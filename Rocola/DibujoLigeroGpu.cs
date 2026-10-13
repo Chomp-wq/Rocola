@@ -266,6 +266,186 @@ namespace Rocola
         }
         private static void TV(ref D3D9.Vtx x, float px, float py, uint c, float u, float v) { x.X = px; x.Y = py; x.Color = c; x.U = u; x.V = v; }
 
+        // 4) EL CIELO NO SE PINTA DEBAJO DE LAS PORTADAS (13-10-2026). En la pared, las portadas tapan buena parte de la
+        // pantalla, y debajo de cada una la tarjeta pintaba antes, para nada, las capas del cielo que van mezcladas: las dos
+        // pasadas de la nebulosa, la via lactea, el grano y la vineta. Donde una portada es OPACA, lo que haya debajo no
+        // cambia ni un pixel de lo que se ve: la tarjeta la pinta encima con alfa 255, o sea que copia la portada y ya.
+        // Asi que esas capas se pintan ahora con HUECOS donde caen las portadas opacas.
+        //
+        // Cuando una portada es opaca de verdad (HuecosDePortadas), con la MISMA cuenta con que la dibuja DrawNativeCover:
+        //   - la casilla se pinta entera (alfa 255: ni fundiendose, ni al hojear a media opacidad, ni la pared fundida);
+        //   - su textura ya esta subida y es la de esa portada;
+        //   - la portada no tiene transparencia por dentro (InteriorOpaco, una vez al subirla): los dos texeles del borde
+        //     no cuentan, porque al reducirla el filtro los deja a medias;
+        //   - el hueco es solo su interior: 3 texeles y un pixel mas adentro que el borde suave de medio texel. El filtrado
+        //     bilineal lee como mucho un texel alrededor, y la textura no tiene mipmaps: dentro del hueco la portada sale
+        //     opaca en cada pixel.
+        // El cielo de abajo (el degradado) se pinta entero: es opaco, sin textura ni mezcla, lo mas barato de pintar, y
+        // tapa lo del cuadro anterior (la pantalla no se borra). La aurora tampoco se toca.
+        //
+        // Lo que no esta debajo de una portada sale igual: cada capa se parte en rectangulos alrededor de los huecos, cada uno
+        // con las coordenadas de textura que le tocaban dentro del cuadrilatero entero. Como en las teselas, el redondeo de
+        // los vertices nuevos puede mover un nivel de 255 algun pixel suelto en el borde de un hueco. Solo con tarjeta;
+        // automatico y sin interruptor, porque no cambia lo que se ve.
+        internal const int BordePortada = 2;      // texeles del borde de la portada que no cuentan
+        internal const float HuecoMinimo = 8f;    // un hueco mas chico no ahorra nada
+        private readonly int[] huecos = new int[4 * MaxCells];   // x0,y0,x1,y1 en pixeles (x1,y1 excluidos)
+        private int nHuecos;
+        private D3D9.Vtx[] trozosHuecos = new D3D9.Vtx[0];
+        private readonly float[] cortesHuecos = new float[2 * MaxCells + 2];
+        private readonly int[] tapanHuecos = new int[MaxCells];
+        internal long PixelesHueco;                // las pruebas: cuanto se dejo de pintar en el ultimo cuadro (sin contar capas)
+
+        // Si la portada no tiene transparencia por dentro (sin sus BordePortada texeles de cada lado).
+        internal static bool InteriorOpaco(Bitmap b)
+        {
+            if (b == null) return false;
+            int w = b.Width, h = b.Height, m = BordePortada;
+            if (w <= 2 * m || h <= 2 * m) return false;
+            PixelFormat f = b.PixelFormat;
+            if (!Image.IsAlphaPixelFormat(f) && (f & PixelFormat.Indexed) == 0) return true;   // sin canal alfa: opaca
+            int[] fila = new int[w - 2 * m];
+            BitmapData bd = b.LockBits(new Rectangle(m, m, w - 2 * m, h - 2 * m), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                for (int y = 0; y < h - 2 * m; y++)
+                {
+                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), fila, 0, fila.Length);
+                    for (int x = 0; x < fila.Length; x++) if ((uint)fila[x] < 0xFF000000u) return false;
+                }
+                return true;
+            }
+            finally { b.UnlockBits(bd); }
+        }
+
+        // Los huecos de ESTE cuadro: antes de abrir la escena (el cielo se pinta dentro de Begin), con lo mismo con que se
+        // dibujaran las portadas despues.
+        private void HuecosDePortadas()
+        {
+            nHuecos = 0; PixelesHueco = 0;
+            if (!ShowAlbum || Width <= 0 || Height <= 0) return;
+            for (int i = 0; i < gridN; i++)
+            {
+                GpuGridCell c = gridBuf[i];
+                if (!c.Direct || c.FullCover == null || nativeGridTex[i] == IntPtr.Zero) continue;
+                if (c.X + c.W <= 0f || c.X >= Width) continue;
+                int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
+                if (ca < 255) continue;
+                CellTex t;
+                if (!nativeCovers.TryGetValue(c.FullCover, out t) || !t.Opaca || t.Tex != nativeGridTex[i] || t.Bw < 1 || t.Bh < 1) continue;
+                RectangleF bounds = c.CoverRect;
+                Rectangle face = StaticFace(new RectangleF(0, 0, bounds.Width, bounds.Height));
+                float x = bounds.X + face.X, y = bounds.Y;
+                float mx = 3f * face.Width / t.Bw + 1f, my = 3f * face.Height / t.Bh + 1f;   // 3 texeles y un pixel
+                int x0 = (int)Math.Ceiling(x + mx), x1 = (int)Math.Floor(x + face.Width - mx);
+                int y0 = (int)Math.Ceiling(y + my), y1 = (int)Math.Floor(y + face.Height - my);
+                if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > Width) x1 = Width; if (y1 > Height) y1 = Height;
+                if (x1 - x0 < HuecoMinimo || y1 - y0 < HuecoMinimo) continue;
+                int o = nHuecos * 4;
+                huecos[o] = x0; huecos[o + 1] = y0; huecos[o + 2] = x1; huecos[o + 3] = y1;
+                nHuecos++;
+                PixelesHueco += (long)(x1 - x0) * (y1 - y0);
+            }
+        }
+
+        // Una capa del cielo con huecos: lo mismo que DibujaTeselas, sin lo que cae dentro de un hueco.
+        private void DibujaTeselasFondo(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, D3D9.Vtx[] quad)
+        {
+            if (tex == IntPtr.Zero) return;
+            if (nHuecos == 0 || !TocaHueco(x0, y0, x1, y1)) { DibujaTeselas(tex, t, x0, y0, x1, y1, uMax, vMax, argb, quad); return; }
+            int v = 0;
+            if (t == null || t.Ancho < 1 || t.Alto < 1) v = Trozos(v, x0, y0, x1, y1, 0f, 0f, uMax, vMax, argb);
+            else
+            {
+                if (t.N == 0) return;
+                double sx = ((double)x1 - x0) / t.Ancho, sy = ((double)y1 - y0) / t.Alto;
+                double su = (double)uMax / t.Ancho, sv = (double)vMax / t.Alto;
+                for (int i = 0; i < t.N; i++)
+                {
+                    int a = t.Rect[i * 4], b = t.Rect[i * 4 + 1], c = t.Rect[i * 4 + 2], d = t.Rect[i * 4 + 3];
+                    v = Trozos(v, (float)(x0 + a * sx), (float)(y0 + b * sy), (float)(x0 + c * sx), (float)(y0 + d * sy),
+                               (float)(a * su), (float)(b * sv), (float)(c * su), (float)(d * sv), argb);
+                }
+            }
+            if (v > 0) stars.DrawTexturedBatch(tex, trozosHuecos, v / 3);
+        }
+
+        private bool TocaHueco(float x0, float y0, float x1, float y1)
+        {
+            for (int k = 0; k < nHuecos; k++)
+            {
+                int o = k * 4;
+                if (huecos[o] < x1 && huecos[o + 2] > x0 && huecos[o + 1] < y1 && huecos[o + 3] > y0) return true;
+            }
+            return false;
+        }
+
+        // El rectangulo (x0,y0)-(x1,y1) (pixeles, sin el medio pixel de D3D9) con (u0,v0)-(u1,v1) de su textura, menos los
+        // huecos: franjas horizontales entre los bordes de los huecos que lo tocan y, en cada una, los tramos libres. Cada
+        // vertice lleva la coordenada de textura que tenia en ese punto del rectangulo entero. Escribe a partir del vertice
+        // 'v' de trozosHuecos y devuelve hasta donde llego.
+        private int Trozos(int v, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint argb)
+        {
+            if (!(x1 > x0) || !(y1 > y0)) return v;
+            int n = 0;
+            for (int k = 0; k < nHuecos; k++)
+            {
+                int o = k * 4;
+                if (huecos[o] < x1 && huecos[o + 2] > x0 && huecos[o + 1] < y1 && huecos[o + 3] > y0) tapanHuecos[n++] = k;
+            }
+            if (n == 0) return Rect(v, x0, y0, x1, y1, x0, y0, x1, y1, u0, v0, u1, v1, argb);
+            // Los cortes en alto: los bordes de los huecos que caen dentro, ordenados y sin repetir.
+            int nc = 0;
+            cortesHuecos[nc++] = y0;
+            for (int j = 0; j < n; j++)
+            {
+                int o = tapanHuecos[j] * 4;
+                if (huecos[o + 1] > y0) cortesHuecos[nc++] = huecos[o + 1];
+                if (huecos[o + 3] < y1) cortesHuecos[nc++] = huecos[o + 3];
+            }
+            Array.Sort(cortesHuecos, 1, nc - 1);
+            cortesHuecos[nc++] = y1;
+            for (int b = 0; b + 1 < nc; b++)
+            {
+                float ya = cortesHuecos[b], yb = cortesHuecos[b + 1];
+                if (!(yb > ya)) continue;
+                // En esta franja, los huecos que la cubren de arriba abajo, de izquierda a derecha.
+                float x = x0;
+                while (x < x1)
+                {
+                    float siguiente = x1; float salto = x;
+                    for (int j = 0; j < n; j++)
+                    {
+                        int o = tapanHuecos[j] * 4;
+                        if (huecos[o + 1] > ya || huecos[o + 3] < yb) continue;   // no cubre la franja entera
+                        if (huecos[o + 2] <= x) continue;                         // ya quedo atras
+                        if (huecos[o] <= x) { if (huecos[o + 2] > salto) salto = huecos[o + 2]; }   // x cae dentro: saltarlo
+                        else if (huecos[o] < siguiente) siguiente = huecos[o];
+                    }
+                    if (salto > x) { x = salto; continue; }
+                    v = Rect(v, x, ya, siguiente, yb, x0, y0, x1, y1, u0, v0, u1, v1, argb);
+                    x = siguiente;
+                }
+            }
+            return v;
+        }
+
+        // Un trozo (a0,b0)-(a1,b1) del rectangulo (x0,y0)-(x1,y1): sus coordenadas de textura, por la misma recta.
+        private int Rect(int v, float a0, float b0, float a1, float b1, float x0, float y0, float x1, float y1,
+                         float u0, float v0, float u1, float v1, uint argb)
+        {
+            if (trozosHuecos.Length < v + 6) Array.Resize(ref trozosHuecos, Math.Max(v + 6, trozosHuecos.Length * 2 + 96));
+            double su = ((double)u1 - u0) / ((double)x1 - x0), sv = ((double)v1 - v0) / ((double)y1 - y0);
+            float ua = a0 == x0 ? u0 : (float)(u0 + (a0 - (double)x0) * su), ub = a1 == x1 ? u1 : (float)(u0 + (a1 - (double)x0) * su);
+            float va = b0 == y0 ? v0 : (float)(v0 + (b0 - (double)y0) * sv), vb = b1 == y1 ? v1 : (float)(v0 + (b1 - (double)y0) * sv);
+            D3D9.Vtx[] q = trozosHuecos;
+            float pa = a0 - 0.5f, pb = a1 - 0.5f, qa = b0 - 0.5f, qb = b1 - 0.5f;
+            TV(ref q[v], pa, qa, argb, ua, va); TV(ref q[v + 1], pb, qa, argb, ub, va); TV(ref q[v + 2], pb, qb, argb, ub, vb);
+            TV(ref q[v + 3], pa, qa, argb, ua, va); TV(ref q[v + 4], pb, qb, argb, ub, vb); TV(ref q[v + 5], pa, qb, argb, ua, vb);
+            for (int i = 0; i < 6; i++) { q[v + i].Z = 0f; q[v + i].Rhw = 1f; }
+            return v + 6;
+        }
+
         // LA AURORA SIN REPETIR CUENTAS. Cada franja de la cortina y el pie de cada columna parten de un color que solo
         // depende de los colores de la cancion (pie y punta de los dos extremos), de si van las bandas de color y de la
         // paleta de la portada. Ese color se calculaba en cada cuadro -1.160 mezclas de color- aunque no hubiera

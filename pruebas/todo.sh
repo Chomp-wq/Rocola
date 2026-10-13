@@ -40,7 +40,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 # La casilla de AYUDA y la guia paso a paso de la estrella (11-10-2026, solo GPU).
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -128,6 +128,10 @@ GPU="$GPU mejorasia"
 # las mismas sumas y la misma memoria de los filtros que la cuenta cuadro a cuadro de antes, bit a bit.
 CPU="$CPU repasoligero"
 GPU="$GPU repasoligero"
+# 'mp3ligero': los MP3 del repaso sin la basura de NAudio (13-10-2026; Mp3Ligero.cs): el descompresor recibe los mismos
+# cuadros y salen los mismos bytes que con Mp3FileReader, con saltos, ID3, basura entre cuadros y archivos cortados.
+CPU="$CPU mp3ligero"
+GPU="$GPU mp3ligero"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

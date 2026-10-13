@@ -589,14 +589,15 @@ class DibujoLigero
         Exige(esc >= 2 && lee >= 2, "el cuadro tira las teselas de la interfaz al subirla y las pide cuando esta quieta");
         Codigo.UsosDeCampo(rf, "uiBotTeselas", out lee, out esc);
         Exige(esc >= 2 && lee >= 2, "y lo mismo con la franja de abajo");
-        int veces = 0; foreach (string s in Codigo.Nombres(rf)) if (s == "DibujaTeselas") veces++;
-        Exige(veces >= 3, "el cuadro dibuja a trozos la vineta, la interfaz y la franja (" + veces + " sitios)");
+        // Desde el 13-10-2026 la vineta va por DibujaTeselasFondo (la misma, sin pintar bajo las portadas), que llama a DibujaTeselas.
+        int veces = 0; foreach (string s in Codigo.Nombres(rf)) if (s == "DibujaTeselas" || s == "DibujaTeselasFondo") veces++;
+        Exige(veces >= 3 && Codigo.Llama(Metodo(TPanel, "DibujaTeselasFondo"), "DibujaTeselas"), "el cuadro dibuja a trozos la vineta, la interfaz y la franja (" + veces + " sitios)");
         // El analizador nuevo reparte las MISMAS teselas en pasos; seguir exigiendo dos
         // sitios reales en RenderFrame, no un nombre anterior que ya no esta enchufado.
         string pedido = Metodo(TPanel, "TeselasEnPasos") != null ? "TeselasEnPasos" : "TeselasQuietas";
         int vq = 0; foreach (string s in Codigo.Nombres(rf)) if (s == pedido) vq++;
         Exige(vq == 2, "y pide las teselas quietas de las dos imagenes de la interfaz (" + pedido + ")");
-        Exige(Codigo.Llama(Metodo(TPanel, "DibujaNieblas"), "DibujaTeselas"), "la via lactea se dibuja a trozos");
+        Exige(Codigo.Llama(Metodo(TPanel, "DibujaNieblas"), "DibujaTeselas") || Codigo.Llama(Metodo(TPanel, "DibujaNieblas"), "DibujaTeselasFondo"), "la via lactea se dibuja a trozos");
         Exige(Codigo.Llama(Metodo(TPanel, "EnsureNieblas"), "De") && Codigo.Llama(Metodo(TPanel, "EnsureVineta"), "De"),
               "y sus teselas se sacan al hornear la via lactea y la vineta, una vez");
         int lv, ev; Codigo.UsosDeCampo(Metodo(TPanel, "EnsureVineta"), "vinetaTeselas", out lv, out ev);
@@ -948,6 +949,197 @@ class DibujoLigero
         Exige(ConTextura(c4, ui).Count == 1 && ConTextura(c4, bot).Count == 0, "con los controles a la vista la interfaz si se pinta, y la franja tapada por el reposo sigue sin mandarse");
     }
 
+    // ======================= EL CIELO NO SE PINTA DEBAJO DE LAS PORTADAS =======================
+    // Las capas del cielo que van mezcladas (nebulosa, via lactea, grano y vineta) se pintan con huecos donde caen las
+    // portadas opacas. Se comprueba:
+    //   - que portada cuenta como opaca (InteriorOpaco) y cuando una casilla deja hueco (HuecosDePortadas);
+    //   - cada capa, entera y con huecos, por el raster de referencia: dentro de los huecos no se pinta nada; fuera, lo
+    //     mismo (un nivel de 255 en algun pixel suelto, como mucho, por el redondeo de los vertices nuevos); ningun pixel
+    //     dos veces;
+    //   - y lo que importa: el cielo con huecos y las portadas encima (DrawNativeCover, la de verdad) dan la MISMA
+    //     pantalla que el cielo entero y las portadas encima.
+    static Bitmap Portada(int w, int h, int semilla, int bordeSuave, bool agujero)
+    {
+        Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+        Random r = new Random(semilla); int[] px = new int[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int d = Math.Min(Math.Min(x, y), Math.Min(w - 1 - x, h - 1 - y));
+                uint a = d < bordeSuave ? (uint)(60 + 90 * d) : 255u;
+                px[y * w + x] = unchecked((int)((a << 24) | (uint)r.Next(0x1000000)));
+            }
+        if (agujero) px[(h / 2) * w + w / 2] = unchecked((int)(0xFE000000u | 0x123456u));
+        BitmapData bd = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        for (int y = 0; y < h; y++) Marshal.Copy(px, y * w, new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), w);
+        b.UnlockBits(bd);
+        return b;
+    }
+    static void PonHuecos(Control panel, int[] h)
+    {
+        int[] dst = (int[])Toma(panel, "huecos"); Array.Clear(dst, 0, dst.Length);
+        Array.Copy(h, dst, h.Length); Pon(panel, "nHuecos", h.Length / 4);
+    }
+    // Pinta 'con' sobre un fondo al azar; mira que dentro de los huecos no toque nada y que fuera salga como 'sin'.
+    // Fuera, el mismo margen que lo estirado a trozos (seccion 3): un nivel de 255 en menos del 0,1 % de los pixeles, en los
+    // bordes de los huecos. La vineta es la que mas: su imagen de 128 texeles se estira ocho veces.
+    static void ConHuecos(string que, List<Envio> sin, List<Envio> con, int[] h, int W, int H, int semilla)
+    {
+        int[] f0 = Fondo(W, H, semilla), fa = (int[])f0.Clone(), fb = (int[])f0.Clone();
+        Pinta(sin, fa, W, H); Pinta(con, fb, W, H);
+        bool[] hueco = new bool[W * H];
+        for (int k = 0; k + 3 < h.Length; k += 4)
+            for (int y = Math.Max(0, h[k + 1]); y < Math.Min(H, h[k + 3]); y++)
+                for (int x = Math.Max(0, h[k]); x < Math.Min(W, h[k + 2]); x++) hueco[y * W + x] = true;
+        int dentro = 0, fuera = 0, maxd = 0, enHueco = 0, pintadoAntes = 0;
+        for (int i = 0; i < fa.Length; i++)
+        {
+            if (hueco[i]) { enHueco++; if (fb[i] != f0[i]) dentro++; if (fa[i] != f0[i]) pintadoAntes++; continue; }
+            if (fa[i] == fb[i]) continue;
+            fuera++;
+            for (int s = 0; s < 24; s += 8) { int dd = Math.Abs(((fa[i] >> s) & 255) - ((fb[i] >> s) & 255)); if (dd > maxd) maxd = dd; }
+        }
+        int[] veces = new int[W * H]; int dobles = 0;
+        foreach (Envio e in con) for (int i = 0; i < e.Tris; i++) Triangulo(e.Datos, i * 3, null, false, false, null, veces, W, H);
+        int[] vecesSin = new int[W * H];
+        foreach (Envio e in sin) for (int i = 0; i < e.Tris; i++) Triangulo(e.Datos, i * 3, null, false, false, null, vecesSin, W, H);
+        for (int i = 0; i < veces.Length; i++) if (veces[i] > vecesSin[i]) dobles++;
+        Exige(dentro == 0 && fuera <= W * H / 1000 && maxd <= 1 && dobles == 0 && (enHueco == 0 || pintadoAntes > 0),
+              que + ": dentro de los huecos " + dentro + " pixeles tocados (de " + enHueco + "); fuera, " + fuera + " distintos" + (fuera > 0 ? " (el peor por " + maxd + " de 255)" : "")
+              + "; pintados mas veces que antes: " + dobles);
+    }
+    static void BajoLasPortadas()
+    {
+        Console.WriteLine("\n  9) EL CIELO NO SE PINTA DEBAJO DE LAS PORTADAS\n");
+        // --- que portada es opaca ---
+        using (Bitmap a = Portada(64, 64, 1, 2, false)) using (Bitmap b = Portada(64, 64, 2, 3, false)) using (Bitmap c = Portada(64, 64, 3, 2, true))
+        using (Bitmap d = new Bitmap(40, 40, PixelFormat.Format24bppRgb))
+            Exige((bool)Estatico(TPanel, "InteriorOpaco", a) && !(bool)Estatico(TPanel, "InteriorOpaco", b) && !(bool)Estatico(TPanel, "InteriorOpaco", c)
+                  && (bool)Estatico(TPanel, "InteriorOpaco", d) && !(bool)Estatico(TPanel, "InteriorOpaco", (object)null),
+                  "portada opaca: con el borde a medias de dos texeles si; con tres, o con un solo pixel de alfa 254 dentro, no; sin canal alfa, si");
+
+        Random basura = new Random(123);
+        int lt = (int)Campo(TTes, "LadoTesela").GetValue(null);
+        int[][] juegos = {
+            new int[] { 100, 100, 300, 260, 320, 100, 520, 260, 540, 100, 740, 260, 100, 300, 300, 460 },   // pared
+            new int[] { -20, 50, 90, 200, 980, 700, 1100, 800, 400, 300, 600, 500, 450, 350, 650, 550 },     // fuera de la pantalla y solapados
+            new int[] { 0, 0, 1024, 768 },                                                                  // toda la pantalla
+            new int[] { 200, 200, 400, 400, 400, 200, 600, 400, 200, 400, 400, 600 } };                     // pegados por los bordes
+        foreach (int[] p in new int[][] { new int[] { 1024, 768 }, new int[] { 1366, 768 } })
+        {
+            int W = p[0], H = p[1];
+            Control panel = Panel(W, H, Cielo(Tarjeta(W, H), W, H));
+            int mw = Math.Max(8, W / 4), mh = Math.Max(8, H / 4);
+            Bitmap nb = (Bitmap)Estatico(TPanel, "BakeNatural", mw, mh);
+            Textura tn = DeBitmap(nb, basura); IntPtr texN = Registra(tn);
+            Bitmap hz = (Bitmap)Estatico(TStar, "BakeViaLactea", mw, mh);
+            Textura th = DeBitmap(hz, basura); IntPtr texH = Registra(th); object tesH = De(hz, lt, true);
+            Bitmap vm = (Bitmap)Estatico(TPanel, "BakeVineta", 128);
+            Textura tvi = DeBitmap(vm, basura); IntPtr texV = Registra(tvi); object tesV = De(vm, lt, true);
+            Pon(panel, "nebTex", texN); Pon(panel, "nebU", (float)mw / tn.W); Pon(panel, "nebV", (float)mh / tn.H); Pon(panel, "nebTeselas", null);
+            Pon(panel, "hazTex", texH); Pon(panel, "hazU", (float)mw / th.W); Pon(panel, "hazV", (float)mh / th.H); Pon(panel, "hazTeselas", tesH);
+            Pon(panel, "NebColor", 0xFF8C78FFu); Pon(panel, "NebColor2", 0xFF40C0A0u); Pon(panel, "NebFase", 0.9f); Pon(panel, "HazFase", 1.9f);
+            Array quad = Array.CreateInstance(TVtx, 6);
+            for (int j = 0; j < juegos.Length; j++)
+            {
+                string q = W + "x" + H + ", huecos " + (j == 0 ? "de una pared" : j == 1 ? "fuera de la pantalla y solapados" : j == 2 ? "por toda la pantalla" : "pegados");
+                envios.Clear();
+                PonHuecos(panel, new int[0]); Llama(panel, "DibujaNieblas"); List<Envio> sin = Captura();
+                PonHuecos(panel, juegos[j]); Llama(panel, "DibujaNieblas"); List<Envio> con = Captura();
+                ConHuecos("nebulosa (dos pasadas) y via lactea, " + q, sin, con, juegos[j], W, H, 300 + j);
+                PonHuecos(panel, new int[0]); Llama(panel, "DibujaTeselasFondo", texV, tesV, 0f, 0f, (float)W, (float)H, 1f, 1f, 0xFFFFFFFFu, quad); sin = Captura();
+                PonHuecos(panel, juegos[j]); Llama(panel, "DibujaTeselasFondo", texV, tesV, 0f, 0f, (float)W, (float)H, 1f, 1f, 0xFFFFFFFFu, quad); con = Captura();
+                ConHuecos("vineta, " + q, sin, con, juegos[j], W, H, 310 + j);
+                Pon(panel, "ruidoTex", texV); Pon(panel, "ruU", 0.7f); Pon(panel, "ruV", 0.6f);
+                PonHuecos(panel, new int[0]); Llama(panel, "DibujaRuido"); sin = Captura();
+                PonHuecos(panel, juegos[j]); Llama(panel, "DibujaRuido"); con = Captura();
+                ConHuecos("grano, " + q, sin, con, juegos[j], W, H, 320 + j);
+            }
+            PonHuecos(panel, new int[0]); envios.Clear();
+            Llama(panel, "DibujaNieblas"); List<Envio> a0 = Captura();
+            Llama(panel, "DibujaNieblas"); List<Envio> a1 = Captura();
+            bool igual = a0.Count == a1.Count;
+            for (int k = 0; igual && k < a0.Count; k++) { igual = a0[k].Tris == a1[k].Tris && a0[k].Datos.Length == a1[k].Datos.Length; for (int z = 0; igual && z < a0[k].Datos.Length; z++) igual = a0[k].Datos[z] == a1[k].Datos[z]; }
+            Exige(igual && a0.Count == 3, W + "x" + H + ": sin huecos, las capas se mandan exactamente como antes (tres envios)");
+            nb.Dispose(); hz.Dispose(); vm.Dispose();
+        }
+
+        // --- la pared de verdad: portadas encima del cielo con huecos = encima del cielo entero ---
+        {
+            int W = 1024, H = 768;
+            Control panel = Panel(W, H, Cielo(Tarjeta(W, H), W, H));
+            int mw = W / 4, mh = H / 4;
+            Bitmap nb = (Bitmap)Estatico(TPanel, "BakeNatural", mw, mh);
+            Textura tn = DeBitmap(nb, basura); IntPtr texN = Registra(tn);
+            Pon(panel, "nebTex", texN); Pon(panel, "nebU", (float)mw / tn.W); Pon(panel, "nebV", (float)mh / tn.H); Pon(panel, "nebTeselas", null); Pon(panel, "hazTex", IntPtr.Zero);
+            Pon(panel, "NebColor", 0xFF8C78FFu); Pon(panel, "NebColor2", 0xFF40C0A0u); Pon(panel, "NebFase", 2.2f);
+            Pon(panel, "ShowAlbum", true); Pon(panel, "WallOpacity", 1f);
+            Type tCell = TPanel.Assembly.GetType("Rocola.GpuGridCell"), tTex = TPanel.GetNestedType("CellTex", TODO);
+            Array buf = (Array)Toma(panel, "gridBuf"); IntPtr[] nat = (IntPtr[])Toma(panel, "nativeGridTex");
+            float[] nu = (float[])Toma(panel, "nativeGridU"), nv = (float[])Toma(panel, "nativeGridV");
+            System.Collections.IDictionary covers = (System.Collections.IDictionary)Toma(panel, "nativeCovers");
+            // seis casillas: opacas, una fundiendose, una con un pixel transparente dentro, una medio fuera de la pantalla
+            float[][] cel = { new float[] { 60, 80, 220, 1 }, new float[] { 330, 80, 220, 1 }, new float[] { 600, 80, 160.5f, 1 }, new float[] { 60, 400, 220, 0.97f },
+                              new float[] { 330, 400, 220, 1 }, new float[] { 900, 400, 220, 1 } };
+            bool[] agujero = { false, false, false, false, true, false };
+            int[] lados = { 128, 256, 100, 128, 128, 128 };
+            for (int i = 0; i < cel.Length; i++)
+            {
+                Bitmap cov = Portada(lados[i], lados[i], 900 + i, 2, agujero[i]);
+                Textura tc = DeBitmap(cov, basura); IntPtr texC = Registra(tc);
+                object c = Activator.CreateInstance(tCell);
+                Campo(tCell, "Direct").SetValue(c, true); Campo(tCell, "FullCover").SetValue(c, cov);
+                float x = cel[i][0], y = cel[i][1], w = cel[i][2];
+                Campo(tCell, "X").SetValue(c, x); Campo(tCell, "Y").SetValue(c, y); Campo(tCell, "W").SetValue(c, w); Campo(tCell, "H").SetValue(c, w + 30f);
+                Campo(tCell, "A").SetValue(c, cel[i][3]); Campo(tCell, "CoverRect").SetValue(c, new RectangleF(x + 3.25f, y + 2.5f, w - 6, w - 6));
+                buf.SetValue(c, i); nat[i] = texC; nu[i] = (float)cov.Width / tc.W; nv[i] = (float)cov.Height / tc.H;
+                object ct = Activator.CreateInstance(tTex, true);
+                Campo(tTex, "Tex").SetValue(ct, texC); Campo(tTex, "Bw").SetValue(ct, cov.Width); Campo(tTex, "Bh").SetValue(ct, cov.Height);
+                Campo(tTex, "U").SetValue(ct, nu[i]); Campo(tTex, "V").SetValue(ct, nv[i]);
+                Campo(tTex, "Opaca").SetValue(ct, (bool)Estatico(TPanel, "InteriorOpaco", cov));
+                covers[cov] = ct;
+            }
+            Pon(panel, "gridN", cel.Length);
+            Llama(panel, "HuecosDePortadas");
+            int n = (int)Toma(panel, "nHuecos"); int[] h = (int[])Toma(panel, "huecos");
+            Exige(n == 4, "la pared deja " + n + " huecos: las cuatro opacas y enteras (no la que se esta fundiendo ni la que tiene un pixel transparente)");
+            int[] hs = new int[n * 4]; Array.Copy(h, hs, hs.Length);
+            bool enPantalla = true; for (int k = 0; k < n; k++) if (hs[k * 4] < 0 || hs[k * 4 + 2] > W || hs[k * 4 + 1] < 0 || hs[k * 4 + 3] > H) enPantalla = false;
+            Exige(enPantalla, "los huecos no se salen de la pantalla (la que asoma por la derecha, recortada)");
+            envios.Clear();
+            PonHuecos(panel, new int[0]); Llama(panel, "DibujaNieblas"); List<Envio> sin = Captura();
+            PonHuecos(panel, hs); Llama(panel, "DibujaNieblas"); List<Envio> con = Captura();
+            Pon(panel, "nHuecos", n);
+            for (int i = 0; i < cel.Length; i++)
+            {
+                object c = buf.GetValue(i);
+                int ca = (int)(Math.Max(0f, Math.Min(1f, cel[i][3])) * 255f + 0.5f);
+                Llama(panel, "DrawNativeCover", i, c, (uint)Estatico(TPanel, "ColorCelda", ca, 0f));
+            }
+            List<Envio> tapas = Captura();
+            int[] f0 = Fondo(W, H, 500), fa = (int[])f0.Clone(), fb = (int[])f0.Clone();
+            Pinta(sin, fa, W, H); Pinta(tapas, fa, W, H);
+            Pinta(con, fb, W, H); Pinta(tapas, fb, W, H);
+            int maxd; int dist = Compara(fa, fb, out maxd);
+            long ahorro = 0; for (int k = 0; k < n; k++) ahorro += (long)(hs[k * 4 + 2] - hs[k * 4]) * (hs[k * 4 + 3] - hs[k * 4 + 1]);
+            Exige(dist <= W * H / 10000 && maxd <= 1, "con las portadas encima, la misma pantalla: " + dist + " pixeles distintos" + (dist > 0 ? " (el peor por " + maxd + " de 255)" : "")
+                  + "; se dejan de pintar " + ahorro + " pixeles por capa (" + Pct((double)ahorro / (W * H)) + " de la pantalla)");
+            // la pared fundida, o fuera de la pared: ningun hueco
+            Pon(panel, "WallOpacity", 0.99f); Llama(panel, "HuecosDePortadas"); int n1 = (int)Toma(panel, "nHuecos");
+            Pon(panel, "WallOpacity", 1f); Pon(panel, "ShowAlbum", false); Llama(panel, "HuecosDePortadas"); int n2 = (int)Toma(panel, "nHuecos");
+            Exige(n1 == 0 && n2 == 0, "con la pared fundiendose (" + n1 + ") o sin la pared (" + n2 + "): ningun hueco");
+            Pon(panel, "ShowAlbum", true);
+            // enchufado: los huecos se sacan antes de abrir la escena y las capas los usan
+            MethodInfo rf = Metodo(TPanel, "RenderFrame");
+            Exige(Codigo.Llama(rf, "GpuPanel.HuecosDePortadas") && Codigo.Llama(Metodo(TPanel, "DibujaRuido"), "GpuPanel.Trozos")
+                  && Codigo.Llama(Metodo(TPanel, "NieblaDeriva"), "GpuPanel.DibujaTeselasFondo") && Codigo.Llama(Metodo(TPanel, "PrepareNativeCover"), "GpuPanel.InteriorOpaco"),
+                  "enchufado: el cuadro saca los huecos; nebulosa, via lactea, grano y vineta los usan; la opacidad se mira al subir la portada");
+            List<string> llam = Codigo.Llamadas(rf); int iH = llam.IndexOf("GpuPanel.HuecosDePortadas"), iB = llam.IndexOf("GpuStarfield.Begin");
+            Exige(iH >= 0 && iB > iH, "los huecos se sacan antes de abrir la escena (el cielo se pinta dentro de Begin)");
+            nb.Dispose();
+        }
+    }
+
     // En Linux (Mono) la rocola copia memoria con una funcion de Windows (RtlMoveMemory), y sin ella no puede subir una
     // imagen a la tarjeta imitada. Se carga una COPIA de la rocola con su .config, que le dice a Mono que use memmove.
     // No se toca el ejecutable de las pruebas y no se deja nada: la carpeta se borra al acabar. En Windows, tal cual.
@@ -992,6 +1184,7 @@ class DibujoLigero
         try { AuroraReusada(); } catch (Exception e) { Mal("la aurora reusada: " + e.GetType().Name + ": " + e.Message); }
         try { PorEntero(); } catch (Exception e) { Mal("por entero: " + e.GetType().Name + ": " + e.Message); }
         try { CuadroDeVerdad(); } catch (Exception e) { Mal("el cuadro de verdad: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
+        try { BajoLasPortadas(); } catch (Exception e) { Mal("bajo las portadas: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien" : ("\n  " + fallos + " fallos"));
         return fallos;
     }

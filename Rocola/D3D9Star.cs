@@ -1877,7 +1877,7 @@ namespace Rocola
         // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
         private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
-        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; }
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; public bool Opaca; }   // Opaca: portada sin transparencia por dentro (DibujoLigeroGpu.cs, HuecosDePortadas)
         private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
         private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
@@ -2555,11 +2555,12 @@ namespace Rocola
             UpdateMoonMusic(pulseCrudo);
             AvanzaAsistente(); // reloj fino de ESTE cuadro, independiente del timer de la UI
             double antesDibujo = AhoraMs();
+            HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
             if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz.
             if (VinetaSuave && vinetaTex != IntPtr.Zero)
             {
-                DibujaTeselas(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente (DibujoLigeroGpu.cs)
+                DibujaTeselasFondo(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente ni bajo las portadas (DibujoLigeroGpu.cs)
             }
             if (HaloSeleccion && ShowAlbum && GetContourRect != null)
             {
@@ -3306,6 +3307,18 @@ namespace Rocola
         {
             if (ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return;
             PreparaMallaRuido();
+            if (nHuecos > 0 && ruidoMalla != null)
+            {
+                // Sin pintar debajo de las portadas (DibujoLigeroGpu.cs): cada teja, menos los huecos.
+                int v = 0;
+                for (int p = 0; p + 5 < ruidoTriangulos * 3; p += 6)
+                {
+                    D3D9.Vtx a = ruidoMalla[p], c = ruidoMalla[p + 2];
+                    v = Trozos(v, a.X + 0.5f, a.Y + 0.5f, c.X + 0.5f, c.Y + 0.5f, a.U, a.V, c.U, c.V, a.Color);
+                }
+                if (v > 0) stars.DrawTexturedBatchWrap(ruidoTex, trozosHuecos, v / 3);
+                return;
+            }
             stars.DrawTexturedBatchWrap(ruidoTex, ruidoMalla, ruidoTriangulos);
         }
         private void PreparaMallaRuido()
@@ -3531,7 +3544,7 @@ namespace Rocola
                 // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
                 float ox = EnMargen((float)Math.Sin(HazFase) * mx + hazEmpuje, mx), oy = (float)Math.Cos(HazFase) * my;
-                DibujaTeselas(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente (DibujoLigeroGpu.cs)
+                DibujaTeselasFondo(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente ni queda bajo una portada (DibujoLigeroGpu.cs)
             }
         }
 
@@ -3541,7 +3554,7 @@ namespace Rocola
         // Solo lo que no es transparente (DibujoLigeroGpu.cs): sin teselas, el cuadrilatero entero de siempre.
         private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
         {
-            DibujaTeselas(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);
+            DibujaTeselasFondo(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);   // sin pintar debajo de las portadas
         }
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo

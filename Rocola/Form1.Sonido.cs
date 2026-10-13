@@ -537,12 +537,10 @@ namespace Rocola
                     long inicio;
                     try { inicio = InicioAudioMp3(archivo); }
                     catch (IOException) { inicio = 0; }
-                    if (inicio == 0)
-                    {
-                        archivo.Dispose(); archivo = null;
-                        return AbreMp3(ruta);
-                    }
-                    vista = new VistaMp3(archivo, inicio); archivo = null;   // la vista pasa a ser duena del archivo
+                    // Sin ID3 que saltar, el archivo tal cual: es lo que abria AbreMp3(ruta) (File.OpenRead), ahora con el lector
+                    // ligero (Mp3Ligero.cs). Con ID3, la vista.
+                    if (inicio == 0) { vista = archivo; archivo = null; }
+                    else { vista = new VistaMp3(archivo, inicio); archivo = null; }   // la vista pasa a ser duena del archivo
                     Func<WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(WaveFormat f)
                     { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
                     Mp3FileReader.FrameDecompressorBuilder armador = delegate(WaveFormat wf)
@@ -551,7 +549,8 @@ namespace Rocola
                         hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                         return hecho;
                     };
-                    Mp3FileReader lector = new Mp3FileReader(vista, armador);
+                    // El repaso lee cada cuadro sin dejar basura (Mp3Ligero.cs): el mismo lector de NAudio, la misma salida.
+                    Mp3FileReader lector = LectorMp3Ligero.Posible ? new LectorMp3Ligero(vista, armador) : new Mp3FileReader(vista, armador);
                     propio = vista; vista = null;
                     return lector;
                 }

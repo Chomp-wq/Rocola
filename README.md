@@ -8,6 +8,15 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El repaso sin basura y el cielo sin pintar bajo las portadas — 13 de octubre de 2026
+
+- **Los MP3 del repaso:** el mismo lector de NAudio, pero cada cuadro reutiliza su memoria. Leer una canción entera deja
+  26 KB de basura en vez de 9,6 MB, con los mismos bytes para el descompresor.
+- **La pared (solo tarjeta):** la nebulosa, la vía láctea, el grano y la viñeta ya no se pintan debajo de las portadas
+  opacas. Cada capa pinta entre un 12 y un 18 % menos de la pantalla y la imagen es la misma.
+
+[Qué se cambió y cómo se comprobó](REPASO_Y_PARED_LIGEROS_MODEST_2026-10-13.md).
+
 ## Lo que queda por mejorar, medido — 13 de octubre de 2026
 
 Ronda de medir, sin cambios en el programa. La cadena de sonido, el arranque de cada canción y el fondo ya van

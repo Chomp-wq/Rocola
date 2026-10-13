@@ -129,6 +129,7 @@ namespace Rocola
             long start = Stopwatch.GetTimestamp(); budget--;
             texture.Tex = stars.CreateCoverShared(cell.FullCover, out texture.U, out texture.V);
             texture.Bw = cell.FullCover.Width; texture.Bh = cell.FullCover.Height;
+            texture.Opaca = texture.Tex != IntPtr.Zero && InteriorOpaco(cell.FullCover);   // el cielo no se pinta debajo (DibujoLigeroGpu.cs); dentro del coste medido
             long spent = Stopwatch.GetTimestamp() - start; nativeUploadCost = CargaTrabajo.AprendeCoste(nativeUploadCost, spent);
             if (CoverControl != null) CoverControl.Spend(spent);
             if (texture.Tex != IntPtr.Zero) { nativeCovers[cell.FullCover] = texture; cellBytesDirty = true; }
