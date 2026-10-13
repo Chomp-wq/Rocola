@@ -89,6 +89,40 @@ Mientras suena música, se añade un contador por cuadro y, cada 64, unas pocas 
   Linux); ninguno nuevo. `desnormales` pasa en CPU y GPU.
 - **Dibujo por CPU:** los 14 métodos congelados, idénticos.
 
+## Segunda pasada (13 de octubre): el convertidor de frecuencia, un tercio más ligero
+
+Petición del usuario: «busca más mejoras».
+
+Medí también las opciones de sonido que no son de fábrica. **El convertidor de frecuencia** era, con diferencia, lo
+que más gastaba: unos 40 ms por segundo, el triple que todo el resto de la cadena. Lo usan:
+
+- «Tarjeta a: 44,1 / 48 kHz» (Ctrl+F3 → Sonido → El local y sus bocinas), cuando la canción viene a la otra
+  frecuencia;
+- el relevo sin pausa entre dos canciones de frecuencias distintas.
+
+**Por qué gastaba tanto.** Cada muestra de salida se calcula con 192 coeficientes, y cada uno se interpolaba en el
+momento entre dos fases de una tabla. Pero de 44,1 a 48 kHz solo hay 160 posiciones distintas, que se repiten sin
+parar.
+
+**Qué se cambió** (`SinPausa.cs`, `RemuestreoContinuo`):
+
+- esas posiciones se interpolan una sola vez, con la misma cuenta y en el mismo orden, y cada muestra solo las lee.
+  Si en alguna pareja de frecuencias rara hubiera demasiadas (más de 2 MB), se sigue como siempre;
+- el anillo de entrada guarda cada muestra dos veces, ya en doble precisión: la ventana nunca da la vuelta y no hay
+  que comprobarlo en cada coeficiente, ni convertir cada muestra 192 veces.
+
+**Resultado (aquí, mejor de cinco medidas):** de 44,1 a 48 kHz en estéreo, de 43 a 29 ms por segundo; de 48 a
+44,1, de 42 a 29. Con 6 canales casi no cambia (es raro en una rocola).
+
+**Los mismos bits.** El ejecutable de antes y el de ahora dan exactamente la misma salida, en 10 parejas de frecuencias
+(de 11 a 96 kHz), en mono, estéreo y 5.1. La batería nueva **`remuestreoligero`** (CPU y GPU) lo vigila: compara en
+la misma rocola el camino nuevo con el de siempre, en 48 conversiones, y mira que 44,1 ↔ 48 usen el nuevo. Con el
+ejecutable de antes falla 13 de sus 62 comprobaciones.
+
+También pasan `sinpausa`, `octavatanda`, `eficiencia` y `desnormales`. `salidacontinua` falla igual que antes: en este
+Linux no hay `Msacm32.dll` para el MP3. Tanda completa: los mismos 26 problemas de siempre, ninguno nuevo; el dibujo
+por CPU, idéntico.
+
 ## Lo que no se pudo medir
 
 - **Los tiempos son de esta máquina**, no del equipo del bar. La proporción (unas siete veces) es la de aquí.

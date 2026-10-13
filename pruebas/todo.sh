@@ -116,6 +116,10 @@ GPU="$GPU decimatanda"
 # cero exacto, ningun estado se queda en desnormal y el silencio no cuesta mas que la musica (antes, unas siete veces).
 CPU="$CPU desnormales"
 GPU="$GPU desnormales"
+# 'remuestreoligero': el convertidor de frecuencia (Tarjeta a 44,1/48 kHz y relevo entre tasas) con sus fases ya
+# interpoladas y el anillo sin vueltas: los mismos bits que interpolando en cada cuadro, en muchos pares de tasas.
+CPU="$CPU remuestreoligero"
+GPU="$GPU remuestreoligero"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

@@ -15,6 +15,8 @@ HD suspendida y renderizado CPU congelado.
   la siguiente.
 - **Ahora esos restos se ponen a cero** cada 64 cuadros: de 95 a 13 ms por segundo en una canción con silencio largo.
 - **Lo que suena es lo mismo:** comparado byte a byte en 16 bits con canciones enteras. Con música gasta lo mismo.
+- **Segunda pasada:** el convertidor de frecuencia («Tarjeta a 44,1/48 kHz» y el relevo entre frecuencias) gasta
+  un tercio menos, con los mismos bits.
 - Medido en esta máquina; en el equipo del bar (y en XP) no se pudo medir.
 
 [Lo que se midió, lo que se cambió y cómo se comprobó](RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md).

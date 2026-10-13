@@ -39,9 +39,20 @@ namespace Rocola
         private readonly ISampleProvider src;
         private readonly WaveFormat formato;
         private readonly int tasaIn, tasaOut, ch, mitad, taps, capacidad;
-        private readonly float[] anillo, entrada, cuadro;
+        private readonly float[] entrada, cuadro;
+        private readonly double[] anillo;   // en double: cada muestra se convierte una vez al entrar, no en cada coeficiente (la cuenta es la misma)
         private readonly double[] sumas;
         private readonly double[] filtro;
+        // LAS FASES QUE DE VERDAD SE USAN, YA INTERPOLADAS (13-10-2026). La fase de cada cuadro de salida sale del resto
+        // (emitidos * tasaIn) % tasaOut, que solo toma tasaOut / mcd(tasaIn, tasaOut) valores: 160 de 44,1 a 48 kHz. Antes
+        // cada cuadro volvia a interpolar sus 192 coeficientes entre dos fases de la tabla; ahora se interpolan una vez,
+        // con la misma cuenta y en el mismo orden, y el cuadro solo los lee: los mismos numeros, casi la mitad de trabajo.
+        // Si salieran demasiadas (tasas raras), se sigue interpolando como siempre.
+        private readonly double[] filas;
+        private readonly int paso;   // mcd(tasaIn, tasaOut): el resto avanza de 'paso' en 'paso'
+        private const long FilasBytesTope = 2 * 1024 * 1024;
+        private static double[] filasDe, filasLista;   // las ultimas preparadas (de que tabla salieron y cuales son)
+        private static int filasIn, filasOut;
         private long leidos, emitidos, porSaltar;
         private bool fin;
         private int canalCuadro;
@@ -151,7 +162,7 @@ namespace Rocola
             if (soloPreparada && (tablaPreparada == null || tablaPreparada.Length != (Fases + 1) * taps))
                 throw new ArgumentException("Falta la tabla de continuidad ya preparada");
             capacidad = Bloque * 2 + taps + 8;
-            anillo = new float[capacidad * ch]; entrada = new float[Bloque * ch]; cuadro = new float[ch]; sumas = new double[ch];
+            anillo = new double[2 * capacidad * ch]; entrada = new float[Bloque * ch]; cuadro = new float[ch]; sumas = new double[ch];
             canalCuadro = ch;
             filtro = tablaPreparada;
             if (!soloPreparada)
@@ -159,6 +170,8 @@ namespace Rocola
                 lock (tablaCerrojo) filtro = BuscaTabla(tasaIn, tasaOut);
                 if (filtro == null) filtro = CreaFiltro(tasaIn, tasaOut); // constructor directo de fixtures, nunca usado por la UI
             }
+            paso = Mcd(tasaIn, tasaOut);
+            filas = FilasDe(filtro, tasaIn, tasaOut, taps, paso);
         }
         private static double[] CreaFiltro(int tasaIn, int tasaOut)
         {
@@ -186,6 +199,26 @@ namespace Rocola
             }
             return filtro;
         }
+        private static int Mcd(int a, int b) { while (b != 0) { int t = a % b; a = b; b = t; } return a; }
+        // Cada resto posible, con su interpolacion hecha exactamente como la hace Siguiente. Se guardan las ultimas: la
+        // misma tabla y el mismo par de tasas, cancion tras cancion, no se rehacen.
+        private static double[] FilasDe(double[] filtro, int tasaIn, int tasaOut, int taps, int paso)
+        {
+            int restos = tasaOut / paso;
+            if ((long)restos * taps * 8 > FilasBytesTope) return null;
+            lock (tablaCerrojo)
+                if (object.ReferenceEquals(filasDe, filtro) && filasIn == tasaIn && filasOut == tasaOut) return filasLista;
+            double[] r = new double[restos * taps];
+            for (int k = 0; k < restos; k++)
+            {
+                double fase = (double)((long)k * paso) * Fases / tasaOut;
+                int p0 = (int)fase; double fr = fase - p0;
+                int h0 = p0 * taps, h1 = h0 + taps, q = k * taps;
+                for (int j = 0; j < taps; j++) { double h = filtro[h0 + j]; h += (filtro[h1 + j] - h) * fr; r[q + j] = h; }
+            }
+            lock (tablaCerrojo) { filasDe = filtro; filasIn = tasaIn; filasOut = tasaOut; filasLista = r; }
+            return r;
+        }
         public WaveFormat WaveFormat { get { return formato; } }
         private void Llena(long hasta)
         {
@@ -209,8 +242,8 @@ namespace Rocola
                 int frames = got / ch;
                 for (int i = 0; i < frames; i++)
                 {
-                    int p = (int)((leidos + i) % capacidad) * ch;
-                    for (int c = 0; c < ch; c++) anillo[p + c] = entrada[i * ch + c];
+                    int p = (int)((leidos + i) % capacidad) * ch, espejo = p + capacidad * ch;
+                    for (int c = 0; c < ch; c++) { double v = entrada[i * ch + c]; anillo[p + c] = v; anillo[espejo + c] = v; }
                 }
                 leidos += frames;
             }
@@ -229,15 +262,41 @@ namespace Rocola
             if (primero < leidos - capacidad) throw new InvalidOperationException("Ventana de remuestreo fuera del anillo");
             int ring = (int)(primero % capacidad) * ch;
             int h0 = p0 * taps, h1 = h0 + taps;
+            if (filas != null && ch == 2)
+            {
+                // Los coeficientes de este resto ya interpolados (FilasDe): misma suma, en el mismo orden.
+                // El anillo guarda cada cuadro dos veces (en su sitio y una vuelta mas alla): la ventana nunca da la vuelta
+                // y no hace falta mirarlo en cada coeficiente.
+                int q = (int)((num % tasaOut) / paso) * taps;
+                double[] fl = filas, an = anillo;
+                double izquierda = 0, derecha = 0;
+                for (int j = desde; j < hasta; j++, ring += 2)
+                {
+                    double h = fl[q + j];
+                    izquierda += an[ring] * h; derecha += an[ring + 1] * h;
+                }
+                cuadro[0] = (float)izquierda; cuadro[1] = (float)derecha;
+            }
+            else if (filas != null)
+            {
+                int q = (int)((num % tasaOut) / paso) * taps;
+                for (int c = 0; c < ch; c++) sumas[c] = 0;
+                for (int j = desde; j < hasta; j++, ring += ch)
+                {
+                    double h = filas[q + j];
+                    for (int c = 0; c < ch; c++) sumas[c] += anillo[ring + c] * h;
+                }
+                for (int c = 0; c < ch; c++) cuadro[c] = (float)sumas[c];
+            }
             // Una fase/interpolacion por tap para todos los canales; un modulo por cuadro, no por tap.
-            if (ch == 2)
+            else if (ch == 2)
             {
                 double izquierda = 0, derecha = 0;
                 for (int j = desde; j < hasta; j++)
                 {
                     double h = filtro[h0 + j]; h += (filtro[h1 + j] - h) * fr;
                     izquierda += anillo[ring] * h; derecha += anillo[ring + 1] * h;
-                    ring += 2; if (ring == anillo.Length) ring = 0;
+                    ring += 2; if (ring == capacidad * 2) ring = 0;
                 }
                 cuadro[0] = (float)izquierda; cuadro[1] = (float)derecha;
             }
@@ -248,7 +307,7 @@ namespace Rocola
                 {
                     double h = filtro[h0 + j]; h += (filtro[h1 + j] - h) * fr;
                     for (int c = 0; c < ch; c++) sumas[c] += anillo[ring + c] * h;
-                    ring += ch; if (ring == anillo.Length) ring = 0;
+                    ring += ch; if (ring == capacidad * ch) ring = 0;
                 }
                 for (int c = 0; c < ch; c++) cuadro[c] = (float)sumas[c];
             }

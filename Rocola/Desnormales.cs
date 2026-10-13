@@ -7,9 +7,9 @@
 // mas, y la que sale de ellos tambien es diminuta, asi que el silencio se contagia hacia abajo por toda la cadena.
 //
 // Medido aqui con la cadena de verdad, lo de fabrica y sin saltar el silencio: con musica, la cadena entera gasta unos
-// 19 ms por segundo de cancion; en silencio exacto, unos 140 ms, siete veces mas (lo vigila pruebas/desnormales.cs). El grave en mono pasaba de 0,8 a
-// 26 ms; el bajo, el modo noche y la medida del original, de uno o dos a trece o veinticinco. Y justo ahi, al final de
-// cada cancion, es cuando la pantalla prepara la siguiente.
+// 19 ms por segundo de cancion; en silencio exacto, unos 140 ms, siete veces mas (lo vigila pruebas/desnormales.cs).
+// El grave en mono pasaba de 0,8 a 26 ms; el bajo, el modo noche y la medida del original, de uno o dos a trece o
+// veinticinco. Y justo ahi, al final de cada cancion, es cuando la pantalla prepara la siguiente.
 //
 // EL REMEDIO. Cada poco (como mucho cada 64 cuadros) lo que queda por debajo del tope se pone a cero; desde ahi, con
 // ceros a la entrada, el filtro se queda en cero exacto y no cuesta nada. Cada poco y no en cada muestra: mientras
