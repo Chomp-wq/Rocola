@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Más mejoras de audio, para elegir — 13 de octubre de 2026
+
+Revisión con propuestas, sin cambios en el programa: un canal mudo por los dos (S1), quitar la continua (S2), estéreo
+estrecho automático (S3), escuchar sin mejoras (S4) y qué le hace a la canción que suena (S5). Siguen pendientes A5,
+A3 y A6.
+[Las propuestas y lo que ya existe](AUDIO_PROPUESTAS_MODEST_2026-10-13.md).
+
 ## Ctrl+F3: dependencias vivas, guardar al momento y ajustes inútiles fuera — 13 de octubre de 2026
 
 Lo que depende de otro ajuste va en gris y dice qué le falta, y vuelve solo. Sin tarjeta gráfica, lo suyo en gris con un
