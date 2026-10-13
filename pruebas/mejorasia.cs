@@ -182,6 +182,22 @@ class MejorasIa
                 bool sano = true; foreach (float v in ys) if (float.IsNaN(v) || float.IsInfinity(v) || Math.Abs(v) > 2f) sano = false;
                 Check(sano, "I2: nada roto en la salida");
             }
+            // Disco continuo: la pista siguiente hereda el piso aprendido y su intro ya sale sin siseo; sola, espera 3 s.
+            {
+                double ruido = Math.Pow(10, -55 / 20.0);
+                object qa; Pasa(tq, Musica(fs, 2, ruido, 11), fs, 2, out qa);
+                float[] intro = Musica(fs, 2, ruido, 12);
+                object qb = Activator.CreateInstance(tq, T, null, new object[] { new Arr(intro, fs, 2) }, null);
+                tq.GetMethod("Sigue", T).Invoke(qb, new object[] { qa });
+                List<float> yb = new List<float>(); float[] bb = new float[4410]; int kb;
+                while ((kb = ((ISampleProvider)qb).Read(bb, 0, bb.Length)) > 0) for (int i = 0; i < kb; i++) yb.Add(bb[i]);
+                float[] heredada = new float[intro.Length]; Array.Copy(yb.ToArray(), 2 * h, heredada, 0, intro.Length);
+                object qs; float[] ys2 = Pasa(tq, intro, fs, 2, out qs);
+                float[] sola = new float[intro.Length]; Array.Copy(ys2, 2 * h, sola, 0, intro.Length);
+                double ei = Agudos(intro, fs, 2, 0.5, 3.0), eh = Agudos(heredada, fs, 2, 0.5, 3.0), es = Agudos(sola, fs, 2, 0.5, 3.0);
+                Check(ei - eh >= 3.0, "I2 disco continuo: la intro de la siguiente ya sale sin siseo (" + (ei - eh).ToString("0.0") + " dB)");
+                Check(Math.Abs(ei - es) < 0.5, "I2 sin heredar: la intro espera a aprender (" + (ei - es).ToString("0.0") + " dB)");
+            }
             // Mono, y con mas de dos canales pasa tal cual.
             float[] mono = Musica(fs, 1, Math.Pow(10, -55 / 20.0), 9);
             float[] ym = Pasa(tq, mono, fs, 1, out q);
@@ -205,6 +221,7 @@ class MejorasIa
                 for (int paso = 0; nodo != null && paso < 40; paso++) { if (nodo.GetType() == tq) hay = true; object up = null; try { up = Get(nodo, "src"); } catch { } nodo = up; }
                 int ret = (int)Get(cad, "Retardo");
                 Check(hay == on, "I2 en la cadena: " + (on ? "con el interruptor, esta" : "apagado, ni se pone"));
+                Check((Get(cad, "Siseo") != null) == on, "I2: la cadena lo apunta para que la siguiente del disco herede");
                 if (on) Check(ret >= h, "I2: su retraso cuenta en la cola de la cadena (" + ret + ")");
                 ((IDisposable)lector).Dispose();
             }

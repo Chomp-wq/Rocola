@@ -124,6 +124,10 @@ GPU="$GPU remuestreoligero"
 # I2 quitar el siseo (Siseo.cs) e I3 los modelos del DSEE por genero. Las tres con su interruptor, apagadas de fabrica.
 CPU="$CPU mejorasia"
 GPU="$GPU mejorasia"
+# 'repasoligero': el repaso a fondo por trozos (13-10-2026): la huella del EQ banda por banda y la sonoridad K dan
+# las mismas sumas y la misma memoria de los filtros que la cuenta cuadro a cuadro de antes, bit a bit.
+CPU="$CPU repasoligero"
+GPU="$GPU repasoligero"
 # 'cielovivo': el cielo vivo de Legacy (12-10-2026): luna, lluvias, festejo, cometa, profundidad, hora y reflejo (CieloVivoGpu.cs).
 CPU="$CPU cielovivo"
 GPU="$GPU cielovivo"

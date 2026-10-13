@@ -8,6 +8,15 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Más mejoras: el repaso a fondo más rápido y el quitasiseo en discos seguidos — 13 de octubre de 2026
+
+- **El repaso a fondo de la biblioteca, un 25 % más rápido** (2,39 → 1,79 s por canción aquí). La huella del EQ y la
+  sonoridad se calculan por trozos en vez de muestra a muestra, con los mismos números bit a bit.
+- **El quitasiseo en un disco seguido:** la pista siguiente hereda el siseo aprendido de la anterior, y su intro ya
+  sale limpia.
+
+[Qué se cambió y cómo se comprobó](MAS_MEJORAS_MODEST_2026-10-13.md).
+
 ## Mejoras con IA en el sonido: I1, I2 e I3 — 13 de octubre de 2026
 
 En Ctrl+F3 → Sonido → **Mejoras con IA**, cada una con su interruptor, apagadas de fábrica:

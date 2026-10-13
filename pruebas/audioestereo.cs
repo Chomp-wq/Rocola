@@ -72,7 +72,11 @@ class AudioEstereo {
  static int Main(string[] args){
   form=Assembly.LoadFrom(args[0]).GetType("Rocola.Form1");
   foreach(string method in new string[]{"MeasureFile","MideBloqueOriginal"})
-   Check(Codigo.Llama(form.GetMethod(method,F),"AccumulateEqFrame"),"Ruta sin nueva medicion: "+method);
+   Check(Codigo.Llama(form.GetMethod(method,F),"AccumulateEqFrame")
+         // Desde el 13-10-2026 el repaso pasa cada trozo por HuellaDelTrozo: la misma cuenta, banda por banda, que cae en
+         // AccumulateEqFrame con otros canales (repasoligero comprueba que da los mismos bits).
+         ||(Codigo.Llama(form.GetMethod(method,F),"HuellaDelTrozo")&&Codigo.Llama(form.GetMethod("HuellaDelTrozo",F),"AccumulateEqFrame")),
+         "Ruta sin nueva medicion: "+method);
   Check(Codigo.Llama(form.GetMethod("ReportAudioBlock",F),"MideBloqueOriginal"),"Fallback de pruebas no mide original");
   foreach(Codigo.Paso p in Codigo.Pasos(form.GetMethod("AccumulateEqFrame",F)))
    Check(p.Op!=0x8D&&p.Op!=0x73,"Reserva por cuadro de medicion");

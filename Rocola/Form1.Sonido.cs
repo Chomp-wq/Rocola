@@ -775,11 +775,15 @@ namespace Rocola
                         if (n <= 0) break;
                         got += n;
                         if (integ != null) integ.Procesa(buf, 0, n);
+                        // La huella del EQ de todo el trozo de una vez, banda por banda (HuellaDelTrozo): la misma cuenta, en el
+                        // mismo orden y con la limpieza de restos en los mismos cuadros que cuadro a cuadro, en la mitad de tiempo.
+                        if (!esVideo) HuellaDelTrozo(buf, n / ch, ch, bp, bpSt, bpSum, bpN);
+                        // Y la sonoridad K y los recortes, igual de una vez (SonoridadDelTrozo): cuadro a cuadro y canal a canal, como
+                        // siempre, porque su suma es una sola para los dos canales; solo sin ir y venir de la IA en cada cuadro.
+                        SonoridadDelTrozo(buf, n / ch, ch, c1, c2, st, ref sumSq, ref nSamp, ref clipN, clipRun, bpN);
                         for (int i = 0; i + ch <= n; i += ch)
                         {
-                            if (!esVideo) AccumulateEqFrame(buf, i, ch, bp, bpSt, bpSum);
                             bpN++;
-                            if ((bpN & (Desnormales.Cada - 1)) == 0) { Desnormales.Limpia(bpSt); Desnormales.Limpia(st); }   // en el silencio, los restos diminutos a cero (Desnormales.cs)
                             // canal 0 hacia el analizador de la IA (el DSEE tambien trabaja por canal)
                             if (hv != null && ((soloCorte ? false : hvVistos < hvVistosMax) || qualitySeen < qualityFrames))
                             {
@@ -830,18 +834,6 @@ namespace Rocola
                                         }
                                     }
                                 }
-                            }
-                            for (int c = 0; c < ch; c++)
-                            {
-                                int b = c * 8; float x = buf[i + c];
-                                float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
-                                st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
-                                float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
-                                st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
-                                sumSq += y2 * y2; nSamp++;
-                                float ax = x < 0f ? -x : x;
-                                if (ax >= 0.985f) { clipRun[c]++; if (clipRun[c] == 3) clipN += 3; else if (clipRun[c] > 3) clipN++; }
-                                else clipRun[c] = 0;
                             }
                         }
                     }
@@ -1287,7 +1279,7 @@ namespace Rocola
             // siseo). Retrasa 11,6 ms, que se suman a la cola que el fundido tiene que abarcar.
             if (quitaSiseo)
             {
-                QuitaSiseo qs = new QuitaSiseo(chain); chain = qs; audioTailDelay += qs.DelayFrames;
+                QuitaSiseo qs = new QuitaSiseo(chain); chain = qs; audioTailDelay += qs.DelayFrames; c.Siseo = qs;
             }
             if (sbrAllowed)
             {

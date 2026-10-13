@@ -111,8 +111,9 @@ camino funciona, no que un modelo por género suene mejor.
   canales van al revés.
 - **La transformada del DSEE:** ya usa tablas precalculadas; no hay trabajo repetido que quitar.
 - **El entrenamiento por género** era la pieza que faltaba para que I3 sirva sin escribir comandos: añadida.
-- **Idea para después (no hecha):** que el quitasiseo herede lo aprendido de la pista anterior del mismo disco, para
-  no esperar 3 s en las intros de las siguientes.
+- **Idea para después:** que el quitasiseo herede lo aprendido de la pista anterior del mismo disco, para no esperar
+  3 s en las intros de las siguientes. Hecha después, ver
+  [MAS_MEJORAS_MODEST_2026-10-13.md](MAS_MEJORAS_MODEST_2026-10-13.md).
 
 Junto con lo del 12 y 13 de octubre ([RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md](RENDIMIENTO_SILENCIOS_MODEST_2026-10-12.md)):
 la cadena ya no se atasca en los silencios, el convertidor de frecuencia gasta un tercio menos y el repaso a fondo ya

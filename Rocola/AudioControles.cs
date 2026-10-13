@@ -380,6 +380,101 @@ namespace Rocola
                 }
             }
         }
+        // LA HUELLA DE UN TROZO ENTERO (13-10-2026). Lo mismo que AccumulateEqFrame cuadro a cuadro, pero banda por banda:
+        // cada banda es un filtro aparte, asi que se le pueden pasar todos los cuadros del trozo seguidos, con sus
+        // coeficientes y su memoria en variables y no en arreglos. La suma de cada banda recibe lo mismo y en el mismo orden
+        // (cuadro a cuadro, el izquierdo antes que el derecho), y la limpieza de restos diminutos (Desnormales.cs) cae en
+        // los mismos cuadros que antes: cada 64 contados desde el principio de la cancion ('contados' = los que iban antes
+        // de este trozo). Mismos numeros, bit a bit, en la mitad de tiempo: es lo que mas pesa del repaso a fondo.
+        // Con mas de dos canales, cuadro a cuadro como siempre.
+        private static void HuellaDelTrozo(float[] buffer, int cuadros, int channels, float[][] coefficients, float[] state, double[] sums, long contados)
+        {
+            const int m = Desnormales.Cada - 1;
+            if (channels != 1 && channels != 2)
+            {
+                for (int f = 0; f < cuadros; f++)
+                {
+                    AccumulateEqFrame(buffer, f * channels, channels, coefficients, state, sums);
+                    if (((contados + f + 1) & m) == 0) Desnormales.Limpia(state);
+                }
+                return;
+            }
+            double weight = 1.0 / channels;
+            for (int b = 0; b < 8; b++)
+            {
+                float[] cf = coefficients[b]; if (cf == null) continue;
+                float k0 = cf[0], k1 = cf[1], k2 = cf[2], k3 = cf[3], k4 = cf[4];
+                int qa = b * 4, qb = 32 + b * 4;
+                float a0 = state[qa], a1 = state[qa + 1], a2 = state[qa + 2], a3 = state[qa + 3];
+                double suma = sums[b];
+                if (channels == 1)
+                {
+                    for (int f = 0; f < cuadros; f++)
+                    {
+                        float x = buffer[f];
+                        float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                        a1 = a0; a0 = x; a3 = a2; a2 = o;
+                        suma += (o * o) * weight;
+                        if (((contados + f + 1) & m) == 0)
+                        { a0 = Desnormales.Limpia(a0); a1 = Desnormales.Limpia(a1); a2 = Desnormales.Limpia(a2); a3 = Desnormales.Limpia(a3); }
+                    }
+                }
+                else
+                {
+                    float b0 = state[qb], b1 = state[qb + 1], b2 = state[qb + 2], b3 = state[qb + 3];
+                    for (int f = 0, i = 0; f < cuadros; f++, i += 2)
+                    {
+                        float x = buffer[i];
+                        float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                        a1 = a0; a0 = x; a3 = a2; a2 = o;
+                        suma += (o * o) * weight;
+                        float x2 = buffer[i + 1];
+                        float o2 = k0 * x2 + k1 * b0 + k2 * b1 - k3 * b2 - k4 * b3;
+                        b1 = b0; b0 = x2; b3 = b2; b2 = o2;
+                        suma += (o2 * o2) * weight;
+                        if (((contados + f + 1) & m) == 0)
+                        {
+                            a0 = Desnormales.Limpia(a0); a1 = Desnormales.Limpia(a1); a2 = Desnormales.Limpia(a2); a3 = Desnormales.Limpia(a3);
+                            b0 = Desnormales.Limpia(b0); b1 = Desnormales.Limpia(b1); b2 = Desnormales.Limpia(b2); b3 = Desnormales.Limpia(b3);
+                        }
+                    }
+                    state[qb] = b0; state[qb + 1] = b1; state[qb + 2] = b2; state[qb + 3] = b3;
+                }
+                state[qa] = a0; state[qa + 1] = a1; state[qa + 2] = a2; state[qa + 3] = a3;
+                sums[b] = suma;
+            }
+            // Las posiciones del arreglo que no son de ninguna banda con coeficientes (bandas nulas, canales de mas) se
+            // limpiaban igual: siguen en cero, que es como empiezan.
+        }
+        // LA SONORIDAD K Y LOS RECORTES DE UN TROZO (13-10-2026), fuera del bucle de cada cuadro de MeasureFile: la misma
+        // cuenta, cuadro a cuadro y canal a canal (la suma es una para todos los canales: su orden no se toca), con los
+        // coeficientes en variables. La limpieza de restos (Desnormales.cs) va ANTES del cuadro que hace un multiplo de 64
+        // contados, como iba en el bucle. Mismos numeros, bit a bit.
+        private static void SonoridadDelTrozo(float[] buf, int cuadros, int ch, float[] c1, float[] c2, float[] st,
+                                              ref double sumSq, ref long nSamp, ref long clipN, int[] clipRun, long contados)
+        {
+            const int m = Desnormales.Cada - 1;
+            float p0 = c1[0], p1 = c1[1], p2 = c1[2], p3 = c1[3], p4 = c1[4];
+            float q0 = c2[0], q1 = c2[1], q2 = c2[2], q3 = c2[3], q4 = c2[4];
+            double suma = sumSq; long muestras = nSamp, recortes = clipN;
+            for (int f = 0, i = 0; f < cuadros; f++, i += ch)
+            {
+                if (((contados + f + 1) & m) == 0) Desnormales.Limpia(st);
+                for (int c = 0; c < ch; c++)
+                {
+                    int b = c * 8; float x = buf[i + c];
+                    float y1 = p0 * x + p1 * st[b] + p2 * st[b + 1] - p3 * st[b + 2] - p4 * st[b + 3];
+                    st[b + 1] = st[b]; st[b] = x; st[b + 3] = st[b + 2]; st[b + 2] = y1;
+                    float y2 = q0 * y1 + q1 * st[b + 4] + q2 * st[b + 5] - q3 * st[b + 6] - q4 * st[b + 7];
+                    st[b + 5] = st[b + 4]; st[b + 4] = y1; st[b + 7] = st[b + 6]; st[b + 6] = y2;
+                    suma += y2 * y2; muestras++;
+                    float ax = x < 0f ? -x : x;
+                    if (ax >= 0.985f) { clipRun[c]++; if (clipRun[c] == 3) recortes += 3; else if (clipRun[c] > 3) recortes++; }
+                    else clipRun[c] = 0;
+                }
+            }
+            sumSq = suma; nSamp = muestras; clipN = recortes;
+        }
         private bool HasStereoEq(string path)
         {
             System.Collections.Generic.Dictionary<string, float[]> eqCache = lecturaPlan != null ? lecturaPlan.Eq : this.eqCache;

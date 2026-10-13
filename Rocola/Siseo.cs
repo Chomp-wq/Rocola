@@ -61,6 +61,8 @@ namespace Rocola
         private bool acabo;
         private long dentro, fuera;                      // cuadros leidos del origen y entregados (salen dentro + h)
         internal long TrozosConQuita;                    // cuantos trozos (por canal) llevaron alguna rebaja (las pruebas)
+        private bool empezo;
+        private volatile QuitaSiseo anterior;            // la pista que acaba justo antes, sin fundido (disco continuo)
 
         public QuitaSiseo(ISampleProvider fuente)
         {
@@ -130,8 +132,27 @@ namespace Rocola
 
         // Lee h cuadros (o lo que quede), los pasa y deja listos h cuadros. Salen exactamente los que entraron mas h (el
         // retraso): al acabar el origen se empuja con ceros hasta soltar la cola.
+        // DISCO CONTINUO (13-10-2026): la pista siguiente del mismo disco viene de la misma fuente y trae el mismo siseo. Sigue
+        // con lo que aprendio la anterior (sus minimos, su ganancia), y su intro no espera otros 3 s para quitarlo. Lo
+        // llama la pantalla al preparar el relevo (SigueA, Form1.SinPausa.cs); se toma en la primera lectura, en el hilo
+        // del sonido, cuando la anterior ya acabo.
+        internal void Sigue(QuitaSiseo previa) { if (previa != null && !object.ReferenceEquals(previa, this)) anterior = previa; }
+        private void Hereda()
+        {
+            QuitaSiseo a = anterior; anterior = null;
+            if (a == null || !activo || !a.activo || !a.acabo || a.ch != ch || a.n != n || a.nb != nb || a.framesPorTrozo != framesPorTrozo) return;
+            for (int c = 0; c < ch; c++)
+            {
+                Array.Copy(a.suave[c], suave[c], nb); Array.Copy(a.minTrozo[c], minTrozo[c], nb); Array.Copy(a.cerca[c], cerca[c], nb);
+                Array.Copy(a.quieta[c], quieta[c], nb); Array.Copy(a.ganancia[c], ganancia[c], nb);
+                for (int b = 0; b < nb; b++) Array.Copy(a.minimos[c][b], minimos[c][b], Trozos);
+            }
+            framesEnTrozo = a.framesEnTrozo; trozosVistos = a.trozosVistos; trozoActual = a.trozoActual;
+        }
+
         private bool Siguiente()
         {
+            if (!empezo) { empezo = true; Hereda(); }
             int quiero = h * ch, tiene = 0;
             if (!acabo)
                 while (tiene < quiero)
@@ -176,8 +197,10 @@ namespace Rocola
                 for (int i = 0; i < h; i++) e[h + i] = lee[i * ch + c];   // la mitad nueva (la vieja ya esta corrida)
             }
             double[] eL = entrada[0], eR = ch == 2 ? entrada[1] : null;
+            bool mudo = true;
+            for (int i = 0; i < n && mudo; i++) if (eL[i] != 0.0 || (eR != null && eR[i] != 0.0)) mudo = false;
             for (int i = 0; i < n; i++) { re[i] = eL[i] * ventana[i]; im[i] = eR != null ? eR[i] * ventana[i] : 0.0; }
-            Transforma(false);
+            if (!mudo) Transforma(false);   // silencio digital: su espectro es cero exacto, sin hacer la cuenta
             int m = n / 2;
             for (int k = 0; k <= m; k++)
             {
