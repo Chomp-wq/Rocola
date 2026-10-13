@@ -165,7 +165,7 @@ class PaletaServicio
             using(Font font=new Font("Segoe UI",9,FontStyle.Bold))
             using(Panel page=(Panel)Call(form,f,"PaginaFondo",font,font,font,font,Color.White,Color.Gray,Color.Gray))
             {
-                Control toggle=Find(page,"Paleta completa de caratula (GPU)");
+                Control toggle=Find(page,"Paleta completa de caratula");
                 Check(toggle!=null&&toggle.Bottom<=toggle.Parent.Height,"Toggle no cabe");
                 foreach(bool enabled in new bool[]{true,false,true})
                 {

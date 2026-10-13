@@ -168,7 +168,7 @@ class Luna
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
         {
             if (m.Name == "LoadConfigPrefs") lee = m;
-            else if (m.Name == "SaveConfigPrefs") escribe = m;
+            else if (m.Name == "TextoConfig") escribe = m;
             else if (m.Name == "PaginaDetalles") pag = m;
         }
         bool enLee = false, enEsc = false;

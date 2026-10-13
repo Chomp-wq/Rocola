@@ -79,7 +79,7 @@ class Noche
         Check(rampa != null, "y la rampa que lo baja poco a poco (AvanzaRampa)");
 
         Console.WriteLine("\n  2) LAS CUATRO PERILLAS SE GUARDAN Y SE RELEEN\n");
-        MethodInfo lee = Met("LoadConfigPrefs"), esc = Met("SaveConfigPrefs");
+        MethodInfo lee = Met("LoadConfigPrefs"), esc = Met("TextoConfig");
         List<string> tLee = (lee != null) ? Codigo.Textos(lee) : new List<string>();
         List<string> tEsc = (esc != null) ? Codigo.Textos(esc) : new List<string>();
         foreach (string k in new string[] { "noche=", "noche_desde=", "noche_hasta=", "noche_db=" })
@@ -373,7 +373,7 @@ class Noche
         }
 
         // e) La configuracion y cuanto se compensa.
-        MethodInfo lee = Met("LoadConfigPrefs"), esc = Met("SaveConfigPrefs");
+        MethodInfo lee = Met("LoadConfigPrefs"), esc = Met("TextoConfig");
         Check(Codigo.Textos(lee).Contains("noche_compensa=") && Codigo.Textos(esc).Contains("noche_compensa="), "noche_compensa= se lee y se guarda en la configuracion");
         MethodInfo pc = Met("NocheCompensa"); FieldInfo fc = Campo("nocheCompensa");
         object bkC = fc.GetValue(null);

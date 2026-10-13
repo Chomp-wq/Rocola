@@ -510,6 +510,14 @@ namespace Rocola
             public Color Acento = Color.FromArgb(110, 225, 160);
             public event EventHandler CheckedChanged;
             private bool marcado;
+            // LO QUE LE FALTA (A1, 13-10-2026). Con el mando en gris porque depende de otro que esta apagado, dice
+            // cual: "Necesita: ... (pagina)". Con DosRenglones va debajo del nombre (el mando mide 38 y el nombre
+            // queda a la altura de los demas); si no, detras del nombre y en letra chica.
+            public string Necesita;
+            public bool DosRenglones;
+            internal const int AltoDosRenglones = 38;
+            internal static readonly Color ColorNecesita = Color.FromArgb(232, 186, 112);
+            public void PonNecesita(string que) { if (que != Necesita) { Necesita = que; Invalidate(); } }
             public Interruptor()
             {
                 SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
@@ -538,7 +546,8 @@ namespace Rocola
                 Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-                int h = 20, w = 40, y = (Height - h) / 2;
+                int fila = DosRenglones ? 26 : Height;
+                int h = 20, w = 40, y = (fila - h) / 2;
                 Color ac = !Enabled ? Color.FromArgb(80, 88, 112) : (marcado ? Acento : Color.FromArgb(58, 68, 108));
                 using (GraphicsPath pa = RoundedPath(new Rectangle(0, y, w, h), h / 2))
                 using (SolidBrush b = new SolidBrush(ac))
@@ -552,7 +561,18 @@ namespace Rocola
                     g.FillEllipse(b, kx, y + 3, r, r);
                 if (!string.IsNullOrEmpty(Text))
                     using (SolidBrush tb = new SolidBrush(Enabled ? ForeColor : Color.FromArgb(110, 118, 142)))
-                        g.DrawString(Text, Font, tb, w + 10, (Height - Font.Height) / 2f - 1f);
+                        g.DrawString(Text, Font, tb, w + 10, (fila - Font.Height) / 2f - 1f);
+                if (!Enabled && !string.IsNullOrEmpty(Necesita) && Font != null)
+                    using (Font chica = new Font(Font.FontFamily, 8.5f))
+                    using (SolidBrush nb = new SolidBrush(ColorNecesita))
+                    {
+                        if (DosRenglones) g.DrawString(Necesita, chica, nb, w + 10, fila - 2f);
+                        else
+                        {
+                            float x = w + 10 + (string.IsNullOrEmpty(Text) ? 0f : g.MeasureString(Text, Font).Width + 4f);
+                            g.DrawString(Necesita, chica, nb, x, (Height - chica.Height) / 2f);
+                        }
+                    }
             }
         }
 
@@ -581,19 +601,22 @@ namespace Rocola
             }
             protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
             protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
             protected override void OnPaint(PaintEventArgs e)
             {
                 Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
-                Color rel = encima ? Aclara(Relleno, 0.16f) : Relleno;
+                // En gris si no se puede usar (A1: depende de otro ajuste que esta apagado, o no hay tarjeta grafica).
+                Color rel = !Enabled ? Color.FromArgb(24, 28, 50) : encima ? Aclara(Relleno, 0.16f) : Relleno;
+                Color bor = !Enabled ? Color.FromArgb(52, 60, 96) : Focused ? Aclara(Borde, 0.35f) : Borde;
                 using (GraphicsPath pa = RoundedPath(r, 9))
                 using (SolidBrush b = new SolidBrush(rel))
-                using (Pen pn = new Pen(Focused ? Aclara(Borde, 0.35f) : Borde, Focused ? 2f : 1f))
+                using (Pen pn = new Pen(bor, Focused && Enabled ? 2f : 1f))
                 { g.FillPath(b, pa); g.DrawPath(pn, pa); }
                 SizeF sz = g.MeasureString(Text, Font);
-                using (SolidBrush tb = new SolidBrush(ForeColor))
+                using (SolidBrush tb = new SolidBrush(Enabled ? ForeColor : Color.FromArgb(96, 104, 128)))
                     g.DrawString(Text, Font, tb, (Width - sz.Width) / 2f, (Height - sz.Height) / 2f);
             }
             private static Color Aclara(Color c, float t)
@@ -645,6 +668,7 @@ namespace Rocola
                 using (Font fInt = new Font(ff, 9.5f, FontStyle.Bold))
                 using (Form dlg = new Form())
                 {
+                    OlvidaRequisitos();   // la ventana se arma de nuevo: lo apuntado de la vez anterior ya no vale (A1)
                     dlg.Text = "Rocola - Sonido";
                     dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
                     dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
@@ -934,7 +958,9 @@ namespace Rocola
                     notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");
                     Interruptor swGen = interIa(180, "Modelos del DSEE por genero", cBri, dseePorGenero);
                     swGen.Name = "SonidoIaGenero";
-                    notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");
+                    Label lGenNota = notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");
+                    // A1: sin el DSEE encendido no hace nada. Gris, y la nota de abajo dice que le falta.
+                    Necesita(swGen, delegate { return sbrOn && sbrAllowed; }, "el DSEE encendido (Sonido)", lGenNota);
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
                     Label lEqIa = notaLocal(tMod, 40, 48, "");
                     Label lDsIa = notaLocal(tMod, 104, 64, "");
@@ -1291,11 +1317,17 @@ namespace Rocola
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     System.Windows.Forms.Timer tTrain = new System.Windows.Forms.Timer();
                     tTrain.Interval = 500;
-                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); };
+                    // A1: despues de cualquier cambio se repasan las dependencias, y se ponen ya como estan.
+                    EnganchaRequisitos(dlg);
+                    RefrescaRequisitos();
+                    // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
+                    EmpiezaGuardadoAlMomento();
+                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
                     tTrain.Stop(); tTrain.Dispose();
+                    OlvidaRequisitos();
                     ParaPruebaBocinas();   // la prueba de bocinas no sigue sonando con la ventana cerrada
                 }
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }

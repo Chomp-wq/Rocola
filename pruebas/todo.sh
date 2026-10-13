@@ -26,7 +26,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
 # Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
 FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/AjustesVivos.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TexturasCompatiblesGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/CaratulasAdaptativas.cs"
@@ -152,6 +152,11 @@ GPU="$GPU cielovivo"
 # textos que caben (con la letra de Mono y con una mas ancha). No son las letras de XP.
 CPU="$CPU ventanaf3"
 GPU="$GPU ventanaf3"
+# 'ajustesvivos': Ctrl+F3 con dependencias vivas y guardado al momento (A1 y A2, 13-10-2026): lo que depende de otro ajuste
+# va en gris y dice que le falta, entre paginas y al momento; sin tarjeta, lo de la tarjeta en gris con un aviso por pagina;
+# lo tocado se guarda quieto medio segundo, y un guardado viejo no pisa al nuevo. Y los ajustes retirados ya no estan.
+CPU="$CPU ajustesvivos"
+GPU="$GPU ajustesvivos"
 CPU="$CPU asistentecombo buscainteligente"
 GPU="$GPU asistentecombo asistentevisual buscainteligente guiarojo"
 CPU="$CPU auditoriageneral"

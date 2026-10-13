@@ -944,7 +944,7 @@ namespace Rocola
                 gpuPanel.GetSongTravel = delegate { return songList == null ? 0f : songList.GpuSlideTravel; };
                 gpuPanel.GetSongVertical = delegate { return songList != null && songList.GpuSlideVertical; };
                 gpuPanel.GetPaletteKey = delegate {
-                    if (!coloresCache || !searchOpen || searchOverlay == null) return 0;
+                    if (!searchOpen || searchOverlay == null) return 0;
                     searchOverlay.Accent = bgAccentTarget;
                     return bgAccentTarget.ToArgb();
                 };

@@ -590,56 +590,22 @@ namespace Rocola
         private const float BgDimLevel = 0.45f;   // brillo del starfield mientras se navega (1 = normal)
         private const int BgDimIdleSecs = 10;     // segundos sin botones para volver al brillo normal
 
-        // ---------- LA PARED QUE RESPIRA, Y SU FRENO ----------
+        // ---------- LA QUIETUD, Y LA RESPIRACION DE LA AURORA ----------
         //
-        // La pared de discos sube y baja de brillo muy despacio, una respiracion cada medio minuto. Es lo
-        // que hace que una pantalla quieta parezca encendida en vez de colgada.
+        // La pared de discos respiraba (subia y bajaba de brillo cada medio minuto con nadie tocando). Se
+        // retiro el 13-10-2026 a peticion del usuario: con musica la pared se oculta a los pocos segundos de
+        // reposo, asi que esa respiracion no se llegaba a ver. Sus claves (respira=, respira_fuerza=) se
+        // ignoran al leer una configuracion vieja.
         //
-        // Y TIENE FRENO: mientras alguien esta usando la rocola, NO respira. Una pantalla enorme moviendose
-        // despacio delante de quien esta eligiendo cancion no es bonita, es mareante.
-        //
-        // PERO FRENAR NO ES PARARSE EN SECO. Cortando de golpe, la pared se quedaria clavada en el brillo
-        // que le tocara en ese instante -a veces mas oscura, a veces mas clara de lo normal- y asi hasta
-        // que alguien vuelva a soltar el boton, que es justo lo que se queria evitar. Lo que se le quita es
-        // el AIRE: la fuerza baja a cero mientras el ciclo sigue corriendo por dentro, y entonces la pared
-        // acaba SIEMPRE en su brillo de siempre, se toque el boton en el punto del ciclo que se toque.
-        private const float RespiraTope = 0.06f;     // por mucho que pida el archivo, nunca mas de un 6%
-        // De fabrica, un 4.5%. NO es un numero a ojo: medido sobre el degradado del cielo, un 2.5% -lo que
-        // habia- mueve entre 4 y 6 niveles de 255, que en una pantalla grande y en penumbra esta justo en el
-        // limite de no verse. Con 4.5% se mueve entre 8 y 10, y eso ya se lee como una marea. Un 1.2% son
-        // DOS niveles: la respiracion corria y no se veia, que es exactamente lo que pasaba.
-        private const float RespiraDef = 0.045f;
-        private const float RespiraPaso = 0.00873f;  // radianes por cuadro: a 24 cuadros/s, una vuelta cada ~30 s
-        private static bool respiraOn = true;        // "respira=" en config
-        private static float respiraFuerza = RespiraDef;   // "respira_fuerza=" en config, en por ciento
+        // Lo que queda es la cuenta que comparte la aurora del horizonte, que sigue respirando cuando no
+        // suena nada, y su FRENO: mientras alguien usa la rocola no respira, y al frenar no se para en
+        // seco -se quedaria clavada mas oscura o mas clara-, se le quita el aire y acaba en su brillo.
         private float quietud = 0f;                  // 0 = alguien esta tocando AHORA; 1 = hace rato que nadie
-        // LA VISTA PREVIA, y por que hace falta.
-        //
-        // La respiracion esta hecha para NO verse mientras se mira: el freno pide diez segundos sin que nadie
-        // toque un boton, tarda otros cuatro en volver del todo, y entonces mueve el cielo ocho o diez
-        // niveles de 255 repartidos en treinta segundos -unas tres decimas de nivel por segundo-. Eso es
-        // exactamente lo que se pidio... y hace imposible elegir cuanto respira, porque al pulsar el boton
-        // acabas de tocar la rocola y no se mueve nada.
-        //
-        // Asi que mientras se elige, y SOLO mientras se elige, respira deprisa: el ciclo entero en unos
-        // segundos y sin freno. Se apaga sola. En el bar no cambia nada: ni la velocidad, ni la fuerza, ni el
-        // freno.
-        private const int RespiraDemoSegs = 6;       // lo que dura la vista previa
-        private const float RespiraDemoPaso = 0.10f; // radianes por cuadro: una vuelta cada ~2.6 s
-        private DateTime respiraDemoHasta = DateTime.MinValue;
-        internal void MuestraRespiracion() { respiraDemoHasta = DateTime.Now.AddSeconds(RespiraDemoSegs); }
-        private float respiraFase = 0f;
-        private float bgDimResp = 1f;                // la atenuacion CON la respiracion puesta (estrellas y destellos)
-        private float bgRespiro = 1f;                // y la respiracion SOLA, que es la que mueve el cielo
+        private float bgDimResp = 1f;                // la atenuacion al navegar (estrellas y destellos); la lee el dibujo por CPU
+        private readonly float bgRespiro = 1f;       // el brillo del cielo: siempre 1 desde que la pared no respira (lo lee el dibujo por CPU, congelado)
 
-        // El brillo ahora mismo: 1 es el de siempre. Es la forma de la respiracion y nada mas, sin tope
-        // propio: la comparten la pared y la aurora del horizonte, que respira desde antes y con bastante
-        // mas fuerza (AurReposoOnda), y meterle aqui el tope de la pared le recortaria la suya sin que
-        // nadie lo hubiera pedido. Quien acota es FuerzaRespira, que es el UNICO sitio por donde se le
-        // pone fuerza a la pared.
-        //
-        // Lo que si esta garantizado aqui es el freno: con quietud 0 devuelve 1 EXACTO, sea cual sea el
-        // punto del ciclo. Por eso la pared nunca se queda clavada a media respiracion.
+        // El brillo ahora mismo: 1 es el de siempre. Con quietud 0 devuelve 1 EXACTO, sea cual sea el punto
+        // del ciclo: por eso la aurora nunca se queda clavada a media respiracion.
         internal static float Respiracion(float fuerza, float quietud, float fase)
         {
             if (!(fuerza > 0f) || !(quietud > 0f)) return 1f;
@@ -647,27 +613,15 @@ namespace Rocola
             return 1f + fuerza * quietud * (float)Math.Sin(fase);
         }
 
-        // A donde va la quietud en el cuadro siguiente. Baja DEPRISA -en cuanto alguien toca un boton, la
-        // pared se para en menos de medio segundo- y sube DESPACIO: parar tiene que notarse poco, y volver
-        // a arrancar, nada. Y llega a CERO exacto, no a un pelin de movimiento que no se acaba nunca.
+        // A donde va la quietud en el cuadro siguiente. Baja DEPRISA -en cuanto alguien toca un boton, se
+        // para en menos de medio segundo- y sube DESPACIO: parar tiene que notarse poco, y volver a
+        // arrancar, nada. Y llega a CERO exacto, no a un pelin de movimiento que no se acaba nunca.
         internal static float PasoQuietud(float quietud, bool tocando)
         {
             float meta = tocando ? 0f : 1f;
             float q = quietud + (meta - quietud) * (tocando ? 0.30f : 0.05f);
             if (Math.Abs(q - meta) < 0.005f) q = meta;
             return q;
-        }
-
-        // Lo que se le deja respirar, leido del archivo de configuracion (en por ciento). Acotado: la pared
-        // de un bar es enorme y de noche; un 20% ahi no es vistoso, es mareante. Y una linea sin sentido no
-        // apaga la pared: se queda como de fabrica.
-        internal static float FuerzaRespira(string txt)
-        {
-            float v;
-            if (txt == null) return RespiraDef;
-            if (!float.TryParse(txt.Trim(), System.Globalization.NumberStyles.Float,
-                                System.Globalization.CultureInfo.InvariantCulture, out v)) return RespiraDef;
-            return Clampf(v / 100f, 0f, RespiraTope);
         }
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
@@ -1117,7 +1071,7 @@ namespace Rocola
         }
 
         // Un por ciento del archivo, acotado entre 0 y 1. Una linea sin sentido no apaga nada: se queda como
-        // de fabrica, que es la misma regla que ya sigue la fuerza de la respiracion.
+        // de fabrica.
         private static float LeePorCiento(string txt, float porDefecto)
         {
             float v;
@@ -2255,8 +2209,6 @@ namespace Rocola
             DateTime ahora = DateTime.Now;
             if (lastInput > ahora) lastInput = ahora;
             if (searchLastActivity > ahora) searchLastActivity = ahora;
-            DateTime topeDemo = ahora.AddSeconds(RespiraDemoSegs);
-            if (respiraDemoHasta > topeDemo) respiraDemoHasta = topeDemo;
         }
 
         private void ShowToast(string text) { ShowToast(text, Color.FromArgb(40, 165, 90)); }
@@ -2460,35 +2412,15 @@ namespace Rocola
             if (gpuPanel != null) gpuPanel.IdleExpandTarget = estadoExpandido && muroQuieto;
 #endif
             if (Math.Abs(bgDim - dimTgt) < 0.01f) bgDim = dimTgt;
-            // LA RESPIRACION va APARTE de bgDim y no dentro, a proposito: bgDim es de quien sale la cuenta
-            // de 'quieto' que calma la aurora, y metiendosela dentro se armaria una pescadilla que se muerde
-            // la cola. Aqui se multiplican al final, para pintar.
+            // La quietud (si alguien toca) la usa el reposo de la aurora (Form1.Sonido.cs). La pared ya no respira:
+            // la atenuacion al navegar es la de siempre.
             quietud = PasoQuietud(quietud, (DateTime.Now - lastInput).TotalSeconds < BgDimIdleSecs);
-            respiraFase += RespiraPaso;
-            if (respiraFase > 6.2831853f) respiraFase -= 6.2831853f;
-            // DOS COSAS DISTINTAS, y hay que tenerlas separadas.
-            //
-            // 'bgDimResp' es la atenuacion al navegar CON la respiracion encima, y va a las estrellas y a
-            // los destellos. 'bgRespiro' es SOLO la respiracion, y es la que va a los colores del CIELO.
-            //
-            // Mezclarlas seria un fallo gordo: la atenuacion al navegar baja al 45%, y aplicada al cielo
-            // dejaria toda la pantalla a media luz en cuanto alguien toca un boton con musica sonando. El
-            // cielo no se atenua -nunca se atenuo- pero si respira.
-            // LA VISTA PREVIA de Ctrl+F3: va deprisa y sin freno, y se apaga sola. Fuera de ella, todo igual.
-            bool demo = respiraOn && DateTime.Now < respiraDemoHasta;
-            if (demo) respiraFase += RespiraDemoPaso - RespiraPaso;   // el paso normal ya se sumo arriba
-            bgRespiro = respiraOn ? Respiracion(respiraFuerza, demo ? 1f : quietud, respiraFase) : 1f;
-            bgDimResp = bgDim * bgRespiro;
+            bgDimResp = bgDim;
             albumView.BgDim = bgDimResp;
             if (panelSongs != null) panelSongs.BgDim = bgDimResp;   // el interior del disco comparte el mismo campo: atenua igual
             if (searchOverlay != null) searchOverlay.BgDim = bgDimResp;
             // Mientras la atenuacion CAMBIA, repinta el fondo del form (franjas de arriba/abajo) para que atenuen
             // junto con la rejilla: el campo es UNA SOLA PIEZA (si no, se veria una banda mas clara arriba/abajo).
-            //
-            // Y el umbral hace aqui un segundo trabajo que importa en la maquina del bar: la respiracion mueve
-            // el brillo tan despacio que la mayoria de los cuadros no lo cambian lo bastante para verse, y esos
-            // no obligan a repintar nada. Medido con el 2.5% de fabrica: 61 repintados en las 720 vueltas de
-            // reloj que dura un ciclo, uno de cada once.
             if (Math.Abs(bgDimResp - bgDimPrev) > 0.0015f) this.Invalidate();
             bgDimPrev = bgDimResp;
 #if ROCOLA_GPU
@@ -2530,18 +2462,13 @@ namespace Rocola
                 { gpuPanel.SkyTop = 0xFF06081Au; gpuPanel.SkyMid = 0xFF0C0E28u; gpuPanel.SkyBot = 0xFF12143Au; }
                 else
                 {
-                    // EL CIELO RESPIRA AQUI. Estos tres colores se le pasan al panel ya calculados, asi que
-                    // multiplicarlos no cuesta nada de tarjeta grafica: son tres numeros por cuadro. Antes la
-                    // respiracion iba solo a 'Dim', que mueve las estrellas y los destellos y deja el cielo
-                    // igual: la superficie grande -la que uno llama "la pared"- no se enteraba, y por eso no
-                    // se veia respirar.
-                    gpuPanel.SkyTop = ToD3D(EscalaBrillo(SkyColor(bgAccent), bgRespiro));
-                    gpuPanel.SkyMid = ToD3D(EscalaBrillo(SkyColorMid(bgAccent), bgRespiro));
-                    gpuPanel.SkyBot = ToD3D(EscalaBrillo(SkyColor2(bgAccent), bgRespiro));
+                    gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent));
+                    gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent));
+                    gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent));
                     // LAS DOS NEBULOSAS: una el genero, la otra la caratula. El desplazamiento va en la
                     // misma fase lenta, y en sentidos contrarios: es el cruce de las dos lo que se ve moverse.
-                    gpuPanel.NebColor = ToD3D(EscalaBrillo(nebA, bgRespiro));
-                    gpuPanel.NebColor2 = ToD3D(EscalaBrillo(nebB, bgRespiro));
+                    gpuPanel.NebColor = ToD3D(nebA);
+                    gpuPanel.NebColor2 = ToD3D(nebB);
                     gpuPanel.NebFase = nebFase;
                 }   // el degradado sigue al genero
                 // EL RELOJ LENTO DEL CIELO Y LA LUNA VAN FUERA DEL SI: en modo atraccion el cielo se queda
@@ -2561,7 +2488,7 @@ namespace Rocola
                 UpdateSecretCredits();
                 searchOverlay.Accent = bgAccent;
 #if ROCOLA_GPU
-                if (gpuEnabled && coloresCache) searchOverlay.Accent = bgAccentTarget;
+                if (gpuEnabled) searchOverlay.Accent = bgAccentTarget;
 #endif
                 searchOverlay.Phase = phase;
                 searchOverlay.PulseLo = levLo; searchOverlay.PulseMid = levMid; searchOverlay.PulseHi = levHi;   // cada estrella late con SU banda

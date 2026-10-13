@@ -61,7 +61,7 @@ class Bloqueos
         { "disco", "Form1.ReadLoudCache", "", "arranque: solo si el lector de tablas no pudo (camino de respaldo)" },
         { "disco", "Form1.RestoreState", "", "restaurar creditos y cola tras un apagon: una vez (lee lo encargado en memoria si aun no llego al disco)" },
         { "disco", "Form1.RutaLectura", "", "arranque, una vez: donde estan los modelos de IA" },
-        { "disco", "Form1.SaveConfigPrefs", "", "guardar la configuracion al cambiarla en las ventanas de servicio" },
+        { "disco", "Form1.EscribeConfigEnTurno", "", "guardar la configuracion al cambiarla en las ventanas de servicio (SaveConfigPrefs; desde Ctrl+F3 va detras de la pantalla)" },
         { "disco", "Form1.SaveKeys", "", "asistente de botones: guardar al terminar la configuracion" },
         { "disco", "Form1.SavedStateTime", "", "al restaurar: la fecha del estado guardado si no la trae dentro (formato viejo)" },
         { "disco", "Form1.ShowMusicDirManager", "", "ventana de carpetas de musica (Ctrl+F2)" },

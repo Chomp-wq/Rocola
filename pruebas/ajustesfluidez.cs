@@ -87,14 +87,14 @@ class AjustesFluidez
             foreach (int waves in new int[] { 24, 50, 60 })
             foreach (int cubes in new int[] { 24, 50, 60 }) {
                 Set(owner, "f3CambioGraf", false);
-                Click(Find(fluency, "Ondas de sonido (GPU): " + waves + " FPS"));
-                Click(Find(fluency, "Todos los cubos (GPU): " + cubes + " FPS"));
+                Click(Find(fluency, "Ondas de sonido: " + waves + " FPS"));
+                Click(Find(fluency, "Todos los cubos: " + cubes + " FPS"));
                 Check((int)Get(owner, "animOndasFps") == waves && (int)Get(owner, "animCubosFps") == cubes,
                     "Ajustes independientes " + waves + " / " + cubes);
                 Check((bool)Get(owner, "f3CambioGraf"), "Cambio marcado para guardar al cerrar");
                 Check((int)Get(owner, "fpsTope") == 200, "No cambia el límite general de FPS");
-                Check(Find(fluency, "Ondas de sonido (GPU): " + waves + " FPS").AccessibleDescription == "Seleccionado"
-                    && Find(fluency, "Todos los cubos (GPU): " + cubes + " FPS").AccessibleDescription == "Seleccionado",
+                Check(Find(fluency, "Ondas de sonido: " + waves + " FPS").AccessibleDescription == "Seleccionado"
+                    && Find(fluency, "Todos los cubos: " + cubes + " FPS").AccessibleDescription == "Seleccionado",
                     "Selección visible y accesible coincide con ambos valores");
                 Call(form, owner, "SaveConfigPrefs"); Codigo.EsperaGuardado(form, owner);
                 object read = Owner(); Call(form, read, "LoadConfigPrefs");
@@ -107,7 +107,7 @@ class AjustesFluidez
             Control reset = null; foreach (Control c in page.Controls) if (c.Text == "Graficos como de fabrica") reset = c;
             Click(reset);
             Check((int)Get(owner, "animOndasFps") == 60 && (int)Get(owner, "animCubosFps") == 60, "Fábrica restaura 60 / 60");
-            foreach (string group in new string[] { "Ondas de sonido (GPU)", "Todos los cubos (GPU)" })
+            foreach (string group in new string[] { "Ondas de sonido", "Todos los cubos" })
                 Check(Find(fluency, group + ": 60 FPS").AccessibleDescription == "Seleccionado"
                     && Find(fluency, group + ": 24 FPS").AccessibleDescription != "Seleccionado", "Fábrica repinta la selección");
             using (Bitmap image = new Bitmap(fluency.Width, fluency.Height)) {
@@ -121,7 +121,7 @@ class AjustesFluidez
                 page.Font = normal; page.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
                 image.Save(Path.Combine(root, "imagen-fluidez.png"));
             }
-            Control option = Find(fluency, "Todos los cubos (GPU): 24 FPS");
+            Control option = Find(fluency, "Todos los cubos: 24 FPS");
             KeyEventArgs enabled = new KeyEventArgs(Keys.Enter);
             Call(option.GetType(), option, "OnKeyDown", enabled);
             Check((int)Get(owner, "animCubosFps") == 24 && enabled.SuppressKeyPress, "Enter selecciona sin sonido de tecla");

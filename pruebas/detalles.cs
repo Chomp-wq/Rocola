@@ -4,9 +4,9 @@ using System.Reflection;
 
 // LOS DETALLES, CON MANDO.
 //
-// Los seis adornos que se le pusieron a la rocola -el turno en la cola, el palomito de "ya la pusiste",
-// el fondo con el tono de la portada, las portaditas de la cola, el relevo del cubito y la pared que
-// respira- solo se podian apagar escribiendo a mano en el archivo de configuracion. Para quien no toca
+// Los adornos que se le pusieron a la rocola -el turno en la cola, el palomito de "ya la pusiste",
+// el fondo con el tono de la portada, las portaditas de la cola y el relevo del cubito- solo se podian
+// apagar escribiendo a mano en el archivo de configuracion. Para quien no toca
 // archivos de texto, eso es lo mismo que no poder apagarlos.
 //
 // Y no cabian en la ventana que ya existia: la tarjeta EFECTOS mide 568 px y su contenido llega al 562,
@@ -21,8 +21,8 @@ using System.Reflection;
 //   2) QUE CADA INTERRUPTOR ESTE ATADO A SU ADORNO. Un interruptor que se mueve y no apaga nada es peor
 //      que no tenerlo: el operador cree que lo apago y sigue viendolo.
 //   3) QUE LO QUE SE TOQUE SE GUARDE. Si no, al cerrar la ventana se pierde y vuelve al abrir.
-//   4) QUE LA FUERZA DE LA RESPIRACION PASE POR DONDE SE ACOTA. Es la unica de las siete que lleva un
-//      numero, y un numero grande ahi marea a todo el bar.
+//   4) QUE LA PARED QUE RESPIRA YA NO ESTE (retirada el 13-10-2026 a peticion del usuario: con musica la
+//      pared se oculta en reposo y no se llegaba a ver). Ni interruptor, ni claves, ni la cuenta.
 //   5) QUE EL TURNO SE PUEDA APAGAR DE VERDAD (era el unico de los seis que no tenia ni clave).
 class Detalles
 {
@@ -100,14 +100,13 @@ class Detalles
         Check(laMonta, "y la ventana de Ctrl+F3 la monta (hay una tercera pestaña)");
 
         Console.WriteLine("\n  2) CADA INTERRUPTOR, ATADO A SU ADORNO\n");
-        string[] campo = { "turnoOn", "marcaColaOn", "fondoPortadaOn", "colaPortadasOn", "relevoOn", "respiraOn" };
+        string[] campo = { "turnoOn", "marcaColaOn", "fondoPortadaOn", "colaPortadasOn", "relevoOn" };
         string[] loQueEs = {
             "el turno que dice cuando suena tu cancion",
             "el palomito de \"ya la pusiste\" en la pared",
             "el fondo que toma el tono de la portada",
             "las portaditas de la capsula de la cola",
             "la media vuelta del cubito al cambiar de cancion",
-            "la pared que respira",
         };
         for (int i = 0; i < campo.Length; i++)
         {
@@ -122,11 +121,20 @@ class Detalles
         Check(LaPaginaEscribe("f3CambioGraf"),
               "al mover algo, la rocola se apunta que hay que guardar (si no, se pierde al cerrar)");
 
-        Console.WriteLine("\n  4) LA FUERZA DE LA RESPIRACION, POR DONDE SE ACOTA\n");
-        // Es la unica de las siete que lleva un numero, y un numero grande ahi marea a todo el bar. Se le
-        // pone SOLO por la funcion que acota (la misma que lee el archivo), nunca a mano.
-        Check(LaPaginaEscribe("respiraFuerza"), "la ventana puede cambiar cuanto respira la pared");
-        Check(LaPaginaLlama("FuerzaRespira"), "y lo hace por la funcion que acota, no poniendo el numero a mano");
+        Console.WriteLine("\n  4) LA PARED QUE RESPIRA, RETIRADA\n");
+        foreach (string ido in new string[] { "respiraOn", "respiraFuerza", "RespiraDef", "respiraDemoHasta" })
+            Check(TF.GetField(ido, TODO) == null, "ya no existe " + ido);
+        Check(Met("FuerzaRespira") == null && Met("MuestraRespiracion") == null, "ni su fuerza ni su vista previa");
+        bool enPagina = false;
+        foreach (MethodBase m in DeLaPagina())
+            foreach (string t in Codigo.Textos(m)) if (t.IndexOf("respir", StringComparison.OrdinalIgnoreCase) >= 0) enPagina = true;
+        Check(!enPagina, "la pagina ya no la ofrece");
+        MethodBase txt = Met("TextoConfig"), carga = Met("LoadConfigPrefs");
+        bool escribeVieja = false, leeVieja = false;
+        if (txt != null) foreach (string t in Codigo.Textos(txt)) if (t.StartsWith("respira")) escribeVieja = true;
+        if (carga != null) foreach (string t in Codigo.Textos(carga)) if (t.StartsWith("respira")) leeVieja = true;
+        Check(txt != null && !escribeVieja, "el archivo de configuracion ya no la escribe");
+        Check(carga != null && !leeVieja, "y una configuracion vieja con respira= se lee sin hacerle caso");
 
         Console.WriteLine("\n  5) EL TURNO SE APAGA DE VERDAD\n");
         // Era el unico de los seis que no tenia ni clave en el archivo: se veia siempre.
@@ -151,7 +159,7 @@ class Detalles
         }
 
         // Y que lo lea del archivo, para que el operador pueda dejarlo puesto entre encendidas.
-        MethodBase lee = Met("LoadConfigPrefs"), escribe = Met("SaveConfigPrefs");
+        MethodBase lee = Met("LoadConfigPrefs"), escribe = Met("TextoConfig");
         bool clave = false;
         if (lee != null) foreach (string s in Codigo.Textos(lee)) if (s == "turno=") clave = true;
         Check(clave, "y la rocola se acuerda al apagarla y encenderla (clave \"turno=\" en el archivo)");

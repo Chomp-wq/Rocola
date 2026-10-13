@@ -611,7 +611,7 @@ class Atraccion
         object owner = Codigo.FormSinEncender(form);
         Set(owner, "carpetaDatos", dir);
         if (gpu != null) { Set(owner, "gpuPanel", Activator.CreateInstance(gpu, true)); Set(owner, "gpuEnabled", true); }
-        string[] nom = { "El escaparate (GPU)", "Lo más pedido esta noche (GPU)" };
+        string[] nom = { "El escaparate", "Lo más pedido esta noche" };
         string[] campo = { "escaparate", "topNoche" };
         using (Font fo = new Font("Segoe UI", 9))
         using (Panel page = (Panel)form.GetMethod("PaginaPantalla", F).Invoke(owner, new object[] { fo, fo, fo, Color.White, Color.Gray, Color.Gray }))

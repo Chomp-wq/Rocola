@@ -271,7 +271,7 @@ class IaDatos
             Console.WriteLine("        " + q.PadRight(52) + " lee " + kv.Value[0] + ", escribe " + kv.Value[1]);
             bool permitido = EsDe(q, "VentanaAjustes")               // el interruptor y su letrero
                           || q == "Form1.LoadConfigPrefs"            // leerlo de la configuracion al arrancar
-                          || q == "Form1.SaveConfigPrefs"            // y guardarlo al cambiarlo
+                          || q == "Form1.TextoConfig"                // y guardarlo al cambiarlo (SaveConfigPrefs lo escribe)
                           || q == "Form1.MeasureFile"                // EL UNICO sitio que decide si se guarda material
                           || q == "Form1..ctor";                     // el valor de fabrica: encendido
             if (!permitido) sobra.Add(q);

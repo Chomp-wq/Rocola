@@ -66,7 +66,7 @@ namespace Rocola
 
             int[] values = { 24, 50, 60 };
             BotonPlano[][] choices = new BotonPlano[2][];
-            string[] names = { "Ondas de sonido (GPU)", "Todos los cubos (GPU)" };
+            string[] names = { "Ondas de sonido", "Todos los cubos" };
             string[] descriptions = {
                 "Frecuencia de la aurora y sus ondas reactivas.\nNo cambia la calidad del sonido ni su análisis.",
                 "Cadencia del giro, bamboleo y transiciones de cubos.\nNo cambia su calidad, carga ni la respuesta al toque."
@@ -103,6 +103,7 @@ namespace Rocola
                         paintOptions(); AplicaEfectosGpu(); f3CambioGraf = true;
                     };
                     choices[group][i] = option; fluency.Controls.Add(option);
+                    SoloConTarjeta(option);   // solo se dibujan con la tarjeta grafica (A1)
                 }
             }
             Label note = new Label(); note.SetBounds(16, 382, 424, 112);
@@ -111,8 +112,12 @@ namespace Rocola
                 + "24 FPS: menos actualizaciones de estas animaciones.\n\n"
                 + "Son objetivos visuales, no el límite general de FPS.\n"
                 + "La cadencia real depende del equipo y de la pantalla.\n"
-                + "Se guardan al cerrar Ctrl+F3. De fábrica: 60 / 60.";
+                + "Se guardan al momento. De fábrica: 60 / 60.";
             fluency.Controls.Add(note);
+            Label sinTarjeta = new Label(); sinTarjeta.SetBounds(16, 500, 424, 34);
+            sinTarjeta.Font = small; sinTarjeta.ForeColor = Interruptor.ColorNecesita; sinTarjeta.BackColor = Color.Transparent;
+            sinTarjeta.Text = TextoSinTarjeta; sinTarjeta.Visible = false;
+            fluency.Controls.Add(sinTarjeta); AvisoSinTarjeta(sinTarjeta, null);
             paintOptions(); paintSheets();
             return sheets;
         }

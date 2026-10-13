@@ -152,7 +152,7 @@ class Subgrave
         Check(ceros, "tras el silencio los filtros del subgrave quedan en cero exacto (sin desnormales, que en un procesador viejo son lentisimos)");
 
         Console.WriteLine("\n  6) CONFIGURACION Y CADENA\n");
-        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
         Check(lee.Contains("ancho_estereo=") && esc.Contains("ancho_estereo=") && lee.Contains("subgrave=") && esc.Contains("subgrave="),
               "ancho_estereo= y subgrave= se leen y se guardan en la configuracion");
         MethodInfo pa = TF.GetMethod("AnchoEstereo", T), ps = TF.GetMethod("SubgraveHz", T);
@@ -220,7 +220,7 @@ class Subgrave
         Check(lSub && lEst && Codigo.EscribeCampo(ven, "cortaSubgrave") && Codigo.EscribeCampo(ven, "estereoEstrecho"), "Ctrl+F3 -> Sonido tiene los dos interruptores y los cambia");
         bool aplica = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "AplicaBocinas")) aplica = true;
         Check(aplica && Codigo.Llama(TF.GetMethod("AplicaBocinas", T), "Ajusta"), "y los lleva al instante a lo que suena y a la siguiente");
-        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+        List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
         Check(lee.Contains("estereo_estrecho=") && esc.Contains("estereo_estrecho=") && lee.Contains("corta_subgrave=") && esc.Contains("corta_subgrave="),
               "se guardan en la configuracion (estereo_estrecho=, corta_subgrave=)");
         int l1, e1, l2, e2; Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "estereoEstrecho", out l1, out e1); Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "cortaSubgrave", out l2, out e2);

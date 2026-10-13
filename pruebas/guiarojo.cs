@@ -15,7 +15,7 @@ class GuiaRojo
         {
             if (c.Left < 0 || c.Top < 0 || c.Right > parent.Width || c.Bottom > parent.Height)
                 throw new Exception("Opción recortada: " + c.Text);
-            if (c.Text == "Guía al mantener el botón rojo (GPU)") found++;
+            if (c.Text == "Guía al mantener el botón rojo") found++;
             found += CheckControls(c);
         }
         return found;

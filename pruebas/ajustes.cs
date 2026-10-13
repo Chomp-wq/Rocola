@@ -317,22 +317,11 @@ class Ajustes
             CSw("detalle.sw" + i, 32, PY + 44 + i * 72, 424, 26, detNom[i], fNom, 10f);
             C("detalle.exp" + i, 32, PY + 74 + i * 72, 424, 32, detExp[i], fDes, 8.5f, true);
         }
-        // ---- tarjeta LA PARED QUE RESPIRA (488,100,456,424) ----
-        CSw("respira.sw", 504, PY + 44, 424, 26, "Que la pared respire cuando nadie la usa", fNom, 10f);
-        C("respira.que", 504, PY + 74, 424, 48,
-          "La pared de discos sube y baja de brillo muy despacio, una\nrespiracion cada medio minuto. Es lo que hace que una pantalla\nquieta parezca encendida en vez de colgada.", fDes, 8.5f, true);
-        C("respira.cuanto", 504, PY + 132, 424, 16, "Cuanto respira:", fDes, 8.5f, false);
-        string[] detFza = { "Apenas", "Normal", "Se nota" };
-        for (int k = 0; k < 3; k++)
-            C("respira.fza" + k, 504 + k * 140, PY + 152, 132, 28, detFza[k], fBot, 10f, false);
-        C("respira.freno", 504, PY + 194, 424, 118,
-          "EL FRENO. En cuanto alguien toca un boton la pared deja de\nrespirar, y vuelve sola unos segundos despues de que la dejen\n"
-          + "en paz. Una pantalla grande moviendose delante de quien esta\neligiendo cancion marea.\n\n"
-          + "Y no se para en seco -asi se quedaria clavada mas oscura o mas\nclara-: se le quita el aire, y acaba en su brillo de siempre.", fDes, 8.5f, true);
+        // (La tarjeta LA PARED QUE RESPIRA se retiro el 13-10-2026: con musica la pared se oculta en reposo.)
         C("detalles.pie", 16, PY + 444, 928, 48,
           "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
           + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
-          + "de la vista. Todo lo que se toque aqui se guarda al cerrar la ventana.", fDes, 8.5f, true);
+          + "de la vista. Lo que se toque aqui se guarda al momento.", fDes, 8.5f, true);
         C("detalles.fabrica", 16, PY + 508, 300, 38, "Detalles como de fabrica", fBot, 10f, false);
         pagActual = 0;
 

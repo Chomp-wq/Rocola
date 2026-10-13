@@ -40,7 +40,7 @@ class CieloVivo
         {
             // Sin tarjeta grafica no hay cielo vivo: el dibujo por CPU esta congelado. Solo se mira que la configuracion
             // se conserve igual en este ejecutable.
-            List<string> tl0 = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts0 = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+            List<string> tl0 = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts0 = Codigo.Textos(TF.GetMethod("TextoConfig", T));
             foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "cometa=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
                 Check(tl0.Contains(k) && ts0.Contains(k), "sin tarjeta, la configuracion conserva " + k);
             Console.WriteLine(fallos == 0 ? "  OK cielovivo: " + oks + " comprobaciones (sin tarjeta grafica: solo la configuracion; CPU congelado)"
@@ -244,13 +244,13 @@ class CieloVivo
                 string campo = p;
                 Check(ap.Exists(delegate (string s) { return s.StartsWith("7D ") && s.EndsWith(" " + campo); }), "Ctrl+F3 lleva " + p + " a la tarjeta");
             }
-            List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+            List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("TextoConfig", T));
             foreach (string k in new string[] { "luna_del_cielo=", "lluvias_estrellas=", "fugaz_festejo=", "cometa=", "profundidad_pagina=", "cielo_por_hora=", "reflejo_aurora=" })
                 Check(tl.Contains(k) && ts.Contains(k), "la configuracion lee y guarda " + k);
             Check(!tl.Contains("cielo_hora=") && !tl.Contains("luna_fase="), "las claves viejas de Espacio natural siguen ignoradas");
             List<string> pag = new List<string>();
             foreach (MethodBase m in Codigo.MetodosConAyudantes(TF, "PaginaFondo")) pag.AddRange(Codigo.Textos(m));
-            foreach (string s in new string[] { "Luna con su fase real (GPU)", "Lluvias de estrellas en sus fechas (GPU)", "Fugaz al poner una cancion (GPU)", "Cometa de vez en cuando (GPU)", "Mas profundidad al pasar de pagina (GPU)", "Cielo segun la hora (GPU)", "Reflejo de la aurora (GPU)" })
+            foreach (string s in new string[] { "Luna con su fase real", "Lluvias de estrellas en sus fechas", "Fugaz al poner una cancion", "Cometa de vez en cuando", "Mas profundidad al pasar de pagina", "Cielo segun la hora", "Reflejo de la aurora" })
                 Check(pag.Contains(s), "en Ctrl+F3 -> Fondo: «" + s + "»");
             List<string> hojas = Codigo.Textos(TF.GetMethod("MontaHojasFondo", T));
             Check(hojas.Contains("Cielo vivo"), "con su hoja: Cielo vivo");

@@ -674,7 +674,7 @@ class PantallaViva
         string dir = Path.Combine(Path.GetTempPath(), "rocola_pantallaviva_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
         form.GetField("carpetaDatos", F).SetValue(null, dir);
         object owner = Codigo.FormSinEncender(form);
-        string[] nom = { "Portada enfocada (GPU)", "Ficha rápida del disco (GPU)", "Pasar de página deslizando (GPU)", "Barra de letras con lupa (GPU)" };
+        string[] nom = { "Portada enfocada", "Ficha rápida del disco", "Pasar de página deslizando", "Barra de letras con lupa" };
         string[] campo = { "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa" };
         Control panel = gpu != null ? (Control)Activator.CreateInstance(gpu, true) : null;
         Control pared = gpu != null ? (Control)Activator.CreateInstance(av, true) : null;

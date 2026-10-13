@@ -614,7 +614,7 @@ class SuenaVivo
         Set(owner, "carpetaDatos", dir);
         Control pc = (Control)Activator.CreateInstance(pvT, true); Set(owner, "pastCred", pc);
         if (gpu != null) { Set(owner, "gpuPanel", Activator.CreateInstance(gpu, true)); Set(owner, "gpuEnabled", true); }
-        string[] nom = { "Lo que suena, en grande (GPU)", "La moneda que cae (GPU)", "Sin creditos, invitar (GPU)", "Avisos que se entienden (GPU)" };
+        string[] nom = { "Lo que suena, en grande", "La moneda que cae", "Sin creditos, invitar", "Avisos que se entienden" };
         string[] campo = { "suenaGrande", "monedaCae", "sinCreditosInvita", "avisosClaros" };
         using (Font f = new Font("Segoe UI", 9))
         using (Panel page = (Panel)form.GetMethod("PaginaPantalla", F).Invoke(owner, new object[] { f, f, f, Color.White, Color.Gray, Color.Gray }))
@@ -626,7 +626,7 @@ class SuenaVivo
             List<Control> hojas = new List<Control>(); List<Control> botones = new List<Control>();
             foreach (Control c in page.Controls) { if (c.GetType() == typeof(Panel)) hojas.Add(c); else if (c.GetType().Name == "BotonPlano" && c.Top < 40) botones.Add(c); }
             Control hojaSuena = sw[0].Parent != null ? sw[0].Parent.Parent : null;
-            Control hojaPared = Find(page, "Portada enfocada (GPU)").Parent.Parent;
+            Control hojaPared = Find(page, "Portada enfocada").Parent.Parent;
             bool unaVisible = hojaPared.Visible && !hojaSuena.Visible;
             Check(hojas.Count >= 2 && botones.Count == hojas.Count && hojaSuena != hojaPared && unaVisible,
                   "en su hoja con su boton arriba (\"" + (botones.Count > 1 ? botones[1].Text : "") + "\"); al abrir se ve la de la pared y el disco");

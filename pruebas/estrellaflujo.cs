@@ -197,7 +197,7 @@ class EstrellaFlujo {
     Call(typeof(Control),styleTab,"OnClick",EventArgs.Empty);Bounds(page);
     Call(typeof(Control),adjustmentsTab,"OnClick",EventArgs.Empty);Bounds(page);
    }
-   Control toggle=Find(page,"Colores del espectro en movimiento (GPU)");
+   Control toggle=Find(page,"Colores del espectro en movimiento");
    Check(toggle!=null,"Falta control");
    foreach(bool b in new bool[]{true,false,true}){
     toggle.GetType().GetProperty("Checked",F).SetValue(toggle,b,null);

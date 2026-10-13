@@ -316,7 +316,7 @@ class SalaLocalPrueba
             List<string> aplica = Codigo.Llamadas(TF.GetMethod("AplicaBocinas", T));
             Check(Codigo.Llama(aplica, "SalaLocal.Ajusta"), "los mandos se oyen al instante en la que suena y en la siguiente");
             Check(Codigo.Llama(TF.GetMethod("SigueA", T), "SalaLocal.Sigue"), "el disco continuo enlaza la etapa del local");
-            List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+            List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("TextoConfig", T));
             foreach (string k in new string[] { "claridad_local=", "partes_suaves=", "balance=" })
                 Check(tl.Contains(k) && ts.Contains(k), "la configuracion lee y guarda " + k);
             Check(!(bool)TF.GetField("claridadLocal", T).GetValue(null) && !(bool)TF.GetField("partesSuaves", T).GetValue(null) && (int)TF.GetField("balanceDb", T).GetValue(null) == 0,

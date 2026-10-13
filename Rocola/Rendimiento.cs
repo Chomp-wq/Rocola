@@ -235,9 +235,7 @@ namespace Rocola
             gpuPanel.CieloProfundo = cieloProfundo;
             gpuPanel.AuroraBandas = auroraBandas;
             gpuPanel.LunaActiva = lunaActiva;
-            gpuPanel.ColoresCache = coloresCache;
             gpuPanel.ControlesReposo = controlesReposo;
-            gpuPanel.OndasUnidas = ondasUnidas;
             gpuPanel.LunaRealista = lunaRealista;
             gpuPanel.HaloLunar = haloLunar;
             gpuPanel.PolvoLunar = polvoLunar;
@@ -248,7 +246,6 @@ namespace Rocola
             gpuPanel.FugazFestejo = fugazFestejo; gpuPanel.Cometa = cometaOn;
             gpuPanel.ProfundidadPagina = profundidadPagina; gpuPanel.CieloPorHora = cieloPorHora; gpuPanel.ReflejoAurora = reflejoAurora;
             gpuPanel.ColoresFluidos = coloresFluidos;
-            gpuPanel.RespuestaInmediata = respuestaInmediata;
             gpuPanel.TransicionesTacto = transicionesTacto;
             gpuPanel.CachePortadas = true;
             if (searchOverlay != null) searchOverlay.SeparateGpu = true;
@@ -820,15 +817,16 @@ namespace Rocola
 
         // ============================ LA PAGINA DE DETALLES ============================
         //
-        // Los seis adornos que la rocola fue juntando -el turno, el palomito, el fondo con el tono de la
-        // portada, las portaditas de la cola, el relevo del cubito y la pared que respira- solo se podian
-        // apagar escribiendo a mano en el archivo de configuracion. Para quien no toca archivos de texto,
-        // eso es lo mismo que no poder apagarlos.
+        // Los adornos que la rocola fue juntando -el turno, el palomito, el fondo con el tono de la portada,
+        // las portaditas de la cola, el relevo del cubito y el astro del cielo- solo se podian apagar
+        // escribiendo a mano en el archivo de configuracion. Para quien no toca archivos de texto, eso es lo
+        // mismo que no poder apagarlos.
         //
-        // Y no cabian en la pagina de Imagen: la tarjeta EFECTOS mide 568 px y su contenido llega al 562, y
-        // las dos columnas acaban en 572 de 636. Estan llenas, medido. Asi que van en pestaña propia, que
-        // ademas es su sitio: las de Imagen se BAJAN para ganar rendimiento a cambio de que se vea menos
+        // Van en pestaña propia: las de Imagen se BAJAN para ganar rendimiento a cambio de que se vea menos
         // bonito, y por eso el medidor las puede proponer. Estas no cuestan nada que se note; son gusto.
+        //
+        // La pared que respira estuvo aqui hasta el 13-10-2026: se retiro porque con musica la pared se
+        // oculta a los pocos segundos de reposo y la respiracion no se llegaba a ver (ver Form1.cs).
         //
         // Cada una lleva escrito QUE SE VE si se enciende, no como esta hecha por dentro. Quien abre esta
         // ventana quiere saber que va a cambiar en la pantalla del bar.
@@ -836,119 +834,59 @@ namespace Rocola
                                      Color cTexto, Color cTenue, Color cApagado)
         {
             Color cVida = Color.FromArgb(150, 220, 180);
-            Color cResp = Color.FromArgb(140, 205, 255);
-            Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
-            Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
+            Color cFon = Color.FromArgb(140, 205, 255);
 
             Panel pg = new Panel();
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
-            // LAS DOS TARJETAS CRECEN 72 PX para que quepa el sexto interruptor. La pagina son 636 y debajo
-            // quedaban el pie y el boton de fabrica con sitio de sobra; ahora bajan y siguen cabiendo. La
-            // bateria 'luna' lo comprueba armando la pagina de verdad y midiendola.
-            Tarjeta tVida = new Tarjeta(); tVida.SetBounds(16, 4, 456, 496); tVida.Titulo = "LO QUE SE VE"; tVida.Acento = cVida;
-            Tarjeta tResp = new Tarjeta(); tResp.SetBounds(488, 4, 456, 496); tResp.Titulo = "LA PARED QUE RESPIRA"; tResp.Acento = cResp;
+            // Dos tarjetas de tres: lo que ve quien pide, y lo que pasa en el fondo y en la barra de abajo.
+            Tarjeta tVida = new Tarjeta(); tVida.SetBounds(16, 4, 456, 280); tVida.Titulo = "AL PEDIR CANCIONES"; tVida.Acento = cVida;
+            Tarjeta tFon = new Tarjeta(); tFon.SetBounds(488, 4, 456, 280); tFon.Titulo = "EL FONDO Y LA BARRA"; tFon.Acento = cFon;
 
-            // ---------------- LO QUE SE VE: cinco interruptores con su explicacion ----------------
             string[] nombre = {
                 "Decir cuando suena tu cancion",
                 "Marcar los discos que ya pediste",
-                "Que el fondo tome el color de la portada",
                 "Ensenar las portadas de la cola",
+                "Que el fondo tome el color de la portada",
                 "Media vuelta al cambiar de cancion",
                 "Astro principal en el cielo",
             };
             string[] explica = {
                 "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos\nminutos faltan, en vez de solo \"Cancion agregada\".",
                 "Un palomito verde en la esquina de los discos de los que ya hay\nalgo pedido o sonando, para no volver a pedir lo mismo.",
-                "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
                 "En la capsula de \"En cola\", las caratulas de las tres proximas.\nSi hay mas de tres, la ultima lleva un \"+2\".",
+                "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo\nsigue mandando el genero: ninguna portada estropea la pantalla.",
                 "El cubito de la barra de abajo gira media vuelta y la portada\nnueva aparece en el camino, en vez de cambiar de golpe.",
                 "Estrella de color musical y corona en GPU.\nEl renderizador CPU conserva la luna clasica.",
             };
             Interruptor[] sw = new Interruptor[nombre.Length];
             for (int i = 0; i < nombre.Length; i++)
             {
-                int y = 40 + i * 72;
+                Tarjeta t = (i < 3) ? tVida : tFon;
+                int y = 40 + (i % 3) * 72;
                 sw[i] = new Interruptor();
                 sw[i].SetBounds(16, y, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
-                sw[i].Text = nombre[i]; sw[i].Acento = cVida;
+                sw[i].Text = nombre[i]; sw[i].Acento = (i < 3) ? cVida : cFon;
                 Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explica[i];
-                tVida.Controls.Add(sw[i]); tVida.Controls.Add(le);
+                t.Controls.Add(sw[i]); t.Controls.Add(le);
             }
             sw[0].Checked = turnoOn;
             sw[1].Checked = marcaColaOn;
-            sw[2].Checked = fondoPortadaOn;
-            sw[3].Checked = colaPortadasOn;
+            sw[2].Checked = colaPortadasOn;
+            sw[3].Checked = fondoPortadaOn;
             sw[4].Checked = relevoOn;
             sw[5].Checked = lunaOn;
-
-            // ---------------- LA PARED QUE RESPIRA ----------------
-            Interruptor swResp = new Interruptor();
-            swResp.SetBounds(16, 40, 424, 26); swResp.ForeColor = cTexto; swResp.Font = fNom;
-            swResp.Text = "Que la pared respire cuando nadie la usa"; swResp.Acento = cResp;
-            swResp.Checked = respiraOn;
-            Label lResp = new Label(); lResp.SetBounds(16, 70, 424, 48); lResp.BackColor = Color.Transparent;
-            lResp.ForeColor = cTenue; lResp.Font = fDes;
-            lResp.Text = "La pared de discos sube y baja de brillo muy despacio, una\n"
-                       + "respiracion cada medio minuto. Es lo que hace que una pantalla\n"
-                       + "quieta parezca encendida en vez de colgada.";
-
-            Label lCuanto = new Label(); lCuanto.SetBounds(16, 128, 424, 16); lCuanto.BackColor = Color.Transparent;
-            lCuanto.ForeColor = cApagado; lCuanto.Font = fDes; lCuanto.Text = "Cuanto respira:";
-            // Los tres pasos, medidos sobre el degradado del cielo (cuanto se mueve, en niveles de 255, de
-            // un extremo de la respiracion al otro): 2.5% son 4-6 niveles, 4.5% son 8-10 y 6% son 12. El
-            // 1.2% que habia aqui son DOS niveles, o sea nada: se quito porque no era una opcion, era un
-            // apagado con otro nombre.
-            string[] nomFza = { "Apenas", "Normal", "Se nota" };
-            string[] valFza = { "2.5", "4.5", "6" };
-            BotonPlano[] bFza = new BotonPlano[3];
-            for (int k = 0; k < 3; k++)
-            {
-                bFza[k] = new BotonPlano(); bFza[k].SetBounds(16 + k * 140, 148, 132, 28);
-                bFza[k].Font = fBot; bFza[k].Text = nomFza[k];
-                tResp.Controls.Add(bFza[k]);
-            }
-
-            Label lFreno = new Label(); lFreno.SetBounds(16, 190, 424, 118); lFreno.BackColor = Color.Transparent;
-            lFreno.ForeColor = cTenue; lFreno.Font = fDes;
-            lFreno.Text = "EL FRENO. En cuanto alguien toca un boton la pared deja de\n"
-                        + "respirar, y vuelve sola unos segundos despues de que la dejen\n"
-                        + "en paz. Una pantalla grande moviendose delante de quien esta\n"
-                        + "eligiendo cancion marea.\n\n"
-                        + "Y no se para en seco -asi se quedaria clavada mas oscura o mas\n"
-                        + "clara-: se le quita el aire, y acaba en su brillo de siempre.";
-
-            tResp.Controls.Add(swResp); tResp.Controls.Add(lResp); tResp.Controls.Add(lCuanto); tResp.Controls.Add(lFreno);
 
             Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
                       + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
-                      + "de la vista. Todo lo que se toque aqui se guarda al cerrar la ventana.";
+                      + "de la vista. Lo que se toque aqui se guarda al momento.";
 
             BotonPlano bResetD = new BotonPlano();
             bResetD.SetBounds(16, 572, 300, 38); bResetD.Font = fBot; bResetD.Text = "Detalles como de fabrica";
-
-            // ---------------- LO QUE SE ENSENA ----------------
-            Action pinta = delegate
-            {
-                int cual = 1;
-                if (respiraFuerza < 0.035f) cual = 0; else if (respiraFuerza > 0.052f) cual = 2;
-                for (int k = 0; k < 3; k++)
-                {
-                    bool act = (k == cual) && respiraOn;
-                    bFza[k].Enabled = respiraOn;
-                    bFza[k].Relleno = act ? cOn : cOff;
-                    bFza[k].Borde = act ? cBordeOn : cBordeOff;
-                    bFza[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
-                    bFza[k].Invalidate();
-                }
-                lCuanto.ForeColor = respiraOn ? cTenue : cApagado;
-                lFreno.ForeColor = respiraOn ? cTenue : cApagado;
-            };
 
             sw[0].CheckedChanged += delegate { turnoOn = sw[0].Checked; f3CambioGraf = true; };
             // La marca va DENTRO del mapa de bits horneado de cada casilla y su clave lleva el "#q", asi que
@@ -956,57 +894,35 @@ namespace Rocola
             sw[1].CheckedChanged += delegate { marcaColaOn = sw[1].Checked; f3CambioGraf = true; if (albumView != null) albumView.Invalidate(); };
             sw[2].CheckedChanged += delegate
             {
-                fondoPortadaOn = sw[2].Checked;
-                f3CambioGraf = true;
-                // Se ve YA, sin esperar a la siguiente cancion: el fondo viaja hasta el color nuevo con el
-                // mismo fundido lento de siempre.
-                if (nowPlaying != null && !nowPlaying.IsVideo) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
-            };
-            sw[3].CheckedChanged += delegate
-            {
-                colaPortadasOn = sw[3].Checked;
+                colaPortadasOn = sw[2].Checked;
                 f3CambioGraf = true;
                 // La capsula cambia de ANCHO al llevar o no portaditas, asi que hay que reacomodar la fila.
                 if (pastCola != null) { pastCola.ConPortadas = colaPortadasOn; LlenaPortaditas(); pastCola.Invalidate(); }
                 LayoutControls();
             };
+            sw[3].CheckedChanged += delegate
+            {
+                fondoPortadaOn = sw[3].Checked;
+                f3CambioGraf = true;
+                // Se ve YA, sin esperar a la siguiente cancion: el fondo viaja hasta el color nuevo con el
+                // mismo fundido lento de siempre.
+                if (nowPlaying != null && !nowPlaying.IsVideo) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
+            };
             sw[4].CheckedChanged += delegate { relevoOn = sw[4].Checked; f3CambioGraf = true; };
             // La luna NO va horneada en el cielo: se pega encima en cada cuadro, asi que con pedir un
             // repintado basta y no hay que rehacer nada.
             sw[5].CheckedChanged += delegate { lunaOn = sw[5].Checked; f3CambioGraf = true; RepintaFondo(); };
-            swResp.CheckedChanged += delegate { respiraOn = swResp.Checked; f3CambioGraf = true; pinta(); };
-            for (int k = 0; k < 3; k++)
-            {
-                int mio = k;
-                bFza[k].Click += delegate
-                {
-                    // SIEMPRE por FuerzaRespira, que es la que acota: es el unico numero de esta pagina, y
-                    // uno grande ahi marea a todo el bar.
-                    respiraFuerza = FuerzaRespira(valFza[mio]);
-                    f3CambioGraf = true;
-                    // Y QUE SE VEA. Tal y como esta hecha no se puede elegir mirando -tarda catorce segundos
-                    // en arrancar y se mueve tres decimas de nivel por segundo-, asi que al pulsar respira
-                    // deprisa unos segundos. En el bar sigue igual de lenta.
-                    MuestraRespiracion();
-                    pinta();
-                };
-            }
             bResetD.Click += delegate
             {
                 turnoOn = true; marcaColaOn = true; fondoPortadaOn = true; colaPortadasOn = true;
-                relevoOn = true; respiraOn = true; lunaOn = true;
-                respiraFuerza = FuerzaRespira("4.5");
-                MuestraRespiracion();
+                relevoOn = true; lunaOn = true;
                 for (int k = 0; k < sw.Length; k++) sw[k].Checked = true;
-                swResp.Checked = true;
                 f3CambioGraf = true;
                 RepintaFondo();   // la luna vuelve a encenderse: que se vea ya
-                pinta();
                 ShowToast("Detalles como de fabrica", Color.FromArgb(40, 130, 90));
             };
 
-            pg.Controls.Add(tVida); pg.Controls.Add(tResp); pg.Controls.Add(lPie); pg.Controls.Add(bResetD);
-            pinta();
+            pg.Controls.Add(tVida); pg.Controls.Add(tFon); pg.Controls.Add(lPie); pg.Controls.Add(bResetD);
             return pg;
         }
 
@@ -1075,12 +991,15 @@ namespace Rocola
             sw[9].CheckedChanged += delegate { neonIntenso = sw[9].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
+            // Una nota para toda la pagina: con tarjeta, lo de siempre; sin ella, que lo de aqui no se ve (A1).
             Label lAd = new Label(); lAd.SetBounds(340, 598, 440, 32); lAd.BackColor = Color.Transparent;
             lAd.ForeColor = cApagado; lAd.Font = fDes;
-            lAd.Text = "Efectos GPU: el coste depende del equipo.\nPruebalos con musica; puedes apagarlos por separado.";
+            lAd.Text = "Todo lo de esta pagina es de la tarjeta grafica: el coste depende\ndel equipo. Pruebalos con musica; se apagan por separado.";
+            Label lAdSin = new Label(); lAdSin.Bounds = lAd.Bounds; lAdSin.BackColor = Color.Transparent;
+            lAdSin.ForeColor = Interruptor.ColorNecesita; lAdSin.Font = fDes; lAdSin.Text = TextoSinTarjeta; lAdSin.Visible = false;
             Interruptor swFlujo=new Interruptor();swFlujo.SetBounds(16,392,424,26);
             swFlujo.Font=fNom;swFlujo.ForeColor=cTexto;swFlujo.Acento=cAc;
-            swFlujo.Text="Colores del espectro en movimiento (GPU)";swFlujo.Checked=coloresFluidos;
+            swFlujo.Text="Colores del espectro en movimiento";swFlujo.Checked=coloresFluidos;
             swFlujo.CheckedChanged+=delegate { coloresFluidos=swFlujo.Checked;AplicaEfectosGpu();f3CambioGraf=true; };
             tAd.Controls.Add(swFlujo);
 
@@ -1091,28 +1010,30 @@ namespace Rocola
             lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = ContentAlignment.TopRight;
             Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 34); lNatD.BackColor = Color.Transparent;
             lNatD.ForeColor = cTenue; lNatD.Font = fDes;
-            lNatD.Text = "Menos bruma deja ver mas el relieve y el degradado.\nRequiere Nebulosas con detalle natural (GPU).";
+            lNatD.Text = "Menos bruma deja ver mas el relieve y el degradado.";
             Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 106, 424, 22);
             barNat.Minimum = 0; barNat.Maximum = 100; barNat.Acento = cAc;
             barNat.Value = (int)Math.Round(nebNaturalFuerza * 100f);
             tNat.Controls.Add(lNatN); tNat.Controls.Add(lNatV); tNat.Controls.Add(lNatD); tNat.Controls.Add(barNat);
             Interruptor swCristal = new Interruptor();
             swCristal.SetBounds(16, 140, 424, 26); swCristal.Font = fNom; swCristal.ForeColor = cTexto;
-            swCristal.Text = "Interior de discos con cristal (GPU)"; swCristal.Acento = cAc; swCristal.Checked = cancionesCristal;
+            swCristal.Text = "Interior de discos con cristal"; swCristal.Acento = cAc; swCristal.Checked = cancionesCristal;
             swCristal.CheckedChanged += delegate { cancionesCristal = swCristal.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Interruptor swDoce = new Interruptor();
             swDoce.SetBounds(16, 176, 424, 26); swDoce.Font = fNom; swDoce.ForeColor = cTexto;
-            swDoce.Text = "Cola ampliada de 12 canciones (GPU)"; swDoce.Acento = cAc; swDoce.Checked = colaDoce;
+            swDoce.Text = "Cola ampliada de 12 canciones"; swDoce.Acento = cAc; swDoce.Checked = colaDoce;
             swDoce.CheckedChanged += delegate { colaDoce = swDoce.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swCristal); tNat.Controls.Add(swDoce);
             Label lExtras = new Label(); lExtras.SetBounds(16, 208, 424, 48); lExtras.Font = fDes;
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
-            lExtras.Text = "El cristal requiere Lista de canciones transparente (Imagen).\nLa cola de 12 requiere el estado ampliado en reposo.\nAl apagarlos vuelven el velo plano y las tres canciones.";
+            lExtras.Text = "Apagados, vuelven el velo plano dentro del disco\ny las tres canciones del estado ampliado.";
             tNat.Controls.Add(lExtras);
             tNat.Height = 586;
             tAd.Height = 580;
-            string[] extraNames = { "Vidrio por capas y color vivo (GPU)", "Transiciones suaves de color (GPU)", "Estrella viajera con orbitas (GPU)", "Ocultar controles en reposo (GPU)" };
-            bool[] extraValues = { glassCapas, coloresCache, lunaActiva, controlesReposo };
+            // "Transiciones suaves de color" se retiro el 13-10-2026: apagarla solo dejaba el buscador con el color de antes
+            // al cambiar de cancion. Va siempre encendida (sin interruptor, como las demas cosas que no son una opcion).
+            string[] extraNames = { "Vidrio por capas y color vivo", "Estrella viajera con orbitas", "Ocultar controles en reposo" };
+            bool[] extraValues = { glassCapas, lunaActiva, controlesReposo };
             Interruptor[] extras = new Interruptor[extraNames.Length];
             for (int i = 0; i < extras.Length; i++)
             {
@@ -1121,12 +1042,14 @@ namespace Rocola
                 extras[i].Text = extraNames[i]; extras[i].Checked = extraValues[i]; tAd.Controls.Add(extras[i]);
             }
             extras[0].CheckedChanged += delegate { glassCapas = extras[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            extras[1].CheckedChanged += delegate { coloresCache = extras[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            extras[2].CheckedChanged += delegate { lunaActiva = extras[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            extras[3].CheckedChanged += delegate { controlesReposo = extras[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            extras[1].CheckedChanged += delegate { lunaActiva = extras[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            extras[2].CheckedChanged += delegate { controlesReposo = extras[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Titulo = "DETALLE Y RESPUESTA";
-            string[] tactileNames = { "Respuesta inmediata al toque (GPU)", "Transiciones de vista y seleccion (GPU)", "Ondas unidas al estado (GPU)" };
-            bool[] tactileValues = { respuestaInmediata, transicionesTacto, ondasUnidas };
+            // "Respuesta inmediata al toque" (es rendimiento: apagarla solo hacia que la pantalla tardara mas en responder)
+            // y "Ondas unidas al estado" (apagada, la aurora se despegaba del estado ampliado) se retiraron el 13-10-2026:
+            // van siempre encendidas.
+            string[] tactileNames = { "Transiciones de vista y seleccion" };
+            bool[] tactileValues = { transicionesTacto };
             Interruptor[] tactile = new Interruptor[tactileNames.Length];
             for (int i = 0; i < tactile.Length; i++)
             {
@@ -1134,20 +1057,18 @@ namespace Rocola
                 tactile[i].Font = fNom; tactile[i].ForeColor = cTexto; tactile[i].Acento = cAc;
                 tactile[i].Text = tactileNames[i]; tactile[i].Checked = tactileValues[i]; tNat.Controls.Add(tactile[i]);
             }
-            tactile[0].CheckedChanged += delegate { respuestaInmediata = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            tactile[1].CheckedChanged += delegate { transicionesTacto = tactile[1].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            tactile[2].CheckedChanged += delegate { ondasUnidas = tactile[2].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
+            tactile[0].CheckedChanged += delegate { transicionesTacto = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             Label lMoon = new Label(); lMoon.SetBounds(16, 386, 424, 20);
             Interruptor swPaleta = new Interruptor(); swPaleta.SetBounds(16, 354, 424, 26);
             swPaleta.Font = fNom; swPaleta.ForeColor = cTexto; swPaleta.Acento = cAc;
-            swPaleta.Text = "Paleta completa de caratula (GPU)"; swPaleta.Checked = paletaCompleta;
+            swPaleta.Text = "Paleta completa de caratula"; swPaleta.Checked = paletaCompleta;
             swPaleta.CheckedChanged += delegate { paletaCompleta = swPaleta.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swPaleta);
             lMoon.Text = "ESTRELLA: superficie, corona y polvo independientes";
             lMoon.Font = fDes; lMoon.ForeColor = cTenue; lMoon.BackColor = Color.Transparent;
             tNat.Controls.Add(lMoon);
-            string[] moonNames = { "Superficie detallada de la estrella (GPU)", "Corona estelar (GPU)", "Polvo estelar orbital (GPU)", "Realzar estrella en reposo (GPU)" };
+            string[] moonNames = { "Superficie detallada de la estrella", "Corona estelar", "Polvo estelar orbital", "Realzar estrella en reposo" };
             bool[] moonValues = { lunaRealista, haloLunar, polvoLunar, lunaProtagonista };
             Interruptor[] moonSwitches = new Interruptor[moonNames.Length];
             for (int i = 0; i < moonSwitches.Length; i++)
@@ -1162,20 +1083,20 @@ namespace Rocola
             moonSwitches[3].CheckedChanged += delegate { lunaProtagonista = moonSwitches[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Interruptor swEstela = new Interruptor(); swEstela.SetBounds(16, 530, 424, 26);
             swEstela.Font = fNom; swEstela.ForeColor = cTexto; swEstela.Acento = cAc;
-            swEstela.Text = "Ecos de color de la estrella (GPU)"; swEstela.Checked = estelaEstelar;
+            swEstela.Text = "Ecos de color de la estrella"; swEstela.Checked = estelaEstelar;
             swEstela.CheckedChanged += delegate { estelaEstelar = swEstela.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swEstela);
             // La estrella en 3D girando (Estrella3dGpu.cs). Apagado vuelve la estrella plana del icono, con sus ecos de antes.
             Interruptor sw3d = new Interruptor(); sw3d.SetBounds(16, 560, 424, 26);
             sw3d.Font = fNom; sw3d.ForeColor = cTexto; sw3d.Acento = cAc;
-            sw3d.Text = "Estrella en 3D girando (GPU)"; sw3d.Checked = estrella3d;
+            sw3d.Text = "Estrella en 3D girando"; sw3d.Checked = estrella3d;
             sw3d.CheckedChanged += delegate { estrella3d = sw3d.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(sw3d);
 
             // EL CIELO VIVO (CieloVivoGpu.cs, 12-10-2026): siete adornos de Legacy, cada uno con su interruptor, en su hoja.
-            string[] vivoNames = { "Luna con su fase real (GPU)", "Lluvias de estrellas en sus fechas (GPU)",
-                "Fugaz al poner una cancion (GPU)", "Cometa de vez en cuando (GPU)",
-                "Mas profundidad al pasar de pagina (GPU)", "Cielo segun la hora (GPU)", "Reflejo de la aurora (GPU)" };
+            string[] vivoNames = { "Luna con su fase real", "Lluvias de estrellas en sus fechas",
+                "Fugaz al poner una cancion", "Cometa de vez en cuando",
+                "Mas profundidad al pasar de pagina", "Cielo segun la hora", "Reflejo de la aurora" };
             bool[] vivoValues = { lunaDelCielo, lluviasEstrellas, fugazFestejo, cometaOn, profundidadPagina, cieloPorHora, reflejoAurora };
             Interruptor[] vivo = new Interruptor[vivoNames.Length];
             for (int i = 0; i < vivo.Length; i++)
@@ -1194,7 +1115,7 @@ namespace Rocola
             Label lVivo1 = new Label(); lVivo1.BackColor = Color.Transparent; lVivo1.ForeColor = cTenue; lVivo1.Font = fDes;
             lVivo1.Text = "La luna sigue su fase de verdad: cerca de la luna nueva\nno se ve. Las lluvias, en sus fechas (agosto: Perseidas;\ndiciembre: Geminidas). El cometa pasa cada 35-70 min.";
             Label lVivo2 = new Label(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;
-            lVivo2.Text = "La profundidad va con Pasar de pagina deslizando\n(Pantalla). Con la hora cambia solo el cielo de abajo:\nmas hondo de madrugada y calido al anochecer.";
+            lVivo2.Text = "Con la hora cambia solo el cielo de abajo: mas\nhondo de madrugada y calido al anochecer.";
 
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
@@ -1221,9 +1142,9 @@ namespace Rocola
                 estrellasFinas = true; vinetaSuave = true; haloSeleccion = true; estadoTransparente = true;
                 progresoNeon = true; neonIntenso = true; progresoFluido = true;
                 cancionesCristal = true; colaDoce = true; swCristal.Checked = true; swDoce.Checked = true;
-                respuestaInmediata = true; transicionesTacto = true;
-                glassCapas = coloresCache = lunaActiva = true;
-                controlesReposo = ondasUnidas = true;
+                transicionesTacto = true;
+                glassCapas = lunaActiva = true;
+                controlesReposo = true;
                 lunaRealista = haloLunar = polvoLunar = lunaProtagonista = true;
                 estelaEstelar = true; swEstela.Checked = true;
                 estrella3d = true; sw3d.Checked = true;
@@ -1241,18 +1162,34 @@ namespace Rocola
             };
 
             pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
-            pg.Controls.Add(lAd);
+            pg.Controls.Add(lAd); pg.Controls.Add(lAdSin);
             Control[][] groups = {
                 new Control[] { sw[0], sw[1], sw[2], sw[3], sw[4], sw[5], swFlujo, swPaleta },
                 new Control[] { lNatN, lNatV, lNatD, barNat },
-                new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce, tactile[2] },
-                new Control[] { swCristal, extras[0], extras[1], tactile[1], tactile[0], lExtras },
+                new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce },
+                new Control[] { swCristal, extras[0], tactile[0], lExtras },
                 new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
-                new Control[] { extras[2], extras[3], lMoon },
+                new Control[] { extras[1], extras[2], lMoon },
                 new Control[] { vivo[0], vivo[1], vivo[2], vivo[3], lVivo1 },
                 new Control[] { vivo[4], vivo[5], vivo[6], lVivo2 }
             };
             MontaHojasFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue);
+
+            // A1: LO QUE DEPENDE DE OTRO, gris y diciendo que le falta. Cada uno lee el AJUSTE, no el interruptor: asi
+            // vale aunque el requisito este en otra pagina. Va despues de MontaHojasFondo, que acomoda las filas.
+            Necesita(sw[7], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            Necesita(sw[9], delegate { return progresoNeon; }, "Barra de progreso neon (esta hoja)");
+            Necesita(swDoce, delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            Necesita(swCristal, delegate { return cancionesTransparentes; }, "Lista de canciones transparente (Imagen)");
+            Necesita(swPaleta, delegate { return fondoPortadaOn; }, "Que el fondo tome el color de la portada (Detalles)");
+            Necesita(barNat, delegate { return cieloProfundo; }, "Nebulosas con detalle natural (hoja Cielo y aurora)", lNatD);
+            Necesita(swEstela, delegate { return lunaActiva; }, "Estrella viajera con orbitas (esta hoja)");
+            Necesita(extras[2], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            Necesita(vivo[4], delegate { return paginaDesliza; }, "Pasar de pagina deslizando (Pantalla)");
+            // Y todo lo de esta pagina es de la tarjeta grafica.
+            SoloConTarjeta(sw); SoloConTarjeta(swFlujo, swPaleta, barNat, swCristal, swDoce, swEstela, sw3d);
+            SoloConTarjeta(extras); SoloConTarjeta(tactile); SoloConTarjeta(moonSwitches); SoloConTarjeta(vivo);
+            AvisoSinTarjeta(lAdSin, lAd);
             pinta();
             return pg;
         }
@@ -1291,7 +1228,7 @@ namespace Rocola
             Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
             l1.ForeColor = cTenue; l1.Font = fDes;
             l1.Text = "Los botones dan al tono del DISCO un peso de 20%, 50% o 100% en el acento; el resto viene del GENERO.\n"
-                    + "Paleta completa (GPU): hasta ocho colores del disco. BTS/Bangtan con genero conserva el morado fijo.\n"
+                    + "Paleta completa (en Fondo): hasta ocho colores del disco. BTS/Bangtan con genero conserva el morado fijo.\n"
                     + "Sin genero reconocido, manda todo el tono disponible del disco, incluso con Mitad y mitad.\n"
                     + "Se conservan brillo, viveza y degradados del cielo; no se copia el RGB de la portada como un fondo plano.";
             string[] nom1 = { "Disco 20%", "Mitad y mitad", "Disco 100%" };
@@ -1371,7 +1308,7 @@ namespace Rocola
             Label lPie = new Label(); lPie.SetBounds(330, 580, 460, 46); lPie.BackColor = Color.Transparent;
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "La pared esta detras de esta ventana: toca una y mirala.\n"
-                      + "Todo se guarda al cerrar. El coste depende del equipo:\n"
+                      + "Todo se guarda al momento. El coste depende del equipo:\n"
                       + "compruebalo con el medidor (Imagen).";
 
             BotonPlano bReset = new BotonPlano();
@@ -1409,6 +1346,12 @@ namespace Rocola
 
             pg.Controls.Add(t1); pg.Controls.Add(t2); pg.Controls.Add(t3); pg.Controls.Add(t4);
             pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            // A1: el peso del disco solo cuenta si el fondo toma el color de la portada (Detalles). Lo dice al lado.
+            Label lNec1 = new Label(); lNec1.SetBounds(620, 108, 292, 34); lNec1.BackColor = Color.Transparent;
+            lNec1.ForeColor = cTenue; lNec1.Font = fDes; lNec1.Text = "";
+            t1.Controls.Add(lNec1);
+            for (int k = 0; k < b1.Length; k++)
+                Necesita(b1[k], delegate { return fondoPortadaOn; }, "Que el fondo tome el color\nde la portada (Detalles)", k == 0 ? lNec1 : null);
             pinta();
             return pg;
         }
@@ -1560,7 +1503,7 @@ namespace Rocola
             string[] nomSw = {
                 "Ocultar caratulas en hojeo rapido",
                 "Ocultar discos en reposo con musica",
-                "Estado y cola ampliados en reposo",
+                "Estado ampliado en reposo",
                 "Lista de canciones transparente",
                 "Miniaturas provisionales durante la carga",
             };
@@ -1678,8 +1621,12 @@ namespace Rocola
                     lVer.ForeColor = cTenue;
                     lVer.Text = "Aun sin medir.\n\nAqui no hay ningun numero porque ninguno seria de verdad:"
                               + " los de este equipo salen de medirlo.";
-                    lProp.Text = "Sin medir todavia. La propuesta sale de lo que se mida en ESTE equipo, no de una"
-                               + " lista de equipos buenos y malos escrita a mano.";
+                    // Sin tarjeta, lo que va en gris en las hojas de la derecha lo dice aqui, una vez (A1).
+                    lProp.Text = HayTarjeta()
+                        ? "Sin medir todavia. La propuesta sale de lo que se mida en ESTE equipo, no de una"
+                          + " lista de equipos buenos y malos escrita a mano."
+                        : "Esta rocola dibuja ahora SIN tarjeta grafica: lo que esta en gris en Efectos, Fluidez y"
+                          + " Performance solo se ve con ella.";
                     bApli.Enabled = false; bApli.Relleno = cOff; bApli.Borde = cBordeOff; bApli.ForeColor = cApagado;
                     return;
                 }
@@ -1829,6 +1776,12 @@ namespace Rocola
             };
 
             pg.Controls.Add(tMide); pg.Controls.Add(tProp); pg.Controls.Add(hojasGraficas); pg.Controls.Add(bResetG);
+            // A1: el estado ampliado solo sale con la pared oculta en reposo (Form1.cs: IdleExpandTarget). Esta justo
+            // encima, asi que lo dice detras del nombre, en su renglon.
+            Necesita(sw[2], delegate { return muroReposo; }, "la de arriba", null);
+            // Los cinco interruptores son de la tarjeta grafica; los niveles de arriba valen tambien sin ella.
+            // Sin tarjeta, la tarjeta de la propuesta lo dice una vez (ver pinta).
+            SoloConTarjeta(sw);
             CoverProfileChanged += pinta;
             pg.Disposed += delegate { CoverProfileChanged -= pinta; };
             pg.VisibleChanged += delegate { if (pg.Visible) pinta(); };
@@ -1896,8 +1849,12 @@ namespace Rocola
             Label nota = new Label(); nota.SetBounds(16, 478, 424, 34); nota.Font = fDes; nota.ForeColor = cTenue;
             nota.BackColor = Color.Transparent;
             nota.Text = "De fábrica vienen apagados: la pantalla, idéntica a siempre.\n"
-                      + "Se guardan al cerrar Ctrl+F3. Solo con tarjeta gráfica.";
+                      + "Se guardan al momento. Solo con tarjeta gráfica.";
             hoja.Controls.Add(autoT); hoja.Controls.Add(autoD); hoja.Controls.Add(cuenta); hoja.Controls.Add(nota);
+            // Sin tarjeta, en gris y dicho una vez (A1).
+            Label sin = new Label(); sin.SetBounds(16, 520, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
+            sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
+            SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, null);
         }
         // Lo medido de un ahorro, en una linea.
         private string TextoAhorro(int i)

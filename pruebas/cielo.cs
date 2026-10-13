@@ -208,7 +208,7 @@ class Cielo
               "y tira el cielo guardado: el corte no es un color y no entra en su firma");
 
         Console.WriteLine("\n  7) Y SE GUARDAN\n");
-        MethodBase lee = Met("LoadConfigPrefs"), escribe = Met("SaveConfigPrefs");
+        MethodBase lee = Met("LoadConfigPrefs"), escribe = Met("TextoConfig");
         string[] claves = { "portada_manda=", "cielo_azul=", "cielo_negro=" };
         for (int i = 0; i < claves.Length; i++)
         {

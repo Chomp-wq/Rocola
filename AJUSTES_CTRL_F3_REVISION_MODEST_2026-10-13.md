@@ -3,7 +3,8 @@
 Petición del usuario: «Revisa en la ventana de Ctrl+F3 todos los settings a ver qué cosas necesitan una renovación o
 mejora de cómo funcionan algunos settings».
 
-Esta ronda es solo de revisar: **no cambia nada del programa.** Recorrí las seis páginas (Colores, Detalles, Sonido,
+Esta ronda es solo de revisar: **no cambia nada del programa.** (Después se hicieron A1 y A2: ver
+[AJUSTES_VIVOS_MODEST_2026-10-13.md](AJUSTES_VIVOS_MODEST_2026-10-13.md).) Recorrí las seis páginas (Colores, Detalles, Sonido,
 Imagen, Fondo y Pantalla) y sus hojas: unos 80 ajustes. Abajo, lo que encontré y lo que propongo, para que elijas.
 
 ## Lo que funciona bien (no lo tocaría)

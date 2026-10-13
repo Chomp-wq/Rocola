@@ -476,8 +476,8 @@ class Estrella3dPrueba
             using (Panel page = (Panel)form.GetMethod("PaginaFondo", F).Invoke(owner, new object[] { f, f, f, f, Color.White, Color.Gray, Color.Gray }))
             {
                 bool dentro = true;
-                Control t = Find(page, "Estrella en 3D girando (GPU)");
-                Check(t != null, "Ctrl+F3 -> Fondo tiene \"Estrella en 3D girando (GPU)\"");
+                Control t = Find(page, "Estrella en 3D girando");
+                Check(t != null, "Ctrl+F3 -> Fondo tiene \"Estrella en 3D girando\"");
                 if (t != null)
                 {
                     Control card = t.Parent;

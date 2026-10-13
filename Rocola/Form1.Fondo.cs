@@ -54,12 +54,12 @@ namespace Rocola
         private bool cancionesTransparentes = true;
         private bool cancionesCristal = true;
         private bool colaDoce = true;
-        private bool glassCapas = true, coloresCache = true, lunaActiva = true;
-        private bool controlesReposo = true, ondasUnidas = true;
+        private bool glassCapas = true, lunaActiva = true;
+        private bool controlesReposo = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
         private bool estelaEstelar = true;
         private bool estrella3d = true;          // la estrella grande en 3D, girando (Estrella3dGpu.cs); "estrella_3d=" en config
-        private bool respuestaInmediata = true, transicionesTacto = true;
+        private bool transicionesTacto = true;
         // AVISOS PARA EL PANEL DE REPOSO. El panel solo existe con tarjeta grafica, pero las cosas que
         // ensena -la cola, la cancion, el color del genero- cambian en archivos que compilan siempre. Por
         // eso los avisos son metodos PARCIALES: con tarjeta llevan cuerpo (ver EstadoReposoGpu.cs) y sin

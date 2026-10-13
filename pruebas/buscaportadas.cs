@@ -1163,7 +1163,7 @@ class BuscaPortadas
         using (Font fo = new Font(FontFamily.GenericSansSerif, 9))
         using (Panel page = (Panel)Metodo(TF, "PaginaPantalla").Invoke(owner, new object[] { fo, fo, fo, Color.White, Color.Gray, Color.Gray }))
         {
-            Control sw = Busca(page, "Buscador con portadas (GPU)");
+            Control sw = Busca(page, "Buscador con portadas");
             Exige(sw != null, "la pestana Pantalla tiene su interruptor");
             if (sw == null) return;
             Control hoja = sw.Parent.Parent;

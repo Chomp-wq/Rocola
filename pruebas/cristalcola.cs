@@ -25,8 +25,11 @@ class CristalCola
   using(Font desc=new Font("Segoe UI",8.5f))
   using(Panel p=(Panel)t.GetMethod("PaginaFondo",F).Invoke(o,new object[]{font,font,desc,font,Color.White,Color.Gray,Color.Gray}))
   {
-   string[] labels={"Interior de discos con cristal (GPU)","Cola ampliada de 12 canciones (GPU)","Respuesta inmediata al toque (GPU)","Transiciones de vista y seleccion (GPU)","Vidrio por capas y color vivo (GPU)","Transiciones suaves de color (GPU)","Estrella viajera con orbitas (GPU)","Ocultar controles en reposo (GPU)","Ondas unidas al estado (GPU)"};
-   string[] fields={"cancionesCristal","colaDoce","respuestaInmediata","transicionesTacto","glassCapas","coloresCache","lunaActiva","controlesReposo","ondasUnidas"};
+   // "Respuesta inmediata al toque", "Transiciones suaves de color" y "Ondas unidas al estado" se retiraron el 13-10-2026:
+   // no eran opciones (rendimiento, o un defecto al apagarlas) y van siempre encendidas en el panel.
+   string[] labels={"Interior de discos con cristal","Cola ampliada de 12 canciones","Transiciones de vista y seleccion","Vidrio por capas y color vivo","Estrella viajera con orbitas","Ocultar controles en reposo"};
+   string[] fields={"cancionesCristal","colaDoce","transicionesTacto","glassCapas","lunaActiva","controlesReposo"};
+   foreach(string ido in new string[]{"respuestaInmediata","coloresCache","ondasUnidas"})if(t.GetField(ido,F)!=null)throw new Exception("Sigue el ajuste retirado "+ido);
    foreach(Control card in p.Controls){
     if(card.Bottom>p.Height||card.Right>p.Width)throw new Exception("Tarjeta fuera de Fondo");
     foreach(Control c in card.Controls){
@@ -73,7 +76,7 @@ class CristalCola
   string source=(args.Length > 1 ? File.ReadAllText((args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "cristalcola.png"))) : Codigo.FuenteDeForm1());
   string guard=null;foreach(string line in source.Split('\n'))if(line.Contains("cc != lTit"))guard=line;
   if(guard==null||!guard.Contains("cc != bPagF")||!guard.Contains("cc != pFon"))throw new Exception("Fondo se oculta");
-  Console.WriteLine("  OK    512 combinaciones de opciones, Fondo sin cruces, 56 paneles, miniaturas visibles, vidrio y pestanas. Imagenes: "+dir);
+  Console.WriteLine("  OK    "+(1<<6)+" combinaciones de opciones, Fondo sin cruces, 56 paneles, miniaturas visibles, vidrio y pestanas. Imagenes: "+dir);
   return 0;
  }
 }

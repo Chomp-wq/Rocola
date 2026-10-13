@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Ctrl+F3: dependencias vivas, guardar al momento y ajustes inútiles fuera — 13 de octubre de 2026
+
+Lo que depende de otro ajuste va en gris y dice qué le falta, y vuelve solo. Sin tarjeta gráfica, lo suyo en gris con un
+aviso por página; los nombres ya no llevan «(GPU)». Lo tocado se guarda al momento. Fuera la pared que respira y tres
+interruptores que no eran opciones.
+[Qué se cambió y cómo se comprobó](AJUSTES_VIVOS_MODEST_2026-10-13.md).
+
 ## Actualizar una rocola con una versión vieja — 13 de octubre de 2026
 
 Compatible desde la primera versión: lo más sonado, monedas, botones, créditos, medidas y material de la IA se leen tal

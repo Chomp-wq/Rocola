@@ -80,7 +80,7 @@ class CaratulasJpeg
         {
             FieldInfo campo = form.GetField("caratulasJpeg", B);
             Check(campo != null && campo.IsStatic && !(bool)campo.GetValue(null), "el interruptor existe y viene apagado de fabrica");
-            List<string> lee = Codigo.Textos(form.GetMethod("LoadConfigPrefs", B)), guarda = Codigo.Textos(form.GetMethod("SaveConfigPrefs", B));
+            List<string> lee = Codigo.Textos(form.GetMethod("LoadConfigPrefs", B)), guarda = Codigo.Textos(form.GetMethod("TextoConfig", B));
             Check(lee.Contains("caratulas_jpeg=") && guarda.Contains("caratulas_jpeg="), "se lee y se guarda en la configuracion (caratulas_jpeg=)");
 
             // 1) APAGADO: PNG sin perdida, como siempre.

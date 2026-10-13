@@ -456,7 +456,7 @@ class Estilo
         object owner = Codigo.FormSinEncender(form);
         Set(owner, "carpetaDatos", dir);
         if (gpu != null) { Set(owner, "gpuPanel", Activator.CreateInstance(gpu, true)); Set(owner, "gpuEnabled", true); }
-        string[] nom = { "Letra para leer de lejos (GPU)", "El color del género en todo (GPU)" };
+        string[] nom = { "Letra para leer de lejos", "El color del género en todo" };
         string[] campo = { "letraLejos", "colorGenero" };
         using (Font fo = new Font("Segoe UI", 9))
         using (Panel page = (Panel)form.GetMethod("PaginaPantalla", F).Invoke(owner, new object[] { fo, fo, fo, Color.White, Color.Gray, Color.Gray }))
@@ -465,7 +465,7 @@ class Estilo
             for (int i = 0; i < 2; i++) { sw[i] = Find(page, nom[i]); if (sw[i] == null) estan = false; }
             Check(estan, "la pestaña Pantalla tiene los dos nuevos");
             if (!estan) return;
-            Control card = sw[0].Parent, hoja = card.Parent, atr = Find(page, "El escaparate (GPU)");
+            Control card = sw[0].Parent, hoja = card.Parent, atr = Find(page, "El escaparate");
             Check(card == sw[1].Parent && atr != null && atr.Parent.Parent == hoja && atr.Parent != card && !card.Bounds.IntersectsWith(atr.Parent.Bounds)
                   && card.Right <= hoja.Width && card.Bottom <= hoja.Height,
                   "en su tarjeta, en la tercera hoja al lado del modo atraccion, sin pisarse");

@@ -395,7 +395,7 @@ class GraveMonoPrueba
         }
         finally { try { System.IO.Directory.Delete(tmp, true); } catch { } }
         // La configuracion: se lee, se guarda y se acota.
-        List<string> tLee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), tEsc = Codigo.Textos(TF.GetMethod("SaveConfigPrefs", T));
+        List<string> tLee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), tEsc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
         Check(tLee.Contains("grave_mono=") && tEsc.Contains("grave_mono="), "grave_mono= se lee y se guarda en la configuracion");
         MethodInfo hz = TF.GetMethod("GraveMonoHz", T);
         FieldInfo campo = TF.GetField("graveMonoHz", T);

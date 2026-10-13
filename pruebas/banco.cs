@@ -146,7 +146,7 @@ class Banco
 
         Console.WriteLine("\n  2) LAS PERILLAS SE GUARDAN Y SE RELEEN\n");
         string[] claves = { "estrellas=", "fugaces=", "nieblas=", "patron=", "espectro=", "animacion=" };
-        MethodInfo lee = Met(TF, "LoadConfigPrefs"), esc = Met(TF, "SaveConfigPrefs");
+        MethodInfo lee = Met(TF, "LoadConfigPrefs"), esc = Met(TF, "TextoConfig");
         List<string> tLee = (lee != null) ? Codigo.Textos(lee) : new List<string>();
         List<string> tEsc = (esc != null) ? Codigo.Textos(esc) : new List<string>();
         foreach (string k in claves)

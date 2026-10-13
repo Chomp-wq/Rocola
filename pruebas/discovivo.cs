@@ -644,7 +644,7 @@ class DiscoVivo
         string dir = Path.Combine(Path.GetTempPath(), "rocola_discovivo_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
         form.GetField("carpetaDatos", F).SetValue(null, dir);
         object owner = Codigo.FormSinEncender(form);
-        string[] nom = { "Lista grande (GPU)", "Ecualizador en la que suena (GPU)", "En cola, con los minutos (GPU)", "Ver adónde va la canción (GPU)" };
+        string[] nom = { "Lista grande", "Ecualizador en la que suena", "En cola, con los minutos", "Ver adónde va la canción" };
         string[] campo = { "listaGrande", "eqSonando", "colaMinutos", "vueloCola" };
         string[] viejos = { "portadaEnfocada", "fichaDisco", "paginaDesliza", "letrasLupa" };
         Control sl = (Control)Activator.CreateInstance(slT, true);
@@ -656,7 +656,7 @@ class DiscoVivo
         {
             Control[] sw = new Control[4]; bool estan = true;
             for (int i = 0; i < 4; i++) { sw[i] = Find(page, nom[i]); if (sw[i] == null) estan = false; }
-            Check(estan && Find(page, "Portada enfocada (GPU)") != null, "la pestaña Pantalla tiene los cuatro ajustes al lado de los cuatro de la pared");
+            Check(estan && Find(page, "Portada enfocada") != null, "la pestaña Pantalla tiene los cuatro ajustes al lado de los cuatro de la pared");
             if (!estan) return;
             // Las tarjetas van en HOJAS (paneles lisos, una a la vista; tanda 3): dentro de cada hoja, lado a lado y sin pisarse.
             bool dentro = true, noSePisan = true, juntas = false; int fondo = 0, hojas = 0;
@@ -672,7 +672,7 @@ class DiscoVivo
                     if (card.Left < 0 || card.Top < 0 || card.Right > hoja.Width || card.Bottom > hoja.Height) dentro = false;
                     foreach (Rectangle r in tarjetas) if (r.IntersectsWith(card.Bounds)) noSePisan = false;
                     tarjetas.Add(card.Bounds);
-                    if (Find(card, "Portada enfocada (GPU)") != null) pared = true;
+                    if (Find(card, "Portada enfocada") != null) pared = true;
                     if (Find(card, nom[0]) != null) disco = true;
                     foreach (Control x in card.Controls)
                     {

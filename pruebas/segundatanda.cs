@@ -59,21 +59,19 @@ class SegundaTanda
 
     static void RelojQueSeAtrasa(object f)
     {
+        // (La vista previa de la respiracion se retiro el 13-10-2026 con la pared que respira.)
         DateTime ahora = DateTime.Now;
         Set(f, "lastInput", ahora.AddHours(1));
         Set(f, "searchLastActivity", ahora.AddMinutes(30));
-        Set(f, "respiraDemoHasta", ahora.AddHours(1));
         Call(f, "RelojAtras");
-        DateTime li = (DateTime)Get(f, "lastInput"), sa = (DateTime)Get(f, "searchLastActivity"), rd = (DateTime)Get(f, "respiraDemoHasta");
+        DateTime li = (DateTime)Get(f, "lastInput"), sa = (DateTime)Get(f, "searchLastActivity");
         DateTime despues = DateTime.Now;
         Check(li >= ahora && li <= despues, "con el reloj atrasado una hora, la ultima tecla cuenta desde ahora");
         Check(sa >= ahora && sa <= despues, "y la ultima actividad del buscador tambien (se cierra al minuto, no en media hora)");
-        Check(rd <= despues.AddSeconds(7) && rd > ahora, "la vista previa de la respiracion no se alarga una hora");
         DateTime antes = ahora.AddMinutes(-3);
-        Set(f, "lastInput", antes); Set(f, "searchLastActivity", antes); Set(f, "respiraDemoHasta", DateTime.MinValue);
+        Set(f, "lastInput", antes); Set(f, "searchLastActivity", antes);
         Call(f, "RelojAtras");
         Check((DateTime)Get(f, "lastInput") == antes && (DateTime)Get(f, "searchLastActivity") == antes, "con el reloj normal no se toca nada");
-        Check((DateTime)Get(f, "respiraDemoHasta") == DateTime.MinValue, "ni la vista previa apagada");
     }
 
     static void Tick(Assembly asm)

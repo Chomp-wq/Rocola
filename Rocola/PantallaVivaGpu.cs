@@ -74,11 +74,11 @@ namespace Rocola
             hPared.BackColor = pg.BackColor; hSuena.BackColor = pg.BackColor; hAtr.BackColor = pg.BackColor;
             Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 0, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
             string[] nom = {
-                "Portada enfocada (GPU)",
-                "Ficha rápida del disco (GPU)",
-                "Pasar de página deslizando (GPU)",
-                "Barra de letras con lupa (GPU)",
-                "Guía al mantener el botón rojo (GPU)",
+                "Portada enfocada",
+                "Ficha rápida del disco",
+                "Pasar de página deslizando",
+                "Barra de letras con lupa",
+                "Guía al mantener el botón rojo",
             };
             string[] explica = {
                 "La portada elegida crece, brilla con su propio color y dice cuantas\ncanciones trae y cuanto dura. Las demas se apagan un poco.",
@@ -107,10 +107,10 @@ namespace Rocola
             // LA TANDA 2, al lado: lo que pasa dentro de un disco (DiscoVivoGpu.cs).
             Tarjeta tDisco = new Tarjeta(); tDisco.SetBounds(488, 0, 456, 412); tDisco.Titulo = "DENTRO DEL DISCO"; tDisco.Acento = cAc;
             string[] nomD = {
-                "Lista grande (GPU)",
-                "Ecualizador en la que suena (GPU)",
-                "En cola, con los minutos (GPU)",
-                "Ver adónde va la canción (GPU)",
+                "Lista grande",
+                "Ecualizador en la que suena",
+                "En cola, con los minutos",
+                "Ver adónde va la canción",
             };
             string[] explicaD = {
                 "Filas mas altas y letra mas grande dentro del disco: se lee de\nlejos. Caben menos canciones por pagina.",
@@ -137,10 +137,10 @@ namespace Rocola
             // LA TANDA 3, en la segunda hoja: lo que suena y los creditos (SuenaVivoGpu.cs).
             Tarjeta tSuena = new Tarjeta(); tSuena.SetBounds(16, 0, 456, 328); tSuena.Titulo = "LO QUE SUENA Y LOS CREDITOS"; tSuena.Acento = cAc;
             string[] nomS = {
-                "Lo que suena, en grande (GPU)",
-                "La moneda que cae (GPU)",
-                "Sin creditos, invitar (GPU)",
-                "Avisos que se entienden (GPU)",
+                "Lo que suena, en grande",
+                "La moneda que cae",
+                "Sin creditos, invitar",
+                "Avisos que se entienden",
             };
             string[] explicaS = {
                 "En reposo, el titulo va en una linea que se desliza si no cabe\ny dice cuanto falta, tambien de las que siguen.",
@@ -169,8 +169,8 @@ namespace Rocola
             // LA TANDA 4, en la tercera hoja: el modo atraccion (AtraccionGpu.cs).
             Tarjeta tAtr = new Tarjeta(); tAtr.SetBounds(16, 0, 456, 184); tAtr.Titulo = "MODO ATRACCION"; tAtr.Acento = cAc;
             string[] nomA = {
-                "El escaparate (GPU)",
-                "Lo más pedido esta noche (GPU)",
+                "El escaparate",
+                "Lo más pedido esta noche",
             };
             string[] explicaA = {
                 "Cuando nadie usa la rocola, el cubo se mece a la izquierda y a\nsu lado sale el disco en grande, con mensajes que se turnan.",
@@ -193,9 +193,9 @@ namespace Rocola
             // LA TANDA 5, al lado: el estilo general (EstiloGpu.cs).
             Tarjeta tEst = new Tarjeta(); tEst.SetBounds(488, 0, 456, 256); tEst.Titulo = "ESTILO GENERAL"; tEst.Acento = cAc;
             string[] nomE = {
-                "Letra para leer de lejos (GPU)",
-                "El color del género en todo (GPU)",
-                "Títulos largos deslizantes (GPU)",
+                "Letra para leer de lejos",
+                "El color del género en todo",
+                "Títulos largos deslizantes",
             };
             string[] explicaE = {
                 "El titulo de lo que suena, abajo, crece y lo que sigue pasa a la\nderecha en un gris mas claro: se lee de pie, a dos metros.",
@@ -221,7 +221,7 @@ namespace Rocola
             Tarjeta tBus = new Tarjeta(); tBus.SetBounds(488, 268, 456, 184); tBus.Titulo = "BUSCADOR Y AYUDA"; tBus.Acento = cAc;
             Interruptor swB = new Interruptor(); swB.SetBounds(16, 40, 424, 26);
             swB.Font = fNom; swB.ForeColor = cTexto; swB.Acento = cAc;
-            swB.Text = "Buscador con portadas (GPU)"; swB.Checked = buscadorPortadas;
+            swB.Text = "Buscador con portadas"; swB.Checked = buscadorPortadas;
             Label leB = new Label(); leB.SetBounds(16, 70, 424, 32); leB.BackColor = Color.Transparent;
             leB.ForeColor = cTenue; leB.Font = fDes;
             leB.Text = "Teclado compacto y resultados en tarjetas con su portada. Arriba,\n"
@@ -230,7 +230,7 @@ namespace Rocola
             swB.CheckedChanged += delegate { buscadorPortadas = swB.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             Interruptor swAyuda = new Interruptor(); swAyuda.SetBounds(16, 112, 424, 26);
             swAyuda.Font = fNom; swAyuda.ForeColor = cTexto; swAyuda.Acento = cAc;
-            swAyuda.Text = "Animación del asistente (GPU)"; swAyuda.Checked = asistenteAnimado;
+            swAyuda.Text = "Animación del asistente"; swAyuda.Checked = asistenteAnimado;
             Label leAyuda = new Label(); leAyuda.SetBounds(16, 142, 424, 32);
             leAyuda.BackColor = Color.Transparent; leAyuda.ForeColor = cTenue; leAyuda.Font = fDes;
             leAyuda.Text = "La ayuda se abre con ROJO + ABAJO o con su casilla. Sin rostro:\nanima postura, brazos y pasos. Apagado, la ayuda sigue igual.";
@@ -240,7 +240,7 @@ namespace Rocola
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
                       + "sale exactamente como siempre. Ninguna le quita rendimiento que se note; son de gusto, y todo lo que se\n"
-                      + "toque aqui se guarda al cerrar la ventana.";
+                      + "toque aqui se guarda al momento.";
             BotonPlano bReset = new BotonPlano(); bReset.SetBounds(16, 572, 300, 38); bReset.Font = fBot; bReset.Text = "Pantalla como de fabrica";
             bReset.Click += delegate
             {
@@ -277,6 +277,12 @@ namespace Rocola
             }
             MuestraHoja(hojas, bHoja, 0, cApagado);
             pg.Controls.Add(lPie); pg.Controls.Add(bReset);
+            // Todo lo de esta pagina es de la tarjeta grafica: sin ella, en gris y dicho una vez (A1).
+            Label lSin = new Label(); lSin.SetBounds(330, 572, 460, 34); lSin.BackColor = Color.Transparent;
+            lSin.ForeColor = Interruptor.ColorNecesita; lSin.Font = fDes; lSin.Text = TextoSinTarjeta; lSin.Visible = false;
+            pg.Controls.Add(lSin); AvisoSinTarjeta(lSin, null);
+            SoloConTarjeta(sw); SoloConTarjeta(swD); SoloConTarjeta(swS); SoloConTarjeta(swA); SoloConTarjeta(swE);
+            SoloConTarjeta(swB, swAyuda);
             return pg;
         }
         // Enseña una hoja y enciende su boton, con los mismos colores que las pestañas de arriba.

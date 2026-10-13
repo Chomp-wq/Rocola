@@ -60,7 +60,7 @@ class LunaDetalle
    panel.Size=new Size(640,480);
    string[] fields={"lunaRealista","haloLunar","polvoLunar","lunaProtagonista","estelaEstelar"};
    string[] gpuFields={"LunaRealista","HaloLunar","PolvoLunar","LunaProtagonista","EstelaEstelar"};
-   string[] labels={"Superficie detallada de la estrella (GPU)","Corona estelar (GPU)","Polvo estelar orbital (GPU)","Realzar estrella en reposo (GPU)","Ecos de color de la estrella (GPU)"};
+   string[] labels={"Superficie detallada de la estrella","Corona estelar","Polvo estelar orbital","Realzar estrella en reposo","Ecos de color de la estrella"};
    Set(form,null,"carpetaDatos",dir);object o=Blank(form);Set(form,o,"gpuPanel",panel);
    using(Font font=new Font("Segoe UI",10,FontStyle.Bold))
    using(Font desc=new Font("Segoe UI",8.5f))
