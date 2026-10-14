@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Más rendimiento para los gráficos, segunda vuelta, para elegir — 14 de octubre de 2026
+
+Tres propuestas más, todavía sin hacer. J1: el estirado del cielo no se pinta bajo las portadas (se ve igual). J2: el
+cielo a un cuarto de resolución (casi igual; el cuadro que más pesa baja un 40 %, justo al pasar de página). J3: la
+aurora a media resolución (con condiciones).
+[Las propuestas, con sus cuentas](PERFORMANCE_PROPUESTAS_2_MODEST_2026-10-14.md).
+
 ## G1 y G2: el cielo sin repetir y el fondo en una sola capa — 14 de octubre de 2026
 
 El cielo a media resolución ya no se vuelve a pintar si no cambió (G1, automático y se ve igual). «Fondo en una sola
