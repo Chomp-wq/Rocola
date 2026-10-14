@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Pulir los gráficos, para elegir — 14 de octubre de 2026
+
+Propuestas, todavía sin hacer: colores y degradados (cielo de muchas paradas, colores mezclados como luz, aurora más
+limpia, interfaz sin escalones), reflejos de la estrella (facetas con degradado, que refleje el cielo, destello en cruz,
+borde de luz, reflejo en el horizonte) y otras (brillo de cristal en la portada elegida, sombra bajo las portadas,
+fugaces con cola de color).
+[Las propuestas](PULIDO_GRAFICO_PROPUESTAS_MODEST_2026-10-14.md).
+
 ## J1, J2 y los ajustes que el Performance deja sin efecto — 14 de octubre de 2026
 
 El estirado del cielo ya no se pinta bajo las portadas (J1, automático). «Cielo a un cuarto de resolución» (J2, Ctrl+F3
