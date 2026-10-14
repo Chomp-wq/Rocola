@@ -8,6 +8,11 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## BUSCAR y AYUDA, centradas juntas — 14 de octubre de 2026
+
+Ahora se centra en la pantalla el par BUSCAR + AYUDA, no solo BUSCAR (antes el par quedaba corrido a la derecha).
+[Detalle](BUSCAR_AYUDA_CENTRADAS_MODEST_2026-10-14.md).
+
 ## El pulido de los gráficos — 14 de octubre de 2026
 
 Ctrl+F3 → Fondo → hoja **Pulido**: diez opciones visuales, encendidas de fábrica. Cielo de muchas paradas, colores

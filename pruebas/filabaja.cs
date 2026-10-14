@@ -65,7 +65,8 @@ class FilaBaja
             // acomodarla hasta el primer cambio de cancion o de creditos.
             Check(Codigo.Llama(form.GetMethod("ApplyAlbumGpu", T), "LayoutControls"), "Encender o apagar la tarjeta acomoda la fila en el acto");
             // Colocacion del par BUSCAR + AYUDA, pura.
-            Check((int)Static(form, "ColocaParBusca", 1920, 258, 516, 328, 1906, 300) == (1920 - 258) / 2, "Con sitio de sobra, BUSCAR sigue en el centro");
+            Check((int)Static(form, "ColocaParBusca", 1920, 258, 516, 328, 1906, 300) == (1920 - 516) / 2, "Con sitio de sobra, el par BUSCAR + AYUDA queda centrado en la pantalla (14-10-2026)");
+            Check((int)Static(form, "ColocaParBusca", 1920, 258, 258, 328, 1906, 300) == (1920 - 258) / 2, "Sin AYUDA, BUSCAR sola en el centro");
             int x = (int)Static(form, "ColocaParBusca", 1024, 203, 407, 328, 1010, 255);
             Check(x >= 328 && x + 407 + 12 + 255 <= 1010, "En 1024, el par se corre lo justo para dejarle al encabezado lo que pide");
             Check((int)Static(form, "ColocaParBusca", 800, 203, 330, 328, 786, 255) == 328, "Si no hay sitio, el par se pega a las instrucciones (nunca encima)");
@@ -113,7 +114,8 @@ class FilaBaja
                         Check(cab.Width >= pide, n + "el encabezado tiene lo que pide (" + cab.Width + " de " + pide + " px)");
                     }
                     else Check(cab.Width >= 90, n + "al encabezado le quedan al menos 90 px");
-                    if (W >= 1920) Check(Math.Abs(busca.Left + busca.Width / 2 - W / 2) <= 1, n + "BUSCAR en el centro de la pantalla");
+                    // El par BUSCAR + AYUDA, centrado en la pantalla (14-10-2026: antes se centraba BUSCAR sola).
+                    if (W >= 1920) Check(Math.Abs((busca.Left + ayuda.Right) / 2 - W / 2) <= 1, n + "BUSCAR y AYUDA juntas en el centro de la pantalla");
                     if (W == 1024 && r[1] == 768)
                         Console.WriteLine("     1024x768: instrucciones " + help.Left + ".." + help.Right + ", BUSCAR " + busca.Left + ".." + busca.Right
                             + ", AYUDA " + ayuda.Left + ".." + ayuda.Right + ", encabezado " + cab.Left + ".." + cab.Right + " (pide " + pide + ")");

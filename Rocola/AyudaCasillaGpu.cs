@@ -206,9 +206,13 @@ namespace Rocola
         }
 
         // Donde empieza BUSCAR (con AYUDA a su derecha, 'grupo' de ancho entre las dos). Pura: se prueba sin ventana.
+        // EL PAR, CENTRADO (peticion del 14-10-2026: «haz que la casilla de buscar y ayuda esten bien centradas»). Antes
+        // se centraba BUSCAR sola y AYUDA quedaba pegada a su derecha: el par se veia corrido a la derecha. Ahora el centro
+        // de la pantalla cae en el medio del par (BUSCAR, 10 px, AYUDA). Sin AYUDA (grupo = BUSCAR), BUSCAR sola en el centro.
         internal static int ColocaParBusca(int W, int busW, int grupo, int minX, int barraDer, int pideEncabezado)
         {
-            int x = SitioBusca(W, busW, minX, barraDer);              // BUSCAR en el centro, como siempre
+            int x = (W - grupo) / 2;                                  // el par, con su centro en el de la pantalla
+            if (x + grupo > barraDer) x = barraDer - grupo;
             int tope = barraDer - 12 - pideEncabezado - grupo;        // mas a la derecha apretaria al encabezado
             if (x > tope) x = tope;
             if (x < minX) x = minX;                                   // nunca encima de las instrucciones
