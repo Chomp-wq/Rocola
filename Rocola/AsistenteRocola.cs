@@ -193,14 +193,16 @@ namespace Rocola
             if (motivo != null)
             {
                 if (asistenteVisible) CierraAsistente();
-                if (atajo) { AvisaSinAyuda(motivo); return true; }
+                if (atajo) { if (disparoAyuda.Pide()) AvisaSinAyuda(motivo); return true; }
                 return false;
             }
             if (asistenteVisible) asistenteActividadTick = Environment.TickCount;
             if (atajo)
             {
                 // Tambien mientras la estrella regresa: da media vuelta desde donde iba. Abrir tiene tope (TopeAperturas,
-                // Form1.cs): cerrar no.
+                // Form1.cs): cerrar no. Y una vez por pulsacion (UnDisparo.cs): con los dos botones apretados no vuelve a
+                // abrir ni a cerrar, aunque el teclado no marque sus repeticiones; hay que soltar y apretar otra vez.
+                if (!disparoAyuda.Pide()) return true;
                 if (asistenteVisible) CierraAsistente();
                 else if (topeAyuda.Pide(Environment.TickCount)) AbreAsistente();
                 else AvisaTopeCombo();

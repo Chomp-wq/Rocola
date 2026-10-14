@@ -15,6 +15,11 @@ la validación PCM y escucha antes de autorizar cualquier activación. Las herra
 adicionales de evaluación están en el paquete completo del repositorio, no en este
 conjunto mínimo de entrenamiento.
 
+Desde el 14 de octubre de 2026 la rocola lee todos sus modelos de la carpeta **`IAS`** (junto a `Rocola.exe`, o
+dentro de `ROCOLA_DATOS`): `rocola_ia.bin`, `rocola_eq_ia.bin` y los `rocola_ia_genero_*.bin`. Al arrancar pasa ahí
+los que encuentre sueltos, sin borrar ninguno. El material (`rocola_ia_datos.*`, `rocola_eq.txt`) se queda donde
+estaba. Arrastrando la carpeta de la rocola, el entrenador encuentra los modelos de `IAS`.
+
 No llames `entrenar_ia.py --help`: ese entrenador no reconoce esa opción y podría
 iniciar su prueba sintética. Utiliza el lanzador de arrastre indicado arriba.
 
@@ -40,6 +45,7 @@ iniciar su prueba sintética. Utiliza el lanzador de arrastre indicado arriba.
    - pregunta género por género si ya lo escuchaste;
    - la ventana no se cierra hasta que aprietes Enter, y lo que pasó queda en `ia\instalar_dsee_genero_log.txt`.
 
-   El modelo general no se toca. Si ya había un modelo de ese género, se guarda al lado como `.anterior-N`.
+   Lo deja en la carpeta `IAS` de la rocola (la crea si no está). El modelo general no se toca. Si ya había un
+   modelo de ese género, se guarda en `IAS` como `.anterior-N`.
 4. **Usarlo.** Reinicia la rocola. En Ctrl+F3 → Sonido → Mejoras con IA, enciende «Modelos del DSEE por género»
    (con el DSEE encendido). Las canciones de ese género usan su modelo; las demás, el general.

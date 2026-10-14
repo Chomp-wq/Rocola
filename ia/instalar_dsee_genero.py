@@ -3,15 +3,18 @@
 """INSTALAR UN MODELO DEL DSEE POR GENERO (I3, 13 de octubre de 2026).
 
 entrenar_ia.py --datos rocola_ia_datos.bin --genero cumbia   deja un candidato aislado con su informe. Este programa lo
-copia a la carpeta de datos de la rocola como  rocola_ia_genero_<genero>.bin  (la rocola lo usa con el interruptor
-"Modelos del DSEE por genero" de Ctrl+F3, en las canciones de ese genero). El modelo general (rocola_ia.bin) no se toca.
+copia a la carpeta IAS de la carpeta de datos de la rocola como  IAS/rocola_ia_genero_<genero>.bin  (la rocola lo usa
+con el interruptor "Modelos del DSEE por genero" de Ctrl+F3, en las canciones de ese genero). El modelo general
+(rocola_ia.bin) no se toca. Desde el 14 de octubre de 2026 la rocola lee todas sus IAs de la carpeta IAS; si no existe,
+se crea.
 
 Solo instala si:
   - el informe es del DSEE, del mismo extractor, contrato 28 -> 12, y dice "aceptado numericamente" (le gano al modelo
     instalado -el general- en la prueba de ESE genero, sin regresiones por clase ni diferencias con la rocola);
   - el informe es de ese genero, y la huella del candidato es la que dice el informe;
   - se confirma con --escuchado que ya se escucho en el A/B (como el general: nunca solo por los numeros).
-Si ya habia un modelo de ese genero, se guarda al lado como .anterior-N antes de reemplazarlo. La copia es atomica.
+Si ya habia un modelo de ese genero (en IAS, o suelto en la carpeta de datos, donde iban antes), se guarda en IAS como
+.anterior-N antes de reemplazarlo. La copia es atomica.
 
 LO NORMAL: DOBLE CLIC en instalar_dsee_genero.bat (o en este .py). Sin argumentos, el programa pregunta:
   - busca solo los modelos por genero que dejo entrenar_dsee.bat en  ia/entrenado/dsee-genero-*  y dice de cada uno si
@@ -51,6 +54,21 @@ except Exception:   # sin numpy, o falta una pieza al lado: con doble clic hay q
     raise
 
 PREFIJO = "rocola_ia_genero_"
+CARPETA_IAS = "IAS"
+
+
+def carpeta_ias(destino):
+    """La carpeta IAS de la carpeta de datos (o la misma, si ya se dio la carpeta IAS)."""
+    if os.path.basename(os.path.normpath(destino)).upper() == CARPETA_IAS:
+        return destino
+    return os.path.join(destino, CARPETA_IAS)
+
+
+def _libre_anterior(final):
+    n = 1
+    while os.path.exists("%s.anterior-%d" % (final, n)):
+        n += 1
+    return "%s.anterior-%d" % (final, n)
 
 
 def _sha(ruta):
@@ -86,17 +104,21 @@ def instala(candidato, destino, informe=None, escuchado=False):
         raise ValueError("falta --escuchado: hay que escucharlo en el A/B antes de instalarlo")
     if not os.path.isdir(destino):
         raise ValueError("la carpeta de datos no existe: " + destino)
-    final = os.path.join(destino, PREFIJO + genero + ".bin")
+    ias = carpeta_ias(destino)
+    os.makedirs(ias, exist_ok=True)
+    nombre = PREFIJO + genero + ".bin"
+    final = os.path.join(ias, nombre)
     with open(candidato, "rb") as f:
         datos = f.read()
     temporal = final + ".instalando"
     with open(temporal, "wb") as f:
         f.write(datos); f.flush(); os.fsync(f.fileno())
-    if os.path.exists(final):
-        n = 1
-        while os.path.exists("%s.anterior-%d" % (final, n)):
-            n += 1
-        os.replace(final, "%s.anterior-%d" % (final, n))
+    # El de antes se guarda: el de IAS y tambien uno suelto en la carpeta de datos (si se dejara suelto, la rocola lo
+    # tomaria al arrancar por uno recien puesto y apartaria a este).
+    suelto = os.path.join(destino, nombre)
+    for viejo in (final, suelto):   # si destino ya era IAS, son el mismo: el segundo ya no existe
+        if os.path.exists(viejo):
+            os.replace(viejo, _libre_anterior(final))
     os.replace(temporal, final)
     return final
 

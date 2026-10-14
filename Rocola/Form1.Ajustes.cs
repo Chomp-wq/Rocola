@@ -965,17 +965,17 @@ namespace Rocola
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
                     Label lEqIa = notaLocal(tMod, 40, 48, "");
                     Label lDsIa = notaLocal(tMod, 104, 64, "");
-                    notaLocal(tMod, 184, 64, "Se entrenan en otra PC con el material que junta la rocola\n(carpeta ia: entrenar_dsee.bat; los de genero se instalan con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
+                    notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat; los de genero, con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
                     BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
                     bVolverIa.Text = "Volver a las canciones"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
                     Action pintaIa = delegate
                     {
                         lEqIa.Text = EqNet.Loaded
                             ? "IA del EQ: cargada. \"A la medida\" la usa para el bajo\ny el brillo de cada cancion."
-                            : "IA del EQ: sin modelo (rocola_eq_ia.bin). Sin ella,\n\"a la medida\" no cambia nada: todo como siempre.";
+                            : "IA del EQ: sin modelo (IAS\\rocola_eq_ia.bin). Sin ella,\n\"a la medida\" no cambia nada: todo como siempre.";
                         int nGen = ModelosPorGenero();
                         lDsIa.Text = (NeuralEnv.Loaded ? "DSEE: modelo general cargado." : "DSEE: sin modelo; usa la curva clasica.")
-                            + "\nPor genero: " + (nGen == 0 ? "ninguno todavia (rocola_ia_genero_*.bin)." : nGen + (nGen == 1 ? " modelo." : " modelos."))
+                            + "\nPor genero: " + (nGen == 0 ? "ninguno todavia (IAS\\rocola_ia_genero_*)." : nGen + (nGen == 1 ? " modelo." : " modelos."))
                             + (sbrAllowed ? "" : "\nEl DSEE no esta disponible en este equipo.");
                     };
                     pintaIa();

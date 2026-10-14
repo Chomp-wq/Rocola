@@ -349,15 +349,103 @@ namespace Rocola
         }
         private static string RutaDatos(string nombre) { return Path.Combine(CarpetaDatos, nombre); }
 
-        // Un archivo que la rocola LEE pero no escribe -los modelos de IA entrenados- se busca primero en la
-        // carpeta de datos y luego junto al programa. Asi el modelo que viene de fabrica funciona sin tocar
-        // nada, y si se entrena uno nuevo basta con dejarlo en la carpeta de datos: dentro del .sfs, que es
-        // de solo lectura, no se podria.
+        // LAS IAS, EN SU CARPETA (14-10-2026; peticion: «como son muchas IAs, haz que el programa lea las IAs dentro de
+        // una carpeta llamada IAS, para asi tener mas orden»). Los modelos entrenados -rocola_ia.bin (DSEE),
+        // rocola_eq_ia.bin (EQ automatico) y rocola_ia_genero_*.bin (DSEE por genero)- viven en IAS\ dentro de la
+        // carpeta de datos. El material para entrenar (rocola_ia_datos.*) no es un modelo: sigue donde estaba.
+        internal const string NombreCarpetaIas = "IAS";
+        internal static readonly string[] ModelosIa = { "rocola_ia.bin", "rocola_eq_ia.bin" };
+        internal static string CarpetaIas { get { return Path.Combine(CarpetaDatos, NombreCarpetaIas); } }
+
+        // Donde se buscan, por orden: IAS\ de la carpeta de datos, la carpeta de datos (donde iban antes: si no se pudo
+        // ordenar, se siguen leyendo alli), y lo mismo junto al programa, para los de fabrica: dentro del .sfs, que es de
+        // solo lectura, no se pueden mover. Sin repetir carpeta (sin ROCOLA_DATOS, datos y programa son la misma).
+        private static string[] CarpetasIas()
+        {
+            string prog = Application.StartupPath;
+            string[] todas = { CarpetaIas, CarpetaDatos, Path.Combine(prog, NombreCarpetaIas), prog };
+            List<string> r = new List<string>(4);
+            foreach (string c in todas)
+            {
+                bool ya = false;
+                foreach (string x in r)
+                    if (string.Equals(x.TrimEnd('\\', '/'), c.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)) ya = true;
+                if (!ya) r.Add(c);
+            }
+            return r.ToArray();
+        }
+
+        // Un archivo que la rocola LEE pero no escribe -un modelo de IA-: el primero que aparezca en CarpetasIas. Si no
+        // hay ninguno, la ruta de IAS\ (no se carga nada y todo sigue sin esa IA, como siempre).
         private static string RutaLectura(string nombre)
         {
-            string a = RutaDatos(nombre);
-            try { if (File.Exists(a)) return a; } catch { }
-            return Path.Combine(Application.StartupPath, nombre);
+            string[] cs = CarpetasIas();
+            foreach (string c in cs)
+            {
+                string a = Path.Combine(c, nombre);
+                try { if (File.Exists(a)) return a; } catch { }
+            }
+            return Path.Combine(cs[0], nombre);
+        }
+
+        // Al arrancar, una vez, antes de cargarlos: los modelos sueltos en la carpeta de datos se pasan a IAS\. Es un
+        // cambio de nombre en el mismo disco: no se copia nada y no hay un momento con el modelo a medias. Si IAS\ ya
+        // tenia uno con ese nombre, el suelto es el que alguien acaba de dejar (como se hacia antes): manda el suelto y
+        // el de IAS\ se guarda al lado como .anterior-N. Nunca se borra un modelo. Las copias .anterior-N que dejaba el
+        // instalador de los de genero tambien se pasan. Si no se puede (solo lectura, archivo en uso), se quedan donde
+        // estan y se siguen leyendo alli. Devuelve cuantos se pasaron.
+        internal static int OrdenaIas()
+        {
+            int pasados = 0;
+            try
+            {
+                string datos = CarpetaDatos, ias = CarpetaIas;
+                if (!Directory.Exists(datos)) return 0;
+                List<string> sueltos = new List<string>();
+                foreach (string n in ModelosIa)
+                {
+                    string p = Path.Combine(datos, n);
+                    if (File.Exists(p)) sueltos.Add(p);
+                }
+                // "*.bin" en Windows tambien encuentra ".bin<algo>": se mira la extension de verdad.
+                foreach (string p in Directory.GetFiles(datos, PrefijoDseeGenero + "*.bin"))
+                    if (string.Equals(Path.GetExtension(p), ".bin", StringComparison.OrdinalIgnoreCase)) sueltos.Add(p);
+                List<string> anteriores = new List<string>(Directory.GetFiles(datos, PrefijoDseeGenero + "*.bin.anterior-*"));
+                if (sueltos.Count == 0 && anteriores.Count == 0) return 0;
+                if (!Directory.Exists(ias)) Directory.CreateDirectory(ias);
+                foreach (string p in sueltos)
+                {
+                    try
+                    {
+                        string destino = Path.Combine(ias, Path.GetFileName(p));
+                        if (File.Exists(destino)) File.Move(destino, LibreAnterior(destino));
+                        File.Move(p, destino);
+                        pasados++;
+                    }
+                    catch { }   // se queda suelto: RutaLectura y CargaModelosPorGenero lo siguen encontrando
+                }
+                foreach (string p in anteriores)
+                {
+                    try
+                    {
+                        string destino = Path.Combine(ias, Path.GetFileName(p));
+                        if (File.Exists(destino)) continue;   // ya hay uno con ese nombre: no se pisa
+                        File.Move(p, destino);
+                        pasados++;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return pasados;
+        }
+        private static string LibreAnterior(string ruta)
+        {
+            for (int k = 1; ; k++)
+            {
+                string a = ruta + ".anterior-" + k.ToString(CultureInfo.InvariantCulture);
+                if (!File.Exists(a)) return a;
+            }
         }
 
         private string ConfigFile { get { return RutaDatos("rocola_config.txt"); } }

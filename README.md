@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Carpeta IAS y un disparo por pulsación — 14 de octubre de 2026
+
+Los modelos de IA (DSEE, EQ automático y los de cada género) van en la carpeta **`IAS`**; al arrancar, la rocola pasa
+ahí los que encuentre sueltos, sin borrar ninguno. ROJO + ARRIBA (buscador) y ROJO + ABAJO (ayuda) hacen lo suyo
+**una vez por pulsación**: manteniendo los botones ya no abren y cierran solos; hay que soltar y volver a apretar.
+[Qué se cambió y cómo se comprobó](IAS_Y_UN_DISPARO_MODEST_2026-10-14.md).
+
 ## Cuatro arreglos de las fotos — 13 de octubre de 2026
 
 Fuera el cometa del cielo; la ayuda dice «¡Adiós!» y se cierra sola a los 15 s sin uso; el reflejo de la aurora nace
@@ -798,7 +805,8 @@ Flujo completo:
 2. Copias `rocola_ia_datos.bin` a una **memoria USB** con espacio suficiente (hasta 24 GiB por defecto).
 3. En una PC potente: `python3 ia/entrenar_ia.py --datos rocola_ia_datos.bin --capas 28,96,96,12`
    (el script viene en la carpeta `ia/`; solo necesita **Python 3 + numpy**).
-4. Regresas el `rocola_ia.bin` nuevo junto al `Rocola.exe`.
+4. Regresas el `rocola_ia.bin` nuevo a la carpeta `IAS`, junto al `Rocola.exe` (si lo dejas suelto junto al
+   `Rocola.exe`, al arrancar la rocola lo pasa a `IAS` y guarda el de antes como `.anterior-N`).
 
 Se apaga con `ia_datos=0` en `rocola_config.txt`.
 

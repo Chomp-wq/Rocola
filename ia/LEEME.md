@@ -139,7 +139,8 @@ este en reposo y saca de cada cancion unas ocho veces mas material. Dejalo una n
 
 - `rocola_ia.bin` es la red de envolvente espectral ENTRENADA CON LA MUSICA DEL LOCAL
   (misma red y formato RIA1 que en la rama rocola-hd; paridad C#<->numpy verificada: 2e-6).
-- Para activarla: copia `rocola_ia.bin` JUNTO a `Rocola.exe` y reinicia. En Ctrl+F3, la nota
+- Para activarla: copia `rocola_ia.bin` en la carpeta `IAS` junto a `Rocola.exe` (o suelto junto a `Rocola.exe`:
+  al arrancar, la rocola lo pasa a `IAS` y guarda el de antes como `.anterior-N`) y reinicia. En Ctrl+F3, la nota
   del reconstructor dira "con IA PROPIA". Sin el archivo, el DSEE usa su curva clasica (cero cambio).
 - Solo actua con el DSEE espectral encendido y sobre canciones con agudos cortados.
   La red distribuida es 28 -> 96 -> 96 -> 12: 13.260 parametros y 13.056 multiplicaciones

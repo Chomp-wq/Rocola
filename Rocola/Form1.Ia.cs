@@ -588,8 +588,8 @@ namespace Rocola
         private static readonly int[] EqNetSalida = { 0, 6, 7 };   // que bandas predice: 50 Hz, 10 kHz y 15.8 kHz
         // I3, EL DSEE POR GENERO (13-10-2026; interruptor "Modelos del DSEE por genero" en Ctrl+F3, apagado de fabrica:
         // "dsee_genero="). Ademas del modelo general (rocola_ia.bin), el entrenador puede sacar uno por genero con el
-        // material de ese genero (ia/entrenar_ia.py --genero cumbia), con las mismas guardas, y publicar_dsee.py lo deja como
-        // rocola_ia_genero_<genero>.bin en la carpeta de datos. Con el interruptor encendido, cada cancion usa el de su
+        // material de ese genero (ia/entrenar_ia.py --genero cumbia), con las mismas guardas, e instalar_dsee_genero.py lo deja
+        // como rocola_ia_genero_<genero>.bin en la carpeta IAS de la carpeta de datos. Con el interruptor encendido, cada cancion usa el de su
         // genero (la etiqueta del archivo, la misma que se apunta junto al material); si no hay, el general. Solo se nota
         // con el DSEE encendido. Se mira al armar la cadena de cada cancion.
         private bool dseePorGenero;
@@ -613,22 +613,31 @@ namespace Rocola
             return sb.ToString().Trim('_');
         }
         // Al arrancar, en segundo plano (listar la carpeta y leer los modelos no para la pantalla): los modelos por genero
-        // de la carpeta de datos (los de fabrica no traen ninguno). Hasta que esten, cada cancion usa el general.
+        // de la carpeta IAS (Form1.Datos.cs: CarpetasIas; los de fabrica no traen ninguno). Si el mismo genero esta en dos
+        // sitios, manda el primero (IAS de la carpeta de datos). Hasta que esten, cada cancion usa el general.
         private static void CargaModelosPorGenero()
         {
-            try
+            Dictionary<string, bool> vistos = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (string carpeta in CarpetasIas())
             {
-                if (!Directory.Exists(CarpetaDatos)) return;
-                foreach (string f in Directory.GetFiles(CarpetaDatos, PrefijoDseeGenero + "*.bin"))
+                try
                 {
-                    string slug = Path.GetFileNameWithoutExtension(f).Substring(PrefijoDseeGenero.Length);
-                    if (slug.Length == 0 || slug != SlugGenero(slug)) continue;   // un nombre que no saldria de una etiqueta: no se usa
-                    RedChica r = new RedChica(28, 12);
-                    r.TryLoad(f);
-                    if (r.Loaded) lock (dseeGeneros) dseeGeneros[slug] = r;
+                    if (!Directory.Exists(carpeta)) continue;
+                    foreach (string f in Directory.GetFiles(carpeta, PrefijoDseeGenero + "*.bin"))
+                    {
+                        if (!string.Equals(Path.GetExtension(f), ".bin", StringComparison.OrdinalIgnoreCase)) continue;
+                        string slug = Path.GetFileNameWithoutExtension(f).Substring(PrefijoDseeGenero.Length);
+                        if (slug.Length == 0 || slug != SlugGenero(slug)) continue;   // un nombre que no saldria de una etiqueta: no se usa
+                        if (vistos.ContainsKey(slug)) continue;
+                        RedChica r = new RedChica(28, 12);
+                        r.TryLoad(f);
+                        if (!r.Loaded) continue;   // roto o de otro contrato: puede valer el de la carpeta siguiente
+                        vistos[slug] = true;
+                        lock (dseeGeneros) dseeGeneros[slug] = r;
+                    }
                 }
+                catch { }
             }
-            catch { }
         }
         // El modelo del DSEE para esta cancion: el de su genero si el interruptor esta encendido y lo hay; si no, null (el
         // general, como siempre).

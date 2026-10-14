@@ -96,13 +96,30 @@ class Instalador(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(destino)), ["rocola_ia.bin"])   # nada se escribio
             final = I.instala(bueno, destino, escuchado=True)
             self.assertEqual(os.path.basename(final), "rocola_ia_genero_cumbia.bin")
+            self.assertEqual(os.path.dirname(final), os.path.join(destino, "IAS"))   # en la carpeta IAS (14-10-2026)
             self.assertEqual(open(final, "rb").read(), open(bueno, "rb").read())
             otro = _candidato(os.path.join(d, "g"))
             I.instala(otro, destino, escuchado=True)
             self.assertEqual(open(final, "rb").read(), open(otro, "rb").read())
             self.assertEqual(open(final + ".anterior-1", "rb").read(), open(bueno, "rb").read())   # el de antes, guardado
             self.assertEqual(open(general, "rb").read(), b"general")   # el general, intacto
-            self.assertFalse(any(n.endswith(".instalando") for n in os.listdir(destino)))
+            self.assertFalse(any(n.endswith(".instalando") for n in os.listdir(os.path.join(destino, "IAS"))))
+
+    def test_va_a_IAS_y_aparta_el_suelto_de_antes(self):
+        with tempfile.TemporaryDirectory() as d:
+            destino = os.path.join(d, "datos"); os.makedirs(destino)
+            suelto = os.path.join(destino, "rocola_ia_genero_cumbia.bin")   # instalado antes de la carpeta IAS
+            with open(suelto, "wb") as f:
+                f.write(b"de antes")
+            final = I.instala(_candidato(os.path.join(d, "f")), destino, escuchado=True)
+            self.assertEqual(final, os.path.join(destino, "IAS", "rocola_ia_genero_cumbia.bin"))
+            self.assertFalse(os.path.exists(suelto))   # si quedara suelto, la rocola lo tomaria por el recien puesto
+            self.assertEqual(open(final + ".anterior-1", "rb").read(), b"de antes")
+            # dando la carpeta IAS misma, no se anida otra IAS dentro
+            final2 = I.instala(_candidato(os.path.join(d, "g")), os.path.join(destino, "IAS"), escuchado=True)
+            self.assertEqual(final2, final)
+            self.assertTrue(os.path.exists(final + ".anterior-2"))
+            self.assertFalse(os.path.exists(os.path.join(destino, "IAS", "IAS")))
 
 
 class ConDobleClic(unittest.TestCase):
@@ -127,7 +144,8 @@ class ConDobleClic(unittest.TestCase):
             log = os.path.join(d, "log.txt")
             cod = I.interactivo(self._respuestas("", "n", "s"), ent, destino, log)   # Enter = la carpeta propuesta; bolero no, cumbia si (en orden)
             self.assertEqual(cod, 0)
-            self.assertEqual(sorted(os.listdir(destino)), ["rocola_ia_genero_cumbia.bin"])   # bolero: dijo que no
+            self.assertEqual(sorted(os.listdir(destino)), ["IAS"])
+            self.assertEqual(sorted(os.listdir(os.path.join(destino, "IAS"))), ["rocola_ia_genero_cumbia.bin"])   # bolero: dijo que no
             self.assertIn("NO: el entrenador no lo acepto", open(log, encoding="utf-8").read())
 
     def test_sin_modelos_lo_explica(self):

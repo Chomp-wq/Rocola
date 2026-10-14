@@ -137,6 +137,14 @@ def junta(paths):
     return datos_dsee, datos_eq, otros, saltados
 
 
+def instalados_de(otros, nombre):
+    """Los modelos con ese nombre que se arrastraron. Primero los de una carpeta IAS: desde el 14 de octubre de 2026 la
+    rocola lee sus IAs de ahi (y pasa alli los sueltos), y la copia de la carpeta ia del repositorio no es la puesta."""
+    r = [p for p, q in otros if q == "modelo" and os.path.basename(p).lower() == nombre]
+    r.sort(key=lambda p: 0 if os.path.basename(os.path.dirname(p)).upper() == "IAS" else 1)   # estable: el resto, igual
+    return r
+
+
 def tam(ruta):
     n = os.path.getsize(ruta)
     if n >= 1024 ** 3:
@@ -284,7 +292,7 @@ def main(argv):
         # Ningun entrenamiento instala ni recupera modelos: solo crea un candidato aislado.
         # El modelo que el dueno tiene PUESTO: si lo arrastro junto al material, el candidato se compara
         # con ese; si no, con el que haya en esta carpeta. El instalado nunca se reemplaza aqui.
-        instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_ia.bin"]
+        instalados = instalados_de(otros_todos, "rocola_ia.bin")
         extra = ["--instalado", instalados[0]] if instalados else []
         for tipo, extension, opcion in (("indice_dsee", ".idx", "--indice"),
                                        ("generos_dsee", ".generos.tsv", "--generos")):
@@ -363,7 +371,7 @@ def main(argv):
             raya("  [!] Solo hay %s canciones medidas. Se entrena igual, pero con tan poco la red no suele" % format(n, ","))
             raya("      ganarle al promedio y lo mas probable es que decida no guardar nada. No pasa nada:")
             raya("      el modelo EQ instalado se conserva; si no existe, sigue el promedio de la biblioteca.")
-        instalados = [p for p, q in otros_todos if q == "modelo" and os.path.basename(p).lower() == "rocola_eq_ia.bin"]
+        instalados = instalados_de(otros_todos, "rocola_eq_ia.bin")
         instalado = instalados[0] if instalados else os.path.join(AQUI, "rocola_eq_ia.bin")
         # Cada entrenamiento queda aislado; nunca sustituye modelos sin escucha/PCM final.
         os.makedirs(SALIDA, exist_ok=True)

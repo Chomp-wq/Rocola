@@ -751,7 +751,9 @@ namespace Rocola
             // AQUI y no en BuildUi: la pantalla se arma antes de leer la configuracion, asi que alla
             // "cola_portadas=0" todavia no se sabe. Y manda en el ANCHO de la capsula, que se mide luego.
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;
-            NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en la carpeta de datos, o el de fabrica)
+            int iasOrdenadas = OrdenaIas();   // los modelos sueltos de la carpeta de datos, a IAS\ (Form1.Datos.cs)
+            if (iasOrdenadas > 0) Diag("IAS: " + iasOrdenadas + " modelo(s) pasados a la carpeta IAS");
+            NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en IAS, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             System.Threading.ThreadPool.QueueUserWorkItem(delegate { CargaModelosPorGenero(); });   // I3: los del DSEE por genero, en segundo plano (Form1.Ia.cs): sin ellos aun, el general
             // SIN CURSOR: la rocola se usa con botones. Se oculta y se manda a una esquina
@@ -1906,6 +1908,25 @@ namespace Rocola
         private TopeAperturas topeBuscador { get { return topeBuscadorCampo ?? (topeBuscadorCampo = new TopeAperturas(6, 30000, 700)); } }
         internal TopeAperturas topeAyuda { get { return topeAyudaCampo ?? (topeAyudaCampo = new TopeAperturas(6, 30000, 700)); } }
         private int topeAvisoTick;
+        // UN DISPARO POR PULSACION (UnDisparo.cs, 14-10-2026): mientras los dos botones sigan apretados, la combinacion
+        // no vuelve a hacer nada. Al primer uso, como los topes.
+        private UnDisparo disparoBuscadorCampo, disparoAyudaCampo;
+        internal UnDisparo disparoBuscador { get { return disparoBuscadorCampo ?? (disparoBuscadorCampo = new UnDisparo()); } }
+        internal UnDisparo disparoAyuda { get { return disparoAyudaCampo ?? (disparoAyudaCampo = new UnDisparo()); } }
+        // ROJO cuenta para las dos; ARRIBA para la del buscador y ABAJO para la de la ayuda.
+        private void ApuntaDisparos(Keys kc, bool apretada)
+        {
+            int t = Environment.TickCount;
+            bool rojo = IsBack(kc);
+            if (rojo || IsUp(kc)) { if (apretada) disparoBuscador.Aprieta(t); else disparoBuscador.Suelta(t); }
+            if (rojo || IsDown(kc)) { if (apretada) disparoAyuda.Aprieta(t); else disparoAyuda.Suelta(t); }
+        }
+        // Con KeyPreview, el formulario ve soltar los botones aunque el foco lo tenga otro control suyo.
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            ApuntaDisparos(e.KeyCode, false);
+            base.OnKeyUp(e);
+        }
         private bool TopeBuscadorDeja()
         {
             if (topeBuscador.Pide(Environment.TickCount)) return true;
@@ -1980,6 +2001,7 @@ namespace Rocola
 
             bool wasFull = videoFull;
             Keys kc = keyData & Keys.KeyCode;   // tecla base (sin modificadores)
+            ApuntaDisparos(kc, true);   // antes de mirar ROJO + ARRIBA y ROJO + ABAJO (un disparo por pulsacion)
 
             // ===== ENTRADAS ESPECIALES: SIEMPRE funcionan (buscador, video en pantalla completa, donde sea) =====
             // MONEDA (filtra AUTO-REPETICION: si la señal queda "mantenida", el teclado la repite y sumaria
@@ -2075,7 +2097,13 @@ namespace Rocola
             // casilla de BUSCAR que parpadea arriba en medio, asi que no hay nada que adivinar.
             // CON TOPE (peticion del 12-10-2026: "que no se pueda abrir y cerrar cientos de veces el buscador y el
             // asistente"). Cerrar se puede siempre; ABRIR, no dos veces en menos de 0,7 s ni mas de seis en 30 s.
-            if (IsUp(kc) && BackHeld()) { if (searchOpen || TopeBuscadorDeja()) ToggleSearch(); return true; }
+            // Y UNA VEZ POR PULSACION (14-10-2026, UnDisparo.cs): manteniendo los dos botones ya no abre y cierra sin parar;
+            // para volver a abrir o cerrar hay que soltar y apretar otra vez.
+            if (IsUp(kc) && BackHeld())
+            {
+                if (disparoBuscador.Pide() && (searchOpen || TopeBuscadorDeja())) ToggleSearch();
+                return true;
+            }
 
             // FRENO DE LA AUTO-REPETICION DE LAS FLECHAS.
             //

@@ -61,6 +61,8 @@ class Bloqueos
         { "disco", "Form1.ReadLoudCache", "", "arranque: solo si el lector de tablas no pudo (camino de respaldo)" },
         { "disco", "Form1.RestoreState", "", "restaurar creditos y cola tras un apagon: una vez (lee lo encargado en memoria si aun no llego al disco)" },
         { "disco", "Form1.RutaLectura", "", "arranque, una vez: donde estan los modelos de IA" },
+        { "disco", "Form1.OrdenaIas", "", "arranque, una vez, antes de cargar los modelos: pasar los sueltos a la carpeta IAS (cambiar de nombre en el mismo disco, sin copiar; si no hay sueltos, solo mira la carpeta)" },
+        { "disco", "Form1.LibreAnterior", "", "lo mismo: solo si ya habia en IAS un modelo con el nombre del suelto, busca el .anterior-N libre" },
         { "disco", "Form1.EscribeConfigEnTurno", "", "guardar la configuracion al cambiarla en las ventanas de servicio (SaveConfigPrefs; desde Ctrl+F3 va detras de la pantalla)" },
         { "disco", "Form1.SaveKeys", "", "asistente de botones: guardar al terminar la configuracion" },
         { "disco", "Form1.SavedStateTime", "", "al restaurar: la fecha del estado guardado si no la trae dentro (formato viejo)" },
