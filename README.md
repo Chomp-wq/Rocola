@@ -8,6 +8,13 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## Más rendimiento para los gráficos, para elegir — 14 de octubre de 2026
+
+Tres propuestas, todavía sin hacer: no repetir el cielo cuando no cambió (G1, se ve igual); el fondo en una sola capa
+(G2, casi igual); y 30 cuadros por segundo en reposo (G3). Juntas, el fondo pasaría de unas 5,9 pantallas por cuadro de
+fábrica (3,2 con Performance) a unas 2,0, y en reposo a la mitad de veces por segundo.
+[Las propuestas, con sus cuentas](PERFORMANCE_PROPUESTAS_MODEST_2026-10-14.md).
+
 ## Carpeta IAS y un disparo por pulsación — 14 de octubre de 2026
 
 Los modelos de IA (DSEE, EQ automático y los de cada género) van en la carpeta **`IAS`**; al arrancar, la rocola pasa
