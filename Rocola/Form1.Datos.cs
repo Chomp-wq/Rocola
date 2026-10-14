@@ -519,6 +519,7 @@ namespace Rocola
                     else if (s.StartsWith("cielo_media=")) cieloMedia = s.Substring(12).Trim() == "1";      // Performance (PerformanceGpu.cs)
                     else if (s.StartsWith("grano_vineta=")) granoVineta = s.Substring(13).Trim() == "1";
                     else if (s.StartsWith("fondo_capa=")) fondoCapa = s.Substring(11).Trim() == "1";        // G2 (14-10-2026)
+                    else if (s.StartsWith("cielo_cuarto=")) cieloCuarto = s.Substring(13).Trim() == "1";    // J2 (14-10-2026)
                     else if (s.StartsWith("halo_seleccion=")) haloSeleccion = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("estrellas_finas=")) estrellasFinas = s.Substring(16).Trim() != "0";
                     else if (s.StartsWith("luna_del_cielo=")) lunaDelCielo = s.Substring(15).Trim() != "0";          // el cielo vivo (CieloVivoGpu.cs)
@@ -682,6 +683,7 @@ namespace Rocola
             sb.Append("cielo_media=").Append(cieloMedia ? "1" : "0").Append("\r\n");
             sb.Append("grano_vineta=").Append(granoVineta ? "1" : "0").Append("\r\n");
             sb.Append("fondo_capa=").Append(fondoCapa ? "1" : "0").Append("\r\n");
+            sb.Append("cielo_cuarto=").Append(cieloCuarto ? "1" : "0").Append("\r\n");
             sb.Append("halo_seleccion=").Append(haloSeleccion ? "1" : "0").Append("\r\n");
             sb.Append("estrellas_finas=").Append(estrellasFinas ? "1" : "0").Append("\r\n");
             sb.Append("luna_del_cielo=").Append(lunaDelCielo ? "1" : "0").Append("\r\n");

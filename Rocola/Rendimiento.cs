@@ -227,7 +227,7 @@ namespace Rocola
             gpuPanel.NebulosasCine = nebulosasCine;
             gpuPanel.VinetaSuave = vinetaSuave;
             gpuPanel.CieloMedia = cieloMedia; gpuPanel.GranoVineta = granoVineta;   // Performance (PerformanceGpu.cs)
-            gpuPanel.FondoUnaCapa = fondoCapa;
+            gpuPanel.FondoUnaCapa = fondoCapa; gpuPanel.CieloCuarto = cieloCuarto;
             gpuPanel.HaloSeleccion = haloSeleccion;
             gpuPanel.EstrellasFinas = estrellasFinas;
             gpuPanel.OndasSuaves = ondasSuaves;
@@ -315,25 +315,56 @@ namespace Rocola
         // LOS AHORROS DE PERFORMANCE (PerformanceGpu.cs), en el orden de su lista. Casi no se notan: van ANTES que bajar
         // efectos, que si se notan.
         // El tercero, «Fondo en una sola capa» (G2, 14-10-2026), va DENTRO de la imagen del cielo a media resolucion: sin el
-        // primero no hace nada (RequiereAhorro), y lo que ahorra se mide encima de los otros dos (AhorroSobre).
-        private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa" };
-        internal static readonly int[] RequiereAhorro = { -1, -1, 0 };
+        // primero no hace nada (RequiereAhorro), y lo que ahorra se mide encima de los otros dos (AhorroSobre). El cuarto, «Cielo
+        // a un cuarto de resolucion» (J2, 14-10-2026), hace esa imagen mas chica: tambien necesita el primero.
+        private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa",
+                                                          "Cielo a un cuarto de resolución" };
+        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0 };
 #if ROCOLA_GPU
-        private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 } };
+        private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 }, new int[] { 0 } };
 #endif
         // Ctrl+F3 -> Imagen -> Performance. Son de aspecto (casi identico): interruptor propio, apagados de fabrica (AGENTS.md).
-        private bool cieloMedia, granoVineta, fondoCapa;
-        private bool LeeAhorro(int i) { return i == 0 ? cieloMedia : (i == 1 ? granoVineta : fondoCapa); }
+        private bool cieloMedia, granoVineta, fondoCapa, cieloCuarto;
+        private bool LeeAhorro(int i) { return i == 0 ? cieloMedia : (i == 1 ? granoVineta : (i == 2 ? fondoCapa : cieloCuarto)); }
         private void PonAhorro(int i, bool encendido)
         {
-            if (i == 0) cieloMedia = encendido; else if (i == 1) granoVineta = encendido; else fondoCapa = encendido;
+            if (i == 0) cieloMedia = encendido; else if (i == 1) granoVineta = encendido; else if (i == 2) fondoCapa = encendido;
+            else cieloCuarto = encendido;
             AplicaEfectosGpu();
+        }
+        // Todos los ahorros a la vez (los presets y «Graficos como de fabrica»).
+        private void PonAhorros(bool encendidos) { cieloMedia = granoVineta = fondoCapa = cieloCuarto = encendidos; }
+        private bool TodosLosAhorros(bool encendidos)
+        {
+            for (int i = 0; i < NombreAhorro.Length; i++) if (LeeAhorro(i) != encendidos) return false;
+            return true;
+        }
+        // POR QUE UN AHORRO NO HACE NADA AHORA (14-10-2026: «pon en gris los settings que el performance anule»). null = hace
+        // lo suyo. El cielo a media resolucion, y lo que va dentro de el, solo se usan con las nebulosas puestas; la pasada
+        // de grano y vineta necesita la vineta, y con el fondo en una sola capa no se usa: el grano y la vineta ya van dentro
+        // del cielo.
+        private string MotivoSinAhorro(int i)
+        {
+            bool nebulosas = nieblasNiv != NivBajo;
+            bool capa = cieloMedia && fondoCapa && nebulosas;
+            switch (i)
+            {
+                case 0: return nebulosas ? null : "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
+                case 1:
+                    if (!vinetaSuave) return "Necesita: Viñeta suave (Fondo)";
+                    if (capa) return "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)";
+                    return null;
+                default:
+                    if (!cieloMedia) return "Necesita: Cielo a media resolución (arriba)";
+                    if (!nebulosas) return "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
+                    return null;
+            }
         }
         private bool PuedeAhorro(int i)
         {
 #if ROCOLA_GPU
             if (gpuPanel == null) return false;
-            return i == 0 ? gpuPanel.PuedeCieloMedia : (i == 1 ? gpuPanel.PuedeGranoVineta : gpuPanel.PuedeFondoUnaCapa);
+            return i == 0 ? gpuPanel.PuedeCieloMedia : (i == 1 ? gpuPanel.PuedeGranoVineta : gpuPanel.PuedeFondoUnaCapa);   // (J2, como G2: va en la imagen intermedia)
 #else
             return false;
 #endif
@@ -1614,7 +1645,7 @@ namespace Rocola
                     else if (bancoEscenas != null && bancoError == null && bancoConGpu && !bancoEfectosMedidos) coste = "no hizo falta";
                     lCost[i].Text = coste; lCost[i].ForeColor = cc;
                 }
-                bool ahorrosPuestos = cieloMedia && granoVineta && fondoCapa, ahorrosQuitados = !cieloMedia && !granoVineta && !fondoCapa;
+                bool ahorrosPuestos = TodosLosAhorros(true), ahorrosQuitados = TodosLosAhorros(false);
                 int general = (comun == NivAlto && ahorrosPuestos) ? Performance
                             : (comun == NivAlto && ahorrosQuitados) ? NivAlto
                             : (comun == NivMedio || comun == NivBajo) ? comun : -1;
@@ -1800,7 +1831,7 @@ namespace Rocola
                 // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
                 hojeoLigero = true; muroReposo = true; estadoExpandido = true;
                 cancionesTransparentes = true; caratulasLod = true;
-                cieloMedia = false; granoVineta = false; fondoCapa = false;   // Performance: de fabrica, apagados
+                PonAhorros(false);   // Performance: de fabrica, apagados
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;   // de fabrica vienen encendidos
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
@@ -1829,7 +1860,7 @@ namespace Rocola
             int nivel = preset >= NivAlto ? NivAlto : preset;
             foreach (EfectoGrafico e in ef) PonNivel(e.Clave, nivel);
             bool ahorros = preset != NivAlto;
-            cieloMedia = ahorros; granoVineta = ahorros; fondoCapa = ahorros;
+            PonAhorros(ahorros);
             AplicaEfectosGpu();
         }
 
@@ -1846,52 +1877,53 @@ namespace Rocola
                      + "cambios que casi no se notan. El botón Performance de\n"
                      + "Efectos los enciende con los efectos en Alto.";
             hoja.Controls.Add(tit); hoja.Controls.Add(des);
+            // Cuatro ahorros (J2, 14-10-2026): explicaciones de dos renglones. Los que pueden quedar sin efecto llevan un renglon
+            // mas debajo del nombre (NecesitaMotivo) y bajan lo suyo 12 pixeles.
             string[] explica = {
                 "El cielo, las nebulosas y la vía láctea se pintan a la mitad\n"
-              + "y se estiran una vez. Ya son difusas: casi idéntico, y la\n"
-              + "tarjeta pinta un cuarto de esos píxeles.",
-                "La tarjeta mezcla las dos capas a la vez: lee y escribe la\n"
-              + "pantalla una vez en vez de dos. El grano queda también sobre\n"
-              + "las estrellas (algún píxel, un punto más claro u oscuro).",
-                "El grano y la viñeta van dentro del cielo a la mitad y solo se\n"
-              + "pintan cuando cambia. Lo de encima se oscurece en los bordes\n"
-              + "punto por punto: casi igual, con el grano algo más grueso."
+              + "y se estiran una vez: casi idéntico, un cuarto de píxeles.",
+                "Grano y viñeta mezclados a la vez: la pantalla se lee y escribe\n"
+              + "una vez y no dos. El grano queda también sobre las estrellas.",
+                "El grano y la viñeta van dentro del cielo y solo se pintan\n"
+              + "cuando cambia. Casi igual; el grano, algo más grueso.",
+                "El cielo a un cuarto: las nebulosas ya vienen de ese tamaño.\n"
+              + "Algo más suaves; pasar de página pesa mucho menos."
             };
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];
+            int y = 124;
             for (int i = 0; i < NombreAhorro.Length; i++)
             {
-                // El tercero lleva dos renglones (el segundo dice lo que necesita): baja lo suyo 12 pixeles.
-                int y = 128 + i * 108, extra = (i == 2) ? 12 : 0;
+                const int extra = 12;   // todos llevan el renglon de lo que les falta
                 Interruptor s = new Interruptor(); s.SetBounds(16, y, 424, 26); s.Font = fNom; s.ForeColor = cTexto;
                 s.Acento = hoja.Acento; s.Text = NombreAhorro[i]; s.Checked = LeeAhorro(i);
                 s.AccessibleName = "Performance: " + NombreAhorro[i];
-                Label d = new Label(); d.SetBounds(16, y + 30 + extra, 424, 50); d.Font = fDes; d.ForeColor = cTenue;
+                Label d = new Label(); d.SetBounds(16, y + 28 + extra, 424, 34); d.Font = fDes; d.ForeColor = cTenue;
                 d.BackColor = Color.Transparent; d.Text = explica[i];
-                Label m = new Label(); m.SetBounds(16, y + 82 + extra, 424, 18); m.Font = fDes; m.ForeColor = cTenue;
+                Label m = new Label(); m.SetBounds(16, y + 62 + extra, 424, 18); m.Font = fDes; m.ForeColor = cTenue;
                 m.BackColor = Color.Transparent;
                 hoja.Controls.Add(s); hoja.Controls.Add(d); hoja.Controls.Add(m);
                 interruptores[i] = s; medidos[i] = m;
+                int k = i;
+                NecesitaMotivo(s, delegate { return MotivoSinAhorro(k); });   // en gris si ahora no hace nada, y por que
+                y += 84 + extra;
             }
-            // A1: el fondo en una capa va dentro del cielo a media resolucion; sin el, en gris y dicho.
-            Necesita(interruptores[2], delegate { return cieloMedia; }, "Cielo a media resolución (arriba)");
-            Label autoT = new Label(); autoT.SetBounds(16, 468, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
+            Label autoT = new Label(); autoT.SetBounds(16, y, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
             autoT.BackColor = Color.Transparent; autoT.Text = "Siempre activo: juntar órdenes y no repetir";
-            Label autoD = new Label(); autoD.SetBounds(16, 492, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
+            Label autoD = new Label(); autoD.SetBounds(16, y + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
             autoD.BackColor = Color.Transparent;
-            autoD.Text = "Las órdenes chicas van juntas y el cielo a la mitad solo se\n"
-                       + "repinta si cambió. Sale exactamente igual: sin interruptor.";
-            cuenta = new Label(); cuenta.SetBounds(16, 530, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
+            autoD.Text = "Órdenes chicas juntas; el cielo, solo si cambió y no debajo\n"
+                       + "de las portadas. Sale exactamente igual: sin interruptor.";
+            cuenta = new Label(); cuenta.SetBounds(16, y + 56, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
             cuenta.BackColor = Color.Transparent;
-            Label nota = new Label(); nota.SetBounds(16, 568, 424, 34); nota.Font = fDes; nota.ForeColor = cTenue;
+            Label nota = new Label(); nota.SetBounds(16, y + 92, 424, 18); nota.Font = fDes; nota.ForeColor = cTenue;
             nota.BackColor = Color.Transparent;
-            nota.Text = "De fábrica vienen apagados: la pantalla, idéntica a siempre.\n"
-                      + "Se guardan al momento. Solo con tarjeta gráfica.";
+            nota.Text = "De fábrica, apagados. Se guardan al momento.";
             hoja.Controls.Add(autoT); hoja.Controls.Add(autoD); hoja.Controls.Add(cuenta); hoja.Controls.Add(nota);
-            // Sin tarjeta, en gris y dicho una vez (A1), en el sitio de la nota.
-            Label sin = new Label(); sin.SetBounds(16, 568, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
+            // Sin tarjeta, en gris y dicho una vez (A1), en el sitio de la cuenta.
+            Label sin = new Label(); sin.SetBounds(16, y + 56, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
             sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
-            SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, nota);
+            SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, cuenta);
         }
         // Lo medido de un ahorro, en una linea.
         private string TextoAhorro(int i)
@@ -1931,12 +1963,14 @@ namespace Rocola
                 bool a0 = bancoUsaAhorro.Length > 0 && bancoUsaAhorro[0] && !LeeAhorro(0);
                 bool a1 = bancoUsaAhorro.Length > 1 && bancoUsaAhorro[1] && !LeeAhorro(1);
                 bool a2 = bancoUsaAhorro.Length > 2 && bancoUsaAhorro[2] && !LeeAhorro(2);
-                if (a0 && a1 && a2) cosas.Add("Performance (casi igual)");
+                bool a3 = bancoUsaAhorro.Length > 3 && bancoUsaAhorro[3] && !LeeAhorro(3);
+                if (a0 && a1 && a2 && a3) cosas.Add("Performance (casi igual)");
                 else
                 {
                     if (a0) cosas.Add("cielo a media resolución");
                     if (a1) cosas.Add("grano y viñeta juntos");
                     if (a2) cosas.Add("fondo en una sola capa");
+                    if (a3) cosas.Add("cielo a un cuarto");
                 }
             }
             int efectos = 0, nombrados = 0;

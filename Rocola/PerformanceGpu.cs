@@ -144,17 +144,23 @@ namespace Rocola
         private int mediaGen;
         internal int MediaGen { get { return mediaGen; } }
         private bool mediaSinSoporte, enMedia;
+        // J2 (14-10-2026): la imagen va a la mitad (2) o a un cuarto (4) de la pantalla en cada lado.
+        private int mediaDiv = 2;
+        internal int MediaDiv { get { return mediaDiv; } }
         private D3D9.Vtx[] mediaVerts;
         internal bool EnMedia { get { return enMedia; } }
         internal int MediaTW { get { return mediaTW; } }
         internal int MediaTH { get { return mediaTH; } }
         internal bool MediaSinSoporte { get { return mediaSinSoporte; } }
-        internal static int MediaLado(int lado) { return (lado + 1) / 2 + 2; }
+        internal static int MediaLado(int lado) { return MediaLado(lado, 2); }
+        internal static int MediaLado(int lado, int div) { return (lado + div - 1) / div + 2; }
 
-        internal bool EmpiezaMedia(int w, int h)
+        internal bool EmpiezaMedia(int w, int h) { return EmpiezaMedia(w, h, 2); }
+        internal bool EmpiezaMedia(int w, int h, int div)
         {
-            if (dev == IntPtr.Zero || lost || !inScene || enMedia || mediaSinSoporte || w < 8 || h < 8) return false;
-            int mw = MediaLado(w), mh = MediaLado(h);
+            if (div != 4) div = 2;
+            if (dev == IntPtr.Zero || lost || !inScene || enMedia || mediaSinSoporte || w < 8 * div || h < 8 * div) return false;
+            int mw = MediaLado(w, div), mh = MediaLado(h, div);
             if (mediaTex == IntPtr.Zero || mediaTW < mw || mediaTH < mh)
             {
                 LiberaMedia();
@@ -172,7 +178,7 @@ namespace Rocola
                 { D3D9.Release(fondo); mediaSinSoporte = true; return false; }
             }
             catch { if (fondo != IntPtr.Zero) D3D9.Release(fondo); mediaSinSoporte = true; return false; }
-            mediaFondo = fondo; mediaW = mw; mediaH = mh; enMedia = true; Cambios++;
+            mediaFondo = fondo; mediaW = mw; mediaH = mh; mediaDiv = div; enMedia = true; Cambios++;
             return true;
         }
         private bool CreaMedia(int tw, int th)
@@ -225,10 +231,11 @@ namespace Rocola
             if (v == null || tris <= 0 || tris > v.Length / 3) return null;
             int n = tris * 3;
             if (mediaVerts == null || mediaVerts.Length < n) mediaVerts = new D3D9.Vtx[Math.Max(n, 64)];
+            float e = 1f / mediaDiv;
             for (int i = 0; i < n; i++)
             {
                 D3D9.Vtx x = v[i];
-                x.X = (x.X + 0.5f) * 0.5f - 0.5f; x.Y = (x.Y + 0.5f) * 0.5f - 0.5f;
+                x.X = (x.X + 0.5f) * e - 0.5f; x.Y = (x.Y + 0.5f) * e - 0.5f;
                 mediaVerts[i] = x;
             }
             return mediaVerts;
@@ -419,6 +426,8 @@ namespace Rocola
             gpu.DrawSkyN(skyAmplio, 6);
         }
         internal bool EmpiezaMedia(int w, int h) { return Ok && gpu.EmpiezaMedia(w, h); }
+        internal bool EmpiezaMedia(int w, int h, int div) { return Ok && gpu.EmpiezaMedia(w, h, div); }
+        internal int MediaDiv { get { return gpu != null ? gpu.MediaDiv : 2; } }
         internal int MediaGen { get { return gpu != null ? gpu.MediaGen : 0; } }
         internal bool VinetaPuntos { get { return gpu != null && gpu.VinetaPuntos; } set { if (gpu != null) gpu.VinetaPuntos = value; } }
         internal bool TerminaMedia() { return Ok && gpu.TerminaMedia(); }
@@ -442,7 +451,7 @@ namespace Rocola
     {
         // Ctrl+F3 -> Imagen -> Performance. Los tres son de aspecto (casi identico), asi que llevan interruptor y vienen
         // apagados de fabrica; el preset "Performance" los enciende.
-        public bool CieloMedia, GranoVineta, FondoUnaCapa;
+        public bool CieloMedia, GranoVineta, FondoUnaCapa, CieloCuarto;
         // El medidor pide contar tambien los pixeles pintados (cuesta un poco de procesador; solo mientras mide).
         public bool CuentaArea;
         private bool cieloMedioEsteCuadro, granoUnidoEsteCuadro, capaUnicaEsteCuadro;
@@ -467,21 +476,21 @@ namespace Rocola
         // completa, el cuadro que si cambia costaria una pantalla mas que hoy, y eso empeora justo los peores cuadros.
         private sealed class FirmaCielo
         {
-            internal int W, H, Nieblas, Ver, Gen;
+            internal int W, H, Nieblas, Ver, Gen, Div;
             internal float MidY, NebFase, HazFase, NebEmpuje, HazEmpuje;
             internal uint Top, Mid, Bot, Neb1, Neb2;
             internal bool Cine, Capa;
             internal IntPtr NebTex, HazTex, RuidoTex, VinetaTex;
             internal bool Igual(FirmaCielo o)
             {
-                return W == o.W && H == o.H && Nieblas == o.Nieblas && Ver == o.Ver && MidY == o.MidY && NebFase == o.NebFase
+                return W == o.W && H == o.H && Div == o.Div && Nieblas == o.Nieblas && Ver == o.Ver && MidY == o.MidY && NebFase == o.NebFase
                     && HazFase == o.HazFase && NebEmpuje == o.NebEmpuje && HazEmpuje == o.HazEmpuje && Top == o.Top && Mid == o.Mid
                     && Bot == o.Bot && Neb1 == o.Neb1 && Neb2 == o.Neb2 && Cine == o.Cine && Capa == o.Capa && NebTex == o.NebTex
                     && HazTex == o.HazTex && RuidoTex == o.RuidoTex && VinetaTex == o.VinetaTex;
             }
             internal void Copia(FirmaCielo o)
             {
-                W = o.W; H = o.H; Nieblas = o.Nieblas; Ver = o.Ver; Gen = o.Gen; MidY = o.MidY; NebFase = o.NebFase; HazFase = o.HazFase;
+                W = o.W; H = o.H; Div = o.Div; Nieblas = o.Nieblas; Ver = o.Ver; Gen = o.Gen; MidY = o.MidY; NebFase = o.NebFase; HazFase = o.HazFase;
                 NebEmpuje = o.NebEmpuje; HazEmpuje = o.HazEmpuje; Top = o.Top; Mid = o.Mid; Bot = o.Bot; Neb1 = o.Neb1; Neb2 = o.Neb2;
                 Cine = o.Cine; Capa = o.Capa; NebTex = o.NebTex; HazTex = o.HazTex; RuidoTex = o.RuidoTex; VinetaTex = o.VinetaTex;
             }
@@ -503,17 +512,18 @@ namespace Rocola
             if (!CieloMedia || Nieblas == GpuStarfield.Bajo || (nebTex == IntPtr.Zero && hazTex == IntPtr.Zero)) return false;
             if (stars == null) return false;
             bool capa = FondoUnaCapa;
+            int div = CieloCuarto ? 4 : 2;   // J2: a un cuarto en cada lado
             IntPtr vineta = capa && VinetaSuave ? vinetaTex : IntPtr.Zero, ruido = capa ? ruidoTex : IntPtr.Zero;
             if (firmaHecha == null) { firmaHecha = new FirmaCielo(); firmaAhora = new FirmaCielo(); }
             FirmaCielo f = firmaAhora;
-            f.W = w; f.H = h; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;
+            f.W = w; f.H = h; f.Div = div; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;
             f.NebEmpuje = nebEmpuje; f.HazEmpuje = hazEmpuje; f.Top = top; f.Mid = mid; f.Bot = bot; f.Neb1 = NebColor; f.Neb2 = NebColor2;
             f.Cine = NebulosasCine; f.Capa = capa; f.NebTex = nebTex; f.HazTex = hazTex; f.RuidoTex = ruido; f.VinetaTex = vineta;
             bool repinta = !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0;
             if (repinta)
             {
                 firmaValida = false;
-                if (!stars.EmpiezaMedia(w, h)) return false;
+                if (!stars.EmpiezaMedia(w, h, div)) return false;
                 int huecosGuardados = nHuecos;
                 bool ok = false;
                 try
@@ -524,7 +534,7 @@ namespace Rocola
                     if (capa)
                     {
                         // G2: el grano (un granito por pixel de la imagen: 2x2 en la pantalla) y la vineta, aqui dentro.
-                        if (ruido != IntPtr.Zero) { D3D9.Vtx[] malla; int n = MallaRuidoMedia(out malla); if (n > 0) stars.DrawTexturedBatchWrap(ruido, malla, n / 3); }
+                        if (ruido != IntPtr.Zero) { D3D9.Vtx[] malla; int n = MallaRuidoMedia(div, out malla); if (n > 0) stars.DrawTexturedBatchWrap(ruido, malla, n / 3); }
                         if (vineta != IntPtr.Zero)
                             DibujaTeselasFondo(vineta, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);
                     }
@@ -544,8 +554,31 @@ namespace Rocola
             else CieloReusos++;
             int tw = stars.MediaTW, th = stars.MediaTH;
             if (tw <= 0 || th <= 0) { firmaValida = false; return false; }
-            ArmaEstirado(mediaQuad, w, h, tw, th);
-            stars.DibujaMedia(mediaQuad, 8);
+            if (nHuecos > 0)
+            {
+                // J1 (14-10-2026; automatico): el estirado no se pinta debajo de las portadas opacas. Los huecos son su
+                // interior (DibujoLigeroGpu.cs, HuecosDePortadas), que la portada tapa con alfa 255: se ve igual.
+                PiezasEstirado(piezasEstirado, w, h, tw, th, div);
+                int v = 0;
+                for (int k = 0; k < 4; k++)
+                {
+                    int o = k * 8;
+                    float[] q = piezasEstirado;
+                    v = Trozos(v, q[o], q[o + 1], q[o + 2], q[o + 3], q[o + 4], q[o + 5], q[o + 6], q[o + 7], 0xFFFFFFFFu);
+                }
+                if (v > 0) stars.DibujaMedia(trozosHuecos, v / 3);
+            }
+            else
+            {
+                PiezasEstirado(piezasEstirado, w, h, tw, th, div);   // (sin reservar nada por cuadro)
+                float[] q = piezasEstirado;
+                for (int k = 0; k < 4; k++)
+                {
+                    int o = k * 8;
+                    Trozo(mediaQuad, k * 6, q[o], q[o + 1], q[o + 2], q[o + 3], q[o + 4], q[o + 5], q[o + 6], q[o + 7]);
+                }
+                stars.DibujaMedia(mediaQuad, 8);
+            }
             cieloMedioEsteCuadro = true;
             if (capa)
             {
@@ -560,14 +593,15 @@ namespace Rocola
         // G2: la malla del grano para la imagen intermedia. Tejas de 2048 pixeles de pantalla, que alli son 1024: un texel
         // del grano por pixel de la imagen, alineado con su centro. Se rehace solo si cambia la pantalla o el grano.
         private D3D9.Vtx[] ruidoMediaMalla;
-        private int ruidoMediaAncho, ruidoMediaAlto, ruidoMediaN;
+        private int ruidoMediaAncho, ruidoMediaAlto, ruidoMediaN, ruidoMediaDiv;
         private float ruidoMediaU, ruidoMediaV;
-        private int MallaRuidoMedia(out D3D9.Vtx[] malla)
+        private int MallaRuidoMedia(int div, out D3D9.Vtx[] malla)
         {
             malla = null;
-            int ancho = Width, alto = Height, teja = 2 * RuidoTeja;
+            int ancho = Width, alto = Height, teja = div * RuidoTeja;   // con el cielo a un cuarto (J2), tejas de 4096
             if (ruidoTex == IntPtr.Zero || ancho <= 0 || alto <= 0) return 0;
-            if (ruidoMediaMalla == null || ruidoMediaAncho != ancho || ruidoMediaAlto != alto || ruidoMediaU != ruU || ruidoMediaV != ruV)
+            if (ruidoMediaMalla == null || ruidoMediaAncho != ancho || ruidoMediaAlto != alto || ruidoMediaU != ruU || ruidoMediaV != ruV
+                || ruidoMediaDiv != div)
             {
                 int n = checked(((ancho - 1) / teja + 1) * ((alto - 1) / teja + 1) * 6);
                 if (ruidoMediaMalla == null || ruidoMediaMalla.Length != n) ruidoMediaMalla = new D3D9.Vtx[n];
@@ -582,7 +616,7 @@ namespace Rocola
                         SetV(ref ruidoMediaMalla[pos + 4], x + aw, y + ah, u, v); SetV(ref ruidoMediaMalla[pos + 5], x, y + ah, 0, v);
                         pos += 6;
                     }
-                ruidoMediaAncho = ancho; ruidoMediaAlto = alto; ruidoMediaU = ruU; ruidoMediaV = ruV; ruidoMediaN = n;
+                ruidoMediaAncho = ancho; ruidoMediaAlto = alto; ruidoMediaU = ruU; ruidoMediaV = ruV; ruidoMediaN = n; ruidoMediaDiv = div;
             }
             malla = ruidoMediaMalla;
             return ruidoMediaN;
@@ -593,19 +627,38 @@ namespace Rocola
         // ultimas si el ancho es impar) ese texel ya es de FUERA de la pantalla: donde una nebulosa, en su punto mas corrido,
         // acaba justo en el borde, alli no hay nebulosa y el borde salia hasta 19 niveles mas oscuro. Asi que la pantalla se
         // estira en cuatro trozos: lo de dentro, como se dijo; la tira de la derecha lee solo la ultima columna buena de la
-        // imagen (la que cubre los dos ultimos pixeles de dentro), la de abajo la ultima fila buena, y la esquina las dos.
-        // Mismo dibujo y misma textura: una sola orden de 8 triangulos.
-        internal static void ArmaEstirado(D3D9.Vtx[] q, int w, int h, int tw, int th)
+        // imagen (la que cubre los ultimos pixeles de dentro), la de abajo la ultima fila buena, y la esquina las dos.
+        // Mismo dibujo y misma textura: una sola orden de 8 triangulos. Con el cielo a un cuarto (J2), lo mismo con 4: el
+        // pixel p cae en (p + 0.5) / 4, y la ultima columna buena es la que cubre cuatro pixeles enteros de dentro.
+        internal static void ArmaEstirado(D3D9.Vtx[] q, int w, int h, int tw, int th) { ArmaEstirado(q, w, h, tw, th, 2); }
+        internal static void ArmaEstirado(D3D9.Vtx[] q, int w, int h, int tw, int th, int div)
         {
-            int jx = w / 2 - 1, jy = h / 2 - 1;                 // la ultima columna y fila de la imagen enteras dentro
-            int finX = 2 * (w / 2) - 1, finY = 2 * (h / 2) - 1;  // hasta aqui (sin incluir), el pixel lee solo texeles de dentro
-            float uIn = 0.5f * finX / tw, vIn = 0.5f * finY / th;
-            float uB = (jx + 0.5f) / tw, vB = (jy + 0.5f) / th;
-            Trozo(q, 0, 0, 0, finX, finY, 0, 0, uIn, vIn);
-            Trozo(q, 6, finX, 0, w, finY, uB, 0, uB, vIn);
-            Trozo(q, 12, 0, finY, finX, h, 0, vB, uIn, vB);
-            Trozo(q, 18, finX, finY, w, h, uB, vB, uB, vB);
+            float[] p = new float[32];
+            PiezasEstirado(p, w, h, tw, th, div);
+            for (int k = 0; k < 4; k++)
+            {
+                int o = k * 8;
+                Trozo(q, k * 6, p[o], p[o + 1], p[o + 2], p[o + 3], p[o + 4], p[o + 5], p[o + 6], p[o + 7]);
+            }
         }
+        // Los cuatro trozos del estirado: x0, y0, x1, y1 (pixeles de pantalla) y u0, v0, u1, v1, de 8 en 8.
+        private readonly float[] piezasEstirado = new float[32];
+        internal static void PiezasEstirado(float[] p, int w, int h, int tw, int th, int div)
+        {
+            if (div != 4) div = 2;
+            int jx = w / div - 1, jy = h / div - 1;   // la ultima columna y fila de la imagen enteras dentro
+            // Hasta aqui (sin incluir), el pixel lee solo texeles de dentro: p <= div * (j + 0.5) - 0.5.
+            int finX = (int)Math.Floor(div * (jx + 0.5) - 0.5) + 1, finY = (int)Math.Floor(div * (jy + 0.5) - 0.5) + 1;
+            float e = 1f / div;
+            float uIn = e * finX / tw, vIn = e * finY / th;
+            float uB = (jx + 0.5f) / tw, vB = (jy + 0.5f) / th;
+            Pieza(p, 0, 0, 0, finX, finY, 0, 0, uIn, vIn);
+            Pieza(p, 8, finX, 0, w, finY, uB, 0, uB, vIn);
+            Pieza(p, 16, 0, finY, finX, h, 0, vB, uIn, vB);
+            Pieza(p, 24, finX, finY, w, h, uB, vB, uB, vB);
+        }
+        private static void Pieza(float[] p, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1)
+        { p[o] = x0; p[o + 1] = y0; p[o + 2] = x1; p[o + 3] = y1; p[o + 4] = u0; p[o + 5] = v0; p[o + 6] = u1; p[o + 7] = v1; }
         private static void Trozo(D3D9.Vtx[] q, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1)
         {
             SetV(ref q[o], x0, y0, u0, v0); SetV(ref q[o + 1], x1, y0, u1, v0); SetV(ref q[o + 2], x1, y1, u1, v1);

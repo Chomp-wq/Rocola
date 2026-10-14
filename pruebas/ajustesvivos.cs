@@ -36,7 +36,8 @@ class AjustesVivos
     // Los ajustes de los que depende algo, y su valor de fabrica (encendidos).
     static readonly string[] requisitos = { "estadoExpandido", "progresoNeon", "cancionesTransparentes", "fondoPortadaOn",
                                             "cieloProfundo", "lunaActiva", "paginaDesliza", "muroReposo",
-                                            "cieloMedia" };   // «Fondo en una sola capa» (G2, 14-10-2026) va dentro del cielo a media resolucion
+                                            "cieloMedia",     // «Fondo en una sola capa» (G2, 14-10-2026) va dentro del cielo a media resolucion
+                                            "vinetaSuave" };  // y la pasada de grano y vineta necesita la vineta (14-10-2026)
 
     [STAThread] static int Main(string[] args)
     {
@@ -106,6 +107,7 @@ class AjustesVivos
             Set("gpuEnabled", true);
             Dictionary<string, bool> antes = new Dictionary<string, bool>();
             foreach (string r in requisitos) { antes[r] = (bool)Get(r); Set(r, true); }
+            int nieblasAntes = (int)Get("nieblasNiv"); Set("nieblasNiv", 2);   // los ahorros del cielo necesitan las nebulosas
             Refresca();
             bool todosVivos = true;
             foreach (object r in reqs)
@@ -118,10 +120,11 @@ class AjustesVivos
             // Lo que valen los que dependen, para ver que ponerlos en gris no los toca.
             string[] dependientes = { "colaDoce", "neonIntenso", "estadoTransparente", "cancionesCristal", "paletaCompleta",
                                       "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda",
-                                      "fondoCapa" };
+                                      "fondoCapa", "cieloCuarto" };
             List<object> valAntes = new List<object>();
             foreach (string d in dependientes) valAntes.Add(Get(d));
             foreach (string r in requisitos) Set(r, false);
+            Set("nieblasNiv", 0);
             Refresca();
             int grises = 0, dicen = 0, caben = 0, cabenTotal = 0, alto = 0;
             foreach (object r in reqs)
@@ -204,11 +207,38 @@ class AjustesVivos
                 }
             }
 
+            // LO QUE ANULA PERFORMANCE (14-10-2026): un ahorro que ahora no hace nada va en gris y dice por que.
+            {
+                foreach (string r in requisitos) Set(r, true);
+                Set("nieblasNiv", 2); Set("fondoCapa", false);
+                Refresca();
+                Control g1 = Busca(ctl, "Grano y viñeta en una pasada"), g2 = Busca(ctl, "Fondo en una sola capa"), j2 = Busca(ctl, "Cielo a un cuarto de resolución");
+                Check(g1 != null && g2 != null && j2 != null && g1.Enabled && g2.Enabled && j2.Enabled, "Performance: con todo lo suyo, los ahorros vivos");
+                if (g1 != null && g2 != null && j2 != null)
+                {
+                    Set("fondoCapa", true); Refresca();
+                    Check(!g1.Enabled && Necesita(g1) == "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)",
+                          "con el fondo en una sola capa, la pasada de grano y vineta va en gris: ya no hace nada (lo dice)");
+                    Set("fondoCapa", false); Set("vinetaSuave", false); Refresca();
+                    Check(!g1.Enabled && Necesita(g1) == "Necesita: Viñeta suave (Fondo)", "sin la vineta (Fondo), la pasada de grano y vineta, en gris");
+                    Set("vinetaSuave", true); Set("cieloMedia", false); Refresca();
+                    Check(!g2.Enabled && !j2.Enabled && Necesita(j2) == "Necesita: Cielo a media resolución (arriba)", "sin el cielo a media resolucion, el fondo en una capa y el cuarto, en gris");
+                    Set("cieloMedia", true); Set("nieblasNiv", 0); Refresca();
+                    Control c0 = Busca(ctl, "Cielo a media resolución");
+                    Check(c0 != null && !c0.Enabled && !g2.Enabled && !j2.Enabled && Necesita(c0) == "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)",
+                          "con las nebulosas en Bajo, los ahorros del cielo no hacen nada: en gris");
+                    Set("nieblasNiv", 2); Refresca();
+                    Check(c0 != null && c0.Enabled && g2.Enabled && j2.Enabled && g1.Enabled, "y vuelven solos");
+                }
+            }
+
             foreach (KeyValuePair<string, bool> kv in antes) Set(kv.Key, kv.Value);
+            Set("nieblasNiv", nieblasAntes);
             }
 
             Console.WriteLine("\n  4) SIN TARJETA GRAFICA\n");
             foreach (string r in requisitos) Set(r, true);   // que no falte nada mas que la tarjeta
+            Set("nieblasNiv", 2);
             IList solo = (IList)Get("f3SoloTarjeta"); IList avisos = (IList)Get("f3AvisoTarjeta");
             Check(solo.Count >= 60, "lo que solo se dibuja con tarjeta esta apuntado (" + solo.Count + " mandos)");
             Check(avisos.Count >= 4, "y hay un aviso por pagina u hoja (" + avisos.Count + ")");

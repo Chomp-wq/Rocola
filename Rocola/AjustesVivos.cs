@@ -30,6 +30,7 @@ namespace Rocola
             public Label Aviso;          // si el mando no tiene sitio para decirlo, lo dice esta nota
             public string AvisoTexto;    // y lo que la nota dice cuando no falta nada
             public Color AvisoColor;
+            public Func<string> Motivo;  // en vez de Cumple: lo que falta o lo que lo anula, al momento (null = vale)
         }
         // Se crean al primer uso (las paginas tambien se arman sueltas, en las pruebas, sin pasar por el constructor).
         private List<Requisito> f3Requisitos;
@@ -71,6 +72,19 @@ namespace Rocola
             Necesita(mando, cumple, que, null);
         }
 
+        // Como Necesita, pero el motivo se dice al momento y puede ser mas de uno: "Necesita: ..." o "Sin efecto: ...", o null
+        // si vale (14-10-2026: los ahorros de Performance, que dependen de ajustes de otras paginas y se anulan entre ellos).
+        private void NecesitaMotivo(Interruptor mando, Func<string> motivo)
+        {
+            if (mando == null || motivo == null) return;
+            mando.DosRenglones = true;
+            if (mando.Height < Interruptor.AltoDosRenglones) mando.Height = Interruptor.AltoDosRenglones;
+            ListasDeRequisitos();
+            Requisito r = new Requisito();
+            r.Mando = mando; r.Motivo = motivo; r.Cumple = delegate { return true; }; r.Necesita = "";
+            f3Requisitos.Add(r);
+        }
+
         // Lo que solo se ve con tarjeta grafica.
         private void SoloConTarjeta(params Control[] mandos)
         {
@@ -108,7 +122,14 @@ namespace Rocola
             foreach (Requisito r in f3Requisitos)
             {
                 bool ok = true;
-                try { ok = r.Cumple(); } catch { }
+                if (r.Motivo != null)
+                {
+                    string m = null;
+                    try { m = r.Motivo(); } catch { }
+                    ok = m == null;
+                    r.Necesita = m ?? "";
+                }
+                else try { ok = r.Cumple(); } catch { }
                 bool vale = ok && (tarjeta || !f3SoloTarjeta.Contains(r.Mando));
                 r.Mando.Enabled = vale;
                 // Sin tarjeta lo dice la pagina, no cada mando: el requisito no es lo que falta.

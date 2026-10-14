@@ -2,7 +2,10 @@
 
 Petición del usuario, después de G1 y G2: «Busca más mejoras de este tipo».
 
-Son propuestas: **no se ha cambiado nada todavía**. Todo es solo con tarjeta gráfica; el dibujo por CPU sigue
+**Hechas J1 y J2** el mismo día («Haz J1 y J2»):
+[J1_J2_Y_GRISES_PERFORMANCE_MODEST_2026-10-14.md](J1_J2_Y_GRISES_PERFORMANCE_MODEST_2026-10-14.md). J3 no se hizo.
+
+Eran propuestas. Todo es solo con tarjeta gráfica; el dibujo por CPU sigue
 congelado.
 
 ## Dónde está ahora el trabajo de la tarjeta

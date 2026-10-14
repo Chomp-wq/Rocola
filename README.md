@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## J1, J2 y los ajustes que el Performance deja sin efecto — 14 de octubre de 2026
+
+El estirado del cielo ya no se pinta bajo las portadas (J1, automático). «Cielo a un cuarto de resolución» (J2, Ctrl+F3
+→ Imagen → Performance, apagado de fábrica, en el preset Performance) hace la imagen del cielo cuatro veces más chica:
+en 1024×768 el fondo pasa de 1,61 a 1,16 pantallas por cuadro. Ningún ajuste normal queda anulado por el Performance;
+los ahorros que en algún caso no hacen nada van en gris y dicen por qué.
+[Qué se cambió y cómo se comprobó](J1_J2_Y_GRISES_PERFORMANCE_MODEST_2026-10-14.md).
+
 ## Más rendimiento para los gráficos, segunda vuelta, para elegir — 14 de octubre de 2026
 
 Tres propuestas más, todavía sin hacer. J1: el estirado del cielo no se pinta bajo las portadas (se ve igual). J2: el
