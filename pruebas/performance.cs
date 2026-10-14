@@ -684,13 +684,16 @@ class Performance
         object dev = Tarjeta(W, H, true, true, false);
         Control p = Panel(W, H, Cielo(dev, W, H));
         Pon(p, "CieloMedia", true); Pon(p, "GranoVineta", true); Pon(p, "CuentaArea", true);
-        bool ok = true; List<Envio> c = null;
-        for (int i = 0; i < 3; i++) { envios.Clear(); ok &= (bool)Llama(p, "RenderFrame"); c = Captura(); }
+        bool ok = true; List<Envio> c = null; int alIntermedio = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            envios.Clear(); ok &= (bool)Llama(p, "RenderFrame"); c = Captura();
+            foreach (Envio e in c) if (e.S.Blanco != fondo) alIntermedio++;   // el primero la pinta; los otros la reusan (G1)
+        }
         Exige(ok, "el cuadro se presenta con los dos ahorros encendidos");
-        int alIntermedio = 0, dobles = 0; bool estadoLimpio = true; bool pasoDoble = false;
+        int dobles = 0; bool estadoLimpio = true; bool pasoDoble = false;
         foreach (Envio e in c)
         {
-            if (e.S.Blanco != fondo) alIntermedio++;
             if (e.Paso == 36) { dobles++; pasoDoble = true; continue; }
             if (pasoDoble && (e.S.E[1].Op != 1 || e.S.Fvf != 0x144)) estadoLimpio = false;
         }
@@ -706,6 +709,161 @@ class Performance
         bool siempre = c.Count > 0 && c[0].S.Blanco == fondo && !c[0].S.Mezcla && c[0].Tris == 4;
         foreach (Envio e in c) if (e.S.Blanco != fondo || e.Paso != 28) siempre = false;
         Exige(siempre, "con los dos apagados (de fabrica), el cuadro de siempre: todo a la pantalla, nada doble");
+    }
+
+    // ======================= 8) G1 Y G2 (14-10-2026) =======================
+    static int AlIntermedio(List<Envio> es) { int n = 0; foreach (Envio e in es) if (e.S.Blanco != fondo) n++; return n; }
+    static void G1G2()
+    {
+        Console.WriteLine("\n  8) G1: NO REPETIR EL CIELO (automatico)  Y  G2: EL FONDO EN UNA SOLA CAPA (interruptor)\n");
+        const int W = 640, H = 480;
+        object dev = Tarjeta(W, H, true, true, false);
+        Control panel = Panel(W, H, Cielo(dev, W, H));
+        Llama(panel, "EnsureNieblas"); Llama(panel, "EnsureVineta");
+        Pon(panel, "Nieblas", 2); Pon(panel, "VinetaSuave", true);
+        Pon(panel, "NebColor", 0xFF8C78FFu); Pon(panel, "NebColor2", 0xFF40C0A0u);
+        Pon(panel, "CieloMedia", true);
+        float midY = H * 0.42f; uint top = 0xFF02030Au, mid = 0xFF101848u, bot = 0xFF3A1E5Au;
+        Func<List<Envio>> base0 = delegate
+        {
+            envios.Clear(); Llama(dev, "BeginFrame");
+            bool h = (bool)Llama(panel, "CieloMedioBase", W, H, midY, top, mid, bot);
+            Llama(dev, "EndFrame");
+            if (!h) throw new Exception("el cielo a media no se hizo");
+            return Captura();
+        };
+        // ---- G1 ----
+        List<Envio> a = base0(), b = base0();
+        Exige(AlIntermedio(a) > 1 && b.Count == 1 && AlIntermedio(b) == 0,
+              "G1: la primera vez se pinta la imagen intermedia (" + AlIntermedio(a) + " ordenes); la segunda, sin cambios, solo se estira (" + b.Count + " orden)");
+        int[] fa = Fondo(W, H, 11), fb = Fondo(W, H, 12);
+        Pinta(a, fa, W, H); Pinta(b, fb, W, H);
+        int dist, mas2, maxd; double med; Compara(fa, fb, out dist, out mas2, out maxd, out med);
+        Exige(dist == 0, "G1: lo reusado es la misma imagen, pixel por pixel (" + dist + " distintos)");
+        string[] cambios = { "NebFase", "NebColor", "midY", "nieblasVer", "reinicio" };
+        bool todos = true;
+        foreach (string cam in cambios)
+        {
+            if (cam == "NebFase") Pon(panel, "NebFase", 0.37f);
+            else if (cam == "NebColor") Pon(panel, "NebColor", 0xFF30A0FFu);
+            else if (cam == "midY") midY = H * 0.44f;
+            else if (cam == "nieblasVer") Pon(panel, "nieblasVer", (int)Toma(panel, "nieblasVer") + 1);
+            else Llama(dev, "LiberaMedia");   // lo que hace un reinicio del dispositivo
+            List<Envio> x = base0(), y = base0();
+            if (!(AlIntermedio(x) > 1 && AlIntermedio(y) == 0)) { todos = false; Console.WriteLine("     no se repinto con: " + cam); }
+        }
+        Exige(todos, "G1: se vuelve a pintar si cambia lo suyo (paso de las nebulosas, su color, el cielo, sus imagenes) o tras un reinicio");
+        // A 60 cuadros por segundo, con las nebulosas moviendose 24 veces por segundo (el reloj de la animacion):
+        int r0 = (int)Toma(panel, "CieloRepintes"), u0 = (int)Toma(panel, "CieloReusos"); long areaG1 = 0, areaSiempre = 0;
+        for (int i = 0; i < 60; i++)
+        {
+            Pon(panel, "NebFase", 1f + (i * 24 / 60) * 0.00654f);
+            areaG1 += Area(base0());
+        }
+        int rep = (int)Toma(panel, "CieloRepintes") - r0, reu = (int)Toma(panel, "CieloReusos") - u0;
+        for (int i = 0; i < 60; i++) { Llama(panel, "OlvidaCielo"); areaSiempre += Area(base0()); }
+        Exige(rep >= 23 && rep <= 25 && reu == 60 - rep, "G1: en un segundo a 60 cuadros, " + rep + " se pintan y " + reu + " se reusan");
+        Exige(areaG1 < areaSiempre, "G1: el cielo pinta " + Pct((double)areaG1 / Math.Max(1, areaSiempre)) + " de lo de antes (con la imagen intermedia en cada cuadro)");
+
+        // ---- G2: la vineta punto por punto, contra la de siempre encima ----
+        IntPtr vin = (IntPtr)Toma(panel, "vinetaTex");
+        object vt = Toma(panel, "vinetaTeselas"); object vu = Toma(panel, "vinetaU"), vv = Toma(panel, "vinetaV"), aq = Toma(panel, "adornoQuad");
+        int peor = 0, puntos = 0;
+        foreach (float[] pt in new float[][] { new float[] { 320, 240 }, new float[] { 20, 20 }, new float[] { 600, 30 }, new float[] { 40, 450 }, new float[] { 630, 470 }, new float[] { 100, 240 }, new float[] { 320, 15 } })
+        {
+            Array q = Array.CreateInstance(TVtx, 6);
+            float x0 = pt[0] - 2, y0 = pt[1] - 2, x1 = pt[0] + 2, y1 = pt[1] + 2;
+            Estatico(TStar, "SetQuad", q, 0, x0, y0, x1, y1, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu);
+            envios.Clear(); Llama(dev, "BeginFrame");
+            Llama(dev, "DrawShootStreaks", q, 2);
+            Llama(panel, "DibujaTeselasFondo", vin, vt, 0f, 0f, (float)W, (float)H, vu, vv, 0xFFFFFFFFu, aq);
+            Llama(dev, "EndFrame"); List<Envio> siempre = Captura();
+            envios.Clear(); Llama(dev, "BeginFrame");
+            Pon(dev, "VinetaPuntos", true); Llama(dev, "DrawShootStreaks", q, 2); Pon(dev, "VinetaPuntos", false);
+            Llama(dev, "EndFrame"); List<Envio> puntoAPunto = Captura();
+            int[] f1 = new int[W * H], f2 = new int[W * H];
+            for (int i = 0; i < f1.Length; i++) f1[i] = f2[i] = unchecked((int)0xFF000000u);
+            Pinta(siempre, f1, W, H); Pinta(puntoAPunto, f2, W, H);
+            int k = (int)pt[1] * W + (int)pt[0];
+            int d = Math.Abs((f1[k] & 255) - (f2[k] & 255)); peor = Math.Max(peor, d); puntos++;
+        }
+        Exige(peor <= 2, "G2: una estrella con la vineta en su punto sale como con la vineta encima, en el centro, el borde y las esquinas ("
+              + puntos + " sitios; como mucho " + peor + " niveles de 255)");
+
+        // ---- G2: el cuadro entero ----
+        Func<bool, int[]> cuadro = delegate (bool capa)
+        {
+            object d2 = Tarjeta(W, H, true, true, false);
+            Control p2 = Panel(W, H, Cielo(d2, W, H));
+            Pon(p2, "CieloMedia", true); Pon(p2, "GranoVineta", true); Pon(p2, "FondoUnaCapa", capa); Pon(p2, "VinetaSuave", true);
+            Pon(p2, "Fugaces", 0);   // las fugaces salen al azar con el reloj: en un cuadro si y en el otro no
+            Pon(p2, "ConLuna", false);   // y la estrella protagonista: su polvo y sus ecos van con su propio reloj
+            List<Envio> todo = new List<Envio>(); long areaUltimo = 0; int capaVista = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                Pon(Toma(p2, "stars"), "campoRelojOk", false);   // el titileo con el reloj parado: los dos cuadros en el mismo instante
+                envios.Clear(); Llama(p2, "RenderFrame"); List<Envio> c = Captura();
+                todo.AddRange(c); areaUltimo = Area(c);
+                if ((bool)Toma(p2, "capaUnicaEsteCuadro")) capaVista++;
+            }
+            int[] fbx = new int[W * H];
+            for (int i = 0; i < fbx.Length; i++) fbx[i] = unchecked((int)0xFF000000u);
+            Pinta(todo, fbx, W, H);
+            int[] r = new int[fbx.Length + 3]; Array.Copy(fbx, r, fbx.Length);
+            r[fbx.Length] = (int)Math.Min(int.MaxValue, areaUltimo); r[fbx.Length + 1] = capaVista; r[fbx.Length + 2] = (bool)Toma(dev, "VinetaPuntos") ? 1 : 0;
+            return r;
+        };
+        int[] hoy = cuadro(false), g2 = cuadro(true);
+        int n = W * H;
+        Exige(g2[n + 1] == 3 && hoy[n + 1] == 0, "G2: con el interruptor, el fondo va en una capa en los tres cuadros; sin el, como siempre");
+        Exige((double)g2[n] < 0.8 * hoy[n], "G2: un cuadro con el cielo reusado pinta " + Pct((double)g2[n] / Math.Max(1, hoy[n]))
+              + " de lo de Performance con G1 (sin el grano ni la vineta a pantalla completa)");
+        int[] ha = new int[n], hb = new int[n]; Array.Copy(hoy, ha, n); Array.Copy(g2, hb, n);
+        Compara(ha, hb, out dist, out mas2, out maxd, out med);
+        Console.WriteLine("     G2 contra Performance: " + Pct((double)dist / n) + " de los pixeles cambian; mas de 2 niveles, " + Pct((double)mas2 / n)
+                          + "; el que mas, " + maxd + " niveles; de media " + med.ToString("0.00"));
+        // El grano es otro dibujo (granitos de 2x2): casi todos los pixeles cambian 1 o 2 niveles, arriba o abajo. Lo que
+        // importa: que nada cambie mas de unos pocos niveles y que el brillo medio no se mueva (ni mas oscuro ni mas claro).
+        double sesgo = 0;
+        for (int i = 0; i < n; i++)
+            for (int sh = 0; sh < 24; sh += 8) sesgo += ((hb[i] >> sh) & 255) - ((ha[i] >> sh) & 255);
+        sesgo /= 3.0 * n;
+        Exige(maxd <= 6 && med < 1.5 && Math.Abs(sesgo) < 0.3, "G2: casi igual que Performance: como mucho " + maxd + " niveles de 255, de media "
+              + med.ToString("0.00") + ", y el brillo medio se mueve " + sesgo.ToString("+0.00;-0.00") + " niveles");
+        // ---- Cuanto pinta el fondo, en 1024x768 (lo que se pone en el documento) ----
+        // 30 cuadros a 60 por segundo, con las nebulosas moviendose 24 veces por segundo. Sin portadas ni aurora (aqui no hay
+        // musica): la aurora seria lo mismo en las cuatro.
+        {
+            const int AW = 1024, AH = 768;
+            string[] nombre = { "de fabrica (Alto)", "Performance de antes (sin G1)", "Performance con G1", "Performance con G1 y G2" };
+            double[] pant = new double[4];
+            for (int conf = 0; conf < 4; conf++)
+            {
+                object d4 = Tarjeta(AW, AH, true, true, false); Control p4 = Panel(AW, AH, Cielo(d4, AW, AH));
+                Pon(p4, "VinetaSuave", true); Pon(p4, "Fugaces", 0);
+                Pon(p4, "CieloMedia", conf >= 1); Pon(p4, "GranoVineta", conf >= 1); Pon(p4, "FondoUnaCapa", conf == 3);
+                long area = 0;
+                for (int i = 0; i < 31; i++)
+                {
+                    Pon(p4, "NebFase", 1f + (i * 24 / 60) * 0.00654f);
+                    if (conf == 1) Llama(p4, "OlvidaCielo");
+                    envios.Clear(); Llama(p4, "RenderFrame"); List<Envio> c4 = Captura();
+                    if (i > 0) area += Area(c4);   // el primero sube texturas
+                }
+                pant[conf] = area / 30.0 / ((double)AW * AH);
+                Console.WriteLine("     1024x768, " + nombre[conf] + ": " + pant[conf].ToString("0.00") + " pantallas por cuadro");
+            }
+            Exige(pant[3] < pant[2] && pant[2] < pant[1] && pant[1] < pant[0],
+                  "1024x768: el fondo pinta " + pant[0].ToString("0.00") + " -> " + pant[1].ToString("0.00") + " -> " + pant[2].ToString("0.00") + " -> "
+                  + pant[3].ToString("0.00") + " pantallas por cuadro (fabrica, Performance de antes, con G1, con G1 y G2)");
+        }
+        // Sin el cielo a media resolucion, G2 no hace nada.
+        {
+            object d3 = Tarjeta(W, H, true, true, false); Control p3 = Panel(W, H, Cielo(d3, W, H));
+            Pon(p3, "CieloMedia", false); Pon(p3, "FondoUnaCapa", true); Pon(p3, "VinetaSuave", true);
+            envios.Clear(); Llama(p3, "RenderFrame"); List<Envio> c3 = Captura();
+            Exige(AlIntermedio(c3) == 0 && !(bool)Toma(p3, "capaUnicaEsteCuadro"), "G2 sin el cielo a media resolucion: el cuadro de siempre (va dentro de esa imagen)");
+        }
     }
 
     // ======================= 6) LA PROPUESTA Y EL MEDIDOR =======================
@@ -779,21 +937,29 @@ class Performance
         {
             object f = Codigo.FormSinEncender(TForm);
             Pon(f, "carpetaDatos", raiz);
-            Exige(!(bool)Toma(f, "cieloMedia") && !(bool)Toma(f, "granoVineta"), "de fabrica, los dos apagados: la pantalla de siempre");
+            Exige(!(bool)Toma(f, "cieloMedia") && !(bool)Toma(f, "granoVineta") && !(bool)Toma(f, "fondoCapa"), "de fabrica, los tres apagados: la pantalla de siempre");
             Llama(f, "AplicaPresetGrafico", 3);
             bool alto = true; foreach (string k in new string[] { "nieblas", "estrellas", "espectro", "patron", "fugaces", "animacion" }) if ((int)Llama(f, "LeeNivel", k) != 2) alto = false;
-            Exige((bool)Toma(f, "cieloMedia") && (bool)Toma(f, "granoVineta") && alto, "Performance: los dos ahorros encendidos y los efectos en Alto");
+            Exige((bool)Toma(f, "cieloMedia") && (bool)Toma(f, "granoVineta") && (bool)Toma(f, "fondoCapa") && alto, "Performance: los tres ahorros encendidos (tambien el fondo en una sola capa) y los efectos en Alto");
             Llama(f, "AplicaPresetGrafico", 2);
-            Exige(!(bool)Toma(f, "cieloMedia") && !(bool)Toma(f, "granoVineta"), "Alto: la pantalla de siempre, sin ahorros");
+            Exige(!(bool)Toma(f, "cieloMedia") && !(bool)Toma(f, "granoVineta") && !(bool)Toma(f, "fondoCapa"), "Alto: la pantalla de siempre, sin ahorros");
             Llama(f, "AplicaPresetGrafico", 1);
             Exige((bool)Toma(f, "cieloMedia") && (int)Llama(f, "LeeNivel", "nieblas") == 1, "Medio: efectos a medio y los ahorros puestos (son para ganar rendimiento)");
             // Se guardan y se releen.
-            Pon(f, "cieloMedia", true); Pon(f, "granoVineta", false);
+            Pon(f, "cieloMedia", true); Pon(f, "granoVineta", false); Pon(f, "fondoCapa", true);
             Llama(f, "SaveConfigPrefs"); Codigo.EsperaGuardado(TForm, f);
             string cfg = File.ReadAllText(Path.Combine(raiz, "rocola_config.txt"));
             object g = Codigo.FormSinEncender(TForm); Pon(g, "carpetaDatos", raiz); Llama(g, "LoadConfigPrefs");
-            Exige(cfg.Contains("cielo_media=1") && cfg.Contains("grano_vineta=0") && (bool)Toma(g, "cieloMedia") && !(bool)Toma(g, "granoVineta"),
-                  "cada interruptor se guarda con su clave (cielo_media=, grano_vineta=) y se relee");
+            Exige(cfg.Contains("cielo_media=1") && cfg.Contains("grano_vineta=0") && cfg.Contains("fondo_capa=1") && (bool)Toma(g, "cieloMedia")
+                  && !(bool)Toma(g, "granoVineta") && (bool)Toma(g, "fondoCapa"),
+                  "cada interruptor se guarda con su clave (cielo_media=, grano_vineta=, fondo_capa=) y se relee");
+            // La propuesta del medidor: el fondo en una capa nunca va sin el cielo a media resolucion (va dentro de el).
+            {
+                object[] pa = { 20.0, new double[] { 1.0, 0.5, 6.0 }, new double[0], new double[0], 16.0, 30.0, null, null, null };
+                Estatico(TForm, "PlanDeAhorros", pa);
+                bool[] u = (bool[])pa[6];
+                Exige(u.Length == 3 && u[2] && u[0], "la propuesta: si enciende el fondo en una capa, enciende tambien el cielo a media resolucion");
+            }
             // La pagina Imagen: el boton de golpe y la hoja con sus dos interruptores.
             using (Font n = new Font("Segoe UI", 10f, FontStyle.Bold)) using (Font s = new Font("Segoe UI", 8.5f))
             using (Panel pg = (Panel)Llama(g, "PaginaImagen", n, n, s, n, Color.White, Color.Gray, Color.DimGray))
@@ -870,6 +1036,7 @@ class Performance
         try { GranoVineta(); } catch (Exception e) { Exige(false, "grano y vineta: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { SinEspera(); } catch (Exception e) { Exige(false, "sin espera: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { CuadroEntero(); } catch (Exception e) { Exige(false, "el cuadro entero: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
+        try { G1G2(); } catch (Exception e) { Exige(false, "G1 y G2: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { Medidor(); } catch (Exception e) { Exige(false, "el medidor: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         Console.WriteLine(fallos == 0 ? "\n  PASS performance (" + oks + " comprobaciones; tarjeta imitada, no mide velocidad ni es la del bar)" : "\n  " + fallos + " fallos");
         return fallos;

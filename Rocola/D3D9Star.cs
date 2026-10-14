@@ -748,6 +748,7 @@ namespace Rocola
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
             if (enMedia) { verts = EscalaMedia(verts, tris); if (verts == null) return; }   // a la imagen intermedia (PerformanceGpu.cs)
+            else if (VinetaPuntos) { verts = Vinetea(verts, tris); if (verts == null) return; }   // G2: la vineta en cada punto (PerformanceGpu.cs)
             TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(texturaLogica);
             if (dividida != null) { Junta(); DibujaDividida(dividida, verts, tris); return; }
             DrawFisico(verts, tris);
@@ -2156,7 +2157,7 @@ namespace Rocola
                 aurDibujada = false;
                 if (!cieloMedioEsteCuadro) DibujaNieblas();   // si no, ya van en la imagen intermedia (PerformanceGpu.cs)
                 if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); }
-                if (!granoUnidoEsteCuadro) DibujaRuido();     // si no, va junto con la vineta, en una pasada
+                if (!granoUnidoEsteCuadro && !capaUnicaEsteCuadro) DibujaRuido();   // si no, va con la vineta: en una pasada, o en el cielo (G2)
             };
             cieloBase = CieloMedioBase;
             trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante
@@ -2584,9 +2585,12 @@ namespace Rocola
             double antesDibujo = AhoraMs();
             HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
             DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs)
-            if (!stars.Begin(Width, Height, pulse, pulseCrudo)) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
-            // Adornos solo del fondo: antes del muro y de toda la interfaz.
-            if (VinetaSuave && vinetaTex != IntPtr.Zero)
+            bool fondoOk = stars.Begin(Width, Height, pulse, pulseCrudo);
+            stars.VinetaPuntos = false;   // la vineta punto por punto (G2) es solo para el fondo: aqui termina
+            if (!fondoOk) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
+            // Adornos solo del fondo: antes del muro y de toda la interfaz. Con «Fondo en una sola capa» (G2) la vineta y el
+            // grano ya van dentro del cielo.
+            if (VinetaSuave && vinetaTex != IntPtr.Zero && !capaUnicaEsteCuadro)
             {
                 // Con "grano y vineta en una pasada" van los dos juntos aqui (PerformanceGpu.cs). Si esa pasada no se pudo, este
                 // cuadro van por separado.
@@ -3272,7 +3276,7 @@ namespace Rocola
             if (nuevoTamano || hazTex == IntPtr.Zero)
                 using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh))
                 {
-                    hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV);
+                    hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV); nieblasVer++;   // (G1: el cielo guardado ya no vale)
                     hazTeselas = TeselasVisibles.De(hz, TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)
                 }
             if (nuevoTamano || nebTex == IntPtr.Zero)
@@ -3283,14 +3287,14 @@ namespace Rocola
                 nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb;
                 using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh))
                 {
-                    nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV);
+                    nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV); nieblasVer++;
                     // Sin el detalle natural, la mitad de la nebulosa es transparente del todo, y se pintaba dos veces
                     // por cuadro a pantalla completa. Con el detalle, casi toda tiene algo: va entera, como siempre.
                     nebTeselas = SiAhorran(TeselasVisibles.De(nb, TeselasVisibles.LadoTesela, true));   // (DibujoLigeroGpu.cs)
                 }
             }
             if (ruidoTex == IntPtr.Zero)
-                using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV);
+                using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) { ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV); nieblasVer++; }
             nieblaRetryPending = hazTex == IntPtr.Zero || nebTex == IntPtr.Zero || ruidoTex == IntPtr.Zero;
             nieblaRetryMs = Environment.TickCount;   // un fallo persistente no rehornea las capas en cada cuadro
         }
@@ -3513,16 +3517,73 @@ namespace Rocola
             int[] pixels = new int[n * n];
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
-                {
-                    double dx = 2.0 * x / (n - 1) - 1.0, dy = 2.0 * y / (n - 1) - 1.0;
-                    double f = Math.Max(0.0, Math.Min(1.0, (dx * dx + dy * dy - 0.18) / 1.82));
-                    f = f * f * (3.0 - 2.0 * f);
-                    pixels[y * n + x] = unchecked((int)((uint)(110.0 * f + 0.5) << 24));   // negro; solo cambia el alfa
-                }
+                    pixels[y * n + x] = unchecked((int)((uint)(VinetaAlfa(x, y, n) + 0.5) << 24));   // negro; solo cambia el alfa
             BitmapData data = b.LockBits(new Rectangle(0, 0, n, n), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
             try { for (int y = 0; y < n; y++) Marshal.Copy(pixels, y * n, new IntPtr(data.Scan0.ToInt64() + y * (long)data.Stride), n); }
             finally { b.UnlockBits(data); }
             return b;
+        }
+        // El alfa de la vineta en el texel (x, y) de un mapa de n x n (0 a 110). Tambien la usa la vineta punto por punto de
+        // «Fondo en una sola capa» (PerformanceGpu.cs), con el texel en decimales.
+        internal static double VinetaAlfa(double x, double y, int n)
+        {
+            double dx = 2.0 * x / (n - 1) - 1.0, dy = 2.0 * y / (n - 1) - 1.0;
+            double f = Math.Max(0.0, Math.Min(1.0, (dx * dx + dy * dy - 0.18) / 1.82));
+            f = f * f * (3.0 - 2.0 * f);
+            return 110.0 * f;
+        }
+        internal const int VinetaLado = 128;   // el mapa que se hornea (EnsureVineta)
+        // Lo que deja pasar la vineta en el texel (tx, ty) del mapa estirado a la pantalla: 1 en el centro, 1 - 110/255 en
+        // las esquinas. Pegado al borde, como la textura (que va en modo "pegado al borde").
+        // Solo depende de la distancia al centro (dx^2 + dy^2, de 0 a 2), asi que va por tabla: se hace en cada vertice del
+        // fondo y cada cuadro (unos doce mil), y con la cuenta entera costaba mas de medio milisegundo aqui.
+        private const int VinetaTabN = 2048;
+        private static readonly float[] VinetaTab = HazVinetaTab();
+        // La misma cuenta en una rejilla de 257 x 257 sobre la pantalla (de 0 a 1 en cada lado), en 256avos: lo que deja pasar
+        // la vineta en ese punto. La usa la vineta punto por punto (PerformanceGpu.cs, Vinetea). De un punto de la rejilla
+        // al siguiente la vineta cambia como mucho un nivel y medio de 255.
+        internal const int VinetaRejillaLado = 256;
+        private static int[] vinetaRejilla;
+        internal static int[] VinetaRejilla
+        {
+            get
+            {
+                int[] r = vinetaRejilla;
+                if (r != null) return r;
+                r = new int[(VinetaRejillaLado + 1) * (VinetaRejillaLado + 1)];
+                for (int y = 0; y <= VinetaRejillaLado; y++)
+                    for (int x = 0; x <= VinetaRejillaLado; x++)
+                    {
+                        float tx = (x + 0.5f) / VinetaRejillaLado * VinetaLado - 0.5f, ty = (y + 0.5f) / VinetaRejillaLado * VinetaLado - 0.5f;
+                        r[y * (VinetaRejillaLado + 1) + x] = (int)Math.Round(256.0 * VinetaDeja(tx, ty));
+                    }
+                vinetaRejilla = r;
+                return r;
+            }
+        }
+        private static float[] HazVinetaTab()
+        {
+            float[] t = new float[VinetaTabN + 2];
+            for (int i = 0; i <= VinetaTabN + 1; i++)
+            {
+                double r = 2.0 * i / VinetaTabN;
+                double f = Math.Max(0.0, Math.Min(1.0, (r - 0.18) / 1.82));
+                f = f * f * (3.0 - 2.0 * f);
+                t[i] = (float)(1.0 - 110.0 * f / 255.0);
+            }
+            return t;
+        }
+        internal static float VinetaDeja(float tx, float ty)
+        {
+            if (tx < 0f) tx = 0f; else if (tx > VinetaLado - 1) tx = VinetaLado - 1;
+            if (ty < 0f) ty = 0f; else if (ty > VinetaLado - 1) ty = VinetaLado - 1;
+            float dx = 2f * tx / (VinetaLado - 1) - 1f, dy = 2f * ty / (VinetaLado - 1) - 1f;
+            float r = dx * dx + dy * dy;
+            if (r <= 0.18f) return 1f;   // el centro: la vineta no hace nada
+            float p = r * (VinetaTabN / 2f);
+            int i = (int)p; if (i > VinetaTabN) i = VinetaTabN;
+            float fr = p - i;
+            return VinetaTab[i] + (VinetaTab[i + 1] - VinetaTab[i]) * fr;
         }
         // EL MAPA SE HORNEA UNA VEZ Y SE GUARDA. Lo que puede fallar en el reintento es la SUBIDA a la
         // tarjeta -al arrancar, o cuando Windows se lleva el dispositivo al bloquear la sesion-, nunca

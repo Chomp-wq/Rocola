@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## G1 y G2: el cielo sin repetir y el fondo en una sola capa — 14 de octubre de 2026
+
+El cielo a media resolución ya no se vuelve a pintar si no cambió (G1, automático y se ve igual). «Fondo en una sola
+capa» (G2, Ctrl+F3 → Imagen → Performance, apagado de fábrica, lo enciende el preset Performance) mete el grano y la
+viñeta dentro de ese cielo. En 1024×768, con la tarjeta imitada: el fondo pasa de 3,05 pantallas por cuadro
+(Performance de antes) a 1,61.
+[Qué se cambió y cómo se comprobó](G1_G2_CIELO_EN_UNA_CAPA_MODEST_2026-10-14.md).
+
 ## Más rendimiento para los gráficos, para elegir — 14 de octubre de 2026
 
 Tres propuestas, todavía sin hacer: no repetir el cielo cuando no cambió (G1, se ve igual); el fondo en una sola capa

@@ -3,7 +3,10 @@
 Petición del usuario: «Busca más optimizaciones del tipo performance para los gráficos de la rocola; no importa si se
 ven ligeramente diferentes si dan mucho rendimiento».
 
-Son propuestas: **no se ha cambiado nada todavía**. Todo es solo con tarjeta gráfica; el dibujo por CPU sigue
+**Hechas G1 y G2** el mismo día, a petición del usuario («Me interesa G1 y G2»):
+[G1_G2_CIELO_EN_UNA_CAPA_MODEST_2026-10-14.md](G1_G2_CIELO_EN_UNA_CAPA_MODEST_2026-10-14.md). G3 no se hizo.
+
+Eran propuestas. Todo es solo con tarjeta gráfica; el dibujo por CPU sigue
 congelado.
 
 ## De dónde sale cada número

@@ -35,7 +35,8 @@ class AjustesVivos
 
     // Los ajustes de los que depende algo, y su valor de fabrica (encendidos).
     static readonly string[] requisitos = { "estadoExpandido", "progresoNeon", "cancionesTransparentes", "fondoPortadaOn",
-                                            "cieloProfundo", "lunaActiva", "paginaDesliza", "muroReposo" };
+                                            "cieloProfundo", "lunaActiva", "paginaDesliza", "muroReposo",
+                                            "cieloMedia" };   // «Fondo en una sola capa» (G2, 14-10-2026) va dentro del cielo a media resolucion
 
     [STAThread] static int Main(string[] args)
     {
@@ -116,7 +117,8 @@ class AjustesVivos
 
             // Lo que valen los que dependen, para ver que ponerlos en gris no los toca.
             string[] dependientes = { "colaDoce", "neonIntenso", "estadoTransparente", "cancionesCristal", "paletaCompleta",
-                                      "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda" };
+                                      "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda",
+                                      "fondoCapa" };
             List<object> valAntes = new List<object>();
             foreach (string d in dependientes) valAntes.Add(Get(d));
             foreach (string r in requisitos) Set(r, false);

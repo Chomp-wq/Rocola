@@ -227,6 +227,7 @@ namespace Rocola
             gpuPanel.NebulosasCine = nebulosasCine;
             gpuPanel.VinetaSuave = vinetaSuave;
             gpuPanel.CieloMedia = cieloMedia; gpuPanel.GranoVineta = granoVineta;   // Performance (PerformanceGpu.cs)
+            gpuPanel.FondoUnaCapa = fondoCapa;
             gpuPanel.HaloSeleccion = haloSeleccion;
             gpuPanel.EstrellasFinas = estrellasFinas;
             gpuPanel.OndasSuaves = ondasSuaves;
@@ -313,20 +314,26 @@ namespace Rocola
 
         // LOS AHORROS DE PERFORMANCE (PerformanceGpu.cs), en el orden de su lista. Casi no se notan: van ANTES que bajar
         // efectos, que si se notan.
-        private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada" };
+        // El tercero, «Fondo en una sola capa» (G2, 14-10-2026), va DENTRO de la imagen del cielo a media resolucion: sin el
+        // primero no hace nada (RequiereAhorro), y lo que ahorra se mide encima de los otros dos (AhorroSobre).
+        private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa" };
+        internal static readonly int[] RequiereAhorro = { -1, -1, 0 };
+#if ROCOLA_GPU
+        private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 } };
+#endif
         // Ctrl+F3 -> Imagen -> Performance. Son de aspecto (casi identico): interruptor propio, apagados de fabrica (AGENTS.md).
-        private bool cieloMedia, granoVineta;
-        private bool LeeAhorro(int i) { return i == 0 ? cieloMedia : granoVineta; }
+        private bool cieloMedia, granoVineta, fondoCapa;
+        private bool LeeAhorro(int i) { return i == 0 ? cieloMedia : (i == 1 ? granoVineta : fondoCapa); }
         private void PonAhorro(int i, bool encendido)
         {
-            if (i == 0) cieloMedia = encendido; else granoVineta = encendido;
+            if (i == 0) cieloMedia = encendido; else if (i == 1) granoVineta = encendido; else fondoCapa = encendido;
             AplicaEfectosGpu();
         }
         private bool PuedeAhorro(int i)
         {
 #if ROCOLA_GPU
             if (gpuPanel == null) return false;
-            return i == 0 ? gpuPanel.PuedeCieloMedia : gpuPanel.PuedeGranoVineta;
+            return i == 0 ? gpuPanel.PuedeCieloMedia : (i == 1 ? gpuPanel.PuedeGranoVineta : gpuPanel.PuedeFondoUnaCapa);
 #else
             return false;
 #endif
@@ -359,11 +366,24 @@ namespace Rocola
                 if (tramo == 1 && msBase <= objetivo) { usa = new bool[na]; msFinal = msBase; meta = 1; return niv; }
                 // Solo con los ahorros, los justos.
                 bool[] u = new bool[na]; double ms = msBase;
-                foreach (int k in orden) { if (ms <= objetivo) break; u[k] = true; ms -= ahorros[k]; }
+                foreach (int k in orden)
+                {
+                    if (ms <= objetivo) break;
+                    if (u[k]) continue;
+                    u[k] = true; ms -= ahorros[k];
+                    // El que necesita a otro (el fondo en una capa va dentro del cielo a media resolucion) lo lleva consigo.
+                    int r = k < RequiereAhorro.Length ? RequiereAhorro[k] : -1;
+                    if (r >= 0 && r < na && !u[r]) { u[r] = true; ms -= Math.Max(0.0, ahorros[r]); }
+                }
                 if (ms <= objetivo) { usa = u; msFinal = ms; meta = tramo; return niv; }
                 // Con todos los ahorros, y los escalones que hagan falta.
                 bool[] todos = new bool[na]; double conTodos = msBase;
-                foreach (int k in orden) { todos[k] = true; conTodos -= ahorros[k]; }
+                foreach (int k in orden)
+                {
+                    if (!todos[k]) { todos[k] = true; conTodos -= ahorros[k]; }
+                    int r = k < RequiereAhorro.Length ? RequiereAhorro[k] : -1;
+                    if (r >= 0 && r < na && !todos[r]) { todos[r] = true; conTodos -= Math.Max(0.0, ahorros[r]); }
+                }
                 double fin;
                 int[] escalones = ProponeEscalonesMs(aMedio, aBajo, conTodos, objetivo, out fin);
                 if (fin <= objetivo) { usa = todos; msFinal = fin; meta = tramo; return escalones; }
@@ -689,6 +709,13 @@ namespace Rocola
                     {
                         if (bkAhorro[i]) { bancoAhorros[i] = 0.0; continue; }       // ya estaba puesto: esta en la cuenta
                         if (!PuedeAhorro(i)) { bancoAhorros[i] = -1.0; continue; }  // esta tarjeta no puede
+                        // El que va encima de otros (G2, sobre los dos primeros) se mide con esos puestos: lo que ahorra DE MAS.
+                        int[] sobre = i < AhorroSobre.Length ? AhorroSobre[i] : null;
+                        if (sobre != null)
+                        {
+                            foreach (int j in sobre) if (PuedeAhorro(j)) PonAhorro(j, true);
+                            antes = MideCoste(peorId, MsPorEscalon);
+                        }
                         PonAhorro(i, true);
                         double con = MideCoste(peorId, MsPorEscalon);
                         bool pudo = PuedeAhorro(i);   // pudo descubrir al usarlo que no le sale
@@ -697,6 +724,11 @@ namespace Rocola
                         double ruido = Math.Abs(antes - despues), ahorro = (antes + despues) / 2.0 - con;
                         bancoAhorros[i] = !pudo ? -1.0 : (ahorro > Math.Max(RuidoMs, ruido) ? ahorro : 0.0);
                         antes = despues;
+                        if (sobre != null)
+                        {
+                            foreach (int j in sobre) PonAhorro(j, bkAhorro[j]);
+                            if (i + 1 < bancoAhorros.Length) antes = MideCoste(peorId, MsPorEscalon);
+                        }
                     }
                     double conAhorros = base0;
                     for (int i = 0; i < bancoAhorros.Length; i++) if (bancoAhorros[i] > 0) conAhorros -= bancoAhorros[i];
@@ -1582,7 +1614,7 @@ namespace Rocola
                     else if (bancoEscenas != null && bancoError == null && bancoConGpu && !bancoEfectosMedidos) coste = "no hizo falta";
                     lCost[i].Text = coste; lCost[i].ForeColor = cc;
                 }
-                bool ahorrosPuestos = cieloMedia && granoVineta, ahorrosQuitados = !cieloMedia && !granoVineta;
+                bool ahorrosPuestos = cieloMedia && granoVineta && fondoCapa, ahorrosQuitados = !cieloMedia && !granoVineta && !fondoCapa;
                 int general = (comun == NivAlto && ahorrosPuestos) ? Performance
                             : (comun == NivAlto && ahorrosQuitados) ? NivAlto
                             : (comun == NivMedio || comun == NivBajo) ? comun : -1;
@@ -1768,7 +1800,7 @@ namespace Rocola
                 // una sorpresa, y en la ventana de al lado no se ve lo que cambio.
                 hojeoLigero = true; muroReposo = true; estadoExpandido = true;
                 cancionesTransparentes = true; caratulasLod = true;
-                cieloMedia = false; granoVineta = false;   // Performance: de fabrica, apagados
+                cieloMedia = false; granoVineta = false; fondoCapa = false;   // Performance: de fabrica, apagados
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;   // de fabrica vienen encendidos
                 AplicaEfectosGpu();
                 f3CambioGraf = true;
@@ -1797,7 +1829,7 @@ namespace Rocola
             int nivel = preset >= NivAlto ? NivAlto : preset;
             foreach (EfectoGrafico e in ef) PonNivel(e.Clave, nivel);
             bool ahorros = preset != NivAlto;
-            cieloMedia = ahorros; granoVineta = ahorros;
+            cieloMedia = ahorros; granoVineta = ahorros; fondoCapa = ahorros;
             AplicaEfectosGpu();
         }
 
@@ -1820,41 +1852,46 @@ namespace Rocola
               + "tarjeta pinta un cuarto de esos píxeles.",
                 "La tarjeta mezcla las dos capas a la vez: lee y escribe la\n"
               + "pantalla una vez en vez de dos. El grano queda también sobre\n"
-              + "las estrellas (algún píxel, un punto más claro u oscuro)."
+              + "las estrellas (algún píxel, un punto más claro u oscuro).",
+                "El grano y la viñeta van dentro del cielo a la mitad y solo se\n"
+              + "pintan cuando cambia. Lo de encima se oscurece en los bordes\n"
+              + "punto por punto: casi igual, con el grano algo más grueso."
             };
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];
             for (int i = 0; i < NombreAhorro.Length; i++)
             {
-                int y = 128 + i * 112;
+                // El tercero lleva dos renglones (el segundo dice lo que necesita): baja lo suyo 12 pixeles.
+                int y = 128 + i * 108, extra = (i == 2) ? 12 : 0;
                 Interruptor s = new Interruptor(); s.SetBounds(16, y, 424, 26); s.Font = fNom; s.ForeColor = cTexto;
                 s.Acento = hoja.Acento; s.Text = NombreAhorro[i]; s.Checked = LeeAhorro(i);
                 s.AccessibleName = "Performance: " + NombreAhorro[i];
-                Label d = new Label(); d.SetBounds(16, y + 30, 424, 50); d.Font = fDes; d.ForeColor = cTenue;
+                Label d = new Label(); d.SetBounds(16, y + 30 + extra, 424, 50); d.Font = fDes; d.ForeColor = cTenue;
                 d.BackColor = Color.Transparent; d.Text = explica[i];
-                Label m = new Label(); m.SetBounds(16, y + 82, 424, 18); m.Font = fDes; m.ForeColor = cTenue;
+                Label m = new Label(); m.SetBounds(16, y + 82 + extra, 424, 18); m.Font = fDes; m.ForeColor = cTenue;
                 m.BackColor = Color.Transparent;
                 hoja.Controls.Add(s); hoja.Controls.Add(d); hoja.Controls.Add(m);
                 interruptores[i] = s; medidos[i] = m;
             }
-            Label autoT = new Label(); autoT.SetBounds(16, 356, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
-            autoT.BackColor = Color.Transparent; autoT.Text = "Siempre activo: juntar órdenes de dibujo";
-            Label autoD = new Label(); autoD.SetBounds(16, 380, 424, 50); autoD.Font = fDes; autoD.ForeColor = cTenue;
+            // A1: el fondo en una capa va dentro del cielo a media resolucion; sin el, en gris y dicho.
+            Necesita(interruptores[2], delegate { return cieloMedia; }, "Cielo a media resolución (arriba)");
+            Label autoT = new Label(); autoT.SetBounds(16, 468, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
+            autoT.BackColor = Color.Transparent; autoT.Text = "Siempre activo: juntar órdenes y no repetir";
+            Label autoD = new Label(); autoD.SetBounds(16, 492, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
             autoD.BackColor = Color.Transparent;
-            autoD.Text = "Las órdenes de dibujo chicas y seguidas, con el mismo estado,\n"
-                       + "van juntas a la tarjeta. Pinta exactamente lo mismo: por eso\n"
-                       + "no lleva interruptor.";
-            cuenta = new Label(); cuenta.SetBounds(16, 436, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
+            autoD.Text = "Las órdenes chicas van juntas y el cielo a la mitad solo se\n"
+                       + "repinta si cambió. Sale exactamente igual: sin interruptor.";
+            cuenta = new Label(); cuenta.SetBounds(16, 530, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
             cuenta.BackColor = Color.Transparent;
-            Label nota = new Label(); nota.SetBounds(16, 478, 424, 34); nota.Font = fDes; nota.ForeColor = cTenue;
+            Label nota = new Label(); nota.SetBounds(16, 568, 424, 34); nota.Font = fDes; nota.ForeColor = cTenue;
             nota.BackColor = Color.Transparent;
             nota.Text = "De fábrica vienen apagados: la pantalla, idéntica a siempre.\n"
                       + "Se guardan al momento. Solo con tarjeta gráfica.";
             hoja.Controls.Add(autoT); hoja.Controls.Add(autoD); hoja.Controls.Add(cuenta); hoja.Controls.Add(nota);
-            // Sin tarjeta, en gris y dicho una vez (A1).
-            Label sin = new Label(); sin.SetBounds(16, 520, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
+            // Sin tarjeta, en gris y dicho una vez (A1), en el sitio de la nota.
+            Label sin = new Label(); sin.SetBounds(16, 568, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
             sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
-            SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, null);
+            SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, nota);
         }
         // Lo medido de un ahorro, en una linea.
         private string TextoAhorro(int i)
@@ -1893,9 +1930,14 @@ namespace Rocola
             {
                 bool a0 = bancoUsaAhorro.Length > 0 && bancoUsaAhorro[0] && !LeeAhorro(0);
                 bool a1 = bancoUsaAhorro.Length > 1 && bancoUsaAhorro[1] && !LeeAhorro(1);
-                if (a0 && a1) cosas.Add("Performance (casi igual)");
-                else if (a0) cosas.Add("cielo a media resolución");
-                else if (a1) cosas.Add("grano y viñeta juntos");
+                bool a2 = bancoUsaAhorro.Length > 2 && bancoUsaAhorro[2] && !LeeAhorro(2);
+                if (a0 && a1 && a2) cosas.Add("Performance (casi igual)");
+                else
+                {
+                    if (a0) cosas.Add("cielo a media resolución");
+                    if (a1) cosas.Add("grano y viñeta juntos");
+                    if (a2) cosas.Add("fondo en una sola capa");
+                }
             }
             int efectos = 0, nombrados = 0;
             for (int i = 0; i < ef.Length && i < bancoPropuesta.Length; i++)

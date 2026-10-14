@@ -139,6 +139,10 @@ namespace Rocola
         // pixeles de la imagen: el centro del pixel p de la pantalla cae en (p + 0.5) / 2 - 0.5.
         private IntPtr mediaTex, mediaSup, mediaFondo;
         private int mediaTW, mediaTH, mediaW, mediaH;
+        // G1 (14-10-2026): cuantas veces se creo la imagen intermedia. Lo que se pinto en ella vale mientras no cambie: al
+        // reiniciar el dispositivo se suelta y la nueva empieza vacia (otro numero), asi que hay que volver a pintarla.
+        private int mediaGen;
+        internal int MediaGen { get { return mediaGen; } }
         private bool mediaSinSoporte, enMedia;
         private D3D9.Vtx[] mediaVerts;
         internal bool EnMedia { get { return enMedia; } }
@@ -188,7 +192,7 @@ namespace Rocola
                 IntPtr sup;
                 if (D3D9.Fn<D3D9.GetPtrDel>(t, D3D9.SlotGetSurfaceLevel)(t, 0, out sup) < 0 || sup == IntPtr.Zero)
                 { D3D9.Release(t); return false; }
-                mediaTex = t; mediaSup = sup; mediaTW = tw; mediaTH = th;
+                mediaTex = t; mediaSup = sup; mediaTW = tw; mediaTH = th; mediaGen++;
                 return true;
             }
             catch { if (t != IntPtr.Zero) D3D9.Release(t); return false; }
@@ -231,6 +235,7 @@ namespace Rocola
         }
         private void LiberaMedia()
         {
+            mediaGen++;   // lo que tenia pintado ya no vale (G1)
             if (enMedia) { enMedia = false; if (mediaFondo != IntPtr.Zero) D3D9.Release(mediaFondo); mediaFondo = IntPtr.Zero; }
             IntPtr s = mediaSup, t = mediaTex;
             mediaSup = mediaTex = IntPtr.Zero; mediaTW = mediaTH = 0;
@@ -238,6 +243,42 @@ namespace Rocola
             if (s != IntPtr.Zero) D3D9.Release(s);
             if (t != IntPtr.Zero) D3D9.Release(t);
         }
+        // ---------------- G2: LA VINETA, PUNTO POR PUNTO (14-10-2026) ----------------
+        // Con «Fondo en una sola capa» la vineta va dentro de la imagen intermedia, DEBAJO de la aurora, las estrellas, la
+        // luna y las fugaces. Para que en los bordes sigan oscureciendose como antes, mientras VinetaPuntos esta encendido
+        // cada vertice se oscurece lo que la vineta oscureceria en su sitio: su color por (1 - alfa de la vineta). Con la
+        // mezcla normal o la sumada, y el color del vertice multiplicando (las dos maneras que usa el fondo), eso es lo mismo
+        // que la vineta encima, en el centro de cada punto; entre vertice y vertice la tarjeta lo degrada. La cuenta es la de
+        // BakeVineta (GpuPanel.VinetaAlfa), sin la textura: en el centro de la pantalla no hace nada y se copia tal cual.
+        internal bool VinetaPuntos;
+        private D3D9.Vtx[] vinetaVerts;
+        private D3D9.Vtx[] Vinetea(D3D9.Vtx[] v, int tris)
+        {
+            if (v == null || tris <= 0 || tris > v.Length / 3) return null;
+            int n = tris * 3;
+            if (vinetaVerts == null || vinetaVerts.Length < n) vinetaVerts = new D3D9.Vtx[Math.Max(n, 64)];
+            float w = Math.Max(1f, (float)pp.BackBufferWidth), h = Math.Max(1f, (float)pp.BackBufferHeight);
+            Array.Copy(v, 0, vinetaVerts, 0, n);   // de golpe; luego solo se toca el color de los que caen en la vineta
+            D3D9.Vtx[] o = vinetaVerts;
+            // Por tabla de enteros sobre la pantalla (GpuPanel.VinetaRejilla): se hace con cada vertice y cada cuadro, y
+            // con decimales costaba seis veces lo que estirar los vertices a la imagen intermedia.
+            int[] tab = GpuPanel.VinetaRejilla;
+            int lado = GpuPanel.VinetaRejillaLado;
+            float ex = lado / w, ey = lado / h;
+            for (int i = 0; i < n; i++)
+            {
+                int ix = (int)((o[i].X + 0.5f) * ex), iy = (int)((o[i].Y + 0.5f) * ey);
+                if (ix < 0) ix = 0; else if (ix > lado) ix = lado;
+                if (iy < 0) iy = 0; else if (iy > lado) iy = lado;
+                int k = tab[iy * (lado + 1) + ix];
+                if (k >= 256) continue;   // el centro: la vineta no hace nada
+                uint c = o[i].Color, kk = (uint)k;
+                o[i].Color = (c & 0xFF000000u) | ((((c >> 16) & 255u) * kk + 128u) >> 8 << 16)
+                           | ((((c >> 8) & 255u) * kk + 128u) >> 8 << 8) | (((c & 255u) * kk + 128u) >> 8);
+            }
+            return o;
+        }
+
         public void DrawSkyN(D3D9.Vtx[] sky, int tris)
         {
             if (dev == IntPtr.Zero || lost) return;
@@ -378,6 +419,8 @@ namespace Rocola
             gpu.DrawSkyN(skyAmplio, 6);
         }
         internal bool EmpiezaMedia(int w, int h) { return Ok && gpu.EmpiezaMedia(w, h); }
+        internal int MediaGen { get { return gpu != null ? gpu.MediaGen : 0; } }
+        internal bool VinetaPuntos { get { return gpu != null && gpu.VinetaPuntos; } set { if (gpu != null) gpu.VinetaPuntos = value; } }
         internal bool TerminaMedia() { return Ok && gpu.TerminaMedia(); }
         internal void DibujaMedia(D3D9.Vtx[] quad, int tris) { if (Ok) gpu.DibujaMedia(quad, tris); }
         internal int MediaTW { get { return gpu != null ? gpu.MediaTW : 0; } }
@@ -397,52 +440,152 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
-        // Ctrl+F3 -> Imagen -> Performance. Los dos son de aspecto (casi identico), asi que llevan interruptor y vienen
+        // Ctrl+F3 -> Imagen -> Performance. Los tres son de aspecto (casi identico), asi que llevan interruptor y vienen
         // apagados de fabrica; el preset "Performance" los enciende.
-        public bool CieloMedia, GranoVineta;
+        public bool CieloMedia, GranoVineta, FondoUnaCapa;
         // El medidor pide contar tambien los pixeles pintados (cuesta un poco de procesador; solo mientras mide).
         public bool CuentaArea;
-        private bool cieloMedioEsteCuadro, granoUnidoEsteCuadro;
+        private bool cieloMedioEsteCuadro, granoUnidoEsteCuadro, capaUnicaEsteCuadro;
         private readonly D3D9.Vtx[] mediaQuad = new D3D9.Vtx[24];
         private D3D9.Vtx2[] granoVineta2;
 
         // Antes de abrir la escena: que va a ir en una pasada este cuadro.
         private void DecideAhorros()
         {
-            cieloMedioEsteCuadro = false;
+            cieloMedioEsteCuadro = false; capaUnicaEsteCuadro = false;
+            if (stars != null) stars.VinetaPuntos = false;
             granoUnidoEsteCuadro = GranoVineta && VinetaSuave && vinetaTex != IntPtr.Zero && ruidoTex != IntPtr.Zero
                 && stars != null && stars.PuedeDosTexturas;
         }
 
+        // ---------------- G1: NO REPETIR EL CIELO CUANDO NO CAMBIO (14-10-2026; automatico) ----------------
+        // Las nebulosas y la via lactea se mueven con el reloj de la animacion (24 veces por segundo, Form1.AnimTimer_Tick),
+        // pero la imagen intermedia se pintaba en cada cuadro: 60 veces por segundo, y 36 de ellas salia lo mismo. Ahora se
+        // apunta CON QUE se pinto (la firma) y solo se vuelve a pintar si algo de eso cambio, o si la imagen se rehizo (un
+        // reinicio del dispositivo la deja vacia: MediaGen). Si no, se estira la que ya estaba: es la misma imagen, pixel por
+        // pixel, asi que va siempre activo y sin interruptor (AGENTS.md). Solo con la imagen intermedia: a resolucion
+        // completa, el cuadro que si cambia costaria una pantalla mas que hoy, y eso empeora justo los peores cuadros.
+        private sealed class FirmaCielo
+        {
+            internal int W, H, Nieblas, Ver, Gen;
+            internal float MidY, NebFase, HazFase, NebEmpuje, HazEmpuje;
+            internal uint Top, Mid, Bot, Neb1, Neb2;
+            internal bool Cine, Capa;
+            internal IntPtr NebTex, HazTex, RuidoTex, VinetaTex;
+            internal bool Igual(FirmaCielo o)
+            {
+                return W == o.W && H == o.H && Nieblas == o.Nieblas && Ver == o.Ver && MidY == o.MidY && NebFase == o.NebFase
+                    && HazFase == o.HazFase && NebEmpuje == o.NebEmpuje && HazEmpuje == o.HazEmpuje && Top == o.Top && Mid == o.Mid
+                    && Bot == o.Bot && Neb1 == o.Neb1 && Neb2 == o.Neb2 && Cine == o.Cine && Capa == o.Capa && NebTex == o.NebTex
+                    && HazTex == o.HazTex && RuidoTex == o.RuidoTex && VinetaTex == o.VinetaTex;
+            }
+            internal void Copia(FirmaCielo o)
+            {
+                W = o.W; H = o.H; Nieblas = o.Nieblas; Ver = o.Ver; Gen = o.Gen; MidY = o.MidY; NebFase = o.NebFase; HazFase = o.HazFase;
+                NebEmpuje = o.NebEmpuje; HazEmpuje = o.HazEmpuje; Top = o.Top; Mid = o.Mid; Bot = o.Bot; Neb1 = o.Neb1; Neb2 = o.Neb2;
+                Cine = o.Cine; Capa = o.Capa; NebTex = o.NebTex; HazTex = o.HazTex; RuidoTex = o.RuidoTex; VinetaTex = o.VinetaTex;
+            }
+        }
+        private FirmaCielo firmaHecha, firmaAhora;   // al primer uso (un panel armado a mano en las pruebas tambien los tiene)
+        private bool firmaValida;
+        private int nieblasVer;                      // sube cada vez que se sube una imagen del cielo (EnsureNieblas)
+        internal int CieloRepintes, CieloReusos;     // cuantas veces se pinto y cuantas se reuso (pruebas y medidor)
+        internal void OlvidaCielo() { firmaValida = false; }
+
         // EL CIELO A MEDIA RESOLUCION (lo llama GpuStarfield.Begin en lugar del degradado). El degradado, las nebulosas y la
         // via lactea van a la imagen intermedia, enteras (sin los huecos de las portadas: el estirado leeria su borde), y
         // la imagen se estira una vez, opaca, a toda la pantalla. Si algo falla, el cielo de siempre.
+        // Con «Fondo en una sola capa» (G2) van tambien el grano y la vineta. Y solo se pinta si cambio algo (G1).
         private bool CieloMedioBase(int w, int h, float midY, uint top, uint mid, uint bot)
         {
-            cieloMedioEsteCuadro = false;
+            cieloMedioEsteCuadro = false; capaUnicaEsteCuadro = false;
+            if (stars != null) stars.VinetaPuntos = false;
             if (!CieloMedia || Nieblas == GpuStarfield.Bajo || (nebTex == IntPtr.Zero && hazTex == IntPtr.Zero)) return false;
-            if (stars == null || !stars.EmpiezaMedia(w, h)) return false;
-            int huecosGuardados = nHuecos;
-            bool ok = false;
-            try
+            if (stars == null) return false;
+            bool capa = FondoUnaCapa;
+            IntPtr vineta = capa && VinetaSuave ? vinetaTex : IntPtr.Zero, ruido = capa ? ruidoTex : IntPtr.Zero;
+            if (firmaHecha == null) { firmaHecha = new FirmaCielo(); firmaAhora = new FirmaCielo(); }
+            FirmaCielo f = firmaAhora;
+            f.W = w; f.H = h; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;
+            f.NebEmpuje = nebEmpuje; f.HazEmpuje = hazEmpuje; f.Top = top; f.Mid = mid; f.Bot = bot; f.Neb1 = NebColor; f.Neb2 = NebColor2;
+            f.Cine = NebulosasCine; f.Capa = capa; f.NebTex = nebTex; f.HazTex = hazTex; f.RuidoTex = ruido; f.VinetaTex = vineta;
+            bool repinta = !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0;
+            if (repinta)
             {
-                nHuecos = 0;
-                stars.CieloAmplio(w, h, midY, top, mid, bot);
-                DibujaNieblas();
-                ok = true;
+                firmaValida = false;
+                if (!stars.EmpiezaMedia(w, h)) return false;
+                int huecosGuardados = nHuecos;
+                bool ok = false;
+                try
+                {
+                    nHuecos = 0;
+                    stars.CieloAmplio(w, h, midY, top, mid, bot);
+                    DibujaNieblas();
+                    if (capa)
+                    {
+                        // G2: el grano (un granito por pixel de la imagen: 2x2 en la pantalla) y la vineta, aqui dentro.
+                        if (ruido != IntPtr.Zero) { D3D9.Vtx[] malla; int n = MallaRuidoMedia(out malla); if (n > 0) stars.DrawTexturedBatchWrap(ruido, malla, n / 3); }
+                        if (vineta != IntPtr.Zero)
+                            DibujaTeselasFondo(vineta, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);
+                    }
+                    ok = true;
+                }
+                finally
+                {
+                    nHuecos = huecosGuardados;
+                    if (!stars.TerminaMedia()) ok = false;
+                }
+                if (!ok) return false;
+                f.Gen = stars.MediaGen;
+                firmaHecha.Copia(f);
+                firmaValida = true;
+                CieloRepintes++;
             }
-            finally
-            {
-                nHuecos = huecosGuardados;
-                if (!stars.TerminaMedia()) ok = false;
-            }
-            if (!ok) return false;
+            else CieloReusos++;
             int tw = stars.MediaTW, th = stars.MediaTH;
-            if (tw <= 0 || th <= 0) return false;
+            if (tw <= 0 || th <= 0) { firmaValida = false; return false; }
             ArmaEstirado(mediaQuad, w, h, tw, th);
             stars.DibujaMedia(mediaQuad, 8);
             cieloMedioEsteCuadro = true;
+            if (capa)
+            {
+                // Lo que se pinte encima hasta el final del fondo (aurora, estrellas, luna, fugaces) lleva la vineta en cada
+                // punto; GpuPanel.RenderFrame la apaga al terminar el fondo.
+                capaUnicaEsteCuadro = true;
+                stars.VinetaPuntos = vineta != IntPtr.Zero;
+            }
             return true;
+        }
+
+        // G2: la malla del grano para la imagen intermedia. Tejas de 2048 pixeles de pantalla, que alli son 1024: un texel
+        // del grano por pixel de la imagen, alineado con su centro. Se rehace solo si cambia la pantalla o el grano.
+        private D3D9.Vtx[] ruidoMediaMalla;
+        private int ruidoMediaAncho, ruidoMediaAlto, ruidoMediaN;
+        private float ruidoMediaU, ruidoMediaV;
+        private int MallaRuidoMedia(out D3D9.Vtx[] malla)
+        {
+            malla = null;
+            int ancho = Width, alto = Height, teja = 2 * RuidoTeja;
+            if (ruidoTex == IntPtr.Zero || ancho <= 0 || alto <= 0) return 0;
+            if (ruidoMediaMalla == null || ruidoMediaAncho != ancho || ruidoMediaAlto != alto || ruidoMediaU != ruU || ruidoMediaV != ruV)
+            {
+                int n = checked(((ancho - 1) / teja + 1) * ((alto - 1) / teja + 1) * 6);
+                if (ruidoMediaMalla == null || ruidoMediaMalla.Length != n) ruidoMediaMalla = new D3D9.Vtx[n];
+                int pos = 0;
+                for (int y = 0; y < alto; y += teja)
+                    for (int x = 0; x < ancho; x += teja)
+                    {
+                        float aw = Math.Min(teja, ancho - x), ah = Math.Min(teja, alto - y);
+                        float u = ruU * (aw / teja), v = ruV * (ah / teja);
+                        SetV(ref ruidoMediaMalla[pos], x, y, 0, 0); SetV(ref ruidoMediaMalla[pos + 1], x + aw, y, u, 0);
+                        SetV(ref ruidoMediaMalla[pos + 2], x + aw, y + ah, u, v); SetV(ref ruidoMediaMalla[pos + 3], x, y, 0, 0);
+                        SetV(ref ruidoMediaMalla[pos + 4], x + aw, y + ah, u, v); SetV(ref ruidoMediaMalla[pos + 5], x, y + ah, 0, v);
+                        pos += 6;
+                    }
+                ruidoMediaAncho = ancho; ruidoMediaAlto = alto; ruidoMediaU = ruU; ruidoMediaV = ruV; ruidoMediaN = n;
+            }
+            malla = ruidoMediaMalla;
+            return ruidoMediaN;
         }
 
         // EL ESTIRADO. El pixel p de la pantalla cae en (p + 0.5) / 2 de la imagen intermedia (en texeles): la textura va de 0
@@ -533,6 +676,7 @@ namespace Rocola
             }
         }
         internal bool PuedeGranoVineta { get { return stars != null && stars.PuedeDosTexturas; } }
+        internal bool PuedeFondoUnaCapa { get { return PuedeCieloMedia; } }   // va en la imagen intermedia
     }
 }
 #endif
