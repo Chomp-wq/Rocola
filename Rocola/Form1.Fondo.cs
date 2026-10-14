@@ -58,6 +58,29 @@ namespace Rocola
         private bool controlesReposo = true;
         private bool lunaRealista = true, haloLunar = true, polvoLunar = true, lunaProtagonista = true;
         private bool estelaEstelar = true;
+        // EL PULIDO (PulidoGpu.cs, 14-10-2026): diez opciones visuales de la tarjeta, encendidas de fabrica (Fondo -> Pulido).
+        private bool cieloSuave = true, coloresProfundos = true, auroraLimpia = true, interfazTramada = true;
+        private bool estrellaDegradado = true, estrellaRefleja = true, estrellaDestello = true, estrellaBorde = true, estrellaEspejo = true;
+        private bool portadaBrillo = true;
+        // Los diez interruptores del pulido, en el orden de la hoja (Rendimiento.cs, pagina Fondo).
+        private bool LeePulido(int i)
+        {
+            switch (i)
+            {
+                case 0: return cieloSuave; case 1: return coloresProfundos; case 2: return auroraLimpia; case 3: return interfazTramada;
+                case 4: return estrellaDegradado; case 5: return estrellaRefleja; case 6: return estrellaDestello; case 7: return estrellaBorde;
+                case 8: return estrellaEspejo; default: return portadaBrillo;
+            }
+        }
+        private void PonPulido(int i, bool v)
+        {
+            switch (i)
+            {
+                case 0: cieloSuave = v; break; case 1: coloresProfundos = v; break; case 2: auroraLimpia = v; break; case 3: interfazTramada = v; break;
+                case 4: estrellaDegradado = v; break; case 5: estrellaRefleja = v; break; case 6: estrellaDestello = v; break; case 7: estrellaBorde = v; break;
+                case 8: estrellaEspejo = v; break; default: portadaBrillo = v; break;
+            }
+        }
         private bool estrella3d = true;          // la estrella grande en 3D, girando (Estrella3dGpu.cs); "estrella_3d=" en config
         private bool transicionesTacto = true;
         // AVISOS PARA EL PANEL DE REPOSO. El panel solo existe con tarjeta grafica, pero las cosas que

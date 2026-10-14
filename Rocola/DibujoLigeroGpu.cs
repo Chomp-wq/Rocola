@@ -455,10 +455,15 @@ namespace Rocola
         // mismos datos y en el mismo orden: el mismo color.
         private uint[] aurBase, aurBasePie;                 // (AurFilas + 1) * puntos, y uno por punto
         private readonly uint[] aurBaseDe = new uint[12];   // con que colores se calcularon (4 de la cancion + 8 de la portada)
-        private float aurBasePeso; private bool aurBaseBandas, aurBaseOk;
+        private float aurBasePeso; private bool aurBaseBandas, aurBaseOk, aurBaseLimpia, aurBaseProf;
+        // C3 (PulidoGpu.cs): «Aurora mas limpia». Encendida, las rampas van como luz y con curva suave (ver AurMezcla).
+        public bool AuroraLimpia = true;
+        private uint AurMezcla(uint c0, uint c1, float f, bool limpia) { return limpia ? Luz.Mezcla(c0, c1, f) & 0x00FFFFFFu : AurLerpRgb(c0, c1, f); }
         private void AurBases(GpuAurora au, int puntos)
         {
+            bool limpia = AuroraLimpia, prof = stars != null && stars.ColoresProfundos;
             bool igual = aurBaseOk && aurBase != null && aurBaseBandas == AuroraBandas && aurBasePeso == coverWeight
+                && aurBaseLimpia == limpia && aurBaseProf == prof
                 && aurBaseDe[0] == au.Rgb && aurBaseDe[1] == au.RgbA && aurBaseDe[2] == au.Rgb2 && aurBaseDe[3] == au.Rgb2A;
             for (int i = 0; i < 8 && igual; i++) if (aurBaseDe[4 + i] != coverBands[i]) igual = false;
             if (igual) return;
@@ -468,6 +473,7 @@ namespace Rocola
             for (int k = 0; k <= AurFilas; k++)
             {
                 float f = (float)k / AurFilas;
+                if (limpia) f = f * f * (3f - 2f * f);   // C3: del pie a la punta sin escalon en los extremos
                 aurRampPie[k] = AurTonoMezcla(au.Rgb, au.RgbA, f);
                 aurRampAgu[k] = AurTonoMezcla(au.Rgb2, au.Rgb2A, f);
             }
@@ -477,15 +483,18 @@ namespace Rocola
                 uint coverColumn = CoverColor(fx);
                 for (int k = 0; k <= AurFilas; k++)
                 {
-                    uint c = AurLerpRgb(aurRampPie[k], aurRampAgu[k], fx);
-                    if (AuroraBandas) c = AurLerpRgb(c, fx < .5f ? AurLerpRgb(0x009779F2u, 0x0059DBCCu, fx*2) : AurLerpRgb(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2), .38f);
-                    aurBase[k * puntos + i] = MixCoverColor(c, coverColumn);
+                    uint c = AurMezcla(aurRampPie[k], aurRampAgu[k], fx, limpia);
+                    if (AuroraBandas) c = AurMezcla(c, fx < .5f ? AurMezcla(0x009779F2u, 0x0059DBCCu, fx*2, limpia) : AurMezcla(0x0059DBCCu, 0x00E7BE88u, (fx-.5f)*2, limpia), .38f, limpia);
+                    c = MixCoverColor(c, coverColumn);
+                    if (prof) c = Luz.Vivo(c, 0.15f) & 0x00FFFFFFu;   // C2
+                    aurBase[k * puntos + i] = c;
                 }
-                aurBasePie[i] = MixCoverColor(AurLerpRgb(au.Rgb, au.Rgb2, fx), coverColumn);
+                uint pie = MixCoverColor(AurMezcla(au.Rgb, au.Rgb2, fx, limpia), coverColumn);
+                aurBasePie[i] = prof ? Luz.Vivo(pie, 0.15f) & 0x00FFFFFFu : pie;
             }
             aurBaseDe[0] = au.Rgb; aurBaseDe[1] = au.RgbA; aurBaseDe[2] = au.Rgb2; aurBaseDe[3] = au.Rgb2A;
             for (int i = 0; i < 8; i++) aurBaseDe[4 + i] = coverBands[i];
-            aurBasePeso = coverWeight; aurBaseBandas = AuroraBandas; aurBaseOk = true;
+            aurBasePeso = coverWeight; aurBaseBandas = AuroraBandas; aurBaseLimpia = limpia; aurBaseProf = prof; aurBaseOk = true;
         }
     }
 }

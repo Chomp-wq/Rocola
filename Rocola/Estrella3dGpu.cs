@@ -135,6 +135,12 @@ namespace Rocola
             return luz;
         }
 
+        // E3 (PulidoGpu.cs): el brillo de la luz principal con la potencia que se pida (16 de siempre; mas, mas nitido).
+        internal static float Especular(float nx, float ny, float nz, float potencia)
+        {
+            float h = nx * H1x + ny * H1y + nz * H1z;
+            return h > 0f ? (float)Math.Pow(h, potencia) : 0f;
+        }
         // El color de una cara: el metal (plata azulada) tenido con el color de la cancion, por su luz, mas el reflejo
         // en blanco. Alfa aparte.
         internal static uint ColorCara(uint tinte, float luz, float reflejo, uint alfa)
@@ -200,6 +206,9 @@ namespace Rocola
             // La franja va DEBAJO: donde cae sobre otra cara que se ve, esa cara la tapa, y solo queda la de fuera.
             if (filo > 0) stars.DrawMesh(e3filo, filo / 3);
             if (n > 0) stars.DrawMesh(e3caras, n / 3);
+            if (EstrellaEspejo) DibujaEspejoEstrella(n, cx, cy, r);   // E5: su reflejo bajo el horizonte (PulidoGpu.cs)
+            // E3: el destello en cruz donde mas refleja, que se mueve con el giro (PulidoGpu.cs).
+            if (EstrellaDestello && mejor >= 0 && brillo > .2f) { DibujaDestello(e3brilloX, e3brilloY, r, brillo, now); return; }
             // El destello: la faceta que mas refleja la luz principal se enciende al pasar por ella.
             if (mejor >= 0 && brillo > .2f)
             {
@@ -222,15 +231,41 @@ namespace Rocola
             Estrella3d.Ordena(e3zc, e3orden);
             uint a8 = alfa <= 0 ? 0u : alfa >= 255 ? 255u : (uint)(alfa + .5f);
             int v = c0; mejor = -1; brillo = 0;
+            // E1-E4 (PulidoGpu.cs): con alguno encendido, la luz se calcula en cada vertice y no una vez por cara.
+            bool pulida = eco ? EstrellaDegradado : (EstrellaDegradado || EstrellaRefleja || EstrellaBorde || EstrellaDestello);
             for (int k = 0; k < Estrella3d.Caras; k++)
             {
                 int c = e3orden[k];
                 if (!e3mira[c]) continue;   // una cara de espaldas nunca se ve en un solido cerrado
+                if (pulida)
+                {
+                    uint ca, cb, cc; float ra, rb, rc;
+                    ca = ColorVertice(c, Estrella3d.CA[c], tinte, a8, eco, out ra);
+                    cb = ColorVertice(c, Estrella3d.CB[c], tinte, a8, eco, out rb);
+                    cc = ColorVertice(c, Estrella3d.CC[c], tinte, a8, eco, out rc);
+                    e3col[c] = Promedio3(ca, cb, cc);
+                    float rm = Math.Max(ra, Math.Max(rb, rc));
+                    if (rm > brillo)
+                    {
+                        brillo = rm; mejor = c;
+                        int iv = ra >= rb && ra >= rc ? Estrella3d.CA[c] : (rb >= rc ? Estrella3d.CB[c] : Estrella3d.CC[c]);
+                        e3brilloX = e3px[iv]; e3brilloY = e3py[iv];
+                    }
+                    V3(caras, v++, e3px[Estrella3d.CA[c]], e3py[Estrella3d.CA[c]], ca);
+                    V3(caras, v++, e3px[Estrella3d.CB[c]], e3py[Estrella3d.CB[c]], cb);
+                    V3(caras, v++, e3px[Estrella3d.CC[c]], e3py[Estrella3d.CC[c]], cc);
+                    continue;
+                }
                 float refl;
                 float luz = Estrella3d.Luz(e3nx[c], e3ny[c], e3nz[c], LunaRealista && !eco, out refl);
                 uint col = eco ? ColorEco(tinte, luz, a8) : Estrella3d.ColorCara(tinte, LunaRealista ? luz : .45f + .55f * luz, refl, a8);
                 e3col[c] = col;
-                if (refl > brillo) { brillo = refl; mejor = c; }
+                if (refl > brillo)
+                {
+                    brillo = refl; mejor = c;
+                    e3brilloX = (e3px[Estrella3d.CA[c]] + e3px[Estrella3d.CB[c]] + e3px[Estrella3d.CC[c]]) / 3f;
+                    e3brilloY = (e3py[Estrella3d.CA[c]] + e3py[Estrella3d.CB[c]] + e3py[Estrella3d.CC[c]]) / 3f;
+                }
                 V3(caras, v++, e3px[Estrella3d.CA[c]], e3py[Estrella3d.CA[c]], col);
                 V3(caras, v++, e3px[Estrella3d.CB[c]], e3py[Estrella3d.CB[c]], col);
                 V3(caras, v++, e3px[Estrella3d.CC[c]], e3py[Estrella3d.CC[c]], col);

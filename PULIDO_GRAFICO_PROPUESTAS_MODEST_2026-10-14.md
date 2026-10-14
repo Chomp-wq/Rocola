@@ -3,7 +3,10 @@
 Petición del usuario: «Quiero pulir los gráficos de la rocola. Por ejemplo, me gustaría que mejoraras la profundidad de
 colores y degradados, y los reflejos en la estrella animada, y mejoras de ese tipo que tú también me propongas».
 
-Son propuestas: **no se ha cambiado nada todavía**.
+**Hechas** el mismo día todas menos O2 y O3 («Haz todo menos O2 y O3»):
+[PULIDO_GRAFICO_MODEST_2026-10-14.md](PULIDO_GRAFICO_MODEST_2026-10-14.md).
+
+Eran propuestas.
 
 **Reglas que siguen todas:**
 - Solo con tarjeta gráfica; el dibujo por CPU sigue congelado.

@@ -8,6 +8,14 @@ sin reducir calidad; los paneles respetan los limites de la tarjeta. Solo Modest
 HD suspendida y renderizado CPU congelado.
 [Cambios, pruebas y limites pendientes](AUDITORIA_GENERAL_MODEST_2026-10-11.md).
 
+## El pulido de los gráficos — 14 de octubre de 2026
+
+Ctrl+F3 → Fondo → hoja **Pulido**: diez opciones visuales, encendidas de fábrica. Cielo de muchas paradas, colores
+mezclados como luz, aurora más limpia, interfaz sin escalones; la estrella con facetas en degradado, que refleja el cielo
+y el color del género, con destello en cruz, borde de luz y su reflejo en el horizonte; y un brillo de cristal que cruza
+la portada elegida. Solo con tarjeta gráfica; la estrella sigue sin cara.
+[Qué se cambió y cómo se comprobó](PULIDO_GRAFICO_MODEST_2026-10-14.md).
+
 ## Pulir los gráficos, para elegir — 14 de octubre de 2026
 
 Propuestas, todavía sin hacer: colores y degradados (cielo de muchas paradas, colores mezclados como luz, aurora más

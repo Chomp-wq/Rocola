@@ -544,6 +544,7 @@ class Performance
             Llama(panel, "EnsureNieblas");
             Pon(panel, "Nieblas", 2);
             Pon(panel, "NebColor", 0xFF8C78FFu); Pon(panel, "NebColor2", 0xFF40C0A0u);
+            Pon(sf, "CieloSuave", false); Pon(sf, "ColoresProfundos", false);   // aqui se compara la media resolucion con el cielo de dos tramos de siempre
             float midY = H * 0.42f; uint top = 0xFF02030Au, mid = 0xFF101848u, bot = 0xFF3A1E5Au;
             Array sky = Array.CreateInstance(TVtx, 12);
             Estatico(TStar, "SetQuad", sky, 0, 0f, 0f, (float)W, midY, top, top, mid, mid);
@@ -706,7 +707,8 @@ class Performance
         // Y apagados: como siempre (el cielo opaco es lo primero, y va a la pantalla).
         Pon(p, "CieloMedia", false); Pon(p, "GranoVineta", false);
         envios.Clear(); Llama(p, "RenderFrame"); c = Captura();
-        bool siempre = c.Count > 0 && c[0].S.Blanco == fondo && !c[0].S.Mezcla && c[0].Tris == 4;
+        // El cielo opaco va primero: de dos tramos (4 triangulos) o, con el cielo de muchas paradas (C1), de doce (24).
+        bool siempre = c.Count > 0 && c[0].S.Blanco == fondo && !c[0].S.Mezcla && (c[0].Tris == 4 || c[0].Tris == 24);
         foreach (Envio e in c) if (e.S.Blanco != fondo || e.Paso != 28) siempre = false;
         Exige(siempre, "con los dos apagados (de fabrica), el cuadro de siempre: todo a la pantalla, nada doble");
     }
@@ -943,6 +945,204 @@ class Performance
         }
     }
 
+    // ======================= 10) EL PULIDO (14-10-2026, PulidoGpu.cs) =======================
+    static uint U(object o) { return (uint)o; }
+    static int Ch8(uint c, int s) { return (int)((c >> s) & 255); }
+    static void Pulido()
+    {
+        Console.WriteLine("\n  10) EL PULIDO: COLORES, DEGRADADOS, LA ESTRELLA Y LA PORTADA\n");
+        Type TL = TStar.Assembly.GetType("Rocola.Luz", true);
+        // ---- C1: el cielo de muchas paradas ----
+        uint top = 0xFF02030Au, mid = 0xFF2A2468u, bot = 0xFF6A2E7Au; float x1 = .42f;
+        bool pasa = true; int peorSalto = 0;
+        uint[] alto = new uint[401];
+        for (int i = 0; i <= 400; i++) alto[i] = U(Estatico(TL, "ColorCielo", i / 400f, x1, top, mid, bot));
+        foreach (int[] par in new int[][] { new int[] { 0, (int)top }, new int[] { 168, (int)mid }, new int[] { 400, (int)bot } })
+            for (int s = 0; s < 24; s += 8) if (Math.Abs(Ch8(alto[par[0]], s) - Ch8((uint)par[1], s)) > 1) pasa = false;
+        // Sin quiebre: en la parada, el cambio de una fila a la siguiente es parecido antes y despues (la recta cambia de golpe).
+        int[] antes = new int[3], despues = new int[3];
+        for (int k = 0, s = 16; k < 3; k++, s -= 8) { antes[k] = Ch8(alto[168], s) - Ch8(alto[148], s); despues[k] = Ch8(alto[188], s) - Ch8(alto[168], s); }
+        int quiebre = 0; for (int k = 0; k < 3; k++) quiebre = Math.Max(quiebre, Math.Abs(despues[k] - antes[k]));
+        int quiebreRecta = 0;
+        for (int k = 0, s = 16; k < 3; k++, s -= 8)
+        {
+            float a0 = (Ch8(mid, s) - Ch8(top, s)) / (x1 * 400f) * 20f, a1 = (Ch8(bot, s) - Ch8(mid, s)) / ((1 - x1) * 400f) * 20f;
+            quiebreRecta = Math.Max(quiebreRecta, (int)Math.Round(Math.Abs(a1 - a0)));
+        }
+        for (int i = 1; i <= 400; i++) for (int s = 0; s < 24; s += 8) peorSalto = Math.Max(peorSalto, Math.Abs(Ch8(alto[i], s) - Ch8(alto[i - 1], s)));
+        Exige(pasa, "C1: el cielo de muchas paradas pasa por sus tres colores (arriba, la parada media y abajo), a 1 nivel");
+        Exige(quiebre < Math.Max(2, quiebreRecta), "C1: sin quiebre en la parada media (cambio de pendiente " + quiebre + " niveles cada 20 filas; con dos rectas, " + quiebreRecta + ")");
+        Exige(peorSalto <= 3, "C1: ninguna fila salta mas de " + peorSalto + " niveles respecto a la anterior");
+        {
+            object dev = Tarjeta(640, 480, true, false, false); object sf = Cielo(dev, 640, 480);
+            Pon(sf, "CieloSuave", true); envios.Clear(); Llama(sf, "Begin", 640, 480, 0f, 0f); Llama(sf, "End"); List<Envio> con = Captura();
+            Pon(sf, "CieloSuave", false); envios.Clear(); Llama(sf, "Begin", 640, 480, 0f, 0f); Llama(sf, "End"); List<Envio> sin = Captura();
+            Exige(con.Count > 0 && con[0].Tris == 24 && !con[0].S.Mezcla && sin.Count > 0 && sin[0].Tris == 4,
+                  "C1: encendido, el cielo va en doce franjas (24 triangulos, opaco); apagado, en los dos tramos de siempre");
+            int[] fa = Fondo(640, 480, 41), fb = Fondo(640, 480, 42);
+            Pinta(new List<Envio> { con[0] }, fa, 640, 480); Pinta(new List<Envio> { con[0] }, fb, 640, 480);
+            int d, m2, mx; double me; Compara(fa, fb, out d, out m2, out mx, out me);
+            Exige(d == 0, "C1: las doce franjas tapan toda la pantalla, sin huecos ni dobles");
+        }
+        // ---- C2: los colores como luz ----
+        uint azulRojo = U(Estatico(TL, "Mezcla", 0x000000FFu, 0x00FF0000u, .5f));
+        Exige(Ch8(azulRojo, 16) >= 180 && Ch8(azulRojo, 0) >= 180, "C2: mezclar azul y rojo a medias como luz da un violeta claro (" + Ch8(azulRojo, 16) + ", "
+              + Ch8(azulRojo, 0) + "), no el 128 apagado de mezclar numeros");
+        uint gris = U(Estatico(TL, "Vivo", 0xFF808080u, .3f)), apagado = U(Estatico(TL, "Vivo", 0xFF607090u, .3f)), vivo = U(Estatico(TL, "Vivo", 0xFFFF0000u, .3f));
+        Exige(gris == 0xFF808080u, "C2: un gris sigue gris");
+        Exige(Ch8(apagado, 0) - Ch8(apagado, 16) > 0x90 - 0x60 && vivo == 0xFFFF0000u, "C2: un color apagado gana vida y uno ya vivo no cambia");
+        uint hondo = U(Estatico(TL, "Hondo", 0xFF20283Cu));
+        Exige(Ch8(hondo, 16) < 0x20 && Ch8(hondo, 0) <= 0x3C && Ch8(hondo, 0) >= Ch8(hondo, 16), "C2: el negro de arriba, mas hondo y hacia azul noche");
+        // ---- C4: degradado con tramado ----
+        {
+            MethodInfo deg = TForm.GetMethod("DegradadoV", TODO);
+            FieldInfo tram = TForm.GetField("InterfazTramada", TODO);
+            using (Bitmap b = new Bitmap(64, 300, PixelFormat.Format32bppArgb))
+            {
+                using (Graphics g = Graphics.FromImage(b))
+                using (Brush br = (Brush)deg.Invoke(null, new object[] { new Rectangle(0, 0, 64, 300), Color.FromArgb(255, 20, 30, 60), Color.FromArgb(255, 22, 32, 63) }))
+                    g.FillRectangle(br, 0, 0, 64, 300);
+                double peor = 0; int distintosEnFila = 0;
+                for (int y = 0; y < 300; y++)
+                {
+                    double suma = 0; int primero = b.GetPixel(0, y).B; bool mezcla = false;
+                    for (int x = 0; x < 64; x++) { int v = b.GetPixel(x, y).B; suma += v; if (v != primero) mezcla = true; }
+                    double esperado = 60 + 3.0 * (y + .5) / 300;
+                    peor = Math.Max(peor, Math.Abs(suma / 64 - esperado));
+                    if (mezcla) distintosEnFila++;
+                }
+                Exige(peor <= .6 && distintosEnFila > 150, "C4: el degradado tramado sigue la recta en cada fila (como mucho " + peor.ToString("0.00")
+                      + " niveles de media) y reparte el paso entre pixeles (" + distintosEnFila + " de 300 filas mezclan dos niveles)");
+            }
+            tram.SetValue(null, false);
+            using (Brush br2 = (Brush)deg.Invoke(null, new object[] { new Rectangle(0, 0, 8, 8), Color.Black, Color.White }))
+                Exige(br2 is System.Drawing.Drawing2D.LinearGradientBrush, "C4 apagado: el degradado de siempre de Windows");
+            tram.SetValue(null, true);
+        }
+        // ---- E1..E4: la estrella ----
+        {
+            object dev = Tarjeta(640, 480, true, false, false);
+            Control panel = Panel(640, 480, Cielo(dev, 640, 480));
+            Pon(panel, "LunaRealista", true); Pon(panel, "GeneroArgb", 0xFFE0409Fu);
+            MethodInfo pose = Metodo(TPanel, "PoseEstrella");
+            Func<bool, object[]> P = delegate (bool todo)
+            {
+                foreach (string campo in new string[] { "EstrellaDegradado", "EstrellaRefleja", "EstrellaDestello", "EstrellaBorde" }) Pon(panel, campo, todo);
+                Array caras = Array.CreateInstance(TVtx, 60), filo = Array.CreateInstance(TVtx, 180);
+                object[] a = { caras, 0, filo, 0, 320f, 240f, 100f, 0.6, 0.22, 0.1, 0xFFB0C8FFu, 255f, false, 1.1f, 0, 0, 0f };
+                int n0 = (int)pose.Invoke(panel, a);
+                return new object[] { caras, n0, a[15], a[16], filo, a[14] };   // caras, cuantos, la mas brillante, su brillo, la franja, cuantos
+            };
+            object[] sinPulir = P(false), pulida = P(true);
+            Array cs0 = (Array)sinPulir[0], cs1 = (Array)pulida[0]; int n = (int)pulida[1];
+            int carasPlanas = 0, carasDegradado = 0;
+            for (int i = 0; i + 2 < n; i += 3)
+            {
+                uint a0 = (uint)TVtx.GetField("Color").GetValue(cs0.GetValue(i)), b0 = (uint)TVtx.GetField("Color").GetValue(cs0.GetValue(i + 1));
+                uint a1 = (uint)TVtx.GetField("Color").GetValue(cs1.GetValue(i)), b1 = (uint)TVtx.GetField("Color").GetValue(cs1.GetValue(i + 1));
+                if (a0 == b0) carasPlanas++;
+                if (a1 != b1) carasDegradado++;
+            }
+            Exige(n == (int)sinPulir[1] && carasPlanas == n / 3 && carasDegradado >= n / 3 - 1,
+                  "E1: apagado, cada cara de un color; encendido, " + carasDegradado + " de " + (n / 3) + " caras con degradado");
+            Pon(panel, "GeneroArgb", 0xFF20E040u); object[] otroGenero = P(true);
+            int cambia = 0; Array cs2 = (Array)otroGenero[0];
+            for (int i = 0; i < n; i++) if (!object.Equals(TVtx.GetField("Color").GetValue(cs1.GetValue(i)), TVtx.GetField("Color").GetValue(cs2.GetValue(i)))) cambia++;
+            Exige(cambia > n / 4, "E2: la estrella refleja el color del genero: al cambiarlo cambian " + cambia + " de " + n + " vertices");
+            Exige((float)pulida[3] > .2f && (int)pulida[2] >= 0, "E3: hay un punto que brilla para el destello (" + ((float)pulida[3]).ToString("0.00") + ")");
+            // Que nada se salga de su rango ni salga negro: el canal mas alto de cada vertice visible.
+            int negros = 0; for (int i = 0; i < n; i++) { uint c = (uint)TVtx.GetField("Color").GetValue(cs1.GetValue(i)); if ((c & 0xFFFFFF) == 0) negros++; }
+            Exige(negros == 0, "E1-E4: ningun vertice de la estrella sale negro");
+            // Capturas para mirarlas (no se comprueba nada con ellas): la estrella sin pulir y pulida, sobre un cielo.
+            try
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "rocola-pulido-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                Directory.CreateDirectory(dir);
+                foreach (bool todo in new bool[] { false, true })
+                {
+                    object[] pz = P(todo);
+                    Array cz = (Array)pz[0]; int nz = (int)pz[1];
+                    Array filo = (Array)pz[4]; int nf = (int)pz[5];
+                    envios.Clear(); Llama(dev, "BeginFrame");
+                    if (nf > 0) Llama(dev, "DrawMesh", filo, nf / 3);
+                    Llama(dev, "DrawMesh", cz, nz / 3);
+                    Llama(dev, "EndFrame"); List<Envio> es = Captura();
+                    int[] fb = FondoCielo(640, 480, 7);
+                    Pinta(es, fb, 640, 480);
+                    using (Bitmap bm = new Bitmap(640, 480, PixelFormat.Format32bppArgb))
+                    {
+                        BitmapData bd = bm.LockBits(new Rectangle(0, 0, 640, 480), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                        for (int i = 0; i < fb.Length; i++) fb[i] |= unchecked((int)0xFF000000u);
+                        Marshal.Copy(fb, 0, bd.Scan0, fb.Length); bm.UnlockBits(bd);
+                        bm.Save(Path.Combine(dir, todo ? "estrella_pulida.png" : "estrella_antes.png"), ImageFormat.Png);
+                    }
+                }
+                Console.WriteLine("     capturas de la estrella: " + dir);
+            }
+            catch (Exception e) { Console.WriteLine("     (sin capturas: " + e.Message + ")"); }
+            // E5: el reflejo bajo el horizonte.
+            Pon(panel, "aurDibujada", true); Pon(panel, "aurDibujadaBase", 400f);   // una aurora con su raya a 386
+            float hy = (float)Llama(panel, "Horizonte");
+            Array e3 = (Array)Toma(panel, "e3caras");
+            Array.Copy(cs1, e3, n);
+            envios.Clear(); Llama(dev, "BeginFrame");
+            Llama(panel, "DibujaEspejoEstrella", n, 320f, Math.Min(240f, hy - 160f), 100f);
+            Llama(dev, "EndFrame"); List<Envio> esp = Captura();
+            bool debajo = esp.Count == 1, tenue = true;
+            if (esp.Count == 1)
+                for (int i = 0; i < esp[0].Tris * 3; i++)
+                {
+                    float y = BitConverter.ToSingle(esp[0].Datos, i * esp[0].Paso + 4) + .5f;
+                    uint c = BitConverter.ToUInt32(esp[0].Datos, i * esp[0].Paso + 16);
+                    if (y < hy - .01f) debajo = false;
+                    if ((c >> 24) > 255 / 3 + 1) tenue = false;
+                }
+            Exige(debajo && tenue, "E5: el reflejo va entero bajo la raya del horizonte (" + hy + ") y con un tercio del alfa como mucho");
+            envios.Clear(); Llama(dev, "BeginFrame"); Llama(panel, "DibujaEspejoEstrella", n, 320f, hy - 20f, 100f); Llama(dev, "EndFrame");
+            Exige(Captura().Count == 0, "E5: si la estrella toca la raya, no hay reflejo");
+            // ---- O1: el brillo de cristal ----
+            float s0 = (float)Estatico(TPanel, "FranjaBrillo", 0.0), s1 = (float)Estatico(TPanel, "FranjaBrillo", 0.6), s2 = (float)Estatico(TPanel, "FranjaBrillo", 3.0);
+            Exige(Math.Abs(s0 + .3f) < .01f && s1 > s0 && float.IsNaN(s2), "O1: la franja cruza en 1,2 s y luego descansa hasta los 6,5 s");
+            envios.Clear(); Llama(dev, "BeginFrame");
+            Llama(panel, "DibujaBrilloPortada", 200f, 100f, 200f, 200f, 0.0, 0.0, 1f, 600.0);
+            Llama(dev, "EndFrame"); List<Envio> br = Captura();
+            float fl = 200f + 100f - 100f / (float)Math.Sqrt(2), fr = 200f + 100f + 100f / (float)Math.Sqrt(2);
+            bool dentro = br.Count == 1 && br[0].S.Mezcla, suave = true;
+            if (br.Count == 1)
+                for (int i = 0; i < br[0].Tris * 3; i++)
+                {
+                    float x = BitConverter.ToSingle(br[0].Datos, i * br[0].Paso) + .5f, y = BitConverter.ToSingle(br[0].Datos, i * br[0].Paso + 4) + .5f;
+                    uint c = BitConverter.ToUInt32(br[0].Datos, i * br[0].Paso + 16);
+                    if (x < (float)Math.Round(fl) - .01f || x > (float)Math.Round(fr) + .01f || y < 99.99f || y > 300.01f) dentro = false;
+                    if ((c >> 24) > 70) suave = false;
+                }
+            Exige(dentro && suave, "O1: la franja va dentro de la cara de delante de la portada y suma como mucho 70 de 255");
+            envios.Clear(); Llama(dev, "BeginFrame"); Llama(panel, "DibujaBrilloPortada", 200f, 100f, 200f, 200f, 0.6, 0.0, 1f, 600.0); Llama(dev, "EndFrame");
+            Exige(Captura().Count == 0, "O1: mientras la portada gira, no hay brillo");
+        }
+        // ---- La configuracion ----
+        {
+            string raiz = Path.Combine(Path.GetTempPath(), "rocola_pulido_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(raiz);
+            try
+            {
+                object f = Codigo.FormSinEncender(TForm); Pon(f, "carpetaDatos", raiz);
+                string[] campos = { "cieloSuave", "coloresProfundos", "auroraLimpia", "interfazTramada", "estrellaDegradado", "estrellaRefleja",
+                                    "estrellaDestello", "estrellaBorde", "estrellaEspejo", "portadaBrillo" };
+                for (int i = 0; i < campos.Length; i++) Pon(f, campos[i], i % 2 == 0);
+                Llama(f, "SaveConfigPrefs"); Codigo.EsperaGuardado(TForm, f);
+                object g = Codigo.FormSinEncender(TForm); Pon(g, "carpetaDatos", raiz);
+                for (int i = 0; i < campos.Length; i++) Pon(g, campos[i], i % 2 != 0);
+                Llama(g, "LoadConfigPrefs");
+                bool igual = true; for (int i = 0; i < campos.Length; i++) if ((bool)Toma(g, campos[i]) != (i % 2 == 0)) igual = false;
+                Exige(igual, "los diez interruptores del pulido se guardan y se releen");
+                Pon(g, "estrellaEspejo", true); Llama(g, "AplicaPresetGrafico", 3);
+                Exige(!(bool)Toma(g, "estrellaEspejo"), "el preset Performance apaga el reflejo de la estrella en el horizonte (cuesta algo de tarjeta)");
+            }
+            finally { try { Directory.Delete(raiz, true); } catch { } }
+        }
+    }
+
     // ======================= 6) LA PROPUESTA Y EL MEDIDOR =======================
     static int[] Plan(double msBase, double[] ah, double[] am, double[] ab, double alto, double bajo, out bool[] usa, out double fin, out int meta)
     {
@@ -1116,6 +1316,7 @@ class Performance
         try { CuadroEntero(); } catch (Exception e) { Exige(false, "el cuadro entero: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { G1G2(); } catch (Exception e) { Exige(false, "G1 y G2: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { J1J2(); } catch (Exception e) { Exige(false, "J1 y J2: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
+        try { Pulido(); } catch (Exception e) { Exige(false, "el pulido: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         try { Medidor(); } catch (Exception e) { Exige(false, "el medidor: " + e.GetType().Name + ": " + e.Message + " " + e.StackTrace); }
         Console.WriteLine(fallos == 0 ? "\n  PASS performance (" + oks + " comprobaciones; tarjeta imitada, no mide velocidad ni es la del bar)" : "\n  " + fallos + " fallos");
         return fallos;

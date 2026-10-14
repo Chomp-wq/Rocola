@@ -418,6 +418,7 @@ namespace Rocola
         internal void CieloAmplio(int w, int h, float midY, uint top, uint mid, uint bot)
         {
             if (gpu == null) return;
+            if (CieloSuave) { DibujaCieloSuave(ArmaCieloSuave(w + 8f, h, midY, top, mid, bot, 8f)); return; }   // C1 (PulidoGpu.cs)
             if (skyAmplio == null) skyAmplio = new D3D9.Vtx[18];
             float ancho = w + 8f;
             SetQuad(skyAmplio, 0, 0, 0, ancho, midY, top, top, mid, mid);
@@ -479,20 +480,20 @@ namespace Rocola
             internal int W, H, Nieblas, Ver, Gen, Div;
             internal float MidY, NebFase, HazFase, NebEmpuje, HazEmpuje;
             internal uint Top, Mid, Bot, Neb1, Neb2;
-            internal bool Cine, Capa;
+            internal bool Cine, Capa, Suave, Prof;
             internal IntPtr NebTex, HazTex, RuidoTex, VinetaTex;
             internal bool Igual(FirmaCielo o)
             {
                 return W == o.W && H == o.H && Div == o.Div && Nieblas == o.Nieblas && Ver == o.Ver && MidY == o.MidY && NebFase == o.NebFase
                     && HazFase == o.HazFase && NebEmpuje == o.NebEmpuje && HazEmpuje == o.HazEmpuje && Top == o.Top && Mid == o.Mid
-                    && Bot == o.Bot && Neb1 == o.Neb1 && Neb2 == o.Neb2 && Cine == o.Cine && Capa == o.Capa && NebTex == o.NebTex
+                    && Bot == o.Bot && Neb1 == o.Neb1 && Neb2 == o.Neb2 && Cine == o.Cine && Capa == o.Capa && Suave == o.Suave && Prof == o.Prof && NebTex == o.NebTex
                     && HazTex == o.HazTex && RuidoTex == o.RuidoTex && VinetaTex == o.VinetaTex;
             }
             internal void Copia(FirmaCielo o)
             {
                 W = o.W; H = o.H; Div = o.Div; Nieblas = o.Nieblas; Ver = o.Ver; Gen = o.Gen; MidY = o.MidY; NebFase = o.NebFase; HazFase = o.HazFase;
                 NebEmpuje = o.NebEmpuje; HazEmpuje = o.HazEmpuje; Top = o.Top; Mid = o.Mid; Bot = o.Bot; Neb1 = o.Neb1; Neb2 = o.Neb2;
-                Cine = o.Cine; Capa = o.Capa; NebTex = o.NebTex; HazTex = o.HazTex; RuidoTex = o.RuidoTex; VinetaTex = o.VinetaTex;
+                Cine = o.Cine; Capa = o.Capa; Suave = o.Suave; Prof = o.Prof; NebTex = o.NebTex; HazTex = o.HazTex; RuidoTex = o.RuidoTex; VinetaTex = o.VinetaTex;
             }
         }
         private FirmaCielo firmaHecha, firmaAhora;   // al primer uso (un panel armado a mano en las pruebas tambien los tiene)
@@ -518,7 +519,7 @@ namespace Rocola
             FirmaCielo f = firmaAhora;
             f.W = w; f.H = h; f.Div = div; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;
             f.NebEmpuje = nebEmpuje; f.HazEmpuje = hazEmpuje; f.Top = top; f.Mid = mid; f.Bot = bot; f.Neb1 = NebColor; f.Neb2 = NebColor2;
-            f.Cine = NebulosasCine; f.Capa = capa; f.NebTex = nebTex; f.HazTex = hazTex; f.RuidoTex = ruido; f.VinetaTex = vineta;
+            f.Cine = NebulosasCine; f.Capa = capa; f.Suave = stars.CieloSuave; f.Prof = stars.ColoresProfundos; f.NebTex = nebTex; f.HazTex = hazTex; f.RuidoTex = ruido; f.VinetaTex = vineta;
             bool repinta = !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0;
             if (repinta)
             {

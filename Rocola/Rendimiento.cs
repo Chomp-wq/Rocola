@@ -243,6 +243,11 @@ namespace Rocola
             gpuPanel.LunaProtagonista = lunaProtagonista;
             gpuPanel.EstelaEstelar = estelaEstelar;
             gpuPanel.Estrella3D = estrella3d;
+            // El pulido (PulidoGpu.cs)
+            gpuPanel.CieloSuave = cieloSuave; gpuPanel.ColoresProfundos = coloresProfundos; gpuPanel.AuroraLimpia = auroraLimpia;
+            gpuPanel.EstrellaDegradado = estrellaDegradado; gpuPanel.EstrellaRefleja = estrellaRefleja; gpuPanel.EstrellaDestello = estrellaDestello;
+            gpuPanel.EstrellaBorde = estrellaBorde; gpuPanel.EstrellaEspejo = estrellaEspejo; gpuPanel.PortadaBrillo = portadaBrillo;
+            if (InterfazTramada != interfazTramada) { InterfazTramada = interfazTramada; CambioElPanelDeReposo(); }   // C4: se rehornea
             gpuPanel.LunaDelCielo = lunaDelCielo; gpuPanel.LluviasEstrellas = lluviasEstrellas;   // el cielo vivo (CieloVivoGpu.cs)
             gpuPanel.FugazFestejo = fugazFestejo;
             gpuPanel.ProfundidadPagina = profundidadPagina; gpuPanel.CieloPorHora = cieloPorHora; gpuPanel.ReflejoAurora = reflejoAurora;
@@ -1180,6 +1185,24 @@ namespace Rocola
             Label lVivo2 = new Label(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;
             lVivo2.Text = "Con la hora cambia solo el cielo de abajo: mas\nhondo de madrugada y calido al anochecer.";
 
+            // EL PULIDO (PulidoGpu.cs, 14-10-2026): diez opciones visuales de la tarjeta, cada una con su interruptor, en su hoja.
+            string[] pulNames = { "Cielo de muchas paradas", "Colores con mas profundidad", "Aurora mas limpia", "Interfaz sin escalones",
+                "Estrella con facetas en degradado", "La estrella refleja el cielo", "Destello nitido en cruz", "Borde de luz en la estrella",
+                "Reflejo de la estrella en el horizonte", "Brillo de cristal en la portada elegida" };
+            Interruptor[] pul = new Interruptor[pulNames.Length];
+            for (int i = 0; i < pul.Length; i++)
+            {
+                int k = i;
+                pul[i] = new Interruptor(); pul[i].SetBounds(16, 40, 424, 26);
+                pul[i].Font = fNom; pul[i].ForeColor = cTexto; pul[i].Acento = cAc;
+                pul[i].Text = pulNames[i]; pul[i].Checked = LeePulido(i);
+                pul[i].CheckedChanged += delegate { if (LeePulido(k) == pul[k].Checked) return; PonPulido(k, pul[k].Checked); AplicaEfectosGpu(); f3CambioGraf = true; };
+            }
+            Label lPul1 = new Label(); lPul1.BackColor = Color.Transparent; lPul1.ForeColor = cTenue; lPul1.Font = fDes;
+            lPul1.Text = "Los colores se mezclan como luz y no como numeros:\nlos cruces salen limpios y vivos. Los degradados,\nsin quiebres ni escalones.";
+            Label lPul2 = new Label(); lPul2.BackColor = Color.Transparent; lPul2.ForeColor = cTenue; lPul2.Font = fDes;
+            lPul2.Text = "La estrella como metal pulido: refleja el cielo y el\ncolor de la cancion. Sin cara, como siempre.";
+
             BotonPlano bResetF = new BotonPlano();
             bResetF.SetBounds(16, 594, 300, 38); bResetF.Font = fBot; bResetF.Text = "Fondo como de fabrica";
             bResetF.TabIndex = 4;
@@ -1217,6 +1240,7 @@ namespace Rocola
                 for (int i = 0; i < extras.Length; i++) extras[i].Checked = true;
                 for (int i = 0; i < tactile.Length; i++) tactile[i].Checked = true;
                 for (int i = 0; i < vivo.Length; i++) vivo[i].Checked = true;   // y el cielo vivo, encendido
+                for (int i = 0; i < pul.Length; i++) { PonPulido(i, true); pul[i].Checked = true; }   // y el pulido
                 nebNaturalFuerza = NebNaturalDef;
                 for (int i = 0; i < sw.Length; i++) sw[i].Checked = true;
                 barNat.Value = (int)Math.Round(NebNaturalDef * 100f);
@@ -1234,7 +1258,9 @@ namespace Rocola
                 new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
                 new Control[] { extras[1], extras[2], lMoon },
                 new Control[] { vivo[0], vivo[1], vivo[2], lVivo1 },
-                new Control[] { vivo[3], vivo[4], vivo[5], lVivo2 }
+                new Control[] { vivo[3], vivo[4], vivo[5], lVivo2 },
+                new Control[] { pul[0], pul[1], pul[2], pul[3], lPul1 },
+                new Control[] { pul[4], pul[5], pul[6], pul[7], pul[8], pul[9], lPul2 }
             };
             MontaHojasFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue);
 
@@ -1249,9 +1275,11 @@ namespace Rocola
             Necesita(swEstela, delegate { return lunaActiva; }, "Estrella viajera con orbitas (esta hoja)");
             Necesita(extras[2], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
             Necesita(vivo[3], delegate { return paginaDesliza; }, "Pasar de pagina deslizando (Pantalla)");
+            // El pulido de la estrella es de la estrella en 3D (la de fabrica).
+            for (int i = 4; i <= 8; i++) Necesita(pul[i], delegate { return estrella3d; }, "Estrella en 3D girando (hoja Estrella)");
             // Y todo lo de esta pagina es de la tarjeta grafica.
             SoloConTarjeta(sw); SoloConTarjeta(swFlujo, swPaleta, barNat, swCristal, swDoce, swEstela, sw3d);
-            SoloConTarjeta(extras); SoloConTarjeta(tactile); SoloConTarjeta(moonSwitches); SoloConTarjeta(vivo);
+            SoloConTarjeta(extras); SoloConTarjeta(tactile); SoloConTarjeta(moonSwitches); SoloConTarjeta(vivo); SoloConTarjeta(pul);
             AvisoSinTarjeta(lAdSin, lAd);
             pinta();
             return pg;
@@ -1861,6 +1889,7 @@ namespace Rocola
             foreach (EfectoGrafico e in ef) PonNivel(e.Clave, nivel);
             bool ahorros = preset != NivAlto;
             PonAhorros(ahorros);
+            if (ahorros) estrellaEspejo = false;   // E5 cuesta algo de tarjeta: Performance, Medio y Bajo lo apagan (PulidoGpu.cs)
             AplicaEfectosGpu();
         }
 

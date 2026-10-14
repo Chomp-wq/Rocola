@@ -283,7 +283,7 @@ namespace Rocola
                 g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 using (GraphicsPath borde = AsistenteGloboCamino(w, h))
-                using (LinearGradientBrush vidrio = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(250, 26, 44, 78), Color.FromArgb(246, 10, 18, 37), 90f))
+                using (Brush vidrio = DegradadoV(new Rectangle(0, 0, w, h), Color.FromArgb(250, 26, 44, 78), Color.FromArgb(246, 10, 18, 37)))
                 using (Pen halo = new Pen(logro ? Color.FromArgb(70, 255, 214, 102) : Color.FromArgb(40, 101, 206, 255), 5f))
                 using (Pen brillo = new Pen(logro ? Color.FromArgb(240, 255, 214, 102) : Color.FromArgb(220, 142, 215, 255), 1.8f))
                 { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }

@@ -1127,11 +1127,20 @@ namespace Rocola
             // media para abajo. Con el interruptor apagado los dos valen 0 y sale exactamente el cielo de siempre.
             uint cMid = Form1.TineCielo(skyMid, Form1.HondoMedio * HoraHondo, Form1.CalorMedio * HoraCalor);
             uint cBot = Form1.TineCielo(skyBot, Form1.HondoAbajo * HoraHondo, Form1.CalorAbajo * HoraCalor);
-            SetQuad(skyV, 0, 0, 0, w, midY, skyTop, skyTop, cMid, cMid);
-            SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
+            // C2 (PulidoGpu.cs): con "Colores con mas profundidad", el negro de arriba mas hondo y mas vida en los otros dos.
+            uint cTop = skyTop; ColoresCielo(ref cTop, ref cMid, ref cBot);
             // Cielo azul/negro original; la paleta movil pertenece a la aurora. Con el cielo a media resolucion
             // (Ctrl+F3 -> Imagen -> Performance) el cielo y las nebulosas salen de la imagen intermedia (PerformanceGpu.cs).
-            if (CieloBase == null || !CieloBase(w, h, midY, skyTop, cMid, cBot)) gpu.DrawSky(skyV);
+            if (CieloBase == null || !CieloBase(w, h, midY, cTop, cMid, cBot))
+            {
+                if (CieloSuave) DibujaCieloSuave(ArmaCieloSuave(w, h, midY, cTop, cMid, cBot, 0f));   // C1: doce franjas
+                else
+                {
+                    SetQuad(skyV, 0, 0, 0, w, midY, cTop, cTop, cMid, cMid);
+                    SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
+                    gpu.DrawSky(skyV);
+                }
+            }
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
             // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
@@ -2372,6 +2381,7 @@ namespace Rocola
             // escena ya abierta no es valido en Direct3D 9.
             stars.Redimensiona(Width, Height);
             stars.SetSky(SkyTop, SkyMid, SkyBot);
+            PasaPulido();   // C1 y C2 (PulidoGpu.cs)
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
             // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
             // pesado: cada disco es su propio quad con textura cacheada (rejilla por celdas, mas abajo).
@@ -2662,6 +2672,8 @@ namespace Rocola
             if (cs.Sel.Has)
             {
                 stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
+                if (selTexA != IntPtr.Zero && !(cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f))   // O1: el brillo de cristal (PulidoGpu.cs)
+                    DibujaBrilloPortada(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Tilt, ShowAlbum ? WallOpacity : 1f, AhoraMs());
                 if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
                     stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade * (ShowAlbum ? WallOpacity : 1f), cs.Sel.Tilt);
                 DibujaFoco(cs);   // "12 canciones · 38 min" sobre el borde de abajo de la portada enfocada
@@ -3642,8 +3654,8 @@ namespace Rocola
                 float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
                 // MAS PROFUNDIDAD AL PASAR DE PAGINA (CieloVivoGpu.cs): se suma lo que se corrieron, sin salirse nunca del
                 // margen (asi el borde no asoma y la capa no cambia de tamano). Sin empuje, la cuenta de siempre.
-                NieblaDeriva(mx, my, EnMargen(c * mx + nebEmpuje, mx), sn * my, (a << 24) | TinteNebulosa(NebColor, false, NebulosasCine));
-                NieblaDeriva(mx, my, EnMargen(-c * mx + nebEmpuje, mx), -sn * my, (a << 24) | TinteNebulosa(NebColor2, true, NebulosasCine));
+                NieblaDeriva(mx, my, EnMargen(c * mx + nebEmpuje, mx), sn * my, (a << 24) | TinteNeb(NebColor, false));
+                NieblaDeriva(mx, my, EnMargen(-c * mx + nebEmpuje, mx), -sn * my, (a << 24) | TinteNeb(NebColor2, true));
             }
             if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
             {

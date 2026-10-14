@@ -546,6 +546,17 @@ namespace Rocola
                     else if (s.StartsWith("luna_protagonista=")) lunaProtagonista = s.Substring("luna_protagonista=".Length).Trim() != "0";
                     else if (s.StartsWith("estela_estelar=")) estelaEstelar = s.Substring("estela_estelar=".Length).Trim() != "0";
                     else if (s.StartsWith("estrella_3d=")) estrella3d = s.Substring("estrella_3d=".Length).Trim() != "0";
+                    // El pulido (PulidoGpu.cs, 14-10-2026)
+                    else if (s.StartsWith("cielo_suave=")) cieloSuave = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("colores_profundos=")) coloresProfundos = s.Substring(18).Trim() != "0";
+                    else if (s.StartsWith("aurora_limpia=")) auroraLimpia = s.Substring(14).Trim() != "0";
+                    else if (s.StartsWith("interfaz_tramada=")) interfazTramada = s.Substring(17).Trim() != "0";
+                    else if (s.StartsWith("estrella_degradado=")) estrellaDegradado = s.Substring(19).Trim() != "0";
+                    else if (s.StartsWith("estrella_refleja=")) estrellaRefleja = s.Substring(17).Trim() != "0";
+                    else if (s.StartsWith("estrella_destello=")) estrellaDestello = s.Substring(18).Trim() != "0";
+                    else if (s.StartsWith("estrella_borde=")) estrellaBorde = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("estrella_espejo=")) estrellaEspejo = s.Substring(16).Trim() != "0";
+                    else if (s.StartsWith("portada_brillo=")) portadaBrillo = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("colores_fluidos=")) coloresFluidos = s.Substring("colores_fluidos=".Length).Trim() != "0";
                     else if (s.StartsWith("transiciones_tacto=")) transicionesTacto = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("cielo_profundo=")) cieloProfundo = s.Substring(15).Trim() != "0";
@@ -710,6 +721,16 @@ namespace Rocola
             sb.Append("luna_protagonista=").Append(lunaProtagonista ? "1" : "0").Append("\r\n");
             sb.Append("estela_estelar=").Append(estelaEstelar ? "1" : "0").Append("\r\n");
             sb.Append("estrella_3d=").Append(estrella3d ? "1" : "0").Append("\r\n");
+            sb.Append("cielo_suave=").Append(cieloSuave ? "1" : "0").Append("\r\n");
+            sb.Append("colores_profundos=").Append(coloresProfundos ? "1" : "0").Append("\r\n");
+            sb.Append("aurora_limpia=").Append(auroraLimpia ? "1" : "0").Append("\r\n");
+            sb.Append("interfaz_tramada=").Append(interfazTramada ? "1" : "0").Append("\r\n");
+            sb.Append("estrella_degradado=").Append(estrellaDegradado ? "1" : "0").Append("\r\n");
+            sb.Append("estrella_refleja=").Append(estrellaRefleja ? "1" : "0").Append("\r\n");
+            sb.Append("estrella_destello=").Append(estrellaDestello ? "1" : "0").Append("\r\n");
+            sb.Append("estrella_borde=").Append(estrellaBorde ? "1" : "0").Append("\r\n");
+            sb.Append("estrella_espejo=").Append(estrellaEspejo ? "1" : "0").Append("\r\n");
+            sb.Append("portada_brillo=").Append(portadaBrillo ? "1" : "0").Append("\r\n");
             sb.Append("colores_fluidos=").Append(coloresFluidos ? "1" : "0").Append("\r\n");
             sb.Append("transiciones_tacto=").Append(transicionesTacto ? "1" : "0").Append("\r\n");
             sb.Append("cielo_profundo=").Append(cieloProfundo ? "1" : "0").Append("\r\n");

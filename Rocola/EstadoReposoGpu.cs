@@ -135,7 +135,7 @@ namespace Rocola
                 sig.Append('|').Append(queue[i].PathKey()).Append('|').Append(qt[i]).Append('|').Append(qa[i])
                     .Append('|').Append(covers[i] != null ? covers[i].GetHashCode() : 0);
             }
-            sig.Append('|').Append(colaDoce).Append('|').Append(textosDeslizantes);
+            sig.Append('|').Append(colaDoce).Append('|').Append(textosDeslizantes).Append('|').Append(InterfazTramada);
             // Lo que suena, en grande (SuenaVivoGpu.cs): el genero y lo que falta para cada una de la cola.
             ReposoGrande extra = ExtraReposo(w, h, qt.Length);
             if (extra != null)
@@ -279,8 +279,8 @@ namespace Rocola
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
             Bitmap bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(bitmap))
-            using (LinearGradientBrush bg = new LinearGradientBrush(new Rectangle(0, 0, w, h),
-                Color.FromArgb(transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(transparent ? 0 : 248, 7, 12, 29), 90f))
+            using (Brush bg = DegradadoV(new Rectangle(0, 0, w, h),
+                Color.FromArgb(transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(transparent ? 0 : 248, 7, 12, 29)))   // C4 (PulidoGpu.cs)
             using (Pen top = new Pen(Color.FromArgb(155, Lighten(accent, .45)), 2))
             using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))

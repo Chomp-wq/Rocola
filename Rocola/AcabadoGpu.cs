@@ -346,9 +346,9 @@ namespace Rocola
             Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(b))
             using (GraphicsPath edge = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))
-            using (LinearGradientBrush body = new LinearGradientBrush(new Rectangle(0, 0, w, h),
+            using (Brush body = DegradadoV(new Rectangle(0, 0, w, h),
                 neutral ? Color.FromArgb(205, 55, 55, 55) : Color.FromArgb(205, 26, 37, 59),
-                neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31), 90f))
+                neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31)))   // C4 (PulidoGpu.cs)
             using (LinearGradientBrush sheen = new LinearGradientBrush(new Rectangle(0, 0, w, h),
                 neutral ? Color.FromArgb(36, 255, 255, 255) : Color.FromArgb(36, 210, 230, 255), Color.FromArgb(0, 210, 230, 255), 115f))
             using (Pen rim = new Pen(neutral ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(96, 193, 222, 255), 1.3f))

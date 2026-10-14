@@ -633,11 +633,11 @@ class DibujoLigero
                     else
                     {
                         Envio e = envios[0];
-                        if (e.Mezcla || e.ConTextura || e.Tris != 4) q = "lo primero no es el cielo opaco (mezcla " + e.Mezcla + ", textura " + e.ConTextura + ", " + e.Tris + " triangulos)";
+                        if (e.Mezcla || e.ConTextura || (e.Tris != 4 && e.Tris != 24)) q = "lo primero no es el cielo opaco (mezcla " + e.Mezcla + ", textura " + e.ConTextura + ", " + e.Tris + " triangulos)";
                         else
                         {
                             int[] veces = new int[W * H];
-                            for (int i = 0; i < 4; i++) Triangulo(e.Datos, i * 3, null, false, false, null, veces, W, H);
+                            for (int i = 0; i < e.Tris; i++) Triangulo(e.Datos, i * 3, null, false, false, null, veces, W, H);
                             int huecos = 0, dobles = 0;
                             for (int i = 0; i < veces.Length; i++) { if (veces[i] == 0) huecos++; else if (veces[i] > 1) dobles++; }
                             if (huecos > 0 || dobles > 0) q = huecos + " pixeles sin tapar y " + dobles + " tapados dos veces";
@@ -914,7 +914,7 @@ class DibujoLigero
         Pon(p, "GetUiBot", (Func<Bitmap>)delegate { return abajo; }); Pon(p, "GetUiBotVersion", (Func<int>)delegate { return 1; });
         List<Envio> c1 = Cuadro(p);
         IntPtr ui = (IntPtr)Toma(p, "uiTex"), bot = (IntPtr)Toma(p, "uiBotTex");
-        Exige(c1.Count > 0 && !c1[0].Mezcla && !c1[0].ConTextura && c1[0].Tris == 4 && borrados == 0, "el cuadro no borra y empieza por el cielo opaco");
+        Exige(c1.Count > 0 && !c1[0].Mezcla && !c1[0].ConTextura && (c1[0].Tris == 4 || c1[0].Tris == 24) && borrados == 0, "el cuadro no borra y empieza por el cielo opaco (de dos tramos, o de doce con el cielo de muchas paradas)");
         Exige(Toma(p, "uiTeselas") == null, "recien subida, la interfaz se pinta entera");
         // Quieta: se sigue dibujando (como en el bar) hasta que la interfaz lleva el rato sin cambiar.
         List<Envio> c2; System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();

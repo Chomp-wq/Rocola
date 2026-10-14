@@ -37,7 +37,8 @@ class AjustesVivos
     static readonly string[] requisitos = { "estadoExpandido", "progresoNeon", "cancionesTransparentes", "fondoPortadaOn",
                                             "cieloProfundo", "lunaActiva", "paginaDesliza", "muroReposo",
                                             "cieloMedia",     // «Fondo en una sola capa» (G2, 14-10-2026) va dentro del cielo a media resolucion
-                                            "vinetaSuave" };  // y la pasada de grano y vineta necesita la vineta (14-10-2026)
+                                            "vinetaSuave",    // y la pasada de grano y vineta necesita la vineta (14-10-2026)
+                                            "estrella3d" };   // y el pulido de la estrella, la estrella en 3D (PulidoGpu.cs)
 
     [STAThread] static int Main(string[] args)
     {

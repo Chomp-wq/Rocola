@@ -155,6 +155,7 @@
     <Compile Include="PerformanceGpu.cs" />
     <Compile Include="AjustesVivos.cs" />
     <Compile Include="UnDisparo.cs" />
+    <Compile Include="PulidoGpu.cs" />
     <Compile Include="LoQueSuena.cs" />
     <Compile Include="ArreglosGrabacion.cs" />
     <Compile Include="MedidaFluidezGpu.cs" />
