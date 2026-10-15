@@ -8,6 +8,9 @@ carátulas transparentes con JPEG activado. El entrenamiento DSEE por género ex
 que el general. Solo Modest; no cambia el aspecto ni el renderizador CPU.
 [Detalles y verificaciones](CORRECCIONES_REVISION_MODEST_2026-10-15.md).
 
+La leyenda del menú del asistente distingue las acciones: flechas rojas ↑ ↓ para **mover**, botón verde para
+**elegir** y botón rojo para **salir**. Conserva los iconos y el comportamiento de los controles.
+
 ## Auditoria de Modest — 11 de octubre de 2026
 
 Correcciones de guardado, buscador, fichas, transparencia de caratulas, bordes GPU,

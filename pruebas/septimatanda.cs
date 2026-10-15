@@ -144,6 +144,11 @@ class SeptimaTanda
         MethodInfo pinta = form.GetMethod("PintaPanelAsistente", B), ctrl = form.GetMethod("AsistenteControlesOpcion", B), opc = form.GetMethod("AsistenteOpcionRect", B);
         Check(ctrl != null, "estan los controles de la opcion");
         if (ctrl == null) return;
+        System.Collections.Generic.List<string> textos = Codigo.Textos(pinta);
+        Check(textos.Contains("mover") && textos.Contains("elegir") && textos.Contains("salir") && !textos.Contains("aceptar"),
+              "leyenda: flechas rojas para mover, verde para elegir, rojo para salir");
+        Check(textos.IndexOf("mover") < textos.IndexOf("elegir") && textos.IndexOf("elegir") < textos.IndexOf("salir"),
+              "cada indicacion sigue el orden de sus iconos, sin confundir mover con elegir");
         foreach (int[] wh in new int[][] { new int[] { 574, 499 }, new int[] { 356, 312 }, new int[] { 900, 640 } })
             for (int sel = 0; sel < 3; sel++)
                 using (Bitmap b = (Bitmap)pinta.Invoke(null, new object[] { wh[0], wh[1], 0, 0, sel }))

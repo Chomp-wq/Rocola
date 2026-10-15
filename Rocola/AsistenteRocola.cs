@@ -344,7 +344,7 @@ namespace Rocola
         // LOS CONTROLES DIBUJADOS EN LA OPCION ELEGIDA (peticion del 12-10-2026: "pon los controles en su pantalla,
         // graficos, para que el cliente lo entienda mas facil; en cada casilla que el cliente se mueva los controles se
         // moveran con cada seleccion"). Dentro de la opcion elegida, a la derecha: las dos flechas de subir y bajar (rojas,
-        // como en la cruceta; la que no lleva a ningun lado, apagada) y el boton VERDE de aceptar. Las otras opciones no
+        // como en la cruceta; la que no lleva a ningun lado, apagada) y el boton VERDE de elegir. Las otras opciones no
         // llevan nada: los controles van con la seleccion. Coordenadas del globo, como AsistenteOpcionRect.
         internal static void AsistenteControlesOpcion(Rectangle r, out Rectangle arriba, out Rectangle abajo, out Rectangle verde)
         {
@@ -473,15 +473,15 @@ namespace Rocola
                     }
                 }
                 finally { if (propia != null) propia.Dispose(); }
-                // La leyenda de abajo, con los botones dibujados como son (antes: "FLECHAS: elegir · VERDE: aceptar · ROJO: salir").
+                // Flechas rojas ARRIBA/ABAJO: mover. VERDE: elegir. ROJO: salir.
                 int ld = Math.Max(12, Math.Min(26, (int)(h * .046f))), lcy = (int)(h * .955f);
                 float lx = x;
                 Color azulC = Color.FromArgb(150, 215, 255);
                 TeclaFlecha(g, lx, lcy, ld, rojo, 0); lx += ld + 3;
                 TeclaFlecha(g, lx, lcy, ld, rojo, 1); lx += ld + 6;
-                lx = CtrlTxt(g, pequeno, "elegir", lx, lcy, azulC) + ld;
+                lx = CtrlTxt(g, pequeno, "mover", lx, lcy, azulC) + ld;
                 lx = CtrlDot(g, lx, lcy, ld, verdeC) + 6;
-                lx = CtrlTxt(g, pequeno, "aceptar", lx, lcy, azulC) + ld;
+                lx = CtrlTxt(g, pequeno, "elegir", lx, lcy, azulC) + ld;
                 lx = CtrlDot(g, lx, lcy, ld, rojo) + 6;
                 CtrlTxt(g, pequeno, "salir", lx, lcy, azulC);
             }
