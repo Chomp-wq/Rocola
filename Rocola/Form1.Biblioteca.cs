@@ -2508,6 +2508,9 @@ namespace Rocola
                         System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 ? 20 : 5);
                     }
                     try { File.Delete(viejas[i]); fuera++; } catch { }
+#if ROCOLA_GPU
+                    if (!File.Exists(viejas[i])) ConfirmaFormatoMiniatura(viejas[i], false);
+#endif
                 }
                 return fuera;
             }
@@ -2526,7 +2529,16 @@ namespace Rocola
             // Interruptor "Caratulas en JPEG" encendido y portada opaca: JPEG de calidad alta al lado de la identidad.
             // Si no: PNG sin perdida en la identidad (ver MiniaturaGuardada en Form1.Portadas.cs).
             ImageCodecInfo jpeg = null;
-            try { if (JpegActivo && MiniaturaOpaca(thumb)) jpeg = CodecJpegMiniatura(); } catch { jpeg = null; }
+            bool alfa = false;
+            try
+            {
+                if (JpegActivo)
+                {
+                    alfa = !MiniaturaOpaca(thumb);
+                    if (!alfa) jpeg = CodecJpegMiniatura();
+                }
+            }
+            catch { jpeg = null; }
             string destino = jpeg != null ? MiniaturaJpeg(cacheFile) : cacheFile;
             string tmp = destino + ".tmp." + Guid.NewGuid().ToString("N");
             try
@@ -2542,10 +2554,20 @@ namespace Rocola
                     else thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache.
                     if (File.Exists(destino))
                     {
-                        try { File.Replace(tmp, destino, null, true); tmp = null; return; }
+                        try
+                        {
+                            File.Replace(tmp, destino, null, true); tmp = null;
+#if ROCOLA_GPU
+                            ConfirmaFormatoMiniatura(cacheFile, alfa);
+#endif
+                            return;
+                        }
                         catch { try { File.Delete(destino); } catch { } }
                     }
                     File.Move(tmp, destino); tmp = null;
+#if ROCOLA_GPU
+                    ConfirmaFormatoMiniatura(cacheFile, alfa);
+#endif
                 }
             }
             catch { }

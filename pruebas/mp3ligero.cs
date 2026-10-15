@@ -118,7 +118,8 @@ class Mp3LigeroPrueba
     }
     static byte[] Trozo(byte[] a, int desde, int n) { byte[] r = new byte[n]; Array.Copy(a, desde, r, 0, n); return r; }
 
-    static long Reservado() { return (long)typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread").Invoke(null, null); }
+    static readonly MethodInfo mideReserva = typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread");
+    static long Reservado() { return mideReserva == null ? 0 : (long)mideReserva.Invoke(null, null); }
 
     static int Main(string[] args)
     {
@@ -182,9 +183,13 @@ class Mp3LigeroPrueba
                     suma[lig] = g[0].Suma;
                 }
             }
-        Console.WriteLine("    cancion de " + seg.ToString("0") + " s leida entera: NAudio " + basuraDe[0] / 1024 + " KB de basura, ligero " + basuraDe[1] / 1024 + " KB");
         Check(suma[0] == suma[1], "la cancion larga: el descompresor recibe lo mismo con los dos");
-        Check(basuraDe[0] > 1024 * 1024 && basuraDe[1] * 50 < basuraDe[0], "la cancion larga deja menos del 2 % de la basura de NAudio");
+        if (mideReserva != null)
+        {
+            Console.WriteLine("    cancion de " + seg.ToString("0") + " s leida entera: NAudio " + basuraDe[0] / 1024 + " KB de basura, ligero " + basuraDe[1] / 1024 + " KB");
+            Check(basuraDe[0] > 1024 * 1024 && basuraDe[1] * 50 < basuraDe[0], "la cancion larga deja menos del 2 % de la basura de NAudio");
+        }
+        else Console.WriteLine("    OMITIDA solo la medida de reservas: este CLR (.NET 3.5) no trae GetAllocatedBytesForCurrentThread; bytes y cuadros si comprobados.");
 
         // La medida abre el ligero, con ID3 y sin el.
         Type tf = asm.GetType("Rocola.Form1", true);

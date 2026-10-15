@@ -28,6 +28,47 @@ class Slug(unittest.TestCase):
 
 
 class SoloGenero(unittest.TestCase):
+    def test_minimos_del_genero_no_se_saltan_con_miles_de_ejemplos(self):
+        partes = [np.arange(2000), np.arange(2000, 4000), np.arange(4000, 6000)]
+        informe = {"independiente": True, "grupos": [1, 1, 1]}
+        self.assertIn("validacion", T.valida_material_genero(partes, informe))
+        self.assertIn("minimo 3 y 200", T.valida_material_genero(partes, informe))
+        # Los grupos siguen separados: rechazar por diversidad no debe llamarlo contaminacion.
+        self.assertTrue(informe["independiente"])
+
+    def test_minimos_en_cada_particion_y_limites_inclusivos(self):
+        from origen_dsee import MIN_GRUPOS, MIN_EJEMPLOS
+        partes = [np.arange(n) for n in MIN_EJEMPLOS]
+        informe = {"independiente": True, "grupos": list(MIN_GRUPOS)}
+        self.assertEqual(T.valida_material_genero(partes, informe), "")
+        for p in range(3):
+            poca_diversidad = dict(informe, grupos=list(MIN_GRUPOS))
+            poca_diversidad["grupos"][p] -= 1
+            self.assertTrue(T.valida_material_genero(partes, poca_diversidad))
+            pocas_filas = list(partes)
+            pocas_filas[p] = pocas_filas[p][:-1]
+            self.assertTrue(T.valida_material_genero(pocas_filas, informe))
+        self.assertTrue(T.valida_material_genero(partes, dict(informe, independiente=False)))
+
+    def test_cli_rechaza_antes_de_entrenar_o_guardar(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            ruta = os.path.join(d, "material.bin")
+            candidato = os.path.join(d, "candidato.bin")
+            partes = [np.arange(0, 2000), np.arange(2000, 4000), np.arange(4000, 6000)]
+            canciones = np.repeat(np.arange(1, 4, dtype=np.uint64), 2000)
+            informe = {"independiente": True, "_canciones": canciones, "_grupos": canciones.copy()}
+            with mock.patch.object(sys, "argv", ["entrenar_ia.py", "--datos", ruta, "--genero", "cumbia"]), \
+                    mock.patch.object(T, "rutas_candidato", return_value=("no.bin", candidato, os.path.join(d, "informe.json"))), \
+                    mock.patch.object(T, "cargar_datos_rocola", return_value=(np.zeros((6000, 28)), np.zeros((6000, 12)))), \
+                    mock.patch.object(T, "particiones_rocola", return_value=(partes, informe)), \
+                    mock.patch.object(T, "lee_generos", return_value={1: "cumbia", 2: "cumbia", 3: "cumbia"}), \
+                    mock.patch.object(T, "train") as entrena, mock.patch("builtins.print"):
+                self.assertEqual(T.main(), 1)
+                entrena.assert_not_called()
+            self.assertFalse(os.path.exists(candidato))
+            self.assertFalse(os.path.exists(os.path.join(d, "informe.json")))
+
     def test_deja_solo_las_canciones_del_genero_sin_moverlas_de_particion(self):
         with tempfile.TemporaryDirectory() as d:
             ruta = os.path.join(d, "rocola_ia_datos.bin")

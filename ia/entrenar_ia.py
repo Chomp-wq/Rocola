@@ -541,6 +541,22 @@ def solo_genero(partes, informe, ruta, sidecar, genero):
     return nuevas, informe
 
 
+def valida_material_genero(partes, informe):
+    """Filtrar conserva la separacion, pero puede quitar la diversidad del reparto original.
+    No repartir de nuevo: eso moveria canciones entre entrenamiento y prueba. Exigir los mismos minimos."""
+    import origen_dsee as O
+    grupos = informe.get("grupos", ())
+    if partes is None or len(partes) != 3 or len(grupos) != 3:
+        return "faltan las tres particiones con sus grupos de origen"
+    if not informe.get("independiente", False):
+        return informe.get("motivo") or "el reparto de origen no es independiente"
+    for p, nombre in enumerate(O.PARTES):
+        if grupos[p] < O.MIN_GRUPOS[p] or len(partes[p]) < O.MIN_EJEMPLOS[p]:
+            return ("el genero se queda en %s con %d grupos y %d ejemplos (minimo %d y %d)"
+                    % (nombre, grupos[p], len(partes[p]), O.MIN_GRUPOS[p], O.MIN_EJEMPLOS[p]))
+    return ""
+
+
 def cobertura_generos(ruta, entradas, partes, pesos, sidecar=None):
     mapa = lee_generos(ruta, sidecar)
     grupos = [{}, {}, {}]
@@ -635,8 +651,9 @@ def main():
             partes, informe = solo_genero(partes, informe, ruta, generos, sys.argv[sys.argv.index("--genero") + 1])
             origen_datos["genero"] = informe["genero"]
             print("  solo el genero '%s': %d / %d / %d ejemplos" % ((informe["genero"],) + tuple(len(p) for p in partes)))
-            if sum(len(p) for p in partes) <= 500 or min(len(p) for p in partes) == 0:
-                print("Muy poco material de ese genero para entrenar, validar y probar. No se guarda ningun modelo.")
+            motivo_genero = valida_material_genero(partes, informe)
+            if motivo_genero:
+                print("Material insuficiente de ese genero: %s. No se guarda ningun modelo." % motivo_genero)
                 return 1
     else:
         if "--genero" in sys.argv:

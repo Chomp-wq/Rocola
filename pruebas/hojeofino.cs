@@ -22,6 +22,7 @@ using System.Windows.Forms;
 // Y los perfiles de carga de caratulas con JPEG: cuantas paginas de colchon pide cada uno (PaginasDeColchon).
 class HojeoFino
 {
+    delegate int CuentaColchon(bool gpu, int perfil, bool lento, bool jpeg, int cpu); // Func de cinco entradas no existe en .NET 3.5
     const BindingFlags B = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
     static int ok, mal;
     static void Check(bool c, string s) { if (c) { ok++; Console.WriteLine("  OK " + s); } else { mal++; Console.WriteLine("  FALLO " + s); } }
@@ -205,7 +206,7 @@ class HojeoFino
 
         // 5. PAGINAS DE COLCHON POR PERFIL, DISCO Y FORMATO.
         MethodInfo colchon = form.GetMethod("PaginasDeColchon", B);
-        Func<bool, int, bool, bool, int, int> P = delegate(bool g, int perfil, bool lento, bool jpeg, int cpu)
+        CuentaColchon P = delegate(bool g, int perfil, bool lento, bool jpeg, int cpu)
         { return (int)colchon.Invoke(null, new object[] { g, perfil, lento, jpeg, cpu }); };
         Check(P(false, 3, false, true, 8) == 2 && P(false, 3, true, true, 8) == 1, "sin tarjeta grafica, lo de siempre: dos con SSD y una con disco duro");
         bool fluidez = true;

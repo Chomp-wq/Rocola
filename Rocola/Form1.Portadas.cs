@@ -737,12 +737,26 @@ namespace Rocola
             if (JpegActivo) { string jpg = MiniaturaJpeg(identidad); if (File.Exists(jpg)) return jpg; }
             return File.Exists(identidad) ? identidad : null;
         }
-        // Con el interruptor, una miniatura que aun no esta en JPEG se rehace (en segundo plano) por si es opaca.
+        // Una PNG transparente ya es definitiva. La marca vive junto a SU identidad (fuente/tamano/fecha/version),
+        // no en una lista de RAM sin limite; no exige volver a decodificar la portada en cada censo o arranque.
+        internal static string MiniaturaAlfa(string identidad) { return identidad + ".alfa"; }
         internal static bool MiniaturaPorRehacer(string identidad)
         {
             if (MiniaturaGuardada(identidad) == null) return true;
-            return JpegActivo && !File.Exists(MiniaturaJpeg(identidad));
+            return JpegActivo && !File.Exists(MiniaturaJpeg(identidad)) && !File.Exists(MiniaturaAlfa(identidad));
         }
+#if ROCOLA_GPU
+        private static void ConfirmaFormatoMiniatura(string identidad, bool alfa)
+        {
+            try
+            {
+                string marca = MiniaturaAlfa(identidad);
+                if (alfa) File.WriteAllText(marca, "PNG-alpha-v1");
+                else if (File.Exists(marca)) File.Delete(marca);
+            }
+            catch { }   // la imagen ya esta guardada; si no se pudo marcar se comprobara de nuevo mas adelante
+        }
+#endif
         // Si TODOS sus pixeles son opacos. Una pasada por 65 mil pixeles: mucho menos que guardar un PNG.
         internal static bool MiniaturaOpaca(Bitmap b)
         {
@@ -889,8 +903,8 @@ namespace Rocola
                 try
                 {
                     string guardada = MiniaturaGuardada(cacheFile);   // PNG, o el JPEG si el interruptor esta encendido
-                    if (soloJpeg && guardada != null && !string.Equals(guardada, MiniaturaJpeg(cacheFile), StringComparison.OrdinalIgnoreCase))
-                        guardada = null;   // calentando para pasar a JPEG: el PNG no sirve, se rehace desde la original
+                    if (soloJpeg && guardada != null && MiniaturaPorRehacer(cacheFile))
+                        guardada = null;   // PNG sin decision definitiva: comprobar desde la original si puede pasar a JPEG
                     if (guardada != null)
                     {
                         byte[] cdata; int clargo;

@@ -167,7 +167,12 @@ namespace Rocola
         // Estaticos: el candado existe aunque el formulario se arme sin constructor (pruebas), y hay un solo archivo.
         private static readonly object configEscribe = new object();
         private static long configTurno, configEscrito;
-        private string f3Guardado, f3Visto;   // lo ultimo escrito desde la ventana, y lo visto en la vuelta anterior
+        private volatile string f3Guardado;  // confirmado por el escritor, nunca solo por haberlo encolado
+        private string f3Visto;
+        private int f3Guardando;             // como mucho un trabajo pendiente por ventana
+        private volatile bool f3Reintenta;
+        private int f3FalloTick;
+        internal const int ConfigReintentoMs = 2000;
 
         private void EscribeConfigEnTurno(string texto, long turno)
         {
@@ -176,13 +181,20 @@ namespace Rocola
                 if (turno <= configEscrito) return;
                 EscribeSeguro(ConfigFile, texto);
                 configEscrito = turno;
+                f3Guardado = texto;   // tambien si lo guardo el cierre o SaveConfigPrefs, no solo el latido
             }
         }
 
-        // Al abrir la ventana: lo que hay ahora es lo guardado.
+        // En la primera apertura se parte de las preferencias cargadas. Reabrir no debe olvidar un fallo ni un
+        // trabajo pendiente: se conserva lo confirmado por el escritor (incluidos los guardados al cerrar).
         private void EmpiezaGuardadoAlMomento()
         {
-            try { f3Guardado = f3Visto = TextoConfig(); } catch { f3Guardado = f3Visto = null; }
+            try
+            {
+                f3Visto = TextoConfig();
+                if (f3Guardado == null && !f3Reintenta) f3Guardado = f3Visto;
+            }
+            catch { f3Visto = null; }
         }
 
         // Cada medio segundo con la ventana abierta. Si los ajustes cambiaron y llevan medio segundo quietos (una barra que
@@ -193,9 +205,21 @@ namespace Rocola
             try { t = TextoConfig(); } catch { return false; }
             if (t == f3Guardado) { f3Visto = t; return false; }
             if (t != f3Visto) { f3Visto = t; return false; }   // aun se esta moviendo
-            f3Guardado = t;
+            // Un fallo transitorio no confirma el texto. Reintentar desde el latido, con pausa y sin llenar la cola
+            // ni dormir al escritor compartido con los otros datos de la Rocola.
+            if (f3Reintenta && unchecked(Environment.TickCount - f3FalloTick) < ConfigReintentoMs) return false;
+            if (System.Threading.Interlocked.CompareExchange(ref f3Guardando, 1, 0) != 0) return false;
             long turno = System.Threading.Interlocked.Increment(ref configTurno);
-            GuardaDetras(delegate { try { EscribeConfigEnTurno(t, turno); } catch { } });
+            GuardaDetras(delegate
+            {
+                try
+                {
+                    EscribeConfigEnTurno(t, turno);   // un turno antiguo se salta sin confirmar su texto
+                    f3Reintenta = false;
+                }
+                catch { f3FalloTick = Environment.TickCount; f3Reintenta = true; }
+                finally { System.Threading.Interlocked.Exchange(ref f3Guardando, 0); }
+            });
             return true;
         }
     }

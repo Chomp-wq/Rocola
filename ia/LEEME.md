@@ -192,6 +192,11 @@ van siempre juntos.
 
 ## Cuando se acepta numericamente un candidato (sin reemplazar)
 
+Con `--genero`, filtrar no vuelve a repartir ni mezcla canciones entre particiones. Desde el 15-10-2026 se
+comprueban de nuevo los mismos minimos: 1/3/3 grupos y 500/200/200 ejemplos en entrenamiento/validacion/prueba.
+Si un genero no los conserva, se explica el motivo y se termina antes de entrenar o guardar el candidato.
+La separacion y la diversidad son comprobaciones distintas; pocos grupos no significan por si solos que hubo mezcla.
+
 El candidato se mide sobre la particion de PRUEBA contra la curva fija y contra el modelo que ya
 tienes (arrastra tu `rocola_ia.bin` junto al material, o se usa el de esta carpeta). Se acepta solo si
 gana a la curva (5 % global, ninguna banda 10 % peor) y al instalado (2 % global, ninguna banda 10 %

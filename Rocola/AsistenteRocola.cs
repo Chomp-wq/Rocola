@@ -22,10 +22,10 @@ namespace Rocola
         // los botones de siempre: la ayuda no se queda con ellos. Al lograrlo celebra y vuelve sola al cielo.
         private bool asistenteVisible, asistenteRestaurarVideo;
         private int asistenteInicioTick, asistenteActividadTick;
-        // LA DESPEDIDA (13-10-2026; peticion: «si alguien deja el asistente abierto, despues de 15 segundos diga adios y se
-        // cierre»). Con 15 s sin que nadie toque nada, la estrella se despide (gesto y «¡Adios!» en su globo) y a los 2,2 s
+        // LA DESPEDIDA (15-10-2026: el usuario amplia de 15 a 45 segundos el tiempo sin uso).
+        // Con 45 s sin que nadie toque nada, la estrella se despide (gesto y «¡Adios!» en su globo) y a los 2,2 s
         // se cierra. Si alguien toca algo mientras se despide, se queda. 0 = no se esta despidiendo.
-        internal const int AdiosTrasMs = 15000, AdiosMs = 2200;
+        internal const int AdiosTrasMs = 45000, AdiosMs = 2200;
         private int asistenteAdiosTick;
         private bool AsistenteDespidiendo { get { return asistenteVisible && asistenteAdiosTick != 0; } }
         // Lo que hace el reloj de la ayuda con el tiempo quieto: 0 nada, 1 empezar a despedirse, 2 cerrar, 3 seguir (alguien
@@ -238,7 +238,7 @@ namespace Rocola
             int ahora = Environment.TickCount;
             switch (PasoDespedida(ahora, asistenteActividadTick, asistenteAdiosTick))
             {
-                case 1: asistenteAdiosTick = ahora == 0 ? 1 : ahora; AnimaAsistente(AsistenteGestoGpu.Despedir); break;   // 15 s quieta: se despide
+                case 1: asistenteAdiosTick = ahora == 0 ? 1 : ahora; AnimaAsistente(AsistenteGestoGpu.Despedir); break;   // 45 s quieta: se despide
                 case 2: CierraAsistente(); return;                                                                      // y se va
                 case 3: asistenteAdiosTick = 0; AnimaAsistente(AsistenteGestoGpu.Saludar); break;                       // alguien volvio: se queda
             }

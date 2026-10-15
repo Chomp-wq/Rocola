@@ -18,16 +18,26 @@ class IasDisparo
     static object Call(string m, params object[] a) { return TF.GetMethod(m, T).Invoke(null, a); }
 
     static void Ria1(string ruta, int entradas)
+    { Ria1(ruta, entradas, 12, -1f); }
+    static void Ria1(string ruta, int entradas, int salidas, float valor)
     {
         using (BinaryWriter w = new BinaryWriter(File.Create(ruta)))
         {
             w.Write(new byte[] { (byte)'R', (byte)'I', (byte)'A', (byte)'1' }); w.Write(1);
-            w.Write(12); w.Write(entradas);
-            for (int i = 0; i < 12 * entradas; i++) w.Write(0f);
-            for (int i = 0; i < 12; i++) w.Write(-1f - i * 0.1f);
+            w.Write(salidas); w.Write(entradas);
+            for (int i = 0; i < salidas * entradas; i++) w.Write(0f);
+            for (int i = 0; i < salidas; i++) w.Write(valor - i * 0.1f);
         }
     }
     static string Lee(string ruta) { return File.Exists(ruta) ? File.ReadAllText(ruta) : null; }
+    static string Bin(string ruta) { return Convert.ToBase64String(File.ReadAllBytes(ruta)); }
+    static bool Cargable(string ruta, int entradas, int salidas)
+    {
+        Type t = TF.GetNestedType("RedChica", T);
+        object red = Activator.CreateInstance(t, T, null, new object[] { entradas, salidas }, null);
+        t.GetMethod("TryLoad", T).Invoke(red, new object[] { ruta });
+        return (bool)t.GetField("Loaded", T).GetValue(red);
+    }
 
     static int Main(string[] args)
     {
@@ -49,8 +59,9 @@ class IasDisparo
             Check(((string)Call("RutaLectura", "rocola_ia.bin")) == Path.Combine(ias, "rocola_ia.bin"),
                   "sin ningun modelo, se busca en IAS (no se carga nada, como siempre)");
 
-            File.WriteAllText(Path.Combine(datos, "rocola_ia.bin"), "general A");
-            File.WriteAllText(Path.Combine(datos, "rocola_eq_ia.bin"), "eq");
+            Ria1(Path.Combine(datos, "rocola_ia.bin"), 28);
+            Ria1(Path.Combine(datos, "rocola_eq_ia.bin"), 5, 3, -1f);
+            string generalA = Bin(Path.Combine(datos, "rocola_ia.bin")), eq = Bin(Path.Combine(datos, "rocola_eq_ia.bin"));
             Ria1(Path.Combine(datos, "rocola_ia_genero_cumbia.bin"), 28);
             File.WriteAllText(Path.Combine(datos, "rocola_ia_genero_cumbia.bin.anterior-1"), "cumbia vieja");
             File.WriteAllText(Path.Combine(datos, "rocola_ia_datos.bin"), "material");          // no es un modelo
@@ -58,7 +69,7 @@ class IasDisparo
             File.WriteAllText(Path.Combine(datos, "rocola_config.txt"), "gpu=1");
             int n = (int)Call("OrdenaIas");
             Check(n == 4, "al arrancar pasa a IAS los cuatro: DSEE, EQ, el de cumbia y su copia de antes (" + n + ")");
-            Check(Lee(Path.Combine(ias, "rocola_ia.bin")) == "general A" && Lee(Path.Combine(ias, "rocola_eq_ia.bin")) == "eq"
+            Check(Bin(Path.Combine(ias, "rocola_ia.bin")) == generalA && Bin(Path.Combine(ias, "rocola_eq_ia.bin")) == eq
                   && File.Exists(Path.Combine(ias, "rocola_ia_genero_cumbia.bin"))
                   && Lee(Path.Combine(ias, "rocola_ia_genero_cumbia.bin.anterior-1")) == "cumbia vieja",
                   "estan en IAS, enteros");
@@ -71,14 +82,33 @@ class IasDisparo
             Check((int)Call("OrdenaIas") == 0, "la segunda vez no hay nada que pasar");
 
             // Alguien deja un modelo nuevo suelto, como se hacia antes: manda el nuevo y el de IAS se guarda.
-            File.WriteAllText(Path.Combine(datos, "rocola_ia.bin"), "general B");
-            Check((int)Call("OrdenaIas") == 1 && Lee(Path.Combine(ias, "rocola_ia.bin")) == "general B"
-                  && Lee(Path.Combine(ias, "rocola_ia.bin.anterior-1")) == "general A",
+            Ria1(Path.Combine(datos, "rocola_ia.bin"), 28, 12, -2f);
+            string generalB = Bin(Path.Combine(datos, "rocola_ia.bin"));
+            Check((int)Call("OrdenaIas") == 1 && Bin(Path.Combine(ias, "rocola_ia.bin")) == generalB
+                  && Bin(Path.Combine(ias, "rocola_ia.bin.anterior-1")) == generalA,
                   "un modelo nuevo dejado suelto pasa a IAS y el de antes se guarda como .anterior-1 (nunca se borra)");
-            File.WriteAllText(Path.Combine(datos, "rocola_ia.bin"), "general C");
+            Ria1(Path.Combine(datos, "rocola_ia.bin"), 28, 12, -3f);
+            string generalC = Bin(Path.Combine(datos, "rocola_ia.bin"));
             Call("OrdenaIas");
-            Check(Lee(Path.Combine(ias, "rocola_ia.bin")) == "general C" && Lee(Path.Combine(ias, "rocola_ia.bin.anterior-2")) == "general B"
-                  && Lee(Path.Combine(ias, "rocola_ia.bin.anterior-1")) == "general A", "y otro mas, como .anterior-2");
+            Check(Bin(Path.Combine(ias, "rocola_ia.bin")) == generalC && Bin(Path.Combine(ias, "rocola_ia.bin.anterior-2")) == generalB
+                  && Bin(Path.Combine(ias, "rocola_ia.bin.anterior-1")) == generalA, "y otro mas, como .anterior-2");
+            string activo = Path.Combine(ias, "rocola_ia.bin"), suelto = Path.Combine(datos, "rocola_ia.bin");
+            Ria1(suelto, 28, 12, -4f);
+            using (FileStream bloqueado = new FileStream(suelto, FileMode.Open, FileAccess.Read, FileShare.None))
+                Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && Cargable(activo, 28, 12),
+                      "un suelto bloqueado no aparta al modelo activo ni impide cargarlo");
+            using (FileStream bloqueado = new FileStream(activo, FileMode.Open, FileAccess.Read, FileShare.Read))
+                Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && File.Exists(suelto),
+                      "si falla el reemplazo, el activo y el nuevo quedan en sus sitios");
+            File.WriteAllBytes(suelto, new byte[] { 1, 2, 3 });
+            Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && File.Exists(suelto),
+                  "un suelto corrupto se conserva para revisar, pero no sustituye al valido");
+            Ria1(suelto, 5, 3, -1f);
+            Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC,
+                  "un EQ bajo el nombre del DSEE tampoco desplaza al activo");
+            Check(!File.Exists(activo + ".anterior-3") && Bin(activo + ".anterior-1") == generalA,
+                  "los intentos fallidos no alteran los respaldos");
+            File.Delete(suelto);   // solo la fixture temporal de la prueba
 
             // Si uno no se pudo pasar (suelto), se sigue leyendo donde esta.
             File.Delete(Path.Combine(ias, "rocola_eq_ia.bin"));

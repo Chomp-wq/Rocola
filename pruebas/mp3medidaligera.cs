@@ -91,7 +91,9 @@ class Mp3MedidaLigera
             Check(((TimeSpan)legacy.GetProperty("TotalTime", B).GetValue(a,null)).Ticks == ((TimeSpan)current.GetProperty("TotalTime",B).GetValue(b,null)).Ticks, "misma duracion MP3");
             Check(legacy.GetProperty("WaveFormat",B).GetValue(a,null).ToString() == current.GetProperty("WaveFormat",B).GetValue(b,null).ToString(), "mismo formato");
             Stream owner = (Stream)current.GetField("flujoMp3",B).GetValue(b);
-            Check((owner != null) == light, "seleccion ligera/fallback esperada");
+            // Desde Mp3Ligero (13-10) el medidor tambien es dueno del FileStream SIN saltar ID3. Lo que distingue
+            // saltar la etiqueta del camino conservador es VistaMp3, no que exista un stream propio.
+            Check(owner != null && (owner.GetType() == view) == light, "vista solo para ID3 que se puede omitir; si no, archivo completo");
             if (light)
             {
                 Mp3FileReader reader = (Mp3FileReader)current.GetField("mp3",B).GetValue(b);

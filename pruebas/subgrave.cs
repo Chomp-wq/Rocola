@@ -177,9 +177,36 @@ class Subgrave
         Check(tNueva < tVieja * 3 + 20, "cuesta poco mas que la etapa de siempre");
 
         Interruptores(fs);
+        ContinuidadMono();
 
         Console.WriteLine(fallos == 0 ? "\n  OK subgrave: " + oks + " comprobaciones (tonos sinteticos; no es oirlo en el bar)" : "\n  FALLO subgrave: " + fallos + " de " + (oks + fallos));
         return fallos == 0 ? 0 : 1;
+    }
+    static void ContinuidadMono()
+    {
+        const int fs = 48000, n = 4800;
+        float[] todo = new float[n * 2], a = new float[n], b = new float[n];
+        for (int i = 0; i < todo.Length; i++) todo[i] = (float)(.5 * Math.Cos(2 * Math.PI * 30 * i / fs));
+        Array.Copy(todo, a, n); Array.Copy(todo, n, b, 0, n);
+        foreach (int bloque in new int[] { 1, 137, 4800 })
+        {
+            ISampleProvider primera = Etapa(new Fuente(a, fs, 1), 120f, 1f, 30f);
+            ISampleProvider segunda = Etapa(new Fuente(b, fs, 1), 120f, 1f, 30f);
+            float[] vacio = new float[1];
+            Check(primera.Read(vacio, 0, 0) == 0 && !(bool)TMono.GetField("acabo", T).GetValue(primera),
+                  "mono: una consulta vacia no marca fin de pista");
+            TMono.GetMethod("Sigue", T).Invoke(segunda, new object[] { primera });
+            Check(segunda.Read(vacio, 0, 0) == 0 && !(bool)TMono.GetField("empezo", T).GetValue(segunda),
+                  "una consulta vacia de la siguiente no consume la herencia antes de que acabe la anterior");
+            LeeTodo(primera, bloque);
+            Check((bool)TMono.GetField("acabo", T).GetValue(primera), "mono: el fin queda reconocido");
+            TMono.GetMethod("Sigue", T).Invoke(segunda, new object[] { primera });
+            float[] salida = LeeTodo(segunda, bloque);
+            float[] referencia = LeeTodo(Etapa(new Fuente(todo, fs, 1), 120f, 1f, 30f), bloque);
+            bool igual = salida.Length == n;
+            for (int i = 0; i < salida.Length && igual; i++) igual = salida[i] == referencia[n + i];
+            Check(igual, "mono: dos pistas conservan el filtro bit a bit como una sola, bloques de " + bloque);
+        }
     }
     static void Interruptores(int fs)
     {

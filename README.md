@@ -1,5 +1,13 @@
 # Rocola
 
+## Guardado, modelos IA y ayuda — 15 de octubre de 2026
+
+El asistente espera **45 segundos sin uso** antes de despedirse. Se corrigen los reintentos de guardado de Ctrl+F3,
+la sustitución segura de modelos en IAS, la continuidad del subgrave entre pistas mono y el repaso innecesario de
+carátulas transparentes con JPEG activado. El entrenamiento DSEE por género exige la misma diversidad mínima
+que el general. Solo Modest; no cambia el aspecto ni el renderizador CPU.
+[Detalles y verificaciones](CORRECCIONES_REVISION_MODEST_2026-10-15.md).
+
 ## Auditoria de Modest — 11 de octubre de 2026
 
 Correcciones de guardado, buscador, fichas, transparencia de caratulas, bordes GPU,
@@ -68,7 +76,7 @@ ahí los que encuentre sueltos, sin borrar ninguno. ROJO + ARRIBA (buscador) y R
 
 ## Cuatro arreglos de las fotos — 13 de octubre de 2026
 
-Fuera el cometa del cielo; la ayuda dice «¡Adiós!» y se cierra sola a los 15 s sin uso; el reflejo de la aurora nace
+Fuera el cometa del cielo; la ayuda dice «¡Adiós!» tras 45 s sin uso y se cierra con su animación; el reflejo de la aurora nace
 pegado a la raya del horizonte (ya no queda una franja oscura bajo la barra); «EN ESTA ROCOLA» sale entero en el modo
 atracción.
 [Qué se cambió y cómo se comprobó](FOTOS_COMETA_AYUDA_BARRA_MODEST_2026-10-13.md).

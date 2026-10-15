@@ -243,11 +243,14 @@ namespace Rocola
 
             public int Read(float[] buffer, int offset, int count)
             {
+                if (count == 0) return 0;   // no consumir el relevo de filtros hasta la primera lectura de audio
                 if (!activo) return src.Read(buffer, offset, count);
                 if (!empezo) { empezo = true; Hereda(); }
                 if (canales == 1)
                 {   // un canal: solo el subgrave
+                    if (acabo) return 0;
                     int n1 = src.Read(buffer, offset, count);
+                    if (n1 <= 0) { acabo = true; return 0; }
                     if (n1 > 0 && SubAhora()) Subgrave(buffer, offset, n1, 0, 1);
                     return n1;
                 }

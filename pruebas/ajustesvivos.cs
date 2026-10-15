@@ -278,6 +278,36 @@ class AjustesVivos
         string escrito = File.Exists(cfg) ? File.ReadAllText(cfg) : "";
         Check(escrito.Contains("turno=0"), "y queda en el archivo sin cerrar la ventana");
         Check(!(bool)Call("GuardaAlMomento"), "y no lo vuelve a escribir si no cambia nada");
+        // Un temporal bloqueado no debe hacer creer que ya se escribio. Sin dormir la prueba: mover solo el reloj
+        // de reintento, no el de Windows ni el del audio.
+        Set("turnoOn", true);
+        Check(!(bool)Call("GuardaAlMomento"), "el cambio tras el primer guardado se estabiliza");
+        using (FileStream bloqueado = new FileStream(cfg + ".tmp", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+        {
+            Check((bool)Call("GuardaAlMomento"), "encola el intento con el temporal bloqueado");
+            Codigo.EsperaGuardado(TF, f);
+            Check(File.ReadAllText(cfg) == escrito && (bool)Get("f3Reintenta"), "el fallo conserva el archivo y queda pendiente");
+            Call("EmpiezaGuardadoAlMomento");
+            Check((string)Get("f3Guardado") == escrito, "reabrir la ventana no confirma el guardado que fallo");
+            Check(!(bool)Call("GuardaAlMomento"), "durante la pausa no llena la cola con reintentos");
+        }
+        Set("f3FalloTick", unchecked(Environment.TickCount - 2000));
+        Check((bool)Call("GuardaAlMomento"), "al liberar el temporal reintenta sin otro cambio ni cerrar Ctrl+F3");
+        Codigo.EsperaGuardado(TF, f);
+        Check(File.ReadAllText(cfg).Contains("turno=1") && !(bool)Get("f3Reintenta"), "el reintento queda escrito y confirmado");
+        Check(!(bool)Call("GuardaAlMomento"), "el exito no se vuelve a escribir");
+        // Si el cierre guarda antes que un trabajo pendiente, el antiguo ni escribe ni confirma su texto.
+        Set("turnoOn", false); Call("GuardaAlMomento");
+        object cerrojo = Get("configEscribe");
+        lock (cerrojo)
+        {
+            Check((bool)Call("GuardaAlMomento"), "un trabajo pendiente espera al escritor");
+            Check(!(bool)Call("GuardaAlMomento"), "no duplica el trabajo pendiente");
+            Set("turnoOn", true); Call("SaveConfigPrefs");
+        }
+        Codigo.EsperaGuardado(TF, f);
+        Check(File.ReadAllText(cfg).Contains("turno=1"), "un guardado al cerrar mas nuevo conserva prioridad");
+        Check((string)Get("f3Guardado") == File.ReadAllText(cfg), "el guardado al cerrar tambien actualiza la confirmacion");
         // Un guardado de detras que llega tarde no pisa a uno mas nuevo.
         long turnoViejo = Convert.ToInt64(Get("configTurno")) + 1;
         Set("turnoOn", true); Call("SaveConfigPrefs"); Codigo.EsperaGuardado(TF, f);

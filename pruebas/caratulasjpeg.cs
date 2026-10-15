@@ -151,7 +151,27 @@ class CaratulasJpeg
                 if (porGuardar != null) Run("SaveThumb", porGuardar, id1);
                 Check(File.Exists((string)Run("MiniaturaJpeg", id1)) && !(bool)Run("MiniaturaPorRehacer", id1), "y queda en JPEG");
                 if (calentada != null) calentada.Dispose(); if (porGuardar != null) porGuardar.Dispose();
-                Check((bool)Run("MiniaturaPorRehacer", id3) || File.Exists(id3), "las transparentes pueden repasarse, pero nunca se pierden");
+                Check(!(bool)Run("MiniaturaPorRehacer", id3), "la PNG transparente ya es definitiva, no queda pendiente en cada censo");
+                Check(File.Exists((string)Run("MiniaturaAlfa", id3)), "la decision queda junto a su identidad y sobrevive al reinicio");
+                string fuenteGuardada = p3 + ".original";
+                File.Move(p3, fuenteGuardada);
+                object[] transparente = { p3, id3, null };
+                using (Image im = (Image)Run("DecodeCoverParaCalentar", transparente))
+                    Check(im != null && transparente[2] == null, "el calentador reutiliza la PNG transparente sin leer la original");
+                File.Move(fuenteGuardada, p3);
+                File.SetLastWriteTimeUtc(p3, DateTime.UtcNow.AddMinutes(2));
+                string idNueva = (string)Run("ThumbCachePath", p3);
+                Check(idNueva != id3 && (bool)Run("MiniaturaPorRehacer", idNueva), "otra version de la fuente no hereda la marca anterior");
+                File.Delete(id3);
+                Check((bool)Run("MiniaturaPorRehacer", id3), "una marca sin PNG no oculta una miniatura que falta");
+                // Reutilizar a proposito la identidad en el guardador: una sustitucion opaca limpia la marca vieja.
+                using (Bitmap op = new Bitmap(256, 256))
+                {
+                    using (Graphics g = Graphics.FromImage(op)) g.Clear(Color.Teal);
+                    Run("SaveThumb", op, id3);
+                }
+                Check(!File.Exists((string)Run("MiniaturaAlfa", id3)) && File.Exists((string)Run("MiniaturaJpeg", id3)),
+                      "una sustitucion opaca invalida la marca de transparencia");
             }
 
             // 5) APAGADO otra vez: vuelve el PNG sin perdida.

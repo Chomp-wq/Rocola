@@ -389,11 +389,12 @@ namespace Rocola
         }
 
         // Al arrancar, una vez, antes de cargarlos: los modelos sueltos en la carpeta de datos se pasan a IAS\. Es un
-        // cambio de nombre en el mismo disco: no se copia nada y no hay un momento con el modelo a medias. Si IAS\ ya
+        // reemplazo en el mismo disco desde una copia temporal validada. Si IAS\ ya
         // tenia uno con ese nombre, el suelto es el que alguien acaba de dejar (como se hacia antes): manda el suelto y
         // el de IAS\ se guarda al lado como .anterior-N. Nunca se borra un modelo. Las copias .anterior-N que dejaba el
-        // instalador de los de genero tambien se pasan. Si no se puede (solo lectura, archivo en uso), se quedan donde
-        // estan y se siguen leyendo alli. Devuelve cuantos se pasaron.
+        // instalador de los de genero tambien se pasan. El reemplazo y su respaldo son atomicos: si no se puede
+        // (solo lectura, archivo en uso, sistema de archivos sin reemplazo), queda activa la version anterior.
+        // Si no se completa, el suelto se conserva y se puede reintentar al arrancar. Devuelve cuantos se pasaron.
         internal static int OrdenaIas()
         {
             int pasados = 0;
@@ -415,14 +416,42 @@ namespace Rocola
                 if (!Directory.Exists(ias)) Directory.CreateDirectory(ias);
                 foreach (string p in sueltos)
                 {
+                    string destino = Path.Combine(ias, Path.GetFileName(p)), respaldo = null, temporal = null;
                     try
                     {
-                        string destino = Path.Combine(ias, Path.GetFileName(p));
-                        if (File.Exists(destino)) File.Move(destino, LibreAnterior(destino));
-                        File.Move(p, destino);
+                        // No admitir escrituras al suelto mientras se toma la copia. ReplaceFile necesita abrir SU
+                        // fuente para escritura: usar el suelto bloqueado para lectura impediria reemplazarlo en
+                        // Windows. La copia tiene nombre exclusivo, no esta abierta al promoverla y se valida entera.
+                        using (FileStream guarda = new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+                        {
+                            if (guarda.Length < 12 || guarda.Length > 9 * 1024 * 1024) continue;
+                            temporal = Path.Combine(ias, ".modelo-validado-" + Guid.NewGuid().ToString("N") + ".tmp");
+                            File.Copy(p, temporal, false);
+                            bool eq = string.Equals(Path.GetFileName(p), "rocola_eq_ia.bin", StringComparison.OrdinalIgnoreCase);
+                            RedChica candidata = new RedChica(eq ? EqNetIn : 28, eq ? EqNetOut : 12);
+                            candidata.TryLoad(temporal);
+                            if (!candidata.Loaded) continue;   // roto, bloqueado o de otro contrato: no desplazar al utilizable
+                            if (File.Exists(destino))
+                            {
+                                respaldo = LibreAnterior(destino);
+                                File.Replace(temporal, destino, respaldo);
+                            }
+                            else File.Move(temporal, destino);
+                            temporal = null;
+                            // Solo retirar el duplicado cuando su copia validada ya esta activa. Los bytes anteriores
+                            // siguen en el respaldo. Un fallo aqui solo deja el suelto duplicado, nunca pierde el modelo.
+                            try { File.Delete(p); } catch { }
+                        }
                         pasados++;
                     }
-                    catch { }   // se queda suelto: RutaLectura y CargaModelosPorGenero lo siguen encontrando
+                    catch
+                    {
+                        // Defensa adicional si el sistema de archivos fallo despues de crear el respaldo. No borrar
+                        // ese respaldo ni pisar un destino que si exista. Un bloqueo ordinario no llega a mover nada.
+                        if (respaldo != null && !File.Exists(destino) && File.Exists(respaldo))
+                            try { File.Copy(respaldo, destino, false); } catch { }
+                    }
+                    finally { if (temporal != null) try { File.Delete(temporal); } catch { } }
                 }
                 foreach (string p in anteriores)
                 {

@@ -256,6 +256,8 @@ def grupos(entradas, nivel="artista", tope_fraccion=0.5):
 #  Particiones por grupo: entrenamiento / validacion (elige checkpoint) / prueba (solo decide)
 # ---------------------------------------------------------------------------------------------
 PARTES = ("entrenamiento", "validacion", "prueba")
+MIN_GRUPOS = (1, 3, 3)
+MIN_EJEMPLOS = (500, 200, 200)
 
 
 def _mezcla64(x, semilla):
@@ -267,7 +269,7 @@ def _mezcla64(x, semilla):
 
 
 def reparte(etiquetas, pesos, fracciones=(0.8, 0.1, 0.1), semilla=20260922,
-            min_grupos=(1, 3, 3), min_ejemplos=(500, 200, 200)):
+            min_grupos=MIN_GRUPOS, min_ejemplos=MIN_EJEMPLOS):
     """Asigna cada GRUPO entero a una particion (0 entrenamiento, 1 validacion, 2 prueba).
 
     Los grupos se recorren en un orden mezclado de forma determinista (depende solo de su etiqueta y

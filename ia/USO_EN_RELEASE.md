@@ -17,7 +17,9 @@ conjunto mínimo de entrenamiento.
 
 Desde el 14 de octubre de 2026 la rocola lee todos sus modelos de la carpeta **`IAS`** (junto a `Rocola.exe`, o
 dentro de `ROCOLA_DATOS`): `rocola_ia.bin`, `rocola_eq_ia.bin` y los `rocola_ia_genero_*.bin`. Al arrancar pasa ahí
-los que encuentre sueltos, sin borrar ninguno. El material (`rocola_ia_datos.*`, `rocola_eq.txt`) se queda donde
+los que encuentre sueltos, validando primero una copia temporal. Si hay uno instalado, lo conserva como respaldo
+y solo activa el nuevo si puede completar la sustitución. Un modelo inválido o bloqueado no desplaza al anterior;
+el suelto queda disponible para revisarlo o reintentar. El material (`rocola_ia_datos.*`, `rocola_eq.txt`) se queda donde
 estaba. Arrastrando la carpeta de la rocola, el entrenador encuentra los modelos de `IAS`.
 
 No llames `entrenar_ia.py --help`: ese entrenador no reconoce esa opción y podría
@@ -32,7 +34,10 @@ iniciar su prueba sintética. Utiliza el lanzador de arrastre indicado arriba.
 
    Las canciones sin género en la etiqueta cuentan con el que la rocola deduce de su disco (la pastilla de la
    pantalla: «Regional», «Rock»…). Hace falta que un género tenga **60 canciones o más** con
-   material.
+   material. Además, tras filtrar ese género, el reparto debe conservar al menos **1 / 3 / 3 grupos** y
+   **500 / 200 / 200 ejemplos** en entrenamiento / validación / prueba, respectivamente. Con el agrupado
+   predeterminado, los grupos son artistas cuando el índice permite distinguirlos. No basta con muchas filas
+   de unos pocos artistas: si falta diversidad o material, se explica y no se crea ese candidato.
 2. **Entrenar.** Arrastra la carpeta de la rocola (por ejemplo `D:\Release1`) sobre `ia\entrenar_dsee.bat`.
    Primero entrena el modelo general y después uno por cada género con material de sobra (como mucho los 6 con
    más). El RESUMEN del final dice qué salió:

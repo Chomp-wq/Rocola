@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Reflection;
 
 // LAS FOTOS DEL 13-10-2026 (tanda de cuatro): el cometa fuera (lo mira 'cielovivo'), la ayuda que se despide sola a los
-// 15 s, el reflejo de la aurora pegado a la raya del horizonte y «EN ESTA ROCOLA» entero en el modo atraccion.
+// 45 s (ampliado el 15-10), el reflejo de la aurora pegado a la raya y «EN ESTA ROCOLA» entero en el modo atraccion.
 // Con formulario aislado y sin tarjeta grafica: las cuentas y los dibujos que se hornean, no la pantalla del bar.
 class Fotos1013
 {
@@ -26,14 +26,17 @@ class Fotos1013
         Console.WriteLine("\n  1) LA AYUDA SE DESPIDE SOLA\n");
         MethodInfo paso = TF.GetMethod("PasoDespedida", T);
         int tras = (int)TF.GetField("AdiosTrasMs", T).GetValue(null), dura = (int)TF.GetField("AdiosMs", T).GetValue(null);
-        Check(tras == 15000, "a los 15 s sin tocar nada");
+        Check(tras == 45000, "a los 45 s sin tocar nada");
         Check(dura >= 1500 && dura <= 3000, "se despide un par de segundos (" + dura + " ms) y se cierra");
         Func<int, int, int, int> P = delegate (int ahora, int act, int adios) { return (int)paso.Invoke(null, new object[] { ahora, act, adios }); };
-        Check(P(1000 + 14999, 1000, 0) == 0, "a los 14,9 s todavia no");
-        Check(P(1000 + 15000, 1000, 0) == 1, "a los 15 s empieza a despedirse");
+        Check(P(16000, 1000, 0) == 0, "a los antiguos 15 s sigue abierta");
+        Check(P(1000 + 44999, 1000, 0) == 0, "justo antes de 45 s todavia no");
+        Check(P(1000 + 45000, 1000, 0) == 1, "a los 45 s empieza a despedirse");
+        Check(P(46000, 45000, 0) == 0, "un nuevo toque reinicia la espera");
         Check(P(16000 + dura - 1, 1000, 16000) == 0 && P(16000 + dura, 1000, 16000) == 2, "y se cierra al acabar la despedida");
         Check(P(16500, 16200, 16000) == 3, "si alguien toca algo mientras se despide, se queda");
-        Check(P(int.MinValue + 20000, int.MaxValue - 5000, 0) == 1, "aunque el reloj de Windows de la vuelta");
+        Check(P(int.MinValue + 39998, int.MaxValue - 5000, 0) == 0
+              && P(int.MinValue + 39999, int.MaxValue - 5000, 0) == 1, "aunque el reloj de Windows de la vuelta");
         Check(Codigo.Llama(Codigo.ConAyudantes(TF, "TickAsistenteGpu"), "PasoDespedida"), "el reloj de la ayuda lo usa");
         Bitmap globo = (Bitmap)TF.GetMethod("PintaAdiosAsistente", T).Invoke(null, new object[] { 640, 300 });
         bool tinta = (bool)TF.GetMethod("Tinta", T).Invoke(null, new object[] { globo, 0, 0, 0, 0 });
