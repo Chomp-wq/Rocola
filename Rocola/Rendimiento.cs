@@ -377,8 +377,20 @@ namespace Rocola
         // lo suyo. El cielo a media resolucion, y lo que va dentro de el, solo se usan con las nebulosas puestas; la pasada
         // de grano y vineta necesita la vineta, y con el fondo en una sola capa no se usa: el grano y la vineta ya van dentro
         // del cielo.
+        private string MotivoSinEstadoExtendido()
+        {
+            if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Imagen)";
+            if (!muroReposo) return "Necesita: Ocultar discos en reposo (Imagen)";
+            return null;
+        }
+        private string MotivoSinAurora()
+        { return auroraAmount > .004f ? null : "Necesita: Aurora del horizonte en Medio o Alto"; }
         private string MotivoSinAhorro(int i)
         {
+#if ROCOLA_GPU
+            if (gpuEnabled && gpuPanel != null && !PuedeAhorro(i))
+                return "No disponible: esta tarjeta no admite este ahorro";
+#endif
             bool nebulosas = nieblasNiv != NivBajo;
             bool capa = cieloMedia && fondoCapa && nebulosas;
             switch (i)
@@ -388,16 +400,21 @@ namespace Rocola
                     if (!vinetaSuave) return "Necesita: Viñeta suave (Fondo)";
                     if (capa) return "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)";
                     return null;
-                case 9: case 4: return estadoExpandido ? null : "Necesita: Estado ampliado en reposo (Efectos)";
-                case 5: return auroraAmount > .004f ? null : "Necesita: Espectro de sonido en Medio o Alto";
+                case 9: case 4: return MotivoSinEstadoExtendido();
+                case 5: return MotivoSinAurora();
                 case 6:
-                    if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Efectos)";
+                    if (MotivoSinEstadoExtendido() != null) return MotivoSinEstadoExtendido();
                     if (estadoOpacoPerf) return "Sin efecto: el estado opaco ya tapa ese reflejo";
-                    return reflejoAurora && auroraAmount > .004f ? null : "Necesita: Reflejo de aurora y espectro encendidos";
+                    if (MotivoSinAurora() != null) return MotivoSinAurora();
+                    return reflejoAurora ? null : "Necesita: Reflejo de la aurora (Fondo / Cielo vivo)";
                 case 7:
-                    if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Efectos)";
-                    return estelaEstelar && lunaOn && lunaActiva ? null : "Necesita: Estrella y su estela encendidas";
-                case 8: return haloLunar && lunaOn ? null : "Necesita: Estrella y su halo encendidos";
+                    if (MotivoSinEstadoExtendido() != null) return MotivoSinEstadoExtendido();
+                    if (!lunaOn) return "Necesita: Astro principal en el cielo (Detalles)";
+                    if (!lunaActiva) return "Necesita: Estrella viajera con orbitas (Fondo)";
+                    return estelaEstelar ? null : "Necesita: Ecos de color de la estrella (Fondo)";
+                case 8:
+                    if (!lunaOn) return "Necesita: Astro principal en el cielo (Detalles)";
+                    return haloLunar ? null : "Necesita: Corona estelar (Fondo / Estrella)";
                 default:
                     if (!cieloMedia) return "Necesita: Cielo a media resolución (arriba)";
                     if (!nebulosas) return "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
@@ -1333,16 +1350,21 @@ namespace Rocola
             // vale aunque el requisito este en otra pagina. Va despues de MontaHojasFondo, que acomoda las filas.
             NecesitaMotivo(sw[7], delegate
             {
-                if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Imagen)";
+                string falta = MotivoSinEstadoExtendido();
+                if (falta != null) return falta;
                 return estadoOpacoPerf ? "Sin efecto: estado opaco (Performance)" : null;
             });
+            NecesitaMotivo(sw[2], MotivoSinAurora);
+            NecesitaMotivo(sw[3], MotivoSinAurora);
+            NecesitaMotivo(vivo[5], MotivoSinAurora);
+            NecesitaMotivo(pul[2], MotivoSinAurora);
             Necesita(sw[9], delegate { return progresoNeon; }, "Barra de progreso neon (esta hoja)");
-            Necesita(swDoce, delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            NecesitaMotivo(swDoce, MotivoSinEstadoExtendido);
             Necesita(swCristal, delegate { return cancionesTransparentes; }, "Lista de canciones transparente (Imagen)");
             Necesita(swPaleta, delegate { return fondoPortadaOn; }, "Que el fondo tome el color de la portada (Detalles)");
             Necesita(barNat, delegate { return cieloProfundo; }, "Nebulosas con detalle natural (hoja Cielo y aurora)", lNatD);
             Necesita(swEstela, delegate { return lunaActiva; }, "Estrella viajera con orbitas (esta hoja)");
-            Necesita(extras[2], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            NecesitaMotivo(extras[2], MotivoSinEstadoExtendido);
             Necesita(vivo[3], delegate { return paginaDesliza; }, "Pasar de pagina deslizando (Pantalla)");
             // El pulido de la estrella es de la estrella en 3D (la de fabrica).
             for (int i = 4; i <= 8; i++) Necesita(pul[i], delegate { return estrella3d; }, "Estrella en 3D girando (hoja Estrella)");

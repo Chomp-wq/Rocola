@@ -145,6 +145,18 @@ class EstadoEficiente
         Run(again, "CambioElAcentoDelPanel", Color.Red); int data = (int)Get(again, "idlePanelDatos");
         Run(again, "CambioElAcentoDelPanel", Color.Blue);
         Check(data == (int)Get(again, "idlePanelDatos"), "color directo no repinta los pasos intermedios");
+        // Un panel que no consiguio las capacidades necesarias no ofrece ahorros imposibles.
+        using (Control unsupported = (Control)Activator.CreateInstance(panel, true))
+        {
+            Set(again, "gpuEnabled", true); Set(again, "gpuPanel", unsupported);
+            Set(again, "nieblasNiv", 2); Set(again, "cieloMedia", true); Set(again, "vinetaSuave", true);
+            for (int i = 0; i < 4; i++)
+                Check((string)Run(again, "MotivoSinAhorro", i) == "No disponible: esta tarjeta no admite este ahorro",
+                      "sin capacidad grafica no se ofrece el ahorro " + i);
+            Set(again, "auroraAmount", .55f);
+            Check(Run(again, "MotivoSinAhorro", 5) == null, "la falta de textura intermedia no anula la aurora ligera");
+            Set(again, "gpuPanel", null);
+        }
         // El medidor tiene una escena real de estado extendido y devuelve los ajustes incluso al salir.
         string[] scenes = (string[])form.GetField("NombreEscena", B).GetValue(null);
         Check(Array.IndexOf(scenes, "Estado extendido") >= 0, "medidor incluye el estado extendido");

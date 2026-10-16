@@ -1,5 +1,12 @@
 # Rocola
 
+## Dependencias gráficas completas — 16 de octubre de 2026
+
+Los ahorros de Performance y los mandos relacionados explican sus requisitos,
+conflictos y capacidades de tarjeta; se actualizan entre páginas sin borrar valores.
+Se comprueba también el requisito indirecto de ocultar discos para abrir el estado.
+[Tabla de dependencias y validación](DEPENDENCIAS_GRAFICAS_MODEST_2026-10-16.md).
+
 ## Estado extendido en equipos modestos — 16 de octubre de 2026
 
 Se reutilizan los mapas del estado, se copia y sube solo el recuadro del reloj y

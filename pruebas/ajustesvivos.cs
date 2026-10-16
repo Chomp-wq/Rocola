@@ -245,6 +245,80 @@ class AjustesVivos
                 }
             }
 
+            // Los ahorros de reposo necesitan toda la cadena: no solo la preferencia hija.
+            // Cambiar controles reales verifica el refresco entre paginas y que el gris no borra valores.
+            {
+                Set("auroraAmount", .55f);
+                foreach (string r in requisitos) Set(r, true);
+                Control opaco = Busca(ctl, "Estado extendido opaco"), color = Busca(ctl, "Color directo del estado extendido");
+                Control sinReflejo = Busca(ctl, "Sin reflejo de aurora en reposo"), sinEstela = Busca(ctl, "Sin estela de estrella en reposo");
+                Control corona = Busca(ctl, "Corona de estrella compacta"), ligera = Busca(ctl, "Aurora con menos columnas");
+                Control muro = Busca(ctl, "Ocultar discos en reposo con musica");
+                Control estadoNuevo = Busca(ctl, "Estado ampliado en reposo");
+                Control ecos = Busca(ctl, "Ecos de color de la estrella"), halo = Busca(ctl, "Corona estelar");
+                Check(opaco != null && color != null && sinReflejo != null && sinEstela != null && corona != null && ligera != null,
+                      "estan los seis ahorros nuevos para comprobar sus conflictos vivos");
+                if (opaco != null && color != null && sinReflejo != null && sinEstela != null && corona != null && ligera != null)
+                {
+                    PropertyInfo marca = opaco.GetType().GetProperty("Checked");
+                    foreach (Control c in new Control[] { muro, estadoNuevo, ecos, halo, color, sinReflejo, sinEstela, corona, ligera })
+                        marca.SetValue(c, true, null);
+                    marca.SetValue(opaco, true, null);
+                    Check(!sinReflejo.Enabled && Necesita(sinReflejo).StartsWith("Sin efecto:")
+                          && (bool)Get("reposoSinReflejo"), "estado opaco anula solo el ahorro redundante de reflejo y conserva su valor");
+                    marca.SetValue(opaco, false, null);
+                    Check(sinReflejo.Enabled, "al quitar el opaco se puede volver a ajustar el reflejo");
+                    marca.SetValue(muro, false, null);
+                    bool cadena = true;
+                    foreach (Control c in new Control[] { opaco, color, sinReflejo, sinEstela,
+                        Busca(ctl, "Estado ampliado transparente"), Busca(ctl, "Cola ampliada de 12 canciones"), Busca(ctl, "Ocultar controles en reposo") })
+                        if (c.Enabled || Necesita(c) != "Necesita: Ocultar discos en reposo (Imagen)") cadena = false;
+                    Check(cadena && (bool)Get("estadoExpandido"), "sin ocultar discos toda la cadena del estado queda gris aunque su preferencia siga encendida");
+                    Check(corona.Enabled && ligera.Enabled, "corona y aurora siguen disponibles: tambien actuan fuera del estado extendido");
+                    Check((bool)Get("estadoColorDirecto") && (bool)Get("reposoSinEstela"), "la dependencia indirecta no borra ahorros guardados");
+                    marca.SetValue(muro, true, null);
+                    Check(opaco.Enabled && color.Enabled && sinReflejo.Enabled && sinEstela.Enabled,
+                          "restaurar el requisito padre reactiva todos los ahorros al momento");
+                    marca.SetValue(estadoNuevo, false, null);
+                    Check(!opaco.Enabled && !color.Enabled && !sinReflejo.Enabled && !sinEstela.Enabled
+                          && Necesita(color) == "Necesita: Estado ampliado en reposo (Imagen)", "sin estado ampliado se indica ese requisito concreto");
+                    marca.SetValue(estadoNuevo, true, null);
+                    Set("auroraAmount", 0f); Refresca();
+                    bool aurora = true;
+                    foreach (Control c in new Control[] { ligera, sinReflejo, Busca(ctl, "Aurora con bandas mas definidas"),
+                        Busca(ctl, "Ondas suaves"), Busca(ctl, "Reflejo de la aurora"), Busca(ctl, "Aurora mas limpia") })
+                        if (c.Enabled || Necesita(c) != "Necesita: Aurora del horizonte en Medio o Alto") aurora = false;
+                    Check(aurora, "aurora apagada deja en gris su ahorro, reflejo y adornos con el motivo exacto");
+                    Call("PonNivel", "espectro", 1); Refresca();
+                    Check(ligera.Enabled && sinReflejo.Enabled, "aurora en Medio reactiva los ahorros");
+                    Set("reflejoAurora", false); Refresca();
+                    Check(!sinReflejo.Enabled && Necesita(sinReflejo) == "Necesita: Reflejo de la aurora (Fondo / Cielo vivo)",
+                          "el ahorro de reflejo nombra su interruptor cuando falta");
+                    Set("reflejoAurora", true); Set("lunaOn", false); Refresca();
+                    Check(!corona.Enabled && !sinEstela.Enabled && Necesita(corona) == "Necesita: Astro principal en el cielo (Detalles)",
+                          "sin estrella ambos ahorros dicen donde encenderla");
+                    Set("lunaOn", true); Set("lunaActiva", false); Refresca();
+                    Check(!sinEstela.Enabled && Necesita(sinEstela) == "Necesita: Estrella viajera con orbitas (Fondo)" && corona.Enabled,
+                          "la estela necesita movimiento; la corona no");
+                    Set("lunaActiva", true); marca.SetValue(ecos, false, null);
+                    Check(!sinEstela.Enabled && Necesita(sinEstela) == "Necesita: Ecos de color de la estrella (Fondo)",
+                          "sin ecos el ahorro de estela indica ese interruptor");
+                    marca.SetValue(ecos, true, null); marca.SetValue(halo, false, null);
+                    Check(!corona.Enabled && Necesita(corona) == "Necesita: Corona estelar (Fondo / Estrella)",
+                          "sin halo el ahorro de corona indica su requisito");
+                    marca.SetValue(halo, true, null);
+                    Check(corona.Enabled && sinEstela.Enabled && (bool)Get("coronaCompacta") && (bool)Get("reposoSinEstela"),
+                          "al restaurar vuelven activos con sus valores guardados");
+                    // Estos ahorros solo suprimen reflejo/estela EN REPOSO. Sus mandos originales
+                    // siguen sirviendo al navegar: no crear un bloqueo circular de controles.
+                    marca.SetValue(opaco, true, null);
+                    Check(ecos.Enabled && Busca(ctl, "Reflejo de la aurora").Enabled && halo.Enabled,
+                          "los mandos globales siguen editables porque actuan tambien al navegar");
+                    marca.SetValue(opaco, false, null);
+                    foreach (Control c in new Control[] { color, sinReflejo, sinEstela, corona, ligera }) marca.SetValue(c, false, null);
+                }
+            }
+
             foreach (KeyValuePair<string, bool> kv in antes) Set(kv.Key, kv.Value);
             Set("nieblasNiv", nieblasAntes);
             }
