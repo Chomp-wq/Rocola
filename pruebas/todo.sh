@@ -284,6 +284,7 @@ GPU="$GPU memoriaanalisis memoriaintegrada wavdirecto"
 CPU="$CPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medidaligera"
 GPU="$GPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medidaligera"
 GPU="$GPU ruidomalla papeleraportadas"
+GPU="$GPU fichaportada"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
 CPU="$CPU pantallaviva"

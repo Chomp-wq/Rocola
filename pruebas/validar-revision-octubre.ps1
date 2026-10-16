@@ -20,7 +20,7 @@ try {
         $app = Join-Path $OutputDirectory ("Rocola-$mode.exe")
         & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $define ("/out:$app") @refs /r:System.Xml.dll ("/resource:$nlayer,Rocola.NLayer.dll") @sources
         if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
-        foreach ($test in @('ajustesvivos','iasdisparo','subgrave','gravemono','caratulasjpeg','fotos1013','asistentecombo','hojeofino','mp3ligero')) {
+        foreach ($test in @('ajustesvivos','iasdisparo','subgrave','gravemono','caratulasjpeg','fotos1013','asistentecombo','hojeofino','mp3ligero','fichaportada')) {
             $exe = Join-Path $OutputDirectory ("$test.exe")
             & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") @refs (Join-Path $PSScriptRoot "$test.cs") (Join-Path $PSScriptRoot 'leercodigo.cs')
             if ($LASTEXITCODE -ne 0) { throw "No compila $test" }

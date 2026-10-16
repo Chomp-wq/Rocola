@@ -924,6 +924,9 @@ namespace Rocola
                             Bitmap cb = cimg as Bitmap;
                             if (cb == null || cb.Width != ThumbPx || cb.Height != ThumbPx)
                                 throw new InvalidDataException("Miniatura de tamano incompatible");
+#if ROCOLA_GPU
+                            if (publicarPrimero) return CopiaMiniaturaGpu(cb);
+#endif
                             return cb.Clone(new Rectangle(0, 0, ThumbPx, ThumbPx), PixelFormat.Format32bppPArgb);
                         }
                     }
@@ -970,6 +973,38 @@ namespace Rocola
             }
             catch { return null; }
         }
+
+#if ROCOLA_GPU
+        // Un Clone de una imagen decodificada no garantiza desprenderse de su stream en GDI+ antiguo.
+        // Materializar los pixeles ANTES de cerrarlo y de reutilizar lecturaCaratula. Copia PArgb sin
+        // otra composicion: conserva el alfa y no reserva un arreglo grande por cada portada.
+        private static Bitmap CopiaMiniaturaGpu(Bitmap origen)
+        {
+            Bitmap copia = new Bitmap(origen.Width, origen.Height, PixelFormat.Format32bppPArgb);
+            try
+            {
+                Rectangle area = new Rectangle(0, 0, origen.Width, origen.Height);
+                BitmapData src = origen.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+                try
+                {
+                    BitmapData dst = copia.LockBits(area, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                    try
+                    {
+                        byte[] fila = new byte[area.Width * 4];
+                        for (int y = 0; y < area.Height; y++)
+                        {
+                            System.Runtime.InteropServices.Marshal.Copy(new IntPtr(src.Scan0.ToInt64() + (long)y * src.Stride), fila, 0, fila.Length);
+                            System.Runtime.InteropServices.Marshal.Copy(fila, 0, new IntPtr(dst.Scan0.ToInt64() + (long)y * dst.Stride), fila.Length);
+                        }
+                    }
+                    finally { copia.UnlockBits(dst); }
+                }
+                finally { origen.UnlockBits(src); }
+                return copia;
+            }
+            catch { copia.Dispose(); throw; }
+        }
+#endif
 
         // Guarda en cache acotando el tamaño (FIFO). Llamar SIEMPRE bajo coverLock.
         // Las expulsadas NO se liberan aqui (el hilo de pantalla podria estar dibujandolas):

@@ -1,5 +1,12 @@
 # Rocola
 
+## Ficha del disco y GDI+ — 16 de octubre de 2026
+
+La ficha rápida completa su texto aunque GDI+ rechace la portada. Las miniaturas
+para GPU se independizan del stream de lectura y la ficha usa coordenadas en
+píxeles. Corrección y pruebas sintéticas; pendiente comprobar en la máquina real.
+[Detalle del fallo de las fotos y verificación](FICHA_GDI_MODEST_2026-10-16.md).
+
 ## Guardado, modelos IA y ayuda — 15 de octubre de 2026
 
 El asistente espera **45 segundos sin uso** antes de despedirse. Se corrigen los reintentos de guardado de Ctrl+F3,

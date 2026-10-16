@@ -605,14 +605,22 @@ namespace Rocola
                 }
                 float pad = 16f * u, lado = 64f * u;
                 RectangleF rT = new RectangleF(pad, pad, lado, lado);
+                bool portadaPintada = false;
                 if (tapa != null)
                 {
                     GraphicsState st = g.Save();
-                    using (GraphicsPath pt = Redondo(rT, 7f * u)) g.SetClip(pt);
-                    g.DrawImage(tapa, rT);
-                    g.Restore(st);
+                    try
+                    {
+                        using (GraphicsPath pt = Redondo(rT, 7f * u)) g.SetClip(pt);
+                        // Coordenadas de origen en pixeles: no depender del DPI del archivo en GDI+ de XP.
+                        g.DrawImage(tapa, rT, new RectangleF(0, 0, tapa.Width, tapa.Height), GraphicsUnit.Pixel);
+                        portadaPintada = true;
+                    }
+                    catch (System.Runtime.InteropServices.ExternalException) { } // portada no dibujable en este GDI+
+                    catch (ArgumentException) { } // una imagen retirada/invalida tampoco debe parar el panel
+                    finally { g.Restore(st); }
                 }
-                else
+                if (!portadaPintada)
                     using (SolidBrush b = new SolidBrush(Color.FromArgb(80, colGenero)))
                     using (GraphicsPath pt = Redondo(rT, 7f * u)) g.FillPath(b, pt);
                 // LA CABECERA: artista, disco, cuantas y cuanto duran, y las pastillas del genero y de la cola.
