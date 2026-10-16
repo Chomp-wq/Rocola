@@ -137,6 +137,8 @@ namespace Rocola
             prep = Percentil(preparar, .5); dibujo = Percentil(dibujar, .5);
             present = Percentil(presentar, .5); fuera = Percentil(fueraRender, .5);
         }
+        internal void Colas(out double p99, out double max)
+        { p99 = n > 0 ? Percentil(intervalos, .99) : 0; max = n > 0 ? Percentil(intervalos, 1) : 0; }
         private double Percentil(double[] datos, double f)
         {
             Array.Copy(datos, ordenados, n); Array.Sort(ordenados, 0, n);

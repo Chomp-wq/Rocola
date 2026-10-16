@@ -38,7 +38,7 @@ class AjustesVivos
                                             "cieloProfundo", "lunaActiva", "paginaDesliza", "muroReposo",
                                             "cieloMedia",     // «Fondo en una sola capa» (G2, 14-10-2026) va dentro del cielo a media resolucion
                                             "vinetaSuave",    // y la pasada de grano y vineta necesita la vineta (14-10-2026)
-                                            "estrella3d" };   // y el pulido de la estrella, la estrella en 3D (PulidoGpu.cs)
+                                            "estrella3d", "reflejoAurora", "estelaEstelar", "haloLunar", "lunaOn" };   // y el pulido de la estrella, la estrella en 3D (PulidoGpu.cs)
 
     [STAThread] static int Main(string[] args)
     {
@@ -97,6 +97,7 @@ class AjustesVivos
             Check(conGpu == 0, "ningun mando ni nota lleva \"(GPU)\" en el nombre (" + conGpu + ")");
 
             IList reqs = (IList)Get("f3Requisitos");
+            float espectroAntes = (float)Get("auroraAmount");
             Console.WriteLine("\n  2) LAS DEPENDENCIAS (" + reqs.Count + " mandos)\n");
             Check(reqs.Count >= 12, "estan apuntadas las dependencias conocidas (al menos 12 mandos)");
             Dictionary<string, bool> antes0 = new Dictionary<string, bool>();
@@ -108,7 +109,7 @@ class AjustesVivos
             Set("gpuEnabled", true);
             Dictionary<string, bool> antes = new Dictionary<string, bool>();
             foreach (string r in requisitos) { antes[r] = (bool)Get(r); Set(r, true); }
-            int nieblasAntes = (int)Get("nieblasNiv"); Set("nieblasNiv", 2);   // los ahorros del cielo necesitan las nebulosas
+            int nieblasAntes = (int)Get("nieblasNiv"); Set("nieblasNiv", 2); Set("auroraAmount", .55f);   // los ahorros del cielo necesitan las nebulosas
             Refresca();
             bool todosVivos = true;
             foreach (object r in reqs)
@@ -121,11 +122,14 @@ class AjustesVivos
             // Lo que valen los que dependen, para ver que ponerlos en gris no los toca.
             string[] dependientes = { "colaDoce", "neonIntenso", "estadoTransparente", "cancionesCristal", "paletaCompleta",
                                       "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda",
-                                      "fondoCapa", "cieloCuarto" };
+                                      "fondoCapa", "cieloCuarto", "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto" };
             List<object> valAntes = new List<object>();
-            foreach (string d in dependientes) valAntes.Add(Get(d));
             foreach (string r in requisitos) Set(r, false);
+            Set("auroraAmount", 0f);
             Set("nieblasNiv", 0);
+            // Algunos requisitos (la estela) tambien son dependientes: capturar despues
+            // de preparar las entradas y antes de refrescar, para medir solo el efecto del gris.
+            foreach (string d in dependientes) valAntes.Add(Get(d));
             Refresca();
             int grises = 0, dicen = 0, caben = 0, cabenTotal = 0, alto = 0;
             foreach (object r in reqs)
@@ -162,7 +166,9 @@ class AjustesVivos
             foreach (object r in reqs)
             {
                 Control m = (Control)r.GetType().GetField("Mando").GetValue(r);
-                if (m.Bottom > m.Parent.Height) choques++;
+                ScrollableControl scroll = m.Parent as ScrollableControl;
+                int bottom = scroll != null && scroll.AutoScroll ? scroll.DisplayRectangle.Bottom : m.Parent.ClientSize.Height;
+                if (m.Bottom > bottom) choques++;
                 foreach (Control o in m.Parent.Controls) if (o != m && o.Visible && o.Bounds.IntersectsWith(m.Bounds)) choques++;
             }
             Check(choques == 0, "al crecer, ninguno se sale de su tarjeta ni pisa a otro");
@@ -190,6 +196,12 @@ class AjustesVivos
                 Check(cristal.Enabled && paleta.Enabled, "los que no dependen de el siguen como estaban");
                 marca.SetValue(expandido, true, null);
                 Check(doce.Enabled && transp.Enabled && ocultar.Enabled && Necesita(doce) == null, "y al encenderlo vuelven solos");
+                bool transparenteAntes = (bool)Get("estadoTransparente");
+                Set("estadoOpacoPerf", true); Refresca();
+                Check(!transp.Enabled && Necesita(transp) == "Sin efecto: estado opaco (Performance)"
+                      && (bool)Get("estadoTransparente") == transparenteAntes, "el estado opaco deja la transparencia en gris sin cambiarla");
+                Set("estadoOpacoPerf", false); Refresca();
+                Check(transp.Enabled && Necesita(transp) == null, "la transparencia vuelve al quitar el ahorro opaco");
                 marca.SetValue(lista, false, null);
                 Check(!cristal.Enabled && Necesita(cristal) == "Necesita: Lista de canciones transparente (Imagen)", "el cristal, con la lista transparente (Imagen)");
                 marca.SetValue(lista, true, null);
@@ -239,7 +251,7 @@ class AjustesVivos
 
             Console.WriteLine("\n  4) SIN TARJETA GRAFICA\n");
             foreach (string r in requisitos) Set(r, true);   // que no falte nada mas que la tarjeta
-            Set("nieblasNiv", 2);
+            Set("nieblasNiv", 2); Set("auroraAmount", .55f);
             IList solo = (IList)Get("f3SoloTarjeta"); IList avisos = (IList)Get("f3AvisoTarjeta");
             Check(solo.Count >= 60, "lo que solo se dibuja con tarjeta esta apuntado (" + solo.Count + " mandos)");
             Check(avisos.Count >= 4, "y hay un aviso por pagina u hoja (" + avisos.Count + ")");
@@ -265,6 +277,7 @@ class AjustesVivos
                 Check(vivos == solo.Count, "con la tarjeta, vuelven todos");
             }
             foreach (KeyValuePair<string, bool> kv in antes0) Set(kv.Key, kv.Value);
+            Set("auroraAmount", espectroAntes);
         }
 
         Console.WriteLine("\n  5) GUARDAR AL MOMENTO\n");

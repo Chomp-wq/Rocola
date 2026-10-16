@@ -199,8 +199,11 @@ namespace Rocola
         {
             float r = radius * Estrella3dEscala;
             double pitch = StarPitch(), yaw = LunaActiva ? starYaw : 0;   // quieta, de frente como el icono
-            UpdateStarEchoes3d(now, cx, cy, r, yaw, pitch, roll, color);
-            DrawStarEchoes3d(now);
+            if (!(ReposoSinEstela && AhorroReposo))
+            {
+                UpdateStarEchoes3d(now, cx, cy, r, yaw, pitch, roll, color);
+                DrawStarEchoes3d(now);
+            }
             int filo, mejor; float brillo;
             int n = PoseEstrella(e3caras, 0, e3filo, 0, cx, cy, r, yaw, pitch, roll, color, 255, false, 1.1f, out filo, out mejor, out brillo);
             // La franja va DEBAJO: donde cae sobre otra cara que se ve, esa cara la tapa, y solo queda la de fuera.

@@ -150,7 +150,9 @@ namespace Rocola
             if (paradaApuntada && unchecked(ahora - paradaErrorTick) < 10000) { paradasSinApuntar++; return; }
             string callo = paradasSinApuntar > 0 ? " (y " + paradasSinApuntar + " mas de " + ParadaErrorMs + " ms desde el apunte anterior)" : "";
             paradaApuntada = true; paradaErrorTick = ahora; paradasSinApuntar = 0;
-            LogError("Pantalla parada " + ms + " ms, " + que + callo, null);
+            LogError("Pantalla parada " + ms + " ms, " + que + callo
+                + "; repaso_pendiente=" + System.Threading.Thread.VolatileRead(ref preScanLeft)
+                + "; miniaturas_pendientes=" + minisPendientes + "; biblioteca_construyendose=" + libBuilding, null);
         }
     }
 

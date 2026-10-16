@@ -473,7 +473,7 @@ namespace Rocola
         private Bitmap tituloReposoBmp; private int tituloReposoVer; private string tituloReposoDe; private int tituloReposoAlto = -1;
         private ReposoGrande reposoUltimo;
         private Font fTituloReposo; private int fTituloW, fTituloH;
-        private bool ReposoGrandeActivo() { return suenaGrande && estadoExpandido; }
+        private bool ReposoGrandeActivo() { return suenaGrande && EstadoExtendidoEfectivo; }
         // Lo que el panel de reposo pinta de mas; null si la idea esta apagada.
         private ReposoGrande ExtraReposo(int w, int h, int enCola)
         {

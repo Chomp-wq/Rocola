@@ -549,6 +549,12 @@ namespace Rocola
                     else if (s.StartsWith("grano_vineta=")) granoVineta = s.Substring(13).Trim() == "1";
                     else if (s.StartsWith("fondo_capa=")) fondoCapa = s.Substring(11).Trim() == "1";        // G2 (14-10-2026)
                     else if (s.StartsWith("cielo_cuarto=")) cieloCuarto = s.Substring(13).Trim() == "1";    // J2 (14-10-2026)
+                    else if (s.StartsWith("estado_opaco_perf=")) estadoOpacoPerf = s.Substring(18).Trim() == "1";
+                    else if (s.StartsWith("aurora_ligera_perf=")) auroraLigeraPerf = s.Substring(19).Trim() == "1";
+                    else if (s.StartsWith("reposo_sin_reflejo=")) reposoSinReflejo = s.Substring(19).Trim() == "1";
+                    else if (s.StartsWith("reposo_sin_estela=")) reposoSinEstela = s.Substring(18).Trim() == "1";
+                    else if (s.StartsWith("corona_compacta=")) coronaCompacta = s.Substring(16).Trim() == "1";
+                    else if (s.StartsWith("estado_color_directo=")) estadoColorDirecto = s.Substring(21).Trim() == "1";
                     else if (s.StartsWith("halo_seleccion=")) haloSeleccion = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("estrellas_finas=")) estrellasFinas = s.Substring(16).Trim() != "0";
                     else if (s.StartsWith("luna_del_cielo=")) lunaDelCielo = s.Substring(15).Trim() != "0";          // el cielo vivo (CieloVivoGpu.cs)
@@ -724,6 +730,12 @@ namespace Rocola
             sb.Append("grano_vineta=").Append(granoVineta ? "1" : "0").Append("\r\n");
             sb.Append("fondo_capa=").Append(fondoCapa ? "1" : "0").Append("\r\n");
             sb.Append("cielo_cuarto=").Append(cieloCuarto ? "1" : "0").Append("\r\n");
+            sb.Append("estado_opaco_perf=").Append(estadoOpacoPerf ? "1" : "0").Append("\r\n");
+            sb.Append("aurora_ligera_perf=").Append(auroraLigeraPerf ? "1" : "0").Append("\r\n");
+            sb.Append("reposo_sin_reflejo=").Append(reposoSinReflejo ? "1" : "0").Append("\r\n");
+            sb.Append("reposo_sin_estela=").Append(reposoSinEstela ? "1" : "0").Append("\r\n");
+            sb.Append("corona_compacta=").Append(coronaCompacta ? "1" : "0").Append("\r\n");
+            sb.Append("estado_color_directo=").Append(estadoColorDirecto ? "1" : "0").Append("\r\n");
             sb.Append("halo_seleccion=").Append(haloSeleccion ? "1" : "0").Append("\r\n");
             sb.Append("estrellas_finas=").Append(estrellasFinas ? "1" : "0").Append("\r\n");
             sb.Append("luna_del_cielo=").Append(lunaDelCielo ? "1" : "0").Append("\r\n");
@@ -3276,6 +3288,9 @@ namespace Rocola
             if (nowPlaying.IsVideo)
             {
                 bgAccentTarget = DefaultAccent;       // el video no tiene genero
+#if ROCOLA_GPU
+                if (estadoColorDirecto) CambioElAcentoDelPanel(bgAccentTarget);
+#endif
                 bgGeneroTarget = DefaultAccent; bgPort1 = SinColor; bgPort2 = SinColor; bgSinGenero = false; bgArtistaFijo = false;   // ni caratula que aporte
                 StartVideoItem(nowPlaying.VideoPath);
             }

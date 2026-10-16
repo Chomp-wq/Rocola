@@ -1,5 +1,15 @@
 # Rocola
 
+## Estado extendido en equipos modestos — 16 de octubre de 2026
+
+Se reutilizan los mapas del estado, se copia y sube solo el recuadro del reloj y
+se evitan cargas de textos ocultos. Performance incorpora seis interruptores:
+estado opaco, aurora con menos columnas, omitir reflejo y estela durante el reposo,
+corona compacta y color del estado sin transición. El medidor incluye el estado
+extendido y registra p95/p99/máximo. Compilación para .NET 3.5 y pruebas sintéticas;
+pendiente medir el resultado en el AMD A4 con XP del local.
+[Cambios, activación y pruebas](ESTADO_EXTENDIDO_MODEST_2026-10-16.md).
+
 ## Ficha del disco y GDI+ — 16 de octubre de 2026
 
 La ficha rápida completa su texto aunque GDI+ rechace la portada. Las miniaturas

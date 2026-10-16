@@ -96,12 +96,26 @@ namespace Rocola
         private const int AcentoPaso = 6;
         partial void CambioElAcentoDelPanel(Color nuevo)
         {
+            if (estadoColorDirecto) nuevo = bgAccentTarget;
             if (idlePanelAcento != Color.Empty
                 && Math.Abs(nuevo.R - idlePanelAcento.R) < AcentoPaso
                 && Math.Abs(nuevo.G - idlePanelAcento.G) < AcentoPaso
                 && Math.Abs(nuevo.B - idlePanelAcento.B) < AcentoPaso) return;
             idlePanelAcento = nuevo;
             CambioElPanelDeReposo();
+        }
+        // Las precargas de otras paginas no cambian las portaditas del estado ni de su cola.
+        private bool PortadasVisiblesEnCola(string[] keys, int maximum)
+        {
+            int count = Math.Min(maximum, queue.Count);
+            for (int i = 0; i < count; i++)
+            {
+                Album disc = queue[i] != null ? queue[i].Disc : null;
+                if (disc == null || string.IsNullOrEmpty(disc.CoverPath)) continue;
+                for (int k = 0; k < keys.Length; k++)
+                    if (string.Equals(keys[k], disc.CoverPath, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
         private Bitmap BuildIdlePanel()
         {
@@ -118,15 +132,16 @@ namespace Rocola
                 return idlePanelBmp;
             }
             idlePanelDatosDe = idlePanelDatos;
+            Color acento = estadoColorDirecto ? bgAccentTarget : bgAccent;
             string title, artist; nowPlaying.TituloArtista(out title, out artist);
             title = TituloSinPista(title);
             string[] qt = new string[Math.Min(colaDoce ? 12 : 3, queue.Count)], qa = new string[qt.Length];
             Image[] covers = new Image[qt.Length];
             StringBuilder sig = new StringBuilder();
             sig.Append(w).Append('|').Append(h).Append('|').Append(nowPlaying.PathKey()).Append('|')
-                .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(bgAccent.ToArgb());
+                .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(acento.ToArgb());
             string time = TextoRelojReposoCache(reader);   // mismo formato de SuenaVivoGpu.cs, sin volver a formar cadenas por cuadro
-            sig.Append('|').Append(estadoTransparente).Append('|').Append(iaBadgeKind);
+            sig.Append('|').Append(estadoTransparente).Append('|').Append(EstadoOpacoActivo).Append('|').Append(iaBadgeKind);
             for (int i = 0; i < qt.Length; i++)
             {
                 queue[i].TituloArtista(out qt[i], out qa[i]);
@@ -148,18 +163,23 @@ namespace Rocola
             int progressStart;
             Bitmap next;
             using (CapturaTexto(1))
-                next = RenderIdlePanelGrande(w, h, title, artist, "", qt, qa, covers, queue.Count, bgAccent, estadoTransparente, iaBadgeKind, colaDoce, extra, out progressStart);
+                next = RenderIdlePanelEn(idlePanelBmp, w, h, title, artist, "", qt, qa, covers, queue.Count, acento,
+                    estadoTransparente && !EstadoOpacoActivo, iaBadgeKind, colaDoce, extra, EstadoOpacoActivo, out progressStart);
             reposoUltimo = extra;
             if (extra != null) { extra.Titulo = title; extra.W = w; extra.H = h; }   // el titulo que se desliza lo hornea la tarjeta al pedirlo
-            if (idleClockUnderlay != null) { idleClockUnderlay.Dispose(); idleClockUnderlay = null; }
-            idleClockUnderlay = next.Clone(new Rectangle(0, h - 34, w, 34), PixelFormat.Format32bppPArgb);
+            if (idleClockUnderlay == null || idleClockUnderlay.Width != w)
+            {
+                if (idleClockUnderlay != null) idleClockUnderlay.Dispose();
+                idleClockUnderlay = new Bitmap(w, 34, PixelFormat.Format32bppPArgb);
+            }
+            CopiaRegionReposo(next, new Rectangle(0, h - 34, w, 34), idleClockUnderlay, Point.Empty);
             progressStart = UpdateIdleClock(next, idleClockUnderlay, time);
             idlePanelTime = time; idlePanelRevision++;
             if (gpuPanel != null) { gpuPanel.IdlePanelVersion = idlePanelRevision; gpuPanel.IdlePanelDirty = Rectangle.Empty; }
             idlePanelProgressStart = progressStart;
             if (gpuPanel != null) gpuPanel.IdleProgressStart = progressStart;
             Bitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;
-            if (old != null) old.Dispose();
+            if (old != null && !ReferenceEquals(old, next)) old.Dispose();
             return idlePanelBmp;
         }
 
@@ -187,23 +207,71 @@ namespace Rocola
         {
             string time = TextoRelojReposoCache(reader);
             if (idleClockUnderlay == null || idlePanelBmp == null || idlePanelTime == time) return;
-            idlePanelProgressStart = UpdateIdleClock(idlePanelBmp, idleClockUnderlay, time);
+            Rectangle zona;
+            idlePanelProgressStart = UpdateIdleClockRegion(idlePanelBmp, idleClockUnderlay, time, idlePanelProgressStart, out zona);
             idlePanelTime = time; idlePanelRevision++;
             if (gpuPanel != null)
             {
                 gpuPanel.IdlePanelVersion = idlePanelRevision;
-                gpuPanel.IdlePanelDirty = new Rectangle(0, h - 34, w, 34);
+                gpuPanel.IdlePanelDirty = zona;
                 gpuPanel.IdleProgressStart = idlePanelProgressStart;
             }
         }
 
-        internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+        // Solo los digitos, con margen para el antialias y para borrar un texto anterior mas largo.
+        internal static int UpdateIdleClockRegion(Bitmap panel, Bitmap underlay, string time, int previousRight, out Rectangle dirty)
         {
+            float scale = Math.Max(.8f, Math.Min(1.3f, panel.Height / 260f));
+            int x = GpuPanel.IdleCoverRect(panel.Width, panel.Height).Right + 16;
+            using (Graphics g = Graphics.FromImage(panel))
+            using (Font font = new Font("Tahoma", 17 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.FormatFlags = StringFormatFlags.NoWrap;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                int width = (int)Math.Ceiling(g.MeasureString(time ?? "", font, int.MaxValue, sf).Width) + 2;
+                width = Math.Max(1, Math.Min(width, panel.Width - x - 112));
+                int right = Math.Max(previousRight, x + width + 8) + 3;
+                dirty = Rectangle.Intersect(new Rectangle(0, 0, panel.Width, panel.Height),
+                    new Rectangle(Math.Max(0, x - 3), panel.Height - 34, Math.Max(1, right - x + 3), 34));
+            }
+            CopiaRegionReposo(underlay, new Rectangle(dirty.X, dirty.Y - panel.Height + underlay.Height, dirty.Width, dirty.Height), panel, dirty.Location);
             using (Graphics g = Graphics.FromImage(panel))
             {
-                g.CompositingMode = CompositingMode.SourceCopy;
-                g.DrawImageUnscaled(underlay, 0, panel.Height - underlay.Height);
-                g.CompositingMode = CompositingMode.SourceOver;
+                g.SetClip(dirty);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                return DrawIdleClock(g, panel.Width, panel.Height, time);
+            }
+        }
+
+        [ThreadStatic] private static byte[] filaReposo;
+        internal static void CopiaRegionReposo(Bitmap source, Rectangle area, Bitmap target, Point position)
+        {
+            int bytes = checked(area.Width * 4);
+            if (filaReposo == null || filaReposo.Length < bytes) filaReposo = new byte[bytes];
+            BitmapData src = source.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+            try
+            {
+                BitmapData dst = target.LockBits(new Rectangle(position, area.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                try
+                {
+                    for (int y = 0; y < area.Height; y++)
+                    {
+                        System.Runtime.InteropServices.Marshal.Copy(new IntPtr(src.Scan0.ToInt64() + (long)y * src.Stride), filaReposo, 0, bytes);
+                        System.Runtime.InteropServices.Marshal.Copy(filaReposo, 0, new IntPtr(dst.Scan0.ToInt64() + (long)y * dst.Stride), bytes);
+                    }
+                }
+                finally { target.UnlockBits(dst); }
+            }
+            finally { source.UnlockBits(src); }
+        }
+
+        internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+        {
+            CopiaRegionReposo(underlay, new Rectangle(0, 0, underlay.Width, underlay.Height), panel, new Point(0, panel.Height - underlay.Height));
+            using (Graphics g = Graphics.FromImage(panel))
+            {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 return DrawIdleClock(g, panel.Width, panel.Height, time);
@@ -275,12 +343,17 @@ namespace Rocola
         // 'extra' es lo de "Lo que suena, en grande" (SuenaVivoGpu.cs); con null, el panel de siempre.
         internal static Bitmap RenderIdlePanelGrande(int w, int h, string title, string artist, string time,
             string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, ReposoGrande extra, out int progressStart)
+        { return RenderIdlePanelEn(null, w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, extra, false, out progressStart); }
+
+        internal static Bitmap RenderIdlePanelEn(Bitmap bitmap, int w, int h, string title, string artist, string time,
+            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,
+            ReposoGrande extra, bool opaque, out int progressStart)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
-            Bitmap bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+            if (bitmap == null || bitmap.Width != w || bitmap.Height != h) bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (Graphics g = Graphics.FromImage(bitmap))
             using (Brush bg = DegradadoV(new Rectangle(0, 0, w, h),
-                Color.FromArgb(transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(transparent ? 0 : 248, 7, 12, 29)))   // C4 (PulidoGpu.cs)
+                Color.FromArgb(opaque ? 255 : transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(opaque ? 255 : transparent ? 0 : 248, 7, 12, 29)))   // C4 (PulidoGpu.cs)
             using (Pen top = new Pen(Color.FromArgb(155, Lighten(accent, .45)), 2))
             using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
@@ -293,6 +366,7 @@ namespace Rocola
             using (StringFormat wrap = new StringFormat())
             using (StringFormat numberFormat = StringFormat.GenericTypographic)
             {
+                g.Clear(Color.Transparent); // el mapa se reutiliza: no acumular texto/alfa de la cancion anterior
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 line.Trimming = StringTrimming.EllipsisCharacter; line.FormatFlags = StringFormatFlags.NoWrap;

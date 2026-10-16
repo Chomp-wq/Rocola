@@ -450,11 +450,19 @@ namespace Rocola
 
     internal sealed partial class GpuPanel
     {
-        // Ctrl+F3 -> Imagen -> Performance. Los tres son de aspecto (casi identico), asi que llevan interruptor y vienen
+        // Ctrl+F3 -> Imagen -> Performance. Estos ahorros son de aspecto (casi identico), asi que llevan interruptor y vienen
         // apagados de fabrica; el preset "Performance" los enciende.
         public bool CieloMedia, GranoVineta, FondoUnaCapa, CieloCuarto;
+        public bool EstadoOpaco, AuroraLigera, ReposoSinReflejo, ReposoSinEstela, CoronaCompacta;
+        private bool AhorroReposo { get { return idleBlend >= .999f; } }
+        private bool EstadoOcultaDesde(float top)
+        {
+            return EstadoOpaco && idleBlend >= 1f && idleTex != IntPtr.Zero && idleLastBmp != null
+                && idleUploadedVersion == IdlePanelVersion && top >= Math.Ceiling(StatusTopY) + 2f;
+        }
         // El medidor pide contar tambien los pixeles pintados (cuesta un poco de procesador; solo mientras mide).
         public bool CuentaArea;
+        internal bool EstadoExtendidoAsentado { get { return idleBlend >= 1f && idleTex != IntPtr.Zero; } }
         private bool cieloMedioEsteCuadro, granoUnidoEsteCuadro, capaUnicaEsteCuadro;
         private readonly D3D9.Vtx[] mediaQuad = new D3D9.Vtx[24];
         private D3D9.Vtx2[] granoVineta2;
@@ -706,6 +714,7 @@ namespace Rocola
         // Lo tipico (mediana) de los cuadros medidos desde ReiniciaMedida, del diagnostico de fluidez.
         internal void Medianas(out double intervalo, out double preparar, out double dibujar, out double presentar, out double fuera, out double p95)
         { fluidez.Medianas(out intervalo, out preparar, out dibujar, out presentar, out fuera, out p95); }
+        internal void ColasDeCuadro(out double p99, out double max) { fluidez.Colas(out p99, out max); }
         internal bool PuedeSinEspera { get { return stars != null && stars.PuedeSinEspera; } }
         internal bool PideSinEspera(bool sinEspera) { return stars != null && stars.PideSinEspera(sinEspera); }
         internal bool SinEspera { get { return stars != null && stars.SinEspera; } }

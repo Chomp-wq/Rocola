@@ -2466,16 +2466,12 @@ namespace Rocola
             double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
             if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
             {
+                VigiaPantalla.Hace("preparar estado extendido");
                 Bitmap ib = GetIdlePanel();
                 if (ib != null)
                 {
-                    if (ReferenceEquals(ib, idleLastBmp) && idleTex != IntPtr.Zero && IdlePanelVersion != idleUploadedVersion)
-                    {
-                        if (IdlePanelDirty.IsEmpty || !stars.UpdateOverlayRegion(idleTex, ib, IdlePanelDirty))
-                            idleLastBmp = null; // fallo regional: reintentar la subida completa habitual
-                    }
-                    EnsureCover(ref idleTex, ref idleLastBmp, ref idleW, ref idleH, ref idleU, ref idleV, ib);
-                    if (idleTex != IntPtr.Zero) idleUploadedVersion = IdlePanelVersion;
+                    VigiaPantalla.Hace("subir estado extendido a la tarjeta");
+                    SubeEstadoExtendido(ib);
                 }
             }
             idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
@@ -2542,6 +2538,7 @@ namespace Rocola
                     else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }
+            VigiaPantalla.Hace("preparar textos y adornos GPU");
             PreparaCintasTexto();
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
             EnsureVineta();
@@ -2595,7 +2592,9 @@ namespace Rocola
             double antesDibujo = AhoraMs();
             HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
             DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs)
+            VigiaPantalla.Hace("dibujar fondo, aurora y estrella");
             bool fondoOk = stars.Begin(Width, Height, pulse, pulseCrudo);
+            VigiaPantalla.Hace("dibujar portadas e interfaz");
             stars.VinetaPuntos = false;   // la vineta punto por punto (G2) es solo para el fondo: aqui termina
             if (!fondoOk) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             // Adornos solo del fondo: antes del muro y de toda la interfaz. Con «Fondo en una sola capa» (G2) la vineta y el
@@ -2804,6 +2803,7 @@ namespace Rocola
             double trabajo = AhoraMs() - msTrab0;
             lastFrameWork = trabajo;
             double antesPresentar = AhoraMs();
+            VigiaPantalla.Hace("presentar cuadro de la tarjeta");
             if (!stars.End()) return NoPresentado();
             double terminado = AhoraMs();
             // Un tope de 24/50/60 puede saltar varios refrescos: no clasificar ese intervalo normal como tiron.
@@ -3086,6 +3086,21 @@ namespace Rocola
             int cost = lastHeavyMs - t0; if (cost < 0) cost = 0;
             int g = cost + cost / 2;   // ~1.5x el coste
             heavyGapMs = g < 16 ? 16 : (g > 250 ? 250 : g);
+        }
+
+        // El estado es una textura mutable propia, no una portada compartida. Una actualizacion de
+        // texto reusa su memoria GPU; el reloj solo sube la region marcada de la revision inmediata.
+        private void SubeEstadoExtendido(Bitmap bitmap)
+        {
+            if (bitmap == null) return;
+            if (ReferenceEquals(bitmap, idleLastBmp) && idleTex != IntPtr.Zero && IdlePanelVersion == idleUploadedVersion) return;
+            bool regional = ReferenceEquals(bitmap, idleLastBmp) && idleTex != IntPtr.Zero
+                && unchecked(IdlePanelVersion - idleUploadedVersion) == 1 && !IdlePanelDirty.IsEmpty
+                && idleW == bitmap.Width && idleH == bitmap.Height;
+            if (!(regional && stars.UpdateOverlayRegion(idleTex, bitmap, IdlePanelDirty)))
+                idleTex = Upload(idleTex, ref idleW, ref idleH, bitmap, out idleU, out idleV);
+            if (idleTex != IntPtr.Zero) { idleLastBmp = bitmap; idleUploadedVersion = IdlePanelVersion; }
+            else { idleLastBmp = null; idleUploadedVersion = -1; }
         }
 
         // Sube 'bmp' a 'tex' REUTILIZANDO la textura si el bitmap tiene el mismo tamano (barato: solo re-copia
@@ -3933,8 +3948,13 @@ namespace Rocola
         // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
         internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel)
+        { return AurMallaLigera(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, 1); }
+
+        internal static int AurMallaLigera(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+                                     float ancho, float baseY, float alturaPanel, int saltoCols)
         {
             int puntos = AurCols + 1;
+            saltoCols = saltoCols == 2 ? 2 : 1;
             if (v == null || hCol == null || cCortina == null || cSuelo == null || aCol == null || rCol == null) return 0;
             if (v.Length < (AurFilas + AurSuelo) * AurCols * 6) return 0;
             if (hCol.Length < puntos || aCol.Length < puntos || rCol.Length < puntos) return 0;
@@ -3955,10 +3975,10 @@ namespace Rocola
                 // El borde DERECHO de una celda es el IZQUIERDO de la de al lado: mismo color, misma opacidad,
                 // misma cuenta. Se arrastra en vez de calcularlo dos veces.
                 uint cL0 = AurArgb(cSuelo[k0], aCol[0] * m0), cL1 = AurArgb(cSuelo[k1], aCol[0] * m1);
-                for (int i = 0; i < AurCols; i++)
+                for (int i = 0; i < AurCols; i += saltoCols)
                 {
-                    float x0 = i * paso, x1 = x0 + paso;
-                    uint cR0 = AurArgb(cSuelo[k0 + i + 1], aCol[i + 1] * m0), cR1 = AurArgb(cSuelo[k1 + i + 1], aCol[i + 1] * m1);
+                    float x0 = i * paso, x1 = x0 + paso * saltoCols;
+                    uint cR0 = AurArgb(cSuelo[k0 + i + saltoCols], aCol[i + saltoCols] * m0), cR1 = AurArgb(cSuelo[k1 + i + saltoCols], aCol[i + saltoCols] * m1);
                     AurV3(ref v[n + 0], x0, y0, cL0); AurV3(ref v[n + 1], x1, y0, cR0); AurV3(ref v[n + 2], x0, y1, cL1);
                     AurV3(ref v[n + 3], x1, y0, cR0); AurV3(ref v[n + 4], x1, y1, cR1); AurV3(ref v[n + 5], x0, y1, cL1);
                     n += 6;
@@ -3978,14 +3998,14 @@ namespace Rocola
                 float yL0 = baseY - hCol[0] * f0, yL1 = baseY - hCol[0] * f1;
                 float wL0 = aCol[0] * m0 * (1f + (rCol[0] - 1f) * g0), wL1 = aCol[0] * m1 * (1f + (rCol[0] - 1f) * g1);
                 uint cL0 = AurArgb(cCortina[k0], wL0), cL1 = AurArgb(cCortina[k1], wL1);
-                for (int i = 0; i < AurCols; i++)
+                for (int i = 0; i < AurCols; i += saltoCols)
                 {
-                    float x0 = i * paso, x1 = x0 + paso;
-                    float hR = hCol[i + 1];
+                    float x0 = i * paso, x1 = x0 + paso * saltoCols;
+                    float hR = hCol[i + saltoCols];
                     float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
-                    float wR0 = aCol[i + 1] * m0 * (1f + (rCol[i + 1] - 1f) * g0), wR1 = aCol[i + 1] * m1 * (1f + (rCol[i + 1] - 1f) * g1);
-                    uint cR0 = AurArgb(cCortina[k0 + i + 1], wR0);
-                    uint cR1 = AurArgb(cCortina[k1 + i + 1], wR1);
+                    float wR0 = aCol[i + saltoCols] * m0 * (1f + (rCol[i + saltoCols] - 1f) * g0), wR1 = aCol[i + saltoCols] * m1 * (1f + (rCol[i + saltoCols] - 1f) * g1);
+                    uint cR0 = AurArgb(cCortina[k0 + i + saltoCols], wR0);
+                    uint cR1 = AurArgb(cCortina[k1 + i + saltoCols], wR1);
                     AurV3(ref v[n + 0], x0, yL1, cL1); AurV3(ref v[n + 1], x1, yR1, cR1); AurV3(ref v[n + 2], x0, yL0, cL0);
                     AurV3(ref v[n + 3], x1, yR1, cR1); AurV3(ref v[n + 4], x1, yR0, cR0); AurV3(ref v[n + 5], x0, yL0, cL0);
                     n += 6;
@@ -4048,8 +4068,13 @@ namespace Rocola
         //   cLinea/gCol = lo mismo para la linea del horizonte (color del PIE y su brillo)
         internal static int AurBrillo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY)
+        { return AurBrilloLigero(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, 1); }
+
+        internal static int AurBrilloLigero(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols)
         {
             int puntos = AurCols + 1;
+            saltoCols = saltoCols == 2 ? 2 : 1;
             if (v == null || hCol == null || cNeon == null || nCol == null || cLinea == null || gCol == null) return 0;
             if (v.Length < AurBrilloVtx) return 0;
             if (hCol.Length < puntos || nCol.Length < puntos || gCol.Length < puntos) return 0;
@@ -4071,10 +4096,10 @@ namespace Rocola
             uint fL = AurArgb(pL, 0f);                                                 // el borde del resplandor: apagado
             uint mL = AurArgb(pL, aL * AurLineaHalo);
             uint nLc = AurArgb(kL, aL);                                                // el nucleo, aclarado
-            for (int i = 0; i < AurLineaCols; i++)
+            for (int i = 0; i < AurLineaCols; i += saltoCols)
             {
-                float x0 = i * pasoL, x1 = x0 + pasoL;
-                int j1 = (i + 1) * salto;
+                float x0 = i * pasoL, x1 = x0 + pasoL * saltoCols;
+                int j1 = (i + saltoCols) * salto;
                 uint pR = cLinea[j1];
                 uint kR = AurNeon(pR, AurNeonBlanco);
                 float aR = gCol[j1];
@@ -4101,16 +4126,16 @@ namespace Rocola
             uint cfL = AurArgb(cIz, 0f);
             uint cmL = AurArgb(cIz, aIz * AurNeonHalo);
             uint cnL = AurArgb(kIz, aIz);
-            for (int q = 0; q < AurContCols; q++)
+            for (int q = 0; q < AurContCols; q += saltoCols)
             {
-                int k = q + 1;
+                int k = q + saltoCols;
                 int i = k / sub; float u = (k - i * sub) / (float)sub;
                 if (i > AurCols) { i = AurCols; u = 0f; }
                 int i2 = (i < AurCols) ? i + 1 : AurCols;
                 float tR = baseY - AurCurvaH(hCol, i, u);              // la cresta al final de este tramo
                 uint cDe = (u <= 0f) ? cNeon[i] : AurLerpRgb(cNeon[i], cNeon[i2], u);
                 float aDe = nCol[i] + (nCol[i2] - nCol[i]) * u;
-                float x0 = q * pasoC, x1 = x0 + pasoC;
+                float x0 = q * pasoC, x1 = x0 + pasoC * saltoCols;
                 uint kR = AurNeon(cDe, AurNeonBlanco);
                 uint cfR = AurArgb(cDe, 0f);
                 uint cmR = AurArgb(cDe, aDe * AurNeonHalo);
@@ -4125,7 +4150,7 @@ namespace Rocola
             return n;
         }
 
-        private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk;   // la ultima malla armada
+        private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk; private int aurMallaSalto;   // la ultima malla armada
         private void DrawAurora(GpuAurora au)
         {
             bool updateWave = SampleWave(ref au);
@@ -4220,13 +4245,14 @@ namespace Rocola
             // colores y brillos de cada columna -que solo cambian arriba, cuando toca muestra de la onda-, del ancho, del
             // alto y de donde va el horizonte. En los cuadros en que nada de eso cambio (pantalla de mas de 60 Hz, ondas a
             // 24 o 30 por segundo, o el reposo quieto) saldria la misma malla, numero por numero: se dibuja la que ya esta.
-            bool mismaMalla = !updateWave && aurMallaOk && aurMallaBase == au.BaseY && aurMallaAncho == Width && aurMallaAlto == Height;
-            int n = mismaMalla ? aurMallaN : AurMalla(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height);
+            int salto = AuroraLigera ? 2 : 1;
+            bool mismaMalla = aurMallaSalto == salto && !updateWave && aurMallaOk && aurMallaBase == au.BaseY && aurMallaAncho == Width && aurMallaAlto == Height;
+            int n = mismaMalla ? aurMallaN : AurMallaLigera(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height, salto);
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
-            int nb2 = mismaMalla ? aurBrilloN : AurBrillo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY);
-            aurMallaN = n; aurBrilloN = nb2; aurMallaBase = au.BaseY; aurMallaAncho = Width; aurMallaAlto = Height; aurMallaOk = true;
+            int nb2 = mismaMalla ? aurBrilloN : AurBrilloLigero(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY, salto);
+            aurMallaSalto = salto; aurMallaN = n; aurBrilloN = nb2; aurMallaBase = au.BaseY; aurMallaAncho = Width; aurMallaAlto = Height; aurMallaOk = true;
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
             aurDibujada = n >= 3; aurDibujadaBase = au.BaseY;   // para su reflejo (CieloVivoGpu.cs)
         }

@@ -399,7 +399,11 @@ namespace Rocola
             string[] keys = TakeCoverArrivals();
             for (int i = 0; i < keys.Length; i++) ApplyArrivedCover(keys[i]);
             if (keys.Length == 0) return;
-            CambioElPanelDeReposo();   // el panel de reposo ensena las caratulas de la cola, y estas acaban de llegar
+#if ROCOLA_GPU
+            if (PortadasVisiblesEnCola(keys, colaDoce ? 12 : 3)) CambioElPanelDeReposo();
+#else
+            CambioElPanelDeReposo();
+#endif
             try
             {
                 if (searchOpen && searchOverlay != null) searchOverlay.Invalidate();

@@ -75,6 +75,7 @@ class RenderCache
             Bitmap visible = ((Bitmap[])Get(compact[0], "Tiles"))[0];
             Check(tiles.Count == 21 && (IntPtr)Get(tiles[visible], "Tex") != IntPtr.Zero, "la compacta visible espera por la cola oculta");
             int loaded = 0; foreach (object tile in tiles.Values) if ((IntPtr)Get(tile, "Tex") != IntPtr.Zero) loaded++;
+            Check(loaded == 1, "la cola completamente oculta recibe subidas especulativas");
             Set(panel, "idleBlend", .5f); Locks.Clear(); Call(panel, "PreparaCintasTexto");
             Check(Locks.Count == 21 - loaded, "al aparecer la cola no recupera todas sus cintas pendientes");
             foreach (object tile in tiles.Values) Check((IntPtr)Get(tile, "Tex") != IntPtr.Zero, "una cinta visible sigue sin textura");

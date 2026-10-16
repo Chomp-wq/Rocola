@@ -127,7 +127,7 @@ class PanelReposo
 
         // ---------- 5) EL RELOJ VA POR SU CUENTA ----------
         Console.WriteLine("\n  5) EL RELOJ SE PARCHEA SOLO, SIN REHACER EL PANEL\n");
-        Exige(Codigo.Llama(reloj, "UpdateIdleClock"), "el parche del reloj repinta la franja de abajo");
+        Exige(Codigo.Llama(reloj, "UpdateIdleClockRegion"), "el parche del reloj repinta solo el recuadro de los digitos");
         Exige(!Codigo.Llama(reloj, "RenderIdlePanelLayout"), "y NO rehace el panel entero por un digito");
         Exige(Veces(bip, "ParcheaElReloj") >= 2,
               "los dos caminos cortos del panel parchean el reloj (los " + Veces(bip, "ParcheaElReloj") + ")");

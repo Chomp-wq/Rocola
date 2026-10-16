@@ -335,7 +335,8 @@ namespace Rocola
         private D3D9.Vtx[] reflejoV; private bool aurDibujada; private float aurDibujadaBase;
         private void DibujaReflejoAurora()
         {
-            if (!ReflejoAurora || !aurDibujada || aurHs == null || aurNc == null || aurNi == null) return;
+            if ((ReposoSinReflejo && AhorroReposo) || !ReflejoAurora || !aurDibujada || aurHs == null || aurNc == null || aurNi == null) return;
+            if (EstadoOcultaDesde(aurDibujadaBase - AurLineaAlza + 1f)) return; // completamente tapado: no cambia ningun pixel visible
             if (reflejoV == null) reflejoV = new D3D9.Vtx[AurCols * 6];
             // PEGADO A LA RAYA (foto del 13-10-2026: «la barra de estado queda un poco despegada del espectro»). Nacia en el pie
             // del relleno, 15 px por debajo de la raya del horizonte (AurLineaAlza): entre el brillo de la raya y el reflejo

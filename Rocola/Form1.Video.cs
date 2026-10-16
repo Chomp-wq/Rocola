@@ -442,6 +442,9 @@ namespace Rocola
         {
             Color acc = ColorDeLoQueSuena(t, org);   // excepcion por artista (BTS=morado) y luego genero
             bgAccentTarget = acc;
+#if ROCOLA_GPU
+            if (estadoColorDirecto) CambioElAcentoDelPanel(bgAccentTarget);
+#endif
             bgGeneroTarget = GeneroDeLoQueSuena(t, org);          // el genero suelto: una de las dos nebulosas
             bgSinGenero = t != null && GeneroDeCancion(t, org).Length == 0;
             bgArtistaFijo = !bgSinGenero && EsArtistaMorado(t);

@@ -202,7 +202,7 @@ namespace Rocola
             foreach (CintaTile tile in cintaTiles)
             {
                 if (System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
-                if (tile.Tex == IntPtr.Zero) SubeCinta(tile);
+                if (tile.Tex == IntPtr.Zero && CintaGrupoProximo(tile.Group)) SubeCinta(tile);
             }
             cintaOldSources.Clear();
             foreach (KeyValuePair<Bitmap, CintaTile> kv in cintaByBitmap)
@@ -220,6 +220,14 @@ namespace Rocola
                 D3D9.Release(cintaRetiradas[i]); cintaRetiradas.RemoveAt(i);
                 if (cintaRetiradas.Count <= 256 && System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
             }
+        }
+        // No subir partes de una barra completamente oculta. Al comenzar el fundido se
+        // prepara su grupo; lo visible conserva siempre su subida inmediata y sin presupuesto.
+        private bool CintaGrupoProximo(int group)
+        {
+            if (group == 0) return idleBlend < 1f || !IdleExpandTarget;
+            if (group == 1) return idleBlend > 0f || IdleExpandTarget;
+            return CintaDeLista(group);
         }
         private void SubeCinta(CintaTile tile)
         { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }

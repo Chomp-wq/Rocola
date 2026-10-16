@@ -289,11 +289,11 @@ namespace Rocola
         // automatico y sin interruptor, porque no cambia lo que se ve.
         internal const int BordePortada = 2;      // texeles del borde de la portada que no cuentan
         internal const float HuecoMinimo = 8f;    // un hueco mas chico no ahorra nada
-        private readonly int[] huecos = new int[4 * MaxCells];   // x0,y0,x1,y1 en pixeles (x1,y1 excluidos)
+        private readonly int[] huecos = new int[4 * (MaxCells + 1)];   // x0,y0,x1,y1 en pixeles (x1,y1 excluidos)
         private int nHuecos;
         private D3D9.Vtx[] trozosHuecos = new D3D9.Vtx[0];
-        private readonly float[] cortesHuecos = new float[2 * MaxCells + 2];
-        private readonly int[] tapanHuecos = new int[MaxCells];
+        private readonly float[] cortesHuecos = new float[2 * (MaxCells + 1) + 2];
+        private readonly int[] tapanHuecos = new int[MaxCells + 1];
         internal long PixelesHueco;                // las pruebas: cuanto se dejo de pintar en el ultimo cuadro (sin contar capas)
 
         // Si la portada no tiene transparencia por dentro (sin sus BordePortada texeles de cada lado).
@@ -322,7 +322,19 @@ namespace Rocola
         // dibujaran las portadas despues.
         private void HuecosDePortadas()
         {
-            nHuecos = 0; PixelesHueco = 0;
+            nHuecos = 0; PixelesHueco = 0; int fondoHasta = Height;
+            // Solo cuando la textura de ESTE cuadro ya es opaca y termino el fundido. Durante
+            // la entrada/salida se conserva todo el fondo, para no abrir un agujero en el cielo.
+            if (EstadoOpaco && idleBlend >= 1f && idleTex != IntPtr.Zero
+                && idleUploadedVersion == IdlePanelVersion && idleLastBmp != null)
+            {
+                int top = Math.Max(0, Math.Min(Height, (int)Math.Ceiling(StatusTopY) + 2));
+                if (top < Height && Width > 0)
+                {
+                    huecos[0] = 0; huecos[1] = top; huecos[2] = Width; huecos[3] = Height; nHuecos = 1;
+                    fondoHasta = top; PixelesHueco = (long)Width * (Height - top);
+                }
+            }
             if (!ShowAlbum || Width <= 0 || Height <= 0) return;
             for (int i = 0; i < gridN; i++)
             {
@@ -339,7 +351,7 @@ namespace Rocola
                 float mx = 3f * face.Width / t.Bw + 1f, my = 3f * face.Height / t.Bh + 1f;   // 3 texeles y un pixel
                 int x0 = (int)Math.Ceiling(x + mx), x1 = (int)Math.Floor(x + face.Width - mx);
                 int y0 = (int)Math.Ceiling(y + my), y1 = (int)Math.Floor(y + face.Height - my);
-                if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > Width) x1 = Width; if (y1 > Height) y1 = Height;
+                if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > Width) x1 = Width; if (y1 > fondoHasta) y1 = fondoHasta;
                 if (x1 - x0 < HuecoMinimo || y1 - y0 < HuecoMinimo) continue;
                 int o = nHuecos * 4;
                 huecos[o] = x0; huecos[o + 1] = y0; huecos[o + 2] = x1; huecos[o + 3] = y1;

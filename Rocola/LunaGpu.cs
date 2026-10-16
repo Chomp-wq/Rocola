@@ -119,8 +119,11 @@ namespace Rocola
                 DrawLunarDust(cx,cy,radius,visibility,true);
                 return;
             }
-            UpdateStarEchoes(now,cx,cy,radius,angle,color);
-            DrawStarEchoes(now);
+            if (!(ReposoSinEstela && AhorroReposo))
+            {
+                UpdateStarEchoes(now,cx,cy,radius,angle,color);
+                DrawStarEchoes(now);
+            }
             SetTexQuadA(lunaQuad,cx-radius,cy-radius,cx+radius,cy+radius,luU,luV,color);
             RotateStarQuad(lunaQuad,cx,cy,angle);
             stars.DrawQuad(lunaTex,lunaQuad);
@@ -137,8 +140,8 @@ namespace Rocola
             uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
-                stars.GlowBatchAdd(cx,cy,radius*1.9f,((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
-                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*1.20f,((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
+                stars.GlowBatchAdd(cx,cy,radius*(CoronaCompacta ? 1.05f : 1.9f),((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
+                stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*(CoronaCompacta ? .78f : 1.20f),((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
             }
             if (PolvoLunar)
                 for(int orbit=0;orbit<3;orbit++)

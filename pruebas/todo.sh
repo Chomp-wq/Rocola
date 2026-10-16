@@ -285,6 +285,7 @@ CPU="$CPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medi
 GPU="$GPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medidaligera"
 GPU="$GPU ruidomalla papeleraportadas"
 GPU="$GPU fichaportada"
+GPU="$GPU estadoeficiente"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
 CPU="$CPU pantallaviva"
@@ -424,6 +425,10 @@ corre() {
     if [ "$t" = "rendercache" ]; then
       apoyo="$apoyo franjareloj.cs buscaportadas.cs"
       principal="-main:RenderCache"
+    fi
+    if [ "$t" = "estadoeficiente" ]; then
+      apoyo="$apoyo franjareloj.cs"
+      principal="-main:EstadoEficiente"
     fi
     if ! mcs -sdk:4 -warn:4 -warnaserror+ $principal -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $apoyo > "$ct" 2>&1; then
       echo "  COMPILA MAL  $t"; tail -5 "$ct"; mal=$((mal+1)); continue

@@ -228,6 +228,9 @@ namespace Rocola
             gpuPanel.VinetaSuave = vinetaSuave;
             gpuPanel.CieloMedia = cieloMedia; gpuPanel.GranoVineta = granoVineta;   // Performance (PerformanceGpu.cs)
             gpuPanel.FondoUnaCapa = fondoCapa; gpuPanel.CieloCuarto = cieloCuarto;
+            gpuPanel.EstadoOpaco = EstadoOpacoActivo; gpuPanel.AuroraLigera = auroraLigeraPerf;
+            gpuPanel.ReposoSinReflejo = reposoSinReflejo; gpuPanel.ReposoSinEstela = reposoSinEstela;
+            gpuPanel.CoronaCompacta = coronaCompacta;
             gpuPanel.HaloSeleccion = haloSeleccion;
             gpuPanel.EstrellasFinas = estrellasFinas;
             gpuPanel.OndasSuaves = ondasSuaves;
@@ -256,7 +259,7 @@ namespace Rocola
             gpuPanel.CachePortadas = true;
             if (searchOverlay != null) searchOverlay.SeparateGpu = true;
             CambioElPanelDeReposo();   // 'estado ampliado transparente' y 'cola de doce' cambian como se dibuja
-            if (!estadoExpandido) gpuPanel.IdleExpandTarget = false;
+            if (!EstadoExtendidoEfectivo) gpuPanel.IdleExpandTarget = false;
             gpuPanel.UiUrgent = true;
             gpuPanel.Fugaces = fugacesNiv;
             gpuPanel.RelevoPatron = relevoNiv;
@@ -283,6 +286,7 @@ namespace Rocola
             // EL MEDIDOR RENOVADO (13-10-2026). Lo tipico (medianas) de los cuadros, presentados SIN esperar al monitor:
             public double MsCuadro;      // de un cuadro al siguiente: lo que de verdad tarda (1000 / esto = cuadros posibles)
             public double P95Cuadro;     // el 5 % peor
+            public double P99Cuadro = 0, MaxCuadro = 0;
             public double MsProcesador;  // preparar y mandar el dibujo
             public double MsEspera;      // presentar: con el monitor suelto, es esperar a la TARJETA
             public double MsFuera;       // entre cuadros: la musica, los mensajes y lo que hace la pantalla
@@ -310,7 +314,7 @@ namespace Rocola
         private double bancoMsComprobado = -1;     // y lo que dio al probarla de verdad (-1 = sin comprobar)
         private string bancoFrena = "";            // lo que frena, dicho en palabras
         private bool bancoEfectosMedidos;          // si hizo falta medir los escalones de efectos
-        private int bancoPeorId = -1;              // cual de las cinco salio peor (se marca en la tabla)
+        private int bancoPeorId = -1;              // cual de las seis salio peor (se marca en la tabla)
 
         // UN CUADRO TIENE QUE CABER CON HOLGURA: un 8 % de margen, porque una medida oscila y un cuadro justo en la raya
         // se pasaria la mitad de las veces (y con la espera al monitor, pasarse un poco es caer a la mitad).
@@ -323,22 +327,47 @@ namespace Rocola
         // primero no hace nada (RequiereAhorro), y lo que ahorra se mide encima de los otros dos (AhorroSobre). El cuarto, «Cielo
         // a un cuarto de resolucion» (J2, 14-10-2026), hace esa imagen mas chica: tambien necesita el primero.
         private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa",
-                                                          "Cielo a un cuarto de resolución" };
-        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0 };
+                                                          "Cielo a un cuarto de resolución", "Estado extendido opaco", "Aurora con menos columnas",
+                                                          "Sin reflejo de aurora en reposo", "Sin estela de estrella en reposo", "Corona de estrella compacta", "Color directo del estado extendido" };
+        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0, -1, -1, -1, -1, -1, -1 };
 #if ROCOLA_GPU
         private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 }, new int[] { 0 } };
 #endif
         // Ctrl+F3 -> Imagen -> Performance. Son de aspecto (casi identico): interruptor propio, apagados de fabrica (AGENTS.md).
         private bool cieloMedia, granoVineta, fondoCapa, cieloCuarto;
-        private bool LeeAhorro(int i) { return i == 0 ? cieloMedia : (i == 1 ? granoVineta : (i == 2 ? fondoCapa : cieloCuarto)); }
+        private bool estadoOpacoPerf, auroraLigeraPerf, reposoSinReflejo, reposoSinEstela, coronaCompacta, estadoColorDirecto;
+        private bool EstadoOpacoActivo { get { return estadoOpacoPerf && EstadoExtendidoEfectivo; } }
+        private bool EstadoExtendidoEfectivo
+        {
+            get { return estadoExpandido
+#if ROCOLA_GPU
+                || bancoReposoActivo
+#endif
+                ; }
+        }
+        private bool LeeAhorro(int i)
+        {
+            switch (i) {
+                case 0: return cieloMedia; case 1: return granoVineta; case 2: return fondoCapa; case 3: return cieloCuarto;
+                case 4: return estadoOpacoPerf; case 5: return auroraLigeraPerf; case 6: return reposoSinReflejo;
+                case 7: return reposoSinEstela; case 8: return coronaCompacta; case 9: return estadoColorDirecto; default: return false;
+            }
+        }
         private void PonAhorro(int i, bool encendido)
         {
             if (i == 0) cieloMedia = encendido; else if (i == 1) granoVineta = encendido; else if (i == 2) fondoCapa = encendido;
-            else cieloCuarto = encendido;
+            else if (i == 3) cieloCuarto = encendido;
+            else if (i == 4) estadoOpacoPerf = encendido; else if (i == 5) auroraLigeraPerf = encendido;
+            else if (i == 6) reposoSinReflejo = encendido; else if (i == 7) reposoSinEstela = encendido;
+            else if (i == 8) coronaCompacta = encendido; else if (i == 9) estadoColorDirecto = encendido;
             AplicaEfectosGpu();
         }
         // Todos los ahorros a la vez (los presets y «Graficos como de fabrica»).
-        private void PonAhorros(bool encendidos) { cieloMedia = granoVineta = fondoCapa = cieloCuarto = encendidos; }
+        private void PonAhorros(bool encendidos)
+        {
+            cieloMedia = granoVineta = fondoCapa = cieloCuarto = estadoOpacoPerf = auroraLigeraPerf = reposoSinReflejo = reposoSinEstela = coronaCompacta = estadoColorDirecto = encendidos;
+            CambioElPanelDeReposo();
+        }
         private bool TodosLosAhorros(bool encendidos)
         {
             for (int i = 0; i < NombreAhorro.Length; i++) if (LeeAhorro(i) != encendidos) return false;
@@ -359,6 +388,16 @@ namespace Rocola
                     if (!vinetaSuave) return "Necesita: Viñeta suave (Fondo)";
                     if (capa) return "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)";
                     return null;
+                case 9: case 4: return estadoExpandido ? null : "Necesita: Estado ampliado en reposo (Efectos)";
+                case 5: return auroraAmount > .004f ? null : "Necesita: Espectro de sonido en Medio o Alto";
+                case 6:
+                    if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Efectos)";
+                    if (estadoOpacoPerf) return "Sin efecto: el estado opaco ya tapa ese reflejo";
+                    return reflejoAurora && auroraAmount > .004f ? null : "Necesita: Reflejo de aurora y espectro encendidos";
+                case 7:
+                    if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Efectos)";
+                    return estelaEstelar && lunaOn && lunaActiva ? null : "Necesita: Estrella y su estela encendidas";
+                case 8: return haloLunar && lunaOn ? null : "Necesita: Estrella y su halo encendidos";
                 default:
                     if (!cieloMedia) return "Necesita: Cielo a media resolución (arriba)";
                     if (!nebulosas) return "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
@@ -369,6 +408,7 @@ namespace Rocola
         {
 #if ROCOLA_GPU
             if (gpuPanel == null) return false;
+            if (i >= 4) return true;
             return i == 0 ? gpuPanel.PuedeCieloMedia : (i == 1 ? gpuPanel.PuedeGranoVineta : gpuPanel.PuedeFondoUnaCapa);   // (J2, como G2: va en la imagen intermedia)
 #else
             return false;
@@ -429,12 +469,12 @@ namespace Rocola
             return ultimo;
         }
 
-        // Las cinco pantallas donde la rocola pasa su vida. Ya no son fotos fijas: cada una lleva dentro lo
+        // Las seis pantallas donde la rocola pasa su vida. Ya no son fotos fijas: cada una lleva dentro lo
         // que de verdad hace la gente en ella.
-        private const int EscPagina = 0, EscLetra = 1, EscBuscador = 2, EscDisco = 3, EscAtraccion = 4;
+        private const int EscPagina = 0, EscLetra = 1, EscBuscador = 2, EscDisco = 3, EscAtraccion = 4, EscReposo = 5;
         private static readonly string[] NombreEscena = {
             "Pasando de pagina", "Cambiando de letra", "Escribiendo en el buscador",
-            "Entrando a discos", "Pantalla de atraccion" };
+            "Entrando a discos", "Pantalla de atraccion", "Estado extendido" };
         private const int MsPorEscena = 2000;    // lo que dura la medida de cada pantalla
         private const int MsPorEscalon = 1200;   // ... y la de cada escalon de efecto (la pantalla ya esta puesta)
         private const int MsCalentando = 350;    // los primeros no cuentan: una pantalla nueva sube texturas
@@ -465,7 +505,7 @@ namespace Rocola
         // Cada cuanto se da un paso de la pantalla. El de pagina va a 180 ms A PROPOSITO: la animacion de
         // pasar dura 230, asi que se la interrumpe a si misma, que es exactamente lo que pasa cuando alguien
         // machaca el boton. Lo demas va al ritmo al que lo haria una persona con prisa.
-        private static readonly int[] PasoEscenaMs = { 180, 420, 150, 380, 0 };
+        private static readonly int[] PasoEscenaMs = { 180, 420, 150, 380, 0, 0 };
 
         // UN PULSO DE MUSICA DE MENTIRA, para cuando NO se pudo poner ninguna cancion. Con musica de verdad
         // esto no se llama: los niveles salen de la cancion, que es lo suyo.
@@ -530,7 +570,7 @@ namespace Rocola
             if (gpuPanel == null || !gpuPanel.Visible) return;
             int t0 = Environment.TickCount, ultTick = t0 - 42, ultPaso = t0;
             int paso = PasoEscenaMs[escena];
-            int calentamiento = escena == EscPagina ? 0 : MsCalentando;
+            int calentamiento = escena == EscPagina ? 0 : escena == EscReposo && !gpuPanel.EstadoExtendidoAsentado ? 2200 : MsCalentando;
             bool contando = false;
             int tCuenta = t0;
             while (true)
@@ -547,6 +587,7 @@ namespace Rocola
                 if (escena == EscPagina) paso = va < 1500 ? 600 : 180; // paso lento y rafaga en la misma medida
                 if (paso > 0 && ahora - ultPaso >= paso) { ultPaso = ahora; PasoDeEscena(escena); }
                 if (!bancoConMusica) PulsoDeMentira();   // sin cancion, un latido de mentira; con ella, el suyo
+                if (escena == EscReposo) gpuPanel.IdleExpandTarget = true;
                 bool presentado = gpuPanel.DibujaUnCuadro();
                 if (contando && presentado) cuadros++;
                 Application.DoEvents();   // de aqui come el audio: sin esto la musica no entraria en la cuenta
@@ -580,6 +621,8 @@ namespace Rocola
                 throw new InvalidOperationException("El panel GPU no esta disponible; medicion no valida");
             int cuadros, msReales;
             CorreEscena(escena, ms, out cuadros, out msReales);
+            if (escena == EscReposo && !gpuPanel.EstadoExtendidoAsentado)
+                throw new InvalidOperationException("No se pudo abrir el estado extendido; medicion no valida");
             if (gpuPanel.FallosMedidos != 0 || cuadros == 0)
                 throw new InvalidOperationException("La GPU no presento todos los cuadros; medicion no valida");
             m.MsTrabajo = gpuPanel.MsTrabajo;
@@ -596,8 +639,12 @@ namespace Rocola
             gpuPanel.Medianas(out intervalo, out preparar, out dibujar, out presentar, out fuera, out p95);
             m.MsCuadro = intervalo; m.P95Cuadro = p95; m.MsProcesador = preparar + dibujar;
             m.MsEspera = presentar; m.MsFuera = fuera;
+            gpuPanel.ColasDeCuadro(out m.P99Cuadro, out m.MaxCuadro);
             m.Pedidos = gpuPanel.PedidosPorCuadro; m.Envios = gpuPanel.EnviosPorCuadro; m.Pantallas = gpuPanel.PantallasPorCuadro;
             m.SinEspera = gpuPanel.SinEspera;
+            Diag("medida " + m.Nombre + ": p95=" + m.P95Cuadro.ToString("0.0") + " p99=" + m.P99Cuadro.ToString("0.0")
+                + " max=" + m.MaxCuadro.ToString("0.0") + " ms; repaso_pendiente=" + System.Threading.Thread.VolatileRead(ref preScanLeft)
+                + "; miniaturas_pendientes=" + minisPendientes);
             return m;
         }
         private double MideCoste(int escena, int ms) { return CosteDe(MideEscena(escena, ms, new EscenaMedida())); }
@@ -618,7 +665,7 @@ namespace Rocola
         //  EL MEDIDOR
         // ---------------------------------------------------------------------------------------------
         //  Pone una cancion, mide las portadas como siempre (con el monitor), y despues SUELTA EL MONITOR:
-        //  recorre las cinco pantallas EN MOVIMIENTO viendo lo que cuesta de verdad cada cuadro, se queda con
+        //  recorre las seis pantallas EN MOVIMIENTO viendo lo que cuesta de verdad cada cuadro, se queda con
         //  la peor y, contra esa:
         //   1. si ya cabe en el refresco de la pantalla (60), no prueba nada mas;
         //   2. prueba los ahorros de Performance uno a uno, cada uno ENTRE DOS medidas sin el (lo que tiembla
@@ -722,8 +769,14 @@ namespace Rocola
                 EnterAttract();
                 bancoEscenas.Add(MideEscena(EscAtraccion));
                 ExitAttract();
+                if (nowPlaying != null && !nowPlaying.IsVideo)
+                {
+                    PonEscena(EscReposo);
+                    try { bancoEscenas.Add(MideEscena(EscReposo)); }
+                    finally { QuitaEscena(EscReposo); }
+                }
 
-                // EL PEOR MANDA: de nada sirve que cuatro pantallas vayan sobradas si la quinta se arrastra.
+                // EL PEOR MANDA: incluir el estado extendido, aunque las demas pantallas vayan sobradas.
                 EscenaMedida peor = null; int peorId = 0;
                 for (int i = 0; i < bancoEscenas.Count; i++)
                     if (CosteDe(bancoEscenas[i]) > 0.0 && (peor == null || CosteDe(bancoEscenas[i]) > CosteDe(peor)))
@@ -820,6 +873,7 @@ namespace Rocola
             finally
             {
                 // La rocola vuelve donde estaba, truene lo que truene por el camino: niveles, ahorros y el monitor.
+                if (bancoReposoActivo) QuitaEscena(EscReposo);
                 for (int i = 0; i < ef.Length; i++) PonNivel(ef[i].Clave, bkNiv[i]);
                 for (int i = 0; i < bkAhorro.Length; i++) if (LeeAhorro(i) != bkAhorro[i]) PonAhorro(i, bkAhorro[i]);
                 try { gpuPanel.CuentaArea = false; gpuPanel.PideSinEspera(false); } catch { }
@@ -844,16 +898,27 @@ namespace Rocola
 #if ROCOLA_GPU
         // Deja puesta la pantalla que toca medir (y la quita despues). Sale aparte porque el coste de cada
         // escalon se mide varias veces sobre la MISMA pantalla.
+        private bool bancoReposoActivo, bancoReposoTargetAnterior;
         private void PonEscena(int escena)
         {
             pasoEsc = 0;
             if (escena == EscBuscador) OpenSearch();
             else if (escena == EscAtraccion) EnterAttract();
+            else if (escena == EscReposo && gpuPanel != null)
+            {
+                if (!bancoReposoActivo) { bancoReposoTargetAnterior = gpuPanel.IdleExpandTarget; }
+                bancoReposoActivo = true; AplicaEfectosGpu(); gpuPanel.IdleExpandTarget = true;
+            }
         }
         private void QuitaEscena(int escena)
         {
             if (escena == EscBuscador) { if (searchOpen) CloseSearch(); }
             else if (escena == EscAtraccion) { if (attractOn) ExitAttract(); }
+            else if (escena == EscReposo && bancoReposoActivo)
+            {
+                bancoReposoActivo = false; AplicaEfectosGpu();
+                if (gpuPanel != null) gpuPanel.IdleExpandTarget = bancoReposoTargetAnterior;
+            }
             else if (panelSongs != null && panelSongs.Visible) BackToAlbums();
         }
 #endif
@@ -872,7 +937,7 @@ namespace Rocola
         private int f3Pagina;          // 0 = Sonido, 1 = Imagen (al volver de medir se abre en Imagen)
         private bool f3CambioGraf;     // se toco algo de graficos (para guardar al cerrar)
 
-        // Cual de las cinco pantallas salio peor: es la que manda sobre todo lo demas, y en la tabla se
+        // Cual de las seis pantallas salio peor: es la que manda sobre todo lo demas, y en la tabla se
         // senala para que se vea de un vistazo de donde salen los numeros de abajo.
         private bool EsLaPeor(int i)
         {
@@ -1266,7 +1331,11 @@ namespace Rocola
 
             // A1: LO QUE DEPENDE DE OTRO, gris y diciendo que le falta. Cada uno lee el AJUSTE, no el interruptor: asi
             // vale aunque el requisito este en otra pagina. Va despues de MontaHojasFondo, que acomoda las filas.
-            Necesita(sw[7], delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
+            NecesitaMotivo(sw[7], delegate
+            {
+                if (!estadoExpandido) return "Necesita: Estado ampliado en reposo (Imagen)";
+                return estadoOpacoPerf ? "Sin efecto: estado opaco (Performance)" : null;
+            });
             Necesita(sw[9], delegate { return progresoNeon; }, "Barra de progreso neon (esta hoja)");
             Necesita(swDoce, delegate { return estadoExpandido; }, "Estado ampliado en reposo (Imagen)");
             Necesita(swCristal, delegate { return cancionesTransparentes; }, "Lista de canciones transparente (Imagen)");
@@ -1492,7 +1561,7 @@ namespace Rocola
             bMedir.Relleno = cOn; bMedir.Borde = cMide;
             Label lTarda = new Label(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;
             lTarda.ForeColor = cTenue; lTarda.Font = fDes;
-            const string textoTarda = "Tarda de 20 a 45 segundos. Pone una canción muda, usa la\nrocola sola y mide sin esperar al monitor.";
+            const string textoTarda = "Puede tardar unos minutos. Incluye el estado extendido.\nUsa la música actual; si no hay, intenta una canción muda.";
             lTarda.Text = textoTarda;
             BotonPlano bHistorial = new BotonPlano(); bHistorial.SetBounds(328, 590, 144, 38);
             bHistorial.Font = fBot; bHistorial.Text = "Comparar perfiles";
@@ -1511,11 +1580,11 @@ namespace Rocola
                 lCab[c].TextAlign = c == 0 ? ContentAlignment.TopLeft : ContentAlignment.TopRight;
                 tMide.Controls.Add(lCab[c]);
             }
-            Label[,] lCelda = new Label[5, colX.Length];
-            for (int i = 0; i < 5; i++)
+            Label[,] lCelda = new Label[NombreEscena.Length, colX.Length];
+            for (int i = 0; i < NombreEscena.Length; i++)
                 for (int c = 0; c < colX.Length; c++)
                 {
-                    Label l = new Label(); l.SetBounds(colX[c], 140 + i * 22, colW[c], 20);
+                    Label l = new Label(); l.SetBounds(colX[c], 140 + i * 18, colW[c], 18);
                     l.BackColor = Color.Transparent; l.ForeColor = cTexto; l.Font = fDes;
                     l.TextAlign = c == 0 ? ContentAlignment.TopLeft : ContentAlignment.TopRight;
                     lCelda[i, c] = l; tMide.Controls.Add(l);
@@ -1621,7 +1690,7 @@ namespace Rocola
             BotonPlano bResetG = new BotonPlano();
             bResetG.SetBounds(16, 590, 300, 38); bResetG.Font = fBot; bResetG.Text = "Graficos como de fabrica";
 
-            // LA HOJA PERFORMANCE: los dos ahorros con su interruptor, lo que ahorra cada uno aqui y lo automatico.
+            // PERFORMANCE: ahorros independientes y lista desplazable bajo una cabecera fija.
             Tarjeta tPerf = new Tarjeta(); tPerf.Size = tEfe.Size;
             Interruptor[] swAhorro; Label[] lAhorro; Label lCuentaPerf;
             LlenaHojaPerformance(tPerf, fNom, fDes, cTexto, cTenue, out swAhorro, out lAhorro, out lCuentaPerf);
@@ -1703,7 +1772,7 @@ namespace Rocola
                 bSoloPerf.Invalidate();
 
                 // ---- La tabla de lo medido ----
-                for (int i = 0; i < 5; i++) for (int c = 0; c < colX.Length; c++) lCelda[i, c].Text = "";
+                for (int i = 0; i < NombreEscena.Length; i++) for (int c = 0; c < colX.Length; c++) lCelda[i, c].Text = "";
                 lTarda.Text = textoTarda; lTarda.ForeColor = cTenue;
                 if (bancoEscenas == null)
                 {
@@ -1722,7 +1791,7 @@ namespace Rocola
                     return;
                 }
                 for (int c = 0; c < colX.Length; c++) lCab[c].Visible = true;
-                for (int i = 0; i < bancoEscenas.Count && i < 5; i++)
+                for (int i = 0; i < bancoEscenas.Count && i < NombreEscena.Length; i++)
                 {
                     EscenaMedida m = bancoEscenas[i];
                     double coste = CosteDe(m);
@@ -1906,7 +1975,7 @@ namespace Rocola
                      + "cambios que casi no se notan. El botón Performance de\n"
                      + "Efectos los enciende con los efectos en Alto.";
             hoja.Controls.Add(tit); hoja.Controls.Add(des);
-            // Cuatro ahorros (J2, 14-10-2026): explicaciones de dos renglones. Los que pueden quedar sin efecto llevan un renglon
+            // Explicaciones de dos renglones. Los ahorros que pueden quedar sin efecto llevan un renglon
             // mas debajo del nombre (NecesitaMotivo) y bajan lo suyo 12 pixeles.
             string[] explica = {
                 "El cielo, las nebulosas y la vía láctea se pintan a la mitad\n"
@@ -1916,7 +1985,19 @@ namespace Rocola
                 "El grano y la viñeta van dentro del cielo y solo se pintan\n"
               + "cuando cambia. Casi igual; el grano, algo más grueso.",
                 "El cielo a un cuarto: las nebulosas ya vienen de ese tamaño.\n"
-              + "Algo más suaves; pasar de página pesa mucho menos."
+              + "Algo más suaves; pasar de página pesa mucho menos.",
+                "Fondo sólido en el estado extendido: deja de transparentar\n"
+              + "el cielo y evita dibujar sus capas bajo esa zona.",
+                "La cortina y su filo usan la mitad de segmentos.\n"
+              + "La música sigue guiando la forma, algo más suave.",
+                "Con el estado abierto se omite el reflejo bajo el horizonte.\n"
+              + "La aurora principal y la reacción a la música siguen igual.",
+                "En reposo se dibuja la estrella sin sus copias de estela.\n"
+              + "Conserva sus giros, gestos y ayuda; vuelve al navegar.",
+                "Los dos halos grandes de la estrella cubren menos espacio.\n"
+              + "El cuerpo, el polvo y sus movimientos siguen completos.",
+                "El estado toma el nuevo color de una vez, sin transición.\n"
+              + "Evita redibujarlo por cada paso del cambio de canción."
             };
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];
@@ -1938,11 +2019,11 @@ namespace Rocola
                 y += 84 + extra;
             }
             Label autoT = new Label(); autoT.SetBounds(16, y, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
-            autoT.BackColor = Color.Transparent; autoT.Text = "Siempre activo: juntar órdenes y no repetir";
+            autoT.BackColor = Color.Transparent; autoT.Text = "Automático: mapas y reloj por recuadros";
             Label autoD = new Label(); autoD.SetBounds(16, y + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
             autoD.BackColor = Color.Transparent;
-            autoD.Text = "Órdenes chicas juntas; el cielo, solo si cambió y no debajo\n"
-                       + "de las portadas. Sale exactamente igual: sin interruptor.";
+            autoD.Text = "Reutilizar mapas y texturas; no subir textos ocultos.\n"
+                       + "Juntar órdenes y no repetir el cielo. Misma imagen.";
             cuenta = new Label(); cuenta.SetBounds(16, y + 56, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
             cuenta.BackColor = Color.Transparent;
             Label nota = new Label(); nota.SetBounds(16, y + 92, 424, 18); nota.Font = fDes; nota.ForeColor = cTenue;
@@ -1953,6 +2034,13 @@ namespace Rocola
             Label sin = new Label(); sin.SetBounds(16, y + 56, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
             sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
             SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, cuenta);
+            Panel contenido = new Panel(); contenido.SetBounds(0, 42, 456, 582);
+            contenido.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            contenido.BackColor = Color.Transparent; contenido.AutoScroll = true;
+            Control[] mandos = new Control[hoja.Controls.Count]; hoja.Controls.CopyTo(mandos, 0);
+            foreach (Control mando in mandos) { mando.Top -= 42; mando.Width = Math.Min(mando.Width, 404); contenido.Controls.Add(mando); }
+            contenido.AutoScrollMinSize = new Size(0, y + 78);
+            hoja.Controls.Add(contenido);
         }
         // Lo medido de un ahorro, en una linea.
         private string TextoAhorro(int i)
@@ -1993,7 +2081,7 @@ namespace Rocola
                 bool a1 = bancoUsaAhorro.Length > 1 && bancoUsaAhorro[1] && !LeeAhorro(1);
                 bool a2 = bancoUsaAhorro.Length > 2 && bancoUsaAhorro[2] && !LeeAhorro(2);
                 bool a3 = bancoUsaAhorro.Length > 3 && bancoUsaAhorro[3] && !LeeAhorro(3);
-                if (a0 && a1 && a2 && a3) cosas.Add("Performance (casi igual)");
+                if (a0 && a1 && a2 && a3) cosas.Add("cielo Performance");
                 else
                 {
                     if (a0) cosas.Add("cielo a media resolución");
@@ -2002,6 +2090,9 @@ namespace Rocola
                     if (a3) cosas.Add("cielo a un cuarto");
                 }
             }
+            if (bancoUsaAhorro != null)
+                for (int i = 4; i < bancoUsaAhorro.Length && i < NombreAhorro.Length; i++)
+                    if (bancoUsaAhorro[i] && !LeeAhorro(i)) cosas.Add(NombreAhorro[i]);
             int efectos = 0, nombrados = 0;
             for (int i = 0; i < ef.Length && i < bancoPropuesta.Length; i++)
             {
