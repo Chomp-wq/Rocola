@@ -1158,13 +1158,16 @@ namespace Rocola
             // salen ya transparentes del todo. Armarlas y mandarlas a la tarjeta para que dibuje nada es
             // trabajo tirado, y justo del caro. Se corta ahi: no se ve, porque no habia nada que ver.
             float fadeAnt = (1f - tr) * dim;
+            EstrellasEnviadas = EstrellasOmitidas = 0;
             if (transing && px != null && fadeAnt > FadeMinimo)
             {
-                BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, fadeAnt, pulse, driftX, driftY, w, h);
-                gpu.DrawStars(starV2, pnStars * 2, glowTex);
+                int anteriores = BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, fadeAnt, pulse, driftX, driftY, w, h);
+                gpu.DrawStars(starV2, anteriores / 3, glowTex);
+                EstrellasEnviadas += anteriores / 6; EstrellasOmitidas += pnStars - anteriores / 6;
             }
-            BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
-            gpu.DrawStars(starV, nStars * 2, glowTex);
+            int actuales = BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
+            gpu.DrawStars(starV, actuales / 3, glowTex);
+            EstrellasEnviadas += actuales / 6; EstrellasOmitidas += nStars - actuales / 6;
             if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
@@ -1261,7 +1264,11 @@ namespace Rocola
         }
 
         public bool EstrellasFinas = true;
-        private void BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
+        // Cero = sin zona tapada. Solo el estado opaco, asentado y subido de ESTE cuadro fija este limite.
+        // No altera el patron, deriva ni reloj: al destaparse salen en la posicion que les corresponde.
+        internal float EstrellasTapadasDesde;
+        internal int EstrellasEnviadas, EstrellasOmitidas;
+        private int BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
         {
             int vi = 0;
             HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
@@ -1275,6 +1282,14 @@ namespace Rocola
                 // antes -como estaba- lo dejaria atado a donde nacio y no a donde se la ve.
                 float x = xs[i] + dx[k]; if (x >= w) x -= w;   // deriva la de SU tamano + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
                 float y = ys[i] + dy[k]; if (y >= h) y -= h;
+                float s = sz[i];
+                if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
+                // No cambiar el patron ni reconstruir el atlas al alternar: solo
+                // reducir las puntas grandes, dejando algunas estrellas protagonistas.
+                if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
+                // Mantener entero cualquier sprite que roce el borde, incluido el medio pixel de D3D9.
+                // Se evita tambien el titileo/color; no se omite ninguna estrella parcialmente visible.
+                if (EstrellasTapadasDesde > 0f && y - s - .5f >= EstrellasTapadasDesde) continue;
                 int b = (int)(y * aireEsc); if (b < 0) b = 0; else if (b >= AireN) b = AireN - 1;
 
                 // EL TITILEO, MAS FUERTE ABAJO. Se agranda alrededor de su punto medio, no desde cero: asi la
@@ -1293,15 +1308,11 @@ namespace Rocola
                 uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
                        | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
                        | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
-                float s = sz[i];
-                if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
-                // No cambiar el patron ni reconstruir el atlas al alternar: solo
-                // reducir las puntas grandes, dejando algunas estrellas protagonistas.
-                if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
                 int f = (fm != null) ? fm[i] : FormaEstrella;
                 SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
                 vi += 6;
             }
+            return vi;
         }
 
         // Estrellas FUGACES: una cada 7-16s, desde arriba-izquierda hacia abajo-derecha, con estela que se

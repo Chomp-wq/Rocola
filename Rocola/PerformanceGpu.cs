@@ -473,7 +473,11 @@ namespace Rocola
         private void DecideAhorros()
         {
             cieloMedioEsteCuadro = false; capaUnicaEsteCuadro = false;
-            if (stars != null) stars.VinetaPuntos = false;
+            if (stars != null)
+            {
+                stars.VinetaPuntos = false;
+                stars.EstrellasTapadasDesde = EstadoOpacoListo ? (float)Math.Ceiling(StatusTopY) + 2f : 0f;
+            }
             granoUnidoEsteCuadro = !SinGrano && GranoVineta && VinetaSuave && vinetaTex != IntPtr.Zero && ruidoTex != IntPtr.Zero
                 && stars != null && stars.PuedeDosTexturas;
         }
@@ -569,15 +573,28 @@ namespace Rocola
             {
                 // J1 (14-10-2026; automatico): el estirado no se pinta debajo de las portadas opacas. Los huecos son su
                 // interior (DibujoLigeroGpu.cs, HuecosDePortadas), que la portada tapa con alfa 255: se ve igual.
-                PiezasEstirado(piezasEstirado, w, h, tw, th, div);
-                int v = 0;
-                for (int k = 0; k < 4; k++)
+                // La textura intermedia puede repintarse sin cambiar su geometria. Guardar solo los
+                // vertices: los pixeles se siguen leyendo de la textura actual, tambien tras un reset.
+                if (recorteMedia != null && recorteMedia.Vale(null, w, h, tw, th, div, 0f, 0xFFFFFFFFu, huecos, nHuecos))
                 {
-                    int o = k * 8;
-                    float[] q = piezasEstirado;
-                    v = Trozos(v, q[o], q[o + 1], q[o + 2], q[o + 3], q[o + 4], q[o + 5], q[o + 6], q[o + 7], 0xFFFFFFFFu);
+                    if (recorteMedia.N > 0) stars.DibujaMedia(recorteMedia.Vertices, recorteMedia.N / 3);
+                    RecortesReusados++;
                 }
-                if (v > 0) stars.DibujaMedia(trozosHuecos, v / 3);
+                else
+                {
+                    PiezasEstirado(piezasEstirado, w, h, tw, th, div);
+                    int v = 0;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int o = k * 8;
+                        float[] q = piezasEstirado;
+                        v = Trozos(v, q[o], q[o + 1], q[o + 2], q[o + 3], q[o + 4], q[o + 5], q[o + 6], q[o + 7], 0xFFFFFFFFu);
+                    }
+                    if (recorteMedia == null) recorteMedia = new RecorteGuardado();
+                    recorteMedia.Guarda(trozosHuecos, v, null, w, h, tw, th, div, 0f, 0xFFFFFFFFu, huecos, nHuecos);
+                    if (v > 0) stars.DibujaMedia(trozosHuecos, v / 3);
+                    RecortesCalculados++;
+                }
             }
             else
             {

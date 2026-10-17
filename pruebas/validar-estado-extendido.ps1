@@ -21,7 +21,7 @@ try {
         & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $define ("/out:$app") @refs ("/resource:$nlayer,Rocola.NLayer.dll") @sources
         if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
         $tests = if ($mode -eq 'gpu') {
-            @('resolucionligera','estadoeficiente','performance','rendercache','franjareloj','panelreposo','fluidezcuadros','estrellaflujo','estrella3d','estelaestelar','ajustesvivos','fichaportada','caratulasjpeg','hojeofino','papeleraportadas','asistentecombo','asistentevisual','ayudaguia')
+            @('trabajovisible','campoestelarbuffers','dibujoligero','resolucionligera','estadoeficiente','performance','rendercache','franjareloj','panelreposo','fluidezcuadros','estrellaflujo','estrella3d','estelaestelar','ajustesvivos','fichaportada','caratulasjpeg','hojeofino','papeleraportadas','asistentecombo','asistentevisual','ayudaguia')
         } else { @('estadoeficiente','ajustesvivos','fichaportada') }
         foreach ($test in $tests) {
             $exe = Join-Path $out ("$test.exe")
@@ -30,6 +30,10 @@ try {
             if ($test -eq 'resolucionligera') {
                 $support += Join-Path $PSScriptRoot 'performance.cs'
                 $entry = @('/main:ResolucionLigera')
+            }
+            if ($test -eq 'trabajovisible') {
+                $support += Join-Path $PSScriptRoot 'performance.cs'
+                $entry = @('/main:TrabajoVisible')
             }
             if ($test -eq 'estadoeficiente') {
                 $support += Join-Path $PSScriptRoot 'franjareloj.cs'

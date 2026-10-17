@@ -360,11 +360,56 @@ namespace Rocola
             }
         }
 
+        // El recorte es geometria, independiente de la textura GPU y del destino. Cuatro entradas para las
+        // dos nebulosas, via lactea y vineta; otra para estirar el cielo intermedio. Memoria acotada y sin
+        // reservas en los aciertos. Nunca guardar el buffer compartido Trozos: lo pisa la siguiente capa.
+        private sealed class RecorteGuardado
+        {
+            internal const int MaxVertices = 8192;
+            internal D3D9.Vtx[] Vertices;
+            internal int N;
+            private TeselasVisibles teselas;
+            private float x0, y0, x1, y1, u, v;
+            private uint color;
+            private readonly int[] huecosDe = new int[4 * (MaxCells + 1)];
+            private int cuantos;
+            internal bool Vale(TeselasVisibles t, float a, float b, float c, float d, float uu, float vv,
+                               uint argb, int[] huecos, int n)
+            {
+                if (Vertices == null || teselas != t || x0 != a || y0 != b || x1 != c || y1 != d
+                    || u != uu || v != vv || color != argb || cuantos != n) return false;
+                for (int i = 0; i < n * 4; i++) if (huecosDe[i] != huecos[i]) return false;
+                return true;
+            }
+            internal void Guarda(D3D9.Vtx[] fuente, int vertices, TeselasVisibles t,
+                float a, float b, float c, float d, float uu, float vv, uint argb, int[] huecos, int n)
+            {
+                if (vertices > MaxVertices) return; // el recorte muy grande conserva el camino sin cache
+                if (Vertices == null || Vertices.Length < vertices)
+                    Vertices = new D3D9.Vtx[Math.Min(MaxVertices, Math.Max(vertices, Vertices == null ? 96 : Vertices.Length * 2))];
+                Array.Copy(fuente, Vertices, vertices); N = vertices;
+                teselas = t; x0 = a; y0 = b; x1 = c; y1 = d; u = uu; v = vv; color = argb;
+                Array.Copy(huecos, huecosDe, n * 4); cuantos = n;
+            }
+        }
+        private readonly RecorteGuardado[] recortesFondo = new RecorteGuardado[4];
+        private int recorteSiguiente;
+        private RecorteGuardado recorteMedia;
+        internal int RecortesCalculados, RecortesReusados;
+
         // Una capa del cielo con huecos: lo mismo que DibujaTeselas, sin lo que cae dentro de un hueco.
         private void DibujaTeselasFondo(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, D3D9.Vtx[] quad)
         {
             if (tex == IntPtr.Zero) return;
             if (nHuecos == 0 || !TocaHueco(x0, y0, x1, y1)) { DibujaTeselas(tex, t, x0, y0, x1, y1, uMax, vMax, argb, quad); return; }
+            for (int i = 0; i < recortesFondo.Length; i++)
+            {
+                RecorteGuardado r = recortesFondo[i];
+                if (r == null || !r.Vale(t, x0, y0, x1, y1, uMax, vMax, argb, huecos, nHuecos)) continue;
+                if (r.N > 0) stars.DrawTexturedBatch(tex, r.Vertices, r.N / 3);
+                RecortesReusados++; return;
+            }
+            RecortesCalculados++;
             int v = 0;
             if (t == null || t.Ancho < 1 || t.Alto < 1) v = Trozos(v, x0, y0, x1, y1, 0f, 0f, uMax, vMax, argb);
             else
@@ -378,6 +423,13 @@ namespace Rocola
                     v = Trozos(v, (float)(x0 + a * sx), (float)(y0 + b * sy), (float)(x0 + c * sx), (float)(y0 + d * sy),
                                (float)(a * su), (float)(b * sv), (float)(c * su), (float)(d * sv), argb);
                 }
+            }
+            if (v <= RecorteGuardado.MaxVertices)
+            {
+                int i = recorteSiguiente; recorteSiguiente = (i + 1) % recortesFondo.Length;
+                RecorteGuardado r = recortesFondo[i];
+                if (r == null) recortesFondo[i] = r = new RecorteGuardado();
+                r.Guarda(trozosHuecos, v, t, x0, y0, x1, y1, uMax, vMax, argb, huecos, nHuecos);
             }
             if (v > 0) stars.DrawTexturedBatch(tex, trozosHuecos, v / 3);
         }

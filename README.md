@@ -1,5 +1,13 @@
 # Rocola
 
+## Menos trabajo repetido por cuadro — 17 de octubre de 2026
+
+Tres ahorros automáticos: guardar los recortes de capas y del cielo intermedio,
+y no preparar estrellas completamente cubiertas por el estado opaco. Conservan
+el aspecto y los doce ajustes existentes; caché con memoria acotada. Comparación
+contra `0a3f7b0`, sin afirmar FPS reales del AMD A4 a partir del simulador.
+[Detalle, comprobaciones y límites](TRABAJO_VISIBLE_MODEST_2026-10-17.md).
+
 ## Más resolución con menos trabajo — 17 de octubre de 2026
 
 Se omite el suelo de aurora completamente tapado, el estado opaco evita mezcla y
