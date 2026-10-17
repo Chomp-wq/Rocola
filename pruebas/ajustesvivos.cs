@@ -122,7 +122,7 @@ class AjustesVivos
             // Lo que valen los que dependen, para ver que ponerlos en gris no los toca.
             string[] dependientes = { "colaDoce", "neonIntenso", "estadoTransparente", "cancionesCristal", "paletaCompleta",
                                       "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda",
-                                      "fondoCapa", "cieloCuarto", "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto" };
+                                      "fondoCapa", "cieloCuarto", "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo" };
             List<object> valAntes = new List<object>();
             foreach (string r in requisitos) Set(r, false);
             Set("auroraAmount", 0f);
@@ -229,6 +229,21 @@ class AjustesVivos
                 Check(g1 != null && g2 != null && j2 != null && g1.Enabled && g2.Enabled && j2.Enabled, "Performance: con todo lo suyo, los ahorros vivos");
                 if (g1 != null && g2 != null && j2 != null)
                 {
+                    Control sinGrano = Busca(ctl, "Fondo sin grano"), sinSuelo = Busca(ctl, "Aurora sin velo inferior");
+                    Check(sinGrano != null && sinSuelo != null, "estan los ahorros nuevos para resoluciones mayores");
+                    if (sinGrano != null && sinSuelo != null)
+                    {
+                        PropertyInfo marca = sinGrano.GetType().GetProperty("Checked");
+                        marca.SetValue(sinGrano, true, null);
+                        Check(!g1.Enabled && Necesita(g1) == "Sin efecto: Fondo sin grano (Performance)" && g2.Enabled,
+                              "sin grano anula la pasada doble, pero no el fondo en una capa");
+                        marca.SetValue(sinGrano, false, null);
+                        Check(g1.Enabled, "al restaurar el grano vuelve la pasada doble con su valor");
+                        Set("auroraAmount", 0f); Refresca();
+                        Check(!sinSuelo.Enabled && sinGrano.Enabled, "el velo necesita aurora; quitar grano no tiene requisitos adicionales");
+                        Set("auroraAmount", .55f); Refresca();
+                        Check(sinSuelo.Enabled, "la aurora reactiva su ahorro del velo inferior");
+                    }
                     Set("fondoCapa", true); Refresca();
                     Check(!g1.Enabled && Necesita(g1) == "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)",
                           "con el fondo en una sola capa, la pasada de grano y vineta va en gris: ya no hace nada (lo dice)");

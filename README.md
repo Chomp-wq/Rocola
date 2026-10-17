@@ -1,5 +1,13 @@
 # Rocola
 
+## Más resolución con menos trabajo — 17 de octubre de 2026
+
+Se omite el suelo de aurora completamente tapado, el estado opaco evita mezcla y
+la estrella 3D no prepara una textura 2D innecesaria. Performance añade «Fondo sin
+grano» y «Aurora sin velo inferior», con persistencia y conflictos explicados.
+Pruebas sintéticas en 1024×768, 1280×1024 y 1920×1080; pendiente medir en el A4/XP.
+[Detalles, evidencia y límites](MAS_RESOLUCION_MODEST_2026-10-17.md).
+
 ## Dependencias gráficas completas — 16 de octubre de 2026
 
 Los ahorros de Performance y los mandos relacionados explican sus requisitos,

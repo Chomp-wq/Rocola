@@ -453,13 +453,15 @@ namespace Rocola
         // Ctrl+F3 -> Imagen -> Performance. Estos ahorros son de aspecto (casi identico), asi que llevan interruptor y vienen
         // apagados de fabrica; el preset "Performance" los enciende.
         public bool CieloMedia, GranoVineta, FondoUnaCapa, CieloCuarto;
-        public bool EstadoOpaco, AuroraLigera, ReposoSinReflejo, ReposoSinEstela, CoronaCompacta;
+        public bool EstadoOpaco, AuroraLigera, ReposoSinReflejo, ReposoSinEstela, CoronaCompacta, SinGrano, AuroraSinSuelo;
         private bool AhorroReposo { get { return idleBlend >= .999f; } }
-        private bool EstadoOcultaDesde(float top)
+        private bool EstadoOpacoListo
         {
-            return EstadoOpaco && idleBlend >= 1f && idleTex != IntPtr.Zero && idleLastBmp != null
-                && idleUploadedVersion == IdlePanelVersion && top >= Math.Ceiling(StatusTopY) + 2f;
+            get { return EstadoOpaco && idleBlend >= 1f && idleTex != IntPtr.Zero && idleLastBmp != null
+                && idleUploadedVersion == IdlePanelVersion; }
         }
+        private bool EstadoOcultaDesde(float top)
+        { return EstadoOpacoListo && top >= Math.Ceiling(StatusTopY) + 2f; }
         // El medidor pide contar tambien los pixeles pintados (cuesta un poco de procesador; solo mientras mide).
         public bool CuentaArea;
         internal bool EstadoExtendidoAsentado { get { return idleBlend >= 1f && idleTex != IntPtr.Zero; } }
@@ -472,7 +474,7 @@ namespace Rocola
         {
             cieloMedioEsteCuadro = false; capaUnicaEsteCuadro = false;
             if (stars != null) stars.VinetaPuntos = false;
-            granoUnidoEsteCuadro = GranoVineta && VinetaSuave && vinetaTex != IntPtr.Zero && ruidoTex != IntPtr.Zero
+            granoUnidoEsteCuadro = !SinGrano && GranoVineta && VinetaSuave && vinetaTex != IntPtr.Zero && ruidoTex != IntPtr.Zero
                 && stars != null && stars.PuedeDosTexturas;
         }
 
@@ -522,7 +524,7 @@ namespace Rocola
             if (stars == null) return false;
             bool capa = FondoUnaCapa;
             int div = CieloCuarto ? 4 : 2;   // J2: a un cuarto en cada lado
-            IntPtr vineta = capa && VinetaSuave ? vinetaTex : IntPtr.Zero, ruido = capa ? ruidoTex : IntPtr.Zero;
+            IntPtr vineta = capa && VinetaSuave ? vinetaTex : IntPtr.Zero, ruido = capa && !SinGrano ? ruidoTex : IntPtr.Zero;
             if (firmaHecha == null) { firmaHecha = new FirmaCielo(); firmaAhora = new FirmaCielo(); }
             FirmaCielo f = firmaAhora;
             f.W = w; f.H = h; f.Div = div; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;

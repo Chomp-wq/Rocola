@@ -1238,6 +1238,17 @@ class Performance
                 bool[] u = (bool[])pa[6];
                 Exige(u.Length == 4 && u[2] && u[0], "la propuesta: si enciende el fondo en una capa, enciende tambien el cielo a media resolucion");
             }
+            // El medidor no suma alternativas incompatibles como dos ganancias independientes.
+            {
+                double[] alternatives = new double[12]; alternatives[1] = 4; alternatives[10] = 3;
+                object[] pa = { 30.0, alternatives, new double[0], new double[0], 24.0, 24.0, null, null, null };
+                Estatico(TForm, "PlanDeAhorros", pa); bool[] u = (bool[])pa[6];
+                Exige(u[1] && !u[10] && (double)pa[7] == 26.0 && (int)pa[8] == 0,
+                      "no inventa llegar a la meta sumando quitar grano y unirlo a la vineta");
+                alternatives[10] = 8; Estatico(TForm, "PlanDeAhorros", pa); u = (bool[])pa[6];
+                Exige(!u[1] && u[10] && (double)pa[7] == 22.0 && (int)pa[8] == 2,
+                      "elige quitar grano cuando la medida indica que ahorra mas");
+            }
             // La pagina Imagen: el boton de golpe y la hoja con sus dos interruptores.
             using (Font n = new Font("Segoe UI", 10f, FontStyle.Bold)) using (Font s = new Font("Segoe UI", 8.5f))
             using (Panel pg = (Panel)Llama(g, "PaginaImagen", n, n, s, n, Color.White, Color.Gray, Color.DimGray))

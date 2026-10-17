@@ -1,5 +1,7 @@
 # Reglas permanentes de la Rocola
 
+- Peticion del usuario del 17 de octubre de 2026: seguir optimizando Modest para el AMD A4-6300 y explorar resoluciones mayores que 1024x768. Conservar textos y portadas a resolucion nativa; comparar varias resoluciones y no afirmar fluidez en la rocola real basandose en el controlador artificial.
+
 - Peticion del usuario del 16 de octubre de 2026: los ajustes graficos deben quedar en gris y explicar el requisito o conflicto cuando no puedan actuar, incluidas las dependencias indirectas. Conservar el valor guardado y reactivar al restaurar el requisito; no bloquear mandos globales que siguen sirviendo fuera del reposo.
 
 - Peticion del usuario del 16 de octubre de 2026: optimizar Modest para la rocola real con Windows XP, AMD A4-6300 APU (dos nucleos), 3,5 GB de RAM, SSD y pantalla 1024x768, especialmente el estado extendido. Cada ahorro con cambio visual debe tener su interruptor persistente en Ctrl+F3 -> Imagen -> Performance; los ahorros sin cambio de aspecto ni funcionalidad son automaticos. Conservar toda la funcionalidad.

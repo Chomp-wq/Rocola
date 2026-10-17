@@ -122,20 +122,38 @@ class EstadoEficiente
             Set(p, "IdlePanelVersion", 5); Set(p, "EstadoOpaco", false); Run(p, "HuecosDePortadas");
             Check((int)Get(p, "nHuecos") == 0, "opcion apagada conserva transparencia");
             using (Bitmap wider = new Bitmap(1280, 245))
-            { Set(p, "IdlePanelVersion", 6); Run(p, "SubeEstadoExtendido", wider); int created = Creations(); Check(created > start + 1, "resolucion distinta recrea respetando el limite del driver"); Run(p, "SubeEstadoExtendido", wider); Check(Creations() == created, "mapa grande dividido no se recrea en cada cuadro"); }
+            { object dev = Get(Get(p, "stars"), "gpu"); Set(dev, "limiteTexturaW", 512);
+                using (Graphics g = Graphics.FromImage(wider)) g.Clear(Color.White);
+                // El controlador artificial expone por separado los dos tipos CLR de LockRect.
+                // Las teselas nuevas se crean con su vista regional; el driver real admite ambas.
+                object oldTable = helper.GetField("vtTex", B).GetValue(null);
+                helper.GetField("vtTex", B).SetValue(null, helper.GetField("vtTrozos", B).GetValue(null));
+                Set(p, "IdlePanelVersion", 6);
+                try { Run(p, "SubeEstadoExtendido", wider); }
+                finally { helper.GetField("vtTex", B).SetValue(null, oldTable); }
+                int created = Creations(); Check(created > start + 1, "resolucion distinta recrea respetando el limite del driver"); Run(p, "SubeEstadoExtendido", wider); Check(Creations() == created, "mapa grande dividido no se recrea en cada cuadro");
+                IntPtr split = (IntPtr)Get(p, "idleTex");
+                Check(Call(form.Assembly.GetType("Rocola.TexturasDivididasGpu"), null, "Busca", split) != null, "el caso fuerza una textura dividida");
+                Array quad = Array.CreateInstance(form.Assembly.GetType("Rocola.D3D9").GetNestedType("Vtx", B), 6);
+                Call(panel, null, "SetTexQuadA", quad, 0f, 0f, 1280f, 245f, 1f, 1f, 0xFFFFFFFFu);
+                Run(dev, "BeginFrame"); Run(dev, "DrawOpaqueQuad", split, quad);
+                Check((int)Get(dev, "stBlend") == 1 && (int)Get(dev, "Envios") > 0, "la ruta opaca tambien envia todos los trozos de una textura dividida");
+                Run(dev, "DrawTexQuad", split, quad);
+                Check((int)Get(dev, "stBlend") == 3 && (bool)Run(dev, "EndFrame"), "la textura dividida puede volver a mezcla normal y presentar");
+            }
         }
     }
     static void Options(string dir)
     {
         object f = Codigo.FormSinEncender(form); Set(f, "carpetaDatos", dir);
-        string[] names = { "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto" };
+        string[] names = { "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo" };
         for (int i = 0; i < names.Length; i++) Set(f, names[i], true);
         Run(f, "SaveConfigPrefs"); Codigo.EsperaGuardado(form, f);
         object again = Codigo.FormSinEncender(form); Set(again, "carpetaDatos", dir); Run(again, "LoadConfigPrefs");
         foreach (string name in names) Check((bool)Get(again, name), "persiste " + name);
         Run(again, "PonAhorros", false);
         foreach (string name in names) Check(!(bool)Get(again, name), "apagado independiente de fabrica " + name);
-        for (int i = 4; i < 10; i++)
+        for (int i = 4; i < 12; i++)
         {
             Run(again, "PonAhorro", i, true);
             for (int k = 0; k < names.Length; k++) Check((bool)Get(again, names[k]) == (k == i - 4), "interruptores independientes");
@@ -198,7 +216,7 @@ class EstadoEficiente
             object[] args = { sheet, font, font, Color.White, Color.Gray, null, null, null };
             Run(f, "LlenaHojaPerformance", args);
             Array switches = (Array)args[5];
-            Check(switches.Length == 10, "Performance muestra todos los ahorros independientes");
+            Check(switches.Length == 12, "Performance muestra todos los ahorros independientes");
             ScrollableControl body = sheet.Controls[0] as ScrollableControl;
             Check(body != null && body.AutoScroll && body.Top >= 40, "lista desplazable conserva la cabecera de pestañas");
             host.Show(); Application.DoEvents(); sheet.CreateControl(); body.CreateControl();

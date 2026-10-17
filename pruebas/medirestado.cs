@@ -8,14 +8,14 @@ using System.Windows.Forms;
 
 // Comparacion sintetica: controlador artificial, sin musica, sin esperas de monitor.
 // Compilar con franjareloj.cs y leercodigo.cs /main:MedirEstado. Primer argumento:
-// ejecutable exacto. Segundo: 'opciones' para activar los ahorros visuales nuevos.
+// ejecutable exacto. Segundo: original, performance o nuevos. Tercero/cuarto: ancho/alto.
 // Los intervalos son Start->Start de estas llamadas, NO FPS reales del equipo XP.
 class MedirEstado
 {
     const BindingFlags B = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
     static Type helper = typeof(FranjaReloj), panel, form;
     static Bitmap current, cell;
-    static int frame;
+    static int frame, width = 1024, height = 768;
     static object Call(Type t, object o, string n, params object[] a) { return t.GetMethod(n, B).Invoke(o, a); }
     static object Run(object o, string n, params object[] a) { return Call(o.GetType(), o, n, a); }
     static object Get(object o, string n) { return o.GetType().GetField(n, B).GetValue(o); }
@@ -31,8 +31,8 @@ class MedirEstado
         {
             object c = Activator.CreateInstance(typeof(T));
             Set(c, "Key", "disco" + i); Set(c, "Bmp", cell); Set(c, "Slot", i);
-            Set(c, "X", (float)(12 + (i % 6) * 166)); Set(c, "Y", (float)(100 + (i / 6) * 140));
-            Set(c, "W", 156f); Set(c, "H", 130f); Set(c, "A", 1f);
+            Set(c, "X", (float)(12 + (i % 6) * (width - 24) / 6)); Set(c, "Y", (float)(100 + (i / 6) * (height - 300) / 3));
+            Set(c, "W", (float)((width - 24) / 6 - 10)); Set(c, "H", (float)((height - 300) / 3 - 10)); Set(c, "A", 1f);
             data[i] = (T)c;
         }
         GridData<T>.Rows = (T[])data.Clone(); return 18;
@@ -41,7 +41,7 @@ class MedirEstado
     static T Aurora<T>()
     {
         object wave = Activator.CreateInstance(typeof(T));
-        Set(wave, "Has", true); Set(wave, "B", bands); Set(wave, "Alto", 140f); Set(wave, "BaseY", 650f);
+        Set(wave, "Has", true); Set(wave, "B", bands); Set(wave, "Alto", 140f); Set(wave, "BaseY", (float)(height - 96));
         Set(wave, "Dim", .5f); Set(wave, "DimFilo", 1f); Set(wave, "Calma", .4f);
         return (T)wave;
     }
@@ -56,7 +56,7 @@ class MedirEstado
         int n = 12; string[] t = new string[n], a = new string[n]; Image[] covers = new Image[n];
         for (int i = 0; i < n; i++) { t[i] = "Cancion " + i; a[i] = "Artista"; covers[i] = cell; }
         MethodInfo reuse = form.GetMethod("RenderIdlePanelEn", B);
-        object[] args = { 1024, 245, changed ? "Otra cancion" : "Cancion actual", "Artista", "1:00 / 3:00", t, a, covers, n, Color.Teal, false, 0, true, null, 0 };
+        object[] args = { width, (int)Call(panel, null, "IdlePanelHeight", height), changed ? "Otra cancion" : "Cancion actual", "Artista", "1:00 / 3:00", t, a, covers, n, Color.Teal, false, 0, true, null, 0 };
         if (reuse == null) return (Bitmap)form.GetMethod("RenderIdlePanelGrande", B).Invoke(null, args);
         object[] newer = new object[args.Length + 2]; newer[0] = current;
         Array.Copy(args, 0, newer, 1, args.Length - 1); newer[newer.Length - 2] = opaque; newer[newer.Length - 1] = 0;
@@ -64,9 +64,9 @@ class MedirEstado
     }
     static double Percentile(double[] values, double q)
     { return values[Math.Max(0, Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * q) - 1))]; }
-    static void Scenario(bool expanded, bool threeD, bool options)
+    static void Scenario(bool expanded, bool threeD, bool options, bool newer)
     {
-        using (Control p = (Control)Call(helper, null, "Panel", 1024, 768))
+        using (Control p = (Control)Call(helper, null, "Panel", width, height))
         {
             Set(p, "ConLuna", true); Set(p, "LunaActiva", true); Set(p, "Estrella3D", threeD);
             Set(p, "Dim", 1f); Set(p, "ShowAlbum", !expanded); Set(p, "IdleExpandTarget", expanded);
@@ -75,6 +75,7 @@ class MedirEstado
             FieldInfo grid = panel.GetField("GetGrid", B); grid.SetValue(p, Generic(grid, "Grid"));
             FieldInfo wave = panel.GetField("GetAurora", B); wave.SetValue(p, Generic(wave, "Aurora"));
             if (options) foreach (string n in new string[] { "EstadoOpaco", "AuroraLigera", "ReposoSinReflejo", "ReposoSinEstela", "CoronaCompacta" }) SetIf(p, n, true);
+            if (newer) { SetIf(p, "SinGrano", true); SetIf(p, "AuroraSinSuelo", true); }
             current = null; current = Draw(options, false);
             for (int i = 0; i < 120; i++) Run(p, "RenderFrame");
             int creations = (int)helper.GetField("creaciones", B).GetValue(null), accepted = 0, maps = 0;
@@ -93,7 +94,7 @@ class MedirEstado
             }
             int more = (int)helper.GetField("creaciones", B).GetValue(null) - creations;
             Array.Sort(intervals);
-            Console.WriteLine((expanded ? "estado" : "navegacion") + " estrella=" + (threeD ? "3D" : "2D") + " opciones=" + options
+            Console.WriteLine((expanded ? "estado" : "rejilla_estatica") + " estrella=" + (threeD ? "3D" : "2D") + " opciones=" + options + " nuevas=" + newer
                 + " cuadros_aceptados=" + accepted + " fallidos=" + (intervals.Length + 1 - accepted) + " nuevas_texturas=" + more + " nuevos_mapas=" + maps
                 + " p50=" + Percentile(intervals, .5).ToString("F3") + " p95=" + Percentile(intervals, .95).ToString("F3")
                 + " p99=" + Percentile(intervals, .99).ToString("F3") + " max=" + Percentile(intervals, 1).ToString("F3") + " ms");
@@ -103,6 +104,9 @@ class MedirEstado
     }
     [STAThread] static int Main(string[] args)
     {
+        if (args.Length >= 4) { width = int.Parse(args[2]); height = int.Parse(args[3]); }
+        bool options = args.Length > 1 && args[1] != "original", newer = args.Length > 1 && args[1] == "nuevos";
+        Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor");
         Assembly app = Assembly.LoadFrom(args[0]); form = app.GetType("Rocola.Form1"); panel = app.GetType("Rocola.GpuPanel");
         Console.WriteLine("ensamblado=" + app.Location + " bitmap_reutilizable=" + (form.GetMethod("RenderIdlePanelEn", B) != null));
         foreach (string field in new string[] { "TF", "TPanel", "TStar", "TDev", "TD3D" })
@@ -112,7 +116,7 @@ class MedirEstado
         }
         cell = new Bitmap(156, 130, PixelFormat.Format32bppPArgb);
         using (Graphics g = Graphics.FromImage(cell)) g.Clear(Color.DarkSlateBlue);
-        try { foreach (bool expanded in new bool[] { false, true }) foreach (bool threeD in new bool[] { false, true }) Scenario(expanded, threeD, args.Length > 1); }
+        try { foreach (bool expanded in new bool[] { false, true }) foreach (bool threeD in new bool[] { false, true }) Scenario(expanded, threeD, options, newer); }
         finally { cell.Dispose(); }
         return 0;
     }

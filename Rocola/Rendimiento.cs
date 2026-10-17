@@ -230,7 +230,7 @@ namespace Rocola
             gpuPanel.FondoUnaCapa = fondoCapa; gpuPanel.CieloCuarto = cieloCuarto;
             gpuPanel.EstadoOpaco = EstadoOpacoActivo; gpuPanel.AuroraLigera = auroraLigeraPerf;
             gpuPanel.ReposoSinReflejo = reposoSinReflejo; gpuPanel.ReposoSinEstela = reposoSinEstela;
-            gpuPanel.CoronaCompacta = coronaCompacta;
+            gpuPanel.CoronaCompacta = coronaCompacta; gpuPanel.SinGrano = sinGranoPerf; gpuPanel.AuroraSinSuelo = auroraSinSuelo;
             gpuPanel.HaloSeleccion = haloSeleccion;
             gpuPanel.EstrellasFinas = estrellasFinas;
             gpuPanel.OndasSuaves = ondasSuaves;
@@ -328,14 +328,14 @@ namespace Rocola
         // a un cuarto de resolucion» (J2, 14-10-2026), hace esa imagen mas chica: tambien necesita el primero.
         private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa",
                                                           "Cielo a un cuarto de resolución", "Estado extendido opaco", "Aurora con menos columnas",
-                                                          "Sin reflejo de aurora en reposo", "Sin estela de estrella en reposo", "Corona de estrella compacta", "Color directo del estado extendido" };
-        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0, -1, -1, -1, -1, -1, -1 };
+                                                          "Sin reflejo de aurora en reposo", "Sin estela de estrella en reposo", "Corona de estrella compacta", "Color directo del estado extendido", "Fondo sin grano", "Aurora sin velo inferior" };
+        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1 };
 #if ROCOLA_GPU
         private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 }, new int[] { 0 } };
 #endif
         // Ctrl+F3 -> Imagen -> Performance. Son de aspecto (casi identico): interruptor propio, apagados de fabrica (AGENTS.md).
         private bool cieloMedia, granoVineta, fondoCapa, cieloCuarto;
-        private bool estadoOpacoPerf, auroraLigeraPerf, reposoSinReflejo, reposoSinEstela, coronaCompacta, estadoColorDirecto;
+        private bool estadoOpacoPerf, auroraLigeraPerf, reposoSinReflejo, reposoSinEstela, coronaCompacta, estadoColorDirecto, sinGranoPerf, auroraSinSuelo;
         private bool EstadoOpacoActivo { get { return estadoOpacoPerf && EstadoExtendidoEfectivo; } }
         private bool EstadoExtendidoEfectivo
         {
@@ -350,7 +350,7 @@ namespace Rocola
             switch (i) {
                 case 0: return cieloMedia; case 1: return granoVineta; case 2: return fondoCapa; case 3: return cieloCuarto;
                 case 4: return estadoOpacoPerf; case 5: return auroraLigeraPerf; case 6: return reposoSinReflejo;
-                case 7: return reposoSinEstela; case 8: return coronaCompacta; case 9: return estadoColorDirecto; default: return false;
+                case 7: return reposoSinEstela; case 8: return coronaCompacta; case 9: return estadoColorDirecto; case 10: return sinGranoPerf; case 11: return auroraSinSuelo; default: return false;
             }
         }
         private void PonAhorro(int i, bool encendido)
@@ -360,12 +360,13 @@ namespace Rocola
             else if (i == 4) estadoOpacoPerf = encendido; else if (i == 5) auroraLigeraPerf = encendido;
             else if (i == 6) reposoSinReflejo = encendido; else if (i == 7) reposoSinEstela = encendido;
             else if (i == 8) coronaCompacta = encendido; else if (i == 9) estadoColorDirecto = encendido;
+            else if (i == 10) sinGranoPerf = encendido; else if (i == 11) auroraSinSuelo = encendido;
             AplicaEfectosGpu();
         }
         // Todos los ahorros a la vez (los presets y «Graficos como de fabrica»).
         private void PonAhorros(bool encendidos)
         {
-            cieloMedia = granoVineta = fondoCapa = cieloCuarto = estadoOpacoPerf = auroraLigeraPerf = reposoSinReflejo = reposoSinEstela = coronaCompacta = estadoColorDirecto = encendidos;
+            cieloMedia = granoVineta = fondoCapa = cieloCuarto = estadoOpacoPerf = auroraLigeraPerf = reposoSinReflejo = reposoSinEstela = coronaCompacta = estadoColorDirecto = sinGranoPerf = auroraSinSuelo = encendidos;
             CambioElPanelDeReposo();
         }
         private bool TodosLosAhorros(bool encendidos)
@@ -396,7 +397,10 @@ namespace Rocola
             switch (i)
             {
                 case 0: return nebulosas ? null : "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
+                case 10: return null;
+                case 11: return MotivoSinAurora();
                 case 1:
+                    if (sinGranoPerf) return "Sin efecto: Fondo sin grano (Performance)";
                     if (!vinetaSuave) return "Necesita: Viñeta suave (Fondo)";
                     if (capa) return "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)";
                     return null;
@@ -450,7 +454,12 @@ namespace Rocola
             if (msBase <= objetivoAlto) return niv;
             // Los ahorros que de verdad ahorran, del que mas al que menos.
             List<int> orden = new List<int>();
-            for (int i = 0; i < na; i++) if (ahorros[i] > RuidoMs) orden.Add(i);
+            // Quitar el grano y unirlo a la vineta son alternativas: no sumar dos veces
+            // el mismo ahorro ni proponer las dos como ganancias independientes.
+            bool sinGranoMejor = na > 10 && ahorros[10] >= ahorros[1] && ahorros[10] > RuidoMs;
+            for (int i = 0; i < na; i++)
+                if (ahorros[i] > RuidoMs && !(i == 1 && sinGranoMejor)
+                    && !(i == 10 && !sinGranoMejor && ahorros[1] > RuidoMs)) orden.Add(i);
             orden.Sort(delegate (int a, int b) { return ahorros[b].CompareTo(ahorros[a]); });
             int[] ultimo = niv; bool[] ultimoUsa = usa; double ultimoMs = msBase;
             for (int tramo = 2; tramo >= 1; tramo--)
@@ -2019,7 +2028,11 @@ namespace Rocola
                 "Los dos halos grandes de la estrella cubren menos espacio.\n"
               + "El cuerpo, el polvo y sus movimientos siguen completos.",
                 "El estado toma el nuevo color de una vez, sin transición.\n"
-              + "Evita redibujarlo por cada paso del cambio de canción."
+              + "Evita redibujarlo por cada paso del cambio de canción.",
+                "Quita la textura de grano del cielo, también en su caché.\n"
+              + "Conserva el degradado, las nebulosas y la viñeta.",
+                "Omite el velo de luz que ocupa la zona bajo el horizonte.\n"
+              + "Conserva la cortina, el filo y las ocho bandas de música."
             };
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];
@@ -2037,7 +2050,7 @@ namespace Rocola
                 hoja.Controls.Add(s); hoja.Controls.Add(d); hoja.Controls.Add(m);
                 interruptores[i] = s; medidos[i] = m;
                 int k = i;
-                NecesitaMotivo(s, delegate { return MotivoSinAhorro(k); });   // en gris si ahora no hace nada, y por que
+                if (k != 10) NecesitaMotivo(s, delegate { return MotivoSinAhorro(k); });   // en gris si ahora no hace nada, y por que
                 y += 84 + extra;
             }
             Label autoT = new Label(); autoT.SetBounds(16, y, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
