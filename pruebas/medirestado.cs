@@ -92,6 +92,8 @@ class MedirEstado
             int computed = Counter(p, "RecortesCalculados"), reused = Counter(p, "RecortesReusados");
             long omitted = 0;
             object stars = Get(p, "stars");
+            int skies = Counter(stars, "CielosSuavesCalculados"), skyReuse = Counter(stars, "CielosSuavesReusados");
+            int reflections = Counter(p, "ReflejosCalculados"), reflectionReuse = Counter(p, "ReflejosReusados");
             double[] intervals = new double[360]; long previous = Stopwatch.GetTimestamp();
             for (frame = 0; frame <= intervals.Length; frame++)
             {
@@ -113,6 +115,8 @@ class MedirEstado
                 + " cuadros_aceptados=" + accepted + " fallidos=" + (intervals.Length + 1 - accepted) + " nuevas_texturas=" + more + " nuevos_mapas=" + maps
                 + " recortes_calculados=" + (Counter(p, "RecortesCalculados") - computed)
                 + " recortes_reusados=" + (Counter(p, "RecortesReusados") - reused) + " estrellas_omitidas_total=" + omitted
+                + " cielos_calculados=" + (Counter(stars, "CielosSuavesCalculados") - skies) + " cielos_reusados=" + (Counter(stars, "CielosSuavesReusados") - skyReuse)
+                + " reflejos_calculados=" + (Counter(p, "ReflejosCalculados") - reflections) + " reflejos_reusados=" + (Counter(p, "ReflejosReusados") - reflectionReuse)
                 + " p50=" + Percentile(intervals, .5).ToString("F3") + " p95=" + Percentile(intervals, .95).ToString("F3")
                 + " p99=" + Percentile(intervals, .99).ToString("F3") + " max=" + Percentile(intervals, 1).ToString("F3") + " ms");
             current.Dispose(); current = null;

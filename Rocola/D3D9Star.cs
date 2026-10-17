@@ -4237,6 +4237,7 @@ namespace Rocola
             aurFinoAnt = tkAur; aurRelojOk = true;
             float t = (float)aurT;
             if (updateWave) {
+            reflejoListo = false; // sus alturas/colores/brillos van a cambiar en esta muestra
             // DEGRADADO del pie a la punta de los dos extremos (grave y agudo), girando el tono por el BORDE de la
             // rueda (ver AurTonoMezcla): asi a media altura el color sigue siendo un color y no una mezcla sucia. Con
             // el ancho y la paleta de la portada da el color de partida de cada franja; se guarda y solo se rehace

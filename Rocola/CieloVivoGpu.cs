@@ -333,6 +333,10 @@ namespace Rocola
 
         // ---------------- 7) el reflejo de la aurora (lo que dejo DrawAurora en este cuadro)
         private D3D9.Vtx[] reflejoV; private bool aurDibujada; private float aurDibujadaBase;
+        private bool reflejoListo;
+        private int reflejoN, reflejoAncho;
+        private float reflejoBase, reflejoHueco;
+        internal int ReflejosCalculados, ReflejosReusados;
         private void DibujaReflejoAurora()
         {
             if ((ReposoSinReflejo && AhorroReposo) || !ReflejoAurora || !aurDibujada || aurHs == null || aurNc == null || aurNi == null) return;
@@ -341,8 +345,16 @@ namespace Rocola
             // PEGADO A LA RAYA (foto del 13-10-2026: «la barra de estado queda un poco despegada del espectro»). Nacia en el pie
             // del relleno, 15 px por debajo de la raya del horizonte (AurLineaAlza): entre el brillo de la raya y el reflejo
             // quedaba una franja oscura, y la raya se veia suelta encima de la barra. Ahora nace justo bajo el nucleo de la raya.
-            int n = Form1.AurReflejo(reflejoV, aurHs, aurNc, aurNi, AurCols, Width, aurDibujadaBase - AurLineaAlza, Form1.ReflejoHueco(Height));
-            if (n >= 3) stars.DrawMeshAdd(reflejoV, n / 3);
+            float baseY = aurDibujadaBase - AurLineaAlza, hueco = Form1.ReflejoHueco(Height);
+            if (!reflejoListo || reflejoAncho != Width || reflejoBase != baseY || reflejoHueco != hueco)
+            {
+                reflejoListo = false;
+                reflejoN = Form1.AurReflejo(reflejoV, aurHs, aurNc, aurNi, AurCols, Width, baseY, hueco);
+                reflejoAncho = Width; reflejoBase = baseY; reflejoHueco = hueco; reflejoListo = true;
+                ReflejosCalculados++;
+            }
+            else ReflejosReusados++;
+            if (reflejoN >= 3) stars.DrawMeshAdd(reflejoV, reflejoN / 3);
         }
 
         // ---------------- 5) la profundidad al pasar de pagina: lo que se corren nebulosas y via lactea, y su vuelta

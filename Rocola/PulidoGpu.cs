@@ -129,18 +129,66 @@ namespace Rocola
         // de la ayuda, tarjetas de las piezas); con el interruptor apagado, el degradado de siempre de Windows.
         internal static volatile bool InterfazTramada = true;
         private static readonly int[] Bayer4 = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+        // Cuatro fuentes de 4 x hasta 2048 pixeles: 128 KiB de pixeles como maximo.
+        // El llamador recibe su propio pincel, que puede transformar/disponer sin tocar la fuente.
+        // El cerrojo protege crear pinceles/disponer mapas de GDI+ si dos horneadores coinciden.
+        private sealed class DegradadoGuardado
+        {
+            internal int Alto, Inicio, Fin;
+            internal Bitmap Mapa;
+        }
+        private static readonly object degradadoCerrojo = new object();
+        private static readonly DegradadoGuardado[] degradados = new DegradadoGuardado[4];
+        private static int degradadoTurno;
+        internal static int DegradadosGuardados, DegradadosReusados;
         internal static Brush DegradadoV(Rectangle r, Color c0, Color c1)
         {
             if (!InterfazTramada || r.Height < 2 || r.Width < 1) return new LinearGradientBrush(r, c0, c1, 90f);
-            using (Bitmap b = new Bitmap(4, r.Height, PixelFormat.Format32bppArgb))
+            if (r.Height > 2048) return HorneaDegradadoV(r, c0, c1); // los tamanos extraordinarios no quedan retenidos
+            lock (degradadoCerrojo)
             {
-                BitmapData d = b.LockBits(new Rectangle(0, 0, 4, r.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                int a = c0.ToArgb(), b = c1.ToArgb();
+                for (int i = 0; i < degradados.Length; i++)
+                {
+                    DegradadoGuardado d = degradados[i];
+                    if (d == null || d.Alto != r.Height || d.Inicio != a || d.Fin != b) continue;
+                    TextureBrush copia = CopiaDegradado(d.Mapa, r.Location);
+                    DegradadosReusados++; return copia;
+                }
+                Bitmap fuente = HorneaMapaDegradado(r.Height, c0, c1);
+                TextureBrush nuevo;
+                try { nuevo = CopiaDegradado(fuente, r.Location); }
+                catch { fuente.Dispose(); throw; }
+                DegradadoGuardado anterior = degradados[degradadoTurno];
+                degradados[degradadoTurno] = new DegradadoGuardado { Alto = r.Height, Inicio = a, Fin = b, Mapa = fuente };
+                degradadoTurno = (degradadoTurno + 1) % degradados.Length;
+                if (anterior != null) anterior.Mapa.Dispose();
+                DegradadosGuardados++; return nuevo;
+            }
+        }
+        private static TextureBrush CopiaDegradado(Bitmap fuente, Point origen)
+        {
+            // Crear desde ARGB original evita otro redondeo de alfa al clonar un TextureBrush.
+            TextureBrush copia = new TextureBrush(fuente, WrapMode.Tile);
+            try { copia.TranslateTransform(origen.X, origen.Y); return copia; }
+            catch { copia.Dispose(); throw; }
+        }
+        private static Brush HorneaDegradadoV(Rectangle r, Color c0, Color c1)
+        {
+            using (Bitmap b = HorneaMapaDegradado(r.Height, c0, c1)) return CopiaDegradado(b, r.Location);
+        }
+        private static Bitmap HorneaMapaDegradado(int alto, Color c0, Color c1)
+        {
+            Bitmap b = new Bitmap(4, alto, PixelFormat.Format32bppArgb);
+            try
+            {
+                BitmapData d = b.LockBits(new Rectangle(0, 0, 4, alto), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
                 try
                 {
                     int[] fila = new int[4];
-                    for (int y = 0; y < r.Height; y++)
+                    for (int y = 0; y < alto; y++)
                     {
-                        float t = (y + .5f) / r.Height;
+                        float t = (y + .5f) / alto;
                         float fa = c0.A + (c1.A - c0.A) * t, fr = c0.R + (c1.R - c0.R) * t, fg = c0.G + (c1.G - c0.G) * t, fb = c0.B + (c1.B - c0.B) * t;
                         for (int x = 0; x < 4; x++)
                         {
@@ -151,10 +199,9 @@ namespace Rocola
                     }
                 }
                 finally { b.UnlockBits(d); }
-                TextureBrush tb = new TextureBrush(b, WrapMode.Tile);   // GDI+ se queda con su propia copia
-                tb.TranslateTransform(r.X, r.Y);
-                return tb;
+                return b;
             }
+            catch { b.Dispose(); throw; }
         }
         private static int Tramo(float v, float umbral)
         {
@@ -169,6 +216,11 @@ namespace Rocola
         public bool CieloSuave = true, ColoresProfundos = true;
         internal const int CieloFranjas = 6;   // por tramo: doce en total
         private D3D9.Vtx[] skySuave;
+        private bool cieloSuaveListo;
+        private float cieloSuaveAncho, cieloSuaveAlto, cieloSuaveMedio, cieloSuaveExtra;
+        private uint cieloSuaveArriba, cieloSuaveCentro, cieloSuaveAbajo;
+        private int cieloSuaveTris;
+        internal int CielosSuavesCalculados, CielosSuavesReusados;
         // Los colores de las tres paradas, como se van a pintar (C2).
         internal void ColoresCielo(ref uint top, ref uint mid, ref uint bot)
         {
@@ -179,6 +231,10 @@ namespace Rocola
         // de abajo del todo con el color de abajo. Devuelve cuantos triangulos.
         internal int ArmaCieloSuave(float ancho, float h, float midY, uint top, uint mid, uint bot, float extra)
         {
+            if (cieloSuaveListo && ancho == cieloSuaveAncho && h == cieloSuaveAlto && midY == cieloSuaveMedio &&
+                extra == cieloSuaveExtra && top == cieloSuaveArriba && mid == cieloSuaveCentro && bot == cieloSuaveAbajo)
+            { CielosSuavesReusados++; return cieloSuaveTris; }
+            cieloSuaveListo = false;
             int n = 2 * CieloFranjas * 6 + 6;
             if (skySuave == null || skySuave.Length < n) skySuave = new D3D9.Vtx[n];
             float x1 = h > 0f ? midY / h : 0.5f;
@@ -196,7 +252,10 @@ namespace Rocola
                 }
             }
             if (extra > 0f) { SetQuad(skySuave, v, 0, h, ancho, h + extra, bot | 0xFF000000u, bot | 0xFF000000u, bot | 0xFF000000u, bot | 0xFF000000u); v += 6; }
-            return v / 3;
+            cieloSuaveAncho = ancho; cieloSuaveAlto = h; cieloSuaveMedio = midY; cieloSuaveExtra = extra;
+            cieloSuaveArriba = top; cieloSuaveCentro = mid; cieloSuaveAbajo = bot;
+            cieloSuaveTris = v / 3; cieloSuaveListo = true; CielosSuavesCalculados++;
+            return cieloSuaveTris;
         }
         internal void DibujaCieloSuave(int tris) { if (gpu != null && skySuave != null) gpu.DrawSkyN(skySuave, tris); }
     }

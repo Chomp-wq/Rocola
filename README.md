@@ -1,5 +1,13 @@
 # Rocola
 
+## Degradados y reflejos reutilizados — 17 de octubre de 2026
+
+Tres ahorros automáticos sin cambiar el aspecto: conservar los píxeles de los
+degradados de paneles, la malla del cielo suave y el reflejo entre muestras de
+aurora iguales. Memoria acotada y comparación de píxeles contra `978ab3d`.
+El ahorro medido al preparar pinceles no equivale a una mejora de FPS del A4.
+[Detalles, memoria, comprobaciones y mediciones](CACHES_GRAFICAS_MODEST_2026-10-17.md).
+
 ## Aurora e interfaz con menos cálculos — 17 de octubre de 2026
 
 Dos ahorros automáticos: reutilizar la geometría de capas quietas y compartir las
