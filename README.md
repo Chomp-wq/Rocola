@@ -1,5 +1,14 @@
 # Rocola
 
+## Aurora e interfaz con menos cálculos — 17 de octubre de 2026
+
+Dos ahorros automáticos: reutilizar la geometría de capas quietas y compartir las
+ondas iguales de altura y brillo. Nuevo «Halo de aurora compacto» en Performance:
+21,6% menos vértices de la malla de brillo; conserva el núcleo y el horizonte.
+Persistente, apagado de fábrica y con sus requisitos en gris. Comparado con
+`b04fd38` en tres resoluciones mediante controlador artificial; pendiente XP/A4.
+[Detalle, dependencias y comprobaciones](AURORA_E_INTERFAZ_MODEST_2026-10-17.md).
+
 ## Menos trabajo repetido por cuadro — 17 de octubre de 2026
 
 Tres ahorros automáticos: guardar los recortes de capas y del cielo intermedio,

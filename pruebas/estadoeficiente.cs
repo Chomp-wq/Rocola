@@ -146,14 +146,20 @@ class EstadoEficiente
     static void Options(string dir)
     {
         object f = Codigo.FormSinEncender(form); Set(f, "carpetaDatos", dir);
-        string[] names = { "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo" };
+        string[] names = { "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo", "auroraHaloCompacto" };
+        Check(!(bool)Get(f, "auroraHaloCompacto"), "halo compacto apagado en configuracion nueva");
+        foreach (int preset in new int[] { 0, 1, 3, 2 })
+        {
+            Run(f, "AplicaPresetGrafico", preset);
+            Check((bool)Get(f, "auroraHaloCompacto") == (preset != 2), "preset incluye halo compacto: " + preset);
+        }
         for (int i = 0; i < names.Length; i++) Set(f, names[i], true);
         Run(f, "SaveConfigPrefs"); Codigo.EsperaGuardado(form, f);
         object again = Codigo.FormSinEncender(form); Set(again, "carpetaDatos", dir); Run(again, "LoadConfigPrefs");
         foreach (string name in names) Check((bool)Get(again, name), "persiste " + name);
         Run(again, "PonAhorros", false);
         foreach (string name in names) Check(!(bool)Get(again, name), "apagado independiente de fabrica " + name);
-        for (int i = 4; i < 12; i++)
+        for (int i = 4; i < 4 + names.Length; i++)
         {
             Run(again, "PonAhorro", i, true);
             for (int k = 0; k < names.Length; k++) Check((bool)Get(again, names[k]) == (k == i - 4), "interruptores independientes");
@@ -216,7 +222,7 @@ class EstadoEficiente
             object[] args = { sheet, font, font, Color.White, Color.Gray, null, null, null };
             Run(f, "LlenaHojaPerformance", args);
             Array switches = (Array)args[5];
-            Check(switches.Length == 12, "Performance muestra todos los ahorros independientes");
+            Check(switches.Length == 13, "Performance muestra todos los ahorros independientes");
             ScrollableControl body = sheet.Controls[0] as ScrollableControl;
             Check(body != null && body.AutoScroll && body.Top >= 40, "lista desplazable conserva la cabecera de pestañas");
             host.Show(); Application.DoEvents(); sheet.CreateControl(); body.CreateControl();

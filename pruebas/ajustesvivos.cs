@@ -122,7 +122,7 @@ class AjustesVivos
             // Lo que valen los que dependen, para ver que ponerlos en gris no los toca.
             string[] dependientes = { "colaDoce", "neonIntenso", "estadoTransparente", "cancionesCristal", "paletaCompleta",
                                       "estelaEstelar", "controlesReposo", "profundidadPagina", "nebNaturalFuerza", "portadaManda",
-                                      "fondoCapa", "cieloCuarto", "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo" };
+                                      "fondoCapa", "cieloCuarto", "estadoOpacoPerf", "auroraLigeraPerf", "reposoSinReflejo", "reposoSinEstela", "coronaCompacta", "estadoColorDirecto", "sinGranoPerf", "auroraSinSuelo", "auroraHaloCompacto" };
             List<object> valAntes = new List<object>();
             foreach (string r in requisitos) Set(r, false);
             Set("auroraAmount", 0f);
@@ -243,6 +243,26 @@ class AjustesVivos
                         Check(!sinSuelo.Enabled && sinGrano.Enabled, "el velo necesita aurora; quitar grano no tiene requisitos adicionales");
                         Set("auroraAmount", .55f); Refresca();
                         Check(sinSuelo.Enabled, "la aurora reactiva su ahorro del velo inferior");
+                    }
+                    Control compacto = Busca(ctl, "Halo de aurora compacto");
+                    Check(compacto != null && compacto.Enabled, "halo compacto disponible con aurora activa");
+                    if (compacto != null)
+                    {
+                        PropertyInfo marca = compacto.GetType().GetProperty("Checked");
+                        marca.SetValue(compacto, true, null);
+                        Set("auroraAmount", 0f); Refresca();
+                        Check(!compacto.Enabled && Necesita(compacto) == "Necesita: Aurora del horizonte en Medio o Alto"
+                            && (bool)Get("auroraHaloCompacto") && (bool)marca.GetValue(compacto, null),
+                            "halo en gris conserva su valor y explica el requisito exacto");
+                        Set("auroraAmount", .55f); Refresca();
+                        Check(compacto.Enabled && Necesita(compacto) == null && (bool)marca.GetValue(compacto, null),
+                            "encender aurora restaura el halo compacto sin perder la preferencia");
+                        foreach (bool value in new bool[] { false, true })
+                        {
+                            Set("auroraLigeraPerf", value); Set("auroraSinSuelo", value); Set("estadoOpacoPerf", value); Refresca();
+                            Check(compacto.Enabled, "halo combinable con columnas, velo y estado opaco: " + value);
+                        }
+                        Set("estadoOpacoPerf", false); marca.SetValue(compacto, false, null);
                     }
                     Set("fondoCapa", true); Refresca();
                     Check(!g1.Enabled && Necesita(g1) == "Sin efecto: ya va dentro del cielo (Fondo en una sola capa)",

@@ -551,6 +551,7 @@ namespace Rocola
                     else if (s.StartsWith("cielo_cuarto=")) cieloCuarto = s.Substring(13).Trim() == "1";    // J2 (14-10-2026)
                     else if (s.StartsWith("sin_grano_perf=")) sinGranoPerf = s.Substring(15).Trim() == "1";
                     else if (s.StartsWith("aurora_sin_suelo=")) auroraSinSuelo = s.Substring(17).Trim() == "1";
+                    else if (s.StartsWith("aurora_halo_compacto=")) auroraHaloCompacto = s.Substring(21).Trim() == "1";
                     else if (s.StartsWith("estado_opaco_perf=")) estadoOpacoPerf = s.Substring(18).Trim() == "1";
                     else if (s.StartsWith("aurora_ligera_perf=")) auroraLigeraPerf = s.Substring(19).Trim() == "1";
                     else if (s.StartsWith("reposo_sin_reflejo=")) reposoSinReflejo = s.Substring(19).Trim() == "1";
@@ -734,6 +735,7 @@ namespace Rocola
             sb.Append("cielo_cuarto=").Append(cieloCuarto ? "1" : "0").Append("\r\n");
             sb.Append("sin_grano_perf=").Append(sinGranoPerf ? "1" : "0").Append("\r\n");
             sb.Append("aurora_sin_suelo=").Append(auroraSinSuelo ? "1" : "0").Append("\r\n");
+            sb.Append("aurora_halo_compacto=").Append(auroraHaloCompacto ? "1" : "0").Append("\r\n");
             sb.Append("estado_opaco_perf=").Append(estadoOpacoPerf ? "1" : "0").Append("\r\n");
             sb.Append("aurora_ligera_perf=").Append(auroraLigeraPerf ? "1" : "0").Append("\r\n");
             sb.Append("reposo_sin_reflejo=").Append(reposoSinReflejo ? "1" : "0").Append("\r\n");

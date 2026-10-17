@@ -230,7 +230,7 @@ namespace Rocola
             gpuPanel.FondoUnaCapa = fondoCapa; gpuPanel.CieloCuarto = cieloCuarto;
             gpuPanel.EstadoOpaco = EstadoOpacoActivo; gpuPanel.AuroraLigera = auroraLigeraPerf;
             gpuPanel.ReposoSinReflejo = reposoSinReflejo; gpuPanel.ReposoSinEstela = reposoSinEstela;
-            gpuPanel.CoronaCompacta = coronaCompacta; gpuPanel.SinGrano = sinGranoPerf; gpuPanel.AuroraSinSuelo = auroraSinSuelo;
+            gpuPanel.CoronaCompacta = coronaCompacta; gpuPanel.SinGrano = sinGranoPerf; gpuPanel.AuroraSinSuelo = auroraSinSuelo; gpuPanel.AuroraHaloCompacto = auroraHaloCompacto;
             gpuPanel.HaloSeleccion = haloSeleccion;
             gpuPanel.EstrellasFinas = estrellasFinas;
             gpuPanel.OndasSuaves = ondasSuaves;
@@ -328,14 +328,14 @@ namespace Rocola
         // a un cuarto de resolucion» (J2, 14-10-2026), hace esa imagen mas chica: tambien necesita el primero.
         private static readonly string[] NombreAhorro = { "Cielo a media resolución", "Grano y viñeta en una pasada", "Fondo en una sola capa",
                                                           "Cielo a un cuarto de resolución", "Estado extendido opaco", "Aurora con menos columnas",
-                                                          "Sin reflejo de aurora en reposo", "Sin estela de estrella en reposo", "Corona de estrella compacta", "Color directo del estado extendido", "Fondo sin grano", "Aurora sin velo inferior" };
-        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1 };
+                                                          "Sin reflejo de aurora en reposo", "Sin estela de estrella en reposo", "Corona de estrella compacta", "Color directo del estado extendido", "Fondo sin grano", "Aurora sin velo inferior", "Halo de aurora compacto" };
+        internal static readonly int[] RequiereAhorro = { -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 #if ROCOLA_GPU
         private static readonly int[][] AhorroSobre = { null, null, new int[] { 0, 1 }, new int[] { 0 } };
 #endif
         // Ctrl+F3 -> Imagen -> Performance. Son de aspecto (casi identico): interruptor propio, apagados de fabrica (AGENTS.md).
         private bool cieloMedia, granoVineta, fondoCapa, cieloCuarto;
-        private bool estadoOpacoPerf, auroraLigeraPerf, reposoSinReflejo, reposoSinEstela, coronaCompacta, estadoColorDirecto, sinGranoPerf, auroraSinSuelo;
+        private bool estadoOpacoPerf, auroraLigeraPerf, reposoSinReflejo, reposoSinEstela, coronaCompacta, estadoColorDirecto, sinGranoPerf, auroraSinSuelo, auroraHaloCompacto;
         private bool EstadoOpacoActivo { get { return estadoOpacoPerf && EstadoExtendidoEfectivo; } }
         private bool EstadoExtendidoEfectivo
         {
@@ -350,7 +350,7 @@ namespace Rocola
             switch (i) {
                 case 0: return cieloMedia; case 1: return granoVineta; case 2: return fondoCapa; case 3: return cieloCuarto;
                 case 4: return estadoOpacoPerf; case 5: return auroraLigeraPerf; case 6: return reposoSinReflejo;
-                case 7: return reposoSinEstela; case 8: return coronaCompacta; case 9: return estadoColorDirecto; case 10: return sinGranoPerf; case 11: return auroraSinSuelo; default: return false;
+                case 7: return reposoSinEstela; case 8: return coronaCompacta; case 9: return estadoColorDirecto; case 10: return sinGranoPerf; case 11: return auroraSinSuelo; case 12: return auroraHaloCompacto; default: return false;
             }
         }
         private void PonAhorro(int i, bool encendido)
@@ -360,13 +360,13 @@ namespace Rocola
             else if (i == 4) estadoOpacoPerf = encendido; else if (i == 5) auroraLigeraPerf = encendido;
             else if (i == 6) reposoSinReflejo = encendido; else if (i == 7) reposoSinEstela = encendido;
             else if (i == 8) coronaCompacta = encendido; else if (i == 9) estadoColorDirecto = encendido;
-            else if (i == 10) sinGranoPerf = encendido; else if (i == 11) auroraSinSuelo = encendido;
+            else if (i == 10) sinGranoPerf = encendido; else if (i == 11) auroraSinSuelo = encendido; else if (i == 12) auroraHaloCompacto = encendido;
             AplicaEfectosGpu();
         }
         // Todos los ahorros a la vez (los presets y «Graficos como de fabrica»).
         private void PonAhorros(bool encendidos)
         {
-            cieloMedia = granoVineta = fondoCapa = cieloCuarto = estadoOpacoPerf = auroraLigeraPerf = reposoSinReflejo = reposoSinEstela = coronaCompacta = estadoColorDirecto = sinGranoPerf = auroraSinSuelo = encendidos;
+            cieloMedia = granoVineta = fondoCapa = cieloCuarto = estadoOpacoPerf = auroraLigeraPerf = reposoSinReflejo = reposoSinEstela = coronaCompacta = estadoColorDirecto = sinGranoPerf = auroraSinSuelo = auroraHaloCompacto = encendidos;
             CambioElPanelDeReposo();
         }
         private bool TodosLosAhorros(bool encendidos)
@@ -398,7 +398,7 @@ namespace Rocola
             {
                 case 0: return nebulosas ? null : "Necesita: Nieblas y nebulosas en Medio o Alto (Efectos)";
                 case 10: return null;
-                case 11: return MotivoSinAurora();
+                case 11: case 12: return MotivoSinAurora();
                 case 1:
                     if (sinGranoPerf) return "Sin efecto: Fondo sin grano (Performance)";
                     if (!vinetaSuave) return "Necesita: Viñeta suave (Fondo)";
@@ -2032,7 +2032,9 @@ namespace Rocola
                 "Quita la textura de grano del cielo, también en su caché.\n"
               + "Conserva el degradado, las nebulosas y la viñeta.",
                 "Omite el velo de luz que ocupa la zona bajo el horizonte.\n"
-              + "Conserva la cortina, el filo y las ocho bandas de música."
+              + "Conserva la cortina, el filo y las ocho bandas de música.",
+                "Estrecha el resplandor de la cresta de la aurora.\n"
+              + "Conserva su línea luminosa, la cortina y el horizonte."
             };
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];

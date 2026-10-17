@@ -42,6 +42,23 @@ namespace Rocola
         internal int N;                      // cuantos rectangulos
         internal D3D9.Vtx[] Vtx = new D3D9.Vtx[0];   // seis vertices por rectangulo, reusados en cada cuadro
         internal double Fraccion = 1.0;      // lo que queda por pintar, en parte del area de la imagen
+        // Rect/Ancho/Alto son inmutables una vez publicado el analisis. Su malla pertenece a esta
+        // instancia: reusarla no retiene imagenes y no necesita un segundo buffer de vertices.
+        private bool geometriaLista;
+        private float gx0, gy0, gx1, gy1, gu, gv;
+        private uint gc;
+        internal int GeometriasCalculadas, GeometriasReusadas;
+        internal bool MismaGeometria(float x0, float y0, float x1, float y1, float u, float v, uint color)
+        {
+            if (geometriaLista && gx0 == x0 && gy0 == y0 && gx1 == x1 && gy1 == y1 && gu == u && gv == v && gc == color)
+            { GeometriasReusadas++; return true; }
+            return false;
+        }
+        internal void GuardaGeometria(float x0, float y0, float x1, float y1, float u, float v, uint color)
+        {
+            geometriaLista = true; gx0 = x0; gy0 = y0; gx1 = x1; gy1 = y1; gu = u; gv = v; gc = color;
+            GeometriasCalculadas++;
+        }
 
         // Que hay que pintar de esta imagen. Solo mira el alfa. 'bordeSiempre': las teselas del borde se pintan siempre
         // (hace falta si la imagen se ESTIRA: ahi la tarjeta puede leer fuera de lo horneado); una imagen pintada texel a
@@ -250,6 +267,8 @@ namespace Rocola
                 return;
             }
             if (t.N == 0) return;   // toda transparente: no hay nada que pintar
+            if (t.MismaGeometria(x0, y0, x1, y1, uMax, vMax, argb))
+            { stars.DrawTexturedBatch(tex, t.Vtx, t.N * 2); return; }
             double sx = ((double)x1 - x0) / t.Ancho, sy = ((double)y1 - y0) / t.Alto;
             double su = (double)uMax / t.Ancho, sv = (double)vMax / t.Alto;
             D3D9.Vtx[] v = t.Vtx;
@@ -262,6 +281,7 @@ namespace Rocola
                 TV(ref v[o + 0], px0, py0, argb, u0, v0); TV(ref v[o + 1], px1, py0, argb, u1, v0); TV(ref v[o + 2], px1, py1, argb, u1, v1);
                 TV(ref v[o + 3], px0, py0, argb, u0, v0); TV(ref v[o + 4], px1, py1, argb, u1, v1); TV(ref v[o + 5], px0, py1, argb, u0, v1);
             }
+            t.GuardaGeometria(x0, y0, x1, y1, uMax, vMax, argb);
             stars.DrawTexturedBatch(tex, v, t.N * 2);
         }
         private static void TV(ref D3D9.Vtx x, float px, float py, uint c, float u, float v) { x.X = px; x.Y = py; x.Color = c; x.U = u; x.V = v; }

@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 // Comparacion sintetica: controlador artificial, sin musica, sin esperas de monitor.
 // Compilar con franjareloj.cs y leercodigo.cs /main:MedirEstado. Primer argumento:
-// ejecutable exacto. Segundo: original, performance o nuevos. Tercero/cuarto: ancho/alto.
+// ejecutable exacto. Segundo: original, performance, nuevos o halo. Tercero/cuarto: ancho/alto.
 // Quinto opcional: animado (avanza fases de nebulosas 24 de cada 60 cuadros simulados).
 // Los intervalos son Start->Start de estas llamadas, NO FPS reales del equipo XP.
 class MedirEstado
@@ -17,7 +17,7 @@ class MedirEstado
     static Type helper = typeof(FranjaReloj), panel, form;
     static Bitmap current, cell;
     static int frame, width = 1024, height = 768;
-    static bool animated;
+    static bool animated, halo;
     static object Call(Type t, object o, string n, params object[] a) { return t.GetMethod(n, B).Invoke(o, a); }
     static object Run(object o, string n, params object[] a) { return Call(o.GetType(), o, n, a); }
     static object Get(object o, string n) { return o.GetType().GetField(n, B).GetValue(o); }
@@ -85,6 +85,7 @@ class MedirEstado
             FieldInfo wave = panel.GetField("GetAurora", B); wave.SetValue(p, Generic(wave, "Aurora"));
             if (options) foreach (string n in new string[] { "EstadoOpaco", "AuroraLigera", "ReposoSinReflejo", "ReposoSinEstela", "CoronaCompacta" }) SetIf(p, n, true);
             if (newer) { SetIf(p, "SinGrano", true); SetIf(p, "AuroraSinSuelo", true); }
+            SetIf(p, "AuroraHaloCompacto", halo);
             current = null; current = Draw(options, false);
             for (int i = 0; i < 120; i++) { Background(p, i); Run(p, "RenderFrame"); }
             int creations = (int)helper.GetField("creaciones", B).GetValue(null), accepted = 0, maps = 0;
@@ -108,7 +109,7 @@ class MedirEstado
             }
             int more = (int)helper.GetField("creaciones", B).GetValue(null) - creations;
             Array.Sort(intervals);
-            Console.WriteLine((expanded ? "estado" : "rejilla_estatica") + " estrella=" + (threeD ? "3D" : "2D") + " opciones=" + options + " nuevas=" + newer
+            Console.WriteLine((expanded ? "estado" : "rejilla_estatica") + " estrella=" + (threeD ? "3D" : "2D") + " opciones=" + options + " nuevas=" + newer + " halo=" + halo
                 + " cuadros_aceptados=" + accepted + " fallidos=" + (intervals.Length + 1 - accepted) + " nuevas_texturas=" + more + " nuevos_mapas=" + maps
                 + " recortes_calculados=" + (Counter(p, "RecortesCalculados") - computed)
                 + " recortes_reusados=" + (Counter(p, "RecortesReusados") - reused) + " estrellas_omitidas_total=" + omitted
@@ -122,7 +123,8 @@ class MedirEstado
     {
         if (args.Length >= 4) { width = int.Parse(args[2]); height = int.Parse(args[3]); }
         animated = args.Length >= 5 && args[4] == "animado";
-        bool options = args.Length > 1 && args[1] != "original", newer = args.Length > 1 && args[1] == "nuevos";
+        bool options = args.Length > 1 && args[1] != "original", newer = args.Length > 1 && (args[1] == "nuevos" || args[1] == "halo");
+        halo = args.Length > 1 && args[1] == "halo";
         Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor; fases_animadas=" + animated);
         Assembly app = Assembly.LoadFrom(args[0]); form = app.GetType("Rocola.Form1"); panel = app.GetType("Rocola.GpuPanel");
         Console.WriteLine("ensamblado=" + app.Location + " bitmap_reutilizable=" + (form.GetMethod("RenderIdlePanelEn", B) != null));

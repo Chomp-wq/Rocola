@@ -285,7 +285,7 @@ CPU="$CPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medi
 GPU="$GPU corpusacotado discoacotado prefijosguardados flotantesobrantes mp3medidaligera"
 GPU="$GPU ruidomalla papeleraportadas"
 GPU="$GPU fichaportada"
-GPU="$GPU estadoeficiente resolucionligera trabajovisible"
+GPU="$GPU estadoeficiente resolucionligera trabajovisible auroraeficiente"
 # 'pantallaviva' sale en las dos: sin tarjeta grafica solo existe la pestaña de ajustes (se comprueba que se guarda y
 # que no hay nada mas); con ella, todo lo de la tanda 1 de la pantalla (PantallaVivaGpu.cs).
 CPU="$CPU pantallaviva"
@@ -429,6 +429,10 @@ corre() {
     if [ "$t" = "resolucionligera" ]; then
       apoyo="$apoyo performance.cs"
       principal="-main:ResolucionLigera"
+    fi
+    if [ "$t" = "auroraeficiente" ]; then
+      apoyo="$apoyo performance.cs"
+      principal="-main:AuroraEficiente"
     fi
     if [ "$t" = "trabajovisible" ]; then
       apoyo="$apoyo performance.cs"

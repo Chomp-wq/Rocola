@@ -3791,6 +3791,22 @@ namespace Rocola
             return v;
         }
 
+        // Mismas operaciones y precision que AurRayo/AurOndaAlto; solo se comparten los dos senos
+        // identicos. Cinco senos por columna en lugar de siete, sin tabla ni cambio de cadencia.
+        internal static void AurOndas(float fx, float t, out float rayo, out float altura)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 17.9 + t * 0.44);
+            float b = (float)Math.Sin(x * 9.3 - t * 0.31);
+            float c = (float)Math.Sin(x * 3.7 + t * 0.55);
+            float d = (float)Math.Sin(x * 1.3 + t * 0.13);
+            float e = (float)Math.Sin(x * 2.3 - t * 0.29);
+            rayo = 1f + 0.09f * a + 0.11f * b + 0.09f * c + 0.07f * d;
+            if (!(rayo > 0.64f)) rayo = 0.64f; else if (rayo > 1.36f) rayo = 1.36f;
+            altura = 1f + 0.11f * c + 0.08f * e + 0.09f * d;
+            if (!(altura > 0.72f)) altura = 0.72f; else if (altura > 1.28f) altura = 1.28f;
+        }
+
         // SUAVIZADO DE LA SILUETA. Donde se cruzan dos bandas vecinas queda un valle estrecho -cuatro
         // columnas- y el fondo de ese valle es una punta con el radio de una aguja: ocho pixeles. En el
         // relleno no se veia, porque su borde se desvanece; el filo de neon lo dibuja, y ahi se ve como un
@@ -4097,6 +4113,11 @@ namespace Rocola
 
         internal static int AurBrilloLigero(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols)
+        { return AurBrilloConHalo(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, saltoCols, false); }
+
+        // El ahorro visual solo estrecha el halo de la cresta. Su nucleo y el horizonte son los mismos.
+        internal static int AurBrilloConHalo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols, bool compacto)
         {
             int puntos = AurCols + 1;
             saltoCols = saltoCols == 2 ? 2 : 1;
@@ -4165,16 +4186,23 @@ namespace Rocola
                 uint cfR = AurArgb(cDe, 0f);
                 uint cmR = AurArgb(cDe, aDe * AurNeonHalo);
                 uint cnR = AurArgb(kR, aDe);
-                n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
-                n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, cmL, cmR, cnL, cnR);
+                if (compacto)
+                    n = AurBanda(v, n, x0, x1, tL - 4f, tR - 4f, tL - AurNeonNucleo, tR - AurNeonNucleo, cfL, cfR, cnL, cnR);
+                else
+                {
+                    n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
+                    n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, cmL, cmR, cnL, cnR);
+                }
                 n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, cnL, cnR, cnL, cnR);
-                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + AurNeonDentro, tR + AurNeonDentro, cnL, cnR, cfL, cfR);
+                float dentro = compacto ? 4f : AurNeonDentro;
+                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + dentro, tR + dentro, cnL, cnR, cfL, cfR);
                 tL = tR; aIz = aDe;
                 cfL = cfR; cmL = cmR; cnL = cnR;
             }
             return n;
         }
 
+        private bool aurHaloCompactoDe;
         private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk; private int aurMallaSalto; private bool aurMallaSuelo;   // la ultima malla armada
         private void DrawAurora(GpuAurora au)
         {
@@ -4221,9 +4249,10 @@ namespace Rocola
                 if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;
-                float rayo = AurRayo(fx, t);                       // el titileo: solo brillo
+                float rayo, onda;
+                AurOndas(fx, t, out rayo, out onda); // comparten dos senos exactos, calculados una vez
                 aurR[i] = rayo;
-                aurH[i] = au.Alto * alt * AurOndaAlto(fx, t);      // la forma la pone la musica; el ondeo largo la mece
+                aurH[i] = au.Alto * alt * onda;      // la forma la pone la musica; el ondeo largo la mece
                 // COLOR de la columna, franja por franja. A lo ancho se funde el tono del extremo grave con el
                 // del agudo (estan a 32 grados: se mezclan sin ensuciarse) y, segun la INTENSIDAD, se elige un
                 // tono de esa misma familia (ver TonoPorNivel). El ondeo NO entra aqui: solo cambia el brillo,
@@ -4278,7 +4307,9 @@ namespace Rocola
             if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
             // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
             // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
-            int nb2 = mismaMalla ? aurBrilloN : AurBrilloLigero(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY, salto);
+            int nb2 = mismaMalla && aurHaloCompactoDe == AuroraHaloCompacto ? aurBrilloN
+                : AurBrilloConHalo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY, salto, AuroraHaloCompacto);
+            aurHaloCompactoDe = AuroraHaloCompacto;
             aurMallaSuelo = suelo; aurMallaSalto = salto; aurMallaN = n; aurBrilloN = nb2; aurMallaBase = au.BaseY; aurMallaAncho = Width; aurMallaAlto = Height; aurMallaOk = true;
             if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
             aurDibujada = n >= 3; aurDibujadaBase = au.BaseY;   // para su reflejo (CieloVivoGpu.cs)

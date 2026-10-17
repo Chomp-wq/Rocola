@@ -453,7 +453,7 @@ namespace Rocola
         // Ctrl+F3 -> Imagen -> Performance. Estos ahorros son de aspecto (casi identico), asi que llevan interruptor y vienen
         // apagados de fabrica; el preset "Performance" los enciende.
         public bool CieloMedia, GranoVineta, FondoUnaCapa, CieloCuarto;
-        public bool EstadoOpaco, AuroraLigera, ReposoSinReflejo, ReposoSinEstela, CoronaCompacta, SinGrano, AuroraSinSuelo;
+        public bool EstadoOpaco, AuroraLigera, ReposoSinReflejo, ReposoSinEstela, CoronaCompacta, SinGrano, AuroraSinSuelo, AuroraHaloCompacto;
         private bool AhorroReposo { get { return idleBlend >= .999f; } }
         private bool EstadoOpacoListo
         {
