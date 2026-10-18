@@ -620,7 +620,7 @@ namespace Rocola
 
         // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
         private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] cubeBatchV = new D3D9.Vtx[24];
+        private D3D9.Vtx[] cubeBatchV;
         private readonly double[] cbx = new double[4];
         private readonly double[] cbz = new double[4];
         private readonly int[] cbo = new int[4];
@@ -629,10 +629,42 @@ namespace Rocola
         // textura de la portada: el giro es solo geometria (4 caras como cuadrangulos, ordenadas por
         // profundidad y oscurecidas igual). Si tex es nulo usa un relleno azulado (portada aun cargando).
         // alpha < 1 permite FUNDIR una portada sobre otra (discos TOP) en dos pasadas.
-        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
+        private sealed class CuboPose
         {
-            uint BlankCubeColor = CubeBaseColor;
-            if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
+            internal float X, Y, W, H, U, V;
+            internal double Angulo, Inclinacion;
+            internal bool Textura;
+            internal uint Color, Alfa;
+            internal int N;
+            internal readonly D3D9.Vtx[] Vertices = new D3D9.Vtx[24];
+        }
+        private CuboPose[] cuboPoses;
+        private int cuboSiguiente;
+        internal int CubosCalculados, CubosReusados;
+        private CuboPose PreparaCubo(bool textured, float uMax, float vMax, float ax, float ay,
+            float aw, float ah, double angle, double tilt, uint av)
+        {
+            uint BlankCubeColor = textured ? 0u : CubeBaseColor & 0xFFFFFFu;
+            if (cuboPoses == null) cuboPoses = new CuboPose[4];
+            for (int i = 0; i < cuboPoses.Length; i++)
+            {
+                CuboPose cached = cuboPoses[i];
+                if (cached != null && cached.Angulo == angle && cached.Inclinacion == tilt
+                    && cached.X == ax && cached.Y == ay && cached.W == aw && cached.H == ah && cached.U == uMax && cached.V == vMax
+                    && cached.Textura == textured && cached.Color == BlankCubeColor)
+                {
+                    if (cached.Alfa != av) {
+                        for (int k = 0; k < cached.N; k++) cached.Vertices[k].Color = (cached.Vertices[k].Color & 0xFFFFFFu) | (av << 24);
+                        cached.Alfa = av;
+                    }
+                    CubosReusados++; return cached;
+                }
+            }
+            CuboPose pose = cuboPoses[cuboSiguiente];
+            if (pose == null) cuboPoses[cuboSiguiente] = pose = new CuboPose();
+            cuboSiguiente = (cuboSiguiente + 1) % cuboPoses.Length;
+            pose.X = ax; pose.Y = ay; pose.W = aw; pose.H = ah; pose.U = uMax; pose.V = vMax;
+            pose.Angulo = angle; pose.Inclinacion = tilt; pose.Textura = textured; pose.Color = BlankCubeColor; pose.Alfa = av;
             double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
             double cyc = y0 + Hh / 2.0, ct = Math.Cos(tilt), stt = Math.Sin(tilt);   // bamboleo: rota el cubo entero alrededor de su centro (igual que RotateTransform en CPU)
             for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
@@ -641,10 +673,6 @@ namespace Rocola
             for (int i = 0; i < 4; i++)                          // ordena las caras de atras hacia adelante
                 for (int j = 0; j < 3 - i; j++)
                     if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
-            bool textured = tex != IntPtr.Zero;
-            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
-            Blend(3);
-            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
             int cubeCount = 0;
             for (int oi = 0; oi < 4; oi++)
             {
@@ -659,11 +687,24 @@ namespace Rocola
                     ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
                     : (av << 24) | ((((BlankCubeColor >> 16) & 255u) * g / 255u) << 16) | ((((BlankCubeColor >> 8) & 255u) * g / 255u) << 8) | ((BlankCubeColor & 255u) * g / 255u);
                 CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
-                Array.Copy(cubeFaceV, 0, cubeBatchV, cubeCount, 6);
+                Array.Copy(cubeFaceV, 0, pose.Vertices, cubeCount, 6);
                 cubeCount += 6;
             }
-            // Misma secuencia de triangulos y transparencias, una sola llamada por cubo.
-            if (cubeCount > 0) Draw(cubeBatchV, cubeCount / 3);
+            pose.N = cubeCount; CubosCalculados++;
+            return pose;
+        }
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
+        {
+            if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
+            bool textured = tex != IntPtr.Zero;
+            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
+            CuboPose pose = PreparaCubo(textured, uMax, vMax, ax, ay, aw, ah, angle, tilt, av);
+            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
+            Blend(3);
+            // Solo geometria y sombreado: la textura y la opacidad siguen vivas en cada dibujo.
+            // Cuatro poses acotadas; ninguna referencia a texturas ni bitmaps en esta cache.
+            cubeBatchV = pose.Vertices;
+            if (pose.N > 0) Draw(cubeBatchV, pose.N / 3);
         }
         // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
         private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,

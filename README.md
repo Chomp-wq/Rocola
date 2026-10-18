@@ -1,5 +1,13 @@
 # Rocola
 
+## Cubos y textos largos reutilizados — 18 de octubre de 2026
+
+Hasta cuatro poses de cubos reutilizables y desplazamiento compartido entre
+fragmentos de títulos largos. Texturas, transparencias y cambios de tamaño
+siguen respondiendo; sin pérdida de calidad ni nuevas opciones. La caché de
+cubos favorece poses repetidas y fundidos, con un pequeño coste si todo cambia.
+[Comparaciones, memoria y mediciones](CUBOS_Y_TEXTOS_MODEST_2026-10-18.md).
+
 ## Optimizaciones gráficas generales — 18 de octubre de 2026
 
 Siete ahorros automáticos en paneles/textos/transiciones, halos, selección de

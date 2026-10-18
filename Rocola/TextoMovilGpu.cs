@@ -13,6 +13,20 @@ namespace Rocola
         internal RectangleF Rect;
         internal Bitmap[] Tiles;
         internal int Width, Born;
+        private bool desplazamientoListo;
+        private int desplazamientoTick, desplazamientoBorn;
+        private float desplazamientoExceso, desplazamientoValor;
+        internal float Desplazamiento(int now, float anchoVisible)
+        {
+            float exceso = Math.Max(0, Width - anchoVisible);
+            if (!desplazamientoListo || now != desplazamientoTick || Born != desplazamientoBorn || exceso != desplazamientoExceso)
+            {
+                desplazamientoValor = GpuPanel.CorreTitulo((uint)(now - Born), exceso);
+                desplazamientoTick = now; desplazamientoBorn = Born; desplazamientoExceso = exceso;
+                desplazamientoListo = true;
+            }
+            return desplazamientoValor;
+        }
         public void Dispose() { if (Tiles != null) foreach (Bitmap b in Tiles) b.Dispose(); }
     }
     internal sealed class CintasTexto : IDisposable
@@ -313,7 +327,9 @@ namespace Rocola
                 if (clip.IsEmpty || (tile.Group == 4 && AlfaVistaPrevia(origin) <= .003f)) return false;
                 left = clip.Left - x; right = clip.Right - x;
             }
-            float off = CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width));
+            float off = run.Width <= 1024
+                ? CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width))
+                : run.Desplazamiento(now, r.Width);
             float start = tile.Part * 1024 - off;
             return start < right + 32 && start + tile.Source.Width > left - 32;
         }
@@ -345,7 +361,9 @@ namespace Rocola
                     if (tile.Group == 4) alpha = AlfaVistaPrevia(origin);
                     if (clip.IsEmpty) continue;
                 }
-                float off = CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width));
+                float off = run.Width <= 1024
+                ? CorreTitulo((uint)(now - run.Born), Math.Max(0, run.Width - r.Width))
+                : run.Desplazamiento(now, r.Width);
                 float start = tile.Part * 1024 - off;
                 float left = Math.Max(clip.Left - x, start), right = Math.Min(clip.Right - x, start + tile.Source.Width);
                 if (right <= left) continue;
