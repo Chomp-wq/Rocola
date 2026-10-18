@@ -180,6 +180,7 @@ namespace Rocola
         private readonly D3D9.Vtx[] e3ecoBorde = new D3D9.Vtx[12 * Estrella3d.Aristas * 6];
         private readonly StarEcho[] e3ecoClave = new StarEcho[12];
         private readonly bool[] e3ecoValida = new bool[12];
+        private readonly bool[] e3ecoDegradado = new bool[12];
         private readonly int[] e3ecoN = new int[12], e3ecoBordeN = new int[12];
         private float starEchoCamino, starEchoUltX, starEchoUltY;   // distancia recorrida desde la ultima copia
         private bool starEchoHayUlt;
@@ -236,6 +237,17 @@ namespace Rocola
             int v = c0; mejor = -1; brillo = 0;
             // E1-E4 (PulidoGpu.cs): con alguno encendido, la luz se calcula en cada vertice y no una vez por cara.
             bool pulida = eco ? EstrellaDegradado : (EstrellaDegradado || EstrellaRefleja || EstrellaBorde || EstrellaDestello);
+            TinteLuz material = new TinteLuz();
+            if (pulida)
+            {
+                PreparaLuzEstrella(eco);
+                if (!eco)
+                {
+                    material.R = ((tinte >> 16) & 255) / 255f; material.G = ((tinte >> 8) & 255) / 255f; material.B = (tinte & 255) / 255f;
+                    if (EstrellaBorde) material.Borde = Luz.Vivo(tinte, .3f);
+                    if (EstrellaRefleja) material.Suelo = Luz.Vivo(GeneroArgb, .25f);
+                }
+            }
             for (int k = 0; k < Estrella3d.Caras; k++)
             {
                 int c = e3orden[k];
@@ -243,9 +255,9 @@ namespace Rocola
                 if (pulida)
                 {
                     uint ca, cb, cc; float ra, rb, rc;
-                    ca = ColorVertice(c, Estrella3d.CA[c], tinte, a8, eco, out ra);
-                    cb = ColorVertice(c, Estrella3d.CB[c], tinte, a8, eco, out rb);
-                    cc = ColorVertice(c, Estrella3d.CC[c], tinte, a8, eco, out rc);
+                    ca = ColorVertice(c, Estrella3d.CA[c], tinte, a8, eco, ref material, out ra);
+                    cb = ColorVertice(c, Estrella3d.CB[c], tinte, a8, eco, ref material, out rb);
+                    cc = ColorVertice(c, Estrella3d.CC[c], tinte, a8, eco, ref material, out rc);
                     e3col[c] = Promedio3(ca, cb, cc);
                     float rm = Math.Max(ra, Math.Max(rb, rc));
                     if (rm > brillo)
@@ -368,7 +380,7 @@ namespace Rocola
                 if (alpha < .003f) continue;
                 StarEcho key = e3ecoClave[slot];
                 int c0 = slot * Estrella3d.Caras * 3, f0 = slot * Estrella3d.Aristas * 6;
-                if (!e3ecoValida[slot] || echo.X != key.X || echo.Y != key.Y || echo.Radius != key.Radius ||
+                if (!e3ecoValida[slot] || e3ecoDegradado[slot] != EstrellaDegradado || echo.X != key.X || echo.Y != key.Y || echo.Radius != key.Radius ||
                     echo.Yaw != key.Yaw || echo.Pitch != key.Pitch || echo.Angle != key.Angle || echo.Color != key.Color)
                 {
                     int filo, mejor; float brillo;
@@ -377,6 +389,7 @@ namespace Rocola
                         out filo, out mejor, out brillo);
                     e3ecoBordeN[slot] = filo;
                     e3ecoClave[slot] = echo; e3ecoValida[slot] = true;
+                    e3ecoDegradado[slot] = EstrellaDegradado;
                 }
                 // Mismo redondeo que PoseEstrella; el filo aditivo usa alfa entero / 2.
                 float alfa = alpha * 255f;

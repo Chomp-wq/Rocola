@@ -1,5 +1,13 @@
 # Rocola
 
+## Iluminación con menos cálculos — 18 de octubre de 2026
+
+El suelo de la aurora comparte el cálculo de tono entre sus cinco filas y la
+estrella 3D comparte los datos comunes de iluminación entre sus caras. Ahorros
+automáticos, con colores y poses comparados contra `5cee759`. Cambiar el
+degradado actualiza también los ecos existentes de la estela.
+[Detalle, comprobaciones y límites](ILUMINACION_LIGERA_MODEST_2026-10-18.md).
+
 ## Textos con menos trabajo por cuadro — 18 de octubre de 2026
 
 Dos ahorros automáticos: reutilizar la lista GPU de textos cuando no cambia y

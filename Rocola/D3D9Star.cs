@@ -3746,6 +3746,45 @@ namespace Rocola
             if (b < 0f) b = 0f; else if (b > 255f) b = 255f;
         }
 
+        // Las cinco filas del suelo parten del MISMO color. Su tono/saturacion
+        // se descomponen una vez por columna; solo varia el nivel de cada fila.
+        // Mantener las operaciones y el redondeo de TonoPorNivel, sin aproximaciones.
+        private static readonly float[] aurNivelesSuelo = NivelesSuelo();
+        private static float[] NivelesSuelo()
+        {
+            float[] levels = new float[AurSuelo + 1];
+            for (int k = 0; k < levels.Length; k++) levels[k] = AurSueloTono((float)k / AurSuelo);
+            return levels;
+        }
+        private static void AurColoresSuelo(uint[] colors, int puntos, int columna, uint color, float nivel)
+        {
+            float r = (int)((color >> 16) & 255), g = (int)((color >> 8) & 255), b = (int)(color & 255);
+            float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+            if (mx < 1f)
+            {
+                for (int k = 0; k <= AurSuelo; k++) colors[k * puntos + columna] = color & 0xFFFFFFu;
+                return;
+            }
+            float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+            float sat = (mx - mn) / mx, piso = 1f - sat;
+            float inv = (sat > .0001f) ? 1f / sat : 0f;
+            float tr = (sat > .0001f) ? ((r / mx) - piso) * inv : 1f;
+            float tg = (sat > .0001f) ? ((g / mx) - piso) * inv : 1f;
+            float tb = (sat > .0001f) ? ((b / mx) - piso) * inv : 1f;
+            for (int k = 0; k <= AurSuelo; k++)
+            {
+                float v = nivel * aurNivelesSuelo[k];
+                if (!(v > 0f)) v = 0f; else if (v > 1f) v = 1f;
+                float val = mx * (.50f + .50f * v); if (val > 255f) val = 255f;
+                float satNueva = sat * (1f - .09f * v), pisoNuevo = 1f - satNueva;
+                float rd = val * (pisoNuevo + satNueva * tr), gd = val * (pisoNuevo + satNueva * tg), bd = val * (pisoNuevo + satNueva * tb);
+                if (rd < 0f) rd = 0f; else if (rd > 255f) rd = 255f;
+                if (gd < 0f) gd = 0f; else if (gd > 255f) gd = 255f;
+                if (bd < 0f) bd = 0f; else if (bd > 255f) bd = 255f;
+                colors[k * puntos + columna] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
+            }
+        }
+
         // SILUETA. Devuelve, para una posicion de 0 (izquierda) a 1 (derecha) de la pantalla, que tan alto
         // llega el color ahi. Cada banda pone un LOBULO redondeado centrado en su sitio -la primera pegada al
         // borde izquierdo, la ultima al derecho- y se toma el MAS ALTO de los que alcanzan ese punto. Tomando
@@ -4270,13 +4309,7 @@ namespace Rocola
                 // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
                 aurNc[i] = aurCortina[AurFilas * puntos + i];
                 uint cPie = FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
-                float r0 = (int)((cPie >> 16) & 0xFF), g0 = (int)((cPie >> 8) & 0xFF), b0 = (int)(cPie & 0xFF);
-                for (int k = 0; suelo && k <= AurSuelo; k++)          // el suelo: el mismo color, hundiendose
-                {
-                    float rd = r0, gd = g0, bd = b0;
-                    TonoPorNivel(ref rd, ref gd, ref bd, v * AurSueloTono((float)k / AurSuelo));
-                    aurSueloC[k * puntos + i] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
-                }
+                if (suelo) AurColoresSuelo(aurSueloC, puntos, i, cPie, v);
                 float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
                 if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
                 aurA[i] = al;

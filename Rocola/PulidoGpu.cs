@@ -279,13 +279,32 @@ namespace Rocola
         private void PasaPulido() { if (stars != null) { stars.CieloSuave = CieloSuave; stars.ColoresProfundos = ColoresProfundos; } }
         public bool EstrellaDegradado = true, EstrellaRefleja = true, EstrellaDestello = true, EstrellaBorde = true, EstrellaEspejo = true;
         private float e3brilloX, e3brilloY;   // donde mas refleja la pose de ahora (PoseEstrella)
-        private uint ColorVertice(int c, int vi, uint tinte, uint a8, bool eco, out float spec)
+        private struct LuzVertice { internal float Largo, Vx, Vy, Vz; }
+        private struct TinteLuz { internal float R, G, B; internal uint Borde, Suelo; }
+        private readonly LuzVertice[] e3luz = new LuzVertice[Estrella3d.Vertices];
+        private void PreparaLuzEstrella(bool eco)
+        {
+            // Un vertice pertenece a varias caras, pero su longitud y direccion
+            // hacia la camara son las mismas en todas. Buffer fijo de 192 bytes.
+            for (int i = 0; i < Estrella3d.Vertices; i++)
+            {
+                float px = e3vx[i], py = e3vy[i], pz = e3vz[i];
+                if (EstrellaDegradado) e3luz[i].Largo = (float)Math.Sqrt(px * px + py * py + pz * pz);
+                if (!eco && (EstrellaRefleja || EstrellaBorde))
+                {
+                    float vx = -px, vy = -py, vz = Estrella3d.Camara - pz;
+                    float vl = (float)Math.Sqrt(vx * vx + vy * vy + vz * vz); if (vl < 1e-6f) vl = 1e-6f;
+                    e3luz[i].Vx = vx / vl; e3luz[i].Vy = vy / vl; e3luz[i].Vz = vz / vl;
+                }
+            }
+        }
+        private uint ColorVertice(int c, int vi, uint tinte, uint a8, bool eco, ref TinteLuz material, out float spec)
         {
             float nx = e3nx[c], ny = e3ny[c], nz = e3nz[c];
             float px = e3vx[vi], py = e3vy[vi], pz = e3vz[vi];
             if (EstrellaDegradado)
             {
-                float pl = (float)Math.Sqrt(px * px + py * py + pz * pz);
+                float pl = e3luz[vi].Largo;
                 if (pl > 1e-5f)
                 {
                     nx = nx * .62f + px / pl * .38f; ny = ny * .62f + py / pl * .38f; nz = nz * .62f + pz / pl * .38f;
@@ -296,19 +315,17 @@ namespace Rocola
             float refl;
             float luz = Estrella3d.Luz(nx, ny, nz, false, out refl);
             if (eco) { spec = 0f; return ColorEco(tinte, luz, a8); }
-            float vx = -px, vy = -py, vz = Estrella3d.Camara - pz;
-            float vl = (float)Math.Sqrt(vx * vx + vy * vy + vz * vz); if (vl < 1e-6f) vl = 1e-6f;
-            vx /= vl; vy /= vl; vz /= vl;
+            float vx = e3luz[vi].Vx, vy = e3luz[vi].Vy, vz = e3luz[vi].Vz;
             float nv = nx * vx + ny * vy + nz * vz; if (nv < 0f) nv = 0f;
             float L = LunaRealista ? luz : .45f + .55f * luz;
-            float tr = ((tinte >> 16) & 255) / 255f, tg = ((tinte >> 8) & 255) / 255f, tb = (tinte & 255) / 255f;
+            float tr = material.R, tg = material.G, tb = material.B;
             float r = .80f * tr * L, g = .86f * tg * L, b = .97f * tb * L;
             if (EstrellaRefleja)
             {
                 float d = 2f * (nx * vx + ny * vy + nz * vz);
                 float ry = d * ny - vy;   // el reflejo de la vista: hacia donde "mira" este punto
                 uint ent = ry >= 0f ? Luz.Mezcla(SkyMid, SkyTop, Math.Min(1f, ry * 1.4f))
-                                    : Luz.Mezcla(SkyMid, Luz.Vivo(GeneroArgb, .25f), Math.Min(1f, -ry * 1.6f));
+                                    : Luz.Mezcla(SkyMid, material.Suelo, Math.Min(1f, -ry * 1.6f));
                 ent = Luz.Vivo(ent, .2f);
                 // El cielo es oscuro: reflejado tal cual, la estrella se apagaria. Se refleja como luz (algo mas clara).
                 float er = Math.Min(1f, ((ent >> 16) & 255) / 255f * 2.1f + .04f), eg = Math.Min(1f, ((ent >> 8) & 255) / 255f * 2.1f + .04f),
@@ -322,7 +339,7 @@ namespace Rocola
             if (EstrellaBorde)
             {
                 float f = 1f - nv, rim = (float)Math.Pow(f, 2.2) * .75f;
-                uint viva = Luz.Vivo(tinte, .3f);
+                uint viva = material.Borde;
                 r += ((viva >> 16) & 255) / 255f * rim; g += ((viva >> 8) & 255) / 255f * rim; b += (viva & 255) / 255f * rim;
             }
             return (a8 << 24) | (Canal(r * 255f) << 16) | (Canal(g * 255f) << 8) | Canal(b * 255f);
