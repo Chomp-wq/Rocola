@@ -2969,10 +2969,11 @@ namespace Rocola
         {
             float x0 = x + at.X * sx, x1 = x + at.Right * sx, y0 = y + at.Y * sy, y1 = y + at.Bottom * sy;
             float u0 = src.X * u, u1 = src.Right * u, v0 = src.Y * v, v1 = src.Bottom * v;
-            SetV(ref r[o], x0, y0, u0, v0); SetV(ref r[o + 1], x1, y0, u1, v0);
-            SetV(ref r[o + 2], x1, y1, u1, v1); SetV(ref r[o + 3], x0, y0, u0, v0);
-            SetV(ref r[o + 4], x1, y1, u1, v1); SetV(ref r[o + 5], x0, y1, u0, v1);
-            for (int i = 0; i < 6; i++) r[o + i].Color = color;
+            SetV(ref r[o], x0, y0, u0, v0); r[o].Color = color;
+            SetV(ref r[o + 1], x1, y0, u1, v0); r[o + 1].Color = color;
+            SetV(ref r[o + 2], x1, y1, u1, v1); r[o + 2].Color = color;
+            r[o + 3] = r[o]; r[o + 4] = r[o + 2];
+            SetV(ref r[o + 5], x0, y1, u0, v1); r[o + 5].Color = color;
         }
 
         private bool AheadContains(string key, int count)

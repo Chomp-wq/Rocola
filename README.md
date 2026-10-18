@@ -1,5 +1,13 @@
 # Rocola
 
+## Portadas y atlas con menos cálculos — 18 de octubre de 2026
+
+La rejilla comparte esquinas entre triángulos de portadas, textos y bordes.
+Mantiene resolución nativa y suavizado; ahorro automático con 448 bytes de
+buffer por panel. Preparación aislada de 36 celdas: 10–15% menos en portadas
+y 9–14% en atlas, sin equivaler a una mejora de FPS.
+[Comparaciones, mediciones y fallos previos](REJILLA_LIGERA_MODEST_2026-10-18.md).
+
 ## Gestos con menos cálculos — 18 de octubre de 2026
 
 La estrella comparte muestras repetidas de sus gestos y los cubos reutilizan

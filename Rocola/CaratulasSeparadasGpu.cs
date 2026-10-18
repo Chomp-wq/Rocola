@@ -93,6 +93,7 @@ namespace Rocola
         private readonly float[] nativeGridU = new float[MaxCells], nativeGridV = new float[MaxCells];
         private readonly D3D9.Vtx[] nativeQuad = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] nativeSoftQuad = new D3D9.Vtx[54];
+        private readonly D3D9.Vtx[] nativeCorners = new D3D9.Vtx[16];
         private readonly float[] nativeXs = new float[4], nativeYs = new float[4], nativeUs = new float[4], nativeVs = new float[4];
         private long nativeUploadCost;
         private int maintenanceFrame = -1, maintenanceCount;
@@ -170,17 +171,22 @@ namespace Rocola
             nativeYs[0] = y - py; nativeYs[1] = y + py; nativeYs[2] = y + face.Height - py; nativeYs[3] = y + face.Height + py;
             nativeUs[0] = 0; nativeUs[1] = nativeGridU[index] / (2f * Math.Max(1, source.Bw)); nativeUs[2] = nativeGridU[index] - nativeUs[1]; nativeUs[3] = nativeGridU[index];
             nativeVs[0] = 0; nativeVs[1] = nativeGridV[index] / (2f * Math.Max(1, source.Bh)); nativeVs[2] = nativeGridV[index] - nativeVs[1]; nativeVs[3] = nativeGridV[index];
+            // La malla de nueve parches comparte dieciseis esquinas. Conservar sus
+            // 54 vertices finales y el alfa del borde, calculando cada esquina una vez.
+            for (int row = 0; row < 4; row++) for (int col = 0; col < 4; col++)
+                NativeCorner(row * 4 + col, col, row, color);
             int n = 0;
             for (int row = 0; row < 3; row++) for (int col = 0; col < 3; col++) {
-                NativeCorner(n++, col, row, color); NativeCorner(n++, col + 1, row, color); NativeCorner(n++, col + 1, row + 1, color);
-                NativeCorner(n++, col, row, color); NativeCorner(n++, col + 1, row + 1, color); NativeCorner(n++, col, row + 1, color);
+                int a = row * 4 + col;
+                nativeSoftQuad[n++] = nativeCorners[a]; nativeSoftQuad[n++] = nativeCorners[a + 1]; nativeSoftQuad[n++] = nativeCorners[a + 5];
+                nativeSoftQuad[n++] = nativeCorners[a]; nativeSoftQuad[n++] = nativeCorners[a + 5]; nativeSoftQuad[n++] = nativeCorners[a + 4];
             }
             stars.DrawTexturedBatch(texture, nativeSoftQuad, 18);
         }
         private void NativeCorner(int n, int x, int y, uint color)
         {
-            SetV(ref nativeSoftQuad[n], nativeXs[x], nativeYs[y], nativeUs[x], nativeVs[y]);
-            nativeSoftQuad[n].Color = x == 0 || x == 3 || y == 0 || y == 3 ? color & 0x00ffffffu : color;
+            SetV(ref nativeCorners[n], nativeXs[x], nativeYs[y], nativeUs[x], nativeVs[y]);
+            nativeCorners[n].Color = x == 0 || x == 3 || y == 0 || y == 3 ? color & 0x00ffffffu : color;
         }
         private void ReleaseNativeCovers()
         {
