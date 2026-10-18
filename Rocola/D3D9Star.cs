@@ -4285,7 +4285,7 @@ namespace Rocola
             for (int i = 0; i < puntos; i++)
             {
                 float fx = (float)i / AurCols;
-                float v = AuroraBandas ? PerfilDefinido(au.B, fx) : AurPerfil(au.B, fx);
+                float v = AurPerfilColumna(au.B, i, AuroraBandas);
                 if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
                 if (v > 1f) v = 1f;
                 float alt = AurPiso + (1f - AurPiso) * v;

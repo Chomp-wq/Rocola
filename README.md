@@ -1,5 +1,14 @@
 # Rocola
 
+## Perfiles de aurora precalculados — 18 de octubre de 2026
+
+La aurora reutiliza los pesos espaciales de sus bandas en sus dos estilos,
+conservando cada muestra musical y la geometría. Ahorro automático de cálculos
+con 4.640 bytes de tablas compartidas; sin nuevos ajustes. Comparados contra
+`f1930f3` en tres resoluciones. La medición completa no muestra una mejora
+uniforme de los intervalos.
+[Detalle, comprobaciones y límites](PERFILES_AURORA_MODEST_2026-10-18.md).
+
 ## Iluminación con menos cálculos — 18 de octubre de 2026
 
 El suelo de la aurora comparte el cálculo de tono entre sus cinco filas y la

@@ -61,6 +61,66 @@ namespace Rocola
             }
             return Math.Min(1,sum);
         }
+
+        // La malla siempre consulta las mismas 145 posiciones y SampleWave entrega ocho bandas.
+        // Solo dos bandas pueden alcanzar cada columna (ambos radios son menores que uno).
+        // Guardar los pesos espaciales exactos evita repetir distancias/divisiones/polinomios;
+        // las intensidades musicales se leen de nuevo en cada muestra, sin cachearlas aqui.
+        private struct PerfilColumna
+        {
+            internal int Banda0, Banda1;
+            internal float Peso0, Peso1;
+        }
+        private static readonly PerfilColumna[] aurPerfilSuave = PreparaPerfilColumnas(false);
+        private static readonly PerfilColumna[] aurPerfilDefinido = PreparaPerfilColumnas(true);
+        private static PerfilColumna[] PreparaPerfilColumnas(bool definido)
+        {
+            PerfilColumna[] tabla = new PerfilColumna[AurCols + 1];
+            for (int c = 0; c <= AurCols; c++)
+            {
+                float fx = (float)c / AurCols;
+                float t = fx * 7; int centro = (int)t;
+                PerfilColumna p = new PerfilColumna(); p.Banda0 = p.Banda1 = -1;
+                for (int b = centro; b <= Math.Min(7, centro + 1); b++)
+                {
+                    float d = Math.Abs(t - b); d /= definido ? .90f : AurLobulo;
+                    if (d >= 1f) continue;
+                    float k = 1f - d * d * (3f - 2f * d);
+                    if (p.Banda0 < 0) { p.Banda0 = b; p.Peso0 = k; }
+                    else { p.Banda1 = b; p.Peso1 = k; }
+                }
+                tabla[c] = p;
+            }
+            return tabla;
+        }
+        internal static float AurPerfilColumna(float[] bands, int columna, bool definido)
+        {
+            // Conservar tambien el contrato general de las formulas, aunque SampleWave use ocho.
+            if (bands == null || bands.Length != 8 || columna < 0 || columna > AurCols)
+            {
+                float fx = (float)columna / AurCols;
+                return definido ? PerfilDefinido(bands, fx) : AurPerfil(bands, fx);
+            }
+            PerfilColumna p = (definido ? aurPerfilDefinido : aurPerfilSuave)[columna];
+            if (definido)
+            {
+                float sum = 0f;
+                if (p.Banda0 >= 0) {
+                    float value = bands[p.Banda0];
+                    if (value > 0f) sum = Math.Max(sum, Math.Min(1f, value) * p.Peso0);
+                }
+                if (p.Banda1 >= 0) {
+                    float value = bands[p.Banda1];
+                    if (value > 0f) sum = Math.Max(sum, Math.Min(1f, value) * p.Peso1);
+                }
+                return Math.Min(1f, sum);
+            }
+            double suma = 0.0;
+            if (p.Banda0 >= 0) { double v = bands[p.Banda0] * p.Peso0; v *= v; suma += v * v; }
+            if (p.Banda1 >= 0) { double v = bands[p.Banda1] * p.Peso1; v *= v; suma += v * v; }
+            if (suma <= 0.0) return 0f;
+            return (float)Math.Sqrt(Math.Sqrt(suma));
+        }
     }
 }
 #endif
