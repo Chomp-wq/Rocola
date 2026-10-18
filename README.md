@@ -1,5 +1,13 @@
 # Rocola
 
+## Gestos con menos cálculos — 18 de octubre de 2026
+
+La estrella comparte muestras repetidas de sus gestos y los cubos reutilizan
+sus esquinas comunes. Ahorros automáticos sin cambiar el aspecto; 51.858 poses
+idénticas al release anterior. El cálculo aislado de poses cuesta 8–15% menos
+en el simulador; no es una mejora equivalente de FPS.
+[Pruebas, mediciones y límites](GESTOS_LIGEROS_MODEST_2026-10-18.md).
+
 ## Cubos y textos largos reutilizados — 18 de octubre de 2026
 
 Hasta cuatro poses de cubos reutilizables y desplazamiento compartido entre

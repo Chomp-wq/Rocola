@@ -714,7 +714,7 @@ namespace Rocola
             RotP(x0, y0, cx, cy, ct, st, out tlx, out tly); RotP(x1, y0, cx, cy, ct, st, out trx, out tryy);
             RotP(x1, y1, cx, cy, ct, st, out brx, out bry); RotP(x0, y1, cx, cy, ct, st, out blx, out bly);
             CFV(ref v[0], tlx, tly, c, 0, 0); CFV(ref v[1], trx, tryy, c, uM, 0); CFV(ref v[2], brx, bry, c, uM, vM);
-            CFV(ref v[3], tlx, tly, c, 0, 0); CFV(ref v[4], brx, bry, c, uM, vM); CFV(ref v[5], blx, bly, c, 0, vM);
+            v[3] = v[0]; v[4] = v[2]; CFV(ref v[5], blx, bly, c, 0, vM);
         }
         private static void RotP(float x, float y, double cx, double cy, double ct, double st, out float ox, out float oy)
         {

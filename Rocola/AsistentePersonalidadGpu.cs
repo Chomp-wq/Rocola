@@ -49,35 +49,41 @@ namespace Rocola
             vida = AsistenteTiempoSeguro(vida); edad = AsistenteTiempoSeguro(edad);
             // Espera relajada: balanceo continuo, sin rasgos ni parpadeos faciales.
             e.Inclinacion = .022f * (float)Math.Sin(vida * 1.35);
-            e.Rebote = -.014f * (float)(1 - Math.Cos(vida * 1.8));
+            // Una misma muestra alimenta respiracion y rebote, sin aproximar el tiempo.
+            float respiracion = (float)(1 - Math.Cos(vida * 1.8));
+            e.Rebote = -.014f * respiracion;
             e.Desplazamiento = .012f * (float)Math.Sin(vida * .9);
             // Tras un rato espera con un pequeno pasito, no repite el saludo.
             float espera = AsistenteImpulso(vida % 13, 8, 3);
-            e.PieIzqY -= .08f * espera * (float)(.5 + .5 * Math.Sin(vida * 5));
-            e.PieDerY -= .08f * espera * (float)(.5 - .5 * Math.Sin(vida * 5));
+            double paso = Math.Sin(vida * 5);
+            e.PieIzqY -= .08f * espera * (float)(.5 + .5 * paso);
+            e.PieDerY -= .08f * espera * (float)(.5 - .5 * paso);
             e.ManoIzqY += .05f * espera * (float)Math.Sin(vida * 2);
             float fuerza = AsistenteSuaviza(edad / .18) * (1 - AsistenteSuaviza((edad - 3.8) / .45));
             switch (gesto)
             {
                 case AsistenteGestoGpu.Saludar:
-                    e.ManoDerY += fuerza * (-.66f + .15f * (float)Math.Sin(edad * 11));
-                    e.ManoDerX += fuerza * .07f * (float)Math.Sin(edad * 11);
+                    float saludo = (float)Math.Sin(edad * 11);
+                    float impulsoSaludo = AsistenteImpulso(edad, .05, .6);
+                    e.ManoDerY += fuerza * (-.66f + .15f * saludo);
+                    e.ManoDerX += fuerza * .07f * saludo;
                     e.ManoIzqY += .10f * fuerza;
                     e.Inclinacion -= .055f * fuerza;
                     e.PieIzqX -= .045f * fuerza;
-                    e.Rebote -= .06f * AsistenteImpulso(edad, .05, .6);
-                    e.Escala += .035f * AsistenteImpulso(edad, .05, .6);
+                    e.Rebote -= .06f * impulsoSaludo;
+                    e.Escala += .035f * impulsoSaludo;
                     break;
                 case AsistenteGestoGpu.Explicar:
                     // Palmas abiertas: alterna presentar el globo y acompanarlo.
                     float presenta = (float)Math.Sin(edad * 4.2);
+                    double explica = Math.Sin(edad * 3);
                     e.ManoDerY += fuerza * (.40f + .11f * presenta);
                     e.ManoDerX += .10f * fuerza;
                     e.ManoIzqY -= fuerza * (.45f + .10f * presenta);
                     e.ManoIzqX -= .04f * fuerza;
-                    e.Inclinacion += .055f * fuerza * (float)Math.Sin(edad * 3);
+                    e.Inclinacion += .055f * fuerza * (float)explica;
                     e.Desplazamiento += .025f * fuerza;
-                    e.Reverencia += .04f * fuerza * (float)(.5 + .5 * Math.Sin(edad * 3));
+                    e.Reverencia += .04f * fuerza * (float)(.5 + .5 * explica);
                     break;
                 case AsistenteGestoGpu.Buscar:
                     // Recoge los brazos, se inclina curiosa y luego abre la mano
@@ -103,8 +109,9 @@ namespace Rocola
                     e.ManoIzqY -= .76f * fuerza; e.ManoDerY -= .29f * fuerza;
                     e.ManoIzqX -= .04f * fuerza; e.ManoDerX += .05f * fuerza;
                     e.Rebote -= .08f * AsistenteImpulso(edad, 0, .7);
-                    e.Reverencia += .15f * AsistenteImpulso(edad, .18, .75);
-                    e.Inclinacion -= .06f * AsistenteImpulso(edad, .18, .75);
+                    float confirma = AsistenteImpulso(edad, .18, .75);
+                    e.Reverencia += .15f * confirma;
+                    e.Inclinacion -= .06f * confirma;
                     e.PieDerY -= .10f * AsistenteImpulso(edad, .18, .6);
                     break;
                 case AsistenteGestoGpu.Volver:
@@ -123,14 +130,15 @@ namespace Rocola
                     e.Inclinacion += .055f * fuerza * (float)Math.Sin(edad * 5);
                     break;
                 case AsistenteGestoGpu.Despedir:
-                    e.ManoDerY -= fuerza * (.6f - .13f * (float)Math.Sin(edad * 13));
-                    e.ManoDerX += .05f * fuerza * (float)Math.Sin(edad * 13);
+                    float despedida = (float)Math.Sin(edad * 13);
+                    e.ManoDerY -= fuerza * (.6f - .13f * despedida);
+                    e.ManoDerX += .05f * fuerza * despedida;
                     e.Inclinacion -= .035f * fuerza;
                     e.Reverencia += .12f * AsistenteImpulso(edad, .1, .7);
                     break;
             }
             // Pequena respiracion del cuerpo; amplitud constante, sin retexturizar.
-            e.Escala += .012f * (float)(1 - Math.Cos(vida * 1.8));
+            e.Escala += .012f * respiracion;
             AsistenteCaricatura(ref e, vida, edad, gesto, fuerza);
             return e;
         }
@@ -160,16 +168,18 @@ namespace Rocola
                 else if (cual == 1)
                 {
                     float toca = espera * AsistenteImpulso(fase, 4.6, 1.6);
-                    e.PieDerY -= .11f * toca * (float)Math.Abs(Math.Sin(fase * 9.0));
+                    float golpecito = (float)Math.Abs(Math.Sin(fase * 9.0));
+                    e.PieDerY -= .11f * toca * golpecito;
                     e.Inclinacion += .05f * toca;
-                    e.Estira -= .03f * toca * (float)Math.Abs(Math.Sin(fase * 9.0));
+                    e.Estira -= .03f * toca * golpecito;
                 }
                 else
                 {
                     float mece = espera * AsistenteImpulso(fase, 4.4, 2.0);
-                    e.Inclinacion += .11f * mece * (float)Math.Sin(fase * 6.0);
+                    double vaiven = Math.Sin(fase * 6.0);
+                    e.Inclinacion += .11f * mece * (float)vaiven;
                     e.Desplazamiento += .04f * mece * (float)Math.Sin(fase * 3.0);
-                    e.ManoIzqY -= .18f * mece; e.ManoDerY -= .18f * mece * (float)(.5 + .5 * Math.Sin(fase * 6.0));
+                    e.ManoIzqY -= .18f * mece; e.ManoDerY -= .18f * mece * (float)(.5 + .5 * vaiven);
                 }
             }
             switch (gesto)

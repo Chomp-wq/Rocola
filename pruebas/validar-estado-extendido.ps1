@@ -21,7 +21,7 @@ try {
         & $compiler /nologo /target:winexe /optimize+ /warnaserror+ $define ("/out:$app") @refs ("/resource:$nlayer,Rocola.NLayer.dll") @sources
         if ($LASTEXITCODE -ne 0) { throw "No compila $mode" }
         $tests = if ($mode -eq 'gpu') {
-            @('cubosligeros','graficosgenerales','cuboagrupado','perfilesligeros','coloresligeros','ecosgeometria','cintasligeras','textosgpu','cachesgraficas','cielovivo','fotos1013','auroraeficiente','trabajovisible','campoestelarbuffers','dibujoligero','resolucionligera','estadoeficiente','performance','rendercache','franjareloj','panelreposo','fluidezcuadros','estrellaflujo','estrella3d','estelaestelar','ajustesvivos','fichaportada','caratulasjpeg','hojeofino','papeleraportadas','asistentecombo','asistentevisual','ayudaguia')
+            @('gestosligeros','cubosligeros','graficosgenerales','cuboagrupado','perfilesligeros','coloresligeros','ecosgeometria','cintasligeras','textosgpu','cachesgraficas','cielovivo','fotos1013','auroraeficiente','trabajovisible','campoestelarbuffers','dibujoligero','resolucionligera','estadoeficiente','performance','rendercache','franjareloj','panelreposo','fluidezcuadros','estrellaflujo','estrella3d','estelaestelar','ajustesvivos','fichaportada','caratulasjpeg','hojeofino','papeleraportadas','asistentecombo','asistentevisual','ayudaguia')
         } else { @('estadoeficiente','ajustesvivos','fichaportada') }
         foreach ($test in $tests) {
             $exe = Join-Path $out ("$test.exe")
@@ -63,7 +63,7 @@ try {
             & $compiler /nologo /optimize+ /warnaserror+ ("/out:$exe") @refs @entry (Join-Path $PSScriptRoot "$test.cs") @support
             if ($LASTEXITCODE -ne 0) { throw "No compila $test" }
             $testArguments = @($app)
-            if (($test -eq 'coloresligeros' -or $test -eq 'perfilesligeros' -or $test -eq 'graficosgenerales' -or $test -eq 'cubosligeros') -and $PreviousRelease) {
+            if (($test -eq 'gestosligeros' -or $test -eq 'coloresligeros' -or $test -eq 'perfilesligeros' -or $test -eq 'graficosgenerales' -or $test -eq 'cubosligeros') -and $PreviousRelease) {
                 $testArguments += (Resolve-Path -LiteralPath $PreviousRelease).Path
             }
             Push-Location $PSScriptRoot
