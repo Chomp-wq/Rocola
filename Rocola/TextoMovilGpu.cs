@@ -17,7 +17,22 @@ namespace Rocola
     }
     internal sealed class CintasTexto : IDisposable
     {
-        internal readonly List<CintaTexto> Items = new List<CintaTexto>();
+        internal sealed class Lista : System.Collections.ObjectModel.Collection<CintaTexto>
+        {
+            internal long Version;
+            protected override void InsertItem(int index, CintaTexto item)
+            { base.InsertItem(index, item); unchecked { Version++; } }
+            protected override void RemoveItem(int index)
+            { base.RemoveItem(index); unchecked { Version++; } }
+            protected override void SetItem(int index, CintaTexto item)
+            { base.SetItem(index, item); unchecked { Version++; } }
+            protected override void ClearItems()
+            { base.ClearItems(); unchecked { Version++; } }
+        }
+        internal readonly Lista Items = new Lista();
+        // Solo cambia al sustituir, ordenar o retirar cintas. Su posicion y reloj se
+        // leen del objeto vivo al dibujar; moverlo no requiere rehacer la lista GPU.
+        internal long Version { get { return Items.Version; } }
         private int used, pixels;
         internal void Begin() { used = 0; pixels = 0; }
         internal void End()
@@ -86,7 +101,12 @@ namespace Rocola
                 return true;
             }
         }
-        public void Dispose() { foreach (CintaTexto r in Items) r.Dispose(); Items.Clear(); used = 0; }
+        public void Dispose()
+        {
+            foreach (CintaTexto r in Items) r.Dispose();
+            if (Items.Count > 0) Items.Clear();
+            used = 0;
+        }
     }
     public partial class Form1
     {
@@ -168,12 +188,27 @@ namespace Rocola
         private readonly Dictionary<Bitmap, CintaTile> cintaByBitmap = new Dictionary<Bitmap, CintaTile>();
         private readonly List<Bitmap> cintaOldSources = new List<Bitmap>();
         private readonly List<IntPtr> cintaRetiradas = new List<IntPtr>();
+        private readonly List<CintaTile> cintaPendientes = new List<CintaTile>();
+        private CintasTexto[] cintaGrupos;
+        private long[] cintaVersiones;
+        private bool cintaListaValida;
+        internal int CintasListasCalculadas, CintasListasReusadas;
         private readonly D3D9.Vtx[] cintaQuad = new D3D9.Vtx[6];
-        private void PreparaCintasTexto()
+        private bool MismaListaCintas(CintasTexto[] groups)
         {
-            cintaTiles.Clear();
+            int n = groups != null ? groups.Length : 0;
+            if (!cintaListaValida || cintaGrupos.Length != n) return false;
+            for (int i = 0; i < n; i++)
+                if (!object.ReferenceEquals(groups[i], cintaGrupos[i])
+                    || (groups[i] != null && groups[i].Version != cintaVersiones[i])) return false;
+            return true;
+        }
+        private void ActualizaListaCintas(CintasTexto[] groups)
+        {
+            // Publicar la firma al acabar: una excepcion no deja una lista parcial valida.
+            cintaListaValida = false;
+            cintaTiles.Clear(); cintaPendientes.Clear();
             foreach (CintaTile tile in cintaByBitmap.Values) tile.Seen = false;
-            CintasTexto[] groups = GetCintasTexto != null ? GetCintasTexto() : null;
             if (groups != null)
                 for (int group = 0; group < groups.Length; group++)
                 {
@@ -189,21 +224,9 @@ namespace Rocola
                             }
                             tile.Run = run; tile.Group = group; tile.Part = part; tile.Seen = true;
                             cintaTiles.Add(tile);
+                            if (tile.Tex == IntPtr.Zero) cintaPendientes.Add(tile);
                         }
                 }
-            // Lo legible nunca espera al presupuesto. Solo se aplazan las partes fuera de la
-            // ventana del texto; se preparan con margen antes de que el desplazamiento las muestre.
-            int now = Environment.TickCount;
-            foreach (CintaTile tile in cintaTiles)
-                if (tile.Tex == IntPtr.Zero && CintaVisible(tile, now)) SubeCinta(tile);
-            long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
-            long presupuesto = Math.Min(CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork),
-                (long)(System.Diagnostics.Stopwatch.Frequency * .00035));
-            foreach (CintaTile tile in cintaTiles)
-            {
-                if (System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
-                if (tile.Tex == IntPtr.Zero && CintaGrupoProximo(tile.Group)) SubeCinta(tile);
-            }
             cintaOldSources.Clear();
             foreach (KeyValuePair<Bitmap, CintaTile> kv in cintaByBitmap)
                 if (!kv.Value.Seen) cintaOldSources.Add(kv.Key);
@@ -213,6 +236,39 @@ namespace Rocola
                 if (tile.Tex != IntPtr.Zero) cintaRetiradas.Add(tile.Tex);
                 cintaByBitmap.Remove(source);
             }
+            cintaOldSources.Clear();
+            int n = groups != null ? groups.Length : 0;
+            if (cintaGrupos == null || cintaGrupos.Length != n)
+            { cintaGrupos = new CintasTexto[n]; cintaVersiones = new long[n]; }
+            for (int i = 0; i < n; i++)
+            { cintaGrupos[i] = groups[i]; cintaVersiones[i] = groups[i] != null ? groups[i].Version : 0; }
+            cintaListaValida = true; CintasListasCalculadas++;
+        }
+        private void PreparaCintasTexto()
+        {
+            CintasTexto[] groups = GetCintasTexto != null ? GetCintasTexto() : null;
+            if (!MismaListaCintas(groups)) ActualizaListaCintas(groups);
+            else CintasListasReusadas++;
+            // En reposo, las texturas ya listas no necesitan consultas de visibilidad,
+            // diccionario ni reloj de presupuesto. El dibujo sigue leyendo Rect/Born.
+            if (cintaPendientes.Count == 0 && cintaRetiradas.Count == 0) return;
+            // Lo legible nunca espera al presupuesto. Solo se aplazan las partes fuera de la
+            // ventana del texto; se preparan con margen antes de que el desplazamiento las muestre.
+            int now = Environment.TickCount;
+            foreach (CintaTile tile in cintaPendientes)
+                if (tile.Tex == IntPtr.Zero && CintaVisible(tile, now)) SubeCinta(tile);
+            long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            long presupuesto = Math.Min(CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork),
+                (long)(System.Diagnostics.Stopwatch.Frequency * .00035));
+            foreach (CintaTile tile in cintaPendientes)
+            {
+                if (tile.Tex != IntPtr.Zero) continue;
+                if (System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
+                if (CintaGrupoProximo(tile.Group)) SubeCinta(tile);
+            }
+            // Una subida fallida sigue pendiente y se reintenta al cuadro siguiente.
+            for (int i = cintaPendientes.Count - 1; i >= 0; i--)
+                if (cintaPendientes[i].Tex != IntPtr.Zero) cintaPendientes.RemoveAt(i);
             inicio = System.Diagnostics.Stopwatch.GetTimestamp();
             while (cintaRetiradas.Count > 0)
             {
@@ -311,6 +367,7 @@ namespace Rocola
             foreach (IntPtr tex in cintaRetiradas) D3D9.Release(tex);
             cintaRetiradas.Clear();
             cintaByBitmap.Clear(); cintaTiles.Clear(); cintaOldSources.Clear();
+            cintaPendientes.Clear(); cintaGrupos = null; cintaVersiones = null; cintaListaValida = false;
         }
     }
 }

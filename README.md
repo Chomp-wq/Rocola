@@ -1,5 +1,13 @@
 # Rocola
 
+## Textos con menos trabajo por cuadro — 18 de octubre de 2026
+
+Dos ahorros automáticos: reutilizar la lista GPU de textos cuando no cambia y
+revisar solo las texturas pendientes de cargar. Conservan el desplazamiento,
+la carga inmediata de lo visible y la recuperación tras reinicios gráficos.
+Sin nuevos ajustes ni cambios de aspecto; pruebas sintéticas en tres resoluciones.
+[Detalle, comprobaciones y límites](TEXTOS_LIGEROS_MODEST_2026-10-18.md).
+
 ## Degradados y reflejos reutilizados — 17 de octubre de 2026
 
 Tres ahorros automáticos sin cambiar el aspecto: conservar los píxeles de los

@@ -10,6 +10,7 @@ using System.Windows.Forms;
 // Compilar con franjareloj.cs y leercodigo.cs /main:MedirEstado. Primer argumento:
 // ejecutable exacto. Segundo: original, performance, nuevos o halo. Tercero/cuarto: ancho/alto.
 // Quinto opcional: animado (avanza fases de nebulosas 24 de cada 60 cuadros simulados).
+// Sexto opcional: textos (captura titulos largos reales en la barra extendida).
 // Los intervalos son Start->Start de estas llamadas, NO FPS reales del equipo XP.
 class MedirEstado
 {
@@ -17,7 +18,8 @@ class MedirEstado
     static Type helper = typeof(FranjaReloj), panel, form;
     static Bitmap current, cell;
     static int frame, width = 1024, height = 768;
-    static bool animated, halo;
+    static bool animated, halo, scrolling;
+    static object textHost;
     static object Call(Type t, object o, string n, params object[] a) { return t.GetMethod(n, B).Invoke(o, a); }
     static object Run(object o, string n, params object[] a) { return Call(o.GetType(), o, n, a); }
     static object Get(object o, string n) { return o.GetType().GetField(n, B).GetValue(o); }
@@ -32,6 +34,7 @@ class MedirEstado
         float phase = (i * 24 / 60) * .005f; Set(p, "NebFase", phase); Set(p, "HazFase", phase * .7f);
     }
     static Bitmap Idle() { return current; }
+    static T[] Cintas<T>() { return (T[])Get(textHost, "cintasTexto"); }
     static class GridData<T> { internal static T[] Rows; }
     static int Grid<T>(T[] data)
     {
@@ -57,13 +60,19 @@ class MedirEstado
     static Delegate Generic(FieldInfo field, string method)
     {
         Type type = field.FieldType.GetMethod("Invoke").ReturnType;
+        if (method == "Cintas") type = type.GetElementType();
         if (method == "Grid") type = field.FieldType.GetMethod("Invoke").GetParameters()[0].ParameterType.GetElementType();
         return Delegate.CreateDelegate(field.FieldType, typeof(MedirEstado).GetMethod(method, B).MakeGenericMethod(type));
     }
     static Bitmap Draw(bool opaque, bool changed)
     {
+        if (textHost == null) return DrawPanel(opaque, changed);
+        using ((IDisposable)Run(textHost, "CapturaTexto", 1)) return DrawPanel(opaque, changed);
+    }
+    static Bitmap DrawPanel(bool opaque, bool changed)
+    {
         int n = 12; string[] t = new string[n], a = new string[n]; Image[] covers = new Image[n];
-        for (int i = 0; i < n; i++) { t[i] = "Cancion " + i; a[i] = "Artista"; covers[i] = cell; }
+        for (int i = 0; i < n; i++) { t[i] = "Cancion " + i + (scrolling ? " con nombre largo para leer completo, version extendida en vivo" : ""); a[i] = "Artista"; covers[i] = cell; }
         MethodInfo reuse = form.GetMethod("RenderIdlePanelEn", B);
         object[] args = { width, (int)Call(panel, null, "IdlePanelHeight", height), changed ? "Otra cancion" : "Cancion actual", "Artista", "1:00 / 3:00", t, a, covers, n, Color.Teal, false, 0, true, null, 0 };
         if (reuse == null) return (Bitmap)form.GetMethod("RenderIdlePanelGrande", B).Invoke(null, args);
@@ -77,6 +86,11 @@ class MedirEstado
     {
         using (Control p = (Control)Call(helper, null, "Panel", width, height))
         {
+            if (scrolling)
+            {
+                textHost = Codigo.FormSinEncender(form); Set(textHost, "gpuEnabled", true); Set(textHost, "textosDeslizantes", true);
+                FieldInfo tapes = panel.GetField("GetCintasTexto", B); tapes.SetValue(p, Generic(tapes, "Cintas"));
+            }
             Set(p, "ConLuna", true); Set(p, "LunaActiva", true); Set(p, "Estrella3D", threeD);
             Set(p, "Dim", 1f); Set(p, "ShowAlbum", !expanded); Set(p, "IdleExpandTarget", expanded);
             Set(p, "uiBotH", 96); Set(p, "idleBlend", expanded ? 1f : 0f); Set(p, "IdlePanelVersion", 1);
@@ -94,6 +108,7 @@ class MedirEstado
             object stars = Get(p, "stars");
             int skies = Counter(stars, "CielosSuavesCalculados"), skyReuse = Counter(stars, "CielosSuavesReusados");
             int reflections = Counter(p, "ReflejosCalculados"), reflectionReuse = Counter(p, "ReflejosReusados");
+            int lists = Counter(p, "CintasListasCalculadas"), listReuse = Counter(p, "CintasListasReusadas");
             double[] intervals = new double[360]; long previous = Stopwatch.GetTimestamp();
             for (frame = 0; frame <= intervals.Length; frame++)
             {
@@ -117,9 +132,11 @@ class MedirEstado
                 + " recortes_reusados=" + (Counter(p, "RecortesReusados") - reused) + " estrellas_omitidas_total=" + omitted
                 + " cielos_calculados=" + (Counter(stars, "CielosSuavesCalculados") - skies) + " cielos_reusados=" + (Counter(stars, "CielosSuavesReusados") - skyReuse)
                 + " reflejos_calculados=" + (Counter(p, "ReflejosCalculados") - reflections) + " reflejos_reusados=" + (Counter(p, "ReflejosReusados") - reflectionReuse)
+                + " listas_texto_calculadas=" + (Counter(p, "CintasListasCalculadas") - lists) + " listas_texto_reusadas=" + (Counter(p, "CintasListasReusadas") - listReuse)
                 + " p50=" + Percentile(intervals, .5).ToString("F3") + " p95=" + Percentile(intervals, .95).ToString("F3")
                 + " p99=" + Percentile(intervals, .99).ToString("F3") + " max=" + Percentile(intervals, 1).ToString("F3") + " ms");
             current.Dispose(); current = null;
+            if (textHost != null) { Run(textHost, "SueltaCintasTexto"); textHost = null; }
             if (accepted != intervals.Length + 1) throw new Exception("Cuadros artificiales rechazados");
         }
     }
@@ -127,9 +144,10 @@ class MedirEstado
     {
         if (args.Length >= 4) { width = int.Parse(args[2]); height = int.Parse(args[3]); }
         animated = args.Length >= 5 && args[4] == "animado";
+        scrolling = args.Length >= 6 && args[5] == "textos";
         bool options = args.Length > 1 && args[1] != "original", newer = args.Length > 1 && (args[1] == "nuevos" || args[1] == "halo");
         halo = args.Length > 1 && args[1] == "halo";
-        Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor; fases_animadas=" + animated);
+        Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor; fases_animadas=" + animated + "; textos_largos=" + scrolling);
         Assembly app = Assembly.LoadFrom(args[0]); form = app.GetType("Rocola.Form1"); panel = app.GetType("Rocola.GpuPanel");
         Console.WriteLine("ensamblado=" + app.Location + " bitmap_reutilizable=" + (form.GetMethod("RenderIdlePanelEn", B) != null));
         foreach (string field in new string[] { "TF", "TPanel", "TStar", "TDev", "TD3D" })
