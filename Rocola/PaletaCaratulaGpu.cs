@@ -158,8 +158,14 @@ namespace Rocola
             flowGenre[2]=NebColor2&0xFFFFFFu;flowGenre[3]=auCuadro.Has?auCuadro.Rgb2A:NebColor;
             for(int i=0;i<flowColors.Length;i++){
                 double p=flowPhase+i/(double)flowColors.Length;
-                uint genre=PaletteFlow.Ring(flowGenre,p);
-                flowColors[i]=AurLerpRgb(genre,PaletteFlow.Ring(coverBands,p),coverWeight);
+                // En los extremos no participa una de las paletas. No omitir la tabla completa:
+                // los ecos de la estrella tambien la consultan con ColoresFluidos apagado.
+                if (coverWeight == 0f) flowColors[i] = PaletteFlow.Ring(flowGenre,p);
+                else if (coverWeight == 1f) flowColors[i] = PaletteFlow.Ring(coverBands,p);
+                else {
+                    uint genre=PaletteFlow.Ring(flowGenre,p);
+                    flowColors[i]=AurLerpRgb(genre,PaletteFlow.Ring(coverBands,p),coverWeight);
+                }
             }
         }
         private uint FlowColor(uint original,float x,float y)

@@ -530,12 +530,13 @@ namespace Rocola
         private void PasoEq(double ahora, float dt)
         {
             float mid = lunaMid, hi = lunaHigh;
+            float sube = 1f - (float)Math.Exp(-dt * 30.0), baja = 1f - (float)Math.Exp(-dt * 10.0);
             for (int k = 0; k < 4; k++)
             {
                 float nivel = (k == 0) ? lunaBeat : (k == 1) ? mid : (k == 2) ? (mid + hi) * .5f : hi;
                 float meta = AlturaBarra(k, ahora / 1000.0, nivel);
                 // Sube casi al instante y baja algo mas despacio: marca el golpe sin temblar.
-                float kk = (meta > eqAlto[k]) ? 1f - (float)Math.Exp(-dt * 30.0) : 1f - (float)Math.Exp(-dt * 10.0);
+                float kk = (meta > eqAlto[k]) ? sube : baja;
                 eqAlto[k] += (meta - eqAlto[k]) * kk;
             }
         }

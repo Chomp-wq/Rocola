@@ -1024,10 +1024,12 @@ namespace Rocola
         // y baja: si se dibuja redonda, sube tanto como se extiende y acaba brillando a media pantalla.
         private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, uint c)
         {
+            Punto(a, i, cx, cy, rx, ry, 0, c);
+            Punto(a, i + 1, cx, cy, rx, ry, 1, c);
             for (int k = 0; k < 6; k++)                  // abanico desde el vertice 0: (0,k+1,k+2)
             {
-                Punto(a, i + k * 3 + 0, cx, cy, rx, ry, 0, c);
-                Punto(a, i + k * 3 + 1, cx, cy, rx, ry, k + 1, c);
+                // Ocho posiciones distintas, conservando los mismos dieciocho vertices enviados.
+                if (k > 0) { a[i + k * 3] = a[i]; a[i + k * 3 + 1] = a[i + k * 3 - 1]; }
                 Punto(a, i + k * 3 + 2, cx, cy, rx, ry, k + 2, c);
             }
         }
@@ -3138,15 +3140,18 @@ namespace Rocola
 
         private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
         {
-            SetV(ref v[0], x0, y0, 0, 0); SetV(ref v[1], x1, y0, uMax, 0); SetV(ref v[2], x1, y1, uMax, vMax);
-            SetV(ref v[3], x0, y0, 0, 0); SetV(ref v[4], x1, y1, uMax, vMax); SetV(ref v[5], x0, y1, 0, vMax);
+            SetTexQuadA(v, x0, y0, x1, y1, uMax, vMax, 0xFFFFFFFFu);
         }
         // Igual que SetTexQuad pero con COLOR (el alfa del vertice modula la textura): asi el desvanecido
         // de la transicion no cuesta nada, lo hace la GPU al mezclar.
         private static void SetTexQuadA(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb)
         {
-            SetTexQuad(v, x0, y0, x1, y1, uMax, vMax);
-            for (int i = 0; i < 6; i++) v[i].Color = argb;
+            // Cuatro esquinas y dos copias exactas; sin segunda pasada para cambiar el color.
+            SetV(ref v[0], x0, y0, 0, 0); v[0].Color = argb;
+            SetV(ref v[1], x1, y0, uMax, 0); v[1].Color = argb;
+            SetV(ref v[2], x1, y1, uMax, vMax); v[2].Color = argb;
+            SetV(ref v[5], x0, y1, 0, vMax); v[5].Color = argb;
+            v[3] = v[0]; v[4] = v[2];
         }
         // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.

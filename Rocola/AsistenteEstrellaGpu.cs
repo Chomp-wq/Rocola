@@ -114,12 +114,13 @@ namespace Rocola
             float ox = vacio ? 0 : objetivo.X + objetivo.Width * .5f, oy = vacio ? 0 : objetivo.Y + objetivo.Height * .5f;
             // Primero la esquina opuesta al objetivo; luego las otras tres, por orden de cercania a esa.
             bool abajo = vacio || oy < h * .5f, derecha = vacio || ox < w * .5f;
-            int[] xs = { derecha ? xDer : xIzq, derecha ? xIzq : xDer, derecha ? xDer : xIzq, derecha ? xIzq : xDer };
-            int[] ys = { abajo ? yAba : yArr, abajo ? yAba : yArr, abajo ? yArr : yAba, abajo ? yArr : yAba };
-            Rectangle mejor = new Rectangle(xs[0], ys[0], s.Width, s.Height); float menor = float.MaxValue;
+            Rectangle mejor = new Rectangle(derecha ? xDer : xIzq, abajo ? yAba : yArr, s.Width, s.Height); float menor = float.MaxValue;
             for (int i = 0; i < 4; i++)
             {
-                Rectangle r = new Rectangle(xs[i], ys[i], s.Width, s.Height);
+                // Mismo orden de esquinas, sin dos arreglos temporales por cuadro de la guia.
+                int x = (derecha != ((i & 1) != 0)) ? xDer : xIzq;
+                int y = (abajo != (i >= 2)) ? yAba : yArr;
+                Rectangle r = new Rectangle(x, y, s.Width, s.Height);
                 if (vacio) return r;
                 // Lo que tapa del objetivo, y la estrella (a la izquierda del globo) tampoco debe taparlo.
                 float tapa = TapaGuia(r, radio, objetivo);
@@ -444,12 +445,12 @@ namespace Rocola
         {
             const int pasos = 12;
             float x0 = r, y0 = 0;
+            uint fuera = color & 0xFFFFFFu;
+            float f = (r + 1) / Math.Max(.001f, r);
             for (int i = 1; i <= pasos; i++)
             {
                 float x1 = asistenteCirculoX[i] * r, y1 = asistenteCirculoY[i] * r;
                 V3(v, n++, x, y, color); V3(v, n++, x + x0, y + y0, color); V3(v, n++, x + x1, y + y1, color);
-                uint fuera = color & 0xFFFFFFu;
-                float f = (r + 1) / Math.Max(.001f, r);
                 AsistenteCuadro(v, ref n, x + x0, y + y0, x + x1, y + y1,
                     x + x1 * f, y + y1 * f, x + x0 * f, y + y0 * f, color, color, fuera, fuera);
                 x0 = x1; y0 = y1;

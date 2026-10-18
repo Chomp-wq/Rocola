@@ -1,5 +1,13 @@
 # Rocola
 
+## Optimizaciones gráficas generales — 18 de octubre de 2026
+
+Siete ahorros automáticos en paneles/textos/transiciones, halos, selección de
+portadas, ecualizador visual, paleta animada y asistente. Conservan geometría,
+colores y respuesta; sin nuevas opciones ni pérdida de calidad. Comparados con
+`3e8988e`, con mediciones por familia y del cuadro completo en tres resoluciones.
+[Revisión, resultados y límites](GRAFICOS_GENERALES_MODEST_2026-10-18.md).
+
 ## Perfiles de aurora precalculados — 18 de octubre de 2026
 
 La aurora reutiliza los pesos espaciales de sus bandas en sus dos estilos,

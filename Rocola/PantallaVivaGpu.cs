@@ -859,10 +859,12 @@ namespace Rocola
         // Las demas casillas bajan de brillo poco a poco (y vuelven igual). 'atenua' va por puesto en la rejilla.
         private void AtenuaCeldas(bool toca, float dt)
         {
+            // Todas las casillas comparten el mismo intervalo; no repetir Exp por portada.
+            float k = gridN > 0 && dt > 0f ? 1f - (float)Math.Exp(-dt * 12.0) : 0f;
             for (int i = 0; i < gridN && i < atenua.Length; i++)
             {
                 float meta = (toca && !gridBuf[i].Sel) ? AtenuaOtras : 0f;
-                atenua[i] = Acerca(atenua[i], meta, dt);
+                if (dt > 0f) atenua[i] += (meta - atenua[i]) * k;
                 if (atenua[i] < .002f && meta == 0f) atenua[i] = 0f;
             }
         }
