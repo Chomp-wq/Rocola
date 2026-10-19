@@ -2111,7 +2111,8 @@ namespace Rocola
         }
         private object progressKey;
         private double progressDraw = -1, progressClock;
-        private readonly D3D9.Vtx[] progressQuad = new D3D9.Vtx[6];
+        // Diez quads del tubo, en el orden original y con mezcla normal.
+        private readonly D3D9.Vtx[] progressV = new D3D9.Vtx[60];
         public bool VinetaSuave = true, HaloSeleccion = true, EstrellasFinas = true, OndasSuaves = true;
         private IntPtr vinetaTex;
         private float vinetaU, vinetaV;
@@ -3549,11 +3550,13 @@ namespace Rocola
         private void TuboNeon(float x, float y, float largo, float h, uint color, bool intenso, double ahoraMs)
         {
             uint tint = ProgressLight(color, 0.18f), claro = ProgressLight(color, 0.66f), nucleo = ProgressLight(color, 0.95f);
+            int n = 0;
             float halo = h * (intenso ? 2.6f : 1.7f);
-            BandaSuave(x, y, largo, halo, tint, (intenso ? 0x6E000000u : 0x34u << 24) | tint);
+            BandaSuave(ref n, x, y, largo, halo, tint, (intenso ? 0x6E000000u : 0x34u << 24) | tint);
             float tubo = Math.Max(2f, h * 0.70f);
-            BandaSuave(x, y, largo, tubo, (intenso ? 0xB4000000u : 0x8C000000u) | tint, 0xF2000000u | claro);
-            ProgressBand(x, y, largo, Math.Max(1f, h * 0.20f), 0xFF000000u | nucleo);
+            BandaSuave(ref n, x, y, largo, tubo, (intenso ? 0xB4000000u : 0x8C000000u) | tint, 0xF2000000u | claro);
+            PreparaProgressBand(ref n, x, y, largo, Math.Max(1f, h * 0.20f), 0xFF000000u | nucleo);
+            stars.DrawMesh(progressV, n / 3);
             double t = (double.IsNaN(ahoraMs) ? 0 : ahoraMs) / 1000.0;
             float latido = 0.5f + 0.5f * (float)Math.Sin(t * 4.6);
             uint a = (uint)((intenso ? 150 : 95) * (0.72f + 0.28f * latido));
@@ -3564,23 +3567,27 @@ namespace Rocola
         }
         // Una banda horizontal que se desvanece hacia arriba y hacia abajo: 'borde' en los filos, 'centro' en medio
         // (el alfa va en el color). La punta derecha tambien se desvanece, como ProgressBand.
-        private void BandaSuave(float x, float y, float w, float alto, uint borde, uint centro)
+        private void BandaSuave(ref int n, float x, float y, float w, float alto, uint borde, uint centro)
         {
             if (!(w > 0) || !(alto > 0)) return;
             if ((borde >> 24) == 0) borde &= 0x00FFFFFFu;
-            MediaBanda(x, y - alto * 0.5f, y, w, borde, centro);
-            MediaBanda(x, y, y + alto * 0.5f, w, centro, borde);
+            MediaBanda(ref n, x, y - alto * 0.5f, y, w, borde, centro);
+            MediaBanda(ref n, x, y, y + alto * 0.5f, w, centro, borde);
         }
-        private void MediaBanda(float x, float y0, float y1, float w, uint arriba, uint abajo)
+        private void MediaBanda(ref int n, float x, float y0, float y1, float w, uint arriba, uint abajo)
         {
             float edge = Math.Min(1.5f, w * 0.5f);
-            SetTexQuadA(progressQuad, x, y0, x + w - edge, y1, 1, 1, arriba);
-            progressQuad[2].Color = abajo; progressQuad[4].Color = abajo; progressQuad[5].Color = abajo;
-            stars.DrawColorQuad(progressQuad);
-            SetTexQuadA(progressQuad, x + w - edge, y0, x + w + edge, y1, 1, 1, arriba);
-            progressQuad[2].Color = abajo; progressQuad[4].Color = abajo; progressQuad[5].Color = abajo;
-            progressQuad[1].Color &= 0x00FFFFFFu; progressQuad[2].Color &= 0x00FFFFFFu; progressQuad[4].Color &= 0x00FFFFFFu;
-            stars.DrawColorQuad(progressQuad);
+            ProgressRect(ref n, x, y0, x + w - edge, y1, arriba, abajo, false);
+            ProgressRect(ref n, x + w - edge, y0, x + w + edge, y1, arriba, abajo, true);
+        }
+        private void ProgressRect(ref int n, float x0, float y0, float x1, float y1, uint arriba, uint abajo, bool punta)
+        {
+            SetV(ref progressV[n], x0, y0, 0, 0); progressV[n].Color = arriba;
+            SetV(ref progressV[n + 1], x1, y0, 1, 0); progressV[n + 1].Color = punta ? arriba & 0x00FFFFFFu : arriba;
+            SetV(ref progressV[n + 2], x1, y1, 1, 1); progressV[n + 2].Color = punta ? abajo & 0x00FFFFFFu : abajo;
+            SetV(ref progressV[n + 5], x0, y1, 0, 1); progressV[n + 5].Color = abajo;
+            progressV[n + 3] = progressV[n]; progressV[n + 4] = progressV[n + 2];
+            n += 6;
         }
         private static uint ProgressLight(uint c, float f)
         {
@@ -3591,15 +3598,16 @@ namespace Rocola
         // no cuantizar ni rehornear toda la barra de estado al avanzar.
         private void ProgressBand(float x, float y, float w, float h, uint color)
         {
+            int n = 0;
+            PreparaProgressBand(ref n, x, y, w, h, color);
+            stars.DrawMesh(progressV, n / 3);
+        }
+        private void PreparaProgressBand(ref int n, float x, float y, float w, float h, uint color)
+        {
             float edge = Math.Min(1f, w * 0.5f);
             float top = y - h * 0.5f, bottom = y + h * 0.5f;
-            SetTexQuadA(progressQuad, x, top, x + w - edge, bottom, 1, 1, color);
-            stars.DrawColorQuad(progressQuad);
-            SetTexQuadA(progressQuad, x + w - edge, top, x + w + edge, bottom, 1, 1, color);
-            progressQuad[1].Color &= 0x00FFFFFFu;
-            progressQuad[2].Color &= 0x00FFFFFFu;
-            progressQuad[4].Color &= 0x00FFFFFFu;
-            stars.DrawColorQuad(progressQuad);
+            ProgressRect(ref n, x, top, x + w - edge, bottom, color, color, false);
+            ProgressRect(ref n, x + w - edge, top, x + w + edge, bottom, color, color, true);
         }
 
         // MISMOS PIXELES QUE ANTES, escritos de otra manera. SetPixel es una llamada a GDI+ por

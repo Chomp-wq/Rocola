@@ -1,5 +1,12 @@
 # Rocola
 
+## Barra de progreso con menos trabajo interno — 19 de octubre de 2026
+
+Las franjas del neón se preparan juntas y la barra simple reúne su borde.
+Menos peticiones y copias pequeñas al agrupador general, con los mismos
+triángulos, colores y mezcla. Automático, sin nuevas opciones.
+[Comparaciones, mediciones y límites](PROGRESO_AGRUPADO_MODEST_2026-10-19.md).
+
 ## Partículas con menos cálculos — 19 de octubre de 2026
 
 Las dos pasadas del polvo orbital comparten 18 muestras; se reutilizan cuando

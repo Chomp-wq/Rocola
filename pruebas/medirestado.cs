@@ -11,6 +11,7 @@ using System.Windows.Forms;
 // ejecutable exacto. Segundo: original, performance, nuevos o halo. Tercero/cuarto: ancho/alto.
 // Quinto opcional: animado (avanza fases de nebulosas 24 de cada 60 cuadros simulados).
 // Sexto opcional: textos (captura titulos largos reales en la barra extendida).
+// Septimo opcional: progreso (barra de progreso con neon).
 // Los intervalos son Start->Start de estas llamadas, NO FPS reales del equipo XP.
 class MedirEstado
 {
@@ -18,7 +19,7 @@ class MedirEstado
     static Type helper = typeof(FranjaReloj), panel, form;
     static Bitmap current, cell;
     static int frame, width = 1024, height = 768;
-    static bool animated, halo, scrolling;
+    static bool animated, halo, scrolling, progress;
     static object textHost;
     static object Call(Type t, object o, string n, params object[] a) { return t.GetMethod(n, B).Invoke(o, a); }
     static object Run(object o, string n, params object[] a) { return Call(o.GetType(), o, n, a); }
@@ -57,6 +58,18 @@ class MedirEstado
         Set(wave, "Dim", .5f); Set(wave, "DimFilo", 1f); Set(wave, "Calma", .4f);
         return (T)wave;
     }
+    static class ProgressData<T> { internal static T State; internal static bool Ready; }
+    static T Progress<T>()
+    {
+        if (!ProgressData<T>.Ready) {
+            object p = Activator.CreateInstance(typeof(T));
+            Set(p, "Has", true); Set(p, "Neon", true); Set(p, "Value", .37);
+            Set(p, "Rect", new Rectangle(180, height - 70, width - 240, 12));
+            Set(p, "Color", 0xFF48A0D0u); Set(p, "Key", new object());
+            ProgressData<T>.State = (T)p; ProgressData<T>.Ready = true;
+        }
+        return ProgressData<T>.State;
+    }
     static Delegate Generic(FieldInfo field, string method)
     {
         Type type = field.FieldType.GetMethod("Invoke").ReturnType;
@@ -91,6 +104,7 @@ class MedirEstado
                 textHost = Codigo.FormSinEncender(form); Set(textHost, "gpuEnabled", true); Set(textHost, "textosDeslizantes", true);
                 FieldInfo tapes = panel.GetField("GetCintasTexto", B); tapes.SetValue(p, Generic(tapes, "Cintas"));
             }
+            if (progress) { Set(Get(Get(p, "stars"), "gpu"), "juntar", true); FieldInfo f = panel.GetField("GetProgress", B); f.SetValue(p, Generic(f, "Progress")); }
             Set(p, "ConLuna", true); Set(p, "LunaActiva", true); Set(p, "Estrella3D", threeD);
             Set(p, "Dim", 1f); Set(p, "ShowAlbum", !expanded); Set(p, "IdleExpandTarget", expanded);
             Set(p, "uiBotH", 96); Set(p, "idleBlend", expanded ? 1f : 0f); Set(p, "IdlePanelVersion", 1);
@@ -145,9 +159,10 @@ class MedirEstado
         if (args.Length >= 4) { width = int.Parse(args[2]); height = int.Parse(args[3]); }
         animated = args.Length >= 5 && args[4] == "animado";
         scrolling = args.Length >= 6 && args[5] == "textos";
+        progress = args.Length >= 7 && args[6] == "progreso";
         bool options = args.Length > 1 && args[1] != "original", newer = args.Length > 1 && (args[1] == "nuevos" || args[1] == "halo");
         halo = args.Length > 1 && args[1] == "halo";
-        Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor; fases_animadas=" + animated + "; textos_largos=" + scrolling);
+        Console.WriteLine("RESOLUCION " + width + "x" + height + "; controlador artificial, sin audio ni monitor; fases_animadas=" + animated + "; textos_largos=" + scrolling + "; progreso_neon=" + progress);
         Assembly app = Assembly.LoadFrom(args[0]); form = app.GetType("Rocola.Form1"); panel = app.GetType("Rocola.GpuPanel");
         Console.WriteLine("ensamblado=" + app.Location + " bitmap_reutilizable=" + (form.GetMethod("RenderIdlePanelEn", B) != null));
         foreach (string field in new string[] { "TF", "TPanel", "TStar", "TDev", "TD3D" })
