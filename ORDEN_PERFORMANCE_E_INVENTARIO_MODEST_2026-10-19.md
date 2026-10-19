@@ -77,6 +77,28 @@ un núcleo a 60 cuadros, y a cambio ahorra la viñeta y el grano a pantalla comp
 
 **El buscador, con 30.000 canciones:** índice en 109 ms; por tecla, mediana 0,29 ms, la peor 11 ms. Nada que ganar.
 
+## Segunda vuelta: el programa entero con 30.000 canciones (más optimizaciones, buscadas)
+
+Petición: «Busca más optimizaciones». Se arrancó el programa de verdad (perfil sin tarjeta, en un servidor virtual, con una
+biblioteca inventada de 30.000 canciones en 150 discos, datos aislados) y se midió por hilo. **Es una medición real de arranque y
+memoria, pero no de dibujo con tarjeta ni del equipo del bar.** El dibujo por procesador (congelado) corre en este perfil.
+
+| Qué | Resultado |
+| --- | --- |
+| La ventana, lista | 148 ms desde que nace |
+| La biblioteca, lista | 1,0 s con la lista guardada (1,5 s la primera vez, recorriendo el disco) |
+| Memoria con 30.000 canciones | 160 a 185 MB, sin crecer en 2 minutos |
+| Con la biblioteca ya leída y quieta | el hilo de la pantalla gasta ≈ 9 % de un núcleo |
+| Primera lectura de 30.000 canciones | un solo hilo de fondo al 80 a 97 % de un núcleo (el repaso), y el de la pantalla al 9 % |
+
+- **El repaso a fondo** usa un carril en este equipo, con la prioridad más baja, y **descansa entre canciones** cuando suena
+  música (120 a 220 ms con dos núcleos o más, 400 a 700 ms con uno). Ya estaba pensado para no pisar la reproducción.
+- **Archivos rotos:** se probó una canción buena, una cortada, una de basura y una de 100 bytes. Las malas fallan en 0,3 a 7 ms.
+  Guardar una lista de «archivos que no se pueden medir» para no repetirlos cada arranque **no ahorra nada medible**: no se hizo.
+  (En este servidor ni la canción buena se mide, así que esas cifras son del camino de fallo, no de una medida normal.)
+- **Resultado:** no hay una optimización de recursos que valga la pena añadir con estos datos. Lo que quedaría de verdad es medir
+  con una tarjeta de verdad y en el equipo del bar.
+
 ## Lo que queda como propuesta
 
 | | Qué haría | Ganancia estimada | Por qué no se hizo |
