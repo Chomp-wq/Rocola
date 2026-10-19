@@ -60,6 +60,18 @@ namespace Rocola
             GeometriasCalculadas++;
         }
 
+        // Ambas filas recorren tramos disjuntos de izquierda a derecha. El cursor
+        // vive una sola banda: lo que quedo a su izquierda no puede continuar otra tira.
+        internal static int TramoAnterior(List<int> rect, List<int> abiertas, ref int cursor, int x0, int x1)
+        {
+            while (cursor < abiertas.Count && rect[abiertas[cursor] * 4] < x0) cursor++;
+            if (cursor < abiertas.Count) {
+                int a = abiertas[cursor];
+                if (rect[a * 4] == x0 && rect[a * 4 + 2] == x1) return a;
+            }
+            return -1;
+        }
+
         // Que hay que pintar de esta imagen. Solo mira el alfa. 'bordeSiempre': las teselas del borde se pintan siempre
         // (hace falta si la imagen se ESTIRA: ahi la tarjeta puede leer fuera de lo horneado); una imagen pintada texel a
         // pixel, como las de la interfaz, no lee fuera y no lo necesita.
@@ -103,14 +115,13 @@ namespace Rocola
             for (int j = 0; j < ty; j++)
             {
                 nuevas.Clear();
-                int y0 = j * lado, y1 = Math.Min(h, y0 + lado);
+                int y0 = j * lado, y1 = Math.Min(h, y0 + lado), anterior = 0;
                 for (int i = 0; i < tx; )
                 {
                     if (!pinta[j * tx + i]) { i++; continue; }
                     int k = i; while (k < tx && pinta[j * tx + k]) k++;
                     int x0 = i * lado, x1 = Math.Min(w, k * lado);
-                    int sigue = -1;
-                    foreach (int a in abiertas) if (r[a * 4] == x0 && r[a * 4 + 2] == x1) { sigue = a; break; }
+                    int sigue = TramoAnterior(r, abiertas, ref anterior, x0, x1);
                     if (sigue >= 0) { r[sigue * 4 + 3] = y1; nuevas.Add(sigue); }
                     else { nuevas.Add(r.Count / 4); r.Add(x0); r.Add(y0); r.Add(x1); r.Add(y1); }
                     pintado += (long)(x1 - x0) * (y1 - y0);
@@ -181,14 +192,13 @@ namespace Rocola
                 else if (banda < ty)
                 {
                     nuevas.Clear();
-                    int y0 = banda * lado, y1 = Math.Min(h, y0 + lado);
+                    int y0 = banda * lado, y1 = Math.Min(h, y0 + lado), anterior = 0;
                     for (int i = 0; i < tx; )
                     {
                         if (!pinta[banda * tx + i]) { i++; continue; }
                         int k = i; while (k < tx && pinta[banda * tx + k]) k++;
-                        int x0 = i * lado, x1 = Math.Min(w, k * lado), sigue = -1;
-                        foreach (int a in abiertas)
-                            if (r[a * 4] == x0 && r[a * 4 + 2] == x1) { sigue = a; break; }
+                        int x0 = i * lado, x1 = Math.Min(w, k * lado);
+                        int sigue = TeselasVisibles.TramoAnterior(r, abiertas, ref anterior, x0, x1);
                         if (sigue >= 0) { r[sigue * 4 + 3] = y1; nuevas.Add(sigue); }
                         else { nuevas.Add(r.Count / 4); r.Add(x0); r.Add(y0); r.Add(x1); r.Add(y1); }
                         pintado += (long)(x1 - x0) * (y1 - y0); i = k;

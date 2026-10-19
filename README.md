@@ -1,5 +1,13 @@
 # Rocola
 
+## Análisis de transparencias más ligero — 19 de octubre de 2026
+
+Los recortes del cielo y la interfaz se unen recorriendo sus tramos ordenados,
+sin repetir búsquedas. Mismos rectángulos y vértices, sin memoria persistente
+adicional ni nuevas opciones. Ahorro mayor en máscaras muy fragmentadas;
+no equivale a una mejora de FPS.
+[Comparaciones, mediciones y límites](TESELAS_LIGERAS_MODEST_2026-10-19.md).
+
 ## Portadas y atlas con menos cálculos — 18 de octubre de 2026
 
 La rejilla comparte esquinas entre triángulos de portadas, textos y bordes.
