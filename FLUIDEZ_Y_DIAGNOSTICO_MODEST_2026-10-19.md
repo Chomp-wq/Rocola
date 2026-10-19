@@ -92,5 +92,5 @@ xvfb-run -a mono me.exe Rocola.exe nuevos 1024 768 animado textos progreso
   pide el CLR 2.0 y `System.Core` 3.5, o sea .NET Framework 3.5).
 - **El mismo `Rocola.exe` que se entrega** pasó 39 baterías GPU y 7 CPU relacionadas (ver `VALIDACION.txt` del ZIP), con el mapeo
   de `RtlMoveMemory` de las pruebas. El dibujo por procesador: 14 métodos idénticos.
-- No se ejecutó toda la suite sobre ese binario. La suite completa de las fuentes, comparada con la rama de partida (`426c052`) antes de los dos últimos cambios de código, dio 34 baterías con problemas frente a 35, las mismas salvo `indice`, que solo falló en la rama de partida. La corrida sobre las fuentes finales no está recogida aquí.
+- No se ejecutó toda la suite sobre ese binario. La suite completa de las fuentes finales se comparó con la rama de partida (`426c052`): 34 baterías con problemas frente a 35, **las mismas** salvo `indice`, que solo falló en la rama de partida. Ninguna falla es nueva. Se corrió también antes de los dos últimos cambios de código, con el mismo resultado (34 frente a 35).
 - **No probado:** Windows XP, una tarjeta real, la pantalla del bar, el AMD A4, ni escucha.
