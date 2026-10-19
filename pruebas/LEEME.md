@@ -338,3 +338,5 @@ informes anteriores; las evidencias sinteticas anteriores conservan su alcance.
 
 **La regla que se sigue aquí:** antes de arreglar algo, la batería tiene que **fallar** con el
 código de antes. Una prueba que pasa en las dos versiones no vigila nada.
+
+`inventario` (19-10-2026) no vigila nada: mide, con la tarjeta imitada, cuanto cuesta en procesador y memoria un cuadro de GPU capa por capa y cuanta pantalla pinta cada orden. `ventanaf3` recorre ahora tambien las hojas Fluidez y Performance de Imagen y las hojitas de Performance.

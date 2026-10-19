@@ -141,6 +141,10 @@ GPU="$GPU compatvieja"
 # referencia), presentar sin esperar al monitor, el medidor renovado (PlanDeAhorros) y los interruptores guardados.
 CPU="$CPU performance"
 GPU="$GPU performance"
+# 'inventario': cuanto cuesta en procesador y memoria un cuadro de GPU capa por capa, y cuanta pantalla pinta (19-10-2026): la base
+# de la ronda de optimizacion. Con la tarjeta imitada: no mide la velocidad de una tarjeta, y sin tarjeta dice que no hay nada que medir.
+CPU="$CPU inventario"
+GPU="$GPU inventario"
 # 'hojeofino': hojear rapido sin micro tirones (13-10-2026): reloj fino en la pared y el cielo, empujones que se suman, la
 # rodilla de la niebla, la lectura de caratulas que reutiliza su arreglo y las paginas de colchon por perfil y JPEG.
 CPU="$CPU hojeofino"

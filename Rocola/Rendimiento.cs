@@ -1724,7 +1724,7 @@ namespace Rocola
             // PERFORMANCE: ahorros independientes y lista desplazable bajo una cabecera fija.
             Tarjeta tPerf = new Tarjeta(); tPerf.Size = tEfe.Size;
             Interruptor[] swAhorro; Label[] lAhorro; Label lCuentaPerf;
-            LlenaHojaPerformance(tPerf, fNom, fDes, cTexto, cTenue, out swAhorro, out lAhorro, out lCuentaPerf);
+            LlenaHojaPerformance(tPerf, fNom, fDes, fBot, cTexto, cTenue, out swAhorro, out lAhorro, out lCuentaPerf);
             Action pintaFluidez;
             Panel hojasGraficas = MontaFluidezGrafica(tEfe, tPerf, fNom, fDes, fBot, cTexto, cTenue, out pintaFluidez);
             int ultimoTocado = 0;
@@ -1994,20 +1994,24 @@ namespace Rocola
         }
 
         // La hoja Performance de la tarjeta EFECTOS (la tercera, con Efectos y Fluidez).
-        private void LlenaHojaPerformance(Tarjeta hoja, Font fNom, Font fDes, Color cTexto, Color cTenue,
+        // 19-10-2026: con trece ahorros la lista ya no cabia (iba en un panel con barra de desplazamiento y las ultimas filas
+        // quedaban debajo del boton Listo), asi que van AGRUPADOS POR TEMA en hojitas con su pestana, como las de Fondo. Cada
+        // hoja cabe hasta cuatro, sin apretar los textos; lo de siempre-activo y lo medido queda abajo, fijo.
+        private static readonly string[] GrupoAhorro = { "Cielo", "Grano", "Aurora", "Estrella", "Estado" };
+        private static readonly int[] GrupoDeAhorro = { 0, 1, 0, 0, 4, 2, 2, 3, 3, 4, 1, 2, 2 };
+        private void LlenaHojaPerformance(Tarjeta hoja, Font fNom, Font fDes, Font fBot, Color cTexto, Color cTenue,
                                           out Interruptor[] interruptores, out Label[] medidos, out Label cuenta)
         {
             hoja.Name = "Performance"; hoja.Titulo = ""; hoja.Acento = Color.FromArgb(120, 230, 165);
-            Label tit = new Label(); tit.SetBounds(16, 46, 424, 22); tit.Font = fNom; tit.ForeColor = cTexto;
+            Label tit = new Label(); tit.SetBounds(16, 42, 424, 22); tit.Font = fNom; tit.ForeColor = cTexto;
             tit.BackColor = Color.Transparent; tit.Text = "Casi igual, más ligero";
-            Label des = new Label(); des.SetBounds(16, 70, 424, 50); des.Font = fDes; des.ForeColor = cTenue;
+            Label des = new Label(); des.SetBounds(16, 64, 424, 34); des.Font = fDes; des.ForeColor = cTenue;
             des.BackColor = Color.Transparent;
             des.Text = "Para equipos modestos: menos trabajo para la tarjeta con\n"
-                     + "cambios que casi no se notan. El botón Performance de\n"
-                     + "Efectos los enciende con los efectos en Alto.";
+                     + "cambios que casi no se notan. Performance los enciende.";
             hoja.Controls.Add(tit); hoja.Controls.Add(des);
             // Explicaciones de dos renglones. Los ahorros que pueden quedar sin efecto llevan un renglon
-            // mas debajo del nombre (NecesitaMotivo) y bajan lo suyo 12 pixeles.
+            // mas debajo del nombre (NecesitaMotivo).
             string[] explica = {
                 "El cielo, las nebulosas y la vía láctea se pintan a la mitad\n"
               + "y se estiran una vez: casi idéntico, un cuarto de píxeles.",
@@ -2036,48 +2040,70 @@ namespace Rocola
                 "Estrecha el resplandor de la cresta de la aurora.\n"
               + "Conserva su línea luminosa, la cortina y el horizonte."
             };
+            // Las hojitas por tema: una pestana por grupo y un panel con sus filas.
+            const int altoFila = 86, yGrupos = 134, altoGrupo = 344;
+            Panel[] paneles = new Panel[GrupoAhorro.Length];
+            BotonPlano[] pestanas = new BotonPlano[GrupoAhorro.Length];
+            int elegido = 0;
+            Action pintaPestanas = delegate
+            {
+                for (int g = 0; g < paneles.Length; g++)
+                {
+                    bool activa = g == elegido;
+                    paneles[g].Visible = activa;
+                    pestanas[g].Relleno = activa ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                    pestanas[g].Borde = activa ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
+                    pestanas[g].ForeColor = activa ? cTexto : cTenue;
+                    pestanas[g].Invalidate();
+                }
+            };
+            for (int g = 0; g < GrupoAhorro.Length; g++)
+            {
+                Panel pn = new Panel(); pn.SetBounds(0, yGrupos, 456, altoGrupo); pn.BackColor = Color.Transparent;
+                paneles[g] = pn; hoja.Controls.Add(pn);
+                BotonPlano t = new BotonPlano(); t.SetBounds(16 + g * 84, 102, 78, 28); t.Font = fBot; t.Text = GrupoAhorro[g];
+                t.AccessibleName = "Performance: " + GrupoAhorro[g];
+                int k0 = g; t.Click += delegate { elegido = k0; pintaPestanas(); };
+                pestanas[g] = t; hoja.Controls.Add(t);
+            }
             interruptores = new Interruptor[NombreAhorro.Length];
             medidos = new Label[NombreAhorro.Length];
-            int y = 124;
+            int[] filaDe = new int[GrupoAhorro.Length];
             for (int i = 0; i < NombreAhorro.Length; i++)
             {
-                const int extra = 12;   // todos llevan el renglon de lo que les falta
+                Panel pn = paneles[GrupoDeAhorro[i]];
+                int y = filaDe[GrupoDeAhorro[i]]++ * altoFila;
                 Interruptor s = new Interruptor(); s.SetBounds(16, y, 424, 26); s.Font = fNom; s.ForeColor = cTexto;
                 s.Acento = hoja.Acento; s.Text = NombreAhorro[i]; s.Checked = LeeAhorro(i);
                 s.AccessibleName = "Performance: " + NombreAhorro[i];
-                Label d = new Label(); d.SetBounds(16, y + 28 + extra, 424, 34); d.Font = fDes; d.ForeColor = cTenue;
+                Label d = new Label(); d.SetBounds(16, y + 38, 424, 34); d.Font = fDes; d.ForeColor = cTenue;
                 d.BackColor = Color.Transparent; d.Text = explica[i];
-                Label m = new Label(); m.SetBounds(16, y + 62 + extra, 424, 18); m.Font = fDes; m.ForeColor = cTenue;
+                Label m = new Label(); m.SetBounds(16, y + 70, 424, 16); m.Font = fDes; m.ForeColor = cTenue;
                 m.BackColor = Color.Transparent;
-                hoja.Controls.Add(s); hoja.Controls.Add(d); hoja.Controls.Add(m);
+                pn.Controls.Add(s); pn.Controls.Add(d); pn.Controls.Add(m);
                 interruptores[i] = s; medidos[i] = m;
                 int k = i;
                 if (k != 10) NecesitaMotivo(s, delegate { return MotivoSinAhorro(k); });   // en gris si ahora no hace nada, y por que
-                y += 84 + extra;
             }
-            Label autoT = new Label(); autoT.SetBounds(16, y, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
+            pintaPestanas();
+            // Lo fijo de abajo.
+            const int y0 = yGrupos + altoGrupo + 4;   // 482: y el boton Listo empieza en 580, a la derecha de la x 316
+            Label autoT = new Label(); autoT.SetBounds(16, y0, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
             autoT.BackColor = Color.Transparent; autoT.Text = "Automático: mapas y reloj por recuadros";
-            Label autoD = new Label(); autoD.SetBounds(16, y + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
+            Label autoD = new Label(); autoD.SetBounds(16, y0 + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
             autoD.BackColor = Color.Transparent;
             autoD.Text = "Reutilizar mapas y texturas; no subir textos ocultos.\n"
                        + "Juntar órdenes y no repetir el cielo. Misma imagen.";
-            cuenta = new Label(); cuenta.SetBounds(16, y + 56, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
+            cuenta = new Label(); cuenta.SetBounds(16, y0 + 58, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
             cuenta.BackColor = Color.Transparent;
-            Label nota = new Label(); nota.SetBounds(16, y + 92, 424, 18); nota.Font = fDes; nota.ForeColor = cTenue;
+            Label nota = new Label(); nota.SetBounds(16, y0 + 94, 290, 32); nota.Font = fDes; nota.ForeColor = cTenue;   // 290: no llega al boton Listo
             nota.BackColor = Color.Transparent;
             nota.Text = "De fábrica, apagados. Se guardan al momento.";
             hoja.Controls.Add(autoT); hoja.Controls.Add(autoD); hoja.Controls.Add(cuenta); hoja.Controls.Add(nota);
             // Sin tarjeta, en gris y dicho una vez (A1), en el sitio de la cuenta.
-            Label sin = new Label(); sin.SetBounds(16, y + 56, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
+            Label sin = new Label(); sin.SetBounds(16, y0 + 58, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
             sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
             SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, cuenta);
-            Panel contenido = new Panel(); contenido.SetBounds(0, 42, 456, 582);
-            contenido.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            contenido.BackColor = Color.Transparent; contenido.AutoScroll = true;
-            Control[] mandos = new Control[hoja.Controls.Count]; hoja.Controls.CopyTo(mandos, 0);
-            foreach (Control mando in mandos) { mando.Top -= 42; mando.Width = Math.Min(mando.Width, 404); contenido.Controls.Add(mando); }
-            contenido.AutoScrollMinSize = new Size(0, y + 78);
-            hoja.Controls.Add(contenido);
         }
         // Lo medido de un ahorro, en una linea.
         private string TextoAhorro(int i)

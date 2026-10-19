@@ -1,5 +1,10 @@
 # Rocola
 
+## Medir el cuadro y poner en orden la hoja Performance — 19 de octubre de 2026
+
+La hoja Performance, con sus 13 ahorros, se salía de la ventana: ahora va en cinco hojitas por tema (Cielo, Grano, Aurora, Estrella, Estado). La prueba de la ventana de ajustes mira también Fluidez y Performance, que nadie revisaba. Y un banco nuevo mide cuánto cuesta cada capa del cuadro de la tarjeta.
+[Qué se midió, qué se cambió y cómo se comprobó](ORDEN_PERFORMANCE_E_INVENTARIO_MODEST_2026-10-19.md).
+
 ## Colores de portadas con menos llamadas — 19 de octubre de 2026
 
 La extracción de paletas reutiliza las dimensiones y lee completos los píxeles

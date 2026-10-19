@@ -148,6 +148,26 @@ class VentanaF3
                             if (vuelveA != null) { Click(vuelveA); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver de lo que suena se ven otra vez las canciones"); }
                         }
                     }
+                    if (pag == "Imagen")
+                    {   // Las tres hojas de la tarjeta de efectos (Efectos, Fluidez y Performance). Hasta el 19-10-2026 nadie miraba Fluidez ni
+                        // Performance (su pestana no es hija directa de la pagina), y esta ultima se salia de la ventana.
+                        foreach (string hoja in new string[] { "Fluidez", "Performance" })
+                        {
+                            Control bt = Boton(dlg, hoja);
+                            Check(bt != null, "Imagen tiene su hoja " + hoja);
+                            if (bt == null) continue;
+                            Click(bt); Mira(nombre + ", " + pag + " > " + hoja);
+                            if (hoja != "Performance") continue;
+                            // Performance (19-10-2026): sus ahorros van en hojitas por tema; se mira cada una.
+                            foreach (string sub in new string[] { "Aurora", "Estrella", "Estado", "Grano", "Cielo" })
+                            {
+                                Control st = Boton(dlg, sub);
+                                Check(st != null, "Performance tiene su hojita " + sub);
+                                if (st != null) { Click(st); Mira(nombre + ", " + pag + " > Performance > " + sub); }
+                            }
+                        }
+                        Control efe = Boton(dlg, "Efectos"); if (efe != null) Click(efe);
+                    }
                     foreach (Control pg in dlg.Controls) if (pg is Panel && pg.Visible && pg.Width >= 900)
                     {
                         List<Control> hojas = new List<Control>();
