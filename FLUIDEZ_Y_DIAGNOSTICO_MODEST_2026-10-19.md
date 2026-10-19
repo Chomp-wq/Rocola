@@ -41,6 +41,31 @@ opciones de Performance encendidas, 120 cuadros de calentamiento y 360 intervalo
 - **Programa entero con 30.000 canciones** (perfil sin tarjeta, servidor virtual): ventana lista en 148 ms, biblioteca en 1,0 s, memoria
   160 a 185 MB estable, hilo de pantalla ≈ 9 % de un núcleo con la biblioteca quieta y sin paradas de más de 25 ms después del arranque.
 
+## El repintado del panel de estado, por dentro (segunda búsqueda)
+
+Es lo único recurrente que sobresale, así que se midió por partes (200 repintados, copia de las fuentes con cronómetros; este equipo, libgdiplus):
+
+| Parte del repintado | 1024×768 (panel de 245 px) | 1920×1080 (340 px) |
+| --- | ---: | ---: |
+| Textos y números de la cola (12 puestos) | 1,38 ms | 1,60 ms |
+| Tarjetas redondeadas de la cola | 0,68 ms | 0,94 ms |
+| Fondo (degradado) | 0,17 ms | 0,47 ms |
+| Título, artista y encabezado | 0,16 ms | 0,22 ms |
+| Portadas de la cola | 0,07 ms | 0,14 ms |
+| Reloj, encabezado de la cola, fuentes | 0,18 ms | 0,22 ms |
+| **Total** | **2,74 ms** | **3,68 ms** |
+
+Casi todo es texto y tarjetas, y **de eso solo una parte depende del color del género** (la línea de arriba, los encabezados, el artista y los
+números de la cola). Los 13 o 14 repintados de cada cambio de color rehacen también lo que no cambia.
+
+Se probaron dos salidas y **no se implementó ninguna**:
+- *Repintar solo las zonas del color con un recorte (`SetClip`).* Es exacto píxel a píxel dentro del recorte, pero el tiempo no bajó de forma
+  fiable (3,24 → 3,34 ms a 1024×768): el coste está en maquetar el texto, no en pintarlo.
+- *Pintar en dos capas (la base una vez y, en cada paso, solo lo del color).* Sí ahorraría unos 2 ms por paso (≈ 26 ms por canción aquí), pero
+  obliga a dividir `RenderIdlePanelEn`, `PintaTituloGrande`, `PintaMinutosCola` y las cintas de texto de la tarjeta (que también se
+  hornean con el color) y a demostrar que no cambia ningún píxel. Es un rediseño grande para un ahorro que no se pudo medir en el A4. Si
+  «Color directo del estado extendido» no basta en la rocola, es el siguiente paso.
+
 ## Lo que se descartó, con su motivo
 
 | Idea | Por qué no |
