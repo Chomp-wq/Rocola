@@ -276,6 +276,9 @@ CPU="$CPU firmabiblioteca"
 # 'firmarapida': la firma de la biblioteca (19-10-2026) sale IGUAL, letra por letra, que la de antes, con el hash ASCII, el orden por nombre y el
 # recorrido rapido de CLR 2 (probado con un origen de datos inventado; la parte de Windows, FindFirstFile, no se puede ejecutar aqui).
 CPU="$CPU firmarapida"
+# 'respaldobytes': el respaldo del arranque comprueba cada copia releyendola y comparandola byte a byte con el origen (antes, dos SHA-256 por
+# archivo: 2 a 8 s de procesador en .NET 3.5); una copia estropeada no se publica. De punta a punta solo donde existe FlushFileBuffers.
+CPU="$CPU respaldobytes"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"

@@ -2605,17 +2605,19 @@ namespace Rocola
                 try
                 {
                     int copied = 0;
-                    byte[] buffer = new byte[65536];
+                    byte[] buffer = new byte[65536], otro = new byte[65536];
                     for (int i = 0; i < captura.Archivos.Count; i++)
                     {
                         ArchivoRespaldo archivo = captura.Archivos[i];
                         FileStream input = archivo.Lector; input.Position = 0;
-                        using (System.Security.Cryptography.SHA256 copyHash = System.Security.Cryptography.SHA256.Create())
                         {
                             string dst = Path.Combine(pending, Path.GetFileName(archivo.Ruta));
                             // Mientras se copia, el destino es una carpeta PRIVADA no publicada. Forzar cada
                             // bloque de 64 KiB al disco no protege nada adicional ante un apagon: la copia
-                            // solo se publica despues de FlushFileBuffers exitoso + hash verificado + Move.
+                            // solo se publica despues de FlushFileBuffers exitoso + copia releida y comparada
+                            // byte a byte con el origen capturado + Move. (Antes: dos SHA-256 de cada archivo,
+                            // uno de lo leido y otro de la copia, 2 a 8 segundos de procesador en .NET 3.5 al
+                            // arrancar; ahora, releer la copia y el origen y comparar, sin ningun hash.)
                             // Los respaldos anteriores se conservan si cualquier paso falla.
                             using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.None))
                             {
@@ -2626,23 +2628,12 @@ namespace Rocola
                                     int n = input.Read(buffer, 0, (int)Math.Min(buffer.Length, faltan));
                                     if (n == 0) throw new IOException("El origen del respaldo se trunco durante la copia");
                                     outputFile.Write(buffer, 0, n);
-                                    copyHash.TransformBlock(buffer, 0, n, buffer, 0);
                                     faltan -= n;
                                 }
-                                copyHash.TransformFinalBlock(buffer, 0, 0);
                                 outputFile.Flush();
                                 if (!FlushFileBuffers(outputFile.SafeFileHandle.DangerousGetHandle())) throw new IOException("No se pudo confirmar el respaldo en disco");
                             }
-                            using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
-                            using (FileStream check = File.OpenRead(dst))
-                            {
-                                int n;
-                                while ((n = check.Read(buffer, 0, buffer.Length)) > 0)
-                                { if (cede != null) cede(dst); hash.TransformBlock(buffer, 0, n, buffer, 0); }
-                                hash.TransformFinalBlock(buffer, 0, 0);
-                                byte[] a = copyHash.Hash, b = hash.Hash;
-                                for (int k = 0; k < a.Length; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
-                            }
+                            CompruebaCopiaDeRespaldo(input, archivo.Largo, dst, buffer, otro, cede, archivo.Ruta);
                             copied++;
                         }
                     }
@@ -2656,6 +2647,39 @@ namespace Rocola
                     if (Directory.Exists(pending)) try { Directory.Delete(pending, true); } catch { }
                 }
             }
+        }
+        // La copia ya esta en disco (FlushFileBuffers hecho): se relee y se compara byte a byte con el origen capturado (los primeros 'largo'
+        // bytes, que es lo que se copio). Lanza IOException("La copia del respaldo no coincide") si algun byte difiere o si la copia mide otra cosa,
+        // y la de siempre si el origen se trunco. Los bloques de lectura son los mismos (64 KiB) y entre bloque y bloque se cede igual.
+        private static void CompruebaCopiaDeRespaldo(FileStream origen, long largo, string copia, byte[] a, byte[] b, Action<string> cede, string rutaOrigen)
+        {
+            origen.Position = 0;
+            using (FileStream check = File.OpenRead(copia))
+            {
+                if (check.Length != largo) throw new IOException("La copia del respaldo no coincide");
+                long faltan = largo;
+                while (faltan > 0)
+                {
+                    if (cede != null) { cede(copia); cede(rutaOrigen); }
+                    int quiero = (int)Math.Min(a.Length, faltan);
+                    int n = LeeCompleto(check, a, quiero), m = LeeCompleto(origen, b, quiero);
+                    if (m < quiero) throw new IOException("El origen del respaldo se trunco durante la copia");
+                    if (n < quiero) throw new IOException("La copia del respaldo no coincide");
+                    for (int k = 0; k < quiero; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
+                    faltan -= quiero;
+                }
+            }
+        }
+        private static int LeeCompleto(Stream s, byte[] buf, int cuantos)
+        {
+            int hecho = 0;
+            while (hecho < cuantos)
+            {
+                int n = s.Read(buf, hecho, cuantos - hecho);
+                if (n <= 0) break;
+                hecho += n;
+            }
+            return hecho;
         }
         // Deja solo las 'keep' carpetas de respaldo mas recientes (por fecha de modificacion); borra el resto.
         private static void PruneBackups(string baseDir, int keep)
