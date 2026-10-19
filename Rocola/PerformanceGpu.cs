@@ -144,8 +144,7 @@ namespace Rocola
         private int mediaGen;
         internal int MediaGen { get { return mediaGen; } }
         private bool mediaSinSoporte, enMedia;
-        // J2 (14-10-2026): la imagen va a la mitad (2) o a un cuarto (4) de la pantalla en cada lado. A tamano completo (1) es la
-        // cache del cielo de fabrica (19-10-2026, GpuPanel.CieloMedioBase).
+        // J2 (14-10-2026): la imagen va a la mitad (2) o a un cuarto (4) de la pantalla en cada lado.
         private int mediaDiv = 2;
         internal int MediaDiv { get { return mediaDiv; } }
         private D3D9.Vtx[] mediaVerts;
@@ -154,13 +153,12 @@ namespace Rocola
         internal int MediaTH { get { return mediaTH; } }
         internal bool MediaSinSoporte { get { return mediaSinSoporte; } }
         internal static int MediaLado(int lado) { return MediaLado(lado, 2); }
-        // A tamano completo (div 1) la imagen es la pantalla misma: ni el borde de sobra ni nada que leer fuera.
-        internal static int MediaLado(int lado, int div) { return div == 1 ? lado : (lado + div - 1) / div + 2; }
+        internal static int MediaLado(int lado, int div) { return (lado + div - 1) / div + 2; }
 
         internal bool EmpiezaMedia(int w, int h) { return EmpiezaMedia(w, h, 2); }
         internal bool EmpiezaMedia(int w, int h, int div)
         {
-            if (div != 4 && div != 1) div = 2;
+            if (div != 4) div = 2;
             if (dev == IntPtr.Zero || lost || !inScene || enMedia || mediaSinSoporte || w < 8 * div || h < 8 * div) return false;
             int mw = MediaLado(w, div), mh = MediaLado(h, div);
             if (mediaTex == IntPtr.Zero || mediaTW < mw || mediaTH < mh)
@@ -526,16 +524,10 @@ namespace Rocola
         {
             cieloMedioEsteCuadro = false; capaUnicaEsteCuadro = false;
             if (stars != null) stars.VinetaPuntos = false;
-            if (Nieblas == GpuStarfield.Bajo || (nebTex == IntPtr.Zero && hazTex == IntPtr.Zero)) return false;
+            if (!CieloMedia || Nieblas == GpuStarfield.Bajo || (nebTex == IntPtr.Zero && hazTex == IntPtr.Zero)) return false;
             if (stars == null) return false;
-            // Sin «Cielo a media resolucion»: el cielo de fabrica a tamano completo, con la misma regla de no repetir (G1).
-            // Solo cuando no hay portadas opacas encima (el reposo, la atraccion, los buscadores): con huecos las capas se parten en
-            // rectangulos alrededor de cada portada y el redondeo de sus vertices mueve algun pixel suelto un nivel de 255; la imagen
-            // entera no, y cambiar de una a otra seria un cambio de aspecto. Con huecos se pinta como siempre.
-            bool completo = !CieloMedia;
-            if (completo && nHuecos > 0) return false;
-            bool capa = !completo && FondoUnaCapa;
-            int div = completo ? 1 : (CieloCuarto ? 4 : 2);   // J2: a un cuarto en cada lado
+            bool capa = FondoUnaCapa;
+            int div = CieloCuarto ? 4 : 2;   // J2: a un cuarto en cada lado
             IntPtr vineta = capa && VinetaSuave ? vinetaTex : IntPtr.Zero, ruido = capa && !SinGrano ? ruidoTex : IntPtr.Zero;
             if (firmaHecha == null) { firmaHecha = new FirmaCielo(); firmaAhora = new FirmaCielo(); }
             FirmaCielo f = firmaAhora;
@@ -552,8 +544,7 @@ namespace Rocola
                 try
                 {
                     nHuecos = 0;
-                    if (completo) stars.CieloDirecto(w, h, midY, top, mid, bot, false);   // la imagen guarda el cielo ENTERO
-                    else stars.CieloAmplio(w, h, midY, top, mid, bot);
+                    stars.CieloAmplio(w, h, midY, top, mid, bot);
                     DibujaNieblas();
                     if (capa)
                     {
@@ -593,7 +584,7 @@ namespace Rocola
                 {
                     PiezasEstirado(piezasEstirado, w, h, tw, th, div);
                     int v = 0;
-                    for (int k = 0; k < (div == 1 ? 1 : 4); k++)
+                    for (int k = 0; k < 4; k++)
                     {
                         int o = k * 8;
                         float[] q = piezasEstirado;
@@ -609,13 +600,12 @@ namespace Rocola
             {
                 PiezasEstirado(piezasEstirado, w, h, tw, th, div);   // (sin reservar nada por cuadro)
                 float[] q = piezasEstirado;
-                int piezas = div == 1 ? 1 : 4;
-                for (int k = 0; k < piezas; k++)
+                for (int k = 0; k < 4; k++)
                 {
                     int o = k * 8;
                     Trozo(mediaQuad, k * 6, q[o], q[o + 1], q[o + 2], q[o + 3], q[o + 4], q[o + 5], q[o + 6], q[o + 7]);
                 }
-                stars.DibujaMedia(mediaQuad, piezas * 2);
+                stars.DibujaMedia(mediaQuad, 8);
             }
             cieloMedioEsteCuadro = true;
             if (capa)
@@ -683,8 +673,6 @@ namespace Rocola
         private readonly float[] piezasEstirado = new float[32];
         internal static void PiezasEstirado(float[] p, int w, int h, int tw, int th, int div)
         {
-            // A tamano completo la imagen ES la pantalla: una sola pieza, pixel a pixel (el primer texel va a la esquina).
-            if (div == 1) { Pieza(p, 0, 0, 0, w, h, 0, 0, w / (float)tw, h / (float)th); return; }
             if (div != 4) div = 2;
             int jx = w / div - 1, jy = h / div - 1;   // la ultima columna y fila de la imagen enteras dentro
             // Hasta aqui (sin incluir), el pixel lee solo texeles de dentro: p <= div * (j + 0.5) - 0.5.
