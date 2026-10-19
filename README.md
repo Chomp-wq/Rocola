@@ -1,5 +1,10 @@
 # Rocola
 
+## Fluidez: qué se midió y qué se descartó, y paradas con contexto — 19 de octubre de 2026
+
+El cuadro completo cuesta ≈ 0,09 ms y casi no reserva memoria; lo que sobresale son los repintados del panel de estado (unos milisegundos cada vez). No apareció un ahorro nuevo que valga su complejidad. Ahora cada parada de pantalla apunta recolecciones, memoria y RAM libre para saber qué la causó en el A4.
+[Qué se midió, qué se descartó y cómo medir en el A4](FLUIDEZ_Y_DIAGNOSTICO_MODEST_2026-10-19.md).
+
 ## Medir el cuadro y poner en orden la hoja Performance — 19 de octubre de 2026
 
 La hoja Performance, con sus 13 ahorros, se salía de la ventana: ahora va en cinco hojitas por tema (Cielo, Grano, Aurora, Estrella, Estado). La prueba de la ventana de ajustes mira también Fluidez y Performance, que nadie revisaba. Y un banco nuevo mide cuánto cuesta cada capa del cuadro de la tarjeta.
