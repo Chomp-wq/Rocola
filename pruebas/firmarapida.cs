@@ -109,7 +109,7 @@ class FirmaRapida
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
         TF = asm.GetType("Rocola.Form1", true); TL = asm.GetType("Rocola.ListadoCarpeta", false); TW = asm.GetType("Rocola.ListadoWin32", false); TE = asm.GetType("Rocola.EntradaListado", false);
         Type tAnt = null;
-        if (args.Length > 1) { try { tAnt = Assembly.LoadFrom(args[1]).GetType("Rocola.Form1", true); } catch (Exception ex) { Console.WriteLine("  (sin el ejecutable anterior: " + ex.GetType().Name + ")"); } }
+        if (args.Length > 1) { try { tAnt = Assembly.Load(File.ReadAllBytes(args[1])).GetType("Rocola.Form1", true); } catch (Exception ex) { Console.WriteLine("  (sin el ejecutable anterior: " + ex.GetType().Name + ")"); } }
         NuevoHash = (HashDel)Delegate.CreateDelegate(typeof(HashDel), TF.GetMethod("RootHash", T));
         NuevaFirma = DeEnsamblado(TF);
         Check(TL != null && TW != null && TE != null, "existen el recorrido rapido (ListadoCarpeta, ListadoWin32, EntradaListado)");

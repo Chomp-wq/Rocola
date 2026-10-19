@@ -159,7 +159,7 @@ class CosechaUnaVez
         {
             try
             {
-                Assembly ar = Assembly.LoadFrom(args[1]);
+                Assembly ar = Assembly.Load(File.ReadAllBytes(args[1]));
                 formRef = ar.GetType("Rocola.Form1", true); originRef = formRef.GetNestedType("IaOrigen", BindingFlags.NonPublic); unicoRef = formRef.GetMethod("IaAppendPairsOrigen", IF);
             }
             catch (Exception e) { Console.WriteLine("  (sin ejecutable anterior: " + e.GetType().Name + ")"); formRef = null; }
