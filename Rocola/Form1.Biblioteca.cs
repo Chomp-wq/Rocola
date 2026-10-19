@@ -1793,8 +1793,38 @@ namespace Rocola
         private static void RootHash(ref ulong h, string s)
         {
             if (s == null) s = "";
-            for (int i = 0; i < s.Length; i++) { h ^= char.ToLowerInvariant(s[i]); h *= 1099511628211UL; }
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                // ASCII: la minuscula a mano (ToLowerInvariant solo toca A-Z ahi, y es lo que se comprueba en la bateria firmarapida);
+                // acentos, la I turca con punto, la eszett y lo demas siguen pasando por ToLowerInvariant. Misma firma, sin una llamada por letra.
+                if (c < 0x80) { if (c >= 'A' && c <= 'Z') c = (char)(c + 32); }
+                else c = char.ToLowerInvariant(c);
+                h ^= c; h *= 1099511628211UL;
+            }
             h ^= 0xff; h *= 1099511628211UL;
+        }
+        // Ordena las rutas de UNA carpeta como Array.Sort(rutas, StringComparer.OrdinalIgnoreCase), pero comparando solo el nombre: todas
+        // empiezan igual (la carpeta y el separador) y esa parte comun, de 60 letras o mas, se comparaba en cada una de las n log n
+        // comparaciones. Se comprueba que el comienzo es EXACTAMENTE el mismo en todas (letra por letra) antes de saltarlo; si no, o si no hay
+        // nada que ordenar, se hace lo de siempre. Es el mismo algoritmo (Array.Sort) con la misma respuesta en cada comparacion, asi que
+        // incluso los empates (nombres iguales salvo mayusculas, que en Linux pueden existir) quedan en el mismo sitio.
+        private static void OrdenaRutasDeCarpeta(string[] rutas)
+        {
+            if (rutas == null || rutas.Length < 2) return;
+            string primera = rutas[0];
+            int off = primera.LastIndexOfAny(SepChars) + 1;
+            bool comun = off > 0;
+            for (int i = 1; comun && i < rutas.Length; i++)
+                comun = rutas[i].Length >= off && string.CompareOrdinal(rutas[i], 0, primera, 0, off) == 0;
+            IComparer<string> cmp = comun ? (IComparer<string>)new ComparaDesde(off) : StringComparer.OrdinalIgnoreCase;
+            Array.Sort(rutas, cmp);
+        }
+        private sealed class ComparaDesde : IComparer<string>
+        {
+            private readonly int off;
+            internal ComparaDesde(int desde) { off = desde; }
+            public int Compare(string a, string b) { return string.Compare(a, off, b, off, int.MaxValue, StringComparison.OrdinalIgnoreCase); }
         }
         private static string RootSig(string root)
         { return RootSigCaptured(root, null); }
@@ -1840,7 +1870,7 @@ namespace Rocola
             {
                 paths = Directory.GetFiles(dir);
                 if (memo != null && memo.CanCapture(paths.Length)) captured = (string[])paths.Clone();
-                Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+                OrdenaRutasDeCarpeta(paths);
                 count = paths.Length;
             }
             for (int i = 0; i < count; i++)
@@ -1851,7 +1881,7 @@ namespace Rocola
             }
             string[] subs = Directory.GetDirectories(dir);
             if (memo != null && captured != null) memo.Remember(dir, stamp, captured, subs);
-            Array.Sort(subs, StringComparer.OrdinalIgnoreCase);
+            OrdenaRutasDeCarpeta(subs);
             for (int i = subs.Length - 1; i >= 0; i--)
                 if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
         }

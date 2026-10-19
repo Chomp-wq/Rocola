@@ -273,6 +273,8 @@ CPU="$CPU guardadocortado"
 # 'firmabiblioteca': una carpeta que no se puede leer ya no tira la firma de la biblioteca entera (sin firma no se guardaba
 # y cada arranque recorria el disco completo). Con una carpeta cerrada de verdad (en Linux, el proceso pasa a 'nobody').
 CPU="$CPU firmabiblioteca"
+# 'firmarapida': la firma de la biblioteca (19-10-2026) sale IGUAL, letra por letra, que la de antes, con el hash ASCII y el orden por nombre.
+CPU="$CPU firmarapida"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"
