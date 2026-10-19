@@ -857,14 +857,21 @@ namespace Rocola
                 if (hv != null && !soloCorte && hvPares != null)
                 {
                     // Con su ORIGEN (cancion, carpeta, frecuencia, cuadro, canal 0) para que el entrenador pueda
-                    // separar por cancion. Ver IaApuntaOrigen.
+                    // separar por cancion. Ver IaApuntaOrigenes. El origen se saca UNA vez por cancion (la etiqueta del archivo, el genero, las
+                    // huellas: lo mismo para los dos canales salvo el numero de canal) y los canales se anexan juntos, con una confirmacion en
+                    // disco por archivo (IaAppendPairsLote).
                     bool escribio = false, completas = true;
+                    List<List<float>> lotesIa = new List<List<float>>(); List<int> canalesIa = new List<int>();
                     for (int canalIa = 0; canalIa < hvPares.Length; canalIa++)
-                        if (hvPares[canalIa].Count >= 40 && hvCanales[canalIa].CutHz >= EqSanaHz)
-                        {
-                            bool ok = IaAppendPairsOrigen(hvPares[canalIa], IaOrigenDe(path, total, rate, hv.FrameLen, canalIa));
-                            escribio |= ok; completas &= ok;
-                        }
+                        if (hvPares[canalIa].Count >= 40 && hvCanales[canalIa].CutHz >= EqSanaHz) { lotesIa.Add(hvPares[canalIa]); canalesIa.Add(canalIa); }
+                    if (lotesIa.Count > 0)
+                    {
+                        IaOrigen origenBase = IaOrigenDe(path, total, rate, hv.FrameLen, canalesIa[0]);
+                        IaOrigen[] origenesIa = new IaOrigen[lotesIa.Count];
+                        for (int k = 0; k < origenesIa.Length; k++) origenesIa[k] = IaOrigenParaCanal(origenBase, canalesIa[k]);
+                        bool[] oksIa = IaAppendPairsLote(lotesIa.ToArray(), origenesIa);
+                        for (int k = 0; k < oksIa.Length; k++) { escribio |= oksIa[k]; completas &= oksIa[k]; }
+                    }
                     if (escribio && completas) MarkIaDone(path, nivelAhora);
                 }
                 float corteHz = measuredCut;

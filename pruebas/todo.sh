@@ -279,6 +279,9 @@ CPU="$CPU firmarapida"
 # 'respaldobytes': el respaldo del arranque comprueba cada copia releyendola y comparandola byte a byte con el origen (antes, dos SHA-256 por
 # archivo: 2 a 8 s de procesador en .NET 3.5); una copia estropeada no se publica. De punta a punta solo donde existe FlushFileBuffers.
 CPU="$CPU respaldobytes"
+# 'cosechaunavez': la cosecha de la IA (19-10-2026) saca el origen una vez por cancion y anexa los canales juntos, con una confirmacion en disco por
+# archivo (6 -> 3 en estereo); lo que se guarda es igual, byte a byte, a lo que dejaban los canales anexados uno por uno.
+CPU="$CPU cosechaunavez"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"

@@ -118,7 +118,7 @@ namespace Rocola
         // dejarian el archivo de material entrelazado y por tanto inservible. El candado cuesta nada al lado
         // de descomprimir una cancion, que es lo que hace el hilo justo antes de llegar aqui.
         private readonly object iaFileLock = new object();
-        // Con el ORIGEN de esos pares (ver IaApuntaOrigen). Sin origen -como la llaman las pruebas de los
+        // Con el ORIGEN de esos pares (ver IaApuntaOrigenes). Sin origen -como la llaman las pruebas de los
         // carriles- se guarda igual y esos ejemplos quedan "sin origen": nunca se inventa de donde vienen.
         // El lote sigue siendo una sola entrada de origen. Solo su copia de trabajo se divide en bloques:
         // ambos arrays quedan por debajo del LOH y se reutilizan bajo iaFileLock, aunque un repaso a fondo
@@ -148,51 +148,87 @@ namespace Rocola
         private bool IaAppendPairs(List<float> pairs) { return IaAppendPairsOrigen(pairs, null); }
         private bool IaAppendPairsOrigen(List<float> pairs, IaOrigen origen)
         {
-            if (pairs == null || pairs.Count < 40 || (pairs.Count % 40) != 0) return false;
+            return IaAppendPairsLote(new List<float>[] { pairs }, new IaOrigen[] { origen })[0];
+        }
+        // LOS CANALES DE UNA CANCION, UNA CONFIRMACION POR ARCHIVO (19-10-2026). La cosecha escribia cada canal por su cuenta: datos, confirmacion en
+        // disco (FlushFileBuffers), entrada del indice, confirmacion, linea de genero, confirmacion: seis confirmaciones por cancion en estereo, cada una
+        // una espera de disco en un hilo de fondo. Aqui los lotes (uno por canal, en orden) se anexan igual que antes, uno tras otro y con las mismas
+        // comprobaciones, pero cada archivo se confirma UNA vez al final: los datos, luego (solo despues) las entradas del indice, luego las lineas de
+        // genero. Los mismos bytes en los tres archivos y el mismo orden; lo que se pierde, si se va la luz entre dos canales, es que el canal 0 ya no
+        // tiene su entrada de origen cuando el 1 no llego al disco (esos ejemplos quedan "sin origen", que el entrenador no usa para validar, y nunca
+        // se atribuyen mal). Devuelve, por lote, si se escribio. Un lote invalido o que no cabe no impide los siguientes, como antes.
+        private bool[] IaAppendPairsLote(List<float>[] lotes, IaOrigen[] origenes)
+        {
+            bool[] oks = new bool[lotes.Length];
             lock (iaFileLock)
             {
-                long primero; bool nuevo; uint crcDatos;
+                long[] primeros = new long[lotes.Length]; uint[] crcs = new uint[lotes.Length]; bool[] nuevos = new bool[lotes.Length];
+                long totalFinal = -1;
+                FileStream fs = null;
+                bool pendiente = false;   // hay escrito sin confirmar en 'fs'
                 try
                 {
-                    long loteBytes = (long)pairs.Count * 4L, tope = iaMaxBytes;
-                    // Un lote se admite completo o no se escribe: nunca recortar cuadros o canales.
-                    // Esta comprobacion temprana evita crear una cabecera si el lote ni siquiera cabe
-                    // en un corpus vacio. La decisiva usa el largo REAL, dentro del mismo candado.
-                    if (tope > 0 && loteBytes > Math.Max(0L, tope - 16L)) return false;
-                    string f = IaDataFile();
-                    using (FileStream fs = new FileStream(f, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+                    for (int i = 0; i < lotes.Length; i++)
                     {
-                        nuevo = fs.Length == 0;
-                        if (!nuevo && !IaHeaderValida(fs)) return false;   // no anexar encima de un archivo ajeno/corrupto
-                        long completos = nuevo ? 0L : Math.Max(0L, (fs.Length - 16) / 160);
-                        long valido = 16 + completos * 160;
-                        tope = iaMaxBytes;
-                        if (tope > 0 && valido + loteBytes > tope) return false;
-                        IaPreparaScratch();   // asignar antes de modificar una cabecera/cola interrumpida
-                        if (nuevo)
+                        List<float> pairs = lotes[i];
+                        if (pairs == null || pairs.Count < 40 || (pairs.Count % 40) != 0) continue;
+                        try
                         {
-                            byte[] head = new byte[16];
-                            head[0] = (byte)'R'; head[1] = (byte)'I'; head[2] = (byte)'A'; head[3] = (byte)'D';
-                            Buffer.BlockCopy(BitConverter.GetBytes(1), 0, head, 4, 4);
-                            Buffer.BlockCopy(BitConverter.GetBytes(28), 0, head, 8, 4);
-                            Buffer.BlockCopy(BitConverter.GetBytes(12), 0, head, 12, 4);
-                            fs.Write(head, 0, head.Length);
+                            long loteBytes = (long)pairs.Count * 4L, tope = iaMaxBytes;
+                            // Un lote se admite completo o no se escribe: nunca recortar cuadros o canales.
+                            // Esta comprobacion temprana evita crear una cabecera si el lote ni siquiera cabe
+                            // en un corpus vacio. La decisiva usa el largo REAL, dentro del mismo candado.
+                            if (tope > 0 && loteBytes > Math.Max(0L, tope - 16L)) continue;
+                            if (fs == null) fs = new FileStream(IaDataFile(), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+                            bool nuevo = fs.Length == 0;
+                            if (!nuevo && !IaHeaderValida(fs)) continue;   // no anexar encima de un archivo ajeno/corrupto
+                            long completos = nuevo ? 0L : Math.Max(0L, (fs.Length - 16) / 160);
+                            long valido = 16 + completos * 160;
+                            tope = iaMaxBytes;
+                            if (tope > 0 && valido + loteBytes > tope) continue;
+                            IaPreparaScratch();   // asignar antes de modificar una cabecera/cola interrumpida
+                            if (nuevo)
+                            {
+                                byte[] head = new byte[16];
+                                head[0] = (byte)'R'; head[1] = (byte)'I'; head[2] = (byte)'A'; head[3] = (byte)'D';
+                                Buffer.BlockCopy(BitConverter.GetBytes(1), 0, head, 4, 4);
+                                Buffer.BlockCopy(BitConverter.GetBytes(28), 0, head, 8, 4);
+                                Buffer.BlockCopy(BitConverter.GetBytes(12), 0, head, 12, 4);
+                                fs.Write(head, 0, head.Length);
+                            }
+                            if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
+                            fs.Position = valido;
+                            // Los mismos float32 little-endian y el mismo CRC, sin duplicar todo el lote en RAM.
+                            crcs[i] = IaEscribePares(fs, pairs);
+                            pendiente = true;
+                            primeros[i] = completos; nuevos[i] = nuevo; oks[i] = true;
+                            totalFinal = completos + pairs.Count / 40;
                         }
-                        if (fs.Length != valido) fs.SetLength(valido);   // recupera una ultima escritura interrumpida
-                        fs.Position = valido;
-                        // Los mismos float32 little-endian y el mismo CRC, sin duplicar todo el lote en RAM.
-                        crcDatos = IaEscribePares(fs, pairs);
-                        fs.Flush();
-                        try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
-                        primero = completos;
+                        catch
+                        {
+                            // Como antes: este lote no se escribe; el siguiente reabre el archivo y recupera la cola interrumpida. Lo ya escrito se confirma.
+                            oks[i] = false;
+                            if (fs != null) { ConfirmaDatosIa(fs, ref pendiente); try { fs.Dispose(); } catch { } fs = null; }
+                        }
                     }
-                    long total = primero + pairs.Count / 40;
-                    iaPairsTotal = total > int.MaxValue ? int.MaxValue : (int)total;
+                    if (fs != null) ConfirmaDatosIa(fs, ref pendiente);
                 }
-                catch { return false; }
-                if (origen != null) IaApuntaOrigen(primero, pairs.Count / 40, crcDatos, origen, nuevo);
-                return true;
+                catch { }
+                finally { if (fs != null) { try { fs.Dispose(); } catch { } } }
+                if (totalFinal >= 0) iaPairsTotal = totalFinal > int.MaxValue ? int.MaxValue : (int)totalFinal;
+                // Los datos ya estan en disco: ahora sus entradas de origen (y despues los generos), cada archivo confirmado una vez.
+                List<int> conOrigen = new List<int>();
+                for (int i = 0; i < lotes.Length; i++) if (oks[i] && origenes != null && i < origenes.Length && origenes[i] != null) conOrigen.Add(i);
+                if (conOrigen.Count > 0) IaApuntaOrigenes(conOrigen, lotes, primeros, crcs, origenes, nuevos);
             }
+            return oks;
+        }
+        private void ConfirmaDatosIa(FileStream fs, ref bool pendiente)
+        {
+            if (!pendiente) return;
+            fs.Flush();
+            try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+            pendiente = false;
         }
 
         // ---------- DE QUE CANCION VIENE CADA EJEMPLO: rocola_ia_datos.idx ----------
@@ -246,6 +282,15 @@ namespace Rocola
             catch { return null; }
             return o;
         }
+        // El mismo origen para otro canal de la misma cancion: todo igual salvo el numero de canal (null sigue siendo null).
+        private static IaOrigen IaOrigenParaCanal(IaOrigen o, int canal)
+        {
+            if (o == null) return null;
+            if (o.Canal == canal) return o;
+            IaOrigen c = new IaOrigen();
+            c.Cancion = o.Cancion; c.Carpeta = o.Carpeta; c.Artista = o.Artista; c.Rate = o.Rate; c.Frame = o.Frame; c.Canal = canal; c.Genero = o.Genero;
+            return c;
+        }
         // Lo que ponen los programas cuando NO saben el artista. Agrupar por eso juntaria canciones que no
         // tienen nada que ver (y una recopilacion entera "Various Artists" son artistas distintos).
         private static readonly string[] IaArtistasComodin = { "unknown", "unknown artist", "various", "various artists",
@@ -273,7 +318,7 @@ namespace Rocola
         }
         // Sidecar opcional: preserva RIAX/64 y los datos existentes. Solo huella y etiqueta fiable;
         // sirve para auditar cobertura por genero, nunca para partir una misma cancion entre conjuntos.
-        private void IaApuntaGenero(IaOrigen origen, bool datosNuevos)
+        private void IaApuntaGeneros(List<IaOrigen> origenes, bool datosNuevos)
         {
             try
             {
@@ -285,8 +330,10 @@ namespace Rocola
                     File.Move(ruta, aparte);
                 }
                 // El salto inicial separa una ultima linea interrumpida por un apagon; la lectura ignora vacias.
-                byte[] texto = Encoding.UTF8.GetBytes("\n" + origen.Cancion.ToString("x16", CultureInfo.InvariantCulture)
-                    + "\t" + IaGeneroFiable(origen.Genero) + "\n");
+                StringBuilder lineas = new StringBuilder();
+                for (int k = 0; k < origenes.Count; k++)
+                    lineas.Append("\n").Append(origenes[k].Cancion.ToString("x16", CultureInfo.InvariantCulture)).Append("\t").Append(IaGeneroFiable(origenes[k].Genero)).Append("\n");
+                byte[] texto = Encoding.UTF8.GetBytes(lineas.ToString());
                 using (FileStream fs = new FileStream(ruta, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
                     fs.Write(texto, 0, texto.Length); fs.Flush();
@@ -517,12 +564,15 @@ namespace Rocola
         private static void IaPon(byte[] e, int off, int v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 4); }
         private static void IaPon(byte[] e, int off, uint v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 4); }
         private static void IaPon(byte[] e, int off, ulong v) { Buffer.BlockCopy(BitConverter.GetBytes(v), 0, e, off, 8); }
-        // Solo se llama con iaFileLock tomado (desde IaAppendPairsOrigen).
-        private void IaApuntaOrigen(long primero, int cuenta, uint crcDatos, IaOrigen o, bool datosNuevos)
+        // Solo se llama con iaFileLock tomado (desde IaAppendPairsLote). Las entradas de varios lotes (los canales de una cancion) en orden, con UNA
+        // confirmacion del indice; despues sus lineas de genero, con UNA confirmacion. Cada entrada es exactamente la de siempre.
+        private void IaApuntaOrigenes(List<int> cuales, List<float>[] lotes, long[] primeros, uint[] crcs, IaOrigen[] origenes, bool[] nuevos)
         {
             try
             {
                 string idx = IaIndexFile();
+                bool datosNuevos = false;
+                for (int k = 0; k < cuales.Count; k++) datosNuevos |= nuevos[cuales[k]];
                 if (datosNuevos && File.Exists(idx))
                 {
                     // El archivo de datos empieza de cero: el indice que habia describia OTRO archivo. Se aparta,
@@ -551,15 +601,21 @@ namespace Rocola
                     if (fs.Length != valido) fs.SetLength(valido);   // una entrada a medias de un apagon
                     fs.Position = valido;
                     byte[] e = new byte[64];
-                    IaPon(e, 0, primero); IaPon(e, 8, cuenta); IaPon(e, 12, IaExtractorVersion);
-                    IaPon(e, 16, o.Rate); IaPon(e, 20, o.Frame); IaPon(e, 24, o.Canal); IaPon(e, 28, crcDatos);
-                    IaPon(e, 32, o.Cancion); IaPon(e, 40, o.Carpeta); IaPon(e, 48, o.Artista); IaPon(e, 56, 0);
-                    IaPon(e, 60, IaCrc32(e, 0, 60));
-                    fs.Write(e, 0, 64);
+                    for (int k = 0; k < cuales.Count; k++)
+                    {
+                        int i = cuales[k]; IaOrigen o = origenes[i];
+                        IaPon(e, 0, primeros[i]); IaPon(e, 8, lotes[i].Count / 40); IaPon(e, 12, IaExtractorVersion);
+                        IaPon(e, 16, o.Rate); IaPon(e, 20, o.Frame); IaPon(e, 24, o.Canal); IaPon(e, 28, crcs[i]);
+                        IaPon(e, 32, o.Cancion); IaPon(e, 40, o.Carpeta); IaPon(e, 48, o.Artista); IaPon(e, 56, 0);
+                        IaPon(e, 60, IaCrc32(e, 0, 60));
+                        fs.Write(e, 0, 64);
+                    }
                     fs.Flush();
                     try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
                 }
-                IaApuntaGenero(o, datosNuevos);
+                List<IaOrigen> paraGeneros = new List<IaOrigen>();
+                for (int k = 0; k < cuales.Count; k++) paraGeneros.Add(origenes[cuales[k]]);
+                IaApuntaGeneros(paraGeneros, datosNuevos);
             }
             catch { }   // sin entrada, esos ejemplos quedan "sin origen": el entrenador no los usa para validar
         }

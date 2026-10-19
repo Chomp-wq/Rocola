@@ -266,8 +266,8 @@ class IaOrigenPrueba
         }
         Console.WriteLine("     (en el hilo de fondo, una vez por cancion cosechada; ademas se escriben 64 bytes al disco)");
         MethodInfo mMide = TF.GetMethod("MeasureFile", IF);
-        Check(mMide != null && Codigo.Llama(mMide, "IaAppendPairsOrigen") && Codigo.Llama(mMide, "IaOrigenDe")
-              && !Codigo.Llama(mMide, "IaAppendPairs"),
+        Check(mMide != null && Codigo.Llama(mMide, "IaAppendPairsLote") && Codigo.Llama(mMide, "IaOrigenDe")
+              && !Codigo.Llama(mMide, "IaAppendPairsOrigen") && !Codigo.Llama(mMide, "IaAppendPairs"),
               "la cosecha de la biblioteca guarda con origen (no por el camino sin origen)");
 
         // ============================================================================================
