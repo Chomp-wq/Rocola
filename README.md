@@ -1,5 +1,13 @@
 # Rocola
 
+## Ahorros automáticos del dibujo, con huellas de cuadro — 19 de octubre de 2026
+
+Cinco ahorros que no cambian ni un píxel (168 de 168 pantallas comparadas con una tarjeta imitada que pinta): los estados de mezcla y de etapa solo
+cuando cambian (−40 % de `SetRenderState`), el cielo de fábrica guardado y estirado (−18 % de pantallas pintadas, a costa de un cuadro más caro cuando
+cambia), las franjas del cielo bajo el estado opaco (−15 % en Bajo), la malla de cada portada de la rejilla y dos esquinas copiadas en cada estrella.
+El procesador por cuadro no se movió de forma medible. Sin interruptores nuevos.
+[Inventario, ahorros, comprobaciones y lo descartado](OPTIMIZACIONES_AUTOMATICAS_MODEST_2026-10-19.md).
+
 ## Fluidez: qué se midió y qué se descartó, y paradas con contexto — 19 de octubre de 2026
 
 El cuadro completo cuesta ≈ 0,09 ms y casi no reserva memoria; lo que sobresale son los repintados del panel de estado (unos milisegundos cada vez). No apareció un ahorro nuevo que valga su complejidad. Ahora cada parada de pantalla apunta recolecciones, memoria y RAM libre para saber qué la causó en el A4.
