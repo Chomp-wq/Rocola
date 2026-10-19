@@ -1098,6 +1098,7 @@ class HuellaCuadros
             Console.WriteLine("        alto reposo: RS {0:0.0} TSS {1:0.0} ordenes {2:0.0} pantallas {3:0.00} (max {4:0.00}); bajo reposo: pantallas {5:0.00}; alto rejilla: RS {6:0.0} TSS {7:0.0}",
                 ar.RS, ar.TSS, ar.Ordenes, ar.Pantallas, ar.PantallasMax, br.Pantallas, aj.RS, aj.TSS);
             Exige(aj.RS <= 18.5 && aj.TSS <= 32.5, "alto rejilla: los estados de mezcla y de etapa solo se mandan cuando cambian (antes 24 y 40 por cuadro)");
+            Exige(ar.Pantallas <= 5.9, "alto reposo: el cielo se guarda y se estira: " + ar.Pantallas.ToString("0.00") + " pantallas por cuadro de media (antes 6.45)");
             Exige(br.Pantallas <= 1.80, "bajo reposo: las franjas del cielo bajo el estado opaco no se mandan: " + br.Pantallas.ToString("0.00") + " pantallas (antes 1.98)");
         }
         finally { try { Directory.Delete(dir, true); } catch { } }

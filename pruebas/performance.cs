@@ -704,13 +704,23 @@ class Performance
         Exige((double)pedidos > 0 && (double)mandados > 0 && (double)mandados <= (double)pedidos && (double)pantallas > 0.5,
               "el cuadro cuenta lo suyo: " + ((double)pedidos).ToString("0") + " ordenes pedidas, " + ((double)mandados).ToString("0") + " mandadas, "
               + ((double)pantallas).ToString("0.00") + " pantallas pintadas");
-        // Y apagados: como siempre (el cielo opaco es lo primero, y va a la pantalla).
-        Pon(p, "CieloMedia", false); Pon(p, "GranoVineta", false);
+        // Y apagados, sin nebulosas (nada que guardar a tamano completo): como siempre (el cielo opaco es lo primero, y va a la pantalla).
+        Pon(p, "CieloMedia", false); Pon(p, "GranoVineta", false); Pon(p, "Nieblas", 0);
         envios.Clear(); Llama(p, "RenderFrame"); c = Captura();
         // El cielo opaco va primero: de dos tramos (4 triangulos) o, con el cielo de muchas paradas (C1), de doce (24).
         bool siempre = c.Count > 0 && c[0].S.Blanco == fondo && !c[0].S.Mezcla && (c[0].Tris == 4 || c[0].Tris == 24);
         foreach (Envio e in c) if (e.S.Blanco != fondo || e.Paso != 28) siempre = false;
-        Exige(siempre, "con los dos apagados (de fabrica), el cuadro de siempre: todo a la pantalla, nada doble");
+        Exige(siempre, "con los dos apagados y sin nebulosas, el cuadro de siempre: todo a la pantalla, nada doble");
+        // Con las nebulosas (de fabrica) y sin portadas encima, el cielo se guarda a tamano completo (19-10-2026): el primer cuadro lo pinta en la
+        // imagen y lo estira (identico, pixel a pixel) y los que repiten el mismo cielo solo lo estiran.
+        Pon(p, "Nieblas", 2); Llama(p, "OlvidaCielo"); Pon(p, "NebFase", 0.5f);
+        envios.Clear(); Llama(p, "RenderFrame"); List<Envio> primero = Captura();
+        envios.Clear(); Llama(p, "RenderFrame"); List<Envio> segundo = Captura();
+        Exige(AlIntermedio(primero) > 0 && AlIntermedio(segundo) == 0, "de fabrica, con nebulosas: el cielo se pinta en la imagen una vez (" + AlIntermedio(primero) + " ordenes) y el cuadro igual no la repite (" + AlIntermedio(segundo) + ")");
+        bool estirado = false; foreach (Envio e in segundo) if (e.Tris == 2 && e.S.Blanco == fondo && !e.S.Mezcla && e.S.E[0].Tex != IntPtr.Zero && e.S.E[0].Tex == (IntPtr)Toma(Toma(Toma(p, "stars"), "gpu"), "mediaTex")) estirado = true;
+        Exige(estirado, "y lo estira a la pantalla en un solo cuadrilatero opaco, pixel a pixel (sin portadas encima)");
+        Pon(p, "NebFase", 0.7f); envios.Clear(); Llama(p, "RenderFrame"); List<Envio> tercero = Captura();
+        Exige(AlIntermedio(tercero) > 0, "si el cielo cambia (otra fase de las nebulosas), se vuelve a pintar");
     }
 
     // ======================= 8) G1 Y G2 (14-10-2026) =======================
@@ -864,7 +874,10 @@ class Performance
             object d3 = Tarjeta(W, H, true, true, false); Control p3 = Panel(W, H, Cielo(d3, W, H));
             Pon(p3, "CieloMedia", false); Pon(p3, "FondoUnaCapa", true); Pon(p3, "VinetaSuave", true);
             envios.Clear(); Llama(p3, "RenderFrame"); List<Envio> c3 = Captura();
-            Exige(AlIntermedio(c3) == 0 && !(bool)Toma(p3, "capaUnicaEsteCuadro"), "G2 sin el cielo a media resolucion: el cuadro de siempre (va dentro de esa imagen)");
+            object d4 = Tarjeta(W, H, true, true, false); Control p4 = Panel(W, H, Cielo(d4, W, H));
+            Pon(p4, "CieloMedia", false); Pon(p4, "FondoUnaCapa", false); Pon(p4, "VinetaSuave", true);
+            envios.Clear(); Llama(p4, "RenderFrame"); List<Envio> c4 = Captura();
+            Exige(c3.Count == c4.Count && AlIntermedio(c3) == AlIntermedio(c4) && !(bool)Toma(p3, "capaUnicaEsteCuadro"), "G2 sin el cielo a media resolucion: el cuadro de siempre (la vineta y el grano no entran en la imagen: " + c3.Count + " ordenes, igual que sin G2)");
         }
     }
 

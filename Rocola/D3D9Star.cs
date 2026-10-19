@@ -804,7 +804,7 @@ namespace Rocola
 
         private void Draw(D3D9.Vtx[] verts, int tris)
         {
-            if (enMedia) { verts = EscalaMedia(verts, tris); if (verts == null) return; }   // a la imagen intermedia (PerformanceGpu.cs)
+            if (enMedia) { if (mediaDiv != 1) { verts = EscalaMedia(verts, tris); if (verts == null) return; } }   // a la imagen intermedia (PerformanceGpu.cs); a tamano completo, tal cual
             else if (VinetaPuntos) { verts = Vinetea(verts, tris); if (verts == null) return; }   // G2: la vineta en cada punto (PerformanceGpu.cs)
             TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(texturaLogica);
             if (dividida != null) { Junta(); DibujaDividida(dividida, verts, tris); return; }
