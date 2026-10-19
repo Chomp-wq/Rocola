@@ -1,0 +1,171 @@
+# Huellas del cuadro de la tarjeta imitada ANTES de los ahorros automaticos del 19-10-2026 (rama Modest, e1ae788).
+# Salida de: mono huellacuadros.exe <rocola instrumentada con huella-compila.sh> huella   (pix = pixeles de la imitacion, bruto = chorro de ordenes).
+# Reloj, azar y GDI+ de ESTE equipo (Linux/Mono, libgdiplus): sirven para comparar versiones aqui, no son los pixeles de una tarjeta ni de Windows XP.
+1024x768 alto rejilla est3D        pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+1024x768 alto rejilla est2D        pix 9f978caae85e0b69 bruto c7e6509921621165 cuadros 6/6 sinArea 12 transp 1430
+1024x768 alto reposo est3D         pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+1024x768 alto reposo est2D         pix 0aca197c3a1b3d6b bruto 90bc1227d821aff9 cuadros 6/6 sinArea 12 transp 1214
+1024x768 perf rejilla est3D        pix 8b4a67a953073368 bruto ccc3154de927cd92 cuadros 6/6 sinArea 0 transp 222
+1024x768 perf rejilla est2D        pix e744fa5c4d6a1fdb bruto a15c44aff528e3ff cuadros 6/6 sinArea 0 transp 222
+1024x768 perf reposo est3D         pix 88e38b096e97d930 bruto 59dd836e9d4a9d8a cuadros 6/6 sinArea 0 transp 6
+1024x768 perf reposo est2D         pix 17adef94f9d5647b bruto 8444fc0c84675bb6 cuadros 6/6 sinArea 0 transp 6
+1024x768 medio rejilla est3D       pix 0d3c41382a7db856 bruto f133053a3e81f0b8 cuadros 6/6 sinArea 0 transp 222
+1024x768 medio rejilla est2D       pix 07f39f1f415171d8 bruto e2defa594c7fa84f cuadros 6/6 sinArea 0 transp 222
+1024x768 medio reposo est3D        pix 7c9958b915a7fd41 bruto 198165e28e287738 cuadros 6/6 sinArea 0 transp 6
+1024x768 medio reposo est2D        pix 805b0e145809c6a3 bruto da4066602bf50d16 cuadros 6/6 sinArea 0 transp 6
+1024x768 bajo rejilla est3D        pix 0ecd72aea21662fb bruto b02b25eccc799ef1 cuadros 6/6 sinArea 0 transp 222
+1024x768 bajo rejilla est2D        pix 5d54b3a3de4c8270 bruto 5ebd8ec398c1e3e4 cuadros 6/6 sinArea 0 transp 222
+1024x768 bajo reposo est3D         pix 146b107f2ae95226 bruto b4c997083cb1ab83 cuadros 6/6 sinArea 0 transp 6
+1024x768 bajo reposo est2D         pix 97b2792d9b9b1223 bruto 546a9f8e960630af cuadros 6/6 sinArea 0 transp 6
+1280x1024 alto rejilla est3D       pix 6d07156e891d0701 bruto becc0234d0e0baf3 cuadros 6/6 sinArea 6 transp 1502
+1280x1024 alto rejilla est2D       pix 523929699594890d bruto 1286cd0160117ec5 cuadros 6/6 sinArea 6 transp 1442
+1280x1024 alto reposo est3D        pix 5998a24267f494ba bruto fcbb519a3733206b cuadros 6/6 sinArea 6 transp 1274
+1280x1024 alto reposo est2D        pix 1f92cb3172e8d048 bruto a320b2cd410bd5a3 cuadros 6/6 sinArea 6 transp 1226
+1280x1024 perf rejilla est3D       pix c4e0af6ec1e0e087 bruto bbec73f73511e894 cuadros 6/6 sinArea 0 transp 222
+1280x1024 perf rejilla est2D       pix 4c9a07165ae24b80 bruto 2ad3b27ab35184b3 cuadros 6/6 sinArea 0 transp 222
+1280x1024 perf reposo est3D        pix 1cfd49aa64fa5894 bruto 052ef8bfc639d33d cuadros 6/6 sinArea 0 transp 6
+1280x1024 perf reposo est2D        pix bd065d2230f8dd20 bruto 3c4162cb9d487513 cuadros 6/6 sinArea 0 transp 6
+1280x1024 medio rejilla est3D      pix 64f9f06cdf93eb7b bruto ba9139445e9eef89 cuadros 6/6 sinArea 0 transp 222
+1280x1024 medio rejilla est2D      pix af5488c89eb0d2fe bruto 74a58e471d25a596 cuadros 6/6 sinArea 0 transp 222
+1280x1024 medio reposo est3D       pix b6b686bde874da9b bruto 0397a65f45966b12 cuadros 6/6 sinArea 0 transp 6
+1280x1024 medio reposo est2D       pix bd597a2b03e43d8c bruto 3a2e30fc96a9a086 cuadros 6/6 sinArea 0 transp 6
+1280x1024 bajo rejilla est3D       pix dfc9b9a54e23245d bruto b49bfca3d548d1fe cuadros 6/6 sinArea 0 transp 222
+1280x1024 bajo rejilla est2D       pix 7fc0e969ec584335 bruto 7d674b3cb4f0ab82 cuadros 6/6 sinArea 0 transp 222
+1280x1024 bajo reposo est3D        pix f6cf7c1d95c03e60 bruto 21a08326f33b6069 cuadros 6/6 sinArea 0 transp 6
+1280x1024 bajo reposo est2D        pix 49e250c93819f353 bruto e85babfd7fc12abd cuadros 6/6 sinArea 0 transp 6
+1920x1080 alto rejilla est3D       pix 890e5c4bf7ecc2e4 bruto 0ed9c1e012f75334 cuadros 6/6 sinArea 18 transp 1502
+1920x1080 alto rejilla est2D       pix f60aa6d612bb4922 bruto 2a422c682a207260 cuadros 6/6 sinArea 18 transp 1442
+1920x1080 alto reposo est3D        pix 90a7b5cd305b06be bruto 588a945024676b66 cuadros 6/6 sinArea 18 transp 1274
+1920x1080 alto reposo est2D        pix 0f4aa58a2e4293d0 bruto 67a76e2fd1f2774b cuadros 6/6 sinArea 18 transp 1226
+1920x1080 perf rejilla est3D       pix ebef0fe848753290 bruto 1b893fe40b25db81 cuadros 6/6 sinArea 0 transp 222
+1920x1080 perf rejilla est2D       pix a07d61af2cea66ed bruto bb0210a1f60354cd cuadros 6/6 sinArea 0 transp 222
+1920x1080 perf reposo est3D        pix 08a24a719a360e02 bruto dac0c8afccf36484 cuadros 6/6 sinArea 0 transp 6
+1920x1080 perf reposo est2D        pix 66b75351a5f356d9 bruto 6272c1c02033184e cuadros 6/6 sinArea 0 transp 6
+1920x1080 medio rejilla est3D      pix 36713dd2b8125405 bruto 8264a70c06ba9679 cuadros 6/6 sinArea 0 transp 222
+1920x1080 medio rejilla est2D      pix 134c9bf09f79ef41 bruto f89dce8fa89ae7b1 cuadros 6/6 sinArea 0 transp 222
+1920x1080 medio reposo est3D       pix 318b855bb2c70682 bruto b00cf0ca7c992b9a cuadros 6/6 sinArea 0 transp 6
+1920x1080 medio reposo est2D       pix 6beec19078f8dd91 bruto 30bf6cceffc89a4c cuadros 6/6 sinArea 0 transp 6
+1920x1080 bajo rejilla est3D       pix 1719e5d3ae3abf78 bruto e73440fbb0c46611 cuadros 6/6 sinArea 0 transp 222
+1920x1080 bajo rejilla est2D       pix 69c172cfb42f5c09 bruto 8b5cc926a9a34305 cuadros 6/6 sinArea 0 transp 222
+1920x1080 bajo reposo est3D        pix ed2c865c02a5bbe3 bruto 9db1cecd6ff89506 cuadros 6/6 sinArea 0 transp 6
+1920x1080 bajo reposo est2D        pix e16840923541870c bruto be8393a35318a7a7 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto rejilla sin VinetaSuave pix 16be3a1e40851276 bruto 86f47a291df1b5e4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin HaloSeleccion pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellasFinas pix 12322e2525f37332 bruto a993c9f59ae687cc cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin OndasSuaves pix 05b4f9d1eb691021 bruto 5a8049f8941569d1 cuadros 6/6 sinArea 12 transp 566
+sw 1024x768 alto rejilla sin NeonIntenso pix 31d407d130f3fe70 bruto 7b7a0ae704c21334 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin CieloProfundo pix aaf62a846f3e325f bruto 76f5eb545e511ea8 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin AuroraBandas pix 63bf7757a4676ff1 bruto 60bbd6ae747d725a cuadros 6/6 sinArea 12 transp 1582
+sw 1024x768 alto rejilla sin LunaActiva pix 3a41c7e8513ea1f1 bruto 4a19d97288d0a972 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ControlesReposo pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin LunaRealista pix d2f507f760f6b875 bruto e83352ee57f0bc42 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin HaloLunar pix f3b534d691164d08 bruto 8a4b28890bf4e28c cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin PolvoLunar pix 13a030b7d412f89a bruto 1b803ee5e4b59e77 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin LunaProtagonista pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstelaEstelar pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin CieloSuave pix 45cf37a113f9f223 bruto 3628b8b520a7c664 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ColoresProfundos pix d8a59be9d517746a bruto 185a9ea036fba04f cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin AuroraLimpia pix 48a7452e517b1a7c bruto 0a1e33130a3c25c2 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellaDegradado pix 269730149cf905a6 bruto bddca5d5a5916de9 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellaRefleja pix 2cde0fb0880fc2a3 bruto 1208c59280b9def9 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellaDestello pix bebc9f0016955f10 bruto f7f14198f998847b cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellaBorde pix 05baf78d02480fc6 bruto 3e59e5b7d68e7668 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin EstrellaEspejo pix 881326052324139e bruto 0b20b3a3ede9e429 cuadros 6/6 sinArea 12 transp 1430
+sw 1024x768 alto rejilla sin PortadaBrillo pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin LunaDelCielo pix 8e06f6270825a45e bruto 1d30ec7c01bc464e cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin LluviasEstrellas pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin FugazFestejo pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ProfundidadPagina pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin CieloPorHora pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ReflejoAurora pix 89269952e450d976 bruto eb3642c21c6987fe cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ColoresFluidos pix d589f54fcc895496 bruto d4e12ed59e06e25f cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin NebulosasCine pix 2a95a83dd03b66eb bruto 2513c240a439cee0 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 alto rejilla sin ConLuna pix 01c0e4c63fe4ca90 bruto feb4645ffc691c8c cuadros 6/6 sinArea 12 transp 1430
+sw 1024x768 alto rejilla con CieloMedia pix e6d79c245f122b49 bruto b107ff662571857f cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin CieloMedia pix 6a1fe83722fb404a bruto e970e8b7eff2dfe9 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con GranoVineta pix 5b26369ab967d49c bruto 8e9e2c060d041a58 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin GranoVineta pix 8b4a67a953073368 bruto ccc3154de927cd92 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con FondoUnaCapa pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin FondoUnaCapa pix 270b1948d3aeb581 bruto f580404320c1a796 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con CieloCuarto pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin CieloCuarto pix 8823aa80a2bc325e bruto 4d045d471e18ced8 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con EstadoOpaco pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin EstadoOpaco pix 8b4a67a953073368 bruto ccc3154de927cd92 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con AuroraLigera pix 51deb203b5afcc82 bruto 6a779d3dc3c1596e cuadros 6/6 sinArea 12 transp 875
+sw 1024x768 perf rejilla sin AuroraLigera pix 83ab084a51ce072b bruto ce2cd4f9cee5a623 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con ReposoSinReflejo pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin ReposoSinReflejo pix 8b4a67a953073368 bruto ccc3154de927cd92 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con ReposoSinEstela pix 881326052324139e bruto 819563620286b5d4 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin ReposoSinEstela pix 8b4a67a953073368 bruto ccc3154de927cd92 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con CoronaCompacta pix 007cdf9226c949d3 bruto 31a168ba79318bfc cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin CoronaCompacta pix e0b0a075b6172c04 bruto 663aba80e2173acb cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con SinGrano pix c52e82c5cdd9c9b4 bruto febf0b9d09361e5c cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin SinGrano pix f0969e96d1c57282 bruto b4677f7515b50981 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto rejilla con AuroraSinSuelo pix 026c770c80d77211 bruto 01e9dd69d1bce86a cuadros 6/6 sinArea 0 transp 282
+sw 1024x768 perf rejilla sin AuroraSinSuelo pix 68a3c9005134baad bruto d9226118fe95baa2 cuadros 6/6 sinArea 12 transp 815
+sw 1024x768 alto rejilla con AuroraHaloCompacto pix 1f0bcff86d0e1e34 bruto 4a61b7f43432fb51 cuadros 6/6 sinArea 12 transp 1490
+sw 1024x768 perf rejilla sin AuroraHaloCompacto pix f9a2eca16924de1d bruto a787d28a4b57f9e0 cuadros 6/6 sinArea 0 transp 222
+sw 1024x768 alto reposo sin VinetaSuave pix 44b51fdbb4aed64e bruto 6842c78f84984182 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin HaloSeleccion pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellasFinas pix 604d0c2c64df3012 bruto 4e44ae8105ee961c cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin OndasSuaves pix 70cc0a57d4804da7 bruto a6ca50b5a548c39c cuadros 6/6 sinArea 12 transp 338
+sw 1024x768 alto reposo sin NeonIntenso pix b83e8c1305b98a50 bruto c867208a10a83a48 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin CieloProfundo pix 05abdaae6495bd7f bruto 2971e984607c6c35 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin AuroraBandas pix 2e201a3fdd5392d0 bruto 03c15a4b7880755a cuadros 6/6 sinArea 12 transp 1354
+sw 1024x768 alto reposo sin LunaActiva pix d73f99b119cfb55d bruto 9c6834486ff47cda cuadros 6/6 sinArea 12 transp 1274
+sw 1024x768 alto reposo sin ControlesReposo pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin LunaRealista pix 04e453e78e754600 bruto f6b0ca03c600bb84 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin HaloLunar pix a3224acf524f066c bruto f67cd3852da54941 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin PolvoLunar pix be8a4ff5e155b853 bruto 61c4d869184d2fbd cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin LunaProtagonista pix f1d85f482d4b32a1 bruto 03cab682f1b130f4 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstelaEstelar pix 2096dd61d6761db2 bruto b04a4f89d5f98810 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin CieloSuave pix dc1189a4e68783b3 bruto 6421edaf393167f0 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin ColoresProfundos pix 66a9d0378dbda88a bruto 11ff4f1102b1c875 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin AuroraLimpia pix 2aebbfb7163f9b2e bruto 0ff359c96d2ddea9 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellaDegradado pix 4f4014593d4b18e6 bruto 52e0e9a1ae205626 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellaRefleja pix 12933363dabe15ef bruto b1cf05bef57f1906 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellaDestello pix ac795a8cbacff4db bruto dc4c8b4945f6fd42 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellaBorde pix 2989edcb21393d1a bruto f4892edeff2ab2ff cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin EstrellaEspejo pix d2cacb3b6906ab13 bruto cb711ee4fcfcfbde cuadros 6/6 sinArea 12 transp 1214
+sw 1024x768 alto reposo sin PortadaBrillo pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin LunaDelCielo pix 43778a9d904a9f11 bruto b0155bf00f382e3c cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin LluviasEstrellas pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin FugazFestejo pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin ProfundidadPagina pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin CieloPorHora pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin ReflejoAurora pix 66b4fcc0ee03a6d0 bruto a285d04427a87b8c cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin ColoresFluidos pix 79062544166f00b5 bruto 09d1645855c0d7df cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin NebulosasCine pix 92d89343cac025e3 bruto 85c68f3d407e958c cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 alto reposo sin ConLuna pix 5c5ac0e084332799 bruto f3780ec7744d6cca cuadros 6/6 sinArea 12 transp 1214
+sw 1024x768 alto reposo con CieloMedia pix 222e23b9c06fd821 bruto 785234971231b267 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin CieloMedia pix 9d6efe30ce65a875 bruto f89806b161df23ff cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con GranoVineta pix 58480002b5d0a301 bruto 210ee436bf35a01a cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin GranoVineta pix 88e38b096e97d930 bruto 59dd836e9d4a9d8a cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con FondoUnaCapa pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin FondoUnaCapa pix f6cb8bd0a5878176 bruto ff5ecdc6cb8042c4 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con CieloCuarto pix d2cacb3b6906ab13 bruto 11e5128bb63bd2e8 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin CieloCuarto pix 0ff4a4e15f675e46 bruto 46bca7b7a7f29c3c cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con EstadoOpaco pix 5d58c42ba4c5efb2 bruto 68c53bf78f80a31c cuadros 6/6 sinArea 0 transp 54
+sw 1024x768 perf reposo sin EstadoOpaco pix c76e2f593d5da336 bruto 9079973a7f1146a4 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con AuroraLigera pix ae6cc8cf653112e0 bruto ab4d30b97b347f1e cuadros 6/6 sinArea 12 transp 647
+sw 1024x768 perf reposo sin AuroraLigera pix 4cd376a786f3daca bruto bed5b73d56e9b705 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con ReposoSinReflejo pix 66b4fcc0ee03a6d0 bruto a285d04427a87b8c cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin ReposoSinReflejo pix 88e38b096e97d930 bruto 59dd836e9d4a9d8a cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con ReposoSinEstela pix 2096dd61d6761db2 bruto b04a4f89d5f98810 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin ReposoSinEstela pix 1ec7ebd8f72d8f94 bruto d236635b4b197ed7 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con CoronaCompacta pix 249e173d2891d627 bruto 96c771177f327635 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin CoronaCompacta pix e59a3ec6e796c6ca bruto 529186c3ad8614b9 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con SinGrano pix 6e53b6bd94242e79 bruto 59d381c92a6dfc96 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin SinGrano pix 6a75613fc413e03f bruto ffb7db0cb91cba55 cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con AuroraSinSuelo pix 94f551d122df5dce bruto 26d7a29057d7e7fc cuadros 6/6 sinArea 0 transp 54
+sw 1024x768 perf reposo sin AuroraSinSuelo pix 88e38b096e97d930 bruto 59dd836e9d4a9d8a cuadros 6/6 sinArea 0 transp 6
+sw 1024x768 alto reposo con AuroraHaloCompacto pix 784b6b9ae6ce6225 bruto 98f2e6eba094f4b3 cuadros 6/6 sinArea 12 transp 1262
+sw 1024x768 perf reposo sin AuroraHaloCompacto pix 1e075a438b3e25e1 bruto 24c3b89437f26c74 cuadros 6/6 sinArea 0 transp 6
+1024x768 alto rejilla asistente    pix c8982b32f4949126 bruto 6b56f1d95bc1413e cuadros 6/6 sinArea 12 transp 1424
+1024x768 alto rejilla asistente guia pix 342d3c3722583c3f bruto d6a2106b9b4f5836 cuadros 6/6 sinArea 12 transp 1424
+1024x768 alto reposo asistente     pix 4c81805ba67e61e8 bruto 676b090fa6beef95 cuadros 6/6 sinArea 12 transp 1208
+1024x768 alto reposo asistente guia pix 1fcc7e036adcf318 bruto fd34378d2099ff05 cuadros 6/6 sinArea 12 transp 1208
+1024x768 perf rejilla asistente    pix 51144e0f9ac02ec0 bruto b9e10440d4e2508a cuadros 6/6 sinArea 0 transp 216
+1024x768 perf rejilla asistente guia pix 86273491c1bdda87 bruto 9d5a190ed3a90558 cuadros 6/6 sinArea 0 transp 216
+1024x768 perf reposo asistente     pix d7a06b7ba8b3c7f5 bruto ba080e90be764de1 cuadros 6/6 sinArea 0 transp 0
+1024x768 perf reposo asistente guia pix a795e6736507f76f bruto dfde62fc19d9b065 cuadros 6/6 sinArea 0 transp 0

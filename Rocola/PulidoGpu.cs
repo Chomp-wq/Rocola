@@ -220,6 +220,7 @@ namespace Rocola
         private float cieloSuaveAncho, cieloSuaveAlto, cieloSuaveMedio, cieloSuaveExtra;
         private uint cieloSuaveArriba, cieloSuaveCentro, cieloSuaveAbajo;
         private int cieloSuaveTris;
+        private readonly float[] cieloSuaveY0 = new float[2 * CieloFranjas];   // donde empieza cada franja (de arriba abajo)
         internal int CielosSuavesCalculados, CielosSuavesReusados;
         // Los colores de las tres paradas, como se van a pintar (C2).
         internal void ColoresCielo(ref uint top, ref uint mid, ref uint bot)
@@ -247,6 +248,7 @@ namespace Rocola
                     float y0 = ya + (yb - ya) * k / CieloFranjas, y1 = ya + (yb - ya) * (k + 1) / CieloFranjas;
                     uint c0 = Luz.ColorCielo(h > 0f ? y0 / h : 0f, x1, top, mid, bot);
                     uint c1 = Luz.ColorCielo(h > 0f ? y1 / h : 1f, x1, top, mid, bot);
+                    cieloSuaveY0[tramo * CieloFranjas + k] = y0;
                     SetQuad(skySuave, v, 0, y0, ancho, y1, c0, c0, c1, c1);
                     v += 6;
                 }
@@ -258,6 +260,16 @@ namespace Rocola
             return cieloSuaveTris;
         }
         internal void DibujaCieloSuave(int tris) { if (gpu != null && skySuave != null) gpu.DrawSkyN(skySuave, tris); }
+        // Las franjas se pintan de arriba abajo, cada una por su cuenta. Con el estado extendido opaco asentado, desde 'desde' hacia abajo
+        // lo tapa el panel (alfa 255, sin mezcla): las franjas que empiezan ahi no se ven nunca y no se mandan. Una franja que solo
+        // queda tapada en parte se pinta entera, asi que ningun pixel de lo que se ve cambia (ni su degradado).
+        internal int CieloSuaveVisible(int tris, float desde)
+        {
+            if (!(desde > 0f)) return tris;
+            int n = 0;
+            while (n < cieloSuaveY0.Length && cieloSuaveY0[n] < desde) n++;
+            return Math.Min(tris, Math.Max(1, n) * 2);
+        }
     }
 
     internal sealed partial class GpuPanel

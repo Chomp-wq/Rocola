@@ -145,6 +145,12 @@ GPU="$GPU performance"
 # de la ronda de optimizacion. Con la tarjeta imitada: no mide la velocidad de una tarjeta, y sin tarjeta dice que no hay nada que medir.
 CPU="$CPU inventario"
 GPU="$GPU inventario"
+# 'huellacuadros': las huellas del cuadro de la tarjeta (19-10-2026). Una tarjeta imitada que ademas PINTA (raster en software) saca de
+# cada cuadro los pixeles, el chorro de ordenes y el de ordenes sin lo invisible; compara con las huellas de antes de los ahorros
+# automaticos (huellas_modest_2026-10-19.txt) para demostrar que son la misma imagen, y vigila que los ahorros sigan ahorrando.
+# Compila una copia instrumentada de las fuentes (huella-compila.sh: relojes y azar de pruebas). Sin tarjeta, dice que no hay nada que medir.
+CPU="$CPU huellacuadros"
+GPU="$GPU huellacuadros"
 # 'contextoparada': lo que se apunta junto a una parada de pantalla (19-10-2026): recolecciones desde el apunte anterior, memoria del
 # programa y RAM libre, solo cuando hay parada y desde el hilo del vigia.
 CPU="$CPU contextoparada"

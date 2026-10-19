@@ -278,12 +278,17 @@ namespace Rocola
         // igual: textura modulada + mezcla normal). Sin esto, cada quad repetia 9 cambios identicos. Anotando lo
         // que ya esta puesto, solo se manda al driver lo que de verdad cambia.
         private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
+        // Lo que ya vale en la etapa 0 aunque haya cambiado el modo: los segundos argumentos (COLORARG2 y ALPHAARG2 = el color
+        // del vertice) no cambian entre «color de vertice» y «textura por color», y la mezcla suma o normal usa el mismo origen
+        // (alfa). No se vuelven a mandar al controlador. Se olvidan donde se olvida el resto (InitStates, EstadoFallido, dos texturas).
+        private bool stArg2Difuso, stOrigenAlfa;
         private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
 
         private int stDireccion;
         private bool InitStates()
         {
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
+            stArg2Difuso = false; stOrigenAlfa = false;
             stDireccion = 0; juntaN = 0;
             if (dev == IntPtr.Zero) return false;
             try
@@ -306,6 +311,7 @@ namespace Rocola
         {
             lost = true;
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);
+            stArg2Difuso = false; stOrigenAlfa = false;
         }
 
         private void Direccion(bool repetir)
@@ -355,8 +361,10 @@ namespace Rocola
                 else
                 {
                     if (stBlend <= 1 && setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1) < 0) { EstadoFallido(); return; }
-                    if (setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA) < 0) { EstadoFallido(); return; }
+                    // Entre la suma y la normal el origen es el mismo (alfa): solo cambia el destino.
+                    if (!(stOrigenAlfa && stBlend > 1) && setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA) < 0) { EstadoFallido(); return; }
                     if (setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA) < 0) { EstadoFallido(); return; }
+                    stOrigenAlfa = true;
                 }
                 stBlend = modo;
             }
@@ -532,11 +540,12 @@ namespace Rocola
             {
                 if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) < 0 ||
                     setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE) < 0 ||
-                    setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE) < 0 ||
+                    (!stArg2Difuso && setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE) < 0) ||
                     setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE) < 0 ||
                     setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE) < 0 ||
-                    setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE) < 0)
+                    (!stArg2Difuso && setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE) < 0))
                 { EstadoFallido(); return; }
+                stArg2Difuso = true;
                 stTss = 2;
             }
             catch { EstadoFallido(); }
@@ -1181,16 +1190,7 @@ namespace Rocola
             uint cTop = skyTop; ColoresCielo(ref cTop, ref cMid, ref cBot);
             // Cielo azul/negro original; la paleta movil pertenece a la aurora. Con el cielo a media resolucion
             // (Ctrl+F3 -> Imagen -> Performance) el cielo y las nebulosas salen de la imagen intermedia (PerformanceGpu.cs).
-            if (CieloBase == null || !CieloBase(w, h, midY, cTop, cMid, cBot))
-            {
-                if (CieloSuave) DibujaCieloSuave(ArmaCieloSuave(w, h, midY, cTop, cMid, cBot, 0f));   // C1: doce franjas
-                else
-                {
-                    SetQuad(skyV, 0, 0, 0, w, midY, cTop, cTop, cMid, cMid);
-                    SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
-                    gpu.DrawSky(skyV);
-                }
-            }
+            if (CieloBase == null || !CieloBase(w, h, midY, cTop, cMid, cBot)) CieloDirecto(w, h, midY, cTop, cMid, cBot, true);
             if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
             // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
             // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
@@ -1214,6 +1214,19 @@ namespace Rocola
             if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
             UpdateAndDrawShoots(w, h, nowMs, finoMs);
             return true;
+        }
+
+        // El degradado del cielo tal cual, a la pantalla (o, a tamano completo, a la imagen que lo guarda: PerformanceGpu.cs).
+        internal void CieloDirecto(int w, int h, float midY, uint cTop, uint cMid, uint cBot, bool sinLoTapado)
+        {
+            if (CieloSuave)   // C1: doce franjas; las que quedan bajo el estado opaco no se mandan (PulidoGpu.cs)
+                DibujaCieloSuave(CieloSuaveVisible(ArmaCieloSuave(w, h, midY, cTop, cMid, cBot, 0f), sinLoTapado ? EstrellasTapadasDesde : 0f));
+            else
+            {
+                SetQuad(skyV, 0, 0, 0, w, midY, cTop, cTop, cMid, cMid);
+                SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
+                gpu.DrawSky(skyV);
+            }
         }
 
         // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
@@ -1827,8 +1840,9 @@ namespace Rocola
         private static void SetQuadUV(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint c,
                                      float u0, float v0, float u1, float v1)
         {
+            // Cuatro esquinas calculadas y dos copias (los vertices 3 y 4 repiten el 0 y el 2): los mismos seis vertices, bit a bit.
             V(ref v[o + 0], x0, y0, c, u0, v0); V(ref v[o + 1], x1, y0, c, u1, v0); V(ref v[o + 2], x1, y1, c, u1, v1);
-            V(ref v[o + 3], x0, y0, c, u0, v0); V(ref v[o + 4], x1, y1, c, u1, v1); V(ref v[o + 5], x0, y1, c, u0, v1);
+            v[o + 3] = v[o + 0]; v[o + 4] = v[o + 2]; V(ref v[o + 5], x0, y1, c, u0, v1);
         }
         private static void V(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x; v.Y = y; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
     }

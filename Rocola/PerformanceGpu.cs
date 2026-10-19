@@ -312,7 +312,7 @@ namespace Rocola
             if (lost) return false;
             bool dibujado = false, fvfCambiado = false, segunda = false;
             GCHandle gh = new GCHandle();
-            stTss = 0; stBlend = 0;   // desde aqui, lo de la etapa 0 y la mezcla queda "sin saber": lo siguiente lo repone
+            stTss = 0; stBlend = 0; stArg2Difuso = false; stOrigenAlfa = false;   // desde aqui, lo de la etapa 0 y la mezcla queda "sin saber": lo siguiente lo repone
             try
             {
                 Cambios += 3;
@@ -372,7 +372,7 @@ namespace Rocola
                     }
                 }
                 catch { EstadoFallido(); }
-                stTss = 0; stBlend = 0;
+                stTss = 0; stBlend = 0; stArg2Difuso = false; stOrigenAlfa = false;
             }
             return dibujado;
         }

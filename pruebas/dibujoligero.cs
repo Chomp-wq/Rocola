@@ -651,10 +651,13 @@ class DibujoLigero
         finally { corte.SetValue(null, corteDe); }
         Exige(malos == 0, cuadros + " cuadros (5 pantallas x 5 cortes del cielo): nadie borra, lo primero que llega es el cielo sin mezcla y tapa cada pixel una vez" +
                           (primero != null ? " -- " + malos + " mal; el primero: " + primero : ""));
+        // El cielo directo vive en CieloDirecto (19-10-2026: lo comparte con la imagen que lo guarda a tamano completo): Begin lo llama lo primero.
         List<string> orden = Codigo.Repasa(Metodo(TStar, "Begin"));
-        int iBegin = orden.IndexOf("BeginFrame"), iSky = orden.IndexOf("DrawSky"), antes = 0;
+        int iBegin = orden.IndexOf("BeginFrame"), iSky = orden.IndexOf("CieloDirecto"), antes = 0;
         for (int i = iBegin + 1; i >= 1 && i < iSky; i++) if (orden[i].StartsWith("Draw")) antes++;
-        Exige(iBegin >= 0 && iSky > iBegin && antes == 0, "en el codigo, despues de empezar el cuadro lo primero que se dibuja es el cielo");
+        List<string> directo = Codigo.Repasa(Metodo(TStar, "CieloDirecto"));
+        Exige(iBegin >= 0 && iSky > iBegin && antes == 0 && directo.IndexOf("DrawSky") >= 0 && directo.IndexOf("DibujaCieloSuave") >= 0,
+              "en el codigo, despues de empezar el cuadro lo primero que se dibuja es el cielo");
     }
 
     // ======================= LA AURORA =======================

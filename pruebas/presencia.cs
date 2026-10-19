@@ -208,7 +208,7 @@ class Presencia
             if (beg != null)
             {
                 List<string> l = Codigo.Llamadas(beg);
-                int pCielo = Pos(l, "D3D9Star.DrawSky"); if (pCielo < 0) foreach (string s in l) if (s.EndsWith(".DrawSky")) { pCielo = Pos(l, s); break; }
+                int pCielo = Pos(l, "D3D9Star.DrawSky"); if (pCielo < 0) foreach (string s in l) if (s.EndsWith(".DrawSky") || s.EndsWith(".CieloDirecto")) { pCielo = Pos(l, s); break; }   // el cielo directo vive en CieloDirecto (19-10-2026)
                 int pAur = -1, pEstr = -1;
                 for (int i = 0; i < l.Count; i++)
                 {

@@ -91,6 +91,13 @@ namespace Rocola
         private readonly HashSet<Bitmap> protectedNativeAhead = new HashSet<Bitmap>();
         private readonly IntPtr[] nativeGridTex = new IntPtr[MaxCells];
         private readonly float[] nativeGridU = new float[MaxCells], nativeGridV = new float[MaxCells];
+        private sealed class CubiertaGuardada
+        {
+            internal readonly D3D9.Vtx[] Vertices = new D3D9.Vtx[54];
+            internal bool Lista; internal float X, Y, W, H, U, V; internal int Bw, Bh; internal uint Color;
+        }
+        private readonly CubiertaGuardada[] cubiertas = new CubiertaGuardada[MaxCells];
+        internal int CubiertasCalculadas, CubiertasReusadas;
         private readonly D3D9.Vtx[] nativeQuad = new D3D9.Vtx[6];
         private readonly D3D9.Vtx[] nativeSoftQuad = new D3D9.Vtx[54];
         private readonly D3D9.Vtx[] nativeCorners = new D3D9.Vtx[16];
@@ -164,6 +171,12 @@ namespace Rocola
             }
             CellTex source;
             if (!nativeCovers.TryGetValue(cell.FullCover, out source)) return;
+            // La malla de una portada quieta es la misma en cada cuadro: se guarda por puesto de la rejilla (a lo mas MaxCells, 54 vertices
+            // cada una, unos 54 KiB en total) y se vuelve a armar solo si cambia su sitio, su tamano, su textura o su opacidad.
+            CubiertaGuardada g = index >= 0 && index < cubiertas.Length ? (cubiertas[index] ?? (cubiertas[index] = new CubiertaGuardada())) : null;
+            if (g != null && g.Lista && g.X == x && g.Y == y && g.W == face.Width && g.H == face.Height && g.U == nativeGridU[index] && g.V == nativeGridV[index]
+                && g.Bw == source.Bw && g.Bh == source.Bh && g.Color == color)
+            { CubiertasReusadas++; stars.DrawTexturedBatch(texture, g.Vertices, 18); return; }
             // GDI interpolaba contra transparencia fuera del JPEG. Reproducir ese borde con
             // medio texel fuente, no una copia ampliada ni un contorno duro al deslizar.
             float px = face.Width / (2f * Math.Max(1, source.Bw)), py = face.Height / (2f * Math.Max(1, source.Bh));
@@ -175,13 +188,19 @@ namespace Rocola
             // 54 vertices finales y el alfa del borde, calculando cada esquina una vez.
             for (int row = 0; row < 4; row++) for (int col = 0; col < 4; col++)
                 NativeCorner(row * 4 + col, col, row, color);
+            D3D9.Vtx[] malla = g != null ? g.Vertices : nativeSoftQuad;
             int n = 0;
             for (int row = 0; row < 3; row++) for (int col = 0; col < 3; col++) {
                 int a = row * 4 + col;
-                nativeSoftQuad[n++] = nativeCorners[a]; nativeSoftQuad[n++] = nativeCorners[a + 1]; nativeSoftQuad[n++] = nativeCorners[a + 5];
-                nativeSoftQuad[n++] = nativeCorners[a]; nativeSoftQuad[n++] = nativeCorners[a + 5]; nativeSoftQuad[n++] = nativeCorners[a + 4];
+                malla[n++] = nativeCorners[a]; malla[n++] = nativeCorners[a + 1]; malla[n++] = nativeCorners[a + 5];
+                malla[n++] = nativeCorners[a]; malla[n++] = nativeCorners[a + 5]; malla[n++] = nativeCorners[a + 4];
             }
-            stars.DrawTexturedBatch(texture, nativeSoftQuad, 18);
+            if (g != null)
+            {
+                g.Lista = true; g.X = x; g.Y = y; g.W = face.Width; g.H = face.Height; g.U = nativeGridU[index]; g.V = nativeGridV[index];
+                g.Bw = source.Bw; g.Bh = source.Bh; g.Color = color; CubiertasCalculadas++;
+            }
+            stars.DrawTexturedBatch(texture, malla, 18);
         }
         private void NativeCorner(int n, int x, int y, uint color)
         {
