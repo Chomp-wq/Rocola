@@ -542,13 +542,19 @@ namespace Rocola
 #if ROCOLA_GPU
             int poolGeneration = coverGen;
 #endif
+            // Todo el hilo va dentro de un try (19-10-2026): una excepcion que se escapara de aqui (fuera de los catch de dentro) mataba el hilo sin
+            // avisar -en CLR 2 una excepcion sin atrapar en un hilo cierra la rocola- y dejaba subido el contador de lectores (coverPumpCount), asi que
+            // no se armaba otro. Ahora se apunta, se baja el contador y la portada en curso queda para reintentar.
+            CoverJob enCurso = null; bool salio = false;
+            try
+            {
             while (true)
             {
 #if ROCOLA_GPU
                 if (gpuEnabled && coverGovernor.ReaderPause > 0)
                     System.Threading.Thread.Sleep(coverGovernor.ReaderPause);
 #endif
-                CoverJob j = null;
+                CoverJob j = null; enCurso = null;
                 lock (coverLock)
                 {
                     j = TakeCoverJob(coverQHi) ?? TakeCoverJob(coverQLo);
@@ -568,8 +574,9 @@ namespace Rocola
                         }
                     }
 #endif
-                    if (j == null) { coverPumpCount--; return; }
+                    if (j == null) { coverPumpCount--; salio = true; return; }
                 }
+                enCurso = j;
                 string key = j.Key;
                 bool entered = false;
                 Bitmap miniaturaParaGuardar = null;
@@ -673,6 +680,22 @@ namespace Rocola
                     if (miniaturaParaGuardar != null) try { miniaturaParaGuardar.Dispose(); } catch { }
                     if (entered) coverSem.Release(); ReleaseCoverUnit(j);
                 }
+            }
+            }
+            catch (Exception ex)
+            {
+                try { LogError("Lector de caratulas: fallo inesperado; el hilo termina y se arma otro cuando haga falta", ex); } catch { }
+            }
+            finally
+            {
+                if (!salio)
+                    lock (coverLock)
+                    {
+                        coverPumpCount--;
+                        if (enCurso != null && enCurso.Gen == coverGen && enCurso.Key != null)
+                        { coverLoading.Remove(enCurso.Key); coverRetryUntil[enCurso.Key] = unchecked(Environment.TickCount + 30000); }
+                        System.Threading.Monitor.PulseAll(coverLock);
+                    }
             }
         }
 

@@ -288,6 +288,9 @@ CPU="$CPU objetosmenos"
 # 'reproligera': la reproduccion desde la memoria abre el lector ligero de MP3 (Mp3Ligero.cs, antes solo el repaso): con el descompresor de verdad
 # (NLayer) el mismo PCM muestra a muestra en cancion entera, saltos, reanudar, relevo sin pausa y con la pantalla preguntando desde otro hilo.
 CPU="$CPU reproligera"
+# 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
+# en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
+CPU="$CPU hilosatrapados"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"

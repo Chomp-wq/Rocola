@@ -2275,17 +2275,23 @@ namespace Rocola
 
             int trozo = (n + hilos - 1) / hilos;
             System.Threading.Thread[] th = new System.Threading.Thread[hilos - 1];
+            // Una excepcion sin atrapar en un hilo cierra la rocola en CLR 2: si un ayudante falla, se atrapa y su tramo se rehace aqui, en el hilo que reparte
+            // (que ya tiene su propio manejo de errores). Cada tramo escribe solo dentro de sus entradas, asi que rehacerlo es seguro.
+            bool[] fallo = new bool[hilos - 1];
             for (int k = 1; k < hilos; k++)
             {
                 int desde = k * trozo;
                 int hasta = Math.Min(n, desde + trozo);
-                th[k - 1] = new System.Threading.Thread(delegate () { TramoDeClaves(desde, hasta); });
+                int yo = k - 1;
+                th[k - 1] = new System.Threading.Thread(delegate () { try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });
                 th[k - 1].IsBackground = true;
                 th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
                 th[k - 1].Start();
             }
             TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
             for (int k = 0; k < th.Length; k++) th[k].Join();
+            for (int k = 0; k < th.Length; k++)
+                if (fallo[k]) TramoDeClaves((k + 1) * trozo, Math.Min(n, (k + 2) * trozo));
         }
 
         private void TramoDeClaves(int desde, int hasta)
