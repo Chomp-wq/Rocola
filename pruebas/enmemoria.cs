@@ -92,7 +92,15 @@ class EnMemoria
         string nueva = File.Exists(Path.Combine(dir, "CancionEnMemoria.cs")) ? File.ReadAllText(Path.Combine(dir, "CancionEnMemoria.cs")) : null;
         string deArchivo = Cuerpo(fuente, "private static Mp3FileReader AbreMp3(string ruta)");
         string deMemoria = Cuerpo(nueva, "private static Mp3FileReader AbreMp3(string ruta, Stream enMemoria)");
-        bool igual = deArchivo != null && deMemoria != null && deArchivo == deMemoria.Replace("new Mp3FileReader(enMemoria, armador)", "new Mp3FileReader(ruta, armador)");
+        // Desde el 19-10-2026 la memoria abre el lector ligero (LectorMp3Ligero) cuando se puede; se compara lo demas igual (sin los comentarios).
+        if (deMemoria != null)
+        {
+            System.Text.StringBuilder sinComentarios = new System.Text.StringBuilder();
+            foreach (string linea in deMemoria.Split('\n')) if (!linea.TrimStart().StartsWith("//")) sinComentarios.Append(linea).Append('\n');
+            deMemoria = sinComentarios.ToString().TrimEnd('\n').Replace("LectorMp3Ligero.Posible ? new LectorMp3Ligero(enMemoria, armador) : new Mp3FileReader(enMemoria, armador)", "new Mp3FileReader(ruta, armador)");
+            if (deArchivo != null) deArchivo = deArchivo.TrimEnd('\n');
+        }
+        bool igual = deArchivo != null && deMemoria != null && deArchivo == deMemoria;
         MethodInfo mA = TF.GetMethod("AbreMp3", T, null, new Type[] { typeof(string) }, null);
         MethodInfo mM = TF.GetMethod("AbreMp3", T, null, new Type[] { typeof(string), typeof(Stream) }, null);
         List<string> cA = Cierres(mA), cM = Cierres(mM);

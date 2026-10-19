@@ -285,6 +285,9 @@ CPU="$CPU cosechaunavez"
 # 'objetosmenos': menos objetos de vida larga por cancion (19-10-2026): el espejo del EQ comparte los arreglos, un registro de fuentes en vez de cuatro objetos
 # (el mismo archivo rocola_fuentes.txt) y el artista de la carpeta una vez por carpeta (las mismas canciones).
 CPU="$CPU objetosmenos"
+# 'reproligera': la reproduccion desde la memoria abre el lector ligero de MP3 (Mp3Ligero.cs, antes solo el repaso): con el descompresor de verdad
+# (NLayer) el mismo PCM muestra a muestra en cancion entera, saltos, reanudar, relevo sin pausa y con la pantalla preguntando desde otro hilo.
+CPU="$CPU reproligera"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"

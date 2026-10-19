@@ -164,7 +164,11 @@ namespace Rocola
                 hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                 return hecho;
             };
-            try { return new Mp3FileReader(enMemoria, armador); }
+            // Desde la memoria se abre el lector ligero (Mp3Ligero.cs): el MISMO Mp3FileReader de NAudio, con su cuenta de Read y de Position, pero
+            // reutilizando la memoria de cada cuadro en lugar de crear 38 objetos y 76 arreglos por segundo de cancion (5,8 a 9,6 MB de basura por
+            // cancion). El descompresor recibe los mismos bytes en el mismo orden y los mismos Reset: la bateria reproligera lo comprueba con
+            // una cancion entera, saltos, reanudar y el relevo sin pausa. Si NAudio no es la 1.9 esperada, el de siempre.
+            try { return LectorMp3Ligero.Posible ? new LectorMp3Ligero(enMemoria, armador) : new Mp3FileReader(enMemoria, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
     }

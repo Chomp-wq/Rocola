@@ -17,8 +17,11 @@
 // O sea: el descompresor recibe los mismos bytes, del mismo tamano, en el mismo orden y con los mismos Reset; lo que sale
 // es identico (la bateria mp3ligero lo compara cuadro a cuadro con NAudio).
 //
-// Solo lo usa la medida (LectorMedida). La reproduccion sigue con el lector de NAudio tal cual. Si NAudio no fuera la
-// 1.9 que se espera (no encuentra sus piezas privadas), no se usa: la medida abre el lector de siempre.
+// Lo usa la medida (LectorMedida) y, desde el 19-10-2026, la reproduccion de un MP3 que se abre desde la memoria
+// (CancionEnMemoria.cs, AbreMp3): la bateria reproligera exige el mismo PCM muestra a muestra que con NAudio en cancion
+// entera, saltos, reanudar y relevo sin pausa. La reproduccion de un MP3 que se abre del archivo (mas de 32 MB, poca
+// memoria) sigue con el lector de NAudio tal cual. Si NAudio no fuera la 1.9 que se espera (no encuentra sus piezas
+// privadas), no se usa: se abre el lector de siempre.
 using System;
 using System.Collections;
 using System.Collections.Generic;
