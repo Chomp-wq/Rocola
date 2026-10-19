@@ -2,10 +2,11 @@
 
 ## Ahorros automáticos del dibujo, con huellas de cuadro — 19 de octubre de 2026
 
-Cinco ahorros que no cambian ni un píxel (168 de 168 pantallas comparadas con una tarjeta imitada que pinta): los estados de mezcla y de etapa solo
-cuando cambian (−40 % de `SetRenderState`), el cielo de fábrica guardado y estirado (−18 % de pantallas pintadas, a costa de un cuadro más caro cuando
-cambia), las franjas del cielo bajo el estado opaco (−15 % en Bajo), la malla de cada portada de la rejilla y dos esquinas copiadas en cada estrella.
-El procesador por cuadro no se movió de forma medible. Sin interruptores nuevos.
+Cuatro ahorros que no cambian ni un píxel (168 de 168 pantallas comparadas con una tarjeta imitada que pinta): los estados de mezcla y de etapa solo
+cuando cambian (−39 % de `SetRenderState` en la rejilla, −49 % en el reposo de fábrica), las franjas del cielo bajo el estado opaco (−15 % en Bajo), la malla de
+cada portada de la rejilla y dos esquinas copiadas en cada estrella. El procesador por cuadro no se movió de forma medible. Sin interruptores nuevos.
+**Descartado y revertido:** el cielo de fábrica guardado y estirado bajaba la media de pantallas pintadas un 18 %, pero subía el peor cuadro de 6,45 a 7,45
+pantallas (+16 %) y pedía de 4 a 16 MB más de memoria de la tarjeta: para un problema de tirones importa el peor cuadro, no la media.
 [Inventario, ahorros, comprobaciones y lo descartado](OPTIMIZACIONES_AUTOMATICAS_MODEST_2026-10-19.md).
 
 ## Fluidez: qué se midió y qué se descartó, y paradas con contexto — 19 de octubre de 2026
