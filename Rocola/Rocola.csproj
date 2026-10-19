@@ -110,6 +110,7 @@
     <Compile Include="AyudaCasillaGpu.cs" />
     <Compile Include="AsistenteGuiaRocola.cs" />
     <Compile Include="EscaneoMemo.cs" />
+    <Compile Include="RecorridoRapido.cs" />
     <Compile Include="AperturaAudio.cs" />
     <Compile Include="AudioControles.cs" />
     <Compile Include="Sonoridad.cs" />

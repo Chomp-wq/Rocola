@@ -1809,7 +1809,9 @@ namespace Rocola
         // comparaciones. Se comprueba que el comienzo es EXACTAMENTE el mismo en todas (letra por letra) antes de saltarlo; si no, o si no hay
         // nada que ordenar, se hace lo de siempre. Es el mismo algoritmo (Array.Sort) con la misma respuesta en cada comparacion, asi que
         // incluso los empates (nombres iguales salvo mayusculas, que en Linux pueden existir) quedan en el mismo sitio.
-        private static void OrdenaRutasDeCarpeta(string[] rutas)
+        private static void OrdenaRutasDeCarpeta(string[] rutas) { OrdenaRutasDeCarpeta(rutas, null); }
+        // Con 'acompana' (del mismo largo) reordena a la vez ese arreglo, p. ej. los indices, para ordenar los datos de cada ruta.
+        private static void OrdenaRutasDeCarpeta(string[] rutas, int[] acompana)
         {
             if (rutas == null || rutas.Length < 2) return;
             string primera = rutas[0];
@@ -1818,7 +1820,7 @@ namespace Rocola
             for (int i = 1; comun && i < rutas.Length; i++)
                 comun = rutas[i].Length >= off && string.CompareOrdinal(rutas[i], 0, primera, 0, off) == 0;
             IComparer<string> cmp = comun ? (IComparer<string>)new ComparaDesde(off) : StringComparer.OrdinalIgnoreCase;
-            Array.Sort(rutas, cmp);
+            if (acompana == null) Array.Sort(rutas, cmp); else Array.Sort(rutas, acompana, cmp);
         }
         private sealed class ComparaDesde : IComparer<string>
         {
@@ -1851,6 +1853,15 @@ namespace Rocola
         {
             long stamp = Directory.GetLastWriteTimeUtc(dir).Ticks;
             RootHash(ref h, dir); RootHash(ref h, stamp.ToString(CultureInfo.InvariantCulture));
+            // CLR 2 en Windows: nombre, tamano, fecha y atributos de cada entrada de UN solo recorrido (RecorridoRapido.cs) en vez de una llamada
+            // por archivo y otra por carpeta. Sale con null ante cualquier cosa que no sea el caso limpio (sin permiso, ruta larga, nombres raros,
+            // un fallo a medias) y entonces se hace lo de siempre, con sus errores. La firma es la misma letra por letra.
+            if (!metadataEnumerada && fuenteListado != null)
+            {
+                ListadoCarpeta listado = null;
+                try { listado = fuenteListado(dir); } catch { listado = null; }
+                if (listado != null) { FirmaListado(dir, stamp, listado, memo, pendientes, ref h, ref filesN); return; }
+            }
             // .NET 4 reutiliza metadatos de la enumeracion. En CLR 2 (.NET 3.5)
             // GetFiles no aporta ese ahorro: conservar el recorrido medido mas rapido.
             FileInfo[] files = null; string[] paths = null; int count;
@@ -1884,6 +1895,32 @@ namespace Rocola
             OrdenaRutasDeCarpeta(subs);
             for (int i = subs.Length - 1; i >= 0; i--)
                 if (!EsAtajo(subs[i]) && !EsCarpetaDelSistema(subs[i])) pendientes.Push(subs[i]);
+        }
+        // De donde sale la lista de la carpeta con CLR 2: el recorrido de Windows (null en otros sistemas y en CLR 4, que ya reutiliza los
+        // metadatos de la enumeracion). Las pruebas lo cambian por una lista inventada para comprobar el mismo camino sin Windows.
+        private static FuenteListado fuenteListado = ListadoWin32.Disponible() ? new FuenteListado(ListadoWin32.Lee) : null;
+        // Lo mismo que el camino de siempre, partiendo de la lista ya leida: mismos archivos en el mismo orden (por nombre, sin mayusculas),
+        // mismas tres cosas apuntadas de cada uno, la misma memoria del recorrido (archivos y carpetas en el orden del sistema) y las mismas
+        // carpetas por visitar (de la ultima a la primera, sin atajos ni carpetas del sistema).
+        private static void FirmaListado(string dir, long stamp, ListadoCarpeta l, ScanDirectoryMemo memo, Stack<string> pendientes, ref ulong h, ref long filesN)
+        {
+            string[] captured = null;
+            if (memo != null && memo.CanCapture(l.Archivos.Length)) captured = (string[])l.Archivos.Clone();
+            string[] nombres = (string[])l.Archivos.Clone(); int[] orden = new int[nombres.Length];
+            for (int i = 0; i < orden.Length; i++) orden[i] = i;
+            OrdenaRutasDeCarpeta(nombres, orden);
+            for (int i = 0; i < orden.Length; i++)
+            {
+                int k = orden[i]; filesN++;
+                RootHash(ref h, l.Archivos[k]); RootHash(ref h, l.Largos[k].ToString(CultureInfo.InvariantCulture));
+                RootHash(ref h, l.Fechas[k].ToString(CultureInfo.InvariantCulture));
+            }
+            if (memo != null && captured != null) memo.Remember(dir, stamp, captured, l.Carpetas);
+            string[] subs = (string[])l.Carpetas.Clone(); int[] ordenC = new int[subs.Length];
+            for (int i = 0; i < ordenC.Length; i++) ordenC[i] = i;
+            OrdenaRutasDeCarpeta(subs, ordenC);
+            for (int i = ordenC.Length - 1; i >= 0; i--)
+                if (!l.Atajos[ordenC[i]] && !EsCarpetaDelSistema(l.Carpetas[ordenC[i]])) pendientes.Push(l.Carpetas[ordenC[i]]);
         }
         private static string RootsSig(List<string> roots)
         {
