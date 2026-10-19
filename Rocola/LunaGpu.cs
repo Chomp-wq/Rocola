@@ -133,32 +133,59 @@ namespace Rocola
             stars.GlowBatchEnd();
             DrawLunarDust(cx,cy,radius,visibility,true);
         }
+        private struct MuestraPolvo
+        {
+            internal float Seno, Coseno;
+            internal bool Frente;
+        }
+        private MuestraPolvo[] polvoMuestras;
+        private double polvoFase;
+        private void PreparaPolvoLunar()
+        {
+            double fase = LunaActiva ? moonMotionTime : 0;
+            if (polvoMuestras != null && polvoFase == fase) return;
+            if (polvoMuestras == null) polvoMuestras = new MuestraPolvo[18];
+            for (int orbit = 0; orbit < 3; orbit++) {
+                double angle = fase * (.55 + orbit * .12) + orbit * 2.094;
+                for (int tail = 5; tail >= 0; tail--) {
+                    double a = angle - tail * .05, seno = Math.Sin(a);
+                    int index = orbit * 6 + tail;
+                    polvoMuestras[index].Frente = seno >= 0;
+                    polvoMuestras[index].Seno = (float)seno;
+                    polvoMuestras[index].Coseno = (float)Math.Cos(a);
+                }
+            }
+            // Solo la orbita: posicion, radio, color y alfa siguen vivos en cada pasada.
+            polvoFase = fase;
+        }
         private void DrawLunarDust(float cx,float cy,float radius,float visibility,bool front)
         {
             if (!PolvoLunar && (front || !HaloLunar)) return;
             stars.GlowBatchBegin(21);
-            uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
             if (!front && HaloLunar)
             {
+                uint rgb=StarColorAt(cx,cy)&0xFFFFFFu;
                 stars.GlowBatchAdd(cx,cy,radius*(CoronaCompacta ? 1.05f : 1.9f),((uint)(50*visibility)<<24)|rgb);   // la corona, quieta: sin latido
                 stars.GlowBatchAdd(cx-radius*.16f,cy-radius*.06f,radius*(CoronaCompacta ? .78f : 1.20f),((uint)(64*visibility)<<24)|FlowColor(0xC9DAFFu,cx/Math.Max(1,Width),cy/Math.Max(1,Height)));
             }
             if (PolvoLunar)
+            {
+                PreparaPolvoLunar();
                 for(int orbit=0;orbit<3;orbit++)
                 {
-                    double angle=(LunaActiva ? moonMotionTime*(.55+orbit*.12) : 0)+orbit*2.094;
                     for(int tail=5;tail>=0;tail--)
                     {
-                        double a=angle-tail*.05;
-                        if ((Math.Sin(a)>=0)!=front) continue;
-                        float dx=(float)Math.Cos(a)*radius*(1.38f+orbit*.17f);
-                        float dy=(float)Math.Sin(a)*radius*(.40f+orbit*.09f)-dx*.24f;
+                        MuestraPolvo muestra = polvoMuestras[orbit * 6 + tail];
+                        if (muestra.Frente != front) continue;
+                        float dx=muestra.Coseno*radius*(1.38f+orbit*.17f);
+                        float dy=muestra.Seno*radius*(.40f+orbit*.09f)-dx*.24f;
                         float size=radius*(tail==0 ? .043f : .025f);   // el polvo tampoco late: gira a su paso
                         uint alpha=(uint)((tail==0 ? 165 : 58-tail*8)*visibility);
                         uint dust=FlowColor(0xD5E5FFu,(cx+dx)/Math.Max(1,Width),(cy+dy)/Math.Max(1,Height));
                         stars.GlowBatchAdd(cx+dx,cy+dy,Math.Max(1,size),(alpha<<24)|dust);
                     }
                 }
+            }
             stars.GlowBatchEnd();
         }
     }

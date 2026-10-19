@@ -1,5 +1,13 @@
 # Rocola
 
+## Partículas con menos cálculos — 19 de octubre de 2026
+
+Las dos pasadas del polvo orbital comparten 18 muestras; se reutilizan cuando
+la fase no cambia. Conserva colores, movimiento y geometría, sin nuevas opciones.
+7.680 escenas coinciden con el release anterior. El ahorro aislado es pequeño
+y no equivale a una mejora de FPS.
+[Comparaciones, mediciones y límites](POLVO_LIGERO_MODEST_2026-10-19.md).
+
 ## Análisis de transparencias más ligero — 19 de octubre de 2026
 
 Los recortes del cielo y la interfaz se unen recorriendo sus tramos ordenados,
