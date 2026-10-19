@@ -44,7 +44,7 @@ namespace Rocola
         {
             if (!diagOn) return;
             Diag("cancion: abierta en " + abiertaMs + " ms, sonando en " + Desde(bitacoraCancion) + " ms (en memoria hasta ahora: "
-                 + EnMemoriaDelAdelanto + " de la lectura por adelantado, " + EnMemoriaLeidas + " leidas al abrir)");
+                 + EnMemoriaDelAdelanto + " de la lectura por adelantado, " + EnMemoriaLeidas + " leidas al abrir)" + DiagReservaTexto());
         }
     }
 

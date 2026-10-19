@@ -635,7 +635,7 @@ namespace Rocola
                         perfilDisco = (d == "ssd") ? 1 : (d == "hdd" || d == "duro") ? 2 : 0;
                     }
                     else if (s.StartsWith("video_gpu=")) videoGpuOn = s.Substring(10).Trim() != "0";   // interfaz por GPU aunque haya video
-                    else if (s.StartsWith("diagnostico=")) diagOn = s.Substring(12).Trim() != "0";   // bitacora en rocola_diagnostico.txt
+                    else if (s.StartsWith("diagnostico=")) { diagOn = s.Substring(12).Trim() != "0"; DiagMemoria = diagOn; }   // bitacora en rocola_diagnostico.txt
                     else if (s.StartsWith("normalizar=")) normalizeOn = s.Substring(11).Trim() != "0";   // nivelar volumen de las canciones (por defecto si)
                     else if (s.StartsWith("respaldo_dir=")) { string d = s.Substring(13).Trim(); if (d.Length > 0) backupDir = d; }   // 2o destino del respaldo de datos aprendidos
                     else if (s.StartsWith("nivel_objetivo=")) { float v; if (float.TryParse(s.Substring(15).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normTarget = Clampf(v, NormTargetMin, NormTargetMax); }

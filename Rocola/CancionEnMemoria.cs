@@ -63,8 +63,31 @@ namespace Rocola
         private static byte[] ReservaEnMemoria(string ruta, long largo)
         {
             if (!CabeEnMemoria(ruta, largo)) return null;
-            try { return new byte[largo]; }
+            try { return NuevoArregloDeCancion(largo, "lectura por adelantado"); }
             catch (OutOfMemoryException) { return null; }
+        }
+        // Cada cancion en memoria es un arreglo de 1 a 32 MB: va al monton de objetos grandes, y pedir uno puede disparar una recoleccion de
+        // generacion 2 (que en .NET 3.5 para todos los hilos). Con diagnostico=1 se apunta cuantas hubo mientras se pedia el arreglo, para
+        // saber en la rocola real si eso es lo que se nota al cambiar de cancion (si no, no hace falta reusar los arreglos). Una diferencia de
+        // contadores es una COINCIDENCIA en el tiempo (otro hilo pudo provocarla), no su duracion ni su causa.
+        internal static volatile bool DiagMemoria;
+        private static long diagKB; private static int diagG2Antes, diagG2Despues, diagG0Antes, diagG0Despues, diagMs; private static string diagQuien;
+        private static byte[] NuevoArregloDeCancion(long largo, string quien)
+        {
+            if (!DiagMemoria) return new byte[largo];
+            int g2 = GC.CollectionCount(2), g0 = GC.CollectionCount(0), t = Environment.TickCount;
+            byte[] d = new byte[largo];
+            diagMs = unchecked(Environment.TickCount - t); diagKB = largo / 1024; diagQuien = quien;
+            diagG2Antes = g2; diagG2Despues = GC.CollectionCount(2); diagG0Antes = g0; diagG0Despues = GC.CollectionCount(0);
+            return d;
+        }
+        // Para la linea "cancion:" de la bitacora (solo con diagnostico=1): la ultima reserva y el total de recolecciones de generacion 2.
+        internal static string DiagReservaTexto()
+        {
+            string q = diagQuien;
+            if (q == null) return "; sin arreglo propio de cancion todavia (recolecciones gen2 en total: " + GC.CollectionCount(2) + ")";
+            return "; ultimo arreglo de cancion (" + q + "): " + diagKB + " KB en " + diagMs + " ms, gen2 " + diagG2Antes + " -> " + diagG2Despues
+                 + ", gen0 " + diagG0Antes + " -> " + diagG0Despues + " (coincidencia, no causa); gen2 en total: " + GC.CollectionCount(2);
         }
         // Y la deja aqui, entera, con la firma que tenia el archivo antes de leerlo.
         private static void DejaEnMemoria(string ruta, string firma, byte[] datos)
@@ -99,7 +122,7 @@ namespace Rocola
                 {
                     long largo = fs.Length;
                     if (!CabeEnMemoria(ruta, largo)) return null;
-                    byte[] d = new byte[largo];
+                    byte[] d = NuevoArregloDeCancion(largo, "al abrir");
                     int hecho = 0;
                     while (hecho < d.Length)
                     {

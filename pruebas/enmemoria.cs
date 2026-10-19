@@ -17,7 +17,10 @@ using NAudio.Wave;
 //   3) que mientras suena no depende del disco: con el archivo vaciado a mitad de cancion sigue entera (del archivo, se
 //      cortaba); y cuantas lecturas le cuesta al disco cada forma;
 //   4) el enganche: la fuente de audio abre desde la memoria y cae al archivo si no; la lectura por adelantado guarda los
-//      bytes sin dejar de hacer sus pausas; soltar la cola suelta tambien esto; al cerrar la fuente, suelta la memoria.
+//      bytes sin dejar de hacer sus pausas; soltar la cola suelta tambien esto; al cerrar la fuente, suelta la memoria;
+//   5) el diagnostico del arreglo de la cancion (19-10-2026): con diagnostico=1 se apunta cuantas recolecciones de generacion 2 hubo mientras
+//      se pedia el arreglo (en la linea "cancion:" de rocola_diagnostico.txt), sin diagnostico no se mide ni se guarda nada, y el arreglo
+//      es el mismo (mismo tamano y mismos bytes leidos) con y sin diagnostico.
 class EnMemoria
 {
     const BindingFlags T = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -233,6 +236,46 @@ class EnMemoria
         Check(Codigo.Llama(TF.GetMethod("SueltaLookahead", T), "SueltaEnMemoria"), "soltar lo que se miraba por delante suelta tambien los bytes guardados");
     }
 
+    static void Diagnostico(string dir, string ruta, byte[] bytes)
+    {
+        Console.WriteLine("\n  5) EL DIAGNOSTICO DEL ARREGLO DE LA CANCION\n");
+        FieldInfo diag = TF.GetField("DiagMemoria", T);
+        Check(diag != null && diag.FieldType == typeof(bool), "existe el interruptor DiagMemoria (lo enciende diagnostico=1 al leer la configuracion)");
+        int lee, escribe;
+        Codigo.UsosDeCampo(TF.GetMethod("LoadConfigPrefs", T), "DiagMemoria", out lee, out escribe);
+        Check(escribe > 0, "LoadConfigPrefs lo escribe al leer diagnostico=");
+        Check(Codigo.Llama(TF.GetMethod("ApuntaCancion", T), "DiagReservaTexto"), "la linea 'cancion:' de la bitacora lleva el texto del arreglo");
+        MethodInfo texto = TF.GetMethod("DiagReservaTexto", T), reserva = TF.GetMethod("ReservaEnMemoria", T);
+        diag.SetValue(null, false);
+        string sin0 = (string)texto.Invoke(null, null);
+        byte[] a = (byte[])reserva.Invoke(null, new object[] { ruta, (long)bytes.Length });
+        Check(a != null && a.Length == bytes.Length && (string)texto.Invoke(null, null) == sin0 && sin0.IndexOf("sin arreglo propio") >= 0,
+              "sin diagnostico: el arreglo sale del tamano justo y no se mide ni se apunta nada");
+        diag.SetValue(null, true);
+        try
+        {
+            int g2 = GC.CollectionCount(2);
+            byte[] b = (byte[])reserva.Invoke(null, new object[] { ruta, (long)bytes.Length });
+            int g2b = GC.CollectionCount(2);
+            string t1 = (string)texto.Invoke(null, null);
+            Console.WriteLine("     " + t1.TrimStart(';', ' '));
+            Check(b != null && b.Length == bytes.Length && t1.IndexOf("(lectura por adelantado): " + (bytes.Length / 1024) + " KB") >= 0,
+                  "con diagnostico: mismo arreglo (mismo tamano) y se apunta de donde vino y cuanto pesa");
+            Match m = Regex.Match(t1, @"gen2 (\d+) -> (\d+), gen0 (\d+) -> (\d+)");
+            int a2 = m.Success ? int.Parse(m.Groups[1].Value) : -1, d2 = m.Success ? int.Parse(m.Groups[2].Value) : -1;
+            Check(m.Success && a2 >= g2 && d2 >= a2 && d2 <= g2b && int.Parse(m.Groups[4].Value) >= int.Parse(m.Groups[3].Value),
+                  "los contadores de recolecciones son coherentes: gen2 " + (m.Success ? m.Groups[1] + " -> " + m.Groups[2] : "?") + " dentro de " + g2 + " .. " + g2b + " (dos lecturas del contador del sistema)");
+            // un arreglo grande en el monton de objetos grandes y una recoleccion forzada: el contador sube
+            int antes = GC.CollectionCount(2); GC.Collect(); GC.WaitForPendingFinalizers();
+            Check(GC.CollectionCount(2) > antes && Regex.IsMatch((string)texto.Invoke(null, null), @"gen2 en total: " + GC.CollectionCount(2)), "y el total de recolecciones de generacion 2 que cuenta es el del sistema");
+            // al abrir: sin lectura por adelantado, el arreglo lo pide LeeEnteraEnMemoria
+            MemoryStream ms = (MemoryStream)Call("CancionEnMemoria", ruta);
+            string t2 = (string)texto.Invoke(null, null);
+            Check(ms != null && ms.Length == bytes.Length && t2.IndexOf("(al abrir)") >= 0 && Iguales(ms.ToArray(), bytes), "leida al abrir: se apunta como 'al abrir' y los bytes son los del archivo");
+        }
+        finally { diag.SetValue(null, false); }
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -248,6 +291,7 @@ class EnMemoria
             Cargador(dir, ruta, bytes);
             SinDisco(dir, bytes);
             Enganche();
+            Diagnostico(dir, ruta, bytes);
         }
         catch (Exception e) { Check(false, "sin excepciones: " + (e.InnerException ?? e)); }
         finally { try { Directory.Delete(dir, true); } catch { } }
