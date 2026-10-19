@@ -130,6 +130,42 @@ namespace Rocola
         internal const int ParadaDiagMs = 150, ParadaErrorMs = 500;   // a la bitacora (con diagnostico=1) / a los errores, siempre
         private int paradaErrorTick, paradasSinApuntar;
         private bool paradaApuntada;
+        private int paradaGc0, paradaGc1, paradaGc2; private bool paradaGcVisto;   // contadores del recolector en el apunte anterior
+
+        // EN QUE ESTADO ESTABA EL EQUIPO CUANDO LA PANTALLA SE PARO (19-10-2026). Una parada de cientos de milisegundos en el A4 con XP
+        // pudo ser el recolector de basura, un hilo de fondo, la memoria o el propio dibujo, y la linea de antes solo decia que
+        // hacia la pantalla. Esto agrega lo que se puede mirar sin molestar: cuantas recolecciones hubo desde la parada anterior, la
+        // memoria que usa el programa y cuanta RAM fisica y de direcciones le queda al sistema. Un contador del recolector
+        // coincidente NO prueba la causa ni dice cuanto duro: solo sirve para descartar o sospechar. Se calcula en el hilo del vigia
+        // y solo cuando hay una parada que apuntar (rara): la pantalla no paga nada.
+        internal string ContextoDeParada()
+        {
+            try
+            {
+                int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+                string gc = !paradaGcVisto ? "gc_totales=" + g0 + "/" + g1 + "/" + g2
+                                          : "gc_desde_el_apunte_anterior=" + (g0 - paradaGc0) + "/" + (g1 - paradaGc1) + "/" + (g2 - paradaGc2);
+                paradaGc0 = g0; paradaGc1 = g1; paradaGc2 = g2; paradaGcVisto = true;
+                string mem = "";
+                try
+                {
+                    System.Diagnostics.Process yo = System.Diagnostics.Process.GetCurrentProcess();
+                    try { mem = "; trabajo=" + (yo.WorkingSet64 >> 20) + " MB, privada=" + (yo.PrivateMemorySize64 >> 20) + " MB, monton_gestionado=" + (GC.GetTotalMemory(false) >> 20) + " MB, hilos=" + yo.Threads.Count; }
+                    finally { yo.Dispose(); }
+                }
+                catch { }
+                string sis = "";
+                try
+                {
+                    MemStatusEx m = new MemStatusEx(); m.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
+                    if (GlobalMemoryStatusEx(ref m))
+                        sis = "; ram_libre=" + (m.AvailPhys >> 20) + " de " + (m.TotalPhys >> 20) + " MB (carga " + m.MemoryLoad + " %), direcciones_libres=" + (m.AvailVirtual >> 20) + " MB";
+                }
+                catch { }
+                return "; " + gc + mem + sis;
+            }
+            catch { return ""; }
+        }
 
         private void ArrancaVigia()
         {
@@ -143,7 +179,8 @@ namespace Rocola
         // En el hilo del vigia. Diag y LogError solo dejan la linea en la cola de la bitacora: no esperan al disco.
         private void ApuntaParada(int ms, string que)
         {
-            if (ms >= ParadaDiagMs) Diag("pantalla parada " + ms + " ms, " + que);
+            string contexto = ms >= ParadaDiagMs ? ContextoDeParada() : "";
+            if (ms >= ParadaDiagMs) Diag("pantalla parada " + ms + " ms, " + que + contexto);
             if (ms < ParadaErrorMs) return;
             // Al archivo de errores siempre, pero sin inundarlo: como mucho una cada diez segundos, diciendo cuantas se callaron.
             int ahora = Environment.TickCount;
@@ -152,7 +189,7 @@ namespace Rocola
             paradaApuntada = true; paradaErrorTick = ahora; paradasSinApuntar = 0;
             LogError("Pantalla parada " + ms + " ms, " + que + callo
                 + "; repaso_pendiente=" + System.Threading.Thread.VolatileRead(ref preScanLeft)
-                + "; miniaturas_pendientes=" + minisPendientes + "; biblioteca_construyendose=" + libBuilding, null);
+                + "; miniaturas_pendientes=" + minisPendientes + "; biblioteca_construyendose=" + libBuilding + contexto, null);
         }
     }
 
