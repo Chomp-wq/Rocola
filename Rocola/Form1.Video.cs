@@ -870,6 +870,8 @@ namespace Rocola
                 };
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.ReportFluidez = delegate(string informe) { Diag(informe); };
+                gpuPanel.ReportPeores = delegate(string hoja) { Diag(hoja); };   // el libro de los peores cuadros (MedidaFluidezGpu.cs): solo con diagnostico=1
+                gpuPanel.LibroActivo = diagOn;
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla
                 AplicaEfectosGpu();           // y las perillas de los efectos (Ctrl+F3 -> Imagen y rendimiento)
                 gpuPanel.GetPulse = delegate { return audioLevel; };
@@ -1861,6 +1863,9 @@ namespace Rocola
             if (!startupReadPending && (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing))
                 BorraEstado();
             else WaitDataWrites(15000);   // cierre por otra causa: que el ultimo estado encargado llegue al disco
+#if ROCOLA_GPU
+            if (gpuPanel != null) gpuPanel.VuelcaLibro();   // lo que quedaba del minuto en el libro de los peores cuadros (solo con diagnostico=1)
+#endif
             Bitacora.Vacia(3000);   // y que la bitacora no se quede con apuntes en la cola
             base.OnFormClosing(e);
         }

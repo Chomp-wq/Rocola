@@ -2443,6 +2443,7 @@ namespace Rocola
             if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
+            if (libroOn) libro.Empieza(msTrab0);   // el libro de los peores cuadros: solo con diagnostico=1 (MedidaFluidezGpu.cs)
             stars.EmpiezaCuenta(CuentaArea);   // ordenes de dibujo y area de este cuadro (PerformanceGpu.cs)
             // Correlacionar Start->Start con el trabajo ANTERIOR y el hueco entre cuadros.
             // Ctrl+F1 habilita GC/episodios; sin contador no se consultan los tres contadores GC.
@@ -2468,9 +2469,11 @@ namespace Rocola
             // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
             gridN = 0;
             if (CoverControl != null) CoverControl.Begin(AhoraMs(), TopeFpsReal);
+            LM(LibroDeCuadros.FPre);
             if (ShowAlbum && GetGrid != null)
             {
                 gridN = GetGrid(gridBuf);
+                LM(LibroDeCuadros.FRejilla); LB(LibroDeCuadros.BPagina); if (libroOn) libro.Celdas = gridN;
                 cellFrame++;
                 RefreshCellBudget();
                 if (CoverControl != null) CoverControl.PendingUpload = false;
@@ -2516,6 +2519,7 @@ namespace Rocola
                     CoverControl.FinishPage(ready, AhoraMs());
                 }
             }
+            LM(LibroDeCuadros.FPortadas);
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
             if (GetContour != null)
             {
@@ -2538,6 +2542,7 @@ namespace Rocola
             EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
             EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
             EnsureImmutableCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            LM(LibroDeCuadros.FCubos);
             AplicaEnfoque(ref cs);         // portada enfocada: agranda el cubo elegido y apaga un poco las demas (Ctrl+F3 -> Pantalla)
             double idleNow = AhoraMs();
             double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
@@ -2549,8 +2554,11 @@ namespace Rocola
                 {
                     VigiaPantalla.Hace("subir estado extendido a la tarjeta");
                     SubeEstadoExtendido(ib);
+                    LB(LibroDeCuadros.BEstado);
                 }
             }
+            LM(LibroDeCuadros.FEstado);
+            if (libroOn) { if (IdleExpandTarget) libro.Banderas |= LibroDeCuadros.BReposo; if (idleBlend > 0f && idleBlend < 1f) libro.Banderas |= LibroDeCuadros.BTransicion; libro.Modo = sceneMode; }
             idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
@@ -2568,11 +2576,14 @@ namespace Rocola
             PreparaDiscoVivo();            // dentro del disco: las barritas de la que suena y el boleto que vuela
             PreparaSuenaVivo();            // los avisos, la invitacion, la moneda y el panel de reposo en grande
             PreparaAtraccion();            // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs)
+            LM(LibroDeCuadros.FVivos);
+            if (libroOn) { if (gw.Has) libro.Banderas |= LibroDeCuadros.BVentana; if (tr.Has) libro.Banderas |= LibroDeCuadros.BViaje; }
             // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
             // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
             // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
             PreparePalette();
             bool uiUrgent = UiUrgent; UiUrgent = false;
+            if (uiUrgent) LB(LibroDeCuadros.BUrgente);
             if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || canHeavy))
             {
                 int t0 = Environment.TickCount;
@@ -2581,6 +2592,7 @@ namespace Rocola
                 {
                     Bitmap ub = GetUi();
                     SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
+                    LB(LibroDeCuadros.BInterfaz);
                     uiVer = uv;
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                     uiTeselas = null; uiAnalisisTeselas = null; uiSubidaMs = AhoraMs();   // cancelar cualquier analisis de la version anterior
@@ -2595,7 +2607,7 @@ namespace Rocola
                 if (bv != uiBotVer || uiBotTex == IntPtr.Zero)
                 {
                     Bitmap bb = GetUiBot();
-                    if (bb != null) SubeUiBot(bb);   // el trozo que cambio, o entera (FranjaLigeraGpu.cs)
+                    if (bb != null) { SubeUiBot(bb); LB(LibroDeCuadros.BFranja); }   // el trozo que cambio, o entera (FranjaLigeraGpu.cs)
                     uiBotVer = bv;
                     uiBotTeselas = null; uiBotAnalisisTeselas = null; uiBotSubidaMs = AhoraMs();   // no conservar recortes de una version antigua
                 }
@@ -2615,6 +2627,7 @@ namespace Rocola
                     else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }
+            LM(LibroDeCuadros.FInterfaz);
             VigiaPantalla.Hace("preparar textos y adornos GPU");
             PreparaCintasTexto();
             EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
@@ -2639,6 +2652,7 @@ namespace Rocola
             stars.TrasCielo = trasCielo;
             stars.TrasEstrellas = trasEstrellas;
             stars.CieloBase = cieloBase;
+            LM(LibroDeCuadros.FAdornos);
             // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
             // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
             double aheadNow = AhoraMs();
@@ -2660,8 +2674,10 @@ namespace Rocola
                           850.0 / Math.Max(1, TopeFpsReal) - lastFrameWork);
                     aheadAvailableTicks = Math.Max(1L, (long)(margin * System.Diagnostics.Stopwatch.Frequency / 1000));
                     WarmAheadCells();
+                    LB(LibroDeCuadros.BAdelanto);
                 }
             }
+            LM(LibroDeCuadros.FAdelanto);
             // La precarga opcional tambien puede consumir el refresco previsto. Actualizar la estrella
             // DESPUES de ese trabajo, no antes, para que no conserve una pose de un plazo ya vencido.
             UpdateMoonMusic(pulseCrudo);
@@ -2881,11 +2897,13 @@ namespace Rocola
             double trabajo = AhoraMs() - msTrab0;
             lastFrameWork = trabajo;
             double antesPresentar = AhoraMs();
+            if (libroOn) libro.Marca(LibroDeCuadros.FDibujo, antesPresentar);
             VigiaPantalla.Hace("presentar cuadro de la tarjeta");
             if (!stars.End()) return NoPresentado();
             double terminado = AhoraMs();
             // Un tope de 24/50/60 puede saltar varios refrescos: no clasificar ese intervalo normal como tiron.
             double periodoObjetivo = PeriodoDiagnostico(periodoVistaMs, TopeMs(), ThrottleMs);
+            if (libroOn) { libro.Marca(LibroDeCuadros.FPresentar, terminado); LibroTermina(terminado, periodoObjetivo); }
             fluidez.TomaCuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo,
                 terminado - antesPresentar, periodoObjetivo, agendaDelHueco, gc0Inicio, gc1Inicio, gc2Inicio);
             if (ShowFps && ReportFluidez != null)
@@ -3187,6 +3205,7 @@ namespace Rocola
         // completa en cada reconstruccion (lo caro), p.ej. la UI ~13fps por el brillo de la letra en navegacion.
         private IntPtr Upload(IntPtr tex, ref int bw, ref int bh, Bitmap bmp, out float u, out float v)
         {
+            if (libroOn) libro.Subidas++;
             if (tex != IntPtr.Zero && bw == bmp.Width && bh == bmp.Height && stars.UpdateOverlay(tex, bmp, out u, out v))
                 return tex;   // actualizada in situ (misma textura)
             if (tex != IntPtr.Zero) D3D9.Release(tex);

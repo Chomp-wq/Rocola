@@ -1,0 +1,441 @@
+#pragma warning disable 0649, 0414
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
+
+// TIRONES AL CAMBIAR (20-10-2026): las pruebas de lo que se hizo para los peores cuadros (cambios de pagina, de cancion, de modo).
+//
+//   mono tironescambio.exe <rocola.exe> [<rocola_anterior.exe>]
+//
+// Con una tarjeta imitada que solo CUENTA (no pinta): lo que le llega al controlador (texturas creadas, bloqueos, PreLoad, memoria
+// libre, Evict...) y lo que se puede probar sin un controlador de verdad. Con el ejecutable anterior como segundo argumento compara
+// byte a byte lo que cada camino nuevo produce contra el de antes (se carga con Assembly.Load(File.ReadAllBytes(...)): LoadFrom
+// devolveria el ensamblado ya cargado). Todo es Linux/Mono con libgdiplus: NO mide la rocola real, ni Windows XP, ni un A4-6300.
+class TironesCambio
+{
+    const BindingFlags TODO = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+    static int fallos, oks;
+    static void Check(bool ok, string q) { if (ok) { oks++; Console.WriteLine("  OK    " + q); } else { fallos++; Console.WriteLine("  FALLO " + q); } }
+    static Type TF, TPanel, TStar, TDev, TD3D, TLibro;
+    static Assembly AsmNuevo, AsmViejo;
+    static readonly List<object> vivos = new List<object>();
+
+    // ======================= REFLEXION =======================
+    static FieldInfo Campo(Type t, string n)
+    { for (; t != null; t = t.BaseType) { FieldInfo f = t.GetField(n, TODO | BindingFlags.DeclaredOnly); if (f != null) return f; } return null; }
+    static void Pon(object o, string n, object v) { FieldInfo f = Campo(o.GetType(), n); if (f == null) throw new Exception("falta el campo " + n); f.SetValue(o, v); }
+    static void PonSiHay(object o, string n, object v) { FieldInfo f = Campo(o.GetType(), n); if (f != null) f.SetValue(o, v); }
+    static object Toma(object o, string n) { FieldInfo f = Campo(o.GetType(), n); if (f == null) throw new Exception("falta el campo " + n); return f.GetValue(o); }
+    static MethodInfo Metodo(Type t, string n)
+    { for (; t != null; t = t.BaseType) { MethodInfo m = t.GetMethod(n, TODO | BindingFlags.DeclaredOnly); if (m != null) return m; } return null; }
+    static object Llama(object o, string n, params object[] a)
+    {
+        MethodInfo m = Metodo(o.GetType(), n);
+        if (m == null) throw new Exception("falta " + o.GetType().Name + "." + n);
+        try { return m.Invoke(o, a); } catch (TargetInvocationException e) { throw e.InnerException; }
+    }
+    static object LlamaE(Type t, string n, params object[] a)
+    {
+        MethodInfo m = Metodo(t, n);
+        if (m == null) throw new Exception("falta " + t.Name + "." + n);
+        try { return m.Invoke(null, a); } catch (TargetInvocationException e) { throw e.InnerException; }
+    }
+
+    // ======================= LA TARJETA IMITADA (solo cuenta) =======================
+    sealed class Tx { public int W, H; public IntPtr Mem; public bool Suelta; }
+    static readonly Dictionary<long, Tx> texturas = new Dictionary<long, Tx>();
+    static IntPtr vtTex, vtDisp;
+    static int offPitch, offBits;
+    static long cCrea, cBloq, cPreLoad, cEvict, cMem, cDraw, cSueltas, cPresent;
+    static bool creaFalla; static long creaFallos;   // pedir al controlador que falle CreateTexture
+    static uint memoriaLibre = 256u * 1024 * 1024;
+    static uint Nada(IntPtr self) { return 0; }
+    static uint Memoria(IntPtr self) { cMem++; return memoriaLibre; }
+    static int Evicta(IntPtr self) { cEvict++; return 0; }
+    static int PreCarga(IntPtr self) { cPreLoad++; return 0; }
+    static IntPtr Puntero(string tipo, string metodo)
+    {
+        Delegate del = Delegate.CreateDelegate(TD3D.GetNestedType(tipo, TODO), typeof(TironesCambio).GetMethod(metodo, TODO));
+        vivos.Add(del); return Marshal.GetFunctionPointerForDelegate(del);
+    }
+    static IntPtr PunteroPorDireccion(string tipo, string metodo, int argDireccion)
+    {
+        Type t = TD3D.GetNestedType(tipo, TODO);
+        ParameterInfo[] ps = t.GetMethod("Invoke").GetParameters();
+        Type[] pt = new Type[ps.Length]; for (int i = 0; i < ps.Length; i++) pt[i] = ps[i].ParameterType;
+        DynamicMethod dm = new DynamicMethod(metodo + "Imitado", typeof(int), pt, typeof(TironesCambio).Module, true);
+        ILGenerator il = dm.GetILGenerator();
+        for (int i = 0; i < ps.Length; i++) { il.Emit(OpCodes.Ldarg, i); if (i == argDireccion) il.Emit(OpCodes.Conv_U); }
+        il.Emit(OpCodes.Call, typeof(TironesCambio).GetMethod(metodo, TODO));
+        il.Emit(OpCodes.Ret);
+        Delegate del = dm.CreateDelegate(t); vivos.Add(del);
+        return Marshal.GetFunctionPointerForDelegate(del);
+    }
+    static int CreaTex(IntPtr self, uint w, uint h, uint levels, uint usage, uint format, uint pool, out IntPtr tex, IntPtr shared)
+    {
+        PreparaTexturas();
+        if (creaFalla) { creaFallos++; tex = IntPtr.Zero; return unchecked((int)0x8876017C); }   // D3DERR_OUTOFVIDEOMEMORY
+        cCrea++;
+        IntPtr o = Marshal.AllocHGlobal(16); Marshal.WriteIntPtr(o, vtTex);
+        Tx t = new Tx(); t.W = (int)w; t.H = (int)h; t.Mem = Marshal.AllocHGlobal((int)(w * h * 4));
+        texturas[o.ToInt64()] = t; tex = o;
+        return 0;
+    }
+    static int Bloquea(IntPtr self, IntPtr lr, IntPtr rect)
+    {
+        Tx t = texturas[self.ToInt64()];
+        cBloq++;
+        int x0 = 0, y0 = 0;
+        if (rect != IntPtr.Zero) { x0 = Marshal.ReadInt32(rect, 0); y0 = Marshal.ReadInt32(rect, 4); }
+        Marshal.WriteInt32(lr, offPitch, t.W * 4);
+        Marshal.WriteIntPtr(lr, offBits, new IntPtr(t.Mem.ToInt64() + (long)y0 * t.W * 4 + x0 * 4));
+        return 0;
+    }
+    static int Desbloquea(IntPtr self, uint level) { return 0; }
+    static uint Suelta(IntPtr self) { Tx t; if (texturas.TryGetValue(self.ToInt64(), out t)) { t.Suelta = true; cSueltas++; } return 0; }
+    static void PreparaTexturas()
+    {
+        if (vtTex != IntPtr.Zero) return;
+        Type tlr = TD3D.GetNestedType("LockedRect", TODO);
+        offPitch = (int)Marshal.OffsetOf(tlr, "Pitch"); offBits = (int)Marshal.OffsetOf(tlr, "Bits");
+        Type tLock = TD3D.GetNestedType("LockRectDel", TODO);
+        ParameterInfo[] ps = tLock.GetMethod("Invoke").GetParameters();
+        Type[] pt = new Type[ps.Length]; for (int i = 0; i < ps.Length; i++) pt[i] = ps[i].ParameterType;
+        DynamicMethod dm = new DynamicMethod("BloqueaImitada", typeof(int), pt, typeof(TironesCambio).Module, true);
+        ILGenerator il = dm.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0); il.Emit(OpCodes.Ldarg_2); il.Emit(OpCodes.Conv_U); il.Emit(OpCodes.Ldarg_3);
+        il.Emit(OpCodes.Call, typeof(TironesCambio).GetMethod("Bloquea", TODO));
+        il.Emit(OpCodes.Ret);
+        Delegate lk = dm.CreateDelegate(tLock); vivos.Add(lk);
+        Type tReg = TD3D.GetNestedType("LockRegionDel", TODO);
+        ps = tReg.GetMethod("Invoke").GetParameters();
+        pt = new Type[ps.Length]; for (int i = 0; i < ps.Length; i++) pt[i] = ps[i].ParameterType;
+        DynamicMethod dr = new DynamicMethod("BloqueaRegionImitada", typeof(int), pt, typeof(TironesCambio).Module, true);
+        il = dr.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0); il.Emit(OpCodes.Ldarg_2); il.Emit(OpCodes.Conv_U); il.Emit(OpCodes.Ldarg_3); il.Emit(OpCodes.Conv_U);
+        il.Emit(OpCodes.Call, typeof(TironesCambio).GetMethod("Bloquea", TODO));
+        il.Emit(OpCodes.Ret);
+        Delegate lr2 = dr.CreateDelegate(tReg); vivos.Add(lr2);
+        vtTex = Marshal.AllocHGlobal(64 * IntPtr.Size);
+        for (int i = 0; i < 64; i++) Marshal.WriteIntPtr(vtTex, i * IntPtr.Size, Puntero("UintSelf", "Nada"));
+        Marshal.WriteIntPtr(vtTex, 2 * IntPtr.Size, Puntero("UintSelf", "Suelta"));
+        Marshal.WriteIntPtr(vtTex, 9 * IntPtr.Size, Puntero("HrSelf", "PreCarga"));   // IDirect3DResource9::PreLoad
+        Marshal.WriteIntPtr(vtTex, 19 * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(lk));
+        Marshal.WriteIntPtr(vtTex, 20 * IntPtr.Size, Puntero("UnlockRectDel", "Desbloquea"));
+    }
+    static int Hr(IntPtr self) { return 0; }
+    static int SetRS(IntPtr self, uint a, uint b) { return 0; }
+    static int SetFvf(IntPtr self, uint a) { return 0; }
+    static int SetTSS(IntPtr self, uint e, uint t, uint v) { return 0; }
+    static int SetTex(IntPtr self, uint e, IntPtr t) { return 0; }
+    static int DrawUp(IntPtr self, uint prim, uint count, IntPtr data, uint stride) { cDraw++; return 0; }
+    static int Present(IntPtr self, IntPtr a, IntPtr b, IntPtr c, IntPtr d) { cPresent++; return 0; }
+    static int SetRt(IntPtr self, uint i, IntPtr sup) { return 0; }
+    static int GetRt(IntPtr self, uint i, IntPtr salida) { Marshal.WriteIntPtr(salida, IntPtr.Zero); return 0; }
+    static int Valida(IntPtr self, IntPtr pasadas) { Marshal.WriteInt32(pasadas, 1); return 0; }
+    static int Reset(IntPtr self, IntPtr pp) { return 0; }
+    static void Enchufa(object d, string campo, string metodo)
+    {
+        FieldInfo f = Campo(TDev, campo);
+        if (f == null) throw new Exception("el dispositivo no tiene " + campo);
+        Delegate del = Delegate.CreateDelegate(f.FieldType, typeof(TironesCambio).GetMethod(metodo, TODO));
+        vivos.Add(del); f.SetValue(d, del);
+    }
+    static void EnchufaPorDireccion(object d, string campo, string tipo, string metodo, int arg)
+    {
+        FieldInfo f = Campo(TDev, campo);
+        Type t = TD3D.GetNestedType(tipo, TODO);
+        Delegate del = Marshal.GetDelegateForFunctionPointer(PunteroPorDireccion(tipo, metodo, arg), t);
+        vivos.Add(del); f.SetValue(d, del);
+    }
+    static object Tarjeta(int w, int h)
+    {
+        PreparaTexturas();
+        IntPtr vt = Marshal.AllocHGlobal(128 * IntPtr.Size);
+        for (int i = 0; i < 128; i++) Marshal.WriteIntPtr(vt, i * IntPtr.Size, Puntero("UintSelf", "Nada"));
+        Marshal.WriteIntPtr(vt, 4 * IntPtr.Size, Puntero("UintSelf", "Memoria"));      // GetAvailableTextureMem
+        Marshal.WriteIntPtr(vt, 5 * IntPtr.Size, Puntero("HrSelf", "Evicta"));         // EvictManagedResources
+        Marshal.WriteIntPtr(vt, 37 * IntPtr.Size, Puntero("SetTexDel", "SetRt"));
+        Marshal.WriteIntPtr(vt, 38 * IntPtr.Size, PunteroPorDireccion("GetPtrDel", "GetRt", 2));
+        Marshal.WriteIntPtr(vt, 70 * IntPtr.Size, PunteroPorDireccion("ValidaDel", "Valida", 1));
+        vtDisp = vt;
+        IntPtr obj = Marshal.AllocHGlobal(16); Marshal.WriteIntPtr(obj, vt);
+        object d = Activator.CreateInstance(TDev, new object[] { IntPtr.Zero, w, h });
+        Pon(d, "dev", obj); Pon(d, "stTex", new IntPtr(-1));
+        Pon(d, "lost", false); Pon(d, "resetPending", false);
+        object pp = Activator.CreateInstance(TD3D.GetNestedType("PresentParams", TODO));
+        pp.GetType().GetField("BackBufferWidth").SetValue(pp, (uint)w); pp.GetType().GetField("BackBufferHeight").SetValue(pp, (uint)h);
+        Pon(d, "pp", pp);
+        Enchufa(d, "createTex", "CreaTex");
+        Enchufa(d, "setRS", "SetRS"); Enchufa(d, "setFVF", "SetFvf"); Enchufa(d, "setTSS", "SetTSS"); Enchufa(d, "setSamp", "SetTSS");
+        Enchufa(d, "setTex", "SetTex"); Enchufa(d, "drawUp", "DrawUp"); Enchufa(d, "present", "Present");
+        Enchufa(d, "begin", "Hr"); Enchufa(d, "end", "Hr"); Enchufa(d, "testCoop", "Hr");
+        EnchufaPorDireccion(d, "reset", "ResetDel", "Reset", 1);
+        Pon(d, "verticesSinSoporte", true);
+        Pon(d, "juntar", true); Pon(d, "CapsDosTexturas", true); Pon(d, "CapsSinEspera", false);
+        if (!(bool)Llama(d, "InitStates")) throw new Exception("la tarjeta imitada no arranca");
+        return d;
+    }
+    static void PonCeroCuentas() { cCrea = cBloq = cPreLoad = cEvict = cMem = cDraw = cSueltas = cPresent = 0; }
+
+    // ======================= MONTAR LA ROCOLA (rejilla de 18 discos) =======================
+    static int ancho, alto, montajeId;
+    static Bitmap[] portadas; static Bitmap etiqueta;
+    static class GridData<T> { internal static T[] Rows; internal static int Id; }
+    static Bitmap NuevaPortada(int k)
+    {
+        Bitmap b = new Bitmap(300, 300, PixelFormat.Format24bppRgb);
+        using (Graphics g = Graphics.FromImage(b))
+        {
+            using (System.Drawing.Drawing2D.LinearGradientBrush br = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, 300, 300),
+                Color.FromArgb(40 + k * 30, 60, 200 - k * 20), Color.FromArgb(220, 180 - k * 25, 40 + k * 10), 45f + k * 20)) g.FillRectangle(br, 0, 0, 300, 300);
+        }
+        return b;
+    }
+    static void PreparaPortadas()
+    {
+        portadas = new Bitmap[6];
+        for (int k = 0; k < 6; k++) portadas[k] = NuevaPortada(k);
+        etiqueta = new Bitmap(256, 64, PixelFormat.Format32bppArgb);
+        using (Graphics g = Graphics.FromImage(etiqueta))
+        {
+            g.Clear(Color.Transparent);
+            using (Font f = new Font(FontFamily.GenericSansSerif, 11f, FontStyle.Bold)) using (SolidBrush w = new SolidBrush(Color.White))
+            { g.DrawString("Cancion de ejemplo", f, w, 66, 4); g.DrawString("Artista de ejemplo", f, w, 160, 36); }
+        }
+    }
+    static int Grid<T>(T[] data)
+    {
+        if (GridData<T>.Rows != null && GridData<T>.Id == montajeId) { Array.Copy(GridData<T>.Rows, data, 18); return 18; }
+        int cw = ancho / 6, ch = (alto - 200) / 3;
+        int lado = Math.Max(32, Math.Min(cw - 24, ch - 40));
+        Type tl = typeof(T).GetField("Layout").FieldType;
+        for (int i = 0; i < 18; i++)
+        {
+            object c = Activator.CreateInstance(typeof(T));
+            float x = (i % 6) * cw, y = 100 + (i / 6) * ch;
+            Pon(c, "Key", "disco" + montajeId + "_" + i); Pon(c, "Bmp", etiqueta); Pon(c, "Slot", i);
+            Pon(c, "Direct", true); Pon(c, "FullCover", portadas[i % 6]); Pon(c, "HasCover", true);
+            object lay = Activator.CreateInstance(tl);
+            Pon(lay, "Width", 256); Pon(lay, "Height", 64);
+            Pon(lay, "Face", new Rectangle(0, 0, 64, 64)); Pon(lay, "FaceAt", new Rectangle(0, 0, 64, 64));
+            Pon(lay, "Text1", new Rectangle(64, 0, 96, 32)); Pon(lay, "Text1At", new Rectangle(64, 0, 96, 32));
+            Pon(lay, "Text2", new Rectangle(160, 32, 96, 32)); Pon(lay, "Text2At", new Rectangle(160, 32, 96, 32));
+            Pon(c, "Layout", lay);
+            Pon(c, "CoverRect", new RectangleF(x + (cw - lado) / 2, y, lado, lado));
+            Pon(c, "X", x); Pon(c, "Y", y + lado - 64 + 8); Pon(c, "W", (float)cw); Pon(c, "H", 64f); Pon(c, "A", 1f);
+            data[i] = (T)c;
+        }
+        GridData<T>.Rows = (T[])data.Clone(); GridData<T>.Id = montajeId; return 18;
+    }
+    static Delegate Generic(FieldInfo field, string method)
+    {
+        Type type = field.FieldType.GetMethod("Invoke").GetParameters()[0].ParameterType.GetElementType();
+        return Delegate.CreateDelegate(field.FieldType, typeof(TironesCambio).GetMethod(method, TODO).MakeGenericMethod(type));
+    }
+    static Control Monta(int w, int h)
+    {
+        ancho = w; alto = h; montajeId++;
+        object tarjeta = Tarjeta(w, h);
+        object sf = Activator.CreateInstance(TStar, TODO, null, new object[] { IntPtr.Zero, w, h, 4321 }, null);
+        Pon(sf, "gpu", tarjeta); Pon(sf, "seed0", 4321);
+        Llama(sf, "BuildStars", w, h, 4321);
+        Control p = (Control)Activator.CreateInstance(TPanel, true);
+        p.SetBounds(0, 0, w, h);
+        Pon(p, "stars", sf);
+        PreparaPortadas();
+        Pon(p, "Estrella3D", false); Pon(p, "ConLuna", false); Pon(p, "Dim", 1f); Pon(p, "ShowAlbum", true);
+        FieldInfo grid = TPanel.GetField("GetGrid", TODO); grid.SetValue(p, Generic(grid, "Grid"));
+        return p;
+    }
+    static bool Cuadro(Control p) { return (bool)Llama(p, "RenderFrame"); }
+
+    // ======================= 0. EL LIBRO DE LOS PEORES CUADROS =======================
+    static object NuevoLibro() { return Activator.CreateInstance(TLibro, true); }
+    static void Frame(object libro, double t0, double[] fases)
+    {
+        // fases: milisegundos de cada una de las once, en orden; se marcan en ese orden a partir de t0.
+        Llama(libro, "Empieza", t0);
+        double t = t0;
+        for (int i = 0; i < fases.Length; i++) { t += fases[i]; Llama(libro, "Marca", i, t); }
+        Llama(libro, "Termina", t, 16.7);
+    }
+    static double[] Trabajo(double ms) { double[] f = new double[11]; f[9] = ms; return f; }
+    static double Num(string sub) { return double.Parse(sub, System.Globalization.CultureInfo.InvariantCulture); }
+    static void Libro()
+    {
+        Console.WriteLine("# 0. el libro de los peores cuadros");
+        TLibro = AsmNuevo.GetType("Rocola.LibroDeCuadros");
+        if (TLibro == null) { Check(false, "existe Rocola.LibroDeCuadros"); return; }
+        FieldInfo umbral = Campo(TLibro, "UmbralMs"), ventana = Campo(TLibro, "VentanaMs");
+        double umbral0 = (double)umbral.GetValue(null), ventana0 = (double)ventana.GetValue(null);
+        Check(umbral0 == 12.0 && ventana0 == 60000.0, "de fabrica: entra desde 12 ms de trabajo y la hoja sale cada 60 s");
+        object libro = NuevoLibro();
+        Check((int)Toma(libro, "Banderas") == 0, "el libro nace vacio");
+        // ocho puestos: de 100 cuadros con 13..112 ms se quedan los ocho mayores, de mayor a menor
+        for (int i = 0; i < 100; i++) Frame(libro, 1000.0 + i * 20, Trabajo(13 + i));
+        Check((int)Llama(libro, "get_Ocupadas") == 8, "se guardan ocho cuadros, no mas");
+        Check(Llama(libro, "Vuelca", 1000.0 + 59000, false) == null, "antes de que acabe el minuto no sale hoja");
+        string hoja = (string)Llama(libro, "Vuelca", 1000.0 + 60000, false);
+        Check(hoja != null && hoja.Contains(": 100 de 100 pasaron de 12.0 ms"), "al acabar el minuto sale la hoja, con cuantos cuadros hubo y cuantos pasaron");
+        int p112 = hoja == null ? -1 : hoja.IndexOf("112.0 ms"), p105 = hoja == null ? -1 : hoja.IndexOf("105.0 ms"), p104 = hoja == null ? -1 : hoja.IndexOf("104.0 ms");
+        Check(p112 > 0 && p105 > p112 && p104 < 0, "estan los ocho peores (112 a 105) y de mayor a menor; el noveno (104) no");
+        Check(hoja != null && hoja.Contains("dibujo 112.0") && hoja.Contains("pasaron de 12.0 ms"), "cada entrada reparte el tiempo por fases");
+        Check(Llama(libro, "Vuelca", 1000.0 + 130000, false) == null && (int)Llama(libro, "get_Ocupadas") == 0, "tras la hoja el libro queda vacio y no repite");
+        // por debajo del umbral no hay nada que contar
+        for (int i = 0; i < 50; i++) Frame(libro, 200000.0 + i * 20, Trabajo(11.9));
+        Check(Llama(libro, "Vuelca", 400000.0, true) == null, "ningun cuadro llego al umbral: no sale hoja (ni con forzar)");
+        // la espera de Present cuenta solo lo que pase de un periodo
+        object l2 = NuevoLibro();
+        double[] f = new double[11]; f[9] = 2; f[10] = 16.0; Frame(l2, 10, f);
+        Check((int)Llama(l2, "get_Ocupadas") == 0, "esperar al monitor un periodo entero (16 ms) no es un tiron");
+        f = new double[11]; f[9] = 2; f[10] = 40.0; Frame(l2, 100, f);
+        string h2 = (string)Llama(l2, "Vuelca", 100.0 + 90000, false);
+        Check(h2 != null && h2.Contains("25.3 ms (trabajo 2.0, presentar 40.0)") && h2.Contains("presentar 40.0"), "una espera de 40 ms en Present con periodo de 16.7 pesa 2 + 23.3 = 25.3 ms");
+        // las fases caen en su sitio
+        object l3 = NuevoLibro(); Llama(l3, "Empieza", 500.0);
+        Llama(l3, "Marca", 1, 503.0); Llama(l3, "Marca", 2, 510.0); Llama(l3, "Marca", 2, 520.0); Llama(l3, "Marca", 10, 521.0);
+        Llama(l3, "Termina", 521.0, 16.7);
+        string h3 = (string)Llama(l3, "Vuelca", 600000.0, true);
+        Check(h3 != null && h3.Contains("rejilla 3.0") && h3.Contains("portadas 17.0") && h3.Contains("presentar 1.0") && !h3.Contains("cubos"), "cada marca suma a su fase (rejilla 3, portadas 7+10, presentar 1) y las fases sin tiempo no salen");
+        // memoria fija: ni una reserva por cuadro (ni un gen0 en 300 mil cuadros, con y sin entradas nuevas)
+        object l4 = NuevoLibro();
+        int g0 = GC.CollectionCount(0);
+        double tt = 0;
+        for (int i = 0; i < 300000; i++)
+        {
+            Llama(l4, "Empieza", tt);
+            for (int k = 0; k < 11; k++) { tt += (i % 7 == 0 && k == 9) ? 30.0 + (i % 40) : 0.2; Llama(l4, "Marca", k, tt); }
+            Llama(l4, "Termina", tt, 16.7);
+        }
+        Check(true, "300 mil cuadros pasados por el libro (por reflexion, que reserva lo suyo): recolecciones de generacion 0 = " + (GC.CollectionCount(0) - g0));
+        // la prueba de verdad de memoria: la misma cuenta SIN reflexion, con delegados ya creados
+        MethodInfo mEmp = Metodo(TLibro, "Empieza"), mMar = Metodo(TLibro, "Marca"), mTer = Metodo(TLibro, "Termina");
+        Action<double> emp = (Action<double>)Delegate.CreateDelegate(typeof(Action<double>), l4, mEmp);
+        Action<int, double> mar = (Action<int, double>)Delegate.CreateDelegate(typeof(Action<int, double>), l4, mMar);
+        Action<double, double> ter = (Action<double, double>)Delegate.CreateDelegate(typeof(Action<double, double>), l4, mTer);
+        GC.Collect(); g0 = GC.CollectionCount(0);
+        for (int i = 0; i < 2000000; i++)
+        {
+            emp(tt);
+            for (int k = 0; k < 11; k++) { tt += (i % 7 == 0 && k == 9) ? 30.0 + (i % 40) : 0.2; mar(k, tt); }
+            ter(tt, 16.7);
+        }
+        Check(GC.CollectionCount(0) == g0, "2 millones de cuadros (con y sin entradas nuevas) no reservan ni provocan una recoleccion: " + (GC.CollectionCount(0) - g0));
+        Check((int)Llama(l4, "get_Ocupadas") == 8, "y el libro sigue con sus ocho");
+    }
+
+    // ======================= EL LIBRO DENTRO DEL PANEL =======================
+    static void LibroEnElPanel()
+    {
+        Console.WriteLine("# 0b. el libro dentro de RenderFrame, con la tarjeta imitada");
+        FieldInfo umbral = Campo(TLibro, "UmbralMs"), ventana = Campo(TLibro, "VentanaMs");
+        List<string> hojas = new List<string>();
+        Control p = Monta(1024, 768);
+        try
+        {
+            Pon(p, "ReportPeores", new Action<string>(delegate (string h) { hojas.Add(h); }));
+            // apagado (lo de fabrica): ni marcas ni hojas
+            for (int i = 0; i < 6; i++) Check(Cuadro(p), "el cuadro " + i + " se presenta con el libro apagado");
+            object libro = Llama(p, "get_Libro");
+            Check((int)Llama(libro, "get_Cuadros") == 0 && hojas.Count == 0, "con el libro apagado no se cuenta ni un cuadro ni sale una hoja");
+            // encendido y con el umbral en cero: todos los cuadros entran
+            umbral.SetValue(null, 0.0); ventana.SetValue(null, 1.0);
+            Llama(p, "set_LibroActivo", true);
+            PonCeroCuentas();
+            for (int i = 0; i < 40; i++) { Cuadro(p); System.Threading.Thread.Sleep(1); }
+            Check(hojas.Count > 0, "encendido, salen hojas (" + hojas.Count + " en 40 cuadros con ventana de 1 ms)");
+            string h0 = hojas.Count > 0 ? hojas[0] : "";
+            Check(h0.StartsWith("peores cuadros de los ultimos ") && h0.Contains("ms") && h0.Contains("recolecciones en el cuadro") && h0.Contains("modo "), "la hoja dice de que va y lleva el modo y las recolecciones");
+            Check(h0.Contains("pre ") || h0.Contains("dibujo ") || h0.Contains("rejilla "), "con las fases del cuadro");
+            Check(h0.Contains("pagina"), "marca la bandera de pagina (la rejilla estaba a la vista)");
+            Check(h0.Contains("celdas 18"), "dice cuantas celdas habia (18)");
+            Check(h0.Contains("texturas subidas"), "cuenta las texturas subidas");
+            Console.WriteLine("        ejemplo de hoja: " + h0.Replace("\r\n", "\n        "));
+            // lo que cuesta tenerlo encendido (alternando apagado/encendido; Linux/Mono con tarjeta imitada: NO es el A4)
+            umbral.SetValue(null, 1e9);   // encendido pero sin guardar nada
+            double[] apagado = new double[7], encendido = new double[7];
+            for (int ronda = 0; ronda < 7; ronda++)
+                foreach (bool on in (ronda % 2 == 0 ? new bool[] { false, true } : new bool[] { true, false }))
+                {
+                    Llama(p, "set_LibroActivo", on);
+                    Stopwatch sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 150; i++) Cuadro(p);
+                    (on ? encendido : apagado)[ronda] = sw.Elapsed.TotalMilliseconds / 150;
+                }
+            Array.Sort(apagado); Array.Sort(encendido);
+            Console.WriteLine("        un cuadro con la tarjeta imitada (mediana de 7 rondas alternadas): libro apagado " + (apagado[3] * 1000).ToString("0") + " us, encendido " + (encendido[3] * 1000).ToString("0") + " us (Linux/Mono, sintetico)");
+            Check(encendido[3] - apagado[3] < 0.25, "tener el libro encendido cuesta menos de 0,25 ms por cuadro aqui (es diagnostico, no el modo normal)");
+        }
+        finally { umbral.SetValue(null, 12.0); ventana.SetValue(null, 60000.0); Llama(p, "set_LibroActivo", false); p.Dispose(); texturas.Clear(); }
+        // el cierre vuelca lo que quedaba
+        hojas.Clear();
+        p = Monta(1024, 768);
+        try
+        {
+            Pon(p, "ReportPeores", new Action<string>(delegate (string h) { hojas.Add(h); }));
+            umbral.SetValue(null, 0.0);
+            Llama(p, "set_LibroActivo", true);
+            for (int i = 0; i < 5; i++) Cuadro(p);
+            Check(hojas.Count == 0, "con la ventana de un minuto no sale nada durante el minuto");
+            Llama(p, "VuelcaLibro");
+            Check(hojas.Count == 1 && hojas[0].Contains("peores cuadros"), "al cerrar, VuelcaLibro saca lo que quedaba del minuto");
+        }
+        finally { umbral.SetValue(null, 12.0); Llama(p, "set_LibroActivo", false); p.Dispose(); texturas.Clear(); }
+        // el cableado de Form1: solo con diagnostico=1 y al cerrar
+        List<MethodBase> todos = Codigo.TodosLosMetodos(TF).ConvertAll<MethodBase>(delegate (MethodBase m) { return m; });
+        bool enciende = false, vuelca = false, ligadoADiag = false;
+        foreach (MethodBase m in todos)
+        {
+            List<string> ll = Codigo.Llamadas(m);
+            if (Codigo.Llama(ll, "set_LibroActivo")) { enciende = true; if (Codigo.LeeCampo(new List<MethodBase>(new MethodBase[] { m }), "diagOn")) ligadoADiag = true; }
+            if (Codigo.Llama(ll, "VuelcaLibro")) vuelca = true;
+        }
+        Check(enciende && ligadoADiag, "Form1 enciende el libro leyendo diagOn (diagnostico=1)");
+        Check(vuelca, "Form1 vuelca el libro al cerrar");
+    }
+
+    // En Mono/Linux hace falta la tabla de la biblioteca de copia de memoria; se copia el ejecutable a una carpeta propia con su .config.
+    static string carpetaCopia;
+    static string Cargable(string ruta)
+    {
+        if (Type.GetType("Mono.Runtime") == null || Environment.OSVersion.Platform == PlatformID.Win32NT) return ruta;
+        string dir = Path.Combine(Path.GetTempPath(), "rocola_tirones_" + Process.GetCurrentProcess().Id + "_" + (carpetaCopia == null ? "a" : "b"));
+        if (carpetaCopia == null) carpetaCopia = dir;
+        Directory.CreateDirectory(dir);
+        string destino = Path.Combine(dir, Path.GetFileName(ruta));
+        File.Copy(ruta, destino, true);
+        string naudio = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ruta)), "NAudio.dll");
+        if (File.Exists(naudio)) File.Copy(naudio, Path.Combine(dir, "NAudio.dll"), true);
+        File.WriteAllText(destino + ".config", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <dllmap dll=\"kernel32.dll\">\n" +
+                          "    <dllentry dll=\"libc.so.6\" name=\"RtlMoveMemory\" target=\"memmove\"/>\n  </dllmap>\n</configuration>\n");
+        return destino;
+    }
+    static int Main(string[] argv)
+    {
+        try { return Prueba(argv); }
+        catch (Exception e) { Console.WriteLine("  FALLO excepcion: " + e); return 1; }
+        finally { try { foreach (string d in Directory.GetDirectories(Path.GetTempPath(), "rocola_tirones_" + Process.GetCurrentProcess().Id + "_*")) Directory.Delete(d, true); } catch { } }
+    }
+    static int Prueba(string[] argv)
+    {
+        if (argv.Length < 1) { Console.WriteLine("uso: tironescambio <rocola.exe> [<rocola_anterior.exe>]"); return 2; }
+        AsmNuevo = Assembly.LoadFrom(Cargable(argv[0]));
+        if (argv.Length > 1) { Cargable(argv[1]); AsmViejo = Assembly.Load(File.ReadAllBytes(argv[1])); }   // LoadFrom devolveria el ya cargado
+        TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
+        if (TPanel == null) { Console.WriteLine("  sin tarjeta: nada que medir\n  OK tironescambio (perfil sin GPU)"); return 0; }
+        TStar = AsmNuevo.GetType("Rocola.GpuStarfield"); TDev = AsmNuevo.GetType("Rocola.D3D9Device"); TD3D = AsmNuevo.GetType("Rocola.D3D9");
+        Libro();
+        LibroEnElPanel();
+        Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
+        return fallos;
+    }
+}

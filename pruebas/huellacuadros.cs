@@ -1022,8 +1022,14 @@ class HuellaCuadros
         List<Esc> todos = Escenarios();
         if (modo == "lista") { foreach (Esc e in todos) Console.WriteLine(e.Nombre); return 0; }
         if (modo == "huella" && TReloj == null) { Console.WriteLine("  FALLO: la huella necesita el ejecutable instrumentado (pruebas/huella-compila.sh)"); return 1; }
+        // «k/n» como filtro: solo las pantallas cuyo numero de orden da k al dividir entre n (para repartir las 168 entre procesos).
+        int parte = -1, partes = 1;
+        { int barra = filtro.IndexOf('/'); if (barra > 0 && int.TryParse(filtro.Substring(0, barra), out parte) && int.TryParse(filtro.Substring(barra + 1), out partes) && partes > 0) filtro = ""; else { parte = -1; partes = 1; } }
+        int orden = -1;
         foreach (Esc e in todos)
         {
+            orden++;
+            if (parte >= 0 && orden % partes != parte) continue;
             if (filtro.Length > 0 && e.Nombre.IndexOf(filtro, StringComparison.Ordinal) < 0) continue;
             if (modo == "huella") Huella(e);
             else if (modo == "coste") Coste(e);

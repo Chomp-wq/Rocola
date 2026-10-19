@@ -181,5 +181,149 @@ namespace Rocola
         }
         internal static string Numero(double n) { return n.ToString("0.0", CultureInfo.InvariantCulture); }
     }
+
+    // ============================== EL LIBRO DE LOS PEORES CUADROS (20-10-2026) ==============================
+    //
+    // FluidezGpu dice CUANTO duro un tiron; esto dice QUE estaba haciendo el cuadro. Con «diagnostico=1» cada cuadro de la tarjeta
+    // reparte lo que tarda en once fases (la preparacion de la rejilla, las portadas, el estado extendido, la interfaz...) y se
+    // guardan los ocho peores de cada minuto, con lo que habia pasado en ellos (pagina, estado extendido, interfaz subida...). Al
+    // acabar el minuto sale UNA entrada de bitacora (por el hilo de la bitacora, como el resto); si ningun cuadro llego al umbral,
+    // no sale nada. Sin diagnostico no se lee ni un reloj: cada marca es un «if» sobre un bool.
+    //
+    // Memoria fija: los ocho puestos y sus fases se crean una vez con el panel; Marca/Termina no reservan nada. Solo Vuelca crea
+    // texto, una vez por minuto como mucho. Los milisegundos de cada fase son tiempo de RELOJ de pared del hilo de la pantalla: si el
+    // sistema operativo le quita el procesador en medio de una fase, ese tiempo cuenta en ella (no se puede separar). El numero de
+    // recolecciones de basura de un cuadro es una coincidencia, no una causa ni una duracion.
+    internal sealed class LibroDeCuadros
+    {
+        internal const int Plazas = 8, NFases = 11;
+        internal const int FPre = 0, FRejilla = 1, FPortadas = 2, FCubos = 3, FEstado = 4, FVivos = 5, FInterfaz = 6, FAdornos = 7, FAdelanto = 8, FDibujo = 9, FPresentar = 10;
+        internal static readonly string[] NombresFases = { "pre", "rejilla", "portadas", "cubos", "estado", "vivos", "interfaz", "adornos", "adelanto", "dibujo", "presentar" };
+        internal const int BPagina = 1, BReposo = 2, BTransicion = 4, BInterfaz = 8, BFranja = 16, BUrgente = 32, BVentana = 64, BViaje = 128, BAdelanto = 256, BEstado = 512;
+        internal static readonly string[] NombresBanderas = { "pagina", "estado_extendido", "transicion_del_estado", "interfaz_subida", "franja_subida", "cambio_de_modo", "ventana_del_buscador", "viaje_de_portada", "adelanto_de_portadas", "estado_subido" };
+        // Desde cuantos milisegundos de trabajo (mas la espera de Present que pase de un periodo) un cuadro entra en el libro, y cada
+        // cuanto sale la hoja. Las pruebas los bajan.
+        internal static double UmbralMs = 12.0, VentanaMs = 60000.0;
+
+        internal sealed class Plaza
+        {
+            internal readonly double[] Fases = new double[NFases];
+            internal double Puntos, Trabajo, Espera, Cuando;
+            internal int Banderas, Celdas, Subidas, Modo, Gc0, Gc1, Gc2;
+            internal bool Ocupada;
+        }
+        private readonly Plaza[] plazas = new Plaza[Plazas];
+        private readonly double[] actual = new double[NFases];
+        private readonly int[] orden = new int[Plazas];
+        private readonly StringBuilder texto = new StringBuilder(2048);
+        private double ultimo, inicioVentana = -1;
+        private int gc0Ini, gc1Ini, gc2Ini, cuadros, pasaron;
+        internal int Banderas, Celdas, Subidas, Modo;
+        internal LibroDeCuadros() { for (int i = 0; i < Plazas; i++) plazas[i] = new Plaza(); }
+
+        internal int Ocupadas { get { int n = 0; for (int i = 0; i < Plazas; i++) if (plazas[i].Ocupada) n++; return n; } }
+        internal int Cuadros { get { return cuadros; } }
+        internal Plaza De(int i) { return plazas[i]; }
+
+        internal void Empieza(double ahora)
+        {
+            for (int i = 0; i < NFases; i++) actual[i] = 0;
+            ultimo = ahora; Banderas = Celdas = Subidas = Modo = 0;
+            gc0Ini = GC.CollectionCount(0); gc1Ini = GC.CollectionCount(1); gc2Ini = GC.CollectionCount(2);
+            if (inicioVentana < 0) inicioVentana = ahora;
+        }
+        // Lo que paso desde la marca anterior es de esta fase.
+        internal void Marca(int fase, double ahora)
+        {
+            double d = ahora - ultimo; ultimo = ahora;
+            if (d > 0 && fase >= 0 && fase < NFases) actual[fase] += d;
+        }
+        // Al terminar el cuadro presentado. 'periodoMs': lo que dura un cuadro previsto; lo que Present espere de mas es la parte
+        // que cuenta (esperar al monitor un periodo entero es normal).
+        internal void Termina(double ahora, double periodoMs)
+        {
+            cuadros++;
+            double trabajo = 0;
+            for (int i = 0; i < FPresentar; i++) trabajo += actual[i];
+            double espera = actual[FPresentar], exceso = espera - periodoMs;
+            double puntos = trabajo + (exceso > 0 ? exceso : 0);
+            if (!(puntos >= UmbralMs)) return;
+            pasaron++;
+            int destino = -1; double peor = double.MaxValue;
+            for (int i = 0; i < Plazas; i++)
+            {
+                if (!plazas[i].Ocupada) { destino = i; break; }
+                if (plazas[i].Puntos < peor) { peor = plazas[i].Puntos; destino = i; }
+            }
+            if (plazas[destino].Ocupada && !(puntos > plazas[destino].Puntos)) return;
+            Plaza p = plazas[destino];
+            for (int i = 0; i < NFases; i++) p.Fases[i] = actual[i];
+            p.Puntos = puntos; p.Trabajo = trabajo; p.Espera = espera; p.Cuando = ahora; p.Ocupada = true;
+            p.Banderas = Banderas; p.Celdas = Celdas; p.Subidas = Subidas; p.Modo = Modo;
+            p.Gc0 = GC.CollectionCount(0) - gc0Ini; p.Gc1 = GC.CollectionCount(1) - gc1Ini; p.Gc2 = GC.CollectionCount(2) - gc2Ini;
+        }
+        // La hoja del minuto, o null si todavia no toca o no hay nada que contar. 'forzar': al cerrar.
+        internal string Vuelca(double ahora, bool forzar)
+        {
+            if (inicioVentana < 0) return null;
+            if (!forzar && ahora - inicioVentana < VentanaMs) return null;
+            double dur = ahora - inicioVentana; int total = cuadros, cuantos = pasaron;
+            inicioVentana = ahora; cuadros = 0; pasaron = 0;
+            int n = 0;
+            for (int i = 0; i < Plazas; i++)
+                if (plazas[i].Ocupada)
+                {
+                    int j = n++;   // inserta por puntos, de mayor a menor
+                    while (j > 0 && plazas[orden[j - 1]].Puntos < plazas[i].Puntos) { orden[j] = orden[j - 1]; j--; }
+                    orden[j] = i;
+                }
+            if (n == 0) return null;
+            texto.Length = 0;
+            texto.Append("peores cuadros de los ultimos ").Append(((int)(dur / 1000 + 0.5)).ToString(CultureInfo.InvariantCulture)).Append(" s: ")
+                .Append(cuantos).Append(" de ").Append(total).Append(" pasaron de ").Append(FluidezGpu.Numero(UmbralMs))
+                .Append(" ms (trabajo + lo que Present espere de mas de un periodo); fases en ms, tiempo de reloj del hilo de la pantalla:");
+            for (int k = 0; k < n; k++)
+            {
+                Plaza p = plazas[orden[k]];
+                texto.Append("\r\n  ").Append(k + 1).Append(". hace ").Append(((int)((ahora - p.Cuando) / 1000 + 0.5)).ToString(CultureInfo.InvariantCulture)).Append(" s: ")
+                    .Append(FluidezGpu.Numero(p.Puntos)).Append(" ms (trabajo ").Append(FluidezGpu.Numero(p.Trabajo)).Append(", presentar ").Append(FluidezGpu.Numero(p.Espera)).Append(") |");
+                for (int f = 0; f < NFases; f++)
+                    if (p.Fases[f] >= 0.05) texto.Append(' ').Append(NombresFases[f]).Append(' ').Append(FluidezGpu.Numero(p.Fases[f]));
+                texto.Append(" | modo ").Append(p.Modo).Append(", celdas ").Append(p.Celdas).Append(", texturas subidas ").Append(p.Subidas).Append(", ");
+                bool alguna = false;
+                for (int b = 0; b < NombresBanderas.Length; b++)
+                    if ((p.Banderas & (1 << b)) != 0) { texto.Append(alguna ? "," : "").Append(NombresBanderas[b]); alguna = true; }
+                if (!alguna) texto.Append("sin_banderas");
+                texto.Append(" | recolecciones en el cuadro ").Append(p.Gc0).Append('/').Append(p.Gc1).Append('/').Append(p.Gc2).Append(" (coincidencia, no causa)");
+            }
+            for (int i = 0; i < Plazas; i++) plazas[i].Ocupada = false;
+            return texto.ToString();
+        }
+    }
+
+    // El enchufe del libro en el panel (GpuPanel.RenderFrame, D3D9Star.cs). Solo Form1 lo enciende, con diagnostico=1.
+    internal sealed partial class GpuPanel
+    {
+        private readonly LibroDeCuadros libro = new LibroDeCuadros();
+        private bool libroOn;
+        internal Action<string> ReportPeores;
+        internal bool LibroActivo { get { return libroOn; } set { libroOn = value; } }
+        internal LibroDeCuadros Libro { get { return libro; } }
+        private void LM(int fase) { if (libroOn) libro.Marca(fase, AhoraMs()); }
+        private void LB(int bandera) { if (libroOn) libro.Banderas |= bandera; }
+        private void LibroTermina(double terminado, double periodoObjetivo)
+        {
+            libro.Termina(terminado, periodoObjetivo);
+            string hoja = libro.Vuelca(terminado, false);
+            if (hoja != null && ReportPeores != null) ReportPeores(hoja);
+        }
+        // Al cerrar: lo que quedaba del minuto.
+        internal void VuelcaLibro()
+        {
+            if (!libroOn) return;
+            string hoja = libro.Vuelca(AhoraMs(), true);
+            if (hoja != null && ReportPeores != null) ReportPeores(hoja);
+        }
+    }
 }
 #endif

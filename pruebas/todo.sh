@@ -151,6 +151,11 @@ GPU="$GPU inventario"
 # Compila una copia instrumentada de las fuentes (huella-compila.sh: relojes y azar de pruebas). Sin tarjeta, dice que no hay nada que medir.
 CPU="$CPU huellacuadros"
 GPU="$GPU huellacuadros"
+# 'tironescambio': los peores cuadros al cambiar de pagina, cancion o modo (20-10-2026): el libro de los ocho peores cuadros por minuto con sus fases
+# (solo con diagnostico=1, sin reservas por cuadro) y, segun se vayan haciendo, lo que llega al controlador (precalentado, PreLoad, memoria libre...).
+# Tarjeta imitada que solo cuenta; todo sintetico de Linux/Mono. Sin tarjeta, dice que no hay nada que medir.
+CPU="$CPU tironescambio"
+GPU="$GPU tironescambio"
 # 'contextoparada': lo que se apunta junto a una parada de pantalla (19-10-2026): recolecciones desde el apunte anterior, memoria del
 # programa y RAM libre, solo cuando hay parada y desde el hilo del vigia.
 CPU="$CPU contextoparada"
