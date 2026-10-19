@@ -219,21 +219,33 @@ class EstadoEficiente
         {
             host.ClientSize = new Size(480, 660); host.Controls.Add(sheet);
             sheet.Size = new Size(456, 624);
-            object[] args = { sheet, font, font, Color.White, Color.Gray, null, null, null };
+            object[] args = { sheet, font, font, font, Color.White, Color.Gray, null, null, null };
             Run(f, "LlenaHojaPerformance", args);
-            Array switches = (Array)args[5];
+            Array switches = (Array)args[6];
             Check(switches.Length == 13, "Performance muestra todos los ahorros independientes");
-            ScrollableControl body = sheet.Controls[0] as ScrollableControl;
-            Check(body != null && body.AutoScroll && body.Top >= 40, "lista desplazable conserva la cabecera de pestañas");
-            host.Show(); Application.DoEvents(); sheet.CreateControl(); body.CreateControl();
-            for (int i = 0; i < switches.Length; i++)
+            // 19-10-2026: la lista ya no se desplaza (las ultimas filas quedaban bajo el boton Listo): va en hojitas por tema,
+            // con pestanas fijas. Cada interruptor es accesible al elegir la pestana de su tema, y cabe en el area de las hojitas.
+            Type boton = form.GetNestedType("BotonPlano", B);
+            System.Collections.Generic.List<Control> pestanas = new System.Collections.Generic.List<Control>();
+            foreach (Control c in sheet.Controls) if (c.GetType() == boton && c.Top >= 100 && c.Top <= 110) pestanas.Add(c);
+            Check(pestanas.Count == 5, "hay cinco pestanas por tema (" + pestanas.Count + ")");
+            foreach (Control c in sheet.Controls) Check(!(c is ScrollableControl && ((ScrollableControl)c).AutoScroll), "ninguna lista se desplaza: " + c.GetType().Name);
+            host.Show(); Application.DoEvents(); sheet.CreateControl();
+            int accesibles = 0;
+            MethodInfo click = typeof(Control).GetMethod("OnClick", B);
+            foreach (Control tab in pestanas)
             {
-                Control control = (Control)switches.GetValue(i);
-                body.ScrollControlIntoView(control);
-                Check(control.Top >= body.ClientRectangle.Top && control.Bottom <= body.ClientRectangle.Bottom,
-                    "interruptor accesible al desplazar: " + control.Text);
-                body.AutoScrollPosition = Point.Empty;
+                click.Invoke(tab, new object[] { EventArgs.Empty }); Application.DoEvents();
+                for (int i = 0; i < switches.Length; i++)
+                {
+                    Control control = (Control)switches.GetValue(i);
+                    if (!control.Visible || control.Parent == sheet) continue;
+                    Rectangle r = sheet.RectangleToClient(control.RectangleToScreen(control.ClientRectangle));
+                    Check(r.Top >= 134 && r.Bottom <= 480 && r.Left >= 0 && r.Right <= sheet.Width, "interruptor accesible en su hojita: " + control.Text);
+                    accesibles++;
+                }
             }
+            Check(accesibles == 13, "los trece interruptores son accesibles, uno en cada hojita (" + accesibles + ")");
         }
     }
     [STAThread] static int Main(string[] args)
