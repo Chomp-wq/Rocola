@@ -117,7 +117,7 @@ recolecciones en 480 cuadros, antes y después (las 24 filas del primer informe;
 | Cielo con nebulosas a media resolución en Bajo | Cambia el aspecto (sería un ahorro B) para 0,26 pantallas que el ahorro 3 ya casi iguala |
 | Un Direct3D 9 de mentira nativo para correr la rocola entera | Se construyó (`libd3dfalso.so`), el dispositivo arrancó, pero el bucle de dibujo no llegó a correr bajo xvfb/Mono; se descartó y no se entrega |
 
-## Descartado: el cielo de fábrica guardado y estirado (aplicado en `d86aa2c`, revertido en `d14cd7d`)
+## Descartado: el cielo de fábrica guardado y estirado (aplicado en `d86aa2c`, revertido en `b77f584`)
 
 Era el ahorro 2 de la primera versión de este informe. G1 (14-10-2026) no repetía el cielo de la imagen intermedia si no había cambiado, pero solo con «Cielo a
 media resolución». Esta versión lo hacía también de fábrica: el degradado, las dos capas de nebulosa y la vía láctea se pintaban en una imagen del tamaño de la
@@ -160,6 +160,7 @@ Este informe es de pruebas sintéticas en Linux/Mono con una tarjeta imitada; no
   de referencia salvo seis que ahí fallaban solo por falta de ese archivo (`auroraeficiente`, `cintasligeras`, `estadoeficiente`, `hojeoportadas`,
   `resolucionligera`, `trabajovisible`: ahora pasan) y salvo `resol`, una prueba de tiempos del dibujo por procesador (sin tocar) que pasa 8 de 9 veces y
   falló una vez con 1,38 > 1,35; `presencia` falló en la primera tanda por la reestructuración y se corrigió. Ninguna falla es nueva.
+- Tras la reversión (y el lote de arranque, audio y memoria de `ARRANQUE_AUDIO_Y_MEMORIA_MODEST_2026-10-19.md`) se repitió la tanda completa: ningún nombre con problemas que no estuviera ya en la de referencia (detalle en ese documento).
 - Pruebas de rendimiento, de mezcla de estados y de píxeles con una tarjeta imitada en Linux/Mono: no prueban Windows XP, una tarjeta de verdad ni la pantalla del bar.
 
 ## Cómo repetirlo

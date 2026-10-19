@@ -1,5 +1,13 @@
 # Rocola
 
+## Arranque, audio y memoria sin cambiar lo que se oye ni lo que se guarda — 19 de octubre de 2026
+
+Ahorros que no son gráficos, todos con los mismos bytes en los archivos y el mismo audio: la firma de la biblioteca (hash ASCII y orden por nombre; en .NET 3.5 una lista por carpeta
+con `FindFirstFile`, **sin probar en Windows**), el respaldo del arranque comprobado por bytes en vez de dos SHA-256, la cosecha de la IA con el origen una vez y la mitad de confirmaciones en
+disco, menos objetos de vida larga por canción, la reproducción desde la memoria con el lector ligero de MP3 (mismo PCM muestra a muestra) y dos hilos de fondo que ya no pueden cerrar la rocola. También el
+diagnóstico de recolecciones de gen2 por canción (`diagnostico=1`) y la reversión del cielo de fábrica guardado (empeoraba el peor cuadro). Cifras de Mono/Linux, sintéticas: nada medido en XP ni en el A4.
+[Cada ahorro, sus pruebas, lo no hecho y qué leer en el A4](ARRANQUE_AUDIO_Y_MEMORIA_MODEST_2026-10-19.md).
+
 ## Ahorros automáticos del dibujo, con huellas de cuadro — 19 de octubre de 2026
 
 Cuatro ahorros que no cambian ni un píxel (168 de 168 pantallas comparadas con una tarjeta imitada que pinta): los estados de mezcla y de etapa solo
