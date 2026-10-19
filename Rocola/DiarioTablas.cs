@@ -69,7 +69,10 @@ namespace Rocola
         private sealed class RegistroEq
         {
             internal readonly float[] Curva;
-            internal RegistroEq(float[] curva) { Curva = (float[])curva.Clone(); }
+            // Comparte el arreglo de eqCache en lugar de copiarlo (una copia de 12 floats por cancion: con una biblioteca grande, megas de objetos
+            // chicos que viven toda la sesion). Es seguro porque esos arreglos NO se modifican una vez puestos en la tabla: cada medida nueva
+            // arma uno nuevo y lo pone en su lugar (CierraHuella, PublicaMedida, la lectura de la tabla); la bateria diario lo vigila.
+            internal RegistroEq(float[] curva) { Curva = curva; }
         }
         private sealed class RegistroIntegrada
         {

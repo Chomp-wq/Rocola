@@ -164,8 +164,8 @@ class Eficiencia
     static object Registro(Type rt, Type ft,long n)
     {
         object r=Activator.CreateInstance(rt,true);
-        Set(r,"Fuente",Activator.CreateInstance(ft,B,null,new object[]{n,1L,1L},null));
-        Set(r,"Medidas","0123456789ABCDEF"); Set(r,"Mapa","-"); return r;
+        Set(r,"Largo",n); Set(r,"Creada",1L); Set(r,"Escrita",1L);   // el sello (antes un FuenteMedida aparte por cancion)
+        Set(r,"Medidas",0x0123456789ABCDEFUL); Set(r,"SinMapa",true); return r;
     }
     [STAThread] static int Main(string[] args)
     {

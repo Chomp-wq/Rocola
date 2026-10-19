@@ -2354,13 +2354,31 @@ namespace Rocola
                 else { t.Title = name; }
                 if (string.IsNullOrEmpty(t.Artist))
                 {
-                    string d = System.IO.Path.GetDirectoryName(path);
-                    string leaf = (d != null) ? LeafName(d) : "Desconocido";
-                    string da, dn;
-                    if (SplitArtist(leaf, out da, out dn)) t.Artist = da; else t.Artist = leaf;
+                    // El artista que sale de la CARPETA es el mismo para todas las canciones de ella (y llegan seguidas): se saca una vez por
+                    // carpeta y las demas comparten la misma cadena, en vez de armar cada vez GetDirectoryName, LeafName y los pedazos de
+                    // SplitArtist (varios objetos por cancion, y uno retenido por cada una). Solo si el comienzo de la ruta, hasta el ultimo
+                    // separador, es letra por letra el de la carpeta recordada: GetDirectoryName depende de ese comienzo y de nada mas.
+                    int corte = path.LastIndexOfAny(SepChars);
+                    ArtistaDeCarpeta ultima = ultimaCarpeta;
+                    if (corte > 0 && ultima != null && ultima.Corte == corte && string.CompareOrdinal(path, 0, ultima.Prefijo, 0, corte) == 0)
+                        t.Artist = ultima.Artista;
+                    else
+                    {
+                        string d = System.IO.Path.GetDirectoryName(path);
+                        string leaf = (d != null) ? LeafName(d) : "Desconocido";
+                        string da, dn;
+                        if (SplitArtist(leaf, out da, out dn)) t.Artist = da; else t.Artist = leaf;
+                        if (corte > 0) ultimaCarpeta = new ArtistaDeCarpeta(path.Substring(0, corte), t.Artist);
+                    }
                 }
                 return t;
             }
+            private sealed class ArtistaDeCarpeta
+            {
+                internal readonly string Prefijo, Artista; internal readonly int Corte;
+                internal ArtistaDeCarpeta(string prefijo, string artista) { Prefijo = prefijo; Artista = artista; Corte = prefijo.Length; }
+            }
+            private static volatile ArtistaDeCarpeta ultimaCarpeta;   // una sola referencia: leer y cambiar es atomico entre hilos
 
             // EL GENERO A SOLAS, LEYENDO LO MENOS POSIBLE.
             //

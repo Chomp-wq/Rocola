@@ -17,10 +17,22 @@ namespace Rocola
             internal bool Igual(FuenteMedida otra)
             { return otra != null && Largo == otra.Largo && Creada == otra.Creada && Escrita == otra.Escrita; }
         }
+        // Una fila por cancion medida, tal como esta en rocola_fuentes.txt. Antes eran cuatro objetos por cancion (el registro, su FuenteMedida y dos
+        // cadenas de 16 cifras hexadecimales): con 20.000 canciones, unos 190 bytes y 80.000 objetos que viven toda la sesion. Ahora es un objeto
+        // con los tres numeros del sello y las dos huellas de 64 bits (en el archivo siguen siendo 16 cifras hexadecimales: el mismo formato).
+        // Sigue siendo una clase: las tablas con deltas usan null como "borrado" y comparan por referencia.
         private sealed class RegistroFuente
         {
-            internal FuenteMedida Fuente;
-            internal string Medidas, Mapa;
+            internal long Largo, Creada, Escrita;   // el sello del original (lo mismo que FuenteMedida)
+            internal ulong Medidas, Mapa;           // huellas de las medidas y del mapa de silencios
+            internal bool SinMapa;                  // "-" en el archivo: no hay mapa valido
+            internal void PonSello(FuenteMedida f) { Largo = f.Largo; Creada = f.Creada; Escrita = f.Escrita; }
+            internal bool Coincide(FuenteMedida f) { return f != null && Largo == f.Largo && Creada == f.Creada && Escrita == f.Escrita; }
+            internal bool Igual(RegistroFuente o)
+            {
+                return Largo == o.Largo && Creada == o.Creada && Escrita == o.Escrita && Medidas == o.Medidas
+                    && SinMapa == o.SinMapa && (SinMapa || Mapa == o.Mapa);
+            }
         }
         private readonly object fuentesCerrojo = new object();
         private Dictionary<string, RegistroFuente> fuentesMedidas = new Dictionary<string, RegistroFuente>(StringComparer.OrdinalIgnoreCase);
@@ -90,15 +102,22 @@ namespace Rocola
             fuenteLeida = inicio;
             return true;
         }
-        private static string HuellaTexto(string texto)
+        private static ulong HuellaTexto(string texto)
         {
             ulong h = 14695981039346656037UL;
             unchecked { for (int i = 0; i < texto.Length; i++) { h ^= texto[i]; h *= 1099511628211UL; } }
-            return h.ToString("X16", CultureInfo.InvariantCulture);
+            return h;
         }
-        private static string FirmaMapa(MapaSilencios m)
+        // Como se escribe una huella en el archivo (y se escribia siempre): 16 cifras hexadecimales en mayusculas.
+        private static string HuellaEnArchivo(ulong h) { return h.ToString("X16", CultureInfo.InvariantCulture); }
+        private static bool LeeHuella(string s, out ulong h)
+        {
+            h = 0;
+            return s.Length == 16 && ulong.TryParse(s, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out h);
+        }
+        private static ulong FirmaMapa(MapaSilencios m)
         { return HuellaTexto(MapaSilencios.Texto(m.Desde) + "|" + MapaSilencios.Texto(m.Hasta) + "|" + MapaSilencios.Texto(m.HuecoDesde) + "|" + MapaSilencios.Texto(m.HuecoHasta) + "|" + MapaSilencios.Texto(m.Dura)); }
-        private string FirmaMedidas(string ruta)
+        private ulong FirmaMedidas(string ruta)
         {
             // Redondeo IDENTICO al de las tablas. Una recarga no cambia la firma por
             // perder decimales. Si un apagon publica solo una tabla, la firma no cuadra
@@ -116,15 +135,14 @@ namespace Rocola
         private void ActualizaFuenteMedida(string ruta, FuenteMedida fuente)
         {
             if (ruta == null || fuente == null) return;
-            RegistroFuente r = new RegistroFuente(); r.Fuente = fuente; r.Medidas = FirmaMedidas(ruta);
+            RegistroFuente r = new RegistroFuente(); r.PonSello(fuente); r.Medidas = FirmaMedidas(ruta);
             SonoridadIntegrada s = new SonoridadIntegrada(); bool hay;
             lock (integCerrojo) hay = integCache != null && integCache.TryGetValue(ruta, out s);
-            r.Mapa = hay && s.Silencios.Valido ? FirmaMapa(s.Silencios) : "-";
+            if (hay && s.Silencios.Valido) r.Mapa = FirmaMapa(s.Silencios); else r.SinMapa = true;
             lock (fuentesCerrojo)
             {
                 RegistroFuente antes;
-                if (fuentesMedidas.TryGetValue(ruta, out antes) && antes.Fuente.Igual(fuente)
-                    && antes.Medidas == r.Medidas && antes.Mapa == r.Mapa) return;
+                if (fuentesMedidas.TryGetValue(ruta, out antes) && antes.Igual(r)) return;
                 fuentesMedidas[ruta] = r; fuentesPendientes[ruta] = r; fuentesCambios++;
             }
         }
@@ -133,7 +151,7 @@ namespace Rocola
         {
             FuenteMedida f = CapturaFuente(ruta); if (f == null) return null;
             RegistroFuente r; lock (fuentesCerrojo) fuentesMedidas.TryGetValue(ruta, out r);
-            if (r == null || !f.Igual(r.Fuente) || r.Medidas != FirmaMedidas(ruta))
+            if (r == null || !r.Coincide(f) || r.Medidas != FirmaMedidas(ruta))
             {
                 bool hay = loudCache.ContainsKey(ruta) || durCache.ContainsKey(ruta) || eqCache.ContainsKey(ruta);
                 lock (integCerrojo) hay |= integCache != null && integCache.ContainsKey(ruta);
@@ -146,7 +164,7 @@ namespace Rocola
         {
             ruta = RutaOriginalDe(ruta); // Apollo usa las medidas del original validado, no las de su WAV temporal
             RegistroFuente r; lock (fuentesCerrojo) fuentesMedidas.TryGetValue(ruta, out r);
-            return r != null && r.Fuente.Igual(CapturaFuente(ruta)) && r.Mapa == FirmaMapa(mapa);
+            return r != null && r.Coincide(CapturaFuente(ruta)) && !r.SinMapa && r.Mapa == FirmaMapa(mapa);
         }
         private bool AceptaFuenteMedida(string ruta, FuenteMedida fuente)
         {
@@ -161,10 +179,10 @@ namespace Rocola
             string linea;
             while ((linea = reader.ReadLine()) != null)
             {
-                string[] p = linea.Split(new char[] { '|' }, 6); long n, c, e;
+                string[] p = linea.Split(new char[] { '|' }, 6); long n, c, e; ulong medidas, mapa = 0;
                 if (p.Length != 6 || p[5].Length == 0 || !long.TryParse(p[0], out n) || !long.TryParse(p[1], out c) || !long.TryParse(p[2], out e)
-                    || n < 0 || c <= 0 || e <= 0 || p[3].Length != 16 || (p[4] != "-" && p[4].Length != 16)) continue;
-                destino[p[5]] = new RegistroFuente { Fuente = new FuenteMedida(n, c, e), Medidas = p[3], Mapa = p[4] };
+                    || n < 0 || c <= 0 || e <= 0 || !LeeHuella(p[3], out medidas) || (p[4] != "-" && !LeeHuella(p[4], out mapa))) continue;
+                destino[p[5]] = new RegistroFuente { Largo = n, Creada = c, Escrita = e, Medidas = medidas, Mapa = mapa, SinMapa = p[4] == "-" };
             }
             return 1;
         }
@@ -222,20 +240,21 @@ namespace Rocola
         private static long HuellaFuente(string ruta, RegistroFuente r)
         {
             long h = HuellaVacia;
-            h = Mezcla(h, (int)r.Fuente.Largo); h = Mezcla(h, (int)(r.Fuente.Largo >> 32));
-            h = Mezcla(h, (int)r.Fuente.Creada); h = Mezcla(h, (int)(r.Fuente.Creada >> 32));
-            h = Mezcla(h, (int)r.Fuente.Escrita); h = Mezcla(h, (int)(r.Fuente.Escrita >> 32));
-            for (int i = 0; i < r.Medidas.Length; i++) h = Mezcla(h, r.Medidas[i]);
+            h = Mezcla(h, (int)r.Largo); h = Mezcla(h, (int)(r.Largo >> 32));
+            h = Mezcla(h, (int)r.Creada); h = Mezcla(h, (int)(r.Creada >> 32));
+            h = Mezcla(h, (int)r.Escrita); h = Mezcla(h, (int)(r.Escrita >> 32));
+            h = Mezcla(h, (int)r.Medidas); h = Mezcla(h, (int)(r.Medidas >> 32));
             h = Mezcla(h, '|');
-            for (int i = 0; i < r.Mapa.Length; i++) h = Mezcla(h, r.Mapa[i]);
+            h = Mezcla(h, r.SinMapa ? 1 : 0);
+            if (!r.SinMapa) { h = Mezcla(h, (int)r.Mapa); h = Mezcla(h, (int)(r.Mapa >> 32)); }
             return h;
         }
         private static void EscribeFuente(TextWriter w, string ruta, RegistroFuente r)
         {
-            w.Write(r.Fuente.Largo.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-            w.Write(r.Fuente.Creada.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-            w.Write(r.Fuente.Escrita.ToString(CultureInfo.InvariantCulture)); w.Write('|');
-            w.Write(r.Medidas); w.Write('|'); w.Write(r.Mapa); w.Write('|'); w.Write(ruta); w.Write("\r\n");
+            w.Write(r.Largo.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(r.Creada.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(r.Escrita.ToString(CultureInfo.InvariantCulture)); w.Write('|');
+            w.Write(HuellaEnArchivo(r.Medidas)); w.Write('|'); w.Write(r.SinMapa ? "-" : HuellaEnArchivo(r.Mapa)); w.Write('|'); w.Write(ruta); w.Write("\r\n");
         }
         private bool PublicaMedidaDeFuente(string ruta, float rms, float dur, float[] eq, FuenteMedida fuente)
         {

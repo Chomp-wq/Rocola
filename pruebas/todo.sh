@@ -282,6 +282,9 @@ CPU="$CPU respaldobytes"
 # 'cosechaunavez': la cosecha de la IA (19-10-2026) saca el origen una vez por cancion y anexa los canales juntos, con una confirmacion en disco por
 # archivo (6 -> 3 en estereo); lo que se guarda es igual, byte a byte, a lo que dejaban los canales anexados uno por uno.
 CPU="$CPU cosechaunavez"
+# 'objetosmenos': menos objetos de vida larga por cancion (19-10-2026): el espejo del EQ comparte los arreglos, un registro de fuentes en vez de cuatro objetos
+# (el mismo archivo rocola_fuentes.txt) y el artista de la carpeta una vez por carpeta (las mismas canciones).
+CPU="$CPU objetosmenos"
 # 'otroarchivo': en la ruta de una cancion hay hoy otro archivo (la completa en lugar de una descarga cortada). Con la
 # duracion apuntada del de antes, el fundido bajaba a cero alli y el resto sonaba en silencio: ahora manda el lector.
 CPU="$CPU otroarchivo"
