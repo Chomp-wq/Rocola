@@ -1,5 +1,12 @@
 # Rocola
 
+## Colores de portadas con menos llamadas — 19 de octubre de 2026
+
+La extracción de paletas reutiliza las dimensiones y lee completos los píxeles
+de 32 bits. Conserva muestras, transparencias y tonos; sin memoria persistente
+adicional ni nuevas opciones. El ahorro ocurre al cargar portadas.
+[Comparaciones, mediciones y límites](PALETA_LIGERA_MODEST_2026-10-19.md).
+
 ## Barra de progreso con menos trabajo interno — 19 de octubre de 2026
 
 Las franjas del neón se preparan juntas y la barra simple reúne su borde.

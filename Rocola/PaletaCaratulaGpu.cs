@@ -14,13 +14,14 @@ namespace Rocola
         {
             if (bitmap == null) return new Color[0];
             int[] count = new int[27], red = new int[27], green = new int[27], blue = new int[27];
-            int nx = Math.Min(32, bitmap.Width), ny = Math.Min(32, bitmap.Height), total = 0;
+            int width = bitmap.Width, height = bitmap.Height;
+            int nx = Math.Min(32, width), ny = Math.Min(32, height), total = 0;
             int[] pixels = MuestrasPaleta(bitmap, nx, ny);
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
                 {
                     Color c = pixels != null ? Color.FromArgb(pixels[y*nx+x])
-                        : bitmap.GetPixel((2*x+1)*bitmap.Width/(2*nx), (2*y+1)*bitmap.Height/(2*ny));
+                        : bitmap.GetPixel((2*x+1)*width/(2*nx), (2*y+1)*height/(2*ny));
                     if (c.A < 128) continue;
                     int max = Math.Max(c.R, Math.Max(c.G, c.B)), min = Math.Min(c.R, Math.Min(c.G, c.B));
                     int bin = max < 36 || max-min < 24 ? 24 + Math.Min(2, max/86) : Math.Min(23, (int)(c.GetHue()/15));
@@ -67,16 +68,29 @@ namespace Rocola
             System.Drawing.Imaging.BitmapData d = null;
             try
             {
-                d = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, f);
+                int width = b.Width, height = b.Height;
+                d = b.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.ReadOnly, f);
                 int[] r = new int[nx*ny];
-                for (int y = 0; y < ny; y++) for (int x = 0; x < nx; x++)
+                for (int y = 0; y < ny; y++)
                 {
-                    int px = (2*x+1)*b.Width/(2*nx), py = (2*y+1)*b.Height/(2*ny);
-                    IntPtr p = new IntPtr(d.Scan0.ToInt64() + (long)py*d.Stride + px*bytes);
-                    int a = rgb ? 255 : System.Runtime.InteropServices.Marshal.ReadByte(p, 3);
-                    if (prem && a != 255) return null;
-                    r[y*nx+x] = (a << 24) | (System.Runtime.InteropServices.Marshal.ReadByte(p, 2) << 16)
-                        | (System.Runtime.InteropServices.Marshal.ReadByte(p, 1) << 8) | System.Runtime.InteropServices.Marshal.ReadByte(p);
+                    int py = (2*y+1)*height/(2*ny);
+                    long row = d.Scan0.ToInt64() + (long)py*d.Stride;
+                    for (int x = 0; x < nx; x++)
+                    {
+                        int px = (2*x+1)*width/(2*nx);
+                        IntPtr p = new IntPtr(row + px*bytes);
+                        if (bytes == 4)
+                        {
+                            // Un pixel BGRA completo; RGB fuerza alfa opaco como GetPixel.
+                            int pixel = System.Runtime.InteropServices.Marshal.ReadInt32(p);
+                            if (prem && (uint)pixel >> 24 != 255) return null;
+                            r[y*nx+x] = rgb ? pixel | unchecked((int)0xFF000000u) : pixel;
+                        }
+                        else
+                            // Tres bytes exactos: no leer fuera de la ultima fila RGB de 24 bits.
+                            r[y*nx+x] = unchecked((int)0xFF000000u) | (System.Runtime.InteropServices.Marshal.ReadByte(p, 2) << 16)
+                                | (System.Runtime.InteropServices.Marshal.ReadByte(p, 1) << 8) | System.Runtime.InteropServices.Marshal.ReadByte(p);
+                    }
                 }
                 return r;
             }
