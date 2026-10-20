@@ -1,5 +1,14 @@
 # Rocola
 
+## Tirones al cambiar de página, de canción y de modo — 20 de octubre de 2026
+
+Un libro de los **ocho peores cuadros de cada minuto** con once fases (`diagnostico=1`, sin reservas por cuadro) para saber qué hacía el cuadro, y diez ahorros sin interruptores y sin cambiar lo que se ve ni lo que se oye: el precalentado de lo que pinta la tarjeta (primera vez
+del estado extendido, la ficha, los globos de la estrella y los avisos: de 30–49 ms a 4–9 ms en Mono, en procesos nuevos), los bordes de la celda separada una sola vez (−23 %), `PreLoad` de la página siguiente, `GetAvailableTextureMem` cada minuto
+(18 → 3 llamadas en 180 s), la atracción con el escaparate sin imagen de interfaz vacía, los delegados de `Fn<>` guardados (35 recolecciones por 900 mil llamadas → 0), la evicción y la espera cuando no hay memoria para una textura, la vista previa 32×32
+que ya está en el almacén (2,9 → 0,008 ms) y el espectro del hilo de audio (−20 %, bit a bit igual). Las 168 pantallas de `huellacuadros` salen **idénticas** y `cpucongelado` igual. **Descartado con números:** subir sin convertir los PArgb opacos, cachear el
+tamaño de letra, llevar los 21 polos a locales (más lento). Cifras de Mono/Linux, sintéticas: nada medido en XP ni en el A4 ni con un controlador de verdad.
+[Cada candidato, su prueba, lo no hecho y qué leer en el A4](TIRONES_AL_CAMBIAR_MODEST_2026-10-20.md).
+
 ## Repaso, cadena de sonido y caratulas: perfil por etapas y dos ahorros — 20 de octubre de 2026
 
 Se midio con el codigo de verdad (y un descompresor de MP3 imitado) donde se va el procesador de tres caminos de fondo: el repaso por cancion (≈ 1 s en esta maquina: descomprimir 31 %, leer y convertir 19 %,
