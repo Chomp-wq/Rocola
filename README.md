@@ -1,5 +1,13 @@
 # Rocola
 
+## Repaso, cadena de sonido y caratulas: perfil por etapas y dos ahorros — 20 de octubre de 2026
+
+Se midio con el codigo de verdad (y un descompresor de MP3 imitado) donde se va el procesador de tres caminos de fondo: el repaso por cancion (≈ 1 s en esta maquina: descomprimir 31 %, leer y convertir 19 %,
+huella del EQ 20 %, sonoridad integrada 15 %), la cadena de sonido (≈ 26 ms por segundo de musica de una cancion nueva) y las caratulas (84 % del camino frio es el `DrawImage` de GDI+). Dos ahorros automaticos que dejan los mismos
+bits: los 16 bits enteros del repaso se leen sin el `SampleChannel` (multiplicar por 2^-15 en lugar de dividir, sin barrer NaN: -8 a -11 % por cancion) y el aprendizaje en vivo de una cancion nueva va por trozos (-2,7 a -3,6 ms por
+segundo de musica, -7 a -12 % de la cadena). Cifras de Mono/Linux, sinteticas: nada medido en XP ni en el A4.
+[Etapas, ahorros, comprobaciones, lo descartado con numeros y que medir en el A4](REPASO_SONIDO_Y_CARATULAS_PERFIL_MODEST_2026-10-20.md).
+
 ## Arranque, audio y memoria sin cambiar lo que se oye ni lo que se guarda — 19 de octubre de 2026
 
 Ahorros que no son gráficos, todos con los mismos bytes en los archivos y el mismo audio: la firma de la biblioteca (hash ASCII y orden por nombre; en .NET 3.5 una lista por carpeta
