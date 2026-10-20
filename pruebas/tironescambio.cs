@@ -1381,6 +1381,119 @@ class TironesCambio
             Check(Mediana(a) < Mediana(b) / 2, "ahora cuesta menos de la mitad");
         }
     }
+
+    // ======================= B. EL ESPECTRO DEL HILO DE AUDIO (ReportAudioBlock) =======================
+    static float[] CancionAurora(int tasa, double seg, int semilla)
+    {
+        int n = (int)(tasa * seg); float[] x = new float[n * 2]; Random r = new Random(semilla);
+        double[] notas = { 523, 659, 784, 1047, 880, 698, 587, 1319 };
+        double fm = 0, hp = 0, ant = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double t = (double)i / tasa, v = 0;
+            double tb = t % 0.5; v += 0.55 * Math.Exp(-tb / 0.12) * Math.Sin(2 * Math.PI * (55 + 60 * Math.Exp(-tb / 0.03)) * tb);
+            double w = r.NextDouble() * 2 - 1; hp = 0.5 * (hp + w - ant); ant = w;
+            double th = t % 0.25; v += 0.25 * Math.Exp(-th / 0.035) * hp;
+            v += 0.05 * (Math.Sin(2 * Math.PI * 220 * t) + Math.Sin(2 * Math.PI * 277 * t) + Math.Sin(2 * Math.PI * 330 * t));
+            double f = notas[(int)(t / 0.5) % notas.Length]; fm += 2 * Math.PI * f / tasa;
+            v += 0.12 * Math.Sin(fm) * (0.6 + 0.4 * Math.Exp(-(t % 0.5) / 0.2));
+            x[2 * i] = (float)v; x[2 * i + 1] = (float)(v * 0.9);
+        }
+        return x;
+    }
+    static void HashFloats(System.Security.Cryptography.MD5 md5, float[] f) { if (f == null) return; byte[] b = new byte[f.Length * 4]; Buffer.BlockCopy(f, 0, b, 0, b.Length); md5.TransformBlock(b, 0, b.Length, b, 0); }
+    static void HashDoubles(System.Security.Cryptography.MD5 md5, double[] f) { if (f == null) return; byte[] b = new byte[f.Length * 8]; Buffer.BlockCopy(f, 0, b, 0, b.Length); md5.TransformBlock(b, 0, b.Length, b, 0); }
+    // Modo --aurora: 20 s de musica de prueba por ReportAudioBlock con el espectro encendido; imprime ms por segundo de musica y la huella de TODO lo que sale
+    // (las medidas gruesas y finas con sus horas, y el estado de los filtros al final).
+    static int AuroraBloques(bool conEspectro)
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1");
+        FieldInfo rj = TF.GetField("RelojAuroraPrueba", TODO); double reloj = 0;
+        rj.SetValue(null, (Func<double>)delegate { return reloj; });
+        FieldInfo np = Campo(TF, "nowPlaying");
+        MethodInfo rep = Metodo(TF, "ReportAudioBlock");
+        System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create();
+        // (tasa, canales, ms del bloque): la de siempre y tres mas, con bloques de largo raro y mono; el tiempo es el de la primera.
+        int[][] configs = { new int[] { 44100, 2, 170 }, new int[] { 48000, 2, 10 }, new int[] { 44100, 1, 170 }, new int[] { 48000, 2, 23 }, new int[] { 22050, 2, 61 } };
+        double msPorSegundo = 0;
+        for (int ci = 0; ci < (conEspectro ? configs.Length : 1); ci++)
+        {
+            int tasa = configs[ci][0], ch = configs[ci][1];
+            float[] mono = CancionAurora(tasa, 20, 9 + ci), x = mono;
+            if (ch == 1) { x = new float[mono.Length / 2]; for (int i = 0; i < x.Length; i++) x[i] = mono[2 * i]; }
+            int bloque = tasa * configs[ci][2] / 1000, total = x.Length / ch;
+            for (int vuelta = 0; vuelta < 2; vuelta++)   // la primera calienta (sin hashear ni medir), la segunda de verdad
+            {
+                object f = Codigo.FormSinEncender(TF);
+                Pon(f, "levelLock", new object());
+                foreach (string n in new string[] { "specVis", "specNow", "specPiso", "specGolpe" }) Pon(f, n, new float[8]);
+                Pon(f, "levelQ", Activator.CreateInstance(Campo(TF, "levelQ").FieldType));
+                Pon(f, "auroraAmount", conEspectro ? 0.55f : 0f);
+                np.SetValue(f, System.Runtime.Serialization.FormatterServices.GetUninitializedObject(np.FieldType)); Pon(f, "videoOn", false);
+                object q = Toma(f, "levelQ"); Type tq = q.GetType(); MethodInfo deq = tq.GetMethod("Dequeue"); PropertyInfo cnt = tq.GetProperty("Count");
+                long ticks = 0; object[] a = new object[5];
+                for (int l = 0; l < total; l += bloque)
+                {
+                    reloj = l * 1000.0 / tasa;
+                    a[0] = x; a[1] = l * ch; a[2] = Math.Min(bloque, total - l) * ch; a[3] = tasa; a[4] = ch;
+                    long t0 = Stopwatch.GetTimestamp(); rep.Invoke(f, a); ticks += Stopwatch.GetTimestamp() - t0;
+                    if (vuelta == 0) { while ((int)cnt.GetValue(q, null) > 0) deq.Invoke(q, null); object qf0 = Toma(f, "aurFinQ"); if (qf0 != null) { Type t0q = qf0.GetType(); while ((int)t0q.GetProperty("Count").GetValue(qf0, null) > 0) t0q.GetMethod("Dequeue").Invoke(qf0, null); } continue; }
+                    int primeraHora = int.MinValue;   // la hora de las gruesas es el TickCount de verdad: se hashea relativa a la primera del bloque
+                    while ((int)cnt.GetValue(q, null) > 0)
+                    {
+                        object lv = deq.Invoke(q, null); Type tl = lv.GetType();
+                        int hora = (int)tl.GetField("At").GetValue(lv); if (primeraHora == int.MinValue) primeraHora = hora;
+                        byte[] b = BitConverter.GetBytes(hora - primeraHora); md5.TransformBlock(b, 0, 4, b, 0);
+                        HashFloats(md5, new float[] { (float)tl.GetField("Lo").GetValue(lv), (float)tl.GetField("Mid").GetValue(lv), (float)tl.GetField("Hi").GetValue(lv) });
+                        HashFloats(md5, (float[])tl.GetField("Esp").GetValue(lv));
+                    }
+                    object qf = Toma(f, "aurFinQ");
+                    if (qf != null)
+                    {
+                        Type tf2 = qf.GetType(); MethodInfo d2 = tf2.GetMethod("Dequeue"); PropertyInfo c2 = tf2.GetProperty("Count");
+                        while ((int)c2.GetValue(qf, null) > 0)
+                        {
+                            object lv = d2.Invoke(qf, null); Type tl = lv.GetType();
+                            HashDoubles(md5, new double[] { (double)tl.GetField("At").GetValue(lv) });
+                            HashFloats(md5, (float[])tl.GetField("Esp").GetValue(lv));
+                        }
+                    }
+                }
+                if (vuelta == 1)
+                {
+                    HashFloats(md5, new float[] { (float)Toma(f, "fLp1"), (float)Toma(f, "fLp2") }); HashFloats(md5, (float[])Toma(f, "specLp"));
+                    HashDoubles(md5, (double[])Toma(f, "aurFinAcc")); HashDoubles(md5, (double[])Toma(f, "aurFinAnillo"));
+                    if (ci == 0) msPorSegundo = ticks * 1000.0 / Stopwatch.Frequency / (total / (double)tasa);
+                }
+            }
+        }
+        md5.TransformFinalBlock(new byte[0], 0, 0);
+        Console.WriteLine("AURORA " + msPorSegundo.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " " + BitConverter.ToString(md5.Hash).Replace("-", ""));
+        return 0;
+    }
+    static void Aurora(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# B. el espectro del hilo de audio");
+        string[] n = Lineas(CorreModo(rutaNuevo, "--aurora"), "AURORA ").Trim().Substring(7).Split(' ');
+        Check((int)Campo(TF, "SpecPolos").GetRawConstantValue() == 3 && (int)Campo(TF, "SpecBands").GetRawConstantValue() == 8, "SpecPolos = 3 y SpecBands = 8: el bucle de los tres polos de ReportAudioBlock esta escrito para eso");
+        Check(n.Length == 2 && n[1].Length == 32, "se saco la huella de 5 canciones de 20 s (44,1 kHz estereo, 48 kHz con bloques de 10 y de 23 ms, mono, 22 kHz): medidas gruesas y finas con sus horas, y el estado de los filtros");
+        string basef = Path.Combine(Directory.GetCurrentDirectory(), "aurora_2026-10-20.txt");
+        if (Type.GetType("Mono.Runtime") != null && File.Exists(basef))
+            Check(n[1] == File.ReadAllText(basef).Trim(), "y es la de antes del cambio, bit a bit (aurora_2026-10-20.txt; floats y dobles de este equipo, Linux/Mono)");
+        if (rutaViejo != null)
+        {
+            string[] v = Lineas(CorreModo(rutaViejo, "--aurora"), "AURORA ").Trim().Substring(7).Split(' ');
+            Check(v[1] == n[1], "y la del ejecutable anterior dado");
+            List<double> a = new List<double>(), b = new List<double>();
+            for (int r = 0; r < 5; r++)
+                foreach (bool nuevoPrimero in new bool[] { r % 2 == 0, r % 2 != 0 })
+                {
+                    string[] m = Lineas(CorreModo(nuevoPrimero ? rutaNuevo : rutaViejo, "--aurora"), "AURORA ").Trim().Substring(7).Split(' ');
+                    (nuevoPrimero ? a : b).Add(double.Parse(m[0], System.Globalization.CultureInfo.InvariantCulture));
+                }
+            Console.WriteLine("        ReportAudioBlock con la aurora encendida, por segundo de musica (mediana de 5 procesos alternados; Linux/Mono, sintetico): antes " + Mediana(b).ToString("0.00") + " ms, ahora " + Mediana(a).ToString("0.00") + " ms");
+        }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1474,6 +1587,8 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--fn") return FnTiempo();
         if (argv.Length > 1 && argv[1] == "--fallos") return Fallos();
         if (argv.Length > 1 && argv[1] == "--calienta") return CalientaVista();
+        if (argv.Length > 1 && argv[1] == "--aurora") return AuroraBloques(true);
+        if (argv.Length > 1 && argv[1] == "--aurora-off") return AuroraBloques(false);
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
@@ -1486,6 +1601,7 @@ class TironesCambio
         PruebaPreCarga();
         SinMemoria(argv[0], argv.Length > 1 ? argv[1] : null);
         VistaPrevia(argv[0], argv.Length > 1 ? argv[1] : null);
+        Aurora(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

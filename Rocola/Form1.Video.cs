@@ -564,20 +564,17 @@ namespace Rocola
                     // ESPECTRO: cada peldano de la escalera se queda con lo que el anterior dejo pasar,
                     // asi que la resta de dos peldanos consecutivos ES la banda que hay entre sus cortes.
                     float ant = 0f;
-                    for (int k = 0; k < 7; k++)
+                    for (int k = 0, q = 0; k < 7; k++, q += 3)
                     {
-                        int q = k * SpecPolos;
-                        float x = m, ck = sc[k];
+                        float x = m, ck = sc[k], pv;
                         // Cada polo se lleva a una local: antes se leia su casilla del array DOS veces por
                         // vuelta (una para sumarle y otra para volver a leerla) y el coeficiente en cada
                         // vuelta. Las cuentas son las mismas y en el mismo orden: el sonido no cambia ni un bit.
-                        for (int pp = 0; pp < SpecPolos; pp++)
-                        {
-                            float pv = sl[q + pp];
-                            pv += (x - pv) * ck;
-                            sl[q + pp] = pv;
-                            x = pv;
-                        }
+                        // Los TRES polos (SpecPolos = 3; lo vigila tironescambio) van uno detras de otro, sin el bucle
+                        // pequeno: es el trabajo que mas pesa del hilo de audio con la aurora encendida (20-10-2026).
+                        pv = sl[q]; pv += (x - pv) * ck; sl[q] = pv; x = pv;
+                        pv = sl[q + 1]; pv += (x - pv) * ck; sl[q + 1] = pv; x = pv;
+                        pv = sl[q + 2]; pv += (x - pv) * ck; sl[q + 2] = pv; x = pv;
                         float bnd = x - ant; ant = x;     // lo que este peldano deja pasar menos lo del anterior
                         sSum[k] += bnd * bnd;
 #if ROCOLA_GPU
