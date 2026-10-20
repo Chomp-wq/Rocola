@@ -68,6 +68,7 @@ namespace Rocola
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateDeviceDel(IntPtr self, uint adapter, uint devType, IntPtr hwnd, uint behaviorFlags, ref PresentParams pp, out IntPtr device);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int HrSelf(IntPtr self);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate uint UintSelf(IntPtr self);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate void VoidSelf(IntPtr self);   // IDirect3DResource9::PreLoad devuelve void
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ResetDel(IntPtr self, ref PresentParams pp);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int PresentDel(IntPtr self, IntPtr a, IntPtr b, IntPtr c, IntPtr d);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ClearDel(IntPtr self, uint count, IntPtr rects, uint flags, uint color, float z, uint stencil);
@@ -221,7 +222,7 @@ namespace Rocola
                 createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
                 LeeLimitesTexturas();
                 juntar = true;   // las ordenes chicas seguidas se juntan (PerformanceGpu.cs)
-                if (!InitStates()) Dispose();
+                if (!InitStates()) Dispose(); else preLoadOk = true;   // un dispositivo de verdad: sus texturas tienen la ranura 9 (PreLoad)
             }
             catch
             {
@@ -229,6 +230,32 @@ namespace Rocola
                 // El fondo por CPU se encargara del dibujo; las referencias creadas hasta aqui se liberan.
                 Dispose();
             }
+        }
+
+        // PRECARGAR UNA TEXTURA (IDirect3DResource9::PreLoad, ranura 9 de cualquier recurso). Las texturas son POOL_MANAGED: crearlas y
+        // llenarlas solo deja la copia en la memoria del sistema, y el controlador la sube a la memoria de la tarjeta la PRIMERA vez que
+        // un dibujo la usa, o sea dentro del cuadro del cambio de pagina. PreLoad hace esa subida en el hueco del adelanto de portadas.
+        // Solo se llama para las celdas de la pagina siguiente (WarmAheadCells) y solo en un dispositivo creado de verdad (en una tarjeta
+        // imitada la ranura 9 puede no existir). Si falla alguna vez, se apaga. 20-10-2026: no se ha medido en una tarjeta de verdad.
+        private bool preLoadOk;
+        internal int PreCargas;
+        internal bool PreLoadHabilitado { get { return preLoadOk; } set { preLoadOk = value; } }   // las pruebas
+        public bool PreloadTexture(IntPtr tex)
+        {
+            if (!preLoadOk || tex == IntPtr.Zero || dev == IntPtr.Zero || lost) return false;
+            try
+            {
+                TexturasDivididasGpu.Surface s = TexturasDivididasGpu.Busca(tex);
+                if (s != null)
+                {
+                    foreach (TexturasDivididasGpu.Tile t in s.Tiles)
+                        if (t != null && t.Tex != IntPtr.Zero) { D3D9.Fn<D3D9.VoidSelf>(t.Tex, 9)(t.Tex); PreCargas++; }
+                    return true;
+                }
+                D3D9.Fn<D3D9.VoidSelf>(tex, 9)(tex); PreCargas++;
+                return true;
+            }
+            catch { preLoadOk = false; return false; }
         }
 
         public int BufAncho { get { return (int)pp.BackBufferWidth; } }
@@ -1060,6 +1087,7 @@ namespace Rocola
         public IntPtr CreateCoverShared(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreaPortadaCompartida(bmp, out uMax, out vMax); }
         public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
         public bool UpdateOverlayRegion(IntPtr tex, Bitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }
+        public bool PreloadTexture(IntPtr tex) { return gpu != null && gpu.PreloadTexture(tex); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
 
@@ -3080,6 +3108,13 @@ namespace Rocola
             return true;
         }
 
+        // Precarga una textura y devuelve cuanto tardo (0 si no se hizo).
+        private long PreCarga(IntPtr tex)
+        {
+            if (tex == IntPtr.Zero) return 0;
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            return stars.PreloadTexture(tex) ? System.Diagnostics.Stopwatch.GetTimestamp() - t0 : 0;
+        }
         private void WarmAheadCells()
         {
             if (GetGridAhead == null) return;
@@ -3105,14 +3140,17 @@ namespace Rocola
                 if (!ReserveAheadSpace(cell, count)) continue;
                 if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, false, false)) break;
                 int budget = remaining; float nu, nv;
-                PrepareNativeCover(cell, ref budget, false, out nu, out nv);
-                remaining = budget; if (remaining <= 0) break;
+                IntPtr nativa = PrepareNativeCover(cell, ref budget, false, out nu, out nv);
+                long precarga = budget < remaining ? PreCarga(nativa) : 0;   // la portada recien creada, a la memoria de la tarjeta ya (ver PreloadTexture)
+                remaining = budget; if (remaining <= 0) { if (precarga > 0 && CoverControl != null) CoverControl.Spend(precarga); break; }
                 budget = 1; IntPtr tex; float u, v;
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
                 EnsureCellTex(cell, ref budget, out tex, out u, out v);
                 long spent = System.Diagnostics.Stopwatch.GetTimestamp() - start;
-                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
+                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);   // (sin la precarga: la subida de una celda visible no la hace)
                 if (CoverControl != null && budget == 0) CoverControl.Spend(spent);
+                if (budget == 0) precarga += PreCarga(tex);   // la etiqueta recien subida, igual
+                if (precarga > 0 && CoverControl != null) CoverControl.Spend(precarga);   // lo que cuesta la precarga cuenta en el regulador
                 if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
                 remaining--; // presupuesto compartido; sin regulador, conservar 1/2/4
             }

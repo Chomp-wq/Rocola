@@ -40,7 +40,8 @@ class TironesCambio
     { for (; t != null; t = t.BaseType) { MethodInfo m = t.GetMethod(n, TODO | BindingFlags.DeclaredOnly, null, tipos, null); if (m != null) return m; } return null; }
     static object Llama(object o, string n, params object[] a)
     {
-        MethodInfo m = Metodo(o.GetType(), n);
+        MethodInfo m;
+        try { m = Metodo(o.GetType(), n); } catch (AmbiguousMatchException) { throw new Exception("ambiguo " + o.GetType().Name + "." + n); }
         if (m == null) throw new Exception("falta " + o.GetType().Name + "." + n);
         try { return m.Invoke(o, a); } catch (TargetInvocationException e) { throw e.InnerException; }
     }
@@ -62,7 +63,7 @@ class TironesCambio
     static uint Nada(IntPtr self) { return 0; }
     static uint Memoria(IntPtr self) { cMem++; return memoriaLibre; }
     static int Evicta(IntPtr self) { cEvict++; return 0; }
-    static int PreCarga(IntPtr self) { cPreLoad++; return 0; }
+    static void PreCarga(IntPtr self) { cPreLoad++; }
     static IntPtr Puntero(string tipo, string metodo)
     {
         Delegate del = Delegate.CreateDelegate(TD3D.GetNestedType(tipo, TODO), typeof(TironesCambio).GetMethod(metodo, TODO));
@@ -129,7 +130,7 @@ class TironesCambio
         vtTex = Marshal.AllocHGlobal(64 * IntPtr.Size);
         for (int i = 0; i < 64; i++) Marshal.WriteIntPtr(vtTex, i * IntPtr.Size, Puntero("UintSelf", "Nada"));
         Marshal.WriteIntPtr(vtTex, 2 * IntPtr.Size, Puntero("UintSelf", "Suelta"));
-        Marshal.WriteIntPtr(vtTex, 9 * IntPtr.Size, Puntero("HrSelf", "PreCarga"));   // IDirect3DResource9::PreLoad
+        Marshal.WriteIntPtr(vtTex, 9 * IntPtr.Size, Puntero("VoidSelf", "PreCarga"));   // IDirect3DResource9::PreLoad
         Marshal.WriteIntPtr(vtTex, 19 * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(lk));
         Marshal.WriteIntPtr(vtTex, 20 * IntPtr.Size, Puntero("UnlockRectDel", "Desbloquea"));
     }
@@ -1181,6 +1182,78 @@ class TironesCambio
         }
     }
     static string rutaNuevoFn, rutaViejoFn;
+
+    // ======================= 3. PreLoad DE LAS CELDAS DE LA PAGINA SIGUIENTE =======================
+    static Bitmap[] portadasAdelante; static Bitmap etiquetaAdelante;
+    static int GridAdelante<T>(T[] data)
+    {
+        if (portadasAdelante == null)
+        {
+            portadasAdelante = new Bitmap[6]; for (int k = 0; k < 6; k++) portadasAdelante[k] = NuevaPortada(k);
+            etiquetaAdelante = new Bitmap(256, 64, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(etiquetaAdelante)) { g.Clear(Color.Transparent); g.FillRectangle(Brushes.White, 70, 10, 100, 20); }
+        }
+        int cw = ancho / 6, ch = (alto - 200) / 3, lado = Math.Max(32, Math.Min(cw - 24, ch - 40));
+        Type tl = typeof(T).GetField("Layout").FieldType;
+        for (int i = 0; i < 18; i++)
+        {
+            object c = Activator.CreateInstance(typeof(T));
+            float x = (i % 6) * cw, y = 100 + (i / 6) * ch;
+            Pon(c, "Key", "adelante" + montajeId + "_" + i); Pon(c, "Bmp", etiquetaAdelante); Pon(c, "Slot", i);
+            Pon(c, "Direct", true); Pon(c, "FullCover", portadasAdelante[i % 6]); Pon(c, "HasCover", true);
+            object lay = Activator.CreateInstance(tl);
+            Pon(lay, "Width", 256); Pon(lay, "Height", 64);
+            Pon(lay, "Face", new Rectangle(0, 0, 64, 64)); Pon(lay, "FaceAt", new Rectangle(0, 0, 64, 64));
+            Pon(lay, "Text1", new Rectangle(64, 0, 96, 32)); Pon(lay, "Text1At", new Rectangle(64, 0, 96, 32));
+            Pon(lay, "Text2", new Rectangle(160, 32, 96, 32)); Pon(lay, "Text2At", new Rectangle(160, 32, 96, 32));
+            Pon(c, "Layout", lay);
+            Pon(c, "CoverRect", new RectangleF(x + (cw - lado) / 2, y, lado, lado));
+            Pon(c, "X", x); Pon(c, "Y", y + lado - 64 + 8); Pon(c, "W", (float)cw); Pon(c, "H", 64f); Pon(c, "A", 1f);
+            data[i] = (T)c;
+        }
+        return 18;
+    }
+    static void PruebaPreCarga()
+    {
+        Console.WriteLine("# 3. PreLoad de las celdas de la pagina siguiente");
+        foreach (bool habilitado in new bool[] { false, true })
+        {
+            Control p = Monta(1024, 768);
+            portadasAdelante = null;
+            try
+            {
+                object disp = Toma(Toma(p, "stars"), "gpu");
+                Campo(TDev, "preLoadOk").SetValue(disp, habilitado);
+                FieldInfo fa = TPanel.GetField("GetGridAhead", TODO); fa.SetValue(p, Generic(fa, "GridAdelante"));
+                PonCeroCuentas();
+                for (int i = 0; i < 4; i++) Cuadro(p);   // la pagina a la vista: sus subidas NO se precargan
+                long visiblesCreadas = cCrea, visiblesPre = cPreLoad;
+                Check(visiblesCreadas > 0 && visiblesPre == 0, (habilitado ? "habilitado: " : "sin habilitar: ") + "las " + visiblesCreadas + " texturas de la pagina a la vista no se precargan");
+                long c0 = cCrea;
+                MethodInfo warm = Metodo(TPanel, "WarmAheadCells");
+                Pon(p, "aheadAvailableTicks", Stopwatch.Frequency);
+                for (int i = 0; i < 60; i++) { warm.Invoke(p, null); Pon(p, "aheadAvailableTicks", Stopwatch.Frequency); }
+                long adelanteCreadas = cCrea - c0;
+                if (!habilitado) Check(adelanteCreadas > 0 && cPreLoad == 0, "sin habilitar (una tarjeta imitada o sin soporte) el adelanto sube " + adelanteCreadas + " texturas y no llama a PreLoad");
+                else
+                {
+                    Check(adelanteCreadas > 0 && cPreLoad == adelanteCreadas, "habilitado: cada una de las " + adelanteCreadas + " texturas que sube el adelanto se precarga una vez (" + cPreLoad + " llamadas)");
+                    Check((int)Campo(TDev, "PreCargas").GetValue(disp) == cPreLoad, "y el dispositivo las cuenta (" + Campo(TDev, "PreCargas").GetValue(disp) + ")");
+                    // y volver a pasar por las mismas celdas ya subidas no vuelve a precargar
+                    long antes = cPreLoad;
+                    for (int i = 0; i < 20; i++) warm.Invoke(p, null);
+                    Check(cPreLoad == antes, "celdas ya subidas: no se vuelve a precargar");
+                }
+            }
+            finally { p.Dispose(); texturas.Clear(); }
+        }
+        MethodInfo[] pasos = { Metodo(TPanel, "WarmAheadCells") };
+        Check(Codigo.Llama(pasos[0], "PreCarga") && !Codigo.Llama(Metodo(TPanel, "RenderFrame"), "PreloadTexture") && !Codigo.Llama(Metodo(TPanel, "EnsureCellTex"), "PreloadTexture"),
+            "solo WarmAheadCells precarga (ni RenderFrame ni EnsureCellTex, que son las celdas a la vista)");
+        Check(Codigo.Llama(Metodo(TPanel, "PreCarga"), "PreloadTexture") && Codigo.Llama(pasos[0], "Spend"), "y lo que tarda se cuenta en el regulador (CoverControl.Spend)");
+        // el PreLoad llama a la ranura 9 del recurso
+        Check(TD3D.GetNestedType("VoidSelf", TODO) != null, "PreLoad devuelve void: su delegado no lee un valor de retorno");
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1281,6 +1354,7 @@ class TironesCambio
         Atraccion(argv[0], argv.Length > 1 ? argv[1] : null);
         rutaNuevoFn = argv[0]; rutaViejoFn = argv.Length > 1 ? argv[1] : null;
         Delegados();
+        PruebaPreCarga();
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }
