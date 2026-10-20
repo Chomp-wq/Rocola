@@ -85,7 +85,7 @@ class TironesCambio
         if (creaFalla) { creaFallos++; tex = IntPtr.Zero; return unchecked((int)0x8876017C); }   // D3DERR_OUTOFVIDEOMEMORY
         cCrea++;
         IntPtr o = Marshal.AllocHGlobal(16); Marshal.WriteIntPtr(o, vtTex);
-        Tx t = new Tx(); t.W = (int)w; t.H = (int)h; t.Mem = Marshal.AllocHGlobal((int)(w * h * 4));
+        Tx t = new Tx(); t.W = (int)w; t.H = (int)h; t.Mem = Marshal.AllocHGlobal((int)(w * h * 4)); Marshal.Copy(new byte[w * h * 4], 0, t.Mem, (int)(w * h * 4));
         texturas[o.ToInt64()] = t; tex = o;
         return 0;
     }
@@ -784,6 +784,140 @@ class TironesCambio
 );
         Check(MedianaA(ctib) < MedianaA(cfria), "copiar los bordes cuesta menos que dibujarlos en cada celda");
     }
+
+    // ======================= 5. EL ALFA Y LA SUBIDA SIN COPIAR LOS PArgb =======================
+    // Un mapa de bits PArgb de prueba con valores premultiplicados validos (color <= alfa). tipo: 0 opaco, 1 alfas al azar, 2 opaco menos el ultimo pixel (254),
+    // 3 opaco menos el primero (0), 4 opaco con un pixel a 128 en la ultima fila, 5 todo transparente, 6 centro opaco y marco transparente, 7 opaco con un pixel a 1 en el centro.
+    static Bitmap Pa(int w, int h, int tipo, int semilla)
+    {
+        Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+        Random r = new Random(semilla * 7919 + tipo);
+        BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            int[] fila = new int[w];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int a = 255;
+                    switch (tipo)
+                    {
+                        case 1: a = r.Next(256); break;
+                        case 2: if (x == w - 1 && y == h - 1) a = 254; break;
+                        case 3: if (x == 0 && y == 0) a = 0; break;
+                        case 4: if (x == w / 2 && y == h - 1) a = 128; break;
+                        case 5: a = 0; break;
+                        case 6: if (x < 3 || y < 3 || x >= w - 3 || y >= h - 3) a = 0; break;
+                        case 7: if (x == w / 2 && y == h / 2) a = 1; break;
+                    }
+                    int rr = a == 0 ? 0 : r.Next(a + 1), gg = a == 0 ? 0 : r.Next(a + 1), bb = a == 0 ? 0 : r.Next(a + 1);
+                    fila[x] = (a << 24) | (rr << 16) | (gg << 8) | bb;
+                }
+                Marshal.Copy(fila, 0, new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride), w);
+            }
+        }
+        finally { b.UnlockBits(d); }
+        return b;
+    }
+    static string Md5(byte[] b) { return BitConverter.ToString(System.Security.Cryptography.MD5.Create().ComputeHash(b)).Replace("-", ""); }
+    static int[][] tamanosTex = { new int[] { 1, 1 }, new int[] { 7, 5 }, new int[] { 64, 64 }, new int[] { 130, 70 }, new int[] { 300, 200 }, new int[] { 515, 33 } };
+    static byte[] BytesTextura(IntPtr tex)
+    {
+        Tx t = texturas[tex.ToInt64()];
+        byte[] r = new byte[t.W * t.H * 4]; Marshal.Copy(t.Mem, r, 0, r.Length); return r;
+    }
+    static int Volcado5(bool texturas5)
+    {
+        Type TTe = AsmNuevo.GetType("Rocola.TeselasVisibles"), TTr = AsmNuevo.GetType("Rocola.TrabajoTeselas");
+        object tarjeta = Tarjeta(640, 480);
+        foreach (int[] wh in tamanosTex)
+            for (int tipo = 0; tipo < 8; tipo++)
+                using (Bitmap b = Pa(wh[0], wh[1], tipo, 3))
+                {
+                    string id = wh[0] + "x" + wh[1] + " tipo" + tipo;
+                    foreach (bool borde in new bool[] { false, true })
+                    {
+                        object te = TTe.GetMethod("De", TODO).Invoke(null, new object[] { b, 16, borde });
+                        Console.WriteLine("VOLCADO TESELAS " + id + " borde=" + borde + " " + (te == null ? "nulo" : Toma(te, "N") + " " + Md5(IntsABytes((int[])Toma(te, "Rect"))) + " " + ((double)Toma(te, "Fraccion")).ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+                    }
+                    object tr = Activator.CreateInstance(TTr, TODO, null, new object[] { b, 16 }, null), res = null; int pasos = 0;
+                    while (res == null && pasos++ < 100000) res = TTr.GetMethod("Avanza", TODO).Invoke(tr, new object[] { 1000000L });
+                    Console.WriteLine("VOLCADO TRABAJO " + id + " " + (res == null ? "nulo" : Toma(res, "N") + " " + Md5(IntsABytes((int[])Toma(res, "Rect")))));
+                    Console.WriteLine("VOLCADO OPACO " + id + " " + LlamaE(TPanel, "InteriorOpaco", b));
+                    if (texturas5)
+                    {
+                        object[] a = { b, 0f, 0f };
+                        IntPtr tex = (IntPtr)Llama(tarjeta, "CreateTexturePow2", a);
+                        Console.WriteLine("VOLCADO TEXTURA " + id + " " + (tex == IntPtr.Zero ? "nula" : Md5(BytesTextura(tex)) + " " + a[1] + " " + a[2]));
+                    }
+                }
+        return 0;
+    }
+    static byte[] IntsABytes(int[] v) { byte[] r = new byte[v.Length * 4]; Buffer.BlockCopy(v, 0, r, 0, r.Length); return r; }
+    static int Tiempo5()
+    {
+        Type TTe = AsmNuevo.GetType("Rocola.TeselasVisibles"), TTr = AsmNuevo.GetType("Rocola.TrabajoTeselas");
+        // una interfaz de pantalla completa (alfa al azar en una franja) y una pieza opaca
+        Bitmap ui = Pa(1024, 300, 6, 1), cubierta = Pa(512, 512, 0, 2);
+        double[] de = new double[9], tr = new double[9], op = new double[9];
+        MethodInfo mDe = TTe.GetMethod("De", TODO), mOp = TPanel.GetMethod("InteriorOpaco", TODO);
+        for (int k = 0; k < 9; k++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (int i = 0; i < 6; i++) mDe.Invoke(null, new object[] { ui, 16, false });
+            de[k] = sw.Elapsed.TotalMilliseconds / 6;
+            sw.Reset(); sw.Start();
+            for (int i = 0; i < 6; i++) { object t = Activator.CreateInstance(TTr, TODO, null, new object[] { ui, 16 }, null); while (TTr.GetMethod("Avanza", TODO).Invoke(t, new object[] { 1000000L }) == null) { } }
+            tr[k] = sw.Elapsed.TotalMilliseconds / 6;
+            sw.Reset(); sw.Start();
+            for (int i = 0; i < 20; i++) mOp.Invoke(null, new object[] { cubierta });
+            op[k] = sw.Elapsed.TotalMilliseconds / 20;
+        }
+        Console.WriteLine("MS " + MedianaA(de).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " " + MedianaA(tr).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " "
+            + MedianaA(op).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+        return 0;
+    }
+    static string CorreModo(string rocola, string modo)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
+        psi.Arguments = "\"" + Environment.GetCommandLineArgs()[0] + "\" \"" + rocola + "\" " + modo;
+        psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+        using (Process p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit(); return o.Replace("\r", ""); }
+    }
+    static string Lineas(string salida, string prefijo)
+    {
+        StringBuilder sb = new StringBuilder();
+        foreach (string l in salida.Split('\n')) if (l.StartsWith(prefijo)) sb.Append(l).Append('\n');
+        return sb.ToString();
+    }
+    static void Alfa(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# 5. el alfa y la subida de los PArgb, sin la copia de GDI+");
+        string nuevo = CorreModo(rutaNuevo, "--volcado5");
+        string vol = Lineas(nuevo, "VOLCADO ");
+        Check(vol.Length > 0, "se sacaron las huellas de teselas, trabajo por tandas, interior opaco y bytes de textura (" + vol.Split('\n').Length + " lineas)");
+        string basef = Path.Combine(Directory.GetCurrentDirectory(), "texturas_2026-10-20.txt");
+        if (Type.GetType("Mono.Runtime") != null && File.Exists(basef))
+            Check(vol == File.ReadAllText(basef).Replace("\r", ""), "teselas, interior opaco y los bytes de cada textura subida (el camino de subida no cambia) son los de antes del cambio, byte a byte (texturas_2026-10-20.txt: 6 tamanos x 8 clases de alfa)");
+        if (rutaViejo != null)
+            Check(vol == Lineas(CorreModo(rutaViejo, "--volcado5"), "VOLCADO "), "y los del ejecutable anterior dado (cada uno en su proceso)");
+        // el tiempo, en procesos alternados
+        if (rutaViejo != null)
+        {
+            List<double>[] a = new List<double>[3], b = new List<double>[3];
+            for (int i = 0; i < 3; i++) { a[i] = new List<double>(); b[i] = new List<double>(); }
+            for (int r = 0; r < 5; r++)
+                foreach (bool nuevoPrimero in new bool[] { r % 2 == 0, r % 2 != 0 })
+                {
+                    string[] m = Lineas(CorreModo(nuevoPrimero ? rutaNuevo : rutaViejo, "--tiempo5"), "MS ").Trim().Split(' ');
+                    for (int i = 0; i < 3; i++) (nuevoPrimero ? a : b)[i].Add(double.Parse(m[i + 1], System.Globalization.CultureInfo.InvariantCulture));
+                }
+            string[] que = { "teselas visibles de una interfaz 1024x300", "teselas por tandas de la misma", "interior opaco de una portada 512x512" };
+            Console.WriteLine("        (mediana de 5 procesos alternados; Linux/Mono con libgdiplus, sintetico; ms)  antes -> ahora");
+            for (int i = 0; i < 3; i++) Console.WriteLine("        " + que[i].PadRight(44) + Mediana(b[i]).ToString("0.000") + " -> " + Mediana(a[i]).ToString("0.000"));
+        }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -870,10 +1004,13 @@ class TironesCambio
         if (argv.Length > 3 && argv[1] == "--hijo") return Hijo(argv[2], argv[3]);
         if (argv.Length > 1 && argv[1] == "--volcado") return Volcado();
         if (argv.Length > 1 && argv[1] == "--tiempo") return Tiempo();
+        if (argv.Length > 1 && argv[1] == "--volcado5") { TF = AsmNuevo.GetType("Rocola.Form1"); return Volcado5(true); }
+        if (argv.Length > 1 && argv[1] == "--tiempo5") return Tiempo5();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
         Bordes(argv[0], argv.Length > 1 ? argv[1] : null);
+        Alfa(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

@@ -75,6 +75,12 @@ namespace Rocola
         // Que hay que pintar de esta imagen. Solo mira el alfa. 'bordeSiempre': las teselas del borde se pintan siempre
         // (hace falta si la imagen se ESTIRA: ahi la tarjeta puede leer fuera de lo horneado); una imagen pintada texel a
         // pixel, como las de la interfaz, no lee fuera y no lo necesita.
+        // El formato con que se LEE el alfa de un mapa de bits. Pedir Format32bppArgb a uno Format32bppPArgb obliga a GDI+ a copiar y
+        // des-premultiplicar toda la zona; el alfa es el mismo byte en los dos, asi que a un PArgb se le pide su propio formato (20-10-2026).
+        // Solo se bloquea ENTERO y se leen las filas por su desplazamiento: un bloqueo de un trozo en el mismo formato, en la libgdiplus de
+        // Linux, escribe el trozo de vuelta arriba a la izquierda aunque sea de solo lectura (comprobado en tironescambio); en Windows no pasa,
+        // pero el bloqueo entero vale en los dos y no cuesta nada (devuelve el puntero al propio mapa de bits).
+        internal static bool LecturaNativa(Bitmap b) { return b.PixelFormat == PixelFormat.Format32bppPArgb; }
         internal static TeselasVisibles De(Bitmap b, int lado, bool bordeSiempre)
         {
             if (b == null || lado < 1) return null;
@@ -86,7 +92,7 @@ namespace Rocola
             // leerlo desde la de al lado): las de (x-1)/lado a (x+1)/lado, y lo mismo a lo alto. Se recorre fila a fila,
             // por tramos seguidos de texeles con algo; sin un arreglo del tamano de la imagen.
             int[] fila = new int[w];
-            BitmapData bd = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            BitmapData bd = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, LecturaNativa(b) ? PixelFormat.Format32bppPArgb : PixelFormat.Format32bppArgb);   // solo el alfa: el formato propio, sin copia
             try
             {
                 for (int y = 0; y < h; y++)
@@ -167,12 +173,15 @@ namespace Rocola
                 if (y < h)
                 {
                     int filas = Math.Min(8, h - y);
-                    BitmapData bd = Fuente.LockBits(new Rectangle(0, y, w, filas), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    bool nativo = TeselasVisibles.LecturaNativa(Fuente);   // PArgb: el mapa entero, sin copia, y las filas por su desplazamiento
+                    BitmapData bd = nativo ? Fuente.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb)
+                                           : Fuente.LockBits(new Rectangle(0, y, w, filas), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    long desde = nativo ? (long)y * bd.Stride : 0;
                     try
                     {
                         for (int f = 0; f < filas; f++)
                         {
-                            Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)f * bd.Stride), fila, 0, w);
+                            Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + desde + (long)f * bd.Stride), fila, 0, w);
                             int yy = y + f;
                             int ja = yy == 0 ? 0 : (yy - 1) / lado, jb = Math.Min(ty - 1, (yy + 1) / lado);
                             for (int x = 0; x < w; )
@@ -335,12 +344,15 @@ namespace Rocola
             PixelFormat f = b.PixelFormat;
             if (!Image.IsAlphaPixelFormat(f) && (f & PixelFormat.Indexed) == 0) return true;   // sin canal alfa: opaca
             int[] fila = new int[w - 2 * m];
-            BitmapData bd = b.LockBits(new Rectangle(m, m, w - 2 * m, h - 2 * m), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            bool nativo = TeselasVisibles.LecturaNativa(b);   // PArgb: el mapa entero, sin copia, y el interior por su desplazamiento
+            BitmapData bd = nativo ? b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb)
+                                   : b.LockBits(new Rectangle(m, m, w - 2 * m, h - 2 * m), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            long desde = nativo ? (long)m * bd.Stride + (long)m * 4 : 0;
             try
             {
                 for (int y = 0; y < h - 2 * m; y++)
                 {
-                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), fila, 0, fila.Length);
+                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + desde + (long)y * bd.Stride), fila, 0, fila.Length);
                     for (int x = 0; x < fila.Length; x++) if ((uint)fila[x] < 0xFF000000u) return false;
                 }
                 return true;
