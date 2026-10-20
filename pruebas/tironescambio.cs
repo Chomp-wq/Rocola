@@ -1086,6 +1086,101 @@ class TironesCambio
             Check(Mediana(tn) < Mediana(tv), "ahora cuesta menos que con el ejecutable anterior");
         }
     }
+
+    // ======================= 14. LOS DELEGADOS DE LA TARJETA SE REUSAN =======================
+    static Func<IntPtr, int, Delegate> FnComo(Type tipoDelegado)
+    {
+        MethodInfo m = TD3D.GetMethod("Fn", TODO).MakeGenericMethod(tipoDelegado);
+        return (Func<IntPtr, int, Delegate>)Delegate.CreateDelegate(typeof(Func<IntPtr, int, Delegate>), m);
+    }
+    static IntPtr TexturaFalsa()
+    {
+        PreparaTexturas();
+        IntPtr t; CreaTex(IntPtr.Zero, 8, 8, 1, 0, 21, 1, out t, IntPtr.Zero); return t;
+    }
+    // Modo --fn: cuantas recolecciones y cuanto tiempo cuestan 2 millones de Fn<> sobre las mismas ranuras, en ESTE ejecutable.
+    [DllImport("libc.so.6")] static extern IntPtr dlopen(string f, int flags);
+    [DllImport("libc.so.6")] static extern IntPtr dlsym(IntPtr h, string n);
+    // Una "tarjeta" cuyas funciones son NATIVAS de verdad (getpid de libc, que ignora su argumento): con los delegados de las pruebas de
+    // arriba Mono devuelve el delegado administrado de origen sin reservar nada, y no se veria lo que reserva GetDelegateForFunctionPointer.
+    static IntPtr ObjetoNativo(int ranuras)
+    {
+        IntPtr fn = dlsym(dlopen("libc.so.6", 2), "getpid");
+        IntPtr vt = Marshal.AllocHGlobal(ranuras * IntPtr.Size);
+        for (int k = 0; k < ranuras; k++) Marshal.WriteIntPtr(vt, k * IntPtr.Size, fn);
+        IntPtr o = Marshal.AllocHGlobal(16); Marshal.WriteIntPtr(o, vt); return o;
+    }
+    static int FnTiempo()
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1"); TD3D = AsmNuevo.GetType("Rocola.D3D9");
+        Func<IntPtr, int, Delegate> lock_ = FnComo(TD3D.GetNestedType("LockRectDel", TODO)), unlock = FnComo(TD3D.GetNestedType("UnlockRectDel", TODO)), suelta = FnComo(TD3D.GetNestedType("UintSelf", TODO));
+        IntPtr t = ObjetoNativo(24);
+        lock_(t, 19); unlock(t, 20); suelta(t, 2);
+        GC.Collect(); int g0 = GC.CollectionCount(0);
+        Stopwatch sw = Stopwatch.StartNew();
+        for (int i = 0; i < 300000; i++) { lock_(t, 19); unlock(t, 20); suelta(t, 2); }
+        double us = sw.Elapsed.TotalMilliseconds * 1000.0 / 900000;
+        Console.WriteLine("FN " + (GC.CollectionCount(0) - g0) + " " + us.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+        return 0;
+    }
+    static void Delegados()
+    {
+        Console.WriteLine("# 14. los delegados de la tarjeta (Fn<>) se reusan");
+        Type tl = TD3D.GetNestedType("LockRectDel", TODO), tu = TD3D.GetNestedType("UnlockRectDel", TODO), ts = TD3D.GetNestedType("UintSelf", TODO);
+        Func<IntPtr, int, Delegate> flock = FnComo(tl), funlock = FnComo(tu), fsuelta = FnComo(ts);
+        IntPtr t = TexturaFalsa(), t2 = TexturaFalsa();
+        Delegate a = flock(t, 19), b = flock(t, 19), c = flock(t2, 19);
+        Check(ReferenceEquals(a, b) && ReferenceEquals(a, c), "pedir la misma ranura (de la misma o de otra textura) devuelve el mismo delegado");
+        Check(!ReferenceEquals(flock(t, 19), funlock(t, 20)), "otra ranura, otro delegado");
+        // y funciona: el Release de la textura falsa pasa por la ranura 2
+        long sueltas0 = cSueltas;
+        fsuelta(t, 2).DynamicInvoke(t); fsuelta(t, 2).DynamicInvoke(t);
+        Check(cSueltas == sueltas0 + 2, "el delegado guardado llama a la funcion de verdad (dos Release contados)");
+        // memoria y tiempo: 900 mil llamadas
+        GC.Collect(); int g0 = GC.CollectionCount(0);
+        Stopwatch sw = Stopwatch.StartNew();
+        for (int i = 0; i < 300000; i++) { flock(t, 19); funlock(t, 20); fsuelta(t, 2); }
+        double us = sw.Elapsed.TotalMilliseconds * 1000.0 / 900000;
+        int g = GC.CollectionCount(0) - g0;
+        Console.WriteLine("        900 mil Fn<> sobre las mismas ranuras: " + g + " recolecciones, " + us.ToString("0.000") + " us por llamada (Linux/Mono, sintetico)");
+        Check(g == 0, "ni una recoleccion de generacion 0 en 900 mil llamadas");
+        // acotado: 500 punteros distintos no dejan mas de FnMax
+        int antes = (int)TD3D.GetProperty("FnGuardadasEnEsteHilo", TODO).GetValue(null, null);
+        for (int i = 0; i < 150; i++)
+        {   // 150 funciones nativas DISTINTAS (cada una su propio metodo dinamico): Mono reusa el puente de un mismo metodo
+            DynamicMethod dm = new DynamicMethod("F" + i, typeof(uint), new Type[] { typeof(IntPtr) }, typeof(TironesCambio).Module, true);
+            ILGenerator il = dm.GetILGenerator(); il.Emit(OpCodes.Ldc_I4, i); il.Emit(OpCodes.Ret);
+            Delegate del = dm.CreateDelegate(ts); vivos.Add(del);
+            IntPtr o = Marshal.AllocHGlobal(16); IntPtr vt = Marshal.AllocHGlobal(8 * IntPtr.Size);
+            for (int k = 0; k < 8; k++) Marshal.WriteIntPtr(vt, k * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(del));
+            Marshal.WriteIntPtr(o, vt); fsuelta(o, 3);
+        }
+        int despues = (int)TD3D.GetProperty("FnGuardadasEnEsteHilo", TODO).GetValue(null, null);
+        Check(despues == 48 && despues >= antes, "150 funciones distintas no hacen crecer la cache mas alla de 48 (" + despues + ")");
+        // el camino de verdad: subir una textura con la tarjeta imitada
+        object tarjeta = Tarjeta(640, 480);
+        using (Bitmap bm = new Bitmap(100, 60, PixelFormat.Format32bppPArgb))
+        {
+            object[] ar = { bm, 0f, 0f };
+            IntPtr tx = (IntPtr)Llama(tarjeta, "CreateTexturePow2", ar);
+            GC.Collect(); int h0 = GC.CollectionCount(0);
+            for (int i = 0; i < 2000; i++) { object[] a2 = { tx, bm, 0f, 0f }; Llama(tarjeta, "UpdateTexturePow2", a2); }
+            Console.WriteLine("        2000 subidas de una textura 128x64 con la tarjeta imitada: " + (GC.CollectionCount(0) - h0) + " recolecciones");
+        }
+        if (rutaViejoFn != null)
+        {
+            List<double> gn = new List<double>(), gv = new List<double>(), tn = new List<double>(), tv = new List<double>();
+            for (int r = 0; r < 5; r++)
+                foreach (bool nuevoPrimero in new bool[] { r % 2 == 0, r % 2 != 0 })
+                {
+                    string[] m = Lineas(CorreModo(nuevoPrimero ? rutaNuevoFn : rutaViejoFn, "--fn"), "FN ").Trim().Substring(3).Split(' ');
+                    (nuevoPrimero ? gn : gv).Add(double.Parse(m[0])); (nuevoPrimero ? tn : tv).Add(double.Parse(m[1], System.Globalization.CultureInfo.InvariantCulture));
+                }
+            Console.WriteLine("        900 mil Fn<> (mediana de 5 procesos alternados): antes " + Mediana(gv).ToString("0") + " recolecciones, " + Mediana(tv).ToString("0.000") + " us/llamada; ahora " + Mediana(gn).ToString("0") + " recolecciones, " + Mediana(tn).ToString("0.000") + " us/llamada");
+            Check(Mediana(gv) > Mediana(gn) && Mediana(gn) == 0 && Mediana(tn) < Mediana(tv), "frente al ejecutable anterior, sobre funciones nativas de verdad: sin recolecciones y mas rapido");
+        }
+    }
+    static string rutaNuevoFn, rutaViejoFn;
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1176,6 +1271,7 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--tiempo5") return Tiempo5();
         if (argv.Length > 1 && argv[1] == "--sondeos") return Sondeos();
         if (argv.Length > 1 && argv[1] == "--atr") return AtrTiempo();
+        if (argv.Length > 1 && argv[1] == "--fn") return FnTiempo();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
@@ -1183,6 +1279,8 @@ class TironesCambio
         Alfa(argv[0], argv.Length > 1 ? argv[1] : null);
         MemoriaDeTexturas(argv.Length > 1 ? argv[1] : null);
         Atraccion(argv[0], argv.Length > 1 ? argv[1] : null);
+        rutaNuevoFn = argv[0]; rutaViejoFn = argv.Length > 1 ? argv[1] : null;
+        Delegados();
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

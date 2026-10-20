@@ -83,11 +83,30 @@ namespace Rocola
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockRectDel(IntPtr self, uint level, out LockedRect lr, IntPtr rect, uint flags);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int UnlockRectDel(IntPtr self, uint level);
 
+        // Marshal.GetDelegateForFunctionPointer crea un delegado (y su puente a codigo no administrado) NUEVO en cada llamada: bloquear y
+        // desbloquear una textura, soltarla o cambiar la imagen intermedia del cielo a media resolucion reservaban cada vez. Un delegado
+        // solo depende de la direccion de la funcion y del tipo, y todas las texturas de un dispositivo comparten tabla de funciones, asi
+        // que se guardan los ultimos FnMax (direccion, tipo) por hilo (sin cerrojos) y se reusan (20-10-2026). Acotado: al llenarse se
+        // reemplaza el mas antiguo.
+        private sealed class FnGuardada { internal IntPtr Fn; internal Type Tipo; internal Delegate D; }
+        internal const int FnMax = 48;
+        [ThreadStatic] private static FnGuardada[] fnGuardadas;
+        [ThreadStatic] private static int fnN, fnSiguiente;
+        internal static int FnGuardadasEnEsteHilo { get { return fnN; } }
         public static T Fn<T>(IntPtr punk, int slot) where T : class
         {
             IntPtr vtbl = Marshal.ReadIntPtr(punk);
             IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
-            return (T)(object)Marshal.GetDelegateForFunctionPointer(fn, typeof(T));
+            Type tipo = typeof(T);
+            FnGuardada[] c = fnGuardadas;
+            if (c == null) { c = new FnGuardada[FnMax]; fnGuardadas = c; }
+            int n = fnN;
+            for (int i = 0; i < n; i++) { FnGuardada e = c[i]; if (e.Fn == fn && e.Tipo == tipo) return (T)(object)e.D; }
+            T d = (T)(object)Marshal.GetDelegateForFunctionPointer(fn, tipo);
+            FnGuardada g = new FnGuardada(); g.Fn = fn; g.Tipo = tipo; g.D = (Delegate)(object)d;
+            if (n < FnMax) { c[n] = g; fnN = n + 1; }
+            else { c[fnSiguiente] = g; fnSiguiente = (fnSiguiente + 1) % FnMax; }
+            return d;
         }
         public static void Release(IntPtr punk)
         {
