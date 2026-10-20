@@ -75,7 +75,11 @@ class AudioEstereo {
    Check(Codigo.Llama(form.GetMethod(method,F),"AccumulateEqFrame")
          // Desde el 13-10-2026 el repaso pasa cada trozo por HuellaDelTrozo: la misma cuenta, banda por banda, que cae en
          // AccumulateEqFrame con otros canales (repasoligero comprueba que da los mismos bits).
-         ||(Codigo.Llama(form.GetMethod(method,F),"HuellaDelTrozo")&&Codigo.Llama(form.GetMethod("HuellaDelTrozo",F),"AccumulateEqFrame")),
+         ||(Codigo.Llama(form.GetMethod(method,F),"HuellaDelTrozo")&&Codigo.Llama(form.GetMethod("HuellaDelTrozo",F),"AccumulateEqFrame"))
+         // Desde el 20-10-2026 el aprendizaje en vivo (MideBloqueOriginal) la pasa por HuellaDelTrozoDesde, la misma cuenta desde en medio de un bloque
+         // (HuellaDelTrozo ahora solo le pasa el desplazamiento cero): sigue cayendo en AccumulateEqFrame para los canales de mas.
+         ||(Codigo.Llama(form.GetMethod(method,F),"HuellaDelTrozo")&&Codigo.Llama(form.GetMethod("HuellaDelTrozo",F),"HuellaDelTrozoDesde")&&Codigo.Llama(form.GetMethod("HuellaDelTrozoDesde",F),"AccumulateEqFrame"))
+         ||(Codigo.Llama(form.GetMethod(method,F),"HuellaDelTrozoDesde")&&Codigo.Llama(form.GetMethod("HuellaDelTrozoDesde",F),"AccumulateEqFrame")),
          "Ruta sin nueva medicion: "+method);
   Check(Codigo.Llama(form.GetMethod("ReportAudioBlock",F),"MideBloqueOriginal"),"Fallback de pruebas no mide original");
   foreach(Codigo.Paso p in Codigo.Pasos(form.GetMethod("AccumulateEqFrame",F)))

@@ -294,6 +294,11 @@ CPU="$CPU reproligera"
 # segundo argumento, ademas, MeasureFile + MideIntegrada de WAV generados dan los mismos bits.
 CPU="$CPU lectura16"
 GPU="$GPU lectura16"
+# 'entradaligera': el aprendizaje en vivo de una cancion nueva (MideBloqueOriginal, 20-10-2026) por trozos: la huella tonal con HuellaDelTrozo y la sonoridad K de estereo con
+# los filtros en variables (KCuadrosEstereo). Comparado con una copia del codigo de antes, con lecturas de 1 a 8191 muestras (casi todas parten un cuadro), de 8 a 96 kHz y de 1 a
+# 6 canales, con silencios exactos: todo lo que queda despues de cada lectura es igual bit a bit.
+CPU="$CPU entradaligera"
+GPU="$GPU entradaligera"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"

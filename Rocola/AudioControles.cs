@@ -311,20 +311,17 @@ namespace Rocola
                 // ese trozo se tiraba y, peor, todo el bloque siguiente se leia corrido un canal: el izquierdo
                 // pasaba por el filtro del derecho. Con cuadros enteros la cuenta es la misma que antes, bit a bit.
                 int c = kwCanal; if (c >= ch3) c = 0;
-                for (int i = offset; i < offset + count; i++)
+                int i = offset, finK = offset + count;
+                if (ch3 == 2)
                 {
-                    int b = c * 8; float x = buffer[i];
-                    float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
-                    st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
-                    float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
-                    st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
-                    sumK += y2 * y2; nK++;
-                    if (++c >= ch3)
-                    {
-                        c = 0;
-                        if (++kwLimpia == Desnormales.Cada) { kwLimpia = 0; Desnormales.Limpia(st); }   // restos diminutos a cero (Desnormales.cs)
-                    }
+                    // Estereo (casi toda la musica): el cuadro que quedo partido, muestra a muestra; los cuadros enteros de golpe
+                    // (KCuadrosEstereo, con los coeficientes y la memoria de los dos filtros en variables); y el trozo de cuadro
+                    // del final, muestra a muestra. Las mismas cuentas en el mismo orden: los mismos bits.
+                    if (c == 1 && i < finK) { KMuestraAMuestra(buffer, i, i + 1, ch3, ref c, c1, c2, st, ref sumK, ref nK); i++; }
+                    int cuadrosK = (finK - i) / 2;
+                    if (cuadrosK > 0) { KCuadrosEstereo(buffer, i, cuadrosK, c1, c2, st, ref sumK); nK += 2L * cuadrosK; i += 2 * cuadrosK; }
                 }
+                if (i < finK) KMuestraAMuestra(buffer, i, finK, ch3, ref c, c1, c2, st, ref sumK, ref nK);
                 kwCanal = c;
                 curSumSq += sumK; curSamples += nK;   // energia K-pesada (misma escala que el RMS de antes)
             }
@@ -350,15 +347,85 @@ namespace Rocola
                 }
                 if (eqPendN == 0)
                 {
-                    for (; i + ch2 <= fin; i += ch2)
+                    // Los cuadros enteros del bloque, banda por banda (HuellaDelTrozo, la del repaso): la misma suma de cada banda en el mismo orden y la
+                    // limpieza de restos diminutos (Desnormales.cs) en los mismos cuadros que cuadro a cuadro: 'contados' es el contador de limpieza,
+                    // que cuenta cuadros desde la ultima. Mismos bits, y la mitad de tiempo.
+                    int cuadros = (fin - i) / ch2;
+                    if (cuadros > 0)
                     {
-                        AccumulateEqFrame(buffer, i, ch2, eqMeasCoef, st, sums);
-                        eqMeasN++;
-                        if (++eqLimpia == Desnormales.Cada) { eqLimpia = 0; Desnormales.Limpia(st); }   // restos diminutos a cero (Desnormales.cs)
+                        HuellaDelTrozoDesde(buffer, i, cuadros, ch2, eqMeasCoef, st, sums, eqLimpia);
+                        eqMeasN += cuadros; eqLimpia = (int)((eqLimpia + (long)cuadros) & (Desnormales.Cada - 1));
+                        i += cuadros * ch2;
                     }
                     while (i < fin) eqPend[eqPendN++] = buffer[i++];
                 }
             }
+        }
+
+        // LA SONORIDAD K DEL APRENDIZAJE EN VIVO, por trozos (20-10-2026). Es la cuenta de siempre de MideBloqueOriginal -dos biquads por canal, la suma
+        // de los cuadrados de la salida del segundo, la limpieza de restos diminutos (Desnormales.cs) detras del cuadro que cuenta 64- en dos formas:
+        // muestra a muestra con la memoria en el arreglo (el cuadro partido de los extremos, el mono y los canales de mas) y, para los cuadros
+        // enteros de estereo, con coeficientes y memoria en variables. Mismas cuentas en el mismo orden: mismos bits (bateria entradaligera).
+        private void KMuestraAMuestra(float[] buffer, int desde, int hasta, int ch3, ref int c, float[] c1, float[] c2, float[] st, ref double sumK, ref long nK)
+        {
+            double suma = sumK; long cuenta = nK; int canal = c;
+            for (int i = desde; i < hasta; i++)
+            {
+                int b = canal * 8; float x = buffer[i];
+                float y1 = c1[0]*x + c1[1]*st[b] + c1[2]*st[b+1] - c1[3]*st[b+2] - c1[4]*st[b+3];
+                st[b+1]=st[b]; st[b]=x; st[b+3]=st[b+2]; st[b+2]=y1;
+                float y2 = c2[0]*y1 + c2[1]*st[b+4] + c2[2]*st[b+5] - c2[3]*st[b+6] - c2[4]*st[b+7];
+                st[b+5]=st[b+4]; st[b+4]=y1; st[b+7]=st[b+6]; st[b+6]=y2;
+                suma += y2 * y2; cuenta++;
+                if (++canal >= ch3)
+                {
+                    canal = 0;
+                    if (++kwLimpia == Desnormales.Cada) { kwLimpia = 0; Desnormales.Limpia(st); }   // restos diminutos a cero (Desnormales.cs)
+                }
+            }
+            sumK = suma; nK = cuenta; c = canal;
+        }
+        // Cuadros ENTEROS de estereo (llega con el canal 0 por tocar y lo deja en el 0). Los tramos acaban en el cuadro que cuenta 64.
+        private void KCuadrosEstereo(float[] buffer, int desde, int cuadros, float[] c1, float[] c2, float[] st, ref double sumK)
+        {
+            float p0 = c1[0], p1 = c1[1], p2 = c1[2], p3 = c1[3], p4 = c1[4];
+            float q0 = c2[0], q1 = c2[1], q2 = c2[2], q3 = c2[3], q4 = c2[4];
+            double suma = sumK;
+            float lx1 = st[0], lx2 = st[1], ly1 = st[2], ly2 = st[3], lz1 = st[4], lz2 = st[5], lw1 = st[6], lw2 = st[7];
+            float rx1 = st[8], rx2 = st[9], ry1 = st[10], ry2 = st[11], rz1 = st[12], rz2 = st[13], rw1 = st[14], rw2 = st[15];
+            int f = 0, limpia = kwLimpia;
+            while (f < cuadros)
+            {
+                int fin = f + (Desnormales.Cada - limpia); bool cierra = true;
+                if (fin > cuadros) { fin = cuadros; cierra = false; }
+                limpia += fin - f;
+                for (int i = desde + f * 2; f < fin; f++, i += 2)
+                {
+                    float x = buffer[i];
+                    float y1 = p0 * x + p1 * lx1 + p2 * lx2 - p3 * ly1 - p4 * ly2;
+                    lx2 = lx1; lx1 = x; ly2 = ly1; ly1 = y1;
+                    float y2 = q0 * y1 + q1 * lz1 + q2 * lz2 - q3 * lw1 - q4 * lw2;
+                    lz2 = lz1; lz1 = y1; lw2 = lw1; lw1 = y2;
+                    suma += y2 * y2;
+                    float x2 = buffer[i + 1];
+                    float u1 = p0 * x2 + p1 * rx1 + p2 * rx2 - p3 * ry1 - p4 * ry2;
+                    rx2 = rx1; rx1 = x2; ry2 = ry1; ry1 = u1;
+                    float u2 = q0 * u1 + q1 * rz1 + q2 * rz2 - q3 * rw1 - q4 * rw2;
+                    rz2 = rz1; rz1 = u1; rw2 = rw1; rw1 = u2;
+                    suma += u2 * u2;
+                }
+                if (cierra)
+                {
+                    limpia = 0;
+                    lx1 = Desnormales.Limpia(lx1); lx2 = Desnormales.Limpia(lx2); ly1 = Desnormales.Limpia(ly1); ly2 = Desnormales.Limpia(ly2);
+                    lz1 = Desnormales.Limpia(lz1); lz2 = Desnormales.Limpia(lz2); lw1 = Desnormales.Limpia(lw1); lw2 = Desnormales.Limpia(lw2);
+                    rx1 = Desnormales.Limpia(rx1); rx2 = Desnormales.Limpia(rx2); ry1 = Desnormales.Limpia(ry1); ry2 = Desnormales.Limpia(ry2);
+                    rz1 = Desnormales.Limpia(rz1); rz2 = Desnormales.Limpia(rz2); rw1 = Desnormales.Limpia(rw1); rw2 = Desnormales.Limpia(rw2);
+                }
+            }
+            st[0] = lx1; st[1] = lx2; st[2] = ly1; st[3] = ly2; st[4] = lz1; st[5] = lz2; st[6] = lw1; st[7] = lw2;
+            st[8] = rx1; st[9] = rx2; st[10] = ry1; st[11] = ry2; st[12] = rz1; st[13] = rz2; st[14] = rw1; st[15] = rw2;
+            kwLimpia = limpia; sumK = suma;
         }
 
         // Potencia media de los canales, NO potencia de su mezcla: evita cancelar
@@ -388,13 +455,16 @@ namespace Rocola
         // de este trozo). Mismos numeros, bit a bit, en la mitad de tiempo: es lo que mas pesa del repaso a fondo.
         // Con mas de dos canales, cuadro a cuadro como siempre.
         private static void HuellaDelTrozo(float[] buffer, int cuadros, int channels, float[][] coefficients, float[] state, double[] sums, long contados)
+        { HuellaDelTrozoDesde(buffer, 0, cuadros, channels, coefficients, state, sums, contados); }
+        // Lo mismo desde la posicion 'desde' del arreglo (el aprendizaje en vivo de MideBloqueOriginal lee de en medio de un bloque).
+        private static void HuellaDelTrozoDesde(float[] buffer, int desde, int cuadros, int channels, float[][] coefficients, float[] state, double[] sums, long contados)
         {
             const int m = Desnormales.Cada - 1;
             if (channels != 1 && channels != 2)
             {
                 for (int f = 0; f < cuadros; f++)
                 {
-                    AccumulateEqFrame(buffer, f * channels, channels, coefficients, state, sums);
+                    AccumulateEqFrame(buffer, desde + f * channels, channels, coefficients, state, sums);
                     if (((contados + f + 1) & m) == 0) Desnormales.Limpia(state);
                 }
                 return;
@@ -411,7 +481,7 @@ namespace Rocola
                 {
                     for (int f = 0; f < cuadros; f++)
                     {
-                        float x = buffer[f];
+                        float x = buffer[desde + f];
                         float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
                         a1 = a0; a0 = x; a3 = a2; a2 = o;
                         suma += (o * o) * weight;
@@ -422,7 +492,7 @@ namespace Rocola
                 else
                 {
                     float b0 = state[qb], b1 = state[qb + 1], b2 = state[qb + 2], b3 = state[qb + 3];
-                    for (int f = 0, i = 0; f < cuadros; f++, i += 2)
+                    for (int f = 0, i = desde; f < cuadros; f++, i += 2)
                     {
                         float x = buffer[i];
                         float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
