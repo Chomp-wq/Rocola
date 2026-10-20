@@ -209,6 +209,7 @@ que la huella sale igual con el JIT de XP.
 - Batería nueva `tironescambio` (registrada en `todo.sh` y `pruebas/LEEME.md`): una tarjeta imitada que cuenta (texturas creadas, bloqueos, `PreLoad`, memoria libre, evicciones), sin pintar. Con un ejecutable anterior como
   segundo argumento compara además cada resultado contra él, cada uno en su proceso, y mide antes/después alternando procesos. Sin él, compara contra los archivos de huellas de antes del cambio y contra sí misma (fría/tibia).
 - Ampliados: `huellacuadros` acepta `k/n` como filtro para repartir las 168 pantallas entre procesos; `tironescaratulas` (el sondeo de memoria ahora es de un minuto).
+- Ajustada: `cintasligeras` simulaba una falta de memoria temporal y pedía la textura otra vez sin esperar; con la espera de 200 ms de (11) ahora espera 260 ms antes de reintentar (la falta de memoria de ese ejemplo es temporal y se acaba ahí).
 - Archivos de huellas de antes del cambio (Linux/Mono): `celdas_separadas_2026-10-20.txt`, `texturas_2026-10-20.txt`, `aurora_2026-10-20.txt`.
 - Pruebas automatizadas en Linux/Mono con datos sintéticos: no prueban Windows XP, el A4, un controlador Direct3D de verdad, el audio real ni la pantalla del bar.
 

@@ -148,6 +148,9 @@ class CintasLigeras
             try { Run(p, "PreparaCintasTexto"); }
             finally { create.SetValue(dev, original); }
             foreach (object tile in List(p, "cintaTiles")) Check((IntPtr)Get(tile, "Tex") == IntPtr.Zero, "simula subida fallida");
+            // Tras un "sin memoria" la tarjeta espera 200 ms antes de volver a pedir una textura de ese tamano (D3D9Device.CreaTexturaManejada, 20-10-2026):
+            // la falta de memoria de este ejemplo es temporal y se acaba aqui.
+            System.Threading.Thread.Sleep(260);
             Ready(p); Mapping(p); Check(Released > released, "libera las texturas del color anterior");
             Fingerprint(p, dev, width + "-color-reintentado");
             // La coleccion registra tambien sustituciones directas, aunque no cambie Count.
