@@ -403,6 +403,263 @@ class TironesCambio
         Check(vuelca, "Form1 vuelca el libro al cerrar");
     }
 
+
+    // ======================= 1. EL PRECALENTADO DE LA TARJETA =======================
+    static object Fn(string n, params object[] a) { return LlamaE(TF, n, a); }
+    static Type Nes(string n) { return TF.GetNestedType(n, BindingFlags.NonPublic | BindingFlags.Public); }
+    static Font Fuente(float pt) { return new Font(FontFamily.GenericSansSerif, pt, FontStyle.Bold); }
+    static Bitmap portadaPrueba;
+    static string Gen<T>(T a) { return "rock"; }
+    static Image Tapa<T>(T a) { return portadaPrueba; }
+    static Control MontaBuscador(int w, int h)
+    {
+        Type T = Nes("SearchOverlay"), TItem = Nes("SearchItem"), TAlb = Nes("Album");
+        Control c = (Control)Activator.CreateInstance(T, true);
+        c.SetBounds(0, 0, w, h); c.Font = Fuente(12f);
+        System.Collections.IList res = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(TItem));
+        string[] nom = { "Depeche Mode - Enjoy The Silence", "Jose Jose - El Triste", "Metallica - Enter Sandman", "Juan Gabriel - Amor Eterno", "Bronco - Que No Quede Huella" };
+        object alb = Activator.CreateInstance(TAlb, true);
+        TAlb.GetField("Folder").SetValue(alb, @"C:\Musica\Disco"); TAlb.GetField("Name").SetValue(alb, "Un disco"); TAlb.GetField("Artist").SetValue(alb, "Un artista");
+        TAlb.GetField("CoverPath").SetValue(alb, @"C:\Musica\Disco\cover.jpg");
+        for (int i = 0; i < 40; i++)
+        {
+            object it = Activator.CreateInstance(TItem, true);
+            TItem.GetField("Kind").SetValue(it, i % 3); TItem.GetField("Display").SetValue(it, nom[i % nom.Length] + " " + i);
+            TItem.GetField("Key").SetValue(it, (nom[i % nom.Length] + " " + i).ToLowerInvariant()); TItem.GetField("Score").SetValue(it, 5000 - i);
+            TItem.GetField("AlbumRef").SetValue(it, alb); res.Add(it);
+        }
+        Type tf = typeof(Func<,>).MakeGenericType(TAlb, typeof(Image));
+        T.GetField("GetCover").SetValue(c, Delegate.CreateDelegate(tf, typeof(TironesCambio).GetMethod("Tapa", TODO).MakeGenericMethod(TAlb)));
+        FieldInfo fg = T.GetField("GetGenero");
+        if (fg != null) fg.SetValue(c, Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(TItem, typeof(string)), typeof(TironesCambio).GetMethod("Gen", TODO).MakeGenericMethod(TItem)));
+        T.GetField("Results").SetValue(c, res); T.GetField("Query").SetValue(c, "de");
+        T.GetField("Accent").SetValue(c, Color.FromArgb(178, 152, 255)); T.GetField("FocusResults").SetValue(c, false); T.GetField("SelResult").SetValue(c, 0);
+        return c;
+    }
+    static Control MontaLista(int w, int h)
+    {
+        Type T = Nes("SongListView");
+        Control c = (Control)Activator.CreateInstance(T, true);
+        c.SetBounds(0, 0, w, h); c.Font = Fuente(11f);
+        Pon(c, "RowH", 38); Pon(c, "Accent", Color.FromArgb(150, 110, 220));
+        Pon(c, "GetCount", (Func<int>)delegate { return 60; });
+        Pon(c, "GetText", (Func<int, string>)delegate (int i) { return "Cancion numero " + (i + 1) + " con un titulo largo"; });
+        Pon(c, "GetRight", (Func<int, string>)delegate (int i) { return "3:4" + (i % 10); });
+        Pon(c, "GetQueuePos", (Func<int, int>)delegate (int i) { return (i % 7 == 0) ? 1 : (i % 11 == 0) ? -1 : 0; });
+        Pon(c, "GetGenero", (Func<int, string>)delegate (int i) { return (i % 3 == 0) ? "Regional" : "Pop"; });
+        return c;
+    }
+
+    // La pieza "de verdad" que pinta la tarjeta la primera vez (con datos distintos a los del precalentado). Solo se cronometra.
+    static void PiezaReal(string pieza)
+    {
+        int w = 1024, h = 768;
+        switch (pieza)
+        {
+            case "estado":
+            {
+                int ph = (int)LlamaE(TPanel, "IdlePanelHeight", h);
+                string[] qt = { "Una cancion", "Otra cancion", "Y otra mas" }, qa = { "Alguien", "Alguien mas", "Un tercero" };
+                object[] a = { null, w, ph, "Otro titulo mas largo para que no sea el mismo", "Otro artista", "", qt, qa, new Image[3], 3, Color.Teal, false, 0, false, null, false, 0 };
+                using (Bitmap panel = (Bitmap)Fn("RenderIdlePanelEn", a))
+                using (Bitmap debajo = new Bitmap(w, 34, PixelFormat.Format32bppPArgb))
+                {
+                    Fn("CopiaRegionReposo", panel, new Rectangle(0, ph - 34, w, 34), debajo, Point.Empty);
+                    Fn("UpdateIdleClock", panel, debajo, "1:23 / 3:45");
+                    object[] b = { panel, debajo, "1:24 / 3:45", 200, Rectangle.Empty };
+                    Fn("UpdateIdleClockRegion", b);
+                }
+                break;
+            }
+            case "ficha":
+            {
+                object fam = Fn("FamiliaUi");
+                using (Bitmap foco = new Bitmap(162, 25, PixelFormat.Format32bppPArgb)) Fn("PintaFoco", foco, "7 canciones - 20 min", "7 - 20 min", fam);
+                Size t = (Size)Fn("TamanoFicha", 170, 189);
+                using (Bitmap ficha = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb))
+                    Fn("PintaFicha", ficha, null, "Otro artista", "Otro disco", "7 canciones", "Rock", Color.OrangeRed, 0, false,
+                        new string[] { "Una", "Dos" }, new string[] { "3:00", "2:00" }, new int[] { 1, 0 }, 7, fam);
+                break;
+            }
+            case "asistente":
+            {
+                Size g = ((Rectangle)LlamaE(TPanel, "AsistentePanelRect", w, h)).Size;
+                using (Bitmap p = (Bitmap)Fn("PintaPanelAsistente", g.Width, g.Height, 0, 0, 1)) { }
+                using (Bitmap a = (Bitmap)Fn("PintaAdiosAsistente", g.Width, g.Height)) { }
+                break;
+            }
+            case "avisos":
+            {
+                FontFamily ff = (FontFamily)Fn("FamiliaUi");
+                Type ta = Nes("TipoAviso");
+                using (Font tit = new Font(ff, 14f, FontStyle.Bold)) using (Font det = new Font(ff, 11f, FontStyle.Bold))
+                {
+                    Size sz = (Size)Fn("TamanoAviso", w, "Pusiste otra", "va la 2.a", tit, det);
+                    using (Bitmap b = new Bitmap(sz.Width, sz.Height, PixelFormat.Format32bppPArgb)) Fn("PintaAviso", b, Enum.ToObject(ta, 1), "Pusiste otra", "va la 2.a", tit, det);
+                }
+                using (Font tit = new Font(ff, 17f, FontStyle.Bold)) using (Font txt = new Font(ff, 12.5f, FontStyle.Bold)) using (Font pie = new Font(ff, 10.5f, FontStyle.Bold))
+                {
+                    Size t = (Size)Fn("TamanoInvita", w);
+                    using (Bitmap b = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb))
+                    { object[] a = { b, "Tu cancion", false, 4, tit, txt, pie, new PointF(), 0f }; Fn("PintaInvita", a); }
+                }
+                using (Bitmap m = (Bitmap)LlamaE(TPanel, "BakeMoneda", 96)) { }
+                using (Font mas = new Font(ff, 14f, FontStyle.Bold, GraphicsUnit.Pixel))
+                {
+                    Size t = (Size)Fn("TamanoMas", "+2 creditos", mas);
+                    using (Bitmap b = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb)) Fn("PintaMas", b, "+2 creditos", mas);
+                }
+                break;
+            }
+        }
+    }
+    static void GdiCaliente()
+    {
+        using (Bitmap b = new Bitmap(64, 64, PixelFormat.Format32bppPArgb))
+        using (Graphics g = Graphics.FromImage(b))
+        using (Font f = new Font(FontFamily.GenericSansSerif, 12f, FontStyle.Bold, GraphicsUnit.Pixel))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.DrawString("hola", f, Brushes.White, 2, 2); g.FillEllipse(Brushes.Red, 4, 4, 20, 20);
+            using (System.Drawing.Drawing2D.GraphicsPath p = new System.Drawing.Drawing2D.GraphicsPath()) { p.AddEllipse(1, 1, 30, 30); g.FillPath(Brushes.Blue, p); }
+        }
+    }
+    // Modo hijo: una pieza, fria o precalentada, en un proceso nuevo (la primera vez de verdad: compilar el codigo y crear lo que haga falta).
+    static int Hijo(string pieza, string modo)
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
+        TD3D = AsmNuevo.GetType("Rocola.D3D9");
+        GdiCaliente();
+        if (modo == "caliente")
+        {
+            int paso = pieza == "estado" ? 3 : pieza == "ficha" ? 4 : pieza == "asistente" ? 5 : 6;
+            LlamaE(TF, "PrecalientaPiezaGpuEn", paso, 1024, 768, false, false, false, 0);
+        }
+        Stopwatch sw = Stopwatch.StartNew();
+        PiezaReal(pieza);
+        Console.WriteLine("MS " + sw.Elapsed.TotalMilliseconds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+        return 0;
+    }
+    static double CorreHijo(string rocola, string pieza, string modo)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
+        string yo = Environment.GetCommandLineArgs()[0];
+        psi.Arguments = "\"" + yo + "\" \"" + rocola + "\" --hijo " + pieza + " " + modo;
+        psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+        using (Process p = Process.Start(psi))
+        {
+            string o = p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit();
+            foreach (string l in o.Split('\n')) if (l.StartsWith("MS ")) return double.Parse(l.Substring(3), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return -1;
+    }
+    static double Mediana(List<double> v) { v.Sort(); return v[v.Count / 2]; }
+    static double MedianaA(double[] v) { double[] c = (double[])v.Clone(); Array.Sort(c); return c[c.Length / 2]; }
+    static void Precalentado(string rocola)
+    {
+        Console.WriteLine("# 1. el precalentado de lo que pinta la tarjeta");
+        MethodInfo pre = Metodo(TF, "PrecalientaUnPoco");
+        List<string> ll = Codigo.ConAyudantes(TF, "PrecalientaUnPoco");
+        Check(Codigo.Llama(ll, "TryEnter") && Codigo.Llama(ll, "get_CuadrosMedidos") && Codigo.Llama(ll, "get_MsTrabajo"), "conserva sus guardas: el turno del DSP (TryEnter), cuadros medidos y el margen del ultimo cuadro (MsTrabajo)");
+        int lee, esc; Codigo.UsosDeCampo(pre, "precalUltimoCoste", out lee, out esc);
+        Check(lee > 0 && esc > 0, "sigue midiendo lo que cuesta cada paso (precalUltimoCoste) para el margen de 28 ms");
+        Codigo.UsosDeCampo(pre, "lastInputTick", out lee, out esc);
+        Check(lee > 0, "sigue parandose si alguien esta usando la rocola (PrecalQuieta)");
+        Check(Codigo.Llama(ll, "PrecalientaBuscadorGpu") && Codigo.Llama(ll, "PrecalientaListaGpu") && Codigo.Llama(ll, "PrecalientaPiezaGpu"), "con tarjeta calienta el buscador y la lista por su camino de la tarjeta y las piezas que solo pinta ella");
+        Check(Codigo.LeeCampo(new List<MethodBase>(new MethodBase[] { pre }), "attractView") && Codigo.LeeCampo(new List<MethodBase>(new MethodBase[] { pre }), "searchOverlay"), "y el camino de siempre sigue ahi (sin tarjeta)");
+        // lo que NO toca: ni el panel del estado extendido, ni el del asistente, ni los avisos que haya a la vista
+        List<MethodBase> todos = Codigo.MetodosConAyudantes(TF, "PrecalientaPiezaGpu");
+        string[] visibles = { "idlePanelBmp", "idlePanelSig", "idleClockUnderlay", "asistentePanel", "avisoBmp", "invitaBmp", "monedaBmp", "monedaMas", "fichaBmp", "focoBmp" };
+        bool toca = false;
+        foreach (string v in visibles) if (Codigo.EscribeCampo(todos, v) || Codigo.LeeCampo(todos, v)) { toca = true; Console.WriteLine("        toca " + v); }
+        Check(!toca, "el precalentado de las piezas no lee ni escribe el panel del estado, el del asistente, los avisos ni la ficha/pastilla que haya a la vista");
+        todos = Codigo.MetodosConAyudantes(TF, "PrecalientaListaGpu");
+        Check(!Codigo.EscribeCampo(todos, "Sel") && !Codigo.EscribeCampo(todos, "Accent"), "la lista: solo se mueve la marca pintandoGpu (y vuelve como estaba)");
+        // Corre sin romper en varias pantallas y no deja memoria colgada
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); long antes = GC.GetTotalMemory(true);
+        foreach (int[] wh in new int[][] { new int[] { 1024, 768 }, new int[] { 1280, 1024 }, new int[] { 1920, 1080 }, new int[] { 640, 480 } })
+            foreach (bool doce in new bool[] { false, true })
+                for (int paso = 3; paso <= 6; paso++) LlamaE(TF, "PrecalientaPiezaGpuEn", paso, wh[0], wh[1], doce, doce, !doce, doce ? 1 : 0);
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); long despues = GC.GetTotalMemory(true);
+        Check(despues - antes < 4L * 1024 * 1024, "32 pasadas por 4 pantallas dejan menos de 4 MB (los mapas de bits se sueltan): " + ((despues - antes) / 1024) + " KB");
+        // La prueba que manda: la primera vez de verdad, fria contra precalentada, en procesos nuevos y alternados (mediana de 5)
+        Console.WriteLine("        primera vez de cada pieza en un proceso nuevo (mediana de 5, alternando; Linux/Mono, sintetico; ms)");
+        foreach (string pz in new string[] { "estado", "ficha", "asistente", "avisos" })
+        {
+            List<double> fr = new List<double>(), ca = new List<double>();
+            for (int r = 0; r < 5; r++)
+            {
+                if (r % 2 == 0) { fr.Add(CorreHijo(rocola, pz, "frio")); ca.Add(CorreHijo(rocola, pz, "caliente")); }
+                else { ca.Add(CorreHijo(rocola, pz, "caliente")); fr.Add(CorreHijo(rocola, pz, "frio")); }
+            }
+            double mf = Mediana(fr), mc = Mediana(ca);
+            Console.WriteLine("        " + pz.PadRight(10) + " fria " + mf.ToString("0.0") + "   precalentada " + mc.ToString("0.0") + "   ahorro " + (mf - mc).ToString("0.0"));
+            Check(mf > 0 && mc > 0 && mc < mf * 0.8, "la primera vez de '" + pz + "' cuesta menos precalentada (" + mc.ToString("0.0") + " ms contra " + mf.ToString("0.0") + " ms)");
+        }
+        // El buscador y la lista por el camino de la tarjeta (por control: lo horneado en ese control; mediana de 7)
+        portadaPrueba = new Bitmap(500, 500, PixelFormat.Format32bppPArgb);
+        using (Graphics pg = Graphics.FromImage(portadaPrueba)) pg.Clear(Color.FromArgb(255, 30, 40, 90));
+        Type TSO = Nes("SearchOverlay"), TSL = Nes("SongListView");
+        MethodInfo rcB = TSO.GetMethod("RenderContent", new Type[] { typeof(Graphics), typeof(Rectangle), typeof(bool) }), rcL = TSL.GetMethod("RenderContent", new Type[] { typeof(Graphics) });
+        MethodInfo olvida = TSL.GetMethod("OlvidaPagina", BindingFlags.Instance | BindingFlags.Public);
+        FieldInfo fpg = TSL.GetField("pintandoGpu", TODO);
+        double[] frioB = new double[7], tibioB = new double[7], frioL = new double[7], tibioL = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            Control a = MontaBuscador(1024, 768), b = MontaBuscador(1024, 768);
+            using (Bitmap bm = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb)) using (Graphics g = Graphics.FromImage(bm))
+            { Stopwatch sw = Stopwatch.StartNew(); rcB.Invoke(a, new object[] { g, new Rectangle(0, 0, 1024, 768), true }); frioB[i] = sw.Elapsed.TotalMilliseconds; }
+            using (Bitmap sec = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb)) using (Graphics sg = Graphics.FromImage(sec)) rcB.Invoke(b, new object[] { sg, new Rectangle(0, 0, 1024, 768), true });
+            using (Bitmap bm = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb)) using (Graphics g = Graphics.FromImage(bm))
+            { Stopwatch sw = Stopwatch.StartNew(); rcB.Invoke(b, new object[] { g, new Rectangle(0, 0, 1024, 768), true }); tibioB[i] = sw.Elapsed.TotalMilliseconds; }
+            Control c = MontaLista(980, 532), d = MontaLista(980, 532);
+            fpg.SetValue(c, true); fpg.SetValue(d, true);
+            using (Bitmap bm = new Bitmap(980, 532, PixelFormat.Format32bppPArgb)) using (Graphics g = Graphics.FromImage(bm))
+            { Stopwatch sw = Stopwatch.StartNew(); rcL.Invoke(c, new object[] { g }); frioL[i] = sw.Elapsed.TotalMilliseconds; }
+            using (Bitmap sec = new Bitmap(980, 532, PixelFormat.Format32bppPArgb)) using (Graphics sg = Graphics.FromImage(sec)) rcL.Invoke(d, new object[] { sg });
+            if (olvida != null) olvida.Invoke(d, null);   // abrir un disco tira la pagina horneada
+            using (Bitmap bm = new Bitmap(980, 532, PixelFormat.Format32bppPArgb)) using (Graphics g = Graphics.FromImage(bm))
+            { Stopwatch sw = Stopwatch.StartNew(); rcL.Invoke(d, new object[] { g }); tibioL[i] = sw.Elapsed.TotalMilliseconds; }
+        }
+        Console.WriteLine("        buscador por la tarjeta: fria " + MedianaA(frioB).ToString("0.00") + " ms, precalentada " + MedianaA(tibioB).ToString("0.00") + " ms (mediana de 7, un proceso ya con el codigo compilado)");
+        Console.WriteLine("        lista del disco con la marca de la tarjeta, al abrir un disco: fria " + MedianaA(frioL).ToString("0.00") + " ms, precalentada " + MedianaA(tibioL).ToString("0.00") + " ms");
+        Check(MedianaA(tibioB) < MedianaA(frioB), "el buscador por el camino de la tarjeta cuesta menos la primera vez ya precalentado");
+        Check(MedianaA(tibioL) < MedianaA(frioL), "la lista con la marca de la tarjeta cuesta menos al abrir un disco ya precalentada");
+        // y precalentar no cambia ni un pixel
+        MethodInfo sacaB = rcB;
+        Bitmap f1 = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb), f2 = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb);
+        Control u = MontaBuscador(1024, 768), v2 = MontaBuscador(1024, 768);
+        using (Graphics g = Graphics.FromImage(f1)) sacaB.Invoke(u, new object[] { g, new Rectangle(0, 0, 1024, 768), true });
+        using (Bitmap sec = new Bitmap(1024, 768, PixelFormat.Format32bppPArgb)) using (Graphics sg = Graphics.FromImage(sec)) sacaB.Invoke(v2, new object[] { sg, new Rectangle(0, 0, 1024, 768), true });
+        using (Graphics g = Graphics.FromImage(f2)) sacaB.Invoke(v2, new object[] { g, new Rectangle(0, 0, 1024, 768), true });
+        Check(IgualesPx(f1, f2), "el buscador sale pixel por pixel igual recien abierto que precalentado");
+        f1.Dispose(); f2.Dispose();
+        Bitmap l1 = new Bitmap(980, 532, PixelFormat.Format32bppPArgb), l2 = new Bitmap(980, 532, PixelFormat.Format32bppPArgb);
+        Control lu = MontaLista(980, 532), lv = MontaLista(980, 532); fpg.SetValue(lu, true); fpg.SetValue(lv, true);
+        using (Graphics g = Graphics.FromImage(l1)) rcL.Invoke(lu, new object[] { g });
+        using (Bitmap sec = new Bitmap(980, 532, PixelFormat.Format32bppPArgb)) using (Graphics sg = Graphics.FromImage(sec)) rcL.Invoke(lv, new object[] { sg });
+        using (Graphics g = Graphics.FromImage(l2)) rcL.Invoke(lv, new object[] { g });
+        Check(IgualesPx(l1, l2), "la lista sale pixel por pixel igual recien abierta que precalentada");
+        l1.Dispose(); l2.Dispose();
+    }
+    static bool IgualesPx(Bitmap a, Bitmap b)
+    {
+        BitmapData da = a.LockBits(new Rectangle(0, 0, a.Width, a.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        BitmapData db = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            byte[] x = new byte[Math.Abs(da.Stride)], y = new byte[Math.Abs(db.Stride)];
+            for (int r = 0; r < a.Height; r++)
+            {
+                Marshal.Copy(new IntPtr(da.Scan0.ToInt64() + (long)r * da.Stride), x, 0, x.Length);
+                Marshal.Copy(new IntPtr(db.Scan0.ToInt64() + (long)r * db.Stride), y, 0, y.Length);
+                for (int i = 0; i < x.Length; i++) if (x[i] != y[i]) return false;
+            }
+            return true;
+        }
+        finally { a.UnlockBits(da); b.UnlockBits(db); }
+    }
+
     // En Mono/Linux hace falta la tabla de la biblioteca de copia de memoria; se copia el ejecutable a una carpeta propia con su .config.
     static string carpetaCopia;
     static string Cargable(string ruta)
@@ -429,12 +686,14 @@ class TironesCambio
     {
         if (argv.Length < 1) { Console.WriteLine("uso: tironescambio <rocola.exe> [<rocola_anterior.exe>]"); return 2; }
         AsmNuevo = Assembly.LoadFrom(Cargable(argv[0]));
-        if (argv.Length > 1) { Cargable(argv[1]); AsmViejo = Assembly.Load(File.ReadAllBytes(argv[1])); }   // LoadFrom devolveria el ya cargado
+        if (argv.Length > 1 && argv[1] != "--hijo") { Cargable(argv[1]); AsmViejo = Assembly.Load(File.ReadAllBytes(argv[1])); }   // LoadFrom devolveria el ya cargado
         TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
         if (TPanel == null) { Console.WriteLine("  sin tarjeta: nada que medir\n  OK tironescambio (perfil sin GPU)"); return 0; }
         TStar = AsmNuevo.GetType("Rocola.GpuStarfield"); TDev = AsmNuevo.GetType("Rocola.D3D9Device"); TD3D = AsmNuevo.GetType("Rocola.D3D9");
+        if (argv.Length > 3 && argv[1] == "--hijo") return Hijo(argv[2], argv[3]);
         Libro();
         LibroEnElPanel();
+        Precalentado(argv[0]);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

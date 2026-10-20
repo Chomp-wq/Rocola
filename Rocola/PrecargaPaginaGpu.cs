@@ -1,6 +1,8 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 namespace Rocola
 {
     public partial class Form1
@@ -19,6 +21,118 @@ namespace Rocola
             for(int i=0;i<next.Count;i++) RequestCover(next[i],false,false);
             // BAJA prioridad; solo esta precarga confirmada puede saltarse coversOnHold.
         }
+        // ---------------- EL PRECALENTADO DE LA TARJETA (20-10-2026) ----------------
+        // PrecalientaUnPoco (Form1.Portadas.cs) calentaba solo los caminos del procesador: el buscador con forGpu=false (que con
+        // tarjeta ni se pinta), la lista de un disco sin la marca de la tarjeta y la pantalla de reposo por el procesador. Lo que la
+        // tarjeta pinta de verdad la primera vez -el buscador con forGpu=true, la lista dentro del cristal, el panel del estado
+        // extendido, la pastilla y la ficha del disco, los globos de la estrella, los avisos- pagaba su primera vez DENTRO de un
+        // cuadro: compilar el codigo (JIT), crear las familias de letra y los pinceles, y los horneados que se guardan. Aqui se
+        // dibujan una vez, en mapas de bits de usar y tirar y con datos de relleno, y se tiran. No se toca nada de lo que se ve
+        // (ni idlePanelBmp, ni el panel del asistente, ni los avisos en pantalla): solo se adelanta el trabajo. Cada paso va en
+        // PrecalientaUnPoco, con sus mismas guardas (el turno del DSP, el margen de 28 ms del ultimo cuadro, la quietud).
+        internal const int PrecalPrimeroGpu = 3, PrecalUltimoGpu = 6;   // 3 estado extendido, 4 pastilla y ficha, 5 estrella, 6 avisos y moneda
+
+        // El buscador, por el camino de la tarjeta (forGpu = true): es lo que EnsureUiOverlay pinta al abrirlo.
+        private bool PrecalientaBuscadorGpu()
+        {
+            if (searchOverlay == null) return false;
+            return EnSeco(searchOverlay, delegate (Graphics g)
+            { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true); });
+        }
+
+        // La lista de un disco, con la marca de la tarjeta (la fila elegida dentro del cristal): otro horneado, y otro camino de codigo.
+        // La marca se deja como estaba.
+        private bool PrecalientaListaGpu()
+        {
+            if (songList == null) return false;
+            bool antes = songList.pintandoGpu;
+            songList.pintandoGpu = true;
+            try { return EnSeco(songList, delegate (Graphics g) { songList.RenderContent(g); }); }
+            finally { songList.pintandoGpu = antes; }
+        }
+
+        private bool PrecalientaPiezaGpu(int paso)
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w < 8 || h < 8) return false;   // aun sin tamano: se reintenta
+            PrecalientaPiezaGpuEn(paso, w, h, colaDoce, estadoTransparente && !EstadoOpacoActivo, EstadoOpacoActivo, iaBadgeKind);
+            return true;
+        }
+
+        // Sin estado del formulario, para poder probarlo solo. Todo lo que dibuja va a mapas de bits propios que se sueltan aqui mismo.
+        internal static void PrecalientaPiezaGpuEn(int paso, int w, int h, bool doce, bool transparente, bool opaco, int insignia)
+        {
+            FontFamily fam = FamiliaUi();
+            switch (paso)
+            {
+                case 3:   // el panel del estado extendido y su reloj
+                {
+                    int ph = GpuPanel.IdlePanelHeight(h);
+                    if (w < 480 || ph < 140) return;
+                    int n = doce ? 12 : 3;
+                    string[] qt = new string[n], qa = new string[n];
+                    for (int i = 0; i < n; i++) { qt[i] = "Cancion de relleno " + (i + 1); qa[i] = "Artista de relleno"; }
+                    int comienzo, ultimo;
+                    using (Bitmap panel = RenderIdlePanelEn(null, w, ph, "Titulo de relleno", "Artista de relleno", "", qt, qa, new Image[n], n,
+                        Color.FromArgb(120, 160, 255), transparente, insignia, doce, null, opaco, out comienzo))
+                    using (Bitmap debajo = new Bitmap(w, 34, PixelFormat.Format32bppPArgb))
+                    {
+                        CopiaRegionReposo(panel, new Rectangle(0, ph - 34, w, 34), debajo, Point.Empty);
+                        ultimo = UpdateIdleClock(panel, debajo, "0:00 / 0:00");
+                        Rectangle zona;
+                        UpdateIdleClockRegion(panel, debajo, "0:01 / 3:00", ultimo, out zona);
+                    }
+                    break;
+                }
+                case 4:   // la pastilla de "12 canciones" y la ficha rapida del disco
+                {
+                    int lado = Math.Max(64, Math.Min(256, w / 8));
+                    using (Bitmap foco = new Bitmap(AnchoFoco(lado, lado + 24), AltoFoco(lado), PixelFormat.Format32bppPArgb))
+                        PintaFoco(foco, "12 canciones \u00B7 38 min", "12 \u00B7 38 min", fam);
+                    Size tam = TamanoFicha(Math.Max(120, w / 6), Math.Max(100, (h - 200) / 3));
+                    using (Bitmap ficha = new Bitmap(tam.Width, tam.Height, PixelFormat.Format32bppPArgb))
+                        PintaFicha(ficha, null, "Artista de relleno", "Disco de relleno", "12 canciones \u00B7 38 min", "Pop", Color.FromArgb(120, 160, 255), 1,
+                            true, new string[] { "Cancion uno", "Cancion dos", "Cancion tres" }, new string[] { "3:41", "4:02", "2:58" }, new int[] { 5, 3, 1 }, 12, fam);
+                    break;
+                }
+                case 5:   // los globos de la estrella: la pregunta y la despedida
+                {
+                    Size g = GpuPanel.AsistentePanelRect(w, h).Size;
+                    if (g.Width < 8 || g.Height < 8) return;
+                    using (Bitmap panel = PintaPanelAsistente(g.Width, g.Height, 0, 0, 0)) { }
+                    using (Bitmap adios = PintaAdiosAsistente(g.Width, g.Height)) { }
+                    break;
+                }
+                case 6:   // el aviso, la invitacion a meter una moneda, la moneda y su "+4 creditos"
+                {
+                    using (Font tit = new Font(fam, 14f, FontStyle.Bold))
+                    using (Font det = new Font(fam, 11f, FontStyle.Bold))
+                    {
+                        Size a = TamanoAviso(w, "Aviso de relleno", "con su renglon", tit, det);
+                        using (Bitmap aviso = new Bitmap(a.Width, a.Height, PixelFormat.Format32bppPArgb))
+                            PintaAviso(aviso, TipoAviso.Hecho, "Aviso de relleno", "con su renglon", tit, det);
+                    }
+                    using (Font tit = new Font(fam, 17f, FontStyle.Bold))
+                    using (Font txt = new Font(fam, 12.5f, FontStyle.Bold))
+                    using (Font pie = new Font(fam, 10.5f, FontStyle.Bold))
+                    {
+                        Size t = TamanoInvita(w);
+                        PointF ranura; float radio;
+                        using (Bitmap invita = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb))
+                            PintaInvita(invita, "Cancion de relleno", false, 4, tit, txt, pie, out ranura, out radio);
+                    }
+                    using (Bitmap moneda = GpuPanel.BakeMoneda(96)) { }
+                    using (Font mas = new Font(fam, 14f, FontStyle.Bold, GraphicsUnit.Pixel))
+                    {
+                        Size m = TamanoMas("+4 cr\u00E9ditos", mas);
+                        using (Bitmap bm = new Bitmap(m.Width, m.Height, PixelFormat.Format32bppPArgb))
+                            PintaMas(bm, "+4 cr\u00E9ditos", mas);
+                    }
+                    break;
+                }
+            }
+        }
+
         private List<Album> NextGpuPage(List<Album> list, int current)
         {
             List<Album> result=new List<Album>(PageSize);

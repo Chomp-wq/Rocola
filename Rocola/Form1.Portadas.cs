@@ -1130,10 +1130,17 @@ namespace Rocola
                 switch (precalPaso)
                 {
                     case 0:
+#if ROCOLA_GPU
+                        // Con tarjeta el buscador se pinta con forGpu=true (EnsureUiOverlay): ese es el camino que hay que calentar (PrecargaPaginaGpu.cs).
+                        if (gpuEnabled) { hecho = PrecalientaBuscadorGpu(); break; }
+#endif
                         hecho = EnSeco(searchOverlay, delegate (Graphics g)
                         { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), false); });
                         break;
                     case 1:
+#if ROCOLA_GPU
+                        if (gpuEnabled) { hecho = PrecalientaListaGpu(); break; }   // con la marca de la tarjeta (la fila elegida dentro del cristal)
+#endif
                         hecho = EnSeco(songList, delegate (Graphics g) { songList.RenderContent(g); });
                         break;
                     case 2:
@@ -1145,6 +1152,11 @@ namespace Rocola
                                 InvokePaint(attractView, pe);
                         });
                         break;
+#if ROCOLA_GPU
+                    case 3: case 4: case 5: case 6:   // lo que solo pinta la tarjeta: estado extendido, pastilla y ficha, globos de la estrella, avisos (PrecargaPaginaGpu.cs)
+                        hecho = !gpuEnabled || PrecalientaPiezaGpu(precalPaso);
+                        break;
+#endif
                     default:
                         precalPaso = -1; Diag("precalentado: las pantallas que no se ven al encender, ya horneadas");
                         return;
