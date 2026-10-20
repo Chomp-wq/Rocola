@@ -1323,6 +1323,64 @@ class TironesCambio
             Check(int.Parse(nuevo.Split(' ')[0]) < int.Parse(viejo.Split(' ')[0]) / 10, "diez veces menos llamadas al controlador que el ejecutable anterior");
         }
     }
+
+    // ======================= A. LA VISTA PREVIA 32x32 NO SE REHACE SI YA ESTA EN EL ALMACEN =======================
+    // Modo --calienta: WarmGpuPreview sobre una portada cuya vista previa ya esta guardada; imprime cuanto tarda, y la huella del archivo del almacen.
+    static int CalientaVista()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "rocola_calienta_" + Process.GetCurrentProcess().Id);
+        Directory.CreateDirectory(dir);
+        Environment.SetEnvironmentVariable("ROCOLA_DATOS", dir);
+        try
+        {
+            TF = AsmNuevo.GetType("Rocola.Form1");
+            object f = Codigo.FormSinEncender(TF);
+            Pon(f, "gpuEnabled", true); Pon(f, "caratulasLod", true);
+            Type TA = Nes("Album");
+            string cubierta = Path.Combine(dir, "portada.png");
+            using (Bitmap b0 = Pa(300, 300, 0, 9)) b0.Save(cubierta, ImageFormat.Png);
+            object alb = Activator.CreateInstance(TA, true); Pon(alb, "CoverPath", cubierta); Pon(alb, "Folder", dir); Pon(alb, "Name", "x");
+            string identidad = (string)LlamaE(TF, "ThumbCachePath", cubierta);
+            MethodInfo calienta = Metodo(TF, "WarmGpuPreview");
+            using (Bitmap im1 = Pa(256, 256, 0, 1), im2 = Pa(256, 256, 0, 2))
+            {
+                calienta.Invoke(f, new object[] { alb, im1, identidad });
+                string almacen = Path.Combine(Path.GetDirectoryName(identidad), "previews32-v1.bin");
+                byte[] antes = File.ReadAllBytes(almacen);
+                double[] r = new double[9];
+                for (int k = 0; k < r.Length; k++)
+                {
+                    Stopwatch sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 30; i++) calienta.Invoke(f, new object[] { alb, im2, identidad });   // OTRA imagen: si se rehiciera, se descartaria igual
+                    r[k] = sw.Elapsed.TotalMilliseconds / 30;
+                }
+                byte[] despues = File.ReadAllBytes(almacen);
+                Console.WriteLine("CALIENTA " + MedianaA(r).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture) + " " + Md5(antes) + " " + Md5(despues) + " " + antes.Length);
+            }
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+        return 0;
+    }
+    static void VistaPrevia(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# A. la vista previa 32x32 de una portada que ya la tiene");
+        string[] n = Lineas(CorreModo(rutaNuevo, "--calienta"), "CALIENTA ").Trim().Substring(9).Split(' ');
+        Check(n.Length == 4 && n[1] == n[2], "el almacen queda byte a byte igual tras volver a calentar una portada que ya tiene su vista previa (" + n[3] + " bytes)");
+        if (rutaViejo != null)
+        {
+            string[] v = Lineas(CorreModo(rutaViejo, "--calienta"), "CALIENTA ").Trim().Substring(9).Split(' ');
+            Check(v[1] == v[2] && v[3] == n[3], "y el ejecutable anterior (que reducia la imagen y tiraba el resultado) tampoco lo cambiaba: mismo tamano y mismo archivo antes y despues");
+            List<double> a = new List<double>(), b = new List<double>();
+            for (int r = 0; r < 5; r++)
+                foreach (bool nuevoPrimero in new bool[] { r % 2 == 0, r % 2 != 0 })
+                {
+                    string[] m = Lineas(CorreModo(nuevoPrimero ? rutaNuevo : rutaViejo, "--calienta"), "CALIENTA ").Trim().Substring(9).Split(' ');
+                    (nuevoPrimero ? a : b).Add(double.Parse(m[0], System.Globalization.CultureInfo.InvariantCulture));
+                }
+            Console.WriteLine("        calentar una portada que ya tiene vista previa (mediana de 5 procesos alternados; Linux/Mono con libgdiplus, sintetico): antes " + Mediana(b).ToString("0.000") + " ms, ahora " + Mediana(a).ToString("0.000") + " ms");
+            Check(Mediana(a) < Mediana(b) / 2, "ahora cuesta menos de la mitad");
+        }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1415,6 +1473,7 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--atr") return AtrTiempo();
         if (argv.Length > 1 && argv[1] == "--fn") return FnTiempo();
         if (argv.Length > 1 && argv[1] == "--fallos") return Fallos();
+        if (argv.Length > 1 && argv[1] == "--calienta") return CalientaVista();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
@@ -1426,6 +1485,7 @@ class TironesCambio
         Delegados();
         PruebaPreCarga();
         SinMemoria(argv[0], argv.Length > 1 ? argv[1] : null);
+        VistaPrevia(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

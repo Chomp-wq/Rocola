@@ -511,6 +511,9 @@ namespace Rocola
         {
             if (!gpuEnabled || !caratulasLod || im == null) return;
             if (identity != ThumbCachePath(a.CoverPath)) return; // fuente reemplazada durante la lectura
+            // Save no sobrescribe un registro que ya existe (IndexedSave sale si ReadPixels lo encuentra): si el almacen ya tiene esta identidad,
+            // reducir la imagen a 32x32 y pasarla a bytes solo servia para tirar el resultado (20-10-2026). La identidad lleva el tamano y la fecha del archivo.
+            if (PreviewStore().Contains(identity)) return;
             using (Bitmap small = GpuPreviewStore.Small(im))
                 PreviewStore().Save(identity, GpuPreviewStore.ToBytes(small));
         }
