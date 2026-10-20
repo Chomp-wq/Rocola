@@ -47,10 +47,7 @@ namespace Rocola
                 Bitmap result = new Bitmap(layout.Width, layout.Height, PixelFormat.Format32bppPArgb);
                 try {
                     using (Graphics g = Graphics.FromImage(result)) g.Clear(Color.Transparent);
-                    PackEdge(result, layout.TopAt, layout.Top, left, right, side);
-                    PackEdge(result, layout.BottomAt, layout.Bottom, left, right, side);
-                    PackEdge(result, layout.LeftAt, layout.Left, left, right, side);
-                    PackEdge(result, layout.RightAt, layout.Right, left, right, side);
+                    PegaBordes(result, layout, cw, side, left, right);
                     if (queued)
                         using (Bitmap stamp = new Bitmap(mark.Width, mark.Height, PixelFormat.Format32bppPArgb)) {
                             using (Graphics g = Graphics.FromImage(stamp)) {
@@ -70,6 +67,50 @@ namespace Rocola
                     return result;
                 }
                 catch { result.Dispose(); throw; }
+            }
+            // LOS CUATRO BORDES SON IGUALES EN TODAS LAS CELDAS (20-10-2026). Su dibujo depende solo de (cw, side): cuatro tiras con su Graphics
+            // y su lapiz por celda, para sacar cada vez los mismos pixeles. Se dibujan UNA vez, con el mismo PackEdge, en un mapa de bits
+            // chico transparente y cada celda copia sus filas (el resultado antes de los bordes es todo transparente y SourceCopy copia
+            // los pixeles tal cual: los bytes son los mismos, comprobado contra el camino de antes en tironescambio). Una sola entrada:
+            // al cambiar la resolucion o el lado se rehace.
+            private Bitmap bordesHechos; private byte[] bordesFila; private int bordesCw = -1, bordesSide = -1;
+            private readonly object bordesCerrojo = new object();
+            internal int BordesDibujados, BordesCopiados;
+            private void PegaBordes(Bitmap result, GpuCellLayout layout, int cw, int side, int left, int right)
+            {
+                int ancho = layout.TopAt.Width + 2, alto = layout.Right.Bottom;   // las tiras empiezan en x = 1 y acaban en la fila de Right
+                if (ancho < 1 || alto < 1 || ancho > result.Width || alto > result.Height) {   // geometria rara: como siempre
+                    PackEdge(result, layout.TopAt, layout.Top, left, right, side); PackEdge(result, layout.BottomAt, layout.Bottom, left, right, side);
+                    PackEdge(result, layout.LeftAt, layout.Left, left, right, side); PackEdge(result, layout.RightAt, layout.Right, left, right, side);
+                    return;
+                }
+                lock (bordesCerrojo) {
+                    if (bordesHechos == null || bordesCw != cw || bordesSide != side || bordesHechos.Width != ancho || bordesHechos.Height != alto) {
+                        Bitmap nuevo = new Bitmap(ancho, alto, PixelFormat.Format32bppPArgb);
+                        try {
+                            using (Graphics g = Graphics.FromImage(nuevo)) g.Clear(Color.Transparent);
+                            PackEdge(nuevo, layout.TopAt, layout.Top, left, right, side); PackEdge(nuevo, layout.BottomAt, layout.Bottom, left, right, side);
+                            PackEdge(nuevo, layout.LeftAt, layout.Left, left, right, side); PackEdge(nuevo, layout.RightAt, layout.Right, left, right, side);
+                        }
+                        catch { nuevo.Dispose(); throw; }
+                        if (bordesHechos != null) bordesHechos.Dispose();
+                        bordesHechos = nuevo; bordesCw = cw; bordesSide = side; bordesFila = new byte[ancho * 4]; BordesDibujados++;
+                    }
+                    else BordesCopiados++;
+                    Rectangle area = new Rectangle(0, 0, ancho, alto);
+                    BitmapData src = bordesHechos.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+                    try {
+                        BitmapData dst = result.LockBits(area, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                        try {
+                            for (int y = 0; y < alto; y++) {
+                                System.Runtime.InteropServices.Marshal.Copy(new IntPtr(src.Scan0.ToInt64() + (long)y * src.Stride), bordesFila, 0, bordesFila.Length);
+                                System.Runtime.InteropServices.Marshal.Copy(bordesFila, 0, new IntPtr(dst.Scan0.ToInt64() + (long)y * dst.Stride), bordesFila.Length);
+                            }
+                        }
+                        finally { result.UnlockBits(dst); }
+                    }
+                    finally { bordesHechos.UnlockBits(src); }
+                }
             }
             private static void PackEdge(Bitmap target, Rectangle at, Rectangle source, int left, int right, int height)
             {

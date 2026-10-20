@@ -25,7 +25,7 @@ class TironesCambio
     static int fallos, oks;
     static void Check(bool ok, string q) { if (ok) { oks++; Console.WriteLine("  OK    " + q); } else { fallos++; Console.WriteLine("  FALLO " + q); } }
     static Type TF, TPanel, TStar, TDev, TD3D, TLibro;
-    static Assembly AsmNuevo, AsmViejo;
+    static Assembly AsmNuevo;
     static readonly List<object> vivos = new List<object>();
 
     // ======================= REFLEXION =======================
@@ -660,6 +660,184 @@ class TironesCambio
         finally { a.UnlockBits(da); b.UnlockBits(db); }
     }
 
+
+    // ======================= 2. LOS BORDES DE LA CELDA SEPARADA, DIBUJADOS UNA VEZ =======================
+    static bool filaDeCola;
+    static bool Cola<T>(T a) { return filaDeCola; }
+    static string Plano(object lay)
+    {
+        StringBuilder sb = new StringBuilder();
+        foreach (FieldInfo f in lay.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)) sb.Append(f.Name).Append('=').Append(f.GetValue(lay)).Append(';');
+        return sb.ToString();
+    }
+    static byte[] Bytes(Bitmap b)
+    {
+        BitmapData d = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            byte[] r = new byte[b.Width * 4 * b.Height], fila = new byte[b.Width * 4];
+            for (int y = 0; y < b.Height; y++) { Marshal.Copy(new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride), fila, 0, fila.Length); Buffer.BlockCopy(fila, 0, r, y * fila.Length, fila.Length); }
+            return r;
+        }
+        finally { b.UnlockBits(d); }
+    }
+    static bool Iguales(byte[] a, byte[] b) { if (a.Length != b.Length) return false; for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false; return true; }
+    // Una celda separada con el ensamblado dado. 'vista' se reutiliza para tener la cache caliente, o se pasa null para una vista nueva (fria).
+    static Bitmap Hornea(Assembly asm, ref object vista, int cw, int ch, bool cola, bool lod, out string plano, out int side)
+    {
+        Type V = asm.GetType("Rocola.Form1").GetNestedType("AlbumView", BindingFlags.NonPublic | BindingFlags.Public), A = asm.GetType("Rocola.Form1").GetNestedType("Album", BindingFlags.NonPublic | BindingFlags.Public);
+        if (vista == null)
+        {
+            vista = Activator.CreateInstance(V, true);
+            Pon(vista, "EnCola", Delegate.CreateDelegate(Campo(V, "EnCola").FieldType, typeof(TironesCambio).GetMethod("Cola", TODO).MakeGenericMethod(A)));
+        }
+        Pon(vista, "PortadasLod", lod);
+        filaDeCola = cola;
+        object a = Activator.CreateInstance(A, true);
+        Pon(a, "Folder", "test"); Pon(a, "Name", "Nombre largo de un disco"); Pon(a, "Artist", "Artista");
+        object[] m = { cw, ch, 0, 0, 0 };
+        V.GetMethod("CellMetrics", TODO).Invoke(null, m);
+        side = (int)m[2]; int lh = (int)m[3], gap = (int)m[4];
+        object[] args = { a, cw, side, lh, gap, null };
+        Bitmap r;
+        try { r = (Bitmap)V.GetMethod("BakeSeparatedCell", TODO).Invoke(vista, args); } catch (TargetInvocationException e) { throw e.InnerException; }
+        plano = Plano(args[5]);
+        return r;
+    }
+    static void Bordes(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# 2. los bordes de la celda separada, dibujados una vez por (cw, side)");
+        Type V = Nes("AlbumView");
+        Check(Metodo(V, "PegaBordes") != null, "existe PegaBordes");
+        Size[] pantallas = { new Size(1024, 768), new Size(1280, 1024), new Size(1920, 1080), new Size(2560, 1440), new Size(3440, 1440), new Size(640, 480) };
+        int casos = 0, diferentes = 0, copiados = 0;
+        foreach (Size sz in pantallas)
+            foreach (bool cola in new bool[] { false, true })
+                foreach (bool lod in new bool[] { false, true })
+                {
+                    int cw = sz.Width / 6, ch = (sz.Height - 160) / 3;
+                    object caliente = null; string pl0, pl1, pl2; int sd;
+                    using (Bitmap fria = Hornea(AsmNuevo, ref caliente, cw, ch, cola, lod, out pl0, out sd))        // la primera: dibuja los bordes
+                    using (Bitmap tibia = Hornea(AsmNuevo, ref caliente, cw, ch, cola, lod, out pl1, out sd))      // la segunda: los copia
+                    {
+                        object nueva = null;
+                        using (Bitmap otra = Hornea(AsmNuevo, ref nueva, cw, ch, cola, lod, out pl2, out sd))
+                        {
+                            casos++;
+                            bool ok = Iguales(Bytes(fria), Bytes(tibia)) && Iguales(Bytes(fria), Bytes(otra)) && pl0 == pl1 && pl0 == pl2;
+                            if (!ok) diferentes++;
+                            copiados += (int)Toma(caliente, "BordesCopiados");
+                        }
+                    }
+                }
+        Check(diferentes == 0, casos + " celdas (6 pantallas x en cola o no x LOD): fria, tibia y de una vista nueva salen byte a byte iguales");
+        // contra la rama antes del cambio: la huella de bytes y el plano de las 24 celdas, sacadas con el ejecutable de c29b73e (celdas_separadas_2026-10-20.txt;
+        // son los bytes de ESTE equipo -Linux/Mono con libgdiplus-, no los de GDI+ de Windows). Y, si se da un ejecutable anterior como segundo argumento,
+        // contra el: cada uno en su proceso, porque dos ensamblados "rocola" en uno solo se confunden.
+        string dn = CorreVolcado(rutaNuevo);
+        string basef = Path.Combine(Directory.GetCurrentDirectory(), "celdas_separadas_2026-10-20.txt");
+        if (Type.GetType("Mono.Runtime") != null && File.Exists(basef))
+            Check(dn.Length > 0 && dn.Replace("\r", "") == File.ReadAllText(basef).Replace("\r", ""), "las " + casos + " celdas, dos veces cada una (bordes dibujados y copiados), son byte a byte las de antes del cambio (celdas_separadas_2026-10-20.txt)");
+        if (rutaViejo != null)
+        {
+            string dv = CorreVolcado(rutaViejo);
+            Check(dn.Length > 0 && dn == dv, "y byte a byte las del ejecutable anterior dado (cada uno en su proceso)");
+            List<double> tn = new List<double>(), tv = new List<double>();
+            for (int r = 0; r < 5; r++)
+            {
+                if (r % 2 == 0) { tv.Add(CorreTiempo(rutaViejo)); tn.Add(CorreTiempo(rutaNuevo)); } else { tn.Add(CorreTiempo(rutaNuevo)); tv.Add(CorreTiempo(rutaViejo)); }
+            }
+            Console.WriteLine("        una celda separada a 1024x768 (misma vista, mediana de 5 procesos alternados; Linux/Mono con libgdiplus, sintetico): antes " + Mediana(tv).ToString("0.000") + " ms, ahora " + Mediana(tn).ToString("0.000") + " ms");
+            Check(Mediana(tn) < Mediana(tv), "hornear una celda separada cuesta menos que con el ejecutable anterior");
+        }
+        Check(copiados > 0, "la segunda celda de cada vista copia los bordes en vez de dibujarlos (" + copiados + " copias)");
+        // cambiar de resolucion rehace los bordes
+        object v2 = null; string p; int s1, s2;
+        using (Bitmap a = Hornea(AsmNuevo, ref v2, 170, 202, false, false, out p, out s1)) { }
+        int dib0 = (int)Toma(v2, "BordesDibujados");
+        using (Bitmap a = Hornea(AsmNuevo, ref v2, 213, 202, false, false, out p, out s2)) { }
+        Check((int)Toma(v2, "BordesDibujados") == dib0 + 1, "al cambiar el ancho de la celda los bordes se rehacen");
+        using (Bitmap a = Hornea(AsmNuevo, ref v2, 213, 202, false, false, out p, out s2)) { }
+        Check((int)Toma(v2, "BordesDibujados") == dib0 + 1, "y con la misma medida no");
+        // el tiempo: fria (una vista nueva por celda = dibuja los cuatro bordes cada vez, como antes) contra tibia (los copia)
+        int N = 36; double[] cfria = new double[7], ctib = new double[7], cvieja = new double[7]; cvieja[0] = 0;
+        string pp; int ss; object cal = null;
+        Hornea(AsmNuevo, ref cal, 170, 202, false, false, out pp, out ss).Dispose();
+        for (int ronda = 0; ronda < 7; ronda++)
+        {
+            for (int orden = 0; orden < 3; orden++)
+            {
+                int que = (orden + ronda) % 3;
+                if (que == 2) continue;
+                Stopwatch sw = Stopwatch.StartNew();
+                for (int i = 0; i < N; i++)
+                {
+                    if (que == 0) { object nv = null; Hornea(AsmNuevo, ref nv, 170, 202, false, false, out pp, out ss).Dispose(); }
+                    else if (que == 1) Hornea(AsmNuevo, ref cal, 170, 202, false, false, out pp, out ss).Dispose();
+                    else { }
+                }
+                double ms = sw.Elapsed.TotalMilliseconds / N;
+                if (que == 0) cfria[ronda] = ms; else if (que == 1) ctib[ronda] = ms; else cvieja[ronda] = ms;
+            }
+        }
+        Console.WriteLine("        hornear una celda separada a 1024x768 (mediana de 7 rondas alternadas de " + N + "; Linux/Mono con libgdiplus, sintetico): bordes dibujados cada vez (vista nueva) " + MedianaA(cfria).ToString("0.000") + " ms, bordes copiados " + MedianaA(ctib).ToString("0.000") + " ms"
+);
+        Check(MedianaA(ctib) < MedianaA(cfria), "copiar los bordes cuesta menos que dibujarlos en cada celda");
+    }
+    static string CorreVolcado(string rocola)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
+        psi.Arguments = "\"" + Environment.GetCommandLineArgs()[0] + "\" \"" + rocola + "\" --volcado";
+        psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+        using (Process p = Process.Start(psi))
+        {
+            string o = p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit();
+            StringBuilder sb = new StringBuilder();
+            foreach (string l in o.Split('\n')) if (l.StartsWith("VOLCADO ")) sb.AppendLine(l);
+            return sb.ToString();
+        }
+    }
+    // Modo --tiempo: milisegundos por celda separada (misma vista, 36 celdas por ronda, mediana de 9 rondas) de ESTE ejecutable.
+    static int Tiempo()
+    {
+        object vista = null; string pl; int sd; double[] r = new double[9];
+        Hornea(AsmNuevo, ref vista, 170, 202, false, false, out pl, out sd).Dispose();
+        for (int k = 0; k < r.Length; k++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (int i = 0; i < 36; i++) Hornea(AsmNuevo, ref vista, 170, 202, false, false, out pl, out sd).Dispose();
+            r[k] = sw.Elapsed.TotalMilliseconds / 36;
+        }
+        Console.WriteLine("MS " + MedianaA(r).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture));
+        return 0;
+    }
+    static double CorreTiempo(string rocola)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
+        psi.Arguments = "\"" + Environment.GetCommandLineArgs()[0] + "\" \"" + rocola + "\" --tiempo";
+        psi.UseShellExecute = false; psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+        using (Process p = Process.Start(psi))
+        {
+            string o = p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit();
+            foreach (string l in o.Split('\n')) if (l.StartsWith("MS ")) return double.Parse(l.Substring(3), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return -1;
+    }
+    // Modo --volcado: una huella de cada celda separada que hornea ESTE ejecutable, para compararla con la de otro.
+    static int Volcado()
+    {
+        System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create();
+        foreach (Size sz in new Size[] { new Size(1024, 768), new Size(1280, 1024), new Size(1920, 1080), new Size(2560, 1440), new Size(3440, 1440), new Size(640, 480) })
+            foreach (bool cola in new bool[] { false, true })
+                foreach (bool lod in new bool[] { false, true })
+                {
+                    object vista = null; string plano; int sd;
+                    using (Bitmap b = Hornea(AsmNuevo, ref vista, sz.Width / 6, (sz.Height - 160) / 3, cola, lod, out plano, out sd))
+                    using (Bitmap b2 = Hornea(AsmNuevo, ref vista, sz.Width / 6, (sz.Height - 160) / 3, cola, lod, out plano, out sd))
+                        Console.WriteLine("VOLCADO " + sz.Width + "x" + sz.Height + " cola=" + cola + " lod=" + lod + " " + BitConverter.ToString(md5.ComputeHash(Bytes(b))) + " " + BitConverter.ToString(md5.ComputeHash(Bytes(b2))) + " " + plano);
+                }
+        return 0;
+    }
     // En Mono/Linux hace falta la tabla de la biblioteca de copia de memoria; se copia el ejecutable a una carpeta propia con su .config.
     static string carpetaCopia;
     static string Cargable(string ruta)
@@ -686,14 +864,16 @@ class TironesCambio
     {
         if (argv.Length < 1) { Console.WriteLine("uso: tironescambio <rocola.exe> [<rocola_anterior.exe>]"); return 2; }
         AsmNuevo = Assembly.LoadFrom(Cargable(argv[0]));
-        if (argv.Length > 1 && argv[1] != "--hijo") { Cargable(argv[1]); AsmViejo = Assembly.Load(File.ReadAllBytes(argv[1])); }   // LoadFrom devolveria el ya cargado
-        TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
+                TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
         if (TPanel == null) { Console.WriteLine("  sin tarjeta: nada que medir\n  OK tironescambio (perfil sin GPU)"); return 0; }
         TStar = AsmNuevo.GetType("Rocola.GpuStarfield"); TDev = AsmNuevo.GetType("Rocola.D3D9Device"); TD3D = AsmNuevo.GetType("Rocola.D3D9");
         if (argv.Length > 3 && argv[1] == "--hijo") return Hijo(argv[2], argv[3]);
+        if (argv.Length > 1 && argv[1] == "--volcado") return Volcado();
+        if (argv.Length > 1 && argv[1] == "--tiempo") return Tiempo();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
+        Bordes(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }
