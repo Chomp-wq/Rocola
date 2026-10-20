@@ -3210,6 +3210,7 @@ namespace Rocola
                 return tex;   // actualizada in situ (misma textura)
             if (tex != IntPtr.Zero) D3D9.Release(tex);
             tex = stars.CreateOverlay(bmp, out u, out v);
+            if (tex == IntPtr.Zero) sondeoMemoriaPedido = true;   // no se pudo crear: quiza falta memoria, que se vuelva a preguntar cuanta hay
             bw = bmp.Width; bh = bmp.Height;
             return tex;
         }

@@ -168,9 +168,18 @@ namespace Rocola
         private int cellBudgetWidth, cellBudgetHeight;
         private string memoryPageKey;
         private double memoryPageChanged;
+        // GetAvailableTextureMem es una llamada SINCRONA al controlador (en Windows XP puede tardar milisegundos, dentro de un cuadro). El
+        // presupuesto de portadas que sale de ella solo cambia si cambia la memoria de la tarjeta, o sea casi nunca: se pregunta al
+        // empezar, cada minuto, al cambiar la resolucion y cuando una textura no se pudo crear (20-10-2026; antes cada 10 s). No se
+        // pregunta con el estado extendido abierto o entrando/saliendo: ahi no hay rejilla que presupuestar.
+        internal const double SondeoMemoriaMs = 60000, SondeoForzadoMs = 2000;
         internal static bool CanProbeCoverMemory(double now, double changed, double checkedAt,
             bool initial, bool busy)
-        { return !busy && now - changed >= 600 && (initial || now - checkedAt >= 10000); }
+        { return !busy && now - changed >= 600 && (initial || now - checkedAt >= SondeoMemoriaMs); }
+        // Un sondeo pedido por un suceso (resolucion, textura que no se pudo crear): ya, pero no mas de uno cada SondeoForzadoMs.
+        internal static bool SondeoPedido(bool pedido, double now, double checkedAt)
+        { return pedido && now - checkedAt >= SondeoForzadoMs; }
+        private bool sondeoMemoriaPedido;
         private readonly HashSet<string> protectedAhead = new HashSet<string>();
         internal static long LiveCellBudget(uint available, int cacheMb, int pointerBytes, ulong freeRam)
         {
@@ -178,10 +187,12 @@ namespace Rocola
             if (freeRam > 0) target = Math.Min(target, (long)Math.Min((ulong)long.MaxValue, freeRam / 16));
             return Math.Max(16L * 1024 * 1024, target);
         }
-        private void RefreshCellBudget()
+        private void RefreshCellBudget() { RefreshCellBudget(AhoraMs()); }
+        private void RefreshCellBudget(double now)
         {
-            double now = AhoraMs();
+            if (IdleExpandTarget || idleBlend > 0f) return;   // con el estado extendido (o entrando o saliendo) no hay rejilla que presupuestar
             string key = gridN > 0 ? gridBuf[0].Key : null;
+            if (cellBudgetWidth != Width || cellBudgetHeight != Height) { if (cellBudgetWidth != 0 || cellBudgetHeight != 0) sondeoMemoriaPedido = true; }
             if (key != memoryPageKey || cellBudgetWidth != Width || cellBudgetHeight != Height) {
                 memoryPageKey = key; memoryPageChanged = now;
                 cellBudgetWidth = Width; cellBudgetHeight = Height;
@@ -189,8 +200,9 @@ namespace Rocola
             // GetAvailableTextureMem es sincrono: no llamar al driver en pleno hojeo.
             // El presupuesto anterior sigue protegiendo memoria durante la navegacion.
             if (stars == null || !stars.Ok || !CanProbeCoverMemory(now, memoryPageChanged,
-                cellBudgetChecked, cellBudgetChecked < 0, UiUrgent || (CoverControl != null && CoverControl.PendingUpload))) return;
-            cellBudgetChecked = now; cellBudgetWidth = Width; cellBudgetHeight = Height;
+                cellBudgetChecked, cellBudgetChecked < 0 || SondeoPedido(sondeoMemoriaPedido, now, cellBudgetChecked),
+                UiUrgent || (CoverControl != null && CoverControl.PendingUpload))) return;
+            cellBudgetChecked = now; cellBudgetWidth = Width; cellBudgetHeight = Height; sondeoMemoriaPedido = false;
             uint available = stars.EstimatedTextureMemory;
             // El sondeo ya descuenta nuestras texturas: devolver su coste evita una espiral de poda.
             if (available != 0) available = (uint)Math.Min(uint.MaxValue, (ulong)available + (ulong)CachedCellBytes());

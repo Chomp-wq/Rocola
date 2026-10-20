@@ -19,8 +19,8 @@ class TironesCaratulas
   Check((bool)Call(G,null,"CanProbeCoverMemory",600d,0d,-2000d,true,false),"primer sondeo tras asentamiento");
   Check(!(bool)Call(G,null,"CanProbeCoverMemory",10000d,9900d,0d,false,false),"nueva pagina posterga sondeo vencido");
   Check(!(bool)Call(G,null,"CanProbeCoverMemory",10000d,0d,0d,false,true),"carga pendiente posterga sondeo");
-  Check((bool)Call(G,null,"CanProbeCoverMemory",10000d,0d,0d,false,false),"quieto permite actualizar memoria");
-  Check(!(bool)Call(G,null,"CanProbeCoverMemory",9999d,0d,0d,false,false),"no repite sondeo cada dos segundos");
+  Check((bool)Call(G,null,"CanProbeCoverMemory",60000d,0d,0d,false,false),"quieto permite actualizar memoria cada minuto");
+  Check(!(bool)Call(G,null,"CanProbeCoverMemory",59999d,0d,0d,false,false),"no repite sondeo antes del minuto (ni cada 10 s, ni cada dos segundos)");
  }
  static void Labels(bool baseline)
  {

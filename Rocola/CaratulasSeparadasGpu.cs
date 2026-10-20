@@ -177,6 +177,7 @@ namespace Rocola
             if (budget <= 0 || (CoverControl != null && !CoverControl.CanStart(nativeUploadCost, visible, false))) return IntPtr.Zero;
             long start = Stopwatch.GetTimestamp(); budget--;
             texture.Tex = stars.CreateCoverShared(cell.FullCover, out texture.U, out texture.V);
+            if (texture.Tex == IntPtr.Zero) sondeoMemoriaPedido = true;   // quiza falta memoria: volver a preguntar cuanta hay (PrecargaPaginaGpu.cs)
             texture.Bw = cell.FullCover.Width; texture.Bh = cell.FullCover.Height;
             texture.Opaca = texture.Tex != IntPtr.Zero && InteriorOpaco(cell.FullCover);   // el cielo no se pinta debajo (DibujoLigeroGpu.cs); dentro del coste medido
             long spent = Stopwatch.GetTimestamp() - start; nativeUploadCost = CargaTrabajo.AprendeCoste(nativeUploadCost, spent);

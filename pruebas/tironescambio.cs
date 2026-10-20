@@ -36,6 +36,8 @@ class TironesCambio
     static object Toma(object o, string n) { FieldInfo f = Campo(o.GetType(), n); if (f == null) throw new Exception("falta el campo " + n); return f.GetValue(o); }
     static MethodInfo Metodo(Type t, string n)
     { for (; t != null; t = t.BaseType) { MethodInfo m = t.GetMethod(n, TODO | BindingFlags.DeclaredOnly); if (m != null) return m; } return null; }
+    static MethodInfo Metodo(Type t, string n, params Type[] tipos)
+    { for (; t != null; t = t.BaseType) { MethodInfo m = t.GetMethod(n, TODO | BindingFlags.DeclaredOnly, null, tipos, null); if (m != null) return m; } return null; }
     static object Llama(object o, string n, params object[] a)
     {
         MethodInfo m = Metodo(o.GetType(), n);
@@ -918,6 +920,71 @@ class TironesCambio
             for (int i = 0; i < 3; i++) Console.WriteLine("        " + que[i].PadRight(44) + Mediana(b[i]).ToString("0.000") + " -> " + Mediana(a[i]).ToString("0.000"));
         }
     }
+
+    // ======================= 8. LA MEMORIA DE TEXTURAS SE PREGUNTA MENOS =======================
+    static int SondeosSimulados(Type panel)
+    {
+        // El bucle de RefreshCellBudget con relojes inventados: 180 s a un cuadro cada 100 ms, la pagina quieta.
+        MethodInfo puede = panel.GetMethod("CanProbeCoverMemory", TODO);
+        double comprobado = -2000, cambio = 0; int n = 0;
+        for (double t = 0; t <= 180000; t += 100)
+            if ((bool)puede.Invoke(null, new object[] { t, cambio, comprobado, comprobado < 0, false })) { comprobado = t; n++; }
+        return n;
+    }
+    static int Sondeos()
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
+        Console.WriteLine("SONDEOS " + SondeosSimulados(TPanel));
+        return 0;
+    }
+    static void MemoriaDeTexturas(string rutaViejo)
+    {
+        Console.WriteLine("# 8. GetAvailableTextureMem, menos veces");
+        int nuevo = SondeosSimulados(TPanel);
+        Console.WriteLine("        180 s con la pagina quieta (relojes inventados): " + nuevo + " sondeos");
+        if (rutaViejo != null)
+        {
+            string o = CorreModo(rutaViejo, "--sondeos");
+            int viejo = int.Parse(Lineas(o, "SONDEOS").Trim().Substring(8));
+            Console.WriteLine("        con el ejecutable anterior: " + viejo + " sondeos");
+            Check(nuevo < viejo, "el ejecutable nuevo pregunta menos veces a la tarjeta que el anterior (" + nuevo + " contra " + viejo + " en 180 s)");
+        }
+        Check(nuevo == 3, "en 180 s quieto: al empezar, al minuto y a los dos minutos (3 sondeos)");
+        // Con la tarjeta imitada que cuenta las llamadas (ranura 4 del dispositivo)
+        Control p = Monta(1024, 768);
+        try
+        {
+            MethodInfo refresca = Metodo(TPanel, "RefreshCellBudget", typeof(double));
+            Action<double> paso = delegate (double t) { refresca.Invoke(p, new object[] { t }); };
+            PonCeroCuentas();
+            for (double t = 1000; t <= 181000; t += 100) paso(t);
+            Check(cMem == 3, "el panel con la tarjeta imitada llama a GetAvailableTextureMem 3 veces en 180 s (" + cMem + ")");
+            // al cambiar la resolucion se vuelve a preguntar (despues de asentarse), una vez
+            PonCeroCuentas();
+            p.SetBounds(0, 0, 1280, 1024);
+            for (double t = 181100; t <= 186000; t += 100) paso(t);
+            Check(cMem == 1, "al cambiar la resolucion se pregunta una vez, ya asentada (" + cMem + ")");
+            // una textura que no se pudo crear lo pide, sin pasar de uno cada 2 s
+            PonCeroCuentas();
+            Pon(p, "sondeoMemoriaPedido", true);
+            for (double t = 190000; t <= 200000; t += 100) { Pon(p, "sondeoMemoriaPedido", true); paso(t); }
+            Check(cMem >= 4 && cMem <= 6, "una textura que no se pudo crear pide preguntar, y no mas de uno cada 2 s (" + cMem + " en 10 s de peticiones en cada cuadro)");
+            // el estado extendido: nada
+            PonCeroCuentas();
+            Pon(p, "IdleExpandTarget", true);
+            for (double t = 300000; t <= 480000; t += 100) { Pon(p, "sondeoMemoriaPedido", true); paso(t); }
+            Check(cMem == 0, "con el estado extendido abierto no se pregunta nunca (" + cMem + ")");
+            Pon(p, "IdleExpandTarget", false);
+            // y una textura que de verdad falla al crearse deja la peticion
+            Pon(p, "sondeoMemoriaPedido", false);
+            creaFalla = true; creaFallos = 0;
+            Pon(p, "ShowAlbum", true);
+            for (int i = 0; i < 5; i++) Cuadro(p);
+            creaFalla = false;
+            Check(creaFallos > 0 && (bool)Toma(p, "sondeoMemoriaPedido"), "una textura que el controlador no crea deja pedido el sondeo (" + creaFallos + " intentos fallidos)");
+        }
+        finally { p.Dispose(); texturas.Clear(); creaFalla = false; }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1006,11 +1073,13 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--tiempo") return Tiempo();
         if (argv.Length > 1 && argv[1] == "--volcado5") { TF = AsmNuevo.GetType("Rocola.Form1"); return Volcado5(true); }
         if (argv.Length > 1 && argv[1] == "--tiempo5") return Tiempo5();
+        if (argv.Length > 1 && argv[1] == "--sondeos") return Sondeos();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
         Bordes(argv[0], argv.Length > 1 ? argv[1] : null);
         Alfa(argv[0], argv.Length > 1 ? argv[1] : null);
+        MemoriaDeTexturas(argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }
