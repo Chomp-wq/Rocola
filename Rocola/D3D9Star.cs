@@ -2044,6 +2044,8 @@ namespace Rocola
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
         public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
         public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
+        public Func<bool> GetUiVacia;                     // true: no hay interfaz que subir ni dibujar (la atraccion con el escaparate: sus textos son suyos)
+        private bool uiVacia;                             // la textura principal de la UI se soltó a proposito (ver arriba); nada que dibujar ni que analizar
         public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
         // DESTELLOS del boton pulsado (buscador): halos que se desvanecen. La GPU los dibuja como quads propios (no
         // en la textura de UI), asi el desvanecido NO obliga a re-subir la textura -> tecleo fluido y brillo suave.
@@ -2380,7 +2382,7 @@ namespace Rocola
             }
             if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
             fpsBw = fpsBh = 0; fpsFluidezMostrada = -1; fluidez.Reinicia();
-            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiBotVer = -1; fpsShown = int.MinValue;
+            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiVacia = false; uiBotVer = -1; fpsShown = int.MinValue;
             selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
             uiBmpW = uiBmpH = -1; uiBotW = uiBotH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
             if (stars != null) { stars.Dispose(); stars = null; }
@@ -2584,20 +2586,29 @@ namespace Rocola
             PreparePalette();
             bool uiUrgent = UiUrgent; UiUrgent = false;
             if (uiUrgent) LB(LibroDeCuadros.BUrgente);
-            if (GetUi != null && GetUiVersion != null && (uiTex == IntPtr.Zero || uiUrgent || canHeavy))
+            if (GetUi != null && GetUiVersion != null && ((uiTex == IntPtr.Zero && !uiVacia) || uiUrgent || canHeavy))
             {
                 int t0 = Environment.TickCount;
                 int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
-                if (uv != uiVer || uiTex == IntPtr.Zero)
+                if (uv != uiVer || (uiTex == IntPtr.Zero && !uiVacia))
                 {
-                    Bitmap ub = GetUi();
-                    SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
-                    LB(LibroDeCuadros.BInterfaz);
+                    if (GetUiVacia != null && GetUiVacia())
+                    {   // sin interfaz (la atraccion con el escaparate): ni mapa de bits, ni subida, ni analisis, ni dibujo; la textura se suelta y se crea al volver
+                        if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+                        uiBmpW = uiBmpH = 0; uiU = uiV = 1f; uiVacia = true;
+                    }
+                    else
+                    {
+                        uiVacia = false;
+                        Bitmap ub = GetUi();
+                        SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
+                        LB(LibroDeCuadros.BInterfaz);
+                    }
                     uiVer = uv;
                     NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
                     uiTeselas = null; uiAnalisisTeselas = null; uiSubidaMs = AhoraMs();   // cancelar cualquier analisis de la version anterior
                 }
-                else if (uiTeselas == null) uiTeselas = TeselasEnPasos(ref uiAnalisisTeselas, GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
+                else if (uiTeselas == null && !uiVacia) uiTeselas = TeselasEnPasos(ref uiAnalisisTeselas, GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
             }
             // Franja de ESTADO de abajo: textura chica aparte. El tic del reloj/progreso (~2/seg con musica)
             // rehace y sube SOLO esta tira (~400KB), no la textura principal. Misma franja de trabajo pesado.
@@ -2774,10 +2785,10 @@ namespace Rocola
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
             bool uiPropia = gw.Has && gw.Bmp == null && !gw.Robada;   // se anima la PROPIA textura de UI (abriendo el buscador)
             if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
-            if (uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0 && !(gw.Has && gw.HideUi))
+            if (((uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0) || uiVacia) && !(gw.Has && gw.HideUi))
             {
                 uint uiAlfa = (uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255);
-                if (uiAlfa > 0) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
+                if (uiAlfa > 0 && !uiVacia) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
                 if (uiAlfa > 0) DibujaInterrogacion(uiAlfa / 255f);   // la interrogacion dorada de AYUDA, animada (AyudaCasillaGpu.cs)
             }
             DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada

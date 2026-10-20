@@ -985,6 +985,107 @@ class TironesCambio
         }
         finally { p.Dispose(); texturas.Clear(); creaFalla = false; }
     }
+
+    // ======================= 9. LA ATRACCION CON EL ESCAPARATE NO SUBE UNA INTERFAZ VACIA =======================
+    static void TamanoForm(object f, int w, int h)
+    {
+        BindingFlags F = BindingFlags.Instance | BindingFlags.NonPublic;
+        FieldInfo cs = typeof(Control).GetField("client_size", F), cr = typeof(Control).GetField("client_rect", F), bo = typeof(Control).GetField("bounds", F);
+        if (cs != null) cs.SetValue(f, new Size(w, h));
+        if (cr != null) cr.SetValue(f, new Rectangle(0, 0, w, h));
+        if (bo != null) bo.SetValue(f, new Rectangle(0, 0, w, h));
+    }
+    // Modo --atr: cuanto cuesta EnsureUiOverlay en la atraccion con el escaparate cuando la pantalla cambia de medida (cada vez rehace la imagen).
+    static int AtrTiempo()
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1"); TPanel = AsmNuevo.GetType("Rocola.GpuPanel");
+        object f = Codigo.FormSinEncender(TF);
+        Pon(f, "gpuPanel", Activator.CreateInstance(TPanel, true)); Pon(f, "gpuEnabled", true); Pon(f, "escaparate", true); Pon(f, "attractOn", true);
+        ((System.Collections.IList)Toma(f, "vitrina")).Add(Activator.CreateInstance(AsmNuevo.GetType("Rocola.FichaVitrina"), true));
+        TamanoForm(f, 1024, 768); Llama(f, "EnsureUiOverlay");
+        double[] r = new double[9];
+        for (int k = 0; k < r.Length; k++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (int i = 0; i < 20; i++) { TamanoForm(f, i % 2 == 0 ? 1000 : 1024, 768); Llama(f, "EnsureUiOverlay"); }
+            r[k] = sw.Elapsed.TotalMilliseconds / 20;
+        }
+        Console.WriteLine("MS " + MedianaA(r).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture));
+        return 0;
+    }
+    static void Atraccion(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# 9. la atraccion con el escaparate: sin imagen de interfaz");
+        object f = Codigo.FormSinEncender(TF);
+        Pon(f, "gpuPanel", Activator.CreateInstance(TPanel, true)); Pon(f, "gpuEnabled", true); Pon(f, "escaparate", true);
+        TamanoForm(f, 1024, 768);
+        System.Collections.IList vit = (System.Collections.IList)Toma(f, "vitrina");
+        Type tficha = AsmNuevo.GetType("Rocola.FichaVitrina");
+        vit.Add(Activator.CreateInstance(tficha, true));
+        // fuera de la atraccion: la imagen de siempre (alto = hasta la barra de abajo, o hasta el encabezado)
+        Pon(f, "attractOn", false);
+        int v0 = (int)Llama(f, "EnsureUiOverlay");
+        Bitmap normal = (Bitmap)Toma(f, "uiOverlay");
+        Check(normal != null && !(bool)Toma(f, "uiOverlayVacio"), "fuera de la atraccion la interfaz tiene su imagen (" + (normal == null ? "?" : normal.Width + "x" + normal.Height) + ")");
+        // en la atraccion con el escaparate: nada
+        Pon(f, "attractOn", true);
+        int v1 = (int)Llama(f, "EnsureUiOverlay");
+        Check(Toma(f, "uiOverlay") == null && (bool)Toma(f, "uiOverlayVacio") && v1 != v0, "en la atraccion con el escaparate no hay imagen de interfaz y la version avisa del cambio");
+        int v2 = (int)Llama(f, "EnsureUiOverlay");
+        Check(v2 == v1, "y mientras nada cambie la version no se mueve (no hay nada que subir)");
+        Check(Codigo.EscribeCampo(new List<MethodBase>(new MethodBase[] { Metodo(TF, "EnsureUiOverlay") }), "uiOverlayVacio"), "EnsureUiOverlay marca uiOverlayVacio");
+        // sin escaparate: los dos textos de siempre, con su imagen
+        Pon(f, "escaparate", false);
+        int v3 = (int)Llama(f, "EnsureUiOverlay");
+        Check(Toma(f, "uiOverlay") != null && !(bool)Toma(f, "uiOverlayVacio") && v3 != v2, "sin escaparate la atraccion conserva su imagen con los dos textos de siempre");
+        // el buscador abierto desde la atraccion: su imagen, aunque haya escaparate
+        Pon(f, "escaparate", true);
+        Llama(f, "EnsureUiOverlay");
+        Check(Toma(f, "uiOverlay") == null, "(otra vez con escaparate: sin imagen)");
+        Pon(f, "attractOn", false);
+        Llama(f, "EnsureUiOverlay");
+        Check(Toma(f, "uiOverlay") != null && !(bool)Toma(f, "uiOverlayVacio"), "al salir de la atraccion la imagen vuelve");
+        // La tarjeta: con y sin imagen, lo que sube y dibuja. Una interfaz transparente de pantalla completa (lo de antes) contra "sin interfaz".
+        Bitmap hueca = new Bitmap(1024, 672, PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(hueca)) g.Clear(Color.Transparent);
+        bool vacia = false; int version = 1;
+        long[] creadas = new long[2], bloqueos = new long[2], dibujos = new long[2]; double[] primer = new double[2];
+        for (int caso = 0; caso < 2; caso++)
+        {
+            Control p = Monta(1024, 768);
+            try
+            {
+                int vv = version++;
+                Pon(p, "GetUi", (Func<Bitmap>)delegate { return vacia ? null : hueca; });
+                Pon(p, "GetUiVersion", (Func<int>)delegate { return vv; });
+                if (caso == 1) Pon(p, "GetUiVacia", (Func<bool>)delegate { return vacia; });
+                vacia = caso == 1;
+                PonCeroCuentas();
+                Stopwatch sw = Stopwatch.StartNew(); Cuadro(p); primer[caso] = sw.Elapsed.TotalMilliseconds;
+                for (int i = 0; i < 30; i++) { Cuadro(p); System.Threading.Thread.Sleep(2); }
+                creadas[caso] = cCrea; bloqueos[caso] = cBloq; dibujos[caso] = cDraw;
+            }
+            finally { p.Dispose(); texturas.Clear(); }
+        }
+        Console.WriteLine("        31 cuadros de atraccion con la tarjeta imitada: interfaz transparente de pantalla completa (antes): " + creadas[0] + " texturas creadas, " + bloqueos[0] + " bloqueos, " + dibujos[0] + " ordenes de dibujo, primer cuadro " + primer[0].ToString("0.0") + " ms;"
+            + " sin interfaz (ahora): " + creadas[1] + ", " + bloqueos[1] + ", " + dibujos[1] + ", " + primer[1].ToString("0.0") + " ms");
+        Check(creadas[1] < creadas[0] && bloqueos[1] < bloqueos[0], "la tarjeta ya no crea ni sube la textura de la interfaz vacia");
+        Check(dibujos[1] <= dibujos[0], "ni la dibuja (una textura transparente no cambia ni un pixel)");
+        if (rutaViejo != null)
+        {
+            List<double> tn = new List<double>(), tv = new List<double>();
+            for (int r = 0; r < 5; r++)
+            {
+                foreach (bool nuevoPrimero in new bool[] { r % 2 == 0, r % 2 != 0 })
+                {
+                    string o = CorreModo(nuevoPrimero ? rutaNuevo : rutaViejo, "--atr");
+                    (nuevoPrimero ? tn : tv).Add(double.Parse(Lineas(o, "MS ").Trim().Substring(3), System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            Console.WriteLine("        rehacer la imagen de la interfaz en la atraccion con el escaparate (mediana de 5 procesos alternados; Linux/Mono, sintetico): antes " + Mediana(tv).ToString("0.000") + " ms, ahora " + Mediana(tn).ToString("0.000") + " ms");
+            Check(Mediana(tn) < Mediana(tv), "ahora cuesta menos que con el ejecutable anterior");
+        }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1074,12 +1175,14 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--volcado5") { TF = AsmNuevo.GetType("Rocola.Form1"); return Volcado5(true); }
         if (argv.Length > 1 && argv[1] == "--tiempo5") return Tiempo5();
         if (argv.Length > 1 && argv[1] == "--sondeos") return Sondeos();
+        if (argv.Length > 1 && argv[1] == "--atr") return AtrTiempo();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
         Bordes(argv[0], argv.Length > 1 ? argv[1] : null);
         Alfa(argv[0], argv.Length > 1 ? argv[1] : null);
         MemoriaDeTexturas(argv.Length > 1 ? argv[1] : null);
+        Atraccion(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }

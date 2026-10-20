@@ -53,7 +53,7 @@ namespace Rocola
         // mide otra cosa). Devuelve false si no la tiene; entonces el formulario hace la copia de siempre.
         internal bool RobaUiParaVentana(int version)
         {
-            if (uiTex == IntPtr.Zero || version != uiVer || uiBmpW < 1 || uiBmpH < 1) return false;
+            if (uiTex == IntPtr.Zero || version != uiVer || uiBmpW < 1 || uiBmpH < 1) return false;   // (sin interfaz: uiTex es cero)
             if (winTex != IntPtr.Zero) D3D9.Release(winTex);
             winTex = uiTex; winBw = uiBmpW; winBh = uiBmpH; winU = uiU; winV = uiV; winLastBmp = null;
             uiTex = IntPtr.Zero; uiBmpW = uiBmpH = 0; uiTeselas = null;

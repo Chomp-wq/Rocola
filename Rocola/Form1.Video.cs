@@ -809,6 +809,7 @@ namespace Rocola
         private bool gpuDiscTry = true;                   // interior de disco por GPU (por defecto). Ctrl+F11 lo alterna a CPU como valvula de escape
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
+        private bool uiOverlayVacio;   // la imagen de la UI no existe a proposito (atraccion con el escaparate): ver EnsureUiOverlay
         private Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
@@ -924,6 +925,7 @@ namespace Rocola
                 };
                 gpuPanel.GetUi = delegate { return uiOverlay; };                    // textura PRINCIPAL de la UI (altura segun el modo)
                 gpuPanel.GetUiVersion = delegate { return EnsureUiOverlay(); };
+                gpuPanel.GetUiVacia = delegate { return uiOverlayVacio; };
                 gpuPanel.GetUiCambio = UiCambioDesde;   // y que trozo cambio (en el buscador: BuscadorLigeroGpu.cs)
                 gpuPanel.GetUiBot = delegate { return uiBotOverlay; };              // franja de ESTADO de abajo (textura chica aparte: el reloj no rehace la principal)
                 gpuPanel.GetIdlePanel = BuildIdlePanel;
@@ -1233,6 +1235,19 @@ namespace Rocola
             }
             if (mainH > h) mainH = h; if (mainH < 8) mainH = 8;
             long sig = UiSig();
+            // LA ATRACCION CON EL ESCAPARATE NO TIENE INTERFAZ en esta imagen (sus textos son del escaparate, AtraccionGpu.cs): antes se
+            // reservaba, se borraba y se subia a la tarjeta una imagen transparente de pantalla completa menos la barra de abajo.
+            // Ahora se avisa con la version y con uiOverlayVacio, y la tarjeta no sube, no analiza ni dibuja nada (20-10-2026).
+            if (attractOn && EscaparateActivo() && !(searchOpen && searchOverlay != null) && !(panelSongs != null && panelSongs.Visible))
+            {
+                if (uiOverlayVacio && sig == uiOverlaySig) return uiOverlayVer;
+                if (uiOverlay != null) { uiOverlay.Dispose(); uiOverlay = null; }
+                uiOverlayVacio = true; uiOverlaySig = sig; uiOverlayVer++;
+                uiOverlayZona = Rectangle.Empty; uiOverlayZonaVer = uiOverlayVer;
+                uiBuscaFija = uiBuscaRes = uiBuscaAviso = SigNada;
+                return uiOverlayVer;
+            }
+            uiOverlayVacio = false;
             if (uiOverlay != null && uiOverlay.Width == w && uiOverlay.Height == mainH && sig == uiOverlaySig) return uiOverlayVer;
             long bFija = SigNada, bRes = SigNada, bAviso = SigNada;   // en el buscador: que trozo cambia (ver ZonaBuscador)
             Rectangle zona = Rectangle.Empty;

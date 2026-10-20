@@ -77,7 +77,7 @@ namespace Rocola
             long content = GetPaletteContent != null ? GetPaletteContent() : 0;
             if (key == 0 || content != paletteContent || AhoraMs() - paletteStart >= 420)
                 ClearPaletteFade();
-            if (key != 0 && key != paletteKey && paletteKey != 0 && content == paletteContent && uiTex != IntPtr.Zero)
+            if (key != 0 && key != paletteKey && paletteKey != 0 && content == paletteContent && (uiTex != IntPtr.Zero || uiVacia))
             {
                 ClearPaletteFade();
                 long bytes = CoverBytes(uiBmpW, uiBmpH);
