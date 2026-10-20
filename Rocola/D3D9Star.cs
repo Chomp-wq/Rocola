@@ -788,6 +788,44 @@ namespace Rocola
 
         // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
         // esquina superior izquierda. Devuelve las coordenadas de textura maximas usadas (uMax, vMax).
+        // SIN MEMORIA PARA UNA TEXTURA (20-10-2026). Si el controlador dice que no hay memoria (D3DERR_OUTOFVIDEOMEMORY o E_OUTOFMEMORY), antes se
+        // volvia a pedir la misma textura en CADA cuadro, y cada intento es una llamada al controlador (y un bitmap leido para nada). Ahora, la primera
+        // vez se pide al controlador que saque de la memoria de la tarjeta lo que no se usa (EvictManagedResources, ranura 5; las texturas manejadas
+        // se vuelven a subir solas cuando hagan falta) y se reintenta UNA vez; si aun asi no hay sitio, durante 200 ms no se vuelve a pedir una
+        // textura de ese tamano o mayor (las mas chicas siguen intentandolo). Como mucho una evicion por segundo. Cualquier otro error: como siempre.
+        private const int HrSinMemoriaVideo = unchecked((int)0x8876017C), HrSinMemoria = unchecked((int)0x8007000E);
+        private double creaBloqueadoHasta, ultimaEvicion = -1e9; private long creaFallidaBytes; private bool evictOk = true;
+        internal int Eviciones, CreacionesSaltadas;
+        internal const double EsperaSinMemoriaMs = 200, EntreEvicionesMs = 1000;
+        private int CreaTexturaManejada(uint tw, uint th, out IntPtr tex)
+        {
+            tex = IntPtr.Zero;
+            long bytes = (long)tw * th * 4;
+            if (creaBloqueadoHasta > 0)
+            {
+                double ahora0 = GpuPanel.AhoraMs();
+                if (ahora0 < creaBloqueadoHasta && bytes >= creaFallidaBytes) { CreacionesSaltadas++; return HrSinMemoriaVideo; }
+            }
+            int hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
+            if (hr >= 0 && tex != IntPtr.Zero) return hr;
+            if (hr != HrSinMemoriaVideo && hr != HrSinMemoria) return hr;
+            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            double ahora = GpuPanel.AhoraMs();
+            if (evictOk && ahora - ultimaEvicion >= EntreEvicionesMs)
+            {
+                ultimaEvicion = ahora;
+                try { D3D9.Fn<D3D9.HrSelf>(dev, 5)(dev); Eviciones++; }
+                catch { evictOk = false; }
+                if (evictOk)
+                {
+                    hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
+                    if (hr >= 0 && tex != IntPtr.Zero) return hr;
+                    if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                }
+            }
+            creaBloqueadoHasta = GpuPanel.AhoraMs() + EsperaSinMemoriaMs; creaFallidaBytes = bytes;
+            return hr;
+        }
         public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
@@ -798,7 +836,7 @@ namespace Rocola
                 int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
                 if (tw == 0 || th == 0) return IntPtr.Zero;
                 if (tw > LimiteTexturaW || th > LimiteTexturaH) return CreaTexturaDividida(bmp, out uMax, out vMax);
-                if (createTex(dev, (uint)tw, (uint)th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
+                if (CreaTexturaManejada((uint)tw, (uint)th, out tex) < 0 || tex == IntPtr.Zero)
                 {
                     if (tex != IntPtr.Zero) D3D9.Release(tex);
                     return IntPtr.Zero;

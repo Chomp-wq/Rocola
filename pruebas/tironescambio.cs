@@ -130,7 +130,7 @@ class TironesCambio
         vtTex = Marshal.AllocHGlobal(64 * IntPtr.Size);
         for (int i = 0; i < 64; i++) Marshal.WriteIntPtr(vtTex, i * IntPtr.Size, Puntero("UintSelf", "Nada"));
         Marshal.WriteIntPtr(vtTex, 2 * IntPtr.Size, Puntero("UintSelf", "Suelta"));
-        Marshal.WriteIntPtr(vtTex, 9 * IntPtr.Size, Puntero("VoidSelf", "PreCarga"));   // IDirect3DResource9::PreLoad
+        if (TD3D.GetNestedType("VoidSelf", TODO) != null) Marshal.WriteIntPtr(vtTex, 9 * IntPtr.Size, Puntero("VoidSelf", "PreCarga"));   // IDirect3DResource9::PreLoad (el ejecutable anterior no tiene ese delegado)
         Marshal.WriteIntPtr(vtTex, 19 * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(lk));
         Marshal.WriteIntPtr(vtTex, 20 * IntPtr.Size, Puntero("UnlockRectDel", "Desbloquea"));
     }
@@ -1254,6 +1254,75 @@ class TironesCambio
         // el PreLoad llama a la ranura 9 del recurso
         Check(TD3D.GetNestedType("VoidSelf", TODO) != null, "PreLoad devuelve void: su delegado no lee un valor de retorno");
     }
+
+    // ======================= 11. SIN MEMORIA PARA UNA TEXTURA =======================
+    static int IntentosSinMemoria(int llamadas, int pausaMs, out long evict)
+    {
+        object tarjeta = Tarjeta(640, 480);
+        creaFalla = true; creaFallos = 0; PonCeroCuentas();
+        using (Bitmap bm = new Bitmap(300, 200, PixelFormat.Format32bppPArgb))
+        {
+            for (int i = 0; i < llamadas; i++)
+            {
+                object[] a = { bm, 0f, 0f };
+                IntPtr t = (IntPtr)Llama(tarjeta, "CreateTexturePow2", a);
+                if (t != IntPtr.Zero) throw new Exception("la textura no debia crearse");
+                if (pausaMs > 0) System.Threading.Thread.Sleep(pausaMs);
+            }
+        }
+        creaFalla = false; evict = cEvict;
+        return (int)creaFallos;
+    }
+    static int Fallos()
+    {
+        TF = AsmNuevo.GetType("Rocola.Form1"); TD3D = AsmNuevo.GetType("Rocola.D3D9"); TDev = AsmNuevo.GetType("Rocola.D3D9Device");
+        long ev; int n = IntentosSinMemoria(100, 1, out ev);
+        Console.WriteLine("FALLOS " + n + " " + ev);
+        return 0;
+    }
+    static void SinMemoria(string rutaNuevo, string rutaViejo)
+    {
+        Console.WriteLine("# 11. sin memoria para una textura: evicion y espera");
+        object tarjeta = Tarjeta(640, 480);
+        object[] a;
+        using (Bitmap grande = new Bitmap(300, 200, PixelFormat.Format32bppPArgb))
+        using (Bitmap chica = new Bitmap(16, 16, PixelFormat.Format32bppPArgb))
+        {
+            creaFalla = true; creaFallos = 0; PonCeroCuentas();
+            a = new object[] { grande, 0f, 0f };
+            Check((IntPtr)Llama(tarjeta, "CreateTexturePow2", a) == IntPtr.Zero, "sin memoria la textura no se crea");
+            Check(creaFallos == 2 && cEvict == 1, "la primera vez: una evicion del dispositivo (ranura 5) y UN reintento (" + creaFallos + " intentos, " + cEvict + " eviciones)");
+            long f0 = creaFallos;
+            for (int i = 0; i < 50; i++) { a = new object[] { grande, 0f, 0f }; Llama(tarjeta, "CreateTexturePow2", a); }
+            Check(creaFallos == f0 && (int)Campo(TDev, "CreacionesSaltadas").GetValue(tarjeta) == 50, "las 50 peticiones siguientes de la misma textura no llegan al controlador (se saltan)");
+            a = new object[] { chica, 0f, 0f }; Llama(tarjeta, "CreateTexturePow2", a);
+            Check(creaFallos == f0 + 1, "una textura mas chica si lo intenta (no hay razon para pensar que tampoco cabe)");
+            System.Threading.Thread.Sleep(260);
+            long f1 = creaFallos;
+            a = new object[] { grande, 0f, 0f }; Llama(tarjeta, "CreateTexturePow2", a);
+            Check(creaFallos == f1 + 1 && cEvict == 1, "pasados 200 ms vuelve a intentarlo UNA vez, sin otra evicion (como mucho una por segundo)");
+            System.Threading.Thread.Sleep(1100);
+            long f2 = creaFallos;
+            a = new object[] { grande, 0f, 0f }; Llama(tarjeta, "CreateTexturePow2", a);
+            Check(cEvict == 2 && creaFallos == f2 + 2, "pasado un segundo, otra evicion y otro reintento");
+            // cuando hay memoria otra vez, se crea
+            creaFalla = false;
+            System.Threading.Thread.Sleep(260);
+            a = new object[] { grande, 0f, 0f };
+            Check((IntPtr)Llama(tarjeta, "CreateTexturePow2", a) != IntPtr.Zero, "y en cuanto el controlador vuelve a tener memoria, la textura se crea");
+        }
+        // otro error del controlador: como siempre (ni evicion ni espera)
+        Check(Codigo.Llama(Metodo(TDev, "CreaTexturaManejada"), "Fn"), "la evicion va por la ranura del dispositivo");
+        // contra el ejecutable anterior: 100 peticiones seguidas de la misma textura que no cabe
+        string nuevo = Lineas(CorreModo(rutaNuevo, "--fallos"), "FALLOS ").Trim().Substring(7);
+        Console.WriteLine("        100 peticiones de una textura que no cabe, una cada ms (Linux/Mono, tarjeta imitada): ahora " + nuevo.Split(' ')[0] + " llamadas a CreateTexture y " + nuevo.Split(' ')[1] + " evicion");
+        if (rutaViejo != null)
+        {
+            string viejo = Lineas(CorreModo(rutaViejo, "--fallos"), "FALLOS ").Trim().Substring(7);
+            Console.WriteLine("        con el ejecutable anterior: " + viejo.Split(' ')[0] + " llamadas a CreateTexture");
+            Check(int.Parse(nuevo.Split(' ')[0]) < int.Parse(viejo.Split(' ')[0]) / 10, "diez veces menos llamadas al controlador que el ejecutable anterior");
+        }
+    }
     static string CorreVolcado(string rocola)
     {
         ProcessStartInfo psi = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName);
@@ -1345,6 +1414,7 @@ class TironesCambio
         if (argv.Length > 1 && argv[1] == "--sondeos") return Sondeos();
         if (argv.Length > 1 && argv[1] == "--atr") return AtrTiempo();
         if (argv.Length > 1 && argv[1] == "--fn") return FnTiempo();
+        if (argv.Length > 1 && argv[1] == "--fallos") return Fallos();
         Libro();
         LibroEnElPanel();
         Precalentado(argv[0]);
@@ -1355,6 +1425,7 @@ class TironesCambio
         rutaNuevoFn = argv[0]; rutaViejoFn = argv.Length > 1 ? argv[1] : null;
         Delegados();
         PruebaPreCarga();
+        SinMemoria(argv[0], argv.Length > 1 ? argv[1] : null);
         Console.WriteLine(fallos == 0 ? "  OK tironescambio (" + oks + " comprobaciones)" : "  FALLO tironescambio: " + fallos);
         return fallos;
     }
