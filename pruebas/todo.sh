@@ -40,7 +40,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 # La casilla de AYUDA y la guia paso a paso de la estrella (11-10-2026, solo GPU).
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
-FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -288,6 +288,12 @@ CPU="$CPU objetosmenos"
 # 'reproligera': la reproduccion desde la memoria abre el lector ligero de MP3 (Mp3Ligero.cs, antes solo el repaso): con el descompresor de verdad
 # (NLayer) el mismo PCM muestra a muestra en cancion entera, saltos, reanudar, relevo sin pausa y con la pantalla preguntando desde otro hilo.
 CPU="$CPU reproligera"
+# 'lectura16': los 16 bits enteros (MP3 del sistema y WAV de 16 bits) del repaso se leen con Pcm16Directo (20-10-2026): multiplicar por 2^-15 en lugar de dividir
+# entre 32768 y sin el barrido de NaN que no puede encontrar nada; los mismos floats, bit a bit, que por SampleChannel de NAudio (65.536 enteros, todos los tamanos
+# de lectura, volumen, MP3 de pruebas con el lector de NAudio y el ligero, WAV de 8/16/24/32 bits por la LectorMedida de verdad). Con la rocola anterior como
+# segundo argumento, ademas, MeasureFile + MideIntegrada de WAV generados dan los mismos bits.
+CPU="$CPU lectura16"
+GPU="$GPU lectura16"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"

@@ -414,6 +414,7 @@ namespace Rocola
             private readonly Mp3FileReader mp3;
             private readonly WaveStream wav;
             private readonly SampleChannel canal;
+            private readonly Pcm16Directo directo;   // los 16 bits enteros (MP3 del sistema, WAV de 16 bits) sin el SampleChannel (Pcm16Directo.cs)
             private readonly AudioFileReader otro;
             private readonly Stream flujoMp3;   // Mp3FileReader(Stream, ...) NO cierra el stream que recibe
 
@@ -569,7 +570,11 @@ namespace Rocola
                     {
                         Stream flujo = null;
                         Mp3FileReader r = AbreMp3Medida(ruta, out flujo);
-                        try { canal = new SampleChannel(r, false); mp3 = r; flujoMp3 = flujo; r = null; flujo = null; }
+                        try
+                        {
+                            if (Pcm16Directo.Vale(r.WaveFormat)) directo = new Pcm16Directo(r); else canal = new SampleChannel(r, false);
+                            mp3 = r; flujoMp3 = flujo; r = null; flujo = null;
+                        }
                         finally
                         {
                             if (r != null) { try { r.Dispose(); } catch { } }
@@ -581,12 +586,16 @@ namespace Rocola
                         WaveStream f = WavDirecto.Abre(ruta);
                         if (f != null)
                         {
-                            try { canal = new SampleChannel(f, false); wav = f; f = null; }
+                            try
+                            {
+                                if (Pcm16Directo.Vale(f.WaveFormat)) directo = new Pcm16Directo(f); else canal = new SampleChannel(f, false);
+                                wav = f; f = null;
+                            }
                             finally { if (f != null) { try { f.Dispose(); } catch { } } }
                         }
                         else otro = new AudioFileReader(ruta);
                     }
-                    formato = FormatoAudio.DeArchivo((otro == null) ? canal.WaveFormat : otro.WaveFormat, ruta);
+                    formato = FormatoAudio.DeArchivo((otro != null) ? otro.WaveFormat : (directo != null ? directo.WaveFormat : canal.WaveFormat), ruta);
                 }
                 catch { Dispose(); throw; }
             }
@@ -594,13 +603,20 @@ namespace Rocola
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
             public TimeSpan TotalTime { get { return (otro == null) ? Lector.TotalTime : otro.TotalTime; } }
             public TimeSpan CurrentTime { set { if (otro == null) Lector.CurrentTime = value; else otro.CurrentTime = value; } }
-            public float Volume { set { if (otro == null) canal.Volume = value; else otro.Volume = value; } }
+            public float Volume { set { if (otro != null) otro.Volume = value; else if (directo != null) directo.Volumen = value; else canal.Volume = value; } }
             // UNA MUESTRA QUE NO ES UN NUMERO (NaN o infinito: un WAV en coma flotante estropeado, por ejemplo) cuenta como
             // silencio, que es lo que llega a oirse. Antes la medida entera salia NaN y se daba por buena: la huella del EQ
             // se guardaba con NaN y, con ella, la media de toda la biblioteca (ComputeEqAverage) y el EQ automatico de
             // todas las canciones. (v - v no es 0 solo si v es NaN o infinito.)
             public int Read(float[] b, int o, int c)
             {
+                if (directo != null)
+                {
+                    int n16 = directo.Read(b, o, c);
+                    // Un entero de 16 bits entre 32768 no puede ser NaN ni pasar de 1: con el volumen en 1 no hay nada que limpiar.
+                    if (directo.Volumen != 1f) LimpiaMuestras(b, o, n16);
+                    return n16;
+                }
                 int n = (otro == null) ? canal.Read(b, o, c) : otro.Read(b, o, c);
                 LimpiaMuestras(b, o, n);
                 return n;
