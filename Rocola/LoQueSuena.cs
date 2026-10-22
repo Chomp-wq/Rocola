@@ -49,6 +49,7 @@ namespace Rocola
             if (c.Declip != null) c.Declip.Pasa = sin;
             if (c.Siseo != null) c.Siseo.Pasa = sin;
             if (c.Sala != null) { c.Sala.Ajusta(sin ? false : claridadLocal, sin ? false : partesSuaves, balanceDb); c.Sala.AjustaTono(sin ? 0 : gravesLocalDb, sin ? 0 : agudosLocalDb); }
+            if (c.Presencia != null) c.Presencia.Ajusta(sin ? false : presenciaSala);
             if (!sin) return;
             if (c.Tap != null) { c.Tap.Excite = 0f; c.Tap.EqDb = EqPlana; }
             if (c.Bajo != null) c.Bajo.Amount = 0f;

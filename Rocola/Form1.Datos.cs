@@ -674,6 +674,7 @@ namespace Rocola
                     else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
                     else if (s.StartsWith("graves_local=")) gravesLocalDb = TonoLocalDb(s.Substring(13), gravesLocalDb);   // graves del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("agudos_local=")) agudosLocalDb = TonoLocalDb(s.Substring(13), agudosLocalDb);   // agudos del local en dB (-6..6; 0 de fabrica)
+                    else if (s.StartsWith("presencia_sala=")) presenciaSala = s.Substring(15).Trim() == "1";   // interruptor: presencia en sala ruidosa (compresor suave)
                     else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
                     else if (s.StartsWith("quita_siseo=")) quitaSiseo = s.Substring(12).Trim() == "1";             // I2: quitar el siseo de las grabaciones viejas
                     else if (s.StartsWith("dsee_genero=")) dseePorGenero = s.Substring(12).Trim() == "1";          // I3: el modelo del DSEE del genero de la cancion
@@ -848,6 +849,7 @@ namespace Rocola
             sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("graves_local=").Append(gravesLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("agudos_local=").Append(agudosLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+            sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
             sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
             sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");

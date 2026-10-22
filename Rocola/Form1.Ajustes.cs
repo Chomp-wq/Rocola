@@ -654,7 +654,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -903,7 +903,7 @@ namespace Rocola
                     Panel pTono = new Panel(); pTono.SetBounds(16, 100, 928, 398); pTono.BackColor = dlg.BackColor;
                     pTono.Name = "SonidoTono"; pTono.Visible = false;
                     Tarjeta tTono = new Tarjeta(); tTono.SetBounds(0, 0, 456, 398); tTono.Titulo = "TONO DEL LOCAL"; tTono.Acento = cBri;
-                    Tarjeta tPre = new Tarjeta(); tPre.SetBounds(472, 0, 456, 398); tPre.Titulo = "PARA AFINAR"; tPre.Acento = cVol;
+                    Tarjeta tPre = new Tarjeta(); tPre.SetBounds(472, 0, 456, 398); tPre.Titulo = "PRESENCIA EN SALA RUIDOSA"; tPre.Acento = cVol;
                     pTono.Controls.Add(tTono); pTono.Controls.Add(tPre);
                     Label nGra = new Label(); nGra.SetBounds(16, 44, 250, 18); nGra.BackColor = Color.Transparent;
                     nGra.ForeColor = cTexto; nGra.Font = fNom; nGra.Text = "Graves del local"; tTono.Controls.Add(nGra);
@@ -922,7 +922,11 @@ namespace Rocola
                     barAgu.Minimum = 0; barAgu.Maximum = 2 * SalaLocal.TonoMax; barAgu.Value = agudosLocalDb + SalaLocal.TonoMax; barAgu.Acento = cBri;
                     tTono.Controls.Add(barAgu);
                     notaLocal(tTono, 244, 64, "Los dos en 0 dB de fabrica: no tocan el sonido. Se oyen al\ninstante, sin chasquidos, en la cancion que suena y en la\nsiguiente. «Escuchar sin mejoras» los pone a 0 un rato.");
-                    notaLocal(tPre, 40, 96, "Pon musica y mueve un deslizador: el cambio se oye en el\nacto. Un dB cada vez; si hace falta mucho mas de 3 o 4 dB,\nmejor revisar antes las perillas del amplificador (IN A, IN B)\ny la prueba de bocinas de la hoja anterior.");
+                    Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
+                    swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
+                    tPre.Controls.Add(swPre);
+                    notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
+                    notaLocal(tPre, 176, 64, "No toca el volumen de Windows ni el de la salida. Nunca\nsube la cancion mas alla del techo del limitador. Apagado\nde fabrica; se oye al instante en la cancion que suena.");
                     BotonPlano bVolverTono = new BotonPlano(); bVolverTono.SetBounds(16, 346, 424, 34); bVolverTono.Font = fBot;
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
@@ -1264,6 +1268,7 @@ namespace Rocola
                         balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, barBal.Value - SalaLocal.BalanceMax));
                         gravesLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barGra.Value - SalaLocal.TonoMax));
                         agudosLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barAgu.Value - SalaLocal.TonoMax));
+                        presenciaSala = swPre.Checked;
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
                         bool medAntes = aLaMedida;
                         aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked; dseePorGenero = swGen.Checked;
@@ -1279,7 +1284,7 @@ namespace Rocola
                     swSil.CheckedChanged += apply;
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
-                    barGra.Scroll += apply; barAgu.Scroll += apply;
+                    barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply;
                     swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
                     swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply;
                     EventHandler prueba = delegate (object so, EventArgs ea)
@@ -1305,6 +1310,7 @@ namespace Rocola
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
                         barGra.Value = SalaLocal.TonoMax; barAgu.Value = SalaLocal.TonoMax;   // graves y agudos del local, en 0 dB
+                        swPre.Checked = false;                               // y la presencia en sala ruidosa, apagada
                         swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
@@ -1429,7 +1435,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

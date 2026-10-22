@@ -134,6 +134,7 @@
     <Compile Include="ModoNoche.cs" />
     <Compile Include="GraveMono.cs" />
     <Compile Include="SalaLocal.cs" />
+    <Compile Include="PresenciaSala.cs" />
     <Compile Include="CieloVivoGpu.cs" />
     <Compile Include="SinPausa.cs" />
     <Compile Include="SalidaSonido.cs" />

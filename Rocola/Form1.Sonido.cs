@@ -1332,11 +1332,13 @@ namespace Rocola
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
             c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb, gravesLocalDb, agudosLocalDb);
+            // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
+            c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, presenciaSala);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
-            c.Bajo = new DeepBassProvider(c.Sala, BassAmountPara(c.BajoFactor, c.BajoBase));
+            c.Bajo = new DeepBassProvider(c.Presencia, BassAmountPara(c.BajoFactor, c.BajoBase));
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.

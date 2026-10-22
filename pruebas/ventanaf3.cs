@@ -112,9 +112,9 @@ class VentanaF3
                             {
                                 Click(abreT); Mira(nombre + ", Sonido > El local y sus bocinas > Tono y presencia");
                                 int swT = 0;
-                                foreach (string nomSw in new string[] { "SonidoTonoGraves", "SonidoTonoAgudos" })
+                                foreach (string nomSw in new string[] { "SonidoTonoGraves", "SonidoTonoAgudos", "SonidoPresencia" })
                                 { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swT++; }
-                                Check(swT == 2, "la hoja de tono tiene sus dos deslizadores a la vista (" + swT + ")");
+                                Check(swT == 3, "la hoja de tono y presencia tiene sus dos deslizadores y su interruptor a la vista (" + swT + ")");
                                 Check(Boton(dlg, "Solo izquierda") == null, "y la hoja del local queda escondida mientras tanto");
                                 Control vt = Boton(dlg, "Volver al local y sus bocinas");
                                 Check(vt != null, "la hoja de tono y presencia tiene su boton de volver");

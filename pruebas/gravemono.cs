@@ -384,10 +384,13 @@ class GraveMonoPrueba
             // Desde el 12-10-2026, entre el grave en mono y el grave sintetico va la etapa del local (SalaLocal.cs).
             FieldInfo fSala = cad.GetType().GetField("Sala", T);
             object sala = fSala != null ? fSala.GetValue(cad) : null;
+            // Desde el 22-10-2026, entre el local y el grave sintetico va la presencia en sala ruidosa (PresenciaSala.cs).
+            FieldInfo fPre = cad.GetType().GetField("Presencia", T);
+            object presencia = fPre != null ? fPre.GetValue(cad) : null;
             Check(noche != null && mono != null && object.ReferenceEquals(Get(noche, "src"), tap) && object.ReferenceEquals(Get(mono, "src"), noche)
-                  && object.ReferenceEquals(Get(bajo, "src"), sala ?? mono) && (sala == null || object.ReferenceEquals(Get(sala, "src"), mono))
+                  && object.ReferenceEquals(Get(bajo, "src"), presencia ?? sala ?? mono) && (presencia == null || object.ReferenceEquals(Get(presencia, "src"), sala ?? mono)) && (sala == null || object.ReferenceEquals(Get(sala, "src"), mono))
                   && (bool)TMono.GetProperty("Activo", T).GetValue(mono, null),
-                  "en la cadena armada de verdad cada etapa lee de la de antes: nivelado, noche, grave en mono, (el local), grave sintetico");
+                  "en la cadena armada de verdad cada etapa lee de la de antes: nivelado, noche, grave en mono, (el local), (la presencia), grave sintetico");
             float[] y = LeeTodo((ISampleProvider)Get(cad, "Salida"), new int[] { 4096 }, null);
             double aL, pL, aR, pR; Mide(y, 2, 0, fs, 50, 1.0, out aL, out pL); Mide(y, 2, 1, fs, 50, 1.0, out aR, out pR);
             Check(aR > 0.05 && Math.Abs(Db(aR / aL)) < 1.5, "y un bajo de 50 Hz que viene solo por la izquierda sale por las dos bocinas (" + F(Db(aR / aL), "0.0") + " dB por la derecha)");

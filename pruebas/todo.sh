@@ -43,6 +43,8 @@ TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
+# La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
+FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -221,6 +223,9 @@ CPU="$CPU silencios"
 CPU="$CPU subgrave"
 # 'salalocal': el local y sus bocinas (12-10-2026): claridad, partes suaves, balance y la prueba de bocinas (SalaLocal.cs).
 CPU="$CPU salalocal"
+# 'presenciasala': la presencia en sala ruidosa (22-10-2026; PresenciaSala.cs): el compresor suave detras del local, apagado
+# de fabrica (sale bit a bit), sus 2 a 1, tiempos, ganancia de compensacion hasta el techo del limitador y sin chasquidos.
+CPU="$CPU presenciasala"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

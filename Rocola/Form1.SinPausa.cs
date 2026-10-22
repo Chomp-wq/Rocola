@@ -39,6 +39,7 @@ namespace Rocola
             internal CompensaNoche Noche;        // graves y agudos que devuelve el modo noche (ModoNoche.cs)
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
             internal SalaLocal Sala;             // claridad, partes suaves, balance, graves y agudos del local (SalaLocal.cs)
+            internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
             internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva
@@ -301,6 +302,7 @@ namespace Rocola
             if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
+            if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
             if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
         }
