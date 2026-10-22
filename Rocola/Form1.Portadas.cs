@@ -115,12 +115,12 @@ namespace Rocola
             {
                 try
                 {
-                    System.Threading.Thread.Sleep(1500);   // que la cancion que acaba de empezar tenga el disco
+                    if (!SiguienteUrgente()) System.Threading.Thread.Sleep(1500);   // que la cancion que acaba de empezar tenga el disco (cerca del final no: va primero la siguiente)
                     if (mio != warmSongGen) return;
                     while (true)   // caratulas del primer plano o un video: el disco es para ellos
                     {
                         int busy; lock (coverLock) { busy = coverLoading.Count + coverQHi.Count + coverQLo.Count; }
-                        if (busy == 0 && !videoOn) break;
+                        if ((busy == 0 || SiguienteUrgente()) && !videoOn) break;   // a 45 s del final la siguiente pasa antes que las caratulas
                         System.Threading.Thread.Sleep(300);
                         if (mio != warmSongGen) return;
                     }
@@ -144,7 +144,7 @@ namespace Rocola
                         while (true)
                         {
                             if (mio != warmSongGen) return;
-                            if (!EsperaPortadas(UnidadDe(ruta), CargaTrabajo.Procesadores <= 2,
+                            if (!SiguienteUrgente() && !EsperaPortadas(UnidadDe(ruta), CargaTrabajo.Procesadores <= 2,
                                 delegate { return mio != warmSongGen; })) return;
                             int n = (entera != null) ? fs.Read(entera, hecho, Math.Min(trozo, entera.Length - hecho)) : fs.Read(buf, 0, buf.Length);
                             if (n <= 0) break;

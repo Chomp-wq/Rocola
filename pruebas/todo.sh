@@ -404,6 +404,10 @@ CPU="$CPU buscaportadas"
 # abrir o medir canciones); falla con cualquier sitio nuevo que no este en su lista revisada, y con los de la lista que
 # ya no ocurren. Cada sitio de la lista lleva su motivo.
 GPU="$GPU bloqueos"
+# 'adelantoprioridad': la siguiente cancion pasa antes que las caratulas cuando a la que suena le quedan 45 s o menos
+# (22-10-2026): el calentador se salta su espera de 1,5 s, la de las caratulas y la de cada trozo; con mas tiempo, igual.
+CPU="$CPU adelantoprioridad"
+GPU="$GPU adelantoprioridad"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara

@@ -64,6 +64,23 @@ namespace Rocola
         // tarde para que la siguiente ya este medida (el calentador la mide mientras espera en la cola).
         private const double PreparaAntesSeg = 12.0;
 
+        // LA SIGUIENTE CANCION PASA ANTES QUE LAS CARATULAS CERCA DEL FINAL (22 de octubre de 2026). El calentador de la
+        // siguiente (PrecalientaSiguiente) espera 1,5 s a que la cancion que empieza tenga el disco, cede el paso mientras
+        // haya caratulas en camino y en cada trozo vuelve a mirar. Es lo correcto con minutos por delante, pero si la
+        // siguiente se pidio tarde (la cola estaba vacia y entra una moneda a 40 s del final) o hay muchas caratulas, la
+        // cancion puede llegar sin estar leida ni abierta. Cuando a la que suena le quedan SiguientePrioridadSeg (45 s) o
+        // menos, el calentador se salta esas esperas y abre la siguiente ya. Con mas tiempo, todo igual que antes. No cambia
+        // el sonido: solo el orden en que se usa el disco. El reloj de la cancion apunta lo que queda cada 500 ms.
+        internal const int SiguientePrioridadSeg = 45;
+        private volatile int quedanMs;   // lo que le queda a lo que suena, en ms MAS UNO; 0 = no se sabe (nada suena o aun no hubo tic)
+        internal static bool SiguienteEsUrgente(int quedanMilisegundos) { return quedanMilisegundos <= SiguientePrioridadSeg * 1000; }
+        private bool SiguienteUrgente() { int q = quedanMs; return q > 0 && SiguienteEsUrgente(q - 1); }
+        private void ApuntaQuedan(TimeSpan actual, TimeSpan total)
+        {
+            double q = (total - actual).TotalMilliseconds;
+            quedanMs = (total.TotalSeconds > 0 && !double.IsNaN(q)) ? (int)Math.Max(0.0, Math.Min(q, 2000000000.0)) + 1 : 0;
+        }
+
         // Lo llama el temporizador de la barra de progreso (dos veces por segundo).
         private void PreparaSiguienteSinPausa()
         {
@@ -190,6 +207,7 @@ namespace Rocola
             else if (item != null) queue.Remove(item);
             sonoAntes = nowPlaying;   // lo que sono justo antes (para el nivel por disco, NivelDisco.cs)
             nowPlaying = item;
+            quedanMs = 0;   // la que entra aun no ha dicho cuanto le queda (el reloj lo apunta en su primer tic)
             RefrescaCola();
             SaveState();   // estado vivo: cambio lo que suena / la cola (para reanudar tras un corte de luz)
         }
