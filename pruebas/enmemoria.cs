@@ -97,7 +97,7 @@ class EnMemoria
         {
             System.Text.StringBuilder sinComentarios = new System.Text.StringBuilder();
             foreach (string linea in deMemoria.Split('\n')) if (!linea.TrimStart().StartsWith("//")) sinComentarios.Append(linea).Append('\n');
-            deMemoria = sinComentarios.ToString().TrimEnd('\n').Replace("LectorMp3Ligero.Posible ? new LectorMp3Ligero(enMemoria, armador) : new Mp3FileReader(enMemoria, armador)", "new Mp3FileReader(ruta, armador)");
+            deMemoria = sinComentarios.ToString().TrimEnd('\n').Replace("LectorMp3Ligero.Posible ? LectorMp3Ligero.Abre(enMemoria, armador) : new Mp3FileReader(enMemoria, armador)", "new Mp3FileReader(ruta, armador)");
             if (deArchivo != null) deArchivo = deArchivo.TrimEnd('\n');
         }
         bool igual = deArchivo != null && deMemoria != null && deArchivo == deMemoria;

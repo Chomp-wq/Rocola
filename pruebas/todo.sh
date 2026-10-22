@@ -314,6 +314,12 @@ GPU="$GPU siseorapido"
 # desnormales, NaN e infinitos), 3 techos, mono / estereo / 6 canales, troceos de 1 a 4.410 cuadros con el estado pasando de una llamada a otra, y el vaciado del final.
 CPU="$CPU picorapido"
 GPU="$GPU picorapido"
+# 'indicemp3': el indice de cuadros de los MP3, sin la basura de NAudio (22-10-2026; LectorMp3Ligero.Abre): al abrir, el recorrido del archivo que apunta donde empieza cada cuadro se cuenta
+# aparte, en dos arreglos de enteros, repitiendo paso a paso el constructor de NAudio. Con un descompresor imitado que apunta todo lo que recibe: el mismo formato para el descompresor
+# (tasa de bits media incluida), etiquetas, largo, EL MISMO INDICE (leido por dentro del de NAudio), saltos a muestras exactas y los mismos bytes en ~50 archivos (los de la carpeta,
+# con caratula, basura, cortados, ID3v1, dos frecuencias, diminutos y vacios); lo raro cae al constructor de siempre; y abrir una cancion larga deja menos de la cuarta parte de la basura.
+CPU="$CPU indicemp3"
+GPU="$GPU indicemp3"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"

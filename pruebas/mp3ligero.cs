@@ -195,7 +195,7 @@ class Mp3LigeroPrueba
         Type tf = asm.GetType("Rocola.Form1", true);
         Type tl = tf.GetNestedType("LectorMedida", T);
         MethodInfo abre = tl.GetMethod("AbreMp3Medida", T);
-        Check(Codigo.Llama(abre, "LectorMp3Ligero..ctor"), "la medida (LectorMedida) abre los MP3 con el lector ligero");
+        Check(Codigo.Llama(abre, "LectorMp3Ligero.Abre"), "la medida (LectorMedida) abre los MP3 con el lector ligero (LectorMp3Ligero.Abre, desde el 22-10-2026 con el indice propio: lo vigila indicemp3)");
         Check(!Codigo.Llama(abre, "Form1.AbreMp3"), "sin ID3 tambien: ya no pasa por el lector de la reproduccion");
 
         Console.WriteLine(mal == 0 ? "  OK mp3ligero: " + ok + " comprobaciones (los mismos cuadros y bytes que NAudio, sin su basura)" : "  mp3ligero: " + mal + " FALLOS de " + (ok + mal));

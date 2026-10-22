@@ -208,7 +208,7 @@ class ReproLigera
         MethodInfo abre = TF.GetMethod("AbreMp3", T, null, new Type[] { typeof(string), typeof(Stream) }, null);
         int lee, escribe;
         if (abre != null) Codigo.UsosDeCampo(abre, "Posible", out lee, out escribe); else { lee = 0; }
-        Check(abre != null && abre.ReturnType == typeof(Mp3FileReader) && Codigo.Llama(abre, "LectorMp3Ligero..ctor") && Codigo.Llama(abre, "Mp3FileReader..ctor") && lee > 0,
+        Check(abre != null && abre.ReturnType == typeof(Mp3FileReader) && Codigo.Llama(abre, "LectorMp3Ligero.Abre") && Codigo.Llama(abre, "Mp3FileReader..ctor") && lee > 0,
               "6) AbreMp3 de memoria devuelve un Mp3FileReader: el ligero si Posible, el de siempre si no (el armado del descompresor y la comprobacion de la coma flotante, como siempre: lo vigila enmemoria)");
         Type fas = TF.GetNestedType("FileAudioSource", T);
         ConstructorInfo ctor = fas.GetConstructor(T, null, new Type[] { typeof(string) }, null);

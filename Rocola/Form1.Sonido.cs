@@ -551,7 +551,7 @@ namespace Rocola
                         return hecho;
                     };
                     // El repaso lee cada cuadro sin dejar basura (Mp3Ligero.cs): el mismo lector de NAudio, la misma salida.
-                    Mp3FileReader lector = LectorMp3Ligero.Posible ? new LectorMp3Ligero(vista, armador) : new Mp3FileReader(vista, armador);
+                    Mp3FileReader lector = LectorMp3Ligero.Posible ? LectorMp3Ligero.Abre(vista, armador) : new Mp3FileReader(vista, armador);
                     propio = vista; vista = null;
                     return lector;
                 }
