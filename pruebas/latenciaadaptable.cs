@@ -33,6 +33,35 @@ class LatenciaAdaptable
             Check(Sugerida(p)==inicial,"Precarga del productor no cuenta como reproduccion estable");
             Observa(p,155,700,0,inicial,false);Check(Sugerida(p)==inicial,"Pico DSP invalida estabilidad sin reducir calidad");
         }
+        {   // La caja negra (22-10-2026): cada cambio de nivel queda anotado (en numeros, sin reservar nada en la musica) para rocola_error.txt.
+            object cp=Activator.CreateInstance(perfil,B,null,new object[]{true},null);
+            Func<object,string> toma=delegate(object o){return (string)perfil.GetMethod("TomaCambios",B).Invoke(o,null);};
+            Func<object,bool> hay=delegate(object o){return (bool)perfil.GetProperty("HayCambios",B).GetValue(o,null);};
+            Check(!hay(cp)&&toma(cp)==null,"Sin cambios de nivel no hay nada que anotar");
+            for(int i=0;i<=29;i++)Observa(cp,i,1,0,1000,true);
+            Check(!hay(cp),"Sin cambio de nivel (antes de los 30 s) sigue sin haber nada");
+            Observa(cp,30,1,0,1000,true);
+            Check(hay(cp),"Al bajar un escalon se avisa a la pantalla");
+            string t1=toma(cp);
+            Check(t1!=null&&t1.Contains("baja el margen de 1000 a 750 ms")&&t1.Contains("30 s de musica sin atascos"),"Se anota la bajada con su motivo: "+t1);
+            Check(!hay(cp)&&toma(cp)==null,"Una vez tomado no se repite");
+            Observa(cp,31,1,700,750,true);
+            string t2=toma(cp);
+            Check(t2!=null&&t2.Contains("sube el margen de 750 a 1000 ms")&&t2.Contains("atasco de 700 ms"),"Se anota la subida por un atasco, con su tamano: "+t2);
+            Observa(cp,32,1,700,1000,true);
+            Check(!hay(cp),"Un atasco en el nivel de partida no cambia nada y no se anota");
+            for(int i=33;i<=63;i++)Observa(cp,i,1,0,1000,true);
+            toma(cp);
+            perfil.GetMethod("Fallo",B).Invoke(cp,null);
+            string t3=toma(cp);
+            Check(t3!=null&&t3.Contains("fallo o corte de la salida"),"Un fallo de la salida que sube el margen tambien se anota: "+t3);
+            perfil.GetMethod("Fallo",B).Invoke(cp,null);
+            Check(!hay(cp),"Otro fallo con el margen ya arriba no anota nada");
+            // Muchos cambios seguidos: la lista tiene tope y lo dice, y no reserva sin limite.
+            for(int k=0;k<12;k++){for(int i=0;i<=31;i++)Observa(cp,64+k*40+i,1,0,1000,true);Observa(cp,64+k*40+32,1,700,750,true);}
+            string t4=toma(cp);
+            Check(t4!=null&&t4.Contains("cambios mas sin anotar"),"Con la lista llena dice cuantos faltaron: "+t4.Substring(Math.Max(0,t4.Length-40)));
+        }
         object policy=Activator.CreateInstance(perfil,B,null,new object[]{true},null);
         Type medidor=a.GetType("Rocola.FuenteLatenciaAudio",true);
         ISampleProvider m=(ISampleProvider)Activator.CreateInstance(medidor,B,null,new object[]{new Fuente(),policy,1000,true},null);
@@ -55,6 +84,18 @@ class LatenciaAdaptable
         vigilada.Read(x,2,100);
         Check((double)perfil.GetField("musicaEstable",B).GetValue(policy)==0,"Productor aun atascado no vuelve a sumar estabilidad");
         ((IDisposable)parada).Dispose();
+        {   // Los avisos tardios de la salida se cuentan (solo del lado de la salida, el consumidor).
+            object p2=Activator.CreateInstance(perfil,B,null,new object[]{true},null);
+            object m2=Activator.CreateInstance(medidor,B,null,new object[]{new Fuente(),p2,1000,true},null);
+            float[] bb=new float[200];
+            ((ISampleProvider)m2).Read(bb,2,100);System.Threading.Thread.Sleep(450);((ISampleProvider)m2).Read(bb,2,100);
+            Check((int)medidor.GetProperty("Atrasos",B).GetValue(m2,null)==1&&(int)medidor.GetProperty("MaxAtrasoMs",B).GetValue(m2,null)>=400,"Un aviso de la salida que llega 450 ms tarde con 1000 ms de latencia se cuenta (y el peor)");
+            ((ISampleProvider)m2).Read(bb,2,100);
+            Check((int)medidor.GetProperty("Atrasos",B).GetValue(m2,null)==1,"Uno puntual no se cuenta dos veces");
+            object m3=Activator.CreateInstance(medidor,B,null,new object[]{new Fuente(),p2,1000,false},null);
+            ((ISampleProvider)m3).Read(bb,2,100);System.Threading.Thread.Sleep(450);((ISampleProvider)m3).Read(bb,2,100);
+            Check((int)medidor.GetProperty("Atrasos",B).GetValue(m3,null)==0,"El medidor del productor (no consumidor) no cuenta avisos de la salida");
+        }
         Console.WriteLine("PASS latencia: "+checks+" comprobaciones sinteticas, no mide latencia fisica del DAC");return 0;
     }
 }

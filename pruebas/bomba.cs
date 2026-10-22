@@ -396,6 +396,70 @@ class Bomba
         Check(vueltas > 0 && conPulso * 3 >= vueltas * 2, "y despues, vuelta tras vuelta: las estrellas se deslizan y laten (" + conPulso + " de " + vueltas + ")");
     }
 
+    // LA CAJA NEGRA DEL SONIDO (22-10-2026; SalidaSonido.cs): los cortes del hilo de la musica y los avisos tardios de la salida
+    // dejan UNA linea «[Cortes de sonido]» en rocola_error.txt al acabar o saltar la cancion; sin nada que contar, no se escribe.
+    static void CajaNegra(string dir)
+    {
+        Console.WriteLine("\n  10) LA CAJA NEGRA DEL SONIDO\n");
+        Type bita = TF.Assembly.GetType("Rocola.Bitacora", true);
+        string error = Path.Combine(dir, "rocola_error.txt");
+        Func<string> lee = delegate
+        {
+            bita.GetMethod("Vacia", T).Invoke(null, new object[] { 3000 });
+            return File.Exists(error) ? File.ReadAllText(error) : "";
+        };
+        MethodInfo texto = TF.GetMethod("TextoCortes", T);
+        Check(texto != null, "existe el texto de la linea (TextoCortes)");
+        Func<string, long, int, int, int, string> txt = delegate (string c, long cortes, int av, int mx, int lat) { return (string)texto.Invoke(null, new object[] { c, cortes, av, mx, lat }); };
+        Check(txt("tema", 0, 0, 0, 750) == null, "sin cortes ni avisos tardios: nada que contar");
+        string t1 = txt("Mi tema", 1, 0, 0, 750), t2 = txt("Mi tema", 3, 2, 420, 1000);
+        Check(t1.StartsWith("[Cortes de sonido] ") && t1.Contains("\"Mi tema\"") && t1.Contains("1 corte del hilo") && t1.Contains("latencia abierta 750 ms") && !t1.Contains("aviso"), "un corte: " + t1);
+        Check(t2.Contains("3 cortes") && t2.Contains("2 avisos tardios") && t2.Contains("420 ms") && t2.Contains("1000 ms"), "varios: " + t2);
+        Check(txt("x", 0, 1, 90, 0).Contains("latencia abierta ? ms"), "sin latencia conocida, un signo de pregunta");
+        // La rocola de verdad (sin ventana): una bomba con cortes, una cancion que suena, y el apunte al acabar.
+        object f = Codigo.FormSinEncender(TF);
+        foreach (FieldInfo fi in TF.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            if (fi.FieldType.Name == "GuardadoReciente" && fi.GetValue(f) == null) fi.SetValue(f, Activator.CreateInstance(fi.FieldType, true));
+        object tr = Activator.CreateInstance(TF.GetNestedType("Track", T), true); Set(tr, "Title", "Cumbia del billar"); Set(tr, "Path", Path.Combine(dir, "x.mp3"));
+        object it = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(TF.GetNestedType("PlayItem", T)); Set(it, "Song", tr);
+        Set(f, "nowPlaying", it); Set(f, "latenciaAbiertaMs", 750);
+        object b = Nueva(new Fuente(44100 * 2 * 5, 44100, 2));
+        Set(f, "bomba", b);
+        Call(f, "ApuntaCortesDeSonido");
+        Check(lee().IndexOf("[Cortes de sonido]") < 0 && !File.Exists(error), "sin cortes no se escribe nada (ni se crea el archivo)");
+        Set(b, "huecos", 2L);
+        Call(f, "ApuntaCortesDeSonido");
+        string s1 = lee();
+        Check(s1.IndexOf("[Cortes de sonido]") >= 0 && s1.Contains("Cumbia del billar") && s1.Contains("2 cortes") && s1.Contains("latencia abierta 750 ms"), "con 2 cortes, una linea con la cancion, la cuenta y la latencia");
+        int lineas = 0; foreach (string l in s1.Split('\n')) if (l.Contains("[Cortes de sonido]")) lineas++;
+        Check(lineas == 1 && s1.IndexOf("20") == 0, "es UNA sola linea, con su fecha");
+        Call(f, "ApuntaCortesDeSonido");
+        Check(lee() == s1, "si no hubo mas cortes, no se repite");
+        Set(b, "huecos", 5L);
+        Call(f, "ApuntaCortesDeSonido");
+        string s2 = lee();
+        Check(s2.Length > s1.Length && s2.Contains("3 cortes"), "los nuevos se cuentan desde la ultima linea (3 mas, no 5)");
+        Suelta(b); Set(f, "bomba", null);
+        // Los avisos tardios de la salida (el medidor del lado de la salida) tambien cuentan.
+        Type medidor = TF.Assembly.GetType("Rocola.FuenteLatenciaAudio", true), perfil = TF.Assembly.GetType("Rocola.PerfilLatenciaAudio", true);
+        object pol = Activator.CreateInstance(perfil, T, null, new object[] { true }, null);
+        object med = Activator.CreateInstance(medidor, T, null, new object[] { new Fuente(44100 * 2 * 5, 44100, 2), pol, 1000, true }, null);
+        float[] buf = new float[1000];
+        ((ISampleProvider)med).Read(buf, 0, buf.Length); Thread.Sleep(450); ((ISampleProvider)med).Read(buf, 0, buf.Length);
+        Check((int)medidor.GetProperty("Atrasos", T).GetValue(med, null) == 1 && (int)medidor.GetProperty("MaxAtrasoMs", T).GetValue(med, null) >= 400, "una lectura que llega 450 ms tarde con 1000 ms de latencia cuenta como aviso tardio");
+        Set(f, "medidorSalida", med);
+        Call(f, "ApuntaCortesDeSonido");
+        string s3 = lee();
+        Check(s3.Length > s2.Length && s3.Contains("1 aviso tardio"), "y deja su linea al acabar la cancion");
+        // El cableado.
+        Check(Codigo.Llama(TF.GetMethod("DisposePlaybackNow", T), "ApuntaCortesDeSonido"), "al soltar la cancion (acabar, saltar o parar) se apunta");
+        Check(Codigo.Llama(TF.GetMethod("PasaRelevo", T), "ApuntaCortesDeSonido"), "y al pasar al relevo sin pausa, que no suelta la salida");
+        Check(Codigo.Llama(TF.GetMethod("ProgressTimer_Tick", T), "ApuntaLatencia"), "el reloj de la cancion mira los cambios de nivel de la latencia");
+        int le, es; Codigo.UsosDeCampo(TF.GetMethod("ConBomba", T), "cortesApuntados", out le, out es);
+        Check(es > 0, "cada salida nueva empieza su cuenta de cortes de cero");
+        Check(Codigo.Llama(Codigo.Llamadas(TF.GetMethod("ApuntaCajaNegra", T)), "ApuntaConSello"), "se escribe por la bitacora de fondo (la pantalla y la musica no esperan al disco)");
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -406,7 +470,7 @@ class Bomba
         Environment.SetEnvironmentVariable("ROCOLA_DATOS", dir);
         try
         {
-            LoMismo(); OtroHilo(); Fallo(); Atrasada(); Parar(); Coste(); DeVerdad(dir); Enganches(); ElPulso();
+            LoMismo(); OtroHilo(); Fallo(); Atrasada(); Parar(); Coste(); DeVerdad(dir); Enganches(); ElPulso(); CajaNegra(dir);
         }
         catch (Exception e) { Check(false, "la bateria reviento: " + e); }
         finally { try { Directory.Delete(dir, true); } catch { } }

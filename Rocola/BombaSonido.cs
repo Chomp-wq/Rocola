@@ -271,6 +271,7 @@ namespace Rocola
         private ISampleProvider ConBomba(ISampleProvider cadena)
         {
             SueltaBomba();
+            cortesApuntados = 0;   // salida nueva, cuenta nueva (caja negra, SalidaSonido.cs)
             int ms = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : BombaSonido.ArranqueMs;
             bomba = new BombaSonido(MideLatenciaSalida(cadena, false), ms, ms * 3 / 5);
             return bomba;

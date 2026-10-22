@@ -25,6 +25,13 @@
 //    Si Windows cambia de aparato predeterminado (se enchufa otro), la siguiente no se encadena: la salida se
 //    cierra al acabar la que suena y la siguiente se abre en el aparato nuevo, como antes de la continuidad.
 //
+// 6) LA CAJA NEGRA DEL SONIDO (22 de octubre de 2026). Los cortes que el hilo de la musica no alcanzo a tapar (BombaSonido.Huecos)
+//    y los avisos de la salida que llegaron tarde no se apuntaban en ningun sitio: en el bar, "a veces se corta" no dejaba
+//    rastro. Ahora, al acabar o saltar una cancion con algo que contar, se apunta UNA linea «[Cortes de sonido] ...» en
+//    rocola_error.txt (cuantos cortes, cuantos avisos tardios y el maximo, y la latencia abierta); y cada cambio del nivel de
+//    latencia del perfil de la salida («[Latencia de audio] ...», PerfilLatenciaAudio) tambien. Sin nada que contar, no se
+//    escribe nada. Se escribe por la bitacora de fondo (MedidasBitacora.cs): la musica y la pantalla no esperan al disco.
+//
 // 5) LA CANCION DE LA MEDIDA, CALLADA DESDE DENTRO. La medida de rendimiento pone una cancion muda y antes se
 //    callaba bajandole el volumen a la SALIDA. Ese volumen no es de la rocola: en WASAPI es el volumen general
 //    de Windows y en WaveOut (Vista o posterior) el de la rocola en el mezclador de Windows, y no se devolvia.
@@ -46,22 +53,57 @@ namespace Rocola
         private int nivel;
         private long desde;
         private double musicaEstable;
+        // Los cambios de nivel para la caja negra (se anotan en numeros, sin reservar nada: Observa corre en la musica).
+        internal const int MaxCambios = 8;
+        internal const int CausaBaja = 0, CausaAtasco = 1, CausaFallo = 2;
+        private readonly int[] cambioDe = new int[MaxCambios], cambioA = new int[MaxCambios], cambioCausa = new int[MaxCambios], cambioValor = new int[MaxCambios];
+        private int nCambios, perdidosCambios;
+        private volatile int hayCambios;
         internal PerfilLatenciaAudio(bool clasica) { niveles = clasica ? new int[] { 1000, 750, 500 } : new int[] { 300, 225, 150 }; }
         internal int Sugerida { get { lock (cerrojo) return niveles[nivel]; } }
-        internal void Fallo() { lock (cerrojo) { nivel = 0; desde = 0; musicaEstable = 0; } }
+        internal bool HayCambios { get { return hayCambios != 0; } }
+        private void Anota(int de, int a, int causa, int valor)   // con el cerrojo
+        {
+            if (de == a) return;
+            if (nCambios >= MaxCambios) { perdidosCambios++; return; }
+            cambioDe[nCambios] = niveles[de]; cambioA[nCambios] = niveles[a]; cambioCausa[nCambios] = causa; cambioValor[nCambios] = valor; nCambios++;
+            hayCambios = 1;
+        }
+        // Los cambios de nivel desde la ultima vez, en texto para rocola_error.txt (null si no hubo ninguno). Lo llama la pantalla.
+        internal string TomaCambios()
+        {
+            lock (cerrojo)
+            {
+                if (nCambios == 0 && perdidosCambios == 0) { hayCambios = 0; return null; }
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                for (int i = 0; i < nCambios; i++)
+                {
+                    if (i > 0) sb.Append("; ");
+                    bool sube = cambioA[i] > cambioDe[i];
+                    sb.Append(sube ? "sube" : "baja").Append(" el margen de ").Append(cambioDe[i]).Append(" a ").Append(cambioA[i]).Append(" ms");
+                    if (cambioCausa[i] == CausaBaja) sb.Append(" (30 s de musica sin atascos)");
+                    else if (cambioCausa[i] == CausaAtasco) sb.Append(" (atasco de ").Append(cambioValor[i]).Append(" ms)");
+                    else sb.Append(" (fallo o corte de la salida)");
+                }
+                if (perdidosCambios > 0) sb.Append("; y ").Append(perdidosCambios).Append(" cambios mas sin anotar");
+                nCambios = 0; perdidosCambios = 0; hayCambios = 0;
+                return sb.ToString();
+            }
+        }
+        internal void Fallo() { lock (cerrojo) { Anota(nivel, 0, CausaFallo, 0); nivel = 0; desde = 0; musicaEstable = 0; } }
         internal void Observa(long ahora, double musicaMs, double costoMs, double atrasoMs, int abierta, bool consumidor)
         {
             lock (cerrojo)
             {
                 if (musicaMs <= 0) return;
                 if (costoMs > Math.Max(10, musicaMs * .6) || atrasoMs > abierta * .25)
-                { nivel = 0; desde = ahora; musicaEstable = 0; return; }
+                { Anota(nivel, 0, CausaAtasco, (int)Math.Max(costoMs, atrasoMs)); nivel = 0; desde = ahora; musicaEstable = 0; return; }
                 if (!consumidor || niveles[nivel] != abierta) return;
                 if (desde == 0) desde = ahora;
                 musicaEstable += musicaMs;
                 double transcurrido = (ahora - desde) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 if (transcurrido >= 30000 && musicaEstable >= 30000 && nivel + 1 < niveles.Length)
-                { nivel++; desde = 0; musicaEstable = 0; }
+                { Anota(nivel, nivel + 1, CausaBaja, 0); nivel++; desde = 0; musicaEstable = 0; }
             }
         }
     }
@@ -75,6 +117,9 @@ namespace Rocola
         private readonly BombaSonido bomba;
         private long ultimo, huecos;
         private double duracionPrevia;
+        private volatile int atrasos, maxAtrasoMs;   // avisos de la salida que llegaron tarde (mas de un cuarto de la latencia) y el peor
+        internal int Atrasos { get { return atrasos; } }
+        internal int MaxAtrasoMs { get { return maxAtrasoMs; } }
         internal FuenteLatenciaAudio(ISampleProvider s, PerfilLatenciaAudio p, int ms, bool consume)
         { src = s; perfil = p; latencia = ms; consumidor = consume; bomba = s as BombaSonido; }
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
@@ -88,6 +133,7 @@ namespace Rocola
             double ms = n * 1000.0 / Math.Max(1, WaveFormat.SampleRate) / Math.Max(1, WaveFormat.Channels);
             double costo = (ahora - antes) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             double atraso = consumidor && ultimo != 0 ? Math.Max(0, (antes - ultimo) * 1000.0 / System.Diagnostics.Stopwatch.Frequency - duracionPrevia) : 0;
+            if (consumidor && atraso > latencia * .25) { atrasos++; if (atraso > maxAtrasoMs) maxAtrasoMs = (int)Math.Min(atraso, 600000.0); }
             if (bomba != null && (bomba.SinMusicaTemporal || bomba.Huecos != huecos))
             { huecos = bomba.Huecos; perfil.Fallo(); return n; }
             perfil.Observa(ahora, ms, costo, atraso, latencia, consumidor);
@@ -117,7 +163,60 @@ namespace Rocola
             return latenciaAbiertaMs;
         }
         private ISampleProvider MideLatenciaSalida(ISampleProvider muestras, bool consumidor)
-        { return perfilLatencia == null ? muestras : new FuenteLatenciaAudio(muestras, perfilLatencia, latenciaAbiertaMs, consumidor); }
+        {
+            if (perfilLatencia == null) return muestras;
+            FuenteLatenciaAudio m = new FuenteLatenciaAudio(muestras, perfilLatencia, latenciaAbiertaMs, consumidor);
+            if (consumidor) { medidorSalida = m; atrasosApuntados = 0; }
+            return m;
+        }
+
+        // LA CAJA NEGRA DEL SONIDO (ver 6 arriba).
+        private FuenteLatenciaAudio medidorSalida;      // el medidor del lado de la salida (el que ve los avisos tardios)
+        private long cortesApuntados;                    // cortes de la bomba ya apuntados (de la salida abierta)
+        private int atrasosApuntados;                    // avisos tardios ya apuntados
+        // El texto de «[Cortes de sonido]» de lo ocurrido desde la ultima vez, o null si no hubo nada que contar.
+        internal static string TextoCortes(string cancion, long cortes, int avisosTardios, int maxAtrasoMs, int latenciaMs)
+        {
+            if (cortes <= 0 && avisosTardios <= 0) return null;
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.Append("[Cortes de sonido] ");
+            if (!string.IsNullOrEmpty(cancion)) sb.Append('"').Append(cancion.Length > 80 ? cancion.Substring(0, 80) + "..." : cancion).Append("\": ");
+            if (cortes > 0) sb.Append(cortes).Append(cortes == 1 ? " corte" : " cortes").Append(" del hilo de la musica (silencio entregado)");
+            if (cortes > 0 && avisosTardios > 0) sb.Append(", ");
+            if (avisosTardios > 0) sb.Append(avisosTardios).Append(avisosTardios == 1 ? " aviso tardio" : " avisos tardios").Append(" de la salida (el peor, ").Append(maxAtrasoMs).Append(" ms)");
+            sb.Append("; latencia abierta ").Append(latenciaMs > 0 ? latenciaMs.ToString() : "?").Append(" ms");
+            return sb.ToString();
+        }
+        // Al acabar o saltar una cancion: lo que paso mientras sono. Una sola linea, solo si hubo algo.
+        private void ApuntaCortesDeSonido()
+        {
+            try
+            {
+                BombaSonido b = bomba; FuenteLatenciaAudio m = medidorSalida;
+                long cortes = b != null ? b.Huecos : 0, nuevosCortes = cortes - cortesApuntados;
+                int atrasos = m != null ? m.Atrasos : 0, maxAtraso = m != null ? m.MaxAtrasoMs : 0, nuevosAtrasos = atrasos - atrasosApuntados;
+                if (b != null) cortesApuntados = cortes;
+                if (m != null) { atrasosApuntados = atrasos; }
+                string cancion = nowPlaying != null && nowPlaying.Song != null ? (nowPlaying.Song.Title ?? nowPlaying.Song.Path) : null;
+                string t = TextoCortes(cancion, nuevosCortes, nuevosAtrasos, maxAtraso, latenciaAbiertaMs);   // el peor, de la salida abierta
+                if (t != null) ApuntaCajaNegra(t);
+                ApuntaLatencia();
+            }
+            catch { }
+        }
+        // Los cambios de nivel de la latencia, si hubo (el reloj de la cancion lo mira cada 500 ms: solo un entero).
+        private void ApuntaLatencia()
+        {
+            PerfilLatenciaAudio p = perfilLatencia;
+            if (p == null || !p.HayCambios) return;
+            string c = p.TomaCambios();
+            if (c != null) ApuntaCajaNegra("[Latencia de audio] " + c);
+        }
+        private void ApuntaCajaNegra(string linea)
+        {
+            try { Bitacora.ApuntaConSello(RutaDatos("rocola_error.txt"), 262144, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + linea, "\r\n"); }
+            catch { }
+        }
         private int RetardoVisualSalida()
         { return latenciaAbiertaMs <= 0 ? 850 : (int)(latenciaAbiertaMs * (latenciaClasica ? .85 : .8)); }
         // ------------------------------------------------------------------ 1) EL FORMATO

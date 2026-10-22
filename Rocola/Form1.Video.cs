@@ -462,6 +462,7 @@ namespace Rocola
         {
             CancelAudioOpen(); // saltar/cerrar invalida resultados que aun esten abriendo
             CancelaReintentoSalida();   // y la espera a que vuelva el aparato de sonido (SalidaSonido.cs)
+            ApuntaCortesDeSonido();   // si la que acaba o se salta tuvo cortes, una linea en rocola_error.txt (caja negra, SalidaSonido.cs)
             progressTimer.Stop();
             quedanMs = 0;   // la siguiente cancion no tiene prisa hasta que el reloj diga lo contrario (Form1.SinPausa.cs)
             InvalidaPublicacionAudio();   // los bloques tardios ya no pueden publicar medidas ni pulso
@@ -767,6 +768,7 @@ namespace Rocola
             if (reader == null) return;
             // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
             if (SalidaMuda()) { NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new NAudio.Wave.StoppedEventArgs(new SalidaMudaException())); return; }
+            ApuntaLatencia();   // y si el perfil de latencia de la salida cambio de nivel, una linea en rocola_error.txt (SalidaSonido.cs)
             PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             ApuntaQuedan(cur, tot);   // si quedan 45 s o menos, la siguiente cancion pasa antes que las caratulas (Form1.SinPausa.cs)

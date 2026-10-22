@@ -174,6 +174,7 @@ namespace Rocola
 
         private void PasaRelevo(CadenaCancion b)
         {
+            ApuntaCortesDeSonido();   // la que acaba: si tuvo cortes, una linea en rocola_error.txt (caja negra, SalidaSonido.cs)
             CadenaCancion a = cadenaSonando;
             cadenaSonando = b;
             if (object.ReferenceEquals(cadenaPreparada, b)) cadenaPreparada = null;
