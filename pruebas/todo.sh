@@ -304,6 +304,11 @@ GPU="$GPU lectura16"
 # 6 canales, con silencios exactos: todo lo que queda despues de cada lectura es igual bit a bit.
 CPU="$CPU entradaligera"
 GPU="$GPU entradaligera"
+# 'siseorapido': la transformada del quitasiseo (I2) con las etapas de dos en dos (22-10-2026): la misma cuenta, mariposa a mariposa, con los arreglos y el seno con
+# su signo en variables. Comparada con una copia del codigo de antes, con ruido, impulsos, continua, ceros con signo, desnormales, desbordes y vectores dispersos como
+# los de la vuelta, a 32, 44,1, 48 y 96 kHz (1.024 y 2.048 puntos) y en las dos direcciones: re e im iguales bit a bit; y la etapa entera troceada de cuatro maneras.
+CPU="$CPU siseorapido"
+GPU="$GPU siseorapido"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"

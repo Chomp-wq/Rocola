@@ -42,7 +42,7 @@ namespace Rocola
         private readonly ISampleProvider src;
         private readonly int ch, n, h, nb;
         private readonly bool activo;
-        private readonly double[] ventana, cosT, senT;
+        private readonly double[] ventana, cosT, senT, senN;   // senN = -senT: el seno de la transformada de ida, ya con su signo
         private readonly int[] inversa;                  // permutacion de bits de la transformada
         private readonly int[] bandaIni, bandaFin;       // bins de cada banda [ini, fin)
         private readonly double[][] entrada, quita;      // por canal: las ultimas n muestras y lo que se les quita (solapado)
@@ -79,7 +79,8 @@ namespace Rocola
             ventana = new double[n];
             for (int i = 0; i < n; i++) ventana[i] = Math.Sin(Math.PI * i / n);   // seno al cuadrado con solape de la mitad: suma uno
             cosT = new double[n / 2]; senT = new double[n / 2];
-            for (int i = 0; i < n / 2; i++) { cosT[i] = Math.Cos(2 * Math.PI * i / n); senT[i] = Math.Sin(2 * Math.PI * i / n); }
+            senN = new double[n / 2];
+            for (int i = 0; i < n / 2; i++) { cosT[i] = Math.Cos(2 * Math.PI * i / n); senT[i] = Math.Sin(2 * Math.PI * i / n); senN[i] = -senT[i]; }
             inversa = new int[n];
             int bits = 0; while ((1 << bits) < n) bits++;
             for (int i = 0; i < n; i++) { int r = 0; for (int b = 0; b < bits; b++) if ((i & (1 << b)) != 0) r |= 1 << (bits - 1 - b); inversa[i] = r; }
@@ -320,25 +321,68 @@ namespace Rocola
         }
 
         // Transformada de Fourier compleja en el sitio (radix 2), sobre re/im. La inversa sin escalar.
+        //
+        // La MISMA cuenta de siempre, mariposa a mariposa y con las mismas operaciones en el mismo orden (los mismos bits), pero:
+        //   - los arreglos y las tablas van en variables locales (antes se leian del objeto en cada acceso) y el seno ya viene
+        //     con su signo (senN = -senT: negar es exacto, y evita decidir ida o vuelta en cada mariposa);
+        //   - las etapas van de dos en dos: una mariposa de la etapa de tamano L y la que la sigue (de 2L) se hacen juntas con
+        //     los cuatro valores en variables, en vez de escribirlos y volver a leerlos. Cada valor intermedio es un double (se
+        //     redondea igual que al guardarlo en el arreglo), y las mariposas de una misma etapa no dependen una de otra, asi
+        //     que el orden entre ellas no importa. Con n = 1024 son cinco pares; con 2048 (mas de 48 kHz) queda una etapa suelta.
         private void Transforma(bool inversaT)
         {
+            double[] r = re, m = im, tc = cosT, ts = inversaT ? senT : senN;
+            int[] inv = inversa;
+            int n = this.n;
             for (int i = 0; i < n; i++)
             {
-                int j = inversa[i];
-                if (j > i) { double t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+                int j = inv[i];
+                if (j > i) { double t = r[i]; r[i] = r[j]; r[j] = t; t = m[i]; m[i] = m[j]; m[j] = t; }
             }
-            for (int largo = 2; largo <= n; largo <<= 1)
+            int largo = 2;
+            for (; largo * 2 <= n; largo <<= 2)
             {
+                int h = largo >> 1, bloque = largo << 1, tA = n / largo, tB = tA >> 1;
+                for (int i0 = 0; i0 < n; i0 += bloque)
+                {
+                    int k = 0, kb = 0, kh = h * tB;
+                    for (int a = i0; a < i0 + h; a++, k += tA, kb += tB, kh += tB)
+                    {
+                        int b = a + h, c = a + largo, d = c + h;
+                        double wr = tc[k], wi = ts[k];
+                        // etapa de tamano 'largo': las mariposas (a, b) y (c, d), con el mismo giro
+                        double rb = r[b], mb = m[b];
+                        double xr = rb * wr - mb * wi, xi = rb * wi + mb * wr;
+                        double ra = r[a] + xr, ma = m[a] + xi, rb2 = r[a] - xr, mb2 = m[a] - xi;
+                        double rd = r[d], md = m[d];
+                        double yr = rd * wr - md * wi, yi = rd * wi + md * wr;
+                        double rc = r[c] + yr, mc = m[c] + yi, rd2 = r[c] - yr, md2 = m[c] - yi;
+                        // la etapa siguiente (tamano 2 * largo): (a, c) y (b, d)
+                        double w1r = tc[kb], w1i = ts[kb];
+                        double pr = rc * w1r - mc * w1i, pi = rc * w1i + mc * w1r;
+                        r[c] = ra - pr; m[c] = ma - pi; r[a] = ra + pr; m[a] = ma + pi;
+                        double w2r = tc[kh], w2i = ts[kh];
+                        double qr = rd2 * w2r - md2 * w2i, qi = rd2 * w2i + md2 * w2r;
+                        r[d] = rb2 - qr; m[d] = mb2 - qi; r[b] = rb2 + qr; m[b] = mb2 + qi;
+                    }
+                }
+            }
+            if (largo <= n)
+            {   // la etapa que queda suelta (n no es potencia de cuatro)
                 int mitad = largo >> 1, paso = n / largo;
                 for (int i = 0; i < n; i += largo)
-                    for (int k = 0; k < mitad; k++)
+                {
+                    int kk = 0;
+                    for (int a = i; a < i + mitad; a++, kk += paso)
                     {
-                        double wr = cosT[k * paso], wi = inversaT ? senT[k * paso] : -senT[k * paso];
-                        int a = i + k, b = a + mitad;
-                        double xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr;
-                        re[b] = re[a] - xr; im[b] = im[a] - xi;
-                        re[a] += xr; im[a] += xi;
+                        double wr = tc[kk], wi = ts[kk];
+                        int b = a + mitad;
+                        double rb = r[b], mb = m[b];
+                        double xr = rb * wr - mb * wi, xi = rb * wi + mb * wr;
+                        r[b] = r[a] - xr; m[b] = m[a] - xi;
+                        r[a] += xr; m[a] += xi;
                     }
+                }
             }
         }
     }
