@@ -38,7 +38,7 @@ namespace Rocola
             internal DeepBassProvider Bajo;
             internal CompensaNoche Noche;        // graves y agudos que devuelve el modo noche (ModoNoche.cs)
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
-            internal SalaLocal Sala;             // claridad, partes suaves y balance del local (SalaLocal.cs)
+            internal SalaLocal Sala;             // claridad, partes suaves, balance, graves y agudos del local (SalaLocal.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
             internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva

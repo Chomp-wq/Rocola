@@ -21,6 +21,15 @@
 // el balance va en 50 ms: sin chasquidos. Las pistas seguidas del mismo disco heredan los filtros y la medida (Sigue),
 // igual que el grave en mono. Lo que se queda en casi nada se pone a cero: sin numeros desnormales.
 //
+// GRAVES DEL LOCAL Y AGUDOS DEL LOCAL (22 de octubre de 2026). Dos mandos de -6 a +6 dB, de 1 en 1, para afinar el tono al
+// local sin tocar el EQ automatico: los graves son un escalon de bajos (estante) alrededor de 120 Hz y los agudos uno de
+// altos alrededor de 6 kHz (los dos, filtros de biquad de las notas de Robert Bristow-Johnson, en coma doble). Estan en
+// 0 dB de fabrica y a 0 la etapa no los toca ni los sigue: la muestra sale bit a bit como antes. Al moverlos el valor
+// sube o baja en una rampa de 50 ms para los 12 dB enteros (un escalon de 1 dB tarda 4 ms), con los coeficientes
+// recalculados en cada cuadro: sin chasquidos. Van detras de la claridad y delante de las partes suaves, y las pistas
+// seguidas del mismo disco heredan su estado (Sigue) como el resto. Estan en Ctrl+F3 -> Sonido -> El local y sus bocinas
+// -> Tono y presencia. «Escuchar sin mejoras» los pone a 0 mientras dura.
+//
 // Va detras del grave en mono y delante del bajo psicoacustico y del limitador, que es quien cuida los picos.
 //
 // LA PRUEBA DE BOCINAS: ruido rosa suave (el reparto de energia de la musica) solo por la izquierda, solo por la
@@ -39,6 +48,19 @@ namespace Rocola
         // Los mandos de Ctrl+F3 -> Sonido -> "El local y sus bocinas" (apagados de fabrica).
         private static bool claridadLocal, partesSuaves;
         private static int balanceDb;   // -6..6: negativo baja la derecha (el sonido se va a la izquierda), positivo la izquierda
+        // Graves y agudos del local (22-10-2026): dB de -6 a 6 ("graves_local=", "agudos_local="; 0 de fabrica).
+        private static int gravesLocalDb, agudosLocalDb;
+
+        internal static int TonoLocalDb(string texto, int actual)
+        {
+            int v;
+            if (!int.TryParse(texto.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out v)) return actual;
+            return Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, v));
+        }
+        internal static string TextoTono(int db)
+        {
+            return db == 0 ? "0 dB" : (db > 0 ? "+" + db + " dB" : "−" + (-db) + " dB");
+        }
 
         internal static int BalanceDb(string texto)
         {
@@ -61,6 +83,8 @@ namespace Rocola
             internal const double SuavePuertaDb = -58.0, SuavePuertaAnchoDb = 8.0;
             internal const double MedidaSeg = 0.4, SubeSeg = 1.5, BajaSeg = 0.12, MezclaSeg = 0.03, BalanceSeg = 0.05;
             internal const int Trozo = 32;   // cuadros por cada nueva cuenta de la subida (el logaritmo, no en cada muestra)
+            internal const int TonoMax = 6;                       // graves y agudos del local: de -6 a +6 dB
+            internal const double GravesHz = 120.0, AgudosHz = 6000.0, TonoQ = 0.7071, TonoSeg = 0.05;   // TonoSeg: los 12 dB enteros
 
             private readonly ISampleProvider src;
             private readonly LevelTap tap;           // de donde se lee el volumen general (Master) para no medirlo
@@ -83,10 +107,22 @@ namespace Rocola
             // Balance: lo que lleva cada canal ahora (rampa de 50 ms hacia lo que pide el mando).
             private double gl = 1.0, gr = 1.0;
             private readonly double pasoBalance;
+            // Graves y agudos del local: lo pedido (dB, volatile), lo que llevan ahora (rampa), sus coeficientes y su memoria
+            // (x1 x2 y1 y2 por canal: de 0 a 7 los graves, de 8 a 15 los agudos). 'primado' = su memoria sigue la musica.
+            private volatile int gravesObj, agudosObj;
+            private double gravesDb, agudosDb;
+            private readonly bool conAgudos;
+            private readonly double pasoTono, tSenoG, tCosG, tSenoA, tCosA;
+            private double gb0, gb1, gb2, ga1, ga2, hb0, hb1, hb2, ha1, ha2;
+            private readonly double[] sh = new double[16];
+            private bool gravesPrimado, agudosPrimado, recalculaTono;
             private volatile SalaLocal anterior;     // la pista que acaba justo antes, sin fundido (disco continuo)
             private bool empezo;
 
             public SalaLocal(ISampleProvider s, LevelTap volumen, float objetivo, bool conClaridad, bool conSuaves, int balanceDb)
+                : this(s, volumen, objetivo, conClaridad, conSuaves, balanceDb, 0, 0) { }
+
+            public SalaLocal(ISampleProvider s, LevelTap volumen, float objetivo, bool conClaridad, bool conSuaves, int balanceDb, int graves, int agudos)
             {
                 src = s; tap = volumen;
                 tasa = s.WaveFormat.SampleRate; canales = s.WaveFormat.Channels;
@@ -101,6 +137,14 @@ namespace Rocola
                 if (conPresencia) Campana(PresenciaHz, PresenciaDb, PresenciaQ, out pb0, out pb1, out pb2, out pa1, out pa2);
                 pasoMezcla = 1.0 / (MezclaSeg * tasa);
                 pasoBalance = 1.0 / (BalanceSeg * tasa);
+                conAgudos = AgudosHz < 0.45 * tasa;
+                pasoTono = 2.0 * TonoMax / (TonoSeg * tasa);   // dB por cuadro
+                double w = 2.0 * Math.PI * GravesHz / tasa; tSenoG = Math.Sin(w); tCosG = Math.Cos(w);
+                w = 2.0 * Math.PI * AgudosHz / tasa; tSenoA = Math.Sin(w); tCosA = Math.Cos(w);
+                gravesObj = Math.Max(-TonoMax, Math.Min(TonoMax, graves));
+                agudosObj = conAgudos ? Math.Max(-TonoMax, Math.Min(TonoMax, agudos)) : 0;
+                gravesDb = gravesObj; agudosDb = agudosObj;   // arrancan donde piden los mandos, sin rampa
+                recalculaTono = true;
                 aMedida = 1.0 - Math.Exp(-1.0 / (MedidaSeg * tasa));
                 aSube = 1.0 - Math.Exp(-1.0 / (SubeSeg * tasa));
                 aBaja = 1.0 - Math.Exp(-1.0 / (BajaSeg * tasa));
@@ -126,6 +170,10 @@ namespace Rocola
 
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
             internal bool ConClaridad { get { return claridadOn; } }
+            internal int Graves { get { return gravesObj; } }
+            internal int Agudos { get { return agudosObj; } }
+            internal double GravesAhora { get { return gravesDb; } }
+            internal double AgudosAhora { get { return agudosDb; } }
             internal bool ConSuaves { get { return suavesOn; } }
             internal int Balance { get { return balance; } }
             internal double Subida { get { return sube; } }   // lo que sube ahora (1 = nada); para las pruebas
@@ -139,6 +187,14 @@ namespace Rocola
                 balance = Math.Max(-BalanceMax, Math.Min(BalanceMax, balanceDb));
             }
 
+            // Graves y agudos del local, en vivo (desde la ventana): de -6 a 6 dB; la rampa de 50 ms hace el resto.
+            internal void AjustaTono(int graves, int agudos)
+            {
+                if (!vale) return;
+                gravesObj = Math.Max(-TonoMax, Math.Min(TonoMax, graves));
+                agudosObj = conAgudos ? Math.Max(-TonoMax, Math.Min(TonoMax, agudos)) : 0;
+            }
+
             internal void Sigue(SalaLocal previa) { if (previa != null && !object.ReferenceEquals(previa, this)) anterior = previa; }
             private void Hereda()
             {
@@ -146,6 +202,9 @@ namespace Rocola
                 if (a == null || !a.vale || a.tasa != tasa || a.canales != canales) return;
                 Array.Copy(a.eq, eq, eq.Length);
                 mezcla = a.mezcla; medida = a.medida; sube = a.sube; meta = a.meta; cuenta = a.cuenta; gl = a.gl; gr = a.gr;
+                Array.Copy(a.sh, sh, sh.Length);
+                gravesDb = a.gravesDb; agudosDb = a.agudosDb; gravesPrimado = a.gravesPrimado; agudosPrimado = a.agudosPrimado;
+                recalculaTono = true;
             }
 
             // Nada que hacer: todo apagado, el balance centrado y las rampas ya llegaron. Entonces la etapa no toca ni una
@@ -153,7 +212,8 @@ namespace Rocola
             private bool Quieta(double tl, double tr)
             {
                 return !claridadOn && mezcla == 0.0 && !suavesOn && sube == 1.0
-                    && tl == 1.0 && tr == 1.0 && gl == 1.0 && gr == 1.0;
+                    && tl == 1.0 && tr == 1.0 && gl == 1.0 && gr == 1.0
+                    && gravesDb == 0.0 && agudosDb == 0.0 && gravesObj == 0 && agudosObj == 0;
             }
 
             // CUADROS ENTEROS, como el grave en mono: en estereo se pide siempre un numero par. Si piden una sola muestra,
@@ -201,6 +261,17 @@ namespace Rocola
                 double pb0 = this.pb0, pb1 = this.pb1, pb2 = this.pb2, pa1 = this.pa1, pa2 = this.pa2;
                 bool pres = conPresencia;
                 int cnt = cuenta;
+                double tg = gravesObj, ta = agudosObj, gd = gravesDb, ad = agudosDb, ps = pasoTono;
+                bool tono = gd != 0.0 || ad != 0.0 || tg != 0.0 || ta != 0.0;
+                double gb0 = this.gb0, gb1 = this.gb1, gb2 = this.gb2, ga1 = this.ga1, ga2 = this.ga2;
+                double hb0 = this.hb0, hb1 = this.hb1, hb2 = this.hb2, ha1 = this.ha1, ha2 = this.ha2;
+                if (recalculaTono)
+                {
+                    recalculaTono = false;
+                    if (gd != 0.0) Estante(false, gd, tSenoG, tCosG, out gb0, out gb1, out gb2, out ga1, out ga2);
+                    if (ad != 0.0) Estante(true, ad, tSenoA, tCosA, out hb0, out hb1, out hb2, out ha1, out ha2);
+                }
+                bool gp = gravesPrimado, ap = agudosPrimado;
                 for (int f = 0, i = o; f < cuadros; f++)
                 {
                     double x0 = b[i], x1 = estereo ? b[i + 1] : 0.0;
@@ -217,6 +288,34 @@ namespace Rocola
                             double y1 = Filtra(x1, 8, cb0, cb1, cb2, ca1, ca2);
                             if (pres) y1 = Filtra(y1, 12, pb0, pb1, pb2, pa1, pa2);
                             x1 += mz * (y1 - x1);
+                        }
+                    }
+                    // 1b) Graves y agudos del local: la rampa de dB y, mientras no sea 0, su estante.
+                    if (tono)
+                    {
+                        if (gd != tg)
+                        {
+                            gd = gd < tg ? Math.Min(tg, gd + ps) : Math.Max(tg, gd - ps);
+                            if (gd != 0.0) Estante(false, gd, tSenoG, tCosG, out gb0, out gb1, out gb2, out ga1, out ga2);
+                            else { Array.Clear(sh, 0, 8); gp = false; }
+                        }
+                        if (ad != ta)
+                        {
+                            ad = ad < ta ? Math.Min(ta, ad + ps) : Math.Max(ta, ad - ps);
+                            if (ad != 0.0) Estante(true, ad, tSenoA, tCosA, out hb0, out hb1, out hb2, out ha1, out ha2);
+                            else { Array.Clear(sh, 8, 8); ap = false; }
+                        }
+                        if (gd != 0.0)
+                        {
+                            if (!gp) { sh[0] = sh[1] = sh[2] = sh[3] = x0; if (estereo) sh[4] = sh[5] = sh[6] = sh[7] = x1; gp = true; }
+                            x0 = FiltraTono(x0, 0, gb0, gb1, gb2, ga1, ga2);
+                            if (estereo) x1 = FiltraTono(x1, 4, gb0, gb1, gb2, ga1, ga2);
+                        }
+                        if (ad != 0.0)
+                        {
+                            if (!ap) { sh[8] = sh[9] = sh[10] = sh[11] = x0; if (estereo) sh[12] = sh[13] = sh[14] = sh[15] = x1; ap = true; }
+                            x0 = FiltraTono(x0, 8, hb0, hb1, hb2, ha1, ha2);
+                            if (estereo) x1 = FiltraTono(x1, 12, hb0, hb1, hb2, ha1, ha2);
                         }
                     }
                     // 2) Las partes suaves: se mide lo que llega (sin el Master) y se va hacia la subida que toca.
@@ -242,7 +341,35 @@ namespace Rocola
                     else { b[i] = (float)x0; i += 1; }
                 }
                 mezcla = mz; sube = s; meta = mt; medida = me; gl = l; gr = r; cuenta = cnt;
+                gravesDb = gd; agudosDb = ad; gravesPrimado = gp; agudosPrimado = ap;
+                this.gb0 = gb0; this.gb1 = gb1; this.gb2 = gb2; this.ga1 = ga1; this.ga2 = ga2;
+                this.hb0 = hb0; this.hb1 = hb1; this.hb2 = hb2; this.ha1 = ha1; this.ha2 = ha2;
                 if (mz == 0.0 && !cla) Array.Clear(eq, 0, eq.Length);   // ya salio del todo: sin estados viejos ni desnormales
+            }
+
+            // Un estante de ecualizador (RBJ, con Q): graves (alto = false) o agudos (alto = true), normalizado (a0 = 1).
+            internal static void Estante(bool alto, double db, double seno, double coseno, out double b0, out double b1, out double b2, out double a1, out double a2)
+            {
+                double A = Math.Pow(10.0, db / 40.0), k = 2.0 * Math.Sqrt(A) * (seno / (2.0 * TonoQ));
+                double Am = A - 1.0, Ap = A + 1.0, a0;
+                if (!alto)
+                {
+                    b0 = A * (Ap - Am * coseno + k); b1 = 2.0 * A * (Am - Ap * coseno); b2 = A * (Ap - Am * coseno - k);
+                    a0 = Ap + Am * coseno + k; a1 = -2.0 * (Am + Ap * coseno); a2 = Ap + Am * coseno - k;
+                }
+                else
+                {
+                    b0 = A * (Ap + Am * coseno + k); b1 = -2.0 * A * (Am + Ap * coseno); b2 = A * (Ap + Am * coseno - k);
+                    a0 = Ap - Am * coseno + k; a1 = 2.0 * (Am - Ap * coseno); a2 = Ap - Am * coseno - k;
+                }
+                b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
+            }
+            private double FiltraTono(double x, int e, double b0, double b1, double b2, double a1, double a2)
+            {
+                double y = b0 * x + b1 * sh[e] + b2 * sh[e + 1] - a1 * sh[e + 2] - a2 * sh[e + 3];
+                if (y < 1e-30 && y > -1e-30) y = 0.0;
+                sh[e + 1] = sh[e]; sh[e] = x; sh[e + 3] = sh[e + 2]; sh[e + 2] = y;
+                return y;
             }
 
             private double Filtra(double x, int e, double b0, double b1, double b2, double a1, double a2)

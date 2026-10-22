@@ -15,6 +15,7 @@ using NAudio.Wave;
 //  6) La prueba de bocinas: por donde dice, a -20 dB, la polaridad igual y al reves, sin recortar; solo con la rocola
 //     callada; y se para.
 //  7) La cadena, la configuracion y la ventana.
+//  8) Graves y agudos del local (22-10-2026): estantes de -6 a +6 dB; a 0, bit a bit; sin chasquidos; heredan en el disco continuo.
 // No es escucharlo en el bar: eso solo se sabe alli.
 class FuenteL : ISampleProvider
 {
@@ -53,6 +54,8 @@ class SalaLocalPrueba
     static object Nuevo(Type t, params object[] a) { return Activator.CreateInstance(t, T, null, a, null); }
     static ISampleProvider Sala(ISampleProvider s, object tap, bool cla, bool sua, int bal) { return (ISampleProvider)Nuevo(TSala, s, tap, 0.26f, cla, sua, bal); }
     static void Ajusta(object sala, bool cla, bool sua, int bal) { TSala.GetMethod("Ajusta", T).Invoke(sala, new object[] { cla, sua, bal }); }
+    static ISampleProvider SalaT(ISampleProvider s, int graves, int agudos) { return (ISampleProvider)Nuevo(TSala, s, null, 0.26f, false, false, 0, graves, agudos); }
+    static void AjustaTono(object sala, int graves, int agudos) { TSala.GetMethod("AjustaTono", T).Invoke(sala, new object[] { graves, agudos }); }
     static float[] LeeTodo(ISampleProvider p, int bloque)
     {
         List<float> r = new List<float>(); float[] buf = new float[bloque];
@@ -317,7 +320,7 @@ class SalaLocalPrueba
             Check(Codigo.Llama(aplica, "SalaLocal.Ajusta"), "los mandos se oyen al instante en la que suena y en la siguiente");
             Check(Codigo.Llama(TF.GetMethod("SigueA", T), "SalaLocal.Sigue"), "el disco continuo enlaza la etapa del local");
             List<string> tl = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), ts = Codigo.Textos(TF.GetMethod("TextoConfig", T));
-            foreach (string k in new string[] { "claridad_local=", "partes_suaves=", "balance=" })
+            foreach (string k in new string[] { "claridad_local=", "partes_suaves=", "balance=", "graves_local=", "agudos_local=" })
                 Check(tl.Contains(k) && ts.Contains(k), "la configuracion lee y guarda " + k);
             Check(!(bool)TF.GetField("claridadLocal", T).GetValue(null) && !(bool)TF.GetField("partesSuaves", T).GetValue(null) && (int)TF.GetField("balanceDb", T).GetValue(null) == 0,
                   "de fabrica: claridad y partes suaves apagadas, balance centrado");
@@ -325,8 +328,140 @@ class SalaLocalPrueba
             Check((int)bd.Invoke(null, new object[] { "4" }) == 4 && (int)bd.Invoke(null, new object[] { "-9" }) == -6 && (int)bd.Invoke(null, new object[] { "x" }) == 0, "balance= se lee acotado (-6..6) y lo raro se ignora");
             List<string> ventana = new List<string>();
             foreach (MethodBase m in Codigo.MetodosConAyudantes(TF, "VentanaAjustes")) ventana.AddRange(Codigo.Textos(m));
-            foreach (string s in new string[] { "El local y sus bocinas...", "Claridad para el local", "Que las partes suaves se oigan", "Solo izquierda", "Solo derecha", "Las dos", "Polaridad", "Volver a las canciones" })
+            Check((int)TF.GetField("gravesLocalDb", T).GetValue(null) == 0 && (int)TF.GetField("agudosLocalDb", T).GetValue(null) == 0, "de fabrica: graves y agudos del local en 0 dB");
+            MethodInfo td = TF.GetMethod("TonoLocalDb", T);
+            Check((int)td.Invoke(null, new object[] { "4", 0 }) == 4 && (int)td.Invoke(null, new object[] { "-9", 0 }) == -6 && (int)td.Invoke(null, new object[] { "x", 3 }) == 3, "graves_local= y agudos_local= se leen acotados (-6..6) y lo raro se ignora");
+            foreach (string s in new string[] { "El local y sus bocinas...", "Tono y presencia del local...", "Graves del local", "Agudos del local", "Claridad para el local", "Que las partes suaves se oigan", "Solo izquierda", "Solo derecha", "Las dos", "Polaridad", "Volver a las canciones" })
                 Check(ventana.Contains(s), "en Ctrl+F3: «" + s + "»");
+        }
+
+        Console.WriteLine("\n  8) GRAVES Y AGUDOS DEL LOCAL\n");
+        {
+            float[] rx8 = Ruido(2.0, 8);
+            Check(Igual(LeeTodo(SalaT(new FuenteL(rx8, FS, 2), 0, 0), 1000), rx8), "a 0 dB los dos: sale bit a bit lo que entra (estereo)");
+            float[] rm8 = new float[FS]; Array.Copy(rx8, rm8, rm8.Length);
+            Check(Igual(LeeTodo(SalaT(new FuenteL(rm8, FS, 1), 0, 0), 777), rm8), "a 0 dB los dos: igual con un canal");
+            Check((int)TSala.GetField("TonoMax", T).GetValue(null) == 6, "el margen es de 6 dB");
+            // La respuesta: tono estereo, ultimo medio segundo, con el estante ya asentado (la rampa dura 50 ms).
+            Func<double, int, int, double> resp = delegate (double hz, int g, int a)
+            {
+                float[] x = Tono(hz, 1.5, 0.25, 2);
+                float[] y = LeeTodo(SalaT(new FuenteL(x, FS, 2), g, a), 4096);
+                return Db(Ef(y, 2, 0, 1.0, 1.5)) - Db(Ef(x, 2, 0, 1.0, 1.5));
+            };
+            double g40 = resp(40, 6, 0), g120 = resp(120, 6, 0), g1k = resp(1000, 6, 0), g10k = resp(10000, 6, 0);
+            Console.WriteLine("        graves +6: 40 Hz " + F(g40) + " dB, 120 Hz " + F(g120) + ", 1 kHz " + F(g1k) + ", 10 kHz " + F(g10k));
+            Check(g40 > 5.4 && g40 < 6.3, "graves +6: lo muy grave sube casi 6 dB");
+            Check(Math.Abs(g120 - 3.0) < 0.6, "graves +6: en la frecuencia de corte (120 Hz) sube la mitad, 3 dB");
+            Check(Math.Abs(g1k) < 0.3 && Math.Abs(g10k) < 0.1, "graves +6: el medio y los agudos no se tocan");
+            double n40 = resp(40, -6, 0), n1k = resp(1000, -6, 0);
+            Check(n40 < -5.4 && n40 > -6.3 && Math.Abs(n1k) < 0.3, "graves -6: lo muy grave baja casi 6 dB y el medio no");
+            double a12 = resp(12000, 0, 6), a6k = resp(6000, 0, 6), a1k = resp(1000, 0, 6), a100 = resp(100, 0, 6);
+            Console.WriteLine("        agudos +6: 12 kHz " + F(a12) + " dB, 6 kHz " + F(a6k) + ", 1 kHz " + F(a1k) + ", 100 Hz " + F(a100));
+            Check(a12 > 5.0 && a12 < 6.3, "agudos +6: los agudos suben casi 6 dB");
+            Check(Math.Abs(a6k - 3.0) < 0.7, "agudos +6: en 6 kHz sube la mitad, 3 dB");
+            Check(Math.Abs(a1k) < 0.4 && Math.Abs(a100) < 0.05, "agudos +6: el medio casi no y los graves no se tocan");
+            double an12 = resp(12000, 0, -6);
+            Check(an12 < -5.0 && an12 > -6.3, "agudos -6: los agudos bajan casi 6 dB");
+            double paso = resp(40, 1, 0);
+            Check(Math.Abs(paso - 1.0) < 0.15, "de 1 en 1: +1 dB de graves da casi 1 dB a 40 Hz (" + F(paso) + ")");
+            double fuera = resp(40, 99, 0);
+            Check(Math.Abs(fuera - g40) < 0.01, "no pasa de 6 dB aunque se pida mas");
+            // Ruido: los dos juntos no se pisan entre si (graves arriba, agudos abajo).
+            double d40 = resp(40, 6, -6), d12 = resp(12000, 6, -6);
+            Check(d40 > 5.2 && d12 < -4.8, "graves +6 y agudos -6 a la vez: cada uno en lo suyo");
+            // Un canal: el tono por el unico canal.
+            float[] xm = Tono(40, 1.5, 0.25, 1);
+            float[] ym = LeeTodo(SalaT(new FuenteL(xm, FS, 1), 6, 0), 4096);
+            double gm = Db(Ef(ym, 1, 0, 1.0, 1.5)) - Db(Ef(xm, 1, 0, 1.0, 1.5));
+            Check(gm > 5.4 && gm < 6.3, "con un canal tambien (+" + F(gm) + " dB a 40 Hz)");
+            float[] x6 = new float[6 * 4410]; Array.Copy(rx8, x6, x6.Length);
+            Check(Igual(LeeTodo(SalaT(new FuenteL(x6, FS, 6), 6, 6), 960), x6), "seis canales: no se toca aunque se pida");
+            // Sin chasquidos: encender, subir de golpe de -6 a +6, y volver a 0, sonando.
+            {
+                float[] x = Tono(100, 1.5, 0.4, 2);
+                ISampleProvider s = SalaT(new FuenteL(x, FS, 2), 0, 0);
+                float[] b = new float[2048]; List<float> y = new List<float>(); int n, k = 0;
+                while ((n = s.Read(b, 0, b.Length)) > 0)
+                {
+                    for (int i = 0; i < n; i++) y.Add(b[i]); k++;
+                    if (k == 4) AjustaTono(s, 6, 0);
+                    if (k == 10) AjustaTono(s, -6, 6);
+                    if (k == 16) AjustaTono(s, 0, 0);
+                }
+                float[] ya = y.ToArray();
+                double tono = 0.4 * 2 * Math.PI * 100 / FS * 2.05;   // la pendiente del tono, hasta con +6 dB (x 1,995)
+                double salto = Math.Max(SaltoMax(ya, 2, 0), SaltoMax(ya, 2, 1));
+                Check(salto < tono, "encender, dar la vuelta de -6 a +6 y apagar sonando no da golpe (salto " + F(salto) + " frente a " + F(tono) + ")");
+                float[] fin = new float[FS / 4 * 2]; Array.Copy(ya, ya.Length - fin.Length, fin, 0, fin.Length);
+                float[] xfin = new float[fin.Length]; Array.Copy(x, x.Length - fin.Length, xfin, 0, fin.Length);
+                Check(Igual(fin, xfin), "vuelto a 0, la etapa se aquieta y vuelve a salir bit a bit");
+                Check((double)TSala.GetProperty("GravesAhora", T).GetValue(s, null) == 0.0 && (double)TSala.GetProperty("AgudosAhora", T).GetValue(s, null) == 0.0, "y sus dB ahora son 0 exacto");
+            }
+            // La rampa: de 0 a +6 tarda unos 25 ms (la mitad de los 12 dB de 50 ms) y en 2 ms todavia no llego.
+            {
+                ISampleProvider s = SalaT(new FuenteL(Tono(40, 1.0, 0.25, 2), FS, 2), 0, 0);
+                float[] b = new float[2]; s.Read(b, 0, 2);
+                AjustaTono(s, 6, 0);
+                float[] c = new float[(int)(0.002 * FS) * 2]; s.Read(c, 0, c.Length);
+                double ahora = (double)TSala.GetProperty("GravesAhora", T).GetValue(s, null);
+                Check(ahora > 0.0 && ahora < 1.0, "la rampa empieza suave: a los 2 ms lleva " + F(ahora) + " dB de 6");
+                c = new float[(int)(0.03 * FS) * 2]; s.Read(c, 0, c.Length);
+                Check((double)TSala.GetProperty("GravesAhora", T).GetValue(s, null) == 6.0, "y a los 32 ms ya esta en los 6 dB");
+            }
+            // Disco continuo: dos pistas seguidas suenan como una sola con los estantes encendidos.
+            {
+                float[] a = Ruido(1.0, 31), b2 = Ruido(1.0, 32), ab = new float[a.Length + b2.Length];
+                Array.Copy(a, ab, a.Length); Array.Copy(b2, 0, ab, a.Length, b2.Length);
+                float[] junta = LeeTodo(SalaT(new FuenteL(ab, FS, 2), 4, -3), 4096);
+                ISampleProvider sa = SalaT(new FuenteL(a, FS, 2), 4, -3), sb = SalaT(new FuenteL(b2, FS, 2), 4, -3);
+                float[] ya = LeeTodo(sa, 4096);
+                TSala.GetMethod("Sigue", T).Invoke(sb, new object[] { sa });
+                float[] yb = LeeTodo(sb, 4096);
+                float[] seguidas = new float[ya.Length + yb.Length]; Array.Copy(ya, seguidas, ya.Length); Array.Copy(yb, 0, seguidas, ya.Length, yb.Length);
+                Check(Igual(junta, seguidas), "dos pistas seguidas del mismo disco suenan como una sola (heredan la memoria de los estantes)");
+            }
+            // Lecturas de una muestra o impares: los canales no se cruzan.
+            {
+                float[] x = Ruido(0.5, 41);
+                float[] enteros = LeeTodo(SalaT(new FuenteL(x, FS, 2), 5, -4), 4096);
+                ISampleProvider s = SalaT(new FuenteL(x, FS, 2), 5, -4);
+                List<float> y = new List<float>(); float[] b = new float[777]; int n, k = 0;
+                while ((n = s.Read(b, 0, (k++ % 3 == 0) ? 1 : (k % 2 == 0 ? 777 : 333))) > 0) for (int i = 0; i < n; i++) y.Add(b[i]);
+                Check(Igual(enteros, y.ToArray()), "con los estantes, pedir de a una muestra o numeros impares da lo mismo");
+            }
+            // Silencio: sin desnormales y sin reservar memoria al leer.
+            {
+                float[] x = new float[(int)(3.0 * FS) * 2]; Array.Copy(Ruido(0.5, 4), x, (int)(0.5 * FS) * 2);
+                ISampleProvider s = SalaT(new FuenteL(x, FS, 2), 6, 6);
+                LeeTodo(s, 4096);
+                double[] sh = (double[])TSala.GetField("sh", T).GetValue(s);
+                bool pequenos = true; foreach (double v in sh) if (v != 0.0 && Math.Abs(v) < 1e-29) pequenos = false;
+                Check(pequenos, "tras 2,5 s de silencio la memoria de los estantes no guarda restos desnormales");
+                MethodInfo asignado = typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread", BindingFlags.Public | BindingFlags.Static);
+                if (asignado != null)
+                {
+                    ISampleProvider sm = SalaT(new FuenteL(Ruido(3.0, 5), FS, 2), 6, -6);
+                    float[] bm = new float[4096]; sm.Read(bm, 0, bm.Length);
+                    long antes = (long)asignado.Invoke(null, null);
+                    for (int i = 0; i < 20; i++) sm.Read(bm, 0, bm.Length);
+                    long despues = (long)asignado.Invoke(null, null);
+                    Check(despues - antes < 1024, "leer con los estantes no reserva memoria (" + (despues - antes) + " bytes en 20 lecturas)");
+                }
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                LeeTodo(SalaT(new FuenteL(Ruido(10.0, 6), FS, 2), 6, -6), 4410);
+                sw.Stop();
+                System.Diagnostics.Stopwatch sw0 = System.Diagnostics.Stopwatch.StartNew();
+                LeeTodo(SalaT(new FuenteL(Ruido(10.0, 6), FS, 2), 0, 0), 4410);
+                sw0.Stop();
+                Console.WriteLine("        los dos estantes: " + F(sw.Elapsed.TotalMilliseconds / 10.0) + " ms por segundo de musica (a 0 dB, con la misma copia: " + F(sw0.Elapsed.TotalMilliseconds / 10.0) + " ms)");
+                Check(sw.Elapsed.TotalMilliseconds / 10.0 < 20.0, "cuesta poco (menos de 20 ms por segundo con la copia de la prueba)");
+            }
+            // «Escuchar sin mejoras» los pone a 0 y al quitarlo vuelven.
+            string fuenteF3 = Codigo.FuenteDeForm1();
+            Check(fuenteF3.Contains("barGra.Value = SalaLocal.TonoMax; barAgu.Value = SalaLocal.TonoMax;"), "«Dejar como de fabrica» vuelve los graves y los agudos del local a 0 dB");
+            Check(fuenteF3.Contains("gravesLocalDb = bkGra; agudosLocalDb = bkAgu;"), "y al Cancelar por un fallo se restauran los valores de antes");
+            Check(Codigo.Llama(TF.GetMethod("AplicaSinMejoras", T), "SalaLocal.AjustaTono"), "«Escuchar sin mejoras» pone los estantes a 0 mientras dura");
         }
 
         Console.WriteLine();

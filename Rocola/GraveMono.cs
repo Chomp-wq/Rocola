@@ -85,9 +85,9 @@ namespace Rocola
             // Y los arreglos de la grabacion (ArreglosGrabacion.cs): el canal mudo y la continua.
             if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(canalMudo, quitaContinua);
             if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(canalMudo, quitaContinua);
-            // Y los del local (SalaLocal.cs): claridad, partes suaves y balance.
-            if (c != null && c.Sala != null) c.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
-            if (p != null && p.Sala != null) p.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb);
+            // Y los del local (SalaLocal.cs): claridad, partes suaves, balance, graves y agudos.
+            if (c != null && c.Sala != null) { c.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb); c.Sala.AjustaTono(gravesLocalDb, agudosLocalDb); }
+            if (p != null && p.Sala != null) { p.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb); p.Sala.AjustaTono(gravesLocalDb, agudosLocalDb); }
         }
         private static float AnchoEstereo(string texto)
         {

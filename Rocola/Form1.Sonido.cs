@@ -1331,7 +1331,7 @@ namespace Rocola
             c.Mono.SoloSiHaceFalta(estereoAuto);   // y solo si hace falta (S3)
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
-            c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb);
+            c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb, gravesLocalDb, agudosLocalDb);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)

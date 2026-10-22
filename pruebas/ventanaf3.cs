@@ -105,6 +105,21 @@ class VentanaF3
                         if (abre != null)
                         {
                             Click(abre); Mira(nombre + ", Sonido > El local y sus bocinas");
+                            // La segunda hoja del grupo (22-10-2026): graves y agudos del local y la presencia en sala ruidosa.
+                            Control abreT = Boton(dlg, "Tono y presencia del local...");
+                            Check(abreT != null, "la hoja del local tiene el boton de la hoja de tono y presencia");
+                            if (abreT != null)
+                            {
+                                Click(abreT); Mira(nombre + ", Sonido > El local y sus bocinas > Tono y presencia");
+                                int swT = 0;
+                                foreach (string nomSw in new string[] { "SonidoTonoGraves", "SonidoTonoAgudos" })
+                                { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swT++; }
+                                Check(swT == 2, "la hoja de tono tiene sus dos deslizadores a la vista (" + swT + ")");
+                                Check(Boton(dlg, "Solo izquierda") == null, "y la hoja del local queda escondida mientras tanto");
+                                Control vt = Boton(dlg, "Volver al local y sus bocinas");
+                                Check(vt != null, "la hoja de tono y presencia tiene su boton de volver");
+                                if (vt != null) { Click(vt); Check(Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Tono y presencia del local...") != null, "al volver se ve otra vez la hoja del local"); }
+                            }
                             Control vuelve = Boton(dlg, "Volver a las canciones");
                             Check(vuelve != null && Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Polaridad") != null, "la hoja del local tiene la prueba de bocinas y su boton de volver");
                             if (vuelve != null) { Click(vuelve); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver se ven otra vez las canciones"); }
