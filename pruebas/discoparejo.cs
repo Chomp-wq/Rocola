@@ -57,18 +57,18 @@ class DiscoParejo
     {
         Console.WriteLine("\n  1) EN RACHA Y SIN RACHA\n");
         f = Form();
-        // Un disco con una balada bajita (-20 LKFS) entre dos temas fuertes (-12).
+        // Un disco con una balada bajita (-16 LKFS) entre dos temas fuertes (-12): 4 dB de dispersion, dentro del 5 de un disco de verdad.
         object a1 = Pista("/m/disco/01.mp3"), a2 = Pista("/m/disco/02 balada.mp3"), a3 = Pista("/m/disco/03.mp3");
         object otro = Pista("/m/otro/01.mp3");
         object D = Disco("/m/disco", false, a1, a2, a3), O = Disco("/m/otro", false, otro);
-        tab["/m/disco/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/disco/02 balada.mp3"] = Integ(-20f, -6f, -12f, 600);
+        tab["/m/disco/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/disco/02 balada.mp3"] = Integ(-16f, -6f, -12f, 600);
         tab["/m/disco/03.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/otro/01.mp3"] = Integ(-16f, -2f, -8f, 600);
         // Suena la 01 y en la cola la balada: las dos van con la ganancia del disco.
         Suena(Item(otro, O), Item(a1, D), Item(a2, D), Item(a3, D));
         float g1 = G(a1), g2 = G(a2);
-        Info("cancion por cancion: la 01 " + F(Db(N(a1)), "+0.0;-0.0") + " dB, la balada " + F(Db(N(a2)), "+0.0;-0.0") + " dB (la balada acabaria " + F(8 - Db(N(a2)) + Db(N(a1)), "0.0") + " dB por debajo de la 01 en vez de 8)");
+        Info("cancion por cancion: la 01 " + F(Db(N(a1)), "+0.0;-0.0") + " dB, la balada " + F(Db(N(a2)), "+0.0;-0.0") + " dB (la balada acabaria " + F(4 - Db(N(a2)) + Db(N(a1)), "0.0") + " dB por debajo de la 01 en vez de 4)");
         Info("en racha de disco: las dos " + F(Db(g1), "+0.0;-0.0") + " dB");
-        Check(g1 == g2 && Math.Abs(g1 - N(a1)) > 0.01f, "en racha, la que suena y la siguiente del mismo disco llevan la misma ganancia (la balada sigue 8 dB por debajo, como en el disco)");
+        Check(g1 == g2 && Math.Abs(g1 - N(a1)) > 0.01f, "en racha, la que suena y la siguiente del mismo disco llevan la misma ganancia (la balada sigue 4 dB por debajo, como en el disco)");
         // Sin racha: la de antes y la de despues son de otros discos.
         Suena(Item(otro, O), Item(a2, D), Item(otro, O));
         Check(G(a2) == N(a2), "sin racha (la de antes y la de despues son de otros discos), la de siempre");
@@ -103,14 +103,14 @@ class DiscoParejo
         // La media pesa lo que dura cada pista: una larga y bajita manda mas que una corta y fuerte.
         object e1 = Pista("/m/e/01.mp3"), e2 = Pista("/m/e/02.mp3");
         object E = Disco("/m/e", false, e1, e2);
-        tab["/m/e/01.mp3"] = Integ(-12f, -10f, -14f, 100); tab["/m/e/02.mp3"] = Integ(-18f, -10f, -14f, 2000);
+        tab["/m/e/01.mp3"] = Integ(-12f, -10f, -14f, 100); tab["/m/e/02.mp3"] = Integ(-16f, -10f, -14f, 2000);
         Suena(null, Item(e1, E), Item(e2, E));
         double ge = Db(G(e1)), n1 = Db(N(e1)), n2 = Db(N(e2));
         Check(Math.Abs(ge - n2) < Math.Abs(ge - n1), "la media del disco pesa lo que dura cada pista (" + F(ge, "+0.0") + " dB, cerca de la larga " + F(n2, "+0.0") + " y lejos de la corta " + F(n1, "+0.0") + ")");
         // Sin bastantes medidas: cancion por cancion.
         object c1 = Pista("/m/c/01.mp3"), c2 = Pista("/m/c/02.mp3"), c3 = Pista("/m/c/03.mp3"), c4 = Pista("/m/c/04.mp3"), c5 = Pista("/m/c/05.mp3");
         object C = Disco("/m/c", false, c1, c2, c3, c4, c5);
-        tab["/m/c/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/c/02.mp3"] = Integ(-20f, -6f, -12f, 600);
+        tab["/m/c/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/c/02.mp3"] = Integ(-16f, -6f, -12f, 600);
         Suena(null, Item(c1, C), Item(c2, C));
         Check(G(c1) == N(c1), "con 2 de 5 pistas medidas (menos de la mitad), cancion por cancion");
         tab["/m/c/03.mp3"] = Integ(-14f, -2f, -6f, 600);
@@ -122,9 +122,42 @@ class DiscoParejo
         Check(G(c1) == 1f, "con el nivelado apagado, nada");
     }
 
+    // Recopilatorios parejos (22-10-2026): si las pistas medidas de la carpeta se llevan mas de 5 dB, no hay volumen de disco.
+    static void Recopilatorios()
+    {
+        Console.WriteLine("\n  3) RECOPILATORIOS: LA DISPERSION DEL DISCO\n");
+        f = Form();
+        float lim = (float)TF.GetField("DispersionDiscoDb", T).GetValue(null);
+        Check(lim == 5f, "el limite de dispersion de un disco es de 5 dB (" + lim + ")");
+        // Dos dB de dispersion: sigue siendo un disco.
+        object p1 = Pista("/m/p/01.mp3"), p2 = Pista("/m/p/02.mp3"), p3 = Pista("/m/p/03.mp3");
+        object P = Disco("/m/p", false, p1, p2, p3);
+        tab["/m/p/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/p/02.mp3"] = Integ(-14f, -3f, -6f, 600); tab["/m/p/03.mp3"] = Integ(-13f, -2f, -5f, 600);
+        Suena(null, Item(p1, P), Item(p2, P), Item(p3, P));
+        Check(G(p1) == G(p2) && G(p1) != N(p1), "con 2 dB de dispersion, modo disco: la que suena y la siguiente con la misma ganancia");
+        // Justo en el limite (5 dB) sigue siendo disco; poco mas, no.
+        tab["/m/p/02.mp3"] = Integ(-17f, -3f, -6f, 600);
+        Check(G(p1) == G(p2) && G(p1) != N(p1), "con 5 dB justos, todavia disco");
+        tab["/m/p/02.mp3"] = Integ(-17.5f, -3f, -6f, 600);
+        Check(G(p1) == N(p1) && G(p2) == N(p2), "con 5,5 dB, recopilatorio: cada cancion con la suya");
+        // Ocho dB: recopilatorio, y las tres por separado aunque esten en racha.
+        tab["/m/p/02.mp3"] = Integ(-20f, -6f, -12f, 600);
+        Check(G(p1) == N(p1) && G(p2) == N(p2), "con 8 dB de dispersion, cada cancion se nivela por su cuenta");
+        Info("la balada de -20 queda a " + F(Db(G(p2)) - Db(G(p1)), "+0.0;-0.0") + " dB de la 01, la diferencia de sus ganancias propias");
+        // Una cortinilla de 10 s muy baja no vuelve recopilatorio a un disco de verdad.
+        object q1 = Pista("/m/q/01.mp3"), q2 = Pista("/m/q/02 intro.mp3"), q3 = Pista("/m/q/03.mp3");
+        object Q = Disco("/m/q", false, q1, q2, q3);
+        tab["/m/q/01.mp3"] = Integ(-12f, -1f, -4f, 600); tab["/m/q/02 intro.mp3"] = Integ(-30f, -9f, -15f, 100); tab["/m/q/03.mp3"] = Integ(-14f, -2f, -5f, 600);
+        Suena(null, Item(q1, Q), Item(q3, Q));
+        Check(G(q1) == G(q3) && G(q1) != N(q1), "una intro de 10 s a 18 dB por debajo no cuenta para la dispersion: sigue siendo un disco");
+        // Los topes de pico se conservan en modo disco (la comprobacion 2 sigue pasando); aqui, por pista en modo recopilatorio.
+        float techo = (float)TF.GetField("TechoPicoReal", T).GetValue(null);
+        Check(Db(Lin(-1) * G(p1) / techo) <= 6.0001, "en modo recopilatorio la ganancia de cada cancion respeta su tope de pico como siempre");
+    }
+
     static void Enchufado()
     {
-        Console.WriteLine("\n  3) ENCHUFADO\n");
+        Console.WriteLine("\n  4) ENCHUFADO\n");
         bool cadena = Codigo.Llama(TF.GetMethod("ArmaCadena", T), "GananciaDe") && !Codigo.Llama(TF.GetMethod("ArmaCadena", T), "NormGainFor");
         bool prep = Codigo.Llama(TF.GetMethod("AplicaAPreparada", T), "GananciaDe");
         bool vivo = Codigo.Llama(TF.GetMethod("ApplyNormNow", T), "GananciaDe");
@@ -143,6 +176,7 @@ class DiscoParejo
         if (TF.GetMethod("GananciaDe", T) == null) { Check(false, "la rocola no nivela por disco (falta NivelDisco.cs)"); return 1; }
         try { EnRacha(); } catch (Exception e) { Check(false, "en racha: " + e); }
         try { Topes(); } catch (Exception e) { Check(false, "topes: " + e); }
+        try { Recopilatorios(); } catch (Exception e) { Check(false, "recopilatorios: " + e); }
         try { Enchufado(); } catch (Exception e) { Check(false, "enchufado: " + e); }
         Console.WriteLine(fallos == 0 ? "\n  todo bien (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);
         return fallos == 0 ? 0 : 1;

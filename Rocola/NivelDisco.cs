@@ -12,6 +12,12 @@
 // nivelado, GananciaNivelado). Hacen falta al menos 2 pistas medidas, la mitad del disco y la propia cancion; si no,
 // se nivela cancion por cancion, como siempre. No lleva interruptor: sin racha de disco no cambia nada.
 //
+// RECOPILATORIOS PAREJOS (22 de octubre de 2026). Un "Exitos 90s" o un "Varios" no es un disco: son pistas de grabaciones
+// distintas, y con la ganancia unica una queda 8 dB mas baja que la otra. Si entre las pistas medidas del disco la mas
+// fuerte y la mas baja se llevan mas de DispersionDiscoDb (5 dB), no hay un volumen de disco que respetar y cada cancion
+// se nivela por su cuenta. Las pistas de menos de 30 s (intros, cortinillas) no cuentan para la dispersion: en un disco de
+// verdad siempre hay una. Tampoco lleva interruptor.
+//
 // La cancion que YA suena conserva la ganancia con la que empezo aunque despues se pida otra de su disco: cambiarla a
 // media cancion se oiria. La racha cuenta desde la siguiente.
 using System;
@@ -21,6 +27,12 @@ namespace Rocola
 {
     public partial class Form1
     {
+        // La mas fuerte y la mas baja de un disco (dB de la potencia por canal) pueden llevarse hasta esto y seguir siendo un
+        // disco; mas, es un recopilatorio y se nivela cancion por cancion. Las pistas con menos de MinBloquesDispersion
+        // bloques de 400 ms (30 s) no entran en esa cuenta.
+        internal const float DispersionDiscoDb = 5f;
+        internal const int MinBloquesDispersion = 300;
+
         private PlayItem sonoAntes;   // lo que sono justo antes de la que suena (null si hubo silencio o es la primera)
 
         // La ganancia de nivelado de una cancion en su sitio de la cola: la del disco si esta en racha, si no la suya.
@@ -77,6 +89,7 @@ namespace Rocola
             g = 1f;
             if (!normalizeOn || normStrength <= 0.001f || pistas == null || integCache == null) return false;
             double peso = 0, pot = 0; float pico = 0f, p99 = 0f; bool picos = true, esta = false; int medidas = 0;
+            float rmsMin = float.MaxValue, rmsMax = 0f;
             for (int i = 0; i < pistas.Count; i++)
             {
                 Track tr = pistas[i];
@@ -86,11 +99,13 @@ namespace Rocola
                 if (!(rms > 0.0001f)) continue;
                 double w = Math.Max(1, s.Bloques);
                 pot += w * (double)rms * rms; peso += w; medidas++;
+                if (s.Bloques >= MinBloquesDispersion) { if (rms < rmsMin) rmsMin = rms; if (rms > rmsMax) rmsMax = rms; }
                 if (string.Equals(tr.Path, ruta, StringComparison.OrdinalIgnoreCase)) esta = true;
                 if (s.ConPicos) { pico = Math.Max(pico, DbALin(s.PicoDb)); p99 = Math.Max(p99, DbALin(s.P99Db)); }
                 else picos = false;
             }
             if (!esta || medidas < 2 || medidas * 2 < pistas.Count || !(peso > 0)) return false;
+            if (rmsMax > 0f && rmsMin < float.MaxValue && rmsMax > rmsMin * (float)Math.Pow(10.0, DispersionDiscoDb / 20.0)) return false;   // recopilatorio: cancion por cancion
             float rmsDisco = (float)Math.Sqrt(pot / peso);
             float cap = (float)Math.Pow(10.0, TierCapDb(rmsDisco) / 20.0);
             if (cap > NormMaxBoost) cap = NormMaxBoost;
