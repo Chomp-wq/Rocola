@@ -1381,6 +1381,14 @@ namespace Rocola
                                              saltadoSeg > 0 ? FadeProvider.EntradaRetomadaSeg : FadeProvider.EntradaSeg);   // fundido suave de entrada/salida
                 outChain = c.Fundido;
             }
+            else
+            {
+                // SIN FUNDIDO DE SALIDA ("fundido=0"): la entrada de 5 ms (o de 0,3 s si se retoma) no depende de el. Antes, sin fundido
+                // tampoco habia entrada y una cancion que empieza en su pico arrancaba de golpe. Sin total, no hay fundido de salida.
+                c.Fundido = new FadeProvider(outChain, 0, 0, audioTailDelay,
+                                             saltadoSeg > 0 ? FadeProvider.EntradaRetomadaSeg : FadeProvider.EntradaSeg);
+                outChain = c.Fundido;
+            }
             c.Retardo = audioTailDelay; c.Salida = outChain;
             return c;
         }

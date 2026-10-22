@@ -155,6 +155,36 @@ class Relleno
             }
         }
         finally { cache.SetValue(null, int.MinValue); abre.SetValue(null, null); TR.GetField("Apunte", T).SetValue(null, null); }
+        // Un fallo pasajero no es para toda la sesion (22-10-2026): pasados unos minutos se mide UNA vez mas; si vuelve a fallar, no mas.
+        {
+            FieldInfo reint = TF.GetField("rellenoReintentado", T), espera = TF.GetField("RellenoReintentoMs", T);
+            MethodInfo rel = TF.GetMethod("RellenoExtra", T);
+            int intentos = 0; bool falla = true;
+            Func<byte[], ISampleProvider> g = delegate(byte[] b)
+            {
+                intentos++;
+                object et; LeeBytes(b, out et);
+                float[] y = Descomprime(Clic(2), 2, et, 529);
+                if (falla) y[2 * 20000] = 0.3f;
+                return new Imitado(y, 2);
+            };
+            int guardada = (int)espera.GetValue(null);
+            try
+            {
+                cache.SetValue(null, int.MinValue); reint.SetValue(null, false); abre.SetValue(null, g);
+                espera.SetValue(null, 60000);
+                int a = (int)rel.Invoke(null, null), b2 = (int)rel.Invoke(null, null);
+                Check(a == -1 && b2 == -1 && intentos == 1, "un fallo al medir no se repite de inmediato (dentro de los minutos de espera sigue en -1 sin volver a medir)");
+                espera.SetValue(null, 0); falla = false;
+                int c = (int)rel.Invoke(null, null), d = (int)rel.Invoke(null, null);
+                Check(c == 529 && d == 529 && intentos == 2, "pasada la espera lo intenta una vez mas y, si ahora si, se queda con 529 (" + c + ", " + intentos + " intentos)");
+                // Y si el reintento tambien falla, se acabo: ni un tercer intento en toda la sesion.
+                cache.SetValue(null, int.MinValue); reint.SetValue(null, false); intentos = 0; falla = true; espera.SetValue(null, 0);
+                int e1 = (int)rel.Invoke(null, null), e2 = (int)rel.Invoke(null, null), e3 = (int)rel.Invoke(null, null), e4 = (int)rel.Invoke(null, null);
+                Check(e1 == -1 && e2 == -1 && e3 == -1 && e4 == -1 && intentos == 2, "si el reintento tambien falla, no hay un tercero (" + intentos + " intentos en cuatro llamadas)");
+            }
+            finally { cache.SetValue(null, int.MinValue); reint.SetValue(null, false); abre.SetValue(null, null); espera.SetValue(null, guardada); }
+        }
     }
 
     // ---------------- el recorte ----------------

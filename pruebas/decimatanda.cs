@@ -139,5 +139,21 @@ class DecimaTanda
                 Check(primero < 0.01f && a100 < alMedio * 0.5f && alMedio > 0.3f, "retomada a media cancion: entra en 0,3 s (a los 100 ms va por " + a100.ToString("0.00") + " de " + alMedio.ToString("0.00") + ")");
             }
         }
+        // SIN FUNDIDO DE SALIDA (fundido=0, 22-10-2026): la entrada de 5 ms sigue, y la cancion acaba entera (sin fundido de salida).
+        form.GetField("crossfadeSec", B).SetValue(f, 0f);
+        {
+            object lector = form.GetMethod("OpenAudio", B).Invoke(f, new object[] { wav });
+            form.GetNestedType("IAudioSource", B).GetProperty("Volume").SetValue(lector, 1.0f, null);
+            object cad = form.GetMethod("ArmaCadena", B).Invoke(f, new object[] { track, lector, false, 0.0 });
+            int retardo = (int)cad.GetType().GetField("Retardo", B).GetValue(cad);
+            float[] y = Lee((ISampleProvider)cad.GetType().GetField("Salida", B).GetValue(cad), 4096);
+            ((IDisposable)lector).Dispose();
+            float primero = Math.Abs(y[2 * retardo]), salto = 0, prev = 0;
+            for (int i = retardo; i < retardo + fs / 100; i++) { salto = Math.Max(salto, Math.Abs(y[2 * i] - prev)); prev = y[2 * i]; }
+            float alFinal = 0; for (int i = y.Length / 2 - 2000; i < y.Length / 2; i++) alFinal = Math.Max(alFinal, Math.Abs(y[2 * i]));
+            Check(cad.GetType().GetField("Fundido", B).GetValue(cad) != null && primero < 0.02f && salto < 0.08f,
+                  "con fundido=0 la cancion sigue sin arrancar de golpe: primera muestra " + primero.ToString("0.000") + ", salto mayor " + salto.ToString("0.000"));
+            Check(alFinal > 0.3f, "y sin fundido de salida: los ultimos 45 ms suenan a todo volumen (" + alFinal.ToString("0.00") + ")");
+        }
     }
 }

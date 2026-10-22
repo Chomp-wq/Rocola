@@ -297,12 +297,24 @@ namespace Rocola
         // Las pruebas cambian como se descomprime el clip (en Linux no hay descompresor de Windows).
         internal static Func<byte[], NAudio.Wave.ISampleProvider> AbreClip = null;
 
+        // Si no se pudo medir (un fallo pasajero: poca memoria justo en ese momento, el descompresor ocupado), no se da por perdido
+        // para toda la sesion (22-10-2026): pasados unos minutos se intenta UNA vez mas. Si vuelve a fallar, se queda en -1.
+        internal static int RellenoReintentoMs = 5 * 60 * 1000;
+        private static int rellenoFalloDesde;
+        private static bool rellenoReintentado;
+
         private static int RellenoExtra()
         {
             lock (rellenoCerrojo)
             {
-                if (rellenoExtra != int.MinValue) return rellenoExtra;
+                if (rellenoExtra != int.MinValue)
+                {
+                    if (rellenoExtra >= 0 || rellenoReintentado) return rellenoExtra;
+                    if (unchecked(Environment.TickCount - rellenoFalloDesde) < RellenoReintentoMs) return rellenoExtra;
+                    rellenoReintentado = true;   // el reintento es unico
+                }
                 rellenoExtra = MideRelleno();
+                if (rellenoExtra < 0) rellenoFalloDesde = Environment.TickCount;
                 return rellenoExtra;
             }
         }
