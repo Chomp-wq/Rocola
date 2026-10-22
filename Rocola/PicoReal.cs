@@ -135,9 +135,13 @@ namespace Rocola
         // bit). 'picos[f]' se queda con el mayor entre lo que ya tenia y este canal, salvo en el primero.
         internal void Bloque(float[] datos, int inicio, int salto, int n, float[] picos, bool primero)
         {
-            double[] h = hist, cp = P, cm = M, cq = Q;
+            double[] h = hist;
+            // Los 36 coeficientes en variables: el filtro va desenrollado (ver abajo).
+            double p0 = P[0], p1 = P[1], p2 = P[2], p3 = P[3], p4 = P[4], p5 = P[5], p6 = P[6], p7 = P[7], p8 = P[8], p9 = P[9], p10 = P[10], p11 = P[11];
+            double m0 = M[0], m1 = M[1], m2 = M[2], m3 = M[3], m4 = M[4], m5 = M[5], m6 = M[6], m7 = M[7], m8 = M[8], m9 = M[9], m10 = M[10], m11 = M[11];
+            double q0 = Q[0], q1 = Q[1], q2 = Q[2], q3 = Q[3], q4 = Q[4], q5 = Q[5], q6 = Q[6], q7 = Q[7], q8 = Q[8], q9 = Q[9], q10 = Q[10], q11 = Q[11];
             int p = pos, alta = desdeAlta; float prev = previo, um = umbral;
-            const int T = Taps, R = Retraso, mitad = Taps / 2;
+            const int T = Taps, R = Retraso;
             for (int f = 0, k = inicio; f < n; f++, k += salto)
             {
                 float x = datos == null ? 0f : datos[k];
@@ -154,21 +158,67 @@ namespace Rocola
                 }
                 else
                 {
-                    double u = 0, v = 0, w = 0;
-                    for (int i = 0; i < mitad; i++)
-                    {
-                        double a = h[p + i], b = h[p + T - 1 - i];
-                        u += cp[i] * (a + b);
-                        v += cm[i] * (a - b);
-                        w += cq[i] * (a + b);
-                    }
+                    // Las doce parejas del filtro, DESENROLLADAS a mano (T = 24): las mismas sumas en el mismo orden que el bucle
+                    // de Empuja (i = 0..11, u, v y w acumulando de una en una) y la misma suma a + b para u y w. Con un bucle, el
+                    // JIT comprueba los limites del arreglo y lee el coeficiente del arreglo en cada vuelta.
+                    double u = 0, v = 0, w = 0, a, b, s;
+                    a = h[p]; b = h[p + 23]; s = a + b; u += p0 * s; v += m0 * (a - b); w += q0 * s;
+                    a = h[p + 1]; b = h[p + 22]; s = a + b; u += p1 * s; v += m1 * (a - b); w += q1 * s;
+                    a = h[p + 2]; b = h[p + 21]; s = a + b; u += p2 * s; v += m2 * (a - b); w += q2 * s;
+                    a = h[p + 3]; b = h[p + 20]; s = a + b; u += p3 * s; v += m3 * (a - b); w += q3 * s;
+                    a = h[p + 4]; b = h[p + 19]; s = a + b; u += p4 * s; v += m4 * (a - b); w += q4 * s;
+                    a = h[p + 5]; b = h[p + 18]; s = a + b; u += p5 * s; v += m5 * (a - b); w += q5 * s;
+                    a = h[p + 6]; b = h[p + 17]; s = a + b; u += p6 * s; v += m6 * (a - b); w += q6 * s;
+                    a = h[p + 7]; b = h[p + 16]; s = a + b; u += p7 * s; v += m7 * (a - b); w += q7 * s;
+                    a = h[p + 8]; b = h[p + 15]; s = a + b; u += p8 * s; v += m8 * (a - b); w += q8 * s;
+                    a = h[p + 9]; b = h[p + 14]; s = a + b; u += p9 * s; v += m9 * (a - b); w += q9 * s;
+                    a = h[p + 10]; b = h[p + 13]; s = a + b; u += p10 * s; v += m10 * (a - b); w += q10 * s;
+                    a = h[p + 11]; b = h[p + 12]; s = a + b; u += p11 * s; v += m11 * (a - b); w += q11 * s;
                     float g1 = (float)Math.Abs(u + v), g2 = (float)Math.Abs(w), g3 = (float)Math.Abs(u - v);
                     pico = a0;
                     if (g1 > pico) pico = g1; if (g2 > pico) pico = g2; if (g3 > pico) pico = g3; if (a4 > pico) pico = a4;
-                    pico = Afina(prev, a0, g1, pico);
-                    pico = Afina(a0, g1, g2, pico);
-                    pico = Afina(g1, g2, g3, pico);
-                    pico = Afina(g2, g3, a4, pico);
+                    // Afina (abajo) cuatro veces, ESCRITA EN SU SITIO: la misma cuenta con las mismas operaciones; son cuatro llamadas por muestra que el JIT
+                    // no expande. Afina(y0, y1, y2, pico): si y1 es un maximo de los tres puntos y la parabola abre hacia abajo, el vertice cuenta.
+                    if (!(a0 < prev || a0 < g1))
+                    {
+                        float den = prev - 2f * a0 + g1;
+                        if (den < 0f)
+                        {
+                            float d = 0.5f * (prev - g1) / den;
+                            float vv = a0 - 0.25f * (prev - g1) * d;
+                            if (vv > pico) pico = vv;
+                        }
+                    }
+                    if (!(g1 < a0 || g1 < g2))
+                    {
+                        float den = a0 - 2f * g1 + g2;
+                        if (den < 0f)
+                        {
+                            float d = 0.5f * (a0 - g2) / den;
+                            float vv = g1 - 0.25f * (a0 - g2) * d;
+                            if (vv > pico) pico = vv;
+                        }
+                    }
+                    if (!(g2 < g1 || g2 < g3))
+                    {
+                        float den = g1 - 2f * g2 + g3;
+                        if (den < 0f)
+                        {
+                            float d = 0.5f * (g1 - g3) / den;
+                            float vv = g2 - 0.25f * (g1 - g3) * d;
+                            if (vv > pico) pico = vv;
+                        }
+                    }
+                    if (!(g3 < g2 || g3 < a4))
+                    {
+                        float den = g2 - 2f * g3 + a4;
+                        if (den < 0f)
+                        {
+                            float d = 0.5f * (g2 - a4) / den;
+                            float vv = g3 - 0.25f * (g2 - a4) * d;
+                            if (vv > pico) pico = vv;
+                        }
+                    }
                     prev = g3;
                 }
                 if (primero || pico > picos[f]) picos[f] = pico;

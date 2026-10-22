@@ -309,6 +309,11 @@ GPU="$GPU entradaligera"
 # los de la vuelta, a 32, 44,1, 48 y 96 kHz (1.024 y 2.048 puntos) y en las dos direcciones: re e im iguales bit a bit; y la etapa entera troceada de cuatro maneras.
 CPU="$CPU siseorapido"
 GPU="$GPU siseorapido"
+# 'picorapido': el detector de pico real del limitador (22-10-2026) con el filtro de 24 coeficientes desenrollado y la parabola (Afina) escrita en su sitio. Bloque tiene que dar
+# EXACTAMENTE lo mismo, bit a bit, que Empuja (muestra a muestra, con el bucle de siempre): 10 senales (fuerte, bajita, alterna, a tope, el caso de libro, silencio, ceros con signo,
+# desnormales, NaN e infinitos), 3 techos, mono / estereo / 6 canales, troceos de 1 a 4.410 cuadros con el estado pasando de una llamada a otra, y el vaciado del final.
+CPU="$CPU picorapido"
+GPU="$GPU picorapido"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"
