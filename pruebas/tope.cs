@@ -158,29 +158,37 @@ class Tope
                   "el reloj de la aurora ya NO es el gordo de Windows (aurTickAnt no existe)");
             Check(TP.GetField("aurFinoAnt", BindingFlags.Instance | BindingFlags.NonPublic) != null,
                   "y si el fino (aurFinoAnt)");
-            // Se compara VENTANA CONTRA VENTANA: la hora fina justo antes de cada cuadro contra lo que el reloj
-            // de la aurora dice que avanzo. Y se juzga por la MEDIANA, no por la peor: este banco esta compartido
-            // y un paron del recolector de basura en medio de una medida no dice nada del programa. Lo que hay que
-            // distinguir es reloj fino (error de decimas) de reloj gordo (error de ~7 ms, la mitad de un salto).
+            // DESDE LA CADENCIA DE ONDAS (1-10-2026, cf28d99) la aurora no sigue la hora fina cuadro a cuadro: avanza a
+            // las muestras de su rejilla (OndasFps, 60 de fabrica, ~16.7 ms), asi que con cuadros cada 5 ms solo se mueve
+            // en uno de cada tres. Lo que se exige ahora, con la misma intencion (reloj fino y no el gordo de ~15.6 ms):
+            //   1) cada muestra de la rejilla cae sobre la hora fina: nunca por delante y como mucho un periodo por detras;
+            //   2) en cada cuadro la aurora avanza EXACTAMENTE lo que avanzo la rejilla (sin redondear al reloj gordo);
+            //   3) en una ventana larga, lo que avanza la aurora coincide con lo que paso de verdad salvo un periodo.
             MethodInfo mAhora = TP.GetMethod("AhoraMs", BindingFlags.Static | BindingFlags.NonPublic);
             Check(mAhora != null, "el reloj fino se puede consultar");
+            object cad = TP.GetField("waveCadence", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
+            FieldInfo fMs = cad.GetType().GetField("SampleMs", BindingFlags.Instance | BindingFlags.NonPublic);
+            double periodo = 1000.0 / 60;
             mAur.Invoke(pan, arg);                       // 1er cuadro: solo pone el reloj en hora
-            List<double> errs = new List<double>();
-            double relojAnt = (double)mAhora.Invoke(null, null), aurAnt = (double)fT.GetValue(pan);
-            for (int k = 0; k < 21; k++)
+            double relojIni = (double)mAhora.Invoke(null, null), aurIni = (double)fT.GetValue(pan), aurAnt = aurIni;
+            double msAnt = (double)fMs.GetValue(cad), peorExacto = 0, peorRetraso = 0, menorRetraso = 1e9;
+            for (int k = 0; k < 40; k++)
             {
                 System.Threading.Thread.Sleep(5);
-                double relojYa = (double)mAhora.Invoke(null, null);
                 mAur.Invoke(pan, arg);
-                double aurYa = (double)fT.GetValue(pan);
-                errs.Add(Math.Abs((aurYa - aurAnt) * 1000.0 - (relojYa - relojAnt)));
-                relojAnt = relojYa; aurAnt = aurYa;
+                double relojYa = (double)mAhora.Invoke(null, null);
+                double aurYa = (double)fT.GetValue(pan), ms = (double)fMs.GetValue(cad);
+                peorExacto = Math.Max(peorExacto, Math.Abs((aurYa - aurAnt) * 1000.0 - (ms - msAnt)));
+                // (el retraso se mide con la hora fina de DESPUES del cuadro: sobra el tiempo de la propia llamada)
+                peorRetraso = Math.Max(peorRetraso, relojYa - ms); menorRetraso = Math.Min(menorRetraso, relojYa - ms);
+                aurAnt = aurYa; msAnt = ms;
             }
-            errs.Sort();
-            double mediana = errs[errs.Count / 2];
-            Console.WriteLine(string.Format("       lo que avanza la aurora contra lo que pasa de verdad: {0:0.00} ms de diferencia (mediana de {1})", mediana, errs.Count));
-            Console.WriteLine(string.Format("       con el reloj gordo esa diferencia seria de ~{0:0.0} ms", 15.6 / 2));
-            Check(mediana < 2.0, "la aurora avanza lo que pasa, cuadro a cuadro (con el reloj gordo se iria ~7.8 ms)");
+            double relojFin = (double)mAhora.Invoke(null, null);
+            double deriva = Math.Abs((aurAnt - aurIni) * 1000.0 - (relojFin - relojIni));
+            Console.WriteLine(string.Format("       la aurora contra la rejilla: {0:0.000} ms de diferencia como mucho; la rejilla va {1:0.0}..{2:0.0} ms por detras de la hora fina (periodo {3:0.0}); en la ventana larga {4:0.0} ms de diferencia", peorExacto, menorRetraso, peorRetraso, periodo, deriva));
+            Check(peorExacto < 0.05, "la aurora avanza lo que avanza su rejilla, cuadro a cuadro (sin redondear al reloj gordo)");
+            Check(menorRetraso > -0.05 && peorRetraso < periodo + 3.0, "y cada muestra de la rejilla cae sobre la hora fina (como mucho un periodo por detras)");
+            Check(deriva < periodo + 3.0, "y en una ventana larga la aurora avanza lo que pasa de verdad (con el reloj gordo se iria ~7.8 ms por cuadro)");
         }
 
         MethodInfo mBeg = TS.GetMethod("Begin", BindingFlags.Instance | BindingFlags.Public);

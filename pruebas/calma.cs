@@ -36,6 +36,10 @@ class Calma
     {
         TAu.GetField("Dim").SetValue(au, dim);
         TAu.GetField("DimFilo").SetValue(au, dimFilo);
+        // Desde la cadencia de ondas (1-10-2026) la aurora solo recalcula opacidades cuando toca una muestra (OndasFps);
+        // cuadros seguidos reusan la anterior y todos saldrian iguales. Se pide muestra nueva en cada cuadro.
+        object cad = TP.GetField("waveCadence", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pan);
+        cad.GetType().GetField("rate", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(cad, 0);
         mAur.Invoke(pan, new object[] { au });
         relleno = Media(Vec("aurA"));                       // opacidad del relleno, punto a punto
         filo = Media(Vec("aurNi")) + Media(Vec("aurLi"));   // brillo del neon + el de la raya del horizonte

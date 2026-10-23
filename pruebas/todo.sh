@@ -553,12 +553,13 @@ corre() {
     # nuevas de audio y arranque (audiosuave, audioestereo, tablasarranque...) la exigen.
     xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1
     rc=$?
-    n=$(grep -c '^  FALLO' "$rt")
+    # Unas baterias escriben "  FALLO ..." (con sangria) y otras "FALLO ..." sin ella: se cuentan las dos.
+    n=$(grep -c '^ *FALLO[ :]' "$rt")
     # Algunas baterias resumen con "OK ..." o "PASS ..." sin sangria; sigue siendo obligatorio salir sin fallos.
     ok=$(grep -c '^  OK\|^OK[ :]\|^PASS[ :]' "$rt")
     if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ] || [ "$ok" -eq 0 ]; then
       echo "  FALLA        $t   (salida $rc, $n fallos, $ok comprobaciones OK)"
-      grep '^  FALLO' "$rt" | head -6
+      grep '^ *FALLO[ :]' "$rt" | head -6
       tail -3 "$rt" | sed 's/^/        /'
       mal=$((mal+1))
     else
@@ -625,6 +626,14 @@ if [ "$necesita_refs" -eq 1 ]; then
   incluye buscaperf && [ ! -s rocola_ref.exe ] && { echo "  Falta rocola_ref.exe"; exit 1; }
   incluye busmov && [ ! -s rocola_prev.exe ] && { echo "  Falta rocola_prev.exe"; exit 1; }
   incluye disco && [ ! -s rocola_ant.exe ] && { echo "  Falta rocola_ant.exe"; exit 1; }
+fi
+# SOLO PARA LAS PRUEBAS EN LINUX (Mono): la rocola copia memoria con RtlMoveMemory, de kernel32.dll, que Mono no tiene.
+# Sin este mapeo a memmove la tarjeta imitada no puede subir texturas y las baterias que cargan el ejecutable tal cual
+# (trabajovisible, auroraeficiente, resolucionligera, cintasligeras, estadoeficiente) fallan sin que nada este roto.
+# El .config va junto al rocola.exe de pruebas (ignorado por git); nunca se copia a un Release ni al programa instalado.
+if command -v mono >/dev/null 2>&1; then
+  printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<configuration>' '  <dllmap dll="kernel32.dll">' \
+    '    <dllentry dll="libc.so.6" name="RtlMoveMemory" target="memmove"/>' '  </dllmap>' '</configuration>' > rocola.exe.config
 fi
 cp -f rocola_cpu.exe rocola.exe || { echo "  No se pudo activar el perfil CPU"; exit 1; }
 corre "$CPU"
