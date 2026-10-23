@@ -408,6 +408,9 @@ GPU="$GPU bloqueos"
 # (22-10-2026): el calentador se salta su espera de 1,5 s, la de las caratulas y la de cada trozo; con mas tiempo, igual.
 CPU="$CPU adelantoprioridad"
 GPU="$GPU adelantoprioridad"
+# 'picomuestras': el limitador de pico real con lecturas de menos de un cuadro (22-10-2026): ya no devuelve 0 (el fin de la
+# cancion para quien lo lee) pidiendole una sola muestra en estereo; sale bit a bit lo mismo que pidiendo todo junto.
+CPU="$CPU picomuestras"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara

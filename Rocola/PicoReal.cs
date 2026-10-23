@@ -280,6 +280,8 @@ namespace Rocola
             private float ultimoIntervalo;
             private readonly float[] resto;             // un cuadro que el origen dejo partido
             private int restoN;
+            private readonly float[] sale;              // un cuadro entero leido aparte cuando piden menos de uno (ver Read)
+            private int saleIdx, saleN;
             public LimitadorPicoReal(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); ceiling = ceilingLin;
@@ -296,6 +298,7 @@ namespace Rocola
                 rel = 1f - (float)Math.Exp(-1.0 / (SoltarS * rate));
                 espera = (int)(EsperaS * rate);
                 resto = new float[ch];
+                sale = new float[ch];
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int DelayFrames { get { return total; } }
@@ -395,9 +398,39 @@ namespace Rocola
                 return frames * ch;
             }
 
+            // Pedir menos de un cuadro (una muestra en estereo) NO es el fin: devolver 0 lo tomaba por tal el Encadenado. Se lee el
+            // cuadro entero aparte, se entrega la parte pedida y el resto sale en la lectura siguiente (como GraveMono y SalaLocal).
             public int Read(float[] buffer, int offset, int count)
             {
-                if (count < ch) return 0;   // una lectura vacia no marca fin del origen
+                if (count <= 0) return 0;
+                int hechos = 0;
+                if (saleN > 0)
+                {
+                    int k = Math.Min(count, saleN);
+                    for (int i = 0; i < k; i++) buffer[offset + i] = sale[saleIdx + i];
+                    saleIdx += k; saleN -= k; hechos = k;
+                    if (saleN > 0) return hechos;
+                }
+                int faltan = count - hechos;
+                if (faltan >= ch)
+                {
+                    int n = Lee(buffer, offset + hechos, faltan);
+                    return n > 0 ? hechos + n : hechos;
+                }
+                if (faltan > 0)
+                {
+                    int n = Lee(sale, 0, ch);
+                    if (n <= 0) return hechos;
+                    int k = Math.Min(faltan, n);
+                    for (int i = 0; i < k; i++) buffer[offset + hechos + i] = sale[i];
+                    saleIdx = k; saleN = n - k; hechos += k;
+                }
+                return hechos;
+            }
+
+            private int Lee(float[] buffer, int offset, int count)
+            {
+                if (count < ch) return 0;   // (solo lo llama Read con al menos un cuadro)
                 int want = count - count % ch;
                 while (true)
                 {
