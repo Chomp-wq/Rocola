@@ -592,9 +592,10 @@ class Atraccion
         MethodInfo cubo = M(form, "BuildGpuCubeState");
         Check(Codigo.Llama(cubo, "ParCuboAtraccion") && Codigo.Llama(cubo, "CuboAtraccionAhora") && Codigo.Llama(cubo, "AnguloAtraccion"), "el cubo de la tarjeta sale de ahi mismo");
         Check(Codigo.Llama(M(form, "AnimTimer_Tick"), "AtraccionTic"), "el reloj de la pantalla hornea lo que haga falta");
-        List<string> cuadro = Codigo.Repasa(M(gpu, "RenderFrame"));
-        int iPrep = cuadro.IndexOf("PreparaAtraccion"), iBegin = cuadro.IndexOf("Begin"), iDib = cuadro.IndexOf("DibujaAtraccion");
-        Check(iPrep >= 0 && iPrep < iBegin && iDib > iBegin, "la tarjeta sube lo horneado antes de empezar el cuadro y lo dibuja despues de la interfaz");
+        // Abrir la escena es GpuStarfield.Begin (no el CoverControl.Begin del regulador de portadas, que sale antes en el cuadro).
+        List<string> cuadro = Codigo.Nombres(M(gpu, "RenderFrame"));
+        int iPrep = cuadro.IndexOf("PreparaAtraccion"), iBegin = Codigo.Llamadas(M(gpu, "RenderFrame")).IndexOf("GpuStarfield.Begin"), iDib = cuadro.IndexOf("DibujaAtraccion");
+        Check(iPrep >= 0 && iBegin >= 0 && iPrep < iBegin && iDib > iBegin, "la tarjeta sube lo horneado antes de empezar el cuadro y lo dibuja despues de la interfaz");
         Check(Codigo.LeeCampo(Codigo.MetodosConAyudantes(gpu, "RenderFrame"), "AtrUiAlfa") && Codigo.Llama(M(gpu, "StopGpu"), "SueltaAtraccion") && Codigo.Llama(M(gpu, "PreparaAtraccion"), "SueltaAtraccion"),
               "los textos de siempre se apagan con la lista, y las texturas se sueltan al salir y al parar la tarjeta");
         Check(Codigo.EscribeCampo(Codigo.MetodosConAyudantes(form, "ApplyAlbumGpu"), "GetAtraccion"), "al encender la tarjeta, se le dice a quien pedirle lo de la atraccion");

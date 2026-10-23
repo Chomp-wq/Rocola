@@ -41,6 +41,24 @@ class PantallaViva
     static void Set(object o, string n, object v) { o.GetType().GetField(n, F).SetValue(o, v); }
     static object St(Type t, string n, params object[] a) { return t.GetMethod(n, F).Invoke(null, a); }
     static object Run(object o, string n, params object[] a) { return o.GetType().GetMethod(n, F).Invoke(o, a); }
+    // Desde el 13-10-2026 (9a58cc6) la parte de la tarjeta de la pared cuenta el deslizamiento y el empujon del cielo con el
+    // cronometro de alta resolucion (slideFino / empujeDesdeN, via MsFino), y ya no con Environment.TickCount (slideTick queda
+    // para Sliding y el dibujo por CPU). La prueba lo adelanta en los DOS relojes; si solo movia el viejo, el deslizamiento
+    // parecia no haber avanzado nunca (y la prueba dejaba de comprobar lo que dice).
+    static void Adelanta(object v, int ms)
+    {
+        Set(v, "slideTick", Environment.TickCount - ms);
+        Set(v, "slideFino", (double)St(v.GetType(), "MsFino") - ms);
+    }
+    // Los empujones vivos del cielo: se dejan solo los que se quieren medir (los de deslizamientos anteriores de la prueba
+    // seguirian sumando) y se les pone su arranque 'ms' atras.
+    static void EmpujesLimpios(object v) { float[] h = (float[])Get(v, "empujeHechoN"); for (int i = 0; i < h.Length; i++) h[i] = 1f; }
+    static void EmpujesDesde(object v, int ms)
+    {
+        float[] h = (float[])Get(v, "empujeHechoN"); double[] d = (double[])Get(v, "empujeDesdeN");
+        double ahora = (double)St(v.GetType(), "MsFino");
+        for (int i = 0; i < h.Length; i++) if (h[i] < 1f) d[i] = ahora - ms;
+    }
     static T Cte<T>(Type t, string n) { return (T)t.GetField(n, F).GetValue(null); }
     static Control Find(Control p, string name) { foreach (Control c in p.Controls) { if (c.Text == name) return c; Control r = Find(c, name); if (r != null) return r; } return null; }
 
@@ -223,9 +241,11 @@ class PantallaViva
         // El cableado del cuadro.
         MethodInfo rf = gpu.GetMethod("RenderFrame", F);
         List<string> n = Codigo.Nombres(rf);
-        int iBegin = n.IndexOf("Begin"), iApl = n.IndexOf("AplicaEnfoque"), iPrep = n.IndexOf("PreparaPantallaViva");
+        // OJO: abrir la escena es GpuStarfield.Begin. El nombre pelado "Begin" tambien es el de CoverControl.Begin (el regulador de
+        // portadas, que abre su presupuesto al empezar el cuadro desde el 1-10) y sale mucho antes; se busca la llamada con su tipo.
+        int iBegin = Codigo.Llamadas(rf).IndexOf("GpuStarfield.Begin"), iApl = n.IndexOf("AplicaEnfoque"), iPrep = n.IndexOf("PreparaPantallaViva");
         int iFoco = n.IndexOf("DibujaFoco"), iFicha = n.IndexOf("DibujaFicha"), iProg = n.IndexOf("DrawSmoothProgress"), iTrans = n.LastIndexOf("DrawCube");
-        Check(iApl >= 0 && iPrep >= 0 && iApl < iBegin && iPrep < iBegin, "el cuadro prepara el enfoque y sube el letrero y la ficha ANTES de abrir la escena (Direct3D 9 no deja despues)");
+        Check(iApl >= 0 && iPrep >= 0 && iBegin >= 0 && iApl < iBegin && iPrep < iBegin, "el cuadro prepara el enfoque y sube el letrero y la ficha ANTES de abrir la escena (Direct3D 9 no deja despues)");
         Check(iFoco > iBegin && iFicha > iProg && iFicha < iTrans, "dibuja el letrero sobre el cubo elegido y la ficha encima de la interfaz y debajo del viaje y los avisos");
         Check(Codigo.Llama(rf, "HaloArgb") && Codigo.Llama(rf, "EnfocaCaja") && Codigo.Llama(rf, "ColorCelda"), "el halo, el contorno y el apagado de las casillas salen de sus funciones");
         Check(Codigo.Llama(gpu.GetMethod("StopGpu", F), "SueltaPantallaViva"), "al apagar la tarjeta se sueltan sus texturas");
@@ -520,7 +540,7 @@ class PantallaViva
             Check(ninguna, "y mientras pasa, ninguna casilla esta elegida");
             Check((int)grid.Invoke(v, new object[] { buf18 }) == 18 && (string)Get(buf18.GetValue(0), "Key") == "b0", "si el buffer no da para dos paginas, la que falta es la que sale, nunca la que entra");
             // A medio camino: en la fila de arriba, las doce en fila y sin pisarse.
-            Set(v, "slideTick", Environment.TickCount - 110);
+            Adelanta(v, 110);
             n = (int)grid.Invoke(v, new object[] { buf });
             List<float> fila = new List<float>();
             for (int k = 0; k < n; k++) { object c = buf.GetValue(k); int s = (int)Get(c, "Slot") % 18; if (s < cols) fila.Add((float)Get(c, "X")); }
@@ -529,7 +549,7 @@ class PantallaViva
             for (int k = 0; k + 1 < fila.Count; k++) if (fila[k + 1] - fila[k] < cwv - .5f) enFila = false;
             Check(enFila, "a medio camino las doce columnas de la fila van en orden y sin montarse");
             // Llegada.
-            Set(v, "slideTick", Environment.TickCount - slide - 20);
+            Adelanta(v, slide + 20);
             n = (int)grid.Invoke(v, new object[] { buf });
             Check(n == 18 && Get(v, "slideViejas") == null && Math.Abs((float)Get(buf.GetValue(5), "X") - 5 * cwv) < .01f && (bool)Get(buf.GetValue(3), "Sel"),
                   "al llegar queda solo la nueva, en su sitio, con su elegida, y la vieja se suelta");
@@ -546,7 +566,7 @@ class PantallaViva
             // Apagado: el hojeo de antes.
             Set(v, "slideTick", -1); Set(v, "PaginaDesliza", false); Set(v, "Page", B1); grid.Invoke(v, new object[] { buf });
             Set(v, "Page", A1); Set(v, "gpuLastSlideTick", Environment.TickCount - 5000); Run(v, "StartSlide", 1, 1280);
-            Set(v, "slideTick", Environment.TickCount - 60);
+            Adelanta(v, 60);
             n = (int)grid.Invoke(v, new object[] { buf });
             float dx0 = (float)Get(buf.GetValue(0), "X"), dx5 = (float)Get(buf.GetValue(5), "X") - 5 * cwv;
             Check(n == 18 && Math.Abs(dx0 - dx5) < .01f && dx0 > 0f, "con el interruptor apagado es el deslizamiento de antes: una sola pagina, todas las columnas juntas");
@@ -555,17 +575,19 @@ class PantallaViva
             Set(v, "PaginaDesliza", true); Set(v, "slideTick", -1);
             foreach (int dir in new int[] { 1, -1 })
             {
+                EmpujesLimpios(v);
                 Run(v, "StartSlide", dir, 1280);
-                float suma = 0f; int t0 = Environment.TickCount;
-                for (int paso = 0; paso <= 12; paso++) { Set(v, "empujeDesde", t0 - paso * 25); suma += (float)Run(v, "TomaEmpuje"); }
+                float suma = 0f;
+                for (int paso = 0; paso <= 12; paso++) { EmpujesDesde(v, paso * 25); suma += (float)Run(v, "TomaEmpuje"); }
                 suma += (float)Run(v, "TomaEmpuje");
                 float espera = -dir * Cte<float>(av, "EmpujeFr") * 1280f;
                 Check(Math.Abs(suma - espera) < .05f, "el cielo se corre " + Fm(suma, "0.0") + " px al pasar " + (dir > 0 ? "adelante" : "atras") + " (un 4.5 % del ancho, en el sentido del movimiento)");
                 Set(v, "slideTick", -1);
             }
             // Si la pared estaba tapada mientras pasaba (buscador), lo pendiente se tira: nada de saltos despues.
+            EmpujesLimpios(v);
             Run(v, "StartSlide", 1, 1280);
-            Set(v, "empujeDesde", Environment.TickCount - 2000);
+            EmpujesDesde(v, 2000);
             Check((float)Run(v, "TomaEmpuje") == 0f && (float)Run(v, "TomaEmpuje") == 0f, "si nadie lo pidio a tiempo, el cielo no se corre de golpe despues");
             Set(v, "slideTick", -1);
         }
@@ -800,7 +822,7 @@ class PantallaViva
             Set(v, "Page", A1); for (int k = 0; k < 60; k++) grid.Invoke(v, new object[] { buf });
             double quieta = Mide(200, delegate { grid.Invoke(v, new object[] { buf }); });
             Set(v, "Page", B1); Set(v, "gpuLastSlideTick", Environment.TickCount - 5000); Run(v, "StartSlide", 1, 1280);
-            double hojeando = Mide(200, delegate { Set(v, "slideTick", Environment.TickCount - 100); grid.Invoke(v, new object[] { buf }); });
+            double hojeando = Mide(200, delegate { Adelanta(v, 100); grid.Invoke(v, new object[] { buf }); });
             int n = (int)grid.Invoke(v, new object[] { buf });
             Info("rejilla por cuadro: quieta " + Fm(quieta * 1000, "0") + " us (18 casillas); pasando de pagina " + Fm(hojeando * 1000, "0") + " us (" + n + " casillas)");
             Check(n == 36 && hojeando < quieta * 3 + .2, "pasando de pagina la rejilla entrega el doble de casillas sin hornear nada: cuesta del orden de dos cuadros quietos");
@@ -814,10 +836,35 @@ class PantallaViva
         }
     }
 
+    // En Linux (Mono) la rocola copia memoria con una funcion de Windows (RtlMoveMemory), y sin ella no puede hornear una casilla
+    // de la pared (la prueba de la rejilla se caia ahi con EntryPointNotFoundException). Se carga una COPIA de la rocola con su
+    // .config, que le dice a Mono que use memmove (como en 'dibujoligero'). No se toca el ejecutable de las pruebas y la
+    // carpeta se borra al acabar. En Windows, tal cual.
+    static string carpetaCopia;
+    static string Cargable(string ruta)
+    {
+        if (Type.GetType("Mono.Runtime") == null || Environment.OSVersion.Platform == PlatformID.Win32NT) return ruta;
+        string dir = Path.Combine(Path.GetTempPath(), "rocola_pantallaviva_" + System.Diagnostics.Process.GetCurrentProcess().Id);
+        Directory.CreateDirectory(dir);
+        string destino = Path.Combine(dir, Path.GetFileName(ruta));
+        File.Copy(ruta, destino, true);
+        string naudio = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ruta)), "NAudio.dll");
+        if (File.Exists(naudio)) File.Copy(naudio, Path.Combine(dir, "NAudio.dll"), true);
+        File.WriteAllText(destino + ".config", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <dllmap dll=\"kernel32.dll\">\n" +
+                          "    <dllentry dll=\"libc.so.6\" name=\"RtlMoveMemory\" target=\"memmove\"/>\n  </dllmap>\n</configuration>\n");
+        carpetaCopia = dir;
+        return destino;
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
-        Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
+        try { return Prueba(args); }
+        finally { if (carpetaCopia != null) try { Directory.Delete(carpetaCopia, true); } catch { } }
+    }
+    static int Prueba(string[] args)
+    {
+        Assembly asm = Assembly.LoadFrom(Cargable(args.Length > 0 ? args[0] : "rocola.exe"));
         form = asm.GetType("Rocola.Form1"); gpu = asm.GetType("Rocola.GpuPanel"); star = asm.GetType("Rocola.GpuStarfield");
         av = form.GetNestedType("AlbumView", F); lbT = form.GetNestedType("LetterBar", F);
         albumT = form.GetNestedType("Album", F); trackT = form.GetNestedType("Track", F); itemT = form.GetNestedType("PlayItem", F);
