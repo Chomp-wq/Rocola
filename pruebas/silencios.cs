@@ -105,7 +105,9 @@ class Silencios
     {
         Console.WriteLine("\n  2) LA TABLA (rocola_sonoridad.txt, algoritmo 3)\n");
         int alg = (int)TM.GetField("Algoritmo", T).GetValue(null);
-        Check(alg == 3, "el algoritmo sube a 3 (lleva donde suena): la tanda larga vuelve a medir las de 2");
+        // Desde el 23-10-2026 es el 4 (anade el LRA del modo automatico del local, Sonoridad.cs) y sigue llevando donde suena: lo que
+        // se vigila es que las de 2, sin donde suena, se vuelvan a medir.
+        Check(alg >= 3, "el algoritmo sube a 3 o mas (lleva donde suena): la tanda larga vuelve a medir las de 2");
         ConstructorInfo c7 = null;
         foreach (ConstructorInfo c in TS.GetConstructors(T)) if (c.GetParameters().Length == 7) c7 = c;
         object a = c7.Invoke(new object[] { 3, -14.25f, 2f, 1800, -0.31f, -3.4f, Mapa(3.1f, 78f, 13f, 73f, 82.05f) });
