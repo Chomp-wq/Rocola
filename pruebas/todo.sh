@@ -553,7 +553,7 @@ corre() {
     rc=$?
     n=$(grep -c '^  FALLO' "$rt")
     # Algunas baterias resumen con "OK ..." o "PASS ..." sin sangria; sigue siendo obligatorio salir sin fallos.
-    ok=$(grep -c '^  OK\|^OK \|^PASS ' "$rt")
+    ok=$(grep -c '^  OK\|^OK[ :]\|^PASS[ :]' "$rt")
     if [ "$rc" -ne 0 ] || [ "$n" -ne 0 ] || [ "$ok" -eq 0 ]; then
       echo "  FALLA        $t   (salida $rc, $n fallos, $ok comprobaciones OK)"
       grep '^  FALLO' "$rt" | head -6

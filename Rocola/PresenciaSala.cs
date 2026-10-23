@@ -49,7 +49,7 @@ namespace Rocola
             private readonly LevelTap tap;
             private readonly int tasa, canales;
             private readonly bool vale;
-            private readonly double umbralDb, techo;
+            private readonly double umbralDb, techo, picoSinRecorte;
             private volatile bool encendido;
             private readonly double aVentana, aAtaque, aSuelta, kPico, pasoApaga;
             private readonly int picoRecuerda;   // trozos que se recuerda el pico entero antes de dejarlo bajar
@@ -75,6 +75,9 @@ namespace Rocola
                 double obj = (objetivo > 0.001f && objetivo <= 1f) ? objetivo : 0.26;
                 umbralDb = 20.0 * Math.Log10(obj) - UmbralBajoObjetivoDb;
                 techo = TechoPicoReal * 0.985;   // un pelo por debajo: la cuenta va un trozo (0,7 ms) por detras del pico
+                // Si cabe incluso la compensacion maxima, el logaritmo no puede limitarla.
+                // Margen conservador para no cambiar decisiones por redondeo en el borde.
+                picoSinRecorte = techo / Math.Pow(10.0, CompensaMaxDb / 20.0) * (1.0 - 1e-12);
                 aVentana = 1.0 - Math.Exp(-(double)Trozo / (VentanaSeg * tasa));
                 aAtaque = 1.0 - Math.Exp(-(double)Trozo / (AtaqueSeg * tasa));
                 aSuelta = 1.0 - Math.Exp(-(double)Trozo / (SueltaSeg * tasa));
@@ -108,7 +111,13 @@ namespace Rocola
                 if (!vale || n <= 0) return n;
                 if (!empezo) { empezo = true; Hereda(); }
                 bool on = encendido;
-                if (!on && g == 1.0 && dg == 0.0) return n;   // apagado y ya en 1: ni toca la muestra
+                if (!on && g == 1.0 && dg == 0.0)
+                {
+                    // El bypass tambien avanza por los canales: al encender despues de
+                    // una lectura impar, la derecha sigue compartiendo ganancia con SU izquierda.
+                    canal = (canal + n % canales) % canales;
+                    return n;   // apagado y ya en 1: ni toca la muestra
+                }
                 Proceso(buffer, offset, n, on);
                 return n;
             }
@@ -169,7 +178,7 @@ namespace Rocola
                 if (pico >= picoEnv) { picoEnv = pico; picoQueda = picoRecuerda; }
                 else if (picoQueda > 0) picoQueda--;
                 else picoEnv *= kPico;
-                if (picoEnv > 1e-9)
+                if (picoEnv > picoSinRecorte)
                 {
                     double espacio = 20.0 * Math.Log10(techo / picoEnv);   // lo que queda hasta el techo (negativo si ya lo pasa)
                     if (espacio < objetivoComp) objetivoComp = Math.Max(0.0, espacio);

@@ -94,6 +94,9 @@ namespace Rocola
             // Los mandos: los cambia la ventana de ajustes en cualquier momento; se leen al empezar cada lectura.
             private volatile bool claridadOn, suavesOn;
             private volatile int balance;
+            // Solo el hilo de audio actualiza esta cache; la ventana publica un entero.
+            private int balanceCalculado;
+            private double balanceL, balanceR;
             // Claridad: dos campanas por canal. Coeficientes normalizados (a0 = 1) y estados x1 x2 y1 y2 por canal y campana.
             private readonly bool conPresencia;
             private readonly double cb0, cb1, cb2, ca1, ca2, pb0, pb1, pb2, pa1, pa2;
@@ -150,7 +153,9 @@ namespace Rocola
                 aBaja = 1.0 - Math.Exp(-1.0 / (BajaSeg * tasa));
                 // Arrancan donde piden los mandos, sin rampa: lo de la primera muestra ya es lo que se pidio.
                 mezcla = conClaridad ? 1.0 : 0.0;
-                GananciasBalance(canales == 2 ? balance : 0, out gl, out gr);
+                balanceCalculado = canales == 2 ? balance : 0;
+                GananciasBalance(balanceCalculado, out balanceL, out balanceR);
+                gl = balanceL; gr = balanceR;
                 medida = Math.Pow(10.0, umbralDb / 10.0);   // empieza "en el nivel de siempre": nada que subir al arrancar
             }
 
@@ -243,7 +248,13 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (!vale || n <= 0) return n;
                 if (!empezo) { empezo = true; Hereda(); }
-                double tl, tr; GananciasBalance(canales == 2 ? balance : 0, out tl, out tr);
+                int pedido = canales == 2 ? balance : 0;
+                if (pedido != balanceCalculado)
+                {
+                    GananciasBalance(pedido, out balanceL, out balanceR);
+                    balanceCalculado = pedido;
+                }
+                double tl = balanceL, tr = balanceR;
                 if (Quieta(tl, tr)) return n;
                 if (claridadOn && mezcla == 0.0) Array.Clear(eq, 0, eq.Length);   // entra de nuevo: filtros desde cero
                 Proceso(buffer, offset, n / canales, tl, tr);

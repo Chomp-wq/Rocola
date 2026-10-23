@@ -240,6 +240,28 @@ class PresenciaSalaPrueba
             Check(SaltoMax(yq, 2, 0) < tq, "encendida desde el principio con una intro bajita, la compensacion entra sin golpes");
         }
 
+        // Activar despues de leer SOLO el izquierdo en bypass: la ganancia sigue
+        // perteneciendo al cuadro real, no al par formado por derecha + izquierda siguiente.
+        foreach (int fs in new int[] { 8000, 44100, 48000, 96000 })
+        {
+            float[] x = new float[fs * 2];
+            for (int i = 0; i < x.Length; i++) x[i] = 0.2f;
+            ISampleProvider p = Pre(new FuentePS(x, fs, 2), false);
+            float[] y = new float[x.Length];
+            p.Read(y, 0, 1);
+            Ajusta(p, true);
+            int leidos = 1;
+            while (leidos < y.Length)
+            {
+                int n = p.Read(y, leidos, Math.Min(777, y.Length - leidos));
+                if (n <= 0) break;
+                leidos += n;
+            }
+            bool iguales = leidos == y.Length;
+            for (int i = 0; i < leidos - 1; i += 2) iguales &= y[i] == y[i + 1];
+            Check(iguales, "activar tras lectura impar conserva ganancia estereo a " + fs + " Hz");
+        }
+
         Console.WriteLine("\n  7) DISCO CONTINUO, LECTURAS Y COSTE\n");
         {
             float[] a = Ruido(1.0, 11, 0.2), b2 = Ruido(1.0, 12, 0.05), ab = new float[a.Length + b2.Length];
