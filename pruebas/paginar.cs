@@ -214,6 +214,23 @@ class Paginar
             return fallos;
         }
         Array buf = Array.CreateInstance(TCel, 32);
+        // PRUEBA ACTUALIZADA (23-10-2026). Dos cambios del programa dejaron viejas las comprobaciones de esta parte:
+        //  1) ec4cc97 (1-10-2026): con PortadasLod encendido -de fabrica- al encadenar paginas se hornea una casilla
+        //     provisional acotada en vez de dejar un marcador. Lo que esta parte vigila es el ahorro del hojeo
+        //     SIN esa provisional, asi que se apaga (el camino con ella lo cubren las baterias de portadas).
+        //  2) f4b9699 (1-10-2026): la casilla horneada ya no es el cuadro entero de cw px sino un atlas de bordes y
+        //     rotulos (la portada va aparte), asi que 'resolucion entera' se mide contra el atlas que hornea BakeSeparatedCell sin
+        //     escala alguna (el programa ya nunca degrada su resolucion), y al llegar la portada no se rehace el atlas: llega en FullCover.
+        MethodInfo mAtlas = TAV.GetMethod("BakeSeparatedCell", IF | BindingFlags.DeclaredOnly);
+        int anchoAtlas = 0;
+        if (mAtlas != null)
+        {
+            object[] aa = { album, cw, side, labelH, gap, null };
+            using (Bitmap at = (Bitmap)mAtlas.Invoke(av, aa)) anchoAtlas = at.Width;
+        }
+        FieldInfo fFull = TCel.GetField("FullCover");
+        FieldInfo fLodPrueba = TAV.GetField("PortadasLod", PUB);
+        if (fLodPrueba != null) fLodPrueba.SetValue(av, false);
         FieldInfo fBmp = TCel.GetField("Bmp"), fW = TCel.GetField("W");
         fPlace = TCel.GetField("Placeholder");
         FieldInfo fSlideTick = TAV.GetField("slideTick", IF);
@@ -226,7 +243,7 @@ class Paginar
         mGrid.Invoke(av, new object[] { buf });
         Bitmap q0 = (Bitmap)fBmp.GetValue(buf.GetValue(0));
         float anchoQuad = Convert.ToSingle(fW.GetValue(buf.GetValue(0)));
-        Check(q0 != null && q0.Width > cw * 0.9, "quieta, la casilla va a resolucion entera (" + (q0 == null ? 0 : q0.Width) + " px)");
+        Check(q0 != null && q0.Width == anchoAtlas && anchoAtlas > 0, "quieta, la casilla va a resolucion entera (" + (q0 == null ? 0 : q0.Width) + " px)");
 
         // PASAR UNA PAGINA Y ENCADENARLAS RAPIDO YA NO SON LO MISMO, Y ESO ES A PROPOSITO.
         //
@@ -282,7 +299,7 @@ class Paginar
         for (int k = 0; k < 4; k++) mGrid.Invoke(av, new object[] { buf });
         Bitmap parada = (Bitmap)fBmp.GetValue(buf.GetValue(0));
         Check(!ReferenceEquals(sinTapa, parada), "y en cuanto para, se rehace con su portada y a resolucion entera");
-        Check(parada != null && parada.Width > cw * 0.9, "a resolucion entera de verdad (" + (parada == null ? 0 : parada.Width) + " px)");
+        Check(parada != null && parada.Width == anchoAtlas && anchoAtlas > 0, "a resolucion entera de verdad (" + (parada == null ? 0 : parada.Width) + " px)");
 
         Console.WriteLine("\n  5c) Y SE PUEDE APAGAR, DESHACIENDO LAS DOS COSAS\n");
         // El interruptor de Ctrl+F3 (pestana Imagen). Lo que vigila esta parte es que apagarlo deshaga LAS
@@ -301,13 +318,14 @@ class Paginar
             mSlide.Invoke(av, new object[] { 1, W });
             for (int k = 0; k < 5; k++) mGrid.Invoke(av, new object[] { buf });
             Bitmap apagSin = (Bitmap)fBmp.GetValue(buf.GetValue(0));
-            Check(apagSin != null && apagSin.Width > cw * 0.9,
+            Check(apagSin != null && apagSin.Width == anchoAtlas && anchoAtlas > 0,
                   "apagado, deslizando la casilla va a resolucion ENTERA (" + (apagSin == null ? 0 : apagSin.Width) + " px)");
             hayPortada = true;   // llega la portada, y la pagina sigue moviendose
             for (int k = 0; k < 3; k++) mGrid.Invoke(av, new object[] { buf });
-            Bitmap apagCon = (Bitmap)fBmp.GetValue(buf.GetValue(0));
-            Check(!ReferenceEquals(apagSin, apagCon),
-                  "y apagado SI se rehace al llegar la portada, aunque se este moviendo: las dos cosas deshechas");
+            // Antes la portada iba pintada DENTRO de la casilla horneada, y apagado se rehacia al llegar. Ahora va aparte
+            // (FullCover): apagado, la portada que llega se entrega aunque se este moviendo; encendido en rafaga no.
+            Check(fFull != null && fFull.GetValue(buf.GetValue(0)) != null,
+                  "y apagado SI se entrega la portada al llegar, aunque se este moviendo: las dos cosas deshechas");
             fLigero.SetValue(av, true);
         }
 
