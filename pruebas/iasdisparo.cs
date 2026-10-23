@@ -97,9 +97,36 @@ class IasDisparo
             using (FileStream bloqueado = new FileStream(suelto, FileMode.Open, FileAccess.Read, FileShare.None))
                 Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && Cargable(activo, 28, 12),
                       "un suelto bloqueado no aparta al modelo activo ni impide cargarlo");
+            // El fallo del reemplazo se simula de DOS maneras. (1) Con el activo abierto: en Windows ReplaceFile no puede
+            // con un archivo en uso, pero en Linux/Mono File.Replace es un rename y SI puede (el archivo abierto sigue
+            // vivo por su descriptor), asi que alli esta simulacion no surte efecto. Se comprueba que surtio: si no, se
+            // dice, se deja el estado como estaba para que las comprobaciones siguientes sigan siendo validas, y NO se da
+            // el caso por comprobado por este camino. (2) Con un DIRECTORIO ocupando el nombre del respaldo
+            // (.anterior-N): File.Exists no lo ve, asi que el programa lo elige como respaldo y el reemplazo falla de
+            // verdad en cualquier sistema (y tambien siendo root, a quien un permiso no le impide nada).
+            byte[] activoAntes = File.ReadAllBytes(activo), sueltoAntes = File.ReadAllBytes(suelto);
+            bool candadoSurtio;
             using (FileStream bloqueado = new FileStream(activo, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && File.Exists(suelto),
-                      "si falla el reemplazo, el activo y el nuevo quedan en sus sitios");
+            {
+                int pasados = (int)Call("OrdenaIas");
+                candadoSurtio = pasados == 0;
+                if (candadoSurtio)
+                    Check(Bin(activo) == generalC && File.Exists(suelto), "si falla el reemplazo, el activo y el nuevo quedan en sus sitios");
+            }
+            if (!candadoSurtio)
+            {
+                Console.WriteLine("  SE SALTA el reemplazo con el activo abierto: este sistema (Linux/Mono) deja reemplazar un archivo abierto, asi que el fallo no se produjo; no se da por comprobado por este camino");
+                File.WriteAllBytes(activo, activoAntes);   // se deshace lo que hizo el reemplazo, para que lo de abajo mire lo que dice
+                File.WriteAllBytes(suelto, sueltoAntes);
+                foreach (string r in Directory.GetFiles(ias, "rocola_ia.bin.anterior-*"))
+                    if (r != activo + ".anterior-1" && r != activo + ".anterior-2") File.Delete(r);   // solo respaldos de la propia prueba
+            }
+            string ocupado = activo + ".anterior-3";
+            Check(!File.Exists(ocupado) && !Directory.Exists(ocupado), "(la prueba parte sin el tercer respaldo)");
+            Directory.CreateDirectory(ocupado);
+            Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && File.Exists(suelto) && Cargable(activo, 28, 12),
+                  "si falla el reemplazo (el respaldo no se puede crear), el activo y el nuevo quedan en sus sitios");
+            Directory.Delete(ocupado);
             File.WriteAllBytes(suelto, new byte[] { 1, 2, 3 });
             Check((int)Call("OrdenaIas") == 0 && Bin(activo) == generalC && File.Exists(suelto),
                   "un suelto corrupto se conserva para revisar, pero no sustituye al valido");

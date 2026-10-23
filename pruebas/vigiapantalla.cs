@@ -108,7 +108,11 @@ class VigiaPantallaPrueba
                   "150 ms o mas: a la bitacora del diagnostico (y lo de menos, a ningun sitio)");
             apunta.Invoke(f, new object[] { 740, "en: publicar la biblioteca" });
             Codigo.EsperaBitacora();
-            Check(Lee(err).Contains("[Pantalla parada 740 ms, en: publicar la biblioteca]") && Lee(diag).Contains("pantalla parada 740 ms"),
+            // Desde el 16-10-2026 (1828bd2) la linea de errores no acaba en el "en: ..." sino que trae detras el estado del repaso,
+            // las miniaturas y la biblioteca (y, el 19-10, el contexto del recolector y la memoria): se mira el principio exacto y
+            // que ese estado este, ya sin esperar el "]" justo despues de lo que hacia la pantalla.
+            Check(Lee(err).Contains("[Pantalla parada 740 ms, en: publicar la biblioteca; repaso_pendiente=")
+                  && Lee(err).Contains("; miniaturas_pendientes=") && Lee(err).Contains("; biblioteca_construyendose=") && Lee(diag).Contains("pantalla parada 740 ms"),
                   "500 ms o mas: tambien a los errores");
             apunta.Invoke(f, new object[] { 600, "en: otra" });
             apunta.Invoke(f, new object[] { 650, "en: y otra" });
@@ -117,7 +121,7 @@ class VigiaPantallaPrueba
             Set(f, "paradaErrorTick", unchecked(Environment.TickCount - 11000));
             apunta.Invoke(f, new object[] { 900, "en: la siguiente" });
             Codigo.EsperaBitacora();
-            Check(Lee(err).Contains("[Pantalla parada 900 ms, en: la siguiente (y 2 mas de 500 ms desde el apunte anterior)]"),
+            Check(Lee(err).Contains("[Pantalla parada 900 ms, en: la siguiente (y 2 mas de 500 ms desde el apunte anterior); repaso_pendiente="),
                   "y la siguiente dice cuantas se callaron");
             object g = Codigo.FormSinEncender(TF);
             Set(g, "diagOn", false);

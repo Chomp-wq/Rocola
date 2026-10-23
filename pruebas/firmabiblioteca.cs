@@ -41,7 +41,11 @@ class FirmaBiblioteca
         Check(firma != null && carpeta != null && Codigo.Llama(firma, "FirmaCarpeta") && firma.GetMethodBody().ExceptionHandlingClauses.Count > 0,
               "cada carpeta se firma aparte (FirmaCarpeta) y un fallo en una no tira las demas");
 
-        string dir = Path.Combine(Path.GetTempPath(), "rocola_firma_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        // Siendo root el proceso pasa a 'nobody' (abajo) y 'nobody' tiene que poder ATRAVESAR hasta el arbol de prueba. Un TMPDIR
+        // privado (p. ej. el 0700 que crea 'mktemp -d') se lo impide y la prueba fallaba por eso, no por la rocola: siendo root
+        // el arbol va a /tmp, que todos atraviesan.
+        string baseTmp = (geteuid() == 0 && Directory.Exists("/tmp")) ? "/tmp" : Path.GetTempPath();
+        string dir = Path.Combine(baseTmp, "rocola_firma_" + Guid.NewGuid().ToString("N").Substring(0, 8));
         string raiz = Path.Combine(dir, "musica"), abierta = Path.Combine(raiz, "Disco A"), cerrada = Path.Combine(raiz, "Disco B");
         Directory.CreateDirectory(abierta); Directory.CreateDirectory(cerrada);
         File.WriteAllText(Path.Combine(abierta, "01 - Uno.mp3"), "x");
