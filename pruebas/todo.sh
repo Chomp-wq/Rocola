@@ -320,6 +320,12 @@ GPU="$GPU picorapido"
 # con caratula, basura, cortados, ID3v1, dos frecuencias, diminutos y vacios); lo raro cae al constructor de siempre; y abrir una cancion larga deja menos de la cuarta parte de la basura.
 CPU="$CPU indicemp3"
 GPU="$GPU indicemp3"
+# 'eqporbandas': la primera pasada del nivelado (LevelTap, 22-10-2026) por bandas cuando nada cambia: ganancia y mezcla del realce como constantes y el EQ automatico (hasta 8 bandas en
+# cascada) banda por banda de punta a punta de cada trozo de 512 cuadros, de dos en dos bandas, con la memoria en variables y los dos canales de un estereo a la vez; la limpieza de restos
+# cae en los mismos cuadros. Comparado con el mismo LevelTap cuadro a cuadro (gancho SinBandas): 1, 2, 3 y 6 canales (LFE sin EQ), 44,1 y 48 kHz, EQ de 8, 5, 3, 1 y 0 bandas y sin curva,
+# cambios de curva (cruce), de ganancia y de realce a media cancion, un silencio de ceros, -180 dB y lecturas que parten un cuadro: salida y estado interno iguales bit a bit.
+CPU="$CPU eqporbandas"
+GPU="$GPU eqporbandas"
 # 'hilosatrapados': CoverPump (lector de caratulas) y ClavesDelIndice (ayudantes del buscador) atrapan lo inesperado: en CLR 2 una excepcion sin atrapar
 # en un hilo cierra la rocola. Se provoca el fallo de verdad; con la rocola de antes el proceso muere.
 CPU="$CPU hilosatrapados"

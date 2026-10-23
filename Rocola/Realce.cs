@@ -216,6 +216,8 @@ namespace Rocola
                 {
                     int m = Math.Min(fin - s, RealceSobremuestreado.Trozo * ch);
                     int primero = audioChannel;
+                    if (primero == 0 && m % ch == 0 && PasadaQuieta(g, ex, prepared)) PrimeraPasadaQuieta(buffer, s, m / ch, ch);
+                    else
                     for (int i = s; i < s + m; i++)
                     {
                         if (audioChannel == 0) AdvanceAudioControls(g, ex, prepared);
@@ -238,6 +240,150 @@ namespace Rocola
                     }
                     s += m;
                 }
+            }
+
+            // LA PRIMERA PASADA CUANDO NADA CAMBIA (22-10-2026). Ganancia, EQ y mezcla del realce van muestra a muestra con cuatro cosas por cuadro (las
+            // rampas, el cruce de EQ, la limpieza de restos) y, en cada muestra, el recorrido de las bandas del EQ por el arreglo de estados. Pero casi
+            // siempre NADA cambia: las rampas ya llegaron, el EQ es el mismo y no hay cruce en curso, o sea que lo unico que hace cada cuadro es contar
+            // hasta 64 para la limpieza de restos diminutos (Desnormales.cs). Entonces el trozo se hace por bandas: la ganancia (una constante), cada
+            // banda del EQ de punta a punta del trozo con su memoria y sus coeficientes en variables (los dos canales de un estereo a la vez) y la mezcla
+            // del realce (una constante). Es la MISMA cuenta de cada muestra, con las mismas operaciones en el mismo orden: cada banda solo depende de su
+            // memoria y de la salida de la anterior para esa muestra, asi que el orden entre muestras y bandas no importa; y la limpieza cae en los mismos
+            // cuadros (cada trozo se parte donde toca limpiar). Si algo cambia (una rampa, un cruce, otro EQ, un trozo que empieza a mitad de un cuadro) se
+            // hace como siempre, cuadro a cuadro. La bateria 'eqporbandas' lo compara bit a bit con eso.
+            internal static bool SinBandas = false;   // las pruebas: true = siempre cuadro a cuadro
+            internal static long TrozosPorBandas;     // las pruebas: cuantos trozos se hicieron por bandas
+            private bool PasadaQuieta(float g, float ex, PreparedEq prepared)
+            {
+                return !SinBandas && gainRamp.Remaining <= 0 && g == gainRamp.Target && exciteRamp.Remaining <= 0 && ex == exciteRamp.Target
+                    && !(exciteRamp.Current == 0 && ex > 0) && eqFadeLeft == 0 && eqMix >= 1f && SameEq(currentEq, prepared);
+            }
+            private void PrimeraPasadaQuieta(float[] buffer, int s, int cuadros, int ch)
+            {
+                TrozosPorBandas++;
+                float c = gainRamp.Current;
+                float k = exciteRamp.Current * .5f * .4f;
+                PreparedEq eq = currentEq;
+                bool hayBandas = eq != null && eq.Active > 0;
+                for (int hecho = 0; hecho < cuadros; )
+                {
+                    // el principio del cuadro (AdvanceAudioControls): solo cuenta, y cada 64 limpia los restos
+                    if (++limpia == Desnormales.Cada)
+                    {
+                        limpia = 0;
+                        if (currentEq != null) Desnormales.Limpia(currentEq.State);
+                        if (previousEq != null) Desnormales.Limpia(previousEq.State);
+                        Desnormales.Limpia(exLp);
+                    }
+                    // los cuadros que siguen sin llegar a 64: este y los siguientes hasta que la cuenta vuelva a tocar
+                    int tanda = Math.Min(cuadros - hecho, Desnormales.Cada - limpia);
+                    int ini = s + hecho * ch, fin = ini + tanda * ch;
+                    if (c != 1f) for (int i = ini; i < fin; i++) buffer[i] = buffer[i] * c;   // x * 1 es x, exacto
+                    if (hayBandas) BandasDelTrozo(buffer, ini, fin, ch, eq);
+                    int ki = ini - s;
+                    for (int i = ini; i < fin; i++, ki++) realceK[ki] = canalesMusicales[(i - s) % ch] ? k : 0f;
+                    limpia += tanda - 1;
+                    hecho += tanda;
+                }
+            }
+            // El EQ en cascada de un trozo de cuadros enteros, de dos en dos bandas (la salida de una es la entrada de la siguiente, para esa misma muestra, en una
+            // variable y no en el arreglo); cada banda con su memoria en variables, y los dos canales de un estereo a la vez. La banda b solo depende de su memoria y
+            // de la salida de la b - 1: se puede hacer una banda (o dos) de punta a punta del trozo y luego las siguientes. Cada salida es un float (se redondea
+            // igual que al guardarla en el arreglo) y cada cuenta, la de siempre: cf[0]*x + cf[1]*x1 + cf[2]*x2 - cf[3]*y1 - cf[4]*y2.
+            private void BandasDelTrozo(float[] buffer, int ini, int fin, int ch, PreparedEq eq)
+            {
+                float[] st = eq.State;
+                bool[] mus = canalesMusicales;
+                bool estereo = ch == 2 && mus[0] && mus[1];
+                int activas = eq.Active, b = 0;
+                for (; b + 1 < activas; b += 2)
+                {
+                    float[] cf = eq.Coefficients[b], cg = eq.Coefficients[b + 1];
+                    if (estereo) DosBandasEstereo(buffer, ini, fin, st, cf, cg, b * 4, 32 + b * 4);
+                    else
+                        for (int c = 0; c < ch; c++)
+                            if (mus[c]) DosBandasUnCanal(buffer, ini + c, fin, ch, st, cf, cg, c * 32 + b * 4);   // el LFE no pasa por el EQ
+                }
+                if (b < activas)
+                {
+                    float[] cf = eq.Coefficients[b];
+                    if (estereo) UnaBandaEstereo(buffer, ini, fin, st, cf, b * 4, 32 + b * 4);
+                    else
+                        for (int c = 0; c < ch; c++)
+                            if (mus[c]) UnaBandaUnCanal(buffer, ini + c, fin, ch, st, cf, c * 32 + b * 4);
+                }
+            }
+            private static void UnaBandaEstereo(float[] buffer, int ini, int fin, float[] st, float[] cf, int qa, int qb)
+            {
+                float k0 = cf[0], k1 = cf[1], k2 = cf[2], k3 = cf[3], k4 = cf[4];
+                float a0 = st[qa], a1 = st[qa + 1], a2 = st[qa + 2], a3 = st[qa + 3];
+                float b0 = st[qb], b1 = st[qb + 1], b2 = st[qb + 2], b3 = st[qb + 3];
+                for (int i = ini; i < fin; i += 2)
+                {
+                    float x = buffer[i];
+                    float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                    a1 = a0; a0 = x; a3 = a2; a2 = o; buffer[i] = o;
+                    float x2 = buffer[i + 1];
+                    float o2 = k0 * x2 + k1 * b0 + k2 * b1 - k3 * b2 - k4 * b3;
+                    b1 = b0; b0 = x2; b3 = b2; b2 = o2; buffer[i + 1] = o2;
+                }
+                st[qa] = a0; st[qa + 1] = a1; st[qa + 2] = a2; st[qa + 3] = a3;
+                st[qb] = b0; st[qb + 1] = b1; st[qb + 2] = b2; st[qb + 3] = b3;
+            }
+            private static void DosBandasEstereo(float[] buffer, int ini, int fin, float[] st, float[] cf, float[] cg, int qa, int qb)
+            {
+                float k0 = cf[0], k1 = cf[1], k2 = cf[2], k3 = cf[3], k4 = cf[4];
+                float m0 = cg[0], m1 = cg[1], m2 = cg[2], m3 = cg[3], m4 = cg[4];
+                float a0 = st[qa], a1 = st[qa + 1], a2 = st[qa + 2], a3 = st[qa + 3];
+                float b0 = st[qb], b1 = st[qb + 1], b2 = st[qb + 2], b3 = st[qb + 3];
+                float c0 = st[qa + 4], c1 = st[qa + 5], c2 = st[qa + 6], c3 = st[qa + 7];
+                float d0 = st[qb + 4], d1 = st[qb + 5], d2 = st[qb + 6], d3 = st[qb + 7];
+                for (int i = ini; i < fin; i += 2)
+                {
+                    float x = buffer[i];
+                    float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                    a1 = a0; a0 = x; a3 = a2; a2 = o;
+                    float p = m0 * o + m1 * c0 + m2 * c1 - m3 * c2 - m4 * c3;
+                    c1 = c0; c0 = o; c3 = c2; c2 = p; buffer[i] = p;
+                    float x2 = buffer[i + 1];
+                    float o2 = k0 * x2 + k1 * b0 + k2 * b1 - k3 * b2 - k4 * b3;
+                    b1 = b0; b0 = x2; b3 = b2; b2 = o2;
+                    float p2 = m0 * o2 + m1 * d0 + m2 * d1 - m3 * d2 - m4 * d3;
+                    d1 = d0; d0 = o2; d3 = d2; d2 = p2; buffer[i + 1] = p2;
+                }
+                st[qa] = a0; st[qa + 1] = a1; st[qa + 2] = a2; st[qa + 3] = a3;
+                st[qb] = b0; st[qb + 1] = b1; st[qb + 2] = b2; st[qb + 3] = b3;
+                st[qa + 4] = c0; st[qa + 5] = c1; st[qa + 6] = c2; st[qa + 7] = c3;
+                st[qb + 4] = d0; st[qb + 5] = d1; st[qb + 6] = d2; st[qb + 7] = d3;
+            }
+            private static void UnaBandaUnCanal(float[] buffer, int ini, int fin, int paso, float[] st, float[] cf, int q)
+            {
+                float k0 = cf[0], k1 = cf[1], k2 = cf[2], k3 = cf[3], k4 = cf[4];
+                float a0 = st[q], a1 = st[q + 1], a2 = st[q + 2], a3 = st[q + 3];
+                for (int i = ini; i < fin; i += paso)
+                {
+                    float x = buffer[i];
+                    float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                    a1 = a0; a0 = x; a3 = a2; a2 = o; buffer[i] = o;
+                }
+                st[q] = a0; st[q + 1] = a1; st[q + 2] = a2; st[q + 3] = a3;
+            }
+            private static void DosBandasUnCanal(float[] buffer, int ini, int fin, int paso, float[] st, float[] cf, float[] cg, int q)
+            {
+                float k0 = cf[0], k1 = cf[1], k2 = cf[2], k3 = cf[3], k4 = cf[4];
+                float m0 = cg[0], m1 = cg[1], m2 = cg[2], m3 = cg[3], m4 = cg[4];
+                float a0 = st[q], a1 = st[q + 1], a2 = st[q + 2], a3 = st[q + 3];
+                float c0 = st[q + 4], c1 = st[q + 5], c2 = st[q + 6], c3 = st[q + 7];
+                for (int i = ini; i < fin; i += paso)
+                {
+                    float x = buffer[i];
+                    float o = k0 * x + k1 * a0 + k2 * a1 - k3 * a2 - k4 * a3;
+                    a1 = a0; a0 = x; a3 = a2; a2 = o;
+                    float p = m0 * o + m1 * c0 + m2 * c1 - m3 * c2 - m4 * c3;
+                    c1 = c0; c0 = o; c3 = c2; c2 = p; buffer[i] = p;
+                }
+                st[q] = a0; st[q + 1] = a1; st[q + 2] = a2; st[q + 3] = a3;
+                st[q + 4] = c0; st[q + 5] = c1; st[q + 6] = c2; st[q + 7] = c3;
             }
 
             // La fuente se acabo: lo que quedo retenido sale entero (silencio de entrada, la misma cuenta).
