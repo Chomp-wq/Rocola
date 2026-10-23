@@ -170,9 +170,9 @@ class Ajustes
           + "de ahi sacan el EQ y los graves automaticos lo que le falta.\n"
           + (hd ? "Encendido, ademas los recrea. Se apaga con DSEE ULTRA."      // en HD manda el DSEE ULTRA
                 : "EXPERIMENTAL: encendido, ademas los recrea con la IA."), fDes, 8.5f, true);
-        // Las bocinas del billar (11-10-2026): debajo de la explicacion del DSEE, sin salirse de la tarjeta (acaba en 398).
-        CSw("subgrave", cx + 16, cy + 368, 196, 26, "Quitar el subgrave", fNom, 10f);
-        CSw("estereo", cx + 220, cy + 368, 220, 26, "Estereo al 60 %", fNom, 10f);
+        // Las bocinas del billar estuvieron aqui el 11-10-2026, en dos huecos de 196 y 220 px. Desde el 12-10 viven en la hoja
+        // «El local y sus bocinas» (interLocal en Form1.Ajustes.cs, 424 px de ancho cada uno) y esta pagina ya no los tiene:
+        // medir el hueco viejo daba un falso «no cabe». La hoja nueva la mide ventanaf3 sobre la ventana de verdad.
 
         // ---- tarjeta IA EN VIVO, solo en HD (16,480,928,232) ----
         if (hd)

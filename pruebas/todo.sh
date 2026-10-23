@@ -627,6 +627,17 @@ if [ "$necesita_refs" -eq 1 ]; then
   incluye busmov && [ ! -s rocola_prev.exe ] && { echo "  Falta rocola_prev.exe"; exit 1; }
   incluye disco && [ ! -s rocola_ant.exe ] && { echo "  Falta rocola_ant.exe"; exit 1; }
 fi
+# SOLO PARA LAS PRUEBAS EN LINUX: la letra por defecto. Las baterias que miden texto (abc, moneda, colacompacta, estilo,
+# discovivo, ventanaf3...) se calibraron con DejaVu Sans, que es lo que Linux daba al pedir "Segoe UI", "Tahoma" o "sans".
+# Hay equipos donde la de por defecto es otra (Inter, con cifras de ancho distinto) y esas baterias fallaban sin que nada
+# estuviera roto. Si DejaVu Sans esta, se fija para la tanda; si no, se queda la del sistema. Nada de esto llega a la rocola.
+if [ -z "$FONTCONFIG_FILE" ] && command -v fc-list >/dev/null 2>&1 && fc-list | grep -q 'DejaVu Sans'; then
+  printf '%s\n' '<?xml version="1.0"?>' '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' '<fontconfig>' \
+    '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>' \
+    '  <match target="pattern"><test qual="any" name="family"><string>sans-serif</string></test><edit name="family" mode="prepend" binding="strong"><string>DejaVu Sans</string></edit></match>' \
+    '  <match target="pattern"><test qual="any" name="family"><string>sans</string></test><edit name="family" mode="prepend" binding="strong"><string>DejaVu Sans</string></edit></match>' \
+    '</fontconfig>' > "$TMP_PRUEBAS/fuentes.conf" && FONTCONFIG_FILE="$TMP_PRUEBAS/fuentes.conf" && export FONTCONFIG_FILE
+fi
 # SOLO PARA LAS PRUEBAS EN LINUX (Mono): la rocola copia memoria con RtlMoveMemory, de kernel32.dll, que Mono no tiene.
 # Sin este mapeo a memmove la tarjeta imitada no puede subir texturas y las baterias que cargan el ejecutable tal cual
 # (trabajovisible, auroraeficiente, resolucionligera, cintasligeras, estadoeficiente) fallan sin que nada este roto.
