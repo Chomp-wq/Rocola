@@ -125,8 +125,10 @@ class Mp3MedidaLigera
     }
     [STAThread] static int Main(string[] args)
     {
-        if(Environment.OSVersion.Platform != PlatformID.Win32NT)
-        { Console.WriteLine("OMISION EXPLICITA: MP3 real de ACM necesita Windows; no confirma PCM en esta plataforma."); return 0; }
+        // Fuera de Windows no hay descompresor ACM: el PCM de MP3 reales no se puede comparar y esa parte se omite de forma explicita.
+        // Pero la vista que salta el ID3 y la lectura de la etiqueta NO necesitan descompresor (solo bytes), y antes se omitian
+        // tambien: la bateria salia sin ninguna comprobacion y el lanzador (que exige al menos una OK/PASS) la daba por fallida.
+        bool hayAcm = Environment.OSVersion.Platform == PlatformID.Win32NT;
         string dir = Path.Combine(Path.GetTempPath(),"rocola-mp3-ligero-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
         string old = Environment.GetEnvironmentVariable("ROCOLA_DATOS"); Environment.SetEnvironmentVariable("ROCOLA_DATOS",dir);
         try
@@ -153,6 +155,12 @@ class Mp3MedidaLigera
             Check(Start(new byte[5])==0,"cabecera truncada");
             Header(small,0,4,16,400,false); Header(small,410,4,16,400,true); Check(Start(small)==420,"footer valido");
             small[419]^=1;Check(Start(small)==0,"footer incongruente vuelve al camino anterior");
+            if(!hayAcm)
+            {
+                Console.WriteLine("OMISION EXPLICITA: MP3 real de ACM necesita Windows; no confirma PCM en esta plataforma.");
+                Console.WriteLine("PASS mp3medidaligera (parcial, sin ACM): "+checks+" controles de la vista de bytes y de la deteccion de ID3. NO compara PCM de MP3 reales; eso solo se comprueba en Windows.");
+                return 0;
+            }
             string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mp3-fixtures");
             if(args.Length>2) root=Path.GetDirectoryName(Path.GetFullPath(args[2]));
             else if(!Directory.Exists(root)) root=Directory.GetCurrentDirectory();

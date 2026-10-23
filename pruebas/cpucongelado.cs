@@ -9,34 +9,19 @@ class CpuCongelado
  static string[] names={"Draw","BakeCell","GetOrBakeCell","PeekOrBakeCell","RebuildCubes","UpdateCells","OnPaint","CellMetrics","Geometry","ClearCellCache","PodaCeldas","BakeAhead"};
  // Agregar tipos GPU renumera tokens de metadatos sin cambiar las instrucciones CPU.
  // Comparar cada operando resuelto, nunca omitir los operandos ni aceptar solo igual longitud.
+ // El recorrido de instrucciones ya NO vive aqui: lo hace Codigo.IlConNombres (leercodigo.cs), el unico sitio
+ // que lee el programa por dentro (leer.cs lo exige). Cada instruccion sale con lo que nombra (campo, metodo,
+ // tipo o texto) en vez del numero de tabla, que es exactamente la comparacion de operandos resueltos que se
+ // hacia aqui. Compilar junto a leercodigo.cs: mcs cpucongelado.cs leercodigo.cs
  static string Code(MethodInfo method)
  {
-  Dictionary<short,OpCode> ops=new Dictionary<short,OpCode>();
-  foreach(FieldInfo f in typeof(OpCodes).GetFields(B))if(f.FieldType==typeof(OpCode)){OpCode op=(OpCode)f.GetValue(null);ops[op.Value]=op;}
-  MethodBody body=method.GetMethodBody();byte[] code=body.GetILAsByteArray();StringBuilder result=new StringBuilder();
+  MethodBody body=method.GetMethodBody();StringBuilder result=new StringBuilder();
   result.Append(body.InitLocals).Append('|').Append(body.MaxStackSize);
   foreach(LocalVariableInfo local in body.LocalVariables)result.Append('|').Append(local.LocalType.FullName).Append(':').Append(local.IsPinned);
   foreach(ExceptionHandlingClause clause in body.ExceptionHandlingClauses){result.Append('|').Append(clause.Flags).Append(':').Append(clause.TryOffset).Append(':').Append(clause.TryLength).Append(':').Append(clause.HandlerOffset).Append(':').Append(clause.HandlerLength);if(clause.Flags==ExceptionHandlingClauseOptions.Clause)result.Append(':').Append(clause.CatchType.FullName);if(clause.Flags==ExceptionHandlingClauseOptions.Filter)result.Append(':').Append(clause.FilterOffset);}
-  for(int i=0;i<code.Length;)
-  {
-   int first=code[i++];short value=(short)(first==254 ? 0xfe00|code[i++] : first);OpCode op=ops[value];result.Append('|').Append(op.Name).Append('=');int size=0;
-   switch(op.OperandType)
-   {
-    case OperandType.InlineField:case OperandType.InlineMethod:case OperandType.InlineType:case OperandType.InlineTok:
-     MemberInfo member=method.Module.ResolveMember(BitConverter.ToInt32(code,i),method.DeclaringType.GetGenericArguments(),method.GetGenericArguments());
-     result.Append(member.DeclaringType==null ? "" : member.DeclaringType.FullName).Append(':').Append(member.MemberType).Append(':').Append(member);i+=4;continue;
-    case OperandType.InlineString:result.Append(method.Module.ResolveString(BitConverter.ToInt32(code,i)));i+=4;continue;
-    case OperandType.InlineSig:result.Append(BitConverter.ToString(method.Module.ResolveSignature(BitConverter.ToInt32(code,i))));i+=4;continue;
-    case OperandType.InlineSwitch:size=4+4*BitConverter.ToInt32(code,i);break;
-    case OperandType.InlineI8:case OperandType.InlineR:size=8;break;
-    case OperandType.InlineI:case OperandType.InlineBrTarget:case OperandType.ShortInlineR:size=4;break;
-    case OperandType.InlineVar:size=2;break;
-    case OperandType.ShortInlineI:case OperandType.ShortInlineBrTarget:case OperandType.ShortInlineVar:size=1;break;
-    case OperandType.InlineNone:break;
-    default:throw new Exception("Operando no validado: "+op.OperandType);
-   }
-   if(i+size>code.Length)throw new Exception("IL truncado");for(int j=0;j<size;j++)result.Append(code[i++].ToString("x2"));
-  }
+  List<string> il=Codigo.IlConNombres(method);
+  if(il==null)throw new Exception("Sin cuerpo");
+  foreach(string paso in il){if(paso=="?")throw new Exception("IL truncado");result.Append('|').Append(paso);}
   return result.ToString();
  }
  static int Main(string[] args)

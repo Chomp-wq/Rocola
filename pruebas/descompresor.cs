@@ -107,6 +107,15 @@ class Descompresor
             break;   // ConAyudantes junta los dos: basta mirarlo una vez
         }
 
+        // Desde octubre el repaso (LectorMedida) tiene su propia puerta, AbreMp3Medida: salta la etiqueta ID3 con una vista y abre con
+        // el lector ligero. Tiene que cumplir lo mismo que AbreMp3: quedarse con el descompresor apuntado y cerrarlo si la apertura falla.
+        List<string> llMedida = Codigo.ConAyudantes(TF, "AbreMp3Medida");
+        Check(llMedida.Count > 0, "el repaso tiene su camino de apertura (AbreMp3Medida)");
+        Check(Codigo.Llama(llMedida, "CreateAcmFrameDecompressor"),
+              "el de la medida se queda con el descompresor apuntado, que es lo que permite cerrarlo");
+        Check(Codigo.Llama(llMedida, "Dispose"),
+              "el de la medida CIERRA el descompresor si la apertura falla");
+
         // =========================================================================================
         Console.WriteLine("\n  2) Y NADIE ABRE UN MP3 POR OTRO LADO\n");
         // Esta es LA comprobacion. Es la que habria cazado el descuido el mismo dia.
@@ -115,7 +124,10 @@ class Descompresor
         {
             if (EsAbreMp3(m)) continue;
             List<string> ll = Codigo.Llamadas(m);
-            bool abre = Codigo.Llama(ll, "Mp3FileReader..ctor");
+            // LectorMp3Ligero (Mp3Ligero.cs) ES un Mp3FileReader: su constructor y su Abre construyen el lector, pero NO arman ningun
+            // descompresor (reciben el armador ya hecho, el de AbreMp3). Lo que se vigila de ellos es QUIEN los llama: mas abajo.
+            bool esLigero = m.DeclaringType != null && m.DeclaringType.Name == "LectorMp3Ligero";
+            bool abre = !esLigero && Codigo.Llama(ll, "Mp3FileReader..ctor");
             bool arma = Codigo.Llama(ll, "CreateAcmFrameDecompressor");
             if (!abre && !arma) continue;
             string donde = (m.DeclaringType != null ? m.DeclaringType.Name + "." : "") + m.Name;
@@ -123,6 +135,22 @@ class Descompresor
         }
         foreach (string c in culpables) Console.WriteLine("     POR FUERA DEL CAMINO SEGURO:  " + c);
         Check(culpables.Count == 0, "el descompresor del sistema solo se arma dentro de AbreMp3, en ningun otro sitio");
+
+        // Y el lector ligero solo se abre desde una puerta AbreMp3* (la armadora de arriba): quien lo abriera por otro lado se saltaria
+        // el cierre del descompresor sin llamar nunca a Mp3FileReader..ctor a la vista.
+        List<string> ligerosPorFuera = new List<string>();
+        int ligerosAbiertos = 0;
+        foreach (MethodBase m in todos)
+        {
+            if (m.DeclaringType != null && m.DeclaringType.Name == "LectorMp3Ligero") continue;
+            List<string> ll = Codigo.Llamadas(m);
+            if (!Codigo.Llama(ll, "LectorMp3Ligero.Abre") && !Codigo.Llama(ll, "LectorMp3Ligero..ctor")) continue;
+            ligerosAbiertos++;
+            if (!EsAbreMp3(m)) ligerosPorFuera.Add((m.DeclaringType != null ? m.DeclaringType.Name + "." : "") + m.Name);
+        }
+        foreach (string c in ligerosPorFuera) Console.WriteLine("     LECTOR LIGERO POR FUERA DEL CAMINO SEGURO:  " + c);
+        Check(ligerosAbiertos > 0, "el lector ligero se abre de verdad desde alguna puerta (si no, esta comprobacion no miraria nada)");
+        Check(ligerosPorFuera.Count == 0, "el lector ligero de MP3 solo se abre desde AbreMp3 / AbreMp3Medida, en ningun otro sitio");
 
         // =========================================================================================
         Console.WriteLine("\n  3) Y QUIEN GUARDA UN LECTOR, LO CIERRA\n");
@@ -143,7 +171,7 @@ class Descompresor
                 // Su constructor tiene que pedirlo por el camino seguro...
                 bool porElCamino = false;
                 foreach (ConstructorInfo c in d.GetConstructors(TODO | BindingFlags.DeclaredOnly))
-                    if (Codigo.Llama(c, "AbreMp3")) porElCamino = true;
+                    if (Codigo.Llama(c, "AbreMp3") || Codigo.Llama(c, "AbreMp3Medida")) porElCamino = true;   // el repaso entra por AbreMp3Medida
                 Check(porElCamino, d.Name + " pide su lector por el camino seguro");
                 // ...y su Dispose tiene que TOCAR ese campo. Si se olvidaran de cerrarlo, no lo tocaria.
                 MethodInfo dis = d.GetMethod("Dispose", TODO, null, Type.EmptyTypes, null);

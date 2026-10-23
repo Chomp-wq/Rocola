@@ -114,8 +114,12 @@ class MemoriaIntegrada
             Feed(m, rate, p.Length, .617, 0, true); fresh = New(meter, rate, p); Feed(fresh, rate, p.Length, .617, 0, true);
             Check(Equal(Result(fresh), Result(m)), "Silencio tras musica no hereda picos ni localizacion de sonido");
         }
+        // El literal -0.0 NO sirve: mcs (Mono) lo pliega a +0.0 al compilar (con csc/Roslyn si sale negativo), y entonces la prueba
+        // compararia +0.0 contra +0.0 y fallaria por la herramienta, no por la rocola. Se fabrica el bit de signo a mano.
+        double CeroNegativo = BitConverter.Int64BitsToDouble(long.MinValue);
+        Check(BitConverter.DoubleToInt64Bits(CeroNegativo) != BitConverter.DoubleToInt64Bits(0.0), "el cero negativo de la prueba lo es de verdad");
         double[] mutable = { 1, 0.0 }; object copy = New(meter, 44100, mutable); mutable[0] = 4;
-        Check(Reset(copy, 44100, new double[] { 1, 0.0 }) && !Reset(copy, 44100, new double[] { 1, -0.0 }), "Pesos clonados y bits de cero preservados");
+        Check(Reset(copy, 44100, new double[] { 1, 0.0 }) && !Reset(copy, 44100, new double[] { 1, CeroNegativo }), "Pesos clonados y bits de cero preservados");
         Console.WriteLine("  OK reinicio completo, formatos, pesos y lecturas partidas de 8 a 96 kHz");
     }
     static object Acquire(Type form, int rate, int channels) { return Call(form, null, "TomaTrabajoMedida", rate, channels, false); }

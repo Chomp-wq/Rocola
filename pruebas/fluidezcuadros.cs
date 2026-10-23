@@ -193,36 +193,13 @@ class FluidezCuadros
     }
     static void NoFrameAllocations(Type type)
     {
-        System.Reflection.Emit.OpCode[] codes = new System.Reflection.Emit.OpCode[512];
-        foreach (FieldInfo field in typeof(System.Reflection.Emit.OpCodes).GetFields(B))
-        {
-            if (field.FieldType != typeof(System.Reflection.Emit.OpCode)) continue;
-            System.Reflection.Emit.OpCode code = (System.Reflection.Emit.OpCode)field.GetValue(null);
-            int value = (ushort)code.Value;
-            codes[value > 255 ? 256 + (value & 255) : value] = code;
-        }
+        // El recorrido de instrucciones es el comun (Codigo.Pasos, leercodigo.cs): 0x8D newarr, 0x73 newobj, 0x8C box.
         foreach (string name in new string[] { "Toma", "TomaCuadro", "TomaInterna", "CortaIntervalo", "DescartaContinuidad", "DiferenciaGc", "Finito" })
         {
-            byte[] il = type.GetMethod(name, B).GetMethodBody().GetILAsByteArray();
-            for (int at = 0; at < il.Length;)
+            foreach (Codigo.Paso paso in Codigo.Pasos(type.GetMethod(name, B)))
             {
-                int value = il[at++]; if (value == 254) value = 256 + il[at++];
-                System.Reflection.Emit.OpCode code = codes[value];
-                Check(code != System.Reflection.Emit.OpCodes.Newarr && code != System.Reflection.Emit.OpCodes.Newobj &&
-                    code != System.Reflection.Emit.OpCodes.Box, name + " no asigna arrays/objetos/boxing por cuadro");
-                switch (code.OperandType)
-                {
-                    case System.Reflection.Emit.OperandType.InlineSwitch:
-                        int count = BitConverter.ToInt32(il, at); at += 4 + count * 4; break;
-                    case System.Reflection.Emit.OperandType.InlineI8:
-                    case System.Reflection.Emit.OperandType.InlineR: at += 8; break;
-                    case System.Reflection.Emit.OperandType.InlineVar: at += 2; break;
-                    case System.Reflection.Emit.OperandType.ShortInlineBrTarget:
-                    case System.Reflection.Emit.OperandType.ShortInlineI:
-                    case System.Reflection.Emit.OperandType.ShortInlineVar: at++; break;
-                    case System.Reflection.Emit.OperandType.InlineNone: break;
-                    default: at += 4; break;
-                }
+                bool asigna = paso.Op2 < 0 && (paso.Op == 0x8D || paso.Op == 0x73 || paso.Op == 0x8C);
+                Check(!asigna, name + " no asigna arrays/objetos/boxing por cuadro");
             }
         }
     }

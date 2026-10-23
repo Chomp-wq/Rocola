@@ -103,7 +103,20 @@ class Duerme
         // dejara de cederle el disco a lo que se esta viendo, haria mas daño del que arregla.
         Check(AyudanteUsa("StartThumbWarm", "coverLoading"), "si hay caratulas del primer plano en camino, se aparta");
         Check(AyudanteUsa("StartThumbWarm", "videoOn"), "y si hay un video sonando, tambien");
-        Check(AyudanteLlama("StartThumbWarm", "WaitOne"), "y sigue pidiendo el mismo turno unico de disco que las cargas normales");
+        // Desde el 10-10 el calentador ya no llama a WaitOne en el propio delegado: pide el turno por TomaTurnoMiniatura (que espera
+        // con plazo de 100 ms para poder retirarse si el calentador se cancela). Sigue siendo el MISMO turno unico de disco que las
+        // cargas normales (coverSem, el de Form1.Portadas.cs), asi que se vigila el camino entero: el calentador llama a
+        // TomaTurnoMiniatura, esta espera sobre coverSem, y el calentador devuelve el turno con coverSem.Release.
+        MethodBase toma = Met("TomaTurnoMiniatura");
+        Check(toma != null, "el turno del calentador sale de un unico sitio (TomaTurnoMiniatura)");
+        Check(AyudanteLlama("StartThumbWarm", "TomaTurnoMiniatura"), "el calentador pide el turno por ahi");
+        Check(toma != null && Codigo.Llama(toma, "WaitOne"), "y ahi se espera el turno");
+        {
+            int lee = 0, esc = 0;
+            if (toma != null) Codigo.UsosDeCampo(toma, "coverSem", out lee, out esc);
+            Check(lee > 0, "sigue siendo el mismo turno unico de disco que las cargas normales (coverSem)");
+        }
+        Check(AyudanteLlama("StartThumbWarm", "Release"), "y el calentador devuelve el turno cuando acaba");
 
         Console.WriteLine("\n  3) SE SABE CUANTAS QUEDAN\n");
         // Sin esto, el pre-analisis no tiene forma de apartarse de las miniaturas.
