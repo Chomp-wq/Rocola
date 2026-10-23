@@ -1,5 +1,13 @@
 # Rocola
 
+## Audio y repaso, segunda pasada: cuatro ahorros con los mismos bits — 22 de octubre de 2026
+
+Cuatro ahorros sin interruptores y sin cambiar un bit de lo que sale: la transformada del quitasiseo (−23 % de la etapa), el filtro del detector de pico real (−9 % del limitador), el índice de cuadros de los MP3 contado aparte (abrir 15,7 → 1,9 ms y 1,6 → 0,3 MB por apertura; el repaso
+reserva 2,9 → 0,7 MB por canción) y la primera pasada del nivelado por bandas (con el EQ automático de 8 bandas, que la ronda anterior no había medido, LevelTap −22 % y la cadena −14 a −25 %). Cuatro baterías nuevas (`siseorapido`, `picorapido`, `indicemp3`, `eqporbandas`) con
+una copia del código de antes; la cadena entera, el repaso y los archivos de la IA salen iguales, byte a byte, que con el ejecutable anterior. **Descartado con números:** la FFT float del DSEE (sin diferencia en Mono), el estado del limitador en locales, desenrollar la conversión de 16 bits.
+Cifras de Mono/Linux, sintéticas: nada medido en XP ni en el A4 (el EQ de dos en dos y la FFT dependen del JIT de CLR 2).
+[Tablas por etapa, comprobaciones, descartes y qué medir en el A4](AUDIO_Y_REPASO_SEGUNDA_PASADA_MODEST_2026-10-22.md).
+
 ## Tirones al cambiar de página, de canción y de modo — 20 de octubre de 2026
 
 Un libro de los **ocho peores cuadros de cada minuto** con once fases (`diagnostico=1`, sin reservas por cuadro) para saber qué hacía el cuadro, y diez ahorros sin interruptores y sin cambiar lo que se ve ni lo que se oye: el precalentado de lo que pinta la tarjeta (primera vez
