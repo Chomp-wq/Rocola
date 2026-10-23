@@ -5,7 +5,7 @@
 //   mono compara-cadena.exe /ruta/antes.exe /ruta/despues.exe
 // (Con NAudio.dll y NLayer.dll junto al .exe.) Las combinaciones: de fabrica, el modo del local en los tres tipos con una cancion
 // medida de mucho rango y con otra sin medir, todos los mandos del local a mano, el estereo a mano con S3, y el bajo y el EQ en
-// automatico. Es una comparacion de la cuenta, no del oido.
+// automatico. Es una comparacion de la cuenta, no del oido. Las combinaciones del modo automatico del local solo se informan (cuando un cambio toca a proposito lo que ese modo decide salen distintas); todas las demas tienen que dar los mismos bits.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -141,7 +141,9 @@ class ComparaCadena
                 casos++;
                 bool igual = sal[0].Length == sal[1].Length;
                 for (int i = 0; igual && i < sal[0].Length; i++) if (BitConverter.ToInt32(BitConverter.GetBytes(sal[0][i]), 0) != BitConverter.ToInt32(BitConverter.GetBytes(sal[1][i]), 0)) igual = false;
-                if (!igual) { distintos++; Console.WriteLine("  DISTINTO  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)")); }
+                // El modo automatico del local es lo unico que PUEDE cambiar (24-10-2026: P1 y P2 lo cambian a proposito): se dice, no se cuenta.
+                if (!igual && nombres[c].StartsWith("modo del local")) Console.WriteLine("  distinto  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + " (esperado: lo decide el modo automatico)");
+                else if (!igual) { distintos++; Console.WriteLine("  DISTINTO  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)")); }
                 else Console.WriteLine("  igual     " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + ": " + sal[0].Length + " muestras");
             }
         try { Directory.Delete(dir, true); } catch { }

@@ -1532,7 +1532,8 @@ namespace Rocola
                 int buenas, medias, pobres, recortadas, sinMedir;
                 CalidadResumen(out buenas, out medias, out pobres, out recortadas, out sinMedir);
                 string destino = CalidadFile();
-                int sinPicos; string rangos = TextoRangos(RangosMedidos(out sinPicos), sinPicos);   // el reparto de los rangos (LocalAuto.cs); la tabla es de la pantalla
+                int sinPicos, sinLra; float[] lras; float[] rg = RangosMedidos(out sinPicos, out lras, out sinLra);
+                string rangos = TextoRangos(rg, sinPicos, lras, sinLra);   // el reparto de los rangos (LocalAuto.cs); la tabla es de la pantalla
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir, rangos); });
             }
             catch { }

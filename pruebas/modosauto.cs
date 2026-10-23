@@ -126,8 +126,9 @@ class ModosAuto
     // ---------------------------------------------------------------- 4) EL REPARTO DE LOS RANGOS
     static void Rangos()
     {
-        MethodInfo txt = TF.GetMethod("TextoRangos", T);
-        Check(txt != null && TF.GetMethod("RangosMedidos", T) != null, "esta el reparto de los rangos para rocola_calidad.txt");
+        MethodInfo txt = TF.GetMethod("TextoRangos", T, null, new Type[] { typeof(float[]), typeof(int) }, null);
+        MethodInfo txt4 = TF.GetMethod("TextoRangos", T, null, new Type[] { typeof(float[]), typeof(int), typeof(float[]), typeof(int) }, null);
+        Check(txt != null && txt4 != null && TF.GetMethod("RangosMedidos", T, null, new Type[] { typeof(int).MakeByRefType() }, null) != null, "esta el reparto de los rangos para rocola_calidad.txt");
         if (txt == null) return;
         string vacio = (string)txt.Invoke(null, new object[] { new float[0], 0 });
         Check(vacio.Contains("Aun no hay ninguna"), "sin medidas lo dice, sin dividir entre cero");
@@ -148,8 +149,23 @@ class ModosAuto
         dic["d"] = Activator.CreateInstance(TInt, T, null, new object[] { 3, float.NegativeInfinity, 2f, 1800, -80f, -80f }, null);   // muda
         Set(f, "integCache", dic);
         object[] a = { 0 };
-        float[] medidos = (float[])TF.GetMethod("RangosMedidos", T).Invoke(f, a);
+        float[] medidos = (float[])TF.GetMethod("RangosMedidos", T, null, new Type[] { typeof(int).MakeByRefType() }, null).Invoke(f, a);
         Check(medidos.Length == 2 && Math.Abs(medidos[0] - 8f) < 0.01f && Math.Abs(medidos[1] - 18f) < 0.01f && (int)a[0] == 1, "de la tabla real saca los rangos (8 y 18 dB), cuenta la vieja y no cuenta la muda");
+        // El rango de sonoridad (LRA, 24-10-2026): el reparto y las medidas de antes que aun no lo tienen.
+        float[] lras = new float[50]; for (int i = 0; i < lras.Length; i++) lras[i] = i * 0.4f;   // de 0 a 19,6 LU
+        string tl = (string)txt4.Invoke(null, new object[] { r, 0, lras, 7 });
+        Check(tl.Contains("RANGO DE SONORIDAD") && tl.Contains("50 medidas") && tl.Contains("faltan 7") && tl.Contains("menos de 3 LU") && tl.Contains("20 LU o mas") && tl.Contains("Mediana 10.0 LU"), "el informe trae el reparto del rango de sonoridad y cuantas medidas de antes faltan por volver a medir");
+        int p10 = 0, s14 = 0; foreach (float v in lras) { if (v >= 10f) p10++; if (v >= 14f) s14++; }
+        Check(tl.Contains("(10 LU o mas): " + p10) && tl.Contains("(14 LU o mas): " + s14), "y cuantas llevarian la presencia del billar (" + p10 + ") y las partes suaves de la sala (" + s14 + ")");
+        Check(((string)txt4.Invoke(null, new object[] { new float[0], 0, new float[0], 3 })).Contains("faltan 3"), "sin ninguna medida con picos tambien cuenta las que faltan");
+        Type TSil = null; foreach (Type tp in TF.Assembly.GetTypes()) if (tp.Name == "MapaSilencios") TSil = tp;
+        object mud = TSil.GetMethod("Mudo", T).Invoke(null, new object[] { 180f });
+        dic["e"] = Activator.CreateInstance(TInt, T, null, new object[] { 4, -20f, 2f, 1800, -8f, -12f, mud, 18.3f }, null);
+        dic["f"] = Activator.CreateInstance(TInt, T, null, new object[] { 4, -12f, 2f, 1800, -1f, -2f, mud, 2.5f }, null);
+        object[] b = { 0, null, 0 };
+        float[] m2 = (float[])TF.GetMethod("RangosMedidos", T, null, new Type[] { typeof(int).MakeByRefType(), typeof(float[]).MakeByRefType(), typeof(int).MakeByRefType() }, null).Invoke(f, b);
+        float[] l2 = (float[])b[1];
+        Check(m2.Length == 4 && l2.Length == 2 && Math.Abs(l2[0] - 2.5f) < 0.001f && Math.Abs(l2[1] - 18.3f) < 0.001f && (int)b[2] == 3, "de la tabla real saca tambien los LRA (2,5 y 18,3) y cuenta las 3 medidas validas de antes que aun no lo tienen");
     }
 
     // ---------------------------------------------------------------- 5) MEDIDAS PARA LAS PROPUESTAS (solo informan)
@@ -469,7 +485,7 @@ class ModosAuto
         object f = Codigo.FormSinEncender(TF);
         foreach (FieldInfo fi in TF.GetFields(T)) if (!fi.IsStatic && fi.FieldType.Name == "GuardadoReciente" && fi.GetValue(f) == null) fi.SetValue(f, Activator.CreateInstance(fi.FieldType, true));
         string[] nombres = { "pop comprimido", "pop con intro suave", "rock con golpes", "balada" };
-        Info("cancion                sonoridad    P99  rango(P99-son.)  LRA aprox.  | pasa 12 / 16 dB | partes suaves: sube hasta / baja hasta | presencia: sube hasta / baja hasta");
+        Info("cancion                sonoridad    P99  rango(P99-son.)  LRA aprox.  LRA medido | pasa 12 / 16 dB | partes suaves: sube hasta / baja hasta | presencia: sube hasta / baja hasta");
         for (int tipo = 0; tipo < 4; tipo++)
         {
             float[] x = Archetipo(tipo);
@@ -482,7 +498,7 @@ class ModosAuto
             Fabrica(f); SetS("partesSuaves", true); float[] suaves = Corre(f, wav);
             Fabrica(f); SetS("presenciaSala", true); float[] pres = Corre(f, wav);
             double s1, s2, p1, p2; Extremos(base_, suaves, out s1, out s2); Extremos(base_, pres, out p1, out p2);
-            Info(nombres[tipo].PadRight(22) + F(lk, "0.0").PadLeft(7) + F(p99, "0.0").PadLeft(8) + F(rango, "0.0").PadLeft(12) + F(Lra(x), "0.0").PadLeft(14) + "     |   " + (rango >= 12f ? "si" : "no") + " / " + (rango >= 16f ? "si" : "no")
+            Info(nombres[tipo].PadRight(22) + F(lk, "0.0").PadLeft(7) + F(p99, "0.0").PadLeft(8) + F(rango, "0.0").PadLeft(12) + F(Lra(x), "0.0").PadLeft(14) + F(Convert.ToSingle(med.GetType().GetField("Lra", T).GetValue(med)), "0.0").PadLeft(11) + "     |   " + (rango >= 12f ? "si" : "no") + " / " + (rango >= 16f ? "si" : "no")
                  + "        |   " + F(s1, "+0.0;-0.0;0.0").PadLeft(5) + " / " + F(s2, "+0.0;-0.0;0.0").PadLeft(5) + " dB                |   " + F(p1, "+0.0;-0.0;0.0").PadLeft(5) + " / " + F(p2, "+0.0;-0.0;0.0").PadLeft(5) + " dB");
         }
         Fabrica(f);

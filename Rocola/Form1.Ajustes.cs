@@ -941,7 +941,7 @@ namespace Rocola
                     tTono.Controls.Add(swAutoL);
                     BotonPlano bTipo = new BotonPlano(); bTipo.SetBounds(16, 348, 424, 30); bTipo.Font = fBot; bTipo.Name = "SonidoLocalTipo";
                     bTipo.Text = "Local: " + NombresTipoLocal[tipoLocal] + " (cambiar)"; bTipo.AccessibleName = "Tipo de local"; tTono.Controls.Add(bTipo);
-                    notaLocal(tPre, 248, 92, "El modo automatico decide por ti el subgrave, el estereo, la\nclaridad, las partes suaves, los agudos y la presencia, segun el\ntipo de local y el rango de cada cancion (las de mucho rango\nson las que se pierden en el ruido). No hace falta microfono.");
+                    notaLocal(tPre, 248, 92, "El modo automatico decide por ti el subgrave, el estereo, la\nclaridad, las partes suaves, los agudos y la presencia, segun el\ntipo de local y cuanto varia el volumen de cada cancion (la\npresencia, solo en las que varian). No hace falta microfono.");
                     string motivoAuto = "el modo automatico del local apagado (Tono y presencia)";
                     Func<bool> sinAuto = delegate { return !localAuto; };
                     Necesita(swSub, sinAuto, motivoAuto, nSub); Necesita(swEst, sinAuto, motivoAuto, nEst);

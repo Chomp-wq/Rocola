@@ -11,16 +11,18 @@ Un interruptor, **Ctrl+F3 → Sonido → El local y sus bocinas → Tono y prese
 (`local_auto=`), y un botón que cambia el **tipo de local** (`tipo_local=`: 0 billar, 1 sala buena, 2 bocinas chicas).
 Sin micrófono la rocola no oye el local, así que decide con dos cosas que sí sabe:
 
-| Tipo de local | Fijo para todas las canciones | Por canción (según su rango) |
+| Tipo de local | Fijo para todas las canciones | Por canción |
 | --- | --- | --- |
-| Bocinas repartidas del billar | sin subgrave, estéreo estrecho **solo donde hace falta** (S3), claridad | partes suaves desde 12 dB de rango; presencia desde 16 dB |
-| Sala con bocinas buenas | nada: el tono no se toca | partes suaves solo desde 16 dB |
-| Bocinas chicas | sin subgrave, claridad, +1 dB de agudos | partes suaves desde 12 dB |
+| Bocinas repartidas del billar | sin subgrave, estéreo estrecho **solo donde hace falta** (S3), claridad, **partes suaves siempre** (P1, 24-10) | presencia desde 10 LU de rango de sonoridad (P2, 24-10) |
+| Sala con bocinas buenas | nada: el tono no se toca | partes suaves solo desde 14 LU de rango de sonoridad |
+| Bocinas chicas | sin subgrave, claridad, +1 dB de agudos, **partes suaves siempre** (P1) | nada (sin presencia) |
 
-El **rango** de una canción es el P99 de sus picos menos su sonoridad integrada (los dos de la medida del repaso). Un disco de pop actual ronda 6 a 10 dB;
-una balada, clásica o grabación sin comprimir, 14 o más. Esas son las que pierden sus partes bajitas en el ruido del local. Una canción **sin medir o con una
-medida vieja (sin picos)** solo recibe lo fijo de su tipo. Los graves y el balance de la hoja no se tocan: el balance depende de las perillas del amplificador.
-Los umbrales (12 y 16 dB) son una elección de oído, **no salen de la biblioteca real** de este local: `RangoAltoDb` y `RangoMuyAltoDb` en `LocalAuto.cs`.
+**Cambio del 24 de octubre de 2026** (el dueño eligió P1, P2 y P6 de `MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md`). Antes decidía el «rango» de cada canción = P99 de sus picos menos su sonoridad, que mide picos contra promedio y no cuánto se calla la canción (un rock de golpes secos pasaba los cortes sin tener nada suave; un pop con intro bajita, no). Ahora:
+
+- **Partes suaves, siempre** en el billar y en las bocinas chicas. La etapa ya se frena sola por nivel (solo sube lo que va 12 dB bajo el objetivo, hasta 4 dB): en una canción pareja mide 0,0 dB, en una con intro suave sube hasta +3,9 dB.
+- **Presencia (billar) y partes suaves de la sala** según el **rango de sonoridad (LRA, EBU Tech 3342)**: cuánto varía el volumen de la canción en el tiempo (ventanas de 3 s con ponderación K, puertas de −70 LUFS y de −20 LU, percentiles 10 y 95), que el repaso guarda en `rocola_sonoridad.txt` (algoritmo 4). Cortes: **10 LU** la presencia del billar, **14 LU** las partes suaves de la sala (ayuda más parca, como antes con 16 dB de picos). Las bocinas chicas y la sala buena no llevan presencia (como antes). Una balada o una canción con intro suave ronda 11 a 18 LU; un tema parejo, menos de 3.
+- **Medidas de antes (sin LRA)**: siguen sirviendo para nivelar igual y, hasta que el repaso las vuelva a medir en segundo plano (con su presupuesto acotado de siempre, sin saturar los dos núcleos), el modo usa la regla vieja de P99 − sonoridad: presencia del billar y partes suaves de la sala desde 16 dB. Una canción sin medir recibe solo lo fijo del tipo (y las partes suaves en billar y chicas).
+- Con el modo **apagado** (de fábrica) la cadena sale bit a bit como antes: `LocalDe` devuelve los mandos tal cual.
 
 ## Con el automático encendido
 
@@ -45,4 +47,4 @@ Los tres sitios que antes leían los mandos sueltos (armar la cadena en `Form1.S
 1. Elige el tipo de local y enciende el modo: debería sonar como con las mejoras que ya usabas a mano, sin que toques nada.
 2. Una balada o una canción clásica seguida de un tema muy comprimido: la primera no debe perderse en el ruido, la segunda no debe sonar más fuerte ni aplastada.
 3. Si una canción de mucho rango suena «bombeada» (presencia), pasa a «Sala con bocinas buenas» o apaga el modo y usa los mandos a mano.
-4. Mira la distribución real de rangos de tu biblioteca cuando el repaso la haya medido; si casi todo cae sobre 12 dB, los umbrales hay que subirlos.
+4. Mira la distribución real de rangos de tu biblioteca cuando el repaso la haya medido; mira el reparto del rango de sonoridad (LRA) en rocola_calidad.txt: si casi todo cae sobre 10 LU, el corte de la presencia hay que subirlo.

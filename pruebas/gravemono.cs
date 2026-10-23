@@ -123,6 +123,7 @@ class GraveMonoPrueba
         LasLecturas();
         ElDiscoContinuo();
         LaCadena();
+        LasRampas();
         ElCoste();
 
         Console.WriteLine("\n  " + (fallos == 0 ? "TODO BIEN (" + oks + " comprobaciones)" : fallos + " FALLO(S)"));
@@ -414,6 +415,81 @@ class GraveMonoPrueba
         foreach (string m in new string[] { "Read", "Enteros", "Cuadros", "Hereda", "Sigue" })
             foreach (Codigo.Paso p in Codigo.Pasos(TMono.GetMethod(m, T))) if (p.Op == 0x8D || p.Op == 0x73) reserva = true;
         Check(!reserva, "leer no reserva memoria (ni arreglos ni objetos)");
+    }
+
+    // ================================================================================================
+    //  6b) SIN CHASQUIDO AL TOCAR EL MANDO (P6, 24-10-2026)
+    // ================================================================================================
+    // Una pasada de 4 s por la etapa; en el cuadro 'cambio' se llama a Ajusta(ancho1, sub1) (null = no se llama). Las lecturas se parten
+    // justo en el cambio, como pasa cuando la ventana toca el mando entre dos lecturas del hilo del sonido.
+    static float[] ConCambio(float[] x, int fs, float corte, bool ancho0, bool sub0, bool? ancho1, bool? sub1, int cambio)
+    {
+        ISampleProvider g = (ISampleProvider)Nuevo(TMono, new FuenteSP(x, fs, 2), corte, 0.6f, 30f, ancho0, sub0);
+        MethodInfo aj = TMono.GetMethod("Ajusta", T);
+        float[] y = new float[x.Length]; int pos = 0; float[] b = new float[4096]; bool hecho = ancho1 == null && sub1 == null;
+        while (pos < y.Length)
+        {
+            int quiero = Math.Min(b.Length, y.Length - pos);
+            if (!hecho) quiero = Math.Min(quiero, 2 * cambio - pos);
+            if (quiero <= 0 && !hecho) { hecho = true; aj.Invoke(g, new object[] { ancho1 ?? ancho0, sub1 ?? sub0 }); continue; }
+            int k = g.Read(b, 0, quiero); if (k <= 0) break;
+            Array.Copy(b, 0, y, pos, k); pos += k;
+        }
+        return y;
+    }
+    static double SaltoEn(float[] y, int desde, int hasta)
+    {
+        double m = 0; for (int i = 2 * desde + 2; i < 2 * hasta && i < y.Length; i++) m = Math.Max(m, Math.Abs(y[i] - y[i - 2])); return m;
+    }
+    static void LasRampas()
+    {
+        Console.WriteLine("\n  6b) SIN CHASQUIDO AL ENCENDER O APAGAR EN VIVO (P6)\n");
+        int fs = 44100, n = fs * 4; float[] x = new float[2 * n];
+        for (int i = 0; i < n; i++)
+        {
+            double t = (double)i / fs, inst = 0.3 * Math.Sin(2 * Math.PI * 440 * t) + 0.1 * Math.Sin(2 * Math.PI * 1500 * t), centro = 0.15 * Math.Sin(2 * Math.PI * 110 * t) + 0.12 * Math.Sin(2 * Math.PI * 22 * t);
+            x[2 * i] = (float)(inst + centro); x[2 * i + 1] = (float)centro;   // un instrumento todo a la izquierda y graves al centro
+        }
+        string[] casos = { "estereo estrecho: encender", "estereo estrecho: apagar", "subgrave: encender", "subgrave: apagar" };
+        double[] peor = new double[4], normal = new double[4];
+        for (int c = 0; c < 4; c++)
+            for (int off = 0; off < 60; off++)
+            {
+                int cambio = fs + off * 37;
+                bool a0 = c == 1, s0 = c == 3;
+                bool? a1 = c < 2 ? (bool?)(c == 0) : null, s1 = c >= 2 ? (bool?)(c == 2) : null;
+                float[] y = ConCambio(x, fs, 120f, a0, s0, a1, s1, cambio);
+                normal[c] = Math.Max(normal[c], SaltoEn(y, cambio - 4000, cambio - 50));
+                peor[c] = Math.Max(peor[c], SaltoEn(y, cambio - 1, cambio + 6));
+            }
+        for (int c = 0; c < 4; c++)
+        {
+            Info(casos[c] + ": salto normal " + F(normal[c], "0.0000") + ", peor salto al cambiar " + F(peor[c], "0.0000") + " (" + F(20 * Math.Log10(Math.Max(1e-9, peor[c] / normal[c])), "+0.0;-0.0") + " dB sobre lo normal)");
+            Check(peor[c] <= normal[c] * 1.25, casos[c] + " en vivo: el salto entre muestras no pasa de 2 dB sobre el normal (antes: 6 a 16 dB)");
+        }
+        // Despues de los 25 ms todo queda exactamente como si el mando hubiera estado asi desde el principio.
+        int cam = fs + 1234, ya = cam + fs / 10;   // 100 ms despues
+        float[] eOn = ConCambio(x, fs, 120f, true, false, null, null, 0), eOff = ConCambio(x, fs, 120f, false, false, null, null, 0);
+        float[] aOn = ConCambio(x, fs, 120f, false, false, true, null, cam), aOff = ConCambio(x, fs, 120f, true, false, false, null, cam);
+        bool igual1 = true, igual2 = true;
+        for (int i = 2 * ya; i < x.Length; i++) { if (aOn[i] != eOn[i]) igual1 = false; if (aOff[i] != eOff[i]) igual2 = false; }
+        Check(igual1 && igual2, "pasados 100 ms del cambio, el estereo sale bit a bit como con el mando puesto desde el principio (los dos sentidos)");
+        float[] sOff = ConCambio(x, fs, 0f, false, true, null, false, cam);
+        bool igual3 = true; for (int i = 2 * ya; i < x.Length; i++) if (sOff[i] != x[i]) igual3 = false;
+        Check(igual3, "pasados 100 ms de apagar el subgrave (sin corte de grave en mono), la salida es exactamente lo que entra");
+        float[] sOn = ConCambio(x, fs, 0f, false, false, null, true, cam), sRef = ConCambio(x, fs, 0f, false, true, null, null, 0);
+        double d = 0, r = 0; for (int i = 2 * (fs * 3); i < x.Length; i++) { d = Math.Max(d, Math.Abs(sOn[i] - sRef[i])); r = Math.Max(r, Math.Abs(sRef[i])); }
+        Check(d < 1e-3, "y al encenderlo, un segundo despues alcanza lo mismo que con el subgrave puesto desde el principio (diferencia maxima " + F(d, "0.000000") + ")");
+        // En cualquier tamano de lectura y con cambios repetidos no sale nada raro.
+        float[] mucho = ConCambio(x, fs, 120f, false, false, true, true, cam);
+        bool sano = true; foreach (float v in mucho) if (float.IsNaN(v) || float.IsInfinity(v) || Math.Abs(v) > 2f) sano = false;
+        Check(sano, "encender los dos a la vez no saca nada roto");
+        // Estado estable: el camino de siempre. Con los mandos quietos (apagados, o encendidos desde el principio) la salida no cambia de
+        // un ejecutable a otro: lo comprueba pruebas/compara-cadena.cs; aqui se mira que no haya reservas de memoria al leer.
+        ISampleProvider q = (ISampleProvider)Nuevo(TMono, new FuenteSP(x, fs, 2), 120f, 0.6f, 30f, true, true);
+        float[] bb = new float[4096]; q.Read(bb, 0, bb.Length);
+        long m0 = GC.GetTotalMemory(false); for (int k = 0; k < 20; k++) q.Read(bb, 0, bb.Length); long m1 = GC.GetTotalMemory(false);
+        Check(m1 - m0 < 20000, "leer con los mandos quietos no reserva memoria (" + (m1 - m0) + " bytes en 20 lecturas)");
     }
 
     // ================================================================================================

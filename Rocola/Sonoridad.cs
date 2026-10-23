@@ -43,7 +43,11 @@ namespace Rocola
         //   3  (28 de septiembre de 2026) ademas DONDE SUENA: primer y ultimo bloque con sonido y el silencio mas largo
         //      de en medio (PicosBloques.Mapa), para saltar los silencios largos (SinSilencios.cs). Las de 2 siguen
         //      valiendo para nivelar mientras se vuelven a medir; un ejecutable anterior guarda las de 3 como ajenas.
-        internal const int Algoritmo = 3;
+        //   4  (23 de octubre de 2026) ademas el RANGO DE SONORIDAD (LRA, EBU Tech 3342): cuanto varia el volumen de la cancion en el
+        //      tiempo (ventanas de 3 s, puertas de -70 LUFS y de -20 LU, percentiles 10 y 95). Las de 3 (y 2, y 1) siguen valiendo
+        //      para nivelar mientras el repaso las vuelve a medir; sin LRA, el modo del local usa su regla de antes (P99 - sonoridad).
+        //      Un ejecutable anterior guarda las de 4 como ajenas, intactas.
+        internal const int Algoritmo = 4;
         internal const double PuertaAbsoluta = -70.0;   // LKFS
         internal const double PuertaRelativa = -10.0;   // LU respecto de la media de lo que paso la absoluta
         internal const double Desfase = -0.691;         // la constante de la definicion de LKFS
@@ -66,6 +70,16 @@ namespace Rocola
         private int previos;
         private double[] bloques = new double[64];
         private int nBloques;
+        // EL RANGO DE SONORIDAD (LRA, EBU Tech 3342). Sonoridad "de corto plazo" = la de los ultimos 3 s (30 subbloques de 100 ms),
+        // una cada 100 ms (solape de 2,9 s); las que pasan la puerta absoluta de -70 LUFS van a un histograma de 0,1 LU (-70 a +10, fijo:
+        // la memoria no crece con la cancion). Al cerrar: puerta relativa 20 LU bajo la media (en potencia) de las que pasaron, y la
+        // distancia entre el percentil 95 y el 10 de lo que queda. Menos de 3 s de cancion: no hay LRA.
+        internal const int LraSub = 30, LraBins = 800;
+        internal const double LraPuertaRelativa = -20.0;
+        private readonly double[] lraAnillo = new double[LraSub];
+        private readonly long[] lraCuentas = new long[LraSub];
+        private readonly int[] lraHist = new int[LraBins];
+        private int lraPos, lraLleno;
 
         internal MedidorBs1770(int tasaMuestreo, double[] pesos)
         {
@@ -103,6 +117,7 @@ namespace Rocola
             Array.Clear(estado, 0, estado.Length);
             Array.Clear(anillo, 0, anillo.Length); Array.Clear(cuentas, 0, cuentas.Length);
             Array.Clear(bloques, 0, bloques.Length);
+            Array.Clear(lraAnillo, 0, LraSub); Array.Clear(lraCuentas, 0, LraSub); Array.Clear(lraHist, 0, LraBins); lraPos = lraLleno = 0;
             fase = 0; cuadros = 0; indiceSub = inicioSub = 0; finSub = tasa / 10;
             previos = nBloques = 0;
             Picos.Reinicia();
@@ -258,6 +273,21 @@ namespace Rocola
                 for (int k = 2; k < 6; k++) if (Math.Abs(estado[q + k]) < 1e-25) estado[q + k] = 0;
             }
             long n = cuadros - inicioSub;
+            // El corto plazo (LRA): el subbloque entra al anillo de 30 y, con el anillo lleno, cuenta la sonoridad de los ultimos 3 s.
+            lraAnillo[lraPos] = w; lraCuentas[lraPos] = n;
+            if (++lraPos == LraSub) lraPos = 0;
+            if (lraLleno < LraSub) lraLleno++;
+            if (lraLleno == LraSub)
+            {
+                double sw = 0; long sc = 0;
+                for (int k = 0; k < LraSub; k++) { sw += lraAnillo[k]; sc += lraCuentas[k]; }
+                double pc = sc > 0 ? sw / (double)sc : 0.0;
+                if (pc > Potencia(PuertaAbsoluta))
+                {
+                    int b = (int)Math.Floor((Lkfs(pc) + 70.0) * 10.0);
+                    lraHist[b < 0 ? 0 : (b >= LraBins ? LraBins - 1 : b)]++;
+                }
+            }
             if (previos == 3)
             {
                 // Bloque de 400 ms = los tres subbloques anteriores y este. Potencia media ponderada por canal:
@@ -282,6 +312,34 @@ namespace Rocola
         // La potencia (sum_i G_i z_i) que corresponde a una sonoridad en LKFS, y al reves.
         internal static double Potencia(double lkfs) { return Math.Pow(10.0, (lkfs - Desfase) / 10.0); }
         internal static double Lkfs(double potencia) { return Desfase + 10.0 * Math.Log10(potencia); }
+
+        // El rango de sonoridad (LU). Falso si no hay ninguna ventana de 3 s por encima de la puerta absoluta (cancion de menos de 3 s,
+        // o muda). Los valores de cada ventana son los del centro de su casilla de 0,1 LU.
+        internal bool Lra(out double lra)
+        {
+            lra = 0; long total = 0; double suma = 0;
+            for (int i = 0; i < LraBins; i++)
+            {
+                if (lraHist[i] == 0) continue;
+                total += lraHist[i]; suma += lraHist[i] * Potencia(i / 10.0 - 70.0 + 0.05);
+            }
+            if (total == 0) return false;
+            double puerta = Lkfs(suma / total) + LraPuertaRelativa;
+            long n = 0;
+            for (int i = 0; i < LraBins; i++) if (lraHist[i] > 0 && i / 10.0 - 70.0 + 0.05 > puerta) n += lraHist[i];
+            if (n == 0) return false;
+            double rango10 = 0.10 * (n - 1), rango95 = 0.95 * (n - 1);
+            double bajo = double.NaN, alto = double.NaN; long acum = 0;
+            for (int i = 0; i < LraBins; i++)
+            {
+                if (lraHist[i] == 0 || !(i / 10.0 - 70.0 + 0.05 > puerta)) continue;
+                acum += lraHist[i];   // la casilla cubre los puestos acum - cuenta .. acum - 1
+                if (double.IsNaN(bajo) && acum - 1 >= Math.Floor(rango10)) bajo = i / 10.0 - 70.0 + 0.05;
+                if (acum - 1 >= Math.Floor(rango95)) { alto = i / 10.0 - 70.0 + 0.05; break; }
+            }
+            lra = alto - bajo;
+            return true;
+        }
 
         // Sonoridad integrada. Falso si no hubo ni un bloque completo (menos de 400 ms de audio). Verdadero
         // con -infinito si ningun bloque paso la puerta absoluta (silencio). 'usados' = bloques que pasaron
@@ -557,12 +615,16 @@ namespace Rocola
         internal readonly float PicoDb;   // desde el algoritmo 2: el pico de la cancion y su P99 (PicosBloques),
         internal readonly float P99Db;    // en dBFS; NaN si la medida es de antes (no se sabe)
         internal readonly MapaSilencios Silencios;   // desde el algoritmo 3: donde suena (SinSilencios.cs)
+        internal readonly float Lra;      // desde el algoritmo 4: el rango de sonoridad en LU (EBU Tech 3342); NaN si no hay (cancion corta, muda, o medida de antes)
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = float.NaN; }
+        internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra)
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; }
+        internal bool ConLra { get { return Algoritmo >= 4 && !float.IsNaN(Lra) && !float.IsInfinity(Lra) && Lra >= 0f; } }
         internal bool ConSilencios { get { return Algoritmo >= 3 && Silencios.Valido; } }
         internal bool ConPicos { get { return Algoritmo >= 2 && !float.IsNaN(PicoDb) && !float.IsNaN(P99Db); } }
         internal bool Valida { get { return Algoritmo >= 1 && Pesos > 0f && Bloques > 0; } }
@@ -625,7 +687,7 @@ namespace Rocola
                 int alg;
                 if (!int.TryParse(linea.Substring(0, corte), NumberStyles.None, CultureInfo.InvariantCulture, out alg) || alg < 1) continue;
                 if (alg > MedidorBs1770.Algoritmo) { ajenas.Add(linea); continue; }
-                int campos = (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
+                int campos = (alg >= 4) ? 13 : (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
                 string[] p = linea.Split(barra, campos);
                 if (p.Length != campos || p[campos - 1].Length == 0) continue;
                 float lk, pesos; int bloques;
@@ -641,10 +703,14 @@ namespace Rocola
                 if (alg >= 3 && (!MapaSilencios.Lee(p[6], out sil.Desde) || !MapaSilencios.Lee(p[7], out sil.Hasta)
                                  || !MapaSilencios.Lee(p[8], out sil.HuecoDesde) || !MapaSilencios.Lee(p[9], out sil.HuecoHasta)
                                  || !MapaSilencios.Lee(p[10], out sil.Dura) || !sil.Valido)) continue;
+                float lra = float.NaN;   // desde el 4: el rango de sonoridad ("-" = no hay)
+                if (alg >= 4 && p[11] != "-" && (!float.TryParse(p[11], NumberStyles.Float, CultureInfo.InvariantCulture, out lra)
+                                                 || float.IsNaN(lra) || float.IsInfinity(lra) || lra < 0f || lra > 200f)) continue;
                 string ruta = Pool(p[campos - 1]);
                 SonoridadIntegrada antes;
                 if (tabla.TryGetValue(ruta, out antes) && antes.Algoritmo > alg) continue;   // ya hay una de algoritmo mas nuevo
-                tabla[ruta] = (alg >= 3) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil)
+                tabla[ruta] = (alg >= 4) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra)
+                            : (alg >= 3) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil)
                             : (alg >= 2) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99)
                                          : new SonoridadIntegrada(alg, lk, pesos, bloques);
             }
@@ -669,6 +735,7 @@ namespace Rocola
                 w.Write(MapaSilencios.Texto(m.HuecoDesde)); w.Write('|'); w.Write(MapaSilencios.Texto(m.HuecoHasta)); w.Write('|');
                 w.Write(MapaSilencios.Texto(m.Dura)); w.Write('|');
             }
+            if (s.Algoritmo >= 4) { w.Write(s.ConLra ? s.Lra.ToString("0.#", CultureInfo.InvariantCulture) : "-"); w.Write('|'); }
             w.Write(ruta); w.Write("\r\n");
         }
         // Un pico guardado: dBFS entre "nada" (-200) y +20.
@@ -895,8 +962,16 @@ namespace Rocola
             float pico = m.Picos.PicoDb, p99 = m.Picos.P99Db;
             s = new SonoridadIntegrada(MedidorBs1770.Algoritmo, double.IsNegativeInfinity(lk) ? float.NegativeInfinity : (float)lk,
                                        (float)m.PesoTotal, m.Bloques, (float)Math.Round(pico, 2), (float)Math.Round(p99, 2),
-                                       m.Picos.Mapa(m.Cuadros));
+                                       m.Picos.Mapa(m.Cuadros), LraDeMedidor(m));
             return true;
+        }
+
+        // El rango de sonoridad de lo medido (NaN si no hay; al decimo de LU, como se guarda).
+        private static float LraDeMedidor(MedidorBs1770 m)
+        {
+            double l;
+            if (!m.Lra(out l) || double.IsNaN(l) || double.IsInfinity(l) || l < 0.0) return float.NaN;
+            return (float)Math.Round(l, 1);
         }
 
         // LEER CUADROS ENTEROS. Un lector puede devolver un trozo que parte un cuadro (un canal en esta

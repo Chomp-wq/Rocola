@@ -7,9 +7,16 @@
 //       - Bocinas repartidas del billar: sin subgrave, estereo estrecho solo donde hace falta (S3), claridad.
 //       - Sala con bocinas buenas: no se toca el tono; solo se ayuda a las canciones de mucho rango.
 //       - Bocinas chicas: sin subgrave, claridad y un poco mas de agudos (+1 dB).
-//  2. CADA CANCION, con lo que el repaso ya midio de ella: su rango dinamico (lo fuerte frente al promedio). Las de mucho
-//     rango (baladas, clasica, grabaciones sin comprimir) son las que pierden sus partes bajitas en el ruido del local; las
-//     ya comprimidas (el pop actual) no lo necesitan y no se tocan. Una cancion sin medir no activa nada de esto.
+//  2. CADA CANCION, con lo que el repaso ya midio de ella. Desde el 24-10-2026 (el dueno eligio P1 y P2 de
+//     MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md):
+//       - PARTES SUAVES (billar y bocinas chicas): SIEMPRE encendidas. La etapa ya se frena sola por nivel (solo sube lo que va 12 dB
+//         bajo el objetivo, hasta 4 dB): en una cancion pareja no hace nada, y la que tiene una intro o una estrofa bajita la recibe.
+//         Antes dependian del rango P99 - sonoridad, que mide picos contra promedio, no cuanto se calla la cancion.
+//       - PRESENCIA (billar): segun el RANGO DE SONORIDAD (LRA, EBU Tech 3342) de la cancion, desde LraPresenciaLu (10 LU): lo que
+//         varia el volumen en el tiempo. Una cancion pareja y fuerte no la necesita y la presencia la bajaria ~1 dB.
+//       - Sala con bocinas buenas: partes suaves solo con LRA desde LraSalaLu (14 LU: ayuda mas parca, como antes con 16 dB de rango).
+//       - Una cancion con medida de antes (sin LRA) usa la regla vieja de P99 - sonoridad para la presencia del billar (16 dB) y para
+//         las partes suaves de la sala (16 dB) hasta que el repaso la vuelva a medir; sin medida, solo lo fijo del tipo.
 //
 // Con el automatico encendido los mandos que decide quedan en gris diciendolo; lo que habia guardado en ellos se conserva y
 // vuelve al apagarlo. El balance, la prueba de bocinas, los arreglos de grabacion y el resto de Sonido siguen a mano.
@@ -28,6 +35,9 @@ namespace Rocola
         // El rango (dB entre el P99 de los picos y la sonoridad integrada) desde el que una cancion cuenta como de mucho rango, y desde el
         // que lo cuenta la presencia en sala ruidosa. Un disco de pop actual ronda 6 a 10 dB; una balada o clasica, 14 o mas.
         internal const float RangoAltoDb = 12f, RangoMuyAltoDb = 16f;
+        // El rango de sonoridad (LRA, en LU) desde el que una cancion lleva la presencia en el billar, y desde el que la sala con bocinas
+        // buenas le sube las partes suaves. Una balada o una cancion con intro suave ronda 11 a 18 LU; un tema parejo, menos de 3.
+        internal const float LraPresenciaLu = 10f, LraSalaLu = 14f;
 
         internal struct AjusteLocal
         {
@@ -43,22 +53,25 @@ namespace Rocola
         }
 
         // Lo que el modo automatico pone para un tipo de local y una cancion de ese rango (rangoDb < 0 = sin medir). Pura: sin estado.
-        internal static AjusteLocal LocalAutomatico(int tipo, float rangoDb)
+        internal static AjusteLocal LocalAutomatico(int tipo, float rangoDb) { return LocalAutomatico(tipo, rangoDb, -1f); }
+        // 'lraLu' < 0 = la cancion no tiene rango de sonoridad (medida de antes): se usa la regla de P99 - sonoridad.
+        internal static AjusteLocal LocalAutomatico(int tipo, float rangoDb, float lraLu)
         {
             AjusteLocal a = new AjusteLocal();
             bool medida = rangoDb >= 0f && !float.IsNaN(rangoDb);
-            bool alto = medida && rangoDb >= RangoAltoDb, muyAlto = medida && rangoDb >= RangoMuyAltoDb;
+            bool muyAlto = medida && rangoDb >= RangoMuyAltoDb;
+            bool conLra = lraLu >= 0f && !float.IsNaN(lraLu) && !float.IsInfinity(lraLu);
             switch (Math.Max(0, Math.Min(TiposLocal - 1, tipo)))
             {
                 case 0:   // las bocinas repartidas del billar: ruido y rebote
                     a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = true;
-                    a.Suaves = alto; a.Presencia = muyAlto;
+                    a.Suaves = true; a.Presencia = conLra ? lraLu >= LraPresenciaLu : muyAlto;
                     break;
                 case 1:   // bocinas buenas: el tono se deja como viene
-                    a.Suaves = muyAlto;
+                    a.Suaves = conLra ? lraLu >= LraSalaLu : muyAlto;
                     break;
-                default:  // bocinas chicas: no dan el grave, no hay que gastarlo
-                    a.Subgrave = true; a.Claridad = true; a.Agudos = 1; a.Suaves = alto;
+                default:  // bocinas chicas: no dan el grave, no hay que gastarlo (la presencia, como antes, no)
+                    a.Subgrave = true; a.Claridad = true; a.Agudos = 1; a.Suaves = true;
                     break;
             }
             return a;
@@ -74,6 +87,14 @@ namespace Rocola
             if (path == null || t == null || !t.TryGetValue(path, out s)) return -1f;
             return RangoDe(s);
         }
+        // El rango de sonoridad (LRA, en LU) de la cancion con lo ya medido, o -1 si no hay (medida de antes del 24-10-2026, cancion muy corta).
+        internal float LraDeCancion(string path)
+        {
+            System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
+            SonoridadIntegrada s;
+            if (path == null || t == null || !t.TryGetValue(path, out s) || !s.Valida || s.Muda || !s.ConLra) return -1f;
+            return s.Lra;
+        }
         internal static float RangoDe(SonoridadIntegrada s)
         {
             if (!s.Valida || s.Muda || !s.ConPicos) return -1f;
@@ -85,25 +106,30 @@ namespace Rocola
         // y sin ver cuantas canciones de ESTA biblioteca caen de cada lado no hay como saber si le sirven. Solo informa: no cambia el sonido.
         // En el hilo de la pantalla (la tabla es suya); devuelve los rangos de las medidas con picos, de menor a mayor, y cuantas medidas
         // enteras de una version vieja no los tienen (el repaso las vuelve a medir).
-        private float[] RangosMedidos(out int sinPicos)
+        private float[] RangosMedidos(out int sinPicos) { float[] lras; int sinLra; return RangosMedidos(out sinPicos, out lras, out sinLra); }
+        // Y los rangos de sonoridad (LRA) de las que ya lo tienen, y cuantas medidas validas aun no (el repaso las vuelve a medir).
+        private float[] RangosMedidos(out int sinPicos, out float[] lras, out int sinLra)
         {
-            sinPicos = 0;
+            sinPicos = 0; sinLra = 0; lras = new float[0];
             System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
             if (t == null) return new float[0];
             System.Collections.Generic.List<float> r = new System.Collections.Generic.List<float>(t.Count);
+            System.Collections.Generic.List<float> q = new System.Collections.Generic.List<float>(t.Count);
             foreach (System.Collections.Generic.KeyValuePair<string, SonoridadIntegrada> kv in t)
             {
                 SonoridadIntegrada s = kv.Value;
                 if (!s.Valida || s.Muda) continue;
+                if (s.ConLra) q.Add(s.Lra); else sinLra++;
                 float x = RangoDe(s);
                 if (x < 0f) { if (!s.ConPicos) sinPicos++; continue; }
                 r.Add(x);
             }
-            r.Sort();
+            r.Sort(); q.Sort(); lras = q.ToArray();
             return r.ToArray();
         }
 
-        internal static string TextoRangos(float[] ordenados, int sinPicos)
+        internal static string TextoRangos(float[] ordenados, int sinPicos) { return TextoRangos(ordenados, sinPicos, null, 0); }
+        internal static string TextoRangos(float[] ordenados, int sinPicos, float[] lrasOrdenados, int sinLra)
         {
             CultureInfo ic = CultureInfo.InvariantCulture;
             int n = ordenados == null ? 0 : ordenados.Length;
@@ -114,7 +140,7 @@ namespace Rocola
             sb.Append("  Medidas con picos: ").Append(n.ToString("#,0", ic));
             if (sinPicos > 0) sb.Append("   (otras ").Append(sinPicos.ToString("#,0", ic)).Append(" son de una version vieja, sin picos: el repaso las vuelve a medir)");
             sb.Append("\r\n");
-            if (n == 0) { sb.Append("  Aun no hay ninguna: deja que el repaso vaya midiendo.\r\n"); return sb.ToString(); }
+            if (n == 0) { sb.Append("  Aun no hay ninguna: deja que el repaso vaya midiendo.\r\n"); AnadeLra(sb, lrasOrdenados, sinLra, ic); return sb.ToString(); }
             float[] bordes = { 6f, 8f, 10f, 12f, 14f, 16f };
             int[] cuenta = new int[bordes.Length + 1];
             for (int i = 0; i < n; i++) { int b = 0; while (b < bordes.Length && ordenados[i] >= bordes[b]) b++; cuenta[b]++; }
@@ -124,8 +150,27 @@ namespace Rocola
             int altas = 0, muyAltas = 0;
             for (int i = 0; i < n; i++) { if (ordenados[i] >= RangoAltoDb) altas++; if (ordenados[i] >= RangoMuyAltoDb) muyAltas++; }
             sb.Append("  Mediana ").Append(ordenados[n / 2].ToString("0.0", ic)).Append(" dB, la de 9 de cada 10 canciones ").Append(ordenados[Math.Min(n - 1, (int)(n * 0.9))].ToString("0.0", ic)).Append(" dB.\r\n");
-            sb.Append("  Con partes suaves (billar y bocinas chicas): ").Append(altas.ToString("#,0", ic)).Append(" canciones (").Append((100.0 * altas / n).ToString("0.0", ic)).Append(" %); con presencia (billar): ").Append(muyAltas.ToString("#,0", ic)).Append(" (").Append((100.0 * muyAltas / n).ToString("0.0", ic)).Append(" %).\r\n");
+            sb.Append("  Con 12 dB o mas: ").Append(altas.ToString("#,0", ic)).Append(" canciones (").Append((100.0 * altas / n).ToString("0.0", ic)).Append(" %); con 16 dB o mas: ").Append(muyAltas.ToString("#,0", ic)).Append(" (").Append((100.0 * muyAltas / n).ToString("0.0", ic)).Append(" %). Es la regla de las medidas de antes, que aun no tienen rango de sonoridad.\r\n");
+            AnadeLra(sb, lrasOrdenados, sinLra, ic);
             return sb.ToString();
+        }
+        // El rango de sonoridad (LRA, EBU Tech 3342): lo que decide la presencia del billar (10 LU) y las partes suaves de la sala (14 LU).
+        private static void AnadeLra(System.Text.StringBuilder sb, float[] lras, int sinLra, CultureInfo ic)
+        {
+            int m = lras == null ? 0 : lras.Length;
+            sb.Append("  RANGO DE SONORIDAD (LRA, lo que varia el volumen en el tiempo; un tema parejo, menos de 3 LU; una balada, 10 a 20): ").Append(m.ToString("#,0", ic)).Append(" medidas");
+            if (sinLra > 0) sb.Append("   (faltan ").Append(sinLra.ToString("#,0", ic)).Append(": el repaso las vuelve a medir en segundo plano; mientras, rige la regla de arriba)");
+            sb.Append("\r\n");
+            if (m == 0) return;
+            float[] bordes = { 3f, 6f, 10f, 14f, 20f };
+            int[] cuenta = new int[bordes.Length + 1];
+            for (int i = 0; i < m; i++) { int b = 0; while (b < bordes.Length && lras[i] >= bordes[b]) b++; cuenta[b]++; }
+            string[] nombres = { "menos de 3 LU", "de 3 a 6 LU", "de 6 a 10 LU", "de 10 a 14 LU", "de 14 a 20 LU", "20 LU o mas" };
+            for (int b = 0; b < cuenta.Length; b++)
+                sb.Append("  ").Append(nombres[b].PadRight(15)).Append(cuenta[b].ToString("#,0", ic).PadLeft(8)).Append("   ").Append((100.0 * cuenta[b] / m).ToString("0.0", ic).PadLeft(5)).Append(" %\r\n");
+            int conPres = 0, conSala = 0;
+            for (int i = 0; i < m; i++) { if (lras[i] >= LraPresenciaLu) conPres++; if (lras[i] >= LraSalaLu) conSala++; }
+            sb.Append("  Mediana ").Append(lras[m / 2].ToString("0.0", ic)).Append(" LU. Con presencia en el billar (").Append(LraPresenciaLu.ToString("0", ic)).Append(" LU o mas): ").Append(conPres.ToString("#,0", ic)).Append(" (").Append((100.0 * conPres / m).ToString("0.0", ic)).Append(" %); con partes suaves en la sala buena (").Append(LraSalaLu.ToString("0", ic)).Append(" LU o mas): ").Append(conSala.ToString("#,0", ic)).Append(" (").Append((100.0 * conSala / m).ToString("0.0", ic)).Append(" %).\r\n");
         }
 
         // Lo que de verdad suena para esta cancion: los mandos tal cual (automatico apagado) o lo que decide el automatico.
@@ -133,7 +178,7 @@ namespace Rocola
         {
             if (localAuto)
             {
-                return LocalAutomatico(tipoLocal, t == null ? -1f : RangoDeCancion(t.Path));
+                return LocalAutomatico(tipoLocal, t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraDeCancion(t.Path));
             }
             AjusteLocal m = new AjusteLocal();
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;

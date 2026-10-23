@@ -62,6 +62,13 @@
 // lado y la voz al otro, si. Se vigila, por encima del corte, la energia del lado frente a la del medio (unos 3 s): si
 // el lado pasa del 60 % del medio (paneo extremo), se estrecha, entrando en un segundo; si baja del 35 %, vuelve a como
 // viene. En medio no cambia (para que no vaya y venga). Con el automatico apagado, todo sale bit a bit como antes.
+//
+// SIN CHASQUIDO AL TOCAR EL MANDO (P6, 24-10-2026). Encender o apagar el estereo estrecho o el subgrave con la cancion sonando (desde
+// Ctrl+F3, o al cambiar el tipo de local del modo automatico) antes cambiaba el ancho o el filtro de golpe: un escalon en la onda, que
+// se oia como un "tic" (medido: el salto entre dos muestras seguidas llegaba a 6 y 8 dB sobre lo normal con el estereo y a 16 dB al
+// quitar el subgrave). Ahora el ancho que se aplica sigue al pedido en una rampa de 25 ms, y el subgrave entra y sale mezclando lo
+// filtrado con lo que entra en esos 25 ms (al apagarlo el filtro sigue corriendo hasta acabar la mezcla). Fuera de esos 25 ms la
+// cuenta es la de siempre, bit a bit: en estado estable lo unico que hay de mas es una comparacion por cuadro.
 using System;
 
 namespace Rocola
@@ -152,6 +159,11 @@ namespace Rocola
             private int limpia;                           // cuadros desde la ultima limpieza de restos diminutos
             private bool empezo, acabo;
             private volatile GraveMono anterior;          // la pista que acaba justo antes, sin fundido (disco continuo)
+        // P6: el ancho que se aplica ahora (sigue al pedido en RampaSeg) y la mezcla del subgrave (1 = filtrado, 0 = como entra).
+        internal const double RampaSeg = 0.025;
+        private double anRampa, subMezcla;
+        private bool anListo, subListo;
+        private readonly double pasoAncho, pasoSub;
 
             // Como siempre: solo el grave en mono (sin tocar el ancho ni el subgrave).
             public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz) : this(s, corteHz, 1f, 0f, false) { }
@@ -178,6 +190,8 @@ namespace Rocola
                 activo = cruce || ajustable;
                 aAuto = 1.0 - Math.Exp(-1.0 / (AutoSeg * Math.Max(1, tasa)));
                 pasoAuto = 1.0 / (AutoRampaSeg * Math.Max(1, tasa));
+                pasoSub = 1.0 / (RampaSeg * Math.Max(1, tasa));
+                pasoAncho = Math.Max(1e-9, 1.0 - ancho) / (RampaSeg * Math.Max(1, tasa));   // de ancho entero a ancho estrecho (o al reves) en 25 ms
                 if (sub)
                 {
                     double ws = 2.0 * Math.PI * subgraveHz / tasa, cs = Math.Cos(ws), sn = Math.Sin(ws);
@@ -218,10 +232,17 @@ namespace Rocola
                 if (kAuto != metaAuto) kAuto = kAuto < metaAuto ? Math.Min(metaAuto, kAuto + pasoAuto) : Math.Max(metaAuto, kAuto - pasoAuto);
                 return 1.0 - (1.0 - ancho) * kAuto;
             }
-            private bool SubAhora()
+            // ¿Hay que filtrar este trozo?, con la mezcla del subgrave al empezarlo y hacia donde va. Apagado y ya sin mezcla: no. Al encenderlo
+            // desde cero los filtros empiezan de cero; si se enciende en plena salida (la mezcla aun no llego a 0) siguen como iban.
+            private bool SubAhora(out double m0, out double meta)
             {
-                if (!sub || !subOn) return false;
-                if (subReinicia) { subReinicia = false; Array.Clear(ss, 0, ss.Length); }
+                m0 = 0.0; meta = 0.0;
+                if (!sub) return false;
+                if (!subListo) { subListo = true; subMezcla = subOn ? 1.0 : 0.0; }
+                meta = subOn ? 1.0 : 0.0;
+                if (subMezcla == 0.0 && meta == 0.0) return false;
+                if (subReinicia) { subReinicia = false; if (subMezcla == 0.0) Array.Clear(ss, 0, ss.Length); }
+                m0 = subMezcla;
                 return true;
             }
 
@@ -242,6 +263,7 @@ namespace Rocola
                 vm1 = a.vm1; vm2 = a.vm2; vs1 = a.vs1; vs2 = a.vs2; em = a.em; es = a.es;
                 vuelta = a.vuelta; metaVuelta = a.metaVuelta;
                 eaM = a.eaM; eaS = a.eaS; kAuto = a.kAuto; metaAuto = a.metaAuto;
+                anRampa = a.anRampa; anListo = a.anListo; subMezcla = a.subMezcla; subListo = a.subListo;
             }
 
             public int Read(float[] buffer, int offset, int count)
@@ -254,7 +276,8 @@ namespace Rocola
                     if (acabo) return 0;
                     int n1 = src.Read(buffer, offset, count);
                     if (n1 <= 0) { acabo = true; return 0; }
-                    if (n1 > 0 && SubAhora()) Subgrave(buffer, offset, n1, 0, 1);
+                    double m0, meta;
+                    if (n1 > 0 && SubAhora(out m0, out meta)) subMezcla = Subgrave(buffer, offset, n1, 0, 1, m0, meta);
                     return n1;
                 }
                 int hechos = 0;
@@ -304,6 +327,7 @@ namespace Rocola
                 double zx1 = this.zx1, zx2 = this.zx2, zy1 = this.zy1, zy2 = this.zy2;
                 double vm1 = this.vm1, vm2 = this.vm2, vs1 = this.vs1, vs2 = this.vs2, em = this.em, es = this.es;
                 double vuelta = this.vuelta, meta = this.metaVuelta;
+                double ar = anRampa, pa = pasoAncho; bool anOk = anListo;
                 for (int f = 0; f < cuadros; f++, i += 2)
                 {
                     double l = b[i], r = b[i + 1];
@@ -323,7 +347,9 @@ namespace Rocola
                     if (vuelta != meta) { vuelta = vuelta < meta ? Math.Min(meta, vuelta + pv) : Math.Max(meta, vuelta - pv); }
                     double anF = an;
                     if (auto) { double mh = m - vm2; anF = PasoAuto(h2 * h2, mh * mh); }   // S3: solo si hace falta
-                    double lado = h2 * anF;                                          // el ancho (1 = como viene)
+                    if (!anOk) { ar = anF; anOk = true; }                            // P6: el ancho que se aplica sigue al pedido en 25 ms
+                    else if (ar != anF) ar = ar < anF ? Math.Min(anF, ar + pa) : Math.Max(anF, ar - pa);
+                    double lado = h2 * ar;                                           // el ancho (1 = como viene)
                     if (vuelta != 0.0) pm += vuelta * (ps - h2);                      // el grave del lado, de vuelta y en fase
                     b[i] = (float)(pm + lado); b[i + 1] = (float)(pm - lado);
                     // En el silencio, los restos diminutos a cero (Desnormales.cs): cada 64 cuadros, no en cada uno.
@@ -344,37 +370,47 @@ namespace Rocola
                 this.zx1 = zx1; this.zx2 = zx2; this.zy1 = zy1; this.zy2 = zy2;
                 this.vm1 = vm1; this.vm2 = vm2; this.vs1 = vs1; this.vs2 = vs2; this.em = em; this.es = es;
                 this.vuelta = vuelta; this.metaVuelta = meta;
-                AnchoAhora = auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an;
-                if (SubAhora()) { Subgrave(b, i0, cuadros, 0, 2); Subgrave(b, i0 + 1, cuadros, 1, 2); }
+                anRampa = ar; anListo = anOk;
+                AnchoAhora = anOk ? (float)ar : (auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an);
+                double m0, mt;
+                if (SubAhora(out m0, out mt)) { Subgrave(b, i0, cuadros, 0, 2, m0, mt); subMezcla = Subgrave(b, i0 + 1, cuadros, 1, 2, m0, mt); }
             }
 
             // Sin corte del grave en mono (grave_mono=0): medio y lado sin cruce, y solo si el estereo va estrechado.
             private void SinCruce(float[] b, int i, int cuadros)
             {
-                if (anchoOn && ancho != 1f)
+                bool quiere = anchoOn && ancho != 1f;
+                if (quiere || (anListo && anRampa != 1.0))   // (o aun vuelve al ancho entero, en la rampa de 25 ms)
                 {
-                    double an = ancho;
-                    bool auto = autoOn;
+                    double an = quiere ? ancho : 1.0;
+                    bool auto = quiere && autoOn;
+                    double ar = anRampa, pa = pasoAncho; bool anOk = anListo;
                     for (int f = 0, k = i; f < cuadros; f++, k += 2)
                     {
                         double l = b[k], r = b[k + 1];
                         double m = 0.5 * (l + r), s0 = 0.5 * (l - r);
                         double anF = auto ? PasoAuto(s0 * s0, m * m) : an;   // S3: sin cruce, con toda la banda
-                        double s = s0 * anF;
+                        if (!anOk) { ar = anF; anOk = true; }
+                        else if (ar != anF) ar = ar < anF ? Math.Min(anF, ar + pa) : Math.Max(anF, ar - pa);
+                        double s = s0 * ar;
                         b[k] = (float)(m + s); b[k + 1] = (float)(m - s);
                     }
-                    AnchoAhora = auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an;
+                    anRampa = ar; anListo = anOk;
+                    AnchoAhora = anOk ? (float)ar : (auto ? (float)(1.0 - (1.0 - ancho) * kAuto) : (float)an);
                 }
                 else AnchoAhora = 1f;
-                if (SubAhora()) { Subgrave(b, i, cuadros, 0, 2); Subgrave(b, i + 1, cuadros, 1, 2); }
+                double m0, mt;
+                if (SubAhora(out m0, out mt)) { Subgrave(b, i, cuadros, 0, 2, m0, mt); subMezcla = Subgrave(b, i + 1, cuadros, 1, 2, m0, mt); }
             }
 
             // El subgrave de un canal: 'n' muestras desde 'i', de 'paso' en 'paso'. Lo que se queda en casi nada se pone a
             // cero: con el silencio, los estados bajarian a numeros desnormales, que en un procesador viejo cuestan cien
             // veces mas cada cuenta.
-            private void Subgrave(float[] b, int i, int n, int canal, int paso)
+            // Devuelve la mezcla con que acaba el trozo (1 si es estable y filtrado: el camino de siempre, sin tocar nada mas).
+            private double Subgrave(float[] b, int i, int n, int canal, int paso, double m0, double meta)
             {
-                if (!sub) return;
+                if (!sub) return m0;
+                if (m0 != 1.0 || meta != 1.0) return SubgraveMezcla(b, i, n, canal, paso, m0, meta);
                 int e = canal * 8;
                 double x1 = ss[e], x2 = ss[e + 1], y1 = ss[e + 2], y2 = ss[e + 3];
                 double u1 = ss[e + 4], u2 = ss[e + 5], v1 = ss[e + 6], v2 = ss[e + 7];
@@ -392,6 +428,33 @@ namespace Rocola
                 }
                 ss[e] = x1; ss[e + 1] = x2; ss[e + 2] = y1; ss[e + 3] = y2;
                 ss[e + 4] = u1; ss[e + 5] = u2; ss[e + 6] = v1; ss[e + 7] = v2;
+                return 1.0;
+            }
+
+            // El mismo filtro con la mezcla en rampa (encendiendo o apagando en vivo): salida = entrada + mezcla * (filtrado - entrada).
+            // Con la mezcla en 1 sale exactamente el filtrado, y en 0 exactamente lo que entra.
+            private double SubgraveMezcla(float[] b, int i, int n, int canal, int paso, double m0, double meta)
+            {
+                int e = canal * 8;
+                double x1 = ss[e], x2 = ss[e + 1], y1 = ss[e + 2], y2 = ss[e + 3];
+                double u1 = ss[e + 4], u2 = ss[e + 5], v1 = ss[e + 6], v2 = ss[e + 7];
+                double p0 = this.p0, pa1 = this.pa1, pa2 = this.pa2, q0 = this.q0, qa1 = this.qa1, qa2 = this.qa2;
+                double mz = m0, ps = pasoSub;
+                for (int k = 0, j = i; k < n; k++, j += paso)
+                {
+                    double x = b[j];
+                    double y = p0 * (x - 2.0 * x1 + x2) - pa1 * y1 - pa2 * y2;
+                    if (y < 1e-30 && y > -1e-30) y = 0.0;
+                    x2 = x1; x1 = x; y2 = y1; y1 = y;
+                    double z = q0 * (y - 2.0 * u1 + u2) - qa1 * v1 - qa2 * v2;
+                    if (z < 1e-30 && z > -1e-30) z = 0.0;
+                    u2 = u1; u1 = y; v2 = v1; v1 = z;
+                    if (mz != meta) mz = mz < meta ? Math.Min(meta, mz + ps) : Math.Max(meta, mz - ps);
+                    b[j] = (float)(mz == 1.0 ? z : x + mz * (z - x));
+                }
+                ss[e] = x1; ss[e + 1] = x2; ss[e + 2] = y1; ss[e + 3] = y2;
+                ss[e + 4] = u1; ss[e + 5] = u2; ss[e + 6] = v1; ss[e + 7] = v2;
+                return mz;
             }
         }
     }

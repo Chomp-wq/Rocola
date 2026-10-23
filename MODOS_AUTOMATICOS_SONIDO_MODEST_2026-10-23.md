@@ -82,3 +82,42 @@ Medidas con `mono modosauto.exe rocola.exe medidas` (4 canciones sintéticas de 
 ## 5. Pruebas
 
 `pruebas/modosauto.cs` (nueva, en `todo.sh` y `LEEME.md`): configuración, grises de la ventana real, «sin mejoras» en la cadena armada, reparto de rangos y las medidas (con el argumento `medidas`). Corridas con `TMPDIR=/tmp sh todo.sh modosauto localauto salalocal bajoauto gravemono presenciasala audioestereo sonoridad nivelpicos discoparejo ventanaf3 ajustesvivos ajustes calidad todojunto sinpausa arreglos`: todo en verde, los dos perfiles con 0 avisos. `pruebas/compara-cadena.cs` (herramienta, no entra en `todo.sh`, como `compara-local.cs`).
+
+## 6. Hechas por decisión del dueño (24 de octubre de 2026): P1, P2 y P6
+
+Base: la rama con este documento ya integrado (5a5a32b). Con `local_auto=` apagado (de fábrica) la cadena sale **bit a bit** como antes: `pruebas/compara-cadena.cs` contra el ejecutable de 5a5a32b, 16 de 16 combinaciones idénticas (las 4 del modo automático del local solo se informan: P1 y P2 las cambian a propósito; en las medidas del test, billar y bocinas chicas «sin medir» salen distintas porque ahora llevan partes suaves). Nada de esto lleva interruptor propio (P1 y P2 solo tocan lo que decide el modo del local; P6 es automática).
+
+### P1 — partes suaves siempre en «billar» y «bocinas chicas»
+- `LocalAuto.cs`: `Suaves = true` en los dos tipos. La sala con bocinas buenas queda con las partes suaves solo desde 14 LU de rango de sonoridad (ver P2); antes, desde 16 dB de picos. Nota de la interfaz (`Tono y presencia`) y tabla de `LOCAL_AUTOMATICO_MODEST_2026-10-23.md` actualizadas.
+- Medido (4 canciones sintéticas): pop comprimido 0,0 dB, rock con golpes 0,0 dB, balada +1,8 dB, pop con intro suave **+3,9 dB** (la subida máxima en una ventana de 1 s). Coste ≈ +7 ns por muestra en Mono sobre los 22,5 ns de la etapa del local.
+- Pruebas: `localauto` (billar y chicas llevan partes suaves con poco rango, mucho, sin medir y NaN); fallaba en el ejecutable anterior (3 fallos en la tabla).
+
+### P2 — presencia (y partes suaves de la sala) por rango de sonoridad real, LRA
+- **Qué se midió**: `MedidorBs1770.Lra` (`Sonoridad.cs`): corto plazo de 3 s con ponderación K cada 100 ms (anillo de 30 subbloques, solape de 2,9 s), puerta absoluta −70 LUFS, relativa −20 LU, percentiles 10 y 95 de un histograma fijo de 0,1 LU (800 casillas: la memoria no crece con la canción). Menos de 3 s o muda: sin LRA.
+- **Contraste**: los 4 casos de EBU Tech 3342 dan **10,00 / 5,00 / 20,00 / 15,00 LU** (piden 10, 5, 20 y 15 ±1). Contra `pruebas/ref_lra.py` (Python, ponderación K de la tabla de la norma, sin histograma, percentiles interpolados): estéreo 48 y 44,1 kHz, mono, 5.0 a 32 kHz, estéreo 96 kHz y casi parejo, diferencias de 0,00 a 0,09 LU (tolerancia 0,25 a 0,30). Da lo mismo se lea como se lea (de una muestra, de 777, de golpe).
+- **Decisión**: billar, presencia con LRA ≥ **10 LU**. Sala con bocinas buenas, partes suaves con LRA ≥ **14 LU** (más parca, como antes con 16 dB). Bocinas chicas y sala sin presencia (como antes: la presencia aprieta lo fuerte y las bocinas chicas ya van justas; la sala buena no la necesita). Con los datos sintéticos: pop con intro suave 11,2 LU → sí; balada 17,7 → sí; rock con golpes 0,2 → no (antes sí: lo bajaba 0,8 a 1,2 dB); pop comprimido 0,1 → no.
+- **Formato** (`rocola_sonoridad.txt`): **algoritmo 4** = el 3 más un campo `LRA` (a la décima, `-` si no hay) antes de la ruta. Se leen todas las de antes (1, 2 y 3) igual que siempre y siguen **sirviendo para nivelar con los mismos números** (probado: misma raíz de potencia y mismos picos). Un registro de un algoritmo posterior (5…) se conserva intacto; un LRA negativo, no numérico o absurdo se salta. **Un ejecutable anterior (5a5a32b) lee el archivo nuevo sin romperse**: usa las medidas de 3 y guarda las de 4 intactas como ajenas (probado con `ROCOLA_EXE_ANTERIOR`); eso sí, mientras corra, las canciones ya re-medidas no le sirven para nivelar (cae a la estimación), como pasó del 2 al 3.
+- **Re-medición**: las medidas de 1 a 3 no se tiran. La tanda del repaso (`TandaIntegrada`) pide las de algoritmo menor que 4 y las nunca medidas (probado), en segundo plano y con el presupuesto acotado de siempre (cede a las carátulas, un solo hilo en dos núcleos); mientras tanto el modo usa la regla de antes (P99 − sonoridad, 16 dB). Cuesta decodificar otra vez cada canción una vez; el LRA en sí suma **0,38 ns por muestra** (13,9 → 14,3 ns, +2,7 %) en Mono, unos 8 ms por una canción de 4 minutos en estéreo, nada frente a decodificarla. En el A4 no se midió.
+- `rocola_calidad.txt` trae ahora el reparto del LRA (franjas, mediana, cuántas llevarían presencia en el billar y partes suaves en la sala, y cuántas medidas faltan por volver a medir).
+- Pruebas: batería nueva `lra` (30 comprobaciones, con y sin ejecutable anterior), `localauto` y `modosauto` ampliadas, `sonoridad` y `compatvieja` siguen verdes.
+
+### P6 — sin chasquido al tocar estéreo estrecho o subgrave en vivo
+- `GraveMono.cs`: el ancho que se aplica sigue al pedido en una rampa de 25 ms; el subgrave entra y sale mezclando lo filtrado con lo que entra en esos 25 ms (al apagarlo, el filtro sigue hasta acabar la mezcla). Cubre también el cambio de tipo de local con la canción sonando. Sin interruptor.
+- Salto máximo entre muestras seguidas sobre el normal (60 instantes de cambio distintos, `gravemono` sección 6b):
+
+| mando | antes | ahora |
+| --- | --- | --- |
+| estéreo estrecho, encender | +6,1 dB | −0,3 dB |
+| estéreo estrecho, apagar | +8,2 dB | −0,3 dB |
+| subgrave, encender | +0,2 dB | −0,3 dB |
+| subgrave, apagar | **+15,9 dB** | +0,0 dB |
+
+- Estado estable: tras 100 ms el estéreo sale **bit a bit** como con el mando puesto desde el principio, el subgrave apagado deja exactamente lo que entra, y con los mandos quietos el camino es el de siempre (sin reservas de memoria; costó ≈ 1,1 ns por cuadro más en Mono, 22,5 → 23,9 ns, unos 0,05 ms por segundo de música).
+
+### Qué escuchar en el billar
+1. Modo automático del local encendido, tipo billar: una canción con intro o estrofa bajita (balada, pop con intro suave) debe quedar más cerca del ruido de la sala; un tema parejo no debe sonar distinto. Un rock fuerte y parejo ya no debe sonar ~1 dB más bajo que sus vecinas.
+2. Mientras el repaso re-mide la biblioteca, algunas canciones decidirán por la regla vieja y otras por el LRA; el cambio es gradual y queda registrado en `rocola_calidad.txt` («faltan N»).
+3. Con una canción sonando, enciende y apaga «Estéreo» y «Quitar el subgrave» y cambia el tipo de local: no debe haber «tic».
+4. Si la presencia se oye de más o de menos, el corte es `LraPresenciaLu` en `LocalAuto.cs`; el reparto de tu biblioteca está en `rocola_calidad.txt`.
+
+Límites: todo sintético en Mono/Linux; no se oyó en el bar ni se midió en XP/A4.
