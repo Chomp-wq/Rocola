@@ -229,6 +229,8 @@ CPU="$CPU presenciasala"
 # 'localauto': el local en automatico (23-10-2026; LocalAuto.cs): la tabla por tipo de local y rango de cancion, apagado = los mandos
 # tal cual, encendido = decide por cada cancion con su medida, la cadena y los mandos en vivo lo leen, la configuracion y la ventana.
 CPU="$CPU localauto"
+# 'mp3mezclado': MP3 con frecuencia o canales mezclados (error del 17-10-2026): la reconstruccion con el formato dominante (BuildCleanMp3).
+CPU="$CPU mp3mezclado"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

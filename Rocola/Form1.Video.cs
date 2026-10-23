@@ -872,6 +872,7 @@ namespace Rocola
                 };
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.ReportFluidez = delegate(string informe) { Diag(informe); };
+                gpuPanel.ReportError = delegate(string que, Exception ex) { LogError(que, ex); };
                 gpuPanel.ReportPeores = delegate(string hoja) { Diag(hoja); };   // el libro de los peores cuadros (MedidaFluidezGpu.cs): solo con diagnostico=1
                 gpuPanel.LibroActivo = diagOn;
                 gpuPanel.TopeFps = fpsTope;   // 0 = que lo decida el panel por el refresco de la pantalla

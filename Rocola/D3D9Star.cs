@@ -2148,6 +2148,10 @@ namespace Rocola
         private readonly FluidezGpu fluidez = new FluidezGpu();
         private int fpsBw, fpsBh;
         internal Action<string> ReportFluidez;
+        // Un cuadro que truena (p. ej. "A generic error occurred in GDI+" al pintar una portada rara) ya no cierra la rocola: se apunta y se sigue.
+        internal Action<string, Exception> ReportError;
+        private int cuadrosFallidos, cuadrosFallidosApuntados;
+        private double cuadroFallidoApuntadoMs = -1e9;
         private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
@@ -2411,7 +2415,21 @@ namespace Rocola
                     fluidezAgendaMs += AhoraMs() - agendaInicio;
                 }
                 else AgendaCuadro(ahora, th);
-                RenderFrame();
+                try { RenderFrame(); cuadrosFallidos = 0; }
+                catch (Exception ex)
+                {
+                    // Se apunta (como mucho una vez cada 10 s, con cuantos van) y se sigue con el cuadro siguiente; si truena varios
+                    // seguidos se espera un poco para no girar en vano. Una excepcion aqui cerraba la rocola entera.
+                    cuadrosFallidos++; cuadrosFallidosApuntados++;
+                    double t = AhoraMs();
+                    if (ReportError != null && t - cuadroFallidoApuntadoMs > 10000)
+                    {
+                        cuadroFallidoApuntadoMs = t;
+                        try { ReportError("Un cuadro de la tarjeta fallo y se siguio (" + cuadrosFallidosApuntados + " desde el ultimo apunte)", ex); } catch { }
+                        cuadrosFallidosApuntados = 0;
+                    }
+                    if (cuadrosFallidos >= 3) EsperaMensajes(200);
+                }
                 vistoMs = -1;   // un cuadro pedido fuera de este bucle (WM_PAINT, el medidor) no sabe cuando se vera
             }
         }

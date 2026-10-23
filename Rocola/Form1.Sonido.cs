@@ -1409,13 +1409,16 @@ namespace Rocola
                 bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
                 if (isMp3)
                 {
-                    MemoryStream clean = null;
+                    MemoryStream clean = null; Exception porQue = null;
                     try
                     {
                         clean = BuildCleanMp3(path);
                         if (clean != null) return SinSilencios(path, SellaFuenteAudio(original, inicio, new TolerantMp3Source(clean)));   // reconstruido a una sola frecuencia
+                        porQue = new InvalidDataException("casi no quedaron cuadros de una sola frecuencia y canales");
                     }
-                    catch { if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
+                    catch (Exception ex2) { porQue = ex2; if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
+                    // Que quede escrito POR QUE no pudo la reconstruccion (antes se tragaba): sin esto solo se veia el error del archivo.
+                    try { LogError("MP3 con frecuencias mezcladas: la reconstruccion tampoco pudo con " + Path.GetFileName(path), porQue); } catch { }
                 }
                 throw;   // que el catch de PlayTrack muestre el aviso, lo anote y salte a la siguiente
             }
@@ -1427,6 +1430,9 @@ namespace Rocola
         // sumo un pequeño salto. Todo con la API de frames de NAudio, disponible en XP (decodificacion ACM).
         private static MemoryStream BuildCleanMp3(string path)
         {
+            // La clave es frecuencia Y canales (mono/estereo): el descompresor se arma una vez para un formato, y un cuadro de otros
+            // canales a mitad tambien lo rompe. Un cuadro suelto de basura (los bytes de una portada dentro de la etiqueta que
+            // parecen una cabecera) cae casi siempre en otra clave y se descarta con los demas.
             Dictionary<int, int> rateCount = new Dictionary<int, int>();
             using (FileStream fs = File.OpenRead(path))               // pasada 1: cuenta frecuencias -> elige la DOMINANTE
             {
@@ -1434,7 +1440,8 @@ namespace Rocola
                 {
                     Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs); } catch { break; }
                     if (f == null) break;
-                    int c; rateCount.TryGetValue(f.SampleRate, out c); rateCount[f.SampleRate] = c + 1;
+                    int k = f.SampleRate * 4 + (f.ChannelMode == ChannelMode.Mono ? 1 : 2);
+                    int c; rateCount.TryGetValue(k, out c); rateCount[k] = c + 1;
                 }
             }
             if (rateCount.Count == 0) return null;
@@ -1448,7 +1455,7 @@ namespace Rocola
                 {
                     Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs); } catch { break; }
                     if (f == null) break;
-                    if (f.SampleRate == domRate && f.RawData != null) ms.Write(f.RawData, 0, f.RawData.Length);
+                    if (f.SampleRate * 4 + (f.ChannelMode == ChannelMode.Mono ? 1 : 2) == domRate && f.RawData != null) ms.Write(f.RawData, 0, f.RawData.Length);
                 }
             }
             if (ms.Length < 2048) { ms.Dispose(); return null; }     // casi nada util: que el tolerante falle y se salte
