@@ -45,6 +45,8 @@ FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Roco
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
+# El diagnostico completo de Ctrl+F3 (23-10-2026): el motor, la toma de muestras y el informe, y las escenas con la rocola de verdad.
+FUENTES="$FUENTES $RAIZ/Rocola/DiagnosticoCompleto.cs $RAIZ/Rocola/Form1.DiagnosticoCompleto.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -421,6 +423,10 @@ GPU="$GPU adelantoprioridad"
 # 'picomuestras': el limitador de pico real con lecturas de menos de un cuadro (22-10-2026): ya no devuelve 0 (el fin de la
 # cancion para quien lo lee) pidiendole una sola muestra en estereo; sale bit a bit lo mismo que pidiendo todo junto.
 CPU="$CPU picomuestras"
+# 'diagnostico': el diagnostico completo de Ctrl+F3 (23-10-2026; DiagnosticoCompleto.cs): recorre todas las escenas con una tarjeta imitada, mide huecos,
+# tirones por fase, procesador por hilo y del sistema, escribe el informe, no guarda ni aplica nada, lo deja todo como estaba, no reserva por cuadro y se cancela.
+# Solo con tarjeta grafica; todo sintetico de Linux/Mono (tarjeta imitada), NO mide la rocola real ni Windows XP.
+GPU="$GPU diagnostico"
 
 # --- Que version de .NET pide este PROYECTO. No se deduce probando compiladores ni depende de que
 #     exista .git: las copias entregadas y los ZIP no tienen rama, pero el .csproj siempre declara
@@ -545,6 +551,10 @@ corre() {
     if [ "$t" = "estadoeficiente" ]; then
       apoyo="$apoyo franjareloj.cs"
       principal="-main:EstadoEficiente"
+    fi
+    if [ "$t" = "diagnostico" ]; then
+      apoyo="$apoyo franjareloj.cs"
+      principal="-main:Diagnostico"
     fi
     if ! mcs -sdk:4 -warn:4 -warnaserror+ $principal -out:$t.exe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:"$NAUDIO" $t.cs $apoyo > "$ct" 2>&1; then
       echo "  COMPILA MAL  $t"; tail -5 "$ct"; mal=$((mal+1)); continue

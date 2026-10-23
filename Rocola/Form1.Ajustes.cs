@@ -639,6 +639,13 @@ namespace Rocola
                 while (true)
                 {
                     VentanaAjustes();
+                    if (f3Diagnostico)
+                    {   // Diagnostico completo (DiagnosticoCompleto.cs): igual que medir, la ventana vuelve sola en Imagen
+                        f3Diagnostico = false; f3Medir = false;
+                        DiagnosticoCompletoF3();
+                        f3Pagina = 1;
+                        continue;
+                    }
                     if (!f3Medir) break;
                     f3Medir = false;
                     MideRendimiento();

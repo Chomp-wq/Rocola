@@ -291,8 +291,10 @@ namespace Rocola
             return PreparaDispositivo();
         }
 
+        internal int Perdidas;   // veces que se perdio el dispositivo (lo lee el diagnostico completo, DiagnosticoCompleto.cs)
         private void EsperaDispositivo()
         {
+            Perdidas++;
             lost = true;
             resetEspera = true;
             resetProximo = unchecked(Environment.TickCount + ReintentoDispositivoMs);
@@ -1089,6 +1091,7 @@ namespace Rocola
 
         public bool Ok { get { return gpu != null && gpu.Ok; } }
         public uint EstimatedTextureMemory { get { return gpu != null ? gpu.EstimatedTextureMemory : 0; } }
+        internal int Perdidas { get { return gpu != null ? gpu.Perdidas : 0; } }   // (diagnostico completo)
         public int Count { get { return nStars; } }
         private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
         public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
@@ -2563,6 +2566,7 @@ namespace Rocola
         private bool NoPresentado()
         {
             FallosMedidos++; Fps = 0; frames = 0;
+            if (diagSink != null) diagSink.Fallo();   // el diagnostico completo cuenta los cuadros sin presentar (DiagnosticoCompleto.cs)
             fluidez.DescartaContinuidad(); fluidezAgendaMs = 0;
             return false;
         }
@@ -3050,6 +3054,7 @@ namespace Rocola
             if (libroOn) { libro.Marca(LibroDeCuadros.FPresentar, terminado); LibroTermina(terminado, periodoObjetivo); }
             fluidez.TomaCuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo,
                 terminado - antesPresentar, periodoObjetivo, agendaDelHueco, gc0Inicio, gc1Inicio, gc2Inicio);
+            if (diagSink != null) diagSink.Cuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar, libroOn ? libro : null);   // diagnostico completo
             if (ShowFps && ReportFluidez != null)
             {
                 if (fluidez.Resume(terminado)) ReportFluidez(fluidez.Resumen());

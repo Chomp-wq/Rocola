@@ -224,6 +224,7 @@ namespace Rocola
         internal int Ocupadas { get { int n = 0; for (int i = 0; i < Plazas; i++) if (plazas[i].Ocupada) n++; return n; } }
         internal int Cuadros { get { return cuadros; } }
         internal Plaza De(int i) { return plazas[i]; }
+        internal double[] Fases { get { return actual; } }   // las fases del cuadro que acaba de terminar (el diagnostico completo las lee sin copiar)
 
         internal void Empieza(double ahora)
         {

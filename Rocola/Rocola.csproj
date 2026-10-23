@@ -170,6 +170,8 @@
     <Compile Include="PaletaCaratulaGpu.cs" />
     <Compile Include="CreditosServicio.cs" />
     <Compile Include="CieloNaturalGpu.cs" />
+    <Compile Include="DiagnosticoCompleto.cs" />
+    <Compile Include="Form1.DiagnosticoCompleto.cs" />
     <Compile Include="Rendimiento.cs">
       <SubType>Form</SubType>
     </Compile>

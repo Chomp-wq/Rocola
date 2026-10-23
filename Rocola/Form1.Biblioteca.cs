@@ -854,6 +854,7 @@ namespace Rocola
             {
             durScanTh = new System.Threading.Thread(delegate ()
             {
+                HilosRocola.Nombra("duraciones (escaneo)");
                 try
                 {
                     lectura.Prepara();
@@ -1484,6 +1485,7 @@ namespace Rocola
             {
             preparaRepasoTh = new System.Threading.Thread(delegate ()
             {
+                HilosRocola.Nombra("repaso de la biblioteca (preparacion)");
                 bool compartida = false;
                 try
                 {
@@ -1559,6 +1561,7 @@ namespace Rocola
             for (int carril = 0; carril < carriles; carril++)
             preScanTh[carril] = new System.Threading.Thread(delegate ()
             {
+                HilosRocola.Nombra("repaso de la biblioteca (carriles)");
                 try
                 {
                     // El respiro del arranque se paga UNA vez, no en cada revision de carriles: entrar y

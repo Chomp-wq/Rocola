@@ -960,6 +960,19 @@ namespace Rocola
         //  la pagina de Sonido no se entere: se queda exactamente donde estaba, hasta el ultimo pixel.
         // =============================================================================================
         private bool f3Medir;          // se pulso "Medir este equipo": la ventana se cierra, mide, y vuelve
+        private bool f3Diagnostico;    // se pulso "Diagnostico completo" (DiagnosticoCompleto.cs): la ventana se cierra, recorre las escenas, y vuelve
+        private string diagResumen = "";   // el resumen de dos renglones del ultimo diagnostico completo de esta sesion (y el informe que dejo)
+
+        // El diagnostico completo. No es una preferencia: ni se guarda ni lleva interruptor. Con tarjeta grafica lo hace
+        // Form1.DiagnosticoCompleto.cs; sin ella solo dice por que no hay nada que medir.
+        private void DiagnosticoCompletoF3()
+        {
+#if ROCOLA_GPU
+            CorreDiagnosticoGpu();
+#else
+            diagResumen = "No se hizo el diagnostico: esta rocola dibuja SIN tarjeta grafica.\nSin ella no hay nada que medir por este camino.";
+#endif
+        }
         private int f3Pagina;          // 0 = Sonido, 1 = Imagen (al volver de medir se abre en Imagen)
         private bool f3CambioGraf;     // se toco algo de graficos (para guardar al cerrar)
 
@@ -1588,11 +1601,16 @@ namespace Rocola
 
             // ---------------- ESTE EQUIPO ----------------
             BotonPlano bMedir = new BotonPlano();
-            bMedir.SetBounds(16, 40, 424, 36); bMedir.Font = fBot; bMedir.Text = "Medir este equipo";
+            bMedir.SetBounds(16, 40, 208, 36); bMedir.Font = fBot; bMedir.Text = "Medir este equipo";
             bMedir.Relleno = cOn; bMedir.Borde = cMide;
+            // El DIAGNOSTICO COMPLETO (23-10-2026): varias escenas duras, tirones, procesador por hilo e informe a un archivo.
+            BotonPlano bDiag = new BotonPlano();
+            bDiag.SetBounds(232, 40, 208, 36); bDiag.Font = fBot; bDiag.Text = "Diagnóstico completo";
+            bDiag.Relleno = cOn; bDiag.Borde = cMide;
+            bDiag.AccessibleName = "Diagnóstico completo: varios minutos, escribe un informe";
             Label lTarda = new Label(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;
             lTarda.ForeColor = cTenue; lTarda.Font = fDes;
-            const string textoTarda = "Puede tardar unos minutos. Incluye el estado extendido.\nUsa la música actual; si no hay, intenta una canción muda.";
+            const string textoTarda = "Medir: unos minutos. Diagnóstico: 3 a 6 min e informe.\nIncluyen el estado extendido. Música actual, o una muda.";
             lTarda.Text = textoTarda;
             BotonPlano bHistorial = new BotonPlano(); bHistorial.SetBounds(328, 590, 144, 38);
             bHistorial.Font = fBot; bHistorial.Text = "Comparar perfiles";
@@ -1626,7 +1644,7 @@ namespace Rocola
             lSinMus.ForeColor = Color.FromArgb(255, 196, 96); lSinMus.Font = fDes;
             Label lVer = new Label(); lVer.SetBounds(16, 322, 424, 68); lVer.BackColor = Color.Transparent;
             lVer.ForeColor = cTenue; lVer.Font = fDes;
-            tMide.Controls.Add(bMedir); tMide.Controls.Add(lTarda);
+            tMide.Controls.Add(bMedir); tMide.Controls.Add(bDiag); tMide.Controls.Add(lTarda);
             tMide.Controls.Add(lTecho); tMide.Controls.Add(lSinMus); tMide.Controls.Add(lVer);
 
             // ---------------- LA PROPUESTA ----------------
@@ -1805,6 +1823,9 @@ namespace Rocola
                 // ---- La tabla de lo medido ----
                 for (int i = 0; i < NombreEscena.Length; i++) for (int c = 0; c < colX.Length; c++) lCelda[i, c].Text = "";
                 lTarda.Text = textoTarda; lTarda.ForeColor = cTenue;
+                // El resumen del ultimo diagnostico completo ocupa el sitio del recordatorio (el medidor rapido, mas abajo, lo vuelve a
+                // quitar si tiene algo propio que decir ahi). El detalle esta en el archivo que dice.
+                if (!string.IsNullOrEmpty(diagResumen)) { lTarda.Text = diagResumen; lTarda.ForeColor = cBien; }
                 if (bancoEscenas == null)
                 {
                     for (int c = 0; c < colX.Length; c++) lCab[c].Visible = false;
@@ -1904,6 +1925,12 @@ namespace Rocola
                 f3Medir = true;
                 Form f = pg.FindForm();
                 if (f != null) f.Close();   // la ventana se cierra, se mide con la pantalla libre, y vuelve sola
+            };
+            bDiag.Click += delegate
+            {
+                f3Diagnostico = true;
+                Form f = pg.FindForm();
+                if (f != null) f.Close();   // igual que medir: la ventana se cierra, se recorre todo con la pantalla libre, y vuelve sola
             };
             EventHandler alNivel = delegate (object so, EventArgs ea)
             {

@@ -167,6 +167,7 @@ namespace Rocola
         private void Bombea()
         {
             lock (cerrojo) hiloLector = Thread.CurrentThread.ManagedThreadId;
+            HilosRocola.Nombra("audio (hilo de la musica)");   // para el reparto por hilo del diagnostico completo
             try
             {
                 while (true)

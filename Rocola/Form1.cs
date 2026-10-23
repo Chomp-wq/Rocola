@@ -1777,6 +1777,7 @@ namespace Rocola
             List<Album> snap = new List<Album>(albums);
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
+                HilosRocola.Nombra("calentador de miniaturas");
                 try
                 {
                     // Pausa cancelable: cerrar o recargar no deja un trabajador dormido doce segundos.

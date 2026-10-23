@@ -92,6 +92,7 @@ namespace Rocola
 
         private void Bucle()
         {
+            HilosRocola.Nombra("vigia de la pantalla");
             ManualResetEvent atendido = new ManualResetEvent(false);
             MethodInvoker toque = delegate { atendido.Set(); };
             while (!parar)

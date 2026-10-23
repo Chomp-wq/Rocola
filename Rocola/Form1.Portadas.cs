@@ -113,6 +113,7 @@ namespace Rocola
             Track etiquetaAntes = (cancion != null && !cancion.TagsLoaded) ? cancion.CopiaEtiqueta() : null;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
+                HilosRocola.Nombra("calentador de la cancion siguiente");
                 try
                 {
                     if (!SiguienteUrgente()) System.Threading.Thread.Sleep(1500);   // que la cancion que acaba de empezar tenga el disco (cerca del final no: va primero la siguiente)
@@ -539,6 +540,7 @@ namespace Rocola
         // Prioridad visible y limites por unidad. F5 no borra unidades ocupadas por lecturas en vuelo.
         private void CoverPump()
         {
+            HilosRocola.Nombra("caratulas (lectores)");   // para el reparto por hilo del diagnostico completo
 #if ROCOLA_GPU
             int poolGeneration = coverGen;
 #endif
