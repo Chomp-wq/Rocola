@@ -7,6 +7,12 @@ reserva 2,9 → 0,7 MB por canción) y la primera pasada del nivelado por bandas
 una copia del código de antes; la cadena entera, el repaso y los archivos de la IA salen iguales, byte a byte, que con el ejecutable anterior. **Descartado con números:** la FFT float del DSEE (sin diferencia en Mono), el estado del limitador en locales, desenrollar la conversión de 16 bits.
 Cifras de Mono/Linux, sintéticas: nada medido en XP ni en el A4 (el EQ de dos en dos y la FFT dependen del JIT de CLR 2).
 [Tablas por etapa, comprobaciones, descartes y qué medir en el A4](AUDIO_Y_REPASO_SEGUNDA_PASADA_MODEST_2026-10-22.md).
+## Sonido del local y robustez — 22 de octubre de 2026
+
+Seis cosas elegidas de la lista de propuestas de audio. **Se oyen, con su mando** (Ctrl+F3 → Sonido → El local y sus bocinas → «Tono y presencia del local...», una segunda hoja porque la primera está llena): **Graves del local** y **Agudos del local**, de −6 a +6 dB de 1 en 1 (escalones de 120 Hz y 6 kHz, 0 dB de fábrica, rampa de 50 ms sin chasquidos), y **Presencia en sala ruidosa**, un compresor suave 2 a 1 (ataque 15 ms, suelta 250 ms,
+umbral 6 dB bajo el volumen objetivo, ganancia de compensación de hasta 3 dB que nunca pasa del techo del limitador; apagado de fábrica); con todo a 0/apagado la cadena sale bit a bit como antes. **Automáticos:** **recopilatorios parejos** (el nivel por disco no se aplica si las pistas se llevan más de 5 dB: cada canción la suya), la **siguiente canción pasa antes que las carátulas** cuando quedan 45 s o menos, la **caja negra del sonido** (una línea
+«[Cortes de sonido]» en `rocola_error.txt` si una canción tuvo cortes, y los cambios de nivel de latencia) y tres robusteces (el limitador con lecturas de menos de un cuadro, la entrada de 5 ms con `fundido=0`, el relleno MP3 se reintenta una vez). Cifras de Mono/Linux, sintéticas: nada medido en XP, en el A4 ni oído en las bocinas del billar.
+[Qué hace cada cosa, pruebas, coste y qué escuchar en el local](SONIDO_DEL_LOCAL_Y_ROBUSTEZ_MODEST_2026-10-22.md).
 
 ## Tirones al cambiar de página, de canción y de modo — 20 de octubre de 2026
 
