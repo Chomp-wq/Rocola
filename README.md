@@ -1,5 +1,41 @@
 # Rocola
 
+## Diagnóstico completo en Ctrl+F3 — 23 de octubre de 2026
+
+Un segundo botón junto a «Medir este equipo» (Ctrl+F3 → Imagen): unos 4 minutos (tope 7) por 16 escenas, de la rejilla quieta al
+estado extendido con la estrella 2D y 3D, el hojeo con portadas frías, el buscador escribiendo, el cambio de canción, el asistente y dos
+«peor caso» con todo en Alto, música y trabajo de fondo. Por escena: intervalos p50/p95/p99/máx, cuadros de más de 1,5× y 2× el periodo,
+huecos de más de 50 y 100 ms con la fase del cuadro donde cayeron, procesador del proceso, **por hilo** y del sistema, recolecciones,
+memoria y cortes de sonido. Al final escribe `rocola_diagnostico_AAAA-MM-DD_HHMM.txt` en la carpeta de datos, con una lista de qué
+optimizar justificada con números (una recolección que coincide se dice como coincidencia, no como causa). No guarda ni aplica nada,
+no toca la canción de un cliente y se cancela si alguien toca la rocola. Las escenas con el Form1 real **no se han corrido**: falta la
+primera corrida en la rocola. [Escenas, métricas, cómo leer el informe y límites](DIAGNOSTICO_COMPLETO_MODEST_2026-10-23.md).
+
+## Modos automáticos del sonido: cuatro arreglos y P1, P2, P6 — 23 de octubre de 2026
+
+Revisión de los cinco modos automáticos. **Arreglos:** S3 iba activo con el modo del local encendido (que lo ignora); la barra de los
+videos quedaba en gris aunque nadie eligiera por ella (en XP, siempre); «Escuchar sin mejoras» no alcanzaba a la canción que se preparaba
+mientras duraba; «A la medida» (I1) parecía activa sin el modelo del EQ. `rocola_calidad.txt` trae el reparto de rangos y LRA de la
+biblioteca. **Elegidas por el dueño, dentro del modo automático del local (apagado de fábrica, que con él apagado suena bit a bit
+igual):** P1, partes suaves siempre en billar y bocinas chicas; P2, la presencia se decide por el rango de sonoridad LRA (EBU Tech 3342,
+nueva medida del repaso, algoritmo 4; las medidas de antes siguen nivelando y solo se vuelven a medir con el modo encendido). **Automática:**
+P6, una rampa de 25 ms al encender o apagar en vivo el estéreo estrecho y el subgrave (el tic de hasta +16 dB desaparece). Sintético en
+Mono/Linux: nada oído en el billar. [Modos, defectos, medidas y propuestas](MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md).
+
+## La suite de pruebas, en verde en Linux — 23 de octubre de 2026
+
+De 31 baterías en rojo (36 fallos contando los dos perfiles) a 4 de entorno conocidas (`sala`, `discoacotado`, `caratulasadaptativas`,
+`partescaratulas`), **sin un defecto del programa** detrás de las otras 27: pruebas que se quedaron viejas con los cambios de octubre, el lanzador que no contaba los fallos sin
+sangría, root, libgdiplus y la letra. `todo.sh` mapea `RtlMoveMemory` a `memmove` para Mono y da a cada batería de textos la letra con la
+que se calibró (Inter o DejaVu Sans); nada de eso llega a la rocola. Pendiente de mirar en Windows: el reemplazo de un modelo con el activo
+abierto, el color de la miniatura en la caché y que un hilo terminado no retenga el plan de la biblioteca.
+
+## Recuperación gráfica, errores de la bitácora y audio — 23 de octubre de 2026
+
+[Recuperación de Direct3D en XP y el pantallazo 0xEA](RECUPERACION_GRAFICA_XP_2026-10-23.md) · [Errores de la bitácora: un cuadro que
+truena ya no cierra la rocola, MP3 de frecuencia mezclada](ERRORES_DE_LA_BITACORA_MODEST_2026-10-23.md) · [Audio: trabajo redundante y el
+enlace estéreo de la presencia](AUDIO_EFICIENTE_MODEST_2026-10-23.md).
+
 ## El local en automático — 23 de octubre de 2026
 
 Un interruptor (Ctrl+F3 → Sonido → El local y sus bocinas → Tono y presencia del local) que enciende y ajusta solo las mejoras del local según el tipo de local (billar, sala con bocinas buenas, bocinas chicas) y el rango de cada canción; los mandos que decide quedan en gris con su motivo y lo guardado en ellos se conserva. Apagado de fábrica: la cadena sale como antes. Los umbrales son de oído y no salen de la biblioteca real. Ver `LOCAL_AUTOMATICO_MODEST_2026-10-23.md`.
