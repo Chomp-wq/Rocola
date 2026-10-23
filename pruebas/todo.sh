@@ -551,7 +551,10 @@ corre() {
     fi
     # La ruta del ejecutable va como primer argumento: es la convencion de todas las baterias, y las
     # nuevas de audio y arranque (audiosuave, audioestereo, tablasarranque...) la exigen.
-    xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1
+    letra="$LETRA_COMUN"
+    case " $LETRA_DEJAVU " in *" $t "*) letra="$LETRA_VIEJA" ;; esac
+    if [ -n "$letra" ]; then FONTCONFIG_FILE="$letra" xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1
+    else xvfb-run -a mono $t.exe rocola.exe > "$rt" 2>&1; fi
     rc=$?
     # Unas baterias escriben "  FALLO ..." (con sangria) y otras "FALLO ..." sin ella: se cuentan las dos.
     n=$(grep -c '^ *FALLO[ :]' "$rt")
@@ -627,16 +630,24 @@ if [ "$necesita_refs" -eq 1 ]; then
   incluye busmov && [ ! -s rocola_prev.exe ] && { echo "  Falta rocola_prev.exe"; exit 1; }
   incluye disco && [ ! -s rocola_ant.exe ] && { echo "  Falta rocola_ant.exe"; exit 1; }
 fi
-# SOLO PARA LAS PRUEBAS EN LINUX: la letra por defecto. Las baterias que miden texto (abc, moneda, colacompacta, estilo,
-# discovivo, ventanaf3...) se calibraron con DejaVu Sans, que es lo que Linux daba al pedir "Segoe UI", "Tahoma" o "sans".
-# Hay equipos donde la de por defecto es otra (Inter, con cifras de ancho distinto) y esas baterias fallaban sin que nada
-# estuviera roto. Si DejaVu Sans esta, se fija para la tanda; si no, se queda la del sistema. Nada de esto llega a la rocola.
-if [ -z "$FONTCONFIG_FILE" ] && command -v fc-list >/dev/null 2>&1 && fc-list | grep -q 'DejaVu Sans'; then
+# SOLO PARA LAS PRUEBAS EN LINUX: la letra. Lo que mide texto depende de que fuente da Linux al pedir "Segoe UI",
+# "Tahoma" o "sans", y no todos los equipos dan la misma. Las referencias pixel a pixel mas nuevas (huellacuadros del
+# 19-10, tironescambio del 20-10) y los textos ajustados de sextatanda, filabaja y paginar se sacaron con Inter; las
+# baterias mas viejas de textos (las de LETRA_DEJAVU) se calibraron con DejaVu Sans. Con una sola letra para todas,
+# la mitad fallaba sin que nada estuviera roto. Asi que cada una corre con la suya, si esa fuente esta instalada (si
+# no, la del sistema). Nada de esto llega a la rocola: en XP manda su propia letra, que aqui no existe.
+LETRA_DEJAVU="abc moneda colacompacta estilo discovivo"
+hazletra() {   # $1 = familia, $2 = archivo
   printf '%s\n' '<?xml version="1.0"?>' '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' '<fontconfig>' \
     '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>' \
-    '  <match target="pattern"><test qual="any" name="family"><string>sans-serif</string></test><edit name="family" mode="prepend" binding="strong"><string>DejaVu Sans</string></edit></match>' \
-    '  <match target="pattern"><test qual="any" name="family"><string>sans</string></test><edit name="family" mode="prepend" binding="strong"><string>DejaVu Sans</string></edit></match>' \
-    '</fontconfig>' > "$TMP_PRUEBAS/fuentes.conf" && FONTCONFIG_FILE="$TMP_PRUEBAS/fuentes.conf" && export FONTCONFIG_FILE
+    "  <match target=\"pattern\"><test qual=\"any\" name=\"family\"><string>sans-serif</string></test><edit name=\"family\" mode=\"prepend\" binding=\"strong\"><string>$1</string></edit></match>" \
+    "  <match target=\"pattern\"><test qual=\"any\" name=\"family\"><string>sans</string></test><edit name=\"family\" mode=\"prepend\" binding=\"strong\"><string>$1</string></edit></match>" \
+    '</fontconfig>' > "$2"
+}
+LETRA_COMUN=""; LETRA_VIEJA=""
+if [ -z "$FONTCONFIG_FILE" ] && command -v fc-list >/dev/null 2>&1; then
+  if fc-list | grep -q ': Inter[:,]'; then hazletra "Inter" "$TMP_PRUEBAS/letra_inter.conf" && LETRA_COMUN="$TMP_PRUEBAS/letra_inter.conf"; fi
+  if fc-list | grep -q 'DejaVu Sans'; then hazletra "DejaVu Sans" "$TMP_PRUEBAS/letra_dejavu.conf" && LETRA_VIEJA="$TMP_PRUEBAS/letra_dejavu.conf"; fi
 fi
 # SOLO PARA LAS PRUEBAS EN LINUX (Mono): la rocola copia memoria con RtlMoveMemory, de kernel32.dll, que Mono no tiene.
 # Sin este mapeo a memmove la tarjeta imitada no puede subir texturas y las baterias que cargan el ejecutable tal cual
