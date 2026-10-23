@@ -164,7 +164,10 @@ namespace Rocola
         private D3D9.StreamDel flujoVertices;
         private D3D9.SetU3Del dibujaVertices;
         private D3D9.PresentParams pp;
-        private bool lost, resetPending, inScene;
+        private bool lost, resetPending, inScene, reiniciando;
+        private bool resetEspera;
+        private int resetProximo;
+        internal const int ReintentoDispositivoMs = 250;
 
         private D3D9.PresentDel present; private D3D9.HrSelf begin, end;
         private D3D9.SetU2Del setRS; private D3D9.SetU1Del setFVF; private D3D9.SetU3Del setTSS, setSamp;
@@ -176,7 +179,7 @@ namespace Rocola
         {
             get
             {
-                if (dev == IntPtr.Zero) return 0;
+                if (dev == IntPtr.Zero || lost || resetPending || reiniciando) return 0;
                 try { return D3D9.Fn<D3D9.UintSelf>(dev, 4)(dev); }
                 catch { return 0; }
             }
@@ -242,7 +245,7 @@ namespace Rocola
         internal bool PreLoadHabilitado { get { return preLoadOk; } set { preLoadOk = value; } }   // las pruebas
         public bool PreloadTexture(IntPtr tex)
         {
-            if (!preLoadOk || tex == IntPtr.Zero || dev == IntPtr.Zero || lost) return false;
+            if (!preLoadOk || tex == IntPtr.Zero || dev == IntPtr.Zero || lost || resetPending || reiniciando) return false;
             try
             {
                 TexturasDivididasGpu.Surface s = TexturasDivididasGpu.Busca(tex);
@@ -279,30 +282,67 @@ namespace Rocola
         // volver a subir ni una. Lo que SI se pierde son los estados del dispositivo, y por eso se rehacen.
         public bool Redimensiona(int w, int h)
         {
-            if (dev == IntPtr.Zero || w < 8 || h < 8) return false;
+            if (dev == IntPtr.Zero || reiniciando || w < 8 || h < 8) return false;
             bool mismo = pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h;
-            if (mismo && !resetPending) return true;
+            if (mismo && !resetPending) return !lost;
             if (!mismo) { pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h; }
             resetPending = true;
             if (inScene) { lost = true; return false; }
+            return PreparaDispositivo();
+        }
+
+        private void EsperaDispositivo()
+        {
+            lost = true;
+            resetEspera = true;
+            resetProximo = unchecked(Environment.TickCount + ReintentoDispositivoMs);
+        }
+
+        // Se comprueba ANTES de preparar/subir contenido y tambien antes de BeginScene.
+        // Tras un Reset fallido solo se admiten Reset, TestCooperativeLevel y Release.
+        internal bool PreparaDispositivo()
+        {
+            if (dev == IntPtr.Zero || reiniciando || inScene) return false;
+            if (!lost && !resetPending) return true;
+            if (resetEspera && unchecked(Environment.TickCount - resetProximo) < 0) return false;
+            try
+            {
+                int tc = testCoop(dev);
+                if (tc == D3D9.E_DEVICELOST || (tc < 0 && tc != D3D9.E_DEVICENOTRESET))
+                { EsperaDispositivo(); return false; }
+                if (tc == D3D9.E_DEVICENOTRESET || resetPending) return ReiniciaDispositivo();
+                // Algunos controladores vuelven directamente a S_OK, sin necesitar Reset.
+                if (!InitStates()) { EsperaDispositivo(); return false; }
+                lost = false; resetEspera = false;
+                return true;
+            }
+            catch { EsperaDispositivo(); return false; }
+        }
+
+        private bool ReiniciaDispositivo()
+        {
+            // Reset puede enviar WM_PAINT sin salir de esta llamada. Ningun cuadro ni
+            // otro Reset debe entrar en el controlador mientras esta reiniciandose.
+            reiniciando = true; lost = true; resetPending = true;
+            bool ok = false;
             try
             {
                 SueltaPinesVertices();
                 LiberaVertices();
-                LiberaMedia(); juntaN = 0;   // la imagen intermedia tambien es POOL_DEFAULT (PerformanceGpu.cs)
-                if (reset(dev, ref pp) < 0)
-                {
-                    // Se conserva el tamano PEDIDO. BeginFrame lo reintentara cuando el dispositivo vuelva
-                    // a estar listo; restaurar el tamano anterior recreaba despues el buffer equivocado.
-                    lost = true;
-                    return false;
-                }
+                LiberaMedia(); juntaN = 0;
+                // D3D9 pone Width/Height/Count a cero AL VOLVER de Reset, incluso si falla.
+                // Nunca se le presta la configuracion que conservamos para el siguiente cuadro.
+                D3D9.PresentParams peticion = pp;
+                if (reset(dev, ref peticion) < 0 || !InitStates()) return false;
+                resetPending = false; lost = false; resetEspera = false; ok = true;
+                return true;
             }
-            catch { lost = true; return false; }
-            if (!InitStates()) { lost = true; return false; }
-            resetPending = false;
-            lost = false;
-            return true;
+            catch { return false; }
+            finally
+            {
+                reiniciando = false;
+                if (!ok) EsperaDispositivo();
+            }
         }
 
         private static D3D9.PresentParams MakePP(IntPtr hwnd, int w, int h)
@@ -419,7 +459,7 @@ namespace Rocola
 
         public IntPtr CreateTextureFromBitmap(Bitmap bmp)
         {
-            if (dev == IntPtr.Zero || bmp == null) return IntPtr.Zero;
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
             IntPtr tex = IntPtr.Zero;
             try
             {
@@ -506,31 +546,10 @@ namespace Rocola
         // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
         public bool BeginFrame()
         {
-            if (!inScene) SueltaPinesVertices(); // tambien un cuadro anterior abandonado por perdida
-            if (dev == IntPtr.Zero) return false;
+            if (!PreparaDispositivo()) return false;
+            SueltaPinesVertices(); // tambien un cuadro anterior abandonado por perdida
             try
             {
-                if (lost || resetPending)
-                {
-                    int tc = testCoop(dev);
-                    if (tc == D3D9.E_DEVICELOST) return false;
-                    if (tc < 0 && tc != D3D9.E_DEVICENOTRESET) return false;
-                    if (tc == D3D9.E_DEVICENOTRESET || resetPending)
-                    {
-                        LiberaVertices();
-                        LiberaMedia(); juntaN = 0;   // (PerformanceGpu.cs)
-                        if (reset(dev, ref pp) < 0 || !InitStates()) return false;
-                        resetPending = false;
-                        lost = false;
-                    }
-                    else
-                    {
-                        // Algunos controladores saltan directamente de DEVICELOST a S_OK. Se rehacen los
-                        // estados porque no sabemos cuanto de ellos conservaron durante la perdida.
-                        if (!InitStates()) return false;
-                        lost = false;
-                    }
-                }
                 // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
                 // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
                 // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
@@ -829,7 +848,7 @@ namespace Rocola
         public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero || bmp == null) return IntPtr.Zero;
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
             IntPtr tex = IntPtr.Zero;
             try
             {
@@ -863,7 +882,8 @@ namespace Rocola
         // la region sucia de la textura MANAGED, sin resubir todo el panel.
         public bool UpdateTextureRegion(IntPtr tex, Bitmap bmp, Rectangle area)
         {
-            if (tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando ||
+                tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
                 !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
             TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
             if (dividida != null) return ActualizaDividida(dividida, bmp, area);
@@ -872,7 +892,7 @@ namespace Rocola
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
             uMax = 1f; vMax = 1f;
-            if (dev == IntPtr.Zero || tex == IntPtr.Zero || bmp == null) return false;
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || tex == IntPtr.Zero || bmp == null) return false;
             try
             {
                 int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
@@ -1020,6 +1040,7 @@ namespace Rocola
         // el reloj de Windows solo contesta de 15.6 en 15.6 ms, y con el tope de cuadros puesto -un cuadro cada
         // ~15 ms- el titileo avanzaria a tirones, un cuadro si y el siguiente no.
         private double campoT; private double campoFinoAnt; private bool campoRelojOk;
+        private int patronW, patronH;
         private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
         private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
         // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
@@ -1114,11 +1135,13 @@ namespace Rocola
         public void Redimensiona(int w, int h)
         {
             if (!Ok || w < 8 || h < 8) return;
-            if (gpu.BufAncho == w && gpu.BufAlto == h) return;
+            if (gpu.BufAncho == w && gpu.BufAlto == h && patronW == w && patronH == h) return;
             if (!gpu.Redimensiona(w, h)) return;
             int minuto = (curMinute != int.MinValue) ? curMinute : 0;
             ReconstruyePatron(w, h, unchecked(seed0 + minuto * 40503));
         }
+
+        internal bool PreparaDispositivo() { return Ok && gpu.PreparaDispositivo(); }
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
         public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
@@ -1612,6 +1635,7 @@ namespace Rocola
 
         private void BuildStars(int w, int h, int seed)
         {
+            patronW = w; patronH = h;
             Random rnd = new Random(seed);
             // MUCHAS MAS Y MUCHO MAS TENUES, igual que por CPU: un cielo de verdad tiene un punado de
             // estrellas fuertes y cientos que apenas se adivinan, y eso es lo que da sensacion de fondo.
@@ -2524,8 +2548,13 @@ namespace Rocola
             fluidez.DescartaContinuidad(); fluidezAgendaMs = 0;
             return false;
         }
+        private bool renderEnCurso;
         private bool RenderFrame()
         {
+            if (renderEnCurso) return false;
+            renderEnCurso = true;
+            try
+            {
             VigiaPantalla.Hace("un cuadro de la tarjeta");
             if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
@@ -2545,6 +2574,7 @@ namespace Rocola
             // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
             // escena ya abierta no es valido en Direct3D 9.
             stars.Redimensiona(Width, Height);
+            if (!stars.PreparaDispositivo()) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
             stars.SetSky(SkyTop, SkyMid, SkyBot);
             PasaPulido();   // C1 y C2 (PulidoGpu.cs)
             // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
@@ -3015,6 +3045,8 @@ namespace Rocola
             int transcurrido = unchecked(Environment.TickCount - fpsTick);
             if (transcurrido >= 1000) { Fps = (int)Math.Round(frames * 1000.0 / transcurrido); frames = 0; fpsTick = Environment.TickCount; }
             return true;
+            }
+            finally { renderEnCurso = false; }
         }
 
         // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Key (Folder; los

@@ -14,3 +14,5 @@ ia/modelos/
 # lo que deja el instalador de los modelos por genero y el lanzador del entrenamiento: de cada maquina
 ia/instalar_dsee_genero_log.txt
 ia/entrenar_dsee_log.txt
+# Informes locales de Windows XP, recogidos para diagnosticar pantallazos.
+Diagnostico_XP/

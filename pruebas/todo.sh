@@ -172,7 +172,7 @@ GPU="$GPU cielovivo"
 # 'ventanaf3': la ventana Ctrl+F3 de verdad, todas sus paginas y hojas: nada fuera de la ventana, nada debajo de Listo,
 # textos que caben (con la letra de Mono y con una mas ancha). No son las letras de XP.
 CPU="$CPU ventanaf3"
-GPU="$GPU ventanaf3"
+GPU="$GPU ventanaf3 recuperagpu"
 # 'ajustesvivos': Ctrl+F3 con dependencias vivas y guardado al momento (A1 y A2, 13-10-2026): lo que depende de otro ajuste
 # va en gris y dice que le falta, entre paginas y al momento; sin tarjeta, lo de la tarjeta en gris con un aviso por pagina;
 # lo tocado se guarda quieto medio segundo, y un guardado viejo no pisa al nuevo. Y los ajustes retirados ya no estan.
