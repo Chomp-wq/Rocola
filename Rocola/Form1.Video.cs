@@ -125,6 +125,11 @@ namespace Rocola
         // de las canciones. Si aun no hay medidas (o el equipo no puede medir), manda la perilla y ya.
         private const float VideoAutoFuera = 0.15f;   // fraccion de videos que se da por perdida
         private const int VideoBaseMin = 40;          // -8 dB: lo mas que se acepta bajar el conjunto
+        private const int VideoMinMedidos = 8;        // con menos videos medidos no se elige nada: manda la perilla
+        // ¿El volumen base de los videos lo esta eligiendo el programa DE VERDAD? Solo en automatico, con el nivelado encendido y con
+        // bastantes videos medidos; en cualquier otro caso VideoBase devuelve la perilla, y la perilla tiene que poder moverse (en la
+        // rocola con Windows XP los videos no se miden: ahi el automatico de fabrica nunca elige nada). Lo usa Ctrl+F3.
+        private bool VideoAutoManda(bool automatico, bool nivelar) { return automatico && nivelar && VideosMedidos() >= VideoMinMedidos; }
         private int VideoBase()
         {
             if (!videoAuto || !normalizeOn) return videoVol;   // sin nivelado no hay nada que emparejar: manda la perilla
@@ -150,7 +155,7 @@ namespace Rocola
                     }
                 }
             }
-            if (nec.Count < 8) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
+            if (nec.Count < VideoMinMedidos) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
             nec.Sort();
             int v = (int)Math.Round(nec[(int)(nec.Count * VideoAutoFuera)]);
             if (v < VideoBaseMin) v = VideoBaseMin; else if (v > 100) v = 100;

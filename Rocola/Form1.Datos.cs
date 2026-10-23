@@ -1532,12 +1532,13 @@ namespace Rocola
                 int buenas, medias, pobres, recortadas, sinMedir;
                 CalidadResumen(out buenas, out medias, out pobres, out recortadas, out sinMedir);
                 string destino = CalidadFile();
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir); });
+                int sinPicos; string rangos = TextoRangos(RangosMedidos(out sinPicos), sinPicos);   // el reparto de los rangos (LocalAuto.cs); la tabla es de la pantalla
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir, rangos); });
             }
             catch { }
         }
         private static void InformeCalidadFondo(List<KeyValuePair<string, float[]>> lista, string destino,
-                                                int buenas, int medias, int pobres, int recortadas, int sinMedir)
+                                                int buenas, int medias, int pobres, int recortadas, int sinMedir, string rangos)
         {
             try
             {
@@ -1551,6 +1552,7 @@ namespace Rocola
                 sb.Append("\r\n  POBRES (128k o menos):  ").Append(pobres.ToString("#,0"));
                 sb.Append("\r\n  Con picos recortados de origen: ").Append(recortadas.ToString("#,0"));
                 sb.Append("\r\n  Aun sin medir: ").Append(sinMedir.ToString("#,0"));
+                if (!string.IsNullOrEmpty(rangos)) sb.Append("\r\n\r\n").Append(rangos.TrimEnd('\r', '\n'));
                 sb.Append("\r\n\r\ncorte   recorte  archivo\r\n");
                 for (int i = 0; i < lista.Count; i++)
                 {

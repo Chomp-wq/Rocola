@@ -85,6 +85,18 @@ namespace Rocola
             f3Requisitos.Add(r);
         }
 
+        // Lo mismo, pero sin sitio debajo del nombre: el motivo (si lo hay) lo dice la nota 'aviso' del mando, como en Necesita(...,
+        // aviso), y vuelve a su texto cuando ya nada falta (23-10-2026: "a la medida" de la IA, que necesita el modelo del EQ).
+        private void NecesitaMotivo(Interruptor mando, Func<string> motivo, Label aviso)
+        {
+            if (mando == null || motivo == null) return;
+            ListasDeRequisitos();
+            Requisito r = new Requisito();
+            r.Mando = mando; r.Motivo = motivo; r.Cumple = delegate { return true; }; r.Necesita = ""; r.Aviso = aviso;
+            if (aviso != null) { r.AvisoTexto = aviso.Text; r.AvisoColor = aviso.ForeColor; }
+            f3Requisitos.Add(r);
+        }
+
         // Lo que solo se ve con tarjeta grafica.
         private void SoloConTarjeta(params Control[] mandos)
         {

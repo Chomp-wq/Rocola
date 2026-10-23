@@ -1391,6 +1391,7 @@ namespace Rocola
                 outChain = c.Fundido;
             }
             c.Retardo = audioTailDelay; c.Salida = outChain;
+            AplicaSinMejoras(c);   // «Escuchar sin mejoras» (LoQueSuena.cs): una cancion armada mientras dura (el relevo, o la siguiente) nace ya sin ellas; si no, sale como siempre
             return c;
         }
 

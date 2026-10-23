@@ -231,6 +231,11 @@ CPU="$CPU presenciasala"
 CPU="$CPU localauto"
 # 'mp3mezclado': MP3 con frecuencia o canales mezclados (error del 17-10-2026): la reconstruccion con el formato dominante (BuildCleanMp3).
 CPU="$CPU mp3mezclado"
+# 'modosauto': la revision de los modos automaticos del sonido (23-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md): la
+# configuracion de videos, EQ, graves, S3 y el local (guardar = leer, fuera de rango), los grises de la ventana (S3 con el modo del
+# local, la barra de los videos, "a la medida" sin modelo), «Escuchar sin mejoras» en la cancion que se arma mientras dura, el reparto
+# de los rangos de la biblioteca y las medidas de las propuestas (solo informan).
+CPU="$CPU modosauto"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

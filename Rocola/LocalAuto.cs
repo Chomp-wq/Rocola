@@ -71,9 +71,61 @@ namespace Rocola
         {
             System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
             SonoridadIntegrada s;
-            if (path == null || t == null || !t.TryGetValue(path, out s) || !s.Valida || s.Muda || !s.ConPicos) return -1f;
+            if (path == null || t == null || !t.TryGetValue(path, out s)) return -1f;
+            return RangoDe(s);
+        }
+        internal static float RangoDe(SonoridadIntegrada s)
+        {
+            if (!s.Valida || s.Muda || !s.ConPicos) return -1f;
             float r = s.P99Db - s.Lkfs;
             return float.IsNaN(r) || float.IsInfinity(r) ? -1f : Math.Max(0f, r);
+        }
+
+        // EL REPARTO DE LOS RANGOS de la biblioteca (23-10-2026), para rocola_calidad.txt: los umbrales de 12 y 16 dB se eligieron de oido,
+        // y sin ver cuantas canciones de ESTA biblioteca caen de cada lado no hay como saber si le sirven. Solo informa: no cambia el sonido.
+        // En el hilo de la pantalla (la tabla es suya); devuelve los rangos de las medidas con picos, de menor a mayor, y cuantas medidas
+        // enteras de una version vieja no los tienen (el repaso las vuelve a medir).
+        private float[] RangosMedidos(out int sinPicos)
+        {
+            sinPicos = 0;
+            System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
+            if (t == null) return new float[0];
+            System.Collections.Generic.List<float> r = new System.Collections.Generic.List<float>(t.Count);
+            foreach (System.Collections.Generic.KeyValuePair<string, SonoridadIntegrada> kv in t)
+            {
+                SonoridadIntegrada s = kv.Value;
+                if (!s.Valida || s.Muda) continue;
+                float x = RangoDe(s);
+                if (x < 0f) { if (!s.ConPicos) sinPicos++; continue; }
+                r.Add(x);
+            }
+            r.Sort();
+            return r.ToArray();
+        }
+
+        internal static string TextoRangos(float[] ordenados, int sinPicos)
+        {
+            CultureInfo ic = CultureInfo.InvariantCulture;
+            int n = ordenados == null ? 0 : ordenados.Length;
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(900);
+            sb.Append("RANGO DE LAS CANCIONES (modo automatico del local: Ctrl+F3, Sonido, El local y sus bocinas, Tono y presencia)\r\n");
+            sb.Append("  Rango = lo fuerte de la cancion frente a su promedio (P99 de los picos menos la sonoridad). Un disco de pop actual ronda 6 a 10 dB;\r\n");
+            sb.Append("  una balada, clasica o grabacion sin comprimir, 14 o mas. El modo automatico usa ").Append(RangoAltoDb.ToString("0", ic)).Append(" y ").Append(RangoMuyAltoDb.ToString("0", ic)).Append(" dB como cortes.\r\n");
+            sb.Append("  Medidas con picos: ").Append(n.ToString("#,0", ic));
+            if (sinPicos > 0) sb.Append("   (otras ").Append(sinPicos.ToString("#,0", ic)).Append(" son de una version vieja, sin picos: el repaso las vuelve a medir)");
+            sb.Append("\r\n");
+            if (n == 0) { sb.Append("  Aun no hay ninguna: deja que el repaso vaya midiendo.\r\n"); return sb.ToString(); }
+            float[] bordes = { 6f, 8f, 10f, 12f, 14f, 16f };
+            int[] cuenta = new int[bordes.Length + 1];
+            for (int i = 0; i < n; i++) { int b = 0; while (b < bordes.Length && ordenados[i] >= bordes[b]) b++; cuenta[b]++; }
+            string[] nombres = { "menos de 6 dB", "de 6 a 8 dB", "de 8 a 10 dB", "de 10 a 12 dB", "de 12 a 14 dB", "de 14 a 16 dB", "16 dB o mas" };
+            for (int b = 0; b < cuenta.Length; b++)
+                sb.Append("  ").Append(nombres[b].PadRight(15)).Append(cuenta[b].ToString("#,0", ic).PadLeft(8)).Append("   ").Append((100.0 * cuenta[b] / n).ToString("0.0", ic).PadLeft(5)).Append(" %\r\n");
+            int altas = 0, muyAltas = 0;
+            for (int i = 0; i < n; i++) { if (ordenados[i] >= RangoAltoDb) altas++; if (ordenados[i] >= RangoMuyAltoDb) muyAltas++; }
+            sb.Append("  Mediana ").Append(ordenados[n / 2].ToString("0.0", ic)).Append(" dB, la de 9 de cada 10 canciones ").Append(ordenados[Math.Min(n - 1, (int)(n * 0.9))].ToString("0.0", ic)).Append(" dB.\r\n");
+            sb.Append("  Con partes suaves (billar y bocinas chicas): ").Append(altas.ToString("#,0", ic)).Append(" canciones (").Append((100.0 * altas / n).ToString("0.0", ic)).Append(" %); con presencia (billar): ").Append(muyAltas.ToString("#,0", ic)).Append(" (").Append((100.0 * muyAltas / n).ToString("0.0", ic)).Append(" %).\r\n");
+            return sb.ToString();
         }
 
         // Lo que de verdad suena para esta cancion: los mandos tal cual (automatico apagado) o lo que decide el automatico.

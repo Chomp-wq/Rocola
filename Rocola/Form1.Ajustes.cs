@@ -1003,7 +1003,9 @@ namespace Rocola
                     };
                     Interruptor swMed = interIa(40, "Bajo y brillo a la medida de cada cancion", cGra, aLaMedida);
                     swMed.Name = "SonidoIaMedida";
-                    notaLocal(tIa, 66, 32, "Compara cada cancion con lo que tendria una bien grabada\ncomo ella (la IA del EQ), no con el promedio de todas.");
+                    Label nMed = notaLocal(tIa, 66, 32, "Compara cada cancion con lo que tendria una bien grabada\ncomo ella (la IA del EQ), no con el promedio de todas.");
+                    // Sin el modelo del EQ, o sin 10 canciones con el tono medido, "a la medida" no cambia nada (MetaDeCancion da null): en gris y diciendolo.
+                    NecesitaMotivo(swMed, delegate { return !EqNet.Loaded ? "Necesita: el modelo del EQ (IAS\\rocola_eq_ia.bin)" : (eqAvg == null ? "Necesita: 10 canciones con el tono medido (el repaso)" : null); }, nMed);
                     Interruptor swSis = interIa(110, "Quitar el siseo de grabaciones viejas", cCal, quitaSiseo);
                     swSis.Name = "SonidoIaSiseo";
                     notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");
@@ -1060,7 +1062,10 @@ namespace Rocola
                     notaLocal(tArr, 136, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
                     Interruptor swAuto = interArr(180, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
                     swAuto.Name = "SonidoEstereoAuto";
-                    Necesita(swAuto, delegate { return estereoEstrecho; }, "Estereo al " + Math.Round(anchoEstereo * 100f) + " % (El local y sus bocinas)");
+                    // S3 solo actua si el estereo estrecho esta encendido, y con el modo automatico del local encendido manda ese modo (billar: lo
+                    // enciende el solo y decide el solo; los otros dos tipos, no estrechan): el mando queda en gris diciendo cual de las dos cosas pasa.
+                    string motivoEstrecho = "Necesita: Estereo al " + Math.Round(anchoEstereo * 100f) + " % (El local y sus bocinas)";
+                    NecesitaMotivo(swAuto, delegate { return localAuto ? "Necesita: el modo automatico del local apagado (Tono y presencia)" : (estereoEstrecho ? null : motivoEstrecho); });
                     notaLocal(tArr, 222, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
                     notaLocal(tArr, 270, 48, "Los dos primeros, encendidos de fabrica: en las canciones sin\nese defecto no tocan ni un bit. Se oyen al instante.");
                     BotonPlano bVolverAhora = new BotonPlano(); bVolverAhora.SetBounds(16, 346, 424, 34); bVolverAhora.Font = fBot;
@@ -1183,13 +1188,16 @@ namespace Rocola
                         // fuertes, que es la unica manera de que suenen todos igual.
                         int vMed = VideosMedidos();
                         val[3].Text = (au[3].Checked ? VideoBase() : bar[3].Value) + "%";
+                        bool videoManda = VideoAutoManda(au[3].Checked, swOn.Checked);
                         des[3].Text = "Los videos no pasan por la cadena de sonido: los pone Windows.\n"
                                     + (au[3].Checked
-                                       ? (videoSinMedir
-                                          ? "Solo: este equipo no puede medirlos; de momento manda la barra."
-                                          : (vMed >= 8
+                                       ? (!swOn.Checked
+                                          ? "Solo: sin nivelar no hay que emparejar; manda la barra."
+                                          : (videoManda
                                              ? ("Solo: bajado hasta donde alcanzan los flojos (" + vMed.ToString("#,0") + " medidos).")
-                                             : "Solo: aun no hay bastantes medidos; de momento manda la barra."))
+                                             : (videoSinMedir
+                                                ? "Solo: este equipo no puede medirlos; de momento manda la barra."
+                                                : "Solo: aun no hay bastantes medidos; de momento manda la barra.")))
                                        : "A mano: manda la barra, sin emparejar nada.");
                         // ---------- CALIDAD ---------- (en automatico se ensena lo que eligio el programa, no la barra)
                         int eqPct = (int)Math.Round((au[4].Checked ? EqFuerzaAuto() : bar[4].Value / 100f) * 100f);
@@ -1249,7 +1257,7 @@ namespace Rocola
                         val[0].ForeColor = en ? cVol : cApagado;
                         val[1].ForeColor = en ? cFue : cApagado;
                         des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
-                        bar[3].Enabled = !au[3].Checked;
+                        bar[3].Enabled = !VideoAutoManda(au[3].Checked, swOn.Checked);   // en gris solo si el programa de verdad elige (si no, la barra manda)
                         bar[4].Enabled = !au[4].Checked;
                         bar[5].Enabled = !au[5].Checked;
                         // ---------- EL LOCAL ----------
