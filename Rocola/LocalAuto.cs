@@ -16,7 +16,8 @@
 //         varia el volumen en el tiempo. Una cancion pareja y fuerte no la necesita y la presencia la bajaria ~1 dB.
 //       - Sala con bocinas buenas: partes suaves solo con LRA desde LraSalaLu (14 LU: ayuda mas parca, como antes con 16 dB de rango).
 //       - Una cancion con medida de antes (sin LRA) usa la regla vieja de P99 - sonoridad para la presencia del billar (16 dB) y para
-//         las partes suaves de la sala (16 dB) hasta que el repaso la vuelva a medir; sin medida, solo lo fijo del tipo.
+//         las partes suaves de la sala (16 dB) hasta que el repaso la vuelva a medir (solo lo hace con este modo ENCENDIDO: con el modo
+//         apagado el repaso no re-mide nada por el LRA); sin medida, solo lo fijo del tipo.
 //
 // Con el automatico encendido los mandos que decide quedan en gris diciendolo; lo que habia guardado en ellos se conserva y
 // vuelve al apagarlo. El balance, la prueba de bocinas, los arreglos de grabacion y el resto de Sonido siguen a mano.
@@ -159,7 +160,7 @@ namespace Rocola
         {
             int m = lras == null ? 0 : lras.Length;
             sb.Append("  RANGO DE SONORIDAD (LRA, lo que varia el volumen en el tiempo; un tema parejo, menos de 3 LU; una balada, 10 a 20): ").Append(m.ToString("#,0", ic)).Append(" medidas");
-            if (sinLra > 0) sb.Append("   (faltan ").Append(sinLra.ToString("#,0", ic)).Append(": el repaso las vuelve a medir en segundo plano; mientras, rige la regla de arriba)");
+            if (sinLra > 0) sb.Append("   (faltan ").Append(sinLra.ToString("#,0", ic)).Append(": con el modo automatico del local apagado no se vuelven a medir; con el modo encendido el repaso las mide en segundo plano; mientras, rige la regla de arriba)");
             sb.Append("\r\n");
             if (m == 0) return;
             float[] bordes = { 3f, 6f, 10f, 14f, 20f };

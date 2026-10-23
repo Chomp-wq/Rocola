@@ -224,9 +224,14 @@ class LraPrueba
         IList pistas = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tt));
         foreach (string p in new string[] { "C:\\m\\tres.mp3", "C:\\m\\cuatro.mp3", "C:\\m\\nunca.mp3" }) { object t = Activator.CreateInstance(tt, true); tt.GetField("Path", T).SetValue(t, p); pistas.Add(t); }
         TF.GetField("tracks", T).SetValue(f, pistas);
-        IList pend = (IList)TF.GetMethod("TandaIntegrada", T).Invoke(f, null);
-        List<string> pp = new List<string>(); foreach (object s in pend) pp.Add((string)s);
-        Check(pp.Count == 2 && pp.Contains("C:\\m\\tres.mp3") && pp.Contains("C:\\m\\nunca.mp3") && !pp.Contains("C:\\m\\cuatro.mp3"), "la tanda del repaso pide la de antes y la que nunca se midio, y no la que ya tiene su LRA");
+        FieldInfo la = TF.GetField("localAuto", T);
+        la.SetValue(null, false);
+        List<string> pp = new List<string>(); foreach (object s in (IList)TF.GetMethod("TandaIntegrada", T).Invoke(f, null)) pp.Add((string)s);
+        Check(pp.Count == 1 && pp.Contains("C:\\m\\nunca.mp3"), "con el modo automatico del local APAGADO el repaso no pide la de antes por el LRA (solo la que nunca se midio): como antes");
+        la.SetValue(null, true);
+        pp = new List<string>(); foreach (object s in (IList)TF.GetMethod("TandaIntegrada", T).Invoke(f, null)) pp.Add((string)s);
+        Check(pp.Count == 2 && pp.Contains("C:\\m\\tres.mp3") && pp.Contains("C:\\m\\nunca.mp3") && !pp.Contains("C:\\m\\cuatro.mp3"), "con el modo ENCENDIDO pide tambien la de antes, y no la que ya tiene su LRA");
+        la.SetValue(null, false);
         // La medida de un archivo de verdad conserva lo que ya tenia la de antes y suma el LRA.
         string wav = Path.Combine(dir, "real.wav");
         float[] x = Programa(44100, 2, new double[][] { new double[] { -26, 9 }, new double[] { -14, 11 }, new double[] { -30, 6 } }, 99);

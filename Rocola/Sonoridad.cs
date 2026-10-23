@@ -1048,6 +1048,8 @@ namespace Rocola
             finally { measureCancellation = previo; }
         }
 
+        internal const int AlgoritmoSinLra = 3;   // la ultima medida completa que no trae el rango de sonoridad
+
         // QUE FALTA POR MEDIR ENTERO. Canciones (no videos: su sonido lo pone Windows y se quedan con la
         // estimacion) sin integrada de este algoritmo, en el mismo orden de interes que el repaso normal: lo
         // pedido, lo mas sonado, lo mas reciente.
@@ -1060,12 +1062,16 @@ namespace Rocola
             Dictionary<string, long> songSeq = p != null ? p.Sec : this.songSeq;
             List<string> pend = new List<string>();
             if (tracks == null || integCache == null) return pend;
+            // El rango de sonoridad (algoritmo 4) solo lo usa el modo automatico del local (apagado de fabrica): con el modo apagado las
+            // medidas completas de antes (algoritmo 3) no se piden de nuevo, y el repaso se comporta como siempre; al encenderlo, el siguiente
+            // repaso (al arrancar, o «Repasar la biblioteca a fondo») las va midiendo en segundo plano. Lo nuevo que se mide ya trae el LRA.
+            int minimo = localAuto ? MedidorBs1770.Algoritmo : AlgoritmoSinLra;
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];
                 if (tk == null || tk.Path == null) continue;
                 SonoridadIntegrada s;
-                if (integCache.TryGetValue(tk.Path, out s) && s.Algoritmo >= MedidorBs1770.Algoritmo) continue;
+                if (integCache.TryGetValue(tk.Path, out s) && s.Algoritmo >= minimo) continue;
                 pend.Add(tk.Path);
             }
             HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
