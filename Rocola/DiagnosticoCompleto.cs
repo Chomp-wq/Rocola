@@ -56,7 +56,9 @@ namespace Rocola
         private static readonly object cerrojo = new object();
         private static readonly string[] nombres = new string[Max];
         private static readonly long[] ids = new long[Max];
-        private static readonly Thread[] hilos = new Thread[Max];
+        // Referencias DEBILES: un Thread terminado retiene su delegado y, con el, todo lo que el cierre capturo (la fuga que vigila 'planbiblioteca').
+        private static readonly WeakReference[] hilos = new WeakReference[Max];
+        private static bool Vivo(int i) { WeakReference w = hilos[i]; Thread t = w != null ? w.Target as Thread : null; return t != null && t.IsAlive; }
         private static int cuantos;
 
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
@@ -81,11 +83,11 @@ namespace Rocola
                 {
                     if (id >= 0)
                         for (int i = 0; i < cuantos; i++)
-                            if (ids[i] == id && hilos[i] != null && hilos[i].IsAlive) { nombres[i] = nombre; hilos[i] = yo; return; }
+                            if (ids[i] == id && Vivo(i)) { nombres[i] = nombre; hilos[i] = new WeakReference(yo); return; }
                     int libre = -1;
-                    for (int i = 0; i < cuantos; i++) if (hilos[i] == null || !hilos[i].IsAlive) { libre = i; break; }
+                    for (int i = 0; i < cuantos; i++) if (!Vivo(i)) { libre = i; break; }
                     if (libre < 0) { if (cuantos >= Max) return; libre = cuantos++; }
-                    nombres[libre] = nombre; ids[libre] = id; hilos[libre] = yo;
+                    nombres[libre] = nombre; ids[libre] = id; hilos[libre] = new WeakReference(yo);
                 }
             }
             catch { }
@@ -97,11 +99,11 @@ namespace Rocola
             lock (cerrojo)
             {
                 int n = 0;
-                for (int i = 0; i < cuantos; i++) if (ids[i] >= 0 && hilos[i] != null && hilos[i].IsAlive) n++;
+                for (int i = 0; i < cuantos; i++) if (ids[i] >= 0 && Vivo(i)) n++;
                 nom = new string[n]; id = new long[n];
                 int k = 0;
                 for (int i = 0; i < cuantos; i++)
-                    if (ids[i] >= 0 && hilos[i] != null && hilos[i].IsAlive) { nom[k] = nombres[i]; id[k] = ids[i]; k++; }
+                    if (ids[i] >= 0 && Vivo(i)) { nom[k] = nombres[i]; id[k] = ids[i]; k++; }
             }
         }
     }

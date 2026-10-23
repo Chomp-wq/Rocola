@@ -162,6 +162,7 @@ namespace Rocola
                 {
                     DisposePlaybackNow();
                     nowPlaying = bk.NowPlaying;   // null: no sonaba nada antes
+                    CambioElPanelDeReposo();   // el panel del estado extendido se entera de que cambio lo que suena
                     RefrescaCola(); UpdateNowPlayingUI();
                 }
                 // Con la cancion de un cliente nunca se toco nowPlaying: si cambio mientras tanto, es que su cancion acabo de verdad, y asi se queda.
@@ -228,6 +229,7 @@ namespace Rocola
             {
                 if (c.MusicaPropia) DisposePlaybackNow();
                 nowPlaying = it;
+                CambioElPanelDeReposo();
                 PlayTrackForMeasurement(it.Song);
                 if (output != null)
                 {
@@ -242,6 +244,7 @@ namespace Rocola
             }
             catch { }
             nowPlaying = c.Bk.NowPlaying;
+            CambioElPanelDeReposo();
             c.MusicaPropia = false; c.ConMusica = false; c.MusicaTexto = "sin musica (no se pudo abrir la cancion del diagnostico)";
             return false;
         }
@@ -488,6 +491,7 @@ namespace Rocola
                 c.Cambio = (c.Cambio + 1) % c.Items.Length;
                 sonoAntes = nowPlaying;
                 nowPlaying = c.Items[c.Cambio];
+                CambioElPanelDeReposo();
                 RefrescaTrasRelevo();
             }
             else if (c.Items.Length > 1)
@@ -676,7 +680,7 @@ namespace Rocola
             {
                 try
                 {
-                    if (c.MusicaPropia && c.ItemPropio != null) { sonoAntes = nowPlaying; nowPlaying = c.ItemPropio; RefrescaTrasRelevo(); }
+                    if (c.MusicaPropia && c.ItemPropio != null) { sonoAntes = nowPlaying; nowPlaying = c.ItemPropio; CambioElPanelDeReposo(); RefrescaTrasRelevo(); }
                     else if (nowPlaying != null && nowPlaying.Song != null) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
                 }
                 catch { }
@@ -748,7 +752,7 @@ namespace Rocola
             {
                 try
                 {
-                    if (c.MusicaPropia && c.ItemPropio != null) { sonoAntes = nowPlaying; nowPlaying = c.ItemPropio; RefrescaTrasRelevo(); }
+                    if (c.MusicaPropia && c.ItemPropio != null) { sonoAntes = nowPlaying; nowPlaying = c.ItemPropio; CambioElPanelDeReposo(); RefrescaTrasRelevo(); }
                     else if (nowPlaying != null && nowPlaying.Song != null) ApplyGenreBackground(nowPlaying.Song, nowPlaying.Disc);
                 }
                 catch { }
