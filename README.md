@@ -1,5 +1,9 @@
 # Rocola
 
+## El local en automático — 23 de octubre de 2026
+
+Un interruptor (Ctrl+F3 → Sonido → El local y sus bocinas → Tono y presencia del local) que enciende y ajusta solo las mejoras del local según el tipo de local (billar, sala con bocinas buenas, bocinas chicas) y el rango de cada canción; los mandos que decide quedan en gris con su motivo y lo guardado en ellos se conserva. Apagado de fábrica: la cadena sale como antes. Los umbrales son de oído y no salen de la biblioteca real. Ver `LOCAL_AUTOMATICO_MODEST_2026-10-23.md`.
+
 ## Audio y repaso, segunda pasada: cuatro ahorros con los mismos bits — 22 de octubre de 2026
 
 Cuatro ahorros sin interruptores y sin cambiar un bit de lo que sale: la transformada del quitasiseo (−23 % de la etapa), el filtro del detector de pico real (−9 % del limitador), el índice de cuadros de los MP3 contado aparte (abrir 15,7 → 1,9 ms y 1,6 → 0,3 MB por apertura; el repaso

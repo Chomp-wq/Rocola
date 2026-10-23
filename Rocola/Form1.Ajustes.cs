@@ -654,7 +654,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -878,13 +878,13 @@ namespace Rocola
                         l.ForeColor = cTenue; l.Font = fDes; l.Text = texto; card.Controls.Add(l); return l;
                     };
                     Interruptor swSub = interLocal(40, "Quitar el subgrave", cGra, cortaSubgrave);
-                    notaLocal(tLoc, 66, 18, "Ninguna bocina del billar da menos de 30 Hz: solo gasta amplificador.");
+                    Label nSub = notaLocal(tLoc, 66, 18, "Ninguna bocina del billar da menos de 30 Hz: solo gasta amplificador.");
                     Interruptor swEst = interLocal(90, "Estereo al " + Math.Round(anchoEstereo * 100f) + " %", cCal, estereoEstrecho);
-                    notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");
+                    Label nEst = notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");
                     Interruptor swCla = interLocal(140, "Claridad para el local", cBri, claridadLocal);
-                    notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
+                    Label nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
                     Interruptor swSua = interLocal(190, "Que las partes suaves se oigan", cVol, partesSuaves);
-                    notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
+                    Label nSua = notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
                     Label nBal = new Label(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;
                     nBal.ForeColor = cTexto; nBal.Font = fNom; nBal.Text = "Balance"; tLoc.Controls.Add(nBal);
                     Label vBal = new Label(); vBal.SetBounds(16 + 424 - 170, 242, 170, 20); vBal.BackColor = Color.Transparent;
@@ -909,7 +909,7 @@ namespace Rocola
                     nGra.ForeColor = cTexto; nGra.Font = fNom; nGra.Text = "Graves del local"; tTono.Controls.Add(nGra);
                     Label vGra = new Label(); vGra.SetBounds(16 + 424 - 170, 42, 170, 20); vGra.BackColor = Color.Transparent;
                     vGra.ForeColor = cGra; vGra.Font = fVal; vGra.TextAlign = ContentAlignment.TopRight; tTono.Controls.Add(vGra);
-                    notaLocal(tTono, 65, 32, "El cuerpo de la musica (120 Hz): mas para llenar el local,\nmenos si retumba. De -6 a +6 dB.");
+                    Label nGraNota = notaLocal(tTono, 65, 32, "El cuerpo de la musica (120 Hz): mas para llenar el local,\nmenos si retumba. De -6 a +6 dB.");
                     Deslizador barGra = new Deslizador(); barGra.SetBounds(16, 99, 424, 22); barGra.Name = "SonidoTonoGraves";
                     barGra.Minimum = 0; barGra.Maximum = 2 * SalaLocal.TonoMax; barGra.Value = gravesLocalDb + SalaLocal.TonoMax; barGra.Acento = cGra;
                     tTono.Controls.Add(barGra);
@@ -917,7 +917,7 @@ namespace Rocola
                     nAgu.ForeColor = cTexto; nAgu.Font = fNom; nAgu.Text = "Agudos del local"; tTono.Controls.Add(nAgu);
                     Label vAgu = new Label(); vAgu.SetBounds(16 + 424 - 170, 142, 170, 20); vAgu.BackColor = Color.Transparent;
                     vAgu.ForeColor = cBri; vAgu.Font = fVal; vAgu.TextAlign = ContentAlignment.TopRight; tTono.Controls.Add(vAgu);
-                    notaLocal(tTono, 165, 32, "El brillo (6 kHz): mas si el local se traga los agudos,\nmenos si silba o cansa. De -6 a +6 dB.");
+                    Label nAguNota = notaLocal(tTono, 165, 32, "El brillo (6 kHz): mas si el local se traga los agudos,\nmenos si silba o cansa. De -6 a +6 dB.");
                     Deslizador barAgu = new Deslizador(); barAgu.SetBounds(16, 199, 424, 22); barAgu.Name = "SonidoTonoAgudos";
                     barAgu.Minimum = 0; barAgu.Maximum = 2 * SalaLocal.TonoMax; barAgu.Value = agudosLocalDb + SalaLocal.TonoMax; barAgu.Acento = cBri;
                     tTono.Controls.Add(barAgu);
@@ -925,8 +925,22 @@ namespace Rocola
                     Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
                     swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
                     tPre.Controls.Add(swPre);
-                    notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
+                    Label nPreNota = notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
                     notaLocal(tPre, 176, 64, "No toca el volumen de Windows ni el de la salida. Nunca\nsube la cancion mas alla del techo del limitador. Apagado\nde fabrica; se oye al instante en la cancion que suena.");
+                    // EL LOCAL EN AUTOMATICO (23-10-2026, LocalAuto.cs): enciende y ajusta por ti las mejoras del local segun el tipo de
+                    // local y cada cancion. Con el encendido, lo que decide queda en gris en esta hoja y en la del local.
+                    Interruptor swAutoL = new Interruptor(); swAutoL.SetBounds(16, 316, 424, 26); swAutoL.ForeColor = cTexto; swAutoL.Font = fNom;
+                    swAutoL.Text = "Modo automatico del local"; swAutoL.Acento = cBri; swAutoL.Checked = localAuto; swAutoL.Name = "SonidoLocalAuto";
+                    tTono.Controls.Add(swAutoL);
+                    BotonPlano bTipo = new BotonPlano(); bTipo.SetBounds(16, 348, 424, 30); bTipo.Font = fBot; bTipo.Name = "SonidoLocalTipo";
+                    bTipo.Text = "Local: " + NombresTipoLocal[tipoLocal] + " (cambiar)"; bTipo.AccessibleName = "Tipo de local"; tTono.Controls.Add(bTipo);
+                    notaLocal(tPre, 248, 92, "El modo automatico decide por ti el subgrave, el estereo, la\nclaridad, las partes suaves, los agudos y la presencia, segun el\ntipo de local y el rango de cada cancion (las de mucho rango\nson las que se pierden en el ruido). No hace falta microfono.");
+                    string motivoAuto = "el modo automatico del local apagado (Tono y presencia)";
+                    Func<bool> sinAuto = delegate { return !localAuto; };
+                    Necesita(swSub, sinAuto, motivoAuto, nSub); Necesita(swEst, sinAuto, motivoAuto, nEst);
+                    Necesita(swCla, sinAuto, motivoAuto, nCla); Necesita(swSua, sinAuto, motivoAuto, nSua);
+                    Necesita(barGra, sinAuto, motivoAuto, nGraNota); Necesita(barAgu, sinAuto, motivoAuto, nAguNota);
+                    Necesita(swPre, sinAuto, motivoAuto, nPreNota);
                     BotonPlano bVolverTono = new BotonPlano(); bVolverTono.SetBounds(16, 346, 424, 34); bVolverTono.Font = fBot;
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
@@ -1240,6 +1254,7 @@ namespace Rocola
                         bar[5].Enabled = !au[5].Checked;
                         // ---------- EL LOCAL ----------
                         vBal.Text = TextoBalance(barBal.Value - SalaLocal.BalanceMax);
+                        bTipo.Text = "Local: " + NombresTipoLocal[tipoLocal] + " (cambiar)";
                         vGra.Text = TextoTono(barGra.Value - SalaLocal.TonoMax); vAgu.Text = TextoTono(barAgu.Value - SalaLocal.TonoMax);
                         string pruAhora = EstadoPrueba();
                         lPru.Text = pruAhora.Length > 0 ? pruAhora : pruAviso;
@@ -1269,6 +1284,7 @@ namespace Rocola
                         gravesLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barGra.Value - SalaLocal.TonoMax));
                         agudosLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barAgu.Value - SalaLocal.TonoMax));
                         presenciaSala = swPre.Checked;
+                        localAuto = swAutoL.Checked;
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
                         bool medAntes = aLaMedida;
                         aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked; dseePorGenero = swGen.Checked;
@@ -1284,7 +1300,8 @@ namespace Rocola
                     swSil.CheckedChanged += apply;
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
-                    barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply;
+                    barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
+                    bTipo.Click += delegate { tipoLocal = (tipoLocal + 1) % TiposLocal; apply(bTipo, EventArgs.Empty); };
                     swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
                     swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply;
                     EventHandler prueba = delegate (object so, EventArgs ea)
@@ -1311,6 +1328,7 @@ namespace Rocola
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
                         barGra.Value = SalaLocal.TonoMax; barAgu.Value = SalaLocal.TonoMax;   // graves y agudos del local, en 0 dB
                         swPre.Checked = false;                               // y la presencia en sala ruidosa, apagada
+                        swAutoL.Checked = false; tipoLocal = 0;              // y el modo automatico del local, apagado (bocinas del billar)
                         swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
@@ -1435,7 +1453,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

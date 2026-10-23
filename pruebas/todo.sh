@@ -44,7 +44,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ
 FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
-FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
   echo "  No se pudo crear la carpeta temporal: $TMP_PRUEBAS"
   exit 1
@@ -226,6 +226,9 @@ CPU="$CPU salalocal"
 # 'presenciasala': la presencia en sala ruidosa (22-10-2026; PresenciaSala.cs): el compresor suave detras del local, apagado
 # de fabrica (sale bit a bit), sus 2 a 1, tiempos, ganancia de compensacion hasta el techo del limitador y sin chasquidos.
 CPU="$CPU presenciasala"
+# 'localauto': el local en automatico (23-10-2026; LocalAuto.cs): la tabla por tipo de local y rango de cancion, apagado = los mandos
+# tal cual, encendido = decide por cada cancion con su medida, la cadena y los mandos en vivo lo leen, la configuracion y la ventana.
+CPU="$CPU localauto"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
 # en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.

@@ -250,8 +250,11 @@ class Subgrave
         List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
         Check(lee.Contains("estereo_estrecho=") && esc.Contains("estereo_estrecho=") && lee.Contains("corta_subgrave=") && esc.Contains("corta_subgrave="),
               "se guardan en la configuracion (estereo_estrecho=, corta_subgrave=)");
-        int l1, e1, l2, e2; Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "estereoEstrecho", out l1, out e1); Codigo.UsosDeCampo(TF.GetMethod("ArmaCadena", T), "cortaSubgrave", out l2, out e2);
-        Check(l1 > 0 && l2 > 0, "y cada cancion nueva nace con ellos como estan");
+        // Desde el modo automatico del local (23-10-2026) ArmaCadena los lee por LocalDe, que devuelve los mandos tal cual con el automatico apagado.
+        int l1 = 0, e1, l2 = 0, e2; bool armaLeeLocalDe = Codigo.Llama(TF.GetMethod("ArmaCadena", T), "LocalDe");
+        foreach (MethodInfo mm in TF.GetMethods(T)) if (mm.Name == "LocalDe" && mm.GetParameters()[0].ParameterType.Name == "Track")
+        { Codigo.UsosDeCampo(mm, "estereoEstrecho", out l1, out e1); Codigo.UsosDeCampo(mm, "cortaSubgrave", out l2, out e2); }
+        Check(armaLeeLocalDe && l1 > 0 && l2 > 0, "y cada cancion nueva nace con ellos como estan (por LocalDe, que sin el automatico devuelve los mandos)");
     }
     static double GetF(string n) { return Convert.ToDouble(TMono.GetField(n, T).GetValue(null)); }
     static double Mejor(Action a)

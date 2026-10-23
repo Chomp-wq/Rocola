@@ -1327,13 +1327,14 @@ namespace Rocola
             c.Noche = new CompensaNoche(tap); c.Noche.Db = NocheCompensaDb();
             // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y, con sus interruptores de Ctrl+F3,
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
-            c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, estereoEstrecho, cortaSubgrave);
-            c.Mono.SoloSiHaceFalta(estereoAuto);   // y solo si hace falta (S3)
+            AjusteLocal loc = LocalDe(t);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion (LocalAuto.cs)
+            c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
+            c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
-            c.Sala = new SalaLocal(c.Mono, tap, normTarget, claridadLocal, partesSuaves, balanceDb, gravesLocalDb, agudosLocalDb);
+            c.Sala = new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
-            c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, presenciaSala);
+            c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia);
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)

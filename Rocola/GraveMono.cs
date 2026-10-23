@@ -80,16 +80,17 @@ namespace Rocola
         private void AplicaBocinas()
         {
             CadenaCancion c = cadenaSonando, p = cadenaPreparada;
-            if (c != null && c.Mono != null) { c.Mono.Ajusta(estereoEstrecho, cortaSubgrave); c.Mono.SoloSiHaceFalta(estereoAuto); }
-            if (p != null && p.Mono != null) { p.Mono.Ajusta(estereoEstrecho, cortaSubgrave); p.Mono.SoloSiHaceFalta(estereoAuto); }
+            AjusteLocal lc = LocalDe(c), lp = LocalDe(p);   // los mandos o, con el modo automatico, lo que decide para cada una (LocalAuto.cs)
+            if (c != null && c.Mono != null) { c.Mono.Ajusta(lc.Estrecho, lc.Subgrave); c.Mono.SoloSiHaceFalta(lc.EstrechoSoloSiHaceFalta); }
+            if (p != null && p.Mono != null) { p.Mono.Ajusta(lp.Estrecho, lp.Subgrave); p.Mono.SoloSiHaceFalta(lp.EstrechoSoloSiHaceFalta); }
             // Y los arreglos de la grabacion (ArreglosGrabacion.cs): el canal mudo y la continua.
             if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(canalMudo, quitaContinua);
             if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(canalMudo, quitaContinua);
             // Y los del local (SalaLocal.cs): claridad, partes suaves, balance, graves y agudos; y la presencia en sala ruidosa (PresenciaSala.cs).
-            if (c != null && c.Sala != null) { c.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb); c.Sala.AjustaTono(gravesLocalDb, agudosLocalDb); }
-            if (p != null && p.Sala != null) { p.Sala.Ajusta(claridadLocal, partesSuaves, balanceDb); p.Sala.AjustaTono(gravesLocalDb, agudosLocalDb); }
-            if (c != null && c.Presencia != null) c.Presencia.Ajusta(presenciaSala);
-            if (p != null && p.Presencia != null) p.Presencia.Ajusta(presenciaSala);
+            if (c != null && c.Sala != null) { c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb); c.Sala.AjustaTono(lc.Graves, lc.Agudos); }
+            if (p != null && p.Sala != null) { p.Sala.Ajusta(lp.Claridad, lp.Suaves, balanceDb); p.Sala.AjustaTono(lp.Graves, lp.Agudos); }
+            if (c != null && c.Presencia != null) c.Presencia.Ajusta(lc.Presencia);
+            if (p != null && p.Presencia != null) p.Presencia.Ajusta(lp.Presencia);
         }
         private static float AnchoEstereo(string texto)
         {
