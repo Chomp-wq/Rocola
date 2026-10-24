@@ -51,3 +51,5 @@ El paquete incluye `Recoger_error_XP.cmd`. Ejecutarlo desde la carpeta de Rocola
 Adjuntar el .dmp del reinicio (el mas reciente si solo hubo ese) y dxdiag.txt. La foto menciona un `Mini102226-02.dmp` dentro de una carpeta WER temporal; puede haber sido borrada al cerrar el informe, por lo que tambien se revisa `%SystemRoot%\Minidump`.
 
 El guion tiene ASCII/CRLF y usa comandos de XP, pero falta ejecutarlo en la maquina real. El diagnostico del controlador queda pendiente del volcado.
+
+**24-10-2026:** el dueño lo ejecutó y mandó los dos minivolcados del 22-10. En los dos el hilo atascado está en el controlador de pantalla de ATI y es de `logonui.exe` y de `CCC.exe`, no de la rocola. Ver [VOLCADOS_XP_A4_2026-10-24.md](VOLCADOS_XP_A4_2026-10-24.md).

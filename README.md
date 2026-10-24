@@ -1,5 +1,33 @@
 # Rocola
 
+## Los volcados del pantallazo de XP — 24 de octubre de 2026
+
+Los dos minivolcados del 22-10 (`0x100000EA`) dicen lo mismo: el hilo atascado está en el controlador de pantalla de ATI
+(`ati2cqag.dll`/`ati2dvag.dll`, el segundo también en `ati3duag.dll`) y **no es de la rocola**. El primero es de `logonui.exe`, la
+pantalla de inicio de sesión de Windows, abierta 22 s antes con el equipo encendido desde hacía casi 3 horas. El segundo es del
+Catalyst Control Center, 60 s después del arranque. Recomendaciones sin tocar código:
+- protector de pantalla y energía en «Nunca» (o sin contraseña);
+- quitar el Catalyst Control Center del arranque;
+- apagar la desfragmentación automática de PerfectDisk en el SSD.
+
+XP administra 2509 MB de memoria, no 3,5 GB. Queda pendiente de decisión que la rocola impida el protector de pantalla y la
+inactividad. Para optimizar el rendimiento hace falta el «Diagnóstico completo» del A4. [Volcados, recomendaciones y datos del
+equipo](VOLCADOS_XP_A4_2026-10-24.md).
+
+## Nivelado al límite, medidas de versiones viejas, adiós al modo noche y volumen de Windows — 24 de octubre de 2026
+
+**Por qué sonaban bajísimo:** al sonar, la rocola borraba todas las medidas de una canción si dudaba de que fuera el mismo archivo
+(medida por una versión anterior al 29-09, música copiada a otro disco, etiqueta retocada), y la canción salía sin nivelar, hasta
+19 dB más baja. Con un viaje real entre versiones, las tablas del 26-09 perdían 5 de 5 medidas al tocarlas con la del 23-10; ahora,
+0. Solo se olvida lo que es otro archivo (otro tamaño u otra duración); lo demás se adopta y se vuelve a medir. **Modo noche
+retirado:** ya no se baja el volumen de 11 de la noche a 7 de la mañana; de día la cadena sale igual bit a bit. **Volumen de
+Windows:** al arrancar, el general al máximo y sin silencio, una vez (sin probar en un XP real). **Nivelado al límite:** sin volumen
+objetivo, cada canción sube lo más que aguanta sin que el limitador la raspe (algoritmo 5, con el P90 de los picos: P90 a 1 dB del
+techo, P99 a 3 dB y el golpe más fuerte a 6 dB). Lo medido antes nivela con la regla de antes mientras la tanda larga vuelve a medir
+toda la biblioteca. Con ocho canciones sintéticas y el limitador de verdad: suben las sostenidas y las comprimidas grabadas bajas, las
+fuertes ya no se bajan, y la de batería muy seguida queda 0,7 dB por debajo de antes (el limitador trabaja el 7 % del tiempo en vez del
+27 %). Nada oído en el billar. [Causa, arreglo, regla, números y compatibilidad](NIVELADO_AL_LIMITE_Y_COMPATIBILIDAD_MODEST_2026-10-24.md).
+
 ## Diagnóstico completo en Ctrl+F3 — 23 de octubre de 2026
 
 Un segundo botón junto a «Medir este equipo» (Ctrl+F3 → Imagen): unos 4 minutos (tope 7) por 16 escenas, de la rejilla quieta al
