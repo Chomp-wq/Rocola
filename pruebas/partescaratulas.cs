@@ -40,7 +40,42 @@ class PartesCaratulas {
    Console.WriteLine("18 composiciones CPU a 3440: atlas anterior "+oldMs.ToString("F2")+" ms; etiquetas separadas "+newMs.ToString("F2")+" ms. No mide FPS ni lectura de biblioteca.");
   }
  }
+ // SONDA DE LA LIBRERIA GRAFICA (Mono/libgdiplus). Con ella, geometria/borde/marca y texto dan rojo aqui SIN que el programa este roto:
+ // el camino nuevo (BakeSeparatedCell) compone el atlas con dos operaciones que libgdiplus hace distinto de GDI+ de Windows,
+ // y que el camino viejo (BakeCell) no usa. Comprobado el 24-10-2026 con programas sueltos y con el commit f4b9699 (donde nacio
+ // esta bateria: sale el mismo "dif=1905 max=255"):
+ //  (1) DrawImage(...) con CompositingMode.SourceCopy BORRA todo el destino fuera del rectangulo dibujado (operador SOURCE de cairo
+ //      sin limite). PackEdge copia cuatro tiras seguidas con SourceCopy: cada una borra la anterior y el atlas queda sin bordes.
+ //  (2) LockBits de un sub-rectangulo con origen distinto de (0,0) en el mismo formato (PArgb) devuelve Scan0 SIN desplazar al
+ //      origen y con el stride completo: lo escrito cae en (0,0) y desborda (CopiaEtiquetaGpu escribe la etiqueta asi).
+ //      Con las etiquetas copiadas con un LockBits de bitmap completo y el desplazamiento a mano, dif baja de 1905 a 361 y el resto es (1).
+ // En Windows ninguna de las dos pasa. Si la sonda las detecta, esas dos comprobaciones salen como AVISO (no comprobado) en vez de
+ // reventar; el resto de la bateria sigue. Eso NO prueba el aspecto: hay que mirar esos pixeles en Windows.
+ static bool gdiMalo;
+ static int Opacos(Bitmap b){int n=0;for(int y=0;y<b.Height;y++)for(int x=0;x<b.Width;x++)if(b.GetPixel(x,y).A!=0)n++;return n;}
+ static void Sonda(){
+  bool borra,desplaza;
+  using(Bitmap a=new Bitmap(50,2,PixelFormat.Format32bppPArgb))using(Bitmap t=new Bitmap(120,40,PixelFormat.Format32bppPArgb)){
+   using(Graphics g=Graphics.FromImage(a))g.Clear(Color.FromArgb(120,0,0,0));
+   using(Graphics g=Graphics.FromImage(t)){g.Clear(Color.Transparent);g.CompositingMode=CompositingMode.SourceCopy;g.DrawImageUnscaled(a,new Point(1,1));}
+   using(Graphics g=Graphics.FromImage(t)){g.CompositingMode=CompositingMode.SourceCopy;g.DrawImageUnscaled(a,new Point(1,10));}
+   borra=Opacos(t)!=200;
+  }
+  using(Bitmap t=new Bitmap(100,60,PixelFormat.Format32bppPArgb)){
+   using(Graphics g=Graphics.FromImage(t))g.Clear(Color.Transparent);
+   Rectangle r=new Rectangle(10,5,40,20);BitmapData d=t.LockBits(r,ImageLockMode.WriteOnly,PixelFormat.Format32bppPArgb);
+   byte[] row=new byte[r.Width*4];for(int i=0;i<row.Length;i++)row[i]=255;
+   for(int y=0;y<r.Height;y++)Marshal.Copy(row,0,new IntPtr(d.Scan0.ToInt64()+(long)y*d.Stride),row.Length);
+   t.UnlockBits(d);
+   int dentro=0,fuera=0;for(int y=0;y<60;y++)for(int x=0;x<100;x++)if(t.GetPixel(x,y).A!=0){if(r.Contains(x,y))dentro++;else fuera++;}
+   desplaza=dentro!=r.Width*r.Height||fuera!=0;
+  }
+  gdiMalo=borra||desplaza;
+  if(gdiMalo)Console.WriteLine("AVISO libgdiplus: SourceCopy borra fuera del rectangulo="+borra+"; LockBits de sub-rectangulo escribe fuera de sitio="+desplaza+". geometria/borde/marca y texto NO se comprueban en esta maquina (ver Sonda).");
+  else Console.WriteLine("OK la libreria grafica compone el atlas como GDI+ (sonda de SourceCopy y LockBits de sub-rectangulo)");
+ }
  static void Images(string output){
+  Sonda();
   object a=Activator.CreateInstance(A,true);Set(a,"Folder","test");Set(a,"Name","Nombre largo de un disco");Set(a,"Artist","Artista");
   using(Control view=(Control)Activator.CreateInstance(V,true)){
    Set(view,"EnCola",Provider("EnCola","Q"));Set(view,"PortadasLod",false);
@@ -61,8 +96,11 @@ class PartesCaratulas {
       int[] x=Pixels(previous),y=Pixels(rebuilt);int max=0,diffs=0,textMax=0;
       for(int i=0;i<x.Length;i++)if(x[i]!=y[i]){diffs++;for(int b=0;b<32;b+=8){int d=Math.Abs(((x[i]>>b)&255)-((y[i]>>b)&255));max=Math.Max(max,d);if(i/cw>=side+gap)textMax=Math.Max(textMax,d);}}
       if(max>1){previous.Save(Path.Combine(output,"antes.png"));rebuilt.Save(Path.Combine(output,"despues.png"));for(int i=0,n=0;i<x.Length&&n<12;i++)if(x[i]!=y[i]){Console.WriteLine("diff "+i%cw+","+i/cw+" "+x[i].ToString("X8")+" "+y[i].ToString("X8"));n++;}}
-      Check(max<=1,"geometria/borde/marca "+size+" cola="+q+" dif="+diffs+" max="+max);
-      Check(textMax==0,"texto conserva pixeles originales");
+      if(gdiMalo)Console.WriteLine("AVISO sin comprobar (libgdiplus defectuoso, ver Sonda): geometria/borde/marca y texto "+size+" cola="+q+" dif="+diffs+" max="+max+" textMax="+textMax);
+      else{
+       Check(max<=1,"geometria/borde/marca "+size+" cola="+q+" dif="+diffs+" max="+max);
+       Check(textMax==0,"texto conserva pixeles originales");
+      }
       Console.WriteLine("POT "+size+" anterior="+Pot(cw,h)+" etiqueta="+Pot(atlas.Width,atlas.Height)+" portada="+Pot(256,256));
       if(size.Width>=1920)Check(Pot(atlas.Width,atlas.Height)+Pot(256,256)<=Pot(cw,h),"memoria no aumenta a resolucion alta");
       Check((bool)Get(plan,"Separate"),"plano usa portada separada");
@@ -235,6 +273,6 @@ class PartesCaratulas {
   using(cover=new Bitmap(256,256,PixelFormat.Format32bppPArgb)){using(Graphics g=Graphics.FromImage(cover)){g.Clear(Color.SteelBlue);g.FillEllipse(Brushes.White,12,20,140,200);g.FillRectangle(Brushes.Pink,190,0,66,256);}Images(output);Index(output);Workers(output);
    if(Environment.OSVersion.Platform==PlatformID.Win32NT&&Array.IndexOf(args,"--sin-hal")<0)Hal(output);else Console.WriteLine("OMITIDA comparacion HAL: no confirma aspecto GPU real.");
   }
-  Console.WriteLine("PASS "+checks+" pruebas de partes/indice/memoria; salida="+output);return 0;
+  Console.WriteLine("PASS "+checks+" pruebas de partes/indice/memoria"+(gdiMalo?" (CON AVISO: geometria/borde/marca y texto SIN comprobar por el libgdiplus de esta maquina)":"")+"; salida="+output);return 0;
  }catch(Exception e){Console.WriteLine("FALLO "+e);return 1;}}
 }
