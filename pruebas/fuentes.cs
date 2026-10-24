@@ -103,17 +103,26 @@ class Fuentes
             ((IDictionary)Get(g, "eqCache"))[ruta] = ((IDictionary)Get(f, "eqCache"))[ruta];
             Call(g, "LoadFuentesMedidas"); Call(g, "CompruebaFuenteMedida", ruta);
             Check(Tiene(g, ruta), "redondeo de tablas conserva identidad");
+            // Desde el 24-10-2026 una duda ya no deja la cancion sin nivelar: la medida se conserva (adoptada) y se vuelve a medir antes
+            // que el resto (FuentesMedidas.cs, CompruebaFuenteMedida). Solo otro tamano (aqui) u otra duracion (OlvidaSiEsOtroArchivo) la borran.
             ((IDictionary)Get(g, "durCache"))[ruta] = 11f; Call(g, "CompruebaFuenteMedida", ruta);
-            Check(!Tiene(g, ruta), "snapshot parcial no certifica medidas distintas");
+            Check(Tiene(g, ruta) && (bool)Call(g, "PorVerificar", ruta), "tablas de dos momentos: la medida se conserva y queda por verificar");
             DateTime fecha = File.GetLastWriteTimeUtc(ruta);
             Call(null, "IntegradaPuesta", ruta);
             File.WriteAllBytes(ruta, new byte[128]); File.SetLastWriteTimeUtc(ruta, fecha.AddSeconds(2));
             Call(f, "CompruebaFuenteMedida", ruta);
-            Check(!Tiene(f, ruta) && !((IDictionary)Get(f, "eqCache")).Contains(ruta), "otra edicion del mismo largo/duracion invalida volumen y EQ");
-            Check(!(bool)Call(null, "YaIntegrada", ruta), "la sustitucion permite repetir el analisis integrado en esta sesion");
-            Medida(f, ruta, sello); Check(!Tiene(f, ruta), "resultado tardio no se publica");
+            Check(Tiene(f, ruta) && ((IDictionary)Get(f, "eqCache")).Contains(ruta) && (bool)Call(f, "PorVerificar", ruta),
+                  "mismo tamano y duracion con otra fecha (copiada, etiqueta retocada): conserva volumen y EQ y queda por verificar");
+            Check(!(bool)Call(null, "YaIntegrada", ruta), "la duda permite repetir el analisis integrado en esta sesion");
+            float[] eqTarde = new float[12]; eqTarde[8] = 17000; eqTarde[11] = 2;
+            Call(f, "PublicaMedidaDeFuente", ruta, .5f, 20f, eqTarde, sello);
+            Check(!(((IDictionary)Get(f, "durCache"))[ruta] is float && (float)((IDictionary)Get(f, "durCache"))[ruta] == 20f), "resultado tardio (sello de antes) no se publica");
             object h = Nueva(); ((IDictionary)Get(h, "durCache"))[ruta] = 10f;
-            Call(h, "CompruebaFuenteMedida", ruta); Check(!Tiene(h, ruta), "tabla antigua sin identidad se migra conservadoramente");
+            Call(h, "CompruebaFuenteMedida", ruta);
+            Check(Tiene(h, ruta) && (bool)Call(h, "PorVerificar", ruta) && ((IDictionary)Get(h, "fuentesMedidas")).Contains(ruta),
+                  "tabla de una version vieja, sin identidad: la medida se adopta (sigue nivelando) y queda por verificar");
+            File.WriteAllBytes(ruta, new byte[200]);
+            Call(h, "CompruebaFuenteMedida", ruta); Check(!Tiene(h, ruta), "otro tamano en la misma ruta: otro archivo, se olvida");
             File.WriteAllText(archivo, "ROCOLA-FUENTES v99\r\nregistro-futuro\r\n");
             Call(h, "LoadFuentesMedidas"); Medida(h, ruta, Call(null, "CapturaFuente", ruta));
             Set(h, "startupReadPending", false); Call(h, "SaveFuentesMedidas"); Espera(h);

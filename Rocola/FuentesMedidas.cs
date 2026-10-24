@@ -146,19 +146,35 @@ namespace Rocola
                 fuentesMedidas[ruta] = r; fuentesPendientes[ruta] = r; fuentesCambios++;
             }
         }
-        // Solo en UI: invalida TODAS las medidas correlacionadas, antes de aplicar EQ.
+        // Solo en UI, antes de aplicar nivelado y EQ: decide si las medidas de la ruta son del archivo que hay hoy en ella.
+        //
+        // CONSERVAR LO VIEJO MIENTRAS SE VUELVE A MEDIR (24-10-2026). Antes, cualquier duda borraba TODAS las medidas de la cancion al
+        // sonar: una biblioteca medida por una version anterior al registro de identidad (29-09-2026), una musica copiada a otro disco
+        // (cambia la fecha de creacion) o una etiqueta retocada sin cambiar el tamano la dejaban sonar SIN NIVELAR, a su volumen de
+        // origen; las grabaciones bajitas, con 10 o 15 dB de menos. Ahora solo se olvida lo que es otro archivo de verdad: otro tamano
+        // en bytes aqui, u otra duracion (OlvidaSiEsOtroArchivo, que lo mira antes). En los demas casos la medida se ADOPTA: se apunta
+        // con el sello de hoy, sigue nivelando, y la cancion queda por verificar para que el repaso la vuelva a medir antes que el resto.
         private FuenteMedida CompruebaFuenteMedida(string ruta)
         {
             FuenteMedida f = CapturaFuente(ruta); if (f == null) return null;
             RegistroFuente r; lock (fuentesCerrojo) fuentesMedidas.TryGetValue(ruta, out r);
-            if (r == null || !r.Coincide(f) || r.Medidas != FirmaMedidas(ruta))
-            {
-                bool hay = loudCache.ContainsKey(ruta) || durCache.ContainsKey(ruta) || eqCache.ContainsKey(ruta);
-                lock (integCerrojo) hay |= integCache != null && integCache.ContainsKey(ruta);
-                if (hay) OlvidaMedidas(ruta);
-            }
+            if (r != null && r.Coincide(f) && r.Medidas == FirmaMedidas(ruta)) return f;
+            bool hay = loudCache.ContainsKey(ruta) || durCache.ContainsKey(ruta) || eqCache.ContainsKey(ruta);
+            lock (integCerrojo) hay |= integCache != null && integCache.ContainsKey(ruta);
+            if (!hay) return f;
+            if (r != null && r.Largo != f.Largo) { OlvidaMedidas(ruta); return f; }   // otro tamano: otro archivo
+            ActualizaFuenteMedida(ruta, f);   // la identidad de hoy con las medidas que hay
+            lock (fuentesCerrojo) porVerificar.Add(ruta);
+            lock (integHechasCerrojo) integHechas.Remove(ruta);   // que el repaso la pueda medir otra vez en esta sesion
+            lock (deepDoneLock) deepDone.Remove(ruta);
+            OlvidaMedidaHecha(ruta);
+            SaveFuentesMedidas();
             return f;
         }
+        // Las canciones con una medida adoptada sin certificar (ver arriba). Solo en memoria: el registro ya lleva el sello de hoy, y
+        // tras reiniciar la medida vale como cualquier otra. La tanda larga las pone delante (TandaIntegrada).
+        private readonly HashSet<string> porVerificar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool PorVerificar(string ruta) { lock (fuentesCerrojo) return ruta != null && porVerificar.Contains(ruta); }
         // Este filtro tambien se usa desde el abridor en fondo. No muta tablas UI.
         private bool FuenteDelMapa(string ruta, MapaSilencios mapa)
         {
@@ -268,6 +284,7 @@ namespace Rocola
             if (!AceptaFuenteMedida(ruta, fuente)) return;
             PublicaIntegrada(ruta, s);
             ActualizaFuenteMedida(ruta, fuente);
+            if (fuente != null) lock (fuentesCerrojo) porVerificar.Remove(ruta);   // medida entera de este archivo: verificada
         }
         private void CierraSonoridadDeFuente(string ruta, double sum, long n, int tasa, int canales, FuenteMedida fuente)
         {

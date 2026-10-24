@@ -1071,7 +1071,7 @@ namespace Rocola
                 Track tk = tracks[i];
                 if (tk == null || tk.Path == null) continue;
                 SonoridadIntegrada s;
-                if (integCache.TryGetValue(tk.Path, out s) && s.Algoritmo >= minimo) continue;
+                if (integCache.TryGetValue(tk.Path, out s) && s.Algoritmo >= minimo && !PorVerificar(tk.Path)) continue;   // las adoptadas sin certificar, otra vez
                 pend.Add(tk.Path);
             }
             HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
