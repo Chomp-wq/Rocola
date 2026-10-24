@@ -83,6 +83,11 @@ namespace Rocola
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateTexDel(IntPtr self, uint w, uint h, uint levels, uint usage, uint format, uint pool, out IntPtr tex, IntPtr shared);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockRectDel(IntPtr self, uint level, out LockedRect lr, IntPtr rect, uint flags);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int UnlockRectDel(IntPtr self, uint level);
+        // D3DSURFACE_DESC (Format, Type, Usage, Pool, MultiSampleType, MultiSampleQuality, Width, Height), con holgura.
+        [StructLayout(LayoutKind.Explicit, Size = 64)]
+        public struct SurfaceDesc { [FieldOffset(24)] public uint Width; [FieldOffset(28)] public uint Height; }
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LevelDescDel(IntPtr self, uint level, ref SurfaceDesc d);
+        public const int SlotGetLevelDesc = 17;   // IDirect3DTexture9::GetLevelDesc
 
         // Marshal.GetDelegateForFunctionPointer crea un delegado (y su puente a codigo no administrado) NUEVO en cada llamada: bloquear y
         // desbloquear una textura, soltarla o cambiar la imagen intermedia del cielo a media resolucion reservaban cada vez. Un delegado
@@ -890,6 +895,7 @@ namespace Rocola
                 !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
             TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
             if (dividida != null) return ActualizaDividida(dividida, bmp, area);
+            if (MideMenos(tex, Pow2(bmp.Width), Pow2(bmp.Height))) return false;   // (la misma guarda que al subirla entera)
             return ActualizaRegionBitmap(tex, bmp, area, area.Location, bmp.Width, bmp.Height);
         }
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
@@ -902,11 +908,26 @@ namespace Rocola
                 TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
                 if (dividida != null)
                 { uMax = vMax = 1f; return ActualizaDividida(dividida, bmp, new Rectangle(0, 0, w, h)); }
-                if (tw == 0 || th == 0 || !SubeBitmapBorde(tex, bmp, w, h, tw, th)) return false;
+                if (tw == 0 || th == 0 || MideMenos(tex, tw, th) || !SubeBitmapBorde(tex, bmp, w, h, tw, th)) return false;
                 uMax = (float)w / tw; vMax = (float)h / th;
                 return true;
             }
             catch { return false; }
+        }
+
+        // ¿La textura mide menos de lo que se le va a subir? (24-10-2026) Al bloquearla solo se mira el ancho (el paso de fila); si una
+        // cuenta de la rocola se equivocara de alto, la copia escribiria filas de mas en la memoria del controlador, que en XP no avisa
+        // hasta que algo truena mucho despues. Se le pregunta a Direct3D cuanto mide: una llamada que no espera a la tarjeta. Si no lo
+        // dice (un controlador que deja ceros), se sigue como antes; si falla, no se sube (el llamador la crea de nuevo).
+        private static bool MideMenos(IntPtr tex, int tw, int th)
+        {
+            D3D9.SurfaceDesc d = new D3D9.SurfaceDesc();
+            int hr;
+            try { hr = D3D9.Fn<D3D9.LevelDescDel>(tex, D3D9.SlotGetLevelDesc)(tex, 0, ref d); }
+            catch { return false; }   // (una tarjeta imitada de las pruebas sin esa ranura) no se sabe: como antes
+            if (hr < 0) return true;
+            if (d.Width == 0 && d.Height == 0) return false;
+            return d.Width < (uint)tw || d.Height < (uint)th;
         }
 
         private void Draw(D3D9.Vtx[] verts, int tris)
@@ -2422,19 +2443,25 @@ namespace Rocola
                 try { RenderFrame(); cuadrosFallidos = 0; }
                 catch (Exception ex)
                 {
-                    // Se apunta (como mucho una vez cada 10 s, con cuantos van) y se sigue con el cuadro siguiente; si truena varios
-                    // seguidos se espera un poco para no girar en vano. Una excepcion aqui cerraba la rocola entera.
-                    cuadrosFallidos++; cuadrosFallidosApuntados++;
-                    double t = AhoraMs();
-                    if (ReportError != null && t - cuadroFallidoApuntadoMs > 10000)
-                    {
-                        cuadroFallidoApuntadoMs = t;
-                        try { ReportError("Un cuadro de la tarjeta fallo y se siguio (" + cuadrosFallidosApuntados + " desde el ultimo apunte)", ex); } catch { }
-                        cuadrosFallidosApuntados = 0;
-                    }
+                    // Se sigue con el cuadro siguiente; si truena varios seguidos se espera un poco para no girar en vano. Una excepcion
+                    // aqui cerraba la rocola entera.
+                    ApuntaCuadroFallido(ex);
                     if (cuadrosFallidos >= 3) EsperaMensajes(200);
                 }
                 vistoMs = -1;   // un cuadro pedido fuera de este bucle (WM_PAINT, el medidor) no sabe cuando se vera
+            }
+        }
+
+        // Se apunta (como mucho una vez cada 10 s, con cuantos van).
+        private void ApuntaCuadroFallido(Exception ex)
+        {
+            cuadrosFallidos++; cuadrosFallidosApuntados++;
+            double t = AhoraMs();
+            if (ReportError != null && t - cuadroFallidoApuntadoMs > 10000)
+            {
+                cuadroFallidoApuntadoMs = t;
+                try { ReportError("Un cuadro de la tarjeta fallo y se siguio (" + cuadrosFallidosApuntados + " desde el ultimo apunte)", ex); } catch { }
+                cuadrosFallidosApuntados = 0;
             }
         }
 
@@ -4622,7 +4649,10 @@ namespace Rocola
             }
         }
 
-        protected override void OnPaint(PaintEventArgs e) { RenderFrame(); }   // WM_PAINT -> dibuja por D3D9
+        // WM_PAINT -> dibuja por D3D9. Con su try (24-10-2026), como el bucle de arriba: en .NET 2.0 una excepcion que se escapa de
+        // OnPaint marca el control y desde entonces solo se pinta la X roja, sin volver a llamar a OnPaint hasta reiniciar la rocola.
+        // WM_PAINT llega al destaparse la ventana (al volver del inicio de sesion de Windows, al cerrar Ctrl+F3).
+        protected override void OnPaint(PaintEventArgs e) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }
 
         // UN CUADRO, PEDIDO A MANO. Lo usa el medidor de Ctrl+F3: medir ocurre dentro de una pulsacion, o sea
         // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje

@@ -254,6 +254,10 @@ CPU="$CPU cadenaentera"
 # publicar la biblioteca. Mono no aplica la baja latencia: se mira la logica, no el efecto. En el perfil con tarjeta (la imagen de la
 # interfaz solo existe ahi).
 GPU="$GPU recolector"
+# 'caratulaenorme': las portadas enormes (mas de 16 millones de pixeles; un JPEG de 8000x8000 pide 256 MB al descomprimirse) se
+# decodifican de una en una (24-10-2026): dos a la vez ya no piden el doble de memoria, las normales no esperan, la miniatura sale
+# igual y la medida sale de la cabecera (JPEG, PNG, GIF y BMP). Memoria medida con Mono/libgdiplus, no con el GDI+ de XP.
+CPU="$CPU caratulaenorme"
 # 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con

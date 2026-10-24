@@ -310,6 +310,10 @@ class BuscaLigero
         for (int i = 0; i < 64; i++) { Marshal.WriteIntPtr(vtTex, i * IntPtr.Size, nada); Marshal.WriteIntPtr(vtTrozos, i * IntPtr.Size, nada); }
         Marshal.WriteIntPtr(vtTex, 2 * IntPtr.Size, suelta); Marshal.WriteIntPtr(vtTrozos, 2 * IntPtr.Size, suelta);
         Marshal.WriteIntPtr(vtTex, 20 * IntPtr.Size, desb); Marshal.WriteIntPtr(vtTrozos, 20 * IntPtr.Size, desb);
+        // GetLevelDesc (ranura 17) dice cuanto mide de verdad, como Direct3D (24-10-2026)
+        // (con el tipo de delegado de la rocola: al pedir la funcion de vuelta, .NET devuelve este mismo delegado)
+        IntPtr pdn = TD3D.GetNestedType("LevelDescDel", TODO) == null ? Puntero("UintSelf", "Nada") : Marshal.GetFunctionPointerForDelegate(DescAlVuelo());
+        Marshal.WriteIntPtr(vtTex, 17 * IntPtr.Size, pdn); Marshal.WriteIntPtr(vtTrozos, 17 * IntPtr.Size, pdn);
         // Una textura normal se bloquea entera; una "por trozos" se bloquea por un rectangulo (UpdateTextureRegion).
         Marshal.WriteIntPtr(vtTex, 19 * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(AlVuelo("LockRectDel", "Bloquea", false)));
         Marshal.WriteIntPtr(vtTrozos, 19 * IntPtr.Size, Marshal.GetFunctionPointerForDelegate(AlVuelo("LockRegionDel", "BloqueaTrozo", true)));
@@ -341,6 +345,23 @@ class BuscaLigero
         return 0;
     }
     static int Desbloquea(IntPtr self, uint level) { return 0; }
+    static Delegate DescAlVuelo()
+    {
+        Type td = TD3D.GetNestedType("LevelDescDel", TODO);
+        ParameterInfo[] ps = td.GetMethod("Invoke").GetParameters();
+        Type[] pt = new Type[ps.Length]; for (int i = 0; i < ps.Length; i++) pt[i] = ps[i].ParameterType;
+        DynamicMethod dm = new DynamicMethod("DescNivelImitado", typeof(int), pt, typeof(BuscaLigero).Module, true);
+        ILGenerator il = dm.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0); il.Emit(OpCodes.Ldarg_1); il.Emit(OpCodes.Ldarg_2); il.Emit(OpCodes.Conv_U);   // ref SurfaceDesc -> su direccion
+        il.Emit(OpCodes.Call, typeof(BuscaLigero).GetMethod("DescNivel", TODO));
+        il.Emit(OpCodes.Ret);
+        Delegate d = dm.CreateDelegate(td); vivos.Add(d); return d;
+    }
+    static int DescNivel(IntPtr self, uint level, IntPtr d)
+    {
+        TexImitada t; if (!creadas.TryGetValue(self.ToInt64(), out t)) return -1;
+        Marshal.WriteInt32(d, 24, t.W); Marshal.WriteInt32(d, 28, t.H); return 0;   // Width y Height de D3DSURFACE_DESC
+    }
     static uint Suelta(IntPtr self) { TexImitada t; if (creadas.TryGetValue(self.ToInt64(), out t)) { creadas.Remove(self.ToInt64()); Marshal.FreeHGlobal(t.Mem); } return 0; }
     static void PorTrozos(IntPtr tex) { Marshal.WriteIntPtr(tex, vtTrozos); }   // a partir de ahora esta textura se bloquea por rectangulos
     // ¿Lo que tiene la textura es exactamente esta imagen? (arriba a la izquierda, como la sube la rocola)
@@ -590,6 +611,24 @@ class BuscaLigero
         Exige(nav.Height != busca.Height, "(las dos imagenes miden distinto: " + nav.Height + " y " + busca.Height + " de alto)");
         Exige(exacta && creaciones == c1 && Repuestos(ps[0]) == r1 + 6,
               "seis idas y vueltas: ni una textura nueva (antes, una por vuelta), seis tomadas del repuesto, y cada vez la imagen exacta");
+
+        // Y SI UNA CUENTA DE LA ROCOLA SE EQUIVOCARA DE ALTO (24-10-2026): una textura de 512x128 que llega al repuesto apuntada como
+        // si fuera de 600 de alto (1024 en potencias de dos). Al bloquearla solo se ve el ancho; sin preguntar cuanto mide, la imagen de
+        // 512x600 se copiaria en sus 128 filas y escribiria 472 de mas en la memoria del controlador. Ahora se le pregunta y no se usa.
+        Console.WriteLine("\n  4c) UNA TEXTURA QUE MIDE MENOS DE LO APUNTADO NO SE USA\n");
+        IntPtr chica; CreaTex(IntPtr.Zero, 512, 128, 1, 0, 21, 1, out chica, IntPtr.Zero);
+        Llama(ps[0], "SueltaRepuestos"); Llama(ps[0], "Repone", chica, 512, 600);
+        Bitmap alta = new Bitmap(512, 600, PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(alta)) { g.Clear(Color.FromArgb(255, 30, 120, 200)); g.FillRectangle(Brushes.Orange, 10, 500, 300, 80); }
+        object[] args = { IntPtr.Zero, 0, 0, alta, 0f, 0f };
+        long r2 = Repuestos(ps[0]); int c2 = creaciones;
+        IntPtr subida = (IntPtr)Llama(ps[0], "SubeReponiendo", args);
+        Exige(subida != chica && !creadas.ContainsKey(chica.ToInt64()) && Repuestos(ps[0]) == r2,
+              "la textura que mide menos de lo apuntado no se toma del repuesto (se suelta)");
+        TexImitada nueva; creadas.TryGetValue(subida.ToInt64(), out nueva);
+        Exige(creaciones == c2 + 1 && nueva != null && nueva.H >= 600 && DistintosEnTextura(subida, alta) == 0,
+              "y la imagen va a una textura nueva de su medida, entera");
+        Llama(ps[0], "SueltaRepuestos");
     }
     static long Repuestos(object p) { FieldInfo f = p.GetType().GetField("RepuestosUsados", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public); return f == null ? -1 : (long)f.GetValue(null); }
     static object[] ventanas = new object[2];

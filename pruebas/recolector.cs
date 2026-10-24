@@ -149,6 +149,29 @@ class Recolector
               "el diagnostico completo lo pregunta en cada tiron");
     }
 
+    // 5) WM_PAINT NO DEJA LA X ROJA (24-10-2026). En .NET 2.0 una excepcion que se escapa de OnPaint marca el control y desde entonces
+    // solo se pinta la X roja. El OnPaint del panel de la tarjeta la atrapa, como el bucle de cuadros.
+    static void ElPintado(Assembly asm)
+    {
+        Console.WriteLine("\n  5) UN CUADRO QUE FALLA EN WM_PAINT NO SE ESCAPA\n");
+        Type tp = asm.GetType("Rocola.GpuPanel", false);
+        if (tp == null) { Check(false, "falta Rocola.GpuPanel"); return; }
+        MethodInfo onPaint = tp.GetMethod("OnPaint", BindingFlags.Instance | BindingFlags.NonPublic, null, new Type[] { typeof(System.Windows.Forms.PaintEventArgs) }, null);
+        bool atrapa = false;
+        if (onPaint != null && onPaint.GetMethodBody() != null)
+            foreach (ExceptionHandlingClause c in onPaint.GetMethodBody().ExceptionHandlingClauses)
+                if (c.Flags == ExceptionHandlingClauseOptions.Clause && c.CatchType == typeof(Exception)) atrapa = true;
+        Check(atrapa, "OnPaint del panel envuelve el cuadro en un try/catch");
+        // Y de verdad: un panel a medio armar (sin dispositivo, sin nada) hace tronar el cuadro; no debe salir de OnPaint.
+        object p = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(tp);
+        MethodInfo render = tp.GetMethod("RenderFrame", T);
+        bool truena = false;
+        try { render.Invoke(p, null); } catch (TargetInvocationException) { truena = true; }
+        bool sale = false;
+        try { onPaint.Invoke(p, new object[] { null }); } catch (TargetInvocationException) { sale = true; }
+        Check(truena && !sale, "un cuadro que truena (" + (truena ? "truena" : "no truena") + ") no sale de OnPaint" + (sale ? ": SALIO" : ""));
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -157,6 +180,7 @@ class Recolector
         LaImagenDeLaInterfaz();
         LaBiblioteca();
         LaMarcaDelHueco(asm);
+        ElPintado(asm);
         Console.WriteLine(fallos == 0 ? "\n  OK recolector: " + oks + " comprobaciones (logica; el efecto en el A4 lo dice el diagnostico completo)" : "\n  FALLO recolector: " + fallos + " de " + (oks + fallos));
         return fallos;
     }

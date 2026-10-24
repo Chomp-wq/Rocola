@@ -55,6 +55,9 @@ namespace Rocola
         private sealed class PaletteTexture
         {
             public IntPtr Tex; public Rectangle Rect; public float U, V;
+            // La medida del mapa de bits con el que se subio (Rect es donde se dibuja, y puede no coincidir): la que necesita el
+            // repuesto para saber cuanto mide de verdad la textura. Con otra, una subida posterior escribiria filas de mas.
+            public int BmpW, BmpH;
         }
         private readonly PaletteTexture[] paletteOld = new PaletteTexture[MaxPiezas + 1];
         private void ClearPaletteFade()
@@ -62,7 +65,7 @@ namespace Rocola
             for (int i = 0; i < paletteOld.Length; i++)
                 if (paletteOld[i] != null)
                 {
-                    if (paletteOld[i].Tex != IntPtr.Zero) Repone(paletteOld[i].Tex, paletteOld[i].Rect.Width, paletteOld[i].Rect.Height);
+                    if (paletteOld[i].Tex != IntPtr.Zero) Repone(paletteOld[i].Tex, paletteOld[i].BmpW, paletteOld[i].BmpH);
                     paletteOld[i] = null;
                 }
             paletteStart = -1000;
@@ -138,12 +141,12 @@ namespace Rocola
                 // Cota adicional: la transicion nunca retiene mas de 64 MiB de texturas.
                 if (bytes <= 64L * 1024 * 1024)
                 {
-                    paletteOld[0] = new PaletteTexture { Tex = uiTex, Rect = new Rectangle(0, 0, uiBmpW, uiBmpH), U = uiU, V = uiV };
+                    paletteOld[0] = new PaletteTexture { Tex = uiTex, Rect = new Rectangle(0, 0, uiBmpW, uiBmpH), U = uiU, V = uiV, BmpW = uiBmpW, BmpH = uiBmpH };
                     uiTex = IntPtr.Zero; uiBmpW = uiBmpH = -1; uiVer = -1;
                     for (int i = 0; i < MaxPiezas; i++)
                     {
                         if (piezaTex[i] == IntPtr.Zero) continue;
-                        paletteOld[i + 1] = new PaletteTexture { Tex = piezaTex[i], Rect = GetPiezaRect(i), U = piezaU[i], V = piezaV[i] };
+                        paletteOld[i + 1] = new PaletteTexture { Tex = piezaTex[i], Rect = GetPiezaRect(i), U = piezaU[i], V = piezaV[i], BmpW = piezaW[i], BmpH = piezaH[i] };
                         piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; piezaVer[i] = -1;
                     }
                     paletteStart = AhoraMs();

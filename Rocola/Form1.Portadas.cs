@@ -968,39 +968,90 @@ namespace Rocola
             {
                 int largo;
                 byte[] data = LeeEntero(path, out largo);   // I/O puro primero (lectura secuencial corta); GDI+ decodifica desde RAM
-                using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
-                using (Image src = Image.FromStream(ms, false, false))
+                // Una enorme se decodifica de una en una (24-10-2026): ver CaratulaEnormeCerrojo. La medida sale de la cabecera, antes
+                // de abrirla, porque segun la version de GDI+ la imagen se descomprime al abrirla o al dibujarla.
+                int cabW, cabH;
+                bool enorme = MedidaDeCabecera(data, largo, out cabW, out cabH) && (long)cabW * cabH > PixelesCaratulaEnorme;
+                if (enorme) System.Threading.Monitor.Enter(CaratulaEnormeCerrojo);
+                try
                 {
-                    Bitmap thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
-                    // Con el interruptor JPEG: una portada SIN transparencia (casi todas) es opaca, pero al reducirla el
-                    // filtro mezclaba el borde con lo de fuera y lo dejaba semitransparente. Se reduce repitiendo su
-                    // propio borde y queda opaca de verdad, que es lo que permite guardarla en JPEG (SaveThumb). Las de
-                    // paleta (GIF) pueden traer un color transparente sin canal alfa: esas no cuentan como opacas.
-                    bool fuenteOpaca = JpegActivo && !Image.IsAlphaPixelFormat(src.PixelFormat)
-                                       && (src.PixelFormat & PixelFormat.Indexed) == 0 && (src.Flags & (int)ImageFlags.HasAlpha) == 0;
-                    using (Graphics g = Graphics.FromImage(thumb))
+                    using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
+                    using (Image src = Image.FromStream(ms, false, false))
                     {
-                        g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // filtro original de la miniatura (1 vez por disco)
-                        g.PixelOffsetMode = PixelOffsetMode.Half;
-                        if (fuenteOpaca)
-                            using (ImageAttributes borde = new ImageAttributes())
+                        Bitmap thumb = null;
+                        try
+                        {
+                            thumb = new Bitmap(ThumbPx, ThumbPx, PixelFormat.Format32bppPArgb);
+                            // Con el interruptor JPEG: una portada SIN transparencia (casi todas) es opaca, pero al reducirla el
+                            // filtro mezclaba el borde con lo de fuera y lo dejaba semitransparente. Se reduce repitiendo su
+                            // propio borde y queda opaca de verdad, que es lo que permite guardarla en JPEG (SaveThumb). Las de
+                            // paleta (GIF) pueden traer un color transparente sin canal alfa: esas no cuentan como opacas.
+                            bool fuenteOpaca = JpegActivo && !Image.IsAlphaPixelFormat(src.PixelFormat)
+                                               && (src.PixelFormat & PixelFormat.Indexed) == 0 && (src.Flags & (int)ImageFlags.HasAlpha) == 0;
+                            using (Graphics g = Graphics.FromImage(thumb))
                             {
-                                borde.SetWrapMode(WrapMode.TileFlipXY);
-                                g.DrawImage(src, new Rectangle(0, 0, ThumbPx, ThumbPx), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, borde);
+                                g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // filtro original de la miniatura (1 vez por disco)
+                                g.PixelOffsetMode = PixelOffsetMode.Half;
+                                if (fuenteOpaca)
+                                    using (ImageAttributes borde = new ImageAttributes())
+                                    {
+                                        borde.SetWrapMode(WrapMode.TileFlipXY);
+                                        g.DrawImage(src, new Rectangle(0, 0, ThumbPx, ThumbPx), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, borde);
+                                    }
+                                else g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
                             }
-                        else g.DrawImage(src, 0, 0, ThumbPx, ThumbPx);
+                            if (fuenteOpaca) HazOpaca(thumb);
+                            if (cacheFile != null)
+                            {
+                                if (publicarPrimero)
+                                    try { pendiente = (Bitmap)thumb.Clone(); } catch { }
+                                if (pendiente == null) SaveThumb(thumb, cacheFile);
+                            }
+                            Bitmap hecha = thumb; thumb = null;
+                            return hecha;
+                        }
+                        finally { if (thumb != null) thumb.Dispose(); }   // fallo a medias (sin memoria al dibujar): la miniatura no se queda tirada
                     }
-                    if (fuenteOpaca) HazOpaca(thumb);
-                    if (cacheFile != null)
-                    {
-                        if (publicarPrimero)
-                            try { pendiente = (Bitmap)thumb.Clone(); } catch { }
-                        if (pendiente == null) SaveThumb(thumb, cacheFile);
-                    }
-                    return thumb;
                 }
+                finally { if (enorme) System.Threading.Monitor.Exit(CaratulaEnormeCerrojo); }
             }
             catch { return null; }
+        }
+        // LAS CARATULAS ENORMES, DE UNA EN UNA (24-10-2026). GDI+ descomprime la portada ENTERA para reducirla: un JPEG de 8000x8000
+        // pesa menos de 1 MB en el disco y pide 256 MB al descomprimirse. Los lectores de caratulas y el calentador trabajan a la vez, y
+        // dos o tres asi pedian el doble o el triple de golpe; en XP (32 bits, 1,3 GB de direcciones libres con el calentador en
+        // marcha el 23-10) eso puede dejar sin memoria a la pantalla o a la tarjeta. Las de mas de 16 millones de pixeles (64 MB)
+        // esperan su turno; las normales siguen a la vez y sin esperar. La miniatura sale igual (pruebas/caratulaenorme.cs).
+        internal const long PixelesCaratulaEnorme = 16L * 1024 * 1024;
+        private static readonly object CaratulaEnormeCerrojo = new object();
+        // Ancho y alto de un JPEG, PNG, GIF o BMP leidos de su cabecera, sin descomprimir nada. Falso si no se sabe (otro formato o
+        // una cabecera rara): entonces se decodifica como siempre, sin esperar turno.
+        internal static bool MedidaDeCabecera(byte[] d, int n, out int w, out int h)
+        {
+            w = h = 0;
+            if (d == null || n < 26 || n > d.Length) return false;
+            if (d[0] == 0x89 && d[1] == 0x50 && d[2] == 0x4E && d[3] == 0x47)   // PNG: IHDR
+            { w = (d[16] << 24) | (d[17] << 16) | (d[18] << 8) | d[19]; h = (d[20] << 24) | (d[21] << 16) | (d[22] << 8) | d[23]; return w > 0 && h > 0; }
+            if (d[0] == (byte)'G' && d[1] == (byte)'I' && d[2] == (byte)'F')
+            { w = d[6] | (d[7] << 8); h = d[8] | (d[9] << 8); return w > 0 && h > 0; }
+            if (d[0] == (byte)'B' && d[1] == (byte)'M')
+            { w = BitConverter.ToInt32(d, 18); h = Math.Abs(BitConverter.ToInt32(d, 22)); return w > 0 && h > 0; }
+            if (d[0] != 0xFF || d[1] != 0xD8) return false;
+            int i = 2;   // JPEG: se recorren los segmentos hasta el que trae la medida (SOF0 a SOF15, salvo DHT, JPG y DAC)
+            while (i + 9 < n)
+            {
+                if (d[i] != 0xFF) return false;
+                int m = d[i + 1];
+                if (m == 0xFF) { i++; continue; }   // relleno
+                if (m == 0xD8 || m == 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }   // sin largo
+                if (m == 0xD9 || m == 0xDA) return false;   // fin o datos: no habia medida
+                if (m >= 0xC0 && m <= 0xCF && m != 0xC4 && m != 0xC8 && m != 0xCC)
+                { h = (d[i + 5] << 8) | d[i + 6]; w = (d[i + 7] << 8) | d[i + 8]; return w > 0 && h > 0; }
+                int l = (d[i + 2] << 8) | d[i + 3];
+                if (l < 2) return false;
+                i += 2 + l;
+            }
+            return false;
         }
 
 #if ROCOLA_GPU
