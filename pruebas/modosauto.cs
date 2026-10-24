@@ -116,7 +116,10 @@ class ModosAuto
         Check((float)Get(Get(normal, "Tap"), "Excite") > 0.2f && (float)Get(Get(normal, "Bajo"), "Amount") > 0.2f && (bool)Get(Get(normal, "Sala"), "ConClaridad") && (bool)Get(Get(normal, "Sbr"), "Active"),
               "referencia: sin pedir nada, la cancion armada lleva su realce, su bajo, su claridad y su DSEE");
         AjustesCadena(true);
+        SetS("gravesLocalDb", 3); SetS("agudosLocalDb", -2);
         object sin = Arma();
+        SetS("gravesLocalDb", 0); SetS("agudosLocalDb", 0);
+        Check((double)Get(Get(sin, "Sala"), "mezcla") == 0.0 && (double)Get(Get(sin, "Sala"), "GravesAhora") == 0.0 && (double)Get(Get(sin, "Sala"), "AgudosAhora") == 0.0, "y nace SIN la claridad ni los graves y agudos del local (sin rampa que los desvanezca desde el principio)");
         Check((float)Get(Get(sin, "Tap"), "Excite") == 0f, "armada mientras dura «Escuchar sin mejoras», nace sin realce");
         Check((float)Get(Get(sin, "Bajo"), "Amount") == 0f && !(bool)Get(Get(sin, "Sala"), "ConClaridad") && !(bool)Get(Get(sin, "Sbr"), "Active"), "ni bajo, ni claridad, ni DSEE");
         float[] eq = (float[])Get(Get(sin, "Tap"), "EqDb"); float mx = 0f; if (eq != null) foreach (float v in eq) mx = Math.Max(mx, Math.Abs(v));
@@ -150,8 +153,9 @@ class ModosAuto
         Set(f, "integCache", dic);
         object[] a = { 0 };
         float[] medidos = (float[])TF.GetMethod("RangosMedidos", T, null, new Type[] { typeof(int).MakeByRefType() }, null).Invoke(f, a);
+        Array.Sort(medidos);   // ya no vienen ordenados: se ordenan detras, al armar el texto
         Check(medidos.Length == 2 && Math.Abs(medidos[0] - 8f) < 0.01f && Math.Abs(medidos[1] - 18f) < 0.01f && (int)a[0] == 1, "de la tabla real saca los rangos (8 y 18 dB), cuenta la vieja y no cuenta la muda");
-        // El rango de sonoridad (LRA, 24-10-2026): el reparto y las medidas de antes que aun no lo tienen.
+        // El rango de sonoridad (LRA, 23-10-2026): el reparto y las medidas de antes que aun no lo tienen.
         float[] lras = new float[50]; for (int i = 0; i < lras.Length; i++) lras[i] = i * 0.4f;   // de 0 a 19,6 LU
         string tl = (string)txt4.Invoke(null, new object[] { r, 0, lras, 7 });
         Check(tl.Contains("RANGO DE SONORIDAD") && tl.Contains("50 medidas") && tl.Contains("faltan 7") && tl.Contains("menos de 3 LU") && tl.Contains("20 LU o mas") && tl.Contains("Mediana 10.0 LU"), "el informe trae el reparto del rango de sonoridad y cuantas medidas de antes faltan por volver a medir");
@@ -164,7 +168,7 @@ class ModosAuto
         dic["f"] = Activator.CreateInstance(TInt, T, null, new object[] { 4, -12f, 2f, 1800, -1f, -2f, mud, 2.5f }, null);
         object[] b = { 0, null, 0 };
         float[] m2 = (float[])TF.GetMethod("RangosMedidos", T, null, new Type[] { typeof(int).MakeByRefType(), typeof(float[]).MakeByRefType(), typeof(int).MakeByRefType() }, null).Invoke(f, b);
-        float[] l2 = (float[])b[1];
+        float[] l2 = (float[])b[1]; Array.Sort(l2);
         Check(m2.Length == 4 && l2.Length == 2 && Math.Abs(l2[0] - 2.5f) < 0.001f && Math.Abs(l2[1] - 18.3f) < 0.001f && (int)b[2] == 3, "de la tabla real saca tambien los LRA (2,5 y 18,3) y cuenta las 3 medidas validas de antes que aun no lo tienen");
     }
 

@@ -1328,6 +1328,8 @@ namespace Rocola
             // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y, con sus interruptores de Ctrl+F3,
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             AjusteLocal loc = LocalDe(t);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion (LocalAuto.cs)
+            // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
+            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }
             c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:

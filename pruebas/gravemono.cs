@@ -418,7 +418,7 @@ class GraveMonoPrueba
     }
 
     // ================================================================================================
-    //  6b) SIN CHASQUIDO AL TOCAR EL MANDO (P6, 24-10-2026)
+    //  6b) SIN CHASQUIDO AL TOCAR EL MANDO (P6, 23-10-2026)
     // ================================================================================================
     // Una pasada de 4 s por la etapa; en el cuadro 'cambio' se llama a Ajusta(ancho1, sub1) (null = no se llama). Las lecturas se parten
     // justo en el cambio, como pasa cuando la ventana toca el mando entre dos lecturas del hilo del sonido.
@@ -466,6 +466,19 @@ class GraveMonoPrueba
         {
             Info(casos[c] + ": salto normal " + F(normal[c], "0.0000") + ", peor salto al cambiar " + F(peor[c], "0.0000") + " (" + F(20 * Math.Log10(Math.Max(1e-9, peor[c] / normal[c])), "+0.0;-0.0") + " dB sobre lo normal)");
             Check(peor[c] <= normal[c] * 1.25, casos[c] + " en vivo: el salto entre muestras no pasa de 2 dB sobre el normal (antes: 6 a 16 dB)");
+        }
+        // Lo mismo sin corte del grave en mono (grave_mono=0): el estereo tambien va en rampa aunque arranque apagado.
+        for (int c = 0; c < 2; c++)
+        {
+            double pe = 0, no = 0;
+            for (int off = 0; off < 60; off++)
+            {
+                int cambio = fs + off * 37;
+                float[] y = ConCambio(x, fs, 0f, c == 1, false, c == 0, null, cambio);
+                no = Math.Max(no, SaltoEn(y, cambio - 4000, cambio - 50)); pe = Math.Max(pe, SaltoEn(y, cambio - 1, cambio + 6));
+            }
+            Info("sin corte de grave, " + (c == 0 ? "encender" : "apagar") + " el estereo: salto normal " + F(no, "0.0000") + ", peor al cambiar " + F(pe, "0.0000"));
+            Check(pe <= no * 1.25, "sin corte del grave en mono (grave_mono=0), " + (c == 0 ? "encender" : "apagar") + " el estereo en vivo tampoco da chasquido");
         }
         // Despues de los 25 ms todo queda exactamente como si el mando hubiera estado asi desde el principio.
         int cam = fs + 1234, ya = cam + fs / 10;   // 100 ms despues

@@ -117,7 +117,7 @@ class ComparaCadena
             "de fabrica", "modo del local: billar", "modo del local: sala buena", "modo del local: bocinas chicas",
             "local a mano: todo encendido", "estereo a mano con S3 y subgrave", "DSEE, I1 y siseo encendidos", "videos, EQ y graves a mano"
         };
-        int distintos = 0, casos = 0;
+        int distintos = 0, casos = 0, esperadas = 0;
         for (int c = 0; c < nombres.Length; c++)
             foreach (int cual in new int[] { 0, 1 })   // 0: la medida (mucho rango); 1: la que no se midio
             {
@@ -141,13 +141,15 @@ class ComparaCadena
                 casos++;
                 bool igual = sal[0].Length == sal[1].Length;
                 for (int i = 0; igual && i < sal[0].Length; i++) if (BitConverter.ToInt32(BitConverter.GetBytes(sal[0][i]), 0) != BitConverter.ToInt32(BitConverter.GetBytes(sal[1][i]), 0)) igual = false;
-                // El modo automatico del local es lo unico que PUEDE cambiar (24-10-2026: P1 y P2 lo cambian a proposito): se dice, no se cuenta.
+                // El modo automatico del local es lo unico que PUEDE cambiar (23-10-2026: P1 y P2 lo cambian a proposito): se dice, no se cuenta.
+                if (!igual && nombres[c].StartsWith("modo del local")) esperadas++;
                 if (!igual && nombres[c].StartsWith("modo del local")) Console.WriteLine("  distinto  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + " (esperado: lo decide el modo automatico)");
                 else if (!igual) { distintos++; Console.WriteLine("  DISTINTO  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)")); }
                 else Console.WriteLine("  igual     " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + ": " + sal[0].Length + " muestras");
             }
         try { Directory.Delete(dir, true); } catch { }
-        Console.WriteLine(distintos == 0 ? "OK " + casos + " combinaciones con la cadena entera identica bit a bit" : "FALLO: " + distintos + " combinaciones distintas");
+        Console.WriteLine((casos - distintos - esperadas) + " iguales bit a bit, " + esperadas + " distintas esperadas (modo automatico del local), " + distintos + " distintas inesperadas");
+        Console.WriteLine(distintos == 0 ? "OK: con el modo automatico del local apagado, y en todo lo demas, la cadena sale identica bit a bit" : "FALLO: " + distintos + " combinaciones distintas sin esperarlas");
         return distintos == 0 ? 0 : 1;
     }
 }

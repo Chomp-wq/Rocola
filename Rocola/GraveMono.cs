@@ -63,7 +63,7 @@
 // el lado pasa del 60 % del medio (paneo extremo), se estrecha, entrando en un segundo; si baja del 35 %, vuelve a como
 // viene. En medio no cambia (para que no vaya y venga). Con el automatico apagado, todo sale bit a bit como antes.
 //
-// SIN CHASQUIDO AL TOCAR EL MANDO (P6, 24-10-2026). Encender o apagar el estereo estrecho o el subgrave con la cancion sonando (desde
+// SIN CHASQUIDO AL TOCAR EL MANDO (P6, 23-10-2026). Encender o apagar el estereo estrecho o el subgrave con la cancion sonando (desde
 // Ctrl+F3, o al cambiar el tipo de local del modo automatico) antes cambiaba el ancho o el filtro de golpe: un escalon en la onda, que
 // se oia como un "tic" (medido: el salto entre dos muestras seguidas llegaba a 6 y 8 dB sobre lo normal con el estereo y a 16 dB al
 // quitar el subgrave). Ahora el ancho que se aplica sigue al pedido en una rampa de 25 ms, y el subgrave entra y sale mezclando lo
@@ -380,6 +380,7 @@ namespace Rocola
             private void SinCruce(float[] b, int i, int cuadros)
             {
                 bool quiere = anchoOn && ancho != 1f;
+                if (!quiere && !anListo) { anRampa = 1.0; anListo = true; }   // arranca con el ancho entero: encenderlo en vivo despues va en rampa
                 if (quiere || (anListo && anRampa != 1.0))   // (o aun vuelve al ancho entero, en la rampa de 25 ms)
                 {
                     double an = quiere ? ancho : 1.0;

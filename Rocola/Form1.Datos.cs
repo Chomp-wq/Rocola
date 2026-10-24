@@ -1532,14 +1532,13 @@ namespace Rocola
                 int buenas, medias, pobres, recortadas, sinMedir;
                 CalidadResumen(out buenas, out medias, out pobres, out recortadas, out sinMedir);
                 string destino = CalidadFile();
-                int sinPicos, sinLra; float[] lras; float[] rg = RangosMedidos(out sinPicos, out lras, out sinLra);
-                string rangos = TextoRangos(rg, sinPicos, lras, sinLra);   // el reparto de los rangos (LocalAuto.cs); la tabla es de la pantalla
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir, rangos); });
+                int sinPicos, sinLra, sinPosible; float[] lras; float[] rg = RangosMedidos(out sinPicos, out lras, out sinLra, out sinPosible);   // solo copia los numeros (la tabla es de la pantalla); el texto se arma detras
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate { InformeCalidadFondo(lista, destino, buenas, medias, pobres, recortadas, sinMedir, rg, sinPicos, lras, sinLra, sinPosible); });
             }
             catch { }
         }
         private static void InformeCalidadFondo(List<KeyValuePair<string, float[]>> lista, string destino,
-                                                int buenas, int medias, int pobres, int recortadas, int sinMedir, string rangos)
+                                                int buenas, int medias, int pobres, int recortadas, int sinMedir, float[] rg, int sinPicos, float[] lras, int sinLra, int sinPosible)
         {
             try
             {
@@ -1553,6 +1552,7 @@ namespace Rocola
                 sb.Append("\r\n  POBRES (128k o menos):  ").Append(pobres.ToString("#,0"));
                 sb.Append("\r\n  Con picos recortados de origen: ").Append(recortadas.ToString("#,0"));
                 sb.Append("\r\n  Aun sin medir: ").Append(sinMedir.ToString("#,0"));
+                string rangos = TextoRangos(rg, sinPicos, lras, sinLra, sinPosible);   // el reparto de los rangos (LocalAuto.cs): ordenar y escribir, aqui detras
                 if (!string.IsNullOrEmpty(rangos)) sb.Append("\r\n\r\n").Append(rangos.TrimEnd('\r', '\n'));
                 sb.Append("\r\n\r\ncorte   recorte  archivo\r\n");
                 for (int i = 0; i < lista.Count; i++)

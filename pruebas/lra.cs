@@ -6,7 +6,7 @@ using System.IO;
 using System.Reflection;
 using NAudio.Wave;
 
-// EL RANGO DE SONORIDAD (LRA, EBU Tech 3342) EN LA MEDIDA DEL REPASO (Rocola/Sonoridad.cs, 24-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md, P2).
+// EL RANGO DE SONORIDAD (LRA, EBU Tech 3342) EN LA MEDIDA DEL REPASO (Rocola/Sonoridad.cs, 23-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md, P2).
 // El medidor de sonoridad (MedidorBs1770) saca ahora, ademas de la integrada y los picos, cuanto varia el volumen de la cancion en el tiempo:
 // ventanas de 3 s cada 100 ms con ponderacion K, puerta absoluta de -70 LUFS, relativa de -20 LU, percentiles 10 y 95. Se comprueba:
 //  1) Los casos de la norma EBU Tech 3342 (tonos de 1 kHz escalonados), con su tolerancia de +-1 LU.
@@ -134,7 +134,7 @@ class LraPrueba
     {
         Console.WriteLine("\n  3) CONTRA UNA REFERENCIA INDEPENDIENTE (pruebas/ref_lra.py)\n");
         int cod; string o = Python("-c \"import numpy\"", out cod);
-        if (o == null || cod != 0) { Check(true, "(sin Python con numpy: la comparacion con la referencia independiente se salta y se dice)"); return; }
+        if (o == null || cod != 0) { Info("AVISO (no cuenta como comprobacion): sin Python con numpy no se compara con la referencia independiente"); return; }
         double[][] p1 = { new double[] { -26, 9 }, new double[] { -14, 11 }, new double[] { -999, 4 }, new double[] { -34, 8 }, new double[] { -20, 6 } };
         double[][] p2 = { new double[] { -18, 12 }, new double[] { -30, 7 }, new double[] { -22, 10.3 } };
         double[][] p3 = { new double[] { -16, 20 }, new double[] { -17, 5 } };   // casi parejo
@@ -267,7 +267,7 @@ class LraPrueba
         double nuevo = NsPorMuestra(asm);
         Info("medir 60 s de estereo a 44,1 kHz: " + F(nuevo, "0.00") + " ns por muestra con el LRA (Mono/Linux, no el A4)");
         string ant = Environment.GetEnvironmentVariable("ROCOLA_EXE_ANTERIOR");
-        if (string.IsNullOrEmpty(ant) || !File.Exists(ant)) { Check(true, "(sin ROCOLA_EXE_ANTERIOR: la comparacion de coste y la lectura por un ejecutable anterior se saltan y se dicen)"); return; }
+        if (string.IsNullOrEmpty(ant) || !File.Exists(ant)) { Info("AVISO (no cuenta como comprobacion): sin ROCOLA_EXE_ANTERIOR no se compara el coste ni se prueba la lectura por un ejecutable anterior"); return; }
         Assembly vieja = Assembly.Load(File.ReadAllBytes(ant));
         double antes = NsPorMuestra(vieja);
         Info("el ejecutable anterior: " + F(antes, "0.00") + " ns por muestra (diferencia " + F(nuevo - antes, "+0.00;-0.00") + " ns, " + F(100.0 * (nuevo - antes) / antes, "+0.0;-0.0") + " %)");

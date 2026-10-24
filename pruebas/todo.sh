@@ -238,7 +238,7 @@ CPU="$CPU mp3mezclado"
 # local, la barra de los videos, "a la medida" sin modelo), «Escuchar sin mejoras» en la cancion que se arma mientras dura, el reparto
 # de los rangos de la biblioteca y las medidas de las propuestas (solo informan).
 CPU="$CPU modosauto"
-# 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (24-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
+# 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con
 # ROCOLA_EXE_ANTERIOR=<ejecutable de antes> ademas compara el coste y comprueba que ese lee el archivo nuevo sin perder nada.

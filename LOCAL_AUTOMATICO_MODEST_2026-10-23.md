@@ -13,11 +13,11 @@ Sin micrófono la rocola no oye el local, así que decide con dos cosas que sí 
 
 | Tipo de local | Fijo para todas las canciones | Por canción |
 | --- | --- | --- |
-| Bocinas repartidas del billar | sin subgrave, estéreo estrecho **solo donde hace falta** (S3), claridad, **partes suaves siempre** (P1, 24-10) | presencia desde 10 LU de rango de sonoridad (P2, 24-10) |
+| Bocinas repartidas del billar | sin subgrave, estéreo estrecho **solo donde hace falta** (S3), claridad, **partes suaves siempre** (P1, 23-10) | presencia desde 10 LU de rango de sonoridad (P2, 23-10) |
 | Sala con bocinas buenas | nada: el tono no se toca | partes suaves solo desde 14 LU de rango de sonoridad |
 | Bocinas chicas | sin subgrave, claridad, +1 dB de agudos, **partes suaves siempre** (P1) | nada (sin presencia) |
 
-**Cambio del 24 de octubre de 2026** (el dueño eligió P1, P2 y P6 de `MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md`). Antes decidía el «rango» de cada canción = P99 de sus picos menos su sonoridad, que mide picos contra promedio y no cuánto se calla la canción (un rock de golpes secos pasaba los cortes sin tener nada suave; un pop con intro bajita, no). Ahora:
+**Cambio del 23 de octubre de 2026** (el dueño eligió P1, P2 y P6 de `MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md`). Antes decidía el «rango» de cada canción = P99 de sus picos menos su sonoridad, que mide picos contra promedio y no cuánto se calla la canción (un rock de golpes secos pasaba los cortes sin tener nada suave; un pop con intro bajita, no). Ahora:
 
 - **Partes suaves, siempre** en el billar y en las bocinas chicas. La etapa ya se frena sola por nivel (solo sube lo que va 12 dB bajo el objetivo, hasta 4 dB): en una canción pareja mide 0,0 dB, en una con intro suave sube hasta +3,9 dB.
 - **Presencia (billar) y partes suaves de la sala** según el **rango de sonoridad (LRA, EBU Tech 3342)**: cuánto varía el volumen de la canción en el tiempo (ventanas de 3 s con ponderación K, puertas de −70 LUFS y de −20 LU, percentiles 10 y 95), que el repaso guarda en `rocola_sonoridad.txt` (algoritmo 4). Cortes: **10 LU** la presencia del billar, **14 LU** las partes suaves de la sala (ayuda más parca, como antes con 16 dB de picos). Las bocinas chicas y la sala buena no llevan presencia (como antes). Una balada o una canción con intro suave ronda 11 a 18 LU; un tema parejo, menos de 3.

@@ -39,7 +39,7 @@ class LocalAutoPrueba
         Console.WriteLine("\n  1) LA TABLA POR TIPO DE LOCAL Y RANGO\n");
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
         Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad"), "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, en cualquier cancion");
-        // P1 (24-10-2026): las partes suaves van SIEMPRE en el billar y en las bocinas chicas (la etapa se frena sola por nivel).
+        // P1 (23-10-2026): las partes suaves van SIEMPRE en el billar y en las bocinas chicas (la etapa se frena sola por nivel).
         Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1 billar: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia"), "billar, sin rango de sonoridad y de poco rango: sin presencia");
         Check(B(b2, "Presencia"), "billar, de muchisimo rango (regla de antes, P99 - sonoridad): presencia");
@@ -52,7 +52,7 @@ class LocalAutoPrueba
         Check(B(c1, "Suaves") && B(c0, "Suaves") && B(Auto(2, -1f), "Suaves"), "P1 bocinas chicas: las partes suaves siempre (tambien las de poco rango y las sin medir)");
         Check(!B(Auto(0, muy - 0.01f), "Presencia") && B(Auto(0, muy), "Presencia"), "el corte de la regla de antes (" + muy + " dB) para la presencia vale justo en su valor");
         Check(B(Auto(0, float.NaN), "Suaves") && !B(Auto(0, float.NaN), "Presencia") && B(Auto(99, 5f), "Subgrave") == B(Auto(2, 5f), "Subgrave") && B(Auto(-4, 5f), "Estrecho"), "un tipo o un rango fuera de lo posible no truena (se queda en el mas cercano)");
-        // P2 (24-10-2026): la presencia del billar y las partes suaves de la sala, por el rango de sonoridad (LRA).
+        // P2 (23-10-2026): la presencia del billar y las partes suaves de la sala, por el rango de sonoridad (LRA).
         float lraP = (float)TF.GetField("LraPresenciaLu", T).GetValue(null), lraS = (float)TF.GetField("LraSalaLu", T).GetValue(null);
         Check(lraP == 10f && lraS == 14f, "los cortes del rango de sonoridad: " + lraP + " LU la presencia del billar, " + lraS + " LU las partes suaves de la sala");
         Check(B(AutoLra(0, 3f, lraP), "Presencia") && !B(AutoLra(0, 3f, lraP - 0.01f), "Presencia"), "P2 billar: la presencia desde 10 LU de rango de sonoridad, justo en su valor");

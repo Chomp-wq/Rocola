@@ -129,7 +129,9 @@ namespace Rocola
         // ¿El volumen base de los videos lo esta eligiendo el programa DE VERDAD? Solo en automatico, con el nivelado encendido y con
         // bastantes videos medidos; en cualquier otro caso VideoBase devuelve la perilla, y la perilla tiene que poder moverse (en la
         // rocola con Windows XP los videos no se miden: ahi el automatico de fabrica nunca elige nada). Lo usa Ctrl+F3.
-        private bool VideoAutoManda(bool automatico, bool nivelar) { return automatico && nivelar && VideosMedidos() >= VideoMinMedidos; }
+        private bool VideoAutoManda(bool automatico, bool nivelar) { return automatico && nivelar && VideoHayMedidas(VideosMedidos()); }
+        // Un solo predicado para VideoBase y para Ctrl+F3: con estos videos medidos (y un objetivo de nivelado con sentido) el programa elige.
+        private bool VideoHayMedidas(int medidos) { return medidos >= VideoMinMedidos && normTarget > 0.0001f; }
         private int VideoBase()
         {
             if (!videoAuto || !normalizeOn) return videoVol;   // sin nivelado no hay nada que emparejar: manda la perilla
@@ -155,7 +157,7 @@ namespace Rocola
                     }
                 }
             }
-            if (nec.Count < VideoMinMedidos) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
+            if (!VideoHayMedidas(nec.Count)) { videoBaseAuto = videoVol; return videoBaseAuto; }   // sin medidas suficientes: la perilla
             nec.Sort();
             int v = (int)Math.Round(nec[(int)(nec.Count * VideoAutoFuera)]);
             if (v < VideoBaseMin) v = VideoBaseMin; else if (v > 100) v = 100;

@@ -7,7 +7,7 @@
 //       - Bocinas repartidas del billar: sin subgrave, estereo estrecho solo donde hace falta (S3), claridad.
 //       - Sala con bocinas buenas: no se toca el tono; solo se ayuda a las canciones de mucho rango.
 //       - Bocinas chicas: sin subgrave, claridad y un poco mas de agudos (+1 dB).
-//  2. CADA CANCION, con lo que el repaso ya midio de ella. Desde el 24-10-2026 (el dueno eligio P1 y P2 de
+//  2. CADA CANCION, con lo que el repaso ya midio de ella. Desde el 23-10-2026 (el dueno eligio P1 y P2 de
 //     MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md):
 //       - PARTES SUAVES (billar y bocinas chicas): SIEMPRE encendidas. La etapa ya se frena sola por nivel (solo sube lo que va 12 dB
 //         bajo el objetivo, hasta 4 dB): en una cancion pareja no hace nada, y la que tiene una intro o una estrofa bajita la recibe.
@@ -88,7 +88,7 @@ namespace Rocola
             if (path == null || t == null || !t.TryGetValue(path, out s)) return -1f;
             return RangoDe(s);
         }
-        // El rango de sonoridad (LRA, en LU) de la cancion con lo ya medido, o -1 si no hay (medida de antes del 24-10-2026, cancion muy corta).
+        // El rango de sonoridad (LRA, en LU) de la cancion con lo ya medido, o -1 si no hay (medida de antes del 23-10-2026, cancion muy corta).
         internal float LraDeCancion(string path)
         {
             System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
@@ -109,9 +109,12 @@ namespace Rocola
         // enteras de una version vieja no los tienen (el repaso las vuelve a medir).
         private float[] RangosMedidos(out int sinPicos) { float[] lras; int sinLra; return RangosMedidos(out sinPicos, out lras, out sinLra); }
         // Y los rangos de sonoridad (LRA) de las que ya lo tienen, y cuantas medidas validas aun no (el repaso las vuelve a medir).
-        private float[] RangosMedidos(out int sinPicos, out float[] lras, out int sinLra)
+        private float[] RangosMedidos(out int sinPicos, out float[] lras, out int sinLra) { int sinPosible; return RangosMedidos(out sinPicos, out lras, out sinLra, out sinPosible); }
+        // 'sinPosible': medidas de este algoritmo sin LRA porque no pueden tenerlo (menos de 3 s): el repaso no las vuelve a medir.
+        // Solo copia los numeros (sin ordenar): el que arma el texto los ordena en el hilo de fondo que escribe el informe.
+        private float[] RangosMedidos(out int sinPicos, out float[] lras, out int sinLra, out int sinPosible)
         {
-            sinPicos = 0; sinLra = 0; lras = new float[0];
+            sinPicos = 0; sinLra = 0; sinPosible = 0; lras = new float[0];
             System.Collections.Generic.Dictionary<string, SonoridadIntegrada> t = integCache;
             if (t == null) return new float[0];
             System.Collections.Generic.List<float> r = new System.Collections.Generic.List<float>(t.Count);
@@ -120,18 +123,22 @@ namespace Rocola
             {
                 SonoridadIntegrada s = kv.Value;
                 if (!s.Valida || s.Muda) continue;
-                if (s.ConLra) q.Add(s.Lra); else sinLra++;
+                if (s.ConLra) q.Add(s.Lra); else if (s.Algoritmo >= MedidorBs1770.Algoritmo) sinPosible++; else sinLra++;
                 float x = RangoDe(s);
                 if (x < 0f) { if (!s.ConPicos) sinPicos++; continue; }
                 r.Add(x);
             }
-            r.Sort(); q.Sort(); lras = q.ToArray();
+            lras = q.ToArray();
             return r.ToArray();
         }
 
         internal static string TextoRangos(float[] ordenados, int sinPicos) { return TextoRangos(ordenados, sinPicos, null, 0); }
-        internal static string TextoRangos(float[] ordenados, int sinPicos, float[] lrasOrdenados, int sinLra)
+        internal static string TextoRangos(float[] ordenados, int sinPicos, float[] lrasOrdenados, int sinLra) { return TextoRangos(ordenados, sinPicos, lrasOrdenados, sinLra, 0); }
+        // Los numeros pueden venir sin ordenar: aqui se ordena una copia.
+        internal static string TextoRangos(float[] ordenados, int sinPicos, float[] lrasOrdenados, int sinLra, int sinLraPosible)
         {
+            if (ordenados != null) { ordenados = (float[])ordenados.Clone(); Array.Sort(ordenados); }
+            if (lrasOrdenados != null) { lrasOrdenados = (float[])lrasOrdenados.Clone(); Array.Sort(lrasOrdenados); }
             CultureInfo ic = CultureInfo.InvariantCulture;
             int n = ordenados == null ? 0 : ordenados.Length;
             System.Text.StringBuilder sb = new System.Text.StringBuilder(900);
@@ -141,7 +148,7 @@ namespace Rocola
             sb.Append("  Medidas con picos: ").Append(n.ToString("#,0", ic));
             if (sinPicos > 0) sb.Append("   (otras ").Append(sinPicos.ToString("#,0", ic)).Append(" son de una version vieja, sin picos: el repaso las vuelve a medir)");
             sb.Append("\r\n");
-            if (n == 0) { sb.Append("  Aun no hay ninguna: deja que el repaso vaya midiendo.\r\n"); AnadeLra(sb, lrasOrdenados, sinLra, ic); return sb.ToString(); }
+            if (n == 0) { sb.Append("  Aun no hay ninguna: deja que el repaso vaya midiendo.\r\n"); AnadeLra(sb, lrasOrdenados, sinLra, sinLraPosible, ic); return sb.ToString(); }
             float[] bordes = { 6f, 8f, 10f, 12f, 14f, 16f };
             int[] cuenta = new int[bordes.Length + 1];
             for (int i = 0; i < n; i++) { int b = 0; while (b < bordes.Length && ordenados[i] >= bordes[b]) b++; cuenta[b]++; }
@@ -152,15 +159,16 @@ namespace Rocola
             for (int i = 0; i < n; i++) { if (ordenados[i] >= RangoAltoDb) altas++; if (ordenados[i] >= RangoMuyAltoDb) muyAltas++; }
             sb.Append("  Mediana ").Append(ordenados[n / 2].ToString("0.0", ic)).Append(" dB, la de 9 de cada 10 canciones ").Append(ordenados[Math.Min(n - 1, (int)(n * 0.9))].ToString("0.0", ic)).Append(" dB.\r\n");
             sb.Append("  Con 12 dB o mas: ").Append(altas.ToString("#,0", ic)).Append(" canciones (").Append((100.0 * altas / n).ToString("0.0", ic)).Append(" %); con 16 dB o mas: ").Append(muyAltas.ToString("#,0", ic)).Append(" (").Append((100.0 * muyAltas / n).ToString("0.0", ic)).Append(" %). Es la regla de las medidas de antes, que aun no tienen rango de sonoridad.\r\n");
-            AnadeLra(sb, lrasOrdenados, sinLra, ic);
+            AnadeLra(sb, lrasOrdenados, sinLra, sinLraPosible, ic);
             return sb.ToString();
         }
         // El rango de sonoridad (LRA, EBU Tech 3342): lo que decide la presencia del billar (10 LU) y las partes suaves de la sala (14 LU).
-        private static void AnadeLra(System.Text.StringBuilder sb, float[] lras, int sinLra, CultureInfo ic)
+        private static void AnadeLra(System.Text.StringBuilder sb, float[] lras, int sinLra, int sinLraPosible, CultureInfo ic)
         {
             int m = lras == null ? 0 : lras.Length;
             sb.Append("  RANGO DE SONORIDAD (LRA, lo que varia el volumen en el tiempo; un tema parejo, menos de 3 LU; una balada, 10 a 20): ").Append(m.ToString("#,0", ic)).Append(" medidas");
             if (sinLra > 0) sb.Append("   (faltan ").Append(sinLra.ToString("#,0", ic)).Append(": con el modo automatico del local apagado no se vuelven a medir; con el modo encendido el repaso las mide en segundo plano; mientras, rige la regla de arriba)");
+            if (sinLraPosible > 0) sb.Append("   (otras ").Append(sinLraPosible.ToString("#,0", ic)).Append(" no pueden tenerlo: duran menos de 3 s)");
             sb.Append("\r\n");
             if (m == 0) return;
             float[] bordes = { 3f, 6f, 10f, 14f, 20f };
