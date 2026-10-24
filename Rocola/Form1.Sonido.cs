@@ -222,8 +222,11 @@ namespace Rocola
             // cuenta esta en GananciaNivelado (Sonoridad.cs).
             float cap = (float)Math.Pow(10.0, TierCapDb(rms) / 20.0);
             if (cap > NormMaxBoost) cap = NormMaxBoost;   // NormMaxBoost sigue siendo el techo absoluto de seguridad
-            float pico, p99;
+            float pico, p99, p90;
             bool hayPicos = PicosParaNivelar(path, out pico, out p99);
+            // Con la medida nueva (algoritmo 5, con el P90): hasta su limite, sin objetivo (GananciaAlLimite, Sonoridad.cs). Con una de antes,
+            // la regla de antes mientras la tanda larga la vuelve a medir.
+            if (hayPicos && P90ParaNivelar(path, out p90)) return GananciaAlLimite(normStrength, pico, p99, p90);
             return GananciaNivelado(normTarget, rms, normStrength, cap, hayPicos, pico, p99);
         }
 

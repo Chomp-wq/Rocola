@@ -18,6 +18,10 @@
 // se nivela por su cuenta. Las pistas de menos de 30 s (intros, cortinillas) no cuentan para la dispersion: en un disco de
 // verdad siempre hay una. Tampoco lleva interruptor.
 //
+// AL LIMITE (24-10-2026). Con todas sus pistas medidas con el algoritmo 5 (con el P90), el disco entero sube hasta el limite de su
+// pista mas exigente (los picos y el P90 mas altos de todas, GananciaAlLimite): ninguna se raspa, y las bajitas siguen sonando por
+// debajo, como en el disco. Si falta alguna medida nueva, la regla de antes, hacia el objetivo, mientras la tanda larga las mide.
+//
 // La cancion que YA suena conserva la ganancia con la que empezo aunque despues se pida otra de su disco: cambiarla a
 // media cancion se oiria. La racha cuenta desde la siguiente.
 using System;
@@ -88,7 +92,7 @@ namespace Rocola
         {
             g = 1f;
             if (!normalizeOn || normStrength <= 0.001f || pistas == null || integCache == null) return false;
-            double peso = 0, pot = 0; float pico = 0f, p99 = 0f; bool picos = true, esta = false; int medidas = 0;
+            double peso = 0, pot = 0; float pico = 0f, p99 = 0f, p90 = 0f; bool picos = true, conP90 = true, esta = false; int medidas = 0;
             float rmsMin = float.MaxValue, rmsMax = 0f;
             for (int i = 0; i < pistas.Count; i++)
             {
@@ -103,9 +107,11 @@ namespace Rocola
                 if (string.Equals(tr.Path, ruta, StringComparison.OrdinalIgnoreCase)) esta = true;
                 if (s.ConPicos) { pico = Math.Max(pico, DbALin(s.PicoDb)); p99 = Math.Max(p99, DbALin(s.P99Db)); }
                 else picos = false;
+                if (s.ConP90) p90 = Math.Max(p90, DbALin(s.P90Db)); else conP90 = false;
             }
             if (!esta || medidas < 2 || medidas * 2 < pistas.Count || !(peso > 0)) return false;
             if (rmsMax > 0f && rmsMin < float.MaxValue && rmsMax > rmsMin * (float)Math.Pow(10.0, DispersionDiscoDb / 20.0)) return false;   // recopilatorio: cancion por cancion
+            if (picos && conP90) { g = GananciaAlLimite(normStrength, pico, p99, p90); return true; }   // todas con la medida nueva: al limite
             float rmsDisco = (float)Math.Sqrt(pot / peso);
             float cap = (float)Math.Pow(10.0, TierCapDb(rmsDisco) / 20.0);
             if (cap > NormMaxBoost) cap = NormMaxBoost;

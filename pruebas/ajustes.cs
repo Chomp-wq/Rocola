@@ -145,11 +145,11 @@ class Ajustes
 
         // ---- tarjeta VOLUMEN (16,70,456,400) ----
         int vx = 16, vy = 100;
-        CSw("nivelar", vx + 16, vy + 40, 424, 26, "Nivelar el volumen de todas las canciones", fNom, 10f);
+        CSw("nivelar", vx + 16, vy + 40, 424, 26, "Subir cada cancion hasta su limite", fNom, 10f);
         Fila("objetivo", vx, vy, 76, "Volumen objetivo", "100%",
-             "Que tan fuerte queda el conjunto.\nMas alto = todas las canciones suenan mas fuerte.", false);
+             "Solo para las que el repaso aun no midio de nuevo:\nsuben hacia aqui; las ya medidas, hasta su limite.", false);
         Fila("fuerza", vx, vy, 156, "Fuerza del nivelado", "100%",
-             "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.", false);
+             "Cuanto de su margen usa cada cancion: 100 % = hasta\nsu limite, sin que el limitador las raspe.", false);
         Fila("subir", vx, vy, 236, "Subir TODO el volumen", "+12 dB",
              "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.", false);
         Fila("videos", vx, vy, 316, "Volumen de los videos", "100%",

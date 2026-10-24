@@ -368,6 +368,7 @@ namespace Rocola
             MapaSilencios m = s.Silencios;
             h = Mezcla(h, m.Desde); h = Mezcla(h, m.Hasta); h = Mezcla(h, m.HuecoDesde); h = Mezcla(h, m.HuecoHasta); h = Mezcla(h, m.Dura);
             if (s.Algoritmo >= 4) h = Mezcla(h, s.Lra);
+            if (s.Algoritmo >= 5) h = Mezcla(h, s.P90Db);
             return h;
         }
 

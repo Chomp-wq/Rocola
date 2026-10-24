@@ -771,7 +771,7 @@ namespace Rocola
                     // que con la letra de Windows se queda a un pelo justo de dos, y el segundo salia cortado
                     // ("...NUNCA se" y ahi se acababa). Ahora 32, y ademas cada texto lleva escrito a mano donde
                     // parte, para que no dependa de lo ancha que sea la letra en cada equipo.
-                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 100, 456, 398); tVol.Titulo = "VOLUMEN PAREJO"; tVol.Acento = cVol;
+                    Tarjeta tVol = new Tarjeta(); tVol.SetBounds(16, 100, 456, 398); tVol.Titulo = "VOLUMEN AL LIMITE"; tVol.Acento = cVol;
                     Tarjeta tCal = new Tarjeta(); tCal.SetBounds(488, 100, 456, 398); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
                     Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 508, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
@@ -803,7 +803,7 @@ namespace Rocola
                     // ---------------- VOLUMEN PAREJO ----------------
                     Interruptor swOn = new Interruptor();
                     swOn.SetBounds(16, 40, 424, 26); swOn.ForeColor = cTexto; swOn.Font = fNom;
-                    swOn.Text = "Nivelar el volumen de todas las canciones"; swOn.Acento = cVol; swOn.Checked = normalizeOn;
+                    swOn.Text = "Subir cada cancion hasta su limite"; swOn.Acento = cVol; swOn.Checked = normalizeOn;
                     tVol.Controls.Add(swOn);
                     Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
                     Fila(1, tVol, 156, "Fuerza del nivelado", cFue, 0, 100, false);
@@ -1174,9 +1174,9 @@ namespace Rocola
                     {
                         // ---------- VOLUMEN ----------
                         val[0].Text = bar[0].Value + "%";
-                        des[0].Text = "Que tan fuerte queda el conjunto.\nMas alto = todas las canciones suenan mas fuerte.";
+                        des[0].Text = "Solo para las que el repaso aun no midio de nuevo:\nsuben hacia aqui; las ya medidas, hasta su limite.";
                         val[1].Text = bar[1].Value + "%";
-                        des[1].Text = "Cuanto se suben las canciones bajitas.\nLas muy fuertes se bajan un poco (4 dB como mucho).";
+                        des[1].Text = "Cuanto de su margen usa cada cancion: 100 % = hasta\nsu limite, sin que el limitador las raspe.";
                         val[2].Text = "+" + bar[2].Value + " dB";
                         des[2].Text = TextoSubir(bar[2].Value);   // cuanto aguanta la musica y cuanto se aplica (SubirTodo.cs)
                         // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo

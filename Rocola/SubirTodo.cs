@@ -13,6 +13,11 @@
 // techo y Ctrl+F3 lo dice ("pides +6, tu musica aguanta +3: se aplican +3"). Con menos de 20 canciones con los picos
 // medidos no se puede saber y se aplica lo pedido, como antes. Para mas volumen que eso, el amplificador.
 //
+// AL LIMITE (24-10-2026). El dueno decidio lo que aqui se habia descartado: cada cancion medida con el algoritmo 5 sube hasta
+// su limite sin rasparse (GananciaAlLimite, Sonoridad.cs). Esas ya no tienen holgura (HolguraAlLimiteDb = 0 con la fuerza al
+// 100 %): cuando casi toda la biblioteca este medida asi, "Subir TODO" dira que la musica ya va al limite y no subira nada. Con
+// la fuerza por debajo del 100 % les queda margen, y lo de antes (algoritmos 1 a 4) cuenta con su holgura de siempre.
+//
 // COSTE. El techo se calcula recorriendo la tabla de medidas y se guarda: se rehace si cambian los ajustes del nivelado
 // (en la pantalla, al momento: es un ajuste de Ctrl+F3) o, como mucho una vez por minuto, si llegaron medidas nuevas.
 // Esto ultimo pasa sin parar mientras se mide la biblioteca, y la cuenta se pedia desde el latido de la pantalla (el
@@ -55,9 +60,18 @@ namespace Rocola
             return (float)(Math.Floor(h[fuera] * 10.0) / 10.0);   // a la decima, hacia abajo
         }
 
+        // Lo que le queda a una cancion medida con el algoritmo 5 (con el P90) hasta su limite sin rasparse, encima de su nivelado. Con
+        // el nivelado al limite (24-10-2026) las niveladas ya estan en el: 0, y "Subir TODO" lo dice.
+        internal static float HolguraAlLimiteDb(float ganancia, float picoLin, float p99Lin, float p90Lin)
+        {
+            float t = LimiteSinRaspar(picoLin, p99Lin, p90Lin) / Math.Max(ganancia, 1e-6f);
+            if (!(t > 1f)) return 0f;
+            return (float)(20.0 * Math.Log10(t));
+        }
         private static float GananciaDeTabla(SonoridadIntegrada s, bool nivela, float objetivo, float fuerza)
         {
             if (!nivela || fuerza <= 0.001f) return 1f;
+            if (s.ConP90) return GananciaAlLimite(fuerza, DbALin(s.PicoDb), DbALin(s.P99Db), DbALin(s.P90Db));
             float rms = s.RmsPorCanal;
             if (!(rms > 0.0001f)) return 1f;
             float cap = (float)Math.Pow(10.0, TierCapDb(rms) / 20.0);
@@ -74,7 +88,8 @@ namespace Rocola
                 foreach (SonoridadIntegrada s in valores)
                 {
                     if (!s.Valida || !s.ConPicos || s.Muda || float.IsNaN(s.PicoDb) || s.PicoDb <= PicosBloques.Nada) continue;
-                    h[n++] = HolguraDb(GananciaDeTabla(s, nivela, objetivo, fuerza), DbALin(s.PicoDb), DbALin(s.P99Db));
+                    float g = GananciaDeTabla(s, nivela, objetivo, fuerza);
+                    h[n++] = s.ConP90 ? HolguraAlLimiteDb(g, DbALin(s.PicoDb), DbALin(s.P99Db), DbALin(s.P90Db)) : HolguraDb(g, DbALin(s.PicoDb), DbALin(s.P99Db));
                 }
             }
             medidas = n;

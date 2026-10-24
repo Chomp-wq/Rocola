@@ -122,13 +122,13 @@ class VistaF3
         dlg.Controls.Add(Lab(22, 12, 700, 28, "Sonido", fTit, Color.FromArgb(232,238,255), ContentAlignment.TopLeft));
         dlg.Controls.Add(Lab(24, 44, 916, 18, "Todo lo que cambies aqui se oye al instante en la cancion que esta sonando.", fSub, cTenue, ContentAlignment.TopLeft));
 
-        Control tVol = Tarj(16, 70, 456, 400, "VOLUMEN PAREJO", cVol, fSub);
+        Control tVol = Tarj(16, 70, 456, 400, "VOLUMEN AL LIMITE", cVol, fSub);
         Control tCal = Tarj(488, 70, 456, 400, "CALIDAD DEL SONIDO", cCal, fSub);
         Control tBib = Tarj(16, 480, 928, 160, "TU BIBLIOTECA", cBib, fSub);
 
-        tVol.Controls.Add(Inter(16, 40, 424, "Nivelar el volumen de todas las canciones", cVol, true, fNom, cTexto, true));
-        Fila(tVol, 76, "Volumen objetivo", cVol, 0, 100, 62, "62%", "Que tan fuerte queda el conjunto.\nMas alto = todas las canciones suenan mas fuerte.", false, false, true);
-        Fila(tVol, 156, "Fuerza del nivelado", cFue, 0, 100, 100, "100%", "Cuanto se suben las canciones bajitas.\nLas que ya suenan fuerte NUNCA se bajan.", false, false, true);
+        tVol.Controls.Add(Inter(16, 40, 424, "Subir cada cancion hasta su limite", cVol, true, fNom, cTexto, true));
+        Fila(tVol, 76, "Volumen objetivo", cVol, 0, 100, 62, "62%", "Solo para las que el repaso aun no midio de nuevo:\nsuben hacia aqui; las ya medidas, hasta su limite.", false, false, true);
+        Fila(tVol, 156, "Fuerza del nivelado", cFue, 0, 100, 100, "100%", "Cuanto de su margen usa cada cancion: 100 % = hasta\nsu limite, sin que el limitador las raspe.", false, false, true);
         Fila(tVol, 236, "Subir TODO el volumen", cSub, 0, 12, 3, "+3 dB", "De mas para TODAS, ademas del nivelado.\nPara cuando el local se queda corto de volumen.", false, false, true);
         Fila(tVol, 316, "Volumen de los videos", cVid, 0, 100, 85, "85%", "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.", false, false, true);
 

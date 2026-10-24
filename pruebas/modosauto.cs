@@ -541,7 +541,7 @@ class ModosAuto
         Marca(estrecho, false);
 
         // La barra de los videos: en gris solo si el automatico de verdad elige.
-        Control nivelar = PorTexto(dlg, "Interruptor", "Nivelar el volumen"), barra = null, auto = null;
+        Control nivelar = PorTexto(dlg, "Interruptor", "Subir cada cancion hasta su limite"), barra = null, auto = null;
         if (nivelar != null)
         {   // en la tarjeta del volumen: la cuarta barra es la de los videos y su "Auto" es el unico interruptor con ese texto
             int k = 0;

@@ -47,7 +47,10 @@ namespace Rocola
         //      tiempo (ventanas de 3 s, puertas de -70 LUFS y de -20 LU, percentiles 10 y 95). Las de 3 (y 2, y 1) siguen valiendo
         //      para nivelar mientras el repaso las vuelve a medir; sin LRA, el modo del local usa su regla de antes (P99 - sonoridad).
         //      Un ejecutable anterior guarda las de 4 como ajenas, intactas.
-        internal const int Algoritmo = 4;
+        //   5  (24 de octubre de 2026) ademas el P90 de los picos por bloque (el pico que solo superan el 10 % de los bloques de 100 ms con
+        //      sonido): con el, cada cancion se sube hasta su limite sin rasparse (GananciaAlLimite). Las de 4 (y 3, 2, 1) siguen nivelando
+        //      con la regla de antes mientras la tanda larga las vuelve a medir. Un ejecutable anterior guarda las de 5 como ajenas.
+        internal const int Algoritmo = 5;
         internal const double PuertaAbsoluta = -70.0;   // LKFS
         internal const double PuertaRelativa = -10.0;   // LU respecto de la media de lo que paso la absoluta
         internal const double Desfase = -0.691;         // la constante de la definicion de LKFS
@@ -470,22 +473,25 @@ namespace Rocola
             return m;
         }
         // El P99, contando tambien el bloque a medias del final. Sin bloques con sonido, el pico.
-        internal float P99Db
+        internal float P99Db { get { return PercentilDb(Fraccion); } }
+        // El P90 (desde el algoritmo 5): donde esta el grueso de la cancion. Con el se distingue una cancion con golpes (solo ellos
+        // llegan arriba) de una ya aplastada (todo esta arriba): ver GananciaAlLimite.
+        internal const double FraccionP90 = 0.10;
+        internal float P90Db { get { return PercentilDb(FraccionP90); } }
+        // El pico que superan como mucho 'fraccion' de los bloques con sonido (del mismo histograma de 0,1 dB).
+        internal float PercentilDb(double fraccion)
         {
-            get
+            int extra = (enBloque > 0) ? Casilla(maxBloque) : -1;
+            int n = nSonando + (extra >= 0 ? 1 : 0);
+            if (n == 0) return PicoDb;
+            int permitidos = (int)Math.Floor(n * fraccion);   // cuantos bloques pueden quedar por encima
+            int encima = 0;
+            for (int b = hist.Length - 1; b >= 0; b--)
             {
-                int extra = (enBloque > 0) ? Casilla(maxBloque) : -1;
-                int n = nSonando + (extra >= 0 ? 1 : 0);
-                if (n == 0) return PicoDb;
-                int permitidos = (int)Math.Floor(n * Fraccion);   // cuantos bloques pueden quedar por encima
-                int encima = 0;
-                for (int b = hist.Length - 1; b >= 0; b--)
-                {
-                    encima += hist[b] + (b == extra ? 1 : 0);
-                    if (encima > permitidos) return Math.Min(PicoDb, DbMin + (b + 1) * Paso);
-                }
-                return PicoDb;
+                encima += hist[b] + (b == extra ? 1 : 0);
+                if (encima > permitidos) return Math.Min(PicoDb, DbMin + (b + 1) * Paso);
             }
+            return PicoDb;
         }
     }
 
@@ -616,14 +622,18 @@ namespace Rocola
         internal readonly float P99Db;    // en dBFS; NaN si la medida es de antes (no se sabe)
         internal readonly MapaSilencios Silencios;   // desde el algoritmo 3: donde suena (SinSilencios.cs)
         internal readonly float Lra;      // desde el algoritmo 4: el rango de sonoridad en LU (EBU Tech 3342); NaN si no hay (cancion corta, muda, o medida de antes)
+        internal readonly float P90Db;    // desde el algoritmo 5: el P90 de los picos por bloque, en dBFS (GananciaAlLimite); NaN si la medida es de antes
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = float.NaN; P90Db = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = float.NaN; }
+        internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra, float p90Db)
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = p90Db; }
+        internal bool ConP90 { get { return Algoritmo >= 5 && ConPicos && !float.IsNaN(P90Db); } }
         internal bool ConLra { get { return Algoritmo >= 4 && !float.IsNaN(Lra) && !float.IsInfinity(Lra) && Lra >= 0f; } }
         internal bool ConSilencios { get { return Algoritmo >= 3 && Silencios.Valido; } }
         internal bool ConPicos { get { return Algoritmo >= 2 && !float.IsNaN(PicoDb) && !float.IsNaN(P99Db); } }
@@ -687,7 +697,7 @@ namespace Rocola
                 int alg;
                 if (!int.TryParse(linea.Substring(0, corte), NumberStyles.None, CultureInfo.InvariantCulture, out alg) || alg < 1) continue;
                 if (alg > MedidorBs1770.Algoritmo) { ajenas.Add(linea); continue; }
-                int campos = (alg >= 4) ? 13 : (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
+                int campos = (alg >= 5) ? 14 : (alg >= 4) ? 13 : (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
                 string[] p = linea.Split(barra, campos);
                 if (p.Length != campos || p[campos - 1].Length == 0) continue;
                 float lk, pesos; int bloques;
@@ -706,10 +716,13 @@ namespace Rocola
                 float lra = float.NaN;   // desde el 4: el rango de sonoridad ("-" = no hay)
                 if (alg >= 4 && p[11] != "-" && (!float.TryParse(p[11], NumberStyles.Float, CultureInfo.InvariantCulture, out lra)
                                                  || float.IsNaN(lra) || float.IsInfinity(lra) || lra < 0f || lra > 200f)) continue;
+                float p90 = float.NaN;   // desde el 5: el P90 de los picos (nunca por encima del P99)
+                if (alg >= 5 && (!LeePico(p[12], out p90) || p90 > p99)) continue;
                 string ruta = Pool(p[campos - 1]);
                 SonoridadIntegrada antes;
                 if (tabla.TryGetValue(ruta, out antes) && antes.Algoritmo > alg) continue;   // ya hay una de algoritmo mas nuevo
-                tabla[ruta] = (alg >= 4) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra)
+                tabla[ruta] = (alg >= 5) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra, p90)
+                            : (alg >= 4) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra)
                             : (alg >= 3) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil)
                             : (alg >= 2) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99)
                                          : new SonoridadIntegrada(alg, lk, pesos, bloques);
@@ -736,6 +749,7 @@ namespace Rocola
                 w.Write(MapaSilencios.Texto(m.Dura)); w.Write('|');
             }
             if (s.Algoritmo >= 4) { w.Write(s.ConLra ? s.Lra.ToString("0.#", CultureInfo.InvariantCulture) : "-"); w.Write('|'); }
+            if (s.Algoritmo >= 5) { w.Write(s.P90Db.ToString("0.##", CultureInfo.InvariantCulture)); w.Write('|'); }
             w.Write(ruta); w.Write("\r\n");
         }
         // Un pico guardado: dBFS entre "nada" (-200) y +20.
@@ -933,6 +947,49 @@ namespace Rocola
             return (float)Math.Pow(10.0, -baja / 20.0);
         }
 
+        // CADA CANCION HASTA SU LIMITE, SIN RASPARSE (decision del dueno del 24-10-2026; con una medida del algoritmo 5). Ya no hay volumen
+        // objetivo: cada cancion se sube lo mas que aguanta sin que el limitador del final la raspe, y no se baja si ya va fuerte (solo lo
+        // justo si llega por encima de su limite). El limite sale de sus picos por bloque de 100 ms, contra el techo del limitador:
+        //   - el P99 (sus golpes) a no mas de 3 dB por encima, y el golpe mas fuerte de toda la cancion a no mas de 6: los mismos topes de
+        //     picos que ya tenia el nivelado (TopeSubidaPorPicos, 28-09-2026);
+        //   - y, nuevo, el P90 (el grueso de la cancion) a no mas de 1 dB: lo que una cancion ya aplastada no aguanta es que el limitador
+        //     trabaje TODO el tiempo, y sin objetivo nada mas la frenaria.
+        // Elegidos con el limitador de la rocola en ocho canciones de prueba de 60 s (golpes parejos, desiguales y sueltos, baladas con y
+        // sin un golpe suelto, una moderna aplastada, una vieja bajita y una comprimida grabada baja), con este criterio: que quite mas de
+        // 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 %. Con el P90 a 1 dB quita mas de 1 dB como mucho el 9 % y mas
+        // de 3 el 0,5 %; las aplastadas no pasan de 1,4 dB; un unico golpe muy por encima del resto (un platillo suelto, un chasquido de
+        // disco) se baja mas, solo en su instante, como antes. Con el P90 a 1,5 dB la de golpes parejos pasaba al 16 % y la comprimida al
+        // 44 %; sin el P90, las aplastadas quedaban limitadas el 100 % del tiempo. El precio: una cancion con golpes en mas del 10 % de los
+        // bloques (bateria muy seguida) suena de 0,7 a 1 dB menos que con la regla de antes, que la limitaba el 27 % del tiempo. Con medidas de antes
+        // del algoritmo 5 (sin P90) se nivela con la regla de arriba mientras se vuelven a medir.
+        internal const float LimP90Db = 1f, LimP99Db = SubeGrP99Db, LimPicoDb = SubeGrPicoDb;
+        internal static float LimiteSinRaspar(float picoLin, float p99Lin, float p90Lin)
+        {
+            float a = TechoPicoReal * DbALin(LimP90Db) / Math.Max(p90Lin, 1e-6f);
+            float b = TechoPicoReal * DbALin(LimP99Db) / Math.Max(p99Lin, 1e-6f);
+            float c = TechoPicoReal * DbALin(LimPicoDb) / Math.Max(picoLin, 1e-6f);
+            return Math.Min(a, Math.Min(b, c));
+        }
+        // La ganancia: el limite, elevado a la "Fuerza del nivelado" (100 %, todo el camino), con el techo absoluto de seguridad.
+        internal static float GananciaAlLimite(float fuerza, float picoLin, float p99Lin, float p90Lin)
+        {
+            float lim = LimiteSinRaspar(picoLin, p99Lin, p90Lin);
+            if (float.IsNaN(lim) || !(lim > 0f)) return 1f;
+            if (lim > NormMaxBoost) lim = NormMaxBoost;   // casi muda: no se amplifica sin fin
+            float g = (float)Math.Pow(lim, fuerza);
+            return (float.IsNaN(g) || float.IsInfinity(g)) ? 1f : g;
+        }
+        // El P90 con el que se nivela (lineal): solo el de una medida integrada del algoritmo 5.
+        private bool P90ParaNivelar(string path, out float p90Lin)
+        {
+            p90Lin = 0f;
+            Dictionary<string, SonoridadIntegrada> t = integCache;
+            SonoridadIntegrada s;
+            if (path == null || t == null || !t.TryGetValue(path, out s) || !s.Valida || !s.ConP90) return false;
+            p90Lin = DbALin(s.P90Db);
+            return true;
+        }
+
         // ============================== MEDIR LA CANCION ENTERA ==============================
 
         // Lo que la ultima MeasureFile de ESTE hilo midio de la cancion entera, si la leyo entera (canciones
@@ -959,10 +1016,10 @@ namespace Rocola
             if (m.Cuadros + margen < esperados || m.Cuadros > esperados + margen) return false;
             double lk; int usados;
             if (!m.Integrada(out lk, out usados)) return false;   // ni un bloque de 400 ms
-            float pico = m.Picos.PicoDb, p99 = m.Picos.P99Db;
+            float pico = m.Picos.PicoDb, p99 = m.Picos.P99Db, p90 = m.Picos.P90Db;
             s = new SonoridadIntegrada(MedidorBs1770.Algoritmo, double.IsNegativeInfinity(lk) ? float.NegativeInfinity : (float)lk,
                                        (float)m.PesoTotal, m.Bloques, (float)Math.Round(pico, 2), (float)Math.Round(p99, 2),
-                                       m.Picos.Mapa(m.Cuadros), LraDeMedidor(m));
+                                       m.Picos.Mapa(m.Cuadros), LraDeMedidor(m), (float)Math.Round(Math.Min(p90, p99), 2));
             return true;
         }
 
@@ -1062,10 +1119,10 @@ namespace Rocola
             Dictionary<string, long> songSeq = p != null ? p.Sec : this.songSeq;
             List<string> pend = new List<string>();
             if (tracks == null || integCache == null) return pend;
-            // El rango de sonoridad (algoritmo 4) solo lo usa el modo automatico del local (apagado de fabrica): con el modo apagado las
-            // medidas completas de antes (algoritmo 3) no se piden de nuevo, y el repaso se comporta como siempre; al encenderlo, el siguiente
-            // repaso (al arrancar, o «Repasar la biblioteca a fondo») las va midiendo en segundo plano. Lo nuevo que se mide ya trae el LRA.
-            int minimo = localAuto ? MedidorBs1770.Algoritmo : AlgoritmoSinLra;
+            // TODO lo que no tenga la medida de este algoritmo (desde el 24-10-2026, el 5: el P90 con el que cada cancion sube hasta su
+            // limite). Hasta el 23-10 las de 3 solo se pedian con el modo automatico del local encendido (el LRA del 4 solo lo usaba el); el
+            // nivelado lo necesita en todas. Mientras tanto cada una nivela con la regla de antes: nada se queda sin nivelar.
+            int minimo = MedidorBs1770.Algoritmo;
             for (int i = 0; i < tracks.Count; i++)
             {
                 Track tk = tracks[i];

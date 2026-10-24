@@ -194,7 +194,7 @@ class Banco
         MethodInfo vent = Met(TF, "VentanaAjustes");
         Check(vent != null, "el cuerpo de la ventana sigue en su funcion (VentanaAjustes)");
         List<string> tv = TextosConAyudantes(TF, "VentanaAjustes");
-        foreach (string t in new string[] { "VOLUMEN PAREJO", "CALIDAD DEL SONIDO", "TU BIBLIOTECA", "Tipo de disco" })
+        foreach (string t in new string[] { "VOLUMEN AL LIMITE", "CALIDAD DEL SONIDO", "TU BIBLIOTECA", "Tipo de disco" })
             Check(tv.Contains(t), "la pagina de Sonido conserva \"" + t + "\"");
         Check(tv.Contains("Sonido") && tv.Contains("Imagen"), "y estan las dos pestanas");
         Check(tv.Contains("Imagen y rendimiento"), "el titulo cambia al pasar a la pestana de Imagen");

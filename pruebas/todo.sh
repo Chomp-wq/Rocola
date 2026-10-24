@@ -243,6 +243,9 @@ CPU="$CPU modosauto"
 # 'volumenwindows': el volumen general de Windows al maximo y sin silencio, una vez por arranque (24-10-2026; VolumenWindows.cs):
 # en XP el maestro del mezclador, en Vista el aparato y la sesion de la rocola; en un hilo de fondo; y nadie mas lo toca.
 CPU="$CPU volumenwindows"
+# 'allimite': cada cancion hasta su limite sin rasparse (24-10-2026; Sonoridad.cs: GananciaAlLimite, algoritmo 5 con el P90 de los picos):
+# el P90, su formato, la regla con el limitador de verdad, cada medida con su regla, una tabla vieja que suena y nivela, la tanda y el disco.
+CPU="$CPU allimite"
 # 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con
