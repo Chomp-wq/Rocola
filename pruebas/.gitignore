@@ -15,3 +15,4 @@ mono_crash.*.json
 _tmp_ref*/
 referencias.version
 rocola.exe.config
+partes-*/
