@@ -669,6 +669,19 @@ if [ -z "$FONTCONFIG_FILE" ] && command -v fc-list >/dev/null 2>&1; then
   if fc-list | grep -q ': Inter[:,]'; then hazletra "Inter" "$TMP_PRUEBAS/letra_inter.conf" && LETRA_COMUN="$TMP_PRUEBAS/letra_inter.conf"; fi
   if fc-list | grep -q 'DejaVu Sans'; then hazletra "DejaVu Sans" "$TMP_PRUEBAS/letra_dejavu.conf" && LETRA_VIEJA="$TMP_PRUEBAS/letra_dejavu.conf"; fi
 fi
+# AVISO UNA SOLA VEZ, al empezar: que letra usa cada grupo y cual falta. Sin la fuente calibrada, la bateria corre con la letra
+# del sistema y sus referencias de texto pueden salir rojas sin que nada este roto (o verdes sin comprobar lo mismo).
+if [ -n "$FONTCONFIG_FILE" ]; then
+  echo "  AVISO letra: FONTCONFIG_FILE ya viene puesto ($FONTCONFIG_FILE): TODAS las baterias usan esa letra, no Inter ni DejaVu Sans."
+  echo "        Las calibradas con Inter o con DejaVu Sans pueden dar rojos enganosos."
+elif ! command -v fc-list >/dev/null 2>&1; then
+  echo "  AVISO letra: no hay fc-list; TODAS las baterias usan la letra del sistema (ni Inter ni DejaVu Sans): posibles rojos enganosos en las de texto."
+else
+  if [ -n "$LETRA_COMUN" ]; then echo "  letra: Inter para las baterias de texto de la tanda nueva (huellacuadros, tironescambio, sextatanda, filabaja, paginar...)"
+  else echo "  AVISO letra: FALTA Inter; las baterias calibradas con Inter (huellacuadros, tironescambio, sextatanda, filabaja, paginar...) usan la letra del sistema y pueden dar rojos enganosos."; fi
+  if [ -n "$LETRA_VIEJA" ]; then echo "  letra: DejaVu Sans para $LETRA_DEJAVU"
+  else echo "  AVISO letra: FALTA DejaVu Sans; las baterias calibradas con ella ($LETRA_DEJAVU) usan la letra del sistema y pueden dar rojos enganosos."; fi
+fi
 # SOLO PARA LAS PRUEBAS EN LINUX (Mono): la rocola copia memoria con RtlMoveMemory, de kernel32.dll, que Mono no tiene.
 # Sin este mapeo a memmove la tarjeta imitada no puede subir texturas y las baterias que cargan el ejecutable tal cual
 # (trabajovisible, auroraeficiente, resolucionligera, cintasligeras, estadoeficiente) fallan sin que nada este roto.

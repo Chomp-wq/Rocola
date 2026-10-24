@@ -311,6 +311,9 @@ class Paginar
         if (fLigero != null)
         {
             Check((bool)fLigero.GetValue(av), "y viene encendido de fabrica");
+            FieldInfo tPeek = TAV.GetField("PeekCoverGpu");
+            Type tfp = typeof(Func<,>).MakeGenericType(TAlb, typeof(Image));
+            tPeek.SetValue(av, Delegate.CreateDelegate(tfp, typeof(Paginar).GetMethod("Tapa", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(TAlb)));
             fLigero.SetValue(av, false);
             mReset.Invoke(av, null);
             fSlideTick.SetValue(av, -1);
@@ -322,11 +325,20 @@ class Paginar
                   "apagado, deslizando la casilla va a resolucion ENTERA (" + (apagSin == null ? 0 : apagSin.Width) + " px)");
             hayPortada = true;   // llega la portada, y la pagina sigue moviendose
             for (int k = 0; k < 3; k++) mGrid.Invoke(av, new object[] { buf });
-            // Antes la portada iba pintada DENTRO de la casilla horneada, y apagado se rehacia al llegar. Ahora va aparte
-            // (FullCover): apagado, la portada que llega se entrega aunque se este moviendo; encendido en rafaga no.
-            Check(fFull != null && fFull.GetValue(buf.GetValue(0)) != null,
-                  "y apagado SI se entrega la portada al llegar, aunque se este moviendo: las dos cosas deshechas");
+            // Lo que SOLO pasa con el interruptor apagado (BuildGpuGrid, Form1.Pared.cs): en rafaga con HojeoLigero encendido
+            // ("chica") no se hornea (presupuesto 0), la casilla va como marcador (Placeholder, Bmp=null) y NO cuenta como
+            // vestida con su portada (HasCover=false); apagado se hornea con su portada, sin marcador. La portada suelta
+            // (FullCover) NO distingue: el programa real la rellena con PeekCoverGpu en los dos casos, asi que aqui
+            // PeekCoverGpu se enchufa igual que en el programa (antes quedaba nulo y FullCover != null solo salia con el
+            // interruptor apagado por casualidad del montaje, no por lo que hace el interruptor).
+            object c0 = buf.GetValue(0);
+            FieldInfo fHas = TCel.GetField("HasCover");
+            Check(fHas != null, "la celda dice si ya va vestida con su portada (HasCover)");
+            Check(fBmp.GetValue(c0) != null && !Marcador(c0) && fHas != null && (bool)fHas.GetValue(c0),
+                  "y apagado SI se hornea con su portada al llegar, aunque se este moviendo (sin marcador): las dos cosas deshechas");
+            Check(fFull != null && fFull.GetValue(c0) != null, "y la portada completa se entrega");
             fLigero.SetValue(av, true);
+            tPeek.SetValue(av, null);
         }
 
         Console.WriteLine("\n  6) NUNCA UN HUECO\n");

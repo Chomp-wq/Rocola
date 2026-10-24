@@ -26,6 +26,7 @@ class CpuCongelado
  }
  static int Main(string[] args)
  {
+  if(args.Length<2){Console.WriteLine("Uso: mono cpucongelado.exe <rocola_anterior_cpu.exe> <rocola_nuevo_cpu.exe>");Console.WriteLine("(manual: no esta en la suite; compilar junto a leercodigo.cs; los dos exes con las mismas opciones)");return 2;}
   try{
    Assembly before=Assembly.LoadFile(System.IO.Path.GetFullPath(args[0])),after=Assembly.LoadFile(System.IO.Path.GetFullPath(args[1]));
    Type f0=before.GetType("Rocola.Form1",true),f1=after.GetType("Rocola.Form1",true);int count=0;

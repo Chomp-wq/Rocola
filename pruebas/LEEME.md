@@ -263,7 +263,7 @@ Ocho baterías quedaron en rojo con `todo.sh` (Mono). Lo que era del programa y 
   las unidades al empezar de cero y comprueba que una unidad conocida no se mide otra vez.
 - `calienta` y `sonoridad`: lo medido pasa ahora por `PublicaMedidaDeFuente` y la espera por
   `EsperaPortadas`; las pruebas siguen un salto (`Codigo.ConUnSalto`).
-- `leer`: `cpucongelado` lee el IL por `leercodigo.cs` (`Codigo.BytesIL`). Y como un campo nuevo
+- `leer`: `cpucongelado` lee el IL por `leercodigo.cs` (`Codigo.IlConNombres`, que parte de `Codigo.BytesIL`). Y como un campo nuevo
   corre los números de tabla del ejecutable, si los bytes difieren compara lo que nombra cada
   instrucción (`Codigo.IlConNombres`): con el campo nuevo de `ssd`, los 14 métodos del dibujo por
   procesador salen iguales; cambiar un número dentro de `Cube.Draw` sí lo detecta.

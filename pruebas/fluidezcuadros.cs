@@ -196,7 +196,12 @@ class FluidezCuadros
         // El recorrido de instrucciones es el comun (Codigo.Pasos, leercodigo.cs): 0x8D newarr, 0x73 newobj, 0x8C box.
         foreach (string name in new string[] { "Toma", "TomaCuadro", "TomaInterna", "CortaIntervalo", "DescartaContinuidad", "DiferenciaGc", "Finito" })
         {
-            foreach (Codigo.Paso paso in Codigo.Pasos(type.GetMethod(name, B)))
+            MethodInfo vigilado = type.GetMethod(name, B);
+            // Sin metodo, o con cuerpo ilegible/vacio, Codigo.Pasos devuelve una lista vacia y la prueba pasaria en falso.
+            Check(vigilado != null, "FALLO: el metodo vigilado " + name + " no existe (renombrado o retirado)");
+            System.Collections.Generic.List<Codigo.Paso> pasos = Codigo.Pasos(vigilado);
+            Check(pasos.Count > 0, "FALLO: el metodo vigilado " + name + " no tiene pasos de IL legibles");
+            foreach (Codigo.Paso paso in pasos)
             {
                 bool asigna = paso.Op2 < 0 && (paso.Op == 0x8D || paso.Op == 0x73 || paso.Op == 0x8C);
                 Check(!asigna, name + " no asigna arrays/objetos/boxing por cuadro");
