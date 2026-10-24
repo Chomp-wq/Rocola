@@ -1227,6 +1227,7 @@ namespace Rocola
                 c.Sbr.Active = sbrOn; chain = c.Sbr;
             }
             LevelTap tap = new LevelTap(chain, this);
+            tap.Cebado = audioTailDelay;   // lo que llega de cebado (des-recorte, siseo): en un disco continuo no entra en el realce heredado (Realce.cs)
             original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
@@ -1242,20 +1243,26 @@ namespace Rocola
             if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }
             c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
+            // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
+            c.Mono.Cebado = audioTailDelay;
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
             c.Sala = new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
+            c.Sala.Cebado = audioTailDelay;
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
             c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia);
+            c.Presencia.Cebado = audioTailDelay;
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
             c.Bajo = new DeepBassProvider(c.Presencia, BassAmountPara(c.BajoFactor, c.BajoBase));
+            c.Bajo.Cebado = audioTailDelay;
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
             LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, TechoPicoReal, 3.0);
+            lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;
             NAudio.Wave.ISampleProvider outChain = lim;
             if (crossfadeSec > 0.01f)
@@ -1316,7 +1323,7 @@ namespace Rocola
         {
             string original = RutaOriginalDe(path);
             FuenteMedida inicio = CapturaFuente(original);
-            try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, new FileAudioSource(path)))); }   // sin el hueco del codificador ni los silencios largos
+            try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
             catch
             {
                 bool isMp3 = path != null && path.Length > 4 && path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
@@ -1326,7 +1333,7 @@ namespace Rocola
                     try
                     {
                         clean = BuildCleanMp3(path);
-                        if (clean != null) return SinSilencios(path, SellaFuenteAudio(original, inicio, new TolerantMp3Source(clean)));   // reconstruido a una sola frecuencia
+                        if (clean != null) return SinSilencios(path, SellaFuenteAudio(original, inicio, ComoEstereo(new TolerantMp3Source(clean))));   // reconstruido a una sola frecuencia
                         porQue = new InvalidDataException("casi no quedaron cuadros de una sola frecuencia y canales");
                     }
                     catch (Exception ex2) { porQue = ex2; if (clean != null) { try { clean.Dispose(); } catch { } } }   // el tolerante tampoco pudo: cae al throw de abajo
@@ -1627,6 +1634,48 @@ namespace Rocola
             public TimeSpan TotalTime { get { return TiempoLector(mp3, true); } }
             public void Salta(TimeSpan donde) { SaltaCuadro(mp3, donde); }
             public void Dispose() { try { mp3.Dispose(); } catch { } try { ms.Dispose(); } catch { } }
+        }
+
+        // LAS CANCIONES MONO, COMO ESTEREO DE DOS CANALES IGUALES (24-10-2026; decision del dueno: "lo que sea mejor para la calidad del
+        // sonido"). Un archivo mono salia mono a la tarjeta y Windows mandaba lo mismo a las dos bocinas, que es lo que sale ahora; pero
+        // el balance del local no se le aplicaba (SalaLocal solo lo pone con dos canales) y entre una cancion mono y una estereo no habia
+        // relevo sin pausa (otra disposicion: se cerraba y reabria la salida). Ahora cada muestra sale dos veces, justo encima del lector:
+        // el sello, el relleno del MP3 y los silencios van por fuera, como siempre. El nivelado no cambia (se mide por canal) y el grave en
+        // mono, el estereo estrecho y los arreglos de la grabacion no hacen nada con los dos canales iguales. Esas canciones cuestan el
+        // doble en la cadena. Los de mas de dos canales siguen como vienen.
+        private static IAudioSource ComoEstereo(IAudioSource s) { return (s != null && s.WaveFormat.Channels == 1) ? new MonoComoEstereo(s) : s; }
+        private sealed class MonoComoEstereo : IAudioSource
+        {
+            private readonly IAudioSource s;
+            private readonly NAudio.Wave.WaveFormat formato;
+            private float[] uno = new float[0];
+            private float pendiente; private bool hayPendiente;   // la segunda copia de una muestra, si se pidio un numero impar
+            internal MonoComoEstereo(IAudioSource s) { this.s = s; formato = FormatoAudio.Flotante(s.WaveFormat.SampleRate, 2, 3); }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                if (count <= 0) return 0;
+                int hechos = 0;
+                if (hayPendiente) { buffer[offset] = pendiente; hayPendiente = false; hechos = 1; }
+                int quiero = (count - hechos + 1) / 2;
+                if (quiero > 0)
+                {
+                    if (uno.Length < quiero) uno = new float[quiero];   // crece una vez, hasta lo mas que se pida
+                    int n = s.Read(uno, 0, quiero);
+                    for (int i = 0; i < n; i++)
+                    {
+                        float v = uno[i];
+                        buffer[offset + hechos++] = v;   // a mano: 'buffer' puede ser la vista flotante de un byte[]
+                        if (hechos < count) buffer[offset + hechos++] = v; else { pendiente = v; hayPendiente = true; }
+                    }
+                }
+                return hechos;
+            }
+            public float Volume { set { s.Volume = value; } }
+            public TimeSpan CurrentTime { get { return s.CurrentTime; } }
+            public TimeSpan TotalTime { get { return s.TotalTime; } }
+            public void Salta(TimeSpan donde) { hayPendiente = false; s.Salta(donde); }
+            public void Dispose() { s.Dispose(); }
         }
 
         // ==========  RECONSTRUCTOR ESPECTRAL DE AGUDOS (el DSEE "serio")  ==========
@@ -2560,6 +2609,9 @@ namespace Rocola
         // El grave de un cuadro se suma al cuadro SIGUIENTE (1 muestra, 23 us: a 320 Hz son 2,6 grados): asi un
         // cuadro que llega partido entre dos lecturas se completa sin tocar lo ya entregado, y da igual como
         // lleguen las lecturas; antes suponia cuadros enteros (una muestra suelta se quedaba sin su grave).
+        // DISCO CONTINUO (24-10-2026): la pista siguiente del mismo disco empezaba con los filtros en cero, y en el cambio el grave
+        // sintetico daba un escalon (medido en la cadena entera: 0,003 con la musica a 0,3 de pico). Ahora sigue con los de la anterior
+        // (Sigue, desde SigueA) y su cebado pasa tal cual: el grave que la anterior dejo pendiente cae en la primera muestra de musica.
         private sealed class DeepBassProvider : NAudio.Wave.ISampleProvider
         {
             private readonly bool[] musicales;
@@ -2577,6 +2629,18 @@ namespace Rocola
             private int fase; private float suma, hSal;   // cuadro que va llegando: canal, suma mono y lo que se le suma
             private readonly float[] cuadro;   // para completar un cuadro que llego partido (se reserva al construir)
             private int limpia;                // cuadros desde la ultima limpieza de restos diminutos
+            private volatile DeepBassProvider anterior;   // la pista anterior del mismo disco, de la que seguir
+            internal int Cebado;               // el cebado de delante (lo pone ArmaCadena): tras heredar pasa tal cual
+            private int cebadoPorPasar;
+            internal void Sigue(DeepBassProvider previa) { if (previa != null && !ReferenceEquals(previa, this)) anterior = previa; }
+            private void Hereda()
+            {
+                DeepBassProvider a = anterior; anterior = null;
+                if (a == null || !a.empezo || a.ch != ch || a.aLow != aLow || a.fase != 0) return;
+                lp1 = a.lp1; lp2 = a.lp2; lp3 = a.lp3; env = a.env; hpS = a.hpS; lpS = a.lpS; hSal = a.hSal;
+                if (a.vivo) vivo = true;
+                cebadoPorPasar = Math.Max(0, Cebado) * ch;
+            }
             public DeepBassProvider(NAudio.Wave.ISampleProvider s, float amount)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); Amount = amount;
@@ -2606,14 +2670,19 @@ namespace Rocola
                 float amt = Amount, obj;
                 if (float.IsNaN(amt) || float.IsInfinity(amt)) obj = objetivo;   // un valor roto no mueve nada
                 else obj = amt > 0.001f ? amt * 0.85f : 0f;
-                if (!empezo) { empezo = true; mix = objetivo = obj; }            // al empezar: la pedida, sin rampa
+                if (!empezo) { empezo = true; mix = objetivo = obj; Hereda(); }  // al empezar: la pedida, sin rampa (y lo de la anterior del disco)
                 else if (obj != objetivo) { objetivo = obj; quedan = rampa; paso = (objetivo - mix) / rampa; }
+                int i = offset, end = offset + n;
+                if (cebadoPorPasar > 0)
+                {   // el cebado de la siguiente del mismo disco: tal cual, y lo pendiente de la anterior espera a la musica
+                    int salta = Math.Min(n, cebadoPorPasar); cebadoPorPasar -= salta; i += salta;
+                    if (i == end) return n;
+                }
                 if (!vivo)
                 {
                     if (mix == 0f && quedan == 0) return n;   // nunca encendido en esta cancion: pase directo, sin coste
                     vivo = true;
                 }
-                int i = offset, end = offset + n;
                 // Un cuadro que quedo a medias en la lectura anterior (lecturas que parten cuadros; en la cadena
                 // normal no pasa): se completa, y su suma pasa por la misma cuenta que los cuadros enteros.
                 if (fase != 0)
@@ -3015,7 +3084,8 @@ namespace Rocola
                 for (int i = 0; i < n; i++)
                 {
                     long p = pos;
-                    if (entra && p >= entradaDesde && p < entradaHasta)
+                    if (entra && p < entradaDesde) buffer[offset + i] = 0f;   // el cebado: silencio exacto (ver Entrada)
+                    else if (entra && p < entradaHasta)
                         buffer[offset + i] *= (float)(0.5 - 0.5 * Math.Cos(Math.PI * (p - entradaDesde + 1) / largo));
                     if (totalFrames > 0 && totalFrames - p < fadeFrames
                         && System.Threading.Interlocked.CompareExchange(ref estadoFundido, 2, 0) != 1)
@@ -3027,13 +3097,17 @@ namespace Rocola
                 }
             }
             // Media onda de coseno: arranca sin escalon y llega a uno sin quiebre.
+            // EL CEBADO, EN SILENCIO EXACTO (24-10-2026). Antes de la musica solo hay el retardo de la cadena: ceros, salvo los ecos previos
+            // de lo que lee por delante (la pre-oscilacion del realce, el eco de la banda que recrea el DSEE y, desde que el grave en mono es
+            // de fase lineal, el del grave del lado, hasta 15 ms). En el relevo sin pausa ese cebado se descarta; en la primera cancion despues
+            // de un silencio sonaba antes de la musica. Ahora sale en cero.
             private void Entrada(float[] buffer, int offset, int frames)
             {
                 double largo = entradaHasta - entradaDesde + 1;
                 for (int f = 0; f < frames; f++)
                 {
                     long p = pos + f;
-                    if (p < entradaDesde) continue;   // el cebado de la cadena: ceros
+                    if (p < entradaDesde) { int bz = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bz + c] = 0f; continue; }   // el cebado de la cadena
                     if (p >= entradaHasta) break;
                     float g = (float)(0.5 - 0.5 * Math.Cos(Math.PI * (p - entradaDesde + 1) / largo));
                     int bi = offset + f * ch; for (int c = 0; c < ch; c++) buffer[bi + c] *= g;
@@ -3084,6 +3158,7 @@ namespace Rocola
                 internal readonly float[] Curve, State;
                 internal readonly float[][] Coefficients;
                 internal readonly int Active;
+                internal readonly int Mascara;   // las bandas que lleva (bit b = banda b): para heredar su memoria en un disco continuo
                 internal PreparedEq(float[] curve, int rate, int channels)
                 {
                     Curve = curve;
@@ -3092,7 +3167,7 @@ namespace Rocola
                     for (int b = 0; b < 8; b++)
                     {
                         float[] cf = Form1.EqPeak(Form1.EqCentros[b], rate, curve[b]);
-                        if (cf != null) Coefficients[active++] = cf;
+                        if (cf != null) { Coefficients[active++] = cf; Mascara |= 1 << b; }
                     }
                     Active = active;
                     State = new float[Math.Max(1, channels) * 32];
@@ -3143,7 +3218,9 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0 && modoRealce == 2 && audioReady && owner != null)
                 {
-                    // Se acabo la cancion: el realce 2x tiene retenidos sus 31 cuadros; salen enteros, no se cortan.
+                    // Se acabo la cancion: el realce 2x tiene retenidos sus 31 cuadros; salen enteros, no se cortan. Antes, lo que la siguiente
+                    // del mismo disco necesita para seguir (Realce.cs).
+                    GuardaFin();
                     vaciando = true; porVaciar = RealceSobremuestreado.Retraso * audioChannels;
                     return VaciaRealce(buffer, offset, count);
                 }
@@ -3166,6 +3243,15 @@ namespace Rocola
                     {
                         gainRamp.Init(g);exciteRamp.Init(ex);currentEq=prepared;audioReady=true;
                         FijaModoRealce(ex);
+                        HeredaFin();   // disco continuo: el realce y el EQ siguen con los de la anterior (Realce.cs)
+                    }
+                    if (cebadoPorPasar > 0)
+                    {   // y el cebado de delante pasa tal cual: el realce sigue justo donde acabo la musica de la anterior
+                        int salta = Math.Min(n, cebadoPorPasar); cebadoPorPasar -= salta;
+                        audioChannel = (audioChannel + salta) % audioChannels;
+                        if (salta == n) return n;
+                        int total = n; offset += salta; n -= salta;
+                        if (modoRealce == 2) { ProcesaConRealce(buffer, offset, n, g, ex, prepared); return total; }
                     }
                     // Realce 2x (la cancion empezo con el realce encendido): siempre por la linea de retraso,
                     // tambien si luego se apaga (sale el seco intacto, retrasado lo mismo).

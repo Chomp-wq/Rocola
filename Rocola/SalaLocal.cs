@@ -121,6 +121,9 @@ namespace Rocola
             private bool gravesPrimado, agudosPrimado, recalculaTono;
             private volatile SalaLocal anterior;     // la pista que acaba justo antes, sin fundido (disco continuo)
             private bool empezo;
+            // El cebado de delante (lo pone ArmaCadena; GraveMono.cs): tras heredar de la anterior del mismo disco pasa tal cual.
+            internal int Cebado;
+            private int cebadoPorPasar;
 
             public SalaLocal(ISampleProvider s, LevelTap volumen, float objetivo, bool conClaridad, bool conSuaves, int balanceDb)
                 : this(s, volumen, objetivo, conClaridad, conSuaves, balanceDb, 0, 0) { }
@@ -210,6 +213,7 @@ namespace Rocola
                 Array.Copy(a.sh, sh, sh.Length);
                 gravesDb = a.gravesDb; agudosDb = a.agudosDb; gravesPrimado = a.gravesPrimado; agudosPrimado = a.agudosPrimado;
                 recalculaTono = true;
+                cebadoPorPasar = Math.Max(0, Cebado) * canales;
             }
 
             // Nada que hacer: todo apagado, el balance centrado y las rampas ya llegaron. Entonces la etapa no toca ni una
@@ -248,6 +252,12 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (!vale || n <= 0) return n;
                 if (!empezo) { empezo = true; Hereda(); }
+                int o = offset, m = n;
+                if (cebadoPorPasar > 0)
+                {   // el cebado de la siguiente del mismo disco: sin tocar los filtros heredados (el relevo lo tira)
+                    int salta = Math.Min(n, cebadoPorPasar); cebadoPorPasar -= salta; o += salta; m -= salta;
+                    if (m == 0) return n;
+                }
                 int pedido = canales == 2 ? balance : 0;
                 if (pedido != balanceCalculado)
                 {
@@ -257,7 +267,7 @@ namespace Rocola
                 double tl = balanceL, tr = balanceR;
                 if (Quieta(tl, tr)) return n;
                 if (claridadOn && mezcla == 0.0) Array.Clear(eq, 0, eq.Length);   // entra de nuevo: filtros desde cero
-                Proceso(buffer, offset, n / canales, tl, tr);
+                Proceso(buffer, o, m / canales, tl, tr);
                 return n;
             }
 

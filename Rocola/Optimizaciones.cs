@@ -232,6 +232,8 @@ namespace Rocola
         }
         private static readonly object fftPlanLock = new object();
         private static AudioFftPlan fft2048, fft4096;
+        // Las grandes (8192 a 65536), una de cada: el grave en mono y el subgrave en fase lineal (GraveMono.cs) las piden cancion tras cancion.
+        private static readonly System.Collections.Generic.Dictionary<int, AudioFftPlan> fftGrandes = new System.Collections.Generic.Dictionary<int, AudioFftPlan>();
         // Cuatro piezas pequenas, invocadas desde el precalentador despues del primer cuadro.
         // Sin abrir audio ni modelos: no desplaza ni espera trabajo de reproduccion o portadas.
         internal static bool PrecalientaTablasAudio(int paso)
@@ -247,11 +249,15 @@ namespace Rocola
         }
         private static AudioFftPlan GetAudioFftPlan(int size)
         {
-            if (size != 2048 && size != 4096) return new AudioFftPlan(size);
+            bool grande = size >= 8192 && size <= 65536 && (size & (size - 1)) == 0;
+            if (size != 2048 && size != 4096 && !grande) return new AudioFftPlan(size);
             lock (fftPlanLock)
             {
                 if (size == 2048) return fft2048 ?? (fft2048 = new AudioFftPlan(size));
-                return fft4096 ?? (fft4096 = new AudioFftPlan(size));
+                if (size == 4096) return fft4096 ?? (fft4096 = new AudioFftPlan(size));
+                AudioFftPlan p;
+                if (!fftGrandes.TryGetValue(size, out p)) { p = new AudioFftPlan(size); fftGrandes[size] = p; }
+                return p;
             }
         }
 

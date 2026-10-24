@@ -431,18 +431,34 @@ class SinPausa
                 string nom = (completa ? "cadena completa" : "cadena minima") + " a " + fs + " Hz";
                 // El cebado, sin el DSEE: silencio (el realce 2x deja a lo sumo su pre-oscilacion, unos 2e-6, -114
                 // dBFS), y la musica empieza JUSTO en el cuadro que dicen los retrasos: ni antes (se cortaria) ni despues.
+                // Se mira en el MEDIO, (L + R) / 2: desde el 24-10-2026 el grave en mono es de fase lineal y el grave del LADO se adelanta
+                // hasta 15 ms sobre el silencio del cebado (su eco previo, con L y R opuestos: en el medio, cero). Eso es lo que el relevo
+                // descarta; en la cadena de verdad el fundido deja el cebado en silencio exacto (se mira abajo).
                 int rs; object fs0;
                 float[] sinDsee = LeeTodo(Cadena(form, b, fs, ch, completa, false, out rs, out fs0), new int[] { 4096 }, null, null);
-                double cebado = 0; for (int i = 0; i < rs * ch; i++) cebado = Math.Max(cebado, Math.Abs(sinDsee[i]));
-                int primera = -1; for (int i = 0; i < sinDsee.Length && primera < 0; i++) if (Math.Abs(sinDsee[i]) > 1e-5) primera = i / ch;
+                double cebado = 0; for (int i = 0; i + 1 < rs * ch; i += 2) cebado = Math.Max(cebado, Math.Abs(0.5 * (sinDsee[i] + sinDsee[i + 1])));
+                int primera = -1; for (int i = 0; i + 1 < sinDsee.Length && primera < 0; i += 2) if (Math.Abs(0.5 * (sinDsee[i] + sinDsee[i + 1])) > 1e-5) primera = i / ch;
                 Check(soloA.Length == a.Length + ra * ch && soloB.Length == b.Length + rb * ch && rs == rb && cebado <= 1e-5 && primera == rb,
-                      nom + ": el cebado dura justo lo que suman sus retrasos (" + rb + " cuadros, " + F(1000.0 * rb / fs, "0.0") + " ms), es silencio (" + F(cebado, "0.0e0") + ") y la musica empieza en el cuadro " + primera);
+                      nom + ": el cebado dura justo lo que suman sus retrasos (" + rb + " cuadros, " + F(1000.0 * rb / fs, "0.0") + " ms), su medio es silencio (" + F(cebado, "0.0e0") + ") y la musica empieza en el cuadro " + primera);
+                {
+                    // Con el fundido de la cadena de verdad (la entrada empieza donde empieza la musica), el cebado sale en silencio exacto.
+                    int rv; object fv;
+                    Cadena(form, b, fs, ch, completa, false, out rv, out fv);
+                    object lim0 = fv.GetType().GetField("src", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(fv);
+                    object real = Activator.CreateInstance(TFade, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                        new object[] { lim0, (long)(b.Length / ch + rv), 0.5, (long)rv, 0.005 }, null);
+                    float[] yv = LeeTodo((ISampleProvider)real, new int[] { 4096 }, null, null);
+                    double cv = 0; for (int i = 0; i < rv * ch; i++) cv = Math.Max(cv, Math.Abs(yv[i]));
+                    double eco = 0; for (int i = 0; i + 1 < rs * ch; i += 2) eco = Math.Max(eco, Math.Abs(0.5 * (sinDsee[i] - sinDsee[i + 1])));
+                    Check(cv == 0.0 && yv.Length == b.Length + rv * ch, nom + ": con el fundido de verdad el cebado sale en silencio exacto (el eco previo del grave del lado, hasta "
+                          + F(20 * Math.Log10(Math.Max(eco, 1e-12)), "0") + " dBFS en esta senal con un canal al reves, no se oye) y la cancion sale entera");
+                }
                 if (completa)
                 {
                     // Con el DSEE detras del des-recorte: la banda que recrea se adelanta un poco (su ventana) sobre
                     // el silencio que mete el des-recorte. Es lo unico que se tira al descartar el cebado.
                     double eco = 0; int desde = -1;
-                    for (int i = 0; i < rb * ch; i++) { double v = Math.Abs(soloB[i]); if (v > eco) eco = v; if (v > 1e-6 && desde < 0) desde = i / ch; }
+                    for (int i = 0; i + 1 < rb * ch; i += 2) { double v = Math.Abs(0.5 * (soloB[i] + soloB[i + 1])); if (v > eco) eco = v; if (v > 1e-6 && desde < 0) desde = i / ch; }   // en el medio (ver arriba)
                     Check(eco <= 1e-3, nom + ", con el DSEE: en el cebado solo queda el eco previo de la banda recreada (" + F(20 * Math.Log10(Math.Max(eco, 1e-12)), "0") + " dBFS, "
                           + (desde < 0 ? "ninguno" : F(1000.0 * (rb - desde) / fs, "0.0") + " ms antes") + "); es lo unico que se descarta, y sin des-recorte no existe");
                 }

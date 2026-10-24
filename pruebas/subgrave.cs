@@ -6,11 +6,12 @@ using NAudio.Wave;
 // LAS BOCINAS DEL BILLAR (Rocola/GraveMono.cs, 11-10-2026): el subgrave fuera y el estereo un poco mas estrecho.
 // Con tonos sinteticos por la etapa de verdad:
 //  1) Apagado (ancho 100 %, sin subgrave) sale bit a bit como la etapa de siempre.
-//  2) El subgrave: Butterworth de cuarto orden en 30 Hz; lo que se oye no cambia.
+//  2) El subgrave: la curva de un Butterworth de cuarto orden en 30 Hz, EN FASE LINEAL desde el 24-10-2026 (sin girar la fase del
+//     grave: no mueve el bombo ni sube los picos de un masterizado aplastado, que el filtro de antes subia); lo que se oye no cambia.
 //  3) El ancho: lo que va todo a un lado sale por el otro 12 dB mas bajo (al 60 %); lo del centro, igual.
 //  4) Un archivo de un canal: solo el subgrave.
-//  5) Disco continuo: la siguiente pista sigue con los filtros de la anterior (sin golpe), y el silencio deja los
-//     filtros en cero (sin numeros desnormales).
+//  5) Disco continuo: la siguiente pista empalma con la anterior sin escalon (en fase lineal la anterior acaba sin conocer la
+//     siguiente: no puede salir bit a bit como una sola), y tras el silencio sale cero exacto.
 //  6) La configuracion, la cadena de cada cancion y que leer no reserve memoria.
 //  7) Los interruptores de Ctrl+F3 (apagados de fabrica: son para las bocinas del billar), al instante.
 // No es escucharlo en el bar: eso solo se sabe alli.
@@ -92,7 +93,7 @@ class Subgrave
         object vieja = Vieja(new Fuente(ruido, fs, 1), 120f);
         Check(!(bool)TMono.GetProperty("Activo", T).GetValue(vieja, null), "y un archivo de un canal, sin subgrave, ni se toca");
 
-        Console.WriteLine("\n  2) EL SUBGRAVE (30 Hz, cuarto orden)\n");
+        Console.WriteLine("\n  2) EL SUBGRAVE (30 Hz: la curva de cuarto orden, en fase lineal)\n");
         double fc = GetF("SubDeFabrica");
         Check(Math.Abs(fc - 30) < .01, "de fabrica corta en 30 Hz");
         foreach (double hz in new double[] { 15, 20, 25, 30, 40, 50, 60, 80, 120, 1000, 8000 })
@@ -107,6 +108,7 @@ class Subgrave
             if (hz >= 60) Check(Math.Abs(g) < .05, F(hz, "0") + " Hz sale igual (" + F(g, "0.000") + " dB)");
         }
         Check(Math.Abs(fc - 30) < .01, "fin del barrido");
+        FaseLineal(fs);
 
         Console.WriteLine("\n  3) EL ANCHO (60 %)\n");
         double an = GetF("AnchoDeFabrica");
@@ -142,14 +144,21 @@ class Subgrave
         TMono.GetMethod("Sigue", T).Invoke(eb, new object[] { ea });
         float[] p2 = LeeTodo(eb, 2048);
         float[] seguidas = new float[p1.Length + p2.Length]; Array.Copy(p1, seguidas, p1.Length); Array.Copy(p2, 0, seguidas, p1.Length, p2.Length);
-        Check(Igual(junta, seguidas), "dos pistas seguidas sin fundido salen igual que una sola (el subgrave no da un golpe en el cambio)");
+        double dif = 0, salto = 0, normal = 0; int cambio = mitad / 2;
+        for (int i = 0; i < junta.Length && i < seguidas.Length; i++) dif = Math.Max(dif, Math.Abs(junta[i] - seguidas[i]));
+        for (int c = 0; c < 2; c++)
+        {
+            for (int i = 2 * (cambio - 3) + c; i <= 2 * (cambio + 3) + c; i += 2) salto = Math.Max(salto, Math.Abs(seguidas[i] - seguidas[i - 2]));
+            for (int i = 2 * 4410 + c; i < 2 * (cambio - 4410); i += 2) normal = Math.Max(normal, Math.Abs(seguidas[i] - seguidas[i - 2]));
+        }
+        Info("dos pistas seguidas frente a una sola: diferencia maxima " + F(dif, "0.0000") + " (el grave de la siguiente que la anterior no conocia); salto en el cambio " + F(salto, "0.0000") + ", normal " + F(normal, "0.0000"));
+        Check(seguidas.Length == junta.Length && salto <= normal * 1.25, "dos pistas seguidas sin fundido: el cambio no da un golpe (el salto entre muestras, como el normal)");
         float[] tonoSilencio = new float[fs * 2 * 12];
         Array.Copy(Tono(fs, 40, 1.0, 1, .3), tonoSilencio, fs * 2);
         object es = Etapa(new Fuente(tonoSilencio, fs, 2), 120f, .6f, 30f);
-        LeeTodo((ISampleProvider)es, 4096);
-        double[] st = (double[])TMono.GetField("ss", T).GetValue(es);
-        bool ceros = true; foreach (double v in st) if (v != 0.0) ceros = false;
-        Check(ceros, "tras el silencio los filtros del subgrave quedan en cero exacto (sin desnormales, que en un procesador viejo son lentisimos)");
+        float[] tras = LeeTodo((ISampleProvider)es, 4096);
+        bool ceros = tras.Length == tonoSilencio.Length; for (int i = tras.Length - fs * 2 * 8; i < tras.Length && ceros; i++) if (tras[i] != 0f) ceros = false;
+        Check(ceros, "tras el silencio sale cero exacto (sin restos diminutos ni desnormales, que en un procesador viejo son lentisimos)");
 
         Console.WriteLine("\n  6) CONFIGURACION Y CADENA\n");
         List<string> lee = Codigo.Textos(TF.GetMethod("LoadConfigPrefs", T)), esc = Codigo.Textos(TF.GetMethod("TextoConfig", T));
@@ -166,7 +175,8 @@ class Subgrave
         int l1, e1, l2, e2; Codigo.UsosDeCampo(arma, "anchoEstereo", out l1, out e1); Codigo.UsosDeCampo(arma, "subgraveHz", out l2, out e2);
         Check(l1 > 0 && l2 > 0, "cada cancion arma su etapa con el ancho y el subgrave de la configuracion");
         bool reserva = false;
-        foreach (string m in new string[] { "Read", "Enteros", "Cuadros", "SinCruce", "Subgrave", "Hereda", "Sigue", "SubAhora", "Ajusta" })
+        foreach (string m in new string[] { "Read", "Interior", "Enteros", "Cuadros", "SinCruce", "LeeEnFaseLineal", "Bloque", "GraveDelLado", "Hereda", "Sigue", "Ajusta",
+                                            "SubQuiere", "SubLee", "Anillo", "Anillo1", "Entra", "Sale", "SubBloque", "SubLeeDelInterior", "LoQueSeQuita", "GraveDe" })
             foreach (Codigo.Paso p in Codigo.Pasos(TMono.GetMethod(m, T))) if (p.Op == 0x8D || p.Op == 0x73) reserva = true;
         Check(!reserva, "leer no reserva memoria");
         // Lo que cuesta, comparado con la etapa de siempre (Mono, este equipo: orientativo).
@@ -198,14 +208,13 @@ class Subgrave
             TMono.GetMethod("Sigue", T).Invoke(segunda, new object[] { primera });
             Check(segunda.Read(vacio, 0, 0) == 0 && !(bool)TMono.GetField("empezo", T).GetValue(segunda),
                   "una consulta vacia de la siguiente no consume la herencia antes de que acabe la anterior");
-            LeeTodo(primera, bloque);
+            float[] uno = LeeTodo(primera, bloque);
             Check((bool)TMono.GetField("acabo", T).GetValue(primera), "mono: el fin queda reconocido");
             TMono.GetMethod("Sigue", T).Invoke(segunda, new object[] { primera });
             float[] salida = LeeTodo(segunda, bloque);
-            float[] referencia = LeeTodo(Etapa(new Fuente(todo, fs, 1), 120f, 1f, 30f), bloque);
-            bool igual = salida.Length == n;
-            for (int i = 0; i < salida.Length && igual; i++) igual = salida[i] == referencia[n + i];
-            Check(igual, "mono: dos pistas conservan el filtro bit a bit como una sola, bloques de " + bloque);
+            double salto = Math.Abs(salida[0] - uno[uno.Length - 1]), normal = 0;
+            for (int i = 1; i < n; i++) normal = Math.Max(normal, Math.Max(Math.Abs(salida[i] - salida[i - 1]), Math.Abs(uno[i] - uno[i - 1])));
+            Check(salida.Length == n && salto <= normal * 1.25, "mono: dos pistas seguidas empalman sin escalon (" + F(salto, "0.00000") + " frente a " + F(normal, "0.00000") + " de normal), bloques de " + bloque);
         }
     }
     static void Interruptores(int fs)
@@ -255,6 +264,56 @@ class Subgrave
         foreach (MethodInfo mm in TF.GetMethods(T)) if (mm.Name == "LocalDe" && mm.GetParameters()[0].ParameterType.Name == "Track")
         { Codigo.UsosDeCampo(mm, "estereoEstrecho", out l1, out e1); Codigo.UsosDeCampo(mm, "cortaSubgrave", out l2, out e2); }
         Check(armaLeeLocalDe && l1 > 0 && l2 > 0, "y cada cancion nueva nace con ellos como estan (por LocalDe, que sin el automatico devuelve los mandos)");
+    }
+    // EN FASE LINEAL: un tono sale en su sitio (sin desfase), y una onda aplanada como la de un masterizado moderno no sube de pico.
+    // El filtro de antes (dos bicuadradas de Butterworth) se rehace aqui para ensenar lo que subia.
+    static void FaseLineal(int fs)
+    {
+        foreach (double hz in new double[] { 40, 50, 60, 80, 120 })
+        {
+            float[] x = Tono(fs, hz, 4.0, 1, 1), y = LeeTodo(Etapa(new Fuente(x, fs, 2), 120f, 1f, 30f), 4096);
+            double grados = Fase(y, fs, hz) - Fase(x, fs, hz), viejo = Fase(Antes(x, fs), fs, hz) - Fase(x, fs, hz);
+            grados = Math.IEEERemainder(grados, 360); viejo = Math.IEEERemainder(viejo, 360);
+            Check(Math.Abs(grados) < 0.5, F(hz, "0") + " Hz sale en su sitio: " + F(grados, "0.00") + " grados (el filtro de antes lo corria " + F(viejo, "0") + ")");
+        }
+        // Un bombo de 50 Hz con sus armonicos, aplanado al techo (como un masterizado con mucho limitador).
+        int n = fs * 4; float[] q = new float[2 * n];
+        for (int i = 0; i < n; i++)
+        {
+            double t = (double)i / fs, v = 0;
+            for (int k = 1; k <= 7; k++) v += Math.Sin(2 * Math.PI * 50 * k * t) / k;
+            v = Math.Max(-0.7, Math.Min(0.7, 0.9 * v));
+            q[2 * i] = q[2 * i + 1] = (float)v;
+        }
+        double p0 = Pico(q, fs), p1 = Pico(LeeTodo(Etapa(new Fuente(q, fs, 2), 120f, 1f, 30f), 4096), fs), pv = Pico(Antes(q, fs), fs);
+        Info("onda aplanada en 50 Hz: pico " + F(Db(p0), "0.00") + " dBFS; con el subgrave " + F(Db(p1), "0.00") + " (antes: " + F(Db(pv), "0.00") + ")");
+        Check(Db(p1) - Db(p0) < 0.3 && Db(pv) - Db(p0) > Db(p1) - Db(p0) + 0.5, "una onda aplanada no sube de pico (" + F(Db(p1) - Db(p0), "+0.00;-0.00") + " dB; el filtro de antes la subia " + F(Db(pv) - Db(p0), "+0.00") + ")");
+    }
+    static double Fase(float[] y, int fs, double hz)
+    {
+        int frames = y.Length / 2, desde = frames / 4, hasta = frames - frames / 4; double s = 0, c = 0;
+        for (int i = desde; i < hasta; i++) { double w = 2 * Math.PI * hz * i / fs; s += y[2 * i] * Math.Sin(w); c += y[2 * i] * Math.Cos(w); }
+        return Math.Atan2(c, s) * 180 / Math.PI;
+    }
+    static double Pico(float[] y, int fs) { double m = 0; for (int i = 2 * fs; i < y.Length - 2 * fs; i++) m = Math.Max(m, Math.Abs(y[i])); return m; }
+    static float[] Antes(float[] x, int fs)
+    {
+        double ws = 2.0 * Math.PI * 30 / fs, cs = Math.Cos(ws), sn = Math.Sin(ws);
+        double[] qs = { 0.54119610, 1.30656296 };
+        float[] y = new float[x.Length];
+        for (int c = 0; c < 2; c++)
+        {
+            double[] v = new double[x.Length / 2];
+            for (int i = 0; i < v.Length; i++) v[i] = x[2 * i + c];
+            foreach (double qq in qs)
+            {
+                double a0 = 1.0 + sn / (2.0 * qq), b0 = (1.0 + cs) / (2.0 * a0), a1 = -2.0 * cs / a0, a2 = (1.0 - sn / (2.0 * qq)) / a0;
+                double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+                for (int i = 0; i < v.Length; i++) { double xx = v[i], yy = b0 * (xx - 2 * x1 + x2) - a1 * y1 - a2 * y2; x2 = x1; x1 = xx; y2 = y1; y1 = yy; v[i] = yy; }
+            }
+            for (int i = 0; i < v.Length; i++) y[2 * i + c] = (float)v[i];
+        }
+        return y;
     }
     static double GetF(string n) { return Convert.ToDouble(TMono.GetField(n, T).GetValue(null)); }
     static double Mejor(Action a)

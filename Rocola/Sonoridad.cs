@@ -952,17 +952,20 @@ namespace Rocola
         // justo si llega por encima de su limite). El limite sale de sus picos por bloque de 100 ms, contra el techo del limitador:
         //   - el P99 (sus golpes) a no mas de 3 dB por encima, y el golpe mas fuerte de toda la cancion a no mas de 6: los mismos topes de
         //     picos que ya tenia el nivelado (TopeSubidaPorPicos, 28-09-2026);
-        //   - y, nuevo, el P90 (el grueso de la cancion) a no mas de 1 dB: lo que una cancion ya aplastada no aguanta es que el limitador
+        //   - y, nuevo, el P90 (el grueso de la cancion) a no mas de 0,5 dB: lo que una cancion ya aplastada no aguanta es que el limitador
         //     trabaje TODO el tiempo, y sin objetivo nada mas la frenaria.
-        // Elegidos con el limitador de la rocola en ocho canciones de prueba de 60 s (golpes parejos, desiguales y sueltos, baladas con y
-        // sin un golpe suelto, una moderna aplastada, una vieja bajita y una comprimida grabada baja), con este criterio: que quite mas de
-        // 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 %. Con el P90 a 1 dB quita mas de 1 dB como mucho el 9 % y mas
-        // de 3 el 0,5 %; las aplastadas no pasan de 1,4 dB; un unico golpe muy por encima del resto (un platillo suelto, un chasquido de
-        // disco) se baja mas, solo en su instante, como antes. Con el P90 a 1,5 dB la de golpes parejos pasaba al 16 % y la comprimida al
-        // 44 %; sin el P90, las aplastadas quedaban limitadas el 100 % del tiempo. El precio: una cancion con golpes en mas del 10 % de los
-        // bloques (bateria muy seguida) suena de 0,7 a 1 dB menos que con la regla de antes, que la limitaba el 27 % del tiempo. Con medidas de antes
-        // del algoritmo 5 (sin P90) se nivela con la regla de arriba mientras se vuelven a medir.
-        internal const float LimP90Db = 1f, LimP99Db = SubeGrP99Db, LimPicoDb = SubeGrPicoDb;
+        // Criterio: que el limitador quite mas de 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 %, EN LA CADENA DE FABRICA
+        // (realce al 35 %, bajo automatico, des-recorte y el grave en mono de fase lineal: lo que va detras del nivelado tambien sube algo
+        // los picos). Medido con catorce canciones de prueba (golpes parejos, desiguales y sueltos, baladas con y sin un golpe suelto, una
+        // moderna aplastada, una vieja bajita, una comprimida grabada baja, una mezcla completa sin masterizar y masterizada con 3, 6, 9 y
+        // 12 dB de limitador, y una vieja con el bajo a un lado). Con el P90 a 0,5 dB: mas de 1 dB como mucho el 8 % y mas de 3 dB el 0,6 %;
+        // los masterizados, el 2 % y nunca mas de 1,5 dB. Con el P90 a 1 dB (lo que iba antes de la revision de la cadena) los masterizados
+        // pasaban del 11 al 38 % (bajando 0,1 a 0,3 dB, que el limitador quitaba igual); con 0 dB casi no mejoran y las de bateria muy
+        // seguida y las baladas pierden 0,5 dB mas. Sin el P90, las aplastadas quedaban limitadas el 100 % del tiempo. Un unico golpe muy por
+        // encima del resto (un platillo suelto, un chasquido de disco) se baja mas, solo en su instante, como antes. El precio: una cancion
+        // con golpes en mas del 10 % de los bloques (bateria muy seguida) suena algo menos que con la regla de antes, que la limitaba mas.
+        // Con medidas de antes del algoritmo 5 (sin P90) se nivela con la regla de arriba mientras se vuelven a medir.
+        internal const float LimP90Db = 0.5f, LimP99Db = SubeGrP99Db, LimPicoDb = SubeGrPicoDb;
         internal static float LimiteSinRaspar(float picoLin, float p99Lin, float p90Lin)
         {
             float a = TechoPicoReal * DbALin(LimP90Db) / Math.Max(p90Lin, 1e-6f);

@@ -93,6 +93,11 @@ namespace Rocola
         {
             umbral = techo / GananciaMaxima;
         }
+        // Disco continuo (el limitador de la pista siguiente sigue con el de la anterior): toda la memoria de otro.
+        internal void CopiaDe(DetectorPicoReal a)
+        {
+            Array.Copy(a.hist, hist, hist.Length); pos = a.pos; desdeAlta = a.desdeAlta; previo = a.previo;
+        }
 
         // Entra una muestra; devuelve el pico de la onda reconstruida en el intervalo que empieza Retraso
         // muestras atras (entre esa muestra y la siguiente, ambas incluidas). Si no puede pasar del techo, lo que
@@ -258,6 +263,12 @@ namespace Rocola
         // detector vea el pico entero antes de decidir, y al terminar la cancion vacia tambien eso.
         //
         // Lo que no pasa del techo sale tal cual (solo retrasado): la ganancia se queda en 1 exacto.
+        //
+        // DISCO CONTINUO (24-10-2026). La pista siguiente del mismo disco empezaba con el limitador de cero (sin bajar nada): si la
+        // anterior acababa limitando, en el cambio la ganancia saltaba de golpe (medido en la cadena entera, con la musica a tope:
+        // un escalon de 0,03 a 0,14). Ahora la anterior guarda su estado al acabar su musica, antes de vaciarse, y la siguiente
+        // sigue con el (Sigue, desde SigueA): su retardo lleva la cola de la anterior otra vez (el relevo la tira, es su cebado) y
+        // la musica de la siguiente sale con la ganancia que venia y la pre-escucha de verdad. El cebado de delante pasa tal cual.
         private sealed class LimitadorPicoReal : NAudio.Wave.ISampleProvider
         {
             private readonly NAudio.Wave.ISampleProvider src;
@@ -282,6 +293,17 @@ namespace Rocola
             private int restoN;
             private readonly float[] sale;              // un cuadro entero leido aparte cuando piden menos de uno (ver Read)
             private int saleIdx, saleN;
+            // Disco continuo: la anterior de la que seguir, el cebado de delante (lo pone ArmaCadena) y lo guardado al acabar la musica.
+            private volatile LimitadorPicoReal anterior;
+            internal int Cebado;
+            private int cebadoPorPasar;                 // cuadros
+            private bool empezo, finGuardado;
+            private readonly DetectorPicoReal[] fdet;
+            private readonly float[] fdelay, fpico, fpeaks;
+            private readonly long[] fpeakFrames;
+            private int fpeakHead, fpeakCount, fdpos, fspos, fesperando;
+            private long fframeIndex, fpaso;
+            private float fenv, fultimo;
             public LimitadorPicoReal(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs)
             {
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); ceiling = ceilingLin;
@@ -299,9 +321,37 @@ namespace Rocola
                 espera = (int)(EsperaS * rate);
                 resto = new float[ch];
                 sale = new float[ch];
+                fdet = new DetectorPicoReal[ch];
+                for (int c = 0; c < ch; c++) fdet[c] = new DetectorPicoReal(ceilingLin);
+                fdelay = new float[delay.Length]; fpico = new float[picoCuadro.Length]; fpeaks = new float[peaks.Length]; fpeakFrames = new long[peakFrames.Length];
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int DelayFrames { get { return total; } }
+
+            internal void Sigue(LimitadorPicoReal previa) { if (previa != null && !ReferenceEquals(previa, this)) anterior = previa; }
+            // Al acabar la musica (antes de vaciar la pre-escucha con silencio): todo lo que hace falta para seguir.
+            private void GuardaFin()
+            {
+                finGuardado = true;
+                for (int c = 0; c < ch; c++) fdet[c].CopiaDe(det[c]);
+                Array.Copy(delay, fdelay, delay.Length); Array.Copy(picoCuadro, fpico, fpico.Length);
+                Array.Copy(peaks, fpeaks, fpeaks.Length); Array.Copy(peakFrames, fpeakFrames, fpeakFrames.Length);
+                fpeakHead = peakHead; fpeakCount = peakCount; fdpos = dpos; fspos = spos; fesperando = esperando;
+                fframeIndex = frameIndex; fpaso = paso; fenv = env; fultimo = ultimoIntervalo;
+            }
+            // En la primera lectura: el limitador de la anterior del mismo disco, como lo dejo su musica.
+            private void Hereda()
+            {
+                LimitadorPicoReal a = anterior; anterior = null;
+                if (a == null || !a.finGuardado || a.ch != ch || a.total != total || a.look != look || a.ceiling != ceiling) return;
+                for (int c = 0; c < ch; c++) det[c].CopiaDe(a.fdet[c]);
+                Array.Copy(a.fdelay, delay, delay.Length); Array.Copy(a.fpico, picoCuadro, picoCuadro.Length);
+                Array.Copy(a.fpeaks, peaks, peaks.Length); Array.Copy(a.fpeakFrames, peakFrames, peakFrames.Length);
+                peakHead = a.fpeakHead; peakCount = a.fpeakCount; dpos = a.fdpos; spos = a.fspos; esperando = a.fesperando;
+                frameIndex = a.fframeIndex; paso = a.fpaso; env = a.fenv; ultimoIntervalo = a.fultimo;
+                hadInput = true;
+                cebadoPorPasar = Math.Max(0, Cebado);
+            }
 
             // Igual que en LookaheadLimiter: cola monotona del maximo de la ventana de pre-escucha.
             private void AdvanceGain(float peak)
@@ -392,6 +442,7 @@ namespace Rocola
 
             private int Drain(float[] buffer, int offset, int count)
             {
+                if (!finGuardado && hadInput) GuardaFin();   // (antes del silencio de vaciar)
                 int frames = Math.Min(drainFrames, count / ch);
                 if (frames > 0) Bloque(null, 0, buffer, offset, frames);
                 drainFrames -= frames;
@@ -403,6 +454,7 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count)
             {
                 if (count <= 0) return 0;
+                if (!empezo) { empezo = true; Hereda(); }
                 int hechos = 0;
                 if (saleN > 0)
                 {
@@ -463,7 +515,9 @@ namespace Rocola
                     if (frames > 0)
                     {
                         hadInput = true;
-                        Bloque(buffer, offset, buffer, offset, frames);
+                        int crudo = 0;   // tras heredar, el cebado de delante sale tal cual (el relevo lo tira)
+                        if (cebadoPorPasar > 0) { crudo = Math.Min(frames, cebadoPorPasar); cebadoPorPasar -= crudo; }
+                        if (frames > crudo) Bloque(buffer, offset + crudo * ch, buffer, offset + crudo * ch, frames - crudo);
                         return frames * ch;
                     }
                 }

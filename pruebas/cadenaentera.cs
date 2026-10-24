@@ -14,7 +14,14 @@ using NAudio.Wave;
 //   2) nada roto (NaN, infinitos) ni por encima del techo del limitador;
 //   3) sale la cancion entera mas su cebado, ni una muestra de menos;
 //   4) el retardo que declara la cadena (lo que el relevo sin pausa descarta) es el de verdad: donde sale un clic;
-//   5) y cada etapa, sola, con lecturas de 1 a 7 muestras sueltas o entre bloques, en mono, estereo y 6 canales.
+//   5) las canciones mono salen como estereo de dos canales iguales (24-10-2026): bit a bit las del archivo, leidas como se lean, con
+//      relevo sin pausa junto a las estereo, al retomar en cuadros enteros, y con el balance del local;
+//   6) y cada etapa, sola, con lecturas de 1 a 7 muestras sueltas o entre bloques, en mono, estereo y 6 canales;
+//   7) EL CAMBIO DE PISTA EN UN DISCO CONTINUO (24-10-2026): un disco partido en dos pistas, por las dos cadenas de verdad y el relevo
+//      (la siguiente sin su cebado, siguiendo con las etapas de la anterior), frente a la cancion entera. Con la version publicada
+//      (1d04b70) el cambio daba un escalon de 0,33 de fabrica (0,16 a 0,33 con el local; 0,46 con el limitador trabajando), con esta
+//      musica a 0,3 de pico: el cebado de los retardos era un hueco para las etapas que heredan (y el paso-todo del grave en mono lo
+//      volvia un golpe), y el realce, el EQ, el bajo y el limitador empezaban de cero. Ahora, 0,0002 a 0,0003 (0,0024 a tope).
 // La salida de la rocola pide siempre cuadros enteros, asi que lo de las lecturas partidas no sonaba; pero la cadena tiene que
 // valer pidase como se pida (como el limitador desde el 22-10-2026). Con la version anterior fallan el fundido (la entrada de
 // 5 ms caia en medio de la cancion) y el des-recorte (canales corridos y, en 6 canales, los ultimos 68 cuadros perdidos).
@@ -239,6 +246,125 @@ class CadenaEntera
         }
         Check(q.Length == 0, "la etapa " + nombre + " (" + ch + " canales), leida de 1 a 7 muestras o con sueltas entre bloques, da los mismos bits" + q);
     }
+    // ---------------------------------------------------------------- LAS CANCIONES MONO, COMO ESTEREO (24-10-2026)
+    static float[] LeeLector(object lector, Random r)
+    {
+        ISampleProvider s = (ISampleProvider)lector; List<float> y = new List<float>(); float[] b = new float[9000]; int n;
+        while ((n = s.Read(b, 0, r == null ? 4096 : 1 + r.Next(7))) > 0) for (int i = 0; i < n; i++) y.Add(b[i]);
+        return y.ToArray();
+    }
+    static void Mono(string dir)
+    {
+        Console.WriteLine("\n  LAS CANCIONES MONO, COMO ESTEREO DE DOS CANALES IGUALES\n");
+        int hz = 44100; float[] x = Musica(hz, 1, 3, 0, 9);
+        string p = Escribe(dir, "mono16.wav", x, new WaveFormat(hz, 16, 1));
+        object f = Form(false);
+        // 1) El lector: dos canales, iguales, y cada uno la muestra del archivo (16 bits: la misma cuenta que mono).
+        object lector = Call(f, "OpenAudio", p);
+        WaveFormat wf = ((ISampleProvider)lector).WaveFormat;
+        float[] a = LeeLector(lector, null); ((IDisposable)lector).Dispose();
+        object lm = Call(f, "OpenAudio", p); float[] b = LeeLector(lm, new Random(3)); ((IDisposable)lm).Dispose();
+        bool iguales = a.Length == 2 * x.Length, deArchivo = true;
+        for (int i = 0; iguales && i < x.Length; i++) { if (a[2 * i] != a[2 * i + 1]) iguales = false; if (Math.Abs(a[2 * i] - x[i]) > 3.0 / 32768) deArchivo = false; }   // el WAV de 16 bits: NAudio escribe x 32767 truncando y se lee / 32768
+        bool partidas = b.Length == a.Length; for (int i = 0; partidas && i < a.Length; i++) if (a[i] != b[i]) partidas = false;
+        Check(wf.Channels == 2 && iguales && deArchivo, "un archivo mono se abre como estereo: dos canales identicos, cada uno la muestra del archivo (" + wf.Channels + " canales)");
+        Check(partidas, "y leido de 1 a 7 muestras (cuadros partidos), lo mismo bit a bit");
+        Type sp = TF.Assembly.GetType("Rocola.RemuestreoContinuo", true);
+        bool mismo = (bool)sp.GetMethod("MismoLayout", T).Invoke(null, new object[] { wf, WaveFormat.CreateIeeeFloatWaveFormat(hz, 2) });
+        Check(mismo, "con la misma disposicion que una estereo: entre las dos hay relevo sin pausa (antes se cerraba y reabria la salida)");
+        // 2) Retomar a media cancion: lo que sale sigue en cuadros enteros (no queda media muestra colgando de antes del salto).
+        object ls = Call(f, "OpenAudio", p); ISampleProvider ss = (ISampleProvider)ls; float[] t = new float[3]; ss.Read(t, 0, 3);
+        TF.GetNestedType("IAudioSource", T).GetMethod("Salta").Invoke(ls, new object[] { TimeSpan.FromSeconds(1.0) });
+        float[] tras = LeeLector(ls, null); ((IDisposable)ls).Dispose();
+        bool pares = tras.Length % 2 == 0; for (int i = 0; pares && i + 1 < tras.Length; i += 2) if (tras[i] != tras[i + 1]) pares = false;
+        Check(pares && tras.Length > 0, "al retomar a media cancion sigue en cuadros enteros y con los dos canales iguales");
+        // 3) El balance del local se le aplica (antes solo con dos canales).
+        object fb = Form(false);   // (Form deja la clase de fabrica: el balance se pone despues)
+        TF.GetField("balanceDb", T).SetValue(null, 4);
+        int r0, c0, h0; float[] y = Lee(fb, p, 0, out r0, out c0, out h0);
+        RestauraEstaticos();
+        double eL = 0, eR = 0; for (int i = 0; i + 1 < y.Length; i += 2) { eL += y[i] * (double)y[i]; eR += y[i + 1] * (double)y[i + 1]; }
+        double bal = 10 * Math.Log10(Math.Max(eR, 1e-30) / Math.Max(eL, 1e-30));
+        Check(c0 == 2 && Math.Abs(bal) > 1.0, "y lleva el balance del local: con el balance movido, un canal sale " + Math.Abs(bal).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " dB por debajo del otro");
+    }
+
+    // ---- 7) el cambio de pista en un disco continuo ----
+    static object ArmaPista(object f, string ruta, out object lector)
+    {
+        Type tt = TF.GetNestedType("Track", T);
+        object track = Activator.CreateInstance(tt, true); tt.GetField("Path", T).SetValue(track, ruta);
+        lector = Call(f, "OpenAudio", ruta);
+        TF.GetNestedType("IAudioSource", T).GetProperty("Volume").SetValue(lector, 1.0f, null);
+        object cad = Call(f, "ArmaCadena", track, lector, false, 0.0);
+        object tap = Get(cad, "Tap"); tap.GetType().GetField("Gain", T).SetValue(tap, 1.0f);   // la misma ganancia en las tres: se mira el empalme, no el nivelado
+        return cad;
+    }
+    static float[] Todo(object cad)
+    {
+        ISampleProvider sal = (ISampleProvider)Get(cad, "Salida"); List<float> y = new List<float>(); float[] b = new float[2205 * 2]; int n;
+        while ((n = sal.Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) y.Add(b[i]);
+        return y.ToArray();
+    }
+    static void Fundido(object cad, string m) { object fu = Get(cad, "Fundido"); fu.GetType().GetMethod(m, T).Invoke(fu, null); }
+    static double Empalme(string dir, Action<object> pon, double nivel, out double aparta, out double normal)
+    {
+        int fs = 44100, n = fs * 8, corte = fs * 4 + 1037;
+        float[] x = Musica(fs, 2, 8, 0, 11);
+        for (int i = 0; i < n; i++)
+        {   // y un bajo abierto a un lado (lado con grave), para el grave en mono y el subgrave
+            double t = (double)i / fs, bj = 0.25 * Math.Sin(2 * Math.PI * 38 * t) + 0.2 * Math.Sin(2 * Math.PI * 61 * t);
+            x[2 * i] = (float)(nivel * (x[2 * i] + bj)); x[2 * i + 1] = (float)(nivel * (x[2 * i + 1] + 0.3 * bj));
+        }
+        float[] xa = new float[2 * corte], xb = new float[2 * (n - corte)];
+        Array.Copy(x, xa, xa.Length); Array.Copy(x, 2 * corte, xb, 0, xb.Length);
+        WaveFormat wf = WaveFormat.CreateIeeeFloatWaveFormat(fs, 2);
+        string pa = Escribe(dir, "ea.wav", xa, wf), pb = Escribe(dir, "eb.wav", xb, wf), pc = Escribe(dir, "ec.wav", x, wf);
+        object f = Form(false); Set(f, "saltaSilencios", false); pon(f);
+        object la, lb, lc;
+        object cA = ArmaPista(f, pa, out la), cB = ArmaPista(f, pb, out lb), cC = ArmaPista(f, pc, out lc);
+        Fundido(cA, "Quita"); Fundido(cC, "Quita");
+        TF.GetMethod("SigueA", T).Invoke(null, new object[] { cB, cA });   // lo que hace el relevo de un disco continuo
+        Fundido(cB, "SinEntrada");
+        float[] yA = Todo(cA), yB = Todo(cB), yC = Todo(cC);
+        ((IDisposable)la).Dispose(); ((IDisposable)lb).Dispose(); ((IDisposable)lc).Dispose();
+        int rA = (int)Get(cA, "Retardo"), rB = (int)Get(cB, "Retardo"), rC = (int)Get(cC, "Retardo");
+        int nA = yA.Length / 2 - rA, nB = yB.Length / 2 - rB;
+        double escalon = 0; aparta = 0; normal = 0;
+        for (int c = 0; c < 2; c++)
+        {
+            double antes = 0;
+            for (int i = 0; i < nA + nB && rC + i < yC.Length / 2; i++)
+            {
+                double v = i < nA ? yA[2 * (rA + i) + c] : yB[2 * (rB + i - nA) + c], d = v - yC[2 * (rC + i) + c];
+                aparta = Math.Max(aparta, Math.Abs(d));
+                if (i == nA) escalon = Math.Max(escalon, Math.Abs(d - antes));
+                antes = d;
+                if (i > nA - fs / 10 && i < nA - 10) normal = Math.Max(normal, Math.Abs(yC[2 * (rC + i) + c] - yC[2 * (rC + i - 1) + c]));
+            }
+        }
+        return escalon;
+    }
+    static void DiscoContinuo(string dir)
+    {
+        Console.WriteLine("\n  EL CAMBIO DE PISTA EN UN DISCO CONTINUO (dos pistas seguidas frente a la cancion entera)\n");
+        string[] nom = { "de fabrica", "con la claridad", "modo automatico del local: billar", "con los graves del local +3 y el subgrave" };
+        Action<object>[] pon = {
+            delegate(object f) { },
+            delegate(object f) { Set(f, "claridadLocal", true); },
+            delegate(object f) { Set(f, "localAuto", true); Set(f, "tipoLocal", 0); },
+            delegate(object f) { Set(f, "gravesLocalDb", 3); Set(f, "cortaSubgrave", true); } };
+        for (int k = 0; k < nom.Length; k++)
+        {
+            double aparta, normal, e = Empalme(dir, pon[k], 0.3, out aparta, out normal);
+            Check(e < 0.002, nom[k] + ": el cambio no da escalon (" + e.ToString("0.00000") + "; el salto normal entre muestras es " + normal.ToString("0.0000")
+                  + "; lo que mas se aparta de la cancion entera, " + aparta.ToString("0.0000") + ", lo que la anterior no podia saber de la siguiente)");
+        }
+        {
+            double aparta, normal, e = Empalme(dir, delegate(object f) { }, 1.6, out aparta, out normal);
+            Check(e < 0.005, "y fuerte, con el limitador trabajando en el cambio: escalon " + e.ToString("0.0000") + " (la version publicada, 0,46); salto normal " + normal.ToString("0.0000"));
+        }
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -264,6 +390,8 @@ class CadenaEntera
             }
             Console.WriteLine("\n  EL RETARDO DECLARADO, CONTRA EL DE VERDAD\n");
             foreach (int hz in new int[] { 44100, 48000 }) foreach (bool todo in new bool[] { false, true }) Retardo(dir, hz, todo);
+            Mono(dir);
+            DiscoContinuo(dir);
             Console.WriteLine("\n  CADA ETAPA SOLA, CON LECTURAS PARTIDAS\n");
             F = Form(false);
             float techo = (float)TF.GetField("TechoPicoReal", T).GetValue(null);

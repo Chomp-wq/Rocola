@@ -317,9 +317,12 @@ namespace Rocola
         private static void SigueA(CadenaCancion nueva, CadenaCancion vieja)
         {
             if (nueva == null || vieja == null) return;
+            if (nueva.Tap != null) nueva.Tap.Sigue(vieja.Tap);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
             if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
+            if (nueva.Bajo != null) nueva.Bajo.Sigue(vieja.Bajo);
+            if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
             if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
         }

@@ -65,6 +65,9 @@ namespace Rocola
             private int cuadroEnTrozo, canal;
             private volatile PresenciaSala anterior;
             private bool empezo;
+            // El cebado de delante (lo pone ArmaCadena; GraveMono.cs): tras heredar de la anterior del mismo disco pasa tal cual.
+            internal int Cebado;
+            private int cebadoPorPasar;
 
             public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender)
             {
@@ -103,6 +106,7 @@ namespace Rocola
                 if (a == null || !a.vale || a.tasa != tasa || a.canales != canales) return;
                 potencia = a.potencia; grDb = a.grDb; compDb = a.compDb; picoEnv = a.picoEnv; picoQueda = a.picoQueda; g = a.g; dg = a.dg;
                 suma = a.suma; maximo = a.maximo; cuadroEnTrozo = a.cuadroEnTrozo; canal = a.canal;
+                cebadoPorPasar = Math.Max(0, Cebado) * canales;
             }
 
             public int Read(float[] buffer, int offset, int count)
@@ -110,15 +114,22 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (!vale || n <= 0) return n;
                 if (!empezo) { empezo = true; Hereda(); }
+                int o = offset, m = n;
+                if (cebadoPorPasar > 0)
+                {   // el cebado de la siguiente del mismo disco: sin tocar lo heredado (el relevo lo tira)
+                    int salta = Math.Min(n, cebadoPorPasar); cebadoPorPasar -= salta;
+                    canal = (canal + salta % canales) % canales; o += salta; m -= salta;
+                    if (m == 0) return n;
+                }
                 bool on = encendido;
                 if (!on && g == 1.0 && dg == 0.0)
                 {
                     // El bypass tambien avanza por los canales: al encender despues de
                     // una lectura impar, la derecha sigue compartiendo ganancia con SU izquierda.
-                    canal = (canal + n % canales) % canales;
+                    canal = (canal + m % canales) % canales;
                     return n;   // apagado y ya en 1: ni toca la muestra
                 }
-                Proceso(buffer, offset, n, on);
+                Proceso(buffer, o, m, on);
                 return n;
             }
 

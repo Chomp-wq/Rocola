@@ -17,14 +17,20 @@ y cada etapa sola. Está bien:
 Con cuadros enteros sale igual bit a bit (16 de 16). La nueva batería `cadenaentera` da 77 comprobaciones; la versión anterior da 12
 fallos con ella.
 
-**Tres mejoras, pendientes de decisión:**
-- M1: el grave en mono (encendido de fábrica) gira la fase del grave y sube 1,5–2,7 dB los picos de los masterizados modernos. El
-  limitador los aplasta de más: el 46 % del tiempo y hasta 3,8 dB, frente al 32 % y 1,9 dB sin él. Se recomienda saltarlo en las
-  canciones con el grave ya en mono.
-- M2: las canciones mono no llevan el balance ni el relevo sin pausa con las estéreo.
-- M3: el realce y el bajo hacen limitar suave a las canciones aplastadas.
+**Lo mejor para la calidad del sonido (decisión del dueño), hecho:**
+- **El cambio de pista en un disco continuo, sin golpe.** En la versión publicada daba un escalón de un tercio del pico en cada
+  cambio. El cebado de los retardos era un hueco para las etapas que heredan, y el realce, el EQ, el bajo y el limitador empezaban
+  de cero. Ahora heredan todas y el cebado pasa tal cual: 0,0002 (0,0024 con el limitador trabajando).
+- **M1, el grave en mono, en fase lineal.** El cruce de antes giraba la fase del grave y subía 1,5–2,7 dB los picos de los
+  masterizados (ahora +0,06–0,08). El limitador, de fábrica, en un masterizado de 9 dB, pasa del 46 % del tiempo y 3,8 dB al 2 % y
+  1,3 dB.
+- **El subgrave, en fase lineal**, con la misma curva. Con el modo del local en billar o bocinas chicas, que lo encienden, el
+  limitador trabajaba del 21 al 72 % del tiempo; ahora, del 1 al 3 %.
+- **M2:** las canciones mono se abren como estéreo de dos canales iguales: llevan el balance y entran sin pausa tras una estéreo.
+- **M3:** el P90 del nivelado al límite, a 0,5 dB del techo (antes 1), medido en la cadena de fábrica entera.
 
-Nada oído en el billar ni probado con MP3 reales. [Cadena, pruebas, defectos y propuestas](REVISION_CADENA_AUDIO_MODEST_2026-10-24.md).
+Fuera de eso, la cadena de fábrica sale bit a bit igual. Nada oído en el billar ni probado con MP3 reales. [Cadena, pruebas, lo hecho
+y los números](REVISION_CADENA_AUDIO_MODEST_2026-10-24.md).
 
 ## Los volcados del pantallazo de XP — 24 de octubre de 2026
 
@@ -48,8 +54,8 @@ equipo](VOLCADOS_XP_A4_2026-10-24.md).
 0. Solo se olvida lo que es otro archivo (otro tamaño u otra duración); lo demás se adopta y se vuelve a medir. **Modo noche
 retirado:** ya no se baja el volumen de 11 de la noche a 7 de la mañana; de día la cadena sale igual bit a bit. **Volumen de
 Windows:** al arrancar, el general al máximo y sin silencio, una vez (sin probar en un XP real). **Nivelado al límite:** sin volumen
-objetivo, cada canción sube lo más que aguanta sin que el limitador la raspe (algoritmo 5, con el P90 de los picos: P90 a 1 dB del
-techo, P99 a 3 dB y el golpe más fuerte a 6 dB). Lo medido antes nivela con la regla de antes mientras la tanda larga vuelve a medir
+objetivo, cada canción sube lo más que aguanta sin que el limitador la raspe (algoritmo 5, con el P90 de los picos: P90 a 0,5 dB del
+techo desde la revisión de la cadena, P99 a 3 dB y el golpe más fuerte a 6 dB). Lo medido antes nivela con la regla de antes mientras la tanda larga vuelve a medir
 toda la biblioteca. Con ocho canciones sintéticas y el limitador de verdad: suben las sostenidas y las comprimidas grabadas bajas, las
 fuertes ya no se bajan, y la de batería muy seguida queda 0,7 dB por debajo de antes (el limitador trabaja el 7 % del tiempo en vez del
 27 %). Nada oído en el billar. [Causa, arreglo, regla, números y compatibilidad](NIVELADO_AL_LIMITE_Y_COMPATIBILIDAD_MODEST_2026-10-24.md).

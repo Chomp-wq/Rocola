@@ -103,7 +103,9 @@ class AperturaAudioTest {
       for(int i=0;i<read;i++)Check(x[i+7]==y[i+7],"PCM distinto");
       total+=read;
      }while(read>0);
-     Check(total==frames*channels,"Muestras perdidas");
+     // Desde el 24-10-2026 un archivo mono se abre como estereo de dos canales iguales (M2): el doble de muestras, todas las del archivo.
+     Check(a.WaveFormat.Channels==Math.Max(2,channels),"Mono no abre como estereo");
+     Check(total==frames*a.WaveFormat.Channels,"Muestras perdidas");
     }
     using(FileStream exclusive=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.None))Check(exclusive.Length>0,"Archivo retenido");
    }

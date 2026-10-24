@@ -114,7 +114,7 @@ límite. El límite sale de sus picos por bloque de 100 ms, comparados con el te
 
 | Pico de la canción | Puede pasar del techo | Qué protege |
 |---|---|---|
-| **P90** (el que solo supera el 10 % de los bloques: el grueso de la canción) | **1 dB** (nuevo) | que una canción ya aplastada no quede limitada todo el tiempo |
+| **P90** (el que solo supera el 10 % de los bloques: el grueso de la canción) | **0,5 dB** (nuevo; al principio 1 dB, ver abajo) | que una canción ya aplastada no quede limitada todo el tiempo |
 | **P99** (sus golpes) | 3 dB (el tope de antes) | los golpes |
 | **el golpe más fuerte** de toda la canción | 6 dB (el tope de antes) | un golpe suelto |
 
@@ -128,7 +128,8 @@ de seguridad de +24 dB para una canción casi muda.
 ### Cómo se eligieron los márgenes
 
 Se pasaron ocho canciones sintéticas de 60 s por el limitador de la rocola de verdad (`pruebas/allimite.cs`). Criterio: que el
-limitador quite **más de 1 dB como mucho el 10 % del tiempo** y **más de 3 dB como mucho el 1 %**.
+limitador quite **más de 1 dB como mucho el 10 % del tiempo** y **más de 3 dB como mucho el 1 %**. La tabla es la del primer
+margen, con el P90 a 1 dB; el de ahora (0,5 dB) sale de la cadena entera, más abajo.
 
 | Canción de prueba | Sube | Peor reducción | > 1 dB | > 3 dB |
 |---|---|---|---|---|
@@ -141,9 +142,16 @@ limitador quite **más de 1 dB como mucho el 10 % del tiempo** y **más de 3 dB 
 | grabación vieja bajita (pico −9 dBFS) | +11,8 | 4,1 | 8,4 % | 0,4 % |
 | comprimida grabada baja (pico −7 dBFS) | +7,2 | 1,4 | 3,7 % | 0 % |
 
-Las alternativas probadas:
+**Después, en la cadena de fábrica entera: el P90 a 0,5 dB** (revisión de la cadena, `REVISION_CADENA_AUDIO_MODEST_2026-10-24.md`,
+sección 4.3). Esta tabla se hizo con el limitador solo, y ahí 1 dB cumplía. Pero lo que va detrás del nivelado también sube algo los
+picos: el realce, el bajo y el grave en mono. Medido con catorce canciones en la cadena de fábrica entera (ya con el grave en mono de
+fase lineal), con 1 dB los masterizados modernos pasaban del 11 al 38 % del tiempo por encima de 1 dB. Con **0,5 dB** quedan en el
+2 % (nunca más de 1,5 dB), y las catorce, como mucho el 8 % y el 0,6 %. El precio es el de la primera alternativa de abajo: la de
+golpes parejos sube algo menos. La batería `allimite` lo mide (sección 8, en la cadena de fábrica).
 
-- Con el P90 a **0,5 dB**, la de golpes parejos subía solo +1,2.
+Las alternativas probadas (con el limitador solo):
+
+- Con el P90 a **0,5 dB**, la de golpes parejos subía solo +1,2 (es lo que se hizo después, por la cadena entera).
 - Con el P90 a **1,5 dB**, la de golpes parejos pasaba al 16 % del tiempo por encima de 1 dB y la comprimida al 44 %.
 - **Sin el P90** (solo los topes de picos y sin objetivo), las dos aplastadas quedaban limitadas más de 1 dB más del 90 % del
   tiempo. La batería lo vigila.
@@ -151,7 +159,9 @@ Las alternativas probadas:
 
 ### Lo que cambia frente a la regla de antes
 
-Sonoridad a la salida de la cadena entera, de fábrica, en LKFS (con la medida nueva comparada con la misma medida leída como de antes):
+Sonoridad a la salida de la cadena entera, de fábrica, en LKFS (con la medida nueva comparada con la misma medida leída como de antes).
+Medida con el primer margen (P90 a 1 dB): con el de ahora, las canciones que frena el P90 suenan hasta 0,5 dB menos que en esta
+columna.
 
 | Canción de prueba | Al límite | Regla de antes | Sin nivelar |
 |---|---|---|---|

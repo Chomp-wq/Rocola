@@ -8,7 +8,7 @@ using NAudio.Wave;
 // CADA CANCION HASTA SU LIMITE, SIN RASPARSE (decision del dueno del 24-10-2026; Sonoridad.cs: GananciaAlLimite, algoritmo 5).
 //
 // Ya no hay volumen objetivo para lo medido con el algoritmo 5: cada cancion sube lo mas que aguanta sin que el limitador del final
-// la raspe (su P90 a 1 dB del techo como mucho, su P99 a 3 dB y su golpe mas fuerte a 6 dB: los dos ultimos, los topes de picos de
+// la raspe (su P90 a 0,5 dB del techo como mucho, su P99 a 3 dB y su golpe mas fuerte a 6 dB: los dos ultimos, los topes de picos de
 // antes). Lo medido antes (algoritmos 1 a 4, o
 // solo la estimacion) nivela con la regla de antes mientras la tanda larga lo vuelve a medir: nada se queda sin nivelar. Y una tabla
 // de una version vieja, sin registros de identidad, ya no se borra al sonar la cancion (FuentesMedidas.cs).
@@ -21,7 +21,8 @@ using NAudio.Wave;
 //      como mucho el 10 % del tiempo, mas de 3 dB como mucho el 1 %), la ya aplastada casi no se sube, y sin el P90 si se rasparia;
 //   5) cada medida va por su regla (5 al limite; 2 a 4 la de antes con sus topes; 1 y la estimacion, la de antes sin picos);
 //   6) de punta a punta con archivos: una tabla vieja sin identidad nivela al sonar y no se borra;
-//   7) la tanda larga pide todo lo que no es del algoritmo 5, y el disco en racha sube hasta el limite de su pista mas exigente.
+//   7) la tanda larga pide todo lo que no es del algoritmo 5, y el disco en racha sube hasta el limite de su pista mas exigente;
+//   8) y en la cadena de fabrica entera (con lo que va detras del nivelado), el limitador sigue dentro del criterio.
 // Son senales sinteticas: dicen que la cuenta hace lo que promete, no como suena tu musica (eso se oye en el bar).
 class AlLimite
 {
@@ -191,8 +192,8 @@ class AlLimite
     {
         Console.WriteLine("\n  3) LA REGLA (GananciaAlLimite)\n");
         float a = (float)S("LimP90Db"), b = (float)S("LimP99Db"), c = (float)S("LimPicoDb"), techo = (float)S("TechoPicoReal");
-        Check(a == 1f && b == 3f && c == 6f && b == (float)S("SubeGrP99Db") && c == (float)S("SubeGrPicoDb"),
-              "los margenes: el P90 a 1 dB del techo, el P99 a 3 dB y el golpe mas fuerte a 6 dB (los dos ultimos, los topes de picos de antes)");
+        Check(a == 0.5f && b == 3f && c == 6f && b == (float)S("SubeGrP99Db") && c == (float)S("SubeGrPicoDb"),
+              "los margenes: el P90 a 0,5 dB del techo (medido con la cadena de fabrica entera), el P99 a 3 dB y el golpe mas fuerte a 6 dB (los dos ultimos, los topes de picos de antes)");
         float g = AlLim(1f, -1, -2, -9);
         double gP90 = Db(Lin(-9) * g / techo), gP99 = Db(Lin(-2) * g / techo), gPico = Db(Lin(-1) * g / techo);
         Check(gP90 <= a + 1e-4 && gP99 <= b + 1e-4 && gPico <= c + 1e-4 && (Math.Abs(gP90 - a) < 0.01 || Math.Abs(gP99 - b) < 0.01 || Math.Abs(gPico - c) < 0.01),
@@ -338,6 +339,7 @@ class AlLimite
             List<string> pp = new List<string>(); foreach (object s in (IEnumerable)Call(f, "TandaIntegrada")) pp.Add(s is string ? (string)s : (string)tt.GetField("Path", T).GetValue(s));
             Check(pp.Count == 5 && !pp.Contains(rutas[4]), "la tanda larga pide todo lo que no es del algoritmo 5 (de la 1 a la 4 y la nunca medida), con el modo del local " + (modo ? "encendido" : "apagado"));
         }
+        if (TF.GetField("localAuto", T) != null) TF.GetField("localAuto", T).SetValue(null, false);   // es de la clase: que no se quede encendido para lo que sigue
         // El disco: dos pistas del algoritmo 5 con los picos lejos del techo (con la regla de antes las frenaria el objetivo), una mas exigente. (Rutas del sistema: el disco es la carpeta.)
         string R1 = Path.Combine(Path.Combine("m", "x"), "1.mp3"), R2 = Path.Combine(Path.Combine("m", "x"), "2.mp3");
         object g = Form(); IDictionary t2 = Tabla(); Set(g, "integCache", t2);
@@ -362,6 +364,85 @@ class AlLimite
         Check(Math.Abs(gv - antes) < 1e-5 && Math.Abs(gv - AlLim(1f, -6, -8, -10)) > 0.1f, "si una pista del disco aun tiene la medida de antes, el disco nivela con la regla de antes (" + F(Db(gv), "+0.0;-0.0") + " dB) hasta que se vuelva a medir");
     }
 
+    // ---------------------------------------------------------------- 8) EN LA CADENA DE FABRICA
+    // Una mezcla completa (bombo, bajo, caja, platillos, colchon, voz y guitarra), de 20 s.
+    static float[] Mezcla(int semilla)
+    {
+        int fs = 44100, n = fs * 20; float[] x = new float[2 * n]; Random r = new Random(semilla);
+        double hp = 0, ant = 0, v1 = 0, v2 = 0, v3 = 0, fbajo = 0, fgui = 0;
+        double[] notas = { 41.2, 41.2, 55, 49, 36.7, 41.2, 61.7, 55 };
+        for (int i = 0; i < n; i++)
+        {
+            double t = (double)i / fs, beat = t % 0.5, bar = t % 2.0;
+            double kick = 0.9 * Math.Exp(-beat / 0.15) * Math.Sin(2 * Math.PI * (45 + 80 * Math.Exp(-beat / 0.025)) * beat);
+            fbajo += 2 * Math.PI * notas[(int)t % notas.Length] / fs;
+            double bajo = 0.55 * (Math.Sin(fbajo) + 0.3 * Math.Sin(2 * fbajo) + 0.15 * Math.Sin(3 * fbajo)) * (0.6 + 0.4 * Math.Exp(-(t % 0.25) / 0.2));
+            double w = r.NextDouble() * 2 - 1; hp = 0.6 * (hp + w - ant); ant = w;
+            double sn = (bar > 0.5 && bar < 0.75) || (bar > 1.5 && bar < 1.75) ? 0.5 * Math.Exp(-((bar % 1.0) - 0.5) / 0.08) * (0.6 * w + 0.4 * Math.Sin(2 * Math.PI * 190 * t)) : 0;
+            double hat = 0.18 * Math.Exp(-(t % 0.125) / 0.02) * hp;
+            double pad = 0.12 * (Math.Sin(2 * Math.PI * 220 * t) + Math.Sin(2 * Math.PI * 277.2 * t) + Math.Sin(2 * Math.PI * 329.6 * t));
+            double e = (Math.Sin(2 * Math.PI * 3 * t) > -0.3) ? 1 : 0.1, ex = (r.NextDouble() * 2 - 1) * e;
+            v1 += 0.02 * (ex - v1); v2 += 0.08 * (ex - v2); v3 += 0.25 * (ex - v3);
+            double voz = 1.8 * (v1 - 0.6 * v2 + 0.3 * v3);
+            fgui += 2 * Math.PI * 330 / fs; double gui = 0.15 * Math.Tanh(3 * Math.Sin(fgui)) * Math.Exp(-(t % 0.25) / 0.15);
+            x[2 * i] = (float)(kick + bajo + sn + hat * 0.8 + pad + voz + gui * 1.2); x[2 * i + 1] = (float)(kick + bajo * 0.97 + sn + hat * 1.1 + pad * 0.9 + voz + gui * 0.4);
+        }
+        return x;
+    }
+    // Masterizada: subida 'db' y pasada por el limitador de la rocola con el techo a -0,3 dBFS (como un maestro "a tope").
+    static float[] Masteriza(float[] x, double db)
+    {
+        double pk = 0; foreach (float v in x) pk = Math.Max(pk, Math.Abs(v));
+        float g = (float)(Math.Pow(10, (db - 0.3) / 20) / pk); float[] y = new float[x.Length]; for (int i = 0; i < x.Length; i++) y[i] = x[i] * g;
+        Type L = TF.GetNestedType("LimitadorPicoReal", T);
+        ISampleProvider lim = (ISampleProvider)Activator.CreateInstance(L, T, null, new object[] { new Fuente(y), (float)Math.Pow(10, -0.3 / 20), 1.5 }, null);
+        List<float> z = new List<float>(); float[] b = new float[4096]; int n; while ((n = lim.Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) z.Add(b[i]);
+        float[] w = new float[x.Length]; z.CopyTo(z.Count - x.Length, w, 0, x.Length); return w;
+    }
+    // La cadena de verdad de fabrica (realce 35 %, bajo automatico, des-recorte, grave en mono), con la cancion medida y nivelada al limite:
+    // lo que hace el limitador cada 2 ms.
+    static void EnLaCadena(float[] x, string dir, string nombre, out double sube, out double peor, out double m1, out double m3)
+    {
+        string wav = Path.Combine(dir, nombre + ".wav");
+        using (WaveFileWriter wr = new WaveFileWriter(wav, WaveFormat.CreateIeeeFloatWaveFormat(44100, 2))) wr.WriteSamples(x, 0, x.Length);
+        object f = Form();
+        Set(f, "excAmount", 0.35f); Set(f, "bassAuto", true); Set(f, "bassAmount", 0.30f); Set(f, "eqAuto", false); Set(f, "eqAmount", 0f);
+        Set(f, "declipOn", true); Set(f, "crossfadeSec", 0f); Set(f, "saltaSilencios", false);
+        // Lo del local, como de fabrica: apagado (son de la clase; otra seccion pudo dejarlos de otra manera).
+        foreach (string q in new string[] { "localAuto", "claridadLocal", "partesSuaves", "presenciaSala", "estereoEstrecho", "cortaSubgrave", "estereoAuto", "quitaSiseo", "sinMejoras" })
+            if (TF.GetField(q, T) != null) Set(f, q, false);
+        foreach (string q in new string[] { "balanceDb", "gravesLocalDb", "agudosLocalDb" }) if (TF.GetField(q, T) != null) Set(f, q, 0);
+        object[] a = { wav, null }; TF.GetMethod("MideIntegrada", T).Invoke(f, a);
+        IDictionary tab = Tabla(); tab[wav] = a[1]; Set(f, "integCache", tab);
+        ((IDictionary)Get(f, "durCache"))[wav] = (float)(x.Length / 2 / 44100.0);
+        object track = Pista(TF.GetNestedType("Track", T), wav);
+        object lector = Call(f, "OpenAudio", wav);
+        TF.GetNestedType("IAudioSource", T).GetProperty("Volume").SetValue(lector, 1.0f, null);
+        object cad = Call(f, "ArmaCadena", track, lector, false, 0.0);
+        sube = Db((float)Get(Get(cad, "Tap"), "Gain"));
+        object lim = Get(cad, "Limitador"); FieldInfo env = lim.GetType().GetField("env", T);
+        ISampleProvider sal = (ISampleProvider)Get(cad, "Salida");
+        float[] b = new float[176]; int n1 = 0, n3 = 0, tot = 0; peor = 0;
+        while (sal.Read(b, 0, b.Length) > 0) { double gr = -Db((float)env.GetValue(lim)); tot++; if (gr > peor) peor = gr; if (gr > 1) n1++; if (gr > 3) n3++; }
+        ((IDisposable)lector).Dispose();
+        m1 = n1 / (double)tot; m3 = n3 / (double)tot;
+    }
+    static void CadenaDeFabrica(string dir)
+    {
+        Console.WriteLine("\n  8) EN LA CADENA DE FABRICA (realce, bajo, des-recorte y grave en mono detras del nivelado)\n");
+        string[] nom = { "masterizada con 9 dB de limitador", "aplastada moderna", "golpes parejos 4/s", "vieja bajita" };
+        float[][] can = { Masteriza(Mezcla(3), 9), Aplastada(-0.2, 6), Golpes(-0.3, 4, 1.0, 0.1, 1), Golpes(-9.0, 2, 1.5, 0.5, 7) };
+        Info("cancion                              sube    peor   >1 dB  >3 dB");
+        bool bien = true;
+        for (int k = 0; k < can.Length; k++)
+        {
+            double g, p, m1, m3; EnLaCadena(can[k], dir, "fab" + k, out g, out p, out m1, out m3);
+            Info(nom[k].PadRight(36) + F(g, "+0.0;-0.0").PadLeft(6) + F(p, "0.0").PadLeft(8) + (F(m1 * 100, "0.0") + " %").PadLeft(8) + (F(m3 * 100, "0.0") + " %").PadLeft(7));
+            if (!(m1 <= 0.10 && m3 <= 0.01)) bien = false;
+        }
+        Check(bien, "con todo lo de fabrica detras del nivelado, el limitador quita mas de 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 % (con el P90 a 1 dB, el masterizado pasaba del 26 %)");
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -380,6 +461,7 @@ class AlLimite
             try { CadaMedida(); } catch (Exception e) { Check(false, "cada medida: " + e); }
             try { DePuntaAPunta(dir); } catch (Exception e) { Check(false, "de punta a punta: " + e); }
             try { RepasoYDisco(); } catch (Exception e) { Check(false, "repaso y disco: " + e); }
+            try { CadenaDeFabrica(dir); } catch (Exception e) { Check(false, "en la cadena de fabrica: " + e); }
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);

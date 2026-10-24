@@ -62,18 +62,19 @@ class DecimaTanda
             object f = ctor.Invoke(new object[] { new Fija(fs, ch, 0.8f, fs), 0L, 0.5, (long)cebado, seg });
             float[] y = Lee((ISampleProvider)f, bloque * ch);
             int largo = (int)(seg * fs);
-            bool cebadoIntacto = true, sube = true, llega = true; float salto = 0, antes = 0;
+            bool cebadoMudo = true, sube = true, llega = true; float salto = 0, antes = 0;
             for (int i = 0; i < y.Length / ch; i++)
             {
                 float v = y[i * ch];
                 for (int c = 1; c < ch; c++) if (y[i * ch + c] != v) sube = false;   // los canales, igual
-                if (i < cebado) { if (v != 0.8f) cebadoIntacto = false; continue; }
+                // Desde el 24-10-2026 el cebado sale en silencio exacto: en fase lineal (el grave en mono) lleva el eco previo de lo que empieza.
+                if (i < cebado) { if (v != 0f) cebadoMudo = false; continue; }
                 if (i == cebado) antes = 0f;
                 salto = Math.Max(salto, Math.Abs(v - antes)); antes = v;
                 if (i < cebado + largo && i > cebado && v < y[(i - 1) * ch]) sube = false;
                 if (i >= cebado + largo + 1 && v != 0.8f) llega = false;
             }
-            Check(cebadoIntacto, ch + " canales, bloques de " + bloque + ": el cebado de la cadena no se toca (el fundido empieza donde empieza la musica)");
+            Check(cebadoMudo, ch + " canales, bloques de " + bloque + ": el cebado de la cadena sale en silencio exacto (y el fundido empieza donde empieza la musica)");
             Check(sube && salto < 0.8f * 0.02f, ch + " canales, bloques de " + bloque + ": entra subiendo sin escalon (salto mayor " + salto.ToString("0.0000") + " de 0,8)");
             Check(llega, ch + " canales, bloques de " + bloque + ": pasada la entrada, la cancion sale tal cual, bit a bit");
         }

@@ -36,6 +36,13 @@
 // El retraso seco es siempre de 31 cuadros, tambien si empieza apagado. Los FIR solo se calculan
 // con mezcla no nula; la historia barata de entrada permite cebarlos al encender sin saltar en el tiempo
 // ni volver al realce sin sobremuestreo. Al acabar se vacia la misma cola en todos los modos.
+//
+// DISCO CONTINUO (24-10-2026). La pista siguiente del mismo disco empezaba el realce de cero: el paso-alto de un polo en 0 (la
+// primera muestra salia como si fuera toda agudos) y la historia de 62 muestras vacia. Medido en la cadena entera, con un disco
+// partido en dos: un escalon en el cambio de 0,011 con la musica a 0,25 de pico (lo que mas quedaba, una vez arreglado el resto).
+// Ahora la anterior guarda, al acabar su musica y antes de vaciar su cola, el estado del realce y el del EQ, y la siguiente sigue
+// con ellos (LevelTap.Sigue, desde SigueA). Los 31 cuadros que la siguiente saca primero son la cola de la anterior otra vez, y
+// el relevo los tira (son su cebado); lo que viene despues es la siguiente con la historia de verdad.
 using System;
 
 namespace Rocola
@@ -95,6 +102,10 @@ namespace Rocola
         private readonly float polo;
         private readonly double c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15;
         private readonly double d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15;
+        // Lo guardado al acabar la musica (Guarda), para la pista siguiente del mismo disco (Toma).
+        private readonly double[][] fh, fv, fg, fn;
+        private readonly float[] flp;
+        private readonly bool[] flisto;
 
         internal RealceSobremuestreado(int canales, float polo)
         {
@@ -102,16 +113,41 @@ namespace Rocola
             this.polo = polo;
             lp = new float[canales]; listo = new bool[canales];
             xh = new double[canales][]; xv = new double[canales][]; xg = new double[canales][]; xn = new double[canales][];
+            fh = new double[canales][]; fv = new double[canales][]; fg = new double[canales][]; fn = new double[canales][];
+            flp = new float[canales]; flisto = new bool[canales];
             for (int c = 0; c < canales; c++)
             {
                 xh[c] = new double[2 * Retraso + Trozo]; xv[c] = new double[2 * Retraso + Trozo];
                 xg[c] = new double[2 * Retraso + Trozo]; xn[c] = new double[2 * Retraso + Trozo];
+                fh[c] = new double[2 * Retraso]; fv[c] = new double[2 * Retraso]; fg[c] = new double[2 * Retraso]; fn[c] = new double[2 * Retraso];
             }
             double[] k = C;
             c0 = k[0]; c1 = k[1]; c2 = k[2]; c3 = k[3]; c4 = k[4]; c5 = k[5]; c6 = k[6]; c7 = k[7];
             c8 = k[8]; c9 = k[9]; c10 = k[10]; c11 = k[11]; c12 = k[12]; c13 = k[13]; c14 = k[14]; c15 = k[15];
             d0 = .5 * k[0]; d1 = .5 * k[1]; d2 = .5 * k[2]; d3 = .5 * k[3]; d4 = .5 * k[4]; d5 = .5 * k[5]; d6 = .5 * k[6]; d7 = .5 * k[7];
             d8 = .5 * k[8]; d9 = .5 * k[9]; d10 = .5 * k[10]; d11 = .5 * k[11]; d12 = .5 * k[12]; d13 = .5 * k[13]; d14 = .5 * k[14]; d15 = .5 * k[15];
+        }
+
+        // Entre trozos, la historia de cada canal son los primeros 2 * Retraso valores de cada arreglo, mas el paso-bajo y si los restos
+        // ya estaban hechos. Guarda la copia; Toma la de otra (la pista anterior del mismo disco) como propia.
+        internal void Guarda()
+        {
+            const int H = 2 * Retraso;
+            for (int c = 0; c < lp.Length; c++)
+            {
+                Array.Copy(xh[c], fh[c], H); Array.Copy(xv[c], fv[c], H); Array.Copy(xg[c], fg[c], H); Array.Copy(xn[c], fn[c], H);
+                flp[c] = lp[c]; flisto[c] = listo[c];
+            }
+        }
+        internal void Toma(RealceSobremuestreado a)
+        {
+            const int H = 2 * Retraso;
+            if (a == null || a.lp.Length != lp.Length || a.polo != polo) return;
+            for (int c = 0; c < lp.Length; c++)
+            {
+                Array.Copy(a.fh[c], xh[c], H); Array.Copy(a.fv[c], xv[c], H); Array.Copy(a.fg[c], xg[c], H); Array.Copy(a.fn[c], xn[c], H);
+                lp[c] = a.flp[c]; listo[c] = a.flisto[c];
+            }
         }
 
         private void CalculaResto(double[] h, double[] g, double[] nn, int desde, int hasta)
@@ -188,11 +224,43 @@ namespace Rocola
             private float[] realceK;                // la mezcla del realce de cada muestra del trozo
             private bool vaciando;                  // la fuente ya acabo: se entrega lo retenido
             private int porVaciar;                  // muestras retenidas que faltan por entregar
+            // DISCO CONTINUO (ver la cabecera): lo de esta al acabar su musica, y la anterior del mismo disco, de la que seguir.
+            private volatile LevelTap anterior;
+            private bool finGuardado;
+            private float[] finEq;                  // la memoria del EQ al acabar
+            private int finMascara = -1;            // que bandas llevaba (-1: sin EQ)
+            // El cebado de delante (el des-recorte y el siseo; lo pone ArmaCadena): tras heredar pasa tal cual, sin entrar en el realce.
+            internal int Cebado;
+            private int cebadoPorPasar;
 
             private void PreparaRealce()
             {
                 realce = new RealceSobremuestreado(audioChannels, exciterPole);
                 realceK = new float[RealceSobremuestreado.Trozo * audioChannels];
+                finEq = new float[Math.Max(1, audioChannels) * 32];
+            }
+
+            // La pista siguiente del mismo disco sigue con el realce y el EQ de esta. Lo llama la pantalla al preparar el relevo (SigueA);
+            // se toma en la primera lectura con musica, en el hilo del sonido, cuando la anterior ya acabo.
+            internal void Sigue(LevelTap previa) { if (previa != null && !ReferenceEquals(previa, this)) anterior = previa; }
+            // Al acabar la musica, antes de vaciar la cola (que mete ceros): lo que la siguiente necesita para seguir.
+            private void GuardaFin()
+            {
+                realce.Guarda();
+                PreparedEq e = currentEq;
+                if (e != null && e.State.Length == finEq.Length) { Array.Copy(e.State, finEq, finEq.Length); finMascara = e.Mascara; }
+                else finMascara = -1;
+                finGuardado = true;
+            }
+            // En la primera lectura: el realce de la anterior, y su memoria del EQ si lleva las mismas bandas.
+            private void HeredaFin()
+            {
+                LevelTap a = anterior; anterior = null;
+                if (a == null || !a.finGuardado || a.audioChannels != audioChannels || a.WaveFormat.SampleRate != WaveFormat.SampleRate) return;
+                realce.Toma(a.realce);
+                cebadoPorPasar = Math.Max(0, Cebado) * audioChannels;
+                PreparedEq e = currentEq;
+                if (e != null && a.finMascara == e.Mascara && e.State.Length == a.finEq.Length) Array.Copy(a.finEq, e.State, e.State.Length);
             }
 
             // El modo no depende de la intensidad inicial ni de los cambios en vivo.

@@ -11,15 +11,17 @@ using NAudio.Wave;
 // juntan dos bocinas el grave en contrafase ya no se cancela. Por encima, todo sigue tal cual.
 //
 // LO QUE VIGILA:
-//  1) La respuesta, medida con tonos por la etapa de verdad: el lado (L - R) cae como el cruce Linkwitz-Riley de
-//     cuarto orden (-6 dB en el corte, 24 dB por octava por debajo); lo mono sale igual de fuerte en TODAS las
-//     frecuencias; un instrumento abierto a un lado sigue a su lado por encima del corte. Y una grabacion con un
-//     canal al reves no pierde el grave: se le devuelve en fase; en una normal eso nunca se activa.
+//  1) La respuesta, medida con tonos por la etapa de verdad: el lado (L - R) cae como su paso-bajo de fase lineal (desde el
+//     24-10-2026; antes el cruce Linkwitz-Riley de cuarto orden): -6 dB en el corte, mas de 40 dB por debajo de la mitad;
+//     lo mono sale bit a bit como entra (sin paso-todo: sin girar la fase del grave ni subir los picos); un instrumento
+//     abierto a un lado sigue a su lado por encima del corte. Y una grabacion con un canal al reves no pierde el grave: se
+//     le devuelve en fase; en una normal eso nunca se activa.
 //  2) Lo que no se toca: un archivo de un canal, uno de seis, grave_mono=0 y el silencio salen bit a bit.
 //  3) Cualquier forma de leer da lo mismo bit a bit: lecturas de tamanos al azar, impares, de una muestra, y un
 //     origen que entrega cuadros partidos.
-//  4) Disco continuo: la pista que sigue sin fundido continua con los filtros de la anterior, y eso es exactamente
-//     lo mismo que pasar las dos seguidas por una sola etapa. Sin eso, en el cambio queda un golpe en el grave.
+//  4) Disco continuo: la pista que sigue sin fundido continua con la memoria de la anterior (sus ultimos cuadros y la
+//     vigilancia): sin golpe en el cambio. En fase lineal la anterior acaba sin conocer la siguiente, asi que no es bit a bit
+//     lo mismo que una sola etapa: en sus ultimos milisegundos se aparta un poco en el grave del LADO (el medio no tiene memoria).
 //  5) Donde va en la cadena, la configuracion, que leer no reserve memoria, y lo que cuesta.
 class FuenteSP : ISampleProvider
 {
@@ -97,15 +99,24 @@ class GraveMonoPrueba
     static float[] LadoDe(float[] y) { float[] r = new float[y.Length / 2]; for (int i = 0; i < r.Length; i++) r[i] = 0.5f * (y[2 * i] - y[2 * i + 1]); return r; }
     static float[] MedioDe(float[] y) { float[] r = new float[y.Length / 2]; for (int i = 0; i < r.Length; i++) r[i] = 0.5f * (y[2 * i] + y[2 * i + 1]); return r; }
 
-    // El lado que tiene que quedar segun el cruce: |paso-alto Butterworth|^2 en analogico, con el corte ajustado
-    // (la bilineal lleva cada frecuencia a tan(pi f / fs)).
+    // El lado que tiene que quedar segun su filtro (rehecho aqui, aparte del programa): 1 - H(f), con H el seno cardinal de corte
+    // fc con ventana de Kaiser de 60 dB y una transicion de fc de ancho, normalizado a 1 en el grave. De fase cero: real.
     static double LadoTeorico(double f, double fc, int fs)
     {
-        double w = Math.Tan(Math.PI * f / fs) / Math.Tan(Math.PI * fc / fs);
-        double w2 = w * w;
-        double hp = w2 / Math.Sqrt((1 - w2) * (1 - w2) + 2 * w2);
-        return Db(hp * hp);
+        const double A = 60.0;
+        double dw = 2 * Math.PI * fc / fs; int K = ((int)Math.Ceiling((A - 8) / (2.285 * dw)) + 1) / 2;
+        double beta = 0.1102 * (A - 8.7), suma = 0, h = 0, w = 2 * Math.PI * f / fs;
+        for (int i = -K; i <= K; i++)
+        {
+            double x = 2.0 * fc / fs * i, u = (double)i / K;
+            double c = 2.0 * fc / fs * (i == 0 ? 1.0 : Math.Sin(Math.PI * x) / (Math.PI * x)) * I0(beta * Math.Sqrt(Math.Max(0, 1 - u * u))) / I0(beta);
+            suma += c; h += c * Math.Cos(w * i);
+        }
+        return Db(Math.Abs(1 - h / suma));
     }
+    static double I0(double x) { double s = 1, t = 1; for (int k = 1; k < 300; k++) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; if (t < 1e-17 * s) break; } return s; }
+    // Sin los ultimos 'seg' segundos: el filtro es simetrico y el final de un tono que se corta en seco no es estado estable.
+    static float[] SinFinal(float[] y, int ch, int fs, double seg) { int quita = (int)(seg * fs) * ch; float[] r = new float[Math.Max(0, y.Length - quita)]; Array.Copy(y, r, r.Length); return r; }
 
     static int Main(string[] args)
     {
@@ -144,10 +155,11 @@ class GraveMonoPrueba
             {
                 double seg = Math.Max(1.0, 40.0 / hz);
                 // Solo lado: L = +s, R = -s. Lo que queda del lado es (L - R) / 2 a la salida.
-                float[] y = LadoDe(LeeTodo(Mono(new FuenteSP(Tono(fs, hz, seg + 0.5, 1, -1), fs, 2), 120f), new int[] { 4096 }, null));
+                float[] y = SinFinal(LadoDe(LeeTodo(Mono(new FuenteSP(Tono(fs, hz, seg + 0.6, 1, -1), fs, 2), 120f), new int[] { 4096 }, null)), 1, fs, 0.1);
                 double aL, fL; Mide(y, 1, 0, fs, hz, seg * 0.5, out aL, out fL);
                 double lado = Db(aL / 0.5), teo = LadoTeorico(hz, 120, fs);
-                if (hz <= 300) peorLado = Math.Max(peorLado, Math.Abs(lado - teo));
+                // Donde el filtro deja algo (por encima de -40 dB), como dice la teoria; por debajo, que se quede por debajo de -40 dB.
+                if (hz <= 300) peorLado = Math.Max(peorLado, teo > -40 ? Math.Abs(lado - teo) : Math.Max(0.0, lado + 40));
                 filaLado += F(hz, "0") + ":" + F(lado, "0.0") + " ";
                 if (hz == 120) lado120 = lado; if (hz == 50) lado50 = lado; if (hz == 300) lado300 = lado;
                 // Solo medio: L = R = s. Tiene que salir igual de fuerte, y los dos canales identicos.
@@ -156,7 +168,7 @@ class GraveMonoPrueba
                 peorMedio = Math.Max(peorMedio, Math.Abs(Db(mL / 0.5)));
                 for (int i = 0; i < ym.Length; i += 2) peorPar = Math.Max(peorPar, Math.Abs(ym[i] - ym[i + 1]));
                 // Abierto a un lado: L = s, R = 0.
-                float[] ya = LeeTodo(Mono(new FuenteSP(Tono(fs, hz, seg + 0.5, 1, 0), fs, 2), 120f), new int[] { 4096 }, null);
+                float[] ya = SinFinal(LeeTodo(Mono(new FuenteSP(Tono(fs, hz, seg + 0.6, 1, 0), fs, 2), 120f), new int[] { 4096 }, null), 2, fs, 0.1);
                 double bL, fbL, bR, fbR; Mide(ya, 2, 0, fs, hz, seg * 0.5, out bL, out fbL); Mide(ya, 2, 1, fs, hz, seg * 0.5, out bR, out fbR);
                 double rel = Db(bR / bL);
                 filaAbierto += F(hz, "0") + ":" + F(rel, "0.0") + " ";
@@ -165,23 +177,24 @@ class GraveMonoPrueba
             string n = fs + " Hz: ";
             Info(n + "lo que queda del lado (dB): " + filaLado);
             Info(n + "abierto a la izquierda, lo que sale por la derecha (dB): " + filaAbierto);
-            Check(Math.Abs(lado120 + 6.02) < 0.1 && lado50 < -29 && lado300 > -0.3,
-                  n + "el lado cae como el cruce de cuarto orden: " + F(lado120, "0.00") + " dB en el corte (teoria -6,02), " + F(lado50, "0.0") + " en 50 Hz, " + F(lado300, "0.00") + " en 300 Hz");
-            Check(peorLado < 0.15, n + "y de 30 a 300 Hz se aparta de la teoria " + F(peorLado, "0.000") + " dB como mucho");
+            Check(Math.Abs(lado120 + 6.02) < 0.1 && lado50 < -40 && lado300 > -0.05,
+                  n + "el lado cae como su filtro de fase lineal: " + F(lado120, "0.00") + " dB en el corte (teoria -6,02), " + F(lado50, "0.0") + " en 50 Hz, " + F(lado300, "0.00") + " en 300 Hz");
+            Check(peorLado < 0.15, n + "y de 30 a 300 Hz se aparta de la teoria " + F(peorLado, "0.000") + " dB como mucho (por debajo de -40 dB, solo que no pase de ahi)");
             Check(peorMedio < 0.01 && peorPar == 0,
                   n + "lo mono sale igual de fuerte en todas las frecuencias (se aparta " + F(peorMedio, "0.0000") + " dB) y los dos canales salen identicos, bit a bit");
             Check(abierto60 > -1.5 && abierto200 < -20 && abierto1k < -60,
                   n + "un instrumento abierto a la izquierda: en 60 Hz ya suena casi igual por la derecha (" + F(abierto60, "0.0") + " dB), en 200 Hz sigue a su lado (" + F(abierto200, "0") + " dB) y en 1 kHz no se mueve (" + F(abierto1k, "0") + " dB)");
         }
         UnCanalAlReves();
-        // El retraso del grave (paso-todo): se informa, no se exige. Es el de un cruce de dos vias.
+        // El retraso del grave: con el paso-todo de antes eran unos 4 ms; en fase lineal el medio no se toca y sale a la vez.
         {
             int fs = 44100;
             float[] ya = LeeTodo(Mono(new FuenteSP(Tono(fs, 50, 3, 1, 1), fs, 2), 120f), new int[] { 4096 }, null);
             float[] yb = LeeTodo(Mono(new FuenteSP(Tono(fs, 51, 3, 1, 1), fs, 2), 120f), new int[] { 4096 }, null);
             double a1, p1, a2, p2; Mide(ya, 2, 0, fs, 50, 1.0, out a1, out p1); Mide(yb, 2, 0, fs, 51, 1.0, out a2, out p2);
             double dp = p2 - p1; while (dp > Math.PI) dp -= 2 * Math.PI; while (dp < -Math.PI) dp += 2 * Math.PI;
-            Info("el grave sale " + F(Math.Abs(dp) / (2 * Math.PI * 1.0) * 1000, "0.0") + " ms mas tarde que los agudos (paso-todo del cruce, medido en 50 Hz)");
+            double ms = Math.Abs(dp) / (2 * Math.PI * 1.0) * 1000;
+            Check(ms < 0.05, "el grave del medio sale a la vez que los agudos (" + F(ms, "0.00") + " ms; con el paso-todo de antes, unos 4 ms)");
         }
     }
 
@@ -307,7 +320,7 @@ class GraveMonoPrueba
         // Y los cuadros siguen en su sitio: el izquierdo sigue siendo el izquierdo.
         float[] soloIzq = Tono(fs, 1000, 0.5, 1, 0);
         float[] ys = LeeTodo(Mono(new FuenteSP(soloIzq, fs, 2, 333), 120f), new int[] { 999 }, new Random(13));
-        double izq = 0, der = 0; for (int i = fs / 4 * 2; i + 1 < ys.Length; i += 2) { izq += ys[i] * ys[i]; der += ys[i + 1] * ys[i + 1]; }   // pasado el arranque del tono
+        double izq = 0, der = 0; for (int i = fs / 4 * 2; i + 1 < ys.Length - fs / 10 * 2; i += 2) { izq += ys[i] * ys[i]; der += ys[i + 1] * ys[i + 1]; }   // pasado el arranque del tono y antes de su final
         Check(Db(Math.Sqrt(der / izq)) < -60, "leyendo a trozos los canales no se cruzan: un tono de 1 kHz a la izquierda sigue a la izquierda (" + F(Db(Math.Sqrt(der / izq)), "0") + " dB a la derecha)");
     }
 
@@ -327,15 +340,47 @@ class GraveMonoPrueba
             Inv(eb, "Sigue", ea);
             float[] yb = LeeTodo((ISampleProvider)eb, new int[] { 999 }, new Random(5));
             float[] seguidas = new float[ya.Length + yb.Length]; Array.Copy(ya, seguidas, ya.Length); Array.Copy(yb, 0, seguidas, ya.Length, yb.Length);
-            Check(Igual(junta, seguidas), que + ": la anterior entera y la siguiente siguiendo con sus filtros dan lo mismo, bit a bit, que las dos seguidas por una sola etapa");
+            // Lo que se aparta de una sola etapa: en todo, y en el medio (que no tiene memoria: tiene que salir igual).
+            double aparta = 0, apartaMedio = 0;
+            for (int i = 0; i + 1 < Math.Min(junta.Length, seguidas.Length); i += 2)
+            {
+                aparta = Math.Max(aparta, Math.Max(Math.Abs(junta[i] - seguidas[i]), Math.Abs(junta[i + 1] - seguidas[i + 1])));
+                apartaMedio = Math.Max(apartaMedio, Math.Abs((junta[i] + junta[i + 1]) - (seguidas[i] + seguidas[i + 1])) * 0.5);
+            }
+            double pico = 0; foreach (float v in ab) pico = Math.Max(pico, Math.Abs(v));
+            // EL EMPALME (24-10-2026): la anterior acaba sin conocer la siguiente (fase lineal), y lo que le falto quitar en su ultimo
+            // cuadro la siguiente lo lleva a cero en 25 ms. Lo que se aparta de una sola etapa no da un salto en el cambio.
+            int j0 = ya.Length; double salto = 0, maxE = 0;
+            for (int c = 0; c < 2 && j0 + 2 < seguidas.Length; c++)
+            {
+                salto = Math.Max(salto, Math.Abs((seguidas[j0 + c] - junta[j0 + c]) - (seguidas[j0 - 2 + c] - junta[j0 - 2 + c])));
+                for (int i = c; i < Math.Min(junta.Length, seguidas.Length); i += 2) maxE = Math.Max(maxE, Math.Abs(seguidas[i] - junta[i]));
+            }
+            Check(salto <= 0.05 * maxE + 1e-6, que + ": en el cambio de pista lo que se aparta no da un salto (" + F(salto, "0.000000") + "; lo que mas se aparta, " + F(maxE, "0.0000") + ")");
+            if (derecho > 0)
+                Check(junta.Length == seguidas.Length && apartaMedio < 1e-5 && aparta < 0.01 * pico,
+                      que + ": la anterior entera y la siguiente siguiendo se apartan de una sola etapa como mucho " + F(Db(aparta / pico), "0") + " dB bajo el pico, solo en el grave del lado (el medio, "
+                      + F(Db(Math.Max(apartaMedio, 1e-12) / pico), "0") + " dB: lo mismo)");
+            else
+            {
+                // Con un canal al reves el grave va en el lado y se devuelve a los dos: en los ultimos K cuadros de la anterior (los que
+                // no llegan a ver la siguiente, unos 15 ms) y en los 25 ms del empalme baja algo el grave del canal derecho; fuera de ahi,
+                // lo mismo que una sola etapa.
+                int K = ((int)Math.Ceiling(52.0 / (2.285 * 2 * Math.PI * 120.0 / fs)) + 1) / 2, ini = (ya.Length / 2 - K - 4) * 2, fin = ya.Length + 2 * (int)Math.Round(0.025 * fs) + 8;
+                double fuera = 0, dentro = 0;
+                for (int i = 0; i < Math.Min(junta.Length, seguidas.Length); i++) { double d = Math.Abs(junta[i] - seguidas[i]); if (i >= ini && i < fin) dentro = Math.Max(dentro, d); else fuera = Math.Max(fuera, d); }
+                Info(que + ": en los " + F(1000.0 * K / fs, "0") + " ms antes del cambio y los 25 ms del empalme se aparta hasta " + F(Db(dentro / pico), "0") + " dB bajo el pico (el grave del canal derecho); fuera, " + F(Db(Math.Max(fuera, 1e-12) / pico), "0") + " dB");
+                Check(junta.Length == seguidas.Length && fuera < 0.01 * pico && dentro < 0.2 * pico,
+                      que + ": fuera de los ultimos " + F(1000.0 * K / fs, "0") + " ms de la anterior y del empalme, lo mismo que una sola etapa (menos de -40 dB bajo el pico), y en ellos nunca mas de -14 dB bajo el pico");
+            }
             if (derecho < 0) continue;
-            // Sin seguir: el golpe que se oiria en el cambio.
+            // Sin seguir: lo que se apartaria en el cambio. Heredar nunca es peor.
             object ec = Mono(new FuenteSP(b, fs, 2), 120f);
             float[] yc = LeeTodo((ISampleProvider)ec, new int[] { 4096 }, null);
-            double golpe = 0; for (int i = 0; i < Math.Min(yc.Length, (int)(0.05 * fs) * 2); i++) golpe = Math.Max(golpe, Math.Abs(yc[i] - junta[a.Length + i]));
-            double pico = 0; foreach (float v in b) pico = Math.Max(pico, Math.Abs(v));
-            Info("empezando de cero, en los primeros 50 ms la siguiente se aparta hasta " + F(golpe, "0.000") + " de lo que tocaba (su pico es " + F(pico, "0.00") + "): ese es el golpe que se evita");
-            Check(golpe > 0.02, "sin seguir, el cambio se aparta de verdad (la prueba de arriba mira algo que existe)");
+            double golpe = 0, conSigue = 0;
+            for (int i = 0; i < Math.Min(yc.Length, (int)(0.05 * fs) * 2); i++) { golpe = Math.Max(golpe, Math.Abs(yc[i] - junta[ya.Length + i])); conSigue = Math.Max(conSigue, Math.Abs(yb[i] - junta[ya.Length + i])); }
+            Info("empezando de cero, en los primeros 50 ms la siguiente se aparta hasta " + F(golpe, "0.0000") + " de lo que tocaba; siguiendo, " + F(conSigue, "0.0000") + " (el pico es " + F(pico, "0.00") + ")");
+            Check(conSigue <= golpe && golpe < 0.05 * pico, "seguir con la memoria de la anterior nunca es peor que empezar de cero, y aun empezando de cero no hay golpe (el medio no tiene memoria)");
             // Si la anterior no acabo (no deberia pasar), no se hereda nada: empieza de cero, como siempre.
             object ed = Mono(new FuenteSP(a, fs, 2), 120f), ee = Mono(new FuenteSP(b, fs, 2), 120f);
             float[] medio = new float[4096]; ((ISampleProvider)ed).Read(medio, 0, medio.Length);
