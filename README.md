@@ -1,5 +1,31 @@
 # Rocola
 
+## Revisión de la cadena de audio completa — 24 de octubre de 2026
+
+Se probó la cadena entera: cinco formatos, de fábrica y con todo encendido, leída en bloques, a tamaños al azar y de a una muestra,
+y cada etapa sola. Está bien:
+- mismos bits leyendo al azar;
+- nada por encima del techo;
+- sale la canción entera;
+- el retardo declarado es el de verdad;
+- el dither, el conversor y las rampas en vivo, correctos.
+
+**Dos defectos latentes, arreglados.** Con lecturas de menos de un cuadro (la salida de hoy no las hace):
+- el fundido metía su entrada de 5 ms en medio de la canción;
+- el des-recorte corría los canales y perdía los últimos 68 cuadros.
+
+Con cuadros enteros sale igual bit a bit (16 de 16). La nueva batería `cadenaentera` da 77 comprobaciones; la versión anterior da 12
+fallos con ella.
+
+**Tres mejoras, pendientes de decisión:**
+- M1: el grave en mono (encendido de fábrica) gira la fase del grave y sube 1,5–2,7 dB los picos de los masterizados modernos. El
+  limitador los aplasta de más: el 46 % del tiempo y hasta 3,8 dB, frente al 32 % y 1,9 dB sin él. Se recomienda saltarlo en las
+  canciones con el grave ya en mono.
+- M2: las canciones mono no llevan el balance ni el relevo sin pausa con las estéreo.
+- M3: el realce y el bajo hacen limitar suave a las canciones aplastadas.
+
+Nada oído en el billar ni probado con MP3 reales. [Cadena, pruebas, defectos y propuestas](REVISION_CADENA_AUDIO_MODEST_2026-10-24.md).
+
 ## Los volcados del pantallazo de XP — 24 de octubre de 2026
 
 Los dos minivolcados del 22-10 (`0x100000EA`) dicen lo mismo: el hilo atascado está en el controlador de pantalla de ATI
