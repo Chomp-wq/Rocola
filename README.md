@@ -24,11 +24,27 @@ Mono/Linux: nada oído en el billar. [Modos, defectos, medidas y propuestas](MOD
 
 ## La suite de pruebas, en verde en Linux — 23 de octubre de 2026
 
-De 31 baterías en rojo (36 fallos contando los dos perfiles) a 4 de entorno conocidas (`sala`, `discoacotado`, `caratulasadaptativas`,
-`partescaratulas`), **sin un defecto del programa** detrás de las otras 27: pruebas que se quedaron viejas con los cambios de octubre, el lanzador que no contaba los fallos sin
-sangría, root, libgdiplus y la letra. `todo.sh` mapea `RtlMoveMemory` a `memmove` para Mono y da a cada batería de textos la letra con la
-que se calibró (Inter o DejaVu Sans); nada de eso llega a la rocola. Pendiente de mirar en Windows: el reemplazo de un modelo con el activo
-abierto, el color de la miniatura en la caché y que un hilo terminado no retenga el plan de la biblioteca.
+De 31 baterías en rojo (36 fallos contando los dos perfiles) a 3 de entorno conocidas: `sala` (margen de color de libgdiplus, falla igual
+desde el 29-9), `discoacotado` (Mono no tiene `FlushFileBuffers`) y `caratulasadaptativas` (Mono no entiende `C:\` / `D:\`). Ninguna de
+las otras 28 escondía un defecto del programa: pruebas que se quedaron viejas con los cambios de octubre, el lanzador que no contaba los
+fallos sin sangría, root, libgdiplus y la letra. `partescaratulas` detecta con una sonda dos diferencias demostradas de libgdiplus frente a
+GDI+ (DrawImage con SourceCopy borra fuera del rectángulo; LockBits de un subrectángulo no desplaza Scan0) y deja esas dos comprobaciones
+como AVISO sin comprobar. `todo.sh` mapea `RtlMoveMemory` a `memmove` para Mono y da a cada batería de textos la letra con la que se calibró
+(Inter o DejaVu Sans), avisando si falta; nada de eso llega a la rocola. Pendiente de mirar en Windows: el reemplazo de un modelo con el
+activo abierto, el color de la miniatura en la caché, que un hilo terminado no retenga el plan de la biblioteca y las dos de `partescaratulas`.
+
+## Revisión independiente de lo del 23 de octubre — 24 de octubre de 2026
+
+Tres revisores leyeron todo lo hecho el 23 (sonido, diagnóstico, pruebas) sin haberlo escrito. **Diagnóstico completo, corregido antes de
+instalarlo en el billar:** tras cancelarlo porque alguien tocó la rocola, la ventana de Ctrl+F3 se volvía a abrir delante del cliente; una
+moneda y una petición durante el diagnóstico dejaban la cola parada (y el estado guardado decía que sonaba la canción muda); si la salida de
+sonido fallaba, la muda podía devolver un crédito, marcarse dañada o volver a sonar de verdad; la restauración redondeaba la densidad de
+estrellas y la aurora (y el guardado al momento lo persistía), y no reabría el disco ni el asistente; el dispositivo perdido contaba
+reintentos y no episodios; la atracción podía entrar sola entre escenas. **Sonido:** con `grave_mono=0` la rampa de P6 no actuaba al
+encender el estéreo estrecho; «Escuchar sin mejoras» ahora hace nacer la canción sin lo del local; el reparto de rangos se ordena fuera del
+hilo de la pantalla. **Pruebas:** `fluidezcuadros` pasaba en falso si se renombraba un método, `paginar` no distinguía su interruptor y `lra`
+contaba como OK una comprobación que no hacía; cada arreglo se comprobó con una mutación. Con `local_auto=` apagado todo sale bit a bit igual
+(antes se dijo «16 de 16» contra la versión anterior: con el modo encendido, dos combinaciones cambian a propósito por P1).
 
 ## Recuperación gráfica, errores de la bitácora y audio — 23 de octubre de 2026
 
