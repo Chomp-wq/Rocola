@@ -748,6 +748,7 @@ namespace Rocola
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
             Diag("rocola del " + DeCuandoEs());   // LO PRIMERO de la bitacora: de cuando es la que esta corriendo
+            SubeVolumenWindowsAlArrancar();   // el volumen general de Windows al maximo y sin silencio, una vez por arranque (VolumenWindows.cs)
             // AQUI y no en BuildUi: la pantalla se arma antes de leer la configuracion, asi que alla
             // "cola_portadas=0" todavia no se sabe. Y manda en el ANCHO de la capsula, que se mide luego.
             if (pastCola != null) pastCola.ConPortadas = colaPortadasOn;

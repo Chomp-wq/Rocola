@@ -45,6 +45,8 @@ FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Roco
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
+# El volumen general de Windows al maximo al arrancar (24-10-2026).
+FUENTES="$FUENTES $RAIZ/Rocola/VolumenWindows.cs"
 # El diagnostico completo de Ctrl+F3 (23-10-2026): el motor, la toma de muestras y el informe, y las escenas con la rocola de verdad.
 FUENTES="$FUENTES $RAIZ/Rocola/DiagnosticoCompleto.cs $RAIZ/Rocola/Form1.DiagnosticoCompleto.cs"
 if ! mkdir -p "$TMP_PRUEBAS"; then
@@ -238,6 +240,9 @@ CPU="$CPU mp3mezclado"
 # local, la barra de los videos, "a la medida" sin modelo), «Escuchar sin mejoras» en la cancion que se arma mientras dura, el reparto
 # de los rangos de la biblioteca y las medidas de las propuestas (solo informan).
 CPU="$CPU modosauto"
+# 'volumenwindows': el volumen general de Windows al maximo y sin silencio, una vez por arranque (24-10-2026; VolumenWindows.cs):
+# en XP el maestro del mezclador, en Vista el aparato y la sesion de la rocola; en un hilo de fondo; y nadie mas lo toca.
+CPU="$CPU volumenwindows"
 # 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con
