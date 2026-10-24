@@ -19,7 +19,8 @@ class LatenciaAdaptable
         Assembly a=Assembly.LoadFrom(args[0]);Type perfil=a.GetType("Rocola.PerfilLatenciaAudio",true);
         foreach(bool clasica in new bool[]{true,false}){
             object p=Activator.CreateInstance(perfil,B,null,new object[]{clasica},null);
-            int inicial=clasica?1000:300,medio=clasica?750:225,minimo=clasica?500:150;
+            // Desde el 24-10-2026 la salida clasica no baja de 750 ms (la rellena la pantalla, que se para hasta 766 ms): su minimo es el medio.
+            int inicial=clasica?1000:300,medio=clasica?750:225,minimo=clasica?750:150;
             Check(Sugerida(p)==inicial,"Inicio conservador "+inicial);
             for(int i=0;i<30;i++)Observa(p,i,1,0,inicial,true);
             Check(Sugerida(p)==inicial,"No baja antes de 30 segundos reales");
@@ -32,6 +33,20 @@ class LatenciaAdaptable
             for(int i=123;i<=154;i++)Observa(p,i,1,0,inicial,false);
             Check(Sugerida(p)==inicial,"Precarga del productor no cuenta como reproduccion estable");
             Observa(p,155,700,0,inicial,false);Check(Sugerida(p)==inicial,"Pico DSP invalida estabilidad sin reducir calidad");
+        }
+        {   // 24-10-2026: el hilo de la musica (no consumidor) lee trozos de 25 ms y tiene 200 ms de colchon. Pasarse 15-20 ms (un tic de XP)
+            // ya no es un atasco; pasarse de la mitad del colchon, si.
+            object q=Activator.CreateInstance(perfil,B,null,new object[]{true},null);
+            for(int i=0;i<=30;i++)Observa(q,i,1,0,1000,true);
+            Check(Sugerida(q)==750,"Bajo a 750 tras 30 s estables");
+            MethodInfo obs=perfil.GetMethod("Observa",B);
+            obs.Invoke(q,new object[]{31L*System.Diagnostics.Stopwatch.Frequency,25.0,17.0,0.0,750,false});
+            obs.Invoke(q,new object[]{32L*System.Diagnostics.Stopwatch.Frequency,25.0,60.0,0.0,750,false});
+            Check(Sugerida(q)==750,"Trozo de 25 ms del hilo de la musica que tarda 17 o 60 ms: no es un atasco (tiene 200 ms de colchon)");
+            obs.Invoke(q,new object[]{33L*System.Diagnostics.Stopwatch.Frequency,25.0,130.0,0.0,750,false});
+            Check(Sugerida(q)==1000,"El que tarda 130 ms (mas de la mitad del colchon) si sube el margen");
+            for(int i=34;i<=200;i++)Observa(q,i,1,0,Sugerida(q),true);
+            Check(Sugerida(q)==750,"Y la salida clasica nunca baja de 750 ms");
         }
         {   // La caja negra (22-10-2026): cada cambio de nivel queda anotado (en numeros, sin reservar nada en la musica) para rocola_error.txt.
             object cp=Activator.CreateInstance(perfil,B,null,new object[]{true},null);

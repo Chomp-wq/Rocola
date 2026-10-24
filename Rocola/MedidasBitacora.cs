@@ -61,7 +61,30 @@ namespace Rocola
     {
         private static volatile string hace;   // lo ultimo que empezo la pantalla (lo marca ella misma)
         private static int haceTick;
-        internal static void Hace(string que) { haceTick = Environment.TickCount; hace = que; }
+        // Y las ultimas ocho marcas con su hora fina (24-10-2026): el diagnostico completo dice, de cada tiron, que marco la pantalla en el
+        // hueco antes del cuadro. Solo la pantalla marca, asi que no hace falta cerrojo; son dos escrituras en arreglos ya hechos.
+        private static readonly string[] marcas = new string[8];
+        private static readonly long[] marcasTs = new long[8];
+        private static int marcaN;
+        internal static void Hace(string que)
+        {
+            haceTick = Environment.TickCount; hace = que;
+            int i = marcaN & 7; marcas[i] = que; marcasTs[i] = System.Diagnostics.Stopwatch.GetTimestamp(); marcaN++;
+        }
+        // La ultima marca con hora entre 'desdeTs' y 'hastaTs' (marcas del reloj fino) que no sea 'salvo', o null.
+        internal static string MarcaEntre(long desdeTs, long hastaTs, string salvo, out long cuandoTs)
+        {
+            cuandoTs = 0;
+            for (int k = 1; k <= 8 && k <= marcaN; k++)
+            {
+                int i = (marcaN - k) & 7; long t = marcasTs[i];
+                if (t > hastaTs || string.Equals(marcas[i], salvo)) continue;
+                if (t < desdeTs) return null;
+                cuandoTs = t; return marcas[i];
+            }
+            return null;
+        }
+        internal const string MarcaCuadro = "un cuadro de la tarjeta";   // la que pone cada cuadro al empezar (no es del hueco)
         internal static string QueHace(int llevaMs)
         {
             string q = hace;

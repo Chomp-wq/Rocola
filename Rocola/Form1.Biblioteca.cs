@@ -169,17 +169,27 @@ namespace Rocola
             if (e.Error != null) { lblStatus.Text = "Error al escanear: " + e.Error.Message; return; }
 
             bool fromCache = (e.Result is bool) ? (bool)e.Result : false;
+            // CUANTO CUESTA CADA PASO (24-10-2026). El rocola_error.txt del A4 trae paradas de la pantalla de 500 a 766 ms «en: publicar
+            // la biblioteca», al arrancar y a media noche, sin decir cual de estos pasos (con 118.000 canciones) es el lento. Ahora cada
+            // paso marca al vigia con su nombre y, si entre todos pasan de medio segundo, una linea en rocola_error.txt con lo de cada uno.
+            PasosPublicar pasos = new PasosPublicar();
+            pasos.Paso("letras");
 
             letterAvailable.Clear();
             foreach (KeyValuePair<char, List<Album>> kv in byLetter) if (kv.Value.Count > 0) letterAvailable.Add(kv.Key);
             if (videoAlbums != null && videoAlbums.Count > 0) letterAvailable.Add(VideoMark);
             topDirty = true;   // OPTIMIZACION (TOP): la biblioteca se re-escaneo (nuevos Album/Track) -> reconstruir
+            pasos.Paso("lo mas sonado");
             BuildTopDiscs();
             if (topDiscs != null && topDiscs.Count > 0) letterAvailable.Add(TopMark);   // hay estadisticas -> seccion "Lo mas sonado"
+            pasos.Paso("colores de las letras");
             LeeTintes(FirmaBiblioteca());   // el color de cada letra, si ya se calculo para esta misma biblioteca
+            pasos.Paso("generos de los artistas");
             RecalculaGenerosArtista();      // y de esos generos de disco salen los del artista, sin leer nada mas
             nombreTag.Clear();              // biblioteca nueva: lo adivinado por el nombre se vuelve a mirar
+            pasos.Paso("generos de la IA");
             ActualizaGenerosIa(true);       // y los generos interpretados, para la IA (Form1.Ia.cs)
+            pasos.Paso("letras de la pared");
             RecalculaLetras();
 
             string order = LetrasOrden;
@@ -190,13 +200,16 @@ namespace Rocola
             if (!gotReal) for (int i = 0; i < order.Length; i++) if (letterAvailable.Contains(order[i])) { currentLetter = order[i]; break; }
             page = 0; selAlbumIndex = 0;
             if (albumView != null) albumView.ResetCellCache();   // re-escaneo: descarta celdas horneadas (etiqueta/portada pueden haber cambiado para el mismo Folder)
+            pasos.Paso("la pared de discos");
             RefreshAlbums();
 
             if (albums.Count == 0) lblStatus.Text = "No encontr\u00e9 m\u00fasica en la carpeta: " + MusicFolder;   // no solo MP3: tambien WAV, WMA...
             else lblStatus.Text = "";   // las instrucciones las muestra la barra de ayuda (formas/colores)
 
+            pasos.Paso("bitacora y miniaturas");
             ApuntaBiblioteca(fromCache);   // (bitacora: MedidasBitacora.cs)
             StartThumbWarm();   // en segundo plano: construir las miniaturas que falten (1a vez tarda; luego todo vuela)
+            pasos.Paso("plan del repaso");
             planArranqueComun = CapturaLecturaBiblioteca();
             try
             {
@@ -205,12 +218,44 @@ namespace Rocola
             }
             finally { planArranqueComun = null; }
 
+            pasos.Paso("guardar la biblioteca");
             if (!fromCache) SaveLibraryCacheAsync();   // escaneo fresco: guardar la biblioteca para el proximo arranque
             cachedVideoPaths = null; cachedCovers = null; lastVideoPaths = null;
 
             // REANUDACION tras corte de luz: con la biblioteca ya armada, restaura creditos/cola/cancion
             // guardados (solo el PRIMER armado; un F5 a media jornada no toca lo que este sonando).
+            pasos.Paso("reanudar");
             if (!stateRestored && nowPlaying == null && queue.Count == 0) RestoreState();
+            string desglose = pasos.Fin(ParadaErrorMs);
+            if (desglose != null) LogError("[Publicar la biblioteca] " + desglose + " (" + tracks.Count + " canciones" + (fromCache ? ", desde la cache)" : ", escaneo fresco)"), null);
+        }
+        // Los pasos de publicar la biblioteca: cada uno marca al vigia de la pantalla al empezar, y se apunta lo que tardo.
+        private sealed class PasosPublicar
+        {
+            private readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
+            private readonly System.Text.StringBuilder texto = new System.Text.StringBuilder();
+            private string actual; private long desde;
+            internal void Paso(string siguiente)
+            {
+                Cierra();
+                actual = siguiente; desde = reloj.ElapsedMilliseconds;
+                VigiaPantalla.Hace("publicar la biblioteca: " + siguiente);
+            }
+            private void Cierra()
+            {
+                if (actual == null) return;
+                long ms = reloj.ElapsedMilliseconds - desde;
+                if (ms > 0) texto.Append(texto.Length > 0 ? ", " : "").Append(actual).Append(' ').Append(ms).Append(" ms");
+                actual = null;
+            }
+            // El desglose si entre todos pasaron de 'umbralMs'; si no, null.
+            internal string Fin(int umbralMs)
+            {
+                Cierra();
+                long total = reloj.ElapsedMilliseconds;
+                if (total < umbralMs) return null;
+                return total + " ms: " + (texto.Length > 0 ? texto.ToString() : "ningun paso de mas de 1 ms");
+            }
         }
         // Vuelca las huellas del EQ recien medidas. Se llama de tanto en tanto (no por cancion): recalcular el
         // promedio de la biblioteca y reescribir el archivo en cada tema seria puro desgaste de disco.

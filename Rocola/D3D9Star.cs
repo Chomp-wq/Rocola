@@ -2494,6 +2494,7 @@ namespace Rocola
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
             SueltaAyudaIcono();
             if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+            SueltaRepuestos();   // las guardadas para la interfaz (RespuestaGpu.cs), despues del fundido de colores, que las deja ahi
             if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
             if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
             if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
@@ -2578,7 +2579,7 @@ namespace Rocola
             renderEnCurso = true;
             try
             {
-            VigiaPantalla.Hace("un cuadro de la tarjeta");
+            VigiaPantalla.Hace(VigiaPantalla.MarcaCuadro);   // "un cuadro de la tarjeta"
             if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
             if (stars == null || !stars.Ok) return NoPresentado();
             double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
@@ -2732,7 +2733,7 @@ namespace Rocola
                 {
                     if (GetUiVacia != null && GetUiVacia())
                     {   // sin interfaz (la atraccion con el escaparate): ni mapa de bits, ni subida, ni analisis, ni dibujo; la textura se suelta y se crea al volver
-                        if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+                        if (uiTex != IntPtr.Zero) { Repone(uiTex, uiBmpW, uiBmpH); uiTex = IntPtr.Zero; }   // al repuesto: al volver se usa (RespuestaGpu.cs)
                         uiBmpW = uiBmpH = 0; uiU = uiV = 1f; uiVacia = true;
                     }
                     else
@@ -2773,7 +2774,7 @@ namespace Rocola
                     if (pv == piezaVer[i] && (piezaTex[i] != IntPtr.Zero || piezaW[i] == -1)) continue;
                     Bitmap pb = GetPieza(i);
                     if (pb != null) SubePieza(i, pb);
-                    else { if (piezaTex[i] != IntPtr.Zero) D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
+                    else { if (piezaTex[i] != IntPtr.Zero) Repone(piezaTex[i], piezaW[i], piezaH[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
                     piezaVer[i] = pv;
                 }
             LM(LibroDeCuadros.FInterfaz);

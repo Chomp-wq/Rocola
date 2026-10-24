@@ -249,6 +249,11 @@ CPU="$CPU allimite"
 # 'cadenaentera': la cadena de sonido entera leida de cualquier manera (24-10-2026): varios formatos, de fabrica y con todo encendido,
 # los mismos bits en bloques, al azar o de a una muestra, la longitud, el retardo declarado contra un clic y cada etapa sola.
 CPU="$CPU cadenaentera"
+# 'recolector': la tanda de rendimiento del 24-10-2026 con el diagnostico del A4: mientras alguien elige, el recolector sin generacion 2
+# (con sus topes y desde el latido); la imagen de la interfaz al ir y volver entre dos medidas, sin reservar otra; y el desglose de
+# publicar la biblioteca. Mono no aplica la baja latencia: se mira la logica, no el efecto. En el perfil con tarjeta (la imagen de la
+# interfaz solo existe ahi).
+GPU="$GPU recolector"
 # 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con

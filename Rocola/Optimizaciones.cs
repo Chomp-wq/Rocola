@@ -7,6 +7,56 @@ namespace Rocola
         // Optimizaciones automaticas: no son preferencias visuales de Ctrl+F3.
         [ThreadStatic] private static Func<bool> measureCancellation;
 
+        // LAS RECOLECCIONES GRANDES, FUERA DE CUANDO ALGUIEN ELIGE (24-10-2026). En el diagnostico del A4 los dos peores tirones (194 y
+        // 283 ms) cayeron navegando, uno de ellos con una recoleccion de generacion 2 en el mismo cuadro; con un monton de 130 a 220 MB
+        // (las 118.000 canciones) una de esas para todos los hilos un buen rato. .NET 3.5 deja pedir que no las haga mientras tanto
+        // (GCSettings.LatencyMode = LowLatency): las de generacion 0 y 1 siguen, solo las grandes esperan. Se pide mientras alguien elige
+        // (un boton hace menos de 10 s, o una escena del diagnostico completo) y fuera de la atraccion; al dejar de elegir se vuelve al
+        // modo de antes y la grande, si toca, llega cuando nadie mira. Con tope: si se sigue eligiendo mas de 5 minutos o el monton crece
+        // mas de 128 MB, se vuelve al modo de antes hasta que se deje de elegir. Si el sistema anda corto de memoria, .NET la hace igual.
+        // No cambia nada de lo que se ve ni de lo que suena: automatico, sin interruptor. En un .NET sin ese modo no hace nada.
+        internal const int EligiendoMs = 10000, GcBajaMaxMs = 300000;
+        internal const long GcBajaCrecerBytes = 128L << 20;
+        private bool gcBaja, gcAgotada, gcModoPrevioOk; private int gcBajaDesde; private long gcBajaMemoria; private int gcModoPrevio;
+        internal static int GcBajasPuestas, GcBajasQuitadas;   // (pruebas y diagnostico)
+        private bool AlguienElige()
+        {
+            if (attractOn) return false;
+            if (diagEnMarcha) return true;
+            int t = lastInputTick;
+            return t != 0 && unchecked(Environment.TickCount - t) < EligiendoMs;
+        }
+        // Desde el latido (Form1.cs): unas comparaciones por vuelta.
+        private void RevisaRecolector()
+        {
+            if (!AlguienElige()) { gcAgotada = false; if (gcBaja) QuitaGcBaja(); return; }
+            if (gcBaja)
+            {
+                if (unchecked(Environment.TickCount - gcBajaDesde) > GcBajaMaxMs || GC.GetTotalMemory(false) - gcBajaMemoria > GcBajaCrecerBytes)
+                { QuitaGcBaja(); gcAgotada = true; }
+                return;
+            }
+            if (gcAgotada) return;
+            int previo;
+            if (!LeeLatenciaGc(out previo)) return;
+            if (!PonLatenciaGc(-1)) return;   // -1: LowLatency
+            if (!gcModoPrevioOk) { gcModoPrevio = previo; gcModoPrevioOk = true; }
+            gcBaja = true; gcBajaDesde = Environment.TickCount; gcBajaMemoria = GC.GetTotalMemory(false); GcBajasPuestas++;
+        }
+        private void QuitaGcBaja() { gcBaja = false; if (PonLatenciaGc(gcModoPrevioOk ? gcModoPrevio : -2)) GcBajasQuitadas++; }   // -2: Interactive
+        // GCSettings.LatencyMode existe desde .NET 2.0 SP1 (el de la rocola de XP es 2.0.50727.1433). Si no existiera, la llamada truena
+        // al compilarse el metodo de dentro: se atrapa fuera y no se hace nada.
+        private static bool LeeLatenciaGc(out int modo) { modo = -2; try { modo = LeeLatenciaGcDirecto(); return true; } catch { return false; } }
+        private static bool PonLatenciaGc(int modo) { try { PonLatenciaGcDirecto(modo); return true; } catch { return false; } }
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static int LeeLatenciaGcDirecto() { return (int)System.Runtime.GCSettings.LatencyMode; }
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void PonLatenciaGcDirecto(int modo)   // el de antes tal cual (su numero), o -1 LowLatency / -2 Interactive por nombre
+        {
+            System.Runtime.GCSettings.LatencyMode = modo == -1 ? System.Runtime.GCLatencyMode.LowLatency
+                : modo == -2 ? System.Runtime.GCLatencyMode.Interactive : (System.Runtime.GCLatencyMode)modo;
+        }
+
         // Solo scratch del analisis: ningun lector, formulario, ruta ni resultado publicado.
         // Una instancia por hilo; una llamada reentrante recibe otra y no pisa la medida externa.
         [ThreadStatic] private static TrabajoMedida trabajoMedidaDelHilo;

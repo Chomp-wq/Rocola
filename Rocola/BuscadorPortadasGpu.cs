@@ -1704,7 +1704,7 @@ namespace Rocola
                     if (updated) return;
                 }
             }
-            piezaTex[i] = Upload(piezaTex[i], ref piezaW[i], ref piezaH[i], bitmap, out piezaU[i], out piezaV[i]);
+            piezaTex[i] = SubeReponiendo(piezaTex[i], ref piezaW[i], ref piezaH[i], bitmap, out piezaU[i], out piezaV[i]);   // (RespuestaGpu.cs)
         }
         // EL BUSCADOR CON PORTADAS: cada tarjeta es su trozo de la pieza de las tarjetas, con su transparencia y lo que le
         // falta por subir, y cuanto se ve la tarjeta elegida (que entra con la suya). Lo pone el formulario (FillCartas).

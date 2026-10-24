@@ -1,5 +1,17 @@
 # Rocola
 
+## El diagnóstico completo del A4 y lo que se arregló — 24 de octubre de 2026
+
+Doce de las dieciséis escenas salían bien. Los tirones de verdad se juntaban al **entrar y salir de un disco** (23 de los 25
+huecos de más de 50 ms): la capa de interfaz cambia de medida y en cada vuelta se destruían y se creaban su imagen y sus texturas
+de la tarjeta (hasta 4 MB). Ahora la de la otra medida se guarda y se vuelve a usar: en la prueba, seis idas y vueltas sin ninguna
+textura nueva. Mientras alguien elige, el recolector de .NET no hace recolecciones de generación 2 (una coincidió con el peor
+hueco, de 284 ms). Y el sonido, que no tuvo ni un corte, deja de subir y bajar su margen cada 30 s por atascos de 15 ms que no
+lo eran; la salida de XP ya no baja de 750 ms. Para la próxima: «publicar la biblioteca» dice cuánto tarda cada paso, y cada tirón
+del diagnóstico qué marcó la pantalla en el hueco. El `rocola_sonoridad.txt` no alcanza aún para decidir el nivelado: 229
+canciones del algoritmo 3, casi todas intros. Probado en Linux con pruebas; nada medido todavía en el A4.
+[Lo que dicen los números y lo que se hizo](RENDIMIENTO_DIAGNOSTICO_A4_2026-10-24.md).
+
 ## Revisión de la cadena de audio completa — 24 de octubre de 2026
 
 Se probó la cadena entera: cinco formatos, de fábrica y con todo encendido, leída en bloques, a tamaños al azar y de a una muestra,

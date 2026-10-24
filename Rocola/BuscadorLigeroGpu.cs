@@ -40,11 +40,11 @@ namespace Rocola
                 && winBw == ub.Width && winBh == ub.Height && !VentanaEnUso(gw))
             {
                 // 3) la textura de la ultima ventana mide lo mismo: se reutiliza (se le sube la imagen encima)
-                if (uiTex != IntPtr.Zero) D3D9.Release(uiTex);
+                if (uiTex != IntPtr.Zero) Repone(uiTex, uiBmpW, uiBmpH);   // la de antes, al repuesto (RespuestaGpu.cs)
                 uiTex = winTex; uiBmpW = winBw; uiBmpH = winBh; uiU = winU; uiV = winV;
                 winTex = IntPtr.Zero; winLastBmp = null; winBw = winBh = 0;
             }
-            uiTex = Upload(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);
+            uiTex = SubeReponiendo(uiTex, ref uiBmpW, ref uiBmpH, ub, out uiU, out uiV);   // otra medida: del repuesto (RespuestaGpu.cs)
         }
         private static bool VentanaEnUso(GpuWin gw) { return gw.Has && (gw.Bmp != null || gw.Robada); }
 

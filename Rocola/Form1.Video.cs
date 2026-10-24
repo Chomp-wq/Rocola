@@ -814,6 +814,10 @@ namespace Rocola
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
         private bool uiOverlayVacio;   // la imagen de la UI no existe a proposito (atraccion con el escaparate): ver EnsureUiOverlay
         private Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)
+        // La de la otra medida (navegar: una franja arriba; dentro de un disco o en el buscador: casi toda la pantalla). Al cambiar de
+        // modo se toma esa en vez de reservar y soltar otra imagen de 2,8 MB cada vez (24-10-2026: el diagnostico del A4 ponia el 92 %
+        // de los tirones de mas de 50 ms al entrar y salir de un disco, en la fase de la interfaz). Se repinta entera igual.
+        private Bitmap uiOverlayOtro;
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
         private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
@@ -1245,7 +1249,7 @@ namespace Rocola
             if (attractOn && EscaparateActivo() && !(searchOpen && searchOverlay != null) && !(panelSongs != null && panelSongs.Visible))
             {
                 if (uiOverlayVacio && sig == uiOverlaySig) return uiOverlayVer;
-                if (uiOverlay != null) { uiOverlay.Dispose(); uiOverlay = null; }
+                if (uiOverlay != null) { if (uiOverlayOtro != null) uiOverlayOtro.Dispose(); uiOverlayOtro = uiOverlay; uiOverlay = null; }
                 uiOverlayVacio = true; uiOverlaySig = sig; uiOverlayVer++;
                 uiOverlayZona = Rectangle.Empty; uiOverlayZonaVer = uiOverlayVer;
                 uiBuscaFija = uiBuscaRes = uiBuscaAviso = SigNada;
@@ -1262,8 +1266,14 @@ namespace Rocola
             }
             if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
-                if (uiOverlay != null) uiOverlay.Dispose();
-                uiOverlay = new Bitmap(w, mainH, PixelFormat.Format32bppPArgb);
+                if (uiOverlayOtro != null && uiOverlayOtro.Width == w && uiOverlayOtro.Height == mainH)
+                { Bitmap t = uiOverlayOtro; uiOverlayOtro = uiOverlay; uiOverlay = t; }   // la de este modo, guardada: se repinta entera abajo
+                else
+                {
+                    if (uiOverlayOtro != null) uiOverlayOtro.Dispose();
+                    uiOverlayOtro = uiOverlay;
+                    uiOverlay = new Bitmap(w, mainH, PixelFormat.Format32bppPArgb);
+                }
             }
             using (Graphics g = Graphics.FromImage(uiOverlay))
             {

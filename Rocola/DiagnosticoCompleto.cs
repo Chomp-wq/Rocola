@@ -237,9 +237,11 @@ namespace Rocola
         internal double Cuando, Hueco, Fuera, Espera, Trabajo;
         internal readonly double[] Fases = new double[LibroDeCuadros.NFases];
         internal int FaseDom, Banderas, Celdas, Subidas, Modo, Gc0, Gc1, Gc2, Fallos;
+        internal string Marca; internal double MarcaAntes;   // lo ultimo que marco la pantalla en el hueco (VigiaPantalla), y cuanto antes del cuadro
         internal DiagTiron Copia()
         {
             DiagTiron t = new DiagTiron();
+            t.Marca = Marca; t.MarcaAntes = MarcaAntes;
             t.Cuando = Cuando; t.Hueco = Hueco; t.Fuera = Fuera; t.Espera = Espera; t.Trabajo = Trabajo; t.FaseDom = FaseDom; t.Banderas = Banderas;
             t.Celdas = Celdas; t.Subidas = Subidas; t.Modo = Modo; t.Gc0 = Gc0; t.Gc1 = Gc1; t.Gc2 = Gc2; t.Fallos = Fallos;
             Array.Copy(Fases, t.Fases, Fases.Length);
@@ -378,6 +380,10 @@ namespace Rocola
                         if (libro != null) { t.Banderas = libro.Banderas; t.Celdas = libro.Celdas; t.Subidas = libro.Subidas; t.Modo = libro.Modo; }
                         else { t.Banderas = 0; t.Celdas = 0; t.Subidas = 0; t.Modo = 0; }
                         t.Gc0 = g0 - gcPrev0; t.Gc1 = g1 - gcPrev1; t.Gc2 = g2 - gcPrev2; t.Fallos = fallosPendientes;
+                        // Que marco la pantalla en el hueco (entre el Present anterior y el comienzo de este cuadro): una tecla, el latido...
+                        double f2t = System.Diagnostics.Stopwatch.Frequency / 1000.0; long cuando;
+                        t.Marca = VigiaPantalla.MarcaEntre(GpuPanel.InicioRelojTicks + (long)(finPrevio * f2t), GpuPanel.InicioRelojTicks + (long)(inicio * f2t), VigiaPantalla.MarcaCuadro, out cuando);
+                        t.MarcaAntes = t.Marca != null ? inicio - (cuando - GpuPanel.InicioRelojTicks) / f2t : 0;
                     }
                 }
             }
@@ -996,6 +1002,7 @@ namespace Rocola
                     if (!alguna) sb.Append("ninguna");
                     sb.Append(" | celdas ").Append(t.Celdas).Append(", texturas subidas ").Append(t.Subidas).Append(" | recolecciones en el hueco ").Append(t.Gc0).Append('/').Append(t.Gc1).Append('/').Append(t.Gc2).Append(" (coincidencia, no causa)");
                     if (t.Fallos > 0) sb.Append(" | cuadros sin presentar antes: ").Append(t.Fallos);
+                    sb.Append(" | en el hueco la pantalla marco: ").Append(t.Marca != null ? "«" + t.Marca + "» " + N1(t.MarcaAntes) + " ms antes del cuadro" : "nada (trabajo sin marca: mensajes, temporizadores, otros hilos)");
                     sb.Append(nl);
                 }
             }

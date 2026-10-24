@@ -557,8 +557,12 @@ class BuscaLigero
         IntPtr laVentana = (IntPtr)Toma(ps[0], "winTex");
         // (ahora la ventana es la de navegacion, que no mide lo mismo que el buscador: al abrir se crea)
         ui[0] = busca; ver[0] = 5; ventanas[0] = Ventana(false, null, true);
-        c0 = creaciones; CuadroHasta(ps[0], 5);
-        Exige(creaciones == c0 + 1 && (IntPtr)Toma(ps[0], "winTex") == laVentana, "si la ventana no mide lo mismo, se crea una textura nueva, como siempre");
+        c0 = creaciones; long r0 = Repuestos(ps[0]); CuadroHasta(ps[0], 5);
+        // Desde el 24-10-2026 la textura de otra medida se guarda y la que falta puede salir de lo guardado (RespuestaGpu.cs): o se
+        // crea una, o se toma una guardada (sin crear); la de la ventana no se toca, y la imagen es la del buscador.
+        Exige(((creaciones == c0 + 1 && Repuestos(ps[0]) == r0) || (creaciones == c0 && Repuestos(ps[0]) == r0 + 1))
+              && (IntPtr)Toma(ps[0], "winTex") == laVentana && DistintosEnTextura((IntPtr)Toma(ps[0], "uiTex"), busca) == 0,
+              "si la ventana no mide lo mismo, la UI va a otra textura (nueva o guardada de su medida), con su imagen");
         // Cerrar el buscador de verdad (se roba su textura grande) y abrirlo otra vez: se reutiliza.
         IntPtr grande = (IntPtr)Toma(ps[0], "uiTex");
         Llama(ps[0], "RobaUiParaVentana", 5);
@@ -570,7 +574,24 @@ class BuscaLigero
         Exige(reu == grande && creaciones == c0 && (IntPtr)Toma(ps[0], "winTex") == IntPtr.Zero && DistintosEnTextura(reu, busca2) == 0,
               "al abrir, la textura grande de la ultima ventana se reutiliza (sin crear ninguna) y queda con la imagen nueva");
         Exige(ConTextura(ab, reu).Count == 1, "y la ventana que se abre se anima con ella, como siempre");
+
+        // EL REPUESTO (24-10-2026): ir y volver entre dos medidas (navegar <-> buscador, como entrar y salir de un disco) ya no crea una
+        // textura cada vez: la de la otra medida se guarda y se vuelve a usar, con la imagen exacta de cada vez.
+        Console.WriteLine("\n  4b) IR Y VOLVER ENTRE DOS MEDIDAS SIN CREAR TEXTURAS\n");
+        ventanas[0] = null;
+        ui[0] = nav; ver[0] = 20; CuadroHasta(ps[0], 20);
+        ui[0] = busca; ver[0] = 21; CuadroHasta(ps[0], 21);
+        int c1 = creaciones; long r1 = Repuestos(ps[0]); bool exacta = true;
+        for (int k = 0; k < 6; k++)
+        {
+            Bitmap b = k % 2 == 0 ? nav : busca; ui[0] = b; ver[0] = 22 + k; CuadroHasta(ps[0], 22 + k);
+            if (DistintosEnTextura((IntPtr)Toma(ps[0], "uiTex"), b) != 0) exacta = false;
+        }
+        Exige(nav.Height != busca.Height, "(las dos imagenes miden distinto: " + nav.Height + " y " + busca.Height + " de alto)");
+        Exige(exacta && creaciones == c1 && Repuestos(ps[0]) == r1 + 6,
+              "seis idas y vueltas: ni una textura nueva (antes, una por vuelta), seis tomadas del repuesto, y cada vez la imagen exacta");
     }
+    static long Repuestos(object p) { FieldInfo f = p.GetType().GetField("RepuestosUsados", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public); return f == null ? -1 : (long)f.GetValue(null); }
     static object[] ventanas = new object[2];
     static object Vacia() { return Activator.CreateInstance(TWin); }
     static object Dame(int k) { return ventanas[k] ?? Vacia(); }

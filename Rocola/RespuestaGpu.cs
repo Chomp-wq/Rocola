@@ -62,10 +62,63 @@ namespace Rocola
             for (int i = 0; i < paletteOld.Length; i++)
                 if (paletteOld[i] != null)
                 {
-                    if (paletteOld[i].Tex != IntPtr.Zero) D3D9.Release(paletteOld[i].Tex);
+                    if (paletteOld[i].Tex != IntPtr.Zero) Repone(paletteOld[i].Tex, paletteOld[i].Rect.Width, paletteOld[i].Rect.Height);
                     paletteOld[i] = null;
                 }
             paletteStart = -1000;
+        }
+
+        // EL REPUESTO DE TEXTURAS DE LA INTERFAZ (24-10-2026). El diagnostico del A4 ponia 23 de los 25 huecos de mas de 50 ms en la fase
+        // de la interfaz, al entrar y salir de un disco: la textura de las barras cambia de medida (navegar: una franja; dentro: casi toda
+        // la pantalla), y cada vez se destruia y se creaba otra de hasta 1024x1024 (4 MB), y lo mismo las piezas de cristal de la lista y
+        // la textura que guarda el fundido de colores al cambiar de letra. Ahora la que ya no sirve se guarda (hasta cuatro) y la siguiente
+        // que necesita la misma medida en potencias de dos toma esa y solo le sube la imagen encima. Lo que se ve es identico: la imagen se
+        // sube entera, con su borde, como en una textura nueva. Automatico, sin interruptor (no cambia el aspecto).
+        private const int RepuestoMax = 4;
+        private readonly IntPtr[] repuestoTex = new IntPtr[RepuestoMax];
+        private readonly int[] repuestoTw = new int[RepuestoMax], repuestoTh = new int[RepuestoMax];
+        private int repuestoTurno;
+        internal static long RepuestosGuardados, RepuestosUsados;   // (las pruebas)
+        private static int Pot2(int n) { if (n < 1 || n > 0x40000000) return 0; int p = 1; while (p < n) p <<= 1; return p; }
+        // En vez de soltarla: se guarda. Si ya hay cuatro, se suelta la mas vieja.
+        private void Repone(IntPtr tex, int bw, int bh)
+        {
+            if (tex == IntPtr.Zero) return;
+            int tw = Pot2(bw), th = Pot2(bh);
+            if (tw == 0 || th == 0 || TexturasDivididasGpu.Busca(tex) != null) { D3D9.Release(tex); return; }   // (las divididas, no)
+            int k = -1;
+            for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] == IntPtr.Zero) { k = i; break; }
+            if (k < 0) { k = repuestoTurno; repuestoTurno = (repuestoTurno + 1) % RepuestoMax; D3D9.Release(repuestoTex[k]); }
+            repuestoTex[k] = tex; repuestoTw[k] = tw; repuestoTh[k] = th; RepuestosGuardados++;
+        }
+        private IntPtr TomaRepuesto(int bw, int bh)
+        {
+            int tw = Pot2(bw), th = Pot2(bh);
+            if (tw == 0 || th == 0) return IntPtr.Zero;
+            for (int i = 0; i < RepuestoMax; i++)
+                if (repuestoTex[i] != IntPtr.Zero && repuestoTw[i] == tw && repuestoTh[i] == th)
+                { IntPtr t = repuestoTex[i]; repuestoTex[i] = IntPtr.Zero; return t; }
+            return IntPtr.Zero;
+        }
+        private void SueltaRepuestos()
+        {
+            for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] != IntPtr.Zero) { D3D9.Release(repuestoTex[i]); repuestoTex[i] = IntPtr.Zero; }
+        }
+        // Como Upload, pero una textura de otra medida se guarda en vez de destruirse, y se usa una guardada que valga.
+        private IntPtr SubeReponiendo(IntPtr tex, ref int bw, ref int bh, Bitmap bmp, out float u, out float v)
+        {
+            if (bmp != null && (tex == IntPtr.Zero || bw != bmp.Width || bh != bmp.Height))
+            {
+                if (tex != IntPtr.Zero) { Repone(tex, bw, bh); tex = IntPtr.Zero; }
+                IntPtr r = TomaRepuesto(bmp.Width, bmp.Height);
+                if (r != IntPtr.Zero)
+                {
+                    if (libroOn) libro.Subidas++;
+                    if (stars.UpdateOverlay(r, bmp, out u, out v)) { bw = bmp.Width; bh = bmp.Height; RepuestosUsados++; return r; }
+                    D3D9.Release(r);
+                }
+            }
+            return Upload(tex, ref bw, ref bh, bmp, out u, out v);
         }
         private void PreparePalette()
         {

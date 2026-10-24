@@ -2346,6 +2346,7 @@ namespace Rocola
             EnsureCoverReaders(); // rearmar la cola cuando el regulador recupera margen
 #endif
             CaducaEstado();   // los avisos de error de la linea de estado se van solos
+            RevisaRecolector();   // mientras alguien elige, sin recolecciones grandes (Optimizaciones.cs)
             RelojAtras();     // y si el reloj de Windows se atraso, la inactividad cuenta desde ahora
             phase += 0.045;
             frameTick++;

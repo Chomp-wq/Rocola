@@ -46,6 +46,13 @@ namespace Rocola
 {
     // Solo latencia, nunca cambia PCM, frecuencia, canales ni efectos. Perfil de
     // sesion; una bajada por apertura tras 30 s reales sin picos. No reabre salida.
+    //
+    // SIN SUBIR Y BAJAR CADA 30 s (24-10-2026). El rocola_error.txt de la noche del 23 al 24 traia unas cien lineas «[Latencia de
+    // audio]»: bajaba de 1000 a 750 ms, a los pocos segundos «atasco de 15 a 20 ms» y vuelta a 1000. Esos atascos eran del hilo de
+    // la musica, que lee trozos de 25 ms: pasarse del 60 % del trozo (15 ms) contaba como atasco, y en XP un solo tic del reloj del
+    // sistema son 15,6 ms. Pero ese hilo tiene 200 ms de colchon (BombaSonido): 15 ms no le hacen nada. Ahora su atasco se mide contra
+    // el colchon (pasar de la mitad, 100 ms). Y la salida clasica ya no baja de 750 ms: la rellena el hilo de la pantalla, y el mismo
+    // archivo trae paradas de la pantalla de 500 a 766 ms (publicar la biblioteca); con 500 ms de colchon, una de esas se oiria.
     internal sealed class PerfilLatenciaAudio
     {
         private readonly object cerrojo = new object();
@@ -59,7 +66,7 @@ namespace Rocola
         private readonly int[] cambioDe = new int[MaxCambios], cambioA = new int[MaxCambios], cambioCausa = new int[MaxCambios], cambioValor = new int[MaxCambios];
         private int nCambios, perdidosCambios;
         private volatile int hayCambios;
-        internal PerfilLatenciaAudio(bool clasica) { niveles = clasica ? new int[] { 1000, 750, 500 } : new int[] { 300, 225, 150 }; }
+        internal PerfilLatenciaAudio(bool clasica) { niveles = clasica ? new int[] { 1000, 750 } : new int[] { 300, 225, 150 }; }
         internal int Sugerida { get { lock (cerrojo) return niveles[nivel]; } }
         internal bool HayCambios { get { return hayCambios != 0; } }
         private void Anota(int de, int a, int causa, int valor)   // con el cerrojo
@@ -96,7 +103,9 @@ namespace Rocola
             lock (cerrojo)
             {
                 if (musicaMs <= 0) return;
-                if (costoMs > Math.Max(10, musicaMs * .6) || atrasoMs > abierta * .25)
+                // El hilo de la musica (no consumidor) tiene su colchon: su atasco es pasarse de la mitad de el, no del 60 % del trozo.
+                double topeCosto = consumidor ? Math.Max(10, musicaMs * .6) : Math.Max(musicaMs, BombaSonido.ColchonMs * .5);
+                if (costoMs > topeCosto || atrasoMs > abierta * .25)
                 { Anota(nivel, 0, CausaAtasco, (int)Math.Max(costoMs, atrasoMs)); nivel = 0; desde = ahora; musicaEstable = 0; return; }
                 if (!consumidor || niveles[nivel] != abierta) return;
                 if (desde == 0) desde = ahora;
