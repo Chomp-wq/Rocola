@@ -2564,7 +2564,7 @@ namespace Rocola
 
             // MODO ATRACCION: en reposo, sin nada sonando, mostrar la pantalla estrellada con el cubo.
             // (nunca durante un re-escaneo: EnterAttract muestrea 'albums' y el worker lo esta mutando)
-            if (!attractOn && nowPlaying == null && queue.Count == 0 && !searchOpen && !videoOn && !libBuilding
+            if (!attractOn && nowPlaying == null && queue.Count == 0 && !searchOpen && !videoOn && !libBuilding && !diagEnMarcha
                 && albums.Count > 0 && (lblConfig == null || !lblConfig.Visible)
                 && (DateTime.Now - lastInput).TotalSeconds > AttractIdleSecs)
                 EnterAttract();

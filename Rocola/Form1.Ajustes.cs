@@ -642,14 +642,18 @@ namespace Rocola
                     if (f3Diagnostico)
                     {   // Diagnostico completo (DiagnosticoCompleto.cs): igual que medir, la ventana vuelve sola en Imagen
                         f3Diagnostico = false; f3Medir = false;
+                        diagCancelado = false;
                         DiagnosticoCompletoF3();
                         f3Pagina = 1;
+                        // Si alguien toco la rocola (un cliente, una moneda) o se esta cerrando, la ventana NO vuelve: la rocola queda en servicio.
+                        if (diagCancelado || IsDisposed || Disposing || startupClosing) break;
                         continue;
                     }
                     if (!f3Medir) break;
                     f3Medir = false;
                     MideRendimiento();
                     f3Pagina = 1;
+                    if (IsDisposed || Disposing || startupClosing) break;
                 }
             }
             finally { ajustesAbiertos = false; f3Pagina = 0; }

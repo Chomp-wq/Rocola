@@ -401,8 +401,8 @@ namespace Rocola
             Activo = false;
             r.DuraMs = ahoraMs - t0;
             r.PeriodoRefMs = periodo; r.Cuadros = cuadros; r.Fallos = fallos; r.Desborde = desborde;
-            r.Fps = r.DuraMs > 0 ? cuadros * 1000.0 / r.DuraMs : 0;
             int n = nIntervalos;
+            r.Fps = sumaHuecos > 0 ? n * 1000.0 / sumaHuecos : 0;   // intervalos entre presentaciones (no cuadros: el primero no tiene hueco de antes)
             Array.Copy(intervalos, orden, n); Array.Sort(orden, 0, n);
             r.P50 = Pct(orden, n, .5); r.P95 = Pct(orden, n, .95); r.P99 = Pct(orden, n, .99); r.Max = n > 0 ? orden[n - 1] : 0;
             r.Medio = n > 0 ? sumaHuecos / n : 0;
@@ -859,14 +859,14 @@ namespace Rocola
             {
                 DiagResultado r = rs[i]; if (r.Estado == "saltada" || r.Cuadros < 10) continue;
                 double w = 0; for (int s = 0; s < LibroDeCuadros.FPresentar; s++) w += r.FasesMs[s];   // sin presentar ni fuera
-                double porCuadro = w / r.Cuadros;
+                double porCuadro = w / Math.Max(1, r.Cuadros - 1);
                 if (porCuadro > costeCara) { costeCara = porCuadro; cara = r; }
             }
             if (cara != null && costeCara > 0.5)
             {
                 int a = -1, b = -1;
                 for (int s = 0; s < LibroDeCuadros.FPresentar; s++) { if (a < 0 || cara.FasesMs[s] > cara.FasesMs[a]) { b = a; a = s; } else if (b < 0 || cara.FasesMs[s] > cara.FasesMs[b]) b = s; }
-                string dos = "\"" + DiagCaptura.NombresSlots[a] + "\" " + N(cara.FasesMs[a] / cara.Cuadros, "0.00") + " ms/cuadro" + (b >= 0 && cara.FasesMs[b] > 0 ? " y \"" + DiagCaptura.NombresSlots[b] + "\" " + N(cara.FasesMs[b] / cara.Cuadros, "0.00") + " ms/cuadro" : "");
+                string dos = "\"" + DiagCaptura.NombresSlots[a] + "\" " + N(cara.FasesMs[a] / Math.Max(1, cara.Cuadros - 1), "0.00") + " ms/cuadro" + (b >= 0 && cara.FasesMs[b] > 0 ? " y \"" + DiagCaptura.NombresSlots[b] + "\" " + N(cara.FasesMs[b] / Math.Max(1, cara.Cuadros - 1), "0.00") + " ms/cuadro" : "");
                 c.Add("En la escena que mas trabajo de CPU arma (\"" + cara.Nombre + "\", " + N(costeCara, "0.0") + " ms por cuadro sin contar Present): " + dos + ".");
             }
             // 4) CPU
@@ -1004,7 +1004,7 @@ namespace Rocola
 
             // 6) CPU
             sb.Append("== 6. PROCESADOR: DEL PROCESO, DEL SISTEMA Y POR HILO ==").Append(nl);
-            sb.Append("Proceso = % de todos los nucleos (").Append(m.Nucleos).Append("). Hilos = % de UN nucleo (un hilo no pasa de 100). 'Otros' = lo que usa el resto del equipo, ajeno a la rocola.").Append(nl);
+            sb.Append("Proceso = % de todos los nucleos (").Append(m.Nucleos).Append("). Hilos = % de UN nucleo por hilo (varios hilos con el mismo nombre se SUMAN y pueden pasar de 100). 'Otros' = lo que usa el resto del equipo, ajeno a la rocola.").Append(nl);
             for (int i = 0; i < rs.Count; i++)
             {
                 DiagResultado r = rs[i]; if (r.Estado == "saltada" || r.Cuadros == 0) continue;
@@ -1139,12 +1139,15 @@ namespace Rocola
         private DiagCaptura diagSink;
         internal DiagCaptura DiagSink { get { return diagSink; } set { diagSink = value; } }
         internal int DiagPerdidas { get { return stars != null ? stars.Perdidas : 0; } }
+        // El periodo con el que se juzga: el del refresco, o el del tope de cuadros si es mas largo (fps_tope explicito) o el del video a la vista.
+        internal double DiagPeriodoMs { get { int hz = RefrescoHz; double p = 1000.0 / (hz > 0 ? hz : 60); return PeriodoDiagnostico(p, TopeMs(), ThrottleMs); } }
         internal long DiagMemoriaTexturaMb { get { try { return stars != null ? (long)(stars.EstimatedTextureMemory >> 20) : -1; } catch { return -1; } } }
 
         // Un turno. true si presento un cuadro.
         internal bool DiagCuadroPaceado()
         {
             if (stars == null || !stars.Ok || !Visible) return false;
+            if (!PuedeDibujar()) { System.Threading.Thread.Sleep(5); return false; }   // minimizada o suspendida: se espera, no se gira al 100 % de procesador
             int th = TopeMs();
             if (ThrottleMs > th) th = ThrottleMs;
             double ahora = AhoraMs();
@@ -1158,7 +1161,9 @@ namespace Rocola
                 return false;
             }
             AgendaCuadro(ahora, th);
-            bool ok = RenderFrame();
+            bool ok;
+            try { ok = RenderFrame(); }
+            catch { ok = false; System.Threading.Thread.Sleep(5); if (diagSink != null) diagSink.Fallo(); }   // un cuadro que revienta no tumba el diagnostico
             vistoMs = -1;   // igual que OnIdle: un cuadro pedido fuera del bucle no sabe cuando se vera
             return ok;
         }

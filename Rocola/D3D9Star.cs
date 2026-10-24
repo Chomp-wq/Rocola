@@ -292,10 +292,11 @@ namespace Rocola
         }
 
         internal int Perdidas;   // veces que se perdio el dispositivo (lo lee el diagnostico completo, DiagnosticoCompleto.cs)
+        // EPISODIOS de perdida (de «bien» a «perdido»), no los reintentos cada 250 ms ni los Reset por cambio de tamano.
+        private void PerdidaNueva() { if (!lost) Perdidas++; }
         private void EsperaDispositivo()
         {
-            Perdidas++;
-            lost = true;
+            PerdidaNueva(); lost = true;
             resetEspera = true;
             resetProximo = unchecked(Environment.TickCount + ReintentoDispositivoMs);
         }
@@ -397,7 +398,7 @@ namespace Rocola
 
         private void EstadoFallido()
         {
-            lost = true;
+            PerdidaNueva(); lost = true;
             stTss = 0; stBlend = 0; stTex = new IntPtr(-1);
             stArg2Difuso = false; stOrigenAlfa = false;
         }
@@ -560,11 +561,11 @@ namespace Rocola
                 // cielo (GpuStarfield.Begin): dos cuadrilateros opacos, sin mezcla, que tapan todos los pixeles. Borrar
                 // antes era escribir la pantalla entera para nada, una vez por cuadro. El buffer se descarta al
                 // presentar (SWAPEFFECT_DISCARD): no hay nada viejo que respetar.
-                if (begin(dev) < 0) { lost = true; return false; }
+                if (begin(dev) < 0) { PerdidaNueva(); lost = true; return false; }
                 inScene = true;
                 return true;
             }
-            catch { lost = true; return false; }
+            catch { PerdidaNueva(); lost = true; return false; }
         }
 
         public bool EndFrame()
@@ -574,13 +575,13 @@ namespace Rocola
             inScene = false;
             try
             {
-                if (end(dev) < 0) { lost = true; return false; }
+                if (end(dev) < 0) { PerdidaNueva(); lost = true; return false; }
                 // No se cuenta una escena incompleta ni una presentacion rechazada.
                 if (lost) return false;
-                if (present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) < 0) { lost = true; return false; }
+                if (present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) < 0) { PerdidaNueva(); lost = true; return false; }
                 return true;
             }
-            catch { lost = true; return false; }
+            catch { PerdidaNueva(); lost = true; return false; }
             finally { SueltaPinesVertices(); }
         }
 
@@ -1018,7 +1019,7 @@ namespace Rocola
             SueltaPinesVertices();
             LiberaVertices();
             LiberaMedia(); SueltaJunta();   // (PerformanceGpu.cs)
-            lost = true;
+            PerdidaNueva(); lost = true;
             resetPending = false;
             inScene = false;
             IntPtr dv = dev; dev = IntPtr.Zero;

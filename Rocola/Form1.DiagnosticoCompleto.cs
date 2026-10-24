@@ -24,12 +24,13 @@ namespace Rocola
 {
     public partial class Form1
     {
-        private bool diagEnMarcha;
 
         // Lo que hay que devolver al acabar.
         private sealed class DiagEstado
         {
             internal bool Buscador, Atraccion, Disco, Estrella3d, IdleTarget, LibroAntes, PuseCancion, Asistente;
+            internal float EstrellasDens, AuroraAmount;   // los valores CRUDOS (PonNivel los cuantiza a tres escalones)
+            internal Album DiscoAbierto;
             internal char Letra; internal int Pagina, Sel;
             internal int[] Niv; internal bool[] Ahorro;
             internal PlayItem NowPlaying;
@@ -60,15 +61,17 @@ namespace Rocola
             if (videoOn)
             { diagResumen = "No se hizo el diagnostico: hay un video en ventana.\nOcupa la tarjeta y el procesador y la medida no serviria."; return; }
             if (IsDisposed || Disposing || startupClosing) return;
-            diagEnMarcha = true;
-            DiagEstado bk = DiagGuardaEstado();
-            DiagCtx c = new DiagCtx(); c.Bk = bk;
+            diagCancelado = false;
+            DiagEstado bk = null;
+            DiagCtx c = new DiagCtx();
             DiagMeta meta = new DiagMeta();
             DiagnosticoCompleto motor = null;
             string error = null;
             string equipo = "", ajustes = "", repasoIni = "";
             try
             {
+                diagEnMarcha = true;
+                bk = DiagGuardaEstado(); c.Bk = bk;
                 meta.Inicio = DateTime.Now; meta.Version = DeCuandoEs();
                 meta.Nucleos = Math.Max(1, Environment.ProcessorCount);
                 equipo = DiagTextoEquipo();
@@ -81,7 +84,6 @@ namespace Rocola
                 List<DiagEscenaDef> escenas = DiagEscenas(c);
                 for (int i = 0; i < escenas.Count; i++) motor.Escenas.Add(escenas[i]);
                 // El libro de los peores cuadros, encendido mientras dura (y como estaba al acabar), y la toma enchufada.
-                bk.LibroAntes = gpuPanel.LibroActivo;
                 gpuPanel.LibroActivo = true;
                 gpuPanel.DiagSink = motor.Captura;
                 c.GraciaHasta = Environment.TickCount + 2000;
@@ -91,11 +93,12 @@ namespace Rocola
             catch (Exception ex) { error = ex.Message; LogError("Diagnostico completo", ex); }
             finally
             {
-                try { if (gpuPanel != null) { gpuPanel.DiagSink = null; gpuPanel.LibroActivo = bk.LibroAntes; } } catch { }
+                try { if (gpuPanel != null) { gpuPanel.DiagSink = null; if (bk != null) gpuPanel.LibroActivo = bk.LibroAntes; } } catch { }
                 string fondoFin = "";
                 try { fondoFin = DiagFondo(); } catch { }
-                DiagRestaura(bk);
+                if (bk != null) DiagRestaura(bk);
                 diagEnMarcha = false;
+                diagCancelado = motor != null && motor.Cancelado;
                 try { ShowToast("Diagnostico terminado: restaurando todo", Color.FromArgb(40, 130, 90)); } catch { }
                 if (motor != null)
                 {
@@ -121,6 +124,13 @@ namespace Rocola
             if (!string.IsNullOrEmpty(error)) cond.Append("ERROR durante el diagnostico: ").Append(error).Append(nl);
             if (!c.ConMusica) cond.Append("SIN MUSICA: las escenas de estado extendido y de cambio de cancion necesitan una cancion; se saltaron.").Append(nl);
             meta.Condiciones = cond.ToString();
+            bool midioAlgo = false;
+            for (int i = 0; i < motor.Resultados.Count; i++) if (motor.Resultados[i].Cuadros > 0) midioAlgo = true;
+            if (!midioAlgo && motor.Cancelado)
+            {   // un informe sin una sola escena medida gastaria uno de los diez cupos: no se escribe
+                diagResumen = "Diagnóstico CANCELADO antes de medir nada.\nNo se escribió informe.";
+                return;
+            }
             string texto = DiagInforme.Construye(meta, motor.Resultados);
             string err;
             string ruta = DiagInforme.Escribe(CarpetaDatos, texto, meta.Inicio, DiagInforme.Conservar, out err);
@@ -142,6 +152,8 @@ namespace Rocola
             for (int i = 0; i < b.Ahorro.Length; i++) b.Ahorro[i] = LeeAhorro(i);
             b.Estrella3d = estrella3d; b.IdleTarget = gpuPanel != null && gpuPanel.IdleExpandTarget;
             b.NowPlaying = nowPlaying; b.Asistente = asistenteVisible;
+            b.EstrellasDens = estrellasDens; b.AuroraAmount = auroraAmount; b.DiscoAbierto = b.Disco ? currentAlbum : null;
+            b.LibroAntes = gpuPanel != null && gpuPanel.LibroActivo;
             b.Acento = bgAccentTarget; b.Genero = bgGeneroTarget; b.Port1 = bgPort1; b.Port2 = bgPort2;
             b.SinGenero = bgSinGenero; b.ArtistaFijo = bgArtistaFijo;
             try { if (panelSongs != null) b.PanelBack = panelSongs.BackColor; if (songList != null) { b.ListBack = songList.BackColor; b.ListAccent = songList.Accent; } if (songPager != null) b.PagerBack = songPager.BackColor; } catch { }
@@ -155,15 +167,28 @@ namespace Rocola
             try { if (bancoReposoActivo) QuitaEscena(EscReposo); } catch { }
             try { EfectoGrafico[] ef = Efectos(); for (int i = 0; i < ef.Length && i < bk.Niv.Length; i++) if (LeeNivel(ef[i].Clave) != bk.Niv[i]) PonNivel(ef[i].Clave, bk.Niv[i]); } catch { }
             try { for (int i = 0; i < bk.Ahorro.Length; i++) if (LeeAhorro(i) != bk.Ahorro[i]) PonAhorro(i, bk.Ahorro[i]); } catch { }
+            try
+            {   // PonNivel cuantiza «estrellas» y «espectro» a tres escalones: se devuelven los valores crudos que habia (nada que guardar distinto)
+                if (estrellasDens != bk.EstrellasDens || auroraAmount != bk.AuroraAmount) { estrellasDens = bk.EstrellasDens; auroraAmount = bk.AuroraAmount; AplicaEfectosGpu(); }
+            }
+            catch { }
             try { if (estrella3d != bk.Estrella3d) { estrella3d = bk.Estrella3d; AplicaEfectosGpu(); } } catch { }
             try
             {
                 if (bk.PuseCancion)
                 {
-                    DisposePlaybackNow();
-                    nowPlaying = bk.NowPlaying;   // null: no sonaba nada antes
-                    CambioElPanelDeReposo();   // el panel del estado extendido se entera de que cambio lo que suena
-                    RefrescaCola(); UpdateNowPlayingUI();
+                    // Solo se para SU muda. Si ya no es la que suena, no es nuestra y no se toca.
+                    if (EsMudaDiag(nowPlaying))
+                    {
+                        DisposePlaybackNow();
+                        nowPlaying = bk.NowPlaying;   // null: no sonaba nada antes
+                        CambioElPanelDeReposo();   // el panel del estado extendido se entera de que cambio lo que suena
+                        RefrescaCola(); UpdateNowPlayingUI();
+                    }
+                    diagMuda = null;
+                    // Una moneda y una peticion durante el diagnostico solo se encolaron (habia algo «sonando»): ahora arranca la cola; si no,
+                    // el estado guardado se rehace sin la muda.
+                    if (nowPlaying == null && queue.Count > 0) PlayNext(); else SaveState();
                 }
                 // Con la cancion de un cliente nunca se toco nowPlaying: si cambio mientras tanto, es que su cancion acabo de verdad, y asi se queda.
             }
@@ -175,6 +200,7 @@ namespace Rocola
                 if (attractOn && !bk.Atraccion) ExitAttract();
                 currentLetter = bk.Letra; page = bk.Pagina; selAlbumIndex = bk.Sel;
                 RefreshAlbums();
+                if (bk.Disco && bk.DiscoAbierto != null && !(panelSongs != null && panelSongs.Visible)) EnterAlbum(bk.DiscoAbierto);   // el disco que estaba abierto
                 if (bk.Atraccion && !attractOn) EnterAttract();
                 else if (bk.Buscador && !searchOpen) OpenSearch();
             }
@@ -195,6 +221,7 @@ namespace Rocola
             }
             catch { }
             try { if (gpuPanel != null) gpuPanel.IdleExpandTarget = bk.IdleTarget; } catch { }
+            try { if (bk.Asistente && !asistenteVisible && AsistentePermitido()) AbreAsistente(); } catch { }
         }
 
         // ============================ LA MUSICA ============================
@@ -225,9 +252,17 @@ namespace Rocola
             if (tracks.Count == 0) { c.MusicaTexto = "sin musica (la biblioteca no tiene canciones)"; return false; }
             PlayItem it = DiagItemAleatorio(c.ItemPropio);
             if (it == null) { c.MusicaTexto = "sin musica (ninguna cancion con disco)"; return false; }
+            // Si entro una peticion de un cliente mientras tanto, no se pone otra muda: el diagnostico se cancelara y la cola arrancara al restaurar.
+            if (queue.Count > 0) { c.ConMusica = false; return false; }
             try
             {
-                if (c.MusicaPropia) DisposePlaybackNow();
+                if (c.MusicaPropia)
+                {
+                    // Solo se para lo que sigue siendo SU muda; si ya suena otra cosa, no es nuestra.
+                    if (!EsMudaDiag(nowPlaying)) { c.MusicaPropia = false; c.ConMusica = nowPlaying != null && output != null; return false; }
+                    DisposePlaybackNow();
+                }
+                diagMuda = it;
                 nowPlaying = it;
                 CambioElPanelDeReposo();
                 PlayTrackForMeasurement(it.Song);
@@ -243,6 +278,7 @@ namespace Rocola
                 }
             }
             catch { }
+            diagMuda = null;
             nowPlaying = c.Bk.NowPlaying;
             CambioElPanelDeReposo();
             c.MusicaPropia = false; c.ConMusica = false; c.MusicaTexto = "sin musica (no se pudo abrir la cancion del diagnostico)";
@@ -281,7 +317,7 @@ namespace Rocola
             if (!c.MusicaPropia) return;
             try
             {
-                bool viva = output != null && nowPlaying != null;
+                bool viva = output != null && EsMudaDiag(nowPlaying);
                 double restan = double.MaxValue;
                 if (reader != null && reader.TotalTime.TotalSeconds > 0) restan = (reader.TotalTime.TotalSeconds - reader.CurrentTime.TotalSeconds) * 1000.0;
                 if (viva && restan > minMs + 15000) return;
@@ -299,7 +335,7 @@ namespace Rocola
             h.Bombea = delegate { Application.DoEvents(); };
             h.Interrumpido = delegate { return DiagInterrumpido(c); };
             h.Ahora = delegate { return GpuPanel.AhoraMs(); };
-            h.PeriodoRefMs = delegate { int hz = p.RefrescoHz; return 1000.0 / (hz > 0 ? hz : 60); };
+            h.PeriodoRefMs = delegate { return p.DiagPeriodoMs; };
             h.ReiniciaMedida = delegate { p.ReiniciaMedida(); };
             h.Pulso = delegate { if (!c.ConMusica) PulsoDeMentira(); };
             h.Latidos = delegate { return frameTick; };

@@ -156,7 +156,7 @@ class Diagnostico
         Check(Codigo.Llama(Metodo(TPanel, "RenderFrame"), "Cuadro"), "y le da el cuadro presentado");
         Codigo.UsosDeCampo(Metodo(TPanel, "NoPresentado"), "diagSink", out l, out e);
         Check(l > 0 && Codigo.Llama(Metodo(TPanel, "NoPresentado"), "Fallo"), "NoPresentado le cuenta los cuadros que no se presentaron");
-        int pl, pe; Codigo.UsosDeCampo(Metodo(TDev, "EsperaDispositivo"), "Perdidas", out pl, out pe);
+        int pl, pe; Codigo.UsosDeCampo(Metodo(TDev, "PerdidaNueva"), "Perdidas", out pl, out pe);
         Check(Campo(TDev, "Perdidas") != null && pe > 0, "la tarjeta cuenta las veces que se perdio el dispositivo");
         List<string> tImg = Codigo.ConAyudantes(TF, "PaginaImagen"); List<string> txt = new List<string>();
         foreach (MethodBase m in Codigo.MetodosConAyudantes(TF, "PaginaImagen")) txt.AddRange(Codigo.Textos(m));
@@ -419,7 +419,9 @@ class Diagnostico
         Check(trabajador > 55 && trabajador <= 105, "el hilo con nombre que trabaja sale con su parte: " + F(trabajador, "0.0") + " % de un nucleo (esperado ~100)");
         Check(finitos && resto >= 0, "todos los hilos salen finitos y no negativos; el resto del proceso (" + F(resto, "0.0") + " %) cuadra lo que queda");
         Check(Math.Abs((suma + resto) - 100.0 * nucleos) < 1.0 || suma + resto >= 100.0 * nucleos - 1.0, "los hilos y el resto suman el procesador del proceso");
-        Check(((IList)Toma(r, "Hilos"))[0] != null && D(hilos[0], "PctNucleo") >= D(hilos[hilos.Count - 1], "PctNucleo"), "van ordenados del que mas al que menos");
+        bool ordenados = hilos.Count > 0;
+        for (int i = 1; i < hilos.Count; i++) if (D(hilos[i - 1], "PctNucleo") < D(hilos[i], "PctNucleo")) ordenados = false;
+        Check(ordenados, "van ordenados del que mas al que menos (" + hilos.Count + " hilos)");
         // Sin API (nada que leer): -1, sin lanzar nada.
         object vacia = Nuevo(TInst); object vacia2 = Nuevo(TInst); object rv = Nuevo(TRes);
         Pon(vacia, "RelojMs", 0.0); Pon(vacia2, "RelojMs", 1000.0);
@@ -443,10 +445,8 @@ class Diagnostico
             if (m != null && Codigo.Llama(m, "Nombra")) anotan++;
         }
         Check(anotan == 2, "el hilo de la musica y los lectores de caratulas se anotan con nombre al nacer");
-        bool repaso = false;
-        foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (m.Name.IndexOf("RepasoDeLaBiblioteca", StringComparison.Ordinal) < 0 && Codigo.Llama(m, "Nombra") && m.Name.IndexOf("Biblioteca", StringComparison.Ordinal) < 0 && m.Name.IndexOf("Repaso", StringComparison.Ordinal) >= 0) repaso = true;
         int total = 0; foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (Codigo.Llama(m, "Nombra")) total++;
-        Check(total >= 5, "y los del repaso, las duraciones y los calentadores tambien (" + total + " sitios de Form1 anotan su hilo)" + (repaso ? "" : ""));
+        Check(total >= 5, "y los del repaso, las duraciones y los calentadores tambien (" + total + " sitios de Form1 anotan su hilo)");
     }
 
     // ======================= 5) EL INFORME =======================
@@ -732,16 +732,21 @@ class Diagnostico
         Llama(p, "set_LibroActivo", false);
 
         // Devolver el estado de verdad: se guarda, se estropea todo y se devuelve.
+        Pon(f, "estrellasDens", 0.77f); Pon(f, "auroraAmount", 0.2f);
         object bk = Llama(f, "DiagGuardaEstado");
+        Pon(f, "estrellasDens", 1f); Pon(f, "auroraAmount", 0.55f);
         Pon(f, "nieblasNiv", 2); Pon(f, "cieloMedia", false); Pon(f, "estrella3d", true); Pon(f, "currentLetter", 'Z'); Pon(f, "page", 0); Pon(f, "selAlbumIndex", 0);
         Pon(p, "IdleExpandTarget", true);
         Llama(f, "DiagRestaura", bk);
         Check((int)Toma(f, "nieblasNiv") == 1 && (bool)Toma(f, "cieloMedia") && !(bool)Toma(f, "estrella3d"), "DiagRestaura devuelve el nivel de los efectos, los ahorros y la estrella 3D");
         Check((char)Toma(f, "currentLetter") == 'M' && !(bool)Toma(p, "IdleExpandTarget"), "y la letra y el estado extendido");
+        Check((float)Toma(f, "estrellasDens") == 0.77f && (float)Toma(f, "auroraAmount") == 0.2f, "y los valores CRUDOS de estrellas y aurora (0,77 y 0,2), no los tres escalones");
     }
 
     // ======================= 8) LO QUE NO DEBE HACER =======================
-    static List<string> DeTodosLosDiag(out int metodos)
+    static List<string> DeTodosLosDiag(out int metodos) { return DeTodosLosDiag(out metodos, true); }
+    // 'conRestaura' false: sin DiagRestaura (que SI arranca la cola y rehace el estado guardado al devolver, a proposito).
+    static List<string> DeTodosLosDiag(out int metodos, bool conRestaura)
     {
         List<string> r = new List<string>(); metodos = 0;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
@@ -750,6 +755,7 @@ class Diagnostico
             bool mio = n.StartsWith("Diag") || n == "CorreDiagnosticoGpu" || n == "DiagnosticoCompletoF3" || n.IndexOf("<Diag", StringComparison.Ordinal) >= 0 || n.IndexOf("<CorreDiagnosticoGpu>", StringComparison.Ordinal) >= 0
                 || dt.IndexOf("<Diag", StringComparison.Ordinal) >= 0 || dt.IndexOf("<CorreDiagnosticoGpu>", StringComparison.Ordinal) >= 0;
             if (!mio) continue;
+            if (!conRestaura && (n == "DiagRestaura" || n.IndexOf("<DiagRestaura>", StringComparison.Ordinal) >= 0)) continue;
             metodos++; r.AddRange(Codigo.Llamadas(m));
         }
         return r;
@@ -761,10 +767,11 @@ class Diagnostico
         Check(n >= 20, "se leen " + n + " metodos del diagnostico en Form1 (con sus funciones sueltas)");
         Check(!Codigo.Llama(ll, "SaveConfigPrefs") && !Codigo.Llama(ll, "SaveConfig") && !Codigo.Llama(ll, "GuardaAlMomento") && !Codigo.Llama(ll, "TextoConfig"), "NO guarda la configuracion (propone y mide, como el medidor: no se pide guardar nada)");
         Check(!Codigo.Llama(ll, "ApplyAlbumGpu") && !Codigo.Llama(ll, "StopGpu") && !Codigo.Llama(ll, "StartGpu"), "NO reinicia la tarjeta grafica");
-        Check(!Codigo.Llama(ll, "SaveState") && !Codigo.Llama(ll, "GuardaEstado") && !Codigo.Llama(ll, "AddCoin") && !Codigo.Llama(ll, "RefundCredit"), "NO toca el estado guardado, ni las monedas ni los creditos");
+        int n2; List<string> sinRest = DeTodosLosDiag(out n2, false);
+        Check(!Codigo.Llama(sinRest, "SaveState") && !Codigo.Llama(sinRest, "GuardaEstado") && !Codigo.Llama(ll, "AddCoin") && !Codigo.Llama(ll, "RefundCredit"), "NO toca el estado guardado (solo DiagRestaura lo rehace, sin la muda), ni las monedas ni los creditos");
         bool volumen = false; foreach (string s in ll) if (s.IndexOf("Volume", StringComparison.Ordinal) >= 0 || s.IndexOf("Volumen", StringComparison.Ordinal) >= 0 || s.IndexOf("Mute", StringComparison.Ordinal) >= 0) volumen = true;
         Check(!volumen, "NO toca ningun volumen (ni el de Windows ni el de la salida, ni el de la cancion)");
-        Check(Codigo.Llama(ll, "PlayTrackForMeasurement") && !Codigo.Llama(ll, "PlayTrack") && !Codigo.Llama(ll, "PlayNext") && !Codigo.Llama(ll, "StartOpenedTrack"), "la cancion del diagnostico se pone por PlayTrackForMeasurement (sale muda desde dentro de la cadena); nunca por la cola");
+        Check(Codigo.Llama(ll, "PlayTrackForMeasurement") && !Codigo.Llama(ll, "PlayTrack") && !Codigo.Llama(sinRest, "PlayNext") && !Codigo.Llama(ll, "StartOpenedTrack"), "la cancion del diagnostico se pone por PlayTrackForMeasurement (sale muda desde dentro de la cadena); nunca por la cola");
         Check(Codigo.Llama(ll, "DisposePlaybackNow") && Codigo.Llama(ll, "QuitaEscena") && Codigo.Llama(ll, "PonNivel") && Codigo.Llama(ll, "PonAhorro") && Codigo.Llama(ll, "CloseSearch") && Codigo.Llama(ll, "BackToAlbums") && Codigo.Llama(ll, "RefreshAlbums"),
               "lo deja todo como estaba: para su cancion, quita la escena, devuelve niveles y ahorros, cierra buscador y disco, vuelve a la pagina");
         // Solo para SU cancion.
@@ -802,6 +809,60 @@ class Diagnostico
         bool lib = Codigo.Llama(Codigo.Llamadas(Metodo(TPanel, "DiagCuadroPaceado")), "RenderFrame") && Codigo.Llama(Codigo.Llamadas(Metodo(TPanel, "DiagCuadroPaceado")), "AgendaCuadro") && Codigo.Llama(Codigo.Llamadas(Metodo(TPanel, "DiagCuadroPaceado")), "EsperaMensajes");
         Check(lib, "el turno de cuadro agenda y espera igual que el bucle de verdad (AgendaCuadro + EsperaMensajes + RenderFrame): no suelta el monitor");
         Check(!Codigo.Llama(DeTodosLosDiag(out n), "PideSinEspera"), "y no suelta el monitor (no pide PideSinEspera)");
+        // ---- Los defectos de la revision del 24-10-2026: cada uno con la comprobacion que lo habria cazado ----
+        // 1) la ventana de Ctrl+F3 no vuelve delante de un cliente, ni con la rocola cerrandose
+        MethodInfo svm = Metodo(TF, "ShowVolumeManager"); int la, lb;
+        Codigo.UsosDeCampo(svm, "diagCancelado", out la, out lb);
+        int sc1, sc2; Codigo.UsosDeCampo(svm, "startupClosing", out sc1, out sc2);
+        Check(la > 0 && lb > 0 && sc1 > 0 && Codigo.Llama(svm, "get_IsDisposed") && Codigo.Llama(svm, "get_Disposing"),
+              "(1) tras el diagnostico, la ventana NO se reabre si se cancelo por entrada ajena ni si la rocola se cierra (diagCancelado, IsDisposed, Disposing, startupClosing)");
+        MethodInfo corre2 = Metodo(TF, "CorreDiagnosticoGpu"); int dc1, dc2;
+        Codigo.UsosDeCampo(corre2, "diagCancelado", out dc1, out dc2);
+        Check(dc2 > 0, "y quien corre el diagnostico apunta si lo cancelo alguien");
+        // 2) la cola no se queda parada y la muda nunca queda en el estado guardado
+        List<string> rest = new List<string>(); foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (m.Name == "DiagRestaura") rest.AddRange(Codigo.Llamadas(m));
+        Check(Codigo.Llama(rest, "PlayNext") && Codigo.Llama(rest, "SaveState"), "(2) al devolver el estado, si no suena nada y hay cola arranca (PlayNext); si no, se rehace el estado guardado sin la muda (SaveState)");
+        MethodInfo ss = Metodo(TF, "SaveState");
+        Check(Codigo.Llama(ss, "EsMudaDiag"), "y SaveState ignora la cancion muda del diagnostico (nunca se guarda como «sonando»)");
+        // 3) ningun camino de fallo o reintento trata la muda como una cancion pedida
+        foreach (string nom in new string[] { "AudioStartFailed", "SalidaCaida", "Output_PlaybackStopped", "ApuntaCortesDeSonido" })
+        {
+            List<string> ls = new List<string>(); foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (m.Name == nom) ls.AddRange(Codigo.Llamadas(m));
+            Check(Codigo.Llama(ls, "EsMudaDiag"), "(3) " + nom + " distingue la muda del diagnostico (ni credito, ni danada, ni reintento audible, ni caja negra)");
+        }
+        List<string> arr = new List<string>(); foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (m.Name == "DiagArrancaPropia") arr.AddRange(Codigo.Llamadas(m));
+        Check(Codigo.Llama(arr, "EsMudaDiag") && Codigo.Llama(arr, "DisposePlaybackNow") && Codigo.Llama(rest, "EsMudaDiag"), "y solo se para lo que sigue siendo SU muda (al rearmarla y al devolver el estado)");
+        // y de comportamiento, con un Form1 sin encender
+        object ff = Codigo.FormSinEncender(TF);
+        Type tPlay = TF.GetNestedType("PlayItem", TODO);
+        object muda = Activator.CreateInstance(tPlay, true), otra = Activator.CreateInstance(tPlay, true);
+        Check(!(bool)Llama(ff, "EsMudaDiag", muda), "sin muda puesta, nada es la muda");
+        Pon(ff, "diagMuda", muda);
+        Check((bool)Llama(ff, "EsMudaDiag", muda) && !(bool)Llama(ff, "EsMudaDiag", otra) && !(bool)Llama(ff, "EsMudaDiag", (object)null), "solo ES la muda el elemento que puso el diagnostico (una cancion pedida por un cliente, no)");
+        // 4) restauracion exacta
+        List<string> rr = new List<string>(); List<MethodBase> rms = new List<MethodBase>(); foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (m.Name == "DiagRestaura") { rr.AddRange(Codigo.Llamadas(m)); rms.Add(m); }
+        Check(Codigo.EscribeCampo(rms, "estrellasDens") && Codigo.EscribeCampo(rms, "auroraAmount") && Codigo.Llama(rr, "EnterAlbum") && Codigo.Llama(rr, "AbreAsistente"),
+              "(4) devuelve los valores CRUDOS de estrellas y aurora, reabre el disco que estaba abierto y el asistente");
+        // 5) perdidas del dispositivo: episodios
+        object dev = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(TDev);
+        MethodInfo nueva = Metodo(TDev, "PerdidaNueva");
+        Check(nueva != null && Codigo.Llama(Metodo(TDev, "EsperaDispositivo"), "PerdidaNueva") && Codigo.Llama(Metodo(TDev, "EndFrame"), "PerdidaNueva"), "(5) cada sitio donde se pierde el dispositivo avisa de un episodio nuevo (PerdidaNueva)");
+        if (nueva != null)
+        {
+            nueva.Invoke(dev, null); Pon(dev, "lost", true); nueva.Invoke(dev, null); nueva.Invoke(dev, null);
+            int p1 = (int)Toma(dev, "Perdidas");
+            Pon(dev, "lost", false); nueva.Invoke(dev, null); Pon(dev, "lost", true);
+            int p2 = (int)Toma(dev, "Perdidas");
+            Check(p1 == 1 && p2 == 2, "varios «perdido» seguidos (reintentos cada 250 ms) son UN episodio; recuperar y volver a perder, otro (" + p1 + " y " + p2 + ")");
+        }
+        int ea, eb; Codigo.UsosDeCampo(Metodo(TDev, "EsperaDispositivo"), "Perdidas", out ea, out eb);
+        Check(eb == 0, "y EsperaDispositivo (que se repite cada 250 ms) no suma por su cuenta");
+        // 6) el turno paceado respeta PuedeDibujar y no revienta
+        MethodInfo pace = Metodo(TPanel, "DiagCuadroPaceado");
+        Check(Codigo.Llama(pace, "PuedeDibujar") && pace.GetMethodBody().ExceptionHandlingClauses.Count > 0 && Codigo.Llama(pace, "Sleep"), "(6) DiagCuadroPaceado respeta PuedeDibujar, espera con Sleep si no puede y atrapa lo que reviente");
+        // 8) la atraccion no entra sola mientras corre
+        int ga, gb; Codigo.UsosDeCampo(Metodo(TF, "AnimTimer_Tick"), "diagEnMarcha", out ga, out gb);
+        Check(ga > 0, "(8) la atraccion no entra sola mientras corre el diagnostico (AnimTimer_Tick mira diagEnMarcha)");
         // MideRendimiento sigue sin guardar nada (lo vigila banco; aqui tambien).
         List<string> mide = Codigo.ConAyudantes(TF, "MideRendimiento");
         Check(!Codigo.Llama(mide, "SaveConfigPrefs") && Codigo.Llama(mide, "PlayTrackForMeasurement"), "el medidor rapido sigue igual: no guarda nada y pone su cancion muda");

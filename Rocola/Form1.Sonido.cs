@@ -1527,6 +1527,7 @@ namespace Rocola
             // toca controles y la cola, asi que siempre se termina en el hilo de la interfaz.
             if (InvokeRequired) { try { BeginInvoke((MethodInvoker)delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }
             if (!object.ReferenceEquals(sender, output)) return;   // callback viejo de una salida ya reemplazada
+            if (EsMudaDiag(nowPlaying)) { DisposePlaybackNow(); return; }   // la muda del diagnostico acabo o fallo: ni credito, ni danada, ni PlayNext
             Exception deLaSalida = e.Exception;   // lo que aviso la salida misma (no un fallo de lectura de la cancion)
             // RELEVO SIN PAUSA: la siguiente que ya habia entrado y aun no se daba por sonando, y un fallo de lectura
             // que atrapo la secuencia (se atiende aqui, UNA vez, como si lo hubiera avisado la salida). Ver RecogeAlParar.

@@ -313,6 +313,9 @@ namespace Rocola
                 DisposePlaybackNow();
                 return;
             }
+            // La cancion MUDA del diagnostico completo no es de nadie: si falla (tambien en el arranque diferido) ni se devuelve un credito, ni se marca
+            // danada, ni se pasa a la cola. Se para y el diagnostico se queda sin musica propia.
+            if (EsMudaDiag(nowPlaying)) { DisposePlaybackNow(); return; }
             EstadoPasajero("No se pudo reproducir: " + MotivoFallo(ex) + "  (" + System.IO.Path.GetFileName(t.Path) + ")", EstadoPasajeroMs);   // el motivo primero: un nombre largo se corta por la orilla y se llevaria el motivo; el detalle, en rocola_error.txt
             MarcaDanada(t.Path, ex);   // si es el archivo (no el disco), no se vuelve a dejar poner hasta que lo cambien
             LogError("PlayTrack " + System.IO.Path.GetFileName(t.Path), ex);

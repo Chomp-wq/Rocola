@@ -2293,7 +2293,7 @@ namespace Rocola
                 if (antes != null)
                     for (int i = 1; i < antes.Length; i++)
                         if (antes[i].StartsWith("sonando=") || antes[i].StartsWith("cola=")) sb.Append(antes[i]).Append("\r\n");
-                if (nowPlaying != null)   // con lo de antes delante, lo de ahora va a la cola, detras
+                if (nowPlaying != null && !EsMudaDiag(nowPlaying))   // con lo de antes delante, lo de ahora va a la cola, detras (la muda del diagnostico nunca se guarda)
                     sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");

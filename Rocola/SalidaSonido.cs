@@ -199,6 +199,7 @@ namespace Rocola
                 if (m != null) { atrasosApuntados = atrasos; }
                 string cancion = nowPlaying != null && nowPlaying.Song != null ? (nowPlaying.Song.Title ?? nowPlaying.Song.Path) : null;
                 string t = TextoCortes(cancion, nuevosCortes, nuevosAtrasos, maxAtraso, latenciaAbiertaMs);   // el peor, de la salida abierta
+                if (EsMudaDiag(nowPlaying)) return;   // la cancion muda del diagnostico no es una cancion real: nada a la caja negra
                 if (t != null) ApuntaCajaNegra(t);
                 ApuntaLatencia();
             }
@@ -445,7 +446,7 @@ namespace Rocola
         // 'desde'; false = el que llama la trata como un fallo de la cancion (credito devuelto, siguiente).
         private bool SalidaCaida(Track t, double desde, Exception ex, bool aMedias)
         {
-            if (t == null || audioOpeningForMeasurement) return false;
+            if (t == null || audioOpeningForMeasurement || EsMudaDiag(nowPlaying)) return false;   // la muda del diagnostico no se reintenta (sonaria sin Callada)
             if (!SigueEsperando(nowPlaying, aMedias)) return false;
             if (perfilLatencia != null) perfilLatencia.Fallo();
             if (reintentos == 0)

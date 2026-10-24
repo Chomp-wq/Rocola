@@ -961,6 +961,10 @@ namespace Rocola
         // =============================================================================================
         private bool f3Medir;          // se pulso "Medir este equipo": la ventana se cierra, mide, y vuelve
         private bool f3Diagnostico;    // se pulso "Diagnostico completo" (DiagnosticoCompleto.cs): la ventana se cierra, recorre las escenas, y vuelve
+        private bool diagEnMarcha = false;       // el diagnostico completo esta corriendo (la atraccion no entra sola mientras tanto)
+        private bool diagCancelado;      // el ultimo diagnostico se cancelo porque alguien toco la rocola: la ventana de ajustes NO se reabre
+        private PlayItem diagMuda = null;       // la cancion MUDA que puso el diagnostico (nunca una de un cliente); null = ninguna
+        private bool EsMudaDiag(PlayItem it) { return diagMuda != null && object.ReferenceEquals(it, diagMuda); }
         private string diagResumen = "";   // el resumen de dos renglones del ultimo diagnostico completo de esta sesion (y el informe que dejo)
 
         // El diagnostico completo. No es una preferencia: ni se guarda ni lleva interruptor. Con tarjeta grafica lo hace
