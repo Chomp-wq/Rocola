@@ -2694,7 +2694,8 @@ namespace Rocola
             private int dpos;                      // cuadro de escritura actual
             private int primed;                    // cuadros cargados (mientras se llena sale silencio: ~1.5 ms una vez)
             private bool srcEnded, hadInput;
-            private int drainFrames;
+            private int drainSamples;              // muestras que quedan por vaciar del retardo al acabar (D cuadros enteros)
+            private int canal;                     // canal de la muestra siguiente dentro del cuadro 'dpos' (0 = cuadro entero)
             private readonly int[] runLen;         // por canal: muestras seguidas pegadas al techo
             private readonly int[] runSign;        // por canal: signo del techo actual (+1/-1)
             private readonly float[] preVal;       // por canal: la muestra justo ANTES del techo
@@ -2710,17 +2711,15 @@ namespace Rocola
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int DelayFrames { get { return D; } }
+            // Al acabar sale lo que queda en el retardo, muestra a muestra desde donde va (24-10-2026): antes se vaciaba por cuadros
+            // enteros, y una lectura de menos de un cuadro devolvia 0 -que quiere decir "se acabo"- con 68 cuadros aun dentro. Son
+            // copias: con cuadros enteros sale exactamente lo mismo que antes.
             private int Drain(float[] buffer, int offset, int count)
             {
-                int frames = Math.Min(drainFrames, count / ch);
-                for (int f = 0; f < frames; f++)
-                {
-                    int bi = offset + f * ch, di = dpos * ch;
-                    for (int c = 0; c < ch; c++) { buffer[bi + c] = delay[di + c]; delay[di + c] = 0f; }
-                    dpos++; if (dpos >= D) dpos = 0;
-                }
-                drainFrames -= frames;
-                return frames * ch;
+                int k = Math.Min(drainSamples, count), w = dpos * ch + canal, largo = delay.Length;
+                for (int i = 0; i < k; i++) { buffer[offset + i] = delay[w]; delay[w] = 0f; if (++w == largo) w = 0; }
+                drainSamples -= k; dpos = w / ch; canal = w % ch;
+                return k;
             }
             // S4 ("Escuchar sin mejoras"): con Pasa no se repara nada; sale lo grabado con su mismo retraso. Y lo que se
             // reparo, para que Ctrl+F3 lo ensene (S5).
@@ -2754,9 +2753,13 @@ namespace Rocola
                 if (n <= 0)
                 {
                     srcEnded = true;
-                    drainFrames = hadInput ? D : 0;   // vacia TODO el retardo; no corta las ultimas muestras
+                    drainSamples = hadInput ? D * ch : 0;   // vacia TODO el retardo; no corta las ultimas muestras
                     return Drain(buffer, offset, count);
                 }
+                // UN CUADRO PARTIDO (24-10-2026). Si una lectura dejaba un cuadro a medias, sus muestras sueltas salian sin retardo ni
+                // reparar y las lecturas siguientes iban con los canales corridos. Entonces se sigue muestra a muestra, sabiendo el
+                // canal de cada una (MuestraAMuestra), con las mismas cuentas; con cuadros enteros, el camino de siempre.
+                if (canal != 0 || n % ch != 0) { MuestraAMuestra(buffer, offset, n); return n; }
                 int frames = n / ch;
                 if (frames > 0) hadInput = true;
                 for (int f = 0; f < frames; f++)
@@ -2787,6 +2790,40 @@ namespace Rocola
                     if (primed < D) primed++;
                 }
                 return n;
+            }
+            // Lo mismo que el bucle de Read, una muestra cada vez y sabiendo de que canal es: el cuadro 'dpos' avanza al llegar su
+            // ultimo canal. Solo cuando una lectura deja un cuadro a medias (con cuadros enteros no se usa).
+            private void MuestraAMuestra(float[] buffer, int offset, int n)
+            {
+                hadInput = true;
+                for (int i = 0; i < n; i++)
+                {
+                    int c = canal, q = dpos * ch + c, bi = offset + i;
+                    float x = buffer[bi];
+                    float ax = x < 0f ? -x : x;
+                    int sgn = x >= 0f ? 1 : -1;
+                    if (ax >= Thresh)
+                    {
+                        if (runLen[c] > 0 && sgn != runSign[c])
+                        { Repair(c, x); runLen[c] = 0; tooLong[c] = false; }
+                        if (runLen[c] == 0)
+                        { runSign[c] = sgn; preVal[c] = last1[c]; preSlope[c] = last1[c] - last2[c]; }
+                        runLen[c]++;
+                        if (runLen[c] > MaxRun) tooLong[c] = true;
+                    }
+                    else if (runLen[c] > 0)
+                    { Repair(c, x); runLen[c] = 0; tooLong[c] = false; }
+                    last2[c] = last1[c]; last1[c] = x;
+                    float outv = delay[q];
+                    delay[q] = x;
+                    buffer[bi] = (primed < D) ? 0f : outv;
+                    if (++canal == ch)
+                    {
+                        canal = 0;
+                        dpos++; if (dpos >= D) dpos = 0;
+                        if (primed < D) primed++;
+                    }
+                }
             }
         }
 
@@ -2916,6 +2953,7 @@ namespace Rocola
             private readonly long fadeFrames;    // frames de rampa del fundido de salida
             private long totalFrames;            // frames totales (0 = desconocido o muy corta: sin fundido de salida)
             private long pos;                    // frames ya entregados
+            private int canal;                   // canal de la muestra siguiente dentro del cuadro 'pos' (0 = cuadro entero)
             // RELEVO SIN PAUSA a la pista siguiente del MISMO disco: el fundido se quita si aun no empezo (un disco
             // continuo tiene que seguir continuo). 0 = normal, 1 = quitado a tiempo, 2 = ya empezo y se termina.
             private int estadoFundido;
@@ -2948,6 +2986,11 @@ namespace Rocola
             {
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0) return n;
+                // UN CUADRO PARTIDO (24-10-2026). La cuenta iba por cuadros enteros (n / ch): una lectura que dejaba un cuadro a medias
+                // no avanzaba la posicion y las siguientes iban con los canales corridos. Leida de a una muestra, la entrada de 5 ms
+                // caia en medio de la cancion (un hueco de hasta -6 dB) y el fundido de salida llegaba tarde. Entonces se sigue
+                // muestra a muestra, sabiendo el cuadro y el canal de cada una; con cuadros enteros, el camino de siempre.
+                if (canal != 0 || n % ch != 0) { MuestraAMuestra(buffer, offset, n); return n; }
                 int frames = n / ch;
                 if (pos < entradaHasta && System.Threading.Thread.VolatileRead(ref sinEntrada) == 0) Entrada(buffer, offset, frames);
                 // Fuera de los ultimos segundos no hay nada que hacer, y eso es TODA la cancion menos el final.
@@ -2963,6 +3006,25 @@ namespace Rocola
                 }
                 pos += frames;
                 return n;
+            }
+            // Lo mismo que Read y Entrada, una muestra cada vez: la de entrada y luego la de salida, cada una del cuadro de su muestra.
+            private void MuestraAMuestra(float[] buffer, int offset, int n)
+            {
+                bool entra = System.Threading.Thread.VolatileRead(ref sinEntrada) == 0;
+                double largo = entradaHasta - entradaDesde + 1;
+                for (int i = 0; i < n; i++)
+                {
+                    long p = pos;
+                    if (entra && p >= entradaDesde && p < entradaHasta)
+                        buffer[offset + i] *= (float)(0.5 - 0.5 * Math.Cos(Math.PI * (p - entradaDesde + 1) / largo));
+                    if (totalFrames > 0 && totalFrames - p < fadeFrames
+                        && System.Threading.Interlocked.CompareExchange(ref estadoFundido, 2, 0) != 1)
+                    {
+                        long rem = totalFrames - p;
+                        buffer[offset + i] *= (rem <= 0) ? 0f : (float)((double)rem / fadeFrames);
+                    }
+                    if (++canal == ch) { canal = 0; pos++; }
+                }
             }
             // Media onda de coseno: arranca sin escalon y llega a uno sin quiebre.
             private void Entrada(float[] buffer, int offset, int frames)

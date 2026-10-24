@@ -246,6 +246,9 @@ CPU="$CPU volumenwindows"
 # 'allimite': cada cancion hasta su limite sin rasparse (24-10-2026; Sonoridad.cs: GananciaAlLimite, algoritmo 5 con el P90 de los picos):
 # el P90, su formato, la regla con el limitador de verdad, cada medida con su regla, una tabla vieja que suena y nivela, la tanda y el disco.
 CPU="$CPU allimite"
+# 'cadenaentera': la cadena de sonido entera leida de cualquier manera (24-10-2026): varios formatos, de fabrica y con todo encendido,
+# los mismos bits en bloques, al azar o de a una muestra, la longitud, el retardo declarado contra un clic y cada etapa sola.
+CPU="$CPU cadenaentera"
 # 'lra': el rango de sonoridad (LRA, EBU Tech 3342) en la medida del repaso (23-10-2026; Sonoridad.cs, algoritmo 4): los casos de la norma,
 # leer como se lea, contra la referencia independiente ref_lra.py, el formato de rocola_sonoridad.txt (lo de antes se lee igual, lo
 # posterior se conserva), que las medidas de antes siguen nivelando y el repaso las vuelve a medir, y lo que cuesta. Con
