@@ -268,9 +268,9 @@ class NivelPicos
         Set(k, "normTarget", 0.2602f);
         System.Diagnostics.Stopwatch s2 = System.Diagnostics.Stopwatch.StartNew(); Call(k, "SubirAplicadoDb"); s2.Stop();
         Check(s2.Elapsed.TotalMilliseconds < 400 && sw.Elapsed.TotalMilliseconds < 50, "50 000 canciones: el techo se rehace en " + F(s2.Elapsed.TotalMilliseconds, "0") + " ms (en la pantalla, al cambiar ajustes o cada minuto con medidas nuevas); guardado, casi nada");
-        // Enchufado: los cuatro sitios que ponen el Master pasan por MasterEfectivo; ninguno pone MasterLin a pelo.
+        // Enchufado: los tres sitios que ponen el Master (el cuarto, la rampa de la noche, se retiro el 24-10-2026) pasan por MasterEfectivo; ninguno pone MasterLin a pelo.
         bool todos = Codigo.Llama(TF.GetMethod("ArmaCadena", T), "MasterEfectivo") && Codigo.Llama(TF.GetMethod("AplicaAPreparada", T), "MasterEfectivo")
-                     && Codigo.Llama(TF.GetMethod("ApplyNormNow", T), "MasterEfectivo") && Codigo.Llama(TF.GetMethod("AvanzaModoNoche", T), "MasterEfectivo");
+                     && Codigo.Llama(TF.GetMethod("ApplyNormNow", T), "MasterEfectivo");
         bool ningunoSolo = true;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
         {
@@ -279,7 +279,7 @@ class NivelPicos
         }
         List<MethodBase> ven = Codigo.MetodosConAyudantes(TF, "VentanaAjustes");
         bool texto = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "TextoSubir")) texto = true;
-        Check(todos && ningunoSolo && texto, "la cadena, la siguiente preparada, el ajuste en vivo y la rampa de la noche pasan por el techo; Ctrl+F3 lo explica");
+        Check(todos && ningunoSolo && texto, "la cadena, la siguiente preparada y el ajuste en vivo pasan por el techo; Ctrl+F3 lo explica");
     }
 
     // ---------------- conectado ----------------

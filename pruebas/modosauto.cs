@@ -96,7 +96,6 @@ class ModosAuto
         Set(f2, "normalizeOn", true); Set(f2, "normTarget", 0.26f); Set(f2, "normStrength", 1f); Set(f2, "masterDb", 0f);
         Set(f2, "excAmount", 0.35f); Set(f2, "bassAuto", false); Set(f2, "bassAmount", 0.3f); Set(f2, "bassSongFactor", 1f);
         Set(f2, "sbrAllowed", true); Set(f2, "sbrOn", true); Set(f2, "declipOn", true);
-        Set(f2, "nocheArrancada", true); Set(f2, "nocheFactor", 1f); Set(f2, "nocheCompensa", 1f);
         Set(f2, "crossfadeSec", 0.5f); Set(f2, "saltaSilencios", false);
         SetS("claridadLocal", true); SetS("partesSuaves", true); SetS("localAuto", false); SetS("presenciaSala", false);
         SetS("gravesLocalDb", 0); SetS("agudosLocalDb", 0); SetS("balanceDb", 0);
@@ -225,7 +224,6 @@ class ModosAuto
         Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "normStrength", 1f); Set(f, "masterDb", 0f);
         Set(f, "excAmount", 0.35f); Set(f, "bassAuto", true); Set(f, "bassAmount", 0.3f); Set(f, "bassSongFactor", 1f);
         Set(f, "eqAuto", true); Set(f, "eqAmount", 0f); Set(f, "sbrAllowed", true); Set(f, "sbrOn", false); Set(f, "declipOn", true);
-        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", 1f); Set(f, "nocheCompensa", 1f);
         Set(f, "crossfadeSec", 0.5f); Set(f, "saltaSilencios", false); Set(f, "sinMejoras", false); Set(f, "aLaMedida", false); Set(f, "quitaSiseo", false);
         SetS("claridadLocal", false); SetS("partesSuaves", false); SetS("localAuto", false); SetS("tipoLocal", 0); SetS("presenciaSala", false);
         SetS("gravesLocalDb", 0); SetS("agudosLocalDb", 0); SetS("balanceDb", 0); SetS("cortaSubgrave", false); SetS("estereoEstrecho", false); SetS("estereoAuto", false);
@@ -374,7 +372,6 @@ class ModosAuto
         string v = @"C:\videos\medido.mp4";
         ((IDictionary)Get(f, "loudCache"))[v] = 0.13f;
         Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "videoAuto", false); Set(f, "videoVol", 40); Set(f, "masterDb", 0f);
-        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", 1f);
         string r = "";
         foreach (float fuerza in new float[] { 1f, 0.5f, 0f })
         {

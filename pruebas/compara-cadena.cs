@@ -80,7 +80,8 @@ class ComparaCadena
         m.Set("excAmount", 0.35f); m.Set("bassAuto", true); m.Set("bassAmount", 0.3f); m.Set("bassSongFactor", 1f);
         m.Set("eqAuto", true); m.Set("eqAmount", 0f);
         m.Set("sbrAllowed", true); m.Set("sbrOn", false); m.Set("declipOn", true);
-        m.Set("nocheArrancada", true); m.Set("nocheFactor", 1f); m.Set("nocheCompensa", 1f);
+        // (el modo noche se retiro el 24-10-2026: un ejecutable anterior lo deja apagado, para comparar a cualquier hora)
+        if (m.TF.GetField("nocheArrancada", T) != null) { m.Set("nocheArrancada", true); m.Set("nocheFactor", 1f); m.Set("nocheCompensa", 1f); }
         m.Set("crossfadeSec", 0.5f); m.Set("saltaSilencios", false);
         m.SetS("claridadLocal", false); m.SetS("partesSuaves", false); m.SetS("localAuto", false); m.SetS("tipoLocal", 0); m.SetS("presenciaSala", false);
         m.SetS("gravesLocalDb", 0); m.SetS("agudosLocalDb", 0); m.SetS("balanceDb", 0);

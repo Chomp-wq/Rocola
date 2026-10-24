@@ -9,7 +9,7 @@ using NAudio.Wave;
 //
 // Cada opcion de sonido tiene su bateria. Esta mira que no choquen entre si: la cadena de verdad de una cancion
 // (OpenAudio + ArmaCadena) con TODO encendido a la vez -nivelado, "Subir TODO", realce, DSEE, grave sintetico, grave en
-// mono, des-recorte, modo noche, fundido y saltar silencios- y ademas cambiandolo todo en vivo mientras suena, como
+// mono, des-recorte, fundido y saltar silencios (el modo noche se retiro el 24-10-2026)- y ademas cambiandolo todo en vivo mientras suena, como
 // desde Ctrl+F3 (ApplyNormNow). Se mira:
 //   - que no salga nada roto (NaN, infinitos) ni nada por encima del techo del limitador;
 //   - que los cambios en vivo no metan chasquidos (el salto mas grande entre dos muestras seguidas no pasa del de
@@ -101,7 +101,6 @@ class TodoJunto
         Set(f, "bassAuto", false); Set(f, "bassAmount", todo ? 0.3f : 0f); Set(f, "bassSongFactor", 1f);
         Set(f, "sbrAllowed", true); Set(f, "sbrOn", todo);
         Set(f, "declipOn", todo);
-        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", todo ? 0.63f : 1f); Set(f, "nocheCompensa", 1f);
         Set(f, "crossfadeSec", 0.5f);
         Set(f, "saltaSilencios", todo);
     }
@@ -113,11 +112,11 @@ class TodoJunto
     static Pasada Suena(bool todo, Action<int> cambia, bool soloNivelado)
     {
         Ajustes(todo);
-        if (soloNivelado) { Set(f, "excAmount", 0f); Set(f, "bassAmount", 0f); Set(f, "sbrOn", false); Set(f, "nocheFactor", 1f); }
+        if (soloNivelado) { Set(f, "excAmount", 0f); Set(f, "bassAmount", 0f); Set(f, "sbrOn", false); }
         object lector = Call(f, "OpenAudio", wav);
         TF.GetNestedType("IAudioSource", T).GetProperty("Volume").SetValue(lector, 1.0f, null);
         object cad = Call(f, "ArmaCadena", track, lector, false, 0.0);
-        Set(f, "curTap", Get(cad, "Tap")); Set(f, "curBass", Get(cad, "Bajo")); Set(f, "curNoche", Get(cad, "Noche")); Set(f, "curSbr", Get(cad, "Sbr"));
+        Set(f, "curTap", Get(cad, "Tap")); Set(f, "curBass", Get(cad, "Bajo")); Set(f, "curSbr", Get(cad, "Sbr"));
         Set(f, "nowPlaying", item); Set(f, "cadenaPreparada", null);
         ISampleProvider sal = (ISampleProvider)Get(cad, "Salida");
         object fun = Get(cad, "Fundido");
@@ -175,7 +174,7 @@ class TodoJunto
             Check(rmsE > 0.05, "y suena (" + F(Db(rmsE), "0.0") + " dBFS de media)");
 
             Console.WriteLine("\n  3) CAMBIANDOLO TODO MIENTRAS SUENA (como desde Ctrl+F3)\n");
-            string[] quien = { "realce", "grave sintetico", "DSEE", "modo noche", "nivelado", "Subir TODO" };
+            string[] quien = { "realce", "grave sintetico", "DSEE", "fuerza del nivelado", "nivelado", "Subir TODO" };
             bool coherente = true; string falla = "";
             Action<int> cambia = delegate(int k)
             {
@@ -185,7 +184,7 @@ class TodoJunto
                     case 0: Set(f, "excAmount", enc ? 0.35f : 0f); break;
                     case 1: Set(f, "bassAmount", enc ? 0.3f : 0f); break;
                     case 2: Set(f, "sbrOn", enc); break;
-                    case 3: Set(f, "nocheFactor", enc ? 0.63f : 1f); break;
+                    case 3: Set(f, "normStrength", enc ? 0.5f : 1f); break;
                     case 4: Set(f, "normalizeOn", enc); break;
                     case 5: Set(f, "masterDb", enc ? 6f : 0f); break;
                 }
@@ -193,16 +192,15 @@ class TodoJunto
                 // Lo que queda puesto en la cadena es lo que dicen los ajustes.
                 object tap = Get(f, "curTap");
                 float g = (float)Get(tap, "Gain"), m = (float)Get(tap, "Master");
-                float gE = (float)Call(f, "GananciaDe", track), mE = (float)Call(f, "MasterEfectivo") * (float)Call(f, "FactorNoche");
+                float gE = (float)Call(f, "GananciaDe", track), mE = (float)Call(f, "MasterEfectivo");
                 float bajo = (float)Get(Get(f, "curBass"), "Amount"), bajoE = (float)Call(f, "BassAmountNow");
-                float nDb = (float)Get(Get(f, "curNoche"), "Db"), nDbE = (float)Call(f, "NocheCompensaDb");
                 bool dsee = (bool)Get(Get(f, "curSbr"), "Active");
                 bool dseeE = TF.GetMethod("DseeActivo", T) != null ? (bool)Call(f, "DseeActivo") : (bool)Get(f, "sbrOn");   // Modest: manda el interruptor
-                if (g != gE || m != mE || bajo != bajoE || nDb != nDbE || dsee != dseeE) { coherente = false; if (falla.Length == 0) falla = quien[q]; }
+                if (g != gE || m != mE || bajo != bajoE || dsee != dseeE) { coherente = false; if (falla.Length == 0) falla = quien[q]; }
             };
             Pasada vivo = Suena(true, cambia);
             Check(Sano(vivo.y) && Pico(vivo.y) <= techo + 1e-6, "cambiando una opcion cada 0,4 s: nada roto y nada por encima del techo");
-            Check(coherente, "tras cada cambio, la cadena tiene puesto exactamente lo que dicen los ajustes (ganancia, Subir TODO con su techo y la noche, grave, noche, DSEE)" + (coherente ? "" : ": no con " + falla));
+            Check(coherente, "tras cada cambio, la cadena tiene puesto exactamente lo que dicen los ajustes (ganancia con su fuerza, Subir TODO con su techo, grave, DSEE)" + (coherente ? "" : ": no con " + falla));
             Check(vivo.n == encendido.n, "no se pierde ni se repite ninguna muestra (" + vivo.n + " cuadros, igual que sin tocar nada)");
             int desde = 44100;   // el primer segundo es la entrada de la cancion (el fundido de entrada)
             double sV = SaltoMax(vivo.y, desde), sE = SaltoMax(encendido.y, desde), sA = SaltoMax(apagado.y, desde);
@@ -214,7 +212,7 @@ class TodoJunto
             Info("solo nivelado y Subir TODO: el limitador quita mas de 3 dB el " + F(Pct(solo.grDb, 3), "0.0") + " % del tiempo; mas de 6, el " + F(Pct(solo.grDb, 6), "0.0") + " %");
             Info("con todo encendido: mas de 3 dB el " + F(Pct(encendido.grDb, 3), "0.0") + " %; mas de 6, el " + F(Pct(encendido.grDb, 6), "0.0") + " %");
             Check(Pct(solo.grDb, 3) <= 12, "con el techo de Subir TODO el limitador queda en su tope: pasa de 3 dB solo en los golpes (" + F(Pct(solo.grDb, 3), "0.0") + " % del tiempo)");
-            Check(Pct(encendido.grDb, 6) <= Pct(solo.grDb, 6) + 5, "con realce, DSEE, grave y noche encima, el limitador no pasa de 6 dB mucho mas que con el nivelado solo");
+            Check(Pct(encendido.grDb, 6) <= Pct(solo.grDb, 6) + 5, "con realce, DSEE y grave encima, el limitador no pasa de 6 dB mucho mas que con el nivelado solo");
             double seg = encendido.n / 44100.0;
             Info("coste con todo encendido: " + F(encendido.ms / seg, "0.0") + " ms por segundo de musica (" + F(encendido.ms / seg / 10, "0.0") + " % de un nucleo de esta maquina); todo apagado " + F(apagado.ms / (apagado.n / 44100.0), "0.0") + " ms");
             Check(encendido.ms / seg < 250, "todo encendido cabe de sobra en tiempo real (menos de un cuarto de nucleo en esta maquina)");

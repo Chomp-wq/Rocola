@@ -131,7 +131,6 @@
     <Compile Include="Siseo.cs" />
     <Compile Include="Mp3Ligero.cs" />
     <Compile Include="Pcm16Directo.cs" />
-    <Compile Include="ModoNoche.cs" />
     <Compile Include="GraveMono.cs" />
     <Compile Include="SalaLocal.cs" />
     <Compile Include="PresenciaSala.cs" />

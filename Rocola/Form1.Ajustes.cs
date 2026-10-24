@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkNoche = nocheOn, bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -758,20 +758,6 @@ namespace Rocola
                     // a nada.
                     string cuando = DeCuandoEs();
                     string sello = (cuando.Length > 0) ? ("   \u00b7   Esta rocola es del " + cuando) : "";
-                    // MODO NOCHE. Va AQUI, en el renglon del subtitulo, y no dentro de una tarjeta: esta
-                    // ventana mide 960x732 a proposito -con su barra de titulo cabe justo en 1024x768- y las
-                    // tres tarjetas estan llenas hasta el ultimo pixel. Este renglon, en cambio, tiene 371 px
-                    // libres MEDIDOS (el subtitulo gasta 545 de 916), asi que el interruptor entra sin mover
-                    // ni un pixel de nada de lo que ya funciona.
-                    //
-                    // Y ademas es su sitio: no es una de las cuatro perillas de nivelado, es una regla que
-                    // vale para toda la ventana -musica y videos por igual-, y por eso queda fuera y arriba.
-                    // La hora sale de la configuracion, no escrita a mano: si el operador cambia noche_desde=
-                    // en el archivo, el letrero lo dice.
-                    Interruptor swNoche = new Interruptor();
-                    swNoche.SetBounds(624, 40, 316, 22); swNoche.ForeColor = cTenue; swNoche.Font = fInt;
-                    swNoche.Text = "Bajar el volumen de " + nocheDesde + " a " + nocheHasta + " h";
-                    swNoche.Acento = Color.FromArgb(150, 205, 255); swNoche.Checked = nocheOn;
                     // QUE HAY DESPUES DEL CABLE. La rocola mide el ARCHIVO, y eso vale en cualquier equipo; lo
                     // que no puede saber por su cuenta es si Windows le esta metiendo sus propias mejoras
                     // encima. Se lee del registro de Windows y se dice aqui, en ambar si hay algo que arreglar.
@@ -1291,7 +1277,6 @@ namespace Rocola
                         bassAmount = bar[5].Value / 100f;
                         excAmount = bar[6].Value / 100f;
                         sbrOn = swSbr.Checked && sbrAllowed;
-                        nocheOn = swNoche.Checked;   // al apagarlo de madrugada, la rampa lo devuelve solo (AvanzaModoNoche)
                         iaHarvestOn = swIa.Checked;
                         bool silAntes = saltaSilencios;
                         saltaSilencios = swSil.Checked;
@@ -1315,7 +1300,6 @@ namespace Rocola
                     };
                     for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
-                    swNoche.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
@@ -1340,7 +1324,6 @@ namespace Rocola
                         au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
-                        swNoche.Checked = true;                              // y bajar el volumen de madrugada, tambien
                         swSil.Checked = true;                                // y saltar los silencios largos
                         swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
@@ -1438,7 +1421,7 @@ namespace Rocola
                     bPagF.Click += delegate { f3Pagina = 4; pintaPag(); };
                     bPagP.Click += delegate { f3Pagina = 5; pintaPag(); };
 
-                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(bPagP); dlg.Controls.Add(lSub); dlg.Controls.Add(swNoche); dlg.Controls.Add(lSal);
+                    dlg.Controls.Add(lTit); dlg.Controls.Add(bPagS); dlg.Controls.Add(bPagI); dlg.Controls.Add(bPagD); dlg.Controls.Add(bPagC); dlg.Controls.Add(bPagF); dlg.Controls.Add(bPagP); dlg.Controls.Add(lSub); dlg.Controls.Add(lSal);
                     dlg.Controls.Add(tVol); dlg.Controls.Add(tCal); dlg.Controls.Add(tBib);
                     dlg.Controls.Add(lDskT); dlg.Controls.Add(bDskA); dlg.Controls.Add(bDskS); dlg.Controls.Add(bDskH); dlg.Controls.Add(lDskS);
                     dlg.Controls.Add(bReset); dlg.Controls.Add(bOk); dlg.Controls.Add(pImg); dlg.Controls.Add(pDet); dlg.Controls.Add(pCol); dlg.Controls.Add(pFon); dlg.Controls.Add(pPan);
@@ -1472,7 +1455,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { nocheOn = bkNoche; normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

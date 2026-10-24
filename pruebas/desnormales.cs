@@ -106,11 +106,10 @@ class Desnormales
             tab[wav] = a[1];
             Call(f, "ActualizaFuenteMedida", wav, Call(null, "TomaFuenteMedida"));
 
-            // Lo de fabrica, con el modo noche encendido (de madrugada), aprendiendo sonoridad y huella, sin saltar silencios.
+            // Lo de fabrica, aprendiendo sonoridad y huella, sin saltar silencios (el modo noche se retiro el 24-10-2026).
             Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "normStrength", 1f); Set(f, "masterDb", 0f);
             Set(f, "excAmount", 0.35f); Set(f, "bassAuto", false); Set(f, "bassAmount", 0.3f); Set(f, "bassSongFactor", 1f);
             Set(f, "sbrAllowed", false); Set(f, "sbrOn", false); Set(f, "declipOn", true);
-            Set(f, "nocheArrancada", true); Set(f, "nocheFactor", 0.63f); Set(f, "nocheCompensa", 1f);
             Set(f, "crossfadeSec", 0.5f); Set(f, "saltaSilencios", false); Set(f, "eqAuto", true);
             SetSiHay(f, "auroraAmount", 1f);   // la aurora pide su espectro (solo con tarjeta grafica)
 
@@ -119,10 +118,10 @@ class Desnormales
             object lector = Call(f, "OpenAudio", wav);
             TF.GetNestedType("IAudioSource", T).GetProperty("Volume").SetValue(lector, 1.0f, null);
             object cad = Call(f, "ArmaCadena", track, lector, false, 0.0);
-            Set(f, "curTap", Get(cad, "Tap")); Set(f, "curBass", Get(cad, "Bajo")); Set(f, "curNoche", Get(cad, "Noche")); Set(f, "curSbr", Get(cad, "Sbr"));
+            Set(f, "curTap", Get(cad, "Tap")); Set(f, "curBass", Get(cad, "Bajo")); Set(f, "curSbr", Get(cad, "Sbr"));
             Set(f, "nowPlaying", item); Set(f, "cadenaPreparada", null);
             ISampleProvider sal = (ISampleProvider)Get(cad, "Salida");
-            Check(Get(cad, "Noche") != null && Get(cad, "Mono") != null && Get(cad, "Bajo") != null && Get(cad, "Tap") != null, "la cadena lleva noche, grave en mono, bajo y nivelado");
+            Check(Get(cad, "Mono") != null && Get(cad, "Bajo") != null && Get(cad, "Tap") != null, "la cadena lleva grave en mono, bajo y nivelado");
             Check(Get(f, "curMeasurePath") != null || Get(cad, "MedidaRuta") != null, "la cadena aprende la sonoridad del original (K-weighting)");
 
             // Leer como la bomba: bloques de 50 ms, cronometrando cada uno.
@@ -149,7 +148,7 @@ class Desnormales
             // 2) Ningun estado en desnormal ni en un resto por debajo del tope.
             List<string> donde = new List<string>();
             object tap = Get(cad, "Tap");
-            int restos = Restos(Get(cad, "Mono"), "GraveMono", donde) + Restos(Get(cad, "Bajo"), "Bajo", donde) + Restos(Get(cad, "Noche"), "Noche", donde)
+            int restos = Restos(Get(cad, "Mono"), "GraveMono", donde) + Restos(Get(cad, "Bajo"), "Bajo", donde)
                        + Restos(tap, "LevelTap", donde) + Restos(Get(tap, "realce"), "Realce", donde)
                        + Restos(Get(tap, "currentEq"), "EQ", donde) + Restos(f, "Form1", donde, new string[] { "fLp1", "fLp2", "specLp", "kwSt", "eqMeasSt" });
             Check(restos == 0, "ningun estado se queda en un resto diminuto o desnormal (" + restos + (donde.Count > 0 ? ": " + string.Join(", ", donde.ToArray()) : "") + ")");

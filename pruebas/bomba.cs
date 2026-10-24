@@ -263,7 +263,7 @@ class Bomba
         Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "normStrength", 1f); Set(f, "masterDb", 3f);
         Set(f, "excAmount", 0.35f); Set(f, "bassAuto", false); Set(f, "bassAmount", 0.3f); Set(f, "bassSongFactor", 1f);
         Set(f, "sbrAllowed", true); Set(f, "sbrOn", true); Set(f, "declipOn", true);
-        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", 0.8f); Set(f, "nocheCompensa", 1f); Set(f, "crossfadeSec", 0.5f);
+        Set(f, "crossfadeSec", 0.5f);
     }
     static ISampleProvider Cadena()
     {
@@ -293,7 +293,7 @@ class Bomba
         List<float> porBomba = Todo((ISampleProvider)b, 4410);
         bool igual = directa.Count == porBomba.Count && directa.Count > 44100;
         for (int i = 0; igual && i < directa.Count; i++) if (directa[i] != porBomba[i]) igual = false;
-        Check(igual, "por la bomba sale bit a bit lo mismo que leyendo la cadena a mano (" + directa.Count + " muestras: nivelado, realce, DSEE, grave, noche, limitador y fundido)");
+        Check(igual, "por la bomba sale bit a bit lo mismo que leyendo la cadena a mano (" + directa.Count + " muestras: nivelado, realce, DSEE, grave, limitador y fundido)");
         Check(object.ReferenceEquals(Get(f, "bomba"), b) && (int)Call(f, "AdelantoBomba") == (int)Get(b, "AdelantoMs") && (int)Call(f, "AdelantoBomba") > 0,
               "la rocola se queda con ella y sabe cuanto lee por delante (" + Call(f, "AdelantoBomba") + " ms)");
         int sinB = (int)Get(f, TF.GetField("audioVisualDelayMs", T) != null ? "audioVisualDelayMs" : "AudioVisualDelayMs");

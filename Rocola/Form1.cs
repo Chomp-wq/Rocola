@@ -2390,7 +2390,6 @@ namespace Rocola
 #endif
             PrecalientaUnPoco();   // y las pantallas que al encender no se ven, horneadas antes de que hagan falta
             CheckBusinessDayReset();   // al cruzar las 7 AM: reinicia el estado (nada de anoche cruza el corte del dia)
-            AvanzaModoNoche();         // y de 11pm a 7am, el volumen baja 4 dB (bajando poco a poco, sin escalon)
 
             // BEAT: toma el RMS cuyo momento de OIRSE ya llego (medido ~0.85s antes, al llenar el colchon) y
             // detecta GOLPES contra un piso movil: el pulso visual cae encima del golpe que se esta oyendo,

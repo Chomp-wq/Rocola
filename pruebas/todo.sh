@@ -41,7 +41,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/ModoNoche.cs $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
@@ -244,7 +244,7 @@ CPU="$CPU modosauto"
 # ROCOLA_EXE_ANTERIOR=<ejecutable de antes> ademas compara el coste y comprueba que ese lee el archivo nuevo sin perder nada.
 CPU="$CPU lra"
 # 'todojunto': todo el sonido a la vez en la cadena de verdad (nivelado, Subir TODO, realce, DSEE, grave sintetico, grave
-# en mono, des-recorte, modo noche, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
+# en mono, des-recorte, fundido y saltar silencios), y cambiandolo en vivo como desde Ctrl+F3: nada roto, nada
 # por encima del techo, sin chasquidos ni muestras perdidas, la cadena siempre como dicen los ajustes, el limitador y el coste.
 CPU="$CPU todojunto"
 # 'discoparejo': el nivel por disco (NivelDisco.cs): pistas seguidas del mismo disco con la ganancia del disco entero.

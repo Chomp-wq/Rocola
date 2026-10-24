@@ -36,7 +36,6 @@ namespace Rocola
             internal LevelTap Tap;
             internal SpectralTap Sbr;
             internal DeepBassProvider Bajo;
-            internal CompensaNoche Noche;        // graves y agudos que devuelve el modo noche (ModoNoche.cs)
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
             internal SalaLocal Sala;             // claridad, partes suaves, balance, graves y agudos del local (SalaLocal.cs)
             internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
@@ -197,7 +196,7 @@ namespace Rocola
             { try { a.Lector.Dispose(); } catch { } }
             // El corte de agudos lo medira el DSEE de la nueva: no se le arrastra el de la anterior.
             eqMeasCut = 0f; eqMeasCutLo = 0f;
-            curTap = b.Tap; curSbr = b.Sbr; curBass = b.Bajo; curNoche = b.Noche;
+            curTap = b.Tap; curSbr = b.Sbr; curBass = b.Bajo;
             bassSongFactor = b.BajoFactor; bassAutoBase = b.BajoBase;
             AlEntrarPorRelevo(b);
             playFailStreak = 0;   // la anterior termino bien
@@ -311,14 +310,13 @@ namespace Rocola
             CierraHuellaDeFuente(c.EqRuta, c.EqSumas, c.EqN, c.EqTasa, corte, corteBajo, c.Fuente as FuenteMedida);
         }
 
-        // DISCO CONTINUO: la que entra ('nueva') sigue con la memoria de los filtros de la que acaba ('vieja'): la
-        // compensacion del modo noche y el grave en mono. Solo cuando la vieja acaba entera, sin fundido (si no,
+        // DISCO CONTINUO: la que entra ('nueva') sigue con la memoria de los filtros de la que acaba ('vieja'): el
+        // grave en mono y el local. Solo cuando la vieja acaba entera, sin fundido (si no,
         // su memoria es la de una musica que ya no se oye). Sin esto, esos filtros empezarian de cero justo en el
         // cambio, y el del grave en mono deja un golpe en el grave que se oye. Lo toman en su primera lectura.
         private static void SigueA(CadenaCancion nueva, CadenaCancion vieja)
         {
             if (nueva == null || vieja == null) return;
-            if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
             if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
@@ -336,7 +334,7 @@ namespace Rocola
             return i >= 0 && i + 1 < d.Tracks.Count && object.ReferenceEquals(d.Tracks[i + 1], b.Song);
         }
 
-        // Los ajustes en vivo de Ctrl+F3 y el modo noche tambien le llegan a la siguiente ya preparada: si aun no
+        // Los ajustes en vivo de Ctrl+F3 tambien le llegan a la siguiente ya preparada: si aun no
         // suena, empieza con lo nuevo (sin rampa); si ya entro, lo toma con la rampa de siempre.
         private void AplicaAPreparada()
         {
@@ -344,10 +342,9 @@ namespace Rocola
             if (p == null || p.Cancion == null || p.Tap == null) return;
             p.Tap.Gain = GananciaDe(p.Cancion);
             p.Tap.Excite = ExcitePara(p);
-            p.Tap.Master = MasterEfectivo() * FactorNoche();
+            p.Tap.Master = MasterEfectivo();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
-            if (p.Noche != null) p.Noche.Db = NocheCompensaDb();
             if (p.Sbr != null) p.Sbr.Active = DseeDe(p);
             AplicaSinMejoras(p);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): la siguiente tambien, si esta puesto
         }

@@ -642,8 +642,8 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
-                    else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";
-                    else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)   // modo noche (baja el volumen de madrugada)
+                    else if (s.StartsWith("noche")) { }   // noche=, noche_desde=, noche_hasta=, noche_db=, noche_compensa=: el modo noche se retiro (24-10-2026), se ignoran
+                    else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
                     // Las tres perillas del fondo. Todas pasan por su funcion, que acota: un disparate en el
@@ -656,10 +656,6 @@ namespace Rocola
                     else if (s.StartsWith("cola_portadas=")) colaPortadasOn = s.Substring(14).Trim() != "0";   // las portaditas en la capsula de la cola
                     else if (s.StartsWith("relevo=")) relevoOn = s.Substring(7).Trim() != "0";   // la media vuelta del cubito al cambiar de cancion
                     else if (s.StartsWith("luna=")) lunaOn = s.Substring(5).Trim() != "0";
-                    else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
-                    else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
-                    else if (s.StartsWith("noche_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) nocheDb = Clampf(v, -24f, 0f); }   // cuanto baja (negativo)
-                    else if (s.StartsWith("noche_compensa=")) nocheCompensa = NocheCompensa(s.Substring(15));   // graves y agudos que devuelve de noche (%)
                     else if (s.StartsWith("grave_mono=")) graveMonoHz = GraveMonoHz(s.Substring(11));   // corte del grave en mono (Hz; 0 = apagado)
                     else if (s.StartsWith("ancho_estereo=")) anchoEstereo = AnchoEstereo(s.Substring(14));   // % del estereo (100 = como viene)
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
@@ -821,7 +817,6 @@ namespace Rocola
             sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
-            sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");
             sb.Append("saltar_silencios=").Append(saltaSilencios ? "1" : "0").Append("\r\n");
             sb.Append("turno=").Append(turnoOn ? "1" : "0").Append("\r\n");
             sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");
@@ -833,10 +828,6 @@ namespace Rocola
             sb.Append("cola_portadas=").Append(colaPortadasOn ? "1" : "0").Append("\r\n");
             sb.Append("relevo=").Append(relevoOn ? "1" : "0").Append("\r\n");
             sb.Append("luna=").Append(lunaOn ? "1" : "0").Append("\r\n");
-            sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
-            sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
-            sb.Append("noche_db=").Append(nocheDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
-            sb.Append("noche_compensa=").Append((nocheCompensa * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("grave_mono=").Append(graveMonoHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("ancho_estereo=").Append((anchoEstereo * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("subgrave=").Append(subgraveHz.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -1720,9 +1711,8 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
-            CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();   // el modo noche, si se acaba de encender o apagar
             SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
             AplicaSinMejoras(cadenaSonando);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): encima de lo de siempre

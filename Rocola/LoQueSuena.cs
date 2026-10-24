@@ -3,8 +3,8 @@
 //
 // S4. ESCUCHAR SIN MEJORAS. Para decidir con el oido, en el bar, si las mejoras valen la pena: mientras dura (15 s, o
 //     hasta volver a pulsar o cerrar la ventana), la cancion suena sin des-recorte, quitasiseo, DSEE, realce, EQ, bajo,
-//     compensacion de noche, claridad, partes suaves, canal mudo ni continua. Lo que NO cambia es el volumen: el
-//     nivelado, «Subir todo», la bajada de noche, el balance, las bocinas (grave en mono, subgrave, estereo) y el
+//     claridad, partes suaves, canal mudo ni continua. Lo que NO cambia es el volumen: el
+//     nivelado, «Subir todo», el balance, las bocinas (grave en mono, subgrave, estereo) y el
 //     limitador siguen igual, asi el oido no se engana con que «lo fuerte suena mejor». Cada etapa entra y sale en su
 //     rampa de siempre (sin golpes). No se guarda: no es un ajuste.
 //
@@ -54,7 +54,6 @@ namespace Rocola
             if (!sin) return;
             if (c.Tap != null) { c.Tap.Excite = 0f; c.Tap.EqDb = EqPlana; }
             if (c.Bajo != null) c.Bajo.Amount = 0f;
-            if (c.Noche != null) c.Noche.Db = 0f;
             if (c.Sbr != null) c.Sbr.Active = false;
         }
 

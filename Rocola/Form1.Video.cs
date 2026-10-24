@@ -216,11 +216,6 @@ namespace Rocola
                 v *= lv;
             }
             else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
-            // EL MODO NOCHE VA AQUI FUERA, Y NO DENTRO DE MasterLin(). La rama de arriba -la del video YA
-            // MEDIDO- se salta la ganancia general a proposito, asi que metiendolo alli esos videos, que en
-            // una rocola usada son la mayoria, seguirian a todo volumen a las tres de la manana. Bajar si
-            // se puede aunque subir no: el tope de 100 del WMP solo estorba hacia arriba.
-            v *= FactorNoche();
             int r = (int)Math.Round(v);
             if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
             return r;
@@ -492,7 +487,7 @@ namespace Rocola
                 ClearLevels();
             }
             SueltaLectoresAudio(anterior, lectorActual, lectorPreparado);
-            curTap = null; curSbr = null; curBass = null; curNoche = null;   // ya no hay taps actuales
+            curTap = null; curSbr = null; curBass = null;   // ya no hay taps actuales
             rmsLo = rmsMid = rmsHi = 0f; avgLo = avgMid = avgHi = 0f;
         }
 

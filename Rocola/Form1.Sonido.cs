@@ -59,100 +59,11 @@ namespace Rocola
         private bool IaMejoradaPara(string path) { return false; }
         private void AlEntrarPorRelevo(CadenaCancion b) { }
 
-        // ============================== MODO NOCHE ==============================
-        // De las 11 de la noche a las 7 de la manana la rocola baja 4 dB.
-        //
-        // POR QUE 4 Y NO "EL 80%". Se pidio "al 80%", pero el oido no funciona en linea recta: multiplicar
-        // la senal por 0.8 son -1.9 dB, y el oido apenas distingue 1 dB. En un bar con gente eso no se
-        // habria notado NADA y el ajuste habria parecido roto. Con -4 dB la musica se oye a un ~76% de
-        // fuerte, que es lo que la gente quiere decir cuando dice "bajalo al 80".
-        //
-        // Y BAJA POCO A POCO. Veinte segundos de rampa: la musica simplemente ya esta mas baja y nadie
-        // sabe cuando paso. De golpe, a mitad de cancion, se oye el escalon y suena a averia.
-        //
-        // Las 7 no son un numero suelto: son BusinessDayStartHour, la misma hora a la que esta rocola
-        // empieza su dia. Cuadra que la noche acabe cuando empieza el dia del negocio.
-        private static bool nocheOn = true;                        // "noche=" en config (0 lo apaga del todo)
-        private static int nocheDesde = 23;                        // "noche_desde="
-        private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta="
-        private static float nocheDb = -4f;                        // "noche_db=" (negativo: baja)
-        private const int NocheRampaMs = 20000;                    // lo que tarda en bajar, y en subir
-        private float nocheFactor = 1f;                            // donde esta la rampa AHORA (1 = de dia)
-        private int nocheUltMs;                                    // reloj de pared de la ultima vuelta
-        private bool nocheArrancada, nocheAvisada;
+        // MODO NOCHE: RETIRADO (decision del dueno del 24-10-2026). Bajaba 4 dB de 11 de la noche a 7 de la manana; el que hace el
+        // corte de la venta baja el volumen el mismo cuando lo necesita. Las claves noche=, noche_desde=, noche_hasta=, noche_db= y
+        // noche_compensa= de configuraciones viejas se ignoran (Form1.Datos.cs); la cadena ya no lleva la etapa que devolvia graves y
+        // agudos de madrugada (de dia no hacia nada, asi que de dia el sonido sale bit a bit como antes).
 
-        private static float NocheLin() { return (float)Math.Pow(10.0, nocheDb / 20.0); }
-
-        // AQUI ESTA LA TRAMPA DE TODO ESTO, y por eso tiene su propia funcion y su propia prueba: el rango
-        // va de las 23 a las 7 PASANDO POR LA MEDIANOCHE. Escrito como sale solo -"hora >= 23 && hora < 7"-
-        // es SIEMPRE FALSO: no existe ninguna hora que cumpla las dos a la vez. Y el fallo no da la cara,
-        // porque el programa compila, arranca y no truena: el modo noche simplemente no ocurre nunca.
-        private static bool EsDeNoche(DateTime t)
-        {
-            int h = t.Hour, a = nocheDesde, b = nocheHasta;
-            if (a == b) return false;              // rango vacio
-            if (a < b) return h >= a && h < b;     // rango normal, dentro del mismo dia
-            return h >= a || h < b;                // el que cruza la medianoche: va un O, no un Y
-        }
-
-        // A donde TIENE que llegar la rampa segun el reloj: 1 de dia, y de noche lo que se haya puesto.
-        private static float MetaNoche() { return (nocheOn && EsDeNoche(DateTime.Now)) ? NocheLin() : 1f; }
-
-        // Cuanto hay que bajar AHORA MISMO. Es el valor de la rampa, no el destino: mientras baja, esto va
-        // devolviendo los valores de en medio, y por eso se oye bajar en vez de pegar un salto.
-        //
-        // Antes de que el temporizador haya dado su primera vuelta se contesta el destino directamente, y no
-        // el campo. Eso no es un adorno: si un video empezara a sonar en ese hueco, el campo todavia valdria
-        // cero y el video saldria MUDO. Lo encontro la bateria de videos, que arma la rocola a mano y por
-        // tanto cae siempre en ese hueco.
-        private float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
-
-        // Un paso de la rampa. Va por MILISEGUNDOS DE RELOJ, no por veces que la llamen, y eso importa: el
-        // medidor de Ctrl+F3 PARA el temporizador de animacion y llama al tick a mano, asi que contar
-        // vueltas la volveria loca. A velocidad constante el recorrido entero dura siempre lo mismo, se
-        // empiece donde se empiece.
-        private static float AvanzaRampa(float actual, float meta, int msPasados)
-        {
-            if (actual == meta) return meta;
-            if (msPasados <= 0) return actual;
-            float recorrido = 1f - NocheLin();
-            if (recorrido < 0.0001f) return meta;   // no baja nada: no hay rampa que hacer
-            float paso = recorrido * msPasados / NocheRampaMs;
-            if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
-            else { actual -= paso; if (actual < meta) actual = meta; }
-            return actual;
-        }
-
-        // La lleva el temporizador de animacion, al lado de CheckBusinessDayReset, que ya es donde vive lo
-        // de mirar la hora.
-        private void AvanzaModoNoche()
-        {
-            bool esNoche = nocheOn && EsDeNoche(DateTime.Now);
-            float meta = MetaNoche();
-            int ahora = Environment.TickCount;
-            // Al encender NO se hace la rampa: se arranca ya en el nivel que toca. Una rocola que empieza
-            // a todo volumen y baja sola durante veinte segundos parece que se esta estropeando.
-            if (!nocheArrancada) { nocheArrancada = true; nocheUltMs = ahora; nocheFactor = meta; nocheAvisada = esNoche; return; }
-            int dt = ahora - nocheUltMs; nocheUltMs = ahora;
-            if (dt < 0 || dt > 5000) dt = 0;   // desbordamiento del reloj, o el equipo estuvo dormido: no dar un salto
-            if (esNoche != nocheAvisada)
-            {
-                nocheAvisada = esNoche;
-                ShowToast(esNoche ? ("Modo noche: el volumen baja " + (-nocheDb).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " dB")
-                                  : "Se acabo el modo noche: vuelve el volumen de siempre",
-                          Color.FromArgb(38, 78, 132));
-            }
-            float antes = nocheFactor;
-            nocheFactor = AvanzaRampa(nocheFactor, meta, dt);
-            // Y se empuja a la cancion que YA esta sonando: si no, la baja no se oiria hasta la siguiente.
-            // Y lo que devuelve de graves y agudos sigue la misma rampa (ModoNoche.cs).
-            if (nocheFactor != antes)
-            {
-                LevelTap t = curTap; if (t != null) t.Master = MasterEfectivo() * FactorNoche();
-                CompensaNoche cn = curNoche; if (cn != null) cn.Db = NocheCompensaDb();
-                AplicaAPreparada();
-            }
-        }
         // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, pedido el 12-10-2026). En Windows XP, si la tarjeta trabaja a
         // 48 kHz y la cancion viene a 44,1 kHz, la conversion la hace el mezclador de Windows, que es de calidad baja (ensucia
         // los agudos). Con "frecuencia_salida=48000" (o 44100) cada cancion se convierte AQUI, con el mismo convertidor
@@ -1234,7 +1145,6 @@ namespace Rocola
                 kwRate = 0;   // reinicia el estado del K-weighting: cada cancion mide desde cero (sin cola del filtro anterior)
                 tapMedido = cad.Tap;
                 curSbr = cad.Sbr; curTap = cad.Tap; curBass = cad.Bajo;   // para ajustarla en vivo (Ctrl+F3)
-                curNoche = cad.Noche;                                     // y para que siga la rampa del modo noche
                 bassSongFactor = cad.BajoFactor; bassAutoBase = cad.BajoBase;
                 cadenaSonando = cad; cadenaPreparada = null;
                 // RELEVO SIN PAUSA (SinPausa.cs): la salida lee de la secuencia. Cuando esta cancion se acabe, si la
@@ -1317,20 +1227,17 @@ namespace Rocola
             original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
-            tap.Master = MasterEfectivo() * FactorNoche();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs), y de madrugada mas bajo
+            tap.Master = MasterEfectivo();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs)
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)
             tap.Medida.Fuente = c.Fuente;
-            // MODO NOCHE: al bajar el volumen de madrugada, devuelve los graves y agudos que el oido pierde
-            // (ModoNoche.cs). De dia no hace nada: sale tal cual.
-            c.Noche = new CompensaNoche(tap); c.Noche.Db = NocheCompensaDb();
             // GRAVE EN MONO: por debajo del corte, el mismo grave por todas las bocinas. Y, con sus interruptores de Ctrl+F3,
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             AjusteLocal loc = LocalDe(t);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion (LocalAuto.cs)
             // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
             if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }
-            c.Mono = new GraveMono(c.Noche, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
+            c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.

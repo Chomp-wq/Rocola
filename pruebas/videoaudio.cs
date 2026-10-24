@@ -15,7 +15,7 @@ using System.Reflection;
 //   2) un video ya medido va al volumen que lo empareja con el objetivo de las canciones, dentro de sus limites
 //      (no mas de x4 ni menos de x0,15 sobre el base), y "Subir TODO" NO lo empuja contra el techo;
 //   3) uno sin medir sigue a "Subir TODO", topado en 100;
-//   4) el modo noche solo baja;
+//   4) el volumen no depende de la hora (el modo noche se retiro el 24-10-2026);
 //   5) el base automatico deja hueco para que casi todos los videos lleguen al objetivo sin pasar de 100, y
 //      nunca baja de 40;
 //   6) el fundido del final solo baja, desde el volumen del video, y no toca el techo.
@@ -45,12 +45,11 @@ class VideoAudio
     }
     static int Vol(object f, string ruta) { return (int)Inv(f, "VideoVolumeFor", ruta); }
 
-    // Deja la rocola en un estado conocido: nivelado, base a mano, sin noche, "Subir TODO" en 'masterDb'.
+    // Deja la rocola en un estado conocido: nivelado, base a mano, "Subir TODO" en 'masterDb' ('noche' ya no se usa).
     static void Pon(object f, bool auto, int vol, float master, float noche)
     {
         Set(f, "normalizeOn", true); Set(f, "videoAuto", auto); Set(f, "videoVol", vol);
         Set(f, "masterDb", master);
-        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", noche);
         Set(f, "videoBaseFirma", -1); Set(f, "videoBaseAuto", -1);
     }
 
@@ -73,14 +72,14 @@ class VideoAudio
         int casos = 0, fuera = 0, peor = 0;
         foreach (int vol in new int[] { 0, 1, 40, 85, 100 })
             foreach (float master in new float[] { -12f, -6f, 0f, 6f, 12f })
-                foreach (float noche in new float[] { 1f, 0.63f, 0.1f })
+                foreach (float noche in new float[] { 1f })
                     foreach (string r in rutas)
                     {
                         Pon(f, false, vol, master, noche);
                         int v = Vol(f, r); casos++;
                         if (v < 0 || v > 100) { fuera++; peor = v; }
                     }
-        Check(fuera == 0, casos + " combinaciones (base, Subir TODO de -12 a +12 dB, modo noche, videos de -26 a +26 dB): ninguna le pide al reproductor mas de 100 ni menos de 0" + (fuera > 0 ? " (salio " + peor + ")" : ""));
+        Check(fuera == 0, casos + " combinaciones (base, Subir TODO de -12 a +12 dB, videos de -26 a +26 dB): ninguna le pide al reproductor mas de 100 ni menos de 0" + (fuera > 0 ? " (salio " + peor + ")" : ""));
 
         Console.WriteLine("\n  2) UN VIDEO MEDIDO SE EMPAREJA, DENTRO DE LO QUE EL REPRODUCTOR PUEDE\n");
         Pon(f, false, 50, 0f, 1f);
@@ -101,22 +100,10 @@ class VideoAudio
         Check(s6 == (int)Math.Round(50 * Math.Pow(10, 6 / 20.0)) && sm6 == (int)Math.Round(50 * Math.Pow(10, -6 / 20.0)) && s12 == 100,
               "base 50 con +6 dB: " + s6 + "; con -6 dB: " + sm6 + "; base 85 con +12 dB: " + s12 + " (el techo)");
 
-        Console.WriteLine("\n  4) EL MODO NOCHE SOLO BAJA\n");
-        bool baja = true, acerca = true;
-        foreach (string r in rutas)
-            foreach (int vol in new int[] { 40, 85, 100 })
-            {
-                Pon(f, false, vol, 0f, 1f); int dia = Vol(f, r);
-                Pon(f, false, vol, 0f, 0.63f); int noche = Vol(f, r);
-                if (noche > dia) baja = false;
-                if (dia < 100 && Math.Abs(noche - dia * 0.63) > 1.01) baja = false;   // los que no estaban en el techo: -4 dB
-            }
-        // El que de dia no llegaba al objetivo (en el techo), de noche -objetivo 4 dB mas bajo- se le acerca o llega.
-        Pon(f, false, 85, 0f, 1f); int diaFlojo = Vol(f, "v-3.mp4");
-        Pon(f, false, 85, 0f, 0.63f); int nocheFlojo = Vol(f, "v-3.mp4");
-        if (!(diaFlojo == 100 && nocheFlojo == (int)Math.Round(85 * Math.Pow(10, 3 / 20.0) * 0.63))) acerca = false;
-        Check(baja && acerca, "de noche nunca suena mas que de dia: los que no estaban en el techo bajan un 37 % (-4 dB), y el que de dia no llegaba ("
-              + diaFlojo + ") queda justo en el objetivo de noche (" + nocheFlojo + ")");
+        Console.WriteLine("\n  4) SIN MODO NOCHE: A CUALQUIER HORA, EL MISMO VOLUMEN\n");
+        // El modo noche (bajaba 4 dB de 11 a 7) se retiro el 24-10-2026: el volumen de un video ya no puede depender de la hora.
+        Check(TF.GetMethod("FactorNoche", T) == null && !Codigo.Llama(TF.GetMethod("VideoVolumeFor", T), "get_Now") && !Codigo.Llama(TF.GetMethod("VideoVolumeFor", T), "get_Hour"),
+              "el volumen de los videos no mira el reloj (no queda nada del modo noche)");
 
         Console.WriteLine("\n  5) EL BASE AUTOMATICO DEJA HUECO\n");
         IList discos = (IList)Get(f, "videoAlbums"); discos.Clear();
