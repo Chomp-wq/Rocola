@@ -1457,6 +1457,15 @@ namespace Rocola
             // RELEVO SIN PAUSA: la siguiente que ya habia entrado y aun no se daba por sonando, y un fallo de lectura
             // que atrapo la secuencia (se atiende aqui, UNA vez, como si lo hubiera avisado la salida). Ver RecogeAlParar.
             if (secuencia != null) e = RecogeAlParar(e);
+            // LA SALIDA CON HILO PROPIO FALLO POR SI MISMA (T5, SalidaPropia.cs): ni el aparato ni la cancion. Desde ahora, la de siempre, y
+            // la misma cancion se retoma desde donde iba (como cuando falla el aparato), sin devolver el credito ni darla por rota.
+            WaveOutPropio propia = sender as WaveOutPropio;
+            if (deLaSalida != null && propia != null && propia.FalloPropio && !EsFalloDelDispositivo(deLaSalida))
+            {
+                salidaPropiaFallo = true;
+                LogError("La salida de sonido con hilo propio fallo a media cancion: sigue la de siempre en esta sesion", deLaSalida);
+                if (nowPlaying != null && !nowPlaying.IsVideo && SalidaCaida(nowPlaying.Song, PosicionActual(), deLaSalida, true)) return;
+            }
             if (e.Exception != null)
             {
                 // EL APARATO, NO LA CANCION (SalidaSonido.cs): se espera y se retoma la misma desde donde iba.

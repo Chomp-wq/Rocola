@@ -42,7 +42,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRoco
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/Eses.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
 # El volumen general de Windows al maximo al arrancar (24-10-2026).
@@ -255,6 +255,10 @@ CPU="$CPU zumbido"
 # 'eses': T9 (25-10-2026), suavizar las eses (Eses.cs): una voz con eses baja de 3 a 6 dB en la "s" y sale bit a bit entre ellas; la musica
 # pareja no se toca; apagada, bit a bit; lecturas partidas, sin mejoras, en vivo, disco continuo y lo que cuesta.
 CPU="$CPU eses"
+# 'salidapropia': T5 (25-10-2026), la salida de sonido con su propio hilo (SalidaPropia.cs) con un Windows imitado: suena todo en orden, el
+# reloj, la pantalla parada 3 s sin quedarse sin musica, pausa y parada, los fallos (del aparato, de Windows y de la musica), la parada en
+# el hilo de la pantalla, nada de .NET 2.0 SP2 en todo el ejecutable, y que Form1 la usa y sabe volver a la de siempre.
+CPU="$CPU salidapropia"
 # 'recolector': la tanda de rendimiento del 24-10-2026 con el diagnostico del A4: mientras alguien elige, el recolector sin generacion 2
 # (con sus topes y desde el latido); la imagen de la interfaz al ir y volver entre dos medidas, sin reservar otra; y el desglose de
 # publicar la biblioteca. Mono no aplica la baja latencia: se mira la logica, no el efecto. En el perfil con tarjeta (la imagen de la

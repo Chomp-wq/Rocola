@@ -16,8 +16,8 @@ estado y se publica (commit + push a la rama Modest, comprobando el push).
 | T1 nivelado con el tono del local | **hecho** (fcc1304): `SalaLocal.MargenTonoDb` (raíz de la suma de cuadrados de 0,75·graves y 0,25·agudos), `GananciaDe`/`MargenDelTono` en `NivelDisco.cs`; `allimite` sección 9 | fcc1304 |
 | T3 inicio y fin útiles (algoritmo 6) | **hecho**: `MedidorBs1770.Utiles`, `SonoridadIntegrada` (`InicioUtil`, `FinUtil`), formato 6; batería `zumbido` (secciones 1 y 2); `lra` y `allimite` actualizadas | e270a27 |
 | T6 quitar el zumbido | **hecho**: `Zumbido.cs` (`MedidorZumbido`, CIC de orden 3 y Goertzel; `QuitaZumbido`, cuatro muescas de 2 Hz); `quita_zumbido=` (encendido de fábrica) en Ctrl+F3 → Sonido → Lo que suena ahora; S4, S5, disco continuo; batería `zumbido`. La medida cuesta +9 ns por muestra en Mono (+54 %) | e270a27 |
-| T9 suavizar las eses | **hecho**: `Eses.cs` (`SuavizaEses`: paso-banda de 6,5 kHz, envolventes de 5 ms, (0,45/fracción)², hasta −6 dB; fuera de las «s», bit a bit); `suaviza_eses=` (apagado de fábrica) en Ctrl+F3 → Sonido → El local y sus bocinas → Tono y presencia; S4, S5, disco continuo; batería `eses`; `compara-cadena` 16 de 16 iguales | (este commit) |
-| T5 salida con hilo propio | pendiente | |
+| T9 suavizar las eses | **hecho**: `Eses.cs` (`SuavizaEses`: paso-banda de 6,5 kHz, envolventes de 5 ms, (0,45/fracción)², hasta −6 dB; fuera de las «s», bit a bit); `suaviza_eses=` (apagado de fábrica) en Ctrl+F3 → Sonido → El local y sus bocinas → Tono y presencia; S4, S5, disco continuo; batería `eses`; `compara-cadena` 16 de 16 iguales | dbccdf9 |
+| T5 salida con hilo propio | **hecho**: `SalidaPropia.cs` (`WaveOutPropio`, `ISistemaWaveOut`, `WinmmWaveOut`); `CreaWaveOut`/`IniciaSalida` en `SalidaSonido.cs` con vuelta a la de siempre si no abre; `Output_PlaybackStopped` vuelve a la de siempre si falla por sí misma (`FalloPropio`); batería `salidapropia`. **Falta probarla en el A4** | (este commit) |
 | Ruido del amplificador | pendiente | |
 
 ## Reglas que hay que respetar (de AGENTS.md y del proyecto)

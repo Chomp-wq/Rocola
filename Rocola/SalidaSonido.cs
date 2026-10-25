@@ -241,9 +241,18 @@ namespace Rocola
             return so.Platform == PlatformID.Win32NT && so.Version.Major >= 6;
         }
 
+        // T5 (SalidaPropia.cs): la salida con su propio hilo, salvo que en esta sesion no haya abierto o haya fallado por si misma.
+        private bool salidaPropiaFallo;
         private IWavePlayer CreaWaveOut()
         {
             if (fabricaSalidaClasica != null) return fabricaSalidaClasica();
+            if (!salidaPropiaFallo)
+            {
+                WaveOutPropio p = new WaveOutPropio();
+                p.DesiredLatency = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000;
+                p.NumberOfBuffers = p.DesiredLatency / 50;   // los mismos bloques de 50 ms
+                return p;
+            }
             // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a WaitHandle.WaitOne(Int32),
             // que NO existe en .NET 3.5 sin Service Pack 1 (el de la rockola de XP) y truena. Este no lo usa.
             WaveOut wo = new WaveOut();
@@ -268,32 +277,51 @@ namespace Rocola
             Exception rechazo = null;
             if (flotante && !flotanteRechazado)
             {
-                IWavePlayer wf = CreaWaveOut();
-                output = wf; wf.PlaybackStopped += Output_PlaybackStopped;
-                try { wf.Init(new SampleToWaveProvider(muestras)); formatoSalida = "float32"; return; }
+                try { IniciaSalida(new SampleToWaveProvider(muestras)); formatoSalida = "float32"; return; }
                 catch (Exception ex)
                 {
-                    wf.PlaybackStopped -= Output_PlaybackStopped; output = null;
-                    try { wf.Dispose(); } catch { }
                     if (EsFalloDelDispositivo(ex)) throw;
                     rechazo = ex;
                 }
             }
-            IWavePlayer w16 = CreaWaveOut();
-            output = w16; w16.PlaybackStopped += Output_PlaybackStopped;
-            try { w16.Init(new DitherWaveProvider16(muestras)); formatoSalida = "PCM16+TPDF"; }
-            catch
-            {
-                w16.PlaybackStopped -= Output_PlaybackStopped; output = null;
-                try { w16.Dispose(); } catch { }
-                throw;
-            }
+            IniciaSalida(new DitherWaveProvider16(muestras)); formatoSalida = "PCM16+TPDF";
             if (rechazo != null)
             {
                 // Los 16 bits si abrieron: era el formato. Se recuerda para no volver a probar en esta sesion.
                 flotanteRechazado = true;
                 LogError("La salida de sonido no admite coma flotante: sigue en 16 bits con dither", rechazo);
             }
+        }
+
+        // Abre la salida clasica con 'prov' y la deja en 'output' (con su aviso de parada). La propia (T5) y, si no abre por algo que no
+        // es el aparato ni el formato, la de siempre durante esta sesion. Si no abre ninguna, la excepcion sale como antes.
+        private void IniciaSalida(IWaveProvider prov)
+        {
+            IWavePlayer w = CreaWaveOut();
+            output = w; w.PlaybackStopped += Output_PlaybackStopped;
+            try { w.Init(prov); return; }
+            catch (Exception ex)
+            {
+                w.PlaybackStopped -= Output_PlaybackStopped; output = null;
+                try { w.Dispose(); } catch { }
+                if (!(w is WaveOutPropio) || EsFalloDelDispositivo(ex) || EsFormatoRechazado(ex)) throw;
+                salidaPropiaFallo = true;
+                LogError("La salida de sonido con hilo propio no abrio: sigue la de siempre en esta sesion", ex);
+            }
+            IWavePlayer v = CreaWaveOut();
+            output = v; v.PlaybackStopped += Output_PlaybackStopped;
+            try { v.Init(prov); }
+            catch
+            {
+                v.PlaybackStopped -= Output_PlaybackStopped; output = null;
+                try { v.Dispose(); } catch { }
+                throw;
+            }
+        }
+        private static bool EsFormatoRechazado(Exception ex)
+        {
+            NAudio.MmException mm = ex as NAudio.MmException;
+            return mm != null && mm.Result == NAudio.MmResult.WaveBadFormat;
         }
 
         // ------------------------------------------------------------------ 2) CUANDO FALLA EL APARATO
