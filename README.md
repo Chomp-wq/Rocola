@@ -1,5 +1,19 @@
 # Rocola
 
+## Más mejoras de audio, para elegir — 25 de octubre de 2026
+
+Diez propuestas (T1 a T10), sin cambiar nada todavía. Las más importantes:
+
+- **T1:** con «Graves del local» a +3, el limitador aplasta una canción masterizada el 96 % del tiempo, porque el nivelado al límite
+  no cuenta con el tono del local. Bajar el nivelado 0,7 dB por cada dB de graves lo arregla (medido).
+- **T3:** medir dónde empieza y acaba de verdad cada canción, aprovechando que el repaso está midiendo toda la biblioteca otra vez.
+  Conviene decidirlo ya.
+- **T5:** la tarjeta de sonido la rellena todavía la pantalla, y en el A4 la pantalla se paró hasta 3 s. Un hilo propio para la salida
+  quita ese riesgo de cortes.
+
+También: zumbido de la corriente, finales larguísimos, mezcla entre discos, las «eses», saltar sin chasquido y dos ajustes de Windows XP
+para el equipo del bar. [Las propuestas, con lo medido](AUDIO_PROPUESTAS_MODEST_2026-10-25.md).
+
 ## Revisión: lo que podía tumbar la rocola en XP, y la cadena de audio — 24 de octubre de 2026
 
 Tres arreglos del renderizado:
