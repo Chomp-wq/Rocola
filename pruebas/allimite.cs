@@ -167,7 +167,7 @@ class AlLimite
     {
         Console.WriteLine("\n  2) EL FORMATO DEL ALGORITMO 5 (rocola_sonoridad.txt)\n");
         Type tm = TF.Assembly.GetType("Rocola.MedidorBs1770", true);
-        Check((int)tm.GetField("Algoritmo", T).GetValue(null) == 5, "el algoritmo de ahora es el 5");
+        Check((int)tm.GetField("Algoritmo", T).GetValue(null) >= 5, "el algoritmo de ahora es el 5 o posterior (el 6, del 25-10, suma donde empieza y acaba y el zumbido)");
         string cab = (string)S("IntegCabecera");
         StringWriter w = new StringWriter(); w.Write(cab + "\r\n");
         TF.GetMethod("EscribeIntegRegistro", T).Invoke(null, new object[] { w, "C:\\m\\cinco.mp3", Reg(5, -14.2f, -0.4f, -1.5f, -4.25f, 2000) });
@@ -180,7 +180,7 @@ class AlLimite
         Check(ok && aj.Count == 0 && Prop(c5, "ConP90") && Math.Abs(Campo(c5, "P90Db") + 4.25f) < 1e-4 && !Prop(c4, "ConP90") && Campo(c4, "Algoritmo") == 4,
               "ida y vuelta: la de 5 con su P90, la de 4 sin el (nivelara con la regla de antes)");
         string malos = cab + "\r\n5|-10|2|100|-0.4|-2.1|-|-|-|-|180|7|-1|C:\\m\\p90mayor.mp3\r\n5|-10|2|100|-0.4|-2.1|-|-|-|-|180|7|NaN|C:\\m\\nan.mp3\r\n"
-                     + "5|-10|2|100|-0.4|-2.1|-|-|-|-|180|7|C:\\m\\falta.mp3\r\n6|-9|2|100|-0.4|-2.1|-|-|-|-|180|7|-3|x|C:\\m\\futuro.mp3\r\n";
+                     + "5|-10|2|100|-0.4|-2.1|-|-|-|-|180|7|C:\\m\\falta.mp3\r\n99|-9|2|100|-0.4|-2.1|-|-|-|-|180|7|-3|x|C:\\m\\futuro.mp3\r\n";
         t = Tabla(); aj = new List<string>();
         TF.GetMethod("LeeIntegRegistros", T).Invoke(null, new object[] { new StringReader(malos), t, aj });
         Check(t.Count == 0 && aj.Count == 1, "un P90 por encima del P99, que no es numero o que falta: se salta; uno de un algoritmo posterior se guarda intacto");
@@ -293,7 +293,8 @@ class AlLimite
         string linea5 = sw.ToString().TrimEnd('\r', '\n');
         string[] p = linea5.Split('|');
         string linea2 = "2|" + string.Join("|", p, 1, 5) + "|" + wav;   // la misma medida, como la escribia una version de septiembre
-        Check(Prop(a[1], "ConP90") && p.Length == 14, "la medida de hoy sale del algoritmo 5, con su P90");
+        int algHoy = (int)TF.Assembly.GetType("Rocola.MedidorBs1770", true).GetField("Algoritmo", T).GetValue(null);
+        Check(Prop(a[1], "ConP90") && p.Length == (algHoy >= 6 ? 18 : 14), "la medida de hoy sale del algoritmo de hoy (" + algHoy + "), con su P90");
         Type tt = TF.GetNestedType("Track", T);
         foreach (string linea in new string[] { linea2, linea5 })
         {
@@ -332,12 +333,15 @@ class AlLimite
             object f = Form(); IDictionary tab = Tabla(); Set(f, "integCache", tab);
             if (TF.GetField("localAuto", T) != null) Set(f, "localAuto", modo);
             IList pistas = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tt));
-            string[] rutas = { "C:\\m\\d\\1.mp3", "C:\\m\\d\\2.mp3", "C:\\m\\d\\3.mp3", "C:\\m\\d\\4.mp3", "C:\\m\\d\\5.mp3", "C:\\m\\nunca.mp3" };
+            int hoy = (int)TF.Assembly.GetType("Rocola.MedidorBs1770", true).GetField("Algoritmo", T).GetValue(null);
+            string[] rutas = new string[hoy + 1];
+            for (int alg = 1; alg <= hoy; alg++) rutas[alg - 1] = "C:\\m\\d\\" + alg + ".mp3";
+            rutas[hoy] = "C:\\m\\nunca.mp3";
             foreach (string r in rutas) pistas.Add(Pista(tt, r));
-            for (int alg = 1; alg <= 5; alg++) tab[rutas[alg - 1]] = Reg(alg, -14f, -1f, -4f, -10f, 2000);
+            for (int alg = 1; alg <= hoy; alg++) tab[rutas[alg - 1]] = Reg(alg, -14f, -1f, -4f, -10f, 2000);
             Set(f, "tracks", pistas);
             List<string> pp = new List<string>(); foreach (object s in (IEnumerable)Call(f, "TandaIntegrada")) pp.Add(s is string ? (string)s : (string)tt.GetField("Path", T).GetValue(s));
-            Check(pp.Count == 5 && !pp.Contains(rutas[4]), "la tanda larga pide todo lo que no es del algoritmo 5 (de la 1 a la 4 y la nunca medida), con el modo del local " + (modo ? "encendido" : "apagado"));
+            Check(pp.Count == hoy && !pp.Contains(rutas[hoy - 1]), "la tanda larga pide todo lo que no es del algoritmo de hoy (" + hoy + ": de la 1 a la " + (hoy - 1) + " y la nunca medida), con el modo del local " + (modo ? "encendido" : "apagado"));
         }
         if (TF.GetField("localAuto", T) != null) TF.GetField("localAuto", T).SetValue(null, false);   // es de la clase: que no se quede encendido para lo que sigue
         // El disco: dos pistas del algoritmo 5 con los picos lejos del techo (con la regla de antes las frenaria el objetivo), una mas exigente. (Rutas del sistema: el disco es la carpeta.)

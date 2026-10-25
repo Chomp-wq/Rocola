@@ -1206,6 +1206,10 @@ namespace Rocola
             // LOS ARREGLOS DE LA GRABACION (S1 y S2, ArreglosGrabacion.cs): un canal mudo por los dos y la continua fuera. Lo
             // primero, para que nada de lo de detras trabaje con el defecto. Sin retardo; sin el defecto, sale bit a bit.
             c.Arreglo = new ArreglaGrabacion(chain, canalMudo, quitaContinua); chain = c.Arreglo;
+            // EL ZUMBIDO DE LA CORRIENTE (T6, Zumbido.cs): solo en las canciones en que el repaso lo midio. Va siempre que lo traen, con el
+            // interruptor decidiendo si actua (asi se enciende y se apaga en vivo); apagado, pasa tal cual. Sin retardo.
+            int zumbidoHz = ZumbidoDe(t.Path);
+            if (zumbidoHz > 0) { c.Zumbido = new QuitaZumbido(chain, zumbidoHz, quitaZumbido); chain = c.Zumbido; }
             // DES-RECORTE: repara picos aplastados de origen (despues de medir original, antes de DSEE). Ya sabemos, cancion
             // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
             // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.

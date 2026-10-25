@@ -22,6 +22,7 @@
 //
 // Cuesta unas sumas y productos por muestra. Mono: solo S2. Mas de dos canales: pasa tal cual.
 using System;
+using System.Collections.Generic;
 using NAudio.Wave;
 
 namespace Rocola
@@ -30,6 +31,15 @@ namespace Rocola
     {
         // Los interruptores (Ctrl+F3 -> Sonido -> Lo que suena ahora). Encendidos de fabrica: solo actuan con el defecto.
         private static bool canalMudo = true, quitaContinua = true;   // "canal_mudo=" y "quita_continua="
+        private static bool quitaZumbido = true;                    // "quita_zumbido=" (T6, Zumbido.cs): encendido de fabrica, como S1 y S2
+        // El zumbido medido de una cancion (50 o 60 Hz), o 0 si no lo trae o aun no se sabe (T6, algoritmo 6 del repaso).
+        private int ZumbidoDe(string ruta)
+        {
+            SonoridadIntegrada s;
+            Dictionary<string, SonoridadIntegrada> t = integCache;
+            if (ruta == null || t == null || !t.TryGetValue(ruta, out s) || !s.ConZumbido) return 0;
+            return s.ZumbidoHz;
+        }
 
         internal sealed class ArreglaGrabacion : ISampleProvider
         {

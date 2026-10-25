@@ -120,6 +120,8 @@ namespace Rocola
             // Y los arreglos de la grabacion (ArreglosGrabacion.cs): el canal mudo y la continua.
             if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(canalMudo, quitaContinua);
             if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(canalMudo, quitaContinua);
+            if (c != null && c.Zumbido != null) c.Zumbido.Ajusta(quitaZumbido);   // T6 (Zumbido.cs)
+            if (p != null && p.Zumbido != null) p.Zumbido.Ajusta(quitaZumbido);
             // Y los del local (SalaLocal.cs): claridad, partes suaves, balance, graves y agudos; y la presencia en sala ruidosa (PresenciaSala.cs).
             if (c != null && c.Sala != null) { c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb); c.Sala.AjustaTono(lc.Graves, lc.Agudos); }
             if (p != null && p.Sala != null) { p.Sala.Ajusta(lp.Claridad, lp.Suaves, balanceDb); p.Sala.AjustaTono(lp.Graves, lp.Agudos); }

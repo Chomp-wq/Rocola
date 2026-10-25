@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkAuto = estereoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1057,14 +1057,17 @@ namespace Rocola
                     Interruptor swDc = interArr(110, "Quitar la corriente continua", cCal, quitaContinua);
                     swDc.Name = "SonidoContinua";
                     notaLocal(tArr, 136, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
-                    Interruptor swAuto = interArr(180, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
+                    // T6 (25-10-2026, Zumbido.cs): el zumbido de la corriente, solo en las canciones en que el repaso lo midio.
+                    Interruptor swZum = interArr(180, "Quitar el zumbido de la corriente", cGra, quitaZumbido);
+                    swZum.Name = "SonidoZumbido";
+                    notaLocal(tArr, 206, 32, "El \"mmm\" de 50 o 60 Hz de una grabacion vieja: se quita solo\nese tono. Solo en las que el repaso encontro con zumbido.");
+                    Interruptor swAuto = interArr(250, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
                     swAuto.Name = "SonidoEstereoAuto";
                     // S3 solo actua si el estereo estrecho esta encendido, y con el modo automatico del local encendido manda ese modo (billar: lo
                     // enciende el solo y decide el solo; los otros dos tipos, no estrechan): el mando queda en gris diciendo cual de las dos cosas pasa.
                     string motivoEstrecho = "Necesita: Estereo al " + Math.Round(anchoEstereo * 100f) + " % (El local y sus bocinas)";
                     NecesitaMotivo(swAuto, delegate { return localAuto ? "Necesita: el modo automatico del local apagado (Tono y presencia)" : (estereoEstrecho ? null : motivoEstrecho); });
-                    notaLocal(tArr, 222, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
-                    notaLocal(tArr, 270, 48, "Los dos primeros, encendidos de fabrica: en las canciones sin\nese defecto no tocan ni un bit. Se oyen al instante.");
+                    notaLocal(tArr, 292, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
                     BotonPlano bVolverAhora = new BotonPlano(); bVolverAhora.SetBounds(16, 346, 424, 34); bVolverAhora.Font = fBot;
                     bVolverAhora.Text = "Volver a las canciones"; bVolverAhora.Name = "SonidoAhoraVolver"; tArr.Controls.Add(bVolverAhora);
                     bool verAhora = false;
@@ -1283,6 +1286,7 @@ namespace Rocola
                         if (saltaSilencios != silAntes) SiguienteConElInterruptor();   // lo ya abierto para la siguiente traia el de antes
                         cortaSubgrave = swSub.Checked; estereoEstrecho = swEst.Checked;
                         canalMudo = swMudo.Checked; quitaContinua = swDc.Checked; estereoAuto = swAuto.Checked;   // S1, S2 y S3
+                        quitaZumbido = swZum.Checked;   // T6
                         claridadLocal = swCla.Checked; partesSuaves = swSua.Checked;
                         balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, barBal.Value - SalaLocal.BalanceMax));
                         gravesLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barGra.Value - SalaLocal.TonoMax));
@@ -1306,7 +1310,7 @@ namespace Rocola
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
                     bTipo.Click += delegate { tipoLocal = (tipoLocal + 1) % TiposLocal; apply(bTipo, EventArgs.Empty); };
                     swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
-                    swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply;
+                    swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply; swZum.CheckedChanged += apply;
                     EventHandler prueba = delegate (object so, EventArgs ea)
                     {
                         PruebaModo m = (so == bPruI) ? PruebaModo.Izquierda : (so == bPruD) ? PruebaModo.Derecha
@@ -1333,6 +1337,7 @@ namespace Rocola
                         swAutoL.Checked = false; tipoLocal = 0;              // y el modo automatico del local, apagado (bocinas del billar)
                         swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
+                        swZum.Checked = true;   // T6, encendido (solo actua con el defecto)
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1455,7 +1460,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

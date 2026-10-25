@@ -41,6 +41,7 @@ namespace Rocola
             internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
+            internal QuitaZumbido Zumbido;       // las muescas del zumbido de la corriente, si la cancion lo trae (T6, Zumbido.cs)
             internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva
             internal LimitadorPicoReal Limitador; // el limitador de pico real (lo que baja lo ensena Ctrl+F3: S5)
             internal FadeProvider Fundido;
@@ -326,6 +327,7 @@ namespace Rocola
             if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
             if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
+            if (nueva.Zumbido != null && vieja.Zumbido != null) nueva.Zumbido.Sigue(vieja.Zumbido);
             // Convertidas a la frecuencia de la salida: el convertidor y su limitador, tambien (SinPausa.cs).
             if (nueva.Conversion != null && vieja.Conversion != null) nueva.Conversion.Sigue(vieja.Conversion);
             if (nueva.LimiteSalida != null && vieja.LimiteSalida != null) nueva.LimiteSalida.Sigue(vieja.LimiteSalida);

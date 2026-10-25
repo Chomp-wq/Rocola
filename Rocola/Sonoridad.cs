@@ -50,7 +50,11 @@ namespace Rocola
         //   5  (24 de octubre de 2026) ademas el P90 de los picos por bloque (el pico que solo superan el 10 % de los bloques de 100 ms con
         //      sonido): con el, cada cancion se sube hasta su limite sin rasparse (GananciaAlLimite). Las de 4 (y 3, 2, 1) siguen nivelando
         //      con la regla de antes mientras la tanda larga las vuelve a medir. Un ejecutable anterior guarda las de 5 como ajenas.
-        internal const int Algoritmo = 5;
+        //   6  (25 de octubre de 2026) ademas DONDE EMPIEZA Y ACABA DE VERDAD (T3): el primer y el ultimo momento en que la sonoridad de corto
+        //      plazo (3 s) esta a menos de 20 LU de la integrada (Utiles), y EL ZUMBIDO DE LA CORRIENTE (T6, MedidorZumbido): 50 o 60 Hz y
+        //      cuanto sobresale. La cuenta de la sonoridad, los picos, el LRA y el P90 no cambian: las de 5 nivelan igual mientras la tanda
+        //      larga las vuelve a medir. Un ejecutable anterior guarda las de 6 como ajenas.
+        internal const int Algoritmo = 6;
         internal const double PuertaAbsoluta = -70.0;   // LKFS
         internal const double PuertaRelativa = -10.0;   // LU respecto de la media de lo que paso la absoluta
         internal const double Desfase = -0.691;         // la constante de la definicion de LKFS
@@ -83,6 +87,10 @@ namespace Rocola
         private readonly long[] lraCuentas = new long[LraSub];
         private readonly int[] lraHist = new int[LraBins];
         private int lraPos, lraLleno;
+        // DONDE EMPIEZA Y ACABA (T3, algoritmo 6): el primer y el ultimo bloque de 400 ms (los que ya se guardan para la integrada, uno
+        // cada 100 ms) a menos de 20 LU de la integrada. Con bloques cortos un final seco sale a menos de 0,4 s de donde acaba la musica
+        // (con las ventanas de 3 s del LRA salia casi 3 s tarde: una ventana con un 1 % de musica ya esta a menos de 20 LU).
+        internal const double UtilBajoIntegradaLu = 20.0;
 
         internal MedidorBs1770(int tasaMuestreo, double[] pesos)
         {
@@ -105,10 +113,13 @@ namespace Rocola
             estado = new double[canales * 8];
             finSub = tasa / 10;
             Picos = new PicosBloques(tasaMuestreo, canales);
+            Zumbido = new MedidorZumbido(tasaMuestreo, canales);
         }
 
         // Los picos de la cancion, de paso (no tocan la cuenta de la sonoridad).
         internal readonly PicosBloques Picos;
+        // Y el zumbido de la corriente (T6, Zumbido.cs), tambien de paso.
+        internal readonly MedidorZumbido Zumbido;
 
         // Solo para memoria exclusiva del trabajador de analisis. No cambia receta ni coeficientes:
         // otra tasa/disposicion requiere otra instancia. Un retorno false no toca la medida existente.
@@ -121,6 +132,7 @@ namespace Rocola
             Array.Clear(anillo, 0, anillo.Length); Array.Clear(cuentas, 0, cuentas.Length);
             Array.Clear(bloques, 0, bloques.Length);
             Array.Clear(lraAnillo, 0, LraSub); Array.Clear(lraCuentas, 0, LraSub); Array.Clear(lraHist, 0, LraBins); lraPos = lraLleno = 0;
+            Zumbido.Reinicia();
             fase = 0; cuadros = 0; indiceSub = inicioSub = 0; finSub = tasa / 10;
             previos = nBloques = 0;
             Picos.Reinicia();
@@ -171,6 +183,7 @@ namespace Rocola
         {
             int i = desde, fin = desde + cuantos;
             Picos.Procesa(datos, desde, cuantos);             // aparte, sin tocar nada de lo de abajo
+            Zumbido.Procesa(datos, desde, cuantos);           // tambien aparte (T6)
             if (fase != 0) i = Suelto(datos, i, fin, true);   // primero, el cuadro que quedo partido
             if (canales == 2) i = Estereo(datos, i, fin);
             else if (canales == 1) i = Mono(datos, i, fin);
@@ -341,6 +354,22 @@ namespace Rocola
                 if (acum - 1 >= Math.Floor(rango95)) { alto = i / 10.0 - 70.0 + 0.05; break; }
             }
             lra = alto - bajo;
+            return true;
+        }
+
+        // DONDE EMPIEZA Y ACABA DE VERDAD (T3), con la integrada 'lkfs': el principio del primer bloque de 400 ms y el final del ultimo que
+        // estan a menos de 20 LU de ella (y sobre la puerta absoluta), en segundos desde el principio. El bloque k va de k/10 a k/10 + 0,4 s.
+        // Falso si no hay ninguno (cancion muda, o de menos de 400 ms).
+        internal bool Utiles(double lkfs, out double inicioS, out double finS)
+        {
+            inicioS = finS = 0;
+            if (double.IsNaN(lkfs) || double.IsInfinity(lkfs) || nBloques == 0) return false;
+            double umbral = Math.Max(Potencia(lkfs - UtilBajoIntegradaLu), Potencia(PuertaAbsoluta));
+            int primero = -1, ultimo = -1;
+            for (int k = 0; k < nBloques; k++) if (bloques[k] >= umbral) { if (primero < 0) primero = k; ultimo = k; }
+            if (ultimo < 0) return false;
+            inicioS = primero / 10.0;
+            finS = ultimo / 10.0 + 0.4;
             return true;
         }
 
@@ -623,17 +652,28 @@ namespace Rocola
         internal readonly MapaSilencios Silencios;   // desde el algoritmo 3: donde suena (SinSilencios.cs)
         internal readonly float Lra;      // desde el algoritmo 4: el rango de sonoridad en LU (EBU Tech 3342); NaN si no hay (cancion corta, muda, o medida de antes)
         internal readonly float P90Db;    // desde el algoritmo 5: el P90 de los picos por bloque, en dBFS (GananciaAlLimite); NaN si la medida es de antes
+        internal readonly float InicioUtil, FinUtil;   // desde el 6 (T3): donde empieza y acaba de verdad, en s (MedidorBs1770.Utiles); NaN si no hay
+        internal readonly int ZumbidoHz;               // desde el 6 (T6): 50 o 60 si trae zumbido de la corriente (MedidorZumbido); 0 si no
+        internal readonly float ZumbidoDb;             //   y cuanto sobresale en lo callado, en dB; NaN si no hay
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = float.NaN; P99Db = float.NaN; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; InicioUtil = FinUtil = float.NaN; ZumbidoHz = 0; ZumbidoDb = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = MapaSilencios.Mudo(0f); Lra = float.NaN; P90Db = float.NaN; InicioUtil = FinUtil = float.NaN; ZumbidoHz = 0; ZumbidoDb = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = float.NaN; P90Db = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = float.NaN; P90Db = float.NaN; InicioUtil = FinUtil = float.NaN; ZumbidoHz = 0; ZumbidoDb = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = float.NaN; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = float.NaN; InicioUtil = FinUtil = float.NaN; ZumbidoHz = 0; ZumbidoDb = float.NaN; }
         internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra, float p90Db)
-        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = p90Db; }
+        { Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = p90Db; InicioUtil = FinUtil = float.NaN; ZumbidoHz = 0; ZumbidoDb = float.NaN; }
+        internal SonoridadIntegrada(int algoritmo, float lkfs, float pesos, int bloques, float picoDb, float p99Db, MapaSilencios silencios, float lra, float p90Db,
+                                    float inicioUtil, float finUtil, int zumbidoHz, float zumbidoDb)
+        {
+            Algoritmo = algoritmo; Lkfs = lkfs; Pesos = pesos; Bloques = bloques; PicoDb = picoDb; P99Db = p99Db; Silencios = silencios; Lra = lra; P90Db = p90Db;
+            InicioUtil = inicioUtil; FinUtil = finUtil; ZumbidoHz = zumbidoHz; ZumbidoDb = zumbidoDb;
+        }
         internal bool ConP90 { get { return Algoritmo >= 5 && ConPicos && !float.IsNaN(P90Db); } }
+        internal bool ConUtiles { get { return Algoritmo >= 6 && !float.IsNaN(InicioUtil) && !float.IsNaN(FinUtil); } }
+        internal bool ConZumbido { get { return Algoritmo >= 6 && (ZumbidoHz == 50 || ZumbidoHz == 60); } }
         internal bool ConLra { get { return Algoritmo >= 4 && !float.IsNaN(Lra) && !float.IsInfinity(Lra) && Lra >= 0f; } }
         internal bool ConSilencios { get { return Algoritmo >= 3 && Silencios.Valido; } }
         internal bool ConPicos { get { return Algoritmo >= 2 && !float.IsNaN(PicoDb) && !float.IsNaN(P99Db); } }
@@ -663,7 +703,8 @@ namespace Rocola
         //   ROCOLA-SONORIDAD v1                  <- version del FORMATO
         //   1|-11.482|2|2398|C:\musica\a.mp3     <- algoritmo | LKFS (o "muda") | suma de pesos | bloques | ruta
         //   desde el 2, tras los bloques: pico | P99; desde el 3, ademas: desde | hasta | hueco desde | hueco hasta |
-        //   duracion, en segundos ("-" = no hay: cancion muda, o sin silencio en medio)
+        //   duracion, en segundos ("-" = no hay: cancion muda, o sin silencio en medio); desde el 4, LRA; desde el 5, P90;
+        //   desde el 6: inicio util | fin util (s) | zumbido (50, 60) | cuanto sobresale (dB) ("-" = no hay)
         //
         // Reglas para no perder nada:
         //   - Una cabecera que no es esta (una version futura, o basura) NO se lee y NO se pisa: la tabla
@@ -697,7 +738,7 @@ namespace Rocola
                 int alg;
                 if (!int.TryParse(linea.Substring(0, corte), NumberStyles.None, CultureInfo.InvariantCulture, out alg) || alg < 1) continue;
                 if (alg > MedidorBs1770.Algoritmo) { ajenas.Add(linea); continue; }
-                int campos = (alg >= 5) ? 14 : (alg >= 4) ? 13 : (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
+                int campos = (alg >= 6) ? 18 : (alg >= 5) ? 14 : (alg >= 4) ? 13 : (alg >= 3) ? 12 : (alg >= 2) ? 7 : 5;   // desde el 2: alg|lkfs|pesos|bloques|pico|p99|ruta
                 string[] p = linea.Split(barra, campos);
                 if (p.Length != campos || p[campos - 1].Length == 0) continue;
                 float lk, pesos; int bloques;
@@ -718,10 +759,25 @@ namespace Rocola
                                                  || float.IsNaN(lra) || float.IsInfinity(lra) || lra < 0f || lra > 200f)) continue;
                 float p90 = float.NaN;   // desde el 5: el P90 de los picos (nunca por encima del P99)
                 if (alg >= 5 && (!LeePico(p[12], out p90) || p90 > p99)) continue;
+                float ini = float.NaN, fin = float.NaN, zdb = float.NaN; int zhz = 0;   // desde el 6: donde empieza y acaba, y el zumbido
+                if (alg >= 6)
+                {
+                    if (p[13] != "-" || p[14] != "-")
+                    {
+                        if (!LeeSegundos(p[13], out ini) || !LeeSegundos(p[14], out fin) || ini > fin) continue;
+                    }
+                    if (p[15] != "-")
+                    {
+                        if (p[15] == "50") zhz = 50; else if (p[15] == "60") zhz = 60; else continue;
+                        if (!float.TryParse(p[16], NumberStyles.Float, CultureInfo.InvariantCulture, out zdb) || float.IsNaN(zdb) || zdb < 0f || zdb > 120f) continue;
+                    }
+                    else if (p[16] != "-") continue;
+                }
                 string ruta = Pool(p[campos - 1]);
                 SonoridadIntegrada antes;
                 if (tabla.TryGetValue(ruta, out antes) && antes.Algoritmo > alg) continue;   // ya hay una de algoritmo mas nuevo
-                tabla[ruta] = (alg >= 5) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra, p90)
+                tabla[ruta] = (alg >= 6) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra, p90, ini, fin, zhz, zdb)
+                            : (alg >= 5) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra, p90)
                             : (alg >= 4) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil, lra)
                             : (alg >= 3) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99, sil)
                             : (alg >= 2) ? new SonoridadIntegrada(alg, lk, pesos, bloques, pico, p99)
@@ -750,7 +806,19 @@ namespace Rocola
             }
             if (s.Algoritmo >= 4) { w.Write(s.ConLra ? s.Lra.ToString("0.#", CultureInfo.InvariantCulture) : "-"); w.Write('|'); }
             if (s.Algoritmo >= 5) { w.Write(s.P90Db.ToString("0.##", CultureInfo.InvariantCulture)); w.Write('|'); }
+            if (s.Algoritmo >= 6)
+            {
+                if (s.ConUtiles) { w.Write(s.InicioUtil.ToString("0.#", CultureInfo.InvariantCulture)); w.Write('|'); w.Write(s.FinUtil.ToString("0.#", CultureInfo.InvariantCulture)); w.Write('|'); }
+                else w.Write("-|-|");
+                if (s.ConZumbido) { w.Write(s.ZumbidoHz.ToString(CultureInfo.InvariantCulture)); w.Write('|'); w.Write(s.ZumbidoDb.ToString("0.#", CultureInfo.InvariantCulture)); w.Write('|'); }
+                else w.Write("-|-|");
+            }
             w.Write(ruta); w.Write("\r\n");
+        }
+        // Unos segundos guardados (donde empieza o acaba): de 0 a 100.000 s.
+        private static bool LeeSegundos(string t, out float seg)
+        {
+            return float.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out seg) && !float.IsNaN(seg) && seg >= 0f && seg <= 100000f;
         }
         // Un pico guardado: dBFS entre "nada" (-200) y +20.
         private static bool LeePico(string t, out float db)
@@ -1020,9 +1088,13 @@ namespace Rocola
             double lk; int usados;
             if (!m.Integrada(out lk, out usados)) return false;   // ni un bloque de 400 ms
             float pico = m.Picos.PicoDb, p99 = m.Picos.P99Db, p90 = m.Picos.P90Db;
+            double ini, fin; float fIni = float.NaN, fFin = float.NaN;
+            if (m.Utiles(lk, out ini, out fin)) { fIni = (float)Math.Round(ini, 1); fFin = (float)Math.Round(fin, 1); if (fIni > fFin) fIni = fFin; }
+            int zhz; float zdb;
+            if (!m.Zumbido.Resultado(out zhz, out zdb)) { zhz = 0; zdb = float.NaN; }
             s = new SonoridadIntegrada(MedidorBs1770.Algoritmo, double.IsNegativeInfinity(lk) ? float.NegativeInfinity : (float)lk,
                                        (float)m.PesoTotal, m.Bloques, (float)Math.Round(pico, 2), (float)Math.Round(p99, 2),
-                                       m.Picos.Mapa(m.Cuadros), LraDeMedidor(m), (float)Math.Round(Math.Min(p90, p99), 2));
+                                       m.Picos.Mapa(m.Cuadros), LraDeMedidor(m), (float)Math.Round(Math.Min(p90, p99), 2), fIni, fFin, zhz, zdb);
             return true;
         }
 

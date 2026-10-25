@@ -13,9 +13,9 @@ estado y se publica (commit + push a la rama Modest, comprobando el push).
 | Tarea | Estado | Commit |
 |---|---|---|
 | Plan (este archivo) | hecho | 941127b |
-| T1 nivelado con el tono del local | **hecho**: `SalaLocal.MargenTonoDb` (raíz de la suma de cuadrados de 0,75·graves y 0,25·agudos), `GananciaDe`/`MargenDelTono` en `NivelDisco.cs`; `allimite` sección 9 | (este commit) |
-| T3 inicio y fin útiles (algoritmo 6) | pendiente | |
-| T6 quitar el zumbido | pendiente | |
+| T1 nivelado con el tono del local | **hecho** (fcc1304): `SalaLocal.MargenTonoDb` (raíz de la suma de cuadrados de 0,75·graves y 0,25·agudos), `GananciaDe`/`MargenDelTono` en `NivelDisco.cs`; `allimite` sección 9 | fcc1304 |
+| T3 inicio y fin útiles (algoritmo 6) | **hecho**: `MedidorBs1770.Utiles`, `SonoridadIntegrada` (`InicioUtil`, `FinUtil`), formato 6; batería `zumbido` (secciones 1 y 2); `lra` y `allimite` actualizadas | (este commit) |
+| T6 quitar el zumbido | **hecho**: `Zumbido.cs` (`MedidorZumbido`, CIC de orden 3 y Goertzel; `QuitaZumbido`, cuatro muescas de 2 Hz); `quita_zumbido=` (encendido de fábrica) en Ctrl+F3 → Sonido → Lo que suena ahora; S4, S5, disco continuo; batería `zumbido`. La medida cuesta +9 ns por muestra en Mono (+54 %) | (este commit) |
 | T9 suavizar las eses | pendiente | |
 | T5 salida con hilo propio | pendiente | |
 | Ruido del amplificador | pendiente | |
@@ -80,18 +80,14 @@ Para volver al criterio del nivelado al límite (más de 1 dB, como mucho el 10 
 
 ## T3. Dónde empieza y acaba de verdad cada canción (algoritmo 6)
 
-**Qué se mide.** En `MedidorBs1770` (`Sonoridad.cs`), el corto plazo de 3 s del LRA (una cada 100 ms) ya se calcula. Para cada
-casilla del histograma del LRA (0,1 LU, de −70 a +10) se guardan, con memoria fija:
+**Qué se mide (hecho así).** En `MedidorBs1770.Utiles` (`Sonoridad.cs`), con los bloques de 400 ms que el medidor ya guarda para
+la integrada (uno cada 100 ms):
 
-- el primer subbloque en que el corto plazo llegó a esa casilla o más;
-- el último.
+- **inicio útil:** el principio del primer bloque a menos de 20 LU de la integrada;
+- **fin útil:** el final del último.
 
-Al cerrar, con la sonoridad integrada `I`, el umbral es `I − 20 LU`:
-
-- **fin útil** = el último subbloque con corto plazo ≥ umbral, más 1, por 0,1 s. Es el final de esa ventana de 3 s;
-- **inicio útil** = el primero ≥ umbral, por 0,1 s, menos 3 s (el principio de esa ventana), y nunca menos de 0.
-
-Sin datos (canción de menos de 3 s, o muda): `-`.
+Se cambió respecto de la primera idea, que usaba las ventanas de 3 s del LRA: con ellas, un final seco salía casi 3 s tarde. Con bloques
+de 400 ms queda a menos de 0,4 s.
 
 **Formato** (`rocola_sonoridad.txt`). Algoritmo 6 = el 5 más cuatro campos antes de la ruta:
 

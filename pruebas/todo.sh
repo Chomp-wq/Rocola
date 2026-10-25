@@ -41,7 +41,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
@@ -249,6 +249,9 @@ CPU="$CPU allimite"
 # 'cadenaentera': la cadena de sonido entera leida de cualquier manera (24-10-2026): varios formatos, de fabrica y con todo encendido,
 # los mismos bits en bloques, al azar o de a una muestra, la longitud, el retardo declarado contra un clic y cada etapa sola.
 CPU="$CPU cadenaentera"
+# 'zumbido': T3 y T6 (25-10-2026), el algoritmo 6 de rocola_sonoridad.txt: donde empieza y acaba de verdad cada cancion (bloques de
+# 400 ms a menos de 20 LU de la integrada) y el zumbido de la corriente (50/60 Hz y armonicos, en lo callado), y las muescas que lo quitan.
+CPU="$CPU zumbido"
 # 'recolector': la tanda de rendimiento del 24-10-2026 con el diagnostico del A4: mientras alguien elige, el recolector sin generacion 2
 # (con sus topes y desde el latido); la imagen de la interfaz al ir y volver entre dos medidas, sin reservar otra; y el desglose de
 # publicar la biblioteca. Mono no aplica la baja latencia: se mira la logica, no el efecto. En el perfil con tarjeta (la imagen de la

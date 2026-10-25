@@ -171,7 +171,7 @@ class LraPrueba
         Console.WriteLine("\n  4) EL FORMATO DE rocola_sonoridad.txt (algoritmo 4)\n");
         Type TSil = null; foreach (Type t in asm.GetTypes()) if (t.Name == "MapaSilencios") TSil = t;
         object mudo = TSil.GetMethod("Mudo", T).Invoke(null, new object[] { 180f });
-        Check((int)TM.GetField("Algoritmo", T).GetValue(null) == 5, "el algoritmo de ahora es el 5 (el 4 trajo el LRA; el 5, el 24-10-2026, el P90 del nivelado al limite)");
+        Check((int)TM.GetField("Algoritmo", T).GetValue(null) >= 5, "el algoritmo de ahora es el 5 o posterior (el 4 trajo el LRA; el 5, el 24-10-2026, el P90 del nivelado al limite; el 6, el 25-10, donde empieza y acaba y el zumbido)");
         string cab = (string)TF.GetField("IntegCabecera", T).GetValue(null);
         StringWriter w = new StringWriter(); w.Write(cab + "\r\n");
         MethodInfo esc = TF.GetMethod("EscribeIntegRegistro", T);
@@ -192,10 +192,10 @@ class LraPrueba
         Check(Math.Abs(Campo(t1["C:\\m\\viejo1.mp3"], "Lkfs") + 11.482f) < 0.001f && Math.Abs(Campo(t1["C:\\m\\viejo2.mp3"], "P99Db") + 2.1f) < 0.001f, "y lo viejo se lee exactamente igual que antes");
         // Registros rotos del algoritmo 4 se saltan; uno posterior se conserva intacto.
         string malos = "4|-10|2|100|-0.4|-2.1|-|-|-|-|180|-5|C:\\m\\a.mp3\r\n4|-10|2|100|-0.4|-2.1|-|-|-|-|180|NaN|C:\\m\\b.mp3\r\n4|-10|2|100|-0.4|-2.1|-|-|-|-|180|abc|C:\\m\\c.mp3\r\n4|-10|2|100|-0.4|-2.1|-|-|-|-|180|400|C:\\m\\d.mp3\r\n4|-10|2|100|-0.4|-2.1|-|-|-|-|C:\\m\\e.mp3\r\n";
-        string futuro = "6|-9.5|2|100|-0.4|-2.1|-|-|-|-|180|7|-3|x|C:\\m\\f.mp3";
+        string futuro = "99|-9.5|2|100|-0.4|-2.1|-|-|-|-|180|7|-3|x|C:\\m\\f.mp3";
         t1 = TablaNueva(); aj = new List<string>();
         ok = Lee(TF, cab + "\r\n" + malos + futuro + "\r\n", t1, aj);
-        Check(ok && t1.Count == 0 && aj.Count == 1 && aj[0] == futuro, "un LRA negativo, que no es numero, texto o absurdo, o un registro de 4 al que le falta el campo: se saltan; uno de un algoritmo posterior (6) se guarda intacto");
+        Check(ok && t1.Count == 0 && aj.Count == 1 && aj[0] == futuro, "un LRA negativo, que no es numero, texto o absurdo, o un registro de 4 al que le falta el campo: se saltan; uno de un algoritmo posterior (99) se guarda intacto");
         // Una medida de 3 no pisa a una de 4 al leer en el orden contrario.
         t1 = TablaNueva(); aj = new List<string>();
         Lee(TF, cab + "\r\n4|-14.5|2|2398|-0.4|-2.1|-|-|-|-|180|12.3|C:\\m\\x.mp3\r\n3|-14.4|2|2398|-0.4|-2.1|-|-|-|-|180|C:\\m\\x.mp3\r\n", t1, aj);
@@ -241,13 +241,14 @@ class LraPrueba
         object[] med = { wav, null };
         bool ok = (bool)TF.GetMethod("MideIntegrada", T).Invoke(f, med);
         object s4 = med[1];
-        Check(ok && Campo(s4, "Algoritmo") == 5 && (bool)s4.GetType().GetProperty("ConLra", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConP90", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConPicos", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConSilencios", T).GetValue(s4, null),
-              "MideIntegrada de un archivo da el algoritmo 5 con LRA (" + F(Campo(s4, "Lra"), "0.0") + " LU), picos, P90 y silencios");
+        int algHoy = (int)TM.GetField("Algoritmo", T).GetValue(null);
+        Check(ok && Campo(s4, "Algoritmo") == algHoy && (bool)s4.GetType().GetProperty("ConLra", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConP90", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConPicos", T).GetValue(s4, null) && (bool)s4.GetType().GetProperty("ConSilencios", T).GetValue(s4, null),
+              "MideIntegrada de un archivo da el algoritmo de hoy (" + algHoy + ") con LRA (" + F(Campo(s4, "Lra"), "0.0") + " LU), picos, P90 y silencios");
         float[] corto = new float[44100 * 2 * 2]; for (int i = 0; i < corto.Length; i++) corto[i] = (float)(0.2 * Math.Sin(i * 0.05));
         string wavc = Path.Combine(dir, "corto.wav"); EscribeWav(wavc, 44100, 2, corto);
         med = new object[] { wavc, null };
         ok = (bool)TF.GetMethod("MideIntegrada", T).Invoke(f, med);
-        Check(ok && !(bool)med[1].GetType().GetProperty("ConLra", T).GetValue(med[1], null) && Campo(med[1], "Algoritmo") == 5, "una cancion de 2 s se mide (algoritmo 5) pero sin LRA: la regla de antes decide en el modo del local");
+        Check(ok && !(bool)med[1].GetType().GetProperty("ConLra", T).GetValue(med[1], null) && Campo(med[1], "Algoritmo") == algHoy, "una cancion de 2 s se mide (algoritmo de hoy) pero sin LRA: la regla de antes decide en el modo del local");
     }
 
     // ---------------------------------------------------------------- 7) COSTE Y COMPATIBILIDAD CON EL EJECUTABLE ANTERIOR
@@ -273,7 +274,10 @@ class LraPrueba
         Assembly vieja = Assembly.Load(File.ReadAllBytes(ant));
         double antes = NsPorMuestra(vieja);
         Info("el ejecutable anterior: " + F(antes, "0.00") + " ns por muestra (diferencia " + F(nuevo - antes, "+0.00;-0.00") + " ns, " + F(100.0 * (nuevo - antes) / antes, "+0.0;-0.0") + " %)");
-        Check(nuevo - antes < 1.0, "el LRA suma menos de 1 ns por muestra a la medida");
+        // Desde el 25-10-2026 la medida lleva tambien el zumbido de la corriente (T6, MedidorZumbido): unos 9 ns por muestra en Mono.
+        int algAnt0 = (int)vieja.GetType("Rocola.MedidorBs1770", true).GetField("Algoritmo", T).GetValue(null);
+        bool conZumbido = asm.GetType("Rocola.MedidorZumbido", false) != null && vieja.GetType("Rocola.MedidorZumbido", false) == null;
+        Check(nuevo - antes < (conZumbido ? 12.0 : 1.0), conZumbido ? "el zumbido (T6) suma menos de 12 ns por muestra a la medida (algoritmo " + algAnt0 + " -> el de hoy)" : "el LRA suma menos de 1 ns por muestra a la medida");
         // El archivo nuevo, leido por el anterior.
         Type tfv = vieja.GetType("Rocola.Form1", true), tsv = vieja.GetType("Rocola.SonoridadIntegrada", true);
         Type TSil = null; foreach (Type t in asm.GetTypes()) if (t.Name == "MapaSilencios") TSil = t;
@@ -284,6 +288,12 @@ class LraPrueba
         esc.Invoke(null, new object[] { w, "C:\\m\\tres.mp3", Reg("a", TS, 3, -13.5f, 2f, 2398, -0.4f, -2.1f, mudo) });
         esc.Invoke(null, new object[] { w, "C:\\m\\cuatro.mp3", Reg("b", TS, 4, -14.5f, 2f, 2398, -0.4f, -2.1f, mudo, 12.3f) });
         esc.Invoke(null, new object[] { w, "C:\\m\\cinco.mp3", Reg("c", TS, 5, -15.5f, 2f, 2398, -0.4f, -2.1f, mudo, 12.3f, -6.25f) });
+        int registros = 3;
+        if ((int)TM.GetField("Algoritmo", T).GetValue(null) >= 6)
+        {   // y uno del 6 (T3 y T6), con donde empieza y acaba y el zumbido
+            esc.Invoke(null, new object[] { w, "C:\\m\\seis.mp3", Activator.CreateInstance(TS, T, null, new object[] { 6, -15.5f, 2f, 2398, -0.4f, -2.1f, mudo, 12.3f, -6.25f, 3.2f, 177.4f, 60, 18.5f }, null) });
+            registros = 4;
+        }
         string texto = w.ToString();
         // Lo que el anterior entiende (su algoritmo o menos) lo usa; lo posterior lo guarda intacto para devolverlo al guardar.
         int algAnt = (int)vieja.GetType("Rocola.MedidorBs1770", true).GetField("Algoritmo", T).GetValue(null);
@@ -291,14 +301,14 @@ class LraPrueba
         List<string> aj = new List<string>();
         bool lee = Lee(tfv, texto, tv, aj);
         string[] lineas = texto.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
-        bool bien = lee && aj.Count + tv.Count == 3;
+        bool bien = lee && aj.Count + tv.Count == registros;
         for (int k = 1; k < lineas.Length; k++)
         {
             int alg = int.Parse(lineas[k].Substring(0, 1)); string ruta = lineas[k].Substring(lineas[k].LastIndexOf('|') + 1);
             if (alg <= algAnt) bien &= tv.Contains(ruta) && !aj.Contains(lineas[k]);
             else bien &= aj.Contains(lineas[k]) && !tv.Contains(ruta);
         }
-        Check(bien, "un ejecutable anterior (algoritmo " + algAnt + ") lee el archivo nuevo sin romperse: usa " + tv.Count + " de las 3 medidas y guarda las "
+        Check(bien, "un ejecutable anterior (algoritmo " + algAnt + ") lee el archivo nuevo sin romperse: usa " + tv.Count + " de las " + registros + " medidas y guarda las "
               + aj.Count + " posteriores intactas para devolverlas al guardar");
     }
 

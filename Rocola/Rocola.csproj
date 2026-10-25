@@ -132,6 +132,7 @@
     <Compile Include="Mp3Ligero.cs" />
     <Compile Include="Pcm16Directo.cs" />
     <Compile Include="GraveMono.cs" />
+    <Compile Include="Zumbido.cs" />
     <Compile Include="SalaLocal.cs" />
     <Compile Include="PresenciaSala.cs" />
     <Compile Include="LocalAuto.cs" />

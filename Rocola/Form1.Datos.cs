@@ -660,6 +660,7 @@ namespace Rocola
                     else if (s.StartsWith("ancho_estereo=")) anchoEstereo = AnchoEstereo(s.Substring(14));   // % del estereo (100 = como viene)
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
                     else if (s.StartsWith("canal_mudo=")) canalMudo = s.Substring(11).Trim() != "0";   // S1: un canal mudo, por los dos
+                    else if (s.StartsWith("quita_zumbido=")) quitaZumbido = s.Substring(14).Trim() != "0";   // T6: el zumbido de la corriente
                     else if (s.StartsWith("quita_continua=")) quitaContinua = s.Substring(15).Trim() != "0";   // S2: quitar la continua
                     else if (s.StartsWith("estereo_auto=")) estereoAuto = s.Substring(13).Trim() == "1";   // S3: estrecho solo si hace falta
                     else if (s.StartsWith("estereo_estrecho=")) estereoEstrecho = s.Substring(17).Trim() == "1";   // interruptor: estereo al ancho_estereo
@@ -834,6 +835,7 @@ namespace Rocola
             sb.Append("estereo_estrecho=").Append(estereoEstrecho ? "1" : "0").Append("\r\n");
             sb.Append("corta_subgrave=").Append(cortaSubgrave ? "1" : "0").Append("\r\n");
             sb.Append("canal_mudo=").Append(canalMudo ? "1" : "0").Append("\r\n");
+            sb.Append("quita_zumbido=").Append(quitaZumbido ? "1" : "0").Append("\r\n");
             sb.Append("quita_continua=").Append(quitaContinua ? "1" : "0").Append("\r\n");
             sb.Append("estereo_auto=").Append(estereoAuto ? "1" : "0").Append("\r\n");
             sb.Append("frecuencia_salida=").Append(frecuenciaSalida.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
