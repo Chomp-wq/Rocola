@@ -55,6 +55,9 @@ namespace Rocola
             internal double InicioMusica;
             internal long CuadroComienzo;
             internal int CebadoInicial;
+            // Lo que el modo automatico del local decidio para ESTA cadena (LocalAuto.cs, L1): se fija la primera vez y no cambia a media
+            // cancion; en un disco continuo la siguiente lo hereda (HeredaLocal), asi no hay escalon en el cambio de pista.
+            internal bool AutoFijo, AutoPresencia, AutoSuaves;
         }
         private static void SellaInicioReloj(CadenaCancion c)
         { c.InicioMusica = c.Lector.CurrentTime.TotalSeconds; c.CuadroComienzo = 0; c.CebadoInicial = c.Retardo; }
@@ -148,7 +151,7 @@ namespace Rocola
             // Y la siguiente, sin su fundido de entrada: la onda sigue sin corte (Form1.Sonido.cs, FadeProvider).
             if (entera && SiguienteDelDisco(nowPlaying, sig) && c.Fundido != null) c.Fundido.SinEntrada();
             // Si acaba entera, la siguiente sigue con la memoria de sus filtros: el cambio no se oye (SigueA).
-            if (entera && lector.WaveFormat.SampleRate == cadenaSonando.Lector.WaveFormat.SampleRate) SigueA(c, cadenaSonando);
+            if (entera && lector.WaveFormat.SampleRate == cadenaSonando.Lector.WaveFormat.SampleRate) { SigueA(c, cadenaSonando); HeredaLocal(c, cadenaSonando); }
         }
 
         // La siguiente ya suena. Lo mira el temporizador de la animacion (cada 42 ms): el relevo se recoge

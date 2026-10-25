@@ -50,27 +50,27 @@ class ModosAuto
         string archivo = (string)Get(f, "ConfigFile");
         // a) Guardar y leer da lo mismo.
         Set(f, "videoVol", 37); Set(f, "videoAuto", false); Set(f, "eqAmount", 0.42f); Set(f, "eqAuto", false);
-        Set(f, "bassAmount", 0.6f); Set(f, "bassAuto", false); SetS("estereoAuto", true); SetS("localAuto", true); SetS("tipoLocal", 2);
+        Set(f, "bassAmount", 0.6f); Set(f, "bassAuto", false); SetS("estereoAuto", true); SetS("localAuto", true);
         string texto = (string)Call(f, "TextoConfig");
         File.WriteAllText(archivo, texto);
         Set(f, "videoVol", 85); Set(f, "videoAuto", true); Set(f, "eqAmount", 0f); Set(f, "eqAuto", true);
-        Set(f, "bassAmount", 0.3f); Set(f, "bassAuto", true); SetS("estereoAuto", false); SetS("localAuto", false); SetS("tipoLocal", 0);
+        Set(f, "bassAmount", 0.3f); Set(f, "bassAuto", true); SetS("estereoAuto", false); SetS("localAuto", false);
         Call(f, "LoadConfigPrefs");
         Check((int)Get(f, "videoVol") == 37 && !(bool)Get(f, "videoAuto") && !(bool)Get(f, "eqAuto") && !(bool)Get(f, "bassAuto"), "videos, EQ y graves: el volumen base y el automatico se guardan y se leen igual");
         Check(Math.Abs((float)Get(f, "eqAmount") - 0.42f) < 0.006f && Math.Abs((float)Get(f, "bassAmount") - 0.6f) < 0.0001f, "y la fuerza del EQ (en %) y el bajo a mano");
-        Check((bool)GetS("estereoAuto") && (bool)GetS("localAuto") && (int)GetS("tipoLocal") == 2, "S3, el modo del local y su tipo tambien");
+        Check((bool)GetS("estereoAuto") && (bool)GetS("localAuto") && !texto.Contains("tipo_local="), "S3 y el modo del local tambien (el tipo de local ya no se guarda: solo hay uno, 25-10-2026)");
         // b) Valores fuera de rango: se acotan, no rompen nada.
         File.WriteAllText(archivo, "video_vol=500\r\neq_auto=250\r\nbajo=-3\r\ntipo_local=9\r\nvideo_automatico=2\r\neq_automatico=0\r\nbajo_automatico=x\r\nlocal_auto=2\r\nestereo_auto=2\r\n");
         Call(f, "LoadConfigPrefs");
         Check((int)Get(f, "videoVol") == 100 && Math.Abs((float)Get(f, "eqAmount") - 1f) < 1e-6f && (float)Get(f, "bassAmount") == 0f, "volumen de videos, EQ y bajo fuera de rango se acotan (100, 100 %, 0)");
-        Check((int)GetS("tipoLocal") == 2 && (bool)Get(f, "videoAuto") && !(bool)Get(f, "eqAuto") && (bool)Get(f, "bassAuto"), "el tipo de local se acota; un automatico con valor raro queda en su valor de fabrica (videos y graves si, EQ solo con 0)");
+        Check((bool)Get(f, "videoAuto") && !(bool)Get(f, "eqAuto") && (bool)Get(f, "bassAuto"), "un tipo_local= viejo se ignora; un automatico con valor raro queda en su valor de fabrica (videos y graves si, EQ solo con 0)");
         Check(!(bool)GetS("localAuto") && !(bool)GetS("estereoAuto"), "y los dos que nacen apagados solo se encienden con un 1");
         File.WriteAllText(archivo, "tipo_local=-5\r\nbajo=NaN\r\neq_auto=Infinity\r\nvideo_vol=abc\r\n");
-        SetS("tipoLocal", 1); Set(f, "videoVol", 61);
+        Set(f, "videoVol", 61);
         Call(f, "LoadConfigPrefs");
-        Check((int)GetS("tipoLocal") == 0 && (float)Get(f, "bassAmount") == 0f && (float)Get(f, "eqAmount") == 1f && (int)Get(f, "videoVol") == 61, "un menos, un NaN, un infinito y un texto: se acotan o se ignoran, sin dejar nada roto");
+        Check((float)Get(f, "bassAmount") == 0f && (float)Get(f, "eqAmount") == 1f && (int)Get(f, "videoVol") == 61, "un menos, un NaN, un infinito y un texto: se acotan o se ignoran, sin dejar nada roto");
         File.Delete(archivo);
-        SetS("localAuto", false); SetS("tipoLocal", 0); SetS("estereoAuto", false);
+        SetS("localAuto", false); SetS("estereoAuto", false);
     }
 
     // ---------------------------------------------------------------- 3) LA CADENA Y «ESCUCHAR SIN MEJORAS»
@@ -158,8 +158,13 @@ class ModosAuto
         float[] lras = new float[50]; for (int i = 0; i < lras.Length; i++) lras[i] = i * 0.4f;   // de 0 a 19,6 LU
         string tl = (string)txt4.Invoke(null, new object[] { r, 0, lras, 7 });
         Check(tl.Contains("RANGO DE SONORIDAD") && tl.Contains("50 medidas") && tl.Contains("faltan 7") && tl.Contains("menos de 3 LU") && tl.Contains("20 LU o mas") && tl.Contains("Mediana 10.0 LU"), "el informe trae el reparto del rango de sonoridad y cuantas medidas de antes faltan por volver a medir");
-        int p10 = 0, s14 = 0; foreach (float v in lras) { if (v >= 10f) p10++; if (v >= 14f) s14++; }
-        Check(tl.Contains("(10 LU o mas): " + p10) && tl.Contains("(14 LU o mas): " + s14), "y cuantas llevarian la presencia del billar (" + p10 + ") y las partes suaves de la sala (" + s14 + ")");
+        // L5 (25-10-2026): con menos de 200 medidas, el corte de siempre (10 LU); con mas, el del tercio que mas varia. Solo el billar.
+        int p10 = 0; foreach (float v in lras) if (v >= 10f) p10++;
+        Check(tl.Contains("Presencia en el billar desde 10.0 LU (el de siempre") && tl.Contains(": " + p10 + " canciones") && !tl.Contains("sala buena"),
+              "y cuantas llevarian la presencia del billar con el corte de siempre (" + p10 + "), sin la sala buena");
+        float[] muchas = new float[600]; for (int i = 0; i < muchas.Length; i++) muchas[i] = i * 0.02f + 0.01f;   // de 0 a 12 LU, lejos de los bordes de las casillas
+        string tm = (string)txt4.Invoke(null, new object[] { r, 0, muchas, 0 });
+        Check(tm.Contains("Presencia en el billar desde 8.0 LU (el tercio que mas varia") && tm.Contains(": 200 canciones"), "con 600 medidas el corte sale de la biblioteca (8 LU) y la lleva el tercio que mas varia (200)");
         Check(((string)txt4.Invoke(null, new object[] { new float[0], 0, new float[0], 3 })).Contains("faltan 3"), "sin ninguna medida con picos tambien cuenta las que faltan");
         Type TSil = null; foreach (Type tp in TF.Assembly.GetTypes()) if (tp.Name == "MapaSilencios") TSil = tp;
         object mud = TSil.GetMethod("Mudo", T).Invoke(null, new object[] { 180f });
@@ -225,7 +230,7 @@ class ModosAuto
         Set(f, "excAmount", 0.35f); Set(f, "bassAuto", true); Set(f, "bassAmount", 0.3f); Set(f, "bassSongFactor", 1f);
         Set(f, "eqAuto", true); Set(f, "eqAmount", 0f); Set(f, "sbrAllowed", true); Set(f, "sbrOn", false); Set(f, "declipOn", true);
         Set(f, "crossfadeSec", 0.5f); Set(f, "saltaSilencios", false); Set(f, "sinMejoras", false); Set(f, "aLaMedida", false); Set(f, "quitaSiseo", false);
-        SetS("claridadLocal", false); SetS("partesSuaves", false); SetS("localAuto", false); SetS("tipoLocal", 0); SetS("presenciaSala", false);
+        SetS("claridadLocal", false); SetS("partesSuaves", false); SetS("localAuto", false); SetS("presenciaSala", false);
         SetS("gravesLocalDb", 0); SetS("agudosLocalDb", 0); SetS("balanceDb", 0); SetS("cortaSubgrave", false); SetS("estereoEstrecho", false); SetS("estereoAuto", false);
         SetS("canalMudo", true); SetS("quitaContinua", true);
     }
@@ -455,7 +460,7 @@ class ModosAuto
             using (WaveFileWriter w = new WaveFileWriter(wavs[k], WaveFormat.CreateIeeeFloatWaveFormat(FS, 2))) w.WriteSamples(x, 0, x.Length);
             MideYApunta(f, wavs[k]);
         }
-        string[] cfg = { "de fabrica", "modo del local: billar", "modo del local: sala buena", "modo del local: bocinas chicas", "claridad", "graves del local +6 dB", "agudos del local +6 dB", "subgrave fuera", "bajo (graves) a 60 %", "presencia en sala ruidosa" };
+        string[] cfg = { "de fabrica", "modo del local (billar)", "claridad", "graves del local +6 dB", "agudos del local +6 dB", "subgrave fuera", "bajo (graves) a 60 %", "presencia en sala ruidosa" };
         double[,] lk = new double[cfg.Length, 2];
         for (int c = 0; c < cfg.Length; c++)
             for (int k = 0; k < 2; k++)
@@ -463,15 +468,13 @@ class ModosAuto
                 Fabrica(f);
                 switch (c)
                 {
-                    case 1: SetS("localAuto", true); SetS("tipoLocal", 0); break;
-                    case 2: SetS("localAuto", true); SetS("tipoLocal", 1); break;
-                    case 3: SetS("localAuto", true); SetS("tipoLocal", 2); break;
-                    case 4: SetS("claridadLocal", true); break;
-                    case 5: SetS("gravesLocalDb", 6); break;
-                    case 6: SetS("agudosLocalDb", 6); break;
-                    case 7: SetS("cortaSubgrave", true); break;
-                    case 8: Set(f, "bassAuto", false); Set(f, "bassAmount", 0.6f); break;
-                    case 9: SetS("presenciaSala", true); break;
+                    case 1: SetS("localAuto", true); break;
+                    case 2: SetS("claridadLocal", true); break;
+                    case 3: SetS("gravesLocalDb", 6); break;
+                    case 4: SetS("agudosLocalDb", 6); break;
+                    case 5: SetS("cortaSubgrave", true); break;
+                    case 6: Set(f, "bassAuto", false); Set(f, "bassAmount", 0.6f); break;
+                    case 7: SetS("presenciaSala", true); break;
                 }
                 lk[c, k] = SonoridadDe(f, Corre(f, wavs[k]), dir);
             }
@@ -607,7 +610,7 @@ class ModosAuto
         dm.Invoke(null, new object[] { f });
         TF.GetMethod("BuildUi", T).Invoke(f, null);
         try { TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null); } catch { }
-        SetS("localAuto", false); SetS("tipoLocal", 0); SetS("estereoEstrecho", false); SetS("estereoAuto", false);
+        SetS("localAuto", false); SetS("estereoEstrecho", false); SetS("estereoAuto", false);
         Set(f, "videoAuto", true); Set(f, "normalizeOn", true); Set(f, "videoVol", 85);
         Timer t = new Timer(); t.Interval = 400; int n = 0;
         t.Tick += delegate

@@ -20,9 +20,13 @@ class LocalAutoPrueba
     static Type TF, TA;
     static object Campo(object o, string n) { return (o == null ? TA : o.GetType()).GetField(n, T).GetValue(o); }
     static void PonStatic(string n, object v) { TF.GetField(n, T).SetValue(null, v); }
-    static object Auto(int tipo, float rango) { return TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(int), typeof(float) }, null).Invoke(null, new object[] { tipo, rango }); }
-    // Con el rango de sonoridad (LRA, en LU) de la cancion; 'rango' es el P99 - sonoridad de la regla de antes.
-    static object AutoLra(int tipo, float rango, float lra) { return TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(int), typeof(float), typeof(float) }, null).Invoke(null, new object[] { tipo, rango, lra }); }
+    // Desde el 25-10-2026 solo hay un local (el billar): LocalAutomatico(rango, lra, corte). 'rango' es el P99 - sonoridad de la regla
+    // de antes; 'lra' el rango de sonoridad (LU); 'corte' el de la presencia (L5: el tercio que mas varia de la biblioteca).
+    static object AutoC(float rango, float lra, float corte) { return TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float) }, null).Invoke(null, new object[] { rango, lra, corte }); }
+    static object Auto(int tipo, float rango) { return AutoC(rango, -1f, 10f); }
+    static object AutoLra(int tipo, float rango, float lra) { return AutoC(rango, lra, 10f); }
+    static float Umbral(int[] cuenta, int n) { return (float)TF.GetMethod("UmbralPresencia", T).Invoke(null, new object[] { cuenta, n }); }
+    static int[] Hist(float[] v) { int[] c = new int[600]; foreach (float x in v) c[(int)TF.GetMethod("CasillaLra", T).Invoke(null, new object[] { x })]++; return c; }
     static bool B(object a, string n) { return (bool)a.GetType().GetField(n).GetValue(a); }
     static int I(object a, string n) { return (int)a.GetType().GetField(n).GetValue(a); }
     static string Texto(string rel) { string p = Path.Combine("..", "Rocola", rel); return File.Exists(p) ? File.ReadAllText(p) : ""; }
@@ -32,37 +36,36 @@ class LocalAutoPrueba
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
         TF = asm.GetType("Rocola.Form1", true);
         TA = TF.GetNestedType("AjusteLocal", T);
-        Check(TA != null && TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(int), typeof(float) }, null) != null, "esta el modo automatico del local");
+        Check(TA != null && TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float) }, null) != null, "esta el modo automatico del local");
         if (TA == null) return 1;
         float alto = (float)TF.GetField("RangoAltoDb", T).GetValue(null), muy = (float)TF.GetField("RangoMuyAltoDb", T).GetValue(null);
 
-        Console.WriteLine("\n  1) LA TABLA POR TIPO DE LOCAL Y RANGO\n");
+        Console.WriteLine("\n  1) LO QUE PONE EN EL BILLAR (el unico local desde el 25-10-2026)\n");
+        Check(TF.GetField("tipoLocal", T) == null && TF.GetField("NombresTipoLocal", T) == null && TF.GetMethod("TipoLocalDe", T) == null && TF.GetField("LraSalaLu", T) == null,
+              "ya no hay tipos de local: ni el campo, ni los nombres, ni la lectura, ni el corte de la sala buena");
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
-        Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad"), "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, en cualquier cancion");
-        // P1 (23-10-2026): las partes suaves van SIEMPRE en el billar y en las bocinas chicas (la etapa se frena sola por nivel).
-        Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1 billar: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
-        Check(!B(b0, "Presencia") && !B(b1, "Presencia"), "billar, sin rango de sonoridad y de poco rango: sin presencia");
-        Check(B(b2, "Presencia"), "billar, de muchisimo rango (regla de antes, P99 - sonoridad): presencia");
-        Check(B(bx, "Subgrave") && !B(bx, "Presencia"), "billar, sin medir: lo fijo del tipo y las partes suaves, sin presencia");
-        object s0 = Auto(1, alto + 1f), s1 = Auto(1, muy + 1f);
-        Check(!B(s0, "Subgrave") && !B(s0, "Estrecho") && !B(s0, "Claridad") && !B(s0, "Suaves") && !B(s0, "Presencia") && I(s0, "Graves") == 0 && I(s0, "Agudos") == 0, "sala buena: el tono no se toca (ni a una de mucho rango)");
-        Check(B(s1, "Suaves") && !B(s1, "Presencia"), "sala buena, de muchisimo rango (regla de antes): solo las partes suaves");
-        object c0 = Auto(2, 8f), c1 = Auto(2, alto + 1f);
-        Check(B(c0, "Subgrave") && B(c0, "Claridad") && I(c0, "Agudos") == 1 && !B(c0, "Estrecho") && !B(c0, "Presencia"), "bocinas chicas: sin subgrave, claridad y +1 dB de agudos; sin estrechar el estereo");
-        Check(B(c1, "Suaves") && B(c0, "Suaves") && B(Auto(2, -1f), "Suaves"), "P1 bocinas chicas: las partes suaves siempre (tambien las de poco rango y las sin medir)");
-        Check(!B(Auto(0, muy - 0.01f), "Presencia") && B(Auto(0, muy), "Presencia"), "el corte de la regla de antes (" + muy + " dB) para la presencia vale justo en su valor");
-        Check(B(Auto(0, float.NaN), "Suaves") && !B(Auto(0, float.NaN), "Presencia") && B(Auto(99, 5f), "Subgrave") == B(Auto(2, 5f), "Subgrave") && B(Auto(-4, 5f), "Estrecho"), "un tipo o un rango fuera de lo posible no truena (se queda en el mas cercano)");
-        // P2 (23-10-2026): la presencia del billar y las partes suaves de la sala, por el rango de sonoridad (LRA).
-        float lraP = (float)TF.GetField("LraPresenciaLu", T).GetValue(null), lraS = (float)TF.GetField("LraSalaLu", T).GetValue(null);
-        Check(lraP == 10f && lraS == 14f, "los cortes del rango de sonoridad: " + lraP + " LU la presencia del billar, " + lraS + " LU las partes suaves de la sala");
-        Check(B(AutoLra(0, 3f, lraP), "Presencia") && !B(AutoLra(0, 3f, lraP - 0.01f), "Presencia"), "P2 billar: la presencia desde 10 LU de rango de sonoridad, justo en su valor");
-        Check(B(AutoLra(0, 3f, 18f), "Presencia") && !B(AutoLra(0, 20f, 0.2f), "Presencia"), "billar: manda el LRA, no los picos (un rock de picos altos y volumen parejo no la lleva; una balada con picos bajos, si)");
-        Check(B(AutoLra(1, 3f, lraS), "Suaves") && !B(AutoLra(1, 20f, lraS - 0.01f), "Suaves") && !B(AutoLra(1, 3f, 12f), "Suaves"), "P2 sala buena: las partes suaves desde 14 LU, y no por los picos");
-        Check(!B(AutoLra(2, 3f, 30f), "Presencia") && !B(AutoLra(1, 3f, 30f), "Presencia"), "las bocinas chicas y la sala buena no llevan presencia, tenga el rango que tenga");
-        Check(B(AutoLra(0, -1f, 12f), "Presencia") && !B(AutoLra(0, -1f, -1f), "Presencia"), "con LRA y sin medida de picos decide el LRA; sin ninguno de los dos, nada");
-        Check(AutoLra(0, 20f, -1f).Equals(Auto(0, 20f)) && AutoLra(1, 17f, -1f).Equals(Auto(1, 17f)), "una medida de antes (sin LRA) sigue por la regla de antes, igual que la forma de dos argumentos");
-        Check(!B(AutoLra(0, 3f, float.NaN), "Presencia") && B(AutoLra(0, 17f, float.NaN), "Presencia"), "un LRA que no es un numero cuenta como que no hay");
-        Check(Auto(0, 20f).Equals(Auto(0, 20f)), "la misma entrada da lo mismo (no tiene estado)");
+        Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
+              "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
+        Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
+        Check(!B(b0, "Presencia") && !B(b1, "Presencia") && B(b2, "Presencia") && !B(bx, "Presencia"), "sin LRA (medida de antes): presencia solo desde " + muy + " dB de P99 - sonoridad; sin medir, sin presencia");
+        Check(!B(Auto(0, muy - 0.01f), "Presencia") && B(Auto(0, muy), "Presencia"), "el corte de la regla de antes vale justo en su valor");
+        Check(B(AutoC(3f, 12f, 12f), "Presencia") && !B(AutoC(3f, 11.99f, 12f), "Presencia") && B(AutoC(3f, 7f, 6.5f), "Presencia"), "con LRA manda el corte que se le da, justo en su valor");
+        Check(B(AutoLra(0, 3f, 18f), "Presencia") && !B(AutoLra(0, 20f, 0.2f), "Presencia"), "manda el LRA, no los picos (un rock de picos altos y volumen parejo no la lleva; una balada con picos bajos, si)");
+        Check(!B(AutoC(3f, float.NaN, 10f), "Presencia") && B(AutoC(17f, float.NaN, 10f), "Presencia") && B(AutoC(3f, 12f, float.NaN), "Presencia") && !B(AutoC(3f, 9f, float.NaN), "Presencia"),
+              "un LRA que no es un numero cuenta como que no hay; un corte que no es un numero, el de siempre (10 LU)");
+        Check(AutoC(20f, 13f, 10f).Equals(AutoC(20f, 13f, 10f)), "la misma entrada da lo mismo (no tiene estado)");
+
+        Console.WriteLine("\n  1b) L5: EL CORTE, CON TU BIBLIOTECA\n");
+        Check(Umbral(new int[600], 0) == 10f && Umbral(Hist(new float[] { 1f, 2f, 30f }), 3) == 10f, "con menos de 200 canciones con LRA, el de siempre: 10 LU");
+        float[] lib = new float[3000]; Random r = new Random(7);
+        for (int i = 0; i < lib.Length; i++) lib[i] = (float)(r.NextDouble() * 12.0);   // de 0 a 12 LU, parejo
+        float u = Umbral(Hist(lib), lib.Length); int encima = 0; foreach (float x in lib) if (x >= u) encima++;
+        Check(Math.Abs(u - 8f) <= 0.15f && Math.Abs(encima - 1000) <= 40, "biblioteca pareja de 0 a 12 LU: corte en " + u + " LU, y la lleva el tercio que mas varia (" + encima + " de 3000)");
+        float[] pop = new float[1000]; for (int i = 0; i < pop.Length; i++) pop[i] = (float)(2.0 + r.NextDouble() * 3.0);   // todo muy parejo
+        float[] clas = new float[1000]; for (int i = 0; i < clas.Length; i++) clas[i] = (float)(15.0 + r.NextDouble() * 10.0);   // todo con mucho rango
+        Check(Umbral(Hist(pop), pop.Length) == 6f && Umbral(Hist(clas), clas.Length) == 14f, "se acota: una biblioteca toda pareja no baja de 6 LU (no se la pone a todas) y una de clasica no pasa de 14");
+        int[] raro = new int[600]; raro[599] = 500;
+        Check(Umbral(raro, 500) == 14f && (int)TF.GetMethod("CasillaLra", T).Invoke(null, new object[] { 99f }) == 599 && (int)TF.GetMethod("CasillaLra", T).Invoke(null, new object[] { -3f }) == 0, "los LRA fuera de la tabla caen en sus bordes, sin tronar");
 
         Console.WriteLine("\n  2) APAGADO: LOS MANDOS TAL CUAL\n");
         object f = FormatterServices.GetUninitializedObject(TF);
@@ -79,7 +82,7 @@ class LocalAutoPrueba
         object m0 = localDe.Invoke(f, new object[] { cancion });
         Check(B(m0, "Subgrave") && !B(m0, "Estrecho") && B(m0, "EstrechoSoloSiHaceFalta") && !B(m0, "Claridad") && B(m0, "Suaves") && B(m0, "Presencia") && I(m0, "Graves") == 3 && I(m0, "Agudos") == -2,
               "con el automatico apagado salen los siete mandos exactamente como estan, tengan lo que tengan");
-        Check(!(bool)TF.GetField("localAuto", T).GetValue(null) && (int)TF.GetField("tipoLocal", T).GetValue(null) == 0, "de fabrica: apagado y el tipo del billar");
+        Check(!(bool)TF.GetField("localAuto", T).GetValue(null), "de fabrica: apagado");
         object mn = localDe.Invoke(f, new object[] { null });
         Check(B(mn, "Subgrave") && I(mn, "Graves") == 3, "sin cancion tambien sale lo de los mandos");
 
@@ -100,7 +103,7 @@ class LocalAutoPrueba
         float rd = (float)rango.Invoke(f, new object[] { @"C:\musica\a\uno.mp3" }), rc = (float)rango.Invoke(f, new object[] { @"C:\musica\a\dos.mp3" });
         Check(Math.Abs(rd - 18f) < 0.01f && Math.Abs(rc - 8f) < 0.01f, "el rango sale del P99 menos la sonoridad integrada (18 y 8 dB; salio " + rd + " y " + rc + ")");
         Check((float)rango.Invoke(f, new object[] { @"C:\musica\a\tres.mp3" }) < 0f && (float)rango.Invoke(f, new object[] { @"C:\musica\a\nueva.mp3" }) < 0f && (float)rango.Invoke(f, new object[] { null }) < 0f, "una medida vieja (sin picos), una cancion sin medir o sin ruta: sin rango");
-        PonStatic("localAuto", true); PonStatic("tipoLocal", 0);
+        PonStatic("localAuto", true);
         object a1 = localDe.Invoke(f, new object[] { cDin }), a2 = localDe.Invoke(f, new object[] { cComp }), a3 = localDe.Invoke(f, new object[] { cVieja });
         Check(B(a1, "Suaves") && B(a1, "Presencia") && B(a1, "Claridad") && B(a1, "Subgrave"), "billar, la dinamica: claridad, sin subgrave, partes suaves y presencia");
         Check(B(a2, "Suaves") && !B(a2, "Presencia") && B(a2, "Claridad"), "billar, la comprimida: lo fijo del tipo y las partes suaves, sin presencia");
@@ -121,21 +124,44 @@ class LocalAutoPrueba
         object ab = localDe.Invoke(f, new object[] { cBal }), ar = localDe.Invoke(f, new object[] { cRock }), ac = localDe.Invoke(f, new object[] { cCorta });
         Check(B(ab, "Presencia") && B(ab, "Suaves") && !B(ar, "Presencia") && B(ar, "Suaves"), "billar: la balada (8 dB de picos, 18 LU) lleva presencia; el rock (16 dB de picos, 0,2 LU) no, y los dos las partes suaves");
         Check(!B(ac, "Presencia") && B(ac, "Suaves"), "billar, la corta (sin LRA, 1 dB de picos): por la regla de antes, sin presencia");
-        PonStatic("tipoLocal", 1);
-        Check(B(localDe.Invoke(f, new object[] { cBal }), "Suaves") && !B(localDe.Invoke(f, new object[] { cRock }), "Suaves"), "sala buena: la balada lleva las partes suaves (18 LU) y el rock no (0,2 LU, aunque tenga 16 dB de picos)");
-        PonStatic("tipoLocal", 0);
         Check(B(a1, "Estrecho") && B(a1, "EstrechoSoloSiHaceFalta") && !B(m0, "Estrecho"), "el estereo estrecho entra solo donde hace falta (S3), aunque el mando este apagado");
         Check(I(a1, "Graves") == 0 && I(a1, "Agudos") == 0, "en el billar los graves y agudos no se tocan, aunque el mando tenga 3 y -2");
-        PonStatic("tipoLocal", 2);
-        Check(I(localDe.Invoke(f, new object[] { cComp }), "Agudos") == 1, "al cambiar el tipo cambia lo decidido (bocinas chicas: +1 dB de agudos)");
+        // L5 con la tabla de verdad. Con 3 canciones con LRA vale el corte de siempre (10 LU): la de 9 LU no lleva presencia. Con 300 mas,
+        // de 0 a 12 LU, el corte baja a ~8 (el tercio que mas varia de ESTA biblioteca) y la de 9 LU ya la lleva; el rock (0,2), no.
+        object cNueve = FormatterServices.GetUninitializedObject(TTrack); TTrack.GetField("Path", T).SetValue(cNueve, @"C:\musica\a\nueve.mp3");
+        dic[@"C:\musica\a\nueve.mp3"] = Activator.CreateInstance(TInt, T, null, new object[] { 4, -18f, 2f, 1800, -6f, -9f, mudo, 9f }, null);
+        Check(!B(localDe.Invoke(f, new object[] { cNueve }), "Presencia"), "con pocas canciones con LRA, el corte de siempre (10 LU): la de 9 LU no la lleva");
+        for (int i = 0; i < 300; i++) dic[@"C:\musica\z\" + i + ".mp3"] = Activator.CreateInstance(TInt, T, null, new object[] { 4, -14f, 2f, 1800, -2f, -4f, mudo, i * 12f / 300f }, null);
+        TF.GetField("integCambios", T).SetValue(f, 1L + (long)TF.GetField("integCambios", T).GetValue(f));
+        MethodInfo umbralAhora = TF.GetMethod("UmbralPresenciaAhora", T);
+        object[] arg = new object[] { 0 }; float sinRehacer = (float)umbralAhora.Invoke(f, arg);
+        Check(sinRehacer == 10f, "con medidas nuevas no se rehace antes de 10 minutos (sigue en " + sinRehacer + " LU)");
+        TF.GetField("umbralCuando", T).SetValue(f, Environment.TickCount - 700000);   // ya pasaron los 10 minutos
+        float corteLib = (float)umbralAhora.Invoke(f, arg);
+        Check(Math.Abs(corteLib - 8f) <= 0.3f && (int)arg[0] == 303, "L5: pasados los 10 minutos, el corte sale de la biblioteca (" + corteLib + " LU, con " + arg[0] + " medidas)");
+        Check(B(localDe.Invoke(f, new object[] { cNueve }), "Presencia") && !B(localDe.Invoke(f, new object[] { cRock }), "Presencia"), "y decide con el: la de 9 LU ya lleva presencia, el rock de 0,2 LU no");
+
+        // L1: lo decidido para una cadena se fija al armarla, y en un disco continuo la siguiente lo hereda.
+        Type TCad = TF.GetNestedType("CadenaCancion", T);
+        MethodInfo localDeC = null, hereda = TF.GetMethod("HeredaLocal", T);
+        foreach (MethodInfo m in TF.GetMethods(T)) if (m.Name == "LocalDe" && m.GetParameters()[0].ParameterType == TCad) localDeC = m;
+        object cadA = FormatterServices.GetUninitializedObject(TCad); TCad.GetField("Cancion", T).SetValue(cadA, cNueve);
+        object cadB = FormatterServices.GetUninitializedObject(TCad); TCad.GetField("Cancion", T).SetValue(cadB, cRock);
+        Check(B(localDeC.Invoke(f, new object[] { cadA }), "Presencia") && (bool)TCad.GetField("AutoFijo", T).GetValue(cadA), "la cadena de la de 9 LU: con presencia, y queda fijado");
+        TF.GetField("umbralLra", T).SetValue(f, 12f);   // el corte cambia a media cancion (llegaron medidas nuevas)...
+        Check(B(localDeC.Invoke(f, new object[] { cadA }), "Presencia") && !B(localDe.Invoke(f, new object[] { cNueve }), "Presencia"), "...y la que ya suena no cambia (la siguiente vez que suene, si)");
+        hereda.Invoke(f, new object[] { cadB, cadA });
+        Check(B(localDeC.Invoke(f, new object[] { cadB }), "Presencia"), "disco continuo: el rock que entra sin pausa sigue con la presencia de la anterior (sin escalon en el cambio)");
+        object cadC = FormatterServices.GetUninitializedObject(TCad); TCad.GetField("Cancion", T).SetValue(cadC, cRock);
+        Check(!B(localDeC.Invoke(f, new object[] { cadC }), "Presencia"), "sin relevo continuo, el rock decide por si mismo (sin presencia)");
+        TF.GetField("umbralLra", T).SetValue(f, 8f);
         PonStatic("localAuto", false);
         object m1 = localDe.Invoke(f, new object[] { cDin });
         Check(B(m1, "Subgrave") && I(m1, "Graves") == 3 && I(m1, "Agudos") == -2 && B(m1, "Presencia"), "al apagarlo vuelven los mandos que habia guardados (no se perdio nada)");
-        PonStatic("tipoLocal", 0);
 
         Console.WriteLine("\n  4) LA CADENA Y LOS MANDOS EN VIVO LEEN LocalDe\n");
         string son = Texto("Form1.Sonido.cs"), gm = Texto("GraveMono.cs"), qs = Texto("LoQueSuena.cs");
-        Check(son.Contains("AjusteLocal loc = LocalDe(t);") && son.Contains("new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos)")
+        Check(son.Contains("AjusteLocal loc = LocalDe(c);") && son.Contains("new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos)")
               && son.Contains("new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia)") && son.Contains("loc.Estrecho, loc.Subgrave"), "al armar la cancion se usa lo que decide LocalDe, no los mandos sueltos");
         Check(gm.Contains("LocalDe(c), lp = LocalDe(p)") && gm.Contains("c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb)") && gm.Contains("p.Presencia.Ajusta(lp.Presencia)"), "AplicaBocinas pone en vivo lo decidido para la que suena y para la preparada");
         Check(qs.Contains("LocalDe(c)") && qs.Contains("sin ? false : lo.Claridad") && qs.Contains("sin ? 0 : lo.Graves"), "«Escuchar sin mejoras» sigue quitando todo, tambien lo del automatico");
@@ -143,10 +169,10 @@ class LocalAutoPrueba
 
         Console.WriteLine("\n  5) CONFIGURACION Y VENTANA\n");
         string dat = Texto("Form1.Datos.cs"), aj = Texto("Form1.Ajustes.cs");
-        Check(dat.Contains("StartsWith(\"local_auto=\")") && dat.Contains("sb.Append(\"local_auto=\")") && dat.Contains("StartsWith(\"tipo_local=\")") && dat.Contains("sb.Append(\"tipo_local=\")"), "local_auto= y tipo_local= se leen y se guardan");
-        MethodInfo tipoDe = TF.GetMethod("TipoLocalDe", T);
-        Check((int)tipoDe.Invoke(null, new object[] { "2", 0 }) == 2 && (int)tipoDe.Invoke(null, new object[] { "9", 0 }) == 2 && (int)tipoDe.Invoke(null, new object[] { "-1", 1 }) == 0 && (int)tipoDe.Invoke(null, new object[] { "x", 1 }) == 1 && (int)tipoDe.Invoke(null, new object[] { null, 1 }) == 1, "el tipo guardado se acota a 0..2 y lo ilegible deja el que habia");
-        Check(aj.Contains("SonidoLocalAuto") && aj.Contains("SonidoLocalTipo") && aj.Contains("bkLoA = localAuto") && aj.Contains("localAuto = bkLoA; tipoLocal = bkTipo;") && aj.Contains("swAutoL.Checked = false; tipoLocal = 0;"), "la ventana: interruptor, tipo, Cancelar lo devuelve y «Dejar como de fabrica» lo apaga");
+        Check(dat.Contains("StartsWith(\"local_auto=\")") && dat.Contains("sb.Append(\"local_auto=\")") && dat.Contains("StartsWith(\"tipo_local=\")) { }") && !dat.Contains("sb.Append(\"tipo_local=\")"), "local_auto= se lee y se guarda; tipo_local= se ignora y ya no se escribe");
+        Check(aj.Contains("SonidoLocalAuto") && aj.Contains("SonidoLocalHecho") && !aj.Contains("SonidoLocalTipo") && aj.Contains("bkLoA = localAuto") && aj.Contains("localAuto = bkLoA;") && aj.Contains("swAutoL.Checked = false;"), "la ventana: interruptor, para que local esta hecho (sin boton de tipo), Cancelar lo devuelve y «Dejar como de fabrica» lo apaga");
+        string sp = Texto("Form1.SinPausa.cs");
+        Check(sp.Contains("SigueA(c, cadenaSonando); HeredaLocal(c, cadenaSonando);"), "L1: el relevo sin pausa hereda lo decidido justo donde la siguiente sigue con los filtros de la anterior");
         Check(aj.Contains("Necesita(swSub, sinAuto") && aj.Contains("Necesita(swPre, sinAuto") && aj.Contains("Necesita(barGra, sinAuto") && aj.Contains("Necesita(barAgu, sinAuto") && aj.Contains("Necesita(swCla, sinAuto") && aj.Contains("Necesita(swSua, sinAuto") && aj.Contains("Necesita(swEst, sinAuto"), "los siete mandos que decide el automatico se ponen en gris diciendo por que");
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos");
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : "  FALLOS: " + fallos);

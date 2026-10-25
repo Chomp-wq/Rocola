@@ -43,3 +43,23 @@ encendido, en el billar o la sala buena, en discos sin pausa entre pistas (en vi
 L5 y L6 son opcionales: L5 vale la pena cuando el repaso haya medido el LRA de casi toda la biblioteca (ver `rocola_calidad.txt`).
 
 Ninguna se ha implementado aún: se espera la elección del dueño. Todo es con señales y reglas; nada se ha oído en el bar.
+
+## Lo que eligió el dueño y lo que se hizo (25-10-2026)
+
+«L1 y L5 si es lo que mejorará la calidad de sonido, hazlas, y asegúrate que el modo automático sea solo para mi configuración de bocinas,
+las demás no me importan, que sea un modo automático especial para mi local, perfectamente configurado.»
+
+- **Solo para el billar.** Se quitaron los tipos de local (sala con bocinas buenas, bocinas chicas) y el botón que los cambiaba; en su
+  sitio, Ctrl+F3 dice «Hecho para tu billar: bocinas repartidas por zonas, sin subwoofer». `tipo_local=` se ignora y ya no se guarda.
+  L2, L3, L4 y L6 eran para otros tipos de bocinas: no se hacen.
+- **Lo que pone siempre:** sin subgrave (ninguna bocina del billar da menos de 30 Hz), estéreo estrecho solo donde hace falta (las
+  bocinas por zonas), claridad, partes suaves, graves y agudos en 0.
+- **L5, la presencia según tu biblioteca:** la llevan las canciones del tercio que más varía de volumen de TU música (el percentil
+  66,7 del LRA), con el corte entre 6 y 14 LU para que nunca se ponga a todas ni a ninguna. Con menos de 200 canciones con LRA medido,
+  10 LU como antes. Se recalcula como mucho cada 10 minutos mientras el repaso mide; `rocola_calidad.txt` dice el corte que salió y
+  cuántas canciones lo pasan.
+- **L1, sin escalón en los discos:** en racha del mismo disco decide el disco entero (su pista que más varía); lo decidido se fija al
+  empezar cada canción (no cambia a media canción aunque cambie el corte), y en un disco sin pausas la pista siguiente hereda lo de la
+  anterior.
+- Con el modo apagado (de fábrica) la cadena sale bit a bit como antes. Pruebas: `localauto` (la regla, el corte con bibliotecas de
+  mentira, los 10 minutos, lo fijado y lo heredado), `modosauto`, `cadenaentera`, `compara-cadena`.

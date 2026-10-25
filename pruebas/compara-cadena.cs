@@ -48,6 +48,8 @@ class ComparaCadena
         public object Get(string n) { return ComparaCadena.Get(F, n); }
         public void Set(string n, object v) { ComparaCadena.Set(F, n, v); }
         public void SetS(string n, object v) { TF.GetField(n, T).SetValue(null, v); }
+        // Para los campos que una version tiene y otra no (tipoLocal se retiro el 25-10-2026: el modo del local es solo para el billar).
+        public void SetSiHay(string n, object v) { FieldInfo fi = TF.GetField(n, T); if (fi != null) fi.SetValue(null, v); }
         public object Call(string n, params object[] a) { return TF.GetMethod(n, T).Invoke(F, a); }
     }
 
@@ -83,7 +85,7 @@ class ComparaCadena
         // (el modo noche se retiro el 24-10-2026: un ejecutable anterior lo deja apagado, para comparar a cualquier hora)
         if (m.TF.GetField("nocheArrancada", T) != null) { m.Set("nocheArrancada", true); m.Set("nocheFactor", 1f); m.Set("nocheCompensa", 1f); }
         m.Set("crossfadeSec", 0.5f); m.Set("saltaSilencios", false);
-        m.SetS("claridadLocal", false); m.SetS("partesSuaves", false); m.SetS("localAuto", false); m.SetS("tipoLocal", 0); m.SetS("presenciaSala", false);
+        m.SetS("claridadLocal", false); m.SetS("partesSuaves", false); m.SetS("localAuto", false); m.SetSiHay("tipoLocal", 0); m.SetS("presenciaSala", false);
         m.SetS("gravesLocalDb", 0); m.SetS("agudosLocalDb", 0); m.SetS("balanceDb", 0);
         m.SetS("cortaSubgrave", false); m.SetS("estereoEstrecho", false); m.SetS("estereoAuto", false);
         m.SetS("canalMudo", true); m.SetS("quitaContinua", true);
@@ -129,9 +131,9 @@ class ComparaCadena
                     Fabrica(m);
                     switch (c)
                     {
-                        case 1: m.SetS("localAuto", true); m.SetS("tipoLocal", 0); break;
-                        case 2: m.SetS("localAuto", true); m.SetS("tipoLocal", 1); break;
-                        case 3: m.SetS("localAuto", true); m.SetS("tipoLocal", 2); break;
+                        case 1: m.SetS("localAuto", true); m.SetSiHay("tipoLocal", 0); break;
+                        case 2: m.SetS("localAuto", true); m.SetSiHay("tipoLocal", 1); break;   // desde el 25-10-2026 los tres son el billar
+                        case 3: m.SetS("localAuto", true); m.SetSiHay("tipoLocal", 2); break;
                         case 4: m.SetS("claridadLocal", true); m.SetS("partesSuaves", true); m.SetS("presenciaSala", true); m.SetS("gravesLocalDb", 3); m.SetS("agudosLocalDb", -2); m.SetS("balanceDb", -2); m.SetS("cortaSubgrave", true); break;
                         case 5: m.SetS("estereoEstrecho", true); m.SetS("estereoAuto", true); m.SetS("cortaSubgrave", true); break;
                         case 6: m.Set("sbrOn", true); m.Set("aLaMedida", true); m.Set("quitaSiseo", true); break;

@@ -367,7 +367,7 @@ class CadenaEntera
         Action<object>[] pon = {
             delegate(object f) { },
             delegate(object f) { Set(f, "claridadLocal", true); },
-            delegate(object f) { Set(f, "localAuto", true); Set(f, "tipoLocal", 0); },
+            delegate(object f) { Set(f, "localAuto", true); },
             delegate(object f) { Set(f, "gravesLocalDb", 3); Set(f, "cortaSubgrave", true); } };
         for (int k = 0; k < nom.Length; k++)
         {
