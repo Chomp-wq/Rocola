@@ -1,5 +1,22 @@
 # Rocola
 
+## T1, T3, T5, T6, T9 y el ruido del amplificador — 25 de octubre de 2026
+
+Lo que eligió el dueño de las propuestas del 25-10:
+
+- **T1:** con los graves o los agudos del local subidos, el nivelado deja el margen que piden, y el limitador ya no aplasta. Con graves +3
+  aplastaba el 96 % del tiempo.
+- **T3:** el repaso mide dónde empieza y acaba de verdad cada canción.
+- **T6:** se quita el zumbido de 50/60 Hz de las grabaciones que lo traen. Interruptor encendido de fábrica.
+- **T9:** se suavizan las «eses». Interruptor apagado de fábrica.
+- **T5:** la salida de sonido tiene su propio hilo; un atoro de la pantalla ya no corta la música.
+
+El ruido del amplificador es casi todo de hardware: el documento dice cómo averiguar de dónde viene y cómo quitarlo. La rocola, además,
+apunta las entradas del mezclador de XP que se oyen por los altavoces.
+
+De fábrica, la cadena sale bit a bit como antes. Probado en Linux; **T5 hay que probarla en el A4**.
+[Lo hecho y lo medido](AUDIO_T1_T3_T5_T6_T9_MODEST_2026-10-25.md) · [el plan de traspaso](PLAN_AUDIO_T1_T3_T5_T6_T9.md).
+
 ## Más mejoras de audio, para elegir — 25 de octubre de 2026
 
 Diez propuestas (T1 a T10), sin cambiar nada todavía. Las más importantes:

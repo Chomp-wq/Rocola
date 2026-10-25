@@ -14,6 +14,12 @@
 //
 // COSTE Y SEGURIDAD. Una vez por arranque, en un hilo de fondo (no frena la pantalla ni la musica), todo con try/catch: si una API
 // no esta o la tarjeta no tiene ese control, no pasa nada y se dice en la bitacora. Sin interruptor: es lo que el dueno pidio.
+//
+// LAS ENTRADAS QUE SE OYEN POR LA SALIDA (25-10-2026, la revision del ruido del amplificador). En XP, el mezclador de los altavoces
+// tambien deja pasar las entradas analogicas de la tarjeta (microfono, linea, CD, auxiliar, el altavoz del PC): si estan abiertas, su
+// ruido de fondo (el del microfono con su refuerzo, sobre todo) sale por el amplificador aunque no haya nada enchufado. De paso, al subir el
+// volumen se MIRA cuales estan abiertas (sin silencio y con volumen) y, si hay alguna, se apunta «[Ruido en la salida] ...» en
+// rocola_error.txt con como silenciarlas. No se tocan: AGENTS.md solo permite subir el volumen general (decision del 24-10).
 using System;
 using System.Collections.Generic;
 
@@ -23,6 +29,8 @@ namespace Rocola
     {
         // Lo que hizo la ultima vez (para la bitacora, Ctrl+F3 y las pruebas). null = aun no se intento.
         internal static string volumenWindowsHecho;
+        // Las entradas que se oyen por los altavoces sin ser de la rocola ("" = ninguna; null = no se miro: Vista o sin mezclador).
+        internal static string entradasAbiertas;
 
         private void SubeVolumenWindowsAlArrancar()
         {
@@ -34,6 +42,8 @@ namespace Rocola
                 volumenWindowsHecho = r;
                 Diag("volumen de Windows al arrancar: " + r);
                 if (r.StartsWith("no se pudo")) { try { LogError("Volumen de Windows al arrancar: " + r, null); } catch { } }
+                string ruido = TextoRuidoEntradas(entradasAbiertas);
+                if (ruido != null) { Diag(ruido); ApuntaCajaNegra(ruido); }
             });
         }
 
@@ -71,7 +81,8 @@ namespace Rocola
 
         private static string SubeVolumenXp()
         {
-            List<string> hecho = new List<string>();
+            List<string> hecho = new List<string>(), abiertas = new List<string>();
+            bool mirado = false;
             int tarjetas = NAudio.Mixer.Mixer.NumberOfDevices;
             for (int i = 0; i < tarjetas; i++)
             {
@@ -83,13 +94,55 @@ namespace Rocola
                         if (dest.ComponentType != NAudio.Mixer.MixerLineComponentType.DestinationSpeakers) continue;
                         string h = SubeLinea(dest, true);
                         foreach (NAudio.Mixer.MixerLine src in dest.Sources)
+                        {
                             if (src.ComponentType == NAudio.Mixer.MixerLineComponentType.SourceWaveOut) { string w = SubeLinea(src, false); if (w.Length > 0) h += "; onda: " + w; }
+                            else if (EsEntradaAnalogica(src.ComponentType)) { try { string a = EntradaAbierta(src); if (a != null) abiertas.Add((tarjetas > 1 ? "tarjeta " + i + ": " : "") + a); } catch { } }
+                        }
+                        mirado = true;
                         hecho.Add("tarjeta " + i + ": " + (h.Length > 0 ? h : "sin control de volumen"));
                     }
                 }
                 catch (Exception ex) { hecho.Add("tarjeta " + i + ": no se pudo (" + ex.GetType().Name + ")"); }
             }
+            if (mirado) entradasAbiertas = string.Join(", ", abiertas.ToArray());
             return hecho.Count > 0 ? string.Join("; ", hecho.ToArray()) : "no se pudo (no hay mezclador de altavoces)";
+        }
+
+        // Las entradas analogicas de la tarjeta (las que meten ruido de fondo si se oyen por la salida). La onda y el sintetizador no.
+        internal static bool EsEntradaAnalogica(NAudio.Mixer.MixerLineComponentType t)
+        {
+            switch (t)
+            {
+                case NAudio.Mixer.MixerLineComponentType.SourceMicrophone:
+                case NAudio.Mixer.MixerLineComponentType.SourceLine:
+                case NAudio.Mixer.MixerLineComponentType.SourceCompactDisc:
+                case NAudio.Mixer.MixerLineComponentType.SourceAuxiliary:
+                case NAudio.Mixer.MixerLineComponentType.SourceAnalog:
+                case NAudio.Mixer.MixerLineComponentType.SourceTelephone:
+                case NAudio.Mixer.MixerLineComponentType.SourcePcSpeaker:
+                    return true;
+            }
+            return false;
+        }
+        // "Microfono (75 %)" si la linea se oye (sin silencio y con volumen), o null. Solo LEE: no cambia nada.
+        private static string EntradaAbierta(NAudio.Mixer.MixerLine linea)
+        {
+            bool muda = false; double pct = -1;
+            foreach (NAudio.Mixer.MixerControl c in linea.Controls)
+            {
+                if (c.ControlType == NAudio.Mixer.MixerControlType.Mute) { NAudio.Mixer.BooleanMixerControl b = c as NAudio.Mixer.BooleanMixerControl; if (b != null) muda = b.Value; }
+                else if (c.ControlType == NAudio.Mixer.MixerControlType.Volume) { NAudio.Mixer.UnsignedMixerControl u = c as NAudio.Mixer.UnsignedMixerControl; if (u != null) pct = u.Percent; }
+            }
+            if (muda || pct == 0) return null;
+            return linea.Name + (pct >= 0 ? " (" + pct.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %)" : "");
+        }
+        // La linea para rocola_error.txt (null si no hay ninguna abierta, o no se miro).
+        internal static string TextoRuidoEntradas(string abiertas)
+        {
+            if (string.IsNullOrEmpty(abiertas)) return null;
+            return "[Ruido en la salida] Se oyen por los altavoces entradas que la rocola no usa: " + abiertas + ". Su ruido de fondo (el del "
+                 + "microfono, sobre todo) sale por el amplificador aunque no haya nada enchufado. Para quitarlo: control de volumen de Windows, "
+                 + "Reproduccion, marcar Silencio en esas lineas. La rocola no las toca.";
         }
 
         // Quita el silencio de la linea y, si 'nivel', la sube al maximo. Devuelve lo que hizo ("" si no habia nada).

@@ -42,6 +42,19 @@ class VolumenWindows
             if (Codigo.Llama(m, "SubeVolumenWindows") && m.GetMethodBody() != null && m.GetMethodBody().ExceptionHandlingClauses.Count > 0) atrapa = true;
         Check(atrapa, "con todo atrapado: si una API no esta, no pasa nada");
 
+        Console.WriteLine("\n  1b) LAS ENTRADAS QUE SE OYEN POR LA SALIDA (ruido del amplificador, 25-10-2026)\n");
+        MethodInfo texto = TF.GetMethod("TextoRuidoEntradas", T), abierta = TF.GetMethod("EntradaAbierta", T);
+        if (texto == null || abierta == null) Check(false, "no esta lo de las entradas abiertas");
+        else
+        {
+            string t0 = (string)texto.Invoke(null, new object[] { "" }), t1 = (string)texto.Invoke(null, new object[] { "Microfono (75 %), Entrada de linea (50 %)" });
+            Check(t0 == null && texto.Invoke(null, new object[] { null }) == null, "sin entradas abiertas (o sin mirar), no se apunta nada");
+            Check(t1 != null && t1.StartsWith("[Ruido en la salida]") && t1.Contains("Microfono (75 %)") && t1.Contains("Silencio"), "con alguna, una linea que dice cuales y como silenciarlas");
+            Check(!Codigo.Llama(abierta, "set_Value") && Codigo.Llama(abierta, "get_Value"), "mirarlas solo LEE: no cambia ningun control del mezclador");
+            Check(Codigo.Llama(Codigo.ConAyudantes(TF, "SubeVolumenXp"), "EntradaAbierta") && Codigo.Llama(detras, "TextoRuidoEntradas") && Codigo.Llama(detras, "ApuntaCajaNegra"),
+                  "se miran al subir el volumen en XP y, si hay, se apunta en rocola_error.txt");
+        }
+
         Console.WriteLine("\n  2) Y 3) QUE VOLUMEN\n");
         List<string> xp = Codigo.ConAyudantes(TF, "SubeVolumenXp"), vista = Codigo.ConAyudantes(TF, "SubeVolumenVista");
         MethodInfo linea = TF.GetMethod("SubeLinea", T);
