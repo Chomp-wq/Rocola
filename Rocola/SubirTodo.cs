@@ -159,10 +159,41 @@ namespace Rocola
         // Lo mismo para TODAS las canciones: el volumen sigue parejo.
         private float MasterEfectivo() { return (float)Math.Pow(10.0, SubirAplicadoDb() / 20.0); }
 
+        // LOS TEXTOS DEL NIVELADO EN CTRL+F3 (25-10-2026: que se entienda sin saber de sonido).
+        // El valor de "Cuanto se sube cada cancion": con palabras en los extremos.
+        private static string TextoCuantoSube(int pct)
+        {
+            if (pct >= 100) return "Al limite";
+            if (pct <= 0) return "Tal cual";
+            return pct + "%";
+        }
+        // El segundo renglon de esa fila: lo que de verdad lleva la cancion que suena (el nivelado, con el margen del tono del local).
+        private string TextoLaQueSuena()
+        {
+            PlayItem np = nowPlaying; LevelTap tap = curTap;
+            if (np == null || np.Song == null || tap == null) return "menos, se quedan un poco por debajo de su limite.";
+            float rms;
+            if (!SonoridadParaNivelar(np.Song.Path, out rms)) return "la que suena aun no esta medida: va como viene.";
+            double db = 20.0 * Math.Log10(Math.Max(1e-6, (double)tap.Gain));
+            string v = (db >= 0 ? "+" : "\u2212") + Math.Abs(db).ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) + " dB";
+            float p90;
+            return P90ParaNivelar(np.Song.Path, out p90)
+                ? ("la que suena ahora va " + v + ".")
+                : ("la que suena va " + v + " (con la medida de antes).");
+        }
+        // La fila del volumen de lo que no se puede subir al limite: los videos y las canciones que el repaso aun no midio.
+        private string TextoSinMedir()
+        {
+            int falta = integLeft;
+            return falta > 0
+                ? ("Los videos y las " + falta.ToString("#,0") + " canciones que faltan por medir\nsuben hacia aqui; las ya medidas, hasta su limite.")
+                : "Los videos suben hacia aqui. Las canciones ya estan\nmedidas: cada una sube hasta su limite.";
+        }
+
         // El texto de Ctrl+F3 debajo de la barra (dos renglones).
         private string TextoSubir(int pedidoDb)
         {
-            if (pedidoDb <= 0) return "Lo mismo de mas para TODAS, sin aplastar los golpes.\nPara mas volumen, mejor el amplificador.";
+            if (pedidoDb <= 0) return "Lo mismo de mas para TODAS, sin aplastar los golpes.\nCon el nivelado al limite casi no queda: mejor el amplificador.";
             int n;
             float techo = TechoSubirDb(out n);
             if (float.IsNaN(techo))

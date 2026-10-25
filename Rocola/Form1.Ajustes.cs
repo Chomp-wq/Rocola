@@ -805,9 +805,13 @@ namespace Rocola
                     swOn.SetBounds(16, 40, 424, 26); swOn.ForeColor = cTexto; swOn.Font = fNom;
                     swOn.Text = "Subir cada cancion hasta su limite"; swOn.Acento = cVol; swOn.Checked = normalizeOn;
                     tVol.Controls.Add(swOn);
-                    Fila(0, tVol, 76, "Volumen objetivo", cVol, 0, 100, false);
-                    Fila(1, tVol, 156, "Fuerza del nivelado", cFue, 0, 100, false);
-                    Fila(2, tVol, 236, "Subir TODO el volumen", cSub, 0, 12, false);
+                    // MAS FACIL DE ENTENDER (25-10-2026, peticion del dueno): primero lo que manda en casi todas -cuanto se sube cada
+                    // cancion-, con lo que se le aplica a la que suena; luego el nivel de lo que no se puede medir (los videos y las aun
+                    // sin medir), y el extra para todas diciendo cuanto se aplica de verdad. Las mismas claves y los mismos valores: solo
+                    // cambian los nombres, el orden y lo que dicen.
+                    Fila(1, tVol, 76, "Cuanto se sube cada cancion", cFue, 0, 100, false);
+                    Fila(0, tVol, 156, "Videos y canciones aun sin medir", cVol, 0, 100, false);
+                    Fila(2, tVol, 236, "Extra para todas", cSub, 0, 12, false);
                     Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, true);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
@@ -1180,11 +1184,12 @@ namespace Rocola
                     Action updateLabels = delegate
                     {
                         // ---------- VOLUMEN ----------
+                        val[1].Text = TextoCuantoSube(bar[1].Value);
+                        des[1].Text = "100 % = cada una sube todo lo que aguanta sin aplastarse;\n"
+                                    + (swOn.Checked ? TextoLaQueSuena() : "apagado, todas suenan como vienen.");
                         val[0].Text = bar[0].Value + "%";
-                        des[0].Text = "Solo para las que el repaso aun no midio de nuevo:\nsuben hacia aqui; las ya medidas, hasta su limite.";
-                        val[1].Text = bar[1].Value + "%";
-                        des[1].Text = "Cuanto de su margen usa cada cancion: 100 % = hasta\nsu limite, sin que el limitador las raspe.";
-                        val[2].Text = "+" + bar[2].Value + " dB";
+                        des[0].Text = TextoSinMedir();
+                        val[2].Text = "+" + bar[2].Value + " dB";   // lo pedido; cuanto se aplica de verdad lo dice el texto de debajo
                         des[2].Text = TextoSubir(bar[2].Value);   // cuanto aguanta la musica y cuanto se aplica (SubirTodo.cs)
                         // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo
                         // sabe BAJAR desde lo que el archivo trae. Por eso en automatico el programa elige el

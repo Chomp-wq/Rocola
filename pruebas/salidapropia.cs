@@ -111,12 +111,14 @@ class SalidaPropia
     sealed class Fuente : IWaveProvider
     {
         readonly byte[] d; int p; readonly WaveFormat wf = new WaveFormat(44100, 16, 2); public int FallaEn = -1; public Imitado Avisa;
+        public int AtoraEn = -1; public readonly ManualResetEvent Suelta = new ManualResetEvent(false); public volatile bool Atorada;
         public Fuente(double seg) { d = new byte[(int)(seg * 44100) * 4]; for (int i = 0; i < d.Length; i++) d[i] = (byte)(i * 7 + (i >> 9)); }
         public byte[] Todo { get { return d; } }
         public WaveFormat WaveFormat { get { return wf; } }
         public int Read(byte[] b, int o, int c)
         {
             if (FallaEn >= 0 && p >= FallaEn) throw new InvalidOperationException("la cancion fallo al leer");
+            if (AtoraEn >= 0 && p >= AtoraEn) { AtoraEn = -1; Atorada = true; Suelta.WaitOne(); Atorada = false; }
             int n = Math.Min(c, d.Length - p); Array.Copy(d, p, b, o, n); p += n;
             if (n == 0 && Avisa != null) Avisa.TerminoLaFuente = true;
             return n;
@@ -212,6 +214,22 @@ class SalidaPropia
         P(w).Dispose();
     }
 
+    static void CierreAtorado()
+    {
+        Console.WriteLine("\n  5b) CERRAR CON LA MUSICA ATORADA MAS DE 2 S\n");
+        Imitado im = new Imitado(TI); Fuente f = new Fuente(3.0); f.AtoraEn = 44100 * 4 / 2;
+        object w = Nueva(im);
+        P(w).Init(f); P(w).Play();
+        Check(Espera(delegate { return f.Atorada; }, 3000), "la lectura de la musica se queda atorada");
+        int t0 = Environment.TickCount;
+        P(w).Dispose();
+        int ms = Environment.TickCount - t0;
+        Check(im.Cerrado && im.Preparadas > 0, "Dispose espera 2 s (" + ms + " ms), cierra la salida y NO libera los bloques en los que el hilo aun puede copiar");
+        f.Suelta.Set();
+        Thread.Sleep(300);
+        Check(true, "al soltarse la lectura, el hilo copia en sus bloques y se va sin tumbar nada");
+    }
+
     sealed class Pantalla : SynchronizationContext
     {
         public readonly List<SendOrPostCallback> Pendientes = new List<SendOrPostCallback>(); public readonly List<object> Estados = new List<object>();
@@ -288,6 +306,7 @@ class SalidaPropia
         try { PantallaParada(); } catch (Exception e) { Check(false, "pantalla parada: " + e); }
         try { PausaYParada(); } catch (Exception e) { Check(false, "pausa y parada: " + e); }
         try { Fallos(); } catch (Exception e) { Check(false, "fallos: " + e); }
+        try { CierreAtorado(); } catch (Exception e) { Check(false, "cierre atorado: " + e); }
         try { EnLaPantalla(); } catch (Exception e) { Check(false, "en la pantalla: " + e); }
         try { SinWaitOneDeSp2(asm); } catch (Exception e) { Check(false, "sin SP2: " + e); }
         try { EnForm1(); } catch (Exception e) { Check(false, "en Form1: " + e); }

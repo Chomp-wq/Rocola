@@ -260,3 +260,27 @@ un filtro en la rocola solo tocaría la música, no ese ruido.
 4. **T6.** Cuando el repaso vaya midiendo, S5 («Lo que suena ahora») dirá «Zumbido: 60 Hz quitado» en las canciones que lo traigan.
 5. **El ruido:** mira si `rocola_error.txt` trae «[Ruido en la salida]», y haz la prueba de desenchufar el cable.
 6. Repite el **Diagnóstico completo** de Ctrl+F3 y mándame `rocola_error.txt`.
+
+## Revisión de la cadena entera y mandos del nivelado (25-10-2026, después)
+
+Petición: «Revisa toda la cadena de sonido, que todo funcione bien entre sí [...] y sobre el nivelador de volumen, cambia los controles
+para que sea más intuitivo».
+
+**Revisión.** Se repasó cómo encajan las etapas nuevas (zumbido, eses, salida propia) con las de antes: orden en la cadena, disco continuo
+(`SigueA`), «Escuchar sin mejoras» (S4/S5), encendido y apagado en vivo, cebado, y que con todo de fábrica salga bit a bit igual.
+- **Arreglado (`SalidaPropia.cs`):** si al cerrar la salida su hilo no acababa en 2 s (una lectura de la música atorada), se liberaban
+  bloques en los que ese hilo todavía podía copiar: la rocola podía tronar. Ahora, en ese caso, se cierra la salida y esos pocos KB se
+  dejan sin liberar. Prueba nueva: `salidapropia` 5b.
+- **Arreglado:** el aviso de parada podía salir dos veces si la pantalla paraba justo cuando la canción acababa (ahora con `Interlocked`).
+- Lo demás está bien: el zumbido va delante de todo (sin retardo, así no necesita cebado) y hereda los filtros en un disco continuo solo si
+  la anterior tenía el mismo zumbido; las eses heredan detrás del local y pasan el cebado tal cual; el margen de T1 no lo deshace «Extra
+  para todas» (su techo se calcula sin ese margen, así que nunca sube por encima del límite).
+
+**Mandos del nivelado (Ctrl+F3 → Sonido → Volumen al límite).** Mismas claves (`nivel_fuerza=`, `nivel_objetivo=`, `subir_db=`) y mismos
+valores; con todo de fábrica suena igual. Solo cambian nombre, orden y lo que dicen:
+
+| Antes | Ahora | Qué dice |
+|---|---|---|
+| Fuerza del nivelado (2.º) | **Cuánto se sube cada canción** (1.º) | «Al límite» en 100 %, «Tal cual» en 0 %; y cuántos dB lleva la que suena |
+| Volumen objetivo (1.º) | **Videos y canciones aún sin medir** (2.º) | cuántas canciones faltan por medir; si ya no falta ninguna, que solo cuenta para los videos |
+| Subir TODO el volumen | **Extra para todas** | lo pedido y cuánto se aplica de verdad (con el nivelado al límite, casi nada) |

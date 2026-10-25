@@ -113,7 +113,8 @@ namespace Rocola
         private int largoBloque;
         private Thread hilo;
         private volatile PlaybackState estado = PlaybackState.Stopped;
-        private volatile bool parar, fin, avisado, deLaFuente;
+        private volatile bool parar, fin, deLaFuente;
+        private int avisado;                                  // 1 = ya se aviso la parada (Interlocked: la pantalla y el hilo pueden llegar a la vez)
         private bool cerrada;
         // El ultimo aviso de parada con error fue de la propia salida (Windows o este codigo), no de la musica que le dan (la cancion o la
         // cadena, que se tratan como siempre). Lo mira Form1 para volver a la salida de siempre (SalidaSonido.cs).
@@ -177,7 +178,7 @@ namespace Rocola
                 estado = PlaybackState.Playing; aviso.Set();
                 return;
             }
-            estado = PlaybackState.Playing; parar = false; fin = false; avisado = false;
+            estado = PlaybackState.Playing; parar = false; fin = false; Interlocked.Exchange(ref avisado, 0);
             if (hilo == null || !hilo.IsAlive)
             {
                 hilo = new Thread(Bucle);
@@ -280,8 +281,7 @@ namespace Rocola
         // La parada, una sola vez, en el hilo de la pantalla (si se creo alli) como el WaveOut de siempre.
         private void Avisa(Exception ex)
         {
-            if (avisado) return;
-            avisado = true;
+            if (Interlocked.Exchange(ref avisado, 1) != 0) return;
             EventHandler<StoppedEventArgs> h = PlaybackStopped;
             if (h == null) return;
             StoppedEventArgs e = new StoppedEventArgs(ex);
@@ -299,7 +299,10 @@ namespace Rocola
             if (salida != IntPtr.Zero) lock (cerrojo) so.Reinicia(salida);
             aviso.Set();
             Thread t = hilo; hilo = null;
-            if (t != null && !object.ReferenceEquals(t, Thread.CurrentThread)) t.Join(2000);
+            // Si el hilo no acaba en 2 s (una lectura de la fuente atorada), los bloques NO se liberan: aun puede copiar en ellos, y
+            // liberarlos tumbaria la rocola. Se cierra la salida y se pierde esa poca memoria, que es lo de menos.
+            bool suelto = t == null || object.ReferenceEquals(t, Thread.CurrentThread) || t.Join(2000);
+            if (!suelto) { lock (cerrojo) { if (salida != IntPtr.Zero) { try { so.Cierra(salida); } catch { } salida = IntPtr.Zero; } } return; }
             Libera();
             aviso.Close();
         }
