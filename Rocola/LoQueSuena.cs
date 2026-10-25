@@ -47,6 +47,7 @@ namespace Rocola
             bool sin = sinMejoras;
             if (c.Arreglo != null) c.Arreglo.Pasa = sin;
             if (c.Zumbido != null) c.Zumbido.Pasa = sin;
+            if (c.Eses != null) c.Eses.Pasa = sin;
             if (c.Declip != null) c.Declip.Pasa = sin;
             if (c.Siseo != null) c.Siseo.Pasa = sin;
             AjusteLocal lo = LocalDe(c);
@@ -96,6 +97,8 @@ namespace Rocola
             }
             // T6 (Zumbido.cs): el de la corriente, si la cancion lo trae
             if (c.Zumbido != null) sb.Append("   Zumbido: ").Append(c.Zumbido.Hz).Append(" Hz ").Append(c.Zumbido.Activa && !c.Zumbido.Pasa ? "quitado" : "(sin quitar)");
+            // T9 (Eses.cs): lo que mas bajo la banda de las eses desde la ultima mirada (cada medio segundo)
+            if (c.Eses != null && c.Eses.Encendido) { double e = c.Eses.BajaDb; sb.Append("   Eses: ").Append(e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
             return sb.ToString();
         }
     }

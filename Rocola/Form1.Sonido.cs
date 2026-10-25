@@ -1256,11 +1256,15 @@ namespace Rocola
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
             c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia);
             c.Presencia.Cebado = audioTailDelay;
+            // SUAVIZAR LAS ESES (T9, Eses.cs): detras de lo que sube los agudos, delante del bajo y del limitador. Apagada (de fabrica) ni se
+            // calcula; encendida, fuera de las "s" sale bit a bit.
+            c.Eses = new SuavizaEses(c.Presencia, suavizaEses);
+            c.Eses.Cebado = audioTailDelay;
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
             c.BajoFactor = BassFactorFor(t.Path);   // cuanto le toca a ESTA cancion (1 = la perilla tal cual)
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
-            c.Bajo = new DeepBassProvider(c.Presencia, BassAmountPara(c.BajoFactor, c.BajoBase));
+            c.Bajo = new DeepBassProvider(c.Eses, BassAmountPara(c.BajoFactor, c.BajoBase));
             c.Bajo.Cebado = audioTailDelay;
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits

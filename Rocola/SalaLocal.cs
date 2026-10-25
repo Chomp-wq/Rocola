@@ -50,6 +50,8 @@ namespace Rocola
         private static int balanceDb;   // -6..6: negativo baja la derecha (el sonido se va a la izquierda), positivo la izquierda
         // Graves y agudos del local (22-10-2026): dB de -6 a 6 ("graves_local=", "agudos_local="; 0 de fabrica).
         private static int gravesLocalDb, agudosLocalDb;
+        // Suavizar las eses (T9, Eses.cs): "suaviza_eses=", apagado de fabrica.
+        private static bool suavizaEses;
 
         internal static int TonoLocalDb(string texto, int actual)
         {

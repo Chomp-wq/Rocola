@@ -133,6 +133,7 @@
     <Compile Include="Pcm16Directo.cs" />
     <Compile Include="GraveMono.cs" />
     <Compile Include="Zumbido.cs" />
+    <Compile Include="Eses.cs" />
     <Compile Include="SalaLocal.cs" />
     <Compile Include="PresenciaSala.cs" />
     <Compile Include="LocalAuto.cs" />
