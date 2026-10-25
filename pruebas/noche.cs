@@ -73,7 +73,7 @@ class Noche
             try { TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null); } catch { leyo = false; }
             Check(leyo, "las claves noche=, noche_desde=, noche_hasta=, noche_db= y noche_compensa= se leen sin error");
             FieldInfo fm = TF.GetField("masterDb", T);
-            Check(fm != null && Math.Abs((float)fm.GetValue(f) - 3f) < 1e-4, "y lo de alrededor se lee igual (subir_db=3)");
+            Check(fm != null && (float)fm.GetValue(f) == 0f, "subir_db=3 tambien se ignora (\"Subir TODO\" se retiro el 25-10-2026)");
             TF.GetMethod("SaveConfigPrefs", T).Invoke(f, null);
             Codigo.EsperaGuardado(TF, f);
             string nuevo = File.ReadAllText(Path.Combine(dir, "rocola_config.txt"));

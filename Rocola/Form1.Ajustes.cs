@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkUp = masterDb, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; int bkTipo = tipoLocal; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -807,15 +807,14 @@ namespace Rocola
                     tVol.Controls.Add(swOn);
                     // MAS FACIL DE ENTENDER (25-10-2026, peticion del dueno): primero lo que manda en casi todas -cuanto se sube cada
                     // cancion-, con lo que se le aplica a la que suena; luego el nivel de lo que no se puede medir (los videos y las aun
-                    // sin medir), y el extra para todas diciendo cuanto se aplica de verdad. Las mismas claves y los mismos valores: solo
-                    // cambian los nombres, el orden y lo que dicen.
+                    // sin medir). Las mismas claves y los mismos valores: solo cambian los nombres, el orden y lo que dicen.
+                    // "SUBIR TODO" / "Extra para todas" SE RETIRO (25-10-2026, el dueno: «ya no cumple ninguna funcion»): con cada cancion
+                    // al limite no quedaba nada que subir. La fila 2 ya no se crea (bar[2] es null) y la clave subir_db= se ignora.
                     Fila(1, tVol, 76, "Cuanto se sube cada cancion", cFue, 0, 100, false);
                     Fila(0, tVol, 156, "Videos y canciones aun sin medir", cVol, 0, 100, false);
-                    Fila(2, tVol, 236, "Extra para todas", cSub, 0, 12, false);
-                    Fila(3, tVol, 316, "Volumen de los videos", cVid, 0, 100, true);
+                    Fila(3, tVol, 236, "Volumen de los videos", cVid, 0, 100, true);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
-                    bar[2].Value = (int)Math.Round(masterDb);
                     bar[3].Value = videoVol; au[3].Checked = videoAuto;
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
@@ -1189,8 +1188,6 @@ namespace Rocola
                                     + (swOn.Checked ? TextoLaQueSuena() : "apagado, todas suenan como vienen.");
                         val[0].Text = bar[0].Value + "%";
                         des[0].Text = TextoSinMedir();
-                        val[2].Text = "+" + bar[2].Value + " dB";   // lo pedido; cuanto se aplica de verdad lo dice el texto de debajo
-                        des[2].Text = TextoSubir(bar[2].Value);   // cuanto aguanta la musica y cuanto se aplica (SubirTodo.cs)
                         // Los videos no pasan por la cadena de sonido: los pone el reproductor de Windows, que solo
                         // sabe BAJAR desde lo que el archivo trae. Por eso en automatico el programa elige el
                         // base mirando lo que miden todos: lo pone donde los flojos todavia alcanzan a los
@@ -1281,7 +1278,6 @@ namespace Rocola
                         normalizeOn = swOn.Checked;
                         normTarget = TargetFromPct(bar[0].Value);
                         normStrength = bar[1].Value / 100f;
-                        masterDb = bar[2].Value;
                         videoVol = bar[3].Value; videoAuto = au[3].Checked;
                         if (videoOn && nowPlaying != null) SetVideoVolume(VideoVolumeFor(nowPlaying.VideoPath));   // el video que suena cambia YA
                         eqAuto = au[4].Checked; bassAuto = au[5].Checked;
@@ -1312,7 +1308,7 @@ namespace Rocola
                         ApplyNormNow();   // se oye el cambio al instante en la cancion que suena
                         UpdateNowPlayingUI();   // y el letrero MEJORADA aparece/desaparece al instante
                     };
-                    for (int k = 0; k < bar.Length; k++) { bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
+                    for (int k = 0; k < bar.Length; k++) { if (bar[k] == null) continue; bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
@@ -1333,7 +1329,7 @@ namespace Rocola
                     bReset.Click += delegate
                     {
                         swOn.Checked = true;
-                        bar[0].Value = TargetToPct(0.26f); bar[1].Value = 100; bar[2].Value = 0; bar[3].Value = 85;
+                        bar[0].Value = TargetToPct(0.26f); bar[1].Value = 100; bar[3].Value = 85;
                         bar[4].Value = 0; bar[5].Value = 30; bar[6].Value = 35;
                         au[3].Checked = true; au[4].Checked = true; au[5].Checked = true;   // videos, EQ y graves en automatico
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
@@ -1471,7 +1467,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; masterDb = bkUp; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; tipoLocal = bkTipo; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

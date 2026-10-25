@@ -543,11 +543,12 @@ class ModosAuto
         // La barra de los videos: en gris solo si el automatico de verdad elige.
         Control nivelar = PorTexto(dlg, "Interruptor", "Subir cada cancion hasta su limite"), barra = null, auto = null;
         if (nivelar != null)
-        {   // en la tarjeta del volumen: la cuarta barra es la de los videos y su "Auto" es el unico interruptor con ese texto
+        {   // en la tarjeta del volumen: la tercera barra es la de los videos ("Subir TODO" se retiro el 25-10-2026) y su "Auto" es el
+            // unico interruptor con ese texto
             int k = 0;
             foreach (Control c in nivelar.Parent.Controls)
             {
-                if (c.GetType().Name == "Deslizador" && k++ == 3) barra = c;
+                if (c.GetType().Name == "Deslizador" && k++ == 2) barra = c;
                 if (c.GetType().Name == "Interruptor" && c.Text == "Auto") auto = c;
             }
         }

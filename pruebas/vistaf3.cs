@@ -129,8 +129,7 @@ class VistaF3
         tVol.Controls.Add(Inter(16, 40, 424, "Subir cada cancion hasta su limite", cVol, true, fNom, cTexto, true));
         Fila(tVol, 76, "Cuanto se sube cada cancion", cFue, 0, 100, 100, "Al limite", "100 % = cada una sube todo lo que aguanta sin aplastarse;\nla que suena ahora va +4.2 dB.", false, false, true);
         Fila(tVol, 156, "Videos y canciones aun sin medir", cVol, 0, 100, 62, "62%", "Los videos y las 1,234 canciones que faltan por medir\nsuben hacia aqui; las ya medidas, hasta su limite.", false, false, true);
-        Fila(tVol, 236, "Extra para todas", cSub, 0, 12, 3, "+3 dB", "Tu musica ya va al limite: subirla mas aplastaria los golpes,\nasi que no se sube. Para mas volumen, el amplificador.", false, false, true);
-        Fila(tVol, 316, "Volumen de los videos", cVid, 0, 100, 85, "85%", "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.", false, false, true);
+        Fila(tVol, 236, "Volumen de los videos", cVid, 0, 100, 85, "85%", "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.", false, false, true);
 
         Fila(tCal, 44, "EQ automatico", cCal, 0, 100, 0, "75%", "Empareja el tono de cada cancion con el de tu biblioteca.\nSolo: mas fuerza cuantas mas canciones medidas (van 4,182).", true, true, false);
         Fila(tCal, 124, "Graves (bajo profundo)", cGra, 0, 100, 30, "36%", "Devuelve el golpe de bajo que el archivo no trae.\nSolo: a cada cancion se le da lo que le falta.   Esta: 42%.", true, true, false);

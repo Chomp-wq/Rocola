@@ -230,7 +230,7 @@ namespace Rocola
         // mezclar una pizca de vuelta. Se aplica en LevelTap tras nivelar; perilla en Ctrl+F3; "realce=" en config.
         private float excAmount = 0.35f;                                                      // intensidad del realce 0..1 (0 = apagado); 0.35 = sutil
         private DeepBassProvider curBass;   // el de la cancion que suena (para mover la perilla en vivo)
-        private float masterDb = 0f;         // SUBIR TODO: dB extra para ABSOLUTAMENTE todas las canciones (0..12; barra en Ctrl+F3, "subir_db=" en config)
+        private float masterDb = 0f;         // SUBIR TODO: retirado el 25-10-2026 (SubirTodo.cs); siempre 0, "subir_db=" se ignora
         private float MasterLin() { return (float)Math.Pow(10.0, masterDb / 20.0); }   // dB -> ganancia lineal
         private static bool relevoOn = true;         // "relevo=" en config
         // LA AURORA SE CALMA MAS QUE LAS ESTRELLAS. Es lo mas grande y lo que mas se mueve de toda la pantalla,

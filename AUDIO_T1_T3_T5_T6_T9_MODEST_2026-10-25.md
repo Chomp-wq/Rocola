@@ -283,4 +283,4 @@ valores; con todo de fábrica suena igual. Solo cambian nombre, orden y lo que d
 |---|---|---|
 | Fuerza del nivelado (2.º) | **Cuánto se sube cada canción** (1.º) | «Al límite» en 100 %, «Tal cual» en 0 %; y cuántos dB lleva la que suena |
 | Volumen objetivo (1.º) | **Videos y canciones aún sin medir** (2.º) | cuántas canciones faltan por medir; si ya no falta ninguna, que solo cuenta para los videos |
-| Subir TODO el volumen | **Extra para todas** | lo pedido y cuánto se aplica de verdad (con el nivelado al límite, casi nada) |
+| Subir TODO el volumen | **retirado** | el dueño: «ya no cumple ninguna función realmente». `subir_db=` se ignora y queda en 0 dB (lo que tenía guardado deja de aplicarse). Con todo de fábrica (0 dB) el sonido no cambia |

@@ -18,6 +18,10 @@
 // 100 %): cuando casi toda la biblioteca este medida asi, "Subir TODO" dira que la musica ya va al limite y no subira nada. Con
 // la fuerza por debajo del 100 % les queda margen, y lo de antes (algoritmos 1 a 4) cuenta con su holgura de siempre.
 //
+// RETIRADO DE CTRL+F3 (25-10-2026). El dueno: «ya no cumple ninguna funcion realmente». Con cada cancion al limite no queda nada
+// que subir, asi que la fila «Extra para todas» se quito y la clave subir_db= se ignora: masterDb se queda en 0 y todo lo de aqui
+// devuelve 0 dB (MasterEfectivo = 1 exacto) sin calcular el techo. Se deja la cuenta por si algun dia se vuelve a pedir.
+//
 // COSTE. El techo se calcula recorriendo la tabla de medidas y se guarda: se rehace si cambian los ajustes del nivelado
 // (en la pantalla, al momento: es un ajuste de Ctrl+F3) o, como mucho una vez por minuto, si llegaron medidas nuevas.
 // Esto ultimo pasa sin parar mientras se mide la biblioteca, y la cuenta se pedia desde el latido de la pantalla (el
@@ -188,20 +192,6 @@ namespace Rocola
             return falta > 0
                 ? ("Los videos y las " + falta.ToString("#,0") + " canciones que faltan por medir\nsuben hacia aqui; las ya medidas, hasta su limite.")
                 : "Los videos suben hacia aqui. Las canciones ya estan\nmedidas: cada una sube hasta su limite.";
-        }
-
-        // El texto de Ctrl+F3 debajo de la barra (dos renglones).
-        private string TextoSubir(int pedidoDb)
-        {
-            if (pedidoDb <= 0) return "Lo mismo de mas para TODAS, sin aplastar los golpes.\nCon el nivelado al limite casi no queda: mejor el amplificador.";
-            int n;
-            float techo = TechoSubirDb(out n);
-            if (float.IsNaN(techo))
-                return "Aun no hay bastantes canciones medidas para saber cuanto\naguantan: se aplica lo pedido (se mide sola en reposo).";
-            if (techo < 0.05f) return "Tu musica ya va al limite: subirla mas aplastaria los golpes,\nasi que no se sube. Para mas volumen, el amplificador.";
-            string t = techo.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
-            if (pedidoDb <= techo) return "Sube lo mismo a todas. Tu musica aguanta hasta +" + t + " dB\nsin aplastar los golpes: se aplica todo lo pedido.";
-            return "Pides +" + pedidoDb + " dB; tu musica aguanta +" + t + " dB sin aplastar los\ngolpes: se aplican +" + t + " dB. Para mas, el amplificador.";
         }
     }
 }

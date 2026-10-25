@@ -64,8 +64,8 @@ class CompatVieja
         Exige(Math.Abs((float)Toma(f, "estrellasDens") - 0.60f) < 1e-4 && (int)Toma(f, "videoVol") == 70 && TF.GetField("nocheOn", T) == null,
               "estrellas y volumen de videos, como estaban; el noche=0 de antes se ignora (el modo noche se retiro el 24-10-2026)");
         Exige(Math.Abs((float)Toma(f, "normTarget") - 0.3f) < 1e-4 && Math.Abs((float)Toma(f, "normStrength") - 0.8f) < 1e-4
-              && Math.Abs((float)Toma(f, "masterDb") - 3f) < 1e-4 && Math.Abs((float)Toma(f, "eqAmount") - 0.4f) < 1e-4,
-              "el sonido de antes: volumen objetivo, fuerza, subir 3 dB y EQ al 40 %");
+              && (float)Toma(f, "masterDb") == 0f && Math.Abs((float)Toma(f, "eqAmount") - 0.4f) < 1e-4,
+              "el sonido de antes: volumen objetivo, fuerza y EQ al 40 % (subir_db=3 se ignora desde el 25-10-2026)");
         IList dirs = (IList)Toma(f, "extraMusicDirs");
         Exige(dirs.Count == 1 && (string)dirs[0] == musicaExtra, "la carpeta de musica extra (dir=) se conserva");
         // Al guardar: formato nuevo, mismos valores; lo que ya no existe no se vuelve a escribir.

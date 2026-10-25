@@ -146,14 +146,12 @@ class Ajustes
         // ---- tarjeta VOLUMEN (16,70,456,400) ----
         int vx = 16, vy = 100;
         CSw("nivelar", vx + 16, vy + 40, 424, 26, "Subir cada cancion hasta su limite", fNom, 10f);
-        // Desde el 25-10-2026: primero cuanto se sube cada cancion, luego lo que no se puede medir y el extra (los textos mas largos de cada fila)
+        // Desde el 25-10-2026: primero cuanto se sube cada cancion, luego lo que no se puede medir y los videos (sin "Subir TODO") (los textos mas largos de cada fila)
         Fila("fuerza", vx, vy, 76, "Cuanto se sube cada cancion", "Al limite",
              "100 % = cada una sube todo lo que aguanta sin aplastarse;\nla que suena va \u221212.5 dB (con la medida de antes).", false);
         Fila("objetivo", vx, vy, 156, "Videos y canciones aun sin medir", "100%",
              "Los videos y las 123,456 canciones que faltan por medir\nsuben hacia aqui; las ya medidas, hasta su limite.", false);
-        Fila("subir", vx, vy, 236, "Extra para todas", "+12 dB",
-             "Pides +12 dB; tu musica aguanta +3.5 dB sin aplastar los\ngolpes: se aplican +3.5 dB. Para mas, el amplificador.", false);
-        Fila("videos", vx, vy, 316, "Volumen de los videos", "100%",
+        Fila("videos", vx, vy, 236, "Volumen de los videos", "100%",
              "Los videos no pasan por la cadena de sonido.\nSu volumen se empareja aqui a mano.", false);
 
         // ---- tarjeta CALIDAD (488,70,456,400) ----

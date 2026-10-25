@@ -678,7 +678,7 @@ namespace Rocola
                     else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
                     else if (s.StartsWith("quita_siseo=")) quitaSiseo = s.Substring(12).Trim() == "1";             // I2: quitar el siseo de las grabaciones viejas
                     else if (s.StartsWith("dsee_genero=")) dseePorGenero = s.Substring(12).Trim() == "1";          // I3: el modelo del DSEE del genero de la cancion
-                    else if (s.StartsWith("subir_db=")) { float v; if (float.TryParse(s.Substring(9).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) masterDb = Clampf(v, 0f, 12f); }   // SUBIR TODO (dB extra general)
+                    // subir_db= ("Subir TODO"): retirado el 25-10-2026, se ignora (el nivelado ya sube cada cancion hasta su limite)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
                     else if (s.StartsWith("ia_datos_mb=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v)) iaMaxBytes = (v <= 0) ? 0L : (long)v * 1024 * 1024; }   // tope del archivo de material
@@ -818,7 +818,6 @@ namespace Rocola
             sb.Append("nivel_fuerza=").Append(normStrength.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("realce=").Append(excAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("bajo=").Append(bassAmount.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
-            sb.Append("subir_db=").Append(masterDb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("saltar_silencios=").Append(saltaSilencios ? "1" : "0").Append("\r\n");
             sb.Append("turno=").Append(turnoOn ? "1" : "0").Append("\r\n");
             sb.Append("marca_cola=").Append(marcaColaOn ? "1" : "0").Append("\r\n");

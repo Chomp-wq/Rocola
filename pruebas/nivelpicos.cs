@@ -248,12 +248,6 @@ class NivelPicos
         for (int i = 0; i < 30; i++) conMudas["m" + i + ".mp3"] = Integ(new object[] { 2, float.NegativeInfinity, 2f, 100, -200f, -200f });
         Set(g, "integCache", conMudas);
         Check((float)Call(g, "SubirAplicadoDb") == 0f, "las canciones mudas no cuentan para el techo (con 30 mudas y 3 de 21 sin holgura, no se sube)");
-        string txt = (string)Call(f, "TextoSubir", 6);
-        Check(txt.StartsWith("Tu musica ya va al limite"), "si no aguanta nada, lo dice asi: \"" + txt.Replace("\n", " ") + "\"");
-        Set(f, "masterDb", 6f); Set(f, "normTarget", 0.26f);
-        for (int i = 5; i < 40; i++) tab.Remove("din" + i + ".mp3");
-        string txt2 = (string)Call(f, "TextoSubir", 6);
-        Check(txt2.StartsWith("Pides +6 dB; tu musica aguanta +") && txt2.Contains("se aplican +"), "Ctrl+F3 lo dice: \"" + txt2.Replace("\n", " ") + "\"");
         // Coste: 50 000 canciones.
         IDictionary grande = TablaNueva(); Random r = new Random(4);
         for (int i = 0; i < 50000; i++) grande["c" + i + ".mp3"] = Integ2(-6f - (float)r.NextDouble() * 18f, -(float)r.NextDouble() * 3f, -3f - (float)r.NextDouble() * 6f);
@@ -278,8 +272,8 @@ class NivelPicos
             if (esc > 0 && Codigo.Llama(m, "MasterLin")) ningunoSolo = false;
         }
         List<MethodBase> ven = Codigo.MetodosConAyudantes(TF, "VentanaAjustes");
-        bool texto = false; foreach (MethodBase m in ven) if (Codigo.Llama(m, "TextoSubir")) texto = true;
-        Check(todos && ningunoSolo && texto, "la cadena, la siguiente preparada y el ajuste en vivo pasan por el techo; Ctrl+F3 lo explica");
+        bool fila = false; foreach (MethodBase m in ven) if (Codigo.LeeCampo(new List<MethodBase> { m }, "masterDb") || Codigo.EscribeCampo(new List<MethodBase> { m }, "masterDb")) fila = true;
+        Check(todos && ningunoSolo && !fila, "la cadena, la siguiente preparada y el ajuste en vivo pasan por el techo; Ctrl+F3 ya no tiene la fila (retirada el 25-10-2026: con masterDb en 0 no hace nada)");
     }
 
     // ---------------- conectado ----------------
