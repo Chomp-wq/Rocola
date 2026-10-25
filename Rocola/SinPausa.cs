@@ -33,6 +33,13 @@ namespace Rocola
     // Tabla de fases y ventana acotadas, sin COM ni API nueva: tambien .NET 3.5/XP.
     // El sinc centrado usa como mucho 96 cuadros futuros (multiplicados al bajar tasa); no agrega cebado.
     // No mezcla canales, no altera pistas del mismo formato y entrega ceil(entrada * salida / entradaHz).
+    //
+    // DISCO CONTINUO CONVERTIDO (24-10-2026). Con la salida abierta a otra frecuencia (la de la tarjeta, o la de una cancion de 48 kHz
+    // que sono antes de un disco de 44,1), cada pista del disco pasaba por SU convertidor. El de la que acaba no ve lo que viene: sus
+    // ultimos cuadros salian con media ventana de ceros, y el de la siguiente empezaba igual. Medido en la cadena entera (un disco partido
+    // en dos, la musica a 0,3 de pico; pruebas/cadenaentera.cs): un escalon de 0,04 a 0,07 en el cambio y un cuadro de mas. Ahora, si la
+    // siguiente sigue a esta (Sigue, desde SigueA), esta se para donde su ventana aun estaria entera y la siguiente sigue con su anillo y su
+    // cuenta: lo mismo que un solo convertidor para las dos. Si la siguiente se retira sin empezar (NoSigue), esta vuelve a acabar entera.
     internal sealed class RemuestreoContinuo : ISampleProvider
     {
         private const int Fases = 512, Bloque = 4096;
@@ -56,6 +63,9 @@ namespace Rocola
         private long leidos, emitidos, porSaltar;
         private bool fin;
         private int canalCuadro;
+        private volatile bool sigueOtra, cedio;     // la siguiente del mismo disco sigue con este (se para con la ventana entera) / ya se paro
+        private volatile RemuestreoContinuo anterior;   // la anterior del mismo disco, de la que seguir
+        private bool empezo;
         private static readonly object tablaCerrojo = new object();
         private static int tablaIn, tablaOut;
         private static double[] tablaLista;
@@ -220,6 +230,22 @@ namespace Rocola
             return r;
         }
         public WaveFormat WaveFormat { get { return formato; } }
+        // La siguiente pista del mismo disco sigue con este convertidor. Lo llama la pantalla al preparar el relevo (SigueA); la siguiente
+        // lo toma en su primera lectura, en el hilo del sonido, cuando este ya se paro.
+        internal void Sigue(RemuestreoContinuo previa)
+        {
+            if (previa == null || object.ReferenceEquals(previa, this) || previa.tasaIn != tasaIn || previa.tasaOut != tasaOut
+                || previa.ch != ch || previa.taps != taps || previa.capacidad != capacidad) return;
+            anterior = previa; previa.sigueOtra = true;
+        }
+        // La que iba a seguir se retiro sin empezar (SinSilencios.cs): la anterior vuelve a acabar entera, sin ceder sus ultimos 2 ms.
+        internal void NoSigue() { RemuestreoContinuo a = anterior; anterior = null; if (a != null) a.sigueOtra = false; }
+        private void Hereda()
+        {
+            RemuestreoContinuo a = anterior; anterior = null;
+            if (a == null || !a.cedio) return;   // la anterior ya habia acabado entera: se empieza de cero, como siempre
+            Array.Copy(a.anillo, anillo, anillo.Length); leidos = a.leidos; emitidos = a.emitidos;
+        }
         private void Llena(long hasta)
         {
             while (!fin && leidos <= hasta)
@@ -250,8 +276,12 @@ namespace Rocola
         }
         private bool Siguiente()
         {
+            if (cedio) return false;
+            if (!empezo) { empezo = true; Hereda(); }
             long num = emitidos * tasaIn, centro = num / tasaOut;
             Llena(centro + mitad);
+            // Disco continuo: lo que ya no tendria la ventana entera lo saca la siguiente, que sigue con este anillo y esta cuenta.
+            if (fin && sigueOtra && leidos < centro + mitad + 1) { cedio = true; return false; }
             long total = (leidos * tasaOut + tasaIn - 1) / tasaIn;
             if (fin && emitidos >= total) return false;
             double fase = (double)(num % tasaOut) * Fases / tasaOut;

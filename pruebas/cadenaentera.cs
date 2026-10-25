@@ -22,6 +22,9 @@ using NAudio.Wave;
 //      (1d04b70) el cambio daba un escalon de 0,33 de fabrica (0,16 a 0,33 con el local; 0,46 con el limitador trabajando), con esta
 //      musica a 0,3 de pico: el cebado de los retardos era un hueco para las etapas que heredan (y el paso-todo del grave en mono lo
 //      volvia un golpe), y el realce, el EQ, el bajo y el limitador empezaban de cero. Ahora, 0,0002 a 0,0003 (0,0024 a tope).
+//      Y CONVERTIDO A OTRA FRECUENCIA (24-10-2026, revision de la cadena): con la salida abierta a 48 kHz y el disco a 44,1 (una de
+//      48 sono antes, o la frecuencia de la tarjeta), cada pista pasaba por su convertidor y el cambio daba un escalon de 0,04 a 0,07
+//      con la musica a 0,3 de pico, y un cuadro de mas. Ahora el convertidor y su limitador siguen con los de la anterior.
 // La salida de la rocola pide siempre cuadros enteros, asi que lo de las lecturas partidas no sonaba; pero la cadena tiene que
 // valer pidase como se pida (como el limitador desde el 22-10-2026). Con la version anterior fallan el fundido (la entrada de
 // 5 ms caia en medio de la cancion) y el des-recorte (canales corridos y, en 6 canales, los ultimos 68 cuadros perdidos).
@@ -307,6 +310,10 @@ class CadenaEntera
     }
     static void Fundido(object cad, string m) { object fu = Get(cad, "Fundido"); fu.GetType().GetMethod(m, T).Invoke(fu, null); }
     static double Empalme(string dir, Action<object> pon, double nivel, out double aparta, out double normal)
+    { int largo; return Empalme(dir, pon, nivel, 0, out aparta, out normal, out largo); }
+    // Con 'salidaHz' > 0 las tres van convertidas a esa frecuencia, como en el relevo con la salida abierta a otra (ConvierteSalida).
+    // 'largo': los cuadros de las dos pistas seguidas menos los de la entera (0 = los mismos).
+    static double Empalme(string dir, Action<object> pon, double nivel, int salidaHz, out double aparta, out double normal, out int largo)
     {
         int fs = 44100, n = fs * 8, corte = fs * 4 + 1037;
         float[] x = Musica(fs, 2, 8, 0, 11);
@@ -323,12 +330,21 @@ class CadenaEntera
         object la, lb, lc;
         object cA = ArmaPista(f, pa, out la), cB = ArmaPista(f, pb, out lb), cC = ArmaPista(f, pc, out lc);
         Fundido(cA, "Quita"); Fundido(cC, "Quita");
+        if (salidaHz > 0)
+        {
+            Type rc = TF.Assembly.GetType("Rocola.RemuestreoContinuo", true);
+            WaveFormat a = (WaveFormat)TF.Assembly.GetType("Rocola.FormatoAudio", true).GetMethod("Flotante", T).Invoke(null, new object[] { salidaHz, 2, 3 });
+            double[] tabla = (double[])rc.GetMethod("CreaFiltro", T).Invoke(null, new object[] { fs, salidaHz });
+            foreach (object c in new object[] { cA, cB, cC }) TF.GetMethod("ConvierteSalida", T).Invoke(null, new object[] { c, a, tabla });
+            fs = salidaHz;
+        }
         TF.GetMethod("SigueA", T).Invoke(null, new object[] { cB, cA });   // lo que hace el relevo de un disco continuo
         Fundido(cB, "SinEntrada");
         float[] yA = Todo(cA), yB = Todo(cB), yC = Todo(cC);
         ((IDisposable)la).Dispose(); ((IDisposable)lb).Dispose(); ((IDisposable)lc).Dispose();
         int rA = (int)Get(cA, "Retardo"), rB = (int)Get(cB, "Retardo"), rC = (int)Get(cC, "Retardo");
         int nA = yA.Length / 2 - rA, nB = yB.Length / 2 - rB;
+        largo = nA + nB - (yC.Length / 2 - rC);
         double escalon = 0; aparta = 0; normal = 0;
         for (int c = 0; c < 2; c++)
         {
@@ -362,6 +378,33 @@ class CadenaEntera
         {
             double aparta, normal, e = Empalme(dir, delegate(object f) { }, 1.6, out aparta, out normal);
             Check(e < 0.005, "y fuerte, con el limitador trabajando en el cambio: escalon " + e.ToString("0.0000") + " (la version publicada, 0,46); salto normal " + normal.ToString("0.0000"));
+        }
+        foreach (int hz in new int[] { 48000, 32000 })
+        {
+            int largo; double aparta, normal, e = Empalme(dir, delegate(object f) { }, 0.3, hz, out aparta, out normal, out largo);
+            Check(e < 0.002 && largo == 0, "convertido a " + (hz / 1000) + " kHz (la salida abierta a otra frecuencia): el cambio no da escalon (" + e.ToString("0.00000")
+                  + "; con un convertidor por pista, 0,04 a 0,07; salto normal " + normal.ToString("0.0000") + ") y salen los cuadros de la entera ("
+                  + (largo == 0 ? "los mismos" : (largo > 0 ? "+" : "") + largo) + ")");
+        }
+        {   // Y si la que iba a seguir se retira sin empezar (al cambiar un interruptor en Ctrl+F3), la que suena acaba entera.
+            Type rc = TF.Assembly.GetType("Rocola.RemuestreoContinuo", true);
+            WaveFormat a = (WaveFormat)TF.Assembly.GetType("Rocola.FormatoAudio", true).GetMethod("Flotante", T).Invoke(null, new object[] { 48000, 2, 3 });
+            double[] tabla = (double[])rc.GetMethod("CreaFiltro", T).Invoke(null, new object[] { 44100, 48000 });
+            ConstructorInfo k = rc.GetConstructor(T, null, new Type[] { typeof(ISampleProvider), typeof(WaveFormat), typeof(int), typeof(double[]) }, null);
+            float[] x = Musica(44100, 2, 1, 0, 5);
+            Func<bool, int> largoDe = delegate(bool retira)
+            {
+                ISampleProvider ra = (ISampleProvider)k.Invoke(new object[] { new Fuente(x, 44100, 2), a, 0, tabla });
+                object rb = k.Invoke(new object[] { new Fuente(x, 44100, 2), a, 0, tabla });
+                rc.GetMethod("Sigue", T).Invoke(rb, new object[] { ra });
+                if (retira) rc.GetMethod("NoSigue", T).Invoke(rb, null);
+                float[] b = new float[4096]; int n, t = 0; while ((n = ra.Read(b, 0, b.Length)) > 0) t += n; return t / 2;
+            };
+            ISampleProvider sola = (ISampleProvider)k.Invoke(new object[] { new Fuente(x, 44100, 2), a, 0, tabla });
+            float[] bs = new float[4096]; int ns, ts = 0; while ((ns = sola.Read(bs, 0, bs.Length)) > 0) ts += ns; ts /= 2;
+            int cede = largoDe(false), retirada = largoDe(true);
+            Check(retirada == ts && cede < ts, "si la que iba a seguir se retira, la que suena acaba entera (" + retirada + " cuadros, sola " + ts
+                  + "; la que cede a la siguiente, " + cede + ")");
         }
     }
 

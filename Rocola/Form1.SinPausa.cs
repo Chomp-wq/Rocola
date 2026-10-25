@@ -44,6 +44,8 @@ namespace Rocola
             internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva
             internal LimitadorPicoReal Limitador; // el limitador de pico real (lo que baja lo ensena Ctrl+F3: S5)
             internal FadeProvider Fundido;
+            internal RemuestreoContinuo Conversion;   // el convertidor a la frecuencia de la salida, si la lleva (ConvierteSalida)
+            internal LimitadorPicoReal LimiteSalida;  // y el limitador de detras
             internal int Retardo;                // cuadros de cebado: se descartan si entra por relevo
             internal string MedidaRuta, EqRuta;  // que se aprende oyendola (null = nada)
             internal float BajoFactor, BajoBase;
@@ -126,8 +128,7 @@ namespace Rocola
                 {
                     // Se quita el cebado a la tasa del origen; despues se convierte y se vuelve a limitar.
                     // Otras disposiciones nunca se mezclan: se abre su salida al terminar, como siempre.
-                    LimitadorPicoReal lim = new LimitadorPicoReal(new RemuestreoContinuo(c.Salida, s.WaveFormat, c.Retardo, tablaConversion), TechoPicoReal, 3.0);
-                    c.Salida = lim; c.Retardo = lim.DelayFrames;
+                    ConvierteSalida(c, s.WaveFormat, tablaConversion);
                 }
             }
             catch (Exception ex)
@@ -325,6 +326,17 @@ namespace Rocola
             if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
             if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
+            // Convertidas a la frecuencia de la salida: el convertidor y su limitador, tambien (SinPausa.cs).
+            if (nueva.Conversion != null && vieja.Conversion != null) nueva.Conversion.Sigue(vieja.Conversion);
+            if (nueva.LimiteSalida != null && vieja.LimiteSalida != null) nueva.LimiteSalida.Sigue(vieja.LimiteSalida);
+        }
+        // La cadena, a otra frecuencia (la de la salida): el convertidor quita el cebado a la tasa del origen y un limitador cuida los
+        // picos que la conversion pueda dejar. El cebado que queda es el de ese limitador.
+        private static void ConvierteSalida(CadenaCancion c, NAudio.Wave.WaveFormat a, double[] tabla)
+        {
+            RemuestreoContinuo r = new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla);
+            LimitadorPicoReal lim = new LimitadorPicoReal(r, TechoPicoReal, 3.0);
+            c.Salida = lim; c.Retardo = lim.DelayFrames; c.Conversion = r; c.LimiteSalida = lim;
         }
 
         // ¿'b' es la pista que sigue a 'a' en el MISMO disco? (un disco TOP junta canciones de discos distintos)

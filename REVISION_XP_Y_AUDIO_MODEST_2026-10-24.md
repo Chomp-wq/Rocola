@@ -102,10 +102,55 @@ diagnóstico completo dirá qué se marcó en el hueco.
 
 ## 3. La cadena de audio
 
-(En curso: se añade cuando termine su revisión.)
+Se revisó sobre todo lo cambiado desde la revisión anterior (`REVISION_CADENA_AUDIO_MODEST_2026-10-24.md`): el grave en mono y el
+subgrave en fase lineal, el mono como estéreo, el disco continuo, el P90 del nivelado, la latencia y el hilo de la música.
+
+### El defecto: un chasquido entre pistas de un disco continuo con la salida a otra frecuencia
+
+**Cuándo pasa.** La salida se queda abierta a la frecuencia de la canción que sonó antes. Basta con que suene una canción de 48 kHz
+antes de un disco continuo de 44,1 kHz (o que `frecuencia_salida=` pida otra). Pasa con los ajustes de fábrica.
+
+**Qué pasaba.** Cada pista del disco pasaba por **su propio convertidor** de frecuencia y su limitador. Desde el 24-10, todas las
+demás etapas siguen con las de la pista anterior; estas dos, no. El convertidor de la pista que acaba no ve lo que viene, así que sus
+últimos cuadros salían con media ventana de ceros, y el de la siguiente empezaba igual.
+
+- Medido en la cadena entera (un disco partido en dos frente a la canción entera, con la música a 0,3 de pico): un escalón de 0,04 a
+  0,07 en el cambio de pista, y un cuadro de más.
+
+**Ahora.** El convertidor y su limitador también siguen con los de la pista anterior (`RemuestreoContinuo.Sigue`, desde `SigueA`).
+El que acaba se para donde su ventana aún estaría entera, y el siguiente sigue con su anillo y su cuenta. Suena igual que un solo
+convertidor para las dos pistas.
+
+- Escalón de 0,00014 a 48 kHz y de 0,00012 a 32 kHz, con los mismos cuadros que la canción entera.
+- Si la pista preparada se retira sin empezar (al cambiar un interruptor en Ctrl+F3), la que suena vuelve a acabar entera
+  (`NoSigue`).
+- Sin conversión no cambia nada. Automático y sin interruptor.
+- Pruebas: `cadenaentera` («convertido a 48 / 32 kHz» y «si la que iba a seguir se retira»). Los dos casos convertidos fallan con la
+  versión anterior.
+
+### Lo revisado que está bien
+
+- **El grave en mono, leído entero:** la FFT, el FIR del lado y del subgrave, el empalme de 25 ms, la herencia, el anillo y sus tres
+  modos, la entrada y la salida. El cebado conmuta siempre en un número par de muestras, así que los canales no se cruzan aunque las
+  lecturas sean impares.
+- **La herencia en disco continuo** del realce, el EQ, el bajo, el local, la presencia y el limitador: el cebado y el retardo cuadran
+  con lo que tira el relevo. El relevo lee la pista siguiente solo cuando la anterior se acabó.
+- **El mono como estéreo:** los límites, la muestra pendiente y el salto. El nivelado no cambia.
+- **El reloj de la canción** va por los cuadros de la salida: la lectura por delante no lo mueve.
+- **`GananciaAlLimite`** está protegida contra NaN y ceros.
+- **La latencia:** la clásica va a 1000 y 750 ms, y el atasco se mide contra el colchón.
+- **El hilo de la música** atrapa todo y no termina antes de tiempo.
+- **Ni un `WaitOne(int)`** de .NET 2.0 SP2 en el sonido.
 
 ## 4. Pruebas
 
-- Nuevas o ampliadas: `buscaligero` (4c, y la tarjeta imitada ahora contesta `GetLevelDesc`), `recolector` (5) y `caratulaenorme`.
+- Nuevas o ampliadas: `buscaligero` (4c, y la tarjeta imitada ahora contesta `GetLevelDesc`), `recolector` (5), `caratulaenorme`
+  y `cadenaentera` (las tres del convertidor).
+- La batería completa, sobre el commit del renderizado: solo fallan las tres que ya fallaban antes (`sala`, `discoacotado` y
+  `caratulasadaptativas`, por cosas de Linux y de la tarjeta imitada).
+- Las de sonido, con el arreglo del convertidor, en verde: `cadenaentera` (90), `gravemono`, `subgrave`, `sinpausa`, `salida`,
+  `allimite`, `latenciaadaptable`, `picoreal`, `realce`, `aperturaaudio`, `presenciasala`, `salalocal`, `remuestreoligero`,
+  `transiciones`, `audiosuave`, `audioestereo`, `sonoridad`, `nivelpicos`, `octavatanda` y `decimatanda`.
+  - `salidacontinua` y `remuestreo` no son de la batería: necesitan el Msacm32.dll de Windows, y fallan igual sin el cambio.
 - Las de la tarjeta afectadas siguen en verde: `recuperagpu`, `estadoeficiente`, `performance`, `huellacuadros`, `tironescambio`,
   `buscaportadas` y `dibujoligero`.

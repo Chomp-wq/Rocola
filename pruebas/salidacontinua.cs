@@ -120,9 +120,12 @@ class SalidaContinua
             lock(gate)warm.SetValue(null,true);
             Check(tr.GetMethod("CapturaTabla",T).Invoke(null,new object[]{bIn,bOut})==null&&object.ReferenceEquals(lista.GetValue(null),tablaA),
                 "cachemiss mientras calienta otra tasa espera siguiente tick sin consumir la tabla ni el lector");
-            MethodInfo prepara=tf.GetMethod("PreparaSiguienteSinPausa",T);bool usa4=false,usa3=false;
-            foreach(Codigo.Paso paso in Codigo.Pasos(prepara))if(paso.Op==0x73){MethodBase c=prepara.Module.ResolveMethod(paso.Numero);if(c.DeclaringType==tr){usa4|=c.GetParameters().Length==4;usa3|=c.GetParameters().Length==3;}}
-            Check(usa4&&!usa3,"UI solamente construye conversion con referencia capturada, nunca ctor sincrono de fixtures");
+            // (Desde el 24-10-2026 el convertidor lo arma ConvierteSalida, que PreparaSiguienteSinPausa llama con la tabla capturada.)
+            MethodInfo prepara=tf.GetMethod("PreparaSiguienteSinPausa",T),convierte=tf.GetMethod("ConvierteSalida",T);bool usa4=false,usa3=false,llama=false;
+            foreach(MethodInfo mi in new MethodInfo[]{prepara,convierte})if(mi!=null)
+            foreach(Codigo.Paso paso in Codigo.Pasos(mi)){if(paso.Op==0x73){MethodBase c=mi.Module.ResolveMethod(paso.Numero);if(c.DeclaringType==tr){usa4|=c.GetParameters().Length==4;usa3|=c.GetParameters().Length==3;}}
+                else if(paso.Op==0x28&&mi==prepara&&convierte!=null){MethodBase c=mi.Module.ResolveMethod(paso.Numero);llama|=c.Equals(convierte);}}
+            Check(usa4&&!usa3&&(convierte==null||llama),"UI solamente construye conversion con referencia capturada, nunca ctor sincrono de fixtures");
         }finally{lock(gate){hi.SetValue(null,oldHi);ho.SetValue(null,oldHo);lista.SetValue(null,oldList);warm.SetValue(null,oldWarm);}}
     }
     static void CosteMulticanal()

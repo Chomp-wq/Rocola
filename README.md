@@ -1,5 +1,21 @@
 # Rocola
 
+## Revisión: lo que podía tumbar la rocola en XP, y la cadena de audio — 24 de octubre de 2026
+
+Tres arreglos del renderizado:
+
+- Antes de subir una imagen a una textura que ya existe, se le pregunta a Direct3D cuánto mide. Antes solo se miraba el ancho, y un
+  alto equivocado escribía en la memoria del controlador: en la prueba, la versión anterior muere con un SIGSEGV.
+- Un cuadro que falla al repintarse la ventana ya no deja la X roja hasta reiniciar.
+- Las carátulas enormes se decodifican de una en una.
+
+Uno del sonido: en un disco continuo con la salida a otra frecuencia (por ejemplo, después de una canción de 48 kHz), el cambio de
+pista daba un chasquido; ahora el convertidor sigue con el de la pista anterior.
+
+Lo demás se comprobó con lectores del ejecutable: las ranuras de Direct3D, las estructuras, que ningún hilo de fondo toque la tarjeta y
+que no haya nada de .NET posterior al 2.0 SP1 del A4. Probado en Linux; nada en el A4 todavía.
+[Lo revisado y lo arreglado](REVISION_XP_Y_AUDIO_MODEST_2026-10-24.md).
+
 ## El diagnóstico completo del A4 y lo que se arregló — 24 de octubre de 2026
 
 Doce de las dieciséis escenas salían bien. Los tirones de verdad se juntaban al **entrar y salir de un disco** (23 de los 25

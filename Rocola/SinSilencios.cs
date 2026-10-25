@@ -255,6 +255,7 @@ namespace Rocola
             {
                 // No empezo: el hilo del sonido no la leyo ni la leera (Releva la toma bajo el mismo cerrojo).
                 cadenaPreparada = null; retirada = true;
+                if (p.Conversion != null) p.Conversion.NoSigue();   // la que suena ya no le cede su final (SinPausa.cs)
                 if (p.Lector != null) try { p.Lector.Dispose(); } catch { }
             }
             string pedida = (lookahead != null) ? lookahead.Para : null;

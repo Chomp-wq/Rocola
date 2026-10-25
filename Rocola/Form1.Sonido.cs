@@ -83,8 +83,8 @@ namespace Rocola
             if (!RemuestreoContinuo.SePuede(de, a)) return;   // otra disposicion o fuera de presupuesto: como venga
             double[] tabla = RemuestreoContinuo.CapturaTabla(de, a);
             if (tabla == null) return;
-            LimitadorPicoReal lim = new LimitadorPicoReal(new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla), TechoPicoReal, 3.0);
-            c.Salida = lim; c.Retardo = lim.DelayFrames;
+            ConvierteSalida(c, a, tabla);   // (Form1.SinPausa.cs)
+            LimitadorPicoReal lim = c.LimiteSalida;
             // El reloj de la cancion descuenta el cebado en cuadros DE LA CANCION (SalidaSonido.cs): el convertidor ya tiro
             // el de la cadena y solo queda el del limitador, que va en cuadros de la salida.
             c.CebadoInicial = (int)Math.Round(lim.DelayFrames * (double)de.SampleRate / hz);
