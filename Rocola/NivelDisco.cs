@@ -40,13 +40,24 @@ namespace Rocola
         private PlayItem sonoAntes;   // lo que sono justo antes de la que suena (null si hubo silencio o es la primera)
 
         // La ganancia de nivelado de una cancion en su sitio de la cola: la del disco si esta en racha, si no la suya.
+        // Y con el margen que necesita el tono del local que le toca (T1, SalaLocal.MargenTonoDb).
         private float GananciaDe(Track t)
         {
             if (t == null) return 1f;
             List<Track> disco = RachaDeDisco(t);
             float g;
-            if (disco != null && GananciaDeDisco(disco, t.Path, out g)) return g;
-            return NormGainFor(t.Path);
+            if (!(disco != null && GananciaDeDisco(disco, t.Path, out g))) g = NormGainFor(t.Path);
+            float m = MargenDelTono(t);
+            return m == 1f ? g : g * m;
+        }
+        // Lo que baja el nivelado para el tono del local que de verdad suena en esta cancion (los mandos, o lo que decide el modo
+        // automatico). Con "Escuchar sin mejoras" el tono no suena: no se baja. 1 = nada (tono en 0 o negativo).
+        private float MargenDelTono(Track t)
+        {
+            if (sinMejoras) return 1f;
+            AjusteLocal lo = LocalDe(t);
+            double db = SalaLocal.MargenTonoDb(lo.Graves, lo.Agudos);
+            return db > 0.0 ? (float)Math.Pow(10.0, -db / 20.0) : 1f;
         }
 
         // Las pistas del disco de 't' si suena en racha con otra de su disco (la de antes o la de despues); null si no.

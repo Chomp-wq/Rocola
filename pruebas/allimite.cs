@@ -402,6 +402,9 @@ class AlLimite
     // La cadena de verdad de fabrica (realce 35 %, bajo automatico, des-recorte, grave en mono), con la cancion medida y nivelada al limite:
     // lo que hace el limitador cada 2 ms.
     static void EnLaCadena(float[] x, string dir, string nombre, out double sube, out double peor, out double m1, out double m3)
+    { EnLaCadena(x, dir, nombre, 0, 0, out sube, out peor, out m1, out m3); }
+    // Con el tono del local (graves y agudos en dB, de -6 a 6) puesto despues de dejar lo demas de fabrica.
+    static void EnLaCadena(float[] x, string dir, string nombre, int graves, int agudos, out double sube, out double peor, out double m1, out double m3)
     {
         string wav = Path.Combine(dir, nombre + ".wav");
         using (WaveFileWriter wr = new WaveFileWriter(wav, WaveFormat.CreateIeeeFloatWaveFormat(44100, 2))) wr.WriteSamples(x, 0, x.Length);
@@ -412,6 +415,7 @@ class AlLimite
         foreach (string q in new string[] { "localAuto", "claridadLocal", "partesSuaves", "presenciaSala", "estereoEstrecho", "cortaSubgrave", "estereoAuto", "quitaSiseo", "sinMejoras" })
             if (TF.GetField(q, T) != null) Set(f, q, false);
         foreach (string q in new string[] { "balanceDb", "gravesLocalDb", "agudosLocalDb" }) if (TF.GetField(q, T) != null) Set(f, q, 0);
+        if (graves != 0 || agudos != 0) { Set(f, "gravesLocalDb", graves); Set(f, "agudosLocalDb", agudos); }
         object[] a = { wav, null }; TF.GetMethod("MideIntegrada", T).Invoke(f, a);
         IDictionary tab = Tabla(); tab[wav] = a[1]; Set(f, "integCache", tab);
         ((IDictionary)Get(f, "durCache"))[wav] = (float)(x.Length / 2 / 44100.0);
@@ -443,6 +447,54 @@ class AlLimite
         Check(bien, "con todo lo de fabrica detras del nivelado, el limitador quita mas de 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 % (con el P90 a 1 dB, el masterizado pasaba del 26 %)");
     }
 
+    // 9) EL MARGEN DEL TONO DEL LOCAL (T1, 25-10-2026). Con los graves o los agudos del local subidos, el nivelado deja el margen que
+    // piden; sin eso, con graves +3 el limitador quitaba mas de 1 dB el 96 % del tiempo en la masterizada (+6: mas de 3 dB el 84 %).
+    static void ConElTono(string dir)
+    {
+        Console.WriteLine("\n  9) CON LOS GRAVES Y AGUDOS DEL LOCAL SUBIDOS (T1)\n");
+        if (TF.GetNestedType("SalaLocal", T) == null || TF.GetNestedType("SalaLocal", T).GetMethod("MargenTonoDb", T) == null) { Check(false, "no esta SalaLocal.MargenTonoDb"); return; }
+        string[] nom = { "masterizada con 9 dB de limitador", "aplastada moderna", "golpes parejos 4/s", "vieja bajita", "mezcla sin masterizar", "balada con un golpe" };
+        float[][] can = { Masteriza(Mezcla(3), 9), Aplastada(-0.2, 6), Golpes(-0.3, 4, 1.0, 0.1, 1), Golpes(-9.0, 2, 1.5, 0.5, 7), Mezcla(5), Golpes(-12.0, 1, 2.0, 0.8, 9) };
+        int[][] tonos = { new int[] { 3, 0 }, new int[] { 6, 0 }, new int[] { 0, 3 }, new int[] { 0, 6 }, new int[] { 6, 6 }, new int[] { 3, 6 }, new int[] { 1, 1 } };
+        double[] sube0 = new double[can.Length];
+        for (int k = 0; k < can.Length; k++) { double p, m1, m3; EnLaCadena(can[k], dir, "tono" + k, 0, 0, out sube0[k], out p, out m1, out m3); }
+        foreach (int[] tn in tonos)
+        {
+            Info("graves " + tn[0].ToString("+0;-0;0") + ", agudos " + tn[1].ToString("+0;-0;0") + ":  cancion                         sube    peor   >1 dB  >3 dB");
+            bool bien = true, baja = true;
+            double esperado = (double)TF.GetNestedType("SalaLocal", T).GetMethod("MargenTonoDb", T).Invoke(null, new object[] { tn[0], tn[1] });
+            for (int k = 0; k < can.Length; k++)
+            {
+                double g, p, m1, m3; EnLaCadena(can[k], dir, "tono" + k, tn[0], tn[1], out g, out p, out m1, out m3);
+                Info("                     " + nom[k].PadRight(32) + F(g, "+0.0;-0.0").PadLeft(6) + F(p, "0.0").PadLeft(8) + (F(m1 * 100, "0.0") + " %").PadLeft(8) + (F(m3 * 100, "0.0") + " %").PadLeft(7));
+                if (!(m1 <= 0.10 && m3 <= 0.01)) bien = false;
+                if (Math.Abs((sube0[k] - g) - esperado) > 0.05) baja = false;
+            }
+            Check(bien, "graves " + tn[0] + " y agudos " + tn[1] + ": el limitador quita mas de 1 dB como mucho el 10 % del tiempo y mas de 3 dB como mucho el 1 %");
+            Check(baja, "  y el nivelado baja lo que pide el tono (" + F(esperado, "0.00") + " dB) en todas");
+        }
+        // Lo negativo no da nada, y con el tono en 0 la ganancia es la de siempre (la misma cuenta, bit a bit).
+        bool negativo = true;
+        for (int k = 0; k < can.Length; k++)
+        {
+            double g, p, m1, m3; EnLaCadena(can[k], dir, "tono" + k, -6, -6, out g, out p, out m1, out m3);
+            if (g != sube0[k]) negativo = false;
+        }
+        Check(negativo, "con graves y agudos en negativo, el nivelado sube lo mismo que con el tono en 0");
+        object f = Form();
+        Check((double)TF.GetNestedType("SalaLocal", T).GetMethod("MargenTonoDb", T).Invoke(null, new object[] { 0, 0 }) == 0.0, "con el tono en 0 no se baja nada");
+        // Con "Escuchar sin mejoras" el tono no suena: tampoco se baja.
+        Set(f, "gravesLocalDb", 6); Set(f, "agudosLocalDb", 6);
+        object track = Pista(TF.GetNestedType("Track", T), Path.Combine(dir, "tono0.wav"));
+        Set(f, "sinMejoras", true);
+        float conSin = (float)TF.GetMethod("MargenDelTono", T).Invoke(f, new object[] { track });
+        Set(f, "sinMejoras", false);
+        float conTono = (float)TF.GetMethod("MargenDelTono", T).Invoke(f, new object[] { track });
+        Set(f, "gravesLocalDb", 0); Set(f, "agudosLocalDb", 0);
+        double pide66 = (double)TF.GetNestedType("SalaLocal", T).GetMethod("MargenTonoDb", T).Invoke(null, new object[] { 6, 6 });
+        Check(conSin == 1f && Math.Abs(Db(conTono) + pide66) < 0.01, "con \"Escuchar sin mejoras\" no se baja (" + F(Db(conSin), "0.00") + " dB); sin eso, con +6 y +6, " + F(Db(conTono), "0.00") + " dB");
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -462,6 +514,7 @@ class AlLimite
             try { DePuntaAPunta(dir); } catch (Exception e) { Check(false, "de punta a punta: " + e); }
             try { RepasoYDisco(); } catch (Exception e) { Check(false, "repaso y disco: " + e); }
             try { CadenaDeFabrica(dir); } catch (Exception e) { Check(false, "en la cadena de fabrica: " + e); }
+            try { ConElTono(dir); } catch (Exception e) { Check(false, "con el tono del local: " + e); }
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);

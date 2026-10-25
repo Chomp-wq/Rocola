@@ -12,8 +12,8 @@ estado y se publica (commit + push a la rama Modest, comprobando el push).
 
 | Tarea | Estado | Commit |
 |---|---|---|
-| Plan (este archivo) | hecho | (este commit) |
-| T1 nivelado con el tono del local | pendiente | |
+| Plan (este archivo) | hecho | 941127b |
+| T1 nivelado con el tono del local | **hecho**: `SalaLocal.MargenTonoDb` (raíz de la suma de cuadrados de 0,75·graves y 0,25·agudos), `GananciaDe`/`MargenDelTono` en `NivelDisco.cs`; `allimite` sección 9 | (este commit) |
 | T3 inicio y fin útiles (algoritmo 6) | pendiente | |
 | T6 quitar el zumbido | pendiente | |
 | T9 suavizar las eses | pendiente | |

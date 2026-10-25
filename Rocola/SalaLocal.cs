@@ -84,6 +84,20 @@ namespace Rocola
             internal const double MedidaSeg = 0.4, SubeSeg = 1.5, BajaSeg = 0.12, MezclaSeg = 0.03, BalanceSeg = 0.05;
             internal const int Trozo = 32;   // cuadros por cada nueva cuenta de la subida (el logaritmo, no en cada muestra)
             internal const int TonoMax = 6;                       // graves y agudos del local: de -6 a +6 dB
+            // EL MARGEN DEL TONO (T1, 25-10-2026). El nivelado al limite sube cada cancion hasta su limite medido en la cadena de fabrica,
+            // con el tono en 0. Subir los graves o los agudos del local sube los picos detras del nivelado, y el limitador se los comia: con
+            // graves +3 quitaba mas de 1 dB el 96 % del tiempo en una masterizada, y con +6 mas de 3 dB el 84 %. Medido en la cadena de
+            // verdad con seis canciones (pruebas/allimite.cs), para volver al criterio del nivelado (mas de 1 dB como mucho el 10 % del
+            // tiempo, mas de 3 dB el 1 %) hay que bajar 2 dB con graves +3, 4,5 con +6, 0,5 con agudos +3 y 1,5 con +6: 0,75 dB por dB
+            // de graves y 0,25 por dB de agudos. Los dos a la vez no se suman (sus picos no caen juntos): lo medido (4,75 dB con +6 y +6,
+            // 2,25 con +3 y +3, 4,5 con +6 y +3, 2,75 con +3 y +6) es la raiz de la suma de los cuadrados, a menos de 0,15 dB. Lo negativo
+            // no da nada (no sube los picos). Con el tono en 0, nada cambia.
+            internal const double MargenPorDbGraves = 0.75, MargenPorDbAgudos = 0.25;
+            internal static double MargenTonoDb(int gravesDb, int agudosDb)
+            {
+                double g = MargenPorDbGraves * Math.Max(0, gravesDb), a = MargenPorDbAgudos * Math.Max(0, agudosDb);
+                return Math.Sqrt(g * g + a * a);
+            }
             internal const double GravesHz = 120.0, AgudosHz = 6000.0, TonoQ = 0.7071, TonoSeg = 0.05;   // TonoSeg: los 12 dB enteros
 
             private readonly ISampleProvider src;
