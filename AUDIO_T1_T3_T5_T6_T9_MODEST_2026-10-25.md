@@ -238,6 +238,12 @@ un filtro en la rocola solo tocaría la música, no ese ruido.
   `flotantexp`, `cadenaentera`, `arreglos`, `ajustes`, `ajustesvivos`, `ventanaf3`, `calidad`, `todojunto`, `salalocal`, `presenciasala`,
   `sinpausa`, `salida`, `latenciaadaptable`, `arranquevivo`, `videoaudio`, `bomba`, `ventanareal`, `diagnostico`, `aperturaaudio`,
   `transiciones` y `audiosuave`.
+- **La batería completa** (sobre 584175a):
+  - fallan las tres de siempre (`sala`, `discoacotado` y `caratulasadaptativas`, por cosas de Linux y de la tarjeta imitada);
+  - dos que esperaban la cadena y el algoritmo de antes (`gravemono`: entre la presencia y el bajo va ahora T9; `silencios`: el algoritmo
+    es el 6). Se actualizaron y pasan;
+  - tres de tiempos (`realce`, `subgrave` y `flotantexp`) fallaron por la carga de la máquina. Corridas solas pasan, y en ese momento
+    `realce` fallaba incluso con el ejecutable anterior.
 - `compara-cadena` contra el ejecutable anterior: 16 de 16 combinaciones iguales bit a bit.
 - Las dos hojas de Ctrl+F3 que cambiaron se miraron en pantalla (Linux): todo cabe, nada se pisa.
 - `datosdeltas` (no es de la batería) falla igual con el ejecutable anterior: no es de esto.

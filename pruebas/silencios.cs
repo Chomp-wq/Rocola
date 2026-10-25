@@ -105,9 +105,9 @@ class Silencios
     {
         Console.WriteLine("\n  2) LA TABLA (rocola_sonoridad.txt, algoritmo 5)\n");
         int alg = (int)TM.GetField("Algoritmo", T).GetValue(null);
-        // Desde el 24-10-2026 es el 5 (el 4 anadio el LRA y el 5 el P90 del nivelado al limite, Sonoridad.cs) y sigue llevando donde suena: lo
-        // que se vigila es que las de 2, sin donde suena, se vuelvan a medir.
-        Check(alg == 5, "el algoritmo es exactamente el 5 (lleva donde suena, el LRA y el P90); es " + alg + ": la tanda larga vuelve a medir las anteriores");
+        // Desde el 25-10-2026 es el 6 (el 4 anadio el LRA, el 5 el P90 del nivelado al limite y el 6 donde empieza y acaba y el zumbido,
+        // Sonoridad.cs) y sigue llevando donde suena: lo que se vigila es que las de 2, sin donde suena, se vuelvan a medir.
+        Check(alg == 6, "el algoritmo es exactamente el 6 (lleva donde suena, el LRA, el P90, donde empieza y acaba y el zumbido); es " + alg + ": la tanda larga vuelve a medir las anteriores");
         ConstructorInfo c7 = null;
         foreach (ConstructorInfo c in TS.GetConstructors(T)) if (c.GetParameters().Length == 7) c7 = c;
         object a = c7.Invoke(new object[] { 3, -14.25f, 2f, 1800, -0.31f, -3.4f, Mapa(3.1f, 78f, 13f, 73f, 82.05f) });
