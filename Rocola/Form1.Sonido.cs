@@ -48,9 +48,9 @@ namespace Rocola
         // (no hace falta medir nada nuevo). 1 = la perilla tal cual, que es lo que hacia antes con todas.
         private float bassSongFactor = 1f;
         private float BassBaseNow() { return bassAuto || localAuto ? bassAutoBase : bassAmount; }   // el modo billar lo pone en automatico (CadenaBillar.cs)
-        private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor, 0f, 1f); }
+        private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor * BajoMedido, 0f, 1f); }   // BajoMedido: 1 salvo en el billar afinado (AfinarLocal.cs)
         // Lo mismo para una cancion que aun no suena (la siguiente, preparada para entrar sin pausa).
-        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto || localAuto ? autoBase : bassAmount) * factor, 0f, 1f); }
+        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto || localAuto ? autoBase : bassAmount) * factor * BajoMedido, 0f, 1f); }
         // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs): sin IA en vivo, el reconstructor lo
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
         private bool DseeDe(CadenaCancion c) { return DseeEfectivo; }
@@ -1149,6 +1149,7 @@ namespace Rocola
                 tapMedido = cad.Tap;
                 curSbr = cad.Sbr; curTap = cad.Tap; curBass = cad.Bajo;   // para ajustarla en vivo (Ctrl+F3)
                 bassSongFactor = cad.BajoFactor; bassAutoBase = cad.BajoBase;
+                AprendeParejo(cadenaSonando);   // la de antes, si aun no se habia soltado (VolumenParejo.cs)
                 cadenaSonando = cad; cadenaPreparada = null;
                 // RELEVO SIN PAUSA (SinPausa.cs): la salida lee de la secuencia. Cuando esta cancion se acabe, si la
                 // siguiente ya esta preparada, sigue en la MISMA lectura sin cerrar la salida.
@@ -1281,7 +1282,10 @@ namespace Rocola
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
-            LimitadorPicoReal lim = new LimitadorPicoReal(c.Hundir, TechoPicoReal, 3.0);
+            // EN EL BILLAR, lo que le llega al limitador se mide para el volumen parejo (VolumenParejo.cs). Pasa tal cual.
+            NAudio.Wave.ISampleProvider alLimitador = c.Hundir;
+            if (localAuto) { c.Margen = new MideMargen(c.Hundir, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; }
+            LimitadorPicoReal lim = new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0);
             lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;
             NAudio.Wave.ISampleProvider outChain = lim;

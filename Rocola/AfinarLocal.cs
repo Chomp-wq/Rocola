@@ -36,6 +36,31 @@ namespace Rocola
         internal const int AfinaSinMedir = 39, AfinaMinDb = 40, AfinaMaxDb = 120;   // el deslizador: 39 = sin medir
 
         private static readonly float[] afinadoDb = { float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN };
+        // EN VARIOS PUNTOS (tercera tanda, 27-10-2026): en una nave con eco la lectura cambia de 2 a 4 dB de un sitio a otro. Hasta tres juegos
+        // de lecturas (la barra, el fondo, el entrepiso...); la afinacion usa su promedio por banda (de los puntos que tengan esa banda). El
+        // primero es el de siempre (afinado_local=); los otros, afinado_local2= y afinado_local3=.
+        internal const int AfinaPuntos = 3;
+        private static readonly float[][] afinadoPuntos = { afinadoDb, SinMedir8(), SinMedir8() };
+        private static float[] SinMedir8() { float[] v = new float[8]; for (int i = 0; i < 8; i++) v[i] = float.NaN; return v; }
+        // El promedio por banda de los puntos medidos (NaN donde ninguno la tiene). Pura.
+        internal static float[] PromedioPuntos(float[][] puntos)
+        {
+            float[] m = new float[8];
+            for (int b = 0; b < 8; b++)
+            {
+                double s = 0; int n = 0;
+                for (int k = 0; k < puntos.Length; k++) { float v = puntos[k] != null && puntos[k].Length > b ? puntos[k][b] : float.NaN; if (!float.IsNaN(v)) { s += v; n++; } }
+                m[b] = n > 0 ? (float)(s / n) : float.NaN;
+            }
+            return m;
+        }
+        internal static float[] AfinadoPromedio() { return PromedioPuntos(afinadoPuntos); }
+        internal static int PuntosMedidos()
+        {
+            int n = 0;
+            for (int k = 0; k < AfinaPuntos; k++) { bool alguna = false; for (int b = 0; b < 8; b++) if (!float.IsNaN(afinadoPuntos[k][b])) alguna = true; if (alguna) n++; }
+            return n;
+        }
         private static int afinadoPonderacion = 1;   // C de fabrica (la que se recomienda)
         private static bool afinadoUsar;              // "afinado_usar=": apagado de fabrica
 
@@ -86,14 +111,14 @@ namespace Rocola
         }
 
         // ¿Se usa la afinacion ahora? Solo con el modo billar, el interruptor y las medidas de la voz.
-        private static bool AfinadaActiva { get { return localAuto && afinadoUsar && CorreccionAfinada(afinadoDb, afinadoPonderacion) != null; } }
+        private static bool AfinadaActiva { get { return localAuto && afinadoUsar && CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) != null; } }
 
         // El EQ que suena: el de la cancion y, en el billar con la afinacion, la del local encima (tope total -8 / +4 dB).
         internal const float AfinaTotalMin = -8f, AfinaTotalMax = 4f;
         private float[] ConLocalAfinado(float[] cancion)
         {
             if (!AfinadaActiva) return cancion;
-            float[] sala = AfinadaEnBandasEq(CorreccionAfinada(afinadoDb, afinadoPonderacion));
+            float[] sala = AfinadaEnBandasEq(CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion));
             if (sala == null) return cancion;
             float[] t = new float[8]; bool any = false;
             for (int b = 0; b < 8; b++)
@@ -106,25 +131,29 @@ namespace Rocola
         }
 
         // La configuracion: "afinado_local=" con las ocho lecturas ("x" = sin medir) y "afinado_ponderacion=" A, C o Z.
-        internal static string TextoAfinado()
+        internal static string TextoAfinado() { return TextoAfinado(0); }
+        internal static string TextoAfinado(int punto)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            float[] d = afinadoPuntos[punto];
             for (int b = 0; b < 8; b++)
             {
                 if (b > 0) sb.Append(';');
-                float v = afinadoDb[b];
+                float v = d[b];
                 sb.Append(float.IsNaN(v) ? "x" : v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture));
             }
             return sb.ToString();
         }
-        internal static void LeeAfinado(string texto)
+        internal static void LeeAfinado(string texto) { LeeAfinado(texto, 0); }
+        internal static void LeeAfinado(string texto, int punto)
         {
-            if (texto == null) return;
+            if (texto == null || punto < 0 || punto >= AfinaPuntos) return;
             string[] p = texto.Split(';');
+            float[] d = afinadoPuntos[punto];
             for (int b = 0; b < 8; b++)
             {
                 float v;
-                afinadoDb[b] = (b < p.Length && float.TryParse(p[b].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)
+                d[b] = (b < p.Length && float.TryParse(p[b].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)
                                 && v >= AfinaMinDb && v <= AfinaMaxDb) ? v : float.NaN;
             }
         }
@@ -137,22 +166,41 @@ namespace Rocola
         // Lo que dice la hoja: la correccion de cada banda, o lo que falta medir.
         internal static string TextoCorreccionAfinada()
         {
-            float[] c = CorreccionAfinada(afinadoDb, afinadoPonderacion);
+            float[] prom = AfinadoPromedio();
+            float[] c = CorreccionAfinada(prom, afinadoPonderacion);
             if (c == null)
             {
                 string falta = "";
-                for (int b = 2; b <= 5; b++) if (float.IsNaN(afinadoDb[b])) falta += (falta.Length > 0 ? ", " : "") + NombreBanda(b);
+                for (int b = 2; b <= 5; b++) if (float.IsNaN(prom[b])) falta += (falta.Length > 0 ? ", " : "") + NombreBanda(b);
                 return "Faltan las bandas de la voz: " + falta + ".\nSin ellas no hay con que comparar el resto.";
             }
-            string s = "Correccion para tu local (dB):\n";
+            int np = PuntosMedidos();
+            string s = "Correccion para tu local (dB" + (np > 1 ? ", promedio de " + np + " puntos" : "") + "):\n";
             for (int b = 0; b < 8; b++)
             {
-                s += NombreBanda(b) + " " + (float.IsNaN(afinadoDb[b]) ? "sin medir" : c[b].ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture));
+                s += NombreBanda(b) + " " + (float.IsNaN(prom[b]) ? "sin medir" : c[b].ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture));
                 s += b == 3 ? "\n" : (b < 7 ? "   " : "");
             }
             return s;
         }
         internal static string NombreBanda(int b) { float f = AfinaCentros[b]; return f >= 1000f ? (f / 1000f).ToString("0") + " kHz" : f.ToString("0") + " Hz"; }
+
+        // EL BAJO SEGUN LO MEDIDO (tercera tanda, 27-10-2026). Con la afinacion en uso se sabe cuanto grave dan de verdad las bocinas a 63 Hz
+        // frente a la zona de la voz (y a la curva de casa). Si dan poco, el bajo psicoacustico (que fabrica armonicos que si se oyen) sube su
+        // cantidad; si dan de sobra, la baja. El microfono de un celular suele leer de menos a 63 Hz: los primeros 4 dB que falten no
+        // cuentan (y 2 dB de sobra tampoco). 12 dB que falten de verdad = el doble... topado: entre 0,75 y 1,4 veces. 1 = como siempre. Pura.
+        internal const float BajoMedidoHolguraFalta = 4f, BajoMedidoHolguraSobra = 2f, BajoMedidoMin = 0.75f, BajoMedidoMax = 1.4f;
+        internal static float FactorBajoMedido(float[] lecturas, int ponderacion)
+        {
+            if (lecturas == null || lecturas.Length < 8 || float.IsNaN(lecturas[0]) || ponderacion < 0 || ponderacion > 2) return 1f;
+            double refSum = 0; int refN = 0;
+            for (int b = 2; b <= 5; b++) { if (float.IsNaN(lecturas[b])) return 1f; refSum += lecturas[b] - AfinaPonderacion[ponderacion][b] - CurvaCasa[b]; refN++; }
+            double d = (lecturas[0] - AfinaPonderacion[ponderacion][0]) - refSum / refN - CurvaCasa[0];   // negativo: le falta grave
+            double e = d < -BajoMedidoHolguraFalta ? d + BajoMedidoHolguraFalta : (d > BajoMedidoHolguraSobra ? d - BajoMedidoHolguraSobra : 0.0);
+            double f = 1.0 - e / 12.0;
+            return (float)(f < BajoMedidoMin ? BajoMedidoMin : (f > BajoMedidoMax ? BajoMedidoMax : f));
+        }
+        private static float BajoMedido { get { return AfinadaActiva ? FactorBajoMedido(AfinadoPromedio(), afinadoPonderacion) : 1f; } }
 
         // ---------------------------------------------------------------- EL RUIDO POR BANDAS
         private PruebaBanda bandaSonando;

@@ -1,0 +1,191 @@
+// VOLUMEN PAREJO APRENDIDO (27 de octubre de 2026, tercera tanda del modo billar). El nivelado al limite (Sonoridad.cs, GananciaAlLimite)
+// mide los picos de cada cancion EN SU ARCHIVO, con unos margenes calibrados para la cadena de fabrica. En el billar la cadena cambia esos
+// picos: el corte de 40 Hz y el EQ del billar le quitan grave (a un reggaeton le sobra 1,8 dB de margen bajo el techo) y la presencia los
+// cambia segun la cancion. Resultado: canciones que podrian sonar como las demas se quedan mas bajas.
+//
+// Aqui se aprende, cancion por cancion, lo que de verdad hace la cadena del billar con ella:
+//  - MIDE (MideMargen, pegada delante del limitador, solo en el billar): el pico de cada bloque de 100 ms de lo que le llega al limitador,
+//    en un histograma de 0,1 dB (sin reservar nada al sonar). No toca ni una muestra.
+//  - APRENDE al acabar la cancion, solo si sono ENTERA desde el principio (llego al final del archivo) y sin «Escuchar sin mejoras»: de
+//    sus picos por bloque saca el P90, el P99 y el mayor (frente al techo del limitador) y cuanto podria subir o deberia bajar para que el
+//    P90 quede a 0,75 dB, el P99 a 3 dB y el mayor a 5 dB por encima del techo (lo que el limitador quita sin oirse; la cadena de fabrica
+//    deja las canciones bien masterizadas en +0,7 y +1,0). Se acerca el 70 % a eso cada vez (unas pocas vueltas y queda), sin pasar de
+//    +-2 dB, y lo que cambiaria menos de 0,25 dB se deja.
+//  - SE USA la siguiente vez que suena en el billar (GananciaDe). En racha con otra de su disco, el MENOR de las pistas del disco (una
+//    sin aprender cuenta como 0): el disco sigue sonando parejo entre si.
+// Se guarda en rocola_billar_nivel.txt (una linea "dB|ruta" por cada cosa aprendida; al leer, la ultima manda). Con el modo billar apagado
+// no se mide ni se usa: la cadena sale bit a bit como antes.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using NAudio.Wave;
+
+namespace Rocola
+{
+    public partial class Form1
+    {
+        internal const float ParejoP90Db = 0.75f, ParejoP99Db = 3f, ParejoMaxDb = 5f;
+        internal const float ParejoTopeDb = 2f, ParejoPaso = 0.7f, ParejoZonaMuerta = 0.25f;
+        internal const int ParejoMinBloques = 300;   // al menos 30 s de musica que no sea silencio
+
+        private static readonly object parejoCerrojo = new object();
+        private static Dictionary<string, float> parejoDb = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        private string ParejoFile() { return RutaDatos("rocola_billar_nivel.txt"); }
+
+        // Lo aprendido de esta cancion (dB), 0 si nada.
+        internal static float ParejoDe(string path)
+        {
+            if (path == null) return 0f;
+            float v;
+            lock (parejoCerrojo) return parejoDb.TryGetValue(path, out v) ? v : 0f;
+        }
+        // Lo que se le aplica al sonar (dB): en el billar lo suyo, o el menor de su disco si suena en racha con otra de el.
+        private float ParejoAplicado(Track t)
+        {
+            if (!localAuto || t == null || t.Path == null) return 0f;
+            List<Track> disco = queue != null ? RachaDeDisco(t) : null;
+            if (disco == null) return ParejoDe(t.Path);
+            float m = float.MaxValue;
+            for (int i = 0; i < disco.Count; i++) { Track tr = disco[i]; if (tr != null) m = Math.Min(m, ParejoDe(tr.Path)); }
+            return m == float.MaxValue ? 0f : m;
+        }
+
+        // Cuanto deberia cambiar (dB) segun los picos por bloque medidos (P90, P99 y el mayor, en dB frente al techo). Pura.
+        internal static float ParejoFalta(float p90, float p99, float max)
+        {
+            return Math.Min(ParejoP90Db - p90, Math.Min(ParejoP99Db - p99, ParejoMaxDb - max));
+        }
+        // Lo nuevo que se apunta: 'aplicado' es lo que llevaba al sonar, 'propio' lo que ya tenia apuntado (o NaN). NaN = no apuntar. Pura.
+        internal static float ParejoNuevo(float propio, float aplicado, float falta)
+        {
+            if (float.IsNaN(falta) || float.IsInfinity(falta)) return float.NaN;
+            float ideal = aplicado + falta;
+            if (ideal > ParejoTopeDb) ideal = ParejoTopeDb; else if (ideal < -ParejoTopeDb) ideal = -ParejoTopeDb;
+            float antes = float.IsNaN(propio) ? 0f : propio;
+            float nuevo = antes + ParejoPaso * (ideal - antes);
+            if (Math.Abs(nuevo - antes) < ParejoZonaMuerta && !float.IsNaN(propio)) return float.NaN;
+            return (float)Math.Round(nuevo, 2);
+        }
+
+        // Al soltar una cadena (acabo, se salto o se paro): si sono entera en el billar, se aprende. En el hilo de la pantalla.
+        private void AprendeParejo(CadenaCancion c)
+        {
+            if (c == null || c.Margen == null || c.Cancion == null || c.Cancion.Path == null) return;
+            MideMargen m = c.Margen; c.Margen = null;
+            if (!m.Entera || m.Descarta || !localAuto) return;
+            float p90, p99, max;
+            if (!m.Percentiles(out p90, out p99, out max)) return;
+            string path = c.Cancion.Path;
+            float propio; bool habia;
+            lock (parejoCerrojo) habia = parejoDb.TryGetValue(path, out propio);
+            float nuevo = ParejoNuevo(habia ? propio : float.NaN, m.Aplicado, ParejoFalta(p90, p99, max));
+            if (float.IsNaN(nuevo)) return;
+            lock (parejoCerrojo) parejoDb[path] = nuevo;
+            string linea = nuevo.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "|" + path + "\r\n";
+            string archivo = ParejoFile();
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { lock (parejoCerrojo) File.AppendAllText(archivo, linea); }
+                catch (Exception ex) { LogError("Volumen parejo", ex); }
+            });
+        }
+
+        // Al arrancar: lo apuntado (la ultima linea de cada ruta manda). Si el archivo crecio mucho con lineas repetidas, se reescribe.
+        private void CargaParejo()
+        {
+            string archivo = ParejoFile();
+            Dictionary<string, float> d = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            int lineas = 0;
+            try
+            {
+                if (!File.Exists(archivo)) return;
+                foreach (string s in File.ReadAllLines(archivo))
+                {
+                    int bar = s.IndexOf('|'); float v;
+                    if (bar <= 0 || bar >= s.Length - 1) continue;
+                    if (!float.TryParse(s.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) continue;
+                    if (float.IsNaN(v) || v > ParejoTopeDb || v < -ParejoTopeDb) continue;
+                    d[s.Substring(bar + 1)] = v; lineas++;
+                }
+                lock (parejoCerrojo) parejoDb = d;
+                if (lineas > 2 * d.Count + 200)
+                {
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    foreach (KeyValuePair<string, float> kv in d) sb.Append(kv.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append('|').Append(kv.Key).Append("\r\n");
+                    lock (parejoCerrojo) { File.WriteAllText(archivo + ".nuevo", sb.ToString()); File.Copy(archivo + ".nuevo", archivo, true); File.Delete(archivo + ".nuevo"); }
+                }
+            }
+            catch (Exception ex) { LogError("Volumen parejo", ex); }
+        }
+
+        // EL OIDO: delante del limitador, el pico de cada bloque de 100 ms en un histograma de 0,1 dB frente al techo (de -40 a +20 dB). Pasa
+        // tal cual. Entera = leyo hasta el final del archivo; Descarta = alguien puso «Escuchar sin mejoras» mientras sonaba.
+        internal sealed class MideMargen : ISampleProvider
+        {
+            internal const float DesdeDb = -40f, PasoDb = 0.1f; internal const int Casillas = 600;
+            private readonly ISampleProvider src;
+            private readonly int[] hist = new int[Casillas];
+            private readonly int bloque;   // muestras por bloque (todos los canales)
+            private readonly double techoDb;
+            private int enBloque; private float pico;
+            private volatile bool entera;
+            internal volatile bool Descarta;
+            internal readonly bool DesdeElPrincipio;
+            internal readonly float Aplicado;   // lo aprendido que llevaba al sonar (dB)
+            internal int Bloques;
+            private readonly long esperadas;    // muestras que trae la cancion entera (0 = no se sabe: hace falta llegar al final)
+            private long leidas;
+            internal MideMargen(ISampleProvider s, float techo, bool desdeElPrincipio, float aplicadoDb, double segundos)
+            {
+                src = s; DesdeElPrincipio = desdeElPrincipio; Aplicado = aplicadoDb;
+                esperadas = segundos > 1.0 ? (long)(segundos * s.WaveFormat.SampleRate * s.WaveFormat.Channels) : 0L;
+                bloque = Math.Max(1, s.WaveFormat.SampleRate / 10) * Math.Max(1, s.WaveFormat.Channels);
+                techoDb = 20.0 * Math.Log10(techo);
+            }
+            public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            // Entera: desde el principio y hasta el final del archivo, o al menos el 90 % de lo que dura (el fundido de la siguiente y saltar
+            // los silencios largos pueden dejar sin leer el final).
+            internal bool Entera { get { return DesdeElPrincipio && (entera || (esperadas > 0 && leidas >= esperadas * 9 / 10)); } }
+            public int Read(float[] buffer, int offset, int count)
+            {
+                int n = src.Read(buffer, offset, count);
+                if (n <= 0) { if (count > 0) entera = true; return n; }
+                leidas += n;
+                float p = pico; int k = enBloque;
+                for (int i = 0; i < n; i++)
+                {
+                    float a = buffer[offset + i]; if (a < 0f) a = -a;
+                    if (a > p) p = a;
+                    if (++k >= bloque) { Apunta(p); p = 0f; k = 0; }
+                }
+                pico = p; enBloque = k;
+                return n;
+            }
+            private void Apunta(float p)
+            {
+                if (!(p > 0f)) return;
+                double db = 20.0 * Math.Log10(p) - techoDb;
+                if (db < DesdeDb) return;   // silencio: no cuenta
+                int c = (int)((db - DesdeDb) / PasoDb); if (c >= Casillas) c = Casillas - 1;
+                hist[c]++; Bloques++;
+            }
+            internal bool Percentiles(out float p90, out float p99, out float max)
+            {
+                p90 = p99 = max = float.NaN;
+                int total = Bloques;
+                if (total < ParejoMinBloques) return false;
+                int a90 = (int)Math.Ceiling(total * 0.9), a99 = (int)Math.Ceiling(total * 0.99), suma = 0;
+                for (int c = 0; c < Casillas; c++)
+                {
+                    if (hist[c] == 0) continue;
+                    suma += hist[c];
+                    float db = DesdeDb + (c + 0.5f) * PasoDb;
+                    if (float.IsNaN(p90) && suma >= a90) p90 = db;
+                    if (float.IsNaN(p99) && suma >= a99) p99 = db;
+                    max = db;
+                }
+                return !float.IsNaN(p90) && !float.IsNaN(p99);
+            }
+        }
+    }
+}

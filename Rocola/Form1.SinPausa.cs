@@ -43,6 +43,7 @@ namespace Rocola
             internal RetumbeDinamico Retumbe;    // el retumbe dinamico (RetumbeDinamico.cs)
             internal AtaqueClaro Ataque;         // el ataque mas claro (AtaqueClaro.cs)
             internal BomboSinHundir Hundir;      // que el bombo no hunda la voz (BomboSinHundir.cs)
+            internal MideMargen Margen;          // en el billar: lo que le llega al limitador, para el volumen parejo (VolumenParejo.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
             internal QuitaZumbido Zumbido;       // las muescas del zumbido de la corriente, si la cancion lo trae (T6, Zumbido.cs)
@@ -184,6 +185,7 @@ namespace Rocola
         {
             ApuntaCortesDeSonido();   // la que acaba: si tuvo cortes, una linea en rocola_error.txt (caja negra, SalidaSonido.cs)
             CadenaCancion a = cadenaSonando;
+            AprendeParejo(a);   // la que acabo, si sono entera en el billar (VolumenParejo.cs)
             cadenaSonando = b;
             if (object.ReferenceEquals(cadenaPreparada, b)) cadenaPreparada = null;
             // 1) LA QUE ACABO. Su medida la guardo el hilo del sonido en el primer bloque de la nueva; si la nueva
@@ -277,6 +279,7 @@ namespace Rocola
                 MedidaCancion m = p.Tap != null ? p.Tap.Medida : null;
                 if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
             }
+            AprendeParejo(cadenaSonando);   // la que sonaba, si llego entera (VolumenParejo.cs)
             secuencia = null; cadenaSonando = null; tapMedido = null;
             return p != null ? p.Lector : null;
         }

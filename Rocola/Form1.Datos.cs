@@ -677,6 +677,8 @@ namespace Rocola
                     else if (s.StartsWith("agudos_local=")) agudosLocalDb = TonoLocalDb(s.Substring(13), agudosLocalDb);   // agudos del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("local_auto=")) localAuto = s.Substring(11).Trim() == "1";   // el modo automatico del local (LocalAuto.cs)
                     else if (s.StartsWith("afinado_local=")) LeeAfinado(s.Substring(14));                          // afinar el local con el celular (AfinarLocal.cs)
+                    else if (s.StartsWith("afinado_local2=")) LeeAfinado(s.Substring(15), 1);                      // y en otros dos puntos del local
+                    else if (s.StartsWith("afinado_local3=")) LeeAfinado(s.Substring(15), 2);
                     else if (s.StartsWith("afinado_ponderacion=")) afinadoPonderacion = PonderacionDe(s.Substring(20));
                     else if (s.StartsWith("afinado_usar=")) afinadoUsar = s.Substring(13).Trim() == "1";
                     else if (s.StartsWith("tipo_local=")) { }   // retirado el 25-10-2026: el modo automatico es solo para el billar (LocalAuto.cs); se ignora
@@ -857,6 +859,8 @@ namespace Rocola
             sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
             sb.Append("local_auto=").Append(localAuto ? "1" : "0").Append("\r\n");
             sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");
+            sb.Append("afinado_local2=").Append(TextoAfinado(1)).Append("\r\n");
+            sb.Append("afinado_local3=").Append(TextoAfinado(2)).Append("\r\n");
             sb.Append("afinado_ponderacion=").Append(AfinaPonderacionNombre[afinadoPonderacion]).Append("\r\n");
             sb.Append("afinado_usar=").Append(afinadoUsar ? "1" : "0").Append("\r\n");
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");

@@ -1,5 +1,15 @@
 # Rocola
 
+## Modo billar, tercera tanda — 27 de octubre de 2026
+
+- **Volumen parejo aprendido:** al terminar cada canción en el billar, la rocola anota cuánto margen le sobró (o le faltó) y la próxima
+  vez la sube o la baja eso, hasta 2 dB. En el banco, las canciones quedan dentro de 1,7 dB entre sí, en vez de 2,5.
+- **Afinar en varios puntos:** hasta 3 puntos del local, y se usa el promedio.
+- **El bajo según lo medido:** con la afinación encendida, el bajo psicoacústico sube si tus bocinas dan poco grave a 63 Hz y baja si dan de sobra.
+
+Con el modo apagado, la cadena sale como antes. **Nada se ha oído en el billar ni se probó en el A4.**
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#tercera-tanda-volumen-parejo-varios-puntos-y-el-bajo-según-lo-medido).
+
 ## Modo billar, segunda tanda — 27 de octubre de 2026
 
 - **Presencia más llena:** en el billar devuelve hasta 5 dB. La balada deja de sonar 1,7 dB más baja que el resto.

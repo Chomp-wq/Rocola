@@ -747,6 +747,7 @@ namespace Rocola
             ArrancaVigia();   // cuanto tarda la pantalla en atender, siempre (MedidasBitacora.cs)
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LoadConfigPrefs();   // preferencias: render GPU/CPU + carpetas de musica adicionales (Ctrl+F2)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate { CargaParejo(); });   // el volumen parejo aprendido del modo billar, en segundo plano (VolumenParejo.cs)
             Diag("rocola del " + DeCuandoEs());   // LO PRIMERO de la bitacora: de cuando es la que esta corriendo
             SubeVolumenWindowsAlArrancar();   // el volumen general de Windows al maximo y sin silencio, una vez por arranque (VolumenWindows.cs)
             // AQUI y no en BuildUi: la pantalla se arma antes de leer la configuracion, asi que alla

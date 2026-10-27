@@ -26,6 +26,7 @@ namespace Rocola
         private void PonSinMejoras(bool on)
         {
             sinMejoras = on;
+            if (on) { CadenaCancion c = cadenaSonando; if (c != null && c.Margen != null) c.Margen.Descarta = true; }   // esa vuelta no se aprende (VolumenParejo.cs)
             sinMejorasHasta = on ? DateTime.Now.AddSeconds(SinMejorasSeg) : DateTime.MinValue;
             ApplyNormNow();   // devuelve lo de siempre y, si toca, lo quita (AplicaSinMejoras, al final)
         }

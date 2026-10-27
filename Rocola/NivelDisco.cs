@@ -48,6 +48,7 @@ namespace Rocola
             float g;
             if (!(disco != null && GananciaDeDisco(disco, t.Path, out g))) g = NormGainFor(t.Path);
             float m = MargenDelTono(t);
+            if (localAuto) { float pa = ParejoAplicado(t); if (pa != 0f) m *= DbALin(pa); }   // en el billar, el volumen parejo aprendido (VolumenParejo.cs)
             return m == 1f ? g : g * m;
         }
         // Lo que baja el nivelado para el tono del local que de verdad suena en esta cancion (los mandos, o lo que decide el modo

@@ -14,6 +14,8 @@ using System.Runtime.Serialization;
 //  3) Realce, DSEE, siseo, a la medida, arreglos y bajo: lo que el modo decide, y que apagado manda el interruptor.
 //  4) El codigo: la cadena usa lo efectivo y la ventana lo pone en gris.
 // Son cuentas, no oido: nada de esto se ha oido en el billar.
+class Fuente : NAudio.Wave.ISampleProvider { float[] x; int p; public Fuente(float[] a) { x = a; } public NAudio.Wave.WaveFormat WaveFormat { get { return NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(44100, 2); } }
+    public int Read(float[] b, int o, int n) { int k = Math.Min(n, x.Length - p); Array.Copy(x, p, b, o, k); p += k; return k; } }
 class CadenaBillarPrueba
 {
     static int fallos, oks;
@@ -164,13 +166,63 @@ class CadenaBillarPrueba
         Check(eq.Invoke(f, new object[] { "cancion.mp3" }) == null, "con su interruptor apagado, nada");
         for (int b = 0; b < 8; b++) med[b] = medAntes[b];
         PonStatic("afinadoUsar", false); PonStatic("localAuto", false);
-        MethodInfo lee = TF.GetMethod("LeeAfinado", T), texto = TF.GetMethod("TextoAfinado", T);
+        MethodInfo lee = TF.GetMethod("LeeAfinado", T, null, new Type[] { typeof(string) }, null), texto = TF.GetMethod("TextoAfinado", T, null, Type.EmptyTypes, null);
         lee.Invoke(null, new object[] { "78;84.5;x;85;84;86;87;200" });
         string vuelta = (string)texto.Invoke(null, null);
         Check(vuelta == "78;84.5;x;85;84;86;87;x", "la configuracion: ida y vuelta, \"x\" sin medir y lo absurdo se descarta (" + vuelta + ")");
         lee.Invoke(null, new object[] { "x;x;x;x;x;x;x;x" });
         Check(son.Contains("SubgraveEf") && dat.Contains("ConLocalAfinado(EqCorrCancion(path))") && aj.Contains("\"SonidoAfinarAbrir\"") && aj.Contains("NecesitaMotivo(swAfi,"),
               "el codigo: el subgrave del billar al armar, la afinacion dentro del EQ y su hoja en la ventana");
+
+        Console.WriteLine("\n  6) TERCERA TANDA: VOLUMEN PAREJO, VARIOS PUNTOS Y EL BAJO SEGUN LO MEDIDO\n");
+        MethodInfo faltaM = TF.GetMethod("ParejoFalta", T), nuevoM = TF.GetMethod("ParejoNuevo", T);
+        float fa = (float)faltaM.Invoke(null, new object[] { -1.1f, -0.3f, 1.1f });
+        Check(Math.Abs(fa - 1.85f) < 1e-4f, "volumen parejo: al reggaeton del banco (P90 -1,1 dB del techo) le faltan 1,85 dB");
+        float fb = (float)faltaM.Invoke(null, new object[] { 0.5f, 4f, 3f });
+        Check(Math.Abs(fb + 1f) < 1e-4f, "y si su P99 pasa 1 dB de lo que se aguanta, baja 1 dB");
+        float n1 = (float)nuevoM.Invoke(null, new object[] { float.NaN, 0f, 1.85f });
+        float n2 = (float)nuevoM.Invoke(null, new object[] { 1.3f, 1.3f, 0.5f });
+        float n3 = (float)nuevoM.Invoke(null, new object[] { 1.7f, 1.7f, 0.1f });
+        float n4 = (float)nuevoM.Invoke(null, new object[] { float.NaN, 0f, 9f });
+        Check(Math.Abs(n1 - 1.3f) < 0.01f && Math.Abs(n2 - 1.65f) < 0.01f && float.IsNaN(n3) && Math.Abs(n4 - 1.4f) < 0.01f,
+              "se acerca el 70 % cada vez, lo de menos de 0,25 dB se deja y nunca pasa de 2 dB (" + n1 + ", " + n2 + ", " + n3 + ", " + n4 + ")");
+        float enRacha = (float)nuevoM.Invoke(null, new object[] { 1.8f, 0f, 1.85f });
+        Check(float.IsNaN(enRacha), "en racha con su disco (sonando con 0 dB y faltandole 1,85), lo suyo (1,8) no se pierde: ya estaba bien");
+        // El oido: pasa tal cual, cuenta bloques y solo aprende si sono entera.
+        Type TM = TF.GetNestedType("MideMargen", T);
+        float[] tono = new float[44100 * 2 * 40]; for (int i = 0; i < tono.Length; i += 2) { float v = (float)(0.8 * Math.Sin(2 * Math.PI * 100 * (i / 2) / 44100.0)); tono[i] = v; tono[i + 1] = v; }
+        object mm = Activator.CreateInstance(TM, T, null, new object[] { new Fuente(tono), 0.88f, true, 0f, 40.0 }, null);
+        NAudio.Wave.ISampleProvider mp = (NAudio.Wave.ISampleProvider)mm;
+        float[] bl = new float[4410 * 2]; bool igualM = true; int leido = 0; int r;
+        while ((r = mp.Read(bl, 0, bl.Length)) > 0) { for (int i = 0; i < r; i++) if (bl[i] != tono[leido + i]) igualM = false; leido += r; }
+        object[] po = { 0f, 0f, 0f }; bool hay = (bool)TM.GetMethod("Percentiles", T).Invoke(mm, po);
+        Check(igualM && leido == tono.Length, "el oido no toca ni una muestra");
+        Check(hay && Math.Abs((float)po[0] - 20 * (float)Math.Log10(0.8 / 0.88)) < 0.1f && (bool)TM.GetProperty("Entera", T).GetValue(mm, null), "y mide el pico por bloque frente al techo (" + po[0] + " dB), con la cancion entera");
+        object mc = Activator.CreateInstance(TM, T, null, new object[] { new Fuente(tono), 0.88f, true, 0f, 80.0 }, null);
+        ((NAudio.Wave.ISampleProvider)mc).Read(bl, 0, bl.Length);
+        Check(!(bool)TM.GetProperty("Entera", T).GetValue(mc, null), "si se salta a media cancion no aprende nada");
+        string son3 = Texto("Form1.SinPausa.cs"), ld = Texto("NivelDisco.cs"), lq = Texto("LoQueSuena.cs");
+        Check(son.Contains("if (localAuto) { c.Margen = new MideMargen(") && son3.Contains("AprendeParejo(a);") && son3.Contains("AprendeParejo(cadenaSonando);")
+              && ld.Contains("ParejoAplicado(t)") && lq.Contains("c.Margen.Descarta = true"), "se mide solo en el billar, se aprende al soltar la cadena, se usa al nivelar y no con «Escuchar sin mejoras»");
+        // Varios puntos.
+        MethodInfo prom = TF.GetMethod("PromedioPuntos", T);
+        float[] pm = (float[])prom.Invoke(null, new object[] { new float[][] { new float[] { 80, 80, 80, 80, 80, 80, 80, float.NaN }, new float[] { 84, 82, float.NaN, 80, 80, 80, 80, float.NaN }, new float[] { float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN } } });
+        Check(pm[0] == 82f && pm[1] == 81f && pm[2] == 80f && float.IsNaN(pm[7]), "varios puntos: el promedio por banda de los que la tienen");
+        MethodInfo lee2 = TF.GetMethod("LeeAfinado", T, null, new Type[] { typeof(string), typeof(int) }, null), texto2 = TF.GetMethod("TextoAfinado", T, null, new Type[] { typeof(int) }, null);
+        lee2.Invoke(null, new object[] { "80;80;80;80;80;80;80;80", 1 }); lee2.Invoke(null, new object[] { "84;x;x;x;x;x;x;x", 2 });
+        float[] ap = (float[])TF.GetMethod("AfinadoPromedio", T).Invoke(null, null);
+        Check((string)texto2.Invoke(null, new object[] { 2 }) == "84;x;x;x;x;x;x;x" && ap[0] == 82f && ap[3] == 80f, "la configuracion de los otros puntos y su promedio");
+        lee2.Invoke(null, new object[] { "x;x;x;x;x;x;x;x", 1 }); lee2.Invoke(null, new object[] { "x;x;x;x;x;x;x;x", 2 });
+        Check(dat.Contains("StartsWith(\"afinado_local2=\")") && dat.Contains("sb.Append(\"afinado_local3=\")"), "se leen y se guardan afinado_local2= y afinado_local3=");
+        // El bajo segun lo medido.
+        MethodInfo fbm = TF.GetMethod("FactorBajoMedido", T);
+        float bajoPlano = (float)fbm.Invoke(null, new object[] { new float[] { 82, 81.5f, 80.5f, 80, 80, 79.5f, 78.5f, 77 }, 2 });
+        float bajoFalta = (float)fbm.Invoke(null, new object[] { new float[] { 70, 81.5f, 80.5f, 80, 80, 79.5f, 78.5f, 77 }, 2 });
+        float bajoSobra = (float)fbm.Invoke(null, new object[] { new float[] { 92, 81.5f, 80.5f, 80, 80, 79.5f, 78.5f, 77 }, 2 });
+        float bajoNada = (float)fbm.Invoke(null, new object[] { new float[] { float.NaN, 81.5f, 80.5f, 80, 80, 79.5f, 78.5f, 77 }, 2 });
+        Check(bajoPlano == 1f && bajoFalta > 1.3f && bajoFalta <= 1.4f && bajoSobra < 1f && bajoSobra >= 0.75f && bajoNada == 1f,
+              "el bajo segun lo medido: igual si 63 Hz va bien, mas si falta (" + bajoFalta + "), menos si sobra (" + bajoSobra + "), igual sin medir");
+        Check(son.Contains("bassSongFactor * BajoMedido") && son.Contains("* factor * BajoMedido"), "el bajo psicoacustico lo lleva al sonar y en la siguiente");
 
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");

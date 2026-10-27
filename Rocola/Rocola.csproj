@@ -145,6 +145,7 @@
     <Compile Include="LocalAuto.cs" />
     <Compile Include="CadenaBillar.cs" />
     <Compile Include="AfinarLocal.cs" />
+    <Compile Include="VolumenParejo.cs" />
     <Compile Include="VolumenWindows.cs" />
     <Compile Include="CieloVivoGpu.cs" />
     <Compile Include="SinPausa.cs" />

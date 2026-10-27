@@ -232,6 +232,69 @@ Pruebas de la segunda tanda:
 Para la afinación, conviene medir con la app en C o Z y en lento, con el local como siempre, de pie donde se escucha y no pegado a una
 bocina.
 
+## Tercera tanda: volumen parejo, varios puntos y el bajo según lo medido
+
+El dueño pidió más mejoras y eligió tres de las cuatro propuestas. La cuarta, afinar cada zona aparte, queda pendiente de saber cómo están
+conectadas las cajas.
+
+### 1. Volumen parejo aprendido
+
+El nivelado al límite mide los picos de cada canción en su archivo, con márgenes calibrados para la cadena de fábrica. En el billar la
+cadena cambia esos picos: el corte de 40 Hz y el EQ le quitan grave, y la presencia los mueve según la canción. Por eso a unas canciones
+les sobra margen bajo el techo y se quedan más bajas que las demás. Al reggaetón del banco le sobraban 1,8 dB. El código está en
+`VolumenParejo.cs`.
+
+- **Medir:** en el billar, una etapa pegada delante del limitador apunta el pico de cada bloque de 100 ms en un histograma. No toca ni
+  una muestra ni reserva memoria al sonar.
+- **Aprender:** al soltar la canción, solo si sonó entera desde el principio y sin «Escuchar sin mejoras». Saca sus P90, P99 y el pico
+  mayor frente al techo, y busca que queden en +0,75, +3 y +5 dB:
+  - en cada vuelta se acerca el 70 % a eso;
+  - nunca pasa de ±2 dB;
+  - deja lo que cambiaría menos de 0,25 dB.
+- **Usar:** la siguiente vez que suena en el billar. En racha con otra de su disco usa el menor del disco (una pista sin aprender cuenta
+  como 0), así el disco sigue sonando parejo entre sí.
+- **Guardar:** en `rocola_billar_nivel.txt`, una línea por cada cosa aprendida. Al arrancar se lee en segundo plano (no frena la pantalla) y, si creció mucho, se reescribe.
+
+En el banco, en 2 o 3 vueltas:
+
+| Canción | Primera vez | Aprendido | Después |
+|---|---|---|---|
+| Pop | −10,2 LUFS | +0,2 dB | −10,1 |
+| Reggaetón | −12,5 | +1,7 dB | **−11,1** |
+| Balada | −11,5 | +1,3 dB | −11,0 |
+| Cumbia | −11,6 | −0,2 dB | −11,7 |
+| Pop con eses | −10,0 | +0,1 dB | −10,0 |
+
+La diferencia entre la más fuerte y la más baja pasa de 2,5 a 1,7 LU. El limitador nunca pasa del 7 % del tiempo (de fábrica, hasta 14 %).
+
+### 2. Afinar en varios puntos
+
+En una nave con eco, la lectura del celular cambia de 2 a 4 dB de un sitio a otro. La hoja de afinar tiene ahora **Punto 1, 2 y 3** y el
+botón «Borrar este punto». La afinación usa el promedio por banda de los puntos que tengan esa banda. Se guardan en `afinado_local=` (el
+de siempre), `afinado_local2=` y `afinado_local3=`.
+
+### 3. El bajo según lo medido
+
+Con la afinación en uso, la rocola sabe cuánto grave dan de verdad las bocinas a 63 Hz frente a la zona de la voz y a la curva de casa.
+
+- Si dan poco, el bajo psicoacústico sube su cantidad; si dan de sobra, la baja.
+- El micrófono de un celular suele leer de menos a 63 Hz, así que los primeros 4 dB que falten no cuentan, ni 2 dB de sobra.
+- Va entre 0,75 y 1,4 veces lo de siempre.
+
+Solo actúa con el modo billar y la afinación encendidos.
+
+### Pruebas de la tercera tanda
+
+- `pruebas/cadenabillar.cs` suma:
+  - las cuentas del volumen parejo;
+  - el oído, que no toca ni una muestra y solo aprende con la canción entera;
+  - el promedio de los puntos y su configuración;
+  - el factor del bajo;
+  - los ganchos en el código.
+- Con el modo apagado, `compara-cadena` sigue dando 0 combinaciones distintas sin esperarlas.
+- Suite completa: los únicos fallos son los de antes (`sala`, `discoacotado` y `caratulasadaptativas`). `bloqueos` avisó que la lectura de
+  `rocola_billar_nivel.txt` frenaba la pantalla al arrancar; ahora se lee en segundo plano y pasa.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,
