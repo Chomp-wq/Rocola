@@ -46,7 +46,7 @@ class LocalAutoPrueba
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
         Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
               "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
-        Check(B(b0, "Bombo") && B(bx, "Bombo") && B(b2, "Bombo"),
+        Check(B(b0, "Bombo") && B(b0, "Retumbe") && B(bx, "Bombo") && B(bx, "Retumbe") && B(b2, "Bombo") && B(b2, "Retumbe"),
               "voz, golpe y retumbe (27-10-2026): el bombo, el retumbe y el ataque van siempre en el billar, en cualquier cancion, tambien sin medir");
         Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia") && B(b2, "Presencia") && !B(bx, "Presencia"), "sin LRA (medida de antes): presencia solo desde " + muy + " dB de P99 - sonoridad; sin medir, sin presencia");
@@ -84,10 +84,10 @@ class LocalAutoPrueba
         object m0 = localDe.Invoke(f, new object[] { cancion });
         Check(B(m0, "Subgrave") && !B(m0, "Estrecho") && B(m0, "EstrechoSoloSiHaceFalta") && !B(m0, "Claridad") && B(m0, "Suaves") && B(m0, "Presencia") && I(m0, "Graves") == 3 && I(m0, "Agudos") == -2,
               "con el automatico apagado salen los siete mandos exactamente como estan, tengan lo que tengan");
-        Check(!B(m0, "Bombo"), "y con los tres interruptores de voz, golpe y retumbe apagados (de fabrica) el apagado los deja apagados");
-        PonStatic("bomboSinHundir", true);
+        Check(!B(m0, "Bombo") && !B(m0, "Retumbe"), "y con los tres interruptores de voz, golpe y retumbe apagados (de fabrica) el apagado los deja apagados");
+        PonStatic("bomboSinHundir", true); PonStatic("retumbeDinamico", false);
         object mv = localDe.Invoke(f, new object[] { cancion });
-        Check(B(mv, "Bombo"), "con el automatico apagado mandan sus tres interruptores, cada uno el suyo");
+        Check(B(mv, "Bombo") && !B(mv, "Retumbe"), "con el automatico apagado mandan sus tres interruptores, cada uno el suyo");
         PonStatic("bomboSinHundir", false);
         Check(!(bool)TF.GetField("localAuto", T).GetValue(null), "de fabrica: apagado");
         object mn = localDe.Invoke(f, new object[] { null });
@@ -169,7 +169,7 @@ class LocalAutoPrueba
         Console.WriteLine("\n  4) LA CADENA Y LOS MANDOS EN VIVO LEEN LocalDe\n");
         string son = Texto("Form1.Sonido.cs"), gm = Texto("GraveMono.cs"), qs = Texto("LoQueSuena.cs");
         Check(son.Contains("AjusteLocal loc = LocalDe(c);") && son.Contains("new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos)")
-              && son.Contains("new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia)") && son.Contains("loc.Estrecho, loc.Subgrave"), "al armar la cancion se usa lo que decide LocalDe, no los mandos sueltos");
+              && son.Contains("new PresenciaSala(c.Retumbe, tap, normTarget, loc.Presencia)") && son.Contains("loc.Estrecho, loc.Subgrave"), "al armar la cancion se usa lo que decide LocalDe, no los mandos sueltos");
         Check(gm.Contains("LocalDe(c), lp = LocalDe(p)") && gm.Contains("c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb)") && gm.Contains("p.Presencia.Ajusta(lp.Presencia)"), "AplicaBocinas pone en vivo lo decidido para la que suena y para la preparada");
         Check(qs.Contains("LocalDe(c)") && qs.Contains("sin ? false : lo.Claridad") && qs.Contains("sin ? 0 : lo.Graves"), "«Escuchar sin mejoras» sigue quitando todo, tambien lo del automatico");
         Check(!son.Contains("claridadLocal, partesSuaves") && !gm.Contains("claridadLocal, partesSuaves"), "ya no queda ninguna etapa armada con los mandos sueltos");

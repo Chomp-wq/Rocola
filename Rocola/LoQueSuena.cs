@@ -103,6 +103,7 @@ namespace Rocola
             // Bombo, retumbe y ataque (VozGolpeYRetumbe.cs): lo que hicieron desde la ultima mirada, solo si estan encendidos (una linea corta)
             string vg = "";
             if (c.Hundir != null && c.Hundir.Encendido) { double e = c.Hundir.BajaDb; vg += "Bombo " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            if (c.Retumbe != null && c.Retumbe.Encendido) { double e = c.Retumbe.CortaDb; vg += (vg.Length > 0 ? "   " : "") + "Retumbe " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
             if (vg.Length > 0) sb.Append("\n").Append(vg);
             return sb.ToString();
         }

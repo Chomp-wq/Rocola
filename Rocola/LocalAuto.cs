@@ -51,7 +51,7 @@ namespace Rocola
         internal struct AjusteLocal
         {
             public bool Subgrave, Estrecho, EstrechoSoloSiHaceFalta, Claridad, Suaves, Presencia;
-            public bool Bombo;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs, 27-10-2026)
+            public bool Bombo, Retumbe;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs, 27-10-2026)
             public int Graves, Agudos;
         }
 
@@ -68,7 +68,7 @@ namespace Rocola
             // Voz, golpe y retumbe (27-10-2026): siempre, en el billar. Cada etapa se frena sola por lo que oye (el bombo solo baja el bajo cuando algo pasa del
             // techo; el retumbe solo corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con
             // sitio bajo el techo): ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
-            a.Bombo = true;
+            a.Bombo = true; a.Retumbe = true;
             return a;
         }
 
@@ -236,7 +236,7 @@ namespace Rocola
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;
             m.Claridad = claridadLocal; m.Suaves = partesSuaves; m.Presencia = presenciaSala;
             m.Graves = gravesLocalDb; m.Agudos = agudosLocalDb;
-            m.Bombo = bomboSinHundir;
+            m.Bombo = bomboSinHundir; m.Retumbe = retumbeDinamico;
             return m;
         }
         // L1: en racha con otra de su disco, el LRA mas alto de las pistas medidas del disco (todas deciden igual); si no, el suyo.

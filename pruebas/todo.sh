@@ -43,7 +43,7 @@ TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/Eses.cs"
 # Voz, golpe y retumbe (27-10-2026): que el bombo no hunda la voz, el retumbe dinamico y el ataque mas claro.
-FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
@@ -261,7 +261,7 @@ CPU="$CPU eses"
 # Que el bombo no hunda la voz (el bajo cede antes que el limitador baje la mezcla entera), el retumbe dinamico (260 Hz solo cuando el grave medio se
 # pasa de su media, con el presupuesto del EQ automatico y la claridad) y el ataque mas claro (menos cola, mas ataque con sitio bajo el techo): apagadas,
 # bit a bit; lo que hacen, tiempos, sin chasquidos, disco continuo, lecturas partidas, coste y enchufe en la cadena. Tonos y ruido sinteticos en Mono.
-CPU="$CPU bombosinhundir"
+CPU="$CPU bombosinhundir retumbedinamico"
 # 'salidapropia': T5 (25-10-2026), la salida de sonido con su propio hilo (SalidaPropia.cs) con un Windows imitado: suena todo en orden, el
 # reloj, la pantalla parada 3 s sin quedarse sin musica, pausa y parada, los fallos (del aparato, de Windows y de la musica), la parada en
 # el hilo de la pantalla, nada de .NET 2.0 SP2 en todo el ejecutable, y que Form1 la usa y sabe volver a la de siempre.

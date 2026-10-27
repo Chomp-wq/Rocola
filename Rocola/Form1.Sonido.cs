@@ -1244,7 +1244,7 @@ namespace Rocola
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             AjusteLocal loc = LocalDe(c);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion, fijado en ella (LocalAuto.cs)
             // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
-            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }   // el bombo se queda: es de la familia del limitador
+            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; loc.Retumbe = false; }   // el bombo se queda: es de la familia del limitador
             c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
@@ -1253,8 +1253,12 @@ namespace Rocola
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
             c.Sala = new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
             c.Sala.Cebado = audioTailDelay;
+            // RETUMBE DINAMICO (RetumbeDinamico.cs, 27-10-2026): detras del EQ automatico y la claridad (que ya cortan ese rango: su corte se descuenta
+            // del presupuesto) y delante del compresor. Apagado (de fabrica) no toca ni una muestra.
+            c.Retumbe = new RetumbeDinamico(c.Sala, loc.Retumbe, loc.Claridad, RetumbeDinamico.CorteEstaticoDb(tap.EqDb, loc.Claridad, c.Sala.WaveFormat.SampleRate));
+            c.Retumbe.Cebado = audioTailDelay;
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
-            c.Presencia = new PresenciaSala(c.Sala, tap, normTarget, loc.Presencia);
+            c.Presencia = new PresenciaSala(c.Retumbe, tap, normTarget, loc.Presencia);
             c.Presencia.Cebado = audioTailDelay;
             // SUAVIZAR LAS ESES (T9, Eses.cs): detras de lo que sube los agudos, delante del bajo y del limitador. Apagada (de fabrica) ni se
             // calcula; encendida, fuera de las "s" sale bit a bit.
