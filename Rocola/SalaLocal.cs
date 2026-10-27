@@ -476,7 +476,7 @@ namespace Rocola
             if (w == null) return;
             MethodInvoker suelta = delegate
             {
-                if (object.ReferenceEquals(pruebaSalida, w)) { pruebaSalida = null; pruebaSonando = null; }
+                if (object.ReferenceEquals(pruebaSalida, w)) { pruebaSalida = null; pruebaSonando = null; bandaSonando = null; }
                 try { w.PlaybackStopped -= PruebaAcabo; } catch { }
                 try { w.Dispose(); } catch { }
             };
@@ -488,7 +488,7 @@ namespace Rocola
         internal void ParaPruebaBocinas()
         {
             IWavePlayer w = pruebaSalida;
-            pruebaSalida = null; pruebaSonando = null;
+            pruebaSalida = null; pruebaSonando = null; bandaSonando = null;   // (y el ruido por bandas de afinar el local)
             if (w == null) return;
             try { w.PlaybackStopped -= PruebaAcabo; } catch { }
             try { w.Stop(); } catch { }

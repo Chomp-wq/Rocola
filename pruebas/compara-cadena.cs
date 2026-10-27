@@ -145,14 +145,20 @@ class ComparaCadena
                 bool igual = sal[0].Length == sal[1].Length;
                 for (int i = 0; igual && i < sal[0].Length; i++) if (BitConverter.ToInt32(BitConverter.GetBytes(sal[0][i]), 0) != BitConverter.ToInt32(BitConverter.GetBytes(sal[1][i]), 0)) igual = false;
                 // El modo automatico del local es lo unico que PUEDE cambiar (23-10-2026: P1 y P2 lo cambian a proposito): se dice, no se cuenta.
+                // El subgrave a menos resolucion (GraveMono.cs, 27-10-2026) cambia la cuenta, no lo que se oye: con el subgrave a mano (casos 4
+                // y 5), si la mayor diferencia queda por debajo de -80 dBFS se dice "casi igual" y no se cuenta como fallo.
+                double difMax = 0.0;
+                if (!igual && sal[0].Length == sal[1].Length) for (int i = 0; i < sal[0].Length; i++) difMax = Math.Max(difMax, Math.Abs((double)sal[0][i] - sal[1][i]));
+                bool casiIgual = !igual && (c == 4 || c == 5) && sal[0].Length == sal[1].Length && difMax < 1e-4;
+                if (casiIgual) { esperadas++; Console.WriteLine("  casi igual " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + ": como mucho " + (20.0 * Math.Log10(difMax + 1e-30)).ToString("0.0") + " dBFS (el subgrave a menos resolucion)"); continue; }
                 if (!igual && nombres[c].StartsWith("modo del local")) esperadas++;
                 if (!igual && nombres[c].StartsWith("modo del local")) Console.WriteLine("  distinto  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + " (esperado: lo decide el modo automatico)");
                 else if (!igual) { distintos++; Console.WriteLine("  DISTINTO  " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)")); }
                 else Console.WriteLine("  igual     " + nombres[c] + (cual == 0 ? " (medida)" : " (sin medir)") + ": " + sal[0].Length + " muestras");
             }
         try { Directory.Delete(dir, true); } catch { }
-        Console.WriteLine((casos - distintos - esperadas) + " iguales bit a bit, " + esperadas + " distintas esperadas (modo automatico del local), " + distintos + " distintas inesperadas");
-        Console.WriteLine(distintos == 0 ? "OK: con el modo automatico del local apagado, y en todo lo demas, la cadena sale identica bit a bit" : "FALLO: " + distintos + " combinaciones distintas sin esperarlas");
+        Console.WriteLine((casos - distintos - esperadas) + " iguales bit a bit, " + esperadas + " distintas esperadas (el modo automatico del local, o el subgrave por debajo de -80 dBFS), " + distintos + " distintas inesperadas");
+        Console.WriteLine(distintos == 0 ? "OK: con el modo automatico del local apagado, y en todo lo demas, la cadena sale identica bit a bit (con el subgrave a mano, a menos de -80 dBFS)" : "FALLO: " + distintos + " combinaciones distintas sin esperarlas");
         return distintos == 0 ? 0 : 1;
     }
 }

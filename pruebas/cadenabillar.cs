@@ -123,6 +123,55 @@ class CadenaBillarPrueba
               && aj.Contains("NecesitaMotivo(swSbr,") && aj.Contains("bar[6].Enabled = !localAuto;"), "lo que decide el modo, en gris en las hojas diciendo por que");
         Check(aj.Contains("bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked;") && aj.Contains("bomboSinHundir = bkBom;"), "voz, golpe y retumbe: por fin con su mando (y Cancelar lo devuelve)");
 
+        Console.WriteLine("\n  5) SEGUNDA TANDA: PRESENCIA, SUBGRAVE A 40 Hz Y AFINAR EL LOCAL\n");
+        Type TP = TF.GetNestedType("PresenciaSala", T);
+        Check((double)TP.GetField("CompensaBillarDb", T).GetRawConstantValue() == 5.0 && (double)TP.GetField("CompensaMaxDb", T).GetRawConstantValue() == 3.0,
+              "presencia: en el billar devuelve hasta 5 dB (lo de siempre, 3)");
+        PropertyInfo subEf = TF.GetProperty("SubgraveEf", T); FieldInfo subHz = TF.GetField("subgraveHz", T); object subAntes = subHz.GetValue(null);
+        subHz.SetValue(null, 30f); PonStatic("localAuto", false); float s0 = (float)subEf.GetValue(null, null);
+        PonStatic("localAuto", true); float s1 = (float)subEf.GetValue(null, null);
+        subHz.SetValue(null, 55f); float s2 = (float)subEf.GetValue(null, null);
+        subHz.SetValue(null, subAntes); PonStatic("localAuto", false);
+        Check(s0 == 30f && s1 == 40f && s2 == 55f, "subgrave: en el billar al menos a 40 Hz (si alguien puso uno mas alto, manda el suyo); apagado, el de siempre");
+        MethodInfo cAfi = TF.GetMethod("CorreccionAfinada", T), enEq = TF.GetMethod("AfinadaEnBandasEq", T);
+        float[] plano = { 80f, 80f, 80f, 80f, 80f, 80f, 80f, 80f };
+        float[] cp = (float[])cAfi.Invoke(null, new object[] { plano, 2 });
+        Check(cp != null && cp[0] == 0f && cp[3] == 0f && cp[7] < 0f && cp[7] > -1.5f && cp[1] >= 0f, "local plano en Z: casi nada (la curva de casa pide un poco menos de 8 kHz y no sube 63 Hz)");
+        float[] falta = (float[])plano.Clone(); falta[3] = float.NaN;
+        Check(cAfi.Invoke(null, new object[] { falta, 2 }) == null, "sin las bandas de la voz no hay afinacion");
+        float[] chillon = (float[])plano.Clone(); chillon[6] = 92f;
+        float[] cc = (float[])cAfi.Invoke(null, new object[] { chillon, 2 });
+        Check(cc[6] <= -6f + 1e-4f && cc[6] >= -6f - 1e-4f, "4 kHz 12 dB de mas: baja, con el tope de 6 dB");
+        float[] hueco = (float[])plano.Clone(); hueco[1] = 70f; hueco[0] = 60f;
+        float[] ch = (float[])cAfi.Invoke(null, new object[] { hueco, 2 });
+        Check(ch[1] == 3f && ch[0] == 0f, "125 Hz 10 dB de menos: sube, con el tope de 3 dB; 63 Hz nunca sube");
+        float[] conA = { 80f - 26.2f, 80f - 16.1f, 80f - 8.6f, 80f - 3.2f, 80f, 81.2f, 81f, 78.9f };
+        float[] ca = (float[])cAfi.Invoke(null, new object[] { conA, 0 }), cz = (float[])cAfi.Invoke(null, new object[] { plano, 2 });
+        bool igual = true; for (int b = 0; b < 8; b++) if (Math.Abs(ca[b] - cz[b]) > 1e-3f) igual = false;
+        Check(igual, "la ponderacion A de la app se devuelve: el mismo local leido en A da la misma correccion que en Z");
+        float[] e = (float[])enEq.Invoke(null, new object[] { new float[] { -1f, -2f, -3f, -4f, -5f, -6f, -4f, -2f } });
+        Check(e[0] == -1f && e[3] == -5f && Math.Abs(e[6] + 1f) < 1e-4f && e[7] == 0f && e[1] < -2f && e[1] > -3f, "a las bandas del EQ: interpolada en octavas, 10 kHz la mitad de 8 kHz y 15,8 kHz nada");
+        // En EqCorrFor: la afinacion encima, tambien en una cancion que el EQ no toca, y sin la inclinacion estimada.
+        float[] med = (float[])TF.GetField("afinadoDb", T).GetValue(null); float[] medAntes = (float[])med.Clone();
+        for (int b = 0; b < 8; b++) med[b] = chillon[b];
+        TF.GetField("afinadoPonderacion", T).SetValue(null, 2); PonStatic("afinadoUsar", true);
+        dur["cancion.mp3"] = 30f;
+        PonStatic("localAuto", false); object apag = eq.Invoke(f, new object[] { "cancion.mp3" });
+        PonStatic("localAuto", true); float[] corta2 = (float[])eq.Invoke(f, new object[] { "cancion.mp3" });
+        Check(apag != null && ((float[])apag)[5] > 0f, "con el modo apagado la afinacion no hace nada (el EQ de siempre)");
+        Check(corta2 != null && corta2[5] < -3f && corta2[0] == 0f, "en el billar, la afinacion va tambien en una cancion que el EQ no toca (la de 30 s)");
+        PonStatic("afinadoUsar", false);
+        Check(eq.Invoke(f, new object[] { "cancion.mp3" }) == null, "con su interruptor apagado, nada");
+        for (int b = 0; b < 8; b++) med[b] = medAntes[b];
+        PonStatic("afinadoUsar", false); PonStatic("localAuto", false);
+        MethodInfo lee = TF.GetMethod("LeeAfinado", T), texto = TF.GetMethod("TextoAfinado", T);
+        lee.Invoke(null, new object[] { "78;84.5;x;85;84;86;87;200" });
+        string vuelta = (string)texto.Invoke(null, null);
+        Check(vuelta == "78;84.5;x;85;84;86;87;x", "la configuracion: ida y vuelta, \"x\" sin medir y lo absurdo se descarta (" + vuelta + ")");
+        lee.Invoke(null, new object[] { "x;x;x;x;x;x;x;x" });
+        Check(son.Contains("SubgraveEf") && dat.Contains("ConLocalAfinado(EqCorrCancion(path))") && aj.Contains("\"SonidoAfinarAbrir\"") && aj.Contains("NecesitaMotivo(swAfi,"),
+              "el codigo: el subgrave del billar al armar, la afinacion dentro del EQ y su hoja en la ventana");
+
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : "  FALLOS: " + fallos);

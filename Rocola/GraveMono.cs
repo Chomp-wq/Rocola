@@ -75,6 +75,9 @@
 //    guarda lo ultimo que salio); al encenderlo lee por delante 255 ms (de una vez) y desde ahi va por bloques; al apagarlo,
 //    acabada la rampa, lo leido por delante sale tal cual y vuelve a pasar tal cual. Cuesta unos 0,2 us por cuadro encendido
 //    (Mono, esta maquina; el doble sin el cruce) y 7 ns apagado.
+//    A MENOS RESOLUCION desde el 27-10-2026 (sD, GraveDeDiezmado): lo que se quita se calcula con la ventana diezmada 16 veces y se
+//    devuelve a la tasa entera; sale igual a menos de -85 dB del calculo entero y cuesta de 2 a 4 veces menos (a 30 Hz, de unos 11 a
+//    unos 3 ms por segundo de musica en Mono).
 //  - EL ESTEREO MAS ESTRECHO: cada zona oye sobre todo SU bocina, o sea un solo canal. Un instrumento grabado todo
 //    a un lado desaparecia en la zona del otro. El lado (L - R) por encima del corte se multiplica por el ancho: al
 //    60 % lo que va todo a la izquierda sale por la derecha 12 dB mas bajo, en vez de nada. Lo que va al centro (casi
@@ -183,6 +186,15 @@ namespace Rocola
             private readonly float[] sLr, sLi, sRr, sRi;  // la FFT de trabajo de cada canal (sM/2); despues, lo que se quita (pares en r, impares en i)
             private readonly float[] sAnillo;             // apagado: los ultimos sK cuadros que salieron (intercalados), para encenderlo ya
             private readonly AudioFftPlan sPlan, sPlanTodo;   // la FFT de sM/2 y las tablas de giro de sM
+            // A MENOS RESOLUCION (27-10-2026): lo que se quita no pasa de unas 4 veces el corte (a 4 veces ya es -100 dB), asi que se calcula
+            // con la ventana diezmada sD veces (a unos 2,8 kHz): un paso-bajo de fase cero (sG, Kaiser de 90 dB, mitad sLg) la diezma, la FFT
+            // de sMd hace el filtro de siempre a esa tasa (sHd) y el mismo paso-bajo la devuelve a la tasa entera. Con sD = 1 (tasas bajas),
+            // la FFT de la ventana entera como antes.
+            internal const int DiezmaMinimoHz = 2400;
+            internal const double DiezmaAtenuacionDb = 90.0;
+            private readonly int sD, sLg, sC0, sNd, sMd;
+            private readonly float[] sG, sHd, sDr, sDi;
+            private readonly AudioFftPlan sPlanD;
             private int sModo;                            // 0: tal cual; 1: por bloques; 2: vaciando, tal cual, lo leido por delante
             private int sA;                               // donde escribe el anillo (en muestras)
             private int sT, sSalen, sVac, sVacN, sUnionN; // el cuadro que toca del bloque y cuantos salen; lo que queda por vaciar
@@ -257,11 +269,33 @@ namespace Rocola
                 if (sub)
                 {   // el largo (3,5 periodos del corte a cada lado), la FFT (el bloque, al menos medio filtro) y la ventana
                     sCh = canales;
-                    sK = Math.Max(16, (int)Math.Round(SubPeriodos * tasa / subgraveHz));
-                    int ms = 4096; while (ms < 2 * sK + sK / 2) ms <<= 1;
-                    sM = ms; sB = sM - 2 * sK;
-                    sH = FiltroSub(tasa, subgraveHz, sK, sM);
-                    sPlan = GetAudioFftPlan(sM / 2); sPlanTodo = GetAudioFftPlan(sM);
+                    sD = 1; while (tasa / (sD * 2) >= DiezmaMinimoHz) sD <<= 1;
+                    if (sD >= 4)
+                    {   // el paso-bajo: plano hasta 4 veces el corte y sin nada desde la tasa diezmada menos eso (lo que se doblaria hasta ahi)
+                        double fsd = (double)tasa / sD, banda = 4.0 * subgraveHz, dw = 2.0 * Math.PI * (fsd - 2.0 * banda) / tasa;
+                        sLg = (int)Math.Ceiling((DiezmaAtenuacionDb - 8.0) / (2.285 * dw) / 2.0);
+                        int kd = Math.Max(4, (int)Math.Round(SubPeriodos * fsd / subgraveHz));
+                        sK = kd * sD + 2 * sLg + sD; sK = (sK + sD - 1) / sD * sD;
+                        int ms = 4096; while (ms < 2 * sK + sK / 2) ms <<= 1;
+                        sM = ms; sB = sM - 2 * sK;
+                        sC0 = (sLg + sD - 1) / sD * sD;
+                        sNd = (sM - 1 - sLg - sC0) / sD + 1;
+                        int md = 64; while (md < sNd) md <<= 1;
+                        sMd = md;
+                        sG = PasoBajoDiezma(sD, sLg);
+                        sHd = FiltroSub(fsd, subgraveHz, kd, sMd);
+                        sPlanD = GetAudioFftPlan(sMd);
+                        sDr = new float[sMd]; sDi = new float[sMd];
+                    }
+                    else
+                    {
+                        sD = 1;
+                        sK = Math.Max(16, (int)Math.Round(SubPeriodos * tasa / subgraveHz));
+                        int ms = 4096; while (ms < 2 * sK + sK / 2) ms <<= 1;
+                        sM = ms; sB = sM - 2 * sK;
+                        sH = FiltroSub(tasa, subgraveHz, sK, sM);
+                        sPlan = GetAudioFftPlan(sM / 2); sPlanTodo = GetAudioFftPlan(sM);
+                    }
                     sMedio = cruce;
                     sL = new float[sM]; sLr = new float[sM / 2]; sLi = new float[sM / 2];
                     if (canales == 2) sR = new float[sM];
@@ -320,8 +354,8 @@ namespace Rocola
             // ya no pesa; y hasta 12 veces el corte, donde la curva ya es 1e-9); se le pone la ventana de Kaiser de 2K + 1, se ajusta a 1 en
             // el grave y se pasa a la FFT de M, centrada en 0 (asi el espectro es real). Se guarda el ultimo: cancion tras cancion es el mismo.
             private static readonly object subCerrojo = new object();
-            private static int subTasa, subK, subM; private static float subFc; private static float[] subFiltro;
-            private static float[] FiltroSub(int tasa, float hz, int K, int M)
+            private static int subK, subM; private static double subTasa; private static float subFc; private static float[] subFiltro;
+            private static float[] FiltroSub(double tasa, float hz, int K, int M)
             {
                 lock (subCerrojo)
                     if (subFiltro != null && subTasa == tasa && subFc == hz && subK == K && subM == M) return subFiltro;
@@ -836,9 +870,69 @@ namespace Rocola
             // Lo que se quita a la ventana (desde 'hasta', ceros): al medio (con cruce), o a cada canal por su lado.
             private void LoQueSeQuita(int hasta)
             {
+                if (sD > 1)
+                {
+                    if (sMedio) { GraveDeDiezmado(sL, sR, hasta, sLr, sLi); return; }
+                    GraveDeDiezmado(sL, null, hasta, sLr, sLi);
+                    if (sR != null) GraveDeDiezmado(sR, null, hasta, sRr, sRi);
+                    return;
+                }
                 if (sMedio) { GraveDe(sL, sR, hasta, sLr, sLi); return; }
                 GraveDe(sL, null, hasta, sLr, sLi);
                 if (sR != null) GraveDe(sR, null, hasta, sRr, sRi);
+            }
+            // El paso-bajo de la diezma (y de la vuelta): seno cardinal con el corte en la mitad de la tasa diezmada y ventana de Kaiser de
+            // 2 sLg + 1, con suma 1 (en la vuelta se multiplica por sD: cada fase suma 1/sD). Se guarda el ultimo.
+            private static readonly object diezmaCerrojo = new object();
+            private static int diezmaD, diezmaL; private static float[] diezmaG;
+            private static float[] PasoBajoDiezma(int D, int L)
+            {
+                lock (diezmaCerrojo) if (diezmaG != null && diezmaD == D && diezmaL == L) return diezmaG;
+                double beta = 0.1102 * (DiezmaAtenuacionDb - 8.7), i0b = BesselI0(beta), fc = 0.5 / D, suma = 0.0;
+                double[] h = new double[2 * L + 1];
+                for (int j = 0; j <= 2 * L; j++)
+                {
+                    int i = j - L; double x = 2.0 * fc * i, u = (double)i / L;
+                    double sinc = i == 0 ? 1.0 : Math.Sin(Math.PI * x) / (Math.PI * x);
+                    h[j] = sinc * BesselI0(beta * Math.Sqrt(Math.Max(0.0, 1.0 - u * u))) / i0b;
+                    suma += h[j];
+                }
+                float[] g = new float[2 * L + 1];
+                for (int j = 0; j <= 2 * L; j++) { double v = h[j] / suma; g[j] = (v < 1e-12 && v > -1e-12) ? 0f : (float)v; }   // los ceros del seno cardinal, ceros de verdad
+                lock (diezmaCerrojo) { diezmaD = D; diezmaL = L; diezmaG = g; }
+                return g;
+            }
+            // LO QUE SE QUITA, A MENOS RESOLUCION: la ventana (o el medio de dos) se diezma con el paso-bajo en los puntos sC0 + sD j (siempre
+            // los mismos frente al principio del bloque: sB y sK son multiplos de sD), se filtra a la tasa diezmada con la FFT de sMd y se
+            // vuelve a la tasa entera en los cuadros del bloque [sK, sK + sB). Queda donde lo deja GraveDe: zr (pares) y zi (impares). Desde
+            // 'hasta' la ventana cuenta como ceros (el empalme). Con lo mono, el medio sale igual que cada canal: la misma cuenta.
+            private void GraveDeDiezmado(float[] x, float[] y, int hasta, float[] zr, float[] zi)
+            {
+                int D = sD, L = sLg, c0 = sC0, nd = sNd, md = sMd;
+                float[] g = sG, H = sHd, ar = sDr, ai = sDi;
+                for (int j = 0, c = c0; j < nd; j++, c += D)
+                {
+                    int i0 = c - L, i1 = Math.Min(c + L, hasta - 1);
+                    double acc = 0.0;
+                    if (y == null) for (int i = i0; i <= i1; i++) acc += g[i - i0] * x[i];
+                    else for (int i = i0; i <= i1; i++) acc += g[i - i0] * (0.5f * (x[i] + y[i]));
+                    ar[j] = (float)acc; ai[j] = 0f;
+                }
+                for (int j = nd; j < md; j++) { ar[j] = 0f; ai[j] = 0f; }
+                Fft(ar, ai, sPlanD, false);
+                int h = md >> 1;
+                for (int k = 0; k < md; k++) { float q = H[k <= h ? k : md - k]; ar[k] *= q; ai[k] *= q; }
+                Fft(ar, ai, sPlanD, true);
+                int desde = sK, hastaW = sK + sB;
+                for (int w = desde; w < hastaW; w++)
+                {
+                    int jlo = (w - L - c0 + D - 1) / D, jhi = (w + L - c0) / D;
+                    double acc = 0.0;
+                    for (int j = jlo, c = c0 + jlo * D; j <= jhi; j++, c += D) acc += ar[j] * g[w - c + L];
+                    float v = (float)(acc * D);
+                    if (v < 1e-30f && v > -1e-30f) v = 0f;
+                    if ((w & 1) == 0) zr[w >> 1] = v; else zi[w >> 1] = v;
+                }
             }
             // Lo de un canal (x) o del medio de dos (x + y)/2, siempre con las mismas cuentas: si los dos canales traen lo mismo (lo mono),
             // salen iguales bit a bit. Como el grave del lado (GraveDelLado): las M muestras van de dos en dos a una FFT compleja de M/2, se

@@ -676,6 +676,9 @@ namespace Rocola
                     else if (s.StartsWith("graves_local=")) gravesLocalDb = TonoLocalDb(s.Substring(13), gravesLocalDb);   // graves del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("agudos_local=")) agudosLocalDb = TonoLocalDb(s.Substring(13), agudosLocalDb);   // agudos del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("local_auto=")) localAuto = s.Substring(11).Trim() == "1";   // el modo automatico del local (LocalAuto.cs)
+                    else if (s.StartsWith("afinado_local=")) LeeAfinado(s.Substring(14));                          // afinar el local con el celular (AfinarLocal.cs)
+                    else if (s.StartsWith("afinado_ponderacion=")) afinadoPonderacion = PonderacionDe(s.Substring(20));
+                    else if (s.StartsWith("afinado_usar=")) afinadoUsar = s.Substring(13).Trim() == "1";
                     else if (s.StartsWith("tipo_local=")) { }   // retirado el 25-10-2026: el modo automatico es solo para el billar (LocalAuto.cs); se ignora
                     else if (s.StartsWith("presencia_sala=")) presenciaSala = s.Substring(15).Trim() == "1";   // interruptor: presencia en sala ruidosa (compresor suave)
                     else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
@@ -853,6 +856,9 @@ namespace Rocola
             sb.Append("agudos_local=").Append(agudosLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
             sb.Append("local_auto=").Append(localAuto ? "1" : "0").Append("\r\n");
+            sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");
+            sb.Append("afinado_ponderacion=").Append(AfinaPonderacionNombre[afinadoPonderacion]).Append("\r\n");
+            sb.Append("afinado_usar=").Append(afinadoUsar ? "1" : "0").Append("\r\n");
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
             sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
             sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");
@@ -1340,7 +1346,9 @@ namespace Rocola
         // Correccion en dB por banda para una cancion (o null si apagado / aun sin huella / sin objetivo).
         // Correccion = (objetivo - huella) con tope +-4 dB, escalada por la fuerza. Una banda casi MUDA
         // (>25 dB bajo la referencia de su cancion) no se sube: seria inflar piso de ruido, no musica.
-        private float[] EqCorrFor(string path)
+        // En el modo billar con la afinacion medida, la del local va encima (AfinarLocal.cs); si no, la de la cancion tal cual.
+        private float[] EqCorrFor(string path) { return localAuto ? ConLocalAfinado(EqCorrCancion(path)) : EqCorrCancion(path); }
+        private float[] EqCorrCancion(string path)
         {
             // EN EL MODO BILLAR el EQ va siempre en automatico y a la medida de esas bocinas (CadenaBillar.cs); apagado, como siempre.
             bool billar = localAuto;
@@ -1378,7 +1386,7 @@ namespace Rocola
                 }
                 if (nb > 0) fuerza *= Clampf(1.15f - (dif / nb) / 14f, billar ? BillarEqRaraMin : 0.45f, 1f);
             }
-            bool recortada = c[EqClip] > BillarEqRecorte;
+            bool recortada = c[EqClip] > BillarEqRecorte, afinada = billar && AfinadaActiva;
             bool flaca = false;
             if (billar) { float falta = 0.5f * ((meta[1] - c[1]) + (meta[2] - c[2])); flaca = c[1] > -25f && c[2] > -25f && falta >= CuerpoFlacaDb; }
             float[] dbs = new float[8]; bool any = false;
@@ -1388,7 +1396,7 @@ namespace Rocola
                 if (corte > 100f && EqCentros[b] > corte) { dbs[b] = 0f; continue; }
                 if (billar)
                 {
-                    if (BandaBillar(b, c, corte) && c[b] > BillarEqMuda) corr = CorreccionBillar(b, meta[b] + InclinacionBillar[b] - c[b], fuerza, recortada, flaca);
+                    if (BandaBillar(b, c, corte) && c[b] > BillarEqMuda) corr = CorreccionBillar(b, meta[b] + (afinada ? 0f : InclinacionBillar[b]) - c[b], fuerza, recortada, flaca);   // con el local medido, sin la inclinacion estimada
                 }
                 else if (c[b] > -25f)
                 {

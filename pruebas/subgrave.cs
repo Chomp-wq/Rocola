@@ -172,8 +172,8 @@ class Subgrave
         FieldInfo fa = TF.GetField("anchoEstereo", T); object antes = fa.GetValue(null);
         fa.SetValue(null, .33f); Check(A("abc") == .33f && A("") == .33f, "un texto sin sentido deja lo que habia"); fa.SetValue(null, antes);
         MethodBase arma = TF.GetMethod("ArmaCadena", T);
-        int l1, e1, l2, e2; Codigo.UsosDeCampo(arma, "anchoEstereo", out l1, out e1); Codigo.UsosDeCampo(arma, "subgraveHz", out l2, out e2);
-        Check(l1 > 0 && l2 > 0, "cada cancion arma su etapa con el ancho y el subgrave de la configuracion");
+        int l1, e1, l2, e2; Codigo.UsosDeCampo(arma, "anchoEstereo", out l1, out e1); Codigo.UsosDeCampo(TF.GetProperty("SubgraveEf", T).GetGetMethod(true), "subgraveHz", out l2, out e2);
+        Check(l1 > 0 && l2 > 0 && Codigo.Llama(arma, "get_SubgraveEf"), "cada cancion arma su etapa con el ancho y el subgrave de la configuracion (en el billar, al menos 40 Hz: SubgraveEf)");
         bool reserva = false;
         foreach (string m in new string[] { "Read", "Interior", "Enteros", "Cuadros", "SinCruce", "LeeEnFaseLineal", "Bloque", "GraveDelLado", "Hereda", "Sigue", "Ajusta",
                                             "SubQuiere", "SubLee", "Anillo", "Anillo1", "Entra", "Sale", "SubBloque", "SubLeeDelInterior", "LoQueSeQuita", "GraveDe" })

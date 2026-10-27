@@ -49,7 +49,7 @@ namespace Rocola
             private readonly LevelTap tap;
             private readonly int tasa, canales;
             private readonly bool vale;
-            private readonly double umbralDb, techo, picoSinRecorte;
+            private readonly double umbralDb, techo, picoSinRecorte, compMax;
             private volatile bool encendido;
             private readonly double aVentana, aAtaque, aSuelta, kPico, pasoApaga;
             private readonly int picoRecuerda;   // trozos que se recuerda el pico entero antes de dejarlo bajar
@@ -75,6 +75,10 @@ namespace Rocola
             // los picos ya rozan el techo y el freno de siempre la dejaba en nada, asi que la presencia BAJABA la cancion 1 a 3 dB en vez de
             // acercar lo suave a lo fuerte. Esos picos (los golpes que el ataque de 15 ms no alcanza) los recorta el limitador, que va detras.
             internal const double MargenBillarDb = 2.0;
+            // Y DEVUELVE HASTA 5 dB (27-10-2026, segunda tanda): en una cancion de mucho rango la presencia aprieta lo fuerte mas de 3 dB, y con
+            // solo 3 de vuelta lo fuerte quedaba ~1 dB MAS BAJO que sin ella (la balada del banco: -13,1 LUFS con presencia, -12,1 sin). Con
+            // 5 dB de vuelta lo fuerte vuelve a su sitio y lo suave sube: -11,5 LUFS, y el limitador pasa del 0,2 al 3,3 % del tiempo.
+            internal const double CompensaBillarDb = 5.0;
             public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender, bool billar)
             {
                 src = s; tap = volumen;
@@ -86,7 +90,8 @@ namespace Rocola
                 techo = TechoPicoReal * 0.985 * (billar ? Math.Pow(10.0, MargenBillarDb / 20.0) : 1.0);   // un pelo por debajo: la cuenta va un trozo (0,7 ms) por detras del pico
                 // Si cabe incluso la compensacion maxima, el logaritmo no puede limitarla.
                 // Margen conservador para no cambiar decisiones por redondeo en el borde.
-                picoSinRecorte = techo / Math.Pow(10.0, CompensaMaxDb / 20.0) * (1.0 - 1e-12);
+                compMax = billar ? CompensaBillarDb : CompensaMaxDb;
+                picoSinRecorte = techo / Math.Pow(10.0, compMax / 20.0) * (1.0 - 1e-12);
                 aVentana = 1.0 - Math.Exp(-(double)Trozo / (VentanaSeg * tasa));
                 aAtaque = 1.0 - Math.Exp(-(double)Trozo / (AtaqueSeg * tasa));
                 aSuelta = 1.0 - Math.Exp(-(double)Trozo / (SueltaSeg * tasa));
@@ -186,8 +191,8 @@ namespace Rocola
                 else gr = (1.0 / Razon - 1.0) * sobre;
                 grDb += (gr - grDb) * (gr < grDb ? aAtaque : aSuelta);
                 if (grDb > -1e-6 && gr == 0.0) grDb = 0.0;
-                // La compensacion: lo que se aprieta se devuelve hasta CompensaMaxDb, menos cerca del silencio y sin pasar del techo.
-                double objetivoComp = CompensaMaxDb;
+                // La compensacion: lo que se aprieta se devuelve hasta CompensaMaxDb (en el billar, CompensaBillarDb), menos cerca del silencio y sin pasar del techo.
+                double objetivoComp = compMax;
                 if (nivelDb <= PuertaDb) objetivoComp = 0.0;
                 else { double puerta = (nivelDb - PuertaDb) / PuertaAnchoDb; if (puerta < 1.0) objetivoComp *= puerta; }
                 double sinComp = Math.Pow(10.0, grDb / 20.0);

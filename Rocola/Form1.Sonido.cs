@@ -1245,7 +1245,7 @@ namespace Rocola
             AjusteLocal loc = LocalDe(c);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion, fijado en ella (LocalAuto.cs)
             // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
             if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; loc.Retumbe = false; loc.Ataque = false; }   // el bombo se queda: es de la familia del limitador
-            c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
+            c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, SubgraveEf, loc.Estrecho, loc.Subgrave);   // en el billar, a 40 Hz (CadenaBillar.cs)
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
             c.Mono.Cebado = audioTailDelay;

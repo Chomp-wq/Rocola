@@ -109,6 +109,13 @@ namespace Rocola
         // El interruptor guardado de cada uno se conserva y vuelve al apagar el modo.
         private bool DseeEfectivo { get { return sbrOn && !localAuto; } }
         internal const float RealceBillarCantidad = 0.35f;   // la de fabrica
+        // EL CORTE DEL SUBGRAVE A 40 Hz (segunda tanda, 27-10-2026). Las cajas de 12" del billar llevan puerto: por debajo de su sintonia
+        // (en cajas asi, unos 45-50 Hz) el cono se queda sin freno y lo que llega solo gasta amplificador y distorsiona; los medios de 6,5"
+        // del gabinete tampoco dan nada ahi. El Butterworth de cuarto orden a 40 Hz baja 3 dB en 40 Hz y apenas 0,2 dB en 60; la sensacion
+        // de grave la sigue dando el bajo psicoacustico (que fabrica sus armonicos con lo que hay por debajo de 100 Hz). Medido en el banco:
+        // -1 dB en la zona de menos de 45 Hz y -0,3 a -0,6 en 45-140 Hz. Si alguien puso a mano un corte mas alto, manda el suyo.
+        internal const float SubgraveBillarHz = 40f;
+        private static float SubgraveEf { get { return localAuto && subgraveHz < SubgraveBillarHz ? SubgraveBillarHz : subgraveHz; } }
         private static bool CanalMudoEf { get { return canalMudo || localAuto; } }
         private static bool QuitaContinuaEf { get { return quitaContinua || localAuto; } }
         private static bool QuitaZumbidoEf { get { return quitaZumbido || localAuto; } }

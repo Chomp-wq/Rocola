@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -879,7 +879,7 @@ namespace Rocola
                     pLoc.Name = "SonidoLocal"; pLoc.Visible = false;
                     Tarjeta tLoc = new Tarjeta(); tLoc.SetBounds(0, 0, 456, 398); tLoc.Titulo = "EL LOCAL Y SUS BOCINAS"; tLoc.Acento = cGra;
                     // La prueba de bocinas paso a la pagina de Sonido (27-10-2026); aqui queda la frecuencia de la tarjeta.
-                    Tarjeta tPru = new Tarjeta(); tPru.SetBounds(472, 0, 456, 398); tPru.Titulo = "LA TARJETA DE SONIDO"; tPru.Acento = cCal;
+                    Tarjeta tPru = new Tarjeta(); tPru.SetBounds(472, 0, 456, 398); tPru.Titulo = "MEDIR EL LOCAL Y LA TARJETA"; tPru.Acento = cCal;
                     pLoc.Controls.Add(tLoc); pLoc.Controls.Add(tPru);
                     Func<int, string, Color, bool, Interruptor> interLocal = delegate (int y, string texto, Color ac, bool on)
                     {
@@ -983,6 +983,12 @@ namespace Rocola
                     notaLocal(tBil, 332, 48, "Polaridad: el grave suena igual por las dos y luego con una al\nreves, dos veces. Si AL REVES se oye con MAS grave, una\nbocina esta conectada al reves (rojo con negro).");
                     notaLocal(tPru, 40, 64, "A que frecuencia le llega el sonido a la tarjeta. De fabrica,\ncomo la cancion (sin convertir nada); con 44,1 o 48 kHz la\nrocola convierte aqui cada cancion, con su convertidor.");
                     notaLocal(tPru, 120, 32, "La prueba de bocinas esta en la pagina de Sonido, debajo\ndel modo billar.");
+                    // AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs): su propia hoja, en el sitio de la del local.
+                    BotonPlano bAfi = new BotonPlano(); bAfi.SetBounds(16, 170, 424, 30); bAfi.Font = fBot;
+                    bAfi.Text = "Afinar el local con el celular..."; bAfi.Name = "SonidoAfinarAbrir";
+                    bAfi.AccessibleName = "Afinar el local con el celular"; bAfi.AccessibleRole = AccessibleRole.PushButton;
+                    tPru.Controls.Add(bAfi);
+                    notaLocal(tPru, 204, 48, "Con una app de decibeles en el celular, mide como suena tu\nlocal por bandas; el modo billar ajusta el ecualizador a lo\nmedido en vez de a lo estimado.");
                     string pruAviso = "";
                     // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, Form1.Sonido.cs): en el renglon libre antes de "Volver".
                     Label lFrec = new Label(); lFrec.SetBounds(16, 316, 92, 20); lFrec.BackColor = Color.Transparent;
@@ -1015,6 +1021,76 @@ namespace Rocola
                     BotonPlano bVolver = new BotonPlano(); bVolver.SetBounds(16, 346, 424, 34); bVolver.Font = fBot;
                     bVolver.Text = "Volver a los ajustes del sonido"; bVolver.Name = "SonidoLocalVolver"; tPru.Controls.Add(bVolver);
                     bool verLocal = false;
+                    // ---------------- AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs) ----------------
+                    Panel pAfi = new Panel(); pAfi.SetBounds(16, 100, 928, 398); pAfi.BackColor = dlg.BackColor;
+                    pAfi.Name = "SonidoAfinar"; pAfi.Visible = false;
+                    Tarjeta tAfi = new Tarjeta(); tAfi.SetBounds(0, 0, 456, 398); tAfi.Titulo = "AFINAR EL LOCAL CON EL CELULAR"; tAfi.Acento = cVol;
+                    Tarjeta tAfiR = new Tarjeta(); tAfiR.SetBounds(472, 0, 456, 398); tAfiR.Titulo = "LA AFINACION"; tAfiR.Acento = cBri;
+                    pAfi.Controls.Add(tAfi); pAfi.Controls.Add(tAfiR);
+                    notaLocal(tAfi, 40, 32, "Toca una banda, mira la app parado donde esta la gente y\nmueve la barra hasta lo que marca (en dB). Una por una.");
+                    BotonPlano[] bBanda = new BotonPlano[8]; Deslizador[] barBanda = new Deslizador[8]; Label[] vBanda = new Label[8];
+                    for (int k = 0; k < 8; k++)
+                    {
+                        int y = 80 + 36 * k;
+                        bBanda[k] = new BotonPlano(); bBanda[k].SetBounds(16, y, 92, 28); bBanda[k].Font = fBot; bBanda[k].Text = NombreBanda(k);
+                        bBanda[k].Name = "SonidoAfinarBanda" + k; tAfi.Controls.Add(bBanda[k]);
+                        barBanda[k] = new Deslizador(); barBanda[k].SetBounds(116, y + 3, 236, 22); barBanda[k].Name = "SonidoAfinarDb" + k;
+                        barBanda[k].Minimum = AfinaSinMedir; barBanda[k].Maximum = AfinaMaxDb; barBanda[k].Acento = cVol;
+                        barBanda[k].Value = float.IsNaN(afinadoDb[k]) ? AfinaSinMedir : (int)Math.Round(afinadoDb[k]);
+                        tAfi.Controls.Add(barBanda[k]);
+                        vBanda[k] = new Label(); vBanda[k].SetBounds(358, y + 4, 82, 20); vBanda[k].BackColor = Color.Transparent;
+                        vBanda[k].ForeColor = cVol; vBanda[k].Font = fNom; vBanda[k].TextAlign = ContentAlignment.TopRight; tAfi.Controls.Add(vBanda[k]);
+                    }
+                    Label lPond = new Label(); lPond.SetBounds(16, 44, 140, 20); lPond.BackColor = Color.Transparent;
+                    lPond.ForeColor = cTexto; lPond.Font = fNom; lPond.Text = "La app mide en:"; tAfiR.Controls.Add(lPond);
+                    BotonPlano[] bPond = new BotonPlano[3];
+                    for (int k = 0; k < 3; k++)
+                    {
+                        bPond[k] = new BotonPlano(); bPond[k].SetBounds(160 + 94 * k, 38, 86, 30); bPond[k].Font = fBot; bPond[k].Text = AfinaPonderacionNombre[k];
+                        bPond[k].Name = "SonidoAfinarPond" + AfinaPonderacionNombre[k]; tAfiR.Controls.Add(bPond[k]);
+                    }
+                    Label lAfiEstado = new Label(); lAfiEstado.SetBounds(16, 78, 424, 20); lAfiEstado.BackColor = Color.Transparent;
+                    lAfiEstado.ForeColor = Color.FromArgb(255, 214, 120); lAfiEstado.Font = fNom; tAfiR.Controls.Add(lAfiEstado);
+                    Label lAfiRes = notaLocal(tAfiR, 104, 52, "");
+                    lAfiRes.ForeColor = cTexto; lAfiRes.Name = "SonidoAfinarResultado";
+                    Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 170, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
+                    swAfi.Text = "Usar la afinacion en el modo billar"; swAfi.Acento = cBri; swAfi.Checked = afinadoUsar; swAfi.Name = "SonidoAfinarUsar";
+                    tAfiR.Controls.Add(swAfi);
+                    Label lAfiNota = notaLocal(tAfiR, 200, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
+                    notaLocal(tAfiR, 250, 80, "Con la rocola callada y el local como siempre. Si la app deja,\nponla en C (o Z) y en lento. Mide de pie donde se escucha, no\npegado a una bocina. Corrige el 70 %: baja hasta 6 dB y sube\ncomo mucho 3 (el grave de 63 Hz no lo sube nunca).");
+                    BotonPlano bVolverAfi = new BotonPlano(); bVolverAfi.SetBounds(16, 346, 424, 34); bVolverAfi.Font = fBot;
+                    bVolverAfi.Text = "Volver al local y sus bocinas"; bVolverAfi.Name = "SonidoAfinarVolver"; tAfiR.Controls.Add(bVolverAfi);
+                    NecesitaMotivo(swAfi, delegate { return !localAuto ? "Necesita: el modo billar encendido (pagina de Sonido)" : (CorreccionAfinada(afinadoDb, afinadoPonderacion) == null ? "Necesita: medir las bandas de la voz (250 Hz a 2 kHz)" : null); }, lAfiNota);
+                    bool verAfi = false; string afiAviso = "";
+                    Action pintaAfi = delegate
+                    {
+                        for (int k = 0; k < 8; k++) vBanda[k].Text = barBanda[k].Value <= AfinaSinMedir ? "sin medir" : barBanda[k].Value + " dB";
+                        for (int k = 0; k < 3; k++)
+                        {
+                            bool act = afinadoPonderacion == k;
+                            bPond[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
+                            bPond[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
+                            bPond[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
+                            bPond[k].Invalidate();
+                        }
+                        lAfiRes.Text = TextoCorreccionAfinada();
+                        string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso;
+                    };
+                    EventHandler afiApply = delegate
+                    {
+                        for (int k = 0; k < 8; k++) afinadoDb[k] = barBanda[k].Value <= AfinaSinMedir ? float.NaN : barBanda[k].Value;
+                        afinadoUsar = swAfi.Checked;
+                        changed = true; pintaAfi(); RefrescaRequisitos(); ApplyNormNow();
+                    };
+                    for (int k = 0; k < 8; k++)
+                    {
+                        int kk = k;
+                        barBanda[k].Scroll += afiApply;
+                        bBanda[k].Click += delegate { string r = ProbarBanda(kk); afiAviso = r.StartsWith("Sonando") ? "" : r; pintaAfi(); };
+                    }
+                    for (int k = 0; k < 3; k++) { int kk = k; bPond[k].Click += delegate { afinadoPonderacion = kk; afiApply(bPond[kk], EventArgs.Empty); }; }
+                    swAfi.CheckedChanged += afiApply;
+                    pintaAfi();
                     // LAS MEJORAS CON IA (13-10-2026: I1, I2 e I3). Su propia hoja, como la del local: aqui ya no cabe nada. El
                     // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
                     BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 214, 424, 30); bIa.Font = fBot;
@@ -1440,6 +1516,7 @@ namespace Rocola
                         swEses.Checked = false;   // T9, apagado
                         bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados
                         swBom.Checked = false; swRet.Checked = false; swAta.Checked = false;   // (y sus mandos, en su hoja)
+                        swAfi.Checked = false;   // la afinacion del local, sin usar (lo medido se guarda)
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1477,11 +1554,12 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pAfi)
                                 cc.Visible = (f3Pagina == 0);
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
-                        pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono);
-                        pTono.Visible = (f3Pagina == 0 && verLocal && verTono);
+                        pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono && !verAfi);
+                        pAfi.Visible = (f3Pagina == 0 && verLocal && verAfi);
+                        pTono.Visible = (f3Pagina == 0 && verLocal && verTono && !verAfi);
                         pIa.Visible = (f3Pagina == 0 && verIa && !verLocal);
                         pAhora.Visible = (f3Pagina == 0 && verAhora && !verLocal && !verIa);
                         // La hoja de los ajustes del sonido (27-10-2026) va debajo de las suyas: al volver de una, se vuelve a ella.
@@ -1506,7 +1584,9 @@ namespace Rocola
                         }
                     };
                     bPagS.Click += delegate { f3Pagina = 0; updateLabels(); pintaPag(); };
-                    bLocal.Click += delegate { verLocal = true; verTono = false; updateLabels(); pintaPag(); };
+                    bLocal.Click += delegate { verLocal = true; verTono = false; verAfi = false; updateLabels(); pintaPag(); };
+                    bAfi.Click += delegate { verAfi = true; pintaAfi(); pintaPag(); };
+                    bVolverAfi.Click += delegate { verAfi = false; pintaPag(); };
                     bTono.Click += delegate { verTono = true; updateLabels(); pintaPag(); };
                     bVolverTono.Click += delegate { verTono = false; pintaPag(); };
                     bIa.Click += delegate
@@ -1524,9 +1604,9 @@ namespace Rocola
                     bVolverIa.Click += delegate { verIa = false; pintaPag(); };
                     bAhora.Click += delegate { verLocal = false; verTono = false; verIa = false; verAhora = true; pintaAhora(); pintaPag(); };
                     bVolverAhora.Click += delegate { verAhora = false; pintaPag(); };
-                    bVolver.Click += delegate { verLocal = false; verTono = false; pintaPag(); };
+                    bVolver.Click += delegate { verLocal = false; verTono = false; verAfi = false; pintaPag(); };
                     bAju.Click += delegate { verAju = true; updateLabels(); pintaPag(); };
-                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verIa = false; verAhora = false; verVoz = false; updateLabels(); pintaPag(); };
+                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verAfi = false; verIa = false; verAhora = false; verVoz = false; updateLabels(); pintaPag(); };
                     bVoz.Click += delegate { verVoz = true; pintaPag(); };
                     bVolverVoz.Click += delegate { verVoz = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
@@ -1544,6 +1624,7 @@ namespace Rocola
                     dlg.Controls.Add(pIa); pIa.BringToFront();
                     dlg.Controls.Add(pAhora); pAhora.BringToFront();
                     dlg.Controls.Add(pVoz); pVoz.BringToFront();
+                    dlg.Controls.Add(pAfi); pAfi.BringToFront();
                     dlg.Controls.Add(pAju); pAju.BringToFront();
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
@@ -1559,7 +1640,7 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); GuardaAlMomento(); };
+                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
@@ -1571,7 +1652,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

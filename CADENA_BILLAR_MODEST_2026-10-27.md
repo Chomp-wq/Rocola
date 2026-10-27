@@ -159,6 +159,79 @@ Con el modo apagado, las 10 combinaciones de `pruebas/compara-cadena.cs` dan los
 
 **Todo son cuentas con señales sintéticas en Linux/Mono. Nada de esto se ha oído en el billar ni se probó en el A4 con Windows XP.**
 
+## Segunda tanda (el mismo día): lo que el dueño eligió del banco
+
+El dueño pidió más mejoras para la cadena nueva. Tras medir con el banco, eligió las cuatro propuestas:
+
+### 1. Presencia más llena
+
+En una canción de mucho rango, la presencia aprieta lo fuerte más de 3 dB. Como solo devolvía 3, lo fuerte quedaba más bajo que sin
+ella: la balada daba −13,1 LUFS con la presencia y −12,1 sin ella. Ahora, en el billar, devuelve hasta **5 dB**
+(`PresenciaSala.CompensaBillarDb`). La balada queda en −11,5 LUFS, casi como de fábrica (−11,4), y lo suave queda más cerca de lo fuerte.
+El limitador pasa de actuar el 0,2 % al 3,2 % del tiempo (de fábrica, el 11 %).
+
+### 2. Corte de grave a 40 Hz
+
+Las cajas de 12" llevan puerto. Por debajo de la sintonía del puerto (en cajas así, unos 45-50 Hz) el cono se queda sin freno, y lo que
+llega ahí solo gasta amplificador y distorsiona. En el billar, el subgrave corta a **40 Hz** en vez de 30 (`SubgraveBillarHz`). Si
+alguien puso a mano un corte más alto, manda el suyo. En el banco quita 1 dB por debajo de 45 Hz y de 0,3 a 0,6 dB entre 45 y 140 Hz.
+La sensación de grave la sigue dando el bajo psicoacústico. En el reggaetón deja 0,7 dB de margen sin usar bajo el techo: es lo que se
+deja de mandar a los conos.
+
+### 3. Afinar el local con el celular
+
+Es una hoja nueva: Ajustes del sonido → El local y sus bocinas → «Afinar el local con el celular...». El código está en `AfinarLocal.cs`.
+
+- **El ruido:** la rocola, callada, toca ruido rosa por bandas de una octava, de 63 Hz a 8 kHz. Sale a −20 dB eficaces por canal, y
+  cada canal lleva su propio ruido, para que dos bocinas no se sumen y se resten según dónde esté uno.
+- **La medida:** el dueño, parado donde está la gente, mueve una barra por banda hasta lo que marca la app de decibeles, y dice si la
+  app mide en A, C o Z. A la ponderación A se le devuelve lo que le quita al grave (26 dB a 63 Hz).
+- **La corrección:** se compara con una curva de casa para un bar, contando desde la zona de la voz (250 Hz a 2 kHz):
+  - corrige el 70 %;
+  - deja lo de menos de 1 dB;
+  - baja como mucho 6 dB y sube como mucho 3;
+  - en 8 kHz sube como mucho 2 dB, y en 63 Hz nunca sube.
+- **Cómo se aplica:** con el modo billar y el interruptor «Usar la afinación» encendidos, la corrección va dentro del EQ de cada
+  canción. Usa las mismas ocho bandas, sin filtros nuevos ni procesador de más, y sustituye la inclinación de agudos estimada. Va
+  también en las canciones que el EQ no toca.
+- **Lo que se guarda:** `afinado_local=` (las ocho lecturas), `afinado_ponderacion=` y `afinado_usar=` (apagado de fábrica).
+  «Dejar como de fábrica» apaga el interruptor y guarda lo medido.
+
+### 4. Menos procesador
+
+El subgrave quita lo que hay por debajo del corte con un filtro de fase lineal muy largo: 117 ms a 30 Hz, calculado por FFT. Ahora lo
+que quita se calcula con la ventana diezmada 16 veces (a unos 2,8 kHz) y se devuelve a la tasa entera (`GraveMono.GraveDeDiezmado`).
+
+- **Diferencia con el cálculo entero:** sale igual a menos de −85 dB. En la cadena entera, como mucho −98 dBFS.
+- **Costo de la etapa sola:** de unos 11 a unos 3 ms por segundo de música a 30 Hz.
+- **Toda la cadena del billar:** de 31-43 a 25-35 ms/s en Mono; la de fábrica gasta 24-30.
+
+Es automático, sin interruptor: no cambia nada que se oiga.
+
+### Lo medido después
+
+| Canción | Fábrica | Billar (1.ª tanda) | Billar ahora |
+|---|---|---|---|
+| Pop | −9,5 LUFS | −10,0 | −10,2 |
+| Reggaetón | −11,7 | −12,0 | −12,5 |
+| Balada | −11,4 | −13,1 | **−11,5** |
+| Cumbia | −11,1 | −11,6 | −11,6 |
+| Pop con eses | −9,3 | −9,8 | −10,0 |
+
+Con el modo apagado y todo de fábrica, la cadena sale bit a bit como antes. Con el subgrave puesto **a mano**, la diferencia del
+cálculo a menos resolución queda por debajo de −98 dBFS. `pruebas/compara-cadena.cs` ahora la cuenta como «casi igual» si está por
+debajo de −80 dBFS; con el cálculo entero forzado, las 10 combinaciones salen idénticas.
+
+Pruebas de la segunda tanda:
+
+- `pruebas/cadenabillar.cs` suma la presencia, el corte de 40 Hz, la afinación (la corrección, la ponderación, las bandas del EQ, dentro de `EqCorrFor` y la configuración) y la ventana.
+- `subgrave` se puso al día.
+- Suite completa: los únicos fallos son los de antes (`sala`, `discoacotado` y `caratulasadaptativas`).
+- `ventanareal`, una prueba de tiempos, falló una vez en la tanda entera (191 ms contra 150); sola pasó dos de dos.
+
+Para la afinación, conviene medir con la app en C o Z y en lento, con el local como siempre, de pie donde se escucha y no pegado a una
+bocina.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,
@@ -172,4 +245,4 @@ Con el modo apagado, las 10 combinaciones de `pruebas/compara-cadena.cs` dan los
 
 - El recorte suave y quitar el eco de los vivos: el dueño eligió solo las técnicas seguras.
 - Cortar silencios largos o finales: el dueño lo pidió expresamente.
-- Optimizar el filtro del grave en mono para gastar menos procesador. Funciona, pero el cambio no se puede verificar sin el A4.
+- (Hecho en la segunda tanda: el subgrave a menos resolución.)

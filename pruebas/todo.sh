@@ -46,7 +46,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Roco
 FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/AtaqueClaro.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
-FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs $RAIZ/Rocola/CadenaBillar.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs $RAIZ/Rocola/CadenaBillar.cs $RAIZ/Rocola/AfinarLocal.cs"
 # El volumen general de Windows al maximo al arrancar (24-10-2026).
 FUENTES="$FUENTES $RAIZ/Rocola/VolumenWindows.cs"
 # El diagnostico completo de Ctrl+F3 (23-10-2026): el motor, la toma de muestras y el informe, y las escenas con la rocola de verdad.

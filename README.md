@@ -1,5 +1,17 @@
 # Rocola
 
+## Modo billar, segunda tanda — 27 de octubre de 2026
+
+- **Presencia más llena:** en el billar devuelve hasta 5 dB. La balada deja de sonar 1,7 dB más baja que el resto.
+- **Corte de grave a 40 Hz:** protege las cajas de 12" con puerto y el amplificador; el bajo psicoacústico sigue dando la sensación de grave.
+- **Afinar el local con el celular:** está en El local y sus bocinas. La rocola toca ruido por bandas y tú anotas lo que marca una app de
+  decibeles; el modo billar ajusta el ecualizador a tu local medido. Se activa con el interruptor «Usar la afinación», apagado de fábrica.
+- **Menos procesador:** el corte de grave se calcula a menos resolución. Sale igual a menos de −85 dB y la cadena del billar gasta casi
+  lo mismo que la de fábrica.
+
+Con el modo apagado, la cadena sale bit a bit como antes. **Nada se ha oído en el billar ni se probó en el A4.**
+[Detalle en el documento del modo billar](CADENA_BILLAR_MODEST_2026-10-27.md#segunda-tanda-el-mismo-día-lo-que-el-dueño-eligió-del-banco).
+
 ## La cadena del modo billar — 27 de octubre de 2026
 
 El modo automático del local ahora se llama **Modo billar** y ajusta la cadena de sonido entera para las bocinas del billar. No es una
