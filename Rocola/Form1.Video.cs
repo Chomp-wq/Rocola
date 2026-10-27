@@ -676,7 +676,7 @@ namespace Rocola
         private bool MejActivo()
         {
             SpectralTap sp = curSbr;
-            return sbrOn && nowPlaying != null && !nowPlaying.IsVideo && sp != null && sp.Mejorando;
+            return DseeEfectivo && nowPlaying != null && !nowPlaying.IsVideo && sp != null && sp.Mejorando;
         }
 
         // Parte "Reproduciendo: <titulo>" en HASTA DOS lineas y coloca el letrero "MEJORADA" justo despues de

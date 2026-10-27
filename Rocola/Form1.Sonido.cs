@@ -47,13 +47,13 @@ namespace Rocola
         // nada y si le metes mas, se emborrona. Sale de la huella tonal que la rocola YA le mide a cada cancion
         // (no hace falta medir nada nuevo). 1 = la perilla tal cual, que es lo que hacia antes con todas.
         private float bassSongFactor = 1f;
-        private float BassBaseNow() { return bassAuto ? bassAutoBase : bassAmount; }
+        private float BassBaseNow() { return bassAuto || localAuto ? bassAutoBase : bassAmount; }   // el modo billar lo pone en automatico (CadenaBillar.cs)
         private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor, 0f, 1f); }
         // Lo mismo para una cancion que aun no suena (la siguiente, preparada para entrar sin pausa).
-        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto ? autoBase : bassAmount) * factor, 0f, 1f); }
+        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto || localAuto ? autoBase : bassAmount) * factor, 0f, 1f); }
         // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs): sin IA en vivo, el reconstructor lo
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
-        private bool DseeDe(CadenaCancion c) { return sbrOn; }
+        private bool DseeDe(CadenaCancion c) { return DseeEfectivo; }
         private float ExcitePara(CadenaCancion c) { return ExciteAmountFor(c.Cancion.Path); }
         private int RetrasoAudible() { return RetardoVisualSalida() + AdelantoBomba(); }   // snapshot de la salida abierta + adelanto de la bomba
         private bool IaMejoradaPara(string path) { return false; }
@@ -1205,11 +1205,11 @@ namespace Rocola
             int audioTailDelay = 0;   // estos retardos se vacian: el fundido debe abarcar tambien su cola
             // LOS ARREGLOS DE LA GRABACION (S1 y S2, ArreglosGrabacion.cs): un canal mudo por los dos y la continua fuera. Lo
             // primero, para que nada de lo de detras trabaje con el defecto. Sin retardo; sin el defecto, sale bit a bit.
-            c.Arreglo = new ArreglaGrabacion(chain, canalMudo, quitaContinua); chain = c.Arreglo;
+            c.Arreglo = new ArreglaGrabacion(chain, CanalMudoEf, QuitaContinuaEf); chain = c.Arreglo;
             // EL ZUMBIDO DE LA CORRIENTE (T6, Zumbido.cs): solo en las canciones en que el repaso lo midio. Va siempre que lo traen, con el
             // interruptor decidiendo si actua (asi se enciende y se apaga en vivo); apagado, pasa tal cual. Sin retardo.
             int zumbidoHz = ZumbidoDe(t.Path);
-            if (zumbidoHz > 0) { c.Zumbido = new QuitaZumbido(chain, zumbidoHz, quitaZumbido); chain = c.Zumbido; }
+            if (zumbidoHz > 0) { c.Zumbido = new QuitaZumbido(chain, zumbidoHz, QuitaZumbidoEf); chain = c.Zumbido; }
             // DES-RECORTE: repara picos aplastados de origen (despues de medir original, antes de DSEE). Ya sabemos, cancion
             // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
             // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.
@@ -1219,7 +1219,7 @@ namespace Rocola
             }
             // QUITAR EL SISEO (I2, Siseo.cs): con su interruptor, antes del DSEE y del realce (que si no le darian brillo al
             // siseo). Retrasa 11,6 ms, que se suman a la cola que el fundido tiene que abarcar.
-            if (quitaSiseo)
+            if (quitaSiseo && !localAuto)   // en el modo billar no (CadenaBillar.cs)
             {
                 QuitaSiseo qs = new QuitaSiseo(chain); chain = qs; audioTailDelay += qs.DelayFrames; c.Siseo = qs;
             }
@@ -1228,7 +1228,7 @@ namespace Rocola
                 c.Sbr = new SpectralTap(chain);
                 c.Sbr.ConectaOriginal(original, audioTailDelay);
                 c.Sbr.Red = ModeloDseePara(t);   // I3: el modelo de su genero, si se pidio y lo hay (Form1.Ia.cs)
-                c.Sbr.Active = sbrOn; chain = c.Sbr;
+                c.Sbr.Active = DseeEfectivo; chain = c.Sbr;
             }
             LevelTap tap = new LevelTap(chain, this);
             tap.Cebado = audioTailDelay;   // lo que llega de cebado (des-recorte, siseo): en un disco continuo no entra en el realce heredado (Realce.cs)
@@ -1251,21 +1251,22 @@ namespace Rocola
             c.Mono.Cebado = audioTailDelay;
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
-            c.Sala = new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
+            float nivelLocal = NivelLocalDe(t, tap.Gain);   // en el billar, el nivel de ESTA cancion; si no, normTarget (CadenaBillar.cs)
+            c.Sala = new SalaLocal(c.Mono, tap, nivelLocal, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
             c.Sala.Cebado = audioTailDelay;
             // RETUMBE DINAMICO (RetumbeDinamico.cs, 27-10-2026): detras del EQ automatico y la claridad (que ya cortan ese rango: su corte se descuenta
             // del presupuesto) y delante del compresor. Apagado (de fabrica) no toca ni una muestra.
             c.Retumbe = new RetumbeDinamico(c.Sala, loc.Retumbe, loc.Claridad, RetumbeDinamico.CorteEstaticoDb(tap.EqDb, loc.Claridad, c.Sala.WaveFormat.SampleRate));
             c.Retumbe.Cebado = audioTailDelay;
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
-            c.Presencia = new PresenciaSala(c.Retumbe, tap, normTarget, loc.Presencia);
+            c.Presencia = new PresenciaSala(c.Retumbe, tap, nivelLocal, loc.Presencia, localAuto);
             c.Presencia.Cebado = audioTailDelay;
             // ATAQUE MAS CLARO (AtaqueClaro.cs, 27-10-2026): detras del compresor y delante de las eses. Apagado (de fabrica) no toca ni una muestra.
             c.Ataque = new AtaqueClaro(c.Presencia, loc.Ataque);
             c.Ataque.Cebado = audioTailDelay;
             // SUAVIZAR LAS ESES (T9, Eses.cs): detras de lo que sube los agudos, delante del bajo y del limitador. Apagada (de fabrica) ni se
             // calcula; encendida, fuera de las "s" sale bit a bit.
-            c.Eses = new SuavizaEses(c.Ataque, suavizaEses);
+            c.Eses = new SuavizaEses(c.Ataque, loc.Eses, localAuto);   // en el billar, con la referencia por encima de 1 kHz (CadenaBillar.cs)
             c.Eses.Cebado = audioTailDelay;
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.

@@ -143,6 +143,7 @@
     <Compile Include="SalaLocal.cs" />
     <Compile Include="PresenciaSala.cs" />
     <Compile Include="LocalAuto.cs" />
+    <Compile Include="CadenaBillar.cs" />
     <Compile Include="VolumenWindows.cs" />
     <Compile Include="CieloVivoGpu.cs" />
     <Compile Include="SinPausa.cs" />

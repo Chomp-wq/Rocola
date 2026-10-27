@@ -118,12 +118,12 @@ namespace Rocola
             if (c != null && c.Mono != null) { c.Mono.Ajusta(lc.Estrecho, lc.Subgrave); c.Mono.SoloSiHaceFalta(lc.EstrechoSoloSiHaceFalta); }
             if (p != null && p.Mono != null) { p.Mono.Ajusta(lp.Estrecho, lp.Subgrave); p.Mono.SoloSiHaceFalta(lp.EstrechoSoloSiHaceFalta); }
             // Y los arreglos de la grabacion (ArreglosGrabacion.cs): el canal mudo y la continua.
-            if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(canalMudo, quitaContinua);
-            if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(canalMudo, quitaContinua);
-            if (c != null && c.Zumbido != null) c.Zumbido.Ajusta(quitaZumbido);   // T6 (Zumbido.cs)
-            if (p != null && p.Zumbido != null) p.Zumbido.Ajusta(quitaZumbido);
-            if (c != null && c.Eses != null) c.Eses.Ajusta(suavizaEses);   // T9 (Eses.cs)
-            if (p != null && p.Eses != null) p.Eses.Ajusta(suavizaEses);
+            if (c != null && c.Arreglo != null) c.Arreglo.Ajusta(CanalMudoEf, QuitaContinuaEf);   // en el modo billar, siempre (CadenaBillar.cs)
+            if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(CanalMudoEf, QuitaContinuaEf);
+            if (c != null && c.Zumbido != null) c.Zumbido.Ajusta(QuitaZumbidoEf);   // T6 (Zumbido.cs)
+            if (p != null && p.Zumbido != null) p.Zumbido.Ajusta(QuitaZumbidoEf);
+            if (c != null && c.Eses != null) c.Eses.Ajusta(lc.Eses);   // T9 (Eses.cs): el mando, o lo que decide el modo del billar
+            if (p != null && p.Eses != null) p.Eses.Ajusta(lp.Eses);
             // Y los del local (SalaLocal.cs): claridad, partes suaves, balance, graves y agudos; y la presencia en sala ruidosa (PresenciaSala.cs).
             if (c != null && c.Sala != null) { c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb); c.Sala.AjustaTono(lc.Graves, lc.Agudos); }
             if (p != null && p.Sala != null) { p.Sala.Ajusta(lp.Claridad, lp.Suaves, balanceDb); p.Sala.AjustaTono(lp.Graves, lp.Agudos); }

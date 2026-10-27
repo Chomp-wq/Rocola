@@ -323,13 +323,13 @@ class BomboSinHundirPrueba
             Check(!vol, "la etapa no llama a nada de volumen (ni el de Windows ni el de la salida)");
             string fuenteF3 = Codigo.FuenteDeForm1();
             Check(fuenteF3.Contains("bomboSinHundir = false;"), "«Dejar como de fabrica» la apaga");
-            // El modo automatico del local la enciende; apagado, manda el interruptor
-            MethodInfo auto = TF.GetMethod("LocalAutomatico", T);
+            // El modo billar no la pone (CadenaBillar.cs); apagado, manda el interruptor
+            MethodInfo auto = TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float) }, null);
             object aj = auto.Invoke(null, new object[] { 8f, 5f, 10f });
             Type tAj = aj.GetType();
-            Check((bool)tAj.GetField("Bombo").GetValue(aj), "el modo automatico del local la enciende (siempre, en el billar)");
+            Check(!(bool)tAj.GetField("Bombo").GetValue(aj), "el modo billar NO la pone (cadena del billar, 27-10-2026: quitaba ~1 dB de bajo sin mejorar la voz)");
             object aj2 = auto.Invoke(null, new object[] { -1f, -1f, 10f });
-            Check((bool)tAj.GetField("Bombo").GetValue(aj2), "y tambien en una cancion sin medir");
+            Check(!(bool)tAj.GetField("Bombo").GetValue(aj2), "ni en una cancion sin medir");
         }
 
         Console.WriteLine();

@@ -46,8 +46,18 @@ class LocalAutoPrueba
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
         Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
               "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
-        Check(B(b0, "Bombo") && B(b0, "Retumbe") && B(b0, "Ataque") && B(bx, "Bombo") && B(bx, "Retumbe") && B(bx, "Ataque") && B(b2, "Bombo") && B(b2, "Retumbe") && B(b2, "Ataque"),
-              "voz, golpe y retumbe (27-10-2026): el bombo, el retumbe y el ataque van siempre en el billar, en cualquier cancion, tambien sin medir");
+        Check(!B(b0, "Bombo") && B(b0, "Retumbe") && B(b0, "Ataque") && !B(bx, "Bombo") && B(bx, "Retumbe") && B(bx, "Ataque") && !B(b2, "Bombo") && B(b2, "Retumbe") && B(b2, "Ataque"),
+              "voz, golpe y retumbe (27-10-2026): el retumbe y el ataque van siempre en el billar, tambien sin medir; el bombo no (cadena del billar)");
+        Check(B(b0, "Eses") && B(bx, "Eses") && B(b2, "Eses"), "cadena del billar: las eses, siempre");
+        MethodInfo auto4 = TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float), typeof(float) }, null);
+        Check(auto4 != null, "esta la variante con la falta de cuerpo");
+        if (auto4 != null)
+        {
+            float flacaDb = (float)TF.GetField("CuerpoFlacaDb", T).GetValue(null);
+            object fl = auto4.Invoke(null, new object[] { 8f, -1f, 10f, flacaDb + 0.5f }), nf = auto4.Invoke(null, new object[] { 8f, -1f, 10f, flacaDb - 0.5f }), sx = auto4.Invoke(null, new object[] { 8f, -1f, 10f, float.NaN });
+            Check(!B(fl, "Claridad") && B(fl, "Cuerpo") && B(fl, "Suaves"), "cancion flaca: sin la claridad (que corta a 300 Hz) y con cuerpo del EQ");
+            Check(B(nf, "Claridad") && !B(nf, "Cuerpo") && B(sx, "Claridad") && !B(sx, "Cuerpo"), "con cuerpo de sobra, o sin saberlo, la claridad como siempre");
+        }
         Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia") && B(b2, "Presencia") && !B(bx, "Presencia"), "sin LRA (medida de antes): presencia solo desde " + muy + " dB de P99 - sonoridad; sin medir, sin presencia");
         Check(!B(Auto(0, muy - 0.01f), "Presencia") && B(Auto(0, muy), "Presencia"), "el corte de la regla de antes vale justo en su valor");
@@ -168,8 +178,9 @@ class LocalAutoPrueba
 
         Console.WriteLine("\n  4) LA CADENA Y LOS MANDOS EN VIVO LEEN LocalDe\n");
         string son = Texto("Form1.Sonido.cs"), gm = Texto("GraveMono.cs"), qs = Texto("LoQueSuena.cs");
-        Check(son.Contains("AjusteLocal loc = LocalDe(c);") && son.Contains("new SalaLocal(c.Mono, tap, normTarget, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos)")
-              && son.Contains("new PresenciaSala(c.Retumbe, tap, normTarget, loc.Presencia)") && son.Contains("loc.Estrecho, loc.Subgrave"), "al armar la cancion se usa lo que decide LocalDe, no los mandos sueltos");
+        Check(son.Contains("AjusteLocal loc = LocalDe(c);") && son.Contains("new SalaLocal(c.Mono, tap, nivelLocal, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos)")
+              && son.Contains("new PresenciaSala(c.Retumbe, tap, nivelLocal, loc.Presencia, localAuto)") && son.Contains("new SuavizaEses(c.Ataque, loc.Eses, localAuto)")
+              && son.Contains("loc.Estrecho, loc.Subgrave"), "al armar la cancion se usa lo que decide LocalDe, no los mandos sueltos");
         Check(gm.Contains("LocalDe(c), lp = LocalDe(p)") && gm.Contains("c.Sala.Ajusta(lc.Claridad, lc.Suaves, balanceDb)") && gm.Contains("p.Presencia.Ajusta(lp.Presencia)"), "AplicaBocinas pone en vivo lo decidido para la que suena y para la preparada");
         Check(qs.Contains("LocalDe(c)") && qs.Contains("sin ? false : lo.Claridad") && qs.Contains("sin ? 0 : lo.Graves"), "«Escuchar sin mejoras» sigue quitando todo, tambien lo del automatico");
         Check(!son.Contains("claridadLocal, partesSuaves") && !gm.Contains("claridadLocal, partesSuaves"), "ya no queda ninguna etapa armada con los mandos sueltos");

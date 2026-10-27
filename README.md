@@ -1,5 +1,31 @@
 # Rocola
 
+## La cadena del modo billar — 27 de octubre de 2026
+
+El modo automático del local ahora se llama **Modo billar** y ajusta la cadena de sonido entera para las bocinas del billar. No es una
+cadena nueva: es la misma, revisada pieza por pieza para que ninguna choque con otra.
+
+- **EQ automático para estas bocinas:** 50 Hz y 5,6 kHz solo bajan y 15,8 kHz no se toca. 400 Hz baja como mucho 2,5 dB y los agudos
+  quedan un poco más bajos, por el rebote del local. Además, no ecualiza canciones de menos de 45 s ni bandas que el codec cortó, y no
+  refuerza los agudos de las canciones recortadas.
+- **Más cuerpo para las canciones flacas:** no se les pone la claridad, y el EQ les devuelve 158-400 Hz.
+- **La presencia y las partes suaves** miden contra el nivel de la propia canción, y la presencia da su compensación entera.
+- **Las eses** se suavizan siempre, y ahora sí se detectan aunque haya grave.
+- **Lo que deja fuera:** el bombo (le quitaba bajo sin ayudar a la voz), el DSEE y quitar el siseo.
+- **Lo que pone:** el realce solo devuelve lo que el MP3 cortó; el bajo va en automático; a la medida, el retumbe, el ataque y los
+  arreglos de la grabación van encendidos.
+
+Medido en la balada, la franja de 5 a 10 kHz pasa de +9,1 a +3,0 dB, y la «s» pasa de +3,8 a −1,1 dB frente a la voz.
+
+**La ventana de Sonido, solo con lo esencial:**
+
+- **A la vista:** el volumen, el Modo billar con su botón «Ajustes del sonido...» al lado, la prueba de bocinas y la biblioteca.
+- **En la hoja de ajustes:** todo lo demás, incluida la hoja nueva «Voz, golpe y retumbe» con sus tres interruptores. Lo que decide el
+  modo va en gris diciendo por qué.
+
+Con el modo apagado, la cadena sale bit a bit como antes (10 de 10 combinaciones iguales). Son cuentas con señales sintéticas en Linux:
+**nada se ha oído en el billar ni se probó en el A4**. [Lo hecho, lo medido y qué escuchar](CADENA_BILLAR_MODEST_2026-10-27.md).
+
 ## Voz, golpe y retumbe — 27 de octubre de 2026
 
 Tres etapas nuevas de la cadena de sonido, para el billar:

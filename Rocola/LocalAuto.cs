@@ -52,12 +52,16 @@ namespace Rocola
         {
             public bool Subgrave, Estrecho, EstrechoSoloSiHaceFalta, Claridad, Suaves, Presencia;
             public bool Bombo, Retumbe, Ataque;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs, 27-10-2026)
+            public bool Eses;                     // suavizar las eses (T9, Eses.cs); en el billar, con la referencia de la cadena del billar
+            public bool Cuerpo;                   // cancion flaca: el EQ del billar le devuelve cuerpo (CadenaBillar.cs); solo informa (S5)
             public int Graves, Agudos;
         }
 
         // Lo que el modo automatico pone para una cancion: 'rangoDb' es el P99 - sonoridad (< 0 = sin medir), 'lraLu' su LRA (< 0 = sin
         // LRA: medida de antes) y 'umbralLu' el corte de la presencia (UmbralPresencia). Pura: sin estado.
-        internal static AjusteLocal LocalAutomatico(float rangoDb, float lraLu, float umbralLu)
+        internal static AjusteLocal LocalAutomatico(float rangoDb, float lraLu, float umbralLu) { return LocalAutomatico(rangoDb, lraLu, umbralLu, float.NaN); }
+        // 'flacaDb': cuanto le falta de cuerpo (158 y 400 Hz) a la cancion frente a su objetivo del EQ (CadenaBillar.cs, FaltaDeCuerpoDb); NaN = no se sabe.
+        internal static AjusteLocal LocalAutomatico(float rangoDb, float lraLu, float umbralLu, float flacaDb)
         {
             AjusteLocal a = new AjusteLocal();
             bool medida = rangoDb >= 0f && !float.IsNaN(rangoDb);
@@ -65,10 +69,20 @@ namespace Rocola
             if (float.IsNaN(umbralLu) || float.IsInfinity(umbralLu)) umbralLu = LraPresenciaLu;
             a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = true; a.Suaves = true;
             a.Presencia = conLra ? lraLu >= umbralLu : (medida && rangoDb >= RangoMuyAltoDb);
-            // Voz, golpe y retumbe (27-10-2026): siempre, en el billar. Cada etapa se frena sola por lo que oye (el bombo solo baja el bajo cuando algo pasa del
-            // techo; el retumbe solo corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con
-            // sitio bajo el techo): ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
-            a.Bombo = true; a.Retumbe = true; a.Ataque = true;
+            // Voz, golpe y retumbe (27-10-2026): el retumbe y el ataque, siempre en el billar. Cada etapa se frena sola por lo que oye (el retumbe solo
+            // corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con sitio bajo el techo):
+            // ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
+            a.Retumbe = true; a.Ataque = true;
+            // LA CADENA DEL BILLAR (CadenaBillar.cs, 27-10-2026), medida con la cadena entera:
+            //   - El BOMBO no va: con el nivelado al limite el limitador casi no actua (0,2 a 2 % del tiempo en masters normales) y la etapa
+            //     quitaba ~1 dB de bajo sin mejorar la voz (reacciona despues del primer golpe, que el limitador ya bajo). Su interruptor sigue a mano.
+            //   - Las ESES si: la claridad (+1,5 dB a 3 kHz) acercaba la "s" a la voz hasta +1 dB; con la referencia del billar la etapa actua.
+            //   - A una cancion FLACA (le faltan 2,5 dB o mas de cuerpo frente a su objetivo) no se le pone la claridad, que le quitaria aun mas
+            //     cuerpo a 300 Hz, y el EQ del billar le devuelve cuerpo (mas cuerpo en voces).
+            a.Bombo = false; a.Eses = true;
+            bool flaca = !float.IsNaN(flacaDb) && flacaDb >= CuerpoFlacaDb;
+            if (flaca) a.Claridad = false;
+            a.Cuerpo = flaca;
             return a;
         }
 
@@ -230,13 +244,15 @@ namespace Rocola
             if (localAuto)
             {
                 int n;
-                return LocalAutomatico(t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraParaDecidir(t), UmbralPresenciaAhora(out n));
+                return LocalAutomatico(t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraParaDecidir(t), UmbralPresenciaAhora(out n),
+                                       t == null ? float.NaN : FaltaDeCuerpoParaDecidir(t));
             }
             AjusteLocal m = new AjusteLocal();
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;
             m.Claridad = claridadLocal; m.Suaves = partesSuaves; m.Presencia = presenciaSala;
             m.Graves = gravesLocalDb; m.Agudos = agudosLocalDb;
             m.Bombo = bomboSinHundir; m.Retumbe = retumbeDinamico; m.Ataque = ataqueClaro;
+            m.Eses = suavizaEses;
             return m;
         }
         // L1: en racha con otra de su disco, el LRA mas alto de las pistas medidas del disco (todas deciden igual); si no, el suyo.

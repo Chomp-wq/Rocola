@@ -69,7 +69,13 @@ namespace Rocola
             internal int Cebado;
             private int cebadoPorPasar;
 
-            public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender)
+            public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender) : this(s, volumen, objetivo, encender, false) { }
+            // EN EL MODO BILLAR (CadenaBillar.cs) la compensacion vuelve a ser la de su diseno -lo que se aprieta en el nivel de la cancion (3 dB)
+            // se devuelve entero- y solo la frena un pico comprimido que pasaria del techo por mas de MargenBillarDb: con el nivelado al limite
+            // los picos ya rozan el techo y el freno de siempre la dejaba en nada, asi que la presencia BAJABA la cancion 1 a 3 dB en vez de
+            // acercar lo suave a lo fuerte. Esos picos (los golpes que el ataque de 15 ms no alcanza) los recorta el limitador, que va detras.
+            internal const double MargenBillarDb = 2.0;
+            public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender, bool billar)
             {
                 src = s; tap = volumen;
                 tasa = s.WaveFormat.SampleRate; canales = s.WaveFormat.Channels;
@@ -77,7 +83,7 @@ namespace Rocola
                 encendido = encender;
                 double obj = (objetivo > 0.001f && objetivo <= 1f) ? objetivo : 0.26;
                 umbralDb = 20.0 * Math.Log10(obj) - UmbralBajoObjetivoDb;
-                techo = TechoPicoReal * 0.985;   // un pelo por debajo: la cuenta va un trozo (0,7 ms) por detras del pico
+                techo = TechoPicoReal * 0.985 * (billar ? Math.Pow(10.0, MargenBillarDb / 20.0) : 1.0);   // un pelo por debajo: la cuenta va un trozo (0,7 ms) por detras del pico
                 // Si cabe incluso la compensacion maxima, el logaritmo no puede limitarla.
                 // Margen conservador para no cambiar decisiones por redondeo en el borde.
                 picoSinRecorte = techo / Math.Pow(10.0, CompensaMaxDb / 20.0) * (1.0 - 1e-12);

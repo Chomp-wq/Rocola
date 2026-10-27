@@ -46,7 +46,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Roco
 FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/AtaqueClaro.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
-FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs $RAIZ/Rocola/CadenaBillar.cs"
 # El volumen general de Windows al maximo al arrancar (24-10-2026).
 FUENTES="$FUENTES $RAIZ/Rocola/VolumenWindows.cs"
 # El diagnostico completo de Ctrl+F3 (23-10-2026): el motor, la toma de muestras y el informe, y las escenas con la rocola de verdad.
@@ -235,6 +235,9 @@ CPU="$CPU presenciasala"
 # 'localauto': el local en automatico (23-10-2026; LocalAuto.cs): la tabla por tipo de local y rango de cancion, apagado = los mandos
 # tal cual, encendido = decide por cada cancion con su medida, la cadena y los mandos en vivo lo leen, la configuracion y la ventana.
 CPU="$CPU localauto"
+# 'cadenabillar': la cadena del modo billar (27-10-2026; CadenaBillar.cs): el EQ del billar banda por banda, EqCorrFor con una huella
+# (encendido y apagado), lo que el modo decide del realce, el DSEE, los arreglos y el bajo, el codigo y la ventana.
+CPU="$CPU cadenabillar"
 # 'mp3mezclado': MP3 con frecuencia o canales mezclados (error del 17-10-2026): la reconstruccion con el formato dominante (BuildCleanMp3).
 CPU="$CPU mp3mezclado"
 # 'modosauto': la revision de los modos automaticos del sonido (23-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md): la

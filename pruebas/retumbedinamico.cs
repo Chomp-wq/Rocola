@@ -287,7 +287,7 @@ class RetumbeDinamicoPrueba
                 foreach (string c in Codigo.Llamadas(m)) if (c.IndexOf("Volume", StringComparison.OrdinalIgnoreCase) >= 0 || c.IndexOf("waveOutSet", StringComparison.OrdinalIgnoreCase) >= 0 || c.IndexOf("Mixer", StringComparison.OrdinalIgnoreCase) >= 0) vol = true;
             Check(!vol, "la etapa no llama a nada de volumen (ni el de Windows ni el de la salida)");
             Check(Codigo.FuenteDeForm1().Contains("retumbeDinamico = false;"), "«Dejar como de fabrica» la apaga");
-            MethodInfo auto = TF.GetMethod("LocalAutomatico", T);
+            MethodInfo auto = TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float) }, null);
             object aj = auto.Invoke(null, new object[] { 8f, 5f, 10f }), aj2 = auto.Invoke(null, new object[] { -1f, -1f, 10f });
             Type tAj = aj.GetType();
             Check((bool)tAj.GetField("Retumbe").GetValue(aj) && (bool)tAj.GetField("Retumbe").GetValue(aj2), "el modo automatico del local la enciende (siempre, en el billar)");

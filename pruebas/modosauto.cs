@@ -534,9 +534,9 @@ class ModosAuto
         Marca(estrecho, true);
         Check(s3.Enabled, "con el estereo estrecho a mano encendido, S3 manda");
         Marca(local, true);
-        Check(!s3.Enabled && Falta(s3).Contains("modo automatico del local"), "con el modo automatico del local encendido, S3 queda en gris diciendo que decide ese modo (antes seguia como si mandara)");
+        Check(!s3.Enabled && Falta(s3).Contains("modo billar"), "con el modo automatico del local encendido, S3 queda en gris diciendo que decide ese modo (antes seguia como si mandara)");
         Marca(estrecho, false);
-        Check(!s3.Enabled && Falta(s3).Contains("modo automatico del local") && !Falta(s3).Contains("Estereo al"), "y sin el estereo a mano el motivo sigue siendo el del modo del local, no que falte el estereo");
+        Check(!s3.Enabled && Falta(s3).Contains("modo billar") && !Falta(s3).Contains("Estereo al"), "y sin el estereo a mano el motivo sigue siendo el del modo del local, no que falte el estereo");
         Marca(local, false);
         Check(!s3.Enabled && Falta(s3).Contains("Estereo al"), "al apagar el modo del local vuelve el motivo de siempre");
         Marca(estrecho, true);

@@ -38,7 +38,16 @@ namespace Rocola
         internal int Cebado;                                 // el cebado de delante (lo pone ArmaCadena): tras heredar, pasa tal cual
         private double bajaMax;                              // lo que mas bajo desde la ultima vez que se pregunto (S5)
 
-        internal SuavizaEses(ISampleProvider s, bool encender)
+        // EN EL MODO BILLAR (CadenaBillar.cs) la "s" se compara con lo que suena por encima de 1 kHz (la voz, las guitarras, los platillos), no con
+        // TODO: en una mezcla con bajo el grave se lleva casi toda la energia y la banda de las eses no llegaba nunca al 45 % del total, asi que
+        // la etapa no actuaba justo en la musica que mas suena en el billar (medido: cero bajada en pop y reggaeton). Con la referencia por
+        // encima de 1 kHz, una vocal (formantes de 0,5 a 3 kHz) queda lejos del umbral y una "s" lo pasa con o sin bajo debajo.
+        internal const double ReferenciaBillarHz = 1000.0;
+        private readonly bool billar;
+        private readonly double hb0, hb1, hb2, ha1, ha2;     // paso-alto de la referencia (solo en el billar)
+        private readonly double[] ref_;                      // su memoria por canal: x1, x2, y1, y2
+        internal SuavizaEses(ISampleProvider s, bool encender) : this(s, encender, false) { }
+        internal SuavizaEses(ISampleProvider s, bool encender, bool enBillar)
         {
             src = s; ch = Math.Max(1, s.WaveFormat.Channels); tasa = s.WaveFormat.SampleRate;
             vale = CentroHz * 1.5 < 0.45 * tasa;
@@ -51,6 +60,10 @@ namespace Rocola
             gMin = Math.Pow(10.0, -MaxBajaDb / 20.0);
             piso = Math.Pow(10.0, PisoDb / 10.0) * ch;   // la potencia de la banda (suma de los canales) a -40 dBFS en cada uno
             encendido = encender;
+            billar = enBillar;
+            ref_ = new double[4 * ch];
+            double wr = 2.0 * Math.PI * Math.Min(ReferenciaBillarHz, 0.4 * tasa) / tasa, cr = Math.Cos(wr), alr = Math.Sin(wr) / (2.0 * 0.7071), a0r = 1.0 + alr;
+            hb0 = (1.0 + cr) / 2.0 / a0r; hb1 = -(1.0 + cr) / a0r; hb2 = hb0; ha1 = -2.0 * cr / a0r; ha2 = (1.0 - alr) / a0r;
         }
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
         internal void Ajusta(bool encender) { encendido = encender; }
@@ -64,6 +77,7 @@ namespace Rocola
             SuavizaEses a = anterior; anterior = null;
             if (a == null || a.ch != ch || a.tasa != tasa) return;
             Array.Copy(a.est, est, est.Length); eB = a.eB; eT = a.eT; pb = a.pb; pt = a.pt; g = a.g; canal = a.canal;
+            if (a.billar == billar) Array.Copy(a.ref_, ref_, ref_.Length);
             cebadoPorPasar = Math.Max(0, Cebado) * ch;
         }
 
@@ -89,7 +103,15 @@ namespace Rocola
                 double y = b0 * (x - est[e + 1]) - a1 * est[e + 2] - a2 * est[e + 3];
                 est[e + 1] = est[e]; est[e] = x; est[e + 3] = est[e + 2]; est[e + 2] = y;
                 if (gg != 1.0) buffer[i] = (float)(x - (1.0 - gg) * y);
-                sb += y * y; st += x * x;
+                sb += y * y;
+                if (billar)
+                {
+                    double r = hb0 * x + hb1 * ref_[e] + hb2 * ref_[e + 1] - ha1 * ref_[e + 2] - ha2 * ref_[e + 3];
+                    if (r < 1e-30 && r > -1e-30) r = 0.0;
+                    ref_[e + 1] = ref_[e]; ref_[e] = x; ref_[e + 3] = ref_[e + 2]; ref_[e + 2] = r;
+                    st += r * r;
+                }
+                else st += x * x;
                 if (++c < ch) continue;
                 c = 0;
                 b += kEnv * (sb - b); t += kEnv * (st - t); sb = 0; st = 0;

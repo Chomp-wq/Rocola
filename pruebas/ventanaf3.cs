@@ -99,68 +99,90 @@ class VentanaF3
                     Control b = Boton(dlg, pag); if (b == null) { Mal("falta la pagina " + pag); continue; }
                     Click(b); Mira(nombre + ", " + pag);
                     if (pag == "Sonido")
-                    {   // La hoja del local y sus bocinas (12-10-2026): se abre con su boton y se vuelve con el suyo.
-                        Control abre = Boton(dlg, "El local y sus bocinas...");
-                        Check(abre != null, "Sonido tiene el boton de la hoja del local");
-                        if (abre != null)
+                    {   // LA PAGINA DE SONIDO, SOLO LO ESENCIAL (27-10-2026): el modo billar con su boton de ajustes al lado y la prueba de bocinas
+                        // a la vista; lo demas en la hoja de ajustes del sonido, y de ahi a sus hojas, que vuelven a ella.
+                        Check(dlg.Controls.Find("SonidoLocalAuto", true).Length == 1 && dlg.Controls.Find("SonidoLocalAuto", true)[0].Visible, "Sonido tiene el interruptor del modo billar a la vista");
+                        Check(Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Polaridad") != null, "y la prueba de bocinas");
+                        Check(Boton(dlg, "El local y sus bocinas...") == null, "las hojas no se ven sin abrir los ajustes del sonido");
+                        Control aju = Boton(dlg, "Ajustes del sonido...");
+                        Check(aju != null, "Sonido tiene el boton de los ajustes del sonido junto al modo billar");
+                        if (aju != null)
                         {
-                            Click(abre); Mira(nombre + ", Sonido > El local y sus bocinas");
-                            // La segunda hoja del grupo (22-10-2026): graves y agudos del local y la presencia en sala ruidosa.
-                            Control abreT = Boton(dlg, "Tono y presencia del local...");
-                            Check(abreT != null, "la hoja del local tiene el boton de la hoja de tono y presencia");
-                            if (abreT != null)
+                            Click(aju); Mira(nombre + ", Sonido > Ajustes del sonido");
+                            Check(Boton(dlg, "Solo izquierda") == null, "la pagina queda escondida mientras tanto");
+                            Control abre = Boton(dlg, "El local y sus bocinas...");
+                            Check(abre != null, "los ajustes tienen el boton de la hoja del local");
+                            if (abre != null)
                             {
-                                Click(abreT); Mira(nombre + ", Sonido > El local y sus bocinas > Tono y presencia");
-                                int swT = 0;
-                                foreach (string nomSw in new string[] { "SonidoTonoGraves", "SonidoTonoAgudos", "SonidoPresencia" })
-                                { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swT++; }
-                                Check(swT == 3, "la hoja de tono y presencia tiene sus dos deslizadores y su interruptor a la vista (" + swT + ")");
-                                Check(Boton(dlg, "Solo izquierda") == null, "y la hoja del local queda escondida mientras tanto");
-                                Control vt = Boton(dlg, "Volver al local y sus bocinas");
-                                Check(vt != null, "la hoja de tono y presencia tiene su boton de volver");
-                                if (vt != null) { Click(vt); Check(Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Tono y presencia del local...") != null, "al volver se ve otra vez la hoja del local"); }
+                                Click(abre); Mira(nombre + ", Sonido > El local y sus bocinas");
+                                Control abreT = Boton(dlg, "Tono y presencia del local...");
+                                Check(abreT != null, "la hoja del local tiene el boton de la hoja de tono y presencia");
+                                if (abreT != null)
+                                {
+                                    Click(abreT); Mira(nombre + ", Sonido > El local y sus bocinas > Tono y presencia");
+                                    int swT = 0;
+                                    foreach (string nomSw in new string[] { "SonidoTonoGraves", "SonidoTonoAgudos", "SonidoPresencia", "SonidoEses" })
+                                    { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swT++; }
+                                    Check(swT == 4, "la hoja de tono y presencia tiene sus dos deslizadores y sus dos interruptores a la vista (" + swT + ")");
+                                    Check(Boton(dlg, "Como la cancion") == null, "y la hoja del local queda escondida mientras tanto");
+                                    Control vt = Boton(dlg, "Volver al local y sus bocinas");
+                                    Check(vt != null, "la hoja de tono y presencia tiene su boton de volver");
+                                    if (vt != null) { Click(vt); Check(Boton(dlg, "Como la cancion") != null && Boton(dlg, "Tono y presencia del local...") != null, "al volver se ve otra vez la hoja del local"); }
+                                }
+                                Control vuelve = Boton(dlg, "Volver a los ajustes del sonido");
+                                Check(vuelve != null && Boton(dlg, "Como la cancion") != null, "la hoja del local tiene la frecuencia de la tarjeta y su boton de volver");
+                                if (vuelve != null) { Click(vuelve); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver se ven otra vez los ajustes del sonido"); }
                             }
-                            Control vuelve = Boton(dlg, "Volver a las canciones");
-                            Check(vuelve != null && Boton(dlg, "Solo izquierda") != null && Boton(dlg, "Polaridad") != null, "la hoja del local tiene la prueba de bocinas y su boton de volver");
-                            if (vuelve != null) { Click(vuelve); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver se ven otra vez las canciones"); }
-                        }
-                        // La hoja de las mejoras con IA (13-10-2026: I1, I2 e I3), igual: su boton, sus tres interruptores y volver.
-                        Control abreIa = Boton(dlg, "Mejoras con IA...");
-                        Check(abreIa != null, "Sonido tiene el boton de la hoja de las mejoras con IA");
-                        if (abreIa != null)
-                        {
-                            Click(abreIa); Mira(nombre + ", Sonido > Mejoras con IA");
-                            int sw = 0;
-                            foreach (string nomSw in new string[] { "SonidoIaMedida", "SonidoIaSiseo", "SonidoIaGenero" })
-                            { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) sw++; }
-                            Check(sw == 3, "la hoja de las mejoras con IA tiene sus tres interruptores a la vista (" + sw + ")");
-                            Control vuelveIa = Boton(dlg, "Volver a las canciones");
-                            Check(vuelveIa != null, "la hoja de las mejoras con IA tiene su boton de volver");
-                            if (vuelveIa != null) { Click(vuelveIa); Check(Boton(dlg, "Mejoras con IA...") != null, "al volver de la IA se ven otra vez las canciones"); }
-                        }
-                    }
-                    if (pag == "Sonido")
-                    {   // Lo que suena ahora (13-10-2026: S1 a S5): su hoja, sus tres interruptores, el boton sin mejoras y volver.
-                        Control abreA = Boton(dlg, "Lo que suena ahora...");
-                        Check(abreA != null, "Sonido tiene el boton de lo que suena ahora");
-                        if (abreA != null)
-                        {
-                            Click(abreA); Mira(nombre + ", Sonido > Lo que suena ahora");
-                            int swA = 0;
-                            foreach (string nomSw in new string[] { "SonidoCanalMudo", "SonidoContinua", "SonidoEstereoAuto" })
-                            { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swA++; }
-                            Check(swA == 3, "la hoja de lo que suena tiene sus tres interruptores a la vista (" + swA + ")");
-                            Control sinM = Boton(dlg, "Escuchar sin mejoras (15 s)");
-                            Check(sinM != null, "y el boton de escuchar sin mejoras");
-                            if (sinM != null)
+                            Control abreV = Boton(dlg, "Voz, golpe y retumbe...");
+                            Check(abreV != null, "los ajustes tienen el boton de la hoja de voz, golpe y retumbe");
+                            if (abreV != null)
                             {
-                                Click(sinM); Mira(nombre + ", Sonido > Lo que suena ahora (sin mejoras)");
-                                Control vol = null; foreach (Control c in dlg.Controls.Find("SonidoSinMejoras", true)) vol = c;
-                                Check(vol != null && vol.Text.StartsWith("Volver a las mejoras"), "al pulsarlo dice como volver y cuanto queda");
-                                if (vol != null) Click(vol);
+                                Click(abreV); Mira(nombre + ", Sonido > Voz, golpe y retumbe");
+                                int swV = 0;
+                                foreach (string nomSw in new string[] { "SonidoRetumbe", "SonidoAtaque", "SonidoBombo" })
+                                { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swV++; }
+                                Check(swV == 3, "la hoja de voz, golpe y retumbe tiene sus tres interruptores a la vista (" + swV + ")");
+                                Control vv = Boton(dlg, "Volver a los ajustes del sonido");
+                                if (vv != null) { Click(vv); Check(Boton(dlg, "Voz, golpe y retumbe...") != null, "al volver de la voz se ven otra vez los ajustes"); }
                             }
-                            Control vuelveA = Boton(dlg, "Volver a las canciones");
-                            if (vuelveA != null) { Click(vuelveA); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver de lo que suena se ven otra vez las canciones"); }
+                            Control abreIa = Boton(dlg, "Mejoras con IA...");
+                            Check(abreIa != null, "los ajustes tienen el boton de la hoja de las mejoras con IA");
+                            if (abreIa != null)
+                            {
+                                Click(abreIa); Mira(nombre + ", Sonido > Mejoras con IA");
+                                int sw = 0;
+                                foreach (string nomSw in new string[] { "SonidoIaMedida", "SonidoIaSiseo", "SonidoIaGenero" })
+                                { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) sw++; }
+                                Check(sw == 3, "la hoja de las mejoras con IA tiene sus tres interruptores a la vista (" + sw + ")");
+                                Control vuelveIa = Boton(dlg, "Volver a los ajustes del sonido");
+                                Check(vuelveIa != null, "la hoja de las mejoras con IA tiene su boton de volver");
+                                if (vuelveIa != null) { Click(vuelveIa); Check(Boton(dlg, "Mejoras con IA...") != null, "al volver de la IA se ven otra vez los ajustes"); }
+                            }
+                            // Lo que suena ahora (13-10-2026: S1 a S5): su hoja, sus interruptores, el boton sin mejoras y volver.
+                            Control abreA = Boton(dlg, "Lo que suena ahora...");
+                            Check(abreA != null, "los ajustes tienen el boton de lo que suena ahora");
+                            if (abreA != null)
+                            {
+                                Click(abreA); Mira(nombre + ", Sonido > Lo que suena ahora");
+                                int swA = 0;
+                                foreach (string nomSw in new string[] { "SonidoCanalMudo", "SonidoContinua", "SonidoEstereoAuto" })
+                                { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) swA++; }
+                                Check(swA == 3, "la hoja de lo que suena tiene sus tres interruptores a la vista (" + swA + ")");
+                                Control sinM = Boton(dlg, "Escuchar sin mejoras (15 s)");
+                                Check(sinM != null, "y el boton de escuchar sin mejoras");
+                                if (sinM != null)
+                                {
+                                    Click(sinM); Mira(nombre + ", Sonido > Lo que suena ahora (sin mejoras)");
+                                    Control vol = null; foreach (Control c in dlg.Controls.Find("SonidoSinMejoras", true)) vol = c;
+                                    Check(vol != null && vol.Text.StartsWith("Volver a las mejoras"), "al pulsarlo dice como volver y cuanto queda");
+                                    if (vol != null) Click(vol);
+                                }
+                                Control vuelveA = Boton(dlg, "Volver a los ajustes del sonido");
+                                if (vuelveA != null) { Click(vuelveA); Check(Boton(dlg, "El local y sus bocinas...") != null, "al volver de lo que suena se ven otra vez los ajustes"); }
+                            }
+                            Control vAju = Boton(dlg, "Volver a las canciones");
+                            Check(vAju != null, "los ajustes del sonido tienen su boton de volver");
+                            if (vAju != null) { Click(vAju); Check(Boton(dlg, "Ajustes del sonido...") != null && Boton(dlg, "Solo izquierda") != null, "al volver se ve otra vez la pagina de Sonido"); }
                         }
                     }
                     if (pag == "Imagen")

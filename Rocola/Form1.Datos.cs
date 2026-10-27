@@ -664,7 +664,7 @@ namespace Rocola
                     else if (s.StartsWith("suaviza_eses=")) suavizaEses = s.Substring(13).Trim() == "1";   // T9: suavizar las eses
                     else if (s.StartsWith("bombo_sin_hundir=")) bomboSinHundir = s.Substring(17).Trim() == "1";   // que el bombo no hunda la voz
                     else if (s.StartsWith("retumbe_dinamico=")) retumbeDinamico = s.Substring(17).Trim() == "1";   // el retumbe dinamico
-                    else if (s.StartsWith("ataque_claro=")) ataqueClaro = s.Substring(13).Trim() == "1";   // el ataque mas claro
+                    else if (s.StartsWith("ataque_claro=")) ataqueClaro = s.Substring(13).Trim() == "1";   // el ataque mas claro
                     else if (s.StartsWith("quita_continua=")) quitaContinua = s.Substring(15).Trim() != "0";   // S2: quitar la continua
                     else if (s.StartsWith("estereo_auto=")) estereoAuto = s.Substring(13).Trim() == "1";   // S3: estrecho solo si hace falta
                     else if (s.StartsWith("estereo_estrecho=")) estereoEstrecho = s.Substring(17).Trim() == "1";   // interruptor: estereo al ancho_estereo
@@ -842,7 +842,7 @@ namespace Rocola
             sb.Append("suaviza_eses=").Append(suavizaEses ? "1" : "0").Append("\r\n");
             sb.Append("bombo_sin_hundir=").Append(bomboSinHundir ? "1" : "0").Append("\r\n");
             sb.Append("retumbe_dinamico=").Append(retumbeDinamico ? "1" : "0").Append("\r\n");
-            sb.Append("ataque_claro=").Append(ataqueClaro ? "1" : "0").Append("\r\n");
+            sb.Append("ataque_claro=").Append(ataqueClaro ? "1" : "0").Append("\r\n");
             sb.Append("quita_continua=").Append(quitaContinua ? "1" : "0").Append("\r\n");
             sb.Append("estereo_auto=").Append(estereoAuto ? "1" : "0").Append("\r\n");
             sb.Append("frecuencia_salida=").Append(frecuenciaSalida.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
@@ -1335,17 +1335,21 @@ namespace Rocola
         }
         // La huella tonal se mide siempre que haga falta para algo: en automatico hace falta SIEMPRE (de ella
         // salen tambien el bajo, el realce y el informe de calidad), y a mano solo si el EQ esta subido.
-        private bool EqMideHuella { get { return eqAuto || eqAmount > 0.001f; } }
+        private bool EqMideHuella { get { return eqAuto || eqAmount > 0.001f || localAuto; } }   // el modo billar lleva el EQ en automatico
 
         // Correccion en dB por banda para una cancion (o null si apagado / aun sin huella / sin objetivo).
         // Correccion = (objetivo - huella) con tope +-4 dB, escalada por la fuerza. Una banda casi MUDA
         // (>25 dB bajo la referencia de su cancion) no se sube: seria inflar piso de ruido, no musica.
         private float[] EqCorrFor(string path)
         {
-            float fuerza = eqAuto ? EqFuerzaAuto() : eqAmount;
+            // EN EL MODO BILLAR el EQ va siempre en automatico y a la medida de esas bocinas (CadenaBillar.cs); apagado, como siempre.
+            bool billar = localAuto;
+            bool auto = eqAuto || billar;
+            float fuerza = auto ? EqFuerzaAuto() : eqAmount;
             if (fuerza <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
             if (!eqCache.TryGetValue(path, out c) || c[EqFingerprint] != EqVersionOriginal) return null;
+            if (billar) { float dur = SegundosDe(path); if (dur > 0.01f && dur < BillarEqMinSeg) return null; }
             // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
             // segun el caso. Con el DSEE apagado, ahi el codec no dejo musica: subirla seria subir ruido. Y con
             // el DSEE encendido tampoco, porque la huella guardada describe el ARCHIVO (donde esa banda esta
@@ -1362,7 +1366,7 @@ namespace Rocola
             // muy oscuro a proposito, una grabacion en vivo, una voz sola. Empujarla a la fuerza hacia el resto
             // la estropea, asi que cuanto mas lejos esta de la biblioteca, con mas cuidado se le toca. Solo se
             // hace en automatico: si alguien puso la perilla a mano, manda la perilla.
-            if (eqAuto)
+            if (auto)
             {
                 float dif = 0f; int nb = 0;
                 for (int b = 0; b < 8; b++)
@@ -1372,14 +1376,21 @@ namespace Rocola
                     float d = meta[b] - c[b]; if (d < 0f) d = -d;
                     dif += d; nb++;
                 }
-                if (nb > 0) fuerza *= Clampf(1.15f - (dif / nb) / 14f, 0.45f, 1f);
+                if (nb > 0) fuerza *= Clampf(1.15f - (dif / nb) / 14f, billar ? BillarEqRaraMin : 0.45f, 1f);
             }
+            bool recortada = c[EqClip] > BillarEqRecorte;
+            bool flaca = false;
+            if (billar) { float falta = 0.5f * ((meta[1] - c[1]) + (meta[2] - c[2])); flaca = c[1] > -25f && c[2] > -25f && falta >= CuerpoFlacaDb; }
             float[] dbs = new float[8]; bool any = false;
             for (int b = 0; b < 8; b++)
             {
                 float corr = 0f;
                 if (corte > 100f && EqCentros[b] > corte) { dbs[b] = 0f; continue; }
-                if (c[b] > -25f)
+                if (billar)
+                {
+                    if (BandaBillar(b, c, corte) && c[b] > BillarEqMuda) corr = CorreccionBillar(b, meta[b] + InclinacionBillar[b] - c[b], fuerza, recortada, flaca);
+                }
+                else if (c[b] > -25f)
                 {
                     corr = meta[b] - c[b];
                     if (corr > 4f) corr = 4f; else if (corr < -4f) corr = -4f;
@@ -1421,7 +1432,7 @@ namespace Rocola
         // cancion (MetaDeCancion) y no con el promedio de toda la biblioteca: una balada de piano y un corrido dejan de
         // medirse con la misma vara. Sin modelo, o apagado, todo como antes.
         private bool aLaMedida;
-        private float[] MetaALaMedida(float[] c) { return aLaMedida ? MetaDeCancion(c) : null; }
+        private float[] MetaALaMedida(float[] c) { return aLaMedida || localAuto ? MetaDeCancion(c) : null; }   // en el modo billar, siempre (CadenaBillar.cs)
         // Al cambiar el interruptor en vivo: el bajo de la que suena y el de la siguiente ya preparada se recalculan con la
         // vara nueva (el realce lo recalcula ApplyNormNow, que va detras). La rampa del bajo hace el resto.
         private void AplicaALaMedida()
@@ -1442,8 +1453,9 @@ namespace Rocola
             float[] c;
             if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f;
             float corte = c[EqCut];
-            if (corte <= 100f) return 1f;   // aun sin medir: como siempre
+            if (corte <= 100f) return localAuto ? RealceBillarSinMedir : 1f;   // aun sin medir: como siempre
             float f = Clampf(1.45f - (corte - 15000f) / 6000f, ExciteCompleta, 1.45f);
+            if (localAuto) return RealceBillar(f);   // en el modo billar: solo lo que el codec corto (CadenaBillar.cs)
             // ...PERO SI EL RECONSTRUCTOR ESPECTRAL ESTA ENCENDIDO, esos agudos ya se los devolvio EL.
             //
             // Estas dos cosas estaban decidiendo por separado y las dos miraban el MISMO dato: el realce le
@@ -1475,7 +1487,7 @@ namespace Rocola
             }
             return f;
         }
-        private float ExciteAmountFor(string path) { return Clampf(excAmount * ExciteFactorFor(path), 0f, 1f); }
+        private float ExciteAmountFor(string path) { return Clampf((localAuto ? RealceBillarCantidad : excAmount) * ExciteFactorFor(path), 0f, 1f); }
 
         // ¿Vale la pena poner el des-recorte en esta cancion? Solo si de verdad viene con picos aplastados. Una
         // cancion aun sin medir se trata como sospechosa (mas vale ponerlo). El umbral es bajo a proposito: con
@@ -1721,7 +1733,7 @@ namespace Rocola
         {
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
-            SpectralTap sp = curSbr; if (sp != null) sp.Active = sbrOn;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
+            SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeEfectivo;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
             AplicaSinMejoras(cadenaSonando);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): encima de lo de siempre
         }
