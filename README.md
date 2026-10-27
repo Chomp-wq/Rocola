@@ -1,5 +1,13 @@
 # Rocola
 
+## Modo billar, cuarta tanda — 27 de octubre de 2026
+
+- **Volumen parejo desde la primera vez:** con 30 canciones aprendidas, la rocola ve qué tienen en común las que necesitaron subir (sobre
+  todo su grave) y aplica la mitad de eso a las que aún no aprende. Así las canciones nuevas también quedan parejas.
+- **Tocar las 8 bandas seguidas:** en la hoja de afinar. Suenan una tras otra con su nombre en grande, para anotar en orden.
+
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#cuarta-tanda-el-volumen-parejo-desde-la-primera-vez-y-las-bandas-seguidas). **Nada oído en el billar ni probado en el A4.**
+
 ## Modo billar, tercera tanda — 27 de octubre de 2026
 
 - **Volumen parejo aprendido:** al terminar cada canción en el billar, la rocola anota cuánto margen le sobró (o le faltó) y la próxima

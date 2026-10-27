@@ -204,12 +204,15 @@ namespace Rocola
 
         // ---------------------------------------------------------------- EL RUIDO POR BANDAS
         private PruebaBanda bandaSonando;
-        internal string ProbarBanda(int b)
+        internal string ProbarBanda(int b) { return b < 0 || b > 7 ? "" : ProbarBandas(b, b); }
+        // TODAS SEGUIDAS (cuarta tanda, 27-10-2026): las ocho bandas una tras otra, 8 s cada una con 1,5 s de silencio entre ellas, para
+        // no ir y venir de la rocola: el dueno se queda parado con el celular y anota en orden lo que dice el letrero.
+        internal string ProbarBandas(int desde, int hasta)
         {
             if (nowPlaying != null || videoOn) return "Hay musica sonando: la medida es con la rocola callada.";
-            if (b < 0 || b > 7) return "";
+            if (desde < 0 || hasta > 7 || desde > hasta) return "";
             ParaPruebaBocinas();
-            PruebaBanda p = new PruebaBanda(b);
+            PruebaBanda p = new PruebaBanda(desde, hasta);
             IWavePlayer w = null;
             try
             {
@@ -218,7 +221,7 @@ namespace Rocola
                 pruebaSalida = w; bandaSonando = p;
                 w.PlaybackStopped += PruebaAcabo;
                 w.Play();
-                return "Sonando: " + NombreBanda(b) + ".";
+                return desde == hasta ? "Sonando: " + NombreBanda(desde) + "." : "Sonando las " + (hasta - desde + 1) + " bandas seguidas.";
             }
             catch (Exception ex)
             {
@@ -228,38 +231,76 @@ namespace Rocola
                 return "No se pudo abrir la salida de sonido: " + MotivoFallo(ex) + ".";
             }
         }
+        // Lo que suena AHORA (lo leido va por delante de lo que se oye lo que guarda la salida, como en la prueba de bocinas).
         internal string EstadoBanda()
         {
             PruebaBanda p = bandaSonando;
             if (p == null || pruebaSalida == null) return "";
-            return "Sonando: " + NombreBanda(p.Banda) + ". Anota lo que marca la app.";
+            int retraso = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000;
+            int b = p.BandaOida(retraso);
+            if (b < 0) return p.Varias ? "Espera: viene la siguiente banda..." : "";
+            return "Anota lo que marca la app en esta banda.";
+        }
+        // En grande: la banda que suena ("250 Hz   3 de 8"), o "" si nada.
+        internal string BandaGrande()
+        {
+            PruebaBanda p = bandaSonando;
+            if (p == null || pruebaSalida == null) return "";
+            int b = p.BandaOida(latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000);
+            if (b < 0) return "";
+            return NombreBanda(b) + (p.Varias ? "   " + (b - p.Desde + 1) + " de " + p.Cuantas : "");
         }
 
         // Ruido rosa en una octava (dos paso-banda de Robert Bristow-Johnson en cascada), cada canal con su ruido, a -20 dB eficaces por
-        // canal: el nivel se mide al armarlo (un segundo de ese mismo ruido) y se ajusta, asi todas las bandas salen igual.
+        // canal: el nivel de cada banda se mide al armarlo (un segundo de ese mismo ruido) y se ajusta, asi todas salen igual. Una banda o
+        // varias seguidas (con un silencio entre ellas). Todo se prepara al armarlo: al sonar no se reserva nada.
         internal sealed class PruebaBanda : ISampleProvider
         {
             internal const int Tasa = 44100;
-            internal const double NivelDb = -20.0, Segundos = 8.0, FundidoSeg = 0.05;
+            internal const double NivelDb = -20.0, Segundos = 8.0, PausaSeg = 1.5, FundidoSeg = 0.05;
             private readonly WaveFormat formato = WaveFormat.CreateIeeeFloatWaveFormat(Tasa, 2);
-            private readonly int banda;
-            private readonly long total;
+            private readonly int desde, cuantas;
+            private readonly long porBanda, suena, total;
             private long pos;
-            private readonly Generador gl, gr;
-            private readonly double nivel;
-            internal PruebaBanda(int b)
+            private readonly Generador[] gl, gr;
+            private readonly double[] nivel;
+            internal PruebaBanda(int b) : this(b, b) { }
+            internal PruebaBanda(int desdeB, int hastaB)
             {
-                banda = b; total = (long)(Tasa * Segundos);
-                gl = new Generador(AfinaCentros[b], 31337u); gr = new Generador(AfinaCentros[b], 4242u);
-                Generador cal = new Generador(AfinaCentros[b], 777u);
-                for (int i = 0; i < Tasa / 2; i++) cal.Siguiente();   // que se asiente
-                double s = 0; for (int i = 0; i < Tasa; i++) { double v = cal.Siguiente(); s += v * v; }
-                double ef = Math.Sqrt(s / Tasa);
-                nivel = ef > 1e-12 ? Math.Pow(10.0, NivelDb / 20.0) / ef : 0.0;
-                for (int i = 0; i < Tasa / 2; i++) { gl.Siguiente(); gr.Siguiente(); }
+                desde = desdeB; cuantas = hastaB - desdeB + 1;
+                suena = (long)(Tasa * Segundos);
+                porBanda = cuantas > 1 ? suena + (long)(Tasa * PausaSeg) : suena;
+                total = porBanda * (cuantas - 1) + suena;
+                gl = new Generador[cuantas]; gr = new Generador[cuantas]; nivel = new double[cuantas];
+                for (int k = 0; k < cuantas; k++)
+                {
+                    float fc = AfinaCentros[desde + k];
+                    gl[k] = new Generador(fc, 31337u + (uint)k); gr[k] = new Generador(fc, 4242u + (uint)k);
+                    Generador cal = new Generador(fc, 777u);
+                    for (int i = 0; i < Tasa / 2; i++) cal.Siguiente();   // que se asiente
+                    double s = 0; for (int i = 0; i < Tasa; i++) { double v = cal.Siguiente(); s += v * v; }
+                    double ef = Math.Sqrt(s / Tasa);
+                    nivel[k] = ef > 1e-12 ? Math.Pow(10.0, NivelDb / 20.0) / ef : 0.0;
+                    for (int i = 0; i < Tasa / 2; i++) { gl[k].Siguiente(); gr[k].Siguiente(); }
+                }
             }
-            internal int Banda { get { return banda; } }
-            internal double Nivel { get { return nivel; } }
+            internal int Banda { get { return desde; } }
+            internal int Desde { get { return desde; } }
+            internal int Cuantas { get { return cuantas; } }
+            internal bool Varias { get { return cuantas > 1; } }
+            internal double Nivel { get { return nivel[0]; } }
+            internal double NivelDe(int k) { return nivel[k]; }
+            internal long Total { get { return total; } }
+            // La banda que se oye con 'retrasoMs' de salida por delante (-1: en un silencio entre bandas o antes de empezar).
+            internal int BandaOida(int retrasoMs)
+            {
+                long oido = pos - (long)Math.Max(0, retrasoMs) * Tasa / 1000;
+                if (oido < 0) return -1;
+                long k = oido / porBanda;
+                if (k >= cuantas) k = cuantas - 1;
+                if (oido - k * porBanda >= suena) return -1;
+                return desde + (int)k;
+            }
             public WaveFormat WaveFormat { get { return formato; } }
             public int Read(float[] buffer, int offset, int count)
             {
@@ -267,11 +308,17 @@ namespace Rocola
                 long fundido = (long)(Tasa * FundidoSeg);
                 for (; hechos < cuadros && pos < total; hechos++, pos++)
                 {
-                    double env = 1.0;
-                    if (pos < fundido) env = pos / (double)fundido;
-                    else if (total - pos < fundido) env = (total - pos) / (double)fundido;
-                    buffer[offset + 2 * hechos] = (float)(gl.Siguiente() * nivel * env);
-                    buffer[offset + 2 * hechos + 1] = (float)(gr.Siguiente() * nivel * env);
+                    int k = (int)(pos / porBanda); long en = pos - k * porBanda;
+                    double l = 0.0, r = 0.0;
+                    if (en < suena)
+                    {
+                        double env = 1.0;
+                        if (en < fundido) env = en / (double)fundido;
+                        else if (suena - en < fundido) env = (suena - en) / (double)fundido;
+                        l = gl[k].Siguiente() * nivel[k] * env; r = gr[k].Siguiente() * nivel[k] * env;
+                    }
+                    buffer[offset + 2 * hechos] = (float)l;
+                    buffer[offset + 2 * hechos + 1] = (float)r;
                 }
                 return hechos * 2;
             }

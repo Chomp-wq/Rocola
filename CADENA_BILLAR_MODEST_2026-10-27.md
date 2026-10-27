@@ -295,6 +295,42 @@ Solo actúa con el modo billar y la afinación encendidos.
 - Suite completa: los únicos fallos son los de antes (`sala`, `discoacotado` y `caratulasadaptativas`). `bloqueos` avisó que la lectura de
   `rocola_billar_nivel.txt` frenaba la pantalla al arrancar; ahora se lee en segundo plano y pasa.
 
+## Cuarta tanda: el volumen parejo desde la primera vez y las bandas seguidas
+
+### 1. Volumen parejo desde la primera vez
+
+El volumen parejo aprendido solo servía después de que una canción sonaba entera. Las nuevas, o las que siempre se saltan, se quedaban
+sin nada. Ahora, con al menos 30 canciones aprendidas, la rocola ajusta una recta de lo aprendido frente a tres rasgos que ya mide el
+repaso:
+
+- cuánto grave profundo (50 Hz) trae cada canción frente a la biblioteca (de su huella del EQ);
+- cuánto grave (158 Hz) trae frente a la biblioteca;
+- su rango de sonoridad (LRA).
+
+La recta usa mínimos cuadrados con un poco de freno. Cómo se aplica:
+
+- **Cuándo se usa:** solo si la recta explica algo (R² ≥ 0,3).
+- **A qué canciones:** a las que aún no tienen nada aprendido, con la mitad de lo que predice y como mucho ±1 dB.
+- **Al sonar entera:** la canción aprende lo suyo, partiendo de lo que llevaba.
+- **Cuándo se rehace:** al tener 5 aprendidas más que la última vez, y como mucho cada 10 minutos.
+- **En racha:** con otra de su disco, las pistas sin aprender cuentan con lo estimado.
+
+### 2. Tocar las 8 bandas seguidas
+
+En la hoja de afinar, el botón «Tocar las 8 bandas seguidas» toca de 63 Hz a 8 kHz, 8 s cada una con 1,5 s de silencio entre ellas. La
+banda que se oye aparece en grande («250 Hz   3 de 8»), descontando lo que guarda la salida, para anotar en orden sin ir y venir de la
+rocola. Todas salen a −20 dB por canal: medido, entre −20,4 y −19,6.
+
+### Pruebas de la cuarta tanda
+
+`pruebas/cadenabillar.cs` suma:
+
+- la recta, que encuentra lo que manda y explica casi todo;
+- en la rocola, una canción sin aprender recibe la mitad de lo predicho, la aprendida usa lo suyo, y con menos de 30 aprendidas no hay recta;
+- las bandas seguidas: su duración, la banda que se oye y el mismo nivel en todas.
+
+Suite completa: los únicos fallos son los de antes. `bombosinhundir` falló una vez en su comprobación de tiempo mientras corría otra medición; sola pasó dos de dos.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,

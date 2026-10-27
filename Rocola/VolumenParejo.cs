@@ -15,6 +15,13 @@
 //    sin aprender cuenta como 0): el disco sigue sonando parejo entre si.
 // Se guarda en rocola_billar_nivel.txt (una linea "dB|ruta" por cada cosa aprendida; al leer, la ultima manda). Con el modo billar apagado
 // no se mide ni se usa: la cadena sale bit a bit como antes.
+//
+// DESDE LA PRIMERA VEZ (cuarta tanda, 27-10-2026). Una cancion que nunca ha sonado entera (nueva, o que siempre se salta) no tiene nada
+// aprendido. Con al menos ParejoMinModelo canciones aprendidas, se ajusta una recta (minimos cuadrados con un poco de freno, ParejoLambda)
+// de lo aprendido frente a tres rasgos de cada cancion que ya mide el repaso: cuanto grave profundo (50 Hz) y grave (158 Hz) trae frente a la
+// biblioteca (su huella del EQ) y su rango de sonoridad (LRA). Si la recta explica algo (R2 >= ParejoMinR2), a una cancion sin aprender se
+// le aplica LA MITAD de lo que predice, como mucho +-1 dB; al sonar entera, aprende lo suyo como siempre. Se rehace al tener 5 aprendidas
+// mas que la ultima vez, como mucho cada 10 minutos.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -39,15 +46,108 @@ namespace Rocola
             float v;
             lock (parejoCerrojo) return parejoDb.TryGetValue(path, out v) ? v : 0f;
         }
-        // Lo que se le aplica al sonar (dB): en el billar lo suyo, o el menor de su disco si suena en racha con otra de el.
+        // Lo que se le aplica al sonar (dB): en el billar lo suyo (o lo estimado), o el menor de su disco si suena en racha con otra de el.
         private float ParejoAplicado(Track t)
         {
             if (!localAuto || t == null || t.Path == null) return 0f;
             List<Track> disco = queue != null ? RachaDeDisco(t) : null;
-            if (disco == null) return ParejoDe(t.Path);
+            if (disco == null) return ParejoEstimado(t.Path);
             float m = float.MaxValue;
-            for (int i = 0; i < disco.Count; i++) { Track tr = disco[i]; if (tr != null) m = Math.Min(m, ParejoDe(tr.Path)); }
+            for (int i = 0; i < disco.Count; i++) { Track tr = disco[i]; if (tr != null) m = Math.Min(m, ParejoEstimado(tr.Path)); }
             return m == float.MaxValue ? 0f : m;
+        }
+
+        // ---- DESDE LA PRIMERA VEZ: la recta de lo aprendido frente a los rasgos de la cancion ----
+        internal const int ParejoMinModelo = 30, ParejoRehacerCada = 5;
+        internal const double ParejoLambda = 1.0, ParejoMinR2 = 0.3, ParejoModeloFraccion = 0.5, ParejoModeloTopeDb = 1.0;
+        private double[] parejoModelo;          // w0 + w1 x1 + w2 x2 + w3 x3 (null: sin recta util)
+        private double parejoLraMedia;          // el LRA medio de las aprendidas (para la que no lo tiene medido)
+        private int parejoModeloN = -1000;      // cuantas aprendidas habia al hacerla
+        private DateTime parejoModeloCuando = DateTime.MinValue;
+
+        // Lo suyo si ya lo aprendio; si no, la mitad de lo que predice la recta (+-1 dB), o 0.
+        internal float ParejoEstimado(string path)
+        {
+            if (path == null) return 0f;
+            float v;
+            lock (parejoCerrojo) if (parejoDb.TryGetValue(path, out v)) return v;
+            RehaceParejoSiToca();
+            double[] w = parejoModelo; double x1, x2, x3;
+            if (w == null || !ParejoRasgos(path, out x1, out x2, out x3)) return 0f;
+            if (double.IsNaN(x3)) x3 = parejoLraMedia;
+            double pred = ParejoModeloFraccion * (w[0] + w[1] * x1 + w[2] * x2 + w[3] * x3);
+            if (double.IsNaN(pred)) return 0f;
+            return (float)Math.Max(-ParejoModeloTopeDb, Math.Min(ParejoModeloTopeDb, pred));
+        }
+        // Los rasgos: grave profundo y grave frente a la biblioteca (dB, de la huella del EQ) y el LRA (NaN si no esta medido).
+        private bool ParejoRasgos(string path, out double x1, out double x2, out double x3)
+        {
+            x1 = x2 = x3 = double.NaN;
+            float[] c, avg = eqAvg;
+            if (path == null || avg == null || eqCache == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen
+                || c[EqFingerprint] != EqVersionOriginal || c[0] <= -25f || c[1] <= -25f) return false;
+            x1 = c[0] - avg[0]; x2 = c[1] - avg[1];
+            float lra = LraDeCancion(path);
+            if (lra >= 0f) x3 = lra;
+            return true;
+        }
+        private void RehaceParejoSiToca()
+        {
+            int n; lock (parejoCerrojo) n = parejoDb.Count;
+            if (n < ParejoMinModelo || n - parejoModeloN < ParejoRehacerCada || (DateTime.Now - parejoModeloCuando).TotalMinutes < 10.0) return;
+            parejoModeloN = n; parejoModeloCuando = DateTime.Now;
+            List<KeyValuePair<string, float>> todas;
+            lock (parejoCerrojo) todas = new List<KeyValuePair<string, float>>(parejoDb);
+            List<double[]> X = new List<double[]>(); List<double> y = new List<double>(); double sumaLra = 0; int nLra = 0;
+            foreach (KeyValuePair<string, float> kv in todas)
+            {
+                double x1, x2, x3;
+                if (!ParejoRasgos(kv.Key, out x1, out x2, out x3)) continue;
+                X.Add(new double[] { x1, x2, x3 }); y.Add(kv.Value);
+                if (!double.IsNaN(x3)) { sumaLra += x3; nLra++; }
+            }
+            double media = nLra > 0 ? sumaLra / nLra : 0.0;
+            foreach (double[] f in X) if (double.IsNaN(f[2])) f[2] = media;
+            double r2 = 0.0; double[] w = null;
+            if (X.Count >= ParejoMinModelo) w = AjusteLineal(X, y, ParejoLambda, out r2);
+            parejoLraMedia = media;
+            parejoModelo = (w != null && r2 >= ParejoMinR2) ? w : null;
+        }
+        // Minimos cuadrados con freno (ridge, sin frenar la ordenada): devuelve { w0, w1.. } y el R2 de lo ajustado. Pura.
+        internal static double[] AjusteLineal(List<double[]> X, List<double> y, double lambda, out double r2)
+        {
+            r2 = 0.0;
+            int n = X.Count; if (n == 0 || y.Count != n) return null;
+            int k = X[0].Length + 1;
+            double[,] A = new double[k, k + 1];
+            for (int i = 0; i < n; i++)
+            {
+                double[] f = new double[k]; f[0] = 1.0; for (int j = 1; j < k; j++) f[j] = X[i][j - 1];
+                for (int a = 0; a < k; a++) { for (int b = 0; b < k; b++) A[a, b] += f[a] * f[b]; A[a, k] += f[a] * y[i]; }
+            }
+            for (int a = 1; a < k; a++) A[a, a] += lambda;
+            for (int col = 0; col < k; col++)
+            {
+                int piv = col; for (int r = col + 1; r < k; r++) if (Math.Abs(A[r, col]) > Math.Abs(A[piv, col])) piv = r;
+                if (Math.Abs(A[piv, col]) < 1e-12) return null;
+                if (piv != col) for (int c = 0; c <= k; c++) { double t = A[col, c]; A[col, c] = A[piv, c]; A[piv, c] = t; }
+                for (int r = 0; r < k; r++)
+                {
+                    if (r == col) continue;
+                    double m = A[r, col] / A[col, col];
+                    for (int c = col; c <= k; c++) A[r, c] -= m * A[col, c];
+                }
+            }
+            double[] w = new double[k]; for (int a = 0; a < k; a++) w[a] = A[a, k] / A[a, a];
+            double my = 0; for (int i = 0; i < n; i++) my += y[i]; my /= n;
+            double sr = 0, st = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double p = w[0]; for (int j = 1; j < k; j++) p += w[j] * X[i][j - 1];
+                sr += (y[i] - p) * (y[i] - p); st += (y[i] - my) * (y[i] - my);
+            }
+            r2 = st > 1e-12 ? 1.0 - sr / st : 0.0;
+            return w;
         }
 
         // Cuanto deberia cambiar (dB) segun los picos por bloque medidos (P90, P99 y el mayor, en dB frente al techo). Pura.

@@ -1060,15 +1060,20 @@ namespace Rocola
                         bPond[k] = new BotonPlano(); bPond[k].SetBounds(160 + 94 * k, 38, 86, 30); bPond[k].Font = fBot; bPond[k].Text = AfinaPonderacionNombre[k];
                         bPond[k].Name = "SonidoAfinarPond" + AfinaPonderacionNombre[k]; tAfiR.Controls.Add(bPond[k]);
                     }
-                    Label lAfiEstado = new Label(); lAfiEstado.SetBounds(16, 78, 424, 20); lAfiEstado.BackColor = Color.Transparent;
+                    // TODAS SEGUIDAS (cuarta tanda): las ocho bandas una tras otra, con la que suena en grande.
+                    BotonPlano bTodas = new BotonPlano(); bTodas.SetBounds(16, 76, 424, 30); bTodas.Font = fBot;
+                    bTodas.Text = "Tocar las 8 bandas seguidas"; bTodas.Name = "SonidoAfinarTodas"; tAfiR.Controls.Add(bTodas);
+                    Label lAfiGrande = new Label(); lAfiGrande.SetBounds(16, 112, 424, 30); lAfiGrande.BackColor = Color.Transparent;
+                    lAfiGrande.ForeColor = Color.FromArgb(255, 214, 120); lAfiGrande.Font = fTit; lAfiGrande.Name = "SonidoAfinarGrande"; tAfiR.Controls.Add(lAfiGrande);
+                    Label lAfiEstado = new Label(); lAfiEstado.SetBounds(16, 144, 424, 20); lAfiEstado.BackColor = Color.Transparent;
                     lAfiEstado.ForeColor = Color.FromArgb(255, 214, 120); lAfiEstado.Font = fNom; tAfiR.Controls.Add(lAfiEstado);
-                    Label lAfiRes = notaLocal(tAfiR, 104, 52, "");
+                    Label lAfiRes = notaLocal(tAfiR, 168, 52, "");
                     lAfiRes.ForeColor = cTexto; lAfiRes.Name = "SonidoAfinarResultado";
-                    Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 170, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
+                    Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 222, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
                     swAfi.Text = "Usar la afinacion en el modo billar"; swAfi.Acento = cBri; swAfi.Checked = afinadoUsar; swAfi.Name = "SonidoAfinarUsar";
                     tAfiR.Controls.Add(swAfi);
-                    Label lAfiNota = notaLocal(tAfiR, 200, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
-                    notaLocal(tAfiR, 242, 96, "Toca una banda y mueve su barra hasta lo que marca la app, de\npie donde se escucha (no pegado a una bocina). Mejor en 2 o 3\npuntos del local: se usa el promedio. Con la rocola callada; la\napp en C (o Z) y en lento. Corrige el 70 %: baja hasta 6 dB y\nsube como mucho 3 (63 Hz nunca); el bajo sigue a lo medido.");
+                    Label lAfiNota = notaLocal(tAfiR, 250, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
+                    notaLocal(tAfiR, 288, 52, "De pie donde se escucha (no pegado a una bocina); mejor en 2 o\n3 puntos. Rocola callada; la app en C (o Z) y en lento. Corrige\nel 70 %: baja hasta 6 dB y sube hasta 3 (63 Hz nunca).");
                     BotonPlano bVolverAfi = new BotonPlano(); bVolverAfi.SetBounds(16, 346, 424, 34); bVolverAfi.Font = fBot;
                     bVolverAfi.Text = "Volver al local y sus bocinas"; bVolverAfi.Name = "SonidoAfinarVolver"; tAfiR.Controls.Add(bVolverAfi);
                     NecesitaMotivo(swAfi, delegate { return !localAuto ? "Necesita: el modo billar encendido (pagina de Sonido)" : (CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null ? "Necesita: medir las bandas de la voz (250 Hz a 2 kHz)" : null); }, lAfiNota);
@@ -1093,7 +1098,7 @@ namespace Rocola
                             bPond[k].Invalidate();
                         }
                         lAfiRes.Text = TextoCorreccionAfinada();
-                        string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso;
+                        string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande();
                     };
                     EventHandler afiApply = delegate
                     {
@@ -1107,6 +1112,7 @@ namespace Rocola
                         barBanda[k].Scroll += afiApply;
                         bBanda[k].Click += delegate { string r = ProbarBanda(kk); afiAviso = r.StartsWith("Sonando") ? "" : r; pintaAfi(); };
                     }
+                    bTodas.Click += delegate { string r = ProbarBandas(0, 7); afiAviso = r.StartsWith("Sonando") ? "" : r; pintaAfi(); };
                     for (int k = 0; k < 3; k++) { int kk = k; bPond[k].Click += delegate { afinadoPonderacion = kk; afiApply(bPond[kk], EventArgs.Empty); }; }
                     swAfi.CheckedChanged += afiApply;
                     Action ponPunto = delegate { for (int k = 0; k < 8; k++) barBanda[k].Value = float.IsNaN(afinadoPuntos[afiPunto][k]) ? AfinaSinMedir : (int)Math.Round(afinadoPuntos[afiPunto][k]); };
@@ -1662,7 +1668,7 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande(); } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);

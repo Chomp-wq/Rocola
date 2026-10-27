@@ -224,6 +224,60 @@ class CadenaBillarPrueba
               "el bajo segun lo medido: igual si 63 Hz va bien, mas si falta (" + bajoFalta + "), menos si sobra (" + bajoSobra + "), igual sin medir");
         Check(son.Contains("bassSongFactor * BajoMedido") && son.Contains("* factor * BajoMedido"), "el bajo psicoacustico lo lleva al sonar y en la siguiente");
 
+        Console.WriteLine("\n  7) CUARTA TANDA: VOLUMEN PAREJO DESDE LA PRIMERA VEZ Y LAS BANDAS SEGUIDAS\n");
+        MethodInfo ajL = TF.GetMethod("AjusteLineal", T);
+        System.Collections.Generic.List<double[]> XX = new System.Collections.Generic.List<double[]>(); System.Collections.Generic.List<double> YY = new System.Collections.Generic.List<double>();
+        Random rnd = new Random(5);
+        for (int i = 0; i < 60; i++) { double a1 = rnd.NextDouble() * 10 - 5, a2 = rnd.NextDouble() * 6 - 3, a3 = 5 + rnd.NextDouble() * 10; XX.Add(new double[] { a1, a2, a3 }); YY.Add(0.2 + 0.3 * a1 - 0.1 * a2 + 0.0 * a3 + (rnd.NextDouble() - 0.5) * 0.2); }
+        object[] aa = { XX, YY, 1.0, 0.0 };
+        double[] ww = (double[])ajL.Invoke(null, aa);
+        Check(ww != null && Math.Abs(ww[1] - 0.3) < 0.03 && Math.Abs(ww[2] + 0.1) < 0.04 && (double)aa[3] > 0.9, "la recta: encuentra lo que manda (0,3 por dB de grave profundo) y explica casi todo (R2 " + ((double)aa[3]).ToString("0.00") + ")");
+        // En la rocola: 40 canciones aprendidas cuyo aprendido sigue al grave profundo; una sin aprender recibe la mitad de lo predicho.
+        object g2 = FormatterServices.GetUninitializedObject(TF);
+        System.Collections.Generic.Dictionary<string, float[]> cache2 = new System.Collections.Generic.Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+        TF.GetField("eqCache", T).SetValue(g2, cache2); TF.GetField("eqAvg", T).SetValue(g2, new float[] { -6f, -3f, -2f, -4f, -8f, -12f, -16f, -22f });
+        TF.GetField("parejoModeloN", T).SetValue(g2, -1000); TF.GetField("parejoModeloCuando", T).SetValue(g2, DateTime.MinValue);
+        FieldInfo dbF = TF.GetField("parejoDb", T); object dbAntes = dbF.GetValue(null);
+        System.Collections.Generic.Dictionary<string, float> apr = new System.Collections.Generic.Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < 40; i++)
+        {
+            float g = -6f + (i % 9) - 4f; string ruta = "c" + i + ".mp3";
+            cache2[ruta] = new float[] { g, -3f, -2f, -4f, -8f, -12f, -16f, -22f, 20000f, 0f, 30f, ver };
+            apr[ruta] = (float)Math.Round(0.3 * (g + 6f), 2);
+        }
+        cache2["nueva.mp3"] = new float[] { -2f, -3f, -2f, -4f, -8f, -12f, -16f, -22f, 20000f, 0f, 30f, ver };   // 4 dB de grave profundo de mas: 1,2 dB
+        cache2["sinhuella.mp3"] = new float[] { -2f, -3f, -2f, -4f, -8f, -12f, -16f, -22f, 20000f, 0f, 30f, 1f };
+        dbF.SetValue(null, apr);
+        MethodInfo est = TF.GetMethod("ParejoEstimado", T);
+        float eN = (float)est.Invoke(g2, new object[] { "nueva.mp3" }), eA = (float)est.Invoke(g2, new object[] { "c3.mp3" }), eS = (float)est.Invoke(g2, new object[] { "sinhuella.mp3" });
+        Check(Math.Abs(eN - 0.6f) < 0.08f, "una sin aprender con 4 dB de grave profundo de mas: la mitad de lo predicho (" + eN + " dB)");
+        Check(eA == apr["c3.mp3"] && eS == 0f, "la aprendida usa lo suyo, y una sin huella nada");
+        apr.Clear(); for (int i = 0; i < 20; i++) apr["c" + i + ".mp3"] = 1f;
+        TF.GetField("parejoModeloN", T).SetValue(g2, -1000); TF.GetField("parejoModeloCuando", T).SetValue(g2, DateTime.MinValue); TF.GetField("parejoModelo", T).SetValue(g2, null);
+        Check((float)est.Invoke(g2, new object[] { "nueva.mp3" }) == 0f, "con menos de 30 aprendidas, nada de recta");
+        dbF.SetValue(null, dbAntes);
+        Check(Texto("VolumenParejo.cs").Contains("return ParejoEstimado(t.Path);"), "al sonar se usa lo estimado (y al aprender, lo que llevaba)");
+        // Las bandas seguidas.
+        Type TB = TF.GetNestedType("PruebaBanda", T);
+        object pb = Activator.CreateInstance(TB, T, null, new object[] { 0, 7 }, null);
+        long tot = (long)TB.GetProperty("Total", T).GetValue(pb, null);
+        MethodInfo oida = TB.GetMethod("BandaOida", T); FieldInfo posF = TB.GetField("pos", T);
+        posF.SetValue(pb, (long)(44100 * 9.5 * 2 + 44100 * 2)); int bo = (int)oida.Invoke(pb, new object[] { 0 });
+        posF.SetValue(pb, (long)(44100 * 9.5 - 44100)); int bp = (int)oida.Invoke(pb, new object[] { 0 });
+        posF.SetValue(pb, 0L);
+        Check(tot == (long)(44100 * 9.5 * 7 + 44100 * 8) && bo == 2 && bp == -1, "las 8 seguidas: 8 s cada una con 1,5 s de silencio entre ellas, y el letrero sabe cual suena");
+        float[] buf = new float[(int)tot * 2]; int got = 0, rr2;
+        while ((rr2 = ((NAudio.Wave.ISampleProvider)pb).Read(buf, got, Math.Min(8820, buf.Length - got))) > 0) got += rr2;
+        bool parejas = true; string niveles = "";
+        for (int k = 0; k < 8; k++)
+        {
+            long a0 = (long)(44100 * 9.5 * k + 44100 * 2), a1 = a0 + 44100 * 4; double sq = 0;
+            for (long i = a0; i < a1; i++) sq += buf[2 * i] * buf[2 * i];
+            double db = 10 * Math.Log10(sq / (a1 - a0)); niveles += db.ToString("0.0") + " ";
+            if (Math.Abs(db + 20.0) > 1.0) parejas = false;
+        }
+        Check(got == buf.Length && parejas, "y todas a -20 dB por canal (" + niveles.Trim() + ")");
+
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");
         Console.WriteLine(fallos == 0 ? "  TODO BIEN" : "  FALLOS: " + fallos);
