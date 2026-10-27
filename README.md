@@ -1,5 +1,16 @@
 # Rocola
 
+## Modo billar, sexta tanda — 27 de octubre de 2026
+
+- **Afinar con el celular, más simple:** un botón toca las 8 bandas de grave a agudo, anotas el número de tu app en cada una y pones
+  cada número en su barra. La app solo dice dBA o dBC. Un solo punto; se quitaron los puntos 2 y 3 y los botones por banda. El micrófono
+  USB se descartó.
+- **Resumen de la bitácora:** en la tarjeta del billar, cuántas canciones lleva, cuántas esta noche, cuánto apretó el limitador y la
+  canción que más.
+
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#sexta-tanda-afinar-con-el-celular-lo-más-simple-y-el-resumen-de-la-bitácora). **Nada oído en el
+billar ni probado en el A4.**
+
 ## Modo billar, quinta tanda — 27 de octubre de 2026
 
 - **Bitácora del billar:** una línea por canción en `rocola_billar_bitacora.txt` con lo que hizo la cadena. Si me la pasas, ajusto con datos

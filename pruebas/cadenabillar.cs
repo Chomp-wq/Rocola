@@ -204,16 +204,9 @@ class CadenaBillarPrueba
         string son3 = Texto("Form1.SinPausa.cs"), ld = Texto("NivelDisco.cs"), lq = Texto("LoQueSuena.cs");
         Check(son.Contains("if (localAuto) { c.Margen = new MideMargen(") && son3.Contains("AprendeParejo(a);") && son3.Contains("AprendeParejo(cadenaSonando);")
               && ld.Contains("ParejoAplicado(t)") && lq.Contains("c.Margen.Descarta = true"), "se mide solo en el billar, se aprende al soltar la cadena, se usa al nivelar y no con «Escuchar sin mejoras»");
-        // Varios puntos.
-        MethodInfo prom = TF.GetMethod("PromedioPuntos", T);
-        float[] pm = (float[])prom.Invoke(null, new object[] { new float[][] { new float[] { 80, 80, 80, 80, 80, 80, 80, float.NaN }, new float[] { 84, 82, float.NaN, 80, 80, 80, 80, float.NaN }, new float[] { float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN } } });
-        Check(pm[0] == 82f && pm[1] == 81f && pm[2] == 80f && float.IsNaN(pm[7]), "varios puntos: el promedio por banda de los que la tienen");
-        MethodInfo lee2 = TF.GetMethod("LeeAfinado", T, null, new Type[] { typeof(string), typeof(int) }, null), texto2 = TF.GetMethod("TextoAfinado", T, null, new Type[] { typeof(int) }, null);
-        lee2.Invoke(null, new object[] { "80;80;80;80;80;80;80;80", 1 }); lee2.Invoke(null, new object[] { "84;x;x;x;x;x;x;x", 2 });
-        float[] ap = (float[])TF.GetMethod("AfinadoPromedio", T).Invoke(null, null);
-        Check((string)texto2.Invoke(null, new object[] { 2 }) == "84;x;x;x;x;x;x;x" && ap[0] == 82f && ap[3] == 80f, "la configuracion de los otros puntos y su promedio");
-        lee2.Invoke(null, new object[] { "x;x;x;x;x;x;x;x", 1 }); lee2.Invoke(null, new object[] { "x;x;x;x;x;x;x;x", 2 });
-        Check(dat.Contains("StartsWith(\"afinado_local2=\")") && dat.Contains("sb.Append(\"afinado_local3=\")"), "se leen y se guardan afinado_local2= y afinado_local3=");
+        // Varios puntos: retirados en la sexta tanda (el dueno pidio afinar con el celular lo mas simple posible: un solo punto).
+        Check(!dat.Contains("afinado_local2=") && !dat.Contains("afinado_local3=") && TF.GetMethod("PromedioPuntos", T) == null && TF.GetField("afinadoPuntos", T) == null,
+              "un solo punto: afinado_local2= y afinado_local3= ya no se leen ni se guardan");
         // El bajo segun lo medido.
         MethodInfo fbm = TF.GetMethod("FactorBajoMedido", T);
         float bajoPlano = (float)fbm.Invoke(null, new object[] { new float[] { 82, 81.5f, 80.5f, 80, 80, 79.5f, 78.5f, 77 }, 2 });
@@ -328,6 +321,30 @@ class CadenaBillarPrueba
         Check(orden.Length == 8 && nb == 4, "a ciegas: ocho tramos, cuatro de cada uno, al azar");
         Check(((string)resC.Invoke(null, new object[] { 4, 1 })).Contains("el modo billar") && ((string)resC.Invoke(null, new object[] { 1, 3 })).Contains("fabrica") && ((string)resC.Invoke(null, new object[] { 2, 2 })).StartsWith("Empate") && ((string)resC.Invoke(null, new object[] { 0, 0 })).StartsWith("No votaste"), "y al final dice cual elegiste mas veces");
         Check(dat.Contains("Append(LocalAutoAGuardar ?") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Ventana cerrada") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Cambiaste un ajuste"), "no se guarda: la configuracion lleva el modo de antes y vuelve al cerrar o al tocar un ajuste");
+
+        Console.WriteLine("\n  9) SEXTA TANDA: AFINAR CON EL CELULAR, LO MAS SIMPLE, Y EL RESUMEN DE LA BITACORA\n");
+        Check(aj.Contains("\"SonidoAfinarTodas\"") && aj.Contains("\"SonidoAfinarDb\" + k") && aj.Contains("new BotonPlano[2]") && aj.Contains("\"dB\" + AfinaPonderacionNombre[k]")
+              && !aj.Contains("SonidoAfinarPunto") && !aj.Contains("SonidoAfinarBanda") && !aj.Contains("SonidoAfinarBorrar"),
+              "la hoja: un boton toca las 8 bandas, una barra por banda y la app en dBA o dBC; sin puntos ni botones por banda");
+        Check(TF.GetMethod("ProbarBanda", T) == null && TF.GetMethod("EstadoBanda", T) == null && TF.GetMethod("ProbarBandas", T) != null && TF.GetMethod("BandaGrande", T) != null,
+              "las bandas solo suenan seguidas, con la que suena en grande");
+        float[] cZ = (float[])cAfi.Invoke(null, new object[] { plano, 2 });
+        Check(cZ != null && (int)TF.GetMethod("PonderacionDe", T).Invoke(null, new object[] { "Z" }) == 2, "la Z guardada de antes se sigue entendiendo");
+        Check(!File.Exists(Path.Combine(Path.Combine("..", "Rocola"), "AfinarMicrofono.cs")), "nada de microfono (el cable no llega)");
+        // El resumen de la bitacora en la tarjeta del billar.
+        Type TRB = TF.GetNestedType("ResumenBitacora", T); object rb = Activator.CreateInstance(TRB, true);
+        MethodInfo acu = TF.GetMethod("AcumulaBitacora", T), txtR = TF.GetMethod("TextoResumenBitacora", T);
+        DateTime ahoraB = new DateTime(2026, 10, 27, 23, 0, 0);
+        string vacia = (string)txtR.Invoke(null, new object[] { rb, ahoraB });
+        string lin2 = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 22, 0, 0), "Los Tigres del Norte - Contrabando y traicion.mp3", true, 200.0, 0f, float.NaN, 0f, 0f, 0f, 0.1f, 0.074f, ajB, false, 1f, 40f, null });
+        bool rb1 = (bool)acu.Invoke(null, new object[] { rb, cab, ahoraB }), rb2 = (bool)acu.Invoke(null, new object[] { rb, lin, ahoraB }), rb3 = (bool)acu.Invoke(null, new object[] { rb, lin2, ahoraB });
+        string res = (string)txtR.Invoke(null, new object[] { rb, ahoraB }), resManana = (string)txtR.Invoke(null, new object[] { rb, ahoraB.AddDays(1) });
+        Check(vacia.StartsWith("Bitacora: aun vacia") && !rb1 && rb2 && rb3, "el resumen: sin lineas dice que esta vacia, y la cabecera no cuenta");
+        Check(res.StartsWith("Bitacora: 2 canciones; 2 en las ultimas 12 h.\n") && res.Contains("la que mas: Los Tigres del Norte...") && res.Contains("(7 %)") && res.Split('\n').Length == 2,
+              "en dos lineas: cuantas, cuantas esta noche y la que mas apreto el limitador (" + res.Replace("\n", " | ") + ")");
+        Check(resManana.StartsWith("Bitacora: 2 canciones; 0 en las ultimas 12 h.\nEl limitador bajo mas de 3 dB el"), "sin canciones recientes, el promedio de todas");
+        Check(Texto("Form1.cs").Contains("QueueUserWorkItem(delegate { CargaResumenBitacora(); })") && Texto("BitacoraBillar.cs").Contains("if (r != null) lock (r) AcumulaBitacora(r, linea, DateTime.Now);")
+              && aj.Contains("+ TextoBitacoraTarjeta()"), "se lee al arrancar en segundo plano, se suma cada linea nueva y va en la tarjeta del billar");
 
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");

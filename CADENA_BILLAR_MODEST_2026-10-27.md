@@ -406,6 +406,50 @@ En «Lo que suena ahora», el botón «Comparar a ciegas» funciona así:
 Con el modo apagado, `compara-cadena` no tiene distintas sin esperarlas. Al hacer las capturas apareció un fallo: la ventana de Sonido no
 abría en el arnés de pruebas, porque la comparación usaba campos que solo se arman con el constructor. Se arregló antes de publicar.
 
+## Sexta tanda: afinar con el celular, lo más simple, y el resumen de la bitácora
+
+Primero el dueño eligió «Afinar con micrófono USB» y «Resumen de la bitácora». Después descartó el micrófono: «el cable es corto y
+pues no es eficiente, lo del teléfono no era mala idea pero debes hacerlo lo más simple posible». El micrófono no se publicó.
+
+### 1. Afinar con el celular, lo más simple
+
+La hoja «Afinar el local con el celular» (en El local y sus bocinas) quedó así:
+
+- **Un botón:** «Tocar las 8 bandas (de grave a agudo)». Suenan seguidas, 8 s cada una con 1,5 s de pausa. En la pantalla sale en grande
+  cuál suena.
+- **Una barra por banda** para poner el número que marcó la app. Hasta la izquierda es «sin anotar».
+- **«Tu app dice: dBA o dBC»**, dos botones. La Z guardada de antes se sigue entendiendo; en la hoja cuenta como C.
+- A la derecha, como antes: la corrección, «Usar la afinación en el modo billar» y cómo medir, en pocas líneas.
+
+Se quitó:
+
+- los puntos 2 y 3 y el promedio: un solo punto. `afinado_local2=` y `afinado_local3=` ya no se leen ni se guardan;
+- los botones de cada banda: las bandas solo suenan seguidas;
+- la Z como botón.
+
+La corrección, sus topes y el bajo según lo medido no cambian.
+
+### 2. El resumen de la bitácora
+
+En la tarjeta «El billar», con el modo encendido, el texto se acortó a dos líneas. Debajo van otras dos:
+
+- cuántas canciones lleva la bitácora y cuántas en las últimas 12 h (una noche de bar);
+- qué parte del tiempo el limitador bajó más de 3 dB, y la canción que más apretó.
+
+Se arma en memoria: al arrancar se lee `rocola_billar_bitacora.txt` en segundo plano, y cada línea nueva se suma al apuntarla. Solo se
+muestra.
+
+### Pruebas de la sexta tanda
+
+`pruebas/cadenabillar.cs` (sección 9) comprueba:
+
+- que la hoja tiene un botón para las 8 bandas, una barra por banda y dBA/dBC, sin puntos ni botones por banda;
+- que la Z de antes se sigue entendiendo;
+- el resumen de la bitácora;
+- que ya no se leen los puntos 2 y 3.
+
+Con el modo apagado, `compara-cadena` da 0 distintas inesperadas.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,

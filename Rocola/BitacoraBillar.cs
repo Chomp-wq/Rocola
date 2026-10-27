@@ -7,7 +7,12 @@
 // los picos por bloque frente al techo (P90, P99 y el mayor, dB), que parte del tiempo el limitador bajo mas de 1 y mas de 3 dB, lo que
 // decidio el modo (presencia, claridad, partes suaves, cuerpo, eses, agudos asperos), si iba afinada, el factor del bajo, el corte del
 // subgrave y el EQ de la cancion en sus ocho bandas (dB).
+//
+// EL RESUMEN (sexta tanda, 27-10-2026). En la tarjeta del billar (pagina de Sonido), dos lineas: cuantas canciones lleva apuntadas (y
+// cuantas en las ultimas 12 h, una noche de bar), que parte del tiempo el limitador bajo mas de 3 dB y la cancion que mas apreto. Se
+// arma en memoria: al arrancar se lee el archivo en segundo plano y cada linea nueva se suma al apuntarla. Solo se muestra.
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -19,6 +24,82 @@ namespace Rocola
         internal const string BitacoraBillarCabecera = "fecha\tarchivo\tentera\tsegundos\tparejo_llevaba\tparejo_aprendio\tp90\tp99\tmayor\tlimita_1dB\tlimita_3dB\tpresencia\tclaridad\tsuaves\tcuerpo\teses\tasperos\tafinada\tbajo\tsubgrave_hz\teq50\teq158\teq400\teq1k\teq2k5\teq5k6\teq10k\teq15k8";
         private static readonly object bitacoraCerrojo = new object();
         private string BitacoraBillarFile() { return RutaDatos("rocola_billar_bitacora.txt"); }
+
+        // ---- EL RESUMEN ----
+        internal const double ResumenBitacoraHoras = 12.0;
+        internal sealed class ResumenBitacora
+        {
+            internal int Total;
+            internal double SumaLim3;
+            internal readonly List<DateTime> Cuando = new List<DateTime>();
+            internal readonly List<string> Archivo = new List<string>();
+            internal readonly List<float> Lim3 = new List<float>();
+        }
+        private volatile ResumenBitacora bitacoraResumen;
+        // Suma una linea de la bitacora al resumen (la cabecera y lo que no se entiende, no). Guarda el detalle de las de las ultimas 12 h
+        // (contando desde 'ahora'). Pura.
+        internal static bool AcumulaBitacora(ResumenBitacora r, string linea, DateTime ahora)
+        {
+            if (r == null || string.IsNullOrEmpty(linea)) return false;
+            string[] c = linea.Split('\t');
+            if (c.Length < 11) return false;
+            System.Globalization.CultureInfo ci = System.Globalization.CultureInfo.InvariantCulture;
+            DateTime cuando; float lim3;
+            if (!DateTime.TryParseExact(c[0], "yyyy-MM-dd HH:mm:ss", ci, System.Globalization.DateTimeStyles.None, out cuando)) return false;
+            if (!float.TryParse(c[10], System.Globalization.NumberStyles.Float, ci, out lim3) || lim3 < 0f || lim3 > 100f) return false;
+            r.Total++; r.SumaLim3 += lim3;
+            if ((ahora - cuando).TotalHours <= ResumenBitacoraHoras)
+            {
+                r.Cuando.Add(cuando); r.Archivo.Add(c[1]); r.Lim3.Add(lim3);
+                if (r.Cuando.Count > 2000) { r.Cuando.RemoveAt(0); r.Archivo.RemoveAt(0); r.Lim3.RemoveAt(0); }
+            }
+            return true;
+        }
+        // Las dos lineas de la tarjeta. Pura.
+        internal static string TextoResumenBitacora(ResumenBitacora r, DateTime ahora)
+        {
+            if (r == null || r.Total == 0)
+                return "Bitacora: aun vacia. Apunta cada cancion que suene 30 s o\nmas con el modo encendido (rocola_billar_bitacora.txt).";
+            int n = 0; double s = 0; float peor = -1f; string cual = "";
+            for (int i = 0; i < r.Cuando.Count; i++)
+            {
+                if ((ahora - r.Cuando[i]).TotalHours > ResumenBitacoraHoras) continue;
+                n++; s += r.Lim3[i];
+                if (r.Lim3[i] > peor) { peor = r.Lim3[i]; cual = r.Archivo[i]; }
+            }
+            string t = "Bitacora: " + r.Total + (r.Total == 1 ? " cancion" : " canciones") + "; " + n + " en las ultimas 12 h.\n";
+            if (n == 0) return t + "El limitador bajo mas de 3 dB el " + (r.SumaLim3 / r.Total).ToString("0.0") + " % del tiempo.";
+            cual = Path.GetFileNameWithoutExtension(cual);
+            if (cual.Length > 22) cual = cual.Substring(0, 20) + "...";
+            return t + "Limitador >3 dB: " + (s / n).ToString("0.0") + " %; la que mas: " + cual + " (" + peor.ToString("0") + " %).";
+        }
+        // Al arrancar, en segundo plano: el resumen de lo que ya hay en el archivo.
+        private void CargaResumenBitacora()
+        {
+            ResumenBitacora r = new ResumenBitacora();
+            try
+            {
+                string archivo = BitacoraBillarFile();
+                if (File.Exists(archivo))
+                {
+                    DateTime ahora = DateTime.Now;
+                    lock (bitacoraCerrojo)
+                        using (StreamReader sr = new StreamReader(archivo))
+                        {
+                            string l;
+                            while ((l = sr.ReadLine()) != null) AcumulaBitacora(r, l, ahora);
+                        }
+                }
+            }
+            catch (Exception ex) { LogError("Bitacora del billar", ex); }
+            if (bitacoraResumen == null) bitacoraResumen = r;
+        }
+        internal string TextoBitacoraTarjeta()
+        {
+            ResumenBitacora r = bitacoraResumen;
+            if (r == null) return "Bitacora: leyendo...\n";
+            lock (r) return TextoResumenBitacora(r, DateTime.Now);
+        }
 
         // La linea de una cancion (pura salvo la hora: la pasa quien llama).
         internal static string LineaBitacoraBillar(DateTime cuando, string archivo, bool entera, double segundos, float llevaba, float aprendio,
@@ -46,6 +127,8 @@ namespace Rocola
                     m.Aplicado, aprendio, p90, p99, max, m.FraccionSobre(1f), m.FraccionSobre(3f), LocalDe(c), AfinadaActiva, BajoMedido, SubgraveEf,
                     c.Tap != null ? c.Tap.EqDb : null);
                 string archivo = BitacoraBillarFile();
+                ResumenBitacora r = bitacoraResumen;
+                if (r != null) lock (r) AcumulaBitacora(r, linea, DateTime.Now);
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate
                 {
                     try

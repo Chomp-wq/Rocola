@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[][] bkAfiDb = { (float[])afinadoPuntos[0].Clone(), (float[])afinadoPuntos[1].Clone(), (float[])afinadoPuntos[2].Clone() }; int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1021,103 +1021,74 @@ namespace Rocola
                     BotonPlano bVolver = new BotonPlano(); bVolver.SetBounds(16, 346, 424, 34); bVolver.Font = fBot;
                     bVolver.Text = "Volver a los ajustes del sonido"; bVolver.Name = "SonidoLocalVolver"; tPru.Controls.Add(bVolver);
                     bool verLocal = false;
-                    // ---------------- AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs) ----------------
+                    // ---------------- AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs; simplificada en la sexta tanda) ----------------
+                    // El dueno pidio hacerlo «lo mas simple posible»: un boton toca las ocho bandas de grave a agudo, cada banda tiene su barra
+                    // y la app solo dice dBA o dBC. Un solo punto (sin puntos 2 y 3) y sin botones por banda.
                     Panel pAfi = new Panel(); pAfi.SetBounds(16, 100, 928, 398); pAfi.BackColor = dlg.BackColor;
                     pAfi.Name = "SonidoAfinar"; pAfi.Visible = false;
                     Tarjeta tAfi = new Tarjeta(); tAfi.SetBounds(0, 0, 456, 398); tAfi.Titulo = "AFINAR EL LOCAL CON EL CELULAR"; tAfi.Acento = cVol;
                     Tarjeta tAfiR = new Tarjeta(); tAfiR.SetBounds(472, 0, 456, 398); tAfiR.Titulo = "LA AFINACION"; tAfiR.Acento = cBri;
                     pAfi.Controls.Add(tAfi); pAfi.Controls.Add(tAfiR);
-                    // EN VARIOS PUNTOS (tercera tanda): hasta tres juegos de lecturas; la afinacion usa su promedio (AfinarLocal.cs).
-                    int afiPunto = 0;
-                    Label lPunto = new Label(); lPunto.SetBounds(16, 44, 62, 20); lPunto.BackColor = Color.Transparent;
-                    lPunto.ForeColor = cTexto; lPunto.Font = fNom; lPunto.Text = "Punto:"; tAfi.Controls.Add(lPunto);
-                    BotonPlano[] bPunto = new BotonPlano[AfinaPuntos];
-                    for (int k = 0; k < AfinaPuntos; k++)
-                    {
-                        bPunto[k] = new BotonPlano(); bPunto[k].SetBounds(80 + 62 * k, 38, 54, 30); bPunto[k].Font = fBot; bPunto[k].Text = (k + 1).ToString();
-                        bPunto[k].Name = "SonidoAfinarPunto" + (k + 1); tAfi.Controls.Add(bPunto[k]);
-                    }
-                    BotonPlano bBorraPunto = new BotonPlano(); bBorraPunto.SetBounds(276, 38, 164, 30); bBorraPunto.Font = fBot;
-                    bBorraPunto.Text = "Borrar este punto"; bBorraPunto.Name = "SonidoAfinarBorrar"; tAfi.Controls.Add(bBorraPunto);
-                    BotonPlano[] bBanda = new BotonPlano[8]; Deslizador[] barBanda = new Deslizador[8]; Label[] vBanda = new Label[8];
+                    BotonPlano bTodas = new BotonPlano(); bTodas.SetBounds(16, 40, 424, 32); bTodas.Font = fBot;
+                    bTodas.Text = "Tocar las 8 bandas (de grave a agudo)"; bTodas.Name = "SonidoAfinarTodas"; tAfi.Controls.Add(bTodas);
+                    Label lAfiGrande = new Label(); lAfiGrande.SetBounds(16, 78, 424, 30); lAfiGrande.BackColor = Color.Transparent;
+                    lAfiGrande.ForeColor = Color.FromArgb(255, 214, 120); lAfiGrande.Font = fTit; lAfiGrande.Name = "SonidoAfinarGrande"; tAfi.Controls.Add(lAfiGrande);
+                    Label[] nBanda = new Label[8]; Deslizador[] barBanda = new Deslizador[8]; Label[] vBanda = new Label[8];
                     for (int k = 0; k < 8; k++)
                     {
-                        int y = 80 + 36 * k;
-                        bBanda[k] = new BotonPlano(); bBanda[k].SetBounds(16, y, 92, 28); bBanda[k].Font = fBot; bBanda[k].Text = NombreBanda(k);
-                        bBanda[k].Name = "SonidoAfinarBanda" + k; tAfi.Controls.Add(bBanda[k]);
-                        barBanda[k] = new Deslizador(); barBanda[k].SetBounds(116, y + 3, 236, 22); barBanda[k].Name = "SonidoAfinarDb" + k;
+                        int y = 114 + 34 * k;
+                        nBanda[k] = new Label(); nBanda[k].SetBounds(16, y + 4, 70, 20); nBanda[k].BackColor = Color.Transparent;
+                        nBanda[k].ForeColor = cTexto; nBanda[k].Font = fNom; nBanda[k].Text = NombreBanda(k); tAfi.Controls.Add(nBanda[k]);
+                        barBanda[k] = new Deslizador(); barBanda[k].SetBounds(90, y + 3, 262, 22); barBanda[k].Name = "SonidoAfinarDb" + k;
                         barBanda[k].Minimum = AfinaSinMedir; barBanda[k].Maximum = AfinaMaxDb; barBanda[k].Acento = cVol;
-                        barBanda[k].Value = float.IsNaN(afinadoPuntos[0][k]) ? AfinaSinMedir : (int)Math.Round(afinadoPuntos[0][k]);
+                        barBanda[k].Value = float.IsNaN(afinadoDb[k]) ? AfinaSinMedir : (int)Math.Round(afinadoDb[k]);
                         tAfi.Controls.Add(barBanda[k]);
                         vBanda[k] = new Label(); vBanda[k].SetBounds(358, y + 4, 82, 20); vBanda[k].BackColor = Color.Transparent;
                         vBanda[k].ForeColor = cVol; vBanda[k].Font = fNom; vBanda[k].TextAlign = ContentAlignment.TopRight; tAfi.Controls.Add(vBanda[k]);
                     }
                     Label lPond = new Label(); lPond.SetBounds(16, 44, 140, 20); lPond.BackColor = Color.Transparent;
-                    lPond.ForeColor = cTexto; lPond.Font = fNom; lPond.Text = "La app mide en:"; tAfiR.Controls.Add(lPond);
-                    BotonPlano[] bPond = new BotonPlano[3];
-                    for (int k = 0; k < 3; k++)
+                    lPond.ForeColor = cTexto; lPond.Font = fNom; lPond.Text = "Tu app dice:"; tAfiR.Controls.Add(lPond);
+                    BotonPlano[] bPond = new BotonPlano[2];
+                    for (int k = 0; k < 2; k++)
                     {
-                        bPond[k] = new BotonPlano(); bPond[k].SetBounds(160 + 94 * k, 38, 86, 30); bPond[k].Font = fBot; bPond[k].Text = AfinaPonderacionNombre[k];
+                        bPond[k] = new BotonPlano(); bPond[k].SetBounds(160 + 94 * k, 38, 86, 30); bPond[k].Font = fBot; bPond[k].Text = "dB" + AfinaPonderacionNombre[k];
                         bPond[k].Name = "SonidoAfinarPond" + AfinaPonderacionNombre[k]; tAfiR.Controls.Add(bPond[k]);
                     }
-                    // TODAS SEGUIDAS (cuarta tanda): las ocho bandas una tras otra, con la que suena en grande.
-                    BotonPlano bTodas = new BotonPlano(); bTodas.SetBounds(16, 76, 424, 30); bTodas.Font = fBot;
-                    bTodas.Text = "Tocar las 8 bandas seguidas"; bTodas.Name = "SonidoAfinarTodas"; tAfiR.Controls.Add(bTodas);
-                    Label lAfiGrande = new Label(); lAfiGrande.SetBounds(16, 112, 424, 30); lAfiGrande.BackColor = Color.Transparent;
-                    lAfiGrande.ForeColor = Color.FromArgb(255, 214, 120); lAfiGrande.Font = fTit; lAfiGrande.Name = "SonidoAfinarGrande"; tAfiR.Controls.Add(lAfiGrande);
-                    Label lAfiEstado = new Label(); lAfiEstado.SetBounds(16, 144, 424, 20); lAfiEstado.BackColor = Color.Transparent;
-                    lAfiEstado.ForeColor = Color.FromArgb(255, 214, 120); lAfiEstado.Font = fNom; tAfiR.Controls.Add(lAfiEstado);
-                    Label lAfiRes = notaLocal(tAfiR, 168, 52, "");
+                    Label lAfiRes = notaLocal(tAfiR, 78, 52, "");
                     lAfiRes.ForeColor = cTexto; lAfiRes.Name = "SonidoAfinarResultado";
-                    Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 222, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
+                    Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 136, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
                     swAfi.Text = "Usar la afinacion en el modo billar"; swAfi.Acento = cBri; swAfi.Checked = afinadoUsar; swAfi.Name = "SonidoAfinarUsar";
                     tAfiR.Controls.Add(swAfi);
-                    Label lAfiNota = notaLocal(tAfiR, 250, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
-                    notaLocal(tAfiR, 288, 52, "De pie donde se escucha (no pegado a una bocina); mejor en 2 o\n3 puntos. Rocola callada; la app en C (o Z) y en lento. Corrige\nel 70 %: baja hasta 6 dB y sube hasta 3 (63 Hz nunca).");
+                    Label lAfiNota = notaLocal(tAfiR, 164, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
+                    notaLocal(tAfiR, 206, 120, "Como medir: con la rocola callada, pon la app de decibeles\nen lento. Toca \"Tocar las 8 bandas\" y parate donde esta la\ngente: suenan de grave a agudo, 8 s cada una, con una pausa\nentre ellas. Anota el numero de cada una, vuelve y ponlo en\nsu barra. Corrige el 70 %: baja hasta 6 dB, sube hasta 3\n(63 Hz nunca).");
                     BotonPlano bVolverAfi = new BotonPlano(); bVolverAfi.SetBounds(16, 346, 424, 34); bVolverAfi.Font = fBot;
                     bVolverAfi.Text = "Volver al local y sus bocinas"; bVolverAfi.Name = "SonidoAfinarVolver"; tAfiR.Controls.Add(bVolverAfi);
-                    NecesitaMotivo(swAfi, delegate { return !localAuto ? "Necesita: el modo billar encendido (pagina de Sonido)" : (CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null ? "Necesita: medir las bandas de la voz (250 Hz a 2 kHz)" : null); }, lAfiNota);
+                    NecesitaMotivo(swAfi, delegate { return !localAuto ? "Necesita: el modo billar encendido (pagina de Sonido)" : (CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null ? "Necesita: anotar las bandas de la voz (250 Hz a 2 kHz)" : null); }, lAfiNota);
                     bool verAfi = false; string afiAviso = "";
                     Action pintaAfi = delegate
                     {
-                        for (int k = 0; k < 8; k++) vBanda[k].Text = barBanda[k].Value <= AfinaSinMedir ? "sin medir" : barBanda[k].Value + " dB";
-                        for (int k = 0; k < AfinaPuntos; k++)
+                        for (int k = 0; k < 8; k++) vBanda[k].Text = barBanda[k].Value <= AfinaSinMedir ? "sin anotar" : barBanda[k].Value + " dB";
+                        for (int k = 0; k < 2; k++)
                         {
-                            bool act = afiPunto == k;
-                            bPunto[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
-                            bPunto[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
-                            bPunto[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
-                            bPunto[k].Invalidate();
-                        }
-                        for (int k = 0; k < 3; k++)
-                        {
-                            bool act = afinadoPonderacion == k;
+                            bool act = k == 0 ? afinadoPonderacion == 0 : afinadoPonderacion != 0;   // (la Z de antes cuenta como C)
                             bPond[k].Relleno = act ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
                             bPond[k].Borde = act ? Color.FromArgb(150, 205, 255) : Color.FromArgb(60, 72, 118);
                             bPond[k].ForeColor = act ? Color.FromArgb(226, 240, 255) : cApagado;
                             bPond[k].Invalidate();
                         }
                         lAfiRes.Text = TextoCorreccionAfinada();
-                        string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande();
+                        string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso;
                     };
                     EventHandler afiApply = delegate
                     {
-                        for (int k = 0; k < 8; k++) afinadoPuntos[afiPunto][k] = barBanda[k].Value <= AfinaSinMedir ? float.NaN : barBanda[k].Value;
+                        for (int k = 0; k < 8; k++) afinadoDb[k] = barBanda[k].Value <= AfinaSinMedir ? float.NaN : barBanda[k].Value;
                         afinadoUsar = swAfi.Checked;
                         changed = true; pintaAfi(); RefrescaRequisitos(); ApplyNormNow();
                     };
-                    for (int k = 0; k < 8; k++)
-                    {
-                        int kk = k;
-                        barBanda[k].Scroll += afiApply;
-                        bBanda[k].Click += delegate { string r = ProbarBanda(kk); afiAviso = r.StartsWith("Sonando") ? "" : r; pintaAfi(); };
-                    }
+                    for (int k = 0; k < 8; k++) barBanda[k].Scroll += afiApply;
                     bTodas.Click += delegate { string r = ProbarBandas(0, 7); afiAviso = r.StartsWith("Sonando") ? "" : r; pintaAfi(); };
-                    for (int k = 0; k < 3; k++) { int kk = k; bPond[k].Click += delegate { afinadoPonderacion = kk; afiApply(bPond[kk], EventArgs.Empty); }; }
+                    for (int k = 0; k < 2; k++) { int kk = k; bPond[k].Click += delegate { afinadoPonderacion = kk; afiApply(bPond[kk], EventArgs.Empty); }; }
                     swAfi.CheckedChanged += afiApply;
-                    Action ponPunto = delegate { for (int k = 0; k < 8; k++) barBanda[k].Value = float.IsNaN(afinadoPuntos[afiPunto][k]) ? AfinaSinMedir : (int)Math.Round(afinadoPuntos[afiPunto][k]); };
-                    for (int k = 0; k < AfinaPuntos; k++) { int kk = k; bPunto[k].Click += delegate { afiPunto = kk; ponPunto(); pintaAfi(); }; }
-                    bBorraPunto.Click += delegate { for (int k = 0; k < 8; k++) barBanda[k].Value = AfinaSinMedir; afiApply(bBorraPunto, EventArgs.Empty); };
                     pintaAfi();
                     // LAS MEJORAS CON IA (13-10-2026: I1, I2 e I3). Su propia hoja, como la del local: aqui ya no cabe nada. El
                     // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
@@ -1427,7 +1398,7 @@ namespace Rocola
                         }
                         for (int k = 4; k <= 6; k++) { des[k].ForeColor = billar ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !billar; }
                         lBil.Text = billar
-                            ? "Encendido: la rocola ajusta sola cada cancion a tus bocinas:\nEQ a su medida, sin subgrave, estereo estrecho si hace falta,\nclaridad (no a las flacas), partes suaves, presencia, eses,\nretumbe, ataque y arreglos. Los ajustes que decide, en gris."
+                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz, presencia, eses, retumbe...). Lo que decide, en gris.\n" + TextoBitacoraTarjeta()
                             : "Apagado: el sonido sale como lo dejes en \"Ajustes del\nsonido\". Encendido, la rocola ajusta sola cada cancion a\nlas bocinas del billar (" + NombreLocal + ").";
                         lMasModo.Text = billar
                             ? "El modo billar esta encendido: lo que decide va en gris y\ndice por que. Lo guardado se conserva y vuelve al apagarlo."
@@ -1685,7 +1656,7 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande(); } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
@@ -1698,7 +1669,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; for (int q = 0; q < AfinaPuntos; q++) Array.Copy(bkAfiDb[q], afinadoPuntos[q], 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

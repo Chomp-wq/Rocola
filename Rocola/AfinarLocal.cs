@@ -4,8 +4,11 @@
 //
 //  1) La rocola, callada, toca ruido rosa por bandas de una octava (63 Hz a 8 kHz), el mismo nivel en cada una (-20 dB eficaces por
 //     canal, cada canal con su propio ruido para que dos bocinas no se sumen y se resten segun donde este uno parado).
-//  2) El dueno, parado donde esta la gente, anota lo que marca la app en cada banda, y dice en que ponderacion mide la app (A, C o Z):
-//     la A le quita mucho al grave (26 dB a 63 Hz) y se le devuelve aqui.
+//  2) El dueno, parado donde esta la gente, anota lo que marca la app en cada banda, y dice si la app mide en dBA o dBC: la A le quita
+//     mucho al grave (26 dB a 63 Hz) y se le devuelve aqui. (La Z de antes se sigue leyendo de la configuracion.)
+//     Sexta tanda (27-10-2026): el dueno descarto medir con un microfono USB (el cable no llega) y pidio lo del telefono «lo mas simple
+//     posible»: un boton toca las ocho bandas seguidas de grave a agudo, cada banda tiene su barra, la app dice dBA o dBC, y un solo
+//     punto (se quitaron los puntos 2 y 3 y los botones por banda; afinado_local2= y afinado_local3= se ignoran).
 //  3) Con eso se calcula cuanto se aleja el local de una curva de casa para un bar (un poco mas de grave y un poco menos de agudo que
 //     plano, CurvaCasa), contando desde la zona de la voz (250 Hz a 2 kHz). Se corrige el 70 % (un celular y un solo punto no son una
 //     medida de laboratorio), lo de menos de 1 dB se deja, se BAJA hasta 6 dB y se SUBE como mucho 3 (2 en 8 kHz y nada en 63 Hz:
@@ -35,32 +38,9 @@ namespace Rocola
         internal const float AfinaBajaMax = -6f, AfinaFuerza = 0.7f, AfinaZonaMuerta = 1f;
         internal const int AfinaSinMedir = 39, AfinaMinDb = 40, AfinaMaxDb = 120;   // el deslizador: 39 = sin medir
 
+        // Las ocho lecturas (un solo punto desde la sexta tanda; antes hubo hasta tres, que se promediaban).
         private static readonly float[] afinadoDb = { float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN };
-        // EN VARIOS PUNTOS (tercera tanda, 27-10-2026): en una nave con eco la lectura cambia de 2 a 4 dB de un sitio a otro. Hasta tres juegos
-        // de lecturas (la barra, el fondo, el entrepiso...); la afinacion usa su promedio por banda (de los puntos que tengan esa banda). El
-        // primero es el de siempre (afinado_local=); los otros, afinado_local2= y afinado_local3=.
-        internal const int AfinaPuntos = 3;
-        private static readonly float[][] afinadoPuntos = { afinadoDb, SinMedir8(), SinMedir8() };
-        private static float[] SinMedir8() { float[] v = new float[8]; for (int i = 0; i < 8; i++) v[i] = float.NaN; return v; }
-        // El promedio por banda de los puntos medidos (NaN donde ninguno la tiene). Pura.
-        internal static float[] PromedioPuntos(float[][] puntos)
-        {
-            float[] m = new float[8];
-            for (int b = 0; b < 8; b++)
-            {
-                double s = 0; int n = 0;
-                for (int k = 0; k < puntos.Length; k++) { float v = puntos[k] != null && puntos[k].Length > b ? puntos[k][b] : float.NaN; if (!float.IsNaN(v)) { s += v; n++; } }
-                m[b] = n > 0 ? (float)(s / n) : float.NaN;
-            }
-            return m;
-        }
-        internal static float[] AfinadoPromedio() { return PromedioPuntos(afinadoPuntos); }
-        internal static int PuntosMedidos()
-        {
-            int n = 0;
-            for (int k = 0; k < AfinaPuntos; k++) { bool alguna = false; for (int b = 0; b < 8; b++) if (!float.IsNaN(afinadoPuntos[k][b])) alguna = true; if (alguna) n++; }
-            return n;
-        }
+        internal static float[] AfinadoPromedio() { return afinadoDb; }
         private static int afinadoPonderacion = 1;   // C de fabrica (la que se recomienda)
         private static bool afinadoUsar;              // "afinado_usar=": apagado de fabrica
 
@@ -131,11 +111,10 @@ namespace Rocola
         }
 
         // La configuracion: "afinado_local=" con las ocho lecturas ("x" = sin medir) y "afinado_ponderacion=" A, C o Z.
-        internal static string TextoAfinado() { return TextoAfinado(0); }
-        internal static string TextoAfinado(int punto)
+        internal static string TextoAfinado()
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            float[] d = afinadoPuntos[punto];
+            float[] d = afinadoDb;
             for (int b = 0; b < 8; b++)
             {
                 if (b > 0) sb.Append(';');
@@ -144,12 +123,11 @@ namespace Rocola
             }
             return sb.ToString();
         }
-        internal static void LeeAfinado(string texto) { LeeAfinado(texto, 0); }
-        internal static void LeeAfinado(string texto, int punto)
+        internal static void LeeAfinado(string texto)
         {
-            if (texto == null || punto < 0 || punto >= AfinaPuntos) return;
+            if (texto == null) return;
             string[] p = texto.Split(';');
-            float[] d = afinadoPuntos[punto];
+            float[] d = afinadoDb;
             for (int b = 0; b < 8; b++)
             {
                 float v;
@@ -174,8 +152,7 @@ namespace Rocola
                 for (int b = 2; b <= 5; b++) if (float.IsNaN(prom[b])) falta += (falta.Length > 0 ? ", " : "") + NombreBanda(b);
                 return "Faltan las bandas de la voz: " + falta + ".\nSin ellas no hay con que comparar el resto.";
             }
-            int np = PuntosMedidos();
-            string s = "Correccion para tu local (dB" + (np > 1 ? ", promedio de " + np + " puntos" : "") + "):\n";
+            string s = "Correccion para tu local (dB):\n";
             for (int b = 0; b < 8; b++)
             {
                 s += NombreBanda(b) + " " + (float.IsNaN(prom[b]) ? "sin medir" : c[b].ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture));
@@ -204,9 +181,8 @@ namespace Rocola
 
         // ---------------------------------------------------------------- EL RUIDO POR BANDAS
         private PruebaBanda bandaSonando;
-        internal string ProbarBanda(int b) { return b < 0 || b > 7 ? "" : ProbarBandas(b, b); }
-        // TODAS SEGUIDAS (cuarta tanda, 27-10-2026): las ocho bandas una tras otra, 8 s cada una con 1,5 s de silencio entre ellas, para
-        // no ir y venir de la rocola: el dueno se queda parado con el celular y anota en orden lo que dice el letrero.
+        // TODAS SEGUIDAS (cuarta tanda, 27-10-2026; desde la sexta, la unica forma): las ocho bandas una tras otra, de grave a agudo, 8 s
+        // cada una con 1,5 s de silencio entre ellas, para no ir y venir de la rocola: el dueno se queda parado con el celular y anota en orden.
         internal string ProbarBandas(int desde, int hasta)
         {
             if (nowPlaying != null || videoOn) return "Hay musica sonando: la medida es con la rocola callada.";
@@ -230,16 +206,6 @@ namespace Rocola
                 LogError("Afinar el local", ex);
                 return "No se pudo abrir la salida de sonido: " + MotivoFallo(ex) + ".";
             }
-        }
-        // Lo que suena AHORA (lo leido va por delante de lo que se oye lo que guarda la salida, como en la prueba de bocinas).
-        internal string EstadoBanda()
-        {
-            PruebaBanda p = bandaSonando;
-            if (p == null || pruebaSalida == null) return "";
-            int retraso = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000;
-            int b = p.BandaOida(retraso);
-            if (b < 0) return p.Varias ? "Espera: viene la siguiente banda..." : "";
-            return "Anota lo que marca la app en esta banda.";
         }
         // En grande: la banda que suena ("250 Hz   3 de 8"), o "" si nada.
         internal string BandaGrande()
