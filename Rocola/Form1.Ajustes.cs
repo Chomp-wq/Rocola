@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro; float[][] bkAfiDb = { (float[])afinadoPuntos[0].Clone(), (float[])afinadoPuntos[1].Clone(), (float[])afinadoPuntos[2].Clone() }; int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[][] bkAfiDb = { (float[])afinadoPuntos[0].Clone(), (float[])afinadoPuntos[1].Clone(), (float[])afinadoPuntos[2].Clone() }; int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1183,6 +1183,13 @@ namespace Rocola
                     BotonPlano bSinMej = new BotonPlano(); bSinMej.SetBounds(16, 150, 424, 34); bSinMej.Font = fBot;
                     bSinMej.Name = "SonidoSinMejoras"; tAhora.Controls.Add(bSinMej);
                     notaLocal(tAhora, 192, 64, "Mientras dura, la cancion suena sin des-recorte, siseo, DSEE,\nrealce, EQ, bajo, claridad, partes suaves ni arreglos, al\nmismo volumen: para comparar con el oido. No se guarda.");
+                    // COMPARAR A CIEGAS (quinta tanda, CompararCiegas.cs): el modo billar contra la cadena de fabrica, sin decir cual suena.
+                    BotonPlano bCiego = new BotonPlano(); bCiego.SetBounds(16, 262, 204, 30); bCiego.Font = fBot; bCiego.Text = "Comparar a ciegas";
+                    bCiego.Name = "SonidoCiego"; tAhora.Controls.Add(bCiego);
+                    BotonPlano bGusta = new BotonPlano(); bGusta.SetBounds(236, 262, 204, 30); bGusta.Font = fBot; bGusta.Text = "Me gusta esta";
+                    bGusta.Name = "SonidoCiegoGusta"; tAhora.Controls.Add(bGusta);
+                    Label lCiego = notaLocal(tAhora, 296, 34, "");
+                    lCiego.Name = "SonidoCiegoTexto";
                     notaLocal(tAhora, 332, 48, "Se mira cada medio segundo. Los videos no pasan por la\ncadena de sonido: con un video aqui no hay nada que ver.");
                     Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
                     {
@@ -1217,8 +1224,13 @@ namespace Rocola
                         bSinMej.Relleno = quedan > 0 ? Color.FromArgb(104, 62, 28) : Color.FromArgb(40, 52, 98);
                         bSinMej.Invalidate();
                         lAhora.Text = TextoLoQueSuena();
+                        lCiego.Text = TextoCiego(); lCiego.ForeColor = ciegoActivo ? Color.FromArgb(255, 214, 120) : cTenue;
+                        bCiego.Text = ciegoActivo ? "Parar la comparacion" : "Comparar a ciegas"; bCiego.Invalidate();
+                        bGusta.Enabled = ciegoActivo;
                     };
-                    bSinMej.Click += delegate { PonSinMejoras(!sinMejoras); pintaAhora(); };
+                    bSinMej.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); PonSinMejoras(!sinMejoras); pintaAhora(); };
+                    bCiego.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
+                    bGusta.Click += delegate { VotaCiego(); pintaAhora(); };
                     pintaAhora();
 
                     // ---------------- MAS AJUSTES DEL SONIDO (27-10-2026) ----------------
@@ -1258,9 +1270,13 @@ namespace Rocola
                     Interruptor swBom = interVoz(180, "Que el bombo no hunda la voz", cCal, bomboSinHundir);
                     swBom.Name = "SonidoBombo";
                     Label nBom = notaLocal(tVoz, 206, 32, "Si el bombo pasaria del techo, baja solo el bajo y no toda la\ncancion: la voz no se hunde con cada golpe.");
+                    // AGUDOS ASPEROS DINAMICOS (quinta tanda, AsperezaDinamica.cs): el cuarto de la hoja.
+                    Interruptor swAsp = interVoz(250, "Agudos asperos dinamicos", cBri, asperezaDinamica);
+                    swAsp.Name = "SonidoAspereza";
+                    Label nAsp = notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
                     notaLocal(tVoz, 332, 48, "Apagados de fabrica. Se oyen al instante en la cancion\nque suena.");
-                    Necesita(swRet, sinAuto, motivoAuto, nRet); Necesita(swAta, sinAuto, motivoAuto, nAta); Necesita(swBom, sinAuto, motivoAuto, nBom);
-                    notaLocal(tVozB, 40, 112, "Con el modo billar encendido, el retumbe y el ataque van\nsiempre. El bombo no: con cada cancion subida hasta su\nlimite, el limitador casi no actua, y la etapa le quitaba\nbajo a la cancion sin ayudar a la voz. Las \"s\" se suavizan\nsiempre (Tono y presencia).");
+                    Necesita(swRet, sinAuto, motivoAuto, nRet); Necesita(swAta, sinAuto, motivoAuto, nAta); Necesita(swBom, sinAuto, motivoAuto, nBom); Necesita(swAsp, sinAuto, motivoAuto, nAsp);
+                    notaLocal(tVozB, 40, 128, "Con el modo billar encendido, el retumbe, el ataque y los\nagudos asperos van siempre. El bombo no: con cada cancion\nsubida hasta su limite, el limitador casi no actua, y la\netapa le quitaba bajo a la cancion sin ayudar a la voz. Las\n\"s\" se suavizan siempre (Tono y presencia).");
                     BotonPlano bVolverVoz = new BotonPlano(); bVolverVoz.SetBounds(16, 346, 424, 34); bVolverVoz.Font = fBot;
                     bVolverVoz.Text = "Volver a los ajustes del sonido"; bVolverVoz.Name = "SonidoVozVolver"; tVozB.Controls.Add(bVolverVoz);
                     bool verVoz = false;
@@ -1469,6 +1485,7 @@ namespace Rocola
                     };
                     EventHandler apply = delegate
                     {
+                        if (ciegoActivo) TerminaCiego("Cambiaste un ajuste: comparacion cortada. ");   // primero vuelve el modo como estaba (CompararCiegas.cs)
                         normalizeOn = swOn.Checked;
                         normTarget = TargetFromPct(bar[0].Value);
                         normStrength = bar[1].Value / 100f;
@@ -1487,7 +1504,7 @@ namespace Rocola
                         canalMudo = swMudo.Checked; quitaContinua = swDc.Checked; estereoAuto = swAuto.Checked;   // S1, S2 y S3
                         quitaZumbido = swZum.Checked;   // T6
                         suavizaEses = swEses.Checked;   // T9
-                        bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked;   // voz, golpe y retumbe
+                        bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked; asperezaDinamica = swAsp.Checked;   // voz, golpe y retumbe
                         claridadLocal = swCla.Checked; partesSuaves = swSua.Checked;
                         balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, barBal.Value - SalaLocal.BalanceMax));
                         gravesLocalDb = Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, barGra.Value - SalaLocal.TonoMax));
@@ -1512,7 +1529,7 @@ namespace Rocola
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
                     swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
                     swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply; swZum.CheckedChanged += apply; swEses.CheckedChanged += apply;
-                    swBom.CheckedChanged += apply; swRet.CheckedChanged += apply; swAta.CheckedChanged += apply;
+                    swBom.CheckedChanged += apply; swRet.CheckedChanged += apply; swAta.CheckedChanged += apply; swAsp.CheckedChanged += apply;
                     NecesitaMotivo(swSbr, delegate { return !sbrAllowed ? lSbrNo : (localAuto ? "Necesita: " + motivoAuto : null); }, lSbr);
                     EventHandler prueba = delegate (object so, EventArgs ea)
                     {
@@ -1542,8 +1559,8 @@ namespace Rocola
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         swZum.Checked = true;   // T6, encendido (solo actua con el defecto)
                         swEses.Checked = false;   // T9, apagado
-                        bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados
-                        swBom.Checked = false; swRet.Checked = false; swAta.Checked = false;   // (y sus mandos, en su hoja)
+                        bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false; asperezaDinamica = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados
+                        swBom.Checked = false; swRet.Checked = false; swAta.Checked = false; swAsp.Checked = false;   // (y sus mandos, en su hoja)
                         swAfi.Checked = false;   // la afinacion del local, sin usar (lo medido se guarda)
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
@@ -1668,19 +1685,20 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande(); } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string est = EstadoBanda(); lAfiEstado.Text = est.Length > 0 ? est : afiAviso; lAfiGrande.Text = BandaGrande(); } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
                     tTrain.Stop(); tTrain.Dispose();
                     OlvidaRequisitos();
                     if (sinMejoras) PonSinMejoras(false);   // "Escuchar sin mejoras" no sobrevive a la ventana
+                    if (ciegoActivo) TerminaCiego("Ventana cerrada: comparacion cortada. ");   // ni la comparacion a ciegas
                     ParaPruebaBocinas();   // la prueba de bocinas no sigue sonando con la ventana cerrada
                 }
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; for (int q = 0; q < AfinaPuntos; q++) Array.Copy(bkAfiDb[q], afinadoPuntos[q], 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; for (int q = 0; q < AfinaPuntos; q++) Array.Copy(bkAfiDb[q], afinadoPuntos[q], 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

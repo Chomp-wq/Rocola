@@ -664,6 +664,7 @@ namespace Rocola
                     else if (s.StartsWith("suaviza_eses=")) suavizaEses = s.Substring(13).Trim() == "1";   // T9: suavizar las eses
                     else if (s.StartsWith("bombo_sin_hundir=")) bomboSinHundir = s.Substring(17).Trim() == "1";   // que el bombo no hunda la voz
                     else if (s.StartsWith("retumbe_dinamico=")) retumbeDinamico = s.Substring(17).Trim() == "1";   // el retumbe dinamico
+                    else if (s.StartsWith("aspereza_dinamica=")) asperezaDinamica = s.Substring(18).Trim() == "1";   // los agudos asperos dinamicos
                     else if (s.StartsWith("ataque_claro=")) ataqueClaro = s.Substring(13).Trim() == "1";   // el ataque mas claro
                     else if (s.StartsWith("quita_continua=")) quitaContinua = s.Substring(15).Trim() != "0";   // S2: quitar la continua
                     else if (s.StartsWith("estereo_auto=")) estereoAuto = s.Substring(13).Trim() == "1";   // S3: estrecho solo si hace falta
@@ -847,6 +848,7 @@ namespace Rocola
             sb.Append("suaviza_eses=").Append(suavizaEses ? "1" : "0").Append("\r\n");
             sb.Append("bombo_sin_hundir=").Append(bomboSinHundir ? "1" : "0").Append("\r\n");
             sb.Append("retumbe_dinamico=").Append(retumbeDinamico ? "1" : "0").Append("\r\n");
+            sb.Append("aspereza_dinamica=").Append(asperezaDinamica ? "1" : "0").Append("\r\n");
             sb.Append("ataque_claro=").Append(ataqueClaro ? "1" : "0").Append("\r\n");
             sb.Append("quita_continua=").Append(quitaContinua ? "1" : "0").Append("\r\n");
             sb.Append("estereo_auto=").Append(estereoAuto ? "1" : "0").Append("\r\n");
@@ -857,7 +859,7 @@ namespace Rocola
             sb.Append("graves_local=").Append(gravesLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("agudos_local=").Append(agudosLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
-            sb.Append("local_auto=").Append(localAuto ? "1" : "0").Append("\r\n");
+            sb.Append("local_auto=").Append(LocalAutoAGuardar ? "1" : "0").Append("\r\n");   // durante «Comparar a ciegas», el de antes (CompararCiegas.cs)
             sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");
             sb.Append("afinado_local2=").Append(TextoAfinado(1)).Append("\r\n");
             sb.Append("afinado_local3=").Append(TextoAfinado(2)).Append("\r\n");

@@ -274,6 +274,10 @@ namespace Rocola
             private readonly NAudio.Wave.ISampleProvider src;
             private readonly int ch, look, lag, total;
             private readonly float ceiling, atk, rel;
+            // QUE RESPIRA MENOS (quinta tanda del modo billar, 27-10-2026; solo en el billar): ver RespiraSueltaLentaS.
+            private readonly bool respira;
+            private readonly float relLenta, kActividad;
+            private float actividad, factividad;
             internal const double SoltarS = 0.10, EsperaS = 0.02;   // soltar (constante de tiempo) y espera antes de soltar
             private readonly int espera;   // cuadros
             private int esperando;
@@ -304,8 +308,16 @@ namespace Rocola
             private int fpeakHead, fpeakCount, fdpos, fspos, fesperando;
             private long fframeIndex, fpaso;
             private float fenv, fultimo;
-            public LimitadorPicoReal(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs)
+            public LimitadorPicoReal(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs) : this(s, ceilingLin, lookMs, false) { }
+            // SUELTA SEGUN LA MUSICA, EN EL BILLAR. En una cancion que el limitador trabaja seguido (una grabacion vieja aplastada, una muy
+            // cargada de grave), soltar siempre en 100 ms hace que la ganancia suba y baje con cada golpe: se oye como un bombeo. Con 'respira'
+            // se lleva la cuenta de cuanto rato esta bajando (la fraccion del ultimo segundo, mas o menos) y la suelta se alarga con ella, de
+            // 100 ms (golpes sueltos: igual que siempre) hasta RespiraSueltaLentaS (bajando todo el rato). Sin 'respira', bit a bit como siempre.
+            internal const double RespiraSueltaLentaS = 0.4, RespiraActividadS = 1.0;
+            internal const float RespiraUmbral = 0.98f;   // por debajo de esto (0,18 dB) cuenta como que esta bajando
+            public LimitadorPicoReal(NAudio.Wave.ISampleProvider s, float ceilingLin, double lookMs, bool respiraBillar)
             {
+                respira = respiraBillar;
                 src = s; ch = Math.Max(1, s.WaveFormat.Channels); ceiling = ceilingLin;
                 int rate = s.WaveFormat.SampleRate; if (rate < 8000) rate = 44100;
                 look = Math.Max(16, (int)(lookMs * 0.001 * rate));
@@ -318,6 +330,8 @@ namespace Rocola
                 peaks = new float[look + 1]; peakFrames = new long[look + 1];
                 atk = 1f - (float)Math.Exp(-9.0 / look);
                 rel = 1f - (float)Math.Exp(-1.0 / (SoltarS * rate));
+                relLenta = 1f - (float)Math.Exp(-1.0 / (RespiraSueltaLentaS * rate));
+                kActividad = 1f - (float)Math.Exp(-1.0 / (RespiraActividadS * rate));
                 espera = (int)(EsperaS * rate);
                 resto = new float[ch];
                 sale = new float[ch];
@@ -337,7 +351,7 @@ namespace Rocola
                 Array.Copy(delay, fdelay, delay.Length); Array.Copy(picoCuadro, fpico, fpico.Length);
                 Array.Copy(peaks, fpeaks, fpeaks.Length); Array.Copy(peakFrames, fpeakFrames, fpeakFrames.Length);
                 fpeakHead = peakHead; fpeakCount = peakCount; fdpos = dpos; fspos = spos; fesperando = esperando;
-                fframeIndex = frameIndex; fpaso = paso; fenv = env; fultimo = ultimoIntervalo;
+                fframeIndex = frameIndex; fpaso = paso; fenv = env; fultimo = ultimoIntervalo; factividad = actividad;
             }
             // En la primera lectura: el limitador de la anterior del mismo disco, como lo dejo su musica.
             private void Hereda()
@@ -349,6 +363,7 @@ namespace Rocola
                 Array.Copy(a.fpeaks, peaks, peaks.Length); Array.Copy(a.fpeakFrames, peakFrames, peakFrames.Length);
                 peakHead = a.fpeakHead; peakCount = a.fpeakCount; dpos = a.fdpos; spos = a.fspos; esperando = a.fesperando;
                 frameIndex = a.fframeIndex; paso = a.fpaso; env = a.fenv; ultimoIntervalo = a.fultimo;
+                if (respira && a.respira) actividad = a.factividad;
                 hadInput = true;
                 cebadoPorPasar = Math.Max(0, Cebado);
             }
@@ -372,7 +387,8 @@ namespace Rocola
                 float target = max > ceiling ? ceiling / max : 1f;
                 if (target < env) { env += atk * (target - env); esperando = espera; }
                 else if (esperando > 0) esperando--;
-                else env += rel * (target - env);
+                else env += (respira ? rel + (relLenta - rel) * actividad : rel) * (target - env);
+                if (respira) actividad += kActividad * ((env < RespiraUmbral ? 1f : 0f) - actividad);
             }
 
             private float[] intervalos = new float[0];   // pico real de cada intervalo del bloque (el mayor de los canales)

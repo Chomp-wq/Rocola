@@ -52,6 +52,7 @@ namespace Rocola
         {
             public bool Subgrave, Estrecho, EstrechoSoloSiHaceFalta, Claridad, Suaves, Presencia;
             public bool Bombo, Retumbe, Ataque;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs, 27-10-2026)
+            public bool Aspereza;                 // los agudos asperos dinamicos (AsperezaDinamica.cs)
             public bool Eses;                     // suavizar las eses (T9, Eses.cs); en el billar, con la referencia de la cadena del billar
             public bool Cuerpo;                   // cancion flaca: el EQ del billar le devuelve cuerpo (CadenaBillar.cs); solo informa (S5)
             public int Graves, Agudos;
@@ -72,7 +73,7 @@ namespace Rocola
             // Voz, golpe y retumbe (27-10-2026): el retumbe y el ataque, siempre en el billar. Cada etapa se frena sola por lo que oye (el retumbe solo
             // corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con sitio bajo el techo):
             // ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
-            a.Retumbe = true; a.Ataque = true;
+            a.Retumbe = true; a.Ataque = true; a.Aspereza = true;   // y los agudos asperos (quinta tanda)
             // LA CADENA DEL BILLAR (CadenaBillar.cs, 27-10-2026), medida con la cadena entera:
             //   - El BOMBO no va: con el nivelado al limite el limitador casi no actua (0,2 a 2 % del tiempo en masters normales) y la etapa
             //     quitaba ~1 dB de bajo sin mejorar la voz (reacciona despues del primer golpe, que el limitador ya bajo). Su interruptor sigue a mano.
@@ -251,7 +252,7 @@ namespace Rocola
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;
             m.Claridad = claridadLocal; m.Suaves = partesSuaves; m.Presencia = presenciaSala;
             m.Graves = gravesLocalDb; m.Agudos = agudosLocalDb;
-            m.Bombo = bomboSinHundir; m.Retumbe = retumbeDinamico; m.Ataque = ataqueClaro;
+            m.Bombo = bomboSinHundir; m.Retumbe = retumbeDinamico; m.Ataque = ataqueClaro; m.Aspereza = asperezaDinamica;
             m.Eses = suavizaEses;
             return m;
         }

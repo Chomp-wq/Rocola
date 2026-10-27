@@ -21,6 +21,7 @@ namespace Rocola
     public partial class Form1
     {
         private static bool bomboSinHundir, retumbeDinamico, ataqueClaro;   // apagados de fabrica
+        private static bool asperezaDinamica;                               // "aspereza_dinamica=": los agudos asperos dinamicos (AsperezaDinamica.cs), apagado de fabrica
 
         // Lleva los interruptores (o lo que decide el modo automatico) a las tres etapas de esa cadena. Lo llaman las bocinas y
         // «Escuchar sin mejoras» (AplicaSinMejoras), que ya se llama tras cada cambio de ajustes, de cancion y de la siguiente preparada.
@@ -36,6 +37,7 @@ namespace Rocola
                 c.Retumbe.Ajusta(!sin && lo.Retumbe, cla, RetumbeDinamico.CorteEstaticoDb(c.Tap != null ? c.Tap.EqDb : null, cla, c.Retumbe.WaveFormat.SampleRate));
             }
             if (c.Ataque != null) c.Ataque.Ajusta(!sin && lo.Ataque);
+            if (c.Aspereza != null) c.Aspereza.Ajusta(!sin && lo.Aspereza);
         }
     }
 }

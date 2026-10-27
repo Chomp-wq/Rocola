@@ -172,14 +172,23 @@ namespace Rocola
         {
             if (c == null || c.Margen == null || c.Cancion == null || c.Cancion.Path == null) return;
             MideMargen m = c.Margen; c.Margen = null;
-            if (!m.Entera || m.Descarta || !localAuto) return;
             float p90, p99, max;
-            if (!m.Percentiles(out p90, out p99, out max)) return;
-            string path = c.Cancion.Path;
-            float propio; bool habia;
-            lock (parejoCerrojo) habia = parejoDb.TryGetValue(path, out propio);
-            float nuevo = ParejoNuevo(habia ? propio : float.NaN, m.Aplicado, ParejoFalta(p90, p99, max));
-            if (float.IsNaN(nuevo)) return;
+            bool hay = m.Percentiles(out p90, out p99, out max);
+            float nuevo = float.NaN;
+            try
+            {
+                if (!m.Entera || m.Descarta || !localAuto || !hay) return;
+                string path = c.Cancion.Path;
+                float propio; bool habia;
+                lock (parejoCerrojo) habia = parejoDb.TryGetValue(path, out propio);
+                nuevo = ParejoNuevo(habia ? propio : float.NaN, m.Aplicado, ParejoFalta(p90, p99, max));
+                if (float.IsNaN(nuevo)) return;
+                GuardaParejo(path, nuevo);
+            }
+            finally { if (hay) ApuntaBitacoraBillar(c, m, p90, p99, max, nuevo); }   // la bitacora, aprenda o no (BitacoraBillar)
+        }
+        private void GuardaParejo(string path, float nuevo)
+        {
             lock (parejoCerrojo) parejoDb[path] = nuevo;
             string linea = nuevo.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "|" + path + "\r\n";
             string archivo = ParejoFile();
@@ -268,6 +277,15 @@ namespace Rocola
                 if (db < DesdeDb) return;   // silencio: no cuenta
                 int c = (int)((db - DesdeDb) / PasoDb); if (c >= Casillas) c = Casillas - 1;
                 hist[c]++; Bloques++;
+            }
+            // La fraccion (0 a 1) de los bloques cuyo pico paso 'db' por encima del techo: lo que el limitador tuvo que bajar mas que eso.
+            internal float FraccionSobre(float db)
+            {
+                int total = Bloques; if (total <= 0) return 0f;
+                int desde = (int)Math.Ceiling((db - DesdeDb) / PasoDb), n = 0;
+                if (desde < 0) desde = 0;
+                for (int c = desde; c < Casillas; c++) n += hist[c];
+                return n / (float)total;
             }
             internal bool Percentiles(out float p90, out float p99, out float max)
             {

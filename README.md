@@ -1,5 +1,16 @@
 # Rocola
 
+## Modo billar, quinta tanda — 27 de octubre de 2026
+
+- **Bitácora del billar:** una línea por canción en `rocola_billar_bitacora.txt` con lo que hizo la cadena. Si me la pasas, ajusto con datos
+  del A4.
+- **Agudos ásperos dinámicos:** baja 3,2 kHz hasta 3 dB solo cuando unos platillos o trompetas «gritan». Interruptor apagado de fábrica;
+  con el modo billar va siempre.
+- **Limitador que respira menos:** en el billar suelta más despacio cuando trabaja seguido. El bombeo baja de 10 a 30 %.
+- **Comparar a ciegas:** 2 minutos alternando el billar y la cadena de fábrica sin decir cuál; votas y te dice cuál elegiste más.
+
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#quinta-tanda-bitácora-agudos-ásperos-limitador-que-respira-y-comparar-a-ciegas). **Nada oído en el billar ni probado en el A4.**
+
 ## Modo billar, cuarta tanda — 27 de octubre de 2026
 
 - **Volumen parejo desde la primera vez:** con 30 canciones aprendidas, la rocola ve qué tienen en común las que necesitaron subir (sobre

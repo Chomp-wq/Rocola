@@ -146,6 +146,9 @@
     <Compile Include="CadenaBillar.cs" />
     <Compile Include="AfinarLocal.cs" />
     <Compile Include="VolumenParejo.cs" />
+    <Compile Include="AsperezaDinamica.cs" />
+    <Compile Include="BitacoraBillar.cs" />
+    <Compile Include="CompararCiegas.cs" />
     <Compile Include="VolumenWindows.cs" />
     <Compile Include="CieloVivoGpu.cs" />
     <Compile Include="SinPausa.cs" />

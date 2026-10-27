@@ -117,7 +117,7 @@ class CadenaBillarPrueba
         Check(son.Contains("if (quitaSiseo && !localAuto)"), "el siseo no se arma en el billar");
         Check(son.Contains("new ArreglaGrabacion(chain, CanalMudoEf, QuitaContinuaEf)") && son.Contains("QuitaZumbidoEf") && gm.Contains("c.Arreglo.Ajusta(CanalMudoEf, QuitaContinuaEf)"), "los arreglos se arman y se ajustan en vivo con lo efectivo");
         Check(dat.Contains("aLaMedida || localAuto ? MetaDeCancion(c) : null"), "a la medida: siempre en el billar");
-        Check(son.Contains("new PresenciaSala(c.Retumbe, tap, nivelLocal, loc.Presencia, localAuto)") && son.Contains("new SuavizaEses(c.Ataque, loc.Eses, localAuto)"), "presencia y eses con la referencia del billar");
+        Check(son.Contains("new PresenciaSala(c.Retumbe, tap, nivelLocal, loc.Presencia, localAuto)") && son.Contains("new SuavizaEses(c.Aspereza, loc.Eses, localAuto)"), "presencia y eses con la referencia del billar");
         Check(bil.Contains("private bool DseeEfectivo { get { return sbrOn && !localAuto; } }"), "lo efectivo: el interruptor guardado manda con el modo apagado");
         Check(aj.Contains("\"SonidoAjustesAbrir\"") && aj.Contains("tBil.Controls.Add(swAutoL)") && aj.Contains("pAju.Controls.Add(tCal)") && aj.Contains("tBil.Controls.Add(bPruI)"),
               "la ventana: el modo billar, su boton de ajustes al lado y la prueba de bocinas en la pagina; la calidad en la hoja de ajustes");
@@ -277,6 +277,57 @@ class CadenaBillarPrueba
             if (Math.Abs(db + 20.0) > 1.0) parejas = false;
         }
         Check(got == buf.Length && parejas, "y todas a -20 dB por canal (" + niveles.Trim() + ")");
+
+        Console.WriteLine("\n  8) QUINTA TANDA: AGUDOS ASPEROS, LIMITADOR QUE RESPIRA, BITACORA Y COMPARAR A CIEGAS\n");
+        Type TAs = TF.Assembly.GetType("Rocola.AsperezaDinamica");
+        int nA = 44100 * 30; float[] xa = new float[nA * 2]; Random ra = new Random(3);
+        double bw = 2 * Math.PI * 3200 / 44100, bal = Math.Sin(bw) / 2, ba0 = 1 + bal, bb0 = bal / ba0, ba1 = -2 * Math.Cos(bw) / ba0, ba2 = (1 - bal) / ba0, bx1 = 0, bx2 = 0, by1 = 0, by2 = 0;
+        for (int i = 0; i < nA; i++)
+        {
+            double t = i / 44100.0, voz = 0.15 * (Math.Sin(2 * Math.PI * 220 * t) + 0.6 * Math.Sin(2 * Math.PI * 440 * t) + 0.4 * Math.Sin(2 * Math.PI * 1000 * t) + 0.25 * Math.Sin(2 * Math.PI * 2900 * t));
+            double rr = ra.NextDouble() * 2 - 1, bv = bb0 * (rr - bx2) - ba1 * by1 - ba2 * by2; bx2 = bx1; bx1 = rr; by2 = by1; by1 = bv;
+            bool raf = (t % 4.0) > 2.0 && (t % 4.0) < 2.5; double v = voz + (raf ? 0.35 : 0.04) * bv;
+            xa[2 * i] = (float)v; xa[2 * i + 1] = (float)v;
+        }
+        object asOff = Activator.CreateInstance(TAs, T, null, new object[] { new Fuente(xa), false }, null);
+        float[] ya = new float[xa.Length]; int ga = 0, ka; while ((ka = ((NAudio.Wave.ISampleProvider)asOff).Read(ya, ga, Math.Min(4410, ya.Length - ga))) > 0) ga += ka;
+        bool igualA = ga == xa.Length; for (int i = 0; i < ga && igualA; i++) if (ya[i] != xa[i]) igualA = false;
+        Check(igualA, "agudos asperos apagado: sale bit a bit");
+        object asOn = Activator.CreateInstance(TAs, T, null, new object[] { new Fuente(xa), true }, null);
+        ga = 0; while ((ka = ((NAudio.Wave.ISampleProvider)asOn).Read(ya, ga, Math.Min(4410, ya.Length - ga))) > 0) ga += ka;
+        double maxCorte = (double)TAs.GetProperty("CortaDb", T).GetValue(asOn, null);
+        bool vozIgual = true; for (int i = (int)(44100 * 8.5) * 2; i < (int)(44100 * 9.8) * 2; i++) if (ya[i] != xa[i]) vozIgual = false;
+        Check(maxCorte > 0.8f && maxCorte <= 3.0001f, "encendido: en una rafaga que grita a 3,2 kHz corta (la mitad de lo que pasa de 4 dB sobre lo normal; aqui " + maxCorte.ToString("0.00") + " dB, tope 3)");
+        Check(vozIgual, "y fuera de las rafagas (la voz sola) no toca ni una muestra");
+        // El limitador que respira: sin el, bit a bit; con el, la ganancia se mueve menos con un bajo que pasa del techo a golpes.
+        Type TL = TF.GetNestedType("LimitadorPicoReal", T);
+        float[] xl = new float[44100 * 2 * 20];
+        for (int i = 0; i < xl.Length / 2; i++) { double t = i / 44100.0, golpe = (t * 2.0) % 1.0 < 0.12 ? 1.5 : 0.6; float v = (float)(golpe * Math.Sin(2 * Math.PI * 55 * t) + 0.2 * Math.Sin(2 * Math.PI * 700 * t)); xl[2 * i] = v; xl[2 * i + 1] = v; }
+        object l0 = Activator.CreateInstance(TL, T, null, new object[] { new Fuente(xl), 0.88f, 3.0 }, null), l1 = Activator.CreateInstance(TL, T, null, new object[] { new Fuente(xl), 0.88f, 3.0, false }, null), l2 = Activator.CreateInstance(TL, T, null, new object[] { new Fuente(xl), 0.88f, 3.0, true }, null);
+        float[] o0 = new float[xl.Length + 2000], o1 = new float[o0.Length], o2 = new float[o0.Length];
+        double mov1 = 0, mov2 = 0; int g0 = 0, g1 = 0, g2b = 0, kk2; float prev1 = 1f, prev2 = 1f;
+        while ((kk2 = ((NAudio.Wave.ISampleProvider)l0).Read(o0, g0, Math.Min(882, o0.Length - g0))) > 0) g0 += kk2;
+        while ((kk2 = ((NAudio.Wave.ISampleProvider)l1).Read(o1, g1, Math.Min(882, o1.Length - g1))) > 0) g1 += kk2;
+        FieldInfo envF = TL.GetField("env", T);
+        while ((kk2 = ((NAudio.Wave.ISampleProvider)l2).Read(o2, g2b, Math.Min(882, o2.Length - g2b))) > 0) { g2b += kk2; float e2 = (float)envF.GetValue(l2); mov2 += Math.Abs(20 * Math.Log10(e2) - 20 * Math.Log10(prev2)); prev2 = e2; }
+        object l3 = Activator.CreateInstance(TL, T, null, new object[] { new Fuente(xl), 0.88f, 3.0, false }, null); int g3 = 0; float[] o3 = new float[o0.Length];
+        while ((kk2 = ((NAudio.Wave.ISampleProvider)l3).Read(o3, g3, Math.Min(882, o3.Length - g3))) > 0) { g3 += kk2; float e1 = (float)envF.GetValue(l3); mov1 += Math.Abs(20 * Math.Log10(e1) - 20 * Math.Log10(prev1)); prev1 = e1; }
+        bool igualL = g0 == g1; for (int i = 0; i < g0 && igualL; i++) if (o0[i] != o1[i]) igualL = false;
+        Check(igualL, "limitador sin respirar: el mismo de siempre, bit a bit");
+        Check(mov2 < mov1 * 0.9, "respirando, su ganancia se mueve menos con golpes seguidos (" + mov1.ToString("0") + " -> " + mov2.ToString("0") + " dB de recorrido)");
+        Check(son.Contains("new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0, localAuto)"), "y solo respira en el billar");
+        // La bitacora: tantas columnas como la cabecera.
+        string cab = (string)TF.GetField("BitacoraBillarCabecera", T).GetRawConstantValue();
+        Type TAj = TF.GetNestedType("AjusteLocal", T); object ajB = Activator.CreateInstance(TAj, true);
+        string lin = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 21, 5, 0), "cumbia.mp3", true, 215.0, 0.6f, float.NaN, 0.4f, 2.1f, 3.3f, 0.05f, 0.002f, ajB, true, 1.2f, 40f, new float[] { -1, 0, 0, 0, 0, -2, -1, 0 } });
+        Check(lin.Split('\t').Length == cab.Split('\t').Length && lin.StartsWith("2026-10-27 21:05:00\tcumbia.mp3\tsi\t215\t0.60\t-\t0.4"), "la bitacora: una linea por cancion con tantas columnas como la cabecera");
+        Check(Texto("VolumenParejo.cs").Contains("ApuntaBitacoraBillar(c, m, p90, p99, max, nuevo)") && Texto("BitacoraBillar.cs").Contains("QueueUserWorkItem"), "se apunta al soltar la cancion, aprenda o no, y se escribe en segundo plano");
+        // Comparar a ciegas.
+        bool[] orden = (bool[])TF.GetMethod("OrdenCiego", T).Invoke(null, new object[] { new Random(1) }); int nb = 0; foreach (bool b2 in orden) if (b2) nb++;
+        MethodInfo resC = TF.GetMethod("ResultadoCiego", T);
+        Check(orden.Length == 8 && nb == 4, "a ciegas: ocho tramos, cuatro de cada uno, al azar");
+        Check(((string)resC.Invoke(null, new object[] { 4, 1 })).Contains("el modo billar") && ((string)resC.Invoke(null, new object[] { 1, 3 })).Contains("fabrica") && ((string)resC.Invoke(null, new object[] { 2, 2 })).StartsWith("Empate") && ((string)resC.Invoke(null, new object[] { 0, 0 })).StartsWith("No votaste"), "y al final dice cual elegiste mas veces");
+        Check(dat.Contains("Append(LocalAutoAGuardar ?") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Ventana cerrada") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Cambiaste un ajuste"), "no se guarda: la configuracion lleva el modo de antes y vuelve al cerrar o al tocar un ajuste");
 
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");

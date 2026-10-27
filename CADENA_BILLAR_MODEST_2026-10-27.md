@@ -331,6 +331,81 @@ rocola. Todas salen a −20 dB por canal: medido, entre −20,4 y −19,6.
 
 Suite completa: los únicos fallos son los de antes. `bombosinhundir` falló una vez en su comprobación de tiempo mientras corría otra medición; sola pasó dos de dos.
 
+## Quinta tanda: bitácora, agudos ásperos, limitador que respira y comparar a ciegas
+
+### 1. Bitácora del billar
+
+Hasta ahora todo se midió con canciones de prueba. Con el modo billar, la rocola apunta una línea por cada canción que sonó al menos 30 s en
+`rocola_billar_bitacora.txt`, junto a los demás datos. Va separada por tabuladores, así se abre en una hoja de cálculo. Lleva:
+
+- la hora y el archivo;
+- si sonó entera, y el volumen parejo que llevaba y el que aprendió;
+- sus picos frente al techo;
+- qué parte del tiempo el limitador bajó más de 1 y más de 3 dB;
+- lo que decidió el modo: presencia, claridad, partes suaves, cuerpo, eses y agudos ásperos;
+- si iba afinada, el factor del bajo, el corte del subgrave y el EQ de la canción.
+
+Se escribe en segundo plano, no cambia el sonido, y al pasar de 4 MB la anterior se guarda como `.1`. **Si me pasas ese archivo, ajusto la
+cadena con datos del A4.**
+
+### 2. Agudos ásperos dinámicos
+
+Las cornetas «gritan» entre 2 y 4 kHz cuando entran de golpe platillos, trompetas o una guitarra saturada. La etapa nueva
+(`AsperezaDinamica.cs`) va entre el ataque y las eses y funciona como el retumbe dinámico, pero en los agudos:
+
+- **Qué compara:** la energía en 3,2 kHz frente a la de 1 kHz (el cuerpo de la voz), contra su propia media de la canción.
+- **Cuándo corta:** si pasa 4 dB de esa media, corta la mitad de lo que pasa, como mucho 3 dB, con una campana en 3,2 kHz. Ataque de
+  8 ms y suelta de 150 ms.
+- **La media:** baja en unos 6 s, pero sube cuatro veces más despacio. Así unos platillos que gritan cada pocos segundos no se vuelven
+  «lo normal»: con la media pareja, a la tercera ráfaga ya casi no cortaba.
+
+Medido con una «voz» continua y ráfagas de ruido en 3,2 kHz cada 4 s: con ráfagas de unos 6 dB de más corta 1,2 dB en cada una, y con
+ráfagas más fuertes, 2,8 a 3 dB. Fuera de las ráfagas no toca ni una muestra.
+
+Tiene su interruptor, «Agudos ásperos dinámicos» (`aspereza_dinamica=`), apagado de fábrica, en la hoja Voz, golpe y retumbe. Con el
+modo billar va siempre. «Escuchar sin mejoras» la quita.
+
+### 3. Limitador que respira menos
+
+En el código constaba que el 28-09 se probó una suelta «según la música» y no ganaba en todo. Esta vez se midió el movimiento de la
+ganancia del limitador cada 10 ms con la cadena del billar entera.
+
+En el billar, el limitador lleva la cuenta de cuánto rato está bajando (más o menos la fracción del último segundo) y su suelta se alarga
+con eso: de 100 ms con golpes sueltos (como siempre) hasta 400 ms cuando trabaja seguido (`RespiraSueltaLentaS`).
+
+| Canción | Movimiento antes | Movimiento ahora | Rato limitando (>1 dB) | Lo que baja de media |
+|---|---|---|---|---|
+| Pop | 0,051 | 0,041 | 0,8 → 0,8 % | −0,14 → −0,17 dB |
+| Balada | 0,092 | 0,071 | 3,1 → 3,7 % | −0,10 → −0,12 dB |
+| Cumbia vieja | 0,099 | 0,070 | 8,6 → 11,3 % | −0,27 → −0,36 dB |
+
+El movimiento (dB por cada 10 ms) baja entre 10 y 30 % en las cinco canciones: se oye menos el bombeo. El precio: limita un poco más de
+rato y baja como 0,1 dB más de media. Sin el billar, el limitador sale bit a bit como siempre.
+
+### 4. Comparar a ciegas
+
+En «Lo que suena ahora», el botón «Comparar a ciegas» funciona así:
+
+- Durante 2 minutos, la canción que suena cambia cada 15 s entre el modo billar y la cadena de fábrica, sin decir cuál es. Son 4 tramos
+  de cada uno, al azar.
+- Tocas «Me gusta esta» en los tramos que te suenan mejor (un voto por tramo), y al final te dice cuál elegiste más veces.
+- Cada modo suena a su volumen de verdad, y lo que se fija al armar la canción (el corte de 40 Hz, la compensación de la presencia) sigue
+  como estaba en esa canción.
+- **No se guarda nada:** la configuración sigue con el modo de antes. Vuelve como estaba al acabar, al cambiar de canción, al tocar un
+  ajuste o al cerrar la ventana. Solo funciona con el modo billar encendido.
+
+### Pruebas de la quinta tanda
+
+`pruebas/cadenabillar.cs` suma:
+
+- los agudos ásperos: apagados salen bit a bit, y encendidos cortan en la ráfaga y no tocan la voz sola;
+- el limitador: sin respirar sale bit a bit, y respirando se mueve menos con golpes seguidos;
+- la línea de la bitácora, con tantas columnas como la cabecera;
+- el orden y el resultado de la comparación a ciegas, y que no se guarda.
+
+Con el modo apagado, `compara-cadena` no tiene distintas sin esperarlas. Al hacer las capturas apareció un fallo: la ventana de Sonido no
+abría en el arnés de pruebas, porque la comparación usaba campos que solo se arman con el constructor. Se arregló antes de publicar.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,

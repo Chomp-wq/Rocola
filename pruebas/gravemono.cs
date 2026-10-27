@@ -441,14 +441,17 @@ class GraveMonoPrueba
             // Desde el 25-10-2026, entre la presencia y el grave sintetico va suavizar las eses (T9, Eses.cs).
             FieldInfo fEses = cad.GetType().GetField("Eses", T);
             object eses = fEses != null ? fEses.GetValue(cad) : null;
-            object trasSala = retumbe ?? sala ?? mono, trasPresencia = ataque ?? presencia ?? trasSala;
+            // Desde el 27-10-2026 (quinta tanda), los agudos asperos dinamicos van entre el ataque y las eses (AsperezaDinamica.cs).
+            object aspereza = cad.GetType().GetField("Aspereza", T) != null ? cad.GetType().GetField("Aspereza", T).GetValue(cad) : null;
+            object trasSala = retumbe ?? sala ?? mono, trasAtaque = ataque ?? presencia ?? trasSala, trasPresencia = aspereza ?? trasAtaque;
             Check(mono != null && object.ReferenceEquals(Get(mono, "src"), tap)
                   && object.ReferenceEquals(Get(bajo, "src"), eses ?? trasPresencia) && (eses == null || object.ReferenceEquals(Get(eses, "src"), trasPresencia))
                   && (ataque == null || object.ReferenceEquals(Get(ataque, "src"), presencia ?? trasSala))
+                  && (aspereza == null || object.ReferenceEquals(Get(aspereza, "src"), trasAtaque))
                   && (presencia == null || object.ReferenceEquals(Get(presencia, "src"), trasSala)) && (retumbe == null || object.ReferenceEquals(Get(retumbe, "src"), sala ?? mono))
                   && (sala == null || object.ReferenceEquals(Get(sala, "src"), mono)) && (hundir == null || object.ReferenceEquals(Get(hundir, "src"), bajo))
                   && (bool)TMono.GetProperty("Activo", T).GetValue(mono, null),
-                  "en la cadena armada de verdad cada etapa lee de la de antes: nivelado, grave en mono, (el local), (el retumbe), (la presencia), (el ataque), (las eses), grave sintetico, (el bombo)");
+                  "en la cadena armada de verdad cada etapa lee de la de antes: nivelado, grave en mono, (el local), (el retumbe), (la presencia), (el ataque), (los asperos), (las eses), grave sintetico, (el bombo)");
             float[] y = LeeTodo((ISampleProvider)Get(cad, "Salida"), new int[] { 4096 }, null);
             double aL, pL, aR, pR; Mide(y, 2, 0, fs, 50, 1.0, out aL, out pL); Mide(y, 2, 1, fs, 50, 1.0, out aR, out pR);
             Check(aR > 0.05 && Math.Abs(Db(aR / aL)) < 1.5, "y un bajo de 50 Hz que viene solo por la izquierda sale por las dos bocinas (" + F(Db(aR / aL), "0.0") + " dB por la derecha)");

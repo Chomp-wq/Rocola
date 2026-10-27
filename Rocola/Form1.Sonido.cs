@@ -1245,7 +1245,7 @@ namespace Rocola
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             AjusteLocal loc = LocalDe(c);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion, fijado en ella (LocalAuto.cs)
             // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
-            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; loc.Retumbe = false; loc.Ataque = false; }   // el bombo se queda: es de la familia del limitador
+            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; loc.Retumbe = false; loc.Ataque = false; loc.Aspereza = false; }   // el bombo se queda: es de la familia del limitador
             c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, SubgraveEf, loc.Estrecho, loc.Subgrave);   // en el billar, a 40 Hz (CadenaBillar.cs)
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
@@ -1267,7 +1267,11 @@ namespace Rocola
             c.Ataque.Cebado = audioTailDelay;
             // SUAVIZAR LAS ESES (T9, Eses.cs): detras de lo que sube los agudos, delante del bajo y del limitador. Apagada (de fabrica) ni se
             // calcula; encendida, fuera de las "s" sale bit a bit.
-            c.Eses = new SuavizaEses(c.Ataque, loc.Eses, localAuto);   // en el billar, con la referencia por encima de 1 kHz (CadenaBillar.cs)
+            // AGUDOS ASPEROS DINAMICOS (AsperezaDinamica.cs, 27-10-2026): detras del ataque (que puede levantar un platillo) y delante de las eses
+            // (que van mas arriba). Apagado (de fabrica) no toca ni una muestra.
+            c.Aspereza = new AsperezaDinamica(c.Ataque, loc.Aspereza);
+            c.Aspereza.Cebado = audioTailDelay;
+            c.Eses = new SuavizaEses(c.Aspereza, loc.Eses, localAuto);   // en el billar, con la referencia por encima de 1 kHz (CadenaBillar.cs)
             c.Eses.Cebado = audioTailDelay;
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.
@@ -1285,7 +1289,7 @@ namespace Rocola
             // EN EL BILLAR, lo que le llega al limitador se mide para el volumen parejo (VolumenParejo.cs). Pasa tal cual.
             NAudio.Wave.ISampleProvider alLimitador = c.Hundir;
             if (localAuto) { c.Margen = new MideMargen(c.Hundir, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; }
-            LimitadorPicoReal lim = new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0);
+            LimitadorPicoReal lim = new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0, localAuto);   // en el billar, respira menos (PicoReal.cs)
             lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;
             NAudio.Wave.ISampleProvider outChain = lim;
