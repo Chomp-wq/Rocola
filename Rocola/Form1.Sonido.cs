@@ -1244,7 +1244,7 @@ namespace Rocola
             // para las bocinas del billar: sin el subgrave que ninguna reproduce y con el estereo mas estrecho (GraveMono.cs).
             AjusteLocal loc = LocalDe(c);   // los mandos tal cual, o lo que decide el modo automatico del local para esta cancion, fijado en ella (LocalAuto.cs)
             // Con «Escuchar sin mejoras» puesto la cancion NACE sin lo del local (sin rampa de entrada que lo desvanezca); el subgrave y el estereo se quedan.
-            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }
+            if (sinMejoras) { loc.Claridad = false; loc.Suaves = false; loc.Presencia = false; loc.Graves = 0; loc.Agudos = 0; }   // el bombo se queda: es de la familia del limitador
             c.Mono = new GraveMono(tap, graveMonoHz, anchoEstereo, subgraveHz, loc.Estrecho, loc.Subgrave);
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
@@ -1266,10 +1266,14 @@ namespace Rocola
             c.BajoBase = BajoAuto(t.Path);          // y de cuanto se parte, si el bajo va en automatico
             c.Bajo = new DeepBassProvider(c.Eses, BassAmountPara(c.BajoFactor, c.BajoBase));
             c.Bajo.Cebado = audioTailDelay;
+            // QUE EL BOMBO NO HUNDA LA VOZ (BomboSinHundir.cs, 27-10-2026): el bajo con su propio margen, pegado al limitador. Apagado (de fabrica) no toca
+            // ni una muestra; encendido, mientras nada pase del techo, tampoco.
+            c.Hundir = new BomboSinHundir(c.Bajo, loc.Bombo);
+            c.Hundir.Cebado = audioTailDelay;
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
-            LimitadorPicoReal lim = new LimitadorPicoReal(c.Bajo, TechoPicoReal, 3.0);
+            LimitadorPicoReal lim = new LimitadorPicoReal(c.Hundir, TechoPicoReal, 3.0);
             lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;
             NAudio.Wave.ISampleProvider outChain = lim;

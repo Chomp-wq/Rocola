@@ -46,6 +46,8 @@ class LocalAutoPrueba
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
         Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
               "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
+        Check(B(b0, "Bombo") && B(bx, "Bombo") && B(b2, "Bombo"),
+              "voz, golpe y retumbe (27-10-2026): el bombo, el retumbe y el ataque van siempre en el billar, en cualquier cancion, tambien sin medir");
         Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia") && B(b2, "Presencia") && !B(bx, "Presencia"), "sin LRA (medida de antes): presencia solo desde " + muy + " dB de P99 - sonoridad; sin medir, sin presencia");
         Check(!B(Auto(0, muy - 0.01f), "Presencia") && B(Auto(0, muy), "Presencia"), "el corte de la regla de antes vale justo en su valor");
@@ -82,6 +84,11 @@ class LocalAutoPrueba
         object m0 = localDe.Invoke(f, new object[] { cancion });
         Check(B(m0, "Subgrave") && !B(m0, "Estrecho") && B(m0, "EstrechoSoloSiHaceFalta") && !B(m0, "Claridad") && B(m0, "Suaves") && B(m0, "Presencia") && I(m0, "Graves") == 3 && I(m0, "Agudos") == -2,
               "con el automatico apagado salen los siete mandos exactamente como estan, tengan lo que tengan");
+        Check(!B(m0, "Bombo"), "y con los tres interruptores de voz, golpe y retumbe apagados (de fabrica) el apagado los deja apagados");
+        PonStatic("bomboSinHundir", true);
+        object mv = localDe.Invoke(f, new object[] { cancion });
+        Check(B(mv, "Bombo"), "con el automatico apagado mandan sus tres interruptores, cada uno el suyo");
+        PonStatic("bomboSinHundir", false);
         Check(!(bool)TF.GetField("localAuto", T).GetValue(null), "de fabrica: apagado");
         object mn = localDe.Invoke(f, new object[] { null });
         Check(B(mn, "Subgrave") && I(mn, "Graves") == 3, "sin cancion tambien sale lo de los mandos");

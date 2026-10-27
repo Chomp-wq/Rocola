@@ -129,6 +129,7 @@ namespace Rocola
             if (p != null && p.Sala != null) { p.Sala.Ajusta(lp.Claridad, lp.Suaves, balanceDb); p.Sala.AjustaTono(lp.Graves, lp.Agudos); }
             if (c != null && c.Presencia != null) c.Presencia.Ajusta(lc.Presencia);
             if (p != null && p.Presencia != null) p.Presencia.Ajusta(lp.Presencia);
+            AjustaVozGolpe(c); AjustaVozGolpe(p);   // bombo, retumbe y ataque (VozGolpeYRetumbe.cs)
         }
         private static float AnchoEstereo(string texto)
         {

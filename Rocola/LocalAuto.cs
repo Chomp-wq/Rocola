@@ -21,6 +21,9 @@
 //     cancion se fija al armarla y no cambia a media cancion (CadenaCancion.AutoFijo), y en un disco continuo la siguiente lo hereda
 //     (HeredaLocal). Antes, si una pista llevaba presencia y la siguiente no, el volumen saltaba hasta 3 dB en el cambio de pista.
 //
+//   - VOZ, GOLPE Y RETUMBE (27-10-2026, VozGolpeYRetumbe.cs): que el bombo no hunda la voz, el retumbe dinamico y el ataque mas claro, siempre
+//     (cada una se frena sola por lo que oye; ninguna necesita una regla por cancion). Pendiente de oirlas en el bar para decidir si siguen aqui.
+//
 // Con el automatico encendido los mandos que decide quedan en gris diciendolo; lo que habia guardado en ellos se conserva y
 // vuelve al apagarlo. El balance, la prueba de bocinas, los arreglos de grabacion y el resto de Sonido siguen a mano.
 // Apagado (de fabrica) la cadena sale BIT A BIT como antes: LocalDe devuelve los mandos tal cual.
@@ -48,6 +51,7 @@ namespace Rocola
         internal struct AjusteLocal
         {
             public bool Subgrave, Estrecho, EstrechoSoloSiHaceFalta, Claridad, Suaves, Presencia;
+            public bool Bombo;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs, 27-10-2026)
             public int Graves, Agudos;
         }
 
@@ -61,6 +65,10 @@ namespace Rocola
             if (float.IsNaN(umbralLu) || float.IsInfinity(umbralLu)) umbralLu = LraPresenciaLu;
             a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = true; a.Suaves = true;
             a.Presencia = conLra ? lraLu >= umbralLu : (medida && rangoDb >= RangoMuyAltoDb);
+            // Voz, golpe y retumbe (27-10-2026): siempre, en el billar. Cada etapa se frena sola por lo que oye (el bombo solo baja el bajo cuando algo pasa del
+            // techo; el retumbe solo corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con
+            // sitio bajo el techo): ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
+            a.Bombo = true;
             return a;
         }
 
@@ -228,6 +236,7 @@ namespace Rocola
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;
             m.Claridad = claridadLocal; m.Suaves = partesSuaves; m.Presencia = presenciaSala;
             m.Graves = gravesLocalDb; m.Agudos = agudosLocalDb;
+            m.Bombo = bomboSinHundir;
             return m;
         }
         // L1: en racha con otra de su disco, el LRA mas alto de las pistas medidas del disco (todas deciden igual); si no, el suyo.

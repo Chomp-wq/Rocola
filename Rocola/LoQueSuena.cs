@@ -53,6 +53,7 @@ namespace Rocola
             AjusteLocal lo = LocalDe(c);
             if (c.Sala != null) { c.Sala.Ajusta(sin ? false : lo.Claridad, sin ? false : lo.Suaves, balanceDb); c.Sala.AjustaTono(sin ? 0 : lo.Graves, sin ? 0 : lo.Agudos); }
             if (c.Presencia != null) c.Presencia.Ajusta(sin ? false : lo.Presencia);
+            AjustaVozGolpe(c);   // bombo (se queda), retumbe y ataque (se quitan) - VozGolpeYRetumbe.cs
             if (!sin) return;
             if (c.Tap != null) { c.Tap.Excite = 0f; c.Tap.EqDb = EqPlana; }
             if (c.Bajo != null) c.Bajo.Amount = 0f;
@@ -99,6 +100,10 @@ namespace Rocola
             if (c.Zumbido != null) sb.Append("   Zumbido: ").Append(c.Zumbido.Hz).Append(" Hz ").Append(c.Zumbido.Activa && !c.Zumbido.Pasa ? "quitado" : "(sin quitar)");
             // T9 (Eses.cs): lo que mas bajo la banda de las eses desde la ultima mirada (cada medio segundo)
             if (c.Eses != null && c.Eses.Encendido) { double e = c.Eses.BajaDb; sb.Append("   Eses: ").Append(e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            // Bombo, retumbe y ataque (VozGolpeYRetumbe.cs): lo que hicieron desde la ultima mirada, solo si estan encendidos (una linea corta)
+            string vg = "";
+            if (c.Hundir != null && c.Hundir.Encendido) { double e = c.Hundir.BajaDb; vg += "Bombo " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            if (vg.Length > 0) sb.Append("\n").Append(vg);
             return sb.ToString();
         }
     }
