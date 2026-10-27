@@ -1344,7 +1344,7 @@ namespace Rocola
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         swZum.Checked = true;   // T6, encendido (solo actua con el defecto)
                         swEses.Checked = false;   // T9, apagado
-                        bomboSinHundir = false; retumbeDinamico = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados (aun sin mando en la ventana)
+                        bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados (aun sin mando en la ventana)
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }

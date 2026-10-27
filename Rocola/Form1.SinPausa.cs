@@ -41,6 +41,7 @@ namespace Rocola
             internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
             internal SuavizaEses Eses;           // suavizar las eses (T9, Eses.cs)
             internal RetumbeDinamico Retumbe;    // el retumbe dinamico (RetumbeDinamico.cs)
+            internal AtaqueClaro Ataque;         // el ataque mas claro (AtaqueClaro.cs)
             internal BomboSinHundir Hundir;      // que el bombo no hunda la voz (BomboSinHundir.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
@@ -331,6 +332,7 @@ namespace Rocola
             if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
             if (nueva.Eses != null) nueva.Eses.Sigue(vieja.Eses);
             if (nueva.Retumbe != null) nueva.Retumbe.Sigue(vieja.Retumbe);
+            if (nueva.Ataque != null) nueva.Ataque.Sigue(vieja.Ataque);
             if (nueva.Hundir != null) nueva.Hundir.Sigue(vieja.Hundir);
             if (nueva.Bajo != null) nueva.Bajo.Sigue(vieja.Bajo);
             if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);

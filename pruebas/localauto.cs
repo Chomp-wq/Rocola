@@ -46,7 +46,7 @@ class LocalAutoPrueba
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
         Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
               "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
-        Check(B(b0, "Bombo") && B(b0, "Retumbe") && B(bx, "Bombo") && B(bx, "Retumbe") && B(b2, "Bombo") && B(b2, "Retumbe"),
+        Check(B(b0, "Bombo") && B(b0, "Retumbe") && B(b0, "Ataque") && B(bx, "Bombo") && B(bx, "Retumbe") && B(bx, "Ataque") && B(b2, "Bombo") && B(b2, "Retumbe") && B(b2, "Ataque"),
               "voz, golpe y retumbe (27-10-2026): el bombo, el retumbe y el ataque van siempre en el billar, en cualquier cancion, tambien sin medir");
         Check(B(b0, "Suaves") && B(b1, "Suaves") && B(b2, "Suaves") && B(bx, "Suaves"), "P1: las partes suaves siempre, con poco rango, con mucho, con muchisimo y sin medir");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia") && B(b2, "Presencia") && !B(bx, "Presencia"), "sin LRA (medida de antes): presencia solo desde " + muy + " dB de P99 - sonoridad; sin medir, sin presencia");
@@ -84,11 +84,11 @@ class LocalAutoPrueba
         object m0 = localDe.Invoke(f, new object[] { cancion });
         Check(B(m0, "Subgrave") && !B(m0, "Estrecho") && B(m0, "EstrechoSoloSiHaceFalta") && !B(m0, "Claridad") && B(m0, "Suaves") && B(m0, "Presencia") && I(m0, "Graves") == 3 && I(m0, "Agudos") == -2,
               "con el automatico apagado salen los siete mandos exactamente como estan, tengan lo que tengan");
-        Check(!B(m0, "Bombo") && !B(m0, "Retumbe"), "y con los tres interruptores de voz, golpe y retumbe apagados (de fabrica) el apagado los deja apagados");
-        PonStatic("bomboSinHundir", true); PonStatic("retumbeDinamico", false);
+        Check(!B(m0, "Bombo") && !B(m0, "Retumbe") && !B(m0, "Ataque"), "y con los tres interruptores de voz, golpe y retumbe apagados (de fabrica) el apagado los deja apagados");
+        PonStatic("bomboSinHundir", true); PonStatic("retumbeDinamico", false); PonStatic("ataqueClaro", true);
         object mv = localDe.Invoke(f, new object[] { cancion });
-        Check(B(mv, "Bombo") && !B(mv, "Retumbe"), "con el automatico apagado mandan sus tres interruptores, cada uno el suyo");
-        PonStatic("bomboSinHundir", false);
+        Check(B(mv, "Bombo") && !B(mv, "Retumbe") && B(mv, "Ataque"), "con el automatico apagado mandan sus tres interruptores, cada uno el suyo");
+        PonStatic("bomboSinHundir", false); PonStatic("ataqueClaro", false);
         Check(!(bool)TF.GetField("localAuto", T).GetValue(null), "de fabrica: apagado");
         object mn = localDe.Invoke(f, new object[] { null });
         Check(B(mn, "Subgrave") && I(mn, "Graves") == 3, "sin cancion tambien sale lo de los mandos");

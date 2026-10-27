@@ -137,6 +137,7 @@
     <Compile Include="EtapaPorCuadros.cs" />
     <Compile Include="BomboSinHundir.cs" />
     <Compile Include="RetumbeDinamico.cs" />
+    <Compile Include="AtaqueClaro.cs" />
     <Compile Include="VozGolpeYRetumbe.cs" />
     <Compile Include="SalidaPropia.cs" />
     <Compile Include="SalaLocal.cs" />

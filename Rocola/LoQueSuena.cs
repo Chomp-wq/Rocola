@@ -104,6 +104,7 @@ namespace Rocola
             string vg = "";
             if (c.Hundir != null && c.Hundir.Encendido) { double e = c.Hundir.BajaDb; vg += "Bombo " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
             if (c.Retumbe != null && c.Retumbe.Encendido) { double e = c.Retumbe.CortaDb; vg += (vg.Length > 0 ? "   " : "") + "Retumbe " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            if (c.Ataque != null && c.Ataque.Encendido) { double bajo, alto; c.Ataque.Toma(out bajo, out alto); vg += (vg.Length > 0 ? "   " : "") + "Ataque " + (bajo <= -0.1 || alto >= 0.1 ? bajo.ToString("0.0") + "/+" + alto.ToString("0.0") + " dB" : "nada"); }
             if (vg.Length > 0) sb.Append("\n").Append(vg);
             return sb.ToString();
         }
