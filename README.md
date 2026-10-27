@@ -1,5 +1,22 @@
 # Rocola
 
+## Voz, golpe y retumbe — 27 de octubre de 2026
+
+Tres etapas nuevas de la cadena de sonido, para el billar:
+
+- **Que el bombo no hunda la voz:** cuando el bajo es lo que pasa del techo, baja solo el bajo (hasta 6 dB) en vez de que el limitador
+  baje toda la mezcla. Con un bajo sostenido que pasa del techo, la voz de 1 kHz se quedó a 0,00 dB (el limitador solo la hundía 4 dB).
+  **No arregla el primer golpe de un bombo muy seco** (no mira hacia adelante): el documento explica por qué y qué se podría hacer.
+- **Retumbe dinámico:** baja 260 Hz (hasta 4 dB; 3 con la claridad) solo cuando el grave medio se pasa de su propia media, y se va solo en unos
+  6 s. Cuenta lo que ya cortan el EQ automático y la claridad: entre todo, nunca más de unos 6 dB en 250-500 Hz.
+- **Ataque más claro:** quita hasta 3 dB de la cola detrás de cada golpe y, si hay sitio bajo el techo, sube el ataque hasta 1,5 dB.
+
+Cada una tiene su interruptor guardado (`bombo_sin_hundir=`, `retumbe_dinamico=`, `ataque_claro=`), apagado de fábrica, y las tres se
+encienden solas con el **modo automático del local** (el del billar). Por ahora no tienen mando en Ctrl+F3: la ventana de Sonido se va a
+reorganizar. De fábrica la cadena sale bit a bit como antes (80 de 80 canciones iguales contra el ejecutable anterior). Cuestan unos 5 ms por
+segundo de música con las tres encendidas (la cadena entera, unos 25). Probado en Linux con señales sintéticas; **nada se ha oído en el billar ni se probó en el A4**.
+[Lo hecho y lo medido](VOZ_GOLPE_Y_RETUMBE_MODEST_2026-10-27.md).
+
 ## T1, T3, T5, T6, T9 y el ruido del amplificador — 25 de octubre de 2026
 
 Lo que eligió el dueño de las propuestas del 25-10:
