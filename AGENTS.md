@@ -1,5 +1,15 @@
 # Reglas permanentes de la Rocola
 
+- Decision del usuario del 28 de octubre de 2026 (septima tanda del modo billar: «Revisar fallas» y «Afinacion a ciegas»).
+  - Arreglos automaticos, sin interruptor:
+    - la comparacion a ciegas se termina antes de armar otra cancion (ArmaCadena);
+    - mientras se compara, el volumen parejo no aprende de esa cancion (Margen.Descarta);
+    - la actividad del limitador que respira se corta a 0 bajo 1e-6 (sin desnormales; sin el billar, bit a bit).
+  - «Con o sin afinar» (CompararCiegas.cs, ciegoQue = CiegoAfinacion; boton en Lo que suena ahora junto a «Billar o fabrica» y «Me gusta esta»):
+    - la misma comparacion a ciegas, pero cambia afinadoUsar con el modo billar encendido;
+    - necesita las bandas de la voz anotadas;
+    - la configuracion guarda la de antes (AfinadoUsarAGuardar);
+    - se corta tambien al tocar algo en la hoja de afinar.
 - Decision del usuario del 27 de octubre de 2026 (sexta tanda del modo billar). Primero eligio «Afinar con microfono USB» y «Resumen de la bitacora»; despues descarto el microfono («el cable es corto [...] lo del telefono no era mala idea pero debes hacerlo lo mas simple posible»).
   - Afinar con el celular, en su forma mas simple: un boton «Tocar las 8 bandas (de grave a agudo)» con la que suena en grande, una barra por banda y «Tu app dice: dBA / dBC».
   - Un solo punto: afinado_local2= y afinado_local3= se ignoran. No hay botones por banda ni Z como boton; la Z guardada se sigue leyendo.

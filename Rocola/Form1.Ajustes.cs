@@ -1081,6 +1081,7 @@ namespace Rocola
                     };
                     EventHandler afiApply = delegate
                     {
+                        if (ciegoActivo) TerminaCiego("Cambiaste un ajuste: comparacion cortada. ");
                         for (int k = 0; k < 8; k++) afinadoDb[k] = barBanda[k].Value <= AfinaSinMedir ? float.NaN : barBanda[k].Value;
                         afinadoUsar = swAfi.Checked;
                         changed = true; pintaAfi(); RefrescaRequisitos(); ApplyNormNow();
@@ -1154,14 +1155,17 @@ namespace Rocola
                     BotonPlano bSinMej = new BotonPlano(); bSinMej.SetBounds(16, 150, 424, 34); bSinMej.Font = fBot;
                     bSinMej.Name = "SonidoSinMejoras"; tAhora.Controls.Add(bSinMej);
                     notaLocal(tAhora, 192, 64, "Mientras dura, la cancion suena sin des-recorte, siseo, DSEE,\nrealce, EQ, bajo, claridad, partes suaves ni arreglos, al\nmismo volumen: para comparar con el oido. No se guarda.");
-                    // COMPARAR A CIEGAS (quinta tanda, CompararCiegas.cs): el modo billar contra la cadena de fabrica, sin decir cual suena.
-                    BotonPlano bCiego = new BotonPlano(); bCiego.SetBounds(16, 262, 204, 30); bCiego.Font = fBot; bCiego.Text = "Comparar a ciegas";
+                    // COMPARAR A CIEGAS (quinta tanda, CompararCiegas.cs): el modo billar contra la cadena de fabrica, sin decir cual suena; y
+                    // desde la septima, con o sin la afinacion del celular.
+                    BotonPlano bCiego = new BotonPlano(); bCiego.SetBounds(16, 262, 136, 30); bCiego.Font = fBot; bCiego.Text = "Billar o fabrica";
                     bCiego.Name = "SonidoCiego"; tAhora.Controls.Add(bCiego);
-                    BotonPlano bGusta = new BotonPlano(); bGusta.SetBounds(236, 262, 204, 30); bGusta.Font = fBot; bGusta.Text = "Me gusta esta";
+                    BotonPlano bCiegoAfi = new BotonPlano(); bCiegoAfi.SetBounds(160, 262, 136, 30); bCiegoAfi.Font = fBot; bCiegoAfi.Text = "Con o sin afinar";
+                    bCiegoAfi.Name = "SonidoCiegoAfinar"; tAhora.Controls.Add(bCiegoAfi);
+                    BotonPlano bGusta = new BotonPlano(); bGusta.SetBounds(304, 262, 136, 30); bGusta.Font = fBot; bGusta.Text = "Me gusta esta";
                     bGusta.Name = "SonidoCiegoGusta"; tAhora.Controls.Add(bGusta);
-                    Label lCiego = notaLocal(tAhora, 296, 34, "");
+                    Label lCiego = notaLocal(tAhora, 296, 48, "");
                     lCiego.Name = "SonidoCiegoTexto";
-                    notaLocal(tAhora, 332, 48, "Se mira cada medio segundo. Los videos no pasan por la\ncadena de sonido: con un video aqui no hay nada que ver.");
+                    notaLocal(tAhora, 352, 32, "Se mira cada medio segundo. Con un video no hay nada que ver\n(no pasan por la cadena de sonido).");
                     Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
                     {
                         Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
@@ -1196,11 +1200,13 @@ namespace Rocola
                         bSinMej.Invalidate();
                         lAhora.Text = TextoLoQueSuena();
                         lCiego.Text = TextoCiego(); lCiego.ForeColor = ciegoActivo ? Color.FromArgb(255, 214, 120) : cTenue;
-                        bCiego.Text = ciegoActivo ? "Parar la comparacion" : "Comparar a ciegas"; bCiego.Invalidate();
+                        bCiego.Text = ciegoActivo && ciegoQue == CiegoBillar ? "Parar" : "Billar o fabrica"; bCiego.Invalidate();
+                        bCiegoAfi.Text = ciegoActivo && ciegoQue == CiegoAfinacion ? "Parar" : "Con o sin afinar"; bCiegoAfi.Invalidate();
                         bGusta.Enabled = ciegoActivo;
                     };
                     bSinMej.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); PonSinMejoras(!sinMejoras); pintaAhora(); };
-                    bCiego.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
+                    bCiego.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoBillar); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
+                    bCiegoAfi.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoAfinacion); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
                     bGusta.Click += delegate { VotaCiego(); pintaAhora(); };
                     pintaAhora();
 

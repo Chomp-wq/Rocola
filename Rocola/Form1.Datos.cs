@@ -860,7 +860,7 @@ namespace Rocola
             sb.Append("local_auto=").Append(LocalAutoAGuardar ? "1" : "0").Append("\r\n");   // durante «Comparar a ciegas», el de antes (CompararCiegas.cs)
             sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");
             sb.Append("afinado_ponderacion=").Append(AfinaPonderacionNombre[afinadoPonderacion]).Append("\r\n");
-            sb.Append("afinado_usar=").Append(afinadoUsar ? "1" : "0").Append("\r\n");
+            sb.Append("afinado_usar=").Append(AfinadoUsarAGuardar ? "1" : "0").Append("\r\n");   // (y el de antes durante «Con o sin afinar»)
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
             sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
             sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");

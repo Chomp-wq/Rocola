@@ -450,6 +450,51 @@ muestra.
 
 Con el modo apagado, `compara-cadena` da 0 distintas inesperadas.
 
+## Séptima tanda: revisión de fallas y «Con o sin afinar» a ciegas
+
+El dueño eligió «Revisar fallas» y «Afinación a ciegas» (28 de octubre de 2026).
+
+### 1. Lo que se encontró y se arregló
+
+- **La comparación a ciegas podía armar la siguiente canción sin el billar.**
+  - Qué pasaba: si la canción se acababa en un tramo «de fábrica», la siguiente se preparaba en ese momento, con el modo apagado.
+  - Consecuencia: toda la canción siguiente sonaba sin el corte de 40 Hz, sin la compensación de la presencia y sin su volumen parejo,
+    aunque al terminar la comparación el modo volvía.
+  - Arreglo: la comparación se termina antes de armar cualquier otra canción (`ArmaCadena`).
+- **Se aprendía el volumen parejo de una canción comparada.** En esa vuelta sonaron dos cadenas distintas, así que lo medido no sirve.
+  Ahora esa vuelta no se aprende, como con «Escuchar sin mejoras».
+- **Desnormales en el limitador que respira.** Tras un minuto y medio sin limitar, su actividad bajaba a números diminutos que en
+  procesadores como el A4 hacen lentísimo el hilo del sonido. Ahora se corta a cero. Sin el billar, el limitador sigue saliendo bit a bit.
+
+Se revisó además y está bien:
+
+- `eqCache` se lee solo en el hilo de la pantalla, donde se arma la cadena.
+- La bitácora y su resumen: cerrojos y segundo plano.
+- Los filtros de los agudos ásperos: sin desnormales.
+- El aprendizaje y la recta del volumen parejo.
+
+### 2. «Con o sin afinar», a ciegas
+
+En «Lo que suena ahora» hay ahora tres botones: «Billar o fábrica», «Con o sin afinar» y «Me gusta esta».
+
+- «Con o sin afinar» funciona como la comparación de antes: 2 minutos, 8 tramos de 15 s al azar, un voto por tramo.
+- Lo que cambia es la afinación del celular. El modo billar sigue encendido todo el rato.
+- Necesita las bandas de la voz anotadas.
+- El EQ cambia al instante. El bajo según lo medido se fija al armar la canción, así que no cambia en la comparación.
+- No se guarda: la configuración lleva la afinación de antes (`AfinadoUsarAGuardar`). Vuelve como estaba al acabar, al cambiar de
+  canción, al tocar un ajuste (también en la hoja de afinar) o al cerrar la ventana.
+
+### Pruebas de la séptima tanda
+
+`pruebas/cadenabillar.cs` (sección 10) comprueba:
+
+- que la actividad del limitador queda en cero exacto tras 100 s sin limitar;
+- que la comparación no aprende y se acaba antes de armar la siguiente canción;
+- el resultado «con o sin tu afinación», y que sin las bandas de la voz no se puede comparar;
+- que durante la comparación se guarda la afinación de antes.
+
+Con el modo apagado, `compara-cadena` da 0 distintas inesperadas.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,

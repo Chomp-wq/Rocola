@@ -388,7 +388,7 @@ namespace Rocola
                 if (target < env) { env += atk * (target - env); esperando = espera; }
                 else if (esperando > 0) esperando--;
                 else env += (respira ? rel + (relLenta - rel) * actividad : rel) * (target - env);
-                if (respira) actividad += kActividad * ((env < RespiraUmbral ? 1f : 0f) - actividad);
+                if (respira) { actividad += kActividad * ((env < RespiraUmbral ? 1f : 0f) - actividad); if (actividad < 1e-6f) actividad = 0f; }   // sin desnormales tras un rato sin limitar
             }
 
             private float[] intervalos = new float[0];   // pico real de cada intervalo del bloque (el mayor de los canales)

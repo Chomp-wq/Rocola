@@ -319,7 +319,7 @@ class CadenaBillarPrueba
         bool[] orden = (bool[])TF.GetMethod("OrdenCiego", T).Invoke(null, new object[] { new Random(1) }); int nb = 0; foreach (bool b2 in orden) if (b2) nb++;
         MethodInfo resC = TF.GetMethod("ResultadoCiego", T);
         Check(orden.Length == 8 && nb == 4, "a ciegas: ocho tramos, cuatro de cada uno, al azar");
-        Check(((string)resC.Invoke(null, new object[] { 4, 1 })).Contains("el modo billar") && ((string)resC.Invoke(null, new object[] { 1, 3 })).Contains("fabrica") && ((string)resC.Invoke(null, new object[] { 2, 2 })).StartsWith("Empate") && ((string)resC.Invoke(null, new object[] { 0, 0 })).StartsWith("No votaste"), "y al final dice cual elegiste mas veces");
+        Check(((string)resC.Invoke(null, new object[] { 4, 1, 0 })).Contains("el modo billar") && ((string)resC.Invoke(null, new object[] { 1, 3, 0 })).Contains("fabrica") && ((string)resC.Invoke(null, new object[] { 2, 2, 0 })).StartsWith("Empate") && ((string)resC.Invoke(null, new object[] { 0, 0, 0 })).StartsWith("No votaste"), "y al final dice cual elegiste mas veces");
         Check(dat.Contains("Append(LocalAutoAGuardar ?") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Ventana cerrada") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Cambiaste un ajuste"), "no se guarda: la configuracion lleva el modo de antes y vuelve al cerrar o al tocar un ajuste");
 
         Console.WriteLine("\n  9) SEXTA TANDA: AFINAR CON EL CELULAR, LO MAS SIMPLE, Y EL RESUMEN DE LA BITACORA\n");
@@ -345,6 +345,41 @@ class CadenaBillarPrueba
         Check(resManana.StartsWith("Bitacora: 2 canciones; 0 en las ultimas 12 h.\nEl limitador bajo mas de 3 dB el"), "sin canciones recientes, el promedio de todas");
         Check(Texto("Form1.cs").Contains("QueueUserWorkItem(delegate { CargaResumenBitacora(); })") && Texto("BitacoraBillar.cs").Contains("if (r != null) lock (r) AcumulaBitacora(r, linea, DateTime.Now);")
               && aj.Contains("+ TextoBitacoraTarjeta()"), "se lee al arrancar en segundo plano, se suma cada linea nueva y va en la tarjeta del billar");
+
+        Console.WriteLine("\n  10) SEPTIMA TANDA: REVISION Y CON O SIN AFINAR A CIEGAS\n");
+        // El limitador que respira, tras 100 s sin limitar: su actividad llega a cero exacto (sin desnormales).
+        float[] xq = new float[44100 * 2 * 102];
+        for (int i = 0; i < 44100 * 2; i++) xq[2 * i] = xq[2 * i + 1] = (float)(1.6 * Math.Sin(i * 0.05));
+        for (int i = 44100 * 2; i < xq.Length / 2; i++) xq[2 * i] = xq[2 * i + 1] = (float)(1e-3 * Math.Sin(i * 0.05));
+        object lq2 = Activator.CreateInstance(TL, T, null, new object[] { new Fuente(xq), 0.88f, 3.0, true }, null);
+        float[] oq = new float[xq.Length]; int gq = 0, kq; float actMax = 0f;
+        FieldInfo actF = TL.GetField("actividad", T);
+        while ((kq = ((NAudio.Wave.ISampleProvider)lq2).Read(oq, gq, Math.Min(8820, oq.Length - gq))) > 0) { gq += kq; if (gq == 44100 * 2 * 2) actMax = (float)actF.GetValue(lq2); }
+        float actFin = (float)actF.GetValue(lq2);
+        Check(actMax > 0.5f && actFin == 0f, "limitador que respira: tras 100 s sin limitar, su actividad queda en cero exacto, sin desnormales (" + actMax.ToString("0.00") + " -> " + actFin + ")");
+        Check(Texto("PicoReal.cs").Contains("if (actividad < 1e-6f) actividad = 0f;"), "y se corta a cero en el codigo");
+        // Comparar a ciegas: no se aprende de esa vuelta y se acaba antes de armar otra cancion.
+        string ccSrc = Texto("CompararCiegas.cs");
+        Check(ccSrc.Contains("if (cs != null && cs.Margen != null) cs.Margen.Descarta = true;"), "mientras se compara, el volumen parejo no aprende de esa cancion");
+        Check(son.Contains("if (ciegoActivo) TerminaCiego(\"Se acaba la cancion: comparacion cortada. \");\r\n            CadenaCancion c = new CadenaCancion();")
+              || son.Contains("if (ciegoActivo) TerminaCiego(\"Se acaba la cancion: comparacion cortada. \");\n            CadenaCancion c = new CadenaCancion();"),
+              "la comparacion se acaba antes de armar la siguiente cancion (no se arma con un tramo de fabrica)");
+        // Con o sin afinar.
+        Check(((string)resC.Invoke(null, new object[] { 3, 1, 1 })).Contains("con tu afinacion") && ((string)resC.Invoke(null, new object[] { 0, 2, 1 })).Contains("sin tu afinacion"),
+              "con o sin afinar: al final dice si te gusto mas con o sin tu afinacion");
+        object gC = FormatterServices.GetUninitializedObject(TF);
+        float[] afi = (float[])TF.GetField("afinadoDb", T).GetValue(null); float[] afiAntes = (float[])afi.Clone();
+        for (int b = 0; b < 8; b++) afi[b] = float.NaN;
+        PonStatic("localAuto", true);
+        string rNo = (string)TF.GetMethod("EmpiezaCiego", T).Invoke(gC, new object[] { 1 });
+        Check(rNo.StartsWith("Anota antes las bandas de la voz"), "sin las bandas de la voz anotadas no se puede comparar la afinacion");
+        Array.Copy(afiAntes, afi, 8);
+        TF.GetField("ciegoActivo", T).SetValue(gC, true); TF.GetField("ciegoQue", T).SetValue(gC, 1); TF.GetField("ciegoGuardado", T).SetValue(gC, false); PonStatic("afinadoUsar", true);
+        PropertyInfo aGu = TF.GetProperty("AfinadoUsarAGuardar", T), lGu = TF.GetProperty("LocalAutoAGuardar", T);
+        Check(!(bool)aGu.GetValue(gC, null) && (bool)lGu.GetValue(gC, null), "mientras compara la afinacion se guarda la de antes, y el modo billar tal cual");
+        TF.GetField("ciegoActivo", T).SetValue(gC, false); PonStatic("afinadoUsar", false);
+        Check(dat.Contains("Append(AfinadoUsarAGuardar ?") && aj.Contains("EmpiezaCiego(CiegoAfinacion)") && aj.Contains("\"SonidoCiegoAfinar\"") && aj.Contains("if (ciegoActivo) TerminaCiego(\"Cambiaste un ajuste: comparacion cortada. \");"),
+              "el boton «Con o sin afinar» y la hoja de afinar corta la comparacion si tocas algo");
 
         PonStatic("localAuto", false);
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos (cuentas en Linux/Mono; nada oido en el billar)");

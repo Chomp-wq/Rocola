@@ -1,5 +1,17 @@
 # Rocola
 
+## Modo billar, séptima tanda — 28 de octubre de 2026
+
+- **Fallas arregladas:**
+  - si la canción se acababa en mitad de «Comparar a ciegas», la siguiente podía sonar entera sin el billar;
+  - esa canción comparada ya no enseña el volumen parejo;
+  - el limitador del billar ya no cae en números lentos tras un rato sin limitar.
+- **«Con o sin afinar», a ciegas:** en «Lo que suena ahora», 2 minutos alternando con y sin tu afinación del celular, sin decir cuál. Votas
+  y te dice cuál te gustó más.
+
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#séptima-tanda-revisión-de-fallas-y-con-o-sin-afinar-a-ciegas). **Nada oído en el billar ni
+probado en el A4.**
+
 ## Modo billar, sexta tanda — 27 de octubre de 2026
 
 - **Afinar con el celular, más simple:** un botón toca las 8 bandas de grave a agudo, anotas el número de tu app en cada una y pones

@@ -1188,6 +1188,8 @@ namespace Rocola
         // 'saltadoSeg': la cancion se retoma desde ahi (volvio el aparato de sonido; SalidaSonido.cs); 0 = entera.
         private CadenaCancion ArmaCadena(Track t, IAudioSource source, bool iaMejorada, double saltadoSeg)
         {
+            // La comparacion a ciegas se acaba antes de armar otra cancion: si no, se armaria con lo del tramo que suene (CompararCiegas.cs).
+            if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. ");
             CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale

@@ -7,6 +7,14 @@
 // fija al armar la cancion (el corte del subgrave a 40 Hz, la compensacion de la presencia) sigue como estaba en esa cancion. Cada modo suena
 // a su volumen de verdad: el del billar lleva su volumen parejo. No se guarda nada: la configuracion sigue diciendo lo de antes, y al acabar,
 // al cambiar de cancion, al tocar un ajuste o al cerrar la ventana vuelve el modo como estaba. Solo con el modo billar encendido.
+//
+// CON O SIN AFINAR (septima tanda, 28-10-2026): lo mismo, pero lo que cambia es la afinacion del celular (afinado_usar=), con el modo
+// billar encendido todo el rato: para saber si lo que se anoto con el celular de verdad suena mejor. Necesita las bandas de la voz anotadas.
+// Lo que se fija al armar la cancion (el bajo segun lo medido) sigue como estaba en esa cancion; el EQ cambia al instante.
+//
+// Revision de la septima tanda: (1) mientras se compara, el volumen parejo no aprende de esa cancion (sonaron dos cadenas distintas);
+// (2) si la cancion se acaba en mitad de la comparacion, esta se termina ANTES de armar la siguiente (ArmaCadena): si no, la siguiente
+// podia armarse en un tramo «de fabrica» y quedarse toda la cancion sin el corte de 40 Hz, la presencia y el volumen parejo del billar.
 using System;
 
 namespace Rocola
@@ -14,8 +22,10 @@ namespace Rocola
     public partial class Form1
     {
         internal const int CiegoTramos = 8, CiegoTramoSeg = 15;
+        internal const int CiegoBillar = 0, CiegoAfinacion = 1;   // que se compara
         private bool ciegoActivo, ciegoGuardado;
-        private bool[] ciegoOrden, ciegoVotado;   // true: el tramo es del modo billar / ya votado (se arman al empezar)
+        private int ciegoQue;
+        private bool[] ciegoOrden, ciegoVotado;   // true: el tramo es del modo billar (o con la afinacion) / ya votado (se arman al empezar)
         private int ciegoVotosBillar, ciegoVotosFabrica, ciegoTramo = -1;
         private DateTime ciegoInicio;
         private PlayItem ciegoCancion;
@@ -29,23 +39,28 @@ namespace Rocola
             for (int i = CiegoTramos - 1; i > 0; i--) { int j = r.Next(i + 1); bool t = o[i]; o[i] = o[j]; o[j] = t; }
             return o;
         }
-        // Lo que se dice al acabar. Pura.
-        internal static string ResultadoCiego(int billar, int fabrica)
+        // Lo que se dice al acabar ('a' votos de lo primero: el billar o con la afinacion). Pura.
+        internal static string ResultadoCiego(int a, int b, int que)
         {
-            if (billar + fabrica == 0) return "No votaste en ningun tramo: no hay ganador.";
-            if (billar == fabrica) return "Empate: " + billar + " votos para cada uno.";
-            return "Te gusto mas " + (billar > fabrica ? "el modo billar" : "la cadena de fabrica") + ": " + Math.Max(billar, fabrica) + " votos contra " + Math.Min(billar, fabrica) + ".";
+            if (a + b == 0) return "No votaste en ningun tramo: no hay ganador.";
+            if (a == b) return "Empate: " + a + " votos para cada uno.";
+            string nomA = que == CiegoAfinacion ? "con tu afinacion" : "el modo billar", nomB = que == CiegoAfinacion ? "sin tu afinacion" : "la cadena de fabrica";
+            return "Te gusto mas " + (a > b ? nomA : nomB) + ": " + Math.Max(a, b) + " votos contra " + Math.Min(a, b) + ".";
         }
 
-        internal string EmpiezaCiego()
+        internal string EmpiezaCiego(int que)
         {
             if (ciegoActivo) return "";
             if (!localAuto) return "Enciende el modo billar para comparar.";
+            if (que == CiegoAfinacion && CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null)
+                return "Anota antes las bandas de la voz (250 Hz a 2 kHz) en\n\"Afinar el local con el celular\".";
             if (nowPlaying == null || nowPlaying.Song == null || videoOn) return "Pon una cancion para comparar.";
             if (sinMejoras) PonSinMejoras(false);
+            CadenaCancion cs = cadenaSonando; if (cs != null && cs.Margen != null) cs.Margen.Descarta = true;   // (1) esta vuelta no se aprende
+            ciegoQue = que == CiegoAfinacion ? CiegoAfinacion : CiegoBillar;
             ciegoOrden = OrdenCiego(new Random()); ciegoVotado = new bool[CiegoTramos];
             ciegoVotosBillar = ciegoVotosFabrica = 0; ciegoTramo = -1; ciegoResultado = "";
-            ciegoGuardado = localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
+            ciegoGuardado = ciegoQue == CiegoAfinacion ? afinadoUsar : localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
             CiegoTick();
             return "";
         }
@@ -69,12 +84,12 @@ namespace Rocola
             if (!ciegoActivo) return;
             ciegoActivo = false; ciegoTramo = -1;
             CiegoPon(ciegoGuardado);
-            ciegoResultado = porQue + ResultadoCiego(ciegoVotosBillar, ciegoVotosFabrica);
+            ciegoResultado = porQue + ResultadoCiego(ciegoVotosBillar, ciegoVotosFabrica, ciegoQue);
         }
-        private void CiegoPon(bool billar)
+        private void CiegoPon(bool a)
         {
-            if (localAuto == billar) return;
-            localAuto = billar;
+            if (ciegoQue == CiegoAfinacion) { if (afinadoUsar == a) return; afinadoUsar = a; }
+            else { if (localAuto == a) return; localAuto = a; }
             try { AplicaBocinas(); AplicaALaMedida(); ApplyNormNow(); } catch (Exception ex) { LogError("Comparar a ciegas", ex); }
         }
         // Lo que dice la hoja.
@@ -83,12 +98,13 @@ namespace Rocola
             if (ciegoActivo && ciegoVotado != null)
             {
                 int votos = 0; for (int i = 0; i < CiegoTramos; i++) if (ciegoVotado[i]) votos++;
-                return "Comparando: tramo " + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
+                return (ciegoQue == CiegoAfinacion ? "Con o sin afinar: tramo " : "Billar o fabrica: tramo ") + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
                      + (ciegoTramo >= 0 && ciegoVotado[ciegoTramo] ? "\nEste tramo ya tiene tu voto." : "\nToca «Me gusta esta» si este tramo te suena mejor.");
             }
-            return !string.IsNullOrEmpty(ciegoResultado) ? ciegoResultado : "2 min: cambia cada 15 s entre el modo billar y la cadena de\nfabrica sin decir cual. Vota los tramos que te suenen mejor.";
+            return !string.IsNullOrEmpty(ciegoResultado) ? ciegoResultado : "A ciegas, 2 min: cambia cada 15 s entre dos formas de sonar sin\ndecir cual (el billar o la de fabrica; con o sin tu afinacion).\nVota los tramos que te suenen mejor.";
         }
-        // Lo que se guarda como modo billar: durante la comparacion, el de antes.
-        private bool LocalAutoAGuardar { get { return ciegoActivo ? ciegoGuardado : localAuto; } }
+        // Lo que se guarda como modo billar y como «usar la afinacion»: durante la comparacion, lo de antes.
+        private bool LocalAutoAGuardar { get { return ciegoActivo && ciegoQue == CiegoBillar ? ciegoGuardado : localAuto; } }
+        private bool AfinadoUsarAGuardar { get { return ciegoActivo && ciegoQue == CiegoAfinacion ? ciegoGuardado : afinadoUsar; } }
     }
 }
