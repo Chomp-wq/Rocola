@@ -535,6 +535,19 @@ La batería `desnormales` suma la cadena del billar con todas sus etapas: 3 s de
 - Se excluyen las casillas viejas de la cola de picos del limitador, porque no se calcula con ellas.
 - El silencio (33,5 ms/s) ya cuesta menos que la música (40,5).
 
+### 2b. Más comprobaciones de la cadena (después de publicar la octava tanda)
+
+- **Cambio de pista en un disco continuo, en el billar y fuerte** (el limitador que respira y los agudos ásperos trabajando en el
+  cambio): escalón 0,0011, con un tope de 0,005. Queda en `pruebas/cadenaentera.cs`.
+- **Archivos raros:** 8, 11, 16, 22, 32, 44,1, 48, 88,2, 96 y 192 kHz, mono y estéreo, de fábrica y en el billar.
+  - Nunca sale NaN ni infinito.
+  - El pico queda en el techo (0,880).
+  - Sale el largo justo.
+  - El silencio llega a cero exacto (en mono a 44,1 kHz con el billar, un resto de 1e-29 se va solo antes de 1,5 s).
+- **Armar la cadena** en el hilo de la pantalla cuesta menos de 5 ms (la primera vez, 17 ms: lo que tarda .NET en compilar).
+- **El bloque de 50 ms más caro** en el billar cuesta de 6 a 12 ms en este equipo. El colchón de la música (200 ms más los 750 de la
+  salida) lo absorbe.
+
 ### 3. La revisión del resto
 
 - **`SalidaPropia.cs`**, la salida de sonido con su propio hilo: las estructuras coinciden con las de Windows (`WAVEHDR` y `MMTIME` de

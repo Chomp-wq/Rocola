@@ -375,6 +375,10 @@ class CadenaEntera
             Check(e < 0.002, nom[k] + ": el cambio no da escalon (" + e.ToString("0.00000") + "; el salto normal entre muestras es " + normal.ToString("0.0000")
                   + "; lo que mas se aparta de la cancion entera, " + aparta.ToString("0.0000") + ", lo que la anterior no podia saber de la siguiente)");
         }
+        {   // (28-10-2026) el modo billar fuerte: el limitador que respira, los agudos asperos y el oido del volumen parejo en el cambio
+            double aparta, normal, e = Empalme(dir, delegate(object f) { Set(f, "localAuto", true); }, 1.6, out aparta, out normal);
+            Check(e < 0.005, "modo billar y fuerte, con el limitador trabajando en el cambio: escalon " + e.ToString("0.0000") + "; salto normal " + normal.ToString("0.0000"));
+        }
         {
             double aparta, normal, e = Empalme(dir, delegate(object f) { }, 1.6, out aparta, out normal);
             Check(e < 0.005, "y fuerte, con el limitador trabajando en el cambio: escalon " + e.ToString("0.0000") + " (la version publicada, 0,46); salto normal " + normal.ToString("0.0000"));
