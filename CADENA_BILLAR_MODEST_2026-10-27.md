@@ -548,6 +548,34 @@ La batería `desnormales` suma la cadena del billar con todas sus etapas: 3 s de
 - **El bloque de 50 ms más caro** en el billar cuesta de 6 a 12 ms en este equipo. El colchón de la música (200 ms más los 750 de la
   salida) lo absorbe.
 
+### 2c. Los modos automáticos y las IA en el billar, revisados (28 de octubre de 2026)
+
+El dueño pidió verificar que el AutoEQ, el grave profundo y las IA (incluido el DSEE por género) estén bien configurados para el billar.
+
+| Pieza | En el billar | Dónde se decide |
+|---|---|---|
+| EQ automático | siempre en automático, con las reglas del billar y el objetivo de cada canción | `EqCorrCancion`: `auto = eqAuto \|\| billar` |
+| Objetivo del EQ (IA del EQ, `rocola_eq_ia.bin`) | lo da la red para el grave profundo y los agudos; sin modelo, el promedio de la biblioteca | `MetaDeCancion` |
+| I1, a la medida | siempre encendido: el bajo y el realce miden con la misma vara que el EQ | `MetaALaMedida`: `aLaMedida \|\| localAuto` |
+| Bajo psicoacústico | en automático, por el factor de cada canción y el de lo medido con el celular | `BassBaseNow`, `BassAmountPara` |
+| Corte de grave | al menos 40 Hz (por los puertos de las cajas) | `SubgraveEf` |
+| Realce | solo lo que el codec cortó | `RealceBillar` |
+| I2, siseo | apagado | `quitaSiseo && !localAuto` |
+| DSEE (e I3, por género) | apagado | `DseeEfectivo = sbrOn && !localAuto` |
+
+**El DSEE se volvió a medir**, porque en un MP3 cortado en 11 a 13 kHz lo que falta sí cae donde dan los tweeters. Prueba: un pop sintético
+cortado como un MP3 (en seco, 32.º orden) en 12 y en 15 kHz, por la cadena del billar con y sin DSEE, con el modelo general cargado
+(`ia/rocola_ia.bin`). Se compara contra el pop completo por la misma cadena (bandas de tercio, dB).
+
+- **El DSEE se activa bien:** detecta el corte en 12,6 y 15,4 kHz y reconstruye desde ahí.
+- **Recrea con la caída natural de una grabación** (unos −9 dB por octava): suma +0,2 a +0,4 dB entre 12,5 y 20 kHz. En la cadena de
+  fábrica, lo mismo.
+- **Cuesta de 10 a 18 ms más por segundo de música**, un 30 a 55 % más de toda la cadena del billar.
+- **Lo que sí devuelve brillo en el billar es el realce:** sin él, de 6 a 10 kHz quedan 0,4 a 0,6 dB más bajos.
+
+**Conclusión: el DSEE sigue apagado en el billar.** Arriba de 12 kHz aporta muy poco, los tweeters de corneta y la nave se comen esa zona,
+y en el A4 cuesta mucho. Por eso el DSEE por género no actúa con el modo billar. Sigue funcionando igual con el modo apagado.
+
 ### 3. La revisión del resto
 
 - **`SalidaPropia.cs`**, la salida de sonido con su propio hilo: las estructuras coinciden con las de Windows (`WAVEHDR` y `MMTIME` de

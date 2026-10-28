@@ -57,10 +57,14 @@ class RespaldoBytes
         bool sha = false;
         foreach (string s in Codigo.Llamadas(bk)) if (s.IndexOf("SHA256") >= 0 || s.IndexOf("HashAlgorithm") >= 0 || s.EndsWith(".TransformBlock") || s.EndsWith(".TransformFinalBlock")) sha = true;
         Check(!sha, "BackupToCapturado ya no calcula ningun hash (antes: dos SHA-256 por archivo)");
-        Check(Codigo.Llama(bk, "CompruebaCopiaDeRespaldo") && Codigo.Llama(bk, "FlushFileBuffers") && Codigo.Llama(bk, "Move"),
+        // (28-10-2026) La confirmacion pasa por RespaldoEnDisco, que llama a FlushFileBuffers (y fuera de Windows, sin esa llamada, basta el Flush).
+        MethodInfo enDisco = TF.GetMethod("RespaldoEnDisco", T);
+        string flush = Codigo.Llama(bk, "FlushFileBuffers") ? "Form1.FlushFileBuffers" : "Form1.RespaldoEnDisco";
+        bool confirma = Codigo.Llama(bk, "FlushFileBuffers") || (enDisco != null && Codigo.Llama(bk, "RespaldoEnDisco") && Codigo.Llama(enDisco, "FlushFileBuffers"));
+        Check(Codigo.Llama(bk, "CompruebaCopiaDeRespaldo") && confirma && Codigo.Llama(bk, "Move"),
               "pero sigue confirmando en disco, comprueba la copia y solo despues la publica por renombrado");
         List<string> orden = Codigo.Llamadas(bk);
-        Check(orden.IndexOf("Form1.FlushFileBuffers") >= 0 && orden.IndexOf("Form1.CompruebaCopiaDeRespaldo") > orden.IndexOf("Form1.FlushFileBuffers")
+        Check(orden.IndexOf(flush) >= 0 && orden.IndexOf("Form1.CompruebaCopiaDeRespaldo") > orden.IndexOf(flush)
               && orden.IndexOf("Directory.Move") > orden.IndexOf("Form1.CompruebaCopiaDeRespaldo"), "y en ese orden: confirmar, comprobar, publicar");
 
         // ---------- 2) la comprobacion ----------

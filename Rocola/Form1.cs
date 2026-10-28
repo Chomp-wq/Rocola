@@ -279,6 +279,10 @@ namespace Rocola
         private static string UnidadDe(string ruta)
         {
             if (string.IsNullOrEmpty(ruta)) return "";
+            // La letra de unidad se lee a mano: da lo mismo que GetPathRoot en Windows ("C:\", "C:") y tambien vale fuera de Windows (las
+            // pruebas en Linux, donde GetPathRoot("C:\x") da "" y todas las rutas parecian de la misma unidad).
+            if (ruta.Length >= 2 && ruta[1] == ':' && char.IsLetter(ruta[0]))
+                return ruta.Length >= 3 && (ruta[2] == '\\' || ruta[2] == '/') ? ruta.Substring(0, 3) : ruta.Substring(0, 2);
             try { string r = Path.GetPathRoot(ruta); return r ?? ""; }
             catch { return ""; }
         }

@@ -903,6 +903,14 @@ namespace Rocola
         // copia (.bak) por si el bueno se estropeara por cualquier otro motivo.
         [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool FlushFileBuffers(IntPtr hFile);
+        // El respaldo exige que Windows confirme que esta en el disco. Si la llamada no existe en el sistema (no es Windows: las pruebas en
+        // Linux) basta el Flush que ya se hizo; en Windows, si falla, sigue siendo un error (28-10-2026).
+        private static bool RespaldoEnDisco(FileStream fs)
+        {
+            try { return FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); }
+            catch (EntryPointNotFoundException) { return true; }
+            catch (DllNotFoundException) { return true; }
+        }
 
         // UN CANDADO POR ARCHIVO. Dos hilos guardando EL MISMO archivo a la vez se pisarian el archivo de
         // paso y dejarian el bueno hecho un lio. Pasaba de verdad con las estadisticas, que tienen dos
@@ -2664,7 +2672,7 @@ namespace Rocola
                                     faltan -= n;
                                 }
                                 outputFile.Flush();
-                                if (!FlushFileBuffers(outputFile.SafeFileHandle.DangerousGetHandle())) throw new IOException("No se pudo confirmar el respaldo en disco");
+                                if (!RespaldoEnDisco(outputFile)) throw new IOException("No se pudo confirmar el respaldo en disco");
                             }
                             CompruebaCopiaDeRespaldo(input, archivo.Largo, dst, buffer, otro, cede, archivo.Ruta);
                             copied++;

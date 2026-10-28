@@ -111,7 +111,7 @@ class DiscoAcotado
         foreach (Codigo.Paso step in Codigo.Pasos(method))
             if (step.Op == 0x20 && (unchecked((uint)step.Numero) & unchecked((uint)FileOptions.WriteThrough)) != 0) writeThrough = true;
         Check(!writeThrough, "respaldo no obliga a confirmar individualmente cada bloque");
-        Check(Codigo.Llama(method, "FlushFileBuffers") && Codigo.Llama(method, "CompruebaCopiaDeRespaldo") && Codigo.Llama(method, "Move"),
+        Check((Codigo.Llama(method, "FlushFileBuffers") || Codigo.Llama(method, "RespaldoEnDisco")) && Codigo.Llama(method, "CompruebaCopiaDeRespaldo") && Codigo.Llama(method, "Move"),
             "conserva confirmacion final, copia releida y comparada con el origen (antes, hash) y publicacion por renombrado");
         string path = Path.Combine(directory, "fuente.bin"); byte[] content = new byte[2 * 1024 * 1024 + 173];
         for (int i = 0; i < content.Length; i++) content[i] = (byte)(i * 31);

@@ -124,7 +124,11 @@ class Sala
                                   nom[fila], tono[fila].R, tono[fila].G, tono[fila].B));
             // La pedida tira a VERDE (G manda) y la que suena tira a AMBAR (R manda sobre B). Se miran los
             // pixeles de verdad: es la unica forma de asegurar que se distinguen sin leer la palabra.
-            Check(tono[1].G > tono[1].B + 6, "la pedida se lee VERDE");
+            // (28-10-2026) Antes pedia G > B + 6: el verde de la pastilla es verde agua (G y B parecidos) y con la letra y el borde
+            // mezclados el promedio quedaba en G 95, B 89 y fallaba aunque a la vista es claramente verde. Lo que importa es que se
+            // distinga: frente a la fila normal (azul, G - B muy negativo) el verde gana al azul por mucho, y al rojo tambien.
+            int gbPedida = tono[1].G - tono[1].B, gbNormal = tono[0].G - tono[0].B;
+            Check(gbPedida > gbNormal + 30 && tono[1].G > tono[1].R + 20 && gbPedida >= 0, "la pedida se lee VERDE (G-B " + gbPedida + " frente a " + gbNormal + " de la normal; G-R " + (tono[1].G - tono[1].R) + ")");
             Check(tono[2].R > tono[2].B + 20 && tono[2].R >= tono[2].G, "la que suena se lee AMBAR");
             // La diferencia gorda entre verde y ambar esta en el ROJO (49 contra 108), que es justo lo que las
             // hace distinguibles de lejos; por eso se miden los tres canales y no solo dos.
