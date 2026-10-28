@@ -1,5 +1,10 @@
 # Reglas permanentes de la Rocola
 
+- Decision del usuario del 28 de octubre de 2026 (octava tanda: «Cadena mas ligera» y «Revisar el resto», y otra mirada a las fotos de las bocinas).
+  - Arreglo automatico, sin interruptor: las envolventes de «Suavizar las eses» (eB, eT en Eses.cs) se cortan a 0 bajo 1e-30; se quedaban en un desnormal fijo en el silencio. Lo que suena no cambia.
+  - pruebas/desnormales.cs mira tambien la cadena del billar entera en 30 s de silencio.
+  - La cadena del billar gasta 2,8 % de un nucleo en Linux, frente a 2,1 % la de fabrica; sin ahorro bit a bit, no se toco.
+  - Las fotos: varias bocinas en paralelo en el mismo borne del amplificador (carga baja), cable delgado a las cajas de fuera, los tweeters del gabinete con su condensador al parecer, y las perillas de microfono subidas. Es de instalacion: no cambia la cadena.
 - Decision del usuario del 28 de octubre de 2026 (septima tanda del modo billar: «Revisar fallas» y «Afinacion a ciegas»).
   - Arreglos automaticos, sin interruptor:
     - la comparacion a ciegas se termina antes de armar otra cancion (ArmaCadena);

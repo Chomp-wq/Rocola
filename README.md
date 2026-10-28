@@ -1,5 +1,18 @@
 # Rocola
 
+## Modo billar, octava tanda — 28 de octubre de 2026
+
+- **Falla arreglada:** con «Suavizar las eses» (siempre en el billar), en el silencio dos valores se quedaban en números lentos para
+  siempre. Ahora se cortan a cero. No cambia lo que suena.
+- **Cadena más ligera:** medida etapa por etapa, la cadena del billar gasta 2,8 % de un núcleo aquí, frente a 2,1 % la de fábrica. No
+  hay más ahorro sin cambiar el sonido.
+- **Revisión del resto:** la salida de sonido con su propio hilo y el volumen de Windows están bien.
+- **Fotos de las bocinas:** varias bocinas en paralelo en el mismo borne (carga muy baja), cable delgado a las cajas de fuera y las
+  perillas de micrófono subidas. Es de instalación, no de programa.
+
+[Detalle](CADENA_BILLAR_MODEST_2026-10-27.md#octava-tanda-cadena-más-ligera-revisión-del-resto-y-otra-mirada-a-las-fotos). **Nada oído en el
+billar ni probado en el A4.**
+
 ## Modo billar, séptima tanda — 28 de octubre de 2026
 
 - **Fallas arregladas:**

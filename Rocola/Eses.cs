@@ -115,6 +115,8 @@ namespace Rocola
                 if (++c < ch) continue;
                 c = 0;
                 b += kEnv * (sb - b); t += kEnv * (st - t); sb = 0; st = 0;
+                if (b < 1e-30) b = 0.0;   // (28-10-2026) en el silencio se quedaba en un desnormal fijo (kEnv * b redondea a 0) y costaba en
+                if (t < 1e-30) t = 0.0;   // cada muestra para siempre; el piso (-40 dB) queda muy por encima: lo que suena no cambia
                 double meta = 1.0;
                 if (on && b > piso && b > Umbral * t) { meta = Umbral * t / b; meta *= meta; if (meta < gMin) meta = gMin; }
                 if (meta < gg) gg += kAta * (meta - gg);

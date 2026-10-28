@@ -495,6 +495,75 @@ En «Lo que suena ahora» hay ahora tres botones: «Billar o fábrica», «Con o
 
 Con el modo apagado, `compara-cadena` da 0 distintas inesperadas.
 
+## Octava tanda: cadena más ligera, revisión del resto y otra mirada a las fotos
+
+El dueño eligió «Cadena más ligera» y «Revisar el resto» (28 de octubre de 2026). Después mandó otra vez las fotos de las bocinas:
+«a ver si no se te escapó algo esencial».
+
+### 1. Lo que gasta la cadena
+
+Se midió con un banco nuevo, que pone un cronómetro en cada etapa de la cadena de verdad (5 canciones sintéticas × 3 vueltas, Linux/Mono
+en este equipo; el A4 es más lento):
+
+| | ms por segundo de música | de un núcleo |
+|---|---|---|
+| De fábrica | 21,1 | 2,1 % |
+| Modo billar | 27,7 | 2,8 % |
+
+Lo que más gasta en el billar:
+
+- el grave en mono con el subgrave, 8,6 ms/s;
+- el limitador, 4,1;
+- el nivelado con el EQ, 3,4;
+- cada etapa del billar (local, retumbe, ataque, ásperos, eses), de 1,2 a 1,8.
+
+Ya va con FFT y tablas. No se encontró un ahorro que deje el sonido igual bit a bit, así que no se tocó.
+
+### 2. Lo que se arregló: las eses se quedaban en un desnormal fijo
+
+Con «Suavizar las eses» encendido (siempre en el billar, o con su interruptor), en el silencio sus dos envolventes bajaban hasta un
+número desnormal. Ahí `kEnv * b` redondea a 0, así que se quedaban fijas para siempre, costando en cada muestra.
+
+- Ahora se cortan a 0 bajo 1e-30.
+- No cambia lo que suena: lo que decide es el piso de −40 dB, muy por encima.
+- `compara-cadena`: 0 distintas inesperadas.
+
+La batería `desnormales` suma la cadena del billar con todas sus etapas: 3 s de música y 30 s de silencio exacto.
+
+- Cada segundo, desde 3 s de silencio, mira cada etapa recorriendo la cadena desde la salida: ninguna queda en un resto diminuto.
+- Antes del arreglo, las eses fallaban todo el rato.
+- Se excluyen las casillas viejas de la cola de picos del limitador, porque no se calcula con ellas.
+- El silencio (33,5 ms/s) ya cuesta menos que la música (40,5).
+
+### 3. La revisión del resto
+
+- **`SalidaPropia.cs`**, la salida de sonido con su propio hilo: las estructuras coinciden con las de Windows (`WAVEHDR` y `MMTIME` de
+  32 bits); parar, pausar, cerrar y un hilo atorado se tratan bien. Si la música no llega a tiempo, la bomba rellena con silencio, así que
+  no se toma por fin de canción.
+- **`VolumenWindows.cs`**: corre en segundo plano, todo con try/catch, y las entradas del mezclador solo se leen.
+- Sin cambios.
+
+### 4. Las fotos, otra vez (9 y 10 de octubre)
+
+Lo de `SONIDO_BOCINAS_MODEST_2026-10-11.md` se confirma: 2 medios de 6,5" GVT SPB2327 (8 Ω) y 2 tweeters Mitzu TW-4700 (4 Ω) en el
+gabinete, y tres cajas de dos vías con corneta (10 a 12", con puertos) por zonas, sin subwoofer.
+
+Lo que se ve y no estaba anotado:
+
+- **Varios cables torcidos en el mismo borne de salida del amplificador.** El gabinete y las cajas de fuera van en paralelo en el mismo
+  canal.
+  - La carga puede quedar en 2 Ω o menos, sobre todo en los agudos, donde el tweeter de 4 Ω se suma.
+  - Cables pelados torcidos en un borne pueden tocar el de al lado o el chasis.
+- **Cable delgado (blanco, como de timbre o teléfono) a las cajas de fuera.** En tiradas largas, y con la carga tan baja, se pierde
+  volumen y control del grave en esas zonas. Lo recomendable es cable de bocina de 1,5 mm² (14–16 AWG) o más grueso.
+- **Los tweeters del gabinete parecen llevar su condensador.** En el izquierdo se ve una pieza cilíndrica en el cable; en el derecho, un
+  empalme con cinta. Contesta en parte el punto 3 del 11 de octubre.
+- **Las perillas de micrófono siguen subidas sin micrófono conectado.** Bajarlas a cero quita ruido del amplificador.
+
+Para el programa no cambia nada esencial: en el billar ya no se refuerza el grave profundo, se corta a 40 Hz y no se suben los agudos.
+Eso es lo que conviene con un amplificador tan cargado. Lo que más ayudaría es de instalación: revisar los ohmios por canal, el cable
+de las cajas de fuera y bajar las perillas de micrófono.
+
 ## Qué escuchar en el billar
 
 1. **Agudos:** el modo billar debería sonar menos «chillón» que antes en las canciones modernas (platillos, «s»). Si se queda opaco,

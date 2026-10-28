@@ -193,6 +193,58 @@ class Desnormales
                 }
             Console.WriteLine("        repaso a fondo: " + msMusica.ToString("0") + " ms la de musica, " + msSilencio.ToString("0") + " ms la del silencio (mejor de tres)");
             Check(msSilencio <= 2.0 * msMusica, "en el repaso a fondo, 20 s de silencio no cuestan mas que 20 s de musica (con margen de 2 veces; antes eran unas ocho)");
+
+            // 5) EL MODO BILLAR (28-10-2026, septima tanda): la cadena con todas sus etapas (local, retumbe, presencia, ataque, agudos
+            //    asperos, eses, bombo, el oido del volumen parejo y el limitador que respira) y 30 s de silencio exacto. Cada segundo de
+            //    silencio se mira cada etapa (recorriendo la cadena desde la salida): ninguna con restos diminutos o desnormales.
+            string wb = Path.Combine(dir, "billar_cola_muda.wav");
+            float[] xb = Cancion(fs, 3.0, 30.0);
+            using (WaveFileWriter w = new WaveFileWriter(wb, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) w.WriteSamples(xb, 0, xb.Length);
+            object[] ab = { wb, null };
+            Call(f, "MideIntegrada", ab); tab[wb] = ab[1];
+            SetSiHay(null, "localAuto", true); SetSiHay(f, "localAuto", true);
+            object trB = Activator.CreateInstance(tt, true); Set(trB, "Path", wb);
+            object lecB = Call(f, "OpenAudio", wb);
+            TF.GetNestedType("IAudioSource", T).GetProperty("Volume").SetValue(lecB, 1.0f, null);
+            object cadB = Call(f, "ArmaCadena", trB, lecB, false, 0.0);
+            ISampleProvider salB = (ISampleProvider)Get(cadB, "Salida");
+            List<object> etapas = new List<object>(); List<string> nombresE = new List<string>();
+            object eo = salB; HashSet<object> vistos = new HashSet<object>();
+            while (eo != null && vistos.Add(eo))
+            {
+                etapas.Add(eo); nombresE.Add(eo.GetType().Name);
+                object sig = null;
+                foreach (string nm in new string[] { "src", "source", "fuente", "entrada" }) { try { sig = Get(eo, nm); } catch { } if (sig is ISampleProvider) break; sig = null; }
+                eo = sig;
+            }
+            bool hayEses = nombresE.Contains("SuavizaEses"), hayAta = nombresE.Contains("AtaqueClaro"), hayLim = nombresE.Contains("LimitadorPicoReal");
+            Check(etapas.Count >= 10 && hayEses && hayAta && hayLim, "la cadena del billar, etapa por etapa (" + etapas.Count + ": " + string.Join(" <- ", nombresE.ToArray()) + ")");
+            int restosB = 0; List<string> dondeB = new List<string>();
+            double msMusB = 0, msSilB = 0; int nMusB = 0, nSilB = 0; long leidas = 0; int segVisto = -1;
+            while (true)
+            {
+                long t0 = Stopwatch.GetTimestamp();
+                int n = salB.Read(b, 0, bloque);
+                double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                if (n <= 0) break;
+                double s0 = leidas / 2.0 / fs; leidas += n;
+                if (s0 >= 1.0 && s0 < 2.9) { msMusB += ms; nMusB++; } else if (s0 >= 5.0) { msSilB += ms; nSilB++; }
+                int seg = (int)s0;
+                if (s0 >= 6.0 && seg != segVisto)
+                {
+                    segVisto = seg; List<string> d2 = new List<string>(); int r2 = 0;
+                    for (int q = 0; q < etapas.Count; q++) r2 += Restos(etapas[q], nombresE[q], d2);
+                    // Fuera de cuenta: las casillas viejas de la cola de picos del limitador (peaks, fuera de su ventana activa): no se calcula con ellas.
+                    for (int q = d2.Count - 1; q >= 0; q--) if (d2[q].StartsWith("LimitadorPicoReal.peaks ") || d2[q].StartsWith("LimitadorPicoReal.fpeaks ")) { r2 -= int.Parse(d2[q].Substring(d2[q].IndexOf('(') + 1).TrimEnd(')')); d2.RemoveAt(q); }
+                    restosB += r2; foreach (string sd in d2) { string clave = sd.Substring(0, sd.IndexOf(" (")); if (!dondeB.Exists(z => z.StartsWith(clave))) dondeB.Add(sd + " a los " + seg + " s"); }
+                }
+            }
+            Check(restosB == 0, "en el billar, tras 3 s de silencio (y hasta 30 s), ninguna etapa queda en un resto diminuto o desnormal (" + restosB + (dondeB.Count > 0 ? ": " + string.Join(", ", dondeB.ToArray()) : "") + ")");
+            double porMusB = msMusB / Math.Max(1, nMusB), porSilB = msSilB / Math.Max(1, nSilB);
+            Console.WriteLine("        billar: " + (porMusB * 20).ToString("0.0") + " ms por segundo con musica, " + (porSilB * 20).ToString("0.0") + " en silencio");
+            Check(nMusB > 10 && nSilB > 100 && porSilB <= 2.5 * porMusB, "en el billar, el silencio tampoco cuesta mas que la musica");
+            ((IDisposable)lecB).Dispose();
+            SetSiHay(null, "localAuto", false); SetSiHay(f, "localAuto", false);
         }
         catch (Exception e) { Exception z = e is TargetInvocationException ? e.InnerException : e; Check(false, "excepcion: " + z.GetType().Name + ": " + z.Message + "\n" + z.StackTrace); }
         finally { try { Directory.Delete(dir, true); } catch { } }
