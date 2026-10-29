@@ -1,0 +1,48 @@
+# Lo del A4 encima de la base de PC de Buildroot (board/pc/linux.config).
+
+# Arrancar desde una memoria USB o el SSD (incluidos en el nucleo, sin initramfs)
+CONFIG_ATA=y
+CONFIG_SATA_AHCI=y
+CONFIG_USB_SUPPORT=y
+CONFIG_USB=y
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_OHCI_HCD=y
+CONFIG_USB_STORAGE=y
+CONFIG_EXT4_FS=y
+
+# Botones y teclado (USB HID)
+CONFIG_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_USB_HID=y
+CONFIG_INPUT_EVDEV=y
+
+# La grafica del A4 (Radeon HD 8370D, ARUBA): como modulo, para que su firmware ya este en el disco al cargarla
+CONFIG_MODULES=y
+CONFIG_DRM=y
+CONFIG_DRM_RADEON=m
+CONFIG_DRM_BOCHS=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_DRM_FBDEV_EMULATION=y
+
+# El sonido del A4 (HDA con codec Realtek, y la salida HDMI)
+CONFIG_SND=y
+CONFIG_SND_HDA_INTEL=y
+CONFIG_SND_HDA_GENERIC=y
+CONFIG_SND_HDA_CODEC_REALTEK=m
+CONFIG_SND_HDA_CODEC_HDMI=m
+
+# La red (Realtek, para actualizar mas adelante) y la temperatura del procesador
+CONFIG_R8169=m
+CONFIG_HWMON=y
+CONFIG_SENSORS_K10TEMP=m
+
+# Respuesta: nucleo con expropiacion completa y 1000 Hz (menos latencia para el sonido y la pantalla)
+CONFIG_PREEMPT=y
+CONFIG_HZ_1000=y
+
+# El procesador siempre a toda velocidad (una rocola no ahorra bateria) y su microcodigo
+CONFIG_CPU_FREQ=y
+CONFIG_X86_ACPI_CPUFREQ=y
+CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y
+CONFIG_MICROCODE=y

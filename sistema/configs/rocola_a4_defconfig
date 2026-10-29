@@ -1,0 +1,69 @@
+# ROCOLA OS para la rocola del billar: AMD A4-6300 (Piledriver, Radeon HD 8370D), 3,5 GB, SSD, 1024x768.
+# Etapa 1: el sistema minimo que arranca, prueba el sonido (ALSA) y la grafica (Mesa r600 / softpipe en QEMU).
+# Se compila con sistema/compila.sh. Detalle en sistema/LEEME.md.
+
+# El procesador del A4: x86-64, Piledriver (gcc -march=bdver2)
+BR2_x86_64=y
+BR2_x86_piledriver=y
+
+# Herramientas propias: glibc y C++ (Mesa y, en la etapa 2, la rocola en .NET los necesitan)
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12=y
+BR2_CCACHE=y
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+BR2_GLOBAL_PATCH_DIR="board/pc/patches"
+
+# El sistema
+BR2_TARGET_GENERIC_HOSTNAME="rocola"
+BR2_TARGET_GENERIC_ISSUE="Rocola OS"
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+# La consola de mantenimiento va en tty2 (Ctrl+Alt+F2); tty1 es de la rocola
+BR2_TARGET_GENERIC_GETTY_PORT="tty2"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/rootfs_overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c $(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/genimage-bios.cfg"
+
+# El nucleo: la base de PC de Buildroot y encima lo del A4 (board/rocola/linux.fragment)
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.47"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/pc/linux.config"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/linux.fragment"
+BR2_LINUX_KERNEL_INSTALL_TARGET=y
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
+
+# Firmware: la Radeon (ARUBA), el microcodigo AMD y la red Realtek
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RADEON=y
+BR2_PACKAGE_LINUX_FIRMWARE_AMD_UCODE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_8169=y
+
+# Sonido: ALSA directo, sin mezcladores intermedios
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
+
+# Grafica: Mesa con r600 (la Radeon HD 8370D del A4) y softpipe (QEMU, sin tarjeta), por KMS/GBM/EGL, sin X ni Wayland
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
+BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_KMSCUBE=y
+
+# La imagen: ext4 y GRUB de BIOS, un solo archivo disk.img para grabar en una memoria USB
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_LABEL="ROCOLA"
+BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+# BR2_TARGET_ROOTFS_TAR is not set
+BR2_TARGET_GRUB2=y
+BR2_TARGET_GRUB2_INSTALL_TOOLS=y
+BR2_PACKAGE_HOST_GENIMAGE=y
