@@ -1263,6 +1263,7 @@ namespace Rocola
             c.Retumbe.Cebado = audioTailDelay;
             // PRESENCIA EN SALA RUIDOSA (PresenciaSala.cs): un compresor suave detras del local; apagado (de fabrica) no toca ni una muestra.
             c.Presencia = new PresenciaSala(c.Retumbe, tap, nivelLocal, loc.Presencia, localAuto);
+            if (!presenciaSinGrave) c.Presencia.SinGrave = false;   // solo durante "Presencia: nueva o de antes" (CompararCiegas.cs)
             c.Presencia.Cebado = audioTailDelay;
             // ATAQUE MAS CLARO (AtaqueClaro.cs, 27-10-2026): detras del compresor y delante de las eses. Apagado (de fabrica) no toca ni una muestra.
             c.Ataque = new AtaqueClaro(c.Presencia, loc.Ataque);

@@ -12,6 +12,10 @@
 // billar encendido todo el rato: para saber si lo que se anoto con el celular de verdad suena mejor. Necesita las bandas de la voz anotadas.
 // Lo que se fija al armar la cancion (el bajo segun lo medido) sigue como estaba en esa cancion; el EQ cambia al instante.
 //
+// PRESENCIA: NUEVA O DE ANTES (30-10-2026, P1 de AUDIO_PROPUESTAS_MODEST_2026-10-29.md): lo mismo con el detector de la presencia del
+// billar: la nueva mide sin el grave (de 150 Hz hacia arriba) y la de antes mide la senal entera. Solo cambia la presencia de la cancion que
+// suena (PresenciaSala.SinGrave); nada se guarda. Necesita el modo billar y la presencia puesta en esa cancion.
+//
 // Revision de la septima tanda: (1) mientras se compara, el volumen parejo no aprende de esa cancion (sonaron dos cadenas distintas);
 // (2) si la cancion se acaba en mitad de la comparacion, esta se termina ANTES de armar la siguiente (ArmaCadena): si no, la siguiente
 // podia armarse en un tramo «de fabrica» y quedarse toda la cancion sin el corte de 40 Hz, la presencia y el volumen parejo del billar.
@@ -22,7 +26,8 @@ namespace Rocola
     public partial class Form1
     {
         internal const int CiegoTramos = 8, CiegoTramoSeg = 15;
-        internal const int CiegoBillar = 0, CiegoAfinacion = 1;   // que se compara
+        internal const int CiegoBillar = 0, CiegoAfinacion = 1, CiegoPresencia = 2;   // que se compara
+        private bool presenciaSinGrave = true;   // la presencia del billar mide sin el grave (P1); false solo en un tramo "de antes"
         private bool ciegoActivo, ciegoGuardado;
         private int ciegoQue;
         private bool[] ciegoOrden, ciegoVotado;   // true: el tramo es del modo billar (o con la afinacion) / ya votado (se arman al empezar)
@@ -44,7 +49,8 @@ namespace Rocola
         {
             if (a + b == 0) return "No votaste en ningun tramo: no hay ganador.";
             if (a == b) return "Empate: " + a + " votos para cada uno.";
-            string nomA = que == CiegoAfinacion ? "con tu afinacion" : "el modo billar", nomB = que == CiegoAfinacion ? "sin tu afinacion" : "la cadena de fabrica";
+            string nomA = que == CiegoAfinacion ? "con tu afinacion" : que == CiegoPresencia ? "la presencia nueva" : "el modo billar";
+            string nomB = que == CiegoAfinacion ? "sin tu afinacion" : que == CiegoPresencia ? "la presencia de antes" : "la cadena de fabrica";
             return "Te gusto mas " + (a > b ? nomA : nomB) + ": " + Math.Max(a, b) + " votos contra " + Math.Min(a, b) + ".";
         }
 
@@ -55,12 +61,18 @@ namespace Rocola
             if (que == CiegoAfinacion && CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null)
                 return "Anota antes las bandas de la voz (250 Hz a 2 kHz) en\n\"Afinar el local con el celular\".";
             if (nowPlaying == null || nowPlaying.Song == null || videoOn) return "Pon una cancion para comparar.";
+            if (que == CiegoPresencia)
+            {
+                CadenaCancion cp = cadenaSonando;
+                if (cp == null || cp.Presencia == null || !cp.Presencia.Encendido)
+                    return "En esta cancion el modo billar no puso la presencia\n(su rango es chico): prueba con otra.";
+            }
             if (sinMejoras) PonSinMejoras(false);
             CadenaCancion cs = cadenaSonando; if (cs != null && cs.Margen != null) cs.Margen.Descarta = true;   // (1) esta vuelta no se aprende
-            ciegoQue = que == CiegoAfinacion ? CiegoAfinacion : CiegoBillar;
+            ciegoQue = que == CiegoAfinacion || que == CiegoPresencia ? que : CiegoBillar;
             ciegoOrden = OrdenCiego(new Random()); ciegoVotado = new bool[CiegoTramos];
             ciegoVotosBillar = ciegoVotosFabrica = 0; ciegoTramo = -1; ciegoResultado = "";
-            ciegoGuardado = ciegoQue == CiegoAfinacion ? afinadoUsar : localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
+            ciegoGuardado = ciegoQue == CiegoAfinacion ? afinadoUsar : ciegoQue == CiegoPresencia ? presenciaSinGrave : localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
             CiegoTick();
             return "";
         }
@@ -88,6 +100,12 @@ namespace Rocola
         }
         private void CiegoPon(bool a)
         {
+            if (ciegoQue == CiegoPresencia)
+            {
+                presenciaSinGrave = a;
+                CadenaCancion c = cadenaSonando; if (c != null && c.Presencia != null) c.Presencia.SinGrave = a;
+                return;
+            }
             if (ciegoQue == CiegoAfinacion) { if (afinadoUsar == a) return; afinadoUsar = a; }
             else { if (localAuto == a) return; localAuto = a; }
             try { AplicaBocinas(); AplicaALaMedida(); ApplyNormNow(); } catch (Exception ex) { LogError("Comparar a ciegas", ex); }
@@ -98,10 +116,10 @@ namespace Rocola
             if (ciegoActivo && ciegoVotado != null)
             {
                 int votos = 0; for (int i = 0; i < CiegoTramos; i++) if (ciegoVotado[i]) votos++;
-                return (ciegoQue == CiegoAfinacion ? "Con o sin afinar: tramo " : "Billar o fabrica: tramo ") + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
+                return (ciegoQue == CiegoAfinacion ? "Con o sin afinar: tramo " : ciegoQue == CiegoPresencia ? "Presencia nueva o de antes: tramo " : "Billar o fabrica: tramo ") + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
                      + (ciegoTramo >= 0 && ciegoVotado[ciegoTramo] ? "\nEste tramo ya tiene tu voto." : "\nToca «Me gusta esta» si este tramo te suena mejor.");
             }
-            return !string.IsNullOrEmpty(ciegoResultado) ? ciegoResultado : "A ciegas, 2 min: cambia cada 15 s entre dos formas de sonar sin\ndecir cual (el billar o la de fabrica; con o sin tu afinacion).\nVota los tramos que te suenen mejor.";
+            return !string.IsNullOrEmpty(ciegoResultado) ? ciegoResultado : "A ciegas, 2 min: cambia cada 15 s entre dos formas de sonar sin\ndecir cual (el billar o la de fabrica; con o sin tu afinacion; la\npresencia nueva o la de antes). Vota los tramos que te suenen mejor.";
         }
         // Lo que se guarda como modo billar y como «usar la afinacion»: durante la comparacion, lo de antes.
         private bool LocalAutoAGuardar { get { return ciegoActivo && ciegoQue == CiegoBillar ? ciegoGuardado : localAuto; } }

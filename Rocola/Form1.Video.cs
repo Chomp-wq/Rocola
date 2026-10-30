@@ -771,6 +771,7 @@ namespace Rocola
             // LA SALIDA SE QUEDO MUDA (SalidaSonido.cs): como si hubiera avisado de un fallo del aparato.
             if (SalidaMuda()) { NAudio.Wave.IWavePlayer o = output; if (o != null) Output_PlaybackStopped(o, new NAudio.Wave.StoppedEventArgs(new SalidaMudaException())); return; }
             ApuntaLatencia();   // y si el perfil de latencia de la salida cambio de nivel, una linea en rocola_error.txt (SalidaSonido.cs)
+            MuestreaEtapas(cadenaSonando);   // lo que hizo cada etapa, para la ventana y la bitacora (BitacoraBillar.cs)
             PreparaSiguienteSinPausa();   // a la que suena le quedan pocos segundos: la siguiente, lista para entrar sin pausa
             TimeSpan cur = reader.CurrentTime, tot = reader.TotalTime;
             ApuntaQuedan(cur, tot);   // si quedan 45 s o menos, la siguiente cancion pasa antes que las caratulas (Form1.SinPausa.cs)

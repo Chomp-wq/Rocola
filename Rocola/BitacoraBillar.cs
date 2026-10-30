@@ -11,6 +11,12 @@
 // EL RESUMEN (sexta tanda, 27-10-2026). En la tarjeta del billar (pagina de Sonido), dos lineas: cuantas canciones lleva apuntadas (y
 // cuantas en las ultimas 12 h, una noche de bar), que parte del tiempo el limitador bajo mas de 3 dB y la cancion que mas apreto. Se
 // arma en memoria: al arrancar se lee el archivo en segundo plano y cada linea nueva se suma al apuntarla. Solo se muestra.
+//
+// LO QUE HIZO CADA ETAPA (D1, 30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md). Al final de cada linea, 16 columnas mas: para la presencia
+// (lo que bajo y lo que devolvio), las partes suaves (lo que subieron), el retumbe, el ataque (lo que bajo y lo que subio), los asperos y las
+// eses, el promedio y el peor momento de la cancion, en dB. Las muestrea el reloj de la cancion cada medio segundo (MuestreaEtapas); la
+// ventana «Lo que suena ahora» lee lo mismo, porque algunas lecturas de las etapas se ponen a cero al leerlas y no pueden tener dos lectores.
+// Las columnas de antes no se mueven (el resumen lee hasta la 11). Solo se apunta: el sonido no cambia.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -21,7 +27,63 @@ namespace Rocola
     public partial class Form1
     {
         internal const long BitacoraBillarMaxBytes = 4L * 1024 * 1024;
-        internal const string BitacoraBillarCabecera = "fecha\tarchivo\tentera\tsegundos\tparejo_llevaba\tparejo_aprendio\tp90\tp99\tmayor\tlimita_1dB\tlimita_3dB\tpresencia\tclaridad\tsuaves\tcuerpo\teses\tasperos\tafinada\tbajo\tsubgrave_hz\teq50\teq158\teq400\teq1k\teq2k5\teq5k6\teq10k\teq15k8";
+        internal const string BitacoraBillarCabecera = "fecha\tarchivo\tentera\tsegundos\tparejo_llevaba\tparejo_aprendio\tp90\tp99\tmayor\tlimita_1dB\tlimita_3dB\tpresencia\tclaridad\tsuaves\tcuerpo\teses\tasperos\tafinada\tbajo\tsubgrave_hz\teq50\teq158\teq400\teq1k\teq2k5\teq5k6\teq10k\teq15k8"
+            + "\tpresencia_baja_media\tpresencia_baja_max\tpresencia_devuelve_media\tpresencia_devuelve_max\tsuaves_sube_media\tsuaves_sube_max\tretumbe_media\tretumbe_max"
+            + "\tataque_baja_media\tataque_baja_max\tataque_sube_media\tataque_sube_max\tasperos_media\tasperos_max\teses_media\teses_max";
+
+        // ---- LO QUE HIZO CADA ETAPA (D1) ----
+        internal sealed class ActividadEtapas
+        {
+            internal const int PresenciaBaja = 0, PresenciaDevuelve = 1, SuavesSube = 2, Retumbe = 3, AtaqueBaja = 4, AtaqueSube = 5, Asperos = 6, Eses = 7, N = 8;
+            internal readonly double[] Ultimo = new double[N], Suma = new double[N], Max = new double[N];   // dB, en positivo: cuanto actuo
+            internal int Muestras;
+            internal void Anota(double[] v)
+            {
+                for (int i = 0; i < N; i++)
+                {
+                    double x = v[i]; if (double.IsNaN(x) || double.IsInfinity(x) || x < 0.0) x = 0.0;
+                    Ultimo[i] = x; Suma[i] += x; if (x > Max[i]) Max[i] = x;
+                }
+                Muestras++;
+            }
+        }
+        [ThreadStatic] private static double[] muestraEtapas;
+        // Cada medio segundo (el reloj de la cancion, en el hilo de la pantalla): lo que hizo cada etapa desde la ultima mirada.
+        private void MuestreaEtapas(CadenaCancion c)
+        {
+            if (c == null) return;
+            try
+            {
+                double[] v = muestraEtapas ?? (muestraEtapas = new double[ActividadEtapas.N]);
+                PresenciaSala p = c.Presencia;
+                bool pOn = p != null && p.Encendido;
+                v[ActividadEtapas.PresenciaBaja] = pOn ? -p.ReduccionDb : 0.0;
+                v[ActividadEtapas.PresenciaDevuelve] = pOn ? p.CompensaDb : 0.0;
+                SalaLocal s = c.Sala;
+                double sub = s != null ? s.Subida : 1.0;
+                v[ActividadEtapas.SuavesSube] = sub > 1.0 ? 20.0 * Math.Log10(sub) : 0.0;
+                v[ActividadEtapas.Retumbe] = c.Retumbe != null ? c.Retumbe.CortaDb : 0.0;
+                double bajo = 0.0, alto = 0.0; if (c.Ataque != null) c.Ataque.Toma(out bajo, out alto);
+                v[ActividadEtapas.AtaqueBaja] = -bajo; v[ActividadEtapas.AtaqueSube] = alto;
+                v[ActividadEtapas.Asperos] = c.Aspereza != null ? c.Aspereza.CortaDb : 0.0;
+                v[ActividadEtapas.Eses] = c.Eses != null ? c.Eses.BajaDb : 0.0;
+                lock (c.Actividad) c.Actividad.Anota(v);
+            }
+            catch { }
+        }
+        // Las 16 columnas de una cancion: promedio y maximo de cada una ("-" si no hubo ni una muestra). Pura.
+        internal static string ColumnasActividad(ActividadEtapas a)
+        {
+            System.Globalization.CultureInfo ci = System.Globalization.CultureInfo.InvariantCulture;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ActividadEtapas.N; i++)
+            {
+                bool hay = a != null && a.Muestras > 0;
+                sb.Append('\t').Append(hay ? (a.Suma[i] / a.Muestras).ToString("0.00", ci) : "-");
+                sb.Append('\t').Append(hay ? a.Max[i].ToString("0.0", ci) : "-");
+            }
+            return sb.ToString();
+        }
         private static readonly object bitacoraCerrojo = new object();
         private string BitacoraBillarFile() { return RutaDatos("rocola_billar_bitacora.txt"); }
 
@@ -103,7 +165,7 @@ namespace Rocola
 
         // La linea de una cancion (pura salvo la hora: la pasa quien llama).
         internal static string LineaBitacoraBillar(DateTime cuando, string archivo, bool entera, double segundos, float llevaba, float aprendio,
-            float p90, float p99, float max, float lim1, float lim3, AjusteLocal lo, bool afinada, float bajo, float subHz, float[] eq)
+            float p90, float p99, float max, float lim1, float lim3, AjusteLocal lo, bool afinada, float bajo, float subHz, float[] eq, ActividadEtapas act)
         {
             System.Globalization.CultureInfo ci = System.Globalization.CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
@@ -116,6 +178,7 @@ namespace Rocola
             sb.Append(lo.Eses ? 1 : 0).Append('\t').Append(lo.Aspereza ? 1 : 0).Append('\t').Append(afinada ? 1 : 0).Append('\t');
             sb.Append(bajo.ToString("0.00", ci)).Append('\t').Append(subHz.ToString("0", ci));
             for (int b = 0; b < 8; b++) sb.Append('\t').Append(eq != null && eq.Length > b ? eq[b].ToString("0.0", ci) : "0");
+            if (act != null) lock (act) sb.Append(ColumnasActividad(act)); else sb.Append(ColumnasActividad(null));
             return sb.ToString();
         }
 
@@ -125,7 +188,7 @@ namespace Rocola
             {
                 string linea = LineaBitacoraBillar(DateTime.Now, Path.GetFileName(c.Cancion.Path), m.Entera && !m.Descarta, m.Bloques / 10.0,
                     m.Aplicado, aprendio, p90, p99, max, m.FraccionSobre(1f), m.FraccionSobre(3f), LocalDe(c), AfinadaActiva, BajoMedido, SubgraveEf,
-                    c.Tap != null ? c.Tap.EqDb : null);
+                    c.Tap != null ? c.Tap.EqDb : null, c.Actividad);
                 string archivo = BitacoraBillarFile();
                 ResumenBitacora r = bitacoraResumen;
                 if (r != null) lock (r) AcumulaBitacora(r, linea, DateTime.Now);

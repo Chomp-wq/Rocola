@@ -16,3 +16,5 @@ ia/instalar_dsee_genero_log.txt
 ia/entrenar_dsee_log.txt
 # Informes locales de Windows XP, recogidos para diagnosticar pantallazos.
 Diagnostico_XP/
+# Los datos del sonido que junta Recoger_sonido_XP.cmd: son del bar, no del programa.
+Sonido_XP/

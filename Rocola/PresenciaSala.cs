@@ -79,6 +79,18 @@ namespace Rocola
             // solo 3 de vuelta lo fuerte quedaba ~1 dB MAS BAJO que sin ella (la balada del banco: -13,1 LUFS con presencia, -12,1 sin). Con
             // 5 dB de vuelta lo fuerte vuelve a su sitio y lo suave sube: -11,5 LUFS, y el limitador pasa del 0,2 al 3,3 % del tiempo.
             internal const double CompensaBillarDb = 5.0;
+            // SIN EL GRAVE EN EL DETECTOR (P1, 30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md). El detector media la senal ENTERA: cada bombo o
+            // nota de bajo contaba como "fuerte" y el compresor apretaba toda la mezcla, voz incluida (la voz subia y bajaba con el grave). En
+            // el billar, el detector mide solo de 150 Hz hacia arriba (Butterworth de segundo orden, por canal) con +3 dB para no abrir el
+            // nivelado de las secciones. La senal que se oye no pasa por ese filtro, y el pico que frena la compensacion sigue siendo de banda
+            // entera. Medido (pruebas/presenciagrave.cs, la etapa sola): una voz fija con notas de bajo subia y bajaba 1,3 a 4,1 dB y ahora 0,1 a 1,2
+            // (en la cadena del billar entera, de 1,6-5,2 a 1,0-2,1). Sin el billar no se calcula nada: bit a bit como siempre. "Presencia: nueva o de antes" (CompararCiegas.cs) lo cambia en vivo (SinGrave).
+            internal const double DetectorSinGraveHz = 150.0, DetectorSinGraveDb = 3.0;
+            private readonly bool hpOn;
+            private volatile bool sinGrave;
+            private readonly double kHp = 1.0, hb0, hb1, hb2, ha1, ha2;
+            private readonly double[] hpEst = new double[8];   // x1 x2 y1 y2 por canal
+            internal bool SinGrave { get { return hpOn && sinGrave; } set { if (hpOn) sinGrave = value; } }
             public PresenciaSala(ISampleProvider s, LevelTap volumen, float objetivo, bool encender, bool billar)
             {
                 src = s; tap = volumen;
@@ -99,6 +111,12 @@ namespace Rocola
                 picoRecuerda = (int)(PicoRecuerdaSeg * tasa / Trozo);
                 pasoApaga = 0.42 * Trozo / (ApagaSeg * tasa);   // 0,42 = 3 dB en lineal: el tramo mas largo hasta 1 en ApagaSeg
                 potencia = Math.Pow(10.0, (20.0 * Math.Log10(obj)) / 10.0);   // empieza "en el nivel de siempre"
+                if (billar && vale)
+                {
+                    hpOn = true; sinGrave = true; kHp = Math.Pow(10.0, DetectorSinGraveDb / 10.0);
+                    double w = 2.0 * Math.PI * DetectorSinGraveHz / tasa, c = Math.Cos(w), al = Math.Sin(w) / (2.0 * 0.70710678118654752), a0 = 1.0 + al;
+                    hb0 = (1.0 + c) / 2.0 / a0; hb1 = -(1.0 + c) / a0; hb2 = hb0; ha1 = -2.0 * c / a0; ha2 = (1.0 - al) / a0;
+                }
             }
 
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
@@ -117,6 +135,7 @@ namespace Rocola
                 if (a == null || !a.vale || a.tasa != tasa || a.canales != canales) return;
                 potencia = a.potencia; grDb = a.grDb; compDb = a.compDb; picoEnv = a.picoEnv; picoQueda = a.picoQueda; g = a.g; dg = a.dg;
                 suma = a.suma; maximo = a.maximo; cuadroEnTrozo = a.cuadroEnTrozo; canal = a.canal;
+                if (hpOn && a.hpOn) Array.Copy(a.hpEst, hpEst, hpEst.Length);
                 cebadoPorPasar = Math.Max(0, Cebado) * canales;
             }
 
@@ -151,11 +170,22 @@ namespace Rocola
                 double master2 = master * master;
                 double gg = g, d = dg, sm = suma, mx = maximo;
                 int cf = cuadroEnTrozo, ca = canal, ch = canales;
+                bool hp = hpOn, sg = sinGrave;
                 for (int i = o, fin = o + n; i < fin; i++)
                 {
                     double x = b[i];
                     double q = x * x;
-                    sm += q; if (q > mx) mx = q;
+                    if (hp)
+                    {
+                        // el filtro corre siempre (sin escalon al cambiar en vivo); solo cuenta si va sin el grave
+                        int e = 4 * ca;
+                        double yh = hb0 * x + hb1 * hpEst[e] + hb2 * hpEst[e + 1] - ha1 * hpEst[e + 2] - ha2 * hpEst[e + 3];
+                        if (yh < 1e-30 && yh > -1e-30) yh = 0.0;
+                        hpEst[e + 1] = hpEst[e]; hpEst[e] = x; hpEst[e + 3] = hpEst[e + 2]; hpEst[e + 2] = yh;
+                        sm += sg ? kHp * yh * yh : q;
+                    }
+                    else sm += q;
+                    if (q > mx) mx = q;
                     b[i] = (float)(x * gg);
                     if (++ca < ch) continue;
                     ca = 0; gg += d;

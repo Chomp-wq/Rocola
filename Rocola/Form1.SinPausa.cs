@@ -63,6 +63,7 @@ namespace Rocola
             // Lo que el modo automatico del local decidio para ESTA cadena (LocalAuto.cs, L1): se fija la primera vez y no cambia a media
             // cancion; en un disco continuo la siguiente lo hereda (HeredaLocal), asi no hay escalon en el cambio de pista.
             internal bool AutoFijo, AutoPresencia, AutoSuaves;
+            internal readonly ActividadEtapas Actividad = new ActividadEtapas();   // lo que hizo cada etapa (D1, BitacoraBillar.cs)
         }
         private static void SellaInicioReloj(CadenaCancion c)
         { c.InicioMusica = c.Lector.CurrentTime.TotalSeconds; c.CuadroComienzo = 0; c.CebadoInicial = c.Retardo; }

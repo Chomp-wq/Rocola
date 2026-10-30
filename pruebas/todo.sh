@@ -238,6 +238,10 @@ CPU="$CPU localauto"
 # 'cadenabillar': la cadena del modo billar (27-10-2026; CadenaBillar.cs): el EQ del billar banda por banda, EqCorrFor con una huella
 # (encendido y apagado), lo que el modo decide del realce, el DSEE, los arreglos y el bajo, el codigo y la ventana.
 CPU="$CPU cadenabillar"
+# 'presenciagrave': P1, D1 y D2 (30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md): la presencia del billar sin el grave en el detector
+# (menos vaiven de la voz, sin el billar bit a bit, en vivo sin chasquido), su comparacion a ciegas, lo que hizo cada etapa en la
+# bitacora y Recoger_sonido_XP.cmd.
+CPU="$CPU presenciagrave"
 # 'mp3mezclado': MP3 con frecuencia o canales mezclados (error del 17-10-2026): la reconstruccion con el formato dominante (BuildCleanMp3).
 CPU="$CPU mp3mezclado"
 # 'modosauto': la revision de los modos automaticos del sonido (23-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md): la

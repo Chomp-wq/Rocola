@@ -312,7 +312,7 @@ class CadenaBillarPrueba
         // La bitacora: tantas columnas como la cabecera.
         string cab = (string)TF.GetField("BitacoraBillarCabecera", T).GetRawConstantValue();
         Type TAj = TF.GetNestedType("AjusteLocal", T); object ajB = Activator.CreateInstance(TAj, true);
-        string lin = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 21, 5, 0), "cumbia.mp3", true, 215.0, 0.6f, float.NaN, 0.4f, 2.1f, 3.3f, 0.05f, 0.002f, ajB, true, 1.2f, 40f, new float[] { -1, 0, 0, 0, 0, -2, -1, 0 } });
+        string lin = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 21, 5, 0), "cumbia.mp3", true, 215.0, 0.6f, float.NaN, 0.4f, 2.1f, 3.3f, 0.05f, 0.002f, ajB, true, 1.2f, 40f, new float[] { -1, 0, 0, 0, 0, -2, -1, 0 }, null });
         Check(lin.Split('\t').Length == cab.Split('\t').Length && lin.StartsWith("2026-10-27 21:05:00\tcumbia.mp3\tsi\t215\t0.60\t-\t0.4"), "la bitacora: una linea por cancion con tantas columnas como la cabecera");
         Check(Texto("VolumenParejo.cs").Contains("ApuntaBitacoraBillar(c, m, p90, p99, max, nuevo)") && Texto("BitacoraBillar.cs").Contains("QueueUserWorkItem"), "se apunta al soltar la cancion, aprenda o no, y se escribe en segundo plano");
         // Comparar a ciegas.
@@ -336,7 +336,7 @@ class CadenaBillarPrueba
         MethodInfo acu = TF.GetMethod("AcumulaBitacora", T), txtR = TF.GetMethod("TextoResumenBitacora", T);
         DateTime ahoraB = new DateTime(2026, 10, 27, 23, 0, 0);
         string vacia = (string)txtR.Invoke(null, new object[] { rb, ahoraB });
-        string lin2 = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 22, 0, 0), "Los Tigres del Norte - Contrabando y traicion.mp3", true, 200.0, 0f, float.NaN, 0f, 0f, 0f, 0.1f, 0.074f, ajB, false, 1f, 40f, null });
+        string lin2 = (string)TF.GetMethod("LineaBitacoraBillar", T).Invoke(null, new object[] { new DateTime(2026, 10, 27, 22, 0, 0), "Los Tigres del Norte - Contrabando y traicion.mp3", true, 200.0, 0f, float.NaN, 0f, 0f, 0f, 0.1f, 0.074f, ajB, false, 1f, 40f, null, null });
         bool rb1 = (bool)acu.Invoke(null, new object[] { rb, cab, ahoraB }), rb2 = (bool)acu.Invoke(null, new object[] { rb, lin, ahoraB }), rb3 = (bool)acu.Invoke(null, new object[] { rb, lin2, ahoraB });
         string res = (string)txtR.Invoke(null, new object[] { rb, ahoraB }), resManana = (string)txtR.Invoke(null, new object[] { rb, ahoraB.AddDays(1) });
         Check(vacia.StartsWith("Bitacora: aun vacia") && !rb1 && rb2 && rb3, "el resumen: sin lineas dice que esta vacia, y la cabecera no cuenta");

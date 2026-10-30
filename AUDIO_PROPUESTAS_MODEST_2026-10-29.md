@@ -3,6 +3,9 @@
 Petición del dueño: «Busca más mejoras de audio en la cadena de sonido de la rocola (revisa los últimos cambios para que sepas qué
 se ha hecho y no repitas trabajo innecesario)».
 
+**Decisión del dueño (30-10): todo menos T10.** Lo hecho y la revisión de otras técnicas, en
+[AUDIO_P1_D1_D2_Y_TECNICAS_MODEST_2026-10-30.md](AUDIO_P1_D1_D2_Y_TECNICAS_MODEST_2026-10-30.md).
+
 Esta ronda es solo de buscar y medir: **no cambia nada del programa.** Todo lo medido es con canciones sintéticas en Linux/Mono, con
 la cadena de verdad (`Rocola.exe` por dentro, como las baterías de `pruebas/`). Nada se oyó en el billar ni se midió en el A4.
 

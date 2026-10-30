@@ -100,13 +100,14 @@ namespace Rocola
             // T6 (Zumbido.cs): el de la corriente, si la cancion lo trae
             if (c.Zumbido != null) sb.Append("   Zumbido: ").Append(c.Zumbido.Hz).Append(" Hz ").Append(c.Zumbido.Activa && !c.Zumbido.Pasa ? "quitado" : "(sin quitar)");
             // T9 (Eses.cs): lo que mas bajo la banda de las eses desde la ultima mirada (cada medio segundo)
-            if (c.Eses != null && c.Eses.Encendido) { double e = c.Eses.BajaDb; sb.Append("   Eses: ").Append(e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            ActividadEtapas act = c.Actividad;   // lo muestreado cada medio segundo (MuestreaEtapas)
+            if (c.Eses != null && c.Eses.Encendido) { double e = act.Ultimo[ActividadEtapas.Eses]; sb.Append("   Eses: ").Append(e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
             // Bombo, retumbe y ataque (VozGolpeYRetumbe.cs): lo que hicieron desde la ultima mirada, solo si estan encendidos (una linea corta)
             string vg = "";
             if (c.Hundir != null && c.Hundir.Encendido) { double e = c.Hundir.BajaDb; vg += "Bombo " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
-            if (c.Retumbe != null && c.Retumbe.Encendido) { double e = c.Retumbe.CortaDb; vg += (vg.Length > 0 ? "   " : "") + "Retumbe " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
-            if (c.Ataque != null && c.Ataque.Encendido) { double bajo, alto; c.Ataque.Toma(out bajo, out alto); vg += (vg.Length > 0 ? "   " : "") + "Ataque " + (bajo <= -0.1 || alto >= 0.1 ? bajo.ToString("0.0") + "/+" + alto.ToString("0.0") + " dB" : "nada"); }
-            if (c.Aspereza != null && c.Aspereza.Encendido) { double e = c.Aspereza.CortaDb; vg += (vg.Length > 0 ? "   " : "") + "Asperos " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            if (c.Retumbe != null && c.Retumbe.Encendido) { double e = act.Ultimo[ActividadEtapas.Retumbe]; vg += (vg.Length > 0 ? "   " : "") + "Retumbe " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
+            if (c.Ataque != null && c.Ataque.Encendido) { double bajo = -act.Ultimo[ActividadEtapas.AtaqueBaja], alto = act.Ultimo[ActividadEtapas.AtaqueSube]; vg += (vg.Length > 0 ? "   " : "") + "Ataque " + (bajo <= -0.1 || alto >= 0.1 ? bajo.ToString("0.0") + "/+" + alto.ToString("0.0") + " dB" : "nada"); }
+            if (c.Aspereza != null && c.Aspereza.Encendido) { double e = act.Ultimo[ActividadEtapas.Asperos]; vg += (vg.Length > 0 ? "   " : "") + "Asperos " + (e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }
             if (vg.Length > 0) sb.Append("\n").Append(vg);
             return sb.ToString();
         }
