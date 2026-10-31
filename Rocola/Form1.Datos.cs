@@ -661,6 +661,7 @@ namespace Rocola
                     else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
                     else if (s.StartsWith("canal_mudo=")) canalMudo = s.Substring(11).Trim() != "0";   // S1: un canal mudo, por los dos
                     else if (s.StartsWith("quita_zumbido=")) quitaZumbido = s.Substring(14).Trim() != "0";   // T6: el zumbido de la corriente
+                    else if (s.StartsWith("quita_preeco=")) quitaPreEco = s.Substring(13).Trim() == "1";     // R2: el pre-eco de los MP3 (apagado de fabrica)
                     else if (s.StartsWith("suaviza_eses=")) suavizaEses = s.Substring(13).Trim() == "1";   // T9: suavizar las eses
                     else if (s.StartsWith("bombo_sin_hundir=")) bomboSinHundir = s.Substring(17).Trim() == "1";   // que el bombo no hunda la voz
                     else if (s.StartsWith("retumbe_dinamico=")) retumbeDinamico = s.Substring(17).Trim() == "1";   // el retumbe dinamico
@@ -843,6 +844,7 @@ namespace Rocola
             sb.Append("corta_subgrave=").Append(cortaSubgrave ? "1" : "0").Append("\r\n");
             sb.Append("canal_mudo=").Append(canalMudo ? "1" : "0").Append("\r\n");
             sb.Append("quita_zumbido=").Append(quitaZumbido ? "1" : "0").Append("\r\n");
+            sb.Append("quita_preeco=").Append(quitaPreEco ? "1" : "0").Append("\r\n");
             sb.Append("suaviza_eses=").Append(suavizaEses ? "1" : "0").Append("\r\n");
             sb.Append("bombo_sin_hundir=").Append(bomboSinHundir ? "1" : "0").Append("\r\n");
             sb.Append("retumbe_dinamico=").Append(retumbeDinamico ? "1" : "0").Append("\r\n");

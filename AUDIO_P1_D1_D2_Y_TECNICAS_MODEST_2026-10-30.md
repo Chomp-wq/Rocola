@@ -3,6 +3,9 @@
 Petición del dueño, sobre [AUDIO_PROPUESTAS_MODEST_2026-10-29.md](AUDIO_PROPUESTAS_MODEST_2026-10-29.md): «Todo menos T10, y revisa si no
 hay más técnicas de procesamiento de audio para mejorarlo, como un DSEE que reconstruya otras frecuencias y no solo los agudos».
 
+**31-10:** el dueño pidió «haz todo»: lo hecho (la medida y R2), por qué no R1 y la separación de voz en Rocola OS, en
+[AUDIO_R2_Y_SEPARACION_VOZ_MODEST_2026-10-31.md](AUDIO_R2_Y_SEPARACION_VOZ_MODEST_2026-10-31.md).
+
 Todo lo medido es con señales sintéticas en Linux/Mono, con la cadena de verdad. Nada se oyó en el billar ni se probó en el A4.
 
 ## 1. Lo hecho

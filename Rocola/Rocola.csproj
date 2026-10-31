@@ -133,6 +133,7 @@
     <Compile Include="Pcm16Directo.cs" />
     <Compile Include="GraveMono.cs" />
     <Compile Include="Zumbido.cs" />
+    <Compile Include="PreEco.cs" />
     <Compile Include="Eses.cs" />
     <Compile Include="EtapaPorCuadros.cs" />
     <Compile Include="BomboSinHundir.cs" />

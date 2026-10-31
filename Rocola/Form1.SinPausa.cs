@@ -47,7 +47,8 @@ namespace Rocola
             internal MideMargen Margen;          // en el billar: lo que le llega al limitador, para el volumen parejo (VolumenParejo.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
-            internal QuitaZumbido Zumbido;       // las muescas del zumbido de la corriente, si la cancion lo trae (T6, Zumbido.cs)
+            internal QuitaZumbido Zumbido;
+            internal QuitaPreEco PreEco;         // el pre-eco de los MP3, si esta cancion lo trae y el interruptor esta puesto (R2, PreEco.cs)       // las muescas del zumbido de la corriente, si la cancion lo trae (T6, Zumbido.cs)
             internal DeclipProvider Declip;      // el des-recorte, si esta cancion lo lleva
             internal LimitadorPicoReal Limitador; // el limitador de pico real (lo que baja lo ensena Ctrl+F3: S5)
             internal FadeProvider Fundido;

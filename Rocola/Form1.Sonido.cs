@@ -1213,6 +1213,12 @@ namespace Rocola
             // interruptor decidiendo si actua (asi se enciende y se apaga en vivo); apagado, pasa tal cual. Sin retardo.
             int zumbidoHz = ZumbidoDe(t.Path);
             if (zumbidoHz > 0) { c.Zumbido = new QuitaZumbido(chain, zumbidoHz, QuitaZumbidoEf); chain = c.Zumbido; }
+            // EL PRE-ECO (R2, PreEco.cs): con su interruptor y solo en las canciones en que el repaso lo midio. Retrasa 64 ms (a la cola del
+            // fundido). Sin el interruptor o sin pre-eco medido ni se pone: sale bit a bit como antes.
+            if (quitaPreEco && PreEcoDe(t.Path))
+            {
+                QuitaPreEco pe = new QuitaPreEco(chain); chain = pe; audioTailDelay += pe.DelayFrames; c.PreEco = pe;
+            }
             // DES-RECORTE: repara picos aplastados de origen (despues de medir original, antes de DSEE). Ya sabemos, cancion
             // por cancion, si de verdad viene recortada; en las que NO -que son la mayoria- ni se pone en la
             // cadena: se ahorra su trabajo y su retardo de ~1.5 ms. Si aun no esta medida, se pone por si acaso.

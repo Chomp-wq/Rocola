@@ -113,7 +113,7 @@ class Zumbido
     static void ElFormato()
     {
         Console.WriteLine("\n  1) EL FORMATO DEL ALGORITMO 6\n");
-        Check((int)TM.GetField("Algoritmo", T).GetValue(null) == 6, "el algoritmo de ahora es el 6");
+        Check((int)TM.GetField("Algoritmo", T).GetValue(null) >= 6, "el algoritmo de ahora mide el zumbido (6 o despues; hoy " + TM.GetField("Algoritmo", T).GetValue(null) + ")");
         StringWriter w = new StringWriter();
         MethodInfo esc = TF.GetMethod("EscribeIntegRegistro", T);
         esc.Invoke(null, new object[] { w, "C:\\m\\con.mp3", Reg6(-14f, 4.2f, 181.7f, 60, 17.3f) });

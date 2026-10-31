@@ -125,6 +125,8 @@ namespace Rocola
             if (p != null && p.Arreglo != null) p.Arreglo.Ajusta(CanalMudoEf, QuitaContinuaEf);
             if (c != null && c.Zumbido != null) c.Zumbido.Ajusta(QuitaZumbidoEf);   // T6 (Zumbido.cs)
             if (p != null && p.Zumbido != null) p.Zumbido.Ajusta(QuitaZumbidoEf);
+            if (c != null && c.PreEco != null) c.PreEco.Pasa = !quitaPreEco || sinMejoras;   // R2 (PreEco.cs): apagarlo se oye al instante
+            if (p != null && p.PreEco != null) p.PreEco.Pasa = !quitaPreEco || sinMejoras;
             if (c != null && c.Eses != null) c.Eses.Ajusta(lc.Eses);   // T9 (Eses.cs): el mando, o lo que decide el modo del billar
             if (p != null && p.Eses != null) p.Eses.Ajusta(lp.Eses);
             // Y los del local (SalaLocal.cs): claridad, partes suaves, balance, graves y agudos; y la presencia en sala ruidosa (PresenciaSala.cs).

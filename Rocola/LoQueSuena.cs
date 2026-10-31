@@ -48,6 +48,7 @@ namespace Rocola
             bool sin = sinMejoras;
             if (c.Arreglo != null) c.Arreglo.Pasa = sin;
             if (c.Zumbido != null) c.Zumbido.Pasa = sin;
+            if (c.PreEco != null) c.PreEco.Pasa = sin || !quitaPreEco;   // R2: el interruptor apagado tambien la deja pasar
             if (c.Eses != null) c.Eses.Pasa = sin;
             if (c.Declip != null) c.Declip.Pasa = sin;
             if (c.Siseo != null) c.Siseo.Pasa = sin;
@@ -99,6 +100,7 @@ namespace Rocola
             }
             // T6 (Zumbido.cs): el de la corriente, si la cancion lo trae
             if (c.Zumbido != null) sb.Append("   Zumbido: ").Append(c.Zumbido.Hz).Append(" Hz ").Append(c.Zumbido.Activa && !c.Zumbido.Pasa ? "quitado" : "(sin quitar)");
+            if (c.PreEco != null) sb.Append("   Pre-eco: ").Append(c.PreEco.Pasa ? "(sin quitar)" : c.PreEco.Quitados + " golpes");   // R2 (PreEco.cs)
             // T9 (Eses.cs): lo que mas bajo la banda de las eses desde la ultima mirada (cada medio segundo)
             ActividadEtapas act = c.Actividad;   // lo muestreado cada medio segundo (MuestreaEtapas)
             if (c.Eses != null && c.Eses.Encendido) { double e = act.Ultimo[ActividadEtapas.Eses]; sb.Append("   Eses: ").Append(e >= 0.1 ? "-" + e.ToString("0.0") + " dB" : "nada"); }

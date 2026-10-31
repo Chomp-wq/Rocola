@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar;   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1175,24 +1175,28 @@ namespace Rocola
                         Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
                         sw.Text = texto; sw.Acento = ac; sw.Checked = on; tArr.Controls.Add(sw); return sw;
                     };
-                    Interruptor swMudo = interArr(40, "Un canal mudo, por los dos", cGra, canalMudo);
+                    Interruptor swMudo = interArr(36, "Un canal mudo, por los dos", cGra, canalMudo);
                     swMudo.Name = "SonidoCanalMudo";
-                    Label nMudo = notaLocal(tArr, 66, 32, "Si una cancion trae un canal vacio, los dos dan el que suena,\na la misma potencia. Solo en las que lo traen.");
-                    Interruptor swDc = interArr(110, "Quitar la corriente continua", cCal, quitaContinua);
+                    Label nMudo = notaLocal(tArr, 60, 32, "Si una cancion trae un canal vacio, los dos dan el que suena,\na la misma potencia. Solo en las que lo traen.");
+                    Interruptor swDc = interArr(96, "Quitar la corriente continua", cCal, quitaContinua);
                     swDc.Name = "SonidoContinua";
-                    Label nDc = notaLocal(tArr, 136, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
+                    Label nDc = notaLocal(tArr, 120, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
                     // T6 (25-10-2026, Zumbido.cs): el zumbido de la corriente, solo en las canciones en que el repaso lo midio.
-                    Interruptor swZum = interArr(180, "Quitar el zumbido de la corriente", cGra, quitaZumbido);
+                    Interruptor swZum = interArr(156, "Quitar el zumbido de la corriente", cGra, quitaZumbido);
                     swZum.Name = "SonidoZumbido";
-                    Label nZum = notaLocal(tArr, 206, 32, "El \"mmm\" de 50 o 60 Hz de una grabacion vieja: se quita solo\nese tono. Solo en las que el repaso encontro con zumbido.");
+                    Label nZum = notaLocal(tArr, 180, 32, "El \"mmm\" de 50 o 60 Hz de una grabacion vieja: se quita solo\nese tono. Solo en las que el repaso encontro con zumbido.");
                     Necesita(swMudo, sinAuto, motivoAuto, nMudo); Necesita(swDc, sinAuto, motivoAuto, nDc); Necesita(swZum, sinAuto, motivoAuto, nZum);
-                    Interruptor swAuto = interArr(250, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
+                    // R2 (31-10-2026, PreEco.cs): el pre-eco de los MP3 de codificadores simples, solo en las canciones en que el repaso lo midio.
+                    Interruptor swPreEco = interArr(216, "Quitar el pre-eco de los MP3 viejos", cCal, quitaPreEco);
+                    swPreEco.Name = "SonidoPreEco";
+                    notaLocal(tArr, 240, 32, "El siseo antes de cada golpe de los MP3 mal hechos. Solo en\nlas que el repaso midio con el; se nota desde la siguiente.");
+                    Interruptor swAuto = interArr(276, "Estereo estrecho solo si hace falta", cBri, estereoAuto);
                     swAuto.Name = "SonidoEstereoAuto";
                     // S3 solo actua si el estereo estrecho esta encendido, y con el modo automatico del local encendido manda ese modo (billar: lo
                     // enciende el solo y decide el solo; los otros dos tipos, no estrechan): el mando queda en gris diciendo cual de las dos cosas pasa.
                     string motivoEstrecho = "Necesita: Estereo al " + Math.Round(anchoEstereo * 100f) + " % (El local y sus bocinas)";
                     NecesitaMotivo(swAuto, delegate { return localAuto ? "Necesita: " + motivoAuto : (estereoEstrecho ? null : motivoEstrecho); });
-                    notaLocal(tArr, 292, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
+                    notaLocal(tArr, 300, 32, "Estrecha solo las canciones con un instrumento entero a un\nlado; las mezclas modernas suenan como vienen.");
                     BotonPlano bVolverAhora = new BotonPlano(); bVolverAhora.SetBounds(16, 346, 424, 34); bVolverAhora.Font = fBot;
                     bVolverAhora.Text = "Volver a los ajustes del sonido"; bVolverAhora.Name = "SonidoAhoraVolver"; tArr.Controls.Add(bVolverAhora);
                     bool verAhora = false;
@@ -1486,6 +1490,7 @@ namespace Rocola
                         cortaSubgrave = swSub.Checked; estereoEstrecho = swEst.Checked;
                         canalMudo = swMudo.Checked; quitaContinua = swDc.Checked; estereoAuto = swAuto.Checked;   // S1, S2 y S3
                         quitaZumbido = swZum.Checked;   // T6
+                        quitaPreEco = swPreEco.Checked;   // R2
                         suavizaEses = swEses.Checked;   // T9
                         bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked; asperezaDinamica = swAsp.Checked;   // voz, golpe y retumbe
                         claridadLocal = swCla.Checked; partesSuaves = swSua.Checked;
@@ -1681,7 +1686,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 

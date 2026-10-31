@@ -41,7 +41,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AsistentePersonalidadGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/AyudaCasillaGpu.cs $RAIZ/Rocola/AsistenteGuiaRocola.cs"
 TMP_PRUEBAS="${TMPDIR:-/tmp}/rocola_pruebas_$$"
 FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ/Rocola/RellenoMp3.cs $RAIZ/Rocola/SinSilencios.cs $RAIZ/Rocola/SubirTodo.cs $RAIZ/Rocola/NivelDisco.cs $RAIZ/Rocola/BombaSonido.cs $RAIZ/Rocola/DiarioTablas.cs $RAIZ/Rocola/CancionEnMemoria.cs $RAIZ/Rocola/MedidasBitacora.cs $RAIZ/Rocola/FlotanteNLayer.cs $RAIZ/Rocola/PicoReal.cs $RAIZ/Rocola/Realce.cs $RAIZ/Rocola/Desnormales.cs $RAIZ/Rocola/Siseo.cs $RAIZ/Rocola/Mp3Ligero.cs $RAIZ/Rocola/Pcm16Directo.cs"
-FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/Eses.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/PreEco.cs $RAIZ/Rocola/Eses.cs"
 # Voz, golpe y retumbe (27-10-2026): que el bombo no hunda la voz, el retumbe dinamico y el ataque mas claro.
 FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/AtaqueClaro.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
@@ -242,6 +242,9 @@ CPU="$CPU cadenabillar"
 # (menos vaiven de la voz, sin el billar bit a bit, en vivo sin chasquido), su comparacion a ciegas, lo que hizo cada etapa en la
 # bitacora y Recoger_sonido_XP.cmd.
 CPU="$CPU presenciagrave"
+# 'preeco': R2 (31-10-2026; PreEco.cs): la medida del pre-eco de los MP3 en el repaso (algoritmo 7) con dos MP3 de verdad (LAME y shine),
+# la tabla, la etapa que lo quita (golpes que vuelven a subir de golpe, bit a bit con Pasa) y el interruptor.
+CPU="$CPU preeco"
 # 'mp3mezclado': MP3 con frecuencia o canales mezclados (error del 17-10-2026): la reconstruccion con el formato dominante (BuildCleanMp3).
 CPU="$CPU mp3mezclado"
 # 'modosauto': la revision de los modos automaticos del sonido (23-10-2026; MODOS_AUTOMATICOS_SONIDO_MODEST_2026-10-23.md): la

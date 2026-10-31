@@ -294,7 +294,7 @@ class AlLimite
         string[] p = linea5.Split('|');
         string linea2 = "2|" + string.Join("|", p, 1, 5) + "|" + wav;   // la misma medida, como la escribia una version de septiembre
         int algHoy = (int)TF.Assembly.GetType("Rocola.MedidorBs1770", true).GetField("Algoritmo", T).GetValue(null);
-        Check(Prop(a[1], "ConP90") && p.Length == (algHoy >= 6 ? 18 : 14), "la medida de hoy sale del algoritmo de hoy (" + algHoy + "), con su P90");
+        Check(Prop(a[1], "ConP90") && p.Length == (algHoy >= 7 ? 20 : algHoy >= 6 ? 18 : 14), "la medida de hoy sale del algoritmo de hoy (" + algHoy + "), con su P90");
         Type tt = TF.GetNestedType("Track", T);
         foreach (string linea in new string[] { linea2, linea5 })
         {
