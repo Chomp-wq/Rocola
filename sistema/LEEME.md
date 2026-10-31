@@ -49,6 +49,10 @@ hasta que esté probado en el A4.
 - **Aún no se ha compilado.** En el entorno en la nube donde se prepara, la red solo deja bajar de GitHub y PyPI, y Buildroot necesita
   78 fuentes de 19 sitios (gnu.org, kernel.org, freedesktop.org...). `sh sistema/comprueba-red.sh` dice cuáles faltan. **Con
   permitir `sources.buildroot.net`** (la copia de respaldo de Buildroot, que tiene todas) basta.
+- **31-10, compilada.** Con `sources.buildroot.net` permitido, la imagen del A4 se compila entera en ~1 hora en la nube
+  (`disk.img`, 537 MB). **No corre en QEMU:** el núcleo y los programas usan instrucciones propias del Piledriver (TBM: `blcs`,
+  `blcfill`...) que el emulador no tiene, y se cae antes de escribir nada. En el A4 son normales. Para probar en QEMU está
+  `ROCOLA_PERFIL=qemu sh sistema/compila.sh`: la misma receta para cualquier x86-64, en `salida-qemu/`.
 - La etapa 2 (la rocola en Linux) está planeada en [ETAPA2.md](ETAPA2.md).
 
 ## Cómo se compila
@@ -66,7 +70,8 @@ ccache y lo compilado, varios GB. La imagen queda en `~/rocola-trabajo/salida/im
 
 ## Cómo se prueba
 
-- **En QEMU (sin la Radeon):** `sh sistema/prueba-qemu.sh`. La gráfica va por software.
+- **En QEMU (sin la Radeon):** primero `ROCOLA_PERFIL=qemu sh sistema/compila.sh` y luego `sh sistema/prueba-qemu.sh` (o
+  `sh sistema/prueba-qemu-captura.sh`, sin ventana: deja una captura de la pantalla). La gráfica va por software.
 - **En el A4:**
   1. Grabar `disk.img` en una memoria USB **que se pueda borrar**: `dd if=disk.img of=/dev/sdX bs=4M conv=fsync` en Linux, o
      Rufus / balenaEtcher en Windows en modo «DD».
