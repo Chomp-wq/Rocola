@@ -1,0 +1,57 @@
+#!/bin/sh
+# ROCOLA OS, etapa 1: la prueba de sonido y grafica. La lanza /etc/init.d/S99rocola en tty1 al arrancar.
+# Apunta lo que vio el nucleo (procesador, memoria, grafica, sonido), suena un tono de 3 s, gira un cubo 15 s y deja el resultado
+# en pantalla y en /root/rocola-prueba.txt (en la particion del sistema: sobrevive al apagar). No toca ningun otro disco.
+LOG=/root/rocola-prueba.txt
+SONIDO="no probado"; GRAFICA="no probada"
+
+linea() { echo "$@" | tee -a "$LOG"; }
+
+: > "$LOG"
+linea "ROCOLA OS - prueba de la etapa 1 - $(date)"
+linea "Nucleo: $(uname -r)"
+linea "Procesador: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-) ($(grep -c ^processor /proc/cpuinfo) nucleos)"
+linea "Memoria: $(grep MemTotal /proc/meminfo | tr -s ' ' | cut -d' ' -f2) kB"
+linea ""
+
+# La grafica: el modulo radeon (con su firmware) lo carga eudev al ver la tarjeta; se espera hasta 10 s a que aparezca.
+i=0; while [ ! -e /dev/dri/card0 ] && [ $i -lt 10 ]; do sleep 1; i=$((i+1)); done
+linea "--- GRAFICA"
+for d in /sys/class/drm/card[0-9]; do
+	[ -e "$d/device/uevent" ] && linea "$(basename "$d"): $(grep -E 'DRIVER|PCI_ID' "$d/device/uevent" | tr '\n' ' ')"
+done
+dmesg | grep -i -E "radeon|\[drm\]" | tail -15 >> "$LOG"
+linea ""
+
+# El sonido: lo que hay, el volumen arriba y sin silencio, y un tono de 440 Hz durante 3 s.
+linea "--- SONIDO"
+cat /proc/asound/cards >> "$LOG" 2>&1
+aplay -l >> "$LOG" 2>&1
+for c in Master PCM Speaker Headphone Front; do amixer -q sset "$c" 80% unmute 2>/dev/null; done
+linea "Tocando un tono de 3 s (440 Hz)..."
+timeout 3 speaker-test -t sine -f 440 -c 2 >> "$LOG" 2>&1; r=$?
+# speaker-test no acaba solo: que lo corte timeout (124 o 143) es lo normal; cualquier otra salida es un fallo
+case $r in 0|124|143) SONIDO="sono (si no se oyo, revisar el cable y el volumen)" ;; *) SONIDO="FALLO $r (ver arriba)" ;; esac
+linea "Sonido: $SONIDO"
+linea ""
+
+# La grafica de verdad: el cubo de Mesa por KMS/EGL, 900 cuadros (unos 15 s a 60 cuadros por segundo).
+linea "--- CUBO (15 s)"
+if [ -e /dev/dri/card0 ]; then
+	if kmscube -c 900 >> "$LOG" 2>&1; then GRAFICA="dibujo el cubo"; else GRAFICA="FALLO kmscube (ver arriba)"; fi
+else
+	GRAFICA="FALLO: no aparecio /dev/dri/card0 (la tarjeta no se cargo)"
+fi
+linea "Grafica: $GRAFICA"
+sync
+
+# Lo que queda en pantalla, para la foto.
+clear 2>/dev/null
+echo "=================== ROCOLA OS: PRUEBA DE LA ETAPA 1 ==================="
+echo "Procesador: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-)"
+echo "Grafica: $(grep -h DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null)  -> $GRAFICA"
+echo "Sonido: $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
+echo ""
+echo "Todo esta en /root/rocola-prueba.txt. Saca una foto de esta pantalla."
+echo "Para apagar: Ctrl+Alt+F2, entrar como root y escribir: poweroff"
+exec sleep 2147483647
