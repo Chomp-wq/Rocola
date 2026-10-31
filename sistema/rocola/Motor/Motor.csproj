@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- EL MOTOR DE SONIDO DE ROCOLA OS (etapa 2; sistema/ETAPA2.md): la cadena de la rocola de XP (Rocola/), copiada y llevada a
+       .NET 10 y NAudio.Core 3. Primero igual que la de XP (Puente.cs); despues, mas rapida. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Rocola</RootNamespace>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- avisos que el codigo de XP trae de siempre (variables sin usar, codigo que no se alcanza) -->
+    <NoWarn>CS0162;CS0168;CS0219;CS0414;CS0649;CS0169;CS0414</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Core" Version="3.3.0" />
+  </ItemGroup>
+</Project>

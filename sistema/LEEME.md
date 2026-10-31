@@ -53,6 +53,8 @@ hasta que esté probado en el A4.
   (`disk.img`, 537 MB). **No corre en QEMU:** el núcleo y los programas usan instrucciones propias del Piledriver (TBM: `blcs`,
   `blcfill`...) que el emulador no tiene, y se cae antes de escribir nada. En el A4 son normales. Para probar en QEMU está
   `ROCOLA_PERFIL=qemu sh sistema/compila.sh`: la misma receta para cualquier x86-64, en `salida-qemu/`.
+- **31-10, probada en QEMU** (la versión `qemu`): arranca sola, corre `rocola-prueba`, el sonido (HDA emulado) pasa y el cubo se
+  dibuja por KMS/EGL con Mesa. Falta el A4 de verdad (la Radeon, el códec Realtek, BIOS o UEFI).
 - La etapa 2 (la rocola en Linux) está planeada en [ETAPA2.md](ETAPA2.md).
 
 ## Cómo se compila
