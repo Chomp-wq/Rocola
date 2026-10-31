@@ -5,13 +5,10 @@ using System;
 
 namespace Rocola
 {
-    // NAudio 1.9 expone SubFormat, pero no dwChannelMask. Solo se consulta/fija
-    // al construir una etapa; nunca por muestra. No se inventa layout multicanal.
+    // La mascara de canales de un formato (de XP, Rocola/AudioControles.cs). NAudio 1.9 no la exponia y XP la leia y la ponia por reflexion;
+    // NAudio 3 la expone (ChannelMask) y la recibe al construir: sin reflexion (NativeAOT). Solo al construir una etapa; nunca por muestra.
     internal static class FormatoAudio
     {
-        private static readonly System.Reflection.FieldInfo campoMascara =
-            typeof(NAudio.Wave.WaveFormatExtensible).GetField("dwChannelMask",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         internal static bool Valida(int mascara, int canales)
         {
             if (mascara == 0 || (mascara & ~0x3FFFF) != 0) return false;
@@ -22,34 +19,20 @@ namespace Rocola
         {
             if (formato == null) return 0;
             NAudio.Wave.WaveFormatExtensible ex = formato as NAudio.Wave.WaveFormatExtensible;
-            if (ex != null && campoMascara != null)
-            {
-                int m = (int)campoMascara.GetValue(ex);
-                return Valida(m, formato.Channels) ? m : 0;
-            }
-            // Los formatos exactos de salida tambien exponen su mascara.
-            System.Reflection.PropertyInfo p = formato.GetType().GetProperty("Mascara",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-            if (p != null) { int m = (int)p.GetValue(formato, null); return Valida(m, formato.Channels) ? m : 0; }
+            if (ex != null) { int m = ex.ChannelMask; return Valida(m, formato.Channels) ? m : 0; }
             return formato.Channels == 1 ? 4 : (formato.Channels == 2 ? 3 : 0);
         }
         internal static NAudio.Wave.WaveFormat Flotante(int hz, int canales, int mascara)
         {
             if ((canales == 1 && mascara == 4) || (canales == 2 && mascara == 3))
                 return NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(hz, canales);
-            NAudio.Wave.WaveFormatExtensible f = new NAudio.Wave.WaveFormatExtensible(hz, 32, canales);
-            if (campoMascara == null) throw new NotSupportedException("NAudio no conserva la mascara multicanal");
-            campoMascara.SetValue(f, Valida(mascara, canales) ? mascara : 0);
-            return f;
+            return new NAudio.Wave.WaveFormatExtensible(hz, 32, canales, true, 32, Valida(mascara, canales) ? mascara : 0);
         }
         internal static NAudio.Wave.WaveFormat Pcm(int hz, int bits, int canales, int mascara)
         {
             if ((canales == 1 && mascara == 4) || (canales == 2 && mascara == 3))
                 return new NAudio.Wave.WaveFormat(hz, bits, canales);
-            NAudio.Wave.WaveFormatExtensible f = new NAudio.Wave.WaveFormatExtensible(hz, bits, canales);
-            if (campoMascara == null) throw new NotSupportedException("NAudio no conserva la mascara multicanal");
-            campoMascara.SetValue(f, Valida(mascara, canales) ? mascara : 0);
-            return f;
+            return new NAudio.Wave.WaveFormatExtensible(hz, bits, canales, false, bits, Valida(mascara, canales) ? mascara : 0);
         }
         internal static NAudio.Wave.WaveFormat DeArchivo(NAudio.Wave.WaveFormat f, string ruta)
         {

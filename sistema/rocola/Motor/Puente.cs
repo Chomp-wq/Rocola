@@ -10,18 +10,29 @@ namespace Rocola
 {
     internal static class Puente
     {
-        [ThreadStatic] private static float[] apoyo;
-        // Una lectura con Span hecha con la lectura de siempre, sobre un arreglo de apoyo del hilo.
+        // Una lectura con Span hecha con la lectura de siempre, sobre un arreglo de apoyo del hilo. UNO POR NIVEL: una etapa lee de la de
+        // delante dentro de su propia lectura, y con un solo apoyo la de delante escribia en el arreglo que la de detras estaba usando
+        // (la cadena entera salia mal aunque cada etapa sola saliera bien: CompararConXP, cadena entera).
+        [ThreadStatic] private static float[][] apoyos;
+        [ThreadStatic] private static int nivel;
         internal static int Lee(Func<float[], int, int, int> lee, Span<float> destino)
         {
-            float[] a = apoyo;
-            if (a == null || a.Length < destino.Length) apoyo = a = new float[Math.Max(destino.Length, 8192)];
-            int n = lee(a, 0, destino.Length);
-            if (n > 0) a.AsSpan(0, n).CopyTo(destino);
-            return n;
+            float[][] t = apoyos ?? (apoyos = new float[8][]);
+            int k = nivel;
+            if (k >= t.Length) { Array.Resize(ref t, t.Length * 2); apoyos = t; }
+            float[] a = t[k];
+            if (a == null || a.Length < destino.Length) t[k] = a = new float[Math.Max(destino.Length, 8192)];
+            nivel = k + 1;
+            try
+            {
+                int n = lee(a, 0, destino.Length);
+                if (n > 0) a.AsSpan(0, n).CopyTo(destino);
+                return n;
+            }
+            finally { nivel = k; }
         }
         [ThreadStatic] private static byte[] apoyoBytes;
-        // Lo mismo para un IWaveProvider (bytes): la salida de 16 bits con dither.
+        // Lo mismo para un IWaveProvider (bytes): la salida de 16 bits con dither (la ultima: no hay otra lectura de bytes dentro).
         internal static int LeeBytes(Func<byte[], int, int, int> lee, Span<byte> destino)
         {
             byte[] a = apoyoBytes;

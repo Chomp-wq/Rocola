@@ -1,6 +1,7 @@
-// LA ROCOLA SIN PANTALLA (Rocola OS, etapa 2, hito 4). Toca una lista de canciones con la cadena del motor, una tras otra:
-//   1) mide la cancion entera (sonoridad, picos y P90: Sonoridad.cs, como el repaso de XP) y la sube "al limite" (GananciaAlLimite);
-//   2) la cadena: arreglos de la grabacion -> nivelado -> grave en mono (120 Hz) -> limitador de pico real -> 16 bits con dither;
+// LA ROCOLA SIN PANTALLA (Rocola OS, etapa 2). Toca una lista de canciones con la cadena del motor, una tras otra:
+//   1) mide la cancion entera si aun no lo esta (sonoridad, picos y P90: el repaso de XP), para nivelarla "al limite";
+//   2) le arma la cadena ENTERA de XP con los ajustes de fabrica (ArmaCadena: arreglos, des-recorte, nivelado y EQ, grave en mono, el
+//      local, presencia, voz/golpe/retumbe, bajo psicoacustico, limitador de pico real y fundido) y la pasa a 16 bits con dither;
 //   3) la toca por ALSA (o la escribe en un WAV con --wav, para probar sin tarjeta).
 // Uso: rocola-consola [--wav salida.wav] [--dispositivo default] cancion1.mp3 cancion2.wav ...
 using System;
@@ -23,15 +24,17 @@ namespace Rocola
             }
             if (lista.Count == 0) { Console.Error.WriteLine("Uso: rocola-consola [--wav salida.wav] [--dispositivo default] canciones..."); return 2; }
             WaveFileWriter escritor = null;
+            Form1 motor = new Form1();   // los ajustes de fabrica de XP
             foreach (string ruta in lista)
             {
                 try
                 {
-                    float ganancia = Form1.MideAlLimite(ruta);
-                    using (LectorCancion lector = new LectorCancion(ruta))
+                    string completa = Path.GetFullPath(ruta);
+                    if (!motor.MideSiFalta(completa)) Console.WriteLine("  (no se pudo medir: suena con la regla de las canciones sin medir)");
+                    using (Form1.Cancion cancion = motor.Arma(completa))
                     {
-                        ISampleProvider cadena = Form1.CadenaDeFabrica(lector, ganancia);
-                        Console.WriteLine("Suena: " + Path.GetFileName(ruta) + "  (" + lector.Duracion.ToString(@"m\:ss") + ", nivelado " + (20 * Math.Log10(ganancia)).ToString("+0.0;-0.0") + " dB)");
+                        ISampleProvider cadena = cancion.Salida;
+                        Console.WriteLine("Suena: " + Path.GetFileName(ruta) + "  (" + cancion.Duracion.ToString(@"m\:ss") + ", nivelado " + cancion.GananciaDb.ToString("+0.0;-0.0") + " dB)");
                         if (wav != null)
                         {
                             if (escritor == null) escritor = new WaveFileWriter(wav, new WaveFormat(cadena.WaveFormat.SampleRate, 16, 2));

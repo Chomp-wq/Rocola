@@ -75,10 +75,88 @@ static class CompararConXP
         if (eq != null) t.GetType().GetProperty("EqDb", T).SetValue(t, eq, null);
         return t;
     }
+    // ---- LA CADENA ENTERA (ArmaCadena), como pruebas/compara-cadena.cs de XP ----
+    static object F;   // la rocola (en XP sin encender; en el motor, un motor nuevo)
+    static void Pon(string n, object v)
+    {
+        FieldInfo f = Tipo("Form1").GetField(n, T);
+        if (f == null) throw new Exception("no esta el campo " + n);
+        f.SetValue(f.IsStatic ? null : F, v);
+    }
+    static object Llama(string n, params object[] a) { return Tipo("Form1").GetMethod(n, T).Invoke(F, a); }
+    static void Fabrica()
+    {
+        Pon("normalizeOn", true); Pon("normTarget", 0.26f); Pon("normStrength", 1f); Pon("masterDb", 0f);
+        Pon("excAmount", 0.35f); Pon("bassAuto", true); Pon("bassAmount", 0.3f); Pon("bassSongFactor", 1f);
+        Pon("eqAuto", true); Pon("eqAmount", 0f);
+        Pon("sbrAllowed", true); Pon("sbrOn", false); Pon("declipOn", true);
+        Pon("crossfadeSec", 0.5f); Pon("saltaSilencios", false);
+        Pon("claridadLocal", false); Pon("partesSuaves", false); Pon("localAuto", false); Pon("presenciaSala", false);
+        Pon("gravesLocalDb", 0); Pon("agudosLocalDb", 0); Pon("balanceDb", 0);
+        Pon("cortaSubgrave", false); Pon("estereoEstrecho", false); Pon("estereoAuto", false);
+        Pon("canalMudo", true); Pon("quitaContinua", true);
+        Pon("sinMejoras", false); Pon("aLaMedida", false); Pon("quitaSiseo", false);
+    }
+    static void CadenaEntera(string dir)
+    {
+        const int FS = 44100;
+        string tmp = Path.Combine(Path.GetTempPath(), "rocola_cadenaentera_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        Environment.SetEnvironmentVariable("ROCOLA_DATOS", tmp);
+#if NET
+        F = Activator.CreateInstance(Tipo("Form1"));
+#else
+        F = Codigo.FormSinEncender(Tipo("Form1"));
+        foreach (FieldInfo fi in Tipo("Form1").GetFields(T))
+            if (!fi.IsStatic && fi.FieldType.Name == "GuardadoReciente" && fi.GetValue(F) == null) fi.SetValue(F, Activator.CreateInstance(fi.FieldType, true));
+#endif
+        string a = Path.Combine(tmp, "a.wav"), b = Path.Combine(tmp, "b.wav");
+        float[] xa = Musica(FS, 12, 1.0), xb = Musica(FS, 9, 0.5);
+        using (WaveFileWriter w = new WaveFileWriter(a, WaveFormat.CreateIeeeFloatWaveFormat(FS, 2))) w.WriteSamples(xa, 0, xa.Length);
+        using (WaveFileWriter w = new WaveFileWriter(b, WaveFormat.CreateIeeeFloatWaveFormat(FS, 2))) w.WriteSamples(xb, 0, xb.Length);
+        // la cancion a, medida por el repaso (va a la tabla); la b, sin medir
+        object[] ma = { a, null };
+        if (!(bool)Llama("MideIntegrada", ma)) throw new Exception("no se pudo medir la cancion de prueba");
+        System.Collections.IDictionary tab = (System.Collections.IDictionary)Tipo("Form1").GetField("integCache", T).GetValue(F);
+        if (tab == null) { tab = (System.Collections.IDictionary)Activator.CreateInstance(Tipo("Form1").GetField("integCache", T).FieldType, StringComparer.OrdinalIgnoreCase); Pon("integCache", tab); }
+        tab[a] = ma[1];
+        Llama("ActualizaFuenteMedida", a, Tipo("Form1").GetMethod("TomaFuenteMedida", T).Invoke(null, null));
+        Type tt = Tipo("Track");
+        string[] nombres = { "fabrica", "billar", "local_a_mano", "estereo_s3_subgrave", "dsee_i1_siseo", "eq_y_graves_a_mano" };
+        for (int c = 0; c < nombres.Length; c++)
+            foreach (string ruta in new string[] { a, b })
+            {
+                Fabrica();
+                switch (c)
+                {
+                    case 1: Pon("localAuto", true); break;
+                    case 2: Pon("claridadLocal", true); Pon("partesSuaves", true); Pon("presenciaSala", true); Pon("gravesLocalDb", 3); Pon("agudosLocalDb", -2); Pon("balanceDb", -2); Pon("cortaSubgrave", true); break;
+                    case 3: Pon("estereoEstrecho", true); Pon("estereoAuto", true); Pon("cortaSubgrave", true); break;
+                    case 4: Pon("sbrOn", true); Pon("aLaMedida", true); Pon("quitaSiseo", true); break;
+                    case 5: Pon("bassAuto", false); Pon("bassAmount", 0.55f); Pon("eqAuto", false); Pon("eqAmount", 0.5f); break;
+                }
+                object track = Activator.CreateInstance(tt, true); tt.GetField("Path", T).SetValue(track, ruta);
+                object lector = Llama("OpenAudio", ruta);
+                Tipo("IAudioSource").GetProperty("Volume").SetValue(lector, 1.0f, null);
+                object cad = Llama("ArmaCadena", track, lector, false, 0.0);
+                object salida = cad.GetType().GetField(Environment.GetEnvironmentVariable("ROCOLA_ETAPA") ?? "Salida", T).GetValue(cad);
+                object tap = cad.GetType().GetField("Tap", T).GetValue(cad);
+                float[] eq = (float[])tap.GetType().GetProperty("EqDb", T).GetValue(tap, null);
+                Console.WriteLine("    gain=" + ((float)tap.GetType().GetField("Gain", T).GetValue(tap)).ToString("R") + " excite=" + ((float)tap.GetType().GetField("Excite", T).GetValue(tap)).ToString("R")
+                    + " eq=" + (eq == null ? "null" : string.Join(",", Array.ConvertAll(eq, v => v.ToString("0.###"))))
+                    + " retardo=" + cad.GetType().GetField("Retardo", T).GetValue(cad) + " bajo=" + cad.GetType().GetField("BajoFactor", T).GetValue(cad) + "/" + cad.GetType().GetField("BajoBase", T).GetValue(cad)
+                    + " declip=" + (cad.GetType().GetField("Declip", T).GetValue(cad) != null) + " sbr=" + (cad.GetType().GetField("Sbr", T).GetValue(cad) != null));
+                Pasa("cadena_" + nombres[c] + (ruta == a ? "_medida" : "_sin_medir"), salida, dir);
+                ((IDisposable)lector).Dispose();
+            }
+        try { Directory.Delete(tmp, true); } catch { }
+    }
+
     static int Main(string[] args)
     {
         asm = Assembly.LoadFrom(Path.GetFullPath(args[0]));
         string dir = args[1]; Directory.CreateDirectory(dir);
+        if (args.Length > 2 && args[2] == "--solo-cadena") { CadenaEntera(dir); return 0; }
         const int FS = 44100;
         float[] x = Musica(FS, 12, 1.0), fuerte = Musica(FS, 12, 2.2);
         Func<float[], ISampleProvider> F = d => new FuenteFija(d, FS, 2);
@@ -98,6 +176,10 @@ static class CompararConXP
         Pasa("zumbido", Nueva("QuitaZumbido", F(x), 60, true), dir);
         Pasa("preeco", Nueva("QuitaPreEco", F(x)), dir);
         Pasa("arreglos", Nueva("ArreglaGrabacion", F(x), true, true), dir);
+        Pasa("bajo_psicoacustico", Nueva("DeepBassProvider", F(x), 0.7f), dir);
+        float[] recortada = (float[])fuerte.Clone(); for (int i = 0; i < recortada.Length; i++) recortada[i] = Math.Max(-0.99f, Math.Min(0.99f, recortada[i]));
+        Pasa("des_recorte", Nueva("DeclipProvider", F(recortada)), dir);
+        Pasa("fundido", Nueva("FadeProvider", F(x), (long)(x.Length / 2), 0.5, 4410L, 0.005), dir);
         Pasa("nivelado", Nivelado(F(x), 2.0f, null, 0f), dir);
         Pasa("nivelado_eq", Nivelado(F(x), 1.5f, new float[] { -2f, 1f, 0f, 1.5f, -1f, 2f, 1f, -3f }, 0f), dir);
         Pasa("nivelado_realce", Nivelado(F(x), 1.2f, new float[] { 0f, 0f, 1f, 0f, 0f, 0f, 2f, 0f }, 0.6f), dir);
@@ -109,6 +191,7 @@ static class CompararConXP
         Tipo("Form1").GetMethod("EscribeIntegRegistro", T).Invoke(null, new object[] { sw, "prueba.wav", args2[3] });
         File.WriteAllText(Path.Combine(dir, "sonoridad.txt"), sw.ToString());
         Console.WriteLine("  sonoridad: " + sw.ToString().Trim());
+        CadenaEntera(dir);
         return 0;
     }
 }

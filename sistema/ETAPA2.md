@@ -39,11 +39,24 @@ nivelado y el EQ (`LevelTap`), la tabla de la sonoridad, el lector de MP3 con NL
 - **Hito 3:** el lector (todos los MP3 por NLayer 3, WAV por NAudio) y la salida ALSA con hilo propio.
 - **Hito 4:** `rocola-consola`, la rocola sin pantalla, como paquete de Rocola OS: en QEMU arranca y toca la canción de prueba por ALSA.
 
-Lo siguiente: la cadena entera como en XP (el local, la presencia, voz/golpe/retumbe, el bajo psicoacústico, el modo billar, el
-fundido y el relevo sin pausa), la configuración (`rocola_config.txt`), la biblioteca y la cola; después la pantalla.
+## Hito 5 (31-10-2026): la cadena entera
 
-Pendientes conocidos: el sin-huecos de los MP3 (la etiqueta LAME, `RellenoMp3.cs`) aún no está en el lector; `FormatoAudio.Mascara` usa
-reflexión (aviso IL2075 de NativeAOT; solo afecta a WAV con máscara de canales).
+- El motor lleva la **cadena entera de XP** (`ArmaCadena`, sin cambiar una línea) y todo lo que necesita: el DSEE, el des-recorte, el
+  siseo, el bajo psicoacústico, el fundido, el modo billar, el relevo sin pausa, los MP3 sin huecos, las tablas y las medidas. Lo
+  que en XP vive en la ventana se sacó tal cual (`Motor/DeXP.cs`); lo de Windows, en su forma de Linux (`Motor/Ventana.cs`).
+- Comparada con la de XP en 12 casos (6 combinaciones de ajustes, con una canción medida y otra sin medir): **casi iguales**, como
+  mucho −135 dB de diferencia (las funciones matemáticas del bajo psicoacústico).
+- **Fallo encontrado y arreglado:** el puente a NAudio 3 hacía que dos etapas seguidas se pisaran el arreglo de apoyo; **el sonido de
+  `rocola-consola` del hito 4 salía mal a trozos**. Cada etapa sola salía bien, por eso no se vio antes.
+- `rocola-consola` ya toca con la cadena entera y los ajustes de fábrica; los MP3 sin el hueco del codificador (NLayer retrasa 529
+  muestras, medido al arrancar como en XP). Probado en QEMU grabando la tarjeta de sonido emulada.
+- Sin reflexión: NAudio 3 ya da la máscara de canales (`FormatoAudio`), sin avisos de NativeAOT.
+
+Lo siguiente: la configuración (`rocola_config.txt`: los mismos interruptores que XP) y guardar las tablas (las medidas, el EQ
+aprendido) en `/rocola/datos`; la biblioteca y la cola; después la pantalla.
+
+Pendientes conocidos: los MP3 de frecuencias mezcladas (en XP se reconstruyen: `BuildCleanMp3`) aún no; la comparación a ciegas y
+«Lo que suena ahora» esperan a la pantalla; leer por delante la siguiente (`MiraPorDelante`) aún no.
 
 ## Lo que hay
 

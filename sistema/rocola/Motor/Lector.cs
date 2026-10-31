@@ -14,16 +14,20 @@ namespace Rocola
         private readonly WaveStream wav;
         private readonly ISampleProvider muestras;   // las del WAV, ya en coma flotante
         private readonly int canalesArchivo;
-        private readonly WaveFormat formato;          // siempre estereo
+        private readonly WaveFormat formato;          // estereo (o los canales del archivo, para medir)
+        private readonly bool comoEstereo;
         private float[] mono = new float[0];
 
-        public LectorCancion(string ruta)
+        public LectorCancion(string ruta) : this(ruta, true) { }
+        // comoEstereo = false: con los canales del archivo (la medida del repaso mide un mono como mono, como en XP: LectorMedida).
+        public LectorCancion(string ruta, bool comoEstereo)
         {
+            this.comoEstereo = comoEstereo;
             if (Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
                 mp3 = new NLayer.MpegFile(ruta);
                 canalesArchivo = mp3.Channels;
-                formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, 2);
+                formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, comoEstereo ? 2 : canalesArchivo);
             }
             else
             {
@@ -31,8 +35,17 @@ namespace Rocola
                 wav = w; muestras = w.ToSampleProvider();
                 canalesArchivo = w.WaveFormat.Channels;
                 if (canalesArchivo > 2) { w.Dispose(); throw new NotSupportedException("mas de dos canales"); }
-                formato = WaveFormat.CreateIeeeFloatWaveFormat(w.WaveFormat.SampleRate, 2);
+                formato = WaveFormat.CreateIeeeFloatWaveFormat(w.WaveFormat.SampleRate, comoEstereo ? 2 : canalesArchivo);
             }
+        }
+
+        // Un MP3 que ya esta en memoria (el clip con el que se mide el relleno, RellenoMp3.cs).
+        public LectorCancion(Stream mp3EnMemoria)
+        {
+            comoEstereo = true;
+            mp3 = new NLayer.MpegFile(mp3EnMemoria);
+            canalesArchivo = mp3.Channels;
+            formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, 2);
         }
 
         public WaveFormat WaveFormat { get { return formato; } }
@@ -45,6 +58,7 @@ namespace Rocola
 
         public int Read(Span<float> destino)
         {
+            if (!comoEstereo && canalesArchivo == 1) return LeeArchivo(destino);
             int pide = destino.Length & ~1;   // cuadros enteros
             if (pide == 0) return 0;
             if (canalesArchivo == 2) return LeeArchivo(destino.Slice(0, pide));
