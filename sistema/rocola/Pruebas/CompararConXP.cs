@@ -58,6 +58,23 @@ static class CompararConXP
         Console.WriteLine("  " + nombre + ": " + y.Count + " muestras");
     }
     static object Nueva(string tipo, params object[] a) { return Activator.CreateInstance(Tipo(tipo), T, null, a, null); }
+    // La ventana "duena" del nivelado, sin encender (en XP con el ayudante de las pruebas; en el motor basta un objeto vacio).
+    static object Duena()
+    {
+#if NET
+        return System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tipo("Form1"));
+#else
+        return Codigo.FormSinEncender(Tipo("Form1"));
+#endif
+    }
+    static object Nivelado(ISampleProvider s, float ganancia, float[] eq, float realce)
+    {
+        object t = Nueva("LevelTap", s, Duena());
+        t.GetType().GetField("Gain", T).SetValue(t, ganancia);
+        t.GetType().GetField("Excite", T).SetValue(t, realce);
+        if (eq != null) t.GetType().GetProperty("EqDb", T).SetValue(t, eq, null);
+        return t;
+    }
     static int Main(string[] args)
     {
         asm = Assembly.LoadFrom(Path.GetFullPath(args[0]));
@@ -81,6 +98,17 @@ static class CompararConXP
         Pasa("zumbido", Nueva("QuitaZumbido", F(x), 60, true), dir);
         Pasa("preeco", Nueva("QuitaPreEco", F(x)), dir);
         Pasa("arreglos", Nueva("ArreglaGrabacion", F(x), true, true), dir);
+        Pasa("nivelado", Nivelado(F(x), 2.0f, null, 0f), dir);
+        Pasa("nivelado_eq", Nivelado(F(x), 1.5f, new float[] { -2f, 1f, 0f, 1.5f, -1f, 2f, 1f, -3f }, 0f), dir);
+        Pasa("nivelado_realce", Nivelado(F(x), 1.2f, new float[] { 0f, 0f, 1f, 0f, 0f, 0f, 2f, 0f }, 0.6f), dir);
+        // La medida de la sonoridad (el repaso): los numeros de la medida, en texto.
+        object m = Nueva("MedidorBs1770", FS, new double[] { 1.0, 1.0 });
+        m.GetType().GetMethod("Procesa", T).Invoke(m, new object[] { x, 0, x.Length });
+        MethodInfo cierra = Tipo("Form1").GetMethod("CierraIntegrada", T); object[] args2 = { m, 12.0, FS, null }; cierra.Invoke(null, args2);
+        StringWriter sw = new StringWriter();
+        Tipo("Form1").GetMethod("EscribeIntegRegistro", T).Invoke(null, new object[] { sw, "prueba.wav", args2[3] });
+        File.WriteAllText(Path.Combine(dir, "sonoridad.txt"), sw.ToString());
+        Console.WriteLine("  sonoridad: " + sw.ToString().Trim());
         return 0;
     }
 }
