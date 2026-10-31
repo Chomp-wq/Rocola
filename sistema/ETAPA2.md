@@ -33,6 +33,18 @@ de XP: **las 15 variantes probadas salen idénticas bit a bit** (limitador con y
 grave en mono con subgrave, eses con y sin billar, retumbe, ataque, ásperos, bombo, zumbido, pre-eco y arreglos). Siguiente: el
 nivelado y el EQ (`LevelTap`), la tabla de la sonoridad, el lector de MP3 con NLayer y la salida ALSA.
 
+## Hitos 2 a 4 (31-10-2026)
+
+- **Hito 2:** el nivelado, el EQ, el realce y la medida de la sonoridad, idénticos bit a bit a XP.
+- **Hito 3:** el lector (todos los MP3 por NLayer 3, WAV por NAudio) y la salida ALSA con hilo propio.
+- **Hito 4:** `rocola-consola`, la rocola sin pantalla, como paquete de Rocola OS: en QEMU arranca y toca la canción de prueba por ALSA.
+
+Lo siguiente: la cadena entera como en XP (el local, la presencia, voz/golpe/retumbe, el bajo psicoacústico, el modo billar, el
+fundido y el relevo sin pausa), la configuración (`rocola_config.txt`), la biblioteca y la cola; después la pantalla.
+
+Pendientes conocidos: el sin-huecos de los MP3 (la etiqueta LAME, `RellenoMp3.cs`) aún no está en el lector; `FormatoAudio.Mascara` usa
+reflexión (aviso IL2075 de NativeAOT; solo afecta a WAV con máscara de canales).
+
 ## Lo que hay
 
 - **109 archivos y unas 69.000 líneas de C#.** 76 de esos archivos son partes de la misma clase `Form1`: las etapas de la cadena

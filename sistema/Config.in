@@ -1,1 +1,2 @@
-# Menu de paquetes propios de Rocola OS (aun ninguno: la rocola llega en la etapa 2).
+# Menu de paquetes propios de Rocola OS.
+source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-consola/Config.in"

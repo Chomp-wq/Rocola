@@ -1,2 +1,2 @@
-# Paquetes propios de Rocola OS (aun ninguno: la rocola llega en la etapa 2).
+# Paquetes propios de Rocola OS: la rocola (sistema/rocola), por ahora la de consola.
 include $(sort $(wildcard $(BR2_EXTERNAL_ROCOLA_PATH)/package/*/*.mk))

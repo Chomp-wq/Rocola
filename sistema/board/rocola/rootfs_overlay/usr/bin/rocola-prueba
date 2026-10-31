@@ -35,6 +35,16 @@ case $r in 0|124|143) SONIDO="sono (si no se oyo, revisar el cable y el volumen)
 linea "Sonido: $SONIDO"
 linea ""
 
+# La rocola de verdad (etapa 2): la cancion de prueba por la cadena de sonido de la rocola y ALSA.
+linea "--- LA ROCOLA (rocola-consola)"
+ROCOLA="no esta"
+if [ -x /usr/bin/rocola-consola ]; then
+	timeout 60 rocola-consola /usr/share/rocola/prueba.mp3 >> "$LOG" 2>&1; r=$?
+	case $r in 0) ROCOLA="toco la cancion de prueba" ;; *) ROCOLA="FALLO $r (ver arriba)" ;; esac
+fi
+linea "Rocola: $ROCOLA"
+linea ""
+
 # La grafica de verdad: el cubo de Mesa por KMS/EGL, 900 cuadros (unos 15 s a 60 cuadros por segundo).
 linea "--- CUBO (15 s)"
 if [ -e /dev/dri/card0 ]; then
@@ -51,6 +61,7 @@ echo "=================== ROCOLA OS: PRUEBA DE LA ETAPA 1 ==================="
 echo "Procesador: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-)"
 echo "Grafica: $(grep -h DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null)  -> $GRAFICA"
 echo "Sonido: $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
+echo "La rocola (sonido de la rocola por ALSA): $ROCOLA"
 echo ""
 echo "Todo esta en /root/rocola-prueba.txt. Saca una foto de esta pantalla."
 echo "Para apagar: Ctrl+Alt+F2, entrar como root y escribir: poweroff"

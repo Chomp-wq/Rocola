@@ -55,6 +55,9 @@ hasta que esté probado en el A4.
   `ROCOLA_PERFIL=qemu sh sistema/compila.sh`: la misma receta para cualquier x86-64, en `salida-qemu/`.
 - **31-10, probada en QEMU** (la versión `qemu`): arranca sola, corre `rocola-prueba`, el sonido (HDA emulado) pasa y el cubo se
   dibuja por KMS/EGL con Mesa. Falta el A4 de verdad (la Radeon, el códec Realtek, BIOS o UEFI).
+- **31-10, la rocola dentro:** el paquete `rocola-consola` (la rocola sin pantalla, de la etapa 2) va en la imagen. La prueba de
+  arranque la usa para tocar una canción de prueba por la cadena de sonido de la rocola. **Hace falta el SDK de .NET 10 en el
+  equipo que compila el sistema** (no en Rocola OS). En QEMU: toca. La imagen del A4 hay que recompilarla para que la lleve.
 - La etapa 2 (la rocola en Linux) está planeada en [ETAPA2.md](ETAPA2.md).
 
 ## Cómo se compila
