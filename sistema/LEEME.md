@@ -38,9 +38,23 @@ hasta que esté probado en el A4.
 | Arranque por la partición | `PARTUUID=524f4341-01` | arranca igual desde la USB que desde el SSD |
 | Consolas | tty1, la rocola; tty2, mantenimiento (Ctrl+Alt+F2, usuario `root`) | |
 
+## Estado (31-10-2026)
+
+- **La receta está validada contra Buildroot 2026.02.3:** `make rocola_a4_defconfig` acepta todas sus opciones tal cual (GCC
+  14.3, glibc, núcleo 6.12.47, Mesa con r600 y softpipe sin LLVM, GRUB de BIOS).
+- **Faltaba el programa de la prueba:** el arranque llamaba a `/usr/bin/rocola-prueba` y no existía. Ya está
+  (`board/rocola/rootfs_overlay/usr/bin/rocola-prueba`). Apunta procesador, memoria, gráfica y sonido, toca un tono de 3 s, gira
+  el cubo 15 s y deja el resultado en pantalla (para la foto) y en `/root/rocola-prueba.txt`. Busybox lleva `timeout`
+  (`board/rocola/busybox.fragment`).
+- **Aún no se ha compilado.** En el entorno en la nube donde se prepara, la red solo deja bajar de GitHub y PyPI, y Buildroot necesita
+  78 fuentes de 19 sitios (gnu.org, kernel.org, freedesktop.org...). `sh sistema/comprueba-red.sh` dice cuáles faltan. **Con
+  permitir `sources.buildroot.net`** (la copia de respaldo de Buildroot, que tiene todas) basta.
+- La etapa 2 (la rocola en Linux) está planeada en [ETAPA2.md](ETAPA2.md).
+
 ## Cómo se compila
 
 ```sh
+sh sistema/comprueba-red.sh              # antes: si se llega a todas las fuentes
 sh sistema/compila.sh                    # todo (la primera vez, horas: herramientas, núcleo, glibc, Mesa)
 sh sistema/compila.sh menuconfig         # cambiar paquetes u opciones del sistema
 sh sistema/compila.sh linux-menuconfig   # cambiar opciones del núcleo

@@ -1,0 +1,2 @@
+# Lo que la prueba de la etapa 1 necesita de busybox, encima de su configuracion de siempre.
+CONFIG_TIMEOUT=y
