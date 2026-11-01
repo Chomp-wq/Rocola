@@ -500,3 +500,11 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **Las instrucciones de la rocola:** el binario lleva instrucciones AVX2 (el A4 no tiene AVX2). Probado con QEMU de usuario emulando un
   Piledriver sin AVX2 (`qemu-x86_64 -cpu Opteron_G5`, que sí rechaza una instrucción AVX2 suelta): la rocola mide, descomprime, pasa
   la cadena entera y escribe el WAV sin fallar. Ese AVX2 son caminos que .NET solo usa si el procesador lo tiene.
+- **Comprobado tras el arreglo:** el núcleo nuevo ya no lleva BMI/TBM (quedan `tzcnt`, que Linux usa a propósito porque en los
+  procesadores viejos vale como `bsf`, y `popcnt`, que Linux cambia en el arranque según el procesador) y arranca entero en QEMU con
+  el procesador por defecto. (Con el modelo Opteron_G5 la emulación se queda en las protecciones contra Spectre de esa familia: límite
+  de QEMU.) Lo que sigue del sistema va con las instrucciones del Piledriver (XOP, FMA4, TBM) y QEMU no las emula: el primer programa
+  se cae ahí, como es de esperar; eso solo se prueba en el A4.
+- **La pantalla de la rocola del A4** (el binario de la imagen) también, con QEMU de usuario como Piledriver sin AVX2 y Mesa softpipe:
+  dibuja el estado extendido con la estrella 3D y el género. (Con llvmpipe de esta máquina no vale: genera código para la CPU real.)
+- Si la imagen del A4 no arrancara allí, la de QEMU (x86-64 genérico) también sirve para el A4 (`LEEME.md`, paso 7).

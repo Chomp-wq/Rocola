@@ -128,6 +128,15 @@ ccache y lo compilado, varios GB. La imagen queda en `~/rocola-trabajo/salida/im
      A4 vuelve a arrancar en XP como siempre.
   6. Lo que pasó queda en la USB: `/root/rocola-prueba.txt` (la prueba) y `/root/rocola.txt` (la rocola). Para verlos: Ctrl+Alt+F2,
      usuario `root`.
+  7. **Si la imagen del A4 no arranca allí** (se reinicia, o se queda en negro tras el menú): la imagen de QEMU
+     (`ROCOLA_PERFIL=qemu sh sistema/compila.sh`, en `salida-qemu/images/disk.img`) es la misma rocola para cualquier x86-64 y también
+     sirve en el A4, solo que sin las instrucciones propias del Piledriver en el sistema. Con la foto de la pantalla y
+     `/root/rocola-prueba.txt` se ve qué pasó.
+
+**Lo que se sabe de la imagen del A4 sin haberla puesto en el A4 (1-11-2026):** se compila entera; su núcleo es genérico y arranca en
+QEMU; la rocola (el binario de .NET) corre entera —sonido y pantalla— emulando un Piledriver sin AVX2. El resto del sistema (glibc,
+BusyBox, Mesa...) va compilado con las instrucciones del Piledriver (XOP, FMA4, TBM), que QEMU no emula: eso solo se puede probar en
+el A4.
 
 ## Personalizarlo
 
