@@ -206,6 +206,7 @@ namespace Rocola
                             motor.PublicaMedidas();
                             ActualizaCodigo();
                             RevisaAtraccion();
+                            RevisaLoQueSuena();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
@@ -325,7 +326,20 @@ namespace Rocola
         internal int AjusteSel = -1;   // -1: cerrados
         internal IList<Form1.Ajuste> ListaAjustes { get { return motor.Ajustes(); } }
         internal int AjustesTotal { get { return ListaAjustes.Count + 1; } }   // y al final: configurar los botones
-        internal void AbreAjustes() { AjusteSel = 0; Buscando = false; }
+        internal void AbreAjustes() { AjusteSel = 0; Buscando = false; ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
+        // S5 de XP (LoQueSuena.cs): lo que la cadena le hace a la que suena, cada medio segundo con la hoja abierta (sus lecturas se ponen a
+        // cero al leerlas: este es su unico lector).
+        internal string LoQueSuena = "";
+        private int ultimoLoQueSuena;
+        private void RevisaLoQueSuena()
+        {
+            if (AjusteSel < 0) return;
+            int ahora = Environment.TickCount;
+            if (ultimoLoQueSuena != 0 && unchecked(ahora - ultimoLoQueSuena) < 500) return;
+            ultimoLoQueSuena = ahora == 0 ? 1 : ahora;
+            try { LoQueSuena = motor.TextoLoQueSuena(); } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Lo que suena ahora", ex); }
+        }
+        private void CierraAjustes() { AjusteSel = -1; if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
         private void ManejaAjustes(Boton b)
         {
             int n = AjustesTotal;
@@ -334,14 +348,14 @@ namespace Rocola
             else if (b == Boton.Regresar)
             {
                 try { motor.GuardaAjustes(); Aviso("Ajustes guardados: se oyen desde la siguiente cancion"); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
-                AjusteSel = -1;
+                CierraAjustes();
             }
-            else if (AjusteSel == n - 1) { if (b == Boton.Poner) { AjusteSel = -1; EmpiezaAsistente(); } }
+            else if (AjusteSel == n - 1) { if (b == Boton.Poner) { CierraAjustes(); EmpiezaAsistente(); } }
             else if (b == Boton.Izquierda || b == Boton.Derecha || b == Boton.Poner)
             {
                 Form1.Ajuste a = ListaAjustes[AjusteSel];
                 if (a.Motivo != null) Aviso("No se puede: " + a.Motivo);
-                else a.Mueve(b == Boton.Izquierda ? -1 : 1);
+                else { a.Mueve(b == Boton.Izquierda ? -1 : 1); ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
             }
         }
 

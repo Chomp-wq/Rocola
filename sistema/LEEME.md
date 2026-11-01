@@ -32,7 +32,7 @@ Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle d
   general al máximo al arrancar (como XP); si la rocola se cierra, vuelve a abrirse; un fallo no la tumba.
 
 **Lo que aún no tiene de XP:** los cubos y la estrella animada, el estado extendido y los demás adornos de la pantalla
-(Ctrl+F3 → Pantalla); «Lo que suena ahora» y las herramientas de diagnóstico del dueño; la comparación a ciegas; afinar el local con el
+(Ctrl+F3 → Pantalla); las herramientas de diagnóstico del dueño; la comparación a ciegas; afinar el local con el
 celular.
 
 **Nada se ha probado aún en el A4:** todo está probado aquí (comparación con XP, pruebas fuera de pantalla) y en QEMU (arranque BIOS y

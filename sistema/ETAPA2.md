@@ -299,3 +299,11 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   y canales), copia a memoria solo los de la dominante, como XP; los de la minoría se descartan (a lo sumo un salto). Sin quitar el
   relleno del codificador, como XP. La medida del repaso usa el mismo lector. El mismo archivo sale ahora 40 s seguidos a 440 Hz.
 - Mirar las cabeceras de un MP3 de 16 MB tarda 30 ms aquí; en uno normal no se lee nada más.
+
+## Extra (1-11-2026): «Lo que suena ahora» en los ajustes
+
+- Lo de XP (`LoQueSuena.cs`, copiado tal cual al motor): **«Escuchar sin mejoras»** (S4) va en la hoja de ajustes, en su grupo; dura
+  15 s o hasta volver a pulsarlo o salir de la hoja, y no se guarda (es una herramienta). Abajo de la hoja, un recuadro con **lo que la
+  cadena le hace a la que suena** (S5): el nivel que sale, lo que baja el limitador y las etapas que de verdad actúan. Se lee cada medio
+  segundo y solo con la hoja abierta (sus lecturas se ponen a cero al leerlas: un solo lector, como en XP).
+- Probado con el motor y una canción (sin pantalla): el texto cambia al encender «sin mejoras» y vuelve al apagarlo; y en captura.
