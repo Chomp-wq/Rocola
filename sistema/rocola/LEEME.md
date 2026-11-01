@@ -12,7 +12,9 @@ Código en .NET 10 de la rocola para Linux. Plan completo en [../ETAPA2.md](../E
   `fsync`, la pantalla que aún no hay); la apertura de canciones, en `Apertura.cs` (el lector de Rocola OS en lugar del de Windows).
   Lo público, en `Reproductor.cs`: `new Form1()` es un motor con los ajustes de fábrica de XP; `Arranca` (la configuración y las
   tablas: `Arranque.cs`, `Configuracion.cs`), `MideSiFalta`, `Arma` (y `Dispose` de la canción: guarda lo aprendido), `Cierra`.
-- **`Consola/`** — la rocola sin pantalla (`rocola-consola [--wav x.wav] [--biblioteca] canciones...`): lee `rocola_config.txt` y lo
+- **`Consola/`** — `rocola-consola --rocola`: **la rocola en modo texto** con sus botones (evdev, `rocola_teclas.txt` de XP; en una
+  terminal, también el teclado; Esc sale): discos por letra, pedir con créditos, monedas, saltar (`RocolaTexto.cs`). Y la rocola sin
+  pantalla (`rocola-consola [--wav x.wav] [--biblioteca] canciones...`): lee `rocola_config.txt` y lo
   aprendido, toca la cola (o toda la biblioteca) con el relevo sin pausa de XP (`Cola.cs`, `Biblioteca.cs`), mide cada canción nueva (como
   el repaso de XP), le arma la **cadena entera** de XP con esos ajustes, guarda lo que aprende al oírla y la toca por ALSA (`SalidaAlsa.cs`, hilo propio, 16 bits con dither) o la escribe en un WAV
   (`--wav`). Los MP3 van todos por NLayer 3 (`Lector.cs`), sin el hueco del codificador; los mono salen como estéreo. Los datos

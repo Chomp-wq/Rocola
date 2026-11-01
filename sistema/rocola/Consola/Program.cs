@@ -5,6 +5,7 @@
 //      pausa de XP: la siguiente se prepara 12 s antes; las pistas seguidas de un disco, sin fundido); 16 bits con dither;
 //   3) por ALSA (o a un WAV con --wav, para probar sin tarjeta); al acabar cada una se guarda lo aprendido, como en XP.
 // Uso: rocola-consola [--wav salida.wav] [--dispositivo default] [--biblioteca] [cancion1.mp3 cancion2.wav ...]
+//      rocola-consola --rocola [--dispositivo default]   la rocola en modo texto, con sus botones (RocolaTexto.cs)
 //   --biblioteca: la cola es la biblioteca entera (la carpeta "musica" junto a los datos y las de "dir="), disco por disco.
 using System;
 using System.Collections.Generic;
@@ -18,13 +19,21 @@ namespace Rocola
     {
         internal static int Main(string[] args)
         {
-            string wav = null, dispositivo = "default"; bool biblioteca = false; List<string> lista = new List<string>();
+            string wav = null, dispositivo = "default"; bool biblioteca = false, rocola = false; List<string> lista = new List<string>();
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
                 else if (args[i] == "--dispositivo" && i + 1 < args.Length) dispositivo = args[++i];
                 else if (args[i] == "--biblioteca") biblioteca = true;
+                else if (args[i] == "--rocola") rocola = true;
                 else lista.Add(Path.GetFullPath(args[i]));
+            }
+            if (rocola)
+            {
+                Form1 m = new Form1(); m.Arranca();
+                int r = new RocolaTexto(m, dispositivo).Corre();
+                m.Cierra();
+                return r;
             }
             if (lista.Count == 0 && !biblioteca) { Console.Error.WriteLine("Uso: rocola-consola [--wav salida.wav] [--dispositivo default] [--biblioteca] canciones..."); return 2; }
             Form1 motor = new Form1();   // los ajustes de fabrica de XP...

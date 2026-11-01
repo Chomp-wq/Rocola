@@ -3226,5 +3226,725 @@ namespace Rocola
             int i = d.Tracks.IndexOf(a.Song);
             return i >= 0 && i + 1 < d.Tracks.Count && object.ReferenceEquals(d.Tracks[i + 1], b.Song);
         }
+        // de Form1.cs
+        private const int CreditsPerCoin = 4;                 // monedas -> creditos
+        // de AperturaAudio.cs
+        private bool EstaDanada(string path)
+        {
+            string antes;
+            if (string.IsNullOrEmpty(path) || danadas.Count == 0 || !danadas.TryGetValue(path, out antes)) return false;
+            if (antes == AudioFileSignature(path)) return true;
+            danadas.Remove(path);   // cambio el archivo (o ya no esta): que se intente de nuevo
+            return false;
+        }
+        // de Form1.Datos.cs
+        // Registra una reproduccion pedida (algo que entro a la cola con exito).
+        private void RecordPlay(PlayItem it)
+        {
+            if (it == null) return;
+            statsTotal++;
+            if (it.IsVideo)
+            {
+                statsVideoTotal++;
+                string vp = it.VideoPath;
+                if (!string.IsNullOrEmpty(vp)) { int n; videoCounts.TryGetValue(vp, out n); videoCounts[vp] = n + 1; videoSeq[vp] = ++statsSeq; }
+            }
+            else if (it.Song != null && !string.IsNullOrEmpty(it.Song.Path))
+            {
+                statsSongTotal++;
+                int n; songCounts.TryGetValue(it.Song.Path, out n); songCounts[it.Song.Path] = n + 1;
+                songSeq[it.Song.Path] = ++statsSeq;
+                if (!string.IsNullOrEmpty(it.Song.Genre) && !songGenre.ContainsKey(it.Song.Path)) songGenre[it.Song.Path] = GenreLabel(it.Song.Genre);
+                string ar = it.Song.Artist;
+                if (!string.IsNullOrEmpty(ar)) { int a; artistCounts.TryGetValue(ar, out a); artistCounts[ar] = a + 1; }
+                // primera cancion contada -> habilitar la seccion "Lo mas sonado" en la barra de letras
+                // (en XP aqui se enciende la seccion "Lo mas sonado" de la pantalla)
+            }
+            statsDirty = true;
+            topDirty = true;   // OPTIMIZACION (TOP): cambiaron counts/genero/artista -> reconstruir al entrar a TOP
+            // (en XP: CuentaNoche, lo mas pedido esta noche para la atraccion de la pantalla)
+        }
+        // de Form1.Datos.cs
+        // Reconstruye creditos/cola/cancion desde el archivo de estado (si hay algo que reanudar).
+        private void RestoreState()
+        {
+            if (stateRestored) return;
+            stateRestored = true;
+            stateMissingRoots = null;
+            try
+            {
+                string f = StateFile();
+                // Si el archivo bueno falta o quedo vacio -un corte de luz de los de antes- se lee la copia:
+                // se pierde como mucho lo ultimo que se hizo, no el dinero entero del cliente. Y si hay un guardado
+                // encargado que aun no llego al disco, manda ese: es lo ultimo que paso (ver EscribeEstado).
+                string[] L = EstadoSinEscribir() ?? LeeLineasSeguro(f);
+                if (L == null || L.Length < 1) return;
+                if (L[0] != "ROCOLA-ESTADO v1")
+                {
+                    try { if (File.Exists(f + ".bak")) L = File.ReadAllLines(f + ".bak"); } catch { }
+                    if (L == null || L.Length < 1 || L[0] != "ROCOLA-ESTADO v1") return;
+                }
+                // El estado solo vale DENTRO del mismo dia del negocio (corte a las 7 AM): lo de anoche, visto ya en
+                // la manana, se descarta (arranque limpio). PERO si se guardo hace poquito (corte breve en plena
+                // sesion, p.ej. un parpadeo de luz justo al dar las 7 mientras te desvelas), se reanuda igual.
+                DateTime saved = SavedStateTime(L, f);
+                if (BusinessDay(DateTime.Now) != BusinessDay(saved) && (DateTime.Now - saved).TotalMinutes > StateRecentMins)
+                { BorraEstado(); return; }
+                // mapas ruta -> cancion/disco para reconstruir los elementos (solo lo que SIGA existiendo)
+                Dictionary<string, Track> byPath = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, Album> discByPath = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < albums.Count; i++)
+                    for (int j = 0; j < albums[i].Tracks.Count; j++)
+                    {
+                        Track t = albums[i].Tracks[j];
+                        if (t != null && t.Path != null && !byPath.ContainsKey(t.Path)) { byPath[t.Path] = t; discByPath[t.Path] = albums[i]; }
+                    }
+                Dictionary<string, Album> vidDisc = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+                if (videoAlbums != null)
+                    for (int i = 0; i < videoAlbums.Count; i++)
+                        for (int j = 0; j < videoAlbums[i].VideoFiles.Count; j++)
+                        { string vp = videoAlbums[i].VideoFiles[j]; if (vp != null && !vidDisc.ContainsKey(vp)) vidDisc[vp] = videoAlbums[i]; }
+
+                int cr = 0; PlayItem playing = null; List<PlayItem> q = new List<PlayItem>();
+                List<string> faltan = new List<string>();
+                for (int i = 1; i < L.Length; i++)
+                {
+                    string s = L[i];
+                    if (s.Length == 0) continue;
+                    if (s.StartsWith("creditos=")) { int.TryParse(s.Substring(9), out cr); continue; }
+                    if (s.StartsWith("pos=")) continue;   // formato viejo: la posicion ya no se usa (siempre desde el principio)
+                    bool isNow = s.StartsWith("sonando=");
+                    if (!isNow && !s.StartsWith("cola=")) continue;
+                    string v = s.Substring(s.IndexOf('=') + 1);
+                    if (v.Length < 3 || v[1] != '|') continue;
+                    bool isVid = (v[0] == 'V'); string path = v.Substring(2);
+                    PlayItem it = null;
+                    if (isVid)
+                    {
+                        bool exists = false; try { exists = File.Exists(path); } catch { }
+                        if (exists) { it = new PlayItem(); it.IsVideo = true; it.VideoPath = path; Album d; vidDisc.TryGetValue(path, out d); it.Disc = d; }
+                    }
+                    else
+                    {
+                        Track t;
+                        if (byPath.TryGetValue(path, out t)) { it = new PlayItem(); it.Song = t; Album d; discByPath.TryGetValue(path, out d); it.Disc = d; }
+                    }
+                    if (it == null)
+                    {
+                        // Un disco configurado puede estar desconectado al arrancar: en ese caso se espera y
+                        // se vuelve a escanear, sin consumir el estado. Si la raiz SI esta, la seleccion se
+                        // perdio de verdad y se devuelve el credito que ya habia pagado.
+                        string raiz = RaizConfiguradaAusente(path);
+                        if (raiz != null)
+                        {
+                            bool repetida = false;
+                            for (int k = 0; k < faltan.Count; k++)
+                                if (string.Equals(faltan[k], raiz, StringComparison.OrdinalIgnoreCase)) { repetida = true; break; }
+                            if (!repetida) faltan.Add(raiz);
+                        }
+                        else cr++;
+                        continue;
+                    }
+                    if (isNow) playing = it; else q.Add(it);
+                }
+                if (faltan.Count > 0)
+                {
+                    stateRestored = false;
+                    stateMissingRoots = faltan;
+                    stateRootRetryTick = Environment.TickCount;
+                    Avisa("Esperando el disco de musica para restaurar creditos y cola...");
+                    return;
+                }
+                if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
+                credits = Math.Max(0, cr);
+                UpdateCredits();
+                queue.AddRange(q); RefrescaCola(); PrecalientaSiguiente();
+                if (playing != null)
+                {
+                    queue.Insert(0, playing);   // lo que estaba sonando vuelve a entrar y arranca DESDE EL PRINCIPIO
+                    RefrescaCola();
+                    PlayNext();
+                    ShowToast("Reanudando la musica");
+                }
+                else UpdateNowPlayingUI();
+            }
+            catch { stateRestored = false; }
+        }
+        // de Form1.Datos.cs
+        private void SaveState()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder(256);
+                sb.Append("ROCOLA-ESTADO v1\r\n");
+                string[] antes = EstadoPorRestaurar();   // lo de antes del apagon, si aun no se restauro (ver abajo)
+                sb.Append("ts=").Append(antes != null ? estadoAntesTs.Ticks : DateTime.Now.Ticks).Append("\r\n");   // cuando se guardo (para descartarlo si cruza las 7 AM)
+                int crAntes = 0;
+                if (antes != null)
+                    for (int i = 1; i < antes.Length; i++)
+                        if (antes[i].StartsWith("creditos=")) { if (!int.TryParse(antes[i].Substring(9), out crAntes) || crAntes < 0) crAntes = 0; break; }
+                sb.Append("creditos=").Append(crAntes + credits).Append("\r\n");
+                if (antes != null)
+                    for (int i = 1; i < antes.Length; i++)
+                        if (antes[i].StartsWith("sonando=") || antes[i].StartsWith("cola=")) sb.Append(antes[i]).Append("\r\n");
+                if (nowPlaying != null && !EsMudaDiag(nowPlaying))   // con lo de antes delante, lo de ahora va a la cola, detras (la muda del diagnostico nunca se guarda)
+                    sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
+                for (int i = 0; i < queue.Count; i++)
+                    sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
+                EscribeEstado(sb.ToString());   // lo escribe un hilo de fondo, en orden (ver abajo)
+            }
+            catch { }
+        }
+        // de Form1.Datos.cs
+        private long statsTotal = 0, statsSongTotal = 0, statsVideoTotal = 0, statsCoins = 0, statsCreditsAdded = 0;
+        // de Form1.Datos.cs
+        private volatile bool statsDirty = false;
+        // de Form1.Datos.cs
+        // Borrar el estado es al momento (es raro: al cerrar a proposito, al empezar el dia o con un estado de otro dia) y
+        // deja atras cualquier encargo anterior que aun no se haya escrito.
+        private void BorraEstado()
+        {
+            string ruta = StateFile();
+            int n;
+            lock (estadoSolicitudLock)
+            {
+                n = System.Threading.Interlocked.Increment(ref estadoPedido);
+                estadoUltimo = null;
+                if (estadoReintento != null) { estadoReintento.Dispose(); estadoReintento = null; }
+            }
+            lock (CandadoDe(ruta))
+            {
+                if (n > estadoHecho) estadoHecho = n;
+                BorraSeguro(ruta);
+            }
+        }
+        // de Form1.Datos.cs
+        private static DateTime BusinessDay(DateTime dt) { return dt.AddHours(-BusinessDayStartHour).Date; }
+        // de Rendimiento.cs
+        private bool EsMudaDiag(PlayItem it) { return diagMuda != null && object.ReferenceEquals(it, diagMuda); }
+        // de Form1.Datos.cs
+        private void EscribeEstado(string texto)
+        {
+            int n;
+            lock (estadoSolicitudLock)
+            {
+                n = System.Threading.Interlocked.Increment(ref estadoPedido);
+                estadoUltimo = texto;
+                if (estadoReintento != null) estadoReintento.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            }
+            EncolaEstado(n, texto);
+        }
+        // de Form1.Datos.cs
+        private string[] EstadoPorRestaurar()
+        {
+            if (stateRestored) return null;
+            if (estadoAntes == null)
+            {
+                string f = StateFile();
+                string[] L = EstadoSinEscribir() ?? LeeLineasSeguro(f);   // lo encargado que aun no llego al disco, o el archivo
+                if (L != null && L.Length > 0 && L[0] != "ROCOLA-ESTADO v1")
+                    try { L = File.Exists(f + ".bak") ? File.ReadAllLines(f + ".bak") : null; } catch { L = null; }   // como RestoreState
+                estadoAntes = (L != null && L.Length > 0 && L[0] == "ROCOLA-ESTADO v1") ? L : new string[0];
+                estadoAntesTs = estadoAntes.Length > 0 ? SavedStateTime(estadoAntes, f) : DateTime.Now;
+            }
+            if (estadoAntes.Length == 0) return null;
+            if (BusinessDay(DateTime.Now) != BusinessDay(estadoAntesTs) && (DateTime.Now - estadoAntesTs).TotalMinutes > StateRecentMins) return null;
+            return estadoAntes;
+        }
+        // de Form1.Datos.cs
+        // Las lineas del ultimo encargo si aun no llego al disco (como las daria File.ReadAllLines); null si el disco ya
+        // esta al dia y hay que leerlo de ahi.
+        private string[] EstadoSinEscribir()
+        {
+            string t;
+            lock (estadoSolicitudLock)
+            {
+                t = estadoUltimo;
+                if (t == null || System.Threading.Volatile.Read(ref estadoHecho) >= estadoPedido) return null;
+            }
+            List<string> L = new List<string>();
+            using (StringReader r = new StringReader(t)) { string s; while ((s = r.ReadLine()) != null) L.Add(s); }
+            return L.ToArray();
+        }
+        // de Form1.Fondo.cs
+        // Etiqueta canonica del genero para agrupar los discos TOP (mismas familias que GenreToColor).
+        private static string GenreLabel(string genre)
+        {
+            if (string.IsNullOrEmpty(genre)) return "Otros";
+            string g = genre.ToLowerInvariant();
+            // KARAOKE manda sobre todo lo demas: una cumbia de karaoke es karaoke, no cumbia. Y NAVIDAD va
+            // detras por lo mismo (una "cumbia navidena" se guarda por navidad, que es cuando se pone).
+            if (Has(g, "karaoke")) return "Karaoke";
+            if (Has(g, "navidad", "navide", "villancico", "christmas", "xmas")) return "Navidad";
+            if (Has(g, "k-pop", "kpop", "j-pop", "jpop", "anime", "idol")) return "K-Pop";
+            if (Has(g, "metal", "thrash", "death", "heavy", "hardcore", "grindcore")) return "Metal";
+            if (Has(g, "punk")) return "Punk";
+            if (Has(g, "gothic", "goth", "gotic", "g\u00f3tic", "darkwave")) return "Gotico";
+            if (Has(g, "industrial")) return "Industrial";
+            if (Has(g, "reggaeton", "reggaet", "reguet", "perreo", "dembow")) return "Reggaeton";
+            if (Has(g, "hip", "rap", "trap")) return "Hip-Hop";
+            if (Has(g, "salsa", "mereng", "bachata", "tropical", "vallenato", "guarach", "mambo", "chachacha",
+                       "cha cha", "danzon", "danz\u00f3n", "guaguanco", "timba", "marimba", "son cubano")) return "Tropical";
+            if (Has(g, "cumbia", "banda", "norte", "ranch", "mariach", "regional", "tejan", "grupe", "corrido",
+                       "duranguense", "sonidero", "quebradita", "sierre", "huapango", "huasteco", "zapateado")) return "Regional";
+            if (Has(g, "bolero", "tango", "ranchera", "balada", "romantic", "romant", "rom\u00e1nt", "vals", "serenata")) return "Bolero";
+            if (Has(g, "flamenco", "rumba", "copla")) return "Flamenco";
+            if (Has(g, "latin", "latino", "espan", "samba", "sertanejo", "pagode", "forro")) return "Latino";
+            if (Has(g, "reggae", "ska", "dub")) return "Reggae";
+            if (Has(g, "drum", "bass", "dnb", "d&b", "jungle", "breakbeat", "garage")) return "DnB";
+            if (Has(g, "electro", "electr\u00f3n", "techno", "tecno", "house", "trance", "edm", "synth", "dance", "club", "dubstep", "rave", "hardstyle", "tribal")) return "Electronica";
+            if (Has(g, "ambient", "chill", "lo-fi", "lofi", "downtempo", "new age", "meditat")) return "Chill";
+            if (Has(g, "jazz", "swing", "bebop", "bossa")) return "Jazz";
+            if (Has(g, "blues", "soul", "funk", "r&b", "rhythm", "motown")) return "Soul";
+            if (Has(g, "gospel", "christian", "worship", "cristian", "alabanza")) return "Cristiana";
+            if (Has(g, "classic", "clasic", "cl\u00e1sic", "orchestr", "orquest", "piano", "opera", "\u00f3pera", "symphon", "baroque", "instrumental")) return "Clasica";
+            if (Has(g, "soundtrack", "score", "cinematic", "banda sonora")) return "Soundtrack";
+            if (Has(g, "country", "bluegrass", "americana")) return "Country";
+            if (Has(g, "folk", "acoustic", "celt")) return "Folk";
+            if (Has(g, "disco")) return "Disco";
+            if (Has(g, "oldies", "50s", "60s", "doo")) return "Oldies";
+            if (Has(g, "world", "ethnic", "african", "arab", "india", "asian")) return "World";
+            if (Has(g, "vocal", "capella", "capela")) return "Vocal";
+            if (Has(g, "comedy", "spoken", "podcast", "hablado", "narracion", "narraci\u00f3n", "audiolibro")) return "Hablado";
+            if (Has(g, "child", "kids", "infantil")) return "Infantil";
+            if (Has(g, "pop")) return "Pop";
+            if (Has(g, "rock", "grunge", "alternative", "indie")) return "Rock";
+            return "Otros";
+        }
+        // de Form1.Datos.cs
+        // Lee un archivo guardado con EscribeSeguro. Si el bueno falta o quedo vacio -un corte de luz de los
+        // de antes, o un disco con problemas- se lee la copia. Devuelve null si no hay nada que leer.
+        private static string[] LeeLineasSeguro(string ruta)
+        {
+            try { if (File.Exists(ruta)) { string[] L = File.ReadAllLines(ruta); if (L.Length > 0) return L; } } catch { }
+            try { if (File.Exists(ruta + ".bak")) { string[] L = File.ReadAllLines(ruta + ".bak"); if (L.Length > 0) return L; } } catch { }
+            return null;
+        }
+        // de Form1.Datos.cs
+        private string RaizConfiguradaAusente(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            List<string> cfg = new List<string>(); cfg.Add(MusicFolder);
+            for (int i = 0; i < extraMusicDirs.Count; i++) cfg.Add(extraMusicDirs[i]);
+            string mejor = null;
+            for (int i = 0; i < cfg.Count; i++)
+            {
+                string r = cfg[i]; if (string.IsNullOrEmpty(r)) continue;
+                try { r = Path.GetFullPath(r); } catch { continue; }
+                if (!PathInside(path, r) || (mejor != null && mejor.Length >= r.Length)) continue;
+                mejor = r;
+            }
+            if (mejor == null) return null;
+            try { return Directory.Exists(mejor) ? null : mejor; } catch { return mejor; }
+        }
+        // de Form1.Datos.cs
+        // Cuando se guardo el estado: la marca "ts=" (ticks); si falta (formato viejo), la fecha del archivo.
+        private static DateTime SavedStateTime(string[] lines, string file)
+        {
+            for (int i = 0; i < lines.Length; i++)
+                if (lines[i].StartsWith("ts="))
+                { long t; if (long.TryParse(lines[i].Substring(3), out t) && t > 0) { try { return new DateTime(t); } catch { } } break; }
+            try { return File.GetLastWriteTime(file); } catch { return DateTime.Now; }
+        }
+        // de Form1.Datos.cs
+        // ===================== ESTADO VIVO (reanudar tras un corte de luz) =====================
+        // Guarda creditos + lo que suena + la cola en rocola_estado.txt (solo cambia en eventos: moneda,
+        // encolar, cambio de cancion). Si se corta la luz, al volver la rocola RETOMA: la cancion que estaba
+        // sonando arranca DESDE EL PRINCIPIO (a peticion: media cancion confunde mas de lo que ayuda), con su
+        // cola y los creditos del cliente intactos. Para el CIERRE del negocio: SALTAR repetido vacia la cola
+        // y, con todo vacio, una pulsacion de SALTAR borra los creditos -> estado vacio -> arranca limpia.
+        // El archivo se DESCARTA por tres vias que distinguen "cierre" de "apagon": (1) apagado deliberado
+        // (boton de poder -> Windows apaga, u Alt+F4) borra el archivo en OnFormClosing; (2) al cruzar las 7 AM
+        // estando ociosa (CheckBusinessDayReset); (3) al restaurar, si el estado ya cruzo las 7 AM y no es reciente.
+        // Un apagon no dispara nada de esto -> el archivo sobrevive y la rocola reanuda.
+        private string StateFile() { return RutaDatos("rocola_estado.txt"); }
+        // de Form1.Datos.cs
+        private const int StateRecentMins = 30;    // si el estado se guardo hace menos de esto, se reanuda aunque cruce las 7 AM (fue un corte breve en plena sesion)
+        // de Form1.cs
+        private const char TopMark = '\u2605';     // "letra" especial = LO MAS SONADO (disco virtual)
+        // de Form1.Biblioteca.cs
+        private Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // de AperturaAudio.cs
+        private readonly Dictionary<string, string> danadas = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // de Form1.Datos.cs
+        private DateTime estadoAntesTs;     // y cuando se guardo
+        // de Form1.cs
+        // ---- Estadisticas (base de "Lo mas sonado") ----
+        // Se cuenta lo que entra a la cola CON EXITO (lo que la gente pide y paga). Se guarda en
+        // rocola_stats.txt junto al .exe: en segundo plano cada minuto si hubo cambios, y al cerrar.
+        private Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // de Form1.cs
+        private Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // ruta -> etiqueta de genero (capturada al sonar)
+        // de Form1.cs
+        private Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);   // recencia (cuando se sono por ultima vez)
+        // de Form1.Datos.cs
+        private List<string> stateMissingRoots;
+        // de Form1.Datos.cs
+        private bool stateRestored = false;   // la restauracion corre UNA vez (al primer armado de biblioteca)
+        // de Form1.Datos.cs
+        private int stateRootRetryTick;
+        // de Form1.Datos.cs
+        private long statsSeq = 0;
+        // de Form1.cs
+        // OPTIMIZACION (TOP): BuildTopDiscs recorre TODA la biblioteca (100k+). Antes se rebuildeaba en
+        // cada cambio de pagina dentro de "Lo mas sonado". Ahora solo cuando los datos cambian (al contar
+        // una reproduccion o tras re-escanear): topDirty=true marca que hay que reconstruir; si no, se
+        // devuelve el topDiscs ya armado. Hojear TOP queda instantaneo.
+        private bool topDirty = true;
+        // de Form1.Video.cs
+        private List<Album> videoAlbums = new List<Album>();   // discos que tienen archivo(s) de video
+        // de Form1.Video.cs
+        private Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // de Form1.Video.cs
+        private Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        // de Form1.Datos.cs
+        // BORRAR UN GUARDADO ES BORRARLO ENTERO. Como cada guardado deja una copia al lado, borrar solo el
+        // archivo bueno no borra nada: la lectura de arriba encuentra la copia y lo resucita. Paso de verdad
+        // con el archivo de estado, donde "que no exista" es la senal de que la rocola se cerro a proposito:
+        // se borraba el bueno, sobrevivia la copia, y al dia siguiente reaparecian los creditos y la cola.
+        //
+        // El ORDEN importa. Primero la copia y el de paso, y el bueno al final: si se fuera la luz a mitad de
+        // esto, lo que queda es el archivo bueno -o sea, se reanuda, que es lo que hace la rocola ante un
+        // apagon de toda la vida-, nunca una copia suelta capaz de resucitar sola.
+        private static void BorraSeguro(string ruta)
+        {
+            lock (CandadoDe(ruta))
+            {
+                try { File.Delete(ruta + ".bak"); } catch { }
+                try { File.Delete(ruta + ".tmp"); } catch { }
+                try { File.Delete(ruta); } catch { }
+            }
+        }
+        // de Form1.Datos.cs
+        // El estado de recuperacion pertenece a UN "dia del negocio", que ARRANCA a las 7 AM (hora del sistema): a
+        // esa hora ya cerro, y nada de la noche anterior debe cruzar las 7 AM. Todo lo de antes de las 7 AM cuenta
+        // como el dia ANTERIOR. Al pasar esa hora: el estado guardado se DESCARTA al restaurar (arranque limpio en
+        // la manana) y se LIMPIA si la rocola sigue encendida (creditos/cola a cero) -> cada dia arranca en cero.
+        private const int BusinessDayStartHour = 7;
+        // de Form1.Datos.cs
+        private void EncolaEstado(int n, string texto)
+        {
+            string ruta = StateFile();
+            lock (estadoSolicitudLock)
+            {
+                if (estadoCerrado || n != estadoPedido || n <= System.Threading.Volatile.Read(ref estadoHecho) || texto == null) return;
+                if (estadoCola == null) estadoCola = new GuardadoReciente();
+                // Validar y publicar la instantanea en el mismo candado. Un reintento
+                // viejo no puede sustituir el pendiente de una moneda nueva.
+                GuardaUltimo(estadoCola, delegate
+                {
+                    try
+                    {
+                        lock (CandadoDe(ruta))
+                        {
+                            if (n <= estadoHecho || n != System.Threading.Volatile.Read(ref estadoPedido)) return;
+                            EscribeSeguroYa(ruta, texto);
+                            // Solo un archivo PUBLICADO cuenta como aplicado. Un fallo sigue pendiente.
+                            System.Threading.Interlocked.Exchange(ref estadoHecho, n);
+                        }
+                        lock (estadoSolicitudLock) { if (n == estadoPedido) estadoFallos = 0; }
+                    }
+                    catch (Exception ex)
+                    {
+                        lock (estadoSolicitudLock)
+                        {
+                            if (estadoCerrado || n != estadoPedido) return;
+                            estadoFallos++;
+                            if (estadoFallos == 1) LogError("Estado de creditos/cola pendiente: se reintentara el guardado", ex);
+                            if (estadoReintento == null) estadoReintento = new System.Threading.Timer(ReintentaEstado, null,
+                                System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                            estadoReintento.Change(estadoFallos == 1 ? 500 : (estadoFallos < 4 ? 2000 : 10000), System.Threading.Timeout.Infinite);
+                        }
+                    }
+                });
+            }
+        }
+        // de Form1.Fondo.cs
+        private static bool Has(string s, params string[] keys)
+        {
+            for (int i = 0; i < keys.Length; i++) if (s.Contains(keys[i])) return true;
+            return false;
+        }
+        // de Rendimiento.cs
+        private PlayItem diagMuda = null;       // la cancion MUDA que puso el diagnostico (nunca una de un cliente); null = ninguna
+        // de Form1.Datos.cs
+        // EL ESTADO QUE AUN NO SE RESTAURO. Tras un apagon, los creditos y la cola se restauran cuando la biblioteca ya
+        // esta armada (o cuando vuelve el disco que faltaba), pero la moneda funciona desde el primer instante. Una
+        // moneda en ese rato guardaba el estado de AHORA encima del de antes, y al restaurar se perdian los creditos y la
+        // cola que los clientes ya habian pagado. Mientras no se haya restaurado, lo de antes se conserva y lo de ahora
+        // se le suma: los creditos, unos encima de otros, y la cola de ahora detras de la de antes (SaveState). Con la
+        // misma regla que la restauracion: lo de otro dia del negocio no se conserva (se descartaria al restaurar).
+        private string[] estadoAntes;       // lo que habia guardado al arrancar (null: aun no se miro; vacio: nada)
+        // de Form1.Datos.cs
+        private int estadoHecho;               // numero del ultimo aplicado en el disco (se cambia bajo el candado del archivo)
+        // de Form1.Datos.cs
+        private int estadoPedido;              // numero del ultimo encargo o borrado pedido
+        // de Form1.Datos.cs
+        private System.Threading.Timer estadoReintento;
+        // de Form1.Datos.cs
+        private readonly object estadoSolicitudLock = new object();
+        // de Form1.Datos.cs
+        private string estadoUltimo;           // el texto del ultimo encargo (null si lo ultimo fue borrar)
+        // de Form1.Datos.cs
+        private static void EscribeSeguroYa(string ruta, string texto)
+        {
+            string tmp = ruta + ".tmp", bak = ruta + ".bak";
+            // MISMOS BYTES que antes: UTF-8 sin marca al principio, que es lo que escribia File.WriteAllText.
+            // Si cambiara, todo lo guardado hasta hoy dejaria de leerse igual.
+            byte[] datos = new UTF8Encoding(false).GetBytes(texto);
+            using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(datos, 0, datos.Length);
+                fs.Flush();
+                // Flush solo deja lo escrito en la memoria de Windows. Esto lo baja al disco de verdad, que
+                // es lo unico que sobrevive a un corte de luz. Si el sistema no tiene esta llamada (o no es
+                // Windows), se sigue adelante: se pierde la garantia dura, no el resto.
+                try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+            }
+            PublicaGuardadoSeguro(ruta, tmp, bak);
+        }
+        // de Form1.Datos.cs
+        private void ReintentaEstado(object ignorado)
+        {
+            int n; string texto;
+            lock (estadoSolicitudLock) { n = estadoPedido; texto = estadoUltimo; }
+            EncolaEstado(n, texto);
+        }
+        // de Form1.Datos.cs
+        private bool estadoCerrado;
+        // de Form1.Datos.cs
+        // EL ESTADO SE ESCRIBE DETRAS DE LA PANTALLA. Los creditos y la cola se guardan con cada moneda, cada cancion que
+        // se pone y cada cambio de tema, y guardarlos es bajarlos al disco de verdad (EscribeSeguroYa: archivo de paso,
+        // FlushFileBuffers y cambio de un tiron). En un disco mecanico ocupado eso tarda decenas de milisegundos, y se
+        // hacia en el hilo de la pantalla: la moneda o el tema nuevo se notaban como un tiron. Ahora la pantalla arma el
+        // texto -lo barato- y lo encarga; lo escribe un hilo de fondo, en el mismo archivo y de la misma forma. Si se
+        // juntan varios, se escribe el ultimo (GuardaUltimo). Decision del usuario del 29 de septiembre de 2026: se
+        // acepta la ventana de unos milisegundos entre encargarlo y tenerlo en el disco.
+        //
+        // EL ORDEN. Cada encargo y cada borrado lleva su numero, y bajo el candado del archivo solo se aplica si es mas
+        // nuevo que lo ultimo aplicado: un encargo viejo que llega tarde nunca pisa a uno nuevo ni resucita un estado
+        // que se borro a proposito (cierre, dia nuevo). Y lo encargado que aun no llego al disco se lee de aqui mismo
+        // (EstadoSinEscribir): restaurar nunca ve lo de antes de la ultima moneda.
+        private GuardadoReciente estadoCola;   // el encargo pendiente (se crea al primer uso)
+        // de Form1.Datos.cs
+        private int estadoFallos;
+        // de Form1.Datos.cs
+        private void LoadStats()
+        {
+            // Fallback del arranque si no se pudo crear/completar el lector.
+            try
+            {
+                using (StreamReader reader = new StreamReader(LibStatsFile()))
+                    PublishStartupStats(ReadStatsRecords(reader));
+            }
+            catch { }   // nada se publica si la lectura se corta antes de EOF
+        }
+        // de Form1.Datos.cs
+        private void SaveStats(bool async)
+        {
+            PruneStats();   // acotar antes de escribir
+            StatsPendientes snapshot;
+            try { snapshot = CopiaStats(); } catch { return; }   // solo numeros/rutas; ordenar y formatear fuera
+            // Este archivo tiene DOS escritores -uno de fondo cada tanto y otro sincrono al cerrar- y si se
+            // pisaban se llevaban por delante "LO MAS SONADO" entero. El candado por archivo esta dentro de
+            // EscribeSeguro, asi que aqui ya no hace falta acordarse de nada.
+            int version = System.Threading.Interlocked.Increment(ref statsSaveVersion);
+            System.Threading.WaitCallback guardar = delegate (object ignored)
+            {
+                try
+                {
+                    if (version != System.Threading.Interlocked.CompareExchange(ref statsSaveVersion, 0, 0)) return;
+                    string text = TextoStats(snapshot);
+                    lock (statsSaveLock)
+                    {
+                        if (version != System.Threading.Interlocked.CompareExchange(ref statsSaveVersion, 0, 0)) return;
+                        EscribeSeguro(LibStatsFile(), text);
+                    }
+                }
+                catch { }
+            };
+            if (async) QueueDataWrite(guardar); else guardar(null);
+        }
+        // de Form1.Datos.cs
+        private StatsPendientes CopiaStats()
+        {
+            return new StatsPendientes { Canciones = CopiaContadores(songCounts, songSeq), Videos = CopiaContadores(videoCounts, videoSeq),
+                Artistas = new List<KeyValuePair<string, int>>(artistCounts).ToArray(), Generos = new List<KeyValuePair<string, string>>(songGenre).ToArray(),
+                Total = statsTotal, CancionesTotal = statsSongTotal, VideosTotal = statsVideoTotal, Monedas = statsCoins, Creditos = statsCreditsAdded,
+                Cultura = CultureInfo.CurrentCulture };
+        }
+        // de Form1.Datos.cs
+        private static void EscribeSeguro(string ruta, string texto)
+        {
+            lock (CandadoDe(ruta)) EscribeSeguroYa(ruta, texto);
+        }
+        // de Form1.Datos.cs
+        // ===================== MOTOR DE ESTADISTICAS =====================
+        private string LibStatsFile() { return RutaDatos("rocola_stats.txt"); }
+        // de Form1.Datos.cs
+        // Mantiene el archivo acotado: descarta lo menos sonado (y mas viejo) para dejar entrar lo nuevo.
+        private void PruneStats()
+        {
+            PruneCountDict(songCounts, songSeq, songGenre, SongStatCap, SongStatTarget);
+            PruneCountDict(videoCounts, videoSeq, null, VideoStatCap, VideoStatTarget);
+            PruneCountDict(artistCounts, null, null, ArtistStatCap, ArtistStatTarget);
+            if (songGenre.Count > songCounts.Count)   // limpiar generos huerfanos
+            {
+                List<string> orphans = new List<string>();
+                foreach (string k in songGenre.Keys) if (!songCounts.ContainsKey(k)) orphans.Add(k);
+                for (int i = 0; i < orphans.Count; i++) songGenre.Remove(orphans[i]);
+            }
+        }
+        // de Form1.Datos.cs
+        // Solo se llama en UI, antes de abrir la biblioteca y de restaurar la cola.
+        private void PublishStartupStats(StartupStats data)
+        {
+            if (data == null) return;
+            songCounts = data.songCounts;
+            songSeq = data.songSeq;
+            artistCounts = data.artistCounts;
+            videoCounts = data.videoCounts;
+            videoSeq = data.videoSeq;
+            songGenre = data.songGenre;
+            statsTotal = data.statsTotal;
+            statsSongTotal = data.statsSongTotal;
+            statsVideoTotal = data.statsVideoTotal;
+            statsCoins = data.statsCoins;
+            statsCreditsAdded = data.statsCreditsAdded;
+            statsSeq = data.statsSeq;
+        }
+        // de Form1.Datos.cs
+        private static StartupStats ReadStatsRecords(TextReader reader)
+        {
+            if (reader.ReadLine() != "ROCOLA-STATS v1") return null;
+            StartupStats data = new StartupStats();
+            int section = 0;   // 0=totales 1=canciones 2=artistas 3=videos
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (line.Length == 0) continue;
+                if (line.StartsWith("[CANCIONES]")) { section = 1; continue; }
+                if (line.StartsWith("[ARTISTAS]")) { section = 2; continue; }
+                if (line.StartsWith("[VIDEOS]")) { section = 3; continue; }
+                if (line.StartsWith("[GENEROS]")) { section = 4; continue; }
+                if (section == 0)
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string k = line.Substring(0, eq); long v;
+                    if (!long.TryParse(line.Substring(eq + 1), out v)) continue;
+                    if (k == "total-reproducciones") data.statsTotal = v;
+                    else if (k == "total-canciones") data.statsSongTotal = v;
+                    else if (k == "total-videos") data.statsVideoTotal = v;
+                    else if (k == "monedas") data.statsCoins = v;
+                    else if (k == "creditos-cargados") data.statsCreditsAdded = v;
+                }
+                else
+                {
+                    int b = line.IndexOf('|');
+                    if (b <= 0) continue;
+                    string key = line.Substring(b + 1);
+                    if (key.Length == 0) continue;
+                    if (section == 4) { data.songGenre[key] = line.Substring(0, b); continue; }   // genero|ruta (lo de antes del | es la etiqueta, no un numero)
+                    int cnt; if (!int.TryParse(line.Substring(0, b), out cnt)) continue;
+                    if (section == 1) { data.songCounts[key] = cnt; data.songSeq[key] = ++data.statsSeq; }
+                    else if (section == 2) data.artistCounts[key] = cnt;
+                    else if (section == 3) { data.videoCounts[key] = cnt; data.videoSeq[key] = ++data.statsSeq; }
+                }
+            }
+            return data;
+        }
+        // de Form1.Datos.cs
+        private sealed class StatsPendientes
+        {
+            internal FilaStats[] Canciones, Videos;
+            internal KeyValuePair<string, int>[] Artistas;
+            internal KeyValuePair<string, string>[] Generos;
+            internal long Total, CancionesTotal, VideosTotal, Monedas, Creditos;
+            internal CultureInfo Cultura;
+        }
+        // de Form1.Datos.cs
+        private static string TextoStats(StatsPendientes snapshot)
+        {
+            Array.Sort(snapshot.Canciones, OrdenStats); Array.Sort(snapshot.Videos, OrdenStats);
+            StringBuilder sb = new StringBuilder(snapshot.Canciones.Length * 48 + 256);
+            sb.Append("ROCOLA-STATS v1\r\n");
+            sb.Append("total-reproducciones=").Append(snapshot.Total.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("total-canciones=").Append(snapshot.CancionesTotal.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("total-videos=").Append(snapshot.VideosTotal.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("monedas=").Append(snapshot.Monedas.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("creditos-cargados=").Append(snapshot.Creditos.ToString(snapshot.Cultura)).Append("\r\n");
+            sb.Append("[CANCIONES] count|ruta\r\n");
+            for (int i = 0; i < snapshot.Canciones.Length; i++) sb.Append(snapshot.Canciones[i].Cuenta.ToString(snapshot.Cultura)).Append('|').Append(snapshot.Canciones[i].Ruta).Append("\r\n");
+            sb.Append("[ARTISTAS] count|artista\r\n");
+            foreach (KeyValuePair<string, int> kv in snapshot.Artistas) sb.Append(kv.Value.ToString(snapshot.Cultura)).Append('|').Append(kv.Key).Append("\r\n");
+            sb.Append("[VIDEOS] count|ruta\r\n");
+            for (int i = 0; i < snapshot.Videos.Length; i++) sb.Append(snapshot.Videos[i].Cuenta.ToString(snapshot.Cultura)).Append('|').Append(snapshot.Videos[i].Ruta).Append("\r\n");
+            sb.Append("[GENEROS] genero|ruta\r\n");
+            foreach (KeyValuePair<string, string> kv in snapshot.Generos) sb.Append(kv.Value).Append('|').Append(kv.Key).Append("\r\n");
+            return sb.ToString();
+        }
+        // de Form1.Datos.cs
+        private readonly object statsSaveLock = new object();
+        // de Form1.Datos.cs
+        private int statsSaveVersion;
+        // de Form1.Datos.cs
+        private struct FilaStats
+        {
+            internal string Ruta; internal int Cuenta; internal long Secuencia;
+        }
+        // de Form1.Datos.cs
+        private static FilaStats[] CopiaContadores(Dictionary<string, int> tabla, Dictionary<string, long> orden)
+        {
+            FilaStats[] filas = new FilaStats[tabla.Count]; int i = 0;
+            foreach (KeyValuePair<string, int> kv in tabla)
+            { long seq; orden.TryGetValue(kv.Key, out seq); filas[i++] = new FilaStats { Ruta = kv.Key, Cuenta = kv.Value, Secuencia = seq }; }
+            return filas;
+        }
+        // de Form1.Datos.cs
+        // El historial se prepara en privado, sin array de todas las lineas ni acceso al formulario.
+        private sealed class StartupStats
+        {
+            public readonly Dictionary<string, int> songCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, long> songSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, int> artistCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, int> videoCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, string> songGenre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            public long statsTotal, statsSongTotal, statsVideoTotal, statsCoins, statsCreditsAdded, statsSeq;
+        }
+        // de Form1.Biblioteca.cs
+        private const int ArtistStatCap = 1000, ArtistStatTarget = 900;
+        // de Form1.Datos.cs
+        private static int OrdenStats(FilaStats a, FilaStats b)
+        { return a.Secuencia != b.Secuencia ? (a.Secuencia < b.Secuencia ? -1 : 1) : string.Compare(a.Ruta, b.Ruta, StringComparison.OrdinalIgnoreCase); }
+        // de Form1.Datos.cs
+        private void PruneCountDict(Dictionary<string, int> counts, Dictionary<string, long> seq, Dictionary<string, string> extra, int cap, int target)
+        {
+            if (counts.Count <= cap) return;
+            List<string> keys = new List<string>(counts.Keys);
+            keys.Sort(delegate (string a, string b)
+            {
+                int ca = counts[a], cb = counts[b];
+                if (ca != cb) return ca - cb;              // menos sonado primero (candidato a borrar)
+                long sa = 0, sb = 0; if (seq != null) { seq.TryGetValue(a, out sa); seq.TryGetValue(b, out sb); }
+                if (sa != sb) return (sa < sb) ? -1 : 1;   // mas viejo primero
+                return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+            });
+            int remove = counts.Count - target;
+            for (int i = 0; i < remove && i < keys.Count; i++)
+            {
+                string k = keys[i];
+                counts.Remove(k);
+                if (seq != null) seq.Remove(k);
+                if (extra != null) extra.Remove(k);
+            }
+        }
+        // de Form1.cs
+        // Topes del archivo de estadisticas: se conserva lo MAS sonado y reciente; lo viejo/poco sonado
+        // se descarta solo, para que el archivo nunca crezca de mas ni alente la rocola.
+        private const int SongStatCap = 2000, SongStatTarget = 1800;
+        // de Form1.Video.cs
+        private const int VideoStatCap = 1000, VideoStatTarget = 900;
     }
 }

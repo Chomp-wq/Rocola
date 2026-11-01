@@ -36,6 +36,7 @@ namespace Rocola
             try { FlushEqIfDirty(); } catch { }
             try { SaveDeepDone(); } catch { }
             try { SaveDurFast(); } catch { }
+            try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }
             EsperaGuardados(15000);
             Bitacora.Vacia(5000);
         }

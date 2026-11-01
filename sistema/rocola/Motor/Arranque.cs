@@ -47,6 +47,7 @@ namespace Rocola
             NeuralEnv.TryLoad(RutaLectura("rocola_ia.bin"));   // IA propia (el modelo entrenado: en IAS, o el de fabrica)
             EqNet.TryLoad(RutaLectura("rocola_eq_ia.bin"));    // IA del EQ automatico (objetivo por cancion)
             CargaModelosPorGenero();   // I3: los del DSEE por genero
+            LoadStats();         // lo mas pedido (rocola_stats.txt)
             LoadLoudCache();
             LoadIntegCache();
             LoadEqCache();
@@ -62,5 +63,8 @@ namespace Rocola
                 + (loudCache != null ? loudCache.Count : 0) + " con volumen, " + (eqCache != null ? eqCache.Count : 0) + " con EQ; modo billar "
                 + (localAuto ? "ENCENDIDO" : "apagado") + "; DSEE " + (sbrOn ? "encendido" : "apagado") + (sbrAllowed ? "" : " (" + sbrReason + ")");
         }
+
+        // rocola_teclas.txt, el de los botones (el mismo de XP).
+        public string ArchivoBotones { get { return RutaDatos("rocola_teclas.txt"); } }
     }
 }
