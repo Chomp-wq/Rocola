@@ -78,3 +78,5 @@ BR2_TARGET_GRUB2_INSTALL_TOOLS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 # la letra de la pantalla de la rocola (DejaVu Sans; el duenio puede poner otra con ROCOLA_LETRA)
 BR2_PACKAGE_DEJAVU=y
+# los videos de la rocola: mpv, por KMS y ALSA (la rocola le cede la pantalla mientras suena)
+BR2_PACKAGE_MPV=y

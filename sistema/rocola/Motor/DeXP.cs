@@ -4825,5 +4825,56 @@ namespace Rocola
                 si.Mask = MarcaLetras(si.Key);
             }
         }
+        // de Form1.Video.cs
+        private const char VideoMark = '\u25BA';   // "letra" especial = seccion VIDEOS
+        // de Form1.Video.cs
+        private void BuildVideoSection(List<string> roots)
+        {
+            InvalidateVideoMeasurements();
+            string[] folderMemo = new string[2];
+            // carpeta -> album de audio existente
+            Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++) { albums[i].VideoFiles.Clear(); byFolder[albums[i].Folder] = albums[i]; }
+
+            Dictionary<string, Album> videoOnly = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            // Fuente unica: la lista de videos que ya viene lista (del cache al arrancar, o del recorrido del
+            // disco en un escaneo fresco). Antes aqui se volvia a caminar TODO el arbol solo por los videos.
+            List<string> vsrc = cachedVideoPaths ?? new List<string>();
+            foreach (string vf in vsrc)
+            {
+                string folder = AlbumFolderCached(vf, roots, folderMemo);
+                Album al;
+                if (byFolder.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
+                else if (videoOnly.TryGetValue(folder, out al)) al.VideoFiles.Add(vf);
+                else
+                {
+                    al = new Album();
+                    al.Folder = folder;
+                    al.Artist = LeafName(folder);
+                    al.Name = "";
+                    al.Letter = FirstLetter(al.Artist);
+                    al.CoverPath = FindCoverCached(folder);
+                    al.VideoFiles.Add(vf);
+                    videoOnly[folder] = al;
+                }
+            }
+
+            videoAlbums = new List<Album>();
+            for (int i = 0; i < albums.Count; i++) if (albums[i].VideoFiles.Count > 0) videoAlbums.Add(albums[i]);
+            foreach (KeyValuePair<string, Album> kv in videoOnly) videoAlbums.Add(kv.Value);
+            videoAlbums.Sort(delegate (Album a, Album b) { return string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase); });
+            for (int i = 0; i < videoAlbums.Count; i++) videoAlbums[i].VideoFiles.Sort(StringComparer.OrdinalIgnoreCase);
+            lastVideoPaths = cachedVideoPaths;   // para guardar el cache
+        }
+        // de Form1.cs
+        private List<string> cachedVideoPaths;            // rutas de video del cache de biblioteca (arranque rapido)
+        // de Form1.Video.cs
+        // VOLUMEN DE LOS VIDEOS: el video lo reproduce Windows Media Player, cuyo sonido va DIRECTO a la
+        // tarjeta sin pasar por la cadena de audio de la rocola (nivelado, limitador, EQ...). Por eso los
+        // videos entraban a un volumen distinto al de las canciones ya niveladas. Esta perilla (Ctrl+F3) es
+        // la BASE con la que suenan; ademas se le aplican los dB de "Subir TODO" para que sigan al resto.
+        private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
+        // de Form1.cs
+        private List<string> lastVideoPaths;              // rutas de video del ultimo armado (para guardar el cache)
     }
 }

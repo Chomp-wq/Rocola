@@ -229,6 +229,8 @@ namespace Rocola
             l.EscribeCentrado(d, ini, x + lado / 2, y + lado / 2 - l.Tam * 0.55f, new Color4(1, 1, 1, 0.85f));
         }
 
+        public void Suelta() { sup.Suelta(); }
+        public void Recupera() { sup.Recupera(); antes = null; }
         public void Dispose() { sup.Dispose(); }
     }
 }

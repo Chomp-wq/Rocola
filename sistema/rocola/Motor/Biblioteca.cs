@@ -4,6 +4,7 @@
 // artista. Por ahora se recorre el disco cada vez (la cache de la biblioteca de XP, despues).
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Rocola
 {
@@ -16,6 +17,7 @@ namespace Rocola
         {
             public string Artista, Nombre, Carpeta, Portada;
             public char Letra;
+            public bool Videos;   // un disco de la seccion de videos (sus Rutas son videos)
             public List<string> Rutas = new List<string>();
             public List<string> Titulos = new List<string>();
             public override string ToString() { return string.IsNullOrEmpty(Nombre) ? Artista : Artista + " - " + Nombre; }
@@ -32,9 +34,10 @@ namespace Rocola
             for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
             AvisaCarpetasSaltadas();
             for (int i = 0; i < audio.Count; i++) tracks.Add(Track.FromFile(audio[i]));
-            cachedCovers = covs;
+            cachedCovers = covs; cachedVideoPaths = vids;
             BuildAlbums(roots);
-            cachedCovers = null;
+            BuildVideoSection(roots);   // la seccion de los videos (la de XP: Form1.Video.cs)
+            cachedCovers = null; cachedVideoPaths = null;
             IndexaBiblioteca();
             BuildSearchIndex();   // el indice del buscador (Buscador.cs)
             List<Disco> r2 = new List<Disco>(albums.Count);
@@ -44,8 +47,15 @@ namespace Rocola
                 foreach (Track t in a.Tracks) { d.Rutas.Add(t.Path); d.Titulos.Add(t.ToString()); }
                 r2.Add(d);
             }
+            foreach (Album a in videoAlbums)
+            {
+                Disco d = new Disco(); d.Artista = a.Artist; d.Nombre = a.Name; d.Carpeta = a.Folder; d.Portada = a.CoverPath; d.Letra = VideoMark; d.Videos = true;
+                foreach (string v in a.VideoFiles) { d.Rutas.Add(v); d.Titulos.Add(Path.GetFileNameWithoutExtension(v)); }
+                r2.Add(d);
+            }
             return r2;
         }
+        public const char LetraVideos = VideoMark;
         public string CarpetaMusica { get { return MusicFolder; } }
 
         // LO MAS SONADO (BuildTopDiscs de XP): un disco virtual "TOP 100" por genero con lo mas pedido (rocola_stats.txt), en la "letra"

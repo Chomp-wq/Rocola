@@ -81,6 +81,9 @@ namespace Rocola
         private readonly List<FileStream> abiertos = new List<FileStream>();
         private volatile bool parar;
         public event Action<Boton, int> Pulsado;   // la funcion (Ninguno si la tecla no es de la rocola) y el codigo de Windows
+        // Lo mismo, con lo que estaba apretado EN ESE MOMENTO (REGRESAR mantenido): quien atiende la pulsacion llega despues, y para entonces
+        // REGRESAR ya se pudo haber soltado (un combo rapido).
+        public event Action<Boton, int, bool> PulsadoConRegresar;
         // LO QUE ESTA APRETADO AHORA (para los combos de XP: REGRESAR mantenido + IZQ/DER cambia de letra, + ARRIBA abre el buscador).
         private readonly HashSet<int> apretadas = new HashSet<int>();
         public bool Apretado(Boton f)
@@ -128,6 +131,8 @@ namespace Rocola
             int vk = CodigoWindows(codigoLinux);
             Action<Boton, int> a = Pulsado;
             if (a != null) a(FuncionDe(vk), vk);
+            Action<Boton, int, bool> b = PulsadoConRegresar;
+            if (b != null) b(FuncionDe(vk), vk, FuncionDe(vk) != Boton.Regresar && Apretado(Boton.Regresar));
         }
 
         public void Dispose()

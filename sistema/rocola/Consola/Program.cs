@@ -21,7 +21,7 @@ namespace Rocola
     {
         internal static int Main(string[] args)
         {
-            string wav = null, dispositivo = "default", captura = null, tam = "1024x768"; bool biblioteca = false, rocola = false, texto = false; List<string> lista = new List<string>(), botones = new List<string>();
+            string wav = null, dispositivo = "default", captura = null, tam = "1024x768"; bool biblioteca = false, rocola = false, texto = false; string guion = null; List<string> lista = new List<string>(), botones = new List<string>();
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
@@ -29,6 +29,7 @@ namespace Rocola
                 else if (args[i] == "--biblioteca") biblioteca = true;
                 else if (args[i] == "--rocola") rocola = true;
                 else if (args[i] == "--texto") texto = true;
+                else if (args[i] == "--guion" && i + 1 < args.Length) guion = args[++i];
                 else if (args[i] == "--captura" && i + 1 < args.Length) captura = args[++i];
                 else if (args[i] == "--tam" && i + 1 < args.Length) tam = args[++i];
                 else if (args[i] == "--boton" && i + 1 < args.Length) botones.Add(args[++i]);
@@ -47,7 +48,8 @@ namespace Rocola
                 }
                 if (vista == null) vista = new VistaTexto();
                 int r;
-                using (vista) r = new Controlador(m, dispositivo).Corre(vista);
+                Controlador ctl = new Controlador(m, dispositivo); ctl.Guion = guion;
+                using (vista) r = ctl.Corre(vista);
                 m.Cierra();
                 return r;
             }

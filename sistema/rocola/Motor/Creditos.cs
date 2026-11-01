@@ -34,16 +34,20 @@ namespace Rocola
         public Pedido Pide(string ruta)
         {
             PlayItem it = new PlayItem();
-            Track t = null; Album d = null;
-            if (pistaDeRuta != null) { pistaDeRuta.TryGetValue(ruta, out t); discoDeRuta.TryGetValue(ruta, out d); }
-            if (t == null) { t = new Track(); t.Path = ruta; }
-            it.Song = t; it.Disc = d;
-            if (EstaDanada(it.Song.Path)) return Pedido.Danada;
+            if (EsVideo(ruta)) { it.IsVideo = true; it.VideoPath = ruta; }   // un video (la seccion de videos de XP)
+            else
+            {
+                Track t = null; Album d = null;
+                if (pistaDeRuta != null) { pistaDeRuta.TryGetValue(ruta, out t); discoDeRuta.TryGetValue(ruta, out d); }
+                if (t == null) { t = new Track(); t.Path = ruta; }
+                it.Song = t; it.Disc = d;
+                if (EstaDanada(it.Song.Path)) return Pedido.Danada;
+            }
             if (credits <= 0) { Avisa("Inserta una moneda"); return Pedido.SinCredito; }
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return Pedido.Repetida;
             queue.Add(it);
-            try { it.Song.EnsureTags(); } catch { }   // el genero (la etiqueta ID3), para lo mas sonado por genero (como XP al empezarla)
+            if (!it.IsVideo) try { it.Song.EnsureTags(); } catch { }   // el genero (la etiqueta ID3), para lo mas sonado por genero (como XP al empezarla)
             RecordPlay(it);   // estadisticas: cuenta lo pedido
             credits--;        // cada cosa cuesta 1 credito
             UpdateCredits();

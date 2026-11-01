@@ -6,6 +6,7 @@
 // siguiente tiene otra, entra por el camino de siempre: se cierra la salida y se abre otra).
 using System;
 using System.Collections.Generic;
+using System.IO;
 using NAudio.Wave;
 
 namespace Rocola
@@ -35,6 +36,20 @@ namespace Rocola
             queue.Add(p);
         }
         public int EnCola { get { return queue.Count; } }
+
+        // LOS VIDEOS. En la cola van como en XP (un PlayItem de video); suenan fuera de la cadena de sonido, con su propio volumen
+        // (video_vol=, 0 a 100, como el de XP). Si la primera de la cola es un video y no suena nada: se saca y se devuelve su ruta.
+        public string TomaVideo()
+        {
+            if (nowPlaying != null || queue.Count == 0 || !queue[0].IsVideo) return null;
+            PlayItem it = queue[0]; queue.RemoveAt(0);
+            sonoAntes = nowPlaying; nowPlaying = it;
+            SaveState();
+            return it.VideoPath;
+        }
+        public void AcaboElVideo() { nowPlaying = null; SaveState(); }
+        public int VolumenVideos { get { return videoVol; } }
+        public bool SonandoVideo { get { PlayItem p = nowPlaying; return p != null && p.IsVideo; } }
         public string Sonando { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.Path : null; } }
         // Cuanto lleva la que suena (0 a 1) y su disco (para la pantalla).
         public float SonandoProgreso
@@ -46,7 +61,7 @@ namespace Rocola
                 catch { return 0f; }
             }
         }
-        public string SonandoTitulo { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.ToString() : null; } }
+        public string SonandoTitulo { get { PlayItem p = nowPlaying; return p == null ? null : p.IsVideo ? Path.GetFileNameWithoutExtension(p.VideoPath) : p.Song != null ? p.Song.ToString() : null; } }
         public string SonandoDisco { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? (string.IsNullOrEmpty(p.Disc.Name) ? p.Disc.Artist : p.Disc.Artist + " - " + p.Disc.Name) : null; } }
         public string SonandoPortada { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? p.Disc.CoverPath : null; } }
         public float SonandoGananciaDb { get { CadenaCancion c = cadenaSonando; return c != null && c.Tap != null ? (float)(20.0 * Math.Log10(Math.Max(1e-9f, c.Tap.Gain))) : 0f; } }
@@ -57,7 +72,9 @@ namespace Rocola
         {
             while (queue.Count > 0)
             {
-                PlayItem it = queue[0]; queue.RemoveAt(0);
+                PlayItem it = queue[0];
+                if (it.IsVideo) return null;   // los videos los toca quien toca (TomaVideo)
+                queue.RemoveAt(0);
                 try
                 {
                     CadenaCancion cad = EmpiezaItem(it);

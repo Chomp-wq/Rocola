@@ -13,6 +13,8 @@ namespace Rocola
         public bool LeeTerminal { get { return true; } }
         internal VistaTexto() { Console.Write("\x1b[?25l\x1b[2J"); }   // sin cursor
         public void Dispose() { Console.Write("\x1b[?25h\x1b[0m\n"); }
+        public void Suelta() { }
+        public void Recupera() { pantallaAntes = null; Console.Write("\x1b[2J"); }
 
         private static int Filas() { try { return Math.Max(12, Console.WindowHeight); } catch { return 25; } }
         private static int Columnas() { try { return Math.Max(40, Console.WindowWidth); } catch { return 80; } }

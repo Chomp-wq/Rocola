@@ -18,6 +18,8 @@ namespace Rocola
     {
         void Dibuja(Controlador c);
         bool LeeTerminal { get; }   // la vista de texto lee tambien el teclado de la terminal
+        void Suelta();              // ceder la pantalla a un video
+        void Recupera();            // y recuperarla
     }
 
     internal sealed class Controlador
@@ -71,8 +73,33 @@ namespace Rocola
 
         internal void EmpiezaAsistente() { AsistentePaso = 0; AsistenteAviso = ""; }
 
+        // UN GUION DE BOTONES (pruebas: --guion archivo): una linea por paso: un boton (moneda, poner...), "regresar+derecha" (con REGRESAR
+        // mantenido), "espera 2000" (ms) o "salir". Se mete en la misma fila que los botones de verdad.
+        internal string Guion;
+        private const int DeGuion = -1000;
+        private const int ConRegresar = 0x10000;   // la tecla llego con REGRESAR apretado
+        private void CorreGuion()
+        {
+            foreach (string l0 in File.ReadAllLines(Guion))
+            {
+                string l = l0.Trim().ToLowerInvariant(); if (l.Length == 0 || l.StartsWith("#")) continue;
+                if (l.StartsWith("espera ")) { Thread.Sleep(int.Parse(l.Substring(7))); continue; }
+                if (l == "salir") { pulsos.Add(0); return; }
+                bool con = l.StartsWith("regresar+"); if (con) l = l.Substring(9);
+                Boton b = (Boton)Enum.Parse(typeof(Boton), l, true);
+                pulsos.Add(DeGuion - (int)b * 2 - (con ? 1 : 0));
+                Thread.Sleep(150);
+            }
+        }
+
         private void Tecla(int vk)
         {
+            if (vk <= DeGuion) { int x = DeGuion - vk; Pulsa((Boton)(x / 2), (x & 1) != 0); return; }
+            if ((vk & ConRegresar) != 0)
+            {
+                vk &= ~ConRegresar;
+                if (AsistentePaso < 0 && botones != null && botones.FuncionDe(vk) != Boton.Ninguno) { Pulsa(botones.FuncionDe(vk), true); return; }
+            }
             if (AsistentePaso >= 0) { CapturaAsistente(vk); return; }
             if (vk == 0x77 && (botones == null || botones.FuncionDe(vk) == Boton.Ninguno)) { EmpiezaAsistente(); return; }   // F8, como en XP
             Boton b = botones != null ? botones.FuncionDe(vk) : Boton.Ninguno;
@@ -95,12 +122,13 @@ namespace Rocola
 
         internal int Corre(IVista vista)
         {
+            vistaActual = vista;
             Prepara();
             using (Botones botones = new Botones())
             {
                 botones.Configura(motor.ArchivoBotones);
                 this.botones = botones;
-                botones.Pulsado += delegate (Boton b, int vk) { if (vk != 0) pulsos.Add(vk); };
+                botones.PulsadoConRegresar += delegate (Boton b, int vk, bool conRegresar) { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0)); };
                 if (!botones.DeArchivo) EmpiezaAsistente();   // sin rocola_teclas.txt: el asistente (como XP la primera vez)
                 int n = botones.Escucha();
                 Aviso((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");
@@ -111,6 +139,7 @@ namespace Rocola
                     Thread teclado = new Thread(delegate () { LeeTeclado(botones, despacha); }) { IsBackground = true, Name = "teclado de la terminal" };
                     teclado.Start();
                 }
+                if (Guion != null) { Thread g = new Thread(CorreGuion) { IsBackground = true, Name = "guion" }; g.Start(); }
                 try
                 {
                     while (!salir)
@@ -120,12 +149,13 @@ namespace Rocola
                         motor.PublicaMedidas();
                         motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                         Suena();
-                        vista.Dibuja(this);
+                        if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
                     }
                 }
                 finally
                 {
                     if (salida != null) { salida.Dispose(); salida = null; motor.AcaboLaSalida(); }
+                    if (video != null) { try { video.Kill(); } catch { } TerminaVideo(); }
                     motor.GuardaEstado();
                 }
             }
@@ -148,7 +178,7 @@ namespace Rocola
         }
 
         // LO MAS SONADO: la "letra" TOP (la estrella de XP), la primera, con un disco por genero; aparece cuando hay estadisticas.
-        internal static string NombreLetra(char l) { return l == Form1.LetraTop ? "TOP" : l.ToString(); }
+        internal static string NombreLetra(char l) { return l == Form1.LetraTop ? "TOP" : l == Form1.LetraVideos ? "VIDEOS" : l.ToString(); }
         private void RefrescaTop()
         {
             List<Form1.Disco> top = motor.LoMasSonado();
@@ -165,7 +195,7 @@ namespace Rocola
         internal const int DiscosPorPagina = 8;
         // REGRESAR mantenido (para los combos de XP); en las pruebas se da por boton.
         private bool regresarDePrueba;
-        private bool RegresarApretado { get { return regresarDePrueba || (botones != null && botones.Apretado(Boton.Regresar)); } }
+        private bool RegresarApretado { get { return regresarDePrueba; } }   // lo que estaba apretado al pulsar (PulsadoConRegresar)
         internal void Pulsa(Boton b, bool conRegresar) { regresarDePrueba = conRegresar; try { Maneja(b); } finally { regresarDePrueba = false; } }
 
         // LOS BOTONES, como en XP (Form1.cs: ProcessCmdKey). MONEDA y SALTAR siempre. REGRESAR mantenido + ARRIBA abre o cierra el buscador.
@@ -176,8 +206,9 @@ namespace Rocola
             switch (b)
             {
                 case Boton.Moneda: motor.Moneda(); return;
-                case Boton.Saltar: if (salida != null) saltar = true; return;
+                case Boton.Saltar: if (salida != null || video != null) saltar = true; return;
             }
+            if (video != null) return;   // durante un video los demas botones no hacen nada (la pantalla es del video)
             if (b == Boton.Arriba && RegresarApretado) { if (Buscando) CierraBuscador(); else AbreBuscador(); return; }
             if (Buscando) { ManejaBuscador(b); return; }
             if (dentro == null)
@@ -278,9 +309,71 @@ namespace Rocola
             }
         }
 
+        // LOS VIDEOS: con mpv (en Rocola OS, por KMS y ALSA), a pantalla completa y con el volumen de los videos de XP (video_vol=). La
+        // rocola cede la pantalla mientras tanto; MONEDA sigue contando y SALTAR lo corta (como en XP).
+        private System.Diagnostics.Process video;
+        private StringBuilder errorVideo;   // lo que dijo mpv (si falla, va al aviso y a la salida de la rocola: /root/rocola.txt)
+        private IVista vistaActual;
+        internal string Mpv = Environment.GetEnvironmentVariable("ROCOLA_MPV") ?? "mpv";
+        private void EmpiezaVideo(string ruta)
+        {
+            try
+            {
+                if (vistaActual != null) vistaActual.Suelta();
+                System.Diagnostics.ProcessStartInfo pi = new System.Diagnostics.ProcessStartInfo(Mpv);
+                foreach (string a in new[] { "--fs", "--no-input-default-bindings", "--no-terminal", "--log-file=/tmp/rocola-mpv.txt", "--msg-level=all=warn", "--vo=gpu,drm", "--gpu-context=drm",
+                    "--ao=alsa", "--volume=" + motor.VolumenVideos, "--", ruta })
+                    pi.ArgumentList.Add(a);
+                pi.UseShellExecute = false;
+                pi.RedirectStandardError = true; pi.RedirectStandardOutput = true;
+                errorVideo = new StringBuilder();
+                video = System.Diagnostics.Process.Start(pi);
+                video.ErrorDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
+                video.OutputDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
+                video.BeginErrorReadLine(); video.BeginOutputReadLine();
+            }
+            catch (Exception ex) { Aviso("No se pudo poner el video: " + ex.Message); TerminaVideo(); }
+        }
+        private void SigueVideo()
+        {
+            bool acabo; try { acabo = video.HasExited; } catch { acabo = true; }
+            if (saltar && !acabo) { try { video.Kill(); } catch { } saltar = false; return; }
+            if (acabo) TerminaVideo();
+        }
+        private void TerminaVideo()
+        {
+            if (video != null)
+            {
+                int codigo = 0; try { video.WaitForExit(1000); codigo = video.ExitCode; } catch { }
+                string dijo; lock (errorVideo) dijo = errorVideo.ToString().Trim();
+                if (codigo != 0 && !saltar)
+                {
+                    Console.Error.WriteLine("mpv salio con " + codigo + ": " + dijo);
+                    if (dijo.Length == 0) try { dijo = File.ReadAllText("/tmp/rocola-mpv.txt").Trim(); } catch { }
+                    string[] lineas = dijo.Split('\n');
+                    string ultima = "codigo " + codigo;
+                    List<string> malas = new List<string>();
+                    foreach (string l in lineas)
+                        if ((l.Contains("][e][") || l.Contains("][w][") || l.Contains("][f][")) && !l.Contains("Exiting")) malas.Add(l.Substring(l.IndexOf("][") + 4).Trim());
+                    if (malas.Count > 0) { ultima = string.Join(" | ", malas.GetRange(Math.Max(0, malas.Count - 2), Math.Min(2, malas.Count))); if (ultima.Length > 150) ultima = ultima.Substring(0, 150); }
+                    Aviso("No se pudo poner el video (" + ultima + ")");
+                }
+                try { video.Dispose(); } catch { } video = null;
+            }
+            saltar = false;
+            motor.AcaboElVideo();
+            if (vistaActual != null) vistaActual.Recupera();
+        }
+
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
         private void Suena()
         {
+            if (salida == null && video == null)
+            {
+                string v = motor.TomaVideo();
+                if (v != null) { EmpiezaVideo(v); return; }
+            }
+            if (video != null) { SigueVideo(); return; }
             if (salida == null && motor.EmpezarYa)
             {
                 ISampleProvider s = motor.EmpiezaSiguiente();

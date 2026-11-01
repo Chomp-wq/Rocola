@@ -232,3 +232,15 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **La memoria de la biblioteca de XP no se trajo:** para saber si vale, recorre todas las carpetas mirando tamaños y fechas, que
   es más que el recorrido normal (los títulos salen del nombre del archivo, sin abrirlo).
 - Probado aquí fuera de pantalla (asistente, TOP, buscador: escribir, pasar a los resultados, elegir).
+
+## Hito 14 (1-11-2026): los vídeos
+
+- **La sección de vídeos de XP** (`BuildVideoSection`): los vídeos de las carpetas de música (las mismas extensiones que XP) van en la
+  letra VIDEOS, por carpeta; se piden, cuestan un crédito y entran en la cola y en el estado como en XP.
+- **Suenan con mpv** (en Rocola OS: por KMS, a pantalla completa, y por ALSA, con `video_vol=` de XP): la rocola cede la pantalla
+  (`drmDropMaster`) mientras dura el vídeo y la recupera al acabar. MONEDA sigue contando y SALTAR lo corta. Si mpv falla, la rocola
+  dice por qué en el aviso y en `/root/rocola.txt` (lo de mpv, en `/tmp/rocola-mpv.txt`).
+- **Fallo encontrado y arreglado:** un combo rápido (REGRESAR + IZQ) no se reconocía si REGRESAR se soltaba antes de que la rocola
+  atendiera la pulsación; ahora lo apretado se anota en el momento de la pulsación (`PulsadoConRegresar`).
+- **Probado en QEMU** con un vídeo de 10 s en el disco NTFS: se ve a pantalla completa, se oye su sonido y al acabar vuelve la rocola.
+  `--guion` (pruebas): una lista de botones y esperas para probar el bucle de verdad sin pantalla ni teclado.

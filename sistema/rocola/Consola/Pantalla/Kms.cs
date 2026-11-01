@@ -26,6 +26,8 @@ namespace Rocola.Pantalla
         [DllImport(Drm)] private static extern int drmModeAddFB(int fd, uint w, uint h, byte prof, byte bpp, uint paso, uint asa, uint* fb);
         [DllImport(Drm)] private static extern int drmModeRmFB(int fd, uint fb);
         [DllImport(Drm)] private static extern int drmModePageFlip(int fd, uint crtc, uint fb, uint banderas, IntPtr dato);
+        [DllImport(Drm)] private static extern int drmDropMaster(int fd);
+        [DllImport(Drm)] private static extern int drmSetMaster(int fd);
         [DllImport(Gbm)] private static extern IntPtr gbm_create_device(int fd);
         [DllImport(Gbm)] private static extern void gbm_device_destroy(IntPtr d);
         [DllImport(Gbm)] private static extern IntPtr gbm_surface_create(IntPtr d, uint w, uint h, uint formato, uint banderas);
@@ -113,6 +115,11 @@ namespace Rocola.Pantalla
             boActual = bo; fbActual = fb;
         }
 
+        // CEDER LA PANTALLA (a mpv, para un video) y recuperarla: se suelta el mando de la tarjeta (DRM master) y, al volver, se toma
+        // otra vez y el siguiente cuadro vuelve a poner el modo.
+        public void Suelta() { drmDropMaster(fd); }
+        public void Recupera() { drmSetMaster(fd); puesto = false; }
+
         public void Dispose()
         {
             if (antes != null)
@@ -136,6 +143,8 @@ namespace Rocola.Pantalla
         int Alto { get; }
         string Descripcion { get; }
         void Presenta();
+        void Suelta();     // ceder la pantalla (un video)
+        void Recupera();   // y recuperarla
     }
 
     // FUERA DE PANTALLA (para probar sin tarjeta ni monitor): Mesa sin superficie y un framebuffer de OpenGL; cada cuadro se puede
@@ -163,6 +172,8 @@ namespace Rocola.Pantalla
             Descripcion = ancho + "x" + alto + " fuera de pantalla, " + GL.Texto(GL.RENDERER);
         }
         public void Presenta() { GL.Finish(); }
+        public void Suelta() { }
+        public void Recupera() { }
         // El cuadro, en PPM (sin compresion; para mirarlo).
         internal void Captura(string ruta)
         {
