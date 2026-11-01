@@ -167,8 +167,11 @@ namespace Rocola
                         // UN FALLO NO TUMBA LA ROCOLA (como XP): cada vuelta va protegida; el error se apunta en rocola_error.txt y se sigue.
                         try
                         {
-                            int vk;
-                            if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
+                            // Todas las pulsaciones pendientes antes de dibujar (si un cuadro tarda, los botones no se quedan esperando en fila).
+                            int vk; bool fin = false;
+                            if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50))
+                                do { if (vk == 0) { fin = true; break; } motor.HuboBoton(); Tecla(vk); } while (pulsos.TryTake(out vk, 0));
+                            if (fin) break;
                             motor.PublicaMedidas();
                             ActualizaCodigo();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
