@@ -4,6 +4,12 @@
 case "$1" in
 	start)
 		acpid   # el boton de encendido: /etc/acpi/PWRF/00000080
+		# EL INSTALADOR (la primera entrada del menu de la memoria USB): solo el, en tty1 (sin montar los discos: los monta el).
+		if grep -q rocola.instalar /proc/cmdline; then
+			printf "Rocola OS: arrancando el instalador en tty1\n"
+			setsid sh -c 'exec /usr/bin/rocola-instalar </dev/tty1 >/dev/tty1 2>&1' &
+			exit 0
+		fi
 		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
 		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		# La prueba de sonido y grafica la primera vez (o si se elige en el menu de GRUB: rocola.prueba); despues, directo a la rocola.

@@ -64,3 +64,9 @@ CONFIG_EFI=y
 CONFIG_EFI_STUB=y
 CONFIG_EFI_PARTITION=y
 CONFIG_FB_EFI=y
+
+# El sistema INSTALADO en el disco de la rocola (rocola-instalar): va en un archivo (sistema.img, ext4) dentro del disco NTFS, junto a
+# la musica, sin tocar las particiones. Un initramfs pequeno monta el NTFS, el archivo por loop y arranca desde ahi.
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y

@@ -1,0 +1,36 @@
+#!/bin/sh
+# EL ARRANQUE DEL SISTEMA INSTALADO (rocola-instalar). Rocola OS va en un archivo, /rocola-os/sistema.img (ext4), dentro del disco NTFS
+# de la rocola, junto a su musica: no hay particion propia. Esto busca ese disco, lo monta (con escritura: el sistema escribe en su
+# archivo, nunca en la musica), monta el archivo por loop y arranca desde ahi. El disco queda visible en /rocola/disco.
+/bin/busybox --install -s /bin 2>/dev/null
+mount -t devtmpfs devtmpfs /dev
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+RAIZ=$(sed -n 's/.*rocola\.raiz=\([^ ]*\).*/\1/p' /proc/cmdline)
+[ -n "$RAIZ" ] || RAIZ=/rocola-os/sistema.img
+mkdir -p /disco /raiz
+encontrado=
+i=0
+while [ $i -lt 30 ] && [ -z "$encontrado" ]; do   # los discos pueden tardar unos segundos en aparecer
+	for p in /sys/class/block/*; do
+		[ -e "$p/partition" ] || continue
+		d=/dev/$(basename "$p")
+		mount -t ntfs3 -o rw,iocharset=utf8 "$d" /disco 2>/dev/null \
+			|| mount -t ntfs3 -o rw,force,iocharset=utf8 "$d" /disco 2>/dev/null \
+			|| mount "$d" /disco 2>/dev/null || continue
+		if [ -f "/disco$RAIZ" ]; then encontrado=$d; break; fi
+		umount /disco
+	done
+	[ -n "$encontrado" ] || { i=$((i + 1)); sleep 1; }
+done
+if [ -z "$encontrado" ]; then
+	echo "Rocola OS: no encuentro el disco con $RAIZ"; exec sh
+fi
+if ! losetup /dev/loop0 "/disco$RAIZ" || ! mount -t ext4 /dev/loop0 /raiz; then
+	echo "Rocola OS: no pude montar $RAIZ"; exec sh
+fi
+mkdir -p /raiz/rocola/disco
+mount --move /disco /raiz/rocola/disco
+mount --move /dev /raiz/dev
+umount /proc /sys
+exec switch_root /raiz /sbin/init

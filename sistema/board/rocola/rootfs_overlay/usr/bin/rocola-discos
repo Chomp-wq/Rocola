@@ -28,8 +28,13 @@ for p in /sys/class/block/*; do
 		*) continue ;;
 	esac
 	m=/rocola/discos/$dev
-	mkdir -p "$m"
-	mountpoint -q "$m" || mount -t "$fs" -o "$opc" "/dev/$dev" "$m" 2>/dev/null || { rmdir "$m" 2>/dev/null; continue; }
+	# Ya montada (el disco donde va instalado Rocola OS, en /rocola/disco: rocola-instalar): se busca ahi, sin montarla otra vez.
+	ya=$(awk -v d="/dev/$dev" '$1 == d {print $2; exit}' /proc/mounts)
+	if [ -n "$ya" ]; then m=$ya
+	else
+		mkdir -p "$m"
+		mountpoint -q "$m" || mount -t "$fs" -o "$opc" "/dev/$dev" "$m" 2>/dev/null || { rmdir "$m" 2>/dev/null; continue; }
+	fi
 	encontradas=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null)
 	if [ -n "$encontradas" ]; then
 		echo "$encontradas" >> "$LISTA"
@@ -40,6 +45,6 @@ for p in /sys/class/block/*; do
 		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt \) 2>/dev/null | grep -iv respaldo | head -1)   # (no la copia de respaldo)
 		[ -n "$xp" ] && dirname "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $(dirname "$xp")"
 	fi
-	echo "rocola-discos: /dev/$dev ($tipo) en $m, solo lectura"
+	echo "rocola-discos: /dev/$dev ($tipo) en $m$([ -n "$ya" ] || echo ', solo lectura')"
 done
 echo "rocola-discos: musica en: $(tr '\n' ' ' < "$LISTA")"
