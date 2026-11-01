@@ -1,0 +1,50 @@
+// LA BIBLIOTECA (en XP, Form1.Biblioteca.cs: ScanLibraryCore sin la pantalla). Las mismas reglas de XP, con sus funciones tal cual
+// (DeXP.cs): la carpeta "musica" junto a los datos (o hasta tres carpetas mas arriba: /rocola/datos -> /rocola/musica) mas las de
+// "dir=" de la configuracion; cada carpeta con canciones es un disco ("Artista - Disco"), las canciones por titulo, los discos por
+// artista. Por ahora se recorre el disco cada vez (la cache de la biblioteca de XP, despues).
+using System;
+using System.Collections.Generic;
+
+namespace Rocola
+{
+    public partial class Form1
+    {
+        private readonly List<Track> tracks = new List<Track>();
+
+        // Un disco, para quien use el motor: artista, nombre y sus canciones (rutas y titulos, en el orden de XP).
+        public sealed class Disco
+        {
+            public string Artista, Nombre, Carpeta, Portada;
+            public char Letra;
+            public List<string> Rutas = new List<string>();
+            public List<string> Titulos = new List<string>();
+            public override string ToString() { return string.IsNullOrEmpty(Nombre) ? Artista : Artista + " - " + Nombre; }
+        }
+
+        // Recorre la musica y arma los discos. Devuelve los discos en el orden de la pared de XP.
+        public List<Disco> LeeBiblioteca()
+        {
+            List<string> roots = AllMusicRoots();
+            tracks.Clear();
+            List<string> audio = new List<string>(), vids = new List<string>();
+            Dictionary<string, string> covs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            carpetasSaltadas = null;
+            for (int r = 0; r < roots.Count; r++) ScanFolders(roots[r], audio, vids, covs);
+            AvisaCarpetasSaltadas();
+            for (int i = 0; i < audio.Count; i++) tracks.Add(Track.FromFile(audio[i]));
+            cachedCovers = covs;
+            BuildAlbums(roots);
+            cachedCovers = null;
+            IndexaBiblioteca();
+            List<Disco> r2 = new List<Disco>(albums.Count);
+            foreach (Album a in albums)
+            {
+                Disco d = new Disco(); d.Artista = a.Artist; d.Nombre = a.Name; d.Carpeta = a.Folder; d.Portada = a.CoverPath; d.Letra = a.Letter;
+                foreach (Track t in a.Tracks) { d.Rutas.Add(t.Path); d.Titulos.Add(t.ToString()); }
+                r2.Add(d);
+            }
+            return r2;
+        }
+        public string CarpetaMusica { get { return MusicFolder; } }
+    }
+}

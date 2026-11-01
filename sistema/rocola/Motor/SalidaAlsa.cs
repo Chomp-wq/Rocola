@@ -30,11 +30,16 @@ namespace Rocola
         internal const uint LatenciaUs = 300000;   // el colchon de la tarjeta: 300 ms (en XP, de 750 a 1000)
         public event Action Acabo;                  // se acabo la musica (y ya sono)
         public long Recuperaciones;                 // xruns y suspensiones recuperadas
+        private long escritos;                      // cuadros entregados a la tarjeta
+        private readonly int tasa;
+        // Cuadros que ya sonaron (aprox.): lo escrito menos el colchon de la tarjeta.
+        public long CuadrosOidos { get { return Math.Max(0L, Interlocked.Read(ref escritos) - (long)LatenciaUs * tasa / 1000000L); } }
+        public bool Sonando { get { Thread h = hilo; return h != null && h.IsAlive; } }
 
         public SalidaAlsa(ISampleProvider musica, string dispositivo = "default")
         {
             fuente = new Form1.DitherWaveProvider16(musica);
-            canales = musica.WaveFormat.Channels;
+            canales = musica.WaveFormat.Channels; tasa = musica.WaveFormat.SampleRate;
             int r = snd_pcm_open(out pcm, dispositivo, Reproducir, 0);
             if (r < 0) throw new InvalidOperationException("ALSA: no se pudo abrir '" + dispositivo + "': " + Error(r));
             r = snd_pcm_set_params(pcm, S16Le, Intercalado, (uint)canales, (uint)musica.WaveFormat.SampleRate, 1, LatenciaUs);
@@ -67,7 +72,7 @@ namespace Rocola
                             Recuperaciones++;
                             continue;
                         }
-                        hechos += (int)w;
+                        hechos += (int)w; Interlocked.Add(ref escritos, w);
                     }
             }
             if (!parar) snd_pcm_drain(pcm);   // que suene lo que queda en la tarjeta

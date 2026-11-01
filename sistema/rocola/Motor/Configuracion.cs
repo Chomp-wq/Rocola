@@ -64,6 +64,11 @@ namespace Rocola
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
+                    else if (s.StartsWith("dir="))   // carpetas de musica extra (en XP, Ctrl+F2)
+                    {
+                        string d = s.Substring(4).Trim();
+                        if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
+                    }
                 }
             }
             catch { }

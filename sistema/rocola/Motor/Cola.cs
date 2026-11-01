@@ -1,0 +1,196 @@
+// LA COLA Y EL RELEVO SIN PAUSA (en XP, Form1.SinPausa.cs: PreparaSiguienteSinPausa, RevisaRelevo y PasaRelevo; Form1.Video.cs:
+// PlayNext y DisposePlaybackNow), sin la pantalla. Las reglas son las de XP: la siguiente se prepara cuando a la que suena le quedan
+// 12 s y entra en la MISMA lectura de la salida (Encadenado, SinPausa.cs), sin hueco; si es la pista siguiente del mismo disco, sin
+// fundido y con la memoria de los filtros de la anterior (SigueA, HeredaLocal). Lo que se aprende de cada una se cierra al relevo.
+// Diferencias con XP: sin el calentador que abre la siguiente por delante (se abre aqui), y sin convertir de frecuencia (si la
+// siguiente tiene otra, entra por el camino de siempre: se cierra la salida y se abre otra).
+using System;
+using System.Collections.Generic;
+using NAudio.Wave;
+
+namespace Rocola
+{
+    public partial class Form1
+    {
+        private Dictionary<string, Track> pistaDeRuta;   // de la biblioteca leida (LeeBiblioteca): la cancion y su disco
+        private Dictionary<string, Album> discoDeRuta;
+        private PlayItem sinEncadenar;                    // la siguiente que no se puede encadenar (otra frecuencia): no se reintenta
+        private int ultimoMuestreo;
+
+        private void IndexaBiblioteca()
+        {
+            pistaDeRuta = new Dictionary<string, Track>(StringComparer.Ordinal);
+            discoDeRuta = new Dictionary<string, Album>(StringComparer.Ordinal);
+            foreach (Album a in albums) foreach (Track t in a.Tracks) { pistaDeRuta[t.Path] = t; discoDeRuta[t.Path] = a; }
+        }
+
+        // A la cola. Si es de la biblioteca leida, con su disco (para el disco continuo).
+        public void Encola(string ruta)
+        {
+            PlayItem p = new PlayItem();
+            Track t = null; Album d = null;
+            if (pistaDeRuta != null) { pistaDeRuta.TryGetValue(ruta, out t); discoDeRuta.TryGetValue(ruta, out d); }
+            if (t == null) { t = new Track(); t.Path = ruta; }
+            p.Song = t; p.Disc = d;
+            queue.Add(p);
+        }
+        public int EnCola { get { return queue.Count; } }
+        public string Sonando { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.Path : null; } }
+        public float SonandoGananciaDb { get { CadenaCancion c = cadenaSonando; return c != null && c.Tap != null ? (float)(20.0 * Math.Log10(Math.Max(1e-9f, c.Tap.Gain))) : 0f; } }
+
+        // EMPIEZA LA SIGUIENTE DE LA COLA por el camino de siempre (como PlayNext: salida nueva). Lo que devuelve es lo que la salida
+        // tiene que leer; null si la cola se acabo. Una que no se puede abrir se apunta y se salta, como en XP.
+        public ISampleProvider EmpiezaSiguiente()
+        {
+            while (queue.Count > 0)
+            {
+                PlayItem it = queue[0]; queue.RemoveAt(0);
+                try
+                {
+                    CadenaCancion cad = EmpiezaItem(it);
+                    secuencia = new Encadenado(cad.Salida, cad);
+                    sinEncadenar = null;
+                    return secuencia;
+                }
+                catch (Exception ex) { LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null; }
+            }
+            return null;
+        }
+
+        // Lo de StartOpenedTrack de XP (Form1.Sonido.cs): la cadena y, en los campos de siempre, lo que se aprende oyendola.
+        private CadenaCancion EmpiezaItem(PlayItem item)
+        {
+            if (cadenaSonando != null) throw new InvalidOperationException("ya suena otra");
+            IAudioSource lector = OpenAudio(item.Song.Path);
+            try
+            {
+                lector.Volume = 1f;
+                sonoAntes = nowPlaying; nowPlaying = item;
+                CadenaCancion cad = ArmaCadena(item.Song, lector, false, 0.0);
+                SellaInicioReloj(cad);
+                cad.Item = item;
+                lock (audioDatosLock)
+                {
+                    curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
+                    curFuenteMedida = cad.Fuente;
+                    eqMeasPath = cad.EqRuta;
+                    eqMeasCut = 0f;   // el acantilado es de ESTA cancion: se vuelve a medir
+                    eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
+                    kwRate = 0;   // cada cancion mide desde cero
+                    tapMedido = cad.Tap;
+                }
+                curSbr = cad.Sbr; curTap = cad.Tap; curBass = cad.Bajo;
+                bassSongFactor = cad.BajoFactor; bassAutoBase = cad.BajoBase;
+                cadenaSonando = cad; cadenaPreparada = null;
+                return cad;
+            }
+            catch { lector.Dispose(); throw; }
+        }
+
+        // LO QUE EN XP HACEN LOS RELOJES DE LA PANTALLA. Llamarlo a menudo (cada 50 a 500 ms) mientras suena: muestrea lo que hizo cada
+        // etapa (cada medio segundo), prepara la siguiente cuando toca y recoge el relevo cuando ya se oye. 'cuadrosOidos' = cuadros de la
+        // salida que ya sonaron (lo escrito menos lo que la tarjeta aun tiene por delante).
+        public void Atiende(long cuadrosOidos)
+        {
+            int ahora = Environment.TickCount;
+            if (unchecked(ahora - ultimoMuestreo) >= 500) { ultimoMuestreo = ahora; MuestreaEtapas(cadenaSonando); }
+            PreparaSiguiente();
+            Encadenado s = secuencia;
+            if (s == null) return;
+            Encadenado.Relevo r = s.TomaRelevoPorCuadro(Math.Max(0L, cuadrosOidos));
+            CadenaCancion b = r != null ? r.Ficha as CadenaCancion : null;
+            if (b != null) { b.CuadroComienzo = r.Cuadro; PasaRelevo(b); }
+        }
+
+        // Como PreparaSiguienteSinPausa de XP, sin el calentador ni la conversion de frecuencia.
+        private void PreparaSiguiente()
+        {
+            Encadenado s = secuencia;
+            if (s == null || cadenaPreparada != null || cadenaSonando == null) return;
+            if (s.Terminado || s.HayRelevoPendiente || queue.Count == 0) return;
+            PlayItem sig = queue[0];
+            if (sig == null || sig.IsVideo || sig.Song == null || sig.Song.Path == null || object.ReferenceEquals(sig, sinEncadenar)) return;
+            double quedan;
+            try { quedan = (cadenaSonando.Lector.TotalTime - cadenaSonando.Lector.CurrentTime).TotalSeconds; } catch { return; }
+            if (quedan > PreparaAntesSeg) return;
+            IAudioSource lector;
+            try { lector = OpenAudio(sig.Song.Path); }
+            catch { sinEncadenar = sig; return; }   // entrara por el camino de siempre, que la apunta y la salta
+            CadenaCancion c;
+            try
+            {
+                lector.Volume = 1f;
+                if (!Encadenado.MismoFormato(lector.WaveFormat, s.WaveFormat)) { lector.Dispose(); sinEncadenar = sig; return; }
+                c = ArmaCadena(sig.Song, lector, false, 0);
+                c.Item = sig;
+                SellaInicioReloj(c); c.CebadoInicial = 0;   // Encadenado descarta el cebado de los relevos
+            }
+            catch (Exception ex)
+            {
+                LogError("Relevo sin pausa: no se pudo preparar " + System.IO.Path.GetFileName(sig.Song.Path) + " (sonara por el camino de siempre)", ex);
+                try { lector.Dispose(); } catch { }
+                sinEncadenar = sig;
+                return;
+            }
+            if (!s.Prepara(c.Salida, c.Retardo, c)) { try { lector.Dispose(); } catch { } return; }
+            cadenaPreparada = c;
+            // PISTA SIGUIENTE DEL MISMO DISCO: sin fundido de salida (si aun no empezo) ni de entrada, y con la memoria de los filtros.
+            bool entera = cadenaSonando.Fundido == null;
+            if (SiguienteDelDisco(nowPlaying, sig) && cadenaSonando.Fundido != null) entera = cadenaSonando.Fundido.Quita();
+            if (entera && SiguienteDelDisco(nowPlaying, sig) && c.Fundido != null) c.Fundido.SinEntrada();
+            if (entera && lector.WaveFormat.SampleRate == cadenaSonando.Lector.WaveFormat.SampleRate) { SigueA(c, cadenaSonando); HeredaLocal(c, cadenaSonando); }
+        }
+
+        // Como PasaRelevo de XP, sin la pantalla: la que acabo cierra lo aprendido, la que entra pasa a sonar y sale de la cola.
+        private void PasaRelevo(CadenaCancion b)
+        {
+            CadenaCancion a = cadenaSonando;
+            AprendeParejo(a);   // la que acabo, si sono entera en el billar (VolumenParejo.cs)
+            cadenaSonando = b;
+            if (object.ReferenceEquals(cadenaPreparada, b)) cadenaPreparada = null;
+            lock (audioDatosLock)
+            {
+                MedidaCancion m = b.Tap != null ? b.Tap.Medida : null;
+                if (m != null && m.CierreAnterior.Listo) CierraMedida(m.CierreAnterior, eqMeasCut, eqMeasCutLo);
+                else { FinalizeLoudMeasure(); FinalizeEqMeasure(); InstalaMedida(b); }
+            }
+            if (a != null && a.Lector != null && !object.ReferenceEquals(a.Lector, b.Lector)) { try { a.Lector.Dispose(); } catch { } }
+            eqMeasCut = 0f; eqMeasCutLo = 0f;
+            curTap = b.Tap; curSbr = b.Sbr; curBass = b.Bajo;
+            bassSongFactor = b.BajoFactor; bassAutoBase = b.BajoBase;
+            PlayItem item = b.Item;
+            if (queue.Count > 0 && object.ReferenceEquals(queue[0], item)) queue.RemoveAt(0);
+            else if (item != null) queue.Remove(item);
+            sonoAntes = nowPlaying;
+            nowPlaying = item;
+        }
+
+        // LA SALIDA SE ACABO (o se paro): como RecogeAlParar y DisposePlaybackNow de XP. Si la siguiente ya habia entrado, pasa a sonar
+        // y se cierra; la preparada que no entro vuelve a la cola; lo de la que sonaba se aprende y se guarda.
+        public void AcaboLaSalida()
+        {
+            Encadenado s = secuencia;
+            if (s != null)
+            {
+                Encadenado.Relevo r = s.TomaRelevo(Environment.TickCount, int.MinValue);
+                CadenaCancion b = r != null ? r.Ficha as CadenaCancion : null;
+                if (b != null) { b.CuadroComienzo = r.Cuadro; PasaRelevo(b); }
+                CadenaCancion p = cadenaPreparada;
+                if (p != null && s.Cancela(p)) { try { p.Lector.Dispose(); } catch { } }
+            }
+            cadenaPreparada = null;
+            InvalidaPublicacionAudio();
+            lock (audioDatosLock)
+            {
+                CadenaCancion c = cadenaSonando;
+                if (c != null) AprendeParejo(c);
+                FinalizeLoudMeasure();
+                FinalizeEqMeasure();
+                if (c != null && c.Lector != null) { try { c.Lector.Dispose(); } catch { } }
+                cadenaSonando = null; secuencia = null; tapMedido = null;
+            }
+            curTap = null; curSbr = null; curBass = null;
+            nowPlaying = null;
+        }
+    }
+}

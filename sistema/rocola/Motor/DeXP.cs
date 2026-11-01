@@ -2769,5 +2769,462 @@ namespace Rocola
             }
             return 0;
         }
+        // de Form1.Datos.cs
+        private List<string> AllMusicRoots()
+        {
+            // Primero, todas las que EXISTEN ahora mismo. Las que no existen -un disco desconectado- no se
+            // tiran de la configuracion: siguen guardadas y vuelven solas cuando el disco reaparezca.
+            List<string> cand = new List<string>();
+            try { if (Directory.Exists(MusicFolder)) cand.Add(MusicFolder); } catch { }
+            for (int i = 0; i < extraMusicDirs.Count; i++)
+            {
+                try { if (Directory.Exists(extraMusicDirs[i])) cand.Add(extraMusicDirs[i]); } catch { }
+            }
+            // Y ahora se sueltan las que estan DENTRO de otra. Mirar las dos escanearia lo mismo dos veces y
+            // cada cancion saldria duplicada en las listas, el buscador y las estadisticas.
+            //
+            // LA QUE SE SUELTA ES LA DE DENTRO, no la de fuera. Antes era al reves -se quedaba la primera de
+            // la lista, que es siempre "musica"-, y eso hacia inutil lo mas normal de todo: decirle a la
+            // rocola "la musica esta en ESTE disco". El disco contiene a "musica", asi que el disco entero se
+            // soltaba y se seguia mirando solo la carpetita de siempre. Mirar la de fuera ya cubre a la de
+            // dentro; al reves no.
+            List<string> roots = new List<string>();
+            for (int i = 0; i < cand.Count; i++)
+            {
+                bool dentroDeOtra = false;
+                for (int j = 0; j < cand.Count && !dentroDeOtra; j++)
+                {
+                    if (j == i) continue;
+                    // Si son la MISMA carpeta, cada una esta "dentro" de la otra: se queda la primera.
+                    if (PathInside(cand[i], cand[j]) && (!PathInside(cand[j], cand[i]) || j < i)) dentroDeOtra = true;
+                }
+                if (!dentroDeOtra) roots.Add(cand[i]);
+            }
+            return roots;
+        }
+        // de Form1.Biblioteca.cs
+        private void AvisaCarpetasSaltadas()
+        {
+            List<string> l = carpetasSaltadas; carpetasSaltadas = null;
+            if (l == null || l.Count == 0) return;
+            StringBuilder sb = new StringBuilder();
+            sb.Append(l.Count).Append(l.Count == 1 ? " carpeta no se pudo leer" : " carpetas no se pudieron leer").Append(" y sus canciones no estan en la biblioteca:");
+            for (int i = 0; i < l.Count && i < SaltadasDichas; i++) sb.Append("\r\n  ").Append(l[i]);
+            if (l.Count > SaltadasDichas) sb.Append("\r\n  ... y ").Append(l.Count - SaltadasDichas).Append(" mas");
+            LogError("Biblioteca: " + sb, null);
+        }
+        // de Form1.Biblioteca.cs
+        private void BuildAlbums(List<string> roots)
+        {
+            string[] folderMemo = new string[2];
+            Dictionary<string, Album> byFolder = new Dictionary<string, Album>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                Track t = tracks[i];
+                string folder = AlbumFolderCached(t.Path, roots, folderMemo);
+                if (folder == null) folder = "";
+                Album al;
+                if (!byFolder.TryGetValue(folder, out al)) { al = new Album(); al.Folder = folder; byFolder[folder] = al; }
+                al.Tracks.Add(t);
+            }
+
+            albums = new List<Album>();
+            foreach (KeyValuePair<string, Album> kv in byFolder)
+            {
+                Album al = kv.Value;
+                string leaf = LeafName(al.Folder);
+                string ar, nm;
+                if (SplitArtist(leaf, out ar, out nm)) { al.Artist = ar; al.Name = nm; }
+                else { al.Artist = leaf; al.Name = ""; }
+                al.Letter = FirstLetter(al.Artist);
+                al.CoverPath = FindCoverCached(al.Folder);
+                al.Tracks.Sort(delegate (Track a, Track b) { return string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase); });
+                albums.Add(al);
+            }
+
+            albums.Sort(delegate (Album a, Album b)
+            {
+                int c = string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase);
+                if (c != 0) return c;
+                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            byLetter = new Dictionary<char, List<Album>>();
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album al = albums[i];
+                List<Album> lst;
+                if (!byLetter.TryGetValue(al.Letter, out lst)) { lst = new List<Album>(); byLetter[al.Letter] = lst; }
+                lst.Add(al);
+            }
+            origenesTop = IndiceTop(albums);
+            albumsDelIndiceTop = albums;
+        }
+        // de Form1.Datos.cs
+        // Busca automaticamente una carpeta llamada "musica" junto a los datos o hasta 3 niveles arriba
+        // (ej.: nueva\Release\Rocola.exe  +  nueva\musica). No requiere elegir carpeta.
+        private string MusicFolder
+        {
+            get
+            {
+                try
+                {
+                    string dir = CarpetaDatos;
+                    for (int i = 0; i < 4 && dir != null; i++)
+                    {
+                        string cand = Path.Combine(dir, "musica");
+                        if (Directory.Exists(cand)) return cand;
+                        DirectoryInfo p = Directory.GetParent(dir);
+                        dir = (p != null) ? p.FullName : null;
+                    }
+                }
+                catch { }
+                return RutaDatos("musica");   // por defecto, junto a los datos
+            }
+        }
+        // de Form1.Biblioteca.cs
+        private void ScanFolders(string root, List<string> audio, List<string> video, Dictionary<string, string> covers)
+        {
+            Stack<string> dirs = new Stack<string>();
+            dirs.Push(root);
+            while (dirs.Count > 0)
+            {
+                string dir = dirs.Pop();
+                string[] files = null, subs = null;
+                bool reused = scanDirectoryMemo != null && scanDirectoryMemo.Take(dir, out files, out subs);
+                if (!reused) try { files = Directory.GetFiles(dir); } catch (Exception ex) { Saltada(dir, ex); }
+                if (files != null)
+                {
+                    for (int i = 0; i < files.Length; i++)
+                    {
+                        string ext = Path.GetExtension(files[i]).ToLowerInvariant();
+                        if (Array.IndexOf(AudioExt, ext) >= 0) audio.Add(files[i]);
+                        else if (Array.IndexOf(VideoExt, ext) >= 0) video.Add(files[i]);
+                    }
+                    if (!covers.ContainsKey(dir))
+                    {
+                        string cv = CoverFromList(dir, files);
+                        if (cv != null) covers[dir] = cv;
+                    }
+                    // (en XP aqui se avisa del avance a la pantalla de arranque: en Rocola OS aun no hay pantalla)
+                }
+                if (!reused) try { subs = Directory.GetDirectories(dir); } catch (Exception ex) { Saltada(dir, ex); }
+                if (subs != null)
+                    foreach (string d in subs)
+                    {
+                        if (EsAtajo(d)) continue;                   // ver EsAtajo: si no, no se sale nunca
+                        if (EsCarpetaDelSistema(d)) continue;       // Windows, los programas, la papelera...
+                        dirs.Push(d);
+                    }
+            }
+        }
+        // de Form1.cs
+        private Dictionary<string, string> cachedCovers;  // carpeta -> portada, del cache de biblioteca
+        // de Form1.Biblioteca.cs
+        // Camina el arbol UNA vez y clasifica lo que encuentra: audio, video y la portada de cada carpeta.
+        // Es el reemplazo de las dos caminatas separadas + el GetFiles extra que hacia FindCover por carpeta.
+        // LAS CARPETAS QUE NO SE PUEDEN LEER se saltan (sin permiso, una ruta de mas de 260 letras, un disco que se fue
+        // a media lectura) y sus canciones no entran en la biblioteca. Se saltaban SIN DECIR NADA: el dueno veia que
+        // faltaba un disco y no habia forma de saber por que. Ahora quedan en rocola_error.txt al acabar el recorrido,
+        // con el motivo (las primeras 20 y cuantas mas), una vez por recorrido del disco.
+        private List<string> carpetasSaltadas;   // (solo el hilo del recorrido)
+        // de Form1.Datos.cs
+        private readonly List<string> extraMusicDirs = new List<string>();   // carpetas de musica extra (ademas de "musica")
+        // de Form1.Portadas.cs
+        private static string AlbumFolderCached(string filePath, List<string> roots, string[] folderMemo)
+        {
+            string dir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (string.Equals(dir, folderMemo[0], StringComparison.Ordinal)) return folderMemo[1];
+            string folder = AlbumFolderFromDirectory(dir, roots);
+            // El escaner entrega archivos consecutivos por carpeta: basta la ultima.
+            // Dos referencias por reconstruccion, sin tabla hash ni retencion de todas las rutas.
+            folderMemo[0] = dir; folderMemo[1] = folder;
+            return folder;
+        }
+        // de Form1.Biblioteca.cs
+        private static readonly string[] AudioExt = { ".mp3", ".wav" };
+        // de Form1.Portadas.cs
+        // La portada de una carpeta a partir de la lista de archivos que YA se leyo. Mismo criterio de siempre:
+        // primero los nombres tipicos (en su orden de preferencia) y, si no hay ninguno, la primera imagen.
+        private static string CoverFromList(string folder, string[] files)
+        {
+            for (int i = 0; i < CoverNames.Length; i++)
+                for (int j = 0; j < files.Length; j++)
+                    if (string.Equals(Path.GetFileName(files[j]), CoverNames[i], StringComparison.OrdinalIgnoreCase))
+                        return Path.Combine(folder, CoverNames[i]);
+            for (int i = 0; i < files.Length; i++)
+            {
+                string ext = Path.GetExtension(files[i]).ToLowerInvariant();
+                if (Array.IndexOf(ImgExt, ext) >= 0) return files[i];
+            }
+            return null;
+        }
+        // de Form1.Biblioteca.cs
+        // UNA CARPETA QUE EN REALIDAD ES UN ATAJO A OTRO SITIO. No se sigue, y no es capricho: en un disco de
+        // verdad los hay que dan vueltas -"/usr/bin/X11" apunta a si mismo, "/proc/<numero>/root" lleva de
+        // vuelta a la raiz- y el recorrido no sale de ahi JAMAS. Medido antes de esto, apuntando al disco
+        // entero: 40.000 carpetas y 401.023 archivos en 19 segundos sin terminar; y en la prueba con dos
+        // atajos, 77.741 canciones encontradas donde solo habia dos. Es lo mismo que hace cualquier buscador
+        // de archivos del sistema.
+        //
+        // La carpeta que se ELIGIO si se mira aunque sea un atajo -si la eligieron, la quieren-: esto solo
+        // decide si se BAJA a los atajos que haya dentro.
+        //
+        // Y NO SE PIERDE NADA POR EL CAMINO, esta comprobado archivo por archivo: barriendo el disco entero
+        // de esta maquina, antes salian 1.657 rutas y ahora 1.582, pero los NOMBRES distintos son 102 en los
+        // dos casos. Los 75 de diferencia eran el mismo archivo contado dos veces -"/lib" es un atajo a
+        // "/usr/lib", asi que todo lo de dentro salia por partida doble-, que es exactamente la duplicacion
+        // que todo esto existe para evitar.
+        private static bool EsAtajo(string dir)
+        {
+            try { return (new DirectoryInfo(dir).Attributes & FileAttributes.ReparsePoint) != 0; }
+            catch { return false; }
+        }
+        // de Form1.Biblioteca.cs
+        private static bool EsCarpetaDelSistema(string dir)
+        {
+            try
+            {
+                // El ultimo tramo, cortando por las dos barras: la ruta puede venir con cualquiera de las
+                // dos, y ademas asi esto se puede comprobar desde una maquina que no sea Windows.
+                string t = dir.TrimEnd('\\', '/');
+                int c = t.LastIndexOfAny(new char[] { '\\', '/' });
+                string n = (c >= 0) ? t.Substring(c + 1) : t;
+                // C:\Recovery es del sistema, pero "Recovery" dentro de una biblioteca puede ser un artista
+                // o un album perfectamente valido. Solo se excluye cuando cuelga directamente de la unidad.
+                if (string.Equals(n, "recovery", StringComparison.OrdinalIgnoreCase))
+                {
+                    string parent = null, drive = null;
+                    try { DirectoryInfo di = Directory.GetParent(t); parent = di != null ? di.FullName.TrimEnd('\\', '/') : null; } catch { }
+                    try { drive = Path.GetPathRoot(t); if (drive != null) drive = drive.TrimEnd('\\', '/'); } catch { }
+                    if (!string.IsNullOrEmpty(parent) && string.Equals(parent, drive, StringComparison.OrdinalIgnoreCase)) return true;
+                    return false;
+                }
+                for (int i = 0; i < CarpetasDelSistema.Length; i++)
+                    if (string.Equals(n, CarpetasDelSistema[i], StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
+            return false;
+        }
+        // de Form1.Portadas.cs
+        // En arranque desde cache: portadas resueltas SIN tocar el disco.
+        // La portada de una carpeta: siempre sale del mapa que dejo el recorrido del disco (el escaneo fresco lo
+        // arma sobre la marcha y el arranque por cache lo trae del archivo), asi que aqui ya no se toca el disco.
+        private string FindCoverCached(string folder)
+        {
+            string cp;
+            if (cachedCovers != null && cachedCovers.TryGetValue(folder, out cp)) return cp;
+            return null;
+        }
+        // de Form1.Biblioteca.cs
+        private static char FirstLetter(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return '#';
+            string n = s.Trim();
+            if (n.Length == 0) return '#';
+            char c = char.ToUpperInvariant(n[0]);
+            string norm = c.ToString().Normalize(NormalizationForm.FormD);
+            for (int i = 0; i < norm.Length; i++)
+                if (CharUnicodeInfo.GetUnicodeCategory(norm[i]) != UnicodeCategory.NonSpacingMark) { c = char.ToUpperInvariant(norm[i]); break; }
+            if (c >= 'A' && c <= 'Z') return c;
+            return '#';
+        }
+        // de PlanBiblioteca.cs
+        private static Dictionary<string, List<OrigenTop>> IndiceTop(List<Album> lista)
+        {
+            Dictionary<string, List<OrigenTop>> indice = new Dictionary<string, List<OrigenTop>>(StringComparer.OrdinalIgnoreCase);
+            int n = 0;
+            for (int i = 0; i < lista.Count; i++)
+                for (int j = 0; j < lista[i].Tracks.Count; j++, n++)
+                {
+                    Track t = lista[i].Tracks[j]; if (t == null || t.Path == null) continue;
+                    List<OrigenTop> origins;
+                    if (!indice.TryGetValue(t.Path, out origins)) { origins = new List<OrigenTop>(1); indice[t.Path] = origins; }
+                    OrigenTop o = new OrigenTop(); o.Pista = t; o.Disco = lista[i]; o.Orden = n; origins.Add(o);
+                }
+            return indice;
+        }
+        // de Form1.Datos.cs
+        // Todas las raices de musica que EXISTEN ahora: la carpeta "musica" principal + las agregadas con Ctrl+F2.
+        // Una carpeta esta DENTRO de otra (o es la misma). Compara por tramos completos, asi "musica2" NO
+        // cuenta como dentro de "musica".
+        private static bool PathInside(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            string x = a.TrimEnd('\\', '/'), y = b.TrimEnd('\\', '/');
+            if (string.Equals(x, y, StringComparison.OrdinalIgnoreCase)) return true;
+            return x.Length > y.Length + 1
+                && x.StartsWith(y, StringComparison.OrdinalIgnoreCase)
+                && (x[y.Length] == '\\' || x[y.Length] == '/');
+        }
+        // de Form1.Biblioteca.cs
+        private void Saltada(string dir, Exception ex)
+        {
+            if (carpetasSaltadas == null) carpetasSaltadas = new List<string>();
+            string linea = dir + "  (" + (ex != null ? ex.GetType().Name + ": " + ex.Message : "?") + ")";
+            if (carpetasSaltadas.Count > 0 && carpetasSaltadas[carpetasSaltadas.Count - 1].StartsWith(dir + "  (")) return;   // la misma carpeta, dos veces
+            carpetasSaltadas.Add(linea);
+        }
+        // de Form1.Biblioteca.cs
+        private const int SaltadasDichas = 20;
+        // de PlanBiblioteca.cs
+        private List<Album> albumsDelIndiceTop;
+        // de Form1.cs
+        private Dictionary<char, List<Album>> byLetter = new Dictionary<char, List<Album>>();
+        // de PlanBiblioteca.cs
+        private Dictionary<string, List<OrigenTop>> origenesTop;
+        // de EscaneoMemo.cs
+        // Solo durante el worker de biblioteca; nunca persiste entre escaneos.
+        private ScanDirectoryMemo scanDirectoryMemo;
+        // de PlanBiblioteca.cs
+        private sealed class OrigenTop
+        {
+            internal Track Pista; internal Album Disco; internal int Orden;
+        }
+        // de EscaneoMemo.cs
+        private sealed class ScanDirectoryMemo
+        {
+            internal const int MaxDirectories = 2048, MaxPaths = 32768;
+            internal const long MaxBytes = 8L * 1024 * 1024;
+            private sealed class Entry
+            {
+                internal long Stamp, Bytes;
+                internal string[] Files, Subdirs;
+            }
+            private readonly Dictionary<string, Entry> entries = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
+            internal long Bytes;
+            internal int Paths, Hits, Misses;
+            internal bool CanCapture(int files)
+            { return entries.Count < MaxDirectories && files <= MaxPaths - Paths && Bytes < MaxBytes; }
+            internal void Remember(string dir, long stamp, string[] files, string[] subdirs)
+            {
+                if (!CanCapture(files.Length + subdirs.Length) || entries.ContainsKey(dir)) return;
+                long bytes = 192L + dir.Length * 2L;
+                for (int i = 0; i < files.Length; i++) bytes += 40L + files[i].Length * 2L;
+                for (int i = 0; i < subdirs.Length; i++) bytes += 40L + subdirs[i].Length * 2L;
+                if (bytes > MaxBytes - Bytes) return;
+                // Files ya es una copia privada. Subdirs se ordenara para la firma: conservar orden original.
+                entries.Add(dir, new Entry { Stamp = stamp, Bytes = bytes, Files = files, Subdirs = (string[])subdirs.Clone() });
+                Bytes += bytes; Paths += files.Length + subdirs.Length;
+            }
+            internal bool Take(string dir, out string[] files, out string[] subdirs)
+            {
+                files = subdirs = null;
+                Entry entry;
+                string full;
+                try { full = Path.GetFullPath(dir); } catch { Misses++; return false; }
+                if (!entries.TryGetValue(full, out entry)) { Misses++; return false; }
+                entries.Remove(full); Bytes -= entry.Bytes; Paths -= entry.Files.Length + entry.Subdirs.Length;
+                // No reutilizar nombres si hubo altas/bajas/renombres desde la enumeracion.
+                try { if (Directory.GetLastWriteTimeUtc(full).Ticks != entry.Stamp) { Misses++; return false; } }
+                catch { Misses++; return false; }
+                files = entry.Files; subdirs = entry.Subdirs; Hits++; return true;
+            }
+            internal void Clear() { entries.Clear(); Bytes = 0; Paths = 0; }
+        }
+        // de Form1.Portadas.cs
+        private static string AlbumFolderFromDirectory(string dir, List<string> roots)
+        {
+            if (string.IsNullOrEmpty(dir)) return "";
+            if (roots != null)
+                for (int r = 0; r < roots.Count; r++)
+                {
+                    string root = roots[r] == null ? "" : roots[r].TrimEnd('\\', '/');
+                    if (root.Length == 0) continue;
+                    if (string.Equals(dir, root, StringComparison.OrdinalIgnoreCase)) return dir;   // suelta en la raiz -> el disco ES la raiz
+                    if (dir.Length > root.Length + 1
+                        && dir.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                        && (dir[root.Length] == '\\' || dir[root.Length] == '/'))
+                    {
+                        int slash = dir.IndexOfAny(SepChars, root.Length + 1);   // fin de la subcarpeta de 1er nivel
+                        return (slash < 0) ? dir : dir.Substring(0, slash);      // raiz + 1a subcarpeta (lo mas profundo cae aqui)
+                    }
+                }
+            return dir;   // fuera de toda raiz conocida: como antes (carpeta inmediata)
+        }
+        // de Form1.Biblioteca.cs
+        // CARPETAS DONDE NO PUEDE HABER MUSICA. Si se le dice a la rocola "la musica esta en este disco
+        // entero", el recorrido se mete en la carpeta de Windows y en la de los programas, que son decenas
+        // de miles de archivos y ni una sola cancion. Medido en la rocola de Linux, apuntando a la raiz: de
+        // 40.000 carpetas miradas, el 90% estaban en sitios donde no puede haber musica.
+        //
+        // QUIEN LO SABE ES EL SISTEMA, cada uno a su manera. En Linux hay respuesta exacta -el sistema dice
+        // de que TIPO es cada sitio montado- y por eso alli esto lo contesta Sistema. En Windows hay que ir
+        // por el nombre, que son cuatro y bien conocidos. Se compara el nombre de la carpeta en cualquier
+        // sitio del disco y no solo en la raiz: nadie llama "Windows" ni "$Recycle.Bin" a una carpeta de
+        // musica, y asi tambien vale para un disco que se conecte a otra maquina.
+        private static readonly string[] CarpetasDelSistema = {
+            "windows", "winnt", "program files", "program files (x86)",
+            "archivos de programa", "archivos de programa (x86)", "programdata",
+            "$recycle.bin", "recycler", "system volume information", "perflogs",
+            "msocache", "config.msi", "documents and settings"
+        };
+        // de Form1.Portadas.cs
+        private static readonly string[] CoverNames = { "portada.jpg", "portada.jpeg", "portada.png", "cover.jpg", "cover.png", "folder.jpg", "front.jpg" };
+        // de Form1.Biblioteca.cs
+        private static readonly string[] ImgExt = { ".jpg", ".jpeg", ".png", ".bmp" };
+        // de Form1.SinPausa.cs
+        // Cierra lo medido de una cancion que acabo por relevo: lo mismo que FinalizeLoudMeasure y
+        // FinalizeEqMeasure con los campos, pero con lo que se guardo. Una sola vez.
+        private void CierraMedida(MedidaCancion.Cierre c, float corte, float corteBajo)
+        {
+            if (c == null || !c.Listo) return;
+            c.Listo = false;
+            CierraSonoridadDeFuente(c.Ruta, c.SumSq, c.Muestras, c.Tasa, c.Canales, c.Fuente as FuenteMedida);
+            CierraHuellaDeFuente(c.EqRuta, c.EqSumas, c.EqN, c.EqTasa, corte, corteBajo, c.Fuente as FuenteMedida);
+        }
+        // de Form1.SinPausa.cs
+        // La nueva no dio ni un bloque: su medida se pone aqui (la salida ya no lee).
+        private void InstalaMedida(CadenaCancion c)
+        {
+            curFuenteMedida = c.Fuente;
+            curMeasurePath = c.MedidaRuta; curSumSq = 0; curSamples = 0; kwRate = 0;
+            eqMeasPath = c.EqRuta; eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0; eqPendN = 0;
+            tapMedido = c.Tap;
+        }
+        // de Form1.SinPausa.cs
+        // Se prepara cuando a la que suena le quedan 12 s: tiempo de sobra en una maquina lenta, y lo bastante
+        // tarde para que la siguiente ya este medida (el calentador la mide mientras espera en la cola).
+        private const double PreparaAntesSeg = 12.0;
+        // de Form1.SinPausa.cs
+        private static void SellaInicioReloj(CadenaCancion c)
+        { c.InicioMusica = c.Lector.CurrentTime.TotalSeconds; c.CuadroComienzo = 0; c.CebadoInicial = c.Retardo; }
+        // de Form1.SinPausa.cs
+        // DISCO CONTINUO: la que entra ('nueva') sigue con la memoria de los filtros de la que acaba ('vieja'): el
+        // grave en mono y el local. Solo cuando la vieja acaba entera, sin fundido (si no,
+        // su memoria es la de una musica que ya no se oye). Sin esto, esos filtros empezarian de cero justo en el
+        // cambio, y el del grave en mono deja un golpe en el grave que se oye. Lo toman en su primera lectura.
+        private static void SigueA(CadenaCancion nueva, CadenaCancion vieja)
+        {
+            if (nueva == null || vieja == null) return;
+            if (nueva.Tap != null) nueva.Tap.Sigue(vieja.Tap);
+            if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
+            if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
+            if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
+            if (nueva.Eses != null) nueva.Eses.Sigue(vieja.Eses);
+            if (nueva.Retumbe != null) nueva.Retumbe.Sigue(vieja.Retumbe);
+            if (nueva.Ataque != null) nueva.Ataque.Sigue(vieja.Ataque);
+            if (nueva.Aspereza != null) nueva.Aspereza.Sigue(vieja.Aspereza);
+            if (nueva.Hundir != null) nueva.Hundir.Sigue(vieja.Hundir);
+            if (nueva.Bajo != null) nueva.Bajo.Sigue(vieja.Bajo);
+            if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);
+            if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);
+            if (nueva.Arreglo != null) nueva.Arreglo.Sigue(vieja.Arreglo);
+            if (nueva.Zumbido != null && vieja.Zumbido != null) nueva.Zumbido.Sigue(vieja.Zumbido);
+            // Convertidas a la frecuencia de la salida: el convertidor y su limitador, tambien (SinPausa.cs).
+            if (nueva.Conversion != null && vieja.Conversion != null) nueva.Conversion.Sigue(vieja.Conversion);
+            if (nueva.LimiteSalida != null && vieja.LimiteSalida != null) nueva.LimiteSalida.Sigue(vieja.LimiteSalida);
+        }
+        // de Form1.SinPausa.cs
+        // ¿'b' es la pista que sigue a 'a' en el MISMO disco? (un disco TOP junta canciones de discos distintos)
+        private static bool SiguienteDelDisco(PlayItem a, PlayItem b)
+        {
+            if (a == null || b == null || a.IsVideo || b.IsVideo || a.Song == null || b.Song == null) return false;
+            Album d = a.Disc;
+            if (d == null || !object.ReferenceEquals(d, b.Disc) || d.IsTop || d.Tracks == null) return false;
+            int i = d.Tracks.IndexOf(a.Song);
+            return i >= 0 && i + 1 < d.Tracks.Count && object.ReferenceEquals(d.Tracks[i + 1], b.Song);
+        }
     }
 }

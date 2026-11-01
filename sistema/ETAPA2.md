@@ -66,7 +66,21 @@ nivelado y el EQ (`LevelTap`), la tabla de la sonoridad, el lector de MP3 con NL
 - Probado aquí (WAV, .NET y NativeAOT): la segunda vez que suena una canción ya trae su volumen y su EQ; con `local_auto=1` suena con
   el modo billar, aprende su volumen parejo (y lo aplica la vez siguiente) y escribe la bitácora. La cadena sigue casi igual a XP.
 
-Lo siguiente: la biblioteca y la cola (leer `musica/`, el orden, los créditos); después la pantalla.
+## Hito 7 (1-11-2026): la biblioteca y la cola sin pausa
+
+- **La biblioteca** con las reglas de XP (`Motor/Biblioteca.cs`, funciones tal cual): la carpeta `musica` junto a los datos (o hasta
+  tres más arriba: con los datos en `/rocola/datos`, la música en `/rocola/musica`) y las de `dir=`; cada carpeta es un disco
+  («Artista - Disco»), sin entrar en atajos ni en carpetas del sistema; las canciones por título y los discos por artista. Por ahora
+  recorre las carpetas cada vez (la caché de XP, más adelante).
+- **La cola con el relevo sin pausa de XP** (`Motor/Cola.cs`): la siguiente se prepara 12 s antes y entra en la misma salida sin
+  hueco; la pista siguiente del mismo disco, sin fundido y con la memoria de los filtros de la anterior. Lo aprendido de cada
+  canción se cierra en el relevo, como en XP. Sin conversión de frecuencia: si la siguiente tiene otra, se cierra la salida y se
+  abre otra.
+- `rocola-consola --biblioteca` toca la biblioteca entera disco por disco (o la lista que se le dé).
+- Probado aquí (WAV): un disco continuo partido en dos pistas sale **sin hueco ni salto** en la unión (el paso entre muestras igual
+  que en el resto); las dos pistas aprenden su volumen y su EQ. La salida ALSA con cola no se ha probado aún (aquí no hay tarjeta).
+
+Lo siguiente: los créditos y los botones (`evdev`), y la pantalla.
 
 **Ojo al pasar los datos del bar:** las tablas de XP van por ruta (`D:\musica\...`); en Rocola OS las rutas serán otras
 (`/rocola/musica/...`). Habrá que traducirlas una vez al copiar los datos, o se vuelven a medir.
