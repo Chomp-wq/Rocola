@@ -266,3 +266,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **El letrero de la portada:** «5 canciones · 18 min» (o «3 videos») sobre su borde de abajo; los minutos solo si se sabe lo que dura
   cada canción (como en XP: no se inventan) y, si no cabe, sin los minutos.
 - Probado aquí fuera de pantalla. Aún no están los cubos, la estrella, las ondas ni el estado extendido de XP.
+
+## Hito 17 (1-11-2026): el pulso de la música y el repaso
+
+- **El cielo late con la música** (como el pulso de XP: va con lo que se oye): el motor mide a la salida, sin tocar el sonido, la
+  fuerza de los graves, los medios y los agudos por bloques de 1024 cuadros, con el cuadro en que suenan (`Motor/Pulso.cs`); la
+  pantalla pide el del cuadro que se está oyendo (lo entregado a la tarjeta menos su colchón). La aurora sube con los medios y brilla
+  con los graves; algunas estrellas, con los agudos. Comprobado: con el pulso, el sonido sale igual (solo cambia el dither, que es
+  aleatorio).
+- **El repaso de la biblioteca** (la tanda larga de XP, en lo esencial): al arrancar, las canciones aún sin medir con el algoritmo de hoy
+  van a una fila de fondo; un hilo de prioridad mínima las mide poco a poco (lo pedido, antes que nada) y se guarda cada 30 s. Se para
+  mientras suena un vídeo. Así cada canción nivela bien desde la primera vez. Probado: 30 canciones medidas solas en 15 s.

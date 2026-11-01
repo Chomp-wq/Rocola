@@ -31,30 +31,54 @@ namespace Rocola
         // LA MEDIDA EN SEGUNDO PLANO (como el repaso de XP, que mide en hilos de fondo y publica en la pantalla): MideEnFondo la encarga,
         // un hilo de prioridad baja la mide (MideIntegrada no toca nada compartido) y PublicaMedidas, desde el hilo de siempre, la
         // pone en la tabla y la guarda. Asi pedir una cancion no congela la pantalla mientras se lee entera.
+        // Dos filas: lo PEDIDO (se mide antes que nada) y EL REPASO de la biblioteca (lo que aun no esta medido, poco a poco, como la tanda
+        // larga de XP). Un solo hilo, de prioridad baja; el repaso se para mientras suena un video (mpv necesita el procesador).
         private readonly System.Collections.Concurrent.BlockingCollection<string> porMedir = new System.Collections.Concurrent.BlockingCollection<string>();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> porRepasar = new System.Collections.Concurrent.ConcurrentQueue<string>();
         private readonly System.Collections.Concurrent.ConcurrentQueue<KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>> medidas =
             new System.Collections.Concurrent.ConcurrentQueue<KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>>();
         private System.Threading.Thread medidor;
+        public volatile bool PausaRepaso;
+        public int PorRepasar { get { return porRepasar.Count; } }
+        private bool YaMedida(string ruta)
+        {
+            SonoridadIntegrada ya;
+            return integCache != null && integCache.TryGetValue(ruta, out ya) && ya.Algoritmo >= MedidorBs1770.Algoritmo;
+        }
+        private void ArrancaMedidor()
+        {
+            if (medidor != null) return;
+            medidor = new System.Threading.Thread(delegate ()
+            {
+                while (true)
+                {
+                    string r;
+                    if (!porMedir.TryTake(out r, PausaRepaso ? 1000 : 0))
+                    {
+                        if (PausaRepaso || !porRepasar.TryDequeue(out r)) { if (!porMedir.TryTake(out r, 1000)) continue; }
+                    }
+                    SonoridadIntegrada s;
+                    try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
+                    catch { }
+                }
+            }) { IsBackground = true, Name = "repaso (medir)", Priority = System.Threading.ThreadPriority.Lowest };
+            medidor.Start();
+        }
         public void MideEnFondo(string ruta)
         {
-            if (ruta == null) return;
-            SonoridadIntegrada ya;
-            if (integCache != null && integCache.TryGetValue(ruta, out ya) && ya.Algoritmo >= MedidorBs1770.Algoritmo) return;
-            if (medidor == null)
-            {
-                medidor = new System.Threading.Thread(delegate ()
-                {
-                    foreach (string r in porMedir.GetConsumingEnumerable())
-                    {
-                        SonoridadIntegrada s;
-                        try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
-                        catch { }
-                    }
-                }) { IsBackground = true, Name = "repaso (medir)", Priority = System.Threading.ThreadPriority.BelowNormal };
-                medidor.Start();
-            }
+            if (ruta == null || YaMedida(ruta)) return;
+            ArrancaMedidor();
             porMedir.Add(ruta);
         }
+        // EL REPASO: las canciones de la biblioteca que aun no estan medidas (con el algoritmo de hoy), a la fila de fondo. Devuelve cuantas.
+        public int RepasaBiblioteca()
+        {
+            int n = 0;
+            foreach (Track t in tracks) if (t.Path != null && !YaMedida(t.Path)) { porRepasar.Enqueue(t.Path); n++; }
+            if (n > 0) ArrancaMedidor();
+            return n;
+        }
+        private int ultimoGuardadoRepaso; private bool repasoSinGuardar;
         // Lo medido en segundo plano, a la tabla (llamar desde el hilo de siempre). Devuelve cuantas publico.
         public int PublicaMedidas()
         {
@@ -62,7 +86,9 @@ namespace Rocola
             KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>> m;
             if (integCache == null) integCache = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
             while (medidas.TryDequeue(out m)) { PublicaIntegradaDeFuente(m.Key, m.Value.Key, m.Value.Value); n++; }
-            if (n > 0) SaveIntegCache();
+            if (n > 0 && unchecked(Environment.TickCount - ultimoGuardadoRepaso) > 30000) { ultimoGuardadoRepaso = Environment.TickCount; SaveIntegCache(); }   // no en cada una: cada 30 s
+            else if (n > 0) repasoSinGuardar = true;
+            if (repasoSinGuardar && unchecked(Environment.TickCount - ultimoGuardadoRepaso) > 30000) { ultimoGuardadoRepaso = Environment.TickCount; repasoSinGuardar = false; SaveIntegCache(); }
             return n;
         }
 

@@ -67,6 +67,8 @@ namespace Rocola
             }
             motor.Reanuda();   // los creditos y la cola de antes del apagon (mismo dia del negocio)
             RefrescaTop();
+            int repaso = motor.RepasaBiblioteca();   // lo que falta medir, poco a poco y con prioridad baja (el repaso de XP)
+            if (repaso > 0) Console.WriteLine("Repaso: " + repaso + " canciones por medir");
         }
         // Un boton, como si se hubiera pulsado (las pruebas).
         internal void Pulsa(Boton b) { Maneja(b); }
@@ -361,6 +363,7 @@ namespace Rocola
             try
             {
                 if (vistaActual != null) vistaActual.Suelta();
+                motor.PausaRepaso = true;   // mpv necesita el procesador
                 System.Diagnostics.ProcessStartInfo pi = new System.Diagnostics.ProcessStartInfo(Mpv);
                 foreach (string a in new[] { "--fs", "--no-input-default-bindings", "--no-terminal", "--log-file=/tmp/rocola-mpv.txt", "--msg-level=all=warn", "--vo=gpu,drm", "--gpu-context=drm",
                     "--ao=alsa", "--volume=" + motor.VolumenVideos, "--", ruta })
@@ -402,6 +405,7 @@ namespace Rocola
                 try { video.Dispose(); } catch { } video = null;
             }
             saltar = false;
+            motor.PausaRepaso = false;
             motor.AcaboElVideo();
             if (vistaActual != null) vistaActual.Recupera();
         }
