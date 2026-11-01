@@ -88,5 +88,31 @@ namespace Rocola
             try { if (statsDirty) { statsDirty = false; SaveStats(true); } } catch { }
             try { SaveLoudCache(); FlushEqIfDirty(); } catch { }
         }
+
+        // LOS CREDITOS DE SERVICIO (CreditosServicio.cs de XP): el codigo del dueno escrito en el buscador y mantenido 5 s da 4 creditos; no
+        // cuentan como monedas ni ingresos en las estadisticas.
+        public static bool EsCodigoDeServicio(string escrito) { return SecretCreditGate.Matches(escrito); }
+        public void CreditosDeServicio()
+        {
+            if (credits > int.MaxValue - 4) return;
+            credits += 4;
+            UpdateCredits();
+            SaveState();   // misma persistencia inmediata que los creditos normales
+        }
+    }
+    // de CreditosServicio.cs (tal cual)
+    // Acceso local oculto, no autenticacion: quien conozca el texto puede utilizarlo.
+    internal sealed class SecretCreditGate
+    {
+        private bool armed;
+        private uint since;
+        internal bool Ready { get; private set; }
+        internal static bool Matches(string text) { return string.Equals(text, "CHOMPS21", StringComparison.OrdinalIgnoreCase); }
+        internal void Update(bool open, string text, uint now)
+        {
+            if (!open || !Matches(text)) { armed = false; Ready = false; return; }
+            if (!armed) { armed = true; since = now; Ready = false; }
+            if (unchecked(now - since) >= 5000u) Ready = true;
+        }
     }
 }

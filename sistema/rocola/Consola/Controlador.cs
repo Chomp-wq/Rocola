@@ -81,6 +81,7 @@ namespace Rocola
         // mantenido), "espera 2000" (ms) o "salir". Se mete en la misma fila que los botones de verdad.
         internal string Guion;
         private const int DeGuion = -1000;
+        private const int DeTexto = -100000;   // una letra para el buscador (pruebas)
         private const int ConRegresar = 0x10000;   // la tecla llego con REGRESAR apretado
         private const int ConCtrl = 0x20000;       // ... o con Ctrl (Ctrl+F3: los ajustes del dueno, como en XP)
         private void CorreGuion()
@@ -91,6 +92,7 @@ namespace Rocola
                 if (l.StartsWith("espera ")) { Thread.Sleep(int.Parse(l.Substring(7))); continue; }
                 if (l == "salir") { pulsos.Add(0); return; }
                 if (l == "ctrl+f3") { pulsos.Add(0x72 | ConCtrl); Thread.Sleep(150); continue; }
+                if (l.StartsWith("escribe ")) { foreach (char ch in l.Substring(8).ToUpperInvariant()) pulsos.Add(DeTexto - ch); Thread.Sleep(150); continue; }   // (en el buscador abierto)
                 bool con = l.StartsWith("regresar+"); if (con) l = l.Substring(9);
                 Boton b = (Boton)Enum.Parse(typeof(Boton), l, true);
                 pulsos.Add(DeGuion - (int)b * 2 - (con ? 1 : 0));
@@ -100,6 +102,7 @@ namespace Rocola
 
         private void Tecla(int vk)
         {
+            if (vk <= DeTexto) { if (Buscando) Escribe((char)(DeTexto - vk)); return; }
             if (vk <= DeGuion) { int x = DeGuion - vk; Pulsa((Boton)(x / 2), (x & 1) != 0); return; }
             if ((vk & ConCtrl) != 0)
             {
@@ -167,6 +170,7 @@ namespace Rocola
                             int vk;
                             if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
                             motor.PublicaMedidas();
+                            ActualizaCodigo();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
@@ -314,11 +318,23 @@ namespace Rocola
 
         internal void AbreBuscador() { Buscando = true; Escrito = ""; FilaTecla = 1; ColTecla = 0; EnResultados = false; SelResultado = 0; Resultados = new List<Form1.Resultado>(); }
         private void CierraBuscador() { Buscando = false; }
+        // El codigo de servicio de XP: escrito y mantenido 5 s, aparece "+4 creditos" como resultado (Tipo 3).
+        private int codigoDesde = -1;
+        private void ActualizaCodigo()
+        {
+            if (!Buscando || !Form1.EsCodigoDeServicio(Escrito)) { codigoDesde = -1; return; }
+            if (codigoDesde < 0) { codigoDesde = Environment.TickCount; Resultados = new List<Form1.Resultado>(); return; }
+            if (unchecked(Environment.TickCount - codigoDesde) >= 5000 && (Resultados.Count == 0 || Resultados[0].Tipo != 3))
+            {
+                Resultados = new List<Form1.Resultado> { new Form1.Resultado { Tipo = 3, Texto = "+4 créditos" } };
+                EnResultados = true; SelResultado = 0;
+            }
+        }
         private void Escribe(char ch)
         {
             if (ch == '\u0002') { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); }
             else Escrito += ch == '\u0001' ? ' ' : ch;
-            Resultados = motor.Busca(Escrito); SelResultado = 0;
+            Resultados = Form1.EsCodigoDeServicio(Escrito) ? new List<Form1.Resultado>() : motor.Busca(Escrito); SelResultado = 0;   // el codigo no busca
         }
         private void ManejaBuscador(Boton b)
         {
@@ -348,6 +364,7 @@ namespace Rocola
         // se va a su primer disco.
         private void Elige(Form1.Resultado r)
         {
+            if (r.Tipo == 3) { if (Form1.EsCodigoDeServicio(Escrito)) { motor.CreditosDeServicio(); Aviso("+4 créditos"); } return; }
             if (r.Tipo == 2 && r.Ruta != null) { PideCancion(r.Ruta, r.Texto); return; }
             if (r.Carpeta == null) return;
             for (int i = 0; i < letras.Count; i++)

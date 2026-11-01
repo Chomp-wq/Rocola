@@ -99,7 +99,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count + (c.Resultados.Count > 0 ? c.Resultados[0].Tipo.ToString() : "") : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
             if (firma == antes && unchecked(ahora - ultimo) < 33) return;   // el cielo se mueve: unos 30 cuadros por segundo
             antes = firma; ultimo = ahora;
@@ -216,7 +216,7 @@ namespace Rocola
                 Form1.Resultado r = c.Resultados[desde + i]; float y = ry + i * fila_;
                 bool sel = c.EnResultados && desde + i == c.SelResultado;
                 if (sel) d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro);
-                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : "CANCIÓN";
+                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
                 chica.Escribe(d, tipo, rx, y + 6 * k, r.Tipo == 2 ? Verde : Dorado);
                 media.Escribe(d, media.Ajusta(r.Texto, rw - 100 * k), rx + 100 * k, y + 2 * k, sel ? Blanco : Gris);
             }

@@ -70,7 +70,7 @@ namespace Rocola
                 sb.Append(new string('-', ancho)).Append('\n');
                 for (int i = 0; i < alto - 3; i++)
                 {
-                    if (i < c.Resultados.Count) sb.Append(c.EnResultados && i == c.SelResultado ? "\x1b[7m" : "").Append(Corta(" " + (c.Resultados[i].Tipo == 0 ? "ARTISTA " : c.Resultados[i].Tipo == 1 ? "DISCO   " : "CANCION ") + c.Resultados[i].Texto, ancho)).Append("\x1b[0m");
+                    if (i < c.Resultados.Count) sb.Append(c.EnResultados && i == c.SelResultado ? "\x1b[7m" : "").Append(Corta(" " + (c.Resultados[i].Tipo == 0 ? "ARTISTA " : c.Resultados[i].Tipo == 1 ? "DISCO   " : c.Resultados[i].Tipo == 3 ? "SERVICIO" : "CANCION ") + c.Resultados[i].Texto, ancho)).Append("\x1b[0m");
                     else sb.Append(new string(' ', ancho));
                     sb.Append('\n');
                 }
