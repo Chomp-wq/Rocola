@@ -64,6 +64,9 @@ namespace Rocola
                     else if (s.StartsWith("bajo_automatico=")) bassAuto = s.Substring(16).Trim() != "0"; // y la cantidad de bajo tambien
                     else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
                     else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
+                    else if (s.StartsWith("ficha_disco=")) FichaDisco = s.Substring(12).Trim() != "0";             // la pantalla viva (PantallaViva.cs)
+                    else if (s.StartsWith("letras_lupa=")) LetrasLupa = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("pagina_desliza=")) PaginaDesliza = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("muro_reposo=")) MuroReposo = s.Substring(12).Trim() != "0";             // el estado extendido (EstadoExtendido.cs)
                     else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
                     else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";

@@ -369,3 +369,16 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   (0,7 por paso) que se apaga (×0,85 por paso) y se asienta plano en la vuelta entera más cercana; el nuevo arranca plano.
 - **El cubo chico** de la barra de lo que suena también gira. Sin portada: el color del nombre y su inicial cuando está casi de frente.
 - Probado en captura (`--boton derecha`).
+
+## Extra (1-11-2026): la pantalla viva de XP (primera tanda: la pared)
+
+- **Ficha rápida** (`ficha_disco=`): si el cursor se queda 1,1 s en un disco, al lado sale una tarjeta (entra en 0,22 s, se queda 9 s y
+  se va en 0,4 s; `CurvaFicha` de XP) con su portadita, el artista, el disco, cuántas y cuánto duran, «N en la cola» si van suyas, y
+  sus tres canciones más pedidas (`MasPedidas` de XP, tal cual; si nadie las ha pedido, las tres primeras) con su duración y sus veces.
+  Nunca en el TOP ni en el reposo. Va a la derecha de la casilla si cabe; si no, a la izquierda (`LugarFicha` de XP).
+- **Barra de letras con lupa** (`letras_lupa=`): la elegida y sus vecinas más grandes, y una rayita debajo de cada letra dice cuánta
+  música tiene.
+- **Pasar de página deslizando** (`pagina_desliza=`): la vieja sale por un lado mientras la nueva entra por el otro, columna a columna
+  (0,38 s cada una, 45 ms entre columnas). Dentro de la misma letra.
+- Los tres con su interruptor en la hoja de ajustes (grupo «Pantalla»), encendidos de fábrica, con las claves de XP. Probado en
+  captura la ficha y la lupa; el deslizamiento, sin captura (la biblioteca de prueba no llega a dos páginas).

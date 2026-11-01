@@ -285,31 +285,81 @@ namespace Rocola
             chica.Escribe(d, "PONER: escribir / elegir    REGRESAR: borrar    REGRESAR + ARRIBA: cerrar", x0, abajo - 28 * k, Gris.ConAlfa(0.8f));
         }
 
+        // LA PARED (la de XP con su pantalla viva: la barra de letras con lupa, el cubo que gira con la portada enfocada, pasar de pagina
+        // deslizando y la ficha rapida).
+        private int pagVista = -1, pagLetraVista = -1, pagAnt = -1; private double pagDesde; private float pagDir = 1f;
+        private const double PaginaMs = 380, ColumnaMs = 45;   // lo que tarda cada columna y el retraso entre columnas
         private void Pared(Controlador c, float W, float abajo)
         {
-            // las letras
+            Form1 m = c.motor;
+            double ahora = reloj.Elapsed.TotalMilliseconds;
+            // LAS LETRAS (con lupa, como XP: la elegida y sus vecinas mas grandes, y una rayita debajo dice cuanta musica tiene cada una)
             float x = 24 * k, y = 76 * k;
-            zLetras = new Zona(x - 4 * k, y - 4 * k, 0, 48 * k);
+            zLetras = new Zona(x - 4 * k, y - 8 * k, 0, 56 * k);
+            int maxDiscos = 1; if (m.LetrasLupa) for (int i = 0; i < c.letras.Count; i++) maxDiscos = Math.Max(maxDiscos, c.DiscosEn(i));
             for (int i = 0; i < c.letras.Count; i++)
             {
-                string l = Controlador.NombreLetra(c.letras[i]); float w = Math.Max(36 * k, media.Mide(l) + 18 * k);
+                int dist = Math.Abs(i - c.letra);
+                bool lupa = m.LetrasLupa && dist == 0, vecina = m.LetrasLupa && dist == 1;
+                Letra f = lupa ? grande : media;
+                string l = Controlador.NombreLetra(c.letras[i]); float w = Math.Max((lupa ? 46 : vecina ? 40 : 36) * k, f.Mide(l) + 18 * k);
                 if (x + w > W - 24 * k) break;
-                if (i == c.letra) d.Redondo(x, y, w, 40 * k, 8 * k, Dorado);
-                media.EscribeCentrado(d, l, x + w / 2, y + 6 * k, i == c.letra ? Fondo : Gris);
+                float yy = lupa ? y - 6 * k : y, hh = lupa ? 50 * k : 40 * k;
+                if (i == c.letra) d.Redondo(x, yy, w, hh, 8 * k, Dorado);
+                f.EscribeCentrado(d, l, x + w / 2, yy + (hh - f.Tam) / 2 - 2 * k, i == c.letra ? Fondo : vecina ? Blanco : Gris);
+                if (m.LetrasLupa)
+                {
+                    float fr = Math.Max(0.08f, c.DiscosEn(i) / (float)maxDiscos);
+                    d.Rect(x + 6 * k, y + 46 * k, (w - 12 * k) * fr, 3 * k, (i == c.letra ? Dorado : Gris).ConAlfa(i == c.letra ? 0.95f : 0.45f));
+                }
                 x += w + 4 * k;
             }
             zLetras.W = x - zLetras.X;
             List<Form1.Disco> ds = c.DiscosDeLetra();
             if (ds.Count == 0) { media.EscribeCentrado(d, "No hay música en la carpeta de la rocola", W / 2, 300 * k, Gris); return; }
             int cols = 4, filas = 2, porPag = Controlador.DiscosPorPagina, pag = c.cursorDisco / porPag;
+            int paginas = (ds.Count + porPag - 1) / porPag;
             float top = 130 * k, alto = abajo - top - 10 * k, celW = (W - 48 * k) / cols, celH = alto / filas;
             float lado = Math.Min(celW - 24 * k, celH - 70 * k);
+            // PASAR DE PAGINA DESLIZANDO (pagina_desliza= de XP): la vieja sale por un lado mientras la nueva entra por el otro, columna a
+            // columna. Solo dentro de la misma letra.
+            if (pagVista != pag || pagLetraVista != c.letra)
+            {
+                if (m.PaginaDesliza && pagVista >= 0 && pagLetraVista == c.letra && pagVista < paginas)
+                {
+                    pagAnt = pagVista; pagDesde = ahora;
+                    pagDir = (pagVista == paginas - 1 && pag == 0) ? 1f : (pagVista == 0 && pag == paginas - 1) ? -1f : pag > pagVista ? 1f : -1f;
+                }
+                else pagAnt = -1;
+                pagVista = pag; pagLetraVista = c.letra;
+            }
+            bool desliza = pagAnt >= 0 && ahora - pagDesde < PaginaMs + ColumnaMs * (cols - 1);
+            if (!desliza) pagAnt = -1;
+            if (desliza) Pagina(c, ds, pagAnt, false, top, celW, celH, lado, cols, porPag, col => -pagDir * W * CurvaPagina(ahora - pagDesde, col, cols));
+            Pagina(c, ds, pag, true, top, celW, celH, lado, cols, porPag, col => desliza ? pagDir * W * (1f - CurvaPagina(ahora - pagDesde, col, cols)) : 0f);
+            if (!desliza && m.FichaDisco && !c.Reposo && c.letras[c.letra] != Form1.LetraTop && c.cursorDisco < ds.Count)
+                FichaRapida(c, ds[c.cursorDisco], ahora - focoDesde, new Zona(24 * k, top, W - 48 * k, alto), celW, celH);
+            if (paginas > 1) chica.Escribe(d, "Página " + (pag + 1) + " de " + paginas, 24 * k, abajo - 26 * k, Gris.ConAlfa(0.8f));
+            string ayuda = "IZQ/DER: disco   ARRIBA/ABAJO: página   REGRESAR + IZQ/DER: letra   REGRESAR + ARRIBA: buscar";
+            chica.Escribe(d, ayuda, W - 24 * k - chica.Mide(ayuda), abajo - 26 * k, Gris.ConAlfa(0.8f));
+        }
+        // Cuanto ha avanzado una columna (0 a 1, frenando al llegar); las columnas salen una tras otra en el sentido del paso.
+        private float CurvaPagina(double t, int col, int cols)
+        {
+            int orden = pagDir > 0 ? col : cols - 1 - col;
+            double u = Math.Max(0, Math.Min(1, (t - orden * ColumnaMs) / PaginaMs));
+            return (float)(1 - Math.Pow(1 - u, 3));
+        }
+
+        // Una pagina de la pared, corrida 'dx(columna)'. 'viva': la que se elige (portada enfocada, cubo, relevo y lo que senala la ayuda).
+        private void Pagina(Controlador c, List<Form1.Disco> ds, int pag, bool viva, float top, float celW, float celH, float lado, int cols, int porPag, Func<int, float> dx)
+        {
             for (int i = 0; i < porPag; i++)
             {
                 int n = pag * porPag + i; if (n >= ds.Count) break;
                 Form1.Disco disco = ds[n];
-                float cx = 24 * k + (i % cols) * celW + celW / 2, cy = top + (i / cols) * celH;
-                bool sel = n == c.cursorDisco;
+                float cx = 24 * k + (i % cols) * celW + celW / 2 + dx(i % cols), cy = top + (i / cols) * celH;
+                bool sel = viva && n == c.cursorDisco;
                 // LA PORTADA ENFOCADA (como XP): crece un 12 % en 170 ms desde el centro de su borde de abajo, con un halo de su propio
                 // color; las demas bajan un 20 % de brillo.
                 if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta))
@@ -331,7 +381,7 @@ namespace Rocola
                     d.Redondo(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 10 * k, Dorado);
                 }
                 if (sel) Cubo(disco.Portada, disco.Artista, px, py, l, AnguloCubo());                       // el cubo que gira (XP)
-                else if (n == relevoIdx && n / porPag == pag) Cubo(disco.Portada, disco.Artista, px, py, l, PasoRelevo());
+                else if (viva && n == relevoIdx) Cubo(disco.Portada, disco.Artista, px, py, l, PasoRelevo());
                 else Portada(disco.Portada, disco.Artista, px, py, l);
                 if (sel) zElegido = new Zona(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k);
                 if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0, 0.2f));
@@ -349,10 +399,72 @@ namespace Rocola
                 chica.EscribeCentrado(d, a, cx, py + l + 10 * k, sel ? Blanco : Gris);
                 if (!string.IsNullOrEmpty(nm)) chica.EscribeCentrado(d, nm, cx, py + l + 32 * k, sel ? Dorado : Gris.ConAlfa(0.7f));
             }
-            int paginas = (ds.Count + porPag - 1) / porPag;
-            if (paginas > 1) chica.Escribe(d, "Página " + (pag + 1) + " de " + paginas, 24 * k, abajo - 26 * k, Gris.ConAlfa(0.8f));
-            string ayuda = "IZQ/DER: disco   ARRIBA/ABAJO: página   REGRESAR + IZQ/DER: letra   REGRESAR + ARRIBA: buscar";
-            chica.Escribe(d, ayuda, W - 24 * k - chica.Mide(ayuda), abajo - 26 * k, Gris.ConAlfa(0.8f));
+        }
+
+        // LA FICHA RAPIDA (ficha_disco= de XP: PantallaVivaGpu.cs): si el cursor se queda 1,1 s en un disco, al lado sale una tarjeta con sus
+        // tres canciones mas pedidas y cuantas suyas van ya en la cola; se va sola a los 9 s y en cuanto el cursor se mueve.
+        internal const int FichaEsperaMs = 1100, FichaEntraMs = 220, FichaDuraMs = 9000, FichaSaleMs = 400;
+        internal static float CurvaFicha(int dt)
+        {
+            if (dt < FichaEsperaMs) return 0f;
+            int t = dt - FichaEsperaMs;
+            if (t < FichaEntraMs) { float q = 1f - t / (float)FichaEntraMs; return 1f - q * q * q; }
+            t -= FichaEntraMs;
+            if (t < FichaDuraMs) return 1f;
+            t -= FichaDuraMs;
+            if (t < FichaSaleMs) { float u = t / (float)FichaSaleMs; return 1f - u * u * (3f - 2f * u); }
+            return 0f;
+        }
+        private Form1.Disco fichaDe; private Form1.Ficha fichaDatos; private int fichaCola = -1;
+        private void FichaRapida(Controlador c, Form1.Disco disco, double dtMs, Zona pared, float celW, float celH)
+        {
+            float alfa = CurvaFicha((int)dtMs);
+            if (alfa <= 0f || zElegido.Vacia) return;
+            if (!object.ReferenceEquals(disco, fichaDe) || fichaCola != c.motor.EnCola) { fichaDe = disco; fichaCola = c.motor.EnCola; fichaDatos = c.motor.FichaDe(disco); }
+            Form1.Ficha f = fichaDatos;
+            float w = Math.Max(260 * k, Math.Min(480 * k, celW * 2 - 20 * k)), h = Math.Max(170 * k, Math.Min(300 * k, celH * 1.36f));
+            // a la derecha de la casilla si cabe; si no, a la izquierda; nunca fuera de la pared (LugarFicha de XP)
+            float sep = 16 * k, fx = zElegido.X + zElegido.W + sep;
+            if (fx + w > pared.X + pared.W - 6 * k) fx = zElegido.X - sep - w;
+            if (fx < pared.X + 6 * k) fx = pared.X + 6 * k;
+            float fy = zElegido.Y - 4 * k;
+            if (fy + h > pared.Y + pared.H - 6 * k) fy = pared.Y + pared.H - 6 * k - h;
+            if (fy < pared.Y + 4 * k) fy = pared.Y + 4 * k;
+            fy += 14 * k * (1f - alfa);
+            float u = h / 230f, pad = 16 * u;
+            d.Redondo(fx - 1.5f * k, fy - 1.5f * k, w + 3 * k, h + 3 * k, 17 * u, Dorado.ConAlfa(0.45f * alfa));
+            d.Redondo(fx, fy, w, h, 16 * u, Color4.Hex(0x0C122A, 0.93f * alfa));
+            float lado = 64 * u;
+            Textura tx = caratulas.De(disco.Portada);
+            if (tx != null) d.Imagen(tx, fx + pad, fy + pad, lado, lado, alfa); else d.Redondo(fx + pad, fy + pad, lado, lado, 7 * u, Dorado.ConAlfa(0.3f * alfa));
+            float tx0 = fx + pad + lado + 12 * u, ancho = w - (tx0 - fx) - pad, ty = fy + pad - 2 * u;
+            media.Escribe(d, media.Ajusta(disco.Artista, ancho), tx0, ty, Blanco.ConAlfa(alfa)); ty += 26 * u;
+            if (!string.IsNullOrEmpty(disco.Nombre)) { chica.Escribe(d, chica.Ajusta(disco.Nombre, ancho), tx0, ty, Color4.Hex(0xC8D4F5, alfa)); ty += 21 * u; }
+            string resumen = disco.Videos ? disco.Rutas.Count + " videos" : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") + (disco.Minutos > 0 ? " · " + disco.Minutos + " min" : "");
+            chica.Escribe(d, resumen, tx0, ty, Color4.Hex(0xA0B2DE, alfa)); ty += 22 * u;
+            if (f.EnCola > 0)
+            {
+                string q = f.EnCola + " en la cola"; float wq = chica.Mide(q) + 18 * k;
+                d.Redondo(tx0, ty, wq, 22 * k, 11 * k, Verde.ConAlfa(0.22f * alfa));
+                chica.Escribe(d, q, tx0 + 9 * k, ty + 1 * k, Verde.ConAlfa(alfa)); ty += 24 * k;
+            }
+            float yl = Math.Max(fy + pad + lado, ty) + 9 * u;
+            d.Rect(fx + pad, yl, w - 2 * pad, 1, Color4.Hex(0xA0B4E6, 0.25f * alfa));
+            chica.Escribe(d, f.Pedidas ? "LAS MÁS PEDIDAS DE ESTE DISCO" : "ALGUNAS DE ESTE DISCO", fx + pad, yl + 4 * u, Color4.Hex(0x96AADC, alfa));
+            float yb = fy + h - pad - 20 * u, yf = yl + 26 * u, altoF = 26 * u;
+            for (int i = 0; i < f.Titulos.Count; i++)
+            {
+                float yk = yf + i * altoF; if (yk + altoF > yb) break;
+                float r = 10 * u; Circulo(fx + pad + r, yk + r, r, Verde.ConAlfa(0.25f * alfa));
+                chica.EscribeCentrado(d, (i + 1).ToString(), fx + pad + r, yk + r - chica.Tam * 0.55f, Verde.ConAlfa(alfa));
+                float xt = fx + pad + 2 * r + 9 * u, der = fx + w - pad;
+                if (f.Pedidas && f.Veces[i] > 0) { string vt = f.Veces[i] == 1 ? "1 vez" : f.Veces[i] + " veces"; float vw = chica.Mide(vt); chica.Escribe(d, vt, der - vw, yk, Color4.Hex(0xFFB84D, alfa)); der -= vw + 8 * u; }
+                string du = f.Duraciones[i];
+                if (du.Length > 0 && der - chica.Mide(du) - 8 * u - xt >= (w - 2 * pad) * .5f) { float dw = chica.Mide(du); chica.Escribe(d, du, der - dw, yk, Color4.Hex(0xA0B0DA, alfa)); der -= dw + 8 * u; }
+                chica.Escribe(d, chica.Ajusta(f.Titulos[i], Math.Max(10, der - xt)), xt, yk, Blanco.ConAlfa(alfa));
+            }
+            float rb = 9 * u; Circulo(fx + pad + rb, yb + rb + 2 * u, rb, Color4.Hex(0x48D470, alfa));
+            chica.Escribe(d, disco.Rutas.Count > 0 ? "Entrar para ver las " + disco.Rutas.Count : "Entrar al disco", fx + pad + 2 * rb + 8 * u, yb, Color4.Hex(0xDFE6FF, alfa));
         }
 
         private void Disco(Controlador c, float W, float abajo)
