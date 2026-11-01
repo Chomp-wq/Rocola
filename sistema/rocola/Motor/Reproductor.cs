@@ -50,6 +50,7 @@ namespace Rocola
             if (medidor != null) return;
             medidor = new System.Threading.Thread(delegate ()
             {
+                Prioridad.Fondo();   // nice 19: el repaso solo usa lo que sobra (en Linux, Priority = Lowest no hace nada)
                 while (true)
                 {
                     string r;

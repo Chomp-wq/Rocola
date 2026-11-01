@@ -63,8 +63,12 @@ linea ""
 linea "--- LA ROCOLA EN LA PANTALLA (20 s)"
 PANTALLA="no esta"
 if [ -x /usr/bin/rocola-consola ] && [ -e /dev/dri/card0 ]; then
+	t0=$(date +%s)
 	ROCOLA_DATOS=/rocola/datos timeout 20 rocola-consola --rocola >> "$LOG" 2>&1; r=$?
-	case $r in 124|143) PANTALLA="se dibujo 20 s" ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
+	dura=$(( $(date +%s) - t0 ))
+	# Al llegar los 20 s, timeout le manda SIGTERM: la rocola se cierra ordenadamente (como con el boton de encendido) y sale con 0;
+	# lo bueno es que aguantara hasta ahi (124/143 si no alcanzo a cerrarse sola).
+	case $r in 124|143) PANTALLA="se dibujo 20 s" ;; 0) if [ "$dura" -ge 19 ]; then PANTALLA="se dibujo 20 s (y se cerro bien)"; else PANTALLA="FALLO: se cerro a los $dura s (ver arriba)"; fi ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
 fi
 linea "Pantalla de la rocola: $PANTALLA"
 sync

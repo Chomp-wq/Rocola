@@ -53,8 +53,12 @@ namespace Rocola
             hilo.Start();
         }
 
+        public string PrioridadSonido = "";
+        private static bool dicha;   // como quedo el hilo (Prioridad.cs)
         private unsafe void Bucle()
         {
+            PrioridadSonido = Prioridad.Sonido();   // en Linux, Thread.Priority no hace nada: se le pide al nucleo
+            if (!dicha) { dicha = true; try { Console.WriteLine("Sonido: el hilo de la salida va en " + PrioridadSonido); } catch { } }
             int cuadrosBloque = 1024, bytesCuadro = 2 * canales;
             byte[] b = new byte[cuadrosBloque * bytesCuadro];
             while (!parar)

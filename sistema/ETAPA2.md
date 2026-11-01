@@ -467,3 +467,17 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   paleta, que nace transparente y se apaga en 1,2 s). Teñida con el color del género de lo que suena.
 - Durante la ayuda no sale (la estrella es la de la ayuda), como en XP. Los cinco interruptores, en la hoja (grupo «Pantalla»),
   encendidos de fábrica. Probado en captura (`--boton reposo --cuadros 140`).
+
+## Extra (1-11-2026): probado entero en QEMU; la prueba del arranque y la prioridad de los hilos
+
+- **Imagen de QEMU recompilada con todo lo de hoy** y arrancada (BIOS, con el disco NTFS de XP de prueba): la prueba del primer
+  arranque, después la rocola por KMS (softpipe, 1280×800): la pared con su cubo y la ficha rápida, la estrella 3D viajando por el
+  cielo, la moneda, el disco, pedir (suena por ALSA: grabado de la tarjeta emulada) y la ayuda de la estrella con su menú. Los registros
+  de dentro (`/root/rocola.txt`, `rocola_error.txt`) sin fallos. (QEMU aquí emula la CPU sin KVM: va muy lento, no mide fluidez.)
+- **Fallo encontrado y arreglado:** la prueba del arranque decía «Pantalla de la rocola: FALLO 0». Era falso: al acabar sus 20 s,
+  `timeout` le manda SIGTERM y la rocola ahora se cierra ordenadamente (como con el botón de encendido) con código 0; la prueba solo
+  aceptaba 124/143. Ahora mide que aguantó los 20 s: «se dibujó 20 s (y se cerró bien)».
+- **La prioridad de los hilos, de verdad** (`Motor/Prioridad.cs`): en Linux, `Thread.Priority` de .NET no hace nada, así que el sonido
+  competía de igual a igual con el dibujo y el repaso. Ahora el hilo de la salida ALSA va en tiempo real (SCHED_FIFO 20; si no se
+  puede, nice −15) y el repaso de la biblioteca con nice 19, como las prioridades de XP. `/root/rocola.txt` dice cómo quedó («Sonido:
+  el hilo de la salida va en tiempo real», comprobado en QEMU).
