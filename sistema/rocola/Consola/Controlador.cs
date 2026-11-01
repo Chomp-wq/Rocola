@@ -24,7 +24,18 @@ namespace Rocola
     {
         internal readonly Form1 motor;
         private readonly string dispositivo;
-        private readonly BlockingCollection<Boton> pulsos = new BlockingCollection<Boton>();
+        private readonly BlockingCollection<int> pulsos = new BlockingCollection<int>();   // codigos de tecla de Windows (0: salir)
+        private Botones botones;
+        // EL ASISTENTE DE BOTONES (el de XP: StartConfig, CaptureConfigKey y FinishConfig): sin rocola_teclas.txt, o con F8 (si F8 no es un
+        // boton de la rocola), se pide cada boton por turno; cada uno distinto; al acabar se guarda rocola_teclas.txt en el formato de XP.
+        internal static readonly string[] PasosAsistente = {
+            "ARRIBA   (subir / pagina anterior)", "ABAJO   (bajar / pagina siguiente)", "IZQUIERDA   (disco anterior)",
+            "DERECHA   (disco siguiente)", "PONER / ACEPTAR   (elegir, poner cancion)", "REGRESAR   (atras / salir)",
+            "MONEDA   (credito)", "SALTAR   (saltar la cancion actual)" };
+        private static readonly string[] ClavesAsistente = { "arriba", "abajo", "izquierda", "derecha", "poner", "regresar", "moneda", "saltar" };
+        internal int AsistentePaso = -1;              // -1: no hay asistente
+        internal string AsistenteAviso = "";
+        private readonly int[] capturas = new int[8];
         internal List<Form1.Disco> discos;
         internal readonly List<char> letras = new List<char>();
         internal readonly Dictionary<char, List<Form1.Disco>> porLetra = new Dictionary<char, List<Form1.Disco>>();
@@ -54,6 +65,32 @@ namespace Rocola
         }
         // Un boton, como si se hubiera pulsado (las pruebas).
         internal void Pulsa(Boton b) { Maneja(b); }
+        // Una tecla (codigo de Windows), como si llegara de los botones (las pruebas).
+        internal void PulsaTecla(int vk) { Tecla(vk); }
+
+        internal void EmpiezaAsistente() { AsistentePaso = 0; AsistenteAviso = ""; }
+
+        private void Tecla(int vk)
+        {
+            if (AsistentePaso >= 0) { CapturaAsistente(vk); return; }
+            if (vk == 0x77 && (botones == null || botones.FuncionDe(vk) == Boton.Ninguno)) { EmpiezaAsistente(); return; }   // F8, como en XP
+            Boton b = botones != null ? botones.FuncionDe(vk) : Boton.Ninguno;
+            if (b != Boton.Ninguno) Maneja(b);
+        }
+        private void CapturaAsistente(int vk)
+        {
+            if (vk == 0 || vk == 0x10 || vk == 0x11 || vk == 0x12) return;   // nada, Mayus, Ctrl o Alt sueltas (como XP)
+            for (int j = 0; j < AsistentePaso; j++)
+                if (capturas[j] == vk) { AsistenteAviso = "Ese boton ya esta usado. Presiona OTRO."; return; }
+            capturas[AsistentePaso++] = vk; AsistenteAviso = "";
+            if (AsistentePaso < PasosAsistente.Length) return;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 8; i++) sb.Append(ClavesAsistente[i]).Append('=').Append(capturas[i]).Append("\r\n");
+            try { File.WriteAllText(motor.ArchivoBotones, sb.ToString()); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
+            if (botones != null) botones.Configura(motor.ArchivoBotones);
+            AsistentePaso = -1;
+            Aviso("¡Botones configurados!");
+        }
 
         internal int Corre(IVista vista)
         {
@@ -61,7 +98,9 @@ namespace Rocola
             using (Botones botones = new Botones())
             {
                 botones.Configura(motor.ArchivoBotones);
-                botones.Pulsado += delegate (Boton b, int vk) { if (b != Boton.Ninguno) pulsos.Add(b); };
+                this.botones = botones;
+                botones.Pulsado += delegate (Boton b, int vk) { if (vk != 0) pulsos.Add(vk); };
+                if (!botones.DeArchivo) EmpiezaAsistente();   // sin rocola_teclas.txt: el asistente (como XP la primera vez)
                 int n = botones.Escucha();
                 Aviso((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");
                 // El teclado de la terminal: solo si no hay aparatos de entrada (si los hay, el teclado ya llega por ahi y contaria dos veces).
@@ -75,8 +114,8 @@ namespace Rocola
                 {
                     while (!salir)
                     {
-                        Boton b;
-                        if (pulsos.TryTake(out b, 50)) { motor.HuboBoton(); Maneja(b); }
+                        int vk;
+                        if (pulsos.TryTake(out vk, 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
                         motor.PublicaMedidas();
                         motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                         Suena();
@@ -94,17 +133,16 @@ namespace Rocola
 
         private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; }
 
-        // El teclado de la terminal: sus codigos de tecla son los de Windows (ConsoleKey), asi que valen las mismas funciones. Esc o Q: salir.
+        // El teclado de la terminal: sus codigos de tecla son los de Windows (ConsoleKey), asi que valen las mismas funciones. Ctrl+Q: salir.
         private void LeeTeclado(Botones botones, bool despacha)
         {
             while (!salir)
             {
                 ConsoleKeyInfo k;
                 try { k = Console.ReadKey(true); } catch { return; }
-                if (k.Key == ConsoleKey.Escape || (k.Key == ConsoleKey.Q && (k.Modifiers & ConsoleModifiers.Control) != 0)) { salir = true; pulsos.Add(Boton.Ninguno); return; }
+                if (k.Key == ConsoleKey.Q && (k.Modifiers & ConsoleModifiers.Control) != 0) { salir = true; pulsos.Add(0); return; }
                 if (!despacha) continue;   // (solo para que la terminal no escriba lo que se teclea)
-                Boton b = botones.FuncionDe((int)k.Key);
-                if (b != Boton.Ninguno) pulsos.Add(b);
+                pulsos.Add((int)k.Key);   // el codigo de ConsoleKey es el de tecla de Windows
             }
         }
 

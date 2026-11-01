@@ -51,7 +51,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            string firma = c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
             if (firma == antes && (m.Sonando == null || unchecked(ahora - ultimo) < 500)) return;
             antes = firma; ultimo = ahora;
@@ -66,6 +66,7 @@ namespace Rocola
             media.Escribe(d, cr, W - wcr, 19 * k, m.Creditos > 0 ? Verde : Dorado);
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
             float abajo = H - 120 * k;   // donde empieza lo que suena
+            if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
             Suena(c, W, H, abajo);
             string av = c.AvisoVigente;
@@ -77,6 +78,21 @@ namespace Rocola
             }
             d.Termina();
             sup.Presenta();
+        }
+
+        // El asistente de botones (como el de XP): paso, el boton que toca, y el aviso si ese ya se uso.
+        private void Asistente(Controlador c, float W, float H)
+        {
+            float y = 140 * k;
+            grande.EscribeCentrado(d, "CONFIGURACIÓN DE LOS BOTONES", W / 2, y, Dorado);
+            media.EscribeCentrado(d, "Paso " + (c.AsistentePaso + 1) + " de " + Controlador.PasosAsistente.Length, W / 2, y + 60 * k, Gris);
+            media.EscribeCentrado(d, "Presiona en la rocola el botón para:", W / 2, y + 130 * k, Blanco);
+            string paso = Controlador.PasosAsistente[c.AsistentePaso];
+            float w = enorme.Mide(paso) + 60 * k;
+            d.Redondo((W - w) / 2, y + 180 * k, w, 80 * k, 16 * k, PanelClaro);
+            enorme.EscribeCentrado(d, paso, W / 2, y + 194 * k, Dorado);
+            if (c.AsistenteAviso.Length > 0) media.EscribeCentrado(d, c.AsistenteAviso, W / 2, y + 300 * k, Color4.Hex(0xFF7A6A));
+            chica.EscribeCentrado(d, "(cada botón debe ser distinto)", W / 2, H - 90 * k, Gris);
         }
 
         private void Pared(Controlador c, float W, float abajo)

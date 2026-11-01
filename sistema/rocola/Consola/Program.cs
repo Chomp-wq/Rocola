@@ -32,6 +32,7 @@ namespace Rocola
                 else if (args[i] == "--captura" && i + 1 < args.Length) captura = args[++i];
                 else if (args[i] == "--tam" && i + 1 < args.Length) tam = args[++i];
                 else if (args[i] == "--boton" && i + 1 < args.Length) botones.Add(args[++i]);
+                else if (args[i] == "--tecla" && i + 1 < args.Length) botones.Add("#" + args[++i]);
                 else lista.Add(Path.GetFullPath(args[i]));
             }
             if (captura != null) return Captura(captura, tam, botones);
@@ -115,7 +116,9 @@ namespace Rocola
             Console.WriteLine("Pantalla: " + v.Descripcion);
             Controlador c = new Controlador(m, "null");
             c.Prepara();
-            foreach (string b in botones) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
+            foreach (string b in botones)
+                if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
+                else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
             v.Dibuja(c);
             fp.Captura(ruta);
             Console.WriteLine("Captura: " + ruta);

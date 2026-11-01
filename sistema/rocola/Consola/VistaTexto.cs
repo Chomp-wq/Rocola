@@ -25,6 +25,17 @@ namespace Rocola
             int ancho = Columnas(), alto = FilasLista();
             StringBuilder sb = new StringBuilder();
             string sonando = motor.Sonando;
+            if (c.AsistentePaso >= 0)
+            {
+                sb.Append("\x1b[1;37;44m").Append(Corta(" CONFIGURACION DE BOTONES DE LA ROCOLA", ancho)).Append("\x1b[0m\n\n");
+                sb.Append(Corta(" Paso " + (c.AsistentePaso + 1) + " de " + Controlador.PasosAsistente.Length, ancho)).Append("\n\n");
+                sb.Append(Corta(" Presiona en la rocola el boton para:", ancho)).Append("\n\n");
+                sb.Append("\x1b[1;33m").Append(Corta(" >>>   " + Controlador.PasosAsistente[c.AsistentePaso] + "   <<<", ancho)).Append("\x1b[0m\n\n");
+                sb.Append(Corta(" " + c.AsistenteAviso, ancho)).Append("\n\n").Append(Corta(" (cada boton debe ser distinto)", ancho)).Append('\n');
+                for (int i = 0; i < alto - 6; i++) sb.Append(new string(' ', ancho)).Append('\n');
+                string q = sb.ToString(); if (q != pantallaAntes) { pantallaAntes = q; Console.Write("\x1b[H" + q); }
+                return;
+            }
             sb.Append("\x1b[1;37;44m").Append(Corta(" ROCOLA OS   Creditos: " + motor.Creditos + "   En la cola: " + motor.EnCola, ancho)).Append("\x1b[0m\n");
             sb.Append(Corta(" Suena: " + (sonando != null ? Path.GetFileNameWithoutExtension(sonando) : "(nada)"), ancho)).Append('\n');
             if (c.dentro == null)
