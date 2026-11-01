@@ -24,12 +24,19 @@ Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle d
   las monedas y los créditos (4 por moneda), el turno («Tu canción es la 3a - en ~7 min»), los créditos de servicio del dueño, la
   cola, y el estado que sobrevive a un apagón (y que el botón de encendido borra, como el cierre de XP). La misma navegación y los
   mismos botones que XP (`rocola_teclas.txt`), con su asistente para configurarlos.
-- **Para el dueño:** Ctrl+F3 en un teclado abre los ajustes del sonido (los mismos interruptores de XP); el reinicio de las 7 y el
-  respaldo diario de lo aprendido; el repaso de la biblioteca en segundo plano.
-- **La pantalla:** por la tarjeta gráfica (KMS y OpenGL ES 2), con el cielo Legacy (estrellas y la aurora, que late con la música), la
-  portada enfocada con su halo, el disco abierto, lo que suena y lo que sigue. Si no hay pantalla gráfica, en modo texto.
+- **Para el dueño:** Ctrl+F3 en un teclado abre los ajustes (los mismos interruptores de XP, del sonido y de la pantalla): «Lo que
+  suena ahora» (escuchar sin mejoras y lo que la cadena le hace a la que suena), las comparaciones a ciegas, afinar el local con el
+  celular, la prueba de bocinas y el diagnóstico completo de la pantalla; el reinicio de las 7 y el respaldo diario de lo aprendido;
+  el repaso de la biblioteca en segundo plano.
+- **La pantalla:** por la tarjeta gráfica (KMS y OpenGL ES 2), con el cielo Legacy (estrellas y la aurora, que late con la música) y la
+  estrella del cielo en 3D (con su corona, su polvo y su estela); el cubo que gira en la portada elegida; la pantalla viva de XP (ficha
+  rápida, letras con lupa, página que se desliza, lista grande, ecualizador, minutos de la cola, el boleto que vuela, la moneda que
+  cae, la tarjeta que invita, los avisos claros, letra para leer de lejos, el color del género, los textos que se deslizan, las pistas
+  del rojo); el estado extendido cuando nadie toca nada; la atracción como escaparate con lo más pedido esta noche; el buscador con
+  portadas; y la ayuda de la estrella (ROJO + ABAJO), sin rostro, que lleva de la mano. Si no hay pantalla gráfica, en modo texto.
 - **El sistema:** arranca en BIOS y en UEFI; la primera vez hace la prueba de sonido y gráfica, después entra directo; el volumen
-  general al máximo al arrancar (como XP); si la rocola se cierra, vuelve a abrirse; un fallo no la tumba.
+  general al máximo al arrancar (como XP); el sonido en un hilo de tiempo real; si la rocola se cierra, vuelve a abrirse; un fallo no
+  la tumba.
 
 **Lo que aún no tiene de XP:** nada de lo que el dueño usa a diario; quedan detalles de pulido gráfico de XP (los de Ctrl+F3 → Fondo →
 Pulido y los ahorros de Imagen → Performance, pensados para Direct3D 9 en XP).
