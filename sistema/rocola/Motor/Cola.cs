@@ -80,7 +80,8 @@ namespace Rocola
                     CadenaCancion cad = EmpiezaItem(it);
                     secuencia = new Encadenado(cad.Salida, cad);
                     sinEncadenar = null;
-                    return secuencia;
+                    pulso = new MedidorPulso(secuencia);   // el pulso para la pantalla (no toca el sonido: Pulso.cs)
+                    return pulso;
                 }
                 catch (Exception ex) { LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null; }
             }
@@ -217,7 +218,7 @@ namespace Rocola
                 FinalizeLoudMeasure();
                 FinalizeEqMeasure();
                 if (c != null && c.Lector != null) { try { c.Lector.Dispose(); } catch { } }
-                cadenaSonando = null; secuencia = null; tapMedido = null;
+                cadenaSonando = null; secuencia = null; tapMedido = null; pulso = null;
             }
             curTap = null; curSbr = null; curBass = null;
             nowPlaying = null;

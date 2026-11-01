@@ -50,6 +50,7 @@ namespace Rocola
         internal int PorPagina = 20;           // canciones que caben en una pagina de la vista (IZQ/DER dentro de un disco)
         internal string AvisoVigente { get { return unchecked(Environment.TickCount - avisoHasta) < 0 ? aviso : ""; } }
         internal float Progreso { get { return motor.SonandoProgreso; } }
+        internal long CuadrosOidos { get { SalidaAlsa sa = salida; return sa != null ? sa.CuadrosOidos : -1; } }   // para el pulso de la pantalla
 
         internal Controlador(Form1 motor, string dispositivo) { this.motor = motor; this.dispositivo = dispositivo; }
 

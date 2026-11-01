@@ -22,6 +22,7 @@ namespace Rocola
         public bool Anima { get { return true; } }
         private readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
         private readonly float[] estrellas;   // x, y (0..1), tamano, fase, velocidad: el cielo de siempre (fijo, como el patron de XP)
+        private float pGraves, pMedios, pAgudos;   // el pulso de la musica, suavizado (sube rapido, baja despacio)
         private int focoDisco = -1; private string focoCarpeta; private double focoDesde;
         public string Descripcion { get { return sup.Descripcion; } }
 
@@ -48,13 +49,21 @@ namespace Rocola
 
         // EL CIELO LEGACY (el fondo de XP, en lo esencial): la noche en degradado, estrellas que titilan y la aurora que ondula sobre el
         // horizonte. Se mueve despacio: no distrae de las portadas.
+        private void Pulso(Controlador c)
+        {
+            float g = 0, m = 0, a = 0; long oido = c.CuadrosOidos;
+            if (oido >= 0) c.motor.Pulso(oido, out g, out m, out a);
+            pGraves = g > pGraves ? pGraves + (g - pGraves) * 0.6f : pGraves * 0.90f;
+            pMedios = m > pMedios ? pMedios + (m - pMedios) * 0.5f : pMedios * 0.93f;
+            pAgudos = a > pAgudos ? pAgudos + (a - pAgudos) * 0.6f : pAgudos * 0.88f;
+        }
         private void Cielo(float W, float H, double t)
         {
             d.Degradado(0, 0, W, H * 0.55f, Color4.Hex(0x03061A), Color4.Hex(0x0C1440));
             d.Degradado(0, H * 0.55f, W, H * 0.45f, Color4.Hex(0x0C1440), Color4.Hex(0x1A0F3A));
             for (int i = 0; i < estrellas.Length; i += 5)
             {
-                float a = 0.45f + 0.55f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3]));
+                float a = Math.Min(1f, 0.45f + 0.55f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3])) + 0.35f * pAgudos * (i % 3 == 0 ? 1 : 0));
                 float tam = estrellas[i + 2] * k;
                 d.Brillo(estrellas[i] * W, estrellas[i + 1] * H, tam * 2.2f, new Color4(0.85f, 0.9f, 1f, a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
             }
@@ -64,9 +73,9 @@ namespace Rocola
             for (int i = 0; i < tiras; i++)
             {
                 double x = (i + 0.5) / tiras;
-                double alto = H * (0.20 + 0.07 * Math.Sin(x * 7.0 + t * 0.30) + 0.035 * Math.Sin(x * 19.0 - t * 0.55));
+                double alto = H * (0.20 + 0.07 * Math.Sin(x * 7.0 + t * 0.30) + 0.035 * Math.Sin(x * 19.0 - t * 0.55)) * (1.0 + 0.30 * pMedios);   // la aurora late con la musica
                 double mezcla = 0.5 + 0.5 * Math.Sin(x * 3.5 + t * 0.10);
-                float fuerza = (float)(0.26 + 0.12 * Math.Sin(x * 11.0 + t * 0.7) + 0.05 * Math.Sin(x * 31.0 - t * 1.3));
+                float fuerza = (float)(0.26 + 0.12 * Math.Sin(x * 11.0 + t * 0.7) + 0.05 * Math.Sin(x * 31.0 - t * 1.3)) * (0.75f + 0.8f * pGraves);
                 float r = (float)(0.25 + 0.45 * mezcla), g = (float)(0.95 - 0.45 * mezcla), b = (float)(0.65 + 0.3 * mezcla);
                 float y0 = (float)(base_ - alto), x0 = i * w;
                 d.Degradado(x0, y0, w, (float)alto * 0.78f, new Color4(r, g, b, 0f), new Color4(r, g, b, fuerza));
@@ -96,6 +105,7 @@ namespace Rocola
             antes = firma; ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
+            Pulso(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             // franja de arriba
             d.Rect(0, 0, W, 64 * k, Panel.ConAlfa(0.82f));
