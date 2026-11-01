@@ -1,5 +1,5 @@
-// LA ROCOLA EN MODO TEXTO (Rocola OS, etapa 2, mientras llega la pantalla grafica): la rocola de verdad, con sus botones, en la
-// consola (tty1 en Rocola OS, o cualquier terminal). Los discos por letra; ARRIBA/ABAJO mueven, IZQUIERDA/DERECHA cambian de letra
+// LA ROCOLA (Rocola OS, etapa 2): lo que hace con cada boton y el sonido, sin el dibujo (la vista: VistaTexto en la consola, o
+// VistaGrafica por KMS y OpenGL ES). Los discos por letra; ARRIBA/ABAJO mueven, IZQUIERDA/DERECHA cambian de letra
 // (o de pagina dentro de un disco), PONER entra al disco o pide la cancion (cuesta un credito), REGRESAR sale del disco, MONEDA
 // suma 4 creditos y SALTAR salta la que suena. Las reglas (creditos, cola, estado, relevo sin pausa, lo aprendido) son las del motor,
 // que son las de XP. Los botones llegan por evdev (Botones.cs, rocola_teclas.txt de XP) y, para probar, tambien por el teclado de la
@@ -14,24 +14,33 @@ using NAudio.Wave;
 
 namespace Rocola
 {
-    internal sealed class RocolaTexto
+    internal interface IVista : IDisposable
     {
-        private readonly Form1 motor;
+        void Dibuja(Controlador c);
+        bool LeeTerminal { get; }   // la vista de texto lee tambien el teclado de la terminal
+    }
+
+    internal sealed class Controlador
+    {
+        internal readonly Form1 motor;
         private readonly string dispositivo;
         private readonly BlockingCollection<Boton> pulsos = new BlockingCollection<Boton>();
-        private List<Form1.Disco> discos;
-        private readonly List<char> letras = new List<char>();
-        private readonly Dictionary<char, List<Form1.Disco>> porLetra = new Dictionary<char, List<Form1.Disco>>();
-        private int letra, cursorDisco, cursorCancion;
-        private Form1.Disco dentro;            // el disco abierto (null: la lista de discos)
+        internal List<Form1.Disco> discos;
+        internal readonly List<char> letras = new List<char>();
+        internal readonly Dictionary<char, List<Form1.Disco>> porLetra = new Dictionary<char, List<Form1.Disco>>();
+        internal int letra, cursorDisco, cursorCancion;
+        internal Form1.Disco dentro;            // el disco abierto (null: la lista de discos)
         private string aviso = ""; private int avisoHasta;
         private SalidaAlsa salida;
         private bool saltar, salir;
-        private string pantallaAntes;
+        internal int PorPagina = 20;           // canciones que caben en una pagina de la vista (IZQ/DER dentro de un disco)
+        internal string AvisoVigente { get { return unchecked(Environment.TickCount - avisoHasta) < 0 ? aviso : ""; } }
+        internal float Progreso { get { return motor.SonandoProgreso; } }
 
-        internal RocolaTexto(Form1 motor, string dispositivo) { this.motor = motor; this.dispositivo = dispositivo; }
+        internal Controlador(Form1 motor, string dispositivo) { this.motor = motor; this.dispositivo = dispositivo; }
 
-        internal int Corre()
+        // La biblioteca por letras y lo de antes del apagon.
+        internal void Prepara()
         {
             motor.Aviso += delegate (string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; };
             discos = motor.LeeBiblioteca();
@@ -42,34 +51,40 @@ namespace Rocola
                 l.Add(d);
             }
             motor.Reanuda();   // los creditos y la cola de antes del apagon (mismo dia del negocio)
+        }
+        // Un boton, como si se hubiera pulsado (las pruebas).
+        internal void Pulsa(Boton b) { Maneja(b); }
+
+        internal int Corre(IVista vista)
+        {
+            Prepara();
             using (Botones botones = new Botones())
             {
                 botones.Configura(motor.ArchivoBotones);
                 botones.Pulsado += delegate (Boton b, int vk) { if (b != Boton.Ninguno) pulsos.Add(b); };
                 int n = botones.Escucha();
                 Aviso((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");
-                Thread teclado = null;
-                if (!Console.IsInputRedirected)
+                // El teclado de la terminal: solo si no hay aparatos de entrada (si los hay, el teclado ya llega por ahi y contaria dos veces).
+                if (vista.LeeTerminal && !Console.IsInputRedirected)
                 {
-                    teclado = new Thread(delegate () { LeeTeclado(botones); }) { IsBackground = true, Name = "teclado de la terminal" };
+                    bool despacha = n == 0;
+                    Thread teclado = new Thread(delegate () { LeeTeclado(botones, despacha); }) { IsBackground = true, Name = "teclado de la terminal" };
                     teclado.Start();
                 }
-                Console.Write("\x1b[?25l");   // sin cursor
                 try
                 {
                     while (!salir)
                     {
                         Boton b;
-                        if (pulsos.TryTake(out b, 100)) Maneja(b);
+                        if (pulsos.TryTake(out b, 50)) Maneja(b);
                         Suena();
-                        Dibuja();
+                        vista.Dibuja(this);
                     }
                 }
                 finally
                 {
                     if (salida != null) { salida.Dispose(); salida = null; motor.AcaboLaSalida(); }
                     motor.GuardaEstado();
-                    Console.Write("\x1b[?25h\x1b[0m\n");
                 }
             }
             return 0;
@@ -78,19 +93,20 @@ namespace Rocola
         private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; }
 
         // El teclado de la terminal: sus codigos de tecla son los de Windows (ConsoleKey), asi que valen las mismas funciones. Esc o Q: salir.
-        private void LeeTeclado(Botones botones)
+        private void LeeTeclado(Botones botones, bool despacha)
         {
             while (!salir)
             {
                 ConsoleKeyInfo k;
                 try { k = Console.ReadKey(true); } catch { return; }
                 if (k.Key == ConsoleKey.Escape || (k.Key == ConsoleKey.Q && (k.Modifiers & ConsoleModifiers.Control) != 0)) { salir = true; pulsos.Add(Boton.Ninguno); return; }
+                if (!despacha) continue;   // (solo para que la terminal no escriba lo que se teclea)
                 Boton b = botones.FuncionDe((int)k.Key);
                 if (b != Boton.Ninguno) pulsos.Add(b);
             }
         }
 
-        private List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
+        internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
         private void Maneja(Boton b)
         {
@@ -111,7 +127,7 @@ namespace Rocola
             }
             else
             {
-                int n = dentro.Rutas.Count, pagina = Math.Max(1, FilasLista());
+                int n = dentro.Rutas.Count, pagina = Math.Max(1, PorPagina);
                 if (b == Boton.Arriba) cursorCancion = (cursorCancion + n - 1) % n;
                 else if (b == Boton.Abajo) cursorCancion = (cursorCancion + 1) % n;
                 else if (b == Boton.Izquierda) cursorCancion = Math.Max(0, cursorCancion - pagina);
@@ -154,52 +170,5 @@ namespace Rocola
             }
         }
 
-        private static int Filas() { try { return Math.Max(12, Console.WindowHeight); } catch { return 25; } }
-        private static int Columnas() { try { return Math.Max(40, Console.WindowWidth); } catch { return 80; } }
-        private static int FilasLista() { return Filas() - 7; }
-        private static string Corta(string s, int n) { s = s ?? ""; return s.Length <= n ? s.PadRight(n) : s.Substring(0, n - 1) + "…"; }
-
-        private void Dibuja()
-        {
-            int ancho = Columnas(), alto = FilasLista();
-            StringBuilder sb = new StringBuilder();
-            string sonando = motor.Sonando;
-            sb.Append("\x1b[1;37;44m").Append(Corta(" ROCOLA OS   Creditos: " + motor.Creditos + "   En la cola: " + motor.EnCola, ancho)).Append("\x1b[0m\n");
-            sb.Append(Corta(" Suena: " + (sonando != null ? Path.GetFileNameWithoutExtension(sonando) : "(nada)"), ancho)).Append('\n');
-            if (dentro == null)
-            {
-                StringBuilder l = new StringBuilder(" Letra: ");
-                for (int i = 0; i < letras.Count; i++) l.Append(i == letra ? "[" + letras[i] + "]" : " " + letras[i] + " ");
-                sb.Append(Corta(l.ToString(), ancho)).Append('\n').Append(new string('-', ancho)).Append('\n');
-                List<Form1.Disco> ds = DiscosDeLetra();
-                int desde = Math.Max(0, Math.Min(cursorDisco - alto / 2, ds.Count - alto));
-                for (int i = 0; i < alto; i++)
-                {
-                    int k = desde + i;
-                    if (k < ds.Count) sb.Append(k == cursorDisco ? "\x1b[7m" : "").Append(Corta(" " + ds[k] + "  (" + ds[k].Rutas.Count + ")", ancho)).Append("\x1b[0m");
-                    else sb.Append(new string(' ', ancho));
-                    sb.Append('\n');
-                }
-                sb.Append(Corta(" ARRIBA/ABAJO: disco   IZQ/DER: letra   PONER: entrar   MONEDA   SALTAR", ancho)).Append('\n');
-            }
-            else
-            {
-                sb.Append(Corta(" Disco: " + dentro, ancho)).Append('\n').Append(new string('-', ancho)).Append('\n');
-                int n = dentro.Rutas.Count, desde = Math.Max(0, Math.Min(cursorCancion - alto / 2, n - alto));
-                for (int i = 0; i < alto; i++)
-                {
-                    int k = desde + i;
-                    if (k < n) sb.Append(k == cursorCancion ? "\x1b[7m" : "").Append(Corta(" " + (k + 1).ToString().PadLeft(3) + ". " + dentro.Titulos[k], ancho)).Append("\x1b[0m");
-                    else sb.Append(new string(' ', ancho));
-                    sb.Append('\n');
-                }
-                sb.Append(Corta(" ARRIBA/ABAJO: cancion   PONER: pedirla (1 credito)   REGRESAR: a los discos", ancho)).Append('\n');
-            }
-            sb.Append("\x1b[1;33m").Append(Corta(unchecked(Environment.TickCount - avisoHasta) < 0 ? " " + aviso : "", ancho)).Append("\x1b[0m");
-            string p = sb.ToString();
-            if (p == pantallaAntes) return;
-            pantallaAntes = p;
-            Console.Write("\x1b[H" + p);
-        }
     }
 }

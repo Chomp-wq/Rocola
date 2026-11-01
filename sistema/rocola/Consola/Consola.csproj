@@ -8,6 +8,7 @@
     <RootNamespace>Rocola</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <!-- las instrucciones del A4 (Piledriver): SSE4.2 y AVX (FMA en .NET 10 solo viene con AVX2, que no tiene). El perfil de QEMU
        (RocolaPerfil=qemu) va sin ellas: el emulador no tiene AVX. -->
@@ -15,4 +16,8 @@
     <IlcInstructionSet>x86-64-v2,avx</IlcInstructionSet>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Motor/Motor.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
+    <PackageReference Include="StbTrueTypeSharp" Version="1.26.13" />
+  </ItemGroup>
 </Project>

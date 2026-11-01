@@ -36,6 +36,19 @@ namespace Rocola
         }
         public int EnCola { get { return queue.Count; } }
         public string Sonando { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.Path : null; } }
+        // Cuanto lleva la que suena (0 a 1) y su disco (para la pantalla).
+        public float SonandoProgreso
+        {
+            get
+            {
+                CadenaCancion c = cadenaSonando;
+                try { double t = c != null ? c.Lector.TotalTime.TotalSeconds : 0; return t > 0 ? (float)Math.Min(1.0, c.Lector.CurrentTime.TotalSeconds / t) : 0f; }
+                catch { return 0f; }
+            }
+        }
+        public string SonandoTitulo { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.ToString() : null; } }
+        public string SonandoDisco { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? (string.IsNullOrEmpty(p.Disc.Name) ? p.Disc.Artist : p.Disc.Artist + " - " + p.Disc.Name) : null; } }
+        public string SonandoPortada { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? p.Disc.CoverPath : null; } }
         public float SonandoGananciaDb { get { CadenaCancion c = cadenaSonando; return c != null && c.Tap != null ? (float)(20.0 * Math.Log10(Math.Max(1e-9f, c.Tap.Gain))) : 0f; } }
 
         // EMPIEZA LA SIGUIENTE DE LA COLA por el camino de siempre (como PlayNext: salida nueva). Lo que devuelve es lo que la salida

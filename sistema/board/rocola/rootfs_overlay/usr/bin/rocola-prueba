@@ -53,6 +53,16 @@ else
 	GRAFICA="FALLO: no aparecio /dev/dri/card0 (la tarjeta no se cargo)"
 fi
 linea "Grafica: $GRAFICA"
+linea ""
+
+# La rocola en la pantalla (etapa 2): 20 s con su pantalla grafica (KMS y OpenGL ES); que siga viva al acabar el tiempo es lo bueno.
+linea "--- LA ROCOLA EN LA PANTALLA (20 s)"
+PANTALLA="no esta"
+if [ -x /usr/bin/rocola-consola ] && [ -e /dev/dri/card0 ]; then
+	ROCOLA_DATOS=/rocola/datos timeout 20 rocola-consola --rocola >> "$LOG" 2>&1; r=$?
+	case $r in 124|143) PANTALLA="se dibujo 20 s" ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
+fi
+linea "Pantalla de la rocola: $PANTALLA"
 sync
 
 # Lo que queda en pantalla, para la foto.
@@ -61,6 +71,7 @@ echo "=================== ROCOLA OS: PRUEBA DE LA ETAPA 1 ==================="
 echo "Procesador: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-)"
 echo "Grafica: $(grep -h DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null)  -> $GRAFICA"
 echo "Sonido: $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
+echo "Pantalla de la rocola: $PANTALLA"
 echo "La rocola (sonido de la rocola por ALSA): $ROCOLA"
 echo ""
 echo "Todo esta en /root/rocola-prueba.txt. Saca una foto de esta pantalla."

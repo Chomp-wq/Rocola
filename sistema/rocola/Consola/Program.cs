@@ -5,7 +5,9 @@
 //      pausa de XP: la siguiente se prepara 12 s antes; las pistas seguidas de un disco, sin fundido); 16 bits con dither;
 //   3) por ALSA (o a un WAV con --wav, para probar sin tarjeta); al acabar cada una se guarda lo aprendido, como en XP.
 // Uso: rocola-consola [--wav salida.wav] [--dispositivo default] [--biblioteca] [cancion1.mp3 cancion2.wav ...]
-//      rocola-consola --rocola [--dispositivo default]   la rocola en modo texto, con sus botones (RocolaTexto.cs)
+//      rocola-consola --rocola [--texto] [--dispositivo default]   la rocola con sus botones: en la pantalla (KMS y OpenGL ES,
+//                     VistaGrafica.cs) o, con --texto o si no hay pantalla grafica, en la consola (VistaTexto.cs)
+//      rocola-consola --captura salida.ppm [--tam 1024x768] [--boton poner ...]   un cuadro de la pantalla, fuera de pantalla (pruebas)
 //   --biblioteca: la cola es la biblioteca entera (la carpeta "musica" junto a los datos y las de "dir="), disco por disco.
 using System;
 using System.Collections.Generic;
@@ -19,19 +21,32 @@ namespace Rocola
     {
         internal static int Main(string[] args)
         {
-            string wav = null, dispositivo = "default"; bool biblioteca = false, rocola = false; List<string> lista = new List<string>();
+            string wav = null, dispositivo = "default", captura = null, tam = "1024x768"; bool biblioteca = false, rocola = false, texto = false; List<string> lista = new List<string>(), botones = new List<string>();
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
                 else if (args[i] == "--dispositivo" && i + 1 < args.Length) dispositivo = args[++i];
                 else if (args[i] == "--biblioteca") biblioteca = true;
                 else if (args[i] == "--rocola") rocola = true;
+                else if (args[i] == "--texto") texto = true;
+                else if (args[i] == "--captura" && i + 1 < args.Length) captura = args[++i];
+                else if (args[i] == "--tam" && i + 1 < args.Length) tam = args[++i];
+                else if (args[i] == "--boton" && i + 1 < args.Length) botones.Add(args[++i]);
                 else lista.Add(Path.GetFullPath(args[i]));
             }
+            if (captura != null) return Captura(captura, tam, botones);
             if (rocola)
             {
                 Form1 m = new Form1(); m.Arranca();
-                int r = new RocolaTexto(m, dispositivo).Corre();
+                IVista vista = null;
+                if (!texto)
+                {
+                    try { VistaGrafica g = new VistaGrafica(new Rocola.Pantalla.Kms(), VistaGrafica.BuscaLetra()); Console.WriteLine("Pantalla: " + g.Descripcion); vista = g; }
+                    catch (Exception e) { Console.Error.WriteLine("Sin pantalla grafica (" + e.Message + "): en modo texto"); }
+                }
+                if (vista == null) vista = new VistaTexto();
+                int r;
+                using (vista) r = new Controlador(m, dispositivo).Corre(vista);
                 m.Cierra();
                 return r;
             }
@@ -87,6 +102,23 @@ namespace Rocola
             }
             if (escritor != null) escritor.Dispose();
             motor.Cierra();   // lo aprendido, al disco
+            return 0;
+        }
+
+        // UN CUADRO DE LA PANTALLA SIN PANTALLA: la rocola con su biblioteca, los botones dados (moneda, derecha, poner...) y la imagen.
+        private static int Captura(string ruta, string tam, List<string> botones)
+        {
+            string[] t = tam.Split('x');
+            Form1 m = new Form1(); m.Arranca();
+            Rocola.Pantalla.FueraDePantalla fp = new Rocola.Pantalla.FueraDePantalla(int.Parse(t[0]), int.Parse(t[1]));
+            VistaGrafica v = new VistaGrafica(fp, VistaGrafica.BuscaLetra());
+            Console.WriteLine("Pantalla: " + v.Descripcion);
+            Controlador c = new Controlador(m, "null");
+            c.Prepara();
+            foreach (string b in botones) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
+            v.Dibuja(c);
+            fp.Captura(ruta);
+            Console.WriteLine("Captura: " + ruta);
             return 0;
         }
     }
