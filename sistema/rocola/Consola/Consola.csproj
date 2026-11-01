@@ -9,6 +9,11 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- la version: la pone GitHub (-p:RocolaVersion=N -p:RocolaCommit=abc1234); en casa, la 0 -->
+    <RocolaVersion Condition="'$(RocolaVersion)' == ''">0</RocolaVersion>
+    <RocolaCommit Condition="'$(RocolaCommit)' == ''">local</RocolaCommit>
+    <InformationalVersion>$(RocolaVersion)+$(RocolaCommit)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <!-- las instrucciones del A4 (Piledriver): SSE4.2 y AVX (FMA en .NET 10 solo viene con AVX2, que no tiene). El perfil de QEMU
        (RocolaPerfil=qemu) va sin ellas: el emulador no tiene AVX. -->

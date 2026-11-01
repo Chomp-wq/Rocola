@@ -11,3 +11,5 @@ CONFIG_FEATURE_VOLUMEID_EXT=y
 # El boton de encendido apaga la rocola y el equipo (como el de XP): acpid llama a /etc/acpi/PWRF/00000080
 CONFIG_ACPID=y
 CONFIG_FEATURE_ACPID_COMPAT=y
+# Internet: la hora por NTP (rocola-actualiza la pone antes de hablar con GitHub)
+CONFIG_NTPD=y

@@ -22,6 +22,8 @@ namespace Rocola
         internal static int Main(string[] args)
         {
             string wav = null, dispositivo = "default", captura = null, tam = "1024x768"; bool biblioteca = false, rocola = false, texto = false; string guion = null; List<string> lista = new List<string>(), botones = new List<string>();
+            // --version: la version del programa ("rocola-consola programa N (commit)"); la comprueba rocola-actualiza antes de aceptarla.
+            if (args.Length > 0 && args[0] == "--version") { Console.WriteLine("rocola-consola programa " + Version.Numero + " (" + Version.Commit + ")"); return 0; }
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];

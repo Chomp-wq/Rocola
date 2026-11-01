@@ -181,6 +181,14 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
             l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
             l.Add(Interruptor("Pantalla", "El buscador con portadas", "buscador_portadas", () => BuscadorPortadas, v => BuscadorPortadas = v, false));
+            // INTERNET (1-11-2026): actualizarse solo desde GitHub (rocola-actualiza, en el sistema) y buscar ya. El recuadro de abajo dice la
+            // version, la red (con la MAC, la que pide el router para el encendido remoto) y como va la actualizacion.
+            l.Add(Interruptor("Internet", "Actualizarse sola desde internet", "actualizar_solo", () => ActualizarSolo, v => ActualizarSolo = v, false));
+            Ajuste ya = new Ajuste { Grupo = "Internet", Nombre = "Buscar actualización ahora", Herramienta = true };
+            ya.Valor = delegate { return File.Exists("/run/rocola-buscar-ya") ? "BUSCANDO" : "BUSCAR"; };
+            ya.Cambia = delegate (int d) { try { File.WriteAllText("/run/rocola-buscar-ya", ""); } catch { } };
+            ya.Bloqueo = delegate { return ActualizarSolo ? null : "necesita «Actualizarse sola»"; };
+            l.Add(ya);
             // EL DIAGNOSTICO COMPLETO (herramienta de XP: no guarda ni aplica nada); lo corre el programa (Diagnostico.cs).
             Ajuste dg = new Ajuste { Grupo = "Diagnóstico", Nombre = "Diagnóstico completo de la pantalla (unos 50 s)", Herramienta = true };
             dg.Valor = delegate { return "EMPEZAR"; };

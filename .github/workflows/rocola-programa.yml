@@ -1,0 +1,56 @@
+# EL PROGRAMA DE LA ROCOLA (Rocola OS), COMPILADO POR GITHUB EN CADA CAMBIO (peticion del dueno del 1-11-2026: que la rocola se actualice
+# sola). Compila rocola-consola con .NET 10 (NativeAOT) en dos versiones -la del A4 (con AVX) y la generica (cualquier x86-64)-, prueba
+# que arranca y toca una cancion, y la publica como la version «programa-N» del repositorio. La rocola la busca cada hora con su llave de
+# solo lectura (rocola-actualiza), la comprueba y la pone sola cuando esta libre.
+name: Programa de la rocola (Rocola OS)
+
+on:
+  push:
+    branches: [claude/modest-carson-fa2v2n]
+    paths: ['sistema/rocola/**', '.github/workflows/rocola-programa.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rocola-programa
+  cancel-in-progress: false
+
+jobs:
+  compilar:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Herramientas de NativeAOT
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang zlib1g-dev ffmpeg
+      - name: Compilar (A4 y generica)
+        run: |
+          V=${{ github.run_number }}; C=${GITHUB_SHA::7}
+          cd sistema/rocola/Consola
+          dotnet publish -c Release -r linux-x64 -p:RocolaVersion=$V -p:RocolaCommit=$C -o "$GITHUB_WORKSPACE/salida/a4"
+          dotnet publish -c Release -r linux-x64 -p:RocolaPerfil=qemu -p:RocolaVersion=$V -p:RocolaCommit=$C -o "$GITHUB_WORKSPACE/salida/generico"
+      - name: Probar que arranca y toca una cancion
+        run: |
+          V=${{ github.run_number }}
+          for p in a4 generico; do
+            ./salida/$p/rocola-consola --version | tee /dev/stderr | grep -q "programa $V"
+            mkdir -p prueba/$p
+            ROCOLA_DATOS=$PWD/prueba/$p ./salida/$p/rocola-consola --wav prueba/$p/salida.wav sistema/rocola/Consola/prueba.mp3
+            test "$(stat -c %s prueba/$p/salida.wav)" -gt 100000
+          done
+      - name: Publicar la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          mkdir pub
+          gzip -9c salida/a4/rocola-consola > pub/rocola-consola-a4.gz
+          gzip -9c salida/generico/rocola-consola > pub/rocola-consola-generico.gz
+          (cd pub && sha256sum rocola-consola-a4.gz rocola-consola-generico.gz > sha256.txt)
+          echo "programa $V ${GITHUB_SHA}" > pub/version.txt
+          git log -1 --pretty='%s' > notas.txt
+          gh release create "programa-$V" pub/* --target "$GITHUB_SHA" --title "Programa de la rocola $V" --notes-file notas.txt

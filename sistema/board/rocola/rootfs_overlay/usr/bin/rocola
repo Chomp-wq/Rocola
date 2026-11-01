@@ -2,10 +2,50 @@
 # LA ROCOLA DE ROCOLA OS. Como la de XP al arrancar: el volumen general al maximo y sin silencio (en XP, VolumenWindows.cs; aqui
 # los controles de la tarjeta: Master, PCM y las salidas), y la rocola en la pantalla. Si se cierra o se cae, vuelve a empezar (la
 # de XP la vigilaba igual). Sus datos en /rocola/datos; lo que dice, en /root/rocola.txt (se recorta al pasar de 1 MB).
+#
+# LAS ACTUALIZACIONES (rocola-actualiza): el programa que corre es /rocola/programa/rocola-consola si lo hay (el ultimo bajado de
+# GitHub), si no el que trae el sistema. Una version nueva (rocola-consola.nueva) se pone al arrancar o cuando la rocola sale con 42
+# (lo hace sola en cuanto esta libre). Si la nueva se cae dos veces en sus primeros 2 minutos, se vuelve a la anterior y se apunta como
+# mala (no se vuelve a bajar).
+PROG=/rocola/programa
+BITACORA=/rocola/datos/rocola_actualizaciones.txt
 for c in Master PCM Speaker Headphone Front "Line Out"; do amixer -q sset "$c" 100% unmute 2>/dev/null; done
+probando=0; fallos=0
+apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> /root/rocola.txt; }
+pon_nueva() {
+	[ -f "$PROG/rocola-consola.nueva" ] || return
+	[ -f "$PROG/rocola-consola" ] && mv -f "$PROG/rocola-consola" "$PROG/rocola-consola.anterior"
+	cp -f "$PROG/version" "$PROG/version.anterior" 2>/dev/null || rm -f "$PROG/version.anterior"
+	mv -f "$PROG/rocola-consola.nueva" "$PROG/rocola-consola"
+	mv -f "$PROG/nueva.version" "$PROG/version"
+	rm -f /run/rocola-hay-nueva; sync
+	probando=1; fallos=0
+	apunta "Se puso la version $(cat "$PROG/version")"
+}
+vuelve_atras() {
+	mala=$(cat "$PROG/version" 2>/dev/null)
+	echo "$mala" >> "$PROG/malas"
+	if [ -f "$PROG/rocola-consola.anterior" ]; then mv -f "$PROG/rocola-consola.anterior" "$PROG/rocola-consola"
+	else rm -f "$PROG/rocola-consola"; fi
+	if [ -f "$PROG/version.anterior" ]; then mv -f "$PROG/version.anterior" "$PROG/version"; else rm -f "$PROG/version"; fi
+	sync; probando=0
+	apunta "La version $mala se cayo al arrancar: se volvio a la anterior"
+}
+pon_nueva
 while :; do
 	[ -f /root/rocola.txt ] && [ "$(wc -c < /root/rocola.txt)" -gt 1048576 ] && mv /root/rocola.txt /root/rocola.txt.1
 	echo "--- $(date) arranca la rocola" >> /root/rocola.txt
-	ROCOLA_DATOS=/rocola/datos /usr/bin/rocola-consola --rocola >> /root/rocola.txt 2>&1
+	BIN=/usr/bin/rocola-consola
+	[ -x "$PROG/rocola-consola" ] && BIN=$PROG/rocola-consola
+	t0=$(date +%s)
+	ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> /root/rocola.txt 2>&1
+	r=$?
+	duro=$(( $(date +%s) - t0 ))
+	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
+	if [ "$probando" = 1 ]; then
+		if [ "$duro" -lt 120 ] && [ "$r" != 0 ]; then
+			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras
+		elif [ "$duro" -ge 120 ]; then probando=0; fi
+	fi
 	sleep 2
 done

@@ -10,6 +10,16 @@ case "$1" in
 			setsid sh -c 'exec /usr/bin/rocola-instalar </dev/tty1 >/dev/tty1 2>&1' &
 			exit 0
 		fi
+		# INTERNET: el encendido remoto (Wake on LAN, el «paquete magico» que manda el router) queda encendido en la tarjeta de red, y el
+		# programa de la rocola se actualiza solo (rocola-actualiza): al minuto de prender y despues cada hora, o al momento si se pide
+		# desde Ctrl+F3 (/run/rocola-buscar-ya).
+		ethtool -s eth0 wol g 2>/dev/null
+		( sleep 60
+		  while :; do
+			/usr/bin/rocola-actualiza >/dev/null 2>&1
+			i=0; while [ $i -lt 360 ] && [ ! -f /run/rocola-buscar-ya ]; do sleep 10; i=$((i + 1)); done
+			rm -f /run/rocola-buscar-ya
+		  done ) &
 		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
 		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		# La prueba de sonido y grafica la primera vez (o si se elige en el menu de GRUB: rocola.prueba); despues, directo a la rocola.
@@ -21,7 +31,7 @@ case "$1" in
 			setsid sh -c 'exec /usr/bin/rocola </dev/tty1 >/dev/tty1 2>&1' &
 		fi
 		;;
-	stop) ;;
+	stop) ethtool -s eth0 wol g 2>/dev/null ;;   # al apagar: que la tarjeta siga escuchando el encendido remoto
 	*) echo "Uso: $0 {start|stop}"; exit 1 ;;
 esac
 exit 0

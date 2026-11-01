@@ -8,6 +8,7 @@ namespace Rocola
 {
     public partial class Form1
     {
+        public bool ActualizarSolo = true; // "actualizar_solo=": el programa se actualiza solo desde GitHub (rocola-actualiza lo lee)
         public bool FichaDisco = true;     // "ficha_disco="
         public bool LetrasLupa = true;     // "letras_lupa="
         public bool PaginaDesliza = true;  // "pagina_desliza="

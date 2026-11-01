@@ -232,6 +232,7 @@ namespace Rocola
                             RevisaLoQueSuena();
                             RevisaAyuda();
                             RevisaDiagnostico();
+                            RevisaActualizacion();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
@@ -253,7 +254,7 @@ namespace Rocola
                     else motor.GuardaEstado();
                 }
             }
-            return 0;
+            return CodigoSalida;
         }
 
         private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; AvisoDesde = Environment.TickCount | 1; }
@@ -385,6 +386,12 @@ namespace Rocola
             ultimoLoQueSuena = ahora == 0 ? 1 : ahora;
             motor.CiegoTick();   // la comparacion a ciegas cambia de tramo (como el reloj de la ventana de XP)
             string grupo = AjusteSel >= 0 && AjusteSel < ListaAjustes.Count ? ListaAjustes[AjusteSel].Grupo : "";
+            if (grupo == "Internet")
+            {
+                RecuadroTitulo = "INTERNET Y ACTUALIZACIONES";
+                LoQueSuena = TextoInternet();
+                return;
+            }
             if (grupo == "Afinar con el celular")
             {
                 RecuadroTitulo = "AFINAR EL LOCAL CON EL CELULAR";

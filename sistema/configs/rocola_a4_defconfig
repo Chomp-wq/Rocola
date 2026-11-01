@@ -80,3 +80,14 @@ BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_DEJAVU=y
 # los videos de la rocola: mpv, por KMS y ALSA (la rocola le cede la pantalla mientras suena)
 BR2_PACKAGE_MPV=y
+# INTERNET (1-11-2026): por cable (la Realtek del A4), con DHCP; la hora por NTP (BusyBox) para que las conexiones seguras valgan.
+# Para que el programa de la rocola se actualice solo desde GitHub (rocola-actualiza: curl, jq y los certificados) y para el
+# encendido remoto (Wake on LAN: ethtool lo deja encendido en la tarjeta).
+BR2_SYSTEM_DHCP="eth0"
+BR2_PACKAGE_CA_CERTIFICATES=y
+BR2_PACKAGE_OPENSSL=y
+BR2_PACKAGE_LIBCURL=y
+BR2_PACKAGE_LIBCURL_CURL=y
+BR2_PACKAGE_LIBCURL_OPENSSL=y
+BR2_PACKAGE_JQ=y
+BR2_PACKAGE_ETHTOOL=y
