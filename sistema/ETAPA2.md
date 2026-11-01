@@ -52,8 +52,24 @@ nivelado y el EQ (`LevelTap`), la tabla de la sonoridad, el lector de MP3 con NL
   muestras, medido al arrancar como en XP). Probado en QEMU grabando la tarjeta de sonido emulada.
 - Sin reflexión: NAudio 3 ya da la máscara de canales (`FormatoAudio`), sin avisos de NativeAOT.
 
-Lo siguiente: la configuración (`rocola_config.txt`: los mismos interruptores que XP) y guardar las tablas (las medidas, el EQ
-aprendido) en `/rocola/datos`; la biblioteca y la cola; después la pantalla.
+## Hito 6 (1-11-2026): la configuración y lo aprendido
+
+- **La configuración:** `rocola-consola` lee `rocola_config.txt` de la carpeta de los datos, con las mismas claves del sonido que XP
+  (45: el modo billar, cada interruptor de la cadena, el fundido, el nivelado, el EQ, el bajo, el DSEE...). Las líneas de cada clave
+  son las de XP tal cual (`Motor/Configuracion.cs`); las de la pantalla se ignoran por ahora. Solo lee: no escribe la configuración.
+- **El arranque**, en el orden de XP (`Motor/Arranque.cs`): los requisitos del DSEE (de `/proc`), la configuración, el volumen
+  parejo del billar, las IA (`IAS/`) y las tablas de lo aprendido (volumen, sonoridad, EQ, repasadas a fondo, duraciones).
+- **Lo aprendido se guarda** como en XP: la medida del repaso de cada canción nueva (`rocola_sonoridad.txt`) y, al acabar cada
+  canción, su volumen, la huella del EQ (`rocola_volumen.txt`, `rocola_eq.txt`), el volumen parejo y la bitácora del billar (con las
+  16 columnas de lo que hizo cada etapa: la consola hace de reloj de la canción, cada medio segundo). Mismos archivos y mismo formato
+  que XP (con finales CRLF).
+- Probado aquí (WAV, .NET y NativeAOT): la segunda vez que suena una canción ya trae su volumen y su EQ; con `local_auto=1` suena con
+  el modo billar, aprende su volumen parejo (y lo aplica la vez siguiente) y escribe la bitácora. La cadena sigue casi igual a XP.
+
+Lo siguiente: la biblioteca y la cola (leer `musica/`, el orden, los créditos); después la pantalla.
+
+**Ojo al pasar los datos del bar:** las tablas de XP van por ruta (`D:\musica\...`); en Rocola OS las rutas serán otras
+(`/rocola/musica/...`). Habrá que traducirlas una vez al copiar los datos, o se vuelven a medir.
 
 Pendientes conocidos: los MP3 de frecuencias mezcladas (en XP se reconstruyen: `BuildCleanMp3`) aún no; la comparación a ciegas y
 «Lo que suena ahora» esperan a la pantalla; leer por delante la siguiente (`MiraPorDelante`) aún no.

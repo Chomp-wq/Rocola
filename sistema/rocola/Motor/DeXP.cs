@@ -2148,5 +2148,626 @@ namespace Rocola
         private static readonly string[] VideoExt = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };
         // de Optimizaciones.cs
         [ThreadStatic] private static Func<bool> measureCancellation;
+        // de Form1.Ia.cs
+        // Al arrancar, en segundo plano (listar la carpeta y leer los modelos no para la pantalla): los modelos por genero
+        // de la carpeta IAS (Form1.Datos.cs: CarpetasIas; los de fabrica no traen ninguno). Si el mismo genero esta en dos
+        // sitios, manda el primero (IAS de la carpeta de datos). Hasta que esten, cada cancion usa el general.
+        private static void CargaModelosPorGenero()
+        {
+            Dictionary<string, bool> vistos = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (string carpeta in CarpetasIas())
+            {
+                try
+                {
+                    if (!Directory.Exists(carpeta)) continue;
+                    foreach (string f in Directory.GetFiles(carpeta, PrefijoDseeGenero + "*.bin"))
+                    {
+                        if (!string.Equals(Path.GetExtension(f), ".bin", StringComparison.OrdinalIgnoreCase)) continue;
+                        string slug = Path.GetFileNameWithoutExtension(f).Substring(PrefijoDseeGenero.Length);
+                        if (slug.Length == 0 || slug != SlugGenero(slug)) continue;   // un nombre que no saldria de una etiqueta: no se usa
+                        if (vistos.ContainsKey(slug)) continue;
+                        RedChica r = new RedChica(28, 12);
+                        r.TryLoad(f);
+                        if (!r.Loaded) continue;   // roto o de otro contrato: puede valer el de la carpeta siguiente
+                        vistos[slug] = true;
+                        lock (dseeGeneros) dseeGeneros[slug] = r;
+                    }
+                }
+                catch { }
+            }
+        }
+        // de CancionEnMemoria.cs
+        // Cada cancion en memoria es un arreglo de 1 a 32 MB: va al monton de objetos grandes, y pedir uno puede disparar una recoleccion de
+        // generacion 2 (que en .NET 3.5 para todos los hilos). Con diagnostico=1 se apunta cuantas hubo mientras se pedia el arreglo, para
+        // saber en la rocola real si eso es lo que se nota al cambiar de cancion (si no, no hace falta reusar los arreglos). Una diferencia de
+        // contadores es una COINCIDENCIA en el tiempo (otro hilo pudo provocarla), no su duracion ni su causa.
+        internal static volatile bool DiagMemoria;
+        // de AfinarLocal.cs
+        internal static void LeeAfinado(string texto)
+        {
+            if (texto == null) return;
+            string[] p = texto.Split(';');
+            float[] d = afinadoDb;
+            for (int b = 0; b < 8; b++)
+            {
+                float v;
+                d[b] = (b < p.Length && float.TryParse(p[b].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)
+                                && v >= AfinaMinDb && v <= AfinaMaxDb) ? v : float.NaN;
+            }
+        }
+        // de Form1.Biblioteca.cs
+        private void LoadDeepDone()
+        {
+            try { ReadDeepDone(DeepDoneFile(), deepDone, loudCache, durCache, eqCache); } catch { }
+        }
+        // de Form1.Biblioteca.cs
+        private void LoadDurFast()
+        {
+            try { ReadDurFast(DurFastFile(), durFast); } catch { }
+        }
+        // de Form1.Datos.cs
+        // Tabla de huellas tonales (d0;d1;...;d7|ruta). Perdida o rota no rompe nada: se re-aprende oyendo.
+        private void LoadEqCache()
+        {
+            try { if (!ReadEqCache(EqFile(), eqCache, ref eqCacheVer)) return; } catch { }
+            if (medidasDeltasActivas) { cambiosEq = PreparaEq(eqCache); diarioEq = null; }
+            EnsureEqAverage();
+        }
+        // de Sonoridad.cs
+        // Si fallo el trabajador del arranque.
+        private void LoadIntegCache()
+        {
+            Dictionary<string, SonoridadIntegrada> t = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
+            List<string> aj = new List<string>();
+            int estado;
+            try { estado = LeeIntegArchivo(IntegFile(), null, t, aj); } catch { estado = 2; t.Clear(); aj.Clear(); }
+            lock (integCerrojo) integCache = t;
+            integAjenas = aj; integEstado = estado;
+            if (medidasDeltasActivas) { cambiosIntegrada = PreparaIntegrada(t); diarioInteg = null; }
+        }
+        // de Form1.Datos.cs
+        private void LoadLoudCache()
+        {
+            LoadFuentesMedidas();
+            InvalidateVideoMeasurements();
+            try { ReadLoudCache(LoudFile(), loudCache, durCache); } catch { }
+            if (medidasDeltasActivas) { cambiosVolumen = PreparaVolumen(loudCache, durCache); diarioVolumen = null; }
+        }
+        // de Form1.cs
+        private const float NormTargetMin = 0.06f, NormTargetMax = 0.40f;                     // rango del volumen objetivo que ofrece la interfaz (de flojo a muy fuerte)
+        // de Form1.Datos.cs
+        // Al arrancar, una vez, antes de cargarlos: los modelos sueltos en la carpeta de datos se pasan a IAS\. Es un
+        // reemplazo en el mismo disco desde una copia temporal validada. Si IAS\ ya
+        // tenia uno con ese nombre, el suelto es el que alguien acaba de dejar (como se hacia antes): manda el suelto y
+        // el de IAS\ se guarda al lado como .anterior-N. Nunca se borra un modelo. Las copias .anterior-N que dejaba el
+        // instalador de los de genero tambien se pasan. El reemplazo y su respaldo son atomicos: si no se puede
+        // (solo lectura, archivo en uso, sistema de archivos sin reemplazo), queda activa la version anterior.
+        // Si no se completa, el suelto se conserva y se puede reintentar al arrancar. Devuelve cuantos se pasaron.
+        internal static int OrdenaIas()
+        {
+            int pasados = 0;
+            try
+            {
+                string datos = CarpetaDatos, ias = CarpetaIas;
+                if (!Directory.Exists(datos)) return 0;
+                List<string> sueltos = new List<string>();
+                foreach (string n in ModelosIa)
+                {
+                    string p = Path.Combine(datos, n);
+                    if (File.Exists(p)) sueltos.Add(p);
+                }
+                // "*.bin" en Windows tambien encuentra ".bin<algo>": se mira la extension de verdad.
+                foreach (string p in Directory.GetFiles(datos, PrefijoDseeGenero + "*.bin"))
+                    if (string.Equals(Path.GetExtension(p), ".bin", StringComparison.OrdinalIgnoreCase)) sueltos.Add(p);
+                List<string> anteriores = new List<string>(Directory.GetFiles(datos, PrefijoDseeGenero + "*.bin.anterior-*"));
+                if (sueltos.Count == 0 && anteriores.Count == 0) return 0;
+                if (!Directory.Exists(ias)) Directory.CreateDirectory(ias);
+                foreach (string p in sueltos)
+                {
+                    string destino = Path.Combine(ias, Path.GetFileName(p)), respaldo = null, temporal = null;
+                    try
+                    {
+                        // No admitir escrituras al suelto mientras se toma la copia. ReplaceFile necesita abrir SU
+                        // fuente para escritura: usar el suelto bloqueado para lectura impediria reemplazarlo en
+                        // Windows. La copia tiene nombre exclusivo, no esta abierta al promoverla y se valida entera.
+                        using (FileStream guarda = new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+                        {
+                            if (guarda.Length < 12 || guarda.Length > 9 * 1024 * 1024) continue;
+                            temporal = Path.Combine(ias, ".modelo-validado-" + Guid.NewGuid().ToString("N") + ".tmp");
+                            File.Copy(p, temporal, false);
+                            bool eq = string.Equals(Path.GetFileName(p), "rocola_eq_ia.bin", StringComparison.OrdinalIgnoreCase);
+                            RedChica candidata = new RedChica(eq ? EqNetIn : 28, eq ? EqNetOut : 12);
+                            candidata.TryLoad(temporal);
+                            if (!candidata.Loaded) continue;   // roto, bloqueado o de otro contrato: no desplazar al utilizable
+                            if (File.Exists(destino))
+                            {
+                                respaldo = LibreAnterior(destino);
+                                File.Replace(temporal, destino, respaldo);
+                            }
+                            else File.Move(temporal, destino);
+                            temporal = null;
+                            // Solo retirar el duplicado cuando su copia validada ya esta activa. Los bytes anteriores
+                            // siguen en el respaldo. Un fallo aqui solo deja el suelto duplicado, nunca pierde el modelo.
+                            try { File.Delete(p); } catch { }
+                        }
+                        pasados++;
+                    }
+                    catch
+                    {
+                        // Defensa adicional si el sistema de archivos fallo despues de crear el respaldo. No borrar
+                        // ese respaldo ni pisar un destino que si exista. Un bloqueo ordinario no llega a mover nada.
+                        if (respaldo != null && !File.Exists(destino) && File.Exists(respaldo))
+                            try { File.Copy(respaldo, destino, false); } catch { }
+                    }
+                    finally { if (temporal != null) try { File.Delete(temporal); } catch { } }
+                }
+                foreach (string p in anteriores)
+                {
+                    try
+                    {
+                        string destino = Path.Combine(ias, Path.GetFileName(p));
+                        if (File.Exists(destino)) continue;   // ya hay uno con ese nombre: no se pisa
+                        File.Move(p, destino);
+                        pasados++;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return pasados;
+        }
+        // de AfinarLocal.cs
+        internal static int PonderacionDe(string texto)
+        {
+            string t = (texto ?? "").Trim().ToUpperInvariant();
+            return t == "A" ? 0 : t == "Z" ? 2 : 1;
+        }
+        // de Form1.Datos.cs
+        // Un archivo que la rocola LEE pero no escribe -un modelo de IA-: el primero que aparezca en CarpetasIas. Si no
+        // hay ninguno, la ruta de IAS\ (no se carga nada y todo sigue sin esa IA, como siempre).
+        private static string RutaLectura(string nombre)
+        {
+            string[] cs = CarpetasIas();
+            foreach (string c in cs)
+            {
+                string a = Path.Combine(c, nombre);
+                try { if (File.Exists(a)) return a; } catch { }
+            }
+            return Path.Combine(cs[0], nombre);
+        }
+        // de Form1.Sonido.cs
+        private bool sbrForce = false;       // dsee_forzar=1 en config: salta la puerta (para pruebas)
+        // de AfinarLocal.cs
+        internal const int AfinaSinMedir = 39, AfinaMinDb = 40, AfinaMaxDb = 120;   // el deslizador: 39 = sin medir
+        // de Form1.Datos.cs
+        internal static string CarpetaIas { get { return Path.Combine(CarpetaDatos, NombreCarpetaIas); } }
+        // de Form1.Datos.cs
+        // Donde se buscan, por orden: IAS\ de la carpeta de datos, la carpeta de datos (donde iban antes: si no se pudo
+        // ordenar, se siguen leyendo alli), y lo mismo junto al programa, para los de fabrica: dentro del .sfs, que es de
+        // solo lectura, no se pueden mover. Sin repetir carpeta (sin ROCOLA_DATOS, datos y programa son la misma).
+        private static string[] CarpetasIas()
+        {
+            string prog = AppContext.BaseDirectory.TrimEnd('/');   // Rocola OS: la carpeta del programa (en XP, Application.StartupPath)
+            string[] todas = { CarpetaIas, CarpetaDatos, Path.Combine(prog, NombreCarpetaIas), prog };
+            List<string> r = new List<string>(4);
+            foreach (string c in todas)
+            {
+                bool ya = false;
+                foreach (string x in r)
+                    if (string.Equals(x.TrimEnd('\\', '/'), c.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)) ya = true;
+                if (!ya) r.Add(c);
+            }
+            return r.ToArray();
+        }
+        // de Form1.Datos.cs
+        // ---- Canciones ya repasadas A FONDO (mismo formato que las de la IA: una ruta por linea) ----
+        private string DeepDoneFile() { return RutaDatos("rocola_afondo.txt"); }
+        // de Form1.Datos.cs
+        // ---- Duraciones rapidas: "segundos|ruta" por linea, escritas POR ANADIDO ----
+        private string DurFastFile() { return RutaDatos("rocola_duracion.txt"); }
+        // de Sonoridad.cs
+        // Lee la tabla de un archivo (o de su copia .bak si el bueno falta). Devuelve el estado: 1 si se puede
+        // guardar encima (leida, o no habia nada), 2 si no se debe tocar (cabecera ajena o archivo ilegible).
+        // Una cancelacion del arranque sale como OperationCanceledException.
+        internal static int LeeIntegArchivo(string ruta, Func<TextReader, TextReader> envuelve,
+                                             Dictionary<string, SonoridadIntegrada> tabla, List<string> ajenas)
+        {
+            string f = File.Exists(ruta) ? ruta : (File.Exists(ruta + ".bak") ? ruta + ".bak" : null);
+            if (f == null) return 1;
+            try
+            {
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan))
+                using (TextReader r = envuelve != null ? envuelve(LeeLineasSanas(fs)) : LeeLineasSanas(fs))   // solo lineas enteras
+                    return LeeIntegRegistros(r, tabla, ajenas) ? 1 : 2;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { tabla.Clear(); ajenas.Clear(); return 2; }
+        }
+        // de Form1.Datos.cs
+        private static string LibreAnterior(string ruta)
+        {
+            for (int k = 1; ; k++)
+            {
+                string a = ruta + ".anterior-" + k.ToString(CultureInfo.InvariantCulture);
+                if (!File.Exists(a)) return a;
+            }
+        }
+        // de Form1.Datos.cs
+        internal static readonly string[] ModelosIa = { "rocola_ia.bin", "rocola_eq_ia.bin" };
+        // de Form1.Ia.cs
+        internal const string PrefijoDseeGenero = "rocola_ia_genero_";
+        // de Form1.Biblioteca.cs
+        private static void ReadDeepDone(string f, HashSet<string> deepDone, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
+            try
+            {
+                if (!File.Exists(f)) return;
+                using (StreamReader reader = new StreamReader(f))
+                    ReadDeepDoneRecords(reader, deepDone, loudCache, durCache, eqCache);
+            }
+            catch { }
+        }
+        // de Form1.Biblioteca.cs
+        private static void ReadDurFast(string f, Dictionary<string, float> durFast)
+        {
+            try
+            {
+                if (!File.Exists(f)) return;
+                using (StreamReader reader = new StreamReader(f))
+                    ReadDurFastRecords(reader, durFast);
+            }
+            catch { }
+        }
+        // de Form1.Datos.cs
+        private static bool ReadEqCache(string f, Dictionary<string, float[]> eqCache, ref int eqCacheVer)
+        {
+            try
+            {
+                if (!File.Exists(f)) return false;
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (TextReader reader = LeeLineasSanas(fs))   // solo lineas enteras (DiarioTablas.cs)
+                    ReadEqCacheRecords(reader, eqCache, ref eqCacheVer);
+            }
+            catch { }
+            return true;
+        }
+        // de Form1.Datos.cs
+        private static void ReadLoudCache(string f, Dictionary<string, float> loudCache, Dictionary<string, float> durCache)
+        {
+            try
+            {
+                if (!File.Exists(f)) return;
+                using (FileStream fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (TextReader reader = LeeLineasSanas(fs))   // solo lineas enteras (DiarioTablas.cs)
+                    ReadLoudCacheRecords(reader, loudCache, durCache);
+            }
+            catch { }
+        }
+        // de Form1.Datos.cs
+        // LAS IAS, EN SU CARPETA (14-10-2026; peticion: «como son muchas IAs, haz que el programa lea las IAs dentro de
+        // una carpeta llamada IAS, para asi tener mas orden»). Los modelos entrenados -rocola_ia.bin (DSEE),
+        // rocola_eq_ia.bin (EQ automatico) y rocola_ia_genero_*.bin (DSEE por genero)- viven en IAS\ dentro de la
+        // carpeta de datos. El material para entrenar (rocola_ia_datos.*) no es un modelo: sigue donde estaba.
+        internal const string NombreCarpetaIas = "IAS";
+        // de Form1.Biblioteca.cs
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadDeepDoneRecords(TextReader reader, HashSet<string> deepDone, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
+            HashSet<string> pending = new HashSet<string>(deepDone.Comparer);
+            FillDeepDoneRecords(reader, pending, loudCache, durCache, eqCache);
+            foreach (string item in pending) deepDone.Add(item);
+        }
+        // de Form1.Biblioteca.cs
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadDurFastRecords(TextReader reader, Dictionary<string, float> durFast)
+        {
+            Dictionary<string, float> pending = new Dictionary<string, float>(durFast.Comparer);
+            FillDurFastRecords(reader, pending);
+            foreach (KeyValuePair<string, float> item in pending) durFast[item.Key] = item.Value;
+        }
+        // de Form1.Datos.cs
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadEqCacheRecords(TextReader reader, Dictionary<string, float[]> eqCache, ref int eqCacheVer)
+        {
+            Dictionary<string, float[]> pending = new Dictionary<string, float[]>(eqCache.Comparer);
+            int updates = FillEqCacheRecords(reader, pending);
+            foreach (KeyValuePair<string, float[]> item in pending) eqCache[item.Key] = item.Value;
+            eqCacheVer += updates;
+        }
+        // de Form1.Sonido.cs
+        // Preparar por registros sin conservar todas las lineas. Un fallo de lectura
+        // antes de EOF descarta pending: ninguna tabla de destino recibe una carga parcial.
+        private static void ReadLoudCacheRecords(TextReader reader, Dictionary<string, float> loudCache, Dictionary<string, float> durCache)
+        {
+            Dictionary<string, float> pending = new Dictionary<string, float>(loudCache.Comparer);
+            Dictionary<string, float> durations = new Dictionary<string, float>(durCache.Comparer);
+            FillLoudCacheRecords(reader, pending, durations);
+            foreach (KeyValuePair<string, float> item in pending) loudCache[item.Key] = item.Value;
+            foreach (KeyValuePair<string, float> item in durations) durCache[item.Key] = item.Value;
+        }
+        // de Form1.Biblioteca.cs
+        private static void FillDeepDoneRecords(TextReader reader, HashSet<string> pending, Dictionary<string, float> loudCache, Dictionary<string, float> durCache, Dictionary<string, float[]> eqCache)
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                string r = line.Trim(); if (r.Length == 0) continue;
+                r = Pool(r);
+                // Una marca que sobrevivio pero cuyas tablas no llegaron al disco no es trabajo hecho.
+                // Los videos no tienen huella EQ; para canciones se exigen las tres medidas.
+                bool medida = loudCache.ContainsKey(r) && durCache.ContainsKey(r)
+                           && (EsVideo(r) || eqCache.ContainsKey(r));
+                if (medida) pending.Add(r);
+            }
+        }
+        // de Form1.Biblioteca.cs
+        private static void FillDurFastRecords(TextReader reader, Dictionary<string, float> pending)
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float d;
+                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) || !(d > 0.01f) || !Finito(d)) continue;
+                pending[Pool(line.Substring(bar + 1))] = d;
+            }
+        }
+        // de Form1.Datos.cs
+        // Solo para una tabla privada que todavia no se ha publicado.
+        private static int FillEqCacheRecords(TextReader reader, Dictionary<string, float[]> pending)
+        {
+            int updates = 0;
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float[] c = ReadEqValues(line, bar);
+                if (c != null) { pending[Pool(line.Substring(bar + 1))] = c; updates++; }
+            }
+            return updates;
+        }
+        // de Form1.Sonido.cs
+        private static void FillLoudCacheRecords(TextReader reader, Dictionary<string, float> pending, Dictionary<string, float> durations)
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int bar = line.IndexOf('|');
+                if (bar <= 0 || bar >= line.Length - 1) continue;
+                float rms;
+                if (!float.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out rms)
+                    || !(rms > 0f) || !Finito(rms)) continue;   // el silencio apuntado (LoudMudo) TIENE que sobrevivir al reinicio; NaN o infinito, no
+                // Formato NUEVO "rms|duracion|ruta" y el VIEJO "rms|ruta" (una ruta de Windows no puede llevar
+                // '|', asi que distinguirlos es seguro): lo viejo se sigue leyendo tal cual, sin duracion.
+                string rest = line.Substring(bar + 1);
+                int bar2 = rest.IndexOf('|');
+                float dur = 0f;
+                if (bar2 > 0 && bar2 < rest.Length - 1
+                    && float.TryParse(rest.Substring(0, bar2), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dur))
+                    rest = rest.Substring(bar2 + 1);
+                else dur = 0f;
+                rest = Pool(rest);
+                pending[rest] = rms;
+                if (dur > 0.01f && Finito(dur)) durations[rest] = dur;
+            }
+        }
+        // de Form1.Datos.cs
+        private static float[] ReadEqValues(string line, int bar)
+        {
+            int parts = 1;
+            for (int i = 0; i < bar; i++) if (line[i] == ';') parts++;
+            if (parts < 8 || parts > EqLen) return null;   // misma admision de formatos antiguos
+            float[] values = new float[EqLen];   // los campos ausentes conservan +0
+            int start = 0;
+            for (int b = 0; b < parts; b++)
+            {
+                int end = line.IndexOf(';', start, bar - start);
+                if (end < 0) end = bar;
+                if (!float.TryParse(line.Substring(start, end - start), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out values[b]) || !Finito(values[b])) return null;   // NaN o infinito: fila rota
+                start = end + 1;
+            }
+            return values;   // sin copiar toda la cabecera ni crear un array de subcadenas
+        }
+        // de Form1.Datos.cs
+        // Cierra la medicion de huella tonal de la cancion que acaba de sonar (audio ya detenido).
+        private void FinalizeEqMeasure()
+        {
+            string path = eqMeasPath; eqMeasPath = null;
+            double[] sums = eqMeasSum; long n = eqMeasN; int tasa = eqMeasRate;
+            eqMeasSum = new double[8]; eqMeasN = 0;
+            CierraHuellaDeFuente(path, sums, n, tasa, eqMeasCut, eqMeasCutLo, curFuenteMedida);
+        }
+        // de Form1.Sonido.cs
+        // Cierra la medida de la cancion que acaba de sonar: calcula su RMS integrado y lo guarda (si se oyo lo
+        // suficiente). La llama DisposePlaybackNow, ya con el audio detenido (sin carrera con el hilo de sonido).
+        private void FinalizeLoudMeasure()
+        {
+            string path = curMeasurePath; curMeasurePath = null;
+            double sumSq = curSumSq; long samples = curSamples; curSumSq = 0; curSamples = 0;
+            CierraSonoridadDeFuente(path, sumSq, samples, kwRate, kwCanales, curFuenteMedida);
+        }
+        // de BombaSonido.cs
+        private void InvalidaPublicacionAudio() { lock (audioDatosLock) { unchecked { publicacionAudio++; } } }
+        // de Form1.Biblioteca.cs
+        // Igual que la lista de la IA: se ANADE al final, no se reescribe entera cada 10 canciones.
+        private void SaveDeepDone()
+        {
+            List<string> nuevas;
+            lock (deepDoneLock)
+            {
+                if (deepPend.Count == 0 || deepDoneSaving) return;
+                nuevas = new List<string>(deepPend); deepDoneSaving = true;
+            }
+            QueueDataWrite(delegate (object ignored)
+            {
+                bool ok = false;
+                try
+                {
+                    StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
+                    for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
+                    AnexaSeguro(DeepDoneFile(), sb.ToString());
+                    ok = true;
+                }
+                catch { }
+                finally
+                {
+                    lock (deepDoneLock)
+                    {
+                        if (ok) RetiraPrefijoGuardado(deepPend, nuevas);
+                        deepDoneSaving = false; deepDoneDirty = deepPend.Count > 0;
+                    }
+                }
+            });
+        }
+        // de Form1.Biblioteca.cs
+        private void SaveDurFast()
+        {
+            List<string> nuevas;
+            lock (durFastLock)
+            {
+                if (durFastPend.Count == 0 || durFastSaving) return;
+                nuevas = new List<string>(durFastPend); durFastSaving = true;
+            }
+            QueueDataWrite(delegate (object ignored)
+            {
+                bool ok = false;
+                try
+                {
+                    StringBuilder sb = new StringBuilder(nuevas.Count * 64 + 16);
+                    for (int i = 0; i < nuevas.Count; i++) sb.Append(nuevas[i]).Append("\r\n");
+                    AnexaSeguro(DurFastFile(), sb.ToString());
+                    ok = true;
+                }
+                catch { }
+                finally
+                {
+                    lock (durFastLock)
+                    {
+                        if (ok) RetiraPrefijoGuardado(durFastPend, nuevas);
+                        durFastSaving = false;
+                    }
+                }
+            });
+        }
+        // de Form1.Sonido.cs
+        private float eqMeasCut = 0f, eqMeasCutLo = 0f;   // cortes (arriba y abajo) de la cancion que suena (0 = aun no se sabe)
+        // de Form1.Datos.cs
+        private static void AnexaSeguro(string ruta, string texto)
+        {
+            if (string.IsNullOrEmpty(texto)) return;
+            byte[] datos = new UTF8Encoding(false).GetBytes(texto);
+            lock (CandadoDe(ruta))
+            {
+                long valido = 0; bool reparar = false;
+                try
+                {
+                    using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        valido = fs.Length;
+                        if (valido > 0)
+                        {
+                            long pos = valido - 1; fs.Position = pos;
+                            if (fs.ReadByte() != (byte)'\n')
+                            {
+                                reparar = true;
+                                valido = UltimoLfAnexo(fs);
+                            }
+                        }
+                    }
+                }
+                catch (FileNotFoundException) { }
+                if (reparar)
+                {
+                    // Nunca truncar el original: una captura de respaldo puede seguir leyendo esa generacion.
+                    // Solo el final corrupto exige este volcado; los anexos sanos siguen siendo O(tanda).
+                    string tmp = ruta + ".tmp";
+                    using (FileStream input = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (FileStream output = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        byte[] buffer = new byte[65536]; long faltan = valido;
+                        while (faltan > 0)
+                        {
+                            int n = input.Read(buffer, 0, (int)Math.Min(buffer.Length, faltan));
+                            if (n == 0) throw new IOException("El anexo original se trunco durante su reparacion");
+                            output.Write(buffer, 0, n); faltan -= n;
+                        }
+                        output.Write(datos, 0, datos.Length); output.Flush();
+                        try { FlushFileBuffers(output.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    }
+                    PublicaGuardadoSeguro(ruta, tmp, ruta + ".bak");
+                    return;
+                }
+                using (ProteccionRespaldo cambio = ProtegeRespaldo(ruta))
+                using (FileStream fs = new FileStream(ruta, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read))
+                {
+                    fs.Position = fs.Length;
+                    fs.Write(datos, 0, datos.Length);
+                    fs.Flush();
+                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                }
+            }
+        }
+        // de Form1.Biblioteca.cs
+        // Se ANADE al final en vez de reescribir el archivo entero. Con cien mil canciones, reescribirlo cada
+        // 10 canciones durante el repaso a fondo eran megas y megas al disco cada minuto, para nada.
+        // Bajo el cerrojo de la cola: mientras escribe una captura solo se ANADEN nuevas lineas.
+        // Retirar una a una con Remove desplaza toda la cola por cada linea (cuadratico).
+        // Confirmar el prefijo y mover el resto una sola vez conserva lo llegado durante el guardado.
+        private static void RetiraPrefijoGuardado(List<string> pendientes, List<string> guardadas)
+        {
+            int n = guardadas.Count;
+            bool prefijo = n <= pendientes.Count;
+            for (int i = 0; prefijo && i < n; i++)
+                prefijo = string.Equals(pendientes[i], guardadas[i], StringComparison.Ordinal);
+            if (prefijo) { pendientes.RemoveRange(0, n); return; }
+            // Respaldo ante una cola sustituida por otro flujo: la semantica anterior, sin
+            // descartar registros diferentes ni asumir que un prefijo parcialmente coincidente se guardo.
+            for (int i = 0; i < n && pendientes.Count > 0; i++) pendientes.Remove(guardadas[i]);
+        }
+        // de Form1.Datos.cs
+        private volatile bool deepDoneDirty = false;   // hay canciones repasadas sin apuntar en disco
+        // de Form1.Datos.cs
+        private bool deepDoneSaving;
+        // de Form1.Datos.cs
+        private readonly List<string> deepPend = new List<string>();   // rutas apuntadas y aun sin escribir
+        // de Form1.Datos.cs
+        private readonly object durFastLock = new object();
+        // de Form1.Datos.cs
+        private readonly List<string> durFastPend = new List<string>();   // lineas apuntadas y aun sin escribir
+        // de Form1.Datos.cs
+        private bool durFastSaving;
+        // de Form1.Datos.cs
+        // Anade lineas sin dejarlas solamente en la cache de Windows. Se usa para los indices crecientes
+        // (IA, repaso a fondo y duraciones), que no conviene reescribir enteros por cada cancion.
+        private static long UltimoLfAnexo(Stream origen)
+        {
+            // Solo para un final incompleto. Buscar por bloques evita un seek/ReadByte por caracter
+            // si un apagon dejo una cola larga. No interpreta texto ni cambia el ultimo LF elegido.
+            byte[] bloque = new byte[65536];
+            long hasta = origen.Length;
+            while (hasta > 0)
+            {
+                int cuantos = (int)Math.Min(bloque.Length, hasta);
+                long desde = hasta - cuantos;
+                origen.Position = desde;
+                int leidos = 0;
+                while (leidos < cuantos)
+                {
+                    int n = origen.Read(bloque, leidos, cuantos - leidos);
+                    if (n == 0) throw new IOException("El anexo original se trunco al comprobar su cola");
+                    leidos += n;
+                }
+                for (int i = cuantos - 1; i >= 0; i--)
+                    if (bloque[i] == (byte)'\n') return desde + i + 1;
+                hasta = desde;
+            }
+            return 0;
+        }
     }
 }

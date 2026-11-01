@@ -10,9 +10,10 @@ Código en .NET 10 de la rocola para Linux. Plan completo en [../ETAPA2.md](../E
   (`RellenoMp3.cs`), los silencios largos, las tablas y medidas (`DeXP.cs`: lo que en XP vive en la ventana, sacado tal cual, cada
   trozo dice de qué archivo). Lo que en XP hace la ventana o Windows va en `Ventana.cs` en su forma de Linux (la carpeta de los datos,
   `fsync`, la pantalla que aún no hay); la apertura de canciones, en `Apertura.cs` (el lector de Rocola OS en lugar del de Windows).
-  Lo público, en `Reproductor.cs`: `new Form1()` es un motor con los ajustes de fábrica de XP; `MideSiFalta` y `Arma`.
-- **`Consola/`** — la rocola sin pantalla (`rocola-consola`): mide cada canción (como el repaso de XP), le arma la **cadena entera**
-  de XP con los ajustes de fábrica y la toca por ALSA (`SalidaAlsa.cs`, hilo propio, 16 bits con dither) o la escribe en un WAV
+  Lo público, en `Reproductor.cs`: `new Form1()` es un motor con los ajustes de fábrica de XP; `Arranca` (la configuración y las
+  tablas: `Arranque.cs`, `Configuracion.cs`), `MideSiFalta`, `Arma` (y `Dispose` de la canción: guarda lo aprendido), `Cierra`.
+- **`Consola/`** — la rocola sin pantalla (`rocola-consola`): lee `rocola_config.txt` y lo aprendido, mide cada canción nueva (como
+  el repaso de XP), le arma la **cadena entera** de XP con esos ajustes, guarda lo que aprende al oírla y la toca por ALSA (`SalidaAlsa.cs`, hilo propio, 16 bits con dither) o la escribe en un WAV
   (`--wav`). Los MP3 van todos por NLayer 3 (`Lector.cs`), sin el hueco del codificador; los mono salen como estéreo. Los datos
   (`rocola_error.txt`...) van a `ROCOLA_DATOS`, si no a `/rocola/datos`. Programa nativo (NativeAOT, 2,6 MB, solo necesita libc y
   libasound). Va en Rocola OS como paquete de Buildroot (`sistema/package/rocola-consola`).
