@@ -240,7 +240,10 @@ namespace Rocola
             switch (b)
             {
                 case Boton.Moneda: motor.Moneda(); return;
-                case Boton.Saltar: if (salida != null || video != null) saltar = true; return;
+                case Boton.Saltar:   // como SkipSong de XP: salta la que suena; con todo parado y sin cola, borra los creditos que quedaron
+                    if (salida != null || video != null) saltar = true;
+                    else if (motor.BorraCreditos()) Aviso("Creditos borrados");
+                    return;
             }
             if (video != null) return;   // durante un video los demas botones no hacen nada (la pantalla es del video)
             if (AjusteSel >= 0) { ManejaAjustes(b); return; }

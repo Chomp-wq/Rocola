@@ -89,6 +89,14 @@ namespace Rocola
             try { SaveLoudCache(); FlushEqIfDirty(); } catch { }
         }
 
+        // SALTAR con todo parado y la cola vacia (SkipSong de XP): borra los creditos que quedaron. Devuelve si habia.
+        public bool BorraCreditos()
+        {
+            if (nowPlaying != null || queue.Count > 0 || credits <= 0) return false;
+            credits = 0; UpdateCredits(); SaveState();
+            return true;
+        }
+
         // LOS CREDITOS DE SERVICIO (CreditosServicio.cs de XP): el codigo del dueno escrito en el buscador y mantenido 5 s da 4 creditos; no
         // cuentan como monedas ni ingresos en las estadisticas.
         public static bool EsCodigoDeServicio(string escrito) { return SecretCreditGate.Matches(escrito); }
