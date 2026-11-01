@@ -328,7 +328,7 @@ namespace Rocola
                 if (m.PaginaDesliza && pagVista >= 0 && pagLetraVista == c.letra && pagVista < paginas)
                 {
                     pagAnt = pagVista; pagDesde = ahora;
-                    pagDir = (pagVista == paginas - 1 && pag == 0) ? 1f : (pagVista == 0 && pag == paginas - 1) ? -1f : pag > pagVista ? 1f : -1f;
+                    pagDir = c.SentidoPagina >= 0 ? 1f : -1f;   // el de la flecha que se apreto (con dos paginas, ir y volver es la misma)
                 }
                 else pagAnt = -1;
                 pagVista = pag; pagLetraVista = c.letra;

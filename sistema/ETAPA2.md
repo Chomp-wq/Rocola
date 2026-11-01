@@ -381,4 +381,5 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **Pasar de página deslizando** (`pagina_desliza=`): la vieja sale por un lado mientras la nueva entra por el otro, columna a columna
   (0,38 s cada una, 45 ms entre columnas). Dentro de la misma letra.
 - Los tres con su interruptor en la hoja de ajustes (grupo «Pantalla»), encendidos de fábrica, con las claves de XP. Probado en
-  captura la ficha y la lupa; el deslizamiento, sin captura (la biblioteca de prueba no llega a dos páginas).
+  captura la ficha, la lupa y el deslizamiento a mitad (con una biblioteca de 12 discos; `--cuadros N` elige cuántos cuadros de
+  50 ms se dibujan antes de la captura). El sentido es el de la flecha apretada (con dos páginas, ir y volver llevan a la misma).

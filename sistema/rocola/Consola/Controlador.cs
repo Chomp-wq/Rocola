@@ -277,6 +277,7 @@ namespace Rocola
             if (letras.Count > 0 && cursorDisco >= porLetra[letras[letra]].Count) cursorDisco = 0;
         }
 
+        internal int SentidoPagina = 1;   // la ultima flecha de pagina: +1 ARRIBA (la siguiente), -1 ABAJO (la anterior); para deslizar
         internal int DiscosEn(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]].Count : 0; }
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
@@ -313,8 +314,8 @@ namespace Rocola
                 else if (b == Boton.Derecha && RegresarApretado) { letra = (letra + 1) % letras.Count; cursorDisco = 0; }
                 else if (b == Boton.Izquierda) cursorDisco = (cursorDisco + l.Count - 1) % l.Count;
                 else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
-                else if (b == Boton.Arriba && !RegresarApretado) { int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
-                else if (b == Boton.Abajo && !RegresarApretado) { int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
+                else if (b == Boton.Arriba && !RegresarApretado) { SentidoPagina = 1; int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
+                else if (b == Boton.Abajo && !RegresarApretado) { SentidoPagina = -1; int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; }
             }
             else

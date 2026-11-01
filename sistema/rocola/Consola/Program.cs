@@ -32,6 +32,7 @@ namespace Rocola
                 else if (args[i] == "--guion" && i + 1 < args.Length) guion = args[++i];
                 else if (args[i] == "--captura" && i + 1 < args.Length) captura = args[++i];
                 else if (args[i] == "--tam" && i + 1 < args.Length) tam = args[++i];
+                else if (args[i] == "--cuadros" && i + 1 < args.Length) botones.Add("cuadros=" + args[++i]);   // cuantos cuadros de 50 ms antes de la captura (26)
                 else if (args[i] == "--boton" && i + 1 < args.Length) botones.Add(args[++i]);
                 else if (args[i] == "--tecla" && i + 1 < args.Length) botones.Add("#" + args[++i]);
                 else lista.Add(Path.GetFullPath(args[i]));
@@ -111,6 +112,11 @@ namespace Rocola
         }
 
         // UN CUADRO DE LA PANTALLA SIN PANTALLA: la rocola con su biblioteca, los botones dados (moneda, derecha, poner...) y la imagen.
+        private static int Cuadros(List<string> botones)
+        {
+            foreach (string b in botones) if (b.StartsWith("cuadros=")) return int.Parse(b.Substring(8));
+            return 26;
+        }
         private static int Captura(string ruta, string tam, List<string> botones)
         {
             string[] t = tam.Split('x');
@@ -121,7 +127,8 @@ namespace Rocola
             Controlador c = new Controlador(m, "null");
             c.Prepara();
             foreach (string b in botones)
-                if (b == "atraccion") c.FuerzaAtraccion();
+                if (b.StartsWith("cuadros=")) continue;
+                else if (b == "atraccion") c.FuerzaAtraccion();
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
                 else if (b == "reposo")
                 {
@@ -135,7 +142,7 @@ namespace Rocola
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
             // que termine de aparecer lo que se anima (la atraccion, el reposo, la estrella que vuela): unos cuadros durante 1,3 s
-                for (int i = 0; i < 26; i++) { v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // que termine de aparecer
+                for (int i = 0; i < Cuadros(botones); i++) { v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // que termine de aparecer
             v.Dibuja(c);
             fp.Captura(ruta);
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
