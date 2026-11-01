@@ -62,6 +62,7 @@ namespace Rocola
                 l.Add(d);
             }
             motor.Reanuda();   // los creditos y la cola de antes del apagon (mismo dia del negocio)
+            RefrescaTop();
         }
         // Un boton, como si se hubiera pulsado (las pruebas).
         internal void Pulsa(Boton b) { Maneja(b); }
@@ -146,6 +147,19 @@ namespace Rocola
             }
         }
 
+        // LO MAS SONADO: la "letra" TOP (la estrella de XP), la primera, con un disco por genero; aparece cuando hay estadisticas.
+        internal static string NombreLetra(char l) { return l == Form1.LetraTop ? "TOP" : l.ToString(); }
+        private void RefrescaTop()
+        {
+            List<Form1.Disco> top = motor.LoMasSonado();
+            char actual = letras.Count > 0 ? letras[letra] : '\0';
+            letras.Remove(Form1.LetraTop); porLetra.Remove(Form1.LetraTop);
+            if (top.Count > 0) { letras.Insert(0, Form1.LetraTop); porLetra[Form1.LetraTop] = top; }
+            int i = letras.IndexOf(actual);
+            if (i >= 0) letra = i; else { letra = Math.Min(letra, Math.Max(0, letras.Count - 1)); }
+            if (letras.Count > 0 && cursorDisco >= porLetra[letras[letra]].Count) cursorDisco = 0;
+        }
+
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
         private void Maneja(Boton b)
@@ -178,7 +192,11 @@ namespace Rocola
                     string ruta = dentro.Rutas[cursorCancion];
                     motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
                     Form1.Pedido p = motor.Pide(ruta);
-                    if (p == Form1.Pedido.Puesta) Aviso("Pusiste «" + dentro.Titulos[cursorCancion] + "» (" + motor.EnCola + " en la cola)");
+                    if (p == Form1.Pedido.Puesta)
+                    {
+                        Aviso("Pusiste «" + dentro.Titulos[cursorCancion] + "» (" + motor.EnCola + " en la cola)");
+                        if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
+                    }
                     else if (p == Form1.Pedido.Repetida) Aviso("Esa ya va en la cola");
                     else if (p == Form1.Pedido.Danada) Aviso("Esa cancion esta danada: no se cobra");
                 }

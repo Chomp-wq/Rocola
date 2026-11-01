@@ -43,6 +43,7 @@ namespace Rocola
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return Pedido.Repetida;
             queue.Add(it);
+            try { it.Song.EnsureTags(); } catch { }   // el genero (la etiqueta ID3), para lo mas sonado por genero (como XP al empezarla)
             RecordPlay(it);   // estadisticas: cuenta lo pedido
             credits--;        // cada cosa cuesta 1 credito
             UpdateCredits();

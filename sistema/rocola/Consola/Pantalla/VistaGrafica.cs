@@ -101,7 +101,7 @@ namespace Rocola
             float x = 24 * k, y = 76 * k;
             for (int i = 0; i < c.letras.Count; i++)
             {
-                string l = c.letras[i].ToString(); float w = Math.Max(36 * k, media.Mide(l) + 18 * k);
+                string l = Controlador.NombreLetra(c.letras[i]); float w = Math.Max(36 * k, media.Mide(l) + 18 * k);
                 if (x + w > W - 24 * k) break;
                 if (i == c.letra) d.Redondo(x, y, w, 40 * k, 8 * k, Dorado);
                 media.EscribeCentrado(d, l, x + w / 2, y + 6 * k, i == c.letra ? Fondo : Gris);

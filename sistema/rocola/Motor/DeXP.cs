@@ -4232,5 +4232,229 @@ namespace Rocola
             }
             return hecho;
         }
+        // de Form1.Datos.cs
+        // Construye el disco virtual "Lo mas sonado" con las canciones MAS PEDIDAS (de las estadisticas),
+        // ordenadas de mas a menos. Se arma al entrar a la seccion, asi siempre refleja lo actual.
+        // Construye los discos virtuales "TOP - <genero>" con las canciones mas pedidas de cada genero.
+        private void BuildTopDiscs()
+        {
+            if (!topDirty && topDiscs != null) return;   // OPTIMIZACION (TOP): nada cambio -> reusar lo ya armado
+            if (libBuilding) return;                     // el worker esta mutando albums/videoAlbums: iterarlos seria una carrera (crash). topDirty queda puesto -> se reconstruye al terminar
+            topDirty = false;                            // limpio AQUI: cubre todas las salidas (incluidas las tempranas)
+            topDiscs = new List<Album>();
+            if (songCounts.Count == 0) return;
+
+            // 1) recolectar todas las canciones pedidas que EXISTEN en la biblioteca, con su disco de origen
+            List<TopEntry> all = new List<TopEntry>();
+            Dictionary<string, List<OrigenTop>> indice = object.ReferenceEquals(albumsDelIndiceTop, albums) ? origenesTop : null;
+            if (indice == null) indice = IndiceTop(albums);   // respaldo para bibliotecas armadas sin el escaner
+            List<OrigenTop> elegidos = new List<OrigenTop>();
+            foreach (KeyValuePair<string, int> cuenta in songCounts)
+            {
+                List<OrigenTop> origen;
+                if (indice.TryGetValue(cuenta.Key, out origen)) elegidos.AddRange(origen);
+            }
+            elegidos.Sort(delegate(OrigenTop a, OrigenTop b) { return a.Orden.CompareTo(b.Orden); });
+            for (int i = 0; i < elegidos.Count; i++)
+            {
+                OrigenTop o = elegidos[i]; int c;
+                if (!songCounts.TryGetValue(o.Pista.Path, out c)) continue;
+                TopEntry te = new TopEntry(); te.T = o.Pista; te.C = c; te.A = o.Disco; all.Add(te);
+            }
+            if (all.Count == 0) return;
+
+            // 2) agrupar por etiqueta de genero (las que no tengan genero capturado caen en "Otros")
+            Dictionary<string, List<TopEntry>> byGenre = new Dictionary<string, List<TopEntry>>();
+            List<string> order = new List<string>();
+            for (int i = 0; i < all.Count; i++)
+            {
+                string gl;
+                if (!songGenre.TryGetValue(all[i].T.Path, out gl) || string.IsNullOrEmpty(gl)) gl = "Otros";
+                List<TopEntry> lst;
+                if (!byGenre.TryGetValue(gl, out lst)) { lst = new List<TopEntry>(); byGenre[gl] = lst; order.Add(gl); }
+                lst.Add(all[i]);
+            }
+
+            // 3) un disco virtual por genero
+            List<Album> discs = new List<Album>();
+            Dictionary<Album, long> totals = new Dictionary<Album, long>();
+            for (int gi = 0; gi < order.Count; gi++)
+            {
+                string gl = order[gi];
+                List<TopEntry> lst = byGenre[gl];
+                lst.Sort(delegate (TopEntry x, TopEntry y)
+                {
+                    if (y.C != x.C) return y.C - x.C;
+                    return string.Compare(x.T.Path, y.T.Path, StringComparison.OrdinalIgnoreCase);
+                });
+                int take = (lst.Count < TopMax) ? lst.Count : TopMax;
+                Album d = new Album();
+                d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOP::" + gl;
+                d.Artist = "TOP 100"; d.Name = gl;             // AlbumLabel -> "TOP 100 - Rock"
+                d.Tracks = new List<Track>();
+                d.TrackCovers = new List<string>();
+                d.TrackInfo = new List<string>();
+                d.TrackAlbums = new List<Album>();
+                List<string> cycle = new List<string>();
+                long total = 0;
+                for (int i = 0; i < take; i++)
+                {
+                    TopEntry te = lst[i];
+                    d.Tracks.Add(te.T);
+                    d.TrackCovers.Add(te.A.CoverPath);
+                    d.TrackInfo.Add(AlbumLabel(te.A));
+                    d.TrackAlbums.Add(te.A);
+                    if (te.A.CoverPath != null && !cycle.Contains(te.A.CoverPath)) cycle.Add(te.A.CoverPath);
+                    total += te.C;
+                }
+                d.CycleCovers = cycle;
+                d.CoverPath = (cycle.Count > 0) ? cycle[0] : null;
+                totals[d] = total;
+                discs.Add(d);
+            }
+
+            // 3a) discos TOP por ARTISTA muy puesto (hasta 10), RANKEADOS: "TOP #1 - <artista>" ... "TOP #10 - ..."
+            {
+                Dictionary<string, List<TopEntry>> byArtist = new Dictionary<string, List<TopEntry>>(StringComparer.OrdinalIgnoreCase);
+                List<string> aOrder = new List<string>();
+                for (int i = 0; i < all.Count; i++)
+                {
+                    string ar = all[i].T.Artist;
+                    if (string.IsNullOrEmpty(ar)) continue;
+                    List<TopEntry> lst;
+                    if (!byArtist.TryGetValue(ar, out lst)) { lst = new List<TopEntry>(); byArtist[ar] = lst; aOrder.Add(ar); }
+                    lst.Add(all[i]);
+                }
+                // candidatos: artistas con >=2 canciones distintas puestas (un solo tema no amerita disco)
+                List<string> cand = new List<string>();
+                Dictionary<string, long> aTot = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < aOrder.Count; i++)
+                {
+                    string ar = aOrder[i];
+                    List<TopEntry> lst = byArtist[ar];
+                    if (lst.Count < 2) continue;
+                    long t = 0; for (int j = 0; j < lst.Count; j++) t += lst[j].C;
+                    aTot[ar] = t; cand.Add(ar);
+                }
+                cand.Sort(delegate (string a, string b)
+                {
+                    long ta = aTot[a], tb = aTot[b];
+                    if (tb != ta) return (tb > ta) ? 1 : -1;
+                    return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+                });
+                int amax = (cand.Count < 10) ? cand.Count : 10;   // hasta 10 artistas mas puestos
+                for (int ai = 0; ai < amax; ai++)
+                {
+                    string ar = cand[ai];
+                    List<TopEntry> lst = byArtist[ar];
+                    lst.Sort(delegate (TopEntry x, TopEntry y)
+                    {
+                        if (y.C != x.C) return y.C - x.C;
+                        return string.Compare(x.T.Path, y.T.Path, StringComparison.OrdinalIgnoreCase);
+                    });
+                    int take = (lst.Count < TopMax) ? lst.Count : TopMax;
+                    Album d = new Album();
+                    // RANKING VISIBLE: el puesto (#1..#10, por total de reproducciones) va en la etiqueta. Tambien
+                    // va en Folder (la CLAVE de la celda horneada): si un artista cambia de puesto, su etiqueta se
+                    // re-hornea; con la clave vieja se habria quedado el numero anterior pegado en el cache.
+                    d.IsTop = true; d.Letter = TopMark; d.Folder = "::TOPART::" + (ai + 1) + "|" + ar;
+                    d.Artist = "TOP #" + (ai + 1); d.Name = ar;             // AlbumLabel -> "TOP #1 - Depeche Mode"
+                    d.Tracks = new List<Track>();
+                    d.TrackCovers = new List<string>();
+                    d.TrackInfo = new List<string>();
+                    d.TrackAlbums = new List<Album>();
+                    List<string> cyc = new List<string>();
+                    for (int i = 0; i < take; i++)
+                    {
+                        TopEntry te = lst[i];
+                        d.Tracks.Add(te.T);
+                        d.TrackCovers.Add(te.A.CoverPath);
+                        d.TrackInfo.Add(AlbumLabel(te.A));
+                        d.TrackAlbums.Add(te.A);
+                        if (te.A.CoverPath != null && !cyc.Contains(te.A.CoverPath)) cyc.Add(te.A.CoverPath);
+                    }
+                    d.CycleCovers = cyc;
+                    d.CoverPath = (cyc.Count > 0) ? cyc[0] : null;
+                    totals[d] = aTot[ar];
+                    discs.Add(d);
+                }
+            }
+
+            // 3b) disco TOP de VIDEOS (de videoCounts, recorriendo los discos con video)
+            if (videoCounts.Count > 0 && videoAlbums != null)
+            {
+                List<TopEntry> vids = new List<TopEntry>();
+                for (int i = 0; i < videoAlbums.Count; i++)
+                {
+                    Album va = videoAlbums[i];
+                    for (int j = 0; j < va.VideoFiles.Count; j++)
+                    {
+                        string vf = va.VideoFiles[j];
+                        int c;
+                        if (vf != null && videoCounts.TryGetValue(vf, out c))
+                        { TopEntry te = new TopEntry(); te.V = vf; te.C = c; te.A = va; vids.Add(te); }
+                    }
+                }
+                if (vids.Count > 0)
+                {
+                    vids.Sort(delegate (TopEntry x, TopEntry y)
+                    {
+                        if (y.C != x.C) return y.C - x.C;
+                        return string.Compare(x.V, y.V, StringComparison.OrdinalIgnoreCase);
+                    });
+                    int vtake = (vids.Count < TopMax) ? vids.Count : TopMax;
+                    Album vd = new Album();
+                    vd.IsTop = true; vd.TopIsVideo = true; vd.Letter = TopMark; vd.Folder = "::TOPVID::";
+                    vd.Artist = "TOP 100"; vd.Name = "Videos";
+                    vd.VideoFiles = new List<string>();
+                    vd.TrackCovers = new List<string>();
+                    vd.TrackInfo = new List<string>();
+                    vd.TrackAlbums = new List<Album>();
+                    List<string> vcyc = new List<string>();
+                    long vtotal = 0;
+                    for (int i = 0; i < vtake; i++)
+                    {
+                        TopEntry te = vids[i];
+                        vd.VideoFiles.Add(te.V);
+                        vd.TrackCovers.Add(te.A.CoverPath);
+                        vd.TrackInfo.Add(AlbumLabel(te.A));
+                        vd.TrackAlbums.Add(te.A);
+                        if (te.A.CoverPath != null && !vcyc.Contains(te.A.CoverPath)) vcyc.Add(te.A.CoverPath);
+                        vtotal += te.C;
+                    }
+                    vd.CycleCovers = vcyc;
+                    vd.CoverPath = (vcyc.Count > 0) ? vcyc[0] : null;
+                    totals[vd] = vtotal;
+                    discs.Add(vd);
+                }
+            }
+
+            // 4) ordenar por CLASE (genero primero, luego videos, luego artistas) y dentro de
+            //    cada clase por total de reproducciones. Asi quedan agrupados y comodos de ver.
+            discs.Sort(delegate (Album x, Album y)
+            {
+                int cx = x.TopIsVideo ? 1 : ((x.Folder != null && x.Folder.StartsWith("::TOPART::", StringComparison.Ordinal)) ? 2 : 0);
+                int cy = y.TopIsVideo ? 1 : ((y.Folder != null && y.Folder.StartsWith("::TOPART::", StringComparison.Ordinal)) ? 2 : 0);
+                if (cx != cy) return cx - cy;
+                long tx = totals[x], ty = totals[y];
+                if (ty != tx) return (ty > tx) ? 1 : -1;
+                return string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase);
+            });
+            topDiscs = discs;
+        }
+        // de Form1.cs
+        private List<Album> topDiscs = new List<Album>();   // discos virtuales "TOP - <genero>"
+        // de Form1.Biblioteca.cs
+        private static string AlbumLabel(Album a)
+        {
+            if (a == null) return "";
+            return (a.Name != null && a.Name.Length > 0) ? (a.Artist + " - " + a.Name) : a.Artist;
+        }
+        // de Form1.Datos.cs
+        private class TopEntry { public Track T; public int C; public Album A; public string V; }
+        // de Form1.cs
+        private const int TopMax = 100;             // tope de canciones del disco "Lo mas sonado"
+        // de Form1.Biblioteca.cs
+        private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
     }
 }

@@ -41,7 +41,7 @@ namespace Rocola
             if (c.dentro == null)
             {
                 StringBuilder l = new StringBuilder(" Letra: ");
-                for (int i = 0; i < c.letras.Count; i++) l.Append(i == c.letra ? "[" + c.letras[i] + "]" : " " + c.letras[i] + " ");
+                for (int i = 0; i < c.letras.Count; i++) l.Append(i == c.letra ? "[" + Controlador.NombreLetra(c.letras[i]) + "]" : " " + Controlador.NombreLetra(c.letras[i]) + " ");
                 sb.Append(Corta(l.ToString(), ancho)).Append('\n').Append(new string('-', ancho)).Append('\n');
                 List<Form1.Disco> ds = c.DiscosDeLetra();
                 int desde = Math.Max(0, Math.Min(c.cursorDisco - alto / 2, ds.Count - alto));

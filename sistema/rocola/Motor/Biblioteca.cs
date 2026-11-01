@@ -46,5 +46,28 @@ namespace Rocola
             return r2;
         }
         public string CarpetaMusica { get { return MusicFolder; } }
+
+        // LO MAS SONADO (BuildTopDiscs de XP): un disco virtual "TOP 100" por genero con lo mas pedido (rocola_stats.txt), en la "letra"
+        // especial de XP (la estrella). Se rehace cuando cambian las estadisticas.
+        public const char LetraTop = TopMark;
+        public List<Disco> LoMasSonado()
+        {
+            BuildTopDiscs();
+            List<Disco> r = new List<Disco>();
+            if (topDiscs == null) return r;
+            foreach (Album a in topDiscs)
+            {
+                Disco d = new Disco(); d.Artista = a.Artist; d.Nombre = a.Name; d.Carpeta = a.Folder; d.Letra = a.Letter;
+                d.Portada = (a.CycleCovers != null && a.CycleCovers.Count > 0) ? a.CycleCovers[0] : null;
+                for (int i = 0; i < a.Tracks.Count; i++)
+                {
+                    d.Rutas.Add(a.Tracks[i].Path);
+                    string info = (a.TrackInfo != null && i < a.TrackInfo.Count) ? a.TrackInfo[i] : null;
+                    d.Titulos.Add(a.Tracks[i].ToString() + (string.IsNullOrEmpty(info) ? "" : "   (" + info + ")"));
+                }
+                r.Add(d);
+            }
+            return r;
+        }
     }
 }

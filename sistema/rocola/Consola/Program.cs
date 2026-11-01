@@ -121,6 +121,7 @@ namespace Rocola
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
             v.Dibuja(c);
             fp.Captura(ruta);
+            m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
             Console.WriteLine("Captura: " + ruta);
             return 0;
         }
