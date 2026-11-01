@@ -40,6 +40,7 @@ namespace Rocola
         {
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LeeConfiguracion();
+            SumaMusicaDeOtrosDiscos();
             CargaParejo();       // el volumen parejo aprendido del modo billar (VolumenParejo.cs)
             Diag("rocola del " + DeCuandoEs());
             int iasOrdenadas = OrdenaIas();   // los modelos sueltos de la carpeta de datos, a IAS/
@@ -66,5 +67,23 @@ namespace Rocola
 
         // rocola_teclas.txt, el de los botones (el mismo de XP).
         public string ArchivoBotones { get { return RutaDatos("rocola_teclas.txt"); } }
+
+        // La musica de los otros discos (Rocola OS: rocola-discos los monta en solo lectura y deja sus carpetas "musica" en
+        // /run/rocola-musica, una por linea; ROCOLA_MUSICA_LISTA puede dar otro archivo). Se suman a las de "dir=", como en XP.
+        private void SumaMusicaDeOtrosDiscos()
+        {
+            string lista = Environment.GetEnvironmentVariable("ROCOLA_MUSICA_LISTA");
+            if (string.IsNullOrEmpty(lista)) lista = "/run/rocola-musica";
+            try
+            {
+                if (!File.Exists(lista)) return;
+                foreach (string l in File.ReadAllLines(lista))
+                {
+                    string d = l.Trim();
+                    if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
+                }
+            }
+            catch { }
+        }
     }
 }

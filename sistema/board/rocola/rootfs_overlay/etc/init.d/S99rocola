@@ -1,7 +1,10 @@
 #!/bin/sh
-# Lo ultimo del arranque: la rocola en tty1. En la etapa 1 todavia es la prueba de sonido y grafica (rocola-prueba).
+# Lo ultimo del arranque: la musica de los otros discos (en solo lectura: rocola-discos) y, en tty1, la prueba de sonido y grafica
+# (rocola-prueba), que al acabar abre la rocola.
 case "$1" in
 	start)
+		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
+		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		printf "Rocola OS: arrancando la prueba en tty1\n"
 		setsid sh -c 'exec /usr/bin/rocola-prueba </dev/tty1 >/dev/tty1 2>&1' &
 		;;

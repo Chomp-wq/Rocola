@@ -170,3 +170,20 @@ Pendientes conocidos: los MP3 de frecuencias mezcladas (en XP se reconstruyen: `
 - **El SDK de .NET 10:** instalado aquí desde los repositorios de Ubuntu (`dotnet-sdk-10.0` y `dotnet-sdk-aot-10.0`); NuGet
   funciona.
 - **Para el sistema:** compilar la etapa 1, lo que necesita `sources.buildroot.net` (ver LEEME.md), y probarla en el A4.
+
+## Hito 10 (1-11-2026): Rocola OS arranca en la rocola, con la música del disco de XP
+
+- **La música se queda donde está.** Al arrancar, `rocola-discos` monta **en solo lectura** cada partición que no sea la del
+  sistema (el disco de Windows XP del A4 en NTFS, memorias USB en FAT o exFAT, ext4) en `/rocola/discos/<nombre>` y busca carpetas
+  `musica` hasta 3 niveles (como XP); una memoria USB sin `musica` se usa entera. La rocola las suma a las suyas (`/run/rocola-musica`).
+  No se escribe ni un byte en el disco de XP. El núcleo lleva NTFS (ntfs3), FAT y exFAT.
+- **El arranque:** la prueba de la etapa 1 (con la música encontrada en su resumen), 60 s para la foto y **la rocola gráfica**, que
+  vuelve a empezar si se cierra. Sus datos en `/rocola/datos`; lo que dice, en `/root/rocola.txt`.
+- **Pedir una canción ya no congela la pantalla:** la medida del repaso se hace en un hilo de fondo (como en XP) y se publica después;
+  mientras, suena con la regla de las canciones sin medir.
+- **Probado en QEMU** con un segundo disco NTFS que imita el de XP (`Rocola/musica` con 11 discos y una carpeta `WINDOWS`): la rocola
+  encontró la música, el teclado hizo de botones (moneda: 4 créditos; letras; entrar a un disco; pedir) y en la grabación de la
+  tarjeta emulada suenan las canciones pedidas.
+
+Para probar en el A4 hace falta la imagen compilada para el A4 (`sh sistema/compila.sh`, con el SDK de .NET 10 en la máquina que la
+arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se ha probado aún en el A4.**

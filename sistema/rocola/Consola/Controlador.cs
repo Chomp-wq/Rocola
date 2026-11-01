@@ -77,6 +77,7 @@ namespace Rocola
                     {
                         Boton b;
                         if (pulsos.TryTake(out b, 50)) Maneja(b);
+                        motor.PublicaMedidas();
                         Suena();
                         vista.Dibuja(this);
                     }
@@ -136,7 +137,7 @@ namespace Rocola
                 else if (b == Boton.Poner)
                 {
                     string ruta = dentro.Rutas[cursorCancion];
-                    if (!motor.MideSiFalta(ruta)) { }   // como el repaso de XP; si no se pudo, suena con la regla de las no medidas
+                    motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
                     Form1.Pedido p = motor.Pide(ruta);
                     if (p == Form1.Pedido.Puesta) Aviso("Pusiste «" + dentro.Titulos[cursorCancion] + "» (" + motor.EnCola + " en la cola)");
                     else if (p == Form1.Pedido.Repetida) Aviso("Esa ya va en la cola");

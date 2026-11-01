@@ -24,6 +24,10 @@ dmesg | grep -i -E "radeon|\[drm\]" | tail -15 >> "$LOG"
 linea ""
 
 # El sonido: lo que hay, el volumen arriba y sin silencio, y un tono de 440 Hz durante 3 s.
+linea "--- LA MUSICA (rocola-discos, en solo lectura)"
+cat /run/rocola-discos.txt >> "$LOG" 2>/dev/null
+linea ""
+
 linea "--- SONIDO"
 cat /proc/asound/cards >> "$LOG" 2>&1
 aplay -l >> "$LOG" 2>&1
@@ -73,7 +77,14 @@ echo "Grafica: $(grep -h DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null) 
 echo "Sonido: $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
 echo "Pantalla de la rocola: $PANTALLA"
 echo "La rocola (sonido de la rocola por ALSA): $ROCOLA"
+echo "Musica: $(tr '\n' ' ' < /run/rocola-musica 2>/dev/null)"
 echo ""
 echo "Todo esta en /root/rocola-prueba.txt. Saca una foto de esta pantalla."
+echo "En 60 segundos empieza la rocola (con la musica de arriba)."
 echo "Para apagar: Ctrl+Alt+F2, entrar como root y escribir: poweroff"
-exec sleep 2147483647
+sleep 60
+# LA ROCOLA. Si se cierra o se cae, vuelve a empezar (la de XP la vigilaba igual); los datos van a /rocola/datos.
+while :; do
+	ROCOLA_DATOS=/rocola/datos /usr/bin/rocola-consola --rocola >> /root/rocola.txt 2>&1
+	sleep 2
+done

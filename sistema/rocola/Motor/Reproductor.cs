@@ -28,6 +28,44 @@ namespace Rocola
             return true;
         }
 
+        // LA MEDIDA EN SEGUNDO PLANO (como el repaso de XP, que mide en hilos de fondo y publica en la pantalla): MideEnFondo la encarga,
+        // un hilo de prioridad baja la mide (MideIntegrada no toca nada compartido) y PublicaMedidas, desde el hilo de siempre, la
+        // pone en la tabla y la guarda. Asi pedir una cancion no congela la pantalla mientras se lee entera.
+        private readonly System.Collections.Concurrent.BlockingCollection<string> porMedir = new System.Collections.Concurrent.BlockingCollection<string>();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>> medidas =
+            new System.Collections.Concurrent.ConcurrentQueue<KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>>();
+        private System.Threading.Thread medidor;
+        public void MideEnFondo(string ruta)
+        {
+            if (ruta == null) return;
+            SonoridadIntegrada ya;
+            if (integCache != null && integCache.TryGetValue(ruta, out ya) && ya.Algoritmo >= MedidorBs1770.Algoritmo) return;
+            if (medidor == null)
+            {
+                medidor = new System.Threading.Thread(delegate ()
+                {
+                    foreach (string r in porMedir.GetConsumingEnumerable())
+                    {
+                        SonoridadIntegrada s;
+                        try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
+                        catch { }
+                    }
+                }) { IsBackground = true, Name = "repaso (medir)", Priority = System.Threading.ThreadPriority.BelowNormal };
+                medidor.Start();
+            }
+            porMedir.Add(ruta);
+        }
+        // Lo medido en segundo plano, a la tabla (llamar desde el hilo de siempre). Devuelve cuantas publico.
+        public int PublicaMedidas()
+        {
+            int n = 0;
+            KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>> m;
+            if (integCache == null) integCache = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
+            while (medidas.TryDequeue(out m)) { PublicaIntegradaDeFuente(m.Key, m.Value.Key, m.Value.Value); n++; }
+            if (n > 0) SaveIntegCache();
+            return n;
+        }
+
         // Al cerrar: todo lo aprendido, al disco, y espera a que se escriba (como al cerrar la rocola de XP).
         public void Cierra()
         {

@@ -1,0 +1,38 @@
+#!/bin/sh
+# LA MUSICA DE LOS OTROS DISCOS, EN SOLO LECTURA. Rocola OS arranca desde su memoria USB (o su particion) y la musica sigue donde
+# esta: en el disco de Windows XP del A4 (NTFS) o en otra memoria USB. Este script monta cada particion que no sea la del sistema en
+# /rocola/discos/<nombre>, SIEMPRE en solo lectura (no se escribe ni un byte en el disco de XP), y busca en ella carpetas "musica"
+# (hasta 3 niveles: como XP, que la busca junto a sus datos o hasta tres carpetas mas arriba). En una memoria USB sin carpeta "musica"
+# se usa la memoria entera. Deja la lista en /run/rocola-musica (una carpeta por linea), que la rocola suma a las suyas.
+LISTA=/run/rocola-musica
+: > "$LISTA"
+# El disco del sistema (la raiz se ve como /dev/root): por su numero de dispositivo.
+RAIZ_NUM=$(mountpoint -d /)
+RAIZ_DISCO=
+for p in /sys/class/block/*; do [ "$(cat "$p/dev" 2>/dev/null)" = "$RAIZ_NUM" ] && RAIZ_DISCO=$(basename "$(readlink -f "$p/..")"); done
+for p in /sys/class/block/*; do
+	dev=$(basename "$p")
+	[ -e "$p/partition" ] || continue   # solo particiones
+	case "$dev" in loop*|ram*|sr*|zram*) continue ;; esac
+	disco=$(basename "$(readlink -f "$p/..")")
+	[ -n "$RAIZ_DISCO" ] && [ "$disco" = "$RAIZ_DISCO" ] && continue   # el disco del sistema: no
+	tipo=$(blkid "/dev/$dev" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+	case "$tipo" in
+		ntfs) fs=ntfs3; opc=ro,iocharset=utf8 ;;
+		vfat) fs=vfat; opc=ro,iocharset=utf8,shortname=mixed ;;
+		exfat) fs=exfat; opc=ro,iocharset=utf8 ;;
+		ext2|ext3|ext4) fs=$tipo; opc=ro ;;
+		*) continue ;;
+	esac
+	m=/rocola/discos/$dev
+	mkdir -p "$m"
+	mountpoint -q "$m" || mount -t "$fs" -o "$opc" "/dev/$dev" "$m" 2>/dev/null || { rmdir "$m" 2>/dev/null; continue; }
+	encontradas=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null)
+	if [ -n "$encontradas" ]; then
+		echo "$encontradas" >> "$LISTA"
+	elif [ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ]; then
+		echo "$m" >> "$LISTA"   # una memoria USB sin carpeta "musica": entera
+	fi
+	echo "rocola-discos: /dev/$dev ($tipo) en $m, solo lectura"
+done
+echo "rocola-discos: musica en: $(tr '\n' ' ' < "$LISTA")"
