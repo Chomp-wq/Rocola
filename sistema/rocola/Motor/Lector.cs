@@ -1,7 +1,7 @@
 // EL LECTOR DE CANCIONES DE ROCOLA OS (hito 3). En XP los MP3 los descomprime el ACM de Windows (y NLayer solo en las que llegan al
 // maximo: FlotanteNLayer.cs); en Linux no hay ACM: TODOS los MP3 van por NLayer 3, en coma flotante, sin recortar lo que pasa del
 // maximo. Los WAV, con el lector de NAudio. Como en XP desde el 24-10-2026, un archivo mono sale como estereo de dos canales iguales.
-// (Falta: el recorte sin huecos de la etiqueta LAME de RellenoMp3.cs y el resto de formatos.)
+// Los MP3 de frecuencias mezcladas se reconstruyen a la dominante, como en XP (Mp3DeUnaFrecuencia).
 using System;
 using System.IO;
 using NAudio.Wave;
@@ -25,7 +25,9 @@ namespace Rocola
             this.comoEstereo = comoEstereo;
             if (Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
-                mp3 = new NLayer.MpegFile(ruta);
+                MemoryStream limpio = Mp3DeUnaFrecuencia(ruta);
+                if (limpio != null) { Reconstruido = true; mp3 = new NLayer.MpegFile(limpio); }
+                else mp3 = new NLayer.MpegFile(ruta);
                 canalesArchivo = mp3.Channels;
                 formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, comoEstereo ? 2 : canalesArchivo);
             }
@@ -47,6 +49,41 @@ namespace Rocola
             canalesArchivo = mp3.Channels;
             formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, 2);
         }
+
+        // true si era un MP3 de frecuencias (o canales) mezcladas y se leyo reconstruido (sin el relleno del codificador, como en XP).
+        public bool Reconstruido { get; private set; }
+
+        // LOS MP3 DE FRECUENCIAS MEZCLADAS (en XP, BuildCleanMp3 de Form1.Sonido.cs): unos pocos archivos traen cuadros de otra
+        // frecuencia (o mono entre estereo). En XP el ACM falla con ellos y se reconstruyen; NLayer no falla, pero toca esos cuadros a
+        // la frecuencia del primero (desafinados y mas largos). Aqui se mira SIEMPRE: si hay mas de una clave (frecuencia y canales),
+        // se copian a memoria solo los cuadros de la dominante, como en XP (los de la minoria se descartan: a lo sumo un salto).
+        // null = de una sola frecuencia (lo normal): se lee el archivo tal cual.
+        internal static MemoryStream Mp3DeUnaFrecuencia(string ruta)
+        {
+            System.Collections.Generic.Dictionary<int, int> claves = new System.Collections.Generic.Dictionary<int, int>();
+            using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
+                while (true)
+                {
+                    Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs, false); } catch { break; }
+                    if (f == null) break;
+                    int k = Clave(f); int c; claves.TryGetValue(k, out c); claves[k] = c + 1;
+                }
+            if (claves.Count < 2) return null;
+            int dom = 0, mejor = -1;
+            foreach (System.Collections.Generic.KeyValuePair<int, int> kv in claves) if (kv.Value > mejor) { mejor = kv.Value; dom = kv.Key; }
+            MemoryStream ms = new MemoryStream();
+            using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
+                while (true)
+                {
+                    Mp3Frame f; try { f = Mp3Frame.LoadFromStream(fs); } catch { break; }
+                    if (f == null) break;
+                    if (Clave(f) == dom && f.RawData != null) ms.Write(f.RawData, 0, f.RawData.Length);
+                }
+            if (ms.Length < 2048) { ms.Dispose(); return null; }   // casi nada util: que se lea tal cual
+            ms.Position = 0;
+            return ms;
+        }
+        private static int Clave(Mp3Frame f) { return f.SampleRate * 4 + (f.ChannelMode == ChannelMode.Mono ? 1 : 2); }
 
         public WaveFormat WaveFormat { get { return formato; } }
         public TimeSpan Duracion { get { return mp3 != null ? mp3.Duration : wav.TotalTime; } }

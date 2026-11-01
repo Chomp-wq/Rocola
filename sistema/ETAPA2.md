@@ -289,3 +289,13 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   el artista, cuántas veces se ha pedido y cuántas canciones trae, y aparece y se va en 0,6 s. Debajo, un aviso que cambia cada 5 s
   («Toca un botón y elige entre N canciones», «una moneda = 4 canciones», el buscador con el botón rojo).
 - Cualquier botón la quita y no hace nada más (la moneda sí cuenta). Probado en captura (`--captura x.ppm --boton atraccion`).
+
+## Extra (1-11-2026): los MP3 de frecuencias mezcladas
+
+- Unos pocos MP3 traen cuadros de otra frecuencia (o mono entre estéreo). En XP el ACM falla con ellos y se reconstruyen
+  (`BuildCleanMp3`); NLayer no falla, pero tocaba esos cuadros a la frecuencia del primero. Probado con un MP3 de 20 s a 44100 + 5 s a
+  48000 (880 Hz) + 20 s a 44100: ese tramo salía a 808 Hz y más largo.
+- Ahora el lector (`Lector.cs`: `Mp3DeUnaFrecuencia`) mira siempre las cabeceras de los cuadros y, si hay más de una clave (frecuencia
+  y canales), copia a memoria solo los de la dominante, como XP; los de la minoría se descartan (a lo sumo un salto). Sin quitar el
+  relleno del codificador, como XP. La medida del repaso usa el mismo lector. El mismo archivo sale ahora 40 s seguidos a 440 Hz.
+- Mirar las cabeceras de un MP3 de 16 MB tarda 30 ms aquí; en uno normal no se lee nada más.

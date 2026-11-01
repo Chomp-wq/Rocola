@@ -28,14 +28,18 @@ namespace Rocola
             public TimeSpan TotalTime { get { return lector.Duracion; } }
             public void Salta(TimeSpan donde) { lector.Posicion = donde; }
             public void Dispose() { lector.Dispose(); }
+            internal bool Reconstruido { get { return lector.Reconstruido; } }
         }
 
-        // Como OpenAudio de XP, sin la reconstruccion de los MP3 de frecuencias mezcladas (NLayer los lee de otra forma: queda pendiente).
+        // Como OpenAudio de XP. Un MP3 de frecuencias mezcladas sale reconstruido a la dominante (Lector.cs) y, como en XP, sin quitarle
+        // el relleno del codificador (sus cuentas son del archivo entero).
         private IAudioSource OpenAudio(string path)
         {
             string original = RutaOriginalDe(path);
             FuenteMedida inicio = CapturaFuente(original);
-            return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, new FuenteArchivo(path))));
+            FuenteArchivo f = new FuenteArchivo(path);
+            if (f.Reconstruido) return SinSilencios(path, SellaFuenteAudio(original, inicio, f));
+            return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, f)));
         }
 
         // El lector para MEDIR una cancion (el repaso; en XP, LectorMedida de Form1.Sonido.cs con el ACM): el de Rocola OS, con los
