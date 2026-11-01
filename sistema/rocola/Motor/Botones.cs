@@ -81,6 +81,13 @@ namespace Rocola
         private readonly List<FileStream> abiertos = new List<FileStream>();
         private volatile bool parar;
         public event Action<Boton, int> Pulsado;   // la funcion (Ninguno si la tecla no es de la rocola) y el codigo de Windows
+        // LO QUE ESTA APRETADO AHORA (para los combos de XP: REGRESAR mantenido + IZQ/DER cambia de letra, + ARRIBA abre el buscador).
+        private readonly HashSet<int> apretadas = new HashSet<int>();
+        public bool Apretado(Boton f)
+        {
+            lock (apretadas) foreach (int vk in apretadas) if (FuncionDe(vk) == f) return true;
+            return false;
+        }
 
         // Abre todos los /dev/input/event* que se dejen leer y escucha cada uno en su hilo. Devuelve cuantos abrio.
         public int Escucha(string carpeta = "/dev/input")
@@ -108,7 +115,10 @@ namespace Rocola
                 try { while (n < 24) { int k = f.Read(e, n, 24 - n); if (k <= 0) return; n += k; } }
                 catch { return; }   // se desconecto el aparato
                 int tipo = BitConverter.ToUInt16(e, 16), codigo = BitConverter.ToUInt16(e, 18), valor = BitConverter.ToInt32(e, 20);
-                if (tipo != EV_KEY || valor != 1) continue;   // solo al bajar (1); ni al soltar (0) ni al repetirse (2)
+                if (tipo != EV_KEY) continue;
+                if (valor == 0) { lock (apretadas) apretadas.Remove(CodigoWindows(codigo)); continue; }   // al soltar: ya no esta apretado
+                if (valor != 1) continue;   // cuenta solo al bajar (1), no al repetirse (2)
+                lock (apretadas) apretadas.Add(CodigoWindows(codigo));
                 Entrega(codigo);
             }
         }

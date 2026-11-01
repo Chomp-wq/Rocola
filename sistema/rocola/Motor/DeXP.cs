@@ -4456,5 +4456,374 @@ namespace Rocola
         private const int TopMax = 100;             // tope de canciones del disco "Lo mas sonado"
         // de Form1.Biblioteca.cs
         private volatile bool libBuilding = false;   // el worker esta armando albums/byLetter/searchIndex: la UI no debe leerlos
+        // de Form1.Buscador.cs
+        private class SearchItem
+        {
+            public int Kind;     // 0=artista, 1=album, 2=cancion
+            public string Display;
+            public string Key;
+            public int TitleAt, TitleLength; // titulo/artista principal dentro de Key, sin otra copia
+            public int Mask;    // que letras contiene Key (ver MarcaLetras)
+            public int Score;
+            public Album AlbumRef;
+            public Track TrackRef;
+            public List<Album> Albums;   // todos los discos del artista (Kind==0)
+        }
+        // de Form1.Buscador.cs
+        // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
+        // que obliga a puntuar el indice entero, y para una letra el resultado no cambia mientras no cambie
+        // la musica. Se vacia al rearmar la biblioteca.
+        private sealed class BolsaLetra
+        {
+            public List<SearchItem> Lista;
+            public int[] Puntos;
+            public List<SearchItem> Mejores;
+            public bool Approximate;
+        }
+        // de Form1.Biblioteca.cs
+        private void BuildSearchIndex()
+        {
+            ClearRecentQueries();
+            lastQuery = null; lastMatches = null;
+            if (bolsaLetra != null) bolsaLetra.Clear();
+            searchPostings = null;
+            searchIndex.Clear();
+            // Mapa artista -> todos sus discos (para el cubo que cicla caratulas)
+            Dictionary<string, List<Album>> artistAlbums = new Dictionary<string, List<Album>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (string.IsNullOrEmpty(a.Artist)) continue;
+                List<Album> lst;
+                if (!artistAlbums.TryGetValue(a.Artist, out lst)) { lst = new List<Album>(); artistAlbums[a.Artist] = lst; }
+                lst.Add(a);
+            }
+            HashSet<string> artistSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < albums.Count; i++)
+            {
+                Album a = albums[i];
+                if (!string.IsNullOrEmpty(a.Artist) && artistSeen.Add(a.Artist))
+                {
+                    SearchItem ar = new SearchItem();
+                    ar.Kind = 0; ar.Display = a.Artist; ar.AlbumRef = a;
+                    artistAlbums.TryGetValue(a.Artist, out ar.Albums);
+                    searchIndex.Add(ar);
+                }
+                SearchItem alb = new SearchItem();
+                alb.Kind = 1; alb.Display = a.Artist + " - " + a.Name; alb.AlbumRef = a;
+                searchIndex.Add(alb);
+                for (int j = 0; j < a.Tracks.Count; j++)
+                {
+                    Track t = a.Tracks[j];
+                    SearchItem so = new SearchItem();
+                    so.Kind = 2; so.Display = t.Artist + " - " + t.Title; so.TrackRef = t; so.AlbumRef = a;
+                    searchIndex.Add(so);
+                }
+            }
+            // La parte cara -limpiar acentos y sacar la marca de letras- es la misma cuenta repetida una vez
+            // por entrada, y cada entrada solo depende de su propio texto: se puede repartir. Va aparte del
+            // bucle de arriba a proposito, para que el indice quede armado y en orden ANTES de repartir.
+            ClavesDelIndice();
+            BuildSearchPostings();
+        }
+        // de Form1.Buscador.cs
+        private BolsaLetra FindLetterQuery(char key)
+        {
+            BolsaLetra data;
+            if (bolsaLetra == null || !bolsaLetra.TryGetValue(key, out data)) return null;
+            if (letterQueryOrder == null) letterQueryOrder = new List<char>();
+            letterQueryOrder.Remove(key); letterQueryOrder.Add(key);
+            return data;
+        }
+        // de Form1.Buscador.cs
+        private BolsaLetra FindRecentQuery(string key)
+        {
+            if (recentQueries == null || key.Length > 128) return null;
+            for (int i = 0; i < recentQueries.Count; i++)
+            {
+                QueryBag entry = recentQueries[i];
+                if (entry.Key != key) continue;
+                recentQueries.RemoveAt(i); recentQueries.Add(entry);
+                return entry.Data;
+            }
+            return null;
+        }
+        // de Form1.Biblioteca.cs
+        // MARCA DE LETRAS. Un numero de 32 bits que dice QUE letras contiene un texto. Con el se descarta
+        // de un plumazo, SIN mirarle el texto, toda entrada a la que le falte alguna letra de lo tecleado:
+        // si al cliente le falta una sola de sus letras, esa cancion no puede casar ni entera ni por
+        // palabras. Comparar dos numeros cuesta nada; recorrer el titulo tres veces, no.
+        // Bits 0..25 = letras a..z ; bit 26 = alguna cifra ; bit 27 = cualquier otro caracter. Los espacios
+        // no cuentan. Meter todo lo raro en un mismo bit es a proposito: puede dejar pasar candidatos de
+        // mas -que luego descarta Score-, pero nunca puede tirar uno bueno.
+        private static int MarcaLetras(string s)
+        {
+            int m = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == ' ') continue;
+                if (c >= 'a' && c <= 'z') m |= 1 << (c - 'a');
+                else if (c >= '0' && c <= '9') m |= 1 << 26;
+                else m |= 1 << 27;
+            }
+            return m;
+        }
+        // de Form1.Buscador.cs
+        private void RememberLetterQuery(char key, BolsaLetra data)
+        {
+            // Maximo 16 letras y 262144 referencias, tambien con bibliotecas grandes
+            // o alfabetos distintos. No es un limite de resultados ni del indice.
+            if (data.Lista.Count > 131072 || bolsaLetra == null) return;
+            if (letterQueryOrder == null) letterQueryOrder = new List<char>();
+            int retained = 0;
+            foreach (BolsaLetra old in bolsaLetra.Values) retained += old.Lista.Count;
+            while (bolsaLetra.Count > 0 && (bolsaLetra.Count >= 16 || retained + data.Lista.Count > 262144))
+            {
+                char oldest;
+                if (letterQueryOrder.Count > 0)
+                { oldest = letterQueryOrder[0]; letterQueryOrder.RemoveAt(0); }
+                else
+                {
+                    // Tambien tolerar que una prueba o el reescaneo vacie el diccionario solo.
+                    oldest = key;
+                    foreach (char candidate in bolsaLetra.Keys) { oldest = candidate; break; }
+                }
+                BolsaLetra old;
+                if (bolsaLetra.TryGetValue(oldest, out old)) { retained -= old.Lista.Count; bolsaLetra.Remove(oldest); }
+            }
+            bolsaLetra[key] = data;
+            letterQueryOrder.Remove(key); letterQueryOrder.Add(key);
+        }
+        // de Form1.Buscador.cs
+        private void RememberQuery(string key, BolsaLetra data)
+        {
+            if (recentQueries == null) recentQueries = new List<QueryBag>();
+            while (recentQueries.Count > 0 && (recentQueries.Count >= 8 || recentQueryItems + data.Lista.Count > 65536))
+            {
+                recentQueryItems -= recentQueries[0].Data.Lista.Count;
+                recentQueries.RemoveAt(0);
+            }
+            QueryBag entry = new QueryBag(); entry.Key = key; entry.Data = data;
+            recentQueries.Add(entry); recentQueryItems += data.Lista.Count;
+        }
+        // de Form1.Biblioteca.cs
+        // OPTIMIZACION (busqueda): q.Split(' ') se calculaba DENTRO de Score, que corre por CADA
+        // entrada de searchIndex (decenas de miles) en CADA tecla. Ahora se recibe ya calculado
+        // (una sola vez por tecla desde RecomputeResults). Se conserva el puntaje historico,
+        // salvo que una coincidencia real en etiquetas enormes ya no puede puntuar cero/negativo.
+        private static int Score(string cand, string q, string[] toks)
+        {
+            if (q.Length == 0) return 0;
+            if (cand == q) return 10000;
+            if (cand.StartsWith(q, StringComparison.Ordinal)) return 6000 - Math.Min(cand.Length, 2000);
+            // UNA sola pasada por el texto. Antes se recorria DOS veces: una buscando " q" (empieza palabra)
+            // y otra buscando "q" (en cualquier sitio). Para los que NO casan -que son la inmensa mayoria del
+            // indice- las dos recorrian el texto ENTERO antes de rendirse. Ahora se busca "q" una vez y se
+            // mira si la letra de delante era un espacio, que es lo mismo que buscar " q".
+            int primera = -1;
+            int pos = cand.IndexOf(q, StringComparison.Ordinal);
+            while (pos >= 0)
+            {
+                if (primera < 0) primera = pos;
+                // Etiquetas muy largas no pueden convertir una coincidencia real en cero/negativo.
+                if (pos > 0 && cand[pos - 1] == ' ') return Math.Max(1, 4000 - (pos - 1));
+                pos = cand.IndexOf(q, pos + 1, StringComparison.Ordinal);
+            }
+            if (primera >= 0) return 2000 - Math.Min(primera, 1500);
+            // Coincidencia por PALABRAS: todas las palabras de la consulta aparecen (en cualquier orden).
+            // Asi "metallica black" encuentra "Metallica - Black Album", y "enter metallica" tambien.
+            if (toks != null)
+            {
+                int sc = 0, real = 0;
+                for (int i = 0; i < toks.Length; i++)
+                {
+                    string tk = toks[i];
+                    if (tk.Length == 0) continue;
+                    real++;
+                    int at = cand.IndexOf(tk, StringComparison.Ordinal);
+                    if (at < 0) return 0;   // falta una palabra -> no coincide
+                    bool wordStart = (at == 0) || (cand[at - 1] == ' ');
+                    sc += (wordStart ? 300 : 150) - Math.Min(at, 100);
+                }
+                if (real >= 2) return 800 + sc;   // menos que substring directo, pero cuenta como coincidencia
+            }
+            return 0;
+        }
+        // de Form1.Buscador.cs
+        private List<SearchItem> SearchCandidates(List<SearchItem> source, int mask)
+        {
+            if (!object.ReferenceEquals(source, searchIndex) || searchPostings == null) return source;
+            List<SearchItem> best = source;
+            for (int bit = 0; bit < searchPostings.Length; bit++)
+            {
+                List<SearchItem> list = searchPostings[bit];
+                if ((mask & (1 << bit)) != 0 && list != null && list.Count < best.Count) best = list;
+            }
+            return best;
+        }
+        // de Form1.Biblioteca.cs
+        // Los N mejores de una lista, SIN ordenar el resto. Se recorre una vez manteniendo una lista corta
+        // ordenada: cada candidato solo se compara con el peor de los que ya estan dentro, y solo si lo mejora
+        // se le hace sitio. Da exactamente los mismos N primeros que ordenarlo todo.
+        private static void TomaMejores(List<SearchItem> src, List<SearchItem> dst, int n)
+        {
+            int cnt = src.Count;
+            if (cnt <= 0 || n <= 0) return;
+            if (n > cnt) n = cnt;
+            SearchItem[] top = new SearchItem[n];
+            int hay = 0;
+            for (int i = 0; i < cnt; i++)
+            {
+                SearchItem v = src[i];
+                if (hay < n)
+                {
+                    int j = hay++;
+                    while (j > 0 && ComparaHit(top[j - 1], v) > 0) { top[j] = top[j - 1]; j--; }
+                    top[j] = v;
+                }
+                else if (ComparaHit(v, top[n - 1]) < 0)
+                {
+                    int j = n - 1;
+                    while (j > 0 && ComparaHit(top[j - 1], v) > 0) { top[j] = top[j - 1]; j--; }
+                    top[j] = v;
+                }
+            }
+            for (int i = 0; i < hay; i++) dst.Add(top[i]);
+        }
+        // de Form1.cs
+        private List<SearchItem> lastMatches = null;          // coincidencias previas (para acotar el re-escaneo)
+        // de Form1.Buscador.cs
+        private bool lastMatchesApproximate;
+        // de Form1.cs
+        private string lastQuery = null;                      // busqueda incremental
+        // de Form1.cs
+        private readonly List<SearchItem> searchIndex = new List<SearchItem>();
+        // de Form1.Buscador.cs
+        private void BuildSearchPostings()
+        {
+            searchPostings = null;
+            int n = searchIndex.Count;
+            if (n < 16000) return;
+            int[] counts = new int[28];
+            for (int i = 0; i < n; i++)
+                for (int bit = 0; bit < counts.Length; bit++)
+                    if ((searchIndex[i].Mask & (1 << bit)) != 0) counts[bit]++;
+            List<SearchItem>[] postings = new List<SearchItem>[28];
+            int limit = Math.Min(n / 8, 8192);
+            int selected = 0;
+            for (int bit = 0; bit < counts.Length; bit++)
+                if (counts[bit] <= limit)
+                {
+                    postings[bit] = new List<SearchItem>(counts[bit]);
+                    selected |= 1 << bit;
+                }
+            for (int i = 0; i < n; i++)
+            {
+                SearchItem item = searchIndex[i];
+                int mask = item.Mask & selected;
+                if (mask == 0) continue;
+                for (int bit = 0; bit < postings.Length; bit++)
+                    if ((mask & (1 << bit)) != 0) postings[bit].Add(item);
+            }
+            searchPostings = postings;
+        }
+        // de Form1.Biblioteca.cs
+        private void ClavesDelIndice()
+        {
+            int n = searchIndex.Count;
+            int hilos = IndexWorkers(n, CargaTrabajo.Procesadores);
+            if (hilos <= 1) { TramoDeClaves(0, n); return; }
+
+            int trozo = (n + hilos - 1) / hilos;
+            System.Threading.Thread[] th = new System.Threading.Thread[hilos - 1];
+            // Una excepcion sin atrapar en un hilo cierra la rocola en CLR 2: si un ayudante falla, se atrapa y su tramo se rehace aqui, en el hilo que reparte
+            // (que ya tiene su propio manejo de errores). Cada tramo escribe solo dentro de sus entradas, asi que rehacerlo es seguro.
+            bool[] fallo = new bool[hilos - 1];
+            for (int k = 1; k < hilos; k++)
+            {
+                int desde = k * trozo;
+                int hasta = Math.Min(n, desde + trozo);
+                int yo = k - 1;
+                th[k - 1] = new System.Threading.Thread(delegate () { try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });
+                th[k - 1].IsBackground = true;
+                th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
+                th[k - 1].Start();
+            }
+            TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
+            for (int k = 0; k < th.Length; k++) th[k].Join();
+            for (int k = 0; k < th.Length; k++)
+                if (fallo[k]) TramoDeClaves((k + 1) * trozo, Math.Min(n, (k + 2) * trozo));
+        }
+        // de Form1.Buscador.cs
+        private void ClearRecentQueries()
+        {
+            if (recentQueries != null) recentQueries.Clear();
+            recentQueryItems = 0;
+            if (bolsaLetra != null) bolsaLetra.Clear();
+            if (letterQueryOrder != null) letterQueryOrder.Clear();
+        }
+        // de Form1.Biblioteca.cs
+        // El orden en que se ensenan los resultados: primero el que mejor casa, a igualdad antes el artista
+        // que el disco y antes el disco que la cancion, y a igualdad de todo, por nombre.
+        private static int ComparaHit(SearchItem a, SearchItem b)
+        {
+            if (b.Score != a.Score) return b.Score - a.Score;
+            if (a.Kind != b.Kind) return a.Kind - b.Kind;
+            return string.Compare(a.Display, b.Display, StringComparison.OrdinalIgnoreCase);
+        }
+        // de Form1.Buscador.cs
+        private sealed class QueryBag { internal string Key; internal BolsaLetra Data; }
+        // de Form1.cs
+        private readonly Dictionary<char, BolsaLetra> bolsaLetra = new Dictionary<char, BolsaLetra>();
+        // de Form1.Buscador.cs
+        private List<char> letterQueryOrder;
+        // de Form1.Buscador.cs
+        private List<QueryBag> recentQueries;
+        // de Form1.Buscador.cs
+        private int recentQueryItems;
+        // de Form1.Biblioteca.cs
+        // Solo listas selectivas y completas, en el orden original. Como maximo
+        // 28 * 8192 referencias; las letras comunes siguen usando el recorrido normal.
+        private List<SearchItem>[] searchPostings;
+        // de Form1.Biblioteca.cs
+        // LAS CLAVES DEL BUSCADOR, REPARTIDAS ENTRE LOS NUCLEOS.
+        //
+        // Cada entrada mira solo su propio texto y escribe solo dentro de si misma, asi que no hay nada
+        // compartido que proteger: ni candados ni esperas. Se reparte por TRAMOS y no de una en una porque
+        // el trabajo de cada entrada es minusculo y ponerse de acuerdo costaria mas que hacerlo.
+        //
+        // Reservar margen para interfaz y musica, tambien al reescanear durante una reproduccion.
+        // En 2C/2T se usa solo el worker actual. Por debajo de 8000 entradas no compensa repartir.
+        //
+        // Al volver de los Join ya no queda nadie tocando el indice, y ademas Join deja a la vista de este
+        // hilo todo lo que escribieron los otros: de aqui en adelante el indice se lee como siempre.
+        internal static int IndexWorkers(int count, int processors)
+        { return count < 8000 ? 1 : CargaTrabajo.Lectores(processors); }
+        // de Form1.Biblioteca.cs
+        private void TramoDeClaves(int desde, int hasta)
+        {
+            for (int i = desde; i < hasta; i++)
+            {
+                SearchItem si = searchIndex[i];
+                string artist = si.Kind == 0 ? si.Display : si.Kind == 2 && si.TrackRef != null
+                    ? si.TrackRef.Artist : si.AlbumRef == null ? "" : si.AlbumRef.Artist;
+                string title = si.Kind == 0 ? "" : si.Kind == 2 && si.TrackRef != null
+                    ? si.TrackRef.Title : si.AlbumRef == null ? si.Display : si.AlbumRef.Name;
+                string artistKey = MotorBusqueda.Normaliza(artist), titleKey = MotorBusqueda.Normaliza(title);
+                si.Key = artistKey.Length == 0 ? titleKey : titleKey.Length == 0 ? artistKey : artistKey + " " + titleKey;
+                si.TitleAt = si.Kind == 0 || artistKey.Length == 0 || titleKey.Length == 0 ? 0 : artistKey.Length + 1;
+                si.TitleLength = si.Key.Length - si.TitleAt;
+                // Se conserva el numero en Key (tambien se puede buscar); solo la prioridad
+                // de un titulo exacto ignora el prefijo de pista ya oculto en la presentacion.
+                if (si.Kind == 2 && MotorBusqueda.PrefijoPista(title))
+                {
+                    int firstSpace = titleKey.IndexOf(' ');
+                    if (firstSpace >= 0 && firstSpace + 1 < titleKey.Length)
+                    { si.TitleAt += firstSpace + 1; si.TitleLength -= firstSpace + 1; }
+                }
+                si.Mask = MarcaLetras(si.Key);
+            }
+        }
     }
 }

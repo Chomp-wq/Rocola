@@ -118,6 +118,7 @@ namespace Rocola
             c.Prepara();
             foreach (string b in botones)
                 if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
+                else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
             v.Dibuja(c);
             fp.Captura(ruta);

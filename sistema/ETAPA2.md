@@ -216,3 +216,19 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   su soporte EFI. Probado en QEMU de las dos formas (UEFI con OVMF): las dos llegan a la prueba.
 - El sistema, en 1 GB (antes 512 MB): sitio para los datos, sus respaldos de 3 días y lo importado de XP.
 - Cómo compilar y grabar la imagen del A4, y qué esperar al arrancarla: `LEEME.md`, «En el A4».
+
+## Hito 13 (1-11-2026): el asistente de botones, lo más sonado, el buscador y la navegación de XP
+
+- **El asistente de botones** de XP: sin `rocola_teclas.txt` (o con F8) pide los 8 botones por turno, cada uno distinto, y guarda el
+  archivo en el formato de XP.
+- **Lo más sonado** (`BuildTopDiscs` de XP): la letra TOP, a la izquierda de la A, con un disco «TOP 100» por género y por artista con lo
+  más pedido. La rocola arranca en la primera letra real, como XP.
+- **El buscador** (`RecomputeResults` y `BuildSearchIndex` de XP, sin la pantalla: la misma puntuación, la caché por letra y la
+  errata): REGRESAR mantenido + ARRIBA lo abre y lo cierra; el teclado de XP en pantalla (1234567890 / QWERTYUIOP / ASDFGHJKLÑ /
+  ZXCVBNM / ESPACIO y BORRAR); a la derecha del teclado, los resultados (artistas, discos y canciones); una canción se pide sin cerrar
+  el buscador, un disco se abre, un artista lleva a su disco. REGRESAR borra una letra.
+- **La navegación de XP:** en la pared, IZQ/DER de disco, ARRIBA/ABAJO de página, REGRESAR mantenido + IZQ/DER de letra; dentro de un
+  disco, ARRIBA/ABAJO de canción, IZQ/DER de página. Para los combos, evdev dice qué botones siguen apretados.
+- **La memoria de la biblioteca de XP no se trajo:** para saber si vale, recorre todas las carpetas mirando tamaños y fechas, que
+  es más que el recorrido normal (los títulos salen del nombre del archivo, sin abrirlo).
+- Probado aquí fuera de pantalla (asistente, TOP, buscador: escribir, pasar a los resultados, elegir).

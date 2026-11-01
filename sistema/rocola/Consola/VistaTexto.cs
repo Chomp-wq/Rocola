@@ -36,6 +36,29 @@ namespace Rocola
                 string q = sb.ToString(); if (q != pantallaAntes) { pantallaAntes = q; Console.Write("\x1b[H" + q); }
                 return;
             }
+            if (c.Buscando)
+            {
+                sb.Append("\x1b[1;37;44m").Append(Corta(" BUSCAR: " + c.Escrito + "_", ancho)).Append("\x1b[0m\n");
+                for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
+                {
+                    StringBuilder fl = new StringBuilder(" ");
+                    for (int i = 0; i < Controlador.FilasTeclado[f].Length; i++)
+                    {
+                        string et = Controlador.Etiqueta(Controlador.FilasTeclado[f][i]);
+                        fl.Append(!c.EnResultados && f == c.FilaTecla && i == c.ColTecla ? "[" + et + "]" : " " + et + " ");
+                    }
+                    sb.Append(Corta(fl.ToString(), ancho)).Append('\n');
+                }
+                sb.Append(new string('-', ancho)).Append('\n');
+                for (int i = 0; i < alto - 3; i++)
+                {
+                    if (i < c.Resultados.Count) sb.Append(c.EnResultados && i == c.SelResultado ? "\x1b[7m" : "").Append(Corta(" " + (c.Resultados[i].Tipo == 0 ? "ARTISTA " : c.Resultados[i].Tipo == 1 ? "DISCO   " : "CANCION ") + c.Resultados[i].Texto, ancho)).Append("\x1b[0m");
+                    else sb.Append(new string(' ', ancho));
+                    sb.Append('\n');
+                }
+                string q2 = sb.ToString(); if (q2 != pantallaAntes) { pantallaAntes = q2; Console.Write("\x1b[H" + q2); }
+                return;
+            }
             sb.Append("\x1b[1;37;44m").Append(Corta(" ROCOLA OS   Creditos: " + motor.Creditos + "   En la cola: " + motor.EnCola, ancho)).Append("\x1b[0m\n");
             sb.Append(Corta(" Suena: " + (sonando != null ? Path.GetFileNameWithoutExtension(sonando) : "(nada)"), ancho)).Append('\n');
             if (c.dentro == null)
@@ -52,7 +75,7 @@ namespace Rocola
                     else sb.Append(new string(' ', ancho));
                     sb.Append('\n');
                 }
-                sb.Append(Corta(" ARRIBA/ABAJO: disco   IZQ/DER: letra   PONER: entrar   MONEDA   SALTAR", ancho)).Append('\n');
+                sb.Append(Corta(" IZQ/DER: disco  ARRIBA/ABAJO: pagina  REGRESAR+IZQ/DER: letra  REGRESAR+ARRIBA: buscar", ancho)).Append('\n');
             }
             else
             {
@@ -65,7 +88,7 @@ namespace Rocola
                     else sb.Append(new string(' ', ancho));
                     sb.Append('\n');
                 }
-                sb.Append(Corta(" ARRIBA/ABAJO: cancion   PONER: pedirla (1 credito)   REGRESAR: a los discos", ancho)).Append('\n');
+                sb.Append(Corta(" ARRIBA/ABAJO: cancion  IZQ/DER: pagina  PONER: pedirla (1 credito)  REGRESAR: a los discos", ancho)).Append('\n');
             }
             sb.Append("\x1b[1;33m").Append(Corta(c.AvisoVigente.Length > 0 ? " " + c.AvisoVigente : "", ancho)).Append("\x1b[0m");
             string p = sb.ToString();

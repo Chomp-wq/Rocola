@@ -36,6 +36,7 @@ namespace Rocola
             BuildAlbums(roots);
             cachedCovers = null;
             IndexaBiblioteca();
+            BuildSearchIndex();   // el indice del buscador (Buscador.cs)
             List<Disco> r2 = new List<Disco>(albums.Count);
             foreach (Album a in albums)
             {

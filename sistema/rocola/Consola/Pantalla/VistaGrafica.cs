@@ -51,7 +51,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            string firma = (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
             if (firma == antes && (m.Sonando == null || unchecked(ahora - ultimo) < 500)) return;
             antes = firma; ultimo = ahora;
@@ -67,14 +67,15 @@ namespace Rocola
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
             float abajo = H - 120 * k;   // donde empieza lo que suena
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
-            if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
+            if (c.Buscando) Buscador(c, W, abajo);
+            else if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
             Suena(c, W, H, abajo);
             string av = c.AvisoVigente;
             if (av.Length > 0)
             {
                 float wa = media.Mide(av) + 48 * k;
-                d.Redondo((W - wa) / 2, abajo - 70 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.92f));
-                media.EscribeCentrado(d, av, W / 2, abajo - 58 * k, Dorado);
+                d.Redondo((W - wa) / 2, abajo - 104 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.92f));
+                media.EscribeCentrado(d, av, W / 2, abajo - 92 * k, Dorado);
             }
             d.Termina();
             sup.Presenta();
@@ -95,6 +96,43 @@ namespace Rocola
             chica.EscribeCentrado(d, "(cada botón debe ser distinto)", W / 2, H - 90 * k, Gris);
         }
 
+        // El buscador (como el de XP): lo escrito arriba, el teclado a la izquierda y los resultados a la derecha.
+        private void Buscador(Controlador c, float W, float abajo)
+        {
+            float x0 = 24 * k, y0 = 80 * k, tecla = 52 * k, sep = 6 * k;
+            d.Redondo(x0, y0, W - 48 * k, 54 * k, 12 * k, PanelClaro);
+            grande.Escribe(d, c.Escrito.Length > 0 ? c.Escrito + "_" : "Escribe un artista, un disco o una canción", x0 + 18 * k, y0 + 8 * k, c.Escrito.Length > 0 ? Blanco : Gris);
+            float ty = y0 + 80 * k;
+            for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
+            {
+                string fila = Controlador.FilasTeclado[f]; float tx = x0;
+                for (int i = 0; i < fila.Length; i++)
+                {
+                    string et = Controlador.Etiqueta(fila[i]);
+                    float w = et.Length > 1 ? tecla * 3 + sep * 2 : tecla;
+                    bool sel = !c.EnResultados && f == c.FilaTecla && i == c.ColTecla;
+                    d.Redondo(tx, ty, w, tecla, 8 * k, sel ? Dorado : Panel);
+                    (et.Length > 1 ? chica : media).EscribeCentrado(d, et, tx + w / 2, ty + (et.Length > 1 ? 14 : 10) * k, sel ? Fondo : Blanco);
+                    tx += w + sep;
+                }
+                ty += tecla + sep;
+            }
+            float rx = x0 + 10 * (tecla + sep) + 24 * k, rw = W - rx - 24 * k, ry = y0 + 80 * k, fila_ = 36 * k;
+            int caben = Math.Max(1, (int)((abajo - ry - 40 * k) / fila_));
+            if (c.Resultados.Count == 0 && c.Escrito.Length > 0) media.Escribe(d, "Nada con eso", rx, ry, Gris);
+            int desde = Math.Max(0, Math.Min(c.SelResultado - caben / 2, c.Resultados.Count - caben));
+            for (int i = 0; i < caben && desde + i < c.Resultados.Count; i++)
+            {
+                Form1.Resultado r = c.Resultados[desde + i]; float y = ry + i * fila_;
+                bool sel = c.EnResultados && desde + i == c.SelResultado;
+                if (sel) d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro);
+                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : "CANCIÓN";
+                chica.Escribe(d, tipo, rx, y + 6 * k, r.Tipo == 2 ? Verde : Dorado);
+                media.Escribe(d, media.Ajusta(r.Texto, rw - 100 * k), rx + 100 * k, y + 2 * k, sel ? Blanco : Gris);
+            }
+            chica.Escribe(d, "PONER: escribir / elegir    REGRESAR: borrar    REGRESAR + ARRIBA: cerrar", x0, abajo - 28 * k, Gris.ConAlfa(0.8f));
+        }
+
         private void Pared(Controlador c, float W, float abajo)
         {
             // las letras
@@ -109,7 +147,7 @@ namespace Rocola
             }
             List<Form1.Disco> ds = c.DiscosDeLetra();
             if (ds.Count == 0) { media.EscribeCentrado(d, "No hay música en la carpeta de la rocola", W / 2, 300 * k, Gris); return; }
-            int cols = 4, filas = 2, porPag = cols * filas, pag = c.cursorDisco / porPag;
+            int cols = 4, filas = 2, porPag = Controlador.DiscosPorPagina, pag = c.cursorDisco / porPag;
             float top = 130 * k, alto = abajo - top - 10 * k, celW = (W - 48 * k) / cols, celH = alto / filas;
             float lado = Math.Min(celW - 24 * k, celH - 70 * k);
             for (int i = 0; i < porPag; i++)
@@ -126,7 +164,9 @@ namespace Rocola
                 if (!string.IsNullOrEmpty(nm)) chica.EscribeCentrado(d, nm, cx, py + l + 32 * k, sel ? Dorado : Gris.ConAlfa(0.7f));
             }
             int paginas = (ds.Count + porPag - 1) / porPag;
-            if (paginas > 1) chica.EscribeCentrado(d, "Página " + (pag + 1) + " de " + paginas, W / 2, abajo - 26 * k, Gris.ConAlfa(0.8f));
+            if (paginas > 1) chica.Escribe(d, "Página " + (pag + 1) + " de " + paginas, 24 * k, abajo - 26 * k, Gris.ConAlfa(0.8f));
+            string ayuda = "IZQ/DER: disco   ARRIBA/ABAJO: página   REGRESAR + IZQ/DER: letra   REGRESAR + ARRIBA: buscar";
+            chica.Escribe(d, ayuda, W - 24 * k - chica.Mide(ayuda), abajo - 26 * k, Gris.ConAlfa(0.8f));
         }
 
         private void Disco(Controlador c, float W, float abajo)
@@ -149,7 +189,7 @@ namespace Rocola
                 chica.Escribe(d, (j + 1).ToString().PadLeft(2), x, y + 6 * k, sel ? Dorado : Gris);
                 media.Escribe(d, media.Ajusta(disco.Titulos[j], ancho - 50 * k), x + 44 * k, y + 2 * k, sel ? Blanco : Gris);
             }
-            chica.Escribe(d, "PONER: pedirla (1 crédito)     REGRESAR: a los discos", x, abajo - 28 * k, Gris.ConAlfa(0.8f));
+            chica.Escribe(d, "ARRIBA/ABAJO: canción   IZQ/DER: página   PONER: pedirla (1 crédito)   REGRESAR: a los discos", x, abajo - 28 * k, Gris.ConAlfa(0.8f));
         }
 
         private void Suena(Controlador c, float W, float H, float abajo)

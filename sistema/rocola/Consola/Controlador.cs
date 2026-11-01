@@ -162,6 +162,15 @@ namespace Rocola
 
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
+        internal const int DiscosPorPagina = 8;
+        // REGRESAR mantenido (para los combos de XP); en las pruebas se da por boton.
+        private bool regresarDePrueba;
+        private bool RegresarApretado { get { return regresarDePrueba || (botones != null && botones.Apretado(Boton.Regresar)); } }
+        internal void Pulsa(Boton b, bool conRegresar) { regresarDePrueba = conRegresar; try { Maneja(b); } finally { regresarDePrueba = false; } }
+
+        // LOS BOTONES, como en XP (Form1.cs: ProcessCmdKey). MONEDA y SALTAR siempre. REGRESAR mantenido + ARRIBA abre o cierra el buscador.
+        // En la pared: IZQ/DER, de disco; ARRIBA, pagina siguiente; ABAJO, la anterior; REGRESAR mantenido + IZQ/DER, de letra; PONER, entrar.
+        // Dentro de un disco: ARRIBA/ABAJO, de cancion; IZQ/DER, de pagina; PONER, pedirla; REGRESAR, a la pared.
         private void Maneja(Boton b)
         {
             switch (b)
@@ -169,37 +178,103 @@ namespace Rocola
                 case Boton.Moneda: motor.Moneda(); return;
                 case Boton.Saltar: if (salida != null) saltar = true; return;
             }
+            if (b == Boton.Arriba && RegresarApretado) { if (Buscando) CierraBuscador(); else AbreBuscador(); return; }
+            if (Buscando) { ManejaBuscador(b); return; }
             if (dentro == null)
             {
                 List<Form1.Disco> l = DiscosDeLetra();
                 if (l.Count == 0) return;
-                if (b == Boton.Arriba) cursorDisco = (cursorDisco + l.Count - 1) % l.Count;
-                else if (b == Boton.Abajo) cursorDisco = (cursorDisco + 1) % l.Count;
-                else if (b == Boton.Izquierda) { letra = (letra + letras.Count - 1) % letras.Count; cursorDisco = 0; }
-                else if (b == Boton.Derecha) { letra = (letra + 1) % letras.Count; cursorDisco = 0; }
+                if (b == Boton.Izquierda && RegresarApretado) { letra = (letra + letras.Count - 1) % letras.Count; cursorDisco = 0; }
+                else if (b == Boton.Derecha && RegresarApretado) { letra = (letra + 1) % letras.Count; cursorDisco = 0; }
+                else if (b == Boton.Izquierda) cursorDisco = (cursorDisco + l.Count - 1) % l.Count;
+                else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
+                else if (b == Boton.Arriba && !RegresarApretado) { int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
+                else if (b == Boton.Abajo && !RegresarApretado) { int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; }
             }
             else
             {
                 int n = dentro.Rutas.Count, pagina = Math.Max(1, PorPagina);
-                if (b == Boton.Arriba) cursorCancion = (cursorCancion + n - 1) % n;
-                else if (b == Boton.Abajo) cursorCancion = (cursorCancion + 1) % n;
+                if (b == Boton.Arriba && !RegresarApretado) cursorCancion = (cursorCancion + n - 1) % n;
+                else if (b == Boton.Abajo && !RegresarApretado) cursorCancion = (cursorCancion + 1) % n;
                 else if (b == Boton.Izquierda) cursorCancion = Math.Max(0, cursorCancion - pagina);
                 else if (b == Boton.Derecha) cursorCancion = Math.Min(n - 1, cursorCancion + pagina);
                 else if (b == Boton.Regresar) dentro = null;
-                else if (b == Boton.Poner)
-                {
-                    string ruta = dentro.Rutas[cursorCancion];
-                    motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
-                    Form1.Pedido p = motor.Pide(ruta);
-                    if (p == Form1.Pedido.Puesta)
+                else if (b == Boton.Poner) PideCancion(dentro.Rutas[cursorCancion], dentro.Titulos[cursorCancion]);
+            }
+        }
+
+        private void PideCancion(string ruta, string titulo)
+        {
+            motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
+            Form1.Pedido p = motor.Pide(ruta);
+            if (p == Form1.Pedido.Puesta)
+            {
+                Aviso("Pusiste «" + titulo + "» (" + motor.EnCola + " en la cola)");
+                if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
+            }
+            else if (p == Form1.Pedido.Repetida) Aviso("Esa cancion ya va seguida");
+            else if (p == Form1.Pedido.Danada) Aviso("Esa cancion esta danada: no se cobra");
+        }
+
+        // ---- EL BUSCADOR (el de XP: teclado en pantalla, resultados a la derecha; REGRESAR borra una letra) ----
+        internal static readonly string[] FilasTeclado = { "1234567890", "QWERTYUIOP", "ASDFGHJKL\u00D1", "ZXCVBNM", "\u0001\u0002" };   // la ultima: ESPACIO y BORRAR
+        internal bool Buscando;
+        internal string Escrito = "";
+        internal int FilaTecla = 1, ColTecla, SelResultado;
+        internal bool EnResultados;
+        internal List<Form1.Resultado> Resultados = new List<Form1.Resultado>();
+        internal static string Etiqueta(char t) { return t == '\u0001' ? "ESPACIO" : t == '\u0002' ? "BORRAR" : t.ToString(); }
+
+        internal void AbreBuscador() { Buscando = true; Escrito = ""; FilaTecla = 1; ColTecla = 0; EnResultados = false; SelResultado = 0; Resultados = new List<Form1.Resultado>(); }
+        private void CierraBuscador() { Buscando = false; }
+        private void Escribe(char ch)
+        {
+            if (ch == '\u0002') { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); }
+            else Escrito += ch == '\u0001' ? ' ' : ch;
+            Resultados = motor.Busca(Escrito); SelResultado = 0;
+        }
+        private void ManejaBuscador(Boton b)
+        {
+            if (b == Boton.Regresar) { Escribe('\u0002'); return; }
+            if (EnResultados)
+            {
+                int n = Resultados.Count;
+                if (n == 0) { EnResultados = false; return; }
+                if (b == Boton.Arriba) SelResultado = Math.Max(0, SelResultado - 1);
+                else if (b == Boton.Abajo) SelResultado = Math.Min(n - 1, SelResultado + 1);
+                else if (b == Boton.Izquierda) EnResultados = false;
+                else if (b == Boton.Poner) Elige(Resultados[Math.Min(SelResultado, n - 1)]);
+                return;
+            }
+            string fila = FilasTeclado[FilaTecla];
+            if (b == Boton.Arriba) { FilaTecla = Math.Max(0, FilaTecla - 1); ColTecla = Math.Min(ColTecla, FilasTeclado[FilaTecla].Length - 1); }
+            else if (b == Boton.Abajo) { FilaTecla = Math.Min(FilasTeclado.Length - 1, FilaTecla + 1); ColTecla = Math.Min(ColTecla, FilasTeclado[FilaTecla].Length - 1); }
+            else if (b == Boton.Izquierda) ColTecla = Math.Max(0, ColTecla - 1);
+            else if (b == Boton.Derecha)
+            {
+                if (ColTecla >= fila.Length - 1 && Resultados.Count > 0) { EnResultados = true; SelResultado = 0; }   // del borde del teclado a los resultados
+                else ColTecla = Math.Min(fila.Length - 1, ColTecla + 1);
+            }
+            else if (b == Boton.Poner) Escribe(fila[ColTecla]);
+        }
+        // Elegir un resultado (ChooseSearchResult de XP): una cancion se pide y el buscador sigue abierto; un disco se abre; un artista,
+        // se va a su primer disco.
+        private void Elige(Form1.Resultado r)
+        {
+            if (r.Tipo == 2 && r.Ruta != null) { PideCancion(r.Ruta, r.Texto); return; }
+            if (r.Carpeta == null) return;
+            for (int i = 0; i < letras.Count; i++)
+            {
+                if (letras[i] == Form1.LetraTop) continue;
+                List<Form1.Disco> l = porLetra[letras[i]];
+                for (int j = 0; j < l.Count; j++)
+                    if (l[j].Carpeta == r.Carpeta)
                     {
-                        Aviso("Pusiste «" + dentro.Titulos[cursorCancion] + "» (" + motor.EnCola + " en la cola)");
-                        if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
+                        letra = i; cursorDisco = j; Buscando = false;
+                        if (r.Tipo == 1) { dentro = l[j]; cursorCancion = 0; } else dentro = null;
+                        return;
                     }
-                    else if (p == Form1.Pedido.Repetida) Aviso("Esa ya va en la cola");
-                    else if (p == Form1.Pedido.Danada) Aviso("Esa cancion esta danada: no se cobra");
-                }
             }
         }
 
