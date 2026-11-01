@@ -31,7 +31,7 @@ Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle d
 - **El sistema:** arranca en BIOS y en UEFI; la primera vez hace la prueba de sonido y gráfica, después entra directo; el volumen
   general al máximo al arrancar (como XP); si la rocola se cierra, vuelve a abrirse; un fallo no la tumba.
 
-**Lo que aún no tiene de XP:** los cubos y la estrella animada, la atracción, el estado extendido y los demás adornos de la pantalla
+**Lo que aún no tiene de XP:** los cubos y la estrella animada, el estado extendido y los demás adornos de la pantalla
 (Ctrl+F3 → Pantalla); «Lo que suena ahora» y las herramientas de diagnóstico del dueño; la comparación a ciegas; afinar el local con el
 celular; los MP3 con frecuencias mezcladas (en XP se reconstruyen).
 

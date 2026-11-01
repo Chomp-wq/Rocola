@@ -67,6 +67,7 @@ namespace Rocola
             }
             motor.Reanuda();   // los creditos y la cola de antes del apagon (mismo dia del negocio)
             RefrescaTop();
+            foreach (Form1.Disco d in discos) if (!d.Videos) TotalCanciones += d.Rutas.Count;
             int repaso = motor.RepasaBiblioteca();   // lo que falta medir, poco a poco y con prioridad baja (el repaso de XP)
             if (repaso > 0) Console.WriteLine("Repaso: " + repaso + " canciones por medir");
         }
@@ -102,6 +103,13 @@ namespace Rocola
 
         private void Tecla(int vk)
         {
+            ultimoToque = Environment.TickCount;
+            if (Atraccion)
+            {
+                Atraccion = false;   // la despierta; la moneda ademas cuenta (en XP la moneda cuenta siempre)
+                Boton f = botones != null ? botones.FuncionDe(vk & 0xFFFF) : Boton.Ninguno;
+                if (f != Boton.Moneda) return;
+            }
             if (vk <= DeTexto) { if (Buscando) Escribe((char)(DeTexto - vk)); return; }
             if (vk <= DeGuion) { int x = DeGuion - vk; Pulsa((Boton)(x / 2), (x & 1) != 0); return; }
             if ((vk & ConCtrl) != 0)
@@ -137,6 +145,29 @@ namespace Rocola
         // El aviso de apagar (SIGTERM: el boton de encendido, por acpid): se sale del bucle y es un cierre deliberado.
         internal volatile bool Apagando;
         internal void Apaga() { Apagando = true; salir = true; pulsos.Add(0); }
+
+        // EL MODO ATRACCION (el de XP: AtraccionGpu.cs, en lo esencial): nada sonando, cola vacia y 40 s sin tocarla -> un escaparate de
+        // discos (uno cada 8 s, al azar) y los mensajes de XP. Cualquier boton la quita (y la MONEDA, ademas, cuenta).
+        internal bool Atraccion;
+        internal int AtraccionDisco; internal Form1.Disco AtraccionActual;
+        private int ultimoToque = Environment.TickCount, atraccionCambio;
+        private readonly Random azar = new Random();
+        internal int TotalCanciones;
+        private void RevisaAtraccion()
+        {
+            bool sola = motor.Sonando == null && motor.EnCola == 0 && video == null && AsistentePaso < 0 && AjusteSel < 0 && !Buscando;
+            if (!Atraccion && sola && unchecked(Environment.TickCount - ultimoToque) > 40000 && discos != null && discos.Count > 0)
+            { Atraccion = true; atraccionCambio = Environment.TickCount - 8000; }
+            if (Atraccion && !sola) Atraccion = false;
+            if (Atraccion && unchecked(Environment.TickCount - atraccionCambio) >= 8000)
+            {
+                atraccionCambio = Environment.TickCount;
+                List<Form1.Disco> l = discos.FindAll(x => !x.Videos);
+                if (l.Count > 0) { AtraccionActual = l[azar.Next(l.Count)]; AtraccionDisco++; }
+            }
+        }
+
+        internal void FuerzaAtraccion() { ultimoToque = Environment.TickCount - 60000; RevisaAtraccion(); }   // (pruebas)
 
         private int fallos;
         internal int Corre(IVista vista)
@@ -174,6 +205,7 @@ namespace Rocola
                             if (fin) break;
                             motor.PublicaMedidas();
                             ActualizaCodigo();
+                            RevisaAtraccion();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya

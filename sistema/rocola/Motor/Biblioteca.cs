@@ -18,7 +18,8 @@ namespace Rocola
             public string Artista, Nombre, Carpeta, Portada;
             public char Letra;
             public bool Videos;   // un disco de la seccion de videos (sus Rutas son videos)
-            public int Minutos = -1;   // lo que dura, si se sabe lo de todas sus canciones (-1: no se sabe; como el letrero de XP, no se inventa)
+            public int Minutos = -1;
+            public int Pedidas;          // cuantas veces se pidieron sus canciones (rocola_stats.txt), para la atraccion   // lo que dura, si se sabe lo de todas sus canciones (-1: no se sabe; como el letrero de XP, no se inventa)
             public List<string> Rutas = new List<string>();
             public List<string> Titulos = new List<string>();
             public override string ToString() { return string.IsNullOrEmpty(Nombre) ? Artista : Artista + " - " + Nombre; }
@@ -50,6 +51,7 @@ namespace Rocola
                 {
                     d.Rutas.Add(t.Path); d.Titulos.Add(t.ToString());
                     float s1 = SegundosDe(t.Path); if (s1 > 0) seg += s1; else todas = false;
+                    int veces; if (songCounts != null && songCounts.TryGetValue(t.Path, out veces)) d.Pedidas += veces;
                 }
                 if (todas && a.Tracks.Count > 0) d.Minutos = (int)Math.Round(seg / 60.0);
                 r2.Add(d);

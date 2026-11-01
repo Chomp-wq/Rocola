@@ -281,3 +281,11 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   convertidor de XP (`RemuestreoContinuo`, con su limitador detrás) y entra sin cerrar la salida. Las tablas de 44100↔48000 se preparan
   al arrancar, en segundo plano. Probado: un disco de tres pistas a 44100, 48000 y 44100 Hz sale seguido (45 s justos) y la de 48000
   suena a su tono (440 Hz; sin convertir habría salido a 404).
+
+## Extra (1-11-2026): la atracción
+
+- **Cuando nadie la usa** (no suena nada, la fila está vacía, no hay vídeo ni hoja abierta y pasan 40 s sin botones), la rocola enseña
+  sola sus discos, como el escaparate de XP en lo esencial: uno al azar cada 8 s (los de vídeos no), con su portada en grande, el nombre,
+  el artista, cuántas veces se ha pedido y cuántas canciones trae, y aparece y se va en 0,6 s. Debajo, un aviso que cambia cada 5 s
+  («Toca un botón y elige entre N canciones», «una moneda = 4 canciones», el buscador con el botón rojo).
+- Cualquier botón la quita y no hace nada más (la moneda sí cuenta). Probado en captura (`--captura x.ppm --boton atraccion`).

@@ -121,9 +121,11 @@ namespace Rocola
             Controlador c = new Controlador(m, "null");
             c.Prepara();
             foreach (string b in botones)
-                if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
+                if (b == "atraccion") c.FuerzaAtraccion();
+                else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
+            if (botones.Contains("atraccion")) { v.Dibuja(c); System.Threading.Thread.Sleep(1300); }   // que termine de aparecer
             v.Dibuja(c);
             fp.Captura(ruta);
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola

@@ -117,6 +117,7 @@ namespace Rocola
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
             float abajo = H - 120 * k;   // donde empieza lo que suena
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); return; }
             if (c.Buscando) Buscador(c, W, abajo);
             else if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
@@ -130,6 +131,43 @@ namespace Rocola
             }
             d.Termina();
             sup.Presenta();
+        }
+
+        // EL MODO ATRACCION (el escaparate de XP): la portada grande, que se mece un poco, y su ficha; debajo, un mensaje cada 5 s.
+        private int atraccionVista = -1; private double atraccionDesde;
+        private void Atraccion(Controlador c, float W, float H)
+        {
+            double t = reloj.Elapsed.TotalSeconds;
+            if (atraccionVista != c.AtraccionDisco) { atraccionVista = c.AtraccionDisco; atraccionDesde = t; }
+            double edad = t - atraccionDesde;
+            float alfa = (float)Math.Max(0, Math.Min(1, Math.Min(edad / 0.6, (8.0 - edad) / 0.6)));   // entra y sale despacio
+            Form1.Disco disco = c.AtraccionActual;
+            float lado = H * 0.48f, x = W * 0.08f, y = H * 0.16f + (float)Math.Sin(t * 0.7) * 6 * k;
+            Textura tx = caratulas.De(disco.Portada);
+            if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.9f, tx.Media.ConAlfa(0.5f * alfa));
+            Portada(disco.Portada, disco.Artista, x, y, lado);
+            if (alfa < 1) d.Rect(x - 2, y - 2, lado + 4, lado + 4, Color4.Hex(0x0A1230, 1 - alfa));
+            float fx = x + lado + 40 * k, fw = W - fx - 40 * k;
+            chica.Escribe(d, "EN ESTA ROCOLA", fx, y + 10 * k, Gris.ConAlfa(alfa));
+            string nombre = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Nombre;
+            enorme.Escribe(d, enorme.Ajusta(nombre, fw), fx, y + 40 * k, Blanco.ConAlfa(alfa));
+            grande.Escribe(d, grande.Ajusta(disco.Artista, fw), fx, y + 100 * k, Verde.ConAlfa(alfa));
+            float px = fx, py = y + 160 * k;
+            foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
+            {
+                if (pastilla == null) continue;
+                float w = media.Mide(pastilla) + 28 * k;
+                d.Redondo(px, py, w, 40 * k, 20 * k, PanelClaro.ConAlfa(alfa));
+                media.Escribe(d, pastilla, px + 14 * k, py + 6 * k, Dorado.ConAlfa(alfa));
+                px += w + 12 * k;
+            }
+            string[] mensajes = { "Toca un botón y elige entre " + c.TotalCanciones.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " canciones",
+                "Pon tu canción: una moneda = 4 canciones", "Busca cualquier canción con el botón rojo y la flecha" };
+            int im = (int)(t / 5.0) % mensajes.Length; double em = t % 5.0;
+            float am = (float)Math.Max(0, Math.Min(1, Math.Min(em / 0.5, (5.0 - em) / 0.5)));
+            float my = H * 0.80f + (1 - am) * 20 * k;
+            d.Brillo(W / 2, my + 20 * k, W * 0.35f, Dorado.ConAlfa(0.10f * am));
+            grande.EscribeCentrado(d, mensajes[im], W / 2, my, Dorado.ConAlfa(am));
         }
 
         private static string FirmaAjustes(Controlador c)
