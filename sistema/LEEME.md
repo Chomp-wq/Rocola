@@ -138,6 +138,50 @@ QEMU; la rocola (el binario de .NET) corre entera —sonido y pantalla— emulan
 BusyBox, Mesa...) va compilado con las instrucciones del Piledriver (XOP, FMA4, TBM), que QEMU no emula: eso solo se puede probar en
 el A4.
 
+## Instalarlo en la rocola (el instalador)
+
+1. Graba `disk.img` en una memoria USB (paso 2 de arriba), conéctala a la rocola y préndela desde la memoria.
+2. **El instalador arranca solo** (es lo primero del menú, a los 5 s). Busca la carpeta `musica` en el disco de la rocola y enseña
+   qué encontró: el disco, la carpeta y cuántas canciones.
+3. **ENTER (el botón verde) instala;** cualquier otro botón cancela sin tocar nada.
+4. Instala Rocola OS **dentro del mismo disco**, en la carpeta `\rocola-os` (el sistema va en un archivo, `sistema.img`): no se
+   reparticiona ni se formatea nada, **la música se queda donde está** y la rocola la encuentra sola. Los archivos de la rocola de XP
+   (su configuración, lo aprendido, los volúmenes, los botones, las IA) tampoco se tocan, y la primera vez Rocola OS los copia
+   (`rocola_importado_xp.txt` dice qué).
+5. Al acabar pide **quitar la memoria USB** y se reinicia sola: desde entonces prende directo en la rocola.
+
+Windows XP deja de arrancar, pero no se borra nada suyo: con **ESC al prender** sale el menú, que tiene «Windows XP (la rocola de
+antes)». El arranque de antes queda guardado en `\rocola-os\arranque-xp.original.bin`. Hace falta 1,7 GB libres en el disco. Volver a
+instalar (otra versión) conserva lo aprendido.
+
+## Internet, actualizaciones y encendido remoto
+
+La rocola se conecta **por cable** (DHCP: basta conectarla al router). Con internet:
+
+- **El programa de la rocola se actualiza solo.** Cada cambio que se sube a GitHub lo compila GitHub
+  (`.github/workflows/rocola-programa.yml`) y lo publica como la versión «programa-N» del repositorio. La rocola la busca al minuto
+  de prender y cada hora, la baja, comprueba su suma y que arranca en ese equipo, y la pone **sola en cuanto está libre** (nada
+  sonando ni en la cola, y nadie tocándola en 2 minutos; los créditos se conservan). Si la nueva se cae al arrancar, vuelve sola a la
+  anterior y no la vuelve a bajar. Solo el programa de la rocola: el sistema (núcleo, bibliotecas) no.
+- **Ctrl+F3 → Internet:** la versión, la red (con la MAC), cómo va la actualización, «Buscar actualización ahora» y el interruptor
+  «Actualizarse sola». Lo que pasó, en `rocola_actualizaciones.txt`.
+
+**La llave de GitHub (una vez).** El repositorio es privado: la rocola necesita una llave que solo pueda leerlo.
+1. En GitHub: tu foto → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. Nombre «rocola», caducidad la más larga, **Repository access: Only select repositories → Chomp-wq/Rocola**,
+   **Permissions → Repository permissions → Contents: Read-only** (nada más). **Generate token** y copia la llave.
+3. Guárdala en un archivo de texto **`rocola_github.txt`** (solo la llave) en una memoria USB y conéctala a la rocola prendida: en la
+   siguiente revisión la copia (o «Buscar actualización ahora»). También vale ponerla en la carpeta de la rocola de XP antes de instalar.
+Si la llave caduca o se borra, la rocola sigue funcionando: solo deja de actualizarse (Ctrl+F3 lo dice).
+
+**Encenderla desde casa (Wake on LAN).** La rocola deja su tarjeta de red escuchando el «paquete mágico» al apagarse.
+1. **En el BIOS del A4** (Supr al prender): activar *Wake on LAN* / *Power On by PCI-E* / *Resume by LAN* (el nombre cambia según la
+   placa) y, si lo hay, desactivar *ErP / Deep Sleep*.
+2. **En el router del bar:** en su app o su página, la función *Wake on LAN* (o *Encender equipo*), con la **MAC** de la rocola
+   (Ctrl+F3 → Internet). Conviene darle a la rocola una **IP fija** (reserva de DHCP) en el router.
+3. Probarlo con la rocola apagada desde el botón (no desenchufada): desde la app del router, en el bar y luego desde casa.
+Si el router no lo trae, hay otras formas (abrir un puerto y una app de Wake on LAN en el celular): dímelo y se prepara.
+
 ## Personalizarlo
 
 Todo se cambia en esta carpeta y se recompila:

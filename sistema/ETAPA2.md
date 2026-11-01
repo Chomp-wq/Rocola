@@ -508,3 +508,24 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **La pantalla de la rocola del A4** (el binario de la imagen) también, con QEMU de usuario como Piledriver sin AVX2 y Mesa softpipe:
   dibuja el estado extendido con la estrella 3D y el género. (Con llvmpipe de esta máquina no vale: genera código para la CPU real.)
 - Si la imagen del A4 no arrancara allí, la de QEMU (x86-64 genérico) también sirve para el A4 (`LEEME.md`, paso 7).
+
+## Extra (1-11-2026): internet, el programa que se actualiza solo y el encendido remoto
+
+- **Internet por cable** (decisión del dueño): DHCP en `eth0` (la Realtek del A4), la hora por NTP, `curl` con los certificados, `jq`
+  y `ethtool`.
+- **GitHub compila el programa** (`.github/workflows/rocola-programa.yml`): en cada cambio de `sistema/rocola/` en esta rama compila
+  `rocola-consola` con .NET 10 (NativeAOT) en dos versiones (la del A4, con AVX, y la genérica), comprueba que arranca y que toca la
+  canción de prueba, y lo publica como la versión «programa-N» del repositorio, con sus sumas SHA-256. **Probado:** la primera
+  (`programa-1`) salió bien.
+- **La rocola se actualiza sola** (`rocola-actualiza`, en el sistema, aparte del programa para que una versión mala no pueda romper las
+  actualizaciones): al minuto de prender y cada hora (o «Buscar actualización ahora» en Ctrl+F3 → Internet) pregunta a GitHub con la
+  llave de solo lectura (`rocola_github.txt`, que copia de una memoria USB), baja la versión de su procesador, comprueba la suma y que
+  arranca (`--version`), y la deja lista. El programa, en cuanto está libre (nada sonando ni en la cola, ninguna hoja abierta y 2 min
+  sin botones), guarda su estado y sale con 42; `/usr/bin/rocola` pone la nueva. Si la nueva se cae dos veces en sus primeros 2 min,
+  vuelve a la anterior y la apunta como mala. Lo que pasa, en `rocola_actualizaciones.txt`. **Probado** contra GitHub: bajó, comprobó
+  y dejó lista la versión 1; y la vuelta atrás con una versión que se cae (volvió a la 1 y apuntó la 2 como mala).
+- **Ctrl+F3 → Internet:** «Actualizarse sola» (`actualizar_solo=`), «Buscar actualización ahora», y abajo la versión, la red con la
+  MAC y cómo va la actualización.
+- **Encendido remoto (Wake on LAN):** la tarjeta queda escuchando el paquete mágico al prender y al apagar (`ethtool -s eth0 wol g`). Lo
+  manda el router del bar (decisión del dueño); falta activarlo en el BIOS y configurarlo en el router (`LEEME.md`).
+- Nada de esto probado aún en el A4 ni con el router del bar.

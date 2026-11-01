@@ -7,18 +7,19 @@
 # GitHub), si no el que trae el sistema. Una version nueva (rocola-consola.nueva) se pone al arrancar o cuando la rocola sale con 42
 # (lo hace sola en cuanto esta libre). Si la nueva se cae dos veces en sus primeros 2 minutos, se vuelve a la anterior y se apunta como
 # mala (no se vuelve a bajar).
-PROG=/rocola/programa
-BITACORA=/rocola/datos/rocola_actualizaciones.txt
+PROG=${ROCOLA_PROG:-/rocola/programa}
+BITACORA=${ROCOLA_BITACORA:-/rocola/datos/rocola_actualizaciones.txt}
+REGISTRO=${ROCOLA_REGISTRO:-/root/rocola.txt}   # (cambiables para probarlo fuera de la rocola)
 for c in Master PCM Speaker Headphone Front "Line Out"; do amixer -q sset "$c" 100% unmute 2>/dev/null; done
 probando=0; fallos=0
-apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> /root/rocola.txt; }
+apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> $REGISTRO; }
 pon_nueva() {
 	[ -f "$PROG/rocola-consola.nueva" ] || return
 	[ -f "$PROG/rocola-consola" ] && mv -f "$PROG/rocola-consola" "$PROG/rocola-consola.anterior"
 	cp -f "$PROG/version" "$PROG/version.anterior" 2>/dev/null || rm -f "$PROG/version.anterior"
 	mv -f "$PROG/rocola-consola.nueva" "$PROG/rocola-consola"
 	mv -f "$PROG/nueva.version" "$PROG/version"
-	rm -f /run/rocola-hay-nueva; sync
+	rm -f ${ROCOLA_RUN:-/run}/rocola-hay-nueva; sync
 	probando=1; fallos=0
 	apunta "Se puso la version $(cat "$PROG/version")"
 }
@@ -33,12 +34,12 @@ vuelve_atras() {
 }
 pon_nueva
 while :; do
-	[ -f /root/rocola.txt ] && [ "$(wc -c < /root/rocola.txt)" -gt 1048576 ] && mv /root/rocola.txt /root/rocola.txt.1
-	echo "--- $(date) arranca la rocola" >> /root/rocola.txt
+	[ -f $REGISTRO ] && [ "$(wc -c < $REGISTRO)" -gt 1048576 ] && mv $REGISTRO $REGISTRO.1
+	echo "--- $(date) arranca la rocola" >> $REGISTRO
 	BIN=/usr/bin/rocola-consola
 	[ -x "$PROG/rocola-consola" ] && BIN=$PROG/rocola-consola
 	t0=$(date +%s)
-	ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> /root/rocola.txt 2>&1
+	ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> $REGISTRO 2>&1
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
