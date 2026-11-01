@@ -313,12 +313,22 @@ namespace Rocola
             if (t == null) { media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
             Portada(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado);
             float x = 24 * k + lado, ancho = W - x - 24 * k;
+            // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)
+            List<string> prox = m.ProximasEnCola(3);
+            if (prox.Count > 0)
+            {
+                float wc = W * 0.30f, xc = W - wc - 16 * k;
+                chica.Escribe(d, "SIGUEN (" + m.EnCola + ")", xc, abajo + 14 * k, Dorado);
+                for (int i = 0; i < prox.Count; i++) chica.Escribe(d, chica.Ajusta((i + 1) + ". " + prox[i], wc), xc, abajo + (38 + 22 * i) * k, Gris);
+                ancho = xc - x - 16 * k;
+            }
             chica.Escribe(d, "SUENA", x, abajo + 14 * k, Dorado);
             grande.Escribe(d, grande.Ajusta(t, ancho), x, abajo + 36 * k, Blanco);
             if (m.SonandoDisco != null) chica.Escribe(d, chica.Ajusta(m.SonandoDisco, ancho), x, abajo + 76 * k, Gris);
             float p = c.Progreso;
-            d.Rect(x, H - 10 * k, ancho, 4 * k, PanelClaro);
-            d.Rect(x, H - 10 * k, ancho * p, 4 * k, Dorado);
+            float wb = W - x - 24 * k;
+            d.Rect(x, H - 10 * k, wb, 4 * k, PanelClaro);
+            d.Rect(x, H - 10 * k, wb * p, 4 * k, Dorado);
         }
 
         // La caratula, o un cuadro de color con la inicial si no tiene.

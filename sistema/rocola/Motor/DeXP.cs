@@ -4885,5 +4885,39 @@ namespace Rocola
             LimitadorPicoReal lim = new LimitadorPicoReal(r, TechoPicoReal, 3.0);
             c.Salida = lim; c.Retardo = lim.DelayFrames; c.Conversion = r; c.LimiteSalida = lim;
         }
+        // de Form1.Datos.cs
+        // Los segundos que faltan para que empiece TU cancion, o -1 si NO SE PUEDE SABER.
+        //
+        // Basta con que de UNA de las que van por delante no se sepa la duracion -recien copiada al
+        // disco, aun sin analizar- para que la cuenta entera deje de valer. Y entonces hay que decirlo,
+        // no redondear: un "en ~11 min" que luego son veinte es peor que no decir nada, porque la
+        // proxima vez ya nadie se lo cree.
+        internal static double EsperaSegundos(double[] antesQueLaTuya, double restanDeLaQueSuena)
+        {
+            if (restanDeLaQueSuena < 0) return -1;
+            double s = restanDeLaQueSuena;
+            if (antesQueLaTuya != null)
+                for (int i = 0; i < antesQueLaTuya.Length; i++)
+                {
+                    if (!(antesQueLaTuya[i] > 0)) return -1;
+                    s += antesQueLaTuya[i];
+                }
+            return s;
+        }
+        // de Form1.cs
+        // Y como se dice. Sin tiempo fiable se dice SOLO el puesto: sigue sirviendo y no miente.
+        internal static string TextoTurno(int puesto, double segundos)
+        {
+            // Apagado desde Ctrl+F3 devuelve texto vacio, y con eso el aviso vuelve solo al "Cancion
+            // agregada" de siempre: el interruptor vive AQUI, en el unico sitio que escribe el letrero,
+            // y no repartido por los dos sitios que lo piden.
+            if (!turnoOn || puesto <= 0) return "";
+            string donde = (puesto == 1) ? "Tu cancion es la siguiente" : ("Tu cancion es la " + puesto + "a");
+            if (segundos < 0) return donde;
+            if (segundos < 60) return donde + " - en menos de 1 min";
+            return donde + " - en ~" + (int)((segundos + 30) / 60) + " min";
+        }
+        // de Form1.cs
+        private static bool turnoOn = true;       // "turno=" en config
     }
 }

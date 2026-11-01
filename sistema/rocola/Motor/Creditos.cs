@@ -5,6 +5,7 @@
 // Lo que hace la pantalla de XP (la pastilla de los creditos, el aviso, la portada que vuela...) aqui es un aviso (Avisa).
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Rocola
 {
@@ -29,6 +30,23 @@ namespace Rocola
         }
 
         public enum Pedido { Puesta, SinCredito, Repetida, Danada }
+        public string UltimoTurno = "";   // "Tu cancion es la 3a - en ~7 min" (vacio: sin turno, como con turno=0 en XP)
+        private double RestanDeLaQueSuena()
+        {
+            if (nowPlaying == null) return 0;
+            if (nowPlaying.IsVideo) return -1;
+            CadenaCancion c = cadenaSonando;
+            try { if (c != null) { double q = c.Lector.TotalTime.TotalSeconds - c.Lector.CurrentTime.TotalSeconds; return q > 0 ? q : 0; } } catch { }
+            return -1;
+        }
+        // Las siguientes de la cola (para la pantalla).
+        public List<string> ProximasEnCola(int n)
+        {
+            List<string> r = new List<string>();
+            for (int i = 0; i < queue.Count && r.Count < n; i++)
+                r.Add(queue[i].IsVideo ? Path.GetFileNameWithoutExtension(queue[i].VideoPath) : queue[i].Song.ToString());
+            return r;
+        }
 
         // PEDIR UNA CANCION (AddItem de XP, sin la pantalla).
         public Pedido Pide(string ruta)
@@ -47,6 +65,13 @@ namespace Rocola
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
             if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return Pedido.Repetida;
             queue.Add(it);
+            // EL TURNO (como XP: se apunta aqui, con la cola como quedo al meterla): el puesto y lo que falta (lo que le queda a la que
+            // suena y lo que duran las de delante; si de alguna no se sabe, solo el puesto).
+            {
+                double[] antes = new double[queue.Count - 1];
+                for (int i = 0; i < queue.Count - 1; i++) antes[i] = queue[i].IsVideo ? -1 : SegundosDe(queue[i].PathKey());
+                UltimoTurno = TextoTurno(queue.Count, EsperaSegundos(antes, RestanDeLaQueSuena()));
+            }
             if (!it.IsVideo) try { it.Song.EnsureTags(); } catch { }   // el genero (la etiqueta ID3), para lo mas sonado por genero (como XP al empezarla)
             RecordPlay(it);   // estadisticas: cuenta lo pedido
             credits--;        // cada cosa cuesta 1 credito

@@ -282,7 +282,7 @@ namespace Rocola
             Form1.Pedido p = motor.Pide(ruta);
             if (p == Form1.Pedido.Puesta)
             {
-                Aviso("Pusiste «" + titulo + "» (" + motor.EnCola + " en la cola)");
+                Aviso(motor.UltimoTurno.Length > 0 ? motor.UltimoTurno : "Pusiste «" + titulo + "»");   // el turno de XP
                 if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
             }
             else if (p == Form1.Pedido.Repetida) Aviso("Esa cancion ya va seguida");
