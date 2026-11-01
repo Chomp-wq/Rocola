@@ -18,6 +18,7 @@ namespace Rocola
             public string Artista, Nombre, Carpeta, Portada;
             public char Letra;
             public bool Videos;   // un disco de la seccion de videos (sus Rutas son videos)
+            public int Minutos = -1;   // lo que dura, si se sabe lo de todas sus canciones (-1: no se sabe; como el letrero de XP, no se inventa)
             public List<string> Rutas = new List<string>();
             public List<string> Titulos = new List<string>();
             public override string ToString() { return string.IsNullOrEmpty(Nombre) ? Artista : Artista + " - " + Nombre; }
@@ -44,7 +45,13 @@ namespace Rocola
             foreach (Album a in albums)
             {
                 Disco d = new Disco(); d.Artista = a.Artist; d.Nombre = a.Name; d.Carpeta = a.Folder; d.Portada = a.CoverPath; d.Letra = a.Letter;
-                foreach (Track t in a.Tracks) { d.Rutas.Add(t.Path); d.Titulos.Add(t.ToString()); }
+                double seg = 0; bool todas = true;
+                foreach (Track t in a.Tracks)
+                {
+                    d.Rutas.Add(t.Path); d.Titulos.Add(t.ToString());
+                    float s1 = SegundosDe(t.Path); if (s1 > 0) seg += s1; else todas = false;
+                }
+                if (todas && a.Tracks.Count > 0) d.Minutos = (int)Math.Round(seg / 60.0);
                 r2.Add(d);
             }
             foreach (Album a in videoAlbums)

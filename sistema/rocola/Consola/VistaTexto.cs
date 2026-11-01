@@ -11,6 +11,7 @@ namespace Rocola
     {
         private string pantallaAntes;
         public bool LeeTerminal { get { return true; } }
+        public bool Anima { get { return false; } }
         internal VistaTexto() { Console.Write("\x1b[?25l\x1b[2J"); }   // sin cursor
         public void Dispose() { Console.Write("\x1b[?25h\x1b[0m\n"); }
         public void Suelta() { }

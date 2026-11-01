@@ -19,6 +19,10 @@ namespace Rocola
         private string antes;
         private int ultimo;
         public bool LeeTerminal { get { return false; } }
+        public bool Anima { get { return true; } }
+        private readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
+        private readonly float[] estrellas;   // x, y (0..1), tamano, fase, velocidad: el cielo de siempre (fijo, como el patron de XP)
+        private int focoDisco = -1; private string focoCarpeta; private double focoDesde;
         public string Descripcion { get { return sup.Descripcion; } }
 
         // Fondo y colores (noche azul con dorado, como la de XP).
@@ -33,6 +37,41 @@ namespace Rocola
             byte[] ttf = File.ReadAllBytes(letraTtf);
             chica = new Letra(d, ttf, 18 * k); media = new Letra(d, ttf, 24 * k); grande = new Letra(d, ttf, 32 * k); enorme = new Letra(d, ttf, 44 * k);
             caratulas = new Caratulas(d, (int)(256 * k));
+            Random r = new Random(5); estrellas = new float[260 * 5];
+            for (int i = 0; i < 260; i++)
+            {
+                estrellas[5 * i] = (float)r.NextDouble(); estrellas[5 * i + 1] = (float)Math.Pow(r.NextDouble(), 1.3) * 0.85f;
+                estrellas[5 * i + 2] = (float)(0.6 + 2.2 * Math.Pow(r.NextDouble(), 3)); estrellas[5 * i + 3] = (float)(r.NextDouble() * 6.283);
+                estrellas[5 * i + 4] = (float)(0.6 + r.NextDouble() * 2.2);
+            }
+        }
+
+        // EL CIELO LEGACY (el fondo de XP, en lo esencial): la noche en degradado, estrellas que titilan y la aurora que ondula sobre el
+        // horizonte. Se mueve despacio: no distrae de las portadas.
+        private void Cielo(float W, float H, double t)
+        {
+            d.Degradado(0, 0, W, H * 0.55f, Color4.Hex(0x03061A), Color4.Hex(0x0C1440));
+            d.Degradado(0, H * 0.55f, W, H * 0.45f, Color4.Hex(0x0C1440), Color4.Hex(0x1A0F3A));
+            for (int i = 0; i < estrellas.Length; i += 5)
+            {
+                float a = 0.45f + 0.55f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3]));
+                float tam = estrellas[i + 2] * k;
+                d.Brillo(estrellas[i] * W, estrellas[i + 1] * H, tam * 2.2f, new Color4(0.85f, 0.9f, 1f, a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
+            }
+            // la aurora: tiras verticales finas; su altura, su fuerza y su color ondulan despacio (verde -> turquesa -> violeta). Sube
+            // desde nada hasta su fuerza y se apaga hacia el horizonte, como un velo.
+            int tiras = 180; float w = W / tiras, base_ = H * 0.64f;
+            for (int i = 0; i < tiras; i++)
+            {
+                double x = (i + 0.5) / tiras;
+                double alto = H * (0.20 + 0.07 * Math.Sin(x * 7.0 + t * 0.30) + 0.035 * Math.Sin(x * 19.0 - t * 0.55));
+                double mezcla = 0.5 + 0.5 * Math.Sin(x * 3.5 + t * 0.10);
+                float fuerza = (float)(0.26 + 0.12 * Math.Sin(x * 11.0 + t * 0.7) + 0.05 * Math.Sin(x * 31.0 - t * 1.3));
+                float r = (float)(0.25 + 0.45 * mezcla), g = (float)(0.95 - 0.45 * mezcla), b = (float)(0.65 + 0.3 * mezcla);
+                float y0 = (float)(base_ - alto), x0 = i * w;
+                d.Degradado(x0, y0, w, (float)alto * 0.78f, new Color4(r, g, b, 0f), new Color4(r, g, b, fuerza));
+                d.Degradado(x0, y0 + (float)alto * 0.78f, w, (float)alto * 0.3f, new Color4(r, g, b, fuerza), new Color4(r, g, b, 0f));
+            }
         }
 
         // La letra: la de ROCOLA_LETRA, si no la DejaVu Sans del sistema (Rocola OS la lleva), o la primera que se encuentre.
@@ -53,12 +92,13 @@ namespace Rocola
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
             string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
-            if (firma == antes && (m.Sonando == null || unchecked(ahora - ultimo) < 500)) return;
+            if (firma == antes && unchecked(ahora - ultimo) < 33) return;   // el cielo se mueve: unos 30 cuadros por segundo
             antes = firma; ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
+            Cielo(W, H, reloj.Elapsed.TotalSeconds);
             // franja de arriba
-            d.Rect(0, 0, W, 64 * k, Panel);
+            d.Rect(0, 0, W, 64 * k, Panel.ConAlfa(0.82f));
             grande.Escribe(d, "ROCOLA", 24 * k, 14 * k, Dorado);
             string cr = m.Creditos > 0 ? "Créditos: " + m.Creditos : "Inserta una moneda";
             float wcr = media.Mide(cr) + 40 * k;
@@ -196,9 +236,31 @@ namespace Rocola
                 Form1.Disco disco = ds[n];
                 float cx = 24 * k + (i % cols) * celW + celW / 2, cy = top + (i / cols) * celH;
                 bool sel = n == c.cursorDisco;
-                float l = sel ? lado * 1.06f : lado, px = cx - l / 2, py = cy + (sel ? 0 : lado * 0.03f);
-                if (sel) d.Redondo(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k, 10 * k, Dorado);
+                // LA PORTADA ENFOCADA (como XP): crece un 12 % en 170 ms desde el centro de su borde de abajo, con un halo de su propio
+                // color; las demas bajan un 20 % de brillo.
+                if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta)) { focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds; }
+                double avance = sel ? Math.Min(1.0, (reloj.Elapsed.TotalMilliseconds - focoDesde) / 170.0) : 0.0;
+                float crece = 1f + 0.12f * (float)(1 - Math.Pow(1 - avance, 3));
+                float l = lado * crece, px = cx - l / 2, py = cy + lado - l;
+                if (sel)
+                {
+                    Textura tx = caratulas.De(disco.Portada);
+                    Color4 halo = tx != null ? tx.Media : Dorado;
+                    d.Brillo(cx, py + l / 2, l * 0.95f, halo.ConAlfa(0.55f));
+                    d.Redondo(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 10 * k, Dorado);
+                }
                 Portada(disco.Portada, disco.Artista, px, py, l);
+                if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0, 0.2f));
+                else
+                {
+                    string letrero = disco.Videos ? disco.Rutas.Count + (disco.Rutas.Count == 1 ? " video" : " videos")
+                        : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") + (disco.Minutos > 0 ? " · " + disco.Minutos + " min" : "");
+                    float wl = chica.Mide(letrero) + 16 * k;
+                    if (wl > l + 20 * k) letrero = disco.Rutas.Count + (disco.Videos ? " videos" : " canciones");
+                    wl = chica.Mide(letrero) + 16 * k;
+                    d.Redondo(cx - wl / 2, py + l - 30 * k, wl, 24 * k, 12 * k, new Color4(0, 0, 0, 0.6f));
+                    chica.EscribeCentrado(d, letrero, cx, py + l - 28 * k, Blanco);
+                }
                 string a = chica.Ajusta(disco.Artista, celW - 12 * k), nm = chica.Ajusta(disco.Nombre, celW - 12 * k);
                 chica.EscribeCentrado(d, a, cx, py + l + 10 * k, sel ? Blanco : Gris);
                 if (!string.IsNullOrEmpty(nm)) chica.EscribeCentrado(d, nm, cx, py + l + 32 * k, sel ? Dorado : Gris.ConAlfa(0.7f));
@@ -235,7 +297,7 @@ namespace Rocola
         private void Suena(Controlador c, float W, float H, float abajo)
         {
             Form1 m = c.motor;
-            d.Rect(0, abajo, W, H - abajo, Panel);
+            d.Rect(0, abajo, W, H - abajo, Panel.ConAlfa(0.88f));
             float lado = H - abajo - 24 * k;
             string t = m.SonandoTitulo;
             if (t == null) { media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }

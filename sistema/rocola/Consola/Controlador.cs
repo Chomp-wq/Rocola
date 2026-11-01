@@ -18,6 +18,7 @@ namespace Rocola
     {
         void Dibuja(Controlador c);
         bool LeeTerminal { get; }   // la vista de texto lee tambien el teclado de la terminal
+        bool Anima { get; }         // dibuja cosas que se mueven (el cielo): el bucle la llama mas a menudo
         void Suelta();              // ceder la pantalla a un video
         void Recupera();            // y recuperarla
     }
@@ -157,7 +158,7 @@ namespace Rocola
                     while (!salir)
                     {
                         int vk;
-                        if (pulsos.TryTake(out vk, 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
+                        if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
                         motor.PublicaMedidas();
                         motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                         Suena();

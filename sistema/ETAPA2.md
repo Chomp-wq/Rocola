@@ -255,3 +255,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   estado del día (créditos y cola), así al día siguiente arranca limpia. Va por `acpid` de busybox (`/etc/acpi/PWRF/00000080`), que
   avisa a la rocola (SIGTERM) y apaga. Un corte de luz no pasa por ahí: el estado sobrevive y la rocola reanuda.
 - Probado: los ajustes se guardan y se releen; en QEMU, con el botón de encendido virtual, el equipo se apaga solo en 8 s.
+
+## Hito 16 (1-11-2026): la pantalla, más cerca de la de XP
+
+- **El cielo Legacy, en lo esencial:** la noche en degradado, 260 estrellas que titilan (siempre el mismo cielo) y la aurora: un velo de
+  tiras finas que ondula despacio del verde al violeta sobre el horizonte. Unos 30 cuadros por segundo; las franjas de arriba y abajo,
+  translúcidas.
+- **La portada enfocada de XP** (`portada_enfocada=`): la elegida crece un 12 % en 170 ms desde el centro de su borde de abajo, con un
+  halo del color de la propia portada (pesando los puntos con color, como en XP) y el marco dorado; las demás bajan un 20 % de brillo.
+- **El letrero de la portada:** «5 canciones · 18 min» (o «3 videos») sobre su borde de abajo; los minutos solo si se sabe lo que dura
+  cada canción (como en XP: no se inventan) y, si no cabe, sin los minutos.
+- Probado aquí fuera de pantalla. Aún no están los cubos, la estrella, las ondas ni el estado extendido de XP.

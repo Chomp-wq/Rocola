@@ -20,6 +20,7 @@ namespace Rocola.Pantalla
     internal sealed class Textura
     {
         public uint Id; public int Ancho, Alto;
+        public Color4 Media;   // el color de la imagen (para el halo de la portada enfocada, como en XP)
     }
 
     internal sealed unsafe class Dibujo : IDisposable
@@ -30,6 +31,7 @@ namespace Rocola.Pantalla
         private int nv;
         private uint texActual;
         private readonly Textura blanca;
+        internal readonly Textura Punto;   // un punto suave (estrellas, halos)
         public int Ancho, Alto;
 
         internal Dibujo(int ancho, int alto)
@@ -44,6 +46,14 @@ namespace Rocola.Pantalla
             uint b; GL.GenBuffers(1, &b); buffer = b;
             byte[] px = { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 };
             blanca = Sube(px, 2, 2);
+            const int L = 64; byte[] pt = new byte[L * L * 4];
+            for (int y = 0; y < L; y++) for (int x = 0; x < L; x++)
+            {
+                double dx = (x + 0.5) / L * 2 - 1, dy = (y + 0.5) / L * 2 - 1, r = Math.Sqrt(dx * dx + dy * dy);
+                double a = r >= 1 ? 0 : Math.Pow(1 - r, 2.2);
+                int o = (y * L + x) * 4; pt[o] = pt[o + 1] = pt[o + 2] = 255; pt[o + 3] = (byte)(255 * a);
+            }
+            Punto = Sube(pt, L, L);
         }
 
         private static uint Shader(uint tipo, string fuente)
@@ -116,6 +126,14 @@ namespace Rocola.Pantalla
             V(x + w, y, u1, v0, c); V(x + w, y + h, u1, v1, c); V(x, y + h, u0, v1, c);
         }
         internal void Rect(float x, float y, float w, float h, Color4 c) { Quad(blanca, x, y, w, h, 0.25f, 0.25f, 0.75f, 0.75f, c); }
+        // Un rectangulo con un color arriba y otro abajo (degradado vertical).
+        internal void Degradado(float x, float y, float w, float h, Color4 arriba, Color4 abajo)
+        {
+            if (blanca.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
+            V(x, y, 0.5f, 0.5f, arriba); V(x + w, y, 0.5f, 0.5f, arriba); V(x, y + h, 0.5f, 0.5f, abajo);
+            V(x + w, y, 0.5f, 0.5f, arriba); V(x + w, y + h, 0.5f, 0.5f, abajo); V(x, y + h, 0.5f, 0.5f, abajo);
+        }
+        internal void Brillo(float cx, float cy, float radio, Color4 c) { Quad(Punto, cx - radio, cy - radio, 2 * radio, 2 * radio, 0, 0, 1, 1, c); }
         internal void Imagen(Textura t, float x, float y, float w, float h, float alfa = 1f) { Quad(t, x, y, w, h, 0, 0, 1, 1, new Color4(1, 1, 1, alfa)); }
         // Rectangulo de esquinas redondas (hecho con rectangulos: sin otra textura).
         internal void Redondo(float x, float y, float w, float h, float r, Color4 c)
@@ -208,11 +226,27 @@ namespace Rocola.Pantalla
                 int w = im.Width, h = im.Height; byte[] px = im.Data;
                 if (Math.Max(w, h) > lado) { int nw = Math.Max(1, w * lado / Math.Max(w, h)), nh = Math.Max(1, h * lado / Math.Max(w, h)); px = Reduce(px, w, h, nw, nh); w = nw; h = nh; }
                 t = d.Sube(px, w, h);
+                t.Media = ColorMedio(px);
             }
             catch { sinImagen.Add(ruta); return null; }
             hechas[ruta] = t; orden.AddFirst(ruta);
             while (orden.Count > 96) { string v = orden.Last.Value; orden.RemoveLast(); d.Borra(hechas[v]); hechas.Remove(v); }
             return t;
+        }
+        // El color de la portada para su halo (como XP: pesan mas los puntos con color; una gris o negra se queda en gris).
+        private static Color4 ColorMedio(byte[] px)
+        {
+            double r = 0, g = 0, b = 0, p = 0;
+            for (int i = 0; i < px.Length; i += 4 * 37)
+            {
+                double cr = px[i], cg = px[i + 1], cb = px[i + 2];
+                double mx = Math.Max(cr, Math.Max(cg, cb)), mn = Math.Min(cr, Math.Min(cg, cb)), peso = 0.15 + (mx - mn) / 255.0;
+                r += cr * peso; g += cg * peso; b += cb * peso; p += peso;
+            }
+            if (p <= 0) return new Color4(0.6f, 0.6f, 0.7f);
+            r /= p; g /= p; b /= p;
+            double m = Math.Max(r, Math.Max(g, b)); if (m < 1) m = 1;
+            return new Color4((float)(r / m), (float)(g / m), (float)(b / m));   // con toda la luz (como el halo de XP)
         }
         // Reduccion por promedio de cajas (sin escalones).
         private static byte[] Reduce(byte[] s, int w, int h, int nw, int nh)
