@@ -176,6 +176,8 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Lo mas pedido esta noche (en la atraccion)", "top_noche", () => TopNocheOn, v => TopNocheOn = v, false));
             l.Add(Interruptor("Pantalla", "Letra para leer de lejos (lo que suena)", "letra_lejos", () => LetraLejos, v => LetraLejos = v, false));
             l.Add(Interruptor("Pantalla", "El color del genero en todo", "color_genero", () => ColorGenero, v => ColorGenero = v, false));
+            l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
+            l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
             l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
             Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
             ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta

@@ -103,7 +103,15 @@ namespace Rocola.Pantalla
             GL.EnableVertexAttribArray(0); GL.EnableVertexAttribArray(1); GL.EnableVertexAttribArray(2);
             texActual = 0; nv = 0;
         }
-        internal void Termina() { Vacia(); }
+        internal void Termina() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
+        // Recorta lo que se dibuje a un rectangulo (coordenadas de pantalla, y hacia abajo); Suelta lo quita.
+        internal void Recorta(float x, float y, float w, float h)
+        {
+            Vacia();
+            GL.Enable(GL.SCISSOR_TEST);
+            GL.Scissor((int)Math.Floor(x), (int)Math.Floor(Alto - y - h), Math.Max(0, (int)Math.Ceiling(w)), Math.Max(0, (int)Math.Ceiling(h)));
+        }
+        internal void SinRecorte() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
 
         private void Vacia()
         {

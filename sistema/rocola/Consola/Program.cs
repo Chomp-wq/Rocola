@@ -129,6 +129,7 @@ namespace Rocola
             foreach (string b in botones)
                 if (b.StartsWith("cuadros=")) continue;
                 else if (b == "atraccion") c.FuerzaAtraccion();
+                else if (b == "rojo") c.RojoDePrueba = true;   // el ROJO mantenido (las pistas del rojo)
                 else if (b == "noche") { c.AtraccionDesfase = 15; c.FuerzaAtraccion(); }   // la atraccion, ya en lo mas pedido esta noche
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
                 else if (b == "reposo")

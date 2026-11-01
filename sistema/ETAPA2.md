@@ -421,3 +421,12 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   disco); la pastilla del género (late con los graves) y la barra de avance de su color.
 - Arreglo: al empezar una canción se leen sus etiquetas (como XP); las que venían del estado guardado no tenían género.
 - Probado en captura con un MP3 etiquetado «Cumbia» (sale «Regional», naranja tierra).
+
+## Extra (1-11-2026): las pistas del rojo y los textos que se deslizan
+
+- **Pistas del rojo mantenido** (`guia_rojo=`, GuiaRojoGpu.cs de XP): con el ROJO mantenido en la pared se encienden la barra de letras
+  (con una flecha dorada a cada lado: ROJO + IZQ/DER cambia de letra) y las casillas BUSCAR y AYUDA, con su propia flecha llena de rojo
+  vivo y un brillo que late (sin flechitas sueltas, como pidió el dueño el 12-10-2026). El rojo mantenido lo dicen los botones (evdev).
+- **Los textos que se deslizan** (`textos_deslizantes=`): un título que no cabe (en lo que suena y en el estado extendido) se corre
+  despacio hasta el final, espera y vuelve, recortado a su caja (scissor de GL); apagado, se corta con puntos suspensivos como antes.
+- Probados en captura (`--boton rojo`; el deslizamiento a mitad de recorrido con `--cuadros 50`).

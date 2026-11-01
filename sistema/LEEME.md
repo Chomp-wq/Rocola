@@ -31,8 +31,7 @@ Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle d
 - **El sistema:** arranca en BIOS y en UEFI; la primera vez hace la prueba de sonido y gráfica, después entra directo; el volumen
   general al máximo al arrancar (como XP); si la rocola se cierra, vuelve a abrirse; un fallo no la tumba.
 
-**Lo que aún no tiene de XP:** la estrella en 3D (va en 2D), el buscador con portadas, los textos que se deslizan y la guía del
-rojo mantenido; las herramientas de diagnóstico del dueño (el diagnóstico completo de Ctrl+F3 → Imagen).
+**Lo que aún no tiene de XP:** la estrella en 3D (va en 2D), el buscador con portadas; las herramientas de diagnóstico del dueño (el diagnóstico completo de Ctrl+F3 → Imagen).
 
 **Nada se ha probado aún en el A4:** todo está probado aquí (comparación con XP, pruebas fuera de pantalla) y en QEMU (arranque BIOS y
 UEFI, pantalla por KMS, sonido grabado de la tarjeta emulada, vídeo, botones por teclado, botón de encendido). Falta la máquina real.

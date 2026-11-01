@@ -590,7 +590,7 @@ namespace Rocola
             float wc = cola.Count == 0 ? 0 : cola.Count > 6 ? W * 0.44f : W * 0.30f;   // doce: dos columnas de seis; hasta seis: una
             float ancho = W - x - wc - (wc > 0 ? 40 * k : 24 * k);
             chica.Escribe(d, "SUENA AHORA", x, top + 18 * k, Dorado);
-            enorme.Escribe(d, enorme.Ajusta(t, ancho), x, top + 40 * k, Blanco);
+            EscribeDesliza(c, enorme, t, x, top + 40 * k, ancho, Blanco);
             float y = top + 40 * k + enorme.Tam * 1.25f;
             if (m.SonandoDisco != null) { media.Escribe(d, media.Ajusta(m.SonandoDisco, ancho), x, y, Gris); y += media.Tam * 1.5f; }
             string gen = m.EtiquetaSonando;
@@ -670,7 +670,7 @@ namespace Rocola
             chica.Escribe(d, "SUENA", x, abajo + 14 * k, Dorado);
             // el titulo crece un 45 % con la letra de lejos (si no cabe, el de siempre con puntos suspensivos)
             Letra lt = m.LetraLejos && enorme.Mide(t) <= ancho ? enorme : grande;
-            lt.Escribe(d, lt.Ajusta(t, ancho), x, abajo + (lt == enorme ? 32 : 36) * k, Blanco);
+            EscribeDesliza(c, lt, t, x, abajo + (lt == enorme ? 32 : 36) * k, ancho, Blanco);
             float ya = abajo + (lt == enorme ? 82 : 76) * k;
             float xa = x;
             string gen = m.ColorGenero ? m.EtiquetaSonando : "";

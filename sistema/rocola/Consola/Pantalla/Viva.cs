@@ -90,12 +90,57 @@ namespace Rocola
             d.Rect(x + 12 * k, y + h - 5 * k, (w - 24 * k) * queda, 2 * k, col.ConAlfa(0.8f * alfa));
         }
 
+        // ---- LOS TEXTOS QUE SE DESLIZAN (textos_deslizantes= de XP): si un titulo no cabe, en vez de cortarlo con puntos suspensivos se
+        // corre despacio (40 px/s) hasta el final, espera y vuelve; con el interruptor apagado, como siempre.
+        private void EscribeDesliza(Controlador c, Letra l, string s, float x, float y, float ancho, Color4 col)
+        {
+            float w = l.Mide(s);
+            if (!c.motor.TextosDeslizantes || w <= ancho) { l.Escribe(d, l.Ajusta(s, ancho), x, y, col); return; }
+            float sobra = w - ancho, vel = 40 * k, pausa = 1.6f, viaje = sobra / vel, ciclo = 2 * (pausa + viaje);
+            float t = (float)(reloj.Elapsed.TotalSeconds % ciclo), dx;
+            if (t < pausa) dx = 0; else if (t < pausa + viaje) dx = (t - pausa) * vel; else if (t < 2 * pausa + viaje) dx = sobra; else dx = sobra - (t - 2 * pausa - viaje) * vel;
+            d.Recorta(x, y - l.Tam * 0.3f, ancho, l.Tam * 1.6f);
+            l.Escribe(d, s, x - dx, y, col);
+            d.SinRecorte();
+        }
+
+        // ---- LAS PISTAS DEL ROJO (guia_rojo= de XP, GuiaRojoGpu.cs): con el ROJO mantenido en la pared se encienden la barra de letras
+        // (con una flecha a cada lado: ROJO + IZQ/DER cambia de letra) y las casillas BUSCAR y AYUDA, con su flecha llena de rojo vivo y un
+        // brillo que late (peticion del 12-10-2026: que se resalten las que ya tienen en su contenedor, sin flechitas sueltas).
+        private void GuiaRojo(Controlador c)
+        {
+            float late = 0.6f + 0.4f * (float)Math.Sin(reloj.Elapsed.TotalSeconds * 6);
+            Color4 oro = Color4.Hex(0xFFD65E);
+            if (!zLetras.Vacia && c.dentro == null && !c.Buscando)
+            {
+                Marco(zLetras, oro.ConAlfa(0.9f), 2 * k);
+                float h = Math.Min(30 * k, zLetras.H * 0.66f), w = 18 * k, cy = zLetras.Cy;
+                float xi = zLetras.X - 4 * k, xd = zLetras.X + zLetras.W + 4 * k;
+                d.Triangulo(xi - w, cy, xi, cy - h / 2, xi, cy + h / 2, oro.ConAlfa(late));
+                d.Triangulo(xd + w, cy, xd, cy - h / 2, xd, cy + h / 2, oro.ConAlfa(late));
+            }
+            foreach (Zona z in new[] { zBuscar, zAyuda })
+            {
+                if (z.Vacia) continue;
+                d.Redondo(z.X - 2 * k, z.Y - 2 * k, z.W + 4 * k, z.H + 4 * k, z.H / 2 + 2 * k, oro.ConAlfa(0.35f * late));
+                bool busca = z.X == zBuscar.X;
+                float r = 9 * k, tx = z.X + z.W - 29 * k, cy = z.Cy;   // la tecla de flecha de la casilla (la misma cuenta que Casilla)
+                d.Brillo(tx, cy, r * 2.6f, Rojo.ConAlfa(0.6f * late));
+                Circulo(tx, cy, r + 1.5f * k, Color4.Hex(0xFFE6E6));
+                Circulo(tx, cy, r, Rojo);
+                float a = r * 0.62f;
+                if (busca) d.Triangulo(tx, cy - a, tx + a, cy + a * 0.6f, tx - a, cy + a * 0.6f, Blanco);
+                else d.Triangulo(tx - a, cy - a * 0.6f, tx + a, cy - a * 0.6f, tx, cy + a, Blanco);
+            }
+        }
+
         // ---- LO DE ENCIMA: la moneda que cae, la tarjeta que invita y el boleto que vuela ----
         internal const int MonedaCaeMs = 650, MonedaGolpeMs = 300, MonedaSumaMs = 1300, InvitaMs = 4200, VueloMs = 620;
         private int vueloVisto; private Zona vueloDesde; private string vueloTitulo = "";
         private void Efectos(Controlador c, float W, float H)
         {
             Form1 m = c.motor;
+            if (m.GuiaRojo && c.RojoMantenido && !c.AyudaAbierta && c.AjusteSel < 0) GuiaRojo(c);
             // LA MONEDA QUE CAE: una moneda dorada girando hasta la capsula de Creditos; la capsula da un golpe con un destello verde y
             // sube "+4 creditos".
             int em = Edad(c.MonedaTick);

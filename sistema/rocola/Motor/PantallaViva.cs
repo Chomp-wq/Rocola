@@ -18,6 +18,8 @@ namespace Rocola
         public bool VueloCola = true;      // "vuelo_cola=": el boleto vuela de la fila a la cola
         public bool MonedaCae = true;      // "moneda_cae=": cae una moneda dorada hasta los creditos
         public bool SinCreditosInvita = true;   // "sin_creditos_invita=": sin creditos, una tarjeta amable en vez del letrero
+        public bool TextosDeslizantes = true;   // "textos_deslizantes=": lo que no cabe se desliza en vez de cortarse
+        public bool GuiaRojo = true;       // "guia_rojo=": con el ROJO mantenido se encienden la barra de letras y las casillas BUSCAR y AYUDA
         public bool AvisosClaros = true;   // "avisos_claros=": los avisos con su color, su icono y dos renglones
 
         public sealed class Ficha

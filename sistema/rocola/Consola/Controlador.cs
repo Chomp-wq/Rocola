@@ -284,6 +284,9 @@ namespace Rocola
             if (letras.Count > 0 && cursorDisco >= porLetra[letras[letra]].Count) cursorDisco = 0;
         }
 
+        // EL ROJO MANTENIDO (para las pistas del rojo de XP): lo dicen los botones (evdev); en las pruebas, --boton rojo.
+        internal bool RojoDePrueba;
+        internal bool RojoMantenido { get { return RojoDePrueba || (botones != null && botones.Apretado(Boton.Regresar)); } }
         internal int SentidoPagina = 1;   // la ultima flecha de pagina: +1 ARRIBA (la siguiente), -1 ABAJO (la anterior); para deslizar
         internal int DiscosEn(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]].Count : 0; }
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
