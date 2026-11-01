@@ -9,7 +9,7 @@ using Rocola.Pantalla;
 
 namespace Rocola
 {
-    internal sealed class VistaGrafica : IVista
+    internal sealed partial class VistaGrafica : IVista
     {
         private readonly ISuperficie sup;
         private readonly Dibujo d;
@@ -113,6 +113,8 @@ namespace Rocola
             string cr = m.Creditos > 0 ? "Créditos: " + m.Creditos : "Inserta una moneda";
             float wcr = media.Mide(cr) + 40 * k;
             d.Redondo(W - wcr - 20 * k, 12 * k, wcr, 40 * k, 20 * k, m.Creditos > 0 ? Verde.ConAlfa(0.25f) : Dorado.ConAlfa(0.25f));
+            zCreditos = new Zona(W - wcr - 24 * k, 8 * k, wcr + 8 * k, 48 * k);
+            Casillas(c);
             media.Escribe(d, cr, W - wcr, 19 * k, m.Creditos > 0 ? Verde : Dorado);
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
             float abajo = H - 120 * k;   // donde empieza lo que suena
@@ -141,6 +143,7 @@ namespace Rocola
                 d.Redondo((W - wa) / 2, abajo - 104 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.92f));
                 media.EscribeCentrado(d, av, W / 2, abajo - 92 * k, Dorado);
             }
+            Ayuda(c, W, H);
             d.Termina();
             sup.Presenta();
         }
@@ -264,7 +267,9 @@ namespace Rocola
                 }
                 ty += tecla + sep;
             }
+            zTeclado = new Zona(x0, y0, 10 * (tecla + sep), ty - y0);
             float rx = x0 + 10 * (tecla + sep) + 24 * k, rw = W - rx - 24 * k, ry = y0 + 80 * k, fila_ = 36 * k;
+            zResultados = new Zona(rx - 8 * k, ry - 4 * k, rw + 16 * k, Math.Max(fila_, abajo - ry - 40 * k));
             int caben = Math.Max(1, (int)((abajo - ry - 40 * k) / fila_));
             if (c.Resultados.Count == 0 && c.Escrito.Length > 0) media.Escribe(d, "Nada con eso", rx, ry, Gris);
             int desde = Math.Max(0, Math.Min(c.SelResultado - caben / 2, c.Resultados.Count - caben));
@@ -284,6 +289,7 @@ namespace Rocola
         {
             // las letras
             float x = 24 * k, y = 76 * k;
+            zLetras = new Zona(x - 4 * k, y - 4 * k, 0, 48 * k);
             for (int i = 0; i < c.letras.Count; i++)
             {
                 string l = Controlador.NombreLetra(c.letras[i]); float w = Math.Max(36 * k, media.Mide(l) + 18 * k);
@@ -292,6 +298,7 @@ namespace Rocola
                 media.EscribeCentrado(d, l, x + w / 2, y + 6 * k, i == c.letra ? Fondo : Gris);
                 x += w + 4 * k;
             }
+            zLetras.W = x - zLetras.X;
             List<Form1.Disco> ds = c.DiscosDeLetra();
             if (ds.Count == 0) { media.EscribeCentrado(d, "No hay música en la carpeta de la rocola", W / 2, 300 * k, Gris); return; }
             int cols = 4, filas = 2, porPag = Controlador.DiscosPorPagina, pag = c.cursorDisco / porPag;
@@ -317,6 +324,7 @@ namespace Rocola
                     d.Redondo(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 10 * k, Dorado);
                 }
                 Portada(disco.Portada, disco.Artista, px, py, l);
+                if (sel) zElegido = new Zona(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k);
                 if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0, 0.2f));
                 else
                 {
@@ -354,7 +362,7 @@ namespace Rocola
             {
                 int j = desde + i; float y = top + i * fila;
                 bool sel = j == c.cursorCancion;
-                if (sel) d.Redondo(x - 10 * k, y - 2 * k, ancho + 20 * k, fila - 4 * k, 8 * k, PanelClaro);
+                if (sel) { d.Redondo(x - 10 * k, y - 2 * k, ancho + 20 * k, fila - 4 * k, 8 * k, PanelClaro); zCancion = new Zona(x - 10 * k, y - 2 * k, ancho + 20 * k, fila - 4 * k); }
                 chica.Escribe(d, (j + 1).ToString().PadLeft(2), x, y + 6 * k, sel ? Dorado : Gris);
                 media.Escribe(d, media.Ajusta(disco.Titulos[j], ancho - 50 * k), x + 44 * k, y + 2 * k, sel ? Blanco : Gris);
             }

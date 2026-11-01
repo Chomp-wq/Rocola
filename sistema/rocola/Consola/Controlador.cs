@@ -23,7 +23,7 @@ namespace Rocola
         void Recupera();            // y recuperarla
     }
 
-    internal sealed class Controlador
+    internal sealed partial class Controlador
     {
         internal readonly Form1 motor;
         private readonly string dispositivo;
@@ -72,7 +72,7 @@ namespace Rocola
             if (repaso > 0) Console.WriteLine("Repaso: " + repaso + " canciones por medir");
         }
         // Un boton, como si se hubiera pulsado (las pruebas).
-        internal void Pulsa(Boton b) { Maneja(b); }
+        internal void Pulsa(Boton b) { Maneja(b); TrasBoton(); }
         // Una tecla (codigo de Windows), como si llegara de los botones (las pruebas).
         internal void PulsaTecla(int vk) { Tecla(vk); }
 
@@ -127,7 +127,10 @@ namespace Rocola
             if (vk == 0x77 && (botones == null || botones.FuncionDe(vk) == Boton.Ninguno)) { EmpiezaAsistente(); return; }   // F8, como en XP
             Boton b = botones != null ? botones.FuncionDe(vk) : Boton.Ninguno;
             if (b != Boton.Ninguno) Maneja(b);
+            TrasBoton();
         }
+        // Tras cada boton, la guia de la ayuda mira ya si se avanzo (ademas de cada vuelta del bucle).
+        private void TrasBoton() { if (AyudaAbierta && AyudaMision != 0) EvaluaGuia(); }
         private void CapturaAsistente(int vk)
         {
             if (vk == 0 || vk == 0x10 || vk == 0x11 || vk == 0x12) return;   // nada, Mayus, Ctrl o Alt sueltas (como XP)
@@ -220,6 +223,7 @@ namespace Rocola
                             ActualizaCodigo();
                             RevisaAtraccion();
                             RevisaLoQueSuena();
+                            RevisaAyuda();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
@@ -279,7 +283,7 @@ namespace Rocola
         // REGRESAR mantenido (para los combos de XP); en las pruebas se da por boton.
         private bool regresarDePrueba;
         private bool RegresarApretado { get { return regresarDePrueba; } }   // lo que estaba apretado al pulsar (PulsadoConRegresar)
-        internal void Pulsa(Boton b, bool conRegresar) { regresarDePrueba = conRegresar; try { Maneja(b); } finally { regresarDePrueba = false; } }
+        internal void Pulsa(Boton b, bool conRegresar) { regresarDePrueba = conRegresar; try { Maneja(b); } finally { regresarDePrueba = false; } TrasBoton(); }
 
         // LOS BOTONES, como en XP (Form1.cs: ProcessCmdKey). MONEDA y SALTAR siempre. REGRESAR mantenido + ARRIBA abre o cierra el buscador.
         // En la pared: IZQ/DER, de disco; ARRIBA, pagina siguiente; ABAJO, la anterior; REGRESAR mantenido + IZQ/DER, de letra; PONER, entrar.
@@ -288,7 +292,7 @@ namespace Rocola
         {
             switch (b)
             {
-                case Boton.Moneda: motor.Moneda(); return;
+                case Boton.Moneda: motor.Moneda(); MonedaAyuda(); return;
                 case Boton.Saltar:   // como SkipSong de XP: salta la que suena; con todo parado y sin cola, borra los creditos que quedaron
                     if (salida != null || video != null) saltar = true;
                     else if (motor.BorraCreditos()) Aviso("Creditos borrados");
@@ -296,6 +300,8 @@ namespace Rocola
             }
             if (video != null) return;   // durante un video los demas botones no hacen nada (la pantalla es del video)
             if (AjusteSel >= 0) { ManejaAjustes(b); return; }
+            if (b == Boton.Abajo && RegresarApretado) { if (AyudaAbierta) CierraAyuda(); else AbreAyuda(); return; }   // ROJO + ABAJO: la ayuda (Ayuda.cs)
+            if (BotonAyuda(b)) return;   // el menu de la ayuda se queda con el boton; guiando, hace lo suyo de siempre
             if (b == Boton.Arriba && RegresarApretado) { if (Buscando) CierraBuscador(); else AbreBuscador(); return; }
             if (Buscando) { ManejaBuscador(b); return; }
             if (dentro == null)
@@ -328,6 +334,7 @@ namespace Rocola
             Form1.Pedido p = motor.Pide(ruta);
             if (p == Form1.Pedido.Puesta)
             {
+                NotaPedidoAyuda();
                 Aviso(motor.UltimoTurno.Length > 0 ? motor.UltimoTurno : "Pusiste «" + titulo + "»");   // el turno de XP
                 if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
             }

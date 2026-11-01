@@ -343,3 +343,19 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   cada una («EN COLA 2 · en ~4 min», `TextoCola` y `MinutosEspera` de XP): hasta tres, o hasta doce en dos columnas.
 - El primer botón solo la despierta (la moneda, además, cuenta), como la atracción. Los avisos salen encima del panel.
 - Probado en captura (`--captura x.ppm --boton reposo`: créditos, cinco pedidas y 20 s sin botones).
+
+## Extra (1-11-2026): la estrella de la ayuda
+
+- Como en XP (AsistenteRocola.cs y AsistenteGuiaRocola.cs): **ROJO + ABAJO** abre y cierra la ayuda. La estrella vive en su casilla de
+  la barra de arriba («AYUDA», con sus dos botones dibujados, al lado de «BUSCAR» con los suyos) y vuela a su globo al abrirla.
+- **Sin rostro** (decisión del 10-10-2026): conserva el cuerpo del icono; sus cinco puntas son la cabeza, los brazos (con su mano) y las
+  piernas (con su pie). Se expresa solo con el cuerpo: saluda con la mano, señala con el brazo hacia lo que toca, abre los brazos al
+  explicar, salta con el brazo arriba al acertar, busca con la mano en la frente (la moneda), festeja con los dos brazos y un salto, y
+  se despide con una reverencia. Respira y se mece.
+- Primero pregunta «¿Qué quieres hacer?» (poner una canción, buscarla por su nombre, aprender a moverme); después **lleva de la mano**:
+  mira lo que de verdad pasa (dónde estás, si hay crédito, si abriste el buscador, si ya pediste), ilumina lo que toca, lo señala con
+  una flecha dorada y dibuja los botones; los botones hacen lo de siempre. «Paso 2 de 3», «¡Muy bien!», «¡Lo lograste!» y vuelve sola.
+  Las reglas puras (`PasoParaCancion`, `OrdenPaso`, `NumeroPaso`, `PasoDespedida`) y los textos son los de XP; 45 s sin tocar nada: se
+  despide («¡Adiós!») y a los 2,2 s se va; si alguien toca algo mientras, se queda. Con la ayuda abierta no hay reposo ni atracción.
+- En 2D (la 3D de XP no se hizo). Probado en captura: el menú, «Elige un disco» con la flecha, «Aprender a moverme» avanzando al paso 2,
+  y la misión de poner una canción hasta «¡Lo lograste!». En el modo texto va en una línea.

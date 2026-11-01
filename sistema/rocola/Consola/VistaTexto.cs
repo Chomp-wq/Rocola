@@ -109,7 +109,14 @@ namespace Rocola
                 }
                 sb.Append(Corta(" ARRIBA/ABAJO: cancion  IZQ/DER: pagina  PONER: pedirla (1 credito)  REGRESAR: a los discos", ancho)).Append('\n');
             }
-            sb.Append("\x1b[1;33m").Append(Corta(c.AvisoVigente.Length > 0 ? " " + c.AvisoVigente : "", ancho)).Append("\x1b[0m");
+            string av = c.AvisoVigente.Length > 0 ? " " + c.AvisoVigente : "";
+            if (c.AyudaAbierta)   // la ayuda de la estrella, en una linea (Ayuda.cs)
+            {
+                if (c.AyudaMision == 0) av = " AYUDA: ¿Que quieres hacer? > " + Controlador.OpcionesAyuda[c.AyudaSeleccion] + "  (flechas, VERDE: aceptar, ROJO: guardar)";
+                else if (c.AyudaLograda) av = " AYUDA: ¡Lo lograste!";
+                else { string ti, tx, te; Controlador.TextoPaso(c.AyudaPaso, out ti, out tx, out te); av = " AYUDA: " + ti + ". " + tx; }
+            }
+            sb.Append("\x1b[1;33m").Append(Corta(av, ancho)).Append("\x1b[0m");
             string p = sb.ToString();
             if (p == pantallaAntes) return;
             pantallaAntes = p;

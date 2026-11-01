@@ -122,6 +122,7 @@ namespace Rocola
             c.Prepara();
             foreach (string b in botones)
                 if (b == "atraccion") c.FuerzaAtraccion();
+                else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
                 else if (b == "reposo")
                 {
                     // algo sonando y cinco en la cola (sin salida: solo para ver la pantalla), y 20 s sin botones
@@ -133,7 +134,7 @@ namespace Rocola
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
-            if (botones.Contains("atraccion") || botones.Contains("reposo"))   // que termine de aparecer (unos cuadros durante 1,3 s)
+            // que termine de aparecer lo que se anima (la atraccion, el reposo, la estrella que vuela): unos cuadros durante 1,3 s
                 for (int i = 0; i < 26; i++) { v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // que termine de aparecer
             v.Dibuja(c);
             fp.Captura(ruta);

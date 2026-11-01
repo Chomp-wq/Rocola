@@ -126,6 +126,21 @@ namespace Rocola.Pantalla
             V(x + w, y, u1, v0, c); V(x + w, y + h, u1, v1, c); V(x, y + h, u0, v1, c);
         }
         internal void Rect(float x, float y, float w, float h, Color4 c) { Quad(blanca, x, y, w, h, 0.25f, 0.25f, 0.75f, 0.75f, c); }
+        // Un triangulo lleno (la estrella de la ayuda se arma con ellos).
+        internal void Triangulo(float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
+        {
+            if (blanca.Id != texActual || nv + 3 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
+            V(x1, y1, 0.5f, 0.5f, c); V(x2, y2, 0.5f, 0.5f, c); V(x3, y3, 0.5f, 0.5f, c);
+        }
+        // Una linea gruesa (un rectangulo girado), con las puntas redondeadas por un brillo duro.
+        internal void Linea(float x1, float y1, float x2, float y2, float grosor, Color4 c)
+        {
+            float dx = x2 - x1, dy = y2 - y1, l = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (l < 0.01f) return;
+            float nx = -dy / l * grosor / 2, ny = dx / l * grosor / 2;
+            Triangulo(x1 + nx, y1 + ny, x2 + nx, y2 + ny, x1 - nx, y1 - ny, c);
+            Triangulo(x2 + nx, y2 + ny, x2 - nx, y2 - ny, x1 - nx, y1 - ny, c);
+        }
         // Un rectangulo con un color arriba y otro abajo (degradado vertical).
         internal void Degradado(float x, float y, float w, float h, Color4 arriba, Color4 abajo)
         {
