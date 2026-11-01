@@ -111,6 +111,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(discos)) discos = "/rocola/discos";
                 List<string> raices = new List<string>();
                 if (Directory.Exists(discos)) raices.AddRange(Directory.GetDirectories(discos));
+                if (Directory.Exists("/rocola/disco")) raices.Add("/rocola/disco");   // instalado: el disco de la rocola (rocola-instalar)
                 string informe = ImportaDeXP(xp, raices);
                 if (informe != null) Diag(informe);
             }
