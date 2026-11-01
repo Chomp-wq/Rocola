@@ -39,9 +39,9 @@ namespace Rocola
         }
         private Zona Casilla(float x, float y, float h, string nombre, char flecha, bool abierta)
         {
-            float wl = chica.Mide(nombre), w = (nombre == "AYUDA" ? 34 * k : 12 * k) + wl + 12 * k + 70 * k;
+            float wl = chica.Mide(nombre), w = (nombre == "AYUDA" ? 38 * k : 12 * k) + wl + 12 * k + 70 * k;
             d.Redondo(x, y, w, h, h / 2, abierta ? Dorado.ConAlfa(0.35f) : PanelClaro.ConAlfa(0.8f));
-            float tx = x + (nombre == "AYUDA" ? 34 * k : 12 * k);
+            float tx = x + (nombre == "AYUDA" ? 38 * k : 12 * k);
             chica.Escribe(d, nombre, tx, y + (h - chica.Tam) / 2 - 1 * k, abierta ? Blanco : Gris);
             float bx = tx + wl + 12 * k, cy = y + h / 2, r = 9 * k;
             Boton(bx + r, cy, r, 'B');

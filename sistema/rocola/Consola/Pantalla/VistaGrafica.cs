@@ -312,7 +312,14 @@ namespace Rocola
                 bool sel = n == c.cursorDisco;
                 // LA PORTADA ENFOCADA (como XP): crece un 12 % en 170 ms desde el centro de su borde de abajo, con un halo de su propio
                 // color; las demas bajan un 20 % de brillo.
-                if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta)) { focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds; }
+                if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta))
+                {
+                    // EL RELEVO DE GIRO (AlbumView.MoveSelectionTo de XP): el que se deja da un giro rapido que se apaga y el nuevo arranca plano
+                    bool mismaPagina = focoCarpeta != null && focoDisco >= 0 && focoDisco / porPag == pag && relevoLetra == c.letra;
+                    if (mismaPagina) { relevoIdx = focoDisco; relevoAng = AnguloCubo(); relevoGiro = 0.7f * (n > focoDisco ? 1f : -1f); } else relevoIdx = -1;
+                    giroDir = n >= focoDisco ? 1f : -1f; relevoLetra = c.letra;
+                    focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds;
+                }
                 double avance = sel ? Math.Min(1.0, (reloj.Elapsed.TotalMilliseconds - focoDesde) / 170.0) : 0.0;
                 float crece = 1f + 0.12f * (float)(1 - Math.Pow(1 - avance, 3));
                 float l = lado * crece, px = cx - l / 2, py = cy + lado - l;
@@ -323,7 +330,9 @@ namespace Rocola
                     d.Brillo(cx, py + l / 2, l * 0.95f, halo.ConAlfa(0.55f));
                     d.Redondo(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 10 * k, Dorado);
                 }
-                Portada(disco.Portada, disco.Artista, px, py, l);
+                if (sel) Cubo(disco.Portada, disco.Artista, px, py, l, AnguloCubo());                       // el cubo que gira (XP)
+                else if (n == relevoIdx && n / porPag == pag) Cubo(disco.Portada, disco.Artista, px, py, l, PasoRelevo());
+                else Portada(disco.Portada, disco.Artista, px, py, l);
                 if (sel) zElegido = new Zona(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k);
                 if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0, 0.2f));
                 else
@@ -433,7 +442,7 @@ namespace Rocola
             float lado = H - abajo - 24 * k;
             string t = m.SonandoTitulo;
             if (t == null) { media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
-            Portada(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado);
+            Cubo(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado, reloj.Elapsed.TotalSeconds * 1.44);   // el cubo chico de la barra (XP)
             float x = 24 * k + lado, ancho = W - x - 24 * k;
             // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)
             List<string> prox = m.ProximasEnCola(3);
@@ -451,6 +460,59 @@ namespace Rocola
             float wb = W - x - 24 * k;
             d.Rect(x, H - 10 * k, wb, 4 * k, PanelClaro);
             d.Rect(x, H - 10 * k, wb * p, 4 * k, Dorado);
+        }
+
+        // EL CUBO QUE GIRA (Cube.Draw de XP y su gemelo en la tarjeta: D3D9Star.cs, PreparaCubo): la portada en las cuatro caras de un prisma
+        // que gira sobre su eje vertical, visto de frente; cada cara visible se oscurece con la profundidad (hasta 130 de 255). Gira a 0,06 rad
+        // por paso de 24 por segundo (1,44 rad/s), en el sentido en que se movio la seleccion.
+        private int relevoIdx = -1, relevoLetra = -1; private double relevoAng; private float relevoGiro, giroDir = 1f; private double relevoT;
+        private double AnguloCubo() { return (reloj.Elapsed.TotalMilliseconds - focoDesde) / 1000.0 * 1.44 * giroDir; }
+        private double PasoRelevo()
+        {
+            double t = reloj.Elapsed.TotalSeconds, pasos = Math.Max(0, Math.Min(0.25, t - relevoT)) * 24; relevoT = t;
+            for (int i = 0; i < (int)Math.Round(pasos); i++)
+            {
+                if (Math.Abs(relevoGiro) > 0.02f) { relevoAng += relevoGiro; relevoGiro *= 0.85f; }
+                else
+                {
+                    double meta = Math.Round(relevoAng / (2 * Math.PI)) * (2 * Math.PI);   // se asienta plano, sin salto
+                    relevoAng += (meta - relevoAng) * 0.25;
+                    if (Math.Abs(meta - relevoAng) < 0.03) { relevoIdx = -1; relevoAng = meta; break; }
+                }
+            }
+            return relevoAng;
+        }
+        private void Cubo(string ruta, string nombre, float x, float y, float lado, double angulo)
+        {
+            Textura t = caratulas.De(ruta);
+            Color4 base_ = Color4.Hex(0x2A3A78);
+            if (t == null)
+            {
+                uint h32 = 2166136261; foreach (char ch in nombre ?? "") h32 = (h32 ^ ch) * 16777619;
+                base_ = new Color4(0.25f + (h32 & 255) / 640f, 0.2f + ((h32 >> 8) & 255) / 640f, 0.35f + ((h32 >> 16) & 255) / 640f);
+            }
+            double cx = x + lado / 2.0, R = lado / 2.0, g45 = Math.PI / 4, g90 = Math.PI / 2;
+            double[] bx = new double[4], bz = new double[4]; int[] orden = { 0, 1, 2, 3 };
+            for (int i = 0; i < 4; i++) { bx[i] = cx + R * Math.Cos(angulo + g45 + i * g90); bz[i] = Math.Sin(angulo + g90 + i * g90); }
+            Array.Sort(orden, (a, b) => bz[a].CompareTo(bz[b]));   // de atras hacia adelante
+            bool alguna = false;
+            foreach (int i in orden)
+            {
+                if (bz[i] <= 0.0) continue;   // cara de atras: no se ve
+                float iz = (float)Math.Round(Math.Min(bx[i], bx[(i + 1) % 4])), de = (float)Math.Round(Math.Max(bx[i], bx[(i + 1) % 4]));
+                if (de - iz < 1f) continue;
+                float g = 1f - (float)Math.Max(0, Math.Min(1, (1.0 - bz[i]) * 130 / 255.0));
+                if (t != null) d.Quad(t, iz, y, de - iz, lado, 0, 0, 1, 1, new Color4(g, g, g, 1f));
+                else d.Rect(iz, y, de - iz, lado, new Color4(base_.R * g, base_.G * g, base_.B * g, 1f));
+                alguna = true;
+            }
+            if (!alguna) return;
+            if (t == null && Math.Abs(Math.Sin(angulo % g90 * 2)) < 0.25)   // casi de frente: su inicial, como la portada sin imagen
+            {
+                string ini = string.IsNullOrEmpty(nombre) ? "?" : nombre.Substring(0, 1).ToUpperInvariant();
+                Letra l = lado > 120 * k ? enorme : grande;
+                l.EscribeCentrado(d, ini, x + lado / 2, y + lado / 2 - l.Tam * 0.55f, new Color4(1, 1, 1, 0.85f));
+            }
         }
 
         // La caratula, o un cuadro de color con la inicial si no tiene.

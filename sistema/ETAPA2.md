@@ -359,3 +359,13 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   despide («¡Adiós!») y a los 2,2 s se va; si alguien toca algo mientras, se queda. Con la ayuda abierta no hay reposo ni atracción.
 - En 2D (la 3D de XP no se hizo). Probado en captura: el menú, «Elige un disco» con la flecha, «Aprender a moverme» avanzando al paso 2,
   y la misión de poner una canción hasta «¡Lo lograste!». En el modo texto va en una línea.
+
+## Extra (1-11-2026): los cubos
+
+- **El cubo que gira** de XP (Cube.Draw y `PreparaCubo` de D3D9Star.cs): la portada elegida en la pared gira como un prisma de cuatro
+  caras con la portada, visto de frente; cada cara visible se oscurece con la profundidad (hasta 130 de 255), a 1,44 rad/s (0,06 por
+  paso de 24 por segundo) en el sentido en que se movió la selección, y con la portada enfocada (crece un 12 %, halo y letrero).
+- **El relevo de giro** (AlbumView.MoveSelectionTo de XP): al cambiar de disco en la misma página, el que se deja da un giro rápido
+  (0,7 por paso) que se apaga (×0,85 por paso) y se asienta plano en la vuelta entera más cercana; el nuevo arranca plano.
+- **El cubo chico** de la barra de lo que suena también gira. Sin portada: el color del nombre y su inicial cuando está casi de frente.
+- Probado en captura (`--boton derecha`).
