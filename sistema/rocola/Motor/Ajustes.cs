@@ -19,7 +19,9 @@ namespace Rocola
             internal Func<string> Guardado;         // como va en rocola_config.txt
             internal Action<int> Cambia;            // +1 / -1
             internal Func<string> Bloqueo;          // null si se puede cambiar; si no, el motivo
+            public bool Herramienta;                // no se guarda ni corta la comparacion a ciegas (S4, las comparaciones, el voto)
             public string Texto { get { return Valor(); } }
+            public string ComoSeGuarda { get { return Guardado != null ? Guardado() : null; } }
             public string Motivo { get { return Bloqueo != null ? Bloqueo() : null; } }
             public void Mueve(int d) { if (Motivo == null) Cambia(d); }
         }
@@ -32,15 +34,33 @@ namespace Rocola
             a.Valor = delegate { return lee() ? "SÍ" : "NO"; };
             a.Guardado = delegate { return lee() ? "1" : "0"; };
             a.Cambia = delegate (int d) { pon(!lee()); };
-            if (delBillar) a.Bloqueo = delegate { return localAuto ? PorElBillar : null; };
+            if (delBillar) a.Bloqueo = delegate { return LocalAutoAGuardar ? PorElBillar : null; };   // a ciegas, sin delatar el tramo
             return a;
         }
+
+        private Ajuste Ciego(string nombre, int que)
+        {
+            Ajuste a = new Ajuste { Grupo = "Lo que suena ahora", Nombre = nombre, Herramienta = true };
+            a.Valor = delegate { return ciegoActivo && ciegoQue == que ? "PARAR" : "EMPEZAR"; };
+            a.Cambia = delegate (int d)
+            {
+                if (ciegoActivo && ciegoQue == que) TerminaCiego("Comparacion parada. ");
+                else { if (ciegoActivo) TerminaCiego(""); string r = EmpiezaCiego(que); if (r.Length > 0) ciegoResultado = r; }
+            };
+            return a;
+        }
+
+        // Al tocar un ajuste de verdad o salir de la hoja, la comparacion se corta y vuelve lo de antes (como XP).
+        public void CortaCiego(string porQue) { if (ciegoActivo) TerminaCiego(porQue); }
 
         public IList<Ajuste> Ajustes()
         {
             if (ajustes != null) return ajustes;
             List<Ajuste> l = new List<Ajuste>();
-            l.Add(Interruptor("El billar", "Modo billar (la cadena para las bocinas del billar)", "local_auto", () => localAuto, v => localAuto = v, false));
+            Ajuste billar = Interruptor("El billar", "Modo billar (la cadena para las bocinas del billar)", "local_auto", () => localAuto, v => localAuto = v, false);
+            billar.Guardado = delegate { return LocalAutoAGuardar ? "1" : "0"; };
+            billar.Valor = delegate { return LocalAutoAGuardar ? "SÍ" : "NO"; };   // a ciegas no se ve cual suena   // durante la comparacion a ciegas, el de antes (como XP)
+            l.Add(billar);
             l.Add(Interruptor("El local", "Claridad para el local", "claridad_local", () => claridadLocal, v => claridadLocal = v, true));
             l.Add(Interruptor("El local", "Que las partes suaves se oigan", "partes_suaves", () => partesSuaves, v => partesSuaves = v, true));
             l.Add(Interruptor("El local", "Presencia en sala ruidosa", "presencia_sala", () => presenciaSala, v => presenciaSala = v, true));
@@ -52,17 +72,26 @@ namespace Rocola
             l.Add(Interruptor("Voz, golpe y retumbe", "Agudos asperos dinamicos", "aspereza_dinamica", () => asperezaDinamica, v => asperezaDinamica = v, true));
             l.Add(Interruptor("Voz, golpe y retumbe", "Que el bombo no hunda la voz", "bombo_sin_hundir", () => bomboSinHundir, v => bomboSinHundir = v, true));
             // S4 de XP: una herramienta, no un ajuste (no se guarda); 15 s, o hasta volver a pulsar o salir de la hoja.
-            Ajuste sin = new Ajuste { Grupo = "Lo que suena ahora", Nombre = "Escuchar sin mejoras (" + SinMejorasSeg + " s)" };
+            Ajuste sin = new Ajuste { Grupo = "Lo que suena ahora", Nombre = "Escuchar sin mejoras (" + SinMejorasSeg + " s)", Herramienta = true };
             sin.Valor = delegate { int q = SinMejorasQuedan(); return q > 0 ? "SÍ (" + q + " s)" : "NO"; };
             sin.Cambia = delegate (int d) { PonSinMejoras(SinMejorasQuedan() == 0); };
             l.Add(sin);
+            // COMPARAR A CIEGAS (CompararCiegas.cs de XP): empezar o parar cada una, y el voto del tramo que suena.
+            l.Add(Ciego("Comparar a ciegas: billar o fábrica", CiegoBillar));
+            l.Add(Ciego("Comparar a ciegas: con o sin afinar", CiegoAfinacion));
+            l.Add(Ciego("Comparar a ciegas: presencia nueva o de antes", CiegoPresencia));
+            Ajuste voto = new Ajuste { Grupo = "Lo que suena ahora", Nombre = "Me gusta esta (un voto por tramo)", Herramienta = true };
+            voto.Valor = delegate { return ciegoActivo ? (ciegoVotado != null && ciegoTramo >= 0 && ciegoVotado[ciegoTramo] ? "VOTADO" : "VOTAR") : "—"; };
+            voto.Cambia = delegate (int d) { VotaCiego(); };
+            voto.Bloqueo = delegate { return ciegoActivo ? null : "solo durante una comparación"; };
+            l.Add(voto);
             l.Add(Interruptor("Lo que suena ahora", "Saltar los silencios largos", "saltar_silencios", () => saltaSilencios, v => saltaSilencios = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Quitar el zumbido de la corriente", "quita_zumbido", () => quitaZumbido, v => quitaZumbido = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Quitar el pre-eco de los MP3 viejos", "quita_preeco", () => quitaPreEco, v => quitaPreEco = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Un canal mudo, por los dos", "canal_mudo", () => canalMudo, v => canalMudo = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Quitar la corriente continua", "quita_continua", () => quitaContinua, v => quitaContinua = v, false));
             Ajuste dsee = Interruptor("Mejoras con IA", "Reconstruir los agudos (DSEE)", "dsee", () => sbrOn, v => sbrOn = v, true);
-            dsee.Bloqueo = delegate { return !sbrAllowed ? "este equipo no llega (" + sbrReason + ")" : localAuto ? PorElBillar : null; };
+            dsee.Bloqueo = delegate { return !sbrAllowed ? "este equipo no llega (" + sbrReason + ")" : LocalAutoAGuardar ? PorElBillar : null; };
             l.Add(dsee);
             l.Add(Interruptor("Mejoras con IA", "Bajo y brillo a la medida (I1)", "a_la_medida", () => aLaMedida, v => aLaMedida = v, false));
             l.Add(Interruptor("Mejoras con IA", "Quitar el siseo de las grabaciones viejas (I2)", "quita_siseo", () => quitaSiseo, v => quitaSiseo = v, true));
@@ -92,7 +121,7 @@ namespace Rocola
             try { if (File.Exists(ConfigFile)) lineas.AddRange(File.ReadAllLines(ConfigFile)); } catch { }
             foreach (Ajuste a in Ajustes())
             {
-                if (a.Clave == null) continue;   // las herramientas no se guardan
+                if (a.Clave == null || a.Herramienta) continue;   // las herramientas no se guardan
                 string linea = a.Clave + "=" + a.Guardado();
                 int i = lineas.FindIndex(x => x.Trim().StartsWith(a.Clave + "=", StringComparison.Ordinal));
                 if (i >= 0) lineas[i] = linea; else lineas.Add(linea);

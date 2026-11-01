@@ -307,3 +307,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   cadena le hace a la que suena** (S5): el nivel que sale, lo que baja el limitador y las etapas que de verdad actúan. Se lee cada medio
   segundo y solo con la hoja abierta (sus lecturas se ponen a cero al leerlas: un solo lector, como en XP).
 - Probado con el motor y una canción (sin pantalla): el texto cambia al encender «sin mejoras» y vuelve al apagarlo; y en captura.
+
+## Extra (1-11-2026): comparar a ciegas
+
+- `CompararCiegas.cs` de XP, copiado tal cual al motor (antes había solo piezas sueltas en `DeXP.cs`). En la hoja de ajustes, grupo
+  «Lo que suena ahora»: **billar o fábrica**, **con o sin afinar** y **presencia nueva o de antes** (EMPEZAR / PARAR) y **«Me gusta
+  esta»** (un voto por tramo). 8 tramos de 15 s al azar; el resultado sale en el recuadro de abajo.
+- Como en XP: el modo cambia de verdad en vivo, pero lo guardado es el de antes; tocar otro ajuste o salir de la hoja la corta y vuelve
+  lo de antes; si la canción se acaba, se corta antes de armar la siguiente; el volumen parejo no aprende de esa canción.
+- En Rocola OS, además, la hoja no delata el tramo: «Modo billar» y los grises muestran lo de antes mientras se compara.
+- Probado con el motor y una canción a paso real (34 s): el modo cambió entre tramos, la configuración guardaba «1» todo el rato, el
+  voto contó y al parar volvió el modo billar. «Con o sin afinar» pide antes las bandas del celular (aún sin la hoja de afinar).

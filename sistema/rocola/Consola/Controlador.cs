@@ -330,6 +330,7 @@ namespace Rocola
         // S5 de XP (LoQueSuena.cs): lo que la cadena le hace a la que suena, cada medio segundo con la hoja abierta (sus lecturas se ponen a
         // cero al leerlas: este es su unico lector).
         internal string LoQueSuena = "";
+        private bool ciegoVisto;   // tras una comparacion, su resultado se queda a la vista mientras la hoja siga abierta
         private int ultimoLoQueSuena;
         private void RevisaLoQueSuena()
         {
@@ -337,9 +338,10 @@ namespace Rocola
             int ahora = Environment.TickCount;
             if (ultimoLoQueSuena != 0 && unchecked(ahora - ultimoLoQueSuena) < 500) return;
             ultimoLoQueSuena = ahora == 0 ? 1 : ahora;
-            try { LoQueSuena = motor.TextoLoQueSuena(); } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Lo que suena ahora", ex); }
+            motor.CiegoTick();   // la comparacion a ciegas cambia de tramo (como el reloj de la ventana de XP)
+            try { LoQueSuena = motor.TextoLoQueSuena(); string ciego = motor.TextoCiego(); if (motor.CiegoActivo || ciegoVisto) { LoQueSuena += "\n" + ciego; ciegoVisto = true; } } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Lo que suena ahora", ex); }
         }
-        private void CierraAjustes() { AjusteSel = -1; if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
+        private void CierraAjustes() { AjusteSel = -1; ciegoVisto = false; motor.CortaCiego("Ventana cerrada: comparacion cortada. "); if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
         private void ManejaAjustes(Boton b)
         {
             int n = AjustesTotal;
@@ -347,6 +349,7 @@ namespace Rocola
             else if (b == Boton.Abajo) AjusteSel = (AjusteSel + 1) % n;
             else if (b == Boton.Regresar)
             {
+                motor.CortaCiego("Ventana cerrada: comparacion cortada. ");   // antes de guardar: vuelve el modo de antes
                 try { motor.GuardaAjustes(); Aviso("Ajustes guardados: se oyen desde la siguiente cancion"); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
                 CierraAjustes();
             }
@@ -355,7 +358,13 @@ namespace Rocola
             {
                 Form1.Ajuste a = ListaAjustes[AjusteSel];
                 if (a.Motivo != null) Aviso("No se puede: " + a.Motivo);
-                else { a.Mueve(b == Boton.Izquierda ? -1 : 1); ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
+                else
+                {
+                    if (!a.Herramienta) motor.CortaCiego("Cambiaste un ajuste: comparacion cortada. ");   // primero vuelve el modo como estaba (XP)
+                    a.Mueve(b == Boton.Izquierda ? -1 : 1);
+                    if (a.Herramienta) ciegoVisto = true;
+                    ultimoLoQueSuena = 0; RevisaLoQueSuena();
+                }
             }
         }
 

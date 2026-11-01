@@ -757,9 +757,6 @@ namespace Rocola
             right = s.Substring(idx + len).Trim();
             return left.Length > 0;
         }
-        // de CompararCiegas.cs
-        // La comparacion a ciegas (CompararCiegas.cs) aun no esta en Rocola OS: nunca hay una en marcha.
-        internal void TerminaCiego(string porQue) { ciegoActivo = false; }
         // de ArreglosGrabacion.cs
         // El zumbido medido de una cancion (50 o 60 Hz), o 0 si no lo trae o aun no se sabe (T6, algoritmo 6 del repaso).
         private int ZumbidoDe(string ruta)
@@ -775,8 +772,6 @@ namespace Rocola
         private readonly object audioDatosLock = new object();
         // de Form1.SinPausa.cs
         private CadenaCancion cadenaPreparada;   // la siguiente: lista, o entrando y aun sin recoger
-        // de CompararCiegas.cs
-        private bool ciegoActivo, ciegoGuardado;
         // de Form1.Sonido.cs
         private float crossfadeSec = 0.5f;   // FUNDIDO de salida entre canciones: segundos de rampa al terminar ("fundido=" en config; 0 = corte seco)
         // de Form1.Fondo.cs
@@ -841,8 +836,6 @@ namespace Rocola
         // demas. La PRIMERA vez que se oye una cancion nueva va a su volumen original (aun no hay medida): se
         // aprende en esa pasada y ya queda pareja para siempre. Se puede apagar con normalizar=0 en rocola_config.txt.
         private bool normalizeOn = true;                                                     // nivelado activo (por defecto si)
-        // de CompararCiegas.cs
-        private bool presenciaSinGrave = true;   // la presencia del billar mide sin el grave (P1); false solo en un tramo "de antes"
         // de Form1.cs
         private readonly List<PlayItem> queue = new List<PlayItem>();
         // de Form1.Sonido.cs
@@ -893,19 +886,6 @@ namespace Rocola
         private static string CarpetaDe(string ruta)
         {
             try { return System.IO.Path.GetDirectoryName(ruta); } catch { return null; }
-        }
-        // de CompararCiegas.cs
-        private void CiegoPon(bool a)
-        {
-            if (ciegoQue == CiegoPresencia)
-            {
-                presenciaSinGrave = a;
-                CadenaCancion c = cadenaSonando; if (c != null && c.Presencia != null) c.Presencia.SinGrave = a;
-                return;
-            }
-            if (ciegoQue == CiegoAfinacion) { if (afinadoUsar == a) return; afinadoUsar = a; }
-            else { if (localAuto == a) return; localAuto = a; }
-            try { AplicaBocinas(); AplicaALaMedida(); ApplyNormNow(); } catch (Exception ex) { LogError("Comparar a ciegas", ex); }
         }
         // de AfinarLocal.cs
         private float[] ConLocalAfinado(float[] cancion)
@@ -1625,8 +1605,6 @@ namespace Rocola
         // cantidad; si dan de sobra, la baja. El microfono de un celular suele leer de menos a 63 Hz: los primeros 4 dB que falten no
         // cuentan (y 2 dB de sobra tampoco). 12 dB que falten de verdad = el doble... topado: entre 0,75 y 1,4 veces. 1 = como siempre. Pura.
         internal const float BajoMedidoHolguraFalta = 4f, BajoMedidoHolguraSobra = 2f, BajoMedidoMin = 0.75f, BajoMedidoMax = 1.4f;
-        // de CompararCiegas.cs
-        internal const int CiegoBillar = 0, CiegoAfinacion = 1, CiegoPresencia = 2;   // que se compara
         // de AfinarLocal.cs
         // La curva de casa para un bar (dB frente a la zona de la voz): un poco mas de grave y menos de agudo que plano.
         internal static readonly float[] CurvaCasa = { 2f, 1.5f, 0.5f, 0f, 0f, -0.5f, -1.5f, -3f };
@@ -1985,8 +1963,6 @@ namespace Rocola
         internal const double SubirFueraDelTope = 0.10;   // canciones medidas que pueden pasar del tope al subir
         // de Form1.Sonido.cs
         private float bassAutoBase = 0.30f;        // lo que el programa eligio para la cancion que suena
-        // de CompararCiegas.cs
-        private int ciegoQue;
         // de Form1.Datos.cs
         private readonly System.Threading.ManualResetEvent dataWritesIdle = new System.Threading.ManualResetEvent(true);
         // de Form1.Datos.cs
