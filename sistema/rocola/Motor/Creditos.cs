@@ -112,6 +112,7 @@ namespace Rocola
             try { CheckBusinessDayReset(); } catch { }
             try { if (statsDirty) { statsDirty = false; SaveStats(true); } } catch { }
             try { SaveLoudCache(); FlushEqIfDirty(); } catch { }
+            try { GuardaNoche(true); } catch { }   // lo mas pedido esta noche, si cambio
         }
 
         // SALTAR con todo parado y la cola vacia (SkipSong de XP): borra los creditos que quedaron. Devuelve si habia.

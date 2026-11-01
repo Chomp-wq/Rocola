@@ -121,6 +121,7 @@ namespace Rocola
             float abajo = H - 120 * k;   // donde empieza lo que suena
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); d.Termina(); sup.Presenta(); return; }
+            atraccionAntes = false;
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
@@ -153,9 +154,20 @@ namespace Rocola
 
         // EL MODO ATRACCION (el escaparate de XP): la portada grande, que se mece un poco, y su ficha; debajo, un mensaje cada 5 s.
         private int atraccionVista = -1; private double atraccionDesde;
+        private bool atraccionAntes; private double atraccionInicio, topDesde = -1; private List<Form1.FilaNoche> topLista; private int topTotal;
         private void Atraccion(Controlador c, float W, float H)
         {
+            Form1 m = c.motor;
             double t = reloj.Elapsed.TotalSeconds;
+            if (!atraccionAntes) { atraccionAntes = true; atraccionInicio = t - c.AtraccionDesfase; topDesde = -1; }
+            // LO MAS PEDIDO ESTA NOCHE (top_noche=): cada 30 s, durante 15, la lista de las cinco mas pedidas desde las 8 de la manana
+            double fase = (t - atraccionInicio) % 30.0;
+            if (m.TopNocheOn && fase >= 15.0)
+            {
+                if (topDesde < 0) { topLista = m.TopNoche(out topTotal); topDesde = t; }
+                if (topLista != null && topLista.Count > 0) { TopNoche(c, W, H, t - topDesde, fase); return; }
+            }
+            else topDesde = -1;
             if (atraccionVista != c.AtraccionDisco) { atraccionVista = c.AtraccionDisco; atraccionDesde = t; }
             double edad = t - atraccionDesde;
             float alfa = (float)Math.Max(0, Math.Min(1, Math.Min(edad / 0.6, (8.0 - edad) / 0.6)));   // entra y sale despacio
@@ -163,29 +175,67 @@ namespace Rocola
             float lado = H * 0.48f, x = W * 0.08f, y = H * 0.16f + (float)Math.Sin(t * 0.7) * 6 * k;
             Textura tx = caratulas.De(disco.Portada);
             if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.9f, tx.Media.ConAlfa(0.5f * alfa));
-            Portada(disco.Portada, disco.Artista, x, y, lado);
+            // EL ESCAPARATE (escaparate=): el cubo, en vez de girar, se mece (la portada se ve de frente); sin el, gira como siempre
+            Cubo(disco.Portada, disco.Artista, x, y, lado, m.Escaparate ? 0.22 * Math.Sin(t * 1.1) : t * 1.44);
             if (alfa < 1) d.Rect(x - 2, y - 2, lado + 4, lado + 4, Color4.Hex(0x0A1230, 1 - alfa));
-            float fx = x + lado + 40 * k, fw = W - fx - 40 * k;
-            chica.Escribe(d, "EN ESTA ROCOLA", fx, y + 10 * k, Gris.ConAlfa(alfa));
-            string nombre = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Nombre;
-            enorme.Escribe(d, enorme.Ajusta(nombre, fw), fx, y + 40 * k, Blanco.ConAlfa(alfa));
-            grande.Escribe(d, grande.Ajusta(disco.Artista, fw), fx, y + 100 * k, Verde.ConAlfa(alfa));
-            float px = fx, py = y + 160 * k;
-            foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
+            if (m.Escaparate)
             {
-                if (pastilla == null) continue;
-                float w = media.Mide(pastilla) + 28 * k;
-                d.Redondo(px, py, w, 40 * k, 20 * k, PanelClaro.ConAlfa(alfa));
-                media.Escribe(d, pastilla, px + 14 * k, py + 6 * k, Dorado.ConAlfa(alfa));
-                px += w + 12 * k;
+                float fx = x + lado + 40 * k, fw = W - fx - 40 * k;
+                chica.Escribe(d, "EN ESTA ROCOLA", fx, y + 10 * k, Gris.ConAlfa(alfa));
+                string nombre = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Nombre;
+                enorme.Escribe(d, enorme.Ajusta(nombre, fw), fx, y + 40 * k, Blanco.ConAlfa(alfa));
+                grande.Escribe(d, grande.Ajusta(disco.Artista, fw), fx, y + 100 * k, Verde.ConAlfa(alfa));
+                float px = fx, py = y + 160 * k;
+                foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
+                {
+                    if (pastilla == null) continue;
+                    float w = media.Mide(pastilla) + 28 * k;
+                    d.Redondo(px, py, w, 40 * k, 20 * k, PanelClaro.ConAlfa(alfa));
+                    media.Escribe(d, pastilla, px + 14 * k, py + 6 * k, Dorado.ConAlfa(alfa));
+                    px += w + 12 * k;
+                }
             }
-            string[] mensajes = { "Toca un botón y elige entre " + c.TotalCanciones.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " canciones",
-                "Pon tu canción: una moneda = 4 canciones", "Busca cualquier canción con el botón rojo y la flecha" };
-            int im = (int)(t / 5.0) % mensajes.Length; double em = t % 5.0;
+            List<string> mensajes = new List<string> { "Toca un botón y elige entre " + c.TotalCanciones.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " canciones",
+                "Pon tu canción: una moneda = 4 canciones" };
+            if (m.TopNocheOn && topLista != null && topLista.Count > 0) mensajes.Add("Lo más pedido esta noche: «" + topLista[0].Titulo + "»");
+            mensajes.Add("Busca cualquier canción con el botón rojo y la flecha");
+            int im = (int)(t / 5.0) % mensajes.Count; double em = t % 5.0;
             float am = (float)Math.Max(0, Math.Min(1, Math.Min(em / 0.5, (5.0 - em) / 0.5)));
             float my = H * 0.80f + (1 - am) * 20 * k;
             d.Brillo(W / 2, my + 20 * k, W * 0.35f, Dorado.ConAlfa(0.10f * am));
-            grande.EscribeCentrado(d, mensajes[im], W / 2, my, Dorado.ConAlfa(am));
+            grande.EscribeCentrado(d, grande.Ajusta(mensajes[im], W - 60 * k), W / 2, my, Dorado.ConAlfa(am));
+        }
+
+        // La lista de la noche: el cubo chico en la esquina, la cabecera a su lado y las cinco filas, que entran una a una desde la
+        // izquierda con su portada y una barra que crece con las veces que se pidio cada una.
+        private void TopNoche(Controlador c, float W, float H, double edad, double fase)
+        {
+            float alfa = (float)Math.Max(0, Math.Min(1, Math.Min(edad / 0.5, (30.0 - fase) / 0.5)));
+            float lado = Math.Max(60 * k, Math.Min(W, H) * 0.20f), cx = W - W * 0.06f - lado, cy = H * 0.05f + 64 * k;
+            Form1.FilaNoche p0 = topLista[0];
+            Cubo(p0.Portada, p0.Artista ?? p0.Titulo, cx, cy, lado, reloj.Elapsed.TotalSeconds * 1.44);
+            float x0 = W * 0.07f, x1 = W * 0.93f;
+            grande.Escribe(d, "LO MÁS PEDIDO ESTA NOCHE", x0, cy + 10 * k, Dorado.ConAlfa(alfa));
+            media.Escribe(d, topTotal + (topTotal == 1 ? " canción pedida" : " canciones pedidas") + " desde las 8 de la mañana", x0, cy + 60 * k, Gris.ConAlfa(alfa));
+            float fy = cy + lado + 24 * k, fh = Math.Min(H * 0.11f, (H * 0.95f - fy) / Form1.TopFilas);
+            int max = 1; foreach (Form1.FilaNoche f in topLista) max = Math.Max(max, f.Veces);
+            for (int i = 0; i < topLista.Count; i++)
+            {
+                Form1.FilaNoche f = topLista[i];
+                float u = (float)Math.Max(0, Math.Min(1, (edad - 0.3 - i * 0.15) / 0.45)); u = 1 - (1 - u) * (1 - u) * (1 - u);
+                if (u <= 0) continue;
+                float y = fy + i * fh, dx = -(1 - u) * W * 0.4f, a = u * alfa, pl = fh - 10 * k;
+                d.Redondo(x0 + dx, y, x1 - x0, fh - 6 * k, 12 * k, Panel.ConAlfa(0.85f * a));
+                grande.EscribeCentrado(d, (i + 1).ToString(), x0 + dx + 30 * k, y + (fh - 6 * k - grande.Tam) / 2 - 2 * k, Dorado.ConAlfa(a));
+                Portada(f.Portada, f.Artista ?? f.Titulo, x0 + dx + 60 * k, y + 2 * k, pl);
+                float tx = x0 + dx + 60 * k + pl + 16 * k, bx = x0 + (x1 - x0) * 0.62f + dx, tw = bx - tx - 16 * k;
+                media.Escribe(d, media.Ajusta(f.Titulo, tw), tx, y + 4 * k, Blanco.ConAlfa(a));
+                if (!string.IsNullOrEmpty(f.Artista)) chica.Escribe(d, chica.Ajusta(f.Artista, tw), tx, y + 4 * k + media.Tam * 1.2f, Gris.ConAlfa(a));
+                float bw = (x1 - 24 * k - bx) * 0.75f * (f.Veces / (float)max) * u;
+                d.Redondo(bx, y + (fh - 6 * k) / 2 - 8 * k, Math.Max(16 * k, bw), 16 * k, 8 * k, Dorado.ConAlfa(0.8f * a));
+                string v = f.Veces == 1 ? "1 vez" : f.Veces + " veces";
+                chica.Escribe(d, v, bx + Math.Max(16 * k, bw) + 10 * k, y + (fh - 6 * k) / 2 - chica.Tam * 0.6f, Dorado.ConAlfa(a));
+            }
         }
 
         private static string FirmaAjustes(Controlador c)

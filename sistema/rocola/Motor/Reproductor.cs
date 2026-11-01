@@ -101,6 +101,7 @@ namespace Rocola
             try { SaveDeepDone(); } catch { }
             try { SaveDurFast(); } catch { }
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }
+            try { GuardaNoche(false); } catch { }
             EsperaGuardados(15000);
             Bitacora.Vacia(5000);
         }

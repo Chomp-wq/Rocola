@@ -172,6 +172,8 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "La moneda que cae", "moneda_cae", () => MonedaCae, v => MonedaCae = v, false));
             l.Add(Interruptor("Pantalla", "Sin creditos, invitar", "sin_creditos_invita", () => SinCreditosInvita, v => SinCreditosInvita = v, false));
             l.Add(Interruptor("Pantalla", "Avisos que se entienden", "avisos_claros", () => AvisosClaros, v => AvisosClaros = v, false));
+            l.Add(Interruptor("Pantalla", "La atraccion como escaparate", "escaparate", () => Escaparate, v => Escaparate = v, false));
+            l.Add(Interruptor("Pantalla", "Lo mas pedido esta noche (en la atraccion)", "top_noche", () => TopNocheOn, v => TopNocheOn = v, false));
             l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
             Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
             ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta

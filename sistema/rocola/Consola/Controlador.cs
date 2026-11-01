@@ -188,6 +188,7 @@ namespace Rocola
         }
         internal void FuerzaReposo() { ultimoToque = Environment.TickCount - 20000; }   // (pruebas)
 
+        internal double AtraccionDesfase;   // (pruebas) segundos ya corridos del ciclo de 30 s de la atraccion
         internal void FuerzaAtraccion() { ultimoToque = Environment.TickCount - 60000; RevisaAtraccion(); }   // (pruebas)
 
         private int fallos;

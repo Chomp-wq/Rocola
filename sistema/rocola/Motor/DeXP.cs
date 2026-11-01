@@ -3238,7 +3238,7 @@ namespace Rocola
             }
             statsDirty = true;
             topDirty = true;   // OPTIMIZACION (TOP): cambiaron counts/genero/artista -> reconstruir al entrar a TOP
-            // (en XP: CuentaNoche, lo mas pedido esta noche para la atraccion de la pantalla)
+            CuentaNoche(it);   // y lo mas pedido esta noche, para la atraccion (Noche.cs; en XP, AtraccionGpu.cs)
         }
         // de Form1.Datos.cs
         // Reconstruye creditos/cola/cancion desde el archivo de estado (si hay algo que reanudar).

@@ -400,3 +400,13 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   dos renglones (`PartirAviso` de XP, tal cual) y con una línea que enseña cuánto les queda. En XP el tipo sale del color con que avisa
   cada sitio; en Rocola OS, de lo que dice el aviso.
 - Los siete con su interruptor (grupo «Pantalla»), encendidos de fábrica, con las claves de XP. Probados en captura (`--cuadros`).
+
+## Extra (1-11-2026): la pantalla viva de XP (tanda 4: la atracción)
+
+- **El escaparate** (`escaparate=`): en la atracción el cubo de la portada, en vez de girar, se mece (se ve de frente) y a su lado va
+  la ficha del disco; sin él, el cubo gira como siempre y solo quedan los mensajes.
+- **Lo más pedido esta noche** (`top_noche=`): la cuenta de XP tal cual (`Motor/Noche.cs`: se cuenta al entrar una canción a la cola,
+  desde las 8 de la mañana, en `rocola_noche.txt`, cada minuto si cambió y al cerrar; solo canciones). En la atracción, cada 30 s y
+  durante 15, el cubo se hace chico en la esquina y salen las cinco más pedidas, una a una desde la izquierda, con su portada y una
+  barra que crece con sus veces; hacen falta al menos tres distintas. Y entre los mensajes, «Lo más pedido esta noche: «…»».
+- Probado en captura (`--boton noche`, con una cuenta de prueba).
