@@ -119,10 +119,10 @@ namespace Rocola
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; float sq = Salto(c); chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k - sq, sq > 0 ? Dorado : Gris); }
             zCola = new Zona(W - wcr - 40 * k - chica.Mide("En la cola: 00"), 16 * k, chica.Mide("En la cola: 00"), 32 * k);
             float abajo = H - 120 * k;   // donde empieza lo que suena
-            if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
-            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); d.Termina(); sup.Presenta(); return; }
+            if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
-            if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); return; }
+            if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
@@ -149,8 +149,9 @@ namespace Rocola
             }
             Efectos(c, W, H);
             Ayuda(c, W, H);
+            if (c.DiagEscena >= 0) { string dt = c.DiagTexto; float wd = chica.Mide(dt) + 30 * k; d.Redondo((W - wd) / 2, H - 150 * k, wd, 32 * k, 16 * k, Color4.Hex(0x7A1E1E, 0.95f)); chica.EscribeCentrado(d, dt, W / 2, H - 145 * k, Blanco); }
             d.Termina();
-            sup.Presenta();
+            sup.Presenta(); Fluidez.Cuadro();
         }
 
         // EL MODO ATRACCION (el escaparate de XP): la portada grande, que se mece un poco, y su ficha; debajo, un mensaje cada 5 s.

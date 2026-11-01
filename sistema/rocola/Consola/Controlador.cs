@@ -108,6 +108,7 @@ namespace Rocola
 
         private void Tecla(int vk)
         {
+            if (DiagEscena >= 0) { AcabaDiagnostico("se toco un boton"); ultimoToque = Environment.TickCount; return; }   // cualquier boton corta el diagnostico
             bool enReposo = Reposo;
             ultimoToque = Environment.TickCount;
             if (Atraccion || enReposo)
@@ -230,6 +231,7 @@ namespace Rocola
                             RevisaAtraccion();
                             RevisaLoQueSuena();
                             RevisaAyuda();
+                            RevisaDiagnostico();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya

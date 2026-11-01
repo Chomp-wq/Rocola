@@ -53,6 +53,8 @@ namespace Rocola
         // Al tocar un ajuste de verdad o salir de la hoja, la comparacion se corta y vuelve lo de antes (como XP).
         public void CortaCiego(string porQue) { if (ciegoActivo) TerminaCiego(porQue); }
 
+        public volatile bool PideDiagnostico;   // la hoja lo pide; el programa lo corre y lo apaga
+        public string DatosEn { get { return CarpetaDatos; } }
         private string avisoAfinar = "";
         public string AvisoAfinar { get { string a = avisoAfinar; return a; } }
         private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
@@ -179,6 +181,11 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
             l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
             l.Add(Interruptor("Pantalla", "El buscador con portadas", "buscador_portadas", () => BuscadorPortadas, v => BuscadorPortadas = v, false));
+            // EL DIAGNOSTICO COMPLETO (herramienta de XP: no guarda ni aplica nada); lo corre el programa (Diagnostico.cs).
+            Ajuste dg = new Ajuste { Grupo = "Diagnóstico", Nombre = "Diagnóstico completo de la pantalla (unos 50 s)", Herramienta = true };
+            dg.Valor = delegate { return "EMPEZAR"; };
+            dg.Cambia = delegate (int d) { PideDiagnostico = true; };
+            l.Add(dg);
             l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
             Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
             ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta

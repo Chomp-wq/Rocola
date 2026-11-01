@@ -443,3 +443,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - Los atajos van en una fila encima del teclado (ARRIBA desde la primera fila); las tarjetas se recorren con las cuatro flechas.
 - El atajo «Karaoke» de XP no está: en Rocola OS el género de cada disco no se sabe sin leer sus canciones.
 - Probado en captura (escribiendo «C» con los botones).
+
+## Extra (1-11-2026): el diagnóstico completo
+
+- Como el de XP (Ctrl+F3 → Imagen → «Diagnóstico completo»; una herramienta, sin preferencia guardada): en la hoja de ajustes, grupo
+  «Diagnóstico», EMPEZAR. Recorre ocho escenas, 6 s cada una, moviendo lo que se movería con los botones (pared quieta, pared
+  moviéndose, pasando de página, dentro de un disco, buscador escribiendo, estado extendido si suena algo, atracción y la ayuda de la
+  estrella guiando) y mide **los intervalos entre cuadros presentados**: cuadros, por segundo, mediana, p95, p99 y el peor, y las
+  recolecciones de memoria de cada escena (regla del 9-10-2026: no solo los cuadros por segundo). No pide canciones ni toca créditos;
+  al acabar deja la pantalla como estaba y añade el informe a `rocola_diagnostico.txt` (carpeta de datos). Cualquier botón lo corta.
+- Probado aquí fuera de pantalla con llvmpipe (sin tarjeta gráfica): unos 25 cuadros/s, p99 de 44 a 55 ms. **No son números del A4**:
+  hay que correrlo allí.
