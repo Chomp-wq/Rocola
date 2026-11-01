@@ -481,3 +481,11 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   competía de igual a igual con el dibujo y el repaso. Ahora el hilo de la salida ALSA va en tiempo real (SCHED_FIFO 20; si no se
   puede, nice −15) y el repaso de la biblioteca con nice 19, como las prioridades de XP. `/root/rocola.txt` dice cómo quedó («Sonido:
   el hilo de la salida va en tiempo real», comprobado en QEMU).
+
+## Extra (1-11-2026): la imagen del A4 y un fallo de `compila.sh`
+
+- **Fallo encontrado y arreglado:** `compila.sh` aplicaba la configuración del A4 solo la primera vez. Al compilar la imagen del A4
+  aquí se usó una configuración de los primeros días: sin la rocola, sin mpv, sin el arranque UEFI, y con el `genimage-bios.cfg` ya
+  renombrado (por eso falló al final). Al dueño le pasaría lo mismo al actualizar. Ahora, si `configs/rocola_a4_defconfig` es más
+  nueva que la configuración de la compilación, se vuelve a aplicar (en los dos perfiles). Ojo: si cambian las opciones de un paquete
+  ya compilado (como GRUB al añadir UEFI), ese paquete hay que rehacerlo (`sh sistema/compila.sh grub2-dirclean`, y luego compilar).
