@@ -99,7 +99,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) + "|" + c.LoQueSuena : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count + (c.Resultados.Count > 0 ? c.Resultados[0].Tipo.ToString() : "") : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) + "|" + c.RecuadroTitulo + c.LoQueSuena : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count + (c.Resultados.Count > 0 ? c.Resultados[0].Tipo.ToString() : "") : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
             if (firma == antes && unchecked(ahora - ultimo) < 33) return;   // el cielo se mueve: unos 30 cuadros por segundo
             antes = firma; ultimo = ahora;
@@ -195,7 +195,7 @@ namespace Rocola
             float lin = 22 * k, alto = 34 * k + lq.Length * lin;
             float py = H - alto - 12 * k;
             d.Redondo(16 * k, py, W - 32 * k, alto, 12 * k, Panel.ConAlfa(0.9f));
-            chica.Escribe(d, "LO QUE SUENA AHORA", 32 * k, py + 8 * k, Dorado);
+            chica.Escribe(d, c.RecuadroTitulo, 32 * k, py + 8 * k, Dorado);
             for (int j = 0; j < lq.Length; j++) chica.Escribe(d, chica.Ajusta(lq[j], W - 64 * k), 32 * k, py + 32 * k + j * lin, j == 0 ? Blanco : Gris);
             int caben = Math.Max(4, (int)((py - top - 8 * k) / fila)), n = c.AjustesTotal;
             int desde = Math.Max(0, Math.Min(c.AjusteSel - caben / 2, n - caben));

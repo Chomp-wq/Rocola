@@ -329,7 +329,7 @@ namespace Rocola
         internal void AbreAjustes() { AjusteSel = 0; Buscando = false; ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
         // S5 de XP (LoQueSuena.cs): lo que la cadena le hace a la que suena, cada medio segundo con la hoja abierta (sus lecturas se ponen a
         // cero al leerlas: este es su unico lector).
-        internal string LoQueSuena = "";
+        internal string LoQueSuena = "", RecuadroTitulo = "LO QUE SUENA AHORA";
         private bool ciegoVisto;   // tras una comparacion, su resultado se queda a la vista mientras la hoja siga abierta
         private int ultimoLoQueSuena;
         private void RevisaLoQueSuena()
@@ -339,14 +339,29 @@ namespace Rocola
             if (ultimoLoQueSuena != 0 && unchecked(ahora - ultimoLoQueSuena) < 500) return;
             ultimoLoQueSuena = ahora == 0 ? 1 : ahora;
             motor.CiegoTick();   // la comparacion a ciegas cambia de tramo (como el reloj de la ventana de XP)
+            string grupo = AjusteSel >= 0 && AjusteSel < ListaAjustes.Count ? ListaAjustes[AjusteSel].Grupo : "";
+            if (grupo == "Afinar con el celular")
+            {
+                RecuadroTitulo = "AFINAR EL LOCAL CON EL CELULAR";
+                string av = motor.AvisoAfinar;
+                try { LoQueSuena = (av.Length > 0 ? av + "\n" : "") + motor.TextoAfinar(); } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Afinar el local", ex); }
+                return;
+            }
+            if (grupo == "El local" && (motor.ProbandoBocinas || motor.AvisoAfinar.Length > 0))
+            {
+                RecuadroTitulo = "PRUEBA DE BOCINAS";
+                LoQueSuena = motor.ProbandoBocinas ? motor.EstadoPrueba() + "\nPolaridad: si «al reves» suena con MAS grave que «igual», una bocina esta al reves." : motor.AvisoAfinar;
+                return;
+            }
+            RecuadroTitulo = "LO QUE SUENA AHORA";
             try { LoQueSuena = motor.TextoLoQueSuena(); string ciego = motor.TextoCiego(); if (motor.CiegoActivo || ciegoVisto) { LoQueSuena += "\n" + ciego; ciegoVisto = true; } } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Lo que suena ahora", ex); }
         }
-        private void CierraAjustes() { AjusteSel = -1; ciegoVisto = false; motor.CortaCiego("Ventana cerrada: comparacion cortada. "); if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
+        private void CierraAjustes() { AjusteSel = -1; ciegoVisto = false; motor.ParaPrueba(); motor.CortaCiego("Ventana cerrada: comparacion cortada. "); if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
         private void ManejaAjustes(Boton b)
         {
             int n = AjustesTotal;
-            if (b == Boton.Arriba) AjusteSel = (AjusteSel + n - 1) % n;
-            else if (b == Boton.Abajo) AjusteSel = (AjusteSel + 1) % n;
+            if (b == Boton.Arriba) { AjusteSel = (AjusteSel + n - 1) % n; ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
+            else if (b == Boton.Abajo) { AjusteSel = (AjusteSel + 1) % n; ultimoLoQueSuena = 0; RevisaLoQueSuena(); }
             else if (b == Boton.Regresar)
             {
                 motor.CortaCiego("Ventana cerrada: comparacion cortada. ");   // antes de guardar: vuelve el modo de antes
@@ -500,6 +515,27 @@ namespace Rocola
             if (vistaActual != null) vistaActual.Recupera();
         }
 
+        // LAS PRUEBAS DEL LOCAL (la de bocinas y las bandas de afinar): el motor dice cual debe sonar y aqui se toca por su propia salida
+        // ALSA, sin la cadena, solo con nada sonando (como en XP, que les abre su propia salida).
+        private SalidaAlsa salidaPrueba;
+        private ISampleProvider pruebaTocando;
+        private void CierraPrueba()
+        {
+            if (salidaPrueba != null) { try { salidaPrueba.Dispose(); } catch { } }
+            salidaPrueba = null; pruebaTocando = null;
+        }
+        private void RevisaPrueba()
+        {
+            ISampleProvider pq = motor.PruebaActual;
+            if (salidaPrueba != null && !salidaPrueba.Sonando) { ISampleProvider t = pruebaTocando; CierraPrueba(); motor.PruebaAcabo(t); pq = motor.PruebaActual; }
+            if (salidaPrueba != null && !object.ReferenceEquals(pq, pruebaTocando)) CierraPrueba();
+            if (salidaPrueba == null && pq != null && salida == null && video == null)
+            {
+                try { salidaPrueba = new SalidaAlsa(pq, dispositivo); pruebaTocando = pq; salidaPrueba.Empieza(); }
+                catch (Exception ex) { CierraPrueba(); motor.ParaPrueba(); Aviso("No se pudo abrir el sonido: " + ex.Message); }
+            }
+        }
+
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
         private void Suena()
         {
@@ -511,6 +547,7 @@ namespace Rocola
             if (video != null) { SigueVideo(); return; }
             if (salida == null && motor.EmpezarYa)
             {
+                if (salidaPrueba != null || motor.PruebaActual != null) { motor.ParaPrueba(); CierraPrueba(); }   // la musica manda: la prueba se calla
                 ISampleProvider s = motor.EmpiezaSiguiente();
                 if (s != null)
                 {
@@ -519,6 +556,7 @@ namespace Rocola
                     motor.GuardaEstado();
                 }
             }
+            RevisaPrueba();
             if (salida != null)
             {
                 motor.Atiende(salida.CuadrosOidos);

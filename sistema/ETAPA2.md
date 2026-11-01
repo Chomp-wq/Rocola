@@ -318,3 +318,18 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - En Rocola OS, además, la hoja no delata el tramo: «Modo billar» y los grises muestran lo de antes mientras se compara.
 - Probado con el motor y una canción a paso real (34 s): el modo cambió entre tramos, la configuración guardaba «1» todo el rato, el
   voto contó y al parar volvió el modo billar. «Con o sin afinar» pide antes las bandas del celular (aún sin la hoja de afinar).
+
+## Extra (1-11-2026): afinar el local con el celular y la prueba de bocinas
+
+- **Afinar con el celular** (AfinarLocal.cs de XP, en su forma más simple de la sexta tanda), grupo nuevo de la hoja de ajustes:
+  «Tocar las 8 bandas (de grave a agudo)» (EMPEZAR/PARAR; el recuadro de abajo dice la banda que se oye: «250 Hz 3 de 8»), «Tu app
+  dice» dBA o dBC (la Z guardada se sigue leyendo), lo que marca cada banda (IZQ/DER de 1 dB; desde «sin medir» empieza en 70 dB) y
+  «Usar la afinación» (en gris sin el modo billar o sin las bandas de la voz). El recuadro de abajo dice la corrección por banda. Mismas
+  claves que XP (`afinado_local=`, `afinado_ponderacion=`, `afinado_usar=`); lo que cambia se aplica al instante en la que suena, y
+  tocar algo aquí corta la comparación a ciegas, como en XP.
+- **La prueba de bocinas** (SalaLocal.cs de XP), en «El local»: IZQ/DER pasan por callada, izquierda, derecha, las dos y la polaridad.
+- Las clases del ruido (`PruebaBocinas`, `PruebaBanda`) son las de XP tal cual (`Motor/PruebasLocal.cs`). En XP cada prueba abre su
+  propia salida; aquí el motor dice cuál debe sonar y el programa la toca por su propia salida ALSA, sin la cadena, solo con nada
+  sonando; si alguien pone una canción, la prueba se calla; se para al salir de la hoja.
+- Probado con el motor: las lecturas se guardan y se vuelven a leer al arrancar; el ruido sale a −20 dB por banda y el letrero sigue la
+  banda; y en captura. **Sin oírlo:** falta tocarlo por la tarjeta (QEMU o el A4).

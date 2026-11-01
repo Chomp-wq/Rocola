@@ -53,6 +53,10 @@ namespace Rocola
         // Al tocar un ajuste de verdad o salir de la hoja, la comparacion se corta y vuelve lo de antes (como XP).
         public void CortaCiego(string porQue) { if (ciegoActivo) TerminaCiego(porQue); }
 
+        private string avisoAfinar = "";
+        public string AvisoAfinar { get { string a = avisoAfinar; return a; } }
+        private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
+
         public IList<Ajuste> Ajustes()
         {
             if (ajustes != null) return ajustes;
@@ -67,6 +71,16 @@ namespace Rocola
             l.Add(Interruptor("El local", "Quitar el subgrave", "corta_subgrave", () => cortaSubgrave, v => cortaSubgrave = v, true));
             l.Add(Interruptor("El local", "Estereo mas estrecho", "estereo_estrecho", () => estereoEstrecho, v => estereoEstrecho = v, true));
             l.Add(Interruptor("El local", "Suavizar las eses", "suaviza_eses", () => suavizaEses, v => suavizaEses = v, true));
+            // LA PRUEBA DE BOCINAS (SalaLocal.cs de XP): IZQ/DER pasan por callada, izquierda, derecha, las dos y la polaridad.
+            Ajuste pr = new Ajuste { Grupo = "El local", Nombre = "Prueba de bocinas (con la rocola callada)", Herramienta = true };
+            pr.Valor = delegate { return pruebaSonando == null ? "callada" : pruebaSonando.Modo == PruebaModo.Izquierda ? "izquierda" : pruebaSonando.Modo == PruebaModo.Derecha ? "derecha" : pruebaSonando.Modo == PruebaModo.Ambas ? "las dos" : "polaridad"; };
+            pr.Cambia = delegate (int d)
+            {
+                int i = pruebaSonando == null ? 0 : 1 + (int)pruebaSonando.Modo;   // 0 callada, 1..4 los modos
+                i = (i + d + 5) % 5;
+                if (i == 0) ParaPrueba(); else { string r = ProbarBocinas((PruebaModo)(i - 1)); avisoAfinar = r.StartsWith("Sonando") ? "" : r; }
+            };
+            l.Add(pr);
             l.Add(Interruptor("Voz, golpe y retumbe", "Retumbe dinamico", "retumbe_dinamico", () => retumbeDinamico, v => retumbeDinamico = v, true));
             l.Add(Interruptor("Voz, golpe y retumbe", "Ataque mas claro", "ataque_claro", () => ataqueClaro, v => ataqueClaro = v, true));
             l.Add(Interruptor("Voz, golpe y retumbe", "Agudos asperos dinamicos", "aspereza_dinamica", () => asperezaDinamica, v => asperezaDinamica = v, true));
@@ -95,6 +109,44 @@ namespace Rocola
             l.Add(dsee);
             l.Add(Interruptor("Mejoras con IA", "Bajo y brillo a la medida (I1)", "a_la_medida", () => aLaMedida, v => aLaMedida = v, false));
             l.Add(Interruptor("Mejoras con IA", "Quitar el siseo de las grabaciones viejas (I2)", "quita_siseo", () => quitaSiseo, v => quitaSiseo = v, true));
+            // AFINAR EL LOCAL CON EL CELULAR (AfinarLocal.cs de XP, en su forma mas simple de la sexta tanda): tocar las 8 bandas, decir si la
+            // app mide en dBA o dBC, anotar lo que marca cada banda y usar la afinacion (con el modo billar). Tocar algo aqui corta la
+            // comparacion a ciegas (como en XP); lo que cambia se aplica al instante en la que suena.
+            Ajuste ab = new Ajuste { Grupo = "Afinar con el celular", Nombre = "Tocar las 8 bandas (de grave a agudo)", Herramienta = true };
+            ab.Valor = delegate { return bandaSonando != null ? "PARAR" : "EMPEZAR"; };
+            ab.Cambia = delegate (int d) { if (bandaSonando != null) ParaPrueba(); else { string r = ProbarBandas(0, 7); avisoAfinar = r.StartsWith("Sonando") ? "" : r; } };
+            l.Add(ab);
+            Ajuste app = new Ajuste { Grupo = "Afinar con el celular", Nombre = "Tu app dice", Clave = "afinado_ponderacion" };
+            app.Valor = delegate { return "dB" + AfinaPonderacionNombre[afinadoPonderacion]; };
+            app.Guardado = delegate { return AfinaPonderacionNombre[afinadoPonderacion]; };
+            app.Cambia = delegate (int d) { afinadoPonderacion = afinadoPonderacion == 0 ? 1 : 0; AplicaAfinado(); };   // A o C (la Z guardada se sigue leyendo)
+            l.Add(app);
+            for (int b = 0; b < 8; b++)
+            {
+                int banda = b;
+                Ajuste lb = new Ajuste { Grupo = "Afinar con el celular", Nombre = "Marca en " + NombreBanda(banda), Clave = "afinado_local" };
+                lb.Valor = delegate { float v = afinadoDb[banda]; return float.IsNaN(v) ? "sin medir" : v.ToString("0", CultureInfo.InvariantCulture) + " dB"; };
+                lb.Guardado = delegate { return TextoAfinado(); };
+                lb.Cambia = delegate (int d)
+                {
+                    float v = afinadoDb[banda];
+                    if (float.IsNaN(v)) v = 70f;   // de "sin medir" se empieza en 70 dB (lo tipico de musica bajita a unos metros)
+                    else { v += d; if (v < AfinaMinDb) v = float.NaN; else if (v > AfinaMaxDb) v = AfinaMaxDb; }
+                    afinadoDb[banda] = v; AplicaAfinado();
+                };
+                l.Add(lb);
+            }
+            Ajuste usa = new Ajuste { Grupo = "Afinar con el celular", Nombre = "Usar la afinacion", Clave = "afinado_usar" };
+            usa.Valor = delegate { return AfinadoUsarAGuardar ? "SÍ" : "NO"; };
+            usa.Guardado = delegate { return AfinadoUsarAGuardar ? "1" : "0"; };
+            usa.Cambia = delegate (int d) { afinadoUsar = !afinadoUsar; AplicaAfinado(); };
+            usa.Bloqueo = delegate
+            {
+                if (!LocalAutoAGuardar) return "necesita el modo billar";
+                if (CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null) return "faltan las bandas de la voz (250 Hz a 2 kHz)";
+                return null;
+            };
+            l.Add(usa);
             float[] fundidos = { 0f, 0.5f, 1f, 1.5f, 2f, 3f };
             Ajuste fu = new Ajuste { Grupo = "Entre canciones", Nombre = "Fundido entre canciones", Clave = "fundido" };
             fu.Valor = delegate { return crossfadeSec <= 0.01f ? "sin fundido" : crossfadeSec.ToString("0.#", CultureInfo.InvariantCulture) + " s"; };
