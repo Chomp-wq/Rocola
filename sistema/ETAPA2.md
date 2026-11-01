@@ -489,3 +489,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   renombrado (por eso falló al final). Al dueño le pasaría lo mismo al actualizar. Ahora, si `configs/rocola_a4_defconfig` es más
   nueva que la configuración de la compilación, se vuelve a aplicar (en los dos perfiles). Ojo: si cambian las opciones de un paquete
   ya compilado (como GRUB al añadir UEFI), ese paquete hay que rehacerlo (`sh sistema/compila.sh grub2-dirclean`, y luego compilar).
+
+## Extra (1-11-2026): la imagen del A4 compilada, el núcleo genérico y las instrucciones de la rocola
+
+- **La imagen del A4 se compila entera** (con la configuración ya buena): lleva la rocola, mpv, DejaVu y el firmware de la Radeon.
+- **Fallo encontrado:** arrancada en QEMU se reiniciaba en GRUB sin decir nada, con cualquier procesador. Buildroot compila su GCC con
+  `--with-arch=bdver2`, así que el núcleo y su descompresor salían con instrucciones BMI y TBM del Piledriver (miles de `bextr`, `blcs`,
+  `tzmsk`). En el A4 existen, pero un núcleo así no arranca en ningún otro procesador ni en ninguna emulación. Ahora el núcleo se compila
+  con `-march=x86-64` explícito (`sistema/external.mk`); la rocola y las bibliotecas siguen con las instrucciones del A4.
+- **Las instrucciones de la rocola:** el binario lleva instrucciones AVX2 (el A4 no tiene AVX2). Probado con QEMU de usuario emulando un
+  Piledriver sin AVX2 (`qemu-x86_64 -cpu Opteron_G5`, que sí rechaza una instrucción AVX2 suelta): la rocola mide, descomprime, pasa
+  la cadena entera y escribe el WAV sin fallar. Ese AVX2 son caminos que .NET solo usa si el procesador lo tiene.
