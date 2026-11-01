@@ -107,6 +107,7 @@ namespace Rocola
             d.Empieza(Fondo);
             Pulso(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
+            if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
             // franja de arriba
             d.Rect(0, 0, W, 64 * k, Panel.ConAlfa(0.82f));
             grande.Escribe(d, "ROCOLA", 24 * k, 14 * k, Dorado);
@@ -131,6 +132,7 @@ namespace Rocola
             else if (c.Buscando) Buscador(c, W, abajo);
             else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
+            if (e > 0f) EstrellaDelCielo(c, W, H, e);
             if (e > 0f && m.EstadoExpandido)
             {
                 float ph = Math.Min(H, Math.Max(220 * k, Math.Min(340 * k, H * 0.32f)));

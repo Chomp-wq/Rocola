@@ -9,6 +9,12 @@ namespace Rocola
     {
         public bool ColorGenero = true;   // "color_genero="
         public bool LetraLejos = true;    // "letra_lejos="
+        // LA ESTRELLA DEL CIELO (el astro principal de XP) y sus adornos, con las claves de XP (encendidos de fabrica).
+        public bool EstrellaCielo = true;   // "luna="
+        public bool Estrella3d = true;      // "estrella_3d="
+        public bool HaloLunar = true;       // "halo_lunar="
+        public bool PolvoLunar = true;      // "polvo_lunar="
+        public bool EstelaEstelar = true;   // "estela_estelar="
         public const uint ColorPorDefecto = 0x2D5FCDu;   // el azul de siempre (sin genero)
 
         // El color del genero de la que suena (0 si no tiene genero).

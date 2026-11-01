@@ -454,3 +454,16 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   al acabar deja la pantalla como estaba y añade el informe a `rocola_diagnostico.txt` (carpeta de datos). Cualquier botón lo corta.
 - Probado aquí fuera de pantalla con llvmpipe (sin tarjeta gráfica): unos 25 cuadros/s, p99 de 44 a 55 ms. **No son números del A4**:
   hay que correrlo allí.
+
+## Extra (1-11-2026): la estrella del cielo, en 3D
+
+- El «astro principal» de XP (`luna=`): una estrella viaja despacio por el cielo, detrás de todo, y en el reposo crece un 32 %, va más
+  deprisa y se ve entera. **En 3D** (`estrella_3d=`): la clase `Estrella3d` de XP tal cual (el sólido de cinco puntas con el centro
+  levantado por delante y por detrás, 12 vértices y 20 caras, de atrás hacia adelante, con la luz principal arriba a la izquierda, la
+  fría a la derecha y el brillo que corre por las facetas al girar); gira una vuelta cada ~19 s navegando y cada ~3,4 s en reposo, con
+  su vaivén. El recorrido (`StarTravelCenter`), el tamaño y la suavidad de las velocidades son los de XP.
+- **Su corona** (`halo_lunar=`), **su polvo** en tres órbitas con cola (`polvo_lunar=`, por delante y por detrás) y **su estela de
+  copias** (`estela_estelar=`, tipo Sandevistan: una copia congelada cada radio recorrido, con su giro de ese momento, de un color de la
+  paleta, que nace transparente y se apaga en 1,2 s). Teñida con el color del género de lo que suena.
+- Durante la ayuda no sale (la estrella es la de la ayuda), como en XP. Los cinco interruptores, en la hoja (grupo «Pantalla»),
+  encendidos de fábrica. Probado en captura (`--boton reposo --cuadros 140`).

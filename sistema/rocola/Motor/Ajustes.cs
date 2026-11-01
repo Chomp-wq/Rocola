@@ -186,6 +186,15 @@ namespace Rocola
             dg.Valor = delegate { return "EMPEZAR"; };
             dg.Cambia = delegate (int d) { PideDiagnostico = true; };
             l.Add(dg);
+            l.Add(Interruptor("Pantalla", "La estrella del cielo", "luna", () => EstrellaCielo, v => EstrellaCielo = v, false));
+            Ajuste e3 = Interruptor("Pantalla", "La estrella en 3D, girando", "estrella_3d", () => Estrella3d, v => Estrella3d = v, false);
+            e3.Bloqueo = delegate { return EstrellaCielo ? null : "necesita la estrella del cielo"; }; l.Add(e3);
+            Ajuste hl = Interruptor("Pantalla", "Su corona", "halo_lunar", () => HaloLunar, v => HaloLunar = v, false);
+            hl.Bloqueo = e3.Bloqueo; l.Add(hl);
+            Ajuste pl = Interruptor("Pantalla", "Su polvo en orbita", "polvo_lunar", () => PolvoLunar, v => PolvoLunar = v, false);
+            pl.Bloqueo = e3.Bloqueo; l.Add(pl);
+            Ajuste es = Interruptor("Pantalla", "Su estela de copias", "estela_estelar", () => EstelaEstelar, v => EstelaEstelar = v, false);
+            es.Bloqueo = e3.Bloqueo; l.Add(es);
             l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
             Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
             ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta

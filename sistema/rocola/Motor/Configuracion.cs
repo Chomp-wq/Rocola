@@ -81,6 +81,11 @@ namespace Rocola
                     else if (s.StartsWith("guia_rojo=")) GuiaRojo = s.Substring(10).Trim() != "0";
                     else if (s.StartsWith("textos_deslizantes=")) TextosDeslizantes = s.Substring(19).Trim() != "0";
                     else if (s.StartsWith("buscador_portadas=")) BuscadorPortadas = s.Substring(18).Trim() != "0";
+                    else if (s.StartsWith("luna=")) EstrellaCielo = s.Substring(5).Trim() != "0";                 // la estrella del cielo
+                    else if (s.StartsWith("estrella_3d=")) Estrella3d = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("halo_lunar=")) HaloLunar = s.Substring(11).Trim() != "0";
+                    else if (s.StartsWith("polvo_lunar=")) PolvoLunar = s.Substring(12).Trim() != "0";
+                    else if (s.StartsWith("estela_estelar=")) EstelaEstelar = s.Substring(15).Trim() != "0";
                     else if (s.StartsWith("muro_reposo=")) MuroReposo = s.Substring(12).Trim() != "0";             // el estado extendido (EstadoExtendido.cs)
                     else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
                     else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";
