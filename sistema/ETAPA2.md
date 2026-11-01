@@ -418,7 +418,7 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **El color del género en todo** (`color_genero=`): los colores de XP tal cual (`ColorDeEtiqueta`, en `Motor/Estilo.cs`; un solo
   sitio: etiqueta → color). Un resplandor de ese color que respira despacio (su propio reloj de 5 s, no la música) detrás de la portada
   de lo que suena (la chica y la grande del reposo) y de la grande dentro de un disco (el género que manda en él, leído una vez por
-  disco); la pastilla del género (late con los graves) y la barra de avance de su color.
+  disco en un hilo de fondo, sobre copias de sus canciones -`LeeEtiquetaAparte` de XP-: la pantalla no espera); la pastilla del género (late con los graves) y la barra de avance de su color.
 - Arreglo: al empezar una canción se leen sus etiquetas (como XP); las que venían del estado guardado no tenían género.
 - Probado en captura con un MP3 etiquetado «Cumbia» (sale «Regional», naranja tierra).
 

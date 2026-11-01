@@ -21,26 +21,35 @@ namespace Rocola
         public uint ColorSonando { get { string g = SonandoGenero; return string.IsNullOrEmpty(g) ? 0u : ColorDeEtiqueta(GenreLabel(g)); } }
         public string EtiquetaSonando { get { string g = SonandoGenero; return string.IsNullOrEmpty(g) ? "" : GenreLabel(g); } }
 
-        // El genero que manda en un disco (el que mas se repite entre las canciones que traen etiqueta; se lee una vez por disco).
+        // El genero que manda en un disco (el que mas se repite entre las canciones que traen etiqueta). Se lee UNA vez por disco y en un
+        // hilo de fondo, sobre copias de las canciones (LeeEtiquetaAparte de XP: no toca la biblioteca); mientras, "" (sin resplandor).
         private readonly Dictionary<string, string> generoDisco = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public string GeneroDeDisco(Disco d)
         {
             if (d == null || d.Videos || d.Carpeta == null) return "";
             string g;
-            if (generoDisco.TryGetValue(d.Carpeta, out g)) return g;
-            Dictionary<string, int> cuenta = new Dictionary<string, int>();
-            foreach (string r in d.Rutas)
+            lock (generoDisco)
             {
-                Track t;
-                if (pistaDeRuta == null || !pistaDeRuta.TryGetValue(r, out t) || t == null) continue;
-                try { t.EnsureTags(); } catch { }
-                if (string.IsNullOrEmpty(t.Genre)) continue;
-                string e = GenreLabel(t.Genre); int n; cuenta.TryGetValue(e, out n); cuenta[e] = n + 1;
+                if (generoDisco.TryGetValue(d.Carpeta, out g)) return g ?? "";
+                generoDisco[d.Carpeta] = null;   // pedido: se lee una vez
             }
-            g = ""; int mejor = 0;
-            foreach (KeyValuePair<string, int> kv in cuenta) if (kv.Value > mejor) { mejor = kv.Value; g = kv.Key; }
-            generoDisco[d.Carpeta] = g;
-            return g;
+            List<Track> copias = new List<Track>();
+            foreach (string r in d.Rutas) { Track t; if (pistaDeRuta != null && pistaDeRuta.TryGetValue(r, out t) && t != null) copias.Add(t.CopiaEtiqueta()); }
+            string carpeta = d.Carpeta;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                Dictionary<string, int> cuenta = new Dictionary<string, int>();
+                foreach (Track c in copias)
+                {
+                    Track l = Track.LeeEtiquetaAparte(c, null);
+                    if (string.IsNullOrEmpty(l.Genre)) continue;
+                    string e = GenreLabel(l.Genre); int n; cuenta.TryGetValue(e, out n); cuenta[e] = n + 1;
+                }
+                string mejor = ""; int m = 0;
+                foreach (KeyValuePair<string, int> kv in cuenta) if (kv.Value > m) { m = kv.Value; mejor = kv.Key; }
+                lock (generoDisco) generoDisco[carpeta] = mejor;
+            });
+            return "";
         }
 
         public static uint ColorDeEtiqueta(string etiqueta)
