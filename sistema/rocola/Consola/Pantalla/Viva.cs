@@ -2,6 +2,7 @@
 // que suena, el boleto que vuela a la cola, la moneda que cae, la tarjeta que invita cuando no hay creditos y los avisos que se entienden.
 // Cada una con su interruptor de XP (encendidos de fabrica); el controlador apunta la hora de cada suceso y aqui se anima.
 using System;
+using System.Collections.Generic;
 using Rocola.Pantalla;
 
 namespace Rocola
@@ -102,6 +103,111 @@ namespace Rocola
             d.Recorta(x, y - l.Tam * 0.3f, ancho, l.Tam * 1.6f);
             l.Escribe(d, s, x - dx, y, col);
             d.SinRecorte();
+        }
+
+        // ---- EL BUSCADOR CON PORTADAS (buscador_portadas= de XP, BuscadorPortadasGpu.cs): arriba la casilla de lo escrito, grande, con su
+        // lupa y cuantos resultados hay; debajo, los atajos; a la izquierda el teclado compacto (teclas de tamano fijo) y a la derecha las
+        // tarjetas en dos columnas, con su portada (o la inicial), que es, el nombre con lo tecleado resaltado, un renglon que ayuda a elegir
+        // y SONANDO o EN COLA si toca; si hay mas de las que caben, se baja fila a fila y una barrita lo dice.
+        private void BuscadorPortadas(Controlador c, float W, float abajo)
+        {
+            Form1 m = c.motor;
+            float x0 = 24 * k, y0 = 76 * k, hb = 60 * k;
+            d.Redondo(x0, y0, W - 48 * k, hb, 14 * k, PanelClaro);
+            // la lupa
+            float lx = x0 + 30 * k, ly = y0 + hb / 2 - 3 * k, lr = 12 * k;
+            Circulo(lx, ly, lr, Dorado); Circulo(lx, ly, lr - 3.5f * k, PanelClaro);
+            d.Linea(lx + lr * 0.7f, ly + lr * 0.7f, lx + lr * 1.5f, ly + lr * 1.5f, 4 * k, Dorado);
+            string escrito = c.Escrito.Length > 0 ? c.Escrito + "_" : "Escribe un artista, un disco o una canción";
+            grande.Escribe(d, grande.Ajusta(escrito, W - 340 * k), x0 + 60 * k, y0 + (hb - grande.Tam) / 2 - 2 * k, c.Escrito.Length > 0 ? Blanco : Gris);
+            if (c.Resultados.Count > 0)
+            {
+                string cu = c.Resultados.Count + (c.Resultados.Count == 1 ? " resultado" : " resultados");
+                media.Escribe(d, cu, W - 48 * k - media.Mide(cu), y0 + (hb - media.Tam) / 2 - 2 * k, Dorado);
+            }
+            // los atajos
+            float ay = y0 + hb + 10 * k, ah = 34 * k, axx = x0;
+            for (int i = 0; i < c.Atajos.Count; i++)
+            {
+                string t = c.Atajos[i].Texto; float w = chica.Mide(t) + 28 * k;
+                if (axx + w > W - 24 * k) break;   // si no caben todos, se quedan fuera los ultimos
+                bool sel = !c.EnResultados && c.FilaTecla < 0 && c.ColTecla == i;
+                d.Redondo(axx, ay, w, ah, ah / 2, sel ? Dorado : Panel.ConAlfa(0.9f));
+                chica.Escribe(d, t, axx + 14 * k, ay + (ah - chica.Tam) / 2 - 1 * k, sel ? Fondo : Blanco);
+                axx += w + 8 * k;
+            }
+            // el teclado compacto
+            float tecla = 40 * k, sep = 4 * k, ty = ay + (c.Atajos.Count > 0 ? ah + 12 * k : 0), ty0 = ty;
+            for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
+            {
+                string fila = Controlador.FilasTeclado[f]; float tx = x0;
+                for (int i = 0; i < fila.Length; i++)
+                {
+                    string et = Controlador.Etiqueta(fila[i]);
+                    float w = et.Length > 1 ? tecla * 3 + sep * 2 : tecla;
+                    bool sel = !c.EnResultados && f == c.FilaTecla && i == c.ColTecla;
+                    d.Redondo(tx, ty, w, tecla, 8 * k, sel ? Dorado : Panel);
+                    (et.Length > 1 ? chica : media).EscribeCentrado(d, et, tx + w / 2, ty + (tecla - (et.Length > 1 ? chica : media).Tam) / 2 - 2 * k, sel ? Fondo : Blanco);
+                    tx += w + sep;
+                }
+                ty += tecla + sep;
+            }
+            zTeclado = new Zona(x0, ty0, 10 * (tecla + sep), ty - ty0);
+            // las tarjetas
+            float rx = x0 + 10 * (tecla + sep) + 20 * k, rw = W - rx - 24 * k, ry = ty0, cw = (rw - 12 * k) / 2, ch = 84 * k;
+            int filas = Math.Max(1, (int)((abajo - ry - 34 * k) / (ch + 10 * k)));
+            zResultados = new Zona(rx, ry, rw, filas * (ch + 10 * k));
+            if (c.Resultados.Count == 0) { if (c.Escrito.Length > 0) media.Escribe(d, "Nada con eso", rx, ry, Gris); }
+            int filaSel = c.SelResultado / 2, filasTot = (c.Resultados.Count + 1) / 2;
+            int desde = Math.Max(0, Math.Min(filaSel - filas / 2, filasTot - filas));
+            string suena = m.Sonando;
+            HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Form1.EnColaVista q in m.ColaParaPantalla(64)) if (q.Ruta != null) enCola.Add(q.Ruta);
+            for (int fi = 0; fi < filas && desde + fi < filasTot; fi++)
+                for (int co = 0; co < 2; co++)
+                {
+                    int i = (desde + fi) * 2 + co; if (i >= c.Resultados.Count) break;
+                    Form1.Resultado r = c.Resultados[i];
+                    float cx = rx + co * (cw + 12 * k), cy = ry + fi * (ch + 10 * k);
+                    bool sel = c.EnResultados && i == c.SelResultado;
+                    if (sel) { d.Redondo(cx - 3 * k, cy - 3 * k, cw + 6 * k, ch + 6 * k, 14 * k, Dorado); zSelResultado = new Zona(cx, cy, cw, ch); }
+                    d.Redondo(cx, cy, cw, ch, 12 * k, sel ? PanelClaro : Panel.ConAlfa(0.92f));
+                    float pl = ch - 16 * k;
+                    if (r.Tipo == 3) { Circulo(cx + 8 * k + pl / 2, cy + 8 * k + pl / 2, pl / 2, Dorado); }
+                    else Portada(r.Portada, r.Texto, cx + 8 * k, cy + 8 * k, pl);
+                    float tx = cx + pl + 20 * k, tw = cw - pl - 30 * k;
+                    string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
+                    chica.Escribe(d, tipo, tx, cy + 8 * k, r.Tipo == 2 ? Verde : Dorado);
+                    // la pastilla de SONANDO o EN COLA
+                    string pas = r.Ruta != null && string.Equals(r.Ruta, suena, StringComparison.OrdinalIgnoreCase) ? "SONANDO" : r.Ruta != null && enCola.Contains(r.Ruta) ? "EN COLA" : null;
+                    float twd = tw;
+                    if (pas != null) { float wp = chica.Mide(pas) + 14 * k; d.Redondo(cx + cw - wp - 8 * k, cy + 56 * k, wp, 22 * k, 11 * k, (pas == "SONANDO" ? Verde : Dorado).ConAlfa(0.22f)); chica.Escribe(d, pas, cx + cw - wp - 1 * k, cy + 57 * k, pas == "SONANDO" ? Verde : Dorado); twd = tw - wp - 8 * k; }
+                    Resaltado(r.Texto, c.Escrito, tx, cy + 30 * k, tw, sel);
+                    if (!string.IsNullOrEmpty(r.Detalle)) chica.Escribe(d, chica.Ajusta(r.Detalle, twd), tx, cy + 58 * k, Gris);
+                }
+            if (filasTot > filas)
+            {   // la barrita de cuanto hay
+                float bh = filas * (ch + 10 * k), hh = bh * filas / filasTot, by = ry + bh * desde / filasTot;
+                d.Redondo(W - 16 * k, ry, 4 * k, bh, 2 * k, Panel); d.Redondo(W - 16 * k, by, 4 * k, hh, 2 * k, Dorado);
+            }
+            chica.Escribe(d, "PONER: escribir / elegir    REGRESAR: borrar    REGRESAR + ARRIBA: cerrar    ARRIBA desde la primera fila: atajos", x0, abajo - 28 * k, Gris.ConAlfa(0.8f));
+        }
+        // El nombre con lo tecleado resaltado (sin distinguir mayusculas ni acentos).
+        private void Resaltado(string texto, string buscado, float x, float y, float ancho, bool sel)
+        {
+            string t = media.Ajusta(texto ?? "", ancho), b = (buscado ?? "").Trim();
+            int i = b.Length > 0 ? Plano(t).IndexOf(Plano(b), StringComparison.Ordinal) : -1;
+            if (i < 0) { media.Escribe(d, t, x, y, sel ? Blanco : Color4.Hex(0xDCE4FF)); return; }
+            float x1 = x + media.Escribe(d, t.Substring(0, i), x, y, sel ? Blanco : Color4.Hex(0xDCE4FF));
+            float x2 = x1 + media.Escribe(d, t.Substring(i, b.Length), x1, y, Dorado);
+            media.Escribe(d, t.Substring(i + b.Length), x2, y, sel ? Blanco : Color4.Hex(0xDCE4FF));
+        }
+        private static string Plano(string s)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(s.Length);
+            foreach (char ch in s.ToUpperInvariant())
+                sb.Append(ch == 'Á' ? 'A' : ch == 'É' ? 'E' : ch == 'Í' ? 'I' : ch == 'Ó' ? 'O' : ch == 'Ú' || ch == 'Ü' ? 'U' : ch);
+            return sb.ToString();
         }
 
         // ---- LAS PISTAS DEL ROJO (guia_rojo= de XP, GuiaRojoGpu.cs): con el ROJO mantenido en la pared se encienden la barra de letras

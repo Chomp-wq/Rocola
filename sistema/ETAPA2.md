@@ -430,3 +430,16 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **Los textos que se deslizan** (`textos_deslizantes=`): un título que no cabe (en lo que suena y en el estado extendido) se corre
   despacio hasta el final, espera y vuelve, recortado a su caja (scissor de GL); apagado, se corta con puntos suspensivos como antes.
 - Probados en captura (`--boton rojo`; el deslizamiento a mitad de recorrido con `--cuadros 50`).
+
+## Extra (1-11-2026): el buscador con portadas
+
+- Como en XP (`buscador_portadas=`, BuscadorPortadasGpu.cs; encendido de fábrica, en la hoja de ajustes): arriba la casilla de lo
+  escrito, grande, con su lupa y cuántos resultados hay; debajo, **los atajos** (solo los que tienen algo detrás: «Lo más pedido hoy»
+  —la cuenta de la noche como resultados—, «Videos» —a su sección de la pared— y «Buscaste: …», las dos últimas búsquedas con las que
+  se eligió algo, solo en memoria y nunca la clave de servicio); a la izquierda **el teclado compacto** (teclas de tamaño fijo) y a la
+  derecha **las tarjetas** en dos columnas con su portada (o la inicial), qué es, el nombre con lo tecleado resaltado (sin distinguir
+  mayúsculas ni acentos), un renglón que ayuda a elegir (el artista y el disco, o cuántas canciones) y SONANDO o EN COLA si toca; si hay
+  más de las que caben, baja fila a fila y una barrita lo dice.
+- Los atajos van en una fila encima del teclado (ARRIBA desde la primera fila); las tarjetas se recorren con las cuatro flechas.
+- El atajo «Karaoke» de XP no está: en Rocola OS el género de cada disco no se sabe sin leer sus canciones.
+- Probado en captura (escribiendo «C» con los botones).

@@ -114,6 +114,23 @@ namespace Rocola
         public sealed class Resultado
         {
             public int Tipo; public string Texto; public string Carpeta; public string Ruta;
+            public string Portada, Detalle;   // para el buscador con portadas (buscador_portadas= de XP): su portada y lo que ayuda a elegir
+        }
+        public bool BuscadorPortadas = true;   // "buscador_portadas=" (XP: BuscadorPortadasGpu.cs)
+        // LO MAS PEDIDO HOY, como resultados del buscador (el atajo de XP): las canciones de la noche, de mas a menos.
+        public List<Resultado> MasPedidoHoy()
+        {
+            List<Resultado> r = new List<Resultado>();
+            CambiaDeNoche(DateTime.Now);
+            foreach (string p in MasPedidasNoche(nocheCuenta, nocheOrden, 12))
+            {
+                Resultado x = new Resultado { Tipo = 2, Ruta = p, Texto = System.IO.Path.GetFileNameWithoutExtension(p), Detalle = nocheCuenta[p] == 1 ? "pedida 1 vez hoy" : "pedida " + nocheCuenta[p] + " veces hoy" };
+                Track t; Album d;
+                if (pistaDeRuta != null && pistaDeRuta.TryGetValue(p, out t) && t != null) x.Texto = t.ToString();
+                if (discoDeRuta != null && discoDeRuta.TryGetValue(p, out d) && d != null) { x.Portada = d.CoverPath; x.Carpeta = d.Folder; }
+                r.Add(x);
+            }
+            return r;
         }
         public List<Resultado> Busca(string texto)
         {
@@ -123,6 +140,11 @@ namespace Rocola
                 Resultado x = new Resultado(); x.Tipo = it.Kind; x.Texto = it.Display;
                 x.Carpeta = it.AlbumRef != null ? it.AlbumRef.Folder : null;
                 x.Ruta = it.TrackRef != null ? it.TrackRef.Path : null;
+                Album a = it.AlbumRef ?? (it.Albums != null && it.Albums.Count > 0 ? it.Albums[0] : null);
+                if (a != null) x.Portada = a.CoverPath;
+                if (it.Kind == 0) { int n = it.Albums != null ? it.Albums.Count : 1; x.Detalle = n == 1 ? "1 disco" : n + " discos"; }
+                else if (it.Kind == 1 && a != null) { int n = a.Tracks != null ? a.Tracks.Count : 0; x.Detalle = (string.IsNullOrEmpty(a.Artist) ? "" : a.Artist + " · ") + n + (n == 1 ? " canción" : " canciones"); }
+                else if (it.Kind == 2 && a != null) x.Detalle = string.IsNullOrEmpty(a.Name) ? a.Artist : (string.IsNullOrEmpty(a.Artist) ? a.Name : a.Artist + " · " + a.Name);
                 if (it.Kind <= 2) r.Add(x);
             }
             return r;

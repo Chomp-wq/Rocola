@@ -127,7 +127,8 @@ namespace Rocola
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
             float e = reposoAlfa * reposoAlfa * (3 - 2 * reposoAlfa);
-            if (c.Buscando) Buscador(c, W, abajo);
+            if (c.Buscando && c.ConPortadas) BuscadorPortadas(c, W, abajo);
+            else if (c.Buscando) Buscador(c, W, abajo);
             else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
             if (e > 0f && m.EstadoExpandido)

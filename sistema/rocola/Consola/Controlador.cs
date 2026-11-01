@@ -435,7 +435,35 @@ namespace Rocola
         internal List<Form1.Resultado> Resultados = new List<Form1.Resultado>();
         internal static string Etiqueta(char t) { return t == '\u0001' ? "ESPACIO" : t == '\u0002' ? "BORRAR" : t.ToString(); }
 
-        internal void AbreBuscador() { Buscando = true; Escrito = ""; FilaTecla = 1; ColTecla = 0; EnResultados = false; SelResultado = 0; Resultados = new List<Form1.Resultado>(); }
+        internal void AbreBuscador() { Buscando = true; Escrito = ""; FilaTecla = 1; ColTecla = 0; EnResultados = false; SelResultado = 0; Resultados = new List<Form1.Resultado>(); ArmaAtajos(); }
+        // LOS ATAJOS DEL BUSCADOR CON PORTADAS (buscador_portadas= de XP): solo los que tienen algo detras, en este orden: lo mas pedido hoy,
+        // los videos y las dos ultimas busquedas con las que alguien eligio algo (solo en memoria, y nunca la clave de servicio). Van en
+        // una fila encima del teclado (FilaTecla = -1). (El de Karaoke de XP no: aqui el genero de cada disco no se sabe sin leerlo.)
+        internal sealed class Atajo { public string Texto; public int Tipo; public string Busqueda; }   // Tipo: 0 lo mas pedido hoy, 1 videos, 2 buscaste
+        internal List<Atajo> Atajos = new List<Atajo>();
+        private readonly List<string> buscadas = new List<string>();
+        internal bool ConPortadas { get { return motor.BuscadorPortadas; } }
+        private void ArmaAtajos()
+        {
+            Atajos.Clear();
+            if (!motor.BuscadorPortadas) return;
+            int total; if (motor.TopNoche(out total).Count > 0 || total > 0) Atajos.Add(new Atajo { Texto = "Lo más pedido hoy", Tipo = 0 });
+            if (letras.Contains(Form1.LetraVideos)) Atajos.Add(new Atajo { Texto = "Videos", Tipo = 1 });
+            foreach (string b in buscadas) Atajos.Add(new Atajo { Texto = "Buscaste: " + b, Tipo = 2, Busqueda = b });
+        }
+        private void ApuntaBusqueda()
+        {
+            string b = Escrito.Trim();
+            if (b.Length == 0 || Form1.EsCodigoDeServicio(Escrito)) return;
+            buscadas.RemoveAll(x => string.Equals(x, b, StringComparison.OrdinalIgnoreCase));
+            buscadas.Insert(0, b); if (buscadas.Count > 2) buscadas.RemoveAt(2);
+        }
+        private void UsaAtajo(Atajo a)
+        {
+            if (a.Tipo == 0) { Resultados = motor.MasPedidoHoy(); EnResultados = Resultados.Count > 0; SelResultado = 0; Escrito = ""; }
+            else if (a.Tipo == 1) { int i = letras.IndexOf(Form1.LetraVideos); if (i >= 0) { letra = i; cursorDisco = 0; dentro = null; Buscando = false; } }
+            else { Escrito = a.Busqueda; Resultados = motor.Busca(Escrito); SelResultado = 0; EnResultados = Resultados.Count > 0; }
+        }
         private void CierraBuscador() { Buscando = false; }
         // El codigo de servicio de XP: escrito y mantenido 5 s, aparece "+4 creditos" como resultado (Tipo 3).
         private int codigoDesde = -1;
@@ -462,14 +490,33 @@ namespace Rocola
             {
                 int n = Resultados.Count;
                 if (n == 0) { EnResultados = false; return; }
+                if (ConPortadas)
+                {   // las tarjetas van en dos columnas
+                    if (b == Boton.Arriba) SelResultado = SelResultado >= 2 ? SelResultado - 2 : SelResultado;
+                    else if (b == Boton.Abajo) SelResultado = Math.Min(n - 1, SelResultado + 2);
+                    else if (b == Boton.Derecha) { if (SelResultado % 2 == 0 && SelResultado + 1 < n) SelResultado++; }
+                    else if (b == Boton.Izquierda) { if (SelResultado % 2 == 1) SelResultado--; else EnResultados = false; }
+                    else if (b == Boton.Poner) { ApuntaBusqueda(); Elige(Resultados[Math.Min(SelResultado, n - 1)]); }
+                    return;
+                }
                 if (b == Boton.Arriba) SelResultado = Math.Max(0, SelResultado - 1);
                 else if (b == Boton.Abajo) SelResultado = Math.Min(n - 1, SelResultado + 1);
                 else if (b == Boton.Izquierda) EnResultados = false;
                 else if (b == Boton.Poner) Elige(Resultados[Math.Min(SelResultado, n - 1)]);
                 return;
             }
+            if (FilaTecla < 0)
+            {   // la fila de los atajos
+                if (Atajos.Count == 0) { FilaTecla = 0; return; }
+                if (b == Boton.Abajo) { FilaTecla = 0; ColTecla = 0; }
+                else if (b == Boton.Izquierda) ColTecla = Math.Max(0, ColTecla - 1);
+                else if (b == Boton.Derecha) ColTecla = Math.Min(Atajos.Count - 1, ColTecla + 1);
+                else if (b == Boton.Poner) UsaAtajo(Atajos[Math.Min(ColTecla, Atajos.Count - 1)]);
+                return;
+            }
             string fila = FilasTeclado[FilaTecla];
-            if (b == Boton.Arriba) { FilaTecla = Math.Max(0, FilaTecla - 1); ColTecla = Math.Min(ColTecla, FilasTeclado[FilaTecla].Length - 1); }
+            if (b == Boton.Arriba && FilaTecla == 0 && Atajos.Count > 0) { FilaTecla = -1; ColTecla = 0; }
+            else if (b == Boton.Arriba) { FilaTecla = Math.Max(0, FilaTecla - 1); ColTecla = Math.Min(ColTecla, FilasTeclado[FilaTecla].Length - 1); }
             else if (b == Boton.Abajo) { FilaTecla = Math.Min(FilasTeclado.Length - 1, FilaTecla + 1); ColTecla = Math.Min(ColTecla, FilasTeclado[FilaTecla].Length - 1); }
             else if (b == Boton.Izquierda) ColTecla = Math.Max(0, ColTecla - 1);
             else if (b == Boton.Derecha)
