@@ -2,8 +2,7 @@
 // PlayNext y DisposePlaybackNow), sin la pantalla. Las reglas son las de XP: la siguiente se prepara cuando a la que suena le quedan
 // 12 s y entra en la MISMA lectura de la salida (Encadenado, SinPausa.cs), sin hueco; si es la pista siguiente del mismo disco, sin
 // fundido y con la memoria de los filtros de la anterior (SigueA, HeredaLocal). Lo que se aprende de cada una se cierra al relevo.
-// Diferencias con XP: sin el calentador que abre la siguiente por delante (se abre aqui), y sin convertir de frecuencia (si la
-// siguiente tiene otra, entra por el camino de siempre: se cierra la salida y se abre otra).
+// Diferencia con XP: sin el calentador que abre la siguiente por delante (se abre aqui). Con otra frecuencia, se convierte como en XP.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -151,10 +150,23 @@ namespace Rocola
             try
             {
                 lector.Volume = 1f;
-                if (!Encadenado.MismoFormato(lector.WaveFormat, s.WaveFormat)) { lector.Dispose(); sinEncadenar = sig; return; }
+                // OTRA FRECUENCIA (48000 tras 44100...): se convierte a la de la salida con el convertidor de XP (RemuestreoContinuo, con su
+                // limitador detras), como su relevo sin pausa; si no se puede (otra disposicion, demasiado trabajo), por el camino de siempre.
+                double[] tabla = null;
+                if (!Encadenado.MismoFormato(lector.WaveFormat, s.WaveFormat))
+                {
+                    tabla = RemuestreoContinuo.CapturaTabla(lector.WaveFormat, s.WaveFormat);
+                    if (tabla == null)
+                    {
+                        lector.Dispose();
+                        if (!RemuestreoContinuo.SePuede(lector.WaveFormat, s.WaveFormat)) sinEncadenar = sig;   // no se puede: por el camino de siempre
+                        return;   // la tabla se esta preparando en segundo plano: se vuelve a mirar en el siguiente ciclo
+                    }
+                }
                 c = ArmaCadena(sig.Song, lector, false, 0);
                 c.Item = sig;
                 SellaInicioReloj(c); c.CebadoInicial = 0;   // Encadenado descarta el cebado de los relevos
+                if (!Encadenado.MismoFormato(c.Salida.WaveFormat, s.WaveFormat)) ConvierteSalida(c, s.WaveFormat, tabla);
             }
             catch (Exception ex)
             {

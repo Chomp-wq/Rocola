@@ -277,3 +277,7 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **El repaso de la biblioteca** (la tanda larga de XP, en lo esencial): al arrancar, las canciones aún sin medir con el algoritmo de hoy
   van a una fila de fondo; un hilo de prioridad mínima las mide poco a poco (lo pedido, antes que nada) y se guarda cada 30 s. Se para
   mientras suena un vídeo. Así cada canción nivela bien desde la primera vez. Probado: 30 canciones medidas solas en 15 s.
+- **El relevo sin pausa entre frecuencias distintas** (48000 tras 44100), como en XP: la siguiente se convierte a la de la salida con el
+  convertidor de XP (`RemuestreoContinuo`, con su limitador detrás) y entra sin cerrar la salida. Las tablas de 44100↔48000 se preparan
+  al arrancar, en segundo plano. Probado: un disco de tres pistas a 44100, 48000 y 44100 Hz sale seguido (45 s justos) y la de 48000
+  suena a su tono (440 Hz; sin convertir habría salido a 404).

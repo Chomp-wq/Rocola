@@ -4876,5 +4876,14 @@ namespace Rocola
         private int videoVol = 85;                 // 0..100, base del volumen de los videos ("video_vol=" en config)
         // de Form1.cs
         private List<string> lastVideoPaths;              // rutas de video del ultimo armado (para guardar el cache)
+        // de Form1.SinPausa.cs
+        // La cadena, a otra frecuencia (la de la salida): el convertidor quita el cebado a la tasa del origen y un limitador cuida los
+        // picos que la conversion pueda dejar. El cebado que queda es el de ese limitador.
+        private static void ConvierteSalida(CadenaCancion c, NAudio.Wave.WaveFormat a, double[] tabla)
+        {
+            RemuestreoContinuo r = new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla);
+            LimitadorPicoReal lim = new LimitadorPicoReal(r, TechoPicoReal, 3.0);
+            c.Salida = lim; c.Retardo = lim.DelayFrames; c.Conversion = r; c.LimiteSalida = lim;
+        }
     }
 }

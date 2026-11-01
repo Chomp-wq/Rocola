@@ -57,6 +57,17 @@ namespace Rocola
             LoadDeepDone();
             LoadDurFast();
             startupReadPending = false;
+            // Las tablas del convertidor para el relevo entre 44100 y 48000 (las frecuencias de casi todo), en segundo plano: cuando haga
+            // falta ya estan (en XP, CalientaFrecuenciaSalida).
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    NAudio.Wave.WaveFormat a = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(44100, 2), b = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(48000, 2);
+                    for (int i = 0; i < 40 && (RemuestreoContinuo.CapturaTabla(a, b) == null || RemuestreoContinuo.CapturaTabla(b, a) == null); i++) System.Threading.Thread.Sleep(250);
+                }
+                catch { }
+            });
         }
 
         // Lo que se sabe, para la consola.
