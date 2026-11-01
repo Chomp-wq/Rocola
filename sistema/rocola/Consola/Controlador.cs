@@ -78,6 +78,7 @@ namespace Rocola
         internal string Guion;
         private const int DeGuion = -1000;
         private const int ConRegresar = 0x10000;   // la tecla llego con REGRESAR apretado
+        private const int ConCtrl = 0x20000;       // ... o con Ctrl (Ctrl+F3: los ajustes del dueno, como en XP)
         private void CorreGuion()
         {
             foreach (string l0 in File.ReadAllLines(Guion))
@@ -85,6 +86,7 @@ namespace Rocola
                 string l = l0.Trim().ToLowerInvariant(); if (l.Length == 0 || l.StartsWith("#")) continue;
                 if (l.StartsWith("espera ")) { Thread.Sleep(int.Parse(l.Substring(7))); continue; }
                 if (l == "salir") { pulsos.Add(0); return; }
+                if (l == "ctrl+f3") { pulsos.Add(0x72 | ConCtrl); Thread.Sleep(150); continue; }
                 bool con = l.StartsWith("regresar+"); if (con) l = l.Substring(9);
                 Boton b = (Boton)Enum.Parse(typeof(Boton), l, true);
                 pulsos.Add(DeGuion - (int)b * 2 - (con ? 1 : 0));
@@ -95,6 +97,11 @@ namespace Rocola
         private void Tecla(int vk)
         {
             if (vk <= DeGuion) { int x = DeGuion - vk; Pulsa((Boton)(x / 2), (x & 1) != 0); return; }
+            if ((vk & ConCtrl) != 0)
+            {
+                vk &= ~ConCtrl;
+                if ((vk & 0xFFFF) == 0x72 && AsistentePaso < 0) { AbreAjustes(); return; }   // Ctrl+F3
+            }
             if ((vk & ConRegresar) != 0)
             {
                 vk &= ~ConRegresar;
@@ -128,7 +135,8 @@ namespace Rocola
             {
                 botones.Configura(motor.ArchivoBotones);
                 this.botones = botones;
-                botones.PulsadoConRegresar += delegate (Boton b, int vk, bool conRegresar) { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0)); };
+                botones.PulsadoConRegresar += delegate (Boton b, int vk, bool conRegresar)
+                { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0) | (botones.TeclaApretada(0x11) ? ConCtrl : 0)); };
                 if (!botones.DeArchivo) EmpiezaAsistente();   // sin rocola_teclas.txt: el asistente (como XP la primera vez)
                 int n = botones.Escucha();
                 Aviso((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");
@@ -173,6 +181,7 @@ namespace Rocola
                 try { k = Console.ReadKey(true); } catch { return; }
                 if (k.Key == ConsoleKey.Q && (k.Modifiers & ConsoleModifiers.Control) != 0) { salir = true; pulsos.Add(0); return; }
                 if (!despacha) continue;   // (solo para que la terminal no escriba lo que se teclea)
+                if (k.Key == ConsoleKey.F3 && (k.Modifiers & ConsoleModifiers.Control) != 0) { pulsos.Add(0x72 | ConCtrl); continue; }
                 pulsos.Add((int)k.Key);   // el codigo de ConsoleKey es el de tecla de Windows
             }
         }
@@ -209,6 +218,7 @@ namespace Rocola
                 case Boton.Saltar: if (salida != null || video != null) saltar = true; return;
             }
             if (video != null) return;   // durante un video los demas botones no hacen nada (la pantalla es del video)
+            if (AjusteSel >= 0) { ManejaAjustes(b); return; }
             if (b == Boton.Arriba && RegresarApretado) { if (Buscando) CierraBuscador(); else AbreBuscador(); return; }
             if (Buscando) { ManejaBuscador(b); return; }
             if (dentro == null)
@@ -246,6 +256,30 @@ namespace Rocola
             }
             else if (p == Form1.Pedido.Repetida) Aviso("Esa cancion ya va seguida");
             else if (p == Form1.Pedido.Danada) Aviso("Esa cancion esta danada: no se cobra");
+        }
+
+        // ---- LOS AJUSTES DEL DUENO (Ctrl+F3, como en XP): ARRIBA/ABAJO eligen, IZQ/DER o PONER cambian, REGRESAR guarda y sale.
+        internal int AjusteSel = -1;   // -1: cerrados
+        internal IList<Form1.Ajuste> ListaAjustes { get { return motor.Ajustes(); } }
+        internal int AjustesTotal { get { return ListaAjustes.Count + 1; } }   // y al final: configurar los botones
+        internal void AbreAjustes() { AjusteSel = 0; Buscando = false; }
+        private void ManejaAjustes(Boton b)
+        {
+            int n = AjustesTotal;
+            if (b == Boton.Arriba) AjusteSel = (AjusteSel + n - 1) % n;
+            else if (b == Boton.Abajo) AjusteSel = (AjusteSel + 1) % n;
+            else if (b == Boton.Regresar)
+            {
+                try { motor.GuardaAjustes(); Aviso("Ajustes guardados: se oyen desde la siguiente cancion"); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
+                AjusteSel = -1;
+            }
+            else if (AjusteSel == n - 1) { if (b == Boton.Poner) { AjusteSel = -1; EmpiezaAsistente(); } }
+            else if (b == Boton.Izquierda || b == Boton.Derecha || b == Boton.Poner)
+            {
+                Form1.Ajuste a = ListaAjustes[AjusteSel];
+                if (a.Motivo != null) Aviso("No se puede: " + a.Motivo);
+                else a.Mueve(b == Boton.Izquierda ? -1 : 1);
+            }
         }
 
         // ---- EL BUSCADOR (el de XP: teclado en pantalla, resultados a la derecha; REGRESAR borra una letra) ----

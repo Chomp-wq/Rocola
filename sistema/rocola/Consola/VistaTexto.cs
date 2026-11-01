@@ -38,6 +38,21 @@ namespace Rocola
                 string q = sb.ToString(); if (q != pantallaAntes) { pantallaAntes = q; Console.Write("\x1b[H" + q); }
                 return;
             }
+            if (c.AjusteSel >= 0)
+            {
+                sb.Append("\x1b[1;37;44m").Append(Corta(" AJUSTES DEL SONIDO (REGRESAR: guardar y salir)", ancho)).Append("\x1b[0m\n");
+                IList<Form1.Ajuste> l = c.ListaAjustes; int n = c.AjustesTotal, desde = Math.Max(0, Math.Min(c.AjusteSel - alto / 2, n - alto));
+                for (int i = 0; i < alto + 3; i++)
+                {
+                    int j = desde + i; string t = "";
+                    if (j < n - 1) { Form1.Ajuste a = l[j]; t = " " + a.Nombre.PadRight(48) + " " + a.Texto + (a.Motivo != null ? "  (" + a.Motivo + ")" : ""); }
+                    else if (j == n - 1) t = " Configurar los botones de la rocola (PONER)";
+                    sb.Append(j == c.AjusteSel ? "\x1b[7m" : "").Append(Corta(t, ancho)).Append("\x1b[0m\n");
+                }
+                sb.Append("\x1b[1;33m").Append(Corta(" " + c.AvisoVigente, ancho)).Append("\x1b[0m");
+                string q3 = sb.ToString(); if (q3 != pantallaAntes) { pantallaAntes = q3; Console.Write("\x1b[H" + q3); }
+                return;
+            }
             if (c.Buscando)
             {
                 sb.Append("\x1b[1;37;44m").Append(Corta(" BUSCAR: " + c.Escrito + "_", ancho)).Append("\x1b[0m\n");

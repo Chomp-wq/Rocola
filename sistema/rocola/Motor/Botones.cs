@@ -86,6 +86,7 @@ namespace Rocola
         public event Action<Boton, int, bool> PulsadoConRegresar;
         // LO QUE ESTA APRETADO AHORA (para los combos de XP: REGRESAR mantenido + IZQ/DER cambia de letra, + ARRIBA abre el buscador).
         private readonly HashSet<int> apretadas = new HashSet<int>();
+        public bool TeclaApretada(int vk) { lock (apretadas) return apretadas.Contains(vk); }
         public bool Apretado(Boton f)
         {
             lock (apretadas) foreach (int vk in apretadas) if (FuncionDe(vk) == f) return true;

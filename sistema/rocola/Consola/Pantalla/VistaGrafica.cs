@@ -51,7 +51,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
             int ahora = Environment.TickCount;
             if (firma == antes && (m.Sonando == null || unchecked(ahora - ultimo) < 500)) return;
             antes = firma; ultimo = ahora;
@@ -67,6 +67,7 @@ namespace Rocola
             if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
             float abajo = H - 120 * k;   // donde empieza lo que suena
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
+            if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); return; }
             if (c.Buscando) Buscador(c, W, abajo);
             else if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
             Suena(c, W, H, abajo);
@@ -79,6 +80,45 @@ namespace Rocola
             }
             d.Termina();
             sup.Presenta();
+        }
+
+        private static string FirmaAjustes(Controlador c)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            foreach (Form1.Ajuste a in c.ListaAjustes) sb.Append(a.Texto).Append(a.Motivo != null ? "g" : "").Append(',');
+            return sb.ToString();
+        }
+        private void AvisoEncima(Controlador c, float W, float y)
+        {
+            string av = c.AvisoVigente; if (av.Length == 0) return;
+            float wa = media.Mide(av) + 48 * k;
+            d.Redondo((W - wa) / 2, y - 52 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.95f));
+            media.EscribeCentrado(d, av, W / 2, y - 40 * k, Dorado);
+        }
+        // LOS AJUSTES DEL DUENO (Ctrl+F3): por grupos, el elegido resaltado, lo que decide el modo billar en gris con el motivo.
+        private void Ajustes(Controlador c, float W, float H)
+        {
+            grande.Escribe(d, "AJUSTES DEL SONIDO", 24 * k, 76 * k, Dorado);
+            chica.Escribe(d, "ARRIBA/ABAJO: elegir    IZQ/DER o PONER: cambiar    REGRESAR: guardar y salir", 24 * k, 118 * k, Gris);
+            IList<Form1.Ajuste> l = c.ListaAjustes;
+            float top = 150 * k, fila = 30 * k;
+            int caben = Math.Max(4, (int)((H - top - 20 * k) / fila)), n = c.AjustesTotal;
+            int desde = Math.Max(0, Math.Min(c.AjusteSel - caben / 2, n - caben));
+            string grupo = null;
+            for (int i = desde, f = 0; i < n && f < caben; i++, f++)
+            {
+                float y = top + f * fila; bool sel = i == c.AjusteSel;
+                if (sel) d.Redondo(16 * k, y - 2 * k, W - 32 * k, fila - 2 * k, 8 * k, PanelClaro);
+                if (i == n - 1) { media.Escribe(d, "Configurar los botones de la rocola  (PONER)", 32 * k, y, sel ? Blanco : Gris); continue; }
+                Form1.Ajuste a = l[i];
+                if (a.Grupo != grupo) { grupo = a.Grupo; }
+                string mot = a.Motivo;
+                chica.Escribe(d, a.Grupo, 32 * k, y + 5 * k, Dorado.ConAlfa(0.7f));
+                media.Escribe(d, media.Ajusta(a.Nombre, W * 0.5f), 240 * k, y, mot != null ? Gris.ConAlfa(0.5f) : sel ? Blanco : Gris);
+                string v = mot != null ? a.Texto + "  (" + mot + ")" : a.Texto;
+                Color4 cv = mot != null ? Gris.ConAlfa(0.5f) : a.Texto == "SÍ" ? Verde : a.Texto == "NO" ? Color4.Hex(0xFF8A7A) : Dorado;
+                media.Escribe(d, media.Ajusta(v, W - 240 * k - W * 0.5f - 40 * k), 240 * k + W * 0.5f + 16 * k, y, cv);
+            }
         }
 
         // El asistente de botones (como el de XP): paso, el boton que toca, y el aviso si ese ya se uso.
