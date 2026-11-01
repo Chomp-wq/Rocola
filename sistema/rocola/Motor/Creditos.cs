@@ -66,6 +66,9 @@ namespace Rocola
 
         // Restaurar los creditos y la cola de antes del apagon (RestoreState de XP), con la biblioteca ya leida.
         public void Reanuda() { RestoreState(); }
+        // EL CIERRE DELIBERADO (el boton de encendido; en XP, OnFormClosing con WindowsShutDown): se borra el estado del dia, asi manana
+        // arranca limpia. Un apagon no pasa por aqui: el archivo sobrevive y al volver la luz se reanuda.
+        public void CierreDelDia() { BorraEstado(); }
         // Guardar el estado (al empezar o acabar una cancion: lo que suena y la cola cambiaron).
         public void GuardaEstado() { SaveState(); }
 

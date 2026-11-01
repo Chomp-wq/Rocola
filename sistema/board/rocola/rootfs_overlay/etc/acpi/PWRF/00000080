@@ -1,0 +1,9 @@
+#!/bin/sh
+# EL BOTON DE ENCENDIDO: como en XP (donde Windows apaga y la rocola, al cerrarse, borra el estado del dia: es un CIERRE, no un apagon).
+# Primero el vigilante (/usr/bin/rocola, para que no la vuelva a abrir), luego la rocola con SIGTERM (guarda lo aprendido y borra el
+# estado), se espera a que acabe (hasta 15 s) y se apaga el equipo.
+killall -TERM rocola 2>/dev/null
+killall -TERM rocola-consola 2>/dev/null
+i=0; while pidof rocola-consola >/dev/null && [ $i -lt 15 ]; do sleep 1; i=$((i+1)); done
+sync
+poweroff

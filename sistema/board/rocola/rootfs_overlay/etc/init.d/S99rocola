@@ -3,6 +3,7 @@
 # (rocola-prueba) la primera vez, que al acabar abre la rocola; despues, la rocola directo (/usr/bin/rocola).
 case "$1" in
 	start)
+		acpid   # el boton de encendido: /etc/acpi/PWRF/00000080
 		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
 		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		# La prueba de sonido y grafica la primera vez (o si se elige en el menu de GRUB: rocola.prueba); despues, directo a la rocola.

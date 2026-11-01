@@ -244,3 +244,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   atendiera la pulsación; ahora lo apretado se anota en el momento de la pulsación (`PulsadoConRegresar`).
 - **Probado en QEMU** con un vídeo de 10 s en el disco NTFS: se ve a pantalla completa, se oye su sonido y al acabar vuelve la rocola.
   `--guion` (pruebas): una lista de botones y esperas para probar el bucle de verdad sin pantalla ni teclado.
+
+## Hito 15 (1-11-2026): los ajustes del dueño y el botón de encendido
+
+- **Los ajustes del dueño (Ctrl+F3 en un teclado, como en XP):** los interruptores del sonido de XP (el modo billar, el local, voz/golpe/
+  retumbe, lo que suena ahora, las mejoras con IA, el fundido y el volumen de los vídeos), con lo que decide el modo billar en gris y
+  el motivo, como en XP. Se manejan con los botones; REGRESAR guarda en `rocola_config.txt` (conservando las demás líneas) y se oye desde
+  la siguiente canción. Desde ahí, también el asistente de botones.
+- **El botón de encendido:** como en XP, apaga el equipo y es un **cierre** (no un apagón): la rocola guarda lo aprendido y borra el
+  estado del día (créditos y cola), así al día siguiente arranca limpia. Va por `acpid` de busybox (`/etc/acpi/PWRF/00000080`), que
+  avisa a la rocola (SIGTERM) y apaga. Un corte de luz no pasa por ahí: el estado sobrevive y la rocola reanuda.
+- Probado: los ajustes se guardan y se releen; en QEMU, con el botón de encendido virtual, el equipo se apaga solo en 8 s.

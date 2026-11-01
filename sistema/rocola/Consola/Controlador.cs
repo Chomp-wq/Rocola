@@ -127,6 +127,10 @@ namespace Rocola
             Aviso("¡Botones configurados!");
         }
 
+        // El aviso de apagar (SIGTERM: el boton de encendido, por acpid): se sale del bucle y es un cierre deliberado.
+        internal volatile bool Apagando;
+        internal void Apaga() { Apagando = true; salir = true; pulsos.Add(0); }
+
         internal int Corre(IVista vista)
         {
             vistaActual = vista;
@@ -164,7 +168,8 @@ namespace Rocola
                 {
                     if (salida != null) { salida.Dispose(); salida = null; motor.AcaboLaSalida(); }
                     if (video != null) { try { video.Kill(); } catch { } TerminaVideo(); }
-                    motor.GuardaEstado();
+                    if (Apagando) motor.CierreDelDia();   // el boton de encendido: como el cierre de XP, manana arranca limpia
+                    else motor.GuardaEstado();
                 }
             }
             return 0;

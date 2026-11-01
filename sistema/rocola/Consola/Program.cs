@@ -49,6 +49,8 @@ namespace Rocola
                 if (vista == null) vista = new VistaTexto();
                 int r;
                 Controlador ctl = new Controlador(m, dispositivo); ctl.Guion = guion;
+                using System.Runtime.InteropServices.PosixSignalRegistration apagar = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                    System.Runtime.InteropServices.PosixSignal.SIGTERM, delegate (System.Runtime.InteropServices.PosixSignalContext ctx) { ctx.Cancel = true; ctl.Apaga(); });
                 using (vista) r = ctl.Corre(vista);
                 m.Cierra();
                 return r;
