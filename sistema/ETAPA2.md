@@ -187,3 +187,23 @@ Pendientes conocidos: los MP3 de frecuencias mezcladas (en XP se reconstruyen: `
 
 Para probar en el A4 hace falta la imagen compilada para el A4 (`sh sistema/compila.sh`, con el SDK de .NET 10 en la máquina que la
 arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se ha probado aún en el A4.**
+
+## Hito 11 (1-11-2026): lo que la rocola de XP ya aprendió, y el reinicio de las 7
+
+- **Importar de XP** (`Motor/ImportaXP.cs`): `rocola-discos` busca en los otros discos la carpeta de datos de XP (la de su
+  `rocola_sonoridad.txt` o `rocola_config.txt`, sin la de `respaldo`). La primera vez, Rocola OS copia a `/rocola/datos`: la sonoridad
+  y las medidas de cada canción, el volumen, el EQ, el sello de cada archivo, las duraciones, las repasadas a fondo, el volumen parejo
+  y la bitácora del billar, las estadísticas, **los botones** (`rocola_teclas.txt`), **la configuración** y los modelos de IA.
+  - Las rutas de Windows (`D:\Rocola\musica\...`) se traducen a las de Rocola OS buscando el archivo en los discos montados (cada
+    letra de unidad queda ligada a su disco); las canciones que ya no están se quedan fuera.
+  - Una sola vez: deja `rocola_importado_xp.txt` con lo que hizo, y nunca pisa un archivo que Rocola OS ya tenga. No escribe en el
+    disco de XP. Los créditos y la cola no se traen (son del día).
+  - XP adopta las medidas de un archivo copiado a otro disco si el tamaño coincide (aunque cambie la fecha de creación), así que las
+    medidas importadas nivelan desde la primera canción.
+- **El reinicio de las 7 y el respaldo diario** (lo de XP tal cual: `CheckBusinessDayReset` y `BackupLearnedData`): pasadas las 7,
+  con la rocola ociosa 10 minutos, los créditos que quedaron de anoche van a cero y lo aprendido se respalda en
+  `/rocola/datos/respaldo` (los 3 últimos días). Lo aprendido y las estadísticas se guardan cada minuto.
+- **Probado:** aquí, con tablas de XP de verdad en su formato (rutas `D:\...`, una canción borrada, una carpeta `dir=` que ya no
+  existe): 30 medidas traducidas, lo que falta fuera, los botones, el modo billar y el modelo de IA traídos. En QEMU, con esos datos
+  dentro del disco NTFS: el resumen del arranque muestra la música encontrada y la rocola usa los botones de XP (la moneda en «1»:
+  «5» ya no hace nada).

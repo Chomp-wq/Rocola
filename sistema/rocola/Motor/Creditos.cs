@@ -63,5 +63,22 @@ namespace Rocola
         public void Reanuda() { RestoreState(); }
         // Guardar el estado (al empezar o acabar una cancion: lo que suena y la cola cambiaron).
         public void GuardaEstado() { SaveState(); }
+
+        // ---- LO QUE EN XP HACEN LOS RELOJES DE LA VENTANA ----
+        private DateTime lastInput = DateTime.Now;   // el ultimo boton (el reinicio de las 7 espera a que la rocola este ociosa)
+        private int ultimoPeriodico;
+        // Un boton (cualquiera): la rocola esta en uso.
+        public void HuboBoton() { lastInput = DateTime.Now; }
+        // Llamarlo a menudo desde el hilo de siempre: una vez por minuto, el reinicio de las 7 (CheckBusinessDayReset de XP: creditos a
+        // cero y respaldo de lo aprendido, solo si esta ociosa) y lo aprendido al disco (como StatsTimer_Tick y el repaso de XP).
+        public void Periodico()
+        {
+            int ahora = Environment.TickCount;
+            if (unchecked(ahora - ultimoPeriodico) < 60000) return;
+            ultimoPeriodico = ahora;
+            try { CheckBusinessDayReset(); } catch { }
+            try { if (statsDirty) { statsDirty = false; SaveStats(true); } } catch { }
+            try { SaveLoudCache(); FlushEqIfDirty(); } catch { }
+        }
     }
 }

@@ -3946,5 +3946,291 @@ namespace Rocola
         private const int SongStatCap = 2000, SongStatTarget = 1800;
         // de Form1.Video.cs
         private const int VideoStatCap = 1000, VideoStatTarget = 900;
+        // de Form1.Datos.cs
+        // Al cruzar las 7 AM (nuevo dia del negocio) reinicia el estado guardado. PERO nunca interrumpe una sesion
+        // en uso: si te DESVELAS, tu musica NO deja de sonar y tus creditos NO se tocan. El reinicio ESPERA a que la
+        // rocola quede OCIOSA (nada sonando, cola vacia y sin botones un buen rato); recien entonces borra los
+        // creditos que hayan quedado (de alguien que se fue) y el archivo guardado -> el dia arranca limpio.
+        private void CheckBusinessDayReset()
+        {
+            if (BusinessDay(DateTime.Now) == stateDay) return;                          // mismo dia del negocio: comun, nada que hacer
+            if (nowPlaying != null || queue.Count > 0) return;                          // hay musica o cola: EN USO -> se aplaza
+            if ((DateTime.Now - lastInput).TotalMinutes < DayResetIdleMins) return;     // botones recientes: EN USO -> se aplaza
+            stateDay = BusinessDay(DateTime.Now);                                       // ociosa y dia nuevo -> reinicia UNA vez
+            if (credits > 0) { credits = 0; UpdateCredits(); }                          // creditos que quedaron de anoche -> a cero
+            BorraEstado();                                                              // borra el estado guardado (y su copia) -> arranque limpio
+            BackupLearnedData();                                                        // cierre del dia: respalda lo aprendido (una vez al dia)
+        }
+        // de Form1.Datos.cs
+        private void BackupLearnedData()
+        {
+            string sp = CarpetaDatos, second = backupDir, baseDir = BackupBaseDir();
+            string[] files = {
+                LoudFile(), EqFile(), LibStatsFile(), LibCacheFile(), ConfigFile, KeysFile(),
+                RutaLectura("rocola_ia.bin"), RutaLectura("rocola_eq_ia.bin"),
+                Path.Combine(sp, "rocola_incompatibles.txt"),
+                IaDoneFile(), DeepDoneFile(),  // sin estas dos, un repaso a fondo empezaria de cero y la IA repetiria ejemplos
+                DurFastFile(), LetterTintFile(),   // sin este, la barra tendria que releer el ID3 de toda la biblioteca
+                IntegFile(), FuentesFile()   // medidas + firmas: deben viajar juntas al restaurar
+            };
+            RespaldoCapturado captura;
+            try { captura = CapturaRespaldo(files); }   // antes del primer guardado de esta sesion
+            catch (Exception ex) { LogError("No se pudo capturar el respaldo; anteriores conservados", ex); return; }
+            QueueDataWrite(delegate(object ignorado)
+            {
+                System.Threading.Thread th = System.Threading.Thread.CurrentThread;
+                System.Threading.ThreadPriority anterior = th.Priority;
+                try
+                {
+                    th.Priority = System.Threading.ThreadPriority.Lowest;
+                    string stamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmssfff", CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
+                    BackupDestinoCapturado(baseDir, stamp, captura);
+                    if (!string.IsNullOrEmpty(second)) BackupDestinoCapturado(Path.Combine(second, "respaldo_rocola"), stamp, captura);
+                }
+                catch { }
+                finally { captura.Dispose(); try { th.Priority = anterior; } catch { } }
+            });
+        }
+        // de Form1.Datos.cs
+        private const int DayResetIdleMins = 10;   // minutos OCIOSA (sin musica/cola/botones) para aplicar el reinicio de 7 AM: si te desvelas, NO te interrumpe
+        // de Form1.Datos.cs
+        private DateTime stateDay = BusinessDay(DateTime.Now);   // dia del negocio del estado vivo actual
+        // de Form1.Datos.cs
+        // ===================== RESPALDO DE DATOS APRENDIDOS =====================
+        // El disco puede morir (ya paso). La musica no se recupera, pero SI todo lo que la rocola aprendio:
+        // volumenes nivelados, huellas del EQ, estadisticas de lo mas sonado, indice de biblioteca,
+        // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
+        // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Las tablas/modelos pueden ocupar MB:
+        // solo se capturan handles y longitudes aqui; copia, hashes y Flush ceden en un trabajador de baja prioridad.
+        private string BackupBaseDir() { return RutaDatos("respaldo"); }
+        // de Form1.Datos.cs
+        private void BackupDestinoCapturado(string root, string stamp, RespaldoCapturado captura)
+        {
+            try { BackupToCapturado(Path.Combine(root, stamp), captura, CedeRespaldo); PruneBackups(root, 3); }
+            catch (Exception ex)
+            {
+                LogError("Respaldo incompleto en " + root + " (se conservan los anteriores)", ex);
+                try { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt"); } catch { }   // (en XP, en la pantalla)
+            }
+        }
+        // de Form1.Datos.cs
+        private static RespaldoCapturado CapturaRespaldo(string[] files)
+        {
+            RespaldoCapturado captura = new RespaldoCapturado();
+            try
+            {
+                for (int i = 0; i < files.Length; i++)
+                {
+                    if (string.IsNullOrEmpty(files[i])) continue;
+                    // Un anexo en curso queda cortado al largo anterior (ningun registro parcial).
+                    // Durante Replace o su fallback no se vuelve a abrir el nombre que esta cambiando.
+                    // La referencia retenida vive hasta terminar los destinos, aunque el escritor falle.
+                    EstadoRespaldo estado = EstadoRespaldoDe(files[i]);
+                    lock (estado)
+                    {
+                        ArchivoRespaldo archivo = estado.Cambiando
+                            ? (estado.Anterior == null ? null : estado.Anterior.Retiene())
+                            : AbreArchivoRespaldo(files[i]);
+                        if (archivo == null) continue;
+                        try { captura.Archivos.Add(archivo); }
+                        catch { archivo.Libera(); throw; }
+                    }
+                }
+                return captura;
+            }
+            catch { captura.Dispose(); throw; }
+        }
+        // de Form1.Ia.cs
+        private string IaDoneFile() { return RutaDatos("rocola_ia_hechas.txt"); }
+        // de Form1.Ajustes.cs
+        // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================
+        private string KeysFile() { return RutaDatos("rocola_teclas.txt"); }
+        // de Form1.Biblioteca.cs
+        // Barrido RAPIDO de duraciones: abre cada archivo, lee cuanto dura y lo suelta. No descomprime nada.
+        // Se salta lo que ya tiene duracion (por esta via o por el analisis completo). Prioridad minima y un
+        // respiro por archivo para no quitarle disco a la musica; con video en pantalla se detiene del todo.
+        // ==========  LO QUE ENSENA LA BARRA DE LETRAS  ==========
+        // Debajo de cada letra va cuantas canciones hay detras, y la letra se pinta del color del genero que
+        // MANDA dentro de ella. Lo primero es gratis (ya esta contado); lo segundo cuesta leer el ID3 de toda
+        // la biblioteca, asi que se calcula una vez en segundo plano y se guarda.
+        private string LetterTintFile() { return RutaDatos("rocola_letras.txt"); }
+        // de Form1.Biblioteca.cs
+        // ===================== CACHE DE BIBLIOTECA (arranque rapido) =====================
+        // El arranque hacia DOS caminatas completas del disco (audio y video) MAS ~una verificacion de
+        // portada por cada disco: en disco duro, minutos. Aqui se guarda el resultado en un archivo y
+        // los siguientes arranques lo leen en segundos. Se invalida solo si la carpeta de musica cambio
+        // (cantidad de carpetas o fecha de la raiz). F5 siempre fuerza un re-escaneo completo.
+        private string LibCacheFile() { return RutaDatos("rocola_biblioteca.txt"); }
+        // de Form1.Datos.cs
+        private sealed class RespaldoCapturado : IDisposable
+        {
+            internal readonly List<ArchivoRespaldo> Archivos = new List<ArchivoRespaldo>();
+            public void Dispose()
+            {
+                for (int i = 0; i < Archivos.Count; i++) Archivos[i].Libera();
+                Archivos.Clear();
+            }
+        }
+        // de Form1.Datos.cs
+        private static void BackupToCapturado(string dir, RespaldoCapturado captura, Action<string> cede)
+        {
+            lock (backupLock)
+            {
+                dir = Path.GetFullPath(dir);
+                string parent = Path.GetDirectoryName(dir);
+                if (string.IsNullOrEmpty(parent) || Directory.Exists(dir) || File.Exists(dir))
+                    throw new IOException("El destino de respaldo debe ser una carpeta nueva");
+                Directory.CreateDirectory(parent);
+                string pending = Path.Combine(parent, ".rocola_backup_pending_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(pending);
+                try
+                {
+                    int copied = 0;
+                    byte[] buffer = new byte[65536], otro = new byte[65536];
+                    for (int i = 0; i < captura.Archivos.Count; i++)
+                    {
+                        ArchivoRespaldo archivo = captura.Archivos[i];
+                        FileStream input = archivo.Lector; input.Position = 0;
+                        {
+                            string dst = Path.Combine(pending, Path.GetFileName(archivo.Ruta));
+                            // Mientras se copia, el destino es una carpeta PRIVADA no publicada. Forzar cada
+                            // bloque de 64 KiB al disco no protege nada adicional ante un apagon: la copia
+                            // solo se publica despues de FlushFileBuffers exitoso + copia releida y comparada
+                            // byte a byte con el origen capturado + Move. (Antes: dos SHA-256 de cada archivo,
+                            // uno de lo leido y otro de la copia, 2 a 8 segundos de procesador en .NET 3.5 al
+                            // arrancar; ahora, releer la copia y el origen y comparar, sin ningun hash.)
+                            // Los respaldos anteriores se conservan si cualquier paso falla.
+                            using (FileStream outputFile = new FileStream(dst, FileMode.CreateNew, FileAccess.Write, FileShare.None, buffer.Length, FileOptions.None))
+                            {
+                                long faltan = archivo.Largo;
+                                while (faltan > 0)
+                                {
+                                    if (cede != null) { cede(archivo.Ruta); cede(dst); }
+                                    int n = input.Read(buffer, 0, (int)Math.Min(buffer.Length, faltan));
+                                    if (n == 0) throw new IOException("El origen del respaldo se trunco durante la copia");
+                                    outputFile.Write(buffer, 0, n);
+                                    faltan -= n;
+                                }
+                                outputFile.Flush();
+                                if (!RespaldoEnDisco(outputFile)) throw new IOException("No se pudo confirmar el respaldo en disco");
+                            }
+                            CompruebaCopiaDeRespaldo(input, archivo.Largo, dst, buffer, otro, cede, archivo.Ruta);
+                            copied++;
+                        }
+                    }
+                    if (copied == 0) throw new IOException("No habia archivos legibles para respaldar");
+                    // Rename en el mismo volumen: la limpieza nunca ve un respaldo a medio copiar.
+                    Directory.Move(pending, dir);
+                }
+                finally
+                {
+                    // Solo la carpeta unica creada por ESTA operacion; nunca un respaldo publicado.
+                    if (Directory.Exists(pending)) try { Directory.Delete(pending, true); } catch { }
+                }
+            }
+        }
+        // de Form1.Datos.cs
+        private void CedeRespaldo(string ruta)
+        {
+            // Ni nuevos hilos lectores ni un limite fijo que frene equipos potentes.
+            // Cede al trabajo visible de la MISMA unidad (a cualquier caratula en 2C).
+            if (!startupClosing)
+                while (YieldCoverWork(UnidadDe(ruta), CargaTrabajo.Procesadores <= 2))
+                { if (startupClosing) break; System.Threading.Thread.Sleep(8); }
+            long ahora = System.Diagnostics.Stopwatch.GetTimestamp();
+            long limite = System.Diagnostics.Stopwatch.Frequency * (CargaTrabajo.Procesadores <= 2 ? 2 : 5) / 1000;
+            if (respaldoPresupuestoInicio == 0 || ahora - respaldoPresupuestoInicio >= limite)
+            {
+                System.Threading.Thread.Sleep(CargaTrabajo.Procesadores <= 2 && !startupClosing ? 1 : 0);
+                respaldoPresupuestoInicio = System.Diagnostics.Stopwatch.GetTimestamp();
+            }
+        }
+        // de Form1.Datos.cs
+        // Deja solo las 'keep' carpetas de respaldo mas recientes (por fecha de modificacion); borra el resto.
+        private static void PruneBackups(string baseDir, int keep)
+        {
+            try
+            {
+                DirectoryInfo bd = new DirectoryInfo(baseDir);
+                if (!bd.Exists) return;
+                List<DirectoryInfo> validas = new List<DirectoryInfo>();
+                foreach (DirectoryInfo d in bd.GetDirectories())
+                {
+                    DateTime fecha;
+                    if ((d.Attributes & FileAttributes.ReparsePoint) != 0 || d.Name.Length < 10 ||
+                        !DateTime.TryParseExact(d.Name.Substring(0, 10), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out fecha) ||
+                        (d.Name.Length != 10 && d.Name[10] != '_')) continue;
+                    if (d.GetFiles().Length > 0) validas.Add(d);
+                }
+                DirectoryInfo[] dirs = validas.ToArray();
+                if (dirs.Length <= keep) return;
+                Array.Sort(dirs, delegate (DirectoryInfo a, DirectoryInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
+                for (int i = keep; i < dirs.Length; i++) { try { dirs[i].Delete(true); } catch { } }
+            }
+            catch { }
+        }
+        // de Form1.Datos.cs
+        // La copia ya esta en disco (FlushFileBuffers hecho): se relee y se compara byte a byte con el origen capturado (los primeros 'largo'
+        // bytes, que es lo que se copio). Lanza IOException("La copia del respaldo no coincide") si algun byte difiere o si la copia mide otra cosa,
+        // y la de siempre si el origen se trunco. Los bloques de lectura son los mismos (64 KiB) y entre bloque y bloque se cede igual.
+        private static void CompruebaCopiaDeRespaldo(FileStream origen, long largo, string copia, byte[] a, byte[] b, Action<string> cede, string rutaOrigen)
+        {
+            origen.Position = 0;
+            using (FileStream check = File.OpenRead(copia))
+            {
+                if (check.Length != largo) throw new IOException("La copia del respaldo no coincide");
+                long faltan = largo;
+                while (faltan > 0)
+                {
+                    if (cede != null) { cede(copia); cede(rutaOrigen); }
+                    int quiero = (int)Math.Min(a.Length, faltan);
+                    int n = LeeCompleto(check, a, quiero), m = LeeCompleto(origen, b, quiero);
+                    if (m < quiero) throw new IOException("El origen del respaldo se trunco durante la copia");
+                    if (n < quiero) throw new IOException("La copia del respaldo no coincide");
+                    for (int k = 0; k < quiero; k++) if (a[k] != b[k]) throw new IOException("La copia del respaldo no coincide");
+                    faltan -= quiero;
+                }
+            }
+        }
+        // de Form1.Datos.cs
+        // El respaldo exige que Windows confirme que esta en el disco. Si la llamada no existe en el sistema (no es Windows: las pruebas en
+        // Linux) basta el Flush que ya se hizo; en Windows, si falla, sigue siendo un error (28-10-2026).
+        private static bool RespaldoEnDisco(FileStream fs)
+        {
+            try { return FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); }
+            catch (EntryPointNotFoundException) { return true; }
+            catch (DllNotFoundException) { return true; }
+        }
+        // de Form1.cs
+        private static string UnidadDe(string ruta)
+        {
+            if (string.IsNullOrEmpty(ruta)) return "";
+            // La letra de unidad se lee a mano: da lo mismo que GetPathRoot en Windows ("C:\", "C:") y tambien vale fuera de Windows (las
+            // pruebas en Linux, donde GetPathRoot("C:\x") da "" y todas las rutas parecian de la misma unidad).
+            if (ruta.Length >= 2 && ruta[1] == ':' && char.IsLetter(ruta[0]))
+                return ruta.Length >= 3 && (ruta[2] == '\\' || ruta[2] == '/') ? ruta.Substring(0, 3) : ruta.Substring(0, 2);
+            try { string r = Path.GetPathRoot(ruta); return r ?? ""; }
+            catch { return ""; }
+        }
+        // (en XP: YieldCoverWork, el respaldo cede el disco a las caratulas; en Rocola OS las caratulas no van por ese despachador)
+        private bool YieldCoverWork(string unit, bool smallCpu) { return false; }
+        // de Form1.Datos.cs
+        private static readonly object backupLock = new object();
+        // de Form1.Datos.cs
+        private long respaldoPresupuestoInicio;
+        // de Form1.cs
+        private bool startupClosing;
+        // de Form1.Datos.cs
+        private static int LeeCompleto(Stream s, byte[] buf, int cuantos)
+        {
+            int hecho = 0;
+            while (hecho < cuantos)
+            {
+                int n = s.Read(buf, hecho, cuantos - hecho);
+                if (n <= 0) break;
+                hecho += n;
+            }
+            return hecho;
+        }
     }
 }

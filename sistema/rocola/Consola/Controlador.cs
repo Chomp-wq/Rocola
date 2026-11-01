@@ -76,8 +76,9 @@ namespace Rocola
                     while (!salir)
                     {
                         Boton b;
-                        if (pulsos.TryTake(out b, 50)) Maneja(b);
+                        if (pulsos.TryTake(out b, 50)) { motor.HuboBoton(); Maneja(b); }
                         motor.PublicaMedidas();
+                        motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                         Suena();
                         vista.Dibuja(this);
                     }

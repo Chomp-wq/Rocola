@@ -2,6 +2,7 @@
 // las IA y las tablas de lo aprendido (volumen, sonoridad, EQ...), en el mismo orden que XP. Las funciones que leen cada tabla son las
 // de XP tal cual (DeXP.cs).
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Rocola
@@ -38,6 +39,7 @@ namespace Rocola
         // Todo lo del arranque que toca al sonido. Se llama una vez, antes de la primera cancion.
         public void Arranca()
         {
+            ImportaDeXPSiHay();  // lo que la rocola de XP ya aprendio, la primera vez (ImportaXP.cs)
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
             LeeConfiguracion();
             SumaMusicaDeOtrosDiscos();
@@ -82,6 +84,24 @@ namespace Rocola
                     string d = l.Trim();
                     if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
                 }
+            }
+            catch { }
+        }
+
+        // La carpeta de datos de XP que encontro rocola-discos (/run/rocola-datos-xp; ROCOLA_DATOS_XP puede dar otra) y los discos montados.
+        private void ImportaDeXPSiHay()
+        {
+            try
+            {
+                string xp = Environment.GetEnvironmentVariable("ROCOLA_DATOS_XP");
+                if (string.IsNullOrEmpty(xp) && File.Exists("/run/rocola-datos-xp")) xp = File.ReadAllText("/run/rocola-datos-xp").Trim();
+                if (string.IsNullOrEmpty(xp)) return;
+                string discos = Environment.GetEnvironmentVariable("ROCOLA_DISCOS");
+                if (string.IsNullOrEmpty(discos)) discos = "/rocola/discos";
+                List<string> raices = new List<string>();
+                if (Directory.Exists(discos)) raices.AddRange(Directory.GetDirectories(discos));
+                string informe = ImportaDeXP(xp, raices);
+                if (informe != null) Diag(informe);
             }
             catch { }
         }

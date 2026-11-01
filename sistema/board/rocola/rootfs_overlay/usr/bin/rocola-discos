@@ -4,8 +4,11 @@
 # /rocola/discos/<nombre>, SIEMPRE en solo lectura (no se escribe ni un byte en el disco de XP), y busca en ella carpetas "musica"
 # (hasta 3 niveles: como XP, que la busca junto a sus datos o hasta tres carpetas mas arriba). En una memoria USB sin carpeta "musica"
 # se usa la memoria entera. Deja la lista en /run/rocola-musica (una carpeta por linea), que la rocola suma a las suyas.
+# Y LOS DATOS DE LA ROCOLA DE XP: la primera carpeta con su rocola_sonoridad.txt (o rocola_config.txt), hasta 4 niveles, va a
+# /run/rocola-datos-xp; la rocola copia de ahi lo aprendido la primera vez (ImportaXP.cs). Solo se lee.
 LISTA=/run/rocola-musica
 : > "$LISTA"
+rm -f /run/rocola-datos-xp
 # El disco del sistema (la raiz se ve como /dev/root): por su numero de dispositivo.
 RAIZ_NUM=$(mountpoint -d /)
 RAIZ_DISCO=
@@ -32,6 +35,10 @@ for p in /sys/class/block/*; do
 		echo "$encontradas" >> "$LISTA"
 	elif [ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ]; then
 		echo "$m" >> "$LISTA"   # una memoria USB sin carpeta "musica": entera
+	fi
+	if [ ! -s /run/rocola-datos-xp ]; then
+		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt \) 2>/dev/null | grep -iv respaldo | head -1)   # (no la copia de respaldo)
+		[ -n "$xp" ] && dirname "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $(dirname "$xp")"
 	fi
 	echo "rocola-discos: /dev/$dev ($tipo) en $m, solo lectura"
 done
