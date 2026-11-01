@@ -207,3 +207,12 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   existe): 30 medidas traducidas, lo que falta fuera, los botones, el modo billar y el modelo de IA traídos. En QEMU, con esos datos
   dentro del disco NTFS: el resumen del arranque muestra la música encontrada y la rocola usa los botones de XP (la moneda en «1»:
   «5» ya no hace nada).
+
+## Hito 12 (1-11-2026): el arranque de uso diario, BIOS y UEFI
+
+- **Arranque de uso diario:** la prueba de sonido y gráfica solo la primera vez (o desde el menú de GRUB: «prueba»); después, directo
+  a la rocola (`/usr/bin/rocola`), que como la de XP pone el volumen general al máximo y sin silencio, y vuelve a empezar si se cierra.
+- **BIOS y UEFI:** `disk.img` lleva GRUB de BIOS en el sector de arranque y GRUB de UEFI en una partición EFI (la 2); el núcleo, con
+  su soporte EFI. Probado en QEMU de las dos formas (UEFI con OVMF): las dos llegan a la prueba.
+- El sistema, en 1 GB (antes 512 MB): sitio para los datos, sus respaldos de 3 días y lo importado de XP.
+- Cómo compilar y grabar la imagen del A4, y qué esperar al arrancarla: `LEEME.md`, «En el A4».

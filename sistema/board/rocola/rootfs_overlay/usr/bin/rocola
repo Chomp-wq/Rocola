@@ -1,0 +1,11 @@
+#!/bin/sh
+# LA ROCOLA DE ROCOLA OS. Como la de XP al arrancar: el volumen general al maximo y sin silencio (en XP, VolumenWindows.cs; aqui
+# los controles de la tarjeta: Master, PCM y las salidas), y la rocola en la pantalla. Si se cierra o se cae, vuelve a empezar (la
+# de XP la vigilaba igual). Sus datos en /rocola/datos; lo que dice, en /root/rocola.txt (se recorta al pasar de 1 MB).
+for c in Master PCM Speaker Headphone Front "Line Out"; do amixer -q sset "$c" 100% unmute 2>/dev/null; done
+while :; do
+	[ -f /root/rocola.txt ] && [ "$(wc -c < /root/rocola.txt)" -gt 1048576 ] && mv /root/rocola.txt /root/rocola.txt.1
+	echo "--- $(date) arranca la rocola" >> /root/rocola.txt
+	ROCOLA_DATOS=/rocola/datos /usr/bin/rocola-consola --rocola >> /root/rocola.txt 2>&1
+	sleep 2
+done

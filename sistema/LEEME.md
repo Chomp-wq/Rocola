@@ -34,7 +34,7 @@ hasta que esté probado en el A4.
 | Gráfica | Mesa: r600 (la Radeon HD 8370D del A4) y softpipe (QEMU), por KMS/GBM/EGL, sin X ni Wayland | |
 | Sonido | ALSA directo, sin mezcladores intermedios | |
 | Firmware | Radeon (ARUBA), microcódigo AMD y la red Realtek | |
-| Arranque | GRUB de BIOS: un solo `disk.img` para grabar en una memoria USB o en el SSD | |
+| Arranque | GRUB de BIOS y de UEFI: un solo `disk.img` (sistema en la partición 1, EFI en la 2) para grabar en una memoria USB o en el SSD | |
 | Arranque por la partición | `PARTUUID=524f4341-01` | arranca igual desde la USB que desde el SSD |
 | Consolas | tty1, la rocola; tty2, mantenimiento (Ctrl+Alt+F2, usuario `root`) | |
 
@@ -78,13 +78,22 @@ ccache y lo compilado, varios GB. La imagen queda en `~/rocola-trabajo/salida/im
 - **En QEMU (sin la Radeon):** primero `ROCOLA_PERFIL=qemu sh sistema/compila.sh` y luego `sh sistema/prueba-qemu.sh` (o
   `sh sistema/prueba-qemu-captura.sh`, sin ventana: deja una captura de la pantalla). La gráfica va por software.
 - **En el A4:**
-  1. Grabar `disk.img` en una memoria USB **que se pueda borrar**: `dd if=disk.img of=/dev/sdX bs=4M conv=fsync` en Linux, o
-     Rufus / balenaEtcher en Windows en modo «DD».
-  2. Arrancar el A4 desde la USB: F8, F11 o F12 al prender, según la placa.
-  3. Se oye un tono de 3 s y se ve un cubo girando 15 s.
-  4. El resultado queda en `/var/log/rocola-prueba.txt`: procesador, memoria, gráfica y tarjeta de sonido que vio el núcleo, y
-     si sonó y si dibujó.
-  5. El SSD con Windows XP no se toca.
+  1. Compilar la imagen del A4 (`sh sistema/compila.sh`, en una máquina con Linux, unos 15 GB libres, el SDK de .NET 10 y sus
+     herramientas de NativeAOT: en Ubuntu, `dotnet-sdk-10.0`, `dotnet-sdk-aot-10.0`, `clang` y `zlib1g-dev`, más `build-essential`,
+     `cpio`, `rsync`, `bc`, `unzip` y `file`). Sale `~/rocola-trabajo/salida/images/disk.img` (1,1 GB).
+  2. Grabarla en una memoria USB **que se pueda borrar**: `dd if=disk.img of=/dev/sdX bs=4M conv=fsync` en Linux, o Rufus /
+     balenaEtcher en Windows en modo «DD».
+  3. Arrancar el A4 desde la USB (F8, F11 o F12 al prender, según la placa). **Arranca en BIOS (heredado) y en UEFI.** El menú
+     (3 s) tiene «Rocola OS» y «Rocola OS - prueba de sonido y grafica».
+  4. **La primera vez** corre la prueba: tono de 3 s, la canción de prueba, el cubo 15 s y la rocola 20 s; luego deja el resumen
+     en pantalla 60 s (para la foto: procesador, gráfica, sonido y **la música que encontró**) y entra en la rocola. Las siguientes
+     veces entra directo en la rocola (la prueba, desde el menú).
+  5. **La música y lo aprendido se leen del disco de XP en solo lectura**: Rocola OS monta los demás discos sin escribir en ellos
+     (`rocola-discos`), usa sus carpetas `musica` y la primera vez copia lo que la rocola de XP aprendió (medidas, EQ, botones,
+     configuración, estadísticas, IA: `rocola_importado_xp.txt` dice qué). El SSD con Windows XP no se toca: se quita la USB y el
+     A4 vuelve a arrancar en XP como siempre.
+  6. Lo que pasó queda en la USB: `/root/rocola-prueba.txt` (la prueba) y `/root/rocola.txt` (la rocola). Para verlos: Ctrl+Alt+F2,
+     usuario `root`.
 
 ## Personalizarlo
 

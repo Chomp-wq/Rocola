@@ -24,7 +24,7 @@ BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/rootfs_overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/post-build.sh"
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/busybox.fragment"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
-BR2_ROOTFS_POST_SCRIPT_ARGS="-c $(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/genimage-bios.cfg"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c $(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/genimage.cfg"
 
 # El nucleo: la base de PC de Buildroot y encima lo del A4 (board/rocola/linux.fragment)
 BR2_LINUX_KERNEL=y
@@ -62,13 +62,18 @@ BR2_PACKAGE_KMSCUBE=y
 # La rocola (etapa 2): por ahora la de consola, que toca canciones por la cadena de sonido y ALSA
 BR2_PACKAGE_ROCOLA_CONSOLA=y
 
-# La imagen: ext4 y GRUB de BIOS, un solo archivo disk.img para grabar en una memoria USB
+# La imagen: ext4 y GRUB de BIOS y de UEFI, un solo archivo disk.img para grabar en una memoria USB
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_LABEL="ROCOLA"
-BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+BR2_TARGET_ROOTFS_EXT2_SIZE="1024M"
 # BR2_TARGET_ROOTFS_TAR is not set
 BR2_TARGET_GRUB2=y
+# arranca en BIOS (heredado) y en UEFI: las placas del A4 (FM2) traen UEFI y no siempre el modo heredado encendido
+BR2_TARGET_GRUB2_I386_PC=y
+BR2_TARGET_GRUB2_X86_64_EFI=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_MTOOLS=y
 BR2_TARGET_GRUB2_INSTALL_TOOLS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 # la letra de la pantalla de la rocola (DejaVu Sans; el duenio puede poner otra con ROCOLA_LETRA)

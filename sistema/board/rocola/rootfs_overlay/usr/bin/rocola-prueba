@@ -82,9 +82,7 @@ echo ""
 echo "Todo esta en /root/rocola-prueba.txt. Saca una foto de esta pantalla."
 echo "En 60 segundos empieza la rocola (con la musica de arriba)."
 echo "Para apagar: Ctrl+Alt+F2, entrar como root y escribir: poweroff"
+touch /rocola/datos/prueba_hecha   # la siguiente vez se arranca directo en la rocola (la prueba, desde el menu de GRUB)
+sync
 sleep 60
-# LA ROCOLA. Si se cierra o se cae, vuelve a empezar (la de XP la vigilaba igual); los datos van a /rocola/datos.
-while :; do
-	ROCOLA_DATOS=/rocola/datos /usr/bin/rocola-consola --rocola >> /root/rocola.txt 2>&1
-	sleep 2
-done
+exec /usr/bin/rocola

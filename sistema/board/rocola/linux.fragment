@@ -58,3 +58,9 @@ CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_CODEPAGE_850=y
 CONFIG_NLS_ISO8859_1=y
 CONFIG_FAT_DEFAULT_IOCHARSET="utf8"
+
+# Arranque por UEFI (la particion EFI de disk.img): el nucleo como programa EFI y la pantalla de UEFI hasta que entra la Radeon
+CONFIG_EFI=y
+CONFIG_EFI_STUB=y
+CONFIG_EFI_PARTITION=y
+CONFIG_FB_EFI=y
