@@ -333,3 +333,13 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   sonando; si alguien pone una canción, la prueba se calla; se para al salir de la hoja.
 - Probado con el motor: las lecturas se guardan y se vuelven a leer al arrancar; el ruido sale a −20 dB por banda y el letrero sigue la
   banda; y en captura. **Sin oírlo:** falta tocarlo por la tarjeta (QEMU o el A4).
+
+## Extra (1-11-2026): el estado extendido
+
+- Como en XP (`muro_reposo=`, `estado_expandido=`, `cola_doce=`, los tres encendidos de fábrica y ahora en la hoja de ajustes, grupo
+  «Pantalla»): con algo sonando, 15 s sin botones, en la pared y sin hojas abiertas, la pared se aparta (el cielo vuelve encima en
+  0,6 s) y la franja de lo que suena crece a un tercio de la pantalla: la portada grande con su halo (late con el grave), «SUENA AHORA»,
+  el título, el artista, el género, el reloj («1:23 / 3:45») con su barra, y a la derecha la cola con sus portadas y en cuánto suena
+  cada una («EN COLA 2 · en ~4 min», `TextoCola` y `MinutosEspera` de XP): hasta tres, o hasta doce en dos columnas.
+- El primer botón solo la despierta (la moneda, además, cuenta), como la atracción. Los avisos salen encima del panel.
+- Probado en captura (`--captura x.ppm --boton reposo`: créditos, cinco pedidas y 20 s sin botones).

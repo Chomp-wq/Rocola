@@ -162,6 +162,13 @@ namespace Rocola
             vv.Guardado = delegate { return videoVol.ToString(CultureInfo.InvariantCulture); };
             vv.Cambia = delegate (int d) { videoVol = Math.Max(0, Math.Min(100, videoVol + 5 * d)); };
             l.Add(vv);
+            l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
+            Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
+            ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta
+            l.Add(ee);
+            Ajuste c12 = Interruptor("Pantalla", "Doce de la cola en el estado extendido (si no, tres)", "cola_doce", () => ColaDoce, v => ColaDoce = v, false);
+            c12.Bloqueo = delegate { return !MuroReposo ? "necesita que la pared se aparte" : !EstadoExpandido ? "necesita el estado extendido" : null; };
+            l.Add(c12);
             ajustes = l;
             return l;
         }

@@ -103,10 +103,11 @@ namespace Rocola
 
         private void Tecla(int vk)
         {
+            bool enReposo = Reposo;
             ultimoToque = Environment.TickCount;
-            if (Atraccion)
+            if (Atraccion || enReposo)
             {
-                Atraccion = false;   // la despierta; la moneda ademas cuenta (en XP la moneda cuenta siempre)
+                Atraccion = false;   // la despierta (y al reposo: vuelve la pared); la moneda ademas cuenta (en XP la moneda cuenta siempre)
                 Boton f = botones != null ? botones.FuncionDe(vk & 0xFFFF) : Boton.Ninguno;
                 if (f != Boton.Moneda) return;
             }
@@ -166,6 +167,18 @@ namespace Rocola
                 if (l.Count > 0) { AtraccionActual = l[azar.Next(l.Count)]; AtraccionDisco++; }
             }
         }
+
+        // EL REPOSO (muro_reposo= y estado_expandido= de XP): algo sonando, 15 s sin botones, en la pared y sin hojas abiertas -> la pared se
+        // aparta y lo que suena crece (el estado extendido). El primer boton solo la despierta (la moneda, ademas, cuenta).
+        internal bool Reposo
+        {
+            get
+            {
+                return motor.MuroReposo && motor.Sonando != null && video == null && AsistentePaso < 0 && AjusteSel < 0 && !Buscando
+                    && dentro == null && !Atraccion && unchecked(Environment.TickCount - ultimoToque) >= 15000;
+            }
+        }
+        internal void FuerzaReposo() { ultimoToque = Environment.TickCount - 20000; }   // (pruebas)
 
         internal void FuerzaAtraccion() { ultimoToque = Environment.TickCount - 60000; RevisaAtraccion(); }   // (pruebas)
 

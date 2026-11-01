@@ -57,15 +57,15 @@ namespace Rocola
             pMedios = m > pMedios ? pMedios + (m - pMedios) * 0.5f : pMedios * 0.93f;
             pAgudos = a > pAgudos ? pAgudos + (a - pAgudos) * 0.6f : pAgudos * 0.88f;
         }
-        private void Cielo(float W, float H, double t)
+        private void Cielo(float W, float H, double t, float alfa = 1f)
         {
-            d.Degradado(0, 0, W, H * 0.55f, Color4.Hex(0x03061A), Color4.Hex(0x0C1440));
-            d.Degradado(0, H * 0.55f, W, H * 0.45f, Color4.Hex(0x0C1440), Color4.Hex(0x1A0F3A));
+            d.Degradado(0, 0, W, H * 0.55f, Color4.Hex(0x03061A, alfa), Color4.Hex(0x0C1440, alfa));
+            d.Degradado(0, H * 0.55f, W, H * 0.45f, Color4.Hex(0x0C1440, alfa), Color4.Hex(0x1A0F3A, alfa));
             for (int i = 0; i < estrellas.Length; i += 5)
             {
                 float a = Math.Min(1f, 0.45f + 0.55f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3])) + 0.35f * pAgudos * (i % 3 == 0 ? 1 : 0));
                 float tam = estrellas[i + 2] * k;
-                d.Brillo(estrellas[i] * W, estrellas[i + 1] * H, tam * 2.2f, new Color4(0.85f, 0.9f, 1f, a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
+                d.Brillo(estrellas[i] * W, estrellas[i + 1] * H, tam * 2.2f, new Color4(0.85f, 0.9f, 1f, alfa * a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
             }
             // la aurora: tiras verticales finas; su altura, su fuerza y su color ondulan despacio (verde -> turquesa -> violeta). Sube
             // desde nada hasta su fuerza y se apaga hacia el horizonte, como un velo.
@@ -78,8 +78,8 @@ namespace Rocola
                 float fuerza = (float)(0.26 + 0.12 * Math.Sin(x * 11.0 + t * 0.7) + 0.05 * Math.Sin(x * 31.0 - t * 1.3)) * (0.75f + 0.8f * pGraves);
                 float r = (float)(0.25 + 0.45 * mezcla), g = (float)(0.95 - 0.45 * mezcla), b = (float)(0.65 + 0.3 * mezcla);
                 float y0 = (float)(base_ - alto), x0 = i * w;
-                d.Degradado(x0, y0, w, (float)alto * 0.78f, new Color4(r, g, b, 0f), new Color4(r, g, b, fuerza));
-                d.Degradado(x0, y0 + (float)alto * 0.78f, w, (float)alto * 0.3f, new Color4(r, g, b, fuerza), new Color4(r, g, b, 0f));
+                d.Degradado(x0, y0, w, (float)alto * 0.78f, new Color4(r, g, b, 0f), new Color4(r, g, b, fuerza * alfa));
+                d.Degradado(x0, y0 + (float)alto * 0.78f, w, (float)alto * 0.3f, new Color4(r, g, b, fuerza * alfa), new Color4(r, g, b, 0f));
             }
         }
 
@@ -119,9 +119,21 @@ namespace Rocola
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); return; }
+            // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
+            double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
+            reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
+            float e = reposoAlfa * reposoAlfa * (3 - 2 * reposoAlfa);
             if (c.Buscando) Buscador(c, W, abajo);
-            else if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo);
-            Suena(c, W, H, abajo);
+            else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
+            if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
+            if (e > 0f && m.EstadoExpandido)
+            {
+                float ph = Math.Min(H, Math.Max(220 * k, Math.Min(340 * k, H * 0.32f)));
+                float top = abajo - (ph - (H - abajo)) * e;
+                if (e < 0.5f) Suena(c, W, H, top); else Extendido(c, W, H, top);
+                abajo = Math.Min(abajo, top - 40 * k);   // el aviso, encima del panel
+            }
+            else Suena(c, W, H, abajo);
             string av = c.AvisoVigente;
             if (av.Length > 0)
             {
@@ -347,6 +359,63 @@ namespace Rocola
                 media.Escribe(d, media.Ajusta(disco.Titulos[j], ancho - 50 * k), x + 44 * k, y + 2 * k, sel ? Blanco : Gris);
             }
             chica.Escribe(d, "ARRIBA/ABAJO: canción   IZQ/DER: página   PONER: pedirla (1 crédito)   REGRESAR: a los discos", x, abajo - 28 * k, Gris.ConAlfa(0.8f));
+        }
+
+        private float reposoAlfa; private double reposoT;
+
+        // EL ESTADO EXTENDIDO (EstadoReposoGpu.cs y SuenaVivoGpu.cs de XP, en lo esencial): la portada grande abajo a la izquierda, el
+        // titulo, el artista, el genero y el reloj con su barra; a la derecha, la cola con sus portadas y en cuanto suena cada una (doce
+        // en dos columnas con cola_doce=, si no tres).
+        private void Extendido(Controlador c, float W, float H, float top)
+        {
+            Form1 m = c.motor;
+            float ph = H - top;
+            d.Degradado(0, top - 30 * k, W, 30 * k, Panel.ConAlfa(0f), Panel.ConAlfa(0.88f));
+            d.Rect(0, top, W, ph, Panel.ConAlfa(0.88f));
+            string t = m.SonandoTitulo; if (t == null) return;
+            float lado = Math.Max(32 * k, Math.Min(ph - 40 * k, W * 0.22f));
+            float cy = top + (ph - lado) / 2;
+            Textura tx = caratulas.De(m.SonandoPortada);
+            d.Brillo(24 * k + lado / 2, cy + lado / 2, lado * 0.9f, (tx != null ? tx.Media : Dorado).ConAlfa(0.35f + 0.25f * pGraves));   // el halo late
+            Portada(m.SonandoPortada, m.SonandoDisco ?? t, 24 * k, cy, lado);
+            float x = 24 * k + lado + 28 * k;
+            List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaDoce ? 12 : 3);
+            float wc = cola.Count == 0 ? 0 : cola.Count > 6 ? W * 0.44f : W * 0.30f;   // doce: dos columnas de seis; hasta seis: una
+            float ancho = W - x - wc - (wc > 0 ? 40 * k : 24 * k);
+            chica.Escribe(d, "SUENA AHORA", x, top + 18 * k, Dorado);
+            enorme.Escribe(d, enorme.Ajusta(t, ancho), x, top + 40 * k, Blanco);
+            float y = top + 40 * k + enorme.Tam * 1.25f;
+            if (m.SonandoDisco != null) { media.Escribe(d, media.Ajusta(m.SonandoDisco, ancho), x, y, Gris); y += media.Tam * 1.5f; }
+            string gen = m.SonandoGenero;
+            if (!string.IsNullOrEmpty(gen))
+            {
+                float wg = chica.Mide(gen) + 24 * k;
+                d.Redondo(x, y, wg, 28 * k, 14 * k, Dorado.ConAlfa(0.22f));
+                chica.Escribe(d, gen, x + 12 * k, y + 4 * k, Dorado);
+            }
+            // el reloj y la barra, abajo
+            string reloj_ = m.SonandoTiempo;
+            float by = top + ph - 26 * k;
+            float wr = media.Mide(reloj_) + 16 * k;
+            media.Escribe(d, reloj_, x, by - media.Tam * 0.62f, Blanco);
+            float bx = x + wr, bw = Math.Max(20 * k, x + ancho - bx);
+            d.Redondo(bx, by - 3 * k, bw, 6 * k, 3 * k, PanelClaro);
+            d.Redondo(bx, by - 3 * k, Math.Max(6 * k, bw * c.Progreso), 6 * k, 3 * k, Dorado);
+            if (cola.Count == 0) return;
+            // la cola
+            float xc = W - wc - 16 * k;
+            chica.Escribe(d, "EN COLA (" + m.EnCola + ")", xc, top + 18 * k, Dorado);
+            int porCol = cola.Count > 3 ? 6 : 3, cols = cola.Count > 6 ? 2 : 1;
+            float fy = top + 46 * k, fh = (ph - 56 * k) / porCol, cw = wc / cols;
+            for (int i = 0; i < cola.Count; i++)
+            {
+                Form1.EnColaVista q = cola[i];
+                float qx = xc + (i / porCol) * cw, qy = fy + (i % porCol) * fh, ql = Math.Min(fh - 6 * k, 56 * k);
+                Portada(q.Portada, q.Disco ?? q.Titulo, qx, qy, ql);
+                Letra lt = fh > 50 * k ? media : chica;
+                lt.Escribe(d, lt.Ajusta(q.Titulo, cw - ql - 20 * k), qx + ql + 10 * k, qy + (fh > 50 * k ? 2 * k : 0), Blanco);
+                if (fh > 40 * k) chica.Escribe(d, chica.Ajusta(Form1.TextoCola(i + 1, q.Minutos), cw - ql - 20 * k), qx + ql + 10 * k, qy + lt.Tam * 1.3f, Gris);
+            }
         }
 
         private void Suena(Controlador c, float W, float H, float abajo)

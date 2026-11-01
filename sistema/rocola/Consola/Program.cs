@@ -122,10 +122,19 @@ namespace Rocola
             c.Prepara();
             foreach (string b in botones)
                 if (b == "atraccion") c.FuerzaAtraccion();
+                else if (b == "reposo")
+                {
+                    // algo sonando y cinco en la cola (sin salida: solo para ver la pantalla), y 20 s sin botones
+                    m.Moneda(); m.Moneda();
+                    foreach (Form1.Disco dd in c.discos) foreach (string r in dd.Rutas) if (!dd.Videos && m.EnCola < 6) m.Pide(r);
+                    m.EmpiezaSiguiente();
+                    c.FuerzaReposo();
+                }
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
-            if (botones.Contains("atraccion")) { v.Dibuja(c); System.Threading.Thread.Sleep(1300); }   // que termine de aparecer
+            if (botones.Contains("atraccion") || botones.Contains("reposo"))   // que termine de aparecer (unos cuadros durante 1,3 s)
+                for (int i = 0; i < 26; i++) { v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // que termine de aparecer
             v.Dibuja(c);
             fp.Captura(ruta);
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
