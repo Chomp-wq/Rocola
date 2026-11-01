@@ -10,6 +10,34 @@ elijan y solo lo que se elija. Y además se puede rehacer igual y actualizar cam
 **La rocola de Windows XP sigue igual** (carpeta `Rocola/`) y sigue funcionando en el bar. Rocola OS va aparte, en esta carpeta,
 hasta que esté probado en el A4.
 
+## Qué hace hoy (1-11-2026)
+
+Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle de cada paso, en [ETAPA2.md](ETAPA2.md)):
+
+- **El sonido de XP, igual:** la cadena entera (nivelado al límite, EQ automático, el local, el modo billar, presencia, voz/golpe/
+  retumbe, bajo psicoacústico, limitador de pico real, fundido...), comparada muestra a muestra con la de XP. MP3 sin huecos, relevo
+  sin pausa (también entre 44100 y 48000), discos continuos sin fundido. Por ALSA, sin servidores de sonido.
+- **Lo que XP ya aprendió, sin tocar el disco de XP:** al arrancar se montan en solo lectura los demás discos (el de XP, memorias
+  USB), se usa su carpeta `musica` y, la primera vez, se copian las medidas, el EQ, el volumen parejo, las estadísticas, los botones,
+  la configuración y las IA, traduciendo las rutas de Windows.
+- **La rocola:** la pared de discos por letra, lo más sonado (TOP), los vídeos (con mpv), el buscador con su teclado en pantalla,
+  las monedas y los créditos (4 por moneda), el turno («Tu canción es la 3a - en ~7 min»), los créditos de servicio del dueño, la
+  cola, y el estado que sobrevive a un apagón (y que el botón de encendido borra, como el cierre de XP). La misma navegación y los
+  mismos botones que XP (`rocola_teclas.txt`), con su asistente para configurarlos.
+- **Para el dueño:** Ctrl+F3 en un teclado abre los ajustes del sonido (los mismos interruptores de XP); el reinicio de las 7 y el
+  respaldo diario de lo aprendido; el repaso de la biblioteca en segundo plano.
+- **La pantalla:** por la tarjeta gráfica (KMS y OpenGL ES 2), con el cielo Legacy (estrellas y la aurora, que late con la música), la
+  portada enfocada con su halo, el disco abierto, lo que suena y lo que sigue. Si no hay pantalla gráfica, en modo texto.
+- **El sistema:** arranca en BIOS y en UEFI; la primera vez hace la prueba de sonido y gráfica, después entra directo; el volumen
+  general al máximo al arrancar (como XP); si la rocola se cierra, vuelve a abrirse; un fallo no la tumba.
+
+**Lo que aún no tiene de XP:** los cubos y la estrella animada, la atracción, el estado extendido y los demás adornos de la pantalla
+(Ctrl+F3 → Pantalla); «Lo que suena ahora» y las herramientas de diagnóstico del dueño; la comparación a ciegas; afinar el local con el
+celular; los MP3 con frecuencias mezcladas (en XP se reconstruyen).
+
+**Nada se ha probado aún en el A4:** todo está probado aquí (comparación con XP, pruebas fuera de pantalla) y en QEMU (arranque BIOS y
+UEFI, pantalla por KMS, sonido grabado de la tarjeta emulada, vídeo, botones por teclado, botón de encendido). Falta la máquina real.
+
 ## Las etapas
 
 1. **El sistema mínimo** (esta etapa): arranca en el A4 desde una memoria USB y comprueba el sonido (ALSA) y la gráfica
