@@ -410,3 +410,14 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   durante 15, el cubo se hace chico en la esquina y salen las cinco más pedidas, una a una desde la izquierda, con su portada y una
   barra que crece con sus veces; hacen falta al menos tres distintas. Y entre los mensajes, «Lo más pedido esta noche: «…»».
 - Probado en captura (`--boton noche`, con una cuenta de prueba).
+
+## Extra (1-11-2026): la pantalla viva de XP (tanda 5: el estilo)
+
+- **Letra para leer de lejos** (`letra_lejos=`): en la franja de lo que suena, el título crece (si no cabe, el de siempre con puntos
+  suspensivos) y lo que sigue va en una tarjeta lateral «A CONTINUACIÓN» (la siguiente y «y N más en la cola»).
+- **El color del género en todo** (`color_genero=`): los colores de XP tal cual (`ColorDeEtiqueta`, en `Motor/Estilo.cs`; un solo
+  sitio: etiqueta → color). Un resplandor de ese color que respira despacio (su propio reloj de 5 s, no la música) detrás de la portada
+  de lo que suena (la chica y la grande del reposo) y de la grande dentro de un disco (el género que manda en él, leído una vez por
+  disco); la pastilla del género (late con los graves) y la barra de avance de su color.
+- Arreglo: al empezar una canción se leen sus etiquetas (como XP); las que venían del estado guardado no tenían género.
+- Probado en captura con un MP3 etiquetado «Cumbia» (sale «Regional», naranja tierra).

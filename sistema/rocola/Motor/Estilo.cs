@@ -1,0 +1,82 @@
+// EL COLOR DEL GENERO EN TODO (color_genero= de XP, EstiloGpu.cs) y la letra para leer de lejos (letra_lejos=). Los colores son los de XP
+// (ColorDeEtiqueta de Form1.Fondo.cs, tal cual, como 0xRRGGBB): un solo sitio donde vive el color de cada genero (GenreLabel -> color).
+using System;
+using System.Collections.Generic;
+
+namespace Rocola
+{
+    public partial class Form1
+    {
+        public bool ColorGenero = true;   // "color_genero="
+        public bool LetraLejos = true;    // "letra_lejos="
+        public const uint ColorPorDefecto = 0x2D5FCDu;   // el azul de siempre (sin genero)
+
+        // El color del genero de la que suena (0 si no tiene genero).
+        public uint ColorSonando { get { string g = SonandoGenero; return string.IsNullOrEmpty(g) ? 0u : ColorDeEtiqueta(GenreLabel(g)); } }
+        public string EtiquetaSonando { get { string g = SonandoGenero; return string.IsNullOrEmpty(g) ? "" : GenreLabel(g); } }
+
+        // El genero que manda en un disco (el que mas se repite entre las canciones que traen etiqueta; se lee una vez por disco).
+        private readonly Dictionary<string, string> generoDisco = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public string GeneroDeDisco(Disco d)
+        {
+            if (d == null || d.Videos || d.Carpeta == null) return "";
+            string g;
+            if (generoDisco.TryGetValue(d.Carpeta, out g)) return g;
+            Dictionary<string, int> cuenta = new Dictionary<string, int>();
+            foreach (string r in d.Rutas)
+            {
+                Track t;
+                if (pistaDeRuta == null || !pistaDeRuta.TryGetValue(r, out t) || t == null) continue;
+                try { t.EnsureTags(); } catch { }
+                if (string.IsNullOrEmpty(t.Genre)) continue;
+                string e = GenreLabel(t.Genre); int n; cuenta.TryGetValue(e, out n); cuenta[e] = n + 1;
+            }
+            g = ""; int mejor = 0;
+            foreach (KeyValuePair<string, int> kv in cuenta) if (kv.Value > mejor) { mejor = kv.Value; g = kv.Key; }
+            generoDisco[d.Carpeta] = g;
+            return g;
+        }
+
+        public static uint ColorDeEtiqueta(string etiqueta)
+        {
+            switch (etiqueta)
+            {
+                case "Karaoke": return 0x4696F5u; // azul de escenario
+                case "Navidad": return 0x7DC846u; // verde pino claro
+                case "K-Pop": return 0xAF64EBu; // lila claro
+                case "Metal": return 0xD7282Du; // rojo sangre
+                case "Punk": return 0xF5551Eu; // naranja encendido
+                case "Gotico": return 0x643796u; // violeta oscuro
+                case "Industrial": return 0x914150u; // granate apagado
+                case "Reggaeton": return 0xC33CBEu; // magenta
+                case "Hip-Hop": return 0x7D46D7u; // violeta azulado
+                case "Tropical": return 0xFF8228u; // naranja mango
+                case "Regional": return 0xD77819u; // naranja tierra
+                case "Bolero": return 0xAF5055u; // vino rosado
+                case "Flamenco": return 0xC88250u; // arena tostada
+                case "Latino": return 0xBE552Du; // terracota
+                case "Reggae": return 0x28AF55u; // verde bandera
+                case "DnB": return 0x0F9196u; // turquesa oscuro
+                case "Electronica": return 0x23C3D2u; // cian brillante
+                case "Chill": return 0x5FAFA5u; // verde agua
+                case "Jazz": return 0xE1A028u; // ambar
+                case "Soul": return 0xB9822Du; // mostaza
+                case "Cristiana": return 0xCDC364u; // oro palido
+                case "Clasica": return 0x5A64D7u; // azul indigo
+                case "Soundtrack": return 0x6E7DC8u; // azul acero
+                case "Country": return 0x8C7855u; // caqui
+                case "Folk": return 0x78965Au; // verde oliva
+                case "Disco": return 0xE14BAFu; // rosa neon
+                case "Oldies": return 0xAA7369u; // rosa palo
+                case "World": return 0xA05F2Du; // marron
+                case "Vocal": return 0xC8AF96u; // crema
+                case "Hablado": return 0x878C8Cu; // gris
+                case "Infantil": return 0xFFBE37u; // amarillo vivo
+                case "Pop": return 0xEB376Eu; // rosa fuerte
+                case "Rock": return 0xE15F4Bu; // coral
+                default: return ColorPorDefecto;
+            }
+        }
+
+    }
+}

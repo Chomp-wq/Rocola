@@ -524,6 +524,7 @@ namespace Rocola
         {
             Form1.Disco disco = c.dentro;
             float lado = Math.Min(360 * k, abajo - 110 * k);
+            if (c.motor.ColorGenero) { string g = c.motor.GeneroDeDisco(disco); if (g.Length > 0) Resplandor(Form1.ColorDeEtiqueta(g), 32 * k + lado / 2, 90 * k + lado / 2, lado * 0.85f); }
             Portada(disco.Portada, disco.Artista, 32 * k, 90 * k, lado);
             float x = 32 * k + lado + 32 * k, ancho = W - x - 32 * k;
             grande.Escribe(d, grande.Ajusta(disco.Artista, ancho), x, 84 * k, Blanco);
@@ -581,7 +582,8 @@ namespace Rocola
             float lado = Math.Max(32 * k, Math.Min(ph - 40 * k, W * 0.22f));
             float cy = top + (ph - lado) / 2;
             Textura tx = caratulas.De(m.SonandoPortada);
-            d.Brillo(24 * k + lado / 2, cy + lado / 2, lado * 0.9f, (tx != null ? tx.Media : Dorado).ConAlfa(0.35f + 0.25f * pGraves));   // el halo late
+            if (m.ColorGenero && m.ColorSonando != 0) Resplandor(m.ColorSonando, 24 * k + lado / 2, cy + lado / 2, lado * 0.95f);
+            else d.Brillo(24 * k + lado / 2, cy + lado / 2, lado * 0.9f, (tx != null ? tx.Media : Dorado).ConAlfa(0.35f + 0.25f * pGraves));   // el halo late
             Portada(m.SonandoPortada, m.SonandoDisco ?? t, 24 * k, cy, lado);
             float x = 24 * k + lado + 28 * k;
             List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaDoce ? 12 : 3);
@@ -591,12 +593,15 @@ namespace Rocola
             enorme.Escribe(d, enorme.Ajusta(t, ancho), x, top + 40 * k, Blanco);
             float y = top + 40 * k + enorme.Tam * 1.25f;
             if (m.SonandoDisco != null) { media.Escribe(d, media.Ajusta(m.SonandoDisco, ancho), x, y, Gris); y += media.Tam * 1.5f; }
-            string gen = m.SonandoGenero;
-            if (!string.IsNullOrEmpty(gen))
+            string gen = m.EtiquetaSonando;
+            if (!string.IsNullOrEmpty(gen) && gen != "Otros")
             {
+                // la pastilla del genero, con un brillo que late con los graves (lo que suena, en grande, de XP)
+                Color4 cg = m.ColorGenero ? Color4.Hex(m.ColorSonando) : Dorado;
                 float wg = chica.Mide(gen) + 24 * k;
-                d.Redondo(x, y, wg, 28 * k, 14 * k, Dorado.ConAlfa(0.22f));
-                chica.Escribe(d, gen, x + 12 * k, y + 4 * k, Dorado);
+                d.Brillo(x + wg / 2, y + 14 * k, wg * 0.8f, cg.ConAlfa(0.25f * pGraves));
+                d.Redondo(x, y, wg, 28 * k, 14 * k, cg.ConAlfa(0.30f));
+                chica.Escribe(d, gen, x + 12 * k, y + 4 * k, Blanco);
             }
             // el reloj y la barra, abajo
             string reloj_ = m.SonandoTiempo;
@@ -623,6 +628,15 @@ namespace Rocola
             }
         }
 
+        // EL COLOR DEL GENERO (color_genero= de XP): un resplandor de ese color que respira despacio (con su propio reloj de 5 s, no con la
+        // musica: nada da saltos) detras de la portada.
+        private void Resplandor(uint rgb, float cx, float cy, float radio)
+        {
+            if (rgb == 0) return;
+            float a = 0.80f + 0.20f * (float)Math.Sin(reloj.Elapsed.TotalSeconds * 2 * Math.PI / 5.0);
+            d.Brillo(cx, cy, radio * 1.6f, Color4.Hex(rgb, a));
+            d.Brillo(cx, cy, radio * 1.25f, Color4.Hex(rgb, 0.8f * a));
+        }
         private void Suena(Controlador c, float W, float H, float abajo)
         {
             Form1 m = c.motor;
@@ -631,24 +645,48 @@ namespace Rocola
             string t = m.SonandoTitulo;
             if (t == null) { zSuena = new Zona(12 * k, abajo + 12 * k, H - abajo - 24 * k, H - abajo - 24 * k); media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
             zSuena = new Zona(12 * k, abajo + 12 * k, lado, lado);
+            if (m.ColorGenero) Resplandor(m.ColorSonando, 12 * k + lado / 2, abajo + 12 * k + lado / 2, lado * 0.95f);
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado, reloj.Elapsed.TotalSeconds * 1.44);   // el cubo chico de la barra (XP)
             float x = 24 * k + lado, ancho = W - x - 24 * k;
-            // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)
             List<string> prox = m.ProximasEnCola(3);
-            if (prox.Count > 0)
+            if (prox.Count > 0 && m.LetraLejos)
             {
+                // LETRA PARA LEER DE LEJOS (letra_lejos= de XP): lo que sigue va en una tarjeta lateral, «A CONTINUACIÓN»
+                float wc = W * 0.27f, xc = W - wc - 16 * k, hc = H - abajo - 26 * k;
+                d.Redondo(xc - 10 * k, abajo + 8 * k, wc + 10 * k, hc, 12 * k, PanelClaro.ConAlfa(0.9f));
+                chica.Escribe(d, "A CONTINUACIÓN", xc + 4 * k, abajo + 14 * k, Dorado);
+                media.Escribe(d, media.Ajusta(prox[0], wc - 14 * k), xc + 4 * k, abajo + 38 * k, Blanco);
+                if (m.EnCola > 1) chica.Escribe(d, "y " + (m.EnCola - 1) + " más en la cola", xc + 4 * k, abajo + 72 * k, Gris);
+                ancho = xc - x - 24 * k;
+            }
+            else if (prox.Count > 0)
+            {
+                // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)
                 float wc = W * 0.30f, xc = W - wc - 16 * k;
                 chica.Escribe(d, "SIGUEN (" + m.EnCola + ")", xc, abajo + 14 * k, Dorado);
                 for (int i = 0; i < prox.Count; i++) chica.Escribe(d, chica.Ajusta((i + 1) + ". " + prox[i], wc), xc, abajo + (38 + 22 * i) * k, Gris);
                 ancho = xc - x - 16 * k;
             }
             chica.Escribe(d, "SUENA", x, abajo + 14 * k, Dorado);
-            grande.Escribe(d, grande.Ajusta(t, ancho), x, abajo + 36 * k, Blanco);
-            if (m.SonandoDisco != null) chica.Escribe(d, chica.Ajusta(m.SonandoDisco, ancho), x, abajo + 76 * k, Gris);
+            // el titulo crece un 45 % con la letra de lejos (si no cabe, el de siempre con puntos suspensivos)
+            Letra lt = m.LetraLejos && enorme.Mide(t) <= ancho ? enorme : grande;
+            lt.Escribe(d, lt.Ajusta(t, ancho), x, abajo + (lt == enorme ? 32 : 36) * k, Blanco);
+            float ya = abajo + (lt == enorme ? 82 : 76) * k;
+            float xa = x;
+            string gen = m.ColorGenero ? m.EtiquetaSonando : "";
+            if (gen.Length > 0 && gen != "Otros")
+            {
+                float wg = chica.Mide(gen) + 16 * k;
+                d.Redondo(xa, ya - 1 * k, wg, 22 * k, 11 * k, Color4.Hex(m.ColorSonando, 0.30f + 0.25f * pGraves));   // late con los graves
+                chica.Escribe(d, gen, xa + 8 * k, ya, Blanco);
+                xa += wg + 10 * k;
+            }
+            if (m.SonandoDisco != null) chica.Escribe(d, chica.Ajusta(m.SonandoDisco, ancho - (xa - x)), xa, ya, Gris);
             float p = c.Progreso;
             float wb = W - x - 24 * k;
+            Color4 barra = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Dorado;
             d.Rect(x, H - 10 * k, wb, 4 * k, PanelClaro);
-            d.Rect(x, H - 10 * k, wb * p, 4 * k, Dorado);
+            d.Rect(x, H - 10 * k, wb * p, 4 * k, barra);
         }
 
         // EL CUBO QUE GIRA (Cube.Draw de XP y su gemelo en la tarjeta: D3D9Star.cs, PreparaCubo): la portada en las cuatro caras de un prisma

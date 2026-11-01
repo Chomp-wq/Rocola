@@ -96,6 +96,7 @@ namespace Rocola
             {
                 lector.Volume = 1f;
                 sonoAntes = nowPlaying; nowPlaying = item;
+                if (item != null && !item.IsVideo && item.Song != null) try { item.Song.EnsureTags(); } catch { }   // su genero, al empezarla (como XP)
                 CadenaCancion cad = ArmaCadena(item.Song, lector, false, 0.0);
                 SellaInicioReloj(cad);
                 cad.Item = item;
@@ -206,6 +207,7 @@ namespace Rocola
             else if (item != null) queue.Remove(item);
             sonoAntes = nowPlaying;
             nowPlaying = item;
+            if (item != null && !item.IsVideo && item.Song != null) try { item.Song.EnsureTags(); } catch { }   // su genero, al empezarla (como XP)
         }
 
         // LA SALIDA SE ACABO (o se paro): como RecogeAlParar y DisposePlaybackNow de XP. Si la siguiente ya habia entrado, pasa a sonar

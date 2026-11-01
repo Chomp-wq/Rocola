@@ -76,6 +76,8 @@ namespace Rocola
                     else if (s.StartsWith("avisos_claros=")) AvisosClaros = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("escaparate=")) Escaparate = s.Substring(11).Trim() != "0";
                     else if (s.StartsWith("top_noche=")) TopNocheOn = s.Substring(10).Trim() != "0";
+                    else if (s.StartsWith("color_genero=")) ColorGenero = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("letra_lejos=")) LetraLejos = s.Substring(12).Trim() != "0";
                     else if (s.StartsWith("muro_reposo=")) MuroReposo = s.Substring(12).Trim() != "0";             // el estado extendido (EstadoExtendido.cs)
                     else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
                     else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";
