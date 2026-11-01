@@ -529,3 +529,19 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **Encendido remoto (Wake on LAN):** la tarjeta queda escuchando el paquete mágico al prender y al apagar (`ethtool -s eth0 wol g`). Lo
   manda el router del bar (decisión del dueño); falta activarlo en el BIOS y configurarlo en el router (`LEEME.md`).
 - Nada de esto probado aún en el A4 ni con el router del bar.
+
+## Extra (1-11-2026): el sistema operativo también se actualiza (soporte continuo)
+
+- **Dos copias del sistema** en la rocola instalada: `\rocola-os\a\` y `\rocola-os\b\` (núcleo, initramfs y `sistema.img`), y
+  `\rocola-os\arranque.cfg` dice cuál prende (GRUB lo lee con `source`). **Lo aprendido va aparte**, en `\rocola-os\datos.img`
+  (montado en `/rocola/datos`), y con él las versiones bajadas del programa (`/rocola/datos/programa`): cambiar el sistema no lo toca.
+- **GitHub compila el sistema entero** (`.github/workflows/rocola-sistema.yml`: `sh sistema/compila.sh` con la imagen del A4, guardando
+  descargas y ccache entre compilaciones), prueba que el núcleo arranca en QEMU y publica «sistema-N» con `sistema.img.gz`, `bzImage`,
+  `initrd.gz` y sus sumas, y además `disk.img.gz` (la imagen de la memoria USB del instalador).
+- **`rocola-actualiza`** (después del programa): en la rocola instalada baja el sistema nuevo a la copia que no está en uso, comprueba
+  las sumas, lo apunta en `arranque.cfg`, deja `probando` y la rocola se reinicia sola cuando está libre (sale con 43).
+- **La vuelta atrás:** el initramfs cuenta los arranques del sistema en prueba; la rocola lo confirma a los 3 minutos en pie
+  (S99rocola borra `probando`); si a los 15 minutos no se confirmó, reinicia, y al tercer arranque sin confirmar el initramfs vuelve al
+  anterior y lo apunta como malo. Con ESC al prender, «la versión anterior del sistema».
+- El instalador ya instala así (2,3 GB libres). **Sin probar todavía:** la primera compilación del sistema en GitHub y la vuelta
+  atrás en QEMU (siguiente paso).

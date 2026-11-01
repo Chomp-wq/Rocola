@@ -13,10 +13,16 @@ namespace Rocola
         internal static string TextoInternet()
         {
             StringBuilder sb = new StringBuilder();
-            string vInstalada = Leer("/rocola/programa/version");
-            sb.Append("Programa: version ").Append(Version.Numero).Append(" (").Append(Version.Commit).Append(")");
-            string nueva = Leer("/rocola/programa/nueva.version");
+                        sb.Append("Programa: version ").Append(Version.Numero).Append(" (").Append(Version.Commit).Append(")");
+            string nueva = Leer("/rocola/datos/programa/nueva.version");
             if (nueva.Length > 0) sb.Append("   -> la ").Append(nueva).Append(" se pone cuando la rocola este libre");
+            sb.Append('\n');
+            string so = Leer("/etc/rocola-sistema-version"); if (so.Length == 0) so = "0";
+            sb.Append("Sistema: version ").Append(so);
+            string cfg = Leer("/rocola/disco/rocola-os/arranque.cfg");
+            if (cfg.Length == 0) sb.Append(" (desde la memoria USB: se actualiza al instalarlo)");
+            else if (File.Exists("/rocola/disco/rocola-os/probando")) sb.Append(" (nueva, en prueba: se da por buena a los 3 minutos)");
+            if (File.Exists("/run/rocola-reinicio-sistema")) sb.Append("   -> uno nuevo listo: se reinicia cuando la rocola este libre");
             sb.Append('\n');
             bool hay = false;
             try

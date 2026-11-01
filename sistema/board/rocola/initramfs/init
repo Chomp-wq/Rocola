@@ -1,13 +1,20 @@
 #!/bin/sh
-# EL ARRANQUE DEL SISTEMA INSTALADO (rocola-instalar). Rocola OS va en un archivo, /rocola-os/sistema.img (ext4), dentro del disco NTFS
-# de la rocola, junto a su musica: no hay particion propia. Esto busca ese disco, lo monta (con escritura: el sistema escribe en su
-# archivo, nunca en la musica), monta el archivo por loop y arranca desde ahi. El disco queda visible en /rocola/disco.
+# EL ARRANQUE DEL SISTEMA INSTALADO (rocola-instalar). Rocola OS va en archivos dentro del disco NTFS de la rocola, junto a su musica:
+#   /rocola-os/a/ y /rocola-os/b/   dos copias del sistema (sistema.img, ext4); GRUB dice cual (rocola.slot=a|b)
+#   /rocola-os/datos.img            lo aprendido (/rocola/datos): no cambia al actualizar el sistema
+# Esto busca ese disco, lo monta (con escritura: el sistema escribe en sus archivos, nunca en la musica), monta la copia por loop y
+# arranca desde ahi. El disco queda visible en /rocola/disco.
+#
+# LA VUELTA ATRAS DEL SISTEMA: una actualizacion (rocola-actualiza) se escribe en la otra copia, la pone en /rocola-os/arranque.cfg y
+# deja /rocola-os/probando. Cada arranque de la nueva lo cuenta; la rocola lo borra cuando lleva 3 minutos funcionando. Si la nueva no
+# llega ahi en dos arranques (no prende la pantalla, se cuelga...), aqui se vuelve a la anterior y se apunta como mala.
 /bin/busybox --install -s /bin 2>/dev/null
 mount -t devtmpfs devtmpfs /dev
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
-RAIZ=$(sed -n 's/.*rocola\.raiz=\([^ ]*\).*/\1/p' /proc/cmdline)
-[ -n "$RAIZ" ] || RAIZ=/rocola-os/sistema.img
+SLOT=$(sed -n 's/.*rocola\.slot=\([ab]\).*/\1/p' /proc/cmdline)
+[ -n "$SLOT" ] || SLOT=a
+OS=/rocola-os
 mkdir -p /disco /raiz
 encontrado=
 i=0
@@ -18,16 +25,39 @@ while [ $i -lt 30 ] && [ -z "$encontrado" ]; do   # los discos pueden tardar uno
 		mount -t ntfs3 -o rw,iocharset=utf8 "$d" /disco 2>/dev/null \
 			|| mount -t ntfs3 -o rw,force,iocharset=utf8 "$d" /disco 2>/dev/null \
 			|| mount "$d" /disco 2>/dev/null || continue
-		if [ -f "/disco$RAIZ" ]; then encontrado=$d; break; fi
+		if [ -f "/disco$OS/$SLOT/sistema.img" ]; then encontrado=$d; break; fi
 		umount /disco
 	done
 	[ -n "$encontrado" ] || { i=$((i + 1)); sleep 1; }
 done
 if [ -z "$encontrado" ]; then
-	echo "Rocola OS: no encuentro el disco con $RAIZ"; exec sh
+	echo "Rocola OS: no encuentro el disco con $OS/$SLOT/sistema.img"; exec sh
 fi
-if ! losetup /dev/loop0 "/disco$RAIZ" || ! mount -t ext4 /dev/loop0 /raiz; then
-	echo "Rocola OS: no pude montar $RAIZ"; exec sh
+
+# La copia en prueba (una actualizacion del sistema): a la tercera sin confirmar, se vuelve a la otra.
+P=/disco$OS/probando
+if [ -f "$P" ] && ! grep -q rocola.anterior /proc/cmdline; then
+	n=$(( $(cat "$P" 2>/dev/null || echo 0) + 1 ))
+	if [ "$n" -gt 2 ]; then
+		otro=a; [ "$SLOT" = a ] && otro=b
+		cat "/disco$OS/$SLOT/version" >> "/disco$OS/sistema-malas" 2>/dev/null
+		printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$otro" "$SLOT" > "/disco$OS/arranque.cfg"
+		rm -f "$P"
+		printf '%s  el sistema nuevo (%s) no arranco bien: se volvio al anterior (%s)\n' "$(date '+%Y-%m-%d %H:%M')" "$SLOT" "$otro" >> "/disco$OS/sistema.txt"
+		sync; umount /disco
+		echo "Rocola OS: el sistema nuevo no arranco bien; vuelvo al anterior"; sleep 3
+		reboot -f
+	fi
+	echo "$n" > "$P"; sync
+fi
+
+if ! losetup /dev/loop0 "/disco$OS/$SLOT/sistema.img" || ! mount -t ext4 /dev/loop0 /raiz; then
+	echo "Rocola OS: no pude montar $OS/$SLOT/sistema.img"; exec sh
+fi
+# Lo aprendido, aparte (si esta: una instalacion de antes de las dos copias lo tenia dentro del sistema)
+if [ -f "/disco$OS/datos.img" ]; then
+	mkdir -p /raiz/rocola/datos
+	losetup /dev/loop1 "/disco$OS/datos.img" && mount -t ext4 /dev/loop1 /raiz/rocola/datos
 fi
 mkdir -p /raiz/rocola/disco
 mount --move /disco /raiz/rocola/disco

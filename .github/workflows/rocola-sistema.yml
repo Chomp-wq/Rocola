@@ -1,0 +1,84 @@
+# EL SISTEMA OPERATIVO DE LA ROCOLA (Rocola OS), COMPILADO POR GITHUB (peticion del dueno del 1-11-2026: soporte continuo). En cada cambio
+# del sistema (sistema/, menos el programa, que tiene su propio flujo) compila con Buildroot la imagen del A4 entera (sh sistema/compila.sh)
+# y publica la version «sistema-N» con:
+#   sistema.img.gz, bzImage, initrd.gz + sha256.txt   lo que baja la rocola instalada para actualizarse (rocola-actualiza)
+#   disk.img.gz + disk.img.gz.sha256                  la imagen para la memoria USB (el instalador): ya no hace falta compilar en casa
+# Antes de publicar, prueba que el nucleo arranca (en QEMU, hasta el primer programa: el resto lleva instrucciones del Piledriver que QEMU
+# no tiene). Las descargas y ccache se guardan entre compilaciones (la primera tarda horas; las siguientes, mucho menos).
+name: Sistema de la rocola (Rocola OS)
+
+on:
+  push:
+    branches: [claude/modest-carson-fa2v2n]
+    paths:
+      - 'sistema/board/**'
+      - 'sistema/configs/**'
+      - 'sistema/package/**'
+      - 'sistema/external.mk'
+      - 'sistema/external.desc'
+      - 'sistema/Config.in'
+      - 'sistema/compila.sh'
+      - '.github/workflows/rocola-sistema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rocola-sistema
+  cancel-in-progress: false
+
+jobs:
+  compilar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      ROCOLA_TRABAJO: /home/runner/rocola-trabajo
+      ROCOLA_SISTEMA_VERSION: ${{ github.run_number }}
+    steps:
+      - name: Hacer sitio en el disco (Buildroot ocupa unos 16 GB)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          mkdir -p /home/runner/rocola-trabajo
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Herramientas
+        run: sudo apt-get update -q && sudo apt-get install -y -q build-essential cpio rsync bc unzip file clang zlib1g-dev qemu-system-x86 python3
+      - name: Descargas y ccache de la vez anterior
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/rocola-trabajo/descargas
+            /home/runner/rocola-trabajo/ccache
+          key: rocola-sistema-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-${{ github.run_number }}
+          restore-keys: |
+            rocola-sistema-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-
+            rocola-sistema-
+      - name: Compilar Rocola OS (la imagen del A4)
+        run: sh sistema/compila.sh
+      - name: Probar que el nucleo arranca
+        run: |
+          I=/home/runner/rocola-trabajo/salida/images
+          timeout 600 qemu-system-x86_64 -m 1024 -kernel $I/bzImage -append "console=ttyS0 root=PARTUUID=524f4341-01 rootwait panic=-1" \
+            -drive file=$I/disk.img,format=raw,if=ide,snapshot=on -display none -serial file:serie.txt -no-reboot || true
+          tail -n 20 serie.txt
+          grep -q "Run /sbin/init" serie.txt
+      - name: Publicar la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          I=/home/runner/rocola-trabajo/salida/images; T=/home/runner/rocola-trabajo/salida/target
+          mkdir -p pub
+          gzip -9c $I/rootfs.ext2 > pub/sistema.img.gz
+          cp $I/bzImage pub/bzImage
+          cp $T/usr/share/rocola/instalar/initrd.gz pub/initrd.gz
+          (cd pub && sha256sum sistema.img.gz bzImage initrd.gz > sha256.txt)
+          gzip -9c $I/disk.img > pub/disk.img.gz
+          (cd pub && sha256sum disk.img.gz > disk.img.gz.sha256)
+          echo "sistema $V ${GITHUB_SHA}" > pub/version.txt
+          git log -1 --pretty='%s' > notas.txt
+          gh release create "sistema-$V" pub/* --target "$GITHUB_SHA" --title "Sistema de la rocola $V" --notes-file notas.txt

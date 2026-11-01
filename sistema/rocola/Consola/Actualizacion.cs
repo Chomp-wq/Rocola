@@ -9,7 +9,7 @@ namespace Rocola
 {
     internal sealed partial class Controlador
     {
-        internal const int SalidaParaActualizar = 42;
+        internal const int SalidaParaActualizar = 42, SalidaParaSistema = 43;   // 43: un sistema nuevo listo: /usr/bin/rocola reinicia el equipo
         internal int CodigoSalida;
         private int ultimaRevisionActualizacion;
         private void RevisaActualizacion()
@@ -17,14 +17,15 @@ namespace Rocola
             int ahora = Environment.TickCount;
             if (unchecked(ahora - ultimaRevisionActualizacion) < 15000) return;
             ultimaRevisionActualizacion = ahora;
-            if (!File.Exists("/run/rocola-hay-nueva")) return;
+            bool programa = File.Exists("/run/rocola-hay-nueva"), sistema = File.Exists("/run/rocola-reinicio-sistema");
+            if (!programa && !sistema) return;
             bool libre = motor.Sonando == null && !motor.SonandoVideo && motor.EnCola == 0 && video == null && salida == null
                 && AjusteSel < 0 && AsistentePaso < 0 && !Buscando && !AyudaAbierta && DiagEscena < 0
                 && unchecked(ahora - ultimoToque) > 120000;
             if (!libre) return;
-            Console.WriteLine("Actualizacion: hay una version nueva y la rocola esta libre: se reinicia para ponerla");
+            Console.WriteLine("Actualizacion: hay " + (sistema ? "un sistema nuevo" : "una version nueva") + " y la rocola esta libre: se reinicia para ponerlo");
             motor.GuardaEstado();
-            CodigoSalida = SalidaParaActualizar;
+            CodigoSalida = sistema ? SalidaParaSistema : SalidaParaActualizar;
             salir = true;
         }
     }

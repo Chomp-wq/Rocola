@@ -151,7 +151,7 @@ el A4.
 5. Al acabar pide **quitar la memoria USB** y se reinicia sola: desde entonces prende directo en la rocola.
 
 Windows XP deja de arrancar, pero no se borra nada suyo: con **ESC al prender** sale el menú, que tiene «Windows XP (la rocola de
-antes)». El arranque de antes queda guardado en `\rocola-os\arranque-xp.original.bin`. Hace falta 1,7 GB libres en el disco. Volver a
+antes)». El arranque de antes queda guardado en `\rocola-os\arranque-xp.original.bin`. Hace falta 2,3 GB libres en el disco (las dos copias del sistema y lo aprendido). Volver a
 instalar (otra versión) conserva lo aprendido.
 
 ## Internet, actualizaciones y encendido remoto
@@ -162,9 +162,19 @@ La rocola se conecta **por cable** (DHCP: basta conectarla al router). Con inter
   (`.github/workflows/rocola-programa.yml`) y lo publica como la versión «programa-N» del repositorio. La rocola la busca al minuto
   de prender y cada hora, la baja, comprueba su suma y que arranca en ese equipo, y la pone **sola en cuanto está libre** (nada
   sonando ni en la cola, y nadie tocándola en 2 minutos; los créditos se conservan). Si la nueva se cae al arrancar, vuelve sola a la
-  anterior y no la vuelve a bajar. Solo el programa de la rocola: el sistema (núcleo, bibliotecas) no.
+  anterior y no la vuelve a bajar. Y desde la versión con las dos copias, **también el sistema entero** (ver abajo).
 - **Ctrl+F3 → Internet:** la versión, la red (con la MAC), cómo va la actualización, «Buscar actualización ahora» y el interruptor
   «Actualizarse sola». Lo que pasó, en `rocola_actualizaciones.txt`.
+
+**El sistema operativo también se actualiza (soporte continuo).** GitHub compila el sistema entero con Buildroot en cada cambio de
+`sistema/` (`.github/workflows/rocola-sistema.yml`; la primera vez tarda horas, después mucho menos) y publica la versión
+«sistema-N». La rocola instalada guarda **dos copias del sistema** (`\rocola-os\a` y `\rocola-os\b`): la nueva se baja en la que no se
+usa, se comprueba y la rocola se reinicia sola cuando está libre. Si el sistema nuevo no llega a funcionar 3 minutos (dos intentos),
+**vuelve solo al anterior** y no lo vuelve a bajar. Lo aprendido y el programa van aparte (`\rocola-os\datos.img`) y no se tocan. Con
+ESC al prender, el menú tiene también «la versión anterior del sistema». Lo que pasa, en `\rocola-os\sistema.txt`.
+
+**La memoria USB, sin compilar nada:** cada versión «sistema-N» trae `disk.img.gz` (la imagen del instalador). Se baja de GitHub
+(el repositorio → Releases → la última «Sistema de la rocola»), se descomprime y se graba en la memoria (Rufus o balenaEtcher).
 
 **La llave de GitHub (una vez).** El repositorio es privado: la rocola necesita una llave que solo pueda leerlo.
 1. En GitHub: tu foto → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.

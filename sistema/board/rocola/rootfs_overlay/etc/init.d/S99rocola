@@ -20,6 +20,19 @@ case "$1" in
 			i=0; while [ $i -lt 360 ] && [ ! -f /run/rocola-buscar-ya ]; do sleep 10; i=$((i + 1)); done
 			rm -f /run/rocola-buscar-ya
 		  done ) &
+		# UN SISTEMA NUEVO EN PRUEBA (rocola-actualiza): si la rocola no lleva 3 minutos en pie a los 15 minutos de prender, se reinicia;
+		# el initramfs cuenta los arranques y a la tercera vuelve al sistema anterior. Si llega, se da por bueno.
+		if [ -f /rocola/disco/rocola-os/probando ]; then
+			( i=0
+			  while [ $i -lt 90 ] && [ ! -f /run/rocola-confirmado ]; do sleep 10; i=$((i + 1)); done
+			  if [ -f /run/rocola-confirmado ]; then
+				rm -f /rocola/disco/rocola-os/probando
+				printf '%s  el sistema %s quedo bien\n' "$(date '+%Y-%m-%d %H:%M')" "$(cat /etc/rocola-sistema-version 2>/dev/null)" >> /rocola/disco/rocola-os/sistema.txt
+			  else
+				printf '%s  el sistema %s no llego a confirmarse: reinicio\n' "$(date '+%Y-%m-%d %H:%M')" "$(cat /etc/rocola-sistema-version 2>/dev/null)" >> /rocola/disco/rocola-os/sistema.txt
+				sync; reboot
+			  fi; sync ) &
+		fi
 		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
 		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		# La prueba de sonido y grafica la primera vez (o si se elige en el menu de GRUB: rocola.prueba); despues, directo a la rocola.

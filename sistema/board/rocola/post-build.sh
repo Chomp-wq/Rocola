@@ -22,3 +22,6 @@ cp "$BOARD_DIR/initramfs/init" "$I/init"; chmod 755 "$I/init"
 mkdir -p "$TARGET_DIR/usr/share/rocola/instalar"
 (cd "$I" && find . | cpio -o -H newc --quiet | gzip -9) > "$TARGET_DIR/usr/share/rocola/instalar/initrd.gz"
 rm -rf "$I"
+# LA VERSION DEL SISTEMA (la pone GitHub al compilarlo: .github/workflows/rocola-sistema.yml; en casa, la 0). rocola-actualiza la compara
+# con la ultima publicada.
+echo "${ROCOLA_SISTEMA_VERSION:-0}" > "$TARGET_DIR/etc/rocola-sistema-version"

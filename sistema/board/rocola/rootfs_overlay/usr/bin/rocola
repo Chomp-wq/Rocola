@@ -3,11 +3,11 @@
 # los controles de la tarjeta: Master, PCM y las salidas), y la rocola en la pantalla. Si se cierra o se cae, vuelve a empezar (la
 # de XP la vigilaba igual). Sus datos en /rocola/datos; lo que dice, en /root/rocola.txt (se recorta al pasar de 1 MB).
 #
-# LAS ACTUALIZACIONES (rocola-actualiza): el programa que corre es /rocola/programa/rocola-consola si lo hay (el ultimo bajado de
+# LAS ACTUALIZACIONES (rocola-actualiza): el programa que corre es /rocola/datos/programa/rocola-consola si lo hay (el ultimo bajado de
 # GitHub), si no el que trae el sistema. Una version nueva (rocola-consola.nueva) se pone al arrancar o cuando la rocola sale con 42
 # (lo hace sola en cuanto esta libre). Si la nueva se cae dos veces en sus primeros 2 minutos, se vuelve a la anterior y se apunta como
 # mala (no se vuelve a bajar).
-PROG=${ROCOLA_PROG:-/rocola/programa}
+PROG=${ROCOLA_PROG:-/rocola/datos/programa}   # (con lo aprendido: sobrevive a una actualizacion del sistema)
 BITACORA=${ROCOLA_BITACORA:-/rocola/datos/rocola_actualizaciones.txt}
 REGISTRO=${ROCOLA_REGISTRO:-/root/rocola.txt}   # (cambiables para probarlo fuera de la rocola)
 for c in Master PCM Speaker Headphone Front "Line Out"; do amixer -q sset "$c" 100% unmute 2>/dev/null; done
@@ -33,6 +33,8 @@ vuelve_atras() {
 	apunta "La version $mala se cayo al arrancar: se volvio a la anterior"
 }
 pon_nueva
+# El sistema se da por bueno cuando la rocola lleva 3 minutos en pie (una actualizacion del sistema en prueba: S99rocola y el initramfs).
+( sleep 180; while ! pidof rocola-consola >/dev/null; do sleep 10; done; touch ${ROCOLA_RUN:-/run}/rocola-confirmado ) &
 while :; do
 	[ -f $REGISTRO ] && [ "$(wc -c < $REGISTRO)" -gt 1048576 ] && mv $REGISTRO $REGISTRO.1
 	echo "--- $(date) arranca la rocola" >> $REGISTRO
@@ -43,6 +45,7 @@ while :; do
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
+	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)
 	if [ "$probando" = 1 ]; then
 		if [ "$duro" -lt 120 ] && [ "$r" != 0 ]; then
 			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras
