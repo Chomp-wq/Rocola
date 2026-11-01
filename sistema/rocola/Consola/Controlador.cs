@@ -135,6 +135,7 @@ namespace Rocola
         internal volatile bool Apagando;
         internal void Apaga() { Apagando = true; salir = true; pulsos.Add(0); }
 
+        private int fallos;
         internal int Corre(IVista vista)
         {
             vistaActual = vista;
@@ -160,12 +161,23 @@ namespace Rocola
                 {
                     while (!salir)
                     {
-                        int vk;
-                        if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
-                        motor.PublicaMedidas();
-                        motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
-                        Suena();
-                        if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
+                        // UN FALLO NO TUMBA LA ROCOLA (como XP): cada vuelta va protegida; el error se apunta en rocola_error.txt y se sigue.
+                        try
+                        {
+                            int vk;
+                            if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50)) { if (vk == 0) break; motor.HuboBoton(); Tecla(vk); }
+                            motor.PublicaMedidas();
+                            motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
+                            Suena();
+                            if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
+                        }
+                        catch (Exception ex)
+                        {
+                            fallos++;
+                            motor.ApuntaError("La rocola (vuelta del bucle)", ex);
+                            if (fallos > 200) throw;   // algo roto de verdad: que el vigilante la vuelva a abrir
+                            Thread.Sleep(100);
+                        }
                     }
                 }
                 finally

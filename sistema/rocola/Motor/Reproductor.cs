@@ -107,5 +107,8 @@ namespace Rocola
 
         // Espera a que lo encargado al disco termine de escribirse (QueueDataWrite).
         private bool EsperaGuardados(int ms) { return dataWritesIdle.WaitOne(ms); }
+
+        // Un error, a rocola_error.txt (LogError de XP, con su sello y su tope).
+        public void ApuntaError(string donde, Exception ex) { try { LogError(donde, ex); } catch { } }
     }
 }
