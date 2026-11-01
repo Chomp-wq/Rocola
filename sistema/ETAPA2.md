@@ -383,3 +383,20 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - Los tres con su interruptor en la hoja de ajustes (grupo «Pantalla»), encendidos de fábrica, con las claves de XP. Probado en
   captura la ficha, la lupa y el deslizamiento a mitad (con una biblioteca de 12 discos; `--cuadros N` elige cuántos cuadros de
   50 ms se dibujan antes de la captura). El sentido es el de la flecha apretada (con dos páginas, ir y volver llevan a la misma).
+
+## Extra (1-11-2026): la pantalla viva de XP (tandas 2 y 3: dentro del disco, lo que suena y los créditos)
+
+- **Lista grande** (`lista_grande=`): filas más altas y letra más grande dentro del disco.
+- **Ecualizador en la que suena** (`eq_sonando=`): su pastilla SONANDO lleva cuatro barritas que se mueven con la música (el pulso
+  que mide el motor a la salida).
+- **En cola, con los minutos** (`cola_minutos=`): «EN COLA 3 · en ~9 min» en las filas (`TextoCola`/`MinutosEspera` de XP).
+- **Ver adónde va** (`vuelo_cola=`): al pedir una canción (en el disco o en el buscador), su boleto sale de la fila y vuela en arco
+  hasta la cápsula de la cola (o hasta lo que suena, si no sonaba nada); al llegar, la cápsula da un saltito.
+- **La moneda que cae** (`moneda_cae=`): cae una moneda dorada girando hasta la cápsula de Créditos, que da un destello verde, y sube
+  «+4 créditos».
+- **Sin créditos, invitar** (`sin_creditos_invita=`): en vez del letrero, una tarjeta amable con la ranura y una moneda entrando: «Te
+  falta un crédito. Inserta una moneda para poner «…»». Se va sola a los 4,2 s (o al meter la moneda).
+- **Avisos que se entienden** (`avisos_claros=`): entran por la derecha con su color y su icono (hecho, cuidado, error, novedad), en
+  dos renglones (`PartirAviso` de XP, tal cual) y con una línea que enseña cuánto les queda. En XP el tipo sale del color con que avisa
+  cada sitio; en Rocola OS, de lo que dice el aviso.
+- Los siete con su interruptor (grupo «Pantalla»), encendidos de fábrica, con las claves de XP. Probados en captura (`--cuadros`).

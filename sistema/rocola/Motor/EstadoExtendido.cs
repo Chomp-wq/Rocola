@@ -32,7 +32,7 @@ namespace Rocola
         private static string Reloj(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
         public string SonandoGenero { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? (p.Song.Genre ?? "") : ""; } }
 
-        public sealed class EnColaVista { public string Titulo, Disco, Portada; public int Minutos; public bool Video; }
+        public sealed class EnColaVista { public string Titulo, Disco, Portada, Ruta; public int Minutos; public bool Video; }
         public List<EnColaVista> ColaParaPantalla(int n)
         {
             List<EnColaVista> r = new List<EnColaVista>();
@@ -40,7 +40,7 @@ namespace Rocola
             for (int i = 0; i < queue.Count && r.Count < n; i++)
             {
                 PlayItem q = queue[i];
-                EnColaVista v = new EnColaVista { Video = q.IsVideo, Minutos = MinutosEspera(s) };
+                EnColaVista v = new EnColaVista { Video = q.IsVideo, Minutos = MinutosEspera(s), Ruta = q.PathKey() };
                 v.Titulo = q.IsVideo ? Path.GetFileNameWithoutExtension(q.VideoPath) : q.Song.ToString();
                 if (q.Disc != null) { v.Disco = string.IsNullOrEmpty(q.Disc.Name) ? q.Disc.Artist : q.Disc.Artist + " - " + q.Disc.Name; v.Portada = q.Disc.CoverPath; }
                 r.Add(v);

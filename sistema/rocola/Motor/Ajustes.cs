@@ -165,6 +165,13 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Ficha rapida del disco (al quedarse en uno)", "ficha_disco", () => FichaDisco, v => FichaDisco = v, false));
             l.Add(Interruptor("Pantalla", "Barra de letras con lupa", "letras_lupa", () => LetrasLupa, v => LetrasLupa = v, false));
             l.Add(Interruptor("Pantalla", "Pasar de pagina deslizando", "pagina_desliza", () => PaginaDesliza, v => PaginaDesliza = v, false));
+            l.Add(Interruptor("Pantalla", "Lista grande dentro del disco", "lista_grande", () => ListaGrande, v => ListaGrande = v, false));
+            l.Add(Interruptor("Pantalla", "Ecualizador en la que suena", "eq_sonando", () => EqSonando, v => EqSonando = v, false));
+            l.Add(Interruptor("Pantalla", "En cola, con los minutos", "cola_minutos", () => ColaMinutos, v => ColaMinutos = v, false));
+            l.Add(Interruptor("Pantalla", "Ver adonde va (el boleto vuela a la cola)", "vuelo_cola", () => VueloCola, v => VueloCola = v, false));
+            l.Add(Interruptor("Pantalla", "La moneda que cae", "moneda_cae", () => MonedaCae, v => MonedaCae = v, false));
+            l.Add(Interruptor("Pantalla", "Sin creditos, invitar", "sin_creditos_invita", () => SinCreditosInvita, v => SinCreditosInvita = v, false));
+            l.Add(Interruptor("Pantalla", "Avisos que se entienden", "avisos_claros", () => AvisosClaros, v => AvisosClaros = v, false));
             l.Add(Interruptor("Pantalla", "La pared se aparta cuando nadie la usa", "muro_reposo", () => MuroReposo, v => MuroReposo = v, false));
             Ajuste ee = Interruptor("Pantalla", "Lo que suena, en grande (estado extendido)", "estado_expandido", () => EstadoExpandido, v => EstadoExpandido = v, false);
             ee.Bloqueo = delegate { return MuroReposo ? null : "necesita que la pared se aparte"; };   // como XP: lo enciende la pared quieta

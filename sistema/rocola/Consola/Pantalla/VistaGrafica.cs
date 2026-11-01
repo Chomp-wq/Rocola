@@ -116,7 +116,8 @@ namespace Rocola
             zCreditos = new Zona(W - wcr - 24 * k, 8 * k, wcr + 8 * k, 48 * k);
             Casillas(c);
             media.Escribe(d, cr, W - wcr, 19 * k, m.Creditos > 0 ? Verde : Dorado);
-            if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k, Gris); }
+            if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; float sq = Salto(c); chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k - sq, sq > 0 ? Dorado : Gris); }
+            zCola = new Zona(W - wcr - 40 * k - chica.Mide("En la cola: 00"), 16 * k, chica.Mide("En la cola: 00"), 32 * k);
             float abajo = H - 120 * k;   // donde empieza lo que suena
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); d.Termina(); sup.Presenta(); return; }
@@ -137,12 +138,14 @@ namespace Rocola
             }
             else Suena(c, W, H, abajo);
             string av = c.AvisoVigente;
-            if (av.Length > 0)
+            if (av.Length > 0 && m.AvisosClaros) AvisoClaro(c, av, W);
+            else if (av.Length > 0)
             {
                 float wa = media.Mide(av) + 48 * k;
                 d.Redondo((W - wa) / 2, abajo - 104 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.92f));
                 media.EscribeCentrado(d, av, W / 2, abajo - 92 * k, Dorado);
             }
+            Efectos(c, W, H);
             Ayuda(c, W, H);
             d.Termina();
             sup.Presenta();
@@ -277,7 +280,7 @@ namespace Rocola
             {
                 Form1.Resultado r = c.Resultados[desde + i]; float y = ry + i * fila_;
                 bool sel = c.EnResultados && desde + i == c.SelResultado;
-                if (sel) d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro);
+                if (sel) { d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro); zSelResultado = new Zona(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k); }
                 string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
                 chica.Escribe(d, tipo, rx, y + 6 * k, r.Tipo == 2 ? Verde : Dorado);
                 media.Escribe(d, media.Ajusta(r.Texto, rw - 100 * k), rx + 100 * k, y + 2 * k, sel ? Blanco : Gris);
@@ -475,17 +478,40 @@ namespace Rocola
             float x = 32 * k + lado + 32 * k, ancho = W - x - 32 * k;
             grande.Escribe(d, grande.Ajusta(disco.Artista, ancho), x, 84 * k, Blanco);
             if (!string.IsNullOrEmpty(disco.Nombre)) media.Escribe(d, media.Ajusta(disco.Nombre, ancho), x, 124 * k, Dorado);
-            float top = 168 * k, fila = 38 * k;
+            // LA LISTA (DiscoVivoGpu.cs de XP): la grande lleva filas mas altas y letra mas grande; la que suena, su pastilla SONANDO con
+            // cuatro barritas que se mueven con la musica; las que van en la cola, "EN COLA 3 · en ~9 min".
+            Form1 m = c.motor;
+            bool gr = m.ListaGrande; Letra lt = gr ? grande : media;
+            float top = 168 * k, fila = gr ? 50 * k : 38 * k;
             int caben = Math.Max(1, (int)((abajo - top - 10 * k) / fila));
             c.PorPagina = caben;
+            string suena = m.Sonando;
+            Dictionary<string, int> enCola = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); Dictionary<string, int> minutos = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            List<Form1.EnColaVista> cola = m.ColaParaPantalla(64);
+            for (int q = 0; q < cola.Count; q++) if (cola[q].Ruta != null && !enCola.ContainsKey(cola[q].Ruta)) { enCola[cola[q].Ruta] = q + 1; minutos[cola[q].Ruta] = cola[q].Minutos; }
             int n = disco.Rutas.Count, desde = Math.Max(0, Math.Min(c.cursorCancion - caben / 2, n - caben));
             for (int i = 0; i < caben && desde + i < n; i++)
             {
                 int j = desde + i; float y = top + i * fila;
                 bool sel = j == c.cursorCancion;
                 if (sel) { d.Redondo(x - 10 * k, y - 2 * k, ancho + 20 * k, fila - 4 * k, 8 * k, PanelClaro); zCancion = new Zona(x - 10 * k, y - 2 * k, ancho + 20 * k, fila - 4 * k); }
-                chica.Escribe(d, (j + 1).ToString().PadLeft(2), x, y + 6 * k, sel ? Dorado : Gris);
-                media.Escribe(d, media.Ajusta(disco.Titulos[j], ancho - 50 * k), x + 44 * k, y + 2 * k, sel ? Blanco : Gris);
+                chica.Escribe(d, (j + 1).ToString().PadLeft(2), x, y + (fila - 4 * k - chica.Tam) / 2, sel ? Dorado : Gris);
+                // a la derecha, su pastilla: SONANDO o EN COLA
+                string ruta = disco.Rutas[j], pastilla = null; Color4 cp = Verde; bool estaSonando = suena != null && string.Equals(suena, ruta, StringComparison.OrdinalIgnoreCase);
+                int puesto;
+                if (estaSonando) pastilla = "SONANDO";
+                else if (enCola.TryGetValue(ruta, out puesto)) { pastilla = m.ColaMinutos ? Form1.TextoCola(puesto, minutos[ruta]) : "EN COLA " + puesto; cp = Dorado; }
+                float der = x + ancho;
+                if (pastilla != null)
+                {
+                    float barras = estaSonando && m.EqSonando ? 30 * k : 0;
+                    float wp = chica.Mide(pastilla) + 20 * k + barras, hp = 24 * k, yp = y + (fila - 4 * k - hp) / 2;
+                    d.Redondo(der - wp, yp, wp, hp, hp / 2, cp.ConAlfa(0.18f));
+                    chica.Escribe(d, pastilla, der - wp + 10 * k + barras, yp + 2 * k, cp);
+                    if (barras > 0) Barritas(der - wp + 10 * k, yp + 4 * k, 20 * k, hp - 8 * k, cp);
+                    der -= wp + 10 * k;
+                }
+                lt.Escribe(d, lt.Ajusta(disco.Titulos[j], der - x - 44 * k), x + 44 * k, y + (fila - 4 * k - lt.Tam) / 2 - 2 * k, sel ? Blanco : Gris);
             }
             chica.Escribe(d, "ARRIBA/ABAJO: canción   IZQ/DER: página   PONER: pedirla (1 crédito)   REGRESAR: a los discos", x, abajo - 28 * k, Gris.ConAlfa(0.8f));
         }
@@ -553,7 +579,8 @@ namespace Rocola
             d.Rect(0, abajo, W, H - abajo, Panel.ConAlfa(0.88f));
             float lado = H - abajo - 24 * k;
             string t = m.SonandoTitulo;
-            if (t == null) { media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
+            if (t == null) { zSuena = new Zona(12 * k, abajo + 12 * k, H - abajo - 24 * k, H - abajo - 24 * k); media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
+            zSuena = new Zona(12 * k, abajo + 12 * k, lado, lado);
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado, reloj.Elapsed.TotalSeconds * 1.44);   // el cubo chico de la barra (XP)
             float x = 24 * k + lado, ancho = W - x - 24 * k;
             // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)

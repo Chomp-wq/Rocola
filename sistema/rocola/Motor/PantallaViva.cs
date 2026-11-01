@@ -11,6 +11,14 @@ namespace Rocola
         public bool FichaDisco = true;     // "ficha_disco="
         public bool LetrasLupa = true;     // "letras_lupa="
         public bool PaginaDesliza = true;  // "pagina_desliza="
+        // tanda 2 (dentro del disco) y tanda 3 (lo que suena y los creditos) de XP: DiscoVivoGpu.cs y SuenaVivoGpu.cs
+        public bool ListaGrande = true;    // "lista_grande=": filas mas altas y letra mas grande
+        public bool EqSonando = true;      // "eq_sonando=": la que suena lleva cuatro barritas que se mueven con la musica
+        public bool ColaMinutos = true;    // "cola_minutos=": "EN COLA 3 · en ~9 min" en las filas
+        public bool VueloCola = true;      // "vuelo_cola=": el boleto vuela de la fila a la cola
+        public bool MonedaCae = true;      // "moneda_cae=": cae una moneda dorada hasta los creditos
+        public bool SinCreditosInvita = true;   // "sin_creditos_invita=": sin creditos, una tarjeta amable en vez del letrero
+        public bool AvisosClaros = true;   // "avisos_claros=": los avisos con su color, su icono y dos renglones
 
         public sealed class Ficha
         {

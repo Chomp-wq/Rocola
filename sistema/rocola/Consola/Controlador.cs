@@ -45,6 +45,11 @@ namespace Rocola
         internal int letra, cursorDisco, cursorCancion;
         internal Form1.Disco dentro;            // el disco abierto (null: la lista de discos)
         private string aviso = ""; private int avisoHasta;
+        // LO QUE LA PANTALLA VIVA ANIMA (la vista mira la hora de cada suceso): la moneda que cae, la tarjeta que invita, el boleto que vuela
+        // y el aviso que entra.
+        internal int MonedaTick, MonedaSuma, InvitaTick, VueloTick, AvisoDesde;
+        internal string InvitaTitulo = "", VueloTitulo = "";
+        internal bool VueloASuena, VueloDesdeBuscador;
         private SalidaAlsa salida;
         private bool saltar, salir;
         internal int PorPagina = 20;           // canciones que caben en una pagina de la vista (IZQ/DER dentro de un disco)
@@ -57,7 +62,7 @@ namespace Rocola
         // La biblioteca por letras y lo de antes del apagon.
         internal void Prepara()
         {
-            motor.Aviso += delegate (string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; };
+            motor.Aviso += delegate (string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; AvisoDesde = Environment.TickCount | 1; };
             discos = motor.LeeBiblioteca();
             foreach (Form1.Disco d in discos)
             {
@@ -248,7 +253,8 @@ namespace Rocola
             return 0;
         }
 
-        private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; }
+        private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; AvisoDesde = Environment.TickCount | 1; }
+        internal int AvisoDuraMs { get { return 4000; } }
 
         // El teclado de la terminal: sus codigos de tecla son los de Windows (ConsoleKey), asi que valen las mismas funciones. Ctrl+Q: salir.
         private void LeeTeclado(Botones botones, bool despacha)
@@ -294,7 +300,12 @@ namespace Rocola
         {
             switch (b)
             {
-                case Boton.Moneda: motor.Moneda(); MonedaAyuda(); return;
+                case Boton.Moneda:
+                    {
+                        int antes = motor.Creditos; motor.Moneda(); MonedaAyuda();
+                        if (motor.Creditos > antes) { MonedaSuma = motor.Creditos - antes; MonedaTick = Environment.TickCount | 1; InvitaTick = 0; }   // LA MONEDA QUE CAE (XP)
+                        return;
+                    }
                 case Boton.Saltar:   // como SkipSong de XP: salta la que suena; con todo parado y sin cola, borra los creditos que quedaron
                     if (salida != null || video != null) saltar = true;
                     else if (motor.BorraCreditos()) Aviso("Creditos borrados");
@@ -333,10 +344,16 @@ namespace Rocola
         private void PideCancion(string ruta, string titulo)
         {
             motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
+            bool sonaba = motor.Sonando != null || motor.SonandoVideo || motor.EnCola > 0;
             Form1.Pedido p = motor.Pide(ruta);
+            if (p == Form1.Pedido.SinCredito && motor.SinCreditosInvita)
+            {   // SIN CREDITOS, INVITAR (XP): una tarjeta amable en vez del letrero
+                aviso = ""; InvitaTitulo = titulo; InvitaTick = Environment.TickCount | 1;
+            }
             if (p == Form1.Pedido.Puesta)
             {
                 NotaPedidoAyuda();
+                if (motor.VueloCola) { VueloTick = Environment.TickCount | 1; VueloASuena = !sonaba; VueloDesdeBuscador = Buscando; VueloTitulo = titulo; }   // VER ADONDE VA (XP)
                 Aviso(motor.UltimoTurno.Length > 0 ? motor.UltimoTurno : "Pusiste «" + titulo + "»");   // el turno de XP
                 if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
             }

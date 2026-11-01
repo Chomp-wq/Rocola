@@ -67,6 +67,13 @@ namespace Rocola
                     else if (s.StartsWith("ficha_disco=")) FichaDisco = s.Substring(12).Trim() != "0";             // la pantalla viva (PantallaViva.cs)
                     else if (s.StartsWith("letras_lupa=")) LetrasLupa = s.Substring(12).Trim() != "0";
                     else if (s.StartsWith("pagina_desliza=")) PaginaDesliza = s.Substring(15).Trim() != "0";
+                    else if (s.StartsWith("lista_grande=")) ListaGrande = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("eq_sonando=")) EqSonando = s.Substring(11).Trim() != "0";
+                    else if (s.StartsWith("cola_minutos=")) ColaMinutos = s.Substring(13).Trim() != "0";
+                    else if (s.StartsWith("vuelo_cola=")) VueloCola = s.Substring(11).Trim() != "0";
+                    else if (s.StartsWith("moneda_cae=")) MonedaCae = s.Substring(11).Trim() != "0";
+                    else if (s.StartsWith("sin_creditos_invita=")) SinCreditosInvita = s.Substring(20).Trim() != "0";
+                    else if (s.StartsWith("avisos_claros=")) AvisosClaros = s.Substring(14).Trim() != "0";
                     else if (s.StartsWith("muro_reposo=")) MuroReposo = s.Substring(12).Trim() != "0";             // el estado extendido (EstadoExtendido.cs)
                     else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
                     else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";
