@@ -41,6 +41,7 @@ namespace Rocola
         {
             ImportaDeXPSiHay();  // lo que la rocola de XP ya aprendio, la primera vez (ImportaXP.cs)
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
+            CapturaFabrica();    // los valores de fabrica de Ctrl+F3, antes de leer los guardados («Dejar como de fabrica»)
             LeeConfiguracion();
             SumaMusicaDeOtrosDiscos();
             CargaParejo();       // el volumen parejo aprendido del modo billar (VolumenParejo.cs)

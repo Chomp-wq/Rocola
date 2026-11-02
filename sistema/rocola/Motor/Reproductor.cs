@@ -40,6 +40,31 @@ namespace Rocola
         private System.Threading.Thread medidor;
         public volatile bool PausaRepaso;
         public int PorRepasar { get { return porRepasar.Count; } }
+        // REPASAR LA BIBLIOTECA A FONDO (el boton de «Tu biblioteca» de XP): mientras este encendido, un segundo hilo mide tambien lo que
+        // falta del repaso (los dos nucleos del A4), con la misma prioridad baja: la musica no se corta y se para con los videos. Se
+        // apaga solo cuando ya no queda nada. Lo medido se publica igual que siempre (PublicaMedidas). MideIntegrada usa lo suyo por hilo.
+        private volatile bool repasoAFondo;
+        public bool RepasoAFondo { get { return repasoAFondo; } }
+        public void PonRepasoAFondo(bool on)
+        {
+            repasoAFondo = on && porRepasar.Count > 0;
+            if (!repasoAFondo) return;
+            ArrancaMedidor();
+            System.Threading.Thread t = new System.Threading.Thread(delegate ()
+            {
+                Prioridad.Fondo();
+                while (repasoAFondo)
+                {
+                    if (PausaRepaso) { System.Threading.Thread.Sleep(1000); continue; }
+                    string r;
+                    if (!porRepasar.TryDequeue(out r)) { repasoAFondo = false; break; }
+                    SonoridadIntegrada s;
+                    try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
+                    catch { }
+                }
+            }) { IsBackground = true, Name = "repaso a fondo", Priority = System.Threading.ThreadPriority.Lowest };
+            t.Start();
+        }
         private bool YaMedida(string ruta)
         {
             SonoridadIntegrada ya;

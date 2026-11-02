@@ -33,6 +33,7 @@ namespace Rocola
                 case "Lo que suena ahora": case "Entre canciones": case "Videos": return Color4.Hex(0x58D888);
                 case "Volumen al limite": return Color4.Hex(0x8CC8FF);
                 case "Tu biblioteca": return Color4.Hex(0xFFA850);
+                case "Dejar como de fabrica": return Color4.Hex(0xF06460);
                 case "Mejoras con IA": return Color4.Hex(0xC08CFF);
                 default: return Color4.Hex(0x8CB4FF);
             }
@@ -98,7 +99,7 @@ namespace Rocola
             if (conBotones) { grupos.Add("Los botones"); porGrupo["Los botones"] = new List<int> { n - 1 }; }
             // TU BIBLIOTECA (la tarjeta de XP): solo informa, no se elige; despues del volumen
             List<string> bib = pagina == "Sonido" ? c.motor.TextoBiblioteca() : null;
-            if (bib != null) { int pv = grupos.IndexOf("Volumen al limite"); grupos.Insert(pv >= 0 ? pv + 1 : 0, "Tu biblioteca"); porGrupo["Tu biblioteca"] = new List<int>(); }
+            if (bib != null && !porGrupo.ContainsKey("Tu biblioteca")) { int pv = grupos.IndexOf("Volumen al limite"); grupos.Insert(pv >= 0 ? pv + 1 : 0, "Tu biblioteca"); porGrupo["Tu biblioteca"] = new List<int>(); }
             // un grupo muy largo (la Pantalla) se parte en dos tarjetas, una por columna
             for (int gi = 0; gi < grupos.Count; gi++)
             {
@@ -133,7 +134,7 @@ namespace Rocola
             foreach (string g in grupos)
             {
                 int col = alto[0] <= alto[1] ? 0 : 1;
-                float h = cab + 12 * k, acum = g == "Tu biblioteca" && bib != null ? bib.Count * 18 * k : 0;
+                float h = cab + 12 * k, acum = g == "Tu biblioteca" && bib != null ? bib.Count * 18 * k + 4 * k : 0;
                 foreach (int i in porGrupo[g]) { if (i == sel) { selY = alto[col] + cab + acum; selH = altoDe[i]; } acum += altoDe[i]; }
                 h += acum;
                 lugar.Add(new KeyValuePair<string, float[]>(g, new float[] { col, alto[col], h }));
@@ -151,7 +152,10 @@ namespace Rocola
                 List<int> filas = porGrupo[g];
                 float yy = y + cab;
                 if (g == "Tu biblioteca" && bib != null)
+                {
                     for (int b = 0; b < bib.Count; b++) (b == 0 ? fNom : fChica).Escribe(d, (b == 0 ? fNom : fChica).Ajusta(bib[b], colW - 36 * k), cx + 18 * k, yy + b * 18 * k + 2 * k, b == 0 ? Color4.Hex(0xC6D6F4) : Color4.Hex(0x8A96BA));
+                    yy += bib.Count * 18 * k + 4 * k;
+                }
                 for (int f = 0; f < filas.Count; f++)
                 {
                     int i = filas[f]; bool es = i == sel; float hf = altoDe[i];
@@ -228,11 +232,12 @@ namespace Rocola
                 if (gris && fNom.Mide(nom) + fChica.Mide(mot) + 16 * k < nw) fChica.Escribe(d, "(" + mot + ")", nx + fNom.Mide(nom) + 10 * k, cy - fChica.Tam * 0.62f, Color4.Hex(0x7A82A0));
                 return;
             }
-            bool boton = a.Herramienta && (v == "EMPEZAR" || v == "PARAR" || v.StartsWith("BUSCAR") || v.StartsWith("CORRER") || v.StartsWith("TOCAR") || v == "");
+            bool boton = a.Herramienta && (v == "EMPEZAR" || v == "PARAR" || v.StartsWith("BUSCAR") || v.StartsWith("CORRER") || v.StartsWith("TOCAR") || v.StartsWith("PONER") || v == "");
             if (boton)
             {
-                float bw = Math.Min(w, fNom.Mide(a.Nombre) + 40 * k);
-                Boton(x, y + 2 * k, bw, fila - 6 * k, a.Nombre + (v.Length > 0 && v != "EMPEZAR" ? "  ·  " + v : ""), sel, fNom, gris);
+                string et = a.Nombre + (v.Length > 0 && v != "EMPEZAR" ? "  ·  " + v : "");
+                float bw = Math.Min(w, fNom.Mide(et) + 40 * k);
+                Boton(x, y + 2 * k, bw, fila - 6 * k, et, sel, fNom, gris);
                 return;
             }
             // el nombre a la izquierda y el valor a la derecha, en azul (como «Al limite» de XP); con flechitas si esta elegido

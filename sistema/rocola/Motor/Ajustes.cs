@@ -58,6 +58,30 @@ namespace Rocola
         // El nivel se oye al instante en la que suena, como al mover las barras en XP.
         private void AplicaNivel() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Volumen al limite", ex); } }
 
+        // DEJAR COMO DE FABRICA (el boton de la ventana de XP): los valores con que arranca un motor nuevo, guardados antes de leer
+        // rocola_config.txt, se vuelven a poner con la misma lectura de cada linea. Se guardan al salir con REGRESAR, como lo demas.
+        private Dictionary<string, string> deFabrica;
+        private int fabricaPide;   // la primera pulsacion pide confirmar; la segunda, en 5 s, lo hace
+        private void CapturaFabrica()
+        {
+            deFabrica = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (Ajuste a in Ajustes())
+            {
+                if (a.Clave == null || a.Herramienta) continue;
+                try { string v = a.Guardado(); if (v != null) deFabrica[a.Clave] = v; } catch { }
+            }
+        }
+        public bool DejaDeFabrica()
+        {
+            if (deFabrica == null) return false;
+            CortaCiego("Ajustes de fabrica: comparacion cortada. ");
+            ParaPrueba();
+            foreach (KeyValuePair<string, string> kv in deFabrica) { try { AplicaLineaConfig(kv.Key + "=" + kv.Value); } catch { } }
+            if (!sbrAllowed) sbrOn = false;
+            AplicaNivel();
+            return true;
+        }
+
         // Al tocar un ajuste de verdad o salir de la hoja, la comparacion se corta y vuelve lo de antes (como XP).
         public void CortaCiego(string porQue) { if (ciegoActivo) TerminaCiego(porQue); }
 
@@ -102,6 +126,13 @@ namespace Rocola
             billar.Guardado = delegate { return LocalAutoAGuardar ? "1" : "0"; };
             billar.Valor = delegate { return LocalAutoAGuardar ? "SÍ" : "NO"; };   // a ciegas no se ve cual suena   // durante la comparacion a ciegas, el de antes (como XP)
             l.Add(billar);
+            // TU BIBLIOTECA: el boton de repasar a fondo (la tarjeta pone encima la calidad y como va el repaso)
+            Ajuste fondo = new Ajuste { Grupo = "Tu biblioteca", Nombre = "Repasar la biblioteca a fondo", Herramienta = true };
+            fondo.Valor = delegate { fondo.Nombre = RepasoAFondo ? "Detener el repaso a fondo" : "Repasar la biblioteca a fondo"; return ""; };
+            fondo.Cambia = delegate (int d) { PonRepasoAFondo(!RepasoAFondo); };
+            fondo.Nota = delegate { return RepasoAFondo ? "Midiendo con los dos nucleos. La musica no se corta; con un video se para." : porRepasar.Count > 0 ? "Mide ya, con los dos nucleos, las canciones que faltan (si no, se miden poco a poco)." : "No falta nada por medir."; };
+            fondo.Bloqueo = delegate { return !RepasoAFondo && porRepasar.Count == 0 ? "no falta nada" : null; };
+            l.Add(fondo);
             l.Add(Interruptor("El local", "Claridad para el local", "claridad_local", () => claridadLocal, v => claridadLocal = v, true));
             l.Add(Interruptor("El local", "Que las partes suaves se oigan", "partes_suaves", () => partesSuaves, v => partesSuaves = v, true));
             l.Add(Interruptor("El local", "Presencia en sala ruidosa", "presencia_sala", () => presenciaSala, v => presenciaSala = v, true));
@@ -247,6 +278,15 @@ namespace Rocola
             Ajuste c12 = Interruptor("Pantalla", "Doce de la cola en el estado extendido (si no, tres)", "cola_doce", () => ColaDoce, v => ColaDoce = v, false);
             c12.Bloqueo = delegate { return !MuroReposo ? "necesita que la pared se aparte" : !EstadoExpandido ? "necesita el estado extendido" : null; };
             l.Add(c12);
+            Ajuste fab = new Ajuste { Grupo = "Dejar como de fabrica", Nombre = "Dejar como de fabrica", Herramienta = true };
+            fab.Valor = delegate { return unchecked(Environment.TickCount - fabricaPide) < 5000 && fabricaPide != 0 ? "PONER OTRA VEZ" : ""; };
+            fab.Cambia = delegate (int d)
+            {
+                if (fabricaPide != 0 && unchecked(Environment.TickCount - fabricaPide) < 5000) { fabricaPide = 0; DejaDeFabrica(); }
+                else fabricaPide = Environment.TickCount | 1;
+            };
+            fab.Nota = delegate { return "Todos los ajustes de esta ventana vuelven a como vienen de fabrica (lo aprendido de cada cancion no se toca). Pide confirmar: PONER otra vez."; };
+            l.Add(fab);
             // LAS NOTAS de la ventana de XP (el renglon gris debajo de cada mando), las mismas frases
             Dictionary<string, string> notas = new Dictionary<string, string>
             {
@@ -267,7 +307,12 @@ namespace Rocola
             foreach (Ajuste x in l) if (x.Nombre.StartsWith("Escuchar sin mejoras", StringComparison.Ordinal) && x.Nota == null) x.Nota = () => "Mientras dura, la cancion suena sin las mejoras, al mismo volumen: para comparar con el oido. No se guarda.";
             // Por paginas, como las pestanas de la ventana de XP (el orden dentro de cada una se conserva)
             List<Ajuste> orden = new List<Ajuste>(l.Count);
-            foreach (string pg in PaginasAjustes) foreach (Ajuste x in l) if (PaginaDe(x.Grupo) == pg) orden.Add(x);
+            foreach (string pg in PaginasAjustes)
+            {
+                List<string> gs = new List<string>();   // y dentro de la pagina, tarjeta por tarjeta (asi se recorre en el orden en que se ven)
+                foreach (Ajuste x in l) if (PaginaDe(x.Grupo) == pg && !gs.Contains(x.Grupo)) gs.Add(x.Grupo);
+                foreach (string g in gs) foreach (Ajuste x in l) if (x.Grupo == g) orden.Add(x);
+            }
             l = orden;
             ajustes = l;
             return l;
