@@ -80,6 +80,8 @@ BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_DEJAVU=y
 # los videos de la rocola: mpv, por KMS y ALSA (la rocola le cede la pantalla mientras suena)
 BR2_PACKAGE_MPV=y
+# el descompresor de MP3 de la rocola (2-11-2026: rocola/Motor/Mpg123.cs; NLayer se comia un cuadro en algunos y es ~8 veces mas lento)
+BR2_PACKAGE_MPG123=y
 # INTERNET (1-11-2026): por cable (la Realtek del A4), con DHCP; la hora por NTP (BusyBox) para que las conexiones seguras valgan.
 # Para que el programa de la rocola se actualice solo desde GitHub (rocola-actualiza: curl, jq y los certificados) y para el
 # encendido remoto (Wake on LAN: ethtool lo deja encendido en la tarjeta).

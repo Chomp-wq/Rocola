@@ -26,7 +26,13 @@ namespace Rocola
             if (args.Length > 0 && args[0] == "--version") { Console.WriteLine("rocola-consola programa " + Version.Numero + " (" + Version.Commit + ")"); return 0; }
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
+                if (args[i] == "--mide-repaso")   // prueba: cuanto tarda medir cada archivo (no publica nada)
+                {
+                    Form1 mr = new Form1(); mr.Arranca();
+                    for (int j = i + 1; j < args.Length; j++) Console.WriteLine(mr.PruebaRepaso(args[j]));
+                    return 0;
+                }
+                else if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
                 else if (args[i] == "--dispositivo" && i + 1 < args.Length) dispositivo = args[++i];
                 else if (args[i] == "--biblioteca") biblioteca = true;
                 else if (args[i] == "--rocola") rocola = true;

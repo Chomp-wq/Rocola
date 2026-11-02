@@ -54,6 +54,32 @@ namespace Rocola
             return a;
         }
 
+        // Un tono del local en dB (de -6 a +6, de 1 en 1), con su barra; lo decide el modo billar.
+        private Ajuste TonoDb(string nombre, string clave, Func<int> lee, Action<int> pon, string nota)
+        {
+            Ajuste a = new Ajuste { Grupo = "El local", Nombre = nombre, Clave = clave };
+            a.Valor = delegate { int v = lee(); return v == 0 ? "0 dB" : (v > 0 ? "+" : "") + v + " dB"; };
+            a.Guardado = delegate { return lee().ToString(CultureInfo.InvariantCulture); };
+            a.Cambia = delegate (int d) { pon(Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, lee() + d))); AplicaAlInstante(); };
+            a.Barra = delegate { return (int)Math.Round((lee() + SalaLocal.TonoMax) * 100f / (2 * SalaLocal.TonoMax)); };
+            a.Nota = () => nota;
+            a.Bloqueo = delegate { return LocalAutoAGuardar ? PorElBillar : null; };
+            return a;
+        }
+        // Una cantidad de 0 a 100 % con su barra (el EQ, los graves, el realce de XP); en gris si la decide la rocola o el modo billar.
+        private Ajuste Cantidad(string grupo, string nombre, string clave, Func<float> lee, Action<float> pon, bool delBillar, Func<bool> automatico, string nota, bool enPorCiento)
+        {
+            Ajuste a = new Ajuste { Grupo = grupo, Nombre = nombre, Clave = clave };
+            a.Valor = delegate { return (int)Math.Round(lee() * 100f) + "%"; };
+            a.Guardado = delegate { return enPorCiento ? ((int)Math.Round(lee() * 100f)).ToString(CultureInfo.InvariantCulture) : lee().ToString("0.####", CultureInfo.InvariantCulture); };
+            a.Cambia = delegate (int d) { pon(Math.Max(0f, Math.Min(1f, (float)Math.Round(lee() * 20f + d) / 20f))); AplicaAlInstante(); };
+            a.Barra = delegate { return (int)Math.Round(lee() * 100f); };
+            a.Nota = () => nota;
+            a.Bloqueo = delegate { return delBillar && LocalAutoAGuardar ? PorElBillar : automatico() ? "lo decide la rocola (arriba)" : null; };
+            return a;
+        }
+        private void AplicaAlInstante() { try { AplicaBocinas(); ApplyNormNow(); } catch (Exception ex) { LogError("Ajustes del sonido", ex); } }
+
         private int ObjetivoPct() { int p = (int)Math.Round((normTarget - NormTargetMin) / (NormTargetMax - NormTargetMin) * 100f); return p < 0 ? 0 : (p > 100 ? 100 : p); }
         // El nivel se oye al instante en la que suena, como al mover las barras en XP.
         private void AplicaNivel() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Volumen al limite", ex); } }
@@ -142,6 +168,16 @@ namespace Rocola
             l.Add(Interruptor("El local", "Quitar el subgrave", "corta_subgrave", () => cortaSubgrave, v => cortaSubgrave = v, true));
             l.Add(Interruptor("El local", "Estereo mas estrecho", "estereo_estrecho", () => estereoEstrecho, v => estereoEstrecho = v, true));
             l.Add(Interruptor("El local", "Suavizar las eses", "suaviza_eses", () => suavizaEses, v => suavizaEses = v, true));
+            l.Add(Interruptor("El local", "Estereo estrecho solo si hace falta (S3)", "estereo_auto", () => estereoAuto, v => estereoAuto = v, true));
+            l.Add(TonoDb("Graves del local", "graves_local", () => gravesLocalDb, v => gravesLocalDb = v, "El cuerpo de la musica (120 Hz): mas para llenar el local, menos si retumba."));
+            l.Add(TonoDb("Agudos del local", "agudos_local", () => agudosLocalDb, v => agudosLocalDb = v, "El brillo (6 kHz): mas si el local se traga los agudos, menos si silba o cansa."));
+            Ajuste bal = new Ajuste { Grupo = "El local", Nombre = "Balance", Clave = "balance" };
+            bal.Valor = delegate { return balanceDb == 0 ? "Centrado" : balanceDb < 0 ? "Derecha -" + (-balanceDb) + " dB" : "Izquierda -" + balanceDb + " dB"; };
+            bal.Guardado = delegate { return balanceDb.ToString(CultureInfo.InvariantCulture); };
+            bal.Cambia = delegate (int d) { balanceDb = Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, balanceDb + d)); AplicaAlInstante(); };
+            bal.Barra = delegate { return (int)Math.Round((balanceDb + SalaLocal.BalanceMax) * 100f / (2 * SalaLocal.BalanceMax)); };
+            bal.Nota = delegate { return "Si una zona suena mas fuerte, baja aqui ese canal (hasta 6 dB). Mejor aun: igualar las perillas IN A e IN B del amplificador."; };
+            l.Add(bal);
             // LA PRUEBA DE BOCINAS (SalaLocal.cs de XP): IZQ/DER pasan por callada, izquierda, derecha, las dos y la polaridad.
             Ajuste pr = new Ajuste { Grupo = "El local", Nombre = "Prueba de bocinas (con la rocola callada)", Herramienta = true };
             pr.Valor = delegate { return pruebaSonando == null ? "callada" : pruebaSonando.Modo == PruebaModo.Izquierda ? "izquierda" : pruebaSonando.Modo == PruebaModo.Derecha ? "derecha" : pruebaSonando.Modo == PruebaModo.Ambas ? "las dos" : "polaridad"; };
@@ -179,6 +215,20 @@ namespace Rocola
             dsee.Bloqueo = delegate { return !sbrAllowed ? "este equipo no llega (" + sbrReason + ")" : LocalAutoAGuardar ? PorElBillar : null; };
             l.Add(dsee);
             l.Add(Interruptor("Mejoras con IA", "Bajo y brillo a la medida (I1)", "a_la_medida", () => aLaMedida, v => aLaMedida = v, false));
+            Ajuste gen = Interruptor("Mejoras con IA", "DSEE con el modelo de su genero (I3)", "dsee_genero", () => dseePorGenero, v => dseePorGenero = v, false);
+            gen.Nota = delegate { return "Cada cancion usa el modelo de su genero, si se entreno. Solo con el DSEE encendido; desde la siguiente cancion."; };
+            l.Add(gen);
+            // CALIDAD DEL SONIDO (la tarjeta de «Ajustes del sonido» de XP): el EQ automatico, los graves y el realce, cada uno con su
+            // «lo decide la rocola» y su barra a mano; con el modo billar los decide el modo
+            Ajuste eqA = Interruptor("Calidad del sonido", "EQ automatico: lo decide la rocola", "eq_automatico", () => eqAuto, v => eqAuto = v, true);
+            eqA.Nota = delegate { return "Empareja el tono de cada cancion con el de tu biblioteca: mas fuerza cuantas mas canciones medidas."; };
+            l.Add(eqA);
+            l.Add(Cantidad("Calidad del sonido", "EQ automatico a mano", "eq_auto", () => eqAmount, v => eqAmount = v, true, () => eqAuto, "A mano: la fuerza del EQ, la misma para todas.", true));
+            Ajuste baA = Interruptor("Calidad del sonido", "Graves: lo decide la rocola", "bajo_automatico", () => bassAuto, v => bassAuto = v, true);
+            baA.Nota = delegate { return "Devuelve el golpe de bajo que el archivo no trae: a cada cancion lo que le falta."; };
+            l.Add(baA);
+            l.Add(Cantidad("Calidad del sonido", "Graves (bajo profundo) a mano", "bajo", () => bassAmount, v => bassAmount = v, true, () => bassAuto, "A mano: manda la barra.", false));
+            l.Add(Cantidad("Calidad del sonido", "Realce de brillo", "realce", () => excAmount, v => excAmount = v, true, () => false, "Devuelve el 'aire' que el MP3 apaga. Se le da mas a las canciones peor grabadas.", false));
             l.Add(Interruptor("Mejoras con IA", "Quitar el siseo de las grabaciones viejas (I2)", "quita_siseo", () => quitaSiseo, v => quitaSiseo = v, true));
             // AFINAR EL LOCAL CON EL CELULAR (AfinarLocal.cs de XP, en su forma mas simple de la sexta tanda): tocar las 8 bandas, decir si la
             // app mide en dBA o dBC, anotar lo que marca cada banda y usar la afinacion (con el modo billar). Tocar algo aqui corta la

@@ -545,3 +545,20 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   anterior y lo apunta como malo. Con ESC al prender, «la versión anterior del sistema».
 - El instalador ya instala así (2,3 GB libres). **Sin probar todavía:** la primera compilación del sistema en GitHub y la vuelta
   atrás en QEMU (siguiente paso).
+
+## Extra (2-11-2026): los MP3 por libmpg123, y Ctrl+F3 con todo el sonido de XP
+
+- **NLayer 3.0.0 se come un cuadro.** Comparado con ffmpeg, NLayer pierde un cuadro entero (1152 muestras, 26 ms) a media canción en
+  cada uno de los tres MP3 de prueba (en el cuadro 815, 2048 y 5221), con un chasquido donde falta. No depende del tamaño de lectura
+  ni de leer de archivo o de memoria: es del descompresor. libmpg123 da lo mismo que ffmpeg (a 3e-7); fuera de ese cuadro, lo mismo
+  que NLayer (a 2e-8), y sin su gapless las muestras caen en el mismo sitio (SinRelleno y el clip del relleno siguen valiendo).
+- **Ahora los MP3 van por libmpg123** (`rocola/Motor/Mpg123.cs`, `BR2_PACKAGE_MPG123=y`), para sonar y para medir; NLayer queda
+  de respaldo (sin la biblioteca, si el archivo no abre, o en los de frecuencias mezcladas, que se reconstruyen como antes).
+  La cadena entera a WAV sale igual (±2 LSB del dither) hasta el cuadro que NLayer perdía.
+- **El repaso, mas rapido:** descomprimir 240 s pasa de 2,5 s a 0,3 s (320 kbit/s) y la medida completa de XP de 3,3 s a 1,3 s
+  (en esta máquina; `rocola-consola --mide-repaso archivos...` lo mide). Las medidas salen iguales (sonoridad, picos, P90, LRA,
+  corte, huella del EQ a 0,001). **No medido en el A4.** La compilación de Buildroot con mpg123 se hace en GitHub; aquí no se pudo
+  (el proxy no deja bajar de sources.buildroot.net).
+- **Ctrl+F3 → Sonido** lleva ya todos los ajustes de sonido de XP que valen en Linux: graves y agudos del local, balance, estéreo
+  estrecho solo si hace falta (S3), DSEE por género (I3) y la tarjeta «Calidad del sonido» (EQ automático o a mano, el bajo profundo
+  automático o a mano, el realce de brillo). Falta `frecuencia_salida=`: la salida ALSA aún no la admite.

@@ -1,6 +1,6 @@
 // EL LECTOR DE CANCIONES DE ROCOLA OS (hito 3). En XP los MP3 los descomprime el ACM de Windows (y NLayer solo en las que llegan al
-// maximo: FlotanteNLayer.cs); en Linux no hay ACM: TODOS los MP3 van por NLayer 3, en coma flotante, sin recortar lo que pasa del
-// maximo. Los WAV, con el lector de NAudio. Como en XP desde el 24-10-2026, un archivo mono sale como estereo de dos canales iguales.
+// maximo: FlotanteNLayer.cs); en Linux no hay ACM: los MP3 van por libmpg123 (Mpg123.cs; NLayer 3 se come un cuadro en algunos) y,
+// si no esta o el archivo es de frecuencias mezcladas, por NLayer 3; los dos en coma flotante, sin recortar lo que pasa del maximo. Los WAV, con el lector de NAudio. Como en XP desde el 24-10-2026, un archivo mono sale como estereo de dos canales iguales.
 // Los MP3 de frecuencias mezcladas se reconstruyen a la dominante, como en XP (Mp3DeUnaFrecuencia).
 using System;
 using System.IO;
@@ -11,6 +11,7 @@ namespace Rocola
     public sealed class LectorCancion : ISampleProvider, IDisposable
     {
         private readonly NLayer.MpegFile mp3;
+        private readonly Mpg123Lector rapido;
         private readonly WaveStream wav;
         private readonly ISampleProvider muestras;   // las del WAV, ya en coma flotante
         private readonly int canalesArchivo;
@@ -26,6 +27,13 @@ namespace Rocola
             if (Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
                 MemoryStream limpio = Mp3DeUnaFrecuencia(ruta);
+                if (limpio == null) rapido = Mpg123Lector.Abre(ruta);
+                if (rapido != null)
+                {
+                    canalesArchivo = rapido.WaveFormat.Channels;
+                    formato = WaveFormat.CreateIeeeFloatWaveFormat(rapido.WaveFormat.SampleRate, comoEstereo ? 2 : canalesArchivo);
+                    return;
+                }
                 if (limpio != null) { Reconstruido = true; mp3 = new NLayer.MpegFile(limpio); }
                 else mp3 = new NLayer.MpegFile(ruta);
                 canalesArchivo = mp3.Channels;
@@ -86,11 +94,11 @@ namespace Rocola
         private static int Clave(Mp3Frame f) { return f.SampleRate * 4 + (f.ChannelMode == ChannelMode.Mono ? 1 : 2); }
 
         public WaveFormat WaveFormat { get { return formato; } }
-        public TimeSpan Duracion { get { return mp3 != null ? mp3.Duration : wav.TotalTime; } }
+        public TimeSpan Duracion { get { return rapido != null ? rapido.Duracion : mp3 != null ? mp3.Duration : wav.TotalTime; } }
         public TimeSpan Posicion
         {
-            get { return mp3 != null ? mp3.Time : wav.CurrentTime; }
-            set { if (mp3 != null) mp3.Time = value; else wav.CurrentTime = value; }
+            get { return rapido != null ? rapido.Posicion : mp3 != null ? mp3.Time : wav.CurrentTime; }
+            set { if (rapido != null) rapido.Posicion = value; else if (mp3 != null) mp3.Time = value; else wav.CurrentTime = value; }
         }
 
         public int Read(Span<float> destino)
@@ -109,6 +117,7 @@ namespace Rocola
         private float[] apoyo = new float[0];
         private int LeeArchivo(Span<float> d)
         {
+            if (rapido != null) return rapido.Read(d);
             if (mp3 == null) return muestras.Read(d);
             if (apoyo.Length < d.Length) apoyo = new float[d.Length];
             int n = mp3.ReadSamples(apoyo, 0, d.Length);
@@ -116,6 +125,6 @@ namespace Rocola
             return Math.Max(0, n);
         }
 
-        public void Dispose() { if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
+        public void Dispose() { if (rapido != null) rapido.Dispose(); if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
     }
 }

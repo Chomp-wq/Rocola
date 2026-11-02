@@ -335,7 +335,7 @@ namespace Rocola
                     try
                     {
                         if (abre != null) sp = abre(clip);
-                        else { ms = new MemoryStream(clip); LectorCancion l = new LectorCancion(ms); r = l; sp = l; }   // Rocola OS: el clip por NLayer, como las canciones (Lector.cs)
+                        else { ms = new MemoryStream(clip); LectorCancion l = new LectorCancion(ms); r = l; sp = l; }   // Rocola OS: el clip por NLayer (mpg123 y NLayer ponen las muestras en el mismo sitio: Mpg123.cs)
                         int ch = sp.WaveFormat.Channels;
                         float[] x = new float[(RellenoMp3.ClicMuestras + 4 * 1152 + RellenoMp3.ExtraMaximo + 4096) * ch];
                         int n = 0, k;

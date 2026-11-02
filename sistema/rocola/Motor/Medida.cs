@@ -856,5 +856,23 @@ namespace Rocola
         // Lo que dice la tarjeta de la biblioteca del material (IaInfoText de XP)
         public string TextoMaterialIa { get { return iaHarvestOn ? "Material para la IA: " + IaInfoText() + "." : "Material para la IA: apagado (lo demas se sigue midiendo igual)."; } }
         public bool JuntaMaterialIa { get { return iaHarvestOn; } }
+
+        // PRUEBA (rocola-consola --mide-repaso archivo...): cuanto tarda cada forma de medir una cancion. No publica nada.
+        public string PruebaRepaso(string ruta)
+        {
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            double tD; using (LectorMedida rd = new LectorMedida(ruta)) { float[] b = new float[16384]; string vol = Environment.GetEnvironmentVariable("ROCOLA_VUELCA"); System.IO.FileStream fv = vol != null ? System.IO.File.Create(vol) : null; int k; while ((k = rd.Read(b, 0, b.Length)) > 0) { if (fv != null) { byte[] bb = new byte[k * 4]; Buffer.BlockCopy(b, 0, bb, 0, bb.Length); fv.Write(bb, 0, bb.Length); } } if (fv != null) fv.Dispose(); tD = sw.Elapsed.TotalMilliseconds; }
+            sw.Restart();
+            SonoridadIntegrada si; bool okI = MideIntegrada(ruta, out si); double tI = sw.Elapsed.TotalMilliseconds;
+            bool antes = iaHarvestOn; float rms, dur; float[] eq; SonoridadIntegrada e;
+            iaHarvestOn = false; sw.Restart(); bool okA = MeasureFile(ruta, true, out rms, out dur, out eq); double tA = sw.Elapsed.TotalMilliseconds; TomaIntegrada(out e);
+            lock (iaDoneLock) iaDone.Remove(ruta);
+            iaHarvestOn = true; sw.Restart(); bool okB = MeasureFile(ruta, true, out rms, out dur, out eq); double tB = sw.Elapsed.TotalMilliseconds; TomaIntegrada(out e);
+            iaHarvestOn = antes;
+            return string.Format(CultureInfo.InvariantCulture, "{0}: dura {1:0.0} s | solo descomprimir {9:0} ms | solo volumen {2:0} ms ({3}) | completa sin IA {4:0} ms ({5}) | completa con IA {6:0} ms ({7}) | corte {8:0} Hz\n   medida: {10:0.000} LUFS, pico {11:0.000}, P99 {12:0.000}, P90 {13:0.000} dBFS, LRA {14:0.00}, bloques {15}, inicio {16:0.00} fin {17:0.00} s, zumbido {18}, pre-eco {19:0.0} ms/{20}, rms {21:0.00000}, eq[0..3] {22}",
+                Path.GetFileName(ruta), dur, tI, okI, tA, okA, tB, okB, eq != null && eq.Length > EqCut ? eq[EqCut] : 0f, tD,
+                si.Lkfs, si.PicoDb, si.P99Db, si.P90Db, si.Lra, si.Bloques, si.InicioUtil, si.FinUtil, si.ZumbidoHz, si.PreEcoMs, si.PreEcoGolpes, rms,
+                eq == null ? "-" : string.Join(" ", Array.ConvertAll(eq.Length > 4 ? new[] { eq[0], eq[1], eq[2], eq[3] } : eq, v => v.ToString("0.000", CultureInfo.InvariantCulture))));
+        }
     }
 }
