@@ -47,11 +47,11 @@ namespace Rocola
         }
         private static Color4 ColorAviso(TipoAviso t)
         {
-            return t == TipoAviso.Cuidado ? Color4.Hex(0xF2CE48) : t == TipoAviso.Error ? Color4.Hex(0xF06460) : t == TipoAviso.Novedad ? Color4.Hex(0x96C8FF) : Color4.Hex(0x48D470);
+            return t == TipoAviso.Cuidado ? Color4.Hex(0xF2CE48) : t == TipoAviso.Error ? Color4.Hex(0xF06460) : t == TipoAviso.Novedad ? Color4.Hex(0x96C8FF) : Color4.Hex(0x78E6A5);
         }
         private static Color4 FondoAviso(TipoAviso t)
         {
-            return t == TipoAviso.Cuidado ? Color4.Hex(0x342808, 0.96f) : t == TipoAviso.Error ? Color4.Hex(0x3E1212, 0.96f) : t == TipoAviso.Novedad ? Color4.Hex(0x0E1C3C, 0.96f) : Color4.Hex(0x0E3422, 0.96f);
+            return t == TipoAviso.Cuidado ? Color4.Hex(0x342808, 244 / 255f) : t == TipoAviso.Error ? Color4.Hex(0x3E1212, 244 / 255f) : t == TipoAviso.Novedad ? Color4.Hex(0x0E1C3C, 244 / 255f) : Color4.Hex(0x0E3422, 244 / 255f);
         }
         // "No se pudo reproducir: credito devuelto" -> titulo y renglon (PartirAviso de XP, tal cual).
         internal static void PartirAviso(string texto, out string titulo, out string detalle)
@@ -64,31 +64,43 @@ namespace Rocola
             if (p < 0 && q > 0 && q < t.Length - 3) { titulo = t.Substring(0, q); detalle = t.Substring(q + 3); return; }
             if (p > 0) { titulo = t.Substring(0, p); detalle = t.Substring(p + 2); }
         }
+        // EL AVISO CLARO (HorneaAviso, TamanoAviso, PintaAviso y CurvaAviso de XP): a la derecha, a 80 de arriba; entra desde la derecha
+        // frenando (220 ms), se queda y se va hacia la derecha desvaneciendose (320 ms); un aro con su icono, el titulo (14 pt) y el renglon
+        // (11 pt), y abajo la linea de lo que le queda.
         private void AvisoClaro(Controlador c, string texto, float W)
         {
             TipoAviso tipo = TipoDe(texto);
             string tit, det; PartirAviso(texto, out tit, out det);
             int e = Math.Max(0, Edad(c.AvisoDesde)), dura = c.AvisoDuraMs;
-            float entra = Suave(e / 220f), sale = 1f - Suave((e - (dura - 320)) / 320f);
-            float alfa = Math.Min(entra, sale);
-            float w = Math.Min(W * 0.6f, Math.Max(media.Mide(tit), chica.Mide(det)) + 96 * k), h = det.Length > 0 ? 70 * k : 52 * k;
-            float x = W - 18 * k - w + 64 * k * (1f - entra), y = 80 * k;
+            if (e >= dura) return;
+            float alfa = 1f, dx = 0f, corre = 64 * k;
+            if (e < 220) { float q = e / 220f, ee = 1f - (1f - q) * (1f - q) * (1f - q); alfa = ee; dx = corre * (1f - ee); }
+            else if (e > dura - 320) { float q = (e - (dura - 320)) / 320f; alfa = 1f - q; dx = corre * q * q; }
+            Letra fTit = Ui(14 * 4f / 3f * k), fDet = Ui(11 * 4f / 3f * k);
+            float hTit = fTit.Tam * 1.15f, hDet = det.Length > 0 ? fDet.Tam * 1.15f : 0;
+            float alto = Math.Max(56 * k, 12 * k + hTit + (hDet > 0 ? 2 * k + hDet : 0) + 14 * k), icono = Math.Min(44 * k, alto - 22 * k);
+            float tw = Math.Max(fTit.Mide(tit), hDet > 0 ? fDet.Mide(det) : 0);
+            float max = Math.Max(360 * k, Math.Min(560 * k, W * .40f)), w = Math.Max(300 * k, Math.Min(max, 16 * k + icono + 14 * k + tw + 22 * k));
+            float x = Math.Max(8 * k, W - 18 * k - w) + dx, y = 80 * k, rad = Math.Min(16 * k, alto * .26f);
             Color4 col = ColorAviso(tipo);
-            d.Redondo(x - 2 * k, y - 2 * k, w + 4 * k, h + 4 * k, 14 * k, col.ConAlfa(0.8f * alfa));
-            d.Redondo(x, y, w, h, 12 * k, FondoAviso(tipo).ConAlfa(alfa));
-            // el icono: un circulo con su signo (hecho, cuidado, error, novedad)
-            float r = 15 * k, cx = x + 16 * k + r, cy = y + h / 2;
-            Circulo(cx, cy, r, col.ConAlfa(alfa));
-            Color4 tinta = FondoAviso(tipo).ConAlfa(alfa);
-            if (tipo == TipoAviso.Hecho) { d.Linea(cx - 7 * k, cy, cx - 2 * k, cy + 6 * k, 4 * k, tinta); d.Linea(cx - 3 * k, cy + 6 * k, cx + 8 * k, cy - 6 * k, 4 * k, tinta); }
-            else if (tipo == TipoAviso.Error) { d.Linea(cx - 6 * k, cy - 6 * k, cx + 6 * k, cy + 6 * k, 4 * k, tinta); d.Linea(cx + 6 * k, cy - 6 * k, cx - 6 * k, cy + 6 * k, 4 * k, tinta); }
-            else media.EscribeCentrado(d, tipo == TipoAviso.Cuidado ? "!" : "i", cx, cy - media.Tam * 0.55f, tinta);
-            float tx = cx + r + 14 * k, tw = x + w - tx - 14 * k;
-            media.Escribe(d, media.Ajusta(tit, tw), tx, y + (det.Length > 0 ? 10 * k : (h - media.Tam) / 2 - 2 * k), Blanco.ConAlfa(alfa));
-            if (det.Length > 0) chica.Escribe(d, chica.Ajusta(det, tw), tx, y + 40 * k, Color4.Hex(0xDCE4FF, alfa));
-            // la linea de lo que le queda
-            float queda = Math.Max(0f, 1f - e / (float)dura);
-            d.Rect(x + 12 * k, y + h - 5 * k, (w - 24 * k) * queda, 2 * k, col.ConAlfa(0.8f * alfa));
+            d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(alfa));
+            d.Contorno(x, y, w, alto, rad, 1.5f * k, col.ConAlfa(alfa));
+            // el aro con su icono (los trazos del boceto de XP, en una caja de 24)
+            float cx = x + 16 * k + icono / 2, cy = y + alto / 2 - 1 * k;
+            Anillo(cx, cy, icono / 2, 2f * k, col.ConAlfa(alfa));
+            float u = icono / 24f * 0.52f * (44f / 24f) * 24f / 44f, ox = cx - 12 * u, oy = cy - 12 * u, g = Math.Max(1.6f * k, 2.6f * u);
+            Color4 ci = col.ConAlfa(alfa);
+            if (tipo == TipoAviso.Hecho) { d.Linea(ox + 4 * u, oy + 12.5f * u, ox + 9.5f * u, oy + 18 * u, g, ci); d.Linea(ox + 9.5f * u, oy + 18 * u, ox + 20 * u, oy + 6 * u, g, ci); }
+            else if (tipo == TipoAviso.Error) { d.Linea(ox + 7 * u, oy + 7 * u, ox + 17 * u, oy + 17 * u, g, ci); d.Linea(ox + 17 * u, oy + 7 * u, ox + 7 * u, oy + 17 * u, g, ci); }
+            else if (tipo == TipoAviso.Cuidado) { d.Linea(ox + 12 * u, oy + 6 * u, ox + 12 * u, oy + 13.5f * u, g, ci); Circulo(ox + 12 * u, oy + 18 * u, 1.7f * u + g / 2, ci); }
+            else { d.Linea(ox + 9 * u, oy + 18 * u, ox + 9 * u, oy + 6 * u, g, ci); d.Linea(ox + 9 * u, oy + 6 * u, ox + 20 * u, oy + 4 * u, g, ci); d.Linea(ox + 20 * u, oy + 4 * u, ox + 20 * u, oy + 16 * u, g, ci); Circulo(ox + 6.5f * u, oy + 18 * u, 2.5f * u, ci); Circulo(ox + 17.5f * u, oy + 16 * u, 2.5f * u, ci); }
+            float xt = cx + icono / 2 + 14 * k, wt = Math.Max(20 * k, x + w - xt - 16 * k);
+            float yt = y + (alto - (hTit + (hDet > 0 ? 2 * k + hDet : 0))) * .5f - 2 * k;
+            fTit.Escribe(d, fTit.Ajusta(tit, wt), xt, yt, Blanco.ConAlfa(alfa));
+            if (hDet > 0) fDet.Escribe(d, fDet.Ajusta(det, wt), xt, yt + hTit + 2 * k, new Color4(214 / 255f, 222 / 255f, 245 / 255f, alfa));
+            // la linea de lo que le queda, por dentro del borde de abajo
+            float vida = Math.Max(0f, 1f - e / (float)dura), lw = (w - 2 * rad) * vida;
+            if (lw > 1) d.Rect(x + rad, y + alto - 4.5f * k, lw, 3 * k, col.ConAlfa(alfa));
         }
 
         // ---- LOS TEXTOS QUE SE DESLIZAN (textos_deslizantes= de XP): si un titulo no cabe, en vez de cortarlo con puntos suspensivos se
@@ -123,8 +135,9 @@ namespace Rocola
             Letra fTipo = Ui(Math.Max(9, 11 * sx)), fTitulo = Ui(Math.Max(12, 17 * sx)), fSub = UiFina(Math.Max(10, 12 * sx)), fMarca = Ui(Math.Max(9, 11 * sx)), fAyuda = Ui(Math.Max(11, 15 * sx));
             // la lupa
             float lx = x0 + 32 * k, ly = y0 + hb / 2 - 2 * k, lr = 9 * k;
-            Anillo(lx, ly, lr, 2.6f * k, Blanco);
-            d.Linea(lx + lr * 0.7f, ly + lr * 0.7f, lx + lr * 1.55f, ly + lr * 1.55f, 3.2f * k, Blanco);
+            Color4 cLupa = Color4.Hex(0xB4C8F5);   // la lupa de XP: fina y azulada
+            Anillo(lx, ly, lr, 2f * k, cLupa);
+            d.Linea(lx + lr * 0.7f, ly + lr * 0.7f, lx + lr * 1.55f, ly + lr * 1.55f, 2.6f * k, cLupa);
             float tx0 = x0 + 56 * k;
             if (c.Escrito.Length > 0)
             {
@@ -135,11 +148,14 @@ namespace Rocola
             else
             {
                 if ((reloj.ElapsedMilliseconds / 530) % 2 == 0) d.Rect(tx0, y0 + 14 * k, 2.5f * k, hb - 28 * k, Color4.Hex(0x6FA8FF));
-                nMedia.Escribe(d, "Escribe un artista, un disco o una canción", tx0 + 12 * k, y0 + hb / 2 - nMedia.Tam * 0.6f, Color4.Hex(0x8C98C8));
+                fCuenta.Escribe(d, "Escribe un artista, un disco o una canción", tx0 + 12 * k, y0 + hb / 2 - fCuenta.Tam * 0.6f, Color4.Hex(0x8C98C8));
             }
-            if (c.Resultados.Count > 0)
+            // TextoCuenta de XP: se ensenan las 40 mejores, pero la casilla dice todas las coincidencias; sin ninguna, «Sin resultados»
+            bool servicio = c.Resultados.Count > 0 && c.Resultados[0].Tipo == 3;
+            int total = c.Escrito.Length > 0 && !Form1.EsCodigoDeServicio(c.Escrito) ? Math.Max(m.TotalUltimaBusqueda, c.Resultados.Count) : c.Resultados.Count;
+            if (!servicio && (total > 0 || c.Escrito.Length > 0))
             {
-                string cu = c.Resultados.Count + (c.Resultados.Count == 1 ? " resultado" : " resultados");
+                string cu = total <= 0 ? "Sin resultados" : total == 1 ? "1 resultado" : total.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " resultados";
                 fCuenta.Escribe(d, cu, x0 + wb - 20 * k - fCuenta.Mide(cu), y0 + hb / 2 - fCuenta.Tam * 0.6f, Color4.Hex(0xC8D2F2));
             }
             // los atajos
@@ -184,7 +200,12 @@ namespace Rocola
             float rx = x0 + anchoTeclado + 46 * k, rw = W - rx - 24 * k, ry = ty0, gap = 11 * k, cw = (rw - gap) / 2, ch = 84 * k;
             int filas = Math.Max(1, (int)((abajo - ry - 40 * k + gap) / (ch + gap)));
             zResultados = new Zona(rx, ry, rw, filas * (ch + gap));
-            if (c.Resultados.Count == 0 && c.Escrito.Length > 0) nMedia.Escribe(d, "Nada con eso", rx + 8 * k, ry + 8 * k, Color4.Hex(0x8C98C8));
+            if (c.Resultados.Count == 0)
+            {   // DibujaSinCartas de XP: que hacer, dicho en el sitio de las tarjetas
+                Letra fVacio = UiFina(Math.Max(11, 16 * sx));
+                string vacio = c.Escrito.Length > 0 ? "Sin resultados para «" + c.Escrito.ToLowerInvariant() + "»" : c.Atajos.Count > 0 ? "Escribe para buscar, o elige un atajo de arriba" : "Escribe para buscar";
+                fVacio.Escribe(d, fVacio.Ajusta(vacio, rw), rx, ry + 8 * k, Color4.Hex(0xA8B4DC));
+            }
             int filaSel = c.SelResultado / 2, filasTot = (c.Resultados.Count + 1) / 2;
             int desde = Math.Max(0, Math.Min(filaSel - filas / 2, filasTot - filas));
             string suena = m.Sonando;
@@ -310,9 +331,20 @@ namespace Rocola
                 {
                     int eg = em - MonedaCaeMs;
                     if (eg < MonedaGolpeMs) d.Brillo(zCreditos.Cx, zCreditos.Cy, zCreditos.W * 0.8f, Verde.ConAlfa(0.5f * (1f - eg / (float)MonedaGolpeMs)));
-                    float u = eg / (float)MonedaSumaMs;
+                    // "+4 creditos" (SueltaMoneda y DibujaMoneda de XP): sale encima de la capsula, a la derecha del numero, sube 46 px
+                    // frenando y se desvanece; verde con un reborde oscuro fino
+                    float u = Math.Min(1f, eg / 1100f);
                     string mas = "+" + c.MonedaSuma + (c.MonedaSuma == 1 ? " crédito" : " créditos");
-                    media.EscribeCentrado(d, mas, zCreditos.Cx, zCreditos.Y + zCreditos.H + 6 * k - 18 * k * u, Verde.ConAlfa(1f - Suave((u - 0.6f) / 0.4f)));
+                    Letra fm = Ui(Math.Max(11 * k, zCreditos.H * .40f));
+                    float tw = fm.Mide(mas) + 24 * k, th = fm.Tam * 1.15f + 14 * k;
+                    float mx = Math.Min(W - tw - 6 * k, zCreditos.X + zCreditos.W * 0.62f), myy = zCreditos.Y - th * .6f - 46 * k * (1f - (1f - u) * (1f - u));
+                    float al = u < .08f ? u / .08f : u > .6f ? (1f - u) / .4f : 1f;
+                    if (u < 1f)
+                    {
+                        float tx = mx + 12 * k, ty = myy + 7 * k;
+                        for (int ox = -1; ox <= 1; ox++) for (int oy = -1; oy <= 1; oy++) if (ox != 0 || oy != 0) fm.Escribe(d, mas, tx + ox * 1.2f, ty + oy * 1.2f, new Color4(6 / 255f, 30 / 255f, 14 / 255f, 150 / 255f * al));
+                        fm.Escribe(d, mas, tx, ty, new Color4(120 / 255f, 240 / 255f, 140 / 255f, al));
+                    }
                 }
             }
             // SIN CREDITOS, INVITAR: una tarjeta amable con la ranura y una moneda entrando; se va sola.

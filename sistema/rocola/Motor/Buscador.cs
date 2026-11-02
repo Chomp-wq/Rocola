@@ -103,13 +103,16 @@ namespace Rocola
                 // 0.19 ms. La lista sin ordenar se guarda igual, porque para acotar la busqueda de la tecla
                 // siguiente lo unico que importa es QUIENES casan, no en que orden.
                 lastMatches = matches; lastQuery = q;
+                TotalUltimaBusqueda = matches != null ? matches.Count : res.Count;   // la casilla dice todas (CuentaResultados de XP)
                 // La tecla siguiente sigue teniendo TODAS las coincidencias para acotar,
                 // no solo las visibles; sus puntos se calculan con la nueva consulta.
             }
-            else { lastMatches = null; lastQuery = null; lastMatchesApproximate = false; }
+            else { lastMatches = null; lastQuery = null; lastMatchesApproximate = false; TotalUltimaBusqueda = 0; }
             return res;
         }
 
+        // Cuantas coincidencias tuvo la ultima busqueda: se ensenan las 40 mejores, pero la casilla del buscador dice todas, como en XP.
+        public int TotalUltimaBusqueda { get; private set; }
         // Un resultado, para quien use el motor: Tipo 0 = artista (va a su primer disco), 1 = disco, 2 = cancion.
         public sealed class Resultado
         {

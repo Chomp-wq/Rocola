@@ -158,7 +158,7 @@ namespace Rocola
             if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.95f, tx.Media.ConAlfa(0.45f * alfa));
             d.Brillo(x + lado / 2, y + lado + 8 * k, lado * 0.6f, new Color4(0, 0, 0.05f, 0.5f * alfa));
             // EL ESCAPARATE (escaparate=): el cubo, en vez de girar, se mece (la portada se ve de frente); sin el, gira como siempre
-            Cubo(disco.Portada, disco.Artista, x, y, lado, m.Escaparate ? 0.22 * Math.Sin(t * 1.1) : t * 1.44);
+            Cubo(disco.Portada, disco.Artista, x, y, lado, m.Escaparate ? 0.28 * Math.Sin((t - atraccionInicio) * 2 * Math.PI / 9.0) : t * 1.44);   // MeceCubo de XP: +-16 grados cada 9 s
             if (alfa < 1) d.Rect(x - 2, y - 2, lado + 4, lado + 4, Color4.Hex(0x1C2050, 1 - alfa));
             // ColumnaEscaparate y HorneaFichaVitrina de XP (Trebuchet MS en negrita, en proporcion al alto)
             float fx = (int)(x + lado + W * .06f), fw = (int)(W - W * .05f) - fx, fy = H * 0.325f;
@@ -189,15 +189,21 @@ namespace Rocola
                     px += w + hp * 0.3f;
                 }
             }
-            List<string> mensajes = new List<string> { "Toca un botón y elige entre " + c.TotalCanciones.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " canciones",
-                "Pon tu canción: una moneda = 4 canciones" };
-            if (m.TopNocheOn && topLista != null && topLista.Count > 0) mensajes.Add("Lo más pedido esta noche: «" + topLista[0].Titulo + "»");
+            // MensajesAtraccion y FaseMensaje de XP: uno cada 5 s, con 0,4 s de fundido; entra desde abajo y se va hacia arriba
+            int nc = c.TotalCanciones;
+            List<string> mensajes = new List<string> { nc > 0 ? "¡Elige tu canción! Hay " + nc.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " esperándote" : "¡Elige tu canción! Toca cualquier botón",
+                "Una moneda = 4 canciones. ¡Tú pones la música!" };
+            if (m.TopNocheOn && topLista != null && topLista.Count > 0) mensajes.Add("La favorita de esta noche: «" + topLista[0].Titulo + "»");
             mensajes.Add("¿Buscas una? ROJO + ARRIBA y escríbela");
-            int im = (int)(t / 5.0) % mensajes.Count; double em = t % 5.0;
-            float am = (float)Math.Max(0, Math.Min(1, Math.Min(em / 0.5, (5.0 - em) / 0.5)));
-            float my = H * 0.66f + (1 - am) * 14 * k;
+            mensajes.Add("¿Primera vez? ROJO + ABAJO y te guío");
+            double msA = (t - atraccionInicio) * 1000.0;
+            int im = (int)(msA / 5000) % mensajes.Count; double sm = msA % 5000;
+            float am = 1f, dyM = 0f;
+            if (sm < 400) { float e = (float)(1 - Math.Pow(1 - sm / 400, 3)); am = e; dyM = 10 * k * (1f - e); }
+            else if (sm > 4600) { float e = (float)((sm - 4600) / 400); e = e * e * (3 - 2 * e); am = 1f - e; dyM = -10 * k * e; }
+            float my = H * 0.66f + dyM;
             Letra fMsg = Tre(Math.Max(14f, H * .029f), true);
-            fMsg.Escribe(d, fMsg.Ajusta(mensajes[im], W - fx - 24 * k), m.Escaparate ? fx : (W - fMsg.Mide(mensajes[im])) / 2, my, Color4.Hex(0xFFD98A, am));
+            fMsg.Escribe(d, fMsg.Ajusta(mensajes[im], W - fx - 24 * k), m.Escaparate ? fx : (W - fMsg.Mide(mensajes[im])) / 2, my, new Color4(1f, 226 / 255f, 176 / 255f, am));
         }
         // Un letrero chico con las letras separadas (EN ESTA ROCOLA de XP).
         private void Espaciado(Letra f, string s, float x, float y, float aire, Color4 c)

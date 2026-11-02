@@ -62,7 +62,7 @@ namespace Rocola
         // La biblioteca por letras y lo de antes del apagon.
         internal void Prepara()
         {
-            motor.Aviso += delegate (string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; AvisoDesde = Environment.TickCount | 1; };
+            motor.Aviso += delegate (string t) { aviso = t; avisoHasta = Environment.TickCount + motor.AvisoVidaMs; AvisoDesde = Environment.TickCount | 1; };
             discos = motor.LeeBiblioteca();
             foreach (Form1.Disco d in discos)
             {
@@ -257,8 +257,8 @@ namespace Rocola
             return CodigoSalida;
         }
 
-        private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + 4000; AvisoDesde = Environment.TickCount | 1; }
-        internal int AvisoDuraMs { get { return 4000; } }
+        private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + motor.AvisoVidaMs; AvisoDesde = Environment.TickCount | 1; }
+        internal int AvisoDuraMs { get { return motor.AvisoVidaMs; } }
 
         // El teclado de la terminal: sus codigos de tecla son los de Windows (ConsoleKey), asi que valen las mismas funciones. Ctrl+Q: salir.
         private void LeeTeclado(Botones botones, bool despacha)
