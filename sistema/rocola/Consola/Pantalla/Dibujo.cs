@@ -101,6 +101,23 @@ namespace Rocola.Pantalla
             texActual = 0;
             return t;
         }
+        // V24: lo que ya esta dibujado en un rectangulo de la pantalla, copiado a una textura (siempre la misma: una a la vez). Las filas
+        // vienen de abajo arriba (como las da OpenGL): se dibuja con v de 1 a 0.
+        private Textura copia;
+        internal Textura CopiaPantalla(float x, float y, float w, float h)
+        {
+            Vacia();
+            int ix = Math.Max(0, (int)x), iy = Math.Max(0, (int)y), iw = Math.Min(Ancho - ix, (int)Math.Ceiling(w)), ih = Math.Min(Alto - iy, (int)Math.Ceiling(h));
+            if (iw < 2 || ih < 2) return null;
+            if (copia == null) { uint t; GL.GenTextures(1, &t); copia = new Textura { Id = t }; }
+            GL.BindTexture(GL.TEXTURE_2D, copia.Id);
+            GL.CopyTexImage2D(GL.TEXTURE_2D, 0, GL.RGB, ix, Alto - iy - ih, iw, ih, 0);
+            GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+            GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+            texActual = 0;
+            copia.Ancho = iw; copia.Alto = ih;
+            return copia;
+        }
         internal void Borra(Textura t) { if (t == null) return; Vacia(); uint id = t.Id; GL.DeleteTextures(1, &id); texActual = 0; }
 
         internal void Empieza(Color4 fondo)
@@ -191,6 +208,13 @@ namespace Rocola.Pantalla
             if (blanca.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
             V(x0, y0, 0.5f, 0.5f, c0); V(x1, y1, 0.5f, 0.5f, c1); V(x3, y3, 0.5f, 0.5f, c3);
             V(x1, y1, 0.5f, 0.5f, c1); V(x2, y2, 0.5f, 0.5f, c2); V(x3, y3, 0.5f, 0.5f, c3);
+        }
+        // Una imagen en un cuadrilatero cualquiera (arriba-izq, arriba-der, abajo-der, abajo-izq): las portadas en perspectiva (V15, V20).
+        internal void ImagenLibre(Textura t, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
+        {
+            if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; }
+            V(x0, y0, 0, 0, c); V(x1, y1, 1, 0, c); V(x3, y3, 0, 1, c);
+            V(x1, y1, 1, 0, c); V(x2, y2, 1, 1, c); V(x3, y3, 0, 1, c);
         }
         // Un degradado de izquierda a derecha.
         internal void DegradadoH(float x, float y, float w, float h, Color4 izq, Color4 der) { Cuatro(x, y, izq, x + w, y, der, x + w, y + h, der, x, y + h, izq); }

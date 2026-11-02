@@ -141,7 +141,8 @@ namespace Rocola
                 else if (b == "atraccion") c.FuerzaAtraccion();
                 else if (b == "rojo") c.RojoDePrueba = true;
                 else if (b == "diagnostico") { c.DiagnosticoDePrueba(v); Console.Write(c.UltimoDiagnostico); }   // el ROJO mantenido (las pistas del rojo)
-                else if (b == "noche") { c.AtraccionDesfase = 15; c.FuerzaAtraccion(); }   // la atraccion, ya en lo mas pedido esta noche
+                else if (b == "noche") { c.AtraccionDesfase = 15; c.FuerzaAtraccion(); }
+                else if (b == "mosaico") { c.AtraccionDesfase = 32; c.FuerzaAtraccion(); }   // V20: la atraccion, ya en el mosaico   // la atraccion, ya en lo mas pedido esta noche
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
                 else if (b == "reposo")
                 {

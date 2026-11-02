@@ -46,6 +46,14 @@ namespace Rocola
             float fuerza = 0.55f + 0.25f * pMedios;
             d.ImagenTenida(nebulosa, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * alfa));
             d.ImagenTenida(nebulosa, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.85f * alfa));
+            if (nebVivasAhora)
+            {
+                // V1: dos capas mas, volteadas y a otra escala, que se funden una en otra despacio: las nubes cambian de forma
+                float f1 = (float)(0.5 + 0.5 * Math.Sin(t * 0.09)), f2 = 1f - f1, ex = W * 0.25f, ey = H * 0.25f;
+                float c2 = (float)Math.Cos(t * 0.021 + 1.7), s2 = (float)Math.Sin(t * 0.027 + 0.4);
+                d.Quad(nebulosa, -ex + c2 * ex * 0.5f, -ey + s2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 1, 0, 0, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * 0.55f * f1 * alfa));
+                d.Quad(nebulosa, -ex - s2 * ex * 0.5f, -ey + c2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 0, 1, 1, 0, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.50f * f2 * alfa));
+            }
         }
         // Ruido de valores en varias escalas (nubes), mas fuerte arriba y en manchas; blanco con su alfa.
         private Textura HazNebulosa(int w, int h)
@@ -128,7 +136,7 @@ namespace Rocola
 
         // ---- V2: LA AURORA QUE RESPIRA CON LA MUSICA: dos cortinas de luz sobre el horizonte (verde y turquesa, tenidas del color de lo
         // que suena), con el borde de abajo brillante y la luz subiendo hasta apagarse; los graves la estiran hacia arriba ----
-        private bool aireAhora = true, auroraAhora = true;   // de fabrica (la pantalla de arranque se dibuja antes de leer los ajustes)
+        private bool aireAhora = true, auroraAhora = true, nebVivasAhora;   // de fabrica (la pantalla de arranque se dibuja antes de leer los ajustes)
         private void Aurora(float W, float H, double t, float alfa)
         {
             float yh = Horizonte(H) - 30 * k;

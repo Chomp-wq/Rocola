@@ -13,7 +13,7 @@ namespace Rocola.Pantalla
             CLAMP_TO_EDGE = 0x812F, BLEND = 0x0BE2, SRC_ALPHA = 0x0302, ONE_MINUS_SRC_ALPHA = 0x0303, ARRAY_BUFFER = 0x8892,
             STREAM_DRAW = 0x88E0, VERTEX_SHADER = 0x8B31, FRAGMENT_SHADER = 0x8B30, COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82,
             FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0, UNPACK_ALIGNMENT = 0x0CF5, PACK_ALIGNMENT = 0x0D05, TEXTURE0 = 0x84C0,
-            SCISSOR_TEST = 0x0C11, RENDERER = 0x1F01, VERSION = 0x1F02, LINEAR_MIPMAP_LINEAR = 0x2703;
+            SCISSOR_TEST = 0x0C11, RENDERER = 0x1F01, VERSION = 0x1F02, LINEAR_MIPMAP_LINEAR = 0x2703, RGB = 0x1907;
         [DllImport(L, EntryPoint = "glViewport")] internal static extern void Viewport(int x, int y, int w, int h);
         [DllImport(L, EntryPoint = "glScissor")] internal static extern void Scissor(int x, int y, int w, int h);
         [DllImport(L, EntryPoint = "glClearColor")] internal static extern void ClearColor(float r, float g, float b, float a);
@@ -42,6 +42,7 @@ namespace Rocola.Pantalla
         [DllImport(L, EntryPoint = "glTexParameteri")] internal static extern void TexParameteri(uint d, uint p, int v);
         [DllImport(L, EntryPoint = "glTexImage2D")] internal static extern void TexImage2D(uint d, int nivel, int interno, int w, int h, int borde, uint formato, uint tipo, void* datos);
         [DllImport(L, EntryPoint = "glGenerateMipmap")] internal static extern void GenerateMipmap(uint destino);
+        [DllImport(L, EntryPoint = "glCopyTexImage2D")] internal static extern void CopyTexImage2D(uint d, int nivel, uint interno, int x, int y, int w, int h, int borde);
         [DllImport(L, EntryPoint = "glPixelStorei")] internal static extern void PixelStorei(uint p, int v);
         [DllImport(L, EntryPoint = "glGenBuffers")] internal static extern void GenBuffers(int n, uint* b);
         [DllImport(L, EntryPoint = "glBindBuffer")] internal static extern void BindBuffer(uint d, uint b);

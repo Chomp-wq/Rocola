@@ -85,7 +85,8 @@ namespace Rocola
             float max = Math.Max(360 * k, Math.Min(560 * k, W * .40f)), w = Math.Max(300 * k, Math.Min(max, 16 * k + icono + 14 * k + tw + 22 * k));
             float x = Math.Max(8 * k, W - 18 * k - w) + dx, y = 80 * k, rad = Math.Min(16 * k, alto * .26f);
             Color4 col = ColorAviso(tipo);
-            d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(alfa));
+            if (c.motor.AvisosVidrio && VidrioDetras(x, y, w, alto, alfa)) d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(0.55f * alfa));   // V24
+            else d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(alfa));
             d.Contorno(x, y, w, alto, rad, 1.5f * k, col.ConAlfa(alfa));
             // el aro con su icono (los trazos del boceto de XP, en una caja de 24)
             float cx = x + 16 * k + icono / 2, cy = y + alto / 2 - 1 * k;

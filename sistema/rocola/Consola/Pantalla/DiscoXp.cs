@@ -121,7 +121,7 @@ namespace Rocola
             d.Rect(0, top, W, 1.5f * k, Color4.Hex(0x7FA0FF, 0.55f));
             d.Brillo(W * 0.5f, top, W * 0.35f, Color4.Hex(0x6A7CFF, 0.12f));
             string t = m.SonandoTitulo; if (t == null) return;
-            List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaDoce ? 12 : 3);
+            List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaCarrusel ? 7 : m.ColaDoce ? 12 : 3);
             float xc = cola.Count == 0 ? W : W * 0.52f;   // donde empieza la cola
             // LAS LETRAS DEL PANEL DE XP (RenderIdlePanelEn): Trebuchet MS en negrita, a la escala del alto del panel
             float sc = Math.Max(.8f, Math.Min(1.3f, ph / (260f * k))) * k;
@@ -167,6 +167,7 @@ namespace Rocola
                 d.Brillo(bx + wp, by, 14 * k, Blanco.ConAlfa(0.7f)); d.Brillo(bx + wp, by, 4 * k, Blanco);
             }
             if (cola.Count == 0) return;
+            if (m.ColaCarrusel) { Carrusel(m, cola, xc, top, W, H, small, normal); return; }   // V15
             // A CONTINUACION: tarjetas en tres columnas (dos si caben pocas)
             small.Escribe(d, "A CONTINUACIÓN  /  " + m.EnCola + (m.EnCola == 1 ? " CANCIÓN" : " CANCIONES"), xc, top + 10 * k, Turquesa);
             int cols = cola.Count > 4 ? 3 : 2, filas = (cola.Count + cols - 1) / cols;

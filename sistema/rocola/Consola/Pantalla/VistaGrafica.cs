@@ -92,7 +92,7 @@ namespace Rocola
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
             Pulso(c);
-            vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
+            vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             ColorDelCielo(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             EspectroHorizonte(c, W, H);
@@ -146,7 +146,8 @@ namespace Rocola
             double t = reloj.Elapsed.TotalSeconds;
             if (!atraccionAntes) { atraccionAntes = true; atraccionInicio = t - c.AtraccionDesfase; topDesde = -1; }
             // LO MAS PEDIDO ESTA NOCHE (top_noche=): cada 30 s, durante 15, la lista de las cinco mas pedidas desde las 8 de la manana
-            double fase = (t - atraccionInicio) % 30.0;
+            double ciclo = m.MosaicoExitos ? 45.0 : 30.0, fase = (t - atraccionInicio) % ciclo;
+            if (fase >= 30.0) { Mosaico(c, W, H, fase - 30.0); return; }   // V20
             if (m.TopNocheOn && fase >= 15.0)
             {
                 if (topDesde < 0) { topLista = m.TopNoche(out topTotal); topDesde = t; }

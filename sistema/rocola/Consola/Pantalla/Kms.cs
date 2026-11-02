@@ -67,6 +67,9 @@ namespace Rocola.Pantalla
             if (con == null) { drmModeFreeResources(r); throw new InvalidOperationException("ninguna pantalla conectada"); }
             int elegido = 0;
             for (int i = 0; i < con->count_modes; i++) if ((con->modes[i].type & 8 /* PREFERRED */) != 0) { elegido = i; break; }
+            if (!Form1.ResolucionNativaGuardada())   // V30 apagado: 1024x768 si el monitor la ofrece (la de XP), la de mas refresco
+                for (int i = 0, mejor = -1; i < con->count_modes; i++)
+                    if (con->modes[i].hdisplay == 1024 && con->modes[i].vdisplay == 768 && (mejor < 0 || con->modes[i].vrefresh > con->modes[mejor].vrefresh)) { mejor = i; elegido = i; }
             modo = con->modes[elegido];
             conector = con->connector_id;
             uint crtcId = 0;

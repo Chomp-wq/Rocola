@@ -578,3 +578,22 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
   bandas de la aurora, ahorros de Performance...), que el cielo de Linux dibuja a su manera; se irán pasando cuando el cielo de
   Linux tenga esas piezas.
 - Sin referencia de XP con música sonando (la hermana no toca): el color se comprobó con capturas de Linux, no contra XP.
+
+## Extra (2-11-2026, tercera parte): las mejoras visuales elegidas (V1-V5, V7-V24, V28-V30)
+
+El dueño eligió 26 de las 30 ideas de la presentación «Rocola OS: mejoras visuales» (todas menos V6, V25, V26 y V27). Están todas,
+cada una con su interruptor en Ctrl+F3 (hojas **Imagen** y **Fondo**, ya activas): las de coste bajo encendidas de fábrica; V1, V7, V13,
+V14, V15, V20 y V24 (coste medio) apagadas hasta medirlas en el A4. Código: `rocola/Motor/MejorasVisuales.cs` (interruptores, el
+espectro y la forma de la canción) y `rocola/Consola/Pantalla/Mejoras.cs` (el dibujo).
+
+- **Lo nuevo debajo:** el espectro de 16 bandas medido en la salida (FFT de 1024 puntos por bloque, al compás de las bocinas: V9, V11),
+  la forma de cada canción (240 tramos, en segundo plano con mpg123: V10), portadas con mipmaps y copia grande (V4), la portada
+  borrosa de 24×24 (V7, V13), un cuadrilátero con textura para la perspectiva (V15, V20), copiar un trozo de pantalla (V24) y unas
+  chispas (V18, V23).
+- **V29:** la rocola pinta el cielo con «ROCOLA» en cuanto tiene la pantalla, antes de leer los datos y la biblioteca, y S99rocola ya
+  no escribe en tty1 ni deja el cursor (sus mensajes van a `/run/rocola-arranque.txt`). GRUB y el núcleo siguen como estaban: el
+  instalador que escribe el menú del disco no está en el repositorio.
+- **V30:** KMS ya usaba la resolución del monitor y la interfaz ya se escalaba con ella (no se estiraba). El interruptor queda
+  encendido (así) y apagado pide 1024×768 si el monitor la ofrece.
+- Comprobado con capturas fuera de pantalla (Mesa por software). **Nada medido en el A4:** ni fluidez ni coste real de cada una.
+  El espectro y las barritas reales necesitan la salida de sonido: en las capturas no se ven moverse.

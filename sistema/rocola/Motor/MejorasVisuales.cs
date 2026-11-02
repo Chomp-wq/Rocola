@@ -35,8 +35,20 @@ namespace Rocola
         public bool ChispasPedir = true;        // V23 "chispas_pedir="
         public bool AvisosVidrio = false;       // V24 "avisos_vidrio=" (medio)
         public bool AjustesVistaPrevia = true;  // V28 "ajustes_vista_previa="
-        public bool ResolucionNativa = false;   // V30 "resolucion_nativa=" (medio; se aplica al arrancar)
+        public bool ResolucionNativa = true;    // V30 "resolucion_nativa=": la del monitor (apagado: 1024x768 si el monitor la ofrece; se aplica al arrancar)
 
+        // V30 antes de tener el motor (la pantalla se abre primero, V29): lo guardado en rocola_config.txt, encendido si no dice nada.
+        public static bool ResolucionNativaGuardada()
+        {
+            try
+            {
+                string f = System.IO.Path.Combine(CarpetaDatos, "rocola_config.txt");
+                if (!System.IO.File.Exists(f)) return true;
+                foreach (string l in System.IO.File.ReadAllLines(f)) if (l.StartsWith("resolucion_nativa=")) return l.Substring(18).Trim() != "0";
+            }
+            catch { }
+            return true;
+        }
         // Las claves, para leerlas y guardarlas de una sola tabla.
         private KeyValuePair<string, Func<bool>>[] clavesVisuales;
         private KeyValuePair<string, Action<bool>>[] ponVisuales;

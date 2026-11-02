@@ -150,9 +150,12 @@ namespace Rocola
         private void VeloAtraccion(Controlador c, float W, float H)
         {
             Form1 m = c.motor;
-            if (!m.AtraccionFundidos || !m.TopNocheOn || topLista == null || topLista.Count == 0) return;
-            double fase = (reloj.Elapsed.TotalSeconds - atraccionInicio) % 30.0;
-            double cerca = Math.Min(Math.Abs(fase - 15.0), Math.Min(fase, 30.0 - fase));
+            bool top = m.TopNocheOn && topLista != null && topLista.Count > 0;
+            if (!m.AtraccionFundidos || (!top && !m.MosaicoExitos)) return;
+            double ciclo = m.MosaicoExitos ? 45.0 : 30.0, fase = (reloj.Elapsed.TotalSeconds - atraccionInicio) % ciclo;
+            double cerca = Math.Min(fase, ciclo - fase);
+            if (top) cerca = Math.Min(cerca, Math.Abs(fase - 15.0));
+            if (m.MosaicoExitos) cerca = Math.Min(cerca, Math.Abs(fase - 30.0));
             if (cerca >= 0.45) return;
             float v = Suave((float)(1 - cerca / 0.45));
             d.Rect(0, 0, W, H, new Color4(0.05f, 0.06f, 0.16f, 0.92f * v));
@@ -281,6 +284,89 @@ namespace Rocola
                     float rr = lado * (0.68f + 0.10f * i + 0.10f * pGraves), g = (3 - i) * 1.4f * k;
                     d.Contorno(cx - rr, cy - rr, 2 * rr, 2 * rr, rr, g, Dibujo.Mezcla(c, Blanco, 0.3f).ConAlfa((0.45f - 0.12f * i) * (0.4f + 0.6f * pGraves)));
                 }
+            }
+        }
+    
+
+        // V24: el vidrio de los avisos: lo que hay detras, copiado y dibujado nueve veces corrido (un promedio: borroso) y aclarado
+        private bool VidrioDetras(float x, float y, float w, float h, float alfa)
+        {
+            Textura t = d.CopiaPantalla(x, y, w, h);
+            if (t == null) return false;
+            float r = 6 * k; int n = 0;
+            d.Recorta(x + 3 * k, y, w - 6 * k, h);   // sin salirse (las esquinas redondas las tapa el borde)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    n++;
+                    d.Quad(t, x + dx * r, y + dy * r, w, h, 0, 1, 1, 0, new Color4(1, 1, 1, alfa / n));   // promedio corrido: 1, 1/2, 1/3...
+                }
+            d.SinRecorte();
+            d.Degradado(x + 3 * k, y, w - 6 * k, h, new Color4(1, 1, 1, 0.10f * alfa), new Color4(1, 1, 1, 0.03f * alfa));
+            return true;
+        }
+    
+
+        // V15: LA COLA EN CARRUSEL: la siguiente al frente, grande, y las demas alejandose a la derecha en perspectiva (la cara de la
+        // derecha mas baja); cuando la cola avanza, todas se corren un puesto (450 ms).
+        private string carruselCabeza; private double carruselDesde = -10;
+        private void Carrusel(Form1 m, System.Collections.Generic.List<Form1.EnColaVista> cola, float xc, float top, float W, float H, Letra small, Letra normal)
+        {
+            double t = reloj.Elapsed.TotalSeconds;
+            string cabeza = cola[0].Ruta ?? cola[0].Titulo;
+            if (cabeza != carruselCabeza) { if (carruselCabeza != null) carruselDesde = t; carruselCabeza = cabeza; }
+            float corre = 1f - Suave((float)((t - carruselDesde) / 0.45));   // de 1 (un puesto atras) a 0
+            small.Escribe(d, "A CONTINUACIÓN  /  " + m.EnCola + (m.EnCola == 1 ? " CANCIÓN" : " CANCIONES"), xc, top + 10 * k, Turquesa);
+            float ay = top + 36 * k, ah = H - 46 * k - ay, aw = W - 24 * k - xc;
+            float s0 = Math.Min(ah * 0.86f, aw * 0.40f), x0 = xc + 6 * k, y0 = ay + (ah - s0) / 2 - 6 * k;
+            for (int i = cola.Count - 1; i >= 0; i--)
+            {
+                float p = i + corre;   // el puesto (con decimales mientras se corren)
+                float esc = (float)Math.Pow(0.80, p), s = s0 * esc;
+                float x = p <= 0 ? x0 : x0 + s0 * 0.72f + (s0 * 0.42f) * (float)((1 - Math.Pow(0.80, p - 1)) / 0.20);
+                if (x + s > W - 10 * k) continue;
+                float y = y0 + (s0 - s) / 2, baja = p < 0.5f ? 0 : s * 0.10f;   // la cara de la derecha, mas corta: se aleja
+                float a = Math.Max(0.15f, 1f - 0.16f * p);
+                Textura tq = caratulas.Para(cola[i].Portada, s);
+                d.Brillo(x + s / 2, y + s + 4 * k, s * 0.5f, new Color4(0, 0, 0.04f, 0.35f * a));
+                if (tq != null) d.ImagenLibre(tq, x, y, x + s, y + baja, x + s, y + s - baja, x, y + s, new Color4(a, a, a, 1f));
+                else { d.Cuatro(x, y, Color4.Hex(0x4A3E9A, a), x + s, y + baja, Color4.Hex(0x4A3E9A, a), x + s, y + s - baja, Color4.Hex(0x2A2470, a), x, y + s, Color4.Hex(0x2A2470, a)); }
+                if (p < 0.5f) d.Contorno(x - 2 * k, y - 2 * k, s + 4 * k, s + 4 * k, 6 * k, 2 * k, Turquesa.ConAlfa(0.8f));
+            }
+            // el titulo de la siguiente, debajo
+            Form1.EnColaVista q = cola[0];
+            float ty = y0 + s0 + 8 * k;
+            normal.Escribe(d, normal.Ajusta(q.Titulo ?? "", aw), xc, Math.Min(ty, H - 40 * k), Blanco);
+        }
+
+        // V20: MOSAICO DE LO MAS PEDIDO (una pantalla mas de la atraccion, 15 s): las portadas de los discos mas pedidos en una pared que
+        // va apareciendo volteandose, una a una, y cada dos segundos una se voltea y ensena otro disco.
+        private void Mosaico(Controlador c, float W, float H, double edad)
+        {
+            System.Collections.Generic.List<Form1.Disco> lista = new System.Collections.Generic.List<Form1.Disco>();
+            if (c.discos != null) foreach (Form1.Disco dd in c.discos) if (!dd.Videos && dd.Portada != null) lista.Add(dd);
+            lista.Sort((a, b) => b.Pedidas.CompareTo(a.Pedidas));
+            if (lista.Count == 0) return;
+            int cols = 6, filas = 3;
+            float mg = 40 * k, gap = 12 * k, tw = (W - 2 * mg - (cols - 1) * gap) / cols, th = tw, alto = filas * th + (filas - 1) * gap;
+            float y0 = Math.Max(110 * k, (H - alto) / 2 + 20 * k);
+            Letra fT = Tre(Math.Max(18f, H * .045f), true);
+            float alfa = (float)Math.Min(1, Math.Min(edad / 0.5, (15.0 - edad) / 0.5));
+            Espaciado(fT, "LO MÁS PEDIDO", (W - fT.Mide("LO MÁS PEDIDO") - 12 * fT.Tam * 0.2f) / 2, y0 - fT.Tam * 1.8f, fT.Tam * 0.2f, Dorado.ConAlfa(alfa));
+            for (int i = 0; i < cols * filas; i++)
+            {
+                int fila = i / cols, col = i % cols;
+                // la que toca en esta casilla: va cambiando cada 2 s (una casilla distinta cada vez)
+                int vuelta = (int)(edad / 2.0), cual = (i + (vuelta > 0 && (vuelta * 7) % (cols * filas) == i ? vuelta : 0)) % lista.Count;
+                double entra = edad - (fila * cols + col) * 0.08, gira = edad - vuelta * 2.0;
+                float abre = Suave((float)(entra / 0.4));
+                if ((vuelta * 7) % (cols * filas) == i && vuelta > 0 && gira < 0.5) abre = Math.Abs((float)Math.Cos(gira / 0.5 * Math.PI));   // se voltea
+                if (abre <= 0.02f) continue;
+                float x = mg + col * (tw + gap), y = y0 + fila * (th + gap), w = tw * abre;
+                Textura tx = caratulas.Para(lista[cual].Portada, tw);
+                if (tx != null) d.Quad(tx, x + (tw - w) / 2, y, w, th, 0, 0, 1, 1, new Color4(1, 1, 1, alfa));
+                else d.Rect(x + (tw - w) / 2, y, w, th, Color4.Hex(0x2A3A78, alfa));
+                if (i < 3 && abre > 0.9f) { Circulo(x + 18 * k, y + 18 * k, 13 * k, Dorado.ConAlfa(alfa)); mini.EscribeCentrado(d, (i + 1).ToString(), x + 18 * k, y + 18 * k - mini.Tam * 0.55f, new Color4(0.1f, 0.08f, 0.02f, alfa)); }
             }
         }
     }
