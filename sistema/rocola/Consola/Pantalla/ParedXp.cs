@@ -236,6 +236,8 @@ namespace Rocola
                         float wc = (float)Math.Round(lado * 0.7071f);
                         d.Contorno(cx - wc / 2, y1, wc, lado, 0.1f, 1f, new Color4(0, 0, 0, 0.47f));
                     }
+                    // YA LA PEDISTE (marca_cola=, Palomito de XP): un palomito verde en la esquina de arriba de la portada
+                    if (!sel && c.motor.DiscoPedido(disco.Carpeta)) Palomito(cx + lado / 2, y1, lado);
                     // la etiqueta: «Artista - Disco» en dos renglones centrados, negrita, con puntos si no cabe (BakeCell de XP)
                     string etiqueta = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Artista + " - " + disco.Nombre;
                     List<string> renglones = Envuelve(etiqueta, mini, celW - 4 * k);
@@ -273,20 +275,28 @@ namespace Rocola
             else nChica.Escribe(d, "Inserta una moneda", xcr + 15 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xE2E6F8));
             zCreditos = new Zona(xcr, y + 1 * k, wcr, hp);
             string q = m.EnCola.ToString();
-            float wq = nChica.Mide("En cola") + nGrande.Mide(q) + 3 * 20 * k + 34 * k, xq = xcr - 12 * k - wq;
+            bool conPortadas = m.ColaPortadas;   // cola_portadas= (XP: ConPortadas)
+            float wq = nChica.Mide("En cola") + nGrande.Mide(q) + (conPortadas ? 3 * 20 * k : 0) + 34 * k, xq = xcr - 12 * k - wq;
             Pastilla(xq, y + 1 * k, wq, hp);
             nChica.Escribe(d, "En cola", xq + 14 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xC4CCE8));
             float sq = Salto(c);
             nGrande.Escribe(d, q, xq + 22 * k + nChica.Mide("En cola"), y + 1 * k + hp / 2 - nGrande.Tam * 0.64f - sq, sq > 0 ? Dorado : AzulNumero);
-            List<string> ports = m.PortadasEnCola(3);
+            List<string> ports = conPortadas ? m.PortadasEnCola(3) : new List<string>();
             float bx = xq + 28 * k + nChica.Mide("En cola") + nGrande.Mide(q);
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < (conPortadas ? 3 : 0); i++)
             {
                 float qx = bx + i * 20 * k, qy = y + 1 * k + hp / 2 - 8 * k;
                 Textura tq = i < ports.Count && ports[i] != null ? caratulas.De(ports[i]) : null;
                 if (tq != null) d.Imagen(tq, qx, qy, 16 * k, 16 * k);
                 else d.Rect(qx, qy, 16 * k, 16 * k, i < m.EnCola ? Color4.Hex(0x5A6AB0, 0.6f) : Color4.Hex(0x2A3462, 0.55f));
                 d.Contorno(qx, qy, 16 * k, 16 * k, 2 * k, 1f * k, Color4.Hex(0x6E7CB8, 0.6f));
+                if (i == 2 && m.EnCola > 3)
+                {
+                    // Y SI HAY MAS DE TRES, cuantas quedan detras (XP: Mas): una franja oscura abajo de la ultima con «+N»
+                    float hm = 16 * k * 0.46f; string mas = "+" + (m.EnCola - 3); Letra fm = Ui(hm * 0.95f);
+                    d.Rect(qx, qy + 16 * k - hm, 16 * k, hm, new Color4(8 / 255f, 11 / 255f, 28 / 255f, 205 / 255f));
+                    fm.EscribeCentrado(d, mas, qx + 8 * k, qy + 16 * k - hm / 2 - fm.Tam * 0.62f, new Color4(232 / 255f, 240 / 255f, 1f, 238 / 255f));
+                }
             }
             zCola = new Zona(xq, y + 1 * k, wq, hp);
             // a la izquierda: lo que suena
@@ -302,7 +312,7 @@ namespace Rocola
                 float lado = 56 * k;
                 zSuena = new Zona(24 * k, y, lado, lado);
                 if (m.ColorGenero) Resplandor(m.ColorSonando, 24 * k + lado / 2, y + lado / 2, lado * 0.9f);
-                Cubo(m.SonandoPortada, m.SonandoDisco ?? t, 24 * k, y, lado, reloj.Elapsed.TotalSeconds * 1.44);   // el cubo chico (XP)
+                Cubo(PortadaDelCubito(m), m.SonandoDisco ?? t, 24 * k, y, lado, AnguloCubito(m));   // el cubo chico (XP), con su relevo
                 float xt = 24 * k + lado + 16 * k, at = ancho - xt;
                 EscribeDesliza(c, nGrande, t, xt, y - 1 * k, at, Blanco);
                 string sub = m.SonandoDisco ?? "";
@@ -332,6 +342,43 @@ namespace Rocola
                 d.Brillo(xb + wp, yb + hb / 2, 5 * k, Blanco);
             }
             nMedia.Escribe(d, rl, W - 22 * k - wr, yb + hb / 2 - nMedia.Tam * 0.62f, Blanco);
+        }
+        // EL RELEVO DEL CUBITO (relevo=, MiniCube.Relevo de XP): al cambiar la portada de lo que suena, el cubo da media vuelta en 420 ms
+        // (arranca y frena suave) y la nueva entra a la mitad, de espaldas a quien mira. La primera de la noche entra sin giro.
+        private string cubitoVista, cubitoNueva; private double cubitoDesde = -1, cubitoGirado;
+        private string PortadaDelCubito(Form1 m)
+        {
+            string ahora = m.SonandoPortada;
+            if (!string.Equals(ahora, cubitoVista) && !string.Equals(ahora, cubitoNueva))
+            {
+                if (m.Relevo && cubitoVista != null && ahora != null) { cubitoNueva = ahora; cubitoDesde = reloj.Elapsed.TotalSeconds; }
+                else { cubitoVista = ahora; cubitoNueva = null; }
+            }
+            return cubitoVista;
+        }
+        private double AnguloCubito(Form1 m)
+        {
+            double t = reloj.Elapsed.TotalSeconds, extra = 0;
+            if (cubitoDesde >= 0)
+            {
+                double u = Math.Min(1.0, (t - cubitoDesde) / 0.42), e = u * u * (3.0 - 2.0 * u);
+                extra = Math.PI * e;
+                if (e >= 0.5 && cubitoNueva != null) { cubitoVista = cubitoNueva; cubitoNueva = null; }
+                if (u >= 1.0) { cubitoDesde = -1; cubitoGirado += Math.PI; extra = 0; }
+            }
+            return t * 1.44 + cubitoGirado + extra;
+        }
+        // EL PALOMITO de XP (Form1.Pared.cs: Palomito): un circulo verde con su aro oscuro y la palomita, en la esquina de arriba a la
+        // derecha del cuadro de la portada ('der' es su borde derecho, 'arriba' su borde de arriba).
+        private void Palomito(float der, float arriba, float lado)
+        {
+            float dd = Math.Max(13f * k, lado * 0.26f), x = der - dd * 0.92f, y = arriba - dd * 0.08f, r = dd / 2;
+            Circulo(x + r, y + r, r, new Color4(120 / 255f, 230 / 255f, 165 / 255f, 236 / 255f));
+            d.Contorno(x, y, dd, dd, r, Math.Max(1f, dd * 0.07f), new Color4(10 / 255f, 40 / 255f, 26 / 255f, 150 / 255f));
+            Color4 v = Color4.Hex(0x0A2C1C); float g = Math.Max(1.6f, dd * 0.15f);
+            d.Linea(x + dd * 0.27f, y + dd * 0.52f, x + dd * 0.44f, y + dd * 0.70f, g, v);
+            d.Linea(x + dd * 0.44f, y + dd * 0.70f, x + dd * 0.75f, y + dd * 0.32f, g, v);
+            Circulo(x + dd * 0.44f, y + dd * 0.70f, g / 2, v);   // la union redonda
         }
         // Una pastilla de la franja de abajo (la cola, los creditos): oscura, con un filo claro.
         private void Pastilla(float x, float y, float w, float h)

@@ -21,6 +21,7 @@ namespace Rocola.Pantalla
     {
         public uint Id; public int Ancho, Alto;
         public Color4 Media;   // el color de la imagen (para el halo de la portada enfocada, como en XP)
+        public Rocola.VistaGrafica.C3 Prom, Uno, Dos;   // de que color es la portada (el cielo toma su tono: ColorFondo.cs)
     }
 
     internal sealed unsafe class Dibujo : IDisposable
@@ -330,6 +331,7 @@ namespace Rocola.Pantalla
                 if (Math.Max(w, h) > lado) { int nw = Math.Max(1, w * lado / Math.Max(w, h)), nh = Math.Max(1, h * lado / Math.Max(w, h)); px = Reduce(px, w, h, nw, nh); w = nw; h = nh; }
                 t = d.Sube(px, w, h);
                 t.Media = ColorMedio(px);
+                Rocola.VistaGrafica.ColoresDePortada(px, w, h, out t.Prom, out t.Uno, out t.Dos);
             }
             catch { sinImagen.Add(ruta); return null; }
             hechas[ruta] = t; orden.AddFirst(ruta);

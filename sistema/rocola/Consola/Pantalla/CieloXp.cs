@@ -20,10 +20,14 @@ namespace Rocola
         {
             float yh = Horizonte(H);
             // la noche: cuatro paradas (medidas en la de XP) y, bajo el horizonte, un azul que se apaga
-            d.Degradado(0, 0, W, H * 0.40f, Color4.Hex(0x16163A, alfa), Color4.Hex(0x28285C, alfa));
-            d.Degradado(0, H * 0.40f, W, H * 0.35f, Color4.Hex(0x28285C, alfa), Color4.Hex(0x2C367D, alfa));
-            d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Color4.Hex(0x2C367D, alfa), Color4.Hex(0x37408F, alfa));
-            d.Degradado(0, yh, W, H - yh, Color4.Hex(0x223470, alfa), Color4.Hex(0x16234C, alfa));
+            // con el tinte de lo que suena (ColorFondo.cs): con el azul de siempre, las mismas paradas de antes
+            C3 a0 = SkyArriba(acento), am = SkyMedio(acento, AzulCielo), ab = SkyAbajo(acento), d0 = SkyArriba(Defecto), dm = SkyMedio(Defecto), db = SkyAbajo(Defecto);
+            C3 a1 = new C3((a0.R + am.R) / 2, (a0.G + am.G) / 2, (a0.B + am.B) / 2), d1 = new C3((d0.R + dm.R) / 2, (d0.G + dm.G) / 2, (d0.B + dm.B) / 2);
+            float corte = H * 0.40f * corteNegro / 42f;   // donde acaba el negro de arriba (cielo_negro=, 42 de fabrica)
+            d.Degradado(0, 0, W, corte, Parada(0x16163A, a0, d0, alfa), Parada(0x28285C, a1, d1, alfa));
+            d.Degradado(0, corte, W, H * 0.75f - corte, Parada(0x28285C, a1, d1, alfa), Parada(0x2C367D, am, dm, alfa));
+            d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Parada(0x2C367D, am, dm, alfa), Parada(0x37408F, ab, db, alfa));
+            d.Degradado(0, yh, W, H - yh, Parada(0x223470, ab, db, alfa), Parada(0x16234C, ab, db, alfa));
             Nebulosas(W, H, t, alfa);
             Estrellas(W, H, t, alfa);
             Onda(W, H, t, alfa);
@@ -39,8 +43,8 @@ namespace Rocola
             double f = t * 0.035;   // una vuelta cada tres minutos
             float c = (float)Math.Cos(f), s = (float)Math.Sin(f);
             float fuerza = 0.55f + 0.25f * pMedios;
-            d.ImagenTenida(nebulosa, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, Color4.Hex(0x4C8AD8, fuerza * alfa));
-            d.ImagenTenida(nebulosa, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, Color4.Hex(0x9A6EE6, fuerza * 0.85f * alfa));
+            d.ImagenTenida(nebulosa, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * alfa));
+            d.ImagenTenida(nebulosa, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.85f * alfa));
         }
         // Ruido de valores en varias escalas (nubes), mas fuerte arriba y en manchas; blanco con su alfa.
         private Textura HazNebulosa(int w, int h)

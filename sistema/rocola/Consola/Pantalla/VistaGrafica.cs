@@ -92,6 +92,7 @@ namespace Rocola
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
             Pulso(c);
+            ColorDelCielo(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
             if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W);   // en la atraccion y en el buscador, como en XP, sin cabecera

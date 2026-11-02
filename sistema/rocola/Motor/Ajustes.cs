@@ -42,6 +42,18 @@ namespace Rocola
             return a;
         }
 
+        // Un ajuste de botones (la hoja Colores de XP): IZQ/DER pasa al de al lado; lo guardado es el numero, como en XP.
+        private Ajuste Opciones(string grupo, string nombre, string clave, string[] nombres, int[] valores, Func<int> lee, Action<int> pon, string nota)
+        {
+            Ajuste a = new Ajuste { Grupo = grupo, Nombre = nombre, Clave = clave };
+            Func<int> cual = delegate { int v = lee(), mejor = 0; for (int i = 1; i < valores.Length; i++) if (Math.Abs(valores[i] - v) < Math.Abs(valores[mejor] - v)) mejor = i; return mejor; };
+            a.Valor = delegate { int i = cual(); return valores[i] == lee() ? nombres[i] : lee() + "%"; };
+            a.Guardado = delegate { return lee().ToString(CultureInfo.InvariantCulture); };
+            a.Cambia = delegate (int d) { int i = cual() + (d < 0 ? -1 : 1); if (i < 0) i = valores.Length - 1; if (i >= valores.Length) i = 0; pon(valores[i]); };
+            a.Nota = () => nota;
+            return a;
+        }
+
         private Ajuste Ciego(string nombre, int que)
         {
             Ajuste a = new Ajuste { Grupo = "Lo que suena ahora", Nombre = nombre, Herramienta = true };
@@ -118,11 +130,12 @@ namespace Rocola
         private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
 
         // LAS PAGINAS (las pestanas de Ctrl+F3 de XP): Sonido, Pantalla y Detalles, en este orden al recorrerlas.
-        public static readonly string[] PaginasAjustes = { "Sonido", "Pantalla", "Detalles" };
+        public static readonly string[] PaginasAjustes = { "Sonido", "Pantalla", "Detalles", "Colores" };
         public static string PaginaDe(string grupo)
         {
             if (grupo == "Pantalla") return "Pantalla";
-            if (grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
+            if (grupo == "De que color es cada cancion" || grupo == "Cuanto azul" || grupo == "Cuanto negro") return "Colores";
+            if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
             return "Sonido";
         }
         public IList<Ajuste> Ajustes()
@@ -302,6 +315,19 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
             l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
             l.Add(Interruptor("Pantalla", "El buscador con portadas", "buscador_portadas", () => BuscadorPortadas, v => BuscadorPortadas = v, false));
+            // LA HOJA DETALLES DE XP (PaginaDetalles): al pedir canciones, y el fondo y la barra (la estrella del cielo sigue en Pantalla)
+            { Ajuste x = Interruptor("Al pedir canciones", "Decir cuando suena tu cancion", "turno", () => Turno, v => Turno = v, false); x.Nota = () => "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos minutos faltan, en vez de solo «Cancion agregada»."; l.Add(x); }
+            { Ajuste x = Interruptor("Al pedir canciones", "Marcar los discos que ya pediste", "marca_cola", () => MarcaCola, v => MarcaCola = v, false); x.Nota = () => "Un palomito verde en la esquina de los discos de los que ya hay algo pedido o sonando, para no volver a pedir lo mismo."; l.Add(x); }
+            { Ajuste x = Interruptor("Al pedir canciones", "Ensenar las portadas de la cola", "cola_portadas", () => ColaPortadas, v => ColaPortadas = v, false); x.Nota = () => "En la pastilla de «En cola», las caratulas de las tres proximas. Si hay mas de tres, la ultima lleva un «+2»."; l.Add(x); }
+            { Ajuste x = Interruptor("El fondo y la barra", "Que el fondo tome el color de la portada", "fondo_portada", () => FondoPortada, v => FondoPortada = v, false); x.Nota = () => "Del disco se toma SOLO de que color es. Lo oscuro y lo vivo lo sigue mandando el genero: ninguna portada estropea la pantalla."; l.Add(x); }
+            { Ajuste x = Interruptor("El fondo y la barra", "Media vuelta al cambiar de cancion", "relevo", () => Relevo, v => Relevo = v, false); x.Nota = () => "El cubito de la barra de abajo gira media vuelta y la portada nueva aparece en el camino, en vez de cambiar de golpe."; l.Add(x); }
+            // LA HOJA COLORES DE XP (PaginaColores): tres botones cada una, con sus valores
+            l.Add(Opciones("De que color es cada cancion", "El tono de la portada", "portada_manda", new[] { "Disco 20%", "Mitad y mitad", "Disco 100%" }, new[] { 20, 50, 100 }, () => PortadaManda, v => PortadaManda = v,
+                "El tono del disco pesa esto en el color del cielo; el resto viene del genero. Sin genero reconocido manda todo el tono del disco. Se conservan el brillo y la viveza del cielo."));
+            l.Add(Opciones("Cuanto azul", "El azul del medio del cielo", "cielo_azul", new[] { "Poco azul", "Normal", "Todo azul" }, new[] { 35, 70, 100 }, () => CieloAzul, v => CieloAzul = v,
+                "El medio del cielo es azul noche y casi no depende de la cancion: es lo que hace que parezca cielo. Con menos azul, el color de la cancion sube desde el horizonte."));
+            l.Add(Opciones("Cuanto negro", "Donde acaba el negro de arriba", "cielo_negro", new[] { "Mas negro", "Normal", "Menos negro" }, new[] { 58, 42, 30 }, () => CieloNegro, v => CieloNegro = v,
+                "Arriba el cielo es casi negro y ahi se ven mejor las estrellas: mas negro deja una noche mas cerrada, menos negro una pantalla mas encendida."));
             // INTERNET (1-11-2026): actualizarse solo desde GitHub (rocola-actualiza, en el sistema) y buscar ya. El recuadro de abajo dice la
             // version, la red (con la MAC, la que pide el router para el encendido remoto) y como va la actualizacion.
             l.Add(Interruptor("Internet", "Actualizarse sola desde internet", "actualizar_solo", () => ActualizarSolo, v => ActualizarSolo = v, false));

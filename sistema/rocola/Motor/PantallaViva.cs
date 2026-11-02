@@ -21,6 +21,25 @@ namespace Rocola
         public bool SinCreditosInvita = true;   // "sin_creditos_invita=": sin creditos, una tarjeta amable en vez del letrero
         public bool TextosDeslizantes = true;   // "textos_deslizantes=": lo que no cabe se desliza en vez de cortarse
         public bool GuiaRojo = true;       // "guia_rojo=": con el ROJO mantenido se encienden la barra de letras y las casillas BUSCAR y AYUDA
+        // LA HOJA DETALLES DE XP (Rendimiento.cs: PaginaDetalles), encendidos de fabrica
+        public bool MarcaCola = true;      // "marca_cola=": el palomito verde en los discos con algo pedido (o sonando)
+        public bool ColaPortadas = true;   // "cola_portadas=": las portaditas de las tres siguientes en la pastilla de la cola
+        public bool FondoPortada = true;   // "fondo_portada=": el cielo toma el tono de la portada de lo que suena
+        public bool Relevo = true;
+        // LA HOJA COLORES DE XP («las perillas del fondo», en por ciento como en su archivo): cuanto manda la portada en el tono (20, 50 o
+        // 100), cuanto azul lleva el medio del cielo (35, 70 o 100) y donde acaba el negro de arriba (58, 42 o 30 % del alto)
+        public int PortadaManda = 50, CieloAzul = 100, CieloNegro = 42;
+        private static int Porciento(string s, int defecto, int min, int max) { float v; return float.TryParse(s.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v) && !float.IsNaN(v) && !float.IsInfinity(v) ? Math.Max(min, Math.Min(max, (int)Math.Round(v))) : defecto; }         // "relevo=": al cambiar de cancion, el cubo chico da media vuelta y entra la portada nueva
+        public bool Turno { get { return turnoOn; } set { turnoOn = value; } }   // "turno=": «Tu cancion es la 3a - en ~9 min»
+        // ¿Hay algo pedido (o sonando) de este disco? (la marca de XP: colaDiscos)
+        public bool DiscoPedido(string carpeta)
+        {
+            if (!MarcaCola || carpeta == null) return false;
+            PlayItem p = nowPlaying;
+            if (p != null && p.Disc != null && string.Equals(p.Disc.Folder, carpeta, StringComparison.OrdinalIgnoreCase)) return true;
+            try { foreach (PlayItem it in queue) if (it != null && it.Disc != null && string.Equals(it.Disc.Folder, carpeta, StringComparison.OrdinalIgnoreCase)) return true; } catch (InvalidOperationException) { }
+            return false;
+        }
         public bool AvisosClaros = true;   // "avisos_claros=": los avisos con su color, su icono y dos renglones
 
         public sealed class Ficha

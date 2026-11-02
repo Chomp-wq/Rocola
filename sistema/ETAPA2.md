@@ -562,3 +562,19 @@ arma) grabada en una memoria USB, y arrancar el A4 desde ella. **Nada de esto se
 - **Ctrl+F3 → Sonido** lleva ya todos los ajustes de sonido de XP que valen en Linux: graves y agudos del local, balance, estéreo
   estrecho solo si hace falta (S3), DSEE por género (I3) y la tarjeta «Calidad del sonido» (EQ automático o a mano, el bajo profundo
   automático o a mano, el realce de brillo). Falta `frecuencia_salida=`: la salida ALSA aún no la admite.
+
+## Extra (2-11-2026, segunda parte): el cielo con el color de lo que suena, y las hojas Detalles y Colores
+
+- **El cielo sigue a la canción, como en XP** (`rocola/Consola/Pantalla/ColorFondo.cs`, cuentas de `Form1.Fondo.cs`): el degradado
+  toma un dejo del género y las dos nebulosas se separan, una con el género y otra con el tono de la portada (de la portada solo el
+  tono: el brillo y la viveza los pone el género). Los colores llegan deslizándose. Sin nada sonando, en un video o en la atracción,
+  el cielo sale exactamente como antes. El tono de cada portada se mide una vez, al decodificarla (32x32 puntos, como XP).
+- **Ctrl+F3 → Detalles** lleva ahora las dos tarjetas de XP: «Al pedir canciones» (`turno=`, `marca_cola=`: el palomito verde en
+  los discos pedidos, `cola_portadas=`: las portaditas de la cola con su «+N») y «El fondo y la barra» (`fondo_portada=`, `relevo=`:
+  el cubito de abajo da media vuelta en 420 ms al cambiar de canción). Todos encendidos de fábrica, con las claves de XP.
+- **Ctrl+F3 → Colores** (nueva hoja): `portada_manda=` (20/50/100), `cielo_azul=` (35/70/100) y `cielo_negro=` (58/42/30), los
+  mismos botones y valores de XP. `cielo_aire=` no se hizo: las estrellas de Linux no llevan esa atmósfera.
+- Las hojas **Imagen** y **Fondo** de XP siguen en gris: son interruptores de los efectos de la tarjeta de XP (nebulosas de cine,
+  bandas de la aurora, ahorros de Performance...), que el cielo de Linux dibuja a su manera; se irán pasando cuando el cielo de
+  Linux tenga esas piezas.
+- Sin referencia de XP con música sonando (la hermana no toca): el color se comprobó con capturas de Linux, no contra XP.

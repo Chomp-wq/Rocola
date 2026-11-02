@@ -149,6 +149,13 @@ namespace Rocola
                     m.EmpiezaSiguiente();
                     c.FuerzaReposo();
                 }
+                else if (b == "sonando")
+                {
+                    // algo sonando y cinco en la cola, en la pared (sin salida: solo para ver la pantalla)
+                    m.Moneda(); m.Moneda();
+                    foreach (Form1.Disco dd in c.discos) foreach (string r in dd.Rutas) if (!dd.Videos && m.EnCola < 6) m.Pide(r);
+                    m.EmpiezaSiguiente();
+                }
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));

@@ -22,7 +22,8 @@ namespace Rocola
         {
             if (pg == "Sonido") return "Todo se oye al instante en la cancion que suena.";
             if (pg == "Pantalla") return "Lo que se ve en la rocola. Cada cosa con su interruptor.";
-            return "Internet, actualizaciones, el diagnostico y los botones de la rocola.";
+            if (pg == "Colores") return "El color del cielo con cada cancion: cuanto manda la portada, cuanto azul y cuanto negro. Se ve al instante.";
+            return "Al pedir canciones, el fondo y la barra, internet, el diagnostico y los botones de la rocola.";
         }
         private static Color4 ColorGrupo(string g)
         {
@@ -32,6 +33,8 @@ namespace Rocola
                 case "El local": case "Voz, golpe y retumbe": return Color4.Hex(0x5AAEFF);
                 case "Lo que suena ahora": case "Entre canciones": case "Videos": return Color4.Hex(0x58D888);
                 case "Volumen al limite": return Color4.Hex(0x8CC8FF);
+                case "Al pedir canciones": return Color4.Hex(0x96DCB4);   // los de la hoja Detalles de XP (cVida y cFon)
+                case "El fondo y la barra": return Color4.Hex(0x8CCDFF);
                 case "Tu biblioteca": return Color4.Hex(0xFFA850);
                 case "Dejar como de fabrica": return Color4.Hex(0xF06460);
                 case "Mejoras con IA": return Color4.Hex(0xC08CFF);

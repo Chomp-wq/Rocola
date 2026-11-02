@@ -99,6 +99,13 @@ namespace Rocola
             else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
             else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";
             else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos (de XP)
+            else if (s.StartsWith("marca_cola=")) MarcaCola = s.Substring(11).Trim() != "0";             // la hoja Detalles de XP
+            else if (s.StartsWith("cola_portadas=")) ColaPortadas = s.Substring(14).Trim() != "0";
+            else if (s.StartsWith("fondo_portada=")) FondoPortada = s.Substring(14).Trim() != "0";
+            else if (s.StartsWith("portada_manda=")) PortadaManda = Porciento(s.Substring(14), 50, 0, 100);   // la hoja Colores de XP
+            else if (s.StartsWith("cielo_azul=")) CieloAzul = Porciento(s.Substring(11), 100, 0, 100);
+            else if (s.StartsWith("cielo_negro=")) CieloNegro = Porciento(s.Substring(12), 42, 25, 66);
+            else if (s.StartsWith("relevo=")) Relevo = s.Substring(7).Trim() != "0";
             else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion (de XP)
             else if (s.StartsWith("dir="))   // carpetas de musica extra (en XP, Ctrl+F2)
             {
