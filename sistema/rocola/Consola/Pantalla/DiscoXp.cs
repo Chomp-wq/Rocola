@@ -19,6 +19,12 @@ namespace Rocola
             Form1 m = c.motor;
             string titulo = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Artista + " - " + disco.Nombre;
             float xp = W * 0.434f, top = 112 * k;
+            if (m.DiscoVidrio)
+            {
+                // V7: la portada en grande y desenfocada detras de todo (vidrio esmerilado), con un velo para que se lea
+                Textura bo = caratulas.Borrosa(disco.Portada);
+                if (bo != null) { d.Imagen(bo, -W * 0.05f, top - 30 * k, W * 1.1f, abajo - top + 40 * k, 0.55f); d.Rect(0, top - 30 * k, W, abajo - top + 40 * k, Color4.Hex(0x0A1030, 0.35f)); }
+            }
             Letra lTit = Ui(20.5f * k); lTit.Escribe(d, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, Blanco);
             // el cubo grande
             float lado = Math.Min(xp - 80 * k, abajo - 210 * k), cx0 = (xp - lado) / 2 + 4 * k, cy0 = top + 62 * k;
@@ -30,7 +36,7 @@ namespace Rocola
             // el panel de las canciones
             float px = xp, py = top + 76 * k, pw = W - px - 28 * k, ph = abajo - py - 12 * k;
             d.RedondoDegradado(px, py, pw, ph, 18 * k, PanelDisco.ConAlfa(0.82f), Color4.Hex(0x0E1534, 0.86f));
-            d.Contorno(px, py, pw, ph, 18 * k, 1.3f * k, Color4.Hex(0x9AAAE0, 0.40f));
+            d.Contorno(px, py, pw, ph, 18 * k, 1.3f * k, m.ListaColores && tx != null ? Dibujo.Mezcla(tx.Media, Blanco, 0.4f).ConAlfa(0.45f) : Color4.Hex(0x9AAAE0, 0.40f));   // V8
             bool gr = m.ListaGrande;
             // FilaGrande y CuerpoGrande de XP: unas nueve filas por pagina (44 a 80 px) y la letra de un tercio de la fila (en puntos); la normal, 30 px y 13 pt
             float fila = gr ? Math.Max(44 * k, Math.Min(80 * k, (float)Math.Floor((ph - 8 * k) / 9))) : 30 * k, y0 = py + 4 * k;
@@ -48,8 +54,14 @@ namespace Rocola
                 bool sel = j == c.cursorCancion;
                 if (sel)
                 {
-                    d.RedondoDegradado(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, Color4.Hex(0x4A6CB8, 0.92f), Color4.Hex(0x3A58A0, 0.92f));
-                    d.Contorno(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, 1.4f * k, Color4.Hex(0xC6D2FF, 0.55f));
+                    Color4 s1 = Color4.Hex(0x4A6CB8, 0.92f), s2 = Color4.Hex(0x3A58A0, 0.92f), sb = Color4.Hex(0xC6D2FF, 0.55f);
+                    if (m.ListaColores && tx != null)
+                    {
+                        // V8: la fila elegida con el color de la portada, oscurecido lo justo para que el texto blanco se lea
+                        Color4 cm = tx.Media; s1 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.45f).ConAlfa(0.92f); s2 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.62f).ConAlfa(0.92f); sb = Dibujo.Mezcla(cm, Blanco, 0.5f).ConAlfa(0.7f);
+                    }
+                    d.RedondoDegradado(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, s1, s2);
+                    d.Contorno(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, 1.4f * k, sb);
                     zCancion = new Zona(px + 4 * k, fy, pw - 8 * k, fh);
                 }
                 // el numero en su circulo
@@ -118,6 +130,7 @@ namespace Rocola
             Espaciado(small, "AHORA SUENA", 24 * k, top + 12 * k, small.Tam * 0.42f, Turquesa);
             float lado = Math.Max(40 * k, Math.Min(ph - 56 * k, W * 0.17f)), lx = 26 * k, ly = top + 46 * k;
             Textura tx = caratulas.De(m.SonandoPortada);
+            LuzDelReposo(m, W, top, lx + lado / 2, ly + lado / 2, lado, tx);   // V13, V14
             if (m.ColorGenero && m.ColorSonando != 0) Resplandor(m.ColorSonando, lx + lado / 2, ly + lado / 2, lado * 0.9f);
             else d.Brillo(lx + lado / 2, ly + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.30f + 0.25f * pGraves));
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, lx, ly, lado, reloj.Elapsed.TotalSeconds * 0.5);

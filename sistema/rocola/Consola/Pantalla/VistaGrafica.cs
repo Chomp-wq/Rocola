@@ -92,7 +92,7 @@ namespace Rocola
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
             Pulso(c);
-            EspectroAlDia(c); eqRealAhora = m.EqReal; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
+            vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             ColorDelCielo(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             EspectroHorizonte(c, W, H);
@@ -102,6 +102,8 @@ namespace Rocola
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
+            if (c.AjusteSel >= 0 && m.AjustesVistaPrevia && c.AjusteSel < c.ListaAjustes.Count && Array.IndexOf(new[] { "Imagen", "Fondo", "Colores" }, Form1.PaginaDe(c.ListaAjustes[c.AjusteSel].Grupo)) >= 0)
+            { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
@@ -157,6 +159,7 @@ namespace Rocola
             Form1.Disco disco = c.AtraccionActual;
             // CuboEscaparate de XP: un cuadrado de min(0,50 alto, 0,36 ancho) a 0,08 del ancho, un poco por encima del centro
             float lado = Math.Max(80, Math.Min(H * .50f, W * .36f)), x = (int)(W * .08f), y = (int)((H - lado) / 2f - H * .04f) + (float)Math.Sin(t * 0.7) * 6 * k;
+            if (m.AtraccionCine) PortadaDeCine(disco, W, H, edad, alfa);   // V19
             Textura tx = caratulas.De(disco.Portada);
             if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.95f, tx.Media.ConAlfa(0.45f * alfa));
             d.Brillo(x + lado / 2, y + lado + 8 * k, lado * 0.6f, new Color4(0, 0, 0.05f, 0.5f * alfa));

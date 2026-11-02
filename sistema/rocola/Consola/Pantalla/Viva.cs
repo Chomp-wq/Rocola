@@ -221,8 +221,11 @@ namespace Rocola
                 {
                     int i = (desde + fi) * 2 + co; if (i >= c.Resultados.Count) break;
                     Form1.Resultado r = c.Resultados[i];
-                    float cx = rx + co * (cw + gap), cy = ry + fi * (ch + gap);
+                    float corre, ac = Cascada(c, i, out corre);   // V17
+                    if (ac <= 0.01f) continue;
+                    float cx = rx + co * (cw + gap) + corre, cy = ry + fi * (ch + gap);
                     bool sel = c.EnResultados && i == c.SelResultado;
+                    if (ac < 1f) { d.Redondo(cx, cy, cw, ch, 9 * k, Color4.Hex(0x161E44, 0.5f * ac)); d.Contorno(cx, cy, cw, ch, 9 * k, 1.1f * k, Color4.Hex(0x7F90D0, 0.3f * ac)); continue; }
                     if (sel) { d.Brillo(cx + cw / 2, cy + ch / 2, cw * 0.65f, Color4.Hex(0x6FA8FF, 0.22f)); zSelResultado = new Zona(cx, cy, cw, ch); }
                     d.RedondoDegradado(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x2C3C78, 0.92f) : Color4.Hex(0x161E44, 0.88f), sel ? Color4.Hex(0x223064, 0.92f) : Color4.Hex(0x10173A, 0.88f));
                     d.Contorno(cx, cy, cw, ch, 9 * k, sel ? 2f * k : 1.1f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.30f));
@@ -316,6 +319,7 @@ namespace Rocola
         private void Efectos(Controlador c, float W, float H)
         {
             Form1 m = c.motor;
+            Chispas();   // V18, V23
             if (m.GuiaRojo && c.RojoMantenido && !c.AyudaAbierta && c.AjusteSel < 0) GuiaRojo(c);
             // LA MONEDA QUE CAE: una moneda dorada girando hasta la capsula de Creditos; la capsula da un golpe con un destello verde y
             // sube "+4 creditos".
@@ -385,6 +389,12 @@ namespace Rocola
                 vueloVisto = c.VueloTick;
                 vueloDesde = c.VueloDesdeBuscador ? zSelResultado : zCancion;
                 vueloTitulo = c.VueloTitulo ?? "";
+                Zona destino = c.VueloASuena ? zSuena : zCola;
+                if (m.ChispasPedir && !vueloDesde.Vacia && !destino.Vacia)   // V23: chispas del color del genero hasta la cola
+                {
+                    Color4 cc = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Dorado;
+                    Suelta(vueloDesde.Cx, vueloDesde.Cy, 36, Dibujo.Mezcla(cc, Dorado, 0.4f), 220 * k, 0.9f, 3f * k, true, destino.Cx, destino.Cy);
+                }
             }
             int ev = Edad(c.VueloTick);
             if (m.VueloCola && ev < VueloMs && !vueloDesde.Vacia)

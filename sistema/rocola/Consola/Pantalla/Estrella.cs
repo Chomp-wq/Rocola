@@ -78,8 +78,10 @@ namespace Rocola
         // ---- EL CUERPO DE LA ESTRELLA ----
         // Las cinco puntas: la cabeza arriba, los brazos a los lados, las piernas abajo. Cada gesto mueve los brazos (y sus manos), la
         // postura y los pasos; nada en la cara (no tiene). edad: segundos desde que empezo el gesto. (ax, ay): hacia donde senala.
+        private Controlador vistaC;   // el de este cuadro (para las mejoras de la estrella)
         private void Cuerpo(float cx, float cy, float r, Gesto g, double edad, double t, float ax, float ay, float alfa)
         {
+            if (vistaC != null) LuzDeLaEstrella(vistaC, cx, cy, r, alfa);   // V18: la sombra y la estela
             // cuanto dura cada gesto antes de volver a quieta (senalar se queda mientras haya a donde)
             double dura = g == Gesto.Credito ? 1.6 : g == Gesto.Saludar || g == Gesto.Despedir ? 1.8 : g == Gesto.Explicar ? 1.4 : g == Gesto.Confirmar ? 0.9 : g == Gesto.Buscar ? 2.4 : 0;
             bool apunta = (ax != 0 || ay != 0);
@@ -151,6 +153,7 @@ namespace Rocola
             // el cuerpo: la estrella de cinco puntas en 3D, lila, que se ladea un poco al moverse
             d.Brillo(cx, cy, r * 2.0f, Color4.Hex(0x9C8CFF, 0.22f * alfa));
             Solido(cx, cy, r * 1.08f, 0.32 * Math.Sin(t * 0.9) + lado / Math.Max(1f, r) * 0.6, 0.18, rot, 0x9C8CFFu, alfa, true);
+            if (vistaC != null) BrilloDeLaEstrella(vistaC, cx, cy, r, alfa);   // V18
         }
 
         // ---- LA AYUDA EN LA PANTALLA ----

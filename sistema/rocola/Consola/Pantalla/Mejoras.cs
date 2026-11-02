@@ -180,5 +180,108 @@ namespace Rocola
             fQ.EscribeCentrado(d, que, cx, cy + r * 1.6f + fT.Tam * 1.4f, Color4.Hex(0xB4C0E6));
             d.Termina(); sup.Presenta();
         }
+    
+
+        // ---- LAS CHISPAS (V18 y V23): unas pocas particulas, cada una un punto suave que se apaga; si llevan destino, se curvan hacia el ----
+        private sealed class Chispa { public float X, Y, Vx, Vy, Edad, Vida, Tam, Tx, Ty; public bool Destino; public Color4 C; }
+        private readonly System.Collections.Generic.List<Chispa> chispas = new System.Collections.Generic.List<Chispa>();
+        private readonly Random azar = new Random(11);
+        private double chispasT = -1;
+        private void Suelta(float x, float y, int n, Color4 c, float vel, float vida, float tam, bool destino = false, float tx = 0, float ty = 0)
+        {
+            for (int i = 0; i < n && chispas.Count < 400; i++)
+            {
+                double a = azar.NextDouble() * 2 * Math.PI; float v = vel * (0.4f + (float)azar.NextDouble());
+                chispas.Add(new Chispa { X = x, Y = y, Vx = v * (float)Math.Cos(a), Vy = v * (float)Math.Sin(a) - (destino ? vel * 0.8f : 0), Vida = vida * (0.7f + 0.6f * (float)azar.NextDouble()), Tam = tam * (0.6f + 0.8f * (float)azar.NextDouble()), C = c, Destino = destino, Tx = tx, Ty = ty });
+            }
+        }
+        private void Chispas()
+        {
+            double t = reloj.Elapsed.TotalSeconds; float dt = chispasT < 0 ? 0 : (float)Math.Max(0, Math.Min(0.1, t - chispasT)); chispasT = t;
+            for (int i = chispas.Count - 1; i >= 0; i--)
+            {
+                Chispa p = chispas[i];
+                p.Edad += dt;
+                if (p.Edad >= p.Vida) { chispas.RemoveAt(i); continue; }
+                if (p.Destino)
+                {
+                    // hacia el destino: un muelle suave que se hace firme al final (llegan todas, en arco)
+                    float u = p.Edad / p.Vida, f = 6f + 40f * u * u;
+                    p.Vx += ((p.Tx - p.X) * f - p.Vx * 3f) * dt; p.Vy += ((p.Ty - p.Y) * f - p.Vy * 3f) * dt;
+                }
+                else { p.Vy += 60 * k * dt; p.Vx *= 1f - 1.5f * dt; p.Vy *= 1f - 1.5f * dt; }
+                p.X += p.Vx * dt; p.Y += p.Vy * dt;
+                float a = 1f - p.Edad / p.Vida;
+                d.Brillo(p.X, p.Y, p.Tam * 2.6f, p.C.ConAlfa(0.35f * a));
+                d.Brillo(p.X, p.Y, p.Tam, Blanco.ConAlfa(0.9f * a));
+            }
+        }
+
+        // V18: la estrella de la ayuda con su sombra en el piso, un reflejo de luz y una estela de chispas cuando vuela (sin cara)
+        private float estAntX = -1, estAntY;
+        private void LuzDeLaEstrella(Controlador c, float cx, float cy, float r, float alfa)
+        {
+            if (!c.motor.EstrellaLuz) return;
+            d.Quad(d.Punto, cx - r * 1.1f, cy + r * 1.38f, r * 2.2f, r * 0.45f, 0, 0, 1, 1, new Color4(0, 0, 0.04f, 0.45f * alfa));   // la sombra
+            if (estAntX >= 0)
+            {
+                float dx = cx - estAntX, dy = cy - estAntY;
+                if (dx * dx + dy * dy > 9 * k * k) Suelta(cx - dx * 0.5f, cy - dy * 0.5f, 2, Color4.Hex(0xC8B8FF), 30 * k, 0.6f, 2.4f * k);
+            }
+            estAntX = cx; estAntY = cy;
+        }
+        private void BrilloDeLaEstrella(Controlador c, float cx, float cy, float r, float alfa)
+        {
+            if (!c.motor.EstrellaLuz) return;
+            d.Brillo(cx - r * 0.32f, cy - r * 0.38f, r * 0.42f, Blanco.ConAlfa(0.32f * alfa));   // la luz de arriba a la izquierda
+        }
+
+        // V17: los resultados del buscador entran en cascada (cada uno 45 ms despues del anterior, 220 ms de entrada)
+        private string cascadaFirma; private double cascadaDesde;
+        private float Cascada(Controlador c, int i, out float corre)
+        {
+            corre = 0;
+            if (!c.motor.ResultadosCascada) return 1f;
+            string f = c.Escrito + "|" + c.Resultados.Count;
+            double t = reloj.Elapsed.TotalSeconds;
+            if (f != cascadaFirma) { cascadaFirma = f; cascadaDesde = t; }
+            float u = Suave((float)((t - cascadaDesde - i * 0.045) / 0.22));
+            corre = 24 * k * (1f - u);
+            return u;
+        }
+
+        // V19: en la atraccion, la portada del disco en grande detras de todo, acercandose y moviendose despacio (como en el cine)
+        private void PortadaDeCine(Form1.Disco disco, float W, float H, double edad, float alfa)
+        {
+            Textura t = caratulas.Para(disco.Portada, W);
+            if (t == null) return;
+            double u = Math.Max(0, Math.Min(1, edad / 8.0));
+            float zoom = 1.05f + 0.12f * (float)u, uw = 1f / zoom, vh = Math.Min(1f, uw * H / W);
+            uint h32 = 2166136261; foreach (char ch in disco.Carpeta ?? "") h32 = (h32 ^ ch) * 16777619;
+            float dirX = (h32 & 1) == 0 ? 1f : -1f, dirY = (h32 & 2) == 0 ? 1f : -1f;
+            float u0 = (1f - uw) * (0.5f + 0.4f * dirX * ((float)u - 0.5f)), v0 = (1f - vh) * (0.5f + 0.4f * dirY * ((float)u - 0.5f));
+            d.Quad(t, 0, 0, W, H, u0, v0, u0 + uw, v0 + vh, new Color4(1, 1, 1, 0.30f * alfa));
+            d.Degradado(0, 0, W, H, Color4.Hex(0x0A0E26, 0.55f * alfa), Color4.Hex(0x0A0E26, 0.80f * alfa));
+        }
+
+        // V13 y V14: en el reposo, la portada derrama su color por el cielo, y un anillo de luz late con los golpes alrededor del cubo
+        private void LuzDelReposo(Form1 m, float W, float top, float cx, float cy, float lado, Textura tx)
+        {
+            if (m.ReposoLuz && m.SonandoPortada != null)
+            {
+                Textura bo = caratulas.Borrosa(m.SonandoPortada);
+                if (bo != null) d.Imagen(bo, -W * 0.1f, -top * 0.1f, W * 1.2f, top * 1.15f, 0.38f);
+                if (tx != null) d.Brillo(cx, cy, W * 0.42f, tx.Media.ConAlfa(0.30f + 0.15f * pGraves));
+            }
+            if (m.AnilloMusica)
+            {
+                Color4 c = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Color4.Hex(0x58D2FF);
+                for (int i = 0; i < 3; i++)
+                {
+                    float rr = lado * (0.68f + 0.10f * i + 0.10f * pGraves), g = (3 - i) * 1.4f * k;
+                    d.Contorno(cx - rr, cy - rr, 2 * rr, 2 * rr, rr, g, Dibujo.Mezcla(c, Blanco, 0.3f).ConAlfa((0.45f - 0.12f * i) * (0.4f + 0.6f * pGraves)));
+                }
+            }
+        }
     }
 }

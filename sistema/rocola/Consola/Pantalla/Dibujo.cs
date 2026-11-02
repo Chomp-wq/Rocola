@@ -366,6 +366,33 @@ namespace Rocola.Pantalla
             while (ord.Count > cuantas) { string v = ord.Last.Value; ord.RemoveLast(); d.Borra(cache[v]); cache.Remove(v); }
             return t;
         }
+        // V7, V13: LA PORTADA BORROSA (vidrio esmerilado): achicada a 24x24 por promedio y suavizada una vez mas; estirada a toda la
+        // pantalla, el filtro lineal de la tarjeta hace el resto. Se hace una vez por portada (las ultimas 8): no cuesta en cada cuadro.
+        private readonly Dictionary<string, Textura> borrosas = new Dictionary<string, Textura>(StringComparer.Ordinal);
+        private readonly LinkedList<string> ordenBorrosas = new LinkedList<string>();
+        internal Textura Borrosa(string ruta)
+        {
+            if (string.IsNullOrEmpty(ruta) || sinImagen.Contains(ruta)) return null;
+            Textura t;
+            if (borrosas.TryGetValue(ruta, out t)) { ordenBorrosas.Remove(ruta); ordenBorrosas.AddFirst(ruta); return t; }
+            try
+            {
+                ImageResult im = ImageResult.FromMemory(File.ReadAllBytes(ruta), ColorComponents.RedGreenBlueAlpha);
+                const int L = 24;
+                byte[] px = Reduce(im.Data, im.Width, im.Height, L, L), r = new byte[px.Length];
+                for (int y = 0; y < L; y++) for (int x = 0; x < L; x++) for (int c = 0; c < 4; c++)
+                {
+                    int s = 0, n = 0;
+                    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { int yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= L || xx >= L) continue; s += px[(yy * L + xx) * 4 + c]; n++; }
+                    r[(y * L + x) * 4 + c] = (byte)(s / n);
+                }
+                t = d.Sube(r, L, L);
+            }
+            catch { sinImagen.Add(ruta); return null; }
+            borrosas[ruta] = t; ordenBorrosas.AddFirst(ruta);
+            while (ordenBorrosas.Count > 8) { string v = ordenBorrosas.Last.Value; ordenBorrosas.RemoveLast(); d.Borra(borrosas[v]); borrosas.Remove(v); }
+            return t;
+        }
         // A otro tamano: achicar por promedio de cajas; agrandar, bilineal.
         private static byte[] Escala(byte[] s, int w, int h, int nw, int nh)
         {

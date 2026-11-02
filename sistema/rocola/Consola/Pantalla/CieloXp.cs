@@ -30,6 +30,7 @@ namespace Rocola
             d.Degradado(0, yh, W, H - yh, Parada(0x223470, ab, db, alfa), Parada(0x16234C, ab, db, alfa));
             Nebulosas(W, H, t, alfa);
             Estrellas(W, H, t, alfa);
+            if (auroraAhora) Aurora(W, H, t, alfa);   // V2
             Onda(W, H, t, alfa);
             HorizonteLuz(W, H, t, alfa);
             Luna(W, H, t, alfa);
@@ -84,6 +85,16 @@ namespace Rocola
                 float y = estrellas[i + 1] * yh;
                 float a = Math.Min(1f, 0.40f + 0.50f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3])) + 0.30f * pAgudos * (i % 3 == 0 ? 1 : 0));
                 float tam = estrellas[i + 2] * 0.75f * k;
+                if (aireAhora)
+                {
+                    // V3: cuanto mas cerca del horizonte, mas aire delante: mas tenue, mas calida y titila mas (cielo_aire de XP)
+                    float fh = y / yh, f2 = fh * fh;
+                    a = Math.Max(0f, Math.Min(1f, a * (1f - 0.5f * f2) + 0.35f * f2 * (float)Math.Sin(t * (4.5 + estrellas[i + 4] * 2) + estrellas[i + 3] * 3)));
+                    Color4 cs = Dibujo.Mezcla(new Color4(0.86f, 0.9f, 1f), new Color4(1f, 0.78f, 0.58f), 0.55f * f2);
+                    if (tam > 1.6f * k) d.Brillo(estrellas[i] * W, y, tam * 5f, cs.ConAlfa(alfa * a * 0.12f));   // el halo de las grandes
+                    d.Brillo(estrellas[i] * W, y, tam * 2f, cs.ConAlfa(alfa * a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
+                    continue;
+                }
                 d.Brillo(estrellas[i] * W, y, tam * 2f, new Color4(0.86f, 0.9f, 1f, alfa * a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
             }
             if (brillantes == null)
@@ -113,6 +124,36 @@ namespace Rocola
             Color4 centro = c.ConAlfa(0.85f * a), nada = c.ConAlfa(0f);
             d.Cuatro(x - L, y, nada, x, y - g, centro, x + L, y, nada, x, y + g, centro);
             d.Cuatro(x, y - L, nada, x + g, y, centro, x, y + L, nada, x - g, y, centro);
+        }
+
+        // ---- V2: LA AURORA QUE RESPIRA CON LA MUSICA: dos cortinas de luz sobre el horizonte (verde y turquesa, tenidas del color de lo
+        // que suena), con el borde de abajo brillante y la luz subiendo hasta apagarse; los graves la estiran hacia arriba ----
+        private bool aireAhora = true, auroraAhora = true;   // de fabrica (la pantalla de arranque se dibuja antes de leer los ajustes)
+        private void Aurora(float W, float H, double t, float alfa)
+        {
+            float yh = Horizonte(H) - 30 * k;
+            C3 ac = acento; float mx = Math.Max(1f, Math.Max(ac.R, Math.Max(ac.G, ac.B)));
+            Color4 gen = new Color4(ac.R / mx, ac.G / mx, ac.B / mx);
+            for (int capa = 0; capa < 2; capa++)
+            {
+                Color4 col = Dibujo.Mezcla(capa == 0 ? new Color4(0.30f, 1f, 0.62f) : new Color4(0.36f, 0.86f, 1f), gen, 0.30f);
+                int n = 64; float sube = (capa == 0 ? 130 : 95) * k * (1f + 0.55f * pGraves), fase = capa * 2.1f;
+                float px = 0, pb = 0, pa = 0, pal = 0;
+                for (int i = 0; i <= n; i++)
+                {
+                    double u = i / (double)n;
+                    float onda = (float)(0.5 + 0.5 * Math.Sin(u * 7.3 + t * 0.19 + fase) * Math.Sin(u * 3.1 - t * 0.11 + fase * 0.5));
+                    float x = (float)(u * W), base_ = yh - 40 * k * (float)Math.Sin(u * 4.4 + t * 0.07 + fase) - 55 * k * capa;
+                    float alto = sube * (0.25f + 0.75f * onda), a = 0.55f * alfa * (0.25f + 0.75f * onda);
+                    if (i > 0)
+                    {
+                        // la cortina (de transparente arriba a su color en el borde de abajo) y el borde, que se apaga hacia abajo
+                        d.Cuatro(px, pb - pa, col.ConAlfa(0f), x, base_ - alto, col.ConAlfa(0f), x, base_, col.ConAlfa(a), px, pb, col.ConAlfa(pal));
+                        d.Cuatro(px, pb, col.ConAlfa(pal * 1.3f), x, base_, col.ConAlfa(a * 1.3f), x, base_ + 9 * k, col.ConAlfa(0f), px, pb + 9 * k, col.ConAlfa(0f));
+                    }
+                    px = x; pb = base_; pa = alto; pal = a;
+                }
+            }
         }
 
         // ---- la onda de luz ----

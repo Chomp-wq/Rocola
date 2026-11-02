@@ -61,9 +61,10 @@ namespace Rocola
 
             // LA VENTANA: el filo azul, la barra de titulo y el fondo
             float wx = 30 * k, wy = 2 * k, ww = W - 60 * k, wh = H - 4 * k;
-            d.Rect(0, 0, W, H, new Color4(0.02f, 0.03f, 0.08f, 0.55f));
+            bool previa = c.motor.AjustesVistaPrevia && (pagina == "Imagen" || pagina == "Fondo" || pagina == "Colores");   // V28
+            if (!previa) d.Rect(0, 0, W, H, new Color4(0.02f, 0.03f, 0.08f, 0.55f));
             d.Rect(wx - 3 * k, wy - 2 * k, ww + 6 * k, wh + 4 * k, Color4.Hex(0x2456E6));
-            d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E), Color4.Hex(0x0C1226));
+            d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E, previa ? 0.72f : 1f), Color4.Hex(0x0C1226, previa ? 0.72f : 1f));
             d.DegradadoH(wx, wy, ww, 26 * k, Color4.Hex(0x2456E6), Color4.Hex(0x1E44C8));
             string titulo = "Rocola - " + pagina + (selloRocola.Length > 0 ? "   ·   Esta rocola es del " + selloRocola : "");
             fTit.Escribe(d, fTit.Ajusta(titulo, ww - 20 * k), wx + 10 * k, wy + 13 * k - fTit.Tam * 0.62f, Blanco);
