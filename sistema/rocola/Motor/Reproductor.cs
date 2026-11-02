@@ -58,9 +58,7 @@ namespace Rocola
                     if (PausaRepaso) { System.Threading.Thread.Sleep(1000); continue; }
                     string r;
                     if (!porRepasar.TryDequeue(out r)) { repasoAFondo = false; break; }
-                    SonoridadIntegrada s;
-                    try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
-                    catch { }
+                    MideUna(r, true);
                 }
             }) { IsBackground = true, Name = "repaso a fondo", Priority = System.Threading.ThreadPriority.Lowest };
             t.Start();
@@ -78,17 +76,40 @@ namespace Rocola
                 Prioridad.Fondo();   // nice 19: el repaso solo usa lo que sobra (en Linux, Priority = Lowest no hace nada)
                 while (true)
                 {
-                    string r;
+                    string r; bool deRepaso = false;
                     if (!porMedir.TryTake(out r, PausaRepaso ? 1000 : 0))
                     {
-                        if (PausaRepaso || !porRepasar.TryDequeue(out r)) { if (!porMedir.TryTake(out r, 1000)) continue; }
+                        if (!PausaRepaso && porRepasar.TryDequeue(out r)) deRepaso = true;
+                        else if (!porMedir.TryTake(out r, 1000)) continue;
                     }
-                    SonoridadIntegrada s;
-                    try { if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida()))); }
-                    catch { }
+                    MideUna(r, deRepaso);
                 }
             }) { IsBackground = true, Name = "repaso (medir)", Priority = System.Threading.ThreadPriority.Lowest };
             medidor.Start();
+        }
+        // UNA CANCION: lo pedido, solo su sonoridad entera (rapido: hay que nivelarla ya). Lo del repaso que aun no se repaso A FONDO,
+        // con la medida completa de XP (MeasureFile a fondo: la sonoridad entera, la huella del EQ, el corte de los agudos -la calidad-,
+        // los picos recortados y, si ia_datos= esta encendido, el material para la IA), de una sola lectura.
+        private sealed class MedidaCompleta { internal string Ruta; internal float Rms, Dur; internal float[] Eq; internal FuenteMedida Fuente; internal bool HayEntera; internal SonoridadIntegrada Entera; }
+        private readonly System.Collections.Concurrent.ConcurrentQueue<MedidaCompleta> completas = new System.Collections.Concurrent.ConcurrentQueue<MedidaCompleta>();
+        private bool RepasadaAFondo(string ruta) { lock (deepDoneLock) return deepDone.Contains(ruta); }
+        private void MideUna(string r, bool deRepaso)
+        {
+            try
+            {
+                if (deRepaso && !RepasadaAFondo(r))
+                {
+                    float rms, dur; float[] eq;
+                    bool ok = MeasureFile(r, true, out rms, out dur, out eq);
+                    FuenteMedida f = TomaFuenteMedida();
+                    SonoridadIntegrada e; bool hay = TomaIntegrada(out e);
+                    if (ok) completas.Enqueue(new MedidaCompleta { Ruta = r, Rms = rms, Dur = dur, Eq = eq, Fuente = f, HayEntera = hay, Entera = e });
+                    return;
+                }
+                SonoridadIntegrada s;
+                if (MideIntegrada(r, out s)) medidas.Enqueue(new KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>>(r, new KeyValuePair<SonoridadIntegrada, FuenteMedida>(s, TomaFuenteMedida())));
+            }
+            catch { }
         }
         public void MideEnFondo(string ruta)
         {
@@ -100,7 +121,7 @@ namespace Rocola
         public int RepasaBiblioteca()
         {
             int n = 0;
-            foreach (Track t in tracks) if (t.Path != null && !YaMedida(t.Path)) { porRepasar.Enqueue(t.Path); n++; }
+            foreach (Track t in tracks) if (t.Path != null && (!YaMedida(t.Path) || !RepasadaAFondo(t.Path))) { porRepasar.Enqueue(t.Path); n++; }
             if (n > 0) ArrancaMedidor();
             return n;
         }
@@ -112,7 +133,15 @@ namespace Rocola
             KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>> m;
             if (integCache == null) integCache = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
             while (medidas.TryDequeue(out m)) { PublicaIntegradaDeFuente(m.Key, m.Value.Key, m.Value.Value); n++; }
-            if (n > 0 && unchecked(Environment.TickCount - ultimoGuardadoRepaso) > 30000) { ultimoGuardadoRepaso = Environment.TickCount; SaveIntegCache(); }   // no en cada una: cada 30 s
+            MedidaCompleta mc;
+            while (completas.TryDequeue(out mc))
+            {
+                bool pub = PublicaMedidaDeFuente(mc.Ruta, mc.Rms, mc.Dur, mc.Eq, mc.Fuente);
+                if (mc.HayEntera) PublicaIntegradaDeFuente(mc.Ruta, mc.Entera, mc.Fuente);
+                if (pub) MarcaAFondo(mc.Ruta);   // nunca dar por terminada una medida de una fuente sustituida (XP)
+                n++;
+            }
+            if (n > 0 && unchecked(Environment.TickCount - ultimoGuardadoRepaso) > 30000) { ultimoGuardadoRepaso = Environment.TickCount; SaveIntegCache(); SaveLoudCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }   // no en cada una: cada 30 s
             else if (n > 0) repasoSinGuardar = true;
             if (repasoSinGuardar && unchecked(Environment.TickCount - ultimoGuardadoRepaso) > 30000) { ultimoGuardadoRepaso = Environment.TickCount; repasoSinGuardar = false; SaveIntegCache(); }
             return n;
@@ -125,6 +154,7 @@ namespace Rocola
             try { SaveIntegCache(); } catch { }
             try { FlushEqIfDirty(); } catch { }
             try { SaveDeepDone(); } catch { }
+            try { SaveIaDone(); } catch { }
             try { SaveDurFast(); } catch { }
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }
             try { GuardaNoche(false); } catch { }

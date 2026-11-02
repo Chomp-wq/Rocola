@@ -133,6 +133,9 @@ namespace Rocola
             fondo.Nota = delegate { return RepasoAFondo ? "Midiendo con los dos nucleos. La musica no se corta; con un video se para." : porRepasar.Count > 0 ? "Mide ya, con los dos nucleos, las canciones que faltan (si no, se miden poco a poco)." : "No falta nada por medir."; };
             fondo.Bloqueo = delegate { return !RepasoAFondo && porRepasar.Count == 0 ? "no falta nada" : null; };
             l.Add(fondo);
+            Ajuste iaDat = Interruptor("Tu biblioteca", "Juntar material para la IA", "ia_datos", () => iaHarvestOn, v => iaHarvestOn = v, false);
+            iaDat.Nota = delegate { return "Guarda ejemplos para entrenar la IA del DSEE en rocola_ia_datos.bin (hasta " + (iaMaxBytes > 0 ? (iaMaxBytes / (1024L * 1024 * 1024)) + " GB" : "sin tope") + "). Apagado, lo demas se sigue midiendo igual."; };
+            l.Add(iaDat);
             l.Add(Interruptor("El local", "Claridad para el local", "claridad_local", () => claridadLocal, v => claridadLocal = v, true));
             l.Add(Interruptor("El local", "Que las partes suaves se oigan", "partes_suaves", () => partesSuaves, v => partesSuaves = v, true));
             l.Add(Interruptor("El local", "Presencia en sala ruidosa", "presencia_sala", () => presenciaSala, v => presenciaSala = v, true));

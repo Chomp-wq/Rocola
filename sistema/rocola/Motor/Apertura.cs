@@ -52,6 +52,7 @@ namespace Rocola
             internal WaveFormat WaveFormat { get { return lector.WaveFormat; } }
             internal float Volume { set { volumen = value; } }
             internal TimeSpan TotalTime { get { return lector.Duracion; } }
+            internal TimeSpan CurrentTime { set { lector.Posicion = value; } }   // el repaso salta a los tramos (MeasureFile de XP)
             internal int Read(float[] buffer, int offset, int count)
             {
                 int n = lector.Read(buffer.AsSpan(offset, count));

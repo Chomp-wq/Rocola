@@ -56,6 +56,8 @@ namespace Rocola
             LoadIntegCache();
             LoadEqCache();
             LoadDeepDone();
+            LoadIaDone();        // de que canciones ya se junto material para la IA (rocola_ia_hechas.txt)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate { try { IaCountPairs(); } catch { } });   // cuantos ejemplos hay ya (solo para ensenarlo)
             LoadDurFast();
             startupReadPending = false;
             // Las tablas del convertidor para el relevo entre 44100 y 48000 (las frecuencias de casi todo), en segundo plano: cuando haga

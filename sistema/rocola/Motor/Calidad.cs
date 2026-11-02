@@ -39,6 +39,7 @@ namespace Rocola
             int falta = porRepasar.Count;
             r.Add(falta > 0 ? "La biblioteca se mide sola mientras la rocola trabaja: faltan " + falta.ToString("#,0", ci) + " canciones."
                             : "La biblioteca se mide sola mientras la rocola trabaja: ya esta al dia.");
+            r.Add(TextoMaterialIa);
             bibTexto = r;
             return r;
         }
