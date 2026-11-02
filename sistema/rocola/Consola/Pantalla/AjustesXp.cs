@@ -31,6 +31,7 @@ namespace Rocola
                 case "El billar": case "Afinar con el celular": return Color4.Hex(0xFFB84D);
                 case "El local": case "Voz, golpe y retumbe": return Color4.Hex(0x5AAEFF);
                 case "Lo que suena ahora": case "Entre canciones": case "Videos": return Color4.Hex(0x58D888);
+                case "Volumen al limite": return Color4.Hex(0x8CC8FF);
                 case "Mejoras con IA": return Color4.Hex(0xC08CFF);
                 default: return Color4.Hex(0x8CB4FF);
             }
@@ -103,16 +104,35 @@ namespace Rocola
                 porGrupo[g2] = li.GetRange(mitad, li.Count - mitad); porGrupo[grupos[gi]] = li.GetRange(0, mitad);
                 grupos.Insert(gi + 1, g2); gi++;
             }
+            // el alto de cada renglon: el de siempre, mas su nota (hasta tres renglones) y su barra
+            Dictionary<int, float> altoDe = new Dictionary<int, float>(); Dictionary<int, List<string>> notaDe = new Dictionary<int, List<string>>();
+            foreach (string g in grupos) foreach (int i in porGrupo[g])
+            {
+                float h = fila;
+                if (i < l.Count)
+                {
+                    string nt = l[i].Explicacion;
+                    if (!string.IsNullOrEmpty(nt))
+                    {
+                        string tv = l[i].Texto ?? ""; float sangria = tv == "SÍ" || tv == "NO" ? 50 * k : 0;
+                        List<string> ln = Envuelve(nt, fChica, colW - 36 * k - sangria);
+                        if (ln.Count > 3) { ln[2] = fChica.Ajusta(ln[2] + " " + string.Join(" ", ln.GetRange(3, ln.Count - 3)), colW - 36 * k - sangria); ln.RemoveRange(3, ln.Count - 3); }
+                        notaDe[i] = ln; h += ln.Count * 14 * k;
+                    }
+                    if (l[i].Posicion.HasValue) h += 24 * k;
+                }
+                altoDe[i] = h;
+            }
             // reparte en columnas
             float[] alto = new float[2]; var lugar = new List<KeyValuePair<string, float[]>>();
             float selY = 0, selH = fila;
             foreach (string g in grupos)
             {
                 int col = alto[0] <= alto[1] ? 0 : 1;
-                float h = cab + porGrupo[g].Count * fila + 12 * k;
+                float h = cab + 12 * k, acum = 0;
+                foreach (int i in porGrupo[g]) { if (i == sel) { selY = alto[col] + cab + acum; selH = altoDe[i]; } acum += altoDe[i]; }
+                h += acum;
                 lugar.Add(new KeyValuePair<string, float[]>(g, new float[] { col, alto[col], h }));
-                int pos = porGrupo[g].IndexOf(sel);
-                if (pos >= 0) { selY = alto[col] + cab + pos * fila; }
                 alto[col] += h + 14 * k;
             }
             float total = Math.Max(alto[0], alto[1]), vis = cy1 - cy0;
@@ -125,16 +145,27 @@ namespace Rocola
                 if (y > cy1 || y + h < cy0) continue;
                 Tarjeta(cx, y, colW, h, g.TrimEnd('\u0001').ToUpperInvariant() + (g.EndsWith("\u0001") ? " (SIGUE)" : ""), ColorGrupo(g.TrimEnd('\u0001')), fTit);
                 List<int> filas = porGrupo[g];
+                float yy = y + cab;
                 for (int f = 0; f < filas.Count; f++)
                 {
-                    int i = filas[f]; float yy = y + cab + f * fila; bool es = i == sel;
+                    int i = filas[f]; bool es = i == sel; float hf = altoDe[i];
                     if (es)
                     {
-                        d.Redondo(cx + 8 * k, yy - 1 * k, colW - 16 * k, fila - 2 * k, 7 * k, Color4.Hex(0x24346A, 0.95f));
-                        d.Contorno(cx + 8 * k, yy - 1 * k, colW - 16 * k, fila - 2 * k, 7 * k, 1.4f * k, Color4.Hex(0x8CB4FF));
+                        d.Redondo(cx + 8 * k, yy - 1 * k, colW - 16 * k, hf - 2 * k, 7 * k, Color4.Hex(0x24346A, 0.95f));
+                        d.Contorno(cx + 8 * k, yy - 1 * k, colW - 16 * k, hf - 2 * k, 7 * k, 1.4f * k, Color4.Hex(0x8CB4FF));
                     }
-                    if (i == n - 1) { Boton(cx + 18 * k, yy + 2 * k, colW - 36 * k, fila - 6 * k, "Configurar los botones de la rocola", es, fNom); continue; }
+                    if (i == n - 1) { Boton(cx + 18 * k, yy + 2 * k, colW - 36 * k, fila - 6 * k, "Configurar los botones de la rocola", es, fNom); yy += hf; continue; }
                     Fila(l[i], cx + 18 * k, yy, colW - 36 * k, fila, es, fNom, fChica, fVal);
+                    // la nota gris (como las de XP) y, si lleva, la barra
+                    float ny = yy + fila - 4 * k; List<string> nl;
+                    if (notaDe.TryGetValue(i, out nl))
+                    {
+                        string tv = l[i].Texto ?? ""; float sangria = tv == "SÍ" || tv == "NO" ? 50 * k : 0;
+                        foreach (string r in nl) { fChica.Escribe(d, r, cx + 18 * k + sangria, ny, Color4.Hex(0x8A96BA)); ny += 14 * k; }
+                    }
+                    int? pos = l[i].Posicion;
+                    if (pos.HasValue) Deslizador(cx + 22 * k, ny + 10 * k, colW - 44 * k, pos.Value / 100f, ColorGrupo(g.TrimEnd('\u0001')), l[i].Motivo != null);
+                    yy += hf;
                 }
             }
             d.SinRecorte();
@@ -145,6 +176,19 @@ namespace Rocola
                 d.Redondo(bx, cy0, 4 * k, vis, 2 * k, Color4.Hex(0x1E2648));
                 d.Redondo(bx, bp, 4 * k, bh2, 2 * k, Color4.Hex(0x8CB4FF));
             }
+        }
+
+        // EL DESLIZADOR de XP: la pista, lo lleno del color de la tarjeta y la perilla blanca con su filo.
+        private void Deslizador(float x, float cy, float w, float v, Color4 col, bool gris)
+        {
+            v = Math.Max(0f, Math.Min(1f, v));
+            float hp = 6 * k, r = 8 * k;
+            d.Redondo(x, cy - hp / 2, w, hp, hp / 2, Color4.Hex(0x252C4C));
+            Color4 c = gris ? Color4.Hex(0x4A5070) : col;
+            if (v > 0) d.Redondo(x, cy - hp / 2, Math.Max(hp, w * v), hp, hp / 2, c.ConAlfa(0.85f));
+            float kx = x + w * v;
+            Circulo(kx, cy, r + 1.5f * k, c);
+            Circulo(kx, cy, r - 1 * k, gris ? Color4.Hex(0xA0A6B8) : Color4.Hex(0xF4F7FF));
         }
 
         // Una tarjeta de grupo (los recuadros de la ventana de XP): fondo, filo, la rayita de color y el titulo.

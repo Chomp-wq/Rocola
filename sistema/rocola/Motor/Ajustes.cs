@@ -20,6 +20,10 @@ namespace Rocola
             internal Action<int> Cambia;            // +1 / -1
             internal Func<string> Bloqueo;          // null si se puede cambiar; si no, el motivo
             public bool Herramienta;                // no se guarda ni corta la comparacion a ciegas (S4, las comparaciones, el voto)
+            internal Func<int> Barra;               // con barra (los deslizadores de XP): donde va, de 0 a 100; null si no lleva
+            internal Func<string> Nota;             // el renglon de explicacion de XP, debajo del nombre (null si no lleva)
+            public int? Posicion { get { return Barra != null ? Barra() : (int?)null; } }
+            public string Explicacion { get { return Nota != null ? Nota() : null; } }
             public string Texto { get { return Valor(); } }
             public string ComoSeGuarda { get { return Guardado != null ? Guardado() : null; } }
             public string Motivo { get { return Bloqueo != null ? Bloqueo() : null; } }
@@ -50,6 +54,10 @@ namespace Rocola
             return a;
         }
 
+        private int ObjetivoPct() { int p = (int)Math.Round((normTarget - NormTargetMin) / (NormTargetMax - NormTargetMin) * 100f); return p < 0 ? 0 : (p > 100 ? 100 : p); }
+        // El nivel se oye al instante en la que suena, como al mover las barras en XP.
+        private void AplicaNivel() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Volumen al limite", ex); } }
+
         // Al tocar un ajuste de verdad o salir de la hoja, la comparacion se corta y vuelve lo de antes (como XP).
         public void CortaCiego(string porQue) { if (ciegoActivo) TerminaCiego(porQue); }
 
@@ -71,6 +79,25 @@ namespace Rocola
         {
             if (ajustes != null) return ajustes;
             List<Ajuste> l = new List<Ajuste>();
+            // VOLUMEN AL LIMITE (la tarjeta de arriba de la pagina Sonido de XP, con sus mismas claves): el interruptor y las barras
+            Ajuste niv = Interruptor("Volumen al limite", "Subir cada cancion hasta su limite", "normalizar", () => normalizeOn, v => { normalizeOn = v; AplicaNivel(); }, false);
+            l.Add(niv);
+            Ajuste fue = new Ajuste { Grupo = "Volumen al limite", Nombre = "Cuanto se sube cada cancion", Clave = "nivel_fuerza" };
+            fue.Valor = delegate { int p = (int)Math.Round(normStrength * 100f); return p >= 100 ? "Al limite" : p <= 0 ? "Tal cual" : p + "%"; };
+            fue.Guardado = delegate { return normStrength.ToString("0.####", CultureInfo.InvariantCulture); };
+            fue.Cambia = delegate (int d) { normStrength = Math.Max(0f, Math.Min(1f, (float)Math.Round(normStrength * 20f + d) / 20f)); AplicaNivel(); };
+            fue.Barra = delegate { return (int)Math.Round(normStrength * 100f); };
+            fue.Nota = delegate { return "100 % = cada una sube todo lo que aguanta sin aplastarse; " + (normalizeOn ? "menos, se quedan un poco por debajo de su limite." : "apagado, todas suenan como vienen."); };
+            fue.Bloqueo = delegate { return normalizeOn ? null : "apagado arriba"; };
+            l.Add(fue);
+            Ajuste obj = new Ajuste { Grupo = "Volumen al limite", Nombre = "Videos y canciones aun sin medir", Clave = "nivel_objetivo" };
+            obj.Valor = delegate { return ObjetivoPct() + "%"; };
+            obj.Guardado = delegate { return normTarget.ToString("0.####", CultureInfo.InvariantCulture); };
+            obj.Cambia = delegate (int d) { int p = Math.Max(0, Math.Min(100, ObjetivoPct() + 5 * d)); normTarget = NormTargetMin + (p / 100f) * (NormTargetMax - NormTargetMin); AplicaNivel(); };
+            obj.Barra = ObjetivoPct;
+            obj.Nota = delegate { int falta = porRepasar.Count; return falta > 0 ? "Los videos y las " + falta.ToString("#,0", CultureInfo.InvariantCulture) + " canciones que faltan por medir suben hacia aqui; las ya medidas, hasta su limite." : "Los videos suben hacia aqui. Las canciones ya estan medidas: cada una sube hasta su limite."; };
+            obj.Bloqueo = fue.Bloqueo;
+            l.Add(obj);
             Ajuste billar = Interruptor("El billar", "Modo billar (la cadena para las bocinas del billar)", "local_auto", () => localAuto, v => localAuto = v, false);
             billar.Guardado = delegate { return LocalAutoAGuardar ? "1" : "0"; };
             billar.Valor = delegate { return LocalAutoAGuardar ? "SÍ" : "NO"; };   // a ciegas no se ve cual suena   // durante la comparacion a ciegas, el de antes (como XP)
@@ -167,8 +194,10 @@ namespace Rocola
                 crossfadeSec = fundidos[Math.Max(0, Math.Min(fundidos.Length - 1, i + d))];
             };
             l.Add(fu);
-            Ajuste vv = new Ajuste { Grupo = "Videos", Nombre = "Volumen de los videos", Clave = "video_vol" };
-            vv.Valor = delegate { return videoVol + " %"; };
+            Ajuste vv = new Ajuste { Grupo = "Volumen al limite", Nombre = "Volumen de los videos", Clave = "video_vol" };
+            vv.Valor = delegate { return videoVol + "%"; };
+            vv.Barra = delegate { return videoVol; };
+            vv.Nota = delegate { return "Los videos no pasan por la cadena de sonido: los pone el reproductor de videos."; };
             vv.Guardado = delegate { return videoVol.ToString(CultureInfo.InvariantCulture); };
             vv.Cambia = delegate (int d) { videoVol = Math.Max(0, Math.Min(100, videoVol + 5 * d)); };
             l.Add(vv);
@@ -218,6 +247,24 @@ namespace Rocola
             Ajuste c12 = Interruptor("Pantalla", "Doce de la cola en el estado extendido (si no, tres)", "cola_doce", () => ColaDoce, v => ColaDoce = v, false);
             c12.Bloqueo = delegate { return !MuroReposo ? "necesita que la pared se aparte" : !EstadoExpandido ? "necesita el estado extendido" : null; };
             l.Add(c12);
+            // LAS NOTAS de la ventana de XP (el renglon gris debajo de cada mando), las mismas frases
+            Dictionary<string, string> notas = new Dictionary<string, string>
+            {
+                { "Modo billar (la cadena para las bocinas del billar)", "Apagado: el sonido sale como lo dejes en los ajustes de abajo. Encendido, la rocola ajusta sola cada cancion a las bocinas del billar (bocinas repartidas por zonas, sin subwoofer)." },
+                { "Quitar el subgrave", "Ninguna bocina del billar da menos de 30 Hz: solo gasta amplificador." },
+                { "Estereo mas estrecho", "Con las bocinas por zonas, lo grabado a un lado se oye en todas." },
+                { "Claridad para el local", "Menos retumbe (300 Hz) y la voz mas presente (3 kHz)." },
+                { "Que las partes suaves se oigan", "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual." },
+                { "Presencia en sala ruidosa", "La voz que baja en la estrofa y las intros se quedan mas cerca de lo fuerte (unos 3 dB); el volumen total no cambia." },
+                { "Prueba de bocinas (con la rocola callada)", "Un ruido suave por donde elijas: para igualar IN A e IN B del amplificador y revisar cada bocina." },
+                { "Bajo y brillo a la medida (I1)", "Compara cada cancion con lo que tendria una bien grabada como ella (la IA del EQ), no con el promedio de todas." },
+                { "Quitar el siseo de las grabaciones viejas (I2)", "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB en los agudos. Se nota desde la siguiente cancion." },
+                { "Un canal mudo, por los dos", "Si una cancion trae un canal vacio, los dos dan el que suena, a la misma potencia. Solo en las que lo traen." },
+                { "Quitar la corriente continua", "Si la onda viene corrida, se centra: el limitador no la baja de mas y los conos no se empujan." },
+                { "Quitar el pre-eco de los MP3 viejos", "El siseo antes de cada golpe de los MP3 mal hechos. Solo en las que el repaso midio con el; se nota desde la siguiente." },
+            };
+            foreach (Ajuste x in l) { string nt; if (x.Nota == null && notas.TryGetValue(x.Nombre, out nt)) { string fija = nt; x.Nota = () => fija; } }
+            foreach (Ajuste x in l) if (x.Nombre.StartsWith("Escuchar sin mejoras", StringComparison.Ordinal) && x.Nota == null) x.Nota = () => "Mientras dura, la cancion suena sin las mejoras, al mismo volumen: para comparar con el oido. No se guarda.";
             // Por paginas, como las pestanas de la ventana de XP (el orden dentro de cada una se conserva)
             List<Ajuste> orden = new List<Ajuste>(l.Count);
             foreach (string pg in PaginasAjustes) foreach (Ajuste x in l) if (PaginaDe(x.Grupo) == pg) orden.Add(x);
