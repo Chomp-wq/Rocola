@@ -40,13 +40,6 @@ using NAudio.Wave;
 
 namespace Rocola
 {
-    // EL DESCOMPRESOR DE MP3 DE SIEMPRE: el de Windows (ACM), por NAudio. Todos los lectores de MP3 de la rocola lo piden aqui, y aqui
-    // es el de Windows, asi que en XP no cambia nada. La rocola de Rocola OS (sistema/rocola/Hermana) pone el suyo: en Linux no hay ACM.
-    internal static class DescompresorMp3
-    {
-        internal static Func<WaveFormat, IMp3FrameDecompressor> Crea = Mp3FileReader.CreateAcmFrameDecompressor;
-    }
-
     // NLAYER VA DENTRO DE Rocola.exe. Antes habia que copiar NLayer.dll junto al programa al desplegar, y si se
     // olvidaba, los MP3 que llegan al maximo volvian a recortarse (solo quedaba apuntado). Ahora la DLL va dentro del
     // exe como recurso y, cuando .NET la busca y no la encuentra junto al programa, se carga desde ahi. Si hay una

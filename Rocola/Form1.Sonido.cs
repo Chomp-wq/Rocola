@@ -289,10 +289,10 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
-            { return DescompresorMp3.Crea(f); };
+            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
-                hecho = DescompresorMp3.Crea(wf);
+                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
                 hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // coma flotante con NLayer si la cancion llega al maximo (FlotanteNLayer.cs)
                 return hecho;
             };
@@ -313,7 +313,7 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = DescompresorMp3.Crea(wf); return hecho; };
+            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
             try { return new Mp3FileReader(flujo, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
@@ -457,10 +457,10 @@ namespace Rocola
                     if (inicio == 0) { vista = archivo; archivo = null; }
                     else { vista = new VistaMp3(archivo, inicio); archivo = null; }   // la vista pasa a ser duena del archivo
                     Func<WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(WaveFormat f)
-                    { return DescompresorMp3.Crea(f); };
+                    { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
                     Mp3FileReader.FrameDecompressorBuilder armador = delegate(WaveFormat wf)
                     {
-                        hecho = DescompresorMp3.Crea(wf);
+                        hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
                         hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                         return hecho;
                     };

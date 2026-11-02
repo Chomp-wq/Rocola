@@ -48,7 +48,7 @@ namespace Rocola
                     Thread worker = new Thread(Run);
                     worker.IsBackground = true;
                     worker.Priority = ThreadPriority.BelowNormal;
-                    try { worker.SetApartmentState(ApartmentState.STA); } catch { }   // en .NET para Linux (Rocola OS) no existe: lanza
+                    worker.SetApartmentState(ApartmentState.STA);
                     worker.Start();
                 }
                 catch { lock (gate) { running = false; pending = null; } throw; }
