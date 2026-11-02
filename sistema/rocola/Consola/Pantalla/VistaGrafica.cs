@@ -14,6 +14,7 @@ namespace Rocola
         private readonly ISuperficie sup;
         private readonly Dibujo d;
         private readonly Letra chica, media, grande, enorme;
+        private readonly Letra micro, mini, nChica, nMedia, nGrande, nEnorme;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
         private readonly Caratulas caratulas;
         private readonly float k;   // escala frente a 768 de alto
         private string antes;
@@ -37,6 +38,9 @@ namespace Rocola
             k = sup.Alto / 768f;
             byte[] ttf = File.ReadAllBytes(letraTtf);
             chica = new Letra(d, ttf, 18 * k); media = new Letra(d, ttf, 24 * k); grande = new Letra(d, ttf, 32 * k); enorme = new Letra(d, ttf, 44 * k);
+            string rutaNegrita = Negrita(letraTtf);
+            byte[] neg = rutaNegrita != null ? File.ReadAllBytes(rutaNegrita) : ttf;
+            micro = new Letra(d, ttf, 10.5f * k); mini = new Letra(d, ttf, 14 * k); nChica = new Letra(d, neg, 15 * k); nMedia = new Letra(d, neg, 19 * k); nGrande = new Letra(d, neg, 26 * k); nEnorme = new Letra(d, neg, 30 * k);
             caratulas = new Caratulas(d, (int)(256 * k));
             Random r = new Random(5); estrellas = new float[260 * 5];
             for (int i = 0; i < 260; i++)
@@ -57,32 +61,6 @@ namespace Rocola
             pMedios = m > pMedios ? pMedios + (m - pMedios) * 0.5f : pMedios * 0.93f;
             pAgudos = a > pAgudos ? pAgudos + (a - pAgudos) * 0.6f : pAgudos * 0.88f;
         }
-        private void Cielo(float W, float H, double t, float alfa = 1f)
-        {
-            d.Degradado(0, 0, W, H * 0.55f, Color4.Hex(0x03061A, alfa), Color4.Hex(0x0C1440, alfa));
-            d.Degradado(0, H * 0.55f, W, H * 0.45f, Color4.Hex(0x0C1440, alfa), Color4.Hex(0x1A0F3A, alfa));
-            for (int i = 0; i < estrellas.Length; i += 5)
-            {
-                float a = Math.Min(1f, 0.45f + 0.55f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3])) + 0.35f * pAgudos * (i % 3 == 0 ? 1 : 0));
-                float tam = estrellas[i + 2] * k;
-                d.Brillo(estrellas[i] * W, estrellas[i + 1] * H, tam * 2.2f, new Color4(0.85f, 0.9f, 1f, alfa * a * Math.Min(1f, 0.35f + tam / (2.5f * k))));
-            }
-            // la aurora: tiras verticales finas; su altura, su fuerza y su color ondulan despacio (verde -> turquesa -> violeta). Sube
-            // desde nada hasta su fuerza y se apaga hacia el horizonte, como un velo.
-            int tiras = 180; float w = W / tiras, base_ = H * 0.64f;
-            for (int i = 0; i < tiras; i++)
-            {
-                double x = (i + 0.5) / tiras;
-                double alto = H * (0.20 + 0.07 * Math.Sin(x * 7.0 + t * 0.30) + 0.035 * Math.Sin(x * 19.0 - t * 0.55)) * (1.0 + 0.30 * pMedios);   // la aurora late con la musica
-                double mezcla = 0.5 + 0.5 * Math.Sin(x * 3.5 + t * 0.10);
-                float fuerza = (float)(0.26 + 0.12 * Math.Sin(x * 11.0 + t * 0.7) + 0.05 * Math.Sin(x * 31.0 - t * 1.3)) * (0.75f + 0.8f * pGraves);
-                float r = (float)(0.25 + 0.45 * mezcla), g = (float)(0.95 - 0.45 * mezcla), b = (float)(0.65 + 0.3 * mezcla);
-                float y0 = (float)(base_ - alto), x0 = i * w;
-                d.Degradado(x0, y0, w, (float)alto * 0.78f, new Color4(r, g, b, 0f), new Color4(r, g, b, fuerza * alfa));
-                d.Degradado(x0, y0 + (float)alto * 0.78f, w, (float)alto * 0.3f, new Color4(r, g, b, fuerza * alfa), new Color4(r, g, b, 0f));
-            }
-        }
-
         // La letra: la de ROCOLA_LETRA, si no la DejaVu Sans del sistema (Rocola OS la lleva), o la primera que se encuentre.
         internal static string BuscaLetra()
         {
@@ -108,18 +86,8 @@ namespace Rocola
             Pulso(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
-            // franja de arriba
-            d.Rect(0, 0, W, 64 * k, Panel.ConAlfa(0.82f));
-            grande.Escribe(d, "ROCOLA", 24 * k, 14 * k, Dorado);
-            string cr = m.Creditos > 0 ? "Créditos: " + m.Creditos : "Inserta una moneda";
-            float wcr = media.Mide(cr) + 40 * k;
-            d.Redondo(W - wcr - 20 * k, 12 * k, wcr, 40 * k, 20 * k, m.Creditos > 0 ? Verde.ConAlfa(0.25f) : Dorado.ConAlfa(0.25f));
-            zCreditos = new Zona(W - wcr - 24 * k, 8 * k, wcr + 8 * k, 48 * k);
-            Casillas(c);
-            media.Escribe(d, cr, W - wcr, 19 * k, m.Creditos > 0 ? Verde : Dorado);
-            if (m.EnCola > 0) { string q = "En la cola: " + m.EnCola; float sq = Salto(c); chica.Escribe(d, q, W - wcr - 40 * k - chica.Mide(q), 24 * k - sq, sq > 0 ? Dorado : Gris); }
-            zCola = new Zona(W - wcr - 40 * k - chica.Mide("En la cola: 00"), 16 * k, chica.Mide("En la cola: 00"), 32 * k);
-            float abajo = H - 120 * k;   // donde empieza lo que suena
+            Cabecera(c, W);
+            float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
@@ -346,116 +314,12 @@ namespace Rocola
         // deslizando y la ficha rapida).
         private int pagVista = -1, pagLetraVista = -1, pagAnt = -1; private double pagDesde; private float pagDir = 1f;
         private const double PaginaMs = 380, ColumnaMs = 45;   // lo que tarda cada columna y el retraso entre columnas
-        private void Pared(Controlador c, float W, float abajo)
-        {
-            Form1 m = c.motor;
-            double ahora = reloj.Elapsed.TotalMilliseconds;
-            // LAS LETRAS (con lupa, como XP: la elegida y sus vecinas mas grandes, y una rayita debajo dice cuanta musica tiene cada una)
-            float x = 24 * k, y = 76 * k;
-            zLetras = new Zona(x - 4 * k, y - 8 * k, 0, 56 * k);
-            int maxDiscos = 1; if (m.LetrasLupa) for (int i = 0; i < c.letras.Count; i++) maxDiscos = Math.Max(maxDiscos, c.DiscosEn(i));
-            for (int i = 0; i < c.letras.Count; i++)
-            {
-                int dist = Math.Abs(i - c.letra);
-                bool lupa = m.LetrasLupa && dist == 0, vecina = m.LetrasLupa && dist == 1;
-                Letra f = lupa ? grande : media;
-                string l = Controlador.NombreLetra(c.letras[i]); float w = Math.Max((lupa ? 46 : vecina ? 40 : 36) * k, f.Mide(l) + 18 * k);
-                if (x + w > W - 24 * k) break;
-                float yy = lupa ? y - 6 * k : y, hh = lupa ? 50 * k : 40 * k;
-                if (i == c.letra) d.Redondo(x, yy, w, hh, 8 * k, Dorado);
-                f.EscribeCentrado(d, l, x + w / 2, yy + (hh - f.Tam) / 2 - 2 * k, i == c.letra ? Fondo : vecina ? Blanco : Gris);
-                if (m.LetrasLupa)
-                {
-                    float fr = Math.Max(0.08f, c.DiscosEn(i) / (float)maxDiscos);
-                    d.Rect(x + 6 * k, y + 46 * k, (w - 12 * k) * fr, 3 * k, (i == c.letra ? Dorado : Gris).ConAlfa(i == c.letra ? 0.95f : 0.45f));
-                }
-                x += w + 4 * k;
-            }
-            zLetras.W = x - zLetras.X;
-            List<Form1.Disco> ds = c.DiscosDeLetra();
-            if (ds.Count == 0) { media.EscribeCentrado(d, "No hay música en la carpeta de la rocola", W / 2, 300 * k, Gris); return; }
-            int cols = 4, filas = 2, porPag = Controlador.DiscosPorPagina, pag = c.cursorDisco / porPag;
-            int paginas = (ds.Count + porPag - 1) / porPag;
-            float top = 130 * k, alto = abajo - top - 10 * k, celW = (W - 48 * k) / cols, celH = alto / filas;
-            float lado = Math.Min(celW - 24 * k, celH - 70 * k);
-            // PASAR DE PAGINA DESLIZANDO (pagina_desliza= de XP): la vieja sale por un lado mientras la nueva entra por el otro, columna a
-            // columna. Solo dentro de la misma letra.
-            if (pagVista != pag || pagLetraVista != c.letra)
-            {
-                if (m.PaginaDesliza && pagVista >= 0 && pagLetraVista == c.letra && pagVista < paginas)
-                {
-                    pagAnt = pagVista; pagDesde = ahora;
-                    pagDir = c.SentidoPagina >= 0 ? 1f : -1f;   // el de la flecha que se apreto (con dos paginas, ir y volver es la misma)
-                }
-                else pagAnt = -1;
-                pagVista = pag; pagLetraVista = c.letra;
-            }
-            bool desliza = pagAnt >= 0 && ahora - pagDesde < PaginaMs + ColumnaMs * (cols - 1);
-            if (!desliza) pagAnt = -1;
-            if (desliza) Pagina(c, ds, pagAnt, false, top, celW, celH, lado, cols, porPag, col => -pagDir * W * CurvaPagina(ahora - pagDesde, col, cols));
-            Pagina(c, ds, pag, true, top, celW, celH, lado, cols, porPag, col => desliza ? pagDir * W * (1f - CurvaPagina(ahora - pagDesde, col, cols)) : 0f);
-            if (!desliza && m.FichaDisco && !c.Reposo && c.letras[c.letra] != Form1.LetraTop && c.cursorDisco < ds.Count)
-                FichaRapida(c, ds[c.cursorDisco], ahora - focoDesde, new Zona(24 * k, top, W - 48 * k, alto), celW, celH);
-            if (paginas > 1) chica.Escribe(d, "Página " + (pag + 1) + " de " + paginas, 24 * k, abajo - 26 * k, Gris.ConAlfa(0.8f));
-            string ayuda = "IZQ/DER: disco   ARRIBA/ABAJO: página   REGRESAR + IZQ/DER: letra   REGRESAR + ARRIBA: buscar";
-            chica.Escribe(d, ayuda, W - 24 * k - chica.Mide(ayuda), abajo - 26 * k, Gris.ConAlfa(0.8f));
-        }
         // Cuanto ha avanzado una columna (0 a 1, frenando al llegar); las columnas salen una tras otra en el sentido del paso.
         private float CurvaPagina(double t, int col, int cols)
         {
             int orden = pagDir > 0 ? col : cols - 1 - col;
             double u = Math.Max(0, Math.Min(1, (t - orden * ColumnaMs) / PaginaMs));
             return (float)(1 - Math.Pow(1 - u, 3));
-        }
-
-        // Una pagina de la pared, corrida 'dx(columna)'. 'viva': la que se elige (portada enfocada, cubo, relevo y lo que senala la ayuda).
-        private void Pagina(Controlador c, List<Form1.Disco> ds, int pag, bool viva, float top, float celW, float celH, float lado, int cols, int porPag, Func<int, float> dx)
-        {
-            for (int i = 0; i < porPag; i++)
-            {
-                int n = pag * porPag + i; if (n >= ds.Count) break;
-                Form1.Disco disco = ds[n];
-                float cx = 24 * k + (i % cols) * celW + celW / 2 + dx(i % cols), cy = top + (i / cols) * celH;
-                bool sel = viva && n == c.cursorDisco;
-                // LA PORTADA ENFOCADA (como XP): crece un 12 % en 170 ms desde el centro de su borde de abajo, con un halo de su propio
-                // color; las demas bajan un 20 % de brillo.
-                if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta))
-                {
-                    // EL RELEVO DE GIRO (AlbumView.MoveSelectionTo de XP): el que se deja da un giro rapido que se apaga y el nuevo arranca plano
-                    bool mismaPagina = focoCarpeta != null && focoDisco >= 0 && focoDisco / porPag == pag && relevoLetra == c.letra;
-                    if (mismaPagina) { relevoIdx = focoDisco; relevoAng = AnguloCubo(); relevoGiro = 0.7f * (n > focoDisco ? 1f : -1f); } else relevoIdx = -1;
-                    giroDir = n >= focoDisco ? 1f : -1f; relevoLetra = c.letra;
-                    focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds;
-                }
-                double avance = sel ? Math.Min(1.0, (reloj.Elapsed.TotalMilliseconds - focoDesde) / 170.0) : 0.0;
-                float crece = 1f + 0.12f * (float)(1 - Math.Pow(1 - avance, 3));
-                float l = lado * crece, px = cx - l / 2, py = cy + lado - l;
-                if (sel)
-                {
-                    Textura tx = caratulas.De(disco.Portada);
-                    Color4 halo = tx != null ? tx.Media : Dorado;
-                    d.Brillo(cx, py + l / 2, l * 0.95f, halo.ConAlfa(0.55f));
-                    d.Redondo(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 10 * k, Dorado);
-                }
-                if (sel) Cubo(disco.Portada, disco.Artista, px, py, l, AnguloCubo());                       // el cubo que gira (XP)
-                else if (viva && n == relevoIdx) Cubo(disco.Portada, disco.Artista, px, py, l, PasoRelevo());
-                else Portada(disco.Portada, disco.Artista, px, py, l);
-                if (sel) zElegido = new Zona(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k);
-                if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0, 0.2f));
-                else
-                {
-                    string letrero = disco.Videos ? disco.Rutas.Count + (disco.Rutas.Count == 1 ? " video" : " videos")
-                        : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") + (disco.Minutos > 0 ? " · " + disco.Minutos + " min" : "");
-                    float wl = chica.Mide(letrero) + 16 * k;
-                    if (wl > l + 20 * k) letrero = disco.Rutas.Count + (disco.Videos ? " videos" : " canciones");
-                    wl = chica.Mide(letrero) + 16 * k;
-                    d.Redondo(cx - wl / 2, py + l - 30 * k, wl, 24 * k, 12 * k, new Color4(0, 0, 0, 0.6f));
-                    chica.EscribeCentrado(d, letrero, cx, py + l - 28 * k, Blanco);
-                }
-                string a = chica.Ajusta(disco.Artista, celW - 12 * k), nm = chica.Ajusta(disco.Nombre, celW - 12 * k);
-                chica.EscribeCentrado(d, a, cx, py + l + 10 * k, sel ? Blanco : Gris);
-                if (!string.IsNullOrEmpty(nm)) chica.EscribeCentrado(d, nm, cx, py + l + 32 * k, sel ? Dorado : Gris.ConAlfa(0.7f));
-            }
         }
 
         // LA FICHA RAPIDA (ficha_disco= de XP: PantallaVivaGpu.cs): si el cursor se queda 1,1 s en un disco, al lado sale una tarjeta con sus
@@ -495,33 +359,33 @@ namespace Rocola
             Textura tx = caratulas.De(disco.Portada);
             if (tx != null) d.Imagen(tx, fx + pad, fy + pad, lado, lado, alfa); else d.Redondo(fx + pad, fy + pad, lado, lado, 7 * u, Dorado.ConAlfa(0.3f * alfa));
             float tx0 = fx + pad + lado + 12 * u, ancho = w - (tx0 - fx) - pad, ty = fy + pad - 2 * u;
-            media.Escribe(d, media.Ajusta(disco.Artista, ancho), tx0, ty, Blanco.ConAlfa(alfa)); ty += 26 * u;
-            if (!string.IsNullOrEmpty(disco.Nombre)) { chica.Escribe(d, chica.Ajusta(disco.Nombre, ancho), tx0, ty, Color4.Hex(0xC8D4F5, alfa)); ty += 21 * u; }
+            nMedia.Escribe(d, nMedia.Ajusta(disco.Artista, ancho), tx0, ty, Blanco.ConAlfa(alfa)); ty += 26 * u;
+            if (!string.IsNullOrEmpty(disco.Nombre)) { mini.Escribe(d, mini.Ajusta(disco.Nombre, ancho), tx0, ty, Color4.Hex(0xC8D4F5, alfa)); ty += 21 * u; }
             string resumen = disco.Videos ? disco.Rutas.Count + " videos" : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") + (disco.Minutos > 0 ? " · " + disco.Minutos + " min" : "");
-            chica.Escribe(d, resumen, tx0, ty, Color4.Hex(0xA0B2DE, alfa)); ty += 22 * u;
+            mini.Escribe(d, resumen, tx0, ty, Color4.Hex(0xA0B2DE, alfa)); ty += 22 * u;
             if (f.EnCola > 0)
             {
-                string q = f.EnCola + " en la cola"; float wq = chica.Mide(q) + 18 * k;
+                string q = f.EnCola + " en la cola"; float wq = mini.Mide(q) + 18 * k;
                 d.Redondo(tx0, ty, wq, 22 * k, 11 * k, Verde.ConAlfa(0.22f * alfa));
-                chica.Escribe(d, q, tx0 + 9 * k, ty + 1 * k, Verde.ConAlfa(alfa)); ty += 24 * k;
+                mini.Escribe(d, q, tx0 + 9 * k, ty + 1 * k, Verde.ConAlfa(alfa)); ty += 24 * k;
             }
             float yl = Math.Max(fy + pad + lado, ty) + 9 * u;
             d.Rect(fx + pad, yl, w - 2 * pad, 1, Color4.Hex(0xA0B4E6, 0.25f * alfa));
-            chica.Escribe(d, f.Pedidas ? "LAS MÁS PEDIDAS DE ESTE DISCO" : "ALGUNAS DE ESTE DISCO", fx + pad, yl + 4 * u, Color4.Hex(0x96AADC, alfa));
+            mini.Escribe(d, f.Pedidas ? "LAS MÁS PEDIDAS DE ESTE DISCO" : "ALGUNAS DE ESTE DISCO", fx + pad, yl + 4 * u, Color4.Hex(0x96AADC, alfa));
             float yb = fy + h - pad - 20 * u, yf = yl + 26 * u, altoF = 26 * u;
             for (int i = 0; i < f.Titulos.Count; i++)
             {
                 float yk = yf + i * altoF; if (yk + altoF > yb) break;
                 float r = 10 * u; Circulo(fx + pad + r, yk + r, r, Verde.ConAlfa(0.25f * alfa));
-                chica.EscribeCentrado(d, (i + 1).ToString(), fx + pad + r, yk + r - chica.Tam * 0.55f, Verde.ConAlfa(alfa));
+                mini.EscribeCentrado(d, (i + 1).ToString(), fx + pad + r, yk + r - mini.Tam * 0.55f, Verde.ConAlfa(alfa));
                 float xt = fx + pad + 2 * r + 9 * u, der = fx + w - pad;
-                if (f.Pedidas && f.Veces[i] > 0) { string vt = f.Veces[i] == 1 ? "1 vez" : f.Veces[i] + " veces"; float vw = chica.Mide(vt); chica.Escribe(d, vt, der - vw, yk, Color4.Hex(0xFFB84D, alfa)); der -= vw + 8 * u; }
+                if (f.Pedidas && f.Veces[i] > 0) { string vt = f.Veces[i] == 1 ? "1 vez" : f.Veces[i] + " veces"; float vw = mini.Mide(vt); mini.Escribe(d, vt, der - vw, yk, Color4.Hex(0xFFB84D, alfa)); der -= vw + 8 * u; }
                 string du = f.Duraciones[i];
-                if (du.Length > 0 && der - chica.Mide(du) - 8 * u - xt >= (w - 2 * pad) * .5f) { float dw = chica.Mide(du); chica.Escribe(d, du, der - dw, yk, Color4.Hex(0xA0B0DA, alfa)); der -= dw + 8 * u; }
-                chica.Escribe(d, chica.Ajusta(f.Titulos[i], Math.Max(10, der - xt)), xt, yk, Blanco.ConAlfa(alfa));
+                if (du.Length > 0 && der - mini.Mide(du) - 8 * u - xt >= (w - 2 * pad) * .5f) { float dw = mini.Mide(du); mini.Escribe(d, du, der - dw, yk, Color4.Hex(0xA0B0DA, alfa)); der -= dw + 8 * u; }
+                mini.Escribe(d, mini.Ajusta(f.Titulos[i], Math.Max(10, der - xt)), xt, yk, Blanco.ConAlfa(alfa));
             }
             float rb = 9 * u; Circulo(fx + pad + rb, yb + rb + 2 * u, rb, Color4.Hex(0x48D470, alfa));
-            chica.Escribe(d, disco.Rutas.Count > 0 ? "Entrar para ver las " + disco.Rutas.Count : "Entrar al disco", fx + pad + 2 * rb + 8 * u, yb, Color4.Hex(0xDFE6FF, alfa));
+            mini.Escribe(d, disco.Rutas.Count > 0 ? "Entrar para ver las " + disco.Rutas.Count : "Entrar al disco", fx + pad + 2 * rb + 8 * u, yb, Color4.Hex(0xDFE6FF, alfa));
         }
 
         private void Disco(Controlador c, float W, float abajo)
@@ -641,58 +505,6 @@ namespace Rocola
             d.Brillo(cx, cy, radio * 1.6f, Color4.Hex(rgb, a));
             d.Brillo(cx, cy, radio * 1.25f, Color4.Hex(rgb, 0.8f * a));
         }
-        private void Suena(Controlador c, float W, float H, float abajo)
-        {
-            Form1 m = c.motor;
-            d.Rect(0, abajo, W, H - abajo, Panel.ConAlfa(0.88f));
-            float lado = H - abajo - 24 * k;
-            string t = m.SonandoTitulo;
-            if (t == null) { zSuena = new Zona(12 * k, abajo + 12 * k, H - abajo - 24 * k, H - abajo - 24 * k); media.Escribe(d, "Elige un disco y pon tu canción", 24 * k, abajo + 40 * k, Gris); return; }
-            zSuena = new Zona(12 * k, abajo + 12 * k, lado, lado);
-            if (m.ColorGenero) Resplandor(m.ColorSonando, 12 * k + lado / 2, abajo + 12 * k + lado / 2, lado * 0.95f);
-            Cubo(m.SonandoPortada, m.SonandoDisco ?? t, 12 * k, abajo + 12 * k, lado, reloj.Elapsed.TotalSeconds * 1.44);   // el cubo chico de la barra (XP)
-            float x = 24 * k + lado, ancho = W - x - 24 * k;
-            List<string> prox = m.ProximasEnCola(3);
-            if (prox.Count > 0 && m.LetraLejos)
-            {
-                // LETRA PARA LEER DE LEJOS (letra_lejos= de XP): lo que sigue va en una tarjeta lateral, «A CONTINUACIÓN»
-                float wc = W * 0.27f, xc = W - wc - 16 * k, hc = H - abajo - 26 * k;
-                d.Redondo(xc - 10 * k, abajo + 8 * k, wc + 10 * k, hc, 12 * k, PanelClaro.ConAlfa(0.9f));
-                chica.Escribe(d, "A CONTINUACIÓN", xc + 4 * k, abajo + 14 * k, Dorado);
-                media.Escribe(d, media.Ajusta(prox[0], wc - 14 * k), xc + 4 * k, abajo + 38 * k, Blanco);
-                if (m.EnCola > 1) chica.Escribe(d, "y " + (m.EnCola - 1) + " más en la cola", xc + 4 * k, abajo + 72 * k, Gris);
-                ancho = xc - x - 24 * k;
-            }
-            else if (prox.Count > 0)
-            {
-                // las siguientes de la cola, a la derecha (como la capsula de la cola de XP)
-                float wc = W * 0.30f, xc = W - wc - 16 * k;
-                chica.Escribe(d, "SIGUEN (" + m.EnCola + ")", xc, abajo + 14 * k, Dorado);
-                for (int i = 0; i < prox.Count; i++) chica.Escribe(d, chica.Ajusta((i + 1) + ". " + prox[i], wc), xc, abajo + (38 + 22 * i) * k, Gris);
-                ancho = xc - x - 16 * k;
-            }
-            chica.Escribe(d, "SUENA", x, abajo + 14 * k, Dorado);
-            // el titulo crece un 45 % con la letra de lejos (si no cabe, el de siempre con puntos suspensivos)
-            Letra lt = m.LetraLejos && enorme.Mide(t) <= ancho ? enorme : grande;
-            EscribeDesliza(c, lt, t, x, abajo + (lt == enorme ? 32 : 36) * k, ancho, Blanco);
-            float ya = abajo + (lt == enorme ? 82 : 76) * k;
-            float xa = x;
-            string gen = m.ColorGenero ? m.EtiquetaSonando : "";
-            if (gen.Length > 0 && gen != "Otros")
-            {
-                float wg = chica.Mide(gen) + 16 * k;
-                d.Redondo(xa, ya - 1 * k, wg, 22 * k, 11 * k, Color4.Hex(m.ColorSonando, 0.30f + 0.25f * pGraves));   // late con los graves
-                chica.Escribe(d, gen, xa + 8 * k, ya, Blanco);
-                xa += wg + 10 * k;
-            }
-            if (m.SonandoDisco != null) chica.Escribe(d, chica.Ajusta(m.SonandoDisco, ancho - (xa - x)), xa, ya, Gris);
-            float p = c.Progreso;
-            float wb = W - x - 24 * k;
-            Color4 barra = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Dorado;
-            d.Rect(x, H - 10 * k, wb, 4 * k, PanelClaro);
-            d.Rect(x, H - 10 * k, wb * p, 4 * k, barra);
-        }
-
         // EL CUBO QUE GIRA (Cube.Draw de XP y su gemelo en la tarjeta: D3D9Star.cs, PreparaCubo): la portada en las cuatro caras de un prisma
         // que gira sobre su eje vertical, visto de frente; cada cara visible se oscurece con la profundidad (hasta 130 de 255). Gira a 0,06 rad
         // por paso de 24 por segundo (1,44 rad/s), en el sentido en que se movio la seleccion.

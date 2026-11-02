@@ -24,32 +24,6 @@ namespace Rocola
         private static readonly Color4 Oro = Color4.Hex(0xFFD45A), OroClaro = Color4.Hex(0xFFF1A8), Rojo = Color4.Hex(0xE5484D), VerdeBoton = Color4.Hex(0x3DDC84),
             Amarillo = Color4.Hex(0xFFC93C), Tinta = Color4.Hex(0x1A2350);
 
-        // LAS DOS CASILLAS DE LA BARRA DE ARRIBA (como XP: buscar y ayuda, una al lado de la otra, con sus botones dibujados).
-        private void Casillas(Controlador c)
-        {
-            float x = 24 * k + grande.Mide("ROCOLA") + 28 * k, y = 14 * k, h = 36 * k;
-            zBuscar = Casilla(x, y, h, "BUSCAR", 'U', c.Buscando);
-            zAyuda = Casilla(zBuscar.X + zBuscar.W + 10 * k, y, h, "AYUDA", 'D', c.AyudaAbierta);
-            // la estrella, en su sitio (si no esta fuera, ayudando)
-            if (!c.AyudaAbierta && !c.AyudaRegresando)
-            {
-                double t = reloj.Elapsed.TotalSeconds;
-                Cuerpo(zAyuda.X + 20 * k, zAyuda.Cy + 1 * k, 12 * k, Gesto.Quieta, 9, t, 0, 0, 1f);
-            }
-        }
-        private Zona Casilla(float x, float y, float h, string nombre, char flecha, bool abierta)
-        {
-            float wl = chica.Mide(nombre), w = (nombre == "AYUDA" ? 38 * k : 12 * k) + wl + 12 * k + 70 * k;
-            d.Redondo(x, y, w, h, h / 2, abierta ? Dorado.ConAlfa(0.35f) : PanelClaro.ConAlfa(0.8f));
-            float tx = x + (nombre == "AYUDA" ? 38 * k : 12 * k);
-            chica.Escribe(d, nombre, tx, y + (h - chica.Tam) / 2 - 1 * k, abierta ? Blanco : Gris);
-            float bx = tx + wl + 12 * k, cy = y + h / 2, r = 9 * k;
-            Boton(bx + r, cy, r, 'B');
-            chica.Escribe(d, "+", bx + 2 * r + 4 * k, cy - chica.Tam * 0.55f, Gris);
-            Boton(bx + 2 * r + 14 * k + r, cy, r, flecha);
-            return new Zona(x, y, w, h);
-        }
-
         // UN BOTON DIBUJADO: B rojo, V verde, M la moneda, U/D/L/R las flechas (las de arriba y abajo, rojas como en la rocola; las de los
         // lados, amarillas).
         private void Boton(float cx, float cy, float r, char b)

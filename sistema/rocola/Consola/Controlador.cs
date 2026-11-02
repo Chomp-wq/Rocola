@@ -294,7 +294,7 @@ namespace Rocola
         internal int DiscosEn(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]].Count : 0; }
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
-        internal const int DiscosPorPagina = 8;
+        internal const int DiscosPorPagina = 18;   // seis columnas y tres filas, como la pared de XP
         // REGRESAR mantenido (para los combos de XP); en las pruebas se da por boton.
         private bool regresarDePrueba;
         private bool RegresarApretado { get { return regresarDePrueba; } }   // lo que estaba apretado al pulsar (PulsadoConRegresar)

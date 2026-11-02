@@ -60,6 +60,13 @@ namespace Rocola
                 catch { return 0f; }
             }
         }
+        // Las portadas de las siguientes de la cola (las cajitas de «En cola»); null donde no hay.
+        public List<string> PortadasEnCola(int n)
+        {
+            List<string> r = new List<string>();
+            for (int i = 0; i < queue.Count && r.Count < n; i++) r.Add(queue[i].Disc != null ? queue[i].Disc.CoverPath : null);
+            return r;
+        }
         public string SonandoTitulo { get { PlayItem p = nowPlaying; return p == null ? null : p.IsVideo ? Path.GetFileNameWithoutExtension(p.VideoPath) : p.Song != null ? p.Song.ToString() : null; } }
         public string SonandoDisco { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? (string.IsNullOrEmpty(p.Disc.Name) ? p.Disc.Artist : p.Disc.Artist + " - " + p.Disc.Name) : null; } }
         public string SonandoPortada { get { PlayItem p = nowPlaying; return p != null && p.Disc != null ? p.Disc.CoverPath : null; } }

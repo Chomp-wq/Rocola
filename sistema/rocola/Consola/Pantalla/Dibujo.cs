@@ -174,6 +174,57 @@ namespace Rocola.Pantalla
             }
         }
 
+        // Un cuadrilatero cualquiera con un color por esquina (en orden: arriba-izq, arriba-der, abajo-der, abajo-izq).
+        internal void Cuatro(float x0, float y0, Color4 c0, float x1, float y1, Color4 c1, float x2, float y2, Color4 c2, float x3, float y3, Color4 c3)
+        {
+            if (blanca.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
+            V(x0, y0, 0.5f, 0.5f, c0); V(x1, y1, 0.5f, 0.5f, c1); V(x3, y3, 0.5f, 0.5f, c3);
+            V(x1, y1, 0.5f, 0.5f, c1); V(x2, y2, 0.5f, 0.5f, c2); V(x3, y3, 0.5f, 0.5f, c3);
+        }
+        // Un degradado de izquierda a derecha.
+        internal void DegradadoH(float x, float y, float w, float h, Color4 izq, Color4 der) { Cuatro(x, y, izq, x + w, y, der, x + w, y + h, der, x, y + h, izq); }
+        // El borde de un rectangulo de esquinas redondas, de 'grosor' pixeles hacia dentro (una tira por cada tramo: sin solapes).
+        internal void Contorno(float x, float y, float w, float h, float r, float grosor, Color4 c)
+        {
+            r = Math.Min(r, Math.Min(w, h) / 2f);
+            float ri = Math.Max(0f, r - grosor);
+            // los lados rectos
+            Rect(x + r, y, w - 2 * r, grosor, c); Rect(x + r, y + h - grosor, w - 2 * r, grosor, c);
+            Rect(x, y + r, grosor, h - 2 * r, c); Rect(x + w - grosor, y + r, grosor, h - 2 * r, c);
+            // las cuatro esquinas, como anillos de un cuarto
+            int pasos = Math.Max(4, (int)(r * 0.8f));
+            float[] cxs = { x + r, x + w - r, x + w - r, x + r }, cys = { y + r, y + r, y + h - r, y + h - r };
+            double[] a0 = { Math.PI, 1.5 * Math.PI, 0, 0.5 * Math.PI };
+            for (int e = 0; e < 4; e++)
+                for (int i = 0; i < pasos; i++)
+                {
+                    double t0 = a0[e] + 0.5 * Math.PI * i / pasos, t1 = a0[e] + 0.5 * Math.PI * (i + 1) / pasos;
+                    float c0 = (float)Math.Cos(t0), s0 = (float)Math.Sin(t0), c1 = (float)Math.Cos(t1), s1 = (float)Math.Sin(t1);
+                    Cuatro(cxs[e] + r * c0, cys[e] + r * s0, c, cxs[e] + r * c1, cys[e] + r * s1, c, cxs[e] + ri * c1, cys[e] + ri * s1, c, cxs[e] + ri * c0, cys[e] + ri * s0, c);
+                }
+        }
+        // Un rectangulo redondo con un degradado vertical (las pastillas de XP).
+        internal void RedondoDegradado(float x, float y, float w, float h, float r, Color4 arriba, Color4 abajo)
+        {
+            r = Math.Min(r, Math.Min(w, h) / 2f);
+            int pasos = Math.Max(2, (int)r);
+            for (int i = 0; i < pasos; i++)
+            {
+                float yy = r - (i + 0.5f) * r / pasos, dx = r - (float)Math.Sqrt(Math.Max(0, r * r - yy * yy)), h1 = r / pasos;
+                float ya = y + i * h1, yb = y + h - (i + 1) * h1;
+                Degradado(x + dx, ya, w - 2 * dx, h1, Mezcla(arriba, abajo, (ya - y) / h), Mezcla(arriba, abajo, (ya + h1 - y) / h));
+                Degradado(x + dx, yb, w - 2 * dx, h1, Mezcla(arriba, abajo, (yb - y) / h), Mezcla(arriba, abajo, (yb + h1 - y) / h));
+            }
+            Degradado(x, y + r, w, h - 2 * r, Mezcla(arriba, abajo, r / h), Mezcla(arriba, abajo, 1 - r / h));
+        }
+        internal static Color4 Mezcla(Color4 a, Color4 b, float t)
+        {
+            t = t < 0 ? 0 : t > 1 ? 1 : t;
+            return new Color4(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t, a.A + (b.A - a.A) * t);
+        }
+        // Una imagen con su color (para tenir una textura blanca: las nebulosas).
+        internal void ImagenTenida(Textura t, float x, float y, float w, float h, Color4 c) { Quad(t, x, y, w, h, 0, 0, 1, 1, c); }
+
         public void Dispose() { }
     }
 
