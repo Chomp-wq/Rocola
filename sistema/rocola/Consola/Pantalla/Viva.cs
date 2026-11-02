@@ -105,59 +105,82 @@ namespace Rocola
             d.SinRecorte();
         }
 
-        // ---- EL BUSCADOR CON PORTADAS (buscador_portadas= de XP, BuscadorPortadasGpu.cs): arriba la casilla de lo escrito, grande, con su
-        // lupa y cuantos resultados hay; debajo, los atajos; a la izquierda el teclado compacto (teclas de tamano fijo) y a la derecha las
-        // tarjetas en dos columnas, con su portada (o la inicial), que es, el nombre con lo tecleado resaltado, un renglon que ayuda a elegir
-        // y SONANDO o EN COLA si toca; si hay mas de las que caben, se baja fila a fila y una barrita lo dice.
+        // ---- EL BUSCADOR (como el de XP, BuscadorPortadasGpu.cs): arriba, de lado a lado, la casilla de lo escrito con su lupa, el cursor y
+        // cuantos resultados hay; debajo, los atajos; a la izquierda el teclado (la elegida en azul, BORRAR en rojo) y a la derecha las
+        // tarjetas en dos columnas, con la portada (si buscador_portadas= esta encendido), que es (ARTISTA, ALBUM, CANCION), el nombre
+        // con lo tecleado resaltado y un renglon que ayuda a elegir; abajo a la izquierda, la leyenda de los botones.
         private void BuscadorPortadas(Controlador c, float W, float abajo)
         {
             Form1 m = c.motor;
-            float x0 = 24 * k, y0 = 76 * k, hb = 60 * k;
-            d.Redondo(x0, y0, W - 48 * k, hb, 14 * k, PanelClaro);
+            bool portadas = c.ConPortadas;
+            float x0 = 24 * k, y0 = 22 * k, hb = 56 * k, wb = W - 48 * k;
+            d.Brillo(x0 + wb / 2, y0 + hb / 2, wb * 0.45f, AzulBorde.ConAlfa(0.10f));
+            d.RedondoDegradado(x0, y0, wb, hb, 14 * k, Color4.Hex(0x172352, 0.88f), Color4.Hex(0x0E1638, 0.88f));
+            d.Contorno(x0, y0, wb, hb, 14 * k, 1.6f * k, Color4.Hex(0x6FA8FF, 0.85f));
             // la lupa
-            float lx = x0 + 30 * k, ly = y0 + hb / 2 - 3 * k, lr = 12 * k;
-            Circulo(lx, ly, lr, Dorado); Circulo(lx, ly, lr - 3.5f * k, PanelClaro);
-            d.Linea(lx + lr * 0.7f, ly + lr * 0.7f, lx + lr * 1.5f, ly + lr * 1.5f, 4 * k, Dorado);
-            string escrito = c.Escrito.Length > 0 ? c.Escrito + "_" : "Escribe un artista, un disco o una canción";
-            grande.Escribe(d, grande.Ajusta(escrito, W - 340 * k), x0 + 60 * k, y0 + (hb - grande.Tam) / 2 - 2 * k, c.Escrito.Length > 0 ? Blanco : Gris);
+            float lx = x0 + 32 * k, ly = y0 + hb / 2 - 2 * k, lr = 9 * k;
+            Anillo(lx, ly, lr, 2.6f * k, Blanco);
+            d.Linea(lx + lr * 0.7f, ly + lr * 0.7f, lx + lr * 1.55f, ly + lr * 1.55f, 3.2f * k, Blanco);
+            float tx0 = x0 + 56 * k;
+            if (c.Escrito.Length > 0)
+            {
+                string e = nGrande.Ajusta(c.Escrito, wb - 260 * k);
+                float we = nGrande.Escribe(d, e, tx0, y0 + hb / 2 - nGrande.Tam * 0.62f, Blanco);
+                if ((reloj.ElapsedMilliseconds / 530) % 2 == 0) d.Rect(tx0 + we + 4 * k, y0 + 14 * k, 2.5f * k, hb - 28 * k, Color4.Hex(0x6FA8FF));
+            }
+            else
+            {
+                if ((reloj.ElapsedMilliseconds / 530) % 2 == 0) d.Rect(tx0, y0 + 14 * k, 2.5f * k, hb - 28 * k, Color4.Hex(0x6FA8FF));
+                nMedia.Escribe(d, "Escribe un artista, un disco o una canción", tx0 + 12 * k, y0 + hb / 2 - nMedia.Tam * 0.6f, Color4.Hex(0x8C98C8));
+            }
             if (c.Resultados.Count > 0)
             {
                 string cu = c.Resultados.Count + (c.Resultados.Count == 1 ? " resultado" : " resultados");
-                media.Escribe(d, cu, W - 48 * k - media.Mide(cu), y0 + (hb - media.Tam) / 2 - 2 * k, Dorado);
+                nChica.Escribe(d, cu, x0 + wb - 20 * k - nChica.Mide(cu), y0 + hb / 2 - nChica.Tam * 0.6f, Color4.Hex(0xC8D2F2));
             }
             // los atajos
-            float ay = y0 + hb + 10 * k, ah = 34 * k, axx = x0;
+            float ay = y0 + hb + 12 * k, ah = 30 * k, axx = x0;
             for (int i = 0; i < c.Atajos.Count; i++)
             {
-                string t = c.Atajos[i].Texto; float w = chica.Mide(t) + 28 * k;
-                if (axx + w > W - 24 * k) break;   // si no caben todos, se quedan fuera los ultimos
+                string t = c.Atajos[i].Texto; float w = nChica.Mide(t) + 28 * k;
+                if (axx + w > W - 24 * k) break;
                 bool sel = !c.EnResultados && c.FilaTecla < 0 && c.ColTecla == i;
-                d.Redondo(axx, ay, w, ah, ah / 2, sel ? Dorado : Panel.ConAlfa(0.9f));
-                chica.Escribe(d, t, axx + 14 * k, ay + (ah - chica.Tam) / 2 - 1 * k, sel ? Fondo : Blanco);
+                d.Redondo(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x16204A, 0.85f));
+                d.Contorno(axx, ay, w, ah, ah / 2, 1.2f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.4f));
+                nChica.Escribe(d, t, axx + 14 * k, ay + ah / 2 - nChica.Tam * 0.6f, Blanco);
                 axx += w + 8 * k;
             }
-            // el teclado compacto
-            float tecla = 40 * k, sep = 4 * k, ty = ay + (c.Atajos.Count > 0 ? ah + 12 * k : 0), ty0 = ty;
+            // el teclado: diez teclas por fila; la fila de la Z, centrada; ESPACIO y BORRAR abajo, anchas
+            float ty0 = Math.Max(153 * k, ay + (c.Atajos.Count > 0 ? ah + 16 * k : 0)), sep = 6 * k, tecla = 40 * k, ht = 38 * k, ty = ty0;
+            float anchoTeclado = 10 * tecla + 9 * sep;
             for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
             {
-                string fila = Controlador.FilasTeclado[f]; float tx = x0;
+                string fila = Controlador.FilasTeclado[f];
+                bool ultima = f == Controlador.FilasTeclado.Length - 1;
+                float tx = x0 + (ultima ? 0 : (anchoTeclado - (fila.Length * tecla + (fila.Length - 1) * sep)) / 2);
                 for (int i = 0; i < fila.Length; i++)
                 {
                     string et = Controlador.Etiqueta(fila[i]);
-                    float w = et.Length > 1 ? tecla * 3 + sep * 2 : tecla;
+                    bool borrar = fila[i] == '\u0002';
+                    float w = ultima ? (borrar ? anchoTeclado * 0.4f - sep / 2 : anchoTeclado * 0.6f - sep / 2) : tecla;
                     bool sel = !c.EnResultados && f == c.FilaTecla && i == c.ColTecla;
-                    d.Redondo(tx, ty, w, tecla, 8 * k, sel ? Dorado : Panel);
-                    (et.Length > 1 ? chica : media).EscribeCentrado(d, et, tx + w / 2, ty + (tecla - (et.Length > 1 ? chica : media).Tam) / 2 - 2 * k, sel ? Fondo : Blanco);
+                    Color4 fondo = sel ? Color4.Hex(0x3A6CFF) : borrar ? Color4.Hex(0x3A1424, 0.88f) : Color4.Hex(0x141C40, 0.85f);
+                    Color4 borde = sel ? Color4.Hex(0xB8D0FF) : borrar ? Color4.Hex(0xB04458, 0.8f) : Color4.Hex(0x7F90D0, 0.30f);
+                    if (sel) d.Brillo(tx + w / 2, ty + ht / 2, w * 0.9f, Color4.Hex(0x3A6CFF, 0.35f));
+                    d.Redondo(tx, ty, w, ht, 7 * k, fondo);
+                    d.Contorno(tx, ty, w, ht, 7 * k, 1.2f * k, borde);
+                    Letra lt = et.Length > 1 ? nChica : nMedia;
+                    lt.EscribeCentrado(d, et, tx + w / 2, ty + ht / 2 - lt.Tam * 0.6f, borrar && !sel ? Color4.Hex(0xFFB0BC) : Blanco);
                     tx += w + sep;
                 }
-                ty += tecla + sep;
+                ty += ht + 8 * k;
             }
-            zTeclado = new Zona(x0, ty0, 10 * (tecla + sep), ty - ty0);
+            zTeclado = new Zona(x0, ty0, anchoTeclado, ty - ty0);
             // las tarjetas
-            float rx = x0 + 10 * (tecla + sep) + 20 * k, rw = W - rx - 24 * k, ry = ty0, cw = (rw - 12 * k) / 2, ch = 84 * k;
-            int filas = Math.Max(1, (int)((abajo - ry - 34 * k) / (ch + 10 * k)));
-            zResultados = new Zona(rx, ry, rw, filas * (ch + 10 * k));
-            if (c.Resultados.Count == 0) { if (c.Escrito.Length > 0) media.Escribe(d, "Nada con eso", rx, ry, Gris); }
+            float rx = x0 + anchoTeclado + 46 * k, rw = W - rx - 24 * k, ry = ty0, gap = 11 * k, cw = (rw - gap) / 2, ch = 84 * k;
+            int filas = Math.Max(1, (int)((abajo - ry - 40 * k + gap) / (ch + gap)));
+            zResultados = new Zona(rx, ry, rw, filas * (ch + gap));
+            if (c.Resultados.Count == 0 && c.Escrito.Length > 0) nMedia.Escribe(d, "Nada con eso", rx + 8 * k, ry + 8 * k, Color4.Hex(0x8C98C8));
             int filaSel = c.SelResultado / 2, filasTot = (c.Resultados.Count + 1) / 2;
             int desde = Math.Max(0, Math.Min(filaSel - filas / 2, filasTot - filas));
             string suena = m.Sonando;
@@ -168,39 +191,56 @@ namespace Rocola
                 {
                     int i = (desde + fi) * 2 + co; if (i >= c.Resultados.Count) break;
                     Form1.Resultado r = c.Resultados[i];
-                    float cx = rx + co * (cw + 12 * k), cy = ry + fi * (ch + 10 * k);
+                    float cx = rx + co * (cw + gap), cy = ry + fi * (ch + gap);
                     bool sel = c.EnResultados && i == c.SelResultado;
-                    if (sel) { d.Redondo(cx - 3 * k, cy - 3 * k, cw + 6 * k, ch + 6 * k, 14 * k, Dorado); zSelResultado = new Zona(cx, cy, cw, ch); }
-                    d.Redondo(cx, cy, cw, ch, 12 * k, sel ? PanelClaro : Panel.ConAlfa(0.92f));
-                    float pl = ch - 16 * k;
-                    if (r.Tipo == 3) { Circulo(cx + 8 * k + pl / 2, cy + 8 * k + pl / 2, pl / 2, Dorado); }
-                    else Portada(r.Portada, r.Texto, cx + 8 * k, cy + 8 * k, pl);
-                    float tx = cx + pl + 20 * k, tw = cw - pl - 30 * k;
-                    string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
-                    chica.Escribe(d, tipo, tx, cy + 8 * k, r.Tipo == 2 ? Verde : Dorado);
-                    // la pastilla de SONANDO o EN COLA
+                    if (sel) { d.Brillo(cx + cw / 2, cy + ch / 2, cw * 0.65f, Color4.Hex(0x6FA8FF, 0.22f)); zSelResultado = new Zona(cx, cy, cw, ch); }
+                    d.RedondoDegradado(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x2C3C78, 0.92f) : Color4.Hex(0x161E44, 0.88f), sel ? Color4.Hex(0x223064, 0.92f) : Color4.Hex(0x10173A, 0.88f));
+                    d.Contorno(cx, cy, cw, ch, 9 * k, sel ? 2f * k : 1.1f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.30f));
+                    float pl = ch - 16 * k, tx = cx + 12 * k;
+                    if (portadas)
+                    {
+                        if (r.Tipo == 3) Circulo(cx + 8 * k + pl / 2, cy + 8 * k + pl / 2, pl / 2, Dorado);
+                        else Portada(r.Portada, r.Texto, cx + 8 * k, cy + 8 * k, pl);
+                        tx = cx + pl + 18 * k;
+                    }
+                    float tw = cx + cw - 10 * k - tx;
+                    string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "ÁLBUM" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
+                    Color4 ct = r.Tipo == 0 ? Color4.Hex(0x8FB8FF) : r.Tipo == 1 ? Color4.Hex(0xFFC24D) : r.Tipo == 2 ? VerdeTexto : Dorado;
+                    micro.Escribe(d, tipo, tx, cy + 14 * k, ct);
                     string pas = r.Ruta != null && string.Equals(r.Ruta, suena, StringComparison.OrdinalIgnoreCase) ? "SONANDO" : r.Ruta != null && enCola.Contains(r.Ruta) ? "EN COLA" : null;
                     float twd = tw;
-                    if (pas != null) { float wp = chica.Mide(pas) + 14 * k; d.Redondo(cx + cw - wp - 8 * k, cy + 56 * k, wp, 22 * k, 11 * k, (pas == "SONANDO" ? Verde : Dorado).ConAlfa(0.22f)); chica.Escribe(d, pas, cx + cw - wp - 1 * k, cy + 57 * k, pas == "SONANDO" ? Verde : Dorado); twd = tw - wp - 8 * k; }
-                    Resaltado(r.Texto, c.Escrito, tx, cy + 30 * k, tw, sel);
-                    if (!string.IsNullOrEmpty(r.Detalle)) chica.Escribe(d, chica.Ajusta(r.Detalle, twd), tx, cy + 58 * k, Gris);
+                    if (pas != null) { float wp = micro.Mide(pas) + 12 * k; d.Redondo(cx + cw - wp - 8 * k, cy + 10 * k, wp, 17 * k, 8.5f * k, (pas == "SONANDO" ? Verde : Dorado).ConAlfa(0.22f)); micro.Escribe(d, pas, cx + cw - wp - 2 * k, cy + 11.5f * k, pas == "SONANDO" ? Verde : Dorado); }
+                    Resaltado(nChica, r.Texto, c.Escrito, tx, cy + 31 * k, tw, sel);
+                    if (!string.IsNullOrEmpty(r.Detalle)) Resaltado(micro, r.Detalle, c.Escrito, tx, cy + 54 * k, twd, false, Color4.Hex(0xA8B4DC));
                 }
             if (filasTot > filas)
             {   // la barrita de cuanto hay
-                float bh = filas * (ch + 10 * k), hh = bh * filas / filasTot, by = ry + bh * desde / filasTot;
-                d.Redondo(W - 16 * k, ry, 4 * k, bh, 2 * k, Panel); d.Redondo(W - 16 * k, by, 4 * k, hh, 2 * k, Dorado);
+                float bh = filas * (ch + gap) - gap, hh = Math.Max(20 * k, bh * filas / filasTot), by = ry + (bh - hh) * desde / Math.Max(1, filasTot - filas);
+                d.Redondo(W - 17 * k, ry, 3 * k, bh, 1.5f * k, Color4.Hex(0x2A3462, 0.7f)); d.Redondo(W - 17 * k, by, 3 * k, hh, 1.5f * k, Color4.Hex(0x8FB8FF));
             }
-            chica.Escribe(d, "PONER: escribir / elegir    REGRESAR: borrar    REGRESAR + ARRIBA: cerrar    ARRIBA desde la primera fila: atajos", x0, abajo - 28 * k, Gris.ConAlfa(0.8f));
+            // la leyenda de abajo
+            float ly2 = abajo - 22 * k, lxx = x0 + 2 * k;
+            Rombo(lxx + 8 * k, ly2, 8 * k); lxx += 22 * k; lxx += mini.Escribe(d, "Mover", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 16 * k;
+            Boton(lxx + 8 * k, ly2, 8 * k, 'V'); lxx += 22 * k; lxx += mini.Escribe(d, "Poner / Elegir", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 16 * k;
+            float zx = lxx;
+            Boton(lxx + 8 * k, ly2, 8 * k, 'B'); lxx += 20 * k; lxx += mini.Escribe(d, "+", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 4 * k;
+            float q2 = 16 * k; d.Redondo(lxx, ly2 - q2 / 2, q2, q2, 3 * k, Color4.Hex(0x2A0F18, 0.9f)); d.Contorno(lxx, ly2 - q2 / 2, q2, q2, 3 * k, 1.4f * k, Rojo);
+            d.Triangulo(lxx + q2 / 2, ly2 - q2 * 0.28f, lxx + q2 * 0.78f, ly2 + q2 * 0.2f, lxx + q2 * 0.22f, ly2 + q2 * 0.2f, Rojo); lxx += q2 + 8 * k;
+            lxx += mini.Escribe(d, "Cerrar", lxx, ly2 - mini.Tam * 0.62f, Leyenda);
+            zBuscar = new Zona(zx - 4 * k, ly2 - 14 * k, lxx - zx + 8 * k, 28 * k);   // lo que cierra el buscador (la guia de la ayuda lo senala)
         }
-        // El nombre con lo tecleado resaltado (sin distinguir mayusculas ni acentos).
-        private void Resaltado(string texto, string buscado, float x, float y, float ancho, bool sel)
+        // El nombre con lo tecleado resaltado (sin distinguir mayusculas ni acentos): lo que coincide, sobre un fondo dorado, como en XP.
+        private void Resaltado(Letra l, string texto, string buscado, float x, float y, float ancho, bool sel, Color4? color = null)
         {
-            string t = media.Ajusta(texto ?? "", ancho), b = (buscado ?? "").Trim();
+            Color4 col = color ?? (sel ? Blanco : Color4.Hex(0xE6EAFA));
+            string t = l.Ajusta(texto ?? "", ancho), b = (buscado ?? "").Trim();
             int i = b.Length > 0 ? Plano(t).IndexOf(Plano(b), StringComparison.Ordinal) : -1;
-            if (i < 0) { media.Escribe(d, t, x, y, sel ? Blanco : Color4.Hex(0xDCE4FF)); return; }
-            float x1 = x + media.Escribe(d, t.Substring(0, i), x, y, sel ? Blanco : Color4.Hex(0xDCE4FF));
-            float x2 = x1 + media.Escribe(d, t.Substring(i, b.Length), x1, y, Dorado);
-            media.Escribe(d, t.Substring(i + b.Length), x2, y, sel ? Blanco : Color4.Hex(0xDCE4FF));
+            if (i < 0 || i + b.Length > t.Length) { l.Escribe(d, t, x, y, col); return; }
+            float x1 = x + l.Escribe(d, t.Substring(0, i), x, y, col);
+            float wm = l.Mide(t.Substring(i, b.Length));
+            d.Redondo(x1 - 1 * k, y - 1 * k, wm + 2 * k, l.Tam * 1.15f, 3 * k, Color4.Hex(0x8A6A34, 0.85f));
+            float x2 = x1 + l.Escribe(d, t.Substring(i, b.Length), x1, y, Color4.Hex(0xFFE2A8));
+            l.Escribe(d, t.Substring(i + b.Length), x2, y, col);
         }
         private static string Plano(string s)
         {

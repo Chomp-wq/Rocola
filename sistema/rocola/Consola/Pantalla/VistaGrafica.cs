@@ -14,7 +14,7 @@ namespace Rocola
         private readonly ISuperficie sup;
         private readonly Dibujo d;
         private readonly Letra chica, media, grande, enorme;
-        private readonly Letra micro, mini, nChica, nMedia, nGrande, nEnorme;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
+        private readonly Letra micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
         private readonly Caratulas caratulas;
         private readonly float k;   // escala frente a 768 de alto
         private string antes;
@@ -40,7 +40,7 @@ namespace Rocola
             chica = new Letra(d, ttf, 18 * k); media = new Letra(d, ttf, 24 * k); grande = new Letra(d, ttf, 32 * k); enorme = new Letra(d, ttf, 44 * k);
             string rutaNegrita = Negrita(letraTtf);
             byte[] neg = rutaNegrita != null ? File.ReadAllBytes(rutaNegrita) : ttf;
-            micro = new Letra(d, ttf, 10.5f * k); mini = new Letra(d, ttf, 14 * k); nChica = new Letra(d, neg, 15 * k); nMedia = new Letra(d, neg, 19 * k); nGrande = new Letra(d, neg, 26 * k); nEnorme = new Letra(d, neg, 30 * k);
+            micro = new Letra(d, ttf, 10.5f * k); mini = new Letra(d, ttf, 14 * k); nChica = new Letra(d, neg, 15 * k); nMedia = new Letra(d, neg, 19 * k); nGrande = new Letra(d, neg, 26 * k); nEnorme = new Letra(d, neg, 30 * k); grandeNegrita = new Letra(d, neg, 40 * k); nMediaFina = new Letra(d, ttf, 19 * k);
             caratulas = new Caratulas(d, (int)(256 * k));
             Random r = new Random(5); estrellas = new float[260 * 5];
             for (int i = 0; i < 260; i++)
@@ -86,7 +86,7 @@ namespace Rocola
             Pulso(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
-            Cabecera(c, W);
+            if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W);   // en la atraccion y en el buscador, como en XP, sin cabecera
             float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
@@ -97,7 +97,7 @@ namespace Rocola
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
             float e = reposoAlfa * reposoAlfa * (3 - 2 * reposoAlfa);
             if (c.Buscando && c.ConPortadas) BuscadorPortadas(c, W, abajo);
-            else if (c.Buscando) Buscador(c, W, abajo);
+            else if (c.Buscando) BuscadorPortadas(c, W, abajo);
             else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
             if (e > 0f) EstrellaDelCielo(c, W, H, e);
@@ -144,38 +144,45 @@ namespace Rocola
             double edad = t - atraccionDesde;
             float alfa = (float)Math.Max(0, Math.Min(1, Math.Min(edad / 0.6, (8.0 - edad) / 0.6)));   // entra y sale despacio
             Form1.Disco disco = c.AtraccionActual;
-            float lado = H * 0.48f, x = W * 0.08f, y = H * 0.16f + (float)Math.Sin(t * 0.7) * 6 * k;
+            float lado = H * 0.46f, x = W * 0.105f, y = H * 0.22f + (float)Math.Sin(t * 0.7) * 6 * k;
             Textura tx = caratulas.De(disco.Portada);
-            if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.9f, tx.Media.ConAlfa(0.5f * alfa));
+            if (tx != null) d.Brillo(x + lado / 2, y + lado / 2, lado * 0.95f, tx.Media.ConAlfa(0.45f * alfa));
+            d.Brillo(x + lado / 2, y + lado + 8 * k, lado * 0.6f, new Color4(0, 0, 0.05f, 0.5f * alfa));
             // EL ESCAPARATE (escaparate=): el cubo, en vez de girar, se mece (la portada se ve de frente); sin el, gira como siempre
             Cubo(disco.Portada, disco.Artista, x, y, lado, m.Escaparate ? 0.22 * Math.Sin(t * 1.1) : t * 1.44);
-            if (alfa < 1) d.Rect(x - 2, y - 2, lado + 4, lado + 4, Color4.Hex(0x0A1230, 1 - alfa));
+            if (alfa < 1) d.Rect(x - 2, y - 2, lado + 4, lado + 4, Color4.Hex(0x1C2050, 1 - alfa));
+            float fx = W * 0.498f, fw = W - fx - 40 * k, fy = H * 0.32f;
             if (m.Escaparate)
             {
-                float fx = x + lado + 40 * k, fw = W - fx - 40 * k;
-                chica.Escribe(d, "EN ESTA ROCOLA", fx, y + 10 * k, Gris.ConAlfa(alfa));
+                EspaciadoChico("EN ESTA ROCOLA", fx, fy, Color4.Hex(0xC8D0EE, alfa));
                 string nombre = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Nombre;
-                enorme.Escribe(d, enorme.Ajusta(nombre, fw), fx, y + 40 * k, Blanco.ConAlfa(alfa));
-                grande.Escribe(d, grande.Ajusta(disco.Artista, fw), fx, y + 100 * k, Verde.ConAlfa(alfa));
-                float px = fx, py = y + 160 * k;
-                foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
+                Letra lt = nEnorme.Mide(nombre) * 1.3f < fw ? grandeNegrita : nEnorme;
+                lt.Escribe(d, lt.Ajusta(nombre, fw), fx, fy + 26 * k, Blanco.ConAlfa(alfa));
+                nMedia.Escribe(d, nMedia.Ajusta(disco.Artista, fw), fx, fy + 26 * k + lt.Tam * 1.35f, VerdeTexto.ConAlfa(alfa));
+                float px = fx, py = fy + 26 * k + lt.Tam * 1.35f + 42 * k;
+                foreach (string pastilla in new[] { disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones"), disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null })
                 {
                     if (pastilla == null) continue;
-                    float w = media.Mide(pastilla) + 28 * k;
-                    d.Redondo(px, py, w, 40 * k, 20 * k, PanelClaro.ConAlfa(alfa));
-                    media.Escribe(d, pastilla, px + 14 * k, py + 6 * k, Dorado.ConAlfa(alfa));
-                    px += w + 12 * k;
+                    float w = nChica.Mide(pastilla) + 28 * k, hp = 28 * k;
+                    d.Redondo(px, py, w, hp, hp / 2, Color4.Hex(0x16224E, 0.75f * alfa));
+                    d.Contorno(px, py, w, hp, hp / 2, 1.3f * k, AzulBorde.ConAlfa(0.8f * alfa));
+                    nChica.Escribe(d, pastilla, px + 14 * k, py + hp / 2 - nChica.Tam * 0.6f, Color4.Hex(0xB8D4FF, alfa));
+                    px += w + 10 * k;
                 }
             }
             List<string> mensajes = new List<string> { "Toca un botón y elige entre " + c.TotalCanciones.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " canciones",
                 "Pon tu canción: una moneda = 4 canciones" };
             if (m.TopNocheOn && topLista != null && topLista.Count > 0) mensajes.Add("Lo más pedido esta noche: «" + topLista[0].Titulo + "»");
-            mensajes.Add("Busca cualquier canción con el botón rojo y la flecha");
+            mensajes.Add("¿Buscas una? ROJO + ARRIBA y escríbela");
             int im = (int)(t / 5.0) % mensajes.Count; double em = t % 5.0;
             float am = (float)Math.Max(0, Math.Min(1, Math.Min(em / 0.5, (5.0 - em) / 0.5)));
-            float my = H * 0.80f + (1 - am) * 20 * k;
-            d.Brillo(W / 2, my + 20 * k, W * 0.35f, Dorado.ConAlfa(0.10f * am));
-            grande.EscribeCentrado(d, grande.Ajusta(mensajes[im], W - 60 * k), W / 2, my, Dorado.ConAlfa(am));
+            float my = H * 0.66f + (1 - am) * 14 * k;
+            nMedia.Escribe(d, nMedia.Ajusta(mensajes[im], W - fx - 24 * k), m.Escaparate ? fx : (W - nMedia.Mide(mensajes[im])) / 2, my, Color4.Hex(0xFFD98A, am));
+        }
+        // Un letrero chico con las letras separadas (EN ESTA ROCOLA de XP).
+        private void EspaciadoChico(string s, float x, float y, Color4 c)
+        {
+            foreach (char ch in s) { string l = ch.ToString(); mini.Escribe(d, l, x, y, c); x += mini.Mide(l) + (ch == ' ' ? 5 * k : 3 * k); }
         }
 
         // La lista de la noche: el cubo chico en la esquina, la cabecera a su lado y las cinco filas, que entran una a una desde la
