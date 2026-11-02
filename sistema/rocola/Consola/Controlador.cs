@@ -196,6 +196,7 @@ namespace Rocola
         internal int Corre(IVista vista)
         {
             vistaActual = vista;
+            VistaGrafica vg = vista as VistaGrafica; if (vg != null) vg.Presentacion("Leyendo tu musica...");   // V29
             Prepara();
             using (Botones botones = new Botones())
             {

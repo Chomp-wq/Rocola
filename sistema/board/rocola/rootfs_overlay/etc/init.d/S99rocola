@@ -33,14 +33,17 @@ case "$1" in
 				sync; reboot
 			  fi; sync ) &
 		fi
-		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n"
+		# V29: en tty1 no se escribe nada ni parpadea el cursor; lo que antes salia en pantalla va a /run/rocola-arranque.txt
+		printf '\033[2J\033[H\033[?25l' > /dev/tty1 2>/dev/null
+		echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+		printf "Rocola OS: buscando la musica en los otros discos (solo lectura)\n" >> /run/rocola-arranque.txt
 		/usr/bin/rocola-discos > /run/rocola-discos.txt 2>&1
 		# La prueba de sonido y grafica la primera vez (o si se elige en el menu de GRUB: rocola.prueba); despues, directo a la rocola.
 		if grep -q rocola.prueba /proc/cmdline || [ ! -f /rocola/datos/prueba_hecha ]; then
-			printf "Rocola OS: arrancando la prueba en tty1\n"
+			printf "Rocola OS: arrancando la prueba en tty1\n" >> /run/rocola-arranque.txt
 			setsid sh -c 'exec /usr/bin/rocola-prueba </dev/tty1 >/dev/tty1 2>&1' &
 		else
-			printf "Rocola OS: arrancando la rocola en tty1\n"
+			printf "Rocola OS: arrancando la rocola en tty1\n" >> /run/rocola-arranque.txt
 			setsid sh -c 'exec /usr/bin/rocola </dev/tty1 >/dev/tty1 2>&1' &
 		fi
 		;;

@@ -48,13 +48,14 @@ namespace Rocola
             if (captura != null) return Captura(captura, tam, botones);
             if (rocola)
             {
-                Form1 m = new Form1(); m.Arranca();
+                // V29: la pantalla primero, con el cielo y el nombre de la rocola, y despues lo que tarda (los datos y la biblioteca)
                 IVista vista = null;
                 if (!texto)
                 {
-                    try { VistaGrafica g = new VistaGrafica(new Rocola.Pantalla.Kms(), VistaGrafica.BuscaLetra()); Console.WriteLine("Pantalla: " + g.Descripcion); vista = g; }
+                    try { VistaGrafica g = new VistaGrafica(new Rocola.Pantalla.Kms(), VistaGrafica.BuscaLetra()); Console.WriteLine("Pantalla: " + g.Descripcion); vista = g; g.Presentacion("Despertando la rocola..."); }
                     catch (Exception e) { Console.Error.WriteLine("Sin pantalla grafica (" + e.Message + "): en modo texto"); }
                 }
+                Form1 m = new Form1(); m.Arranca();
                 if (vista == null) vista = new VistaTexto();
                 int r;
                 Controlador ctl = new Controlador(m, dispositivo); ctl.Guion = guion;
@@ -132,6 +133,7 @@ namespace Rocola
             Rocola.Pantalla.FueraDePantalla fp = new Rocola.Pantalla.FueraDePantalla(int.Parse(t[0]), int.Parse(t[1]));
             VistaGrafica v = new VistaGrafica(fp, VistaGrafica.BuscaLetra());
             Console.WriteLine("Pantalla: " + v.Descripcion);
+            if (botones.Contains("presentacion")) { v.Presentacion("Leyendo tu musica..."); fp.Captura(ruta); Console.WriteLine("Captura: " + ruta); return 0; }   // V29
             Controlador c = new Controlador(m, "null");
             c.Prepara();
             foreach (string b in botones)

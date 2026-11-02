@@ -91,6 +91,16 @@ namespace Rocola.Pantalla
             texActual = 0;
             return new Textura { Id = t, Ancho = ancho, Alto = alto };
         }
+        // Con sus tamanos reducidos (mipmaps; lados potencia de 2, como pide OpenGL ES 2): se achica sin granos (V4).
+        internal Textura SubeConMipmaps(byte[] rgba, int lado)
+        {
+            Textura t = Sube(rgba, lado, lado);
+            GL.BindTexture(GL.TEXTURE_2D, t.Id);
+            GL.GenerateMipmap(GL.TEXTURE_2D);
+            GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR_MIPMAP_LINEAR);
+            texActual = 0;
+            return t;
+        }
         internal void Borra(Textura t) { if (t == null) return; Vacia(); uint id = t.Id; GL.DeleteTextures(1, &id); texActual = 0; }
 
         internal void Empieza(Color4 fondo)
@@ -319,24 +329,62 @@ namespace Rocola.Pantalla
         private readonly LinkedList<string> orden = new LinkedList<string>();
         private readonly HashSet<string> sinImagen = new HashSet<string>(StringComparer.Ordinal);
         internal Caratulas(Dibujo d, int lado) { this.d = d; this.lado = lado; }
-        internal Textura De(string ruta)
+        internal int Lado { get { return lado; } }
+        // V4 (portadas_nitidas=): las que se carguen con esto encendido llevan mipmaps, y las portadas grandes piden otra copia al doble
+        internal bool Nitidas;
+        private readonly Dictionary<string, Textura> grandes = new Dictionary<string, Textura>(StringComparer.Ordinal);
+        private readonly LinkedList<string> ordenGrandes = new LinkedList<string>();
+        internal Textura De(string ruta) { return Carga(ruta, hechas, orden, lado, 96); }
+        // Para dibujar a 'tam' pixeles: si pasa del lado de siempre (con las nitidas), la copia grande (las ultimas 6).
+        internal Textura Para(string ruta, float tam)
+        {
+            if (Nitidas && tam > lado * 1.1f) { Textura g = Carga(ruta, grandes, ordenGrandes, lado * 2, 6); if (g != null) return g; }
+            return De(ruta);
+        }
+        private Textura Carga(string ruta, Dictionary<string, Textura> cache, LinkedList<string> ord, int max, int cuantas)
         {
             if (string.IsNullOrEmpty(ruta) || sinImagen.Contains(ruta)) return null;
             Textura t;
-            if (hechas.TryGetValue(ruta, out t)) { orden.Remove(ruta); orden.AddFirst(ruta); return t; }
+            if (cache.TryGetValue(ruta, out t)) { ord.Remove(ruta); ord.AddFirst(ruta); return t; }
             try
             {
                 ImageResult im = ImageResult.FromMemory(File.ReadAllBytes(ruta), ColorComponents.RedGreenBlueAlpha);
                 int w = im.Width, h = im.Height; byte[] px = im.Data;
-                if (Math.Max(w, h) > lado) { int nw = Math.Max(1, w * lado / Math.Max(w, h)), nh = Math.Max(1, h * lado / Math.Max(w, h)); px = Reduce(px, w, h, nw, nh); w = nw; h = nh; }
-                t = d.Sube(px, w, h);
+                if (Math.Max(w, h) > max) { int nw = Math.Max(1, w * max / Math.Max(w, h)), nh = Math.Max(1, h * max / Math.Max(w, h)); px = Reduce(px, w, h, nw, nh); w = nw; h = nh; }
+                if (Nitidas)
+                {
+                    int s = 1; while (s * 2 <= Math.Max(64, max)) s *= 2;   // el lado potencia de 2 que cabe
+                    t = d.SubeConMipmaps(Escala(px, w, h, s, s), s);
+                    t.Ancho = w; t.Alto = h;   // la forma de la portada (la textura va estirada al cuadrado)
+                }
+                else t = d.Sube(px, w, h);
                 t.Media = ColorMedio(px);
                 Rocola.VistaGrafica.ColoresDePortada(px, w, h, out t.Prom, out t.Uno, out t.Dos);
             }
             catch { sinImagen.Add(ruta); return null; }
-            hechas[ruta] = t; orden.AddFirst(ruta);
-            while (orden.Count > 96) { string v = orden.Last.Value; orden.RemoveLast(); d.Borra(hechas[v]); hechas.Remove(v); }
+            cache[ruta] = t; ord.AddFirst(ruta);
+            while (ord.Count > cuantas) { string v = ord.Last.Value; ord.RemoveLast(); d.Borra(cache[v]); cache.Remove(v); }
             return t;
+        }
+        // A otro tamano: achicar por promedio de cajas; agrandar, bilineal.
+        private static byte[] Escala(byte[] s, int w, int h, int nw, int nh)
+        {
+            if (nw <= w && nh <= h) return Reduce(s, w, h, nw, nh);
+            byte[] r = new byte[nw * nh * 4];
+            for (int y = 0; y < nh; y++)
+            {
+                float fy = Math.Max(0, (y + 0.5f) * h / nh - 0.5f); int y0 = Math.Min(h - 1, (int)fy), y1 = Math.Min(h - 1, y0 + 1); float ty = fy - y0;
+                for (int x = 0; x < nw; x++)
+                {
+                    float fx = Math.Max(0, (x + 0.5f) * w / nw - 0.5f); int x0 = Math.Min(w - 1, (int)fx), x1 = Math.Min(w - 1, x0 + 1); float tx = fx - x0;
+                    for (int c = 0; c < 4; c++)
+                    {
+                        float a = s[(y0 * w + x0) * 4 + c] * (1 - tx) + s[(y0 * w + x1) * 4 + c] * tx, b = s[(y1 * w + x0) * 4 + c] * (1 - tx) + s[(y1 * w + x1) * 4 + c] * tx;
+                        r[(y * nw + x) * 4 + c] = (byte)(a * (1 - ty) + b * ty + 0.5f);
+                    }
+                }
+            }
+            return r;
         }
         // El color de la portada para su halo (como XP: pesan mas los puntos con color; una gris o negra se queda en gris).
         private static Color4 ColorMedio(byte[] px)

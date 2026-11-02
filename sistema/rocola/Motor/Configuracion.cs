@@ -99,6 +99,7 @@ namespace Rocola
             else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";
             else if (s.StartsWith("cola_doce=")) ColaDoce = s.Substring(10).Trim() != "0";
             else if (s.StartsWith("video_vol=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) videoVol = v < 0 ? 0 : (v > 100 ? 100 : v); }   // volumen base de los videos (de XP)
+            else if (LineaVisual(s)) { }   // las mejoras visuales de Rocola OS (MejorasVisuales.cs)
             else if (s.StartsWith("marca_cola=")) MarcaCola = s.Substring(11).Trim() != "0";             // la hoja Detalles de XP
             else if (s.StartsWith("cola_portadas=")) ColaPortadas = s.Substring(14).Trim() != "0";
             else if (s.StartsWith("fondo_portada=")) FondoPortada = s.Substring(14).Trim() != "0";

@@ -92,13 +92,15 @@ namespace Rocola
             float W = sup.Ancho, H = sup.Alto;
             d.Empieza(Fondo);
             Pulso(c);
+            EspectroAlDia(c); eqRealAhora = m.EqReal; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             ColorDelCielo(c);
             Cielo(W, H, reloj.Elapsed.TotalSeconds);
+            EspectroHorizonte(c, W, H);
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
             if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W);   // en la atraccion y en el buscador, como en XP, sin cabecera
             float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
-            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
@@ -478,7 +480,7 @@ namespace Rocola
         }
         private void Cubo(string ruta, string nombre, float x, float y, float lado, double angulo)
         {
-            Textura t = caratulas.De(ruta);
+            Textura t = caratulas.Para(ruta, lado);
             Color4 base_ = Color4.Hex(0x2A3A78);
             if (t == null)
             {
@@ -498,6 +500,7 @@ namespace Rocola
                 float g = 1f - (float)Math.Max(0, Math.Min(1, (1.0 - bz[i]) * 130 / 255.0));
                 if (t != null) d.Quad(t, iz, y, de - iz, lado, 0, 0, 1, 1, new Color4(g, g, g, 1f));
                 else d.Rect(iz, y, de - iz, lado, new Color4(base_.R * g, base_.G * g, base_.B * g, 1f));
+                if (cuboLuzAhora) LuzDeCara(iz, de, y, lado, angulo + g90 + i * g90, bz[i]);   // V5
                 alguna = true;
             }
             if (!alguna) return;
@@ -512,7 +515,7 @@ namespace Rocola
         // La caratula, o un cuadro de color con la inicial si no tiene.
         private void Portada(string ruta, string nombre, float x, float y, float lado)
         {
-            Textura t = caratulas.De(ruta);
+            Textura t = caratulas.Para(ruta, lado);
             if (t != null)
             {
                 float a = t.Ancho / (float)t.Alto, w = lado, h = lado;

@@ -14,8 +14,10 @@ namespace Rocola
         private static float Suave(float u) { u = Math.Max(0f, Math.Min(1f, u)); return u * u * (3f - 2f * u); }
 
         // Cuatro barritas que se mueven con la musica (el pulso que mide el motor a la salida).
+        private bool eqRealAhora, cuboLuzAhora;
         private void Barritas(float x, float y, float w, float h, Color4 c)
         {
+            if (eqRealAhora && BarritasReales(x, y, w, h, c)) return;   // V9
             double t = reloj.Elapsed.TotalSeconds;
             float[] base_ = { pGraves, pMedios, (pMedios + pAgudos) / 2, pAgudos };
             float bw = w / 4 - 2 * k;
@@ -173,6 +175,7 @@ namespace Rocola
             // el teclado: diez teclas por fila; la fila de la Z, centrada; ESPACIO y BORRAR abajo, anchas
             float ty0 = Math.Max(153 * k, ay + (c.Atajos.Count > 0 ? ah + 16 * k : 0)), sep = 6 * k, tecla = 40 * k, ht = 38 * k, ty = ty0;
             float anchoTeclado = 10 * tecla + 9 * sep;
+            TeclaPulsada(c);   // V16
             for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
             {
                 string fila = Controlador.FilasTeclado[f];
@@ -187,10 +190,12 @@ namespace Rocola
                     Color4 fondo = sel ? Color4.Hex(0x3A6CFF) : borrar ? Color4.Hex(0x3A1424, 0.88f) : Color4.Hex(0x141C40, 0.85f);
                     Color4 borde = sel ? Color4.Hex(0xB8D0FF) : borrar ? Color4.Hex(0xB04458, 0.8f) : Color4.Hex(0x7F90D0, 0.30f);
                     if (sel) d.Brillo(tx + w / 2, ty + ht / 2, w * 0.9f, Color4.Hex(0x3A6CFF, 0.35f));
-                    d.Redondo(tx, ty, w, ht, 7 * k, fondo);
-                    d.Contorno(tx, ty, w, ht, 7 * k, 1.2f * k, borde);
+                    float hu = Hundida(c, f, i), enc = 2.5f * k * hu;   // V16: se hunde y brilla
+                    if (hu > 0) { d.Brillo(tx + w / 2, ty + ht / 2, w * 1.2f, Dorado.ConAlfa(0.45f * hu)); fondo = Dibujo.Mezcla(fondo, Color4.Hex(0xC98A22), 0.7f * hu); borde = Dibujo.Mezcla(borde, Dorado, hu); }
+                    d.Redondo(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, fondo);
+                    d.Contorno(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, 1.2f * k, borde);
                     Letra lt = et.Length > 1 ? fTeclaPal : fTecla;
-                    lt.EscribeCentrado(d, et, tx + w / 2, ty + ht / 2 - lt.Tam * 0.6f, borrar && !sel ? Color4.Hex(0xFFB0BC) : Blanco);
+                    lt.EscribeCentrado(d, et, tx + w / 2, ty + ht / 2 - lt.Tam * 0.6f + enc * 0.5f, borrar && !sel ? Color4.Hex(0xFFB0BC) : Blanco);
                     tx += w + sep;
                 }
                 ty += ht + 8 * k;
@@ -320,12 +325,15 @@ namespace Rocola
                 if (em < MonedaCaeMs)
                 {
                     float u = em / (float)MonedaCaeMs, cae = u * u;   // cae acelerando
+                    if (m.MonedaMetal) cae = u < 0.8f ? (u / 0.8f) * (u / 0.8f) : 1f - 0.10f * (float)Math.Sin((u - 0.8f) / 0.2f * Math.PI);   // V22: y un rebote
                     float cx = zCreditos.Cx, cy = -30 * k + (zCreditos.Cy + 30 * k) * cae, r = 16 * k;
                     float giro = Math.Abs((float)Math.Cos(em / 1000.0 * 14));
+                    if (m.MonedaMetal) { MonedaDeMetal(cx, cy, r, giro); goto monedaHecha; }
                     d.Brillo(cx, cy, r * 2.2f, Dorado.ConAlfa(0.35f));
                     float rx = Math.Max(2 * k, r * giro);
                     d.Redondo(cx - rx, cy - r, 2 * rx, 2 * r, rx, Color4.Hex(0xE0A93A));
                     d.Redondo(cx - rx * 0.75f, cy - r * 0.75f, 1.5f * rx, 1.5f * r, rx * 0.75f, Color4.Hex(0xFFD45A));
+                monedaHecha:;
                 }
                 else
                 {

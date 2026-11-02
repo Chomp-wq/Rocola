@@ -213,6 +213,7 @@ namespace Rocola
                         float caja = lado + ((celW - 16 * k) * 1.0f - lado) * e, cy0 = y1 + lado - caja - 6 * k * e;   // crece hacia arriba y a los lados: el pie queda con la portada
                         if (caja < lado) caja = lado;
                         float bx = cx - caja / 2, by = Math.Max(top - 4 * k, cy0);
+                        if (c.motor.CuboLuz) SombraEnElPiso(cx, by + caja + 2 * k, caja * 0.8f);   // V5
                         Cubo(disco.Portada, disco.Artista, bx, by, caja, AnguloCubo());
                         d.Brillo(bx + caja / 2, by + caja / 2, caja * 0.62f, new Color4(0.8f, 0.85f, 1f, 0.10f));
                         d.Contorno(bx - 3 * k, by - 3 * k, caja + 6 * k, caja + 6 * k, 7 * k, 3f * k, Color4.Hex(0xC4C8D4, 0.95f));
@@ -314,7 +315,7 @@ namespace Rocola
                 if (m.ColorGenero) Resplandor(m.ColorSonando, 24 * k + lado / 2, y + lado / 2, lado * 0.9f);
                 Cubo(PortadaDelCubito(m), m.SonandoDisco ?? t, 24 * k, y, lado, AnguloCubito(m));   // el cubo chico (XP), con su relevo
                 float xt = 24 * k + lado + 16 * k, at = ancho - xt;
-                EscribeDesliza(c, nGrande, t, xt, y - 1 * k, at, Blanco);
+                TituloConTransicion(c, nGrande, t, xt, y - 1 * k, at, Blanco);   // V12
                 string sub = m.SonandoDisco ?? "";
                 string gen = m.ColorGenero ? m.EtiquetaSonando : "";
                 float xs = xt;
@@ -332,9 +333,11 @@ namespace Rocola
             float wr = nMedia.Mide(rl), xb = 114 * k, yb = H - 25 * k, wb = W - xb - wr - 40 * k, hb = 9 * k;
             d.Redondo(xb, yb, wb, hb, hb / 2, Color4.Hex(0x141D46, 0.92f));
             float p = Math.Max(0f, Math.Min(1f, c.Progreso));
-            if (p > 0)
+            Color4 neonForma = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Color4.Hex(0x58D2FF);
+            if (m.BarraForma && m.Sonando != null && !m.SonandoVideo && BarraConForma(m, xb, yb, wb, hb, p, neonForma)) { }   // V10
+            else if (p > 0)
             {
-                Color4 neon = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Color4.Hex(0x58D2FF);
+                Color4 neon = neonForma;
                 float wp = Math.Max(hb, wb * p);
                 d.Brillo(xb + wp / 2, yb + hb / 2, wp * 0.55f, neon.ConAlfa(0.10f));
                 d.RedondoDegradado(xb, yb, wp, hb, hb / 2, Dibujo.Mezcla(neon, Blanco, 0.45f), neon);

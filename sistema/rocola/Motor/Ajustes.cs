@@ -130,13 +130,23 @@ namespace Rocola
         private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
 
         // LAS PAGINAS (las pestanas de Ctrl+F3 de XP): Sonido, Pantalla y Detalles, en este orden al recorrerlas.
-        public static readonly string[] PaginasAjustes = { "Sonido", "Pantalla", "Detalles", "Colores" };
+        public static readonly string[] PaginasAjustes = { "Sonido", "Imagen", "Fondo", "Pantalla", "Detalles", "Colores" };
         public static string PaginaDe(string grupo)
         {
             if (grupo == "Pantalla") return "Pantalla";
+            if (grupo == "El cielo") return "Fondo";
+            if (Array.IndexOf(GruposImagen, grupo) >= 0) return "Imagen";
             if (grupo == "De que color es cada cancion" || grupo == "Cuanto azul" || grupo == "Cuanto negro") return "Colores";
             if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
             return "Sonido";
+        }
+        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla" };
+        // Una mejora visual de Rocola OS (MejorasVisuales.cs): su interruptor y su explicacion; 'medio' = de coste medio (apagada de fabrica).
+        private Ajuste Visual(string grupo, string nombre, string clave, Func<bool> lee, Action<bool> pon, bool medio, string nota)
+        {
+            Ajuste a = Interruptor(grupo, nombre, clave, lee, pon, false);
+            a.Nota = () => nota + (medio ? " Coste medio: apagada de fabrica hasta medirla en el A4." : "");
+            return a;
         }
         public IList<Ajuste> Ajustes()
         {
@@ -315,6 +325,32 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
             l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
             l.Add(Interruptor("Pantalla", "El buscador con portadas", "buscador_portadas", () => BuscadorPortadas, v => BuscadorPortadas = v, false));
+            // LAS MEJORAS VISUALES DE ROCOLA OS (V1-V30 de la presentacion; las elegidas el 2-11-2026)
+            l.Add(Visual("El cielo", "Nebulosas vivas (V1)", "nebulosas_vivas", () => NebulosasVivas, v => NebulosasVivas = v, true, "Las nubes cambian de forma despacio, calculadas en la tarjeta."));
+            l.Add(Visual("El cielo", "Aurora que respira con la musica (V2)", "aurora_musica", () => AuroraMusica, v => AuroraMusica = v, false, "La aurora sobre el horizonte, ondulando con los graves y con el color del genero."));
+            l.Add(Visual("El cielo", "Estrellas con aire y brillo (V3)", "estrellas_aire", () => EstrellasAire, v => EstrellasAire = v, false, "Halo suave en las grandes; cerca del horizonte, mas tenues, calidas y titilando mas."));
+            l.Add(Visual("La pared", "Portadas siempre nitidas (V4)", "portadas_nitidas", () => PortadasNitidas, v => PortadasNitidas = v, false, "Achicadas con filtro de calidad, y la elegida a mas resolucion. Vale para las que se carguen desde ahora."));
+            l.Add(Visual("La pared", "El cubo con luz (V5)", "cubo_luz", () => CuboLuz, v => CuboLuz = v, false, "Un brillo recorre las caras del cubo al girar, y la elegida lleva su sombra en el piso."));
+            l.Add(Visual("Dentro de un disco", "La portada, de vidrio esmerilado (V7)", "disco_vidrio", () => DiscoVidrio, v => DiscoVidrio = v, true, "Detras de la lista, la portada en grande y desenfocada."));
+            l.Add(Visual("Dentro de un disco", "La lista con los colores del disco (V8)", "lista_colores", () => ListaColores, v => ListaColores = v, false, "La fila elegida y la barra con el color de la portada."));
+            l.Add(Visual("Dentro de un disco", "El ecualizador, de verdad (V9)", "eq_real", () => EqReal, v => EqReal = v, false, "Las barritas de la que suena leen el sonido real que sale por las bocinas."));
+            l.Add(Visual("La franja de lo que suena", "La barra con la forma de la cancion (V10)", "barra_forma", () => BarraForma, v => BarraForma = v, false, "La barra de avance dibuja el volumen de la cancion de principio a fin."));
+            l.Add(Visual("La franja de lo que suena", "Espectro sobre el horizonte (V11)", "espectro_franja", () => EspectroFranja, v => EspectroFranja = v, false, "Barras de las 16 bandas del sonido, al compas de las bocinas, con sus picos."));
+            l.Add(Visual("La franja de lo que suena", "Cambio de cancion con transicion (V12)", "titulo_transicion", () => TituloTransicion, v => TituloTransicion = v, false, "El titulo nuevo entra deslizandose mientras el viejo se va."));
+            l.Add(Visual("En reposo", "Portada grande con luz ambiental (V13)", "reposo_luz", () => ReposoLuz, v => ReposoLuz = v, true, "En el estado extendido, la portada derrama su color por la pantalla."));
+            l.Add(Visual("En reposo", "Un anillo que late con la musica (V14)", "anillo_musica", () => AnilloMusica, v => AnilloMusica = v, true, "Alrededor de la portada grande, un anillo de luz que crece con los golpes."));
+            l.Add(Visual("En reposo", "La cola en carrusel (V15)", "cola_carrusel", () => ColaCarrusel, v => ColaCarrusel = v, true, "Las siguientes, en un carrusel de portadas con perspectiva."));
+            l.Add(Visual("Buscador y ayuda", "Teclado que se siente (V16)", "teclado_vivo", () => TecladoVivo, v => TecladoVivo = v, false, "La tecla se hunde y brilla; en los resultados se iluminan las letras que coinciden."));
+            l.Add(Visual("Buscador y ayuda", "Resultados en cascada (V17)", "resultados_cascada", () => ResultadosCascada, v => ResultadosCascada = v, false, "Cada resultado entra un instante despues del anterior."));
+            l.Add(Visual("Buscador y ayuda", "La estrella con volumen y luz (V18)", "estrella_luz", () => EstrellaLuz, v => EstrellaLuz = v, false, "La asistente sombreada, con chispas y sombra en el piso. Sin cara."));
+            l.Add(Visual("La atraccion", "Portadas de cine (V19)", "atraccion_cine", () => AtraccionCine, v => AtraccionCine = v, false, "Acercamientos lentos sobre las portadas de la atraccion."));
+            l.Add(Visual("La atraccion", "Mosaico de lo mas pedido (V20)", "mosaico_exitos", () => MosaicoExitos, v => MosaicoExitos = v, true, "Una pantalla mas en la atraccion: las portadas de lo mas pedido volteandose una a una."));
+            l.Add(Visual("La atraccion", "Pasos sin cortes (V21)", "atraccion_fundidos", () => AtraccionFundidos, v => AtraccionFundidos = v, false, "Entre una pantalla y otra de la atraccion, un fundido en vez de un salto."));
+            l.Add(Visual("Monedas y avisos", "Una moneda de verdad (V22)", "moneda_metal", () => MonedaMetal, v => MonedaMetal = v, false, "La moneda que cae, con brillo de metal y un rebote al llegar."));
+            l.Add(Visual("Monedas y avisos", "Chispas al poner una cancion (V23)", "chispas_pedir", () => ChispasPedir, v => ChispasPedir = v, false, "Chispas del color del genero que vuelan hasta la cola."));
+            l.Add(Visual("Monedas y avisos", "Avisos de vidrio (V24)", "avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v, true, "Los avisos sobre un vidrio que desenfoca lo de atras."));
+            l.Add(Visual("Ajustes y pantalla", "Ver el cambio mientras se elige (V28)", "ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v, false, "En las hojas Imagen, Fondo y Colores la ventana se hace transparente para ver el cambio detras."));
+            l.Add(Visual("Ajustes y pantalla", "A la resolucion del monitor (V30)", "resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v, true, "Dibuja a la resolucion real de la pantalla (no estirada). Vale al volver a encender la rocola."));
             // LA HOJA DETALLES DE XP (PaginaDetalles): al pedir canciones, y el fondo y la barra (la estrella del cielo sigue en Pantalla)
             { Ajuste x = Interruptor("Al pedir canciones", "Decir cuando suena tu cancion", "turno", () => Turno, v => Turno = v, false); x.Nota = () => "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos minutos faltan, en vez de solo «Cancion agregada»."; l.Add(x); }
             { Ajuste x = Interruptor("Al pedir canciones", "Marcar los discos que ya pediste", "marca_cola", () => MarcaCola, v => MarcaCola = v, false); x.Nota = () => "Un palomito verde en la esquina de los discos de los que ya hay algo pedido o sonando, para no volver a pedir lo mismo."; l.Add(x); }
