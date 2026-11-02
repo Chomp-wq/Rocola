@@ -59,6 +59,14 @@ namespace Rocola
         public string AvisoAfinar { get { string a = avisoAfinar; return a; } }
         private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
 
+        // LAS PAGINAS (las pestanas de Ctrl+F3 de XP): Sonido, Pantalla y Detalles, en este orden al recorrerlas.
+        public static readonly string[] PaginasAjustes = { "Sonido", "Pantalla", "Detalles" };
+        public static string PaginaDe(string grupo)
+        {
+            if (grupo == "Pantalla") return "Pantalla";
+            if (grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
+            return "Sonido";
+        }
         public IList<Ajuste> Ajustes()
         {
             if (ajustes != null) return ajustes;
@@ -210,6 +218,10 @@ namespace Rocola
             Ajuste c12 = Interruptor("Pantalla", "Doce de la cola en el estado extendido (si no, tres)", "cola_doce", () => ColaDoce, v => ColaDoce = v, false);
             c12.Bloqueo = delegate { return !MuroReposo ? "necesita que la pared se aparte" : !EstadoExpandido ? "necesita el estado extendido" : null; };
             l.Add(c12);
+            // Por paginas, como las pestanas de la ventana de XP (el orden dentro de cada una se conserva)
+            List<Ajuste> orden = new List<Ajuste>(l.Count);
+            foreach (string pg in PaginasAjustes) foreach (Ajuste x in l) if (PaginaDe(x.Grupo) == pg) orden.Add(x);
+            l = orden;
             ajustes = l;
             return l;
         }

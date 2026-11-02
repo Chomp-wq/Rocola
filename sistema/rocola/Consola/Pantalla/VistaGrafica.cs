@@ -261,38 +261,6 @@ namespace Rocola
             media.EscribeCentrado(d, av, W / 2, y - 40 * k, Dorado);
         }
         // LOS AJUSTES DEL DUENO (Ctrl+F3): por grupos, el elegido resaltado, lo que decide el modo billar en gris con el motivo.
-        private void Ajustes(Controlador c, float W, float H)
-        {
-            grande.Escribe(d, "AJUSTES DEL SONIDO", 24 * k, 76 * k, Dorado);
-            chica.Escribe(d, "ARRIBA/ABAJO: elegir    IZQ/DER o PONER: cambiar    REGRESAR: guardar y salir", 24 * k, 118 * k, Gris);
-            IList<Form1.Ajuste> l = c.ListaAjustes;
-            float top = 150 * k, fila = 30 * k;
-            // abajo, lo que la cadena le hace a la que suena (S5 de XP), con su recuadro
-            string[] lq = (c.LoQueSuena ?? "").Split('\n');
-            float lin = 22 * k, alto = 34 * k + lq.Length * lin;
-            float py = H - alto - 12 * k;
-            d.Redondo(16 * k, py, W - 32 * k, alto, 12 * k, Panel.ConAlfa(0.9f));
-            chica.Escribe(d, c.RecuadroTitulo, 32 * k, py + 8 * k, Dorado);
-            for (int j = 0; j < lq.Length; j++) chica.Escribe(d, chica.Ajusta(lq[j], W - 64 * k), 32 * k, py + 32 * k + j * lin, j == 0 ? Blanco : Gris);
-            int caben = Math.Max(4, (int)((py - top - 8 * k) / fila)), n = c.AjustesTotal;
-            int desde = Math.Max(0, Math.Min(c.AjusteSel - caben / 2, n - caben));
-            string grupo = null;
-            for (int i = desde, f = 0; i < n && f < caben; i++, f++)
-            {
-                float y = top + f * fila; bool sel = i == c.AjusteSel;
-                if (sel) d.Redondo(16 * k, y - 2 * k, W - 32 * k, fila - 2 * k, 8 * k, PanelClaro);
-                if (i == n - 1) { media.Escribe(d, "Configurar los botones de la rocola  (PONER)", 32 * k, y, sel ? Blanco : Gris); continue; }
-                Form1.Ajuste a = l[i];
-                if (a.Grupo != grupo) { grupo = a.Grupo; }
-                string mot = a.Motivo;
-                chica.Escribe(d, a.Grupo, 32 * k, y + 5 * k, Dorado.ConAlfa(0.7f));
-                media.Escribe(d, media.Ajusta(a.Nombre, W * 0.5f), 240 * k, y, mot != null ? Gris.ConAlfa(0.5f) : sel ? Blanco : Gris);
-                string v = mot != null ? a.Texto + "  (" + mot + ")" : a.Texto;
-                Color4 cv = mot != null ? Gris.ConAlfa(0.5f) : a.Texto.StartsWith("SÍ") ? Verde : a.Texto == "NO" ? Color4.Hex(0xFF8A7A) : Dorado;
-                media.Escribe(d, media.Ajusta(v, W - 240 * k - W * 0.5f - 40 * k), 240 * k + W * 0.5f + 16 * k, y, cv);
-            }
-        }
-
         // El asistente de botones (como el de XP): paso, el boton que toca, y el aviso si ese ya se uso.
         private void Asistente(Controlador c, float W, float H)
         {
