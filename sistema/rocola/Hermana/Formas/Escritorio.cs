@@ -1,0 +1,440 @@
+// EL ESCRITORIO DE ROCOLA OS: lo que en XP hace Windows con las ventanas. Un hilo de ventana con su cola (lo que otros hilos piden con
+// BeginInvoke, las teclas, los temporizadores), las ventanas una encima de otra y el foco. La pantalla la pone quien la tiene
+// (Anfitrion: KMS y OpenGL ES en Rocola OS); el escritorio le da las capas (Capas): lo que se pinta con GDI+, en imagenes que solo se
+// repintan si algo cambio, y los huecos que pinta la tarjeta (los controles con Direct3D, que el anfitrion marca con MarcaNativa).
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Threading;
+
+namespace System.Windows.Forms
+{
+    public interface IAnfitrion
+    {
+        // Pinta las capas en la pantalla y la presenta (lo llama el escritorio cuando cambia algo y la tarjeta no esta presentando).
+        void Compone();
+    }
+
+    public sealed class Capa
+    {
+        public Rectangle Rect;      // en la pantalla
+        public Bitmap Imagen;       // GDI+ (null en un hueco de la tarjeta)
+        public int Version;         // cambia cuando la imagen se repinto
+        public IntPtr Nativa;       // el control que pinta la tarjeta
+        public float Opacidad = 1f;
+    }
+
+    // Como WindowsFormsSynchronizationContext: lo que se manda con Post llega al hilo de la ventana.
+    public sealed class ContextoVentana : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false); }
+        public override void Send(SendOrPostCallback d, object state)
+        {
+            if (Thread.CurrentThread == Escritorio.HiloUi) { d(state); return; }
+            Escritorio.Pendiente p = Escritorio.Encola(new Action(delegate { d(state); }), null, true);
+            p.AsyncWaitHandle.WaitOne(); if (p.Error != null) throw p.Error;
+        }
+        public override SynchronizationContext CreateCopy() { return this; }
+        internal static void Pon() { if (!(SynchronizationContext.Current is ContextoVentana)) SynchronizationContext.SetSynchronizationContext(new ContextoVentana()); }
+    }
+
+    public static class Escritorio
+    {
+        public static IAnfitrion Anfitrion;
+        public static Size Pantalla = new Size(1024, 768);
+        public static Thread HiloUi;
+        private static readonly Stopwatch reloj = Stopwatch.StartNew();
+        public static double AhoraMs { get { return reloj.Elapsed.TotalMilliseconds; } }
+        internal static Control Foco;
+        internal static Form Activa;
+        public static Keys Modificadores;
+        public static readonly bool[] TeclasAbajo = new bool[256];   // GetKeyState de XP
+
+        // ---------- la cola ----------
+        internal sealed class Pendiente : IAsyncResult
+        {
+            public Delegate Metodo; public object[] Args; public object Resultado; public Exception Error; public bool Espera;
+            private readonly ManualResetEvent hecho = new ManualResetEvent(false);
+            public volatile bool Completo;
+            public void Termina() { Completo = true; hecho.Set(); }
+            public object AsyncState { get { return null; } }
+            public WaitHandle AsyncWaitHandle { get { return hecho; } }
+            public bool CompletedSynchronously { get { return false; } }
+            public bool IsCompleted { get { return Completo; } }
+        }
+        private static readonly object cerrojo = new object();
+        private static readonly Queue<Pendiente> cola = new Queue<Pendiente>();
+        private static readonly Queue<Action> entrada = new Queue<Action>();
+        private static readonly AutoResetEvent senal = new AutoResetEvent(false);
+        internal static Pendiente Encola(Delegate d, object[] args, bool espera)
+        {
+            Pendiente p = new Pendiente(); p.Metodo = d; p.Args = args; p.Espera = espera;
+            lock (cerrojo) cola.Enqueue(p);
+            senal.Set();
+            return p;
+        }
+        // La entrada (teclas) la manda el anfitrion desde su hilo.
+        public static void Entrada(Action a) { lock (cerrojo) entrada.Enqueue(a); senal.Set(); }
+        public static void Despierta() { senal.Set(); }
+        internal static object Llama(Delegate d, object[] args)
+        {
+            Action a = d as Action; if (a != null) { a(); return null; }
+            MethodInvoker mi = d as MethodInvoker; if (mi != null) { mi(); return null; }
+            EventHandler eh = d as EventHandler; if (eh != null) { eh(args != null && args.Length > 0 ? args[0] : null, args != null && args.Length > 1 ? (EventArgs)args[1] : EventArgs.Empty); return null; }
+            return d.DynamicInvoke(args);
+        }
+
+        // ---------- los temporizadores ----------
+        private static readonly List<Timer> timers = new List<Timer>();
+        internal static void AgregaTimer(Timer t) { lock (cerrojo) if (!timers.Contains(t)) timers.Add(t); senal.Set(); }
+        internal static void QuitaTimer(Timer t) { lock (cerrojo) timers.Remove(t); }
+        private static double ProximoTimer()
+        {
+            double m = double.MaxValue;
+            lock (cerrojo) foreach (Timer t in timers) if (t.Proximo < m) m = t.Proximo;
+            return m;
+        }
+
+        // ---------- lo que hay pendiente (PeekMessage de XP) ----------
+        private static readonly List<Control> nativasPorPintar = new List<Control>();
+        public static bool HayMensajes()
+        {
+            lock (cerrojo) { if (cola.Count > 0 || entrada.Count > 0 || nativasPorPintar.Count > 0) return true; }
+            return ProximoTimer() <= AhoraMs;
+        }
+        // Espera hasta ms o hasta que llegue algo (MsgWaitForMultipleObjects de XP). true si llego algo.
+        public static bool EsperaMensajes(int ms)
+        {
+            if (HayMensajes()) return true;
+            double t = ProximoTimer() - AhoraMs;
+            if (t < ms) ms = Math.Max(0, (int)Math.Ceiling(t));
+            senal.WaitOne(ms);
+            return HayMensajes();
+        }
+
+        // Atiende todo lo pendiente: teclas, lo pedido por otros hilos, los temporizadores vencidos y la pintura de los controles de la tarjeta.
+        public static void Bombea()
+        {
+            while (true)
+            {
+                Action a = null;
+                lock (cerrojo) if (entrada.Count > 0) a = entrada.Dequeue();
+                if (a == null) break;
+                Protege(a);
+            }
+            int n; lock (cerrojo) n = cola.Count;
+            for (int i = 0; i < n; i++)
+            {
+                Pendiente p; lock (cerrojo) { if (cola.Count == 0) break; p = cola.Dequeue(); }
+                try { p.Resultado = Llama(p.Metodo, p.Args); }
+                catch (Exception ex) { if (p.Espera) p.Error = ex; else Application.Avisa(ex); }
+                p.Termina();
+            }
+            double ahora = AhoraMs; Timer[] vencidos = null;
+            lock (cerrojo)
+            {
+                List<Timer> l = null;
+                foreach (Timer t in timers) if (t.Proximo <= ahora) (l ?? (l = new List<Timer>())).Add(t);
+                if (l != null) vencidos = l.ToArray();
+            }
+            if (vencidos != null)
+                foreach (Timer t in vencidos)
+                {
+                    if (!t.Enabled) continue;
+                    t.Proximo += t.Interval; if (t.Proximo <= ahora) t.Proximo = ahora + t.Interval;
+                    Protege(t.Dispara);
+                }
+            Control[] np = null;
+            lock (cerrojo) if (nativasPorPintar.Count > 0) { np = nativasPorPintar.ToArray(); nativasPorPintar.Clear(); }
+            if (np != null) foreach (Control c in np) PintaYa(c);
+        }
+        private static void Protege(Action a) { try { a(); } catch (Exception ex) { Application.Avisa(ex); } }
+
+        // ---------- las ventanas ----------
+        private static readonly List<Form> formas = new List<Form>();   // la ultima, la de mas arriba
+        internal static void Agrega(Form f) { lock (formas) { if (!formas.Contains(f)) formas.Add(f); } Ensucia(f); }
+        internal static void Oculta(Form f)
+        {
+            lock (formas) formas.Remove(f);
+            if (Activa == f) { Form otra = null; lock (formas) if (formas.Count > 0) otra = formas[formas.Count - 1]; Activa = otra; }
+            if (Foco != null && (Foco == f || f.Contains(Foco))) Foco = null;
+            Ensucia(null);
+        }
+        internal static void Quita(Form f) { Oculta(f); lock (versiones) versiones.Remove(f); }
+        internal static void AlFrente(Form f)
+        {
+            if (f == null) return;
+            lock (formas) { if (formas.Remove(f)) formas.Add(f); }
+            Ensucia(null);
+        }
+        public static Form[] Formas { get { lock (formas) return formas.ToArray(); } }
+        internal static void PonFoco(Control c)
+        {
+            if (Foco == c) return;
+            Control antes = Foco; Foco = c;
+            Form f = c.FindForm(); if (f != null && f.Visible) Activa = f;
+            if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus);
+            Protege(c.LlamaGotFocus);
+        }
+        internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
+
+        // ---------- teclas (el anfitrion las manda con Entrada(() => Escritorio.Tecla(...))) ----------
+        public static void Tecla(Keys tecla, bool abajo)
+        {
+            Keys mod = tecla == Keys.ShiftKey || tecla == Keys.LShiftKey || tecla == Keys.RShiftKey ? Keys.Shift
+                     : tecla == Keys.ControlKey || tecla == Keys.LControlKey || tecla == Keys.RControlKey ? Keys.Control
+                     : tecla == Keys.Menu || tecla == Keys.LMenu || tecla == Keys.RMenu ? Keys.Alt : Keys.None;
+            if (mod == Keys.Control || mod == Keys.Shift || mod == Keys.Alt) { tecla = mod == Keys.Shift ? Keys.ShiftKey : mod == Keys.Control ? Keys.ControlKey : Keys.Menu; }
+            if (abajo) Modificadores |= mod;
+            int vk = (int)tecla & 0xFF; TeclasAbajo[vk] = abajo;
+            if (mod == Keys.Shift) TeclasAbajo[0x10] = abajo; else if (mod == Keys.Control) TeclasAbajo[0x11] = abajo; else if (mod == Keys.Alt) TeclasAbajo[0x12] = abajo;
+            Keys datos = tecla | Modificadores;
+            Form f = Activa;
+            Control destino = Foco != null && !Foco.IsDisposed && Foco.Visible ? Foco : f;
+            if (destino == null) { if (!abajo) Modificadores &= ~mod; return; }
+            if (f == null) f = destino.FindForm();
+            if (abajo)
+            {
+                Message m = Message.Create(destino.Handle, 0x100, (IntPtr)(int)tecla, IntPtr.Zero);
+                if (destino.LlamaProcessCmdKey(ref m, datos)) return;
+                if (!destino.LlamaIsInputKey(datos) && destino.LlamaProcessDialogKey(datos)) return;
+                KeyEventArgs e = new KeyEventArgs(datos);
+                if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyDown(e); if (e.Handled) return; }
+                destino.LlamaKeyDown(e);
+                if (!e.SuppressKeyPress)
+                {
+                    char ch = Caracter(tecla, Modificadores);
+                    if (ch != '\0')
+                    {
+                        KeyPressEventArgs kp = new KeyPressEventArgs(ch);
+                        if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyPress(kp); if (kp.Handled) return; }
+                        destino.LlamaKeyPress(kp);
+                    }
+                }
+            }
+            else
+            {
+                Modificadores &= ~mod;
+                KeyEventArgs e = new KeyEventArgs(tecla | Modificadores);
+                if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyUp(e); if (e.Handled) return; }
+                destino.LlamaKeyUp(e);
+            }
+        }
+        private static char Caracter(Keys k, Keys mod)
+        {
+            if ((mod & (Keys.Control | Keys.Alt)) != 0) return '\0';
+            bool may = (mod & Keys.Shift) != 0;
+            if (k >= Keys.A && k <= Keys.Z) return (char)((may ? 'A' : 'a') + (k - Keys.A));
+            if (k >= Keys.D0 && k <= Keys.D9 && !may) return (char)('0' + (k - Keys.D0));
+            if (k >= Keys.NumPad0 && k <= Keys.NumPad9) return (char)('0' + (k - Keys.NumPad0));
+            if (k == Keys.Space) return ' ';
+            if (k == Keys.Enter) return '\r';
+            if (k == Keys.Back) return '\b';
+            if (k == Keys.Escape) return (char)27;
+            if (k == Keys.OemMinus) return may ? '_' : '-';
+            if (k == Keys.OemPeriod) return may ? ':' : '.';
+            if (k == Keys.Oemcomma) return may ? ';' : ',';
+            return '\0';
+        }
+
+        // ---------- la pintura ----------
+        private static readonly Dictionary<Form, int> versiones = new Dictionary<Form, int>();
+        private static int cambios;
+        public static int Cambios { get { return Volatile.Read(ref cambios); } }
+        internal static void Ensucia(Control c)
+        {
+            if (c != null && c.nativa) { lock (cerrojo) if (!nativasPorPintar.Contains(c)) nativasPorPintar.Add(c); senal.Set(); return; }
+            Form f = c == null ? null : c.TopLevelControl as Form;
+            if (f != null) lock (versiones) { int v; versiones.TryGetValue(f, out v); versiones[f] = v + 1; }
+            Interlocked.Increment(ref cambios);
+            senal.Set();
+        }
+        internal static void PintaYa(Control c)
+        {
+            if (c == null || c.IsDisposed || !c.Visible) return;
+            if (c.nativa) { using (Graphics g = Graphics.FromImage(LienzoSuelto)) using (PaintEventArgs e = new PaintEventArgs(g, c.ClientRectangle)) c.LlamaPaint(e); c.sucio = false; }
+        }
+        private static Bitmap lienzoSuelto;
+        internal static Bitmap LienzoSuelto { get { return lienzoSuelto ?? (lienzoSuelto = new Bitmap(1, 1, PixelFormat.Format32bppArgb)); } }
+
+        // El anfitrion marca los controles que pinta la tarjeta (al crear un dispositivo sobre su Handle).
+        public static void MarcaNativa(IntPtr hwnd, bool si)
+        {
+            Control c = Control.FromHandle(hwnd);
+            if (c == null) return;
+            c.nativa = si;
+            Ensucia(c.TopLevelControl);
+        }
+        public static Rectangle RectEnPantalla(IntPtr hwnd)
+        {
+            Control c = Control.FromHandle(hwnd);
+            if (c == null) return Rectangle.Empty;
+            return new Rectangle(c.OrigenEnPantalla(), c.ClientSize);
+        }
+        public static bool EsVisible(IntPtr hwnd) { Control c = Control.FromHandle(hwnd); return c != null && !c.IsDisposed && c.Visible; }
+
+        private sealed class CapasDeForma { public List<Capa> Lista = new List<Capa>(); public int Version = -1; public Size Tam; }
+        private static readonly Dictionary<Form, CapasDeForma> cache = new Dictionary<Form, CapasDeForma>();
+        private static int versionCapa;
+        // Las capas de la pantalla, de abajo arriba. Solo en el hilo de la ventana.
+        public static List<Capa> Capas()
+        {
+            List<Capa> r = new List<Capa>();
+            foreach (Form f in Formas)
+            {
+                if (f.IsDisposed || !f.Visible) continue;
+                CapasDeForma cf;
+                if (!cache.TryGetValue(f, out cf)) cache[f] = cf = new CapasDeForma();
+                int v; lock (versiones) versiones.TryGetValue(f, out v);
+                ArmaCapas(f, cf, v);
+                r.AddRange(cf.Lista);
+            }
+            foreach (Form f in new List<Form>(cache.Keys)) if (f.IsDisposed) { foreach (Capa c in cache[f].Lista) if (c.Imagen != null) c.Imagen.Dispose(); cache.Remove(f); }
+            return r;
+        }
+        private static void ArmaCapas(Form f, CapasDeForma cf, int version)
+        {
+            Point o = f.Location, oc = f.OrigenCliente;
+            Size cliente = f.ClientSize;
+            List<Control> hijos = f.Controls.Lista;
+            // de atras adelante; los de la tarjeta parten la pintura en capas. Lo que queda debajo de un hueco opaco de la tarjeta que
+            // tapa la ventana entera no se pinta.
+            int desde = hijos.Count - 1;
+            for (int i = 0; i < hijos.Count; i++)
+            {
+                Control h = hijos[i];
+                if (h.nativa && h.Visible && h.Left <= 0 && h.Top <= 0 && h.Right >= cliente.Width && h.Bottom >= cliente.Height) { desde = i; break; }
+            }
+            bool tapaTodo = desde < hijos.Count - 1 || (desde == hijos.Count - 1 && hijos.Count > 0 && hijos[desde].nativa && hijos[desde].Visible && hijos[desde].Left <= 0 && hijos[desde].Top <= 0 && hijos[desde].Right >= cliente.Width && hijos[desde].Bottom >= cliente.Height);
+            // los tramos
+            List<List<Control>> tramos = new List<List<Control>>(); List<Control> nativas = new List<Control>();
+            List<Control> actual = new List<Control>();
+            for (int i = desde; i >= 0; i--)
+            {
+                Control h = hijos[i];
+                if (!h.VisiblePropio) continue;
+                if (h.nativa) { tramos.Add(actual); nativas.Add(h); actual = new List<Control>(); }
+                else actual.Add(h);
+            }
+            tramos.Add(actual);
+            int necesarias = tramos.Count + nativas.Count;
+            bool rehacer = cf.Version != version || cf.Tam != f.Size || cf.Lista.Count != necesarias;
+            if (!rehacer)
+            {
+                // solo se mueven los huecos
+                int k = 0;
+                for (int t = 0; t < tramos.Count; t++)
+                {
+                    k++;
+                    if (t < nativas.Count) { Control n = nativas[t]; cf.Lista[k].Rect = new Rectangle(n.OrigenEnPantalla(), n.ClientSize); cf.Lista[k].Nativa = n.Handle; k++; }
+                }
+                return;
+            }
+            List<Capa> viejas = cf.Lista; cf.Lista = new List<Capa>();
+            int vi = 0;
+            for (int t = 0; t < tramos.Count; t++)
+            {
+                Capa c = null;
+                while (vi < viejas.Count && viejas[vi].Imagen == null) vi++;
+                if (vi < viejas.Count) c = viejas[vi++];
+                if (c == null || c.Imagen.Width != f.Width || c.Imagen.Height != f.Height)
+                {
+                    if (c != null) c.Imagen.Dispose();
+                    c = new Capa(); c.Imagen = new Bitmap(Math.Max(1, f.Width), Math.Max(1, f.Height), PixelFormat.Format32bppPArgb);
+                }
+                c.Rect = new Rectangle(o, f.Size); c.Version = ++versionCapa; c.Opacidad = (float)f.Opacity;
+                using (Graphics g = Graphics.FromImage(c.Imagen))
+                {
+                    g.Clear(Color.Transparent);
+                    if (t == 0 && !tapaTodo)
+                    {
+                        PintaMarco(f, g);
+                        g.TranslateTransform(oc.X, oc.Y);
+                        g.SetClip(new Rectangle(Point.Empty, cliente));
+                        using (PaintEventArgs e = new PaintEventArgs(g, new Rectangle(Point.Empty, cliente))) { Control fc = f; PintaSolo(fc, g); }
+                        g.ResetTransform(); g.ResetClip();
+                    }
+                    g.TranslateTransform(oc.X, oc.Y);
+                    foreach (Control h in tramos[t]) PintaArbol(h, g, true);
+                }
+                cf.Lista.Add(c);
+                if (t < nativas.Count) { Control n = nativas[t]; Capa cn = new Capa(); cn.Rect = new Rectangle(n.OrigenEnPantalla(), n.ClientSize); cn.Nativa = n.Handle; cf.Lista.Add(cn); }
+            }
+            for (; vi < viejas.Count; vi++) if (viejas[vi].Imagen != null) viejas[vi].Imagen.Dispose();
+            cf.Version = version; cf.Tam = f.Size;
+        }
+        private static void PintaSolo(Control c, Graphics g)
+        {
+            GraphicsState st = g.Save();
+            try { c.PintaFondoYContenido(g, c.ClientRectangle); }
+            catch (Exception ex) { Application.Avisa(ex); }
+            finally { g.Restore(st); }
+        }
+        // Un control y sus hijos, en su sitio (g ya esta en el origen del cliente del padre).
+        internal static void PintaArbol(Control c, Graphics g, bool enSuSitio)
+        {
+            if (!c.VisiblePropio || c.Width <= 0 || c.Height <= 0) return;
+            GraphicsState st = g.Save();
+            try
+            {
+                if (enSuSitio) g.TranslateTransform(c.Left, c.Top);
+                g.IntersectClip(new Rectangle(0, 0, c.Width, c.Height));
+                if (c.nativa) return;
+                Point oc = c.OrigenCliente;
+                if (oc.X != 0 || oc.Y != 0) g.TranslateTransform(oc.X, oc.Y);
+                PintaSolo(c, g);
+                List<Control> hijos = c.Controls.Lista;
+                for (int i = hijos.Count - 1; i >= 0; i--) PintaArbol(hijos[i], g, true);
+            }
+            finally { g.Restore(st); }
+        }
+        private static void PintaMarco(Form f, Graphics g)
+        {
+            if (!f.ConBorde) return;
+            Rectangle r = new Rectangle(0, 0, f.Width, f.Height);
+            using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, f.Width, Form.Titulo + Form.Borde), Color.FromArgb(0, 88, 238), Color.FromArgb(0, 64, 208), LinearGradientMode.Vertical))
+                g.FillRectangle(b, 0, 0, f.Width, Form.Titulo + Form.Borde);
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(0, 72, 224)))
+            {
+                g.FillRectangle(b, 0, Form.Titulo + Form.Borde, Form.Borde, f.Height);
+                g.FillRectangle(b, f.Width - Form.Borde, Form.Titulo + Form.Borde, Form.Borde, f.Height);
+                g.FillRectangle(b, 0, f.Height - Form.Borde, f.Width, Form.Borde);
+            }
+            using (Font letra = new Font("Tahoma", 9.5f, FontStyle.Bold))
+                TextRenderer.DrawText(g, f.Text, letra, new Rectangle(8, Form.Borde, f.Width - 16, Form.Titulo), Color.White, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        }
+
+        // ---------- los bucles ----------
+        private static double ultimaComposicion;
+        public static double UltimaPresentacionNativa;   // la pone el anfitrion al presentar un cuadro de la tarjeta
+        private static int compuesto = -1;
+        internal static void Vuelta(bool conIdle)
+        {
+            Bombea();
+            if (conIdle) Application.LlamaIdle();
+            Bombea();
+            // Si la tarjeta no esta presentando (o hace rato que no), el escritorio presenta lo de GDI+ cuando cambia.
+            double ahora = AhoraMs;
+            int c = Cambios;
+            if (Anfitrion != null && c != compuesto && ahora - UltimaPresentacionNativa > 100)
+            {
+                compuesto = c; ultimaComposicion = ahora;
+                try { Anfitrion.Compone(); } catch (Exception ex) { Application.Avisa(ex); }
+            }
+        }
+        internal static void Bucle(Func<bool> sigue)
+        {
+            if (HiloUi == null) HiloUi = Thread.CurrentThread;
+            while (sigue())
+            {
+                Vuelta(true);
+                if (!sigue()) break;
+                EsperaMensajes(16);
+            }
+        }
+        internal static void BucleModal(Form f) { Bucle(delegate { return f.SigueModal && !Application.Saliendo; }); f.Visible = false; }
+    }
+}

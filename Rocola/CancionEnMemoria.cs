@@ -157,10 +157,10 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
-            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+            { return DescompresorMp3.Crea(f); };
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
-                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DescompresorMp3.Crea(wf);
                 hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                 return hecho;
             };

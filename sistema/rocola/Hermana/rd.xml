@@ -1,0 +1,16 @@
+<!-- Lo que la rocola de XP y NAudio 1.9 piden por reflexion o copian a memoria no administrada (Marshal.StructureToPtr, SizeOf):
+     en NativeAOT hay que decirlo antes. -->
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <Assembly Name="NAudio" Dynamic="Required All">
+      <Type Name="NAudio.Wave.WaveFormat" Dynamic="Required All" MarshalStructure="Required All" />
+      <Type Name="NAudio.Wave.Mp3WaveFormat" Dynamic="Required All" MarshalStructure="Required All" />
+      <Type Name="NAudio.Wave.WaveFormatExtensible" Dynamic="Required All" MarshalStructure="Required All" />
+      <Type Name="NAudio.Wave.AdpcmWaveFormat" Dynamic="Required All" MarshalStructure="Required All" />
+      <Type Name="NAudio.Wave.WaveFormatExtraData" Dynamic="Required All" MarshalStructure="Required All" />
+      <Type Name="NAudio.Wave.Compression.AcmStreamHeaderStruct" Dynamic="Required All" MarshalStructure="Required All" />
+    </Assembly>
+    <Assembly Name="NLayer" Dynamic="Required All" />
+    <Assembly Name="rocola" Dynamic="Required All" />
+  </Application>
+</Directives>

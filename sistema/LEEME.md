@@ -10,6 +10,20 @@ elijan y solo lo que se elija. Y además se puede rehacer igual y actualizar cam
 **La rocola de Windows XP sigue igual** (carpeta `Rocola/`) y sigue funcionando en el bar. Rocola OS va aparte, en esta carpeta,
 hasta que esté probado en el A4.
 
+## Igual que la de XP (2-11-2026)
+
+El dueño pidió que la rocola de Rocola OS sea **idéntica** a la de XP: la de abajo («rocola-consola») suena igual, pero su pantalla
+se dibujó de nuevo y se ve distinta. Ahora, en [rocola/Hermana](rocola/Hermana/LEEME.md), se compila **el mismo código de XP**
+para Linux, con lo que en XP pone Windows hecho aquí:
+
+- las ventanas (WinForms);
+- Direct3D 9, sobre OpenGL ES;
+- el sonido, por ALSA;
+- los MP3, con NLayer.
+
+Ya arranca y se ve como la de XP. Todavía no entra en la imagen del sistema (falta libgdiplus en Buildroot) ni se ha probado en el
+A4.
+
 ## Qué hace hoy (1-11-2026)
 
 Rocola OS ya es la rocola entera, hecha con el código de la de XP (el detalle de cada paso, en [ETAPA2.md](ETAPA2.md)):
