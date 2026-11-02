@@ -292,6 +292,13 @@ namespace Rocola
         internal bool RojoMantenido { get { return RojoDePrueba || (botones != null && botones.Apretado(Boton.Regresar)); } }
         internal int SentidoPagina = 1;   // la ultima flecha de pagina: +1 ARRIBA (la siguiente), -1 ABAJO (la anterior); para deslizar
         internal int DiscosEn(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]].Count : 0; }
+        // Las canciones (o videos) de una letra: el numero que XP pone bajo cada letra (letterBar.Counts).
+        internal int CancionesEn(int i)
+        {
+            if (i < 0 || i >= letras.Count) return 0;
+            int n = 0; foreach (Form1.Disco x in porLetra[letras[i]]) n += x.Rutas.Count;
+            return n;
+        }
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
         internal const int DiscosPorPagina = 18;   // seis columnas y tres filas, como la pared de XP

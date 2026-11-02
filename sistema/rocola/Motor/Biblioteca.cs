@@ -38,6 +38,7 @@ namespace Rocola
             for (int i = 0; i < audio.Count; i++) tracks.Add(Track.FromFile(audio[i]));
             cachedCovers = covs; cachedVideoPaths = vids;
             BuildAlbums(roots);
+            DuracionesQueFaltan(tracks);   // las que aun no tienen duracion, de su cabecera (como el paseo de fondo de XP)
             BuildVideoSection(roots);   // la seccion de los videos (la de XP: Form1.Video.cs)
             cachedCovers = null; cachedVideoPaths = null;
             IndexaBiblioteca();

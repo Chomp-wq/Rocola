@@ -115,7 +115,7 @@ namespace Rocola
         private void Onda(float W, float H, double t, float alfa)
         {
             int n = 96; float yb = H * 0.66f, amp = H * 0.075f, grueso = 18f * k * (1f + 0.4f * pGraves);
-            Color4 luz = new Color4(0.45f, 0.52f, 0.95f, 0.30f * alfa), nada = new Color4(0.45f, 0.52f, 0.95f, 0f), filo = new Color4(0.62f, 0.70f, 1f, 0.55f * alfa);
+            Color4 luz = new Color4(0.45f, 0.52f, 0.95f, 0.16f * alfa), nada = new Color4(0.45f, 0.52f, 0.95f, 0f), filo = new Color4(0.62f, 0.70f, 1f, 0.28f * alfa);
             float px = 0, py = 0;
             for (int i = 0; i <= n; i++)
             {
@@ -136,10 +136,10 @@ namespace Rocola
         private void HorizonteLuz(float W, float H, double t, float alfa)
         {
             float yh = Horizonte(H);
-            Color4 azul = new Color4(0.42f, 0.47f, 0.95f, 0.38f * alfa), nada = new Color4(0.42f, 0.47f, 0.95f, 0f);
+            Color4 azul = new Color4(0.42f, 0.47f, 0.95f, 0.16f * alfa), nada = new Color4(0.42f, 0.47f, 0.95f, 0f);   // medido en la de XP: un brillo leve
             d.Degradado(0, yh - 34 * k, W, 34 * k, nada, azul);
             d.Degradado(0, yh, W, 22 * k, azul, nada);
-            d.Rect(0, yh - 1 * k, W, 2 * k, new Color4(0.62f, 0.66f, 1f, 0.75f * alfa));
+            d.Rect(0, yh - 1 * k, W, 2 * k, new Color4(0.62f, 0.66f, 1f, 0.45f * alfa));
             // un resplandor rosado que camina despacio por el horizonte
             float xr = W * (0.5f + 0.32f * (float)Math.Sin(t * 0.05));
             d.Brillo(xr, yh, 70 * k, new Color4(0.85f, 0.45f, 0.85f, 0.30f * alfa));

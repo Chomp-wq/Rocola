@@ -20,6 +20,7 @@ namespace Rocola
             public float Cy { get { return Y + H / 2; } }
         }
         // Donde quedo cada pieza en el ultimo cuadro (las apunta el dibujo de cada pantalla): lo que la guia senala.
+        private Zona zPortadaElegida;
         private Zona zElegido, zCancion, zLetras, zCreditos, zTeclado, zResultados, zBuscar, zAyuda;
         private static readonly Color4 Oro = Color4.Hex(0xFFD45A), OroClaro = Color4.Hex(0xFFF1A8), Rojo = Color4.Hex(0xE5484D), VerdeBoton = Color4.Hex(0x3DDC84),
             Amarillo = Color4.Hex(0xFFC93C), Tinta = Color4.Hex(0x1A2350);
@@ -186,7 +187,7 @@ namespace Rocola
             {
                 // EL MENU: un globo grande al centro y la estrella a su izquierda
                 gw = Math.Min(W * 0.53f, 560 * k); gh = 492 * k; gx = W - gw - 22 * k; gy = 96 * k;
-                objX = Math.Max(150 * k, gx - 220 * k); objY = gy + gh * 0.50f; objR = 82 * k;
+                objX = Math.Max(150 * k, gx - 220 * k); objY = gy + gh * 0.42f; objR = 101 * k;
             }
             else
             {
@@ -217,6 +218,9 @@ namespace Rocola
                 d.Brillo(obj.Cx, obj.Cy, Math.Max(obj.W, obj.H) * 0.7f, Dorado.ConAlfa(0.10f * late));
                 Flecha(estX, estY, obj, t);
             }
+            // EL VELO (DibujaAsistente de XP): con el menu abierto, toda la rocola detras se oscurece (alfa 138 de 0x060B1D)
+            if (c.AyudaMision == 0) { veloAyuda += (1f - veloAyuda) * f; d.Rect(0, 0, W, H, Color4.Hex(0x060B1D, 0.54f * veloAyuda)); }
+            else veloAyuda = 0;
             // el globo
             Color4 fondoG = Color4.Hex(0x15204A, 0.96f), bordeG = Color4.Hex(0x8CC8FF, 0.9f);
             d.Brillo(gx + gw / 2, gy + gh / 2, Math.Max(gw, gh) * 0.6f, Color4.Hex(0x6FA8FF, 0.10f));
@@ -234,36 +238,47 @@ namespace Rocola
             }
             else if (c.AyudaMision == 0)
             {
-                nChica.Escribe(d, "¡HOLA! TE ACOMPAÑO PASO A PASO", px, py, Color4.Hex(0x8CC8FF));
-                grandeNegrita.Escribe(d, "¿Qué quieres hacer?", px, py + 26 * k, Blanco);
-                List<string> intro = Envuelve("Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.", nMediaFina, pw);
-                for (int i = 0; i < intro.Count && i < 2; i++) nMediaFina.Escribe(d, intro[i], px, py + 92 * k + i * 27 * k, Color4.Hex(0xC4CCEA));
-                float oy = py + 160 * k, oh = 56 * k;
+                // PintaPanelAsistente de XP: todo en proporcion al globo (h), Trebuchet MS; el texto empieza a un veinteavo del ancho
+                float wb = gw + Math.Min(32, Math.Max(18, gw / 18)), hb = gh, mx = Math.Max(12, wb / 20);
+                float x0 = gx + mx, tw = gx + gw - mx - x0;
+                Letra pequeno = Tre(Math.Max(10, Math.Min(18, hb * .034f)), true), tit = Tre(Math.Max(20, Math.Min(42, hb * .085f)), true);
+                Letra cuerpo = Tre(Math.Max(12, Math.Min(21, hb * .043f)), false), opcion = Tre(Math.Max(14, Math.Min(27, hb * .052f)), true);
+                Color4 azulT = new Color4(150 / 255f, 215 / 255f, 1f), blancoT = new Color4(246 / 255f, 248 / 255f, 1f), tenueT = new Color4(185 / 255f, 206 / 255f, 234 / 255f);
+                pequeno.Escribe(d, "¡HOLA! TE ACOMPAÑO PASO A PASO", x0, gy + hb * .045f, azulT);
+                tit.Escribe(d, "¿Qué quieres hacer?", x0, gy + hb * .12f, blancoT);
+                List<string> intro = Envuelve("Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.", cuerpo, tw);
+                for (int i = 0; i < intro.Count && i < 3; i++) cuerpo.Escribe(d, intro[i], x0, gy + hb * .30f + i * cuerpo.Tam * 1.15f, tenueT);
+                float oh = Math.Max(22, (int)(hb * .115f)), ow = gx + gw - Math.Max(12, wb / 20) - x0;
+                float dv = Math.Max(12, (int)(oh * .62f)), kq = Math.Max(9, (int)(oh * .40f)), anchoCtl = 10 + dv + 8 + kq + 8;
+                Letra fOpc = opcion;
+                float mas = 0; foreach (string nom in Controlador.OpcionesAyuda) mas = Math.Max(mas, fOpc.Mide(nom));
+                if (mas > ow - 24 - anchoCtl) fOpc = Tre(Math.Max(opcion.Tam * .70f, opcion.Tam * (ow - 24 - anchoCtl) / mas * .98f), true);
                 for (int i = 0; i < Controlador.AyudaOpciones; i++)
                 {
                     bool sel = i == c.AyudaSeleccion;
-                    float yy = oy + i * (oh + 12 * k);
-                    if (sel) d.Brillo(px + pw / 2, yy + oh / 2, pw * 0.55f, Color4.Hex(0x48D470, 0.12f));
-                    d.RedondoDegradado(px, yy, pw, oh, 10 * k, sel ? Color4.Hex(0x2A4A84, 0.95f) : Color4.Hex(0x16204A, 0.9f), sel ? Color4.Hex(0x223C6E, 0.95f) : Color4.Hex(0x111A3E, 0.9f));
-                    d.Contorno(px, yy, pw, oh, 10 * k, sel ? 2f * k : 1.2f * k, sel ? Color4.Hex(0x9AF0B4) : Color4.Hex(0x7F90D0, 0.40f));
-                    nMedia.Escribe(d, nMedia.Ajusta(Controlador.OpcionesAyuda[i], pw - 110 * k), px + 14 * k, yy + oh / 2 - nMedia.Tam * 0.6f, Blanco);
+                    float yy = gy + (int)(hb * (.50f + i * .135f)), rr = Math.Min(14, oh / 3);
+                    d.Redondo(x0, yy, ow, oh, rr, sel ? new Color4(42 / 255f, 87 / 255f, 130 / 255f, 235 / 255f) : new Color4(28 / 255f, 42 / 255f, 68 / 255f, 150 / 255f));
+                    d.Contorno(x0, yy, ow, oh, rr, sel ? 2f : 1f, sel ? Color4.Hex(0x96EBBC) : Color4.Hex(0x5A7196));
+                    EnRenglon(fOpc, Controlador.OpcionesAyuda[i], x0 + 12, yy, ow - 24 - (sel ? anchoCtl : 0), oh, blancoT);
                     if (sel)
                     {
-                        float bx = px + pw - 70 * k, q = 18 * k;
-                        d.Contorno(bx, yy + oh / 2 - q - 1 * k, q, q, 3 * k, 1.3f * k, Rojo.ConAlfa(0.8f)); d.Triangulo(bx + q / 2, yy + oh / 2 - q * 0.86f, bx + q * 0.78f, yy + oh / 2 - q * 0.3f, bx + q * 0.22f, yy + oh / 2 - q * 0.3f, Rojo.ConAlfa(0.8f));
-                        d.Contorno(bx, yy + oh / 2 + 1 * k, q, q, 3 * k, 1.3f * k, Rojo); d.Triangulo(bx + q * 0.22f, yy + oh / 2 + q * 0.3f, bx + q * 0.78f, yy + oh / 2 + q * 0.3f, bx + q / 2, yy + oh / 2 + q * 0.86f, Rojo);
+                        float cyo = yy + oh / 2, vx = x0 + ow - 10 - dv, kx = vx - 8 - kq;
+                        TeclaFlecha(kx, cyo - kq / 2 - 1, kq, i > 0 ? Rojo : Color4.Hex(0x687086), true);
+                        TeclaFlecha(kx, cyo + kq / 2 + 1, kq, i < Controlador.AyudaOpciones - 1 ? Rojo : Color4.Hex(0x687086), false);
                         float late = 0.75f + 0.25f * (float)Math.Sin(t * 4);
-                        d.Brillo(px + pw - 26 * k, yy + oh / 2, 24 * k, VerdeBoton.ConAlfa(0.45f * late));
-                        Circulo(px + pw - 26 * k, yy + oh / 2, 15 * k, VerdeBoton);
+                        d.Brillo(vx + dv / 2, cyo, dv * 0.8f, VerdeBoton.ConAlfa(0.40f * late));
+                        Circulo(vx + dv / 2, cyo, dv / 2, Color4.Hex(0x46C869));
                     }
                 }
-                float ty = gy + gh - 26 * k, x = px;
-                float q2 = 18 * k;
-                d.Contorno(x, ty - q2 / 2, q2, q2, 3 * k, 1.3f * k, Rojo); d.Triangulo(x + q2 / 2, ty - q2 * 0.3f, x + q2 * 0.78f, ty + q2 * 0.22f, x + q2 * 0.22f, ty + q2 * 0.22f, Rojo); x += q2 + 3 * k;
-                d.Contorno(x, ty - q2 / 2, q2, q2, 3 * k, 1.3f * k, Rojo); d.Triangulo(x + q2 * 0.22f, ty - q2 * 0.22f, x + q2 * 0.78f, ty - q2 * 0.22f, x + q2 / 2, ty + q2 * 0.3f, Rojo); x += q2 + 8 * k;
-                x += nChica.Escribe(d, "mover", x, ty - nChica.Tam * 0.62f, Color4.Hex(0xB8D4FF)) + 22 * k;
-                Boton(x + 10 * k, ty, 10 * k, 'V'); x += 26 * k; x += nChica.Escribe(d, "elegir", x, ty - nChica.Tam * 0.62f, Color4.Hex(0xB8D4FF)) + 22 * k;
-                Boton(x + 10 * k, ty, 10 * k, 'B'); x += 26 * k; nChica.Escribe(d, "salir", x, ty - nChica.Tam * 0.62f, Color4.Hex(0xB8D4FF));
+                // el pie: flechas rojas (mover), VERDE (elegir), ROJO (salir)
+                float ld = Math.Max(12, Math.Min(26, (int)(hb * .046f))), lcy = gy + (int)(hb * .955f), lx = x0;
+                TeclaFlecha(lx, lcy, ld, Rojo, true); lx += ld + 3;
+                TeclaFlecha(lx, lcy, ld, Rojo, false); lx += ld + 6;
+                lx += pequeno.Escribe(d, "mover", lx, lcy - pequeno.Tam * 0.6f, azulT) + ld;
+                Circulo(lx + ld / 2, lcy, ld / 2, Color4.Hex(0x46C869)); lx += ld + 6;
+                lx += pequeno.Escribe(d, "elegir", lx, lcy - pequeno.Tam * 0.6f, azulT) + ld;
+                Circulo(lx + ld / 2, lcy, ld / 2, Rojo); lx += ld + 6;
+                pequeno.Escribe(d, "salir", lx, lcy - pequeno.Tam * 0.6f, azulT);
             }
             else if (c.AyudaLograda)
             {
@@ -284,6 +299,16 @@ namespace Rocola
             Cuerpo(estX, estY, estR, c.AyudaGesto, edad, t, c.AyudaMision != 0 && !c.AyudaLograda ? ax : 0, c.AyudaMision != 0 && !c.AyudaLograda ? ay : 0, 1f);
         }
 
+        private float veloAyuda;
+        // Una tecla de flecha (TeclaFlecha de XP): cuadrito con filo del color y su triangulo, centrado en 'cy'.
+        private void TeclaFlecha(float x, float cy, float q, Color4 c, bool arriba)
+        {
+            float y = cy - q / 2;
+            d.Redondo(x, y, q, q, 3 * k, Color4.Hex(0x2A0F18, 0.9f));
+            d.Contorno(x, y, q, q, 3 * k, 1.3f * k, c);
+            if (arriba) d.Triangulo(x + q / 2, y + q * 0.22f, x + q * 0.80f, y + q * 0.72f, x + q * 0.20f, y + q * 0.72f, c);
+            else d.Triangulo(x + q * 0.20f, y + q * 0.28f, x + q * 0.80f, y + q * 0.28f, x + q / 2, y + q * 0.78f, c);
+        }
         private void Marco(Zona z, Color4 c, float g)
         {
             d.Rect(z.X, z.Y, z.W, g, c); d.Rect(z.X, z.Y + z.H - g, z.W, g, c);

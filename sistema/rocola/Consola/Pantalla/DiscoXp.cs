@@ -19,7 +19,7 @@ namespace Rocola
             Form1 m = c.motor;
             string titulo = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Artista + " - " + disco.Nombre;
             float xp = W * 0.434f, top = 112 * k;
-            nGrande.Escribe(d, nGrande.Ajusta(titulo, xp - 40 * k), 22 * k, 112 * k, Blanco);
+            Letra lTit = Ui(20.5f * k); lTit.Escribe(d, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, Blanco);
             // el cubo grande
             float lado = Math.Min(xp - 80 * k, abajo - 210 * k), cx0 = (xp - lado) / 2 + 4 * k, cy0 = top + 62 * k;
             if (m.ColorGenero) { string g = m.GeneroDeDisco(disco); if (g.Length > 0) Resplandor(Form1.ColorDeEtiqueta(g), cx0 + lado / 2, cy0 + lado / 2, lado * 0.85f); }
@@ -32,7 +32,8 @@ namespace Rocola
             d.RedondoDegradado(px, py, pw, ph, 18 * k, PanelDisco.ConAlfa(0.82f), Color4.Hex(0x0E1534, 0.86f));
             d.Contorno(px, py, pw, ph, 18 * k, 1.3f * k, Color4.Hex(0x9AAAE0, 0.40f));
             bool gr = m.ListaGrande;
-            float fila = gr ? 58 * k : 51 * k, y0 = py + 4 * k;
+            // FilaGrande y CuerpoGrande de XP: unas nueve filas por pagina (44 a 80 px) y la letra de un tercio de la fila (en puntos); la normal, 30 px y 13 pt
+            float fila = gr ? Math.Max(44 * k, Math.Min(80 * k, (float)Math.Floor((ph - 8 * k) / 9))) : 30 * k, y0 = py + 4 * k;
             int caben = Math.Max(1, (int)((ph - 8 * k) / fila));
             c.PorPagina = caben;
             string suena = m.Sonando;
@@ -40,14 +41,14 @@ namespace Rocola
             List<Form1.EnColaVista> cola = m.ColaParaPantalla(64);
             for (int q = 0; q < cola.Count; q++) if (cola[q].Ruta != null && !enCola.ContainsKey(cola[q].Ruta)) { enCola[cola[q].Ruta] = q + 1; minutos[cola[q].Ruta] = cola[q].Minutos; }
             int n = disco.Rutas.Count, desde = Math.Max(0, Math.Min(c.cursorCancion - caben / 2, n - caben));
-            Letra lt = gr ? nGrande : nMedia;
+            Letra lt = Ui(gr ? fila / 3f * 4f / 3f : 13 * 4f / 3f * k);
             for (int i = 0; i < caben && desde + i < n; i++)
             {
                 int j = desde + i; float y = y0 + i * fila, fy = y + 4 * k, fh = fila - 8 * k, cy = fy + fh / 2;
                 bool sel = j == c.cursorCancion;
                 if (sel)
                 {
-                    d.RedondoDegradado(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, Color4.Hex(0x45558C, 0.85f), Color4.Hex(0x34426F, 0.85f));
+                    d.RedondoDegradado(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, Color4.Hex(0x4A6CB8, 0.92f), Color4.Hex(0x3A58A0, 0.92f));
                     d.Contorno(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, 1.4f * k, Color4.Hex(0xC6D2FF, 0.55f));
                     zCancion = new Zona(px + 4 * k, fy, pw - 8 * k, fh);
                 }
@@ -110,30 +111,38 @@ namespace Rocola
             string t = m.SonandoTitulo; if (t == null) return;
             List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaDoce ? 12 : 3);
             float xc = cola.Count == 0 ? W : W * 0.52f;   // donde empieza la cola
+            // LAS LETRAS DEL PANEL DE XP (RenderIdlePanelEn): Trebuchet MS en negrita, a la escala del alto del panel
+            float sc = Math.Max(.8f, Math.Min(1.3f, ph / (260f * k))) * k;
+            Letra small = Tre(15 * sc, true), normal = Tre(20 * sc, true), big = Tre(Math.Max(22 * k, Math.Min(36 * sc, W / 30f)), true);
             // AHORA SUENA
-            Espaciado("AHORA SUENA", 25 * k, top + 12 * k, Turquesa);
+            Espaciado(small, "AHORA SUENA", 24 * k, top + 12 * k, small.Tam * 0.42f, Turquesa);
             float lado = Math.Max(40 * k, Math.Min(ph - 56 * k, W * 0.17f)), lx = 26 * k, ly = top + 46 * k;
             Textura tx = caratulas.De(m.SonandoPortada);
             if (m.ColorGenero && m.ColorSonando != 0) Resplandor(m.ColorSonando, lx + lado / 2, ly + lado / 2, lado * 0.9f);
             else d.Brillo(lx + lado / 2, ly + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.30f + 0.25f * pGraves));
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, lx, ly, lado, reloj.Elapsed.TotalSeconds * 0.5);
             float x = lx + lado + 22 * k, ancho = xc - x - 24 * k;
-            EscribeDesliza(c, nEnorme.Tam * 1.15f < ph * 0.25f ? nEnorme : nGrande, t, x, top + 54 * k, ancho, Blanco);
-            float y = top + 54 * k + nEnorme.Tam * 1.55f;
-            if (m.SonandoDisco != null) { nMedia.Escribe(d, nMedia.Ajusta(m.SonandoDisco, ancho), x, y, Turquesa); y += nMedia.Tam * 1.5f; }
+            // el titulo, en hasta dos renglones con puntos (como el DrawString con LineLimit de XP, en un alto de min(90, 0,28 del panel))
+            List<string> rt = Envuelve(t, big, ancho);
+            int maxR = Math.Max(1, (int)(Math.Min(90 * k, ph * .28f) / (big.Tam * 1.16f)));
+            if (rt.Count > maxR) { rt[maxR - 1] = big.Ajusta(rt[maxR - 1] + " " + string.Join(" ", rt.GetRange(maxR, rt.Count - maxR)), ancho); rt.RemoveRange(maxR, rt.Count - maxR); }
+            for (int i = 0; i < rt.Count; i++) big.Escribe(d, rt[i], x, top + 56 * k + i * big.Tam * 1.16f, Blanco);
+            float y = top + 56 * k + Math.Min(90 * k, ph * .28f) + 6 * k;
+            if (m.SonandoDisco != null) { normal.Escribe(d, normal.Ajusta(m.SonandoDisco, ancho), x, y, Turquesa); y += normal.Tam * 1.5f; }
             string gen = m.EtiquetaSonando;
             if (!string.IsNullOrEmpty(gen) && gen != "Otros")
             {
                 Color4 cg = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Dorado;
-                float wg = mini.Mide(gen) + 20 * k;
+                float wg = small.Mide(gen) + 20 * k;
                 d.Brillo(x + wg / 2, y + 11 * k, wg * 0.8f, cg.ConAlfa(0.25f * pGraves));
                 d.Redondo(x, y, wg, 22 * k, 11 * k, cg.ConAlfa(0.30f));
-                mini.Escribe(d, gen, x + 10 * k, y + 3 * k, Blanco);
+                EnRenglon(small, gen, x + 10 * k, y, wg, 22 * k, Blanco);
             }
             // el reloj y la barra neon, abajo
             string rl = m.SonandoTiempo; if (string.IsNullOrEmpty(rl)) rl = "0:00 / 0:00";
-            float by = H - 22 * k, wr = nMedia.Mide(rl);
-            nMedia.Escribe(d, rl, x, by - nMedia.Tam * 0.62f, Blanco);
+            Letra reloj_ = Ui(17 * sc);   // Tahoma en negrita en XP
+            float by = H - 22 * k, wr = reloj_.Mide(rl);
+            reloj_.Escribe(d, rl, x, by - reloj_.Tam * 0.62f, Blanco);
             float bx = x + wr + 18 * k, bw = Math.Max(20 * k, xc - 24 * k - bx), hb = 6 * k;
             d.Redondo(bx, by - hb / 2, bw, hb, hb / 2, Color4.Hex(0x1A2450, 0.95f));
             float p = Math.Max(0f, Math.Min(1f, c.Progreso));
@@ -146,7 +155,7 @@ namespace Rocola
             }
             if (cola.Count == 0) return;
             // A CONTINUACION: tarjetas en tres columnas (dos si caben pocas)
-            nChica.Escribe(d, "A CONTINUACIÓN  /  " + m.EnCola + (m.EnCola == 1 ? " CANCIÓN" : " CANCIONES"), xc, top + 10 * k, Turquesa);
+            small.Escribe(d, "A CONTINUACIÓN  /  " + m.EnCola + (m.EnCola == 1 ? " CANCIÓN" : " CANCIONES"), xc, top + 10 * k, Turquesa);
             int cols = cola.Count > 4 ? 3 : 2, filas = (cola.Count + cols - 1) / cols;
             float gx = 8 * k, cw = (W - 24 * k - xc - gx * (cols - 1)) / cols, ty = top + 38 * k, fh = Math.Min(44 * k, (H - 12 * k - ty) / Math.Max(1, filas) - 6 * k);
             for (int i = 0; i < cola.Count; i++)
@@ -161,9 +170,10 @@ namespace Rocola
                 d.Redondo(qx + 5 * k, qy + fh - 15 * k, mini.Mide(nn) + 6 * k, 13 * k, 3 * k, new Color4(0, 0, 0.05f, 0.75f));
                 micro.Escribe(d, nn, qx + 8 * k, qy + fh - 14.5f * k, Blanco);
                 float tx0 = qx + tl + 12 * k, aw = qx + cw - 6 * k - tx0;
-                nChica.Escribe(d, nChica.Ajusta(q.Titulo, aw), tx0, qy + 5 * k, Blanco);
+                Letra qt = Tre(Math.Max(9, Math.Min(15 * sc, (fh - 8 * k) * .46f)), true), qa = Tre(Math.Max(8, Math.Min(12 * sc, (fh - 8 * k) * .34f)), true);
+                qt.Escribe(d, qt.Ajusta(q.Titulo, aw), tx0, qy + 4 * k, Blanco);
                 string sub = q.Video ? "video" : (q.Disco ?? "");
-                if (fh > 36 * k && sub.Length > 0) micro.Escribe(d, micro.Ajusta(sub, aw), tx0, qy + 5 * k + nChica.Tam * 1.25f, Turquesa);
+                if (fh > 30 * k && sub.Length > 0) qa.Escribe(d, qa.Ajusta(sub, aw), tx0, qy + 4 * k + qt.Tam * 1.16f, Turquesa);
             }
         }
         // Un letrero con las letras separadas (AHORA SUENA de XP).

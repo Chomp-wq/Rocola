@@ -13,7 +13,9 @@ Código en .NET 10 de la rocola para Linux. Plan completo en [../ETAPA2.md](../E
   Lo público, en `Reproductor.cs`: `new Form1()` es un motor con los ajustes de fábrica de XP; `Arranca` (la configuración y las
   tablas: `Arranque.cs`, `Configuracion.cs`), `MideSiFalta`, `Arma` (y `Dispose` de la canción: guarda lo aprendido), `Cierra`.
 - **`Consola/`** — `rocola-consola --rocola`: **la rocola en la pantalla** (KMS y OpenGL ES 2, `Pantalla/` y `VistaGrafica.cs`; letras y
-  carátulas con StbTrueTypeSharp y StbImageSharp) o, con `--texto` o sin pantalla gráfica, **en modo texto** (`VistaTexto.cs`), con sus botones (evdev, `rocola_teclas.txt` de XP; en una
+  carátulas con StbTrueTypeSharp y StbImageSharp; las letras de XP -Microsoft Sans Serif, Trebuchet MS, Tahoma- se toman de
+  `/rocola/datos/letras`, adonde `rocola-discos` las copia del disco de XP, y si no están, Arial o DejaVu: `Pantalla/Letras.cs`; sus
+  tamaños se cuentan como en GDI+, por el cuadro «em») o, con `--texto` o sin pantalla gráfica, **en modo texto** (`VistaTexto.cs`), con sus botones (evdev, `rocola_teclas.txt` de XP; en una
   terminal, también el teclado; Esc sale): discos por letra, pedir con créditos, monedas, saltar (`RocolaTexto.cs`). Y la rocola sin
   pantalla (`rocola-consola [--wav x.wav] [--biblioteca] canciones...`): lee `rocola_config.txt` y lo
   aprendido, toca la cola (o toda la biblioteca) con el relevo sin pausa de XP (`Cola.cs`, `Biblioteca.cs`), mide cada canción nueva (como

@@ -142,9 +142,30 @@ namespace Rocola
                 x.Ruta = it.TrackRef != null ? it.TrackRef.Path : null;
                 Album a = it.AlbumRef ?? (it.Albums != null && it.Albums.Count > 0 ? it.Albums[0] : null);
                 if (a != null) x.Portada = a.CoverPath;
-                if (it.Kind == 0) { int n = it.Albums != null ? it.Albums.Count : 1; x.Detalle = n == 1 ? "1 disco" : n + " discos"; }
-                else if (it.Kind == 1 && a != null) { int n = a.Tracks != null ? a.Tracks.Count : 0; x.Detalle = (string.IsNullOrEmpty(a.Artist) ? "" : a.Artist + " · ") + n + (n == 1 ? " canción" : " canciones"); }
-                else if (it.Kind == 2 && a != null) x.Detalle = string.IsNullOrEmpty(a.Name) ? a.Artist : (string.IsNullOrEmpty(a.Artist) ? a.Name : a.Artist + " · " + a.Name);
+                // los textos de la tarjeta, como DatosCarta de XP (BuscadorPortadasGpu.cs)
+                if (it.Kind == 0)
+                {
+                    int discos = 0, canciones = 0;
+                    if (it.Albums != null) foreach (Album b in it.Albums) if (b != null) { discos++; canciones += b.Tracks.Count; }
+                    if (discos == 0 && it.AlbumRef != null) { discos = 1; canciones = it.AlbumRef.Tracks.Count; }
+                    if (discos > 0) x.Detalle = discos + (discos == 1 ? " disco" : " discos") + (canciones > 0 ? " · " + canciones + (canciones == 1 ? " canción" : " canciones") : "");
+                }
+                else if (it.Kind == 1 && a != null)
+                {
+                    if (!string.IsNullOrEmpty(a.Name)) x.Texto = a.Name;
+                    int nc = a.Tracks.Count, nv = a.VideoFiles != null ? a.VideoFiles.Count : 0;
+                    string cuenta = nc > 0 ? nc + (nc == 1 ? " canción" : " canciones") : (nv > 0 ? nv + (nv == 1 ? " video" : " videos") : "");
+                    x.Detalle = string.IsNullOrEmpty(a.Artist) ? cuenta : (cuenta.Length > 0 ? a.Artist + " · " + cuenta : a.Artist);
+                }
+                else if (it.Kind == 2)
+                {
+                    Track t = it.TrackRef;
+                    if (t != null && !string.IsNullOrEmpty(t.Title)) x.Texto = TituloSinPista(t.Title);
+                    string artista = t != null && !string.IsNullOrEmpty(t.Artist) ? t.Artist : (it.AlbumRef != null ? (it.AlbumRef.Artist ?? "") : "");
+                    string dur = t != null ? DurText(t.Path) : "";
+                    string extra = dur.Length > 0 ? dur : (it.AlbumRef != null ? (it.AlbumRef.Name ?? "") : "");
+                    x.Detalle = artista.Length > 0 ? (extra.Length > 0 ? artista + " · " + extra : artista) : extra;
+                }
                 if (it.Kind <= 2) r.Add(x);
             }
             return r;

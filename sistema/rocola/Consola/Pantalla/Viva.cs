@@ -117,6 +117,10 @@ namespace Rocola
             d.Brillo(x0 + wb / 2, y0 + hb / 2, wb * 0.45f, AzulBorde.ConAlfa(0.10f));
             d.RedondoDegradado(x0, y0, wb, hb, 14 * k, Color4.Hex(0x172352, 0.88f), Color4.Hex(0x0E1638, 0.88f));
             d.Contorno(x0, y0, wb, hb, 14 * k, 1.6f * k, Color4.Hex(0x6FA8FF, 0.85f));
+            // LAS LETRAS DEL BUSCADOR DE XP (BuscadorPortadasGpu.cs: px por la escala min(W/1280, H/720), con su minimo)
+            float sx = Math.Min(W / 1280f, sup.Alto / 720f);
+            Letra fCaja = Ui(Math.Max(14, 34 * sx)), fCuenta = Ui(Math.Max(10, 16 * sx)), fAtajo = Ui(Math.Max(10, 14 * sx)), fTecla = Ui(Math.Max(12, 24 * sx)), fTeclaPal = Ui(Math.Max(10, 20 * sx));
+            Letra fTipo = Ui(Math.Max(9, 11 * sx)), fTitulo = Ui(Math.Max(12, 17 * sx)), fSub = UiFina(Math.Max(10, 12 * sx)), fMarca = Ui(Math.Max(9, 11 * sx)), fAyuda = Ui(Math.Max(11, 15 * sx));
             // la lupa
             float lx = x0 + 32 * k, ly = y0 + hb / 2 - 2 * k, lr = 9 * k;
             Anillo(lx, ly, lr, 2.6f * k, Blanco);
@@ -124,8 +128,8 @@ namespace Rocola
             float tx0 = x0 + 56 * k;
             if (c.Escrito.Length > 0)
             {
-                string e = nGrande.Ajusta(c.Escrito, wb - 260 * k);
-                float we = nGrande.Escribe(d, e, tx0, y0 + hb / 2 - nGrande.Tam * 0.62f, Blanco);
+                string e = fCaja.Ajusta(c.Escrito.ToLowerInvariant(), wb - 260 * k);
+                float we = fCaja.Escribe(d, e, tx0, y0 + hb / 2 - fCaja.Tam * 0.62f, Blanco);
                 if ((reloj.ElapsedMilliseconds / 530) % 2 == 0) d.Rect(tx0 + we + 4 * k, y0 + 14 * k, 2.5f * k, hb - 28 * k, Color4.Hex(0x6FA8FF));
             }
             else
@@ -136,18 +140,18 @@ namespace Rocola
             if (c.Resultados.Count > 0)
             {
                 string cu = c.Resultados.Count + (c.Resultados.Count == 1 ? " resultado" : " resultados");
-                nChica.Escribe(d, cu, x0 + wb - 20 * k - nChica.Mide(cu), y0 + hb / 2 - nChica.Tam * 0.6f, Color4.Hex(0xC8D2F2));
+                fCuenta.Escribe(d, cu, x0 + wb - 20 * k - fCuenta.Mide(cu), y0 + hb / 2 - fCuenta.Tam * 0.6f, Color4.Hex(0xC8D2F2));
             }
             // los atajos
             float ay = y0 + hb + 12 * k, ah = 30 * k, axx = x0;
             for (int i = 0; i < c.Atajos.Count; i++)
             {
-                string t = c.Atajos[i].Texto; float w = nChica.Mide(t) + 28 * k;
+                string t = c.Atajos[i].Texto; float w = fAtajo.Mide(t) + 28 * k;
                 if (axx + w > W - 24 * k) break;
                 bool sel = !c.EnResultados && c.FilaTecla < 0 && c.ColTecla == i;
                 d.Redondo(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x16204A, 0.85f));
                 d.Contorno(axx, ay, w, ah, ah / 2, 1.2f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.4f));
-                nChica.Escribe(d, t, axx + 14 * k, ay + ah / 2 - nChica.Tam * 0.6f, Blanco);
+                fAtajo.Escribe(d, t, axx + 14 * k, ay + ah / 2 - fAtajo.Tam * 0.6f, Blanco);
                 axx += w + 8 * k;
             }
             // el teclado: diez teclas por fila; la fila de la Z, centrada; ESPACIO y BORRAR abajo, anchas
@@ -169,7 +173,7 @@ namespace Rocola
                     if (sel) d.Brillo(tx + w / 2, ty + ht / 2, w * 0.9f, Color4.Hex(0x3A6CFF, 0.35f));
                     d.Redondo(tx, ty, w, ht, 7 * k, fondo);
                     d.Contorno(tx, ty, w, ht, 7 * k, 1.2f * k, borde);
-                    Letra lt = et.Length > 1 ? nChica : nMedia;
+                    Letra lt = et.Length > 1 ? fTeclaPal : fTecla;
                     lt.EscribeCentrado(d, et, tx + w / 2, ty + ht / 2 - lt.Tam * 0.6f, borrar && !sel ? Color4.Hex(0xFFB0BC) : Blanco);
                     tx += w + sep;
                 }
@@ -206,12 +210,12 @@ namespace Rocola
                     float tw = cx + cw - 10 * k - tx;
                     string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "ÁLBUM" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
                     Color4 ct = r.Tipo == 0 ? Color4.Hex(0x8FB8FF) : r.Tipo == 1 ? Color4.Hex(0xFFC24D) : r.Tipo == 2 ? VerdeTexto : Dorado;
-                    micro.Escribe(d, tipo, tx, cy + 14 * k, ct);
+                    fTipo.Escribe(d, tipo, tx, cy + 14 * k, ct);
                     string pas = r.Ruta != null && string.Equals(r.Ruta, suena, StringComparison.OrdinalIgnoreCase) ? "SONANDO" : r.Ruta != null && enCola.Contains(r.Ruta) ? "EN COLA" : null;
                     float twd = tw;
                     if (pas != null) { float wp = micro.Mide(pas) + 12 * k; d.Redondo(cx + cw - wp - 8 * k, cy + 10 * k, wp, 17 * k, 8.5f * k, (pas == "SONANDO" ? Verde : Dorado).ConAlfa(0.22f)); micro.Escribe(d, pas, cx + cw - wp - 2 * k, cy + 11.5f * k, pas == "SONANDO" ? Verde : Dorado); }
-                    Resaltado(nChica, r.Texto, c.Escrito, tx, cy + 31 * k, tw, sel);
-                    if (!string.IsNullOrEmpty(r.Detalle)) Resaltado(micro, r.Detalle, c.Escrito, tx, cy + 54 * k, twd, false, Color4.Hex(0xA8B4DC));
+                    Resaltado(fTitulo, r.Texto, c.Escrito, tx, cy + 31 * k, tw, sel);
+                    if (!string.IsNullOrEmpty(r.Detalle)) Resaltado(fSub, r.Detalle, c.Escrito, tx, cy + 54 * k, twd, false, Color4.Hex(0xA8B4DC));
                 }
             if (filasTot > filas)
             {   // la barrita de cuanto hay
@@ -219,14 +223,14 @@ namespace Rocola
                 d.Redondo(W - 17 * k, ry, 3 * k, bh, 1.5f * k, Color4.Hex(0x2A3462, 0.7f)); d.Redondo(W - 17 * k, by, 3 * k, hh, 1.5f * k, Color4.Hex(0x8FB8FF));
             }
             // la leyenda de abajo
-            float ly2 = abajo - 22 * k, lxx = x0 + 2 * k;
-            Rombo(lxx + 8 * k, ly2, 8 * k); lxx += 22 * k; lxx += mini.Escribe(d, "Mover", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 16 * k;
-            Boton(lxx + 8 * k, ly2, 8 * k, 'V'); lxx += 22 * k; lxx += mini.Escribe(d, "Poner / Elegir", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 16 * k;
+            float ly2 = abajo - 8 * k, lxx = x0 + 2 * k;
+            Rombo(lxx + 8 * k, ly2, 8 * k); lxx += 22 * k; lxx += fAyuda.Escribe(d, "Mover", lxx, ly2 - fAyuda.Tam * 0.62f, Leyenda) + 16 * k;
+            Boton(lxx + 8 * k, ly2, 8 * k, 'V'); lxx += 22 * k; lxx += fAyuda.Escribe(d, "Poner / Elegir", lxx, ly2 - fAyuda.Tam * 0.62f, Leyenda) + 16 * k;
             float zx = lxx;
-            Boton(lxx + 8 * k, ly2, 8 * k, 'B'); lxx += 20 * k; lxx += mini.Escribe(d, "+", lxx, ly2 - mini.Tam * 0.62f, Leyenda) + 4 * k;
+            Boton(lxx + 8 * k, ly2, 8 * k, 'B'); lxx += 20 * k; lxx += fAyuda.Escribe(d, "+", lxx, ly2 - fAyuda.Tam * 0.62f, Leyenda) + 4 * k;
             float q2 = 16 * k; d.Redondo(lxx, ly2 - q2 / 2, q2, q2, 3 * k, Color4.Hex(0x2A0F18, 0.9f)); d.Contorno(lxx, ly2 - q2 / 2, q2, q2, 3 * k, 1.4f * k, Rojo);
             d.Triangulo(lxx + q2 / 2, ly2 - q2 * 0.28f, lxx + q2 * 0.78f, ly2 + q2 * 0.2f, lxx + q2 * 0.22f, ly2 + q2 * 0.2f, Rojo); lxx += q2 + 8 * k;
-            lxx += mini.Escribe(d, "Cerrar", lxx, ly2 - mini.Tam * 0.62f, Leyenda);
+            lxx += fAyuda.Escribe(d, "Cerrar", lxx, ly2 - fAyuda.Tam * 0.62f, Leyenda);
             zBuscar = new Zona(zx - 4 * k, ly2 - 14 * k, lxx - zx + 8 * k, 28 * k);   // lo que cierra el buscador (la guia de la ayuda lo senala)
         }
         // El nombre con lo tecleado resaltado (sin distinguir mayusculas ni acentos): lo que coincide, sobre un fondo dorado, como en XP.

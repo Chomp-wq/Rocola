@@ -42,8 +42,13 @@ namespace Rocola
             Boton(x + 9 * k, cy, 9 * k, 'B'); x += 24 * k; mini.Escribe(d, "Volver", x, cy - mini.Tam * 0.62f, Leyenda); x += mini.Mide("Volver") + 22 * k;
             // las dos casillas
             float h = 42 * k, y = cy - h / 2;
-            zBuscar = Casilla(Math.Max(x, W * 0.30f), y, h, "BUSCAR", 'U', c.Buscando, AzulBorde);
-            zAyuda = Casilla(zBuscar.X + zBuscar.W + 12 * k, y, h, "AYUDA", 'D', c.AyudaAbierta, OroBorde);
+            // dentro de un disco no van (FilaBuscaAyudaVisible de XP: se esconden con la lista de canciones)
+            if (c.dentro == null)
+            {
+                zBuscar = Casilla(Math.Max(x, W * 0.30f), y, h, "BUSCAR", 'U', c.Buscando, AzulBorde);
+                zAyuda = Casilla(zBuscar.X + zBuscar.W + 12 * k, y, h, "AYUDA", 'D', c.AyudaAbierta, OroBorde);
+            }
+            else { zBuscar = new Zona(x, y, 0, 0); zAyuda = zBuscar; }
             // la letra en la que se esta
             if (c.dentro == null && !c.Buscando && c.letras.Count > 0)
             {
@@ -106,7 +111,7 @@ namespace Rocola
         }
 
         // ---------------- LA BARRA DE LETRAS ----------------
-        // Todas las letras repartidas a lo ancho; debajo de cada una una rayita del largo de lo que tiene y cuantos discos son. La elegida,
+        // Todas las letras repartidas a lo ancho; debajo de cada una una rayita del largo de lo que tiene y cuantas canciones tiene (como XP). La elegida,
         // dentro de su marco.
         private float BarraLetras(Controlador c, float W, float y)
         {
@@ -114,7 +119,7 @@ namespace Rocola
             d.RedondoDegradado(x0, y, x1 - x0, h, 10 * k, Color4.Hex(0x1A2658, 0.55f), Color4.Hex(0x101A40, 0.55f));
             int n = c.letras.Count; if (n == 0) return y + h;
             float paso = (x1 - x0 - 16 * k) / n;
-            int maxD = 1; for (int i = 0; i < n; i++) maxD = Math.Max(maxD, c.DiscosEn(i));
+            int maxD = 1; for (int i = 0; i < n; i++) maxD = Math.Max(maxD, c.CancionesEn(i));
             zLetras = new Zona(x0, y, x1 - x0, h);
             for (int i = 0; i < n; i++)
             {
@@ -123,7 +128,7 @@ namespace Rocola
                 string l = Controlador.NombreLetra(c.letras[i]);
                 Letra f = sel ? nMedia : nChica;
                 if (f.Mide(l) > paso - 6 * k) l = l.Substring(0, 1);
-                int cuantos = c.DiscosEn(i);
+                int cuantos = c.CancionesEn(i);
                 if (sel)
                 {
                     float ws = Math.Min(paso * 0.97f, 232 * k);
@@ -134,7 +139,7 @@ namespace Rocola
                 f.EscribeCentrado(d, l, cx, y + 13 * k - f.Tam * 0.50f, sel ? Blanco : Color4.Hex(0xC8D0F0));
                 float wr = Math.Max(10 * k, (paso * 0.78f) * (float)Math.Sqrt(cuantos / (float)maxD));
                 d.Rect(cx - wr / 2, y + 25 * k, wr, 1.2f * k, (sel ? Color4.Hex(0x9CCBFF) : Color4.Hex(0x8C9AD0)).ConAlfa(sel ? 0.9f : 0.55f));
-                string nn = cuantos.ToString();
+                string nn = cuantos < 10000 ? cuantos.ToString() : Math.Min(999, cuantos / 1000) + "k";
                 micro.EscribeCentrado(d, nn, cx, y + 26 * k, Color4.Hex(0x8C98C8, 0.9f));
             }
             return y + h;
@@ -151,8 +156,12 @@ namespace Rocola
             if (ds.Count == 0) { nMedia.EscribeCentrado(d, "No hay música en la carpeta de la rocola", W / 2, 300 * k, Gris); return; }
             int cols = Columnas, porPag = Controlador.DiscosPorPagina, pag = c.cursorDisco / porPag;
             int paginas = (ds.Count + porPag - 1) / porPag;
-            float margen = 14 * k, alto = abajo - top - 6 * k, celW = (W - 2 * margen) / cols, celH = alto / Filas;
-            float lado = Math.Min(celW * 0.72f, celH - 52 * k);
+            // LA GEOMETRIA DE XP (AlbumView.Geometry y CellMetrics): la pared va de 93 a 645 (de 768), cada casilla es un sexto del ancho y
+            // un tercio del alto; la portada, un cuadrado de min(ancho - 16, alto - 53) arriba de la casilla, con la etiqueta de dos
+            // renglones (38 px) pegada debajo.
+            top = 107 * k;
+            float margen = 14 * k, alto = 555 * k * (abajo / (662f * k)), celW = (W - 2 * margen) / cols, celH = alto / Filas;
+            float lado = Math.Max(10 * k, Math.Min(celW - 16 * k, celH - 53 * k));
             // PASAR DE PAGINA DESLIZANDO (pagina_desliza= de XP): la vieja sale por un lado mientras la nueva entra, columna a columna.
             if (pagVista != pag || pagLetraVista != c.letra)
             {
@@ -194,49 +203,53 @@ namespace Rocola
                         giroDir = n >= focoDisco ? 1f : -1f; relevoLetra = c.letra;
                         focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds;
                     }
-                    // LA ENFOCADA crece un 24 % en 170 ms desde el centro de su borde de abajo, con un halo de su color y su marco claro.
-                    double avance = sel ? Math.Min(1.0, (reloj.Elapsed.TotalMilliseconds - focoDesde) / 170.0) : 0.0;
-                    float crece = 1f + 0.24f * (float)(1 - Math.Pow(1 - avance, 3));
-                    float l = lado * crece, px = cx - l / 2, py = y0 + lado - l;
-                    Textura tx = caratulas.De(disco.Portada);
-                    // la sombra en el suelo
-                    d.Brillo(cx, y0 + lado + 2 * k, l * 0.55f, new Color4(0, 0, 0.05f, sel ? 0.55f : 0.40f));
+                    // la casilla, como en XP: la portada arriba (centrada en lo que sobra) y la etiqueta debajo
+                    float bloque = lado + 3 * k + 38 * k, y1 = y0 - 6 * k + Math.Max(6 * k, (celH - bloque) / 2);
                     if (sel)
                     {
-                        Color4 halo = tx != null ? tx.Media : Dorado;
-                        d.Brillo(cx, py + l / 2, l * 1.05f, halo.ConAlfa(0.50f));
+                        // LA ELEGIDA: su caja (el ancho de la casilla menos 16) crece desde la portada en 170 ms y dentro gira el cubo
+                        double avance = Math.Min(1.0, (reloj.Elapsed.TotalMilliseconds - focoDesde) / 170.0);
+                        float e = (float)(1 - Math.Pow(1 - avance, 3));
+                        float caja = lado + ((celW - 16 * k) * 1.0f - lado) * e, cy0 = y1 + lado - caja - 6 * k * e;   // crece hacia arriba y a los lados: el pie queda con la portada
+                        if (caja < lado) caja = lado;
+                        float bx = cx - caja / 2, by = Math.Max(top - 4 * k, cy0);
+                        Cubo(disco.Portada, disco.Artista, bx, by, caja, AnguloCubo());
+                        d.Brillo(bx + caja / 2, by + caja / 2, caja * 0.62f, new Color4(0.8f, 0.85f, 1f, 0.10f));
+                        d.Contorno(bx - 3 * k, by - 3 * k, caja + 6 * k, caja + 6 * k, 7 * k, 3f * k, Color4.Hex(0xC4C8D4, 0.95f));
+                        zElegido = new Zona(bx - 4 * k, by - 4 * k, caja + 8 * k, caja + 8 * k); zPortadaElegida = new Zona(cx - lado / 2, y1, lado, lado);
+                        // LA PASTILLA (PintaFoco de XP): la letra, de 0,46 a 0,34 del alto, la mas grande que quepa; si ni asi, el texto corto
+                        float hp = 18 * k, cabe = caja - 8 * k - 2 - hp * 1.1f;
+                        string letrero = TextoFoco(disco);
+                        Letra lp = LetraQueQuepa(letrero, hp, cabe);
+                        if (lp == null) { string corto = disco.Rutas.Count + (disco.Videos ? (disco.Rutas.Count == 1 ? " video" : " videos") : (disco.Rutas.Count == 1 ? " canción" : " canciones")); lp = LetraQueQuepa(corto, hp, cabe); letrero = corto; }
+                        if (lp == null) { lp = Ui(hp * 0.34f); letrero = lp.Ajusta(letrero, cabe); }
+                        float wl = Math.Min(caja - 8 * k - 2, lp.Mide(letrero) + hp * 1.1f), yp = by + caja - hp - 5 * k;
+                        d.Redondo(cx - wl / 2, yp, wl, hp, hp / 2, new Color4(0.02f, 0.03f, 0.08f, 0.70f));
+                        d.Contorno(cx - wl / 2, yp, wl, hp, hp / 2, 1f, new Color4(1, 1, 1, 0.35f));
+                        EnRenglon(lp, letrero, cx - lp.Mide(letrero) / 2, yp, wl, hp, Blanco);
                     }
-                    if (sel) Cubo(disco.Portada, disco.Artista, px, py, l, AnguloCubo());
-                    else if (viva && n == relevoIdx) Cubo(disco.Portada, disco.Artista, px, py, l, PasoRelevo());
-                    else Portada(disco.Portada, disco.Artista, px, py, l);
-                    if (!sel) d.Rect(px, py, l, l, new Color4(0, 0, 0.03f, 0.16f));
+                    else if (viva && n == relevoIdx) Cubo(disco.Portada, disco.Artista, cx - lado / 2, y1, lado, PasoRelevo());
                     else
                     {
-                        // el marco y el brillo de cristal (O1 de XP)
-                        d.Contorno(px - 5 * k, py - 5 * k, l + 10 * k, l + 10 * k, 9 * k, 2.4f * k, Color4.Hex(0xD6E4FF, 0.95f));
-                        d.Cuatro(px, py, new Color4(1, 1, 1, 0.20f), px + l * 0.55f, py, new Color4(1, 1, 1, 0f), px, py + l * 0.55f, new Color4(1, 1, 1, 0f), px, py + l * 0.3f, new Color4(1, 1, 1, 0.06f));
-                        zElegido = new Zona(px - 6 * k, py - 6 * k, l + 12 * k, l + 12 * k);
-                        string letrero = disco.Videos ? disco.Rutas.Count + (disco.Rutas.Count == 1 ? " video" : " videos")
-                            : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") + " · " + (disco.Minutos > 0 ? disco.Minutos + " min" : "menos de 1 min");
-                        if (mini.Mide(letrero) + 16 * k > l - 8 * k) letrero = disco.Rutas.Count + (disco.Videos ? " videos" : " canciones");
-                        float wl = mini.Mide(letrero) + 16 * k;
-                        d.Redondo(cx - wl / 2, py + l - 26 * k, wl, 20 * k, 10 * k, new Color4(0.02f, 0.03f, 0.08f, 0.78f));
-                        mini.EscribeCentrado(d, letrero, cx, py + l - 25 * k, Blanco);
+                        // quieta: el cubo de frente (la cara mide el 71 % del cuadrado) con su filo oscuro, como Cube.Draw de XP
+                        Cubo(disco.Portada, disco.Artista, cx - lado / 2, y1, lado, 0);
+                        float wc = (float)Math.Round(lado * 0.7071f);
+                        d.Contorno(cx - wc / 2, y1, wc, lado, 0.1f, 1f, new Color4(0, 0, 0, 0.47f));
                     }
-                    // el nombre: el artista en negrita y el disco debajo; la elegida, si no cabe, se desliza
-                    float ancho = celW - 10 * k, yt = y0 + lado + 8 * k;
-                    if (sel)
-                    {
-                        float wa = Math.Min(ancho, nChica.Mide(disco.Artista)), wn = Math.Min(ancho, mini.Mide(disco.Nombre ?? ""));
-                        EscribeDesliza(c, nChica, disco.Artista, cx - wa / 2, yt, ancho, Blanco);
-                        if (!string.IsNullOrEmpty(disco.Nombre)) EscribeDesliza(c, mini, disco.Nombre, cx - wn / 2, yt + 18 * k, ancho, Color4.Hex(0xFFD98A));
-                    }
-                    else
-                    {
-                        nChica.EscribeCentrado(d, nChica.Ajusta(disco.Artista, ancho), cx, yt, Color4.Hex(0xE4E8FA, 0.88f));
-                        if (!string.IsNullOrEmpty(disco.Nombre)) mini.EscribeCentrado(d, mini.Ajusta(disco.Nombre, ancho), cx, yt + 18 * k, Color4.Hex(0xA8B2D8, 0.85f));
-                    }
+                    // la etiqueta: «Artista - Disco» en dos renglones centrados, negrita, con puntos si no cabe (BakeCell de XP)
+                    string etiqueta = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Artista + " - " + disco.Nombre;
+                    List<string> renglones = Envuelve(etiqueta, mini, celW - 4 * k);
+                    if (renglones.Count > 2) { renglones[1] = mini.Ajusta(renglones[1] + " " + string.Join(" ", renglones.GetRange(2, renglones.Count - 2)), celW - 4 * k); renglones.RemoveRange(2, renglones.Count - 2); }
+                    float ly = y1 + lado + 3 * k + (38 * k - renglones.Count * 15.5f * k) / 2;
+                    for (int rr = 0; rr < renglones.Count; rr++) mini.EscribeCentrado(d, renglones[rr], cx, ly + rr * 15.5f * k, Blanco);
                 }
+        }
+
+        // La letra mas grande (de 0,46 a 0,34 del alto, de medio en medio pixel) con la que 'texto' cabe en 'ancho'; null si ninguna.
+        private Letra LetraQueQuepa(string texto, float alto, float ancho)
+        {
+            for (float t = alto * 0.46f; t >= alto * 0.34f - 0.01f; t -= 0.5f) { Letra l = Ui(t); if (l.Mide(texto) <= ancho) return l; }
+            return null;
         }
 
         // ---------------- LO QUE SUENA (bajo el horizonte) ----------------

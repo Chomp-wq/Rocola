@@ -45,6 +45,23 @@ for p in /sys/class/block/*; do
 		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt \) 2>/dev/null | grep -iv respaldo | head -1)   # (no la copia de respaldo)
 		[ -n "$xp" ] && dirname "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $(dirname "$xp")"
 	fi
+	# LAS LETRAS DE LA ROCOLA DE XP (Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial): Rocola OS no las trae (son de
+	# Windows); si el disco de XP las tiene, se copian una vez a /rocola/datos/letras para que la pantalla use las mismas (Letras.cs).
+	# Del disco solo se lee.
+	if [ "$tipo" = ntfs ]; then
+		fuentes=$(find "$m" -maxdepth 2 -type d -iname fonts 2>/dev/null | grep -i '/windows/fonts$' | head -1)
+		if [ -n "$fuentes" ]; then
+			mkdir -p /rocola/datos/letras
+			n=0
+			for f in "$fuentes"/*; do
+				b=$(basename "$f" | tr 'A-Z' 'a-z')
+				case "$b" in micross.ttf|trebuc*.ttf|tahoma*.ttf|segoeui*.ttf|arial.ttf|arialbd.ttf) ;; *) continue ;; esac
+				[ -e "/rocola/datos/letras/$b" ] && continue
+				cp "$f" "/rocola/datos/letras/$b" 2>/dev/null && n=$((n + 1))
+			done
+			[ "$n" -gt 0 ] && echo "rocola-discos: $n letras de Windows copiadas de $fuentes"
+		fi
+	fi
 	echo "rocola-discos: /dev/$dev ($tipo) en $m$([ -n "$ya" ] || echo ', solo lectura')"
 done
 echo "rocola-discos: musica en: $(tr '\n' ' ' < "$LISTA")"

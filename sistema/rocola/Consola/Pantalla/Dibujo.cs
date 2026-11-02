@@ -235,35 +235,64 @@ namespace Rocola.Pantalla
         private readonly Textura tex;
         private readonly int lado;
         public readonly float Tam;
-        internal Letra(Dibujo d, byte[] ttf, float tam)
+        // NEGRITA SINTETICA (como hace GDI+ con las letras que no traen negrita, p. ej. Microsoft Sans Serif): cada letra se pinta otra
+        // vez corrida un pixel (dos en las grandes) y avanza eso de mas.
+        private readonly int engorda;
+        private readonly float subeBase = 0.8f;   // de lo alto del renglon a la linea base, en tamanos
+        // 'tamEm': el tamano es el del cuadro «em», como lo cuenta GDI+ (Font en pixeles de XP); si no, el alto de arriba a abajo de la
+        // letra (lo que cuenta stb_truetype), que sale un 10-15 % mas chica.
+        internal Letra(Dibujo d, byte[] ttf, float tam, bool negritaSintetica = false, bool tamEm = false)
         {
             Tam = tam;
-            lado = tam > 40 ? 1024 : 512;
+            float alto = tam;
+            int em, sube, baja;
+            if (tamEm && MetricaEm(ttf, out em, out sube, out baja)) { alto = tam * (sube - baja) / (float)em; subeBase = sube / (float)em; }
+            engorda = negritaSintetica ? Math.Max(1, (int)Math.Round(tam / 16f)) : 0;
+            lado = alto > 40 ? 1024 : 512;
             byte[] alfa = new byte[lado * lado];
-            StbTrueType.stbtt_BakeFontBitmap(ttf, 0, tam, alfa, lado, lado, 32, 224, car);
+            StbTrueType.stbtt_BakeFontBitmap(ttf, 0, alto, alfa, lado, lado, 32, 224, car);
             byte[] rgba = new byte[lado * lado * 4];
             for (int i = 0; i < alfa.Length; i++) { rgba[4 * i] = 255; rgba[4 * i + 1] = 255; rgba[4 * i + 2] = 255; rgba[4 * i + 3] = alfa[i]; }
             tex = d.Sube(rgba, lado, lado);
+        }
+        // unitsPerEm (head) y el ascender y descender (hhea) del TTF: lo que usa stb_truetype para su alto.
+        private static bool MetricaEm(byte[] f, out int em, out int sube, out int baja)
+        {
+            em = sube = baja = 0;
+            try
+            {
+                int n = (f[4] << 8) | f[5];
+                for (int i = 0; i < n; i++)
+                {
+                    int r = 12 + 16 * i, off = (f[r + 8] << 24) | (f[r + 9] << 16) | (f[r + 10] << 8) | f[r + 11];
+                    string tag = "" + (char)f[r] + (char)f[r + 1] + (char)f[r + 2] + (char)f[r + 3];
+                    if (tag == "head") em = (f[off + 18] << 8) | f[off + 19];
+                    else if (tag == "hhea") { sube = (short)((f[off + 4] << 8) | f[off + 5]); baja = (short)((f[off + 6] << 8) | f[off + 7]); }
+                }
+            }
+            catch (IndexOutOfRangeException) { return false; }
+            return em > 0 && sube > baja;
         }
         private static int Indice(char c) { int k = c; if (k == 0x2026) k = '.'; if (k < 32 || k > 255) k = '?'; return k - 32; }
         internal float Mide(string s)
         {
             float w = 0; if (s == null) return 0;
-            foreach (char c in s) w += car[Indice(c)].xadvance;
+            foreach (char c in s) w += car[Indice(c)].xadvance + engorda;
             return w;
         }
         // Escribe con la linea base en y + 0,8 * tamano (y es el borde de arriba). Devuelve el ancho.
         internal float Escribe(Dibujo d, string s, float x, float y, Color4 c)
         {
             if (string.IsNullOrEmpty(s)) return 0;
-            float x0 = x, base_ = y + Tam * 0.8f;
+            float x0 = x, base_ = y + Tam * subeBase;
             foreach (char ch in s)
             {
                 StbTrueType.stbtt_bakedchar b = car[Indice(ch)];
                 float w = b.x1 - b.x0, h = b.y1 - b.y0;
                 if (w > 0 && h > 0)
-                    d.Quad(tex, (float)Math.Round(x + b.xoff), (float)Math.Round(base_ + b.yoff), w, h, b.x0 / (float)lado, b.y0 / (float)lado, b.x1 / (float)lado, b.y1 / (float)lado, c);
-                x += b.xadvance;
+                    for (int e = 0; e <= engorda; e++)
+                        d.Quad(tex, (float)Math.Round(x + b.xoff) + e, (float)Math.Round(base_ + b.yoff), w, h, b.x0 / (float)lado, b.y0 / (float)lado, b.x1 / (float)lado, b.y1 / (float)lado, c);
+                x += b.xadvance + engorda;
             }
             return x - x0;
         }
