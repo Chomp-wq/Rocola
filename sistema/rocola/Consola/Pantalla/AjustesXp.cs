@@ -32,6 +32,7 @@ namespace Rocola
                 case "El local": case "Voz, golpe y retumbe": return Color4.Hex(0x5AAEFF);
                 case "Lo que suena ahora": case "Entre canciones": case "Videos": return Color4.Hex(0x58D888);
                 case "Volumen al limite": return Color4.Hex(0x8CC8FF);
+                case "Tu biblioteca": return Color4.Hex(0xFFA850);
                 case "Mejoras con IA": return Color4.Hex(0xC08CFF);
                 default: return Color4.Hex(0x8CB4FF);
             }
@@ -95,6 +96,9 @@ namespace Rocola
             List<string> grupos = new List<string>(); Dictionary<string, List<int>> porGrupo = new Dictionary<string, List<int>>();
             foreach (int i in idx) { string g = l[i].Grupo; List<int> li; if (!porGrupo.TryGetValue(g, out li)) { li = new List<int>(); porGrupo[g] = li; grupos.Add(g); } li.Add(i); }
             if (conBotones) { grupos.Add("Los botones"); porGrupo["Los botones"] = new List<int> { n - 1 }; }
+            // TU BIBLIOTECA (la tarjeta de XP): solo informa, no se elige; despues del volumen
+            List<string> bib = pagina == "Sonido" ? c.motor.TextoBiblioteca() : null;
+            if (bib != null) { int pv = grupos.IndexOf("Volumen al limite"); grupos.Insert(pv >= 0 ? pv + 1 : 0, "Tu biblioteca"); porGrupo["Tu biblioteca"] = new List<int>(); }
             // un grupo muy largo (la Pantalla) se parte en dos tarjetas, una por columna
             for (int gi = 0; gi < grupos.Count; gi++)
             {
@@ -129,7 +133,7 @@ namespace Rocola
             foreach (string g in grupos)
             {
                 int col = alto[0] <= alto[1] ? 0 : 1;
-                float h = cab + 12 * k, acum = 0;
+                float h = cab + 12 * k, acum = g == "Tu biblioteca" && bib != null ? bib.Count * 18 * k : 0;
                 foreach (int i in porGrupo[g]) { if (i == sel) { selY = alto[col] + cab + acum; selH = altoDe[i]; } acum += altoDe[i]; }
                 h += acum;
                 lugar.Add(new KeyValuePair<string, float[]>(g, new float[] { col, alto[col], h }));
@@ -146,6 +150,8 @@ namespace Rocola
                 Tarjeta(cx, y, colW, h, g.TrimEnd('\u0001').ToUpperInvariant() + (g.EndsWith("\u0001") ? " (SIGUE)" : ""), ColorGrupo(g.TrimEnd('\u0001')), fTit);
                 List<int> filas = porGrupo[g];
                 float yy = y + cab;
+                if (g == "Tu biblioteca" && bib != null)
+                    for (int b = 0; b < bib.Count; b++) (b == 0 ? fNom : fChica).Escribe(d, (b == 0 ? fNom : fChica).Ajusta(bib[b], colW - 36 * k), cx + 18 * k, yy + b * 18 * k + 2 * k, b == 0 ? Color4.Hex(0xC6D6F4) : Color4.Hex(0x8A96BA));
                 for (int f = 0; f < filas.Count; f++)
                 {
                     int i = filas[f]; bool es = i == sel; float hf = altoDe[i];
