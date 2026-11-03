@@ -95,6 +95,7 @@ namespace Rocola
             Reloj.Cuadros++; Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
             Pulso(c);
             if (m.LetraNueva != letrasPedidas) CargaLetras(m.LetraNueva);   // L1 cambiada en Ctrl+F3: las letras, al momento
+            PodaLetras();
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             // el cielo borroso de los vidrios: si algun vidrio del cielo se dibujo en el cuadro anterior (o aun no hay)
             vidrioCieloPedido = m.AlgunVidrioDelCielo && (vidrioCieloUsado || !d.CieloBorroso.Hay); vidrioCieloUsado = false;
@@ -466,7 +467,7 @@ namespace Rocola
         private void CargaLetras(bool l1)
         {
             foreach (Letra l in new[] { chica, media, grande, enorme, micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina, tChica, tMedia, tGrande, tTexto }) if (l != null) l.Libera(d);
-            foreach (Dictionary<int, Letra> dl in new[] { letrasUi, letrasUiFina, letrasTre }) { foreach (Letra l in dl.Values) l.Libera(d); dl.Clear(); }
+            foreach (Dictionary<int, Letra> dl in letrasTodas) { foreach (Letra l in dl.Values) l.Libera(d); dl.Clear(); }
             OlvidaRenglones(); fichaLetrasDe = -1; letrasPedidas = l1;
             bool sint;
             byte[] jR = l1 ? Letras.Lee(Letras.L1Texto, out sint) : null, jM = l1 ? Letras.Lee(Letras.L1Medio, out sint) : null, jB = l1 ? Letras.Lee(Letras.L1Negrita, out sint) : null;
@@ -499,13 +500,15 @@ namespace Rocola
         private readonly Dictionary<int, Letra> letrasUi = new Dictionary<int, Letra>();
         private byte[] uiNegrita, uiNormal, treNormal, treNegrita; private bool uiNegritaSint, treSint;
         private readonly Dictionary<int, Letra> letrasTre = new Dictionary<int, Letra>();
+        private Dictionary<int, Letra>[] letrasTodas { get { return todasLetras ?? (todasLetras = new[] { letrasUi, letrasUiFina, letrasTre }); } }
+        private Dictionary<int, Letra>[] todasLetras;
         // Trebuchet MS (la letra del asistente, la atraccion y el reposo de XP) a cualquier tamano, una vez por tamano.
         private Letra Tre(float px, bool negrita)
         {
             int clave = (int)Math.Round(px * 4) * 2 + (negrita ? 1 : 0);
             Letra l;
             if (!letrasTre.TryGetValue(clave, out l)) { l = new Letra(d, negrita ? treNegrita : treNormal, (clave / 2) / 4f, negrita && treSint, true); letrasTre[clave] = l; }
-            return l;
+            l.Usada = Reloj.Cuadros; return l;
         }
         private readonly Dictionary<int, Letra> letrasUiFina = new Dictionary<int, Letra>();
         private Letra UiFina(float px)
@@ -513,14 +516,30 @@ namespace Rocola
             int clave = (int)Math.Round(px * 4);
             Letra l;
             if (!letrasUiFina.TryGetValue(clave, out l)) { l = new Letra(d, uiNormal, clave / 4f, false, true); letrasUiFina[clave] = l; }
-            return l;
+            l.Usada = Reloj.Cuadros; return l;
         }
         private Letra Ui(float px)
         {
             int clave = (int)Math.Round(px * 4);
             Letra l;
             if (!letrasUi.TryGetValue(clave, out l)) { l = new Letra(d, uiNegrita, clave / 4f, uiNegritaSint, true); letrasUi[clave] = l; }
-            return l;
+            l.Usada = Reloj.Cuadros; return l;
+        }
+        // LOS TAMANOS DE PASO SE SUELTAN (3-11-2026): la transicion al reposo pide un tamano nuevo por cuadro (las letras crecen con el
+        // panel) y antes se quedaban todos para siempre (decenas de atlas de 0,5 a 2 MB en la memoria de la tarjeta). Cada 600 cuadros, si
+        // hay mas de 24 de un tipo, se sueltan los que no se pidieron en esos 600 (quien usa una de estas la pide en cada cuadro; si vuelve a
+        // hacer falta, se hace otra vez, y sus letras se dibujan al usarlas: no cuesta). Las letras de siempre (chica, media...) no van aqui.
+        private readonly List<int> podar = new List<int>();
+        private void PodaLetras()
+        {
+            if (Reloj.Cuadros % 600 != 0) return;
+            foreach (Dictionary<int, Letra> dl in letrasTodas)
+            {
+                if (dl.Count <= 24) continue;
+                podar.Clear();
+                foreach (KeyValuePair<int, Letra> e in dl) if (Reloj.Cuadros - e.Value.Usada > 600) podar.Add(e.Key);
+                foreach (int c in podar) { dl[c].Libera(d); dl.Remove(c); }
+            }
         }
 
         private float reposoAlfa; private double reposoT;

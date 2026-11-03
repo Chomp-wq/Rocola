@@ -42,6 +42,7 @@ namespace Rocola.Pantalla
         [DllImport(L, EntryPoint = "glActiveTexture")] internal static extern void ActiveTexture(uint t);
         [DllImport(L, EntryPoint = "glTexParameteri")] internal static extern void TexParameteri(uint d, uint p, int v);
         [DllImport(L, EntryPoint = "glTexImage2D")] internal static extern void TexImage2D(uint d, int nivel, int interno, int w, int h, int borde, uint formato, uint tipo, void* datos);
+        [DllImport(L, EntryPoint = "glTexSubImage2D")] internal static extern void TexSubImage2D(uint d, int nivel, int x, int y, int w, int h, uint formato, uint tipo, void* datos);
         [DllImport(L, EntryPoint = "glGenerateMipmap")] internal static extern void GenerateMipmap(uint destino);
         [DllImport(L, EntryPoint = "glCopyTexImage2D")] internal static extern void CopyTexImage2D(uint d, int nivel, uint interno, int x, int y, int w, int h, int borde);
         [DllImport(L, EntryPoint = "glGetIntegerv")] internal static extern void GetIntegerv(uint p, int* v);

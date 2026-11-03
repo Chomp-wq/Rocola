@@ -717,3 +717,31 @@ Decisión del dueño sobre la presentación «Rocola OS: vidrio y letra»: todo,
 - **Coste** (llvmpipe, 1920x1080, pantallas pintadas por cuadro, de fábrica frente a todo apagado): pared 3,1 / 2,8; disco 3,6 /
   3,25; reposo 2,9 / 3,1 (menos: el vidrio reemplaza un panel ancho); buscador 3,0 / 2,6; atracción 4,1 / 3,7; ajustes 2,15 / 2,0.
   Con G9 encendido los ajustes suben a ~6 pantallas. **Nada medido en el A4.**
+
+## Extra (3-11-2026, sexta parte): el vidrio y la letra nueva, más ligeros (sin cambiar el aspecto)
+
+Automático y sin interruptor (no cambia ningún punto: comparado cuadro a cuadro, con reloj fijo, contra la versión anterior en pared,
+disco, reposo, buscador, atracción, ajustes y ficha, con los vidrios de fábrica, con todos encendidos y con las letras de XP; las
+únicas diferencias son las que cambian solas entre dos ejecuciones iguales, como el contador de canciones por medir).
+
+- **Las letras se dibujan al usarlas** (`Letra`, `Dibujo.cs`): antes cada tamaño nuevo horneaba sus 192 letras de golpe (2,5 a
+  15 ms aquí, varias veces eso en el A4), y la transición al reposo pide cinco tamaños por cuadro (las letras crecen con el panel):
+  entrar al reposo daba cuadros de 20-30 ms y una docena de recolecciones. Ahora el tamaño nuevo solo se mide, y cada letra se dibuja
+  con stb_truetype la primera vez que se escribe, en el mismo atlas, con la misma función y la misma escala (los mismos puntos). Si un
+  atlas se llenara, se hornea entero como antes. `ROCOLA_LETRAS_HORNEADAS=1` vuelve a lo de antes para comparar. Cada archivo de
+  letra se lee una vez (`Letras.Lee`).
+- **Los tamaños de paso se sueltan** (`PodaLetras`): los de la transición se quedaban para siempre (decenas de atlas de 0,5 a 2 MB
+  en la memoria de la tarjeta, que en el A4 es la del sistema). Cada 600 cuadros, si hay más de 24 de un tipo, se sueltan los que
+  no se pidieron en ese tiempo; si vuelven a hacer falta, se hacen otra vez (ya sin coste).
+- **El cielo borroso antes de pintar la pantalla** (`CieloXp.cs`): sus pasadas a las capas chicas iban después de poner el cielo, y
+  la tarjeta dejaba la pantalla a medias para ir a ellas y volver; ahora van antes de pintar nada en la pantalla, leyendo la misma
+  capa ya al día.
+- **Las esquinas del vidrio sin tiras a todo lo ancho** (`RedondoVidrio`): cada renglón curvo era una tira de un punto de alto y
+  todo el ancho del panel (en la cabecera y lo que suena, unas 50 tiras de 1900 puntos; la tarjeta pinta de dos en dos renglones y
+  ahí trabaja el doble). Ahora el tramo recto de arriba y el de abajo son un rectángulo cada uno y solo lo curvo va por renglones.
+  `ROCOLA_TIRAS_ENTERAS=1` (o `ROCOLA_SIN_LOTES`) vuelve a lo de antes.
+- **Los ángulos de los contornos, una vez** (`Contorno`): el vidrio pone cinco contornos por panel (tres aros de sombra, el filo y
+  el de las pastillas), y cada uno calculaba senos y cosenos en cada cuadro; se guardan por número de pasos, con la misma cuenta.
+- **Medido aquí** (llvmpipe; solo procesador, mediana por cuadro a 1920x1080, versión anterior / nueva): pared 0,41 / 0,33 ms;
+  buscador 0,36 / 0,29 ms; al entrar al reposo, el peor cuadro de 20-31 ms a 3,3-3,8 ms, y de 9-11 recolecciones a ninguna. En la
+  tarjeta (`ROCOLA_PERFIL=gpu`): la cabecera de 2,45 a 1,85 ms y lo que suena de 2,8 a 2,4 ms. **Nada medido en el A4.**

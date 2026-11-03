@@ -191,7 +191,7 @@ namespace Rocola
             // ROCOLA_CAPTURA_DOBLE=VARIABLE: el mismo cuadro otra vez con esa variable puesta, en ruta.b.ppm (comparar un ahorro con su
             // forma de antes sin que cambie lo que se ve: mismo disco, mismo reloj)
             string doble = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_DOBLE");
-            if (doble != null) { Environment.SetEnvironmentVariable(doble, "1"); if (doble == "ROCOLA_SIN_LOTES") Rocola.Pantalla.Dibujo.BrilloCuadrado = true; VistaGrafica.RepiteCuadro(); v.Dibuja(c); fp.Captura(ruta + ".b.ppm"); }
+            if (doble != null) { Environment.SetEnvironmentVariable(doble, "1"); if (doble == "ROCOLA_SIN_LOTES") { Rocola.Pantalla.Dibujo.BrilloCuadrado = true; Rocola.Pantalla.Dibujo.TirasEnteras = true; } if (doble == "ROCOLA_TIRAS_ENTERAS") Rocola.Pantalla.Dibujo.TirasEnteras = true; VistaGrafica.RepiteCuadro(); v.Dibuja(c); fp.Captura(ruta + ".b.ppm"); }
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
             Console.WriteLine("Captura: " + ruta);
             return 0;

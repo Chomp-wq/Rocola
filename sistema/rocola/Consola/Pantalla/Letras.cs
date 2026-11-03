@@ -41,6 +41,9 @@ namespace Rocola.Pantalla
             yield return "/usr/local/share/fonts";
         }
         // El primero que haya de la lista (sin distinguir mayusculas); null si ninguno.
+        // Cada archivo se lee una vez: el mismo arreglo cada vez (las letras guardan su fuente ya preparada por arreglo: Letra.Fuente).
+        private static readonly Dictionary<string, byte[]> leidos = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        private static byte[] Archivo(string ruta) { byte[] b; if (!leidos.TryGetValue(ruta, out b)) leidos[ruta] = b = File.ReadAllBytes(ruta); return b; }
         internal static byte[] Lee(string[] nombres, out bool sintetica)
         {
             sintetica = false;
@@ -54,7 +57,7 @@ namespace Rocola.Pantalla
             foreach (string n0 in nombres)
             {
                 bool s = n0.EndsWith("*"); string n = s ? n0.Substring(0, n0.Length - 1) : n0;
-                string r; if (indice.TryGetValue(n, out r)) try { sintetica = s; return File.ReadAllBytes(r); } catch { }
+                string r; if (indice.TryGetValue(n, out r)) try { sintetica = s; return Archivo(r); } catch { }
             }
             return null;
         }

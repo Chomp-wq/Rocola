@@ -134,17 +134,47 @@ namespace Rocola.Pantalla
             texActual = f.T.Id; texActualT = f.T; opacoV = false;
             TiraVidrio(f, x, y + r, w, h - 2 * r, arriba, abajo, y, h);
             int pasos = Math.Max(2, (int)r);
-            for (int i = 0; i < pasos; i++)
+            if (TirasEnteras)
+                for (int i = 0; i < pasos; i++)
+                {
+                    float yy = r - (i + 0.5f) * r / pasos;
+                    float dx = r - (float)Math.Sqrt(Math.Max(0, r * r - yy * yy));
+                    float h1 = r / pasos;
+                    TiraVidrio(f, x + dx, y + i * h1, w - 2 * dx, h1, arriba, abajo, y, h);
+                    TiraVidrio(f, x + dx, y + h - (i + 1) * h1, w - 2 * dx, h1, arriba, abajo, y, h);
+                }
+            else
             {
-                float yy = r - (i + 0.5f) * r / pasos;
-                float dx = r - (float)Math.Sqrt(Math.Max(0, r * r - yy * yy));
-                float h1 = r / pasos;
-                TiraVidrio(f, x + dx, y + i * h1, w - 2 * dx, h1, arriba, abajo, y, h);
-                TiraVidrio(f, x + dx, y + h - (i + 1) * h1, w - 2 * dx, h1, arriba, abajo, y, h);
+                // LAS ESQUINAS SIN TIRAS A TODO LO ANCHO (3-11-2026): antes cada renglon de las esquinas era una tira de un punto de alto
+                // y todo el ancho del panel (en los paneles a lo ancho de la pantalla, 2 x radio tiras de 1900 puntos: la tarjeta pinta de
+                // dos en dos renglones y en esas tiras hacia el doble de trabajo). Ahora el tramo recto de arriba y el de abajo son un solo
+                // rectangulo cada uno, y solo lo curvo va por renglones (a la izquierda y a la derecha). Los mismos bordes, los mismos
+                // puntos: el color y lo de detras se reparten en linea recta (dentro de una tira y en el rectangulo entero, igual).
+                float h1 = r / pasos, xi = x + r, xd = x + w - r;
+                float yArr = y + (pasos - 1) * h1 + h1, yAba = y + h - pasos * h1;
+                if (xd > xi) { TiraVidrioXY(f, xi, y, xd, yArr, arriba, abajo, y, h); TiraVidrioXY(f, xi, yAba, xd, y + h - h1 + h1, arriba, abajo, y, h); }
+                for (int i = 0; i < pasos; i++)
+                {
+                    float yy = r - (i + 0.5f) * r / pasos;
+                    float dx = r - (float)Math.Sqrt(Math.Max(0, r * r - yy * yy));
+                    float a0 = x + dx, a1 = a0 + (w - 2 * dx), ya = y + i * h1, yb = y + h - (i + 1) * h1;
+                    TiraVidrioXY(f, a0, ya, Math.Min(xi, a1), ya + h1, arriba, abajo, y, h); TiraVidrioXY(f, Math.Max(xd, a0), ya, a1, ya + h1, arriba, abajo, y, h);
+                    TiraVidrioXY(f, a0, yb, Math.Min(xi, a1), yb + h1, arriba, abajo, y, h); TiraVidrioXY(f, Math.Max(xd, a0), yb, a1, yb + h1, arriba, abajo, y, h);
+                }
             }
             Vacia();
             GL.UseProgram(programa); texActual = 0; texActualT = null;
             Mezcla(true);
+        }
+        internal static bool TirasEnteras = Environment.GetEnvironmentVariable("ROCOLA_SIN_LOTES") != null || Environment.GetEnvironmentVariable("ROCOLA_TIRAS_ENTERAS") != null;   // la de antes, para comparar
+        private void TiraVidrioXY(Fondo f, float xa, float ya, float xb, float yb, Color4 arriba, Color4 abajo, float y0, float h0)
+        {
+            if (xb <= xa || yb <= ya) return;
+            if (nv + 6 > vertices.Length / 8) Vacia();
+            Color4 ca = Mezcla(arriba, abajo, (ya - y0) / h0), cb = Mezcla(arriba, abajo, (yb - y0) / h0);
+            float u0 = f.Au * xa + f.Bu, u1 = f.Au * xb + f.Bu, v0 = f.Av * ya + f.Bv, v1 = f.Av * yb + f.Bv;
+            V(xa, ya, u0, v0, ca); V(xb, ya, u1, v0, ca); V(xa, yb, u0, v1, cb);
+            V(xb, ya, u1, v0, ca); V(xb, yb, u1, v1, cb); V(xa, yb, u0, v1, cb);
         }
         private void TiraVidrio(Fondo f, float x, float y, float w, float h, Color4 arriba, Color4 abajo, float y0, float h0)
         {

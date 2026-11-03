@@ -47,8 +47,13 @@ namespace Rocola
                         }
                         FondoLento(W, H, t, 1f, true); d.Vuelve();   // los cuatro degradados opacos cubren todo: sin el fondo liso debajo y sin mezclar
                     }
+                    // los vidrios del cielo (G1-G8): su fondo, desenfocado. ANTES DE PINTAR NADA EN LA PANTALLA (3-11-2026): sus pasadas van a
+                    // capas chicas, y hechas aqui no cortan a medio cuadro el dibujo de la pantalla (antes iban despues de poner la capa: la
+                    // tarjeta tenia que dejar a medias la pantalla, ir a la capa chica y volver). Lee la misma capa ya al dia: sale igual.
+                    if (vidrioCieloPedido) d.DesenfocaCielo(capaCielo.Tex);
+                    Perfil.Marca("cielo borroso");
                     if (tapado) d.PonCapa(capaCielo, tx0, ty0, tx1 - tx0, ty1 - ty0); else d.PonCapa(capaCielo);
-                    if (vidrioCieloPedido) d.DesenfocaCielo(capaCielo.Tex);   // los vidrios del cielo (G1-G8): su fondo, desenfocado
+                    Perfil.Marca("cielo capa");
                     goto encima;
                 }
             }

@@ -112,6 +112,27 @@ namespace Rocola.Pantalla
             return Sube(la, ancho, alto, GL.LUMINANCE_ALPHA);
         }
         internal Textura Sube(byte[] rgba, int ancho, int alto) { return Sube(rgba, ancho, alto, GL.RGBA); }
+        internal Textura SubeLuminancia(byte[] la, int ancho, int alto) { return Sube(la, ancho, alto, GL.LUMINANCE_ALPHA); }
+        // Un atlas de letras vacio (blanco transparente, en luminancia + alfa) con el cuadrito blanco opaco de 4x4 en la esquina de abajo a
+        // la derecha; las letras se le suben despues, cada una al usarla (SubeTrozo).
+        private static byte[] ceros;
+        internal Textura AtlasBlanco(int lado)
+        {
+            if (ceros == null || ceros.Length < lado * lado * 2) ceros = new byte[lado * lado * 2];   // siempre ceros: solo se lee
+            Textura t = Sube(ceros, lado, lado, GL.LUMINANCE_ALPHA);
+            byte* b = stackalloc byte[4 * 4 * 2];
+            for (int i = 0; i < 32; i++) b[i] = 255;
+            SubeTrozo(t, lado - 4, lado - 4, 4, 4, b);
+            return t;
+        }
+        // Un trozo de w x h puntos (luminancia + alfa) en x, y de la textura t.
+        internal void SubeTrozo(Textura t, int x, int y, int w, int h, byte* la)
+        {
+            GL.BindTexture(GL.TEXTURE_2D, t.Id);
+            GL.PixelStorei(GL.UNPACK_ALIGNMENT, 1);
+            GL.TexSubImage2D(GL.TEXTURE_2D, 0, x, y, w, h, GL.LUMINANCE_ALPHA, GL.UNSIGNED_BYTE, la);
+            GL.BindTexture(GL.TEXTURE_2D, texActual);   // la atada sigue siendo la del lote (lo pendiente se dibuja con ella)
+        }
         private Textura Sube(byte[] rgba, int ancho, int alto, uint formato)
         {
             Vacia();   // lo pendiente se dibuja antes con su textura (subir cambia la textura atada)
@@ -429,14 +450,33 @@ namespace Rocola.Pantalla
             // las cuatro esquinas, como anillos de un cuarto
             int pasos = Math.Max(4, (int)(r * 0.8f));
             Span<float> cxs = stackalloc float[] { x + r, x + w - r, x + w - r, x + r }, cys = stackalloc float[] { y + r, y + r, y + h - r, y + h - r };   // en la pila: sin basura
-            Span<double> a0 = stackalloc double[] { Math.PI, 1.5 * Math.PI, 0, 0.5 * Math.PI };
+            float[] cs = CosSen(pasos);
             for (int e = 0; e < 4; e++)
                 for (int i = 0; i < pasos; i++)
                 {
-                    double t0 = a0[e] + 0.5 * Math.PI * i / pasos, t1 = a0[e] + 0.5 * Math.PI * (i + 1) / pasos;
-                    float c0 = (float)Math.Cos(t0), s0 = (float)Math.Sin(t0), c1 = (float)Math.Cos(t1), s1 = (float)Math.Sin(t1);
+                    int j = 2 * (e * (pasos + 1) + i);
+                    float c0 = cs[j], s0 = cs[j + 1], c1 = cs[j + 2], s1 = cs[j + 3];
                     Cuatro(cxs[e] + r * c0, cys[e] + r * s0, c, cxs[e] + r * c1, cys[e] + r * s1, c, cxs[e] + ri * c1, cys[e] + ri * s1, c, cxs[e] + ri * c0, cys[e] + ri * s0, c);
                 }
+        }
+        // LOS ANGULOS DE LAS ESQUINAS, UNA VEZ (3-11-2026): el vidrio pone cinco contornos por panel (tres de sombra, el filo y el de las
+        // pastillas) y cada uno calculaba 16 senos y cosenos por paso. Se guardan por numero de pasos, con la misma cuenta (en double, y a
+        // float al final): los mismos numeros, sin calcularlos en cada cuadro.
+        private static readonly Dictionary<int, float[]> cosSen = new Dictionary<int, float[]>();
+        private static float[] CosSen(int pasos)
+        {
+            float[] t;
+            if (cosSen.TryGetValue(pasos, out t)) return t;
+            double[] a0 = { Math.PI, 1.5 * Math.PI, 0, 0.5 * Math.PI };
+            t = new float[2 * 4 * (pasos + 1)];
+            for (int e = 0; e < 4; e++)
+                for (int i = 0; i <= pasos; i++)
+                {
+                    double a = a0[e] + 0.5 * Math.PI * i / pasos;
+                    t[2 * (e * (pasos + 1) + i)] = (float)Math.Cos(a); t[2 * (e * (pasos + 1) + i) + 1] = (float)Math.Sin(a);
+                }
+            if (cosSen.Count < 512) cosSen[pasos] = t;
+            return t;
         }
         // Un rectangulo redondo con un degradado vertical (las pastillas de XP).
         internal void RedondoDegradado(float x, float y, float w, float h, float r, Color4 arriba, Color4 abajo)
@@ -512,6 +552,11 @@ namespace Rocola.Pantalla
     // UNA LETRA HORNEADA a un tamano: los caracteres de 32 a 255 (Latin-1: acentos y la enie) en una textura.
     internal sealed unsafe class Letra
     {
+        // LAS LETRAS SE DIBUJAN AL USARLAS (3-11-2026): antes se horneaban las 192 de golpe al crear cada tamano (2,5 a 15 ms aqui, varias
+        // veces eso en el A4; la transicion al reposo pide cinco tamanos nuevos por cuadro). Ahora al crear el tamano solo se miden (avance,
+        // caja y desplazamiento, sin dibujar) y cada letra se dibuja con stb_truetype la primera vez que se escribe, en el mismo atlas y con
+        // la misma funcion y la misma escala que el horneado de antes: los mismos puntos, solo cambia donde caen dentro del atlas (en
+        // estantes, con un punto de separacion; el cuadrito blanco siempre libre). Si un atlas se llenara, se hornea entero como antes.
         private readonly StbTrueType.stbtt_bakedchar[] car = new StbTrueType.stbtt_bakedchar[224];
         private readonly Textura tex;
         private readonly int lado;
@@ -520,27 +565,95 @@ namespace Rocola.Pantalla
         // vez corrida un pixel (dos en las grandes) y avanza eso de mas.
         private readonly int engorda;
         private readonly float subeBase = 0.8f;   // de lo alto del renglon a la linea base, en tamanos
+        private readonly Dibujo d; private readonly byte[] ttf; private readonly float alto;
+        private readonly StbTrueType.stbtt_fontinfo fuente; private readonly float escala;
+        private readonly int[] glifo = new int[224]; private readonly bool[] puesta = new bool[224];   // puesta: ya dibujada en el atlas
+        private int px = 1, py = 1, pyAbajo = 1; private bool entera;   // el estante donde va la siguiente; entera: horneada de golpe
+        internal static bool Horneadas = Environment.GetEnvironmentVariable("ROCOLA_LETRAS_HORNEADAS") != null;   // la de antes, para comparar
         // 'tamEm': el tamano es el del cuadro «em», como lo cuenta GDI+ (Font en pixeles de XP); si no, el alto de arriba a abajo de la
         // letra (lo que cuenta stb_truetype), que sale un 10-15 % mas chica.
         internal Letra(Dibujo d, byte[] ttf, float tam, bool negritaSintetica = false, bool tamEm = false)
         {
-            Tam = tam;
+            Tam = tam; this.d = d; this.ttf = ttf;
             float alto = tam;
             int em, sube, baja;
             if (tamEm && MetricaEm(ttf, out em, out sube, out baja)) { alto = tam * (sube - baja) / (float)em; subeBase = sube / (float)em; }
+            this.alto = alto;
             engorda = negritaSintetica ? Math.Max(1, (int)Math.Round(tam / 16f)) : 0;
             lado = alto > 40 ? 1024 : 512;
+            fuente = Horneadas ? null : Fuente(ttf);
+            if (fuente == null) { tex = Hornea(); return; }
+            // solo medir: lo mismo que apunta el horneado de stb (stbtt_BakeFontBitmap) de cada letra, menos donde cae en el atlas
+            escala = StbTrueType.stbtt_ScaleForPixelHeight(fuente, alto);
+            for (int i = 0; i < 224; i++)
+            {
+                int g = StbTrueType.stbtt_FindGlyphIndex(fuente, 32 + i), avance, lsb, x0, y0, x1, y1;
+                StbTrueType.stbtt_GetGlyphHMetrics(fuente, g, &avance, &lsb);
+                StbTrueType.stbtt_GetGlyphBitmapBox(fuente, g, escala, escala, &x0, &y0, &x1, &y1);
+                glifo[i] = g;
+                car[i].x0 = 0; car[i].y0 = 0; car[i].x1 = (ushort)(x1 - x0); car[i].y1 = (ushort)(y1 - y0);   // por ahora solo su tamano
+                car[i].xadvance = escala * avance; car[i].xoff = x0; car[i].yoff = y0;
+            }
+            EspacioDe();
+            tex = d.AtlasBlanco(lado);   // vacio (todo transparente) con el cuadrito blanco de 4x4 en la esquina de abajo a la derecha
+            tex.TieneBlanco = true; tex.BlancoU = tex.BlancoV = (lado - 2f) / lado;
+        }
+        // el espacio entre palabras, al menos EspacioMinimo del tamano (L1 trae un espacio estrecho: a tamanos chicos las palabras se juntan)
+        private void EspacioDe() { if (EspacioMinimo > 0 && car[0].xadvance < EspacioMinimo * Tam) car[0].xadvance = (float)Math.Round(EspacioMinimo * Tam); }
+        // El horneado de antes: las 192 letras de golpe (con ROCOLA_LETRAS_HORNEADAS, o si un atlas se llena).
+        private Textura Hornea()
+        {
+            entera = true;
             byte[] alfa = new byte[lado * lado];
             StbTrueType.stbtt_BakeFontBitmap(ttf, 0, alto, alfa, lado, lado, 32, 224, car);
-            // el espacio entre palabras, al menos EspacioMinimo del tamano (L1 trae un espacio estrecho: a tamanos chicos las palabras se juntan)
-            if (EspacioMinimo > 0 && car[0].xadvance < EspacioMinimo * tam) car[0].xadvance = (float)Math.Round(EspacioMinimo * tam);
+            EspacioDe();
             bool blanco = true;   // si ninguna letra llega a la esquina de abajo a la derecha, ahi va el cuadrito blanco (4x4)
             foreach (StbTrueType.stbtt_bakedchar b in car) if (b.x1 > lado - 6 && b.y1 > lado - 6) { blanco = false; break; }
             if (blanco) for (int y = lado - 4; y < lado; y++) for (int x = lado - 4; x < lado; x++) alfa[y * lado + x] = 255;
-            byte[] rgba = new byte[lado * lado * 4];
-            for (int i = 0; i < alfa.Length; i++) { rgba[4 * i] = 255; rgba[4 * i + 1] = 255; rgba[4 * i + 2] = 255; rgba[4 * i + 3] = alfa[i]; }
-            tex = d.SubeBlanca(rgba, lado, lado);
-            if (blanco) { tex.TieneBlanco = true; tex.BlancoU = tex.BlancoV = (lado - 2f) / lado; }
+            byte[] la = new byte[lado * lado * 2];
+            for (int i = 0; i < alfa.Length; i++) { la[2 * i] = 255; la[2 * i + 1] = alfa[i]; }
+            Textura t = d.SubeLuminancia(la, lado, lado);
+            if (blanco) { t.TieneBlanco = true; t.BlancoU = t.BlancoV = (lado - 2f) / lado; }
+            return t;
+        }
+        // La letra i, dibujada en el atlas (la primera vez que se escribe). Falso si ya no cabe.
+        private bool Pon(int i)
+        {
+            int gw = car[i].x1, gh = car[i].y1;
+            if (px + gw + 1 >= lado) { py = pyAbajo; px = 1; }
+            // como stb (y + gh + 1 < lado), y sin pisar la esquina del cuadrito blanco (los ultimos 6 puntos de cada lado)
+            if (py + gh + 1 >= lado || (px + gw > lado - 6 && py + gh > lado - 6)) return false;
+            if (gw > 0 && gh > 0)
+            {
+                byte[] a = Trozo(gw * gh * 3);
+                fixed (byte* p = a)
+                {
+                    byte* alfa = p + gw * gh * 2;
+                    for (int k = 0; k < gw * gh; k++) alfa[k] = 0;
+                    StbTrueType.stbtt_MakeGlyphBitmap(fuente, alfa, gw, gh, gw, escala, escala, glifo[i]);
+                    for (int k = 0; k < gw * gh; k++) { p[2 * k] = 255; p[2 * k + 1] = alfa[k]; }
+                    d.SubeTrozo(tex, px, py, gw, gh, p);
+                }
+            }
+            car[i].x0 = (ushort)px; car[i].y0 = (ushort)py; car[i].x1 = (ushort)(px + gw); car[i].y1 = (ushort)(py + gh);
+            puesta[i] = true;
+            px += gw + 1;
+            if (py + gh + 1 > pyAbajo) pyAbajo = py + gh + 1;
+            return true;
+        }
+        private static byte[] trozo;
+        private static byte[] Trozo(int n) { if (trozo == null || trozo.Length < n) trozo = new byte[Math.Max(n, 64 * 1024)]; return trozo; }
+        // La fuente de un archivo, una vez: copiada fuera del recolector (stb_truetype guarda el puntero a sus datos).
+        private static readonly Dictionary<byte[], StbTrueType.stbtt_fontinfo> fuentes = new Dictionary<byte[], StbTrueType.stbtt_fontinfo>(ReferenceEqualityComparer.Instance);
+        private static StbTrueType.stbtt_fontinfo Fuente(byte[] ttf)
+        {
+            StbTrueType.stbtt_fontinfo f;
+            if (fuentes.TryGetValue(ttf, out f)) return f;
+            byte* p = (byte*)System.Runtime.InteropServices.Marshal.AllocHGlobal(ttf.Length);
+            System.Runtime.InteropServices.Marshal.Copy(ttf, 0, (IntPtr)p, ttf.Length);
+            f = new StbTrueType.stbtt_fontinfo();
+            if (StbTrueType.stbtt_InitFont(f, p, 0) == 0) { System.Runtime.InteropServices.Marshal.FreeHGlobal((IntPtr)p); f = null; }
+            return fuentes[ttf] = f;
         }
         // unitsPerEm (head) y el ascender y descender (hhea) del TTF: lo que usa stb_truetype para su alto.
         private static bool MetricaEm(byte[] f, out int em, out int sube, out int baja)
@@ -568,7 +681,14 @@ namespace Rocola.Pantalla
             return w;
         }
         internal static float EspacioMinimo;   // 0: el de la letra
+        internal int Usada;   // el ultimo cuadro en que se pidio (VistaGrafica.PodaLetras)
         internal void Libera(Dibujo d) { d.Borra(tex); }   // su textura (al cambiar de letra)
+        // El atlas se lleno (no pasa con los tamanos de la rocola: el horneado entero cabe): se hornea entero en la misma textura.
+        private void Rehace()
+        {
+            Textura t = Hornea();
+            d.Borra(tex); tex.Id = t.Id; tex.TieneBlanco = t.TieneBlanco; tex.BlancoU = t.BlancoU; tex.BlancoV = t.BlancoV;
+        }
         // Escribe con la linea base en y + 0,8 * tamano (y es el borde de arriba). Devuelve el ancho.
         internal float Escribe(Dibujo d, string s, float x, float y, Color4 c)
         {
@@ -576,7 +696,9 @@ namespace Rocola.Pantalla
             float x0 = x, base_ = y + Tam * subeBase;
             foreach (char ch in s)
             {
-                StbTrueType.stbtt_bakedchar b = car[Indice(ch)];
+                int ic = Indice(ch);
+                if (!entera && !puesta[ic] && !Pon(ic)) Rehace();
+                StbTrueType.stbtt_bakedchar b = car[ic];
                 float w = b.x1 - b.x0, h = b.y1 - b.y0;
                 if (w > 0 && h > 0)
                     for (int e = 0; e <= engorda; e++)
