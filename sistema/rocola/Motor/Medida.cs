@@ -59,6 +59,7 @@ namespace Rocola
                 // para fijar el objetivo del EQ automatico, y que bandas suyas tiene sentido corregir. Cuesta unas
                 // pocas decenas de FFT por cancion, nada al lado de descomprimirla entera.
                 bool soloCorte = false;
+                float[] cortesIa = IaCutsHz;   // la lista de esta cancion (CortesIa.cs), fija mientras se cosecha
                 // tramos: si el tema es corto se analiza entero; si no, PreSegs ventanas repartidas evitando
                 // el arranque y el final (intros/silencios finales no representan la sonoridad del tema).
                 // A FONDO: un solo "tramo" que abarca la cancion entera. En automatico: PreSegs ventanas.
@@ -215,8 +216,8 @@ namespace Rocola
                                             analizador.AnalyzeFrame(cuadroIa, 0);
                                             if (!soloCorte && hvVistos > IaWarmFrames &&
                                                 (hvStride == 1 || ((hvVistos + hvFase) % hvStride) == 0))
-                                                for (int q = 0; q < IaCutsHz.Length; q++)
-                                                    if (analizador.MakePair(IaCutsHz[q], hvFeat, hvTgt))
+                                                for (int q = 0; q < cortesIa.Length; q++)
+                                                    if (analizador.MakePair(cortesIa[q], hvFeat, hvTgt))
                                                     {
                                                         for (int z = 0; z < 28; z++) paresIa.Add(hvFeat[z]);
                                                         for (int z = 0; z < 12; z++) paresIa.Add(hvTgt[z]);
@@ -348,7 +349,7 @@ namespace Rocola
             return iaPairsTotal.ToString("#,0") + " ejemplos (" + tam
                    + (IaBudgetFull() ? ", tope alcanzado" : "") + ")";
         }
-        private static readonly float[] IaCutsHz = { 11000f, 13000f, 15000f, 16500f, 18000f };   // cortes simulados
+        // los cortes simulados: IaCutsHz, los cinco de siempre y los mas comunes de la biblioteca (CortesIa.cs)
         private string IaDataFile() { return RutaDatos("rocola_ia_datos.bin"); }
         private readonly object iaDoneLock = new object();
         private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco

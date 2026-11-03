@@ -141,6 +141,7 @@ namespace Rocola
             int n = 0;
             KeyValuePair<string, KeyValuePair<SonoridadIntegrada, FuenteMedida>> m;
             if (integCache == null) integCache = new Dictionary<string, SonoridadIntegrada>(StringComparer.OrdinalIgnoreCase);
+            try { RehaceCortesIa(); } catch { }   // IA2: los cortes de la cosecha, de los de la biblioteca (CortesIa.cs)
             while (medidas.TryDequeue(out m)) { PublicaIntegradaDeFuente(m.Key, m.Value.Key, m.Value.Value); n++; }
             MedidaCompleta mc;
             while (completas.TryDequeue(out mc))
