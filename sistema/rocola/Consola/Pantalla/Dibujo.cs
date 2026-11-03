@@ -72,7 +72,7 @@ namespace Rocola.Pantalla
                 int o = (y * L + x) * 4; pt[o] = pt[o + 1] = pt[o + 2] = 255; pt[o + 3] = (byte)(255 * a);
             }
             for (int i = (L + 2) * L * 4; i < pt.Length; i++) pt[i] = 255;   // dos filas transparentes y cuatro blancas debajo (el cuadrito blanco)
-            Punto = Sube(pt, L, L + 6);
+            Punto = SubeBlanca(pt, L, L + 6);
             Punto.TieneBlanco = true; Punto.BlancoU = 0.5f; Punto.BlancoV = (L + 4f) / (L + 6f);
             puntoV1 = L / (L + 6f);
         }
@@ -99,13 +99,26 @@ namespace Rocola.Pantalla
         }
 
         // Una textura RGBA (filas de arriba abajo).
-        internal Textura Sube(byte[] rgba, int ancho, int alto)
+        // BLANCO CON SU ALFA EN DOS BYTES (3-11-2026): las letras, el punto suave y la nebulosa son blancos con transparencia; en
+        // luminancia + alfa la tarjeta lee exactamente lo mismo (1, 1, 1, alfa) con la mitad de memoria y de lectura.
+        internal Textura SubeBlanca(byte[] rgba, int ancho, int alto)
+        {
+            byte[] la = new byte[ancho * alto * 2];
+            for (int i = 0, j = 0; j < la.Length; i += 4, j += 2)
+            {
+                if (rgba[i] != 255 || rgba[i + 1] != 255 || rgba[i + 2] != 255) return Sube(rgba, ancho, alto);   // no era blanca: como siempre
+                la[j] = 255; la[j + 1] = rgba[i + 3];
+            }
+            return Sube(la, ancho, alto, GL.LUMINANCE_ALPHA);
+        }
+        internal Textura Sube(byte[] rgba, int ancho, int alto) { return Sube(rgba, ancho, alto, GL.RGBA); }
+        private Textura Sube(byte[] rgba, int ancho, int alto, uint formato)
         {
             Vacia();   // lo pendiente se dibuja antes con su textura (subir cambia la textura atada)
             uint t; GL.GenTextures(1, &t);
             GL.BindTexture(GL.TEXTURE_2D, t);
             GL.PixelStorei(GL.UNPACK_ALIGNMENT, 1);
-            fixed (byte* p = rgba) GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, ancho, alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            fixed (byte* p = rgba) GL.TexImage2D(GL.TEXTURE_2D, 0, (int)formato, ancho, alto, 0, formato, GL.UNSIGNED_BYTE, p);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
             texActual = 0; texActualT = null;
@@ -446,6 +459,52 @@ namespace Rocola.Pantalla
         // Una imagen con su color (para tenir una textura blanca: las nebulosas).
         internal void ImagenTenida(Textura t, float x, float y, float w, float h, Color4 c) { Quad(t, x, y, w, h, 0, 0, 1, 1, c); }
 
+        // UNA IMAGEN CON MUCHO TRANSPARENTE, POR TRAMOS (3-11-2026; las nebulosas): la textura se parte en celdas de 'lado' texeles y se
+        // apuntan, fila a fila, los tramos de celdas con algo (una celda cuenta como vacia si ella y un texel alrededor -lo que lee el
+        // filtrado- son transparentes del todo). Al dibujarla solo van esos tramos, y los que caen dentro del recorte puesto: lo vacio no
+        // pintaba nada (alfa 0), asi que sale igual con bastante menos relleno.
+        internal sealed class Rejilla { public int Lado, TexW, TexH; public int[] Tramos; }   // fila, celda inicial, celda final (exclusiva)
+        internal static Rejilla HazRejilla(byte[] rgba, int w, int h, int lado)
+        {
+            int cols = (w + lado - 1) / lado, filas = (h + lado - 1) / lado;
+            List<int> t = new List<int>();
+            for (int fy = 0; fy < filas; fy++)
+            {
+                int empieza = -1;
+                for (int fx = 0; fx <= cols; fx++)
+                {
+                    bool algo = false;
+                    if (fx < cols)
+                        for (int y = Math.Max(0, fy * lado - 1); y < Math.Min(h, fy * lado + lado + 1) && !algo; y++)
+                            for (int x = Math.Max(0, fx * lado - 1); x < Math.Min(w, fx * lado + lado + 1); x++)
+                                if (rgba[(y * w + x) * 4 + 3] != 0) { algo = true; break; }
+                    if (algo && empieza < 0) empieza = fx;
+                    else if (!algo && empieza >= 0) { t.Add(fy); t.Add(empieza); t.Add(fx); empieza = -1; }
+                }
+            }
+            return new Rejilla { Lado = lado, TexW = w, TexH = h, Tramos = t.ToArray() };
+        }
+        internal void QuadRejilla(Textura t, Rejilla r, float x, float y, float w, float h, float u0, float v0, float u1, float v1, Color4 c)
+        {
+            if (c.A <= 0f) return;
+            if (r == null || sinLotes) { Quad(t, x, y, w, h, u0, v0, u1, v1, c); return; }
+            if (t.Id != texActual) { Vacia(); texActual = t.Id; texActualT = t; }
+            Forma(false, 0);
+            float su = w / (u1 - u0), sv = h / (v1 - v0);
+            float bx0 = Math.Max(0, rx0), by0 = Math.Max(0, ry0), bx1 = Math.Min(Ancho, rx1), by1 = Math.Min(Alto, ry1);
+            int[] tr = r.Tramos;
+            for (int i = 0; i < tr.Length; i += 3)
+            {
+                float uA = tr[i + 1] * r.Lado / (float)r.TexW, uB = Math.Min(1f, tr[i + 2] * r.Lado / (float)r.TexW);
+                float vA = tr[i] * r.Lado / (float)r.TexH, vB = Math.Min(1f, (tr[i] + 1) * r.Lado / (float)r.TexH);
+                float xa = x + (uA - u0) * su, xb = x + (uB - u0) * su, ya = y + (vA - v0) * sv, yb = y + (vB - v0) * sv;
+                if (Math.Max(xa, xb) <= bx0 || Math.Min(xa, xb) >= bx1 || Math.Max(ya, yb) <= by0 || Math.Min(ya, yb) >= by1) continue;   // fuera de lo que se ve
+                if (nv + 6 > vertices.Length / 8) { Vacia(); Forma(false, 0); }
+                V(xa, ya, uA, vA, c); V(xb, ya, uB, vA, c); V(xa, yb, uA, vB, c);
+                V(xb, ya, uB, vA, c); V(xb, yb, uB, vB, c); V(xa, yb, uA, vB, c);
+            }
+        }
+
         public void Dispose() { }
     }
 
@@ -477,7 +536,7 @@ namespace Rocola.Pantalla
             if (blanco) for (int y = lado - 4; y < lado; y++) for (int x = lado - 4; x < lado; x++) alfa[y * lado + x] = 255;
             byte[] rgba = new byte[lado * lado * 4];
             for (int i = 0; i < alfa.Length; i++) { rgba[4 * i] = 255; rgba[4 * i + 1] = 255; rgba[4 * i + 2] = 255; rgba[4 * i + 3] = alfa[i]; }
-            tex = d.Sube(rgba, lado, lado);
+            tex = d.SubeBlanca(rgba, lado, lado);
             if (blanco) { tex.TieneBlanco = true; tex.BlancoU = tex.BlancoV = (lado - 2f) / lado; }
         }
         // unitsPerEm (head) y el ascender y descender (hhea) del TTF: lo que usa stb_truetype para su alto.

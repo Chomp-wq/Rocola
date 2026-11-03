@@ -676,3 +676,19 @@ Automático y sin interruptor (no cambia el aspecto):
 Comparado con reloj fijo contra la versión anterior en 11 escenas y en el mismo cuadro con y sin los ahorros (diferencia máxima 2
 de 255). Por cuadro a 1920x1080 (pintadas / mezcladas): pared 3,0 / 1,5; disco 3,4 / 2,0; reposo 3,3 / 2,0; atracción 3,9 / 2,5;
 ajustes 2,0 / 0,95 (antes casi todo mezclado). **Nada medido en el A4.**
+
+## Extra (3-11-2026, cuarta parte): lo más pesado, el cielo y las texturas
+
+Automático y sin interruptor (no cambia el aspecto):
+
+- **Nebulosas por tramos**: la textura de la nebulosa es transparente del todo en un 35 % de sus celdas de 8x8 texeles (contando un
+  texel alrededor, lo que lee el filtrado). Se apuntan una vez los tramos de celdas con algo y solo esos se dibujan, y solo los que
+  caen en la franja del cielo que se rehace en ese cuadro. Lo saltado no pintaba nada (alfa 0).
+- **Blanco con alfa en dos bytes**: los atlas de letras, el punto suave de los halos y la nebulosa se suben en luminancia + alfa
+  (la tarjeta lee lo mismo: 1, 1, 1, alfa) con la mitad de memoria y de lectura que en RGBA.
+- Medido también lo del procesador (`ROCOLA_BANCO_SIN_GL=1`): preparar un cuadro cuesta aquí de 0,1 a 0,6 ms; lo que queda es de la
+  tarjeta.
+
+Con reloj fijo, igual que la versión anterior (salvo los contadores que avanzan solos). Por cuadro a 1920x1080 (pintadas /
+mezcladas): pared 2,8 / 1,3; disco 3,25 / 1,8; reposo 3,1 / 1,8; atracción 3,7 / 2,35; ajustes 2,0 / 0,94. De ahí, el cielo es
+1 pantalla (poner la capa, opaca) más unas 0,45 (la franja que se rehace). **Nada medido en el A4.**

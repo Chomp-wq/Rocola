@@ -10,7 +10,7 @@ namespace Rocola
 {
     internal sealed partial class VistaGrafica
     {
-        private Textura nebulosa, luna; private int lunaDia = -1;
+        private Textura nebulosa, luna; private int lunaDia = -1; private Dibujo.Rejilla nebulosaTramos;
         private float[] brillantes;   // x, y (0..1), tamano, fase, tinte
 
         // La altura del horizonte (la linea de luz de XP, a 662 de 768): abajo de ella va la franja de lo que suena.
@@ -109,15 +109,15 @@ namespace Rocola
             double f = t * 0.035;   // una vuelta cada tres minutos
             float c = (float)Math.Cos(f), s = (float)Math.Sin(f);
             float fuerza = 0.55f + 0.25f * pMedios;
-            d.ImagenTenida(nebulosa, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * alfa));
-            d.ImagenTenida(nebulosa, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.85f * alfa));
+            d.QuadRejilla(nebulosa, nebulosaTramos, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * alfa));
+            d.QuadRejilla(nebulosa, nebulosaTramos, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.85f * alfa));
             if (nebVivasAhora)
             {
                 // V1: dos capas mas, volteadas y a otra escala, que se funden una en otra despacio: las nubes cambian de forma
                 float f1 = (float)(0.5 + 0.5 * Math.Sin(t * 0.09)), f2 = 1f - f1, ex = W * 0.25f, ey = H * 0.25f;
                 float c2 = (float)Math.Cos(t * 0.021 + 1.7), s2 = (float)Math.Sin(t * 0.027 + 0.4);
-                d.Quad(nebulosa, -ex + c2 * ex * 0.5f, -ey + s2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 1, 0, 0, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * 0.55f * f1 * alfa));
-                d.Quad(nebulosa, -ex - s2 * ex * 0.5f, -ey + c2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 0, 1, 1, 0, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.50f * f2 * alfa));
+                d.QuadRejilla(nebulosa, nebulosaTramos, -ex + c2 * ex * 0.5f, -ey + s2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 1, 0, 0, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * 0.55f * f1 * alfa));
+                d.QuadRejilla(nebulosa, nebulosaTramos, -ex - s2 * ex * 0.5f, -ey + c2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 0, 1, 1, 0, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.50f * f2 * alfa));
             }
         }
         // Ruido de valores en varias escalas (nubes), mas fuerte arriba y en manchas; blanco con su alfa.
@@ -146,7 +146,8 @@ namespace Rocola
                     int o4 = (y * w + x) * 4;
                     px[o4] = px[o4 + 1] = px[o4 + 2] = 255; px[o4 + 3] = (byte)Math.Min(255, a * 255);
                 }
-            return d.Sube(px, w, h);
+            nebulosaTramos = Dibujo.HazRejilla(px, w, h, 8);
+            return d.SubeBlanca(px, w, h);
         }
 
         // ---- las estrellas ----
