@@ -1,5 +1,7 @@
 # IA: aprovechar los datos de la rocola para entrenar mejor (propuesta, 3-11-2026)
 
+**Elegidas: IA1 e IA2 (hechas, ver sistema/ETAPA2.md, decimosexta parte).**
+
 Idea del dueño: que las IA aprovechen los datos en crudo que junta la rocola, junto con su propia red, para tener
 más datos y mejores resultados. Esto es lo que hay hoy, lo que se midió y lo que se propone. **Nada hecho todavía:
 falta que el dueño elija.**

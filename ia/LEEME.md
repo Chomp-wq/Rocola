@@ -264,3 +264,9 @@ Sin modelo instalado la rocola usa el promedio (exactamente como antes).
 paridad float32 <=1e-4 y guard del objetivo runtime ±6dB. La prueba no selecciona checkpoints.
 
 Hacen falta al menos 200 canciones sanas analizadas para intentarlo.
+
+## Rocola OS: la rocola entrena sola (3-11-2026)
+
+En Rocola OS el entrenador del DSEE va también dentro del programa (`sistema/rocola/Motor/EntrenaIa.cs`), con las mismas reglas que
+`entrenar_ia.py`, y en reposo deja una candidata (`IAS/rocola_ia.candidata.bin`) que el dueño compara a ciegas antes de quedarse con
+ella. Este entrenador de Python sigue valiendo con el mismo material (la cosecha añade cortes de la biblioteca, IA2, sin cambiar el extractor).

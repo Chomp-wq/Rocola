@@ -224,6 +224,7 @@ namespace Rocola
             l.Add(Ciego("Comparar a ciegas: billar o fábrica", CiegoBillar));
             l.Add(Ciego("Comparar a ciegas: con o sin afinar", CiegoAfinacion));
             l.Add(Ciego("Comparar a ciegas: presencia nueva o de antes", CiegoPresencia));
+            l.Add(Ciego("Comparar a ciegas: la IA de ahora o la nueva", CiegoIaNueva));   // IA1 (IaNueva.cs)
             Ajuste voto = new Ajuste { Grupo = "Lo que suena ahora", Nombre = "Me gusta esta (un voto por tramo)", Herramienta = true };
             voto.Valor = delegate { return ciegoActivo ? (ciegoVotado != null && ciegoTramo >= 0 && ciegoVotado[ciegoTramo] ? "VOTADO" : "VOTAR") : "—"; };
             voto.Cambia = delegate (int d) { VotaCiego(); };
@@ -241,6 +242,23 @@ namespace Rocola
             Ajuste gen = Interruptor("Mejoras con IA", "DSEE con el modelo de su genero (I3)", "dsee_genero", () => dseePorGenero, v => dseePorGenero = v, false);
             gen.Nota = delegate { return "Cada cancion usa el modelo de su genero, si se entreno. Solo con el DSEE encendido; desde la siguiente cancion."; };
             l.Add(gen);
+            // IA1: LA IA QUE ENTRENA LA PROPIA ROCOLA (IaNueva.cs, EntrenaIa.cs): herramientas, sin nada guardado en la configuracion.
+            Ajuste en = new Ajuste { Grupo = "Mejoras con IA", Nombre = "Entrenar la IA ahora", Herramienta = true };
+            en.Valor = delegate { return entrenando ? "ENTRENANDO" : "EMPEZAR"; };
+            en.Cambia = delegate (int d) { iaMensaje = EntrenaAhora(); };
+            en.Bloqueo = delegate { return entrenando ? "ya esta entrenando" : null; };
+            en.Nota = delegate { return (iaMensaje.Length > 0 && !entrenando ? iaMensaje + " " : "") + TextoEntreno(); };
+            l.Add(en);
+            Ajuste qd = new Ajuste { Grupo = "Mejoras con IA", Nombre = "Quedarse con la IA nueva", Herramienta = true };
+            qd.Valor = delegate { return "PONER"; };
+            qd.Cambia = delegate (int d) { iaMensaje = QuedateConIaNueva(); };
+            qd.Bloqueo = delegate { return !HayIaNueva ? "no hay IA nueva" : !iaNuevaGano ? "antes tiene que ganar a ciegas (Lo que suena ahora)" : null; };
+            l.Add(qd);
+            Ajuste ds = new Ajuste { Grupo = "Mejoras con IA", Nombre = "Descartar la IA nueva", Herramienta = true };
+            ds.Valor = delegate { return "APARTAR"; };
+            ds.Cambia = delegate (int d) { iaMensaje = DescartaIaNueva(); };
+            ds.Bloqueo = delegate { return !HayIaNueva ? "no hay IA nueva" : null; };
+            l.Add(ds);
             // CALIDAD DEL SONIDO (la tarjeta de «Ajustes del sonido» de XP): el EQ automatico, los graves y el realce, cada uno con su
             // «lo decide la rocola» y su barra a mano; con el modo billar los decide el modo
             Ajuste eqA = Interruptor("Calidad del sonido", "EQ automatico: lo decide la rocola", "eq_automatico", () => eqAuto, v => eqAuto = v, true);

@@ -907,3 +907,27 @@ Probado aquí: dos vídeos de prueba que ffmpeg (EBU R128) da a 15,6 dB uno del 
 (biblioteca → repaso → guardado → ganancia) y sin volver a medir al arrancar otra vez; con mpv 0.37 la opción se acepta, la subida
 es exacta (+12,04 dB), un clic sale en la misma muestra y los picos se quedan en 0,880; un vídeo sin sonido queda como mudo y suena
 con la perilla. `BR2_PACKAGE_FFMPEG_FFMPEG=y` queda escrito en el defconfig. **No probado en el A4** (ni cuánto tarda allí medir un vídeo).
+
+## Extra (3-11-2026, decimosexta parte): la IA del DSEE aprende en la propia rocola (IA1 e IA2)
+
+Decisión del dueño sobre `IA_DATOS_EN_CRUDO_MODEST_2026-11-03.md` («IA1, IA2»).
+
+- **IA2, cortar donde corta tu música** (`Motor/CortesIa.cs`): la cosecha simula además hasta cuatro cortes de los que de verdad
+  tiene la biblioteca (los más comunes entre los MP3 dañados, a 250 Hz, con al menos 3 canciones, a 400 Hz de los fijos). La cuenta de
+  cada ejemplo no cambia (`MakePair`, extractor 2): el entrenador de Python y lo ya juntado siguen valiendo. Probado: con 3 MP3 cortados
+  a 14 kHz, la siguiente canción sana se cosecha también a 14 kHz (6 cortes; unos 20 % más ejemplos); 17,5 kHz, con solo 2, no entra.
+- **IA1, que la rocola entrene sola** (`Motor/EntrenaIa.cs`, `Motor/IaNueva.cs`): el entrenador de `ia/entrenar_ia.py` pasado a C#,
+  con sus reglas (índice con CRC, reparto por grupo 80/10/10 con la misma semilla, pesos por grupo y canción, Adam, la validación elige
+  y la prueba decide contra la curva fija y la red puesta, en bruto y como suena). Entrena en reposo (nada sonando, cola vacía, 15 min
+  sin botones), como mucho cada 20 h y con material nuevo, a nice 19, y se corta en cuanto alguien usa la rocola. **Nunca se pone
+  sola**: queda como `IAS/rocola_ia.candidata.bin`; en Ctrl+F3, «Comparar a ciegas: la IA de ahora o la nueva» (Lo que suena ahora) y,
+  si gana, «Quedarse con la IA nueva» (Mejoras con IA; la de antes queda como `.anterior-N`). También «Entrenar la IA ahora» y
+  «Descartar la IA nueva»; `rocola-consola --entrena-ia` para medir cuánto tarda. **Con el modo billar encendido el DSEE no suena**
+  (regla del modo), así que la comparación pide apagarlo.
+
+Probado aquí con 33 185 ejemplos cosechados por la rocola de 12 piezas sintéticas: el mismo reparto que Python (15 870 / 8 660 / 8 655,
+6/3/3 grupos), el mismo error de la curva fija (0,4192) y de la red puesta (1,8759), y la red nueva 0,0935 (Python, 0,0960); Python
+carga la candidata; 17 s (24 s con el programa nativo, nice 19); un botón lo corta al momento y se apunta como cortado; la red nueva,
+puesta en la cadena, rehace los agudos de una pieza que no vio a 3-4 dB del original (la puesta, a 8-26 dB), pero es del mismo tipo de
+sonido sintético. Se aparta de Python en: muestra de hasta 400 000 ejemplos, azar de .NET y sin el informe por clases de señal.
+**No probado en el A4**: falta medir cuánto tarda allí con el material de verdad y oír la comparación.

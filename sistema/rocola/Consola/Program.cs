@@ -32,6 +32,15 @@ namespace Rocola
                     for (int j = i + 1; j < args.Length; j++) Console.WriteLine(mr.PruebaRepaso(args[j]));
                     return 0;
                 }
+                else if (args[i] == "--entrena-ia")   // IA1: entrenar la IA del DSEE ya, con lo cosechado (para medir cuanto tarda; IaNueva.cs)
+                {
+                    Form1 me = new Form1(); me.Arranca();
+                    Console.WriteLine(me.EntrenaAhora());
+                    while (me.TextoEntreno().StartsWith("Entrenando")) System.Threading.Thread.Sleep(500);
+                    Console.WriteLine(me.TextoEntreno());
+                    me.Cierra();
+                    return 0;
+                }
                 else if (args[i] == "--wav" && i + 1 < args.Length) wav = args[++i];
                 else if (args[i] == "--dispositivo" && i + 1 < args.Length) dispositivo = args[++i];
                 else if (args[i] == "--biblioteca") biblioteca = true;

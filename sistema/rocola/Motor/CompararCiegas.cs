@@ -27,7 +27,7 @@ namespace Rocola
     public partial class Form1
     {
         internal const int CiegoTramos = 8, CiegoTramoSeg = 15;
-        public const int CiegoBillar = 0, CiegoAfinacion = 1, CiegoPresencia = 2;   // que se compara
+        public const int CiegoBillar = 0, CiegoAfinacion = 1, CiegoPresencia = 2, CiegoIaNueva = 3;   // que se compara (CiegoIaNueva: IaNueva.cs)
         private bool presenciaSinGrave = true;   // la presencia del billar mide sin el grave (P1); false solo en un tramo "de antes"
         private bool ciegoActivo, ciegoGuardado;
         public bool CiegoActivo { get { return ciegoActivo; } }
@@ -52,15 +52,27 @@ namespace Rocola
         {
             if (a + b == 0) return "No votaste en ningun tramo: no hay ganador.";
             if (a == b) return "Empate: " + a + " votos para cada uno.";
-            string nomA = que == CiegoAfinacion ? "con tu afinacion" : que == CiegoPresencia ? "la presencia nueva" : "el modo billar";
-            string nomB = que == CiegoAfinacion ? "sin tu afinacion" : que == CiegoPresencia ? "la presencia de antes" : "la cadena de fabrica";
+            string nomA = que == CiegoAfinacion ? "con tu afinacion" : que == CiegoPresencia ? "la presencia nueva" : que == CiegoIaNueva ? "la IA nueva" : "el modo billar";
+            string nomB = que == CiegoAfinacion ? "sin tu afinacion" : que == CiegoPresencia ? "la presencia de antes" : que == CiegoIaNueva ? "la IA de ahora" : "la cadena de fabrica";
             return "Te gusto mas " + (a > b ? nomA : nomB) + ": " + Math.Max(a, b) + " votos contra " + Math.Min(a, b) + ".";
         }
 
         public string EmpiezaCiego(int que)
         {
             if (ciegoActivo) return "";
-            if (!localAuto) return "Enciende el modo billar para comparar.";
+            if (que == CiegoIaNueva)
+            {
+                // LA IA NUEVA (IaNueva.cs): solo se oye donde el DSEE trabaja con el modelo general.
+                if (!HayIaNueva) return "No hay IA nueva: la rocola la entrena sola en reposo\n(o «Entrenar la IA ahora» en Mejoras con IA).";
+                if (localAuto) return "Con el modo billar encendido el DSEE no suena:\napagalo para oir la IA.";
+                if (!sbrOn || !sbrAllowed) return "Enciende «Reconstruir los agudos (DSEE)» en Mejoras con IA.";
+                if (nowPlaying == null || nowPlaying.Song == null || SonandoVideo) return "Pon una cancion con los agudos cortados para comparar.";
+                float[] c; float corte = eqCache.TryGetValue(nowPlaying.Song.Path, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f;
+                if (corte >= EqSanaHz) return "Esta cancion trae sus agudos completos: el DSEE no la toca.\nPrueba con una de agudos cortados.";
+                CadenaCancion ci = cadenaSonando;
+                if (ci != null && ci.Sbr != null && ci.Sbr.Red != null) return "Esta cancion usa la IA de su genero (I3):\nprueba con otra o apaga I3.";
+            }
+            else if (!localAuto) return "Enciende el modo billar para comparar.";
             if (que == CiegoAfinacion && CorreccionAfinada(AfinadoPromedio(), afinadoPonderacion) == null)
                 return "Anota antes las bandas de la voz (250 Hz a 2 kHz) en\n\"Afinar el local con el celular\".";
             if (nowPlaying == null || nowPlaying.Song == null || SonandoVideo) return "Pon una cancion para comparar.";
@@ -72,10 +84,10 @@ namespace Rocola
             }
             if (sinMejoras) PonSinMejoras(false);
             CadenaCancion cs = cadenaSonando; if (cs != null && cs.Margen != null) cs.Margen.Descarta = true;   // (1) esta vuelta no se aprende
-            ciegoQue = que == CiegoAfinacion || que == CiegoPresencia ? que : CiegoBillar;
+            ciegoQue = que == CiegoAfinacion || que == CiegoPresencia || que == CiegoIaNueva ? que : CiegoBillar;
             ciegoOrden = OrdenCiego(new Random()); ciegoVotado = new bool[CiegoTramos];
             ciegoVotosBillar = ciegoVotosFabrica = 0; ciegoTramo = -1; ciegoResultado = "";
-            ciegoGuardado = ciegoQue == CiegoAfinacion ? afinadoUsar : ciegoQue == CiegoPresencia ? presenciaSinGrave : localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
+            ciegoGuardado = ciegoQue == CiegoAfinacion ? afinadoUsar : ciegoQue == CiegoPresencia ? presenciaSinGrave : ciegoQue == CiegoIaNueva ? false : localAuto; ciegoActivo = true; ciegoInicio = DateTime.Now; ciegoCancion = nowPlaying;
             CiegoTick();
             return "";
         }
@@ -100,9 +112,15 @@ namespace Rocola
             ciegoActivo = false; ciegoTramo = -1;
             CiegoPon(ciegoGuardado);
             ciegoResultado = porQue + ResultadoCiego(ciegoVotosBillar, ciegoVotosFabrica, ciegoQue);
+            if (ciegoQue == CiegoIaNueva)
+            {
+                iaNuevaGano = porQue.Length == 0 && ciegoVotosBillar > ciegoVotosFabrica;   // solo una comparacion entera cuenta
+                if (iaNuevaGano) ciegoResultado += "\nSi te convence: «Quedarse con la IA nueva» (Mejoras con IA).";
+            }
         }
         private void CiegoPon(bool a)
         {
+            if (ciegoQue == CiegoIaNueva) { PonIaComparada(a); return; }
             if (ciegoQue == CiegoPresencia)
             {
                 presenciaSinGrave = a;
@@ -119,7 +137,7 @@ namespace Rocola
             if (ciegoActivo && ciegoVotado != null)
             {
                 int votos = 0; for (int i = 0; i < CiegoTramos; i++) if (ciegoVotado[i]) votos++;
-                return (ciegoQue == CiegoAfinacion ? "Con o sin afinar: tramo " : ciegoQue == CiegoPresencia ? "Presencia nueva o de antes: tramo " : "Billar o fabrica: tramo ") + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
+                return (ciegoQue == CiegoAfinacion ? "Con o sin afinar: tramo " : ciegoQue == CiegoPresencia ? "Presencia nueva o de antes: tramo " : ciegoQue == CiegoIaNueva ? "IA de ahora o nueva: tramo " : "Billar o fabrica: tramo ") + (ciegoTramo + 1) + " de " + CiegoTramos + " (cambia cada " + CiegoTramoSeg + " s). Votos: " + votos + "."
                      + (ciegoTramo >= 0 && ciegoVotado[ciegoTramo] ? "\nEste tramo ya tiene tu voto." : "\nToca «Me gusta esta» si este tramo te suena mejor.");
             }
             return !string.IsNullOrEmpty(ciegoResultado) ? ciegoResultado : "A ciegas, 2 min: cambia cada 15 s entre dos formas de sonar sin\ndecir cual (el billar o la de fabrica; con o sin tu afinacion; la\npresencia nueva o la de antes). Vota los tramos que te suenen mejor.";

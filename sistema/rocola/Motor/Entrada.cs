@@ -206,6 +206,9 @@ namespace Rocola
                 catch { }   // una recarga invalida no destruye el ultimo modelo valido
             }
 
+            // Sin red (la comparacion a ciegas de la IA nueva, si no habia ninguna puesta): vuelve la curva clasica.
+            public void Descarga() { lock (modeloLock) { Loaded = false; W = null; B = null; } }
+
             // y = red(x). Capas ocultas con tanh; la de salida lineal. Devuelve false si no hay modelo.
             public bool Predict(float[] x, float[] y)
             {

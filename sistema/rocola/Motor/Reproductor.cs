@@ -160,6 +160,7 @@ namespace Rocola
         // Al cerrar: todo lo aprendido, al disco, y espera a que se escriba (como al cerrar la rocola de XP).
         public void Cierra()
         {
+            cerrandoEntreno = true;   // el entrenamiento de la IA, si iba, se corta (IaNueva.cs)
             try { SaveLoudCache(); } catch { }
             try { SaveIntegCache(); } catch { }
             try { FlushEqIfDirty(); } catch { }
