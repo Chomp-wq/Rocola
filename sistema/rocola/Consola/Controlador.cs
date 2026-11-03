@@ -565,7 +565,7 @@ namespace Rocola
             }
         }
 
-        // LOS VIDEOS: con mpv (en Rocola OS, por KMS y ALSA), a pantalla completa y con el volumen de los videos de XP (video_vol=). La
+        // LOS VIDEOS: con mpv (en Rocola OS, por KMS y ALSA), a pantalla completa y con el volumen de cada video (medido, al de las canciones; si no, video_vol= de XP). La
         // rocola cede la pantalla mientras tanto; MONEDA sigue contando y SALTAR lo corta (como en XP).
         private System.Diagnostics.Process video;
         private StringBuilder errorVideo;   // lo que dijo mpv (si falla, va al aviso y a la salida de la rocola: /root/rocola.txt)
@@ -579,8 +579,15 @@ namespace Rocola
                 motor.PausaRepaso = true;   // mpv necesita el procesador
                 System.Diagnostics.ProcessStartInfo pi = new System.Diagnostics.ProcessStartInfo(Mpv);
                 foreach (string a in new[] { "--fs", "--no-input-default-bindings", "--no-terminal", "--log-file=/tmp/rocola-mpv.txt", "--msg-level=all=warn", "--vo=gpu,drm", "--gpu-context=drm",
-                    "--ao=alsa", "--volume=" + motor.VolumenVideos })
+                    "--ao=alsa", "--volume=100" })
                     pi.ArgumentList.Add(a);
+                // EL VOLUMEN DEL VIDEO (3-11-2026): antes «--volume=85», pero el volumen de mpv es cubico (85 = 0,85^3: -4,2 dB, no los
+                // -1,4 dB de XP). Ahora la ganancia va exacta en el limitador de ffmpeg (alimiter: level_in), que ademas para los picos en
+                // el techo de la cadena de la rocola (-1,1 dB) si un video flojo se sube; con su retraso compensado (latency), la imagen
+                // y el sonido siguen juntos. Medido o no, lo decide el motor (VolumenVideo).
+                double g = Math.Max(0.015625, Math.Min(64.0, motor.VolumenVideo(ruta)));
+                pi.ArgumentList.Add("--af=lavfi=[alimiter=level_in=" + g.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
+                    + ":limit=" + motor.TechoVideos.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ":attack=5:release=80:level=0:latency=1]");
                 // la misma tarjeta que la musica (SalidaAlsa.Elige: la del amplificador, directa), no la 0 por su mezclador
                 string tarjeta = dispositivo == "default" ? SalidaAlsa.Elige() : dispositivo;
                 if (tarjeta != "default") pi.ArgumentList.Add("--audio-device=alsa/" + tarjeta);

@@ -80,6 +80,9 @@ BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_DEJAVU=y
 # los videos de la rocola: mpv, por KMS y ALSA (la rocola le cede la pantalla mientras suena)
 BR2_PACKAGE_MPV=y
+# ffmpeg (el programa): mide el sonido de los videos para emparejarlos con las canciones (rocola/Motor/AudioDeVideo.cs)
+BR2_PACKAGE_FFMPEG=y
+BR2_PACKAGE_FFMPEG_FFMPEG=y
 # el descompresor de MP3 de la rocola (2-11-2026: rocola/Motor/Mpg123.cs; NLayer se comia un cuadro en algunos y es ~8 veces mas lento)
 BR2_PACKAGE_MPG123=y
 # INTERNET (1-11-2026): por cable (la Realtek del A4), con DHCP; la hora por NTP (BusyBox) para que las conexiones seguras valgan.

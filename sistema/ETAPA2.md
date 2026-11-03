@@ -885,3 +885,25 @@ y no queda nada aunque la rocola se caiga. Si mpg123 no puede, NLayer como antes
 Probado con un MP3 de 20 s a 44,1 kHz + 2 s a 48 kHz + 20 s a 44,1 kHz: con mpg123 suena y se mide entero (40,05 s: los dos tramos de
 la dominante); con NLayer, sobre la misma reconstrucción, **se paraba a los 20 s** y la segunda mitad no sonaba. El descomprimir del
 repaso baja de 628 a 52 ms. No quedó ningún temporal. **No probado en el A4.**
+
+## Extra (3-11-2026, decimoquinta parte): los vídeos, al volumen de las canciones
+
+En XP los vídeos los pone el reproductor de Windows y la rocola no puede abrir su sonido: nunca se miden, y como ese reproductor solo
+sabe **bajar** (0 a 100), la perilla «Volumen de los videos» dejaba hueco (85) y un vídeo grabado flojo se quedaba flojo. En Rocola OS
+los pone mpv, que sí puede subir, y el sistema trae ffmpeg. Lo que ya no hace falta y lo que se hace mejor:
+
+- **El repaso mide el sonido de los vídeos** (`Motor/AudioDeVideo.cs`): ffmpeg saca solo la pista de sonido (sin descomprimir la
+  imagen), en coma flotante a 48 kHz, por una tubería, y se mide como XP medía un vídeo (`MeasureFile`: cuánto suena). Van detrás de
+  las canciones, con la prioridad baja del repaso (ffmpeg hereda el nice 19: comprobado) y en pausa mientras suena un vídeo. Se guarda
+  como lo demás (`rocola_volumen.txt`) y no se vuelve a medir.
+- **Cada vídeo medido suena al nivel de las canciones** (`VolumenVideo`, la cuenta de `VideoVolumeFor` de XP sin el tope de 100): con
+  el nivelado encendido, al objetivo «Videos y canciones aún sin medir», de −16 a +12 dB. La perilla vale para los que aún no se
+  midieron (o sin nivelado); su nota en Ctrl+F3 lo dice.
+- **El volumen va exacto y con limitador**: antes se pasaba `--volume=85`, pero el volumen de mpv es cúbico (85 → −4,2 dB, no los
+  −1,4 de XP: medido). Ahora la ganancia va en el limitador de ffmpeg dentro de mpv (`alimiter`, `level_in`), que para los picos en el
+  techo de la cadena de la rocola (0,88, −1,1 dB) cuando un vídeo flojo se sube, con su retraso compensado (imagen y sonido juntos).
+
+Probado aquí: dos vídeos de prueba que ffmpeg (EBU R128) da a 15,6 dB uno del otro, la rocola los mide a 15,6 dB; el recorrido entero
+(biblioteca → repaso → guardado → ganancia) y sin volver a medir al arrancar otra vez; con mpv 0.37 la opción se acepta, la subida
+es exacta (+12,04 dB), un clic sale en la misma muestra y los picos se quedan en 0,880; un vídeo sin sonido queda como mudo y suena
+con la perilla. `BR2_PACKAGE_FFMPEG_FFMPEG=y` queda escrito en el defconfig. **No probado en el A4** (ni cuánto tarda allí medir un vídeo).

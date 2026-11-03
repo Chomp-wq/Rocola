@@ -13,6 +13,7 @@ namespace Rocola
         private readonly NLayer.MpegFile mp3;
         private readonly Mpg123Lector rapido;
         private readonly WaveStream wav;
+        private readonly AudioDeVideo video;          // el sonido de un video, por ffmpeg (solo para medirlo: AudioDeVideo.cs)
         private readonly ISampleProvider muestras;   // las del WAV, ya en coma flotante
         private readonly int canalesArchivo;
         private readonly WaveFormat formato;          // estereo (o los canales del archivo, para medir)
@@ -39,6 +40,13 @@ namespace Rocola
                 else mp3 = new NLayer.MpegFile(ruta);
                 canalesArchivo = mp3.Channels;
                 formato = WaveFormat.CreateIeeeFloatWaveFormat(mp3.SampleRate, comoEstereo ? 2 : canalesArchivo);
+            }
+            else if (!comoEstereo && EsDeVideo(ruta))
+            {
+                video = AudioDeVideo.Abre(ruta);
+                if (video == null) throw new NotSupportedException("sin el sonido del video (ffmpeg)");
+                canalesArchivo = AudioDeVideo.Canales;
+                formato = WaveFormat.CreateIeeeFloatWaveFormat(AudioDeVideo.Tasa, AudioDeVideo.Canales);
             }
             else
             {
@@ -113,12 +121,18 @@ namespace Rocola
         private static int Clave(Mp3Frame f) { return f.SampleRate * 4 + (f.ChannelMode == ChannelMode.Mono ? 1 : 2); }
 
         public WaveFormat WaveFormat { get { return formato; } }
-        public TimeSpan Duracion { get { return rapido != null ? rapido.Duracion : mp3 != null ? mp3.Duration : wav.TotalTime; } }
+        public TimeSpan Duracion { get { return video != null ? video.Duracion : rapido != null ? rapido.Duracion : mp3 != null ? mp3.Duration : wav.TotalTime; } }
         public TimeSpan Posicion
         {
-            get { return rapido != null ? rapido.Posicion : mp3 != null ? mp3.Time : wav.CurrentTime; }
-            set { if (rapido != null) rapido.Posicion = value; else if (mp3 != null) mp3.Time = value; else wav.CurrentTime = value; }
+            get { return video != null ? video.Posicion : rapido != null ? rapido.Posicion : mp3 != null ? mp3.Time : wav.CurrentTime; }
+            set
+            {
+                if (video != null) { if (Math.Abs((value - video.Posicion).TotalSeconds) > 0.05) throw new NotSupportedException("el sonido de un video solo se lee de corrido"); }
+                else if (rapido != null) rapido.Posicion = value; else if (mp3 != null) mp3.Time = value; else wav.CurrentTime = value;
+            }
         }
+        private static readonly string[] ExtVideo = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };   // las de XP (VideoExt)
+        private static bool EsDeVideo(string ruta) { return Array.IndexOf(ExtVideo, Path.GetExtension(ruta).ToLowerInvariant()) >= 0; }
 
         public int Read(Span<float> destino)
         {
@@ -137,6 +151,7 @@ namespace Rocola
         private int LeeArchivo(Span<float> d)
         {
             if (rapido != null) return rapido.Read(d);
+            if (video != null) return video.Read(d);
             if (mp3 == null) return muestras.Read(d);
             if (apoyo.Length < d.Length) apoyo = new float[d.Length];
             int n = mp3.ReadSamples(apoyo, 0, d.Length);
@@ -144,6 +159,6 @@ namespace Rocola
             return Math.Max(0, n);
         }
 
-        public void Dispose() { if (rapido != null) rapido.Dispose(); if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
+        public void Dispose() { if (video != null) video.Dispose(); if (rapido != null) rapido.Dispose(); if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
     }
 }

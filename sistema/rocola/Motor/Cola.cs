@@ -48,6 +48,21 @@ namespace Rocola
         }
         public void AcaboElVideo() { nowPlaying = null; SaveState(); }
         public int VolumenVideos { get { return videoVol; } }
+        // EL VOLUMEN DE UN VIDEO EN ROCOLA OS (3-11-2026; en XP, VideoVolumeFor de Form1.Video.cs), como factor de la amplitud del archivo.
+        // En XP el reproductor de Windows solo sabia BAJAR (0 a 100): por eso la perilla dejaba hueco (85) y un video flojo se quedaba
+        // flojo. Aqui mpv puede subir, y el sonido de los videos se mide (AudioDeVideo.cs): uno medido, con el nivelado encendido, va al
+        // mismo nivel que las canciones sin medir (nivel_objetivo=, «Videos y canciones aun sin medir»), entre -16 y +12 dB como en XP,
+        // y la perilla ya no hace falta (en XP, el base que elegia el programa con bastantes medidos: aqui, sin tope, el 100). Sin medir,
+        // o sin nivelado, la perilla. Los picos los cuida el limitador que mpv lleva delante (Controlador: alimiter al techo de la cadena).
+        public double VolumenVideo(string ruta)
+        {
+            float rms;
+            if (normalizeOn && ruta != null && loudCache.TryGetValue(ruta, out rms) && rms > 0.0001f)
+                return Math.Max(0.15, Math.Min(4.0, normTarget / rms));
+            return videoVol / 100.0;
+        }
+        public bool VideoMedido(string ruta) { float rms; return ruta != null && loudCache.TryGetValue(ruta, out rms) && rms > 0.0001f; }
+        public float TechoVideos { get { return TechoPicoReal; } }
         public bool SonandoVideo { get { PlayItem p = nowPlaying; return p != null && p.IsVideo; } }
         public string Sonando { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.Path : null; } }
         // Cuanto lleva la que suena (0 a 1) y su disco (para la pantalla).

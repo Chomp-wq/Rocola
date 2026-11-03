@@ -97,7 +97,7 @@ namespace Rocola
         {
             try
             {
-                if (deRepaso && !RepasadaAFondo(r))
+                if ((deRepaso || EsVideo(r)) && !RepasadaAFondo(r))   // un video, siempre la medida de XP (MeasureFile): no tiene la entera
                 {
                     float rms, dur; float[] eq;
                     bool ok = MeasureFile(r, true, out rms, out dur, out eq);
@@ -122,6 +122,15 @@ namespace Rocola
         {
             int n = 0;
             foreach (Track t in tracks) if (t.Path != null && (!YaMedida(t.Path) || !RepasadaAFondo(t.Path))) { porRepasar.Enqueue(t.Path); n++; }
+            // LOS VIDEOS (Rocola OS): su sonido se mide como en XP se media el de un video (MeasureFile: cuanto suena), ahora que se puede
+            // abrir (AudioDeVideo.cs, por ffmpeg); con eso, VolumenVideo los empareja con las canciones. Detras de las canciones.
+            if (videoAlbums != null)
+            {
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (Album va in videoAlbums)
+                    if (va != null && va.VideoFiles != null)
+                        foreach (string v in va.VideoFiles) if (v != null && vistos.Add(v) && !RepasadaAFondo(v)) { porRepasar.Enqueue(v); n++; }
+            }
             if (n > 0) ArrancaMedidor();
             return n;
         }

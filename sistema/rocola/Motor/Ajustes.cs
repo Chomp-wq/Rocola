@@ -304,7 +304,7 @@ namespace Rocola
             Ajuste vv = new Ajuste { Grupo = "Volumen al limite", Nombre = "Volumen de los videos", Clave = "video_vol" };
             vv.Valor = delegate { return videoVol + "%"; };
             vv.Barra = delegate { return videoVol; };
-            vv.Nota = delegate { return "Los videos no pasan por la cadena de sonido: los pone el reproductor de videos."; };
+            vv.Nota = delegate { return normalizeOn ? "Los videos ya medidos suenan al nivel de las canciones; esto vale para los que aun no se midieron." : "Los videos no pasan por la cadena de sonido: los pone el reproductor de videos."; };
             vv.Guardado = delegate { return videoVol.ToString(CultureInfo.InvariantCulture); };
             vv.Cambia = delegate (int d) { videoVol = Math.Max(0, Math.Min(100, videoVol + 5 * d)); };
             l.Add(vv);
