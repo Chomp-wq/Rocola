@@ -15,9 +15,16 @@ REGISTRO=${ROCOLA_REGISTRO:-/rocola/datos/rocola.txt}   # (cambiables para proba
 [ -z "$ROCOLA_REGISTRO" ] && [ -f /root/rocola.txt ] && [ ! -L /root/rocola.txt ] && { cat /root/rocola.txt >> "$REGISTRO"; ln -sf "$REGISTRO" /root/rocola.txt; } 2>/dev/null
 # la tarjeta del amplificador (no la del HDMI): la musica y los videos van directos a ella, y su volumen es el que se sube (antes solo el
 # de la tarjeta 0, que puede ser la del HDMI)
+# LA TARJETA PUEDE LLEGAR TARDE (3-11-2026): la HDA se registra en segundo plano, a veces despues de que udev acaba, y su salida arranca
+# silenciada; si el volumen se subia antes, la rocola sonaba muda todo el dia. Se espera a que aparezca (hasta 20 s) y el volumen se
+# vuelve a poner cada vez que se abre la rocola.
+i=0; while [ -z "$(rocola-tarjeta -c)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 export ROCOLA_ALSA=${ROCOLA_ALSA:-$(rocola-tarjeta)}
-T=$(rocola-tarjeta -c)
-for c in Master PCM Speaker Headphone Front "Line Out"; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
+volumen() {
+	T=$(rocola-tarjeta -c)
+	for c in Master PCM Speaker Headphone Front "Line Out"; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
+}
+volumen
 probando=0; fallos=0
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> $REGISTRO; }
 pon_nueva() {
@@ -45,6 +52,7 @@ pon_nueva
 while :; do
 	[ -f $REGISTRO ] && [ "$(wc -c < $REGISTRO)" -gt 1048576 ] && mv $REGISTRO $REGISTRO.1
 	echo "--- $(date) arranca la rocola" >> $REGISTRO
+	volumen
 	BIN=/usr/bin/rocola-consola
 	[ -x "$PROG/rocola-consola" ] && BIN=$PROG/rocola-consola
 	t0=$(date +%s)

@@ -849,3 +849,14 @@ abrirla (EBUSY) y caía a `default`: la tarjeta 0, que en el A4 puede ser la del
 ocupada, se reintenta cada 100 ms hasta 1,5 s (el registro lo dice: «'hw:0,0' estaba ocupada; se liberó a los 300 ms»), y si aun así
 hay que caer, se cae a la mezcla de esa misma tarjeta (`default:N`) antes que a `default`. Probado en QEMU con la HDA emulada: una
 segunda rocola que abre la tarjeta mientras otra suena espera 300 ms y la abre directa. **No probado en el A4.**
+
+## Extra (3-11-2026, duodécima parte): el sonido medido en la tarjeta, y la tarjeta que llega tarde
+
+- **Medido lo que sale por la tarjeta** (QEMU, HDA emulada grabada a un WAV a 44 100 Hz, tonos de 1 y 15 kHz por la cadena entera):
+  el de 15 kHz sale entero (0,0 dB, antes −3,4 dB) y lo peor que no estaba en la canción queda a −71 dB (antes, con el remuestreo
+  lineal, −15 dB).
+- **El ahorro de energía de la HDA** (el «plop» al volver del silencio) viene apagado (`power_save=0`): no hace falta tocarlo.
+- **La tarjeta que llega tarde.** La salida del chip arranca silenciada y la HDA se registra en segundo plano, a veces después de que
+  udev acaba; si `/usr/bin/rocola` subía el volumen antes, la rocola sonaba muda todo el día. Ahora espera a la tarjeta (hasta 20 s) y
+  vuelve a poner el volumen cada vez que se abre la rocola. Probado con un `/proc/asound` imitado en el que la tarjeta aparece a los 3 s.
+  **No probado en el A4.**
