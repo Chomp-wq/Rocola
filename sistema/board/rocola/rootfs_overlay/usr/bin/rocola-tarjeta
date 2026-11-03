@@ -1,0 +1,14 @@
+#!/bin/sh
+# LA TARJETA DE SONIDO DEL AMPLIFICADOR (3-11-2026): la primera salida que no sea HDMI ni DisplayPort (el A4 tiene la HDA del HDMI de
+# la Radeon y la analogica, que va al amplificador; la 0 puede ser la del HDMI). Dice el dispositivo para abrirla directa
+# (plughw:TARJETA,SALIDA: sin el mezclador de ALSA, a la frecuencia de cada cancion) o, con -c, solo el numero de la tarjeta (para
+# amixer). Si no encuentra ninguna, «default» (o nada con -c). La misma eleccion que SalidaAlsa.Elige en la rocola.
+R=${ROCOLA_ASOUND:-/proc/asound}
+for t in $(ls -d "$R"/card[0-9]* 2>/dev/null | sed 's/.*card//' | sort -n); do
+	for p in $(ls -d "$R/card$t"/pcm[0-9]*p 2>/dev/null | sed 's/.*pcm\([0-9]*\)p/\1/' | sort -n); do
+		grep -qiE 'HDMI|DisplayPort' "$R/card$t/pcm${p}p/info" 2>/dev/null && continue
+		if [ "$1" = -c ]; then echo "$t"; else echo "plughw:$t,$p"; fi
+		exit 0
+	done
+done
+[ "$1" = -c ] || echo default

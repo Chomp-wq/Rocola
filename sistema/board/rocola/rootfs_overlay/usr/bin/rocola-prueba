@@ -31,9 +31,10 @@ linea ""
 linea "--- SONIDO"
 cat /proc/asound/cards >> "$LOG" 2>&1
 aplay -l >> "$LOG" 2>&1
-for c in Master PCM Speaker Headphone Front; do amixer -q sset "$c" 80% unmute 2>/dev/null; done
+T=$(rocola-tarjeta -c); D=$(rocola-tarjeta); echo "Tarjeta del amplificador: $D" >> "$LOG"
+for c in Master PCM Speaker Headphone Front; do amixer ${T:+-c $T} -q sset "$c" 80% unmute 2>/dev/null; done
 linea "Tocando un tono de 3 s (440 Hz)..."
-timeout 3 speaker-test -t sine -f 440 -c 2 >> "$LOG" 2>&1; r=$?
+timeout 3 speaker-test -D "$D" -t sine -f 440 -c 2 >> "$LOG" 2>&1; r=$?
 # speaker-test no acaba solo: que lo corte timeout (124 o 143) es lo normal; cualquier otra salida es un fallo
 case $r in 0|124|143) SONIDO="sono (si no se oyo, revisar el cable y el volumen)" ;; *) SONIDO="FALLO $r (ver arriba)" ;; esac
 linea "Sonido: $SONIDO"
@@ -78,7 +79,7 @@ clear 2>/dev/null
 echo "=================== ROCOLA OS: PRUEBA DE LA ETAPA 1 ==================="
 echo "Procesador: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-)"
 echo "Grafica: $(grep -h DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null)  -> $GRAFICA"
-echo "Sonido: $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
+echo "Sonido: $D, $(head -1 /proc/asound/cards 2>/dev/null)  -> $SONIDO"
 echo "Pantalla de la rocola: $PANTALLA"
 echo "La rocola (sonido de la rocola por ALSA): $ROCOLA"
 echo "Musica: $(tr '\n' ' ' < /run/rocola-musica 2>/dev/null)"

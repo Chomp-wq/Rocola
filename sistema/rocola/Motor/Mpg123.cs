@@ -29,7 +29,7 @@ namespace Rocola
         [DllImport(Lib)] private static extern int mpg123_close(IntPtr mh);
         [DllImport(Lib)] private static extern void mpg123_delete(IntPtr mh);
 
-        private const int ADD_FLAGS = 2, REMOVE_FLAGS = 13, QUIET = 0x20, GAPLESS = 0x40, FORCE_FLOAT = 0x400, ENC_FLOAT_32 = 0x200;
+        private const int ADD_FLAGS = 2, REMOVE_FLAGS = 13, RESYNC_LIMIT = 14, QUIET = 0x20, GAPLESS = 0x40, FORCE_FLOAT = 0x400, ENC_FLOAT_32 = 0x200;
         private const int OK = 0, NEW_FORMAT = -11, DONE = -12;
 
         private static readonly object candado = new object();
@@ -71,6 +71,9 @@ namespace Rocola
                 if (h == IntPtr.Zero) return null;
                 mpg123_param(h, ADD_FLAGS, QUIET | FORCE_FLOAT, 0);
                 mpg123_param(h, REMOVE_FLAGS, GAPLESS, 0);
+                // BASURA A MEDIA CANCION (3-11-2026): de fabrica mpg123 busca el siguiente cuadro bueno solo en 1 KB y, si no lo halla, da
+                // la cancion por acabada: un MP3 con 8 KB rotos a la mitad sonaba (y se media) hasta ahi. Sin limite, sigue como ffmpeg.
+                mpg123_param(h, RESYNC_LIMIT, -1, 0);
                 mpg123_format_none(h);
                 foreach (int r in new[] { 8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000 }) mpg123_format(h, r, 1 | 2, ENC_FLOAT_32);
                 byte[] b = System.Text.Encoding.UTF8.GetBytes(ruta + "\0");

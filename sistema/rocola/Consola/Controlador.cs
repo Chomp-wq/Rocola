@@ -579,8 +579,12 @@ namespace Rocola
                 motor.PausaRepaso = true;   // mpv necesita el procesador
                 System.Diagnostics.ProcessStartInfo pi = new System.Diagnostics.ProcessStartInfo(Mpv);
                 foreach (string a in new[] { "--fs", "--no-input-default-bindings", "--no-terminal", "--log-file=/tmp/rocola-mpv.txt", "--msg-level=all=warn", "--vo=gpu,drm", "--gpu-context=drm",
-                    "--ao=alsa", "--volume=" + motor.VolumenVideos, "--", ruta })
+                    "--ao=alsa", "--volume=" + motor.VolumenVideos })
                     pi.ArgumentList.Add(a);
+                // la misma tarjeta que la musica (SalidaAlsa.Elige: la del amplificador, directa), no la 0 por su mezclador
+                string tarjeta = dispositivo == "default" ? SalidaAlsa.Elige() : dispositivo;
+                if (tarjeta != "default") pi.ArgumentList.Add("--audio-device=alsa/" + tarjeta);
+                pi.ArgumentList.Add("--"); pi.ArgumentList.Add(ruta);
                 pi.UseShellExecute = false;
                 pi.RedirectStandardError = true; pi.RedirectStandardOutput = true;
                 errorVideo = new StringBuilder();

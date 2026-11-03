@@ -806,3 +806,26 @@ generó, y que todo esté en orden.
   (`/rocola/datos/rocola.txt`); `/root/rocola.txt` lo sigue enseñando.
 
 **Nada probado en el A4** (la Realtek del A4 y su reloj, en especial).
+
+## Extra (3-11-2026, novena parte): la salida de sonido directa a la tarjeta del amplificador y los MP3 con basura
+
+- **El remuestreo de ALSA.** La rocola abría `default`, que en una HDA es `plug → softvol → dmix` a 48 kHz, y alsa-lib (sin
+  alsa-plugins) convierte con su remuestreo lineal: cada canción de 44,1 kHz (casi todas) se pasaba a 48 kHz con el peor conversor,
+  después de todo lo que cuida la cadena. Medido con el mismo alsa-lib (un tono de 1 kHz y otro de 15 kHz a 44,1 kHz): el de 15 kHz
+  baja 3,4 dB y aparece uno falso en 18,9 kHz a −15 dB, con restos a −27 dB entre 1 y 15 kHz. Ahora se abre la tarjeta directa
+  (`hw`: la frecuencia de la canción tal cual, sin mezclador ni conversión; la música y los vídeos nunca suenan a la vez). Un archivo a
+  una frecuencia que la tarjeta no admita (MP3 viejos de 22 o 32 kHz) se pasa a 48 kHz con el remuestreo de la propia rocola (el de los
+  discos continuos, 192 toques), no con el lineal; si nada de eso abre, `plughw` y por último `default`, como antes.
+- **La tarjeta del amplificador.** El A4 tiene dos HDA: la del HDMI de la Radeon y la analógica, que va al amplificador; `default` era
+  la tarjeta 0, que puede ser la del HDMI (y el volumen se subía solo en esa). Ahora se elige la primera salida que no sea HDMI ni
+  DisplayPort (`SalidaAlsa.Elige` en la rocola y `rocola-tarjeta` en el sistema, la misma regla, probadas con un `/proc/asound` como el
+  del A4: HDMI en la 0 y la Realtek en la 1). La usan la música, la prueba de bocinas, los vídeos (mpv, `--audio-device`), la prueba de
+  arranque (`speaker-test -D`) y el volumen al máximo de `/usr/bin/rocola` (`amixer -c`). `ROCOLA_ALSA` la fija a mano.
+- **Lo que ya sonó**, para el reloj de la canción y el relevo, se le pregunta a la tarjeta (`snd_pcm_delay`) en vez de suponer el
+  colchón pedido de 300 ms (la tarjeta puede dar otro).
+- **MP3 con basura a media canción.** mpg123 buscaba el siguiente cuadro bueno solo en 1 KB y, si no lo hallaba, daba la canción por
+  acabada: un MP3 de 60 s con 8 KB rotos a la mitad sonaba 30 s y se medía como de 30 s (ffmpeg lo toca entero). Sin límite
+  (`MPG123_RESYNC_LIMIT = -1`) suena y se mide entero; los archivos sanos no cambian.
+
+**No probado en el A4**: la tarjeta directa (`hw`) y la elección de la Realtek dependen de su placa; aquí se probó el camino por ALSA
+hasta un archivo y la elección con tarjetas imitadas.
