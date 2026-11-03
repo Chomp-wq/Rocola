@@ -829,3 +829,15 @@ generó, y que todo esté en orden.
 
 **No probado en el A4**: la tarjeta directa (`hw`) y la elección de la Realtek dependen de su placa; aquí se probó el camino por ALSA
 hasta un archivo y la elección con tarjetas imitadas.
+
+## Extra (3-11-2026, décima parte): la caja negra de los cortes, y la salida probada con una HDA emulada
+
+- **Los cortes de sonido no quedaban apuntados.** En XP cada corte iba a `rocola_error.txt` («[Cortes de sonido]», la caja negra del
+  22-10); en Rocola OS la salida ALSA los recuperaba y contaba, pero la rocola no los apuntaba en ningún sitio. Ahora, al cambiar de
+  canción (en un disco continuo la salida sigue abierta) o al cerrarla, si hubo alguno: una línea con la canción, cuántos, la tarjeta,
+  cómo iba el hilo del sonido y si el repaso de la biblioteca estaba en marcha (por la bitácora de fondo).
+- **El registro dice qué se abrió**: «Sonido: abierta hw:0,0 a 44100 Hz» (o «a 48000 Hz (la canción es de 22050)») cada vez que cambia.
+- **Probado en QEMU** con el núcleo de sistema-5, una HDA emulada (intel-hda + hda-output) grabada a un WAV y el programa de la rocola
+  (la versión genérica): elige «Generic Analog» (`plughw:0,0`), abre la tarjeta directa (`hw:0,0`) a 44 100 Hz, el hilo del sonido va
+  en tiempo real, y al congelar el programa 2 s la salida cuenta el corte y sigue. Esa tarjeta emulada admite 22 050 Hz; la del A4
+  quizá no (entonces, 48 kHz con el remuestreo de la rocola). **No probado en el A4.**

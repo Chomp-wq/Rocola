@@ -167,5 +167,22 @@ namespace Rocola
 
         // Un error, a rocola_error.txt (LogError de XP, con su sello y su tope).
         public void ApuntaError(string donde, Exception ex) { try { LogError(donde, ex); } catch { } }
+
+        // LA CAJA NEGRA DEL SONIDO EN ROCOLA OS (3-11-2026; «[Cortes de sonido]» de XP, SalidaSonido.cs): cada vez que la tarjeta se
+        // quedo sin musica (un corte que se oye) la salida ALSA lo recupera y lo cuenta; al cambiar de cancion o cerrar la salida,
+        // si hubo alguno, una linea en rocola_error.txt con la cancion, cuantos, la tarjeta y como iba el hilo del sonido. Por la bitacora
+        // de fondo: la musica y la pantalla no esperan al disco. Sin cortes, nada.
+        public void ApuntaCortes(string cancion, long cortes, string tarjeta, string hilo)
+        {
+            if (cortes <= 0) return;
+            try
+            {
+                string c = string.IsNullOrEmpty(cancion) ? "" : "\"" + (cancion.Length > 80 ? cancion.Substring(0, 80) + "..." : cancion) + "\": ";
+                Bitacora.ApuntaConSello(RutaDatos("rocola_error.txt"), 262144, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [Cortes de sonido]",
+                    " " + c + cortes + (cortes == 1 ? " corte" : " cortes") + " (la tarjeta se quedo sin musica y se recupero); salida " + tarjeta
+                    + ", hilo del sonido en " + (string.IsNullOrEmpty(hilo) ? "?" : hilo) + (PausaRepaso ? "" : ", con el repaso de la biblioteca en marcha") + "\r\n");
+            }
+            catch { }
+        }
     }
 }

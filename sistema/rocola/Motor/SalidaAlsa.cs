@@ -76,6 +76,9 @@ namespace Rocola
             if (fallo != null) throw new InvalidOperationException(fallo);
             Dispositivo = elegido;
             fuente = new Form1.DitherWaveProvider16(m);
+            // en el registro (rocola.txt), cuando cambia: que tarjeta se abrio de verdad y a que frecuencia
+            string dicho = elegido + " a " + tasaSalida + " Hz" + (tasaSalida != tasa ? " (la cancion es de " + tasa + ")" : "");
+            if (dicho != ultimaDicha) { ultimaDicha = dicho; try { Console.WriteLine("Sonido: abierta " + dicho); } catch { } }
         }
         private readonly int tasaSalida;   // a la que va la tarjeta (la de la cancion, salvo que no la admita: 48000)
         private static ISampleProvider A48(ISampleProvider musica)
@@ -88,7 +91,7 @@ namespace Rocola
             }
             catch { return musica; }
         }
-        private static bool avisoFallo;
+        private static bool avisoFallo; private static string ultimaDicha;
         private string Abre(string d, int frecuencia)
         {
             int r = snd_pcm_open(out pcm, d, Reproducir, 0);
@@ -168,7 +171,7 @@ namespace Rocola
                         if (w < 0)
                         {
                             if (snd_pcm_recover(pcm, (int)w, 1) < 0) { parar = true; break; }
-                            Recuperaciones++;
+                            Interlocked.Increment(ref Recuperaciones);
                             continue;
                         }
                         hechos += (int)w; Interlocked.Add(ref escritos, w);

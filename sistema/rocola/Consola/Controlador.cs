@@ -648,6 +648,18 @@ namespace Rocola
             }
         }
 
+        // Los cortes de la salida, por cancion (en un disco continuo la salida sigue abierta de una a otra): ApuntaCortes.
+        private long cortesVistos; private string cortesCancion;
+        private void CajaNegra(bool fin)
+        {
+            string t = motor.SonandoTitulo;
+            if (!fin && t == cortesCancion) return;
+            long r = Interlocked.Read(ref salida.Recuperaciones), n = r - cortesVistos;
+            cortesVistos = r;
+            if (n > 0) motor.ApuntaCortes(cortesCancion ?? t, n, salida.Dispositivo, salida.PrioridadSonido);
+            cortesCancion = t;
+        }
+
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
         private void Suena()
         {
@@ -663,7 +675,7 @@ namespace Rocola
                 ISampleProvider s = motor.EmpiezaSiguiente();
                 if (s != null)
                 {
-                    try { salida = new SalidaAlsa(s, dispositivo); salida.Empieza(); }
+                    try { salida = new SalidaAlsa(s, dispositivo); salida.Empieza(); cortesVistos = 0; cortesCancion = motor.SonandoTitulo; }
                     catch (Exception ex) { Aviso("No se pudo abrir el sonido: " + ex.Message); salida = null; motor.AcaboLaSalida(); }
                     motor.GuardaEstado();
                 }
@@ -672,8 +684,10 @@ namespace Rocola
             if (salida != null)
             {
                 motor.Atiende(salida.CuadrosOidos);
+                CajaNegra(false);
                 if (!salida.Sonando || saltar)
                 {
+                    CajaNegra(true);
                     salida.Dispose(); salida = null; saltar = false;
                     motor.AcaboLaSalida();
                     motor.GuardaEstado();
