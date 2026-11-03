@@ -131,6 +131,7 @@ namespace Rocola
             string[] t = tam.Split('x');
             Form1 m = new Form1(); m.Arranca();
             Rocola.Pantalla.FueraDePantalla fp = new Rocola.Pantalla.FueraDePantalla(int.Parse(t[0]), int.Parse(t[1]));
+            Rocola.Pantalla.Caratulas.AlMomento = Environment.GetEnvironmentVariable("ROCOLA_PORTADAS_EN_FONDO") == null;   // las capturas, con sus portadas desde el primer cuadro
             VistaGrafica v = new VistaGrafica(fp, VistaGrafica.BuscaLetra());
             Console.WriteLine("Pantalla: " + v.Descripcion);
             if (botones.Contains("presentacion")) { v.Presentacion("Leyendo tu musica..."); fp.Captura(ruta); Console.WriteLine("Captura: " + ruta); return 0; }   // V29
@@ -162,6 +163,27 @@ namespace Rocola
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
+            // BANCO DE MEDIDA (ROCOLA_BANCO=N): N cuadros seguidos de esta escena; cuanto tarda cada uno (preparar y dibujar, con el
+            // dibujo por software de Mesa si no hay tarjeta: no es el A4) y cuanta memoria pide. No guarda nada.
+            string banco = Environment.GetEnvironmentVariable("ROCOLA_BANCO");
+            if (banco != null)
+            {
+                int nb = int.Parse(banco); v.SiempreDibuja = true;
+                for (int i = 0; i < 30; i++) v.Dibuja(c);   // que se llenen las caches
+                Perfil.Total.Clear(); Perfil.Bytes.Clear();
+                List<double> ms = new List<double>(); long bytes = 0; int gc0 = GC.CollectionCount(0); Rocola.Pantalla.Dibujo.Dibujos = 0; Rocola.Pantalla.Dibujo.Vertices = 0;
+                System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+                for (int i = 0; i < nb; i++)
+                {
+                    long a = GC.GetAllocatedBytesForCurrentThread(); sw.Restart();
+                    v.Dibuja(c);
+                    ms.Add(sw.Elapsed.TotalMilliseconds); bytes += GC.GetAllocatedBytesForCurrentThread() - a;
+                }
+                ms.Sort();
+                Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro", tam, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb));
+                if (Perfil.Activo) { var l = new List<KeyValuePair<string, double>>(Perfil.Total); l.Sort((a, b) => b.Value.CompareTo(a.Value)); foreach (var kv in l) Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "   {0,-28} {1,7:0.00} ms {2,7:0.0} KB", kv.Key, kv.Value / nb, (Perfil.Bytes.TryGetValue(kv.Key, out long kb) ? kb : 0) / 1024.0 / nb)); }
+                m.Cierra(); return 0;
+            }
             // que termine de aparecer lo que se anima (la atraccion, el reposo, la estrella que vuela): unos cuadros durante 1,3 s
                 for (int i = 0; i < Cuadros(botones); i++) { m.PublicaMedidas(); v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // lo medido en fondo, a las tablas (como el bucle de la rocola)   // que termine de aparecer
             v.Dibuja(c);

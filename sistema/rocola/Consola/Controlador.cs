@@ -224,7 +224,7 @@ namespace Rocola
                         {
                             // Todas las pulsaciones pendientes antes de dibujar (si un cuadro tarda, los botones no se quedan esperando en fila).
                             int vk; bool fin = false;
-                            if (pulsos.TryTake(out vk, vista.Anima ? 15 : 50))
+                            if (pulsos.TryTake(out vk, vista.Anima && video == null ? 0 : 50))   // con la pantalla, el ritmo lo pone el barrido (Presenta espera)
                                 do { if (vk == 0) { fin = true; break; } motor.HuboBoton(); Tecla(vk); } while (pulsos.TryTake(out vk, 0));
                             if (fin) break;
                             motor.PublicaMedidas();
@@ -450,7 +450,8 @@ namespace Rocola
         internal int FilaTecla = 1, ColTecla, SelResultado;
         internal bool EnResultados;
         internal List<Form1.Resultado> Resultados = new List<Form1.Resultado>();
-        internal static string Etiqueta(char t) { return t == '\u0001' ? "ESPACIO" : t == '\u0002' ? "BORRAR" : t.ToString(); }
+        internal static string Etiqueta(char t) { return t == '\u0001' ? "ESPACIO" : t == '\u0002' ? "BORRAR" : t < 256 ? (letrasSueltas[t] ??= t.ToString()) : t.ToString(); }
+        private static readonly string[] letrasSueltas = new string[256];   // cada tecla, hecha texto una vez (no en cada cuadro)
 
         internal void AbreBuscador() { Buscando = true; Escrito = ""; FilaTecla = 1; ColTecla = 0; EnResultados = false; SelResultado = 0; Resultados = new List<Form1.Resultado>(); ArmaAtajos(); }
         // LOS ATAJOS DEL BUSCADOR CON PORTADAS (buscador_portadas= de XP): solo los que tienen algo detras, en este orden: lo mas pedido hoy,

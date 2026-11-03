@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 namespace Rocola
 {
-    internal static class Prioridad
+    public static class Prioridad
     {
         [StructLayout(LayoutKind.Sequential)] private struct SchedParam { public int Prioridad; }
         [DllImport("libc", SetLastError = true)] private static extern int sched_setscheduler(int pid, int politica, ref SchedParam p);
@@ -29,7 +29,7 @@ namespace Rocola
             catch { }
             return "normal";
         }
-        internal static void Fondo()
+        public static void Fondo()
         {
             if (!OperatingSystem.IsLinux()) return;
             try { setpriority(PRIO_PROCESS, 0, 19); } catch { }

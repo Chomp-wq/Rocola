@@ -67,6 +67,9 @@ namespace Rocola.Pantalla
             if (con == null) { drmModeFreeResources(r); throw new InvalidOperationException("ninguna pantalla conectada"); }
             int elegido = 0;
             for (int i = 0; i < con->count_modes; i++) if ((con->modes[i].type & 8 /* PREFERRED */) != 0) { elegido = i; break; }
+            // A esa resolucion, el refresco mas alto que de el monitor (75 Hz en vez de 60, si lo tiene): mas cuadros, movimiento mas liso
+            for (int i = 0; i < con->count_modes; i++)
+                if (con->modes[i].hdisplay == con->modes[elegido].hdisplay && con->modes[i].vdisplay == con->modes[elegido].vdisplay && (con->modes[i].flags & 0x10 /* entrelazado */) == 0 && con->modes[i].vrefresh > con->modes[elegido].vrefresh) elegido = i;
             if (!Form1.ResolucionNativaGuardada())   // V30 apagado: 1024x768 si el monitor la ofrece (la de XP), la de mas refresco
                 for (int i = 0, mejor = -1; i < con->count_modes; i++)
                     if (con->modes[i].hdisplay == 1024 && con->modes[i].vdisplay == 768 && (mejor < 0 || con->modes[i].vrefresh > con->modes[mejor].vrefresh)) { mejor = i; elegido = i; }
@@ -174,7 +177,7 @@ namespace Rocola.Pantalla
             fbo = f; tex = t;
             Descripcion = ancho + "x" + alto + " fuera de pantalla, " + GL.Texto(GL.RENDERER);
         }
-        public void Presenta() { GL.Finish(); }
+        public void Presenta() { if (Environment.GetEnvironmentVariable("ROCOLA_BANCO_SIN_FIN") == null) GL.Finish(); }   // el banco puede medir solo lo del programa
         public void Suelta() { }
         public void Recupera() { }
         // El cuadro, en PPM (sin compresion; para mirarlo).

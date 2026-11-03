@@ -597,3 +597,34 @@ espectro y la forma de la canción) y `rocola/Consola/Pantalla/Mejoras.cs` (el d
   encendido (así) y apagado pide 1024×768 si el monitor la ofrece.
 - Comprobado con capturas fuera de pantalla (Mesa por software). **Nada medido en el A4:** ni fluidez ni coste real de cada una.
   El espectro y las barritas reales necesitan la salida de sonido: en las capturas no se ven moverse.
+
+## Extra (3-11-2026): rendimiento del dibujo para la resolución máxima a 75 Hz (sin cambiar el aspecto)
+
+Petición del dueño: que en Linux la rocola corra a la resolución máxima del monitor y a 75 Hz, buscando ahorros en todo el dibujo sin
+cambiar el aspecto. Son optimizaciones que conservan aspecto y funciones, así que son automáticas y sin interruptor (regla del 15-9-2026).
+
+- **Ritmo de la pantalla**: ya no se dibuja como mucho cada 33 ms ni se salta el cuadro «si nada cambió»; se dibuja uno por refresco
+  del monitor, esperando el cambio de página de KMS (vsync). El hilo de los botones no espera 50 ms cuando hay animación.
+- **75 Hz**: de los modos del monitor se toma su resolución preferida y, a esa resolución, la frecuencia más alta que ofrezca (sin
+  modos entrelazados). Si el monitor no da 75 Hz, se queda con lo que dé. V30 (1024x768) sigue igual.
+- **El cielo lento en una capa**: el degradado y las nebulosas se pintan en una textura propia (FBO) y en pantalla se pone de una
+  vez, opaca. Cada cuadro se rehace solo una cuarta parte (una franja), y entera cuando cambian los colores o un interruptor. Las
+  estrellas, la aurora, la onda, el horizonte y la luna se pintan encima en cada cuadro, como antes.
+- **Menos órdenes de dibujo**: las letras y el punto de luz llevan un cuadrito blanco de 4x4 dentro de su textura, así los
+  rectángulos lisos van en el mismo lote que el texto. En la pared bajó de 172 a 106 órdenes por cuadro.
+- **Portadas sin parar la pantalla**: leer y descomprimir cada portada va en un hilo de fondo de prioridad baja, de una en una; la
+  pantalla sube como mucho 4 por cuadro. Las páginas de al lado se adelantan (hasta 48 en cola). Mientras llega, se ve el cuadro
+  de color con la inicial, como al arrancar.
+- **Sin basura por cuadro**: se recuerdan los textos cortados con puntos (Ajusta), los renglones repartidos (Envuelve), los textos
+  sin acentos del buscador, las letras de cada tecla y lo que va en la cola. Las cinco letras de la ficha rápida se hornean con la
+  primera pared, no al aparecer la ficha (eran unos MB de golpe). Ninguna escena del banco hace ya recolecciones.
+- **Herramientas de medida** (solo con variables de entorno): `ROCOLA_BANCO=N` (mediana, p95, peor, KB por cuadro, recolecciones,
+  órdenes y vértices), `ROCOLA_PERFIL=1` (ms y KB por tramo del dibujo), `ROCOLA_RELOJ_FIJO=s` (capturas comparables),
+  `ROCOLA_SIN_CAPA_CIELO`, `ROCOLA_SIN_LOTES` (para comparar con y sin los ahorros), `ROCOLA_PORTADAS_EN_FONDO` (capturas con el
+  hilo de las portadas) y `ROCOLA_BANCO_SIN_FIN`.
+
+Comprobado aquí con Mesa por software (llvmpipe, 1920x1080; **no es el A4**): con reloj fijo, la imagen con los ahorros y sin
+ellos sale igual (diferencia máxima 1 de 255, salvo los contadores que avanzan solos, como las canciones por medir). En la pared la
+mediana pasó de 33,7 a ~29 ms con llvmpipe; 0 recolecciones en todas las escenas (antes: buscador 66 KB y ajustes 94 KB por
+cuadro). **No está medido en el A4**: falta comprobar allí que llega a 75 Hz a la resolución nativa y si conviene apagar alguna
+mejora de coste medio.

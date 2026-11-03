@@ -240,14 +240,13 @@ namespace Rocola
         }
 
         // V17: los resultados del buscador entran en cascada (cada uno 45 ms despues del anterior, 220 ms de entrada)
-        private string cascadaFirma; private double cascadaDesde;
+        private string cascadaEscrito; private int cascadaCuenta = -1; private double cascadaDesde;
         private float Cascada(Controlador c, int i, out float corre)
         {
             corre = 0;
             if (!c.motor.ResultadosCascada) return 1f;
-            string f = c.Escrito + "|" + c.Resultados.Count;
             double t = reloj.Elapsed.TotalSeconds;
-            if (f != cascadaFirma) { cascadaFirma = f; cascadaDesde = t; }
+            if (c.Escrito != cascadaEscrito || c.Resultados.Count != cascadaCuenta) { cascadaEscrito = c.Escrito; cascadaCuenta = c.Resultados.Count; cascadaDesde = t; }
             float u = Suave((float)((t - cascadaDesde - i * 0.045) / 0.22));
             corre = 24 * k * (1f - u);
             return u;

@@ -332,7 +332,19 @@ namespace Rocola
             float nx = -uy, ny = ux, p = 16 * k;
             d.Triangulo(ex, ey, ex - ux * 26 * k + nx * p, ey - uy * 26 * k + ny * p, ex - ux * 26 * k - nx * p, ey - uy * 26 * k - ny * p, Dorado);
         }
+        // Los renglones se recuerdan (los mismos textos se reparten en cada cuadro); se da una lista nueva porque quien la pide la recorta.
+        private static readonly Dictionary<(string, Letra, float), string[]> envueltos = new Dictionary<(string, Letra, float), string[]>();
         private static List<string> Envuelve(string s, Letra l, float ancho)
+        {
+            string[] h;
+            if (!envueltos.TryGetValue((s ?? "", l, ancho), out h))
+            {
+                if (envueltos.Count >= 512) envueltos.Clear();
+                envueltos[(s ?? "", l, ancho)] = h = Reparte(s, l, ancho).ToArray();
+            }
+            return new List<string>(h);
+        }
+        private static List<string> Reparte(string s, Letra l, float ancho)
         {
             List<string> r = new List<string>(); string linea = "";
             foreach (string p in (s ?? "").Split(' '))

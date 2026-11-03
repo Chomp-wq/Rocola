@@ -173,6 +173,8 @@ namespace Rocola
             if (!desliza) pagAnt = -1;
             if (desliza) Pagina(c, ds, pagAnt, false, top, margen, celW, celH, lado, cols, porPag, col => -pagDir * W * CurvaPagina(ahora - pagDesde, col, cols));
             Pagina(c, ds, pag, true, top, margen, celW, celH, lado, cols, porPag, col => desliza ? pagDir * W * (1f - CurvaPagina(ahora - pagDesde, col, cols)) : 0f);
+            // las paginas de al lado, que se vayan leyendo (sin prisa: asi al pasar de pagina ya estan)
+            for (int dp = 1; dp >= -1; dp -= 2) { int p2 = pag + dp; if (p2 < 0) continue; for (int i = 0; i < porPag; i++) { int n = p2 * porPag + i; if (n >= ds.Count) break; caratulas.Precarga(ds[n].Portada); } }
             if (!desliza && m.FichaDisco && !c.Reposo && !c.AyudaAbierta && c.letras[c.letra] != Form1.LetraTop && c.cursorDisco < ds.Count)
                 FichaRapida(c, ds[c.cursorDisco], ahora - focoDesde, new Zona(margen, top, W - 2 * margen, alto), celW, celH);
             // las paginas: unos puntos a la derecha de abajo (la pagina en la que se esta, encendida)

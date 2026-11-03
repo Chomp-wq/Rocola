@@ -18,7 +18,53 @@ namespace Rocola
 
         private void Cielo(float W, float H, double t, float alfa = 1f)
         {
+            // EL FONDO LENTO (el degradado y las nebulosas: de dos a cuatro capas a pantalla completa) va a una capa que se rehace por
+            // franjas, una cuarta parte en cada cuadro (en cuatro cuadros las nebulosas se corren menos de medio punto y el pulso de la musica
+            // casi nada), o entera al momento si cambian los colores; cada cuadro la pone de un golpe. Lo que titila o se mueve rapido
+            // (estrellas, aurora, onda, luna) va encima, al dia.
+            if (alfa >= 1f && Environment.GetEnvironmentVariable("ROCOLA_SIN_CAPA_CIELO") == null)
+            {
+                if (capaCielo == null && !sinCapaCielo) { capaCielo = d.CapaNueva(); sinCapaCielo = capaCielo == null; }
+                if (capaCielo != null)
+                {
+                    int que = CieloCambio();
+                    if (que > 0)
+                    {
+                        // entera si cambiaron los colores o es la primera; si no, una franja de cuatro por cuadro (todos los cuadros cuestan lo
+                        // mismo: sin un cuadro mas pesado cada cuatro)
+                        d.DibujaEn(capaCielo);
+                        if (que == 1) { int b = cieloBanda++ & 3; d.Recorta(0, H * b / 4f, W, H / 4f + 1); }
+                        d.Rect(0, 0, W, H, Fondo); FondoLento(W, H, t, 1f); d.Vuelve();
+                    }
+                    d.PonCapa(capaCielo);
+                    goto encima;
+                }
+            }
+            FondoLento(W, H, t, alfa);
+        encima:
+            Estrellas(W, H, t, alfa);
+            if (auroraAhora) Aurora(W, H, t, alfa);   // V2
+            Onda(W, H, t, alfa);
+            HorizonteLuz(W, H, t, alfa);
+            Luna(W, H, t, alfa);
+        }
+
+        private Dibujo.Capa capaCielo; private bool sinCapaCielo;
+        private C3 cAcento, cNebA, cNebB; private float cCorte, cAzul; private bool cVivas;
+        private int cieloBanda; private bool cieloHecho;
+        // 2: rehacerla entera (la primera vez, o cambiaron los colores o algun ajuste); 1: una franja; 0: nada (no pasa: siempre se refresca)
+        private int CieloCambio()
+        {
+            bool entera = !cieloHecho || nebVivasAhora != cVivas || corteNegro != cCorte || AzulCielo != cAzul || Lejos(acento, cAcento) || Lejos(nebA, cNebA) || Lejos(nebB, cNebB);
+            cieloHecho = true; cVivas = nebVivasAhora; cCorte = corteNegro; cAzul = AzulCielo;
+            if (entera) { cAcento = acento; cNebA = nebA; cNebB = nebB; return 2; }
+            return 1;
+        }
+        private static bool Lejos(C3 a, C3 b) { return Math.Abs(a.R - b.R) > 0.25f || Math.Abs(a.G - b.G) > 0.25f || Math.Abs(a.B - b.B) > 0.25f; }
+        private void FondoLento(float W, float H, double t, float alfa)
+        {
             float yh = Horizonte(H);
+
             // la noche: cuatro paradas (medidas en la de XP) y, bajo el horizonte, un azul que se apaga
             // con el tinte de lo que suena (ColorFondo.cs): con el azul de siempre, las mismas paradas de antes
             C3 a0 = SkyArriba(acento), am = SkyMedio(acento, AzulCielo), ab = SkyAbajo(acento), d0 = SkyArriba(Defecto), dm = SkyMedio(Defecto), db = SkyAbajo(Defecto);
@@ -29,11 +75,6 @@ namespace Rocola
             d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Parada(0x2C367D, am, dm, alfa), Parada(0x37408F, ab, db, alfa));
             d.Degradado(0, yh, W, H - yh, Parada(0x223470, ab, db, alfa), Parada(0x16234C, ab, db, alfa));
             Nebulosas(W, H, t, alfa);
-            Estrellas(W, H, t, alfa);
-            if (auroraAhora) Aurora(W, H, t, alfa);   // V2
-            Onda(W, H, t, alfa);
-            HorizonteLuz(W, H, t, alfa);
-            Luna(W, H, t, alfa);
         }
 
         // ---- las nebulosas ----

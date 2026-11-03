@@ -22,6 +22,9 @@ namespace Rocola.Pantalla
         public uint Id; public int Ancho, Alto;
         public Color4 Media;   // el color de la imagen (para el halo de la portada enfocada, como en XP)
         public Rocola.VistaGrafica.C3 Prom, Uno, Dos;   // de que color es la portada (el cielo toma su tono: ColorFondo.cs)
+        // Un cuadrito blanco opaco dentro de la textura (los atlas de letras y el punto suave): con el, un rectangulo de color se dibuja
+        // sin cambiar de textura, en el mismo lote que las letras (menos llamadas a la tarjeta; se ve igual).
+        public bool TieneBlanco; public float BlancoU, BlancoV;
     }
 
     internal sealed unsafe class Dibujo : IDisposable
@@ -30,9 +33,10 @@ namespace Rocola.Pantalla
         private readonly int uEscala, uTex;
         private readonly float[] vertices = new float[6 * 8 * 2048];
         private int nv;
-        private uint texActual;
+        private uint texActual; private Textura texActualT;
         private readonly Textura blanca;
-        internal readonly Textura Punto;   // un punto suave (estrellas, halos)
+        internal readonly Textura Punto;   // un punto suave (estrellas, halos); el punto ocupa v de 0 a puntoV1
+        internal readonly float puntoV1;
         public int Ancho, Alto;
 
         internal Dibujo(int ancho, int alto)
@@ -47,14 +51,17 @@ namespace Rocola.Pantalla
             uint b; GL.GenBuffers(1, &b); buffer = b;
             byte[] px = { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 };
             blanca = Sube(px, 2, 2);
-            const int L = 64; byte[] pt = new byte[L * L * 4];
+            const int L = 64; byte[] pt = new byte[L * (L + 6) * 4];
             for (int y = 0; y < L; y++) for (int x = 0; x < L; x++)
             {
                 double dx = (x + 0.5) / L * 2 - 1, dy = (y + 0.5) / L * 2 - 1, r = Math.Sqrt(dx * dx + dy * dy);
                 double a = r >= 1 ? 0 : Math.Pow(1 - r, 2.2);
                 int o = (y * L + x) * 4; pt[o] = pt[o + 1] = pt[o + 2] = 255; pt[o + 3] = (byte)(255 * a);
             }
-            Punto = Sube(pt, L, L);
+            for (int i = (L + 2) * L * 4; i < pt.Length; i++) pt[i] = 255;   // dos filas transparentes y cuatro blancas debajo (el cuadrito blanco)
+            Punto = Sube(pt, L, L + 6);
+            Punto.TieneBlanco = true; Punto.BlancoU = 0.5f; Punto.BlancoV = (L + 4f) / (L + 6f);
+            puntoV1 = L / (L + 6f);
         }
 
         private static uint Shader(uint tipo, string fuente)
@@ -88,7 +95,7 @@ namespace Rocola.Pantalla
             fixed (byte* p = rgba) GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, ancho, alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, p);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-            texActual = 0;
+            texActual = 0; texActualT = null;
             return new Textura { Id = t, Ancho = ancho, Alto = alto };
         }
         // Con sus tamanos reducidos (mipmaps; lados potencia de 2, como pide OpenGL ES 2): se achica sin granos (V4).
@@ -98,7 +105,7 @@ namespace Rocola.Pantalla
             GL.BindTexture(GL.TEXTURE_2D, t.Id);
             GL.GenerateMipmap(GL.TEXTURE_2D);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR_MIPMAP_LINEAR);
-            texActual = 0;
+            texActual = 0; texActualT = null;
             return t;
         }
         // V24: lo que ya esta dibujado en un rectangulo de la pantalla, copiado a una textura (siempre la misma: una a la vez). Las filas
@@ -114,11 +121,57 @@ namespace Rocola.Pantalla
             GL.CopyTexImage2D(GL.TEXTURE_2D, 0, GL.RGB, ix, Alto - iy - ih, iw, ih, 0);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-            texActual = 0;
+            texActual = 0; texActualT = null;
             copia.Ancho = iw; copia.Alto = ih;
             return copia;
         }
-        internal void Borra(Textura t) { if (t == null) return; Vacia(); uint id = t.Id; GL.DeleteTextures(1, &id); texActual = 0; }
+        // UNA CAPA (dibujar en una textura en vez de en la pantalla, y despues ponerla de un golpe): el fondo lento del cielo. Del tamano
+        // de la pantalla, con las mismas coordenadas; las filas quedan de abajo arriba (se pone con v de 1 a 0). null si la tarjeta no puede.
+        internal sealed class Capa { internal Textura Tex; internal uint Fbo; }
+        private int fboPantalla;
+        internal Capa CapaNueva()
+        {
+            Vacia();
+            int antes; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &antes);
+            uint t; GL.GenTextures(1, &t);
+            GL.BindTexture(GL.TEXTURE_2D, t);
+            GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, Ancho, Alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
+            GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+            GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+            uint f; GL.GenFramebuffers(1, &f);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, f);
+            GL.FramebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, t, 0);
+            bool ok = GL.CheckFramebufferStatus(GL.FRAMEBUFFER) == GL.FRAMEBUFFER_COMPLETE;
+            GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)antes);
+            texActual = 0; texActualT = null;
+            if (!ok) { GL.DeleteTextures(1, &t); return null; }
+            return new Capa { Tex = new Textura { Id = t, Ancho = Ancho, Alto = Alto }, Fbo = f };
+        }
+        internal void DibujaEn(Capa c)
+        {
+            Vacia();
+            int antes; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &antes); fboPantalla = antes;
+            GL.Disable(GL.SCISSOR_TEST);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, c.Fbo);
+            GL.Viewport(0, 0, Ancho, Alto);
+        }
+        internal void Vuelve()
+        {
+            Vacia();
+            GL.Disable(GL.SCISSOR_TEST);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)fboPantalla);
+            GL.Viewport(0, 0, Ancho, Alto);
+        }
+        // La capa sobre toda la pantalla, sin mezclar (es opaca: lo de debajo no se lee, la tarjeta solo copia).
+        internal void PonCapa(Capa c)
+        {
+            Vacia();
+            GL.Disable(GL.BLEND);
+            Quad(c.Tex, 0, 0, Ancho, Alto, 0, 1, 1, 0, new Color4(1, 1, 1, 1));
+            Vacia();
+            GL.Enable(GL.BLEND);
+        }
+        internal void Borra(Textura t) { if (t == null) return; Vacia(); uint id = t.Id; GL.DeleteTextures(1, &id); texActual = 0; texActualT = null; }
 
         internal void Empieza(Color4 fondo)
         {
@@ -129,7 +182,7 @@ namespace Rocola.Pantalla
             GL.BindBuffer(GL.ARRAY_BUFFER, buffer);
             GL.VertexAttribPointer(0, 2, GL.FLOAT, 0, 32, (IntPtr)0); GL.VertexAttribPointer(1, 2, GL.FLOAT, 0, 32, (IntPtr)8); GL.VertexAttribPointer(2, 4, GL.FLOAT, 0, 32, (IntPtr)16);
             GL.EnableVertexAttribArray(0); GL.EnableVertexAttribArray(1); GL.EnableVertexAttribArray(2);
-            texActual = 0; nv = 0;
+            texActual = 0; texActualT = null; nv = 0;
         }
         internal void Termina() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
         // Recorta lo que se dibuje a un rectangulo (coordenadas de pantalla, y hacia abajo); Suelta lo quita.
@@ -141,9 +194,14 @@ namespace Rocola.Pantalla
         }
         internal void SinRecorte() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
 
+        // Para el banco: sin tocar la tarjeta (solo lo que cuesta el programa) y la cuenta de dibujos y vertices.
+        internal static readonly bool SinGL = Environment.GetEnvironmentVariable("ROCOLA_BANCO_SIN_GL") != null;
+        internal static long Dibujos, Vertices;
         private void Vacia()
         {
             if (nv == 0) return;
+            Dibujos++; Vertices += nv;
+            if (SinGL) { nv = 0; return; }
             GL.BindTexture(GL.TEXTURE_2D, texActual);
             fixed (float* v = vertices) GL.BufferData(GL.ARRAY_BUFFER, (IntPtr)(nv * 32), v, GL.STREAM_DRAW);
             GL.DrawArrays(GL.TRIANGLES, 0, nv);
@@ -157,16 +215,30 @@ namespace Rocola.Pantalla
         }
         internal void Quad(Textura t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, Color4 c)
         {
-            if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; }
+            if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; texActualT = t; }
             V(x, y, u0, v0, c); V(x + w, y, u1, v0, c); V(x, y + h, u0, v1, c);
             V(x + w, y, u1, v0, c); V(x + w, y + h, u1, v1, c); V(x, y + h, u0, v1, c);
         }
-        internal void Rect(float x, float y, float w, float h, Color4 c) { Quad(blanca, x, y, w, h, 0.25f, 0.25f, 0.75f, 0.75f, c); }
+        // Donde tomar el blanco para n vertices de color liso: el cuadrito blanco de la textura que ya esta puesta, o la textura blanca.
+        private static readonly bool sinLotes = Environment.GetEnvironmentVariable("ROCOLA_SIN_LOTES") != null;   // pruebas: como antes
+        private void Liso(int n, out float u, out float v)
+        {
+            if (nv + n > vertices.Length / 8) Vacia();
+            if (!sinLotes && texActualT != null && texActualT.TieneBlanco && texActual == texActualT.Id) { u = texActualT.BlancoU; v = texActualT.BlancoV; return; }
+            if (blanca.Id != texActual) { Vacia(); texActual = blanca.Id; texActualT = blanca; }
+            u = 0.5f; v = 0.5f;
+        }
+        internal void Rect(float x, float y, float w, float h, Color4 c)
+        {
+            float u, v; Liso(6, out u, out v);
+            V(x, y, u, v, c); V(x + w, y, u, v, c); V(x, y + h, u, v, c);
+            V(x + w, y, u, v, c); V(x + w, y + h, u, v, c); V(x, y + h, u, v, c);
+        }
         // Un triangulo lleno (la estrella de la ayuda se arma con ellos).
         internal void Triangulo(float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
         {
-            if (blanca.Id != texActual || nv + 3 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
-            V(x1, y1, 0.5f, 0.5f, c); V(x2, y2, 0.5f, 0.5f, c); V(x3, y3, 0.5f, 0.5f, c);
+            float u, v; Liso(3, out u, out v);
+            V(x1, y1, u, v, c); V(x2, y2, u, v, c); V(x3, y3, u, v, c);
         }
         // Una linea gruesa (un rectangulo girado), con las puntas redondeadas por un brillo duro.
         internal void Linea(float x1, float y1, float x2, float y2, float grosor, Color4 c)
@@ -180,11 +252,11 @@ namespace Rocola.Pantalla
         // Un rectangulo con un color arriba y otro abajo (degradado vertical).
         internal void Degradado(float x, float y, float w, float h, Color4 arriba, Color4 abajo)
         {
-            if (blanca.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
-            V(x, y, 0.5f, 0.5f, arriba); V(x + w, y, 0.5f, 0.5f, arriba); V(x, y + h, 0.5f, 0.5f, abajo);
-            V(x + w, y, 0.5f, 0.5f, arriba); V(x + w, y + h, 0.5f, 0.5f, abajo); V(x, y + h, 0.5f, 0.5f, abajo);
+            float u, v; Liso(6, out u, out v);
+            V(x, y, u, v, arriba); V(x + w, y, u, v, arriba); V(x, y + h, u, v, abajo);
+            V(x + w, y, u, v, arriba); V(x + w, y + h, u, v, abajo); V(x, y + h, u, v, abajo);
         }
-        internal void Brillo(float cx, float cy, float radio, Color4 c) { Quad(Punto, cx - radio, cy - radio, 2 * radio, 2 * radio, 0, 0, 1, 1, c); }
+        internal void Brillo(float cx, float cy, float radio, Color4 c) { Quad(Punto, cx - radio, cy - radio, 2 * radio, 2 * radio, 0, 0, 1, puntoV1, c); }
         internal void Imagen(Textura t, float x, float y, float w, float h, float alfa = 1f) { Quad(t, x, y, w, h, 0, 0, 1, 1, new Color4(1, 1, 1, alfa)); }
         // Rectangulo de esquinas redondas (hecho con rectangulos: sin otra textura).
         internal void Redondo(float x, float y, float w, float h, float r, Color4 c)
@@ -205,14 +277,14 @@ namespace Rocola.Pantalla
         // Un cuadrilatero cualquiera con un color por esquina (en orden: arriba-izq, arriba-der, abajo-der, abajo-izq).
         internal void Cuatro(float x0, float y0, Color4 c0, float x1, float y1, Color4 c1, float x2, float y2, Color4 c2, float x3, float y3, Color4 c3)
         {
-            if (blanca.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = blanca.Id; }
-            V(x0, y0, 0.5f, 0.5f, c0); V(x1, y1, 0.5f, 0.5f, c1); V(x3, y3, 0.5f, 0.5f, c3);
-            V(x1, y1, 0.5f, 0.5f, c1); V(x2, y2, 0.5f, 0.5f, c2); V(x3, y3, 0.5f, 0.5f, c3);
+            float u, v; Liso(6, out u, out v);
+            V(x0, y0, u, v, c0); V(x1, y1, u, v, c1); V(x3, y3, u, v, c3);
+            V(x1, y1, u, v, c1); V(x2, y2, u, v, c2); V(x3, y3, u, v, c3);
         }
         // Una imagen en un cuadrilatero cualquiera (arriba-izq, arriba-der, abajo-der, abajo-izq): las portadas en perspectiva (V15, V20).
         internal void ImagenLibre(Textura t, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
         {
-            if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; }
+            if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; texActualT = t; }
             V(x0, y0, 0, 0, c); V(x1, y1, 1, 0, c); V(x3, y3, 0, 1, c);
             V(x1, y1, 1, 0, c); V(x2, y2, 1, 1, c); V(x3, y3, 0, 1, c);
         }
@@ -286,9 +358,13 @@ namespace Rocola.Pantalla
             lado = alto > 40 ? 1024 : 512;
             byte[] alfa = new byte[lado * lado];
             StbTrueType.stbtt_BakeFontBitmap(ttf, 0, alto, alfa, lado, lado, 32, 224, car);
+            bool blanco = true;   // si ninguna letra llega a la esquina de abajo a la derecha, ahi va el cuadrito blanco (4x4)
+            foreach (StbTrueType.stbtt_bakedchar b in car) if (b.x1 > lado - 6 && b.y1 > lado - 6) { blanco = false; break; }
+            if (blanco) for (int y = lado - 4; y < lado; y++) for (int x = lado - 4; x < lado; x++) alfa[y * lado + x] = 255;
             byte[] rgba = new byte[lado * lado * 4];
             for (int i = 0; i < alfa.Length; i++) { rgba[4 * i] = 255; rgba[4 * i + 1] = 255; rgba[4 * i + 2] = 255; rgba[4 * i + 3] = alfa[i]; }
             tex = d.Sube(rgba, lado, lado);
+            if (blanco) { tex.TieneBlanco = true; tex.BlancoU = tex.BlancoV = (lado - 2f) / lado; }
         }
         // unitsPerEm (head) y el ascender y descender (hhea) del TTF: lo que usa stb_truetype para su alto.
         private static bool MetricaEm(byte[] f, out int em, out int sube, out int baja)
@@ -332,10 +408,19 @@ namespace Rocola.Pantalla
             return x - x0;
         }
         // Cabe en 'ancho': si no, se corta con puntos suspensivos.
+        // Lo cortado se recuerda (los mismos textos se cortan en cada cuadro: sin basura que recoger); se olvida todo al pasar de 1024.
+        private readonly Dictionary<(string, float), string> ajustadas = new Dictionary<(string, float), string>();
         internal string Ajusta(string s, float ancho)
         {
             if (s == null) return "";
             if (Mide(s) <= ancho) return s;
+            string r;
+            if (ajustadas.TryGetValue((s, ancho), out r)) return r;
+            if (ajustadas.Count >= 1024) ajustadas.Clear();
+            return ajustadas[(s, ancho)] = Corta(s, ancho);
+        }
+        private string Corta(string s, float ancho)
+        {
             float pts = Mide("...");
             int n = s.Length;
             while (n > 0 && Mide(s.Substring(0, n)) + pts > ancho) n--;
@@ -358,64 +443,130 @@ namespace Rocola.Pantalla
         internal bool Nitidas;
         private readonly Dictionary<string, Textura> grandes = new Dictionary<string, Textura>(StringComparer.Ordinal);
         private readonly LinkedList<string> ordenGrandes = new LinkedList<string>();
-        internal Textura De(string ruta) { return Carga(ruta, hechas, orden, lado, 96); }
+        internal Textura De(string ruta) { return Carga(ruta, Clase.Normal, false); }
         // Para dibujar a 'tam' pixeles: si pasa del lado de siempre (con las nitidas), la copia grande (las ultimas 6).
         internal Textura Para(string ruta, float tam)
         {
-            if (Nitidas && tam > lado * 1.1f) { Textura g = Carga(ruta, grandes, ordenGrandes, lado * 2, 6); if (g != null) return g; }
+            if (Nitidas && tam > lado * 1.1f) { Textura g = Carga(ruta, Clase.Grande, false); if (g != null) return g; }
             return De(ruta);
-        }
-        private Textura Carga(string ruta, Dictionary<string, Textura> cache, LinkedList<string> ord, int max, int cuantas)
-        {
-            if (string.IsNullOrEmpty(ruta) || sinImagen.Contains(ruta)) return null;
-            Textura t;
-            if (cache.TryGetValue(ruta, out t)) { ord.Remove(ruta); ord.AddFirst(ruta); return t; }
-            try
-            {
-                ImageResult im = ImageResult.FromMemory(File.ReadAllBytes(ruta), ColorComponents.RedGreenBlueAlpha);
-                int w = im.Width, h = im.Height; byte[] px = im.Data;
-                if (Math.Max(w, h) > max) { int nw = Math.Max(1, w * max / Math.Max(w, h)), nh = Math.Max(1, h * max / Math.Max(w, h)); px = Reduce(px, w, h, nw, nh); w = nw; h = nh; }
-                if (Nitidas)
-                {
-                    int s = 1; while (s * 2 <= Math.Max(64, max)) s *= 2;   // el lado potencia de 2 que cabe
-                    t = d.SubeConMipmaps(Escala(px, w, h, s, s), s);
-                    t.Ancho = w; t.Alto = h;   // la forma de la portada (la textura va estirada al cuadrado)
-                }
-                else t = d.Sube(px, w, h);
-                t.Media = ColorMedio(px);
-                Rocola.VistaGrafica.ColoresDePortada(px, w, h, out t.Prom, out t.Uno, out t.Dos);
-            }
-            catch { sinImagen.Add(ruta); return null; }
-            cache[ruta] = t; ord.AddFirst(ruta);
-            while (ord.Count > cuantas) { string v = ord.Last.Value; ord.RemoveLast(); d.Borra(cache[v]); cache.Remove(v); }
-            return t;
         }
         // V7, V13: LA PORTADA BORROSA (vidrio esmerilado): achicada a 24x24 por promedio y suavizada una vez mas; estirada a toda la
         // pantalla, el filtro lineal de la tarjeta hace el resto. Se hace una vez por portada (las ultimas 8): no cuesta en cada cuadro.
         private readonly Dictionary<string, Textura> borrosas = new Dictionary<string, Textura>(StringComparer.Ordinal);
         private readonly LinkedList<string> ordenBorrosas = new LinkedList<string>();
-        internal Textura Borrosa(string ruta)
+        internal Textura Borrosa(string ruta) { return Carga(ruta, Clase.Borrosa, false); }
+        // Que se vaya leyendo (la pagina de al lado): sin prisa, detras de lo que se esta viendo.
+        internal void Precarga(string ruta) { Carga(ruta, Clase.Normal, true); }
+
+        // LEER UNA PORTADA SIN PARAR LA PANTALLA (2-11-2026): leer el archivo y descomprimirlo (lo que tarda: decenas de milisegundos en
+        // el A4) va en un hilo de fondo de prioridad baja, de una en una; la pantalla solo la sube a la tarjeta (unas pocas por cuadro).
+        // Mientras llega, se ve lo de siempre sin portada (el cuadro de color con la inicial), como al arrancar. En las capturas de
+        // prueba (AlMomento) se lee en el sitio, como antes.
+        internal static bool AlMomento;
+        private enum Clase { Normal, Grande, Borrosa }
+        private sealed class Listo { public string Ruta; public Clase Que; public byte[] Px; public int W, H, S; public bool Mip, Falla; public Color4 Media; public Rocola.VistaGrafica.C3 Prom, Uno, Dos; }
+        private readonly LinkedList<KeyValuePair<string, Clase>> pedidas = new LinkedList<KeyValuePair<string, Clase>>();
+        private readonly HashSet<string> enCamino = new HashSet<string>(StringComparer.Ordinal);
+        private readonly System.Collections.Concurrent.ConcurrentQueue<Listo> listas = new System.Collections.Concurrent.ConcurrentQueue<Listo>();
+        private readonly System.Threading.SemaphoreSlim hay = new System.Threading.SemaphoreSlim(0);
+        private System.Threading.Thread lector;
+        private bool nitidasPedidas;
+        private Textura Carga(string ruta, Clase que, bool precarga)
         {
             if (string.IsNullOrEmpty(ruta) || sinImagen.Contains(ruta)) return null;
+            Dictionary<string, Textura> cache = que == Clase.Normal ? hechas : que == Clase.Grande ? grandes : borrosas;
+            LinkedList<string> ord = que == Clase.Normal ? orden : que == Clase.Grande ? ordenGrandes : ordenBorrosas;
             Textura t;
-            if (borrosas.TryGetValue(ruta, out t)) { ordenBorrosas.Remove(ruta); ordenBorrosas.AddFirst(ruta); return t; }
+            if (cache.TryGetValue(ruta, out t)) { if (!precarga) { ord.Remove(ruta); ord.AddFirst(ruta); } return t; }
+            if (AlMomento) { Pon(Decodifica(ruta, que, Nitidas)); cache.TryGetValue(ruta, out t); return t; }
+            string clave = (int)que + ruta;
+            lock (pedidas)
+            {
+                if (enCamino.Contains(clave)) return null;
+                if (precarga && pedidas.Count >= 48) return null;   // la cola de lo que se adelanta, acotada
+                enCamino.Add(clave);
+                KeyValuePair<string, Clase> p = new KeyValuePair<string, Clase>(ruta, que);
+                if (precarga) pedidas.AddLast(p); else pedidas.AddFirst(p);   // lo que se ve, antes que lo que se adelanta
+                nitidasPedidas = Nitidas;
+            }
+            if (lector == null)
+            {
+                lector = new System.Threading.Thread(Lee) { IsBackground = true, Name = "portadas", Priority = System.Threading.ThreadPriority.BelowNormal };
+                lector.Start();
+            }
+            hay.Release();
+            return null;
+        }
+        private void Lee()
+        {
+            try { Rocola.Prioridad.Fondo(); } catch { }
+            while (true)
+            {
+                hay.Wait();
+                KeyValuePair<string, Clase> p; bool nit;
+                lock (pedidas) { if (pedidas.Count == 0) continue; p = pedidas.First.Value; pedidas.RemoveFirst(); nit = nitidasPedidas; }
+                listas.Enqueue(Decodifica(p.Key, p.Value, nit));
+            }
+        }
+        // Lo que ya esta leido, a la tarjeta (llamar una vez por cuadro, desde el hilo de la pantalla): como mucho 'cuantas'.
+        internal void Recoge(int cuantas)
+        {
+            Listo l;
+            for (int i = 0; i < cuantas && listas.TryDequeue(out l); i++)
+            {
+                lock (pedidas) enCamino.Remove((int)l.Que + l.Ruta);
+                Pon(l);
+            }
+        }
+        // Leer y descomprimir (cualquier hilo: no toca la tarjeta).
+        private Listo Decodifica(string ruta, Clase que, bool nitidas)
+        {
+            Listo l = new Listo { Ruta = ruta, Que = que };
             try
             {
                 ImageResult im = ImageResult.FromMemory(File.ReadAllBytes(ruta), ColorComponents.RedGreenBlueAlpha);
-                const int L = 24;
-                byte[] px = Reduce(im.Data, im.Width, im.Height, L, L), r = new byte[px.Length];
-                for (int y = 0; y < L; y++) for (int x = 0; x < L; x++) for (int c = 0; c < 4; c++)
+                if (que == Clase.Borrosa)
                 {
-                    int s = 0, n = 0;
-                    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { int yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= L || xx >= L) continue; s += px[(yy * L + xx) * 4 + c]; n++; }
-                    r[(y * L + x) * 4 + c] = (byte)(s / n);
+                    const int L = 24;
+                    byte[] px = Reduce(im.Data, im.Width, im.Height, L, L), r = new byte[px.Length];
+                    for (int y = 0; y < L; y++) for (int x = 0; x < L; x++) for (int c = 0; c < 4; c++)
+                    {
+                        int sm = 0, n = 0;
+                        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { int yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= L || xx >= L) continue; sm += px[(yy * L + xx) * 4 + c]; n++; }
+                        r[(y * L + x) * 4 + c] = (byte)(sm / n);
+                    }
+                    l.Px = r; l.W = l.H = L; return l;
                 }
-                t = d.Sube(r, L, L);
+                int max = que == Clase.Grande ? lado * 2 : lado;
+                int w = im.Width, h = im.Height; byte[] pxs = im.Data;
+                if (Math.Max(w, h) > max) { int nw = Math.Max(1, w * max / Math.Max(w, h)), nh = Math.Max(1, h * max / Math.Max(w, h)); pxs = Reduce(pxs, w, h, nw, nh); w = nw; h = nh; }
+                l.W = w; l.H = h;
+                l.Media = ColorMedio(pxs);
+                Rocola.VistaGrafica.ColoresDePortada(pxs, w, h, out l.Prom, out l.Uno, out l.Dos);
+                if (nitidas)
+                {
+                    int sz = 1; while (sz * 2 <= Math.Max(64, max)) sz *= 2;   // el lado potencia de 2 que cabe
+                    l.Px = Escala(pxs, w, h, sz, sz); l.S = sz; l.Mip = true;
+                }
+                else l.Px = pxs;
             }
-            catch { sinImagen.Add(ruta); return null; }
-            borrosas[ruta] = t; ordenBorrosas.AddFirst(ruta);
-            while (ordenBorrosas.Count > 8) { string v = ordenBorrosas.Last.Value; ordenBorrosas.RemoveLast(); d.Borra(borrosas[v]); borrosas.Remove(v); }
-            return t;
+            catch { l.Falla = true; }
+            return l;
+        }
+        // Subir lo leido a la tarjeta (hilo de la pantalla) y guardarlo en su cache (las ultimas 96, 6 grandes, 8 borrosas).
+        private void Pon(Listo l)
+        {
+            if (l.Falla) { sinImagen.Add(l.Ruta); return; }
+            Dictionary<string, Textura> cache = l.Que == Clase.Normal ? hechas : l.Que == Clase.Grande ? grandes : borrosas;
+            LinkedList<string> ord = l.Que == Clase.Normal ? orden : l.Que == Clase.Grande ? ordenGrandes : ordenBorrosas;
+            int cuantas = l.Que == Clase.Normal ? 96 : l.Que == Clase.Grande ? 6 : 8;
+            if (cache.ContainsKey(l.Ruta)) return;
+            Textura t;
+            if (l.Mip) { t = d.SubeConMipmaps(l.Px, l.S); t.Ancho = l.W; t.Alto = l.H; }   // la forma de la portada (la textura va estirada al cuadrado)
+            else t = d.Sube(l.Px, l.W, l.H);
+            t.Media = l.Media; t.Prom = l.Prom; t.Uno = l.Uno; t.Dos = l.Dos;
+            cache[l.Ruta] = t; ord.AddFirst(l.Ruta);
+            while (ord.Count > cuantas) { string v = ord.Last.Value; ord.RemoveLast(); d.Borra(cache[v]); cache.Remove(v); }
         }
         // A otro tamano: achicar por promedio de cajas; agrandar, bilineal.
         private static byte[] Escala(byte[] s, int w, int h, int nw, int nh)

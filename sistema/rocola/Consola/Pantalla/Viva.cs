@@ -144,7 +144,7 @@ namespace Rocola
             float tx0 = x0 + 56 * k;
             if (c.Escrito.Length > 0)
             {
-                string e = fCaja.Ajusta(c.Escrito.ToLowerInvariant(), wb - 260 * k);
+                string e = fCaja.Ajusta(EscritoMin(c.Escrito), wb - 260 * k);
                 float we = fCaja.Escribe(d, e, tx0, y0 + hb / 2 - fCaja.Tam * 0.62f, Blanco);
                 if ((reloj.ElapsedMilliseconds / 530) % 2 == 0) d.Rect(tx0 + we + 4 * k, y0 + 14 * k, 2.5f * k, hb - 28 * k, Color4.Hex(0x6FA8FF));
             }
@@ -209,14 +209,17 @@ namespace Rocola
             if (c.Resultados.Count == 0)
             {   // DibujaSinCartas de XP: que hacer, dicho en el sitio de las tarjetas
                 Letra fVacio = UiFina(Math.Max(11, 16 * sx));
-                string vacio = c.Escrito.Length > 0 ? "Sin resultados para «" + c.Escrito.ToLowerInvariant() + "»" : c.Atajos.Count > 0 ? "Escribe para buscar, o elige un atajo de arriba" : "Escribe para buscar";
+                string vacio = c.Escrito.Length > 0 ? "Sin resultados para «" + EscritoMin(c.Escrito) + "»" : c.Atajos.Count > 0 ? "Escribe para buscar, o elige un atajo de arriba" : "Escribe para buscar";
                 fVacio.Escribe(d, fVacio.Ajusta(vacio, rw), rx, ry + 8 * k, Color4.Hex(0xA8B4DC));
             }
             int filaSel = c.SelResultado / 2, filasTot = (c.Resultados.Count + 1) / 2;
             int desde = Math.Max(0, Math.Min(filaSel - filas / 2, filasTot - filas));
             string suena = m.Sonando;
-            HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (Form1.EnColaVista q in m.ColaParaPantalla(64)) if (q.Ruta != null) enCola.Add(q.Ruta);
+            if (enColaCuenta != m.EnCola || !object.ReferenceEquals(enColaSuena, suena))
+            {   // lo que va en la cola, rehecho solo cuando la cola o lo que suena cambian (no en cada cuadro)
+                enColaCuenta = m.EnCola; enColaSuena = suena; enCola.Clear();
+                foreach (Form1.EnColaVista q in m.ColaParaPantalla(64)) if (q.Ruta != null) enCola.Add(q.Ruta);
+            }
             for (int fi = 0; fi < filas && desde + fi < filasTot; fi++)
                 for (int co = 0; co < 2; co++)
                 {
@@ -276,7 +279,20 @@ namespace Rocola
             float x2 = x1 + l.Escribe(d, t.Substring(i, b.Length), x1, y, Color4.Hex(0xFFE2A8));
             l.Escribe(d, t.Substring(i + b.Length), x2, y, col);
         }
+        private readonly HashSet<string> enCola = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private string escritoDe, escritoMin;
+        private string EscritoMin(string e) { if (!object.ReferenceEquals(e, escritoDe)) { escritoDe = e; escritoMin = e.ToLowerInvariant(); } return escritoMin; }
+        private int enColaCuenta = -1; private string enColaSuena;
+        // Lo pasado a mayusculas sin acentos se recuerda (los mismos titulos en cada cuadro); se olvida todo al pasar de 1024.
+        private static readonly Dictionary<string, string> planos = new Dictionary<string, string>(StringComparer.Ordinal);
         private static string Plano(string s)
+        {
+            string r;
+            if (planos.TryGetValue(s, out r)) return r;
+            if (planos.Count >= 1024) planos.Clear();
+            return planos[s] = HazPlano(s);
+        }
+        private static string HazPlano(string s)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder(s.Length);
             foreach (char ch in s.ToUpperInvariant())

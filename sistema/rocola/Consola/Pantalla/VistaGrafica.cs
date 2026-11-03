@@ -17,11 +17,19 @@ namespace Rocola
         private readonly Letra micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina, tChica, tMedia, tGrande, tTexto;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
         private readonly Caratulas caratulas;
         private readonly float k;   // escala frente a 768 de alto
-        private string antes;
         private int ultimo;
         public bool LeeTerminal { get { return false; } }
+        internal bool SiempreDibuja;
         public bool Anima { get { return true; } }
-        private readonly System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
+        private readonly Reloj reloj = new Reloj();
+        // El reloj de la pantalla; con ROCOLA_RELOJ_FIJO=s (pruebas) siempre marca esos segundos: dos capturas salen iguales punto a punto.
+        private sealed class Reloj
+        {
+            private readonly System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            private static readonly string fijo = Environment.GetEnvironmentVariable("ROCOLA_RELOJ_FIJO");
+            internal TimeSpan Elapsed { get { return fijo != null ? TimeSpan.FromSeconds(double.Parse(fijo, System.Globalization.CultureInfo.InvariantCulture)) : sw.Elapsed; } }
+            internal long ElapsedMilliseconds { get { return (long)Elapsed.TotalMilliseconds; } }
+        }
         private readonly float[] estrellas;   // x, y (0..1), tamano, fase, velocidad: el cielo de siempre (fijo, como el patron de XP)
         private float pGraves, pMedios, pAgudos;   // el pulso de la musica, suavizado (sube rapido, baja despacio)
         private int focoDisco = -1; private string focoCarpeta; private double focoDesde;
@@ -84,27 +92,27 @@ namespace Rocola
         public void Dibuja(Controlador c)
         {
             Form1 m = c.motor;
-            // Se redibuja si algo cambio, y dos veces por segundo mientras suena (el avance).
-            string firma = (c.AjusteSel >= 0 ? "A" + c.AjusteSel + "|" + FirmaAjustes(c) + "|" + c.RecuadroTitulo + c.LoQueSuena : "") + (c.Buscando ? "B" + c.Escrito + "|" + c.FilaTecla + "," + c.ColTecla + "," + c.EnResultados + "," + c.SelResultado + "|" + c.Resultados.Count + (c.Resultados.Count > 0 ? c.Resultados[0].Tipo.ToString() : "") : "") + c.AsistentePaso + "|" + c.AsistenteAviso + "|" + c.letra + "|" + c.cursorDisco + "|" + c.cursorCancion + "|" + (c.dentro != null ? c.dentro.Carpeta : "") + "|" + m.Creditos + "|" + m.EnCola + "|" + m.Sonando + "|" + c.AvisoVigente;
+            // UN CUADRO CADA BARRIDO DE LA PANTALLA (2-11-2026: antes, como mucho uno cada 33 ms): el ritmo lo pone el cambio de pagina
+            // de Presenta, que espera al barrido (60, 75 Hz...). Sin pantalla que espere (fuera de pantalla), no mas de uno cada 4 ms.
             int ahora = Environment.TickCount;
-            if (firma == antes && unchecked(ahora - ultimo) < 33) return;   // el cielo se mueve: unos 30 cuadros por segundo
-            antes = firma; ultimo = ahora;
+            if (!SiempreDibuja && unchecked(ahora - ultimo) < 4) return;
+            ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
-            d.Empieza(Fondo);
+            Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
             Pulso(c);
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
-            ColorDelCielo(c);
-            Cielo(W, H, reloj.Elapsed.TotalSeconds);
-            EspectroHorizonte(c, W, H);
-            if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f);   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
-            if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W);   // en la atraccion y en el buscador, como en XP, sin cabecera
+            ColorDelCielo(c); Perfil.Marca("preparar");
+            Cielo(W, H, reloj.Elapsed.TotalSeconds); Perfil.Marca("cielo");
+            EspectroHorizonte(c, W, H); Perfil.Marca("espectro");
+            if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f); Perfil.Marca("estrella del cielo");   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
+            if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W); Perfil.Marca("cabecera");   // en la atraccion y en el buscador, como en XP, sin cabecera
             float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
-            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
             if (c.AjusteSel >= 0 && m.AjustesVistaPrevia && c.AjusteSel < c.ListaAjustes.Count && Array.IndexOf(new[] { "Imagen", "Fondo", "Colores" }, Form1.PaginaDe(c.ListaAjustes[c.AjusteSel].Grupo)) >= 0)
             { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
-            if (c.AjusteSel >= 0) { Ajustes(c, W, H); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.AjusteSel >= 0) { Ajustes(c, W, H); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
@@ -112,6 +120,7 @@ namespace Rocola
             if (c.Buscando && c.ConPortadas) BuscadorPortadas(c, W, abajo);
             else if (c.Buscando) BuscadorPortadas(c, W, abajo);
             else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
+            Perfil.Marca("pared, disco o buscador");
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
             if (e > 0f) EstrellaDelCielo(c, W, H, e);
             if (e > 0f && m.EstadoExpandido)
@@ -122,6 +131,7 @@ namespace Rocola
                 abajo = Math.Min(abajo, top - 40 * k);   // el aviso, encima del panel
             }
             else Suena(c, W, H, abajo);
+            Perfil.Marca("lo que suena");
             string av = c.AvisoVigente;
             if (av.Length > 0 && m.AvisosClaros) AvisoClaro(c, av, W);
             else if (av.Length > 0)
@@ -130,11 +140,11 @@ namespace Rocola
                 d.Redondo((W - wa) / 2, abajo - 104 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.92f));
                 media.EscribeCentrado(d, av, W / 2, abajo - 92 * k, Dorado);
             }
-            Efectos(c, W, H);
-            Ayuda(c, W, H);
+            Perfil.Marca("avisos"); Efectos(c, W, H); Perfil.Marca("efectos");
+            Ayuda(c, W, H); Perfil.Marca("ayuda");
             if (c.DiagEscena >= 0) { string dt = c.DiagTexto; float wd = chica.Mide(dt) + 30 * k; d.Redondo((W - wd) / 2, H - 150 * k, wd, 32 * k, 16 * k, Color4.Hex(0x7A1E1E, 0.95f)); chica.EscribeCentrado(d, dt, W / 2, H - 145 * k, Blanco); }
-            d.Termina();
-            sup.Presenta(); Fluidez.Cuadro();
+            d.Termina(); Perfil.Marca("vaciar lotes");
+            sup.Presenta(); Fluidez.Cuadro(); Perfil.Marca("presentar");
         }
 
         // EL MODO ATRACCION (el escaparate de XP): la portada grande, que se mece un poco, y su ficha; debajo, un mensaje cada 5 s.
@@ -348,10 +358,13 @@ namespace Rocola
             if (t < FichaSaleMs) { float u = t / (float)FichaSaleMs; return 1f - u * u * (3f - 2f * u); }
             return 0f;
         }
-        private Form1.Disco fichaDe; private Form1.Ficha fichaDatos; private int fichaCola = -1;
+        private Form1.Disco fichaDe; private Form1.Ficha fichaDatos; private int fichaCola = -1; private float fichaLetrasDe = -1;
         private void FichaRapida(Controlador c, Form1.Disco disco, double dtMs, Zona pared, float celW, float celH)
         {
             float alfa = CurvaFicha((int)dtMs);
+            // Sus cinco letras se hornean ya con la primera pared (no a media entrada de la ficha: eran unos MB y un tiron)
+            float hLetras = Math.Max(170 * k, Math.Min(300 * k, celH * 1.36f));
+            if (hLetras != fichaLetrasDe) { float u0 = hLetras / 230f; Ui(18 * u0); Ui(12.5f * u0); Ui(13 * u0); Ui(11 * u0); Ui(14 * u0); fichaLetrasDe = hLetras; }
             if (alfa <= 0f || zElegido.Vacia) return;
             if (!object.ReferenceEquals(disco, fichaDe) || fichaCola != c.motor.EnCola) { fichaDe = disco; fichaCola = c.motor.EnCola; fichaDatos = c.motor.FichaDe(disco); }
             Form1.Ficha f = fichaDatos;
@@ -510,7 +523,7 @@ namespace Rocola
             if (!alguna) return;
             if (t == null && Math.Abs(Math.Sin(angulo % g90 * 2)) < 0.25)   // casi de frente: su inicial, como la portada sin imagen
             {
-                string ini = string.IsNullOrEmpty(nombre) ? "?" : nombre.Substring(0, 1).ToUpperInvariant();
+                string ini = string.IsNullOrEmpty(nombre) ? "?" : Controlador.Etiqueta(char.ToUpperInvariant(nombre[0]));
                 Letra l = lado > 120 * k ? enorme : grande;
                 l.EscribeCentrado(d, ini, x + lado / 2, y + lado / 2 - l.Tam * 0.55f, new Color4(1, 1, 1, 0.85f));
             }
@@ -531,13 +544,30 @@ namespace Rocola
             uint h32 = 2166136261; foreach (char ch in nombre ?? "") h32 = (h32 ^ ch) * 16777619;
             Color4 col = new Color4(0.25f + (h32 & 255) / 640f, 0.2f + ((h32 >> 8) & 255) / 640f, 0.35f + ((h32 >> 16) & 255) / 640f);
             d.Redondo(x, y, lado, lado, 10 * k, col);
-            string ini = string.IsNullOrEmpty(nombre) ? "?" : nombre.Substring(0, 1).ToUpperInvariant();
+            string ini = string.IsNullOrEmpty(nombre) ? "?" : Controlador.Etiqueta(char.ToUpperInvariant(nombre[0]));
             Letra l = lado > 120 * k ? enorme : grande;
             l.EscribeCentrado(d, ini, x + lado / 2, y + lado / 2 - l.Tam * 0.55f, new Color4(1, 1, 1, 0.85f));
         }
 
         public void Suelta() { sup.Suelta(); }
-        public void Recupera() { sup.Recupera(); antes = null; }
+        public void Recupera() { sup.Recupera(); }
         public void Dispose() { sup.Dispose(); }
+    }
+
+    // EL PERFIL DEL CUADRO (solo con el banco, ROCOLA_PERFIL=1): cuanto se va en cada tramo del dibujo. Sin la variable, no hace nada.
+    internal static class Perfil
+    {
+        internal static readonly bool Activo = Environment.GetEnvironmentVariable("ROCOLA_PERFIL") != null;
+        private static readonly System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        private static double antes; private static long bytesAntes;
+        internal static readonly Dictionary<string, double> Total = new Dictionary<string, double>();
+        internal static readonly Dictionary<string, long> Bytes = new Dictionary<string, long>();   // la memoria pedida en cada tramo
+        internal static void Empieza() { if (Activo) { antes = sw.Elapsed.TotalMilliseconds; bytesAntes = GC.GetAllocatedBytesForCurrentThread(); } }
+        internal static void Marca(string que)
+        {
+            if (!Activo) return;
+            double t = sw.Elapsed.TotalMilliseconds, v; Total.TryGetValue(que, out v); Total[que] = v + (t - antes); antes = t;
+            long b = GC.GetAllocatedBytesForCurrentThread(), w; Bytes.TryGetValue(que, out w); Bytes[que] = w + (b - bytesAntes); bytesAntes = GC.GetAllocatedBytesForCurrentThread();
+        }
     }
 }
