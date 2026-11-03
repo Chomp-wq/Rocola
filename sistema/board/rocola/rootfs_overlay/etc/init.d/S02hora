@@ -1,0 +1,10 @@
+#!/bin/sh
+# LA HORA (3-11-2026). El reloj de la placa del A4 guarda la hora LOCAL (como lo deja Windows XP, que sigue en el menu de arranque);
+# el nucleo lo lee como UTC al prender, asi que aqui se vuelve a leer como hora local (con la zona de /etc/localtime: Mexico). Al
+# apagar se escribe de vuelta igual, en hora local: XP la sigue viendo bien. rocola-actualiza la corrige por NTP.
+case "$1" in
+	start) hwclock -s -l 2>/dev/null ;;
+	stop) hwclock -w -l 2>/dev/null ;;
+	*) echo "Uso: $0 {start|stop}"; exit 1 ;;
+esac
+exit 0

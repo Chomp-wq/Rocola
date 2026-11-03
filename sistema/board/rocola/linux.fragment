@@ -70,3 +70,7 @@ CONFIG_FB_EFI=y
 CONFIG_BLK_DEV_LOOP=y
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_RD_GZIP=y
+
+# El reloj de la placa (la hora de la rocola al prender; S02hora lo lee como hora local, como Windows XP)
+CONFIG_RTC_CLASS=y
+CONFIG_RTC_DRV_CMOS=y

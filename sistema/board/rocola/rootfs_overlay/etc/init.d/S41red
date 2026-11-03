@@ -1,0 +1,14 @@
+#!/bin/sh
+# LA RED POR CABLE (3-11-2026). DHCP en eth0 (net.ifnames=0 en el arranque: el nombre de siempre, el que usan el encendido remoto y
+# Ctrl+F3) en segundo plano, sin hacer esperar a la rocola, y sin rendirse: si no hay respuesta (el cable suelto, o el router del bar
+# aun prendiendo tras un apagon) lo vuelve a intentar cada 20 s, y despues renueva su direccion solo.
+case "$1" in
+	start)
+		( i=0; while [ ! -e /sys/class/net/eth0 ] && [ $i -lt 60 ]; do sleep 1; i=$((i + 1)); done
+		  ip link set eth0 up 2>/dev/null
+		  exec udhcpc -f -S -s /usr/share/udhcpc/default.script -i eth0 -x hostname:"$(hostname)" -t 3 -T 3 -A 20 -p /run/udhcpc.eth0.pid ) </dev/null >/dev/null 2>&1 &
+		;;
+	stop) [ -f /run/udhcpc.eth0.pid ] && kill "$(cat /run/udhcpc.eth0.pid)" 2>/dev/null ;;
+	*) echo "Uso: $0 {start|stop}"; exit 1 ;;
+esac
+exit 0

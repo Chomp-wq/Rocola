@@ -214,17 +214,17 @@ set rocola_slot=a
 set rocola_otro=b
 if [ -f /$OS/arranque.cfg ]; then source /$OS/arranque.cfg; fi
 menuentry "Rocola OS" {
-	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.disco=$UUID console=tty1 quiet loglevel=3
+	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.disco=$UUID console=tty1 net.ifnames=0 quiet loglevel=3
 	initrd /$OS/\$rocola_slot/initrd.gz
 }
 if [ -f /$OS/\$rocola_otro/sistema.img ]; then
 	menuentry "Rocola OS - la version anterior del sistema" {
-		linux /$OS/\$rocola_otro/bzImage rocola.slot=\$rocola_otro rocola.anterior rocola.disco=$UUID console=tty1 quiet loglevel=3
+		linux /$OS/\$rocola_otro/bzImage rocola.slot=\$rocola_otro rocola.anterior rocola.disco=$UUID console=tty1 net.ifnames=0 quiet loglevel=3
 		initrd /$OS/\$rocola_otro/initrd.gz
 	}
 fi
 menuentry "Rocola OS - prueba de sonido y grafica" {
-	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.prueba rocola.disco=$UUID console=tty1 quiet loglevel=3
+	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.prueba rocola.disco=$UUID console=tty1 net.ifnames=0 quiet loglevel=3
 	initrd /$OS/\$rocola_slot/initrd.gz
 }
 EOF

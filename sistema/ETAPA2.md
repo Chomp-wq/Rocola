@@ -784,3 +784,25 @@ generó, y que todo esté en orden.
   **Cortes de luz:** un ext4 dentro de un archivo NTFS **con huecos** se estropeó; escrito entero (como lo hacen el instalador y el
   actualizador) aguantó siete apagados de golpe, cuatro a media escritura, sin más que reproducir su diario. BusyBox y GRUB de la prueba
   son los de esta máquina (los de la imagen del A4 llevan instrucciones del Piledriver que QEMU no tiene). **Nada probado en el A4.**
+
+## Extra (3-11-2026, octava parte): la red, la hora y el registro
+
+- **Sin red en el A4.** El udev del sistema renombraba la tarjeta de red (`eth0` → `enp3s0`, por su ranura) y todo usaba `eth0`: el
+  DHCP, el encendido remoto y Ctrl+F3 → Internet. La rocola se habría quedado sin internet y sin Wake on LAN. Ahora se queda como
+  `eth0`: `net.ifnames=0` en los menús de arranque (la memoria y el instalado) y una regla vacía en `/etc/udev/rules.d` que sustituye a
+  la que renombra (esta llega también con las actualizaciones del sistema, que no reescriben el menú instalado).
+- **El DHCP se rendía.** El de Buildroot (`ifup`, `udhcpc -n`) probaba ~10 s al prender y no volvía a intentarlo: tras un apagón, con el
+  router del bar aún prendiendo, la rocola quedaba sin red hasta reiniciar (y hacía esperar el arranque). Ahora `S41red` lo lleva en
+  segundo plano y sin rendirse (cada 20 s), con el guion de Buildroot dado a mano. Probado en QEMU con el cable «conectado» a los 45 s:
+  consigue dirección, ruta y DNS sola.
+- **La hora.** No había zona horaria: la rocola contaba en UTC. El reloj de la placa del A4 está en hora local (lo deja así XP), y el
+  núcleo lo leía como UTC: por casualidad salía la hora local, pero en cuanto el NTP de `rocola-actualiza` pusiera la buena, el
+  reinicio de las 7, «lo más pedido esta noche» y las bitácoras se habrían corrido 6 horas; y `rocola-actualiza` escribía el reloj en
+  UTC, con lo que Windows XP se habría quedado 6 horas adelantado. Ahora: zona `America/Mexico_City` (tzdata, sin cambio de horario
+  desde 2022), `S02hora` lee el reloj como hora local al prender y lo escribe igual al apagar, el initramfs también (las horas de
+  `sistema.txt`), y la hora por NTP se pone antes que nada, aunque falte la llave de GitHub. .NET (NativeAOT, globalización invariante)
+  toma la zona de `/etc/localtime`: comprobado.
+- **El registro de la rocola** (`rocola.txt`) iba dentro del sistema y se perdía en cada actualización del sistema: va con lo aprendido
+  (`/rocola/datos/rocola.txt`); `/root/rocola.txt` lo sigue enseñando.
+
+**Nada probado en el A4** (la Realtek del A4 y su reloj, en especial).

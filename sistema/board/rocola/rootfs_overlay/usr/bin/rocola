@@ -9,7 +9,10 @@
 # mala (no se vuelve a bajar).
 PROG=${ROCOLA_PROG:-/rocola/datos/programa}   # (con lo aprendido: sobrevive a una actualizacion del sistema)
 BITACORA=${ROCOLA_BITACORA:-/rocola/datos/rocola_actualizaciones.txt}
-REGISTRO=${ROCOLA_REGISTRO:-/root/rocola.txt}   # (cambiables para probarlo fuera de la rocola)
+# el registro va con lo aprendido (3-11-2026: dentro del sistema se perdia en cada actualizacion del sistema); /root/rocola.txt lo enseña
+REGISTRO=${ROCOLA_REGISTRO:-/rocola/datos/rocola.txt}   # (cambiables para probarlo fuera de la rocola)
+[ -z "$ROCOLA_REGISTRO" ] && [ ! -e /root/rocola.txt ] && ln -sf "$REGISTRO" /root/rocola.txt 2>/dev/null
+[ -z "$ROCOLA_REGISTRO" ] && [ -f /root/rocola.txt ] && [ ! -L /root/rocola.txt ] && { cat /root/rocola.txt >> "$REGISTRO"; ln -sf "$REGISTRO" /root/rocola.txt; } 2>/dev/null
 for c in Master PCM Speaker Headphone Front "Line Out"; do amixer -q sset "$c" 100% unmute 2>/dev/null; done
 probando=0; fallos=0
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> $REGISTRO; }

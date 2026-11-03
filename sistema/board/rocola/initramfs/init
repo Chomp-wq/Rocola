@@ -14,6 +14,7 @@
 mount -t devtmpfs devtmpfs /dev
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
+hwclock -s -l 2>/dev/null   # el reloj de la placa esta en hora local (como lo deja XP): las horas de sistema.txt, bien
 SLOT=$(sed -n 's/.*rocola\.slot=\([ab]\).*/\1/p' /proc/cmdline)
 [ -n "$SLOT" ] || SLOT=a
 OTRO=a; [ "$SLOT" = a ] && OTRO=b

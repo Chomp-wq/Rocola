@@ -126,7 +126,7 @@ ccache y lo compilado, varios GB. La imagen queda en `~/rocola-trabajo/salida/im
      (`rocola-discos`), usa sus carpetas `musica` y la primera vez copia lo que la rocola de XP aprendió (medidas, EQ, botones,
      configuración, estadísticas, IA: `rocola_importado_xp.txt` dice qué). El SSD con Windows XP no se toca: se quita la USB y el
      A4 vuelve a arrancar en XP como siempre.
-  6. Lo que pasó queda en la USB: `/root/rocola-prueba.txt` (la prueba) y `/root/rocola.txt` (la rocola). Para verlos: Ctrl+Alt+F2,
+  6. Lo que pasó queda en la USB: `/root/rocola-prueba.txt` (la prueba) y `/root/rocola.txt` (la rocola; va con lo aprendido, en `/rocola/datos/rocola.txt`, y no se pierde al actualizar el sistema). Para verlos: Ctrl+Alt+F2,
      usuario `root`.
   7. **Si la imagen del A4 no arranca allí** (se reinicia, o se queda en negro tras el menú): la imagen de QEMU
      (`ROCOLA_PERFIL=qemu sh sistema/compila.sh`, en `salida-qemu/images/disk.img`) es la misma rocola para cualquier x86-64 y también
@@ -169,7 +169,10 @@ pone el sistema en la otra copia y conserva lo aprendido. Lo que hizo el instala
 
 ## Internet, actualizaciones y encendido remoto
 
-La rocola se conecta **por cable** (DHCP: basta conectarla al router). Con internet:
+La rocola se conecta **por cable** (DHCP: basta conectarla al router). Si el router tarda en prender (tras un apagón prenden los dos a
+la vez) o el cable se conecta después, la rocola lo sigue intentando cada 20 s y se conecta sola. La hora es la de México
+(`America/Mexico_City`, sin cambio de horario) y se pone por internet; el reloj de la placa se deja en hora local, como lo tiene
+Windows XP. Con internet:
 
 - **El programa de la rocola se actualiza solo.** Cada cambio que se sube a GitHub lo compila GitHub
   (`.github/workflows/rocola-programa.yml`) y lo publica como la versión «programa-N» del repositorio. La rocola la busca al minuto

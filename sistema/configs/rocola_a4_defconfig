@@ -85,7 +85,8 @@ BR2_PACKAGE_MPG123=y
 # INTERNET (1-11-2026): por cable (la Realtek del A4), con DHCP; la hora por NTP (BusyBox) para que las conexiones seguras valgan.
 # Para que el programa de la rocola se actualice solo desde GitHub (rocola-actualiza: curl, jq y los certificados) y para el
 # encendido remoto (Wake on LAN: ethtool lo deja encendido en la tarjeta).
-BR2_SYSTEM_DHCP="eth0"
+# (la red no la levanta el ifup de Buildroot -su udhcpc se rinde a los ~10 s y, si el router del bar tarda mas en prender que la rocola
+# tras un apagon, se quedaba sin red hasta reiniciar-: lo hace /etc/init.d/S41red, que reintenta siempre)
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_OPENSSL=y
 BR2_PACKAGE_LIBCURL=y
@@ -95,3 +96,7 @@ BR2_PACKAGE_JQ=y
 BR2_PACKAGE_ETHTOOL=y
 # lo aprendido del sistema instalado (datos.img, ext4 con diario): lo hace post-build.sh con el mke2fs de la maquina que compila
 BR2_PACKAGE_HOST_E2FSPROGS=y
+# LA HORA DE MEXICO (3-11-2026): sin zona horaria la rocola contaba en UTC; el reloj de la placa queda en hora local, como lo deja
+# Windows XP (S02hora y rocola-actualiza lo leen y lo escriben asi). Mexico no cambia de horario desde 2022 (lo sabe tzdata).
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_LOCALTIME="America/Mexico_City"

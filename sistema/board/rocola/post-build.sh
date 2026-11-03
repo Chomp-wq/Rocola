@@ -19,6 +19,7 @@ for l in ld-linux-x86-64.so.2 libc.so.6 libresolv.so.2 libm.so.6; do
 	[ -e "$TARGET_DIR/lib/$l" ] && cp -L "$TARGET_DIR/lib/$l" "$I/lib/"
 done
 cp "$BOARD_DIR/initramfs/init" "$I/init"; chmod 755 "$I/init"
+mkdir -p "$I/etc"; [ -e "$TARGET_DIR/etc/localtime" ] && cp -L "$TARGET_DIR/etc/localtime" "$I/etc/localtime"   # la hora de Mexico
 mkdir -p "$TARGET_DIR/usr/share/rocola/instalar"
 (cd "$I" && find . | cpio -o -H newc --quiet | gzip -9) > "$TARGET_DIR/usr/share/rocola/instalar/initrd.gz"
 rm -rf "$I"

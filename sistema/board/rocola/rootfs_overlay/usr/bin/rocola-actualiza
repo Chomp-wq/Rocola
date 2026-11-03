@@ -4,7 +4,7 @@
 #
 #  1. LA LLAVE: rocola_github.txt (una llave de solo lectura del repositorio) en una memoria USB conectada, o en la carpeta de la rocola
 #     de XP, se copia a /rocola/datos/rocola_github.txt. Sin llave no hace nada mas (Ctrl+F3 lo dice).
-#  2. LA HORA por NTP (las conexiones seguras la necesitan; el A4 puede traerla mal).
+#  2. LA HORA por NTP (las conexiones seguras la necesitan; el A4 puede traerla mal), antes que nada: tambien sin llave.
 #  3. EL PROGRAMA: la ultima version «programa-N» que no este apuntada como mala (/rocola/datos/programa/malas). Se baja, se comprueba su
 #     suma (sha256.txt) y que arranca en este equipo (--version), y queda como rocola-consola.nueva + nueva.version, con el aviso
 #     /run/rocola-hay-nueva: la rocola la pone sola cuando esta libre (Actualizacion.cs y /usr/bin/rocola, que vuelve a la anterior si
@@ -30,6 +30,12 @@ apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; }
 mkdir "$RUN/rocola-actualiza.cerrojo" 2>/dev/null || exit 0
 trap 'rm -rf "$RUN/rocola-actualiza.cerrojo" "$TMP"' EXIT
 rm -rf "$TMP"; mkdir -p "$TMP" "$PROG"
+
+# LA HORA, lo primero (aunque falte la llave): por NTP hasta que salga bien una vez en este arranque; y al reloj de la placa en hora
+# LOCAL, como lo deja Windows XP (S02hora la lee asi al prender): XP la sigue viendo bien.
+if [ -z "$ROCOLA_SIN_HORA" ] && [ ! -f "$RUN/rocola-hora" ]; then
+	timeout 30 ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && touch "$RUN/rocola-hora" && hwclock -w -l 2>/dev/null
+fi
 
 # 1. LA LLAVE: de una memoria USB (aunque se conecte con la rocola prendida) o de la carpeta de XP. Solo se lee de ahi.
 busca_llave() {
@@ -64,10 +70,6 @@ if grep -q '^actualizar_solo=0' "$DATOS/rocola_config.txt" 2>/dev/null && [ -z "
 	estado "apagada («Actualizarse sola»): se busca solo con «Buscar actualizacion ahora»"; exit 0
 fi
 
-# 2. LA HORA (una vez por arranque)
-if [ -z "$ROCOLA_SIN_HORA" ] && [ ! -f "$RUN/rocola-hora" ]; then
-	timeout 30 ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && touch "$RUN/rocola-hora" && hwclock -w -u 2>/dev/null
-fi
 
 pide() {   # pide RUTA_DE_LA_API ARCHIVO
 	curl -fsSL --connect-timeout 20 --max-time 60 -H "Authorization: Bearer $LLAVE" -H "Accept: application/vnd.github+json" \
