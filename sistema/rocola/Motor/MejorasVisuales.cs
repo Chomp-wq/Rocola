@@ -36,6 +36,24 @@ namespace Rocola
         public bool AvisosVidrio = false;       // V24 "avisos_vidrio=" (medio)
         public bool AjustesVistaPrevia = true;  // V28 "ajustes_vista_previa="
         public bool ResolucionNativa = true;    // V30 "resolucion_nativa=": la del monitor (apagado: 1024x768 si el monitor la ofrece; se aplica al arrancar)
+        // VIDRIO Y LETRA (decision del 3-11-2026, presentacion «Rocola OS: vidrio y letra»: G1-G11 y la letra L1). Los vidrios sobre el cielo
+        // (coste bajo) encendidos de fabrica; los que desenfocan lo que hay detras de verdad (G4, G9, G10, G11: coste medio), apagados
+        // hasta medirlos en el A4.
+        public bool LetraNueva = true;          // L1 "letra_nueva=": Outfit en los titulos y Plus Jakarta Sans en el texto
+        public bool VidrioCabecera = true;      // G1 "vidrio_cabecera="
+        public bool VidrioLetras = true;        // G2 "vidrio_letras="
+        public bool VidrioSuena = true;         // G3 "vidrio_suena="
+        public bool VidrioFicha = false;        // G4 "vidrio_ficha=" (medio)
+        public bool VidrioDisco = true;         // G5 "vidrio_disco="
+        public bool VidrioReposo = true;        // G6 "vidrio_reposo="
+        public bool VidrioBuscador = true;      // G7 "vidrio_buscador="
+        public bool VidrioAtraccion = true;     // G8 "vidrio_atraccion="
+        public bool VidrioAjustes = false;      // G9 "vidrio_ajustes=" (medio)
+        public bool VidrioAvisos = false;       // G10 "vidrio_avisos=" (medio)
+        public bool VidrioAyuda = false;        // G11 "vidrio_ayuda=" (medio)
+        public static bool LetraNuevaFalta;     // la pantalla avisa si no encontro los archivos de L1 (el interruptor, en gris)
+        // Alguno de los vidrios del cielo: la pantalla prepara la copia desenfocada del cielo solo si hace falta.
+        public bool AlgunVidrioDelCielo { get { return VidrioCabecera || VidrioLetras || VidrioSuena || VidrioDisco || VidrioReposo || VidrioBuscador || VidrioAtraccion; } }
 
         // V30 antes de tener el motor (la pantalla se abre primero, V29): lo guardado en rocola_config.txt, encendido si no dice nada.
         public static bool ResolucionNativaGuardada()
@@ -48,6 +66,18 @@ namespace Rocola
             }
             catch { }
             return true;
+        }
+        // Un interruptor visual antes de tener el motor (la pantalla se abre primero): lo guardado, o 'defecto' si no dice nada.
+        public static bool VisualGuardado(string clave, bool defecto)
+        {
+            try
+            {
+                string f = System.IO.Path.Combine(CarpetaDatos, "rocola_config.txt");
+                if (!System.IO.File.Exists(f)) return defecto;
+                foreach (string l in System.IO.File.ReadAllLines(f)) if (l.StartsWith(clave + "=")) return l.Substring(clave.Length + 1).Trim() != "0";
+            }
+            catch { }
+            return defecto;
         }
         // Las claves, para leerlas y guardarlas de una sola tabla.
         private KeyValuePair<string, Func<bool>>[] clavesVisuales;
@@ -70,6 +100,13 @@ namespace Rocola
             a("moneda_metal", () => MonedaMetal, v => MonedaMetal = v); a("chispas_pedir", () => ChispasPedir, v => ChispasPedir = v);
             a("avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v); a("ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v);
             a("resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v);
+            a("letra_nueva", () => LetraNueva, v => LetraNueva = v);
+            a("vidrio_cabecera", () => VidrioCabecera, v => VidrioCabecera = v); a("vidrio_letras", () => VidrioLetras, v => VidrioLetras = v);
+            a("vidrio_suena", () => VidrioSuena, v => VidrioSuena = v); a("vidrio_ficha", () => VidrioFicha, v => VidrioFicha = v);
+            a("vidrio_disco", () => VidrioDisco, v => VidrioDisco = v); a("vidrio_reposo", () => VidrioReposo, v => VidrioReposo = v);
+            a("vidrio_buscador", () => VidrioBuscador, v => VidrioBuscador = v); a("vidrio_atraccion", () => VidrioAtraccion, v => VidrioAtraccion = v);
+            a("vidrio_ajustes", () => VidrioAjustes, v => VidrioAjustes = v); a("vidrio_avisos", () => VidrioAvisos, v => VidrioAvisos = v);
+            a("vidrio_ayuda", () => VidrioAyuda, v => VidrioAyuda = v);
             clavesVisuales = l.ToArray(); ponVisuales = p.ToArray();
         }
         // Una linea del archivo de configuracion: true si era de estas.

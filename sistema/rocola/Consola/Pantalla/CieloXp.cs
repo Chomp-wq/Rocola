@@ -48,6 +48,7 @@ namespace Rocola
                         FondoLento(W, H, t, 1f, true); d.Vuelve();   // los cuatro degradados opacos cubren todo: sin el fondo liso debajo y sin mezclar
                     }
                     if (tapado) d.PonCapa(capaCielo, tx0, ty0, tx1 - tx0, ty1 - ty0); else d.PonCapa(capaCielo);
+                    if (vidrioCieloPedido) d.DesenfocaCielo(capaCielo.Tex);   // los vidrios del cielo (G1-G8): su fondo, desenfocado
                     goto encima;
                 }
             }

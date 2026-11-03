@@ -65,7 +65,7 @@ namespace Rocola
             {
                 try { string exe = Environment.ProcessPath; selloRocola = exe != null ? File.GetLastWriteTime(exe).ToString("dd/MM/yyyy HH:mm") : ""; } catch { selloRocola = ""; }
             }
-            Letra fTit = Ui(13.3f * k), fNom = Ui(13.3f * k), fChica = UiFina(11 * k), fPag = Ui(20 * k), fPest = Ui(13.3f * k), fVal = Ui(14.6f * k);
+            Letra fTit = Ui(13.3f * k), fNom = Ui(13.3f * k), fChica = UiFina(11 * k), fPag = Titulo(20 * k), fPest = Ui(13.3f * k), fVal = Ui(14.6f * k);
             Color4 tenue = Color4.Hex(0x9AA6C8), blancoX = Color4.Hex(0xF2F5FF);
 
             // LA VENTANA: el filo azul, la barra de titulo y el fondo
@@ -83,7 +83,9 @@ namespace Rocola
             Color4 azulFilo = Color4.Hex(0x2456E6);
             d.Rect(fx0, fy0, fx1 - fx0, wy - fy0, azulFilo); d.Rect(fx0, wy + wh, fx1 - fx0, fy1 - (wy + wh), azulFilo);
             d.Rect(fx0, wy, wx - fx0, wh, azulFilo); d.Rect(wx + ww, wy, fx1 - (wx + ww), wh, azulFilo);
-            d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E, previa ? 0.72f : 1f), Color4.Hex(0x0C1226, previa ? 0.72f : 1f));
+            ajustesVidrio = c.motor.VidrioAjustes && !previa;   // G9: la ventana, de vidrio oscuro que desenfoca la pared de detras
+            if (ajustesVidrio) Vidrio(wx, wy, ww, wh, 4 * k, Color4.Hex(0x2456E6), 1f, true, 0.66f, 0.8f);
+            else d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E, previa ? 0.72f : 1f), Color4.Hex(0x0C1226, previa ? 0.72f : 1f));
             d.DegradadoH(wx, wy, ww, 26 * k, Color4.Hex(0x2456E6), Color4.Hex(0x1E44C8));
             string titulo = "Rocola - " + pagina + (selloRocola.Length > 0 ? "   ·   Esta rocola es del " + selloRocola : "");
             fTit.Escribe(d, fTit.Ajusta(titulo, ww - 20 * k), wx + 10 * k, wy + 13 * k - fTit.Tam * 0.62f, Blanco);
@@ -229,10 +231,15 @@ namespace Rocola
         }
 
         // Una tarjeta de grupo (los recuadros de la ventana de XP): fondo, filo, la rayita de color y el titulo.
+        private bool ajustesVidrio;
         private void Tarjeta(float x, float y, float w, float h, string titulo, Color4 col, Letra f)
         {
-            d.Redondo(x, y, w, h, 10 * k, Color4.Hex(0x141B36, 0.96f));
-            d.Contorno(x, y, w, h, 10 * k, 1f * k, Color4.Hex(0x2C3762));
+            if (ajustesVidrio) PildoraVidrio(x, y, w, h, 10 * k, Color4.Hex(0x6F8CFF), 1f, false);   // G9: tarjetas de vidrio mas claro
+            else
+            {
+                d.Redondo(x, y, w, h, 10 * k, Color4.Hex(0x141B36, 0.96f));
+                d.Contorno(x, y, w, h, 10 * k, 1f * k, Color4.Hex(0x2C3762));
+            }
             d.Redondo(x + 14 * k, y + 13 * k, 4 * k, 16 * k, 2 * k, col);
             f.Escribe(d, titulo, x + 26 * k, y + 21 * k - f.Tam * 0.62f, Color4.Hex(0xEEF2FF));
         }

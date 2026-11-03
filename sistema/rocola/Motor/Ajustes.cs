@@ -140,7 +140,7 @@ namespace Rocola
             if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
             return "Sonido";
         }
-        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla" };
+        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra" };
         // Una mejora visual de Rocola OS (MejorasVisuales.cs): su interruptor y su explicacion; 'medio' = de coste medio (apagada de fabrica).
         private Ajuste Visual(string grupo, string nombre, string clave, Func<bool> lee, Action<bool> pon, bool medio, string nota)
         {
@@ -348,8 +348,25 @@ namespace Rocola
             l.Add(Visual("La atraccion", "Pasos sin cortes (V21)", "atraccion_fundidos", () => AtraccionFundidos, v => AtraccionFundidos = v, false, "Entre una pantalla y otra de la atraccion, un fundido en vez de un salto."));
             l.Add(Visual("Monedas y avisos", "Una moneda de verdad (V22)", "moneda_metal", () => MonedaMetal, v => MonedaMetal = v, false, "La moneda que cae, con brillo de metal y un rebote al llegar."));
             l.Add(Visual("Monedas y avisos", "Chispas al poner una cancion (V23)", "chispas_pedir", () => ChispasPedir, v => ChispasPedir = v, false, "Chispas del color del genero que vuelan hasta la cola."));
-            l.Add(Visual("Monedas y avisos", "Avisos de vidrio (V24)", "avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v, true, "Los avisos sobre un vidrio que desenfoca lo de atras."));
+            Ajuste v24 = Visual("Monedas y avisos", "Avisos de vidrio (V24)", "avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v, true, "Los avisos sobre un vidrio que desenfoca lo de atras.");
+            v24.Bloqueo = () => VidrioAvisos ? "lo hace «Avisos de vidrio nuevos» (G10), que esta encendido" : null;
+            l.Add(v24);
             l.Add(Visual("Ajustes y pantalla", "Ver el cambio mientras se elige (V28)", "ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v, false, "En las hojas Imagen, Fondo y Colores la ventana se hace transparente para ver el cambio detras."));
+            // VIDRIO Y LETRA (3-11-2026): la letra nueva y las ventanas de vidrio (G1-G11)
+            Ajuste letra = Visual("Vidrio y letra", "Letra nueva (L1)", "letra_nueva", () => LetraNueva, v => LetraNueva = v, false, "Outfit en los titulos y Plus Jakarta Sans en el texto, en toda la rocola. Apagado: las letras de XP.");
+            letra.Bloqueo = () => LetraNuevaFalta && LetraNueva ? "faltan los archivos de la letra en /usr/share/rocola/letras" : null;
+            l.Add(letra);
+            l.Add(Visual("Vidrio y letra", "Cabecera de vidrio (G1)", "vidrio_cabecera", () => VidrioCabecera, v => VidrioCabecera = v, false, "La leyenda, BUSCAR, AYUDA y la letra sobre una placa de vidrio que deja ver el cielo."));
+            l.Add(Visual("Vidrio y letra", "Barra de letras de vidrio (G2)", "vidrio_letras", () => VidrioLetras, v => VidrioLetras = v, false, "La barra de las letras de vidrio; la elegida, una pastilla clara que brilla."));
+            l.Add(Visual("Vidrio y letra", "Lo que suena en vidrio (G3)", "vidrio_suena", () => VidrioSuena, v => VidrioSuena = v, false, "Abajo, lo que suena en una barra de vidrio teñida del color del disco."));
+            l.Add(Visual("Vidrio y letra", "Ficha rapida de vidrio (G4)", "vidrio_ficha", () => VidrioFicha, v => VidrioFicha = v, true, "La ficha del disco desenfoca de verdad las portadas de detras y toma el color del disco."));
+            l.Add(Visual("Vidrio y letra", "Las canciones en vidrio (G5)", "vidrio_disco", () => VidrioDisco, v => VidrioDisco = v, false, "Dentro de un disco, la hoja de canciones es de vidrio teñido con la portada."));
+            l.Add(Visual("Vidrio y letra", "Reposo en vidrio (G6)", "vidrio_reposo", () => VidrioReposo, v => VidrioReposo = v, false, "En reposo, lo que suena va en una tarjeta grande de vidrio."));
+            l.Add(Visual("Vidrio y letra", "Buscador de vidrio (G7)", "vidrio_buscador", () => VidrioBuscador, v => VidrioBuscador = v, false, "La caja, el teclado y los resultados sobre vidrio."));
+            l.Add(Visual("Vidrio y letra", "Atraccion en vidrio (G8)", "vidrio_atraccion", () => VidrioAtraccion, v => VidrioAtraccion = v, false, "El nombre del disco y los mensajes de la atraccion sobre placas de vidrio."));
+            l.Add(Visual("Vidrio y letra", "Ajustes de vidrio (G9)", "vidrio_ajustes", () => VidrioAjustes, v => VidrioAjustes = v, true, "Esta ventana, de vidrio oscuro que deja ver la pared detras, borrosa (no en Colores, Imagen ni Fondo con V28)."));
+            l.Add(Visual("Vidrio y letra", "Avisos de vidrio nuevos (G10)", "vidrio_avisos", () => VidrioAvisos, v => VidrioAvisos = v, true, "Todos los avisos sobre vidrio que desenfoca lo de detras, con su color."));
+            l.Add(Visual("Vidrio y letra", "Globo de ayuda de vidrio (G11)", "vidrio_ayuda", () => VidrioAyuda, v => VidrioAyuda = v, true, "El globo de la estrella asistente, de vidrio dorado."));
             l.Add(Visual("Ajustes y pantalla", "A la resolucion del monitor (V30)", "resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v, false, "Dibuja a la resolucion real de la pantalla, sin estirar. Apagado: 1024x768 si el monitor la ofrece (menos trabajo para el A4). Vale al volver a encender la rocola."));
             // LA HOJA DETALLES DE XP (PaginaDetalles): al pedir canciones, y el fondo y la barra (la estrella del cielo sigue en Pantalla)
             { Ajuste x = Interruptor("Al pedir canciones", "Decir cuando suena tu cancion", "turno", () => Turno, v => Turno = v, false); x.Nota = () => "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos minutos faltan, en vez de solo «Cancion agregada»."; l.Add(x); }

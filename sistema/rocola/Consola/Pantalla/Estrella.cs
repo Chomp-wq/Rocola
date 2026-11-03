@@ -227,13 +227,19 @@ namespace Rocola
             // el globo
             Color4 fondoG = Color4.Hex(0x15204A, 0.96f), bordeG = Color4.Hex(0x8CC8FF, 0.9f);
             d.Brillo(gx + gw / 2, gy + gh / 2, Math.Max(gw, gh) * 0.6f, Color4.Hex(0x6FA8FF, 0.10f));
-            d.Redondo(gx + 4 * k, gy + 6 * k, gw, gh, 22 * k, new Color4(0, 0, 0, 0.35f));
-            d.RedondoDegradado(gx, gy, gw, gh, 22 * k, Color4.Hex(0x1C2A5C, 0.97f), Color4.Hex(0x111A40, 0.97f));
+            bool vidrioG = c.motor.VidrioAyuda;   // G11: el globo, de vidrio dorado que desenfoca lo de detras
+            Color4 dentroCola = Color4.Hex(0x161F48);
+            if (vidrioG) { Vidrio(gx, gy, gw, gh, 22 * k, Color4.Hex(0xFFD65E), 1f, true, 0.52f, 1.2f); bordeG = Color4.Hex(0xFFE2A8, 0.85f); dentroCola = Compone(VeloVidrio, 0.62f, Color4.Hex(0xFFD65E), 0.20f).ConAlfa(1f); }
+            else
+            {
+                d.Redondo(gx + 4 * k, gy + 6 * k, gw, gh, 22 * k, new Color4(0, 0, 0, 0.35f));
+                d.RedondoDegradado(gx, gy, gw, gh, 22 * k, Color4.Hex(0x1C2A5C, 0.97f), Color4.Hex(0x111A40, 0.97f));
+            }
             d.Contorno(gx, gy, gw, gh, 22 * k, 1.8f * k, bordeG);
             // la colita del globo, hacia la estrella (con su borde)
             float c0 = gy + gh * 0.45f, c1 = gy + gh * 0.63f, cm = gy + gh * 0.54f;
-            if (colaDerecha) { d.Triangulo(gx + gw, c0 - 2 * k, gx + gw, c1 + 2 * k, gx + gw + 22 * k, cm, bordeG); d.Triangulo(gx + gw - 2 * k, c0, gx + gw - 2 * k, c1, gx + gw + 18 * k, cm, Color4.Hex(0x161F48)); }
-            else { d.Triangulo(gx, c0 - 2 * k, gx, c1 + 2 * k, gx - 22 * k, cm, bordeG); d.Triangulo(gx + 2 * k, c0, gx + 2 * k, c1, gx - 18 * k, cm, Color4.Hex(0x161F48)); }
+            if (colaDerecha) { d.Triangulo(gx + gw, c0 - 2 * k, gx + gw, c1 + 2 * k, gx + gw + 22 * k, cm, bordeG); d.Triangulo(gx + gw - 2 * k, c0, gx + gw - 2 * k, c1, gx + gw + 18 * k, cm, dentroCola); }
+            else { d.Triangulo(gx, c0 - 2 * k, gx, c1 + 2 * k, gx - 22 * k, cm, bordeG); d.Triangulo(gx + 2 * k, c0, gx + 2 * k, c1, gx - 18 * k, cm, dentroCola); }
             float px = gx + 24 * k, py = gy + 18 * k, pw = gw - 48 * k;
             if (c.AyudaDespidiendo)
             {
@@ -260,8 +266,12 @@ namespace Rocola
                 {
                     bool sel = i == c.AyudaSeleccion;
                     float yy = gy + (int)(hb * (.50f + i * .135f)), rr = Math.Min(14, oh / 3);
-                    d.Redondo(x0, yy, ow, oh, rr, sel ? new Color4(42 / 255f, 87 / 255f, 130 / 255f, 235 / 255f) : new Color4(28 / 255f, 42 / 255f, 68 / 255f, 150 / 255f));
-                    d.Contorno(x0, yy, ow, oh, rr, sel ? 2f : 1f, sel ? Color4.Hex(0x96EBBC) : Color4.Hex(0x5A7196));
+                    if (vidrioG) { PildoraVidrio(x0, yy, ow, oh, rr, sel ? Color4.Hex(0x3A9A6A) : Color4.Hex(0x7F90D0), 1f, sel); if (sel) d.Contorno(x0, yy, ow, oh, rr, 2f, Color4.Hex(0x96EBBC)); }
+                    else
+                    {
+                        d.Redondo(x0, yy, ow, oh, rr, sel ? new Color4(42 / 255f, 87 / 255f, 130 / 255f, 235 / 255f) : new Color4(28 / 255f, 42 / 255f, 68 / 255f, 150 / 255f));
+                        d.Contorno(x0, yy, ow, oh, rr, sel ? 2f : 1f, sel ? Color4.Hex(0x96EBBC) : Color4.Hex(0x5A7196));
+                    }
                     EnRenglon(fOpc, Controlador.OpcionesAyuda[i], x0 + 12, yy, ow - 24 - (sel ? anchoCtl : 0), oh, blancoT);
                     if (sel)
                     {
@@ -334,6 +344,7 @@ namespace Rocola
         }
         // Los renglones se recuerdan (los mismos textos se reparten en cada cuadro); se da una lista nueva porque quien la pide la recorta.
         private static readonly Dictionary<(string, Letra, float), string[]> envueltos = new Dictionary<(string, Letra, float), string[]>();
+        private static void OlvidaRenglones() { envueltos.Clear(); }
         private static List<string> Envuelve(string s, Letra l, float ancho)
         {
             string[] h;

@@ -85,7 +85,8 @@ namespace Rocola
             float max = Math.Max(360 * k, Math.Min(560 * k, W * .40f)), w = Math.Max(300 * k, Math.Min(max, 16 * k + icono + 14 * k + tw + 22 * k));
             float x = Math.Max(8 * k, W - 18 * k - w) + dx, y = 80 * k, rad = Math.Min(16 * k, alto * .26f);
             Color4 col = ColorAviso(tipo);
-            if (c.motor.AvisosVidrio && VidrioDetras(x, y, w, alto, alfa)) d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(0.55f * alfa));   // V24
+            if (c.motor.VidrioAvisos) Vidrio(x, y, w, alto, rad, col, alfa, true, 0.42f, 1.3f);   // G10
+            else if (c.motor.AvisosVidrio && VidrioDetras(x, y, w, alto, alfa)) d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(0.55f * alfa));   // V24
             else d.Redondo(x, y, w, alto, rad, FondoAviso(tipo).ConAlfa(alfa));
             d.Contorno(x, y, w, alto, rad, 1.5f * k, col.ConAlfa(alfa));
             // el aro con su icono (los trazos del boceto de XP, en una caja de 24)
@@ -130,12 +131,14 @@ namespace Rocola
             bool portadas = c.ConPortadas;
             float x0 = 24 * k, y0 = 22 * k, hb = 56 * k, wb = W - 48 * k;
             d.Brillo(x0 + wb / 2, y0 + hb / 2, wb * 0.45f, AzulBorde.ConAlfa(0.10f));
-            d.RedondoDegradado(x0, y0, wb, hb, 14 * k, Color4.Hex(0x172352, 0.88f), Color4.Hex(0x0E1638, 0.88f));
+            bool vidrio = m.VidrioBuscador;   // G7
+            if (vidrio) Vidrio(x0, y0, wb, hb, 14 * k, Color4.Hex(0x6FA8FF), 1f, false, 0.30f, 1.3f);
+            else d.RedondoDegradado(x0, y0, wb, hb, 14 * k, Color4.Hex(0x172352, 0.88f), Color4.Hex(0x0E1638, 0.88f));
             d.Contorno(x0, y0, wb, hb, 14 * k, 1.6f * k, Color4.Hex(0x6FA8FF, 0.85f));
             // LAS LETRAS DEL BUSCADOR DE XP (BuscadorPortadasGpu.cs: px por la escala min(W/1280, H/720), con su minimo)
             float sx = Math.Min(W / 1280f, sup.Alto / 720f);
-            Letra fCaja = Ui(Math.Max(14, 34 * sx)), fCuenta = Ui(Math.Max(10, 16 * sx)), fAtajo = Ui(Math.Max(10, 14 * sx)), fTecla = Ui(Math.Max(12, 24 * sx)), fTeclaPal = Ui(Math.Max(10, 20 * sx));
-            Letra fTipo = Ui(Math.Max(9, 11 * sx)), fTitulo = Ui(Math.Max(12, 17 * sx)), fSub = UiFina(Math.Max(10, 12 * sx)), fMarca = Ui(Math.Max(9, 11 * sx)), fAyuda = Ui(Math.Max(11, 15 * sx));
+            Letra fCaja = Titulo(Math.Max(14, 34 * sx)), fCuenta = Ui(Math.Max(10, 16 * sx)), fAtajo = Ui(Math.Max(10, 14 * sx)), fTecla = Ui(Math.Max(12, 24 * sx)), fTeclaPal = Ui(Math.Max(10, 20 * sx));
+            Letra fTipo = Ui(Math.Max(9, 11 * sx)), fTitulo = Titulo(Math.Max(12, 17 * sx)), fSub = UiFina(Math.Max(10, 12 * sx)), fMarca = Ui(Math.Max(9, 11 * sx)), fAyuda = Ui(Math.Max(11, 15 * sx));
             // la lupa
             float lx = x0 + 32 * k, ly = y0 + hb / 2 - 2 * k, lr = 9 * k;
             Color4 cLupa = Color4.Hex(0xB4C8F5);   // la lupa de XP: fina y azulada
@@ -168,8 +171,12 @@ namespace Rocola
                 string t = c.Atajos[i].Texto; float w = fAtajo.Mide(t) + 28 * k;
                 if (axx + w > W - 24 * k) break;
                 bool sel = !c.EnResultados && c.FilaTecla < 0 && c.ColTecla == i;
-                d.Redondo(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x16204A, 0.85f));
-                d.Contorno(axx, ay, w, ah, ah / 2, 1.2f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.4f));
+                if (vidrio) PildoraVidrio(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x7F90D0), 1f, sel);
+                else
+                {
+                    d.Redondo(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x16204A, 0.85f));
+                    d.Contorno(axx, ay, w, ah, ah / 2, 1.2f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.4f));
+                }
                 fAtajo.Escribe(d, t, axx + 14 * k, ay + ah / 2 - fAtajo.Tam * 0.6f, Blanco);
                 axx += w + 8 * k;
             }
@@ -177,6 +184,7 @@ namespace Rocola
             float ty0 = Math.Max(153 * k, ay + (c.Atajos.Count > 0 ? ah + 16 * k : 0)), sep = 6 * k, tecla = 40 * k, ht = 38 * k, ty = ty0;
             float anchoTeclado = 10 * tecla + 9 * sep;
             TeclaPulsada(c);   // V16
+            if (vidrio) Vidrio(x0 - 10 * k, ty0 - 10 * k, anchoTeclado + 20 * k, Controlador.FilasTeclado.Length * (ht + 8 * k) + 12 * k, 18 * k, Color4.Hex(0x6F8CFF), 1f, false, 0.26f);
             for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
             {
                 string fila = Controlador.FilasTeclado[f];
@@ -193,8 +201,12 @@ namespace Rocola
                     if (sel) d.Brillo(tx + w / 2, ty + ht / 2, w * 0.9f, Color4.Hex(0x3A6CFF, 0.35f));
                     float hu = Hundida(c, f, i), enc = 2.5f * k * hu;   // V16: se hunde y brilla
                     if (hu > 0) { d.Brillo(tx + w / 2, ty + ht / 2, w * 1.2f, Dorado.ConAlfa(0.45f * hu)); fondo = Dibujo.Mezcla(fondo, Color4.Hex(0xC98A22), 0.7f * hu); borde = Dibujo.Mezcla(borde, Dorado, hu); }
-                    d.Redondo(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, fondo);
-                    d.Contorno(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, 1.2f * k, borde);
+                    if (vidrio && hu <= 0) PildoraVidrio(tx, ty, w, ht, 7 * k, sel ? Color4.Hex(0x3A6CFF) : borrar ? Color4.Hex(0xB04458) : Color4.Hex(0x7F90D0), 1f, sel);
+                    else
+                    {
+                        d.Redondo(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, fondo);
+                        d.Contorno(tx + enc, ty + enc, w - 2 * enc, ht - 2 * enc, 7 * k, 1.2f * k, borde);
+                    }
                     Letra lt = et.Length > 1 ? fTeclaPal : fTecla;
                     lt.EscribeCentrado(d, et, tx + w / 2, ty + ht / 2 - lt.Tam * 0.6f + enc * 0.5f, borrar && !sel ? Color4.Hex(0xFFB0BC) : Blanco);
                     tx += w + sep;
@@ -206,6 +218,7 @@ namespace Rocola
             float rx = x0 + anchoTeclado + 46 * k, rw = W - rx - 24 * k, ry = ty0, gap = 11 * k, cw = (rw - gap) / 2, ch = 84 * k;
             int filas = Math.Max(1, (int)((abajo - ry - 40 * k + gap) / (ch + gap)));
             zResultados = new Zona(rx, ry, rw, filas * (ch + gap));
+            if (vidrio && c.Resultados.Count > 0) Vidrio(rx - 10 * k, ry - 10 * k, rw + 20 * k, Math.Min(filas, (c.Resultados.Count + 1) / 2) * (ch + gap) - gap + 20 * k, 18 * k, Color4.Hex(0x6F8CFF), 1f, false, 0.26f);
             if (c.Resultados.Count == 0)
             {   // DibujaSinCartas de XP: que hacer, dicho en el sitio de las tarjetas
                 Letra fVacio = UiFina(Math.Max(11, 16 * sx));
@@ -231,8 +244,12 @@ namespace Rocola
                     bool sel = c.EnResultados && i == c.SelResultado;
                     if (ac < 1f) { d.Redondo(cx, cy, cw, ch, 9 * k, Color4.Hex(0x161E44, 0.5f * ac)); d.Contorno(cx, cy, cw, ch, 9 * k, 1.1f * k, Color4.Hex(0x7F90D0, 0.3f * ac)); continue; }
                     if (sel) { d.Brillo(cx + cw / 2, cy + ch / 2, cw * 0.65f, Color4.Hex(0x6FA8FF, 0.22f)); zSelResultado = new Zona(cx, cy, cw, ch); }
-                    d.RedondoDegradado(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x2C3C78, 0.92f) : Color4.Hex(0x161E44, 0.88f), sel ? Color4.Hex(0x223064, 0.92f) : Color4.Hex(0x10173A, 0.88f));
-                    d.Contorno(cx, cy, cw, ch, 9 * k, sel ? 2f * k : 1.1f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.30f));
+                    if (vidrio) { PildoraVidrio(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x6FA8FF) : Color4.Hex(0x7F90D0), 1f, sel); if (sel) d.Contorno(cx, cy, cw, ch, 9 * k, 2f * k, Color4.Hex(0xB8D0FF)); }
+                    else
+                    {
+                        d.RedondoDegradado(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x2C3C78, 0.92f) : Color4.Hex(0x161E44, 0.88f), sel ? Color4.Hex(0x223064, 0.92f) : Color4.Hex(0x10173A, 0.88f));
+                        d.Contorno(cx, cy, cw, ch, 9 * k, sel ? 2f * k : 1.1f * k, sel ? Color4.Hex(0xB8D0FF) : Color4.Hex(0x7F90D0, 0.30f));
+                    }
                     float pl = ch - 16 * k, tx = cx + 12 * k;
                     if (portadas)
                     {

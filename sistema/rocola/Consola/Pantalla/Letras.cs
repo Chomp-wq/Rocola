@@ -13,6 +13,13 @@ namespace Rocola.Pantalla
         internal static readonly string[] UiNegrita = { "micross.ttf*", "arialbd.ttf", "DejaVuSans-Bold.ttf" };   // * = negrita sintetica
         internal static readonly string[] Trebuchet = { "trebuc.ttf" };
         internal static readonly string[] TrebuchetNegrita = { "trebucbd.ttf" };
+        // LA LETRA NUEVA (L1, decision del 3-11-2026): Outfit para los titulos y Plus Jakarta Sans para el texto, las dos libres (SIL OFL);
+        // Rocola OS las lleva en /usr/share/rocola/letras (sistema/board/rocola/rootfs_overlay), cada grosor en su archivo.
+        internal static readonly string[] L1Texto = { "PlusJakartaSans-Regular.ttf" };
+        internal static readonly string[] L1Medio = { "PlusJakartaSans-Medium.ttf" };
+        internal static readonly string[] L1Negrita = { "PlusJakartaSans-Bold.ttf" };
+        internal static readonly string[] L1Titulo = { "Outfit-Bold.ttf" };
+        internal static readonly string[] L1TituloMedio = { "Outfit-Medium.ttf" };
         private static Dictionary<string, string> indice;
         private static IEnumerable<string> Carpetas()
         {
@@ -21,6 +28,15 @@ namespace Rocola.Pantalla
             string datos = Environment.GetEnvironmentVariable("ROCOLA_DATOS");
             if (!string.IsNullOrEmpty(datos)) yield return Path.Combine(datos, "letras");
             yield return "/rocola/datos/letras";
+            yield return "/usr/share/rocola/letras";
+            // al probar desde el codigo: la carpeta del sistema que va en la imagen
+            string dir = AppContext.BaseDirectory;
+            for (int i = 0; i < 8 && !string.IsNullOrEmpty(dir); i++)
+            {
+                string c = Path.Combine(dir, "sistema", "board", "rocola", "rootfs_overlay", "usr", "share", "rocola", "letras");
+                if (Directory.Exists(c)) { yield return c; break; }
+                dir = Path.GetDirectoryName(dir.TrimEnd('/'));
+            }
             yield return "/usr/share/fonts";
             yield return "/usr/local/share/fonts";
         }

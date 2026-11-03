@@ -34,6 +34,7 @@ namespace Rocola
         private void Cabecera(Controlador c, float W)
         {
             float cy = 30 * k;
+            if (c.motor.VidrioCabecera) Vidrio(10 * k, 6 * k, W - 20 * k, 48 * k, 24 * k, Color4.Hex(0x6F8CFF), 1f, false, 0.28f);   // G1
             // la leyenda: mover (el rombo de las flechas), entrar o poner (verde) y volver (rojo)
             float x = 18 * k;
             Rombo(x + 10 * k, cy, 10 * k);
@@ -74,7 +75,8 @@ namespace Rocola
         {
             float wl = nMedia.Mide(nombre), w = 44 * k + wl + 16 * k + 62 * k, r = 12 * k;
             if (abierta) d.Brillo(x + w / 2, y + h / 2, w * 0.7f, borde.ConAlfa(0.35f));
-            d.RedondoDegradado(x, y, w, h, r, Color4.Hex(0x16224E, 0.80f), Color4.Hex(0x0B1434, 0.80f));
+            if (vistaC != null && vistaC.motor.VidrioCabecera) PildoraVidrio(x, y, w, h, r, borde, 1f, abierta);   // G1
+            else d.RedondoDegradado(x, y, w, h, r, Color4.Hex(0x16224E, 0.80f), Color4.Hex(0x0B1434, 0.80f));
             d.Contorno(x, y, w, h, r, 2f * k, borde.ConAlfa(abierta ? 1f : 0.85f));
             float cy = y + h / 2, ix = x + 22 * k;
             if (nombre == "BUSCAR")
@@ -116,7 +118,9 @@ namespace Rocola
         private float BarraLetras(Controlador c, float W, float y)
         {
             float h = 38 * k, x0 = 20 * k, x1 = W - 34 * k;
-            d.RedondoDegradado(x0, y, x1 - x0, h, 10 * k, Color4.Hex(0x1A2658, 0.55f), Color4.Hex(0x101A40, 0.55f));
+            bool vidrio = c.motor.VidrioLetras;   // G2
+            if (vidrio) Vidrio(x0, y, x1 - x0, h, 12 * k, Color4.Hex(0x6F8CFF), 1f, false, 0.22f);
+            else d.RedondoDegradado(x0, y, x1 - x0, h, 10 * k, Color4.Hex(0x1A2658, 0.55f), Color4.Hex(0x101A40, 0.55f));
             int n = c.letras.Count; if (n == 0) return y + h;
             float paso = (x1 - x0 - 16 * k) / n;
             int maxD = 1; for (int i = 0; i < n; i++) maxD = Math.Max(maxD, c.CancionesEn(i));
@@ -132,8 +136,9 @@ namespace Rocola
                 if (sel)
                 {
                     float ws = Math.Min(paso * 0.97f, 232 * k);
-                    d.Brillo(cx, y + 13 * k, ws * 0.5f, AzulBorde.ConAlfa(0.18f));
-                    d.Redondo(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, Color4.Hex(0x0E1A44, 0.85f));
+                    d.Brillo(cx, y + 13 * k, ws * 0.5f, AzulBorde.ConAlfa(vidrio ? 0.30f : 0.18f));
+                    if (vidrio) PildoraVidrio(cx - ws / 2, y + 2 * k, ws, 22 * k, 11 * k, Color4.Hex(0x3A6CFF), 1f, true);   // la elegida: una pastilla clara
+                    else d.Redondo(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, Color4.Hex(0x0E1A44, 0.85f));
                     d.Contorno(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, 2f * k, Color4.Hex(0x9CCBFF));
                 }
                 f.EscribeCentrado(d, l, cx, y + 13 * k - f.Tam * 0.50f, sel ? Blanco : Color4.Hex(0xC8D0F0));
@@ -262,7 +267,8 @@ namespace Rocola
         {
             Form1 m = c.motor;
             float yh = Horizonte(H);
-            if (abajo < yh - 1) d.Degradado(0, abajo, W, H - abajo, Color4.Hex(0x101A40, 0.75f * Math.Min(1f, (yh - abajo) / (40 * k))), Color4.Hex(0x0A1230, 0.92f));
+            if (m.VidrioSuena) Vidrio(8 * k, abajo + 4 * k, W - 16 * k, H - abajo - 8 * k, 18 * k, TinteSonando(m), 1f, false, 0.30f);   // G3
+            else if (abajo < yh - 1) d.Degradado(0, abajo, W, H - abajo, Color4.Hex(0x101A40, 0.75f * Math.Min(1f, (yh - abajo) / (40 * k))), Color4.Hex(0x0A1230, 0.92f));
             float y = abajo + 10 * k;
             // a la derecha: los creditos y la cola
             string cr = m.Creditos > 0 ? m.Creditos.ToString() : "";
@@ -388,6 +394,7 @@ namespace Rocola
         // Una pastilla de la franja de abajo (la cola, los creditos): oscura, con un filo claro.
         private void Pastilla(float x, float y, float w, float h)
         {
+            if (vistaC != null && vistaC.motor.VidrioSuena) { PildoraVidrio(x, y, w, h, h / 2, Color4.Hex(0x96A8E6), 1f, false); return; }   // G3
             d.RedondoDegradado(x, y, w, h, h / 2, Color4.Hex(0x1A2658, 0.72f), Color4.Hex(0x0E1638, 0.72f));
             d.Contorno(x, y, w, h, h / 2, 1.2f * k, Color4.Hex(0x96A8E6, 0.28f));
         }

@@ -28,7 +28,7 @@ namespace Rocola.Pantalla
         public bool TieneBlanco; public float BlancoU, BlancoV;
     }
 
-    internal sealed unsafe class Dibujo : IDisposable
+    internal sealed unsafe partial class Dibujo : IDisposable
     {
         private readonly uint programa, buffer, programaCine;
         private readonly int uCineEsc, uCineTex, uCineA;
@@ -155,13 +155,14 @@ namespace Rocola.Pantalla
         // de la pantalla, con las mismas coordenadas; las filas quedan de abajo arriba (se pone con v de 1 a 0). null si la tarjeta no puede.
         internal sealed class Capa { internal Textura Tex; internal uint Fbo; }
         private int fboPantalla;
-        internal Capa CapaNueva()
+        internal Capa CapaNueva() { return CapaNueva(Ancho, Alto); }
+        internal Capa CapaNueva(int ancho, int alto)
         {
             Vacia();
             int antes; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &antes);
             uint t; GL.GenTextures(1, &t);
             GL.BindTexture(GL.TEXTURE_2D, t);
-            GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, Ancho, Alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
+            GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, ancho, alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
             uint f; GL.GenFramebuffers(1, &f);
@@ -171,7 +172,7 @@ namespace Rocola.Pantalla
             GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)antes);
             texActual = 0; texActualT = null;
             if (!ok) { GL.DeleteTextures(1, &t); return null; }
-            return new Capa { Tex = new Textura { Id = t, Ancho = Ancho, Alto = Alto }, Fbo = f };
+            return new Capa { Tex = new Textura { Id = t, Ancho = ancho, Alto = alto }, Fbo = f };
         }
         internal void DibujaEn(Capa c)
         {
@@ -531,6 +532,8 @@ namespace Rocola.Pantalla
             lado = alto > 40 ? 1024 : 512;
             byte[] alfa = new byte[lado * lado];
             StbTrueType.stbtt_BakeFontBitmap(ttf, 0, alto, alfa, lado, lado, 32, 224, car);
+            // el espacio entre palabras, al menos EspacioMinimo del tamano (L1 trae un espacio estrecho: a tamanos chicos las palabras se juntan)
+            if (EspacioMinimo > 0 && car[0].xadvance < EspacioMinimo * tam) car[0].xadvance = (float)Math.Round(EspacioMinimo * tam);
             bool blanco = true;   // si ninguna letra llega a la esquina de abajo a la derecha, ahi va el cuadrito blanco (4x4)
             foreach (StbTrueType.stbtt_bakedchar b in car) if (b.x1 > lado - 6 && b.y1 > lado - 6) { blanco = false; break; }
             if (blanco) for (int y = lado - 4; y < lado; y++) for (int x = lado - 4; x < lado; x++) alfa[y * lado + x] = 255;
@@ -564,6 +567,8 @@ namespace Rocola.Pantalla
             foreach (char c in s) w += car[Indice(c)].xadvance + engorda;
             return w;
         }
+        internal static float EspacioMinimo;   // 0: el de la letra
+        internal void Libera(Dibujo d) { d.Borra(tex); }   // su textura (al cambiar de letra)
         // Escribe con la linea base en y + 0,8 * tamano (y es el borde de arriba). Devuelve el ancho.
         internal float Escribe(Dibujo d, string s, float x, float y, Color4 c)
         {

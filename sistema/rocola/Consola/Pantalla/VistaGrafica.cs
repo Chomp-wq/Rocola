@@ -13,8 +13,8 @@ namespace Rocola
     {
         private readonly ISuperficie sup;
         private readonly Dibujo d;
-        private readonly Letra chica, media, grande, enorme;
-        private readonly Letra micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina, tChica, tMedia, tGrande, tTexto;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
+        private Letra chica, media, grande, enorme;
+        private Letra micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina, tChica, tMedia, tGrande, tTexto;   // las de la pared al estilo de XP (las negritas, de la letra en negrita)
         private readonly Caratulas caratulas;
         private readonly float k;   // escala frente a 768 de alto
         private int ultimo;
@@ -49,19 +49,8 @@ namespace Rocola
             sup = superficie;
             d = new Dibujo(sup.Ancho, sup.Alto);
             k = sup.Alto / 768f;
-            byte[] ttf = File.ReadAllBytes(letraTtf);
-            chica = new Letra(d, ttf, 18 * k); media = new Letra(d, ttf, 24 * k); grande = new Letra(d, ttf, 32 * k); enorme = new Letra(d, ttf, 44 * k);
-            // LAS LETRAS DE LA ROCOLA DE XP: Microsoft Sans Serif (la de Windows; GDI+ la engorda para la negrita) en casi todo y Trebuchet MS
-            // en la ayuda, la atraccion y el reposo. Rocola OS las copia del disco de XP (rocola-discos); si no estan, Arial o DejaVu.
-            bool sint;
-            byte[] ui = Letras.Lee(Letras.Ui, out sint) ?? ttf, uiN = Letras.Lee(Letras.UiNegrita, out sint) ?? ui;
-            bool uiSint = sint; uiNegrita = uiN; uiNegritaSint = sint; uiNormal = ui;
-            byte[] tr = Letras.Lee(Letras.Trebuchet, out sint) ?? ui, trN = Letras.Lee(Letras.TrebuchetNegrita, out sint) ?? uiN;
-            bool trSint = sint && trN == uiN && uiSint; treNormal = tr; treNegrita = trN; treSint = trSint;
-            micro = new Letra(d, ui, 10.5f * k, false, true); mini = new Letra(d, uiN, 13.3f * k, uiSint, true);
-            nChica = new Letra(d, uiN, 14.5f * k, uiSint, true); nMedia = new Letra(d, uiN, 18.5f * k, uiSint, true); nGrande = new Letra(d, uiN, 25 * k, uiSint, true); nEnorme = new Letra(d, uiN, 28 * k, uiSint, true);
-            grandeNegrita = new Letra(d, trN, 36 * k, trSint, true); nMediaFina = new Letra(d, tr, 19 * k, false, true);
-            tChica = new Letra(d, trN, 15 * k, trSint, true); tMedia = new Letra(d, trN, 20 * k, trSint, true); tGrande = new Letra(d, trN, 27 * k, trSint, true); tTexto = new Letra(d, tr, 17 * k, false, true);
+            ttfBase = File.ReadAllBytes(letraTtf);
+            CargaLetras(Form1.VisualGuardado("letra_nueva", true));
             caratulas = new Caratulas(d, (int)(256 * k));
             Random r = new Random(5); estrellas = new float[260 * 5];
             for (int i = 0; i < 260; i++)
@@ -105,10 +94,13 @@ namespace Rocola
             float W = sup.Ancho, H = sup.Alto;
             Reloj.Cuadros++; Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
             Pulso(c);
+            if (m.LetraNueva != letrasPedidas) CargaLetras(m.LetraNueva);   // L1 cambiada en Ctrl+F3: las letras, al momento
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
+            // el cielo borroso de los vidrios: si algun vidrio del cielo se dibujo en el cuadro anterior (o aun no hay)
+            vidrioCieloPedido = m.AlgunVidrioDelCielo && (vidrioCieloUsado || !d.CieloBorroso.Hay); vidrioCieloUsado = false;
             ColorDelCielo(c); Perfil.Marca("preparar");
             // la ventana de los ajustes sin vista previa es opaca: el cielo solo hace falta a sus lados
-            CieloTapa = c.AjusteSel >= 0 && c.AsistentePaso < 0 && !(c.Atraccion && c.AtraccionActual != null) && !AjustesConPrevia(c) ? VentanaAjustesOpaca(W, H) : new Zona();
+            CieloTapa = c.AjusteSel >= 0 && c.AsistentePaso < 0 && !(c.Atraccion && c.AtraccionActual != null) && !AjustesConPrevia(c) && !m.VidrioAjustes ? VentanaAjustesOpaca(W, H) : new Zona();
             Cielo(W, H, reloj.Elapsed.TotalSeconds); Perfil.Marca("cielo");
             EspectroHorizonte(c, W, H); Perfil.Marca("espectro");
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f); Perfil.Marca("estrella del cielo");   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
@@ -117,7 +109,7 @@ namespace Rocola
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
-            if (c.AjusteSel >= 0 && AjustesConPrevia(c))
+            if (c.AjusteSel >= 0 && (AjustesConPrevia(c) || m.VidrioAjustes))   // V28, o G9 (la pared detras del vidrio)
             { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
@@ -187,6 +179,17 @@ namespace Rocola
             // ColumnaEscaparate y HorneaFichaVitrina de XP (Trebuchet MS en negrita, en proporcion al alto)
             float fx = (int)(x + lado + W * .06f), fw = (int)(W - W * .05f) - fx, fy = H * 0.325f;
             Letra fEt = Tre(Math.Max(11f, H * .019f), true), fTit = Tre(Math.Max(24f, H * .062f), true), fArt = Tre(Math.Max(15f, H * .033f), true), fPil = Tre(Math.Max(11f, H * .021f), true);
+            if (m.Escaparate && m.VidrioAtraccion)
+            {   // G8: la placa de vidrio detras del nombre (con la portada de cine detras, desenfoca de verdad)
+                // su alto, el de lo que lleva (las mismas cuentas que la columna de abajo)
+                string nombre0 = string.IsNullOrEmpty(disco.Nombre) ? disco.Artista : disco.Nombre;
+                Letra lt0 = fTit;
+                for (int i = 0; i < 2 && lt0.Mide(nombre0) > fw * 2; i++) lt0 = Tre(fTit.Tam * (i == 0 ? .88f : .78f), true);
+                int nl = Math.Min(2, Envuelve(nombre0, lt0, fw).Count);
+                float hc = fEt.Tam * 1.15f + H * .012f + nl * lt0.Tam * 1.15f + H * .010f + (!string.IsNullOrEmpty(disco.Artista) && !string.IsNullOrEmpty(disco.Nombre) ? fArt.Tam * 1.15f + H * .020f : H * .010f) + fPil.Tam * 1.15f + 8;
+                float px = fx - 34 * k, py = fy - 30 * k;
+                Vidrio(px, py, W * 0.965f - px, hc + 58 * k, 28 * k, tx != null ? tx.Media : Color4.Hex(0x6F8CFF), alfa, m.AtraccionCine, 0.34f, 1.25f);
+            }
             if (m.Escaparate)
             {
                 float yy = fy;
@@ -227,7 +230,15 @@ namespace Rocola
             else if (sm > 4600) { float e = (float)((sm - 4600) / 400); e = e * e * (3 - 2 * e); am = 1f - e; dyM = -10 * k * e; }
             float my = H * 0.66f + dyM;
             Letra fMsg = Tre(Math.Max(14f, H * .029f), true);
-            fMsg.Escribe(d, fMsg.Ajusta(mensajes[im], W - fx - 24 * k), m.Escaparate ? fx : (W - fMsg.Mide(mensajes[im])) / 2, my, new Color4(1f, 226 / 255f, 176 / 255f, am));
+            string msg = fMsg.Ajusta(mensajes[im], W - fx - 24 * k);
+            float mx = m.Escaparate ? fx : (W - fMsg.Mide(mensajes[im])) / 2;
+            if (m.VidrioAtraccion)
+            {   // G8: el mensaje, en una pastilla de vidrio con halo dorado
+                float wm = fMsg.Mide(msg), hm = fMsg.Tam * 1.15f + 22 * k;
+                d.Brillo(mx + wm / 2, my + fMsg.Tam * 0.55f, wm * 0.62f, Color4.Hex(0xF2B84B, 0.16f * am));
+                PildoraVidrio(mx - 26 * k, my - 11 * k, wm + 52 * k, hm, hm / 2, Color4.Hex(0xFFC668), am, false);
+            }
+            fMsg.Escribe(d, msg, mx, my, new Color4(1f, 226 / 255f, 176 / 255f, am));
         }
         // Un letrero chico con las letras separadas (EN ESTA ROCOLA de XP).
         private void Espaciado(Letra f, string s, float x, float y, float aire, Color4 c)
@@ -281,7 +292,8 @@ namespace Rocola
         {
             string av = c.AvisoVigente; if (av.Length == 0) return;
             float wa = media.Mide(av) + 48 * k;
-            d.Redondo((W - wa) / 2, y - 52 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.95f));
+            if (c.motor.VidrioAvisos) Vidrio((W - wa) / 2, y - 52 * k, wa, 52 * k, 26 * k, Dorado, 1f, true, 0.50f);   // G10
+            else d.Redondo((W - wa) / 2, y - 52 * k, wa, 52 * k, 26 * k, Color4.Hex(0x101830, 0.95f));
             media.EscribeCentrado(d, av, W / 2, y - 40 * k, Dorado);
         }
         // LOS AJUSTES DEL DUENO (Ctrl+F3): por grupos, el elegido resaltado, lo que decide el modo billar en gris con el motivo.
@@ -387,11 +399,15 @@ namespace Rocola
             fy += 14 * k * (1f - alfa);
             // PintaFicha de XP: todo sale del alto de la tarjeta (u); letras en negrita de 18, 12,5, 13, 11 y 14 u
             float u = h / 230f, pad = 16 * u;
-            Letra fTit = Ui(18 * u), fDisco = Ui(12.5f * u), fSub = Ui(13 * u), fMin = Ui(11 * u), fFila = Ui(14 * u);
-            d.Redondo(fx + 1, fy + 1, w - 3, h - 3, 16 * u, new Color4(12 / 255f, 18 / 255f, 42 / 255f, 232 / 255f * alfa));
-            d.Contorno(fx + 1, fy + 1, w - 3, h - 3, 16 * u, 1.5f, Color4.Hex(0x96AFE6, 150 / 255f * alfa));   // el filo: el color del disco con blanco
-            float lado = 64 * u;
+            Letra fTit = Titulo(18 * u), fDisco = Ui(12.5f * u), fSub = Ui(13 * u), fMin = Ui(11 * u), fFila = Ui(14 * u);
             Textura tx = caratulas.De(disco.Portada);
+            if (c.motor.VidrioFicha) Vidrio(fx + 1, fy + 1, w - 3, h - 3, 16 * u, tx != null ? tx.Media : Color4.Hex(0x96AFE6), alfa, true, 0.58f);   // G4: lo de detras (portadas), desenfocado
+            else
+            {
+                d.Redondo(fx + 1, fy + 1, w - 3, h - 3, 16 * u, new Color4(12 / 255f, 18 / 255f, 42 / 255f, 232 / 255f * alfa));
+                d.Contorno(fx + 1, fy + 1, w - 3, h - 3, 16 * u, 1.5f, Color4.Hex(0x96AFE6, 150 / 255f * alfa));   // el filo: el color del disco con blanco
+            }
+            float lado = 64 * u;
             if (tx != null) d.Imagen(tx, fx + pad, fy + pad, lado, lado, alfa); else d.Redondo(fx + pad, fy + pad, lado, lado, 7 * u, Color4.Hex(0x2D5FCD, 80 / 255f * alfa));
             float x = fx + pad + lado + 12 * u, ancho = fx + w - pad - x, y = fy + pad - 2 * u;
             string artista = string.IsNullOrEmpty(disco.Artista) ? disco.Nombre : disco.Artista, nombre = string.IsNullOrEmpty(disco.Artista) ? "" : disco.Nombre;
@@ -444,6 +460,42 @@ namespace Rocola
             return s + " · " + (min / 60) + " h " + (min % 60).ToString("00") + " min";
         }
         // Letras de la interfaz (la negrita de XP) a cualquier tamano, hechas una vez por tamano.
+        // LAS LETRAS, de una vez (al arrancar y al cambiar L1 en Ctrl+F3, en vivo): las de siempre de la rocola de XP o la letra nueva L1
+        // (Outfit en los titulos y lo que era Trebuchet; Plus Jakarta Sans en el resto). Si faltan sus archivos, las de siempre.
+        private byte[] ttfBase; private bool letrasL1, letrasPedidas;
+        private void CargaLetras(bool l1)
+        {
+            foreach (Letra l in new[] { chica, media, grande, enorme, micro, mini, nChica, nMedia, nGrande, nEnorme, grandeNegrita, nMediaFina, tChica, tMedia, tGrande, tTexto }) if (l != null) l.Libera(d);
+            foreach (Dictionary<int, Letra> dl in new[] { letrasUi, letrasUiFina, letrasTre }) { foreach (Letra l in dl.Values) l.Libera(d); dl.Clear(); }
+            OlvidaRenglones(); fichaLetrasDe = -1; letrasPedidas = l1;
+            bool sint;
+            byte[] jR = l1 ? Letras.Lee(Letras.L1Texto, out sint) : null, jM = l1 ? Letras.Lee(Letras.L1Medio, out sint) : null, jB = l1 ? Letras.Lee(Letras.L1Negrita, out sint) : null;
+            byte[] oB = l1 ? Letras.Lee(Letras.L1Titulo, out sint) : null, oM = l1 ? Letras.Lee(Letras.L1TituloMedio, out sint) : null;
+            letrasL1 = jR != null && jM != null && jB != null && oB != null && oM != null;
+            if (l1) Form1.LetraNuevaFalta = !letrasL1;   // para Ctrl+F3: el interruptor en gris si no estan los archivos
+            byte[] ttf, ui, uiN, tr, trN; bool uiSint, trSint;
+            if (letrasL1) { ttf = jM; ui = jR; uiN = jB; uiSint = false; tr = oM; trN = oB; trSint = false; }
+            else
+            {
+                // LAS LETRAS DE LA ROCOLA DE XP: Microsoft Sans Serif (la de Windows; GDI+ la engorda para la negrita) en casi todo y Trebuchet MS
+                // en la ayuda, la atraccion y el reposo. Rocola OS las copia del disco de XP (rocola-discos); si no estan, Arial o DejaVu.
+                ttf = ttfBase;
+                ui = Letras.Lee(Letras.Ui, out sint) ?? ttf; uiN = Letras.Lee(Letras.UiNegrita, out sint) ?? ui; uiSint = sint;
+                tr = Letras.Lee(Letras.Trebuchet, out sint) ?? ui; trN = Letras.Lee(Letras.TrebuchetNegrita, out sint) ?? uiN;
+                trSint = sint && trN == uiN && uiSint;
+            }
+            Letra.EspacioMinimo = letrasL1 ? 0.27f : 0f;
+            uiNegrita = uiN; uiNegritaSint = uiSint; uiNormal = ui; treNormal = tr; treNegrita = trN; treSint = trSint;
+            chica = new Letra(d, ttf, 18 * k); media = new Letra(d, ttf, 24 * k); grande = new Letra(d, ttf, 32 * k); enorme = new Letra(d, ttf, 44 * k);
+            micro = new Letra(d, ui, 10.5f * k, false, true); mini = new Letra(d, uiN, 13.3f * k, uiSint, true);
+            nChica = new Letra(d, uiN, 14.5f * k, uiSint, true); nMedia = new Letra(d, uiN, 18.5f * k, uiSint, true);
+            // los numeros y titulos grandes de la pared (lo que suena, LETRA, la cola y los creditos): con L1, en Outfit
+            nGrande = new Letra(d, letrasL1 ? oB : uiN, 25 * k, uiSint && !letrasL1, true); nEnorme = new Letra(d, letrasL1 ? oB : uiN, 28 * k, uiSint && !letrasL1, true);
+            grandeNegrita = new Letra(d, trN, 36 * k, trSint, true); nMediaFina = new Letra(d, tr, 19 * k, false, true);
+            tChica = new Letra(d, trN, 15 * k, trSint, true); tMedia = new Letra(d, trN, 20 * k, trSint, true); tGrande = new Letra(d, trN, 27 * k, trSint, true); tTexto = new Letra(d, tr, 17 * k, false, true);
+        }
+        // Un titulo: con L1, en Outfit (la de los titulos); si no, la negrita de siempre.
+        private Letra Titulo(float px) { return letrasL1 ? Tre(px, true) : Ui(px); }
         private readonly Dictionary<int, Letra> letrasUi = new Dictionary<int, Letra>();
         private byte[] uiNegrita, uiNormal, treNormal, treNegrita; private bool uiNegritaSint, treSint;
         private readonly Dictionary<int, Letra> letrasTre = new Dictionary<int, Letra>();

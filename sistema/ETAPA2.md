@@ -692,3 +692,28 @@ Automático y sin interruptor (no cambia el aspecto):
 Con reloj fijo, igual que la versión anterior (salvo los contadores que avanzan solos). Por cuadro a 1920x1080 (pintadas /
 mezcladas): pared 2,8 / 1,3; disco 3,25 / 1,8; reposo 3,1 / 1,8; atracción 3,7 / 2,35; ajustes 2,0 / 0,94. De ahí, el cielo es
 1 pantalla (poner la capa, opaca) más unas 0,45 (la franja que se rehace). **Nada medido en el A4.**
+
+## Extra (3-11-2026, quinta parte): vidrio y letra nueva (G1-G11 y L1)
+
+Decisión del dueño sobre la presentación «Rocola OS: vidrio y letra»: todo, y la letra L1. Cada cosa con su interruptor en Ctrl+F3
+(Imagen → «Vidrio y letra»).
+
+- **L1, letra nueva**: Outfit en los títulos (lo que era Trebuchet, los números grandes, el título de lo que suena, de la ficha, del
+  disco, del buscador y de los ajustes) y Plus Jakarta Sans en el resto. Libres (SIL OFL, sin nombre reservado), en grosores fijos
+  sacados de sus versiones variables, en `sistema/board/rocola/rootfs_overlay/usr/share/rocola/letras` con sus licencias: ya no
+  dependen del disco de XP. El espacio entre palabras es de al menos 0,27 del tamaño (el de fábrica es estrecho y a tamaños chicos
+  las palabras se juntaban). Encendida de fábrica; se cambia en vivo. Si faltan los archivos, el interruptor sale en gris.
+- **El vidrio** (`DibujoVidrio.cs`, `Vidrio.cs`): lo de detrás desenfocado de verdad, con un sombreador gaussiano de 9 toques (dos
+  veces en horizontal y vertical) a 1/8 de la pantalla. Dos fuentes: el **cielo borroso** (la capa del cielo, una vez por cuadro y
+  solo si se usó en el anterior: coste bajo) y **lo de detrás de verdad** (se copia el trozo de pantalla del panel con 32 puntos de
+  margen: coste medio). Cada panel: sombra en aros, el fondo desenfocado con el velo y el tinte encima en **una sola pasada opaca**
+  (sombreador propio), un reflejo inclinado que cruza cada 9 s, el filo y el canto de luz. Las teclas, botones y pastillas son vidrio
+  sin fondo propio.
+- **Dónde**: G1 cabecera, G2 barra de letras, G3 lo que suena (y la cola y los créditos), G5 hoja de canciones (con V7, vidrio de
+  verdad), G6 reposo, G7 buscador (caja, placa del teclado con teclas de vidrio, placa de resultados), G8 atracción (placa a la
+  medida del nombre y pastilla del mensaje; con la portada de cine, vidrio de verdad) — encendidos. G4 ficha rápida, G9 ajustes
+  (dibuja la pared detrás y la desenfoca; no en Colores/Imagen/Fondo con V28), G10 avisos (sustituye a V24, que queda en gris),
+  G11 globo de la ayuda — apagados hasta medirlos en el A4.
+- **Coste** (llvmpipe, 1920x1080, pantallas pintadas por cuadro, de fábrica frente a todo apagado): pared 3,1 / 2,8; disco 3,6 /
+  3,25; reposo 2,9 / 3,1 (menos: el vidrio reemplaza un panel ancho); buscador 3,0 / 2,6; atracción 4,1 / 3,7; ajustes 2,15 / 2,0.
+  Con G9 encendido los ajustes suben a ~6 pantallas. **Nada medido en el A4.**
