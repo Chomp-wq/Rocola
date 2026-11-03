@@ -104,7 +104,7 @@ namespace Rocola
                 c.Sbr = new SpectralTap(chain);
                 c.Sbr.ConectaOriginal(original, audioTailDelay);
                 c.Sbr.Red = ModeloDseePara(t);   // I3: el modelo de su genero, si se pidio y lo hay (Form1.Ia.cs)
-                c.Sbr.Active = DseeEfectivo; chain = c.Sbr;
+                c.Sbr.Active = DseePara(t.Path); chain = c.Sbr;   // con el modo billar, solo las muy cortadas si se pidio (CadenaBillar.cs)
             }
             LevelTap tap = new LevelTap(chain, this);
             tap.Cebado = audioTailDelay;   // lo que llega de cebado (des-recorte, siseo): en un disco continuo no entra en el realce heredado (Realce.cs)

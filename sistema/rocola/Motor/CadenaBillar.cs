@@ -108,6 +108,20 @@ namespace Rocola
         //   - Los arreglos de la grabacion (un canal mudo, la continua y el zumbido): siempre. Solo actuan en las canciones con ese defecto.
         // El interruptor guardado de cada uno se conserva y vuelve al apagar el modo.
         private bool DseeEfectivo { get { return sbrOn && !localAuto; } }
+        // EL DSEE EN EL BILLAR, SOLO EN LAS MUY CORTADAS (3-11-2026, decision del dueno: «1 y 2»). Con el modo billar el DSEE sigue
+        // apagado (arriba de unos 13 kHz las cornetas y la nave se comen lo que recrea: +0,2 a +0,4 dB medidos el 27-10), salvo con este
+        // interruptor (dsee_billar_cortes=, APAGADO de fabrica, en Mejoras con IA) y solo en las canciones con el corte medido por debajo
+        // de DseeBillarHz: ahi lo que falta empieza donde los tweeters si dan. Asi el procesador del A4 solo se gasta en esas.
+        internal const float DseeBillarHz = 13000f;
+        private bool dseeBillarCortes;
+        private bool DseePara(string ruta)
+        {
+            if (!sbrOn) return false;
+            if (!localAuto) return true;
+            if (!dseeBillarCortes || ruta == null) return false;
+            float[] c; float corte = eqCache.TryGetValue(ruta, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f;
+            return corte > 100f && corte < DseeBillarHz;
+        }
         internal const float RealceBillarCantidad = 0.35f;   // la de fabrica
         // EL CORTE DEL SUBGRAVE A 40 Hz (segunda tanda, 27-10-2026). Las cajas de 12" del billar llevan puerto: por debajo de su sintonia
         // (en cajas asi, unos 45-50 Hz) el cono se queda sin freno y lo que llega solo gasta amplificador y distorsiona; los medios de 6,5"

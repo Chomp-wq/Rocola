@@ -931,3 +931,31 @@ carga la candidata; 17 s (24 s con el programa nativo, nice 19); un botón lo co
 puesta en la cadena, rehace los agudos de una pieza que no vio a 3-4 dB del original (la puesta, a 8-26 dB), pero es del mismo tipo de
 sonido sintético. Se aparta de Python en: muestra de hasta 400 000 ejemplos, azar de .NET y sin el informe por clases de señal.
 **No probado en el A4**: falta medir cuánto tarda allí con el material de verdad y oír la comparación.
+
+## Extra (3-11-2026, decimoséptima parte): el DSEE en el billar, solo en las muy cortadas, y medido otra vez
+
+Decisión del dueño («1 y 2»): volver a medir el DSEE en el billar y dejarlo encender solo donde puede servir.
+
+- **«DSEE en el billar, solo en las muy cortadas»** (`dsee_billar_cortes=`, APAGADO de fábrica, Ctrl+F3 -> Mejoras con IA;
+  `DseePara` en `Motor/CadenaBillar.cs`): con el modo billar, el DSEE trabaja solo en las canciones con el corte medido por debajo de
+  13 kHz. En las demás sigue apagado, y con el modo apagado todo es como antes. Necesita el DSEE guardado en SÍ; si no, va en gris
+  diciendo por qué. La comparación a ciegas de la IA nueva ya vale en el billar con esas canciones.
+- **La medida**: una pieza sintética tipo pop (que la IA nueva no vio) pasada por MP3 de verdad (LAME 192 kbps, `-cutoff` 12 y
+  15 kHz), por la cadena del billar, contra la pieza completa por la misma cadena (tercios de octava, dB, referidos a 1 kHz):
+
+| | 6,3 kHz | 8 kHz | 10 kHz | 12,5 kHz | 16 kHz | 20 kHz |
+|---|---|---|---|---|---|---|
+| Cortada a 11,9 kHz, sin DSEE | −1,5 | −1,3 | −0,3 | −7,5 | −70 | −72 |
+| con el DSEE y la IA de ahora | −1,2 | −1,0 | −0,2 | −5,7 | −18 | −30 |
+| con el DSEE y una IA entrenada por la rocola | +0,4 | +0,5 | +0,5 | −4,0 | −6,6 | −9,2 |
+
+  - Con un MP3 de verdad cortado a 12 kHz, el DSEE devuelve bastante más que lo medido el 27-10 (+0,2 a +0,4 dB, con un corte
+    ideal): la IA de ahora sube el tercio de 12,5 kHz 1,8 dB y rellena 16 kHz, que estaba vacío; la entrenada aquí se queda a 4-9 dB
+    del original arriba de 12 kHz.
+  - **Pero la entrenada aquí sube también de 6 a 10 kHz (+1,7 dB), por debajo del corte**: lo más probable es que el detector del
+    corte lo vea más abajo en algunos cuadros y la red nueva rellene fuerte desde ahí. Pasó las reglas de números igual: es justo lo
+    que la comparación a ciegas tiene que juzgar, y está entrenada con piezas sintéticas del mismo estilo (optimista).
+  - La cortada a 15,4 kHz no se toca con el interruptor (sale como sin DSEE); la completa tampoco.
+  - Coste: de 14 a 18 ms más por segundo de música en esta PC, **solo en las canciones de corte bajo**.
+- Si tendrá sentido en el bar depende de cuántas canciones de corte bajo hay y de cuánto dan las cornetas por encima de 12 kHz:
+  **no probado en el A4 ni oído en el billar**.

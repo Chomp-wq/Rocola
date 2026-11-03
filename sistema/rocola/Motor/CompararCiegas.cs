@@ -64,7 +64,8 @@ namespace Rocola
             {
                 // LA IA NUEVA (IaNueva.cs): solo se oye donde el DSEE trabaja con el modelo general.
                 if (!HayIaNueva) return "No hay IA nueva: la rocola la entrena sola en reposo\n(o «Entrenar la IA ahora» en Mejoras con IA).";
-                if (localAuto) return "Con el modo billar encendido el DSEE no suena:\napagalo para oir la IA.";
+                if (localAuto && !(dseeBillarCortes && DseePara(nowPlaying != null && nowPlaying.Song != null ? nowPlaying.Song.Path : null)))
+                    return "Con el modo billar el DSEE solo suena en las muy cortadas\n(«DSEE en el billar, solo en las muy cortadas»): pon una o apaga el modo.";
                 if (!sbrOn || !sbrAllowed) return "Enciende «Reconstruir los agudos (DSEE)» en Mejoras con IA.";
                 if (nowPlaying == null || nowPlaying.Song == null || SonandoVideo) return "Pon una cancion con los agudos cortados para comparar.";
                 float[] c; float corte = eqCache.TryGetValue(nowPlaying.Song.Path, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f;

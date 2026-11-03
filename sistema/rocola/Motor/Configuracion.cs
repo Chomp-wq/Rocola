@@ -41,6 +41,7 @@ namespace Rocola
             else if (s.StartsWith("subgrave=")) subgraveHz = SubgraveHz(s.Substring(9));   // corte del subgrave (Hz; 0 = sin corte)
             else if (s.StartsWith("canal_mudo=")) canalMudo = s.Substring(11).Trim() != "0";   // S1: un canal mudo, por los dos
             else if (s.StartsWith("quita_zumbido=")) quitaZumbido = s.Substring(14).Trim() != "0";   // T6: el zumbido de la corriente
+            else if (s.StartsWith("dsee_billar_cortes=")) dseeBillarCortes = s.Substring(19).Trim() == "1";   // el DSEE en el billar, solo en las muy cortadas (apagado de fabrica)
             else if (s.StartsWith("quita_preeco=")) quitaPreEco = s.Substring(13).Trim() == "1";     // R2: el pre-eco de los MP3 (apagado de fabrica)
             else if (s.StartsWith("suaviza_eses=")) suavizaEses = s.Substring(13).Trim() == "1";   // T9: suavizar las eses
             else if (s.StartsWith("bombo_sin_hundir=")) bomboSinHundir = s.Substring(17).Trim() == "1";   // que el bombo no hunda la voz

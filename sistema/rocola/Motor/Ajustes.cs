@@ -238,6 +238,10 @@ namespace Rocola
             Ajuste dsee = Interruptor("Mejoras con IA", "Reconstruir los agudos (DSEE)", "dsee", () => sbrOn, v => sbrOn = v, true);
             dsee.Bloqueo = delegate { return !sbrAllowed ? "este equipo no llega (" + sbrReason + ")" : LocalAutoAGuardar ? PorElBillar : null; };
             l.Add(dsee);
+            Ajuste dbc = Interruptor("Mejoras con IA", "DSEE en el billar, solo en las muy cortadas", "dsee_billar_cortes", () => dseeBillarCortes, v => { dseeBillarCortes = v; ApplyNormNow(); }, false);
+            dbc.Nota = delegate { return "Con el modo billar, el DSEE solo en canciones cortadas bajo 13 kHz (lo que falta cae donde las cornetas dan)."; };
+            dbc.Bloqueo = delegate { return !sbrAllowed ? "este equipo no llega (" + sbrReason + ")" : !LocalAutoAGuardar ? "solo con el modo billar (pagina de Sonido)" : !sbrOn ? "necesita «Reconstruir los agudos (DSEE)» guardado en SI" : null; };
+            l.Add(dbc);
             l.Add(Interruptor("Mejoras con IA", "Bajo y brillo a la medida (I1)", "a_la_medida", () => aLaMedida, v => aLaMedida = v, false));
             Ajuste gen = Interruptor("Mejoras con IA", "DSEE con el modelo de su genero (I3)", "dsee_genero", () => dseePorGenero, v => dseePorGenero = v, false);
             gen.Nota = delegate { return "Cada cancion usa el modelo de su genero, si se entreno. Solo con el DSEE encendido; desde la siguiente cancion."; };

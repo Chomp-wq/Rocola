@@ -1595,7 +1595,7 @@ namespace Rocola
         {
             LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
-            SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeEfectivo;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
+            SpectralTap sp = curSbr; if (sp != null) sp.Active = DseePara(nowPlaying != null && nowPlaying.Song != null ? nowPlaying.Song.Path : null);   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
             AplicaSinMejoras(cadenaSonando);   // "Escuchar sin mejoras" (S4, LoQueSuena.cs): encima de lo de siempre
         }
@@ -1909,7 +1909,7 @@ namespace Rocola
         // de Form1.Sonido.cs
         // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs): sin IA en vivo, el reconstructor lo
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
-        private bool DseeDe(CadenaCancion c) { return DseeEfectivo; }
+        private bool DseeDe(CadenaCancion c) { return DseePara(c != null && c.Cancion != null ? c.Cancion.Path : null); }
         // de Form1.Sonido.cs
         private float ExcitePara(CadenaCancion c) { return ExciteAmountFor(c.Cancion.Path); }
         // de SubirTodo.cs
