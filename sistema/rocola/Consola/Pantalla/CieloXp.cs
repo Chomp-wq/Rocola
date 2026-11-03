@@ -53,6 +53,15 @@ namespace Rocola
             }
             FondoLento(W, H, t, alfa);
         encima:
+            if (CieloTapa.Vacia) { Encima(W, H, t, alfa); return; }
+            // tapado: lo de encima solo en los dos lados que se ven (son funciones del tiempo: dibujarlas dos veces recortadas sale igual)
+            float lx = (float)Math.Ceiling(CieloTapa.X), rx = (float)Math.Floor(CieloTapa.X + CieloTapa.W);
+            if (lx > 0) { d.Recorta(0, 0, lx, H); Encima(W, H, t, alfa); }
+            if (rx < W) { d.Recorta(rx, 0, W - rx, H); Encima(W, H, t, alfa); }
+            d.SinRecorte();
+        }
+        private void Encima(float W, float H, double t, float alfa)
+        {
             Estrellas(W, H, t, alfa);
             if (auroraAhora) Aurora(W, H, t, alfa);   // V2
             Onda(W, H, t, alfa);

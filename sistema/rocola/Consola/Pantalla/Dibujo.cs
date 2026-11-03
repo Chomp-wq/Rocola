@@ -20,6 +20,7 @@ namespace Rocola.Pantalla
     internal sealed class Textura
     {
         public uint Id; public int Ancho, Alto;
+        public bool Opaca;   // todos sus puntos opacos (las portadas): dibujada con alfa 1, no hace falta mezclar
         public Color4 Media;   // el color de la imagen (para el halo de la portada enfocada, como en XP)
         public Rocola.VistaGrafica.C3 Prom, Uno, Dos;   // de que color es la portada (el cielo toma su tono: ColorFondo.cs)
         // Un cuadrito blanco opaco dentro de la textura (los atlas de letras y el punto suave): con el, un rectangulo de color se dibuja
@@ -180,7 +181,7 @@ namespace Rocola.Pantalla
         internal void ImagenConVelo(Textura t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, float a, Color4 arriba, Color4 abajo)
         {
             Vacia();
-            texActual = t.Id; texActualT = t;
+            texActual = t.Id; texActualT = t; opacoV = false;
             GL.UseProgram(programaCine); GL.Uniform2f(uCineEsc, 2f / Ancho, 2f / Alto); GL.Uniform1i(uCineTex, 0); GL.Uniform1f(uCineA, a);
             GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
             V(x, y, u0, v0, arriba); V(x + w, y, u1, v0, arriba); V(x, y + h, u0, v1, abajo);
@@ -189,13 +190,13 @@ namespace Rocola.Pantalla
             GL.BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA); GL.UseProgram(programa);
         }
         // Sin mezclar (para lo opaco: la tarjeta no lee lo de debajo; con alfa 1 sale lo mismo) o mezclando, como siempre.
-        internal void Mezcla(bool si) { Vacia(); if (si) GL.Enable(GL.BLEND); else GL.Disable(GL.BLEND); }
+        internal void Mezcla(bool si) { Vacia(); mezclando = si; if (si) GL.Enable(GL.BLEND); else GL.Disable(GL.BLEND); }
         // ... salvo un rectangulo que luego se tapa con algo opaco (la ventana de los ajustes): solo lo que queda alrededor.
         internal void PonCapa(Capa c, float ex, float ey, float ew, float eh)
         {
             Vacia();
             if (!enCapa) limpiar = false;   // la capa (y, si hay hueco, lo opaco que lo tapa) cubre toda la pantalla
-            GL.Disable(GL.BLEND);
+            GL.Disable(GL.BLEND); mezclando = false;
             Color4 b = new Color4(1, 1, 1, 1);
             if (ew <= 0 || eh <= 0) Quad(c.Tex, 0, 0, Ancho, Alto, 0, 1, 1, 0, b);
             else
@@ -205,7 +206,7 @@ namespace Rocola.Pantalla
                 ParteCapa(c, 0, ey, ex, eh, b); ParteCapa(c, x1, ey, Ancho - x1, eh, b);
             }
             Vacia();
-            GL.Enable(GL.BLEND);
+            GL.Enable(GL.BLEND); mezclando = true;
         }
         private void ParteCapa(Capa c, float x, float y, float w, float h, Color4 b)
         {
@@ -220,7 +221,7 @@ namespace Rocola.Pantalla
             // BORRAR SOLO SI HACE FALTA: si lo primero es la capa del cielo (opaca, a toda la pantalla), borrar seria escribir la pantalla
             // entera para nada; se borra cuando se vaya a dibujar otra cosa antes
             GL.ClearColor(fondo.R, fondo.G, fondo.B, 1f); limpiar = true; enCapa = false;
-            GL.Enable(GL.BLEND); GL.BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
+            GL.Enable(GL.BLEND); mezclando = true; GL.BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
             GL.UseProgram(programa); GL.Uniform2f(uEscala, 2f / Ancho, 2f / Alto); GL.Uniform1i(uTex, 0); GL.ActiveTexture(GL.TEXTURE0);
             GL.BindBuffer(GL.ARRAY_BUFFER, buffer);
             GL.VertexAttribPointer(0, 2, GL.FLOAT, 0, 32, (IntPtr)0); GL.VertexAttribPointer(1, 2, GL.FLOAT, 0, 32, (IntPtr)8); GL.VertexAttribPointer(2, 4, GL.FLOAT, 0, 32, (IntPtr)16);
@@ -244,7 +245,7 @@ namespace Rocola.Pantalla
         // EL RELLENO (solo con el banco): cuantos puntos se pintan por cuadro, sumando el area de cada triangulo recortada a la pantalla
         // (o al recorte puesto). En la tarjeta del A4 (memoria compartida) es lo que mas cuesta: cada pantalla entera mezclada lee y
         // escribe toda la imagen.
-        internal static bool CuentaRelleno; internal static double Relleno;
+        internal static bool CuentaRelleno; internal static double Relleno, RellenoMezclado;   // lo mezclado lee y escribe; lo opaco solo escribe
         private float rx0, ry0, rx1 = 1e9f, ry1 = 1e9f;
         private void Rellena()
         {
@@ -263,15 +264,32 @@ namespace Rocola.Pantalla
             if (nv == 0) return;
             LimpiaSiFalta();
             Dibujos++; Vertices += nv;
-            if (CuentaRelleno) Rellena();
-            if (SinGL) { nv = 0; return; }
+            if (CuentaRelleno) { double antes = Relleno; Rellena(); if (mezclando && !(loteOpaco && !sinLotes)) RellenoMezclado += Relleno - antes; }
+            if (SinGL) { nv = 0; loteOpaco = true; loteGrande = false; return; }
             GL.BindTexture(GL.TEXTURE_2D, texActual);
             fixed (float* v = vertices) GL.BufferData(GL.ARRAY_BUFFER, (IntPtr)(nv * 32), v, GL.STREAM_DRAW);
+            bool sinMezcla = loteOpaco && mezclando && !sinLotes;
+            if (sinMezcla) GL.Disable(GL.BLEND);
             GL.DrawArrays(GL.TRIANGLES, 0, nv);
-            nv = 0;
+            if (sinMezcla) GL.Enable(GL.BLEND);
+            nv = 0; loteOpaco = true; loteGrande = false;
+        }
+        // LO OPACO SIN MEZCLAR (3-11-2026): si todo lo de un lote es opaco (portadas opacas o colores lisos, con alfa 1), se dibuja sin
+        // mezclar: sale igual (con alfa 1 la mezcla da el color tal cual) y la tarjeta no lee lo de debajo (la mitad de memoria por punto).
+        // Cada forma dice antes de sus vertices si lo suyo es opaco (opacoV); el alfa de cada vertice tambien cuenta.
+        private bool loteOpaco = true, opacoV, mezclando = true, loteGrande;
+        // Una forma opaca grande (mas de 1/16 de pantalla) va en su lote propio, sin mezclar, aunque cueste una llamada mas; lo translucido
+        // que venga detras empieza otro lote.
+        private void Forma(bool opaca, float area)
+        {
+            opacoV = opaca;
+            if (sinLotes || nv == 0) { if (opaca && area * 16f > (float)Ancho * Alto) loteGrande = true; return; }
+            if (opaca && area * 16f > (float)Ancho * Alto) { if (!loteOpaco) Vacia(); loteGrande = true; }
+            else if (loteGrande && !opaca) Vacia();
         }
         private void V(float x, float y, float u, float w, Color4 c)
         {
+            if (!opacoV || c.A < 1f) loteOpaco = false;
             int o = nv * 8;
             vertices[o] = x; vertices[o + 1] = y; vertices[o + 2] = u; vertices[o + 3] = w;
             vertices[o + 4] = c.R; vertices[o + 5] = c.G; vertices[o + 6] = c.B; vertices[o + 7] = c.A; nv++;
@@ -282,6 +300,7 @@ namespace Rocola.Pantalla
         {
             if (c.A <= 0f) return;
             if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; texActualT = t; }
+            Forma(t.Opaca && c.A >= 1f, Math.Abs(w * h));
             V(x, y, u0, v0, c); V(x + w, y, u1, v0, c); V(x, y + h, u0, v1, c);
             V(x + w, y, u1, v0, c); V(x + w, y + h, u1, v1, c); V(x, y + h, u0, v1, c);
         }
@@ -297,7 +316,7 @@ namespace Rocola.Pantalla
         internal void Rect(float x, float y, float w, float h, Color4 c)
         {
             if (c.A <= 0f) return;
-            float u, v; Liso(6, out u, out v);
+            float u, v; Liso(6, out u, out v); Forma(c.A >= 1f, Math.Abs(w * h));
             V(x, y, u, v, c); V(x + w, y, u, v, c); V(x, y + h, u, v, c);
             V(x + w, y, u, v, c); V(x + w, y + h, u, v, c); V(x, y + h, u, v, c);
         }
@@ -305,7 +324,7 @@ namespace Rocola.Pantalla
         internal void Triangulo(float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
         {
             if (c.A <= 0f) return;
-            float u, v; Liso(3, out u, out v);
+            float u, v; Liso(3, out u, out v); Forma(c.A >= 1f, 0);
             V(x1, y1, u, v, c); V(x2, y2, u, v, c); V(x3, y3, u, v, c);
         }
         // Una linea gruesa (un rectangulo girado), con las puntas redondeadas por un brillo duro.
@@ -321,11 +340,35 @@ namespace Rocola.Pantalla
         internal void Degradado(float x, float y, float w, float h, Color4 arriba, Color4 abajo)
         {
             if (arriba.A <= 0f && abajo.A <= 0f) return;
-            float u, v; Liso(6, out u, out v);
+            float u, v; Liso(6, out u, out v); Forma(arriba.A >= 1f && abajo.A >= 1f, Math.Abs(w * h));
             V(x, y, u, v, arriba); V(x + w, y, u, v, arriba); V(x, y + h, u, v, abajo);
             V(x + w, y, u, v, arriba); V(x + w, y + h, u, v, abajo); V(x, y + h, u, v, abajo);
         }
-        internal void Brillo(float cx, float cy, float radio, Color4 c) { Quad(Punto, cx - radio, cy - radio, 2 * radio, 2 * radio, 0, 0, 1, puntoV1, c); }
+        // EL BRILLO GRANDE, SIN SUS ESQUINAS (3-11-2026): el punto se apaga como (1 - r)^2,2, asi que las esquinas del cuadrado y el anillo
+        // de fuera no cambian ningun punto (lo que pondrian es menos de medio escalon de 255); un poligono de 16 lados que cubre solo lo
+        // que se ve pinta un 25-40 % menos. Los pequenos siguen en cuadrado (ahi no cuenta).
+        internal static bool BrilloCuadrado = Environment.GetEnvironmentVariable("ROCOLA_SIN_LOTES") != null;
+        private static readonly float[] cos16 = new float[17], sin16 = new float[17];
+        static Dibujo() { for (int i = 0; i <= 16; i++) { double a = i * Math.PI / 8; cos16[i] = (float)Math.Cos(a); sin16[i] = (float)Math.Sin(a); } }
+        internal void Brillo(float cx, float cy, float radio, Color4 c)
+        {
+            if (c.A <= 0f) return;
+            if (radio < 24f || BrilloCuadrado) { Quad(Punto, cx - radio, cy - radio, 2 * radio, 2 * radio, 0, 0, 1, puntoV1, c); return; }
+            // hasta donde se ve: donde (1 - r)^2,2 por el alfa baja de medio escalon (1/510), mas un tramo de dos puntos de la textura por
+            // el filtrado; los vertices van por fuera de ese circulo (el poligono lo envuelve)
+            float corte = 1f - (float)Math.Pow(1.0 / (510.0 * Math.Min(1f, c.A)), 1.0 / 2.2) + 0.05f;
+            float R = Math.Min(0.98f, Math.Max(0.3f, corte)) / 0.98079f;   // 0,98079 = cos(11,25 grados): el poligono por fuera del circulo
+            if (Punto.Id != texActual || nv + 48 > vertices.Length / 8) { Vacia(); texActual = Punto.Id; texActualT = Punto; }
+            Forma(false, 0);
+            float uc = 0.5f, vc = 0.5f * puntoV1;
+            for (int i = 0; i < 16; i++)
+            {
+                float x0 = cos16[i] * R, y0 = sin16[i] * R, x1 = cos16[i + 1] * R, y1 = sin16[i + 1] * R;
+                V(cx, cy, uc, vc, c);
+                V(cx + x0 * radio, cy + y0 * radio, 0.5f + 0.5f * x0, (0.5f + 0.5f * y0) * puntoV1, c);
+                V(cx + x1 * radio, cy + y1 * radio, 0.5f + 0.5f * x1, (0.5f + 0.5f * y1) * puntoV1, c);
+            }
+        }
         internal void Imagen(Textura t, float x, float y, float w, float h, float alfa = 1f) { Quad(t, x, y, w, h, 0, 0, 1, 1, new Color4(1, 1, 1, alfa)); }
         // Rectangulo de esquinas redondas (hecho con rectangulos: sin otra textura).
         internal void Redondo(float x, float y, float w, float h, float r, Color4 c)
@@ -347,7 +390,7 @@ namespace Rocola.Pantalla
         internal void Cuatro(float x0, float y0, Color4 c0, float x1, float y1, Color4 c1, float x2, float y2, Color4 c2, float x3, float y3, Color4 c3)
         {
             if (c0.A <= 0f && c1.A <= 0f && c2.A <= 0f && c3.A <= 0f) return;
-            float u, v; Liso(6, out u, out v);
+            float u, v; Liso(6, out u, out v); Forma(c0.A >= 1f && c1.A >= 1f && c2.A >= 1f && c3.A >= 1f, 0);
             V(x0, y0, u, v, c0); V(x1, y1, u, v, c1); V(x3, y3, u, v, c3);
             V(x1, y1, u, v, c1); V(x2, y2, u, v, c2); V(x3, y3, u, v, c3);
         }
@@ -355,6 +398,7 @@ namespace Rocola.Pantalla
         internal void ImagenLibre(Textura t, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
         {
             if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; texActualT = t; }
+            Forma(t.Opaca && c.A >= 1f, 0);
             V(x0, y0, 0, 0, c); V(x1, y1, 1, 0, c); V(x3, y3, 0, 1, c);
             V(x1, y1, 1, 0, c); V(x2, y2, 1, 1, c); V(x3, y3, 0, 1, c);
         }
@@ -534,7 +578,7 @@ namespace Rocola.Pantalla
         // prueba (AlMomento) se lee en el sitio, como antes.
         internal static bool AlMomento;
         private enum Clase { Normal, Grande, Borrosa }
-        private sealed class Listo { public string Ruta; public Clase Que; public byte[] Px; public int W, H, S; public bool Mip, Falla; public Color4 Media; public Rocola.VistaGrafica.C3 Prom, Uno, Dos; }
+        private sealed class Listo { public string Ruta; public Clase Que; public byte[] Px; public int W, H, S; public bool Mip, Falla, Opaca; public Color4 Media; public Rocola.VistaGrafica.C3 Prom, Uno, Dos; }
         private readonly LinkedList<KeyValuePair<string, Clase>> pedidas = new LinkedList<KeyValuePair<string, Clase>>();
         private readonly HashSet<string> enCamino = new HashSet<string>(StringComparer.Ordinal);
         private readonly System.Collections.Concurrent.ConcurrentQueue<Listo> listas = new System.Collections.Concurrent.ConcurrentQueue<Listo>();
@@ -619,6 +663,9 @@ namespace Rocola.Pantalla
                     l.Px = Escala(pxs, w, h, sz, sz); l.S = sz; l.Mip = true;
                 }
                 else l.Px = pxs;
+                bool op = true; byte[] q = l.Px;
+                for (int i = 3; i < q.Length; i += 4) if (q[i] != 255) { op = false; break; }
+                l.Opaca = op;   // sin un punto transparente: se puede dibujar sin mezclar
             }
             catch { l.Falla = true; }
             return l;
@@ -634,7 +681,7 @@ namespace Rocola.Pantalla
             Textura t;
             if (l.Mip) { t = d.SubeConMipmaps(l.Px, l.S); t.Ancho = l.W; t.Alto = l.H; }   // la forma de la portada (la textura va estirada al cuadrado)
             else t = d.Sube(l.Px, l.W, l.H);
-            t.Media = l.Media; t.Prom = l.Prom; t.Uno = l.Uno; t.Dos = l.Dos;
+            t.Media = l.Media; t.Prom = l.Prom; t.Uno = l.Uno; t.Dos = l.Dos; t.Opaca = l.Opaca;
             cache[l.Ruta] = t; ord.AddFirst(l.Ruta);
             while (ord.Count > cuantas) { string v = ord.Last.Value; ord.RemoveLast(); d.Borra(cache[v]); cache.Remove(v); }
         }

@@ -658,3 +658,21 @@ tarjeta en cada tramo). Todo automático y sin interruptor (no cambia el aspecto
 Con reloj fijo, todas las escenas salen iguales a la versión anterior (salvo contadores que avanzan solos y la fecha del programa
 en el título de los ajustes). Pantallas pintadas por cuadro a 1920x1080: pared 3,2 → 3,0; disco 3,8 → 3,6; reposo 3,8 → 3,5;
 atracción 5,3 → 4,0; ajustes 6,2 → 2,4. **Nada medido en el A4.**
+
+## Extra (3-11-2026, tercera parte): halos sin esquinas y lo opaco sin mezclar
+
+Automático y sin interruptor (no cambia el aspecto):
+
+- **Halos (brillos) grandes como polígono de 16 lados**: el punto suave se apaga como (1 − r)^2,2, así que las esquinas del cuadrado
+  y el anillo de fuera no cambian ningún punto (menos de medio escalón de 255, calculado con el alfa de cada halo). Los de más de 24
+  puntos de radio se pintan con un polígono que cubre solo lo que se ve: un 25-40 % menos de relleno por halo.
+- **Lo opaco sin mezclar**: cada lote sabe si todo lo suyo es opaco (portadas sin transparencia —se mira al leerlas, en el hilo de
+  fondo— o colores lisos con alfa 1); si lo es, se dibuja sin mezclar (sale idéntico y la tarjeta no lee lo de debajo: la mitad de
+  memoria por punto). Una forma opaca grande (más de 1/16 de pantalla, como el fondo de la ventana de los ajustes) va en su propio
+  lote. El banco ahora dice cuánto de lo pintado va mezclado.
+- **Ajustes**: bajo la ventana opaca, las estrellas, la aurora, la onda, el horizonte y la luna se pintan solo en los dos lados que
+  se ven.
+
+Comparado con reloj fijo contra la versión anterior en 11 escenas y en el mismo cuadro con y sin los ahorros (diferencia máxima 2
+de 255). Por cuadro a 1920x1080 (pintadas / mezcladas): pared 3,0 / 1,5; disco 3,4 / 2,0; reposo 3,3 / 2,0; atracción 3,9 / 2,5;
+ajustes 2,0 / 0,95 (antes casi todo mezclado). **Nada medido en el A4.**
