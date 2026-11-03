@@ -628,3 +628,33 @@ ellos sale igual (diferencia máxima 1 de 255, salvo los contadores que avanzan 
 mediana pasó de 33,7 a ~29 ms con llvmpipe; 0 recolecciones en todas las escenas (antes: buscador 66 KB y ajustes 94 KB por
 cuadro). **No está medido en el A4**: falta comprobar allí que llega a 75 Hz a la resolución nativa y si conviene apagar alguna
 mejora de coste medio.
+
+## Extra (3-11-2026, segunda parte): menos relleno por cuadro (lo que más cuesta en la tarjeta del A4)
+
+En la tarjeta del A4 (memoria compartida con el procesador) lo caro es cuántas veces se pinta cada punto de la pantalla. El banco
+ahora lo cuenta («pantallas pintadas» por cuadro; con `ROCOLA_PERFIL=1`, también por tramo, y con `ROCOLA_PERFIL=gpu` esperando a la
+tarjeta en cada tramo). Todo automático y sin interruptor (no cambia el aspecto), salvo el arreglo de V28:
+
+- **Ajustes (Ctrl+F3)**: el velo oscuro y el filo azul se pintan solo donde se ven (antes, dos pantallas enteras debajo de la
+  ventana opaca), y bajo la ventana opaca el cielo no se copia: solo sus lados (la franja que se rehace, un lado por turno; al cerrar
+  se rehace entera). De 6,2 a 2,4 pantallas.
+- **Arreglo de V28** («Ver el cambio mientras se elige»): en Colores, Imagen y Fondo el filo azul se pintaba entero y opaco debajo
+  del fondo translúcido de la ventana, así que lo de detrás no se veía. Ahora es solo el filo y se ve la pared detrás, como dice la
+  opción. **Esto sí cambia lo que se ve en esas tres hojas** (es lo que la opción prometía).
+- **Portada de cine (V19)**: la portada y su velo oscuro, en una sola pasada con un sombreador propio (antes dos pantallas enteras
+  mezcladas una tras otra). Comparado en el mismo cuadro (`ROCOLA_CAPTURA_DOBLE`): diferencia máxima 2 de 255, por redondeo. La
+  atracción, de 5,3 a 4,0 pantallas.
+- **Cielo**: los cuatro degradados de la noche son opacos y cubren todo: ya no se pinta el fondo liso debajo y se pintan sin mezclar
+  (la tarjeta no lee lo de debajo). La pantalla no se borra al empezar el cuadro si lo primero es la capa del cielo, que la cubre
+  entera (se borra solo si se dibuja otra cosa antes).
+- **Lo invisible no se manda**: lo que se dibuja con alfa 0 (lo que se desvanece y ya no se ve) no llega a la tarjeta.
+- **Presentación por KMS**: el framebuffer de DRM de cada buffer se hace una vez (antes, uno nuevo en cada cuadro), y el programa ya
+  no espera el cambio de página en el mismo cuadro: lo pide y prepara el siguiente mientras la tarjeta acaba; espera, si hace
+  falta, al presentar el siguiente. **No probado en KMS de verdad** (aquí no hay tarjeta y la imagen de QEMU no estaba a mano): si en
+  el A4 diera problemas, `ROCOLA_FLIP_ESPERA=1` vuelve a esperar como antes.
+- Herramientas: `ROCOLA_RELOJ_PASO=ms` (el reloj fijo avanza eso por cuadro) y `ROCOLA_CAPTURA_DOBLE=VARIABLE` (el mismo cuadro otra
+  vez con esa variable, en `ruta.b.ppm`).
+
+Con reloj fijo, todas las escenas salen iguales a la versión anterior (salvo contadores que avanzan solos y la fecha del programa
+en el título de los ajustes). Pantallas pintadas por cuadro a 1920x1080: pared 3,2 → 3,0; disco 3,8 → 3,6; reposo 3,8 → 3,5;
+atracción 5,3 → 4,0; ajustes 6,2 → 2,4. **Nada medido en el A4.**

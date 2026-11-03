@@ -10,7 +10,7 @@ namespace Rocola.Pantalla
         private const string L = "libGLESv2.so.2";
         internal const uint COLOR_BUFFER_BIT = 0x4000, TRIANGLES = 4, TEXTURE_2D = 0x0DE1, RGBA = 0x1908, UNSIGNED_BYTE = 0x1401, FLOAT = 0x1406,
             TEXTURE_MIN_FILTER = 0x2801, TEXTURE_MAG_FILTER = 0x2800, LINEAR = 0x2601, TEXTURE_WRAP_S = 0x2802, TEXTURE_WRAP_T = 0x2803,
-            CLAMP_TO_EDGE = 0x812F, BLEND = 0x0BE2, SRC_ALPHA = 0x0302, ONE_MINUS_SRC_ALPHA = 0x0303, ARRAY_BUFFER = 0x8892,
+            CLAMP_TO_EDGE = 0x812F, BLEND = 0x0BE2, ONE = 1, SRC_ALPHA = 0x0302, ONE_MINUS_SRC_ALPHA = 0x0303, ARRAY_BUFFER = 0x8892,
             STREAM_DRAW = 0x88E0, VERTEX_SHADER = 0x8B31, FRAGMENT_SHADER = 0x8B30, COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82,
             FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0, UNPACK_ALIGNMENT = 0x0CF5, PACK_ALIGNMENT = 0x0D05, TEXTURE0 = 0x84C0,
             SCISSOR_TEST = 0x0C11, RENDERER = 0x1F01, VERSION = 0x1F02, LINEAR_MIPMAP_LINEAR = 0x2703, RGB = 0x1907, FRAMEBUFFER_BINDING = 0x8CA6, FRAMEBUFFER_COMPLETE = 0x8CD5;
@@ -35,6 +35,7 @@ namespace Rocola.Pantalla
         [DllImport(L, EntryPoint = "glGetUniformLocation")] internal static extern int GetUniformLocation(uint p, string nombre);
         [DllImport(L, EntryPoint = "glUniform2f")] internal static extern void Uniform2f(int l, float a, float b);
         [DllImport(L, EntryPoint = "glUniform1i")] internal static extern void Uniform1i(int l, int a);
+        [DllImport(L, EntryPoint = "glUniform1f")] internal static extern void Uniform1f(int l, float a);
         [DllImport(L, EntryPoint = "glGenTextures")] internal static extern void GenTextures(int n, uint* t);
         [DllImport(L, EntryPoint = "glDeleteTextures")] internal static extern void DeleteTextures(int n, uint* t);
         [DllImport(L, EntryPoint = "glBindTexture")] internal static extern void BindTexture(uint destino, uint t);

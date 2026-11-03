@@ -170,7 +170,7 @@ namespace Rocola
             {
                 int nb = int.Parse(banco); v.SiempreDibuja = true;
                 for (int i = 0; i < 30; i++) v.Dibuja(c);   // que se llenen las caches
-                Perfil.Total.Clear(); Perfil.Bytes.Clear();
+                Perfil.Total.Clear(); Perfil.Bytes.Clear(); Perfil.Puntos.Clear(); Rocola.Pantalla.Dibujo.CuentaRelleno = true; Rocola.Pantalla.Dibujo.Relleno = 0;
                 List<double> ms = new List<double>(); long bytes = 0; int gc0 = GC.CollectionCount(0); Rocola.Pantalla.Dibujo.Dibujos = 0; Rocola.Pantalla.Dibujo.Vertices = 0;
                 System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
                 for (int i = 0; i < nb; i++)
@@ -180,14 +180,18 @@ namespace Rocola
                     ms.Add(sw.Elapsed.TotalMilliseconds); bytes += GC.GetAllocatedBytesForCurrentThread() - a;
                 }
                 ms.Sort();
-                Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro", tam, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb));
-                if (Perfil.Activo) { var l = new List<KeyValuePair<string, double>>(Perfil.Total); l.Sort((a, b) => b.Value.CompareTo(a.Value)); foreach (var kv in l) Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "   {0,-28} {1,7:0.00} ms {2,7:0.0} KB", kv.Key, kv.Value / nb, (Perfil.Bytes.TryGetValue(kv.Key, out long kb) ? kb : 0) / 1024.0 / nb)); }
+                Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro, {8:0.00} pantallas pintadas", tam, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb, Rocola.Pantalla.Dibujo.Relleno / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto)));
+                if (Perfil.Activo) { var l = new List<KeyValuePair<string, double>>(Perfil.Total); l.Sort((a, b) => b.Value.CompareTo(a.Value)); foreach (var kv in l) Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "   {0,-28} {1,7:0.00} ms {2,7:0.0} KB {3,6:0.00} pantallas", kv.Key, kv.Value / nb, (Perfil.Bytes.TryGetValue(kv.Key, out long kb) ? kb : 0) / 1024.0 / nb, (Perfil.Puntos.TryGetValue(kv.Key, out double pp) ? pp : 0) / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto))); }
                 m.Cierra(); return 0;
             }
             // que termine de aparecer lo que se anima (la atraccion, el reposo, la estrella que vuela): unos cuadros durante 1,3 s
                 for (int i = 0; i < Cuadros(botones); i++) { m.PublicaMedidas(); v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // lo medido en fondo, a las tablas (como el bucle de la rocola)   // que termine de aparecer
             v.Dibuja(c);
             fp.Captura(ruta);
+            // ROCOLA_CAPTURA_DOBLE=VARIABLE: el mismo cuadro otra vez con esa variable puesta, en ruta.b.ppm (comparar un ahorro con su
+            // forma de antes sin que cambie lo que se ve: mismo disco, mismo reloj)
+            string doble = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_DOBLE");
+            if (doble != null) { Environment.SetEnvironmentVariable(doble, "1"); VistaGrafica.RepiteCuadro(); v.Dibuja(c); fp.Captura(ruta + ".b.ppm"); }
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
             Console.WriteLine("Captura: " + ruta);
             return 0;

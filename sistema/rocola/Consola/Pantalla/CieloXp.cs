@@ -27,16 +27,27 @@ namespace Rocola
                 if (capaCielo == null && !sinCapaCielo) { capaCielo = d.CapaNueva(); sinCapaCielo = capaCielo == null; }
                 if (capaCielo != null)
                 {
+                    // TAPADO (la ventana opaca de los ajustes): solo se ve lo de los lados; al destaparse se rehace entera
+                    bool tapado = !CieloTapa.Vacia;
+                    if (cieloTapadoAntes && !tapado) cieloHecho = false;
+                    cieloTapadoAntes = tapado;
                     int que = CieloCambio();
+                    float tx0 = (float)Math.Ceiling(CieloTapa.X), tx1 = (float)Math.Floor(CieloTapa.X + CieloTapa.W), ty0 = (float)Math.Ceiling(CieloTapa.Y), ty1 = (float)Math.Floor(CieloTapa.Y + CieloTapa.H);
                     if (que > 0)
                     {
                         // entera si cambiaron los colores o es la primera; si no, una franja de cuatro por cuadro (todos los cuadros cuestan lo
-                        // mismo: sin un cuadro mas pesado cada cuatro)
+                        // mismo: sin un cuadro mas pesado cada cuatro); tapado, la franja solo de un lado (el izquierdo y el derecho por turnos)
                         d.DibujaEn(capaCielo);
-                        if (que == 1) { int b = cieloBanda++ & 3; d.Recorta(0, H * b / 4f, W, H / 4f + 1); }
-                        d.Rect(0, 0, W, H, Fondo); FondoLento(W, H, t, 1f); d.Vuelve();
+                        if (que == 1)
+                        {
+                            int n = cieloBanda++, b = n & 3;
+                            if (!tapado) d.Recorta(0, H * b / 4f, W, H / 4f + 1);
+                            else if ((n & 4) == 0) d.Recorta(0, H * b / 4f, tx0, H / 4f + 1);
+                            else d.Recorta(tx1, H * b / 4f, W - tx1, H / 4f + 1);
+                        }
+                        FondoLento(W, H, t, 1f, true); d.Vuelve();   // los cuatro degradados opacos cubren todo: sin el fondo liso debajo y sin mezclar
                     }
-                    d.PonCapa(capaCielo);
+                    if (tapado) d.PonCapa(capaCielo, tx0, ty0, tx1 - tx0, ty1 - ty0); else d.PonCapa(capaCielo);
                     goto encima;
                 }
             }
@@ -51,7 +62,9 @@ namespace Rocola
 
         private Dibujo.Capa capaCielo; private bool sinCapaCielo;
         private C3 cAcento, cNebA, cNebB; private float cCorte, cAzul; private bool cVivas;
-        private int cieloBanda; private bool cieloHecho;
+        private int cieloBanda; private bool cieloHecho, cieloTapadoAntes;
+        // Lo que en este cuadro se tapa con algo opaco que va encima (la ventana de los ajustes sin vista previa); vacia si nada.
+        internal Zona CieloTapa;
         // 2: rehacerla entera (la primera vez, o cambiaron los colores o algun ajuste); 1: una franja; 0: nada (no pasa: siempre se refresca)
         private int CieloCambio()
         {
@@ -61,7 +74,7 @@ namespace Rocola
             return 1;
         }
         private static bool Lejos(C3 a, C3 b) { return Math.Abs(a.R - b.R) > 0.25f || Math.Abs(a.G - b.G) > 0.25f || Math.Abs(a.B - b.B) > 0.25f; }
-        private void FondoLento(float W, float H, double t, float alfa)
+        private void FondoLento(float W, float H, double t, float alfa, bool opaco = false)
         {
             float yh = Horizonte(H);
 
@@ -70,10 +83,12 @@ namespace Rocola
             C3 a0 = SkyArriba(acento), am = SkyMedio(acento, AzulCielo), ab = SkyAbajo(acento), d0 = SkyArriba(Defecto), dm = SkyMedio(Defecto), db = SkyAbajo(Defecto);
             C3 a1 = new C3((a0.R + am.R) / 2, (a0.G + am.G) / 2, (a0.B + am.B) / 2), d1 = new C3((d0.R + dm.R) / 2, (d0.G + dm.G) / 2, (d0.B + dm.B) / 2);
             float corte = H * 0.40f * corteNegro / 42f;   // donde acaba el negro de arriba (cielo_negro=, 42 de fabrica)
+            if (opaco) d.Mezcla(false);
             d.Degradado(0, 0, W, corte, Parada(0x16163A, a0, d0, alfa), Parada(0x28285C, a1, d1, alfa));
             d.Degradado(0, corte, W, H * 0.75f - corte, Parada(0x28285C, a1, d1, alfa), Parada(0x2C367D, am, dm, alfa));
             d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Parada(0x2C367D, am, dm, alfa), Parada(0x37408F, ab, db, alfa));
             d.Degradado(0, yh, W, H - yh, Parada(0x223470, ab, db, alfa), Parada(0x16234C, ab, db, alfa));
+            if (opaco) d.Mezcla(true);
             Nebulosas(W, H, t, alfa);
         }
 

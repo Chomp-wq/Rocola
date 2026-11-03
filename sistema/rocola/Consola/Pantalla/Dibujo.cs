@@ -29,7 +29,8 @@ namespace Rocola.Pantalla
 
     internal sealed unsafe class Dibujo : IDisposable
     {
-        private readonly uint programa, buffer;
+        private readonly uint programa, buffer, programaCine;
+        private readonly int uCineEsc, uCineTex, uCineA;
         private readonly int uEscala, uTex;
         private readonly float[] vertices = new float[6 * 8 * 2048];
         private int nv;
@@ -39,15 +40,26 @@ namespace Rocola.Pantalla
         internal readonly float puntoV1;
         public int Ancho, Alto;
 
+        internal static Dibujo Actual;   // para el perfil del banco (vaciar el lote en cada marca)
+        internal void VaciaYa() { Vacia(); }
         internal Dibujo(int ancho, int alto)
         {
-            Ancho = ancho; Alto = alto;
+            Ancho = ancho; Alto = alto; Actual = this;
             programa = Programa(
                 "attribute vec2 p; attribute vec2 t; attribute vec4 c; uniform vec2 esc; varying vec2 vt; varying vec4 vc;" +
                 "void main(){ vt = t; vc = c; gl_Position = vec4(p.x * esc.x - 1.0, 1.0 - p.y * esc.y, 0.0, 1.0); }",
                 "precision mediump float; uniform sampler2D tex; varying vec2 vt; varying vec4 vc;" +
                 "void main(){ gl_FragColor = texture2D(tex, vt) * vc; }");
             uEscala = GL.GetUniformLocation(programa, "esc"); uTex = GL.GetUniformLocation(programa, "tex");
+            // LA PORTADA DE CINE CON SU VELO EN UNA SOLA PASADA (V19): la imagen con alfa 'a' y encima un velo de color (el del vertice, con
+            // su alfa); lo mismo que dibujar las dos a pantalla completa una tras otra, pero la tarjeta lee y escribe la pantalla una vez.
+            // Sale premultiplicado: se mezcla con (1, 1 - alfa).
+            programaCine = Programa(
+                "attribute vec2 p; attribute vec2 t; attribute vec4 c; uniform vec2 esc; varying vec2 vt; varying vec4 vc;" +
+                "void main(){ vt = t; vc = c; gl_Position = vec4(p.x * esc.x - 1.0, 1.0 - p.y * esc.y, 0.0, 1.0); }",
+                "precision mediump float; uniform sampler2D tex; uniform float a; varying vec2 vt; varying vec4 vc;" +
+                "void main(){ vec4 t = texture2D(tex, vt); float x = a * t.a; gl_FragColor = vec4(t.rgb * x * (1.0 - vc.a) + vc.rgb * vc.a, 1.0 - (1.0 - x) * (1.0 - vc.a)); }");
+            uCineEsc = GL.GetUniformLocation(programaCine, "esc"); uCineTex = GL.GetUniformLocation(programaCine, "tex"); uCineA = GL.GetUniformLocation(programaCine, "a");
             uint b; GL.GenBuffers(1, &b); buffer = b;
             byte[] px = { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 };
             blanca = Sube(px, 2, 2);
@@ -113,7 +125,7 @@ namespace Rocola.Pantalla
         private Textura copia;
         internal Textura CopiaPantalla(float x, float y, float w, float h)
         {
-            Vacia();
+            Vacia(); LimpiaSiFalta();
             int ix = Math.Max(0, (int)x), iy = Math.Max(0, (int)y), iw = Math.Min(Ancho - ix, (int)Math.Ceiling(w)), ih = Math.Min(Alto - iy, (int)Math.Ceiling(h));
             if (iw < 2 || ih < 2) return null;
             if (copia == null) { uint t; GL.GenTextures(1, &t); copia = new Textura { Id = t }; }
@@ -151,32 +163,63 @@ namespace Rocola.Pantalla
         {
             Vacia();
             int antes; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &antes); fboPantalla = antes;
-            GL.Disable(GL.SCISSOR_TEST);
-            GL.BindFramebuffer(GL.FRAMEBUFFER, c.Fbo);
+            GL.Disable(GL.SCISSOR_TEST); SinRect();
+            GL.BindFramebuffer(GL.FRAMEBUFFER, c.Fbo); enCapa = true;
             GL.Viewport(0, 0, Ancho, Alto);
         }
         internal void Vuelve()
         {
             Vacia();
-            GL.Disable(GL.SCISSOR_TEST);
-            GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)fboPantalla);
+            GL.Disable(GL.SCISSOR_TEST); SinRect();
+            GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)fboPantalla); enCapa = false;
             GL.Viewport(0, 0, Ancho, Alto);
         }
         // La capa sobre toda la pantalla, sin mezclar (es opaca: lo de debajo no se lee, la tarjeta solo copia).
-        internal void PonCapa(Capa c)
+        internal void PonCapa(Capa c) { PonCapa(c, 0, 0, 0, 0); }
+        // La imagen 't' (su trozo u0..u1, v0..v1) en x, y, w, h con alfa 'a', y encima un velo de 'arriba' a 'abajo' (degradado), de una vez.
+        internal void ImagenConVelo(Textura t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, float a, Color4 arriba, Color4 abajo)
         {
             Vacia();
+            texActual = t.Id; texActualT = t;
+            GL.UseProgram(programaCine); GL.Uniform2f(uCineEsc, 2f / Ancho, 2f / Alto); GL.Uniform1i(uCineTex, 0); GL.Uniform1f(uCineA, a);
+            GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
+            V(x, y, u0, v0, arriba); V(x + w, y, u1, v0, arriba); V(x, y + h, u0, v1, abajo);
+            V(x + w, y, u1, v0, arriba); V(x + w, y + h, u1, v1, abajo); V(x, y + h, u0, v1, abajo);
+            Vacia();
+            GL.BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA); GL.UseProgram(programa);
+        }
+        // Sin mezclar (para lo opaco: la tarjeta no lee lo de debajo; con alfa 1 sale lo mismo) o mezclando, como siempre.
+        internal void Mezcla(bool si) { Vacia(); if (si) GL.Enable(GL.BLEND); else GL.Disable(GL.BLEND); }
+        // ... salvo un rectangulo que luego se tapa con algo opaco (la ventana de los ajustes): solo lo que queda alrededor.
+        internal void PonCapa(Capa c, float ex, float ey, float ew, float eh)
+        {
+            Vacia();
+            if (!enCapa) limpiar = false;   // la capa (y, si hay hueco, lo opaco que lo tapa) cubre toda la pantalla
             GL.Disable(GL.BLEND);
-            Quad(c.Tex, 0, 0, Ancho, Alto, 0, 1, 1, 0, new Color4(1, 1, 1, 1));
+            Color4 b = new Color4(1, 1, 1, 1);
+            if (ew <= 0 || eh <= 0) Quad(c.Tex, 0, 0, Ancho, Alto, 0, 1, 1, 0, b);
+            else
+            {
+                float x1 = ex + ew, y1 = ey + eh;
+                ParteCapa(c, 0, 0, Ancho, ey, b); ParteCapa(c, 0, y1, Ancho, Alto - y1, b);
+                ParteCapa(c, 0, ey, ex, eh, b); ParteCapa(c, x1, ey, Ancho - x1, eh, b);
+            }
             Vacia();
             GL.Enable(GL.BLEND);
+        }
+        private void ParteCapa(Capa c, float x, float y, float w, float h, Color4 b)
+        {
+            if (w <= 0 || h <= 0) return;
+            Quad(c.Tex, x, y, w, h, x / Ancho, 1f - y / Alto, (x + w) / Ancho, 1f - (y + h) / Alto, b);
         }
         internal void Borra(Textura t) { if (t == null) return; Vacia(); uint id = t.Id; GL.DeleteTextures(1, &id); texActual = 0; texActualT = null; }
 
         internal void Empieza(Color4 fondo)
         {
             GL.Viewport(0, 0, Ancho, Alto);
-            GL.ClearColor(fondo.R, fondo.G, fondo.B, 1f); GL.Clear(GL.COLOR_BUFFER_BIT);
+            // BORRAR SOLO SI HACE FALTA: si lo primero es la capa del cielo (opaca, a toda la pantalla), borrar seria escribir la pantalla
+            // entera para nada; se borra cuando se vaya a dibujar otra cosa antes
+            GL.ClearColor(fondo.R, fondo.G, fondo.B, 1f); limpiar = true; enCapa = false;
             GL.Enable(GL.BLEND); GL.BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
             GL.UseProgram(programa); GL.Uniform2f(uEscala, 2f / Ancho, 2f / Alto); GL.Uniform1i(uTex, 0); GL.ActiveTexture(GL.TEXTURE0);
             GL.BindBuffer(GL.ARRAY_BUFFER, buffer);
@@ -184,23 +227,43 @@ namespace Rocola.Pantalla
             GL.EnableVertexAttribArray(0); GL.EnableVertexAttribArray(1); GL.EnableVertexAttribArray(2);
             texActual = 0; texActualT = null; nv = 0;
         }
-        internal void Termina() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
+        internal void Termina() { Vacia(); LimpiaSiFalta(); GL.Disable(GL.SCISSOR_TEST); SinRect(); }
+        private void SinRect() { rx0 = ry0 = 0; rx1 = ry1 = 1e9f; }
         // Recorta lo que se dibuje a un rectangulo (coordenadas de pantalla, y hacia abajo); Suelta lo quita.
         internal void Recorta(float x, float y, float w, float h)
         {
-            Vacia();
-            GL.Enable(GL.SCISSOR_TEST);
+            Vacia(); LimpiaSiFalta();
+            GL.Enable(GL.SCISSOR_TEST); rx0 = x; ry0 = y; rx1 = x + w; ry1 = y + h;
             GL.Scissor((int)Math.Floor(x), (int)Math.Floor(Alto - y - h), Math.Max(0, (int)Math.Ceiling(w)), Math.Max(0, (int)Math.Ceiling(h)));
         }
-        internal void SinRecorte() { Vacia(); GL.Disable(GL.SCISSOR_TEST); }
+        internal void SinRecorte() { Vacia(); GL.Disable(GL.SCISSOR_TEST); SinRect(); }
 
         // Para el banco: sin tocar la tarjeta (solo lo que cuesta el programa) y la cuenta de dibujos y vertices.
         internal static readonly bool SinGL = Environment.GetEnvironmentVariable("ROCOLA_BANCO_SIN_GL") != null;
         internal static long Dibujos, Vertices;
+        // EL RELLENO (solo con el banco): cuantos puntos se pintan por cuadro, sumando el area de cada triangulo recortada a la pantalla
+        // (o al recorte puesto). En la tarjeta del A4 (memoria compartida) es lo que mas cuesta: cada pantalla entera mezclada lee y
+        // escribe toda la imagen.
+        internal static bool CuentaRelleno; internal static double Relleno;
+        private float rx0, ry0, rx1 = 1e9f, ry1 = 1e9f;
+        private void Rellena()
+        {
+            float x0 = Math.Max(0, rx0), y0 = Math.Max(0, ry0), x1 = Math.Min(Ancho, rx1), y1 = Math.Min(Alto, ry1);
+            for (int i = 0; i + 2 < nv; i += 3)
+            {
+                int a = i * 8, b = a + 8, c = b + 8;
+                float ax = Math.Clamp(vertices[a], x0, x1), ay = Math.Clamp(vertices[a + 1], y0, y1), bx = Math.Clamp(vertices[b], x0, x1), by = Math.Clamp(vertices[b + 1], y0, y1), cx = Math.Clamp(vertices[c], x0, x1), cy = Math.Clamp(vertices[c + 1], y0, y1);
+                Relleno += Math.Abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) * 0.5;
+            }
+        }
+        private bool limpiar, enCapa;
+        private void LimpiaSiFalta() { if (limpiar && !enCapa) { limpiar = false; GL.Disable(GL.SCISSOR_TEST); GL.Clear(GL.COLOR_BUFFER_BIT); } }
         private void Vacia()
         {
             if (nv == 0) return;
+            LimpiaSiFalta();
             Dibujos++; Vertices += nv;
+            if (CuentaRelleno) Rellena();
             if (SinGL) { nv = 0; return; }
             GL.BindTexture(GL.TEXTURE_2D, texActual);
             fixed (float* v = vertices) GL.BufferData(GL.ARRAY_BUFFER, (IntPtr)(nv * 32), v, GL.STREAM_DRAW);
@@ -213,8 +276,11 @@ namespace Rocola.Pantalla
             vertices[o] = x; vertices[o + 1] = y; vertices[o + 2] = u; vertices[o + 3] = w;
             vertices[o + 4] = c.R; vertices[o + 5] = c.G; vertices[o + 6] = c.B; vertices[o + 7] = c.A; nv++;
         }
+        // LO INVISIBLE NO SE MANDA (3-11-2026): con la mezcla de siempre (alfa, 1 - alfa), lo de alfa 0 no cambia ni un punto (lo que se
+        // desvanece y ya no se ve): ni vertices ni relleno.
         internal void Quad(Textura t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, Color4 c)
         {
+            if (c.A <= 0f) return;
             if (t.Id != texActual || nv + 6 > vertices.Length / 8) { Vacia(); texActual = t.Id; texActualT = t; }
             V(x, y, u0, v0, c); V(x + w, y, u1, v0, c); V(x, y + h, u0, v1, c);
             V(x + w, y, u1, v0, c); V(x + w, y + h, u1, v1, c); V(x, y + h, u0, v1, c);
@@ -230,6 +296,7 @@ namespace Rocola.Pantalla
         }
         internal void Rect(float x, float y, float w, float h, Color4 c)
         {
+            if (c.A <= 0f) return;
             float u, v; Liso(6, out u, out v);
             V(x, y, u, v, c); V(x + w, y, u, v, c); V(x, y + h, u, v, c);
             V(x + w, y, u, v, c); V(x + w, y + h, u, v, c); V(x, y + h, u, v, c);
@@ -237,6 +304,7 @@ namespace Rocola.Pantalla
         // Un triangulo lleno (la estrella de la ayuda se arma con ellos).
         internal void Triangulo(float x1, float y1, float x2, float y2, float x3, float y3, Color4 c)
         {
+            if (c.A <= 0f) return;
             float u, v; Liso(3, out u, out v);
             V(x1, y1, u, v, c); V(x2, y2, u, v, c); V(x3, y3, u, v, c);
         }
@@ -252,6 +320,7 @@ namespace Rocola.Pantalla
         // Un rectangulo con un color arriba y otro abajo (degradado vertical).
         internal void Degradado(float x, float y, float w, float h, Color4 arriba, Color4 abajo)
         {
+            if (arriba.A <= 0f && abajo.A <= 0f) return;
             float u, v; Liso(6, out u, out v);
             V(x, y, u, v, arriba); V(x + w, y, u, v, arriba); V(x, y + h, u, v, abajo);
             V(x + w, y, u, v, arriba); V(x + w, y + h, u, v, abajo); V(x, y + h, u, v, abajo);
@@ -277,6 +346,7 @@ namespace Rocola.Pantalla
         // Un cuadrilatero cualquiera con un color por esquina (en orden: arriba-izq, arriba-der, abajo-der, abajo-izq).
         internal void Cuatro(float x0, float y0, Color4 c0, float x1, float y1, Color4 c1, float x2, float y2, Color4 c2, float x3, float y3, Color4 c3)
         {
+            if (c0.A <= 0f && c1.A <= 0f && c2.A <= 0f && c3.A <= 0f) return;
             float u, v; Liso(6, out u, out v);
             V(x0, y0, u, v, c0); V(x1, y1, u, v, c1); V(x3, y3, u, v, c3);
             V(x1, y1, u, v, c1); V(x2, y2, u, v, c2); V(x3, y3, u, v, c3);
@@ -300,8 +370,8 @@ namespace Rocola.Pantalla
             Rect(x, y + r, grosor, h - 2 * r, c); Rect(x + w - grosor, y + r, grosor, h - 2 * r, c);
             // las cuatro esquinas, como anillos de un cuarto
             int pasos = Math.Max(4, (int)(r * 0.8f));
-            float[] cxs = { x + r, x + w - r, x + w - r, x + r }, cys = { y + r, y + r, y + h - r, y + h - r };
-            double[] a0 = { Math.PI, 1.5 * Math.PI, 0, 0.5 * Math.PI };
+            Span<float> cxs = stackalloc float[] { x + r, x + w - r, x + w - r, x + r }, cys = stackalloc float[] { y + r, y + r, y + h - r, y + h - r };   // en la pila: sin basura
+            Span<double> a0 = stackalloc double[] { Math.PI, 1.5 * Math.PI, 0, 0.5 * Math.PI };
             for (int e = 0; e < 4; e++)
                 for (int i = 0; i < pasos; i++)
                 {

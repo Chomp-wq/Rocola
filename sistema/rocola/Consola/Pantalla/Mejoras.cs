@@ -262,8 +262,13 @@ namespace Rocola
             uint h32 = 2166136261; foreach (char ch in disco.Carpeta ?? "") h32 = (h32 ^ ch) * 16777619;
             float dirX = (h32 & 1) == 0 ? 1f : -1f, dirY = (h32 & 2) == 0 ? 1f : -1f;
             float u0 = (1f - uw) * (0.5f + 0.4f * dirX * ((float)u - 0.5f)), v0 = (1f - vh) * (0.5f + 0.4f * dirY * ((float)u - 0.5f));
-            d.Quad(t, 0, 0, W, H, u0, v0, u0 + uw, v0 + vh, new Color4(1, 1, 1, 0.30f * alfa));
-            d.Degradado(0, 0, W, H, Color4.Hex(0x0A0E26, 0.55f * alfa), Color4.Hex(0x0A0E26, 0.80f * alfa));
+            // la portada al 30 % y el velo oscuro encima, en una sola pasada (es lo mismo que una y luego la otra)
+            if (Environment.GetEnvironmentVariable("ROCOLA_SIN_LOTES") != null)
+            {
+                d.Quad(t, 0, 0, W, H, u0, v0, u0 + uw, v0 + vh, new Color4(1, 1, 1, 0.30f * alfa));
+                d.Degradado(0, 0, W, H, Color4.Hex(0x0A0E26, 0.55f * alfa), Color4.Hex(0x0A0E26, 0.80f * alfa));
+            }
+            else d.ImagenConVelo(t, 0, 0, W, H, u0, v0, u0 + uw, v0 + vh, 0.30f * alfa, Color4.Hex(0x0A0E26, 0.55f * alfa), Color4.Hex(0x0A0E26, 0.80f * alfa));
         }
 
         // V13 y V14: en el reposo, la portada derrama su color por el cielo, y un anillo de luz late con los golpes alrededor del cubo

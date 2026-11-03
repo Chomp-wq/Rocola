@@ -46,7 +46,7 @@ namespace Rocola.Pantalla
         private readonly uint crtc, conector;
         private Modo modo;
         private readonly Crtc* antes;
-        private IntPtr boActual; private uint fbActual;
+        private IntPtr boActual;
         private bool puesto;
         public int Ancho { get; private set; }
         public int Alto { get; private set; }
@@ -99,42 +99,76 @@ namespace Rocola.Pantalla
             Descripcion = Ancho + "x" + Alto + " a " + modo.vrefresh + " Hz, " + GL.Texto(GL.RENDERER);
         }
 
-        // Presenta lo dibujado: el cambio de pagina espera al barrido (no hay cortes) y se suelta el buffer anterior.
+        // Presenta lo dibujado: el cambio de pagina espera al barrido (no hay cortes). SIN ESPERAR AQUI (3-11-2026): se pide el cambio y
+        // se vuelve a dibujar el siguiente mientras la tarjeta termina este y llega el barrido; la espera es al presentar el siguiente
+        // (si el anterior aun no cambio). Asi la preparacion de un cuadro y el dibujo del anterior van a la vez, no por turnos. GBM tiene
+        // buffers de sobra para eso (en pantalla, el que espera el barrido y el que se dibuja). El framebuffer de DRM de cada buffer se
+        // hace una vez y se reusa (antes se hacia y se borraba en cada cuadro).
+        // ROCOLA_FLIP_ESPERA=1: como antes (esperar el cambio en el mismo cuadro), por si una tarjeta no lo llevara bien.
+        private static readonly bool esperaAlMomento = Environment.GetEnvironmentVariable("ROCOLA_FLIP_ESPERA") != null;
+        private readonly System.Collections.Generic.Dictionary<IntPtr, uint> fbs = new System.Collections.Generic.Dictionary<IntPtr, uint>();
+        private IntPtr boPendiente; private bool pendiente;
+        private uint FbDe(IntPtr bo)
+        {
+            uint fb;
+            if (fbs.TryGetValue(bo, out fb)) return fb;
+            drmModeAddFB(fd, (uint)Ancho, (uint)Alto, 24, 32, gbm_bo_get_stride(bo), (uint)gbm_bo_get_handle(bo), &fb);
+            fbs[bo] = fb;
+            return fb;
+        }
+        // Espera el aviso del cambio pedido: lo que estaba en pantalla se suelta y el pendiente pasa a estar en pantalla.
+        private void EsperaCambio()
+        {
+            if (!pendiente) return;
+            byte* ev = stackalloc byte[1024];
+            read(fd, ev, (IntPtr)1024);
+            pendiente = false;
+            if (boActual != IntPtr.Zero) gbm_surface_release_buffer(superficie, boActual);
+            boActual = boPendiente; boPendiente = IntPtr.Zero;
+        }
+        private void PonEnPantalla(IntPtr bo)
+        {
+            if (boActual != IntPtr.Zero && boActual != bo) gbm_surface_release_buffer(superficie, boActual);
+            boActual = bo;
+        }
         public void Presenta()
         {
             EGL.SwapBuffers(egl, eglSup);
             IntPtr bo = gbm_surface_lock_front_buffer(superficie);
-            uint fb;
-            drmModeAddFB(fd, (uint)Ancho, (uint)Alto, 24, 32, gbm_bo_get_stride(bo), (uint)gbm_bo_get_handle(bo), &fb);
+            if (bo == IntPtr.Zero) return;
+            uint fb = FbDe(bo);
+            EsperaCambio();   // el cambio del cuadro anterior (si aun no llego el barrido)
             if (!puesto)
             {
                 uint con = conector; Modo m = modo;
                 drmModeSetCrtc(fd, crtc, fb, 0, 0, &con, 1, &m);
                 puesto = true;
+                PonEnPantalla(bo);
             }
             else if (drmModePageFlip(fd, crtc, fb, PAGE_FLIP_EVENT, IntPtr.Zero) == 0)
             {
-                byte* ev = stackalloc byte[1024];
-                read(fd, ev, (IntPtr)1024);   // espera el aviso del cambio de pagina
+                pendiente = true; boPendiente = bo;
+                if (esperaAlMomento) EsperaCambio();
             }
-            if (boActual != IntPtr.Zero) { drmModeRmFB(fd, fbActual); gbm_surface_release_buffer(superficie, boActual); }
-            boActual = bo; fbActual = fb;
+            else PonEnPantalla(bo);   // no se pudo pedir el cambio (como antes: se da por puesto y se suelta el anterior)
         }
 
         // CEDER LA PANTALLA (a mpv, para un video) y recuperarla: se suelta el mando de la tarjeta (DRM master) y, al volver, se toma
         // otra vez y el siguiente cuadro vuelve a poner el modo.
-        public void Suelta() { drmDropMaster(fd); }
+        public void Suelta() { EsperaCambio(); drmDropMaster(fd); }
         public void Recupera() { drmSetMaster(fd); puesto = false; }
 
         public void Dispose()
         {
+            EsperaCambio();
             if (antes != null)
             {
                 uint con = conector; Modo m = antes->mode;
                 drmModeSetCrtc(fd, antes->crtc_id, antes->buffer_id, antes->x, antes->y, &con, 1, &m);   // la consola como estaba
                 drmModeFreeCrtc(antes);
             }
-            if (boActual != IntPtr.Zero) { drmModeRmFB(fd, fbActual); gbm_surface_release_buffer(superficie, boActual); }
+            if (boActual != IntPtr.Zero) gbm_surface_release_buffer(superficie, boActual);
+            foreach (uint f in fbs.Values) drmModeRmFB(fd, f);
             EGL.MakeCurrent(egl, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             EGL.DestroySurface(egl, eglSup); EGL.DestroyContext(egl, ctx); EGL.Terminate(egl);
             gbm_surface_destroy(superficie); gbm_device_destroy(gbm);

@@ -46,6 +46,15 @@ namespace Rocola
             }
         }
 
+        // V28: las hojas en las que la ventana deja ver lo de detras
+        private static readonly string[] PaginasConPrevia = { "Imagen", "Fondo", "Colores" };
+        private bool AjustesConPrevia(Controlador c)
+        {
+            IList<Form1.Ajuste> l = c.ListaAjustes; int sel = c.AjusteSel;
+            return c.motor.AjustesVistaPrevia && sel >= 0 && sel < l.Count && Array.IndexOf(PaginasConPrevia, Form1.PaginaDe(l[sel].Grupo)) >= 0;
+        }
+        // La ventana sin vista previa, con su filo: opaca entera (lo de debajo no se ve)
+        private Zona VentanaAjustesOpaca(float W, float H) { return new Zona(30 * k - 3 * k, 2 * k - 2 * k, W - 60 * k + 6 * k, H - 4 * k + 4 * k); }
         private void Ajustes(Controlador c, float W, float H)
         {
             IList<Form1.Ajuste> l = c.ListaAjustes;
@@ -61,9 +70,19 @@ namespace Rocola
 
             // LA VENTANA: el filo azul, la barra de titulo y el fondo
             float wx = 30 * k, wy = 2 * k, ww = W - 60 * k, wh = H - 4 * k;
-            bool previa = c.motor.AjustesVistaPrevia && (pagina == "Imagen" || pagina == "Fondo" || pagina == "Colores");   // V28
-            if (!previa) d.Rect(0, 0, W, H, new Color4(0.02f, 0.03f, 0.08f, 0.55f));
-            d.Rect(wx - 3 * k, wy - 2 * k, ww + 6 * k, wh + 4 * k, Color4.Hex(0x2456E6));
+            bool previa = AjustesConPrevia(c);   // V28
+            // el velo oscuro, solo donde no tapa la ventana (bajo ella no se veria); el filo azul, solo el filo: con la vista previa (V28)
+            // el fondo de la ventana es translucido y se ve lo de detras (antes el azul entero lo tapaba)
+            float fx0 = wx - 3 * k, fy0 = wy - 2 * k, fx1 = wx + ww + 3 * k, fy1 = wy + wh + 2 * k;
+            if (!previa)
+            {
+                Color4 velo = new Color4(0.02f, 0.03f, 0.08f, 0.55f);
+                d.Rect(0, 0, W, fy0, velo); d.Rect(0, fy1, W, H - fy1, velo);
+                d.Rect(0, fy0, fx0, fy1 - fy0, velo); d.Rect(fx1, fy0, W - fx1, fy1 - fy0, velo);
+            }
+            Color4 azulFilo = Color4.Hex(0x2456E6);
+            d.Rect(fx0, fy0, fx1 - fx0, wy - fy0, azulFilo); d.Rect(fx0, wy + wh, fx1 - fx0, fy1 - (wy + wh), azulFilo);
+            d.Rect(fx0, wy, wx - fx0, wh, azulFilo); d.Rect(wx + ww, wy, fx1 - (wx + ww), wh, azulFilo);
             d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E, previa ? 0.72f : 1f), Color4.Hex(0x0C1226, previa ? 0.72f : 1f));
             d.DegradadoH(wx, wy, ww, 26 * k, Color4.Hex(0x2456E6), Color4.Hex(0x1E44C8));
             string titulo = "Rocola - " + pagina + (selloRocola.Length > 0 ? "   ·   Esta rocola es del " + selloRocola : "");

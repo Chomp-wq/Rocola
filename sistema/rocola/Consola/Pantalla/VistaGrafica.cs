@@ -27,9 +27,14 @@ namespace Rocola
         {
             private readonly System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
             private static readonly string fijo = Environment.GetEnvironmentVariable("ROCOLA_RELOJ_FIJO");
-            internal TimeSpan Elapsed { get { return fijo != null ? TimeSpan.FromSeconds(double.Parse(fijo, System.Globalization.CultureInfo.InvariantCulture)) : sw.Elapsed; } }
+            // ROCOLA_RELOJ_PASO=ms (con el fijo): avanza eso en cada cuadro, igual en cada vuelta (para comparar capturas con animacion)
+            private static readonly double paso = double.TryParse(Environment.GetEnvironmentVariable("ROCOLA_RELOJ_PASO"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double ps) ? ps / 1000.0 : 0;
+            internal static int Cuadros;
+            internal static void Atras() { Cuadros--; }
+            internal TimeSpan Elapsed { get { return fijo != null ? TimeSpan.FromSeconds(double.Parse(fijo, System.Globalization.CultureInfo.InvariantCulture) + Cuadros * paso) : sw.Elapsed; } }
             internal long ElapsedMilliseconds { get { return (long)Elapsed.TotalMilliseconds; } }
         }
+        internal static void RepiteCuadro() { Reloj.Atras(); }   // el proximo cuadro, con el reloj del anterior (pruebas)
         private readonly float[] estrellas;   // x, y (0..1), tamano, fase, velocidad: el cielo de siempre (fijo, como el patron de XP)
         private float pGraves, pMedios, pAgudos;   // el pulso de la musica, suavizado (sube rapido, baja despacio)
         private int focoDisco = -1; private string focoCarpeta; private double focoDesde;
@@ -98,10 +103,12 @@ namespace Rocola
             if (!SiempreDibuja && unchecked(ahora - ultimo) < 4) return;
             ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
-            Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
+            Reloj.Cuadros++; Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
             Pulso(c);
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             ColorDelCielo(c); Perfil.Marca("preparar");
+            // la ventana de los ajustes sin vista previa es opaca: el cielo solo hace falta a sus lados
+            CieloTapa = c.AjusteSel >= 0 && c.AsistentePaso < 0 && !(c.Atraccion && c.AtraccionActual != null) && !AjustesConPrevia(c) ? VentanaAjustesOpaca(W, H) : new Zona();
             Cielo(W, H, reloj.Elapsed.TotalSeconds); Perfil.Marca("cielo");
             EspectroHorizonte(c, W, H); Perfil.Marca("espectro");
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f); Perfil.Marca("estrella del cielo");   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
@@ -110,7 +117,7 @@ namespace Rocola
             if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
-            if (c.AjusteSel >= 0 && m.AjustesVistaPrevia && c.AjusteSel < c.ListaAjustes.Count && Array.IndexOf(new[] { "Imagen", "Fondo", "Colores" }, Form1.PaginaDe(c.ListaAjustes[c.AjusteSel].Grupo)) >= 0)
+            if (c.AjusteSel >= 0 && AjustesConPrevia(c))
             { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
             if (c.AjusteSel >= 0) { Ajustes(c, W, H); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
@@ -561,11 +568,18 @@ namespace Rocola
         private static readonly System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
         private static double antes; private static long bytesAntes;
         internal static readonly Dictionary<string, double> Total = new Dictionary<string, double>();
-        internal static readonly Dictionary<string, long> Bytes = new Dictionary<string, long>();   // la memoria pedida en cada tramo
-        internal static void Empieza() { if (Activo) { antes = sw.Elapsed.TotalMilliseconds; bytesAntes = GC.GetAllocatedBytesForCurrentThread(); } }
+        internal static readonly Dictionary<string, long> Bytes = new Dictionary<string, long>();
+        internal static readonly Dictionary<string, double> Puntos = new Dictionary<string, double>();   // lo pintado en cada tramo
+        private static double rellenoAntes;   // la memoria pedida en cada tramo
+        internal static void Empieza() { if (Activo) { antes = sw.Elapsed.TotalMilliseconds; bytesAntes = GC.GetAllocatedBytesForCurrentThread(); rellenoAntes = Rocola.Pantalla.Dibujo.Relleno; } }
+        // ROCOLA_PERFIL=gpu: espera a la tarjeta en cada marca (glFinish), para saber lo que cuesta dibujar cada tramo y no solo pedirlo
+        private static readonly bool Gpu = Environment.GetEnvironmentVariable("ROCOLA_PERFIL") == "gpu";
         internal static void Marca(string que)
         {
             if (!Activo) return;
+            Rocola.Pantalla.Dibujo.Actual?.VaciaYa();
+            if (Gpu) Rocola.Pantalla.GL.Finish();
+            double r; Puntos.TryGetValue(que, out r); Puntos[que] = r + (Rocola.Pantalla.Dibujo.Relleno - rellenoAntes); rellenoAntes = Rocola.Pantalla.Dibujo.Relleno;
             double t = sw.Elapsed.TotalMilliseconds, v; Total.TryGetValue(que, out v); Total[que] = v + (t - antes); antes = t;
             long b = GC.GetAllocatedBytesForCurrentThread(), w; Bytes.TryGetValue(que, out w); Bytes[que] = w + (b - bytesAntes); bytesAntes = GC.GetAllocatedBytesForCurrentThread();
         }
