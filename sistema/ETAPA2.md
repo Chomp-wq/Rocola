@@ -745,3 +745,42 @@ disco, reposo, buscador, atracción, ajustes y ficha, con los vidrios de fábric
 - **Medido aquí** (llvmpipe; solo procesador, mediana por cuadro a 1920x1080, versión anterior / nueva): pared 0,41 / 0,33 ms;
   buscador 0,36 / 0,29 ms; al entrar al reposo, el peor cuadro de 20-31 ms a 3,3-3,8 ms, y de 9-11 recolecciones a ninguna. En la
   tarjeta (`ROCOLA_PERFIL=gpu`): la cabecera de 2,45 a 1,85 ms y lo que suena de 2,8 a 2,4 ms. **Nada medido en el A4.**
+
+## Extra (3-11-2026, séptima parte): el instalador y el actualizador, que no estaban; revisión del sistema instalado
+
+Revisión pedida por el dueño: que el instalador ponga Rocola OS encima de la rocola de XP sin tocar la música ni lo que la rocola de XP
+generó, y que todo esté en orden.
+
+- **Faltaban `rocola-instalar` y `rocola-actualiza`.** Se escribieron el 1-11 en otra sesión, pero la regla `bin/` del `.gitignore`
+  dejaba fuera `rootfs_overlay/usr/bin/` (ya había pasado con `rocola-prueba`): nunca llegaron al repositorio ni a las imágenes
+  publicadas. Con la memoria de sistema-5, «Instalar» no hacía nada y la rocola instalada no se actualizaba. El `.gitignore` ya los
+  incluye y los dos se escribieron de nuevo, a la medida de lo que ya esperaban el initramfs, GRUB, `S99rocola`, `/usr/bin/rocola` y
+  Ctrl+F3 → Internet.
+- **`rocola-instalar`**: busca el NTFS con `musica` (no la memoria), enseña disco, canciones, datos de XP y Windows XP; comprueba MBR,
+  hueco para GRUB y sitio antes de preguntar; ENTER instala, otro botón cancela sin tocar nada. Guarda el arranque de XP (una vez),
+  copia el sistema entero y lo compara byte a byte, crea lo aprendido (`datos.img`, ext4 con diario, hecho en `post-build.sh` con el
+  mke2fs de la máquina que compila) con lo que la memoria ya tuviera, traduciendo `/rocola/discos/<particion>/` a `/rocola/disco/`, y
+  la llave de GitHub de la carpeta de XP; pone GRUB (busca el disco por su UUID) y su menú oculto (ESC: la versión anterior, la prueba
+  y Windows XP). Volver a instalar va a la otra copia y conserva lo aprendido. Si Windows no se apagó bien, no escribe. Al quitar la
+  memoria se reinicia solo (el núcleo no trae SysRq: BusyBox y sus bibliotecas se copian antes a la RAM).
+- **`rocola-desinstalar`**: devuelve el arranque de XP guardado (el código del primer sector y el hueco; no la tabla) y deja `\rocola-os`.
+- **`rocola-actualiza`**: la llave (de una memoria conectada aunque sea después de prender, o de la carpeta de XP), la hora por NTP, el
+  programa (a4 o genérico según AVX; suma y `--version`; el que no arranca queda como malo) y el sistema en la otra copia (sumas,
+  escrito entero, `probando` y `arranque.cfg` al final). Dice qué pasa en Ctrl+F3 (llave que no vale, sin internet, sin sitio...).
+- **Arreglos en lo que ya estaba:**
+  - el initramfs busca el disco por el UUID que pone el instalador, mira los demás NTFS solo en lectura, monta con `noatime`, y si una
+    copia del sistema no se puede montar arranca con la otra en vez de quedarse en una consola (en el bar no hay teclado);
+  - elegir en el menú «la versión anterior del sistema» daba por buena la nueva que estaba en prueba: ahora la anterior queda como la
+    de siempre y la nueva como mala;
+  - «Buscar actualización ahora» borraba su aviso antes de que el actualizador lo viera (y con «Actualizarse sola» apagado no buscaba);
+  - importar de XP: las rutas guardadas con otras mayúsculas que la carpeta real (`C:\MUSICA` frente a `musica`; Windows no las
+    distingue y Linux sí) se perdían, con todas sus medidas; ahora se encuentran (`ImportaXP.cs`, `SinMayusculas`).
+- **Probado en una máquina emulada** con el núcleo de sistema-5, un disco como el de XP (NTFS desde el sector 63, `ntldr`, música,
+  `C:\MUSICA\...` en sus tablas) y una memoria: instala; la copia del arranque de XP es idéntica y la tabla de particiones no cambia; el
+  disco prende solo en Rocola OS (GRUB lee el NTFS, initramfs, el sistema y lo aprendido montados); la vuelta atrás vuelve sola al
+  anterior a la tercera; volver a instalar conserva lo aprendido; con ESC sale el menú (Rocola OS, la versión anterior, la prueba, Windows XP) y «Windows XP»
+  pasa al arranque de la partición de XP (en la prueba no hay un Windows de verdad: su sector de arranque responde); `rocola-desinstalar` devuelve el arranque de XP tal cual; el
+  actualizador contra un GitHub de mentira (llave que falta o no vale, descarga rota, programa que no arranca, apagado y pedido a mano).
+  **Cortes de luz:** un ext4 dentro de un archivo NTFS **con huecos** se estropeó; escrito entero (como lo hacen el instalador y el
+  actualizador) aguantó siete apagados de golpe, cuatro a media escritura, sin más que reproducir su diario. BusyBox y GRUB de la prueba
+  son los de esta máquina (los de la imagen del A4 llevan instrucciones del Piledriver que QEMU no tiene). **Nada probado en el A4.**

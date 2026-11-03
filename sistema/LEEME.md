@@ -141,18 +141,31 @@ el A4.
 ## Instalarlo en la rocola (el instalador)
 
 1. Graba `disk.img` en una memoria USB (paso 2 de arriba), conéctala a la rocola y préndela desde la memoria.
-2. **El instalador arranca solo** (es lo primero del menú, a los 5 s). Busca la carpeta `musica` en el disco de la rocola y enseña
-   qué encontró: el disco, la carpeta y cuántas canciones.
-3. **ENTER (el botón verde) instala;** cualquier otro botón cancela sin tocar nada.
+2. **El instalador arranca solo** (es lo primero del menú, a los 5 s; `rocola-instalar`). Busca el disco de la rocola (un NTFS que no
+   sea la memoria, con la carpeta `musica`) y enseña qué encontró: el disco, sus carpetas `musica`, cuántas canciones, la carpeta de los
+   datos de la rocola de XP y si está Windows XP.
+3. **ENTER (el botón verde) instala;** cualquier otro botón cancela sin tocar nada. Antes de preguntar comprueba que el disco es MBR
+   (el de XP), que hay hueco para el arranque y que hay sitio (unos **2,8 GB libres**: las dos copias del sistema, lo aprendido y el
+   arranque); si algo falta, lo dice y no toca nada.
 4. Instala Rocola OS **dentro del mismo disco**, en la carpeta `\rocola-os` (el sistema va en un archivo, `sistema.img`): no se
    reparticiona ni se formatea nada, **la música se queda donde está** y la rocola la encuentra sola. Los archivos de la rocola de XP
    (su configuración, lo aprendido, los volúmenes, los botones, las IA) tampoco se tocan, y la primera vez Rocola OS los copia
-   (`rocola_importado_xp.txt` dice qué).
-5. Al acabar pide **quitar la memoria USB** y se reinicia sola: desde entonces prende directo en la rocola.
+   (`rocola_importado_xp.txt` dice qué; las rutas de Windows se traducen aunque estén escritas con otras mayúsculas). La llave de
+   GitHub (`rocola_github.txt`), si está en la carpeta de la rocola de XP, se copia al instalar. Lo que la memoria ya tuviera de haberla
+   probado en la rocola se lleva también.
+5. El sistema se copia y se **comprueba byte a byte**; lo aprendido va en `\rocola-os\datos.img` (ext4 con diario: un apagón no lo
+   estropea). Si Windows no se apagó bien (o está hibernado), no escribe en el disco: pide prender XP y apagarlo desde Inicio.
+6. Al acabar pide **quitar la memoria USB** y se reinicia sola: desde entonces prende directo en la rocola.
 
 Windows XP deja de arrancar, pero no se borra nada suyo: con **ESC al prender** sale el menú, que tiene «Windows XP (la rocola de
-antes)». El arranque de antes queda guardado en `\rocola-os\arranque-xp.original.bin`. Hace falta 2,3 GB libres en el disco (las dos copias del sistema y lo aprendido). Volver a
-instalar (otra versión) conserva lo aprendido.
+antes)». El arranque de antes (el primer sector del disco y el hueco que usa GRUB, sin la tabla de particiones) queda guardado en
+`\rocola-os\arranque-xp.original.bin`; **para dejar la rocola como antes**, `rocola-desinstalar` en la consola de mantenimiento
+(Ctrl+Alt+F2, usuario `root`) lo devuelve y la rocola vuelve a prender en XP (no borra `\rocola-os`). Volver a instalar (otra versión)
+pone el sistema en la otra copia y conserva lo aprendido. Lo que hizo el instalador queda en `\rocola-os\instalar.txt`.
+
+**Probado (3-11-2026) en una máquina emulada** con el núcleo de sistema-5 y un disco como el de XP (NTFS desde el sector 63, con su
+`ntldr`): instala, el disco prende solo en Rocola OS, monta lo aprendido y vuelve solo al sistema anterior si el nuevo no se confirma.
+**No probado en el A4.**
 
 ## Internet, actualizaciones y encendido remoto
 
@@ -183,6 +196,10 @@ ESC al prender, el menú tiene también «la versión anterior del sistema». Lo
 3. Guárdala en un archivo de texto **`rocola_github.txt`** (solo la llave) en una memoria USB y conéctala a la rocola prendida: en la
    siguiente revisión la copia (o «Buscar actualización ahora»). También vale ponerla en la carpeta de la rocola de XP antes de instalar.
 Si la llave caduca o se borra, la rocola sigue funcionando: solo deja de actualizarse (Ctrl+F3 lo dice).
+
+**Lo que hace la actualización (`rocola-actualiza`):** busca la llave en las memorias USB conectadas (aunque se conecten con la
+rocola prendida) o en la carpeta de XP, pone la hora por NTP, baja el programa y el sistema con sus sumas comprobadas (una descarga
+rota no cambia nada y se reintenta en una hora), y con «Actualizarse sola» apagado solo busca si se pide «Buscar actualización ahora».
 
 **Encenderla desde casa (Wake on LAN).** La rocola deja su tarjeta de red escuchando el «paquete mágico» al apagarse.
 1. **En el BIOS del A4** (Supr al prender): activar *Wake on LAN* / *Power On by PCI-E* / *Resume by LAN* (el nombre cambia según la

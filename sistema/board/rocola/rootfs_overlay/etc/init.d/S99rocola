@@ -14,11 +14,14 @@ case "$1" in
 		# programa de la rocola se actualiza solo (rocola-actualiza): al minuto de prender y despues cada hora, o al momento si se pide
 		# desde Ctrl+F3 (/run/rocola-buscar-ya).
 		ethtool -s eth0 wol g 2>/dev/null
+		# (el aviso de «Buscar actualizacion ahora» se borra al acabar de buscar: hasta entonces Ctrl+F3 dice BUSCANDO, y
+		# rocola-actualiza sabe que se pidio a mano: busca aunque «Actualizarse sola» este apagado)
 		( sleep 60
 		  while :; do
-			/usr/bin/rocola-actualiza >/dev/null 2>&1
+			pedida=; [ -f /run/rocola-buscar-ya ] && pedida=1
+			ROCOLA_PEDIDA=$pedida /usr/bin/rocola-actualiza >/dev/null 2>&1
+			[ -n "$pedida" ] && rm -f /run/rocola-buscar-ya
 			i=0; while [ $i -lt 360 ] && [ ! -f /run/rocola-buscar-ya ]; do sleep 10; i=$((i + 1)); done
-			rm -f /run/rocola-buscar-ya
 		  done ) &
 		# UN SISTEMA NUEVO EN PRUEBA (rocola-actualiza): si la rocola no lleva 3 minutos en pie a los 15 minutos de prender, se reinicia;
 		# el initramfs cuenta los arranques y a la tercera vuelve al sistema anterior. Si llega, se da por bueno.

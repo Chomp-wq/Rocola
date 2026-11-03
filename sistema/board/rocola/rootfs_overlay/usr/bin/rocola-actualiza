@@ -1,0 +1,172 @@
+#!/bin/sh
+# LA ROCOLA SE ACTUALIZA SOLA DESDE GITHUB (peticion del dueno del 1-11-2026). Lo llama S99rocola al minuto de prender, cada hora y al
+# momento con «Buscar actualizacion ahora» (Ctrl+F3 -> Internet; entonces ROCOLA_PEDIDA=1 y busca aunque «Actualizarse sola» este apagado).
+#
+#  1. LA LLAVE: rocola_github.txt (una llave de solo lectura del repositorio) en una memoria USB conectada, o en la carpeta de la rocola
+#     de XP, se copia a /rocola/datos/rocola_github.txt. Sin llave no hace nada mas (Ctrl+F3 lo dice).
+#  2. LA HORA por NTP (las conexiones seguras la necesitan; el A4 puede traerla mal).
+#  3. EL PROGRAMA: la ultima version «programa-N» que no este apuntada como mala (/rocola/datos/programa/malas). Se baja, se comprueba su
+#     suma (sha256.txt) y que arranca en este equipo (--version), y queda como rocola-consola.nueva + nueva.version, con el aviso
+#     /run/rocola-hay-nueva: la rocola la pone sola cuando esta libre (Actualizacion.cs y /usr/bin/rocola, que vuelve a la anterior si
+#     la nueva se cae al arrancar). En el A4 (con AVX) la version «a4»; en otro equipo, la «generico».
+#  4. EL SISTEMA (solo instalado en el disco: \rocola-os\arranque.cfg): el ultimo «sistema-N» mas nuevo que el que corre y no malo
+#     (\rocola-os\sistema-malas). Se baja a la otra copia (\rocola-os\a o \b), se comprueban las sumas, se descomprime entero (sin
+#     huecos: escribir en el no cambia el NTFS) y se pone en arranque.cfg con \rocola-os\probando; el aviso /run/rocola-reinicio-sistema
+#     hace que la rocola reinicie cuando este libre. El initramfs vuelve a la anterior si la nueva no se confirma (S99rocola, 3 minutos).
+# Lo que dice: /run/rocola-actualiza.txt (Ctrl+F3) y la bitacora /rocola/datos/rocola_actualizaciones.txt.
+# Para probarlo fuera de la rocola: ROCOLA_API, ROCOLA_DATOS, ROCOLA_DISCO, ROCOLA_RUN, ROCOLA_SIN_HORA=1.
+REPO=${ROCOLA_REPO:-Chomp-wq/Rocola}
+API=${ROCOLA_API:-https://api.github.com}
+DATOS=${ROCOLA_DATOS:-/rocola/datos}
+RUN=${ROCOLA_RUN:-/run}
+OS=${ROCOLA_DISCO:-/rocola/disco}/rocola-os
+PROG=$DATOS/programa
+BITACORA=$DATOS/rocola_actualizaciones.txt
+ESTADO=$RUN/rocola-actualiza.txt
+TMP=$RUN/rocola-actualiza.d
+estado() { echo "$(date '+%H:%M') $*" > "$ESTADO"; }
+apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; }
+# una sola a la vez
+mkdir "$RUN/rocola-actualiza.cerrojo" 2>/dev/null || exit 0
+trap 'rm -rf "$RUN/rocola-actualiza.cerrojo" "$TMP"' EXIT
+rm -rf "$TMP"; mkdir -p "$TMP" "$PROG"
+
+# 1. LA LLAVE: de una memoria USB (aunque se conecte con la rocola prendida) o de la carpeta de XP. Solo se lee de ahi.
+busca_llave() {
+	for f in /rocola/discos/*/rocola_github.txt /rocola/discos/*/*/rocola_github.txt; do [ -f "$f" ] && { echo "$f"; return; }; done
+	[ -s /run/rocola-datos-xp ] && f=$(find "$(cat /run/rocola-datos-xp)" -maxdepth 1 -iname rocola_github.txt 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
+	# memorias conectadas despues de prender: se miran en solo lectura y se desmontan
+	for p in /sys/class/block/*; do
+		[ -e "$p/partition" ] || continue
+		dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
+		[ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ] || continue
+		grep -q "^/dev/$dev " /proc/mounts && continue
+		m=$TMP/usb; mkdir -p "$m"
+		mount -o ro "/dev/$dev" "$m" 2>/dev/null || continue
+		f=$(find "$m" -maxdepth 2 -iname rocola_github.txt 2>/dev/null | head -1)
+		[ -n "$f" ] && cp "$f" "$TMP/llave.txt"
+		umount "$m"
+		[ -f "$TMP/llave.txt" ] && { echo "$TMP/llave.txt"; return; }
+	done
+}
+f=$(busca_llave)
+if [ -n "$f" ]; then
+	nueva=$(tr -d ' \r\n\t' < "$f")
+	if [ -n "$nueva" ] && [ "$nueva" != "$(cat "$DATOS/rocola_github.txt" 2>/dev/null)" ]; then
+		printf '%s' "$nueva" > "$DATOS/rocola_github.txt"; chmod 600 "$DATOS/rocola_github.txt"; sync
+		apunta "Llave de GitHub puesta (de $f)"
+	fi
+fi
+LLAVE=$(cat "$DATOS/rocola_github.txt" 2>/dev/null)
+[ -n "$LLAVE" ] || { estado "falta la llave de GitHub (rocola_github.txt en una memoria USB)"; exit 0; }
+# «Actualizarse sola» apagado (actualizar_solo=0) y no pedida a mano: nada
+if grep -q '^actualizar_solo=0' "$DATOS/rocola_config.txt" 2>/dev/null && [ -z "$ROCOLA_PEDIDA" ]; then
+	estado "apagada («Actualizarse sola»): se busca solo con «Buscar actualizacion ahora»"; exit 0
+fi
+
+# 2. LA HORA (una vez por arranque)
+if [ -z "$ROCOLA_SIN_HORA" ] && [ ! -f "$RUN/rocola-hora" ]; then
+	timeout 30 ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && touch "$RUN/rocola-hora" && hwclock -w -u 2>/dev/null
+fi
+
+pide() {   # pide RUTA_DE_LA_API ARCHIVO
+	curl -fsSL --connect-timeout 20 --max-time 60 -H "Authorization: Bearer $LLAVE" -H "Accept: application/vnd.github+json" \
+		-H "X-GitHub-Api-Version: 2022-11-28" -H "User-Agent: rocola" "$API$1" -o "$2"
+}
+baja() {   # baja ID_DEL_ARCHIVO DESTINO (los archivos de una version; GitHub manda a otro sitio, que no recibe la llave)
+	curl -fsSL --connect-timeout 20 --max-time 1800 --retry 2 -H "Authorization: Bearer $LLAVE" -H "Accept: application/octet-stream" \
+		-H "User-Agent: rocola" "$API/repos/$REPO/releases/assets/$1" -o "$2"
+}
+estado "buscando..."
+if ! pide "/repos/$REPO/releases?per_page=50" "$TMP/versiones.json"; then
+	c=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 20 -H "Authorization: Bearer $LLAVE" -H "User-Agent: rocola" "$API/repos/$REPO" 2>/dev/null)
+	case "$c" in
+		401|403|404) estado "la llave de GitHub no vale (caduco o no tiene permiso): pon otra"; apunta "La llave de GitHub no vale ($c)" ;;
+		000) estado "sin internet (¿el cable?)" ;;
+		*) estado "GitHub no contesto ($c): se reintenta en una hora" ;;
+	esac
+	exit 0
+fi
+# la version N mas alta de un tipo («programa» o «sistema») que no este en la lista de malas
+ultima() { jq -r --arg t "$1-" '.[] | select(.draft | not) | .tag_name | select(startswith($t)) | ltrimstr($t)' "$TMP/versiones.json" 2>/dev/null \
+	| grep -E '^[0-9]+$' | while read -r n; do grep -qx "$n" "$2" 2>/dev/null || echo "$n"; done | sort -n | tail -1; }
+archivo() { jq -r --arg t "$1" --arg n "$2" '.[] | select(.tag_name == $t) | .assets[] | select(.name == $n) | .id' "$TMP/versiones.json" | head -1; }
+# comprueba DIRECTORIO ARCHIVO...: las sumas de sha256.txt de esos archivos
+comprueba() { d=$1; shift; for a in "$@"; do grep -q " $a\$" "$d/sha256.txt" || return 1; done; (cd "$d" && for a in "$@"; do grep " $a\$" sha256.txt; done | sha256sum -c -s); }
+dice=
+
+# 3. EL PROGRAMA
+ahora=$(cat "$PROG/version" 2>/dev/null); [ -n "$ahora" ] || ahora=$(/usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p')
+ahora=${ahora:-0}
+n=$(ultima programa "$PROG/malas")
+if [ -n "$n" ] && [ "$n" -gt "$ahora" ] && [ "$n" != "$(cat "$PROG/nueva.version" 2>/dev/null)" ]; then
+	tipo=generico; grep -qw avx /proc/cpuinfo && tipo=a4
+	a=rocola-consola-$tipo.gz
+	estado "bajando el programa $n..."
+	ia=$(archivo "programa-$n" $a); is=$(archivo "programa-$n" sha256.txt)
+	if [ -n "$ia" ] && [ -n "$is" ] && baja "$ia" "$TMP/$a" && baja "$is" "$TMP/sha256.txt" && comprueba "$TMP" $a; then
+		zcat "$TMP/$a" > "$PROG/rocola-consola.descarga" && chmod 755 "$PROG/rocola-consola.descarga"
+		if timeout 30 "$PROG/rocola-consola.descarga" --version 2>/dev/null | grep -qE "programa $n( |$)"; then
+			mv -f "$PROG/rocola-consola.descarga" "$PROG/rocola-consola.nueva"
+			echo "$n" > "$PROG/nueva.version"; sync
+			touch "$RUN/rocola-hay-nueva"
+			apunta "Bajada la version $n del programa ($tipo): se pone cuando la rocola este libre"
+			dice="programa $n listo (se pone cuando la rocola este libre)"
+		else
+			rm -f "$PROG/rocola-consola.descarga"; echo "$n" >> "$PROG/malas"
+			apunta "La version $n del programa no arranca en este equipo: no se pone"
+			dice="el programa $n no arranca en este equipo: no se pone"
+		fi
+	else
+		dice="no se pudo bajar el programa $n (se reintenta en una hora)"
+	fi
+elif [ -f "$PROG/nueva.version" ]; then dice="programa $(cat "$PROG/nueva.version") listo (se pone cuando la rocola este libre)"
+else dice="programa al dia ($ahora)"; fi
+
+# 4. EL SISTEMA (instalado en el disco)
+if [ -f "$OS/arranque.cfg" ]; then
+	sis=$(cat /etc/rocola-sistema-version 2>/dev/null); sis=${sis:-0}
+	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg"); otro=a; [ "$slot" = a ] && otro=b
+	n=$(ultima sistema "$OS/sistema-malas")
+	if [ -f "$OS/probando" ] || [ -f "$RUN/rocola-reinicio-sistema" ]; then
+		dice="$dice; sistema nuevo en prueba"
+	elif [ -n "$n" ] && [ "$n" -gt "$sis" ]; then
+		libre=$(df -k "$OS" | awk 'NR==2 {print $4}'); ocupa=$(du -sk "$OS/$otro" 2>/dev/null | awk '{print $1}')
+		if [ $(( ${libre:-0} + ${ocupa:-0} )) -lt 1400000 ]; then
+			dice="$dice; sistema $n: no hay sitio en el disco (hacen falta 1,4 GB)"
+		else
+			estado "bajando el sistema $n..."
+			B=$OS/$otro/descarga; rm -rf "$B"; mkdir -p "$B"
+			ok=1
+			for a in sistema.img.gz bzImage initrd.gz sha256.txt; do i=$(archivo "sistema-$n" $a); [ -n "$i" ] && baja "$i" "$B/$a" || { ok=; break; }; done
+			if [ -n "$ok" ] && comprueba "$B" sistema.img.gz bzImage initrd.gz; then
+				estado "preparando el sistema $n..."
+				# la copia que se rehace deja de servir de vuelta atras mientras tanto: el menu ya no la ofrece (no tiene sistema.img)
+				rm -f "$OS/$otro/sistema.img"
+				if zcat "$B/sistema.img.gz" > "$OS/$otro/sistema.img.nuevo"; then
+					mv -f "$OS/$otro/sistema.img.nuevo" "$OS/$otro/sistema.img"
+					mv -f "$B/bzImage" "$OS/$otro/bzImage"; mv -f "$B/initrd.gz" "$OS/$otro/initrd.gz"
+					echo "$n" > "$OS/$otro/version"
+					rm -rf "$B"; sync
+					echo 0 > "$OS/probando"
+					printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$otro" "$slot" > "$OS/arranque.cfg.nuevo" && mv -f "$OS/arranque.cfg.nuevo" "$OS/arranque.cfg"
+					sync
+					touch "$RUN/rocola-reinicio-sistema"
+					printf '%s  bajado el sistema %s a la copia %s: se reinicia cuando la rocola este libre\n' "$(date '+%Y-%m-%d %H:%M')" "$n" "$otro" >> "$OS/sistema.txt"
+					apunta "Bajado el sistema $n: se reinicia cuando la rocola este libre"
+					dice="$dice; sistema $n listo (se reinicia cuando la rocola este libre)"
+				else
+					rm -f "$OS/$otro/sistema.img.nuevo"; rm -rf "$B"
+					dice="$dice; no se pudo preparar el sistema $n (¿sitio en el disco?)"
+				fi
+			else
+				rm -rf "$B"
+				dice="$dice; no se pudo bajar el sistema $n (se reintenta en una hora)"
+			fi
+		fi
+	else
+		dice="$dice; sistema al dia ($sis)"
+	fi
+fi
+estado "$dice"
+exit 0

@@ -18,3 +18,6 @@ ia/entrenar_dsee_log.txt
 Diagnostico_XP/
 # Los datos del sonido que junta Recoger_sonido_XP.cmd: son del bar, no del programa.
 Sonido_XP/
+# Los programas del sistema de Rocola OS SI van (la regla bin/ de arriba los dejaba fuera: asi se perdieron rocola-instalar y
+# rocola-actualiza, que nunca llegaron al repositorio ni a la imagen)
+!sistema/board/rocola/rootfs_overlay/usr/bin/

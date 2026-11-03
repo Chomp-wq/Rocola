@@ -1,0 +1,26 @@
+#!/bin/sh
+# DEJAR LA ROCOLA COMO ANTES DE INSTALAR ROCOLA OS (en la consola de mantenimiento, Ctrl+Alt+F2, usuario root): devuelve al disco el
+# arranque de Windows XP que rocola-instalar guardo (\rocola-os\arranque-xp.original.bin: el codigo del primer sector y el hueco hasta la
+# primera particion; la tabla de particiones no se toca) y la rocola vuelve a prender en Windows XP. No borra nada: \rocola-os se queda
+# (lo aprendido incluido) y se puede volver a instalar. Pide escribir SI.
+# (para probarlo fuera de la rocola: ROCOLA_DISCO, donde esta montado el disco, y ROCOLA_DISCO_DEV, el disco entero)
+RAIZ=${ROCOLA_DISCO:-/rocola/disco}
+OS=$RAIZ/rocola-os
+B=$OS/arranque-xp.original.bin
+[ -f "$B" ] || { echo "No esta el arranque de antes ($B): no hay nada que devolver."; exit 1; }
+DISCO=$ROCOLA_DISCO_DEV
+if [ -z "$DISCO" ]; then
+	PART=$(awk -v r="$RAIZ" '$2 == r {print $1; exit}' /proc/mounts)
+	[ -b "$PART" ] || { echo "No encuentro el disco de la rocola."; exit 1; }
+	DISCO=/dev/$(basename "$(readlink -f "/sys/class/block/$(basename "$PART")/..")")
+fi
+n=$(cat "$OS/arranque-xp.sectores" 2>/dev/null || echo $(( $(wc -c < "$B") / 512 )))
+echo "Se devuelve el arranque de Windows XP a $DISCO ($n sectores; la tabla de particiones no se toca)."
+echo "La rocola volvera a prender en Windows XP. \\rocola-os se queda. Escribe SI para seguir:"
+read r; [ "$r" = SI ] || { echo "No se toco nada."; exit 1; }
+# el codigo del primer sector (446 bytes, sin la tabla) y, despues, el hueco (los sectores 1 a n-1)
+dd if="$B" of="$DISCO" bs=446 count=1 conv=notrunc 2>/dev/null || { echo "No se pudo."; exit 1; }
+[ "$n" -gt 1 ] && dd if="$B" of="$DISCO" bs=512 skip=1 seek=1 count=$((n - 1)) conv=notrunc 2>/dev/null
+sync
+printf '%s  se devolvio el arranque de Windows XP (rocola-desinstalar)\n' "$(date '+%Y-%m-%d %H:%M')" >> "$OS/sistema.txt"
+echo "Listo: al reiniciar prende Windows XP. Para volver a Rocola OS, el instalador de la memoria USB."

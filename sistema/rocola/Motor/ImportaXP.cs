@@ -27,6 +27,7 @@ namespace Rocola
             if (carpetaXp == null || !Directory.Exists(carpetaXp) || File.Exists(marca)) return null;
             Dictionary<string, string> hechas = new Dictionary<string, string>(StringComparer.Ordinal);   // ruta de Windows -> de Linux (o null)
             Dictionary<char, string> unidad = new Dictionary<char, string>();                           // la letra de unidad -> el disco montado
+            Dictionary<string, string[]> carpetas = new Dictionary<string, string[]>(StringComparer.Ordinal);   // lo que hay en cada carpeta ya mirada
             Func<string, string> traduce = delegate (string w)
             {
                 string r;
@@ -34,12 +35,12 @@ namespace Rocola
                 string resto = w.Substring(3).Replace('\\', '/').TrimEnd('/', ' ');
                 char u = char.ToUpperInvariant(w[0]);
                 string disco; r = null;
-                if (unidad.TryGetValue(u, out disco)) { string c = Path.Combine(disco, resto); if (File.Exists(c) || Directory.Exists(c)) r = c; }
+                if (unidad.TryGetValue(u, out disco)) r = SinMayusculas(disco, resto, carpetas);
                 if (r == null)
                     foreach (string d in discos)
                     {
-                        string c = Path.Combine(d, resto);
-                        if (File.Exists(c) || Directory.Exists(c)) { r = c; if (!unidad.ContainsKey(u)) unidad[u] = d; break; }
+                        string c = SinMayusculas(d, resto, carpetas);
+                        if (c != null) { r = c; if (!unidad.ContainsKey(u)) unidad[u] = d; break; }
                     }
                 hechas[w] = r;
                 return r;
@@ -94,6 +95,32 @@ namespace Rocola
             foreach (KeyValuePair<char, string> kv in unidad) informe.Append("unidad ").Append(kv.Key).Append(": -> ").Append(kv.Value).Append("\r\n");
             try { EscribeYa(marca, informe.ToString()); } catch { }
             return informe.ToString();
+        }
+
+        // LA RUTA TAL CUAL O CON OTRAS MAYUSCULAS (3-11-2026): Windows no distingue «C:\Musica» de «C:\musica» y la rocola de XP guarda
+        // las rutas como se escribieron en su configuracion; en Linux el disco si las distingue, y sin esto se quedaban fuera todas las
+        // medidas de una carpeta escrita con otras mayusculas. Primero la ruta exacta; si no esta, cada tramo se busca sin mirar mayusculas
+        // (lo que hay en cada carpeta se lee una vez). null si no esta.
+        private static string SinMayusculas(string raiz, string resto, Dictionary<string, string[]> carpetas)
+        {
+            string exacta = Path.Combine(raiz, resto);
+            if (File.Exists(exacta) || Directory.Exists(exacta)) return exacta;
+            string actual = raiz;
+            foreach (string tramo in resto.Split('/'))
+            {
+                if (tramo.Length == 0) continue;
+                string[] hay;
+                if (!carpetas.TryGetValue(actual, out hay))
+                {
+                    try { hay = Directory.GetFileSystemEntries(actual); } catch { hay = new string[0]; }
+                    carpetas[actual] = hay;
+                }
+                string sig = null;
+                foreach (string h in hay) if (string.Equals(Path.GetFileName(h), tramo, StringComparison.OrdinalIgnoreCase)) { sig = h; break; }
+                if (sig == null) return null;
+                actual = sig;
+            }
+            return actual;
         }
 
         // Escribir YA (antes de leer las tablas): a un archivo de paso, al disco (fsync) y cambio de nombre de un tiron.

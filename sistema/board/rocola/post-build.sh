@@ -22,6 +22,14 @@ cp "$BOARD_DIR/initramfs/init" "$I/init"; chmod 755 "$I/init"
 mkdir -p "$TARGET_DIR/usr/share/rocola/instalar"
 (cd "$I" && find . | cpio -o -H newc --quiet | gzip -9) > "$TARGET_DIR/usr/share/rocola/instalar/initrd.gz"
 rm -rf "$I"
+# LO APRENDIDO DEL SISTEMA INSTALADO (rocola-instalar lo pone en \rocola-os\datos.img): un ext4 vacio de 512 MB, con su diario (un apagon no
+# lo estropea). Se hace aqui porque el sistema no trae mkfs.ext4 (solo el mke2fs de BusyBox, sin diario). Comprimido ocupa ~1 MB.
+D=$(mktemp -u)
+MKE2FS=$HOST_DIR/sbin/mke2fs; [ -x "$MKE2FS" ] || MKE2FS=mke2fs   # (host-e2fsprogs: BR2_PACKAGE_HOST_E2FSPROGS)
+"$MKE2FS" -q -t ext4 -L DATOS -E lazy_itable_init=0,lazy_journal_init=0 -F "$D" 512M
+gzip -9c "$D" > "$TARGET_DIR/usr/share/rocola/instalar/datos.img.gz"
+echo $(( $(stat -c %s "$D") / 1024 )) > "$TARGET_DIR/usr/share/rocola/instalar/datos.img.kb"
+rm -f "$D"
 # LA VERSION DEL SISTEMA (la pone GitHub al compilarlo: .github/workflows/rocola-sistema.yml; en casa, la 0). rocola-actualiza la compara
 # con la ultima publicada.
 echo "${ROCOLA_SISTEMA_VERSION:-0}" > "$TARGET_DIR/etc/rocola-sistema-version"

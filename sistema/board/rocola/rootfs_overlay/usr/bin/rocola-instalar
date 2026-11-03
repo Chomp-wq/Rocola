@@ -1,0 +1,262 @@
+#!/bin/sh
+# EL INSTALADOR DE ROCOLA OS (la primera entrada del menu de la memoria USB; S99rocola lo abre en tty1 con rocola.instalar).
+#
+# Instala Rocola OS DENTRO del disco NTFS de la rocola, en la carpeta \rocola-os, sin reparticionar ni formatear: la musica, los datos de
+# la rocola de XP y Windows XP se quedan donde estan. Lo que pone:
+#   \rocola-os\a\ (y \b\, la otra copia, para las actualizaciones)  sistema.img (el sistema, ext4), bzImage, initrd.gz, version
+#   \rocola-os\datos.img      lo aprendido (/rocola/datos, ext4): se conserva al volver a instalar y al actualizar el sistema
+#   \rocola-os\boot\grub\     el arranque (GRUB, que lee el NTFS) y su menu: ESC al prender lo enseña, con «Windows XP»
+#   \rocola-os\arranque.cfg   que copia arranca (rocola-actualiza y el initramfs la cambian)
+#   \rocola-os\arranque-xp.original.bin   el arranque de antes (el primer sector del disco y el hueco hasta la primera particion)
+#   \rocola-os\instalar.txt   lo que hizo
+# Del disco solo cambia el codigo de arranque del primer sector (no la tabla de particiones) y el hueco que GRUB usa detras de el;
+# rocola-desinstalar los devuelve como estaban.
+#
+# Pasos: busca el disco (NTFS, no la memoria USB) con la carpeta «musica» y lo enseña; ENTER (el boton verde) instala, cualquier otro
+# boton cancela sin tocar nada. Con la rocola instalada de antes, vuelve a instalar en la otra copia y conserva lo aprendido.
+# Para probarlo fuera de la rocola: ROCOLA_FUENTE (la particion del sistema a copiar), ROCOLA_RESPUESTA=si (sin preguntar),
+# ROCOLA_SIN_REINICIO=1 (al acabar no reinicia).
+OS=rocola-os
+M=/tmp/rocola-destino
+LOG=/tmp/rocola-instalar.txt
+INST=/usr/share/rocola/instalar
+: > $LOG
+di() { echo "$*"; echo "$*" >> $LOG; }
+apunta() { echo "$*" >> $LOG; }
+# Una tecla (sin esperar ENTER): vacio = ENTER; otra cosa = otro boton. Con ROCOLA_RESPUESTA=si contesta ENTER solo.
+tecla() {
+	if [ "$ROCOLA_RESPUESTA" = si ]; then k=; return 0; fi
+	# lo que se pulso antes no cuenta: se lee y se tira hasta que pasa 1 s sin nada (-t 0 de BusyBox no sirve: con la entrada
+	# cerrada no acaba nunca)
+	n=0; while [ $n -lt 20 ] && read -rs -t 1 -n 1 _x 2>/dev/null; do n=$((n + 1)); done
+	k=; read -rs -n 1 k
+}
+# REINICIAR CON LA MEMORIA YA QUITADA: BusyBox y sus bibliotecas se copian antes a /tmp (en la RAM) y se reinicia desde ahi (el nucleo
+# no trae SysRq, y sin la memoria no se puede abrir /sbin/reboot).
+prepara_reinicio() {
+	mkdir -p /tmp/rocola-r/lib; cp /bin/busybox /tmp/rocola-r/ 2>/dev/null
+	for l in ld-linux-x86-64.so.2 libc.so.6 libresolv.so.2 libm.so.6; do for d in /lib /lib64 /usr/lib; do [ -e "$d/$l" ] && cp -L "$d/$l" /tmp/rocola-r/lib/ 2>/dev/null && break; done; done
+}
+reinicia() {
+	sync
+	if [ -e /tmp/rocola-r/lib/ld-linux-x86-64.so.2 ]; then /tmp/rocola-r/lib/ld-linux-x86-64.so.2 --library-path /tmp/rocola-r/lib /tmp/rocola-r/busybox reboot -f
+	elif [ -x /tmp/rocola-r/busybox ]; then /tmp/rocola-r/busybox reboot -f; fi
+	reboot -f; exit 0
+}
+para() {   # termina sin haber tocado nada (o diciendo que paso) y espera un boton para reiniciar
+	echo; di "$*"
+	cp -f $LOG /tmp/rocola-instalar-ultimo.txt 2>/dev/null
+	[ -n "$ROCOLA_SIN_REINICIO" ] && exit 1
+	echo; echo "Quita la memoria USB y pulsa un boton para reiniciar (o apaga la rocola)."
+	tecla; reinicia
+}
+clear 2>/dev/null; printf '\033[?25l'
+echo "=============================================="
+echo "  ROCOLA OS - INSTALADOR"
+echo "=============================================="
+echo
+di "Buscando el disco de la rocola..."
+apunta "$(date '+%Y-%m-%d %H:%M')  rocola-instalar, sistema $(cat /etc/rocola-sistema-version 2>/dev/null)"
+
+# LA FUENTE: la particion del sistema de esta memoria (la raiz), que se copia entera como sistema.img
+FUENTE=$ROCOLA_FUENTE
+if [ -z "$FUENTE" ]; then
+	n=$(mountpoint -d / 2>/dev/null)
+	for p in /sys/class/block/*; do [ "$(cat "$p/dev" 2>/dev/null)" = "$n" ] && FUENTE=/dev/$(basename "$p"); done
+fi
+[ -b "$FUENTE" ] || para "No encuentro la particion del sistema de esta memoria ($FUENTE). No se toco nada."
+FUENTE_DISCO=$(basename "$(readlink -f "/sys/class/block/$(basename "$FUENTE")/..")")
+apunta "fuente: $FUENTE (disco $FUENTE_DISCO)"
+for f in /boot/bzImage $INST/initrd.gz $INST/datos.img.gz; do [ -f "$f" ] || para "Falta $f en esta memoria: la imagen esta incompleta. No se toco nada."; done
+
+# LOS CANDIDATOS: particiones NTFS de otros discos (no esta memoria). Se miran en solo lectura.
+mkdir -p /tmp/rocola-mira
+mejor=; mejor_n=-1; XP_PART=
+for p in /sys/class/block/*; do
+	[ -e "$p/partition" ] || continue
+	dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
+	case "$dev" in loop*|ram*|sr*|zram*) continue ;; esac
+	[ "$disco" = "$FUENTE_DISCO" ] && continue
+	blkid "/dev/$dev" 2>/dev/null | grep -q 'TYPE="ntfs"' || continue
+	m=/tmp/rocola-mira/$dev; mkdir -p "$m"
+	mount -t ntfs3 -o ro "/dev/$dev" "$m" 2>/dev/null || { apunta "/dev/$dev: no se pudo leer"; continue; }
+	n=0; musica=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null | head -5)
+	for d in $musica; do
+		c=$(find "$d" -type f \( -iname '*.mp3' -o -iname '*.wma' -o -iname '*.wav' -o -iname '*.ogg' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.avi' -o -iname '*.mpg' \) 2>/dev/null | wc -l)
+		n=$((n + c))
+	done
+	[ -n "$(find "$m" -maxdepth 1 -iname ntldr 2>/dev/null)" ] && [ -z "$XP_PART" ] && XP_PART=$dev
+	[ -d "$m/$OS" ] && n=$((n + 1000000))   # ya instalada aqui: este es
+	apunta "/dev/$dev ($disco): $n canciones; musica: $(echo $musica | sed "s|$m||g")"
+	if [ -n "$musica" ] || [ -d "$m/$OS" ]; then
+		if [ "$n" -gt "$mejor_n" ]; then mejor=$dev; mejor_n=$n; fi
+	fi
+done
+[ -n "$mejor" ] || { for d in /tmp/rocola-mira/*; do umount "$d" 2>/dev/null; done; para "No encontre el disco de la rocola (un disco NTFS con la carpeta «musica»). No se toco nada."; }
+PART=$mejor; MIRA=/tmp/rocola-mira/$PART
+DISCO=$(basename "$(readlink -f "/sys/class/block/$PART/..")")
+UUID=$(blkid "/dev/$PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
+XP_UUID=; [ -n "$XP_PART" ] && XP_UUID=$(blkid "/dev/$XP_PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
+musica=$(find "$MIRA" -maxdepth 3 -type d -iname musica 2>/dev/null | head -5)
+canciones=$((mejor_n % 1000000))
+datos_xp=$(find "$MIRA" -maxdepth 4 \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt \) 2>/dev/null | grep -iv respaldo | head -1)
+[ -n "$datos_xp" ] && datos_xp=$(dirname "$datos_xp")
+ya=; [ -f "$MIRA/$OS/arranque.cfg" ] && ya=1
+
+# LO QUE HACE FALTA: el disco con tabla MBR (como el de XP), hueco para GRUB delante de la primera particion y sitio libre
+tabla=$(dd if="/dev/$DISCO" bs=512 count=1 2>/dev/null | od -An -tx1 -j 450 -N 1 | tr -d ' ')
+firma=$(dd if="/dev/$DISCO" bs=512 count=1 2>/dev/null | od -An -tx1 -j 510 -N 2 | tr -d ' ')
+primera=999999999
+for p in /sys/class/block/$DISCO/$DISCO*; do s=$(cat "$p/start" 2>/dev/null) && [ "$s" -lt "$primera" ] && primera=$s; done
+libre_kb=$(df -k "$MIRA" | awk 'NR==2 {print $4}')
+sistema_kb=$(( $(cat "/sys/class/block/$(basename "$FUENTE")/size") / 2 ))
+nucleo_kb=$(( ($(wc -c < /boot/bzImage) + $(wc -c < $INST/initrd.gz)) / 1024 + 1 ))
+datos_kb=$(cat $INST/datos.img.kb 2>/dev/null || echo 524288)
+rocola_slot=; [ -n "$ya" ] && rocola_slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$MIRA/$OS/arranque.cfg")
+otra=a; [ "$rocola_slot" = a ] && otra=b
+# lo que ocupa ahora la copia que se rehace cuenta como libre; lo aprendido de antes se queda
+ocupa_kb=$(du -sk "$MIRA/$OS/$otra" 2>/dev/null | awk '{print $1}'); ocupa_kb=${ocupa_kb:-0}
+falta_kb=$(( 2 * (sistema_kb + nucleo_kb) + 20480 + 204800 - ocupa_kb ))   # las dos copias, GRUB y un margen
+[ -f "$MIRA/$OS/datos.img" ] || falta_kb=$((falta_kb + datos_kb))
+gb() { awk -v k="$1" 'BEGIN { printf "%.1f GB", k / 1048576 }'; }
+
+echo
+echo "Disco de la rocola:  /dev/$PART  ($(gb $(( $(cat /sys/class/block/$PART/size) / 2 ))), libres $(gb $libre_kb))"
+for d in $musica; do echo "Musica:              ${d#$MIRA}"; done
+echo "Canciones y videos:  $canciones"
+[ -n "$datos_xp" ] && echo "Datos de la de XP:   ${datos_xp#$MIRA}  (no se tocan; la primera vez se copian)"
+[ -n "$XP_PART" ] && echo "Windows XP:          /dev/$XP_PART  (sigue en el menu: ESC al prender)"
+[ -n "$ya" ] && echo "Rocola OS:           ya instalada (sistema $(cat "$MIRA/$OS/$rocola_slot/version" 2>/dev/null)): se pone esta y se conserva lo aprendido"
+echo
+apunta "elegido /dev/$PART (disco $DISCO, UUID $UUID); XP: $XP_PART $XP_UUID; datos XP: $datos_xp; libre ${libre_kb} KB, hacen falta ${falta_kb} KB"
+[ "$firma" = 55aa ] || { umount "$MIRA"; para "El disco /dev/$DISCO no tiene tabla de particiones MBR. No se toco nada."; }
+[ "$tabla" = ee ] && { umount "$MIRA"; para "El disco /dev/$DISCO es GPT (no el de XP): este instalador es para el disco de XP. No se toco nada."; }
+[ "$primera" -ge 63 ] || { umount "$MIRA"; para "No hay hueco para el arranque delante de la primera particion. No se toco nada."; }
+[ "$libre_kb" -ge "$falta_kb" ] || { umount "$MIRA"; para "No hay sitio: hacen falta $(gb $falta_kb) libres en /dev/$PART y hay $(gb $libre_kb). No se toco nada."; }
+
+echo "Se instala en \\$OS. No se borra ni se mueve nada: la musica y lo de XP se quedan."
+echo
+echo "   ENTER (boton verde): INSTALAR        Otro boton: cancelar"
+tecla
+if [ -n "$k" ]; then umount "$MIRA"; para "Cancelado. No se toco nada."; fi
+apunta "$(date '+%H:%M')  instalando"
+
+# 1. EL DISCO, CON ESCRITURA (solo si Windows se apago bien: ntfs3 no escribe en un NTFS a medias)
+umount "$MIRA"; mkdir -p $M
+mount -t ntfs3 -o rw,noatime,iocharset=utf8 "/dev/$PART" $M 2>>$LOG \
+	|| para "Windows no se apago bien (o esta hibernado) y no puedo escribir en el disco sin arriesgarlo. Prende la rocola en Windows XP, apagala desde Inicio -> Apagar equipo y vuelve a intentarlo. No se toco nada."
+D=$M/$OS
+mkdir -p "$D/$otra" "$D/boot/grub" || para "No pude crear \\$OS en el disco."
+# Algo fallo a medias: se dice y se deja como estaba (lo de antes sigue arrancando: el arranque se cambia lo ultimo)
+falla() { rm -f "$D/$otra/sistema.img.nuevo" "$D/datos.img.nuevo"; cp -f $LOG "$D/instalar.txt" 2>/dev/null; sync; umount $M 2>/dev/null; para "$* La rocola sigue arrancando como antes."; }
+
+# 2. EL ARRANQUE DE ANTES, guardado (una vez: el de XP, no el de una instalacion anterior)
+if [ ! -f "$D/arranque-xp.original.bin" ]; then
+	n=$primera; [ "$n" -gt 2048 ] && n=2048
+	dd if="/dev/$DISCO" of="$D/arranque-xp.original.bin" bs=512 count=$n 2>>$LOG || falla "No pude guardar el arranque de antes."
+	echo "$n" > "$D/arranque-xp.sectores"
+	di "Arranque de antes guardado ($n sectores)."
+fi
+
+# 3. EL SISTEMA: la particion de esta memoria, copiada entera (en solo lectura mientras: la copia sale igual) y comprobada.
+# LOS ARCHIVOS DEL SISTEMA Y DE LO APRENDIDO SE ESCRIBEN ENTEROS, SIN HUECOS (dd y zcat escriben cada byte; nunca cp --sparse, truncate
+# ni fallocate): probado con cortes de luz a media escritura (3-11-2026), un ext4 dentro de un archivo NTFS con huecos se estropeo, y
+# escrito entero aguanto todos los cortes (solo reproduce su diario).
+di "Copiando el sistema ($(gb $sistema_kb); unos minutos)..."
+sync; mount -o remount,ro / 2>>$LOG && solo_lectura=1 || apunta "la raiz no paso a solo lectura: se copia en marcha"
+dd if="$FUENTE" of="$D/$otra/sistema.img.nuevo" bs=1M 2>>$LOG || { [ -n "$solo_lectura" ] && mount -o remount,rw /; falla "No pude copiar el sistema."; }
+sync
+cmp "$FUENTE" "$D/$otra/sistema.img.nuevo" >>$LOG 2>&1 || { [ -n "$solo_lectura" ] && mount -o remount,rw /; falla "La copia del sistema salio distinta (¿el disco?)."; }
+[ -n "$solo_lectura" ] && mount -o remount,rw / 2>>$LOG
+mv -f "$D/$otra/sistema.img.nuevo" "$D/$otra/sistema.img"
+cp -f /boot/bzImage "$D/$otra/bzImage" && cp -f $INST/initrd.gz "$D/$otra/initrd.gz" || falla "No pude copiar el nucleo."
+cat /etc/rocola-sistema-version > "$D/$otra/version" 2>/dev/null || echo 0 > "$D/$otra/version"
+di "Sistema copiado y comprobado."
+
+# 4. LO APRENDIDO (datos.img): se conserva si ya estaba. Nuevo: vacio, con lo que esta memoria ya tenga (si se probo antes en la
+# rocola: las rutas de su disco, /rocola/discos/<particion>/..., pasan a /rocola/disco/..., donde queda instalado) y la llave de GitHub
+# si estaba en la carpeta de la rocola de XP.
+if [ ! -f "$D/datos.img" ]; then
+	di "Preparando lo aprendido..."
+	zcat $INST/datos.img.gz > "$D/datos.img.nuevo" || falla "No pude crear datos.img."
+	mkdir -p /tmp/rocola-datos
+	if mount -t ext4 -o loop "$D/datos.img.nuevo" /tmp/rocola-datos 2>>$LOG; then
+		if [ -d /rocola/datos ]; then
+			cp -a /rocola/datos/. /tmp/rocola-datos/ 2>>$LOG
+			for f in /tmp/rocola-datos/rocola_*.txt; do
+				[ -f "$f" ] && grep -q "/rocola/discos/$PART/" "$f" && sed -i "s|/rocola/discos/$PART/|/rocola/disco/|g" "$f"
+			done
+			# la prueba de sonido y grafica se vuelve a hacer en la rocola (la de la memoria pudo ser en otro equipo)
+			rm -f /tmp/rocola-datos/prueba_hecha
+		fi
+		[ -n "$datos_xp" ] && [ ! -f /tmp/rocola-datos/rocola_github.txt ] && g=$(find "$M${datos_xp#$MIRA}" -maxdepth 1 -iname rocola_github.txt | head -1) \
+			&& [ -n "$g" ] && tr -d ' \r\n' < "$g" > /tmp/rocola-datos/rocola_github.txt && apunta "llave de GitHub copiada de la carpeta de XP"
+		sync; umount /tmp/rocola-datos
+	else
+		apunta "datos.img: no se pudo montar para llenarlo (queda vacio)"
+	fi
+	mv -f "$D/datos.img.nuevo" "$D/datos.img"
+else
+	apunta "datos.img ya estaba: se conserva"
+fi
+
+# 5. EL ARRANQUE: GRUB en el disco (lee el NTFS), con su menu. El menu sale con ESC al prender.
+di "Poniendo el arranque..."
+cat > "$D/boot/grub/grub.cfg" <<EOF
+# EL MENU DE ARRANQUE DE LA ROCOLA (lo escribe rocola-instalar). Oculto: ESC al prender lo enseña.
+set default=0
+set timeout_style=hidden
+set timeout=2
+insmod part_msdos
+insmod ntfs
+search --no-floppy --fs-uuid --set=root $UUID
+set rocola_slot=a
+set rocola_otro=b
+if [ -f /$OS/arranque.cfg ]; then source /$OS/arranque.cfg; fi
+menuentry "Rocola OS" {
+	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.disco=$UUID console=tty1 quiet loglevel=3
+	initrd /$OS/\$rocola_slot/initrd.gz
+}
+if [ -f /$OS/\$rocola_otro/sistema.img ]; then
+	menuentry "Rocola OS - la version anterior del sistema" {
+		linux /$OS/\$rocola_otro/bzImage rocola.slot=\$rocola_otro rocola.anterior rocola.disco=$UUID console=tty1 quiet loglevel=3
+		initrd /$OS/\$rocola_otro/initrd.gz
+	}
+fi
+menuentry "Rocola OS - prueba de sonido y grafica" {
+	linux /$OS/\$rocola_slot/bzImage rocola.slot=\$rocola_slot rocola.prueba rocola.disco=$UUID console=tty1 quiet loglevel=3
+	initrd /$OS/\$rocola_slot/initrd.gz
+}
+EOF
+if [ -n "$XP_UUID" ]; then cat >> "$D/boot/grub/grub.cfg" <<EOF
+menuentry "Windows XP (la rocola de antes)" {
+	search --no-floppy --fs-uuid --set=root $XP_UUID
+	chainloader +1
+}
+EOF
+fi
+GD=; for d in /lib/grub/i386-pc /usr/lib/grub/i386-pc; do [ -f "$d/boot.img" ] && GD=$d && break; done
+[ -n "$GD" ] || falla "Falta GRUB en esta memoria."
+grub-install --target=i386-pc --directory="$GD" --boot-directory="$D/boot" --modules="part_msdos ntfs search_fs_uuid" \
+	--no-floppy "/dev/$DISCO" >>$LOG 2>&1 || falla "No pude poner el arranque (GRUB)."
+# la copia que arranca: la recien puesta (la otra, si la habia, queda como la anterior)
+anterior=a; [ "$otra" = a ] && anterior=b
+printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$otra" "$anterior" > "$D/arranque.cfg.nuevo" && mv -f "$D/arranque.cfg.nuevo" "$D/arranque.cfg"
+rm -f "$D/probando"
+apunta "$(date '+%H:%M')  instalado en la copia $otra"
+printf '%s  instalado el sistema %s en la copia %s (rocola-instalar)\n' "$(date '+%Y-%m-%d %H:%M')" "$(cat "$D/$otra/version")" "$otra" >> "$D/sistema.txt"
+cp -f $LOG "$D/instalar.txt"
+sync; umount $M || { sync; sleep 2; umount $M; }
+
+echo
+echo "=============================================="
+echo "  LISTO. Rocola OS quedo instalado."
+echo "=============================================="
+echo
+echo "Quita la memoria USB: la rocola se reinicia sola y prende directo en Rocola OS."
+echo "(Windows XP: ESC al prender, en el menu.)"
+[ -n "$ROCOLA_SIN_REINICIO" ] && exit 0
+# se reinicia cuando se quita la memoria (o con un boton)
+prepara_reinicio
+while [ -e "/sys/block/$FUENTE_DISCO" ]; do read -rs -t 1 -n 1 _x && break; done
+reinicia

@@ -2,48 +2,73 @@
 # EL ARRANQUE DEL SISTEMA INSTALADO (rocola-instalar). Rocola OS va en archivos dentro del disco NTFS de la rocola, junto a su musica:
 #   /rocola-os/a/ y /rocola-os/b/   dos copias del sistema (sistema.img, ext4); GRUB dice cual (rocola.slot=a|b)
 #   /rocola-os/datos.img            lo aprendido (/rocola/datos): no cambia al actualizar el sistema
-# Esto busca ese disco, lo monta (con escritura: el sistema escribe en sus archivos, nunca en la musica), monta la copia por loop y
-# arranca desde ahi. El disco queda visible en /rocola/disco.
+# Esto busca ese disco (por su UUID, rocola.disco=, que pone el instalador; si no, mirando cada particion en solo lectura), lo monta con
+# escritura (el sistema escribe en sus archivos, nunca en la musica), monta la copia por loop y arranca desde ahi. El disco queda
+# visible en /rocola/disco.
 #
 # LA VUELTA ATRAS DEL SISTEMA: una actualizacion (rocola-actualiza) se escribe en la otra copia, la pone en /rocola-os/arranque.cfg y
 # deja /rocola-os/probando. Cada arranque de la nueva lo cuenta; la rocola lo borra cuando lleva 3 minutos funcionando. Si la nueva no
 # llega ahi en dos arranques (no prende la pantalla, se cuelga...), aqui se vuelve a la anterior y se apunta como mala.
+# Si el dueno elige en el menu (ESC al prender) «la version anterior del sistema», esa queda como la de siempre y la otra como mala.
 /bin/busybox --install -s /bin 2>/dev/null
 mount -t devtmpfs devtmpfs /dev
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 SLOT=$(sed -n 's/.*rocola\.slot=\([ab]\).*/\1/p' /proc/cmdline)
 [ -n "$SLOT" ] || SLOT=a
+OTRO=a; [ "$SLOT" = a ] && OTRO=b
+UUID=$(sed -n 's/.*rocola\.disco=\([0-9A-Fa-f]*\).*/\1/p' /proc/cmdline)
 OS=/rocola-os
 mkdir -p /disco /raiz
+# noatime: leer la musica no escribe nada en el NTFS. Si el NTFS quedo «sucio» (un apagon), ntfs3 pide force para escribir.
+monta() { mount -t ntfs3 -o rw,noatime,iocharset=utf8 "$1" /disco 2>/dev/null || mount -t ntfs3 -o rw,noatime,force,iocharset=utf8 "$1" /disco 2>/dev/null; }
 encontrado=
 i=0
 while [ $i -lt 30 ] && [ -z "$encontrado" ]; do   # los discos pueden tardar unos segundos en aparecer
-	for p in /sys/class/block/*; do
-		[ -e "$p/partition" ] || continue
-		d=/dev/$(basename "$p")
-		mount -t ntfs3 -o rw,iocharset=utf8 "$d" /disco 2>/dev/null \
-			|| mount -t ntfs3 -o rw,force,iocharset=utf8 "$d" /disco 2>/dev/null \
-			|| mount "$d" /disco 2>/dev/null || continue
-		if [ -f "/disco$OS/$SLOT/sistema.img" ]; then encontrado=$d; break; fi
-		umount /disco
-	done
+	if [ -n "$UUID" ]; then
+		d=$(blkid | grep -i "UUID=\"$UUID\"" | head -1 | cut -d: -f1)
+		[ -n "$d" ] && monta "$d" && { [ -f "/disco$OS/$SLOT/sistema.img" ] && encontrado=$d || umount /disco; }
+	fi
+	if [ -z "$encontrado" ] && [ $i -ge 5 ]; then   # sin UUID (o cambio): cada NTFS, primero en solo lectura
+		for p in /sys/class/block/*; do
+			[ -e "$p/partition" ] || continue
+			d=/dev/$(basename "$p")
+			blkid "$d" 2>/dev/null | grep -q 'TYPE="ntfs"' || continue
+			mount -t ntfs3 -o ro "$d" /disco 2>/dev/null || continue
+			ok=; [ -f "/disco$OS/$SLOT/sistema.img" ] && ok=1
+			umount /disco
+			[ -n "$ok" ] && monta "$d" && { encontrado=$d; break; }
+		done
+	fi
 	[ -n "$encontrado" ] || { i=$((i + 1)); sleep 1; }
 done
 if [ -z "$encontrado" ]; then
-	echo "Rocola OS: no encuentro el disco con $OS/$SLOT/sistema.img"; exec sh
+	echo
+	echo "Rocola OS: no encuentro el disco con $OS/$SLOT/sistema.img."
+	echo "Apaga y prende la rocola; si sigue igual, ESC al prender -> Windows XP (la rocola de antes)."
+	exec sh
 fi
+apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "/disco$OS/sistema.txt"; }
+pon_arranque() { printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$1" "$2" > "/disco$OS/arranque.cfg.nuevo" && mv -f "/disco$OS/arranque.cfg.nuevo" "/disco$OS/arranque.cfg"; }
 
-# La copia en prueba (una actualizacion del sistema): a la tercera sin confirmar, se vuelve a la otra.
 P=/disco$OS/probando
-if [ -f "$P" ] && ! grep -q rocola.anterior /proc/cmdline; then
+if grep -q rocola.anterior /proc/cmdline; then
+	# Elegida a mano en el menu: esta queda como la de siempre; la otra (la nueva) no se vuelve a bajar.
+	actual=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "/disco$OS/arranque.cfg" 2>/dev/null)
+	if [ "$actual" != "$SLOT" ]; then
+		cat "/disco$OS/$OTRO/version" >> "/disco$OS/sistema-malas" 2>/dev/null
+		pon_arranque "$SLOT" "$OTRO"; rm -f "$P"
+		apunta "se eligio en el menu la version anterior del sistema ($SLOT): queda como la de siempre"
+		sync
+	fi
+elif [ -f "$P" ]; then
+	# La copia en prueba (una actualizacion del sistema): a la tercera sin confirmar, se vuelve a la otra.
 	n=$(( $(cat "$P" 2>/dev/null || echo 0) + 1 ))
 	if [ "$n" -gt 2 ]; then
-		otro=a; [ "$SLOT" = a ] && otro=b
 		cat "/disco$OS/$SLOT/version" >> "/disco$OS/sistema-malas" 2>/dev/null
-		printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$otro" "$SLOT" > "/disco$OS/arranque.cfg"
+		pon_arranque "$OTRO" "$SLOT"
 		rm -f "$P"
-		printf '%s  el sistema nuevo (%s) no arranco bien: se volvio al anterior (%s)\n' "$(date '+%Y-%m-%d %H:%M')" "$SLOT" "$otro" >> "/disco$OS/sistema.txt"
+		apunta "el sistema nuevo ($SLOT) no arranco bien: se volvio al anterior ($OTRO)"
 		sync; umount /disco
 		echo "Rocola OS: el sistema nuevo no arranco bien; vuelvo al anterior"; sleep 3
 		reboot -f
@@ -51,13 +76,26 @@ if [ -f "$P" ] && ! grep -q rocola.anterior /proc/cmdline; then
 	echo "$n" > "$P"; sync
 fi
 
-if ! losetup /dev/loop0 "/disco$OS/$SLOT/sistema.img" || ! mount -t ext4 /dev/loop0 /raiz; then
-	echo "Rocola OS: no pude montar $OS/$SLOT/sistema.img"; exec sh
+# El sistema. Si esta copia no se puede montar (danada), se arranca con la otra (sin esperar a nadie: en el bar no hay teclado) y se apunta.
+sistema() { losetup /dev/loop0 "/disco$OS/$1/sistema.img" && mount -t ext4 /dev/loop0 /raiz && return 0; losetup -d /dev/loop0 2>/dev/null; return 1; }
+if ! sistema "$SLOT"; then
+	apunta "no se pudo montar $SLOT/sistema.img"
+	if [ -f "/disco$OS/$OTRO/sistema.img" ] && sistema "$OTRO"; then
+		echo "Rocola OS: la copia $SLOT del sistema no se pudo montar: arranco con la otra ($OTRO)"
+		# (no se apunta como mala: esta danada la copia, no la version; rocola-actualiza la vuelve a bajar en esa copia)
+		pon_arranque "$OTRO" "$SLOT"; rm -f "$P"
+		apunta "se arranco con la otra copia ($OTRO), que queda como la de siempre"; sync
+	else
+		echo "Rocola OS: no pude montar $OS/$SLOT/sistema.img"; sync
+		echo "Vuelve a instalar con la memoria USB; ESC al prender da Windows XP."
+		exec sh
+	fi
 fi
 # Lo aprendido, aparte (si esta: una instalacion de antes de las dos copias lo tenia dentro del sistema)
 if [ -f "/disco$OS/datos.img" ]; then
 	mkdir -p /raiz/rocola/datos
-	losetup /dev/loop1 "/disco$OS/datos.img" && mount -t ext4 /dev/loop1 /raiz/rocola/datos
+	losetup /dev/loop1 "/disco$OS/datos.img" && mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos \
+		|| { apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync; }
 fi
 mkdir -p /raiz/rocola/disco
 mount --move /disco /raiz/rocola/disco
