@@ -860,3 +860,17 @@ segunda rocola que abre la tarjeta mientras otra suena espera 300 ms y la abre d
   udev acaba; si `/usr/bin/rocola` subía el volumen antes, la rocola sonaba muda todo el día. Ahora espera a la tarjeta (hasta 20 s) y
   vuelve a poner el volumen cada vez que se abre la rocola. Probado con un `/proc/asound` imitado en el que la tarjeta aparece a los 3 s.
   **No probado en el A4.**
+
+## Extra (3-11-2026, decimotercera parte): la última etapa, en 24 bits y con silencio de verdad
+
+La cadena trabaja en coma flotante y al final se pasaba a 16 bits con dither triangular (lo mismo que en XP, cuyo WaveOut no daba más).
+Ahora que la salida va directa a la tarjeta:
+
+- **24 bits si la tarjeta los admite** (`S32_LE`, el contenedor de la HDA en Linux; `Salida24en32`): el mismo redondeo con dither
+  triangular, pero de 1/8 388 608. Medido con un tono a −60 dBFS: el ruido de la conversión pasa de −96,3 dBFS (16 bits) a −144,5 dBFS,
+  por debajo del propio de la tarjeta. Solo con la tarjeta directa (`hw`); si no los admite (la HDA emulada de QEMU solo tiene 16 bits:
+  probado, vuelve sola a 16 y suena), 16 como siempre. `ROCOLA_SALIDA_16=1` obliga a 16. El registro dice cuál: «…, 24 bits».
+- **Silencio exacto donde la cadena da cero** (las dos salidas y el WAV): entre canciones, el cebado y los silencios saltados ya no
+  llevan el soplido del dither (~−96 dBFS), que con el amplificador a tope era lo único que se oía en un silencio. Con música, igual.
+
+**No probado en el A4** (la Realtek suele admitir 16, 20 y 24 bits).

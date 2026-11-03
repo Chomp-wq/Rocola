@@ -40,14 +40,59 @@ namespace Rocola
                 {
                     // dos uniformes restados = distribucion TRIANGULAR en (-1..1) LSB: el dither correcto
                     // para 16 bits (decorrelaciona el error, sin modular su volumen con la senal).
+                    // SILENCIO EXACTO (3-11-2026): donde la cadena da cero exacto (entre canciones, el cebado, los silencios saltados) sale
+                    // cero, sin el soplido del dither (con el amplificador a tope era lo unico que se oia en un silencio). Con musica, igual.
+                    float m = fbuf[i];
+                    if (m == 0f) { buffer[bo++] = 0; buffer[bo++] = 0; continue; }
                     float d = NextUni() - NextUni();
-                    float x = fbuf[i] * 32767f + d;
+                    float x = m * 32767f + d;
                     int q = (int)Math.Floor(x + 0.5f);                 // redondeo (no truncado)
                     if (q > 32767) q = 32767; else if (q < -32768) q = -32768;
                     buffer[bo++] = (byte)(q & 0xFF);
                     buffer[bo++] = (byte)((q >> 8) & 0xFF);
                 }
                 return got * 2;
+            }
+        }
+
+        // LA SALIDA DE 24 BITS (3-11-2026, Rocola OS): con la tarjeta abierta directa (hw) y si admite S32_LE (la HDA del A4: 24 bits
+        // utiles en un contenedor de 32), la cadena sale con 24 bits: el mismo redondeo con dither triangular, pero de 1/8388608 (24 bits)
+        // en vez de 1/32768; el ruido de esta etapa baja ~48 dB, por debajo del propio de la tarjeta. Cero exacto, cero.
+        internal sealed class Salida24en32 : NAudio.Wave.IWaveProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider src;
+            private readonly NAudio.Wave.WaveFormat fmt;
+            private float[] fbuf;
+            private uint rs;
+            public Salida24en32(NAudio.Wave.ISampleProvider s)
+            {
+                src = s;
+                fmt = FormatoAudio.Pcm(s.WaveFormat.SampleRate, 32, s.WaveFormat.Channels, FormatoAudio.Mascara(s.WaveFormat));
+                rs = (uint)Environment.TickCount | 1u;
+            }
+            private double NextUni() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (rs >> 8) * (1.0 / 16777216.0); }
+            public NAudio.Wave.WaveFormat WaveFormat { get { return fmt; } }
+            public int Read(Span<byte> destino) { return Puente.LeeBytes(Read, destino); }
+            public int Read(byte[] buffer, int offset, int count)
+            {
+                int need = count / 4;
+                if (fbuf == null || fbuf.Length < need) fbuf = new float[need];
+                int got = src.Read(fbuf, 0, need);
+                int bo = offset;
+                for (int i = 0; i < got; i++)
+                {
+                    float m = fbuf[i];
+                    int q = 0;
+                    if (m != 0f)
+                    {
+                        double x = m * 8388607.0 + (NextUni() - NextUni());
+                        double r = Math.Floor(x + 0.5);
+                        q = r > 8388607 ? 8388607 : r < -8388608 ? -8388608 : (int)r;
+                    }
+                    int v = q << 8;   // los 24 bits arriba (S32_LE)
+                    buffer[bo++] = (byte)v; buffer[bo++] = (byte)(v >> 8); buffer[bo++] = (byte)(v >> 16); buffer[bo++] = (byte)(v >> 24);
+                }
+                return got * 4;
             }
         }
     }

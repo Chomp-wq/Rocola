@@ -21,7 +21,7 @@ namespace Rocola
         [DllImport(Lib)] private static extern int snd_pcm_close(IntPtr pcm);
         [DllImport(Lib)] private static extern IntPtr snd_strerror(int error);
         [DllImport(Lib)] private static extern int snd_pcm_delay(IntPtr pcm, out long cuadros);
-        private const int Reproducir = 0, S16Le = 2, Intercalado = 3;
+        private const int Reproducir = 0, S16Le = 2, S32Le = 10, Intercalado = 3;
 
         private IWaveProvider fuente;
         private readonly int canales;
@@ -62,9 +62,9 @@ namespace Rocola
                 // viejo de 22 o 32 kHz), a 48 kHz con el remuestreo de la rocola (el de los discos continuos: 192 toques) y no con el lineal
                 // de alsa-lib que pondria plug.
                 string hw = "hw:" + elegido.Substring(7);
-                fallo = Abre(hw, tasa);
+                fallo = AbreDirecta(hw, tasa);
                 if (fallo == null) elegido = hw;
-                else if (tasa != 48000 && (m = A48(musica)) != musica && Abre(hw, 48000) == null) { elegido = hw + " (a 48000 Hz)"; tasaSalida = 48000; fallo = null; }
+                else if (tasa != 48000 && (m = A48(musica)) != musica && AbreDirecta(hw, 48000) == null) { elegido = hw + " (a 48000 Hz)"; tasaSalida = 48000; fallo = null; }
                 else { m = musica; fallo = Abre(elegido, tasa); }
             }
             else fallo = Abre(elegido, tasa);
@@ -81,9 +81,10 @@ namespace Rocola
             }
             if (fallo != null) throw new InvalidOperationException(fallo);
             Dispositivo = elegido;
-            fuente = new Form1.DitherWaveProvider16(m);
+            fuente = bits32 ? (IWaveProvider)new Form1.Salida24en32(m) : new Form1.DitherWaveProvider16(m);
+            bytesMuestra = bits32 ? 4 : 2;
             // en el registro (rocola.txt), cuando cambia: que tarjeta se abrio de verdad y a que frecuencia
-            string dicho = elegido + " a " + tasaSalida + " Hz" + (tasaSalida != tasa ? " (la cancion es de " + tasa + ")" : "");
+            string dicho = elegido + " a " + tasaSalida + " Hz" + (tasaSalida != tasa ? " (la cancion es de " + tasa + ")" : "") + (bits32 ? ", 24 bits" : ", 16 bits");
             if (dicho != ultimaDicha) { ultimaDicha = dicho; try { Console.WriteLine("Sonido: abierta " + dicho); } catch { } }
         }
         private readonly int tasaSalida;   // a la que va la tarjeta (la de la cancion, salvo que no la admita: 48000)
@@ -107,7 +108,17 @@ namespace Rocola
             return c > 0 ? "default:" + resto.Substring(0, c) : null;
         }
         private const int EBUSY = -16;
-        private string Abre(string d, int frecuencia)
+        // LA TARJETA DIRECTA: primero con 24 bits (S32_LE) si la admite (Salida24en32), si no con 16. ROCOLA_SALIDA_16=1, siempre 16.
+        private bool bits32; private int bytesMuestra = 2;
+        private static readonly bool Solo16 = Environment.GetEnvironmentVariable("ROCOLA_SALIDA_16") == "1";
+        private string AbreDirecta(string d, int frecuencia)
+        {
+            if (!Solo16 && Abre(d, frecuencia, S32Le) == null) { bits32 = true; return null; }
+            bits32 = false;
+            return Abre(d, frecuencia);
+        }
+        private string Abre(string d, int frecuencia) { return Abre(d, frecuencia, S16Le); }
+        private string Abre(string d, int frecuencia, int formatoAlsa)
         {
             int r = snd_pcm_open(out pcm, d, Reproducir, 0);
             // OCUPADA: mpv (los videos usan la misma tarjeta, directa) puede tardar un momento en soltarla al acabar; se espera hasta 1,5 s
@@ -115,7 +126,7 @@ namespace Rocola
             for (; espera < 15 && r == EBUSY; espera++) { Thread.Sleep(100); r = snd_pcm_open(out pcm, d, Reproducir, 0); }
             if (espera > 0) try { Console.WriteLine("Sonido: '" + d + "' estaba ocupada; " + (r == 0 ? "se libero a los " + espera * 100 + " ms" : "sigue ocupada")); } catch { }
             if (r < 0) { pcm = IntPtr.Zero; return "ALSA: no se pudo abrir '" + d + "': " + Error(r); }
-            r = snd_pcm_set_params(pcm, S16Le, Intercalado, (uint)canales, (uint)frecuencia, 1, LatenciaUs);
+            r = snd_pcm_set_params(pcm, formatoAlsa, Intercalado, (uint)canales, (uint)frecuencia, 1, LatenciaUs);
             if (r < 0) { snd_pcm_close(pcm); pcm = IntPtr.Zero; return "ALSA: formato no admitido en '" + d + "': " + Error(r); }
             return null;
         }
@@ -176,7 +187,7 @@ namespace Rocola
         {
             PrioridadSonido = Prioridad.Sonido();   // en Linux, Thread.Priority no hace nada: se le pide al nucleo
             if (!dicha) { dicha = true; try { Console.WriteLine("Sonido: el hilo de la salida va en " + PrioridadSonido); } catch { } }
-            int cuadrosBloque = 1024, bytesCuadro = 2 * canales;
+            int cuadrosBloque = 1024, bytesCuadro = bytesMuestra * canales;
             byte[] b = new byte[cuadrosBloque * bytesCuadro];
             while (!parar)
             {
