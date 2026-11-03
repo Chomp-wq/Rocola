@@ -147,7 +147,7 @@ namespace Rocola
             // (que van mas arriba). Apagado (de fabrica) no toca ni una muestra.
             c.Aspereza = new AsperezaDinamica(c.Ataque, loc.Aspereza);
             c.Aspereza.Cebado = audioTailDelay;
-            c.Eses = new SuavizaEses(c.Aspereza, loc.Eses, localAuto);   // en el billar, con la referencia por encima de 1 kHz (CadenaBillar.cs)
+            c.Eses = new SuavizaEses(c.Aspereza, loc.Eses, localAuto, localAuto && DseePara(t.Path) ? CorteMedido(t.Path) : 0.0);   // con el DSEE en el billar, la referencia hasta el corte (Eses.cs)   // en el billar, con la referencia por encima de 1 kHz (CadenaBillar.cs)
             c.Eses.Cebado = audioTailDelay;
             // BAJO PSICOACUSTICO: despues de nivelar/ecualizar y ANTES del limitador, que es quien controla
             // los picos que anaden los armonicos.

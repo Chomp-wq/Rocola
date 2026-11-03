@@ -114,6 +114,7 @@ namespace Rocola
         // de DseeBillarHz: ahi lo que falta empieza donde los tweeters si dan. Asi el procesador del A4 solo se gasta en esas.
         internal const float DseeBillarHz = 13000f;
         private bool dseeBillarCortes;
+        private float CorteMedido(string ruta) { float[] c; return ruta != null && eqCache.TryGetValue(ruta, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f; }
         private bool DseePara(string ruta)
         {
             if (!sbrOn) return false;

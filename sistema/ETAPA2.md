@@ -959,3 +959,24 @@ Decisión del dueño («1 y 2»): volver a medir el DSEE en el billar y dejarlo 
   - Coste: de 14 a 18 ms más por segundo de música en esta PC, **solo en las canciones de corte bajo**.
 - Si tendrá sentido en el bar depende de cuántas canciones de corte bajo hay y de cuánto dan las cornetas por encima de 12 kHz:
   **no probado en el A4 ni oído en el billar**.
+
+## Extra (3-11-2026, decimoctava parte): revisión de la cadena del billar con señales difíciles
+
+Petición del dueño: buscar mejoras en toda la cadena del modo billar para aprovechar al máximo sus bocinas.
+
+**Arreglado: las eses se aflojaban con el DSEE** (`Motor/Eses.cs`, `Cadena.cs`). En el billar, «Suavizar las eses» compara la «s» con
+lo que suena por encima de 1 kHz. Con el DSEE en el billar (las muy cortadas), lo recreado arriba del corte entraba en esa referencia
+como si fuera voz y la «s» se suavizaba menos: de 5 a 9 kHz salía hasta 1,9 dB más fuerte. Ahora, **solo en las canciones en que el
+DSEE trabaja con el modo billar**, la referencia llega hasta el corte medido de la canción. Medido: esa subida desaparece (todo baja de
+1 a 2 dB parejo, por el limitador con lo añadido arriba). En las demás canciones sale igual que antes (mismo resultado que el programa
+anterior, salvo los 2 pasos del ruido de redondeo que cambian en cada pasada). Se probó también poner el tope en 11 kHz para todas:
+una canción completa se suavizaba hasta 3,8 dB más, y eso sería otro cambio de sonido, así que no se hizo.
+
+**Revisado sin fallos**, modo billar y de fábrica, con siete señales sintéticas (pop completo, master aplastado, grabación vieja mono y
+bajita con siseo, silencios al principio y a la mitad, todo cargado a un lado, grave con golpes y un disco continuo en tres MP3):
+- ningún NaN; el pico real (medidor EBU de ffmpeg) se queda en el techo, −1,0 a −1,1 dBTP, también en el master aplastado;
+- el disco continuo, dentro de la biblioteca, pasa de pista a pista sin hueco ni bajón (±1 dB por bloques de 100 ms) y dura lo mismo
+  que la pieza entera (el relleno de los MP3 se quita bien). Fuera de la biblioteca hay fundido, como debe: no se sabe que es un disco;
+- lo grabado casi todo a un lado (26 dB) sale con 4,6 dB entre canales: es el estéreo estrecho de fábrica (ancho 0,6), como estaba;
+- la cadena del billar tarda un 25 % más que la de fábrica en esta PC (1,6 s frente a 1,3 s para 40 s de música, con la lectura).
+**No probado en el A4 ni oído en el billar.**

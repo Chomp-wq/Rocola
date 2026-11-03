@@ -43,11 +43,21 @@ namespace Rocola
         // la etapa no actuaba justo en la musica que mas suena en el billar (medido: cero bajada en pop y reggaeton). Con la referencia por
         // encima de 1 kHz, una vocal (formantes de 0,5 a 3 kHz) queda lejos del umbral y una "s" lo pasa con o sin bajo debajo.
         internal const double ReferenciaBillarHz = 1000.0;
+        // Y POR ARRIBA, HASTA EL CORTE DE LA CANCION, SI EL DSEE LA RECREA (3-11-2026): con el DSEE en el billar («solo en las muy
+        // cortadas»), lo que el DSEE recrea por encima del corte entraba en la referencia como si fuera voz, la «s» quedaba en menos
+        // fraccion y se suavizaba menos: medido, de 5 a 9 kHz salia hasta 1,9 dB mas fuerte que sin el DSEE. Ahora, SOLO en esas canciones
+        // (topeHz > 0: el corte medido; Cadena.cs), la referencia es lo que suena entre 1 kHz y el corte: lo recreado ya no la mueve. En
+        // las demas no se pone el tope y sale bit a bit como antes (con tope en 11 kHz para todas, una cancion completa se suavizaba hasta
+        // 3,8 dB mas: es otro cambio, no se hizo).
+        private readonly double lb0, lb1, lb2, la1, la2;     // paso-bajo de la referencia (solo en el billar)
+        private readonly double[] refL;                      // su memoria por canal
         private readonly bool billar;
         private readonly double hb0, hb1, hb2, ha1, ha2;     // paso-alto de la referencia (solo en el billar)
         private readonly double[] ref_;                      // su memoria por canal: x1, x2, y1, y2
         internal SuavizaEses(ISampleProvider s, bool encender) : this(s, encender, false) { }
-        internal SuavizaEses(ISampleProvider s, bool encender, bool enBillar)
+        internal SuavizaEses(ISampleProvider s, bool encender, bool enBillar) : this(s, encender, enBillar, 0.0) { }
+        private readonly bool conTope;
+        internal SuavizaEses(ISampleProvider s, bool encender, bool enBillar, double topeHz)
         {
             src = s; ch = Math.Max(1, s.WaveFormat.Channels); tasa = s.WaveFormat.SampleRate;
             vale = CentroHz * 1.5 < 0.45 * tasa;
@@ -64,6 +74,10 @@ namespace Rocola
             ref_ = new double[4 * ch];
             double wr = 2.0 * Math.PI * Math.Min(ReferenciaBillarHz, 0.4 * tasa) / tasa, cr = Math.Cos(wr), alr = Math.Sin(wr) / (2.0 * 0.7071), a0r = 1.0 + alr;
             hb0 = (1.0 + cr) / 2.0 / a0r; hb1 = -(1.0 + cr) / a0r; hb2 = hb0; ha1 = -2.0 * cr / a0r; ha2 = (1.0 - alr) / a0r;
+            refL = new double[4 * ch];
+            conTope = enBillar && topeHz > ReferenciaBillarHz * 2;
+            double wl = 2.0 * Math.PI * Math.Min(conTope ? topeHz : 0.45 * tasa, 0.45 * tasa) / tasa, cl = Math.Cos(wl), all = Math.Sin(wl) / (2.0 * 0.7071), a0l = 1.0 + all;
+            lb0 = (1.0 - cl) / 2.0 / a0l; lb1 = (1.0 - cl) / a0l; lb2 = lb0; la1 = -2.0 * cl / a0l; la2 = (1.0 - all) / a0l;
         }
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
         internal void Ajusta(bool encender) { encendido = encender; }
@@ -77,7 +91,7 @@ namespace Rocola
             SuavizaEses a = anterior; anterior = null;
             if (a == null || a.ch != ch || a.tasa != tasa) return;
             Array.Copy(a.est, est, est.Length); eB = a.eB; eT = a.eT; pb = a.pb; pt = a.pt; g = a.g; canal = a.canal;
-            if (a.billar == billar) Array.Copy(a.ref_, ref_, ref_.Length);
+            if (a.billar == billar) { Array.Copy(a.ref_, ref_, ref_.Length); if (a.conTope && conTope) Array.Copy(a.refL, refL, refL.Length); }
             cebadoPorPasar = Math.Max(0, Cebado) * ch;
         }
 
@@ -110,6 +124,13 @@ namespace Rocola
                     double r = hb0 * x + hb1 * ref_[e] + hb2 * ref_[e + 1] - ha1 * ref_[e + 2] - ha2 * ref_[e + 3];
                     if (r < 1e-30 && r > -1e-30) r = 0.0;
                     ref_[e + 1] = ref_[e]; ref_[e] = x; ref_[e + 3] = ref_[e + 2]; ref_[e + 2] = r;
+                    if (conTope)
+                    {
+                        double q = lb0 * r + lb1 * refL[e] + lb2 * refL[e + 1] - la1 * refL[e + 2] - la2 * refL[e + 3];
+                        if (q < 1e-30 && q > -1e-30) q = 0.0;
+                        refL[e + 1] = refL[e]; refL[e] = r; refL[e + 3] = refL[e + 2]; refL[e + 2] = q;
+                        r = q;
+                    }
                     st += r * r;
                 }
                 else st += x * x;
