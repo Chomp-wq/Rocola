@@ -341,7 +341,7 @@ namespace Rocola
         // 24 GB de RAM: toma una muestra repartida por todo el archivo (ver ia/entrenar_ia.py). Se cambia con
         // ia_datos_mb= en la configuracion; 0 lo quita del todo.
         private long iaMaxBytes = 24L * 1024 * 1024 * 1024;
-        private bool IaBudgetFull() { return iaMaxBytes > 0 && (long)iaPairsTotal * 160L + 16L >= iaMaxBytes; }
+        private bool IaBudgetFull() { return iaMaxBytes > 0 && ((long)iaPairsTotal * 160L + 16L >= iaMaxBytes || IaSinSitio()); }   // y nunca llenar el disco (MaterialIa.cs)
         private string IaInfoText()
         {
             long mb = ((long)iaPairsTotal * 160L + 16L) / (1024 * 1024);
@@ -350,7 +350,7 @@ namespace Rocola
                    + (IaBudgetFull() ? ", tope alcanzado" : "") + ")";
         }
         // los cortes simulados: IaCutsHz, los cinco de siempre y los mas comunes de la biblioteca (CortesIa.cs)
-        private string IaDataFile() { return RutaDatos("rocola_ia_datos.bin"); }
+        private string IaDataFile() { return RutaMaterialIa("rocola_ia_datos.bin"); }   // en el disco de la rocola (MaterialIa.cs)
         private readonly object iaDoneLock = new object();
         private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco
         private readonly List<string> iaPend = new List<string>();   // lineas apuntadas y aun sin escribir
@@ -530,7 +530,7 @@ namespace Rocola
         // medias, con su CRC malo o que no cuadra con los datos, se ignora al leer. Nunca se atribuye mal.
         // Coste: un CRC de lo que ya estaba en memoria y 64 bytes mas por cancion, en el hilo de fondo.
         private const int IaExtractorVersion = 2;   // la geometria de MakePair (ia/contrato_dsee.py, EXTRACTOR)
-        private string IaIndexFile() { return RutaDatos("rocola_ia_datos.idx"); }
+        private string IaIndexFile() { return RutaMaterialIa("rocola_ia_datos.idx"); }
         private sealed class IaOrigen
         {
             public ulong Cancion, Carpeta, Artista;
@@ -595,7 +595,7 @@ namespace Rocola
         {
             try
             {
-                string ruta = RutaDatos("rocola_ia_datos.generos.tsv");
+                string ruta = RutaMaterialIa("rocola_ia_datos.generos.tsv");
                 if (datosNuevos && File.Exists(ruta))
                 {
                     string aparte = ruta + ".anterior";

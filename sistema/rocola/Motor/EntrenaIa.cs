@@ -41,7 +41,7 @@ namespace Rocola
             internal string Resumen = "";        // una linea para Ctrl+F3 y la bitacora
             internal bool Cortado;               // se paro (la rocola se uso): no cuenta como intento
 
-            private sealed class Entrada { public long Primero; public int Cuenta; public uint Crc; public ulong Cancion, Carpeta, Artista; public int Parte = -1; public ulong Grupo; }
+            private sealed class Entrada { public int Fuente; public long Primero; public int Cuenta; public uint Crc; public ulong Cancion, Carpeta, Artista; public int Parte = -1; public ulong Grupo; }
 
             internal const string Cabecera = "RIAD";
             private readonly StringBuilder inf = new StringBuilder();
@@ -51,31 +51,46 @@ namespace Rocola
             private int[] dims;          // capas: 28 ... 12
             private float[][] W, B;      // fila-mayor: W[L][o * in + i]
 
-            internal void Corre(string datos, string indice, string instalada)
+            internal void Corre(string datos, string indice, string instalada) { Corre(new List<string[]> { new[] { datos, indice } }, instalada); }
+            // Varios materiales (el de esta rocola y el de la rocola de XP, MaterialIa.cs): las canciones se reconocen por su huella, asi que
+            // una misma cancion cosechada en los dos queda en el mismo grupo y nunca a la vez en entrenamiento y en prueba.
+            internal void Corre(List<string[]> materiales, string instalada)
             {
-                try { CorreDentro(datos, indice, instalada); }
+                try { CorreDentro(materiales, instalada); }
                 catch (OperationCanceledException) { Cortado = true; Resumen = "se paro: la rocola se uso (se vuelve a intentar en otra pausa)"; }
                 catch (Exception e) { Resumen = "no se pudo entrenar: " + e.Message; Linea(Resumen); }
                 Informe = inf.ToString();
             }
             private void Mira() { if (Parar()) throw new OperationCanceledException(); }
 
-            private void CorreDentro(string datos, string indice, string instalada)
+            private string[] rutasDatos;
+            private void CorreDentro(List<string[]> materiales, string instalada)
             {
                 Linea("IA del DSEE entrenada en la rocola (EntrenaIa.cs, " + DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + ")");
-                // 1) el indice
-                List<Entrada> ent = LeeIndice(indice);
-                long filasDatos;
-                using (FileStream fs = new FileStream(datos, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                // 1) los indices de cada material
+                List<Entrada> ent = new List<Entrada>(); rutasDatos = new string[materiales.Count];
+                long filasDatos = 0, conOrigen = 0;
+                for (int m = 0; m < materiales.Count; m++)
                 {
-                    byte[] h = new byte[16];
-                    if (fs.Read(h, 0, 16) != 16 || h[0] != 'R' || h[1] != 'I' || h[2] != 'A' || h[3] != 'D' || BitConverter.ToInt32(h, 4) != 1
-                        || BitConverter.ToInt32(h, 8) != 28 || BitConverter.ToInt32(h, 12) != 12) throw new InvalidDataException("rocola_ia_datos.bin no es del formato de la rocola");
-                    filasDatos = (fs.Length - 16) / 160;
+                    string datos = materiales[m][0]; rutasDatos[m] = datos;
+                    long filas;
+                    try
+                    {
+                        using (FileStream fs = new FileStream(datos, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        {
+                            byte[] h = new byte[16];
+                            if (fs.Read(h, 0, 16) != 16 || h[0] != 'R' || h[1] != 'I' || h[2] != 'A' || h[3] != 'D' || BitConverter.ToInt32(h, 4) != 1
+                                || BitConverter.ToInt32(h, 8) != 28 || BitConverter.ToInt32(h, 12) != 12) { Linea(datos + ": no es del formato de la rocola, fuera."); continue; }
+                            filas = (fs.Length - 16) / 160;
+                        }
+                    }
+                    catch (Exception ex) { Linea(datos + ": no se pudo leer (" + ex.Message + "), fuera."); continue; }
+                    List<Entrada> e1; try { e1 = LeeIndice(materiales[m][1]); } catch (Exception ex) { Linea(materiales[m][1] + ": " + ex.Message + ", fuera."); continue; }
+                    e1.RemoveAll(e => e.Primero + e.Cuenta > filas);
+                    long co = 0; foreach (Entrada e in e1) { e.Fuente = m; co += e.Cuenta; }
+                    Linea("Material " + (m + 1) + " (" + datos + "): " + filas.ToString("#,0", CultureInfo.InvariantCulture) + " ejemplos; con origen " + co.ToString("#,0", CultureInfo.InvariantCulture) + " en " + e1.Count + " lotes.");
+                    ent.AddRange(e1); filasDatos += filas; conOrigen += co;
                 }
-                ent.RemoveAll(e => e.Primero + e.Cuenta > filasDatos);
-                long conOrigen = 0; foreach (Entrada e in ent) conOrigen += e.Cuenta;
-                Linea("Material: " + filasDatos.ToString("#,0", CultureInfo.InvariantCulture) + " ejemplos; con origen conocido " + conOrigen.ToString("#,0", CultureInfo.InvariantCulture) + " en " + ent.Count + " lotes.");
                 if (conOrigen < 900) throw new InvalidDataException("muy poco material con origen (" + conOrigen + " ejemplos)");
                 // 2) grupos y reparto (antes de mirar un solo ejemplo)
                 string nivel = Grupos(ent);
@@ -87,7 +102,7 @@ namespace Rocola
                 Mira();
                 // 3) la muestra, leyendo de corrido y comprobando el CRC de cada lote
                 float[] X, Y; int[] parte; ulong[] cancion, grupo; int n;
-                Muestra(datos, ent, conOrigen, out X, out Y, out parte, out cancion, out grupo, out n);
+                Muestra(ent, conOrigen, out X, out Y, out parte, out cancion, out grupo, out n);
                 int[] cuantos = new int[3]; for (int i = 0; i < n; i++) cuantos[parte[i]]++;
                 Linea("Muestra: " + n.ToString("#,0", CultureInfo.InvariantCulture) + " ejemplos (tope " + MaxFilas.ToString("#,0", CultureInfo.InvariantCulture) + "): " + cuantos[0] + " / " + cuantos[1] + " / " + cuantos[2] + ".");
                 if (cuantos[0] < 500 || cuantos[1] < 200 || cuantos[2] < 200) throw new InvalidDataException("la muestra no llega a 500/200/200 ejemplos");
@@ -223,7 +238,7 @@ namespace Rocola
             // ---------------- LA MUESTRA ----------------
             // Una posicion al azar en cada estrato (indices_estratificados, semilla 20260929) sobre los ejemplos CON origen, leyendo el archivo
             // de corrido: cada lote entero pasa por su CRC (como lee_indice) y solo si cuadra entran sus ejemplos elegidos.
-            private void Muestra(string datos, List<Entrada> ent, long total, out float[] X, out float[] Y, out int[] parte, out ulong[] cancion, out ulong[] grupo, out int n)
+            private void Muestra(List<Entrada> ent, long total, out float[] X, out float[] Y, out int[] parte, out ulong[] cancion, out ulong[] grupo, out int n)
             {
                 int quiere = (int)Math.Min(total, MaxFilas);
                 long[] pos = new long[quiere];
@@ -240,13 +255,15 @@ namespace Rocola
                 X = new float[quiere * 28]; Y = new float[quiere * 12]; parte = new int[quiere]; cancion = new ulong[quiere]; grupo = new ulong[quiere];
                 n = 0; int malos = 0, sigue = 0; long rango = 0;
                 byte[] buf = new byte[160 * 8192]; float[] fila = new float[40];
-                using (FileStream fs = new FileStream(datos, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 20))
+                FileStream[] abiertos = new FileStream[rutasDatos.Length];
+                try
                 {
-                    long leido = 0, aLeer = total; int ultimoAviso = Environment.TickCount;
+                long leido = 0, aLeer = total; int ultimoAviso = Environment.TickCount;
                     foreach (Entrada e in ent)
                     {
                         Mira();
                         int n0 = n; uint crc = 0xFFFFFFFFu; bool roto = false;
+                        FileStream fs = abiertos[e.Fuente] ?? (abiertos[e.Fuente] = new FileStream(rutasDatos[e.Fuente], FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 20));
                         fs.Position = 16 + e.Primero * 160;
                         for (int hecho = 0; hecho < e.Cuenta;)
                         {
@@ -273,6 +290,7 @@ namespace Rocola
                         if (unchecked(Environment.TickCount - ultimoAviso) > 5000) { ultimoAviso = Environment.TickCount; Avance("leyendo el material: " + (100 * leido / Math.Max(1, aLeer)) + " %"); }
                     }
                 }
+                finally { foreach (FileStream f in abiertos) if (f != null) f.Dispose(); }
                 if (malos > 0) Linea("Lotes cuyo CRC no cuadra (no se usan): " + malos + ".");
             }
             private static int[] Indices(int[] parte, int n, int p) { List<int> r = new List<int>(); for (int i = 0; i < n; i++) if (parte[i] == p) r.Add(i); return r.ToArray(); }

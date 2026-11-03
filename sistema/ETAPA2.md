@@ -980,3 +980,19 @@ bajita con siseo, silencios al principio y a la mitad, todo cargado a un lado, g
 - lo grabado casi todo a un lado (26 dB) sale con 4,6 dB entre canales: es el estéreo estrecho de fábrica (ancho 0,6), como estaba;
 - la cadena del billar tarda un 25 % más que la de fábrica en esta PC (1,6 s frente a 1,3 s para 40 s de música, con la lectura).
 **No probado en el A4 ni oído en el billar.**
+
+## Extra (3-11-2026, decimonovena parte): el material de la IA ya no puede llenar lo aprendido, y la IA aprende también de lo de XP
+
+- **El fallo:** lo aprendido de Rocola OS vive en `datos.img`, de 512 MB, y ahí iba también `rocola_ia_datos.bin`, que la cosecha deja
+  crecer hasta 24 GB. Con unas 300 canciones sanas repasadas a fondo (≈1,5 MB cada una; más con IA2) se llenaba, y desde entonces la
+  rocola ya no podía guardar nada: ni la configuración, ni las tablas del volumen, ni el EQ, ni las IA.
+- **Ahora** (`Motor/MaterialIa.cs`, `/usr/bin/rocola`): instalada, el material va al disco de la rocola, junto a la música
+  (`/rocola/disco/rocola-os/ia`, `ROCOLA_IA_DATOS`); desde la memoria USB sigue en la carpeta de datos. Lo que ya hubiera se muda solo al
+  arrancar, entero (copia completa, nunca dispersa) y una vez. Y la cosecha se para si donde escribe quedan menos de 256 MB libres.
+- **La IA aprende también de lo de XP:** Rocola OS importa de XP la marca de «repasada a fondo» y no vuelve a repasar esas canciones,
+  así que en la biblioteca de siempre apenas juntaría material. El entrenador (IA1) usa ahora también el `rocola_ia_datos.bin` y `.idx`
+  de la carpeta de datos de XP (mismo formato y extractor), **solo leyéndolos**. Una misma canción cosechada en los dos lados se
+  reconoce por su huella y queda en el mismo grupo: nunca a la vez en entrenamiento y en prueba.
+- Probado: el material (5,3 MB) se mudó entero y la carpeta de datos quedó sin él; con el de XP de prueba, el informe dice los dos
+  materiales, 7 grupos de entrenamiento en vez de 6, y el error en la prueba baja de 0,0935 a 0,0878; el de XP no se tocó. `DriveInfo`
+  mide bien el espacio en una carpeta cualquiera de Linux. **No probado en el A4** (ni con el material de XP de verdad).

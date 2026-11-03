@@ -47,9 +47,9 @@ namespace Rocola
         {
             if (entrenando) return;
             if (!entrenoPedido && !EnReposoParaEntrenar(EntrenoReposoMin)) return;
-            string datos = IaDataFile(), idx = IaIndexFile();
-            long filas;
-            try { if (!File.Exists(datos) || !File.Exists(idx)) { entrenoPedido = false; return; } filas = (new FileInfo(datos).Length - 16) / 160; } catch { return; }
+            System.Collections.Generic.List<string[]> materiales = MaterialesIa();   // el de esta rocola y el de la de XP (MaterialIa.cs)
+            long filas = 0;
+            try { if (materiales.Count == 0) { entrenoPedido = false; return; } foreach (string[] m in materiales) filas += (new FileInfo(m[0]).Length - 16) / 160; } catch { return; }
             DateTime ultimo; long filasAntes; bool cortado; LeeEstadoEntreno(out ultimo, out filasAntes, out cortado);
             if (!entrenoPedido)
             {
@@ -63,11 +63,11 @@ namespace Rocola
             }
             entrenoForzado = entrenoPedido; entrenoPedido = false; entrenando = true; entrenoAvance = "empezando";
             string instalada = RutaLectura("rocola_ia.bin");
-            Thread t = new Thread(delegate () { EntrenaEnFondo(datos, idx, instalada, filas); }) { IsBackground = true, Name = "entrenar la IA" };
+            Thread t = new Thread(delegate () { EntrenaEnFondo(materiales, instalada, filas); }) { IsBackground = true, Name = "entrenar la IA" };
             t.Start();
         }
 
-        private void EntrenaEnFondo(string datos, string idx, string instalada, long filas)
+        private void EntrenaEnFondo(System.Collections.Generic.List<string[]> materiales, string instalada, long filas)
         {
             Prioridad.Fondo();
             EntrenoIa e = new EntrenoIa();
@@ -80,7 +80,7 @@ namespace Rocola
                 e.Parar = delegate { return cerrandoEntreno || nowPlaying != null || queue.Count > 0 || ciegoActivo || bandaSonando != null || (!forzado && lastInput > inicio); };
                 e.Avance = delegate (string s) { entrenoAvance = s; };
                 System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-                e.Corre(datos, idx, instalada);
+                e.Corre(materiales, instalada);
                 string tiempo = " (" + Math.Round(sw.Elapsed.TotalMinutes, 1).ToString(CultureInfo.InvariantCulture) + " min)";
                 Directory.CreateDirectory(CarpetaIas);
                 if (!e.Cortado)
@@ -134,7 +134,7 @@ namespace Rocola
         public string EntrenaAhora()
         {
             if (entrenando) return "Ya esta entrenando.";
-            if (!File.Exists(IaDataFile()) || !File.Exists(IaIndexFile())) return "Aun no hay material (lo junta el repaso de la biblioteca).";
+            if (MaterialesIa().Count == 0) return "Aun no hay material (lo junta el repaso de la biblioteca).";
             entrenoPedido = true; ultimoEntrenoMira = 0; MiraEntreno();
             return entrenando ? "Entrenando: se para si empieza a sonar algo." : "No se pudo empezar.";
         }
