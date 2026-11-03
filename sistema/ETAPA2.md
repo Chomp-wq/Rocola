@@ -874,3 +874,14 @@ Ahora que la salida va directa a la tarjeta:
   llevan el soplido del dither (~−96 dBFS), que con el amplificador a tope era lo único que se oía en un silencio. Con música, igual.
 
 **No probado en el A4** (la Realtek suele admitir 16, 20 y 24 bits).
+
+## Extra (3-11-2026, decimocuarta parte): los MP3 de frecuencias mezcladas, también por mpg123
+
+Los pocos MP3 que traen cuadros de otra frecuencia (pegados de dos grabaciones) se reconstruyen en memoria con solo los cuadros de la
+frecuencia dominante, como en XP. Esa reconstrucción iba por NLayer, el descompresor que se come cuadros y que se había quitado para
+todo lo demás. Ahora se escribe en `/tmp` (en la RAM), mpg123 la abre y se borra en el acto: Linux la deja leer mientras siga abierta,
+y no queda nada aunque la rocola se caiga. Si mpg123 no puede, NLayer como antes.
+
+Probado con un MP3 de 20 s a 44,1 kHz + 2 s a 48 kHz + 20 s a 44,1 kHz: con mpg123 suena y se mide entero (40,05 s: los dos tramos de
+la dominante); con NLayer, sobre la misma reconstrucción, **se paraba a los 20 s** y la segunda mitad no sonaba. El descomprimir del
+repaso baja de 628 a 52 ms. No quedó ningún temporal. **No probado en el A4.**

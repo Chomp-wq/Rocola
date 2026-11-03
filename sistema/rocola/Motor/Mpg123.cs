@@ -2,8 +2,8 @@
 // Dos motivos: NLayer 3.0.0 se COME un cuadro entero (26 ms, con un chasquido) en algunos archivos a media cancion (medido contra
 // ffmpeg: uno en cada archivo de prueba, en sitios distintos), y en C# descomprimir era casi todo lo que tardaba el repaso (unas 8
 // veces mas lento). mpg123 da las mismas muestras que ffmpeg; fuera de ese cuadro, las mismas que NLayer (a 3e-7).
-// Lo usa LectorCancion (Lector.cs) para sonar y para medir. Si la biblioteca no esta, el archivo no abre o es de frecuencias
-// mezcladas (Mp3DeUnaFrecuencia), va NLayer como antes. Sin el gapless de mpg123 (quitaria el relleno del codificador, que la rocola
+// Lo usa LectorCancion (Lector.cs) para sonar y para medir. Si la biblioteca no esta o el archivo no abre, va NLayer como antes; uno de frecuencias
+// mezcladas se reconstruye en memoria y tambien va por aqui (Lector.cs, DeMemoria). Sin el gapless de mpg123 (quitaria el relleno del codificador, que la rocola
 // quita por su cuenta: SinRelleno), asi las muestras caen en el mismo sitio que con NLayer.
 using System;
 using System.Runtime.InteropServices;

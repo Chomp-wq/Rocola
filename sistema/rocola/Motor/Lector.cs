@@ -1,6 +1,6 @@
 // EL LECTOR DE CANCIONES DE ROCOLA OS (hito 3). En XP los MP3 los descomprime el ACM de Windows (y NLayer solo en las que llegan al
 // maximo: FlotanteNLayer.cs); en Linux no hay ACM: los MP3 van por libmpg123 (Mpg123.cs; NLayer 3 se come un cuadro en algunos) y,
-// si no esta o el archivo es de frecuencias mezcladas, por NLayer 3; los dos en coma flotante, sin recortar lo que pasa del maximo. Los WAV, con el lector de NAudio. Como en XP desde el 24-10-2026, un archivo mono sale como estereo de dos canales iguales.
+// si no esta, por NLayer 3 (los de frecuencias mezcladas, reconstruidos, tambien por libmpg123); los dos en coma flotante, sin recortar lo que pasa del maximo. Los WAV, con el lector de NAudio. Como en XP desde el 24-10-2026, un archivo mono sale como estereo de dos canales iguales.
 // Los MP3 de frecuencias mezcladas se reconstruyen a la dominante, como en XP (Mp3DeUnaFrecuencia).
 using System;
 using System.IO;
@@ -28,6 +28,7 @@ namespace Rocola
             {
                 MemoryStream limpio = Mp3DeUnaFrecuencia(ruta);
                 if (limpio == null) rapido = Mpg123Lector.Abre(ruta);
+                else { rapido = DeMemoria(limpio); if (rapido != null) Reconstruido = true; }
                 if (rapido != null)
                 {
                     canalesArchivo = rapido.WaveFormat.Channels;
@@ -47,6 +48,24 @@ namespace Rocola
                 if (canalesArchivo > 2) { w.Dispose(); throw new NotSupportedException("mas de dos canales"); }
                 formato = WaveFormat.CreateIeeeFloatWaveFormat(w.WaveFormat.SampleRate, comoEstereo ? 2 : canalesArchivo);
             }
+        }
+
+        // LOS RECONSTRUIDOS TAMBIEN POR MPG123 (3-11-2026): un MP3 de frecuencias mezcladas, ya reconstruido en memoria, iba por NLayer,
+        // que en algunos archivos se come un cuadro entero (26 ms, con chasquido): justo lo que se quito al pasar a mpg123. Ahora se
+        // escribe en /tmp (en la RAM), mpg123 lo abre y se borra al momento (Linux lo deja leer mientras siga abierto: no queda nada,
+        // aunque la rocola se caiga). Si no se puede, NLayer como antes.
+        private static int temporales;
+        private static Mpg123Lector DeMemoria(MemoryStream limpio)
+        {
+            string t = null;
+            try
+            {
+                t = Path.Combine(Path.GetTempPath(), "rocola-reconstruido-" + Environment.ProcessId + "-" + System.Threading.Interlocked.Increment(ref temporales) + ".mp3");
+                using (FileStream f = new FileStream(t, FileMode.CreateNew, FileAccess.Write)) limpio.WriteTo(f);
+                return Mpg123Lector.Abre(t);
+            }
+            catch { return null; }
+            finally { if (t != null) try { File.Delete(t); } catch { } limpio.Position = 0; }
         }
 
         // Un MP3 que ya esta en memoria (el clip con el que se mide el relleno, RellenoMp3.cs).
