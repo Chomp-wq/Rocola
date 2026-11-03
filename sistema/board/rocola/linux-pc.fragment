@@ -1,0 +1,10 @@
+# ROCOLA OS PARA PROBAR EN CUALQUIER PC (ROCOLA_PERFIL=pc, sistema/compila.sh): lo que el A4 no necesita y una PC actual si.
+# La pantalla que deja puesta la UEFI de la placa (GOP), como tarjeta KMS sencilla: sirve con cualquier tarjeta (tambien NVIDIA, que no
+# tiene controlador libre ligero); la rocola dibuja con el procesador (Mesa llvmpipe).
+CONFIG_SYSFB=y
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_SIMPLEDRM=y
+# Discos NVMe (donde suele estar la musica en una PC actual; se leen en solo lectura al probar)
+CONFIG_BLK_DEV_NVME=y
+# Sonido por USB (tarjetas y DACs externos, algunos auriculares)
+CONFIG_SND_USB_AUDIO=m

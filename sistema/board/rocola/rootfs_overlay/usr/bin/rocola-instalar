@@ -55,6 +55,8 @@ echo "=============================================="
 echo "  ROCOLA OS - INSTALADOR"
 echo "=============================================="
 echo
+# LA MEMORIA PARA PROBAR EN CUALQUIER PC (perfil pc, post-build.sh): no instala nunca, ni llamada a mano.
+[ -f /etc/rocola-solo-probar ] && [ -z "$ROCOLA_INSTALAR_PRUEBA" ] && para "Esta memoria es para probar Rocola OS en cualquier PC: no instala nada. No se toco ningun disco."
 di "Buscando el disco de la rocola..."
 apunta "$(date '+%Y-%m-%d %H:%M')  rocola-instalar, sistema $(cat /etc/rocola-sistema-version 2>/dev/null)"
 

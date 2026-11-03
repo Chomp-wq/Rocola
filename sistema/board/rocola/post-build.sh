@@ -8,6 +8,18 @@ cp -f "$TARGET_DIR/lib/grub/i386-pc/boot.img" "$BINARIES_DIR"
 if [ -d "$BINARIES_DIR/efi-part/EFI/BOOT" ]; then
 	cp -f "$BOARD_DIR/grub-efi.cfg" "$BINARIES_DIR/efi-part/EFI/BOOT/grub.cfg"
 fi
+# LA MEMORIA PARA PROBAR EN CUALQUIER PC (ROCOLA_PERFIL=pc, nombre «rocola-pc»): solo prueba. Sin la entrada del instalador en los menus
+# (lo primero pasa a ser «Probar Rocola OS») y con /etc/rocola-solo-probar, que hace que rocola-instalar se niegue aunque se llame a mano:
+# en una PC ajena no se toca ningun disco (al probar, los discos se leen en solo lectura).
+if grep -q '^BR2_TARGET_GENERIC_HOSTNAME="rocola-pc"' "$BR2_CONFIG"; then
+	for f in "$TARGET_DIR/boot/grub/grub.cfg" "$BINARIES_DIR/efi-part/EFI/BOOT/grub.cfg"; do
+		[ -f "$f" ] || continue
+		awk '/^menuentry "Instalar/ {salta=1} salta && /^}/ {salta=0; next} !salta' "$f" > "$f.nuevo" && mv -f "$f.nuevo" "$f"
+	done
+	echo "Esta memoria es para probar Rocola OS en cualquier PC: no instala nada." > "$TARGET_DIR/etc/rocola-solo-probar"
+else
+	rm -f "$TARGET_DIR/etc/rocola-solo-probar"
+fi
 # EL INITRAMFS DEL SISTEMA INSTALADO (rocola-instalar lo copia al disco de la rocola): BusyBox con sus bibliotecas y el init de
 # board/rocola/initramfs, empaquetado (cpio + gzip) en /usr/share/rocola/instalar/initrd.gz.
 I=$(mktemp -d)

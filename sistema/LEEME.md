@@ -138,6 +138,21 @@ QEMU; la rocola (el binario de .NET) corre entera —sonido y pantalla— emulan
 BusyBox, Mesa...) va compilado con las instrucciones del Piledriver (XOP, FMA4, TBM), que QEMU no emula: eso solo se puede probar en
 el A4.
 
+## Probarla en cualquier PC (la memoria «PC»)
+
+La memoria del A4 (`disk.img.gz`) no arranca en una PC actual: va compilada con instrucciones que solo tienen los AMD de la época del
+A4. Para probar la rocola en otra PC (Intel o Ryzen, con cualquier tarjeta gráfica), cada versión trae también **`disk-pc.img.gz`**
+(`ROCOLA_PERFIL=pc sh sistema/compila.sh`, en `salida-pc/`; se publica un rato después que la del A4):
+
+- **Solo prueba:** su menú no tiene el instalador y `rocola-instalar` se niega aunque se llame a mano. Los discos de la PC solo se leen
+  (busca en ellos una carpeta `musica`, también en discos NVMe); lo aprendido se queda en la memoria.
+- **La pantalla:** la que deja puesta la UEFI de la placa (simpledrm), a la resolución que ella elija; la rocola dibuja con el
+  procesador (Mesa llvmpipe). Sirve con NVIDIA (que no tiene controlador libre ligero), AMD o Intel. La fluidez no dice nada de la del
+  A4, que dibuja con su Radeon.
+- **Arranque:** en UEFI y con **Secure Boot desactivado** (en la BIOS de la placa); en el menú de arranque (F8, F11 o F12) elegir la
+  memoria «UEFI». El sonido sale por la tarjeta de la placa (la salida de los audífonos o las bocinas, no por HDMI), o por una USB.
+- Se graba igual que la otra (balenaEtcher o Rufus en modo DD).
+
 ## Instalarlo en la rocola (el instalador)
 
 1. Graba `disk.img` en una memoria USB (paso 2 de arriba), conéctala a la rocola y préndela desde la memoria.

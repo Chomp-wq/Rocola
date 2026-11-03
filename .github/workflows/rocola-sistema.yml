@@ -82,3 +82,60 @@ jobs:
           echo "sistema $V ${GITHUB_SHA}" > pub/version.txt
           git log -1 --pretty='%s' > notas.txt
           gh release create "sistema-$V" pub/* --target "$GITHUB_SHA" --title "Sistema de la rocola $V" --notes-file notas.txt
+
+  # LA MEMORIA PARA PROBAR EN CUALQUIER PC (3-11-2026; el dueno quiere probarla en su PC con Ryzen y RTX 4070): la misma rocola sin las
+  # instrucciones del Piledriver, con la pantalla de la UEFI (sirve con NVIDIA), dibujo por el procesador (llvmpipe), NVMe y sonido USB
+  # (ROCOLA_PERFIL=pc, sistema/compila.sh). Solo prueba: su menu no tiene el instalador y rocola-instalar se niega. Se compila despues de
+  # la del A4 (que no la espera para publicarse) y se anade a la misma version como disk-pc.img.gz.
+  compilar-pc:
+    needs: compilar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      ROCOLA_TRABAJO: /home/runner/rocola-trabajo
+      ROCOLA_SISTEMA_VERSION: ${{ github.run_number }}
+      ROCOLA_PERFIL: pc
+    steps:
+      - name: Hacer sitio en el disco
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          mkdir -p /home/runner/rocola-trabajo
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Herramientas
+        run: sudo apt-get update -q && sudo apt-get install -y -q build-essential cpio rsync bc unzip file clang zlib1g-dev qemu-system-x86 python3 cmake ninja-build
+      - name: Descargas y ccache de la vez anterior (las del PC)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/rocola-trabajo/descargas
+            /home/runner/rocola-trabajo/ccache
+          key: rocola-sistema-pc-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-${{ github.run_number }}
+          restore-keys: |
+            rocola-sistema-pc-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-
+            rocola-sistema-pc-
+            rocola-sistema-
+      - name: Compilar Rocola OS para cualquier PC
+        run: sh sistema/compila.sh
+      - name: Probar que arranca (entero, sin instrucciones del Piledriver, QEMU lo corre todo)
+        run: |
+          I=/home/runner/rocola-trabajo/salida-pc/images
+          timeout 900 qemu-system-x86_64 -m 2048 -smp 2 -kernel $I/bzImage -append "console=ttyS0 root=PARTUUID=524f4341-01 rootwait panic=-1" \
+            -drive file=$I/disk.img,format=raw,if=ide,snapshot=on -display none -serial file:serie.txt -no-reboot &
+          Q=$!; sleep 240; kill $Q 2>/dev/null || true
+          tail -n 30 serie.txt
+          grep -q "Run /sbin/init" serie.txt
+          if grep -q "Instalar Rocola OS" $I/efi-part/EFI/BOOT/grub.cfg; then echo "el menu del PC trae el instalador"; exit 1; fi
+      - name: Anadir la memoria del PC a la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          I=/home/runner/rocola-trabajo/salida-pc/images
+          mkdir -p pub
+          gzip -9c $I/disk.img > pub/disk-pc.img.gz
+          (cd pub && sha256sum disk-pc.img.gz > disk-pc.img.gz.sha256)
+          gh release upload "sistema-$V" pub/disk-pc.img.gz pub/disk-pc.img.gz.sha256 --clobber
