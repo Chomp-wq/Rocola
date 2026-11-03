@@ -69,9 +69,15 @@ namespace Rocola
             }
             else fallo = Abre(elegido, tasa);
             if (fallo != null && elegido != dispositivo)
-            {   // la tarjeta elegida no se pudo abrir (ocupada, o no admite el formato): la de siempre
-                if (!avisoFallo) { avisoFallo = true; try { Console.WriteLine("Sonido: " + fallo + "; se usa '" + dispositivo + "'"); } catch { } }
-                m = musica; tasaSalida = tasa; elegido = dispositivo; fallo = Abre(elegido, tasa);
+            {
+                // la tarjeta elegida no se pudo abrir (ocupada, o no admite el formato): su mezcla (default:N, la MISMA tarjeta; no la 0,
+                // que en el A4 puede ser la del HDMI) y, si tampoco, la de siempre
+                string mezcla = MezclaDe(elegido);
+                if (!avisoFallo) { avisoFallo = true; try { Console.WriteLine("Sonido: " + fallo + "; se usa '" + (mezcla ?? dispositivo) + "'"); } catch { } }
+                m = musica; tasaSalida = tasa;
+                fallo = mezcla != null ? Abre(mezcla, tasa) : "";
+                elegido = mezcla;
+                if (fallo != null) { elegido = dispositivo; fallo = Abre(elegido, tasa); }
             }
             if (fallo != null) throw new InvalidOperationException(fallo);
             Dispositivo = elegido;
@@ -92,9 +98,22 @@ namespace Rocola
             catch { return musica; }
         }
         private static bool avisoFallo; private static string ultimaDicha;
+        // «hw:1,0 (a 48000 Hz)» o «plughw:1,0» -> «default:1» (la mezcla de esa tarjeta); null si no es de una tarjeta
+        private static string MezclaDe(string d)
+        {
+            int i = d.IndexOf("hw:", StringComparison.Ordinal);
+            if (i < 0) return null;
+            string resto = d.Substring(i + 3); int c = resto.IndexOf(',');
+            return c > 0 ? "default:" + resto.Substring(0, c) : null;
+        }
+        private const int EBUSY = -16;
         private string Abre(string d, int frecuencia)
         {
             int r = snd_pcm_open(out pcm, d, Reproducir, 0);
+            // OCUPADA: mpv (los videos usan la misma tarjeta, directa) puede tardar un momento en soltarla al acabar; se espera hasta 1,5 s
+            int espera = 0;
+            for (; espera < 15 && r == EBUSY; espera++) { Thread.Sleep(100); r = snd_pcm_open(out pcm, d, Reproducir, 0); }
+            if (espera > 0) try { Console.WriteLine("Sonido: '" + d + "' estaba ocupada; " + (r == 0 ? "se libero a los " + espera * 100 + " ms" : "sigue ocupada")); } catch { }
             if (r < 0) { pcm = IntPtr.Zero; return "ALSA: no se pudo abrir '" + d + "': " + Error(r); }
             r = snd_pcm_set_params(pcm, S16Le, Intercalado, (uint)canales, (uint)frecuencia, 1, LatenciaUs);
             if (r < 0) { snd_pcm_close(pcm); pcm = IntPtr.Zero; return "ALSA: formato no admitido en '" + d + "': " + Error(r); }

@@ -841,3 +841,11 @@ hasta un archivo y la elección con tarjetas imitadas.
   (la versión genérica): elige «Generic Analog» (`plughw:0,0`), abre la tarjeta directa (`hw:0,0`) a 44 100 Hz, el hilo del sonido va
   en tiempo real, y al congelar el programa 2 s la salida cuenta el corte y sigue. Esa tarjeta emulada admite 22 050 Hz; la del A4
   quizá no (entonces, 48 kHz con el remuestreo de la rocola). **No probado en el A4.**
+
+## Extra (3-11-2026, undécima parte): la tarjeta ocupada al acabar un vídeo
+
+Los vídeos (mpv) usan ahora la misma tarjeta, directa. Si al acabar un vídeo mpv aún no la ha soltado, la canción siguiente no podía
+abrirla (EBUSY) y caía a `default`: la tarjeta 0, que en el A4 puede ser la del HDMI (la música habría salido por el monitor). Ahora,
+ocupada, se reintenta cada 100 ms hasta 1,5 s (el registro lo dice: «'hw:0,0' estaba ocupada; se liberó a los 300 ms»), y si aun así
+hay que caer, se cae a la mezcla de esa misma tarjeta (`default:N`) antes que a `default`. Probado en QEMU con la HDA emulada: una
+segunda rocola que abre la tarjeta mientras otra suena espera 300 ms y la abre directa. **No probado en el A4.**
