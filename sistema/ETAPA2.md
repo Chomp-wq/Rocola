@@ -996,3 +996,14 @@ bajita con siseo, silencios al principio y a la mitad, todo cargado a un lado, g
 - Probado: el material (5,3 MB) se mudó entero y la carpeta de datos quedó sin él; con el de XP de prueba, el informe dice los dos
   materiales, 7 grupos de entrenamiento en vez de 6, y el error en la prueba baja de 0,0935 a 0,0878; el de XP no se tocó. `DriveInfo`
   mide bien el espacio en una carpeta cualquiera de Linux. **No probado en el A4** (ni con el material de XP de verdad).
+
+## Extra (4-11-2026): saltar sin chasquido
+
+Al pulsar SALTAR, la salida se cerraba con `snd_pcm_drop`: lo que la tarjeta tenía por sonar (hasta 300 ms) se cortaba de golpe a mitad
+de onda, y a volumen de bar eso es un golpe seco en las bocinas. En XP no se pudo arreglar (A1: habría que tocar el volumen del
+WaveOut). En Rocola OS la salida es de la rocola (`SalidaAlsa.Apaga`, `ApagaSuave`): lo que ya está en la tarjeta suena tal cual, lo que
+sigue baja a cero en 60 ms (media curva de coseno) y la salida acaba sola (drain). El salto llega unos 0,35 s después del botón (en XP,
+0,75 s). Mientras baja no se prepara ni se releva nada. No toca ningún volumen del sistema: es la música la que baja. Automático.
+
+Probado con una tarjeta ALSA que graba a archivo y un tono de 1 kHz a 0,8: baja de 0,80 a 0,00 en 60 ms, la última muestra es 0 y ningún
+paso entre muestras es mayor que el del propio tono (antes podía quedar un escalón de hasta 0,8). **No probado en el A4.**

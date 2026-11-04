@@ -81,13 +81,48 @@ namespace Rocola
             }
             if (fallo != null) throw new InvalidOperationException(fallo);
             Dispositivo = elegido;
-            fuente = bits32 ? (IWaveProvider)new Form1.Salida24en32(m) : new Form1.DitherWaveProvider16(m);
+            apaga = new ApagaSuave(m, tasaSalida);
+            fuente = bits32 ? (IWaveProvider)new Form1.Salida24en32(apaga) : new Form1.DitherWaveProvider16(apaga);
             bytesMuestra = bits32 ? 4 : 2;
             // en el registro (rocola.txt), cuando cambia: que tarjeta se abrio de verdad y a que frecuencia
             string dicho = elegido + " a " + tasaSalida + " Hz" + (tasaSalida != tasa ? " (la cancion es de " + tasa + ")" : "") + (bits32 ? ", 24 bits" : ", 16 bits");
             if (dicho != ultimaDicha) { ultimaDicha = dicho; try { Console.WriteLine("Sonido: abierta " + dicho); } catch { } }
         }
         private readonly int tasaSalida;   // a la que va la tarjeta (la de la cancion, salvo que no la admita: 48000)
+
+        // SALTAR SIN CHASQUIDO (Rocola OS, 3-11-2026). Al saltar, la salida se cerraba con snd_pcm_drop: lo que la tarjeta tenia por sonar
+        // (hasta 300 ms) se cortaba de golpe a mitad de onda, y a volumen de bar eso es un golpe seco en las bocinas. En XP no se pudo
+        // (A1: habria que tocar el volumen del WaveOut); aqui la salida es de la rocola: al saltar (Apaga) lo que ya esta en la tarjeta suena
+        // tal cual, lo que sigue baja a cero en ApagaMs con media curva de coseno y la salida acaba (drain) sola. El salto llega unos 0,35 s
+        // despues del boton (en XP el colchon era de 0,75 s). No toca ningun volumen: es la musica la que baja.
+        internal const int ApagaMs = 60;
+        private readonly ApagaSuave apaga;
+        public void Apaga() { if (apaga != null) apaga.Pide(); }
+        public bool Apagando { get { return apaga != null && apaga.Pedido; } }
+        private sealed class ApagaSuave : ISampleProvider
+        {
+            private readonly ISampleProvider src; private readonly int largo, ch;
+            private volatile bool pedido; private int hecho;
+            internal ApagaSuave(ISampleProvider s, int tasa) { src = s; ch = Math.Max(1, s.WaveFormat.Channels); largo = Math.Max(1, tasa * ApagaMs / 1000); }
+            internal void Pide() { pedido = true; }
+            internal bool Pedido { get { return pedido; } }
+            public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(Span<float> d)
+            {
+                if (pedido && hecho >= largo) return 0;   // ya en silencio: se acabo
+                int n = src.Read(d);
+                if (!pedido || n <= 0) return n;
+                int cuadros = n / ch;
+                for (int f = 0; f < cuadros; f++)
+                {
+                    float g = hecho >= largo ? 0f : (float)(0.5 + 0.5 * Math.Cos(Math.PI * hecho / largo));
+                    for (int c = 0; c < ch; c++) d[f * ch + c] *= g;
+                    if (hecho < largo) hecho++;
+                }
+                return n;
+            }
+            public int Read(float[] b, int o, int c) { return Read(b.AsSpan(o, c)); }
+        }
         private static ISampleProvider A48(ISampleProvider musica)
         {
             try

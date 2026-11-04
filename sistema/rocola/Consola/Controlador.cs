@@ -690,7 +690,14 @@ namespace Rocola
             RevisaPrueba();
             if (salida != null)
             {
-                motor.Atiende(salida.CuadrosOidos);
+                if (saltar && salida.Sonando)
+                {
+                    // SALTAR SIN CHASQUIDO (SalidaAlsa.Apaga): la musica baja a cero en 60 ms y la salida acaba sola; mientras, no se
+                    // prepara ni releva nada (lo que entraria ya no se oiria)
+                    salida.Apaga();
+                    return;
+                }
+                if (!salida.Apagando) motor.Atiende(salida.CuadrosOidos);
                 CajaNegra(false);
                 if (!salida.Sonando || saltar)
                 {
