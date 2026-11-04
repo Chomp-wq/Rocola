@@ -277,15 +277,16 @@ namespace Rocola
         // tarjeta vuelva (como al volver la luz). Antes, cada intento fallido se comia una cancion pagada: en segundos, la cola entera.
         public void AcaboPorFallo()
         {
-            PlayItem p = nowPlaying;
-            AcaboLaSalida();
+            PlayItem p = CierraLaSalida();   // la que de verdad sonaba (con el relevo ya recogido), no la de antes
             if (p != null && !p.IsVideo && p.Song != null && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
             {
                 queue.Insert(0, p); RefrescaCola();
             }
             SaveState();
         }
-        public void AcaboLaSalida()
+        public void AcaboLaSalida() { CierraLaSalida(); }
+        // Devuelve la que sonaba al final (si la siguiente ya habia entrado por el relevo, esa).
+        private PlayItem CierraLaSalida()
         {
             Encadenado s = secuencia;
             if (s != null)
@@ -308,7 +309,9 @@ namespace Rocola
                 cadenaSonando = null; secuencia = null; tapMedido = null; pulso = null;
             }
             curTap = null; curSbr = null; curBass = null;
+            PlayItem ultima = nowPlaying;
             nowPlaying = null;
+            return ultima;
         }
     }
 }

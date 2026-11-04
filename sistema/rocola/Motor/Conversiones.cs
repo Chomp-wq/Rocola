@@ -22,6 +22,7 @@ namespace Rocola
     internal static class Conversiones
     {
         internal const int EsperaMaxMs = 20000;
+        internal static int MaxConvertirMs = 10 * 60 * 1000;   // un ffmpeg colgado se corta (ROCOLA_CONVERTIR_MAX_MS, para probarlo)
         internal const long ReservaBytes = 1024L * 1024 * 1024;
         private static readonly object llave = new object();
         private static readonly Queue<string> pendientes = new Queue<string>();
@@ -84,6 +85,7 @@ namespace Rocola
         private static void Trabaja()
         {
             Prioridad.Fondo();
+            int m; if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_CONVERTIR_MAX_MS"), out m) && m >= 1000) MaxConvertirMs = m;
             while (true)
             {
                 string ruta;
@@ -115,9 +117,15 @@ namespace Rocola
             try { p = Process.Start(pi); } catch (Exception ex) { return "sin ffmpeg (" + ex.Message + ")"; }
             using (p)
             {
-                string err = p.StandardError.ReadToEnd();
-                p.StandardOutput.ReadToEnd();
-                if (!p.WaitForExit(600000)) { try { p.Kill(); } catch { } try { File.Delete(tmp); } catch { } return "ffmpeg no acabo"; }
+                // lo que dice se lee aparte: leerlo de corrido esperaria a que acabe, y un ffmpeg colgado dejaria la conversion parada
+                // para siempre (y esa cancion en «se esta convirtiendo»)
+                StringBuilder dijo = new StringBuilder();
+                p.ErrorDataReceived += delegate (object o, DataReceivedEventArgs e) { if (e.Data != null) lock (dijo) if (dijo.Length < 4000) dijo.AppendLine(e.Data); };
+                p.OutputDataReceived += delegate { };
+                p.BeginErrorReadLine(); p.BeginOutputReadLine();
+                if (!p.WaitForExit(MaxConvertirMs)) { try { p.Kill(true); } catch { } try { p.WaitForExit(2000); } catch { } try { File.Delete(tmp); } catch { } return "ffmpeg no acabo en " + MaxConvertirMs / 1000 + " s"; }
+                p.WaitForExit();
+                string err; lock (dijo) err = dijo.ToString();
                 if (p.ExitCode != 0 || !File.Exists(tmp) || new FileInfo(tmp).Length < 1000)
                 {
                     try { File.Delete(tmp); } catch { }

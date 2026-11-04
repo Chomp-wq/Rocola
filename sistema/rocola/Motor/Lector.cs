@@ -45,11 +45,30 @@ namespace Rocola
                     if (h[0] == 'O' && h[1] == 'g' && h[2] == 'g' && h[3] == 'S') return "OGG";
                     if (h[0] == 'f' && h[1] == 'L' && h[2] == 'a' && h[3] == 'C') return "FLAC";
                     if (h[0] == 0x30 && h[1] == 0x26 && h[2] == 0xB2 && h[3] == 0x75 && h[4] == 0x8E && h[5] == 0x66) return "WMA";
-                    if (h[0] == 'R' && h[1] == 'I' && h[2] == 'F' && h[3] == 'F' && h[8] == 'W' && h[9] == 'A' && h[10] == 'V' && h[11] == 'E') return o == 0 ? "WAV" : null;
+                    if (h[0] == 'R' && h[1] == 'I' && h[2] == 'F' && h[3] == 'F' && h[8] == 'W' && h[9] == 'A' && h[10] == 'V' && h[11] == 'E')
+                        return o == 0 && WavSinComprimir(fs) ? "WAV" : null;   // un MP3 dentro de un WAV (formato 0x55): para mpg123, como siempre
                     return null;
                 }
             }
             catch { return null; }
+        }
+        // El formato del primer «fmt » de un RIFF/WAVE (fs justo despues de «WAVE»): PCM, coma flotante o extensible.
+        private static bool WavSinComprimir(FileStream fs)
+        {
+            byte[] c = new byte[8];
+            fs.Position = 12;
+            for (int i = 0; i < 16 && fs.Read(c, 0, 8) == 8; i++)
+            {
+                uint largo = BitConverter.ToUInt32(c, 4);
+                if (c[0] == 'f' && c[1] == 'm' && c[2] == 't' && c[3] == ' ')
+                {
+                    if (fs.Read(c, 0, 2) < 2) return false;
+                    int formato = BitConverter.ToUInt16(c, 0);
+                    return formato == 1 || formato == 3 || formato == 0xFFFE;
+                }
+                fs.Position += largo + (largo & 1);
+            }
+            return false;
         }
         // comoEstereo = false: con los canales del archivo (la medida del repaso mide un mono como mono, como en XP: LectorMedida).
         public LectorCancion(string ruta, bool comoEstereo)

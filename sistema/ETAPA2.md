@@ -1121,3 +1121,20 @@ Probado con la tarjeta de prueba (que no va a tiempo real: una canción de 30 mi
   marcarlas); al volver la carpeta, suenan las dos.
 
 **No probado en el A4.**
+
+## Extra (4-11-2026, novena parte): revisión de lo de hoy
+
+Tres fallos encontrados al revisar lo hecho hoy, arreglados:
+- **Un MP3 dentro de un WAV** (RIFF/WAVE con datos MPEG, formato 0x55; lo hacen algunos programas viejos) se tomaba por un WAV
+  renombrado y ya no sonaba. Ahora solo se abre como WAV si lleva sonido sin comprimir (PCM, coma flotante o extensible); lo demás va a
+  mpg123, como siempre (`LectorCancion.WavSinComprimir`). Probado: el MP3 dentro de un WAV, el WAV renombrado y el M4A renombrado, cada uno
+  por su camino.
+- **Un ffmpeg colgado** al convertir dejaba la conversión parada para siempre (leer lo que dice esperaba a que acabara, y el tope de
+  tiempo no llegaba a mirarse); esa canción se quedaba en «se está convirtiendo»: 20 s de espera y crédito devuelto cada vez. Ahora lo
+  que dice se lee aparte y a los 10 minutos se corta (con sus hijos); la canción queda como no convertible. Probado con un ffmpeg que no
+  acaba nunca: se corta, se devuelve el crédito y no queda ningún proceso.
+- **Si la tarjeta fallaba justo después del relevo** (la siguiente ya había entrado sin pausa), se volvía a poner la que ya había acabado
+  y se perdía la que sonaba. Ahora vuelve a la cola la que de verdad sonaba (`CierraLaSalida`).
+
+También revisado sin cambios: las lecturas de números de archivos (protegidas o solo de pruebas), los avisos del compilador que delatan
+fallos (no hay) y los guiones del sistema con shellcheck (solo avisa de `read -s`, que BusyBox sí entiende).
