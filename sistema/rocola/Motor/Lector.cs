@@ -172,6 +172,7 @@ namespace Rocola
             {
                 if (video != null) { if (Math.Abs((value - video.Posicion).TotalSeconds) > 0.05) throw new NotSupportedException("el sonido de un video solo se lee de corrido"); }
                 else if (rapido != null) rapido.Posicion = value; else if (mp3 != null) mp3.Time = value; else wav.CurrentTime = value;
+                huecos.Reinicia();
             }
         }
         private static readonly string[] ExtVideo = { ".mp4", ".avi", ".wmv", ".mpg", ".mpeg", ".mov", ".mkv", ".flv", ".m4v", ".vob", ".divx", ".3gp", ".asf" };   // las de XP (VideoExt)
@@ -193,16 +194,57 @@ namespace Rocola
         private float[] apoyo = new float[0];
         private int LeeArchivo(Span<float> d)
         {
-            if (rapido != null) return rapido.Read(d);
+            if (rapido != null) { int r = rapido.Read(d); huecos.Procesa(d.Slice(0, Math.Max(0, r)), canalesArchivo); return r; }
             if (video != null) return video.Read(d);
             if (mp3 == null) return muestras.Read(d);
             if (apoyo.Length < d.Length) apoyo = new float[d.Length];
             int n = mp3.ReadSamples(apoyo, 0, d.Length);
-            if (n > 0) apoyo.AsSpan(0, n).CopyTo(d);
+            if (n > 0) { apoyo.AsSpan(0, n).CopyTo(d); huecos.Procesa(d.Slice(0, n), canalesArchivo); }
             return Math.Max(0, n);
         }
+        private readonly HuecosMp3 huecos = new HuecosMp3();
 
         public void Dispose() { if (video != null) video.Dispose(); if (rapido != null) rapido.Dispose(); if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
+    }
+    // LOS HUECOS DE UN MP3 DANADO, SIN CHASQUIDO (4-11-2026). En una zona rota del archivo el descompresor da los cuadros que no puede
+    // leer como silencio exacto: la cancion cortaba de golpe a cero (un salto de hasta toda la escala: un chasquido fuerte en las
+    // bocinas) y volvia de golpe al reencontrar cuadros buenos. Aqui, solo cuando la musica cae EN SECO a cero exacto desde mas de
+    // -26 dBFS (en un MP3 sano el silencio digital llega bajando, nunca asi), el hueco se rellena con la ultima muestra bajando a cero en
+    // 3 ms, y lo que vuelve entra en 3 ms (si vuelve antes, las dos se cruzan). Los archivos sanos salen bit a bit.
+    internal sealed class HuecosMp3
+    {
+        internal const int Largo = 132;           // 3 ms a 44,1 kHz
+        private const float Brusco = 0.05f;       // -26 dBFS
+        private float u0, u1;                     // la ultima muestra (canal 0 y 1)
+        private bool enHueco, volvio;
+        private float c0, c1;                     // lo que se apaga
+        private int k, e;                         // cuadros de la caida y de la entrada
+        internal long Huecos;                     // cuantos se taparon (para la prueba)
+        internal void Reinicia() { enHueco = false; u0 = u1 = 0f; }
+        internal void Procesa(Span<float> d, int ch)
+        {
+            if (ch < 1 || ch > 2) return;
+            int cuadros = d.Length / ch;
+            for (int f = 0; f < cuadros; f++)
+            {
+                int i = f * ch;
+                float a = d[i], b = ch == 2 ? d[i + 1] : a;
+                if (!enHueco)
+                {
+                    if (a == 0f && b == 0f && (Math.Abs(u0) > Brusco || Math.Abs(u1) > Brusco))
+                    { enHueco = true; volvio = false; c0 = u0; c1 = u1; k = 0; e = 0; Huecos++; }
+                    else { u0 = a; u1 = b; continue; }
+                }
+                float gc = k < Largo ? (float)(0.5 + 0.5 * Math.Cos(Math.PI * (k + 1) / Largo)) : 0f; k++;
+                if (!volvio && (a != 0f || b != 0f)) volvio = true;
+                float ge = 0f;
+                if (volvio) { ge = (float)(0.5 - 0.5 * Math.Cos(Math.PI * (e + 1) / Largo)); e++; }
+                float o0 = a * ge + c0 * gc, o1 = b * ge + c1 * gc;
+                d[i] = o0; if (ch == 2) d[i + 1] = o1;
+                u0 = o0; u1 = o1;
+                if (volvio && e >= Largo && k >= Largo) { enHueco = false; u0 = a; u1 = b; }
+            }
+        }
     }
     // Un «MP3» que no lo es (LectorCancion.OtroFormato): Convirtiendose = su copia en WAV esta en marcha (vale la pena esperarla).
     internal sealed class NoEsMp3Exception : NotSupportedException

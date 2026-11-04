@@ -1089,3 +1089,16 @@ portada y lo aprendido siguen siendo del original, y si el original cambia se co
 Probado con un M4A de 4 s renombrado: pedido, se convierte y suena entero gastando un crédito; con un ffmpeg frenado 25 s, a los 20 s se
 devuelve el crédito y la copia queda lista; pedido otra vez, suena al momento aunque no haya ffmpeg; sin ffmpeg, devuelve el crédito y
 apunta por qué. El original sale igual byte a byte. Aquí convertir 4 min tarda 0,9 s; **en el A4 no está medido.**
+
+## Extra (4-11-2026, séptima parte): los huecos de un MP3 dañado, sin chasquido
+
+- **El fallo:** en una zona rota del archivo (unos KB dañados a media canción), el descompresor da los cuadros que no puede leer como
+  silencio exacto: la canción caía de golpe a cero (medido: un salto de 0,65 de la escala, un chasquido fuerte en las bocinas), unos
+  20 ms de silencio, y volvía de golpe.
+- **Ahora** (`Lector.cs: HuecosMp3`, en el lector de los MP3, para sonar y para medir): solo cuando la música cae **en seco** a cero
+  exacto desde más de −26 dBFS (en un MP3 sano el silencio digital llega bajando, nunca así), el hueco se rellena con la última muestra
+  bajando a cero en 3 ms y lo que vuelve entra en 3 ms (si vuelve antes, se cruzan). Automático.
+
+Probado con un tono de 20 s en MP3 con 8 KB de basura a la mitad: el peor salto entre muestras pasa de 0,649 a 0,065 (el del propio tono
+es 0,056). El MP3 sano sale igual que con el programa anterior (la única diferencia, ±2 de 32768, es la del dither, la misma que hay
+entre dos pasadas del mismo programa). **No probado en el A4.**
