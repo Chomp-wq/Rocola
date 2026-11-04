@@ -1005,5 +1005,9 @@ WaveOut). En Rocola OS la salida es de la rocola (`SalidaAlsa.Apaga`, `ApagaSuav
 sigue baja a cero en 60 ms (media curva de coseno) y la salida acaba sola (drain). El salto llega unos 0,35 s después del botón (en XP,
 0,75 s). Mientras baja no se prepara ni se releva nada. No toca ningún volumen del sistema: es la música la que baja. Automático.
 
+Lo mismo **al apagar la rocola** (el botón de encendido o la orden de apagar) y **al cortar una prueba de bocinas o de bandas** porque
+entra la música (`CierraSuave` en el Controlador: espera como mucho medio segundo a que baje y acabe; si no, se cierra como antes).
+Los vídeos no: mpv se cierra por su cuenta.
+
 Probado con una tarjeta ALSA que graba a archivo y un tono de 1 kHz a 0,8: baja de 0,80 a 0,00 en 60 ms, la última muestra es 0 y ningún
 paso entre muestras es mayor que el del propio tono (antes podía quedar un escalón de hasta 0,8). **No probado en el A4.**

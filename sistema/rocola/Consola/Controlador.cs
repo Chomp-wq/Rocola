@@ -249,7 +249,7 @@ namespace Rocola
                 }
                 finally
                 {
-                    if (salida != null) { salida.Dispose(); salida = null; motor.AcaboLaSalida(); }
+                    if (salida != null) { CierraSuave(salida); salida = null; motor.AcaboLaSalida(); }   // al apagar, sin golpe (SalidaAlsa.Apaga)
                     if (video != null) { try { video.Kill(); } catch { } TerminaVideo(); }
                     if (Apagando) motor.CierreDelDia();   // el boton de encendido: como el cierre de XP, manana arranca limpia
                     else motor.GuardaEstado();
@@ -640,8 +640,19 @@ namespace Rocola
         private ISampleProvider pruebaTocando;
         private void CierraPrueba()
         {
-            if (salidaPrueba != null) { try { salidaPrueba.Dispose(); } catch { } }
+            if (salidaPrueba != null) { try { CierraSuave(salidaPrueba); } catch { } }
             salidaPrueba = null; pruebaTocando = null;
+        }
+        // CERRAR SIN GOLPE (4-11-2026): como al saltar, la salida baja a cero en 60 ms y acaba sola antes de cerrarla (al apagar la rocola
+        // y al cortar una prueba de bocinas o de bandas); si en medio segundo no acabo, se cierra como antes.
+        private static void CierraSuave(SalidaAlsa s)
+        {
+            try
+            {
+                if (s.Sonando) { s.Apaga(); int t0 = Environment.TickCount; while (s.Sonando && unchecked(Environment.TickCount - t0) < 500) Thread.Sleep(5); }
+            }
+            catch { }
+            s.Dispose();
         }
         private void RevisaPrueba()
         {
