@@ -1028,3 +1028,15 @@ paso entre muestras es mayor que el del propio tono (antes podía quedar un esca
 
 Probado con una tarjeta que no existe (`--dispositivo hw:99,0`), una moneda y tres canciones: las tres siguen en la cola, el crédito
 también, y el intento queda apuntado. **No probado en el A4.**
+
+## Extra (4-11-2026, tercera parte): volver de un corte sin chasquido
+
+- **Antes:** si el equipo se atascaba más que el colchón de la tarjeta (300 ms), la tarjeta se quedaba sin música, ALSA la recuperaba
+  y la canción seguía a media onda: además del hueco, un chasquido al volver.
+- **Ahora** (`SalidaAlsa.EntraSuave`): lo que sigue tras el corte entra en 10 ms (media curva de coseno), en las muestras ya convertidas
+  (16 o 24 bits), también si el corte cae a mitad de un bloque. Sin cortes no se toca nada (bit a bit). El hueco en sí no se puede
+  evitar (ya sonó); la caja negra lo sigue apuntando. Automático.
+
+Probado el cálculo con un tono de 1 kHz a 0,8 en 16 y 24 bits: tras el corte sale 0, a los 5 ms la mitad y a los 10 ms entero, sin
+saltos entre bloques. Un corte de verdad no se pudo provocar aquí (la tarjeta de prueba graba a archivo y nunca se queda sin
+música). **No probado en el A4.**

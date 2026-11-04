@@ -225,11 +225,13 @@ namespace Rocola
             if (!dicha) { dicha = true; try { Console.WriteLine("Sonido: el hilo de la salida va en " + PrioridadSonido); } catch { } }
             int cuadrosBloque = 1024, bytesCuadro = bytesMuestra * canales;
             byte[] b = new byte[cuadrosBloque * bytesCuadro];
+            int rampaLargo = Math.Max(1, tasaSalida * EntraMs / 1000), rampa = rampaLargo;   // rampa == largo: no hay entrada en curso
             while (!parar)
             {
                 int n = fuente.Read(b.AsSpan());
                 if (n <= 0) break;
                 int cuadros = n / bytesCuadro, hechos = 0;
+                if (rampa < rampaLargo) EntraSuave(b, 0, cuadros, ref rampa, rampaLargo);
                 fixed (byte* p = b)
                     while (hechos < cuadros && !parar)
                     {
@@ -238,6 +240,7 @@ namespace Rocola
                         {
                             if (snd_pcm_recover(pcm, (int)w, 1) < 0) { Fallo = true; parar = true; break; }   // la tarjeta no vuelve (se desconecto, error de E/S)
                             Interlocked.Increment(ref Recuperaciones);
+                            rampa = 0; EntraSuave(b, hechos, cuadros, ref rampa, rampaLargo);   // la tarjeta se quedo sin musica: se vuelve sin chasquido
                             continue;
                         }
                         hechos += (int)w; Interlocked.Add(ref escritos, w);
@@ -246,6 +249,25 @@ namespace Rocola
             }
             if (!parar) snd_pcm_drain(pcm);   // que suene lo que queda en la tarjeta
             Action a = Acabo; if (a != null && !parar) a();
+        }
+
+        // VOLVER DE UN CORTE SIN CHASQUIDO (4-11-2026): si la tarjeta se queda sin musica (el equipo se atasco mas que el colchon),
+        // ALSA la recupera y la cancion seguia a media onda: un chasquido encima del corte. Ahora lo que sigue entra en 10 ms (media
+        // curva de coseno), en las muestras ya convertidas (16 o 24 bits). Sin cortes no se toca nada (bit a bit). El corte en si, el
+        // hueco, no se puede evitar: ya sono.
+        internal const int EntraMs = 10;
+        private void EntraSuave(byte[] b, int desde, int hasta, ref int pos, int largo)
+        {
+            for (int f = desde; f < hasta && pos < largo; f++, pos++)
+            {
+                double g = 0.5 - 0.5 * Math.Cos(Math.PI * pos / largo);
+                for (int c = 0; c < canales; c++)
+                {
+                    int i = (f * canales + c) * bytesMuestra;
+                    if (bytesMuestra == 4) { int v = BitConverter.ToInt32(b, i); BitConverter.TryWriteBytes(b.AsSpan(i, 4), (int)Math.Round(v * g)); }
+                    else { short v = BitConverter.ToInt16(b, i); BitConverter.TryWriteBytes(b.AsSpan(i, 2), (short)Math.Round(v * g)); }
+                }
+            }
         }
 
         public void Espera() { if (hilo != null) hilo.Join(); }
