@@ -729,6 +729,18 @@ namespace Rocola
             cortesCancion = t;
         }
 
+        // SIN TARJETA, LA COLA ESPERA (4-11-2026; Form1.AcaboPorFallo): un fallo de la salida no se come la cancion; se vuelve a probar a
+        // los 2, 4, 8... s (hasta cada 30 s), diciendolo en pantalla. Al primer intento bueno, todo como siempre.
+        private int sinSonidoHasta, fallosSonido;
+        private void FalloSonido(string porque)
+        {
+            fallosSonido++;
+            int espera = Math.Min(30000, 2000 << Math.Min(4, fallosSonido - 1));
+            sinSonidoHasta = Environment.TickCount + espera;
+            Aviso("Sin sonido (" + porque + "). La cola se conserva: vuelvo a probar en " + espera / 1000 + " s");
+            if (fallosSonido == 1 || fallosSonido % 20 == 0) motor.ApuntaError("Sin sonido (intento " + fallosSonido + ")", new Exception(porque));
+        }
+
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
         private void Suena()
         {
@@ -738,14 +750,14 @@ namespace Rocola
                 if (v != null) { EmpiezaVideo(v); return; }
             }
             if (video != null) { SigueVideo(); return; }
-            if (salida == null && motor.EmpezarYa)
+            if (salida == null && (fallosSonido == 0 || unchecked(Environment.TickCount - sinSonidoHasta) >= 0) && motor.EmpezarYa)
             {
                 if (salidaPrueba != null || motor.PruebaActual != null) { motor.ParaPrueba(); CierraPrueba(); }   // la musica manda: la prueba se calla
                 ISampleProvider s = motor.EmpiezaSiguiente();
                 if (s != null)
                 {
-                    try { salida = new SalidaAlsa(s, dispositivo); salida.Empieza(); cortesVistos = 0; cortesCancion = motor.SonandoTitulo; }
-                    catch (Exception ex) { Aviso("No se pudo abrir el sonido: " + ex.Message); salida = null; motor.AcaboLaSalida(); }
+                    try { salida = new SalidaAlsa(s, dispositivo); salida.Empieza(); cortesVistos = 0; cortesCancion = motor.SonandoTitulo; fallosSonido = 0; }
+                    catch (Exception ex) { salida = null; FalloSonido(ex.Message); motor.AcaboPorFallo(); }
                     motor.GuardaEstado();
                 }
             }
@@ -764,8 +776,10 @@ namespace Rocola
                 if (!salida.Sonando || saltar)
                 {
                     CajaNegra(true);
+                    bool fallo = salida.Fallo && !saltar;
                     salida.Dispose(); salida = null; saltar = false;
-                    motor.AcaboLaSalida();
+                    if (fallo) { FalloSonido("la tarjeta dejo de responder"); motor.AcaboPorFallo(); }
+                    else motor.AcaboLaSalida();
                     motor.GuardaEstado();
                 }
             }

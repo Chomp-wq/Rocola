@@ -49,6 +49,7 @@ namespace Rocola
         }
         public readonly string Dispositivo;   // el que se abrio de verdad
         public bool Sonando { get { Thread h = hilo; return h != null && h.IsAlive; } }
+        public volatile bool Fallo;   // acabo porque la tarjeta fallo y no se recupero, no porque se acabara la musica (Controlador: la cola espera)
 
         public SalidaAlsa(ISampleProvider musica, string dispositivo = "default")
         {
@@ -235,7 +236,7 @@ namespace Rocola
                         long w = snd_pcm_writei(pcm, p + hechos * bytesCuadro, (ulong)(cuadros - hechos));
                         if (w < 0)
                         {
-                            if (snd_pcm_recover(pcm, (int)w, 1) < 0) { parar = true; break; }
+                            if (snd_pcm_recover(pcm, (int)w, 1) < 0) { Fallo = true; parar = true; break; }   // la tarjeta no vuelve (se desconecto, error de E/S)
                             Interlocked.Increment(ref Recuperaciones);
                             continue;
                         }

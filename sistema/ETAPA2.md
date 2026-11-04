@@ -1015,3 +1015,16 @@ cierre a propósito se tomaba por un fallo).
 
 Probado con una tarjeta ALSA que graba a archivo y un tono de 1 kHz a 0,8: baja de 0,80 a 0,00 en 60 ms, la última muestra es 0 y ningún
 paso entre muestras es mayor que el del propio tono (antes podía quedar un escalón de hasta 0,8). **No probado en el A4.**
+
+## Extra (4-11-2026, segunda parte): sin tarjeta de sonido, la cola espera
+
+- **El fallo:** si la tarjeta no abría (desconectada, ocupada, o el controlador aún sin cargar) o dejaba de responder a media canción,
+  la rocola daba la canción por terminada y pasaba a la siguiente: en segundos se comía toda la cola pagada sin que sonara nada.
+- **Ahora** (`Consola/Controlador.cs`, `Motor/Cola.cs: AcaboPorFallo`, `SalidaAlsa.Fallo`): la canción vuelve al principio de la cola
+  (los vídeos no, porque los pone mpv) y se vuelve a probar a los 2, 4, 8, 16 y después cada 30 s. Sale el aviso «Sin sonido (...). La cola
+  se conserva: vuelvo a probar en N s», y en `rocola_error.txt` se apuntan el primer intento y uno de cada 20 («[Sin sonido (intento N)]»).
+  Si la tarjeta deja de responder a media canción (ALSA no se recupera), esa canción se vuelve a poner entera. Cuando vuelve a abrir,
+  todo sigue como siempre. Saltar a mano no cuenta como fallo. Automático.
+
+Probado con una tarjeta que no existe (`--dispositivo hw:99,0`), una moneda y tres canciones: las tres siguen en la cola, el crédito
+también, y el intento queda apuntado. **No probado en el A4.**

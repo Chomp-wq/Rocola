@@ -234,6 +234,19 @@ namespace Rocola
 
         // LA SALIDA SE ACABO (o se paro): como RecogeAlParar y DisposePlaybackNow de XP. Si la siguiente ya habia entrado, pasa a sonar
         // y se cierra; la preparada que no entro vuelve a la cola; lo de la que sonaba se aprende y se guarda.
+        // SIN TARJETA, LA COLA ESPERA (Rocola OS, 4-11-2026). Si la salida no abre o se cae a media cancion (la tarjeta desconectada, un
+        // error de E/S), lo que sonaba no se da por oido: se cierra como siempre y vuelve al principio de la cola, para sonar entera cuando la
+        // tarjeta vuelva (como al volver la luz). Antes, cada intento fallido se comia una cancion pagada: en segundos, la cola entera.
+        public void AcaboPorFallo()
+        {
+            PlayItem p = nowPlaying;
+            AcaboLaSalida();
+            if (p != null && !p.IsVideo && p.Song != null && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
+            {
+                queue.Insert(0, p); RefrescaCola();
+            }
+            SaveState();
+        }
         public void AcaboLaSalida()
         {
             Encadenado s = secuencia;
