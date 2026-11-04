@@ -87,7 +87,10 @@ jobs:
   # instrucciones del Piledriver, con la pantalla de la UEFI (sirve con NVIDIA), dibujo por el procesador (llvmpipe), NVMe y sonido USB
   # (ROCOLA_PERFIL=pc, sistema/compila.sh). Solo prueba: su menu no tiene el instalador y rocola-instalar se niega. Se compila despues de
   # la del A4 (que no la espera para publicarse) y se anade a la misma version como disk-pc.img.gz.
+  # APAGADA (4-11-2026, el dueno: «cancela las compilaciones para mi PC»): no cabia en el tope de 6 h de GitHub. Para volver a
+  # encenderla, quitar el «if: false».
   compilar-pc:
+    if: false
     needs: compilar
     runs-on: ubuntu-24.04
     timeout-minutes: 355
