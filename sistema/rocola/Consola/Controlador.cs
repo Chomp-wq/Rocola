@@ -88,6 +88,7 @@ namespace Rocola
         internal string Guion;
         private const int DeGuion = -1000;
         private const int DeTexto = -100000;   // una letra para el buscador (pruebas)
+        private const int Atasca = -1000000;   // el bucle parado (pruebas del vigilante: solo desde un guion)
         private const int ConRegresar = 0x10000;   // la tecla llego con REGRESAR apretado
         private const int ConCtrl = 0x20000;       // ... o con Ctrl (Ctrl+F3: los ajustes del dueno, como en XP)
         private void CorreGuion()
@@ -97,6 +98,7 @@ namespace Rocola
                 string l = l0.Trim().ToLowerInvariant(); if (l.Length == 0 || l.StartsWith("#")) continue;
                 if (l.StartsWith("espera ")) { Thread.Sleep(int.Parse(l.Substring(7))); continue; }
                 if (l == "salir") { pulsos.Add(0); return; }
+                if (l.StartsWith("atasca ")) { pulsos.Add(Atasca - int.Parse(l.Substring(7))); continue; }   // el bucle se queda parado N ms (el vigilante)
                 if (l == "ctrl+f3") { pulsos.Add(0x72 | ConCtrl); Thread.Sleep(150); continue; }
                 if (l.StartsWith("escribe ")) { foreach (char ch in l.Substring(8).ToUpperInvariant()) pulsos.Add(DeTexto - ch); Thread.Sleep(150); continue; }   // (en el buscador abierto)
                 bool con = l.StartsWith("regresar+"); if (con) l = l.Substring(9);
@@ -108,6 +110,7 @@ namespace Rocola
 
         private void Tecla(int vk)
         {
+            if (vk <= Atasca) { Thread.Sleep(Atasca - vk); return; }
             if (DiagEscena >= 0) { AcabaDiagnostico("se toco un boton"); ultimoToque = Environment.TickCount; return; }   // cualquier boton corta el diagnostico
             bool enReposo = Reposo;
             ultimoToque = Environment.TickCount;
@@ -217,10 +220,13 @@ namespace Rocola
                     teclado.Start();
                 }
                 if (Guion != null) { Thread g = new Thread(CorreGuion) { IsBackground = true, Name = "guion" }; g.Start(); }
+                latido = Environment.TickCount;
+                new Thread(Vigila) { IsBackground = true, Name = "vigila el bucle" }.Start();
                 try
                 {
                     while (!salir)
                     {
+                        latido = Environment.TickCount;
                         // UN FALLO NO TUMBA LA ROCOLA (como XP): cada vuelta va protegida; el error se apunta en rocola_error.txt y se sigue.
                         try
                         {
@@ -262,6 +268,28 @@ namespace Rocola
                 }
             }
             return CodigoSalida;
+        }
+
+        // EL VIGILANTE DEL BUCLE (4-11-2026). Dibujar, poner la siguiente cancion y atender los botones van en el mismo bucle; si algo lo
+        // deja parado (la tarjeta grafica colgada dentro de su controlador, un disco que no responde), la cancion que suena acaba (va en
+        // su propio hilo) pero ya no entra otra ni responden los botones: la rocola muerta hasta que alguien la reinicie. Si el bucle no
+        // da una vuelta en BucleMaxMs, se apunta y el programa se cierra a proposito: /usr/bin/rocola lo vuelve a abrir a los 2 s, con
+        // los creditos y la cola guardados (lo que sonaba vuelve a empezar). Nada de esto toca un bucle que funciona.
+        private volatile int latido;
+        internal static int BucleMaxMs = 60000;
+        private void Vigila()
+        {
+            int m; if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_BUCLE_MAX_MS"), out m) && m >= 1000) BucleMaxMs = m;   // (para probarlo)
+            while (!salir)
+            {
+                Thread.Sleep(1000);
+                int parado = unchecked(Environment.TickCount - latido);
+                if (parado < BucleMaxMs || salir) continue;
+                string t = "El bucle de la rocola lleva " + parado / 1000 + " s parado: se cierra para que vuelva a abrirse";
+                try { Console.Error.WriteLine(t); } catch { }
+                try { File.AppendAllText(Path.Combine(Path.GetDirectoryName(motor.ArchivoBotones), "rocola_error.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + t + "]\r\n\r\n"); } catch { }
+                try { System.Diagnostics.Process.GetCurrentProcess().Kill(); } catch { Environment.Exit(70); }
+            }
         }
 
         private void Aviso(string t) { aviso = t; avisoHasta = Environment.TickCount + motor.AvisoVidaMs; AvisoDesde = Environment.TickCount | 1; }
@@ -605,7 +633,7 @@ namespace Rocola
                 pi.ArgumentList.Add("--"); pi.ArgumentList.Add(ruta);
                 pi.UseShellExecute = false;
                 pi.RedirectStandardError = true; pi.RedirectStandardOutput = true;
-                errorVideo = new StringBuilder(); videoDesde = Environment.TickCount;
+                errorVideo = new StringBuilder(); videoDesde = Environment.TickCount; videoRuta = ruta; videoAvanzo = 0;
                 video = System.Diagnostics.Process.Start(pi);
                 video.ErrorDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
                 video.OutputDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
@@ -628,7 +656,63 @@ namespace Rocola
             }
             // se le dio tiempo a bajar (o el canal de ordenes no respondio): ahora si se cierra
             if (!acabo && videoApagaDesde != 0 && unchecked(Environment.TickCount - videoApagaDesde) > VideoApagaMs + 100) { try { video.Kill(); } catch { } return; }
+            if (!acabo && videoApagaDesde == 0) MiraAvanceVideo();
             if (acabo) TerminaVideo();
+        }
+        // UN VIDEO QUE SE TRABA (4-11-2026): la rocola espera a que mpv acabe; si mpv se colgaba sin cerrarse, la rocola se quedaba en ese
+        // video para siempre (salvo que alguien saltara). Cada 10 s se le pregunta por donde va (time-pos, por su canal de ordenes, en un
+        // hilo aparte); si en VideoTrabadoMs no avanzo (o no contesta), se cierra como un salto y sigue la cola.
+        internal const int VideoTrabadoMs = 60000;
+        private volatile int videoPreguntando; private double videoPos = double.NaN; private int videoAvanzo, videoPregunto;
+        private void MiraAvanceVideo()
+        {
+            int ahora = Environment.TickCount;
+            if (videoAvanzo == 0) { videoAvanzo = ahora | 1; videoPregunto = ahora; videoPos = double.NaN; }
+            if (unchecked(ahora - videoAvanzo) > VideoTrabadoMs)
+            {
+                motor.ApuntaError("Video trabado", new Exception("«" + System.IO.Path.GetFileName(videoRuta) + "» no avanzo en " + VideoTrabadoMs / 1000 + " s: se cierra"));
+                videoAvanzo = 0; videoSaltado = true; videoApagaDesde = Environment.TickCount | 1;
+                try { video.Kill(); } catch { }
+                return;
+            }
+            if (unchecked(ahora - videoPregunto) < 10000 || videoPreguntando != 0) return;
+            videoPregunto = ahora; videoPreguntando = 1;
+            string ruta = mpvOrdenes;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    double p = PreguntaMpv(ruta, "time-pos");
+                    if (!double.IsNaN(p) && (double.IsNaN(videoPos) || Math.Abs(p - videoPos) > 0.5)) { videoPos = p; videoAvanzo = Environment.TickCount | 1; }
+                }
+                catch { }
+                finally { videoPreguntando = 0; }
+            });
+        }
+        private string videoRuta;
+        // Una propiedad numerica de mpv por su canal de ordenes; NaN si no contesta.
+        private static double PreguntaMpv(string ruta, string propiedad)
+        {
+            using (System.Net.Sockets.Socket s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified))
+            {
+                s.ReceiveTimeout = 2000; s.SendTimeout = 2000;
+                s.Connect(new System.Net.Sockets.UnixDomainSocketEndPoint(ruta));
+                s.Send(Encoding.UTF8.GetBytes("{\"command\":[\"get_property\",\"" + propiedad + "\"],\"request_id\":9}\n"));
+                byte[] b = new byte[4096]; StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < 8; i++)
+                {
+                    int n = s.Receive(b); if (n <= 0) break;
+                    sb.Append(Encoding.UTF8.GetString(b, 0, n));
+                    foreach (string l in sb.ToString().Split('\n'))
+                        if (l.Contains("\"request_id\":9"))
+                        {
+                            int k = l.IndexOf("\"data\":"); if (k < 0) return double.NaN;
+                            string v = l.Substring(k + 7); int fin = v.IndexOfAny(new[] { ',', '}' });
+                            double d; return double.TryParse(fin > 0 ? v.Substring(0, fin) : v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) ? d : double.NaN;
+                        }
+                }
+            }
+            return double.NaN;
         }
         // Por el canal de ordenes de mpv (JSON por un socket de Unix): donde va el sonido y que @fin baje de 1 a 0 en 0,3 s desde un poco
         // despues. En un hilo aparte (la pantalla no espera); si algo falla, el video se cierra igual a los 0,4 s, como antes pero mas tarde.

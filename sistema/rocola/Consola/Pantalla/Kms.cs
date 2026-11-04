@@ -39,6 +39,8 @@ namespace Rocola.Pantalla
         [DllImport(C, SetLastError = true)] private static extern int open(string ruta, int banderas);
         [DllImport(C)] private static extern int close(int fd);
         [DllImport(C)] private static extern IntPtr read(int fd, byte* b, IntPtr n);
+        [StructLayout(LayoutKind.Sequential)] private struct PollFd { public int fd; public short events, revents; }
+        [DllImport(C)] private static extern int poll(PollFd* f, ulong n, int ms);
         private const uint XRGB8888 = 0x34325258, USO_PANTALLA = 1, USO_DIBUJO = 4, PAGE_FLIP_EVENT = 1;
 
         private readonly int fd;
@@ -52,20 +54,45 @@ namespace Rocola.Pantalla
         public int Alto { get; private set; }
         public string Descripcion { get; private set; }
 
+        // 1024x768 a 60 Hz (VESA DMT): 65 MHz, sincronias negativas
+        private static Modo Vesa1024x768()
+        {
+            Modo m = new Modo { clock = 65000, hdisplay = 1024, hsync_start = 1048, hsync_end = 1184, htotal = 1344, vdisplay = 768, vsync_start = 771, vsync_end = 777, vtotal = 806, vrefresh = 60, flags = 0x2 | 0x8 /* -hsync -vsync */, type = 0x40 /* DRIVER */ };
+            byte[] n = System.Text.Encoding.ASCII.GetBytes("1024x768");
+            for (int i = 0; i < n.Length; i++) m.name[i] = n[i];
+            return m;
+        }
+        internal bool ACiegas { get; private set; }
+
         internal Kms(string tarjeta = "/dev/dri/card0")
         {
             fd = open(tarjeta, 2 /* O_RDWR */ | 0x80000 /* O_CLOEXEC */);
             if (fd < 0) throw new InvalidOperationException("no se pudo abrir " + tarjeta + " (" + Marshal.GetLastWin32Error() + ")");
             Res* r = drmModeGetResources(fd);
             if (r == null) throw new InvalidOperationException(tarjeta + " no es una tarjeta con KMS");
-            Conector* con = null;
+            // SIN MONITOR AL PRENDER (4-11-2026): con el monitor o la tele apagados (o en otra entrada) el controlador puede no ver ninguna
+            // pantalla «conectada», y la rocola se quedaba en modo texto toda la noche aunque despues prendieran el monitor. Como XP (que
+            // saca imagen siempre): si no hay ninguna conectada, la primera salida que exista, con su modo si lo dio o 1024x768 a 60 Hz
+            // (VESA, lo acepta cualquier monitor); al prender el monitor ya hay imagen.
+            Conector* con = null, otra = null;
             for (int i = 0; i < r->count_connectors && con == null; i++)
             {
                 Conector* c = drmModeGetConnector(fd, r->connectors[i]);
-                if (c != null && c->connection == 1 /* conectado */ && c->count_modes > 0) con = c; else if (c != null) drmModeFreeConnector(c);
+                if (c == null) continue;
+                if (c->connection == 1 /* conectado */ && c->count_modes > 0) con = c;
+                else if (otra == null && c->count_encoders > 0) otra = c;
+                else drmModeFreeConnector(c);
             }
-            if (con == null) { drmModeFreeResources(r); throw new InvalidOperationException("ninguna pantalla conectada"); }
+            bool aCiegas = false;
+            if (con == null && otra != null) { con = otra; otra = null; aCiegas = true; }
+            if (otra != null) drmModeFreeConnector(otra);
+            if (con == null) { drmModeFreeResources(r); throw new InvalidOperationException("ninguna salida de pantalla"); }
             int elegido = 0;
+            if (con->count_modes == 0)
+            {
+                modo = Vesa1024x768();
+                goto modoHecho;
+            }
             for (int i = 0; i < con->count_modes; i++) if ((con->modes[i].type & 8 /* PREFERRED */) != 0) { elegido = i; break; }
             // A esa resolucion, el refresco mas alto que de el monitor (75 Hz en vez de 60, si lo tiene): mas cuadros, movimiento mas liso
             for (int i = 0; i < con->count_modes; i++)
@@ -74,6 +101,8 @@ namespace Rocola.Pantalla
                 for (int i = 0, mejor = -1; i < con->count_modes; i++)
                     if (con->modes[i].hdisplay == 1024 && con->modes[i].vdisplay == 768 && (mejor < 0 || con->modes[i].vrefresh > con->modes[mejor].vrefresh)) { mejor = i; elegido = i; }
             modo = con->modes[elegido];
+        modoHecho:
+            ACiegas = aCiegas;
             conector = con->connector_id;
             uint crtcId = 0;
             if (con->encoder_id != 0) { Codificador* e = drmModeGetEncoder(fd, con->encoder_id); if (e != null) { crtcId = e->crtc_id; drmModeFreeEncoder(e); } }
@@ -96,7 +125,7 @@ namespace Rocola.Pantalla
             eglSup = EGL.CreateWindowSurface(egl, cfg, superficie, null);
             if (eglSup == IntPtr.Zero) throw new InvalidOperationException("EGL: sin superficie de ventana (" + EGL.GetError().ToString("x") + ")");
             EGL.MakeCurrent(egl, eglSup, eglSup, ctx);
-            Descripcion = Ancho + "x" + Alto + " a " + modo.vrefresh + " Hz, " + GL.Texto(GL.RENDERER);
+            Descripcion = Ancho + "x" + Alto + " a " + modo.vrefresh + " Hz, " + GL.Texto(GL.RENDERER) + (ACiegas ? " (sin monitor detectado al prender: salida a ciegas)" : "");
         }
 
         // Presenta lo dibujado: el cambio de pagina espera al barrido (no hay cortes). SIN ESPERAR AQUI (3-11-2026): se pide el cambio y
@@ -117,11 +146,20 @@ namespace Rocola.Pantalla
             return fb;
         }
         // Espera el aviso del cambio pedido: lo que estaba en pantalla se suelta y el pendiente pasa a estar en pantalla.
+        // CON LIMITE (4-11-2026): antes se esperaba el aviso sin tope; si no llegaba (la tarjeta colgada, el monitor o la tele que se
+        // desconectan y el controlador que deja de avisar), el bucle de la rocola se quedaba parado para siempre, y con el no entraba la
+        // siguiente cancion ni respondian los botones. Ahora, a los CambioMaxMs se sigue como si hubiera llegado (se apunta una vez).
+        internal const int CambioMaxMs = 500;
+        internal static long CambiosSinAviso;
         private void EsperaCambio()
         {
             if (!pendiente) return;
             byte* ev = stackalloc byte[1024];
-            read(fd, ev, (IntPtr)1024);
+            PollFd pf = new PollFd { fd = fd, events = 1 /* POLLIN */ };
+            int r = poll(&pf, 1, CambioMaxMs);
+            if (r > 0) read(fd, ev, (IntPtr)1024);
+            else if (System.Threading.Interlocked.Increment(ref CambiosSinAviso) == 1)
+                try { Console.Error.WriteLine("Pantalla: la tarjeta no aviso del cambio de cuadro en " + CambioMaxMs + " ms; se sigue sin esperar"); } catch { }
             pendiente = false;
             if (boActual != IntPtr.Zero) gbm_surface_release_buffer(superficie, boActual);
             boActual = boPendiente; boPendiente = IntPtr.Zero;

@@ -1174,3 +1174,29 @@ equipo da la vuelta cada 24,9 días y todas las cuentas con él la aguantan; los
 
 Revisado sin cambios: el registro `rocola.txt` escribe unas pocas líneas por canción (no llena el disco en años) y los respaldos guardan
 solo los 3 días más recientes. **No probado en el A4.**
+
+## Extra (4-11-2026, duodécima parte): lo grave en los gráficos y en el bucle de la rocola
+
+Dibujar, poner la siguiente canción y atender los botones van en el MISMO bucle: si el dibujo se traba, la canción que suena acaba (va
+en su propio hilo) pero ya no entra otra ni responden los botones.
+- **El cambio de cuadro, con límite** (`Kms.EsperaCambio`). Se esperaba el aviso de la tarjeta (`read` del DRM) sin tope: si no llegaba
+  (la tarjeta colgada, el monitor o la tele que se desconectan y el controlador que deja de avisar), la rocola quedaba muerta. Ahora se
+  espera con `poll` hasta 500 ms y, si no llega, se sigue (se apunta una vez en el registro).
+- **El vigilante del bucle** (`Controlador.Vigila`). Si el bucle no da una vuelta en 60 s por lo que sea (la tarjeta colgada dentro de
+  su controlador, un disco que no responde), se apunta en `rocola_error.txt` y el programa se cierra a propósito: `/usr/bin/rocola` lo
+  abre otra vez a los 2 s con los créditos y la cola guardados. Probado con el bucle parado a propósito (orden `atasca N` del guion de
+  pruebas, solo con `--guion`) y el límite en 2 s: se cerró, lo apuntó y el estado quedó guardado; con la rocola normal 15 s y el límite
+  en 1 s, nunca saltó.
+- **Sin monitor al prender** (`Kms`). Si el controlador no veía ninguna pantalla conectada (el monitor o la tele apagados, o en otra
+  entrada), la rocola se quedaba en modo texto toda la noche aunque después prendieran el monitor. Ahora, como XP, saca imagen igual: la
+  primera salida que exista, con su modo si lo dio o 1024x768 a 60 Hz (VESA); el registro dice «salida a ciegas». **No probado** (aquí no
+  hay tarjeta de verdad).
+- **Las portadas gigantes** (`Dibujo.Decodifica`). Una foto de cámara de 100 Mpx ocupa 400 MB descomprimida; en el A4 (3,5 GB) podía
+  acabar con la memoria y Linux mataría a la rocola. Ahora se lee primero la cabecera: más de 64 Mpx (o un archivo de más de 64 MB), sin
+  portada. Probado fuera de pantalla con una portada de 72 Mpx: dibuja normal, 183 MB de memoria en total.
+- **Un vídeo que se traba** (`Controlador.MiraAvanceVideo`). La rocola esperaba a que mpv acabara; un mpv colgado la dejaba en ese vídeo
+  para siempre. Ahora cada 10 s se le pregunta por dónde va (`time-pos`, en un hilo aparte); si en 60 s no avanzó o no contesta, se cierra
+  como un salto, se apunta y sigue la cola. Probado con mpv que `time-pos` avanza reproduciendo (1,96 → 5,00) y se queda quieto trabado.
+
+Revisado sin cambios: si un sombreador no compila en la Radeon, el vidrio se apaga solo y, si fallan los básicos, la rocola sigue en modo
+texto (no se cae); las texturas tienen tope (96 portadas, 6 grandes, 8 borrosas). **Nada de esto probado en el A4.**

@@ -818,13 +818,25 @@ namespace Rocola.Pantalla
                 Pon(l);
             }
         }
+        internal const long PortadaMaxPx = 64L * 1000 * 1000;
         // Leer y descomprimir (cualquier hilo: no toca la tarjeta).
         private Listo Decodifica(string ruta, Clase que, bool nitidas)
         {
             Listo l = new Listo { Ruta = ruta, Que = que };
             try
             {
-                ImageResult im = ImageResult.FromMemory(File.ReadAllBytes(ruta), ColorComponents.RedGreenBlueAlpha);
+                // LAS PORTADAS GIGANTES (4-11-2026): una foto de camara de 100 Mpx ocupa 400 MB descomprimida; en el A4 (3,5 GB) puede
+                // acabar con la memoria y Linux mata a la rocola entera. Primero solo la cabecera: mas de PortadaMaxPx (o un archivo de
+                // mas de 64 MB), sin portada, como una que no se puede leer.
+                byte[] bytes;
+                using (FileStream fs = File.OpenRead(ruta))
+                {
+                    if (fs.Length > 64L * 1024 * 1024) throw new InvalidDataException("portada demasiado grande (archivo)");
+                    ImageInfo? info = ImageInfo.FromStream(fs);
+                    if (info == null || (long)info.Value.Width * info.Value.Height > PortadaMaxPx) throw new InvalidDataException("portada demasiado grande o ilegible");
+                    fs.Position = 0; bytes = new byte[fs.Length]; fs.ReadExactly(bytes);
+                }
+                ImageResult im = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
                 if (que == Clase.Borrosa)
                 {
                     const int L = 24;
