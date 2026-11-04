@@ -23,6 +23,8 @@ export ROCOLA_ALSA=${ROCOLA_ALSA:-$(rocola-tarjeta)}
 # EL MATERIAL PARA ENTRENAR LA IA (3-11-2026): puede crecer a varios GB y datos.img mide 512 MB; instalada, va al disco de la rocola, junto
 # a la musica (MaterialIa.cs). Desde la memoria USB (sin ese disco) sigue en la carpeta de datos.
 [ -z "$ROCOLA_IA_DATOS" ] && [ -d /rocola/disco/rocola-os ] && export ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia
+# LOS «MP3» QUE NO LO SON, CONVERTIDOS A WAV (4-11-2026; Conversiones.cs): la copia va al disco de la musica, el original no se toca.
+[ -z "$ROCOLA_CONVERTIDAS" ] && [ -d /rocola/disco/rocola-os ] && export ROCOLA_CONVERTIDAS=/rocola/disco/rocola-os/convertidas
 volumen() {
 	T=$(rocola-tarjeta -c)
 	for c in Master PCM Speaker Headphone Front "Line Out"; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done

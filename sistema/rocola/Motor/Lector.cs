@@ -56,7 +56,18 @@ namespace Rocola
         {
             this.comoEstereo = comoEstereo;
             string otro = Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase) ? OtroFormato(ruta) : null;
-            if (otro != null && otro != "WAV") throw new NotSupportedException("no es un MP3: es " + otro + " con otro nombre");
+            if (otro != null && otro != "WAV")
+            {
+                // su copia en WAV (Conversiones.cs); si aun no esta, se pide y esta vez no se abre
+                string copia = Conversiones.Lista(ruta);
+                if (copia == null)
+                {
+                    string fallo = Conversiones.Fallo(ruta);
+                    if (fallo == null) Conversiones.Pide(ruta);
+                    throw new NoEsMp3Exception("no es un MP3: es " + otro + " con otro nombre" + (fallo != null ? " y no se pudo convertir (" + fallo + ")" : "; se esta convirtiendo"), fallo == null);
+                }
+                ruta = copia; otro = "WAV";
+            }
             if (otro == null && Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
                 MemoryStream limpio = Mp3DeUnaFrecuencia(ruta);
@@ -192,5 +203,11 @@ namespace Rocola
         }
 
         public void Dispose() { if (video != null) video.Dispose(); if (rapido != null) rapido.Dispose(); if (mp3 != null) mp3.Dispose(); if (wav != null) wav.Dispose(); }
+    }
+    // Un «MP3» que no lo es (LectorCancion.OtroFormato): Convirtiendose = su copia en WAV esta en marcha (vale la pena esperarla).
+    internal sealed class NoEsMp3Exception : NotSupportedException
+    {
+        internal readonly bool Convirtiendose;
+        internal NoEsMp3Exception(string m, bool convirtiendose) : base(m) { Convirtiendose = convirtiendose; }
     }
 }

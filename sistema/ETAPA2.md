@@ -1075,3 +1075,17 @@ quedan 2 créditos (antes, 1); el fallo queda en `rocola_error.txt`. **No probad
 
 Probado con un tono de 4 s: M4A, WMA y OGG renombrados ya no suenan (antes el M4A daba el golpe); el WAV renombrado suena entero, y un
 MP3 con etiqueta ID3 sale igual. **No probado en el A4.**
+
+**Después, decisión del dueño («que se convierta automáticamente para la próxima, o si no tarda mucho que lo convierta en ese mismo
+instante y reproduzca la canción»)** (`Motor/Conversiones.cs`): esos archivos se convierten con ffmpeg a un WAV de 16 bits con su
+frecuencia y sus canales, en una carpeta aparte (`ROCOLA_CONVERTIDAS`: en el disco de la música, `/rocola/disco/rocola-os/convertidas`;
+sin él, en la carpeta de datos). **El original no se toca.** Desde la copia suena y se mide como cualquier otra; las etiquetas, la
+portada y lo aprendido siguen siendo del original, y si el original cambia se convierte otra vez.
+- Se convierte cuando el repaso la encuentra o cuando alguien la pide, de una en una, con la prioridad más baja.
+- Pedida: espera al principio de la cola hasta 20 s («Preparando «…» (no es un MP3: se convierte)...») y suena. Si tarda más, se
+  devuelve el crédito y la conversión sigue: la próxima vez suena al momento.
+- Sin ffmpeg, con menos de 1 GB libre o si ffmpeg no puede: se devuelve el crédito y queda como dañada, con el motivo.
+
+Probado con un M4A de 4 s renombrado: pedido, se convierte y suena entero gastando un crédito; con un ffmpeg frenado 25 s, a los 20 s se
+devuelve el crédito y la copia queda lista; pedido otra vez, suena al momento aunque no haya ffmpeg; sin ffmpeg, devuelve el crédito y
+apunta por qué. El original sale igual byte a byte. Aquí convertir 4 min tarda 0,9 s; **en el A4 no está medido.**

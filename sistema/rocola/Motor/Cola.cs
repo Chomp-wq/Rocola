@@ -99,12 +99,24 @@ namespace Rocola
 
         // EMPIEZA LA SIGUIENTE DE LA COLA por el camino de siempre (como PlayNext: salida nueva). Lo que devuelve es lo que la salida
         // tiene que leer; null si la cola se acabo. Una que no se puede abrir se apunta y se salta, como en XP.
+        private PlayItem esperandoConversion; private int esperaDesde;
         public ISampleProvider EmpiezaSiguiente()
         {
             while (queue.Count > 0)
             {
                 PlayItem it = queue[0];
                 if (it.IsVideo) return null;   // los videos los toca quien toca (TomaVideo)
+                // UN «MP3» QUE NO LO ES Y SE ESTA CONVIRTIENDO (Conversiones.cs): espera al principio de la cola hasta EsperaMaxMs y suena;
+                // si tarda mas, se devuelve el credito y la conversion sigue para la proxima vez.
+                if (it.Song != null && Conversiones.Convirtiendo(it.Song.Path))
+                {
+                    if (!object.ReferenceEquals(esperandoConversion, it)) { esperandoConversion = it; esperaDesde = Environment.TickCount; Avisa("Preparando «" + it.Song.ToString() + "» (no es un MP3: se convierte)..."); }
+                    if (unchecked(Environment.TickCount - esperaDesde) < Conversiones.EsperaMaxMs) return null;   // se vuelve a mirar en el siguiente ciclo
+                    queue.RemoveAt(0); esperandoConversion = null; SaveState();
+                    DevuelveCredito("«" + it.Song.ToString() + "» tarda en convertirse (estara lista para la proxima)");
+                    continue;
+                }
+                if (object.ReferenceEquals(esperandoConversion, it)) esperandoConversion = null;
                 queue.RemoveAt(0);
                 try
                 {
@@ -117,6 +129,8 @@ namespace Rocola
                 catch (Exception ex)
                 {
                     LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null;
+                    NoEsMp3Exception nm = ex as NoEsMp3Exception;
+                    if (nm != null && nm.Convirtiendose) { queue.Insert(0, it); continue; }   // recien pedida su conversion: a esperarla (arriba)
                     try { danadas[it.Song.Path] = AudioFileSignature(it.Song.Path); } catch { }   // no se vuelve a cobrar (Pedido.Danada)
                     DevuelveCredito("No se pudo tocar «" + it.Song.ToString() + "»" + (ex is NotSupportedException ? " (" + ex.Message + ")" : ""));
                 }
