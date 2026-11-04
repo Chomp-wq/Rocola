@@ -226,11 +226,13 @@ namespace Rocola
             int cuadrosBloque = 1024, bytesCuadro = bytesMuestra * canales;
             byte[] b = new byte[cuadrosBloque * bytesCuadro];
             int rampaLargo = Math.Max(1, tasaSalida * EntraMs / 1000), rampa = rampaLargo;   // rampa == largo: no hay entrada en curso
+            int ultimo = 0;   // cuadros del ultimo bloque (su ultimo cuadro es lo ultimo que sono)
             while (!parar)
             {
                 int n = fuente.Read(b.AsSpan());
-                if (n <= 0) break;
+                if (n <= 0) { if (!parar && ultimo > 0) AcabaSuave(b, ultimo, rampaLargo); break; }
                 int cuadros = n / bytesCuadro, hechos = 0;
+                ultimo = cuadros;
                 if (rampa < rampaLargo) EntraSuave(b, 0, cuadros, ref rampa, rampaLargo);
                 fixed (byte* p = b)
                     while (hechos < cuadros && !parar)
@@ -269,6 +271,42 @@ namespace Rocola
                 }
             }
         }
+
+        // ACABAR SIN CHASQUIDO (4-11-2026): una cancion que acaba a media onda (un MP3 truncado, una descarga a medias, el disco que se
+        // quita) dejaba un escalon al silencio. Si lo ultimo que sono no es casi silencio (sobre -66 dBFS), se anade una cola de 10 ms
+        // que lleva ese ultimo valor a cero (media curva de coseno). Las que acaban en silencio, como siempre (bit a bit).
+        private unsafe void AcabaSuave(byte[] b, int cuadrosUltimo, int largo)
+        {
+            int bytesCuadro = bytesMuestra * canales, o = (cuadrosUltimo - 1) * bytesCuadro;
+            double[] v = new double[canales]; bool suena = false;
+            for (int c = 0; c < canales; c++)
+            {
+                v[c] = bytesMuestra == 4 ? BitConverter.ToInt32(b, o + c * 4) / 2147483648.0 : BitConverter.ToInt16(b, o + c * 2) / 32768.0;
+                if (Math.Abs(v[c]) > 1.0 / 2048) suena = true;
+            }
+            if (!suena) return;
+            byte[] cola = new byte[largo * bytesCuadro];
+            for (int f = 0; f < largo; f++)
+            {
+                double g = 0.5 + 0.5 * Math.Cos(Math.PI * (f + 1) / largo);
+                for (int c = 0; c < canales; c++)
+                {
+                    int i = (f * canales + c) * bytesMuestra;
+                    if (bytesMuestra == 4) BitConverter.TryWriteBytes(cola.AsSpan(i, 4), (int)Math.Round(v[c] * g * 2147483647.0));
+                    else BitConverter.TryWriteBytes(cola.AsSpan(i, 2), (short)Math.Round(v[c] * g * 32767.0));
+                }
+            }
+            int hechos = 0;
+            fixed (byte* p = cola)
+                while (hechos < largo && !parar)
+                {
+                    long w = snd_pcm_writei(pcm, p + hechos * bytesCuadro, (ulong)(largo - hechos));
+                    if (w < 0) { if (snd_pcm_recover(pcm, (int)w, 1) < 0) return; continue; }
+                    hechos += (int)w; Interlocked.Add(ref escritos, w);
+                }
+            Interlocked.Increment(ref ColasSuaves);
+        }
+        public long ColasSuaves;   // canciones que acabaron a media onda (para la prueba)
 
         public void Espera() { if (hilo != null) hilo.Join(); }
 

@@ -118,6 +118,7 @@ namespace Rocola
                             salida.Empieza();
                             while (salida.Sonando) { Thread.Sleep(100); motor.Atiende(salida.CuadrosOidos); cuenta(); }
                             if (salida.Recuperaciones > 0) Console.WriteLine("  (cortes recuperados: " + salida.Recuperaciones + ")");
+                            if (salida.ColasSuaves > 0) Console.WriteLine("  (acabo a media onda: cola de 10 ms)");
                         }
                     }
                 }
