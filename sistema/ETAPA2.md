@@ -1007,7 +1007,11 @@ sigue baja a cero en 60 ms (media curva de coseno) y la salida acaba sola (drain
 
 Lo mismo **al apagar la rocola** (el botón de encendido o la orden de apagar) y **al cortar una prueba de bocinas o de bandas** porque
 entra la música (`CierraSuave` en el Controlador: espera como mucho medio segundo a que baje y acabe; si no, se cierra como antes).
-Los vídeos no: mpv se cierra por su cuenta.
+**Los vídeos también** (`Controlador.ApagaVideo`): mpv lleva desde el principio un volumen `@fin` que no hace nada; al saltar, por su
+canal de órdenes (`--input-ipc-server`), se le pregunta por dónde va el sonido y se le pide que baje de 1 a 0 en 0,3 s; a los 0,4 s se
+cierra. Si el canal no responde, se cierra igual a los 0,4 s. Probado contra mpv 0.37 con el mismo código: el sonido baja parejo hasta
+cero y queda en silencio antes de cerrar. **Arreglado de paso:** al saltar un vídeo salía el aviso «No se pudo poner el video» (el
+cierre a propósito se tomaba por un fallo).
 
 Probado con una tarjeta ALSA que graba a archivo y un tono de 1 kHz a 0,8: baja de 0,80 a 0,00 en 60 ms, la última muestra es 0 y ningún
 paso entre muestras es mayor que el del propio tono (antes podía quedar un escalón de hasta 0,8). **No probado en el A4.**

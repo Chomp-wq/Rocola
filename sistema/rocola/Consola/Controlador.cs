@@ -587,7 +587,12 @@ namespace Rocola
                 // y el sonido siguen juntos. Medido o no, lo decide el motor (VolumenVideo).
                 double g = Math.Max(0.015625, Math.Min(64.0, motor.VolumenVideo(ruta)));
                 pi.ArgumentList.Add("--af=lavfi=[alimiter=level_in=" + g.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
-                    + ":limit=" + motor.TechoVideos.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ":attack=5:release=80:level=0:latency=1]");
+                    + ":limit=" + motor.TechoVideos.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ":attack=5:release=80:level=0:latency=1],@fin:lavfi=[volume=volume=1:eval=frame]");
+                // SALTAR UN VIDEO SIN GOLPE (4-11-2026): @fin no hace nada hasta que, al saltar, se le pide por el canal de ordenes de mpv que baje a
+                // cero en 0,3 s (ApagaVideo); despues se cierra. Antes se mataba mpv a media onda: un golpe seco en las bocinas.
+                mpvOrdenes = Path.Combine(Path.GetTempPath(), "rocola-mpv-" + Environment.ProcessId + ".sock");
+                try { File.Delete(mpvOrdenes); } catch { }
+                pi.ArgumentList.Add("--input-ipc-server=" + mpvOrdenes);
                 // la misma tarjeta que la musica (SalidaAlsa.Elige: la del amplificador, directa), no la 0 por su mezclador
                 string tarjeta = dispositivo == "default" ? SalidaAlsa.Elige() : dispositivo;
                 if (tarjeta != "default") pi.ArgumentList.Add("--audio-device=alsa/" + tarjeta);
@@ -602,11 +607,56 @@ namespace Rocola
             }
             catch (Exception ex) { Aviso("No se pudo poner el video: " + ex.Message); TerminaVideo(); }
         }
+        private string mpvOrdenes;
+        private int videoApagaDesde; private bool videoSaltado;
+        internal const int VideoApagaMs = 300;
         private void SigueVideo()
         {
             bool acabo; try { acabo = video.HasExited; } catch { acabo = true; }
-            if (saltar && !acabo) { try { video.Kill(); } catch { } saltar = false; return; }
+            if (saltar && !acabo)
+            {
+                saltar = false;
+                if (videoApagaDesde == 0) { videoApagaDesde = Environment.TickCount | 1; videoSaltado = true; ApagaVideo(); }
+                return;
+            }
+            // se le dio tiempo a bajar (o el canal de ordenes no respondio): ahora si se cierra
+            if (!acabo && videoApagaDesde != 0 && unchecked(Environment.TickCount - videoApagaDesde) > VideoApagaMs + 100) { try { video.Kill(); } catch { } return; }
             if (acabo) TerminaVideo();
+        }
+        // Por el canal de ordenes de mpv (JSON por un socket de Unix): donde va el sonido y que @fin baje de 1 a 0 en 0,3 s desde un poco
+        // despues. En un hilo aparte (la pantalla no espera); si algo falla, el video se cierra igual a los 0,4 s, como antes pero mas tarde.
+        private void ApagaVideo()
+        {
+            string ruta = mpvOrdenes;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    using (System.Net.Sockets.Socket s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified))
+                    {
+                        s.ReceiveTimeout = 200; s.SendTimeout = 200;
+                        s.Connect(new System.Net.Sockets.UnixDomainSocketEndPoint(ruta));
+                        s.Send(Encoding.UTF8.GetBytes("{\"command\":[\"get_property\",\"audio-pts\"],\"request_id\":7}\n"));
+                        byte[] b = new byte[4096]; StringBuilder sb = new StringBuilder(); double pts = double.NaN;
+                        for (int i = 0; i < 5 && double.IsNaN(pts); i++)
+                        {
+                            int n = s.Receive(b); if (n <= 0) break;
+                            sb.Append(Encoding.UTF8.GetString(b, 0, n));
+                            foreach (string l in sb.ToString().Split('\n'))
+                                if (l.Contains("\"request_id\":7") && l.Contains("\"data\":"))
+                                {
+                                    string v = l.Substring(l.IndexOf("\"data\":") + 7); int fin = v.IndexOfAny(new[] { ',', '}' });
+                                    double.TryParse(fin > 0 ? v.Substring(0, fin) : v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out pts);
+                                }
+                        }
+                        if (double.IsNaN(pts)) return;
+                        string expr = "max(0,1-(t-" + (pts + 0.05).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ")/" + (VideoApagaMs / 1000.0).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ")";
+                        s.Send(Encoding.UTF8.GetBytes("{\"command\":[\"af-command\",\"fin\",\"volume\",\"" + expr + "\"]}\n"));
+                        Thread.Sleep(50);
+                    }
+                }
+                catch { }
+            });
         }
         private void TerminaVideo()
         {
@@ -614,7 +664,7 @@ namespace Rocola
             {
                 int codigo = 0; try { video.WaitForExit(1000); codigo = video.ExitCode; } catch { }
                 string dijo; lock (errorVideo) dijo = errorVideo.ToString().Trim();
-                if (codigo != 0 && !saltar)
+                if (codigo != 0 && !saltar && !videoSaltado)   // saltado: cerrado a proposito, no es un fallo (antes salia «No se pudo poner el video»)
                 {
                     Console.Error.WriteLine("mpv salio con " + codigo + ": " + dijo);
                     if (dijo.Length == 0) try { dijo = File.ReadAllText("/tmp/rocola-mpv.txt").Trim(); } catch { }
@@ -628,7 +678,8 @@ namespace Rocola
                 }
                 try { video.Dispose(); } catch { } video = null;
             }
-            saltar = false;
+            saltar = false; videoSaltado = false; videoApagaDesde = 0;
+            if (mpvOrdenes != null) { try { File.Delete(mpvOrdenes); } catch { } }
             motor.PausaRepaso = false;
             motor.AcaboElVideo();
             if (vistaActual != null) vistaActual.Recupera();
