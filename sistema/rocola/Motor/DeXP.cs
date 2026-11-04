@@ -3663,6 +3663,7 @@ namespace Rocola
         // de Form1.Datos.cs
         private string estadoUltimo;           // el texto del ultimo encargo (null si lo ultimo fue borrar)
         // de Form1.Datos.cs
+        public static void GuardaSeguro(string ruta, string texto) { EscribeSeguroYa(ruta, texto); }
         private static void EscribeSeguroYa(string ruta, string texto)
         {
             string tmp = ruta + ".tmp", bak = ruta + ".bak";

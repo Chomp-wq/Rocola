@@ -146,7 +146,8 @@ namespace Rocola
             if (AsistentePaso < PasosAsistente.Length) return;
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 8; i++) sb.Append(ClavesAsistente[i]).Append('=').Append(capturas[i]).Append("\r\n");
-            try { File.WriteAllText(motor.ArchivoBotones, sb.ToString()); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
+            // de un tiron y con copia (.bak): un apagon al guardar no la deja a medias
+            try { Form1.GuardaSeguro(motor.ArchivoBotones, sb.ToString()); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
             if (botones != null) botones.Configura(motor.ArchivoBotones);
             AsistentePaso = -1;
             Aviso("¡Botones configurados!");

@@ -1138,3 +1138,20 @@ Tres fallos encontrados al revisar lo hecho hoy, arreglados:
 
 También revisado sin cambios: las lecturas de números de archivos (protegidas o solo de pruebas), los avisos del compilador que delatan
 fallos (no hay) y los guiones del sistema con shellcheck (solo avisa de `read -s`, que BusyBox sí entiende).
+
+## Extra (4-11-2026, décima parte): la hora que salta y los botones a medio guardar
+
+- **La hora que salta** (`Creditos.cs: MiraSaltoDeHora`). Al prender, la hora viene del reloj de la placa y poco después la pone la red
+  (NTP). Si el reloj de la placa iba mal (la pila gastada puede hacerlo arrancar en otro año), la hora saltaba de golpe y la rocola creía
+  que había cambiado el día del negocio: a los 15 min sin botones borraba los créditos y la cola que quedaron de un apagón. Ahora, una vez
+  por minuto, se compara lo que avanzó la hora con lo que avanzó el reloj del equipo (que no salta); si difieren más de 2 min, el día del
+  negocio se rehace con la hora nueva (un salto no es «llegaron las 7») y «hace cuánto que nadie toca» se corre lo mismo. El salto se
+  apunta en `rocola_error.txt`. **No probado** (aquí no se puede mover la hora del equipo); revisado y compilado.
+- **Los botones a medio guardar** (`Botones.Configura`, `Controlador.CapturaAsistente`). Era el único archivo importante que se escribía de
+  golpe (`File.WriteAllText`): un apagón justo al guardar la configuración de los botones podía dejarlo a medias, y la rocola arrancaba
+  pidiendo configurar los botones, sin que los clientes pudieran usarla. Ahora se guarda como lo demás (archivo de paso, `fsync`,
+  cambio de un tirón y copia `.bak`), y si el archivo está dañado se usa la copia. Probado: dañado con copia, arranca normal; dañado sin
+  copia, pide configurarlos (como antes).
+
+Revisado sin cambios: el guardado seguro de lo demás sí baja al disco en Linux (`FlushFileBuffers` es `fsync` en Rocola OS); el reloj del
+equipo da la vuelta cada 24,9 días y todas las cuentas con él la aguantan; los índices de los menús y del buscador están protegidos.

@@ -120,12 +120,36 @@ namespace Rocola
             int ahora = Environment.TickCount;
             if (unchecked(ahora - ultimoPeriodico) < 60000) return;
             ultimoPeriodico = ahora;
+            try { MiraSaltoDeHora(); } catch { }
             try { CheckBusinessDayReset(); } catch { }
             try { if (statsDirty) { statsDirty = false; SaveStats(true); } } catch { }
             try { SaveLoudCache(); FlushEqIfDirty(); } catch { }
             try { GuardaNoche(true); } catch { }   // lo mas pedido esta noche, si cambio
             try { MiraEntreno(); } catch { }        // IA1: entrenar la IA en reposo (IaNueva.cs)
         }
+
+        // LA HORA QUE SALTA (4-11-2026). Al prender, la hora viene del reloj de la placa; poco despues la pone la red (NTP, rocola-actualiza).
+        // Si el reloj de la placa iba mal (la pila gastada: puede arrancar en otro ano), la hora salta de golpe y la rocola creia que habia
+        // cambiado el dia del negocio: a los 15 min sin botones borraba los creditos y el estado que quedaron de un apagon. Un salto se
+        // reconoce porque la hora de pared avanza distinto que el reloj del equipo (que no salta); entonces el dia del negocio se rehace
+        // con la hora nueva (un salto no es «llegaron las 7») y lo de «hace cuanto que nadie toca» se corre lo mismo.
+        private DateTime paredAntes; private long relojAntes;
+        private void MiraSaltoDeHora()
+        {
+            DateTime pared = DateTime.Now; long reloj = Environment.TickCount64;
+            if (relojAntes != 0)
+            {
+                double salto = (pared - paredAntes).TotalMilliseconds - (reloj - relojAntes);
+                if (Math.Abs(salto) > SaltoDeHoraMs)
+                {
+                    stateDay = BusinessDay(pared);
+                    try { lastInput = lastInput.AddMilliseconds(salto); } catch { }
+                    LogError("La hora salto " + Math.Round(salto / 60000.0) + " min (" + paredAntes.ToString("yyyy-MM-dd HH:mm") + " -> " + pared.ToString("yyyy-MM-dd HH:mm") + "): no cuenta como dia nuevo", null);
+                }
+            }
+            paredAntes = pared; relojAntes = reloj;
+        }
+        internal const int SaltoDeHoraMs = 120000;
 
         // SALTAR con todo parado y la cola vacia (SkipSong de XP): borra los creditos que quedaron. Devuelve si habia.
         public bool BorraCreditos()

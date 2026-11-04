@@ -46,7 +46,20 @@ namespace Rocola
         // un teclado: flechas, Enter (poner), Retroceso (regresar), 5 (moneda) y S (saltar).
         private readonly Dictionary<int, Boton> funciones = new Dictionary<int, Boton>();
         public bool DeArchivo { get; private set; }
+        // Si el archivo esta danado o falta (un apagon al guardarlo), se usa la copia de antes (.bak, la deja el guardado seguro).
         public void Configura(string rocolaTeclas)
+        {
+            if (rocolaTeclas != null && !LeeTeclas(rocolaTeclas) && LeeTeclas(rocolaTeclas + ".bak")) return;
+            if (DeArchivo) return;
+            PorDefecto();
+        }
+        private void PorDefecto()
+        {
+            funciones.Clear(); DeArchivo = false;
+            funciones[0x26] = Boton.Arriba; funciones[0x28] = Boton.Abajo; funciones[0x25] = Boton.Izquierda; funciones[0x27] = Boton.Derecha;
+            funciones[0x0D] = Boton.Poner; funciones[0x08] = Boton.Regresar; funciones['5'] = Boton.Moneda; funciones['S'] = Boton.Saltar;
+        }
+        private bool LeeTeclas(string rocolaTeclas)
         {
             funciones.Clear(); DeArchivo = false;
             Dictionary<string, Boton> nombres = new Dictionary<string, Boton> {
@@ -69,9 +82,8 @@ namespace Rocola
                     }
             }
             catch { vale = false; }
-            if (vale && vistas.Count == 8) { foreach (KeyValuePair<int, Boton> kv in leidas) funciones[kv.Key] = kv.Value; DeArchivo = true; return; }
-            funciones[0x26] = Boton.Arriba; funciones[0x28] = Boton.Abajo; funciones[0x25] = Boton.Izquierda; funciones[0x27] = Boton.Derecha;
-            funciones[0x0D] = Boton.Poner; funciones[0x08] = Boton.Regresar; funciones['5'] = Boton.Moneda; funciones['S'] = Boton.Saltar;
+            if (vale && vistas.Count == 8) { foreach (KeyValuePair<int, Boton> kv in leidas) funciones[kv.Key] = kv.Value; DeArchivo = true; return true; }
+            return false;
         }
         public Boton FuncionDe(int codigoWindows) { Boton b; return funciones.TryGetValue(codigoWindows, out b) ? b : Boton.Ninguno; }
 
