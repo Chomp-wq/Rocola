@@ -3349,6 +3349,7 @@ namespace Rocola
         // de Form1.Datos.cs
         private void SaveState()
         {
+            if (estadoCongelado) return;   // cerrando: vale lo ya guardado (Creditos.cs: CongelaEstado)
             try
             {
                 StringBuilder sb = new StringBuilder(256);

@@ -1102,3 +1102,22 @@ apunta por qué. El original sale igual byte a byte. Aquí convertir 4 min tarda
 Probado con un tono de 20 s en MP3 con 8 KB de basura a la mitad: el peor salto entre muestras pasa de 0,649 a 0,065 (el del propio tono
 es 0,056). El MP3 sano sale igual que con el programa anterior (la única diferencia, ±2 de 32768, es la del dither, la misma que hay
 entre dos pasadas del mismo programa). **No probado en el A4.**
+
+## Extra (4-11-2026, octava parte): lo pagado no se pierde al cerrar ni si se desconecta el disco de la música
+
+- **Al cerrar sin el botón de encendido** (el vigilante que la vuelve a abrir tras un fallo, `salir`): la rocola daba por acabada la
+  canción que sonaba y DESPUÉS guardaba el estado, así que esa canción, ya pagada, se perdía (las de la cola sí quedaban). Ahora se
+  guarda antes de cerrar la salida y lo guardado ya no cambia hasta salir (`CongelaEstado`); al volver, la que sonaba empieza desde el
+  principio, como tras un apagón. El botón de encendido sigue borrando el estado del día (mañana arranca limpia).
+- **El disco de la música desconectado a media noche** (`Cola.cs`: `RaizConfiguradaAusente`, la misma comprobación que al arrancar):
+  cada canción de la cola habría fallado una tras otra (con lo de hoy, cada una devolviendo su crédito y quedando como dañada). Ahora la
+  cola espera con el aviso «Esperando el disco de música: la cola se conserva» (y una línea en `rocola_error.txt`) y sigue sola cuando
+  vuelve. Si no vuelve en 10 minutos, como antes: cada una devuelve su crédito.
+
+Probado con la tarjeta de prueba (que no va a tiempo real: una canción de 30 min «suena» en unos 36 s):
+- Cerrar a media canción con dos en cola: antes (con el programa de ayer y con el de esta mañana) quedaban solo las dos de la cola;
+  ahora quedan también la que sonaba y el crédito.
+- Quitar la carpeta de la música mientras suena la primera: al acabar, la cola espera con las otras dos (sin devolver créditos ni
+  marcarlas); al volver la carpeta, suenan las dos.
+
+**No probado en el A4.**

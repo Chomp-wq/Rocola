@@ -104,6 +104,9 @@ namespace Rocola
         public void CierreDelDia() { BorraEstado(); }
         // Guardar el estado (al empezar o acabar una cancion: lo que suena y la cola cambiaron).
         public void GuardaEstado() { SaveState(); }
+        // Al cerrar sin el boton de encendido: lo guardado ya no cambia (lo que se cierra despues no es «se acabo la cancion»).
+        public void CongelaEstado() { estadoCongelado = true; }
+        private volatile bool estadoCongelado;
 
         // ---- LO QUE EN XP HACEN LOS RELOJES DE LA VENTANA ----
         private DateTime lastInput = DateTime.Now;   // el ultimo boton (el reinicio de las 7 espera a que la rocola este ociosa)

@@ -249,10 +249,14 @@ namespace Rocola
                 }
                 finally
                 {
+                    // LA COLA SE GUARDA ANTES DE CERRAR LA SALIDA (4-11-2026): AcaboLaSalida da por acabada la que suena (y recoge el relevo
+                    // de la siguiente), asi que guardar despues perdia lo que sonaba y lo que esperaba, ya pagado, al cerrar sin el boton
+                    // de encendido (la actualizacion que reinicia, el vigilante). Lo que sonaba vuelve a empezar desde el principio, como
+                    // tras un apagon.
+                    if (!Apagando) { motor.GuardaEstado(); motor.CongelaEstado(); }
                     if (salida != null) { CierraSuave(salida); salida = null; motor.AcaboLaSalida(); }   // al apagar, sin golpe (SalidaAlsa.Apaga)
                     if (video != null) { try { video.Kill(); } catch { } TerminaVideo(); }
                     if (Apagando) motor.CierreDelDia();   // el boton de encendido: como el cierre de XP, manana arranca limpia
-                    else motor.GuardaEstado();
                 }
             }
             return CodigoSalida;

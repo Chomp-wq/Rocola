@@ -100,6 +100,7 @@ namespace Rocola
         // EMPIEZA LA SIGUIENTE DE LA COLA por el camino de siempre (como PlayNext: salida nueva). Lo que devuelve es lo que la salida
         // tiene que leer; null si la cola se acabo. Una que no se puede abrir se apunta y se salta, como en XP.
         private PlayItem esperandoConversion; private int esperaDesde;
+        private int discoFueraDesde; internal const int DiscoFueraMaxMs = 10 * 60 * 1000;
         public ISampleProvider EmpiezaSiguiente()
         {
             while (queue.Count > 0)
@@ -117,6 +118,14 @@ namespace Rocola
                     continue;
                 }
                 if (object.ReferenceEquals(esperandoConversion, it)) esperandoConversion = null;
+                // EL DISCO DE LA MUSICA DESCONECTADO (4-11-2026): como al arrancar (RestoreState), la cola espera a que vuelva en vez de
+                // fallar cancion por cancion (cada una devolveria su credito y quedaria como danada). Si no vuelve en 10 min, como antes.
+                if (it.Song != null && RaizConfiguradaAusente(it.Song.Path) != null)
+                {
+                    if (discoFueraDesde == 0) { discoFueraDesde = Environment.TickCount | 1; Avisa("Esperando el disco de musica: la cola se conserva"); LogError("Disco de musica desconectado: la cola espera", null); }
+                    if (unchecked(Environment.TickCount - discoFueraDesde) < DiscoFueraMaxMs) return null;
+                }
+                else if (discoFueraDesde != 0) { discoFueraDesde = 0; Avisa("Volvio el disco de musica"); }
                 queue.RemoveAt(0);
                 try
                 {
