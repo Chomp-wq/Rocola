@@ -47,6 +47,16 @@ namespace Rocola
             return it.VideoPath;
         }
         public void AcaboElVideo() { nowPlaying = null; SaveState(); }
+        // LO PAGADO QUE NO SONO (4-11-2026, decision del dueno): una cancion que no se puede abrir (archivo danado o que ya no esta) o
+        // un video que no arranca devuelve su credito, con aviso. En XP se apuntaba y se saltaba, y el credito se perdia. La que no
+        // abre queda como danada (no se puede volver a pedir mientras el archivo no cambie). Lo que la tarjeta no deja sonar no pasa
+        // por aqui: vuelve a la cola (AcaboPorFallo).
+        public void DevuelveCredito(string porque)
+        {
+            if (credits < int.MaxValue) credits++;
+            UpdateCredits(); SaveState();
+            Avisa(porque + ": se devuelve el credito");
+        }
         public int VolumenVideos { get { return videoVol; } }
         // EL VOLUMEN DE UN VIDEO EN ROCOLA OS (3-11-2026; en XP, VideoVolumeFor de Form1.Video.cs), como factor de la amplitud del archivo.
         // En XP el reproductor de Windows solo sabia BAJAR (0 a 100): por eso la perilla dejaba hueco (85) y un video flojo se quedaba
@@ -104,7 +114,12 @@ namespace Rocola
                     pulso = new MedidorPulso(secuencia);   // el pulso para la pantalla (no toca el sonido: Pulso.cs)
                     return pulso;
                 }
-                catch (Exception ex) { LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null; }
+                catch (Exception ex)
+                {
+                    LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null;
+                    try { danadas[it.Song.Path] = AudioFileSignature(it.Song.Path); } catch { }   // no se vuelve a cobrar (Pedido.Danada)
+                    DevuelveCredito("No se pudo tocar «" + it.Song.ToString() + "»");
+                }
             }
             return null;
         }

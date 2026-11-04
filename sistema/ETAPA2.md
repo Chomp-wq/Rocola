@@ -1052,3 +1052,15 @@ música). **No probado en el A4.**
 
 Probado con un tono de 440 Hz en MP3 cortado a la mitad y `fundido=0`: acaba con la cola y ningún paso entre muestras es mayor que el
 del propio tono (0,110). Con el fundido de fábrica no se añade nada. **No probado en el A4.**
+
+## Extra (4-11-2026, quinta parte): lo pagado que no suena devuelve su crédito (decisión del dueño)
+
+- **Antes (como en XP):** una canción pagada que no se podía abrir (archivo dañado o que ya no está) se apuntaba y se saltaba; el
+  crédito se perdía, y se podía volver a pedir y volver a perder.
+- **Ahora** (`Cola.cs: DevuelveCredito`, `EmpiezaSiguiente`): se devuelve el crédito con el aviso «No se pudo tocar «…»: se devuelve el
+  crédito», y la canción queda como dañada (no se puede volver a pedir mientras el archivo no cambie). Un vídeo cuyo mpv no arranca o
+  falla en los primeros 8 s también devuelve el suyo (`Controlador.VideoFalloMs`); si falla después, ya se vio: solo el aviso. Lo que la
+  tarjeta no deja sonar no pasa por aquí: vuelve a la cola (segunda parte). Automático.
+
+Probado con una biblioteca de tres canciones, una de ellas ilegible: una moneda (4 créditos), las tres pedidas, suenan las dos buenas y
+quedan 2 créditos (antes, 1); el fallo queda en `rocola_error.txt`. **No probado en el A4.**

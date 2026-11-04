@@ -599,15 +599,16 @@ namespace Rocola
                 pi.ArgumentList.Add("--"); pi.ArgumentList.Add(ruta);
                 pi.UseShellExecute = false;
                 pi.RedirectStandardError = true; pi.RedirectStandardOutput = true;
-                errorVideo = new StringBuilder();
+                errorVideo = new StringBuilder(); videoDesde = Environment.TickCount;
                 video = System.Diagnostics.Process.Start(pi);
                 video.ErrorDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
                 video.OutputDataReceived += delegate (object o, System.Diagnostics.DataReceivedEventArgs e) { if (e.Data != null) lock (errorVideo) errorVideo.AppendLine(e.Data); };
                 video.BeginErrorReadLine(); video.BeginOutputReadLine();
             }
-            catch (Exception ex) { Aviso("No se pudo poner el video: " + ex.Message); TerminaVideo(); }
+            catch (Exception ex) { try { if (video != null) { video.Kill(); video.Dispose(); } } catch { } video = null; motor.DevuelveCredito("No se pudo poner el video: " + ex.Message); TerminaVideo(); }
         }
         private string mpvOrdenes;
+        private int videoDesde; internal const int VideoFalloMs = 8000;   // un video que falla antes de 8 s no llego a verse: se devuelve su credito
         private int videoApagaDesde; private bool videoSaltado;
         internal const int VideoApagaMs = 300;
         private void SigueVideo()
@@ -674,7 +675,8 @@ namespace Rocola
                     foreach (string l in lineas)
                         if ((l.Contains("][e][") || l.Contains("][w][") || l.Contains("][f][")) && !l.Contains("Exiting")) malas.Add(l.Substring(l.IndexOf("][") + 4).Trim());
                     if (malas.Count > 0) { ultima = string.Join(" | ", malas.GetRange(Math.Max(0, malas.Count - 2), Math.Min(2, malas.Count))); if (ultima.Length > 150) ultima = ultima.Substring(0, 150); }
-                    Aviso("No se pudo poner el video (" + ultima + ")");
+                    if (unchecked(Environment.TickCount - videoDesde) < VideoFalloMs) motor.DevuelveCredito("No se pudo poner el video (" + ultima + ")");   // no llego a verse
+                    else Aviso("No se pudo poner el video (" + ultima + ")");
                 }
                 try { video.Dispose(); } catch { } video = null;
             }
