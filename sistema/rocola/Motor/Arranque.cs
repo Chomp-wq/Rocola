@@ -83,6 +83,19 @@ namespace Rocola
 
         // rocola_teclas.txt, el de los botones (el mismo de XP).
         public string ArchivoBotones { get { return RutaDatos("rocola_teclas.txt"); } }
+        // LA COPIA DE LOS BOTONES FUERA DE LO APRENDIDO (4-11-2026): en el disco de la musica (ROCOLA_COPIAS, la pone /usr/bin/rocola).
+        // Si datos.img se pierde, la rocola arrancaba pidiendo configurar los botones y los clientes no podian usarla; con la copia
+        // los botones siguen como estaban. null sin ese disco.
+        public string CopiaBotones
+        {
+            get
+            {
+                string d = Environment.GetEnvironmentVariable("ROCOLA_COPIAS");
+                if (string.IsNullOrEmpty(d)) return null;
+                try { Directory.CreateDirectory(d); } catch { return null; }
+                return Path.Combine(d, "rocola_teclas.txt");
+            }
+        }
 
         // La musica de los otros discos (Rocola OS: rocola-discos los monta en solo lectura y deja sus carpetas "musica" en
         // /run/rocola-musica, una por linea; ROCOLA_MUSICA_LISTA puede dar otro archivo). Se suman a las de "dir=", como en XP.

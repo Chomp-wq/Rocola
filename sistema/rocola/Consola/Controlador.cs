@@ -148,6 +148,7 @@ namespace Rocola
             for (int i = 0; i < 8; i++) sb.Append(ClavesAsistente[i]).Append('=').Append(capturas[i]).Append("\r\n");
             // de un tiron y con copia (.bak): un apagon al guardar no la deja a medias
             try { Form1.GuardaSeguro(motor.ArchivoBotones, sb.ToString()); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
+            try { string c = motor.CopiaBotones; if (c != null) Form1.GuardaSeguro(c, sb.ToString()); } catch { }   // y fuera de lo aprendido
             if (botones != null) botones.Configura(motor.ArchivoBotones);
             AsistentePaso = -1;
             Aviso("¡Botones configurados!");
@@ -201,7 +202,7 @@ namespace Rocola
             Prepara();
             using (Botones botones = new Botones())
             {
-                botones.Configura(motor.ArchivoBotones);
+                botones.Configura(motor.ArchivoBotones, motor.CopiaBotones);
                 this.botones = botones;
                 botones.PulsadoConRegresar += delegate (Boton b, int vk, bool conRegresar)
                 { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0) | (botones.TeclaApretada(0x11) ? ConCtrl : 0)); };
@@ -784,6 +785,7 @@ namespace Rocola
                 {
                     CajaNegra(true);
                     bool fallo = salida.Fallo && !saltar;
+                    if (salida.FalloLectura != null) motor.ApuntaError("Fallo al leer «" + motor.SonandoTitulo + "» (se acabo la cancion)", salida.FalloLectura);
                     salida.Dispose(); salida = null; saltar = false;
                     if (fallo) { FalloSonido("la tarjeta dejo de responder"); motor.AcaboPorFallo(); }
                     else motor.AcaboLaSalida();

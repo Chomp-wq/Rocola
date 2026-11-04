@@ -30,6 +30,13 @@ ln -s busybox "$I/bin/sh"
 for l in ld-linux-x86-64.so.2 libc.so.6 libresolv.so.2 libm.so.6; do
 	[ -e "$TARGET_DIR/lib/$l" ] && cp -L "$TARGET_DIR/lib/$l" "$I/lib/"
 done
+# e2fsck para reparar datos.img si no monta (BR2_PACKAGE_E2FSPROGS), con sus bibliotecas; si falta alguna, el init sigue como antes
+if [ -x "$TARGET_DIR/sbin/e2fsck" ]; then
+	cp -L "$TARGET_DIR/sbin/e2fsck" "$I/bin/"
+	for l in libext2fs.so.2 libcom_err.so.2 libe2p.so.2 libblkid.so.1 libuuid.so.1; do
+		for d in lib usr/lib; do [ -e "$TARGET_DIR/$d/$l" ] && { cp -L "$TARGET_DIR/$d/$l" "$I/lib/"; break; }; done
+	done
+fi
 cp "$BOARD_DIR/initramfs/init" "$I/init"; chmod 755 "$I/init"
 mkdir -p "$I/etc"; [ -e "$TARGET_DIR/etc/localtime" ] && cp -L "$TARGET_DIR/etc/localtime" "$I/etc/localtime"   # la hora de Mexico
 mkdir -p "$TARGET_DIR/usr/share/rocola/instalar"

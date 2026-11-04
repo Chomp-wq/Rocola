@@ -47,10 +47,20 @@ namespace Rocola
         private readonly Dictionary<int, Boton> funciones = new Dictionary<int, Boton>();
         public bool DeArchivo { get; private set; }
         // Si el archivo esta danado o falta (un apagon al guardarlo), se usa la copia de antes (.bak, la deja el guardado seguro).
-        public void Configura(string rocolaTeclas)
+        // Por orden: el archivo, su copia de antes (.bak) y la copia de fuera de lo aprendido (el disco de la musica).
+        public void Configura(string rocolaTeclas, string copia = null)
         {
-            if (rocolaTeclas != null && !LeeTeclas(rocolaTeclas) && LeeTeclas(rocolaTeclas + ".bak")) return;
-            if (DeArchivo) return;
+            if (rocolaTeclas != null && (LeeTeclas(rocolaTeclas) || LeeTeclas(rocolaTeclas + ".bak")))
+            {
+                // la copia de fuera, si aun no esta (una rocola configurada antes de que la hubiera)
+                try { if (copia != null && !System.IO.File.Exists(copia) && System.IO.File.Exists(rocolaTeclas)) System.IO.File.Copy(rocolaTeclas, copia); } catch { }
+                return;
+            }
+            if (copia != null && LeeTeclas(copia))
+            {
+                try { if (rocolaTeclas != null) { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(rocolaTeclas)); System.IO.File.Copy(copia, rocolaTeclas, true); } } catch { }   // vuelve a lo aprendido
+                return;
+            }
             PorDefecto();
         }
         private void PorDefecto()

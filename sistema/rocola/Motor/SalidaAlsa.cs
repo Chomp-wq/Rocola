@@ -229,7 +229,12 @@ namespace Rocola
             int ultimo = 0;   // cuadros del ultimo bloque (su ultimo cuadro es lo ultimo que sono)
             while (!parar)
             {
-                int n = fuente.Read(b.AsSpan());
+                // UN FALLO AL LEER NO TUMBA LA ROCOLA (4-11-2026): la cadena ya atrapa los suyos (Encadenado), pero lo que va despues
+                // (el pulso, el apagado suave, el convertidor a 48 kHz) no; un error sin atrapar en este hilo cerraba el programa entero
+                // (sin musica ni pantalla hasta que el vigilante lo volvia a abrir). Ahora se da por acabada la cancion y sigue la cola.
+                int n;
+                try { n = fuente.Read(b.AsSpan()); }
+                catch (Exception ex) { try { Console.Error.WriteLine("Sonido: fallo al leer (" + ex.GetType().Name + ": " + ex.Message + "): se acaba la cancion"); } catch { } FalloLectura = ex; n = 0; }
                 if (n <= 0) { if (!parar && ultimo > 0) AcabaSuave(b, ultimo, rampaLargo); break; }
                 int cuadros = n / bytesCuadro, hechos = 0;
                 ultimo = cuadros;
@@ -306,7 +311,8 @@ namespace Rocola
                 }
             Interlocked.Increment(ref ColasSuaves);
         }
-        public long ColasSuaves;   // canciones que acabaron a media onda (para la prueba)
+        public long ColasSuaves;
+        public volatile Exception FalloLectura;   // lo que fallo al leer (si fallo)   // canciones que acabaron a media onda (para la prueba)
 
         public void Espera() { if (hilo != null) hilo.Join(); }
 

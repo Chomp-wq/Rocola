@@ -99,6 +99,9 @@ BR2_PACKAGE_JQ=y
 BR2_PACKAGE_ETHTOOL=y
 # lo aprendido del sistema instalado (datos.img, ext4 con diario): lo hace post-build.sh con el mke2fs de la maquina que compila
 BR2_PACKAGE_HOST_E2FSPROGS=y
+# REPARAR LO APRENDIDO (4-11-2026): si datos.img no monta tras un apagon, el arranque lo repara con e2fsck -p y vuelve a probar
+# (initramfs/init; post-build.sh copia e2fsck y sus bibliotecas al initramfs). Sin esto la rocola arrancaba sin lo aprendido.
+BR2_PACKAGE_E2FSPROGS=y
 # LA HORA DE MEXICO (3-11-2026): sin zona horaria la rocola contaba en UTC; el reloj de la placa queda en hora local, como lo deja
 # Windows XP (S02hora y rocola-actualiza lo leen y lo escriben asi). Mexico no cambia de horario desde 2022 (lo sabe tzdata).
 BR2_TARGET_TZ_INFO=y

@@ -95,8 +95,21 @@ fi
 # Lo aprendido, aparte (si esta: una instalacion de antes de las dos copias lo tenia dentro del sistema)
 if [ -f "/disco$OS/datos.img" ]; then
 	mkdir -p /raiz/rocola/datos
-	losetup /dev/loop1 "/disco$OS/datos.img" && mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos \
-		|| { apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync; }
+	# si no monta (un apagon que lo dejo con errores), se repara (e2fsck -p: lo que se arregla sin preguntar; -y si con eso no
+	# basta) y se vuelve a probar; solo si aun asi no monta, la rocola arranca sin lo aprendido
+	if losetup /dev/loop1 "/disco$OS/datos.img"; then
+		if ! mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos 2>/dev/null; then
+			if [ -x /bin/e2fsck ]; then
+				echo "Rocola OS: reparando lo aprendido (datos.img)..."
+				/bin/e2fsck -p /dev/loop1 >/dev/null 2>&1; r=$?
+				[ $r -ge 4 ] && { /bin/e2fsck -fy /dev/loop1 >/dev/null 2>&1; r=$?; }
+				apunta "datos.img no montaba: e2fsck devolvio $r"
+			fi
+			mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos \
+				|| { apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync; }
+		fi
+	else apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync
+	fi
 fi
 mkdir -p /raiz/rocola/disco
 mount --move /disco /raiz/rocola/disco

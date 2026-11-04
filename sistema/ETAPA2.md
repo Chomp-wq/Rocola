@@ -1155,3 +1155,22 @@ fallos (no hay) y los guiones del sistema con shellcheck (solo avisa de `read -s
 
 Revisado sin cambios: el guardado seguro de lo demás sí baja al disco en Linux (`FlushFileBuffers` es `fsync` en Rocola OS); el reloj del
 equipo da la vuelta cada 24,9 días y todas las cuentas con él la aguantan; los índices de los menús y del buscador están protegidos.
+
+## Extra (4-11-2026, undécima parte): lo crítico — que no se caiga, que arranque con lo aprendido y que los botones sigan
+
+- **Un fallo al leer ya no tumba la rocola** (`SalidaAlsa.Bucle`). La cadena de cada canción atrapa sus errores (`Encadenado`), pero lo
+  que va después en el mismo hilo (el pulso de la pantalla, el apagado suave, el convertidor a 48 kHz) no; un error sin atrapar en el
+  hilo del sonido cierra el programa entero en .NET: sin música ni pantalla hasta que el vigilante lo volviera a abrir (perdiendo lo que
+  sonaba). Ahora la canción se da por acabada (con su cola de 10 ms), se apunta en `rocola_error.txt` y sigue la cola. Los demás hilos
+  de fondo (repaso, portadas, botones, conversión, IA) ya atrapaban los suyos: revisados uno por uno.
+- **Lo aprendido se repara al arrancar** (`initramfs/init`, `post-build.sh`, `BR2_PACKAGE_E2FSPROGS`). Si `datos.img` no montaba (un
+  apagón que lo dejó con errores más allá de lo que arregla el diario), la rocola arrancaba sin créditos, sin ajustes y sin los botones.
+  Ahora el arranque lo repara con `e2fsck -p` (y `-fy` si con eso no basta), lo apunta en `sistema.txt` y vuelve a montarlo. Probado aquí
+  el mismo par de pasos con un ext4 dañado a propósito: queda limpio. El arranque de verdad se prueba con la próxima imagen (GitHub).
+- **Los botones, también fuera de lo aprendido** (`Arranque.cs: CopiaBotones`, `ROCOLA_COPIAS` en `/usr/bin/rocola`: el disco de la
+  música, `rocola-os/copias`). Si se pierde `datos.img`, la rocola ya no arranca pidiendo configurar los botones (los clientes no podrían
+  usarla): toma la copia y la devuelve a su sitio. La copia se hace al configurar los botones y, si falta, al arrancar. Probado: con los
+  datos borrados y la copia, arranca normal y el archivo vuelve.
+
+Revisado sin cambios: el registro `rocola.txt` escribe unas pocas líneas por canción (no llena el disco en años) y los respaldos guardan
+solo los 3 días más recientes. **No probado en el A4.**
