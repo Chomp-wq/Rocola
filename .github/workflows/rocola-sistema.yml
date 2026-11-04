@@ -120,9 +120,22 @@ jobs:
             rocola-sistema-pc-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-
             rocola-sistema-pc-
             rocola-sistema-
+      # Se para SOLA a las 5 h (todo su grupo de procesos) antes del tope del paso: cortada por el tope de GitHub, sus make y cc1 seguian
+      # escribiendo en el ccache mientras se guardaba («file changed as we read it») y no se guardaba nada: cada intento empezaba de cero.
       - name: Compilar Rocola OS para cualquier PC
         timeout-minutes: 320
-        run: sh sistema/compila.sh
+        run: |
+          set +e
+          setsid sh sistema/compila.sh & P=$!
+          ( sleep 18000; echo "Se acabo el tiempo de esta vuelta: se para para guardar lo hecho"; kill -TERM -$P; sleep 60; kill -KILL -$P ) 2>/dev/null & W=$!
+          wait $P; r=$?
+          kill $W 2>/dev/null
+          exit $r
+      - name: Que no quede nada compilando
+        if: always()
+        run: |
+          pkill -9 -f 'make|ccache|cc1|ld\.bfd|ninja' 2>/dev/null || true
+          sleep 3
       - name: Guardar descargas y ccache (aunque la compilacion se haya cortado)
         if: always()
         uses: actions/cache/save@v4
