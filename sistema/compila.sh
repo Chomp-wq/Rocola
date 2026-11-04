@@ -24,7 +24,8 @@ if [ "${ROCOLA_PERFIL:-a4}" = pc ]; then
 	SALIDA="$TRABAJO/salida-pc"
 	if [ ! -f "$SALIDA/.config" ] || [ "$SISTEMA/configs/rocola_a4_defconfig" -nt "$SALIDA/.config" ] || [ "$SISTEMA/compila.sh" -nt "$SALIDA/.config" ]; then
 		mkdir -p "$SALIDA"
-		sed -e 's/^BR2_x86_piledriver=y/BR2_x86_x86_64=y/' -e 's/^BR2_TARGET_GENERIC_HOSTNAME="rocola"/BR2_TARGET_GENERIC_HOSTNAME="rocola-pc"/' \
+		# (sin r600, el controlador de la Radeon del A4: en una PC no sirve, y con el LLVM compilaba tambien su parte AMDGPU, horas de mas)
+		sed -e 's/^BR2_x86_piledriver=y/BR2_x86_x86_64=y/' -e '/^BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600=y/d' -e 's/^BR2_TARGET_GENERIC_HOSTNAME="rocola"/BR2_TARGET_GENERIC_HOSTNAME="rocola-pc"/' \
 		    -e 's|^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="\(.*\)"|BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="\1 $(BR2_EXTERNAL_ROCOLA_PATH)/board/rocola/linux-pc.fragment"|' \
 		    "$SISTEMA/configs/rocola_a4_defconfig" > "$SALIDA/rocola_pc_defconfig"
 		printf 'BR2_PACKAGE_MESA3D_LLVM=y\nBR2_PACKAGE_MESA3D_GALLIUM_DRIVER_LLVMPIPE=y\n' >> "$SALIDA/rocola_pc_defconfig"

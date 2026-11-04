@@ -90,7 +90,7 @@ jobs:
   compilar-pc:
     needs: compilar
     runs-on: ubuntu-24.04
-    timeout-minutes: 350
+    timeout-minutes: 355
     env:
       ROCOLA_TRABAJO: /home/runner/rocola-trabajo
       ROCOLA_SISTEMA_VERSION: ${{ github.run_number }}
@@ -107,8 +107,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Herramientas
         run: sudo apt-get update -q && sudo apt-get install -y -q build-essential cpio rsync bc unzip file clang zlib1g-dev qemu-system-x86 python3 cmake ninja-build
+      # Restaurar y guardar por separado: con actions/cache, si el trabajo se corta (el tope de GitHub son 6 h y la primera compilacion,
+      # con el LLVM, se paso) no se guardaba nada y el siguiente intento empezaba de cero. Asi se guarda siempre y el siguiente sigue.
       - name: Descargas y ccache de la vez anterior (las del PC)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             /home/runner/rocola-trabajo/descargas
@@ -119,7 +121,16 @@ jobs:
             rocola-sistema-pc-
             rocola-sistema-
       - name: Compilar Rocola OS para cualquier PC
+        timeout-minutes: 320
         run: sh sistema/compila.sh
+      - name: Guardar descargas y ccache (aunque la compilacion se haya cortado)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /home/runner/rocola-trabajo/descargas
+            /home/runner/rocola-trabajo/ccache
+          key: rocola-sistema-pc-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-${{ github.run_number }}-${{ github.run_attempt }}
       - name: Probar que arranca (entero, sin instrucciones del Piledriver, QEMU lo corre todo)
         run: |
           I=/home/runner/rocola-trabajo/salida-pc/images
