@@ -21,11 +21,43 @@ namespace Rocola
         private float[] mono = new float[0];
 
         public LectorCancion(string ruta) : this(ruta, true) { }
+        // LOS «MP3» QUE NO LO SON (4-11-2026): un M4A, WMA, OGG o FLAC al que le cambiaron el nombre a .mp3. mpg123 busca cuadros MPEG en
+        // cualquier cosa y en un M4A encontraba unos falsos: un golpe de ruido casi al maximo. Se mira la cabecera (despues de la etiqueta
+        // ID3 si la hay): un WAV renombrado se abre como WAV; los demas no se tocan (el aviso dice que son, y se devuelve el credito).
+        // null = parece MP3 (o no se sabe): como siempre.
+        internal static string OtroFormato(string ruta)
+        {
+            try
+            {
+                using (FileStream fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    byte[] h = new byte[16];
+                    if (fs.Read(h, 0, 10) < 10) return null;
+                    long o = 0;
+                    if (h[0] == 'I' && h[1] == 'D' && h[2] == '3')
+                    {
+                        o = 10 + ((h[6] & 0x7F) << 21 | (h[7] & 0x7F) << 14 | (h[8] & 0x7F) << 7 | (h[9] & 0x7F)) + ((h[5] & 0x10) != 0 ? 10 : 0);
+                        if (o >= fs.Length) return null;
+                    }
+                    fs.Position = o;
+                    if (fs.Read(h, 0, 16) < 12) return null;
+                    if (h[4] == 'f' && h[5] == 't' && h[6] == 'y' && h[7] == 'p') return "M4A/AAC";
+                    if (h[0] == 'O' && h[1] == 'g' && h[2] == 'g' && h[3] == 'S') return "OGG";
+                    if (h[0] == 'f' && h[1] == 'L' && h[2] == 'a' && h[3] == 'C') return "FLAC";
+                    if (h[0] == 0x30 && h[1] == 0x26 && h[2] == 0xB2 && h[3] == 0x75 && h[4] == 0x8E && h[5] == 0x66) return "WMA";
+                    if (h[0] == 'R' && h[1] == 'I' && h[2] == 'F' && h[3] == 'F' && h[8] == 'W' && h[9] == 'A' && h[10] == 'V' && h[11] == 'E') return o == 0 ? "WAV" : null;
+                    return null;
+                }
+            }
+            catch { return null; }
+        }
         // comoEstereo = false: con los canales del archivo (la medida del repaso mide un mono como mono, como en XP: LectorMedida).
         public LectorCancion(string ruta, bool comoEstereo)
         {
             this.comoEstereo = comoEstereo;
-            if (Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+            string otro = Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase) ? OtroFormato(ruta) : null;
+            if (otro != null && otro != "WAV") throw new NotSupportedException("no es un MP3: es " + otro + " con otro nombre");
+            if (otro == null && Path.GetExtension(ruta).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
             {
                 MemoryStream limpio = Mp3DeUnaFrecuencia(ruta);
                 if (limpio == null) rapido = Mpg123Lector.Abre(ruta);

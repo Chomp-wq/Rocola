@@ -118,7 +118,7 @@ namespace Rocola
                 {
                     LogError("No se pudo tocar " + System.IO.Path.GetFileName(it.Song.Path), ex); nowPlaying = null;
                     try { danadas[it.Song.Path] = AudioFileSignature(it.Song.Path); } catch { }   // no se vuelve a cobrar (Pedido.Danada)
-                    DevuelveCredito("No se pudo tocar «" + it.Song.ToString() + "»");
+                    DevuelveCredito("No se pudo tocar «" + it.Song.ToString() + "»" + (ex is NotSupportedException ? " (" + ex.Message + ")" : ""));
                 }
             }
             return null;

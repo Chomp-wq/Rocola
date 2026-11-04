@@ -1064,3 +1064,14 @@ del propio tono (0,110). Con el fundido de fábrica no se añade nada. **No prob
 
 Probado con una biblioteca de tres canciones, una de ellas ilegible: una moneda (4 créditos), las tres pedidas, suenan las dos buenas y
 quedan 2 créditos (antes, 1); el fallo queda en `rocola_error.txt`. **No probado en el A4.**
+
+## Extra (4-11-2026, sexta parte): los «MP3» que no lo son
+
+- **El fallo:** un M4A, WMA, OGG o FLAC renombrado a `.mp3` (pasa en las bibliotecas de bar). mpg123 busca cuadros MPEG en cualquier
+  cosa: en un M4A encontraba unos falsos y sonaba un golpe de ruido de 24 ms casi al máximo (0,83); los demás fallaban sin decir por qué.
+- **Ahora** (`LectorCancion.OtroFormato`): antes de abrir un `.mp3` se mira su cabecera (después de la etiqueta ID3 si la hay). Un WAV
+  renombrado suena como WAV; un M4A/AAC, WMA, OGG o FLAC no se toca: el aviso dice qué es («no es un MP3: es M4A/AAC con otro nombre»),
+  se devuelve el crédito y queda en `rocola_error.txt` para convertirlo. Los MP3 de verdad, como siempre. Automático.
+
+Probado con un tono de 4 s: M4A, WMA y OGG renombrados ya no suenan (antes el M4A daba el golpe); el WAV renombrado suena entero, y un
+MP3 con etiqueta ID3 sale igual. **No probado en el A4.**
