@@ -463,7 +463,7 @@ namespace Rocola
         private int masMirado;
         private void RevisaMas()
         {
-            if (dentro == null) { MasDisco = null; masDe = null; cursorMas = -1; deDonde.Clear(); return; }
+            if (dentro == null) { MasDisco = null; masDe = null; cursorMas = -1; deDonde.Clear(); if (!Buscando) volverAlBuscador = false; return; }
             int ahora = Environment.TickCount;
             if (object.ReferenceEquals(masDe, dentro) && masMirado != 0 && unchecked(ahora - masMirado) < 1500) return;
             if (!object.ReferenceEquals(masDe, dentro)) cursorMas = -1;
@@ -485,8 +485,13 @@ namespace Rocola
         {
             cursorMas = -1; masDe = null;
             if (deDonde.Count > 0) { dentro = deDonde.Pop(); cursorCancion = 0; }
-            else dentro = null;
+            else
+            {
+                dentro = null;
+                if (volverAlBuscador) { volverAlBuscador = false; Buscando = true; }   // (abierto desde el buscador y sin sitio en la pared: de vuelta al buscador)
+            }
         }
+        private bool volverAlBuscador;   // el disco abierto vino del buscador y no esta en la pared
 
         // SP6: al final del disco, las canciones de Spotify que le faltan (o ninguna: se quitan las que habia, si se apago).
         private void PonFaltantes(Form1.Disco dd, List<string> faltan)
@@ -580,7 +585,7 @@ namespace Rocola
                 else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
                 else if (b == Boton.Arriba && !RegresarApretado) { SentidoPagina = 1; int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Abajo && !RegresarApretado) { SentidoPagina = -1; int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
-                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; cursorMas = -1; deDonde.Clear(); motor.CargaSpotify(dentro); motor.FaltanEnDisco(dentro); }   // (SP6: lo que le falta llega en un momento)   // (uno de Spotify: sus canciones llegan en un momento)
+                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; cursorMas = -1; deDonde.Clear(); volverAlBuscador = false; motor.CargaSpotify(dentro); motor.FaltanEnDisco(dentro); }   // (SP6: lo que le falta llega en un momento)   // (uno de Spotify: sus canciones llegan en un momento)
             }
             else
             {
@@ -813,12 +818,21 @@ namespace Rocola
             if (r.Tipo == 2 && r.Ruta != null) { PideCancion(r.Ruta, r.Texto); return; }
             if (r.Carpeta == null) return;
             if (Form1.EsRutaSpotify(r.Carpeta))
-            {   // un disco o una lista de Spotify del buscador: se abre (dentro de la letra SPOTIFY si esta)
+            {   // un disco o una lista de Spotify del buscador: se abre directo
                 Form1.Disco d = motor.DiscoSpotifyDe(r.Carpeta);
                 if (d == null) return;
                 if (string.IsNullOrEmpty(d.Nombre)) d.Nombre = r.Texto;
-                int ls = letras.IndexOf(Form1.LetraSpotify);
-                if (ls >= 0) { letra = ls; int j = porLetra[Form1.LetraSpotify].IndexOf(d); cursorDisco = j >= 0 ? j : 0; }
+                // SI ESTA EN LA PARED (la letra SPOTIFY, o su letra con «Discos de Spotify en las letras»), la pared se queda en el, como
+                // con los tuyos, y REGRESAR vuelve a la pared. SI SOLO ESTA EN EL BUSCADOR (pedido del dueno del 7-11-2026), la pared no se
+                // mueve y REGRESAR vuelve al buscador, con lo que se habia escrito y la misma eleccion (alli no hay un sitio al que volver).
+                bool enPared = false;
+                for (int i = 0; i < letras.Count && !enPared; i++)
+                {
+                    if (letras[i] == Form1.LetraTop) continue;
+                    int j = porLetra[letras[i]].IndexOf(d);
+                    if (j >= 0) { letra = i; cursorDisco = j; enPared = true; }
+                }
+                volverAlBuscador = !enPared;
                 Buscando = false; dentro = d; cursorCancion = 0; cursorMas = -1; deDonde.Clear();
                 return;
             }
@@ -831,7 +845,7 @@ namespace Rocola
                     {
                         letra = i; cursorDisco = j; Buscando = false;
                         if (r.Tipo == 1) { dentro = l[j]; cursorCancion = 0; } else dentro = null;
-                        cursorMas = -1; deDonde.Clear();
+                        cursorMas = -1; deDonde.Clear(); volverAlBuscador = false;
                         return;
                     }
             }

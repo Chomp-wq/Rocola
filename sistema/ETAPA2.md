@@ -1453,3 +1453,16 @@ Pedido del dueño: «revisa que todo lo relacionado con Spotify no tenga fallas�
   el buscador, el modo noche sobre lo de Spotify, apagar el interruptor a media canción.
 - Probado con el `rocola-spotify` simulado (la pared, la tira, un artista que carga sus canciones al verlo); `rocola-spotify` compila con
   el cambio. Sin cuenta real ni A4.
+
+## Extra (7-11-2026, séptima parte): del buscador a un disco de Spotify, y de vuelta al buscador
+
+Pedido del dueño: «cuando en el buscador se busque un disco que solo está en Spotify, se lleva directamente al disco, y al salir del
+disco se regresará al buscador, ya que en este caso el disco no está en la pared de discos, solo en el buscador».
+
+- Un disco o una lista de Spotify del buscador **que no está en la pared** se abre directo (la pared no se mueve) y **REGRESAR vuelve al
+  buscador**, con lo que se había escrito y el mismo resultado elegido. Si desde ahí se abre otro de la tira «Más de…», REGRESAR vuelve
+  primero a ese disco y luego al buscador.
+- Si **sí está en la pared** (en la letra SPOTIFY, o en su letra con «Discos de Spotify en las letras»), la pared se queda en él y
+  REGRESAR vuelve a la pared, como con tus discos.
+- Probado con el `rocola-spotify` simulado: «Disco solo en Spotify» → dentro → REGRESAR → el buscador con «solo» y el disco elegido;
+  «Disco guardado» → REGRESAR → la pared, en él.
