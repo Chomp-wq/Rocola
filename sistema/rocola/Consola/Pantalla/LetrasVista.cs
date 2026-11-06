@@ -24,7 +24,7 @@ namespace Rocola
         private float[] letraY;   // donde empieza cada linea (desde arriba del texto)
         private float letraAlto;
 
-        private void LetrasApple(Controlador c, float W, float y0, float y1, float alfa)
+        private void LetrasApple(Controlador c, float W, float H, float y0, float y1, float alfa)
         {
             Form1 m = c.motor;
             Form1.Letra l = m.LetraSonando();
@@ -32,7 +32,8 @@ namespace Rocola
             double t = reloj.Elapsed.TotalSeconds, dt = Math.Max(0, Math.Min(0.1, t - letraT)); letraT = t;
             float yCredito = y1 - nChica.Tam * 1.2f;
             if (!string.IsNullOrEmpty(l.Proveedor)) y1 = yCredito - 10 * k;   // la letra acaba antes del credito (de quien es la letra)
-            Letra f = Titulo(Math.Max(24 * k, Math.Min(46 * k, (y1 - y0) / 6.5f)));
+            // (el tamano no depende del alto que va quedando mientras el panel sube: una letra por tamano, no una por cuadro)
+            Letra f = Titulo((float)Math.Round(Math.Max(24 * k, Math.Min(46 * k, H / 17f))));
             float x0 = 48 * k, ancho = Math.Min(W * 0.62f, W - x0 - 260 * k);
             // el texto, envuelto (una vez por letra y tamano)
             if (!object.ReferenceEquals(l, letraVista) || letraAncho != ancho || letraTam != f.Tam)

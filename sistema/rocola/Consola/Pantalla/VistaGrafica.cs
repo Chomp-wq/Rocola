@@ -127,7 +127,7 @@ namespace Rocola
             {
                 float ph = Math.Min(H, Math.Max(220 * k, Math.Min(340 * k, H * 0.32f)));
                 float top = abajo - (ph - (H - abajo)) * e;
-                if (e > 0.5f) LetrasApple(c, W, 84 * k, top - 28 * k, (e - 0.5f) * 2f);   // SP1: la letra, sobre el cielo (LetrasVista.cs)
+                if (e > 0.5f) LetrasApple(c, W, H, 84 * k, top - 28 * k, (e - 0.5f) * 2f);   // SP1: la letra, sobre el cielo (LetrasVista.cs)
                 if (e < 0.5f) Suena(c, W, H, top); else Extendido(c, W, H, top);
                 abajo = Math.Min(abajo, top - 40 * k);   // el aviso, encima del panel
             }

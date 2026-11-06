@@ -95,6 +95,11 @@ namespace Rocola
         }
         private void Empareja()
         {
+            try { EmparejaVueltas(); }
+            catch (Exception ex) { LogError("Spotify: el emparejador", ex); }   // (una excepcion aqui cerraria la rocola entera)
+        }
+        private void EmparejaVueltas()
+        {
             while (true)
             {
                 long ahora = DateTime.UtcNow.Ticks, mes = TimeSpan.FromDays(30).Ticks;
@@ -110,14 +115,16 @@ namespace Rocola
                     Pareja ya; lock (spotifyCerrojo) parejas.TryGetValue(t.Path, out ya);
                     if (ya != null && (!ya.Ninguna || ahora - ya.Fecha < mes)) continue;
                     if (!(SegundosDe(t.Path) > 10f)) { pendientes++; continue; }   // sin la duracion (el repaso aun no la mide) no se puede asegurar: en la otra vuelta
-                    try { BuscaPareja(s, t); } catch (Exception ex) { LogError("Spotify: emparejar " + Path.GetFileName(t.Path), ex); }
-                    Thread.Sleep(2500);
+                    bool contesto = true;
+                    try { contesto = BuscaPareja(s, t); } catch (Exception ex) { LogError("Spotify: emparejar " + Path.GetFileName(t.Path), ex); }
+                    Thread.Sleep(contesto ? 2500 : 60000);   // sin respuesta (Spotify pone limite de consultas): un minuto
                 }
                 // otra vuelta en 2 minutos: las que aun no tenian duracion, y las canciones nuevas
                 for (int i = 0; i < 120; i++) { Thread.Sleep(1000); if (spotify == null || !SpotifyOn || cerrandoEntreno) return; }
             }
         }
-        private void BuscaPareja(SpotifyEnVivo s, Track t)
+        // Falso si Spotify no contesto (se espera antes de la siguiente).
+        private bool BuscaPareja(SpotifyEnVivo s, Track t)
         {
             try { t.EnsureTags(); } catch { }
             string titulo = Normaliza(TituloSinPista(string.IsNullOrEmpty(t.Title) ? Path.GetFileNameWithoutExtension(t.Path) : t.Title));
@@ -128,13 +135,13 @@ namespace Rocola
             {   // sin titulo, artista o duracion no se puede asegurar que sea la misma: queda sin pareja (se vuelve a mirar en 30 dias)
                 s.Apunta("sin pareja posible (titulo «" + titulo + "», artista «" + artista + "», " + seg.ToString("0", CultureInfo.InvariantCulture) + " s): " + Path.GetFileName(t.Path));
                 ApuntaPareja(t.Path, new Pareja { Ninguna = true, Fecha = DateTime.UtcNow.Ticks });
-                return;
+                return true;
             }
             string q = "track:" + titulo + " artist:" + artista;
             Pareja mejor = null; double dmejor = 2.0;
             using (JsonDocument d = Api(s, "/v1/search?type=track&limit=5&q=" + Q(q)))
             {
-                if (d == null) return;   // (la red o Spotify: se reintenta la proxima vuelta)
+                if (d == null) return false;   // (la red o Spotify: se reintenta la proxima vuelta)
                 if (d.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.TryGetProperty("items", out JsonElement it))
                     foreach (JsonElement x in it.EnumerateArray())
                     {
@@ -164,7 +171,7 @@ namespace Rocola
                         };
                     }
             }
-            if (mejor == null) { ApuntaPareja(t.Path, new Pareja { Ninguna = true, Fecha = DateTime.UtcNow.Ticks }); return; }
+            if (mejor == null) { ApuntaPareja(t.Path, new Pareja { Ninguna = true, Fecha = DateTime.UtcNow.Ticks }); return true; }
             mejor.Fecha = DateTime.UtcNow.Ticks;
             // SP5: el genero del artista (para las canciones que no lo traen)
             if (mejor.ArtistaId.Length > 0)
@@ -178,6 +185,7 @@ namespace Rocola
             ApuntaPareja(t.Path, mejor);
             PonGeneroDeSpotify(t, mejor);
             PonPortadaDeSpotify(s, t.Path, mejor);
+            return true;
         }
         // El disco de una cancion de la biblioteca (el indice, o buscandola en los discos si aun no esta).
         private Album DiscoDe(string ruta)
@@ -193,6 +201,14 @@ namespace Rocola
         internal static string Normaliza(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
+            // «Titulo - Remastered 2011», «Titulo - En vivo», «Titulo - Live at...», «Titulo - Radio Edit»: lo de despues del guion, fuera
+            int g = s.LastIndexOf(" - ", StringComparison.Ordinal);
+            if (g > 0)
+            {
+                string cola = s.Substring(g + 3).ToLowerInvariant();
+                foreach (string w in new[] { "remaster", "live", "en vivo", "version", "versión", "edit", "mono", "stereo", "estéreo", "mix", "acoustic", "acústic" })
+                    if (cola.Contains(w)) { s = s.Substring(0, g); break; }
+            }
             string d = s.Normalize(NormalizationForm.FormD);
             StringBuilder b = new StringBuilder(d.Length);
             int prof = 0;
@@ -205,7 +221,7 @@ namespace Rocola
                 b.Append(char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : ' ');
             }
             string r = " " + b.ToString() + " ";
-            foreach (string corta in new[] { " remaster", " remasterizado", " version", " en vivo", " live", " feat ", " ft ", " featuring " })
+            foreach (string corta in new[] { " feat ", " ft ", " featuring " })
             {
                 int i = r.IndexOf(corta, StringComparison.Ordinal);
                 if (i > 2) r = r.Substring(0, i) + " ";
@@ -297,6 +313,7 @@ namespace Rocola
         }
         private readonly Dictionary<string, Letra> letras = new Dictionary<string, Letra>(StringComparer.Ordinal);
         private readonly HashSet<string> letrasPedidas = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> letraFalloEn = new Dictionary<string, int>(StringComparer.Ordinal);   // sin respuesta: se reintenta al minuto
         // El id de Spotify de lo que suena: la de Spotify, la tuya sustituida o la tuya con pareja.
         private string IdSonando()
         {
@@ -315,10 +332,16 @@ namespace Rocola
             lock (spotifyCerrojo)
             {
                 Letra l; if (letras.TryGetValue(id, out l)) return l;
+                int fallo; if (letraFalloEn.TryGetValue(id, out fallo) && unchecked(Environment.TickCount - fallo) < 60000) return null;
                 if (!letrasPedidas.Add(id)) return null;
                 if (letras.Count > 60) letras.Clear();   // (solo las de esta noche: no se guardan)
             }
-            ThreadPool.QueueUserWorkItem(delegate { Letra l = PideLetra(s, id); lock (spotifyCerrojo) { letras[id] = l; letrasPedidas.Remove(id); } });
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                Letra l = null;
+                try { l = PideLetra(s, id); } catch { }
+                lock (spotifyCerrojo) { if (l != null) letras[id] = l; letrasPedidas.Remove(id); if (l == null) letraFalloEn[id] = Environment.TickCount; }
+            });
             return null;
         }
         private static Letra PideLetra(SpotifyEnVivo s, string id)
@@ -326,7 +349,8 @@ namespace Rocola
             Letra l = new Letra();
             using (JsonDocument d = s.Api.Pide(ControlSpotify.Orden("letra", "id", id), 15000))
             {
-                if (d == null || !SpotifyEnVivo.Bool(d.RootElement, "ok")) return l;   // sin letra: queda vacia (no se vuelve a pedir esta noche)
+                if (d == null || !s.Conectado) return null;   // sin respuesta (la red): se reintenta
+                if (!SpotifyEnVivo.Bool(d.RootElement, "ok")) return l;   // sin letra: queda vacia (no se vuelve a pedir esta noche)
                 try
                 {
                     using (JsonDocument j = JsonDocument.Parse(SpotifyEnVivo.Texto(d.RootElement, "cuerpo")))

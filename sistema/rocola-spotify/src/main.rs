@@ -41,6 +41,8 @@ use tokio::{
 
 // Lo que se pide a Spotify con la llave de la sesion: leer la biblioteca de la cuenta y buscar. Nada que cambie la cuenta.
 const ALCANCE: &str = "user-read-private,playlist-read-private,playlist-read-collaborative,user-library-read,user-follow-read,user-top-read,user-read-recently-played";
+// Si Spotify no da la llave con todos (no todos se permiten a cualquier programa), con lo basico: buscar, tus listas y tus discos.
+const ALCANCE_BASICO: &str = "user-read-private,playlist-read-private,user-library-read";
 
 #[derive(Default)]
 struct Estado {
@@ -276,13 +278,16 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
             let j = r.jugador.lock().unwrap().clone();
             match j {
                 Some(p) => {
-                    {
+                    // el numero de lo que acabo hasta ahora: la rocola espera uno mayor (asi no confunde el final de la anterior,
+                    // aunque sea la misma cancion)
+                    let seq = {
                         let mut s = r.estado.lock().unwrap();
                         s.acabo.clear();
                         s.no_disponible.clear();
-                    }
+                        s.seq
+                    };
                     p.load(id, true, 0);
-                    json!({"ok": true})
+                    json!({"ok": true, "seq": seq})
                 }
                 None => json!({"ok": false, "error": "aun no hay cuenta"}),
             }
@@ -301,7 +306,10 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
             let Some(se) = sesion(r) else { return json!({"ok": false, "error": "sin conexion con Spotify"}) };
             let llave = match se.token_provider().get_token(ALCANCE).await {
                 Ok(t) => t,
-                Err(e) => return json!({"ok": false, "error": format!("llave: {e}")}),
+                Err(e) => match se.token_provider().get_token(ALCANCE_BASICO).await {
+                    Ok(t) => { warn!("la llave con todos los permisos no se dio ({e}): con los basicos"); t }
+                    Err(e2) => return json!({"ok": false, "error": format!("llave: {e}; basica: {e2}")}),
+                },
             };
             let req = Request::builder()
                 .method(Method::GET)

@@ -9,8 +9,9 @@
 //  - lo de Spotify se paga con CREDITOS como todo (el dueno, 6-11-2026: el chiste es la rocola clasica, con su moneda) y va a la cola
 //    como cualquier cancion; si no se puede tocar, se devuelve el credito; tras un apagon, lo pagado de Spotify vuelve como creditos. Suena
 //    por la cadena de la rocola (nivelado al de las no medidas, el local, el modo billar, el limitador; sin DSEE).
-//  - De Spotify no se aprende nada (medidas, EQ, volumen parejo, estadisticas, lo mas pedido) y no se guarda en el estado (tras un apagon
-//    no vuelve a la cola). Nunca se graba ni se descarga musica: el sonido va de la memoria a la tarjeta.
+//  - De Spotify solo se aprende su volumen y su EQ (SP3, SpotifyMas.cs: bajo su ruta de Spotify, como lo tuyo); no cuenta para lo mas
+//    sonado ni lo mas pedido, y no se guarda en el estado (tras un apagon lo pagado vuelve como credito). Nunca se graba ni se descarga
+//    musica: el sonido va de la memoria a la tarjeta.
 // Apagado, el programa ni se abre y la rocola es la de siempre, bit a bit.
 using System;
 using System.Collections.Generic;
@@ -39,6 +40,7 @@ namespace Rocola
             {
                 for (int intento = 0; intento < 2; intento++)
                 {
+                    bool vieja = sock != null;
                     try
                     {
                         if (sock == null)
@@ -55,7 +57,7 @@ namespace Rocola
                         if (l == null) throw new IOException("se cerro");
                         return JsonDocument.Parse(l);
                     }
-                    catch { Cierra(); }
+                    catch { Cierra(); if (!vieja) return null; }   // con una conexion recien abierta no se repite (la orden pudo haber llegado)
                 }
                 return null;
             }
@@ -98,6 +100,8 @@ namespace Rocola
         // Lo que dice el programa (lo pregunta un hilo cada 400 ms).
         internal volatile bool Conectado, EsperandoCuenta;
         internal volatile string Usuario = "", Acabo = "", Error = "";
+        private long seq;
+        internal long Seq { get { return Interlocked.Read(ref seq); } }   // cuantas acabaron (o no se pudieron tocar) desde que abrio
 
         internal bool Vivo { get { Process p = proc; try { return p != null && !p.HasExited; } catch { return false; } } }
         internal bool Callado { get { return callado; } }
@@ -108,6 +112,8 @@ namespace Rocola
             string cache = Path.Combine(datos, "spotify");
             Directory.CreateDirectory(cache);
             Directory.CreateDirectory(CarpetaRun);
+            // las portadas de mas de un dia (estan en la memoria: que no se acumulen si la rocola pasa dias sin reiniciar)
+            try { foreach (string f in Directory.GetFiles(Path.Combine(CarpetaRun, "portadas"))) if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddDays(-1)) File.Delete(f); } catch { }
             string control = Path.Combine(CarpetaRun, "control.sock");
             try { File.Delete(control); } catch { }
             bitacora = Path.Combine(datos, "rocola_spotify.txt");
@@ -142,7 +148,7 @@ namespace Rocola
                     resto = n - util;
                     if (resto > 0) Buffer.BlockCopy(b, util, b, 0, resto);
                     if (muestras == 0) continue;
-                    if (callado) { Thread.Sleep(Math.Max(1, muestras / Canales * 1000 / Hz)); continue; }
+                    if (callado) continue;   // (lo de una cancion ya parada o saltada: se tira enseguida, que no se cuele en la siguiente)
                     int hecho = 0;
                     lock (cerrojo)
                     {
@@ -178,7 +184,9 @@ namespace Rocola
                         {
                             JsonElement r = d.RootElement;
                             Conectado = Bool(r, "conectado"); EsperandoCuenta = Bool(r, "esperando_cuenta");
-                            Usuario = Texto(r, "usuario"); Acabo = Texto(r, "acabo"); Error = Texto(r, "error");
+                            Usuario = Texto(r, "usuario"); Error = Texto(r, "error");
+                            long sq = r.TryGetProperty("seq", out JsonElement se) && se.ValueKind == JsonValueKind.Number ? se.GetInt64() : 0;
+                            Acabo = Texto(r, "acabo"); Interlocked.Exchange(ref seq, sq);   // (primero cual, luego el numero: quien vea el numero ve cual)
                         }
                         else Conectado = false;
                     }
@@ -280,6 +288,7 @@ namespace Rocola
             if (!quiere)
             {
                 if (SonandoSpotify) return;   // primero baja lo que suena (el bucle de la rocola: SalidaAlsa.Apaga), luego se cierra
+                if (spotifySustituida != null && object.ReferenceEquals(nowPlaying, spotifySustituida)) return;   // una tuya desde Spotify (SP2): que acabe entera
                 if (spotify != null) { SpotifyEnVivo s = spotify; spotify = null; s.Calla(); s.Dispose(); }
                 int quitadas = queue.RemoveAll(EsItemSpotify);
                 if (quitadas > 0) { credits += quitadas; UpdateCredits(); SaveState(); Avisa("Spotify apagado: se quitaron de la cola sus " + quitadas + (quitadas == 1 ? " cancion" : " canciones") + " y se devuelven los creditos"); }
@@ -400,6 +409,7 @@ namespace Rocola
         // LA LETRA SPOTIFY: tus favoritas, tus listas y tus discos guardados (hasta 50 de cada), con sus portadas.
         private void CargaPared(SpotifyEnVivo s)
         {
+            bool alDia; lock (spotifyCerrojo) alDia = spotifyPared.Count > 0;   // (no es la primera vez: las listas se vuelven a pedir)
             List<Disco> pared = new List<Disco>();
             Disco fav = DiscoSpotify(RaizSpotify + "favoritas", "Tus favoritas", "Spotify", null);
             pared.Add(fav);
@@ -432,7 +442,8 @@ namespace Rocola
             foreach (Disco x in pared)
             {
                 if (spotify != s) return;   // se apago o se reabrio
-                if (x.Rutas.Count == 0) { CargaSpotify(x); for (int i = 0; i < 100 && spotifyCargandoDisco(x); i++) Thread.Sleep(100); }
+                bool lista = x.Carpeta.StartsWith(RaizSpotify + "playlist/", StringComparison.Ordinal) || x.Carpeta == RaizSpotify + "favoritas";
+                if (x.Rutas.Count == 0 || (alDia && lista)) { CargaSpotify(x, true); for (int i = 0; i < 100 && spotifyCargandoDisco(x); i++) Thread.Sleep(100); }
             }
         }
         private bool spotifyCargandoDisco(Disco d) { lock (spotifyCerrojo) return spotifyCargando.Contains(d); }
@@ -461,9 +472,10 @@ namespace Rocola
         }
 
         // Las canciones de un disco de Spotify, al entrar en el (en segundo plano; mientras, el disco esta vacio).
-        public void CargaSpotify(Disco d)
+        public void CargaSpotify(Disco d) { CargaSpotify(d, false); }
+        private void CargaSpotify(Disco d, bool otraVez)
         {
-            if (d == null || !EsRutaSpotify(d.Carpeta) || d.Rutas.Count > 0) return;
+            if (d == null || !EsRutaSpotify(d.Carpeta) || (d.Rutas.Count > 0 && !otraVez)) return;
             SpotifyEnVivo s = spotify; if (s == null) return;
             lock (spotifyCerrojo) { if (!spotifyCargando.Add(d)) return; }
             ThreadPool.QueueUserWorkItem(delegate
@@ -553,7 +565,7 @@ namespace Rocola
                 if (t.Length >= 2 && t == spotifyBuscaPedido && t != spotifyBuscaHecho && !spotifyBuscando && unchecked(Environment.TickCount - spotifyBuscaDesde) >= 600)
                 {
                     spotifyBuscando = true;
-                    ThreadPool.QueueUserWorkItem(delegate { BuscaEnSpotify(s, t); });
+                    ThreadPool.QueueUserWorkItem(delegate { try { BuscaEnSpotify(s, t); } catch (Exception ex) { LogError("Spotify: buscar", ex); lock (spotifyCerrojo) spotifyBuscando = false; } });
                 }
                 return t == spotifyBuscaHecho ? spotifyBuscaRes : null;
             }
@@ -630,7 +642,7 @@ namespace Rocola
             if (it.Disc.CoverPath == null && p.PortadaUrl != null)
             {   // su portada, en cuanto llegue (para la barra de abajo y la cola)
                 Album al = it.Disc; SpotifyEnVivo s = spotify;
-                ThreadPool.QueueUserWorkItem(delegate { string f = BajaPortada(s, p.PortadaUrl, p.DiscoCarpeta ?? p.Id); if (f != null) al.CoverPath = f; });
+                ThreadPool.QueueUserWorkItem(delegate { try { string f = BajaPortada(s, p.PortadaUrl, p.DiscoCarpeta ?? p.Id); if (f != null) al.CoverPath = f; } catch { } });
             }
             queue.Add(it);
             {   // EL TURNO, como en Pide (las de Spotify cuentan con lo que duran)
@@ -654,7 +666,8 @@ namespace Rocola
         // Las de Spotify pagadas que aun no suenan (y la que suena): tras un apagon vuelven como creditos (SaveState), porque no se reanudan.
         private int CreditosDeSpotifyPendientes()
         {
-            int n = 0; foreach (PlayItem it in queue) if (EsItemSpotify(it)) n++;
+            int n = EsItemSpotify(nowPlaying) ? 1 : 0;   // (la que suena: tras un apagon no se reanuda, vuelve como credito)
+            foreach (PlayItem it in queue) if (EsItemSpotify(it)) n++;
             return n;
         }
 
@@ -673,9 +686,13 @@ namespace Rocola
             PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(pista.Path, out p);
             string uri = "spotify:track:" + id;
             s.Habla();
+            long seq0;
             using (JsonDocument d = s.Toca.Pide(ControlSpotify.Orden("toca", "uri", uri), 5000))
+            {
                 if (d == null || !SpotifyEnVivo.Bool(d.RootElement, "ok")) { s.Calla(); return null; }
-            FuenteSpotify f = new FuenteSpotify(s, this, uri, p != null ? p.Ms : 0, sustituida ? SustitutaSinSonidoMs : SpotifySinSonidoMs);
+                seq0 = d.RootElement.TryGetProperty("seq", out JsonElement sq) && sq.ValueKind == JsonValueKind.Number ? sq.GetInt64() : s.Seq;
+            }
+            FuenteSpotify f = new FuenteSpotify(s, this, uri, seq0, p != null ? p.Ms : 0, sustituida ? SustitutaSinSonidoMs : SpotifySinSonidoMs);
             try
             {
                 sonoAntes = nowPlaying; nowPlaying = it;
@@ -725,7 +742,8 @@ namespace Rocola
             }
             SpotifyEnVivo s = spotify; if (s == null) return;
             s.Calla();
-            ThreadPool.QueueUserWorkItem(delegate { using (s.Toca.Pide("{\"op\":\"para\"}", 3000)) { } });
+            // AL MOMENTO, no en segundo plano: si no, la orden de parar podia llegar despues de la de tocar la siguiente y callarla
+            using (s.Toca.Pide("{\"op\":\"para\"}", 1500)) { }
         }
 
         // El nivel de Spotify: el de las no medidas (como los videos), con el margen del tono del local.
@@ -761,7 +779,7 @@ namespace Rocola
             }
             else sb.Append("Entrando a Spotify...\n");
             if (s != null && s.Error.Length > 0 && !s.Conectado) sb.Append("Ultimo aviso: ").Append(s.Error).Append('\n');
-            sb.Append("Con creditos, como la rocola. No se aprende nada de Spotify. Programa no oficial (librespot): Spotify podria bloquear la cuenta.");
+            sb.Append("Con creditos, como la rocola. De Spotify solo se mide el volumen. Programa no oficial (librespot): Spotify podria bloquear la cuenta.");
             return sb.ToString();
         }
 
@@ -769,38 +787,53 @@ namespace Rocola
         // acaba cuando el programa dice que acabo y ya no queda nada en el anillo, si se callo (SALTAR, apagar) o si en 20 s no llego nada.
         private sealed class FuenteSpotify : IAudioSource
         {
+            private const int AtascoMs = 15000;   // sonando, 15 s sin nada (se cayo la red o Spotify): se acaba
             private readonly SpotifyEnVivo s;
             private readonly Form1 f;
             private readonly string uri;
-            private readonly long ms;
+            private readonly long ms, seq0;
             private readonly WaveFormat formato = WaveFormat.CreateIeeeFloatWaveFormat(SpotifyEnVivo.Hz, SpotifyEnVivo.Canales);
             private volatile float volumen = 1f;
-            private long cuadros;
+            private long cuadros;   // los que de verdad llegaron (los huecos de silencio no cuentan: la posicion de la cancion, para las letras)
             private readonly int desde = Environment.TickCount;
+            private int ultimo;
             private bool acabada, llego;
             private readonly int plazo;
-            internal FuenteSpotify(SpotifyEnVivo s, Form1 f, string uri, long ms, int plazo) { this.s = s; this.f = f; this.uri = uri; this.ms = ms; this.plazo = plazo; }
+            internal FuenteSpotify(SpotifyEnVivo s, Form1 f, string uri, long seq0, long ms, int plazo) { this.s = s; this.f = f; this.uri = uri; this.seq0 = seq0; this.ms = ms; this.plazo = plazo; }
             public WaveFormat WaveFormat { get { return formato; } }
             public int Read(Span<float> d)
             {
                 if (acabada) return 0;
                 if (s.Callado || !object.ReferenceEquals(f.spotify, s)) { acabada = true; return 0; }
                 int n = s.Toma(d);
-                if (n > 0) llego = true;
+                int ahora = Environment.TickCount;
+                if (n > 0) { llego = true; ultimo = ahora; }
                 if (n < d.Length)
                 {
-                    if (s.Acabo == uri) { acabada = true; Cuenta(d.Slice(0, n)); return n; }   // acabo y no queda nada: el final de verdad
-                    if (!llego && unchecked(Environment.TickCount - desde) > plazo) { acabada = true; f.spotifyFallida = true; return 0; }
+                    // acabo (el programa lo dijo DESPUES de pedirla: su numero paso del de entonces) y ya no queda nada: el final de verdad
+                    if (s.Seq > seq0 && s.Acabo == uri)
+                    {
+                        acabada = true;
+                        if (!llego) f.spotifyFallida = true;   // (no disponible: ni un cuadro)
+                        Aplica(d.Slice(0, n)); Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales); return n;
+                    }
+                    if (!llego && unchecked(ahora - desde) > plazo) { acabada = true; f.spotifyFallida = true; return 0; }
+                    if (llego && n == 0 && unchecked(ahora - ultimo) > AtascoMs)
+                    {   // se atasco a media cancion: si no llego a la mitad, como si no hubiera sonado (credito, o tu MP3)
+                        acabada = true;
+                        if (ms <= 0 || Interlocked.Read(ref cuadros) * 1000L / SpotifyEnVivo.Hz < ms / 2) f.spotifyFallida = true;
+                        return 0;
+                    }
                     d.Slice(n).Clear();   // lo que no llego (la red que tarda), en silencio
                 }
-                Cuenta(d);
+                Aplica(d);
+                Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales);
                 return d.Length;
             }
-            private void Cuenta(Span<float> d)
+            private void Aplica(Span<float> d)
             {
                 float v = volumen;
                 if (v != 1f) for (int i = 0; i < d.Length; i++) d[i] *= v;
-                Interlocked.Add(ref cuadros, d.Length / SpotifyEnVivo.Canales);
             }
             public int Read(float[] buffer, int offset, int count) { return Read(buffer.AsSpan(offset, count)); }
             public float Volume { set { volumen = value; } }

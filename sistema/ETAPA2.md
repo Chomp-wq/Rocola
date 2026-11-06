@@ -1267,3 +1267,34 @@ Todo en `Motor/SpotifyMas.cs` (y `Consola/Pantalla/LetrasVista.cs`), solo con el
   nombre, tu disco y tu crédito; la portada, el año y el género vinieron de Spotify; al entrar en el disco apareció la que le faltaba y
   sonó con su crédito; y las letras (una letra inventada para la prueba) en capturas, con la línea encendida y los puntos. **No probado
   con una cuenta real ni en el A4** (en particular, si Spotify deja ver las letras, los éxitos y los géneros a este programa).
+
+## Extra (6-11-2026, tercera parte): revisión de todo lo de Spotify
+
+Pedido del dueño: «revisa todo lo de Spotify en busca de fallos, errores y mejoras». Lo encontrado y arreglado:
+
+- **Saltar podía callar la siguiente.** La orden de parar iba en segundo plano y podía llegar al programa de Spotify después de la de
+  tocar la siguiente: esa no sonaba y, a los 20 s, se devolvía su crédito. Ahora se para al momento (`TerminaSpotify`).
+- **La misma canción dos veces seguidas podía acabarse al empezar.** La rocola veía aún el «acabó» de la vez anterior. Ahora `toca`
+  devuelve cuántas canciones han acabado hasta ese momento, y solo cuenta un «acabó» posterior (`FuenteSpotify`, `seq`).
+- **Una canción de Spotify no disponible** esperaba 20 s en silencio; ahora se acaba en cuanto Spotify lo dice (y se devuelve el crédito,
+  o suena tu MP3 si era una sustituida).
+- **Si se caía la red a media canción,** la rocola se quedaba en silencio sin fin con la cola esperando. Ahora, 15 s sin nada y se acaba;
+  si no había llegado a la mitad, como si no hubiera sonado (crédito, o tu MP3).
+- **Lo que quedaba de una canción saltada** se tiraba al ritmo del reloj y podía colarse al principio de la siguiente; ahora se tira
+  enseguida.
+- **Un apagón con una de Spotify sonando** perdía su crédito (solo volvían las de la cola); ahora vuelve también.
+- **Apagar el interruptor con una tuya sonando desde Spotify** (SP2) la cortaba a media canción; ahora acaba entera y después se cierra.
+- **Una orden que tardaba se repetía** (la API, hasta 40 s esperando); ahora solo se repite si la conexión era vieja.
+- **Los hilos de fondo** (el emparejador, la búsqueda, las portadas, las letras) van protegidos: un error en ellos habría cerrado la rocola.
+- **Si Spotify no da la llave con todos los permisos de lectura** (no todos se permiten a cualquier programa), se pide con los básicos
+  (buscar, tus listas, tus discos) en lugar de fallar todo.
+- **El emparejador** espera un minuto si Spotify no contesta (límite de consultas), en vez de seguir preguntando cada 2,5 s.
+- **Comparar títulos:** «- Remastered 2011», «- En vivo», «- Radio Edit» y similares (lo que Spotify pone tras un guion) se quitan; ya no
+  se corta «live» o «version» en medio de un título.
+- **Las letras:** si no hubo respuesta (la red), se vuelven a pedir al minuto (antes, esa canción se quedaba sin letra toda la noche); la
+  posición ya no cuenta los huecos de silencio (si la red tarda, la letra no se adelanta); y el tamaño de letra ya no cambia mientras el
+  panel sube (antes pedía una letra nueva en cada cuadro).
+- **Tus listas de Spotify** se ponen al día cada 30 minutos (antes, una canción añadida a una lista no salía hasta reiniciar).
+- **Las portadas en la memoria** de más de un día se borran al abrir el programa de Spotify.
+- Probado otra vez con el `rocola-spotify` simulado: la misma canción dos veces suena entera las dos; la sustitución invisible, el disco
+  completado y los créditos, como antes. Sin cuenta real ni A4.
