@@ -441,6 +441,15 @@ namespace Rocola
               x.Bloqueo = sinSpotify; x.Nota = () => "Las canciones que le faltan a un disco tuyo salen al final, marcadas «Spotify», con su credito."; l.Add(x); }
             { Ajuste x = Interruptor("Spotify", "La foto del artista en el estado extendido", "artista_fondo", () => ArtistaFondo, v => ArtistaFondo = v, false);
               x.Bloqueo = sinSpotify; x.Nota = () => "De fondo, tenue, la foto del artista que suena, y el ano del disco."; l.Add(x); }
+            // SPOTIFY EN LAS PORTADAS (7-11-2026, SpotifyPortadas.cs): para quien no usa el buscador
+            { Ajuste x = Interruptor("Spotify", "Discos de Spotify en las letras", "spotify_letras", () => SpotifyEnLetras, v => SpotifyEnLetras = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "En la letra de cada artista tuyo, sus discos mas conocidos de Spotify que no tienes (y tus discos guardados), con una marquita verde."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Mas de este artista (dentro de un disco)", "mas_del_artista", () => VerMasDelArtista, v => VerMasDelArtista = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Debajo de la portada, los otros discos del artista en Spotify: ABAJO al final de la lista para elegir uno."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Tus artistas con foto (letra SPOTIFY)", "spotify_artistas", () => SpotifyArtistas, v => { SpotifyArtistas = v; RecargaParedSpotify(); }, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Los que sigues y los que mas escuchas. Dentro: lo mas conocido y sus discos. La letra SPOTIFY se pone al dia en unos segundos."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Por genero y epoca (letra SPOTIFY)", "spotify_generos", () => SpotifyGeneros, v => { SpotifyGeneros = v; RecargaParedSpotify(); }, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Cumbias, rock en español, banda, salsa, exitos de los 80 y 90... (listas de Spotify). La letra SPOTIFY se pone al dia en unos segundos."; l.Add(x); }
             // EL DIAGNOSTICO COMPLETO (herramienta de XP: no guarda ni aplica nada); lo corre el programa (Diagnostico.cs).
             Ajuste dg = new Ajuste { Grupo = "Diagnóstico", Nombre = "Diagnóstico completo de la pantalla (unos 50 s)", Herramienta = true };
             dg.Valor = delegate { return "EMPEZAR"; };

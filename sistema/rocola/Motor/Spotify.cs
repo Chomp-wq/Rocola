@@ -309,7 +309,7 @@ namespace Rocola
             // LA BIBLIOTECA: al entrar y cada 30 min (listas nuevas), en segundo plano.
             if (spotify.Conectado && !spotifyCargandoPared && (spotifyBibliotecaDesde == 0 || unchecked(ahora - spotifyBibliotecaDesde) > 30 * 60 * 1000))
             {
-                if (spotifyBibliotecaDesde == 0) { LeeParejas(); AplicaParejasGuardadas(); ArrancaEmparejador(); }   // SP4, SP5 (SpotifyMas.cs)
+                if (spotifyBibliotecaDesde == 0) { LeeParejas(); AplicaParejasGuardadas(); ArrancaEmparejador(); ArrancaDiscografo(); }   // SP4, SP5 (SpotifyMas.cs); P1-P3 (SpotifyPortadas.cs)
                 spotifyBibliotecaDesde = ahora | 1; spotifyCargandoPared = true; spotifyFallos = 0;
                 SpotifyEnVivo s = spotify;
                 ThreadPool.QueueUserWorkItem(delegate { try { CargaPared(s); } catch (Exception ex) { LogError("Spotify: la biblioteca", ex); } finally { spotifyCargandoPared = false; } });
@@ -406,7 +406,8 @@ namespace Rocola
             }
         }
 
-        // LA LETRA SPOTIFY: tus favoritas, tus listas y tus discos guardados (hasta 50 de cada), con sus portadas.
+        // LA LETRA SPOTIFY: tus favoritas, los exitos, tus listas, por genero y epoca (P4), tus artistas con foto (P3) y tus discos guardados
+        // (hasta 50 de cada), con sus portadas.
         private void CargaPared(SpotifyEnVivo s)
         {
             bool alDia; lock (spotifyCerrojo) alDia = spotifyPared.Count > 0;   // (no es la primera vez: las listas se vuelven a pedir)
@@ -414,6 +415,9 @@ namespace Rocola
             Disco fav = DiscoSpotify(RaizSpotify + "favoritas", "Tus favoritas", "Spotify", null);
             pared.Add(fav);
             try { pared.AddRange(ExitosDelMomento(s)); } catch (Exception ex) { LogError("Spotify: exitos", ex); }   // SP8
+            List<Disco> generos = new List<Disco>(), artistas = new List<Disco>(), guardados = new List<Disco>();
+            try { generos = PorGeneroYEpoca(s); } catch (Exception ex) { LogError("Spotify: por genero", ex); }   // P4
+            try { artistas = TusArtistas(s); } catch (Exception ex) { LogError("Spotify: tus artistas", ex); }      // P3
             using (JsonDocument d = Api(s, "/v1/me/playlists?limit=50"))
                 if (d != null && d.RootElement.TryGetProperty("items", out JsonElement it) && it.ValueKind == JsonValueKind.Array)
                     foreach (JsonElement p in it.EnumerateArray())
@@ -422,6 +426,7 @@ namespace Rocola
                         string duenio = p.TryGetProperty("owner", out JsonElement ow) ? SpotifyEnVivo.Texto(ow, "display_name") : "";
                         pared.Add(DiscoSpotify(RaizSpotify + "playlist/" + id, SpotifyEnVivo.Texto(p, "name"), duenio.Length > 0 ? duenio : "Spotify", Imagen(p)));
                     }
+            pared.AddRange(generos); pared.AddRange(artistas);
             using (JsonDocument d = Api(s, "/v1/me/albums?limit=50"))
                 if (d != null && d.RootElement.TryGetProperty("items", out JsonElement it) && it.ValueKind == JsonValueKind.Array)
                     foreach (JsonElement x in it.EnumerateArray())
@@ -431,18 +436,20 @@ namespace Rocola
                         Disco disco = DiscoSpotify(RaizSpotify + "album/" + id, SpotifyEnVivo.Texto(a, "name"), Artistas(a), Imagen(a));
                         if (disco.Rutas.Count == 0 && a.TryGetProperty("tracks", out JsonElement tr) && tr.TryGetProperty("items", out JsonElement ti))
                             LlenaDisco(disco, ti, disco.Nombre, disco.Carpeta, Imagen(a), false);
-                        pared.Add(disco);
+                        pared.Add(disco); guardados.Add(disco);
                     }
-            lock (spotifyCerrojo) { spotifyPared = pared; spotifyVersion++; }
+            lock (spotifyCerrojo) { spotifyPared = pared; spotifyGuardados = guardados; spotifyVersion++; }
+            letrasSpVersion++;   // P1: tus discos guardados, tambien en su letra
             s.Apunta("biblioteca: " + (pared.Count - 1) + " listas y discos");
             // las portadas, despues (la pared ya se ve; cada una aparece al llegar), y las canciones de las listas y las favoritas por
             // adelantado (para que digan cuantas tienen y se entre sin esperar), una por una
-            foreach (Disco x in pared) PonPortada(s, x);
+            foreach (Disco x in pared) { if (spotify != s) return; PonPortada(s, x); }
             try { CargaAtajos(s); } catch (Exception ex) { LogError("Spotify: atajos", ex); }   // SP9
             foreach (Disco x in pared)
             {
                 if (spotify != s) return;   // se apago o se reabrio
                 bool lista = x.Carpeta.StartsWith(RaizSpotify + "playlist/", StringComparison.Ordinal) || x.Carpeta == RaizSpotify + "favoritas";
+                if (generos.Contains(x) || artistas.Contains(x)) continue;   // (se abren al entrar: son muchas canciones para traerlas todas de antemano)
                 if (x.Rutas.Count == 0 || (alDia && lista)) { CargaSpotify(x, true); for (int i = 0; i < 100 && spotifyCargandoDisco(x); i++) Thread.Sleep(100); }
             }
         }
@@ -452,7 +459,7 @@ namespace Rocola
             string url; lock (spotifyCerrojo) spotifyPortadaUrl.TryGetValue(d, out url);
             if (d.Portada == null && url != null) { string p = BajaPortada(s, url, d.Carpeta); if (p != null) { d.Portada = p; spotifyVersion++; } }
         }
-        private void LlenaDisco(Disco d, JsonElement pistas, string disco, string carpeta, string portada, bool conArtista)
+        private void LlenaDisco(Disco d, JsonElement pistas, string disco, string carpeta, string portada, bool conArtista, bool soloTitulo = false)
         {
             List<string> rutas = new List<string>(), titulos = new List<string>();
             long ms = 0; bool todas = true;
@@ -464,7 +471,7 @@ namespace Rocola
                 string ruta = ApuntaPista(t, conArtista ? null : disco, conArtista ? null : carpeta, portada);
                 if (ruta == null) continue;
                 PistaSpotify p; lock (spotifyCerrojo) p = spotifyPistas[ruta];
-                rutas.Add(ruta); titulos.Add(conArtista && p.Artista.Length > 0 ? p.Artista + " - " + p.Titulo : p.Titulo);
+                rutas.Add(ruta); titulos.Add(conArtista && !soloTitulo && p.Artista.Length > 0 ? p.Artista + " - " + p.Titulo : p.Titulo);
                 if (p.Ms > 0) ms += p.Ms; else todas = false;
             }
             d.Titulos = titulos; d.Rutas = rutas;   // (en este orden: lo que se cuenta son las rutas)
@@ -490,6 +497,12 @@ namespace Rocola
                         string id = c.Substring(9);
                         if (!Paginas(s, d, "/v1/playlists/" + id + "/tracks?limit=100&offset=", 100, 500, true, portada))
                             Paginas(s, d, "/v1/playlists/" + id + "/items?limit=100&offset=", 100, 500, true, portada);   // (el nombre nuevo de la API)
+                    }
+                    else if (c.StartsWith("artist/"))
+                    {   // P3: un artista: lo mas conocido (cada cancion con su disco); sus discos van en la tira (P2)
+                        using (JsonDocument a = Api(s, "/v1/artists/" + c.Substring(7) + "/top-tracks?market=from_token"))
+                            if (a != null && a.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.ValueKind == JsonValueKind.Array)
+                                LlenaDisco(d, tr, null, null, null, true, true);
                     }
                     else if (c.StartsWith("album/"))
                     {

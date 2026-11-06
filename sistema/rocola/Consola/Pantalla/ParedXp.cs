@@ -179,7 +179,7 @@ namespace Rocola
             if (desliza) Pagina(c, ds, pagAnt, false, top, margen, celW, celH, lado, cols, porPag, col => -pagDir * W * CurvaPagina(ahora - pagDesde, col, cols));
             Pagina(c, ds, pag, true, top, margen, celW, celH, lado, cols, porPag, col => desliza ? pagDir * W * (1f - CurvaPagina(ahora - pagDesde, col, cols)) : 0f);
             // las paginas de al lado, que se vayan leyendo (sin prisa: asi al pasar de pagina ya estan)
-            for (int dp = 1; dp >= -1; dp -= 2) { int p2 = pag + dp; if (p2 < 0) continue; for (int i = 0; i < porPag; i++) { int n = p2 * porPag + i; if (n >= ds.Count) break; caratulas.Precarga(ds[n].Portada); } }
+            for (int dp = 1; dp >= -1; dp -= 2) { int p2 = pag + dp; if (p2 < 0) continue; for (int i = 0; i < porPag; i++) { int n = p2 * porPag + i; if (n >= ds.Count) break; m.QuierePortada(ds[n]); caratulas.Precarga(ds[n].Portada); } }
             if (!desliza && m.FichaDisco && !c.Reposo && !c.AyudaAbierta && c.letras[c.letra] != Form1.LetraTop && c.cursorDisco < ds.Count)
                 FichaRapida(c, ds[c.cursorDisco], ahora - focoDesde, new Zona(margen, top, W - 2 * margen, alto), celW, celH);
             // las paginas: unos puntos a la derecha de abajo (la pagina en la que se esta, encendida)
@@ -243,6 +243,17 @@ namespace Rocola
                         Cubo(disco.Portada, disco.Artista, cx - lado / 2, y1, lado, 0);
                         float wc = (float)Math.Round(lado * 0.7071f);
                         d.Contorno(cx - wc / 2, y1, wc, lado, 0.1f, 1f, new Color4(0, 0, 0, 0.47f));
+                    }
+                    // P1: un disco de Spotify en una letra: su portada se pide al verse, y una marquita verde abajo a la derecha
+                    if (Form1.EsRutaSpotify(disco.Carpeta))
+                    {
+                        c.motor.QuierePortada(disco);
+                        if (c.letras[c.letra] != Form1.LetraSpotify)
+                        {
+                            float rm = 9 * k;
+                            if (sel && zElegido.W > 0) MarcaSpotify(zElegido.X + zElegido.W - rm - 8 * k, zElegido.Y + rm + 8 * k, rm);
+                            else MarcaSpotify(cx + lado * 0.3535f - rm - 3 * k, y1 + lado - rm - 4 * k, rm);
+                        }
                     }
                     // YA LA PEDISTE (marca_cola=, Palomito de XP): un palomito verde en la esquina de arriba de la portada
                     if (!sel && c.motor.DiscoPedido(disco.Carpeta)) Palomito(cx + lado / 2, y1, lado);

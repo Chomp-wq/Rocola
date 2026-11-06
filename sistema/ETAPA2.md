@@ -1333,3 +1333,31 @@ Pedido del dueño: «nos aventaron piedras por tener música a las 12 A.M, así 
 - Probado: en XP, la batería `noche` (el cruce de la medianoche, los porcentajes, la rampa por reloj, la cadena y los videos, la
   configuración) y las del sonido; aquí, la ventana de ajustes en captura (los tres renglones y «PROBANDO 15 s»). No oído en el bar ni en
   el A4.
+
+## Extra (7-11-2026, segunda parte): Spotify en las portadas, para quien no usa el buscador
+
+Pedido del dueño: «los resultados de Spotify aparecen en el buscador, pero ¿cómo podríamos mostrarlos también en las portadas de discos
+como la música normal? No muchos en mi familia saben usar el buscador». Se propusieron cuatro y eligió todas («Haz todo»). Cada una con
+su interruptor en Ctrl+F3 → Spotify, encendidas (y solo con el modo Spotify encendido). `Motor/SpotifyPortadas.cs` y
+`Consola/Pantalla/SpotifyXp.cs`.
+
+- **P1. Spotify en las letras** (`spotify_letras=`): en la letra de cada artista de tu biblioteca, justo detrás de sus discos, hasta tres
+  de sus discos más conocidos en Spotify que no tienes (un remasterizado o una edición de lujo cuentan como el mismo disco), con una
+  marquita verde de Spotify en la esquina; y tus discos guardados en Spotify, en la letra de su artista (si es una letra que no tenías,
+  aparece). Se eligen y se piden como cualquier disco, con crédito. Mientras llegan discos, la pared se reacomoda como mucho cada 15 s y
+  lo que estás mirando se queda elegido.
+- **P2. Más de este artista** (`mas_del_artista=`): dentro de un disco (tuyo o de Spotify), debajo de la portada, la tira «Más de … en
+  Spotify» con hasta 8 discos (sin los que ya tienes). ABAJO desde la última canción entra a la tira; IZQ/DER pasan de disco; PONER lo
+  abre; REGRESAR vuelve al disco de antes (y otra vez, a la pared).
+- **P3. Tus artistas con foto** (`spotify_artistas=`): en la letra SPOTIFY, hasta 24 artistas (los que más escuchas y los que sigues; si
+  la cuenta no los da, los de tu biblioteca con más canciones), con su foto. Al entrar: lo más conocido del artista y, en la tira, sus
+  discos.
+- **P4. Por género y época** (`spotify_generos=`): en la letra SPOTIFY, Cumbias, Rock en español, Baladas en español, Banda, Norteñas,
+  Salsa, Rancheras, Pop en español, Éxitos de los 80 y Éxitos de los 90 (una lista de Spotify de cada una; la de Spotify si la hay).
+- **Cómo se trae**: un hilo de fondo pide los discos de cada artista de tu biblioteca (y de tus artistas), uno cada 2,5 s, y los apunta
+  en `rocola_spotify_artistas.txt` (solo nombres y números; se renuevan a los 14 días). Las portadas se bajan **solo cuando se ven**, a la
+  memoria (`/run`), para no llenarla con las de toda la biblioteca.
+- Probado con el `rocola-spotify` simulado: los discos en la letra A con su marca y la letra B nueva con el disco guardado; la tira dentro
+  del disco, entrar a un disco de la tira y volver; un artista con foto en SPOTIFY, sus canciones y sus discos; pedir desde ahí cobra el
+  crédito; con los interruptores apagados la pared queda como antes. Sin cuenta real ni A4: si Spotify no deja ver algo (por ejemplo,
+  las listas de género o lo más conocido de un artista), simplemente no sale.

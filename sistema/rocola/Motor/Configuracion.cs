@@ -106,6 +106,10 @@ namespace Rocola
             else if (s.StartsWith("letras_spotify=")) LetrasSpotify = s.Substring(15).Trim() != "0";
             else if (s.StartsWith("portadas_spotify=")) PortadasSpotify = s.Substring(17).Trim() != "0";
             else if (s.StartsWith("completar_discos=")) CompletarDiscos = s.Substring(17).Trim() != "0";
+            else if (s.StartsWith("spotify_letras=")) SpotifyEnLetras = s.Substring(15).Trim() != "0";      // P1-P4 (SpotifyPortadas.cs)
+            else if (s.StartsWith("mas_del_artista=")) VerMasDelArtista = s.Substring(16).Trim() != "0";
+            else if (s.StartsWith("spotify_artistas=")) SpotifyArtistas = s.Substring(17).Trim() != "0";
+            else if (s.StartsWith("spotify_generos=")) SpotifyGeneros = s.Substring(16).Trim() != "0";
             else if (s.StartsWith("artista_fondo=")) ArtistaFondo = s.Substring(14).Trim() != "0";
             else if (s.StartsWith("muro_reposo=")) MuroReposo = s.Substring(12).Trim() != "0";             // el estado extendido (EstadoExtendido.cs)
             else if (s.StartsWith("estado_expandido=")) EstadoExpandido = s.Substring(17).Trim() != "0";

@@ -27,12 +27,16 @@ namespace Rocola
             }
             Letra lTit = Titulo(20.5f * k); lTit.Escribe(d, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, Blanco);
             // el cubo grande
-            float lado = Math.Min(xp - 80 * k, abajo - 210 * k), cx0 = (xp - lado) / 2 + 4 * k, cy0 = top + 62 * k;
+            // P2: con la tira «Más de este artista» (Motor/SpotifyPortadas.cs), el cubo se achica para dejarle sitio debajo
+            List<Form1.Disco> mas = c.MasDisco; float tira = mas != null && mas.Count > 0 ? 150 * k : 0;
+            float lado = Math.Max(120 * k, Math.Min(xp - 80 * k, abajo - 210 * k - tira)), cx0 = (xp - lado) / 2 + 4 * k, cy0 = top + 62 * k;
             if (m.ColorGenero) { string g = m.GeneroDeDisco(disco); if (g.Length > 0) Resplandor(Form1.ColorDeEtiqueta(g), cx0 + lado / 2, cy0 + lado / 2, lado * 0.85f); }
             Textura tx = caratulas.De(disco.Portada);
             d.Brillo(cx0 + lado / 2, cy0 + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.28f));
             d.Brillo(cx0 + lado / 2, cy0 + lado + 6 * k, lado * 0.6f, new Color4(0, 0, 0.05f, 0.5f));
             Cubo(disco.Portada, disco.Artista, cx0, cy0, lado, reloj.Elapsed.TotalSeconds * 0.55);
+            if (Form1.EsRutaSpotify(disco.Carpeta)) m.QuierePortada(disco);
+            if (tira > 0) TiraMas(c, mas, 26 * k, cy0 + lado + 26 * k, xp - 52 * k, abajo - 10 * k - (cy0 + lado + 26 * k));
             // el panel de las canciones
             float px = xp, py = top + 76 * k, pw = W - px - 28 * k, ph = abajo - py - 12 * k;
             if (m.VidrioDisco) Vidrio(px, py, pw, ph, 18 * k, tx != null ? tx.Media : Color4.Hex(0x6F8CFF), 1f, m.DiscoVidrio, 0.50f);   // G5 (con V7, detras esta la portada borrosa: vidrio de verdad)
@@ -52,7 +56,7 @@ namespace Rocola
             for (int i = 0; i < caben && desde + i < n; i++)
             {
                 int j = desde + i; float y = y0 + i * fila, fy = y + 4 * k, fh = fila - 8 * k, cy = fy + fh / 2;
-                bool sel = j == c.cursorCancion;
+                bool sel = j == c.cursorCancion && c.cursorMas < 0;   // (en la tira, ninguna cancion elegida)
                 if (sel)
                 {
                     Color4 s1 = Color4.Hex(0x4A6CB8, 0.92f), s2 = Color4.Hex(0x3A58A0, 0.92f), sb = Color4.Hex(0xC6D2FF, 0.55f);

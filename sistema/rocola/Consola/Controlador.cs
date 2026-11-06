@@ -71,6 +71,7 @@ namespace Rocola
                 if (!porLetra.TryGetValue(d.Letra, out l)) { l = new List<Form1.Disco>(); porLetra[d.Letra] = l; letras.Add(d.Letra); }
                 l.Add(d);
             }
+            foreach (KeyValuePair<char, List<Form1.Disco>> kv in porLetra) localDeLetra[kv.Key] = new List<Form1.Disco>(kv.Value);   // (P1: lo tuyo, sin Spotify)
             motor.Reanuda();   // los creditos y la cola de antes del apagon (mismo dia del negocio)
             RefrescaTop();
             foreach (Form1.Disco d in discos) if (!d.Videos) TotalCanciones += d.Rutas.Count;
@@ -348,8 +349,93 @@ namespace Rocola
         internal void EsperaSpotify(IVista v, int ms)
         {
             int t0 = Environment.TickCount;
-            while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
+            while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaLetrasSpotify(); RevisaMas(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
         }
+        // P1 (Motor/SpotifyPortadas.cs): los discos de Spotify en las letras, junto a los del mismo artista (o en su sitio por el nombre). Se
+        // rehace cuando el motor trae discos nuevos; lo que se mira se queda elegido (el mismo disco, aunque cambie de sitio).
+        private readonly Dictionary<char, List<Form1.Disco>> localDeLetra = new Dictionary<char, List<Form1.Disco>>();
+        private readonly HashSet<char> letrasConSpotify = new HashSet<char>();
+        private int versionLetrasSp, letrasRehechas;
+        private void RevisaLetrasSpotify()
+        {
+            int v = motor.VersionLetrasSpotify;
+            if (v == versionLetrasSp) return;
+            // mientras llegan discos (uno cada pocos segundos), la pared se reacomoda como mucho cada 15 s; apagarlo se ve al momento
+            int ahora = Environment.TickCount;
+            if (v != 0 && versionLetrasSp != 0 && letrasRehechas != 0 && unchecked(ahora - letrasRehechas) < 15000) return;
+            versionLetrasSp = v; letrasRehechas = ahora | 1;
+            char actual = letras.Count > 0 ? letras[letra] : '\0';
+            Form1.Disco foco = letras.Count > 0 && cursorDisco < porLetra[actual].Count ? porLetra[actual][cursorDisco] : null;
+            // primero, cada letra como era (solo lo tuyo)
+            foreach (char l in letrasConSpotify)
+            {
+                List<Form1.Disco> base_;
+                if (localDeLetra.TryGetValue(l, out base_)) porLetra[l] = new List<Form1.Disco>(base_);
+                else { porLetra.Remove(l); letras.Remove(l); }
+            }
+            letrasConSpotify.Clear();
+            foreach (Form1.DiscoEnLetra x in motor.DiscosSpotifyPorLetra())
+            {
+                List<Form1.Disco> l;
+                if (!porLetra.TryGetValue(x.Letra, out l))
+                {   // una letra que no tenias: en su sitio (antes de la primera mayor, o de VIDEOS)
+                    l = new List<Form1.Disco>(); porLetra[x.Letra] = l;
+                    int i = 0;
+                    while (i < letras.Count && (letras[i] == Form1.LetraTop || letras[i] == Form1.LetraSpotify || (letras[i] != Form1.LetraVideos && letras[i] < x.Letra))) i++;
+                    letras.Insert(i, x.Letra);
+                }
+                letrasConSpotify.Add(x.Letra);
+                // detras del ultimo disco del mismo artista; si no hay, donde le toca por el nombre del artista
+                string clave = Form1.ClaveArtista(x.JuntoA);
+                int donde = -1;
+                for (int i = 0; i < l.Count; i++) if (Form1.ClaveArtista(l[i].Artista) == clave) donde = i + 1;
+                if (donde < 0) { donde = 0; while (donde < l.Count && string.Compare(Form1.ClaveArtista(l[donde].Artista), clave, StringComparison.Ordinal) <= 0) donde++; }
+                l.Insert(donde, x.D);
+            }
+            int li = letras.IndexOf(actual);
+            letra = li >= 0 ? li : Math.Min(letra, Math.Max(0, letras.Count - 1));
+            if (letras.Count > 0)
+            {
+                int j = foco != null ? porLetra[letras[letra]].IndexOf(foco) : -1;
+                if (j >= 0) cursorDisco = j; else if (cursorDisco >= porLetra[letras[letra]].Count) cursorDisco = 0;
+            }
+        }
+
+        // P2: LA TIRA «MAS DE ESTE ARTISTA» (dentro de un disco). cursorMas: -1 en la lista de canciones; si no, el disco elegido de la tira.
+        // Los discos abiertos desde la tira se apilan: REGRESAR vuelve al de antes.
+        internal List<Form1.Disco> MasDisco;
+        internal string MasArtista;
+        internal int cursorMas = -1;
+        private readonly Stack<Form1.Disco> deDonde = new Stack<Form1.Disco>();
+        private Form1.Disco masDe;
+        private int masMirado;
+        private void RevisaMas()
+        {
+            if (dentro == null) { MasDisco = null; masDe = null; cursorMas = -1; deDonde.Clear(); return; }
+            int ahora = Environment.TickCount;
+            if (object.ReferenceEquals(masDe, dentro) && masMirado != 0 && unchecked(ahora - masMirado) < 700) return;
+            if (!object.ReferenceEquals(masDe, dentro)) cursorMas = -1;
+            masDe = dentro; masMirado = ahora | 1;
+            string artista;
+            List<Form1.Disco> l = motor.MasDelArtista(dentro, out artista);
+            MasDisco = l; MasArtista = artista;
+            if (l == null) cursorMas = -1; else if (cursorMas >= l.Count) cursorMas = l.Count - 1;
+        }
+        private void AbreDeLaTira()
+        {
+            List<Form1.Disco> l = MasDisco;
+            if (l == null || cursorMas < 0 || cursorMas >= l.Count) return;
+            deDonde.Push(dentro);
+            dentro = l[cursorMas]; cursorCancion = 0; cursorMas = -1; masDe = null;
+            motor.CargaSpotify(dentro);
+        }
+        private void SaleDelDisco()
+        {
+            cursorMas = -1; masDe = null;
+            if (deDonde.Count > 0) { dentro = deDonde.Pop(); cursorCancion = 0; }
+            else dentro = null;
+        }
+
         // SP6: al final del disco, las canciones de Spotify que le faltan (o ninguna: se quitan las que habia, si se apago).
         private void PonFaltantes(Form1.Disco dd, List<string> faltan)
         {
@@ -442,17 +528,28 @@ namespace Rocola
                 else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
                 else if (b == Boton.Arriba && !RegresarApretado) { SentidoPagina = 1; int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Abajo && !RegresarApretado) { SentidoPagina = -1; int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
-                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; motor.CargaSpotify(dentro); motor.FaltanEnDisco(dentro); }   // (SP6: lo que le falta llega en un momento)   // (uno de Spotify: sus canciones llegan en un momento)
+                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; cursorMas = -1; deDonde.Clear(); motor.CargaSpotify(dentro); motor.FaltanEnDisco(dentro); }   // (SP6: lo que le falta llega en un momento)   // (uno de Spotify: sus canciones llegan en un momento)
             }
             else
             {
                 int n = dentro.Rutas.Count, pagina = Math.Max(1, PorPagina);
-                if (n == 0) { if (b == Boton.Regresar) dentro = null; return; }   // (un disco de Spotify que aun carga)
-                if (b == Boton.Arriba && !RegresarApretado) cursorCancion = (cursorCancion + n - 1) % n;
-                else if (b == Boton.Abajo && !RegresarApretado) cursorCancion = (cursorCancion + 1) % n;
+                List<Form1.Disco> mas = MasDisco; int nm = mas != null ? mas.Count : 0;
+                if (b == Boton.Regresar) { SaleDelDisco(); return; }
+                if (cursorMas >= 0 && nm > 0)
+                {   // EN LA TIRA (P2): IZQ/DER y ABAJO pasan de disco; ARRIBA vuelve a las canciones; PONER lo abre
+                    if (b == Boton.Izquierda) cursorMas = (cursorMas + nm - 1) % nm;
+                    else if (b == Boton.Derecha) cursorMas = (cursorMas + 1) % nm;
+                    else if (b == Boton.Abajo && !RegresarApretado) { if (cursorMas + 1 < nm) cursorMas++; else { cursorMas = -1; cursorCancion = 0; } }
+                    else if (b == Boton.Arriba && !RegresarApretado) { cursorMas = -1; cursorCancion = Math.Max(0, n - 1); }
+                    else if (b == Boton.Poner) AbreDeLaTira();
+                    return;
+                }
+                cursorMas = -1;
+                if (n == 0) { if (nm > 0 && (b == Boton.Abajo || b == Boton.Arriba) && !RegresarApretado) cursorMas = 0; return; }   // (un disco de Spotify que aun carga)
+                if (b == Boton.Arriba && !RegresarApretado) { if (cursorCancion == 0 && nm > 0) cursorMas = nm - 1; else cursorCancion = (cursorCancion + n - 1) % n; }
+                else if (b == Boton.Abajo && !RegresarApretado) { if (cursorCancion == n - 1 && nm > 0) cursorMas = 0; else cursorCancion = (cursorCancion + 1) % n; }
                 else if (b == Boton.Izquierda) cursorCancion = Math.Max(0, cursorCancion - pagina);
                 else if (b == Boton.Derecha) cursorCancion = Math.Min(n - 1, cursorCancion + pagina);
-                else if (b == Boton.Regresar) dentro = null;
                 else if (b == Boton.Poner) PideCancion(dentro.Rutas[cursorCancion], dentro.Titulos[cursorCancion]);
             }
         }
@@ -670,7 +767,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(d.Nombre)) d.Nombre = r.Texto;
                 int ls = letras.IndexOf(Form1.LetraSpotify);
                 if (ls >= 0) { letra = ls; int j = porLetra[Form1.LetraSpotify].IndexOf(d); cursorDisco = j >= 0 ? j : 0; }
-                Buscando = false; dentro = d; cursorCancion = 0;
+                Buscando = false; dentro = d; cursorCancion = 0; cursorMas = -1; deDonde.Clear();
                 return;
             }
             for (int i = 0; i < letras.Count; i++)
@@ -682,6 +779,7 @@ namespace Rocola
                     {
                         letra = i; cursorDisco = j; Buscando = false;
                         if (r.Tipo == 1) { dentro = l[j]; cursorCancion = 0; } else dentro = null;
+                        cursorMas = -1; deDonde.Clear();
                         return;
                     }
             }
@@ -956,6 +1054,8 @@ namespace Rocola
             // SPOTIFY (Motor/Spotify.cs): abre o cierra su programa segun el interruptor y trae la biblioteca; la letra SPOTIFY se pone al dia.
             motor.AtiendeSpotify();
             RevisaSpotify();
+            RevisaLetrasSpotify();
+            RevisaMas();
             RevisaBusquedaSpotify();
             if (salida == null && video == null)
             {

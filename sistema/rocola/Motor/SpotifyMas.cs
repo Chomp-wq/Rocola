@@ -66,6 +66,7 @@ namespace Rocola
                 }
             }
             catch (Exception ex) { LogError("Spotify: rocola_spotify_pares.txt", ex); }
+            parejasVersion++;   // (lo que se calculo con las parejas aun sin leer se rehace: los artistas de tu biblioteca, P1)
         }
         private void ApuntaPareja(string ruta, Pareja p)
         {
