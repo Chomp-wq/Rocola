@@ -1315,3 +1315,21 @@ salida para actualizarse (guarda el estado: los créditos se conservan). Lo que 
 - Comprobado sin cambios: el espacio que pide la actualización del sistema (1,4 GB: bajar el `.gz` y descomprimir 1 GB) alcanza; un apagón
   a media actualización no cambia el arranque (se cambia lo último); el instalador copia y comprueba byte a byte y guarda el arranque de XP
   antes de tocarlo; el reinicio tras quitar la memoria funciona sin ella; la salida para actualizarse no borra créditos ni cola.
+
+## Extra (7-11-2026): vuelve el modo noche
+
+Pedido del dueño: «nos aventaron piedras por tener música a las 12 A.M, así que volveremos a poner el modo noche, con un slider desde el
+70 al 90 % del audio, y con un botón para probar cómo se escucharía cuando se active». Igual en la rocola de XP (`Form1.Sonido.cs`) y aquí
+(`Motor/ModoNoche.cs`), con las mismas claves:
+
+- **De 11 de la noche a 7 de la mañana** (`noche_desde=`, `noche_hasta=`) la rocola suena al porcentaje del deslizador (`noche_pct=`, de 70
+  a 90 %, 80 de fábrica). Es el porcentaje de **lo que se oye**, no de la señal: al 80 % son 3,2 dB menos (al 70 %, 5,1; al 90 %, 1,5).
+  Interruptor «Modo noche» (`noche=`), **encendido de fábrica**.
+- **Baja poco a poco** (20 s), con un aviso al empezar y al acabar; la canción que suena, la siguiente ya preparada, Spotify (pasa por la
+  misma cadena) y los videos (aquí, un filtro de volumen de mpv que la rocola mueve en vivo; en XP, la perilla del reproductor).
+- **«Probar el modo noche»** (Ctrl+F3 → Sonido, debajo del volumen de los videos): 15 segundos al nivel de la noche, al momento, para oír
+  cómo quedaría; luego vuelve solo. No se guarda.
+- Al escribir a un archivo (`--wav`) no hay modo noche: sale igual a cualquier hora.
+- Probado: en XP, la batería `noche` (el cruce de la medianoche, los porcentajes, la rampa por reloj, la cadena y los videos, la
+  configuración) y las del sonido; aquí, la ventana de ajustes en captura (los tres renglones y «PROBANDO 15 s»). No oído en el bar ni en
+  el A4.

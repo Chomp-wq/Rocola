@@ -642,7 +642,12 @@ namespace Rocola
                     else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
                     else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
                     else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
-                    else if (s.StartsWith("noche")) { }   // noche=, noche_desde=, noche_hasta=, noche_db=, noche_compensa=: el modo noche se retiro (24-10-2026), se ignoran
+                    // EL MODO NOCHE (volvio el 7-11-2026, Form1.Sonido.cs). noche_db= y noche_compensa= (los de antes) se ignoran: ahora manda noche_pct=.
+                    else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";
+                    else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
+                    else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
+                    else if (s.StartsWith("noche_pct=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, v)); }
+                    else if (s.StartsWith("noche")) { }   // noche_db=, noche_compensa=: de la version de antes, se ignoran
                     else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
                     else if (s.StartsWith("marca_cola=")) marcaColaOn = s.Substring(11).Trim() != "0";   // el palomito de "ya la pusiste"
@@ -808,6 +813,10 @@ namespace Rocola
             sb.Append("avisos_claros=").Append(avisosClaros ? "1" : "0").Append("\r\n");
             sb.Append("escaparate=").Append(escaparate ? "1" : "0").Append("\r\n");
             sb.Append("top_noche=").Append(topNoche ? "1" : "0").Append("\r\n");
+            sb.Append("noche=").Append(nocheOn ? "1" : "0").Append("\r\n");   // el modo noche (Form1.Sonido.cs)
+            sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
+            sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
+            sb.Append("noche_pct=").Append(nochePct).Append("\r\n");
             sb.Append("letra_lejos=").Append(letraLejos ? "1" : "0").Append("\r\n");
             sb.Append("guia_rojo=").Append(guiaRojo ? "1" : "0").Append("\r\n");
             sb.Append("asistente_animado=").Append(asistenteAnimado ? "1" : "0").Append("\r\n");
@@ -1751,7 +1760,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = DseeEfectivo;   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa

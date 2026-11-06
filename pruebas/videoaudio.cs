@@ -15,7 +15,7 @@ using System.Reflection;
 //   2) un video ya medido va al volumen que lo empareja con el objetivo de las canciones, dentro de sus limites
 //      (no mas de x4 ni menos de x0,15 sobre el base), y "Subir TODO" NO lo empuja contra el techo;
 //   3) uno sin medir sigue a "Subir TODO", topado en 100;
-//   4) el volumen no depende de la hora (el modo noche se retiro el 24-10-2026);
+//   4) el modo noche (volvio el 7-11-2026) tambien baja los videos;
 //   5) el base automatico deja hueco para que casi todos los videos lleguen al objetivo sin pasar de 100, y
 //      nunca baja de 40;
 //   6) el fundido del final solo baja, desde el volumen del video, y no toca el techo.
@@ -50,6 +50,7 @@ class VideoAudio
     {
         Set(f, "normalizeOn", true); Set(f, "videoAuto", auto); Set(f, "videoVol", vol);
         Set(f, "masterDb", master);
+        TF.GetField("nocheOn", T).SetValue(null, false);   // el modo noche (volvio el 7-11-2026) apagado: esto mide el emparejado, a cualquier hora
         Set(f, "videoBaseFirma", -1); Set(f, "videoBaseAuto", -1);
     }
 
@@ -100,10 +101,9 @@ class VideoAudio
         Check(s6 == (int)Math.Round(50 * Math.Pow(10, 6 / 20.0)) && sm6 == (int)Math.Round(50 * Math.Pow(10, -6 / 20.0)) && s12 == 100,
               "base 50 con +6 dB: " + s6 + "; con -6 dB: " + sm6 + "; base 85 con +12 dB: " + s12 + " (el techo)");
 
-        Console.WriteLine("\n  4) SIN MODO NOCHE: A CUALQUIER HORA, EL MISMO VOLUMEN\n");
-        // El modo noche (bajaba 4 dB de 11 a 7) se retiro el 24-10-2026: el volumen de un video ya no puede depender de la hora.
-        Check(TF.GetMethod("FactorNoche", T) == null && !Codigo.Llama(TF.GetMethod("VideoVolumeFor", T), "get_Now") && !Codigo.Llama(TF.GetMethod("VideoVolumeFor", T), "get_Hour"),
-              "el volumen de los videos no mira el reloj (no queda nada del modo noche)");
+        Console.WriteLine("\n  4) EL MODO NOCHE TAMBIEN BAJA LOS VIDEOS (volvio el 7-11-2026; su bateria es 'noche')\n");
+        Check(Codigo.Llama(TF.GetMethod("VideoVolumeFor", T), "FactorVideoNoche"),
+              "el volumen de los videos pasa por el modo noche (tambien los ya medidos)");
 
         Console.WriteLine("\n  5) EL BASE AUTOMATICO DEJA HUECO\n");
         IList discos = (IList)Get(f, "videoAlbums"); discos.Clear();

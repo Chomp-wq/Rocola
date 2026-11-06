@@ -1594,7 +1594,7 @@ namespace Rocola
         // Aplica el nivelado a la cancion que suena AHORA (para oir el cambio al instante mientras se ajusta en Ctrl+F3).
         private void ApplyNormNow()
         {
-            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
+            LevelTap t = curTap; if (t != null && nowPlaying != null && nowPlaying.Song != null) { t.Gain = GananciaDe(nowPlaying.Song); t.Excite = ExciteAmountFor(nowPlaying.Song.Path); t.Master = MasterEfectivo() * FactorNoche(); t.EqDb = EqCorrFor(nowPlaying.Song.Path); }
             DeepBassProvider bp = curBass; if (bp != null) bp.Amount = BassAmountNow();   // bajo psicoacustico: al instante, ya ajustado a la cancion
             SpectralTap sp = curSbr; if (sp != null) sp.Active = DseePara(nowPlaying != null && nowPlaying.Song != null ? nowPlaying.Song.Path : null);   // reconstruccion espectral: alterna EN VIVO (A/B desde Ctrl+F3)
             AplicaAPreparada();   // y a la siguiente, si ya esta preparada para entrar sin pausa
@@ -1808,7 +1808,7 @@ namespace Rocola
             if (p == null || p.Cancion == null || p.Tap == null) return;
             p.Tap.Gain = GananciaDe(p.Cancion);
             p.Tap.Excite = ExcitePara(p);
-            p.Tap.Master = MasterEfectivo();
+            p.Tap.Master = MasterEfectivo() * FactorNoche();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
             if (p.Sbr != null) p.Sbr.Active = DseeDe(p);

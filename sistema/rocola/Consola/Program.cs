@@ -77,6 +77,7 @@ namespace Rocola
             if (lista.Count == 0 && !biblioteca) { Console.Error.WriteLine("Uso: rocola-consola [--wav salida.wav] [--dispositivo default] [--biblioteca] canciones..."); return 2; }
             Form1 motor = new Form1();   // los ajustes de fabrica de XP...
             motor.Arranca();             // ...y encima los de rocola_config.txt y lo aprendido (las tablas), como al arrancar la de XP
+            if (wav != null) Form1.nocheOn = false;   // a un archivo: sin modo noche (sale igual a cualquier hora; no es el bar)
             Console.WriteLine(motor.Resumen());
             List<Form1.Disco> discos = motor.LeeBiblioteca();
             Console.WriteLine("Biblioteca (" + motor.CarpetaMusica + "): " + discos.Count + " discos");

@@ -106,7 +106,8 @@ class Desnormales
             tab[wav] = a[1];
             Call(f, "ActualizaFuenteMedida", wav, Call(null, "TomaFuenteMedida"));
 
-            // Lo de fabrica, aprendiendo sonoridad y huella, sin saltar silencios (el modo noche se retiro el 24-10-2026).
+            // Lo de fabrica, aprendiendo sonoridad y huella, sin saltar silencios; el modo noche (volvio el 7-11-2026), de dia.
+            SetSiHay(f, "nocheArrancada", true); SetSiHay(f, "nocheFactor", 1f);
             Set(f, "normalizeOn", true); Set(f, "normTarget", 0.26f); Set(f, "normStrength", 1f); Set(f, "masterDb", 0f);
             Set(f, "excAmount", 0.35f); Set(f, "bassAuto", false); Set(f, "bassAmount", 0.3f); Set(f, "bassSongFactor", 1f);
             Set(f, "sbrAllowed", false); Set(f, "sbrOn", false); Set(f, "declipOn", true);

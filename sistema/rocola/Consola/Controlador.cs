@@ -244,6 +244,8 @@ namespace Rocola
                             RevisaAyuda();
                             RevisaDiagnostico();
                             RevisaActualizacion();
+                            motor.AvanzaModoNoche();   // de 11 a 7, el volumen al % del modo noche (con su rampa: ModoNoche.cs)
+                            NocheAlVideo();
                             motor.Periodico();   // el reinicio de las 7 (si esta ociosa) y lo aprendido al disco, una vez por minuto
                             Suena();
                             if (video == null) vista.Dibuja(this);   // mientras suena un video, la pantalla es suya
@@ -707,7 +709,11 @@ namespace Rocola
                 // y el sonido siguen juntos. Medido o no, lo decide el motor (VolumenVideo).
                 double g = Math.Max(0.015625, Math.Min(64.0, motor.VolumenVideo(ruta)));
                 pi.ArgumentList.Add("--af=lavfi=[alimiter=level_in=" + g.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
-                    + ":limit=" + motor.TechoVideos.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ":attack=5:release=80:level=0:latency=1],@fin:lavfi=[volume=volume=1:eval=frame]");
+                    + ":limit=" + motor.TechoVideos.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + ":attack=5:release=80:level=0:latency=1],@noche:lavfi=[volume=volume=" + motor.FactorNoche().ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
+                    + "],@fin:lavfi=[volume=volume=1:eval=frame]");
+                videoNoche = motor.FactorNoche();
+                // EL MODO NOCHE (7-11-2026, ModoNoche.cs): @noche lleva el mismo factor que la cadena de las canciones; si la rampa se mueve con
+                // el video sonando (llegan las 11, o «Probar»), NocheAlVideo se lo manda a mpv por su canal de ordenes.
                 // SALTAR UN VIDEO SIN GOLPE (4-11-2026): @fin no hace nada hasta que, al saltar, se le pide por el canal de ordenes de mpv que baje a
                 // cero en 0,3 s (ApagaVideo); despues se cierra. Antes se mataba mpv a media onda: un golpe seco en las bocinas.
                 mpvOrdenes = Path.Combine(Path.GetTempPath(), "rocola-mpv-" + Environment.ProcessId + ".sock");
@@ -728,6 +734,31 @@ namespace Rocola
             catch (Exception ex) { try { if (video != null) { video.Kill(); video.Dispose(); } } catch { } video = null; motor.DevuelveCredito("No se pudo poner el video: " + ex.Message); TerminaVideo(); }
         }
         private string mpvOrdenes;
+        private float videoNoche = 1f;
+        private int videoNocheMs;
+        // El modo noche al video que suena: cuando el factor se movio mas de 0,005, como mucho cada 250 ms (el canal es de mpv, en otro hilo).
+        private void NocheAlVideo()
+        {
+            if (video == null || mpvOrdenes == null) return;
+            float f = motor.FactorNoche();
+            if (Math.Abs(f - videoNoche) < 0.005f && !(f == 1f && videoNoche != 1f) && !(f == Form1.NocheLin() && videoNoche != f)) return;
+            int ahora = Environment.TickCount; if (unchecked(ahora - videoNocheMs) < 250) return;
+            videoNocheMs = ahora; videoNoche = f;
+            string ruta = mpvOrdenes, v = f.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture);
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    using (System.Net.Sockets.Socket s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified))
+                    {
+                        s.SendTimeout = 200;
+                        s.Connect(new System.Net.Sockets.UnixDomainSocketEndPoint(ruta));
+                        s.Send(Encoding.UTF8.GetBytes("{\"command\":[\"af-command\",\"noche\",\"volume\",\"" + v + "\"]}\n"));
+                    }
+                }
+                catch { }
+            });
+        }
         private int videoDesde; internal const int VideoFalloMs = 8000;   // un video que falla antes de 8 s no llego a verse: se devuelve su credito
         private int videoApagaDesde; private bool videoSaltado;
         internal const int VideoApagaMs = 300;

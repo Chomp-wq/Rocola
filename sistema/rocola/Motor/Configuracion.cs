@@ -34,7 +34,12 @@ namespace Rocola
             else if (s.StartsWith("nivel_fuerza=")) { float v; if (float.TryParse(s.Substring(13).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) normStrength = Clampf(v, 0f, 1f); }
             else if (s.StartsWith("realce=")) { float v; if (float.TryParse(s.Substring(7).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) excAmount = Clampf(v, 0f, 1f); }   // realce de agudos (exciter, tipo DSEE)
             else if (s.StartsWith("bajo=")) { float v; if (float.TryParse(s.Substring(5).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) bassAmount = Clampf(v, 0f, 1f); }   // bajo psicoacustico (armonicos del grave)
-            else if (s.StartsWith("noche")) { }   // noche=, noche_desde=, noche_hasta=, noche_db=, noche_compensa=: el modo noche se retiro (24-10-2026), se ignoran
+            // EL MODO NOCHE (volvio el 7-11-2026, ModoNoche.cs); noche_db= y noche_compensa= (los de antes) se ignoran.
+            else if (s.StartsWith("noche=")) nocheOn = s.Substring(6).Trim() != "0";
+            else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
+            else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
+            else if (s.StartsWith("noche_pct=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, v)); }
+            else if (s.StartsWith("noche")) { }
             else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)
             else if (s.StartsWith("grave_mono=")) graveMonoHz = GraveMonoHz(s.Substring(11));   // corte del grave en mono (Hz; 0 = apagado)
             else if (s.StartsWith("ancho_estereo=")) anchoEstereo = AnchoEstereo(s.Substring(14));   // % del estereo (100 = como viene)

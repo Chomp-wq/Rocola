@@ -111,7 +111,7 @@ namespace Rocola
             original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
-            tap.Master = MasterEfectivo();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs)
+            tap.Master = MasterEfectivo() * FactorNoche();  // y de madrugada mas bajo (ModoNoche.cs); SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs)
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)

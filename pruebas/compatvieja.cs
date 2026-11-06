@@ -61,8 +61,8 @@ class CompatVieja
         Exige((int)Toma(f, "nieblasNiv") == 2 && (int)Toma(f, "fugacesNiv") == 0 && (int)Toma(f, "relevoNiv") == 2 && (int)Toma(f, "animNiv") == 0,
               "nieblas/fugaces/patron/animacion de 0/1 pasan a niveles: 1 = alto, 0 = bajo");
         Exige(Math.Abs((float)Toma(f, "auroraAmount") - 0.40f) < 1e-4, "la aurora guardada como \"fondo=40\" (version del 10-08) se lee: 40 %");
-        Exige(Math.Abs((float)Toma(f, "estrellasDens") - 0.60f) < 1e-4 && (int)Toma(f, "videoVol") == 70 && TF.GetField("nocheOn", T) == null,
-              "estrellas y volumen de videos, como estaban; el noche=0 de antes se ignora (el modo noche se retiro el 24-10-2026)");
+        Exige(Math.Abs((float)Toma(f, "estrellasDens") - 0.60f) < 1e-4 && (int)Toma(f, "videoVol") == 70 && TF.GetField("nocheOn", T) != null && !(bool)TF.GetField("nocheOn", T).GetValue(null),
+              "estrellas y volumen de videos, como estaban; el noche=0 de antes se respeta (el modo noche volvio el 7-11-2026)");
         Exige(Math.Abs((float)Toma(f, "normTarget") - 0.3f) < 1e-4 && Math.Abs((float)Toma(f, "normStrength") - 0.8f) < 1e-4
               && (float)Toma(f, "masterDb") == 0f && Math.Abs((float)Toma(f, "eqAmount") - 0.4f) < 1e-4,
               "el sonido de antes: volumen objetivo, fuerza y EQ al 40 % (subir_db=3 se ignora desde el 25-10-2026)");
@@ -72,7 +72,7 @@ class CompatVieja
         Llama(f, "SaveConfigPrefs"); Codigo.EsperaGuardado(TF, f);
         string nuevo = File.ReadAllText(Ruta("rocola_config.txt"));
         Exige(nuevo.Contains("nieblas=alto") && nuevo.Contains("fugaces=bajo") && nuevo.Contains("espectro=40") && !nuevo.Contains("\nfondo=")
-              && !nuevo.Contains("efectos=") && !nuevo.Contains("estilo_fondo=") && !nuevo.Contains("\nnoche=") && !nuevo.Contains("noche_db=") && nuevo.Contains("dir=" + musicaExtra),
+              && !nuevo.Contains("efectos=") && !nuevo.Contains("estilo_fondo=") && nuevo.Contains("\nnoche=0") && !nuevo.Contains("noche_db=") && nuevo.Contains("dir=" + musicaExtra),
               "al guardar sale en el formato nuevo (nieblas=alto, espectro=40), sin las claves retiradas y con su carpeta extra");
         object g = Rocola(); Llama(g, "LoadConfigPrefs");
         Exige((int)Toma(g, "nieblasNiv") == 2 && Math.Abs((float)Toma(g, "auroraAmount") - 0.40f) < 1e-4 && (int)Toma(g, "videoVol") == 70,

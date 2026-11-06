@@ -377,7 +377,7 @@ namespace Rocola
             if (p == null || p.Cancion == null || p.Tap == null) return;
             p.Tap.Gain = GananciaDe(p.Cancion);
             p.Tap.Excite = ExcitePara(p);
-            p.Tap.Master = MasterEfectivo();
+            p.Tap.Master = MasterEfectivo() * FactorNoche();
             p.Tap.EqDb = EqCorrFor(p.Cancion.Path);
             if (p.Bajo != null) p.Bajo.Amount = BassAmountPara(p.BajoFactor, p.BajoBase);
             if (p.Sbr != null) p.Sbr.Active = DseeDe(p);

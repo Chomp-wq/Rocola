@@ -9,7 +9,7 @@ using NAudio.Wave;
 //
 // Cada opcion de sonido tiene su bateria. Esta mira que no choquen entre si: la cadena de verdad de una cancion
 // (OpenAudio + ArmaCadena) con TODO encendido a la vez -nivelado, "Subir TODO", realce, DSEE, grave sintetico, grave en
-// mono, des-recorte, fundido y saltar silencios (el modo noche se retiro el 24-10-2026)- y ademas cambiandolo todo en vivo mientras suena, como
+// mono, des-recorte, fundido y saltar silencios (el modo noche, de dia)- y ademas cambiandolo todo en vivo mientras suena, como
 // desde Ctrl+F3 (ApplyNormNow). Se mira:
 //   - que no salga nada roto (NaN, infinitos) ni nada por encima del techo del limitador;
 //   - que los cambios en vivo no metan chasquidos (el salto mas grande entre dos muestras seguidas no pasa del de
@@ -103,6 +103,7 @@ class TodoJunto
         Set(f, "declipOn", todo);
         Set(f, "crossfadeSec", 0.5f);
         Set(f, "saltaSilencios", todo);
+        Set(f, "nocheArrancada", true); Set(f, "nocheFactor", 1f);   // el modo noche (volvio el 7-11-2026), de dia: a cualquier hora igual
     }
 
     class Pasada { public float[] y; public double[] grDb; public double ms; public int n; }

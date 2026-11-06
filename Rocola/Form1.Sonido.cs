@@ -59,10 +59,98 @@ namespace Rocola
         private bool IaMejoradaPara(string path) { return false; }
         private void AlEntrarPorRelevo(CadenaCancion b) { }
 
-        // MODO NOCHE: RETIRADO (decision del dueno del 24-10-2026). Bajaba 4 dB de 11 de la noche a 7 de la manana; el que hace el
-        // corte de la venta baja el volumen el mismo cuando lo necesita. Las claves noche=, noche_desde=, noche_hasta=, noche_db= y
-        // noche_compensa= de configuraciones viejas se ignoran (Form1.Datos.cs); la cadena ya no lleva la etapa que devolvia graves y
-        // agudos de madrugada (de dia no hacia nada, asi que de dia el sonido sale bit a bit como antes).
+        // ============================== MODO NOCHE (VUELVE: decision del dueno del 7-11-2026) ==============================
+        // «El otro dia nos aventaron piedras por tener musica a las 12 A.M, asi que volveremos a poner el modo noche, con un slider desde
+        // el 70 al 90% del audio, y con un boton para probar como se escucharia cuando se active.» (Se habia retirado el 24-10-2026.)
+        //
+        // De las 11 de la noche a las 7 de la manana (noche_desde=, noche_hasta=) la rocola suena al nochePct % (noche_pct=, de 70 a 90,
+        // 80 de fabrica; interruptor noche=, ENCENDIDO de fabrica), musica y videos.
+        //
+        // EL PORCENTAJE ES DE LO QUE SE OYE, NO DE LA SENAL. Lo que se aprendio la primera vez: multiplicar la senal por 0,8 son -1,9 dB, y
+        // eso casi no se nota (el ajuste parecia roto). El oido percibe el doble de fuerte con +10 dB, asi que «al 70 %» es 10*log2(0,70) =
+        // -5,1 dB; al 80 %, -3,2 dB; al 90 %, -1,5 dB.
+        //
+        // Y BAJA POCO A POCO: veinte segundos de rampa (de golpe, a media cancion, suena a averia). «Probar» lo pone 15 s al momento (rampa
+        // de 1,5 s, para oir la diferencia) y vuelve solo.
+        private static bool nocheOn = true;                        // "noche=" en config (0 lo apaga del todo)
+        private static int nocheDesde = 23;                        // "noche_desde="
+        private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta=" (las 7: cuando empieza el dia del negocio)
+        private static int nochePct = 80;                          // "noche_pct=": de 70 a 90 (lo que se oye)
+        internal const int NochePctMin = 70, NochePctMax = 90;
+        private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 15000;
+        private float nocheFactor = 1f;                            // donde esta la rampa AHORA (1 = de dia)
+        private int nocheUltMs;                                    // reloj de la ultima vuelta
+        private bool nocheArrancada, nocheAvisada;
+        private int nochePruebaHasta;                              // «Probar»: hasta cuando (TickCount; 0 = no)
+        private bool nochePruebaRapida;                            // la rampa rapida de la prueba (al entrar y al salir)
+
+        private static float NocheDb() { return (float)(10.0 * Math.Log(Math.Max(1, Math.Min(100, nochePct)) / 100.0, 2.0)); }
+        private static float NocheLin() { return (float)Math.Pow(10.0, NocheDb() / 20.0); }
+
+        // El rango CRUZA LA MEDIANOCHE: «hora >= 23 && hora < 7» es siempre falso. Va un O, no un Y (con su prueba: pruebas/noche.cs).
+        private static bool EsDeNoche(DateTime t)
+        {
+            int h = t.Hour, a = nocheDesde, b = nocheHasta;
+            if (a == b) return false;              // rango vacio
+            if (a < b) return h >= a && h < b;     // rango normal, dentro del mismo dia
+            return h >= a || h < b;                // el que cruza la medianoche
+        }
+        private bool ProbandoNoche { get { return nochePruebaHasta != 0 && unchecked(Environment.TickCount - nochePruebaHasta) < 0; } }
+        // A donde TIENE que llegar la rampa: 1 de dia; de noche (o probando), lo que diga el deslizador.
+        private float MetaNoche() { return ((nocheOn && EsDeNoche(DateTime.Now)) || ProbandoNoche) ? NocheLin() : 1f; }
+        // Cuanto hay que bajar AHORA (el valor de la rampa). Antes de la primera vuelta del reloj, el destino (un video que empezara en ese
+        // hueco saldria mudo con el campo aun en cero).
+        private float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
+        // «Probar» (Ctrl+F3 -> Sonido): 15 s al nivel de la noche, al momento; luego vuelve solo (de dia) o se queda (si ya es de noche).
+        internal void PruebaNoche() { nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1; nochePruebaRapida = true; }
+        internal int SegundosPruebaNoche { get { return ProbandoNoche ? Math.Max(1, unchecked(nochePruebaHasta - Environment.TickCount) / 1000 + 1) : 0; } }
+
+        // Un paso de la rampa, por MILISEGUNDOS DE RELOJ (no por vueltas: el medidor de Ctrl+F3 llama al tick a mano).
+        private static float AvanzaRampa(float actual, float meta, int msPasados, int rampaMs)
+        {
+            if (actual == meta) return meta;
+            if (msPasados <= 0) return actual;
+            float paso = (1f - 0.5f) * msPasados / rampaMs;   // recorre medio volumen en rampaMs: la noche (70 a 90 %) en menos que eso
+            if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
+            else { actual -= paso; if (actual < meta) actual = meta; }
+            return actual;
+        }
+
+        // La lleva el temporizador de animacion, al lado de CheckBusinessDayReset.
+        private void AvanzaModoNoche()
+        {
+            bool esNoche = nocheOn && EsDeNoche(DateTime.Now);
+            float meta = MetaNoche();
+            int ahora = Environment.TickCount;
+            // Al encender NO se hace la rampa: se arranca ya en el nivel que toca.
+            if (!nocheArrancada) { nocheArrancada = true; nocheUltMs = ahora; nocheFactor = meta; nocheAvisada = esNoche; return; }
+            int dt = unchecked(ahora - nocheUltMs); nocheUltMs = ahora;
+            if (dt < 0 || dt > 5000) dt = 0;   // el reloj dio la vuelta, o el equipo estuvo dormido: no dar un salto
+            if (nochePruebaHasta != 0 && !ProbandoNoche) { nochePruebaHasta = 0; nochePruebaRapida = true; }   // se acabo la prueba: vuelve rapido
+            if (esNoche != nocheAvisada)
+            {
+                nocheAvisada = esNoche;
+                ShowToast(esNoche ? ("Modo noche: el volumen baja al " + nochePct + " %") : "Se acabo el modo noche: vuelve el volumen de siempre",
+                          Color.FromArgb(38, 78, 132));
+            }
+            float antes = nocheFactor;
+            nocheFactor = AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
+            if (nocheFactor == meta) nochePruebaRapida = false;
+            // Y se empuja a la cancion que YA suena (y a la preparada, y al video): si no, no se oiria hasta la siguiente.
+            if (nocheFactor != antes)
+            {
+                LevelTap t = curTap; if (t != null) t.Master = MasterEfectivo() * FactorNoche();
+                AplicaAPreparada();   // (el video lo sigue solo: su sondeo relee VideoVolumeFor cada 400 ms)
+            }
+        }
+
+        // El de los videos: la misma rampa, llevada a la perilla del reproductor (de 1 a nochePct/100).
+        private float FactorVideoNoche()
+        {
+            float lin = NocheLin(); if (lin >= 1f) return 1f;
+            float avance = (1f - FactorNoche()) / (1f - lin); if (avance < 0f) avance = 0f; else if (avance > 1f) avance = 1f;
+            return 1f - avance * (1f - nochePct / 100f);
+        }
 
         // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, pedido el 12-10-2026). En Windows XP, si la tarjeta trabaja a
         // 48 kHz y la cancion viene a 44,1 kHz, la conversion la hace el mezclador de Windows, que es de calidad baja (ensucia
@@ -1244,7 +1332,7 @@ namespace Rocola
             original.Tap = tap; tap.MideOriginal = true;
             tap.Gain = GananciaDe(t);   // la del disco si suena en racha con otra de su disco (NivelDisco.cs); si no, la suya
             tap.Excite = ExciteAmountFor(t.Path);   // realce de agudos: mas a las dañadas, menos a las que ya traen su aire
-            tap.Master = MasterEfectivo();  // SUBIR TODO (lo mismo a todas, sin pasar del techo de la biblioteca: SubirTodo.cs)
+            tap.Master = MasterEfectivo() * FactorNoche();  // SUBIR TODO (SubirTodo.cs), y de madrugada mas bajo (el modo noche)
             tap.EqDb = EqCorrFor(t.Path);      // EQ automatico: correccion aprendida (null la 1a vez que suena)
             audioTailDelay += tap.DelayFrames;   // realce 2x: retiene 31 cuadros y los entrega al final (Realce.cs)
             c.Tap = tap; tap.Medida = new MedidaCancion(c.MedidaRuta, c.EqRuta);   // lo que aprende oyendola (ver MedidaDe)

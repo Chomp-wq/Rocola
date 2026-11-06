@@ -330,6 +330,20 @@ namespace Rocola
             vv.Guardado = delegate { return videoVol.ToString(CultureInfo.InvariantCulture); };
             vv.Cambia = delegate (int d) { videoVol = Math.Max(0, Math.Min(100, videoVol + 5 * d)); };
             l.Add(vv);
+            // EL MODO NOCHE (7-11-2026, ModoNoche.cs): el interruptor, cuanto se oye (70 a 90 %) y «Probar» (15 s al momento).
+            l.Add(Interruptor("Volumen al limite", "Modo noche (de " + nocheDesde + " a " + nocheHasta + " h)", "noche", () => nocheOn, v => nocheOn = v, false));
+            Ajuste np = new Ajuste { Grupo = "Volumen al limite", Nombre = "De noche suena al", Clave = "noche_pct" };
+            np.Valor = delegate { return nochePct + "%"; };
+            np.Barra = delegate { return (nochePct - NochePctMin) * 100 / (NochePctMax - NochePctMin); };
+            np.Nota = delegate { return "Lo que se oye (al 80 %, 3 dB menos). Baja poco a poco, en 20 s; canciones, Spotify y videos."; };
+            np.Guardado = delegate { return nochePct.ToString(CultureInfo.InvariantCulture); };
+            np.Cambia = delegate (int d) { nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, nochePct + 5 * d)); };
+            l.Add(np);
+            Ajuste pn = new Ajuste { Grupo = "Volumen al limite", Nombre = "Probar el modo noche", Herramienta = true };
+            pn.Valor = delegate { int s = SegundosPruebaNoche; return s > 0 ? "PROBANDO " + s + " s" : "PROBAR"; };
+            pn.Nota = delegate { return "Lo pone 15 segundos al momento, como sonaria de noche, y vuelve solo."; };
+            pn.Cambia = delegate (int d) { PruebaNoche(); };
+            l.Add(pn);
             l.Add(Interruptor("Pantalla", "Ficha rapida del disco (al quedarse en uno)", "ficha_disco", () => FichaDisco, v => FichaDisco = v, false));
             l.Add(Interruptor("Pantalla", "Barra de letras con lupa", "letras_lupa", () => LetrasLupa, v => LetrasLupa = v, false));
             l.Add(Interruptor("Pantalla", "Pasar de pagina deslizando", "pagina_desliza", () => PaginaDesliza, v => PaginaDesliza = v, false));

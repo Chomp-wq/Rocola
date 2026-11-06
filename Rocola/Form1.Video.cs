@@ -216,6 +216,11 @@ namespace Rocola
                 v *= lv;
             }
             else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
+            // EL MODO NOCHE, AQUI FUERA (y no en MasterLin): la rama del video medido se salta la ganancia general, y esos videos -la
+            // mayoria- seguirian a todo volumen a las tres de la manana. A la perilla del reproductor de Windows se le aplica el % del
+            // deslizador tal cual (al 80 %, la perilla al 80 % de lo que iba), siguiendo la rampa. El sondeo del video lo vuelve a leer
+            // cada 400 ms, asi que el que ya suena baja solo.
+            v *= FactorVideoNoche();
             int r = (int)Math.Round(v);
             if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
             return r;
