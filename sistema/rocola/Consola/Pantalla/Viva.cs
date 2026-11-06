@@ -354,6 +354,7 @@ namespace Rocola
         {
             Form1 m = c.motor;
             Chispas();   // V18, V23
+            DibujaDestello();   // C10
             if (m.GuiaRojo && c.RojoMantenido && !c.AyudaAbierta && c.AjusteSel < 0) GuiaRojo(c);
             // LA MONEDA QUE CAE: una moneda dorada girando hasta la capsula de Creditos; la capsula da un golpe con un destello verde y
             // sube "+4 creditos".
@@ -424,6 +425,7 @@ namespace Rocola
                 vueloDesde = c.VueloDesdeBuscador ? zSelResultado : zCancion;
                 vueloTitulo = c.VueloTitulo ?? "";
                 Zona destino = c.VueloASuena ? zSuena : zCola;
+                if (m.DestelloPedir && !vueloDesde.Vacia) Destello(vueloDesde.Cx, vueloDesde.Cy, c.dentro != null ? ColorDeDisco(m, c.dentro, false) : vivo1);   // C10
                 if (m.ChispasPedir && !vueloDesde.Vacia && !destino.Vacia)   // V23: chispas del color del genero hasta la cola
                 {
                     Color4 cc = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Dorado;

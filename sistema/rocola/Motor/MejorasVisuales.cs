@@ -39,6 +39,17 @@ namespace Rocola
         // VIDRIO Y LETRA (decision del 3-11-2026, presentacion «Rocola OS: vidrio y letra»: G1-G11 y la letra L1). Los vidrios sobre el cielo
         // (coste bajo) encendidos de fabrica; los que desenfocan lo que hay detras de verdad (G4, G9, G10, G11: coste medio), apagados
         // hasta medirlos en el A4.
+        // COLOR VIVO (decision del 7-11-2026, maqueta «Rocola OS: mas color», la opcion Vivo: C1-C6, C9-C11; no C7 ni C8). Todo de coste
+        // bajo, encendido de fabrica; mientras alguien usa la rocola los efectos bajan su intensidad (VistaGrafica.Viveza, ColorVivo.cs).
+        public bool TextosColor = true;         // C1 "textos_color="
+        public bool TitulosDegradado = true;    // C2 "titulos_degradado="
+        public bool LetrasColor = true;         // C3 "letras_color="
+        public bool VidrioColor = true;         // C4 "vidrio_color="
+        public bool NeonBorde = true;           // C5 "neon_borde="
+        public bool VidrioLate = true;          // C6 "vidrio_late="
+        public bool PortadasBrillan = true;     // C9 "portadas_brillan="
+        public bool DestelloPedir = true;       // C10 "destello_pedir="
+        public bool BarraNeon = true;           // C11 "barra_neon="
         public bool LetraNueva = true;          // L1 "letra_nueva=": Outfit en los titulos y Plus Jakarta Sans en el texto
         public bool VidrioCabecera = true;      // G1 "vidrio_cabecera="
         public bool VidrioLetras = true;        // G2 "vidrio_letras="
@@ -107,6 +118,11 @@ namespace Rocola
             a("vidrio_buscador", () => VidrioBuscador, v => VidrioBuscador = v); a("vidrio_atraccion", () => VidrioAtraccion, v => VidrioAtraccion = v);
             a("vidrio_ajustes", () => VidrioAjustes, v => VidrioAjustes = v); a("vidrio_avisos", () => VidrioAvisos, v => VidrioAvisos = v);
             a("vidrio_ayuda", () => VidrioAyuda, v => VidrioAyuda = v);
+            a("textos_color", () => TextosColor, v => TextosColor = v); a("titulos_degradado", () => TitulosDegradado, v => TitulosDegradado = v);
+            a("letras_color", () => LetrasColor, v => LetrasColor = v); a("vidrio_color", () => VidrioColor, v => VidrioColor = v);
+            a("neon_borde", () => NeonBorde, v => NeonBorde = v); a("vidrio_late", () => VidrioLate, v => VidrioLate = v);
+            a("portadas_brillan", () => PortadasBrillan, v => PortadasBrillan = v); a("destello_pedir", () => DestelloPedir, v => DestelloPedir = v);
+            a("barra_neon", () => BarraNeon, v => BarraNeon = v);
             clavesVisuales = l.ToArray(); ponVisuales = p.ToArray();
         }
         // Una linea del archivo de configuracion: true si era de estas.

@@ -26,6 +26,8 @@ namespace Rocola
         {
             if (alfa <= 0.01f || w < 4 || h < 4) return;
             r = Math.Min(r, Math.Min(w, h) / 2f);
+            bool c4 = vistaC != null && vistaC.motor.VidrioColor;   // C4: el tinte mas vivo y mas presente (menos mientras se usa la rocola)
+            if (c4) { tinte = Vivido(tinte); luz *= 1f + 0.45f * viveza; }
             // la sombra: tres aros por fuera, cada vez mas tenues (lo de dentro lo tapa el vidrio)
             for (int i = 1; i <= 3; i++)
             {
@@ -46,7 +48,7 @@ namespace Rocola
                 d.RedondoDegradado(x, y, w, h, r, arriba.ConAlfa(arriba.A * alfa), abajo.ConAlfa(abajo.A * alfa));
             }
             ReflejoVidrio(x, y, w, h, r, alfa);
-            d.Contorno(x, y, w, h, r, Math.Max(1f, 1.3f * k), new Color4(1f, 1f, 1f, 0.34f * alfa));
+            d.Contorno(x, y, w, h, r, Math.Max(1f, 1.3f * k), (c4 ? Dibujo.Mezcla(Blanco, tinte, 0.40f * viveza) : Blanco).ConAlfa(0.34f * alfa));
             float ri = r * 0.9f;
             if (w > 2 * ri + 4) d.Degradado(x + ri, y + 1.2f * k, w - 2 * ri, 1.8f * k, new Color4(1f, 1f, 1f, 0.55f * alfa), new Color4(1f, 1f, 1f, 0f));
         }

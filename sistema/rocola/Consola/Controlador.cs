@@ -195,6 +195,7 @@ namespace Rocola
                     && dentro == null && !Atraccion && unchecked(Environment.TickCount - ultimoToque) >= 15000;
             }
         }
+        internal int MsSinTocar { get { return unchecked(Environment.TickCount - ultimoToque); } }   // (Color vivo: la calma mientras se usa)
         internal void FuerzaReposo() { ultimoToque = Environment.TickCount - 20000; }   // (pruebas)
 
         internal double AtraccionDesfase;   // (pruebas) segundos ya corridos del ciclo de 30 s de la atraccion
@@ -559,6 +560,7 @@ namespace Rocola
             int n = 0; foreach (Form1.Disco x in porLetra[letras[i]]) n += x.Rutas.Count;
             return n;
         }
+        internal List<Form1.Disco> DiscosEnLetra(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]] : new List<Form1.Disco>(); }
         internal List<Form1.Disco> DiscosDeLetra() { return letras.Count == 0 ? new List<Form1.Disco>() : porLetra[letras[letra]]; }
 
         internal const int DiscosPorPagina = 18;   // seis columnas y tres filas, como la pared de XP

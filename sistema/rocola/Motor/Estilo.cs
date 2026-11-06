@@ -24,6 +24,12 @@ namespace Rocola
         // El genero que manda en un disco (el que mas se repite entre las canciones que traen etiqueta). Se lee UNA vez por disco y en un
         // hilo de fondo, sobre copias de las canciones (LeeEtiquetaAparte de XP: no toca la biblioteca); mientras, "" (sin resplandor).
         private readonly Dictionary<string, string> generoDisco = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // El genero de un disco si ya se leyo (sin pedirlo): "" si no se sabe.
+        public string GeneroSabido(Disco d)
+        {
+            if (d == null || d.Carpeta == null) return "";
+            string g; lock (generoDisco) return generoDisco.TryGetValue(d.Carpeta, out g) ? g ?? "" : "";
+        }
         public string GeneroDeDisco(Disco d)
         {
             if (d == null || d.Videos || d.Carpeta == null) return "";

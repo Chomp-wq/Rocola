@@ -140,7 +140,7 @@ namespace Rocola
             if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
             return "Sonido";
         }
-        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra" };
+        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra", "Color vivo" };
         // Una mejora visual de Rocola OS (MejorasVisuales.cs): su interruptor y su explicacion; 'medio' = de coste medio (apagada de fabrica).
         private Ajuste Visual(string grupo, string nombre, string clave, Func<bool> lee, Action<bool> pon, bool medio, string nota)
         {
@@ -403,6 +403,17 @@ namespace Rocola
             l.Add(Visual("Vidrio y letra", "Ajustes de vidrio (G9)", "vidrio_ajustes", () => VidrioAjustes, v => VidrioAjustes = v, true, "Esta ventana, de vidrio oscuro que deja ver la pared detras, borrosa (no en Colores, Imagen ni Fondo con V28)."));
             l.Add(Visual("Vidrio y letra", "Avisos de vidrio nuevos (G10)", "vidrio_avisos", () => VidrioAvisos, v => VidrioAvisos = v, true, "Todos los avisos sobre vidrio que desenfoca lo de detras, con su color."));
             l.Add(Visual("Vidrio y letra", "Globo de ayuda de vidrio (G11)", "vidrio_ayuda", () => VidrioAyuda, v => VidrioAyuda = v, true, "El globo de la estrella asistente, de vidrio dorado."));
+            // COLOR VIVO (7-11-2026): mas color, que se calma mientras alguien usa la rocola
+            const string calma = " Mientras alguien usa la rocola se calma; vuelve entero a los 15 s sin botones.";
+            l.Add(Visual("Color vivo", "Textos del color de su genero (C1)", "textos_color", () => TextosColor, v => TextosColor = v, false, "Los nombres de la pared, lo que suena y los numeros de las canciones con el color de su genero o de su disco."));
+            l.Add(Visual("Color vivo", "Titulos en degradado (C2)", "titulos_degradado", () => TitulosDegradado, v => TitulosDegradado = v, false, "«AHORA SUENA», el nombre del disco y la letra de arriba en un degradado de colores que corre despacio." + calma));
+            l.Add(Visual("Color vivo", "Letras de colores (C3)", "letras_color", () => LetrasColor, v => LetrasColor = v, false, "Cada letra de la barra con el color de su genero (o de su lugar en el abecedario); la elegida brilla con el suyo." + calma));
+            l.Add(Visual("Color vivo", "Vidrio del color de lo que suena (C4)", "vidrio_color", () => VidrioColor, v => VidrioColor = v, false, "Los vidrios se tiñen con la cancion que suena y cambian suave en 1,5 s." + calma));
+            l.Add(Visual("Color vivo", "Borde de neon (C5)", "neon_borde", () => NeonBorde, v => NeonBorde = v, false, "Una luz del color de la cancion da vueltas por el borde de lo que suena, del disco abierto y del reposo." + calma));
+            l.Add(Visual("Color vivo", "Vidrio que late (C6)", "vidrio_late", () => VidrioLate, v => VidrioLate = v, false, "El brillo de esos vidrios sube con cada golpe del bajo." + calma));
+            l.Add(Visual("Color vivo", "Portadas que brillan (C9)", "portadas_brillan", () => PortadasBrillan, v => PortadasBrillan = v, false, "Un resplandor de su propio color bajo cada portada." + calma));
+            l.Add(Visual("Color vivo", "Destello al pedir (C10)", "destello_pedir", () => DestelloPedir, v => DestelloPedir = v, false, "Un aro de luz del color del disco donde se pidio la cancion (corto y suave)."));
+            l.Add(Visual("Color vivo", "Barra de neon (C11)", "barra_neon", () => BarraNeon, v => BarraNeon = v, false, "La barra de avance en degradado del color de la cancion, que pulsa con la musica." + calma));
             l.Add(Visual("Ajustes y pantalla", "A la resolucion del monitor (V30)", "resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v, false, "Dibuja a la resolucion real de la pantalla, sin estirar. Apagado: 1024x768 si el monitor la ofrece (menos trabajo para el A4). Vale al volver a encender la rocola."));
             // LA HOJA DETALLES DE XP (PaginaDetalles): al pedir canciones, y el fondo y la barra (la estrella del cielo sigue en Pantalla)
             { Ajuste x = Interruptor("Al pedir canciones", "Decir cuando suena tu cancion", "turno", () => Turno, v => Turno = v, false); x.Nota = () => "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos minutos faltan, en vez de solo «Cancion agregada»."; l.Add(x); }

@@ -25,7 +25,10 @@ namespace Rocola
                 Textura bo = caratulas.Borrosa(disco.Portada);
                 if (bo != null) { d.Imagen(bo, -W * 0.05f, top - 30 * k, W * 1.1f, abajo - top + 40 * k, 0.55f); d.Rect(0, top - 30 * k, W, abajo - top + 40 * k, Color4.Hex(0x0A1030, 0.35f)); }
             }
-            Letra lTit = Titulo(20.5f * k); lTit.Escribe(d, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, Blanco);
+            Letra lTit = Titulo(20.5f * k);
+            if (m.TitulosDegradado) EscribeDegradado(lTit, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, 0);   // C2
+            else lTit.Escribe(d, lTit.Ajusta(titulo, xp - 40 * k), 22 * k, 116 * k, Blanco);
+            Color4 cd = ColorDeDisco(m, disco, false);   // C1, C5, C9: el color del disco
             // el cubo grande
             // P2: con la tira «Más de este artista» (Motor/SpotifyPortadas.cs), el cubo se achica para dejarle sitio debajo
             List<Form1.Disco> mas = c.MasDisco; float tira = mas != null && mas.Count > 0 ? 150 * k : 0;
@@ -33,13 +36,14 @@ namespace Rocola
             if (m.ColorGenero) { string g = m.GeneroDeDisco(disco); if (g.Length > 0) Resplandor(Form1.ColorDeEtiqueta(g), cx0 + lado / 2, cy0 + lado / 2, lado * 0.85f); }
             Textura tx = caratulas.De(disco.Portada);
             d.Brillo(cx0 + lado / 2, cy0 + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.28f));
+            if (m.PortadasBrillan) d.Brillo(cx0 + lado / 2, cy0 + lado / 2, lado * 0.95f, cd.ConAlfa(0.20f + 0.20f * viveza));   // C9
             d.Brillo(cx0 + lado / 2, cy0 + lado + 6 * k, lado * 0.6f, new Color4(0, 0, 0.05f, 0.5f));
             Cubo(disco.Portada, disco.Artista, cx0, cy0, lado, reloj.Elapsed.TotalSeconds * 0.55);
             if (Form1.EsRutaSpotify(disco.Carpeta)) m.QuierePortada(disco);
             if (tira > 0) TiraMas(c, mas, 26 * k, cy0 + lado + 26 * k, xp - 52 * k, abajo - 10 * k - (cy0 + lado + 26 * k));
             // el panel de las canciones
             float px = xp, py = top + 76 * k, pw = W - px - 28 * k, ph = abajo - py - 12 * k;
-            if (m.VidrioDisco) Vidrio(px, py, pw, ph, 18 * k, tx != null ? tx.Media : Color4.Hex(0x6F8CFF), 1f, m.DiscoVidrio, 0.50f);   // G5 (con V7, detras esta la portada borrosa: vidrio de verdad)
+            if (m.VidrioDisco) { Vidrio(px, py, pw, ph, 18 * k, tx != null ? tx.Media : Color4.Hex(0x6F8CFF), 1f, m.DiscoVidrio, 0.50f); VidrioVivo(m, px, py, pw, ph, 18 * k, cd, 1f); }   // G5 (con V7, detras esta la portada borrosa: vidrio de verdad); C5, C6
             else d.RedondoDegradado(px, py, pw, ph, 18 * k, PanelDisco.ConAlfa(0.82f), Color4.Hex(0x0E1534, 0.86f));
             d.Contorno(px, py, pw, ph, 18 * k, 1.3f * k, m.ListaColores && tx != null ? Dibujo.Mezcla(tx.Media, Blanco, 0.4f).ConAlfa(0.45f) : Color4.Hex(0x9AAAE0, 0.40f));   // V8
             bool gr = m.ListaGrande;
@@ -71,8 +75,16 @@ namespace Rocola
                 }
                 // el numero en su circulo
                 float rc = 12 * k, xc = px + 26 * k;
-                Circulo(xc, cy, rc, sel ? Color4.Hex(0x5A6CA8) : Color4.Hex(0x26305A));
-                Anillo(xc, cy, rc, 1.3f * k, Color4.Hex(0xAEBBEE, sel ? 0.9f : 0.5f));
+                if (m.TextosColor)
+                {   // C1: el numero con el color del disco
+                    Circulo(xc, cy, rc, sel ? Dibujo.Mezcla(cd, Color4.Hex(0x101830), 0.35f) : Dibujo.Mezcla(cd, Color4.Hex(0x101830), 0.80f));
+                    Anillo(xc, cy, rc, 1.3f * k, cd.ConAlfa(sel ? 1f : 0.75f));
+                }
+                else
+                {
+                    Circulo(xc, cy, rc, sel ? Color4.Hex(0x5A6CA8) : Color4.Hex(0x26305A));
+                    Anillo(xc, cy, rc, 1.3f * k, Color4.Hex(0xAEBBEE, sel ? 0.9f : 0.5f));
+                }
                 string num = (j + 1).ToString();
                 mini.EscribeCentrado(d, num, xc, cy - mini.Tam * 0.55f, Blanco);
                 // a la derecha: lo que dura y, si toca, SONANDO o EN COLA
@@ -121,7 +133,11 @@ namespace Rocola
         {
             Form1 m = c.motor;
             float ph = H - top;
-            if (m.VidrioReposo) Vidrio(10 * k, top + 2 * k, W - 20 * k, ph - 10 * k, 26 * k, TinteSonando(m), 1f, false, 0.42f, 1.2f);   // G6
+            if (m.VidrioReposo)
+            {
+                Vidrio(10 * k, top + 2 * k, W - 20 * k, ph - 10 * k, 26 * k, m.VidrioColor ? vivo1 : TinteSonando(m), 1f, false, 0.42f, 1.2f);   // G6 (C4)
+                if (m.SonandoTitulo != null) VidrioVivo(m, 10 * k, top + 2 * k, W - 20 * k, ph - 10 * k, 26 * k, vivo1, 1f);   // C5, C6
+            }
             else
             {
                 d.Degradado(0, top - 26 * k, W, 26 * k, Color4.Hex(0x0E1534, 0f), Color4.Hex(0x0E1534, 0.55f));
@@ -147,12 +163,14 @@ namespace Rocola
             float sc = Math.Max(.8f, Math.Min(1.3f, ph / (260f * k))) * k;
             Letra small = Tre(15 * sc, true), normal = Tre(20 * sc, true), big = Tre(Math.Max(22 * k, Math.Min(36 * sc, W / 30f)), true);
             // AHORA SUENA
-            Espaciado(small, "AHORA SUENA", 24 * k, top + 12 * k, small.Tam * 0.42f, Turquesa);
+            if (m.TitulosDegradado) EscribeDegradado(small, "AHORA SUENA", 24 * k, top + 12 * k, small.Tam * 0.42f);   // C2
+            else Espaciado(small, "AHORA SUENA", 24 * k, top + 12 * k, small.Tam * 0.42f, Turquesa);
             float lado = Math.Max(40 * k, Math.Min(ph - 56 * k, W * 0.17f)), lx = 26 * k, ly = top + 46 * k;
             Textura tx = caratulas.De(m.SonandoPortada);
             LuzDelReposo(m, W, top, lx + lado / 2, ly + lado / 2, lado, tx);   // V13, V14
             if (m.ColorGenero && m.ColorSonando != 0) Resplandor(m.ColorSonando, lx + lado / 2, ly + lado / 2, lado * 0.9f);
             else d.Brillo(lx + lado / 2, ly + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.30f + 0.25f * pGraves));
+            if (m.PortadasBrillan) d.Brillo(lx + lado / 2, ly + lado / 2, lado * 1.0f, vivo1.ConAlfa((0.18f + 0.22f * pGraves) * viveza));   // C9
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, lx, ly, lado, reloj.Elapsed.TotalSeconds * 0.5);
             float x = lx + lado + 22 * k, ancho = xc - x - 24 * k;
             // el titulo, en hasta dos renglones con puntos (como el DrawString con LineLimit de XP, en un alto de min(90, 0,28 del panel))
@@ -161,7 +179,7 @@ namespace Rocola
             if (rt.Count > maxR) { rt[maxR - 1] = big.Ajusta(rt[maxR - 1] + " " + string.Join(" ", rt.GetRange(maxR, rt.Count - maxR)), ancho); rt.RemoveRange(maxR, rt.Count - maxR); }
             for (int i = 0; i < rt.Count; i++) big.Escribe(d, rt[i], x, top + 56 * k + i * big.Tam * 1.16f, Blanco);
             float y = top + 56 * k + Math.Min(90 * k, ph * .28f) + 6 * k;
-            if (m.SonandoDisco != null) { normal.Escribe(d, normal.Ajusta(m.SonandoDisco + (string.IsNullOrEmpty(anio) ? "" : " · " + anio), ancho), x, y, Turquesa); y += normal.Tam * 1.5f; }   // (el ano: SP11)
+            if (m.SonandoDisco != null) { normal.Escribe(d, normal.Ajusta(m.SonandoDisco + (string.IsNullOrEmpty(anio) ? "" : " · " + anio), ancho), x, y, m.TextosColor ? Dibujo.Mezcla(vivo1, Blanco, 0.35f) : Turquesa); y += normal.Tam * 1.5f; }   // (el ano: SP11; C1)
             string gen = m.EtiquetaSonando;
             if (!string.IsNullOrEmpty(gen) && gen != "Otros")
             {
@@ -179,7 +197,8 @@ namespace Rocola
             float bx = x + wr + 18 * k, bw = Math.Max(20 * k, xc - 24 * k - bx), hb = 6 * k;
             d.Redondo(bx, by - hb / 2, bw, hb, hb / 2, Color4.Hex(0x1A2450, 0.95f));
             float p = Math.Max(0f, Math.Min(1f, c.Progreso));
-            if (p > 0)
+            if (p > 0 && m.BarraNeon) BarraDeNeon(bx, by - hb / 2, Math.Max(hb, bw * p), hb);   // C11
+            else if (p > 0)
             {
                 Color4 neon = m.ColorGenero && m.ColorSonando != 0 ? Color4.Hex(m.ColorSonando) : Color4.Hex(0x58D2FF);
                 float wp = Math.Max(hb, bw * p);

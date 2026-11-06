@@ -1514,3 +1514,35 @@ Pedido del dueño: «¿también se podría buscar una canción por su letra?» �
 - Probado: MP3 de prueba con una letra **inventada** (frases enteras, en desorden, a medio escribir); un Genius simulado (tu canción,
   una que no tienes, la llave equivocada no truena); la llave mandada desde casa por el buzón simulado. Sin la API real de Genius ni
   el A4.
+
+## Extra (7-11-2026, décima parte): color vivo, que se calma mientras se usa
+
+El dueño comparó con la rocola de XP («los textos en XP son más coloridos») y, tras ver la maqueta de las ideas C1-C12, eligió la
+opción **Vivo** «pero con sus medidas de baja contaminación visual»: mientras alguien usa la rocola, los efectos bajan, como siempre
+se hizo. Solo en Rocola OS (`Consola/Pantalla/ColorVivo.cs`), opciones visuales de coste bajo, cada una con su interruptor
+persistente en Ctrl+F3 → Imagen → **Color vivo**, encendidas de fábrica (claves en `Motor/MejorasVisuales.cs`). No se hicieron C7
+(cielo con los colores de la portada) ni C8 (luces de antro).
+
+- **La calma mientras se usa** («viveza», de 0,35 a 1): baja en 0,4 s al primer botón (también con los ajustes, el buscador, la
+  ayuda o el asistente abiertos) y vuelve en 3 s cuando pasan 15 s sin botones, en el reposo y en la atracción. Todo lo que brilla
+  o se mueve se multiplica por ella, y lo que se mueve va más despacio (el degradado y el neón avanzan a su paso).
+- **C1** `textos_color=`: los nombres de la pared, el título de lo que suena, el disco en el reposo y los números de las canciones
+  con el color del disco.
+- **C2** `titulos_degradado=`: «AHORA SUENA», el nombre del disco abierto y «LETRA X» en un degradado cian-rosa-oro que corre (una
+  vuelta cada 6 s en calma); en uso, más pálido y casi quieto.
+- **C3** `letras_color=`: cada letra de la barra con el color del género que más se repite entre sus discos ya conocidos (no se lee
+  ningún archivo para esto); sin ninguno, un color por su sitio en el abecedario. La elegida brilla con el suyo.
+- **C4** `vidrio_color=`: los vidrios (cabecera, barra de letras, lo que suena, reposo) se tiñen con la canción que suena, más vivo,
+  y pasan de una a otra en 1,5 s; el filo, del mismo color.
+- **C5** `neon_borde=`: una luz del color de la canción da vueltas por el borde de lo que suena, del disco abierto y del reposo.
+- **C6** `vidrio_late=`: el brillo de esos vidrios sube con cada golpe del bajo.
+- **C9** `portadas_brillan=`: un resplandor del color de cada portada debajo de ella (pared, disco abierto, reposo).
+- **C10** `destello_pedir=`: un aro de luz del color del disco donde se pidió la canción (0,7 s, al 70 %).
+- **C11** `barra_neon=`: la barra de avance en degradado del color de la canción, que pulsa con la música (la barra con forma, V10,
+  toma el mismo color).
+- **El color de un disco**: el de su portada si tiene color (así combina con ella); si es gris, el de su género; si no, el azul de la
+  rocola. Siempre llevado a 55 % de saturación y 85 % de brillo como mínimo.
+
+Medido con el dibujo por software de Mesa (no es el A4), 300 cuadros a 1024x768: reposo 12,8 ms de mediana con todo encendido frente
+a 11,9 ms con todo apagado; la pared con algo sonando 13,6-14,4 frente a 13,2-13,5; unas 0,1 pantallas más de relleno. No medido ni
+visto en el A4. Para las capturas, `--boton calma` deja la pared 20 s sin botones (el color entero).
