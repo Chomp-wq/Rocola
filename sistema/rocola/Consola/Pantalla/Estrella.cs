@@ -47,14 +47,19 @@ namespace Rocola
                     break;
             }
         }
+        // (los senos y cosenos, en tablas: un circulo por numero de cancion y por marca, en cada cuadro; mismos puntos que antes)
+        private static readonly float[] Cos20 = Tabla(20, true), Sin20 = Tabla(20, false);
+        internal static float[] Tabla(int n, bool coseno)
+        {
+            float[] t = new float[n + 1];
+            for (int i = 0; i <= n; i++) { double a = 2 * Math.PI * i / n; t[i] = (float)(coseno ? Math.Cos(a) : Math.Sin(a)); }
+            return t;
+        }
         private void Circulo(float cx, float cy, float r, Color4 c)
         {
             const int n = 20;
             for (int i = 0; i < n; i++)
-            {
-                double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
-                d.Triangulo(cx, cy, cx + r * (float)Math.Cos(a0), cy + r * (float)Math.Sin(a0), cx + r * (float)Math.Cos(a1), cy + r * (float)Math.Sin(a1), c);
-            }
+                d.Triangulo(cx, cy, cx + r * Cos20[i], cy + r * Sin20[i], cx + r * Cos20[i + 1], cy + r * Sin20[i + 1], c);
         }
         // Una fila de botones ("L/R U/D V", "B+U"...): devuelve el ancho.
         private float Teclas(string teclas, float x, float cy, float r, bool dibuja)

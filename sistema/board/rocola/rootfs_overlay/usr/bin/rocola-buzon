@@ -72,11 +72,20 @@ gh() {   # gh METODO RUTA [ARCHIVO_JSON] -> la respuesta en $TMP/r.json; devuelv
 	fi
 }
 # sube RUTA_EN_EL_BUZON ARCHIVO_LOCAL MENSAJE (texto; se sustituye si ya estaba)
+# (el sha de lo ultimo que se subio a cada ruta se recuerda: sin preguntarlo antes de cada subida; si otro lo cambio, 409/422 y se pregunta)
 sube() {
-	sha=; c=$(gh GET "/repos/$REPO/contents/$1"); [ "$c" = 200 ] && sha=$(jq -r '.sha // empty' "$TMP/r.json")
-	jq -Rs --arg m "$3" --arg sha "$sha" '{message: $m, content: @base64} + (if $sha == "" then {} else {sha: $sha} end)' < "$2" > "$TMP/put.json" || return 1
-	c=$(gh PUT "/repos/$REPO/contents/$1" "$TMP/put.json"); rm -f "$TMP/put.json"
-	case "$c" in 200|201) return 0 ;; esac
+	clave=$TMP/sha_$(echo "$1" | tr '/' '_')
+	for intento in 1 2; do
+		sha=$(leer "$clave")
+		if [ -z "$sha" ] || [ "$intento" = 2 ]; then sha=; c=$(gh GET "/repos/$REPO/contents/$1"); [ "$c" = 200 ] && sha=$(jq -r '.sha // empty' "$TMP/r.json"); fi
+		jq -Rs --arg m "$3" --arg sha "$sha" '{message: $m, content: @base64} + (if $sha == "" then {} else {sha: $sha} end)' < "$2" > "$TMP/put.json" || return 1
+		c=$(gh PUT "/repos/$REPO/contents/$1" "$TMP/put.json"); rm -f "$TMP/put.json"
+		case "$c" in
+			200|201) jq -r '.content.sha // empty' "$TMP/r.json" > "$clave" 2>/dev/null; return 0 ;;
+			409|422) rm -f "$clave" ;;   # (el sha recordado ya no vale: otra vuelta preguntandolo)
+			*) break ;;
+		esac
+	done
 	dice "no se pudo subir $1 ($c)"; return 1
 }
 
@@ -183,8 +192,9 @@ atiende_ordenes() {
 	sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' "$TMP/cab.txt" | tr -d '\r' > "$TMP/ordenes.etag"
 	jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' > "$TMP/ordenes.json" 2>/dev/null || return 0
 	: > "$TMP/respuestas.nuevas"
-	jq -c '.[]?' "$TMP/ordenes.json" 2>/dev/null | while read -r o; do
-		id=$(echo "$o" | jq -r '.id // empty'); orden=$(echo "$o" | jq -r '.orden // empty'); arg=$(echo "$o" | jq -r '.arg // ""')
+	# (las tres partes de cada orden en una sola pasada de jq: antes, tres jq por orden cada vez que cambiaban)
+	tab=$(printf '\t')
+	jq -r '.[]? | [(.id // "" | tostring), (.orden // ""), (.arg // "")] | @tsv' "$TMP/ordenes.json" 2>/dev/null | while IFS="$tab" read -r id orden arg; do
 		[ -n "$id" ] || continue
 		grep -qx "$id" "$HECHAS" 2>/dev/null && continue
 		echo "$id" >> "$HECHAS"
@@ -220,7 +230,7 @@ atiende_ordenes() {
 	done
 	if [ -s "$TMP/respuestas.nuevas" ]; then
 		c=$(gh GET "/repos/$REPO/contents/rocola/respuestas.json"); viejas='[]'
-		[ "$c" = 200 ] && viejas=$(jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' 2>/dev/null)
+		[ "$c" = 200 ] && { viejas=$(jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' 2>/dev/null); jq -r '.sha // empty' "$TMP/r.json" > "$TMP/sha_rocola_respuestas.json"; }   # (y su sha: sube no vuelve a preguntar)
 		echo "${viejas:-[]}" | jq --slurpfile n "$TMP/respuestas.nuevas" '(. + $n) | .[-60:]' > "$TMP/respuestas.json" 2>/dev/null \
 			|| jq -s '.' "$TMP/respuestas.nuevas" > "$TMP/respuestas.json"
 		sube rocola/respuestas.json "$TMP/respuestas.json" "respuestas $(date '+%Y-%m-%d %H:%M')"

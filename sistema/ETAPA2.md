@@ -1411,3 +1411,23 @@ ni de comportamiento (automáticas, sin interruptor):
   prioridad baja (nice 15). **Rocola en casa** no pregunta a GitHub con la pestaña del navegador escondida.
 - Probado otra vez: la pared con Spotify, la tira, la batería `noche` de XP y el buzón con el GitHub simulado (la segunda vuelta: 304 y
   sin rehacer el estado). No medido en el A4.
+
+## Extra (7-11-2026, quinta parte): más optimizaciones
+
+Pedido del dueño: «busca más optimizaciones». Automáticas, sin cambio de aspecto ni de comportamiento:
+
+- **Los círculos y anillos de la pantalla** (el número de cada canción dentro de un disco, la marca de Spotify, los puntos de página) usan
+  tablas de senos y cosenos calculadas una vez: antes eran 2 senos y 2 cosenos por triángulo en cada cuadro (unos 1 500 por cuadro
+  dentro de un disco). Mismos puntos.
+- **Los nombres de los discos de Spotify** se comparan con la normalización que se recuerda (antes cada comparación armaba la cadena otra
+  vez).
+- **El modo noche, durante su rampa** (Rocola OS y XP): a la canción siguiente ya preparada solo se le cambia el volumen; antes se le
+  recalculaba todo (nivelado, EQ, realce, bajo, DSEE) en cada vuelta durante 20 s. Y el factor de la noche se calcula una vez por
+  porcentaje.
+- **El buzón:** recuerda el «sha» de lo último que subió a cada archivo y ya no lo pregunta antes de cada subida (si otro lo cambió,
+  GitHub dice 409 y entonces sí pregunta); las respuestas se leen una sola vez; y las órdenes se leen con un solo `jq` (antes, tres por
+  orden).
+- **Rocola en casa** recuerda lo que bajó de GitHub con su ETag y pregunta «¿cambió?»: si no, GitHub contesta 304, sin cuerpo y sin
+  gastar consultas (el tablero pregunta cada 30 s).
+- Probado: las baterías `noche`, `videoaudio` y `todojunto` de XP, la pantalla dentro de un disco con la tira, y el buzón y el tablero
+  con el GitHub simulado (304 en la segunda lectura, subidas sin preguntar el sha). No medido en el A4.

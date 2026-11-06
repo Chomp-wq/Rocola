@@ -105,13 +105,13 @@ namespace Rocola
             }
         }
         // Un anillo fino (el borde de los circulos de los numeros).
+        private static readonly float[] Cos28 = Tabla(28, true), Sin28 = Tabla(28, false);
         private void Anillo(float cx, float cy, float r, float g, Color4 c)
         {
             const int n = 28;
             for (int i = 0; i < n; i++)
             {
-                double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
-                float c0 = (float)Math.Cos(a0), s0 = (float)Math.Sin(a0), c1 = (float)Math.Cos(a1), s1 = (float)Math.Sin(a1);
+                float c0 = Cos28[i], s0 = Sin28[i], c1 = Cos28[i + 1], s1 = Sin28[i + 1];
                 d.Cuatro(cx + r * c0, cy + r * s0, c, cx + r * c1, cy + r * s1, c, cx + (r - g) * c1, cy + (r - g) * s1, c, cx + (r - g) * c0, cy + (r - g) * s0, c);
             }
         }

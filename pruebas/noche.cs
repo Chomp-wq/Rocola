@@ -75,8 +75,8 @@ class Noche
         Check(Codigo.Llama(Codigo.Llamadas(TF.GetMethod("MasterLin", T)), "FactorNoche") == false, "y no dentro de MasterLin (esa rama se la salta)");
         MethodInfo av = TF.GetMethod("AvanzaModoNoche", T);
         List<string> la = Codigo.Llamadas(av);
-        Check(av != null && Codigo.Llama(la, "AvanzaRampa") && Codigo.Llama(la, "AplicaAPreparada") && Codigo.Llama(la, "MasterEfectivo"),
-              "el reloj lleva la rampa y se la empuja a la que suena y a la preparada");
+        Check(av != null && Codigo.Llama(la, "AvanzaRampa") && Codigo.Llama(la, "MasterEfectivo") && Codigo.LeeCampo(new List<MethodBase> { av }, "cadenaPreparada"),
+              "el reloj lleva la rampa y se la empuja a la que suena y a la preparada (su volumen)");
         bool enTick = false;
         foreach (MethodBase m in Codigo.TodosLosMetodos(TF)) if (Codigo.Llama(Codigo.Llamadas(m), "AvanzaModoNoche") && Codigo.Llama(Codigo.Llamadas(m), "CheckBusinessDayReset")) enTick = true;
         Check(enTick, "el temporizador lo lleva al lado del corte del dia");

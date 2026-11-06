@@ -18,13 +18,19 @@ namespace Rocola
             for (int j = 0; j < 3; j++)
             {
                 float rr = r * (1.05f - 0.25f * j), oy = cy + r * (0.55f + 0.08f * j), g = r * (0.17f - 0.025f * j);
-                const int n = 8; double a0 = Math.PI * 1.22, a1 = Math.PI * 1.78;
-                for (int i = 0; i < n; i++)
-                {
-                    double t0 = a0 + (a1 - a0) * i / n, t1 = a0 + (a1 - a0) * (i + 1) / n;
-                    d.Linea(cx + rr * (float)Math.Cos(t0), oy + rr * (float)Math.Sin(t0), cx + rr * (float)Math.Cos(t1), oy + rr * (float)Math.Sin(t1), g, new Color4(0.02f, 0.03f, 0.05f, 1f));
-                }
+                for (int i = 0; i < OndaN; i++)
+                    d.Linea(cx + rr * OndaCos[i], oy + rr * OndaSin[i], cx + rr * OndaCos[i + 1], oy + rr * OndaSin[i + 1], g, OndaColor);
             }
+        }
+        // (el arco de las ondas, calculado una vez: hasta 18 marcas por pagina en cada cuadro)
+        private const int OndaN = 8;
+        private static readonly Color4 OndaColor = new Color4(0.02f, 0.03f, 0.05f, 1f);
+        private static readonly float[] OndaCos = Onda(true), OndaSin = Onda(false);
+        private static float[] Onda(bool coseno)
+        {
+            float[] t = new float[OndaN + 1]; double a0 = Math.PI * 1.22, a1 = Math.PI * 1.78;
+            for (int i = 0; i <= OndaN; i++) { double a = a0 + (a1 - a0) * i / OndaN; t[i] = (float)(coseno ? Math.Cos(a) : Math.Sin(a)); }
+            return t;
         }
 
         // La tira, en el rectangulo (x, y, w, h): el letrero, las portadas (la elegida, resaltada) y el nombre de la elegida (o como llegar).

@@ -69,6 +69,7 @@ namespace RocolaCasa
         private static readonly HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         private readonly string llave;
         internal GitHub(string llave) { this.llave = llave; }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string etag, string cuerpo)> recordado = new System.Collections.Concurrent.ConcurrentDictionary<string, (string, string)>();
         // (para probarlo sin GitHub: ROCOLA_CASA_API=http://127.0.0.1:PUERTO)
         private static readonly string Base = Environment.GetEnvironmentVariable("ROCOLA_CASA_API") is string b && b.Length > 0 ? b.TrimEnd('/') : "https://api.github.com";
 
@@ -81,10 +82,24 @@ namespace RocolaCasa
                 r.Headers.UserAgent.ParseAdd("rocola-casa/" + Program.Version);
                 r.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
                 if (json != null) r.Content = new StringContent(json, Encoding.UTF8, "application/json");
+                // OPTIMIZACION: lo leido se recuerda con su ETag y se pregunta «¿cambio?» (If-None-Match): si no, GitHub contesta 304 sin
+                // cuerpo y sin gastar consultas del limite por hora (el tablero pregunta lo mismo cada 30 s).
+                string clave = m == HttpMethod.Get ? acepta + " " + ruta : null;
+                (string etag, string cuerpo) ya = default;
+                if (clave != null && recordado.TryGetValue(clave, out ya)) r.Headers.TryAddWithoutValidation("If-None-Match", ya.etag);
                 try
                 {
                     using (HttpResponseMessage s = await http.SendAsync(r))
-                        return ((int)s.StatusCode, await s.Content.ReadAsStringAsync());
+                    {
+                        if (clave != null && (int)s.StatusCode == 304 && ya.cuerpo != null) return (200, ya.cuerpo);
+                        string b = await s.Content.ReadAsStringAsync();
+                        if (clave != null)
+                        {
+                            if ((int)s.StatusCode == 200 && s.Headers.ETag != null && b.Length < 8_000_000) recordado[clave] = (s.Headers.ETag.ToString(), b);
+                            else recordado.TryRemove(clave, out _);
+                        }
+                        return ((int)s.StatusCode, b);
+                    }
                 }
                 catch (Exception ex) { return (0, ex.Message); }
             }
@@ -98,7 +113,7 @@ namespace RocolaCasa
         // Un archivo de un repositorio, tal cual (null si no esta).
         internal async Task<string> Archivo(string repo, string ruta)
         {
-            var (c, b) = await Pide(HttpMethod.Get, "/repos/" + repo + "/contents/" + Uri.EscapeDataString(ruta).Replace("%2F", "/") + "?t=" + DateTime.UtcNow.Ticks, null, "application/vnd.github.raw+json");
+            var (c, b) = await Pide(HttpMethod.Get, "/repos/" + repo + "/contents/" + Uri.EscapeDataString(ruta).Replace("%2F", "/"), null, "application/vnd.github.raw+json");   // (sin truco contra la cache: el ETag dice si cambio)
             return c == 200 ? b : null;
         }
         internal async Task<(string texto, string sha)> ArchivoConSha(string repo, string ruta)

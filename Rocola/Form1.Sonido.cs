@@ -85,7 +85,8 @@ namespace Rocola
         private bool nochePruebaRapida;                            // la rampa rapida de la prueba (al entrar y al salir)
 
         private static float NocheDb() { return (float)(10.0 * Math.Log(Math.Max(1, Math.Min(100, nochePct)) / 100.0, 2.0)); }
-        private static float NocheLin() { return (float)Math.Pow(10.0, NocheDb() / 20.0); }
+        private static int linDe = -1; private static float linVal = 1f;
+        private static float NocheLin() { int p = nochePct; if (p != linDe) { linVal = (float)Math.Pow(10.0, NocheDb() / 20.0); linDe = p; } return linVal; }   // (una vez por porcentaje)
 
         // El rango CRUZA LA MEDIANOCHE: «hora >= 23 && hora < 7» es siempre falso. Va un O, no un Y (con su prueba: pruebas/noche.cs).
         private static bool EsDeNoche(DateTime t)
@@ -147,8 +148,9 @@ namespace Rocola
             // Y se empuja a la cancion que YA suena (y a la preparada, y al video): si no, no se oiria hasta la siguiente.
             if (nocheFactor != antes)
             {
-                LevelTap t = curTap; if (t != null) t.Master = MasterEfectivo() * FactorNoche();
-                AplicaAPreparada();   // (el video lo sigue solo: su sondeo relee VideoVolumeFor cada 400 ms)
+                float m = MasterEfectivo() * FactorNoche();
+                LevelTap t = curTap; if (t != null) t.Master = m;
+                CadenaCancion p = cadenaPreparada; if (p != null && p.Tap != null) p.Tap.Master = m;   // y la siguiente: solo su volumen (antes, todo AplicaAPreparada en cada vuelta de la rampa); el video lo sigue solo (su sondeo relee VideoVolumeFor cada 400 ms)
             }
         }
 

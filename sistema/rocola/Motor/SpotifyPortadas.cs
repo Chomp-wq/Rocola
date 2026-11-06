@@ -206,12 +206,7 @@ namespace Rocola
             return true;
         }
         // «Disco (Remastered 2011)», «Disco [Deluxe]», «Disco - Edición especial» -> «disco»
-        internal static string NombreBase(string s)
-        {
-            StringBuilder b = new StringBuilder(); int dentro = 0;
-            foreach (char c in s ?? "") { if (c == '(' || c == '[') dentro++; else if (c == ')' || c == ']') { if (dentro > 0) dentro--; } else if (dentro == 0) b.Append(c); }
-            return Normaliza(b.ToString());
-        }
+        internal static string NombreBase(string s) { return Normaliza(s); }   // (Normaliza ya quita lo de entre parentesis y corchetes, y lo recuerda)
 
         // ---- los artistas de tu biblioteca (por las parejas de SP4) ----
         private sealed class ArtistaLocal { public string Nombre; public char Letra; public int Canciones; }

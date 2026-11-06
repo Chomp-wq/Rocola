@@ -19,7 +19,8 @@ namespace Rocola
         private bool nocheArrancada, nocheAvisada, nochePruebaRapida;
 
         internal static float NocheDb() { return (float)(10.0 * Math.Log(Math.Max(1, Math.Min(100, nochePct)) / 100.0, 2.0)); }
-        public static float NocheLin() { return (float)Math.Pow(10.0, NocheDb() / 20.0); }
+        private static int linDe = -1; private static float linVal = 1f;
+        public static float NocheLin() { int p = nochePct; if (p != linDe) { linVal = (float)Math.Pow(10.0, NocheDb() / 20.0); linDe = p; } return linVal; }   // (una vez por porcentaje)
         // El rango CRUZA LA MEDIANOCHE: va un O, no un Y («hora >= 23 && hora < 7» es siempre falso).
         internal static bool EsDeNoche(DateTime t)
         {
@@ -73,8 +74,9 @@ namespace Rocola
             if (nocheFactor == meta) nochePruebaRapida = false;
             if (nocheFactor != antes)
             {
-                LevelTap t = curTap; if (t != null) t.Master = MasterEfectivo() * nocheFactor;   // la que suena (y Spotify: misma cadena)
-                AplicaAPreparada();
+                float m = MasterEfectivo() * nocheFactor;
+                LevelTap t = curTap; if (t != null) t.Master = m;   // la que suena (y Spotify: misma cadena)
+                CadenaCancion p = cadenaPreparada; if (p != null && p.Tap != null) p.Tap.Master = m;   // y la siguiente (solo su volumen: lo demas no cambia)
             }
         }
     }
