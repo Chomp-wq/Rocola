@@ -209,6 +209,7 @@ namespace Rocola
                         if (mismaPagina) { relevoIdx = focoDisco; relevoAng = AnguloCubo(); relevoGiro = 0.7f * (n > focoDisco ? 1f : -1f); } else relevoIdx = -1;
                         giroDir = n >= focoDisco ? 1f : -1f; relevoLetra = c.letra;
                         focoDisco = n; focoCarpeta = disco.Carpeta; focoDesde = reloj.Elapsed.TotalMilliseconds;
+                        if (disco.Rutas.Count == 0 && Form1.EsRutaSpotify(disco.Carpeta)) c.motor.CargaSpotify(disco);   // (uno de Spotify aun sin abrir: sus canciones, para la ficha; una vez por foco)
                     }
                     // la casilla, como en XP: la portada arriba (centrada en lo que sobra) y la etiqueta debajo
                     float bloque = lado + 3 * k + 38 * k, y1 = y0 - 6 * k + Math.Max(6 * k, (celH - bloque) / 2);

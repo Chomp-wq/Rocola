@@ -45,6 +45,7 @@ namespace Rocola
         private readonly Dictionary<string, ArtistaSp> artistasSp = new Dictionary<string, ArtistaSp>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> artistaDeAlbum = new Dictionary<string, string>(StringComparer.Ordinal);   // album -> artista
         private readonly List<string> artistaUrgente = new List<string>();   // los que pide la tira (P2): primero
+        private readonly Dictionary<string, int> fallosArtista = new Dictionary<string, int>(StringComparer.Ordinal);
         private List<string> artistasTuyos = new List<string>();             // los que sigues y los que mas escuchas (P3)
         private List<Disco> spotifyGuardados = new List<Disco>();            // tus discos guardados (P1)
         private bool artistasLeidos;
@@ -87,15 +88,29 @@ namespace Rocola
                 }
             }
             catch (Exception ex) { LogError("Spotify: rocola_spotify_artistas.txt", ex); }
+            // cada artista se vuelve a apuntar a los 14 dias (se anade al final): si el archivo pasa de 2 MB, se reescribe con lo vigente
+            try
+            {
+                if (File.Exists(ArchivoArtistas) && new FileInfo(ArchivoArtistas).Length > 2_000_000)
+                {
+                    List<ArtistaSp> todos; lock (spotifyCerrojo) todos = new List<ArtistaSp>(artistasSp.Values);
+                    StringBuilder b = new StringBuilder();
+                    foreach (ArtistaSp a in todos) b.Append(LineasDe(a));
+                    File.WriteAllText(ArchivoArtistas + ".n", b.ToString());
+                    File.Move(ArchivoArtistas + ".n", ArchivoArtistas, true);
+                }
+            }
+            catch (Exception ex) { LogError("Spotify: compactar rocola_spotify_artistas.txt", ex); }
         }
-        private void ApuntaArtista(ArtistaSp a)
+        private void ApuntaArtista(ArtistaSp a) { try { File.AppendAllText(ArchivoArtistas, LineasDe(a)); } catch { } }
+        private static string LineasDe(ArtistaSp a)
         {
             StringBuilder b = new StringBuilder();
             b.Append("A\t").Append(a.Id).Append('\t').Append(a.Fecha.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(Sin(a.Nombre)).Append('\t').Append(a.FotoUrl ?? "").Append('\n');
             foreach (AlbumSp x in a.Discos)
                 b.Append("D\t").Append(a.Id).Append('\t').Append(x.Id).Append('\t').Append(x.Popularidad.ToString(CultureInfo.InvariantCulture)).Append('\t')
                  .Append(x.Anio ?? "").Append('\t').Append(x.PortadaUrl ?? "").Append('\t').Append(Sin(x.Nombre)).Append('\t').Append(Sin(x.Artista)).Append('\n');
-            try { File.AppendAllText(ArchivoArtistas, b.ToString()); } catch { }
+            return b.ToString();
         }
 
         // ---- el hilo que trae los discos de cada artista ----
@@ -120,7 +135,8 @@ namespace Rocola
                     {   // nada pendiente: se mira otra vez en un minuto (o antes, si la tira pide uno)
                         for (int i = 0; i < 60; i++)
                         {
-                            Thread.Sleep(1000); if (spotify != s || !SpotifyOn) return;
+                            Thread.Sleep(1000); if (spotify == null || !SpotifyOn) return;
+                            if (spotify != s) break;   // (rocola-spotify se volvio a abrir: se sigue con el nuevo; antes el hilo se acababa)
                             bool urgente; lock (spotifyCerrojo) urgente = artistaUrgente.Count > 0;
                             if (urgente || (i % 15 == 14 && SiguienteArtista(false) != null)) break;
                         }
@@ -155,7 +171,18 @@ namespace Rocola
             List<AlbumSp> l = new List<AlbumSp>();
             using (JsonDocument d = Api(s, "/v1/artists/" + id + "/albums?include_groups=album&limit=20&market=from_token"))
             {
-                if (d == null) { a.Fecha = DateTime.UtcNow.Ticks - Refresco + TimeSpan.FromDays(1).Ticks; lock (spotifyCerrojo) if (!artistasSp.ContainsKey(id)) artistasSp[id] = a; return false; }   // en un dia, otra vez
+                if (d == null)
+                {   // sin respuesta: si es la red o el limite de consultas, se reintenta (el hilo espera un minuto); a la tercera seguida (un
+                    // artista que ya no esta), se aparta un dia para no atascar la fila (antes, un corte de red apartaba a todos un dia)
+                    int f; lock (spotifyCerrojo) { fallosArtista.TryGetValue(id, out f); fallosArtista[id] = ++f; }
+                    if (f >= 3)
+                    {
+                        a.Fecha = DateTime.UtcNow.Ticks - Refresco + TimeSpan.FromDays(1).Ticks;
+                        lock (spotifyCerrojo) { fallosArtista.Remove(id); if (!artistasSp.ContainsKey(id)) artistasSp[id] = a; }
+                    }
+                    return false;
+                }
+                lock (spotifyCerrojo) fallosArtista.Remove(id);
                 if (d.RootElement.TryGetProperty("items", out JsonElement it) && it.ValueKind == JsonValueKind.Array)
                     foreach (JsonElement x in it.EnumerateArray())
                     {
@@ -323,6 +350,7 @@ namespace Rocola
         {
             string id; lock (spotifyCerrojo) if (artistaDeDisco.TryGetValue(d.Carpeta, out id)) return id;
             string c = d.Carpeta;
+            if (c.StartsWith(RaizSpotify + "playlist/", StringComparison.Ordinal) || c == RaizSpotify + "favoritas") return null;   // (listas: de varios artistas)
             if (c.StartsWith(RaizSpotify + "artist/", StringComparison.Ordinal)) id = c.Substring((RaizSpotify + "artist/").Length);
             else if (EsRutaSpotify(c))
             {
@@ -440,6 +468,7 @@ namespace Rocola
                         Disco x;
                         lock (spotifyCerrojo) { if (portadasPedidas.Count == 0) { bajandoPortadas = false; return; } x = portadasPedidas.Dequeue(); }
                         try { PonPortada(s, x); } catch (Exception ex) { LogError("Spotify: portada", ex); }
+                        if (x.Portada == null && spotify != s) { lock (spotifyCerrojo) portadaPedida.Remove(x); x.PortadaPedida = false; }   // (se pide otra vez con el nuevo)
                     }
                 }
                 catch { lock (spotifyCerrojo) bajandoPortadas = false; }

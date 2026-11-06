@@ -1431,3 +1431,25 @@ Pedido del dueño: «busca más optimizaciones». Automáticas, sin cambio de as
   gastar consultas (el tablero pregunta cada 30 s).
 - Probado: las baterías `noche`, `videoaudio` y `todojunto` de XP, la pantalla dentro de un disco con la tira, y el buzón y el tablero
   con el GitHub simulado (304 en la segunda lectura, subidas sin preguntar el sha). No medido en el A4.
+
+## Extra (7-11-2026, sexta parte): revisión de fallas de todo lo de Spotify
+
+Pedido del dueño: «revisa que todo lo relacionado con Spotify no tenga fallas». Se arregla:
+
+- **La llave que deja de valer con la rocola prendida** (`rocola-spotify`): si cambias la contraseña de Spotify o cierras sesión en
+  todos los dispositivos, antes reintentaba con la llave vieja para siempre (Spotify sin funcionar hasta reiniciar). Ahora la borra y
+  vuelve a esperar a que la elijas desde el celular, como la primera vez.
+- **El emparejador (SP4) y el hilo de los discos de artistas** se acababan si `rocola-spotify` se caía y se volvía a abrir solo: ya no
+  emparejaban ni traían discos hasta reiniciar la rocola. Ahora siguen con el nuevo.
+- **Un corte de internet** apartaba un día a cada artista que tocaba en ese momento (sin discos en las letras ni en la tira). Ahora se
+  reintenta; solo a la tercera falla seguida (un artista que ya no está) se aparta un día.
+- **Una portada que no se pudo bajar** porque `rocola-spotify` se reabrió ya no se queda sin portada hasta reiniciar: se vuelve a pedir.
+- **La tira «Más de este artista»** ya no sale en las listas (tus favoritas, tus listas, las de género): son de varios artistas.
+- **Un disco de Spotify en la pared aún sin abrir** decía «0 canciones»: ahora dice «Disco de Spotify» y, al quedarse en él, sus
+  canciones se traen solas (la ficha dice cuántas son y cuáles).
+- **El archivo de los discos de artistas** ya no crece para siempre: si pasa de 2 MB se reescribe con lo vigente.
+- Si se apaga Spotify mientras la pared con sus discos se está calculando, lo calculado ya no se pone.
+- Revisado sin cambios: créditos y su devolución, la cola tras un apagón, la versión de Spotify de tus canciones dañadas, las letras,
+  el buscador, el modo noche sobre lo de Spotify, apagar el interruptor a media canción.
+- Probado con el `rocola-spotify` simulado (la pared, la tira, un artista que carga sus canciones al verlo); `rocola-spotify` compila con
+  el cambio. Sin cuenta real ni A4.

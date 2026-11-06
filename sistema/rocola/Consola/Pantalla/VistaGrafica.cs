@@ -206,7 +206,7 @@ namespace Rocola
                 if (!string.IsNullOrEmpty(disco.Artista) && !string.IsNullOrEmpty(disco.Nombre)) { fArt.Escribe(d, fArt.Ajusta(disco.Artista, fw), fx, yy, VerdeTexto.ConAlfa(alfa)); yy += fArt.Tam * 1.15f + H * .020f; }
                 else yy += H * .010f;
                 float px = fx, hp = fPil.Tam * 1.15f + 8;
-                foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
+                foreach (string pastilla in new[] { disco.Pedidas > 0 ? "pedido " + disco.Pedidas + (disco.Pedidas == 1 ? " vez" : " veces") : null, (disco.Rutas.Count == 0 && Form1.EsRutaSpotify(disco.Carpeta)) ? "Spotify" : disco.Rutas.Count + (disco.Rutas.Count == 1 ? " canción" : " canciones") })
                 {
                     if (pastilla == null) continue;
                     bool ambar = pastilla.StartsWith("pedido");
@@ -454,6 +454,7 @@ namespace Rocola
         {
             int n = disco.Rutas.Count;
             if (disco.Videos) return n + (n == 1 ? " video" : " videos");
+            if (n == 0 && Form1.EsRutaSpotify(disco.Carpeta)) return "Disco de Spotify";   // (aun no se abre: sus canciones llegan al quedarse en el; antes decia «0 canciones»)
             string s = n + (n == 1 ? " canción" : " canciones");
             int min = disco.Minutos;
             if (min < 0 || n == 0) return s;

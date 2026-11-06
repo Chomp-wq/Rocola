@@ -112,7 +112,8 @@ namespace Rocola
                 {
                     SpotifyEnVivo s = spotify;
                     if (s == null || !SpotifyOn || cerrandoEntreno) return;
-                    while (!s.Conectado) { Thread.Sleep(5000); if (spotify != s || !SpotifyOn) return; }
+                    // (si rocola-spotify se cayo y se volvio a abrir, se sigue con el nuevo: antes este hilo se acababa y ya no emparejaba hasta reiniciar)
+                    while (!s.Conectado) { Thread.Sleep(5000); if (spotify == null || !SpotifyOn) return; s = spotify; }
                     Pareja ya; lock (spotifyCerrojo) parejas.TryGetValue(t.Path, out ya);
                     if (ya != null && (!ya.Ninguna || ahora - ya.Fecha < mes)) continue;
                     if (!(SegundosDe(t.Path) > 10f)) { pendientes++; continue; }   // sin la duracion (el repaso aun no la mide) no se puede asegurar: en la otra vuelta

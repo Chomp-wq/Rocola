@@ -380,7 +380,7 @@ namespace Rocola
                 if (!letrasCalculando.IsCompleted) return;
                 List<Form1.DiscoEnLetra> listo = letrasCalculando.Status == System.Threading.Tasks.TaskStatus.RanToCompletion ? letrasCalculando.Result : null;
                 int vl = letrasCalculandoV; letrasCalculando = null;
-                if (listo != null) { MezclaLetras(listo); versionLetrasSp = vl; }
+                if (listo != null && motor.VersionLetrasSpotify != 0) { MezclaLetras(listo); versionLetrasSp = vl; }   // (si mientras tanto se apago, no se pone)
                 return;
             }
             int v = motor.VersionLetrasSpotify;

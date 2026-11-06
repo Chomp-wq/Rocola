@@ -152,9 +152,18 @@ async fn main() {
         let invalida = r.sesion.lock().unwrap().as_ref().map(|s| s.is_invalid()).unwrap_or(true);
         if invalida {
             r.estado.lock().unwrap().conectado = false;
-            if let Some(c) = r.cache.credentials() {
-                if let Err(e) = conecta(&r, c).await {
-                    r.estado.lock().unwrap().error = format!("se cayo la conexion con Spotify: {e}");
+            // con la llave guardada; si ya no la hay (se borro porque dejo de valer), se vuelve a esperar al celular
+            let c = match r.cache.credentials() {
+                Some(c) => c,
+                None => espera_cuenta(&r, &nombre).await,
+            };
+            if let Err(e) = conecta(&r, c).await {
+                let m = e.to_string();
+                r.estado.lock().unwrap().error = format!("se cayo la conexion con Spotify: {m}");
+                // la llave dejo de valer con la rocola prendida (se cambio la contrasena, se cerro sesion en todos lados): antes se
+                // reintentaba con ella para siempre; ahora se borra y en la siguiente vuelta se espera la cuenta desde el celular
+                if m.contains("BadCredentials") || m.contains("Bad credentials") {
+                    let _ = std::fs::remove_file(cache_dir.join("credentials.json"));
                 }
             }
         }
