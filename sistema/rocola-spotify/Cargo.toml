@@ -1,0 +1,29 @@
+# EL PROGRAMA DE SPOTIFY DE LA ROCOLA (decision del dueno del 6-11-2026: Spotify integrado en la rocola, para las reuniones familiares).
+# Hecho con las piezas de librespot (como ncspot): entra con la cuenta, busca y lee la biblioteca (la API web de Spotify con la llave de
+# la sesion) y toca lo que pide la rocola, con el sonido por la tuberia (float de 32 bits). La rocola lo maneja por un enchufe Unix
+# (Motor/Spotify.cs). No guarda musica.
+[package]
+name = "rocola-spotify"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-discovery = { version = "=0.8.0", default-features = false, features = ["with-libmdns", "native-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde_json = "1"
+bytes = "1"
+http = "1"
+hyper = "1"
+http-body-util = "0.1"
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

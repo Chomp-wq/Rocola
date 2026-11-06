@@ -3361,14 +3361,15 @@ namespace Rocola
                 if (antes != null)
                     for (int i = 1; i < antes.Length; i++)
                         if (antes[i].StartsWith("creditos=")) { if (!int.TryParse(antes[i].Substring(9), out crAntes) || crAntes < 0) crAntes = 0; break; }
-                sb.Append("creditos=").Append(crAntes + credits).Append("\r\n");
+                sb.Append("creditos=").Append(crAntes + credits + CreditosDeSpotifyPendientes()).Append("\r\n");   // (lo pagado de Spotify que aun no suena vuelve como credito: no se reanuda)
                 if (antes != null)
                     for (int i = 1; i < antes.Length; i++)
                         if (antes[i].StartsWith("sonando=") || antes[i].StartsWith("cola=")) sb.Append(antes[i]).Append("\r\n");
                 if (nowPlaying != null && !EsMudaDiag(nowPlaying) && !EsItemSpotify(nowPlaying))   // (Spotify tampoco: tras un apagon no se «reanuda»)   // con lo de antes delante, lo de ahora va a la cola, detras (la muda del diagnostico nunca se guarda)
                     sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
-                    sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
+                    if (!EsItemSpotify(queue[i]))   // (las de Spotify no se reanudan: vuelven como creditos, arriba)
+                        sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");
                 EscribeEstado(sb.ToString());   // lo escribe un hilo de fondo, en orden (ver abajo)
             }
             catch { }

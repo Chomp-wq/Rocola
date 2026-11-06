@@ -1,0 +1,11 @@
+config BR2_PACKAGE_ROCOLA_SPOTIFY
+	bool "rocola-spotify (Spotify dentro de la rocola)"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_RUSTC
+	select BR2_PACKAGE_OPENSSL
+	help
+	  El programa de Spotify de la rocola (sistema/rocola-spotify), hecho
+	  con las piezas de librespot (no oficial; necesita Premium). La
+	  rocola lo abre solo con el interruptor «Spotify» de Ctrl+F3
+	  (apagado de fabrica): busca, lee la biblioteca de la cuenta y toca
+	  por la cadena de sonido de la rocola. No guarda musica.

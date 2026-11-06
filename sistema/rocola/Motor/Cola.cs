@@ -107,6 +107,15 @@ namespace Rocola
             {
                 PlayItem it = queue[0];
                 if (it.IsVideo) return null;   // los videos los toca quien toca (TomaVideo)
+                // UNA DE SPOTIFY (Spotify.cs): la pide al programa de Spotify y suena por la cadena de siempre; si no se puede, se devuelve su credito
+                if (EsItemSpotify(it))
+                {
+                    queue.RemoveAt(0);
+                    ISampleProvider sp = EmpiezaSpotify(it);
+                    if (sp != null) return sp;
+                    DevuelveCredito("Spotify: no se pudo tocar «" + it.Song.Title + "»" + (SpotifyListo ? "" : " (sin conexion con Spotify)"));
+                    continue;
+                }
                 // UN «MP3» QUE NO LO ES Y SE ESTA CONVIRTIENDO (Conversiones.cs): espera al principio de la cola hasta EsperaMaxMs y suena;
                 // si tarda mas, se devuelve el credito y la conversion sigue para la proxima vez.
                 if (it.Song != null && Conversiones.Convirtiendo(it.Song.Path))
@@ -198,10 +207,11 @@ namespace Rocola
         {
             Encadenado s = secuencia;
             if (s == null || cadenaPreparada != null || cadenaSonando == null) return;
-            if (EsItemSpotify(nowPlaying)) return;   // Spotify no lleva relevo: suena hasta que se pausa o se calla (Spotify.cs)
+            if (EsItemSpotify(nowPlaying)) return;   // Spotify no lleva relevo (Spotify.cs): cada una abre su salida
             if (s.Terminado || s.HayRelevoPendiente || queue.Count == 0) return;
             PlayItem sig = queue[0];
             if (sig == null || sig.IsVideo || sig.Song == null || sig.Song.Path == null || object.ReferenceEquals(sig, sinEncadenar)) return;
+            if (EsItemSpotify(sig)) return;   // (la de Spotify entra por el camino de siempre)
             double quedan;
             try { quedan = (cadenaSonando.Lector.TotalTime - cadenaSonando.Lector.CurrentTime).TotalSeconds; } catch { return; }
             if (quedan > PreparaAntesSeg) return;
@@ -279,7 +289,7 @@ namespace Rocola
         public void AcaboPorFallo()
         {
             PlayItem p = CierraLaSalida();   // la que de verdad sonaba (con el relevo ya recogido), no la de antes
-            if (p != null && !p.IsVideo && p.Song != null && !EsItemSpotify(p) && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
+            if (p != null && !p.IsVideo && p.Song != null && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
             {
                 queue.Insert(0, p); RefrescaCola();
             }
@@ -310,6 +320,7 @@ namespace Rocola
                 cadenaSonando = null; secuencia = null; tapMedido = null; pulso = null;
             }
             curTap = null; curSbr = null; curBass = null;
+            if (EsItemSpotify(nowPlaying)) TerminaSpotify();   // que el programa de Spotify calle (Spotify.cs)
             PlayItem ultima = nowPlaying;
             nowPlaying = null;
             return ultima;

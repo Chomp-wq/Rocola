@@ -229,31 +229,31 @@ Si el router no lo trae, hay otras formas (abrir un puerto y una app de Wake on 
 
 ## Spotify en las reuniones familiares
 
-Pedido del dueño el 6-11-2026: **solo para la familia**. Spotify no permite ponerlo para el público de un negocio, por eso va con un
-interruptor **apagado de fábrica**.
+Pedido del dueño el 6-11-2026: **Spotify dentro de la rocola, solo para la familia**, con un interruptor **apagado de fábrica**
+(Spotify es para uso personal: no es para el público del bar).
 
 **Cómo se usa:**
-1. Ctrl+F3 → **Spotify** → «Spotify en la rocola (reuniones familiares)»: **SÍ**.
-2. En el celular (conectado al wifi del mismo router que la rocola), abre Spotify → el icono de dispositivos → **«Rocola»**. Hace
-   falta **Spotify Premium**. La primera vez la rocola guarda la cuenta (solo su llave, en `/rocola/datos/spotify`) para que vuelva a
-   aparecer.
-3. Lo que pongas en el celular suena **por la cadena de la rocola**: nivelado (al nivel de las canciones aún sin medir), el local, el
-   modo billar, el limitador. En la pantalla sale el nombre y la portada.
+1. Ctrl+F3 → **Spotify** → «Spotify en la rocola (reuniones familiares)»: **SÍ**. Hace falta **Spotify Premium**.
+2. **Solo la primera vez:** en el celular, conectado al wifi del mismo router que la rocola, abre Spotify → el icono de dispositivos →
+   **«Rocola»**. Con eso la rocola recibe tu cuenta y la guarda (solo la llave, en `/rocola/datos/spotify`); desde entonces entra sola y
+   el celular ya no hace falta. Ctrl+F3 → Spotify dice cómo va.
+3. En la pared aparece la letra **SPOTIFY** (junto a TOP): **tus favoritas, tus listas y tus discos guardados**, con sus portadas. Y el
+   **buscador** (ROJO + ARRIBA) busca también en Spotify: canciones, discos y listas salen detrás de los de tu música.
+4. Se elige con los botones de siempre y **cuesta créditos como cualquier canción** (la moneda, el turno, «Inserta una moneda»): la
+   rocola clásica de siempre, con música de Spotify.
 
-**Cómo convive con la rocola:**
-- **Spotify manda:** si empieza mientras suena una canción de la rocola, esa baja suave y **vuelve entera al principio de la cola**; lo
-  que se pida mientras suena Spotify espera.
-- Si Spotify se **pausa más de 8 s**, la rocola sigue con su cola.
-- **SALTAR** con Spotify sonando lo calla hasta su siguiente canción (o hasta que lo pauses y lo reanudes).
-- De Spotify **no se aprende ni se cobra nada**: no entra en lo más sonado ni en las medidas, y tras un apagón no se reanuda.
-  **No se graba ni se descarga música.**
-- Apagado el interruptor, la rocola es la de siempre (Spotify ni se abre).
+**Cómo suena y qué guarda:**
+- Va **por la cadena de la rocola**: nivelado (al nivel de las canciones aún sin medir), el local, el modo billar, el limitador.
+- Si una canción de Spotify no se puede tocar (sin internet, no disponible), **se devuelve el crédito**. Al apagar el interruptor, o tras
+  un apagón, lo pagado de Spotify que aún no sonó **vuelve como créditos**.
+- De Spotify **no se aprende nada** y no cuenta para lo más sonado. **No se graba ni se descarga música**: el sonido va de la memoria a
+  la tarjeta, y las portadas solo viven en la memoria mientras la rocola está prendida.
+- Apagado el interruptor, la rocola es la de siempre (el programa de Spotify ni se abre).
 
-**Lo que hay que saber:** usa **librespot**, un programa libre que **no es oficial de Spotify**. Mucha gente lo usa en bocinas caseras,
-pero Spotify no lo autoriza: **podría bloquear la cuenta** (no es habitual) y, si Spotify cambia algo, puede dejar de funcionar hasta que
-librespot se actualice (llegaría con la actualización del sistema). Lo que dice librespot queda en `/rocola/datos/rocola_spotify.txt`.
-Necesita **IPv6 en el núcleo** (lo trae) para anunciarse en la red. **Probado aquí con un librespot simulado; no probado con una
-cuenta real ni en el A4.**
+**Lo que hay que saber:** usa las piezas de **librespot**, un programa libre que **no es oficial de Spotify** (como ncspot). Spotify no lo
+autoriza: **podría bloquear la cuenta** (no es habitual) y, si Spotify cambia algo, puede dejar de funcionar hasta que se actualice
+(llegaría con la actualización del sistema). Lo que pasa queda en `/rocola/datos/rocola_spotify.txt`. **Probado aquí con un Spotify
+simulado (la pared, el buscador, los créditos, el sonido por la cadena); no probado con una cuenta real ni en el A4.**
 
 ## Personalizarlo
 

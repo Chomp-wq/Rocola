@@ -1,3 +1,3 @@
 # Menu de paquetes propios de Rocola OS.
 source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-consola/Config.in"
-source "$BR2_EXTERNAL_ROCOLA_PATH/package/librespot/Config.in"
+source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-spotify/Config.in"

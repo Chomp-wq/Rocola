@@ -155,6 +155,8 @@ namespace Rocola
                 else if (b == "noche") { c.AtraccionDesfase = 15; c.FuerzaAtraccion(); }
                 else if (b == "mosaico") { c.AtraccionDesfase = 32; c.FuerzaAtraccion(); }   // V20: la atraccion, ya en el mosaico   // la atraccion, ya en lo mas pedido esta noche
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
+                else if (b == "spotify") c.EsperaSpotify(v, 6000);
+                else if (b.StartsWith("escribe:")) c.EscribeDePrueba(b.Substring(8));   // (pruebas) letras en el buscador abierto   // (pruebas) 6 s atendiendo Spotify: su programa, la biblioteca, el buscador
                 else if (b == "reposo")
                 {
                     // algo sonando y cinco en la cola (sin salida: solo para ver la pantalla), y 20 s sin botones

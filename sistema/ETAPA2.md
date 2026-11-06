@@ -1201,34 +1201,34 @@ en su propio hilo) pero ya no entra otra ni responden los botones.
 Revisado sin cambios: si un sombreador no compila en la Radeon, el vidrio se apaga solo y, si fallan los básicos, la rocola sigue en modo
 texto (no se cae); las texturas tienen tope (96 portadas, 6 grandes, 8 borrosas). **Nada de esto probado en el A4.**
 
-## Extra (6-11-2026): Spotify en las reuniones familiares (librespot)
+## Extra (6-11-2026): Spotify dentro de la rocola (reuniones familiares)
 
 Decisión del dueño: «integrar toda la biblioteca de Spotify [...] se podrá apagar con un interruptor, solo lo usaré para reuniones
-familiares». Se le explicó que la API gratuita de Spotify (Web API) no da el sonido, que lo oficial para tocarlo fuera de sus apps es un
-reproductor dentro de un navegador (con su candado Widevine, pesado para el A4 y sin pasar por la cadena) y que librespot no es oficial
-(riesgo para la cuenta). Eligió librespot.
+familiares». Se le explicó que la API gratuita (Web API) no da el sonido y que lo oficial para tocarlo es un reproductor dentro de un
+navegador; eligió librespot (no oficial). Una primera versión dejaba a la rocola como bocina de Spotify Connect (manejada desde el
+celular): el dueño la rechazó («quería una integración nativa en la rocola»). Y pidió que cueste créditos («a mi familia le gusta el tema
+de rocolas clásicas como Rowe AMI y quitar la parte física le quitaría chiste»).
 
-- **El paquete** (`package/librespot`): librespot 0.8.0 de crates.io (el mismo código que la versión de GitHub, con su Cargo.lock), con
-  Rust de Buildroot (`host-rust-bin`), sin rodio ni ALSA propios (`--no-default-features --features with-libmdns,native-tls`): TLS con la
-  OpenSSL del sistema y su propio anuncio zeroconf. Necesita IPv6 en el núcleo (el servidor de anuncio abre un socket doble; sin IPv6 dice
-  «Address family not supported» y no arranca).
-- **Cómo lo abre la rocola** (`Motor/Spotify.cs: SpotifyEnVivo`): con el interruptor `spotify=` (apagado de fábrica), como hijo de la
-  rocola: `--name Rocola --backend pipe --format F32 --bitrate 320 --cache /rocola/datos/spotify --disable-audio-cache
-  --enable-volume-normalisation --normalisation-method basic --initial-volume 100 --onevent /usr/bin/rocola-spotify-evento`. Un hilo
-  lee la tubería a un anillo de 1,5 s; lleno, espera (librespot espera con él: no se pierde nada). Se vuelve a abrir si se cae (5 s, 10
-  s... hasta 5 min). Lo que dice va a `rocola_spotify.txt` (256 KB, con `.1`).
-- **Los avisos** (`rocola-spotify-evento`): en cada `track_changed` deja `/run/rocola-spotify/pista.txt` (nombre, artistas, disco,
-  duración) y baja la portada a `portada-ID.jpg` (borra las de más de una hora).
-- **La canción en vivo** (`FuenteSpotify`, un `IAudioSource`): `EmpiezaSpotify` la arma con `ArmaCadena` como cualquier canción y luego
-  le quita todo lo que aprende (`MedidaRuta`, `EqRuta`, `Margen`, `Tap.Medida`) y el DSEE. Lee del anillo sin esperar nunca (lo que falta,
-  en silencio) y se acaba si librespot se cierra, si SALTAR lo calló o tras 8 s sin sonido. No dice lo que dura hasta estar armada (si no,
-  el fundido de salida caería al final de la primera canción de Spotify) ni lleva relevo (`PreparaSiguiente`).
-- **Enganches en lo de XP:** `GananciaDe` (Spotify al nivel de las no medidas: `normTarget / 0,2`, el margen del tono del local),
-  `DseePara` (nunca), `SaveState` (no se guarda), `AcaboPorFallo` (no vuelve a la cola).
-- **En el bucle** (`Controlador.Suena`): si Spotify manda sonido y suena una canción de la rocola, esa baja en 60 ms (`SalidaAlsa.Apaga`)
-  y vuelve entera a la cola (`DejaPasoASpotify`); con la salida libre empieza Spotify. SALTAR baja en 60 ms y después lo calla (hasta su
-  siguiente canción o una pausa de más de 2 s); apagar el interruptor también baja antes de cerrar librespot.
-- **Probado** con un librespot simulado (manda tonos por la tubería y llama al script de avisos), en modo texto y con la salida de ALSA a
-  un archivo: una canción de la rocola sonando cede a Spotify con un fundido limpio, vuelve entera a la cola y suena completa cuando
-  Spotify se pausa; los avisos de las dos canciones llegan (pista.txt); nada de Spotify queda en las medidas, el EQ, las estadísticas ni el
-  estado. librespot 0.8.0 compilado aquí acepta todas esas opciones. **No probado con una cuenta de Spotify de verdad ni en el A4.**
+- **El programa** (`sistema/rocola-spotify`, Rust, paquete `package/rocola-spotify`): con las piezas de librespot 0.8.0 (como ncspot).
+  Entra con la llave guardada (`/rocola/datos/spotify/credentials.json`); sin ella, se anuncia en la red como «Rocola» y espera a que
+  alguien lo elija una vez desde la app (Spotify Connect, zeroconf; necesita IPv6 en el núcleo). Toca con su `Player` (320 kbps,
+  normalización básica de Spotify, sin huecos no) y saca el sonido por stdout en float. Se maneja por un enchufe Unix
+  (`/run/rocola-spotify/control.sock`, una orden JSON por línea): `estado`, `toca` (uri), `para`, `api` (una ruta de la API web, con la
+  llave de la sesión: solo permisos de lectura) y `baja` (una portada a `/run`). Su `Cargo.lock` es el de librespot 0.8.0 (las mismas
+  versiones que el Rust de Buildroot ya compiló) y Buildroot lo compila con red y `--locked` (un paquete local no pasa por la descarga).
+- **La rocola** (`Motor/Spotify.cs`): `SpotifyEnVivo` abre el programa (con el interruptor), lee su sonido a un anillo de 1,5 s y le
+  pregunta cómo va cada 400 ms (tres conexiones: estado, tocar/parar al momento, y la API, que puede tardar). La letra **SPOTIFY**
+  (`LetraSpotify`) lleva «Tus favoritas» (`/v1/me/tracks`), las listas (`/v1/me/playlists`) y los discos guardados (`/v1/me/albums`), con
+  las canciones cargadas por adelantado en segundo plano (hasta 500 por lista; `/v1/playlists/ID/tracks`, y si no, `/items`). El buscador
+  pide `/v1/search` (canción, disco y lista, 10 de cada) cuando se deja de escribir 0,6 s y lo añade detrás de lo de la biblioteca.
+  Cada canción es una `Track` con ruta `/spotify/ID/Artista - Título.spotify`.
+- **La cola:** `PideSpotify` cobra un crédito y da el turno como `Pide`; `EmpiezaSiguiente` pide la canción al programa y la arma con
+  `ArmaCadena` (sin aprender nada: ni medidas, ni EQ, ni volumen parejo; sin DSEE ni relevo). `FuenteSpotify` lee del anillo sin
+  esperar nunca y se acaba cuando el programa dice que acabó y ya no queda nada; sin sonido en 20 s, no se pudo (se devuelve el
+  crédito). Al acabar o saltar, `para` y lo que quede se tira. En el estado no se guardan: lo pagado que no sonó vuelve como créditos.
+- **Enganches en lo de XP:** `GananciaDe` (al nivel de las no medidas), `DseePara` (nunca), `SaveState`, `PreparaSiguiente`.
+- **Probado** con un programa simulado que habla el mismo enchufe (biblioteca, búsqueda, portadas y tonos como canciones): la letra
+  SPOTIFY con listas y discos (captura), dentro de un disco, el buscador con resultados de Spotify y portadas (captura), las canciones
+  pedidas con créditos (sin crédito no suena; una moneda, dos canciones, quedan 2), sonando por la cadena una detrás de otra y nada en
+  lo aprendido. El programa real compila aquí y en Buildroot, y en QEMU se abre y espera la cuenta. **No probado con una cuenta de
+  Spotify de verdad ni en el A4.**

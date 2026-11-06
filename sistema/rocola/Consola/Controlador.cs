@@ -80,6 +80,7 @@ namespace Rocola
         internal void Pulsa(Boton b) { Maneja(b); TrasBoton(); }
         // Una tecla (codigo de Windows), como si llegara de los botones (las pruebas).
         internal void PulsaTecla(int vk) { Tecla(vk); }
+        internal void EscribeDePrueba(string t) { foreach (char ch in t.ToUpperInvariant()) Tecla(DeTexto - ch); }
 
         internal void EmpiezaAsistente() { AsistentePaso = 0; AsistenteAviso = ""; }
 
@@ -310,7 +311,49 @@ namespace Rocola
         }
 
         // LO MAS SONADO: la "letra" TOP (la estrella de XP), la primera, con un disco por genero; aparece cuando hay estadisticas.
-        internal static string NombreLetra(char l) { return l == Form1.LetraTop ? "TOP" : l == Form1.LetraVideos ? "VIDEOS" : l.ToString(); }
+        internal static string NombreLetra(char l) { return l == Form1.LetraTop ? "TOP" : l == Form1.LetraVideos ? "VIDEOS" : l == Form1.LetraSpotify ? "SPOTIFY" : l.ToString(); }
+        // LA LETRA SPOTIFY (Motor/Spotify.cs): despues de TOP, con tus favoritas, listas y discos; se pone al dia cuando cambian (y se quita al
+        // apagar el interruptor). Dentro de ella no se mueve lo que se mira: solo cambia lo que hay (las portadas llegan solas).
+        private int versionSpotify = -1;
+        private void RevisaSpotify()
+        {
+            int v = motor.VersionSpotify;
+            if (v == versionSpotify) return;
+            versionSpotify = v;
+            List<Form1.Disco> l = motor.DiscosSpotify();
+            char actual = letras.Count > 0 ? letras[letra] : '\0';
+            if (l.Count == 0) { letras.Remove(Form1.LetraSpotify); porLetra.Remove(Form1.LetraSpotify); if (dentro != null && Form1.EsRutaSpotify(dentro.Carpeta) && !motor.SpotifyOn) dentro = null; }
+            else
+            {
+                if (!letras.Contains(Form1.LetraSpotify)) letras.Insert(letras.Count > 0 && letras[0] == Form1.LetraTop ? 1 : 0, Form1.LetraSpotify);
+                porLetra[Form1.LetraSpotify] = l;
+            }
+            int i = letras.IndexOf(actual);
+            letra = i >= 0 ? i : Math.Min(letra, Math.Max(0, letras.Count - 1));
+            if (letras.Count > 0 && cursorDisco >= porLetra[letras[letra]].Count) cursorDisco = 0;
+            if (Buscando && Resultados != null) resultadosSpotifyDe = null;   // las portadas de los resultados llegaron: se vuelven a mirar
+        }
+        // (Pruebas: --boton spotify en una captura) unos segundos atendiendo Spotify como el bucle de la rocola.
+        internal void EsperaSpotify(IVista v, int ms)
+        {
+            int t0 = Environment.TickCount;
+            while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
+        }
+        // Los resultados de Spotify, detras de los de la biblioteca, en cuanto llegan (el motor busca cuando se deja de escribir).
+        private List<Form1.Resultado> resultadosLocales, resultadosMezclados;
+        private string resultadosSpotifyDe;
+        private void RevisaBusquedaSpotify()
+        {
+            if (!Buscando || resultadosLocales == null || Form1.EsCodigoDeServicio(Escrito)) return;
+            // solo sobre lo que se busco escribiendo (no sobre «Lo mas pedido hoy» ni otro atajo)
+            if (!object.ReferenceEquals(Resultados, resultadosLocales) && !object.ReferenceEquals(Resultados, resultadosMezclados)) return;
+            if (resultadosSpotifyDe == Escrito) return;
+            List<Form1.Resultado> sp = motor.ResultadosSpotify(Escrito);
+            if (sp == null) return;
+            List<Form1.Resultado> todo = new List<Form1.Resultado>(resultadosLocales);
+            todo.AddRange(sp);
+            Resultados = resultadosMezclados = todo; resultadosSpotifyDe = Escrito;
+        }
         private void RefrescaTop()
         {
             List<Form1.Disco> top = motor.LoMasSonado();
@@ -376,11 +419,12 @@ namespace Rocola
                 else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
                 else if (b == Boton.Arriba && !RegresarApretado) { SentidoPagina = 1; int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Abajo && !RegresarApretado) { SentidoPagina = -1; int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
-                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; }
+                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; motor.CargaSpotify(dentro); }   // (uno de Spotify: sus canciones llegan en un momento)
             }
             else
             {
                 int n = dentro.Rutas.Count, pagina = Math.Max(1, PorPagina);
+                if (n == 0) { if (b == Boton.Regresar) dentro = null; return; }   // (un disco de Spotify que aun carga)
                 if (b == Boton.Arriba && !RegresarApretado) cursorCancion = (cursorCancion + n - 1) % n;
                 else if (b == Boton.Abajo && !RegresarApretado) cursorCancion = (cursorCancion + 1) % n;
                 else if (b == Boton.Izquierda) cursorCancion = Math.Max(0, cursorCancion - pagina);
@@ -392,9 +436,9 @@ namespace Rocola
 
         private void PideCancion(string ruta, string titulo)
         {
-            motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
+            if (!Form1.EsRutaSpotify(ruta)) motor.MideEnFondo(ruta);   // como el repaso de XP, en segundo plano: hasta tenerla, suena con la regla de las no medidas
             bool sonaba = motor.Sonando != null || motor.SonandoVideo || motor.EnCola > 0;
-            Form1.Pedido p = motor.Pide(ruta);
+            Form1.Pedido p = Form1.EsRutaSpotify(ruta) ? motor.PideSpotify(ruta) : motor.Pide(ruta);   // las de Spotify, con su credito como todo
             if (p == Form1.Pedido.SinCredito && motor.SinCreditosInvita)
             {   // SIN CREDITOS, INVITAR (XP): una tarjeta amable en vez del letrero
                 aviso = ""; InvitaTitulo = titulo; InvitaTick = Environment.TickCount | 1;
@@ -540,6 +584,8 @@ namespace Rocola
             if (ch == '\u0002') { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); }
             else Escrito += ch == '\u0001' ? ' ' : ch;
             Resultados = Form1.EsCodigoDeServicio(Escrito) ? new List<Form1.Resultado>() : motor.Busca(Escrito); SelResultado = 0;   // el codigo no busca
+            resultadosLocales = Resultados; resultadosSpotifyDe = null;
+            if (!Form1.EsCodigoDeServicio(Escrito)) motor.PideBusquedaSpotify(Escrito);   // y en Spotify, si esta encendido (llegan despues)
         }
         private void ManejaBuscador(Boton b)
         {
@@ -591,6 +637,16 @@ namespace Rocola
             if (r.Tipo == 3) { if (Form1.EsCodigoDeServicio(Escrito)) { motor.CreditosDeServicio(); Aviso("+4 créditos"); } return; }
             if (r.Tipo == 2 && r.Ruta != null) { PideCancion(r.Ruta, r.Texto); return; }
             if (r.Carpeta == null) return;
+            if (Form1.EsRutaSpotify(r.Carpeta))
+            {   // un disco o una lista de Spotify del buscador: se abre (dentro de la letra SPOTIFY si esta)
+                Form1.Disco d = motor.DiscoSpotifyDe(r.Carpeta);
+                if (d == null) return;
+                if (string.IsNullOrEmpty(d.Nombre)) d.Nombre = r.Texto;
+                int ls = letras.IndexOf(Form1.LetraSpotify);
+                if (ls >= 0) { letra = ls; int j = porLetra[Form1.LetraSpotify].IndexOf(d); cursorDisco = j >= 0 ? j : 0; }
+                Buscando = false; dentro = d; cursorCancion = 0;
+                return;
+            }
             for (int i = 0; i < letras.Count; i++)
             {
                 if (letras[i] == Form1.LetraTop) continue;
@@ -840,22 +896,12 @@ namespace Rocola
         }
 
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
-        private bool cediendo, callarSpotify;   // la cancion de la rocola baja para dejar sonar a Spotify (vuelve entera a la cola)
         private void Suena()
         {
-            // SPOTIFY (Motor/Spotify.cs): abre o cierra librespot segun el interruptor; si manda sonido, se le da la salida.
+            // SPOTIFY (Motor/Spotify.cs): abre o cierra su programa segun el interruptor y trae la biblioteca; la letra SPOTIFY se pone al dia.
             motor.AtiendeSpotify();
-            if (salida == null && video == null && motor.SpotifyQuiereSonar && (fallosSonido == 0 || unchecked(Environment.TickCount - sinSonidoHasta) >= 0))
-            {
-                if (salidaPrueba != null || motor.PruebaActual != null) { motor.ParaPrueba(); CierraPrueba(); }
-                ISampleProvider sp = motor.EmpiezaSpotify();
-                if (sp != null)
-                {
-                    try { salida = new SalidaAlsa(sp, dispositivo); salida.Empieza(); cortesVistos = 0; cortesCancion = motor.SonandoTitulo; fallosSonido = 0; }
-                    catch (Exception ex) { salida = null; FalloSonido(ex.Message); motor.AcaboPorFallo(); }
-                    return;
-                }
-            }
+            RevisaSpotify();
+            RevisaBusquedaSpotify();
             if (salida == null && video == null)
             {
                 string v = motor.TomaVideo();
@@ -876,19 +922,13 @@ namespace Rocola
             RevisaPrueba();
             if (salida != null)
             {
-                if (!saltar && !cediendo && salida.Sonando && !salida.Apagando && !motor.SonandoSpotify && motor.SpotifyQuiereSonar)
-                {
-                    cediendo = true; salida.Apaga();   // baja en 60 ms y vuelve entera a la cola (DejaPasoASpotify)
-                    return;
-                }
                 if (!saltar && motor.SonandoSpotify && !motor.SpotifyOn && salida.Sonando && !salida.Apagando)
                 {
-                    salida.Apaga();   // se apago el interruptor: baja en 60 ms y despues se cierra librespot (Form1.AtiendeSpotify)
+                    salida.Apaga();   // se apago el interruptor: baja en 60 ms y despues se cierra Spotify (Form1.AtiendeSpotify)
                     return;
                 }
                 if (saltar && salida.Sonando)
                 {
-                    if (motor.SonandoSpotify) callarSpotify = true;   // SALTAR con Spotify: al acabar de bajar, callado hasta su siguiente cancion
                     // SALTAR SIN CHASQUIDO (SalidaAlsa.Apaga): la musica baja a cero en 60 ms y la salida acaba sola; mientras, no se
                     // prepara ni releva nada (lo que entraria ya no se oiria)
                     salida.Apaga();
@@ -903,10 +943,7 @@ namespace Rocola
                     if (salida.FalloLectura != null) motor.ApuntaError("Fallo al leer «" + motor.SonandoTitulo + "» (se acabo la cancion)", salida.FalloLectura);
                     salida.Dispose(); salida = null; saltar = false;
                     if (fallo) { FalloSonido("la tarjeta dejo de responder"); motor.AcaboPorFallo(); }
-                    else if (cediendo) motor.DejaPasoASpotify();
                     else motor.AcaboLaSalida();
-                    if (callarSpotify) motor.CallaSpotify();
-                    cediendo = false; callarSpotify = false;
                     motor.GuardaEstado();
                 }
             }

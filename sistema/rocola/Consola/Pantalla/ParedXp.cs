@@ -54,7 +54,7 @@ namespace Rocola
             if (c.dentro == null && !c.Buscando && c.letras.Count > 0)
             {
                 string l = "LETRA " + Controlador.NombreLetra(c.letras[c.letra]);
-                if (c.letras[c.letra] == Form1.LetraTop) l = Controlador.NombreLetra(c.letras[c.letra]).ToUpperInvariant();
+                if (c.letras[c.letra] == Form1.LetraTop || c.letras[c.letra] == Form1.LetraSpotify) l = Controlador.NombreLetra(c.letras[c.letra]).ToUpperInvariant();
                 float wl = nGrande.Mide(l), xl = W - 26 * k - wl;
                 if (xl > zAyuda.X + zAyuda.W + 20 * k)
                 {
