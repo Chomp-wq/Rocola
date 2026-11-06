@@ -189,8 +189,8 @@ la vez) o el cable se conecta después, la rocola lo sigue intentando cada 20 s 
 (`America/Mexico_City`, sin cambio de horario) y se pone por internet; el reloj de la placa se deja en hora local, como lo tiene
 Windows XP. Con internet:
 
-- **El programa de la rocola se actualiza solo.** Cada cambio que se sube a GitHub lo compila GitHub
-  (`.github/workflows/rocola-programa.yml`) y lo publica como la versión «programa-N» del repositorio. La rocola la busca al minuto
+- **El programa de la rocola se actualiza solo.** GitHub lo compila cuando se le pide
+  (`.github/workflows/rocola-programa.yml`: Actions → Run workflow) y lo publica como la versión «programa-N» del repositorio. La rocola la busca al minuto
   de prender y cada hora, la baja, comprueba su suma y que arranca en ese equipo, y la pone **sola en cuanto está libre** (nada
   sonando ni en la cola, y nadie tocándola en 2 minutos; los créditos se conservan). Si la nueva se cae al arrancar, vuelve sola a la
   anterior y no la vuelve a bajar. Y desde la versión con las dos copias, **también el sistema entero** (ver abajo).
@@ -199,7 +199,7 @@ Windows XP. Con internet:
 
 **El sistema operativo también se actualiza (soporte continuo).** GitHub compila el sistema entero con Buildroot **cuando se le pide**
 (`.github/workflows/rocola-sistema.yml`: en GitHub, Actions → «Sistema de la rocola (Rocola OS)» → Run workflow; cerca de una hora y de
-los 2 000 minutos gratis del mes) y publica la versión «sistema-N». El programa de la rocola, en cambio, se compila solo en cada cambio. La rocola instalada guarda **dos copias del sistema** (`\rocola-os\a` y `\rocola-os\b`): la nueva se baja en la que no se
+los 2 000 minutos gratis del mes) y publica la versión «sistema-N». El programa de la rocola, igual: solo cuando se pide (Actions → «Programa de la rocola (Rocola OS)» → Run workflow; unos 3 minutos). La rocola instalada guarda **dos copias del sistema** (`\rocola-os\a` y `\rocola-os\b`): la nueva se baja en la que no se
 usa, se comprueba y la rocola se reinicia sola cuando está libre. Si el sistema nuevo no llega a funcionar 3 minutos (dos intentos),
 **vuelve solo al anterior** y no lo vuelve a bajar. Lo aprendido y el programa van aparte (`\rocola-os\datos.img`) y no se tocan. Con
 ESC al prender, el menú tiene también «la versión anterior del sistema». Lo que pasa, en `\rocola-os\sistema.txt`.

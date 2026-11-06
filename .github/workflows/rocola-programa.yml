@@ -1,13 +1,12 @@
-# EL PROGRAMA DE LA ROCOLA (Rocola OS), COMPILADO POR GITHUB EN CADA CAMBIO (peticion del dueno del 1-11-2026: que la rocola se actualice
+# EL PROGRAMA DE LA ROCOLA (Rocola OS), COMPILADO POR GITHUB (peticion del dueno del 1-11-2026: que la rocola se actualice
 # sola). Compila rocola-consola con .NET 10 (NativeAOT) en dos versiones -la del A4 (con AVX) y la generica (cualquier x86-64)-, prueba
 # que arranca y toca una cancion, y la publica como la version «programa-N» del repositorio. La rocola la busca cada hora con su llave de
 # solo lectura (rocola-actualiza), la comprueba y la pone sola cuando esta libre.
 name: Programa de la rocola (Rocola OS)
 
+# SOLO A PEDIDO (decision del dueno del 6-11-2026: «haz manual ambas cosas», tras pagar minutos de Actions): se lanza desde GitHub
+# (Actions -> «Programa de la rocola (Rocola OS)» -> Run workflow) o cuando el dueno se lo pide a Claude.
 on:
-  push:
-    branches: [claude/modest-carson-fa2v2n]
-    paths: ['sistema/rocola/**', '.github/workflows/rocola-programa.yml']
   workflow_dispatch:
 
 permissions:
