@@ -1466,3 +1466,30 @@ disco se regresará al buscador, ya que en este caso el disco no está en la par
   REGRESAR vuelve a la pared, como con tus discos.
 - Probado con el `rocola-spotify` simulado: «Disco solo en Spotify» → dentro → REGRESAR → el buscador con «solo» y el disco elegido;
   «Disco guardado» → REGRESAR → la pared, en él.
+
+## Extra (7-11-2026, octava parte): el buscador, para que cualquiera encuentre su canción
+
+Pedido del dueño: «necesito que mejoremos el algoritmo de búsqueda al máximo, para que cualquiera que intente encontrar una canción pueda
+hacerlo». `Motor/BuscadorFlexible.cs`, automático, sin interruptor.
+
+**Lo de antes se queda y manda:** la búsqueda de XP (igual, empieza igual, empieza palabra, en medio, por palabras, una errata) sigue
+saliendo **primero** y en su orden. Cuando da menos de 40, una segunda pasada **rellena debajo** con:
+
+- **Como suena** (español): b/v, s/c/z, ll/y, h muda, qu/k, ge/je, ch/sh, ph/f, n antes de b/p, letras dobles. «bicente fernandes» →
+  Vicente Fernández; «kerida» → Querida; «chakira» → Shakira; «abito de ti» → Hábito de ti; «estos selos» → Estos celos.
+- **Faltas**: una letra mal en palabras de 4 a 6 letras y dos en las de 7 o más (cambiada, de más, de menos o dos al revés), también a
+  medio escribir: «juan grabiel», «luis migel», «bohemian rapsody», «yesterdey», «contrabando y traision».
+- **Palabras de sobra o que faltan**: «el», «la», «de», «the»… no se exigen; con tres o más palabras bastan dos de cada tres: «como la
+  flor de selena», «tigres jaula oro».
+- **Pegadas o separadas**: «lacucaracha» → La cucaracha.
+- **El disco y el género** de cada canción cuentan (menos que el título y el artista): «selena amor prohibido» trae también las demás
+  del disco.
+- **Precisión**: con varias palabras, una tiene que casar bien o todas con poca falta; si lo exacto ya encontró 5 o más, de lo flexible
+  solo lo que suena igual.
+- **Lo más pedido primero**, a igualdad, en toda la búsqueda (hasta 150 puntos por lo que ha sonado; los escalones van de miles en miles,
+  así que solo desempata).
+- **Rápido**: un índice con cada palabra distinta de la biblioteca (como suena) y las entradas que la tienen; se compara contra esas
+  palabras (no contra cada canción) y lo de cada palabra buscada se recuerda mientras se escribe la siguiente. Medido en la máquina de
+  pruebas con 20 000 canciones: de 4 a 12 ms por búsqueda sin nada recordado (antes de este índice, 14 a 25 ms); sin la segunda pasada,
+  0 a 2 ms. No medido en el A4.
+- Prueba: `rocola-consola --busca "texto" ...` (con `ROCOLA_MUSICA_LISTA`) dice los 8 primeros y lo que tardó.

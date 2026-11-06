@@ -4448,6 +4448,9 @@ namespace Rocola
             public Album AlbumRef;
             public Track TrackRef;
             public List<Album> Albums;   // todos los discos del artista (Kind==0)
+            // el buscador flexible (BuscadorFlexible.cs): la clave como suena, sin espacios, por palabras, y el disco y genero de la cancion
+            public string Fon, Pegado; public string[] Palabras, Mas; public int FonMask, MasMask;
+            public int Marca;   // (la busqueda en curso ya la tiene)
         }
         // de Form1.Buscador.cs
         // Lo que casa con cada letra SUELTA, ya puntuado. Ver RecomputeResults: la primera letra es la unica
@@ -4505,6 +4508,7 @@ namespace Rocola
             // bucle de arriba a proposito, para que el indice quede armado y en orden ANTES de repartir.
             ClavesDelIndice();
             BuildSearchPostings();
+            IndicePalabras();   // las palabras del buscador flexible (BuscadorFlexible.cs)
         }
         // de Form1.Buscador.cs
         private BolsaLetra FindLetterQuery(char key)
@@ -4803,6 +4807,7 @@ namespace Rocola
                     { si.TitleAt += firstSpace + 1; si.TitleLength -= firstSpace + 1; }
                 }
                 si.Mask = MarcaLetras(si.Key);
+                ClavesFoneticas(si);   // y como suena (el buscador flexible)
             }
         }
         // de Form1.Video.cs

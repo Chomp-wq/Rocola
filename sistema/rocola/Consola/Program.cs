@@ -26,7 +26,21 @@ namespace Rocola
             if (args.Length > 0 && args[0] == "--version") { Console.WriteLine("rocola-consola programa " + Version.Numero + " (" + Version.Commit + ")"); return 0; }
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "--mide-repaso")   // prueba: cuanto tarda medir cada archivo (no publica nada)
+                if (args[i] == "--busca")   // prueba del buscador (BuscadorFlexible.cs): cada argumento es una busqueda; dice los 8 primeros y cuanto tardo
+                {
+                    Form1 mb = new Form1(); mb.Arranca(); mb.LeeBiblioteca();
+                    for (int j = i + 1; j < args.Length; j++)
+                    {
+                        mb.Busca(args[j]);   // (la primera vez arma lo que guarda; se mide la segunda, como al teclear)
+                        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                        List<Form1.Resultado> r = mb.BuscaSinGuardar(args[j]);
+                        sw.Stop();
+                        Console.WriteLine("«" + args[j] + "»: " + mb.TotalUltimaBusqueda + " resultados, " + sw.Elapsed.TotalMilliseconds.ToString("0.0") + " ms");
+                        for (int k = 0; k < Math.Min(8, r.Count); k++) Console.WriteLine("   " + (r[k].Tipo == 0 ? "artista " : r[k].Tipo == 1 ? "disco   " : "cancion ") + r[k].Texto + (string.IsNullOrEmpty(r[k].Detalle) ? "" : "  (" + r[k].Detalle + ")"));
+                    }
+                    return 0;
+                }
+                else if (args[i] == "--mide-repaso")   // prueba: cuanto tarda medir cada archivo (no publica nada)
                 {
                     Form1 mr = new Form1(); mr.Arranca();
                     for (int j = i + 1; j < args.Length; j++) Console.WriteLine(mr.PruebaRepaso(args[j]));

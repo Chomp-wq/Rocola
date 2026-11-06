@@ -57,6 +57,7 @@ namespace Rocola
                 else
                 {
                     matches = new List<SearchItem>();
+                    int sello = ++selloBusqueda;
                     source = SearchCandidates(source, qMask);
                     int cuantos = source.Count;
                     for (int i = 0; i < cuantos; i++)
@@ -65,7 +66,7 @@ namespace Rocola
                         if ((si.Mask & qMask) != qMask) continue;   // le falta alguna letra: imposible que case
                         int sc = Score(si.Key, q, toks);
                         sc = MotorBusqueda.Relevancia(si.Key, si.TitleAt, si.TitleLength, q, sc);
-                        if (sc > 0) { si.Score = sc; matches.Add(si); }
+                        if (sc > 0) { si.Score = sc + Popular(si); si.Marca = sello; matches.Add(si); }   // (a igualdad, lo mas pedido primero)
                     }
                     lastMatchesApproximate = false;
                     // Las coincidencias literales siempre tienen preferencia. Una unica errata
@@ -82,9 +83,17 @@ namespace Rocola
                             if ((missing & (missing - 1)) != 0) continue;
                             int sc = MotorBusqueda.Aproximado(si.Key, q, toks);
                             sc = MotorBusqueda.RelevanciaAproximada(si.Key, si.TitleAt, si.TitleLength, q, toks, sc);
-                            if (sc > 0) { si.Score = sc; matches.Add(si); }
+                            if (sc > 0) { si.Score = sc + Popular(si); si.Marca = sello; matches.Add(si); }
                         }
                         lastMatchesApproximate = matches.Count > 0;
+                    }
+                    // EL BUSCADOR FLEXIBLE (BuscadorFlexible.cs, 7-11-2026): si lo exacto no llena las 40, lo que casa de oido, con faltas o con
+                    // palabras de sobra, debajo de lo exacto (de 100 a 700 puntos: lo exacto empieza en 800).
+                    if (matches.Count < 40 && !SinFlexible)
+                    {
+                        int antes = matches.Count;
+                        BuscaFlexible(q, matches);
+                        if (matches.Count > antes) lastMatchesApproximate = true;   // (la tecla siguiente busca otra vez en todo el indice)
                     }
                     TomaMejores(matches, res, 40);
                     if ((q.Length == 1 && matches.Count <= 131072) || (q.Length <= 128 && matches.Count <= 32768))
@@ -113,6 +122,7 @@ namespace Rocola
 
         // Cuantas coincidencias tuvo la ultima busqueda: se ensenan las 40 mejores, pero la casilla del buscador dice todas, como en XP.
         public int TotalUltimaBusqueda { get; private set; }
+        internal static readonly bool SinFlexible = Environment.GetEnvironmentVariable("ROCOLA_BUSCA_SIN_FLEXIBLE") == "1";   // (pruebas: medir sin la segunda pasada)
         // Un resultado, para quien use el motor: Tipo 0 = artista (va a su primer disco), 1 = disco, 2 = cancion.
         public sealed class Resultado
         {
@@ -135,6 +145,8 @@ namespace Rocola
             }
             return r;
         }
+        // (pruebas: la misma busqueda sin lo que se recuerda de las anteriores, para medir lo que cuesta de verdad)
+        public List<Resultado> BuscaSinGuardar(string texto) { lock (valoresDePalabra) valoresDePalabra.Clear(); ClearRecentQueries(); if (bolsaLetra != null) bolsaLetra.Clear(); lastQuery = null; lastMatches = null; return Busca(texto); }
         public List<Resultado> Busca(string texto)
         {
             List<Resultado> r = new List<Resultado>();
