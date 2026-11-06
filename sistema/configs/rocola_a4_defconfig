@@ -61,6 +61,7 @@ BR2_PACKAGE_KMSCUBE=y
 
 # La rocola (etapa 2): por ahora la de consola, que toca canciones por la cadena de sonido y ALSA
 BR2_PACKAGE_ROCOLA_CONSOLA=y
+BR2_PACKAGE_LIBRESPOT=y
 
 # La imagen: ext4 y GRUB de BIOS y de UEFI, un solo archivo disk.img para grabar en una memoria USB
 BR2_TARGET_ROOTFS_EXT2=y

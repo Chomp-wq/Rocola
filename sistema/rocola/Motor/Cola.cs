@@ -198,6 +198,7 @@ namespace Rocola
         {
             Encadenado s = secuencia;
             if (s == null || cadenaPreparada != null || cadenaSonando == null) return;
+            if (EsItemSpotify(nowPlaying)) return;   // Spotify no lleva relevo: suena hasta que se pausa o se calla (Spotify.cs)
             if (s.Terminado || s.HayRelevoPendiente || queue.Count == 0) return;
             PlayItem sig = queue[0];
             if (sig == null || sig.IsVideo || sig.Song == null || sig.Song.Path == null || object.ReferenceEquals(sig, sinEncadenar)) return;
@@ -278,7 +279,7 @@ namespace Rocola
         public void AcaboPorFallo()
         {
             PlayItem p = CierraLaSalida();   // la que de verdad sonaba (con el relevo ya recogido), no la de antes
-            if (p != null && !p.IsVideo && p.Song != null && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
+            if (p != null && !p.IsVideo && p.Song != null && !EsItemSpotify(p) && (queue.Count == 0 || !object.ReferenceEquals(queue[0], p)))
             {
                 queue.Insert(0, p); RefrescaCola();
             }

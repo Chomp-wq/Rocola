@@ -411,6 +411,10 @@ namespace Rocola
             ya.Cambia = delegate (int d) { try { File.WriteAllText("/run/rocola-buscar-ya", ""); } catch { } };
             ya.Bloqueo = delegate { return ActualizarSolo ? null : "necesita «Actualizarse sola»"; };
             l.Add(ya);
+            // SPOTIFY (decision del dueno del 6-11-2026, Spotify.cs): para las reuniones familiares, apagado de fabrica. El recuadro de abajo dice
+            // como conectarse y lo que suena.
+            { Ajuste x = Interruptor("Spotify", "Spotify en la rocola (reuniones familiares)", "spotify", () => SpotifyOn, v => SpotifyOn = v, false);
+              x.Nota = () => "Solo para la familia: Spotify no permite ponerlo para el publico de un negocio. Necesita Spotify Premium."; l.Add(x); }
             // EL DIAGNOSTICO COMPLETO (herramienta de XP: no guarda ni aplica nada); lo corre el programa (Diagnostico.cs).
             Ajuste dg = new Ajuste { Grupo = "Diagnóstico", Nombre = "Diagnóstico completo de la pantalla (unos 50 s)", Herramienta = true };
             dg.Valor = delegate { return "EMPEZAR"; };

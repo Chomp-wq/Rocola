@@ -286,6 +286,7 @@ namespace Rocola
         private float GananciaDe(Track t)
         {
             if (t == null) return 1f;
+            if (EsRutaSpotify(t.Path)) return GananciaSpotify(t);   // Spotify (Rocola OS, Spotify.cs): al nivel de las no medidas
             List<Track> disco = RachaDeDisco(t);
             float g;
             if (!(disco != null && GananciaDeDisco(disco, t.Path, out g))) g = NormGainFor(t.Path);
@@ -3364,7 +3365,7 @@ namespace Rocola
                 if (antes != null)
                     for (int i = 1; i < antes.Length; i++)
                         if (antes[i].StartsWith("sonando=") || antes[i].StartsWith("cola=")) sb.Append(antes[i]).Append("\r\n");
-                if (nowPlaying != null && !EsMudaDiag(nowPlaying))   // con lo de antes delante, lo de ahora va a la cola, detras (la muda del diagnostico nunca se guarda)
+                if (nowPlaying != null && !EsMudaDiag(nowPlaying) && !EsItemSpotify(nowPlaying))   // (Spotify tampoco: tras un apagon no se «reanuda»)   // con lo de antes delante, lo de ahora va a la cola, detras (la muda del diagnostico nunca se guarda)
                     sb.Append(antes != null ? "cola=" : "sonando=").Append(nowPlaying.IsVideo ? 'V' : 'S').Append('|').Append(nowPlaying.PathKey()).Append("\r\n");
                 for (int i = 0; i < queue.Count; i++)
                     sb.Append("cola=").Append(queue[i].IsVideo ? 'V' : 'S').Append('|').Append(queue[i].PathKey()).Append("\r\n");

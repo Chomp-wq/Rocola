@@ -428,6 +428,12 @@ namespace Rocola
             ultimoLoQueSuena = ahora == 0 ? 1 : ahora;
             motor.CiegoTick();   // la comparacion a ciegas cambia de tramo (como el reloj de la ventana de XP)
             string grupo = AjusteSel >= 0 && AjusteSel < ListaAjustes.Count ? ListaAjustes[AjusteSel].Grupo : "";
+            if (grupo == "Spotify")
+            {
+                RecuadroTitulo = "SPOTIFY (REUNIONES FAMILIARES)";
+                LoQueSuena = motor.TextoSpotify();
+                return;
+            }
             if (grupo == "Internet")
             {
                 RecuadroTitulo = "INTERNET Y ACTUALIZACIONES";
@@ -834,8 +840,22 @@ namespace Rocola
         }
 
         // El sonido: empieza la siguiente si toca, atiende el relevo sin pausa y cierra al acabar o al saltar.
+        private bool cediendo, callarSpotify;   // la cancion de la rocola baja para dejar sonar a Spotify (vuelve entera a la cola)
         private void Suena()
         {
+            // SPOTIFY (Motor/Spotify.cs): abre o cierra librespot segun el interruptor; si manda sonido, se le da la salida.
+            motor.AtiendeSpotify();
+            if (salida == null && video == null && motor.SpotifyQuiereSonar && (fallosSonido == 0 || unchecked(Environment.TickCount - sinSonidoHasta) >= 0))
+            {
+                if (salidaPrueba != null || motor.PruebaActual != null) { motor.ParaPrueba(); CierraPrueba(); }
+                ISampleProvider sp = motor.EmpiezaSpotify();
+                if (sp != null)
+                {
+                    try { salida = new SalidaAlsa(sp, dispositivo); salida.Empieza(); cortesVistos = 0; cortesCancion = motor.SonandoTitulo; fallosSonido = 0; }
+                    catch (Exception ex) { salida = null; FalloSonido(ex.Message); motor.AcaboPorFallo(); }
+                    return;
+                }
+            }
             if (salida == null && video == null)
             {
                 string v = motor.TomaVideo();
@@ -856,8 +876,19 @@ namespace Rocola
             RevisaPrueba();
             if (salida != null)
             {
+                if (!saltar && !cediendo && salida.Sonando && !salida.Apagando && !motor.SonandoSpotify && motor.SpotifyQuiereSonar)
+                {
+                    cediendo = true; salida.Apaga();   // baja en 60 ms y vuelve entera a la cola (DejaPasoASpotify)
+                    return;
+                }
+                if (!saltar && motor.SonandoSpotify && !motor.SpotifyOn && salida.Sonando && !salida.Apagando)
+                {
+                    salida.Apaga();   // se apago el interruptor: baja en 60 ms y despues se cierra librespot (Form1.AtiendeSpotify)
+                    return;
+                }
                 if (saltar && salida.Sonando)
                 {
+                    if (motor.SonandoSpotify) callarSpotify = true;   // SALTAR con Spotify: al acabar de bajar, callado hasta su siguiente cancion
                     // SALTAR SIN CHASQUIDO (SalidaAlsa.Apaga): la musica baja a cero en 60 ms y la salida acaba sola; mientras, no se
                     // prepara ni releva nada (lo que entraria ya no se oiria)
                     salida.Apaga();
@@ -872,7 +903,10 @@ namespace Rocola
                     if (salida.FalloLectura != null) motor.ApuntaError("Fallo al leer «" + motor.SonandoTitulo + "» (se acabo la cancion)", salida.FalloLectura);
                     salida.Dispose(); salida = null; saltar = false;
                     if (fallo) { FalloSonido("la tarjeta dejo de responder"); motor.AcaboPorFallo(); }
+                    else if (cediendo) motor.DejaPasoASpotify();
                     else motor.AcaboLaSalida();
+                    if (callarSpotify) motor.CallaSpotify();
+                    cediendo = false; callarSpotify = false;
                     motor.GuardaEstado();
                 }
             }

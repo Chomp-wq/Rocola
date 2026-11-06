@@ -118,6 +118,7 @@ namespace Rocola
         private bool DseePara(string ruta)
         {
             if (!sbrOn) return false;
+            if (EsRutaSpotify(ruta)) return false;   // Spotify llega completo (Spotify.cs)
             if (!localAuto) return true;
             if (!dseeBillarCortes || ruta == null) return false;
             float[] c; float corte = eqCache.TryGetValue(ruta, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f;

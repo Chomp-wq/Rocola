@@ -161,6 +161,7 @@ namespace Rocola
         public void Cierra()
         {
             cerrandoEntreno = true;   // el entrenamiento de la IA, si iba, se corta (IaNueva.cs)
+            try { SpotifyEnVivo s = spotify; spotify = null; if (s != null) s.Dispose(); } catch { }   // librespot se cierra con la rocola (Spotify.cs)
             try { SaveLoudCache(); } catch { }
             try { SaveIntegCache(); } catch { }
             try { FlushEqIfDirty(); } catch { }

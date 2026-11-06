@@ -227,6 +227,34 @@ rota no cambia nada y se reintenta en una hora), y con «Actualizarse sola» apa
 3. Probarlo con la rocola apagada desde el botón (no desenchufada): desde la app del router, en el bar y luego desde casa.
 Si el router no lo trae, hay otras formas (abrir un puerto y una app de Wake on LAN en el celular): dímelo y se prepara.
 
+## Spotify en las reuniones familiares
+
+Pedido del dueño el 6-11-2026: **solo para la familia**. Spotify no permite ponerlo para el público de un negocio, por eso va con un
+interruptor **apagado de fábrica**.
+
+**Cómo se usa:**
+1. Ctrl+F3 → **Spotify** → «Spotify en la rocola (reuniones familiares)»: **SÍ**.
+2. En el celular (conectado al wifi del mismo router que la rocola), abre Spotify → el icono de dispositivos → **«Rocola»**. Hace
+   falta **Spotify Premium**. La primera vez la rocola guarda la cuenta (solo su llave, en `/rocola/datos/spotify`) para que vuelva a
+   aparecer.
+3. Lo que pongas en el celular suena **por la cadena de la rocola**: nivelado (al nivel de las canciones aún sin medir), el local, el
+   modo billar, el limitador. En la pantalla sale el nombre y la portada.
+
+**Cómo convive con la rocola:**
+- **Spotify manda:** si empieza mientras suena una canción de la rocola, esa baja suave y **vuelve entera al principio de la cola**; lo
+  que se pida mientras suena Spotify espera.
+- Si Spotify se **pausa más de 8 s**, la rocola sigue con su cola.
+- **SALTAR** con Spotify sonando lo calla hasta su siguiente canción (o hasta que lo pauses y lo reanudes).
+- De Spotify **no se aprende ni se cobra nada**: no entra en lo más sonado ni en las medidas, y tras un apagón no se reanuda.
+  **No se graba ni se descarga música.**
+- Apagado el interruptor, la rocola es la de siempre (Spotify ni se abre).
+
+**Lo que hay que saber:** usa **librespot**, un programa libre que **no es oficial de Spotify**. Mucha gente lo usa en bocinas caseras,
+pero Spotify no lo autoriza: **podría bloquear la cuenta** (no es habitual) y, si Spotify cambia algo, puede dejar de funcionar hasta que
+librespot se actualice (llegaría con la actualización del sistema). Lo que dice librespot queda en `/rocola/datos/rocola_spotify.txt`.
+Necesita **IPv6 en el núcleo** (lo trae) para anunciarse en la red. **Probado aquí con un librespot simulado; no probado con una
+cuenta real ni en el A4.**
+
 ## Personalizarlo
 
 Todo se cambia en esta carpeta y se recompila:
