@@ -16,6 +16,8 @@ namespace Rocola
         public sealed class Disco
         {
             public string Artista, Nombre, Carpeta, Portada;
+            public volatile bool PortadaPedida;   // (Spotify: la portada ya se pidio; la pantalla no vuelve a preguntar en cada cuadro)
+            internal string claveDe, clave;        // (la clave del artista, calculada una vez: Form1.ClaveDe)
             public char Letra;
             public bool Videos;   // un disco de la seccion de videos (sus Rutas son videos)
             public int Minutos = -1;

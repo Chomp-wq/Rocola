@@ -46,7 +46,9 @@ busca_llave() {
 	done
 }
 mira_llave() {
-	f=$(busca_llave)
+	f=
+	ultimaB=$(leer "$TMP/busco_llave"); ahoraB=$(date +%s)
+	if [ ! -s "$DATOS/rocola_buzon.txt" ] || [ $(( ahoraB - ${ultimaB:-0} )) -ge 900 ]; then echo "$ahoraB" > "$TMP/busco_llave"; f=$(busca_llave); fi
 	if [ -n "$f" ]; then
 		nueva=$(tr -d '\r' < "$f" | sed 's/[ \t]//g' | grep -v '^$' | head -2)
 		rm -f "$TMP/llave.txt"
@@ -126,12 +128,12 @@ estado_json() {
 # Lo que cambia de verdad (sin la hora ni lo que dura encendida): para no subir lo mismo una y otra vez.
 huella() { jq -c 'del(.fecha, .arriba_s, .rocola.segundos_abierta, .equipo.carga, .equipo.temperatura_c, .equipo.memoria, .buzon, .rocola.vivo)' "$1" | md5sum | cut -c1-32; }
 manda_estado() {   # manda_estado [forzado]
+	ahora=$(date +%s); ult=$(leer "$TMP/ultimo")
+	[ -z "$1" ] && [ $(( ahora - ${ult:-0} )) -lt 120 ] && return 0   # (armarlo cuesta unos 30 programas: no antes de poder subirlo)
 	estado_json > "$TMP/estado.json" 2>/dev/null || return 1
-	h=$(huella "$TMP/estado.json"); ahora=$(date +%s)
-	ult=$(leer "$TMP/ultimo"); ultH=$(leer "$TMP/ultima_huella")
+	h=$(huella "$TMP/estado.json"); ultH=$(leer "$TMP/ultima_huella")
 	if [ -z "$1" ]; then
 		[ "$h" = "$ultH" ] && [ $(( ahora - ${ult:-0} )) -lt 3600 ] && return 0   # igual que lo ultimo: una vez por hora basta
-		[ $(( ahora - ${ult:-0} )) -lt 120 ] && return 0                          # (como mucho cada 2 minutos)
 	fi
 	sube rocola/estado.json "$TMP/estado.json" "estado $(date '+%Y-%m-%d %H:%M')" || return 1
 	echo "$ahora" > "$TMP/ultimo"; echo "$h" > "$TMP/ultima_huella"
@@ -171,8 +173,14 @@ responde() {   # responde ID ORDEN TEXTO
 	jq -n --arg id "$1" --arg o "$2" --arg t "$3" --arg f "$(date '+%Y-%m-%d %H:%M:%S')" '{id:$id, orden:$o, respuesta:$t, fecha:$f}' >> "$TMP/respuestas.nuevas"
 }
 atiende_ordenes() {
-	c=$(gh GET "/repos/$REPO/contents/casa/ordenes.json")
+	et=$(leer "$TMP/ordenes.etag")
+	if [ -n "$et" ]; then printf 'If-None-Match: %s\n' "$et" > "$TMP/si.txt"; else : > "$TMP/si.txt"; fi   # (la etiqueta lleva comillas: va en un archivo)
+	c=$(curl -s -o "$TMP/r.json" -D "$TMP/cab.txt" -w '%{http_code}' --connect-timeout 20 --max-time 60 -H "Authorization: Bearer $LLAVE" \
+		-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -H "User-Agent: rocola" -H @"$TMP/si.txt" \
+		"$API/repos/$REPO/contents/casa/ordenes.json")
+	ULTIMO_CODIGO=$c
 	[ "$c" = 200 ] || return 0
+	sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' "$TMP/cab.txt" | tr -d '\r' > "$TMP/ordenes.etag"
 	jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' > "$TMP/ordenes.json" 2>/dev/null || return 0
 	: > "$TMP/respuestas.nuevas"
 	jq -c '.[]?' "$TMP/ordenes.json" 2>/dev/null | while read -r o; do
@@ -243,9 +251,11 @@ while :; do
 	mira_llave
 	if [ -z "$LLAVE" ]; then dice "sin llave del buzon (rocola_buzon.txt en una memoria USB)"
 	else
-		c=$(gh GET "/repos/$REPO")
+		ULTIMO_CODIGO=
+		atiende_ordenes
+		c=$ULTIMO_CODIGO
 		case "$c" in
-			200) atiende_ordenes; mira_diagnostico; manda_estado && dice "al dia con el buzon $REPO" ;;
+			200|304|404) mira_diagnostico; manda_estado && dice "al dia con el buzon $REPO" ;;   # (404: aun no hay ordenes)
 			000) dice "sin internet" ;;
 			401|403|404) dice "la llave del buzon no vale para $REPO ($c)" ;;
 			*) dice "GitHub no contesto ($c)" ;;

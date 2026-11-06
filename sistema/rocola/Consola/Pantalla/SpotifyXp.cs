@@ -33,13 +33,20 @@ namespace Rocola
             Form1 m = c.motor;
             float r0 = 7 * k;
             MarcaSpotify(x + r0, y + mini.Tam * 0.55f, r0);
-            string tit = "MÁS DE " + (c.MasArtista ?? "ESTE ARTISTA").ToUpperInvariant() + " EN SPOTIFY";
-            mini.Escribe(d, mini.Ajusta(tit, w - 2 * r0 - 8 * k), x + 2 * r0 + 8 * k, y, Turquesa);
+            // (los textos se arman solo cuando cambia lo elegido o el ancho: no en cada cuadro)
+            int sel = c.cursorMas, n = mas.Count;
+            if (!object.ReferenceEquals(tiraArtista, c.MasArtista) || tiraSel != sel || tiraN != n || tiraW != w || !object.ReferenceEquals(tiraDisco, sel >= 0 && sel < n ? mas[sel] : null))
+            {
+                tiraArtista = c.MasArtista; tiraSel = sel; tiraN = n; tiraW = w; tiraDisco = sel >= 0 && sel < n ? mas[sel] : null;
+                tiraTit = mini.Ajusta("MÁS DE " + (c.MasArtista ?? "ESTE ARTISTA").ToUpperInvariant() + " EN SPOTIFY", w - 2 * r0 - 8 * k);
+                string anio = tiraDisco != null ? m.AnioDeDisco(tiraDisco) : "";
+                tiraAbajo = mini.Ajusta(tiraDisco != null ? tiraDisco.Nombre + (string.IsNullOrEmpty(anio) ? "" : " · " + anio) + "   (PONER: abrir)" : "ABAJO al final de la lista para elegir uno", w);
+            }
+            mini.Escribe(d, tiraTit, x + 2 * r0 + 8 * k, y, Turquesa);
             float pie = mini.Tam * 1.5f, arriba = y + mini.Tam * 1.6f;
             float lado = Math.Min(h - (arriba - y) - pie - 4 * k, 104 * k), gap = 10 * k;
             if (lado < 30 * k) return;
             int caben = Math.Max(1, (int)((w + gap) / (lado + gap)));
-            int sel = c.cursorMas, n = mas.Count;
             int desde = sel >= 0 ? Math.Max(0, Math.Min(sel - caben / 2, n - caben)) : 0;
             for (int i = 0; i < caben && desde + i < n; i++)
             {
@@ -56,8 +63,11 @@ namespace Rocola
                 float px = x + w - 30 * k, py = arriba + lado + 4 * k;
                 for (int i = 0; i < 3; i++) Circulo(px + i * 8 * k, py, 2.2f * k, Lavanda.ConAlfa(0.7f));
             }
-            string abajo = sel >= 0 && sel < n ? mas[sel].Nombre + (string.IsNullOrEmpty(m.AnioDeDisco(mas[sel])) ? "" : " · " + m.AnioDeDisco(mas[sel])) + "   (PONER: abrir)" : "ABAJO al final de la lista para elegir uno";
-            mini.Escribe(d, mini.Ajusta(abajo, w), x, arriba + lado + 8 * k, sel >= 0 ? Blanco : Color4.Hex(0xC4CCEC, 0.8f));
+            mini.Escribe(d, tiraAbajo, x, arriba + lado + 8 * k, sel >= 0 ? Blanco : Color4.Hex(0xC4CCEC, 0.8f));
         }
+        private string tiraArtista, tiraTit = "", tiraAbajo = "";
+        private int tiraSel = -2, tiraN = -1;
+        private float tiraW = -1;
+        private Form1.Disco tiraDisco;
     }
 }

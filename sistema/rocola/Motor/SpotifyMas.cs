@@ -199,15 +199,28 @@ namespace Rocola
         }
         // Para comparar titulos y artistas: sin acentos, sin mayusculas, sin lo que va entre parentesis o corchetes, sin «- Remaster...»,
         // «feat.» ni signos.
+        private static readonly string[] ColasDeVersion = { "remaster", "live", "en vivo", "version", "versión", "edit", "mono", "stereo", "estéreo", "mix", "acoustic", "acústic" };
+        private static readonly string[] Feats = { " feat ", " ft ", " featuring " };
+        private static readonly char[] Espacio = { ' ' };
+        // OPTIMIZACION (7-11-2026): lo mismo se normaliza miles de veces (los artistas y los discos de la pared, las parejas): se recuerda.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> normalizados = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         internal static string Normaliza(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
+            if (normalizados.TryGetValue(s, out string ya)) return ya;
+            string r = NormalizaYa(s);
+            if (normalizados.Count > 40000) normalizados.Clear();
+            normalizados[s] = r;
+            return r;
+        }
+        private static string NormalizaYa(string s)
+        {
             // «Titulo - Remastered 2011», «Titulo - En vivo», «Titulo - Live at...», «Titulo - Radio Edit»: lo de despues del guion, fuera
             int g = s.LastIndexOf(" - ", StringComparison.Ordinal);
             if (g > 0)
             {
                 string cola = s.Substring(g + 3).ToLowerInvariant();
-                foreach (string w in new[] { "remaster", "live", "en vivo", "version", "versión", "edit", "mono", "stereo", "estéreo", "mix", "acoustic", "acústic" })
+                foreach (string w in ColasDeVersion)
                     if (cola.Contains(w)) { s = s.Substring(0, g); break; }
             }
             string d = s.Normalize(NormalizationForm.FormD);
@@ -222,12 +235,12 @@ namespace Rocola
                 b.Append(char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : ' ');
             }
             string r = " " + b.ToString() + " ";
-            foreach (string corta in new[] { " feat ", " ft ", " featuring " })
+            foreach (string corta in Feats)
             {
                 int i = r.IndexOf(corta, StringComparison.Ordinal);
                 if (i > 2) r = r.Substring(0, i) + " ";
             }
-            return string.Join(" ", r.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+            return string.Join(" ", r.Split(Espacio, StringSplitOptions.RemoveEmptyEntries));
         }
 
         // ---------------- SP5: PORTADAS Y GENEROS QUE FALTAN ----------------

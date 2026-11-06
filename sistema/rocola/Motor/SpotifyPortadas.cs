@@ -118,7 +118,12 @@ namespace Rocola
                     string id = SiguienteArtista();
                     if (id == null)
                     {   // nada pendiente: se mira otra vez en un minuto (o antes, si la tira pide uno)
-                        for (int i = 0; i < 60; i++) { Thread.Sleep(1000); if (spotify != s || !SpotifyOn) return; if (SiguienteArtista(false) != null) break; }
+                        for (int i = 0; i < 60; i++)
+                        {
+                            Thread.Sleep(1000); if (spotify != s || !SpotifyOn) return;
+                            bool urgente; lock (spotifyCerrojo) urgente = artistaUrgente.Count > 0;
+                            if (urgente || (i % 15 == 14 && SiguienteArtista(false) != null)) break;
+                        }
                         continue;
                     }
                     bool contesto = true;
@@ -197,7 +202,7 @@ namespace Rocola
             }
             ApuntaArtista(a);
             s.Apunta("discos de " + a.Nombre + ": " + a.Discos.Count);
-            letrasSpVersion++; spotifyVersion++;
+            letrasSpVersion++;   // (no spotifyVersion: haria que la pantalla repasara toda la biblioteca por cada artista)
             return true;
         }
         // «Disco (Remastered 2011)», «Disco [Deluxe]», «Disco - Edición especial» -> «disco»
@@ -283,6 +288,12 @@ namespace Rocola
         private Disco DiscoDeAlbum(AlbumSp x) { return DiscoSpotify(RaizSpotify + "album/" + x.Id, x.Nombre, x.Artista, x.PortadaUrl); }
         // Para la pantalla: el mismo artista (sin acentos ni mayusculas), para poner los de Spotify junto a los tuyos.
         public static string ClaveArtista(string s) { return Normaliza(s); }
+        public static string ClaveDe(Disco d)
+        {
+            string a = d.Artista ?? "";
+            if (!object.ReferenceEquals(d.claveDe, a)) { d.clave = Normaliza(a); d.claveDe = a; }
+            return d.clave;
+        }
 
         // ---- P2: la tira «Más de este artista» ----
         private readonly Dictionary<string, string> artistaDeDisco = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -415,11 +426,12 @@ namespace Rocola
         // La pantalla lo llama por cada disco de Spotify que dibuja sin portada (barato: solo lo apunta).
         public void QuierePortada(Disco d)
         {
-            if (d == null || d.Portada != null || !EsRutaSpotify(d.Carpeta)) return;
+            if (d == null || d.PortadaPedida || d.Portada != null || !EsRutaSpotify(d.Carpeta)) return;   // (lo comun: sin cerrojo)
             SpotifyEnVivo s = spotify; if (s == null || !s.Conectado) return;
             lock (spotifyCerrojo)
             {
                 if (!spotifyPortadaUrl.ContainsKey(d) || !portadaPedida.Add(d)) return;
+                d.PortadaPedida = true;
                 portadasPedidas.Enqueue(d);
                 if (bajandoPortadas) return;
                 bajandoPortadas = true;

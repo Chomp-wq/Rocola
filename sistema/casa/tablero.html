@@ -245,7 +245,7 @@ async function cargaRegistros(){const r=await api("/api/registros");REG=(typeof 
 function pintaRegistro(){if(!REG)return;const n=$("regSel").value;$("regTexto").textContent=filtra(REG[n]||"",$("regBusca").value,$("regErr").checked)||"—"}
 async function guardaConfig(){const r=await api("/api/config",{llave:$("cLlave").value,repo:$("cRepo").value,rama:$("cRama").value,buzon:$("cBuzon").value,wol_host:$("cWolHost").value,wol_puerto:$("cWolPuerto").value,mac:$("cMac").value});$("cLlave").value="";aviso(r.ok?r.texto:"No se pudo: "+r.error);carga()}
 async function comprueba(){$("cRes").textContent="comprobando...";const r=await api("/api/comprueba");$("cRes").textContent=Object.values(r).join("\n")}
-carga();setInterval(carga,30000);
+carga();setInterval(()=>{if(!document.hidden)carga()},30000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)carga()});   // (con la pestaña escondida no se pregunta a GitHub)
 </script>
 </body>
 </html>

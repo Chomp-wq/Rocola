@@ -29,7 +29,15 @@ namespace Rocola
             return h >= a || h < b;
         }
         private bool ProbandoNoche { get { return nochePruebaHasta != 0 && unchecked(Environment.TickCount - nochePruebaHasta) < 0; } }
-        private float MetaNoche() { return ((nocheOn && EsDeNoche(DateTime.Now)) || ProbandoNoche) ? NocheLin() : 1f; }
+        // (la hora se mira una vez por segundo, no en cada vuelta del bucle: DateTime.Now convierte de zona horaria cada vez)
+        private bool nocheAhora; private int nocheMirada;
+        private bool EsDeNocheAhora()
+        {
+            int t = Environment.TickCount;
+            if (nocheMirada == 0 || unchecked(t - nocheMirada) >= 1000) { nocheAhora = EsDeNoche(DateTime.Now); nocheMirada = t | 1; }
+            return nocheAhora;
+        }
+        private float MetaNoche() { return ((nocheOn && EsDeNocheAhora()) || ProbandoNoche) ? NocheLin() : 1f; }
         // Lo que baja AHORA (la senal: canciones y videos). Antes de la primera vuelta, el destino.
         public float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
         public void PruebaNoche() { nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1; nochePruebaRapida = true; }
@@ -48,7 +56,7 @@ namespace Rocola
         // Cada vuelta del bucle de la rocola (Controlador). Por milisegundos de reloj, no por vueltas.
         public void AvanzaModoNoche()
         {
-            bool esNoche = nocheOn && EsDeNoche(DateTime.Now);
+            bool esNoche = nocheOn && EsDeNocheAhora();
             float meta = MetaNoche();
             int ahora = Environment.TickCount;
             if (!nocheArrancada) { nocheArrancada = true; nocheUltMs = ahora; nocheFactor = meta; nocheAvisada = esNoche; return; }   // al prender, sin rampa

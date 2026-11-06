@@ -1385,3 +1385,29 @@ rocola para forzar actualizaciones, y que me dé estados de todo». Ver `sistema
   La tarjeta de red sigue escuchando el encendido remoto.
 - Probado con un GitHub simulado: la rocola sube su estado, atiende ping, registros, un archivo, buscar actualización y rechaza las
   llaves; el tablero muestra todo y los veredictos. Sin el buzón real ni el A4: la rocola necesita el siguiente sistema.
+
+## Extra (7-11-2026, cuarta parte): optimizaciones de lo nuevo
+
+Pedido del dueño: «busca optimizaciones en todo lo que acabamos de hacer, me imagino que lo de Spotify es pesado». Nada cambia de aspecto
+ni de comportamiento (automáticas, sin interruptor):
+
+- **Spotify en las letras (P1):** lo que va en cada letra se calcula **en otro hilo** y en la pantalla solo se mezcla, en una pasada por
+  letra. Antes se insertaba disco por disco normalizando la letra entera cada vez (cuadrático, en el hilo que dibuja): en una letra con
+  cientos de discos, un tirón.
+- **Normalizar nombres** (comparar artistas y discos sin acentos ni mayúsculas): se recuerda lo ya normalizado (las mismas cadenas se
+  comparan miles de veces) y ya no crea listas nuevas en cada llamada. Cada disco guarda la clave de su artista.
+- **Un disco de artista nuevo ya no despierta a toda la pantalla:** antes cada uno (uno cada pocos segundos al principio) hacía que la
+  pantalla repasara toda la biblioteca (portadas que faltan y canciones que le faltan a cada disco); ahora ese repaso va como mucho cada
+  5 s, y solo cuando de verdad cambió algo de lo tuyo.
+- **Las portadas de Spotify en la pared:** la pantalla ya no toma un cerrojo en cada cuadro por cada disco sin portada (el disco recuerda
+  que ya la pidió).
+- **La tira «Más de este artista»:** sus textos se arman solo cuando cambia lo elegido (antes, en cada cuadro), y la tira se pregunta cada
+  1,5 s (antes, 0,7).
+- **El hilo de los discos de artistas**, en reposo, mira lo pendiente cada 15 s (lo que pide la tira, cada segundo).
+- **El modo noche** (Rocola OS y XP) mira la hora una vez por segundo, no en cada vuelta del bucle.
+- **El buzón:** busca su llave en las memorias USB solo si falta o cada 15 minutos (antes montaba y desmontaba las memorias cada minuto);
+  pregunta por las órdenes con ETag (si no cambiaron, GitHub contesta 304: sin cuerpo y sin gastar consultas), sin una consulta aparte
+  para ver si el buzón existe; arma su estado (unos 30 programas pequeños) como mucho cada 2 minutos, no cada minuto; y corre con
+  prioridad baja (nice 15). **Rocola en casa** no pregunta a GitHub con la pestaña del navegador escondida.
+- Probado otra vez: la pared con Spotify, la tira, la batería `noche` de XP y el buzón con el GitHub simulado (la segunda vuelta: 304 y
+  sin rehacer el estado). No medido en el A4.

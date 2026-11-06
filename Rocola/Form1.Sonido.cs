@@ -97,7 +97,15 @@ namespace Rocola
         }
         private bool ProbandoNoche { get { return nochePruebaHasta != 0 && unchecked(Environment.TickCount - nochePruebaHasta) < 0; } }
         // A donde TIENE que llegar la rampa: 1 de dia; de noche (o probando), lo que diga el deslizador.
-        private float MetaNoche() { return ((nocheOn && EsDeNoche(DateTime.Now)) || ProbandoNoche) ? NocheLin() : 1f; }
+        // (la hora se mira una vez por segundo, no en cada vuelta del temporizador de animacion)
+        private bool nocheAhora; private int nocheMirada;
+        private bool EsDeNocheAhora()
+        {
+            int t = Environment.TickCount;
+            if (nocheMirada == 0 || unchecked(t - nocheMirada) >= 1000) { nocheAhora = EsDeNoche(DateTime.Now); nocheMirada = t | 1; }
+            return nocheAhora;
+        }
+        private float MetaNoche() { return ((nocheOn && EsDeNocheAhora()) || ProbandoNoche) ? NocheLin() : 1f; }
         // Cuanto hay que bajar AHORA (el valor de la rampa). Antes de la primera vuelta del reloj, el destino (un video que empezara en ese
         // hueco saldria mudo con el campo aun en cero).
         private float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
@@ -119,7 +127,7 @@ namespace Rocola
         // La lleva el temporizador de animacion, al lado de CheckBusinessDayReset.
         private void AvanzaModoNoche()
         {
-            bool esNoche = nocheOn && EsDeNoche(DateTime.Now);
+            bool esNoche = nocheOn && EsDeNocheAhora();
             float meta = MetaNoche();
             int ahora = Environment.TickCount;
             // Al encender NO se hace la rampa: se arranca ya en el nivel que toca.
