@@ -301,7 +301,9 @@ namespace Rocola
     public enum Fiesta
     {
         Ninguna = 0, AnioNuevo = 1, Reyes = 2, SanValentin = 4, Jacarandas = 8, DiaDelNino = 16, Madres = 32, Patrias = 64, Halloween = 128,
-        Muertos = 256, Guadalupe = 512, Navidad = 1024, Nochebuena = 2048, Grito = 4096, FinDeAnio = 8192
+        Muertos = 256, Guadalupe = 512, Navidad = 1024, Nochebuena = 2048, Grito = 4096, FinDeAnio = 8192,
+        Candelaria = 1 << 14, Bandera = 1 << 15, Mujer = 1 << 16, SanPatricio = 1 << 17, Primavera = 1 << 18, CincoDeMayo = 1 << 19,
+        DiaDelPadre = 1 << 20, Revolucion = 1 << 21, SantaCecilia = 1 << 22, Posadas = 1 << 23, MesPatrio = 1 << 24
     }
     public static class CalendarioCielo
     {
@@ -316,6 +318,17 @@ namespace Rocola
             if (m == 4 && d == 30) f |= Fiesta.DiaDelNino;
             if (m == 5 && d == 10) f |= Fiesta.Madres;
             if (m == 9 && d >= 13 && d <= 16) f |= Fiesta.Patrias;
+            else if (m == 9) f |= Fiesta.MesPatrio;                                     // el resto de septiembre, mas sencillo
+            if (m == 2 && d == 2) f |= Fiesta.Candelaria;
+            if ((m == 2 && d == 24) || (m == 9 && (d == 15 || d == 16)) || (m == 11 && d == 20)) f |= Fiesta.Bandera;
+            if (m == 3 && d == 8) f |= Fiesta.Mujer;
+            if (m == 3 && d == 17) f |= Fiesta.SanPatricio;
+            if (m == 3 && d >= 19 && d <= 23) f |= Fiesta.Primavera;
+            if (m == 5 && d == 5) f |= Fiesta.CincoDeMayo;
+            if (m == 6 && t.DayOfWeek == DayOfWeek.Sunday && d >= 15 && d <= 21) f |= Fiesta.DiaDelPadre;   // el tercer domingo de junio
+            if (m == 11 && d == 20) f |= Fiesta.Revolucion;
+            if (m == 11 && d == 22) f |= Fiesta.SantaCecilia;                                             // la de los musicos (y el mariachi)
+            if (m == 12 && d >= 16 && d <= 24) f |= Fiesta.Posadas;
             if ((m == 9 && d == 15 && h >= 22.5) || (m == 9 && d == 16 && h < 0.75)) f |= Fiesta.Grito;
             if (m == 10 && d == 31) f |= Fiesta.Halloween;
             if ((m == 10 && d >= 28) || (m == 11 && d <= 2)) f |= Fiesta.Muertos;

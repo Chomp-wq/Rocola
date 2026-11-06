@@ -1611,3 +1611,20 @@ dibujado; cambian sus colores y se le pone encima lo de cada momento. Cada cosa 
   - Sin memoria nueva por cuadro.
 - **No probado** en el A4 ni con el clima del bar. Desde esta máquina Open-Meteo contestó una vez y luego dio el límite diario (la IP es
   compartida); la lectura se probó con un Open-Meteo simulado.
+
+### Más festividades (7-11-2026, «Pon mas festividades»)
+
+Se suman a F1 (`fiestas_cielo=`), con el mismo interruptor:
+- **Candelaria (2 de febrero):** farolitos de papel que suben.
+- **La bandera ondeando** arriba a la izquierda: el Día de la Bandera (24 de febrero), el 15 y 16 de septiembre y el 20 de noviembre.
+- **Día de la Mujer (8 de marzo):** tonos y pétalos morados, con mariposas.
+- **San Patricio (17 de marzo):** tréboles verdes.
+- **Primavera (19 a 23 de marzo):** mariposas de colores y flores.
+- **5 de mayo y Revolución (20 de noviembre):** papel picado tricolor y, de noche, fuegos de vez en cuando.
+- **Día del Padre (tercer domingo de junio):** globos azules y dorados y destellos.
+- **El resto de septiembre:** una tira de papel picado tricolor (el 13 al 16 sigue como antes, con el Grito).
+- **Santa Cecilia (22 de noviembre), día de los músicos y del mariachi:** notas musicales que flotan.
+- **Las posadas (16 a 24 de diciembre):** tres piñatas de estrella que se mecen y farolitos, además de lo de Navidad.
+- **Día de Muertos:** ahora también llegan las mariposas monarca.
+
+Todas se revisaron con capturas con la fecha forzada; nada en el A4.

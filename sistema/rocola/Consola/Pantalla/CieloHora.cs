@@ -115,6 +115,11 @@ namespace Rocola
             else if ((fiesta & Fiesta.Muertos) != 0) { p.Hor = MezclaHex(p.Hor, 0xFF9A1A, 0.28f); p.NebA = MezclaHex(p.NebA, 0xFF9A3A, 0.3f); p.NebB = MezclaHex(p.NebB, 0xE6007E, 0.3f); p.AurA = new Color4(1f, 0.62f, 0.12f); p.AurB = new Color4(0.95f, 0.25f, 0.65f); p.Glow = new Color4(1f, 0.6f, 0.2f); }
             if ((fiesta & (Fiesta.Patrias | Fiesta.Grito)) != 0) { p.AurA = new Color4(0.1f, 0.8f, 0.45f); p.AurB = new Color4(1f, 0.3f, 0.35f); }
             if ((fiesta & Fiesta.Nochebuena) != 0) { p.AurA = new Color4(0.2f, 0.9f, 0.45f); p.AurB = new Color4(1f, 0.32f, 0.35f); p.Glow = new Color4(1f, 0.8f, 0.45f); }
+            if ((fiesta & Fiesta.Mujer) != 0) { p.Hor = MezclaHex(p.Hor, 0x9A4FD0, 0.3f); p.NebA = MezclaHex(p.NebA, 0xB070FF, 0.4f); p.NebB = MezclaHex(p.NebB, 0x8A3FC8, 0.4f); p.AurA = new Color4(0.75f, 0.45f, 1f); p.AurB = new Color4(0.95f, 0.55f, 0.95f); }
+            if ((fiesta & Fiesta.SanPatricio) != 0) { p.Hor = MezclaHex(p.Hor, 0x2FAA5A, 0.25f); p.NebA = MezclaHex(p.NebA, 0x40D070, 0.4f); p.AurA = new Color4(0.2f, 1f, 0.4f); p.AurB = new Color4(0.6f, 1f, 0.5f); }
+            if ((fiesta & Fiesta.DiaDelPadre) != 0) { p.NebA = MezclaHex(p.NebA, 0x3A8AFF, 0.35f); p.AurB = new Color4(0.3f, 0.6f, 1f); }
+            if ((fiesta & (Fiesta.CincoDeMayo | Fiesta.Revolucion | Fiesta.Bandera)) != 0) { p.AurA = new Color4(0.1f, 0.8f, 0.45f); p.AurB = new Color4(1f, 0.3f, 0.35f); }
+            if ((fiesta & Fiesta.SantaCecilia) != 0) { p.NebB = MezclaHex(p.NebB, 0xFF9AE0, 0.3f); p.AurA = new Color4(0.4f, 1f, 0.8f); p.AurB = new Color4(1f, 0.6f, 0.9f); }
             if ((fiesta & Fiesta.Jacarandas) != 0) { p.Hor = MezclaHex(p.Hor, 0x9B7FD4, 0.2f); p.NebB = MezclaHex(p.NebB, 0xB89BE6, 0.35f); }
             // la luna llena (F3): el cielo un poco mas claro
             lunaLlena = m.LunaLlenaCielo && Math.Abs(lunaFase - 0.5) < 0.035 && (!m.LunaArco || lunaAlt > 0);
@@ -419,7 +424,18 @@ namespace Rocola
                 Veladoras(W, yh, t, alfa);
                 Almas(W, yh, t, alfa * cuanto);
                 Petalos(W, yh, t, alfa, (int)(48 * cuanto), new Color4(1f, 0.58f, 0.05f), new Color4(1f, 0.77f, 0f), 4.5f, 22, 41);
+                Mariposas(W, yh, t, alfa, (int)(9 * cuanto), true, 121);   // las monarcas llegan con los muertos
             }
+            if ((fiesta & Fiesta.MesPatrio) != 0) PapelPicado(W, H * 0.16f, t, alfa * 0.85f, ColoresPatrios, 2);
+            if ((fiesta & Fiesta.Bandera) != 0) Bandera(W, yh, t, alfa);
+            if ((fiesta & Fiesta.Candelaria) != 0) Farolitos(W, yh, t, alfa, (int)(16 * cuanto));
+            if ((fiesta & Fiesta.Mujer) != 0) { Petalos(W, yh, t, alfa, (int)(56 * cuanto), Color4.Hex(0xC77DFF), Color4.Hex(0xF0C8FF), 6.5f, 18, 45); Mariposas(W, yh, t, alfa, (int)(6 * cuanto), false, 123); }
+            if ((fiesta & Fiesta.SanPatricio) != 0) Treboles(W, yh, t, alfa, (int)(34 * cuanto));
+            if ((fiesta & Fiesta.Primavera) != 0) { Mariposas(W, yh, t, alfa, (int)(14 * cuanto), false, 122); Petalos(W, yh, t, alfa, (int)(30 * cuanto), Color4.Hex(0xFFB3D1), Color4.Hex(0xFFF1A8), 4f, 16, 46); }
+            if ((fiesta & (Fiesta.CincoDeMayo | Fiesta.Revolucion)) != 0) { PapelPicado(W, H * 0.16f, t, alfa, ColoresPatrios, 1); if (deNoche) Fuegos(W, yh, t, alfa, ColoresPatrios, 5.0, 53); }
+            if ((fiesta & Fiesta.DiaDelPadre) != 0) { Confeti(W, yh, t, alfa, (int)(60 * cuanto), true); Globos(W, yh, t, alfa, (int)(12 * cuanto), ColoresPapa); }
+            if ((fiesta & Fiesta.SantaCecilia) != 0) Notas(W, yh, t, alfa, (int)(22 * cuanto));
+            if ((fiesta & Fiesta.Posadas) != 0) { Pinatas(W, H, t, alfa); Farolitos(W, yh, t, alfa * 0.8f, (int)(8 * cuanto)); }
             if ((fiesta & Fiesta.Halloween) != 0) Murcielagos(W, yh, t, alfa, (int)(10 * cuanto));
             if ((fiesta & Fiesta.Patrias) != 0)
             {
@@ -437,13 +453,13 @@ namespace Rocola
             if ((fiesta & Fiesta.Reyes) != 0) { EstrellaDeBelen(W, yh, t, alfa); ReyesMagos(W, yh, t, alfa); }
             if ((fiesta & Fiesta.AnioNuevo) != 0)
             {
-                Confeti(W, yh, t, alfa, (int)(60 * cuanto));
+                Confeti(W, yh, t, alfa, (int)(60 * cuanto), false);
                 if ((fiesta & Fiesta.FinDeAnio) != 0) { Fuegos(W, yh, t, alfa, ColoresAnio, 0.5, 61); CuentaYFeliz(W, H, alfa); }
                 else if (cieloAhora.Month == 12 && deNoche) Fuegos(W, yh, t, alfa, ColoresAnio, 7.0, 62);
             }
             if ((fiesta & Fiesta.SanValentin) != 0) Corazones(W, yh, t, alfa, (int)(18 * cuanto), 71);
             if ((fiesta & Fiesta.Jacarandas) != 0) Petalos(W, yh, t, alfa, (int)(56 * cuanto), Color4.Hex(0xC9A8FF), Color4.Hex(0xE6D2FF), 5f, 18, 42);
-            if ((fiesta & Fiesta.DiaDelNino) != 0) Globos(W, yh, t, alfa, (int)(14 * cuanto));
+            if ((fiesta & Fiesta.DiaDelNino) != 0) Globos(W, yh, t, alfa, (int)(14 * cuanto), ColoresGlobos);
             if ((fiesta & Fiesta.Madres) != 0) { Petalos(W, yh, t, alfa, (int)(40 * cuanto), Color4.Hex(0xD7263D), Color4.Hex(0xFF7AA2), 4.5f, 20, 43); Corazones(W, yh, t, alfa, (int)(7 * cuanto), 72); }
             if ((fiesta & Fiesta.Guadalupe) != 0)
             {
@@ -618,14 +634,14 @@ namespace Rocola
             }
         }
         // Confeti dorado y plateado que cae despacio y brilla (Año Nuevo).
-        private void Confeti(float W, float yh, double t, float alfa, int n)
+        private void Confeti(float W, float yh, double t, float alfa, int n, bool azul)
         {
             for (int i = 0; i < n; i++)
             {
                 float v = (10 + 14 * Hs(i, 101)) * k, y = (float)((Hs(i, 102) * yh + t * v) % yh);
                 float x = Hs(i, 103) * W + (float)Math.Sin(t * 0.9 + i) * 10 * k, br = 0.5f + 0.5f * (float)Math.Sin(t * 5 + i * 2.3);
-                Color4 c = Hs(i, 104) < 0.65f ? new Color4(1f, 0.84f, 0.4f) : new Color4(0.9f, 0.92f, 1f);
-                d.Brillo(x, y, 3 * k, c.ConAlfa(0.9f * br * alfa));
+                Color4 c = Hs(i, 104) < 0.65f ? new Color4(1f, 0.84f, 0.4f) : azul ? new Color4(0.45f, 0.7f, 1f) : new Color4(0.9f, 0.92f, 1f);
+                d.Brillo(x, y, (azul ? 4.5f : 3f) * k, c.ConAlfa(0.9f * br * alfa));
             }
         }
         // La cuenta de los ultimos diez segundos del ano, y luego «¡Feliz 2027!» cinco minutos.
@@ -652,9 +668,9 @@ namespace Rocola
             }
         }
         // Globos de colores que suben con su hilo (Dia del Nino).
-        private void Globos(float W, float yh, double t, float alfa, int n)
+        private static readonly Color4[] ColoresPapa = { Color4.Hex(0x2F6BFF), Color4.Hex(0xFFC93C), Color4.Hex(0x4FC3F7), Color4.Hex(0x1E3FA8), Color4.Hex(0xE8EEF8) };
+        private void Globos(float W, float yh, double t, float alfa, int n, Color4[] col)
         {
-            Color4[] col = ColoresGlobos;
             for (int i = 0; i < n; i++)
             {
                 double u = (Hs(i, 111) + t * 0.01 * (0.6 + Hs(i, 112))) % 1.0;
@@ -667,5 +683,132 @@ namespace Rocola
                 for (int j = 1; j <= 6; j++) { float nx = x + (float)Math.Sin(t * 2 + j + i) * 3 * s, ny = y + 18 * s + j * 8 * s; d.Linea(hx, hy, nx, ny, 1f, new Color4(0.85f, 0.85f, 0.9f, 0.6f * alfa)); hx = nx; hy = ny; }
             }
         }
-    }
+    
+        // ---- MAS FIESTAS (7-11-2026: «Pon mas festividades») ----
+        // La bandera ondeando arriba a la izquierda (24 de febrero, 15 y 16 de septiembre, 20 de noviembre).
+        private void Bandera(float W, float yh, double t, float alfa)
+        {
+            float x0 = W * 0.06f, y0 = yh * 0.16f, bw = 190 * k, bh = 112 * k, ola = 7 * k * (0.4f + 0.6f * viveza);
+            d.Rect(x0 - 4 * k, y0 - 6 * k, 3 * k, bh + 120 * k, new Color4(0.75f, 0.72f, 0.65f, 0.85f * alfa));   // el asta
+            const int n = 30;
+            for (int i = 0; i < n; i++)
+            {
+                float u0 = i / (float)n, u1 = (i + 1) / (float)n;
+                float o0 = (float)Math.Sin(u0 * 7 - t * 2.4) * ola * u0, o1 = (float)Math.Sin(u1 * 7 - t * 2.4) * ola * u1;
+                float luz = 0.82f + 0.18f * (float)Math.Cos(u0 * 7 - t * 2.4);
+                Color4 c = u0 < 1f / 3 ? Color4.Hex(0x0B8A4A) : u0 < 2f / 3 ? Color4.Hex(0xF2F2F2) : Color4.Hex(0xD21F2E);
+                c = new Color4(c.R * luz, c.G * luz, c.B * luz, 0.92f * alfa);
+                float xa = x0 + u0 * bw, xb = x0 + u1 * bw + 0.5f;
+                d.Cuatro(xa, y0 + o0, c, xb, y0 + o1, c, xb, y0 + bh + o1, c, xa, y0 + bh + o0, c);
+            }
+            // el escudo, sencillo: el aguila en su nopal (un circulo cafe con su verde)
+            float cx = x0 + bw / 2, oc = (float)Math.Sin(0.5 * 7 - t * 2.4) * ola * 0.5f, cy = y0 + bh / 2 + oc;
+            d.Brillo(cx, cy, 15 * k, new Color4(0.55f, 0.36f, 0.16f, 0.9f * alfa));
+            d.Brillo(cx, cy + 9 * k, 9 * k, new Color4(0.2f, 0.55f, 0.25f, 0.7f * alfa));
+        }
+        // Farolitos de papel que suben despacio con su luz (Candelaria y posadas).
+        private void Farolitos(float W, float yh, double t, float alfa, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                double u = (Hs(i, 131) + t * 0.008 * (0.6 + Hs(i, 132))) % 1.0;
+                float x = Hs(i, 133) * W + (float)Math.Sin(t * 0.3 + i) * 25 * k, y = yh - (float)u * yh * 0.9f, s = (0.8f + 0.5f * Hs(i, 134)) * k;
+                float a = (float)Math.Min(1, Math.Min(u * 6, (1 - u) * 3)) * alfa, fl = 0.85f + 0.15f * (float)Math.Sin(t * 7 + i * 2.1);
+                d.Brillo(x, y, 30 * s, new Color4(1f, 0.6f, 0.2f, 0.35f * a * fl));
+                d.Redondo(x - 8 * s, y - 10 * s, 16 * s, 20 * s, 6 * s, new Color4(1f, 0.72f * fl, 0.32f, 0.85f * a));
+                d.Rect(x - 8 * s, y - 10 * s, 16 * s, 2 * s, new Color4(0.5f, 0.25f, 0.1f, 0.7f * a));
+                d.Brillo(x, y + 3 * s, 5 * s, new Color4(1f, 0.95f, 0.75f, 0.9f * a * fl));
+            }
+        }
+        // Treboles verdes que caen dando vueltas (San Patricio).
+        private void Treboles(float W, float yh, double t, float alfa, int n)
+        {
+            float alto = yh + 40 * k;
+            for (int i = 0; i < n; i++)
+            {
+                float v = (18 + 18 * Hs(i, 141)) * k, y = (float)((Hs(i, 142) * alto + t * v) % alto) - 20 * k;
+                float x = Hs(i, 143) * W + (float)Math.Sin(t * 0.7 + i) * 24 * k, r = (4 + 3 * Hs(i, 144)) * k;
+                double ang = t * (0.6 + Hs(i, 145)) + i;
+                Color4 c = (Hs(i, 146) < 0.5f ? Color4.Hex(0x2FB457) : Color4.Hex(0x5ED97A)).ConAlfa(0.85f * alfa);
+                for (int h = 0; h < 3; h++)
+                {
+                    double a = ang + h * 2.094;
+                    Circulo(x + (float)Math.Cos(a) * r * 0.85f, y + (float)Math.Sin(a) * r * 0.85f, r * 0.62f, c);
+                }
+                double ta = ang + 1.047 + Math.PI;
+                d.Linea(x, y, x + (float)Math.Cos(ta) * r * 2f, y + (float)Math.Sin(ta) * r * 2f, 1.4f * k, c);
+            }
+        }
+        // Mariposas que revolotean: de colores (primavera) o monarcas (Dia de Muertos).
+        private static readonly Color4[] ColoresMariposa = { Color4.Hex(0xFFD23F), Color4.Hex(0x4FC3F7), Color4.Hex(0xFF7AB6), Color4.Hex(0xB388FF), Color4.Hex(0x7CE38B) };
+        private void Mariposas(float W, float yh, double t, float alfa, int n, bool monarca, int sem)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                float vx = (14 + 18 * Hs(i, sem)) * k * (Hs(i, sem + 1) < 0.5f ? 1 : -1), largo = W + 80 * k;
+                float x = (float)((((Hs(i, sem + 2) * largo + t * vx) % largo) + largo) % largo) - 40 * k;
+                float y = yh * (0.2f + 0.6f * Hs(i, sem + 3)) + (float)Math.Sin(t * 1.3 + i * 2) * 30 * k, s = (0.9f + 0.5f * Hs(i, sem + 4)) * k;
+                float ab = 0.25f + 0.75f * Math.Abs((float)Math.Sin(t * 9 + i * 1.3));   // aleteo: cuanto se ven las alas
+                Color4 c = monarca ? Color4.Hex(0xFF8C1A) : ColoresMariposa[i % ColoresMariposa.Length];
+                c = c.ConAlfa(0.9f * alfa); Color4 borde = new Color4(0.08f, 0.06f, 0.06f, 0.85f * alfa);
+                for (int lado = -1; lado <= 1; lado += 2)
+                {
+                    float wx = lado * 11 * s * ab, wx2 = lado * 8 * s * ab;
+                    if (monarca) { d.Triangulo(x, y - 1 * s, x + wx * 1.12f, y - 10 * s, x + wx * 1.12f, y + 2 * s, borde); }
+                    d.Triangulo(x, y - 1 * s, x + wx, y - 9 * s, x + wx, y + 1 * s, c);
+                    d.Triangulo(x, y + 1 * s, x + wx2, y + 2 * s, x + wx2 * 0.7f, y + 9 * s, c);
+                }
+                d.Rect(x - 0.8f * s, y - 5 * s, 1.6f * s, 10 * s, borde);
+            }
+        }
+        // Notas musicales que flotan y suben (Santa Cecilia, el dia de los musicos y del mariachi).
+        private static readonly Color4[] ColoresNotas = { Color4.Hex(0xFFE08A), Color4.Hex(0x9EE7FF), Color4.Hex(0xFFA8E0), Color4.Hex(0xB9FFB0), Color4.Hex(0xFFFFFF) };
+        private void Notas(float W, float yh, double t, float alfa, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                double u = (Hs(i, 151) + t * 0.012 * (0.6 + Hs(i, 152))) % 1.0;
+                float x = Hs(i, 153) * W + (float)Math.Sin(t * 0.9 + i) * 28 * k, y = yh - (float)u * (yh + 30 * k), s = (1f + 0.6f * Hs(i, 154)) * k;
+                float a = (float)Math.Sin(u * Math.PI) * 0.85f * alfa;
+                Color4 c = ColoresNotas[i % ColoresNotas.Length].ConAlfa(a);
+                d.Brillo(x, y, 14 * s, c.ConAlfa(0.18f * a));
+                Circulo(x, y, 4.5f * s, c);
+                d.Rect(x + 3.4f * s, y - 20 * s, 1.6f * s, 20 * s, c);
+                if (Hs(i, 155) < 0.5f)
+                {   // la corchea: su banderita
+                    d.Linea(x + 4.2f * s, y - 20 * s, x + 11 * s, y - 13 * s, 1.8f * s, c);
+                }
+                else
+                {   // dos unidas
+                    Circulo(x + 13 * s, y + 3 * s, 4.5f * s, c);
+                    d.Rect(x + 16.4f * s, y - 17 * s, 1.6f * s, 20 * s, c);
+                    d.Linea(x + 4.2f * s, y - 20 * s, x + 17.2f * s, y - 17 * s, 3f * s, c);
+                }
+            }
+        }
+        // Piñatas de estrella de siete picos colgadas arriba, que se mecen (posadas).
+        private static readonly Color4[] ColoresPinata = { Color4.Hex(0xFF3B6B), Color4.Hex(0xFFC93C), Color4.Hex(0x3CC8FF), Color4.Hex(0x7CE04C), Color4.Hex(0xB46BFF), Color4.Hex(0xFF8A3C), Color4.Hex(0xFFFFFF) };
+        private void Pinatas(float W, float H, double t, float alfa)
+        {
+            for (int p = 0; p < 3; p++)
+            {
+                float ax = W * (0.22f + 0.28f * p), ay = H * 0.10f, largo = H * (0.13f + 0.05f * (p % 2));
+                double ang = Math.Sin(t * 0.9 + p * 1.7) * 0.18 * (0.4 + 0.6 * viveza);
+                float cx = ax + (float)Math.Sin(ang) * largo, cy = ay + (float)Math.Cos(ang) * largo, r = 16 * k;
+                d.Linea(ax, ay, cx, cy - r, 1.2f * k, new Color4(0.85f, 0.8f, 0.7f, 0.7f * alfa));
+                for (int j = 0; j < 7; j++)
+                {
+                    double a = j / 7.0 * Math.PI * 2 - Math.PI / 2 + ang;
+                    float ex = cx + (float)Math.Cos(a) * r * 2.4f, ey = cy + (float)Math.Sin(a) * r * 2.4f;
+                    float bx0 = cx + (float)Math.Cos(a - 0.32) * r * 0.9f, by0 = cy + (float)Math.Sin(a - 0.32) * r * 0.9f, bx1 = cx + (float)Math.Cos(a + 0.32) * r * 0.9f, by1 = cy + (float)Math.Sin(a + 0.32) * r * 0.9f;
+                    Color4 c = ColoresPinata[(j + p * 2) % ColoresPinata.Length].ConAlfa(0.92f * alfa);
+                    d.Triangulo(bx0, by0, ex, ey, bx1, by1, c);
+                    // las tiritas de papel de la punta
+                    for (int q = 0; q < 2; q++) d.Linea(ex, ey, ex + (float)Math.Cos(a + 0.5 * (q - 0.5) + Math.Sin(t * 3 + j) * 0.3) * 9 * k, ey + (float)Math.Sin(a + 0.5 * (q - 0.5)) * 9 * k + 5 * k, 1.5f * k, c);
+                }
+                Circulo(cx, cy, r, Color4.Hex(0xF4E1B8).ConAlfa(0.95f * alfa));
+                Circulo(cx, cy, r * 0.6f, ColoresPinata[p * 3 % 7].ConAlfa(0.9f * alfa));
+            }
+        }
+}
 }
