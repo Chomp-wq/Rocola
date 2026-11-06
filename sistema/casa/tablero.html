@@ -131,6 +131,13 @@ th{color:var(--tenue);font-weight:500}
       <p class="tenue">Manda el «paquete mágico» al router del bar, que debe reenviarlo a la rocola (Wake on LAN: activado en el BIOS del A4 y en el router, con un puerto UDP reenviado y un nombre DDNS o la IP pública). Si el router tiene su propia app de «encender equipo», úsala con la MAC.</p>
       <div class="kv" id="wolDatos"></div>
       <button class="b" onclick="despierta()">Mandar el paquete mágico</button></div>
+    <div class="tarjeta"><h3>Apagarla al terminar</h3>
+      <p>«Cuando esté libre» espera a que no suene nada, no haya nada en la cola y nadie la toque en 2 minutos. «Ya» la apaga al momento, aunque esté sonando. Los créditos y la cola se guardan y vuelven al prender.</p>
+      <p class="tenue">Para volver a prenderla: el botón de la rocola, o el encendido remoto de aquí arriba (la tarjeta de red sigue escuchando apagada).</p>
+      <div class="tenue" id="apagaPend"></div>
+      <button class="b" onclick="if(confirm('¿Apagar la rocola cuando esté libre?'))orden('apagar')">Apagar cuando esté libre</button>
+      <button class="b peligro" onclick="if(confirm('¿Apagar la rocola YA, aunque esté sonando? Para prenderla hará falta el botón o el encendido remoto.'))orden('apagar','ya')">Apagar YA</button>
+      <button class="b" onclick="orden('cancelar')">Cancelar lo pendiente</button></div>
   </div>
 </section>
 
@@ -163,9 +170,9 @@ th{color:var(--tenue);font-weight:500}
 <div id="aviso"></div>
 <script>
 const CLAVE="__CLAVE__";
-const PESTANAS=[["resumen","Resumen"],["errores","Errores"],["registros","Registros"],["archivos","Archivos"],["actualizaciones","Actualizaciones"],["ordenes","Órdenes"],["despertar","Despertar"],["ajustes","Ajustes"]];
+const PESTANAS=[["resumen","Resumen"],["errores","Errores"],["registros","Registros"],["archivos","Archivos"],["actualizaciones","Actualizaciones"],["ordenes","Órdenes"],["despertar","Encender y apagar"],["ajustes","Ajustes"]];
 const ARCHIVOS=["rocola_error.txt","rocola.txt","rocola.txt.1","rocola_actualizaciones.txt","sistema.txt","rocola_diagnostico.txt","rocola_spotify.txt","rocola_billar_bitacora.txt","rocola_config.txt","rocola_estado.txt","rocola_stats.txt","rocola_sonoridad.txt","rocola_eq.txt","rocola_noche.txt","rocola_volumen.txt","rocola-arranque.txt","rocola-discos.txt","rocola-mpv.txt","dmesg.txt"];
-const ORDENES=["ping","informe","registros","archivo","buscar_actualizacion","diagnostico","reiniciar_programa","reiniciar_equipo"];
+const ORDENES=["ping","informe","registros","archivo","buscar_actualizacion","diagnostico","reiniciar_programa","reiniciar_equipo","apagar","cancelar"];
 let T=null, REG=null, ARC={nombre:"",texto:""};
 const $=id=>document.getElementById(id);
 const esc=s=>(s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -193,6 +200,7 @@ async function carga(){
   $("cabecera").textContent="actualizado "+new Date().toLocaleTimeString()+(e?" · la rocola escribió: "+e.fecha:"");
   $("veredictos").innerHTML=(T.veredictos||[]).map(v=>`<div class="veredicto ${v.nivel}"><span class="punto"></span><div><b>${esc(v.titulo)}</b> ${esc(v.texto)}</div></div>`).join("");
   pintaTarjetas(e);pintaErrores(e);pintaVersiones(e);pintaOrdenes();pintaArchivos();
+  const pend=e&&e.versiones?(e.versiones.reinicio_pendiente||"").trim():"";$("apagaPend").textContent=pend?"Pendiente ahora: "+pend:"";
   $("wolDatos").innerHTML=`<span>Router</span><span>${esc((c.wol_host||"(sin poner: Ajustes)")+":"+(c.wol_puerto||9))}</span><span>MAC</span><span>${esc(c.mac||(e&&e.red?e.red.mac:"")||"(aún no se sabe)")}</span><span>Wake-on</span><span>${esc(e&&e.red?e.red.wake_on_lan:"")}</span>`;
 }
 function kv(o){return `<div class="kv">${o.map(p=>`<span>${esc(p[0])}</span><span>${esc(p[1])}</span>`).join("")}</div>`}

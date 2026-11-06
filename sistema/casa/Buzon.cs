@@ -144,7 +144,7 @@ namespace RocolaCasa
         internal string UltimoError = "";
         internal Buzon(Config cfg) { this.cfg = cfg; gh = new GitHub(cfg.Llave); }
 
-        internal static readonly string[] Ordenes = { "ping", "informe", "registros", "archivo", "buscar_actualizacion", "diagnostico", "reiniciar_programa", "reiniciar_equipo" };
+        internal static readonly string[] Ordenes = { "ping", "informe", "registros", "archivo", "buscar_actualizacion", "diagnostico", "reiniciar_programa", "reiniciar_equipo", "apagar", "cancelar" };
 
         // Deja una orden en casa/ordenes.json (se guardan las ultimas 40). Devuelve su id, o null.
         internal async Task<string> Ordena(string orden, string arg)

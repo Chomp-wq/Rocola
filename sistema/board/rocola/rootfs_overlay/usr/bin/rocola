@@ -68,6 +68,7 @@ while :; do
 	duro=$(( $(date +%s) - t0 ))
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
 	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)
+	if [ "$r" = 44 ]; then apunta "Apagado pedido desde casa"; sync; poweroff; sleep 60; fi   # salio para apagarse (rocola-buzon: «apagar»)
 	if [ "$probando" = 1 ]; then
 		if [ "$duro" -lt 120 ] && [ "$r" != 0 ]; then
 			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras

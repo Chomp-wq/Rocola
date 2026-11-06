@@ -9,7 +9,7 @@ namespace Rocola
 {
     internal sealed partial class Controlador
     {
-        internal const int SalidaParaActualizar = 42, SalidaParaSistema = 43;   // 43: un sistema nuevo listo: /usr/bin/rocola reinicia el equipo
+        internal const int SalidaParaActualizar = 42, SalidaParaSistema = 43, SalidaParaApagar = 44;   // 44: apagar el equipo (pedido desde casa)   // 43: un sistema nuevo listo: /usr/bin/rocola reinicia el equipo
         internal int CodigoSalida;
         private int ultimaRevisionActualizacion;
         private void RevisaActualizacion()
@@ -28,11 +28,18 @@ namespace Rocola
             // como las actualizaciones, solo cuando la rocola esta libre.
             bool reinicia = File.Exists("/run/rocola-reinicia-programa"), equipo = File.Exists("/run/rocola-reinicia-equipo"), diag = File.Exists("/run/rocola-pide-diagnostico");
             bool programa = File.Exists("/run/rocola-hay-nueva") || reinicia, sistema = File.Exists("/run/rocola-reinicio-sistema") || equipo;
-            if (!programa && !sistema && !diag) return;
+            bool apaga = File.Exists("/run/rocola-apaga-equipo");
+            if (!programa && !sistema && !diag && !apaga) return;
             bool libre = motor.Sonando == null && !motor.SonandoVideo && motor.EnCola == 0 && video == null && salida == null
                 && AjusteSel < 0 && AsistentePaso < 0 && !Buscando && !AyudaAbierta && DiagEscena < 0
                 && unchecked(ahora - ultimoToque) > 120000;
             if (!libre) return;
+            if (apaga)
+            {   // APAGAR, pedido desde casa: se guarda el estado (los creditos vuelven al prender, como tras un apagon) y /usr/bin/rocola apaga
+                try { File.Delete("/run/rocola-apaga-equipo"); } catch { }
+                Console.WriteLine("Buzon: apagar el equipo (pedido desde casa), la rocola esta libre");
+                motor.GuardaEstado(); CodigoSalida = SalidaParaApagar; salir = true; return;
+            }
             if (diag && !programa && !sistema)
             {
                 try { File.Delete("/run/rocola-pide-diagnostico"); } catch { }

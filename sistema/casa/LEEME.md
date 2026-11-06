@@ -18,8 +18,10 @@ abre el **tablero** en el navegador (solo se puede abrir desde esa misma computa
   nueva ya».
 - **Órdenes**: ping, estado, registros, archivo, buscar actualización, diagnóstico completo de la pantalla (cuando la rocola esté
   libre), reiniciar el programa o el equipo (cuando esté libre, o «ya»), con lo que contestó la rocola.
-- **Despertar**: si está prendida, la hace buscar actualización al momento; si está apagada, manda el paquete mágico de Wake on LAN
-  al router del bar (si el router lo reenvía).
+- **Encender y apagar**: si está prendida, «despertar» la hace buscar actualización al momento; si está apagada, manda el paquete
+  mágico de Wake on LAN al router del bar (si el router lo reenvía). Y **apagarla** al terminar de trabajar: «cuando esté libre» (nada
+  sonando ni en la cola, 2 minutos sin botones) o «ya»; los créditos y la cola se guardan y vuelven al prender. «Cancelar lo pendiente»
+  quita un apagado o reinicio que aún espera.
 - En la terminal: `rocola-casa --estado` (lo esencial) y `rocola-casa --orden buscar_actualizacion` (cualquier orden).
 
 ## Cómo funciona

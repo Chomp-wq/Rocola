@@ -11,8 +11,8 @@
 #   rocola/respuestas.json  lo que contesto a cada orden.
 #   casa/ordenes.json       las ordenes que deja «Rocola en casa» (sistema/casa); se leen cada minuto.
 # Ordenes: ping, informe, registros, archivo NOMBRE, buscar_actualizacion (lo que hace «Buscar actualizacion ahora»), diagnostico (el
-# diagnostico completo de la pantalla, cuando la rocola este libre), reiniciar_programa y reiniciar_equipo (cuando este libre; con «ya»,
-# al momento).
+# diagnostico completo de la pantalla, cuando la rocola este libre), reiniciar_programa, reiniciar_equipo y apagar (cuando este libre;
+# con «ya», al momento). Apagada se vuelve a prender con el boton o con el encendido remoto (Wake on LAN), que queda escuchando.
 #
 # LA LLAVE: rocola_buzon.txt en una memoria USB (o en la carpeta de XP), como rocola_github.txt: la llave en la primera linea y, si el
 # buzon no es Chomp-wq/rocola-buzon, el repositorio en la segunda. Se copia a /rocola/datos/rocola_buzon.txt. Sin llave no hace nada.
@@ -96,7 +96,7 @@ estado_json() {
 		--arg sistema "$(leer /etc/rocola-sistema-version)" --arg programa "$(programa_version)" --arg nueva "$(leer "$PROG/nueva.version")" \
 		--arg malas "$(leer "$PROG/malas" | tr '\n' ' ')" --arg sistema_malas "$(leer "$OS/sistema-malas" | tr '\n' ' ')" \
 		--arg slot "$slot" --arg probando "$([ -f "$OS/probando" ] && echo si)" \
-		--arg reinicio_pendiente "$([ -f "$RUN/rocola-reinicio-sistema" ] && echo sistema)$([ -f "$RUN/rocola-hay-nueva" ] && echo programa)" \
+		--arg reinicio_pendiente "$([ -f "$RUN/rocola-reinicio-sistema" ] && echo "sistema ")$([ -f "$RUN/rocola-hay-nueva" ] && echo "programa ")$([ -f "$RUN/rocola-apaga-equipo" ] && echo "apagar ")$([ -f "$RUN/rocola-reinicia-equipo" ] && echo "reiniciar ")" \
 		--arg actualiza "$(leer "$RUN/rocola-actualiza.txt")" --arg buscando "$([ -f "$RUN/rocola-buscar-ya" ] && echo si)" \
 		--arg llave_github "$([ -s "$DATOS/rocola_github.txt" ] && echo si)" \
 		--arg ip "$ip" --arg mac "$mac" --arg gw "$gw" --arg wol "$wol" \
@@ -201,6 +201,12 @@ atiende_ordenes() {
 			reiniciar_equipo)
 				if [ "$arg" = ya ]; then responde "$id" "$orden" "reiniciando el equipo ahora"; echo ya > "$TMP/reiniciar"
 				else touch "$RUN/rocola-reinicia-equipo"; responde "$id" "$orden" "el equipo se reinicia cuando la rocola este libre"; fi ;;
+			apagar)
+				if [ "$arg" = ya ]; then responde "$id" "$orden" "apagando el equipo ahora"; echo apaga > "$TMP/reiniciar"
+				else touch "$RUN/rocola-apaga-equipo"; responde "$id" "$orden" "el equipo se apaga cuando la rocola este libre (nada sonando ni en la cola, 2 min sin botones)"; fi ;;
+			cancelar)
+				rm -f "$RUN/rocola-apaga-equipo" "$RUN/rocola-reinicia-equipo" "$RUN/rocola-reinicia-programa"
+				responde "$id" "$orden" "cancelado lo pendiente (apagar o reiniciar cuando este libre)" ;;
 			*) responde "$id" "$orden" "orden desconocida" ;;
 		esac
 	done
@@ -213,7 +219,11 @@ atiende_ordenes() {
 		rm -f "$TMP/ultimo"   # y el estado, al momento (para que se vea en casa que contesto)
 	fi
 	tail -n 500 "$HECHAS" > "$HECHAS.n" 2>/dev/null && mv -f "$HECHAS.n" "$HECHAS"
-	if [ -f "$TMP/reiniciar" ]; then rm -f "$TMP/reiniciar"; manda_estado forzado; sync; reboot; fi
+	if [ -f "$TMP/reiniciar" ]; then
+		que=$(cat "$TMP/reiniciar"); rm -f "$TMP/reiniciar"; manda_estado forzado
+		printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$([ "$que" = apaga ] && echo Apagado || echo Reinicio) pedido desde casa (ya)" >> "$DATOS/rocola_actualizaciones.txt"
+		sync; if [ "$que" = apaga ]; then poweroff; else reboot; fi
+	fi
 }
 # El diagnostico pedido: cuando el programa lo deja (rocola_diagnostico.txt mas nuevo que el pedido), se sube solo.
 mira_diagnostico() {

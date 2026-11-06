@@ -1380,5 +1380,8 @@ rocola para forzar actualizaciones, y que me dé estados de todo». Ver `sistema
   esta computadora) con Resumen (en línea, ¿la actualización ya está?, el programa corre, errores, compilaciones), Errores (agrupados),
   Registros, Archivos (y guardarlos en `~/RocolaCasa`), Actualizaciones (compilar en GitHub, buscar ahora, poner la nueva ya), Órdenes
   con sus respuestas, Despertar (Wake on LAN al router) y Ajustes; y en la terminal `--estado` y `--orden`.
+- **Apagarla desde casa** (pedido del mismo día: «para cuando termine de trabajar con ella apagarla»): «apagar» cuando esté libre (el
+  programa guarda el estado y sale con 44: `/usr/bin/rocola` apaga) o «ya» (el buzón apaga al momento); «cancelar» quita lo pendiente.
+  La tarjeta de red sigue escuchando el encendido remoto.
 - Probado con un GitHub simulado: la rocola sube su estado, atiende ping, registros, un archivo, buscar actualización y rechaza las
   llaves; el tablero muestra todo y los veredictos. Sin el buzón real ni el A4: la rocola necesita el siguiente sistema.
