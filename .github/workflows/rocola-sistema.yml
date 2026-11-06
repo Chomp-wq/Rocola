@@ -14,6 +14,7 @@ on:
       - 'sistema/board/**'
       - 'sistema/configs/**'
       - 'sistema/package/**'
+      - 'sistema/rocola-spotify/**'   # (el programa de Spotify va dentro del sistema, no en el flujo del programa)
       - 'sistema/external.mk'
       - 'sistema/external.desc'
       - 'sistema/Config.in'
