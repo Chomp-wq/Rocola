@@ -1546,3 +1546,68 @@ persistente en Ctrl+F3 → Imagen → **Color vivo**, encendidas de fábrica (cl
 Medido con el dibujo por software de Mesa (no es el A4), 300 cuadros a 1024x768: reposo 12,8 ms de mediana con todo encendido frente
 a 11,9 ms con todo apagado; la pared con algo sonando 13,6-14,4 frente a 13,2-13,5; unas 0,1 pantallas más de relleno. No medido ni
 visto en el A4. Para las capturas, `--boton calma` deja la pared 20 s sin botones (el color entero).
+
+## Extra (7-11-2026, onceava parte): el cielo según la hora, la fecha y el clima
+
+El dueño vio una maqueta con un cielo realista y prefirió el de hoy («no busco el realismo extremo»), pero le gustó que cambie con la
+hora. Con la segunda maqueta («Cielo según la hora») pidió: «Implementa todo, e incrementa la cantidad de decoración por fechas, que
+se vea más bonito, y que también tome los datos del clima del internet». Solo Rocola OS. El cielo Legacy se queda con su estilo
+dibujado; cambian sus colores y se le pone encima lo de cada momento. Cada cosa lleva su interruptor en Ctrl+F3 → Fondo (grupos
+«Según la hora», «Según la fecha» y «Clima y más»), encendidos de fábrica.
+
+- **Según la hora** (por la altura real del sol en la ciudad del bar, `Astro` en `Motor/CieloClima.cs`):
+  - H1 `cielo_hora=`: las paradas del degradado, las nebulosas y el resplandor del horizonte pasan por día, hora dorada,
+    atardecer o amanecer, noche (las paradas de siempre, tal cual) y madrugada (más índigo, de 2 a 4:30).
+  - H2 `sol_hora=`: un sol dibujado en su rumbo y altura (el este a la izquierda), que se esconde detrás del horizonte.
+  - H3 `estrellas_anochecer=`: primero las brillantes, luego las demás.
+  - H4 `luna_arco=`: la luna sale, cruza y se pone a sus horas (si no está en el cielo, no se ve; apagado, siempre arriba a la derecha).
+  - H7 `luna_sin_disco=`: su lado oscuro deja ver el cielo (antes era un disco negro).
+  - H5 `aurora_hora=`: la aurora toma el color de la hora y casi no se ve de día.
+  - H6 `medianoche=`: a las 12, fugaces y un destello en la onda.
+- **Según la fecha** (`CalendarioCielo`):
+  - F1 `fiestas_cielo=`:
+    - Año Nuevo: confeti dorado; el 31 a las 23:59:50 una cuenta en el cielo y fuegos; luego «¡Feliz 2027!» cinco minutos.
+    - Reyes: la estrella de Belén y tres estrellitas viajeras.
+    - 14 de febrero: tonos rosas y corazones que suben.
+    - Jacarandas (del 15 de marzo al 15 de abril): pétalos lilas.
+    - Día del Niño: globos.
+    - 10 de mayo: pétalos de rosa y corazones.
+    - Fiestas patrias: papel picado tricolor y aurora verde y roja. La noche del Grito, fuegos verdes, blancos y rojos; las otras
+      noches, alguno de vez en cuando.
+    - Halloween: murciélagos, la luna naranja y tonos morados.
+    - Día de Muertos (28 de octubre a 2 de noviembre): dos tiras de papel picado, pétalos de cempasúchil, veladoras en el horizonte,
+      lucecitas que suben y la aurora naranja y rosa.
+    - La Guadalupana: pétalos de rosa.
+    - Navidad (13 de diciembre a 4 de enero): nieve y una serie de luces que se prende en cadena. En Nochebuena, además, la estrella
+      de Belén y la aurora verde y roja.
+  - F2 `lluvias_estrellas=`: Cuadrántidas, Líridas, Eta Acuáridas, Perseidas, Dracónidas, Oriónidas, Leónidas, Gemínidas y Úrsidas,
+    un día antes y uno después de su máximo, con fugaces que salen de su radiante.
+  - F3 `luna_llena=`: la luna llena más grande, con dos anillos de halo y el cielo un poco más claro.
+- **Clima y más**:
+  - O1 `constelaciones=`: Orión, la Osa Mayor y Casiopea se dibujan cada 40 s con su nombre.
+  - O2 `nubes_cielo=`: unas nubes dibujadas.
+  - O3 `clima_cielo=`: el clima de afuera.
+- **El clima de afuera (O3)**:
+  - Se pide a Open-Meteo por curl cada 15 minutos, en un hilo de fondo; es gratuito y sin llave.
+  - Lo que se dibuja según el código: algo nublado, nublado (el cielo más gris y menos estrellas), neblina (bruma de abajo hacia
+    arriba), llovizna, lluvia, lluvia fuerte, tormenta (rayos con destello suave) y nieve.
+  - El último clima vale 3 horas tras un reinicio (`rocola_clima.txt`).
+  - La hoja dice el clima, la temperatura, el lugar y hace cuánto se pidió.
+- **Ciudad del bar** (`ciudad_bar=`):
+  - «Automática» la saca de la conexión a internet, una vez por semana (`rocola_clima_lugar.txt`). Prueba ipapi.co, luego ipwho.is y
+    luego get.geojs.io.
+  - También se puede elegir una de 41 ciudades.
+  - Mientras no se sabe, se usa la Ciudad de México.
+- **Mientras se usa la rocola** (la viveza del color vivo): menos pétalos, nieve y globos; sin fugaces ni constelaciones; uno de cada
+  tres fuegos; los rayos, sin rayo y con destello tenue.
+- **Para probar**:
+  - `ROCOLA_CIELO_FECHA=2026-11-01T21:00` fija la hora del cielo. Ojo: es hora local, y en la rocola la zona es la de México.
+  - `ROCOLA_CLIMA=lluvia` (o despejado, poco, nublado, neblina, llovizna, fuerte, tormenta, nieve) fija el clima.
+  - `ROCOLA_CLIMA_API` y `ROCOLA_UBICA_API` cambian el servidor; `ROCOLA_CLIMA_YA` pide sin esperar 20 s.
+  - `--boton ajuste:CLAVE` abre Ctrl+F3 en la hoja de ese ajuste.
+- **Medido** con el dibujo por software de Mesa (no es el A4), 300 cuadros a 1024x768:
+  - Noche: 10,5 ms de mediana frente a 9,1 con todo apagado.
+  - Día de Muertos: 12,0 ms; tormenta: 12,2; Grito: 11,5; Navidad: 11,3.
+  - Sin memoria nueva por cuadro.
+- **No probado** en el A4 ni con el clima del bar. Desde esta máquina Open-Meteo contestó una vez y luego dio el límite diario (la IP es
+  compartida); la lectura se probó con un Open-Meteo simulado.

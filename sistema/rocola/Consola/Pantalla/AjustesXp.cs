@@ -23,7 +23,7 @@ namespace Rocola
             if (pg == "Sonido") return "Todo se oye al instante en la cancion que suena.";
             if (pg == "Pantalla") return "Lo que se ve en la rocola. Cada cosa con su interruptor.";
             if (pg == "Imagen") return "Las mejoras visuales de Rocola OS, cada una con su interruptor. Las de coste medio vienen apagadas.";
-            if (pg == "Fondo") return "El cielo de la rocola: nebulosas, aurora y estrellas.";
+            if (pg == "Fondo") return "El cielo de la rocola: nebulosas, aurora y estrellas, y cómo cambia con la hora, las fiestas y el clima.";
             if (pg == "Colores") return "El color del cielo con cada cancion: cuanto manda la portada, cuanto azul y cuanto negro. Se ve al instante.";
             return "Al pedir canciones, el fondo y la barra, internet, el diagnostico y los botones de la rocola.";
         }

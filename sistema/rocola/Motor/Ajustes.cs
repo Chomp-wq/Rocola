@@ -134,7 +134,7 @@ namespace Rocola
         public static string PaginaDe(string grupo)
         {
             if (grupo == "Pantalla") return "Pantalla";
-            if (grupo == "El cielo") return "Fondo";
+            if (grupo == "El cielo" || grupo == "Según la hora" || grupo == "Según la fecha" || grupo == "Clima y más") return "Fondo";
             if (Array.IndexOf(GruposImagen, grupo) >= 0) return "Imagen";
             if (grupo == "De que color es cada cancion" || grupo == "Cuanto azul" || grupo == "Cuanto negro") return "Colores";
             if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
@@ -365,6 +365,21 @@ namespace Rocola
             l.Add(Visual("El cielo", "Nebulosas vivas (V1)", "nebulosas_vivas", () => NebulosasVivas, v => NebulosasVivas = v, true, "Las nubes cambian de forma despacio, calculadas en la tarjeta."));
             l.Add(Visual("El cielo", "Aurora que respira con la musica (V2)", "aurora_musica", () => AuroraMusica, v => AuroraMusica = v, false, "La aurora sobre el horizonte, ondulando con los graves y con el color del genero."));
             l.Add(Visual("El cielo", "Estrellas con aire y brillo (V3)", "estrellas_aire", () => EstrellasAire, v => EstrellasAire = v, false, "Halo suave en las grandes; cerca del horizonte, mas tenues, calidas y titilando mas."));
+            // EL CIELO SEGUN LA HORA, LA FECHA Y EL CLIMA (7-11-2026, CieloClima.cs y CieloHora.cs)
+            l.Add(Visual("Según la hora", "Colores según la hora (H1)", "cielo_hora", () => CieloHora, v => CieloHora = v, false, "El cielo de siempre cambia de tono con el sol: azul de día, dorado y naranja al atardecer, el azul de siempre de noche, índigo de madrugada y rosa al amanecer."));
+            l.Add(Visual("Según la hora", "El sol se pone y sale (H2)", "sol_hora", () => SolHora, v => SolHora = v, false, "Un sol dibujado a la hora y en el lado reales, que baja detrás de la onda de luz."));
+            l.Add(Visual("Según la hora", "Estrellas que se encienden (H3)", "estrellas_anochecer", () => EstrellasAnochecer, v => EstrellasAnochecer = v, false, "Al oscurecer salen primero las brillantes y luego las demás; al amanecer se apagan."));
+            l.Add(Visual("Según la hora", "La luna cruza el cielo (H4)", "luna_arco", () => LunaArco, v => LunaArco = v, false, "La luna sale, sube y se pone a sus horas reales; cuando no está en el cielo no se ve. Apagado: siempre arriba a la derecha."));
+            l.Add(Visual("Según la hora", "Luna sin disco negro (H7)", "luna_sin_disco", () => LunaSinDisco, v => LunaSinDisco = v, false, "El lado oscuro de la luna deja ver el cielo, apenas aclarado por la luz de la Tierra."));
+            l.Add(Visual("Según la hora", "Aurora del color de la hora (H5)", "aurora_hora", () => AuroraHora, v => AuroraHora = v, false, "La aurora se vuelve cálida al atardecer y al amanecer y fría de madrugada; de día casi no se ve."));
+            l.Add(Visual("Según la hora", "La medianoche (H6)", "medianoche", () => MedianocheCielo, v => MedianocheCielo = v, false, "A las 12 en punto, estrellas fugaces y un destello en la onda (si nadie está usando la rocola)."));
+            l.Add(Visual("Según la fecha", "Fiestas en el cielo (F1)", "fiestas_cielo", () => FiestasCielo, v => FiestasCielo = v, false, "Año Nuevo, Reyes, 14 de febrero, jacarandas, Día del Niño, 10 de mayo, fiestas patrias y el Grito, Halloween, Día de Muertos, la Guadalupana y Navidad, cada una con su decoración."));
+            l.Add(Visual("Según la fecha", "Lluvias de estrellas (F2)", "lluvias_estrellas", () => LluviasEstrellas, v => LluviasEstrellas = v, false, "En sus noches reales (Perseidas, Gemínidas, Leónidas...), estrellas fugaces desde un mismo punto, cuando nadie usa la rocola."));
+            l.Add(Visual("Según la fecha", "Luna llena especial (F3)", "luna_llena", () => LunaLlenaCielo, v => LunaLlenaCielo = v, false, "Las noches de luna llena se ve más grande, con un halo de anillos, y el cielo un poco más claro."));
+            l.Add(Visual("Clima y más", "Constelaciones que se dibujan (O1)", "constelaciones", () => Constelaciones, v => Constelaciones = v, false, "De vez en cuando unas líneas unen Orión, la Osa Mayor o Casiopea, con su nombre, y se borran."));
+            l.Add(Visual("Clima y más", "Nubes dibujadas (O2)", "nubes_cielo", () => NubesCielo, v => NubesCielo = v, false, "Unas cuantas nubes que pasan despacio, con el borde aclarado por la luna."));
+            { Ajuste x = Visual("Clima y más", "El clima de afuera (O3)", "clima_cielo", () => ClimaCielo, v => ClimaCielo = v, false, ""); x.Nota = () => "Nubes, neblina, llovizna, lluvia, tormenta o nieve según el clima real (Open-Meteo, por internet, cada 15 min). " + EstadoClima; l.Add(x); }
+            { int[] vc = new int[Ciudades.Length]; for (int i = 0; i < vc.Length; i++) vc[i] = i; Ajuste x = Opciones("Clima y más", "Ciudad del bar", "ciudad_bar", Ciudades, vc, () => CiudadBar, v => CiudadBar = v, ""); x.Nota = () => "Para la hora del sol y de la luna y para el clima. «Automática» la saca de la conexión a internet. Ahora: " + LugarBar + "."; l.Add(x); }
             l.Add(Visual("La pared", "Portadas siempre nitidas (V4)", "portadas_nitidas", () => PortadasNitidas, v => PortadasNitidas = v, false, "Achicadas con filtro de calidad, y la elegida a mas resolucion. Vale para las que se carguen desde ahora."));
             l.Add(Visual("La pared", "El cubo con luz (V5)", "cubo_luz", () => CuboLuz, v => CuboLuz = v, false, "Un brillo recorre las caras del cubo al girar, y la elegida lleva su sombra en el piso."));
             l.Add(Visual("Dentro de un disco", "La portada, de vidrio esmerilado (V7)", "disco_vidrio", () => DiscoVidrio, v => DiscoVidrio = v, true, "Detras de la lista, la portada en grande y desenfocada."));

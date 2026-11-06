@@ -177,6 +177,7 @@ namespace Rocola
                 else if (b == "noche") { c.AtraccionDesfase = 15; c.FuerzaAtraccion(); }
                 else if (b == "mosaico") { c.AtraccionDesfase = 32; c.FuerzaAtraccion(); }   // V20: la atraccion, ya en el mosaico   // la atraccion, ya en lo mas pedido esta noche
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
+                else if (b.StartsWith("ajuste:")) { c.AbreAjustes(); IList<Form1.Ajuste> la = c.ListaAjustes; for (int ia = 0; ia < la.Count; ia++) if (la[ia].Clave == b.Substring(7)) { c.AjusteSel = ia; break; } }   // (pruebas) la hoja de ese ajuste
                 else if (b == "calma") c.FuerzaReposo();   // (pruebas) 20 s sin botones: sin nada sonando, la pared en calma (Color vivo entero)
                 else if (b == "spotify") c.EsperaSpotify(v, 6000);
                 else if (b.StartsWith("escribe:")) c.EscribeDePrueba(b.Substring(8));   // (pruebas) letras en el buscador abierto   // (pruebas) 6 s atendiendo Spotify: su programa, la biblioteca, el buscador

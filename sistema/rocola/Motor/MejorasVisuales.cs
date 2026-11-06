@@ -123,6 +123,14 @@ namespace Rocola
             a("neon_borde", () => NeonBorde, v => NeonBorde = v); a("vidrio_late", () => VidrioLate, v => VidrioLate = v);
             a("portadas_brillan", () => PortadasBrillan, v => PortadasBrillan = v); a("destello_pedir", () => DestelloPedir, v => DestelloPedir = v);
             a("barra_neon", () => BarraNeon, v => BarraNeon = v);
+            // el cielo segun la hora, la fecha y el clima (CieloClima.cs)
+            a("cielo_hora", () => CieloHora, v => CieloHora = v); a("sol_hora", () => SolHora, v => SolHora = v);
+            a("estrellas_anochecer", () => EstrellasAnochecer, v => EstrellasAnochecer = v); a("luna_arco", () => LunaArco, v => LunaArco = v);
+            a("luna_sin_disco", () => LunaSinDisco, v => LunaSinDisco = v); a("aurora_hora", () => AuroraHora, v => AuroraHora = v);
+            a("medianoche", () => MedianocheCielo, v => MedianocheCielo = v); a("fiestas_cielo", () => FiestasCielo, v => FiestasCielo = v);
+            a("lluvias_estrellas", () => LluviasEstrellas, v => LluviasEstrellas = v); a("luna_llena", () => LunaLlenaCielo, v => LunaLlenaCielo = v);
+            a("constelaciones", () => Constelaciones, v => Constelaciones = v); a("nubes_cielo", () => NubesCielo, v => NubesCielo = v);
+            a("clima_cielo", () => ClimaCielo, v => ClimaCielo = v);
             clavesVisuales = l.ToArray(); ponVisuales = p.ToArray();
         }
         // Una linea del archivo de configuracion: true si era de estas.

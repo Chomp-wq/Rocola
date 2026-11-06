@@ -93,7 +93,7 @@ namespace Rocola
             ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
             Reloj.Cuadros++; Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4);   // las portadas que ya se leyeron en el fondo, a la tarjeta
-            Pulso(c); ColorVivoAlDia(c);
+            Pulso(c); ColorVivoAlDia(c); CieloAlDia(c);   // (el cielo segun la hora, la fecha y el clima: CieloHora.cs)
             if (m.LetraNueva != letrasPedidas) CargaLetras(m.LetraNueva);   // L1 cambiada en Ctrl+F3: las letras, al momento
             PodaLetras();
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;

@@ -68,11 +68,17 @@ namespace Rocola
         }
         private void Encima(float W, float H, double t, float alfa)
         {
+            Sol(W, H, alfa);                       // H2 (CieloHora.cs)
             Estrellas(W, H, t, alfa);
+            Constelaciones(W, H, t, alfa);         // O1
+            Luna(W, H, t, alfa);
+            Nubes(W, H, t, alfa);                  // O2, O3
             if (auroraAhora) Aurora(W, H, t, alfa);   // V2
             Onda(W, H, t, alfa);
             HorizonteLuz(W, H, t, alfa);
-            Luna(W, H, t, alfa);
+            Fiestas(W, H, t, alfa);                // F1
+            Fugaces(W, H, t, alfa);                // F2, H6
+            Clima(W, H, t, alfa);                  // O3
         }
 
         private Dibujo.Capa capaCielo; private bool sinCapaCielo;
@@ -99,10 +105,10 @@ namespace Rocola
             C3 a1 = new C3((a0.R + am.R) / 2, (a0.G + am.G) / 2, (a0.B + am.B) / 2), d1 = new C3((d0.R + dm.R) / 2, (d0.G + dm.G) / 2, (d0.B + dm.B) / 2);
             float corte = H * 0.40f * corteNegro / 42f;   // donde acaba el negro de arriba (cielo_negro=, 42 de fabrica)
             if (opaco) d.Mezcla(false);
-            d.Degradado(0, 0, W, corte, Parada(0x16163A, a0, d0, alfa), Parada(0x28285C, a1, d1, alfa));
-            d.Degradado(0, corte, W, H * 0.75f - corte, Parada(0x28285C, a1, d1, alfa), Parada(0x2C367D, am, dm, alfa));
-            d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Parada(0x2C367D, am, dm, alfa), Parada(0x37408F, ab, db, alfa));
-            d.Degradado(0, yh, W, H - yh, Parada(0x223470, ab, db, alfa), Parada(0x16234C, ab, db, alfa));
+            d.Degradado(0, 0, W, corte, Parada(pal.Top, a0, d0, alfa), Parada(pal.S1, a1, d1, alfa));
+            d.Degradado(0, corte, W, H * 0.75f - corte, Parada(pal.S1, a1, d1, alfa), Parada(pal.Mid, am, dm, alfa));
+            d.Degradado(0, H * 0.75f, W, yh - H * 0.75f, Parada(pal.Mid, am, dm, alfa), Parada(pal.Hor, ab, db, alfa));
+            d.Degradado(0, yh, W, H - yh, Parada(pal.Bel, ab, db, alfa), Parada(pal.Bel2, ab, db, alfa));
             if (opaco) d.Mezcla(true);
             Nebulosas(W, H, t, alfa);
         }
@@ -114,16 +120,16 @@ namespace Rocola
             float mx = W * 0.06f, my = H * 0.06f;
             double f = t * 0.035;   // una vuelta cada tres minutos
             float c = (float)Math.Cos(f), s = (float)Math.Sin(f);
-            float fuerza = 0.55f + 0.25f * pMedios;
-            d.QuadRejilla(nebulosa, nebulosaTramos, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * alfa));
-            d.QuadRejilla(nebulosa, nebulosaTramos, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.85f * alfa));
+            float fuerza = (0.55f + 0.25f * pMedios) * nebCielo;
+            d.QuadRejilla(nebulosa, nebulosaTramos, -mx + c * mx, -my + s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(pal.NebA, nebA, NebADefecto, fuerza * alfa));
+            d.QuadRejilla(nebulosa, nebulosaTramos, -mx - c * mx, -my - s * my, W + 2 * mx, H + 2 * my, 0, 0, 1, 1, TinteNebulosa(pal.NebB, nebB, NebBDefecto, fuerza * 0.85f * alfa));
             if (nebVivasAhora)
             {
                 // V1: dos capas mas, volteadas y a otra escala, que se funden una en otra despacio: las nubes cambian de forma
                 float f1 = (float)(0.5 + 0.5 * Math.Sin(t * 0.09)), f2 = 1f - f1, ex = W * 0.25f, ey = H * 0.25f;
                 float c2 = (float)Math.Cos(t * 0.021 + 1.7), s2 = (float)Math.Sin(t * 0.027 + 0.4);
-                d.QuadRejilla(nebulosa, nebulosaTramos, -ex + c2 * ex * 0.5f, -ey + s2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 1, 0, 0, 1, TinteNebulosa(0x4C8AD8, nebA, NebADefecto, fuerza * 0.55f * f1 * alfa));
-                d.QuadRejilla(nebulosa, nebulosaTramos, -ex - s2 * ex * 0.5f, -ey + c2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 0, 1, 1, 0, TinteNebulosa(0x9A6EE6, nebB, NebBDefecto, fuerza * 0.50f * f2 * alfa));
+                d.QuadRejilla(nebulosa, nebulosaTramos, -ex + c2 * ex * 0.5f, -ey + s2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 1, 0, 0, 1, TinteNebulosa(pal.NebA, nebA, NebADefecto, fuerza * 0.55f * f1 * alfa));
+                d.QuadRejilla(nebulosa, nebulosaTramos, -ex - s2 * ex * 0.5f, -ey + c2 * ey * 0.5f, W + 2 * ex, H + 2 * ey, 0, 1, 1, 0, TinteNebulosa(pal.NebB, nebB, NebBDefecto, fuerza * 0.50f * f2 * alfa));
             }
         }
         // Ruido de valores en varias escalas (nubes), mas fuerte arriba y en manchas; blanco con su alfa.
@@ -164,6 +170,8 @@ namespace Rocola
             {
                 float y = estrellas[i + 1] * yh;
                 float a = Math.Min(1f, 0.40f + 0.50f * (float)(0.5 + 0.5 * Math.Sin(t * estrellas[i + 4] + estrellas[i + 3])) + 0.30f * pAgudos * (i % 3 == 0 ? 1 : 0));
+                a *= VisEstrella(estrellas[i + 3] / 6.2832f);   // H3 y el clima (CieloHora.cs)
+                if (a <= 0.005f) continue;
                 float tam = estrellas[i + 2] * 0.75f * k;
                 if (aireAhora)
                 {
@@ -190,7 +198,8 @@ namespace Rocola
             for (int i = 0; i < brillantes.Length; i += 5)
             {
                 float x = brillantes[i] * W, y = brillantes[i + 1] * yh, s = brillantes[i + 2];
-                float a = (0.70f + 0.30f * (float)Math.Sin(t * 1.3 + brillantes[i + 3])) * alfa;
+                float a = (0.70f + 0.30f * (float)Math.Sin(t * 1.3 + brillantes[i + 3])) * alfa * VisEstrella(brillantes[i + 4] * 0.4f);
+                if (a <= 0.005f) continue;
                 Color4 c = brillantes[i + 4] < 0.25f ? new Color4(1f, 0.82f, 0.9f) : brillantes[i + 4] < 0.45f ? new Color4(0.8f, 0.88f, 1f) : new Color4(1f, 1f, 1f);
                 Destello(x, y, s * k, c, a);
             }
@@ -216,7 +225,7 @@ namespace Rocola
             Color4 gen = new Color4(ac.R / mx, ac.G / mx, ac.B / mx);
             for (int capa = 0; capa < 2; capa++)
             {
-                Color4 col = Dibujo.Mezcla(capa == 0 ? new Color4(0.30f, 1f, 0.62f) : new Color4(0.36f, 0.86f, 1f), gen, 0.30f);
+                Color4 col = Dibujo.Mezcla(capa == 0 ? this.pal.AurA : this.pal.AurB, gen, 0.30f);   // (H5: el color de la hora)
                 int n = 64; float sube = (capa == 0 ? 130 : 95) * k * (1f + 0.55f * pGraves), fase = capa * 2.1f;
                 float px = 0, pb = 0, pa = 0, pal = 0;
                 for (int i = 0; i <= n; i++)
@@ -224,7 +233,7 @@ namespace Rocola
                     double u = i / (double)n;
                     float onda = (float)(0.5 + 0.5 * Math.Sin(u * 7.3 + t * 0.19 + fase) * Math.Sin(u * 3.1 - t * 0.11 + fase * 0.5));
                     float x = (float)(u * W), base_ = yh - 40 * k * (float)Math.Sin(u * 4.4 + t * 0.07 + fase) - 55 * k * capa;
-                    float alto = sube * (0.25f + 0.75f * onda), a = 0.55f * alfa * (0.25f + 0.75f * onda);
+                    float alto = sube * (0.25f + 0.75f * onda), a = 0.55f * alfa * auroraCielo * (0.25f + 0.75f * onda);
                     if (i > 0)
                     {
                         // la cortina (de transparente arriba a su color en el borde de abajo) y el borde, que se apaga hacia abajo
@@ -240,7 +249,8 @@ namespace Rocola
         private void Onda(float W, float H, double t, float alfa)
         {
             int n = 96; float yb = H * 0.66f, amp = H * 0.075f, grueso = 18f * k * (1f + 0.4f * pGraves);
-            Color4 luz = new Color4(0.45f, 0.52f, 0.95f, 0.16f * alfa), nada = new Color4(0.45f, 0.52f, 0.95f, 0f), filo = new Color4(0.62f, 0.70f, 1f, 0.28f * alfa);
+            float fl = destelloOnda;   // H6: el destello de la medianoche
+            Color4 luz = new Color4(0.45f + 0.4f * fl, 0.52f + 0.35f * fl, 0.95f, Math.Min(1f, 0.16f * (1f + 2f * fl)) * alfa), nada = new Color4(0.45f, 0.52f, 0.95f, 0f), filo = new Color4(0.62f + 0.38f * fl, 0.70f + 0.3f * fl, 1f, Math.Min(1f, 0.28f * (1f + 2.5f * fl)) * alfa);
             float px = 0, py = 0;
             for (int i = 0; i <= n; i++)
             {
@@ -267,19 +277,27 @@ namespace Rocola
             d.Rect(0, yh - 1 * k, W, 2 * k, new Color4(0.62f, 0.66f, 1f, 0.45f * alfa));
             // un resplandor rosado que camina despacio por el horizonte
             float xr = W * (0.5f + 0.32f * (float)Math.Sin(t * 0.05));
-            d.Brillo(xr, yh, 70 * k, new Color4(0.85f, 0.45f, 0.85f, 0.30f * alfa));
-            d.Brillo(xr, yh, 16 * k, new Color4(1f, 0.75f, 1f, 0.45f * alfa));
+            d.Brillo(xr, yh, 70 * k, pal.Glow.ConAlfa(0.30f * alfa));   // (H1: el color de la hora)
+            d.Brillo(xr, yh, 16 * k, Dibujo.Mezcla(pal.Glow, Blanco, 0.45f).ConAlfa(0.45f * alfa));
         }
 
         // ---- la luna, en la fase de hoy ----
         private void Luna(float W, float H, double t, float alfa)
         {
-            DateTime hoy = DateTime.UtcNow;
-            int dia = (int)(hoy - new DateTime(2000, 1, 1)).TotalDays;
-            if (luna == null || dia != lunaDia) { if (luna != null) d.Borra(luna); luna = HazLuna(128, FaseLunar(hoy)); lunaDia = dia; }
-            float r = 33 * k, cx = W * 0.83f, cy = H * 0.22f + 3 * k * (float)Math.Sin(t * 0.15);
-            d.Brillo(cx, cy, r * 3.2f, new Color4(0.75f, 0.8f, 1f, 0.16f * alfa));
-            d.Imagen(luna, cx - r, cy - r, 2 * r, 2 * r, alfa);
+            // la fase de la hora del cielo (CieloHora.cs); H7: el lado oscuro deja ver el cielo
+            bool sinDisco = mCielo != null && mCielo.LunaSinDisco;
+            double fase = mCielo != null ? lunaFase : FaseLunar(DateTime.UtcNow);
+            int clave = (int)Math.Round(fase * 200) * 2 + (sinDisco ? 1 : 0);
+            if (luna == null || clave != lunaDia) { if (luna != null) d.Borra(luna); luna = HazLuna(128, fase, sinDisco); lunaDia = clave; }
+            float r, cx, cy;
+            if (!LunaDonde(W, H, out cx, out cy, out r)) return;   // H4: aun no sale o ya se puso
+            cy += 3 * k * (float)Math.Sin(t * 0.15);
+            Color4 tinte = TinteLuna();
+            if (mCielo != null && mCielo.CieloHora) alfa *= 0.35f + 0.65f * oscuridadSol;   // de dia la luna apenas se ve
+            d.Brillo(cx, cy, r * 3.2f, new Color4(0.75f * tinte.R, 0.8f * tinte.G, tinte.B, (lunaLlena ? 0.30f : 0.16f) * alfa));
+            if (lunaLlena)   // F3: los anillos del halo
+                for (int i = 0; i < 2; i++) { float rr = r * (i == 0 ? 2.1f : 3.3f); d.Contorno(cx - rr, cy - rr, 2 * rr, 2 * rr, rr, 4 * k, new Color4(0.82f, 0.86f, 1f, (i == 0 ? 0.10f : 0.06f) * alfa)); }
+            d.ImagenTenida(luna, cx - r, cy - r, 2 * r, 2 * r, tinte.ConAlfa(alfa));
         }
         // 0 = luna nueva, 0,5 = llena (mes sinodico desde la luna nueva del 6 de enero de 2000, 18:14 UTC).
         internal static double FaseLunar(DateTime utc)
@@ -287,7 +305,7 @@ namespace Rocola
             double dias = (utc - new DateTime(2000, 1, 6, 18, 14, 0, DateTimeKind.Utc)).TotalDays;
             double f = dias / 29.530588853; return f - Math.Floor(f);
         }
-        private Textura HazLuna(int n, double fase)
+        private Textura HazLuna(int n, double fase, bool sinDisco)
         {
             Random r = new Random(1969);
             double[] mx = new double[9], my = new double[9], mr = new double[9];
@@ -308,6 +326,15 @@ namespace Rocola
                     double l = Math.Max(0, Math.Min(1, luz * 6 + 0.5));   // el terminador, suave
                     double b = albedo * (0.55 + 0.45 * z) * l + 0.07 * (1 - l);   // la parte oscura, con la luz de la tierra
                     double borde = Math.Min(1, (1 - Math.Sqrt(rr)) * n / 2);   // el canto sin dientes
+                    if (sinDisco)
+                    {
+                        // H7: lo iluminado opaco; lo oscuro casi transparente, apenas azulado por la luz de la Tierra (deja ver el cielo)
+                        double bl = albedo * (0.55 + 0.45 * z);
+                        double cr = bl * l + 0.60 * (1 - l), cg = bl * l + 0.66 * (1 - l), cb = bl * l + 0.84 * (1 - l);
+                        px[o] = (byte)Math.Min(255, 255 * cr * 0.97); px[o + 1] = (byte)Math.Min(255, 255 * cg * 0.98); px[o + 2] = (byte)Math.Min(255, 255 * cb);
+                        px[o + 3] = (byte)(255 * Math.Max(0, Math.Min(1, borde)) * (l + (1 - l) * 0.13 * albedo / 0.82));
+                        continue;
+                    }
                     px[o] = (byte)Math.Min(255, 255 * b * 0.97); px[o + 1] = (byte)Math.Min(255, 255 * b * 0.98); px[o + 2] = (byte)Math.Min(255, 255 * b);
                     px[o + 3] = (byte)(255 * Math.Max(0, Math.Min(1, borde)));
                 }
