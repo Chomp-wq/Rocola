@@ -1493,3 +1493,24 @@ saliendo **primero** y en su orden. Cuando da menos de 40, una segunda pasada **
   pruebas con 20 000 canciones: de 4 a 12 ms por búsqueda sin nada recordado (antes de este índice, 14 a 25 ms); sin la segunda pasada,
   0 a 2 ms. No medido en el A4.
 - Prueba: `rocola-consola --busca "texto" ...` (con `ROCOLA_MUSICA_LISTA`) dice los 8 primeros y lo que tardó.
+
+## Extra (7-11-2026, novena parte): buscar una canción por su letra (L1 y L3)
+
+Pedido del dueño: «¿también se podría buscar una canción por su letra?» → eligió L1 y L3. `Motor/BuscaLetras.cs`. Se busca con una
+**frase de 4 palabras o más** en el buscador de siempre.
+
+- **L3. La letra que traen tus MP3** (automático): un repaso de fondo, con prioridad mínima (20 ms entre archivos), lee una vez cada MP3
+  (el marco USLT de su etiqueta; otra vez si el archivo cambia) y guarda **solo sus palabras sueltas**, como suenan, en
+  `rocola_letras_mp3.txt` (no la letra). Una frase con 3 de cada 4 de sus palabras en la letra encuentra la canción, aunque la última
+  vaya a medio escribir. Sale debajo de lo exacto (650 puntos).
+- **L1. La letra en internet** (Ctrl+F3 → Internet → «Buscar canciones por su letra (Genius)», encendido; necesita la llave de Genius):
+  al dejar de escribir una frase se pregunta a Genius de qué canciones es (por `curl`, como las actualizaciones; nada se guarda). Sus tres
+  primeras van **delante** de los demás resultados: **tu canción** si la tienes (el mismo título como suena, con poca falta, y el
+  artista); si no, **la de Spotify** (con el modo encendido y el mismo título); si no, una tarjeta **«NO ESTÁ»** que dice cuál es (al
+  elegirla, «no está en la rocola»). «Querida» y «Querida (En Vivo)» cuentan como una.
+- **La llave de Genius**: gratuita (genius.com/api-clients → Client Access Token; pasos en `sistema/casa/LEEME.md`). Llega a la rocola
+  desde Rocola en casa (Ajustes → «Mandar a la rocola», orden `llave_genius`) o en `rocola_genius.txt` en una memoria USB (la copia el
+  buzón). Nunca se puede pedir de vuelta como archivo. Las condiciones de uso de Genius son para uso no comercial.
+- Probado: MP3 de prueba con una letra **inventada** (frases enteras, en desorden, a medio escribir); un Genius simulado (tu canción,
+  una que no tienes, la llave equivocada no truena); la llave mandada desde casa por el buzón simulado. Sin la API real de Genius ni
+  el A4.

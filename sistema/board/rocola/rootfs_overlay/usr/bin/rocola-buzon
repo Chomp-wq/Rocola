@@ -29,9 +29,11 @@ mkdir -p "$TMP"
 dice() { echo "$(date '+%H:%M') $*" > "$DICE"; }
 
 # ---- la llave (de una memoria USB, como rocola-actualiza) ----
+# busca_llave [NOMBRE]: rocola_buzon.txt (de fabrica) o rocola_genius.txt (la llave para buscar canciones por su letra, BuscaLetras.cs)
 busca_llave() {
-	for f in /rocola/discos/*/rocola_buzon.txt /rocola/discos/*/*/rocola_buzon.txt; do [ -f "$f" ] && { echo "$f"; return; }; done
-	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname rocola_buzon.txt 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
+	nom=${1:-rocola_buzon.txt}
+	for f in /rocola/discos/*/$nom /rocola/discos/*/*/$nom; do [ -f "$f" ] && { echo "$f"; return; }; done
+	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname $nom 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
 	for p in /sys/class/block/*; do
 		[ -e "$p/partition" ] || continue
 		dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
@@ -39,7 +41,7 @@ busca_llave() {
 		grep -q "^/dev/$dev " /proc/mounts && continue
 		m=$TMP/usb; mkdir -p "$m"
 		mount -o ro "/dev/$dev" "$m" 2>/dev/null || continue
-		f=$(find "$m" -maxdepth 2 -iname rocola_buzon.txt 2>/dev/null | head -1)
+		f=$(find "$m" -maxdepth 2 -iname $nom 2>/dev/null | head -1)
 		[ -n "$f" ] && cp "$f" "$TMP/llave.txt"
 		umount "$m"
 		[ -f "$TMP/llave.txt" ] && { echo "$TMP/llave.txt"; return; }
@@ -56,6 +58,12 @@ mira_llave() {
 			printf '%s\n' "$nueva" > "$DATOS/rocola_buzon.txt"; chmod 600 "$DATOS/rocola_buzon.txt"; sync
 			printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave del buzon puesta (de $f)" >> "$DATOS/rocola_actualizaciones.txt"
 		fi
+	fi
+	# la de Genius (buscar por la letra): solo si falta, en la misma vuelta de cada 15 minutos
+	if [ -n "$ahoraB" ] && [ "$(leer "$TMP/busco_llave")" = "$ahoraB" ] && [ ! -s "$DATOS/rocola_genius.txt" ]; then
+		g=$(busca_llave rocola_genius.txt)
+		if [ -n "$g" ]; then tr -d ' \r\n\t' < "$g" > "$DATOS/rocola_genius.txt"; chmod 600 "$DATOS/rocola_genius.txt"; rm -f "$TMP/llave.txt"; sync
+			printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Genius puesta (de $g)" >> "$DATOS/rocola_actualizaciones.txt"; fi
 	fi
 	LLAVE=$(sed -n 1p "$DATOS/rocola_buzon.txt" 2>/dev/null)
 	REPO=${ROCOLA_BUZON:-$(sed -n 2p "$DATOS/rocola_buzon.txt" 2>/dev/null)}; REPO=${REPO:-Chomp-wq/rocola-buzon}
@@ -151,6 +159,7 @@ manda_estado() {   # manda_estado [forzado]
 permitido() {
 	case "$1" in
 		*/*|*..*|rocola_github.txt|rocola_buzon.txt|"") return 1 ;;
+		rocola_genius.txt) return 1 ;;
 		rocola*.txt|rocola*.txt.1|rocola*.txt.bak|sistema.txt|rocola-arranque.txt|rocola-discos.txt|rocola-mpv.txt|dmesg.txt) return 0 ;;
 	esac
 	return 1
@@ -222,6 +231,10 @@ atiende_ordenes() {
 			apagar)
 				if [ "$arg" = ya ]; then responde "$id" "$orden" "apagando el equipo ahora"; echo apaga > "$TMP/reiniciar"
 				else touch "$RUN/rocola-apaga-equipo"; responde "$id" "$orden" "el equipo se apaga cuando la rocola este libre (nada sonando ni en la cola, 2 min sin botones)"; fi ;;
+			llave_genius)
+				v=$(printf '%s' "$arg" | tr -d ' \r\n\t')
+				if [ ${#v} -lt 10 ]; then responde "$id" "$orden" "la llave de Genius parece incompleta"
+				else printf '%s' "$v" > "$DATOS/rocola_genius.txt"; chmod 600 "$DATOS/rocola_genius.txt"; sync; responde "$id" "$orden" "llave de Genius puesta: ya se puede buscar por la letra"; fi ;;
 			cancelar)
 				rm -f "$RUN/rocola-apaga-equipo" "$RUN/rocola-reinicia-equipo" "$RUN/rocola-reinicia-programa"
 				responde "$id" "$orden" "cancelado lo pendiente (apagar o reiniciar cuando este libre)" ;;

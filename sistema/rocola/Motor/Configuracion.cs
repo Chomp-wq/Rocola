@@ -101,6 +101,7 @@ namespace Rocola
             else if (s.StartsWith("polvo_lunar=")) PolvoLunar = s.Substring(12).Trim() != "0";
             else if (s.StartsWith("estela_estelar=")) EstelaEstelar = s.Substring(15).Trim() != "0";
             else if (s.StartsWith("actualizar_solo=")) ActualizarSolo = s.Substring(16).Trim() != "0";
+            else if (s.StartsWith("busca_letra=")) BuscaLetra = s.Substring(12).Trim() != "0";   // L1 (BuscaLetras.cs)
             else if (s.StartsWith("spotify=")) SpotifyOn = s.Substring(8).Trim() == "1";
             else if (s.StartsWith("calidad_spotify=")) CalidadSpotify = s.Substring(16).Trim() != "0";
             else if (s.StartsWith("letras_spotify=")) LetrasSpotify = s.Substring(15).Trim() != "0";

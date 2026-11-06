@@ -42,6 +42,15 @@ rocola (`rocola-buzon`, en el sistema) lee ahí tus órdenes cada minuto y sube 
 En Pop!_OS: `chmod +x rocola-casa && ./rocola-casa`. En Windows: doble clic en `rocola-casa.exe` (Windows puede avisar por ser un
 programa nuevo: «Más información» → «Ejecutar de todas formas»).
 
+## La llave de Genius (buscar canciones por su letra)
+
+La rocola puede buscar una canción por un pedazo de su letra preguntándole a Genius. Para eso necesita una llave gratuita:
+1. Entra a **genius.com/api-clients** (con una cuenta de Genius) → **New API Client**: nombre «Rocola», y en «App website URL» cualquier
+   dirección (por ejemplo la de tu Facebook o `https://example.com`). Guardar.
+2. En el cliente creado, **Generate Access Token** y copia el **Client Access Token**.
+3. Ponlo en la rocola: en **Ajustes** de Rocola en casa, «Llave de Genius para la rocola» → «Mandar a la rocola»; o en un archivo
+   `rocola_genius.txt` en una memoria USB conectada a la rocola.
+
 ## Compilarlo
 
 `dotnet publish -c Release -r linux-x64` (o `-r win-x64`) en esta carpeta, o en GitHub: Actions → «Rocola en casa» → Run workflow (publica

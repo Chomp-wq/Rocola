@@ -152,6 +152,9 @@ th{color:var(--tenue);font-weight:500}
       <label>Puerto UDP</label><input id="cWolPuerto" style="width:100px">
       <label>MAC de la rocola (si no, la del estado)</label><input id="cMac" style="width:100%">
       <div class="fila"><button class="b" onclick="guardaConfig()">Guardar</button><button class="b" onclick="comprueba()">Comprobar la llave</button></div>
+      <label>Llave de Genius para la rocola (buscar canciones por su letra)</label>
+      <div class="fila"><input id="cGenius" type="password" placeholder="Client Access Token de genius.com/api-clients" style="flex:1">
+      <button class="b" onclick="if($('cGenius').value.trim().length>10){orden('llave_genius',$('cGenius').value.trim());$('cGenius').value=''}else aviso('Pega la llave completa')">Mandar a la rocola</button></div>
       <pre id="cRes" class="tenue">—</pre>
       <div class="tenue" id="cArchivo"></div>
     </div>

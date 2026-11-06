@@ -258,7 +258,7 @@ namespace Rocola
                         tx = cx + pl + 18 * k;
                     }
                     float tw = cx + cw - 10 * k - tx;
-                    string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "ÁLBUM" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
+                    string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "ÁLBUM" : r.Tipo == 3 ? "SERVICIO" : r.Tipo == 5 ? "NO ESTÁ" : "CANCIÓN";
                     Color4 ct = r.Tipo == 0 ? Color4.Hex(0x8FB8FF) : r.Tipo == 1 ? Color4.Hex(0xFFC24D) : r.Tipo == 2 ? VerdeTexto : Dorado;
                     fTipo.Escribe(d, tipo, tx, cy + 14 * k, ct);
                     string pas = r.Ruta != null && string.Equals(r.Ruta, suena, StringComparison.OrdinalIgnoreCase) ? "SONANDO" : r.Ruta != null && enCola.Contains(r.Ruta) ? "EN COLA" : null;

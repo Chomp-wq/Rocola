@@ -240,6 +240,7 @@ namespace Rocola
             foreach (string w in pm.Keys) todas.Add(w);
             string[] l = new string[todas.Count]; todas.CopyTo(l);
             lock (valoresDePalabra) { valoresDePalabra.Clear(); palabrasPrincipales = pp; palabrasMas = pm; palabrasDistintas = l; }
+            if (letrasMp3.Count > 0) IndiceLetras(true);   // (y las letras de los MP3, con las entradas nuevas)
         }
         private static void Apunta(Dictionary<string, List<SearchItem>> d, string w, SearchItem si)
         {

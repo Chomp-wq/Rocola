@@ -45,6 +45,7 @@ namespace Rocola
             cachedCovers = null; cachedVideoPaths = null;
             IndexaBiblioteca();
             BuildSearchIndex();   // el indice del buscador (Buscador.cs)
+            ArrancaLetrasMp3();   // la letra que traen algunos MP3, de fondo (L3, BuscaLetras.cs)
             List<Disco> r2 = new List<Disco>(albums.Count);
             foreach (Album a in albums)
             {

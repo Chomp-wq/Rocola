@@ -346,7 +346,7 @@ namespace Rocola
                 Form1.Resultado r = c.Resultados[desde + i]; float y = ry + i * fila_;
                 bool sel = c.EnResultados && desde + i == c.SelResultado;
                 if (sel) { d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro); zSelResultado = new Zona(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k); }
-                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : "CANCIÓN";
+                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : r.Tipo == 5 ? "NO ESTÁ" : "CANCIÓN";
                 chica.Escribe(d, tipo, rx, y + 6 * k, r.Tipo == 2 ? Verde : Dorado);
                 media.Escribe(d, media.Ajusta(r.Texto, rw - 100 * k), rx + 100 * k, y + 2 * k, sel ? Blanco : Gris);
             }

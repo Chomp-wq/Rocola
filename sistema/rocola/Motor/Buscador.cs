@@ -89,6 +89,8 @@ namespace Rocola
                     }
                     // EL BUSCADOR FLEXIBLE (BuscadorFlexible.cs, 7-11-2026): si lo exacto no llena las 40, lo que casa de oido, con faltas o con
                     // palabras de sobra, debajo de lo exacto (de 100 a 700 puntos: lo exacto empieza en 800).
+                    // LA LETRA DE TUS MP3 (L3, BuscaLetras.cs): con una frase, las canciones con casi todas sus palabras en la letra
+                    if (!SinFlexible) BuscaEnLetrasMp3(q, matches);
                     if (matches.Count < 40 && !SinFlexible)
                     {
                         int antes = matches.Count;

@@ -508,17 +508,33 @@ namespace Rocola
         // Los resultados de Spotify, detras de los de la biblioteca, en cuanto llegan (el motor busca cuando se deja de escribir).
         private List<Form1.Resultado> resultadosLocales, resultadosMezclados;
         private string resultadosSpotifyDe;
+        // Y BUSCAR POR LA LETRA (L1, Motor/BuscaLetras.cs): con una frase, lo que dice Genius va DELANTE (es lo que se buscaba: alguien no
+        // escribe cuatro palabras de una letra por casualidad), sin repetir lo que ya estaba.
+        private List<Form1.Resultado> resultadosSpotify, resultadosLetra;
+        private string resultadosLetraDe;
         private void RevisaBusquedaSpotify()
         {
             if (!Buscando || resultadosLocales == null || Form1.EsCodigoDeServicio(Escrito)) return;
             // solo sobre lo que se busco escribiendo (no sobre «Lo mas pedido hoy» ni otro atajo)
             if (!object.ReferenceEquals(Resultados, resultadosLocales) && !object.ReferenceEquals(Resultados, resultadosMezclados)) return;
-            if (resultadosSpotifyDe == Escrito) return;
-            List<Form1.Resultado> sp = motor.ResultadosSpotify(Escrito);
-            if (sp == null) return;
-            List<Form1.Resultado> todo = new List<Form1.Resultado>(resultadosLocales);
-            todo.AddRange(sp);
-            Resultados = resultadosMezclados = todo; resultadosSpotifyDe = Escrito;
+            bool cambio = false;
+            if (resultadosSpotifyDe != Escrito)
+            {
+                List<Form1.Resultado> sp = motor.ResultadosSpotify(Escrito);
+                if (sp != null) { resultadosSpotify = sp; resultadosSpotifyDe = Escrito; cambio = true; }
+            }
+            if (resultadosLetraDe != Escrito)
+            {
+                List<Form1.Resultado> le = motor.ResultadosPorLetra(Escrito);
+                if (le != null) { resultadosLetra = le; resultadosLetraDe = Escrito; cambio = true; }
+            }
+            if (!cambio) return;
+            List<Form1.Resultado> todo = new List<Form1.Resultado>();
+            HashSet<string> ya = new HashSet<string>(StringComparer.Ordinal);
+            if (resultadosLetraDe == Escrito && resultadosLetra != null) foreach (Form1.Resultado r in resultadosLetra) { todo.Add(r); if (r.Ruta != null) ya.Add(r.Ruta); }
+            foreach (Form1.Resultado r in resultadosLocales) if (r.Ruta == null || !ya.Contains(r.Ruta)) todo.Add(r);
+            if (resultadosSpotifyDe == Escrito && resultadosSpotify != null) foreach (Form1.Resultado r in resultadosSpotify) if (r.Ruta == null || !ya.Contains(r.Ruta)) todo.Add(r);
+            Resultados = resultadosMezclados = todo;
         }
         private void RefrescaTop()
         {
@@ -764,8 +780,8 @@ namespace Rocola
             if (ch == '\u0002') { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); }
             else Escrito += ch == '\u0001' ? ' ' : ch;
             Resultados = Form1.EsCodigoDeServicio(Escrito) ? new List<Form1.Resultado>() : motor.Busca(Escrito); SelResultado = 0;   // el codigo no busca
-            resultadosLocales = Resultados; resultadosSpotifyDe = null;
-            if (!Form1.EsCodigoDeServicio(Escrito)) motor.PideBusquedaSpotify(Escrito);   // y en Spotify, si esta encendido (llegan despues)
+            resultadosLocales = Resultados; resultadosSpotifyDe = null; resultadosLetraDe = null;
+            if (!Form1.EsCodigoDeServicio(Escrito)) { motor.PideBusquedaSpotify(Escrito); motor.PideBusquedaLetra(Escrito); }   // y en Spotify y por la letra, si toca (llegan despues)
         }
         private void ManejaBuscador(Boton b)
         {
@@ -815,6 +831,7 @@ namespace Rocola
         private void Elige(Form1.Resultado r)
         {
             if (r.Tipo == 3) { if (Form1.EsCodigoDeServicio(Escrito)) { motor.CreditosDeServicio(); Aviso("+4 créditos"); } return; }
+            if (r.Tipo == 5) { Aviso("«" + r.Texto + "» no está en la rocola"); return; }   // (por la letra: se sabe cual es, pero no se tiene)
             if (r.Tipo == 2 && r.Ruta != null) { PideCancion(r.Ruta, r.Texto); return; }
             if (r.Carpeta == null) return;
             if (Form1.EsRutaSpotify(r.Carpeta))

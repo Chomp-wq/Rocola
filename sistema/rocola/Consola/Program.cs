@@ -29,6 +29,7 @@ namespace Rocola
                 if (args[i] == "--busca")   // prueba del buscador (BuscadorFlexible.cs): cada argumento es una busqueda; dice los 8 primeros y cuanto tardo
                 {
                     Form1 mb = new Form1(); mb.Arranca(); mb.LeeBiblioteca();
+                    if (Environment.GetEnvironmentVariable("ROCOLA_LETRAS_SIN_PAUSA") == "1") mb.EsperaLetrasMp3();   // (que el repaso de las letras de los MP3 acabe antes)
                     for (int j = i + 1; j < args.Length; j++)
                     {
                         mb.Busca(args[j]);   // (la primera vez arma lo que guarda; se mide la segunda, como al teclear)
@@ -37,6 +38,12 @@ namespace Rocola
                         sw.Stop();
                         Console.WriteLine("«" + args[j] + "»: " + mb.TotalUltimaBusqueda + " resultados, " + sw.Elapsed.TotalMilliseconds.ToString("0.0") + " ms");
                         for (int k = 0; k < Math.Min(8, r.Count); k++) Console.WriteLine("   " + (r[k].Tipo == 0 ? "artista " : r[k].Tipo == 1 ? "disco   " : "cancion ") + r[k].Texto + (string.IsNullOrEmpty(r[k].Detalle) ? "" : "  (" + r[k].Detalle + ")"));
+                        if (Form1.Palabras(args[j]) >= Form1.PalabrasDeFrase && mb.HayLlaveGenius)
+                        {   // por la letra en internet (L1): lo que contesta Genius, ya llevado a la biblioteca
+                            mb.PideBusquedaLetra(args[j]); List<Form1.Resultado> le = null;
+                            for (int w = 0; w < 120 && (le = mb.ResultadosPorLetra(args[j])) == null; w++) System.Threading.Thread.Sleep(100);
+                            if (le != null) foreach (Form1.Resultado x in le) Console.WriteLine("   letra   " + x.Texto + "  (" + x.Detalle + ")" + (x.Tipo == 5 ? " [no esta]" : ""));
+                        }
                     }
                     return 0;
                 }
