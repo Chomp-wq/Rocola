@@ -32,7 +32,7 @@ volumen() {
 	for c in Master PCM Speaker Headphone Front "Line Out"; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
 }
 volumen
-probando=0; fallos=0
+probando=0; fallos=0; rapidas=0
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> $REGISTRO; }
 pon_nueva() {
 	[ -f "$PROG/rocola-consola.nueva" ] || return
@@ -73,5 +73,15 @@ while :; do
 			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras
 		elif [ "$duro" -ge 120 ]; then probando=0; fi
 	fi
-	sleep 2
+	# SE CAE AL ARRANCAR UNA Y OTRA VEZ (aunque ya estuviera confirmada; 6-11-2026): a la tercera seguida en menos de 30 s, se aparta la
+	# version bajada (como mala: no se vuelve a bajar) y se usa la que trae el sistema. Si tambien se cae, se espera mas entre intentos.
+	if [ "$r" != 0 ] && [ "$duro" -lt 30 ]; then rapidas=$((rapidas + 1)); else rapidas=0; fi
+	if [ "$rapidas" -ge 3 ] && [ "$BIN" != /usr/bin/rocola-consola ] && [ "$probando" = 0 ]; then
+		mala=$(cat "$PROG/version" 2>/dev/null)
+		[ -n "$mala" ] && echo "$mala" >> "$PROG/malas"
+		mv -f "$PROG/rocola-consola" "$PROG/rocola-consola.caida"; rm -f "$PROG/version"; sync
+		apunta "La version $mala se cayo 3 veces seguidas al arrancar: se usa la que trae el sistema"
+		rapidas=0
+	fi
+	if [ "$rapidas" -ge 5 ]; then sleep 30; else sleep 2; fi
 done

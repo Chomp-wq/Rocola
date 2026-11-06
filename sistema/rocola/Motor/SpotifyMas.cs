@@ -236,12 +236,18 @@ namespace Rocola
             try { t.EnsureTags(); } catch { }
             if (string.IsNullOrEmpty(t.Genre)) t.Genre = p.Generos.Split(',')[0].Trim();
         }
+        // Las portadas de Spotify de tus discos: instalada, en el disco de la rocola (junto a la musica, como el material de la IA: lo
+        // aprendido, datos.img, mide 512 MB); desde la memoria USB, en los datos. Solo imagenes.
+        private static string CarpetaPortadasSpotify
+        {
+            get { return Directory.Exists("/rocola/disco/rocola-os") ? "/rocola/disco/rocola-os/portadas_spotify" : Path.Combine(CarpetaDatos, "portadas_spotify"); }
+        }
         private readonly Dictionary<string, string> portadaDeCarpeta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private void PonPortadaDeSpotify(SpotifyEnVivo s, string ruta, Pareja p)
         {
             if (!PortadasSpotify || p == null || string.IsNullOrEmpty(p.Portada) || string.IsNullOrEmpty(p.AlbumId)) return;
             Album a = DiscoDe(ruta); if (a == null || !string.IsNullOrEmpty(a.CoverPath)) return;
-            string dir = Path.Combine(CarpetaDatos, "portadas_spotify");
+            string dir = CarpetaPortadasSpotify;
             try { Directory.CreateDirectory(dir); } catch { }
             string archivo = Path.Combine(dir, LimpiaClave(p.AlbumId) + ".jpg");
             if (!File.Exists(archivo))
@@ -262,7 +268,7 @@ namespace Rocola
         private void AplicaParejasGuardadas()
         {
             if (!PortadasSpotify || discoDeRuta == null) return;
-            string dir = Path.Combine(CarpetaDatos, "portadas_spotify");
+            string dir = CarpetaPortadasSpotify;
             List<KeyValuePair<string, Pareja>> l; lock (spotifyCerrojo) l = new List<KeyValuePair<string, Pareja>>(parejas);
             foreach (KeyValuePair<string, Pareja> kv in l)
             {

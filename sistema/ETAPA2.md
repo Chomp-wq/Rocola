@@ -1298,3 +1298,20 @@ Pedido del dueño: «revisa todo lo de Spotify en busca de fallos, errores y mej
 - **Las portadas en la memoria** de más de un día se borran al abrir el programa de Spotify.
 - Probado otra vez con el `rocola-spotify` simulado: la misma canción dos veces suena entera las dos; la sustitución invisible, el disco
   completado y los créditos, como antes. Sin cuenta real ni A4.
+
+## Extra (6-11-2026, cuarta parte): revisión de todo Rocola OS
+
+Pedido del dueño: «revisa todo Rocola OS». Se repasaron el arranque instalado (initramfs: el disco por UUID, la copia en prueba, la vuelta
+atrás, la reparación de datos.img), el inicio (S99rocola, S41red, S02hora), el lanzador de la rocola, la actualización del programa y del
+sistema (rocola-actualiza), el instalador y el desinstalador, los discos de música, la tarjeta de sonido, el botón de encendido y la
+salida para actualizarse (guarda el estado: los créditos se conservan). Lo que estaba bien se deja; se arregla:
+
+- **Una versión del programa que se cae al arrancar una y otra vez** (aunque ya estuviera confirmada; por ejemplo, por algo en los datos)
+  hacía que el lanzador la reabriera cada 2 s para siempre: solo se volvía atrás en los primeros 2 minutos de una versión nueva. Ahora, a
+  la tercera caída seguida en menos de 30 s, se aparta (como mala: no se vuelve a bajar) y se usa la que trae el sistema; si esa también se
+  cae, espera 30 s entre intentos. Probado con un programa que se cae siempre.
+- **Las portadas de Spotify de tus discos** (SP5) se guardaban en lo aprendido (datos.img, 512 MB); con una biblioteca grande podían
+  llenarlo. Instalada, ahora van al disco de la rocola (`\rocola-os\portadas_spotify`), como el material de la IA.
+- Comprobado sin cambios: el espacio que pide la actualización del sistema (1,4 GB: bajar el `.gz` y descomprimir 1 GB) alcanza; un apagón
+  a media actualización no cambia el arranque (se cambia lo último); el instalador copia y comprueba byte a byte y guarda el arranque de XP
+  antes de tocarlo; el reinicio tras quitar la memoria funciona sin ella; la salida para actualizarse no borra créditos ni cola.
