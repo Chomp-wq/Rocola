@@ -415,6 +415,18 @@ namespace Rocola
             // como conectarse y lo que suena.
             { Ajuste x = Interruptor("Spotify", "Spotify en la rocola (reuniones familiares)", "spotify", () => SpotifyOn, v => SpotifyOn = v, false);
               x.Nota = () => "Solo para la familia: Spotify no permite ponerlo para el publico de un negocio. Necesita Spotify Premium."; l.Add(x); }
+            // LO QUE SPOTIFY ANADE (SpotifyMas.cs, SP1-SP11): cada uno con su interruptor, encendidos, y en gris sin el modo Spotify
+            Func<string> sinSpotify = () => SpotifyOn ? null : "necesita «Spotify en la rocola»";
+            { Ajuste x = Interruptor("Spotify", "Tus canciones dañadas suenan desde Spotify (sin que se note)", "calidad_spotify", () => CalidadSpotify, v => CalidadSpotify = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Las tuyas con los agudos cortados suenan con la version de Spotify (320 kbps) si es la misma grabacion. En la pantalla no cambia nada; si Spotify falla, suena tu MP3."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Letras en el estado extendido", "letras_spotify", () => LetrasSpotify, v => LetrasSpotify = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "La letra de lo que suena (de Spotify, o tuya si tiene pareja en Spotify), al estilo de Apple Music, cuando nadie toca la rocola."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Portadas y generos que faltan", "portadas_spotify", () => PortadasSpotify, v => PortadasSpotify = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Tus discos sin caratula toman la de Spotify, y tus canciones sin genero, el del artista. Tus archivos no se tocan."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "Completar tus discos", "completar_discos", () => CompletarDiscos, v => CompletarDiscos = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "Las canciones que le faltan a un disco tuyo salen al final, marcadas «Spotify», con su credito."; l.Add(x); }
+            { Ajuste x = Interruptor("Spotify", "La foto del artista en el estado extendido", "artista_fondo", () => ArtistaFondo, v => ArtistaFondo = v, false);
+              x.Bloqueo = sinSpotify; x.Nota = () => "De fondo, tenue, la foto del artista que suena, y el ano del disco."; l.Add(x); }
             // EL DIAGNOSTICO COMPLETO (herramienta de XP: no guarda ni aplica nada); lo corre el programa (Diagnostico.cs).
             Ajuste dg = new Ajuste { Grupo = "Diagnóstico", Nombre = "Diagnóstico completo de la pantalla (unos 50 s)", Herramienta = true };
             dg.Valor = delegate { return "EMPEZAR"; };

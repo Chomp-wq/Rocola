@@ -246,11 +246,12 @@ namespace Rocola
         internal const string RaizSpotify = "/spotify/";
         internal const float RmsSpotify = 0.2f;   // lo que deja la normalizacion de Spotify (cerca de -14 LUFS), en la escala de normTarget
         private const int SpotifySinSonidoMs = 20000;   // pedida y sin sonido en este tiempo: no se pudo tocar
+        private const int SustitutaSinSonidoMs = 6000;  // (la tuya sustituida: antes, para que suene tu MP3 sin mucha espera)
         private SpotifyEnVivo spotify;
         private int spotifyReintentoDesde, spotifyFallos, spotifyMirado;
 
         // Una cancion de Spotify: su ruta en la rocola es /spotify/ID/Artista - Titulo.spotify (lo que se ve es el nombre del «archivo»).
-        private sealed class PistaSpotify { public string Id, Titulo, Artista, Disco, DiscoCarpeta, PortadaUrl; public long Ms; }
+        private sealed class PistaSpotify { public string Id, Titulo, Artista, Disco, DiscoCarpeta, PortadaUrl, ArtistaId, Anio; public long Ms; }
         private readonly object spotifyCerrojo = new object();
         private readonly Dictionary<string, PistaSpotify> spotifyPistas = new Dictionary<string, PistaSpotify>(StringComparer.Ordinal);
         private readonly Dictionary<string, Disco> spotifyDiscosPorCarpeta = new Dictionary<string, Disco>(StringComparer.Ordinal);
@@ -299,6 +300,7 @@ namespace Rocola
             // LA BIBLIOTECA: al entrar y cada 30 min (listas nuevas), en segundo plano.
             if (spotify.Conectado && !spotifyCargandoPared && (spotifyBibliotecaDesde == 0 || unchecked(ahora - spotifyBibliotecaDesde) > 30 * 60 * 1000))
             {
+                if (spotifyBibliotecaDesde == 0) { LeeParejas(); AplicaParejasGuardadas(); ArrancaEmparejador(); }   // SP4, SP5 (SpotifyMas.cs)
                 spotifyBibliotecaDesde = ahora | 1; spotifyCargandoPared = true; spotifyFallos = 0;
                 SpotifyEnVivo s = spotify;
                 ThreadPool.QueueUserWorkItem(delegate { try { CargaPared(s); } catch (Exception ex) { LogError("Spotify: la biblioteca", ex); } finally { spotifyCargandoPared = false; } });
@@ -366,8 +368,11 @@ namespace Rocola
             if (id.Length == 0 || (t.TryGetProperty("is_local", out JsonElement lo) && lo.ValueKind == JsonValueKind.True)) return null;
             if (t.TryGetProperty("is_playable", out JsonElement pl) && pl.ValueKind == JsonValueKind.False) return null;
             PistaSpotify p = new PistaSpotify { Id = id, Titulo = SpotifyEnVivo.Texto(t, "name"), Artista = Artistas(t), Disco = disco, DiscoCarpeta = discoCarpeta, PortadaUrl = portadaUrl };
+            if (t.TryGetProperty("artists", out JsonElement ars) && ars.ValueKind == JsonValueKind.Array)
+                foreach (JsonElement a0 in ars.EnumerateArray()) { p.ArtistaId = SpotifyEnVivo.Texto(a0, "id"); break; }
             if (t.TryGetProperty("album", out JsonElement al) && al.ValueKind == JsonValueKind.Object)
             {
+                string fecha = SpotifyEnVivo.Texto(al, "release_date"); if (fecha.Length >= 4) p.Anio = fecha.Substring(0, 4);
                 if (string.IsNullOrEmpty(p.Disco)) p.Disco = SpotifyEnVivo.Texto(al, "name");
                 if (string.IsNullOrEmpty(p.DiscoCarpeta)) p.DiscoCarpeta = RaizSpotify + "album/" + SpotifyEnVivo.Texto(al, "id");
                 p.PortadaUrl = Imagen(al) ?? p.PortadaUrl;
@@ -398,6 +403,7 @@ namespace Rocola
             List<Disco> pared = new List<Disco>();
             Disco fav = DiscoSpotify(RaizSpotify + "favoritas", "Tus favoritas", "Spotify", null);
             pared.Add(fav);
+            try { pared.AddRange(ExitosDelMomento(s)); } catch (Exception ex) { LogError("Spotify: exitos", ex); }   // SP8
             using (JsonDocument d = Api(s, "/v1/me/playlists?limit=50"))
                 if (d != null && d.RootElement.TryGetProperty("items", out JsonElement it) && it.ValueKind == JsonValueKind.Array)
                     foreach (JsonElement p in it.EnumerateArray())
@@ -422,6 +428,7 @@ namespace Rocola
             // las portadas, despues (la pared ya se ve; cada una aparece al llegar), y las canciones de las listas y las favoritas por
             // adelantado (para que digan cuantas tienen y se entre sin esperar), una por una
             foreach (Disco x in pared) PonPortada(s, x);
+            try { CargaAtajos(s); } catch (Exception ex) { LogError("Spotify: atajos", ex); }   // SP9
             foreach (Disco x in pared)
             {
                 if (spotify != s) return;   // se apago o se reabrio
@@ -654,30 +661,35 @@ namespace Rocola
         // EMPIEZA UNA DE SPOTIFY por la cadena de siempre (como EmpiezaItem), sin aprender nada.
         private ISampleProvider EmpiezaSpotify(PlayItem it)
         {
+            string id = it.Song.Path.Substring(RaizSpotify.Length); int barra = id.IndexOf('/'); if (barra > 0) id = id.Substring(0, barra);
+            return EmpiezaSpotify(it, id, it.Song, false);
+        }
+        // 'it' es lo que se ve (la de Spotify, o la tuya si se sustituye: SP2) y 'pista', con lo que se arma la cadena (su ruta de
+        // Spotify: su nivelado y lo que se aprende son los de la version de Spotify, SP3).
+        private ISampleProvider EmpiezaSpotify(PlayItem it, string id, Track pista, bool sustituida)
+        {
             SpotifyEnVivo s = spotify;
             if (s == null || !s.Conectado || cadenaSonando != null) return null;
-            string id = it.Song.Path.Substring(RaizSpotify.Length); int barra = id.IndexOf('/'); if (barra > 0) id = id.Substring(0, barra);
-            PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(it.Song.Path, out p);
+            PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(pista.Path, out p);
             string uri = "spotify:track:" + id;
             s.Habla();
             using (JsonDocument d = s.Toca.Pide(ControlSpotify.Orden("toca", "uri", uri), 5000))
                 if (d == null || !SpotifyEnVivo.Bool(d.RootElement, "ok")) { s.Calla(); return null; }
-            FuenteSpotify f = new FuenteSpotify(s, this, uri, p != null ? p.Ms : 0);
+            FuenteSpotify f = new FuenteSpotify(s, this, uri, p != null ? p.Ms : 0, sustituida ? SustitutaSinSonidoMs : SpotifySinSonidoMs);
             try
             {
                 sonoAntes = nowPlaying; nowPlaying = it;
-                CadenaCancion cad = ArmaCadena(it.Song, f, false, 0.0);
-                // NADA SE APRENDE DE SPOTIFY: ni la sonoridad, ni la huella del EQ, ni el volumen parejo del billar
-                cad.MedidaRuta = null; cad.EqRuta = null; cad.Margen = null;
-                if (cad.Tap != null) cad.Tap.Medida = new MedidaCancion(null, null);
-                if (cad.Sbr != null) cad.Sbr.Active = false;
+                spotifySustituida = sustituida ? it : null;
+                // SP3: se aprende como de las tuyas, pero bajo su ruta de Spotify (sonoridad, huella del EQ, volumen parejo del billar)
+                CadenaCancion cad = ArmaCadena(pista, f, false, 0.0);
+                if (cad.Sbr != null) cad.Sbr.Active = false;   // (llega completa: sin DSEE)
                 SellaInicioReloj(cad);
                 cad.Item = it;
                 lock (audioDatosLock)
                 {
-                    curMeasurePath = null; curSumSq = 0; curSamples = 0;
+                    curMeasurePath = cad.MedidaRuta; curSumSq = 0; curSamples = 0;
                     curFuenteMedida = cad.Fuente;
-                    eqMeasPath = null; eqMeasCut = 0f;
+                    eqMeasPath = cad.EqRuta; eqMeasCut = 0f;
                     eqMeasSum = new double[8]; eqMeasN = 0; eqMeasRate = 0;
                     kwRate = 0;
                     tapMedido = cad.Tap;
@@ -694,6 +706,7 @@ namespace Rocola
             {
                 LogError("Spotify: no se pudo armar la cadena", ex);
                 if (object.ReferenceEquals(nowPlaying, it)) nowPlaying = null;
+                spotifySustituida = null;
                 TerminaSpotify();
                 return null;
             }
@@ -702,7 +715,14 @@ namespace Rocola
         private volatile bool spotifyFallida;   // la que sonaba no llego a sonar (FuenteSpotify): se devuelve su credito al cerrarla
         private void TerminaSpotify()
         {
-            if (spotifyFallida) { spotifyFallida = false; DevuelveCredito("Spotify no pudo tocar esa cancion"); }
+            PlayItem sus = spotifySustituida; spotifySustituida = null;
+            if (spotifyFallida)
+            {
+                spotifyFallida = false;
+                // SP2: la tuya que no pudo sonar desde Spotify suena desde tu MP3, enseguida y sin avisar; la de Spotify devuelve su credito
+                if (sus != null) { sinSpotify.Add(sus); if (queue.Count == 0 || !object.ReferenceEquals(queue[0], sus)) queue.Insert(0, sus); pideEmpezar = true; }
+                else DevuelveCredito("Spotify no pudo tocar esa cancion");
+            }
             SpotifyEnVivo s = spotify; if (s == null) return;
             s.Calla();
             ThreadPool.QueueUserWorkItem(delegate { using (s.Toca.Pide("{\"op\":\"para\"}", 3000)) { } });
@@ -711,7 +731,8 @@ namespace Rocola
         // El nivel de Spotify: el de las no medidas (como los videos), con el margen del tono del local.
         private float GananciaSpotify(Track t)
         {
-            float g = 1f;
+            float g = 1f, rms;
+            if (normalizeOn && SonoridadParaNivelar(t.Path, out rms)) return NormGainFor(t.Path) * MargenDelTono(t);   // SP3: ya medida, al limite como las tuyas
             if (normalizeOn) g = Math.Max(0.5f, Math.Min(4f, normTarget / RmsSpotify));
             float m = MargenDelTono(t);
             return m == 1f ? g : g * m;
@@ -757,7 +778,8 @@ namespace Rocola
             private long cuadros;
             private readonly int desde = Environment.TickCount;
             private bool acabada, llego;
-            internal FuenteSpotify(SpotifyEnVivo s, Form1 f, string uri, long ms) { this.s = s; this.f = f; this.uri = uri; this.ms = ms; }
+            private readonly int plazo;
+            internal FuenteSpotify(SpotifyEnVivo s, Form1 f, string uri, long ms, int plazo) { this.s = s; this.f = f; this.uri = uri; this.ms = ms; this.plazo = plazo; }
             public WaveFormat WaveFormat { get { return formato; } }
             public int Read(Span<float> d)
             {
@@ -768,7 +790,7 @@ namespace Rocola
                 if (n < d.Length)
                 {
                     if (s.Acabo == uri) { acabada = true; Cuenta(d.Slice(0, n)); return n; }   // acabo y no queda nada: el final de verdad
-                    if (!llego && unchecked(Environment.TickCount - desde) > SpotifySinSonidoMs) { acabada = true; f.spotifyFallida = true; return 0; }
+                    if (!llego && unchecked(Environment.TickCount - desde) > plazo) { acabada = true; f.spotifyFallida = true; return 0; }
                     d.Slice(n).Clear();   // lo que no llego (la red que tarda), en silencio
                 }
                 Cuenta(d);

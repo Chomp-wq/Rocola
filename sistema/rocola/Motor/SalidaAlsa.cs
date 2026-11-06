@@ -47,6 +47,8 @@ namespace Rocola
                 return tasaSalida == tasa ? oidos : oidos * tasa / tasaSalida;   // en cuadros de la cancion
             }
         }
+        // Lo que la tarjeta aun tiene por sonar, en cuadros de la cancion (para las letras: Form1.MsSonando).
+        public long PorDelante { get { long c = Interlocked.Read(ref enCola); if (c < 0) c = (long)LatenciaUs * tasaSalida / 1000000L; return tasaSalida == tasa ? c : c * tasa / tasaSalida; } }
         public readonly string Dispositivo;   // el que se abrio de verdad
         public bool Sonando { get { Thread h = hilo; return h != null && h.IsAlive; } }
         public volatile bool Fallo;   // acabo porque la tarjeta fallo y no se recupero, no porque se acabara la musica (Controlador: la cola espera)

@@ -3,7 +3,7 @@
 Pedido del dueño: «tener acceso a canciones de Spotify abre muchas oportunidades, como poder poner las letras de las canciones cuando esté
 la barra de estado extendida, mayor calidad de mp3, etc. Piensa en ajustes aparte de los dos que acabo de mencionar».
 
-**Nada hecho todavía: falta que elijas.** Todo va solo con el modo Spotify encendido (reuniones familiares) y cada cosa que cambia lo
+**Elegidas (6-11-2026): todas menos SP7, SP10 y SP12, y nada que haga sonar música sin créditos. Hechas: ver sistema/ETAPA2.md (Spotify, segunda parte).** Las letras, «con el estilo de Apple Music»; y la versión de Spotify de tus dañadas, «que luzca igual», sin ningún cambio visible. Todo va solo con el modo Spotify encendido (reuniones familiares) y cada cosa que cambia lo
 que se ve o se oye lleva su interruptor en Ctrl+F3 → Spotify. Lo que dice «depende de Spotify» no se puede asegurar hasta probarlo con
 tu cuenta: Spotify cierra cosas a los programas de fuera de vez en cuando.
 

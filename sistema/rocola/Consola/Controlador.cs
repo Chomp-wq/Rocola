@@ -55,7 +55,8 @@ namespace Rocola
         internal int PorPagina = 20;           // canciones que caben en una pagina de la vista (IZQ/DER dentro de un disco)
         internal string AvisoVigente { get { return unchecked(Environment.TickCount - avisoHasta) < 0 ? aviso : ""; } }
         internal float Progreso { get { return motor.SonandoProgreso; } }
-        internal long CuadrosOidos { get { SalidaAlsa sa = salida; return sa != null ? sa.CuadrosOidos : -1; } }   // para el pulso de la pantalla
+        internal long CuadrosOidos { get { SalidaAlsa sa = salida; return sa != null ? sa.CuadrosOidos : -1; } }
+        internal long PorDelante { get { SalidaAlsa sa = salida; return sa != null ? sa.PorDelante : 0; } }   // (las letras: lo que aun no se oye)   // para el pulso de la pantalla
 
         internal Controlador(Form1 motor, string dispositivo) { this.motor = motor; this.dispositivo = dispositivo; }
 
@@ -320,6 +321,14 @@ namespace Rocola
             int v = motor.VersionSpotify;
             if (v == versionSpotify) return;
             versionSpotify = v;
+            // SP5 y SP6 (Motor/SpotifyMas.cs): las portadas que llegaron para tus discos sin caratula, y lo que le falta a cada disco
+            if (discos != null)
+                foreach (Form1.Disco dd in discos)
+                {
+                    if (dd.Videos) continue;
+                    if (string.IsNullOrEmpty(dd.Portada)) { string p = motor.PortadaSpotifyDe(dd.Carpeta); if (p != null) dd.Portada = p; }
+                    PonFaltantes(dd, motor.FaltanSabidas(dd));
+                }
             List<Form1.Disco> l = motor.DiscosSpotify();
             char actual = letras.Count > 0 ? letras[letra] : '\0';
             if (l.Count == 0) { letras.Remove(Form1.LetraSpotify); porLetra.Remove(Form1.LetraSpotify); if (dentro != null && Form1.EsRutaSpotify(dentro.Carpeta) && !motor.SpotifyOn) dentro = null; }
@@ -338,6 +347,18 @@ namespace Rocola
         {
             int t0 = Environment.TickCount;
             while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
+        }
+        // SP6: al final del disco, las canciones de Spotify que le faltan (o ninguna: se quitan las que habia, si se apago).
+        private void PonFaltantes(Form1.Disco dd, List<string> faltan)
+        {
+            int propias = dd.Rutas.Count;
+            while (propias > 0 && Form1.EsRutaSpotify(dd.Rutas[propias - 1])) propias--;
+            int ya = dd.Rutas.Count - propias, nuevas = faltan != null ? faltan.Count : 0;
+            if (ya == nuevas && (nuevas == 0 || dd.Rutas[propias] == faltan[0])) return;
+            List<string> rutas = dd.Rutas.GetRange(0, propias), titulos = dd.Titulos.GetRange(0, Math.Min(propias, dd.Titulos.Count));
+            if (faltan != null) foreach (string r in faltan) { rutas.Add(r); titulos.Add(motor.TituloSpotify(r)); }
+            dd.Titulos = titulos; dd.Rutas = rutas;
+            if (object.ReferenceEquals(dentro, dd) && cursorCancion >= rutas.Count) cursorCancion = Math.Max(0, rutas.Count - 1);
         }
         // Los resultados de Spotify, detras de los de la biblioteca, en cuanto llegan (el motor busca cuando se deja de escribir).
         private List<Form1.Resultado> resultadosLocales, resultadosMezclados;
@@ -419,7 +440,7 @@ namespace Rocola
                 else if (b == Boton.Derecha) cursorDisco = (cursorDisco + 1) % l.Count;
                 else if (b == Boton.Arriba && !RegresarApretado) { SentidoPagina = 1; int p = cursorDisco / DiscosPorPagina + 1; if (p * DiscosPorPagina >= l.Count) p = 0; cursorDisco = p * DiscosPorPagina; }
                 else if (b == Boton.Abajo && !RegresarApretado) { SentidoPagina = -1; int paginas = (l.Count + DiscosPorPagina - 1) / DiscosPorPagina, p = cursorDisco / DiscosPorPagina - 1; if (p < 0) p = paginas - 1; cursorDisco = p * DiscosPorPagina; }
-                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; motor.CargaSpotify(dentro); }   // (uno de Spotify: sus canciones llegan en un momento)
+                else if (b == Boton.Poner) { dentro = l[cursorDisco]; cursorCancion = 0; motor.CargaSpotify(dentro); motor.FaltanEnDisco(dentro); }   // (SP6: lo que le falta llega en un momento)   // (uno de Spotify: sus canciones llegan en un momento)
             }
             else
             {
@@ -541,7 +562,7 @@ namespace Rocola
         // LOS ATAJOS DEL BUSCADOR CON PORTADAS (buscador_portadas= de XP): solo los que tienen algo detras, en este orden: lo mas pedido hoy,
         // los videos y las dos ultimas busquedas con las que alguien eligio algo (solo en memoria, y nunca la clave de servicio). Van en
         // una fila encima del teclado (FilaTecla = -1). (El de Karaoke de XP no: aqui el genero de cada disco no se sabe sin leerlo.)
-        internal sealed class Atajo { public string Texto; public int Tipo; public string Busqueda; }   // Tipo: 0 lo mas pedido hoy, 1 videos, 2 buscaste
+        internal sealed class Atajo { public string Texto; public int Tipo; public string Busqueda; }   // Tipo: 0 lo mas pedido hoy, 1 videos, 2 buscaste, 3 y 4 de Spotify (SP9)
         internal List<Atajo> Atajos = new List<Atajo>();
         private readonly List<string> buscadas = new List<string>();
         internal bool ConPortadas { get { return motor.BuscadorPortadas; } }
@@ -551,6 +572,8 @@ namespace Rocola
             if (!motor.BuscadorPortadas) return;
             int total; if (motor.TopNoche(out total).Count > 0 || total > 0) Atajos.Add(new Atajo { Texto = "Lo más pedido hoy", Tipo = 0 });
             if (letras.Contains(Form1.LetraVideos)) Atajos.Add(new Atajo { Texto = "Videos", Tipo = 1 });
+            if (motor.SpotifyListo && motor.AtajoSpotify(0) != null) Atajos.Add(new Atajo { Texto = "Tus más escuchadas", Tipo = 3 });   // SP9
+            if (motor.SpotifyListo && motor.AtajoSpotify(1) != null) Atajos.Add(new Atajo { Texto = "Escuchado hace poco", Tipo = 4 });
             foreach (string b in buscadas) Atajos.Add(new Atajo { Texto = "Buscaste: " + b, Tipo = 2, Busqueda = b });
         }
         private void ApuntaBusqueda()
@@ -564,6 +587,7 @@ namespace Rocola
         {
             if (a.Tipo == 0) { Resultados = motor.MasPedidoHoy(); EnResultados = Resultados.Count > 0; SelResultado = 0; Escrito = ""; }
             else if (a.Tipo == 1) { int i = letras.IndexOf(Form1.LetraVideos); if (i >= 0) { letra = i; cursorDisco = 0; dentro = null; Buscando = false; } }
+            else if (a.Tipo == 3 || a.Tipo == 4) { Resultados = motor.AtajoSpotify(a.Tipo - 3) ?? new List<Form1.Resultado>(); EnResultados = Resultados.Count > 0; SelResultado = 0; Escrito = ""; }
             else { Escrito = a.Busqueda; Resultados = motor.Busca(Escrito); SelResultado = 0; EnResultados = Resultados.Count > 0; }
         }
         private void CierraBuscador() { Buscando = false; }

@@ -11,6 +11,8 @@
 //     {"op":"baja","url":"https://i.scdn.co/...","archivo":"/run/..."}   -> una portada a un archivo
 //     {"op":"toca","uri":"spotify:track:..."}  -> la toca desde el principio
 //     {"op":"para"}                            -> calla
+//     {"op":"letra","id":"<id de la cancion>"} -> la letra que da Spotify (sincronizada por lineas si la tiene): {"ok":true,"cuerpo":"..."};
+//                                                 se pide al momento y no se guarda
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -22,7 +24,7 @@ use futures_util::StreamExt;
 use http::{Method, Request, header};
 use librespot_core::{
     authentication::Credentials, cache::Cache, config::DeviceType, config::SessionConfig, session::Session,
-    spotify_uri::SpotifyUri,
+    spotify_id::SpotifyId, spotify_uri::SpotifyUri,
 };
 use librespot_playback::{
     audio_backend,
@@ -321,6 +323,17 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
                     }
                 }
                 Err(e) => json!({"ok": false, "error": format!("{e}")}),
+            }
+        }
+        "letra" => {
+            let id = match SpotifyId::from_base62(v["id"].as_str().unwrap_or("")) {
+                Ok(id) => id,
+                Err(e) => return json!({"ok": false, "error": format!("id: {e}")}),
+            };
+            let Some(se) = sesion(r) else { return json!({"ok": false, "error": "sin conexion con Spotify"}) };
+            match se.spclient().get_lyrics(&id).await {
+                Ok(b) => json!({"ok": true, "cuerpo": String::from_utf8_lossy(&b)}),
+                Err(e) => json!({"ok": false, "error": format!("{e}")}),   // (sin letra: Spotify responde 404)
             }
         }
         "baja" => {

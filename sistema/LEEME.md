@@ -246,9 +246,22 @@ Pedido del dueño el 6-11-2026: **Spotify dentro de la rocola, solo para la fami
 - Va **por la cadena de la rocola**: nivelado (al nivel de las canciones aún sin medir), el local, el modo billar, el limitador.
 - Si una canción de Spotify no se puede tocar (sin internet, no disponible), **se devuelve el crédito**. Al apagar el interruptor, o tras
   un apagón, lo pagado de Spotify que aún no sonó **vuelve como créditos**.
-- De Spotify **no se aprende nada** y no cuenta para lo más sonado. **No se graba ni se descarga música**: el sonido va de la memoria a
+- Lo que suena de Spotify **no cuenta para lo más sonado**; solo se mide su volumen (para nivelarlo). **No se graba ni se descarga música**: el sonido va de la memoria a
   la tarjeta, y las portadas solo viven en la memoria mientras la rocola está prendida.
 - Apagado el interruptor, la rocola es la de siempre (el programa de Spotify ni se abre).
+
+**Lo que Spotify le añade a la rocola** (cada cosa con su interruptor en Ctrl+F3 → Spotify, encendidas; nada suena sin créditos):
+- **Tus canciones dañadas suenan desde Spotify, sin que se note:** la rocola busca cada canción tuya en Spotify (poco a poco, de
+  fondo). Si una de las tuyas trae los agudos cortados y en Spotify está la misma grabación, suena la de Spotify (320 kbps) en su
+  lugar. **En la pantalla no cambia nada**: mismo nombre, portada, disco y crédito. Si Spotify falla, suena tu MP3.
+- **Letras al estilo Apple Music** en el estado extendido: la línea que se canta grande y encendida, las demás tenues, deslizándose
+  suave; en los tramos sin voz, los tres puntos. También para tus canciones que tienen pareja en Spotify.
+- **Portadas y géneros que faltan:** tus discos sin carátula toman la de Spotify; tus canciones sin género, el del artista.
+- **Completar tus discos:** las canciones que le faltan a un disco tuyo salen al final, marcadas «· Spotify», con su crédito.
+- **Éxitos del momento** (Top 50 y Virales de México) en la letra SPOTIFY, si Spotify los deja ver; y en el buscador, los atajos
+  **«Tus más escuchadas»** y **«Escuchado hace poco»**.
+- **La foto del artista** de fondo en el estado extendido y el año del disco.
+- Lo de Spotify se nivela como tu música (la segunda vez, al límite).
 
 **Lo que hay que saber:** usa las piezas de **librespot**, un programa libre que **no es oficial de Spotify** (como ncspot). Spotify no lo
 autoriza: **podría bloquear la cuenta** (no es habitual) y, si Spotify cambia algo, puede dejar de funcionar hasta que se actualice

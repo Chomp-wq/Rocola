@@ -126,6 +126,17 @@ namespace Rocola
                 d.Brillo(W * 0.5f, top, W * 0.35f, Color4.Hex(0x6A7CFF, 0.12f));
             }
             string t = m.SonandoTitulo; if (t == null) return;
+            // SP11: la foto del artista de fondo (Spotify), estirada y tenue (la foto es chica: estirada ya se ve difuminada)
+            string anio; string foto = m.FotoArtistaSonando(out anio);
+            Textura tfa = foto != null ? caratulas.De(foto) : null;
+            if (tfa != null)
+            {
+                d.Recorta(10 * k, top + 2 * k, W - 20 * k, ph - 10 * k);
+                float ladoFoto = W * 0.62f;
+                d.Imagen(tfa, W - ladoFoto, top + ph / 2 - ladoFoto / 2, ladoFoto, ladoFoto, 0.30f);
+                d.DegradadoH(W - ladoFoto, top, ladoFoto * 0.6f, ph, Color4.Hex(0x0A1028, 0.95f), Color4.Hex(0x0A1028, 0f));
+                d.SinRecorte();
+            }
             List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaCarrusel ? 7 : m.ColaDoce ? 12 : 3);
             float xc = cola.Count == 0 ? W : W * 0.52f;   // donde empieza la cola
             // LAS LETRAS DEL PANEL DE XP (RenderIdlePanelEn): Trebuchet MS en negrita, a la escala del alto del panel
@@ -146,7 +157,7 @@ namespace Rocola
             if (rt.Count > maxR) { rt[maxR - 1] = big.Ajusta(rt[maxR - 1] + " " + string.Join(" ", rt.GetRange(maxR, rt.Count - maxR)), ancho); rt.RemoveRange(maxR, rt.Count - maxR); }
             for (int i = 0; i < rt.Count; i++) big.Escribe(d, rt[i], x, top + 56 * k + i * big.Tam * 1.16f, Blanco);
             float y = top + 56 * k + Math.Min(90 * k, ph * .28f) + 6 * k;
-            if (m.SonandoDisco != null) { normal.Escribe(d, normal.Ajusta(m.SonandoDisco, ancho), x, y, Turquesa); y += normal.Tam * 1.5f; }
+            if (m.SonandoDisco != null) { normal.Escribe(d, normal.Ajusta(m.SonandoDisco + (string.IsNullOrEmpty(anio) ? "" : " · " + anio), ancho), x, y, Turquesa); y += normal.Tam * 1.5f; }   // (el ano: SP11)
             string gen = m.EtiquetaSonando;
             if (!string.IsNullOrEmpty(gen) && gen != "Otros")
             {

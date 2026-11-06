@@ -1232,3 +1232,38 @@ de rocolas clásicas como Rowe AMI y quitar la parte física le quitaría chiste
   pedidas con créditos (sin crédito no suena; una moneda, dos canciones, quedan 2), sonando por la cadena una detrás de otra y nada en
   lo aprendido. El programa real compila aquí y en Buildroot, y en QEMU se abre y espera la cuenta. **No probado con una cuenta de
   Spotify de verdad ni en el A4.**
+
+## Extra (6-11-2026, segunda parte): lo que Spotify le añade a la rocola (SP1-SP6, SP8, SP9, SP11)
+
+Decisión del dueño sobre `SPOTIFY_PROPUESTAS_MODEST_2026-11-06.md`: «todo menos SP7, SP10, SP12», y nada que haga sonar música sin
+créditos. Las letras, «con el estilo de Apple Music»; la versión de Spotify de sus canciones dañadas, «que aparentemente luzca igual».
+Todo en `Motor/SpotifyMas.cs` (y `Consola/Pantalla/LetrasVista.cs`), solo con el modo Spotify encendido.
+
+- **SP4, las parejas:** un hilo de fondo busca cada canción de la biblioteca (`track:título artist:artista`, 5 resultados) y acepta la
+  que tiene el mismo título y artista normalizados (sin acentos, sin lo de entre paréntesis, sin «remaster», «en vivo», «feat.») y la
+  duración a 2 s o menos; sin título, artista o duración (aún sin medir) no se arriesga. Una cada 2,5 s y otra vuelta cada 2 minutos;
+  las sin pareja se vuelven a mirar a los 30 días. En `rocola_spotify_pares.txt` (id, duración, disco, artista, portada, año, géneros).
+- **SP2, la sustitución invisible:** en `EmpiezaSiguiente`, una tuya con el corte de agudos medido por debajo de 16 kHz y con pareja se
+  arma con `EmpiezaSpotify(item, id, pista, true)`: lo que se ve (`nowPlaying`) es tu canción; la cadena se arma con su pista de Spotify
+  (su nivelado y lo que se aprende son los de esa versión). Sin relevo (`PreparaSiguiente` no la prepara). Si en 6 s no llega sonido,
+  vuelve al principio de la cola y suena tu MP3 (`sinSpotify`), sin aviso ni devolución.
+- **SP3:** lo de Spotify ya no se arma «sin aprender»: se mide como lo tuyo bajo su ruta `/spotify/ID/...` y `GananciaSpotify` usa esa
+  medida (al límite) cuando la hay; la primera vez, el nivel de las no medidas.
+- **SP1, las letras:** `rocola-spotify` gana la orden `letra` (`spclient.get_lyrics`: la letra de Spotify, por líneas con su tiempo, y
+  sus colores); la rocola la pide al empezar la canción (la de Spotify, la sustituida o la tuya con pareja) y la tiene solo en la memoria.
+  `LetrasVista.cs` la dibuja sobre el cielo del estado extendido: Outfit en negrita, a la izquierda; la línea que se canta encendida y las
+  demás tenues (cada una cambia de brillo poco a poco), deslizándose con un resorte amortiguado hasta dejar la que se canta a un tercio
+  del alto; los tres puntos que respiran en los tramos sin voz; una franja del color que Spotify da a esa letra; y el crédito del
+  proveedor. El momento es lo leído menos lo que la tarjeta aún tiene por sonar (`SalidaAlsa.PorDelante`).
+- **SP5:** la portada del disco de Spotify para tus discos sin carátula (en `portadas_spotify/`, en los datos) y el género del artista
+  para tus canciones sin género (mueve el color del género y lo más sonado por género).
+- **SP6:** al entrar en un disco tuyo, el disco de Spotify de sus parejas (la mayoría; con dos, o con una en discos de una o dos
+  canciones) y las que no tienes, al final con «· Spotify».
+- **SP8 y SP9:** «Top 50 México» y «Viral 50 México» (solo las de Spotify) en la letra SPOTIFY; «Tus más escuchadas» y «Escuchado hace
+  poco» como atajos del buscador.
+- **SP11:** la foto del artista (la más chica de más de 150 px: estirada se ve difuminada) de fondo en el panel, y el año del disco.
+- **Probado** con el `rocola-spotify` simulado y una canción de prueba con los agudos cortados a 11 kHz: el repaso midió su corte
+  (11 300 Hz), el emparejador encontró su pareja (aunque en Spotify se llamaba «(Remasterizado)»), y al pedirla sonó desde Spotify con tu
+  nombre, tu disco y tu crédito; la portada, el año y el género vinieron de Spotify; al entrar en el disco apareció la que le faltaba y
+  sonó con su crédito; y las letras (una letra inventada para la prueba) en capturas, con la línea encendida y los puntos. **No probado
+  con una cuenta real ni en el A4** (en particular, si Spotify deja ver las letras, los éxitos y los géneros a este programa).

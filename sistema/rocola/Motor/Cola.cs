@@ -116,6 +116,16 @@ namespace Rocola
                     DevuelveCredito("Spotify: no se pudo tocar «" + it.Song.Title + "»" + (SpotifyListo ? "" : " (sin conexion con Spotify)"));
                     continue;
                 }
+                // UNA TUYA CON LOS AGUDOS CORTADOS Y SU VERSION EN SPOTIFY (SP2, SpotifyMas.cs): suena desde Spotify sin que nada cambie en la
+                // pantalla; si Spotify no puede, la tuya, como siempre
+                string sid = IdParaSustituir(it);
+                if (sid != null)
+                {
+                    queue.RemoveAt(0);
+                    ISampleProvider sp = EmpiezaSpotify(it, sid, PistaDeSustituta(it, sid), true);
+                    if (sp != null) return sp;
+                    sinSpotify.Add(it); queue.Insert(0, it);
+                }
                 // UN «MP3» QUE NO LO ES Y SE ESTA CONVIRTIENDO (Conversiones.cs): espera al principio de la cola hasta EsperaMaxMs y suena;
                 // si tarda mas, se devuelve el credito y la conversion sigue para la proxima vez.
                 if (it.Song != null && Conversiones.Convirtiendo(it.Song.Path))
@@ -207,11 +217,11 @@ namespace Rocola
         {
             Encadenado s = secuencia;
             if (s == null || cadenaPreparada != null || cadenaSonando == null) return;
-            if (EsItemSpotify(nowPlaying)) return;   // Spotify no lleva relevo (Spotify.cs): cada una abre su salida
+            if (EsItemSpotify(nowPlaying) || cadenaSonando.Lector is FuenteSpotify) return;   // Spotify no lleva relevo (Spotify.cs): cada una abre su salida
             if (s.Terminado || s.HayRelevoPendiente || queue.Count == 0) return;
             PlayItem sig = queue[0];
             if (sig == null || sig.IsVideo || sig.Song == null || sig.Song.Path == null || object.ReferenceEquals(sig, sinEncadenar)) return;
-            if (EsItemSpotify(sig)) return;   // (la de Spotify entra por el camino de siempre)
+            if (EsItemSpotify(sig) || SeSustituye(sig)) return;   // (la de Spotify, y la tuya que suena desde Spotify, entran por el camino de siempre)
             double quedan;
             try { quedan = (cadenaSonando.Lector.TotalTime - cadenaSonando.Lector.CurrentTime).TotalSeconds; } catch { return; }
             if (quedan > PreparaAntesSeg) return;
@@ -320,7 +330,7 @@ namespace Rocola
                 cadenaSonando = null; secuencia = null; tapMedido = null; pulso = null;
             }
             curTap = null; curSbr = null; curBass = null;
-            if (EsItemSpotify(nowPlaying)) TerminaSpotify();   // que el programa de Spotify calle (Spotify.cs)
+            if (EsItemSpotify(nowPlaying) || (spotifySustituida != null && object.ReferenceEquals(nowPlaying, spotifySustituida))) TerminaSpotify();   // que el programa de Spotify calle (Spotify.cs)
             PlayItem ultima = nowPlaying;
             nowPlaying = null;
             return ultima;
