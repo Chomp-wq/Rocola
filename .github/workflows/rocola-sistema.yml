@@ -7,19 +7,10 @@
 # no tiene). Las descargas y ccache se guardan entre compilaciones (la primera tarda horas; las siguientes, mucho menos).
 name: Sistema de la rocola (Rocola OS)
 
+# SOLO A PEDIDO (decision del dueno del 6-11-2026, al acabarse los 2 000 minutos de Actions del mes: cada compilacion del sistema tarda
+# cerca de una hora). Se lanza desde GitHub: Actions -> «Sistema de la rocola (Rocola OS)» -> Run workflow (o se le pide a Claude).
+# El programa de la rocola (rocola-programa.yml, unos 3 minutos) sigue compilandose solo en cada cambio.
 on:
-  push:
-    branches: [claude/modest-carson-fa2v2n]
-    paths:
-      - 'sistema/board/**'
-      - 'sistema/configs/**'
-      - 'sistema/package/**'
-      - 'sistema/rocola-spotify/**'   # (el programa de Spotify va dentro del sistema, no en el flujo del programa)
-      - 'sistema/external.mk'
-      - 'sistema/external.desc'
-      - 'sistema/Config.in'
-      - 'sistema/compila.sh'
-      - '.github/workflows/rocola-sistema.yml'
   workflow_dispatch:
 
 permissions:

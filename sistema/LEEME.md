@@ -197,9 +197,9 @@ Windows XP. Con internet:
 - **Ctrl+F3 → Internet:** la versión, la red (con la MAC), cómo va la actualización, «Buscar actualización ahora» y el interruptor
   «Actualizarse sola». Lo que pasó, en `rocola_actualizaciones.txt`.
 
-**El sistema operativo también se actualiza (soporte continuo).** GitHub compila el sistema entero con Buildroot en cada cambio de
-`sistema/` (`.github/workflows/rocola-sistema.yml`; la primera vez tarda horas, después mucho menos) y publica la versión
-«sistema-N». La rocola instalada guarda **dos copias del sistema** (`\rocola-os\a` y `\rocola-os\b`): la nueva se baja en la que no se
+**El sistema operativo también se actualiza (soporte continuo).** GitHub compila el sistema entero con Buildroot **cuando se le pide**
+(`.github/workflows/rocola-sistema.yml`: en GitHub, Actions → «Sistema de la rocola (Rocola OS)» → Run workflow; cerca de una hora y de
+los 2 000 minutos gratis del mes) y publica la versión «sistema-N». El programa de la rocola, en cambio, se compila solo en cada cambio. La rocola instalada guarda **dos copias del sistema** (`\rocola-os\a` y `\rocola-os\b`): la nueva se baja en la que no se
 usa, se comprueba y la rocola se reinicia sola cuando está libre. Si el sistema nuevo no llega a funcionar 3 minutos (dos intentos),
 **vuelve solo al anterior** y no lo vuelve a bajar. Lo aprendido y el programa van aparte (`\rocola-os\datos.img`) y no se tocan. Con
 ESC al prender, el menú tiene también «la versión anterior del sistema». Lo que pasa, en `\rocola-os\sistema.txt`.
