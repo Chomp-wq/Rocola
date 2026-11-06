@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ROCOLA EN CASA (7-11-2026): la herramienta del dueno para trabajar en la rocola desde su laptop (Pop!_OS) o su computadora (Windows).
+       Un solo archivo, sin instalar nada: dotnet publish -c Release -r linux-x64 (o win-x64). Ver LEEME.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>rocola-casa</AssemblyName>
+    <RootNamespace>RocolaCasa</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <CasaVersion Condition="'$(CasaVersion)' == ''">0</CasaVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="tablero.html" LogicalName="tablero.html" />
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CasaVersion</_Parameter1>
+      <_Parameter2>$(CasaVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

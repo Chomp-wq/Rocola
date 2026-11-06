@@ -23,6 +23,9 @@ case "$1" in
 			[ -n "$pedida" ] && rm -f /run/rocola-buscar-ya
 			i=0; while [ $i -lt 360 ] && [ ! -f /run/rocola-buscar-ya ]; do sleep 10; i=$((i + 1)); done
 		  done ) &
+		# EL BUZON (7-11-2026, rocola-buzon): trabajar en la rocola desde casa con «Rocola en casa» (sistema/casa). Sin su llave
+		# (rocola_buzon.txt en una memoria USB) no hace nada.
+		( sleep 90; exec /usr/bin/rocola-buzon ) >/dev/null 2>&1 &
 		# UN SISTEMA NUEVO EN PRUEBA (rocola-actualiza): si la rocola no lleva 3 minutos en pie a los 15 minutos de prender, se reinicia;
 		# el initramfs cuenta los arranques y a la tercera vuelve al sistema anterior. Si llega, se da por bueno.
 		if [ -f /rocola/disco/rocola-os/probando ]; then

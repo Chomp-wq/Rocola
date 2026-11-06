@@ -1,0 +1,247 @@
+#!/bin/sh
+# EL BUZON DE LA ROCOLA: trabajar en ella desde casa (peticion del dueno del 7-11-2026: «una herramienta para mi laptop con POP_OS o mi
+# computadora WINDOWS que me diga sus errores, datos de diagnostico... y poder despertarla para forzar actualizaciones»).
+#
+# La rocola no se puede alcanzar desde fuera (esta detras del router del bar), asi que todo pasa por un repositorio PRIVADO de GitHub,
+# el «buzon» (Chomp-wq/rocola-buzon de fabrica), que la rocola lee y escribe con su propia llave (solo de ese repositorio):
+#   rocola/estado.json      lo que pasa ahora (versiones, actualizacion, red, disco, memoria, temperatura, lo que suena, los ultimos
+#                           errores...). Se sube cuando algo cambia (como mucho cada 2 minutos) y al menos una vez por hora.
+#   rocola/registros.json   las colas de todas las bitacoras (hasta 256 KB cada una), cuando se piden.
+#   rocola/archivos/NOMBRE  un archivo entero de los datos (de la lista de abajo; nunca las llaves ni la cuenta de Spotify), cuando se pide.
+#   rocola/respuestas.json  lo que contesto a cada orden.
+#   casa/ordenes.json       las ordenes que deja «Rocola en casa» (sistema/casa); se leen cada minuto.
+# Ordenes: ping, informe, registros, archivo NOMBRE, buscar_actualizacion (lo que hace «Buscar actualizacion ahora»), diagnostico (el
+# diagnostico completo de la pantalla, cuando la rocola este libre), reiniciar_programa y reiniciar_equipo (cuando este libre; con «ya»,
+# al momento).
+#
+# LA LLAVE: rocola_buzon.txt en una memoria USB (o en la carpeta de XP), como rocola_github.txt: la llave en la primera linea y, si el
+# buzon no es Chomp-wq/rocola-buzon, el repositorio en la segunda. Se copia a /rocola/datos/rocola_buzon.txt. Sin llave no hace nada.
+# Lo que dice: /run/rocola-buzon.txt (Ctrl+F3 -> Internet). Para probarlo fuera: ROCOLA_API, ROCOLA_DATOS, ROCOLA_RUN, ROCOLA_DISCO.
+API=${ROCOLA_API:-https://api.github.com}
+DATOS=${ROCOLA_DATOS:-/rocola/datos}
+RUN=${ROCOLA_RUN:-/run}
+OS=${ROCOLA_DISCO:-/rocola/disco}/rocola-os
+PROG=$DATOS/programa
+TMP=$RUN/rocola-buzon.d
+DICE=$RUN/rocola-buzon.txt
+HECHAS=$DATOS/rocola_buzon_hechas.txt
+mkdir -p "$TMP"
+dice() { echo "$(date '+%H:%M') $*" > "$DICE"; }
+
+# ---- la llave (de una memoria USB, como rocola-actualiza) ----
+busca_llave() {
+	for f in /rocola/discos/*/rocola_buzon.txt /rocola/discos/*/*/rocola_buzon.txt; do [ -f "$f" ] && { echo "$f"; return; }; done
+	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname rocola_buzon.txt 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
+	for p in /sys/class/block/*; do
+		[ -e "$p/partition" ] || continue
+		dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
+		[ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ] || continue
+		grep -q "^/dev/$dev " /proc/mounts && continue
+		m=$TMP/usb; mkdir -p "$m"
+		mount -o ro "/dev/$dev" "$m" 2>/dev/null || continue
+		f=$(find "$m" -maxdepth 2 -iname rocola_buzon.txt 2>/dev/null | head -1)
+		[ -n "$f" ] && cp "$f" "$TMP/llave.txt"
+		umount "$m"
+		[ -f "$TMP/llave.txt" ] && { echo "$TMP/llave.txt"; return; }
+	done
+}
+mira_llave() {
+	f=$(busca_llave)
+	if [ -n "$f" ]; then
+		nueva=$(tr -d '\r' < "$f" | sed 's/[ \t]//g' | grep -v '^$' | head -2)
+		rm -f "$TMP/llave.txt"
+		if [ -n "$nueva" ] && [ "$nueva" != "$(cat "$DATOS/rocola_buzon.txt" 2>/dev/null)" ]; then
+			printf '%s\n' "$nueva" > "$DATOS/rocola_buzon.txt"; chmod 600 "$DATOS/rocola_buzon.txt"; sync
+			printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave del buzon puesta (de $f)" >> "$DATOS/rocola_actualizaciones.txt"
+		fi
+	fi
+	LLAVE=$(sed -n 1p "$DATOS/rocola_buzon.txt" 2>/dev/null)
+	REPO=${ROCOLA_BUZON:-$(sed -n 2p "$DATOS/rocola_buzon.txt" 2>/dev/null)}; REPO=${REPO:-Chomp-wq/rocola-buzon}
+}
+
+# ---- GitHub ----
+gh() {   # gh METODO RUTA [ARCHIVO_JSON] -> la respuesta en $TMP/r.json; devuelve el codigo HTTP
+	if [ -n "$3" ]; then
+		curl -s -o "$TMP/r.json" -w '%{http_code}' --connect-timeout 20 --max-time 300 -X "$1" -H "Authorization: Bearer $LLAVE" \
+			-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -H "User-Agent: rocola" --data-binary "@$3" "$API$2"
+	else
+		curl -s -o "$TMP/r.json" -w '%{http_code}' --connect-timeout 20 --max-time 120 -X "$1" -H "Authorization: Bearer $LLAVE" \
+			-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -H "User-Agent: rocola" "$API$2"
+	fi
+}
+# sube RUTA_EN_EL_BUZON ARCHIVO_LOCAL MENSAJE (texto; se sustituye si ya estaba)
+sube() {
+	sha=; c=$(gh GET "/repos/$REPO/contents/$1"); [ "$c" = 200 ] && sha=$(jq -r '.sha // empty' "$TMP/r.json")
+	jq -Rs --arg m "$3" --arg sha "$sha" '{message: $m, content: @base64} + (if $sha == "" then {} else {sha: $sha} end)' < "$2" > "$TMP/put.json" || return 1
+	c=$(gh PUT "/repos/$REPO/contents/$1" "$TMP/put.json"); rm -f "$TMP/put.json"
+	case "$c" in 200|201) return 0 ;; esac
+	dice "no se pudo subir $1 ($c)"; return 1
+}
+
+# ---- lo que se cuenta ----
+leer() { cat "$1" 2>/dev/null | tr -d '\r'; }
+cola() { [ -f "$2" ] && tail -n "$1" "$2" 2>/dev/null | tr -d '\r'; }
+programa_version() { v=$(leer "$PROG/version"); [ -n "$v" ] || v=$(/usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p'); echo "${v:-0}"; }
+estado_json() {
+	ip=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2; exit}')
+	mac=$(cat /sys/class/net/eth0/address 2>/dev/null)
+	gw=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
+	wol=$(ethtool eth0 2>/dev/null | sed -n 's/^[ \t]*Wake-on: *//p' | tail -1)
+	temp=; for t in /sys/class/hwmon/hwmon*/temp1_input /sys/class/thermal/thermal_zone*/temp; do [ -f "$t" ] && { temp=$(( $(cat "$t") / 1000 )); break; }; done
+	pid=$(pidof rocola-consola | awk '{print $1}')
+	desde=; [ -n "$pid" ] && desde=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print int($22/100)}' /proc/$pid/stat 2>/dev/null || echo 0) ))
+	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg" 2>/dev/null)
+	jq -n \
+		--arg fecha "$(date '+%Y-%m-%d %H:%M:%S')" --arg zona "$(date '+%z')" --arg arriba "$(cut -d. -f1 /proc/uptime)" \
+		--arg sistema "$(leer /etc/rocola-sistema-version)" --arg programa "$(programa_version)" --arg nueva "$(leer "$PROG/nueva.version")" \
+		--arg malas "$(leer "$PROG/malas" | tr '\n' ' ')" --arg sistema_malas "$(leer "$OS/sistema-malas" | tr '\n' ' ')" \
+		--arg slot "$slot" --arg probando "$([ -f "$OS/probando" ] && echo si)" \
+		--arg reinicio_pendiente "$([ -f "$RUN/rocola-reinicio-sistema" ] && echo sistema)$([ -f "$RUN/rocola-hay-nueva" ] && echo programa)" \
+		--arg actualiza "$(leer "$RUN/rocola-actualiza.txt")" --arg buscando "$([ -f "$RUN/rocola-buscar-ya" ] && echo si)" \
+		--arg llave_github "$([ -s "$DATOS/rocola_github.txt" ] && echo si)" \
+		--arg ip "$ip" --arg mac "$mac" --arg gw "$gw" --arg wol "$wol" \
+		--arg carga "$(cut -d' ' -f1-3 /proc/loadavg)" --arg temp "$temp" \
+		--arg mem "$(free -m 2>/dev/null | awk '/^Mem:/ {print $2" MB, libres "$7" MB"}')" \
+		--arg disco_datos "$(df -h "$DATOS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')" \
+		--arg disco_rocola "$(df -h "$OS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')" \
+		--arg rocola_corre "$([ -n "$pid" ] && echo si)" --arg rocola_desde "$desde" \
+		--arg vivo "$(leer "$RUN/rocola-vivo.txt")" \
+		--arg errores "$(cola 40 "$DATOS/rocola_error.txt")" --arg n_errores "$(grep -c '' "$DATOS/rocola_error.txt" 2>/dev/null)" \
+		--arg actualizaciones "$(cola 30 "$DATOS/rocola_actualizaciones.txt")" \
+		--arg sistema_txt "$(cola 20 "$OS/sistema.txt")" \
+		--arg registro "$(cola 60 "$DATOS/rocola.txt")" \
+		--arg spotify "$(cola 15 "$DATOS/rocola_spotify.txt")" \
+		--arg nucleo "$(dmesg 2>/dev/null | grep -iE 'error|fail|warn|oops|bug|i/o' | tail -n 25)" \
+		--arg discos "$(leer "$RUN/rocola-discos.txt" | tail -n 15)" \
+		--arg tarjeta "$(cat /proc/asound/cards 2>/dev/null)" \
+		--arg buzon "$(leer "$DICE")" \
+		'{fecha:$fecha, zona:$zona, arriba_s:($arriba|tonumber? // 0), versiones:{sistema:$sistema, programa:$programa, programa_nueva:$nueva,
+		  programa_malas:$malas, sistema_malas:$sistema_malas, copia:$slot, sistema_en_prueba:$probando, reinicio_pendiente:$reinicio_pendiente},
+		  actualizacion:{estado:$actualiza, buscando:$buscando, llave_github:$llave_github}, red:{ip:$ip, mac:$mac, puerta:$gw, wake_on_lan:$wol},
+		  equipo:{carga:$carga, temperatura_c:$temp, memoria:$mem, disco_datos:$disco_datos, disco_rocola:$disco_rocola, tarjeta:$tarjeta},
+		  rocola:{corriendo:$rocola_corre, segundos_abierta:$rocola_desde, vivo:$vivo},
+		  errores:{total_lineas:($n_errores|tonumber? // 0), ultimos:$errores}, bitacoras:{actualizaciones:$actualizaciones, sistema:$sistema_txt,
+		  rocola:$registro, spotify:$spotify, nucleo:$nucleo, discos:$discos}, buzon:$buzon}'
+}
+# Lo que cambia de verdad (sin la hora ni lo que dura encendida): para no subir lo mismo una y otra vez.
+huella() { jq -c 'del(.fecha, .arriba_s, .rocola.segundos_abierta, .equipo.carga, .equipo.temperatura_c, .equipo.memoria, .buzon, .rocola.vivo)' "$1" | md5sum | cut -c1-32; }
+manda_estado() {   # manda_estado [forzado]
+	estado_json > "$TMP/estado.json" 2>/dev/null || return 1
+	h=$(huella "$TMP/estado.json"); ahora=$(date +%s)
+	ult=$(leer "$TMP/ultimo"); ultH=$(leer "$TMP/ultima_huella")
+	if [ -z "$1" ]; then
+		[ "$h" = "$ultH" ] && [ $(( ahora - ${ult:-0} )) -lt 3600 ] && return 0   # igual que lo ultimo: una vez por hora basta
+		[ $(( ahora - ${ult:-0} )) -lt 120 ] && return 0                          # (como mucho cada 2 minutos)
+	fi
+	sube rocola/estado.json "$TMP/estado.json" "estado $(date '+%Y-%m-%d %H:%M')" || return 1
+	echo "$ahora" > "$TMP/ultimo"; echo "$h" > "$TMP/ultima_huella"
+}
+# Los archivos que se pueden pedir enteros (nada con llaves ni la cuenta de Spotify).
+permitido() {
+	case "$1" in
+		*/*|*..*|rocola_github.txt|rocola_buzon.txt|"") return 1 ;;
+		rocola*.txt|rocola*.txt.1|rocola*.txt.bak|sistema.txt|rocola-arranque.txt|rocola-discos.txt|rocola-mpv.txt|dmesg.txt) return 0 ;;
+	esac
+	return 1
+}
+donde_esta() {
+	case "$1" in
+		sistema.txt) echo "$OS/sistema.txt" ;;
+		rocola-arranque.txt|rocola-discos.txt) echo "$RUN/$1" ;;
+		rocola-mpv.txt) echo "/tmp/rocola-mpv.txt" ;;
+		dmesg.txt) dmesg > "$TMP/dmesg.txt" 2>/dev/null; echo "$TMP/dmesg.txt" ;;
+		*) echo "$DATOS/$1" ;;
+	esac
+}
+registros() {
+	: > "$TMP/reg.args"
+	for f in "$DATOS"/rocola*.txt "$OS/sistema.txt" "$RUN/rocola-arranque.txt" "$RUN/rocola-discos.txt" /tmp/rocola-mpv.txt; do
+		[ -f "$f" ] || continue
+		n=$(basename "$f"); permitido "$n" || continue
+		case "$n" in rocola_sonoridad.txt|rocola_eq.txt|rocola_stats.txt|rocola_spotify_pares.txt|rocola_spotify_artistas.txt) continue ;; esac   # (tablas grandes: se piden enteras)
+		tail -c 262144 "$f" | tr -d '\r' > "$TMP/reg_$n"
+	done
+	dmesg 2>/dev/null | tail -c 262144 > "$TMP/reg_dmesg.txt"
+	ls "$DATOS" "$OS" 2>/dev/null > "$TMP/reg_lista.txt"
+	( cd "$TMP" && for f in reg_*; do jq -Rs --arg n "${f#reg_}" '{($n): .}' < "$f"; done ) | jq -s 'add // {}' > "$TMP/registros.json"
+	rm -f "$TMP"/reg_*
+	sube rocola/registros.json "$TMP/registros.json" "registros $(date '+%Y-%m-%d %H:%M')"
+}
+responde() {   # responde ID ORDEN TEXTO
+	jq -n --arg id "$1" --arg o "$2" --arg t "$3" --arg f "$(date '+%Y-%m-%d %H:%M:%S')" '{id:$id, orden:$o, respuesta:$t, fecha:$f}' >> "$TMP/respuestas.nuevas"
+}
+atiende_ordenes() {
+	c=$(gh GET "/repos/$REPO/contents/casa/ordenes.json")
+	[ "$c" = 200 ] || return 0
+	jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' > "$TMP/ordenes.json" 2>/dev/null || return 0
+	: > "$TMP/respuestas.nuevas"
+	jq -c '.[]?' "$TMP/ordenes.json" 2>/dev/null | while read -r o; do
+		id=$(echo "$o" | jq -r '.id // empty'); orden=$(echo "$o" | jq -r '.orden // empty'); arg=$(echo "$o" | jq -r '.arg // ""')
+		[ -n "$id" ] || continue
+		grep -qx "$id" "$HECHAS" 2>/dev/null && continue
+		echo "$id" >> "$HECHAS"
+		case "$orden" in
+			ping) responde "$id" "$orden" "aqui estoy (encendida hace $(( $(cut -d. -f1 /proc/uptime) / 60 )) min)" ;;
+			informe) rm -f "$TMP/ultimo"; responde "$id" "$orden" "estado subido" ;;
+			registros) if registros; then responde "$id" "$orden" "registros subidos (rocola/registros.json)"; else responde "$id" "$orden" "no se pudieron subir los registros"; fi ;;
+			archivo)
+				if ! permitido "$arg"; then responde "$id" "$orden" "ese archivo no se puede pedir: $arg"
+				else
+					f=$(donde_esta "$arg")
+					if [ ! -f "$f" ]; then responde "$id" "$orden" "no esta: $arg"
+					elif [ "$(wc -c < "$f")" -gt 40000000 ]; then responde "$id" "$orden" "es demasiado grande (mas de 40 MB): $arg"
+					elif sube "rocola/archivos/$arg" "$f" "archivo $arg"; then responde "$id" "$orden" "subido: rocola/archivos/$arg ($(wc -c < "$f") bytes)"
+					else responde "$id" "$orden" "no se pudo subir: $arg"; fi
+				fi ;;
+			buscar_actualizacion) touch "$RUN/rocola-buscar-ya"; responde "$id" "$orden" "buscando actualizacion ahora (el estado dira como acabo)" ;;
+			diagnostico) touch "$RUN/rocola-pide-diagnostico"; date +%s > "$TMP/diag_pedido"; responde "$id" "$orden" "pedido: corre cuando la rocola este libre (unos 50 s) y se sube solo" ;;
+			reiniciar_programa)
+				if [ "$arg" = ya ]; then touch "$RUN/rocola-reinicia-programa-ya"; responde "$id" "$orden" "el programa se reinicia ahora (y se pone la version nueva, si ya esta bajada)"
+				else touch "$RUN/rocola-reinicia-programa"; responde "$id" "$orden" "se reinicia cuando la rocola este libre"; fi ;;
+			reiniciar_equipo)
+				if [ "$arg" = ya ]; then responde "$id" "$orden" "reiniciando el equipo ahora"; echo ya > "$TMP/reiniciar"
+				else touch "$RUN/rocola-reinicia-equipo"; responde "$id" "$orden" "el equipo se reinicia cuando la rocola este libre"; fi ;;
+			*) responde "$id" "$orden" "orden desconocida" ;;
+		esac
+	done
+	if [ -s "$TMP/respuestas.nuevas" ]; then
+		c=$(gh GET "/repos/$REPO/contents/rocola/respuestas.json"); viejas='[]'
+		[ "$c" = 200 ] && viejas=$(jq -r '.content' "$TMP/r.json" | tr -d '\n' | jq -Rr '@base64d' 2>/dev/null)
+		echo "${viejas:-[]}" | jq --slurpfile n "$TMP/respuestas.nuevas" '(. + $n) | .[-60:]' > "$TMP/respuestas.json" 2>/dev/null \
+			|| jq -s '.' "$TMP/respuestas.nuevas" > "$TMP/respuestas.json"
+		sube rocola/respuestas.json "$TMP/respuestas.json" "respuestas $(date '+%Y-%m-%d %H:%M')"
+		rm -f "$TMP/ultimo"   # y el estado, al momento (para que se vea en casa que contesto)
+	fi
+	tail -n 500 "$HECHAS" > "$HECHAS.n" 2>/dev/null && mv -f "$HECHAS.n" "$HECHAS"
+	if [ -f "$TMP/reiniciar" ]; then rm -f "$TMP/reiniciar"; manda_estado forzado; sync; reboot; fi
+}
+# El diagnostico pedido: cuando el programa lo deja (rocola_diagnostico.txt mas nuevo que el pedido), se sube solo.
+mira_diagnostico() {
+	[ -f "$TMP/diag_pedido" ] || return 0
+	p=$(cat "$TMP/diag_pedido"); f=$DATOS/rocola_diagnostico.txt
+	if [ -f "$f" ] && [ "$(date -r "$f" +%s)" -gt "$p" ]; then sube rocola/archivos/rocola_diagnostico.txt "$f" "diagnostico" && rm -f "$TMP/diag_pedido"
+	elif [ $(( $(date +%s) - p )) -gt 86400 ]; then rm -f "$TMP/diag_pedido"; fi
+}
+
+# ---- la vuelta: cada minuto ----
+[ "$1" = una ] && UNA=1
+while :; do
+	# «reiniciar el programa ya»: el programa lo atiende en 15 s (sale con 42: se pone la nueva si la hay); si no contesta (colgado), se cierra
+	if [ -f "$RUN/rocola-reinicia-programa-ya" ] && [ $(( $(date +%s) - $(date -r "$RUN/rocola-reinicia-programa-ya" +%s) )) -gt 50 ]; then
+		rm -f "$RUN/rocola-reinicia-programa-ya"; killall rocola-consola 2>/dev/null
+	fi
+	mira_llave
+	if [ -z "$LLAVE" ]; then dice "sin llave del buzon (rocola_buzon.txt en una memoria USB)"
+	else
+		c=$(gh GET "/repos/$REPO")
+		case "$c" in
+			200) atiende_ordenes; mira_diagnostico; manda_estado && dice "al dia con el buzon $REPO" ;;
+			000) dice "sin internet" ;;
+			401|403|404) dice "la llave del buzon no vale para $REPO ($c)" ;;
+			*) dice "GitHub no contesto ($c)" ;;
+		esac
+	fi
+	[ -n "$UNA" ] && break
+	sleep 60
+done
+exit 0

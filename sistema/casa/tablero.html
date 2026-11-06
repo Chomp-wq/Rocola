@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocola en casa</title>
+<style>
+:root{--fondo:#0e1430;--panel:#161f42;--panel2:#1c2754;--borde:#2c3a72;--texto:#e8ecfa;--tenue:#9aa6cc;--acento:#7fd3d3;--ok:#48d470;--aviso:#e6b43c;--mal:#ff6b6b;--boton:#2a3a7a;--boton2:#3a4e9a;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme: light){:root{--fondo:#f3f5fb;--panel:#ffffff;--panel2:#eef1fa;--borde:#d3d9ee;--texto:#1a2140;--tenue:#5c6690;--acento:#127c7c;--boton:#dfe5f7;--boton2:#cdd6f2}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Ubuntu,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--borde);position:sticky;top:0;z-index:2;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;letter-spacing:.5px}
+header .estado{margin-left:auto;color:var(--tenue);font-size:13px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:0;color:var(--tenue);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.sel{background:var(--panel2);color:var(--texto)}
+main{padding:20px;max-width:1300px;margin:0 auto}
+section{display:none}section.sel{display:block}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.tarjeta{background:var(--panel);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
+.tarjeta h3{margin:0 0 8px;font-size:13px;letter-spacing:1px;color:var(--acento);text-transform:uppercase}
+.veredicto{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--borde);margin-bottom:8px}
+.punto{width:11px;height:11px;border-radius:50%;margin-top:6px;flex:none}
+.ok .punto{background:var(--ok)}.aviso .punto{background:var(--aviso)}.mal .punto{background:var(--mal)}
+.veredicto b{min-width:110px;display:inline-block}
+pre{font:12.5px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;margin:0;max-height:520px;overflow:auto;background:var(--panel2);padding:10px;border-radius:8px}
+pre.alto{max-height:72vh}
+button.b{background:var(--boton);color:var(--texto);border:1px solid var(--borde);padding:8px 13px;border-radius:9px;cursor:pointer;font:inherit;margin:3px 4px 3px 0}
+button.b:hover{background:var(--boton2)}
+button.peligro{border-color:var(--mal)}
+.fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input,select{background:var(--panel2);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:7px 9px;font:inherit;min-width:0}
+label{display:block;margin:10px 0 4px;color:var(--tenue);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--borde);vertical-align:top}
+th{color:var(--tenue);font-weight:500}
+.tenue{color:var(--tenue)}.ok-t{color:var(--ok)}.mal-t{color:var(--mal)}.aviso-t{color:var(--aviso)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px}.kv span:nth-child(odd){color:var(--tenue)}
+#aviso{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--borde);padding:10px 16px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+.marca{background:#ffe08a;color:#000}
+@media (max-width:640px){main{padding:12px}.veredicto b{min-width:0;display:block}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎵 Rocola en casa</h1>
+  <nav id="nav"></nav>
+  <div class="estado" id="cabecera">cargando...</div>
+</header>
+<main>
+<section id="resumen">
+  <div id="veredictos"></div>
+  <div class="tarjeta" style="margin:14px 0">
+    <h3>Acciones rápidas</h3>
+    <button class="b" onclick="orden('buscar_actualizacion')">Despertar: buscar actualización ahora</button>
+    <button class="b" onclick="orden('informe')">Pedir estado ahora</button>
+    <button class="b" onclick="orden('registros')">Traer registros</button>
+    <button class="b" onclick="orden('diagnostico')">Diagnóstico completo (cuando esté libre)</button>
+    <button class="b" onclick="orden('ping')">Ping</button>
+    <button class="b" onclick="orden('reiniciar_programa')">Reiniciar programa (cuando esté libre)</button>
+    <button class="b peligro" onclick="if(confirm('¿Reiniciar el programa YA, aunque esté sonando? (la cola y los créditos se conservan)'))orden('reiniciar_programa','ya')">Reiniciar programa YA</button>
+    <button class="b peligro" onclick="if(confirm('¿Reiniciar el equipo cuando la rocola esté libre?'))orden('reiniciar_equipo')">Reiniciar equipo (libre)</button>
+  </div>
+  <div class="rejilla" id="tarjetas"></div>
+</section>
+
+<section id="errores">
+  <div class="fila"><button class="b" onclick="traerArchivo('rocola_error.txt')">Traer rocola_error.txt entero</button>
+  <button class="b" onclick="verArchivo('rocola_error.txt','errEntero')">Ver el traído</button>
+  <span class="tenue">Los últimos 40 llegan solos con el estado.</span></div>
+  <div class="rejilla">
+    <div class="tarjeta"><h3>Los que más se repiten</h3><div id="errGrupos" class="tenue">—</div></div>
+    <div class="tarjeta"><h3>Los últimos</h3><pre id="errUltimos">—</pre></div>
+  </div>
+  <div class="tarjeta" style="margin-top:14px"><h3>rocola_error.txt (traído)</h3><pre class="alto" id="errEntero">Pulsa «Traer» y espera un minuto.</pre></div>
+</section>
+
+<section id="registros">
+  <div class="fila">
+    <button class="b" onclick="orden('registros')">Traer registros nuevos</button>
+    <button class="b" onclick="cargaRegistros()">Volver a leer</button>
+    <select id="regSel" onchange="pintaRegistro()"></select>
+    <input id="regBusca" placeholder="buscar..." oninput="pintaRegistro()">
+    <label style="margin:0"><input type="checkbox" id="regErr" onchange="pintaRegistro()"> solo líneas con error/fallo</label>
+    <button class="b" onclick="guarda('registros.json')">Guardar en mi computadora</button>
+  </div>
+  <div class="tenue" id="regInfo"></div>
+  <pre class="alto" id="regTexto">—</pre>
+</section>
+
+<section id="archivos">
+  <div class="tarjeta"><h3>Pedir un archivo entero a la rocola</h3>
+    <div class="fila"><select id="arcPide"></select><input id="arcOtro" placeholder="u otro: rocola_algo.txt" style="width:220px">
+    <button class="b" onclick="traerArchivo(document.getElementById('arcOtro').value||document.getElementById('arcPide').value)">Traer</button></div>
+    <div class="tenue">Solo archivos de la rocola (bitácoras y tablas), nunca las llaves ni la cuenta de Spotify. Hasta 40 MB. Llega en un minuto o dos.</div>
+  </div>
+  <div class="tarjeta" style="margin-top:14px"><h3>Ya en el buzón</h3><table id="arcLista"></table></div>
+  <div class="tarjeta" style="margin-top:14px"><h3 id="arcTitulo">—</h3><input id="arcBusca" placeholder="buscar..." oninput="pintaArchivo()"><pre class="alto" id="arcTexto"></pre></div>
+</section>
+
+<section id="actualizaciones">
+  <div class="rejilla">
+    <div class="tarjeta"><h3>Versiones</h3><div id="verTabla"></div></div>
+    <div class="tarjeta"><h3>Hacer que se actualice</h3>
+      <p class="tenue">1) Compilar en GitHub (si cambió el código). 2) La rocola la baja en su revisión (cada hora) o al momento con «Buscar actualización». 3) Se pone sola cuando nadie la usa; o ya, con «Reiniciar programa YA».</p>
+      <button class="b" onclick="compila('programa')">Compilar el programa (≈5 min)</button>
+      <button class="b" onclick="compila('sistema')">Compilar el sistema (≈1 h)</button><br>
+      <button class="b" onclick="orden('buscar_actualizacion')">Buscar actualización ahora</button>
+      <button class="b peligro" onclick="if(confirm('¿Poner ya la versión bajada? Reinicia el programa aunque esté sonando.'))orden('reiniciar_programa','ya')">Poner la versión nueva ya</button>
+    </div>
+  </div>
+  <div class="tarjeta" style="margin-top:14px"><h3>Compilaciones en GitHub</h3><table id="compTabla"></table></div>
+  <div class="tarjeta" style="margin-top:14px"><h3>Bitácora de actualizaciones (la rocola)</h3><pre id="actBitacora">—</pre></div>
+</section>
+
+<section id="ordenes">
+  <div class="tarjeta"><h3>Mandar una orden</h3>
+    <div class="fila"><select id="ordSel"></select><input id="ordArg" placeholder="argumento (archivo, «ya»...)"><button class="b" onclick="orden(document.getElementById('ordSel').value,document.getElementById('ordArg').value)">Mandar</button></div>
+    <div class="tenue">La rocola lee el buzón cada minuto.</div>
+  </div>
+  <div class="tarjeta" style="margin-top:14px"><h3>Historial</h3><table id="ordTabla"></table></div>
+</section>
+
+<section id="despertar">
+  <div class="rejilla">
+    <div class="tarjeta"><h3>Si está prendida</h3>
+      <p>«Despertar» la hace buscar actualización al momento (en vez de esperar su revisión de cada hora) y mandar su estado.</p>
+      <button class="b" onclick="orden('buscar_actualizacion');orden('informe')">Despertar ahora</button></div>
+    <div class="tarjeta"><h3>Si está apagada (encendido remoto)</h3>
+      <p class="tenue">Manda el «paquete mágico» al router del bar, que debe reenviarlo a la rocola (Wake on LAN: activado en el BIOS del A4 y en el router, con un puerto UDP reenviado y un nombre DDNS o la IP pública). Si el router tiene su propia app de «encender equipo», úsala con la MAC.</p>
+      <div class="kv" id="wolDatos"></div>
+      <button class="b" onclick="despierta()">Mandar el paquete mágico</button></div>
+  </div>
+</section>
+
+<section id="ajustes">
+  <div class="rejilla">
+    <div class="tarjeta"><h3>Conexión</h3>
+      <label>Llave de GitHub (fine-grained)</label><input id="cLlave" type="password" placeholder="(no se muestra; déjala vacía para no cambiarla)" style="width:100%">
+      <label>Repositorio de la rocola</label><input id="cRepo" style="width:100%">
+      <label>Rama</label><input id="cRama" style="width:100%">
+      <label>Buzón</label><input id="cBuzon" style="width:100%">
+      <label>Encendido remoto: dirección del router (DDNS o IP pública)</label><input id="cWolHost" style="width:100%">
+      <label>Puerto UDP</label><input id="cWolPuerto" style="width:100px">
+      <label>MAC de la rocola (si no, la del estado)</label><input id="cMac" style="width:100%">
+      <div class="fila"><button class="b" onclick="guardaConfig()">Guardar</button><button class="b" onclick="comprueba()">Comprobar la llave</button></div>
+      <pre id="cRes" class="tenue">—</pre>
+      <div class="tenue" id="cArchivo"></div>
+    </div>
+    <div class="tarjeta"><h3>Cómo se prepara (una vez)</h3>
+      <ol>
+        <li>En GitHub crea un repositorio <b>privado</b> llamado <code>rocola-buzon</code> (marca «Add a README»).</li>
+        <li><b>Llave de la rocola</b>: Settings → Developer settings → Fine-grained tokens → Generate. Solo el repositorio <code>rocola-buzon</code>, permiso <b>Contents: Read and write</b>. Guárdala en un archivo <code>rocola_buzon.txt</code> en una memoria USB y conéctala a la rocola (la copia sola).</li>
+        <li><b>Llave de casa</b> (esta): los repositorios <code>Rocola</code> y <code>rocola-buzon</code>, con <b>Contents: Read and write</b> y <b>Actions: Read and write</b>. Pégala aquí arriba.</li>
+        <li>La rocola necesita el sistema con el buzón (Rocola OS, sistema-21 o posterior).</li>
+      </ol>
+      <p class="tenue">La llave se guarda solo en esta computadora. El tablero solo se abre desde esta misma computadora.</p>
+    </div>
+  </div>
+</section>
+</main>
+<div id="aviso"></div>
+<script>
+const CLAVE="__CLAVE__";
+const PESTANAS=[["resumen","Resumen"],["errores","Errores"],["registros","Registros"],["archivos","Archivos"],["actualizaciones","Actualizaciones"],["ordenes","Órdenes"],["despertar","Despertar"],["ajustes","Ajustes"]];
+const ARCHIVOS=["rocola_error.txt","rocola.txt","rocola.txt.1","rocola_actualizaciones.txt","sistema.txt","rocola_diagnostico.txt","rocola_spotify.txt","rocola_billar_bitacora.txt","rocola_config.txt","rocola_estado.txt","rocola_stats.txt","rocola_sonoridad.txt","rocola_eq.txt","rocola_noche.txt","rocola_volumen.txt","rocola-arranque.txt","rocola-discos.txt","rocola-mpv.txt","dmesg.txt"];
+const ORDENES=["ping","informe","registros","archivo","buscar_actualizacion","diagnostico","reiniciar_programa","reiniciar_equipo"];
+let T=null, REG=null, ARC={nombre:"",texto:""};
+const $=id=>document.getElementById(id);
+const esc=s=>(s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function aviso(t){const a=$("aviso");a.textContent=t;a.style.display="block";clearTimeout(a._t);a._t=setTimeout(()=>a.style.display="none",6000)}
+async function api(r,cuerpo){const o=cuerpo===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json","X-Clave":CLAVE},body:JSON.stringify(cuerpo)};const x=await fetch(r,o);const ct=x.headers.get("content-type")||"";return ct.includes("json")?x.json():x.text()}
+function pestana(id){document.querySelectorAll("section").forEach(s=>s.classList.toggle("sel",s.id==id));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("sel",b.dataset.id==id));try{localStorage.setItem("pestana",id)}catch(e){}if(id=="registros"&&!REG)cargaRegistros()}
+$("nav").innerHTML=PESTANAS.map(p=>`<button data-id="${p[0]}" onclick="pestana('${p[0]}')">${p[1]}</button>`).join("");
+$("arcPide").innerHTML=ARCHIVOS.map(a=>`<option>${a}</option>`).join("");
+$("ordSel").innerHTML=ORDENES.map(a=>`<option>${a}</option>`).join("");
+let ini="resumen";try{ini=localStorage.getItem("pestana")||ini}catch(e){}pestana(ini);
+
+async function orden(o,a){const r=await api("/api/orden",{orden:o,arg:a||""});if(r.ok){aviso("Orden «"+o+(a?" "+a:"")+"» dejada. La rocola la lee en menos de un minuto.");[25,50,80,140].forEach(s=>setTimeout(carga,s*1000))}else aviso("No se pudo: "+r.error)}
+async function compila(c){if(!confirm("¿Compilar el "+c+" en GitHub? Gasta minutos de Actions ("+(c=="sistema"?"cerca de una hora":"unos 5")+")."))return;const r=await api("/api/compila",{cual:c});aviso(r.ok?r.texto:"No se pudo: "+r.error);setTimeout(carga,8000)}
+async function despierta(){const mac=T&&T.estado&&T.estado.red?T.estado.red.mac:"";const r=await api("/api/despierta",{mac});aviso(r.ok?r.texto:"No se pudo: "+r.error)}
+async function guarda(n){const r=await api("/api/guarda",{nombre:n});aviso(r.ok?r.texto:"No se pudo: "+r.error)}
+function traerArchivo(n){if(!n)return;orden("archivo",n.trim());aviso("Pedido «"+n+"»: en un minuto o dos aparece en Archivos.")}
+
+async function carga(){
+  try{T=await api("/api/todo")}catch(e){$("cabecera").textContent="sin conexión con el programa";return}
+  const c=T.config||{};
+  $("cRepo").value=c.repo||"";$("cRama").value=c.rama||"";$("cBuzon").value=c.buzon||"";$("cWolHost").value=c.wol_host||"";$("cWolPuerto").value=c.wol_puerto||9;$("cMac").value=c.mac||"";
+  $("cArchivo").textContent="Configuración: "+(c.archivo||"")+" · Descargas: "+(c.descargas||"")+" · versión "+(c.version||"");
+  if(T.sin_llave){$("cabecera").textContent="falta la llave";$("veredictos").innerHTML=`<div class="veredicto aviso"><span class="punto"></span><div><b>Para empezar</b> pon tu llave de GitHub en Ajustes.</div></div>`;pestana("ajustes");return}
+  const e=T.estado;
+  $("cabecera").textContent="actualizado "+new Date().toLocaleTimeString()+(e?" · la rocola escribió: "+e.fecha:"");
+  $("veredictos").innerHTML=(T.veredictos||[]).map(v=>`<div class="veredicto ${v.nivel}"><span class="punto"></span><div><b>${esc(v.titulo)}</b> ${esc(v.texto)}</div></div>`).join("");
+  pintaTarjetas(e);pintaErrores(e);pintaVersiones(e);pintaOrdenes();pintaArchivos();
+  $("wolDatos").innerHTML=`<span>Router</span><span>${esc((c.wol_host||"(sin poner: Ajustes)")+":"+(c.wol_puerto||9))}</span><span>MAC</span><span>${esc(c.mac||(e&&e.red?e.red.mac:"")||"(aún no se sabe)")}</span><span>Wake-on</span><span>${esc(e&&e.red?e.red.wake_on_lan:"")}</span>`;
+}
+function kv(o){return `<div class="kv">${o.map(p=>`<span>${esc(p[0])}</span><span>${esc(p[1])}</span>`).join("")}</div>`}
+function horas(s){s=+s||0;const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+" d ":"")+h+" h "+m+" min"}
+function pintaTarjetas(e){
+  if(!e){$("tarjetas").innerHTML=`<div class="tarjeta"><h3>Sin estado</h3><p class="tenue">La rocola aún no escribe en el buzón.</p></div>`;return}
+  const v=e.versiones||{},q=e.equipo||{},r=e.red||{},ro=e.rocola||{};
+  $("tarjetas").innerHTML=
+   `<div class="tarjeta"><h3>Lo que pasa ahora</h3><pre>${esc(ro.vivo||"(el programa aún no lo dice)")}</pre><div class="tenue">Programa ${ro.corriendo=="si"?"abierto hace "+horas(ro.segundos_abierta):"<b class=mal-t>no corre</b>"}</div></div>`+
+   `<div class="tarjeta"><h3>Versiones</h3>${kv([["Programa",v.programa+(v.programa_nueva?" (bajada la "+v.programa_nueva+")":"")],["Sistema",v.sistema+(v.copia?" · copia "+v.copia:"")+(v.sistema_en_prueba?" · en prueba":"")],["Pendiente",v.reinicio_pendiente||"nada"],["Malas",(v.programa_malas||"—")+" / "+(v.sistema_malas||"—")],["Actualización",(e.actualizacion||{}).estado||""],["Llave GitHub",(e.actualizacion||{}).llave_github?"puesta":"FALTA"]])}</div>`+
+   `<div class="tarjeta"><h3>Equipo</h3>${kv([["Encendido",horas(e.arriba_s)],["Carga",q.carga],["Temperatura",(q.temperatura_c||"?")+" °C"],["Memoria",q.memoria],["Datos",q.disco_datos],["Disco rocola",q.disco_rocola]])}<pre style="margin-top:8px">${esc(q.tarjeta)}</pre></div>`+
+   `<div class="tarjeta"><h3>Red</h3>${kv([["IP",r.ip],["Puerta",r.puerta],["MAC",r.mac],["Wake on LAN",r.wake_on_lan],["Buzón",e.buzon]])}</div>`+
+   `<div class="tarjeta"><h3>Spotify</h3><pre>${esc((e.bitacoras||{}).spotify||"—")}</pre></div>`+
+   `<div class="tarjeta"><h3>Núcleo (dmesg)</h3><pre>${esc((e.bitacoras||{}).nucleo||"—")}</pre></div>`+
+   `<div class="tarjeta"><h3>rocola.txt (lo último)</h3><pre>${esc((e.bitacoras||{}).rocola||"—")}</pre></div>`+
+   `<div class="tarjeta"><h3>Discos de música</h3><pre>${esc((e.bitacoras||{}).discos||"—")}</pre></div>`;
+}
+function sinHora(l){return l.replace(/^\s*\[?\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?\]?\s*/,"").replace(/\d+/g,"#").trim()}
+function grupos(txt){const m=new Map();txt.split("\n").forEach(l=>{if(!l.trim())return;const k=sinHora(l).slice(0,160);m.set(k,(m.get(k)||0)+1)});return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,25)}
+function pintaErrores(e){
+  const u=e&&e.errores?e.errores.ultimos:"";$("errUltimos").textContent=u||"(ninguno)";
+  const g=grupos(u||"");$("errGrupos").innerHTML=g.length?`<table>${g.map(x=>`<tr><td style="width:40px"><b>${x[1]}</b></td><td>${esc(x[0])}</td></tr>`).join("")}</table>`:"—";
+}
+function pintaVersiones(e){
+  const v=T.versiones||{},ev=e?e.versiones||{}:{};
+  const fila=(n,t,inst)=>{const u=v[t];return `<tr><td>${n}</td><td>${esc(inst||"?")}</td><td>${u?`<a href="${u.url}" target="_blank">${u.n}</a> <span class="tenue">${(u.fecha||"").slice(0,16).replace("T"," ")}</span>`:"—"}</td></tr>`};
+  $("verTabla").innerHTML=`<table><tr><th></th><th>En la rocola</th><th>Última publicada</th></tr>${fila("Programa","programa",ev.programa+(ev.programa_nueva?" (+"+ev.programa_nueva+" bajada)":""))}${fila("Sistema","sistema",ev.sistema)}${fila("Rocola en casa","casa",(T.config||{}).version)}</table>`;
+  $("compTabla").innerHTML=`<tr><th>Compilación</th><th>Estado</th><th>Cuándo</th><th>Cambio</th></tr>`+(T.compilaciones||[]).map(c=>`<tr><td><a href="${c.url}" target="_blank">${esc(c.nombre)} #${c.numero}</a></td><td class="${c.estado!="completed"?"aviso-t":c.resultado=="success"?"ok-t":"mal-t"}">${c.estado!="completed"?"en curso":esc(c.resultado)}</td><td>${(c.fecha||"").slice(0,16).replace("T"," ")}</td><td class="tenue">${esc(c.commit)} ${esc(c.mensaje)}</td></tr>`).join("");
+  $("actBitacora").textContent=e&&e.bitacoras?(e.bitacoras.actualizaciones||"")+"\n\n--- sistema.txt ---\n"+(e.bitacoras.sistema||""):"—";
+}
+function pintaOrdenes(){
+  const resp={};(T.respuestas||[]).forEach(r=>resp[r.id]=r);
+  $("ordTabla").innerHTML=`<tr><th>Cuándo</th><th>Orden</th><th>Respuesta</th></tr>`+(T.ordenes||[]).slice().reverse().map(o=>{const r=resp[o.id];return `<tr><td>${esc(o.fecha)}</td><td>${esc(o.orden)} ${esc(o.arg)}</td><td class="${r?"":"aviso-t"}">${r?esc(r.respuesta)+` <span class="tenue">(${esc(r.fecha)})</span>`:"esperando a la rocola..."}</td></tr>`}).join("");
+}
+function pintaArchivos(){
+  $("arcLista").innerHTML=(T.archivos||[]).length?(T.archivos.map(a=>`<tr><td>${esc(a.nombre)}</td><td class="tenue">${((a.tamano||0)/1024).toFixed(0)} KB</td><td><button class="b" onclick="verArchivo('${esc(a.nombre)}')">Ver</button><button class="b" onclick="guarda('${esc(a.nombre)}')">Guardar</button><button class="b" onclick="traerArchivo('${esc(a.nombre)}')">Traer otra vez</button></td></tr>`).join("")):"<tr><td class=tenue>Nada todavía.</td></tr>";
+}
+async function verArchivo(n,dest){const t=await api("/api/archivo?n="+encodeURIComponent(n));if(dest){$(dest).textContent=t;return}ARC={nombre:n,texto:t};$("arcTitulo").textContent=n;pintaArchivo();pestana("archivos")}
+function filtra(txt,q,soloErr){let l=txt.split("\n");if(soloErr)l=l.filter(x=>/error|fallo|fall[oó]|excep|crash|no se pudo|warn/i.test(x));if(q){const ql=q.toLowerCase();l=l.filter(x=>x.toLowerCase().includes(ql))}return l.join("\n")}
+function pintaArchivo(){$("arcTexto").textContent=filtra(ARC.texto||"",$("arcBusca").value,false)}
+async function cargaRegistros(){const r=await api("/api/registros");REG=(typeof r=="string")?{}:r;const ns=Object.keys(REG).sort();const s=$("regSel"),antes=s.value;s.innerHTML=ns.map(n=>`<option>${n}</option>`).join("");if(ns.includes(antes))s.value=antes;$("regInfo").textContent=ns.length?ns.length+" registros (lo último de cada uno, hasta 256 KB)":"Aún no hay registros en el buzón: «Traer registros nuevos».";pintaRegistro()}
+function pintaRegistro(){if(!REG)return;const n=$("regSel").value;$("regTexto").textContent=filtra(REG[n]||"",$("regBusca").value,$("regErr").checked)||"—"}
+async function guardaConfig(){const r=await api("/api/config",{llave:$("cLlave").value,repo:$("cRepo").value,rama:$("cRama").value,buzon:$("cBuzon").value,wol_host:$("cWolHost").value,wol_puerto:$("cWolPuerto").value,mac:$("cMac").value});$("cLlave").value="";aviso(r.ok?r.texto:"No se pudo: "+r.error);carga()}
+async function comprueba(){$("cRes").textContent="comprobando...";const r=await api("/api/comprueba");$("cRes").textContent=Object.values(r).join("\n")}
+carga();setInterval(carga,30000);
+</script>
+</body>
+</html>

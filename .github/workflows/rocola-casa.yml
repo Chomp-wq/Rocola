@@ -1,0 +1,35 @@
+# ROCOLA EN CASA (sistema/casa): la herramienta del dueno para trabajar en la rocola desde casa (Pop!_OS y Windows). SOLO A PEDIDO
+# (Actions -> «Rocola en casa» -> Run workflow, o cuando el dueno se lo pide a Claude): publica «casa-N» con los dos ejecutables.
+name: Rocola en casa
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compilar (Linux y Windows)
+        run: |
+          V=${{ github.run_number }}
+          cd sistema/casa
+          dotnet publish -c Release -r linux-x64 -p:CasaVersion=$V -o "$GITHUB_WORKSPACE/salida/linux"
+          dotnet publish -c Release -r win-x64 -p:CasaVersion=$V -o "$GITHUB_WORKSPACE/salida/windows"
+          "$GITHUB_WORKSPACE/salida/linux/rocola-casa" --version | grep -q "casa $V"
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          mkdir pub
+          cp salida/linux/rocola-casa pub/rocola-casa-linux
+          cp salida/windows/rocola-casa.exe pub/rocola-casa.exe
+          (cd pub && sha256sum * > sha256.txt)
+          gh release create "casa-$V" pub/* --target "$GITHUB_SHA" --title "Rocola en casa $V" --notes "La herramienta para trabajar en la rocola desde casa (sistema/casa/LEEME.md)."

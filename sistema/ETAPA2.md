@@ -1361,3 +1361,24 @@ su interruptor en Ctrl+F3 → Spotify, encendidas (y solo con el modo Spotify en
   del disco, entrar a un disco de la tira y volver; un artista con foto en SPOTIFY, sus canciones y sus discos; pedir desde ahí cobra el
   crédito; con los interruptores apagados la pared queda como antes. Sin cuenta real ni A4: si Spotify no deja ver algo (por ejemplo,
   las listas de género o lo más conocido de un artista), simplemente no sale.
+
+## Extra (7-11-2026, tercera parte): trabajar en la rocola desde casa
+
+Pedido del dueño: «hazme un programa/herramienta para poder usar en mi laptop con POP_OS o desde mi computadora WINDOWS, en la que me
+diga varias cosas esenciales de la rocola, como sus errores, datos de diagnósticos... también desde dicho programa poder despertar la
+rocola para forzar actualizaciones, y que me dé estados de todo». Ver `sistema/casa/LEEME.md`.
+
+- **El buzón** (`/usr/bin/rocola-buzon`, lo arranca S99rocola a los 90 s): la rocola no se puede alcanzar desde fuera, así que habla con
+  casa por un repositorio privado de GitHub (`rocola-buzon`) con su propia llave (`rocola_buzon.txt` en una memoria USB, como la de las
+  actualizaciones; solo ese repositorio). Cada minuto lee las órdenes; sube su estado cuando algo cambia (como mucho cada 2 minutos y al
+  menos cada hora: versiones, actualización, red, equipo, lo que suena, los últimos errores y bitácoras), y a pedido los registros, un
+  archivo entero de los datos (nunca las llaves ni la cuenta de Spotify) y el diagnóstico completo. Ctrl+F3 → Internet dice cómo va.
+- **El programa** atiende lo que se pide desde casa (`Actualizacion.cs`): reiniciar el programa o el equipo y el diagnóstico completo
+  cuando está libre (o el programa «ya»: sale con 42 y se pone la versión bajada, si la hay), y cada 15 s deja lo que pasa ahora en
+  `/run/rocola-vivo.txt`.
+- **Rocola en casa** (`sistema/casa`, .NET 10, un solo archivo para Pop!_OS y otro para Windows): un tablero en el navegador (solo en
+  esta computadora) con Resumen (en línea, ¿la actualización ya está?, el programa corre, errores, compilaciones), Errores (agrupados),
+  Registros, Archivos (y guardarlos en `~/RocolaCasa`), Actualizaciones (compilar en GitHub, buscar ahora, poner la nueva ya), Órdenes
+  con sus respuestas, Despertar (Wake on LAN al router) y Ajustes; y en la terminal `--estado` y `--orden`.
+- Probado con un GitHub simulado: la rocola sube su estado, atiende ping, registros, un archivo, buscar actualización y rechaza las
+  llaves; el tablero muestra todo y los veredictos. Sin el buzón real ni el A4: la rocola necesita el siguiente sistema.
