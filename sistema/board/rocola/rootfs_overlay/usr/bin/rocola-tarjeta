@@ -19,6 +19,12 @@ if [ -f "$F" ]; then
 	fi
 fi
 for t in $(ls -d "$R"/card[0-9]* 2>/dev/null | sed 's/.*card//' | sort -n); do
+	# LA TARJETA DEL HDMI, ENTERA (7-11-2026: en el A4 se eligio «HDA ATI HDMI»: con el controlador generico su salida no se llama «HDMI»):
+	# se reconoce tambien por el nombre de la tarjeta (/proc/asound/cards), su id, su codec o sus ELD (solo las salidas HDMI/DP los tienen)
+	grep -qiE "^ *$t \[.*(HDMI|DisplayPort)" "$R/cards" 2>/dev/null && continue
+	grep -qiE 'HDMI|DisplayPort' "$R/card$t/id" 2>/dev/null && continue
+	cat "$R/card$t"/codec#* 2>/dev/null | head -2 | grep -qiE 'HDMI|DisplayPort' && continue
+	ls "$R/card$t"/eld#* >/dev/null 2>&1 && continue
 	for p in $(ls -d "$R/card$t"/pcm[0-9]*p 2>/dev/null | sed 's/.*pcm\([0-9]*\)p/\1/' | sort -n); do
 		grep -qiE 'HDMI|DisplayPort' "$R/card$t/pcm${p}p/info" 2>/dev/null && continue
 		if [ "$1" = -c ]; then echo "$t"; else echo "plughw:$t,$p"; fi

@@ -28,5 +28,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="bin/**;obj/**;Referencia/**" />
+    <!-- la pantalla de Rocola OS (KMS y fuera de pantalla) y OpenGL ES 2 / EGL: los mismos archivos del programa de Linux de ahora, sin cambiarlos -->
+    <Compile Include="../Consola/Pantalla/Gl.cs" Link="Plataforma/Enlazados/Gl.cs" />
+    <Compile Include="../Consola/Pantalla/Kms.cs" Link="Plataforma/Enlazados/Kms.cs" />
   </ItemGroup>
 </Project>

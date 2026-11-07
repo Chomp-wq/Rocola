@@ -2035,6 +2035,20 @@ anade una prueba que decide:
 - El lanzador quita tambien el silencio de la salida digital (IEC958) de la tarjeta elegida: la del HDMI arranca muda.
 - Probado en QEMU con una tarjeta HDA emulada (la lista, el pitido, el registro, `usar` y `auto`); no en el A4.
 
+### El sonido salia por el HDMI (7 de noviembre de 2026)
+
+La prueba de sonido y grafica del A4 dijo «Sonido: plughw:0,3, 0 [HDMI]: HDA-Intel - HDA ATI HDMI -> sono», y no se oyo nada: el tono
+salio por el HDMI de la grafica, no por la salida verde de la placa (donde va el amplificador). rocola-tarjeta se salta las salidas cuyo
+nombre dice HDMI, pero los controladores de los codecs (Realtek, HDMI) eran modulos; sin ellos cargados a tiempo, el codec del HDMI queda
+con el controlador generico, que nombra su salida de otra forma, y se tomo por la de la placa.
+
+- Los controladores van DENTRO del nucleo (`linux.fragment`): Realtek y HDMI, y tambien VIA, Conexant, IDT, Analog Devices y C-Media por
+  si la placa del A4 trae otro codec, y el sonido por USB (`CONFIG_SND_USB_AUDIO`).
+- `rocola-tarjeta` descarta la tarjeta entera del HDMI tambien por su nombre en `/proc/asound/cards`, su `id`, su codec o sus ELD (solo
+  las salidas HDMI/DP los tienen). Con un `/proc/asound` simulado como el del A4 (la salida del HDMI sin «HDMI» en el nombre) elige la
+  analogica; con solo la del HDMI, `default`.
+- El programa usa la que le pasa el lanzador (`ROCOLA_ALSA`, de `rocola-tarjeta`). No probado en el A4.
+
 ### La consola de mantenimiento y la llave de Spotify (7 de noviembre de 2026)
 
 - **«No puedo abrir la consola de mantenimiento con Ctrl+Alt+F2».** El nucleo si cambiaba a la consola 2 (con su «login»), pero la rocola

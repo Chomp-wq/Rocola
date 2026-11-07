@@ -25,12 +25,21 @@ CONFIG_DRM_BOCHS=y
 CONFIG_DRM_VIRTIO_GPU=y
 CONFIG_DRM_FBDEV_EMULATION=y
 
-# El sonido del A4 (HDA con codec Realtek, y la salida HDMI)
+# El sonido del A4 (HDA con codec Realtek, y la salida HDMI). DENTRO DEL NUCLEO, no como modulos (7-11-2026: en el A4 no se oia nada; los
+# modulos no estaban cargados al elegir la salida, el codec HDMI quedo con el controlador generico, que no nombra «HDMI» a su salida, y la
+# rocola eligio la del HDMI de la grafica en lugar de la verde de la placa). Tambien los de los otros fabricantes de codecs de placa (por si
+# el A4 trae otro) y el sonido por USB (tarjetas y DACs externos).
 CONFIG_SND=y
 CONFIG_SND_HDA_INTEL=y
 CONFIG_SND_HDA_GENERIC=y
-CONFIG_SND_HDA_CODEC_REALTEK=m
-CONFIG_SND_HDA_CODEC_HDMI=m
+CONFIG_SND_HDA_CODEC_REALTEK=y
+CONFIG_SND_HDA_CODEC_HDMI=y
+CONFIG_SND_HDA_CODEC_VIA=y
+CONFIG_SND_HDA_CODEC_CONEXANT=y
+CONFIG_SND_HDA_CODEC_SIGMATEL=y
+CONFIG_SND_HDA_CODEC_ANALOG=y
+CONFIG_SND_HDA_CODEC_CMEDIA=y
+CONFIG_SND_USB_AUDIO=y
 
 # La red (Realtek, para actualizar mas adelante) y la temperatura del procesador
 CONFIG_R8169=m
