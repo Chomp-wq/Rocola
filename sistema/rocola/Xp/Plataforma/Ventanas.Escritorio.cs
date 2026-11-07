@@ -168,6 +168,116 @@ namespace Rocola.Ventanas
         }
         internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
 
+        // ---------- el raton (lo que en XP manda Windows: WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_MOUSEWHEEL...) ----------
+        // Como Windows y WinForms: el control de encima de todo bajo la flecha recibe el movimiento (y MouseEnter / MouseLeave al cambiar);
+        // el que recibe el boton bajado se queda con el raton hasta soltarlo (la captura de Windows); al soltar dentro, Click y MouseClick
+        // (o DoubleClick y MouseDoubleClick si es el segundo en 500 ms y a menos de 4 puntos, como XP), y despues MouseUp. La rueda va al
+        // control con el foco (asi la manda XP), de 120 en 120. La flecha se ve si ShowCursor deja la cuenta en 0 o mas (Cursor.Show/Hide).
+        public static Point PosicionRaton = new Point(1023, 767);
+        internal static int VisibilidadCursor;
+        public static bool CursorVisible { get { return VisibilidadCursor >= 0; } }
+        private static Control bajoRaton, captura;
+        private static double ultimoClicMs = -1e9; private static Point ultimoClicEn; private static MouseButtons ultimoClicBoton; private static Control ultimoClicControl;
+        private static bool dobleEnCurso;
+        internal const double DobleClicMs = 500; internal const int DobleClicPuntos = 4;
+        // el control de encima de todo en un punto de la pantalla (las ventanas de arriba abajo; dentro, los hijos del primero al ultimo)
+        public static Control ControlEn(Point p)
+        {
+            Form[] fs = Formas;
+            for (int i = fs.Length - 1; i >= 0; i--)
+            {
+                Form f = fs[i];
+                if (f.IsDisposed || !f.Visible || !f.Bounds.Contains(p)) continue;
+                return HijoEn(f, p);
+            }
+            return null;
+        }
+        private static Control HijoEn(Control c, Point p)
+        {
+            List<Control> hijos = c.Controls.Lista;
+            for (int i = 0; i < hijos.Count; i++)
+            {
+                Control h = hijos[i];
+                if (!h.VisiblePropio || h.IsDisposed) continue;
+                if (new Rectangle(c.PointToScreen(h.Location), h.Size).Contains(p))
+                    return h.Enabled ? HijoEn(h, p) : c;   // (uno deshabilitado no recibe el raton: lo recibe el de debajo, su padre)
+            }
+            return c;
+        }
+        private static MouseEventArgs Args(Control c, MouseButtons b, int clics, int delta)
+        {
+            Point q = c.PointToClient(PosicionRaton);
+            return new MouseEventArgs(b, clics, q.X, q.Y, delta);
+        }
+        private static void Llama(Control c, int tipo, MouseEventArgs e)
+        {
+            if (c == null || c.IsDisposed) return;
+            try { c.LlamaMouse(tipo, e); } catch (Exception ex) { Application.Avisa(ex); }
+        }
+        // el raton se movio (dx, dy) o esta en (x, y); queda dentro de la pantalla
+        public static void RatonMueve(int dx, int dy) { RatonEn(PosicionRaton.X + dx, PosicionRaton.Y + dy); }
+        public static void RatonEn(int x, int y)
+        {
+            x = Math.Max(0, Math.Min(Pantalla.Width - 1, x)); y = Math.Max(0, Math.Min(Pantalla.Height - 1, y));
+            if (x == PosicionRaton.X && y == PosicionRaton.Y) return;
+            PosicionRaton = new Point(x, y);
+            if (captura != null && !captura.IsDisposed) { Llama(captura, 2, Args(captura, BotonesRaton, 0, 0)); return; }
+            Encima(ControlEn(PosicionRaton));
+            if (bajoRaton != null) Llama(bajoRaton, 2, Args(bajoRaton, BotonesRaton, 0, 0));
+        }
+        private static void Encima(Control c)
+        {
+            if (c == bajoRaton) return;
+            Control antes = bajoRaton; bajoRaton = c;
+            if (antes != null && !antes.IsDisposed) Llama(antes, 4, null);
+            if (c != null) Llama(c, 3, null);
+        }
+        public static void RatonBoton(MouseButtons b, bool abajo)
+        {
+            if (abajo)
+            {
+                BotonesRaton |= b;
+                Control c = ControlEn(PosicionRaton);
+                Encima(c);
+                if (c == null) return;
+                Form f = c.FindForm();
+                if (f != null && f != Activa) { Activa = f; AlFrente(f); }
+                captura = c;
+                double t = AhoraMs;
+                dobleEnCurso = b == ultimoClicBoton && c == ultimoClicControl && t - ultimoClicMs <= DobleClicMs
+                    && Math.Abs(PosicionRaton.X - ultimoClicEn.X) <= DobleClicPuntos / 2 && Math.Abs(PosicionRaton.Y - ultimoClicEn.Y) <= DobleClicPuntos / 2;
+                if (dobleEnCurso) ultimoClicMs = -1e9;   // un tercer clic empieza otra cuenta
+                else { ultimoClicMs = t; ultimoClicEn = PosicionRaton; ultimoClicBoton = b; ultimoClicControl = c; }
+                Llama(c, 0, Args(c, b, dobleEnCurso ? 2 : 1, 0));
+            }
+            else
+            {
+                BotonesRaton &= ~b;
+                Control c = captura ?? ControlEn(PosicionRaton);
+                captura = null;
+                if (c == null) return;
+                MouseEventArgs e = Args(c, b, dobleEnCurso ? 2 : 1, 0);
+                bool dentro = c.ClientRectangle.Contains(e.X, e.Y);
+                Llama(c, !dentro ? 7 : dobleEnCurso ? 5 : 1, e);
+                dobleEnCurso = false;
+                Encima(ControlEn(PosicionRaton));
+            }
+        }
+        public static void RatonRueda(int muescas)
+        {
+            Control c = Foco != null && !Foco.IsDisposed ? Foco : Activa;
+            if (c != null) Llama(c, 6, Args(c, MouseButtons.None, 0, muescas * 120));
+        }
+        // la flecha que toca (la del control de debajo, o la de su padre)
+        public static Cursor CursorActual
+        {
+            get
+            {
+                for (Control c = captura ?? bajoRaton; c != null; c = c.Parent) if (c.Cursor != null) return c.Cursor;
+                return Cursors.Default;
+            }
+        }
+
         // ---------- las teclas (el anfitrion las manda con Entrada(() => Escritorio.Tecla(...))) ----------
         // Como en WinForms: primero ProcessCmdKey del control con el foco (y de sus padres: la rocola de XP atiende sus botones en el de
         // Form1), luego ProcessDialogKey, KeyDown (antes en el formulario si tiene KeyPreview) y KeyPress.

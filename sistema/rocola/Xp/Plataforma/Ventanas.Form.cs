@@ -195,10 +195,11 @@ namespace Rocola.Ventanas
     {
         private readonly string nombre;
         internal Cursor(string n) { nombre = n; }
-        public static Point Position { get; set; }
+        public static Point Position { get { return Escritorio.PosicionRaton; } set { Escritorio.PosicionRaton = value; } }   // (moverla no avisa a nadie, como en Windows)
         public static Cursor Current { get; set; }
-        public static void Hide() { }
-        public static void Show() { }
+        public static void Hide() { Escritorio.VisibilidadCursor--; }   // la cuenta de ShowCursor de Windows
+        public static void Show() { Escritorio.VisibilidadCursor++; }
+        internal string Nombre { get { return nombre; } }
         public static Rectangle Clip { get; set; }
         public void Dispose() { }
         public override string ToString() { return "[Cursor: " + nombre + "]"; }

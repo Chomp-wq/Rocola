@@ -297,12 +297,13 @@ namespace Rocola.Ventanas
             switch (tipo)
             {
                 case 0: OnMouseDown(e); break;
-                case 1: OnMouseUp(e); OnMouseClick(e); OnClick(EventArgs.Empty); break;
+                case 1: OnClick(e); OnMouseClick(e); OnMouseUp(e); break;                 // soltar dentro (como WinForms: Click antes que MouseUp)
                 case 2: OnMouseMove(e); break;
                 case 3: OnMouseEnter(EventArgs.Empty); break;
                 case 4: OnMouseLeave(EventArgs.Empty); break;
-                case 5: OnMouseDoubleClick(e); OnDoubleClick(EventArgs.Empty); break;
+                case 5: OnDoubleClick(e); OnMouseDoubleClick(e); OnMouseUp(e); break;     // soltar el segundo clic
                 case 6: OnMouseWheel(e); break;
+                case 7: OnMouseUp(e); break;                                              // soltar fuera: sin clic
             }
         }
         internal void LlamaPaint(PaintEventArgs e) { OnPaint(e); }

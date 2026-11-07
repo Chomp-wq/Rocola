@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Rocola.Pantalla;
 using SkiaSharp;
+using Point = System.Drawing.Point;
 
 namespace Rocola
 {
@@ -152,9 +153,57 @@ namespace Rocola
             if (fuera != null) foreach (Capa c in fuera) { uint t = capas[c].Tex; if (t != 0) GL.DeleteTextures(1, &t); capas.Remove(c); }
             GL.Disable(GL.BLEND);
             Composiciones++;
-            Capturas();
+            if (conFlecha) { Flecha(); Capturas(); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
+            else { Capturas(); Flecha(); }   // como las capturas de Windows: sin la flecha
             sup.Presenta();
             D3D9.EnGl.EstadoTocado();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta
+        }
+        // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la
+        // mano (Cursors.Hand), dibujadas una vez como las de Windows XP (blanca con borde negro; la mano, con el dedo arriba).
+        private uint texFlecha, texMano;
+        private static readonly bool conFlecha = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_FLECHA") == "1";
+        private void Flecha()
+        {
+            if (!Escritorio.CursorVisible) return;
+            bool mano = Escritorio.CursorActual == Cursors.Hand;
+            if (texFlecha == 0) { texFlecha = HazCursor(false); texMano = HazCursor(true); }
+            Point p = Escritorio.PosicionRaton;
+            GL.UseProgram(programa);
+            GL.Uniform2f(lugarM, 2f / ancho, 2f / alto); GL.Uniform1i(lugarS, 0);
+            GL.ActiveTexture(GL.TEXTURE0);
+            GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
+            GL.BindTexture(GL.TEXTURE_2D, mano ? texMano : texFlecha);
+            if (mano) Cuadro(p.X - 6, p.Y, 32, 32, 1f, 1f, 1f); else Cuadro(p.X, p.Y, 32, 32, 1f, 1f, 1f);
+            GL.Disable(GL.BLEND);
+        }
+        private uint HazCursor(bool mano)
+        {
+            using (SKBitmap b = new SKBitmap(new SKImageInfo(32, 32, SKColorType.Bgra8888, SKAlphaType.Premul)))
+            using (SKCanvas c = new SKCanvas(b))
+            using (SKPath r = new SKPath())
+            using (SKPaint relleno = new SKPaint { Color = SKColors.White, IsAntialias = false, Style = SKPaintStyle.Fill })
+            using (SKPaint borde = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Stroke, StrokeWidth = 1 })
+            {
+                c.Clear(SKColors.Transparent);
+                if (!mano)
+                {
+                    r.MoveTo(0.5f, 0.5f); r.LineTo(0.5f, 16.5f); r.LineTo(4.5f, 12.5f); r.LineTo(7.5f, 18.5f); r.LineTo(9.5f, 17.5f); r.LineTo(6.5f, 11.5f); r.LineTo(11.5f, 11.5f); r.Close();
+                }
+                else
+                {
+                    r.MoveTo(5.5f, 0.5f); r.LineTo(8.5f, 0.5f); r.LineTo(8.5f, 7.5f); r.LineTo(16.5f, 8.5f); r.LineTo(17.5f, 10.5f); r.LineTo(16.5f, 16.5f);
+                    r.LineTo(13.5f, 21.5f); r.LineTo(6.5f, 21.5f); r.LineTo(1.5f, 14.5f); r.LineTo(1.5f, 11.5f); r.LineTo(3.5f, 11.5f); r.LineTo(5.5f, 13.5f); r.Close();
+                }
+                c.DrawPath(r, relleno); c.DrawPath(r, borde);
+                c.Flush();
+                uint t; GL.GenTextures(1, &t);
+                GL.BindTexture(GL.TEXTURE_2D, t);
+                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
+                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+                GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4);
+                GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, 32, 32, 0, GL.RGBA, GL.UNSIGNED_BYTE, (void*)b.GetPixels());
+                return t;
+            }
         }
         private void Sube(Bitmap b, CapaGl g)
         {

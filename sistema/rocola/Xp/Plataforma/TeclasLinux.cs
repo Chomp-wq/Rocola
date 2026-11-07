@@ -32,28 +32,46 @@ namespace Rocola
             new Thread(Repite) { IsBackground = true, Name = "teclas: repeticion" }.Start();
         }
 
-        // ---- pruebas: teclas a su hora ----
+        // ---- pruebas: teclas y raton a su hora ----
+        // S:VK (apretar y soltar), S:VK1+VK2 (VK1 apretada mientras se aprieta VK2: 17+114 = Ctrl+F3), S:raton:X:Y (llevar la flecha),
+        // S:clic:X:Y (llevarla y hacer clic con el izquierdo), S:rueda:N (N muescas).
         internal static void Programadas(string lista)
         {
             if (string.IsNullOrEmpty(lista)) return;
-            List<KeyValuePair<double, int>> l = new List<KeyValuePair<double, int>>();
+            List<KeyValuePair<double, string>> l = new List<KeyValuePair<double, string>>();
             foreach (string e in lista.Split(','))
             {
-                int k = e.IndexOf(':'); double s; int vk;
-                if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out s) && int.TryParse(e.Substring(k + 1), out vk))
-                    l.Add(new KeyValuePair<double, int>(s * 1000.0, vk));
+                int k = e.IndexOf(':'); double s;
+                if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out s)) l.Add(new KeyValuePair<double, string>(s * 1000.0, e.Substring(k + 1)));
             }
             l.Sort((a, b) => a.Key.CompareTo(b.Key));
             new Thread(delegate ()
             {
-                foreach (KeyValuePair<double, int> p in l)
+                foreach (KeyValuePair<double, string> p in l)
                 {
                     double espera = p.Key - Escritorio.AhoraMs;
                     if (espera > 0) Thread.Sleep((int)espera);
-                    Keys t = (Keys)p.Value;
+                    string[] q = p.Value.Split(':');
+                    if ((q[0] == "raton" || q[0] == "clic") && q.Length == 3)
+                    {
+                        int x = int.Parse(q[1]), y = int.Parse(q[2]);
+                        Escritorio.Entrada(delegate { Escritorio.RatonEn(x, y); });
+                        if (q[0] == "clic")
+                        {
+                            Thread.Sleep(30); Escritorio.Entrada(delegate { Escritorio.RatonBoton(MouseButtons.Left, true); });
+                            Thread.Sleep(60); Escritorio.Entrada(delegate { Escritorio.RatonBoton(MouseButtons.Left, false); });
+                        }
+                        continue;
+                    }
+                    if (q[0] == "rueda" && q.Length == 2) { int m = int.Parse(q[1]); Escritorio.Entrada(delegate { Escritorio.RatonRueda(m); }); continue; }
+                    string[] teclas = p.Value.Split('+');
+                    Keys mod = teclas.Length == 2 ? (Keys)int.Parse(teclas[0]) : Keys.None;
+                    Keys t = (Keys)int.Parse(teclas[teclas.Length - 1]);
+                    if (mod != Keys.None) { Escritorio.Entrada(delegate { Escritorio.Tecla(mod, true); }); Thread.Sleep(30); }
                     Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
                     Thread.Sleep(60);
                     Escritorio.Entrada(delegate { Escritorio.Tecla(t, false); });
+                    if (mod != Keys.None) { Thread.Sleep(30); Escritorio.Entrada(delegate { Escritorio.Tecla(mod, false); }); }
                 }
             }) { IsBackground = true, Name = "teclas de prueba" }.Start();
         }
@@ -73,18 +91,62 @@ namespace Rocola
             }
         }
 
+        // EL RATON (y las pantallas tactiles): movimiento, rueda y botones, juntados por cada SYN_REPORT, al escritorio (Escritorio.Raton*).
+        private const int EV_SYN = 0, EV_REL = 2, EV_ABS = 3, BTN_LEFT = 0x110, BTN_RIGHT = 0x111, BTN_MIDDLE = 0x112, BTN_TOUCH = 0x14A;
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)] private static extern int ioctl(IntPtr fd, uint pedido, int[] info);
+        private static bool Limites(FileStream f, int eje, out int min, out int max)
+        {
+            min = max = 0;
+            try { int[] i = new int[6]; if (ioctl(f.SafeFileHandle.DangerousGetHandle(), 0x80184540u + (uint)eje, i) < 0) return false; min = i[1]; max = i[2]; return max > min; }   // EVIOCGABS
+            catch { return false; }
+        }
+
         // struct input_event de 64 bits: tiempo (16 bytes), tipo (2), codigo (2), valor (4) = 24 bytes
         private static void Lee(FileStream f)
         {
             byte[] e = new byte[24];
+            int dx = 0, dy = 0, ax = -1, ay = -1, xmin = 0, xmax = 0, ymin = 0, ymax = 0; bool absVisto = false, conAbs = false;
             while (true)
             {
                 int n = 0;
                 try { while (n < 24) { int k = f.Read(e, n, 24 - n); if (k <= 0) return; n += k; } }
                 catch { return; }   // se desconecto
                 int tipo = BitConverter.ToUInt16(e, 16), codigo = BitConverter.ToUInt16(e, 18), valor = BitConverter.ToInt32(e, 20);
+                if (tipo == EV_REL)
+                {
+                    if (codigo == 0) dx += valor; else if (codigo == 1) dy += valor;
+                    else if (codigo == 8 && valor != 0) { int m = valor; Escritorio.Entrada(delegate { Escritorio.RatonRueda(m); }); }   // REL_WHEEL
+                    continue;
+                }
+                if (tipo == EV_ABS && (codigo == 0 || codigo == 1))
+                {
+                    if (!absVisto) { absVisto = true; conAbs = Limites(f, 0, out xmin, out xmax) & Limites(f, 1, out ymin, out ymax); }
+                    if (conAbs) { if (codigo == 0) ax = valor; else ay = valor; }
+                    continue;
+                }
+                if (tipo == EV_SYN && codigo == 0)
+                {
+                    if (dx != 0 || dy != 0) { int mx = dx, my = dy; dx = dy = 0; Escritorio.Entrada(delegate { Escritorio.RatonMueve(mx, my); }); }
+                    if (conAbs && (ax >= 0 || ay >= 0))
+                    {
+                        int px = ax, py = ay, x0 = xmin, x1 = xmax, y0 = ymin, y1 = ymax; ax = ay = -1;
+                        Escritorio.Entrada(delegate
+                        {
+                            System.Drawing.Size p = Escritorio.Pantalla;
+                            Escritorio.RatonEn(px < 0 ? Escritorio.PosicionRaton.X : (int)((px - x0) * (long)(p.Width - 1) / (x1 - x0)), py < 0 ? Escritorio.PosicionRaton.Y : (int)((py - y0) * (long)(p.Height - 1) / (y1 - y0)));
+                        });
+                    }
+                    continue;
+                }
                 if (tipo != EV_KEY || valor == 2) continue;   // (la repeticion del nucleo no: la hace Repite, como XP)
-                if (codigo >= 0x110 && codigo < 0x160) continue;   // botones de raton y de mando (no son teclas)
+                if (codigo == BTN_LEFT || codigo == BTN_RIGHT || codigo == BTN_MIDDLE || codigo == BTN_TOUCH)
+                {
+                    MouseButtons b = codigo == BTN_RIGHT ? MouseButtons.Right : codigo == BTN_MIDDLE ? MouseButtons.Middle : MouseButtons.Left;
+                    bool baja = valor == 1;
+                    Escritorio.Entrada(delegate { Escritorio.RatonBoton(b, baja); });
+                    continue;
+                }
+                if (codigo >= 0x110 && codigo < 0x160) continue;   // otros botones de raton y de mando (no son teclas)
                 int vk = Botones.CodigoWindows(codigo);
                 if (vk == 0) continue;
                 bool abajo = valor == 1;

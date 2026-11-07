@@ -62,8 +62,13 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   creía que seguía puesta la suya: las nebulosas y la Vía Láctea (blancas casi transparentes) se sumaban enteras. Ahora, después de cada
   composición, se olvida también la mezcla (`EstadoTocado`). Encontrado con las herramientas de prueba de `PruebasLinux.cs` (traza de
   dibujos, volcado de texturas, saltar dibujos, capturar capas).
+- **El ratón** (`TeclasLinux.cs` y `Ventanas.Escritorio.cs`): movimiento, rueda y botones de `/dev/input` (y pantallas táctiles) llegan a
+  las ventanas como en Windows: el control de encima recibe el movimiento (MouseEnter / MouseLeave al cambiar), el que recibe el botón
+  se queda con el ratón hasta soltarlo, al soltar dentro Click y MouseClick (o el doble clic de XP: 500 ms y 4 puntos) y después MouseUp;
+  la rueda, al control con el foco. La flecha (o la mano, `Cursors.Hand`) la dibuja el anfitrión cuando XP la enseña (`Cursor.Show`/`Hide`
+  cuentan como ShowCursor). Probado con pasos programados (`ROCOLA_PULSA=7:17+114,10:clic:712:53`): Ctrl+F3 abre la ventana de ajustes de
+  XP entera y un clic en la pestaña «Imagen» la cambia, con la mano sobre el botón.
 - **Lo siguiente:**
-  - el ratón;
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
 - **Medido con Mono:** el alto de renglón y `Font.Height` salen iguales a GDI+. Los anchos de texto quedan a 1 o 2 píxeles de libgdiplus,
