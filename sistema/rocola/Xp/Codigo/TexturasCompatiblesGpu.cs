@@ -65,7 +65,7 @@ namespace Rocola
                 {
                     // Una textura dividida contiene referencias normales, pero su identificador
                     // logico no es COM. Las portadas normales caben; si no, no se comparten.
-                    try { D3D9.Fn<D3D9.UintSelf>(e.Tex, 1)(e.Tex); }
+                    try { D3D9.EnGl.AddRef(e.Tex); }
                     catch { return IntPtr.Zero; }
                     e.Owners++; u = e.U; v = e.V; return e.Tex;
                 }
@@ -117,7 +117,7 @@ namespace Rocola
             try
             {
                 CapsTextura caps = new CapsTextura();
-                if (D3D9.Fn<CapsDel>(dev, 7)(dev, ref caps) >= 0)
+                if (GetDeviceCaps(dev, ref caps) >= 0)   // Linux: D3D9Device.Gl.cs
                 {
                     limiteTexturaW = PotenciaInferior(caps.W); limiteTexturaH = PotenciaInferior(caps.H);
                     LeeCapacidades(caps.Intervalos, caps.MezclaOrigen, caps.Fvf, caps.OperacionesTextura, caps.TexturasALaVez);
@@ -158,8 +158,8 @@ namespace Rocola
                 int r = right == w ? Pow2(w) : right, b = bottom == h ? Pow2(h) : bottom;
                 D3D9.RectI region = new D3D9.RectI { Left = destino.X, Top = destino.Y, Right = r, Bottom = b };
                 D3D9.LockedRect lr;
-                unlock = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
-                if (D3D9.Fn<D3D9.LockRegionDel>(tex, 19)(tex, 0, out lr, ref region, 0) < 0) return false;
+                unlock = D3D9.EnGl.UnlockRect;
+                if (D3D9.EnGl.LockRect(tex, 0, out lr, ref region, 0) < 0) return false;
                 locked = true;
                 bd = bmp.LockBits(origen, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 int bytes = checked(origen.Width * 4);

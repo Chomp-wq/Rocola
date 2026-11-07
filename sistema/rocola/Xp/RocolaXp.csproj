@@ -4,6 +4,8 @@
        Codigo/ = los archivos de la rocola de XP (Rocola/*.cs) traducidos uno por uno; Plataforma/ = lo nativo de Linux con que se
        traduce lo de Windows: el dibujo de GDI+ en SkiaSharp, Direct3D 9 en OpenGL ES 2, las teclas por evdev, el sonido por ALSA. -->
   <PropertyGroup>
+    <!-- como el proyecto de XP (Rocola.csproj): la tarjeta grafica (Direct3D 9 en XP; aqui OpenGL ES 2, Direct3DaGL.cs) -->
+    <DefineConstants>$(DefineConstants);ROCOLA_GPU</DefineConstants>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>

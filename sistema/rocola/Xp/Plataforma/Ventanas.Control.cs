@@ -27,6 +27,9 @@ namespace Rocola.Ventanas
         // LO PINTA LA TARJETA (OpenGL ES 2): el control de la rocola de XP que en Windows dibujaba Direct3D 9 (GpuPanel). El escritorio no
         // lo pinta con Dibujo2D: deja su hueco y la tarjeta pinta ahi (Escritorio.Capas).
         public bool Nativa;
+        // Lo ultimo que presento la tarjeta en este control (Direct3DaGL, Present): la textura de OpenGL del fondo de su dispositivo y su
+        // medida. La pinta el anfitrion en el hueco del control.
+        internal uint TexturaGl; internal int AnchoGl, AltoGl;
         public ControlCollection Controls { get; }
 
         public Control() { Controls = CreateControlsInstance(); }

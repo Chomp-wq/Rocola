@@ -18,9 +18,9 @@ namespace Rocola
     // -------- Interop crudo con Direct3D 9 (sin SlimDX) --------
     internal static partial class D3D9
     {
-        [DllImport("d3d9.dll")] public static extern IntPtr Direct3DCreate9(uint sdkVersion);
+        public static IntPtr Direct3DCreate9(uint sdkVersion) { return EnGl.Direct3DCreate9(sdkVersion); }   // Linux: OpenGL ES 2 (Direct3DaGL.cs)
         // Copia bloque a bloque entre punteros sin pasar por un arreglo administrado (mitad de copias que Marshal.Copy).
-        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")] public static extern void CopyMemory(IntPtr dst, IntPtr src, UIntPtr len);
+        public static unsafe void CopyMemory(IntPtr dst, IntPtr src, UIntPtr len) { Buffer.MemoryCopy((void*)src, (void*)dst, (long)len, (long)len); }   // Linux (como RtlMoveMemory: aunque se pisen)
 
         [StructLayout(LayoutKind.Sequential)]
         public struct PresentParams
@@ -96,8 +96,11 @@ namespace Rocola
         [ThreadStatic] private static FnGuardada[] fnGuardadas;
         [ThreadStatic] private static int fnN, fnSiguiente;
         internal static int FnGuardadasEnEsteHilo { get { return fnN; } }
+        // Linux: no hay tablas de funciones de COM; cada llamada de las de abajo va a su funcion de Direct3DaGL.cs (D3D9.EnGl).
         public static T Fn<T>(IntPtr punk, int slot) where T : class
         {
+            throw new NotSupportedException("Direct3D 9 por su tabla (hueco " + slot + "): en Linux va por D3D9.EnGl (Direct3DaGL.cs)");
+#pragma warning disable CS0162
             IntPtr vtbl = Marshal.ReadIntPtr(punk);
             IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
             Type tipo = typeof(T);
@@ -110,13 +113,14 @@ namespace Rocola
             if (n < FnMax) { c[n] = g; fnN = n + 1; }
             else { c[fnSiguiente] = g; fnSiguiente = (fnSiguiente + 1) % FnMax; }
             return d;
+#pragma warning restore CS0162
         }
         public static void Release(IntPtr punk)
         {
             if (punk == IntPtr.Zero) return;
             if (TexturasDivididasGpu.Libera(punk)) return;
             PortadasCompartidasGpu.AlSoltar(punk);
-            try { Fn<UintSelf>(punk, 2)(punk); } catch { }
+            try { EnGl.Release(punk); } catch { }
         }
     }
 
@@ -182,7 +186,7 @@ namespace Rocola
             get
             {
                 if (dev == IntPtr.Zero || lost || resetPending || reiniciando) return 0;
-                try { return D3D9.Fn<D3D9.UintSelf>(dev, 4)(dev); }
+                try { return D3D9.EnGl.GetAvailableTextureMem(dev); }
                 catch { return 0; }
             }
         }
@@ -194,7 +198,7 @@ namespace Rocola
                 d3d = D3D9.Direct3DCreate9(32);
                 if (d3d == IntPtr.Zero) return;
                 pp = MakePP(hwnd, w, h);
-                D3D9.CreateDeviceDel create = D3D9.Fn<D3D9.CreateDeviceDel>(d3d, 16);
+                D3D9.CreateDeviceDel create = D3D9.EnGl.CreateDevice;
                 IntPtr dv = IntPtr.Zero;
                 int hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_HARDWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
                 if (hr < 0)
@@ -213,18 +217,18 @@ namespace Rocola
                     return;
                 }
                 dev = dv;
-                present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
-                begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
-                end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
-                setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
-                setFVF = D3D9.Fn<D3D9.SetU1Del>(dev, 89);
-                setTSS = D3D9.Fn<D3D9.SetU3Del>(dev, 67);
-                setSamp = D3D9.Fn<D3D9.SetU3Del>(dev, 69);
-                setTex = D3D9.Fn<D3D9.SetTexDel>(dev, 65);
-                drawUp = D3D9.Fn<D3D9.DrawUpDel>(dev, 83);
-                testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
-                reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
-                createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
+                present = D3D9.EnGl.Present;
+                begin = D3D9.EnGl.BeginScene;
+                end = D3D9.EnGl.EndScene;
+                setRS = D3D9.EnGl.SetRenderState;
+                setFVF = D3D9.EnGl.SetFVF;
+                setTSS = D3D9.EnGl.SetTextureStageState;
+                setSamp = D3D9.EnGl.SetSamplerState;
+                setTex = D3D9.EnGl.SetTexture;
+                drawUp = D3D9.EnGl.DrawPrimitiveUP;
+                testCoop = D3D9.EnGl.TestCooperativeLevel;
+                reset = D3D9.EnGl.Reset;
+                createTex = D3D9.EnGl.CreateTexture;
                 LeeLimitesTexturas();
                 juntar = true;   // las ordenes chicas seguidas se juntan (PerformanceGpu.cs)
                 if (!InitStates()) Dispose(); else preLoadOk = true;   // un dispositivo de verdad: sus texturas tienen la ranura 9 (PreLoad)
@@ -254,10 +258,10 @@ namespace Rocola
                 if (s != null)
                 {
                     foreach (TexturasDivididasGpu.Tile t in s.Tiles)
-                        if (t != null && t.Tex != IntPtr.Zero) { D3D9.Fn<D3D9.VoidSelf>(t.Tex, 9)(t.Tex); PreCargas++; }
+                        if (t != null && t.Tex != IntPtr.Zero) { D3D9.EnGl.PreLoad(t.Tex); PreCargas++; }
                     return true;
                 }
-                D3D9.Fn<D3D9.VoidSelf>(tex, 9)(tex); PreCargas++;
+                D3D9.EnGl.PreLoad(tex); PreCargas++;
                 return true;
             }
             catch { preLoadOk = false; return false; }
@@ -502,8 +506,8 @@ namespace Rocola
             bool texLocked = false, ok = false;
             try
             {
-                D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
-                unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+                D3D9.LockRectDel lockR = D3D9.EnGl.LockRect;
+                unlockR = D3D9.EnGl.UnlockRect;
                 if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
                 texLocked = true;
 
@@ -838,7 +842,7 @@ namespace Rocola
             if (evictOk && ahora - ultimaEvicion >= EntreEvicionesMs)
             {
                 ultimaEvicion = ahora;
-                try { D3D9.Fn<D3D9.HrSelf>(dev, 5)(dev); Eviciones++; }
+                try { D3D9.EnGl.EvictManagedResources(dev); Eviciones++; }
                 catch { evictOk = false; }
                 if (evictOk)
                 {
@@ -920,7 +924,7 @@ namespace Rocola
         {
             D3D9.SurfaceDesc d = new D3D9.SurfaceDesc();
             int hr;
-            try { hr = D3D9.Fn<D3D9.LevelDescDel>(tex, D3D9.SlotGetLevelDesc)(tex, 0, ref d); }
+            try { hr = D3D9.EnGl.GetLevelDesc(tex, 0, ref d); }
             catch { return false; }   // (una tarjeta imitada de las pruebas sin esa ranura) no se sabe: como antes
             if (hr < 0) return true;
             if (d.Width == 0 && d.Height == 0) return false;
@@ -990,17 +994,17 @@ namespace Rocola
                     LiberaVertices();
                     if (creaVertices == null)
                     {
-                        creaVertices = D3D9.Fn<D3D9.CreateVBDel>(dev, 26);
-                        flujoVertices = D3D9.Fn<D3D9.StreamDel>(dev, 100);
-                        dibujaVertices = D3D9.Fn<D3D9.SetU3Del>(dev, 81);
+                        creaVertices = D3D9.EnGl.CreateVertexBuffer;
+                        flujoVertices = D3D9.EnGl.SetStreamSource;
+                        dibujaVertices = D3D9.EnGl.DrawPrimitive;
                     }
                     verticesCap = Math.Max(49152, n);
                     // DYNAMIC | WRITEONLY, POOL_DEFAULT; liberado ANTES de cada Reset.
                     if (creaVertices(dev, (uint)(verticesCap * D3D9.VtxSize), verticesSoftware ? 0x218u : 0x208u, D3D9.FVF, 0, out verticesGpu, IntPtr.Zero) < 0
                         || verticesGpu == IntPtr.Zero)
                     { LiberaVertices(); verticesSinSoporte = true; return false; }
-                    bloqueaVertices = D3D9.Fn<D3D9.LockVBDel>(verticesGpu, 11);
-                    sueltaVertices = D3D9.Fn<D3D9.HrSelf>(verticesGpu, 12);
+                    bloqueaVertices = D3D9.EnGl.LockVB;
+                    sueltaVertices = D3D9.EnGl.UnlockVB;
                 }
                 if (verticesPos + n > verticesCap) verticesPos = 0;
                 IntPtr destino;
@@ -2299,9 +2303,10 @@ namespace Rocola
         public int TopeFps;                               // 0 = automatico (segun la pantalla); >0 = lo manda el config
         private int topeMs = -1;                          // ms minimos entre cuadros, ya resueltos (-1 = aun sin resolver)
         private const int VREFRESH = 116;                 // GetDeviceCaps: veces por segundo que refresca la pantalla
-        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
-        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
-        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+        // Linux: sin GDI; lo que se pregunta de la pantalla (el refresco) lo contesta el escritorio (LlamadasWindows.cs)
+        private static IntPtr GetDC(IntPtr hWnd) { return new IntPtr(1); }
+        private static int ReleaseDC(IntPtr hWnd, IntPtr hdc) { return 1; }
+        private static int GetDeviceCaps(IntPtr hdc, int index) { return LlamadasWindows.CapacidadPantalla(index); }
 
         // Cada cuantos ms toca un cuadro, como poco. Windows contesta 0 o 1 al preguntarle el refresco cuando
         // no lo sabe (pantalla vieja, escritorio remoto, maquina virtual): ahi se toman 60, que es lo de siempre.
@@ -2352,7 +2357,7 @@ namespace Rocola
         // sale, lo procesa y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
-        [DllImport("user32.dll")] private static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
+        private static int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove) { msg = new NativeMessage(); return Escritorio.HayMensajes() ? 1 : 0; }   // Linux: la cola del escritorio
         private static bool AppIdle() { NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0; }   // 0 = PM_NOREMOVE
 
         private bool PuedeDibujar()
@@ -2393,8 +2398,8 @@ namespace Rocola
             return Math.Max(1, (int)(restante - 0.6));
         }
         // La espera no consume mensajes ni bombea eventos de forma reentrante.
-        [DllImport("user32.dll")]
-        private static extern uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags);
+        // Linux: espera en la cola del escritorio (0 = llego algo; 0x102 = paso el tiempo)
+        private static uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags) { return Escritorio.EsperaMensajes((int)ms) ? 0u : 0x102u; }
         internal static bool EsperaMensajes(int ms)
         {
             ms = Math.Max(1, Math.Min(8, ms));

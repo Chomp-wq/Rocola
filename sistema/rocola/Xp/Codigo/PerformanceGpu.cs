@@ -172,9 +172,9 @@ namespace Rocola
             IntPtr fondo = IntPtr.Zero;
             try
             {
-                if (D3D9.Fn<D3D9.GetPtrDel>(dev, D3D9.SlotGetRenderTarget)(dev, 0, out fondo) < 0 || fondo == IntPtr.Zero)
+                if (D3D9.EnGl.GetRenderTarget(dev, 0, out fondo) < 0 || fondo == IntPtr.Zero)
                 { if (fondo != IntPtr.Zero) D3D9.Release(fondo); mediaSinSoporte = true; return false; }
-                if (D3D9.Fn<D3D9.SetTexDel>(dev, D3D9.SlotSetRenderTarget)(dev, 0, mediaSup) < 0)
+                if (D3D9.EnGl.SetRenderTarget(dev, 0, mediaSup) < 0)
                 { D3D9.Release(fondo); mediaSinSoporte = true; return false; }
             }
             catch { if (fondo != IntPtr.Zero) D3D9.Release(fondo); mediaSinSoporte = true; return false; }
@@ -196,7 +196,7 @@ namespace Rocola
                 }
                 if (t == IntPtr.Zero) return false;
                 IntPtr sup;
-                if (D3D9.Fn<D3D9.GetPtrDel>(t, D3D9.SlotGetSurfaceLevel)(t, 0, out sup) < 0 || sup == IntPtr.Zero)
+                if (D3D9.EnGl.GetSurfaceLevel(t, 0, out sup) < 0 || sup == IntPtr.Zero)
                 { D3D9.Release(t); return false; }
                 mediaTex = t; mediaSup = sup; mediaTW = tw; mediaTH = th; mediaGen++;
                 return true;
@@ -212,7 +212,7 @@ namespace Rocola
             enMedia = false;
             IntPtr fondo = mediaFondo; mediaFondo = IntPtr.Zero;
             bool ok;
-            try { ok = D3D9.Fn<D3D9.SetTexDel>(dev, D3D9.SlotSetRenderTarget)(dev, 0, fondo) >= 0; }
+            try { ok = D3D9.EnGl.SetRenderTarget(dev, 0, fondo) >= 0; }
             catch { ok = false; }
             D3D9.Release(fondo);
             Cambios++;
@@ -342,7 +342,7 @@ namespace Rocola
                 if (ok && !dosTexturasValidado)
                 {
                     uint pasadas;
-                    ok = D3D9.Fn<D3D9.ValidaDel>(dev, D3D9.SlotValidateDevice)(dev, out pasadas) >= 0 && pasadas <= 1;
+                    ok = D3D9.EnGl.ValidateDevice(dev, out pasadas) >= 0 && pasadas <= 1;
                     dosTexturasValidado = ok;
                 }
                 if (ok) { fvfCambiado = true; ok = setFVF(dev, D3D9.FVF2) >= 0; }

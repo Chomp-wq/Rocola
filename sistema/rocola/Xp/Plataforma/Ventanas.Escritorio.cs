@@ -29,6 +29,7 @@ namespace Rocola.Ventanas
     {
         public static IAnfitrion Anfitrion;
         public static Size Pantalla = new Size(1024, 768);
+        public static int RefrescoHz = 60;   // lo pone el anfitrion (KMS: el del modo de la pantalla)
         public static Thread HiloUi;
         private static readonly Stopwatch reloj = Stopwatch.StartNew();
         public static double AhoraMs { get { return reloj.Elapsed.TotalMilliseconds; } }
@@ -376,6 +377,15 @@ namespace Rocola.Ventanas
         // ---------- los bucles ----------
         public static double UltimaPresentacionNativa;   // la pone el anfitrion al presentar un cuadro de la tarjeta
         private static int compuesto = -1;
+        // La tarjeta presento un cuadro en un control «Nativa» (Direct3DaGL, Present: en XP, Direct3D 9 lo ponia en la ventana): el anfitrion
+        // compone las capas con el y lo pone en la pantalla. SinEspera: el medidor de Ctrl+F3 pide presentar sin esperar al barrido.
+        public static bool SinEspera;
+        internal static void PresentaNativa(Control c)
+        {
+            UltimaPresentacionNativa = AhoraMs;
+            compuesto = Cambios;
+            if (Anfitrion != null) Anfitrion.Compone();
+        }
         internal static void Vuelta(bool conIdle)
         {
             Bombea();

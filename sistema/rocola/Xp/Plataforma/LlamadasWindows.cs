@@ -43,6 +43,10 @@ namespace Rocola
             try { return fsync(manejador.ToInt32()) == 0; } catch { return false; }
         }
 
+        // GetDeviceCaps de la pantalla (gdi32): VREFRESH (116), las veces por segundo que refresca; lo dice el anfitrion (KMS: el modo
+        // puesto). Lo demas no se pregunta.
+        internal static int CapacidadPantalla(int que) { return que == 116 ? Escritorio.RefrescoHz : 0; }
+
         // La ventana de delante: la activa del escritorio (en Rocola OS no hay otros programas con ventana)
         internal static IntPtr VentanaDelante() { Form f = Form.ActiveForm; return f != null && !f.IsDisposed ? f.Handle : IntPtr.Zero; }
         internal static bool PonDelante(IntPtr h) { Form f = Control.FromHandle(h) as Form; if (f == null || f.IsDisposed) return false; f.Activate(); return true; }

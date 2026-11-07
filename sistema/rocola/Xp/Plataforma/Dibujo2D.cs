@@ -45,10 +45,13 @@ namespace Rocola.Dibujo2D
     [Flags] public enum TextFormatFlags { Default = 0, Left = 0, Top = 0, HorizontalCenter = 1, Right = 2, VerticalCenter = 4, Bottom = 8, WordBreak = 16, SingleLine = 32, ExpandTabs = 64, NoClipping = 256, ExternalLeading = 512, NoPrefix = 2048, Internal = 4096, TextBoxControl = 8192, PathEllipsis = 16384, EndEllipsis = 32768, ModifyString = 65536, RightToLeft = 131072, WordEllipsis = 262144, NoFullWidthCharacterBreak = 524288, HidePrefix = 1048576, PrefixOnly = 2097152, PreserveGraphicsClipping = 16777216, PreserveGraphicsTranslateTransform = 33554432, NoPadding = 268435456, LeftAndRightPadding = 536870912 }
 
     // ---------------------------------------------------------------- las letras
-    public sealed class FontFamily
+    public enum GenericFontFamilies { Serif = 0, SansSerif = 1, Monospace = 2 }
+    public sealed class FontFamily : IDisposable
     {
         public readonly string Name;
         public FontFamily(string nombre) { Name = nombre; }
+        public FontFamily(GenericFontFamilies g) { Name = g == GenericFontFamilies.Serif ? "Times New Roman" : g == GenericFontFamilies.Monospace ? "Courier New" : "Microsoft Sans Serif"; }
+        public void Dispose() { }
         // En Windows XP la generica sin remates es Microsoft Sans Serif; la de ancho fijo, Courier New; la de remates, Times New Roman.
         public static FontFamily GenericSansSerif { get { return new FontFamily("Microsoft Sans Serif"); } }
         public static FontFamily GenericMonospace { get { return new FontFamily("Courier New"); } }
@@ -461,6 +464,8 @@ namespace Rocola.Dibujo2D
         public void Scale(float sx, float sy) { M = M.PreConcat(SKMatrix.CreateScale(sx, sy)); }
         public void Rotate(float grados) { M = M.PreConcat(SKMatrix.CreateRotationDegrees(grados)); }
         public void RotateAt(float grados, PointF c) { M = M.PreConcat(SKMatrix.CreateRotationDegrees(grados, c.X, c.Y)); }
+        public void TransformPoints(PointF[] pts) { if (pts == null) return; for (int i = 0; i < pts.Length; i++) { SKPoint q = M.MapPoint(pts[i].X, pts[i].Y); pts[i] = new PointF(q.X, q.Y); } }
+        public void TransformPoints(Point[] pts) { if (pts == null) return; for (int i = 0; i < pts.Length; i++) { SKPoint q = M.MapPoint(pts[i].X, pts[i].Y); pts[i] = new Point((int)Math.Round(q.X), (int)Math.Round(q.Y)); } }
         public void Dispose() { }
     }
     public sealed class Region : IDisposable
@@ -524,6 +529,12 @@ namespace Rocola.Dibujo2D
         public void SetColorMatrix(ColorMatrix m) { Matriz = m; }
         public void SetColorMatrix(ColorMatrix m, ColorMatrixFlag flags, ColorAdjustType tipo) { Matriz = m; }
         public void SetWrapMode(WrapMode w) { Envoltura = w; }
+        // la clave de color de GDI+: los puntos cuyo rojo, verde y azul caen entre los de 'bajo' y 'alto' quedan transparentes
+        internal bool HayClave; internal Color ClaveBaja, ClaveAlta;
+        public void SetColorKey(Color bajo, Color alto) { HayClave = true; ClaveBaja = bajo; ClaveAlta = alto; }
+        public void SetColorKey(Color bajo, Color alto, ColorAdjustType tipo) { SetColorKey(bajo, alto); }
+        public void ClearColorKey() { HayClave = false; }
+        public void ClearColorKey(ColorAdjustType tipo) { HayClave = false; }
         public void Dispose() { }
     }
     public sealed class BitmapData { public IntPtr Scan0; public int Stride, Width, Height; public PixelFormat PixelFormat; internal byte[] copia; internal GCHandle fijo; internal ImageLockMode modo; internal Rectangle zona; }
@@ -854,8 +865,36 @@ namespace Rocola.Dibujo2D
             {
                 if (CompositingMode == CompositingMode.SourceCopy) p.BlendMode = SKBlendMode.Src;
                 if (ia != null && ia.Matriz != null) p.ColorFilter = SKColorFilter.CreateColorMatrix(ia.Matriz.Skia());
+                if (ia != null && ia.HayClave)
+                {
+                    // la clave va antes que la matriz (como GDI+): se hace en una copia del trozo que se pinta
+                    SKRectI o = SKRectI.Intersect(SKRectI.Round(origen), new SKRectI(0, 0, img.Width, img.Height));
+                    if (o.Width <= 0 || o.Height <= 0) return;
+                    using (SKBitmap trozo = ConClave(img.Sk, o, ia.ClaveBaja, ia.ClaveAlta))
+                    using (SKImage si = SKImage.FromBitmap(trozo))
+                        C.DrawImage(si, new SKRect(origen.Left - o.Left, origen.Top - o.Top, origen.Right - o.Left, origen.Bottom - o.Top), destino, Muestreo(), p);
+                    return;
+                }
                 using (SKImage si = SKImage.FromBitmap(img.Sk)) C.DrawImage(si, origen, destino, Muestreo(), p);
             }
+        }
+        private static unsafe SKBitmap ConClave(SKBitmap b, SKRectI o, Color bajo, Color alto)
+        {
+            SKBitmap t = new SKBitmap(new SKImageInfo(o.Width, o.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+            using (SKCanvas c = new SKCanvas(t)) { c.Clear(SKColors.Transparent); using (SKPaint p = new SKPaint { BlendMode = SKBlendMode.Src }) c.DrawBitmap(b, o, new SKRect(0, 0, o.Width, o.Height), p); }
+            byte* px = (byte*)t.GetPixels(); int paso = t.RowBytes;
+            for (int y = 0; y < o.Height; y++)
+            {
+                byte* f = px + (long)y * paso;
+                for (int x = 0; x < o.Width; x++, f += 4)
+                {
+                    int a = f[3]; if (a == 0) continue;
+                    int bb = f[0], g = f[1], r = f[2];
+                    if (a < 255) { bb = (bb * 255 + a / 2) / a; g = (g * 255 + a / 2) / a; r = (r * 255 + a / 2) / a; }   // sin premultiplicar, como lo ve GDI+
+                    if (r >= bajo.R && r <= alto.R && g >= bajo.G && g <= alto.G && bb >= bajo.B && bb <= alto.B) { f[0] = f[1] = f[2] = f[3] = 0; }
+                }
+            }
+            return t;
         }
         public void DrawImage(Image img, int x, int y) { if (img != null) Imagen(img, new SKRect(0, 0, img.Width, img.Height), new SKRect(x, y, x + img.Width, y + img.Height), null); }
         public void DrawImage(Image img, float x, float y) { if (img != null) Imagen(img, new SKRect(0, 0, img.Width, img.Height), new SKRect(x, y, x + img.Width, y + img.Height), null); }
@@ -916,6 +955,8 @@ namespace Rocola.Dibujo2D
         public SizeF MeasureString(string s, Font f, SizeF caja) { return Texto.Mide(s, f, caja, null, TextRenderingHint); }
         public SizeF MeasureString(string s, Font f, SizeF caja, StringFormat sf) { return Texto.Mide(s, f, caja, sf, TextRenderingHint); }
         public SizeF MeasureString(string s, Font f, PointF p, StringFormat sf) { return Texto.Mide(s, f, new SizeF(0, 0), sf, TextRenderingHint); }
+        public SizeF MeasureString(string s, Font f, SizeF caja, StringFormat sf, out int letras, out int lineas)
+        { Texto.Cuenta(s, f, caja, sf, TextRenderingHint, out letras, out lineas); return Texto.Mide(s, f, caja, sf, TextRenderingHint); }
     }
 
     // ---------------------------------------------------------------- el texto de GDI (TextRenderer)
@@ -1010,6 +1051,30 @@ namespace Rocola.Dibujo2D
             if (Ancho(sk, s) <= anchoUtil) return s;
             int k = 0; while (k < s.Length && Ancho(sk, s.Substring(0, k + 1)) <= anchoUtil) k++;
             return s.Substring(0, k);
+        }
+        // MeasureString con letras y renglones: cuantos renglones salen en la caja (los que se ven, como al pintar) y cuantas letras llevan.
+        public static void Cuenta(string s, Font f, SizeF caja, StringFormat sf, TextRenderingHint h, out int letras, out int lineas)
+        {
+            letras = lineas = 0;
+            if (string.IsNullOrEmpty(s)) return;
+            sf = sf ?? StringFormat.GenericDefault;
+            using (SKFont sk = f.Skia(h))
+            {
+                float m = Margen(f, sf), alto = f.GetHeight();
+                bool noWrap = caja.Width <= 0 || (sf.FormatFlags & StringFormatFlags.NoWrap) != 0;
+                List<string> rs = Renglones(s, sk, caja.Width <= 0 ? 0f : Math.Max(0f, caja.Width - 2 * m), noWrap);
+                int caben = rs.Count;
+                if (caja.Height > 0)
+                {
+                    bool limite = (sf.FormatFlags & StringFormatFlags.LineLimit) != 0;
+                    int visibles = limite ? (int)Math.Floor(caja.Height / alto + 1e-3) : (int)Math.Ceiling(caja.Height / alto - 1e-3);
+                    caben = Math.Min(rs.Count, Math.Max(1, visibles));
+                }
+                lineas = caben;
+                int total = 0;
+                for (int i = 0; i < caben; i++) total += rs[i].Length;
+                letras = caben == rs.Count ? s.Length : Math.Min(s.Length, total + caben);   // (con los espacios o saltos entre renglones)
+            }
         }
         public static List<Pieza> Acomoda(string s, Font f, RectangleF caja, StringFormat sf, TextRenderingHint h, bool enPunto)
         {
