@@ -83,8 +83,8 @@ namespace Rocola
         // no depende de quien se quedo con el mensaje. Y el orden da igual: ABAJO con el rojo apretado, o ROJO con el
         // abajo apretado (al apretar los dos a la vez, cualquiera puede llegar primero; si llegaba primero el abajo, antes
         // no pasaba nada y la ayuda parecia muerta).
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
+        // EN LINUX: el estado fisico de los botones lo lleva el escritorio (evdev; Plataforma/LlamadasWindows.cs)
+        private static short GetAsyncKeyState(int vKey) { return LlamadasWindows.TeclaAbajo(vKey); }
         private static bool sinAsync;
         private static bool Fisica(Keys k)
         {

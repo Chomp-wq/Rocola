@@ -30,30 +30,25 @@ namespace Rocola
         private const int Rows = 3;
         private const int PageSize = Cols * Rows;
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern short GetKeyState(int nVirtKey);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr procId);
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr SetFocus(IntPtr hWnd);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+        // EN LINUX (traduccion de XP; Plataforma/LlamadasWindows.cs): lo que aqui preguntaba a Windows lo contestan las ventanas de la rocola.
+        // No hay otros programas con ventana: la de delante es la activa del escritorio, y nadie le roba el foco.
+        private static short GetKeyState(int nVirtKey) { return LlamadasWindows.TeclaAbajo(nVirtKey); }
+        private static IntPtr GetForegroundWindow() { return LlamadasWindows.VentanaDelante(); }
+        private static bool SetForegroundWindow(IntPtr hWnd) { return LlamadasWindows.PonDelante(hWnd); }
+        private static uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr procId) { return 0; }   // (un solo hilo de pantalla)
+        private static uint GetCurrentThreadId() { return (uint)Environment.CurrentManagedThreadId; }
+        private static bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach) { return true; }
+        private static IntPtr SetFocus(IntPtr hWnd) { return LlamadasWindows.PonFoco(hWnd); }
+        private static void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo) { }   // (el clic para quitarle el foco a otro programa)
         private const uint MOUSEEVENTF_LEFTDOWN = 0x02, MOUSEEVENTF_LEFTUP = 0x04;
         // ¿esta presionada AHORA esta tecla? (para los combos: REGRESAR + otra)
         private static bool KeyHeld(Keys k) { return (GetKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
 
         // Sube la resolucion del reloj del sistema a 1ms para que el temporizador de animacion
         // dispare parejo (en XP, sin esto, un intervalo de ~33ms se "redondea" y la animacion se entrecorta).
-        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeBeginPeriod(uint p);
-        [System.Runtime.InteropServices.DllImport("winmm.dll")] private static extern uint timeEndPeriod(uint p);
+        // EN LINUX: los relojes ya van al milisegundo; nada que pedir (TIMERR_NOERROR)
+        private static uint timeBeginPeriod(uint p) { return 0; }
+        private static uint timeEndPeriod(uint p) { return 0; }
         private bool timerResRaised = false;
 
         private static readonly Color DefaultAccent = Color.FromArgb(45, 95, 205);
@@ -413,7 +408,14 @@ namespace Rocola
         }
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemStatusEx b);
+        // EN LINUX: la memoria de /proc/meminfo (Plataforma/LlamadasWindows.cs)
+        private static bool GlobalMemoryStatusEx(ref MemStatusEx b)
+        {
+            ulong t, d; uint u;
+            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
+            b.TotalPhys = t; b.AvailPhys = d; b.MemoryLoad = u; b.TotalVirtual = 1UL << 47; b.AvailVirtual = 1UL << 47;
+            return true;
+        }
 
         // CUANTA MEMORIA SE LE DEJA AL CAJON DE CASILLAS HORNEADAS.
         //

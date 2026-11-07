@@ -44,8 +44,14 @@ namespace Rocola
         }
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         private struct EstadoMemoria { public uint Largo, Carga; public ulong Fisica, FisicaLibre, Paginacion, PaginacionLibre, Virtual, VirtualLibre, Extendida; }
-        [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "GlobalMemoryStatusEx")]
-        private static extern bool PideEstadoMemoria(ref EstadoMemoria e);
+        // EN LINUX: la memoria de /proc/meminfo (Plataforma/LlamadasWindows.cs)
+        private static bool PideEstadoMemoria(ref EstadoMemoria e)
+        {
+            ulong t, d; uint u;
+            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
+            e.Fisica = t; e.FisicaLibre = d; e.Carga = u;
+            return true;
+        }
         private static ulong MemoriaLibre()
         {
             try

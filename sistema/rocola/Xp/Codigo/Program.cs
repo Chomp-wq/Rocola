@@ -53,8 +53,9 @@ namespace Rocola
             return System.IO.Path.DirectorySeparatorChar == '\\' ? ruta.Replace('/', '\\') : ruta;
         }
 
-        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
-        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
+        // EN LINUX: la otra rocola es otro programa, con su propia pantalla: no hay ventana que traer al frente
+        private static bool SetForegroundWindow(IntPtr h) { return false; }
+        private static bool ShowWindow(IntPtr h, int cmd) { return false; }
 
         private static void AlFrenteLaQueYaCorre()
         {

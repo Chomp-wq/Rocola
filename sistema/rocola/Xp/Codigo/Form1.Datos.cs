@@ -909,8 +909,8 @@ namespace Rocola
         // entonces se pone en el sitio del bueno de un tiron. Pase lo que pase, en el disco queda siempre un
         // archivo COMPLETO: el nuevo si dio tiempo, y el de antes si no. Y el de antes se conserva como
         // copia (.bak) por si el bueno se estropeara por cualquier otro motivo.
-        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool FlushFileBuffers(IntPtr hFile);
+        // EN LINUX: fsync del archivo (Plataforma/LlamadasWindows.cs): que de verdad llegue al disco
+        private static bool FlushFileBuffers(IntPtr hFile) { return LlamadasWindows.AlDisco(hFile); }
         // El respaldo exige que Windows confirme que esta en el disco. Si la llamada no existe en el sistema (no es Windows: las pruebas en
         // Linux) basta el Flush que ya se hizo; en Windows, si falla, sigue siendo un error (28-10-2026).
         private static bool RespaldoEnDisco(FileStream fs)
