@@ -19,6 +19,8 @@ namespace Rocola
         {
             string[] a = Environment.GetCommandLineArgs();
             if (a.Length >= 5 && a[1] == "--prueba-gpu") Environment.Exit(PruebaGpu(int.Parse(a[2]), int.Parse(a[3]), a[4], a.Length >= 6 ? int.Parse(a[5]) : 3));
+            // la rocola: la pantalla (KMS, o fuera de pantalla) y OpenGL en este hilo, antes del Main de XP (Anfitrion.cs)
+            Anfitrion.Arranca();
         }
 
         private static unsafe int PruebaGpu(int w, int h, string salida, int cuadros)

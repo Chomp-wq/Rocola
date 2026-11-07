@@ -2380,6 +2380,7 @@ namespace Rocola
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
+            Nativa = true;   // Linux: lo pinta la tarjeta (Direct3DaGL.cs); el escritorio deja su hueco
             trasCielo = delegate
             {
                 aurDibujada = false;

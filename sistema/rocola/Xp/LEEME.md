@@ -44,10 +44,18 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
 - **Probado**: `rocola-xp --prueba-gpu 1024 768 cielo.png 30` pinta el cielo y las estrellas de XP (`GpuStarfield`, lo de la ventana de
   prueba F12) con la traducción, fuera de pantalla: el degradado de tres paradas y las estrellas con su brillo y su destello salen como en
   XP; 30 cuadros a 5,9 ms cada uno con llvmpipe (sin tarjeta) y ningún objeto de OpenGL suelto al acabar. No probado en el A4.
-- **Arranca** (`dotnet rocola-xp.dll`): lee la música, guarda su biblioteca y corre su bucle.
+- **El anfitrión** (`Anfitrion.cs`): abre la pantalla por KMS (o fuera de pantalla: `ROCOLA_PANTALLA=fuera:1024x768`, o si no hay
+  tarjeta) antes del `Main` de XP, en el mismo hilo, y en cada cuadro compone las capas del escritorio (Dibujo2D, que solo se suben al
+  cambiar) con el fondo de la tarjeta de cada control «Nativa» (el `GpuPanel`, marcado así en su constructor), y lo presenta.
+  `ROCOLA_CAPTURA=S:ruta.png,...` guarda la pantalla a los S segundos (`ROCOLA_CAPTURA_SALE=1`: y se cierra).
+- **La rocola de XP arranca entera en Linux** (`dotnet rocola-xp.dll`, fuera de pantalla, con una carpeta `musica` de prueba): sin
+  `rocola_teclas.txt` sale su asistente de botones («CONFIGURACION DE BOTONES DE LA ROCOLA, Paso 1 de 8»); con él, su pantalla principal:
+  la barra de arriba (Mover, Entrar / Poner, Volver, BUSCAR, ayuda, LETRA L), las pestañas de las letras, el disco con «3 canciones», el
+  cielo con nebulosas, estrellas, aurora, luna y la estrella asistente, y la barra de abajo («Nada reproduciendose», En cola, Inserta una
+  moneda). Todo dibujado por el código de XP. Las letras salen con DejaVu (aquí no están las de Windows); en el A4, las de XP.
 - **Lo siguiente:**
-  - el anfitrión (KMS, o fuera de pantalla para las capturas) que compone las ventanas y lo de la tarjeta, y las teclas por evdev;
-  - la primera pantalla entera de XP comparada con las capturas del A4;
+  - las teclas y botones por evdev (`Escritorio.Tecla`), y el ratón;
+  - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
 - **Medido con Mono:** el alto de renglón y `Font.Height` salen iguales a GDI+. Los anchos de texto quedan a 1 o 2 píxeles de libgdiplus,
   que no pone el margen de 1/6 de GDI+; por eso la referencia buena son las capturas de la rocola de XP, no Mono.
