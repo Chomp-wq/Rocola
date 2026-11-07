@@ -50,8 +50,10 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ArchivoParejas)) return;
+                int lineas = 0;
                 foreach (string l in File.ReadAllLines(ArchivoParejas))
                 {
+                    lineas++;
                     string[] c = l.Split('\t');
                     if (c.Length < 3) continue;
                     Pareja p = new Pareja();
@@ -66,6 +68,15 @@ namespace Rocola
                     else continue;
                     lock (spotifyCerrojo) parejas[c[0]] = p;
                 }
+                // (7-11-2026) cada pareja nueva o corregida (regla 2, comprobada con el sonido, rebuscada al mes) es una linea mas: si el archivo
+                // ya tiene mas del doble de lineas que parejas, se reescribe con la ultima de cada una (en los datos solo hay 512 MB)
+                if (lineas > 2 * parejas.Count + 200)
+                {
+                    StringBuilder sb = new StringBuilder();
+                    lock (spotifyCerrojo) foreach (KeyValuePair<string, Pareja> kv in parejas) sb.Append(LineaDePareja(kv.Key, kv.Value)).Append('\n');
+                    File.WriteAllText(ArchivoParejas + ".nuevo", sb.ToString());
+                    File.Move(ArchivoParejas + ".nuevo", ArchivoParejas, true);
+                }
             }
             catch (Exception ex) { LogError("Spotify: rocola_spotify_pares.txt", ex); }
             parejasVersion++;   // (lo que se calculo con las parejas aun sin leer se rehace: los artistas de tu biblioteca, P1)
@@ -73,11 +84,15 @@ namespace Rocola
         private void ApuntaPareja(string ruta, Pareja p)
         {
             lock (spotifyCerrojo) parejas[ruta] = p;
-            string l = p.Ninguna ? ruta + "\t-\t" + p.Fecha
-                : string.Join("\t", ruta, p.Id, p.Fecha.ToString(CultureInfo.InvariantCulture), p.Ms.ToString(CultureInfo.InvariantCulture), p.AlbumId, p.ArtistaId,
-                    p.Portada ?? "", Sin(p.Disco), p.Anio ?? "", Sin(p.Generos), p.Regla.ToString(CultureInfo.InvariantCulture), p.Verif.ToString(CultureInfo.InvariantCulture));
+            string l = LineaDePareja(ruta, p);
             try { File.AppendAllText(ArchivoParejas, l + "\n"); } catch { }
             parejasVersion++; spotifyVersion++;
+        }
+        private static string LineaDePareja(string ruta, Pareja p)
+        {
+            return p.Ninguna ? ruta + "\t-\t" + p.Fecha
+                : string.Join("\t", ruta, p.Id, p.Fecha.ToString(CultureInfo.InvariantCulture), p.Ms.ToString(CultureInfo.InvariantCulture), p.AlbumId, p.ArtistaId,
+                    p.Portada ?? "", Sin(p.Disco), p.Anio ?? "", Sin(p.Generos), p.Regla.ToString(CultureInfo.InvariantCulture), p.Verif.ToString(CultureInfo.InvariantCulture));
         }
         private static string Sin(string s) { return (s ?? "").Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' '); }
         private Pareja ParejaDe(string ruta)

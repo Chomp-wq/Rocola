@@ -1845,3 +1845,13 @@ Tambien se quito el dibujo viejo del buscador (`Buscador()`), que ya nadie llama
 - «Rocola en casa» compilada (casa-1): su compilacion no estaba registrada en GitHub (nunca habia corrido); ahora corre tambien al
   cambiar su propio archivo de compilacion (solo eso) y desde Actions.
 
+### Quinta tanda («Busca mas mejoras», 7 de noviembre de 2026)
+
+- **`rocola_spotify_pares.txt` ya no crece sin fin**: cada pareja nueva o corregida (regla 2, comprobada con el sonido, rebuscada al
+  mes) era una linea mas y nunca se compactaba (varios MB por vuelta con 20 000 canciones, en los 512 MB de los datos). Al arrancar
+  Spotify, si tiene mas del doble de lineas que parejas, se reescribe con la ultima de cada una (como ya hacia el volumen parejo).
+  Probado: 405 lineas de la misma pareja quedan en 1, con su ultimo estado.
+- Revisado y sin cambio: el paso entre canciones locales ya va sin cortes (la salida no se cierra: `Encadenado`); las demas bitacoras
+  ya tienen tope o se compactan; compilar con `OptimizationPreference=Speed` no gana nada medible (cadena entera de 70 s en 0,8 s,
+  busquedas, portadas y cuadros iguales dentro del ruido) y el programa crece 400 KB: no se cambio.
+
