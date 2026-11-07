@@ -90,10 +90,20 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   el video y lleva un `glFlush` tras cada cuadro. **Arreglado (7-11-2026):** la imagen salía de un color a los pocos segundos. libmpv pide
   OpenGL en su estado de fábrica y le llegaba el que deja la traducción de Direct3D (la mezcla encendida): cada pase de mpv se sumaba al
   del cuadro anterior hasta quedar magenta. Ahora, antes de cada llamada a mpv, `EstadoDeFabrica` pone ese estado (con el área de dibujo
-  del tamaño del video). Y va sin girar (`FLIP_Y` 0: con 1 salía de cabeza). **Queda:** con llvmpipe, más o menos 1 de cada 3 vueltas el
-  video sale todo negro, solo con los escaladores de calidad de mpv sobre texturas de coma flotante; se busca la causa.
-  `rocola-xp --prueba-video RUTA [SEGUNDOS]` prueba el video solo, sin la rocola (corre al empezar el `Main` de XP: dentro del
-  inicializador del módulo, los hilos de mpv se quedaban esperando). No probado en el A4 (r600).
+  del tamaño del video). Y va sin girar (`FLIP_Y` 0: con 1 salía de cabeza). **Arreglado también (7-11-2026): el video negro.** En algunas
+  vueltas salía todo negro (1 de cada 3 en la rocola, casi siempre en la prueba aislada). Era un fallo de mpv (el 0.37 de aquí y también
+  el 0.40 de Rocola OS, `reinit_scaler` de `video/out/gpu/video.c`): sus escaladores de fábrica (lanczos al agrandar y en el color,
+  hermite al achicar) suben su tabla de pesos con dos huecos por fila sin rellenar cuando el filtro tiene 6 puntos, y la leen con filtro
+  lineal; con la cuenta exacta de llvmpipe, un NaN de esa basura por un peso de 0 da NaN y la imagen entera sale negra, según lo que haya
+  dejado malloc en esa memoria. Pasa igual con un programa en C solo con libmpv. Ahora `VideoMpv.cs` escala como la tarjeta con el WMP
+  de XP: bilineal y en una sola pasada (las opciones del perfil «fast» de mpv; mpv entra solo en su modo de una pasada), sin tabla de
+  pesos y con mucho menos trabajo para la tarjeta (con llvmpipe, 2-3 ms por cuadro frente a 13-78 ms). Probado fuera de pantalla: la
+  prueba aislada 20 de 20 y la rocola entera 5 de 5, con la imagen bien en todos los cuadros (y otra vez al juntarlo: 5 de 5 y 3 de 3);
+  también un video de 1920x1080 y uno de 480x360. No volver a poner escaladores con tabla (lanczos, spline36, hermite, mitchell...) sin
+  arreglar antes lo de la tabla. `rocola-xp --prueba-video RUTA [SEGUNDOS]` prueba el video solo, sin la rocola (corre al empezar el
+  `Main` de XP: dentro del inicializador del módulo, los hilos de mpv se quedaban esperando) y dice al final cuántas lecturas salieron
+  negras; `ROCOLA_VIDEO_TEXTURAS=S` vuelca las texturas de mpv con sus NaN (ver la cabecera de `PruebasLinux.cs`). No probado en el A4
+  (r600).
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
