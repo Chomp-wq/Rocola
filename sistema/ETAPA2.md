@@ -1802,3 +1802,19 @@ de punta a punta con el rocola-spotify simulado (re-emparejado con la regla 2; l
 r 0,01, y la vez siguiente suena el archivo propio). No con una cuenta real ni en el A4. Las parejas que no pasan las reglas nuevas
 dejan de dar tambien letras, portadas y canciones que faltan (SP1, SP5, SP6).
 
+### Tercera tanda («Busca mas mejoras», 7 de noviembre de 2026)
+
+- **Spotify al momento con la rocola callada**: si no suena nada ni hay cola y el cursor se queda medio segundo en una cancion de
+  Spotify (dentro de un disco o lista), se precarga (`PrecargaElegida`); al pedirla, empieza sin esperar a que llegue. La que acaba
+  de sonar no se vuelve a precargar.
+- **Sin silencio entre canciones de Spotify**: al acabar una, la rocola esperaba a que rocola-spotify lo dijera (se le pregunta cada
+  400 ms) rellenando con silencio. Con su duracion sabida, si ya llego toda menos 250 ms y no queda nada, se da por acabada al
+  momento y empieza la siguiente (que ya estaba precargada).
+- **La busqueda se reintenta una vez** si fallo porque la biblioteca se estaba poniendo al dia justo entonces (antes se quedaba en
+  «Nada con eso» hasta la siguiente letra).
+- Revisado y sin cambio: el guardado seguro ya baja los archivos al disco en Linux (`FlushFileBuffers` es `fsync` en `Ventana.cs`) y
+  el estado se guarda en un hilo de fondo; arrancar en frio con 19 000 canciones tarda 0,33 s aqui; el resaltado de lo escrito en el
+  buscador esta bien.
+
+Probado con el rocola-spotify simulado (guiones: precarga de la elegida, dos de Spotify seguidas sin devolver creditos).
+

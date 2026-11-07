@@ -802,11 +802,25 @@ namespace Rocola
                 string q;
                 lock (buscaLock) { q = buscaPedida; buscaPedida = null; }
                 if (q == null) continue;
-                List<Form1.Resultado> res; int total;
-                try { res = motor.Busca(q); total = motor.TotalUltimaBusqueda; }
-                catch (Exception e) { motor.ApuntaError("Buscador", e); res = new List<Form1.Resultado>(); total = 0; }
+                List<Form1.Resultado> res = null; int total = 0;
+                for (int intento = 0; intento < 2 && res == null; intento++)   // (si la biblioteca se estaba poniendo al dia justo entonces, una vez mas)
+                {
+                    try { res = motor.Busca(q); total = motor.TotalUltimaBusqueda; }
+                    catch (Exception e) { if (intento == 1) motor.ApuntaError("Buscador", e); else Thread.Sleep(20); }
+                }
+                if (res == null) res = new List<Form1.Resultado>();
                 lock (buscaLock) { buscaHecha = q; buscaRes = res; buscaTotal = total; }
             }
+        }
+        // La cancion de Spotify en la que se quedo el cursor (dentro de un disco), precargada si la rocola esta callada (Spotify.cs).
+        private string elegidaVista; private int elegidaDesde;
+        private void PrecargaLaElegida()
+        {
+            Form1.Disco d = dentro;
+            string r = d != null && !Buscando && cursorMas < 0 && cursorCancion >= 0 && cursorCancion < d.Rutas.Count ? d.Rutas[cursorCancion] : null;
+            if (r == null || !Form1.EsRutaSpotify(r)) { elegidaVista = null; return; }
+            if (r != elegidaVista) { elegidaVista = r; elegidaDesde = Environment.TickCount; return; }
+            if (unchecked(Environment.TickCount - elegidaDesde) >= 500) motor.PrecargaElegida(r);
         }
         // En cada vuelta (y en las pruebas): si ya llego lo de lo escrito, a la pantalla.
         private void RecogeBusqueda()
@@ -1203,6 +1217,7 @@ namespace Rocola
             RevisaMas();
             RecogeBusqueda();
             RevisaBusquedaSpotify();
+            PrecargaLaElegida();
             if (salida == null && video == null)
             {
                 string v = motor.TomaVideo();

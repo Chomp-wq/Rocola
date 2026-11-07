@@ -284,6 +284,17 @@ namespace Rocola
         // (de Spotify, o tuya sustituida: SP2), se le pide a rocola-spotify que la vaya bajando; al tocarla, empieza al momento en vez de
         // esperar a que llegue. Una vez por cancion, en segundo plano (la orden vuelve al instante). Si la cola cambia, no pasa nada.
         private string precargada;
+        // Y CON LA ROCOLA CALLADA (7-11-2026): si no suena nada ni hay cola y el cursor se queda en una canción de Spotify, esa se precarga:
+        // al pedirla empieza al momento. La pantalla la llama con la ruta elegida (tras medio segundo quieta).
+        public void PrecargaElegida(string ruta)
+        {
+            SpotifyEnVivo s = spotify;
+            if (s == null || !s.Conectado || nowPlaying != null || queue.Count > 0 || !EsRutaSpotify(ruta)) return;
+            string id = ruta.Substring(RaizSpotify.Length); int barra = id.IndexOf('/'); if (barra > 0) id = id.Substring(0, barra);
+            if (id.Length == 0 || id == "album" || id == "playlist" || id == "artist" || id == "favoritas" || id == precargada) return;   // (solo pistas: /spotify/ID/nombre.spotify)
+            precargada = id; string uri = "spotify:track:" + id;
+            ThreadPool.QueueUserWorkItem(delegate { try { using (s.Toca.Pide(ControlSpotify.Orden("precarga", "uri", uri), 1500)) { } } catch { } });
+        }
         private void PrecargaSiguiente()
         {
             SpotifyEnVivo s = spotify;
@@ -777,6 +788,7 @@ namespace Rocola
             if (s == null || !s.Conectado || cadenaSonando != null) return null;
             PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(pista.Path, out p);
             string uri = "spotify:track:" + id;
+            precargada = id;   // (la que suena ya esta: no se vuelve a precargar si el cursor sigue encima)
             s.Habla();
             long seq0;
             using (JsonDocument d = s.Toca.Pide(ControlSpotify.Orden("toca", "uri", uri), 5000))
@@ -910,6 +922,13 @@ namespace Rocola
                         Aplica(d.Slice(0, n)); Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales); return n;
                     }
                     if (!llego && unchecked(ahora - desde) > plazo) { acabada = true; f.spotifyFallida = true; return 0; }
+                    // YA SONO ENTERA (7-11-2026): sin esperar a que el programa lo diga (se le pregunta cada 400 ms: hasta medio segundo de
+                    // silencio entre canciones). Con su duracion sabida, si ya llego todo menos 250 ms y no queda nada, se acabo.
+                    if (llego && ms > 0 && n < d.Length && Interlocked.Read(ref cuadros) * 1000L / SpotifyEnVivo.Hz + (n / SpotifyEnVivo.Canales) * 1000L / SpotifyEnVivo.Hz >= ms - 250)
+                    {
+                        acabada = true;
+                        Aplica(d.Slice(0, n)); Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales); return n;
+                    }
                     if (llego && n == 0 && unchecked(ahora - ultimo) > AtascoMs)
                     {   // se atasco a media cancion: si no llego a la mitad, como si no hubiera sonado (credito, o tu MP3)
                         acabada = true;
