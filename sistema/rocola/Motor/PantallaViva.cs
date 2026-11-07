@@ -10,7 +10,6 @@ namespace Rocola
     {
         public bool ActualizarSolo = true; // "actualizar_solo=": el programa se actualiza solo desde GitHub (rocola-actualiza lo lee)
         public bool FichaDisco = true;     // "ficha_disco="
-        public bool LetrasLupa = true;     // "letras_lupa="
         public bool PaginaDesliza = true;  // "pagina_desliza="
         // tanda 2 (dentro del disco) y tanda 3 (lo que suena y los creditos) de XP: DiscoVivoGpu.cs y SuenaVivoGpu.cs
         public bool ListaGrande = true;    // "lista_grande=": filas mas altas y letra mas grande

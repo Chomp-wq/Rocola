@@ -316,45 +316,6 @@ namespace Rocola
             chica.EscribeCentrado(d, "(cada botón debe ser distinto)", W / 2, H - 90 * k, Gris);
         }
 
-        // El buscador (como el de XP): lo escrito arriba, el teclado a la izquierda y los resultados a la derecha.
-        private void Buscador(Controlador c, float W, float abajo)
-        {
-            float x0 = 24 * k, y0 = 80 * k, tecla = 52 * k, sep = 6 * k;
-            d.Redondo(x0, y0, W - 48 * k, 54 * k, 12 * k, PanelClaro);
-            grande.Escribe(d, c.Escrito.Length > 0 ? c.Escrito + "_" : "Escribe un artista, un disco o una canción", x0 + 18 * k, y0 + 8 * k, c.Escrito.Length > 0 ? Blanco : Gris);
-            float ty = y0 + 80 * k;
-            for (int f = 0; f < Controlador.FilasTeclado.Length; f++)
-            {
-                string fila = Controlador.FilasTeclado[f]; float tx = x0;
-                for (int i = 0; i < fila.Length; i++)
-                {
-                    string et = Controlador.Etiqueta(fila[i]);
-                    float w = et.Length > 1 ? tecla * 3 + sep * 2 : tecla;
-                    bool sel = !c.EnResultados && f == c.FilaTecla && i == c.ColTecla;
-                    d.Redondo(tx, ty, w, tecla, 8 * k, sel ? Dorado : Panel);
-                    (et.Length > 1 ? chica : media).EscribeCentrado(d, et, tx + w / 2, ty + (et.Length > 1 ? 14 : 10) * k, sel ? Fondo : Blanco);
-                    tx += w + sep;
-                }
-                ty += tecla + sep;
-            }
-            zTeclado = new Zona(x0, y0, 10 * (tecla + sep), ty - y0);
-            float rx = x0 + 10 * (tecla + sep) + 24 * k, rw = W - rx - 24 * k, ry = y0 + 80 * k, fila_ = 36 * k;
-            zResultados = new Zona(rx - 8 * k, ry - 4 * k, rw + 16 * k, Math.Max(fila_, abajo - ry - 40 * k));
-            int caben = Math.Max(1, (int)((abajo - ry - 40 * k) / fila_));
-            if (c.Resultados.Count == 0 && c.Escrito.Length > 0) media.Escribe(d, "Nada con eso", rx, ry, Gris);
-            int desde = Math.Max(0, Math.Min(c.SelResultado - caben / 2, c.Resultados.Count - caben));
-            for (int i = 0; i < caben && desde + i < c.Resultados.Count; i++)
-            {
-                Form1.Resultado r = c.Resultados[desde + i]; float y = ry + i * fila_;
-                bool sel = c.EnResultados && desde + i == c.SelResultado;
-                if (sel) { d.Redondo(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k, 8 * k, PanelClaro); zSelResultado = new Zona(rx - 8 * k, y - 2 * k, rw + 16 * k, fila_ - 4 * k); }
-                string tipo = r.Tipo == 0 ? "ARTISTA" : r.Tipo == 1 ? "DISCO" : r.Tipo == 3 ? "SERVICIO" : r.Tipo == 5 ? "NO ESTÁ" : "CANCIÓN";
-                chica.Escribe(d, tipo, rx, y + 6 * k, r.Tipo == 2 ? Verde : Dorado);
-                media.Escribe(d, media.Ajusta(r.Texto, rw - 100 * k), rx + 100 * k, y + 2 * k, sel ? Blanco : Gris);
-            }
-            chica.Escribe(d, "PONER: escribir / elegir    REGRESAR: borrar    REGRESAR + ARRIBA: cerrar", x0, abajo - 28 * k, Gris.ConAlfa(0.8f));
-        }
-
         // LA PARED (la de XP con su pantalla viva: la barra de letras con lupa, el cubo que gira con la portada enfocada, pasar de pagina
         // deslizando y la ficha rapida).
         private int pagVista = -1, pagLetraVista = -1, pagAnt = -1; private double pagDesde; private float pagDir = 1f;

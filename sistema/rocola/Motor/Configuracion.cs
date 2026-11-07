@@ -79,7 +79,6 @@ namespace Rocola
             else if (s.StartsWith("dsee=")) sbrOn = s.Substring(5).Trim() == "1";   // reconstruccion espectral (NIVEL 2)
             else if (s.StartsWith("dsee_forzar=")) { if (s.Substring(12).Trim() == "1") { sbrForce = true; sbrAllowed = true; sbrReason = ""; } }   // salta la puerta de requisitos (pruebas)
             else if (s.StartsWith("ficha_disco=")) FichaDisco = s.Substring(12).Trim() != "0";             // la pantalla viva (PantallaViva.cs)
-            else if (s.StartsWith("letras_lupa=")) LetrasLupa = s.Substring(12).Trim() != "0";
             else if (s.StartsWith("pagina_desliza=")) PaginaDesliza = s.Substring(15).Trim() != "0";
             else if (s.StartsWith("lista_grande=")) ListaGrande = s.Substring(13).Trim() != "0";
             else if (s.StartsWith("eq_sonando=")) EqSonando = s.Substring(11).Trim() != "0";
@@ -91,7 +90,6 @@ namespace Rocola
             else if (s.StartsWith("escaparate=")) Escaparate = s.Substring(11).Trim() != "0";
             else if (s.StartsWith("top_noche=")) TopNocheOn = s.Substring(10).Trim() != "0";
             else if (s.StartsWith("color_genero=")) ColorGenero = s.Substring(13).Trim() != "0";
-            else if (s.StartsWith("letra_lejos=")) LetraLejos = s.Substring(12).Trim() != "0";
             else if (s.StartsWith("guia_rojo=")) GuiaRojo = s.Substring(10).Trim() != "0";
             else if (s.StartsWith("textos_deslizantes=")) TextosDeslizantes = s.Substring(19).Trim() != "0";
             else if (s.StartsWith("buscador_portadas=")) BuscadorPortadas = s.Substring(18).Trim() != "0";

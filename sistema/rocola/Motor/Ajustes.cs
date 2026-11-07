@@ -345,7 +345,6 @@ namespace Rocola
             pn.Cambia = delegate (int d) { PruebaNoche(); };
             l.Add(pn);
             l.Add(Interruptor("Pantalla", "Ficha rapida del disco (al quedarse en uno)", "ficha_disco", () => FichaDisco, v => FichaDisco = v, false));
-            l.Add(Interruptor("Pantalla", "Barra de letras con lupa", "letras_lupa", () => LetrasLupa, v => LetrasLupa = v, false));
             l.Add(Interruptor("Pantalla", "Pasar de pagina deslizando", "pagina_desliza", () => PaginaDesliza, v => PaginaDesliza = v, false));
             l.Add(Interruptor("Pantalla", "Lista grande dentro del disco", "lista_grande", () => ListaGrande, v => ListaGrande = v, false));
             l.Add(Interruptor("Pantalla", "Ecualizador en la que suena", "eq_sonando", () => EqSonando, v => EqSonando = v, false));
@@ -356,7 +355,6 @@ namespace Rocola
             l.Add(Interruptor("Pantalla", "Avisos que se entienden", "avisos_claros", () => AvisosClaros, v => AvisosClaros = v, false));
             l.Add(Interruptor("Pantalla", "La atraccion como escaparate", "escaparate", () => Escaparate, v => Escaparate = v, false));
             l.Add(Interruptor("Pantalla", "Lo mas pedido esta noche (en la atraccion)", "top_noche", () => TopNocheOn, v => TopNocheOn = v, false));
-            l.Add(Interruptor("Pantalla", "Letra para leer de lejos (lo que suena)", "letra_lejos", () => LetraLejos, v => LetraLejos = v, false));
             l.Add(Interruptor("Pantalla", "El color del genero en todo", "color_genero", () => ColorGenero, v => ColorGenero = v, false));
             l.Add(Interruptor("Pantalla", "Pistas del rojo mantenido", "guia_rojo", () => GuiaRojo, v => GuiaRojo = v, false));
             l.Add(Interruptor("Pantalla", "Los textos que no caben se deslizan", "textos_deslizantes", () => TextosDeslizantes, v => TextosDeslizantes = v, false));
@@ -380,11 +378,9 @@ namespace Rocola
             l.Add(Visual("Clima y más", "Nubes dibujadas (O2)", "nubes_cielo", () => NubesCielo, v => NubesCielo = v, false, "Unas cuantas nubes que pasan despacio, con el borde aclarado por la luna."));
             { Ajuste x = Visual("Clima y más", "El clima de afuera (O3)", "clima_cielo", () => ClimaCielo, v => ClimaCielo = v, false, ""); x.Nota = () => "Nubes, neblina, llovizna, lluvia, tormenta o nieve según el clima real (Open-Meteo, por internet, cada 15 min). " + EstadoClima; l.Add(x); }
             { int[] vc = new int[Ciudades.Length]; for (int i = 0; i < vc.Length; i++) vc[i] = i; Ajuste x = Opciones("Clima y más", "Ciudad del bar", "ciudad_bar", Ciudades, vc, () => CiudadBar, v => CiudadBar = v, ""); x.Nota = () => "Para la hora del sol y de la luna y para el clima. «Automática» la saca de la conexión a internet. Ahora: " + LugarBar + "."; l.Add(x); }
-            l.Add(Visual("La pared", "Portadas siempre nitidas (V4)", "portadas_nitidas", () => PortadasNitidas, v => PortadasNitidas = v, false, "Achicadas con filtro de calidad, y la elegida a mas resolucion. Vale para las que se carguen desde ahora."));
             l.Add(Visual("La pared", "El cubo con luz (V5)", "cubo_luz", () => CuboLuz, v => CuboLuz = v, false, "Un brillo recorre las caras del cubo al girar, y la elegida lleva su sombra en el piso."));
             l.Add(Visual("Dentro de un disco", "La portada, de vidrio esmerilado (V7)", "disco_vidrio", () => DiscoVidrio, v => DiscoVidrio = v, true, "Detras de la lista, la portada en grande y desenfocada."));
             l.Add(Visual("Dentro de un disco", "La lista con los colores del disco (V8)", "lista_colores", () => ListaColores, v => ListaColores = v, false, "La fila elegida y la barra con el color de la portada."));
-            l.Add(Visual("Dentro de un disco", "El ecualizador, de verdad (V9)", "eq_real", () => EqReal, v => EqReal = v, false, "Las barritas de la que suena leen el sonido real que sale por las bocinas."));
             l.Add(Visual("La franja de lo que suena", "La barra con la forma de la cancion (V10)", "barra_forma", () => BarraForma, v => BarraForma = v, false, "La barra de avance dibuja el volumen de la cancion de principio a fin."));
             l.Add(Visual("La franja de lo que suena", "Espectro sobre el horizonte (V11)", "espectro_franja", () => EspectroFranja, v => EspectroFranja = v, false, "Barras de las 16 bandas del sonido, al compas de las bocinas, con sus picos."));
             l.Add(Visual("La franja de lo que suena", "Cambio de cancion con transicion (V12)", "titulo_transicion", () => TituloTransicion, v => TituloTransicion = v, false, "El titulo nuevo entra deslizandose mientras el viejo se va."));
@@ -396,12 +392,8 @@ namespace Rocola
             l.Add(Visual("Buscador y ayuda", "La estrella con volumen y luz (V18)", "estrella_luz", () => EstrellaLuz, v => EstrellaLuz = v, false, "La asistente sombreada, con chispas y sombra en el piso. Sin cara."));
             l.Add(Visual("La atraccion", "Portadas de cine (V19)", "atraccion_cine", () => AtraccionCine, v => AtraccionCine = v, false, "Acercamientos lentos sobre las portadas de la atraccion."));
             l.Add(Visual("La atraccion", "Mosaico de lo mas pedido (V20)", "mosaico_exitos", () => MosaicoExitos, v => MosaicoExitos = v, true, "Una pantalla mas en la atraccion: las portadas de lo mas pedido volteandose una a una."));
-            l.Add(Visual("La atraccion", "Pasos sin cortes (V21)", "atraccion_fundidos", () => AtraccionFundidos, v => AtraccionFundidos = v, false, "Entre una pantalla y otra de la atraccion, un fundido en vez de un salto."));
             l.Add(Visual("Monedas y avisos", "Una moneda de verdad (V22)", "moneda_metal", () => MonedaMetal, v => MonedaMetal = v, false, "La moneda que cae, con brillo de metal y un rebote al llegar."));
             l.Add(Visual("Monedas y avisos", "Chispas al poner una cancion (V23)", "chispas_pedir", () => ChispasPedir, v => ChispasPedir = v, false, "Chispas del color del genero que vuelan hasta la cola."));
-            Ajuste v24 = Visual("Monedas y avisos", "Avisos de vidrio (V24)", "avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v, true, "Los avisos sobre un vidrio que desenfoca lo de atras.");
-            v24.Bloqueo = () => VidrioAvisos ? "lo hace «Avisos de vidrio nuevos» (G10), que esta encendido" : null;
-            l.Add(v24);
             l.Add(Visual("Ajustes y pantalla", "Ver el cambio mientras se elige (V28)", "ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v, false, "En las hojas Imagen, Fondo y Colores la ventana se hace transparente para ver el cambio detras."));
             // VIDRIO Y LETRA (3-11-2026): la letra nueva y las ventanas de vidrio (G1-G11)
             Ajuste letra = Visual("Vidrio y letra", "Letra nueva (L1)", "letra_nueva", () => LetraNueva, v => LetraNueva = v, false, "Outfit en los titulos y Plus Jakarta Sans en el texto, en toda la rocola. Apagado: las letras de XP.");

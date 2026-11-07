@@ -14,11 +14,12 @@ namespace Rocola
         public bool NebulosasVivas = false;     // V1 "nebulosas_vivas=" (medio)
         public bool AuroraMusica = true;        // V2 "aurora_musica="
         public bool EstrellasAire = true;       // V3 "estrellas_aire="
-        public bool PortadasNitidas = true;     // V4 "portadas_nitidas="
+        // INTERRUPTORES RETIRADOS (7-11-2026, «borra interruptores que sean innecesarios»): ya no se pueden apagar; las claves se ignoran
+        public bool PortadasNitidas { get { return true; } }     // V4 (portadas_nitidas=): siempre (los mipmaps se hacen en el hilo de las portadas)
         public bool CuboLuz = true;             // V5 "cubo_luz="
         public bool DiscoVidrio = false;        // V7 "disco_vidrio=" (medio)
         public bool ListaColores = true;        // V8 "lista_colores="
-        public bool EqReal = true;              // V9 "eq_real="
+        public bool EqReal { get { return true; } }              // V9 (eq_real=): siempre el sonido real
         public bool BarraForma = true;          // V10 "barra_forma="
         public bool EspectroFranja = true;      // V11 "espectro_franja="
         public bool TituloTransicion = true;    // V12 "titulo_transicion="
@@ -30,10 +31,10 @@ namespace Rocola
         public bool EstrellaLuz = true;         // V18 "estrella_luz="
         public bool AtraccionCine = true;       // V19 "atraccion_cine="
         public bool MosaicoExitos = false;      // V20 "mosaico_exitos=" (medio)
-        public bool AtraccionFundidos = true;   // V21 "atraccion_fundidos="
+        public bool AtraccionFundidos { get { return true; } }   // V21 (atraccion_fundidos=): siempre con fundidos
         public bool MonedaMetal = true;         // V22 "moneda_metal="
         public bool ChispasPedir = true;        // V23 "chispas_pedir="
-        public bool AvisosVidrio = false;       // V24 "avisos_vidrio=" (medio)
+        public bool AvisosVidrio { get { return false; } }       // V24 (avisos_vidrio=): retirado, lo hace G10 (vidrio_avisos=)
         public bool AjustesVistaPrevia = true;  // V28 "ajustes_vista_previa="
         public bool ResolucionNativa = true;    // V30 "resolucion_nativa=": la del monitor (apagado: 1024x768 si el monitor la ofrece; se aplica al arrancar)
         // VIDRIO Y LETRA (decision del 3-11-2026, presentacion «Rocola OS: vidrio y letra»: G1-G11 y la letra L1). Los vidrios sobre el cielo
@@ -103,17 +104,17 @@ namespace Rocola
             var l = new List<KeyValuePair<string, Func<bool>>>(); var p = new List<KeyValuePair<string, Action<bool>>>();
             Action<string, Func<bool>, Action<bool>> a = (k, g, s) => { l.Add(new KeyValuePair<string, Func<bool>>(k, g)); p.Add(new KeyValuePair<string, Action<bool>>(k, s)); };
             a("nebulosas_vivas", () => NebulosasVivas, v => NebulosasVivas = v); a("aurora_musica", () => AuroraMusica, v => AuroraMusica = v);
-            a("estrellas_aire", () => EstrellasAire, v => EstrellasAire = v); a("portadas_nitidas", () => PortadasNitidas, v => PortadasNitidas = v);
+            a("estrellas_aire", () => EstrellasAire, v => EstrellasAire = v);
             a("cubo_luz", () => CuboLuz, v => CuboLuz = v); a("disco_vidrio", () => DiscoVidrio, v => DiscoVidrio = v);
-            a("lista_colores", () => ListaColores, v => ListaColores = v); a("eq_real", () => EqReal, v => EqReal = v);
+            a("lista_colores", () => ListaColores, v => ListaColores = v);
             a("barra_forma", () => BarraForma, v => BarraForma = v); a("espectro_franja", () => EspectroFranja, v => EspectroFranja = v);
             a("titulo_transicion", () => TituloTransicion, v => TituloTransicion = v); a("reposo_luz", () => ReposoLuz, v => ReposoLuz = v);
             a("anillo_musica", () => AnilloMusica, v => AnilloMusica = v); a("cola_carrusel", () => ColaCarrusel, v => ColaCarrusel = v);
             a("teclado_vivo", () => TecladoVivo, v => TecladoVivo = v); a("resultados_cascada", () => ResultadosCascada, v => ResultadosCascada = v);
             a("estrella_luz", () => EstrellaLuz, v => EstrellaLuz = v); a("atraccion_cine", () => AtraccionCine, v => AtraccionCine = v);
-            a("mosaico_exitos", () => MosaicoExitos, v => MosaicoExitos = v); a("atraccion_fundidos", () => AtraccionFundidos, v => AtraccionFundidos = v);
+            a("mosaico_exitos", () => MosaicoExitos, v => MosaicoExitos = v);
             a("moneda_metal", () => MonedaMetal, v => MonedaMetal = v); a("chispas_pedir", () => ChispasPedir, v => ChispasPedir = v);
-            a("avisos_vidrio", () => AvisosVidrio, v => AvisosVidrio = v); a("ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v);
+            a("ajustes_vista_previa", () => AjustesVistaPrevia, v => AjustesVistaPrevia = v);
             a("resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v);
             a("letra_nueva", () => LetraNueva, v => LetraNueva = v);
             a("vidrio_cabecera", () => VidrioCabecera, v => VidrioCabecera = v); a("vidrio_letras", () => VidrioLetras, v => VidrioLetras = v);

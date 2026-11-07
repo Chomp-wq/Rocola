@@ -1818,3 +1818,19 @@ dejan de dar tambien letras, portadas y canciones que faltan (SP1, SP5, SP6).
 
 Probado con el rocola-spotify simulado (guiones: precarga de la elegida, dos de Spotify seguidas sin devolver creditos).
 
+## Interruptores innecesarios retirados de Ctrl+F3 (7 de noviembre de 2026)
+
+Peticion del dueño: «borra interruptores que sean innecesarios en la ventana de ctrl f3». Se revisaron los 165 mandos (para cada uno,
+si su valor se lee en algun sitio fuera de los ajustes y la configuracion) y se retiraron seis; sus claves se ignoran:
+
+- **No hacian nada en Rocola OS**: «Barra de letras con lupa» (`letras_lupa=`) y «Letra para leer de lejos» (`letra_lejos=`): se
+  guardaban pero ningun dibujo los leia.
+- **Ya no hay motivo para apagarlos** (quedan siempre encendidos): «Portadas siempre nitidas» (V4, `portadas_nitidas=`: sus reducciones
+  ya se hacen en el hilo de las portadas, sin coste en la pantalla), «El ecualizador, de verdad» (V9, `eq_real=`: el espectro real ya se
+  calcula de todas formas; apagado eran barritas de mentira) y «Pasos sin cortes» en la atraccion (V21, `atraccion_fundidos=`: con el
+  movimiento nuevo, nada cambia de golpe).
+- **Repetido**: «Avisos de vidrio» (V24, `avisos_vidrio=`): lo hace «Avisos de vidrio nuevos» (G10, `vidrio_avisos=`), que va en todos
+  los avisos.
+
+Tambien se quito el dibujo viejo del buscador (`Buscador()`), que ya nadie llamaba.
+

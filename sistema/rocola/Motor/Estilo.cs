@@ -8,7 +8,6 @@ namespace Rocola
     public partial class Form1
     {
         public bool ColorGenero = true;   // "color_genero="
-        public bool LetraLejos = true;    // "letra_lejos="
         // LA ESTRELLA DEL CIELO (el astro principal de XP) y sus adornos, con las claves de XP (encendidos de fabrica).
         public bool EstrellaCielo = true;   // "luna="
         public bool Estrella3d = true;      // "estrella_3d="
