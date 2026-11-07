@@ -252,6 +252,7 @@ namespace Rocola.Pantalla
 
         internal void Empieza(Color4 fondo)
         {
+            Zoom = false;   // (si un cuadro fallo a medio zoom, el siguiente no sale chiquito)
             GL.Viewport(0, 0, Ancho, Alto);
             // BORRAR SOLO SI HACE FALTA: si lo primero es la capa del cielo (opaca, a toda la pantalla), borrar seria escribir la pantalla
             // entera para nada; se borra cuando se vaya a dibujar otra cosa antes

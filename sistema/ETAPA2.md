@@ -1692,3 +1692,15 @@ casilla escogida mostrando los resultados de dicho artista, y al volver estarás
   como «?». Ahora se dibujan con su igual más cercano.
 - **Dos trabajos de fondo sin protección**: la foto del artista de Spotify y el género de un disco. Un error ahí, en un hilo del grupo,
   cerraba la rocola entera. Ahora se atrapa y se apunta.
+- **Los fallos del bucle se juntaban desde el arranque.** Al fallo 201 la rocola se cerraba (para que se vuelva a abrir), pero la cuenta
+  nunca volvía a cero: un error raro, uno por hora, la cerraba a los ocho días a media canción. Ahora cuentan solo los seguidos: con
+  un minuto sin fallos, la cuenta vuelve a cero.
+- **El zoom del artista podía quedarse puesto** si un cuadro fallaba a medio dibujar el disco: todo lo siguiente saldría chiquito.
+  Cada cuadro empieza ahora sin zoom.
+- **Revisado sin fallos:**
+  - todos los hilos de fondo (botones, salida de sonido, Spotify, emparejado, discos de artistas, conversiones, IA, portadas, el
+    vigilante): cada uno atrapa sus errores o va por la cola del bucle;
+  - los cálculos en segundo plano de la pared;
+  - las cachés de Spotify y del buscador, que tienen tope.
+- **Medido:** el buscador de 20 000 canciones sigue entre 3 y 8 ms por búsqueda tras el arreglo de los acentos, y «cancion de amor»
+  ahora encuentra «Triste canción de amor».

@@ -201,7 +201,7 @@ namespace Rocola
         internal double AtraccionDesfase;   // (pruebas) segundos ya corridos del ciclo de 30 s de la atraccion
         internal void FuerzaAtraccion() { ultimoToque = Environment.TickCount - 60000; RevisaAtraccion(); }   // (pruebas)
 
-        private int fallos;
+        private int fallos, ultimoFallo;
         internal int Corre(IVista vista)
         {
             vistaActual = vista;
@@ -254,6 +254,10 @@ namespace Rocola
                         }
                         catch (Exception ex)
                         {
+                            // (los fallos seguidos: si pasa un minuto sin otro, la cuenta vuelve a cero; antes se juntaban desde el arranque y
+                            // un error raro, uno por hora, cerraba la rocola a los ocho dias a media cancion)
+                            if (unchecked(Environment.TickCount - ultimoFallo) > 60000) fallos = 0;
+                            ultimoFallo = Environment.TickCount;
                             fallos++;
                             motor.ApuntaError("La rocola (vuelta del bucle)", ex);
                             if (fallos > 200) throw;   // algo roto de verdad: que el vigilante la vuelva a abrir
