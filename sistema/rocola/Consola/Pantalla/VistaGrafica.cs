@@ -99,27 +99,28 @@ namespace Rocola
             vistaC = c; EspectroAlDia(c); eqRealAhora = m.EqReal; aireAhora = m.EstrellasAire; auroraAhora = m.AuroraMusica; nebVivasAhora = m.NebulosasVivas; cuboLuzAhora = m.CuboLuz; caratulas.Nitidas = m.PortadasNitidas;
             // el cielo borroso de los vidrios: si algun vidrio del cielo se dibujo en el cuadro anterior (o aun no hay)
             vidrioCieloPedido = m.AlgunVidrioDelCielo && (vidrioCieloUsado || !d.CieloBorroso.Hay); vidrioCieloUsado = false;
-            ColorDelCielo(c); Perfil.Marca("preparar");
+            ColorDelCielo(c); MiraEscena(c, W, H); Perfil.Marca("preparar");
             // la ventana de los ajustes sin vista previa es opaca: el cielo solo hace falta a sus lados
-            CieloTapa = c.AjusteSel >= 0 && c.AsistentePaso < 0 && !(c.Atraccion && c.AtraccionActual != null) && !AjustesConPrevia(c) && !m.VidrioAjustes ? VentanaAjustesOpaca(W, H) : new Zona();
+            CieloTapa = c.AjusteSel >= 0 && transDesde < 0 && c.AsistentePaso < 0 && !(c.Atraccion && c.AtraccionActual != null) && !AjustesConPrevia(c) && !m.VidrioAjustes ? VentanaAjustesOpaca(W, H) : new Zona();
             Cielo(W, H, reloj.Elapsed.TotalSeconds); Perfil.Marca("cielo");
             EspectroHorizonte(c, W, H); Perfil.Marca("espectro");
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f); Perfil.Marca("estrella del cielo");   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
-            if (!(c.Atraccion && c.AtraccionActual != null) && !c.Buscando) Cabecera(c, W); Perfil.Marca("cabecera");   // en la atraccion y en el buscador, como en XP, sin cabecera
+            CabeceraSuave(c, W, !(c.Atraccion && c.AtraccionActual != null) && !c.Buscando); Perfil.Marca("cabecera");   // en la atraccion y en el buscador, como en XP, sin cabecera
             float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
-            if (c.AsistentePaso >= 0) { Asistente(c, W, H); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
-            if (c.Atraccion && c.AtraccionActual != null) { Atraccion(c, W, H); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.AsistentePaso >= 0) { Transicion(W, H); Asistente(c, W, H); FinTransicion(); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Transicion(W, H); Atraccion(c, W, H); FinTransicion(); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
             if (c.AjusteSel >= 0 && (AjustesConPrevia(c) || m.VidrioAjustes))   // V28, o G9 (la pared detras del vidrio)
             { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
-            if (c.AjusteSel >= 0) { Ajustes(c, W, H); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.AjusteSel >= 0) { Transicion(W, H); Ajustes(c, W, H); FinTransicion(); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
             float e = reposoAlfa * reposoAlfa * (3 - 2 * reposoAlfa);
-            if (c.Buscando && c.ConPortadas) BuscadorPortadas(c, W, abajo);
-            else if (c.Buscando) BuscadorPortadas(c, W, abajo);
-            else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else if (!ZoomArtista(c, W, H)) Disco(c, W, abajo); else { Disco(c, W, abajo); d.Zoom = false; } }
+            Transicion(W, H);   // M1 (Movimiento.cs)
+            if (c.Buscando) BuscadorPortadas(c, W, abajo);
+            else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
+            FinTransicion();
             Perfil.Marca("pared, disco o buscador");
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
             if (e > 0f) EstrellaDelCielo(c, W, H, e);
@@ -545,24 +546,6 @@ namespace Rocola
         }
 
         private float reposoAlfa; private double reposoT;
-
-        // EL ZOOM DESDE LA CASILLA (7-11-2026): al abrir un artista de Spotify desde el buscador, su pagina crece desde la casilla elegida
-        // hasta llenar la pantalla en 0,42 s (sale suave) y se va aclarando. Devuelve true si hay que dibujar con el zoom puesto.
-        private int zoomVisto; private Zona zoomDesde;
-        private bool ZoomArtista(Controlador c, float W, float H)
-        {
-            int z = c.ZoomDesdeBuscador;
-            if (z == 0) return false;
-            if (z != zoomVisto) { zoomVisto = z; zoomDesde = zSelResultado.Vacia ? new Zona(W * 0.4f, H * 0.4f, W * 0.2f, H * 0.2f) : zSelResultado; }
-            float u = unchecked(Environment.TickCount - z) / 420f;
-            if (u >= 1f || u < 0f) { c.ZoomDesdeBuscador = 0; return false; }
-            float e = 1f - (1f - u) * (1f - u) * (1f - u);
-            float x = zoomDesde.X * (1 - e), y = zoomDesde.Y * (1 - e), w = zoomDesde.W + (W - zoomDesde.W) * e, h = zoomDesde.H + (H - zoomDesde.H) * e;
-            float s = w / W;
-            d.Brillo(x + w / 2, y + h / 2, Math.Max(w, h) * 0.4f, new Color4(0.45f, 0.85f, 0.55f, 0.18f * (1f - e)));   // (un destello verde de Spotify)
-            d.Zoom = true; d.ZoomS = s; d.ZoomX = x; d.ZoomY = y + h / 2 - H * s / 2; d.ZoomA = Math.Min(1f, 0.25f + e * 1.2f);
-            return true;
-        }
 
         // EL COLOR DEL GENERO (color_genero= de XP): un resplandor de ese color que respira despacio (con su propio reloj de 5 s, no con la
         // musica: nada da saltos) detras de la portada.

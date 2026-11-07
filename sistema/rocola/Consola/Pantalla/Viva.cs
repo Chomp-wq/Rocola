@@ -171,6 +171,7 @@ namespace Rocola
                 string t = c.Atajos[i].Texto; float w = fAtajo.Mide(t) + 28 * k;
                 if (axx + w > W - 24 * k) break;
                 bool sel = !c.EnResultados && c.FilaTecla < 0 && c.ColTecla == i;
+                if (sel) selTecla.Meta(new Zona(axx, ay, w, ah));
                 if (vidrio) PildoraVidrio(axx, ay, w, ah, ah / 2, sel ? Color4.Hex(0x3A6CFF) : Color4.Hex(0x7F90D0), 1f, sel);
                 else
                 {
@@ -196,6 +197,7 @@ namespace Rocola
                     bool borrar = fila[i] == '\u0002';
                     float w = ultima ? (borrar ? anchoTeclado * 0.4f - sep / 2 : anchoTeclado * 0.6f - sep / 2) : tecla;
                     bool sel = !c.EnResultados && f == c.FilaTecla && i == c.ColTecla;
+                    if (sel) selTecla.Meta(new Zona(tx, ty, w, ht));
                     Color4 fondo = sel ? Color4.Hex(0x3A6CFF) : borrar ? Color4.Hex(0x3A1424, 0.88f) : Color4.Hex(0x141C40, 0.85f);
                     Color4 borde = sel ? Color4.Hex(0xB8D0FF) : borrar ? Color4.Hex(0xB04458, 0.8f) : Color4.Hex(0x7F90D0, 0.30f);
                     if (sel) d.Brillo(tx + w / 2, ty + ht / 2, w * 0.9f, Color4.Hex(0x3A6CFF, 0.35f));
@@ -243,7 +245,7 @@ namespace Rocola
                     float cx = rx + co * (cw + gap) + corre, cy = ry + fi * (ch + gap);
                     bool sel = c.EnResultados && i == c.SelResultado;
                     if (ac < 1f) { d.Redondo(cx, cy, cw, ch, 9 * k, Color4.Hex(0x161E44, 0.5f * ac)); d.Contorno(cx, cy, cw, ch, 9 * k, 1.1f * k, Color4.Hex(0x7F90D0, 0.3f * ac)); continue; }
-                    if (sel) { d.Brillo(cx + cw / 2, cy + ch / 2, cw * 0.65f, Color4.Hex(0x6FA8FF, 0.22f)); zSelResultado = new Zona(cx, cy, cw, ch); }
+                    if (sel) { d.Brillo(cx + cw / 2, cy + ch / 2, cw * 0.65f, Color4.Hex(0x6FA8FF, 0.22f)); zSelResultado = new Zona(cx, cy, cw, ch); selTecla.Meta(zSelResultado); }
                     if (vidrio) { PildoraVidrio(cx, cy, cw, ch, 9 * k, sel ? Color4.Hex(0x6FA8FF) : Color4.Hex(0x7F90D0), 1f, sel); if (sel) d.Contorno(cx, cy, cw, ch, 9 * k, 2f * k, Color4.Hex(0xB8D0FF)); }
                     else
                     {
@@ -267,6 +269,7 @@ namespace Rocola
                     Resaltado(fTitulo, r.Texto, c.Escrito, tx, cy + 31 * k, tw, sel);
                     if (!string.IsNullOrEmpty(r.Detalle)) Resaltado(fSub, r.Detalle, c.Escrito, tx, cy + 54 * k, twd, false, Color4.Hex(0xA8B4DC));
                 }
+            AroQueViaja(c, selTecla, 8 * k);   // M2: de tecla en tecla, de casilla en casilla y del teclado a los resultados
             if (filasTot > filas)
             {   // la barrita de cuanto hay
                 float bh = filas * (ch + gap) - gap, hh = Math.Max(20 * k, bh * filas / filasTot), by = ry + (bh - hh) * desde / Math.Max(1, filasTot - filas);

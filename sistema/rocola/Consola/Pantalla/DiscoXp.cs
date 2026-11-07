@@ -57,21 +57,26 @@ namespace Rocola
             for (int q = 0; q < cola.Count; q++) if (cola[q].Ruta != null && !enCola.ContainsKey(cola[q].Ruta)) { enCola[cola[q].Ruta] = q + 1; minutos[cola[q].Ruta] = cola[q].Minutos; }
             int n = disco.Rutas.Count, desde = Math.Max(0, Math.Min(c.cursorCancion - caben / 2, n - caben));
             Letra lt = Titulo(gr ? fila / 3f * 4f / 3f : 13 * 4f / 3f * k);
-            for (int i = 0; i < caben && desde + i < n; i++)
+            // M3: la lista se corre suave (desdeF sigue a desde) y las filas de los bordes se desvanecen; M2: la fila elegida viaja
+            double ahoraS = reloj.Elapsed.TotalSeconds;
+            float desdeF = m.ListasSuaves ? desdeLista.Hacia(desde, ahoraS) : desde;
+            int j0 = Math.Max(0, (int)Math.Floor(desdeF)), j1 = Math.Min(n, (int)Math.Ceiling(desdeF) + caben);
+            Zona zMueve = default(Zona); bool mueve = m.SeleccionDesliza && selCancion.Ahora(ahoraS, out zMueve);
+            zoomBase = d.Zoom; zoomBaseA = d.ZoomA;
+            bool recorta = n > caben;   // (lo que entra y sale por los bordes, dentro del panel)
+            if (recorta) d.Recorta(px, y0, pw, caben * fila);
+            if (mueve) FilaElegida(m, tx, zMueve.X, zMueve.Y, zMueve.W, zMueve.H);
+            for (int j = j0; j < j1; j++)
             {
-                int j = desde + i; float y = y0 + i * fila, fy = y + 4 * k, fh = fila - 8 * k, cy = fy + fh / 2;
+                float y = y0 + (j - desdeF) * fila, fy = y + 4 * k, fh = fila - 8 * k, cy = fy + fh / 2;
+                float sobra = Math.Max(y0 - y, y + fila - (y0 + caben * fila)) / fila;
+                if (sobra >= 0.6f) continue;
+                AlfaFila(1f - Math.Max(0f, sobra) / 0.6f);
                 bool sel = j == c.cursorCancion && c.cursorMas < 0;   // (en la tira, ninguna cancion elegida)
                 if (sel)
                 {
-                    Color4 s1 = Color4.Hex(0x4A6CB8, 0.92f), s2 = Color4.Hex(0x3A58A0, 0.92f), sb = Color4.Hex(0xC6D2FF, 0.55f);
-                    if (m.ListaColores && tx != null)
-                    {
-                        // V8: la fila elegida con el color de la portada, oscurecido lo justo para que el texto blanco se lea
-                        Color4 cm = tx.Media; s1 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.45f).ConAlfa(0.92f); s2 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.62f).ConAlfa(0.92f); sb = Dibujo.Mezcla(cm, Blanco, 0.5f).ConAlfa(0.7f);
-                    }
-                    d.RedondoDegradado(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, s1, s2);
-                    d.Contorno(px + 4 * k, fy, pw - 8 * k, fh, 12 * k, 1.4f * k, sb);
-                    zCancion = new Zona(px + 4 * k, fy, pw - 8 * k, fh);
+                    selCancion.Meta(new Zona(px + 4 * k, fy, pw - 8 * k, fh)); zCancion = new Zona(px + 4 * k, fy, pw - 8 * k, fh);
+                    if (!mueve) FilaElegida(m, tx, px + 4 * k, fy, pw - 8 * k, fh);
                 }
                 // el numero en su circulo
                 float rc = 12 * k, xc = px + 26 * k;
@@ -105,13 +110,14 @@ namespace Rocola
                     der -= wp + 10 * k;
                 }
                 float xt = xc + rc + 14 * k;
-                if (sel) EscribeDesliza(c, lt, disco.Titulos[j], xt, cy - lt.Tam * 0.58f, der - xt, Blanco);
+                if (sel) { EscribeDesliza(c, lt, disco.Titulos[j], xt, cy - lt.Tam * 0.58f, der - xt, Blanco); if (recorta) d.Recorta(px, y0, pw, caben * fila); }
                 else lt.Escribe(d, lt.Ajusta(disco.Titulos[j], der - xt), xt, cy - lt.Tam * 0.58f, Color4.Hex(0xE6EAFA, 0.9f));
             }
+            AlfaFila(1f); if (recorta) d.SinRecorte();
             // si hay mas de las que caben, una barrita a la derecha dice donde se esta
             if (n > caben)
             {
-                float bh = ph - 24 * k, bt = py + 12 * k, alto = Math.Max(20 * k, bh * caben / n), pos = bt + (bh - alto) * desde / Math.Max(1, n - caben);
+                float bh = ph - 24 * k, bt = py + 12 * k, alto = Math.Max(20 * k, bh * caben / n), pos = bt + (bh - alto) * desdeF / Math.Max(1, n - caben);
                 d.Redondo(px + pw - 6 * k, bt, 3 * k, bh, 1.5f * k, Color4.Hex(0x3A4678, 0.6f));
                 d.Redondo(px + pw - 6 * k, pos, 3 * k, alto, 1.5f * k, Color4.Hex(0xAEBBEE, 0.9f));
             }
@@ -233,6 +239,18 @@ namespace Rocola
         private void Espaciado(string s, float x, float y, Color4 c)
         {
             foreach (char ch in s) { string l = ch.ToString(); nChica.Escribe(d, l, x, y, c); x += nChica.Mide(l) + (ch == ' ' ? 6 * k : 3.5f * k); }
+        }
+        // La fila elegida de la lista de un disco (en su sitio, o donde va llegando con M2)
+        private void FilaElegida(Form1 m, Textura tx, float x, float y, float w, float h)
+        {
+            Color4 s1 = Color4.Hex(0x4A6CB8, 0.92f), s2 = Color4.Hex(0x3A58A0, 0.92f), sb = Color4.Hex(0xC6D2FF, 0.55f);
+            if (m.ListaColores && tx != null)
+            {
+                // V8: la fila elegida con el color de la portada, oscurecido lo justo para que el texto blanco se lea
+                Color4 cm = tx.Media; s1 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.45f).ConAlfa(0.92f); s2 = Dibujo.Mezcla(cm, Color4.Hex(0x101830), 0.62f).ConAlfa(0.92f); sb = Dibujo.Mezcla(cm, Blanco, 0.5f).ConAlfa(0.7f);
+            }
+            d.RedondoDegradado(x, y, w, h, 12 * k, s1, s2);
+            d.Contorno(x, y, w, h, 12 * k, 1.4f * k, sb);
         }
     }
 }

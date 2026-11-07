@@ -1704,3 +1704,30 @@ casilla escogida mostrando los resultados de dicho artista, y al volver estarás
   - las cachés de Spotify y del buscador, que tienen tope.
 - **Medido:** el buscador de 20 000 canciones sigue entre 3 y 8 ms por búsqueda tras el arreglo de los acentos, y «cancion de amor»
   ahora encuentra «Triste canción de amor».
+
+## El movimiento: transiciones y selecciones suaves (7 de noviembre de 2026)
+
+Peticion del dueño: «Quiero rediseñar todas las animaciones y transiciones para hacerlas mas esteticas, fluidas y menos bruscas» y
+«revisa absolutamente todas las animaciones, al entrar y salir de discos, al abrir buscador, al aparecer el modo atraccion».
+Un solo sistema (`Consola/Pantalla/Movimiento.cs`) con las mismas curvas (salen rapido y llegan suave, sin rebote), medido con el
+reloj (no por cuadro: con menos cuadros dura lo mismo). Tres opciones visuales en Ctrl+F3 → Imagen → **Movimiento**, encendidas de
+fabrica (coste bajo):
+
+- **M1** `transiciones=`: escenas pared, disco, buscador, atraccion, ajustes y asistente. Entrar a un disco: crece desde su portada
+  (0,36 s) o desde su casilla del buscador (0,38 s; el artista de Spotify con su destello verde, sustituye a `ZoomArtista`); volver
+  a la pared o pasar de un disco a otro: la pared se asienta desde un 4 % mas cerca (0,28 s; desde la atraccion 0,34 s); el
+  buscador baja (0,28 s); otra letra: la pared entra 70 px desde el lado hacia el que se movio (0,26 s); los ajustes crecen desde
+  el 96,5 % (0,24 s); la atraccion aparece con un fundido de 0,9 s; el asistente, 0,3 s. La cabecera se va y vuelve con un fundido
+  de 0,25 s (no esta en el buscador ni en la atraccion). Mientras dura la transicion de los ajustes el cielo se pinta entero.
+- **M2** `seleccion_desliza=`: la fila elegida de un disco y la pastilla de la letra viajan a su sitio (seguidor exponencial de
+  50 ms, por debajo de los textos con la meta del cuadro anterior); en el buscador, un aro de luz va de tecla en tecla, de casilla
+  en casilla y del teclado a los resultados, y se desvanece al llegar.
+- **M3** `listas_suaves=`: la lista de canciones de un disco se corre suave (la barrita tambien); las filas de los bordes se
+  desvanecen y quedan recortadas al panel.
+
+Nada hace esperar: los botones actuan al momento. Ya estaban animados y no cambian: el reposo (0,6/0,35 s), la ficha de la pared,
+la cascada de resultados (V17), el titulo que cambia (V12), los avisos, la moneda, el vuelo de la cancion y los fundidos de la
+atraccion. El renglon de los ajustes sigue saltando (su desplazamiento ya era suave). Pruebas: `ROCOLA_PELICULA=N` (con
+`ROCOLA_RELOJ_FIJO` y `ROCOLA_RELOJ_PASO`) guarda N cuadros tras cada boton de `--captura`; revisado cuadro a cuadro. Banco del disco
+abierto en llvmpipe: 14 ms de mediana, 1,2 KB por cuadro, sin recolecciones. No medido ni visto en el A4.
+

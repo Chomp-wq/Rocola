@@ -169,8 +169,22 @@ namespace Rocola
             if (botones.Contains("presentacion")) { v.Presentacion("Leyendo tu musica..."); fp.Captura(ruta); Console.WriteLine("Captura: " + ruta); return 0; }   // V29
             Controlador c = new Controlador(m, "null");
             c.Prepara();
+            // LA PELICULA (ROCOLA_PELICULA=N, pruebas del movimiento): cada boton por separado y N cuadros despues de cada uno, cada cuadro
+            // guardado (ruta-000.ppm...); con ROCOLA_RELOJ_FIJO y ROCOLA_RELOJ_PASO el tiempo avanza igual en cada cuadro.
+            int pelicula = int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_PELICULA"), out int np) ? np : 0, cuadroPeli = 0;
+            if (pelicula > 0) { v.SiempreDibuja = true; for (int i = 0; i < 6; i++) v.Dibuja(c); }
             foreach (string b in botones)
-                if (b.StartsWith("cuadros=")) continue;
+            {
+                if (pelicula > 0 && !b.StartsWith("cuadros=")) { Aplica(b, m, c, v); for (int i = 0; i < pelicula; i++) { v.Dibuja(c); fp.Captura(ruta + "-" + (cuadroPeli++).ToString("000") + ".ppm"); } continue; }
+                if (pelicula == 0) Aplica(b, m, c, v);
+            }
+            if (pelicula > 0) { m.Cierra(); Console.WriteLine("Pelicula: " + cuadroPeli + " cuadros"); return 0; }
+            Despues(ruta, botones, m, c, v, fp);
+            return 0;
+        }
+        private static void Aplica(string b, Form1 m, Controlador c, VistaGrafica v)
+        {
+                if (b.StartsWith("cuadros=")) return;
                 else if (b == "atraccion") c.FuerzaAtraccion();
                 else if (b == "rojo") c.RojoDePrueba = true;
                 else if (b == "diagnostico") { c.DiagnosticoDePrueba(v); Console.Write(c.UltimoDiagnostico); }   // el ROJO mantenido (las pistas del rojo)
@@ -199,6 +213,9 @@ namespace Rocola
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
                 else c.Pulsa((Boton)Enum.Parse(typeof(Boton), b, true));
+        }
+        private static void Despues(string ruta, List<string> botones, Form1 m, Controlador c, VistaGrafica v, Rocola.Pantalla.FueraDePantalla fp)
+        {
             // BANCO DE MEDIDA (ROCOLA_BANCO=N): N cuadros seguidos de esta escena; cuanto tarda cada uno (preparar y dibujar, con el
             // dibujo por software de Mesa si no hay tarjeta: no es el A4) y cuanta memoria pide. No guarda nada.
             string banco = Environment.GetEnvironmentVariable("ROCOLA_BANCO");
@@ -216,9 +233,9 @@ namespace Rocola
                     ms.Add(sw.Elapsed.TotalMilliseconds); bytes += GC.GetAllocatedBytesForCurrentThread() - a;
                 }
                 ms.Sort();
-                Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro, {8:0.00} pantallas pintadas ({9:0.00} mezcladas)", tam, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb, Rocola.Pantalla.Dibujo.Relleno / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto), Rocola.Pantalla.Dibujo.RellenoMezclado / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto)));
+                Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}x{10}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro, {8:0.00} pantallas pintadas ({9:0.00} mezcladas)", Rocola.Pantalla.Dibujo.Actual.Ancho, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb, Rocola.Pantalla.Dibujo.Relleno / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto), Rocola.Pantalla.Dibujo.RellenoMezclado / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto), Rocola.Pantalla.Dibujo.Actual.Alto));
                 if (Perfil.Activo) { var l = new List<KeyValuePair<string, double>>(Perfil.Total); l.Sort((a, b) => b.Value.CompareTo(a.Value)); foreach (var kv in l) Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "   {0,-28} {1,7:0.00} ms {2,7:0.0} KB {3,6:0.00} pantallas", kv.Key, kv.Value / nb, (Perfil.Bytes.TryGetValue(kv.Key, out long kb) ? kb : 0) / 1024.0 / nb, (Perfil.Puntos.TryGetValue(kv.Key, out double pp) ? pp : 0) / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto))); }
-                m.Cierra(); return 0;
+                m.Cierra(); return;
             }
             // que termine de aparecer lo que se anima (la atraccion, el reposo, la estrella que vuela): unos cuadros durante 1,3 s
                 for (int i = 0; i < Cuadros(botones); i++) { m.PublicaMedidas(); v.Dibuja(c); System.Threading.Thread.Sleep(50); }   // lo medido en fondo, a las tablas (como el bucle de la rocola)   // que termine de aparecer
@@ -230,7 +247,6 @@ namespace Rocola
             if (doble != null) { Environment.SetEnvironmentVariable(doble, "1"); if (doble == "ROCOLA_SIN_LOTES") { Rocola.Pantalla.Dibujo.BrilloCuadrado = true; Rocola.Pantalla.Dibujo.TirasEnteras = true; } if (doble == "ROCOLA_TIRAS_ENTERAS") Rocola.Pantalla.Dibujo.TirasEnteras = true; VistaGrafica.RepiteCuadro(); v.Dibuja(c); fp.Captura(ruta + ".b.ppm"); }
             m.GuardaEstado(); m.Cierra();   // lo aprendido y las estadisticas, como al cerrar la rocola
             Console.WriteLine("Captura: " + ruta);
-            return 0;
         }
     }
 }

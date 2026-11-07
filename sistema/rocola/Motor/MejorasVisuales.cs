@@ -50,6 +50,10 @@ namespace Rocola
         public bool PortadasBrillan = true;     // C9 "portadas_brillan="
         public bool DestelloPedir = true;       // C10 "destello_pedir="
         public bool BarraNeon = true;           // C11 "barra_neon="
+        // EL MOVIMIENTO (decision del 7-11-2026: «rediseñar todas las animaciones y transiciones»; Consola/Pantalla/Movimiento.cs), coste bajo
+        public bool Transiciones = true;        // M1 "transiciones=": entrar y salir de discos, buscador, atraccion, ajustes y letras
+        public bool SeleccionDesliza = true;    // M2 "seleccion_desliza=": lo elegido viaja a su sitio en vez de saltar
+        public bool ListasSuaves = true;        // M3 "listas_suaves=": la lista de canciones se corre suave
         public bool LetraNueva = true;          // L1 "letra_nueva=": Outfit en los titulos y Plus Jakarta Sans en el texto
         public bool VidrioCabecera = true;      // G1 "vidrio_cabecera="
         public bool VidrioLetras = true;        // G2 "vidrio_letras="
@@ -123,6 +127,8 @@ namespace Rocola
             a("neon_borde", () => NeonBorde, v => NeonBorde = v); a("vidrio_late", () => VidrioLate, v => VidrioLate = v);
             a("portadas_brillan", () => PortadasBrillan, v => PortadasBrillan = v); a("destello_pedir", () => DestelloPedir, v => DestelloPedir = v);
             a("barra_neon", () => BarraNeon, v => BarraNeon = v);
+            a("transiciones", () => Transiciones, v => Transiciones = v); a("seleccion_desliza", () => SeleccionDesliza, v => SeleccionDesliza = v);
+            a("listas_suaves", () => ListasSuaves, v => ListasSuaves = v);
             // el cielo segun la hora, la fecha y el clima (CieloClima.cs)
             a("cielo_hora", () => CieloHora, v => CieloHora = v); a("sol_hora", () => SolHora, v => SolHora = v);
             a("estrellas_anochecer", () => EstrellasAnochecer, v => EstrellasAnochecer = v); a("luna_arco", () => LunaArco, v => LunaArco = v);

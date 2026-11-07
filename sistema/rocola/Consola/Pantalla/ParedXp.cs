@@ -114,6 +114,14 @@ namespace Rocola
             return new Zona(x, y, w, h);
         }
 
+        // La pastilla de la letra elegida, centrada en cx y de ancho ws
+        private void PastillaLetra(Color4 cl, bool c3, bool vidrio, float cx, float y, float ws)
+        {
+            d.Brillo(cx, y + 13 * k, ws * 0.5f, cl.ConAlfa(c3 ? 0.18f + 0.22f * viveza : vidrio ? 0.30f : 0.18f));
+            if (vidrio) PildoraVidrio(cx - ws / 2, y + 2 * k, ws, 22 * k, 11 * k, c3 ? cl : Color4.Hex(0x3A6CFF), 1f, true);   // la elegida: una pastilla clara
+            else d.Redondo(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, Color4.Hex(0x0E1A44, 0.85f));
+            d.Contorno(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, 2f * k, c3 ? Dibujo.Mezcla(cl, Blanco, 0.35f) : Color4.Hex(0x9CCBFF));
+        }
         // ---------------- LA BARRA DE LETRAS ----------------
         // Todas las letras repartidas a lo ancho; debajo de cada una una rayita del largo de lo que tiene y cuantas canciones tiene (como XP). La elegida,
         // dentro de su marco.
@@ -127,6 +135,9 @@ namespace Rocola
             float paso = (x1 - x0 - 16 * k) / n;
             int maxD = 1; for (int i = 0; i < n; i++) maxD = Math.Max(maxD, c.CancionesEn(i));
             zLetras = new Zona(x0, y, x1 - x0, h);
+            // M2: la pastilla de la elegida viaja (se dibuja antes que las letras, con su color de llegada)
+            Zona zm = default(Zona); bool mueve = c.motor.SeleccionDesliza && selLetra.Ahora(reloj.Elapsed.TotalSeconds, out zm);
+            if (mueve && c.letra >= 0 && c.letra < n) PastillaLetra(c.motor.LetrasColor ? ColorDeLetra(c, c.letra) : AzulBorde, c.motor.LetrasColor, vidrio, zm.Cx, y, zm.W);
             for (int i = 0; i < n; i++)
             {
                 float cx = x0 + 8 * k + paso * (i + 0.5f);
@@ -139,10 +150,8 @@ namespace Rocola
                 if (sel)
                 {
                     float ws = Math.Min(paso * 0.97f, 232 * k);
-                    d.Brillo(cx, y + 13 * k, ws * 0.5f, cl.ConAlfa(c3 ? 0.18f + 0.22f * viveza : vidrio ? 0.30f : 0.18f));
-                    if (vidrio) PildoraVidrio(cx - ws / 2, y + 2 * k, ws, 22 * k, 11 * k, c3 ? cl : Color4.Hex(0x3A6CFF), 1f, true);   // la elegida: una pastilla clara
-                    else d.Redondo(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, Color4.Hex(0x0E1A44, 0.85f));
-                    d.Contorno(cx - ws / 2, y + 2 * k, ws, 22 * k, 10 * k, 2f * k, c3 ? Dibujo.Mezcla(cl, Blanco, 0.35f) : Color4.Hex(0x9CCBFF));
+                    selLetra.Meta(new Zona(cx - ws / 2, y + 2 * k, ws, 22 * k));
+                    if (!mueve) PastillaLetra(cl, c3, vidrio, cx, y, ws);
                 }
                 f.EscribeCentrado(d, l, cx, y + 13 * k - f.Tam * 0.50f, sel ? Blanco : c3 ? Dibujo.Mezcla(cl, Blanco, 0.30f) : Color4.Hex(0xC8D0F0));
                 float wr = Math.Max(10 * k, (paso * 0.78f) * (float)Math.Sqrt(cuantos / (float)maxD));

@@ -140,7 +140,7 @@ namespace Rocola
             if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
             return "Sonido";
         }
-        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra", "Color vivo" };
+        private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra", "Color vivo", "Movimiento" };
         // Una mejora visual de Rocola OS (MejorasVisuales.cs): su interruptor y su explicacion; 'medio' = de coste medio (apagada de fabrica).
         private Ajuste Visual(string grupo, string nombre, string clave, Func<bool> lee, Action<bool> pon, bool medio, string nota)
         {
@@ -429,6 +429,10 @@ namespace Rocola
             l.Add(Visual("Color vivo", "Portadas que brillan (C9)", "portadas_brillan", () => PortadasBrillan, v => PortadasBrillan = v, false, "Un resplandor de su propio color bajo cada portada." + calma));
             l.Add(Visual("Color vivo", "Destello al pedir (C10)", "destello_pedir", () => DestelloPedir, v => DestelloPedir = v, false, "Un aro de luz del color del disco donde se pidio la cancion (corto y suave)."));
             l.Add(Visual("Color vivo", "Barra de neon (C11)", "barra_neon", () => BarraNeon, v => BarraNeon = v, false, "La barra de avance en degradado del color de la cancion, que pulsa con la musica." + calma));
+            // EL MOVIMIENTO (7-11-2026): transiciones y selecciones suaves (Movimiento.cs)
+            l.Add(Visual("Movimiento", "Transiciones entre pantallas (M1)", "transiciones", () => Transiciones, v => Transiciones = v, false, "El disco crece desde su portada; al volver, la pared se asienta; el buscador baja, la letra se desliza y la atraccion y los ajustes llegan con un fundido. Los botones no esperan."));
+            l.Add(Visual("Movimiento", "La seleccion se desliza (M2)", "seleccion_desliza", () => SeleccionDesliza, v => SeleccionDesliza = v, false, "La cancion elegida de un disco, la letra de la barra, la tecla y el resultado del buscador viajan a su nuevo sitio en vez de saltar."));
+            l.Add(Visual("Movimiento", "Lista de canciones suave (M3)", "listas_suaves", () => ListasSuaves, v => ListasSuaves = v, false, "La lista de canciones de un disco se corre suave al bajar o subir, y las filas de los bordes entran y salen desvaneciendose."));
             l.Add(Visual("Ajustes y pantalla", "A la resolucion del monitor (V30)", "resolucion_nativa", () => ResolucionNativa, v => ResolucionNativa = v, false, "Dibuja a la resolucion real de la pantalla, sin estirar. Apagado: 1024x768 si el monitor la ofrece (menos trabajo para el A4). Vale al volver a encender la rocola."));
             // LA HOJA DETALLES DE XP (PaginaDetalles): al pedir canciones, y el fondo y la barra (la estrella del cielo sigue en Pantalla)
             { Ajuste x = Interruptor("Al pedir canciones", "Decir cuando suena tu cancion", "turno", () => Turno, v => Turno = v, false); x.Nota = () => "Al pedir una cancion, el aviso dice que puesto ocupa y cuantos minutos faltan, en vez de solo «Cancion agregada»."; l.Add(x); }
