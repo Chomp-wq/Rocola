@@ -1294,8 +1294,8 @@ namespace Rocola
             {
                 if (wmpMedidor == null)
                 {
-                    Type t = Type.GetTypeFromProgID("WMPlayer.OCX.7");
-                    if (t == null) t = Type.GetTypeFromProgID("WMPlayer.OCX");
+                    Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7");   // Linux: el reproductor de libmpv (VideoMpv.cs)
+                    if (t == null) t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX");
                     if (t == null) return 0f;                       // sin reproductor de Windows: no se puede medir
                     wmpMedidor = Activator.CreateInstance(t);
                     try { Set(wmpMedidor, "uiMode", "none"); } catch { }

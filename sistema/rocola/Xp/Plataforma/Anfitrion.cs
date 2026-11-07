@@ -22,12 +22,14 @@ namespace Rocola
         private readonly ISuperficie sup;
         private readonly uint fboPantalla;
         private readonly int ancho, alto;
-        private uint programa; private int lugarM, lugarA, lugarS;
+        private uint programa; private int lugarM, lugarA, lugarS, lugarRgba;
         private sealed class CapaGl { internal uint Tex; internal int Version = -1, W, H; internal bool Vista; }
         private readonly Dictionary<Capa, CapaGl> capas = new Dictionary<Capa, CapaGl>();
         private readonly List<KeyValuePair<double, string>> capturas = new List<KeyValuePair<double, string>>();
         private readonly bool saleTrasCapturas;
         internal int Composiciones;
+        private static readonly bool trazaCapas = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_CAPAS") == "1";
+        private double ultimaTraza;
 
         // Al empezar (antes del Main de XP, en el mismo hilo): la pantalla y el contexto de OpenGL.
         internal static void Arranca()
@@ -49,6 +51,7 @@ namespace Rocola
             }
             Actual = new Anfitrion(s);
             Escritorio.Anfitrion = Actual;
+            ReproductorWmp.Engancha();   // el video de XP (el control del WMP) con libmpv (VideoMpv.cs)
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
             TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
@@ -82,8 +85,8 @@ namespace Rocola
             "void main() { gl_Position = vec4(p.x * m.x - 1.0, 1.0 - p.y * m.y, 0.0, 1.0); vt = t; }\n";
         // las texturas guardan B, G, R, A (Dibujo2D y Direct3D): se leen en el orden de OpenGL; las de Dibujo2D ya van premultiplicadas
         private const string FuenteF =
-            "precision mediump float; varying vec2 vt; uniform sampler2D s; uniform float a;\n" +
-            "void main() { gl_FragColor = texture2D(s, vt).bgra * a; }\n";
+            "precision mediump float; varying vec2 vt; uniform sampler2D s; uniform float a; uniform float rgba;\n" +
+            "void main() { vec4 c = texture2D(s, vt); gl_FragColor = (rgba > 0.5 ? c : c.bgra) * a; }\n";
         private void Programa()
         {
             if (programa != 0) return;
@@ -95,7 +98,7 @@ namespace Rocola
             int ok; GL.GetProgramiv(p, GL.LINK_STATUS, &ok);
             if (ok == 0) throw new InvalidOperationException("Anfitrion: el programa de componer no enlaza");
             programa = p;
-            lugarM = GL.GetUniformLocation(p, "m"); lugarA = GL.GetUniformLocation(p, "a"); lugarS = GL.GetUniformLocation(p, "s");
+            lugarM = GL.GetUniformLocation(p, "m"); lugarA = GL.GetUniformLocation(p, "a"); lugarS = GL.GetUniformLocation(p, "s"); lugarRgba = GL.GetUniformLocation(p, "rgba");
         }
         private static uint Sombreador(uint tipo, string fuente)
         {
@@ -111,6 +114,9 @@ namespace Rocola
         public void Compone()
         {
             Programa();
+            // los videos (VideoMpv.cs): libmpv pinta su cuadro nuevo en su textura antes de componer
+            ReproductorWmp[] rs; lock (ReproductorWmp.Vivos) rs = ReproductorWmp.Vivos.ToArray();
+            foreach (ReproductorWmp r in rs) { try { r.Pinta(); } catch (Exception ex) { Application.Avisa(ex); } }
             GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
             GL.Viewport(0, 0, ancho, alto);
             GlMas.ColorMask(1, 1, 1, 1);
@@ -118,11 +124,18 @@ namespace Rocola
             GL.ClearColor(0, 0, 0, 1); GL.Clear(GL.COLOR_BUFFER_BIT);
             GL.UseProgram(programa);
             GL.Uniform2f(lugarM, 2f / ancho, 2f / alto);
-            GL.Uniform1i(lugarS, 0);
+            GL.Uniform1i(lugarS, 0); GL.Uniform1f(lugarRgba, 0f);
             GL.ActiveTexture(GL.TEXTURE0);
             GL.BindBuffer(GL.ARRAY_BUFFER, 0);
             foreach (CapaGl c in capas.Values) c.Vista = false;
             List<Capa> lista = Escritorio.Capas();
+            if (trazaCapas && Escritorio.AhoraMs - ultimaTraza > 1000)   // (pruebas) ROCOLA_TRAZA_CAPAS=1: las capas, una vez por segundo
+            {
+                ultimaTraza = Escritorio.AhoraMs;
+                System.Text.StringBuilder sb = new System.Text.StringBuilder("capas " + (Escritorio.AhoraMs / 1000).ToString("0.0", CultureInfo.InvariantCulture) + " s:");
+                foreach (Capa c in lista) sb.Append(' ').Append(c.Nativa != null ? (c.Nativa.GetType().Name + "#" + c.Nativa.TexturaGl + (c.Nativa.TexturaGlRgba ? "rgba" : "")) : "dibujo").Append('@').Append(c.Rect.X).Append(',').Append(c.Rect.Y).Append(',').Append(c.Rect.Width).Append('x').Append(c.Rect.Height);
+                Console.WriteLine(sb.ToString());
+            }
             foreach (Capa c in lista)
             {
                 if (c.Nativa != null)
@@ -134,7 +147,9 @@ namespace Rocola
                     GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
                     GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
                     // el control enseña la esquina de arriba a la izquierda del fondo (el fondo puede ser mas grande)
-                    Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, (float)c.Rect.Width / n.AnchoGl, (float)c.Rect.Height / n.AltoGl, 1f);
+                    if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 1f);
+                    Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, Math.Min(1f, (float)c.Rect.Width / n.AnchoGl), Math.Min(1f, (float)c.Rect.Height / n.AltoGl), 1f);
+                    if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 0f);
                     continue;
                 }
                 if (c.Imagen == null) continue;
@@ -156,6 +171,7 @@ namespace Rocola
             if (conFlecha) { Flecha(); Capturas(); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
             else { Capturas(); Flecha(); }   // como las capturas de Windows: sin la flecha
             sup.Presenta();
+            foreach (ReproductorWmp r in rs) r.TrasPresentar();
             D3D9.EnGl.EstadoTocado();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta
         }
         // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la

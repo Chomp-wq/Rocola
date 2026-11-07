@@ -47,6 +47,13 @@ namespace Rocola
         // puesto). Lo demas no se pregunta.
         internal static int CapacidadPantalla(int que) { return que == 116 ? Escritorio.RefrescoHz : 0; }
 
+        // Type.GetTypeFromProgID del reproductor de Windows Media (el medidor de duraciones de los videos): el de libmpv (VideoMpv.cs)
+        internal static Type TipoDeProgId(string progId)
+        {
+            if (progId != null && progId.StartsWith("WMPlayer.OCX", StringComparison.OrdinalIgnoreCase)) return typeof(ReproductorWmp);
+            return null;
+        }
+
         // La ventana de delante: la activa del escritorio (en Rocola OS no hay otros programas con ventana)
         internal static IntPtr VentanaDelante() { Form f = Form.ActiveForm; return f != null && !f.IsDisposed ? f.Handle : IntPtr.Zero; }
         internal static bool PonDelante(IntPtr h) { Form f = Control.FromHandle(h) as Form; if (f == null || f.IsDisposed) return false; f.Activate(); return true; }

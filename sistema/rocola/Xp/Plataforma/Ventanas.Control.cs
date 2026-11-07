@@ -30,6 +30,7 @@ namespace Rocola.Ventanas
         // Lo ultimo que presento la tarjeta en este control (Direct3DaGL, Present): la textura de OpenGL del fondo de su dispositivo y su
         // medida. La pinta el anfitrion en el hueco del control.
         internal uint TexturaGl; internal int AnchoGl, AltoGl;
+        internal bool TexturaGlRgba;   // la textura va en el orden de OpenGL (el video de libmpv), no en el de Direct3D
         public ControlCollection Controls { get; }
 
         public Control() { Controls = CreateControlsInstance(); }

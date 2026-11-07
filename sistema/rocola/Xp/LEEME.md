@@ -78,6 +78,17 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   descomprime (libmpg123: XP mide 529 muestras de retraso para el «sin huecos»). Hubo que quitar en `AperturaAudio.cs` el
   `Thread.SetApartmentState(STA)` de XP: en Linux no hay COM y lanzaba `PlatformNotSupportedException` (la canción quedaba como
   incompatible). Probado con la salida nula de ALSA (`ROCOLA_ALSA=null`, que no lleva el ritmo); el sonido de verdad, en el A4.
+- **El video** (`VideoMpv.cs`, en curso): lo poco que XP usa del reproductor de Windows Media (URL, settings.volume y autoStart,
+  controls.play, stop y currentPosition, playState, currentMedia.duration, uiMode, stretchToFit, enableContextMenu; y para medir la
+  duración, newMedia y close) lo contesta `ReproductorWmp` con libmpv, con esos mismos nombres (XP los usa por reflexión; en NativeAOT se
+  mantienen con `DynamicDependency`). El control del video de XP (`VideoHost`, un AxHost) lo recibe de `AxHost.Fabrica` y queda «Nativa»:
+  el anfitrión pinta en su hueco la textura donde libmpv dibuja cada cuadro (su API de render con OpenGL, en el mismo contexto). El
+  sonido lo saca mpv por ALSA (como el WMP, fuera de la cadena). El volumen del WMP se toma como amplitud lineal (lo que supone la cuenta
+  de XP) y se pasa al volumen cúbico de mpv. La duración para la biblioteca, con ffprobe (`Type.GetTypeFromProgID` del WMP →
+  `LlamadasWindows.TipoDeProgId`). Probado fuera de pantalla con un video de prueba: la letra VIDEOS, el disco, el crédito, el aviso, la
+  lista que se hace chica, el tiempo que corre (de mpv) y, al acabar, PlayNext como en XP; la imagen se ve los primeros segundos y después
+  sale de un color (con llvmpipe, sin tarjeta: el contexto de render se crea antes de cargar, y un `glFlush` tras cada cuadro; falta ver
+  por qué se estropea y probarlo en el A4, con r600).
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
