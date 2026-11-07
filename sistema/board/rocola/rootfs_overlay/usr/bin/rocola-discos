@@ -8,12 +8,34 @@
 # /run/rocola-datos-xp; la rocola copia de ahi lo aprendido la primera vez (ImportaXP.cs). Solo se lee.
 LISTA=/run/rocola-musica
 # lo que no es de la rocola: la Papelera ($RECYCLE.BIN, RECYCLER de XP) y System Volume Information (en el A4 salieron datos de XP de la Papelera)
-# DE VARIAS CARPETAS DE LA ROCOLA DE XP, LA QUE SE USA (7-11-2026: en el A4 habia una vieja y la de ahora en «Release1», y se tomo la
-# vieja): de los archivos que llegan (uno por linea), el mas reciente; su carpeta es la de la rocola que se usa
-reciente() { while IFS= read -r f; do printf '%s\t%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"; done | sort -rn | head -1 | cut -f2-; }
 basura() { grep -iv '/\$recycle\.bin/\|/recycler/\|/system volume information/'; }
+# LA CARPETA DE LA ROCOLA DE XP QUE SE USA (7-11-2026: en el A4 hay una vieja, «Release», y la de ahora, «Release1»; la rocola de XP
+# guarda sus datos junto a su Rocola.exe). De las carpetas con datos de la rocola, la del programa mas nuevo (la fecha de su Rocola.exe);
+# a igualdad o sin programa, la de los datos mas recientes (los rocola_*.txt: rocola_error.txt y rocola_stats.txt cambian cada dia de
+# uso). Las fechas con «date -r»: en Rocola OS no hay «stat» (con el todas salian 0 y se tomaba la primera por el abecedario: «Release»).
+fecha() { date -r "$1" +%s 2>/dev/null || echo 0; }
+# las carpetas con datos de la rocola de XP en un disco, una por linea (sin entrar en la musica, la Papelera, los respaldos ni rocola-os)
+carpetas_xp() {
+	find "$1" -maxdepth 6 -type d \( -iname musica -o -iname '$recycle.bin' -o -iname recycler -o -iname 'system volume information' -o -iname 'respaldo*' -o -iname rocola-os \) -prune \
+		-o -type f \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt -o -iname rocola_stats.txt \) -print 2>/dev/null \
+		| basura | grep -iv respaldo | sed 's|/[^/]*$||' | sort -u
+}
+# de las carpetas que llegan (una por linea), la que se usa
+la_de_xp() {
+	while IFS= read -r d; do
+		[ -n "$d" ] && [ -d "$d" ] || continue
+		e=0; t=0
+		for f in "$d"/*; do
+			case "${f##*/}" in
+				[Rr][Oo][Cc][Oo][Ll][Aa].[Ee][Xx][Ee]) e=$(fecha "$f") ;;
+				[Rr][Oo][Cc][Oo][Ll][Aa]_*.[Tt][Xx][Tt]) n=$(fecha "$f"); [ "$n" -gt "$t" ] && t=$n ;;
+			esac
+		done
+		printf '%012d%012d\t%s\n' "$e" "$t" "$d"
+	done | sort -r | head -1 | cut -f2-
+}
 : > "$LISTA"
-rm -f /run/rocola-datos-xp
+rm -f /run/rocola-datos-xp; : > /run/rocola-datos-xp.todas
 # El disco del sistema (la raiz se ve como /dev/root): por su numero de dispositivo.
 RAIZ_NUM=$(mountpoint -d /)
 RAIZ_DISCO=
@@ -46,10 +68,7 @@ for p in /sys/class/block/*; do
 	elif [ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ]; then
 		echo "$m" >> "$LISTA"   # una memoria USB sin carpeta "musica": entera
 	fi
-	if [ ! -s /run/rocola-datos-xp ]; then
-		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt -o -iname rocola_stats.txt \) 2>/dev/null | basura | grep -iv respaldo | reciente)   # (no la copia de respaldo)
-		[ -n "$xp" ] && dirname "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $(dirname "$xp")"
-	fi
+	carpetas_xp "$m" >> /run/rocola-datos-xp.todas   # las de todos los discos; abajo se elige la que se usa
 	# LAS LETRAS DE LA ROCOLA DE XP (Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial): Rocola OS no las trae (son de
 	# Windows); si el disco de XP las tiene, se copian una vez a /rocola/datos/letras para que la pantalla use las mismas (Letras.cs).
 	# Del disco solo se lee.
@@ -69,4 +88,7 @@ for p in /sys/class/block/*; do
 	fi
 	echo "rocola-discos: /dev/$dev ($tipo) en $m$([ -n "$ya" ] || echo ', solo lectura')"
 done
+# LOS DATOS DE LA ROCOLA DE XP: de las carpetas de todos los discos, la que se usa (la del programa mas nuevo)
+xp=$(la_de_xp < /run/rocola-datos-xp.todas)
+[ -n "$xp" ] && echo "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $xp (de: $(tr '\n' ' ' < /run/rocola-datos-xp.todas))"
 echo "rocola-discos: musica en: $(tr '\n' ' ' < "$LISTA")"

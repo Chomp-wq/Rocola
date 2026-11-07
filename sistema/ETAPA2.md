@@ -2067,3 +2067,12 @@ conectado, no se veia. La rocola esta por cable.
 - Probado con capturas y una pelicula de cuadros (el odometro). No en el A4.
 
 - **Otra carpeta de XP (7-11-2026):** en el A4 habia una carpeta vieja de la rocola de XP y la de ahora (`Release1`); se importo la vieja. Ahora se elige la usada mas recientemente y, si ya se habia importado otra, se vuelve a importar todo de la buena (configuracion incluida, juntada con lo que solo tiene Rocola OS; lo de antes en `.antes-xp`).
+  - **Corregido el mismo dia:** la regla no funcionaba en la rocola. Rocola OS no trae `stat` (BusyBox sin `CONFIG_STAT`): todas las
+    fechas salian 0 y ganaba la primera carpeta. Y el dueno aclaro que no tiene `Release1`: la que usa es `Release`, y la vieja era OTRA
+    `Release` (al parecer en el disco de XP, que rocola-discos miraba primero y se quedaba con la primera que encontraba). Ahora
+    rocola-discos junta las carpetas de TODOS los discos y elige la mas nueva: la del `Rocola.exe` mas nuevo (la rocola de XP guarda sus
+    datos junto a su programa) y, a igualdad o sin programa, la de los `rocola_*.txt` mas recientes; las fechas con `date -r`. Busca hasta
+    6 niveles sin entrar en la musica, la Papelera, los respaldos ni `rocola-os`. El instalador usa lo mismo en su disco.
+  - Probado en QEMU con el BusyBox del sistema: dos carpetas (gana la del programa nuevo aunque la otra tenga datos tocados despues), sin
+    programas (gana la de datos nuevos), una carpeta a 5 niveles, una trampa dentro de la musica, y el caso del A4 (una `Release` vieja en
+    el disco de XP, que se mira primero, y la buena en el de la musica: gana la buena).
