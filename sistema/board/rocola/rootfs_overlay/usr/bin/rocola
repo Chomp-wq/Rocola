@@ -53,7 +53,22 @@ vuelve_atras() {
 	sync; probando=0
 	apunta "La version $mala se cayo al arrancar: se volvio a la anterior"
 }
+# EL MAS NUEVO, EL BAJADO O EL DEL SISTEMA (7-11-2026): si el sistema se actualizo y trae un programa compilado despues que el bajado de
+# GitHub, se aparta el bajado (no como malo) y se usa el del sistema; antes siempre mandaba el bajado, aunque fuera mas viejo. Cada
+# programa dice cuando se compilo (--version: «compilado SEGUNDOS»); uno bajado de antes de esto no lo dice: es mas viejo.
+compilado() { timeout 20 "$1" --version 2>/dev/null | sed -n 's/.* compilado \([0-9]*\).*/\1/p'; }
+el_mas_nuevo() {
+	[ -x "$PROG/rocola-consola" ] || return
+	s=$(compilado /usr/bin/rocola-consola); [ -n "$s" ] && [ "$s" != 0 ] || return
+	b=$(compilado "$PROG/rocola-consola")
+	if [ -z "$b" ] || [ "$b" -lt "$s" ]; then
+		v=$(cat "$PROG/version" 2>/dev/null)
+		mv -f "$PROG/rocola-consola" "$PROG/rocola-consola.superada"; rm -f "$PROG/version"; sync
+		apunta "El sistema trae un programa mas nuevo que la version ${v:-?} bajada: se usa el del sistema"
+	fi
+}
 pon_nueva
+el_mas_nuevo
 # El sistema se da por bueno cuando la rocola lleva 3 minutos en pie (una actualizacion del sistema en prueba: S99rocola y el initramfs).
 ( sleep 180; while ! pidof rocola-consola >/dev/null; do sleep 10; done; touch ${ROCOLA_RUN:-/run}/rocola-confirmado ) &
 while :; do

@@ -26,7 +26,9 @@ ESTADO=$RUN/rocola-actualiza.txt
 TMP=$RUN/rocola-actualiza.d
 estado() { echo "$(date '+%H:%M') $*" > "$ESTADO"; }
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; }
-# una sola a la vez
+# una sola a la vez (7-11-2026: un cerrojo de mas de 2 horas es de una busqueda que se mato a la fuerza: se quita; si no, ya no se buscaba
+# hasta reiniciar)
+[ -d "$RUN/rocola-actualiza.cerrojo" ] && [ -n "$(find "$RUN/rocola-actualiza.cerrojo" -maxdepth 0 -mmin +120 2>/dev/null)" ] && rm -rf "$RUN/rocola-actualiza.cerrojo"
 mkdir "$RUN/rocola-actualiza.cerrojo" 2>/dev/null || exit 0
 trap 'rm -rf "$RUN/rocola-actualiza.cerrojo" "$TMP"' EXIT
 rm -rf "$TMP"; mkdir -p "$TMP" "$PROG"
@@ -101,6 +103,13 @@ dice=
 ahora=$(cat "$PROG/version" 2>/dev/null); [ -n "$ahora" ] || ahora=$(/usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p')
 ahora=${ahora:-0}
 n=$(ultima programa "$PROG/malas")
+# (7-11-2026) una version publicada ANTES de que se compilara el programa del sistema es mas vieja que el: no se baja (/usr/bin/rocola
+# la apartaria y se volveria a bajar cada hora)
+sisfecha=$(timeout 20 /usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.* compilado \([0-9]*\).*/\1/p')
+if [ -n "$n" ] && [ -n "$sisfecha" ] && [ "$sisfecha" != 0 ] && [ ! -f "$PROG/version" ]; then
+	pub=$(jq -r --arg t "programa-$n" '.[] | select(.tag_name == $t) | .published_at | fromdateiso8601' "$TMP/versiones.json" 2>/dev/null | head -1)
+	[ -n "$pub" ] && [ "$pub" -le "$sisfecha" ] 2>/dev/null && n=
+fi
 if [ -n "$n" ] && [ "$n" -gt "$ahora" ] && [ "$n" != "$(cat "$PROG/nueva.version" 2>/dev/null)" ]; then
 	tipo=generico; grep -qw avx /proc/cpuinfo && tipo=a4
 	a=rocola-consola-$tipo.gz

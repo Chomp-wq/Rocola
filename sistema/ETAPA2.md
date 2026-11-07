@@ -1876,3 +1876,21 @@ punta con el simulado (la primera vez, el pico que mando y el ajuste; al acabar,
 con la medida guardada; con un rocola-spotify sin los datos, sin esperas). No con una cuenta real ni en el A4. V3 llega con la
 siguiente compilacion del sistema (rocola-spotify); V1 y V2 con la del programa.
 
+## Arreglos en lo mas importante: el programa que corre y las actualizaciones (7 de noviembre de 2026)
+
+Peticion del dueño: «busca mejoras y arreglos en las partes mas importantes del programa y de Rocola OS». Revisados el lanzador
+(`/usr/bin/rocola`), el actualizador (`rocola-actualiza`), el arranque (`S99rocola`), el boton de encendido, la salida de sonido
+(se recupera sola de los cortes con `snd_pcm_recover`) y el guardado de los creditos (al momento, en segundo plano, bajado al disco).
+Dos arreglos:
+
+- **El programa mas nuevo, el bajado o el del sistema**: el lanzador siempre usaba el programa bajado de GitHub si lo habia. Si despues
+  se actualizaba el sistema con un programa mas nuevo, seguia el viejo (y sin internet, para siempre). Ahora cada programa dice cuando
+  se compilo (`--version`: «... compilado SEGUNDOS», `RocolaFecha` en Consola.csproj); al arrancar, si el del sistema es mas nuevo que
+  el bajado (o el bajado es de antes de esto y no lo dice), el bajado se aparta (`rocola-consola.superada`, no como malo) y se usa el
+  del sistema. `rocola-actualiza` no baja una version publicada antes de que se compilara el programa del sistema (si no, la bajaria y
+  el lanzador la apartaria cada hora). Probado con programas compilados con fechas distintas (los tres casos).
+- **El cerrojo del actualizador**: si una busqueda se mataba a la fuerza, su cerrojo en /run quedaba y ya no se buscaba hasta
+  reiniciar; ahora uno de mas de 2 horas se quita.
+
+Los dos van en la compilacion del sistema (el lanzador y el actualizador) y la del programa (la fecha).
+

@@ -14,7 +14,10 @@
     <RocolaCommit Condition="'$(RocolaCommit)' == ''">local</RocolaCommit>
     <InformationalVersion>$(RocolaVersion)+$(RocolaCommit)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- cuando se compilo (segundos desde 1970, UTC): el lanzador usa el mas nuevo entre el bajado y el del sistema (/usr/bin/rocola) -->
+    <RocolaFecha Condition="'$(RocolaFecha)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</RocolaFecha>
   </PropertyGroup>
+  <ItemGroup><AssemblyMetadata Include="RocolaFecha" Value="$(RocolaFecha)" /></ItemGroup>
   <!-- las instrucciones del A4 (Piledriver): SSE4.2 y AVX (FMA en .NET 10 solo viene con AVX2, que no tiene). El perfil de QEMU
        (RocolaPerfil=qemu) va sin ellas: el emulador no tiene AVX. -->
   <PropertyGroup Condition="'$(RocolaPerfil)' != 'qemu'">
