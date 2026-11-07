@@ -55,7 +55,7 @@ namespace Rocola
         {
             if (credits < int.MaxValue) credits++;
             UpdateCredits(); SaveState();
-            Avisa(porque + ": se devuelve el credito");
+            Avisa(porque + ": se devuelve el crédito");
         }
         // EL VOLUMEN DE UN VIDEO EN ROCOLA OS (3-11-2026; en XP, VideoVolumeFor de Form1.Video.cs), como factor de la amplitud del archivo.
         // En XP el reproductor de Windows solo sabia BAJAR (0 a 100): por eso la perilla dejaba hueco (85) y un video flojo se quedaba
@@ -111,7 +111,7 @@ namespace Rocola
                     queue.RemoveAt(0);
                     ISampleProvider sp = EmpiezaSpotify(it);
                     if (sp != null) return sp;
-                    DevuelveCredito("Spotify: no se pudo tocar «" + it.Song.Title + "»" + (SpotifyListo ? "" : " (sin conexion con Spotify)"));
+                    DevuelveCredito("Spotify: no se pudo tocar «" + it.Song.Title + "»" + (SpotifyListo ? "" : " (sin conexión con Spotify)"));
                     continue;
                 }
                 // UNA TUYA CON LOS AGUDOS CORTADOS Y SU VERSION EN SPOTIFY (SP2, SpotifyMas.cs): suena desde Spotify sin que nada cambie en la
@@ -128,10 +128,10 @@ namespace Rocola
                 // si tarda mas, se devuelve el credito y la conversion sigue para la proxima vez.
                 if (it.Song != null && Conversiones.Convirtiendo(it.Song.Path))
                 {
-                    if (!object.ReferenceEquals(esperandoConversion, it)) { esperandoConversion = it; esperaDesde = Environment.TickCount; Avisa("Preparando «" + it.Song.ToString() + "» (no es un MP3: se convierte)..."); }
+                    if (!object.ReferenceEquals(esperandoConversion, it)) { esperandoConversion = it; esperaDesde = Environment.TickCount; Avisa("Preparando «" + it.Song.ToString() + "»... un momento"); }
                     if (unchecked(Environment.TickCount - esperaDesde) < Conversiones.EsperaMaxMs) return null;   // se vuelve a mirar en el siguiente ciclo
                     queue.RemoveAt(0); esperandoConversion = null; SaveState();
-                    DevuelveCredito("«" + it.Song.ToString() + "» tarda en convertirse (estara lista para la proxima)");
+                    DevuelveCredito("«" + it.Song.ToString() + "» tarda en prepararse (estará lista para la próxima)");
                     continue;
                 }
                 if (object.ReferenceEquals(esperandoConversion, it)) esperandoConversion = null;
@@ -139,10 +139,10 @@ namespace Rocola
                 // fallar cancion por cancion (cada una devolveria su credito y quedaria como danada). Si no vuelve en 10 min, como antes.
                 if (it.Song != null && RaizConfiguradaAusente(it.Song.Path) != null)
                 {
-                    if (discoFueraDesde == 0) { discoFueraDesde = Environment.TickCount | 1; Avisa("Esperando el disco de musica: la cola se conserva"); LogError("Disco de musica desconectado: la cola espera", null); }
+                    if (discoFueraDesde == 0) { discoFueraDesde = Environment.TickCount | 1; Avisa("Esperando el disco de música: la cola se conserva"); LogError("Disco de musica desconectado: la cola espera", null); }
                     if (unchecked(Environment.TickCount - discoFueraDesde) < DiscoFueraMaxMs) return null;
                 }
-                else if (discoFueraDesde != 0) { discoFueraDesde = 0; Avisa("Volvio el disco de musica"); }
+                else if (discoFueraDesde != 0) { discoFueraDesde = 0; Avisa("Volvió el disco de música"); }
                 queue.RemoveAt(0);
                 try
                 {

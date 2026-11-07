@@ -331,7 +331,7 @@ namespace Rocola
                 if (spotifySustituida != null && object.ReferenceEquals(nowPlaying, spotifySustituida)) return;   // una tuya desde Spotify (SP2): que acabe entera
                 if (spotify != null) { SpotifyEnVivo s = spotify; spotify = null; s.Calla(); s.Dispose(); }
                 int quitadas = queue.RemoveAll(EsItemSpotify);
-                if (quitadas > 0) { credits += quitadas; UpdateCredits(); SaveState(); Avisa("Spotify apagado: se quitaron de la cola sus " + quitadas + (quitadas == 1 ? " cancion" : " canciones") + " y se devuelven los creditos"); }
+                if (quitadas > 0) { credits += quitadas; UpdateCredits(); SaveState(); Avisa("Spotify apagado: se quitaron de la cola sus " + quitadas + (quitadas == 1 ? " canción" : " canciones") + " y se devuelven los creditos"); }
                 lock (spotifyCerrojo) { if (spotifyPared.Count > 0) { spotifyPared = new List<Disco>(); spotifyVersion++; } }
                 spotifyBibliotecaDesde = 0;
                 return;
@@ -855,7 +855,7 @@ namespace Rocola
                 spotifyFallida = false;
                 // SP2: la tuya que no pudo sonar desde Spotify suena desde tu MP3, enseguida y sin avisar; la de Spotify devuelve su credito
                 if (sus != null) { sinSpotify.Add(sus); if (queue.Count == 0 || !object.ReferenceEquals(queue[0], sus)) queue.Insert(0, sus); pideEmpezar = true; }
-                else DevuelveCredito("Spotify no pudo tocar esa cancion");
+                else DevuelveCredito("Spotify no pudo tocar esa canción");
             }
             SpotifyEnVivo s = spotify; if (s == null) return;
             s.Calla();

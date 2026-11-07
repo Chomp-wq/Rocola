@@ -1938,3 +1938,20 @@ quedan sin uso los que solo ellos usaban). No habia clases enteras muertas.
 Comprobado: compila sin errores el programa y las pruebas; `--prueba-sp2` y las capturas, bien; una cancion de 70 s por la cadena
 entera sale igual que antes (mismo largo, a lo mas 2 escalones de diferencia: el dither, que es aleatorio en cada pasada).
 
+## Lo que ve el cliente: textos con acentos y sin cosas tecnicas (7 de noviembre de 2026)
+
+Peticion del dueño: «busca cosas que afecten la experiencia de usuario». Se recorrio la rocola como un cliente (sin creditos, buscar
+algo que no hay, pedir, el turno) y se revisaron todos los avisos y letreros de la pantalla:
+
+- **Acentos y eñes**: varios textos que ve el cliente iban sin ellos (la letra de la rocola los tiene). El peor, «Esa cancion esta
+  danada» (se leia «da nada»): ahora «Esa canción está dañada: no se cobra». Tambien «Créditos» en la barra de abajo, «+4 créditos» de la
+  moneda, «Tu canción es la 3.ª», «Esa canción ya va seguida», «se devuelve el crédito», «Volvió el disco de música», «Se acabó el modo
+  noche», «Créditos borrados», «sin conexión con Spotify», «estará lista para la próxima». La pantalla reconoce el tipo de aviso tambien
+  con acentos («no está disponible»).
+- **Sin cosas tecnicas a la vista**: al arrancar ya no sale «Botones de rocola_teclas.txt; N aparatos de entrada» (va al registro), y
+  una cancion que hay que convertir dice «Preparando «...»... un momento» en vez de «(no es un MP3: se convierte)».
+- Revisado y bien: «Te falta un crédito» con la moneda entrando a la ranura, el buscador sin resultados («Sin resultados para «...»»),
+  el aviso del turno.
+
+Los textos de Ctrl+F3 (solo los ve el dueño) quedan como estaban.
+

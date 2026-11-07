@@ -30,7 +30,7 @@ namespace Rocola
             // Monedas rapidas seguidas: el aviso SUMA (+4, +8, +12...) mientras el anterior siga a la vista (AddCoin de XP)
             coinTotal = unchecked(Environment.TickCount - coinTick) < AvisoVidaMs ? coinTotal + CreditsPerCoin : CreditsPerCoin;
             coinTick = Environment.TickCount;
-            Avisa("+" + coinTotal + " creditos");
+            Avisa("+" + coinTotal + " créditos");
         }
         private int coinTotal, coinTick = Environment.TickCount - 100000;
         // Lo que dura un aviso en pantalla (VidaAviso de XP): 2,8 s el aviso claro, 1,3 s el de siempre.

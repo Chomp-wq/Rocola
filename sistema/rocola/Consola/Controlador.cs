@@ -215,7 +215,7 @@ namespace Rocola
                 { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0) | (botones.TeclaApretada(0x11) ? ConCtrl : 0)); };
                 if (!botones.DeArchivo) EmpiezaAsistente();   // sin rocola_teclas.txt: el asistente (como XP la primera vez)
                 int n = botones.Escucha();
-                Aviso((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");
+                Console.WriteLine((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");   // (7-11-2026: al registro; en la pantalla lo veian los clientes al arrancar)
                 // El teclado de la terminal: solo si no hay aparatos de entrada (si los hay, el teclado ya llega por ahi y contaria dos veces).
                 if (vista.LeeTerminal && !Console.IsInputRedirected)
                 {
@@ -595,7 +595,7 @@ namespace Rocola
                     }
                 case Boton.Saltar:   // como SkipSong de XP: salta la que suena; con todo parado y sin cola, borra los creditos que quedaron
                     if (salida != null || video != null) saltar = true;
-                    else if (motor.BorraCreditos()) Aviso("Creditos borrados");
+                    else if (motor.BorraCreditos()) Aviso("Créditos borrados");
                     return;
             }
             if (video != null) return;   // durante un video los demas botones no hacen nada (la pantalla es del video)
@@ -656,8 +656,8 @@ namespace Rocola
                 Aviso(motor.UltimoTurno.Length > 0 ? motor.UltimoTurno : "Pusiste «" + titulo + "»");   // el turno de XP
                 if (letras.Count == 0 || letras[letra] != Form1.LetraTop) RefrescaTop();   // (dentro del TOP no: se moveria lo que se mira)
             }
-            else if (p == Form1.Pedido.Repetida) Aviso("Esa cancion ya va seguida");
-            else if (p == Form1.Pedido.Danada) Aviso("Esa cancion esta danada: no se cobra");
+            else if (p == Form1.Pedido.Repetida) Aviso("Esa canción ya va seguida");
+            else if (p == Form1.Pedido.Danada) Aviso("Esa canción está dañada: no se cobra");
         }
 
         // ---- LOS AJUSTES DEL DUENO (Ctrl+F3, como en XP): ARRIBA/ABAJO eligen, IZQ/DER o PONER cambian, REGRESAR guarda y sale.
@@ -715,7 +715,7 @@ namespace Rocola
             else if (b == Boton.Regresar)
             {
                 motor.CortaCiego("Ventana cerrada: comparacion cortada. ");   // antes de guardar: vuelve el modo de antes
-                try { motor.GuardaAjustes(); Aviso("Ajustes guardados: se oyen desde la siguiente cancion"); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
+                try { motor.GuardaAjustes(); Aviso("Ajustes guardados: se oyen desde la siguiente canción"); } catch (Exception ex) { Aviso("No se pudo guardar: " + ex.Message); }
                 CierraAjustes();
             }
             else if (AjusteSel == n - 1) { if (b == Boton.Poner) { CierraAjustes(); EmpiezaAsistente(); } }

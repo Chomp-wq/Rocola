@@ -3314,7 +3314,7 @@ namespace Rocola
                     stateRestored = false;
                     stateMissingRoots = faltan;
                     stateRootRetryTick = Environment.TickCount;
-                    Avisa("Esperando el disco de musica para restaurar creditos y cola...");
+                    Avisa("Esperando el disco de música para recuperar los créditos y la cola...");
                     return;
                 }
                 if (cr <= 0 && playing == null && q.Count == 0) return;   // estado vacio: arranque limpio
@@ -4882,7 +4882,7 @@ namespace Rocola
             // agregada" de siempre: el interruptor vive AQUI, en el unico sitio que escribe el letrero,
             // y no repartido por los dos sitios que lo piden.
             if (!turnoOn || puesto <= 0) return "";
-            string donde = (puesto == 1) ? "Tu cancion es la siguiente" : ("Tu cancion es la " + puesto + "a");
+            string donde = (puesto == 1) ? "Tu canción es la siguiente" : ("Tu canción es la " + puesto + ".ª");
             if (segundos < 0) return donde;
             if (segundos < 60) return donde + " - en menos de 1 min";
             return donde + " - en ~" + (int)((segundos + 30) / 60) + " min";

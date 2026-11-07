@@ -44,7 +44,7 @@ namespace Rocola
             string s = (t ?? "").ToLowerInvariant();
             if (s.StartsWith("reanudando") || s.StartsWith("carpetas actualizadas") || s.Contains("guardados") || s.Contains("configurados")) return TipoAviso.Novedad;
             if (s.StartsWith("no se pudo") || s.Contains("danada") || s.Contains("dañada") || s.Contains("error") || s.Contains("fallo")) return TipoAviso.Error;
-            if (s.StartsWith("inserta") || s.Contains("ya va seguida") || s.StartsWith("no se puede") || s.Contains("no esta disponible") || s.Contains("espera")) return TipoAviso.Cuidado;
+            if (s.StartsWith("inserta") || s.Contains("ya va seguida") || s.StartsWith("no se puede") || s.Contains("no esta disponible") || s.Contains("no está disponible") || s.Contains("espera")) return TipoAviso.Cuidado;
             return TipoAviso.Hecho;
         }
         private static Color4 ColorAviso(TipoAviso t)
@@ -360,7 +360,7 @@ namespace Rocola
             DibujaDestello();   // C10
             if (m.GuiaRojo && c.RojoMantenido && !c.AyudaAbierta && c.AjusteSel < 0) GuiaRojo(c);
             // LA MONEDA QUE CAE: una moneda dorada girando hasta la capsula de Creditos; la capsula da un golpe con un destello verde y
-            // sube "+4 creditos".
+            // sube "+4 créditos".
             int em = Edad(c.MonedaTick);
             if (m.MonedaCae && em < MonedaCaeMs + MonedaSumaMs && !zCreditos.Vacia)
             {
@@ -381,7 +381,7 @@ namespace Rocola
                 {
                     int eg = em - MonedaCaeMs;
                     if (eg < MonedaGolpeMs) d.Brillo(zCreditos.Cx, zCreditos.Cy, zCreditos.W * 0.8f, Verde.ConAlfa(0.5f * (1f - eg / (float)MonedaGolpeMs)));
-                    // "+4 creditos" (SueltaMoneda y DibujaMoneda de XP): sale encima de la capsula, a la derecha del numero, sube 46 px
+                    // "+4 créditos" (SueltaMoneda y DibujaMoneda de XP): sale encima de la capsula, a la derecha del numero, sube 46 px
                     // frenando y se desvanece; verde con un reborde oscuro fino
                     float u = Math.Min(1f, eg / 1100f);
                     string mas = "+" + c.MonedaSuma + (c.MonedaSuma == 1 ? " crédito" : " créditos");

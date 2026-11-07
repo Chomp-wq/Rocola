@@ -301,13 +301,13 @@ namespace Rocola
             // a la derecha: los creditos y la cola
             string cr = m.Creditos > 0 ? m.Creditos.ToString() : "";
             float hp = 35 * k;
-            float wcr = m.Creditos > 0 ? nChica.Mide("Creditos") + nGrande.Mide(cr) + 34 * k : nChica.Mide("Inserta una moneda") + 30 * k;
+            float wcr = m.Creditos > 0 ? nChica.Mide("Créditos") + nGrande.Mide(cr) + 34 * k : nChica.Mide("Inserta una moneda") + 30 * k;
             float xcr = W - 14 * k - wcr;
             Pastilla(xcr, y + 1 * k, wcr, hp);
             if (m.Creditos > 0)
             {
-                nChica.Escribe(d, "Creditos", xcr + 14 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xC4CCE8));
-                nGrande.Escribe(d, cr, xcr + 22 * k + nChica.Mide("Creditos"), y + 1 * k + hp / 2 - nGrande.Tam * 0.64f, VerdeTexto);
+                nChica.Escribe(d, "Créditos", xcr + 14 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xC4CCE8));
+                nGrande.Escribe(d, cr, xcr + 22 * k + nChica.Mide("Créditos"), y + 1 * k + hp / 2 - nGrande.Tam * 0.64f, VerdeTexto);
             }
             else nChica.Escribe(d, "Inserta una moneda", xcr + 15 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xE2E6F8));
             zCreditos = new Zona(xcr, y + 1 * k, wcr, hp);

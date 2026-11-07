@@ -67,7 +67,7 @@ namespace Rocola
             if (esNoche != nocheAvisada)
             {
                 nocheAvisada = esNoche;
-                Avisa(esNoche ? "Modo noche: el volumen baja al " + nochePct + " %" : "Se acabo el modo noche: vuelve el volumen de siempre");
+                Avisa(esNoche ? "Modo noche: el volumen baja al " + nochePct + " %" : "Se acabó el modo noche: vuelve el volumen de siempre");
             }
             float antes = nocheFactor;
             nocheFactor = AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);

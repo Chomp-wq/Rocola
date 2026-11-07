@@ -46,7 +46,7 @@ namespace Rocola
         internal void AbreAyuda()
         {
             string m = MotivoSinAyuda();
-            if (m != null) { Aviso("La ayuda no esta disponible ahora: " + m); return; }
+            if (m != null) { Aviso("La ayuda no está disponible ahora: " + m); return; }
             if (AyudaAbierta) return;
             AyudaAbierta = true; AyudaSeleccion = 0; AyudaMision = 0; AyudaPaso = 0; AyudaAprende = 0;
             ayudaLogro = ayudaBien = ayudaAdios = 0;
