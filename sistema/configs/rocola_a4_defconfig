@@ -86,6 +86,10 @@ BR2_PACKAGE_FFMPEG=y
 BR2_PACKAGE_FFMPEG_FFMPEG=y
 # el descompresor de MP3 de la rocola (2-11-2026: rocola/Motor/Mpg123.cs; NLayer se comia un cuadro en algunos y es ~8 veces mas lento)
 BR2_PACKAGE_MPG123=y
+# las portadas (7-11-2026): libjpeg-turbo (con SIMD) y su libturbojpeg; la rocola descomprime los JPEG ya reducidos, 3 a 6 veces mas
+# rapido que su lector propio (rocola/Consola/Pantalla/Dibujo.cs, Turbo); sin ella, el de siempre
+BR2_PACKAGE_JPEG=y
+BR2_PACKAGE_JPEG_TURBO=y
 # INTERNET (1-11-2026): por cable (la Realtek del A4), con DHCP; la hora por NTP (BusyBox) para que las conexiones seguras valgan.
 # Para que el programa de la rocola se actualice solo desde GitHub (rocola-actualiza: curl, jq y los certificados) y para el
 # encendido remoto (Wake on LAN: ethtool lo deja encendido en la tarjeta).

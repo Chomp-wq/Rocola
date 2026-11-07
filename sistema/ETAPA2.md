@@ -1757,3 +1757,20 @@ buscador, reposo y atraccion, y el peor cuadro de 600 no pasa de ~2 ms (antes de
 de 1 a 9 KB de memoria por cuadro, sin recolecciones en el banco. Empezar una cancion local en el hilo principal: ~1 ms (la primera,
 ~6). Arrancar con 19 000 canciones (con la cache): 0,56 s hasta la primera captura. No medido en el A4.
 
+### Segunda tanda («Sigue buscando mejoras», 7 de noviembre de 2026)
+
+- **Portadas con libjpeg-turbo**: el sistema lleva `jpeg-turbo` (con SIMD; `BR2_PACKAGE_JPEG_TURBO`, dependencia de rocola-consola) y
+  la rocola descomprime los JPEG con su libturbojpeg YA REDUCIDOS (1/8 a 8/8 de su tamano: lo justo para el lado que se va a ensenar).
+  Medido aqui (version nativa): portada de 500 px 5,7 -> 2,1 ms; de 1000 px 16 -> 3,4 ms; de 1400 px 28,5 -> 4,3 ms (con todo lo
+  demas: colores, mipmaps). Sin la biblioteca (un sistema viejo con el programa nuevo) o con un archivo que no puede, el lector de
+  siempre (StbImageSharp). Una portada ya del tamano pedido no se copia otra vez.
+- **El hilo de las portadas con nice 5** (antes 19, al parejo del repaso de la biblioteca): detras de la pantalla, delante del repaso.
+- **Spotify sin colas**: rocola-spotify atiende cada conexion por separado, pero la rocola mandaba toda la API por una sola. Ahora lo
+  que alguien esta esperando (buscar, abrir un disco o una lista, la pagina de un artista, letras, la foto del artista, lo que le falta
+  a un disco, los atajos, la busqueda por letra) va por su conexion «prisa», y las portadas que se ven por tres conexiones (tres a la
+  vez); lo de fondo (biblioteca, parejas, discos de artistas, generos) sigue en la suya. Las portadas de los resultados de Spotify se
+  bajan de tres en tres y cada una sale al llegar. La busqueda en Spotify sale a los 300 ms de la ultima letra (antes 600: con los
+  botones, entre letra y letra pasa mas de un segundo). Probado con el rocola-spotify simulado.
+- Revisado y sin cambio: el cielo borroso de los vidrios (cinco pasadas en capas de 1/8 de la pantalla: casi nada; lo que contaba el
+  banco era la capa del cielo que ya esperaba) y los brillos de la portada del disco (ya recortados a lo que se ve).
+

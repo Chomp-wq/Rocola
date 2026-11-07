@@ -778,6 +778,47 @@ namespace Rocola.Pantalla
     }
 
     // LAS CARATULAS: leidas, reducidas a 'lado' como mucho y subidas; las ultimas 96 se guardan.
+    // LOS JPEG CON libjpeg-turbo (7-11-2026, «que todo cargue extremadamente rapido»): descomprime con SIMD y, sobre todo, YA REDUCIDO
+    // (1/8, 1/4, 3/8, 1/2... de su tamano: lo justo para lo que se va a ensenar), en vez de la imagen entera para luego achicarla. Si la
+    // biblioteca no esta (libturbojpeg.so.0) o no puede con el archivo, se usa el lector de siempre (StbImageSharp).
+    internal static unsafe class Turbo
+    {
+        private const string Lib = "libturbojpeg.so.0";
+        [System.Runtime.InteropServices.DllImport(Lib)] private static extern IntPtr tjInitDecompress();
+        [System.Runtime.InteropServices.DllImport(Lib)] private static extern int tjDecompressHeader3(IntPtr h, byte* buf, nuint tam, out int w, out int alto, out int sub, out int espacio);
+        [System.Runtime.InteropServices.DllImport(Lib)] private static extern int tjDecompress2(IntPtr h, byte* buf, nuint tam, byte* dst, int w, int paso, int alto, int formato, int banderas);
+        private const int TJPF_RGBA = 7;
+        private static volatile bool sinBiblioteca = Environment.GetEnvironmentVariable("ROCOLA_SIN_TURBOJPEG") != null;
+        [ThreadStatic] private static IntPtr manija;   // una por hilo (la de un hilo no se puede usar desde otro a la vez)
+        internal static bool Hay { get { return !sinBiblioteca; } }
+        // RGBA de al menos 'minimo' puntos de lado mayor (si la imagen es mas chica, entera); false si no se pudo (y se usa el de siempre).
+        internal static bool Lee(byte[] jpg, int minimo, out byte[] px, out int w, out int h)
+        {
+            px = null; w = h = 0;
+            if (sinBiblioteca || jpg.Length < 4 || jpg[0] != 0xFF || jpg[1] != 0xD8) return false;
+            try
+            {
+                if (manija == IntPtr.Zero) manija = tjInitDecompress();
+                if (manija == IntPtr.Zero) return false;
+                fixed (byte* b = jpg)
+                {
+                    int ow, oh, sub, esp;
+                    if (tjDecompressHeader3(manija, b, (nuint)jpg.Length, out ow, out oh, out sub, out esp) != 0 || ow <= 0 || oh <= 0) return false;
+                    int mayor = Math.Max(ow, oh), num = 8;
+                    for (int n = 1; n <= 8; n++) if ((mayor * n + 7) / 8 >= minimo) { num = n; break; }
+                    w = (ow * num + 7) / 8; h = (oh * num + 7) / 8;
+                    px = new byte[w * h * 4];
+                    fixed (byte* d = px)
+                        if (tjDecompress2(manija, b, (nuint)jpg.Length, d, w, 0, h, TJPF_RGBA, 0) != 0) { px = null; return false; }
+                    return true;
+                }
+            }
+            catch (DllNotFoundException) { sinBiblioteca = true; return false; }
+            catch (EntryPointNotFoundException) { sinBiblioteca = true; return false; }
+            catch { px = null; return false; }
+        }
+    }
+
     internal sealed class Caratulas
     {
         private readonly Dibujo d;
@@ -847,7 +888,7 @@ namespace Rocola.Pantalla
         }
         private void Lee()
         {
-            try { Rocola.Prioridad.Fondo(); } catch { }
+            try { Rocola.Prioridad.Media(); } catch { }   // (7-11-2026: antes 19, al parejo del repaso; las portadas son lo que se esta viendo)
             while (true)
             {
                 hay.Wait();
@@ -869,6 +910,18 @@ namespace Rocola.Pantalla
                 if (!l.Falla) puntos += (long)(l.Mip ? l.S * l.S * 4 / 3 : l.W * l.H);
             }
         }
+        // (pruebas: --mide-portadas) cuanto tarda leer y preparar cada portada, como en el hilo de las portadas
+        internal static void Mide(string[] rutas, int lado)
+        {
+            Caratulas c = new Caratulas(null, lado);
+            foreach (string r in rutas)
+            {
+                c.Decodifica(r, Clase.Normal, true);
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                for (int i = 0; i < 10; i++) c.Decodifica(r, Clase.Normal, true);
+                Console.WriteLine(System.IO.Path.GetFileName(r) + ": " + (sw.Elapsed.TotalMilliseconds / 10).ToString("0.0") + " ms (normal, con mipmaps)");
+            }
+        }
         internal const long PortadaMaxPx = 64L * 1000 * 1000;
         // Leer y descomprimir (cualquier hilo: no toca la tarjeta).
         private Listo Decodifica(string ruta, Clase que, bool nitidas)
@@ -887,11 +940,14 @@ namespace Rocola.Pantalla
                     if (info == null || (long)info.Value.Width * info.Value.Height > PortadaMaxPx) throw new InvalidDataException("portada demasiado grande o ilegible");
                     fs.Position = 0; bytes = new byte[fs.Length]; fs.ReadExactly(bytes);
                 }
-                ImageResult im = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+                int quiere = que == Clase.Borrosa ? 24 : que == Clase.Grande ? lado * 2 : lado;
+                byte[] imData; int imW, imH;
+                if (!Turbo.Lee(bytes, quiere, out imData, out imW, out imH))
+                { ImageResult im0 = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha); imData = im0.Data; imW = im0.Width; imH = im0.Height; }
                 if (que == Clase.Borrosa)
                 {
                     const int L = 24;
-                    byte[] px = Reduce(im.Data, im.Width, im.Height, L, L), r = new byte[px.Length];
+                    byte[] px = Reduce(imData, imW, imH, L, L), r = new byte[px.Length];
                     for (int y = 0; y < L; y++) for (int x = 0; x < L; x++) for (int c = 0; c < 4; c++)
                     {
                         int sm = 0, n = 0;
@@ -901,7 +957,7 @@ namespace Rocola.Pantalla
                     l.Px = r; l.W = l.H = L; return l;
                 }
                 int max = que == Clase.Grande ? lado * 2 : lado;
-                int w = im.Width, h = im.Height; byte[] pxs = im.Data;
+                int w = imW, h = imH; byte[] pxs = imData;
                 if (Math.Max(w, h) > max) { int nw = Math.Max(1, w * max / Math.Max(w, h)), nh = Math.Max(1, h * max / Math.Max(w, h)); pxs = Reduce(pxs, w, h, nw, nh); w = nw; h = nh; }
                 l.W = w; l.H = h;
                 l.Media = ColorMedio(pxs);
@@ -937,6 +993,7 @@ namespace Rocola.Pantalla
         // A otro tamano: achicar por promedio de cajas; agrandar, bilineal.
         private static byte[] Escala(byte[] s, int w, int h, int nw, int nh)
         {
+            if (nw == w && nh == h) return s;   // (ya es de ese tamano: sin copiarla)
             if (nw <= w && nh <= h) return Reduce(s, w, h, nw, nh);
             byte[] r = new byte[nw * nh * 4];
             for (int y = 0; y < nh; y++)

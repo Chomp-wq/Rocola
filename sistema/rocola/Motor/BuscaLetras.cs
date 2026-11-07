@@ -331,7 +331,7 @@ namespace Rocola
         {
             SpotifyEnVivo s = spotify;
             if (!SpotifyListo || s == null) return null;
-            using (JsonDocument d = Api(s, "/v1/search?type=track&limit=1&q=" + Q("track:" + SinParentesis(titulo) + " artist:" + artista)))
+            using (JsonDocument d = Api(s, "/v1/search?type=track&limit=1&q=" + Q("track:" + SinParentesis(titulo) + " artist:" + artista), true))
                 if (d != null && d.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.TryGetProperty("items", out JsonElement ti))
                     foreach (JsonElement t in ti.EnumerateArray())
                     {

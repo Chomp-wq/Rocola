@@ -373,7 +373,7 @@ namespace Rocola
         private static Letra PideLetra(SpotifyEnVivo s, string id)
         {
             Letra l = new Letra();
-            using (JsonDocument d = s.Api.Pide(ControlSpotify.Orden("letra", "id", id), 15000))
+            using (JsonDocument d = s.Prisa.Pide(ControlSpotify.Orden("letra", "id", id), 15000))
             {
                 if (d == null || !s.Conectado) return null;   // sin respuesta (la red): se reintenta
                 if (!SpotifyEnVivo.Bool(d.RootElement, "ok")) return l;   // sin letra: queda vacia (no se vuelve a pedir esta noche)
@@ -442,7 +442,7 @@ namespace Rocola
                 string f = null;
                 try   // (un error aqui, en un hilo del grupo, cerraria la rocola entera)
                 {
-                using (JsonDocument a = Api(s, "/v1/artists/" + aid))
+                using (JsonDocument a = Api(s, "/v1/artists/" + aid, true))
                     if (a != null)
                     {
                         string url = null; int menor = int.MaxValue;   // la mas chica que pase de 150 px: estirada, ya se ve difuminada
@@ -493,7 +493,7 @@ namespace Rocola
                 List<string> faltan = new List<string>();
                 try
                 {
-                    using (JsonDocument a = Api(s, "/v1/albums/" + album))
+                    using (JsonDocument a = Api(s, "/v1/albums/" + album, true))
                         if (a != null && a.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.TryGetProperty("items", out JsonElement ti))
                         {
                             string nombre = SpotifyEnVivo.Texto(a.RootElement, "name");
@@ -546,7 +546,7 @@ namespace Rocola
         {
             List<Resultado> r = new List<Resultado>();
             HashSet<string> vistas = new HashSet<string>();
-            using (JsonDocument d = Api(s, ruta))
+            using (JsonDocument d = Api(s, ruta, true))
                 if (d != null && d.RootElement.TryGetProperty("items", out JsonElement it))
                     foreach (JsonElement x in it.EnumerateArray())
                     {

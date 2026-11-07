@@ -41,11 +41,13 @@ namespace Rocola
             Cubo(disco.Portada, disco.Artista, cx0, cy0, lado, reloj.Elapsed.TotalSeconds * 0.55);
             if (Form1.EsRutaSpotify(disco.Carpeta)) m.QuierePortada(disco);
             if (tira > 0) TiraMas(c, mas, 26 * k, cy0 + lado + 26 * k, xp - 52 * k, abajo - 10 * k - (cy0 + lado + 26 * k));
+            Perfil.Marca("disco: portada y tira");
             // el panel de las canciones
             float px = xp, py = top + 76 * k, pw = W - px - 28 * k, ph = abajo - py - 12 * k;
             if (m.VidrioDisco) { Vidrio(px, py, pw, ph, 18 * k, tx != null ? tx.Media : Color4.Hex(0x6F8CFF), 1f, m.DiscoVidrio, 0.50f); VidrioVivo(m, px, py, pw, ph, 18 * k, cd, 1f); }   // G5 (con V7, detras esta la portada borrosa: vidrio de verdad); C5, C6
             else d.RedondoDegradado(px, py, pw, ph, 18 * k, PanelDisco.ConAlfa(0.82f), Color4.Hex(0x0E1534, 0.86f));
             d.Contorno(px, py, pw, ph, 18 * k, 1.3f * k, m.ListaColores && tx != null ? Dibujo.Mezcla(tx.Media, Blanco, 0.4f).ConAlfa(0.45f) : Color4.Hex(0x9AAAE0, 0.40f));   // V8
+            Perfil.Marca("disco: panel");
             bool gr = m.ListaGrande;
             // FilaGrande y CuerpoGrande de XP: unas nueve filas por pagina (44 a 80 px) y la letra de un tercio de la fila (en puntos); la normal, 30 px y 13 pt
             float fila = gr ? Math.Max(44 * k, Math.Min(80 * k, (float)Math.Floor((ph - 8 * k) / 9))) : 30 * k, y0 = py + 4 * k;

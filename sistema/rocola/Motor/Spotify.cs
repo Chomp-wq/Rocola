@@ -95,7 +95,8 @@ namespace Rocola
         private volatile bool cerrando;
         private volatile bool callado = true;   // lo que llegue sin haberlo pedido la rocola, se tira
         private string bitacora;
-        internal ControlSpotify Estado, Toca, Api;   // tres conexiones: preguntar como va, tocar/parar (al momento) y la API (puede tardar)
+        internal ControlSpotify Estado, Toca, Api, Prisa; internal ControlSpotify[] Portadas;   // conexiones: preguntar como va, tocar/parar (al momento), la API de fondo (puede tardar),
+        // la API de lo que alguien esta esperando (buscar, abrir un disco, letras: 7-11-2026, para no quedar detras de lo de fondo) y las portadas que se ven
 
         // Lo que dice el programa (lo pregunta un hilo cada 400 ms).
         internal volatile bool Conectado, EsperandoCuenta;
@@ -120,7 +121,7 @@ namespace Rocola
             ProcessStartInfo si = new ProcessStartInfo(Binario) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (string a in new[] { "--cache", cache, "--nombre", nombre, "--control", control }) si.ArgumentList.Add(a);
             proc = Process.Start(si);
-            Estado = new ControlSpotify(control); Toca = new ControlSpotify(control); Api = new ControlSpotify(control);
+            Estado = new ControlSpotify(control); Toca = new ControlSpotify(control); Api = new ControlSpotify(control); Prisa = new ControlSpotify(control); Portadas = new[] { new ControlSpotify(control), new ControlSpotify(control), new ControlSpotify(control) };
             Apunta("rocola-spotify abierto");
             lee = new Thread(LeeBucle) { IsBackground = true, Name = "spotify (sonido)" };
             errores = new Thread(ErroresBucle) { IsBackground = true, Name = "spotify (avisos)" };
@@ -240,7 +241,7 @@ namespace Rocola
             try { if (proc != null && !proc.HasExited) proc.Kill(true); } catch { }
             try { proc?.WaitForExit(2000); } catch { }
             try { lee?.Join(1000); errores?.Join(1000); mira?.Join(1000); } catch { }
-            Estado?.Dispose(); Toca?.Dispose(); Api?.Dispose();
+            Estado?.Dispose(); Toca?.Dispose(); Api?.Dispose(); Prisa?.Dispose(); if (Portadas != null) foreach (ControlSpotify p in Portadas) p.Dispose();
             try { proc?.Dispose(); } catch { }
             proc = null;
             Apunta("rocola-spotify cerrado");
@@ -333,10 +334,10 @@ namespace Rocola
         }
 
         // ---- la API web de Spotify (por rocola-spotify, con la llave de la sesion) ----
-        private static JsonDocument Api(SpotifyEnVivo s, string ruta)
+        private static JsonDocument Api(SpotifyEnVivo s, string ruta, bool prisa = false)
         {
             if (s == null) return null;
-            using (JsonDocument d = s.Api.Pide(ControlSpotify.Orden("api", "ruta", ruta), 20000))
+            using (JsonDocument d = (prisa ? s.Prisa : s.Api).Pide(ControlSpotify.Orden("api", "ruta", ruta), 20000))
             {
                 if (d == null) return null;
                 JsonElement r = d.RootElement;
@@ -348,6 +349,7 @@ namespace Rocola
         private static string Q(string s) { return Uri.EscapeDataString(s ?? ""); }
 
         // Las portadas: las baja rocola-spotify a /run/rocola-spotify/portadas (en la memoria; no al disco).
+        private static int portadaTurno;
         private static string BajaPortada(SpotifyEnVivo s, string url, string clave)
         {
             if (s == null || string.IsNullOrEmpty(url)) return null;
@@ -355,7 +357,8 @@ namespace Rocola
             string archivo = Path.Combine(dir, LimpiaClave(clave) + ".jpg");
             if (File.Exists(archivo)) return archivo;
             try { Directory.CreateDirectory(dir); } catch { }
-            using (JsonDocument d = s.Api.Pide(ControlSpotify.Orden("baja", "url", url, "archivo", archivo), 20000))
+            ControlSpotify con = s.Portadas[(Interlocked.Increment(ref portadaTurno) & 0x7fffffff) % s.Portadas.Length];   // (tres a la vez, por turnos)
+            using (JsonDocument d = con.Pide(ControlSpotify.Orden("baja", "url", url, "archivo", archivo), 20000))
                 return d != null && SpotifyEnVivo.Bool(d.RootElement, "ok") && File.Exists(archivo) ? archivo : null;
         }
         private static string LimpiaClave(string s) { StringBuilder b = new StringBuilder(); foreach (char c in s) b.Append(char.IsLetterOrDigit(c) ? c : '_'); return b.ToString(); }
@@ -507,23 +510,23 @@ namespace Rocola
                 {
                     string c = d.Carpeta.Substring(RaizSpotify.Length);
                     string portada; lock (spotifyCerrojo) spotifyPortadaUrl.TryGetValue(d, out portada);
-                    if (c == "favoritas") Paginas(s, d, "/v1/me/tracks?limit=50&offset=", 50, 500, true, portada);
+                    if (c == "favoritas") Paginas(s, d, "/v1/me/tracks?limit=50&offset=", 50, 500, true, portada, true);
                     else if (c.StartsWith("playlist/"))
                     {
                         string id = c.Substring(9);
-                        if (!Paginas(s, d, "/v1/playlists/" + id + "/tracks?limit=100&offset=", 100, 500, true, portada))
-                            Paginas(s, d, "/v1/playlists/" + id + "/items?limit=100&offset=", 100, 500, true, portada);   // (el nombre nuevo de la API)
+                        if (!Paginas(s, d, "/v1/playlists/" + id + "/tracks?limit=100&offset=", 100, 500, true, portada, true))
+                            Paginas(s, d, "/v1/playlists/" + id + "/items?limit=100&offset=", 100, 500, true, portada, true);   // (el nombre nuevo de la API)
                     }
                     else if (c.StartsWith("artist/"))
                     {   // P3: un artista: lo mas conocido (cada cancion con su disco); sus discos van en la tira (P2)
-                        using (JsonDocument a = Api(s, "/v1/artists/" + c.Substring(7) + "/top-tracks?market=from_token"))
+                        using (JsonDocument a = Api(s, "/v1/artists/" + c.Substring(7) + "/top-tracks?market=from_token", true))
                             if (a != null && a.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.ValueKind == JsonValueKind.Array)
                                 LlenaDisco(d, tr, null, null, null, true, true);
                     }
                     else if (c.StartsWith("album/"))
                     {
                         string id = c.Substring(6);
-                        using (JsonDocument a = Api(s, "/v1/albums/" + id))
+                        using (JsonDocument a = Api(s, "/v1/albums/" + id, true))
                             if (a != null)
                             {
                                 JsonElement r = a.RootElement;
@@ -542,14 +545,14 @@ namespace Rocola
                 finally { lock (spotifyCerrojo) spotifyCargando.Remove(d); }
             });
         }
-        private bool Paginas(SpotifyEnVivo s, Disco d, string ruta, int porPagina, int max, bool conArtista, string portada)
+        private bool Paginas(SpotifyEnVivo s, Disco d, string ruta, int porPagina, int max, bool conArtista, string portada, bool prisa = false)
         {
             List<JsonDocument> docs = new List<JsonDocument>();
             try
             {
                 for (int desde = 0; desde < max; desde += porPagina)
                 {
-                    JsonDocument doc = Api(s, ruta + desde);
+                    JsonDocument doc = Api(s, ruta + desde, prisa);
                     if (doc == null) break;
                     docs.Add(doc);
                     if (!doc.RootElement.TryGetProperty("next", out JsonElement nx) || nx.ValueKind != JsonValueKind.String) break;
@@ -591,7 +594,7 @@ namespace Rocola
             string t = (texto ?? "").Trim();
             lock (spotifyCerrojo)
             {
-                if (t.Length >= 2 && t == spotifyBuscaPedido && t != spotifyBuscaHecho && !spotifyBuscando && unchecked(Environment.TickCount - spotifyBuscaDesde) >= 600)
+                if (t.Length >= 2 && t == spotifyBuscaPedido && t != spotifyBuscaHecho && !spotifyBuscando && unchecked(Environment.TickCount - spotifyBuscaDesde) >= 300)
                 {
                     spotifyBuscando = true;
                     ThreadPool.QueueUserWorkItem(delegate { try { BuscaEnSpotify(s, t); } catch (Exception ex) { LogError("Spotify: buscar", ex); lock (spotifyCerrojo) spotifyBuscando = false; } });
@@ -604,7 +607,7 @@ namespace Rocola
             List<Resultado> r = new List<Resultado>();
             try
             {
-                using (JsonDocument d = Api(s, "/v1/search?type=track,album,playlist,artist&limit=10&q=" + Q(texto)))
+                using (JsonDocument d = Api(s, "/v1/search?type=track,album,playlist,artist&limit=10&q=" + Q(texto), true))
                     if (d != null)
                     {
                         JsonElement root = d.RootElement;
@@ -658,14 +661,18 @@ namespace Rocola
             }
             catch (Exception ex) { LogError("Spotify: buscar", ex); }
             lock (spotifyCerrojo) { spotifyBuscaRes = r; spotifyBuscaHecho = texto; spotifyBuscando = false; }
-            // las portadas de los resultados, despues
-            foreach (Resultado x in r)
+            // las portadas de los resultados, despues: tres a la vez (7-11-2026; antes de una en una) y cada una a la pantalla al llegar
+            System.Threading.Tasks.Parallel.ForEach(r, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 3 }, x =>
             {
-                string url = null, clave = x.Carpeta ?? x.Ruta;
-                if (x.Tipo == 2) { PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(x.Ruta, out p); url = p != null ? p.PortadaUrl : null; }
-                else { Disco d; lock (spotifyCerrojo) { spotifyDiscosPorCarpeta.TryGetValue(x.Carpeta, out d); if (d != null) spotifyPortadaUrl.TryGetValue(d, out url); } }
-                if (url != null && clave != null) x.Portada = BajaPortada(s, url, clave);
-            }
+                try
+                {
+                    string url = null, clave = x.Carpeta ?? x.Ruta;
+                    if (x.Tipo == 2) { PistaSpotify p; lock (spotifyCerrojo) spotifyPistas.TryGetValue(x.Ruta, out p); url = p != null ? p.PortadaUrl : null; }
+                    else { Disco d; lock (spotifyCerrojo) { spotifyDiscosPorCarpeta.TryGetValue(x.Carpeta, out d); if (d != null) spotifyPortadaUrl.TryGetValue(d, out url); } }
+                    if (url != null && clave != null) { x.Portada = BajaPortada(s, url, clave); spotifyVersion++; }
+                }
+                catch { }
+            });
             spotifyVersion++;
         }
         // Si 'a' y 'b' estan a 'max' cambios de letra o menos (sin espacios), contando tambien que 'b' sea el principio de 'a'.

@@ -29,6 +29,12 @@ namespace Rocola
             catch { }
             return "normal";
         }
+        // Lo de fondo que alguien esta esperando (las portadas que se ven): nice 5, detras de la pantalla pero antes que el repaso (19).
+        public static void Media()
+        {
+            if (!OperatingSystem.IsLinux()) return;
+            try { setpriority(PRIO_PROCESS, 0, 5); } catch { }
+        }
         public static void Fondo()
         {
             if (!OperatingSystem.IsLinux()) return;

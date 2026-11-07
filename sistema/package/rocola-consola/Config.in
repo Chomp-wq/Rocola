@@ -6,6 +6,7 @@ config BR2_PACKAGE_ROCOLA_CONSOLA
 	select BR2_PACKAGE_ALSA_LIB
 	select BR2_PACKAGE_LIBDRM
 	select BR2_PACKAGE_DEJAVU
+	select BR2_PACKAGE_JPEG   # las portadas con libjpeg-turbo (si falta, el lector propio)
 	help
 	  La rocola de Rocola OS (etapa 2): la cadena de sonido de la rocola por ALSA, y su pantalla por KMS y OpenGL ES
 	  (o en modo texto).

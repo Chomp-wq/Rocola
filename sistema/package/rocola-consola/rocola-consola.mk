@@ -5,7 +5,7 @@
 ROCOLA_CONSOLA_VERSION = 1
 ROCOLA_CONSOLA_SITE = $(BR2_EXTERNAL_ROCOLA_PATH)/rocola
 ROCOLA_CONSOLA_SITE_METHOD = local
-ROCOLA_CONSOLA_DEPENDENCIES = alsa-lib libdrm mesa3d dejavu
+ROCOLA_CONSOLA_DEPENDENCIES = alsa-lib libdrm mesa3d dejavu jpeg
 
 ifeq ($(BR2_x86_piledriver),y)
 ROCOLA_CONSOLA_PERFIL = a4
