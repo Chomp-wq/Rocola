@@ -1774,3 +1774,31 @@ de 1 a 9 KB de memoria por cuadro, sin recolecciones en el banco. Empezar una ca
 - Revisado y sin cambio: el cielo borroso de los vidrios (cinco pasadas en capas de 1/8 de la pantalla: casi nada; lo que contaba el
   banco era la capa del cielo que ya esperaba) y los brillos de la portada del disco (ya recortados a lo que se ve).
 
+## SP2 mas preciso: cuando suena peor, la pareja estricta y comprobada con el sonido (7 de noviembre de 2026)
+
+Pregunta del dueño: «¿que tan preciso es esto? ¿Hay forma de mejorarlo?»; eligio «A, B y C». Solo con el modo Spotify encendido
+(`Motor/SustitucionSpotify.cs`). Calidad de Spotify: rocola-spotify pide 320 kbps (Ogg Vorbis, «Muy alta»); el Lossless de Spotify
+no lo da librespot 0.8 (solo pide Ogg/MP3).
+
+- **A. Suena peor, con mas datos** (`SuenaPeor`): antes, solo agudos cortados bajo 16 kHz. Ahora tambien lo que dice el MP3 (su
+  cabecera: CBR, o Xing/Info/VBRI) y el pre-eco medido: menos de 128 kbps; grabada a menos de 44,1 kHz; 128 kbps con los agudos
+  bajo 17,5 kHz (el corte de LAME); pre-eco con 192 kbps o menos y agudos bajo 19 kHz. En los VBR la tasa media no cuenta (sale de la
+  musica, no de la calidad: un V0 tranquilo da ~110 kbps): solo el corte.
+- **B. La pareja, estricta** (regla 2 en `rocola_spotify_pares.txt`, columnas 11 y 12: regla y comprobacion): con el ISRC del MP3
+  (marco TSRC) se busca `isrc:` y solo vale la que lo tenga igual (duracion a 3 s); si no, el titulo base igual (antes bastaba que
+  empezara igual), las marcas de version iguales en las dos (en vivo, remix/mezcla, acustica, karaoke, instrumental, demo, regrabada,
+  extendida, a capella...; remasterizada o «radio edit» no cuentan), el artista principal igual palabra por palabra (antes «contiene»:
+  «Los Angeles» casaba con «Los Angeles Azules») o etiquetada con uno de los artistas de la grabacion, la duracion a 2 s y, a
+  igualdad, el disco que se llama como el tuyo y no un recopilatorio. Solo se sustituye con parejas de la regla 2: las de antes se
+  vuelven a buscar, primero las que se sustituirian.
+- **C. Comprobada con el sonido** (la primera vez que suena desde Spotify): en el hilo del sonido se apunta el volumen de lo que entra a
+  la cadena por tramos contados en muestras (240 por cancion, como la forma de tu MP3) y al acabar se compara con la forma de tu MP3
+  (correlacion en dB, corrimiento de hasta 3 tramos, al menos 40 tramos y 1,5 dB de vaiven): >= 0,80 la misma (se apunta), < 0,55 otra
+  (esa cancion ya no se sustituye: suena tu MP3), en medio o sin datos, se vuelve a mirar la proxima vez. Solo numeros de volumen en
+  memoria; nada se graba. La bitacora de Spotify dice cada veredicto.
+
+Probado: `--prueba-sp2` (marcas, artistas, ISRC, la comparacion con formas inventadas y lo leido de MP3 de 64, 128, 320 kbps y VBR) y
+de punta a punta con el rocola-spotify simulado (re-emparejado con la regla 2; la misma grabacion: «misma», r 1,00; otra: «otra»,
+r 0,01, y la vez siguiente suena el archivo propio). No con una cuenta real ni en el A4. Las parejas que no pasan las reglas nuevas
+dejan de dar tambien letras, portadas y canciones que faltan (SP1, SP5, SP6).
+

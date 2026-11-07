@@ -466,7 +466,7 @@ namespace Rocola
             // LO QUE SPOTIFY ANADE (SpotifyMas.cs, SP1-SP11): cada uno con su interruptor, encendidos, y en gris sin el modo Spotify
             Func<string> sinSpotify = () => SpotifyOn ? null : "necesita «Spotify en la rocola»";
             { Ajuste x = Interruptor("Spotify", "Tus canciones dañadas suenan desde Spotify (sin que se note)", "calidad_spotify", () => CalidadSpotify, v => CalidadSpotify = v, false);
-              x.Bloqueo = sinSpotify; x.Nota = () => "Las tuyas con los agudos cortados suenan con la version de Spotify (320 kbps) si es la misma grabacion. En la pantalla no cambia nada; si Spotify falla, suena tu MP3."; l.Add(x); }
+              x.Bloqueo = sinSpotify; x.Nota = () => "Las tuyas que suenan peor (agudos cortados, 128 kbps o menos, pre-eco) suenan con la version de Spotify (320 kbps) si es la misma grabacion: por el ISRC o titulo, version y artista iguales, y comprobada con el sonido la primera vez. En la pantalla no cambia nada; si Spotify falla, suena tu MP3."; l.Add(x); }
             { Ajuste x = Interruptor("Spotify", "Letras en el estado extendido", "letras_spotify", () => LetrasSpotify, v => LetrasSpotify = v, false);
               x.Bloqueo = sinSpotify; x.Nota = () => "La letra de lo que suena (de Spotify, o tuya si tiene pareja en Spotify), al estilo de Apple Music, cuando nadie toca la rocola."; l.Add(x); }
             { Ajuste x = Interruptor("Spotify", "Portadas y generos que faltan", "portadas_spotify", () => PortadasSpotify, v => PortadasSpotify = v, false);

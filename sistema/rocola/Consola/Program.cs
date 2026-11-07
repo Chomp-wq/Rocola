@@ -47,6 +47,7 @@ namespace Rocola
                     }
                     return 0;
                 }
+                else if (args[i] == "--prueba-sp2") { string[] rs = new string[args.Length - i - 1]; Array.Copy(args, i + 1, rs, 0, rs.Length); return Form1.PruebaSustitucion(rs); }
                 else if (args[i] == "--mide-portadas") { string[] rs = new string[args.Length - i - 1]; Array.Copy(args, i + 1, rs, 0, rs.Length); Rocola.Pantalla.Caratulas.Mide(rs, 256); return 0; }
                 else if (args[i] == "--mide-repaso")   // prueba: cuanto tarda medir cada archivo (no publica nada)
                 {

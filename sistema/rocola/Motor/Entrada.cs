@@ -71,6 +71,7 @@ namespace Rocola
                 if (tap.Publicacion != publicacionAudio) return;
                 MedidaDe(tap);
                 MideBloqueOriginal(buffer, offset, n, tap.WaveFormat.SampleRate, tap.WaveFormat.Channels);
+                if (verifMidiendo) VerifMide(buffer, offset, n, tap.WaveFormat.SampleRate, tap.WaveFormat.Channels);   // C (SustitucionSpotify.cs)
             }
         }
         private void MideBloqueOriginal(float[] buffer, int offset, int count, int rate, int ch)

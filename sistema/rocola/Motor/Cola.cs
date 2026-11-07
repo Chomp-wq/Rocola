@@ -123,7 +123,7 @@ namespace Rocola
                 {
                     queue.RemoveAt(0);
                     ISampleProvider sp = EmpiezaSpotify(it, sid, PistaDeSustituta(it, sid), true);
-                    if (sp != null) return sp;
+                    if (sp != null) { try { EmpiezaVerificacion(it, sid); } catch { } return sp; }   // C: la primera vez, se comprueba con el sonido
                     sinSpotify.Add(it); queue.Insert(0, it);
                 }
                 // UN «MP3» QUE NO LO ES Y SE ESTA CONVIRTIENDO (Conversiones.cs): espera al principio de la cola hasta EsperaMaxMs y suena;

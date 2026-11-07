@@ -300,6 +300,7 @@ namespace Rocola
             int ahora = Environment.TickCount;
             if (spotifyMirado != 0 && unchecked(ahora - spotifyMirado) < 250) return;
             spotifyMirado = ahora | 1;
+            try { SigueVerificacion(); } catch (Exception ex) { LogError("Spotify: comprobar la pareja", ex); }   // C (SustitucionSpotify.cs)
             bool quiere = SpotifyOn && File.Exists(SpotifyEnVivo.Binario);
             if (!quiere)
             {

@@ -36,7 +36,7 @@ namespace Rocola
 
         // ---------------- SP4: LAS PAREJAS ----------------
         private static readonly long ArregloAcentos = new DateTime(2026, 11, 7, 12, 0, 0, DateTimeKind.Utc).Ticks;
-        private sealed class Pareja { public string Id, AlbumId, ArtistaId, Portada, Disco, Anio, Generos; public long Ms; public bool Ninguna; public long Fecha; }
+        private sealed class Pareja { public string Id, AlbumId, ArtistaId, Portada, Disco, Anio, Generos; public long Ms; public bool Ninguna; public long Fecha; public int Regla = 1, Verif; }   // Regla: 1 las de antes, 2 las de B; Verif: 0 sin comprobar, 1 la misma, -1 otra (C)
         private readonly Dictionary<string, Pareja> parejas = new Dictionary<string, Pareja>(StringComparer.OrdinalIgnoreCase);
         private bool parejasLeidas;
         private Thread emparejador;
@@ -61,6 +61,7 @@ namespace Rocola
                     {
                         p.Id = c[1]; long.TryParse(c[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out p.Ms);
                         p.AlbumId = c[4]; p.ArtistaId = c[5]; p.Portada = c[6]; p.Disco = c[7]; p.Anio = c[8]; p.Generos = c[9];
+                        if (c.Length >= 12) { int.TryParse(c[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out p.Regla); int.TryParse(c[11], NumberStyles.Integer, CultureInfo.InvariantCulture, out p.Verif); }
                     }
                     else continue;
                     lock (spotifyCerrojo) parejas[c[0]] = p;
@@ -74,7 +75,7 @@ namespace Rocola
             lock (spotifyCerrojo) parejas[ruta] = p;
             string l = p.Ninguna ? ruta + "\t-\t" + p.Fecha
                 : string.Join("\t", ruta, p.Id, p.Fecha.ToString(CultureInfo.InvariantCulture), p.Ms.ToString(CultureInfo.InvariantCulture), p.AlbumId, p.ArtistaId,
-                    p.Portada ?? "", Sin(p.Disco), p.Anio ?? "", Sin(p.Generos));
+                    p.Portada ?? "", Sin(p.Disco), p.Anio ?? "", Sin(p.Generos), p.Regla.ToString(CultureInfo.InvariantCulture), p.Verif.ToString(CultureInfo.InvariantCulture));
             try { File.AppendAllText(ArchivoParejas, l + "\n"); } catch { }
             parejasVersion++; spotifyVersion++;
         }
@@ -108,6 +109,20 @@ namespace Rocola
                 long ahora = DateTime.UtcNow.Ticks, mes = TimeSpan.FromDays(30).Ticks;
                 List<Track> lista;
                 lock (tracks) lista = new List<Track>(tracks);
+                // B: las parejas hechas con las reglas de antes se vuelven a buscar; primero las que se sustituirian (A), luego las demas
+                List<Track> urgentes = new List<Track>(), viejas = new List<Track>();
+                foreach (Track t in lista)
+                {
+                    Pareja pv; lock (spotifyCerrojo) parejas.TryGetValue(t.Path, out pv);
+                    if (pv == null || pv.Ninguna || pv.Regla >= ReglaPareja) continue;
+                    string mo; bool peor = false; try { peor = SuenaPeor(t.Path, out mo); } catch { }
+                    (peor ? urgentes : viejas).Add(t);
+                }
+                if (urgentes.Count + viejas.Count > 0) { SpotifyEnVivo s1 = spotify; if (s1 != null) s1.Apunta("parejas con las reglas nuevas: " + urgentes.Count + " que se sustituirian y " + viejas.Count + " mas, se vuelven a buscar"); }
+                urgentes.AddRange(viejas);
+                HashSet<Track> yaVan = new HashSet<Track>(urgentes);
+                foreach (Track t in lista) if (!yaVan.Contains(t)) urgentes.Add(t);
+                lista = urgentes;
                 int hechas, pendientes = 0; lock (spotifyCerrojo) hechas = parejas.Count;
                 { SpotifyEnVivo s0 = spotify; if (s0 != null) s0.Apunta("emparejando con Spotify: " + lista.Count + " canciones, " + hechas + " ya vistas"); }
                 foreach (Track t in lista)
@@ -120,6 +135,7 @@ namespace Rocola
                     // (las que no casaron antes del 7-11-2026 y llevan acentos se vuelven a buscar ya: sin las tablas de idiomas los acentos
                     // no se quitaban y «Corazón» no casaba con «Corazon»; Acentos.cs)
                     bool otraVez = ya != null && ya.Ninguna && ya.Fecha < ArregloAcentos && (Acentos.Quita(t.Title ?? "") != (t.Title ?? "") || Acentos.Quita(t.Artist ?? "") != (t.Artist ?? ""));
+                    if (ya != null && !ya.Ninguna && ya.Regla < ReglaPareja) otraVez = true;   // B
                     if (ya != null && !otraVez && (!ya.Ninguna || ahora - ya.Fecha < mes)) continue;
                     if (!(SegundosDe(t.Path) > 10f)) { pendientes++; continue; }   // sin la duracion (el repaso aun no la mide) no se puede asegurar: en la otra vuelta
                     bool contesto = true;
@@ -144,42 +160,64 @@ namespace Rocola
                 ApuntaPareja(t.Path, new Pareja { Ninguna = true, Fecha = DateTime.UtcNow.Ticks });
                 return true;
             }
-            string q = "track:" + titulo + " artist:" + artista;
-            Pareja mejor = null; double dmejor = 2.0;
-            using (JsonDocument d = Api(s, "/v1/search?type=track&limit=5&q=" + Q(q)))
+            // B (SustitucionSpotify.cs): con el ISRC de tu MP3, por ese numero; si no, titulo igual, mismas marcas de version, el mismo
+            // artista principal, la duracion a 2 s y, a igualdad, el disco que se llama como el tuyo y no un recopilatorio
+            string tituloCrudo = TituloSinPista(string.IsNullOrEmpty(t.Title) ? Path.GetFileNameWithoutExtension(t.Path) : t.Title);
+            string marcas = MarcasDe(tituloCrudo);
+            string artistaCrudo = !string.IsNullOrEmpty(t.Artist) ? t.Artist : (DiscoDe(t.Path) != null ? DiscoDe(t.Path).Artist : "");
+            string discoL = Normaliza(!string.IsNullOrEmpty(t.Album) ? t.Album : (DiscoDe(t.Path) != null ? DiscoDe(t.Path).Name : ""));
+            string isrc = null; try { isrc = InfoDe(t.Path).Isrc; } catch { }
+            Pareja mejor = null; double puntosMejor = double.MaxValue;
+            for (int vuelta = isrc != null ? 0 : 1; vuelta < 2 && mejor == null; vuelta++)
             {
-                if (d == null) return false;   // (la red o Spotify: se reintenta la proxima vuelta)
-                if (d.RootElement.TryGetProperty("tracks", out JsonElement tr) && tr.TryGetProperty("items", out JsonElement it))
+                string q = vuelta == 0 ? "isrc:" + isrc : "track:" + titulo + " artist:" + artista;
+                using (JsonDocument d = Api(s, "/v1/search?type=track&limit=10&q=" + Q(q)))
+                {
+                    if (d == null) return false;   // (la red o Spotify: se reintenta la proxima vuelta)
+                    if (!d.RootElement.TryGetProperty("tracks", out JsonElement tr) || !tr.TryGetProperty("items", out JsonElement it)) continue;
                     foreach (JsonElement x in it.EnumerateArray())
                     {
-                        string nt = Normaliza(SpotifyEnVivo.Texto(x, "name"));
-                        if (!(nt == titulo || (titulo.Length >= 4 && (nt.StartsWith(titulo) || titulo.StartsWith(nt)) && Math.Abs(nt.Length - titulo.Length) <= 12))) continue;
-                        bool artistaBien = false; string artistaId = "";
-                        if (x.TryGetProperty("artists", out JsonElement ar))
-                            foreach (JsonElement a in ar.EnumerateArray())
-                            {
-                                string na = Normaliza(SpotifyEnVivo.Texto(a, "name"));
-                                if (na.Length > 0 && (artista.Contains(na) || na.Contains(artista))) { artistaBien = true; if (artistaId.Length == 0) artistaId = SpotifyEnVivo.Texto(a, "id"); }
-                            }
-                        if (!artistaBien) continue;
+                        if (x.ValueKind != JsonValueKind.Object) continue;
+                        string nombre = SpotifyEnVivo.Texto(x, "name");
                         long ms = x.TryGetProperty("duration_ms", out JsonElement du) && du.ValueKind == JsonValueKind.Number ? du.GetInt64() : 0;
                         double dif = Math.Abs(ms / 1000.0 - seg);
-                        if (dif > dmejor) continue;
-                        dmejor = dif;
+                        List<string> artistasS = new List<string>(); string artistaId = "";
+                        if (x.TryGetProperty("artists", out JsonElement ar))
+                            foreach (JsonElement aa in ar.EnumerateArray()) { artistasS.Add(Normaliza(SpotifyEnVivo.Texto(aa, "name"))); if (artistaId.Length == 0) artistaId = SpotifyEnVivo.Texto(aa, "id"); }
+                        if (vuelta == 0)
+                        {   // por el ISRC: el mismo numero (Spotify a veces devuelve parecidas) y la duracion a 3 s
+                            string suyo = x.TryGetProperty("external_ids", out JsonElement ei) ? LimpiaIsrc(SpotifyEnVivo.Texto(ei, "isrc")) : null;
+                            if (suyo != isrc || dif > 3.0) continue;
+                        }
+                        else
+                        {
+                            if (Normaliza(nombre) != titulo) continue;            // el titulo, igual (sin parentesis ni « - Remastered»)
+                            if (MarcasDe(nombre) != marcas) continue;             // en vivo, remix, acustica... en las dos o en ninguna
+                            if (!MismoArtista(artistaCrudo, artistasS)) continue;  // el artista principal, palabra por palabra
+                            if (dif > 2.0) continue;
+                        }
                         JsonElement al; x.TryGetProperty("album", out al);
-                        string fecha = al.ValueKind == JsonValueKind.Object ? SpotifyEnVivo.Texto(al, "release_date") : "";
+                        bool esAl = al.ValueKind == JsonValueKind.Object;
+                        string nombreDisco = esAl ? SpotifyEnVivo.Texto(al, "name") : "";
+                        double puntos = dif + (discoL.Length > 0 && Normaliza(nombreDisco) == discoL ? 0 : 1.5) + (esAl && SpotifyEnVivo.Texto(al, "album_type") == "compilation" ? 1.0 : 0);
+                        if (puntos >= puntosMejor) continue;
+                        puntosMejor = puntos;
+                        string fecha = esAl ? SpotifyEnVivo.Texto(al, "release_date") : "";
                         mejor = new Pareja
                         {
                             Id = SpotifyEnVivo.Texto(x, "id"), Ms = ms, ArtistaId = artistaId,
-                            AlbumId = al.ValueKind == JsonValueKind.Object ? SpotifyEnVivo.Texto(al, "id") : "",
-                            Portada = al.ValueKind == JsonValueKind.Object ? Imagen(al) : null,
-                            Disco = al.ValueKind == JsonValueKind.Object ? SpotifyEnVivo.Texto(al, "name") : "",
+                            AlbumId = esAl ? SpotifyEnVivo.Texto(al, "id") : "",
+                            Portada = esAl ? Imagen(al) : null,
+                            Disco = nombreDisco,
                             Anio = fecha.Length >= 4 ? fecha.Substring(0, 4) : "",
+                            Regla = ReglaPareja,
                         };
                     }
+                }
             }
             if (mejor == null) { ApuntaPareja(t.Path, new Pareja { Ninguna = true, Fecha = DateTime.UtcNow.Ticks }); return true; }
             mejor.Fecha = DateTime.UtcNow.Ticks;
+            { Pareja ant; lock (spotifyCerrojo) parejas.TryGetValue(t.Path, out ant); if (ant != null && !ant.Ninguna && ant.Id == mejor.Id) mejor.Verif = ant.Verif; }   // (la misma de antes: lo ya comprobado con el sonido vale)
             // SP5: el genero del artista (para las canciones que no lo traen)
             if (mejor.ArtistaId.Length > 0)
                 using (JsonDocument a = Api(s, "/v1/artists/" + mejor.ArtistaId))
@@ -312,8 +350,9 @@ namespace Rocola
         {
             if (!CalidadSpotify || !SpotifyListo || it == null || it.IsVideo || it.Song == null || EsItemSpotify(it) || sinSpotify.Contains(it)) return null;
             Pareja p = ParejaDe(it.Song.Path); if (p == null) return null;
-            float[] c; float corte = eqCache.TryGetValue(it.Song.Path, out c) && c != null && c.Length > EqCut ? c[EqCut] : 0f;
-            return corte > 100f && corte < CorteDanada ? p.Id : null;
+            if (p.Regla < ReglaPareja || p.Verif < 0) return null;   // B: solo con las reglas nuevas; C: comprobada como otra grabacion, nunca
+            string motivo;
+            return SuenaPeor(it.Song.Path, out motivo) ? p.Id : null;   // A
         }
         private bool SeSustituye(PlayItem it) { return IdParaSustituir(it) != null; }
         // La pista de Spotify de una pareja, apuntada como las demas (para la cadena: su nivelado es el de Spotify, SP3).
