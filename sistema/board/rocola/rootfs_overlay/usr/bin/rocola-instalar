@@ -20,6 +20,12 @@ OS=rocola-os
 M=/tmp/rocola-destino
 LOG=/tmp/rocola-instalar.txt
 INST=/usr/share/rocola/instalar
+# LO QUE NO ES DE LA ROCOLA: la Papelera ($RECYCLE.BIN, RECYCLER de XP) y lo de Windows (System Volume Information). En el A4 (7-11-2026)
+# los «datos de la de XP» salieron de una carpeta borrada en la Papelera.
+basura() { grep -iv '/\$recycle\.bin/\|/recycler/\|/system volume information/'; }
+# EL ARRANQUE: los modulos de GRUB que van en el hueco del disco. Sin search_fs_uuid: en el mismo disco grub-install lo encuentra por la
+# particion, y con el la imagen (32 329 bytes) no cabia en el hueco de XP (62 sectores, 31 744 bytes; A4, 7-11-2026).
+GRUB_MODULOS="part_msdos ntfs"
 : > $LOG
 di() { echo "$*"; echo "$*" >> $LOG; }
 apunta() { echo "$*" >> $LOG; }
@@ -82,7 +88,7 @@ for p in /sys/class/block/*; do
 	blkid "/dev/$dev" 2>/dev/null | grep -q 'TYPE="ntfs"' || continue
 	m=/tmp/rocola-mira/$dev; mkdir -p "$m"
 	mount -t ntfs3 -o ro "/dev/$dev" "$m" 2>/dev/null || { apunta "/dev/$dev: no se pudo leer"; continue; }
-	n=0; musica=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null | head -5)
+	n=0; musica=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null | basura | head -5)
 	for d in $musica; do
 		c=$(find "$d" -type f \( -iname '*.mp3' -o -iname '*.wma' -o -iname '*.wav' -o -iname '*.ogg' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.avi' -o -iname '*.mpg' \) 2>/dev/null | wc -l)
 		n=$((n + c))
@@ -99,9 +105,9 @@ PART=$mejor; MIRA=/tmp/rocola-mira/$PART
 DISCO=$(basename "$(readlink -f "/sys/class/block/$PART/..")")
 UUID=$(blkid "/dev/$PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
 XP_UUID=; [ -n "$XP_PART" ] && XP_UUID=$(blkid "/dev/$XP_PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
-musica=$(find "$MIRA" -maxdepth 3 -type d -iname musica 2>/dev/null | head -5)
+musica=$(find "$MIRA" -maxdepth 3 -type d -iname musica 2>/dev/null | basura | head -5)
 canciones=$((mejor_n % 1000000))
-datos_xp=$(find "$MIRA" -maxdepth 4 \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt \) 2>/dev/null | grep -iv respaldo | head -1)
+datos_xp=$(find "$MIRA" -maxdepth 4 \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt \) 2>/dev/null | basura | grep -iv respaldo | head -1)
 [ -n "$datos_xp" ] && datos_xp=$(dirname "$datos_xp")
 ya=; [ -f "$MIRA/$OS/arranque.cfg" ] && ya=1
 
@@ -134,6 +140,15 @@ apunta "elegido /dev/$PART (disco $DISCO, UUID $UUID); XP: $XP_PART $XP_UUID; da
 [ "$firma" = 55aa ] || { umount "$MIRA"; para "El disco /dev/$DISCO no tiene tabla de particiones MBR. No se toco nada."; }
 [ "$tabla" = ee ] && { umount "$MIRA"; para "El disco /dev/$DISCO es GPT (no el de XP): este instalador es para el disco de XP. No se toco nada."; }
 [ "$primera" -ge 63 ] || { umount "$MIRA"; para "No hay hueco para el arranque delante de la primera particion. No se toco nada."; }
+# que el arranque quepa en ese hueco (se mide antes de tocar nada; grub-install fallaria despues de copiar el sistema)
+GD=; for d in /lib/grub/i386-pc /usr/lib/grub/i386-pc; do [ -f "$d/boot.img" ] && GD=$d && break; done
+[ -n "$GD" ] || { umount "$MIRA"; para "Falta GRUB en esta memoria. No se toco nada."; }
+if command -v grub-mkimage >/dev/null 2>&1; then
+	grub-mkimage -d "$GD" -O i386-pc -o /tmp/rocola-core.img -p "(,msdos1)/$OS/boot/grub" biosdisk $GRUB_MODULOS 2>>$LOG
+	core=$(wc -c < /tmp/rocola-core.img 2>/dev/null || echo 0); hueco=$(( (primera - 1) * 512 ))
+	apunta "arranque: $core bytes, hueco $hueco bytes"
+	[ "$core" -gt 0 ] && [ "$core" -gt "$hueco" ] && { umount "$MIRA"; para "El arranque ($core bytes) no cabe en el hueco del disco ($hueco bytes). No se toco nada."; }
+fi
 [ "$libre_kb" -ge "$falta_kb" ] || { umount "$MIRA"; para "No hay sitio: hacen falta $(gb $falta_kb) libres en /dev/$PART y hay $(gb $libre_kb). No se toco nada."; }
 
 echo "Se instala en \\$OS. No se borra ni se mueve nada: la musica y lo de XP se quedan."
@@ -237,9 +252,7 @@ menuentry "Windows XP (la rocola de antes)" {
 }
 EOF
 fi
-GD=; for d in /lib/grub/i386-pc /usr/lib/grub/i386-pc; do [ -f "$d/boot.img" ] && GD=$d && break; done
-[ -n "$GD" ] || falla "Falta GRUB en esta memoria."
-grub-install --target=i386-pc --directory="$GD" --boot-directory="$D/boot" --modules="part_msdos ntfs search_fs_uuid" \
+grub-install --target=i386-pc --directory="$GD" --boot-directory="$D/boot" --modules="$GRUB_MODULOS" \
 	--no-floppy "/dev/$DISCO" >>$LOG 2>&1 || falla "No pude poner el arranque (GRUB)."
 # la copia que arranca: la recien puesta (la otra, si la habia, queda como la anterior)
 anterior=a; [ "$otra" = a ] && anterior=b

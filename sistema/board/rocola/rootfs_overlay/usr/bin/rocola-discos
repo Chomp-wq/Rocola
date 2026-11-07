@@ -7,6 +7,8 @@
 # Y LOS DATOS DE LA ROCOLA DE XP: la primera carpeta con su rocola_sonoridad.txt (o rocola_config.txt), hasta 4 niveles, va a
 # /run/rocola-datos-xp; la rocola copia de ahi lo aprendido la primera vez (ImportaXP.cs). Solo se lee.
 LISTA=/run/rocola-musica
+# lo que no es de la rocola: la Papelera ($RECYCLE.BIN, RECYCLER de XP) y System Volume Information (en el A4 salieron datos de XP de la Papelera)
+basura() { grep -iv '/\$recycle\.bin/\|/recycler/\|/system volume information/'; }
 : > "$LISTA"
 rm -f /run/rocola-datos-xp
 # El disco del sistema (la raiz se ve como /dev/root): por su numero de dispositivo.
@@ -35,14 +37,14 @@ for p in /sys/class/block/*; do
 		mkdir -p "$m"
 		mountpoint -q "$m" || mount -t "$fs" -o "$opc" "/dev/$dev" "$m" 2>/dev/null || { rmdir "$m" 2>/dev/null; continue; }
 	fi
-	encontradas=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null)
+	encontradas=$(find "$m" -maxdepth 3 -type d -iname musica 2>/dev/null | basura)
 	if [ -n "$encontradas" ]; then
 		echo "$encontradas" >> "$LISTA"
 	elif [ "$(cat "/sys/class/block/$disco/removable" 2>/dev/null)" = 1 ]; then
 		echo "$m" >> "$LISTA"   # una memoria USB sin carpeta "musica": entera
 	fi
 	if [ ! -s /run/rocola-datos-xp ]; then
-		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt \) 2>/dev/null | grep -iv respaldo | head -1)   # (no la copia de respaldo)
+		xp=$(find "$m" -maxdepth 4 \( -iname rocola_sonoridad.txt -o -iname rocola_config.txt \) 2>/dev/null | basura | grep -iv respaldo | head -1)   # (no la copia de respaldo)
 		[ -n "$xp" ] && dirname "$xp" > /run/rocola-datos-xp && echo "rocola-discos: datos de la rocola de XP en $(dirname "$xp")"
 	fi
 	# LAS LETRAS DE LA ROCOLA DE XP (Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial): Rocola OS no las trae (son de

@@ -1955,3 +1955,23 @@ algo que no hay, pedir, el turno) y se revisaron todos los avisos y letreros de 
 
 Los textos de Ctrl+F3 (solo los ve el dueño) quedan como estaban.
 
+
+## La primera instalacion en el A4: el arranque no cabia (7 de noviembre de 2026)
+
+Primera prueba del instalador en la rocola de verdad (foto del dueño): encontro el disco (/dev/sda2, 920 GB, 117 670 canciones y
+videos), guardo el arranque de antes (63 sectores), copio y comprobo el sistema y preparo lo aprendido, pero al poner el arranque dijo
+«No pude poner el arranque (GRUB)». El primer sector del disco no se toco (grub-install falla antes de escribirlo): la rocola sigue
+arrancando en XP.
+
+- **La causa (reproducida en QEMU con un disco igual: primera particion en el sector 63, dos NTFS):** el disco de XP deja solo 62 sectores
+  (31 744 bytes) para GRUB, y su imagen con `part_msdos ntfs search_fs_uuid` mide 32 329: «your core.img is unusually large. It won't fit
+  in the embedding area». El `search_fs_uuid` lo poniamos nosotros: arrancando del mismo disco, grub-install encuentra su carpeta por la
+  particion (`(,msdos2)`) y no lo necesita. Sin el, 31 279 bytes: cabe, y en QEMU el disco arranca, GRUB lee el NTFS y el menu
+  encuentra la particion por su UUID (el `search` del menu se carga del disco). La prueba de antes era con un disco de 2048 sectores.
+- **Se mide antes de tocar nada:** el instalador hace la imagen con grub-mkimage y, si no cabe en el hueco, se para sin escribir nada
+  (antes lo descubria despues de copiar 1 GB).
+- **La Papelera:** «Datos de la de XP» salio de `$RECYCLE.BIN/.../$RJD6TWH.0-windows` (una carpeta borrada). El instalador y
+  rocola-discos ya no buscan musica ni datos en la Papelera (`$RECYCLE.BIN`, `RECYCLER` de XP) ni en `System Volume Information`.
+- Lo que dejo la primera vez (`\rocola-os\a`, `datos.img`, el arranque de antes) se aprovecha: volver a instalar rehace la copia `a`,
+  conserva `datos.img` y el arranque de antes guardado es el de XP.
+- Hace falta otra memoria USB con un sistema nuevo (el instalador va dentro). No probado todavia en el A4.
