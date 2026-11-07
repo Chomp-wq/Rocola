@@ -14,6 +14,16 @@ case "$1" in
 		# programa de la rocola se actualiza solo (rocola-actualiza): al minuto de prender y despues cada hora, o al momento si se pide
 		# desde Ctrl+F3 (/run/rocola-buscar-ya).
 		ethtool -s eth0 wol g 2>/dev/null
+		# EL DISCO DE LA ROCOLA, QUE NO SE QUEDE «SIN REVISAR» (A4, 7-11-2026: el instalador no pudo escribir). ntfs3 marca el NTFS sucio en
+		# el disco en cuanto crea, agranda o borra un archivo, y solo lo limpia con un sync o al desmontar: un apagon en medio lo deja
+		# marcado, y entonces Windows XP pide revisarlo, el instalador no escribe y el initramfs tiene que montarlo con «force». Cada 15 s,
+		# si ntfs3 dice que esta sucio por lo que se escribio aqui, un sync lo limpia (sin nada escrito no hace nada). Si ya venia marcado
+		# al montar (un apagon de antes), ntfs3 no lo limpia aunque se haga sync: lo revisa Windows XP al prender; se avisa en
+		# /run/rocola-disco-revisar (y rocola-actualiza no escribe un sistema nuevo en el hasta entonces).
+		( dev=$(awk '$2 == "/rocola/disco" {print $1; exit}' /proc/mounts); v=/proc/fs/ntfs3/${dev##*/}/volinfo
+		  [ -n "$dev" ] && [ -r "$v" ] || exit 0
+		  if [ "$(sed -n 6p "$v")" = dirty ]; then echo "$dev" > /run/rocola-disco-revisar; exit 0; fi
+		  while sleep 15; do [ -r "$v" ] || exit 0; [ "$(sed -n 7p "$v")" = dirty ] && sync; done ) &
 		# (el aviso de «Buscar actualizacion ahora» se borra al acabar de buscar: hasta entonces Ctrl+F3 dice BUSCANDO, y
 		# rocola-actualiza sabe que se pidio a mano: busca aunque «Actualizarse sola» este apagado)
 		( sleep 60

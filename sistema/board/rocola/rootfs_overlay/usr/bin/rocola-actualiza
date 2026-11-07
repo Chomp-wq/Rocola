@@ -144,6 +144,9 @@ if [ -f "$OS/arranque.cfg" ]; then
 	n=$(ultima sistema "$OS/sistema-malas")
 	if [ -f "$OS/probando" ] || [ -f "$RUN/rocola-reinicio-sistema" ]; then
 		dice="$dice; sistema nuevo en prueba"
+	elif [ -n "$n" ] && [ "$n" -gt "$sis" ] && [ -f "$RUN/rocola-disco-revisar" ]; then
+		# el disco vino marcado «sin revisar» (un apagon; S99rocola): un sistema nuevo son 1,4 GB que caerian en un NTFS sin revisar
+		dice="$dice; sistema $n: espera a que Windows XP revise el disco (un apagon lo dejo marcado: prende en Windows XP y no toques nada mientras lo revisa)"
 	elif [ -n "$n" ] && [ "$n" -gt "$sis" ]; then
 		libre=$(df -k "$OS" | awk 'NR==2 {print $4}'); ocupa=$(du -sk "$OS/$otro" 2>/dev/null | awk '{print $1}')
 		if [ $(( ${libre:-0} + ${ocupa:-0} )) -lt 1400000 ]; then

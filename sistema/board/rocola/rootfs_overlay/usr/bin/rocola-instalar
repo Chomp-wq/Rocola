@@ -29,6 +29,8 @@ basura() { grep -iv '/\$recycle\.bin/\|/recycler/\|/system volume information/';
 # EL ARRANQUE: los modulos de GRUB que van en el hueco del disco. Sin search_fs_uuid: en el mismo disco grub-install lo encuentra por la
 # particion, y con el la imagen (32 329 bytes) no cabia en el hueco de XP (62 sectores, 31 744 bytes; A4, 7-11-2026).
 GRUB_MODULOS="part_msdos ntfs"
+# El aviso del disco «sin revisar» (abajo): que paso, por que no se escribe y como se arregla en la rocola, sin raton ni teclado.
+SIN_REVISAR="El disco de la rocola quedo marcado «sin revisar»: se apago de golpe mientras Rocola OS o Windows escribian en el. Asi no escribo en el, para no arriesgar la musica. Se arregla en Windows XP: quita la memoria, prende la rocola y elige Windows XP (ESC al prender). Antes de abrir, Windows revisa el disco solo (\"Comprobando el sistema de archivos\"; puede tardar varios minutos): NO toques ningun boton mientras tanto, cualquier boton salta la revision. Luego apagala desde Inicio -> Apagar equipo y vuelve a instalar. No se toco nada."
 : > $LOG
 di() { echo "$*"; echo "$*" >> $LOG; }
 apunta() { echo "$*" >> $LOG; }
@@ -153,6 +155,11 @@ if command -v grub-mkimage >/dev/null 2>&1; then
 	apunta "arranque: $core bytes, hueco $hueco bytes"
 	[ "$core" -gt 0 ] && [ "$core" -gt "$hueco" ] && { umount "$MIRA"; para "El arranque ($core bytes) no cabe en el hueco del disco ($hueco bytes). No se toco nada."; }
 fi
+# EL DISCO «SIN REVISAR» (A4, 7-11-2026): ntfs3 marca el NTFS sucio en cuanto escribe y lo limpia con un sync o al desmontar; un apagon en
+# medio (con Rocola OS escribiendo) lo deja marcado, y entonces ntfs3 no escribe sin «force». Aqui no se fuerza: un NTFS sin revisar puede
+# tener mal la cuenta de lo ocupado y lo nuevo caeria encima de la musica. Se mira ya (la marca se lee tambien en solo lectura) y se dice
+# antes de pedir ENTER; la revisa Windows XP al prender (chkdsk).
+[ "$(sed -n 6p "/proc/fs/ntfs3/$PART/volinfo" 2>/dev/null)" = dirty ] && { apunta "/dev/$PART: el NTFS esta marcado sucio (volinfo)"; umount "$MIRA"; para "$SIN_REVISAR"; }
 [ "$libre_kb" -ge "$falta_kb" ] || { umount "$MIRA"; para "No hay sitio: hacen falta $(gb $falta_kb) libres en /dev/$PART y hay $(gb $libre_kb). No se toco nada."; }
 
 echo "Se instala en \\$OS. No se borra ni se mueve nada: la musica y lo de XP se quedan."
@@ -162,10 +169,17 @@ tecla
 if [ -n "$k" ]; then umount "$MIRA"; para "Cancelado. No se toco nada."; fi
 apunta "$(date '+%H:%M')  instalando"
 
-# 1. EL DISCO, CON ESCRITURA (solo si Windows se apago bien: ntfs3 no escribe en un NTFS a medias)
+# 1. EL DISCO, CON ESCRITURA (solo si esta bien cerrado: ntfs3 no escribe en un NTFS a medias). Si no se puede, lo que dijo ntfs3 decide
+# el aviso: el disco marcado por un apagon (sin revisar) o Windows a medias (su diario sin pasar, o hibernado).
 umount "$MIRA"; mkdir -p $M
-mount -t ntfs3 -o rw,noatime,iocharset=utf8 "/dev/$PART" $M 2>>$LOG \
-	|| para "Windows no se apago bien (o esta hibernado) y no puedo escribir en el disco sin arriesgarlo. Prende la rocola en Windows XP, apagala desde Inicio -> Apagar equipo y vuelve a intentarlo. No se toco nada."
+if ! mount -t ntfs3 -o rw,noatime,iocharset=utf8 "/dev/$PART" $M 2>>$LOG; then
+	por=$(dmesg 2>/dev/null | grep "ntfs3($PART)" | tail -3); apunta "ntfs3: $por"
+	case "$por" in
+		*dirty*) para "$SIN_REVISAR" ;;
+		*replay*) para "Windows no se apago bien (o esta hibernado) y no puedo escribir en el disco sin arriesgarlo. Prende la rocola en Windows XP (quita la memoria; ESC al prender -> Windows XP), apagala desde Inicio -> Apagar equipo y vuelve a intentarlo. No se toco nada." ;;
+		*) para "No pude escribir en el disco de la rocola (/dev/$PART). Prende la rocola en Windows XP (quita la memoria; ESC al prender -> Windows XP); si revisa el disco al arrancar, no toques ningun boton hasta que acabe. Apagala desde Inicio -> Apagar equipo y vuelve a intentarlo. No se toco nada." ;;
+	esac
+fi
 D=$M/$OS
 mkdir -p "$D/$otra" "$D/boot/grub" || para "No pude crear \\$OS en el disco."
 # Algo fallo a medias: se dice y se deja como estaba (lo de antes sigue arrancando: el arranque se cambia lo ultimo)

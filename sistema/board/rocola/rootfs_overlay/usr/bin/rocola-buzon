@@ -125,7 +125,7 @@ estado_json() {
 		--arg carga "$(cut -d' ' -f1-3 /proc/loadavg)" --arg temp "$temp" \
 		--arg mem "$(free -m 2>/dev/null | awk '/^Mem:/ {print $2" MB, libres "$7" MB"}')" \
 		--arg disco_datos "$(df -h "$DATOS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')" \
-		--arg disco_rocola "$(df -h "$OS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')" \
+		--arg disco_rocola "$(df -h "$OS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')$([ -f "$RUN/rocola-disco-revisar" ] && echo '; SIN REVISAR (un apagon lo dejo marcado): prende en Windows XP y no toques nada mientras lo revisa')" \
 		--arg rocola_corre "$([ -n "$pid" ] && echo si)" --arg rocola_desde "$desde" \
 		--arg vivo "$(leer "$RUN/rocola-vivo.txt")" \
 		--arg errores "$(cola 40 "$DATOS/rocola_error.txt")" --arg n_errores "$(grep -c '' "$DATOS/rocola_error.txt" 2>/dev/null)" \

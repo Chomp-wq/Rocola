@@ -1999,6 +1999,28 @@ Arreglos de esta revision:
   NTFS si la del UUID no tiene el sistema.
 - Lo que no se pudo probar fuera del A4: un Windows XP de verdad al elegirlo en el menu, y la tarjeta grafica y el sonido del A4.
 
+### El disco «sin revisar» (7 de noviembre de 2026)
+
+Al volver a instalar en el A4 (con el sistema 28 ya instalado) el instalador se paro: «Windows no se apago bien (o esta hibernado) y no
+puedo escribir en el disco sin arriesgarlo».
+
+- **La causa (leida en el nucleo 6.12.47 y reproducida en QEMU):** ntfs3 marca el NTFS «sucio» en el disco en cuanto crea, agranda o
+  borra un archivo (lo escribe al momento), y solo lo limpia con un `sync` o al desmontar. Con Rocola OS escribiendo en el disco (el
+  material de la IA, las conversiones, las actualizaciones), un apagon deja la marca. Despues el initramfs monta el disco con `force`
+  (para que la rocola siga arrancando), pero entonces ntfs3 no limpia la marca nunca (`real_dirty`) hasta que la revise el chkdsk de
+  Windows; y el instalador, que no fuerza, no puede escribir. Prueba: montar, crear un archivo, `poweroff -n -f` (sin sync); al montar
+  otra vez, `/proc/fs/ntfs3/sda2/volinfo` dice sucio, y montar con escritura da «volume is dirty and "force" flag is not set!».
+- **Arreglos (automaticos):**
+  - S99rocola: cada 15 s, si `volinfo` dice que el disco esta sucio por lo que se escribio en este arranque, un `sync` lo limpia. Con la
+    prueba: sucio al escribir, limpio a los 20 s, y despues del apagon el disco sale limpio.
+  - Si el disco ya venia marcado (montado con `force`), ntfs3 no lo limpia: queda `/run/rocola-disco-revisar`, rocola-actualiza no baja
+    un sistema nuevo a ese disco (1,4 GB que caerian en un NTFS sin revisar) y el buzon lo dice en `disco_rocola`.
+  - rocola-instalar mira la marca ANTES de pedir ENTER y dice como se arregla: Windows XP revisa el disco solo al prender
+    («Comprobando el sistema de archivos»; cualquier boton la salta) y despues se apaga desde Inicio. Si el montaje con escritura falla
+    por otra cosa, distingue por lo que dijo ntfs3 la marca (`dirty`) de Windows a medias (`replay`: su diario sin pasar, o hibernado).
+- **El instalador nunca escribe con `force`:** un NTFS sin revisar puede tener mal la cuenta de lo ocupado y lo nuevo caeria encima de la
+  musica. Probado en QEMU (el disco sucio, el aviso, la limpieza y una instalacion normal en un disco limpio); no en el A4.
+
 ## La compilacion rapida del sistema (7 de noviembre de 2026)
 
 El dueño pregunto como hacer mas rapidas las compilaciones del sistema y eligio «la 1». La completa tardaba unos 34 min, 30 de ellos
