@@ -141,6 +141,7 @@ namespace Rocola
         // Medir la duracion sin tocarlo (el medidor de la biblioteca): con ffprobe, como lo mide Rocola OS
         public MedioWmp newMedia(string ruta) { return new MedioWmp(ruta, DuracionDe(ruta)); }
 
+        internal double NumeroMpv(string nombre) { IntPtr m = mpv; return m != IntPtr.Zero ? Mpv.Numero(m, nombre) : -1; }   // (pruebas)
         internal int Volumen { get { return volumen; } }
         internal bool Mudo { get { return mudo; } }
         internal double Duracion { get { IntPtr m = mpv; double d = m != IntPtr.Zero ? Mpv.Numero(m, "duration") : -1; return d > 0 ? d : 0; } }
@@ -167,6 +168,8 @@ namespace Rocola
             string alsa = Environment.GetEnvironmentVariable("ROCOLA_ALSA");
             Mpv.mpv_set_option_string(m, "ao", "alsa");
             if (!string.IsNullOrEmpty(alsa)) Mpv.mpv_set_option_string(m, "audio-device", "alsa/" + alsa);
+            string mas = Environment.GetEnvironmentVariable("ROCOLA_VIDEO_OPCIONES");   // (pruebas) clave=valor;clave=valor para mpv, al final
+            if (!string.IsNullOrEmpty(mas)) foreach (string o in mas.Split(';')) { int k = o.IndexOf('='); if (k > 0) Mpv.mpv_set_option_string(m, o.Substring(0, k), o.Substring(k + 1)); }
             if (Mpv.mpv_initialize(m) < 0) { Mpv.mpv_terminate_destroy(m); throw new InvalidOperationException("libmpv no inicia"); }
             mpv = m;
             if (host != null) CreaRender();   // ANTES de cargar nada: si el video empieza sin el, mpv lo deja sin imagen (solo sonido)
@@ -174,6 +177,7 @@ namespace Rocola
             eventos = new Thread(Eventos) { IsBackground = true, Name = "video: mpv" };
             eventos.Start();
         }
+        private static readonly bool traza = Environment.GetEnvironmentVariable("ROCOLA_VIDEO_TRAZA") == "1";
         private void Eventos()
         {
             IntPtr m = mpv;
@@ -181,6 +185,7 @@ namespace Rocola
             {
                 Mpv.Evento* e = (Mpv.Evento*)Mpv.mpv_wait_event(m, 1.0);
                 if (e == null || fin) continue;
+                if (e->Id != 0 && traza) Console.Error.WriteLine("video: aviso " + e->Id + " error " + e->Error);
                 switch (e->Id)
                 {
                     case 1: return;                                 // SHUTDOWN
@@ -245,6 +250,8 @@ namespace Rocola
                 p[1].Tipo = Mpv.PARAM_INIT_GL; p[1].Dato = &ini;
                 p[2].Tipo = 0; p[2].Dato = null;
                 IntPtr rc;
+                EstadoDeFabrica(Math.Max(1, host.Width), Math.Max(1, host.Height));
+                if (vuelcaEstado > 0) VuelcaEstado();
                 int er = Mpv.mpv_render_context_create(&rc, mpv, p);
                 if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_TRAZA") == "1") Console.Error.WriteLine("video: render de libmpv = " + er);
                 if (er < 0) return;
@@ -273,16 +280,16 @@ namespace Rocola
             if ((cambios & 1) != 0 || otra)
             {
                 Mpv.Fbo destino = new Mpv.Fbo { Nombre = (int)fbo, W = w, H = h, Formato = 0 };
-                int gira = 1;   // la fila 0 arriba, como lo pinta la tarjeta (el anfitrion la pone derecha)
+                int gira = 0;   // sin girar, mpv deja la fila 0 arriba, como lo pinta la tarjeta (el anfitrion la pone derecha); con 1 salia de cabeza
                 int sinBloquear = 0;   // que no espere aqui la hora del cuadro: el panel de la tarjeta sigue a su ritmo (en XP el WMP iba aparte)
                 Mpv.Param* p = stackalloc Mpv.Param[4];
                 p[0].Tipo = Mpv.PARAM_FBO; p[0].Dato = &destino;
                 p[1].Tipo = Mpv.PARAM_GIRA_Y; p[1].Dato = &gira;
                 p[2].Tipo = Mpv.PARAM_SIN_BLOQUEO; p[2].Dato = &sinBloquear;
                 p[3].Tipo = 0; p[3].Dato = null;
-                if (aislar) EstadoParaMpv();   // (prueba: ROCOLA_VIDEO_AISLAR=1; con llvmpipe no lo arreglo)
+                EstadoDeFabrica(w, h);   // mpv cuenta con el estado de fabrica de OpenGL (ver abajo)
+                if (vuelcaEstado > 0) { vuelcaEstado--; VuelcaEstado(); }
                 int rr = Mpv.mpv_render_context_render(render, p);
-                if (aislar) SueltaEstadoMpv();
                 if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_FINISH") == "1") GL.Finish(); else GlMas.Flush();   // sin esto, al componer la textura aun salia negra (medido con llvmpipe)
                 if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_TRAZA") == "1")
                 {
@@ -291,7 +298,7 @@ namespace Rocola
                     uint st = GL.CheckFramebufferStatus(GL.FRAMEBUFFER);
                     byte* px = stackalloc byte[4];
                     GL.ReadPixels(w / 2, h / 2, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, px);
-                    Console.Error.WriteLine("video: cuadro " + w + "x" + h + " = " + rr + " glError=" + ge.ToString("x") + " fbo=" + st.ToString("x") + " centro=" + px[0] + "," + px[1] + "," + px[2] + "," + px[3]);
+                    Console.Error.WriteLine("video: " + (Escritorio.AhoraMs / 1000.0).ToString("0.00", CultureInfo.InvariantCulture) + " s cuadro " + w + "x" + h + " = " + rr + " glError=" + ge.ToString("x") + " fbo=" + st.ToString("x") + " centro=" + px[0] + "," + px[1] + "," + px[2] + "," + px[3]);
                 }
                 hayCuadro = false;
             }
@@ -299,36 +306,61 @@ namespace Rocola
             D3D9.EnGl.EstadoTocado();
         }
 
-        // EL ESTADO DE OPENGL ENTRE MPV Y LA ROCOLA (el mismo contexto). La rocola dibuja con atributos de vertices en la memoria del
-        // programa (sin VAO) y mpv con los suyos (VAO en OpenGL ES 3): antes de que pinte mpv no queda nada nuestro activo, y despues se
-        // suelta el VAO de mpv para que lo nuestro no le cambie los suyos.
-        private static readonly bool aislar = Environment.GetEnvironmentVariable("ROCOLA_VIDEO_AISLAR") == "1";
-        private static delegate* unmanaged<uint, void> atarVao;
-        private static bool vaoBuscado;
-        private static void EstadoParaMpv()
+        // EL ESTADO DE OPENGL ENTRE MPV Y LA ROCOLA (el mismo contexto). libmpv pide que cuando se le llama OpenGL este «en sus valores de
+        // fabrica» (render_gl.h, «OpenGL state»): sin mezcla, sin recorte, la mascara de color entera, la unidad de textura 0... Aqui llega con
+        // lo que dejo la traduccion de Direct3D (la mezcla encendida con la de la rocola, el alfa enmascarado en las superficies X8, sus
+        // vertices): con la mezcla puesta, cada pase de mpv se mezclaba con lo que tenia su textura intermedia del cuadro anterior y los
+        // colores se iban sumando hasta quedar en magenta a los pocos segundos (medido con llvmpipe), y el alfa salia en 0. Asi que antes de
+        // cada llamada a mpv se pone ese estado (con el area de dibujo del tamano del video, como la de una ventana nueva); despues,
+        // EstadoTocado le dice a la traduccion que vuelva a poner el suyo.
+        private const uint STENCIL_TEST = 0x0B90, POLYGON_OFFSET_FILL = 0x8037, SAMPLE_ALPHA_TO_COVERAGE = 0x809E, SAMPLE_COVERAGE = 0x80A0,
+            ELEMENT_ARRAY_BUFFER = 0x8893, FUNC_ADD = 0x8006;
+        [DllImport("libGLESv2.so.2", EntryPoint = "glBlendEquation")] private static extern void BlendEquation(uint modo);
+        [DllImport("libGLESv2.so.2", EntryPoint = "glDepthMask")] private static extern void DepthMask(byte si);
+        // (pruebas) ROCOLA_VIDEO_ESTADO=N: el estado de OpenGL antes de las N primeras llamadas a mpv
+        private static int vuelcaEstado = int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_VIDEO_ESTADO"), out int ve) ? ve : 0;
+        [DllImport("libGLESv2.so.2", EntryPoint = "glIsEnabled")] private static extern byte IsEnabled(uint c);
+        [DllImport("libGLESv2.so.2", EntryPoint = "glGetVertexAttribfv")] private static extern void GetVertexAttribfv(uint i, uint q, float* v);
+        [DllImport("libGLESv2.so.2", EntryPoint = "glGetVertexAttribiv")] private static extern void GetVertexAttribiv(uint i, uint q, int* v);
+        private static void VuelcaEstado()
         {
-            for (uint i = 0; i < 8; i++) GlMas.DisableVertexAttribArray(i);
-            GL.BindBuffer(GL.ARRAY_BUFFER, 0);
-            GL.UseProgram(0);
-            for (uint i = 0; i < 4; i++) { GL.ActiveTexture(GL.TEXTURE0 + i); GL.BindTexture(GL.TEXTURE_2D, 0); }
-            GL.ActiveTexture(GL.TEXTURE0);
-            GL.Disable(GL.BLEND); GL.Disable(GL.SCISSOR_TEST); GL.Disable(GlMas.DEPTH_TEST); GL.Disable(GlMas.CULL_FACE);
-            GlMas.ColorMask(1, 1, 1, 1);
-            GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4); GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
-        }
-        private static void SueltaEstadoMpv()
-        {
-            if (!vaoBuscado)
+            System.Text.StringBuilder sb = new System.Text.StringBuilder("video: estado");
+            uint[] enteros = { 0x84E0, 0x8894, 0x8895, 0x85B5, 0x8B8D, 0x8CA6, 0x8CAA, 0x8CA7, 0x8069, 0x88ED, 0x88EF, 0x8A28, 0x8E25, 0x8919,
+                0x0CF5, 0x0D05, 0x0CF2, 0x0CF3, 0x0CF4, 0x806E, 0x806D, 0x0D02, 0x0D03, 0x0D04, 0x8825, 0x0C02, 0x8192, 0x8B8B, 0x0B44, 0x0B45, 0x0B46,
+                0x0B74, 0x0B92, 0x0B93, 0x0B94, 0x0B95, 0x0B96, 0x0B97, 0x0B98, 0x0BC1, 0x8009, 0x883D, 0x80C8, 0x80C9, 0x80CA, 0x80CB, 0x0B21, 0x0BC0, 0x0BC2 };
+            int* v = stackalloc int[4];
+            foreach (uint e in enteros) { v[0] = -12345; GL.GetIntegerv(e, v); sb.Append(' ').Append(e.ToString("x")).Append('=').Append(v[0]); GlMas.GetError(); }
+            uint[] capacidades = { 0x0BE2, 0x0C11, 0x0B71, 0x0B44, 0x0B90, 0x0BD0, 0x8037, 0x809E, 0x80A0, 0x8D69, 0x8C89, 0x8DB9, 0x8E50 };
+            foreach (uint c in capacidades) { sb.Append(" en").Append(c.ToString("x")).Append('=').Append(IsEnabled(c)); GlMas.GetError(); }
+            GL.GetIntegerv(0x0BA2, v); sb.Append(" vista=").Append(v[0]).Append(',').Append(v[1]).Append(',').Append(v[2]).Append(',').Append(v[3]);
+            GL.GetIntegerv(0x0C10, v); sb.Append(" recorte=").Append(v[0]).Append(',').Append(v[1]).Append(',').Append(v[2]).Append(',').Append(v[3]);
+            GL.GetIntegerv(0x0C23, v); 
+            float* f = stackalloc float[4];
+            for (uint a = 0; a < 8; a++)
             {
-                vaoBuscado = true;
-                byte[] n = System.Text.Encoding.ASCII.GetBytes("glBindVertexArray\0");
-                fixed (byte* q = n) atarVao = (delegate* unmanaged<uint, void>)Mpv.eglGetProcAddress((sbyte*)q);
-                if (atarVao == null) { byte[] n2 = System.Text.Encoding.ASCII.GetBytes("glBindVertexArrayOES\0"); fixed (byte* q = n2) atarVao = (delegate* unmanaged<uint, void>)Mpv.eglGetProcAddress((sbyte*)q); }
+                int on = 0; GetVertexAttribiv(a, 0x8622, &on);
+                GetVertexAttribfv(a, 0x8626, f);
+                sb.Append(" atr").Append(a).Append('=').Append(on).Append(':').Append(f[0]).Append(',').Append(f[1]).Append(',').Append(f[2]).Append(',').Append(f[3]);
             }
-            if (atarVao != null) atarVao(0);
-            GL.BindBuffer(GL.ARRAY_BUFFER, 0);
-            for (uint i = 0; i < 8; i++) GlMas.DisableVertexAttribArray(i);
+            for (uint u = 0; u < 4; u++) { GL.ActiveTexture(GL.TEXTURE0 + u); int t = 0; GL.GetIntegerv(0x8069, &t); int sm = 0; GL.GetIntegerv(0x8919, &sm); sb.Append(" u").Append(u).Append('=').Append(t).Append('/').Append(sm); }
+            GL.ActiveTexture(GL.TEXTURE0);
+            sb.Append(" error=").Append(GlMas.GetError().ToString("x"));
+            Console.Error.WriteLine(sb.ToString());
+        }
+        internal static void EstadoDeFabrica(int w, int h)
+        {
+            GL.Viewport(0, 0, w, h);   // (el de fabrica es el tamano de la ventana; sin el -0x0 en una pantalla fuera de pantalla recien abierta- los
+                                       // escaladores de calidad de mpv pintaban negro: medido con llvmpipe)
+            GL.Disable(GL.BLEND); GL.Disable(GL.SCISSOR_TEST); GL.Disable(GlMas.DEPTH_TEST); GL.Disable(GlMas.CULL_FACE);
+            GL.Disable(STENCIL_TEST); GL.Disable(POLYGON_OFFSET_FILL); GL.Disable(SAMPLE_ALPHA_TO_COVERAGE); GL.Disable(SAMPLE_COVERAGE);
+            GL.BlendFunc(GL.ONE, GlMas.ZERO); BlendEquation(FUNC_ADD);
+            GlMas.ColorMask(1, 1, 1, 1); DepthMask(1);
+            for (uint u = 0; u < 2; u++) { GL.ActiveTexture(GL.TEXTURE0 + u); GL.BindTexture(GL.TEXTURE_2D, 0); }   // (las dos etapas de la rocola)
+            GL.ActiveTexture(GL.TEXTURE0);
             GL.UseProgram(0);
+            for (uint a = 0; a < 4; a++) GlMas.DisableVertexAttribArray(a);   // (los vertices de la rocola, en su memoria)
+            GL.BindBuffer(GL.ARRAY_BUFFER, 0); GL.BindBuffer(ELEMENT_ARRAY_BUFFER, 0);
+            GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4); GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
         }
 
         // Despues de presentar la pantalla (el anfitrion): a mpv le sirve para llevar el ritmo de los cuadros
@@ -356,7 +388,7 @@ namespace Rocola
             fin = true;
             lock (Vivos) Vivos.Remove(this);
             IntPtr rc = render; render = IntPtr.Zero;
-            if (rc != IntPtr.Zero) Mpv.mpv_render_context_free(rc);   // (en el hilo de la pantalla: el AxHost se suelta ahi)
+            if (rc != IntPtr.Zero) { EstadoDeFabrica(Math.Max(1, texW), Math.Max(1, texH)); Mpv.mpv_render_context_free(rc); D3D9.EnGl.EstadoTocado(); }   // (en el hilo de la pantalla: el AxHost se suelta ahi)
             if (propio.IsAllocated) propio.Free();
             IntPtr m = mpv;
             if (m != IntPtr.Zero)

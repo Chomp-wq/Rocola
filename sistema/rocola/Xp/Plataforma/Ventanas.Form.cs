@@ -125,7 +125,7 @@ namespace Rocola.Ventanas
         public static string ProductVersion { get { return "1.0"; } }
         public static void EnableVisualStyles() { }
         public static void SetCompatibleTextRenderingDefault(bool defaultValue) { }
-        public static void SetUnhandledExceptionMode(UnhandledExceptionMode mode) { }
+        public static void SetUnhandledExceptionMode(UnhandledExceptionMode mode) { PruebasLinux.DespuesDelInicio(); }   // (pruebas de Linux que necesitan hilos: aqui ya acabo el inicializador del modulo)
         public static void DoEvents() { Escritorio.Vuelta(false); }
         public static void Exit() { Saliendo = true; Escritorio.Despierta(); }
         public static void ExitThread() { Exit(); }
