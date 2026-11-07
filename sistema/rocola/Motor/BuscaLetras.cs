@@ -45,7 +45,8 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ArchivoLetrasMp3)) return;
-                foreach (string l in File.ReadAllLines(ArchivoLetrasMp3))
+                string[] lineas = File.ReadAllLines(ArchivoLetrasMp3);
+                foreach (string l in lineas)
                 {
                     string[] c = l.Split('\t');
                     if (c.Length < 4) continue;
@@ -54,6 +55,23 @@ namespace Rocola
                     long.TryParse(c[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out x.Fecha);
                     x.Palabras = c[3].Length == 0 ? null : c[3].Split(' ');
                     lock (letrasMp3) letrasMp3[c[0]] = x;
+                }
+                // SE COMPACTA (7-11-2026): el repaso solo anade lineas, asi que cada MP3 que cambia deja la suya de antes. Si sobra mas
+                // de un tercio (y al menos 200 lineas), se reescribe con la ultima de cada archivo (no se mira si existe: con el disco de
+                // la musica aun sin montar se perderia todo). Se escribe aparte y se cambia de un golpe (sin perder el archivo si falla).
+                int vale; lock (letrasMp3) vale = letrasMp3.Count;
+                if (lineas.Length - vale >= 200 && lineas.Length > vale * 3 / 2)
+                {
+                    StringBuilder sb = new StringBuilder();
+                    lock (letrasMp3)
+                        foreach (KeyValuePair<string, LetraMp3> kv in letrasMp3)
+                        {
+                            sb.Append(kv.Key).Append('\t').Append(kv.Value.Tam.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(kv.Value.Fecha.ToString(CultureInfo.InvariantCulture))
+                              .Append('\t').Append(kv.Value.Palabras == null ? "" : string.Join(" ", kv.Value.Palabras)).Append('\n');
+                        }
+                    string tmp = ArchivoLetrasMp3 + ".nuevo";
+                    File.WriteAllText(tmp, sb.ToString());
+                    File.Move(tmp, ArchivoLetrasMp3, true);
                 }
             }
             catch (Exception ex) { LogError("rocola_letras_mp3.txt", ex); }

@@ -1666,3 +1666,7 @@ casilla escogida mostrando los resultados de dicho artista, y al volver estarás
 - **Los fuegos de las fiestas usaban una hora fija** (desde las 19:00), que en verano todavía es de día. Ahora salen cuando ya oscureció
   según el sol.
 - **La hora del clima se guarda en UTC**, para no convertir la zona horaria en cada cuadro al ver si caducó.
+- **El archivo de las letras de los MP3 solo crecía.** `rocola_letras_mp3.txt` solo recibe líneas nuevas, así que cada MP3 que
+  cambiaba dejaba su línea vieja. Ahora, al leerlo, si sobra más de un tercio (y al menos 200 líneas), se reescribe con la última línea
+  de cada archivo: aparte y cambiado de un golpe. No se mira si los archivos existen, porque con el disco de la música aún sin montar se
+  perdería todo. Probado: 300 líneas de 50 archivos quedaron en 50.
