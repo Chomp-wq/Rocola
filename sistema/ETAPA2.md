@@ -2013,3 +2013,23 @@ Buildroot rehaciendo todo (con ccache), aunque casi siempre solo cambian scripts
   otras rapidas.
 - Probado aqui con la compilacion de QEMU como base: 2 min 15 s con el programa; dentro, el instalador, el menu, el init, la version y
   el programa nuevos; las sumas bien, e2fsck limpio y el nucleo llega a /sbin/init. Aun no corrido en GitHub.
+
+## El raton, ver si hay internet y Spotify a la vista (7 de noviembre de 2026)
+
+Con Rocola OS ya instalado en el A4, el dueño encontro que no habia raton, ni forma de saber si habia internet, y que Spotify, ya
+conectado, no se veia. La rocola esta por cable.
+
+- **El raton** (`Consola/Raton.cs`, `Motor/Botones.cs`): se leen el movimiento (EV_REL), la rueda, los botones y las pantallas
+  tactiles (EV_ABS con sus limites por EVIOCGABS). Los aparatos conectados con la rocola ya prendida se abren solos (cada 2 s; antes un
+  raton o un teclado enchufados despues no se leian nunca). La vista apunta al dibujar donde quedo cada cosa tocable (letras, portadas,
+  canciones, teclas, atajos, tarjetas, pestanas, Listo, renglones y barras de Ctrl+F3) y el clic busca la de encima, solo entre las de
+  la pantalla que esta delante. Sin raton no se apunta nada (no cuesta). Derecho = REGRESAR, rueda = ARRIBA/ABAJO. Las canciones se
+  piden con un segundo clic en la misma (cuestan un credito). Las barras van a donde se toca, paso a paso con los pasos de cada ajuste.
+  Pruebas: `--boton raton:X,Y`, `clic`, `clicderecho`, `rueda+`, `rueda-`.
+- **Internet** (`Consola/Conexion.cs`): de fondo, con prioridad minima; la barra azul de Ctrl+F3 lo dice siempre a la derecha
+  («Internet: si (45 ms)», «Sin cable de red», «Sin dirección», «Sin internet», «Internet sin DNS») y la hoja Internet explica donde
+  se corta y cuando tuvo internet por ultima vez. Prueba: `--boton red`.
+- **Spotify**: pestana propia en Ctrl+F3 (estaba al final de Sonido; RePag/AvPag o Tab, o el clic, cambian de pestana). El recuadro
+  dice si la API web de Spotify falla (cuantas peticiones bien y mal y el ultimo codigo): sin eso, conectado y sin nada a la vista no
+  se sabia por que.
+- No probado en el A4: el raton real, la red del bar ni la cuenta de Spotify.

@@ -115,39 +115,105 @@ namespace Rocola
             return false;
         }
 
-        // Abre todos los /dev/input/event* que se dejen leer y escucha cada uno en su hilo. Devuelve cuantos abrio.
+        // EL RATON (7-11-2026, en el A4 no se podia usar): lo que llega de un raton (o una pantalla tactil) se entrega aparte, ya juntado por
+        // cada SYN_REPORT. Tipo 1: se movio (a, b = dx, dy en cuentas del raton); 2: la rueda (a = +1 arriba, -1 abajo); 3: un boton
+        // bajado (a = 1 izquierdo o toque, 2 derecho, 3 el de en medio); 4: posicion absoluta (a, b de 0 a 65535: pantalla tactil, tableta).
+        public event Action<int, int, int> Raton;
+        private const int EV_SYN = 0, EV_REL = 2, EV_ABS = 3, BTN_LEFT = 272, BTN_RIGHT = 273, BTN_MIDDLE = 274, BTN_TOUCH = 330;
+
+        // Abre todos los /dev/input/event* que se dejen leer y escucha cada uno en su hilo. Devuelve cuantos abrio. Y LOS QUE SE CONECTEN
+        // DESPUES (7-11-2026: un raton o un teclado enchufados con la rocola ya prendida no se leian nunca): se mira cada 2 s.
+        private readonly HashSet<string> rutas = new HashSet<string>();
+        private string carpetaEntrada;
         public int Escucha(string carpeta = "/dev/input")
         {
+            carpetaEntrada = carpeta;
+            int n = AbreNuevos();
+            Thread vig = new Thread(delegate () { while (!parar) { Thread.Sleep(2000); try { AbreNuevos(); } catch { } } }) { IsBackground = true, Name = "botones nuevos" };
+            vig.Start();
+            return n;
+        }
+        private int AbreNuevos()
+        {
             string[] dev;
-            try { dev = Directory.GetFiles(carpeta, "event*"); } catch { return 0; }
+            try { dev = Directory.GetFiles(carpetaEntrada, "event*"); } catch { return 0; }
+            int n = 0;
             foreach (string d in dev)
             {
+                lock (rutas) if (rutas.Contains(d)) continue;
                 FileStream f;
                 try { f = new FileStream(d, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1, false); } catch { continue; }
-                abiertos.Add(f);
-                Thread h = new Thread(delegate () { Lee(f); }) { IsBackground = true, Name = "botones " + Path.GetFileName(d) };
-                hilos.Add(h); h.Start();
+                lock (rutas) { rutas.Add(d); abiertos.Add(f); }
+                n++;
+                string ruta = d;
+                Thread h = new Thread(delegate () { try { Lee(f, ruta); } finally { lock (rutas) { rutas.Remove(ruta); abiertos.Remove(f); } try { f.Dispose(); } catch { } } }) { IsBackground = true, Name = "botones " + Path.GetFileName(d) };
+                lock (hilos) hilos.Add(h);
+                h.Start();
             }
-            return abiertos.Count;
+            return n;
+        }
+        // LOS LIMITES DE UN EJE ABSOLUTO (EVIOCGABS: struct input_absinfo, 6 int: valor, minimo, maximo, ...)
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+        private static extern int ioctl(IntPtr fd, uint pedido, int[] info);
+        private static bool Limites(FileStream f, int eje, out int min, out int max)
+        {
+            min = 0; max = 0;
+            try
+            {
+                int[] info = new int[6];
+                if (ioctl(f.SafeFileHandle.DangerousGetHandle(), 0x80184540u + (uint)eje, info) < 0) return false;
+                min = info[1]; max = info[2]; return max > min;
+            }
+            catch { return false; }
         }
 
         // struct input_event de 64 bits: tiempo (16 bytes), tipo (2), codigo (2), valor (4) = 24 bytes.
-        private void Lee(FileStream f)
+        private void Lee(FileStream f, string ruta)
         {
             byte[] e = new byte[24];
+            int dx = 0, dy = 0, ax = -1, ay = -1, xmin = 0, xmax = 0, ymin = 0, ymax = 0; bool conAbs = false, absVisto = false;
             while (!parar)
             {
                 int n = 0;
                 try { while (n < 24) { int k = f.Read(e, n, 24 - n); if (k <= 0) return; n += k; } }
                 catch { return; }   // se desconecto el aparato
                 int tipo = BitConverter.ToUInt16(e, 16), codigo = BitConverter.ToUInt16(e, 18), valor = BitConverter.ToInt32(e, 20);
+                if (tipo == EV_REL)
+                {
+                    if (codigo == 0) dx += valor; else if (codigo == 1) dy += valor;
+                    else if (codigo == 8 && valor != 0) Avisa(2, valor > 0 ? 1 : -1, 0);   // REL_WHEEL (sin acumular: cada muesca cuenta)
+                    continue;
+                }
+                if (tipo == EV_ABS && (codigo == 0 || codigo == 1))   // ABS_X, ABS_Y
+                {
+                    if (!absVisto) { absVisto = true; conAbs = Limites(f, 0, out xmin, out xmax) & Limites(f, 1, out ymin, out ymax); }
+                    if (conAbs) { if (codigo == 0) ax = valor; else ay = valor; }
+                    continue;
+                }
+                if (tipo == EV_SYN && codigo == 0)
+                {
+                    if (dx != 0 || dy != 0) { Avisa(1, dx, dy); dx = dy = 0; }
+                    if (conAbs && (ax >= 0 || ay >= 0))
+                    {
+                        Avisa(4, ax < 0 ? -1 : (int)((ax - xmin) * 65535L / (xmax - xmin)), ay < 0 ? -1 : (int)((ay - ymin) * 65535L / (ymax - ymin)));
+                        ax = ay = -1;
+                    }
+                    continue;
+                }
                 if (tipo != EV_KEY) continue;
+                if (codigo == BTN_LEFT || codigo == BTN_RIGHT || codigo == BTN_MIDDLE || codigo == BTN_TOUCH)
+                {
+                    if (valor == 1) Avisa(3, codigo == BTN_RIGHT ? 2 : codigo == BTN_MIDDLE ? 3 : 1, 0);
+                    continue;   // (los botones del raton no son teclas de la rocola)
+                }
                 if (valor == 0) { lock (apretadas) apretadas.Remove(CodigoWindows(codigo)); continue; }   // al soltar: ya no esta apretado
                 if (valor != 1) continue;   // cuenta solo al bajar (1), no al repetirse (2)
                 lock (apretadas) apretadas.Add(CodigoWindows(codigo));
                 Entrega(codigo);
             }
         }
+        private void Avisa(int tipo, int a, int b) { Action<int, int, int> r = Raton; if (r != null) r(tipo, a, b); }
+        public void AvisaRaton(int tipo, int a, int b) { Avisa(tipo, a, b); }   // (pruebas)
         // Lo que se leyo de un aparato (o de una prueba): codigo de Linux.
         public void Entrega(int codigoLinux)
         {
@@ -161,7 +227,8 @@ namespace Rocola
         public void Dispose()
         {
             parar = true;
-            foreach (FileStream f in abiertos) { try { f.Dispose(); } catch { } }
+            List<FileStream> l; lock (rutas) l = new List<FileStream>(abiertos);
+            foreach (FileStream f in l) { try { f.Dispose(); } catch { } }
         }
     }
 }

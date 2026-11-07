@@ -126,6 +126,7 @@ namespace Rocola
             for (int i = 0; i < n; i++)
             {
                 float cx = x0 + 8 * k + paso * (i + 0.5f);
+                c.Zona(cx - paso / 2, y, paso, h, Controlador.ClicLetra, i);   // (Raton.cs)
                 bool sel = i == c.letra;
                 string l = Controlador.NombreLetra(c.letras[i]);
                 Letra f = sel ? nMedia : nChica;
@@ -209,6 +210,7 @@ namespace Rocola
                     if ((pasada == 1) != sel) continue;
                     Form1.Disco disco = ds[n];
                     float cx = margen + (i % cols) * celW + celW / 2 + dx(i % cols), y0 = top + (i / cols) * celH + 6 * k;
+                    if (viva && pasada == 0) c.Zona(cx - celW / 2, top + (i / cols) * celH, celW, celH, Controlador.ClicDisco, n);   // (Raton.cs)
                     if (sel && (focoDisco != n || focoCarpeta != disco.Carpeta))
                     {
                         // EL RELEVO DE GIRO (AlbumView.MoveSelectionTo de XP): el que se deja da un giro rapido que se apaga y el nuevo arranca plano

@@ -136,6 +136,7 @@ namespace Rocola
                 if (AsistentePaso < 0 && botones != null && botones.FuncionDe(vk) != Boton.Ninguno) { Pulsa(botones.FuncionDe(vk), true); return; }
             }
             if (AsistentePaso >= 0) { CapturaAsistente(vk); return; }
+            if (AjusteSel >= 0 && (vk == 0x21 || vk == 0x22 || vk == 0x09) && (botones == null || botones.FuncionDe(vk) == Boton.Ninguno)) { PaginaAjustes(vk == 0x21 ? -1 : 1); return; }   // RePag/AvPag/Tab: otra pestana
             if (vk == 0x77 && (botones == null || botones.FuncionDe(vk) == Boton.Ninguno)) { EmpiezaAsistente(); return; }   // F8, como en XP
             Boton b = botones != null ? botones.FuncionDe(vk) : Boton.Ninguno;
             if (b != Boton.Ninguno) Maneja(b);
@@ -213,6 +214,8 @@ namespace Rocola
                 this.botones = botones;
                 botones.PulsadoConRegresar += delegate (Boton b, int vk, bool conRegresar)
                 { if (vk != 0) pulsos.Add(vk | (conRegresar ? ConRegresar : 0) | (botones.TeclaApretada(0x11) ? ConCtrl : 0)); };
+                ConectaRaton(botones);   // (Raton.cs)
+                Conexion.Empieza();   // ¿hay internet? (Conexion.cs: de fondo; lo ensena Ctrl+F3)
                 if (!botones.DeArchivo) EmpiezaAsistente();   // sin rocola_teclas.txt: el asistente (como XP la primera vez)
                 int n = botones.Escucha();
                 Console.WriteLine((botones.DeArchivo ? "Botones de rocola_teclas.txt" : "Botones de teclado (sin rocola_teclas.txt)") + "; " + n + " aparatos de entrada");   // (7-11-2026: al registro; en la pantalla lo veian los clientes al arrancar)
@@ -239,6 +242,8 @@ namespace Rocola
                             if (pulsos.TryTake(out vk, vista.Anima && video == null ? 0 : 50))   // con la pantalla, el ritmo lo pone el barrido (Presenta espera)
                                 do { if (vk == 0) { fin = true; break; } motor.HuboBoton(); Tecla(vk); } while (pulsos.TryTake(out vk, 0));
                             if (fin) break;
+                            AtiendeRaton();   // el raton (Raton.cs), como los botones: antes de dibujar
+                            Conexion.Prisa = AjusteSel >= 0;
                             motor.PublicaMedidas();
                             ActualizaCodigo();
                             RevisaAtraccion();
@@ -705,6 +710,20 @@ namespace Rocola
             }
             RecuadroTitulo = "LO QUE SUENA AHORA";
             try { LoQueSuena = motor.TextoLoQueSuena(); string ciego = motor.TextoCiego(); if (motor.CiegoActivo || ciegoVisto) { LoQueSuena += "\n" + ciego; ciegoVisto = true; } } catch (Exception ex) { LoQueSuena = ""; motor.ApuntaError("Lo que suena ahora", ex); }
+        }
+        // A OTRA PESTANA (7-11-2026): RePag/AvPag o Tab con el teclado, y el clic en una pestana: al primer ajuste de esa pagina.
+        internal void PaginaAjustes(int dir)
+        {
+            IList<Form1.Ajuste> l = ListaAjustes; if (AjusteSel < 0 || l.Count == 0) return;
+            string actual = AjusteSel < l.Count ? Form1.PaginaDe(l[AjusteSel].Grupo) : "Detalles";
+            string[] pgs = Form1.PaginasAjustes; int i = Array.IndexOf(pgs, actual);
+            for (int paso = 1; paso <= pgs.Length; paso++) { string pg = pgs[((i + dir * paso) % pgs.Length + pgs.Length) % pgs.Length]; if (IrAPaginaAjustes(pg)) return; }
+        }
+        internal bool IrAPaginaAjustes(string pg)
+        {
+            IList<Form1.Ajuste> l = ListaAjustes;
+            for (int j = 0; j < l.Count; j++) if (Form1.PaginaDe(l[j].Grupo) == pg) { AjusteSel = j; ultimoLoQueSuena = 0; RevisaLoQueSuena(); return true; }
+            return false;
         }
         private void CierraAjustes() { AjusteSel = -1; ciegoVisto = false; motor.ParaPrueba(); motor.CortaCiego("Ventana cerrada: comparacion cortada. "); if (motor.SinMejorasQuedan() > 0) motor.PonSinMejoras(false); }   // como XP al cerrar la ventana
         private void ManejaAjustes(Boton b)

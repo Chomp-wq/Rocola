@@ -101,6 +101,9 @@ namespace Rocola
         // Lo que dice el programa (lo pregunta un hilo cada 400 ms).
         internal volatile bool Conectado, EsperandoCuenta;
         internal volatile string Usuario = "", Acabo = "", Error = "";
+        // LA API WEB (la biblioteca, el buscador; 7-11-2026: en el A4, conectado y sin nada a la vista, sin saber por que): cuantas veces
+        // contesto y cuantas fallo, y lo ultimo que dijo al fallar; Ctrl+F3 -> Spotify lo ensena.
+        internal int ApiBien, ApiMal; internal volatile string ApiFallo = ""; internal DateTime ApiFalloCuando;
         // V3 (7-11-2026): los datos de volumen de la ultima cancion que empezo (rocola-spotify los lee del registro de librespot): su pico
         // y el factor que ya le aplico la normalizacion de Spotify; NormN sube con cada cancion (0: un rocola-spotify viejo, sin ellos)
         internal long NormN; internal volatile float NormPico, NormFactor = 1f;
@@ -363,8 +366,16 @@ namespace Rocola
             if (s == null) return null;
             using (JsonDocument d = (prisa ? s.Prisa : s.Api).Pide(ControlSpotify.Orden("api", "ruta", ruta), 20000))
             {
-                if (d == null) return null;
+                if (d == null) { Interlocked.Increment(ref s.ApiMal); s.ApiFallo = "rocola-spotify no contesto (" + ruta + ")"; s.ApiFalloCuando = DateTime.Now; return null; }
                 JsonElement r = d.RootElement;
+                if (!SpotifyEnVivo.Bool(r, "ok"))
+                {
+                    Interlocked.Increment(ref s.ApiMal);
+                    string est = r.TryGetProperty("estado", out JsonElement e0) ? e0.ToString() : "", err = SpotifyEnVivo.Texto(r, "error");
+                    s.ApiFallo = (est.Length > 0 ? "Spotify contesto " + est + (est == "429" ? " (demasiadas peticiones: Spotify esta frenando a esta cuenta o a este programa)" : est == "401" || est == "403" ? " (no deja leer esto con esta llave)" : "") : err) + "  [" + Recorta(ruta, 40) + "]";
+                    s.ApiFalloCuando = DateTime.Now;
+                }
+                else Interlocked.Increment(ref s.ApiBien);
                 if (!SpotifyEnVivo.Bool(r, "ok")) { s.Apunta("API " + ruta + ": " + SpotifyEnVivo.Texto(r, "error") + " " + (r.TryGetProperty("estado", out JsonElement e) ? e.ToString() : "") + " " + Recorta(SpotifyEnVivo.Texto(r, "cuerpo"), 200)); return null; }
                 try { return JsonDocument.Parse(SpotifyEnVivo.Texto(r, "cuerpo")); } catch { return null; }
             }
@@ -891,8 +902,12 @@ namespace Rocola
                   .Append("dispositivos -> «Rocola». Queda guardada y la rocola entra sola desde entonces.\n");
             else if (s.Conectado)
             {
-                int n; lock (spotifyCerrojo) n = Math.Max(0, spotifyPared.Count - 1);
-                sb.Append("Dentro como ").Append(s.Usuario).Append(". En la letra SPOTIFY: tus favoritas y ").Append(n).Append(" listas y discos; el buscador busca tambien en Spotify.\n");
+                int n, tot; lock (spotifyCerrojo) { tot = spotifyPared.Count; n = Math.Max(0, tot - 1); }
+                sb.Append("Dentro como ").Append(s.Usuario.Length > 0 ? s.Usuario : "(tu cuenta)").Append(". ");
+                if (tot > 0) sb.Append("En la letra SPOTIFY (despues de TOP): tus favoritas y ").Append(n).Append(" listas y discos; el buscador busca tambien en Spotify.\n");
+                else if (s.ApiMal > 0 && s.ApiBien == 0) sb.Append("PERO NO SE PUDO LEER TU BIBLIOTECA: por eso no sale nada (ni la letra SPOTIFY ni en el buscador).\n");
+                else sb.Append("Leyendo tu biblioteca... (la letra SPOTIFY sale despues de TOP en cuanto llega)\n");
+                if (s.ApiMal > 0) sb.Append("Spotify: ").Append(s.ApiBien).Append(" bien, ").Append(s.ApiMal).Append(" mal. Ultimo fallo (").Append(s.ApiFalloCuando.ToString("HH:mm")).Append("): ").Append(s.ApiFallo).Append('\n');
             }
             else sb.Append("Entrando a Spotify...\n");
             if (s != null && s.Error.Length > 0 && !s.Conectado) sb.Append("Ultimo aviso: ").Append(s.Error).Append('\n');

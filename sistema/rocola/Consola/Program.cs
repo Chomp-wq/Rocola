@@ -194,6 +194,7 @@ namespace Rocola
                 else if (b == "mosaico") { c.AtraccionDesfase = 32; c.FuerzaAtraccion(); }   // V20: la atraccion, ya en el mosaico   // la atraccion, ya en lo mas pedido esta noche
                 else if (b == "espera") { v.Dibuja(c); System.Threading.Thread.Sleep(500); }   // como alguien que mira antes de apretar
                 else if (b.StartsWith("ajuste:")) { c.AbreAjustes(); IList<Form1.Ajuste> la = c.ListaAjustes; for (int ia = 0; ia < la.Count; ia++) if (la[ia].Clave == b.Substring(7)) { c.AjusteSel = ia; break; } }   // (pruebas) la hoja de ese ajuste
+                else if (b == "red") { Conexion.Empieza(); for (int i = 0; i < 100 && Conexion.Ahora == Conexion.Estado.Mirando; i++) System.Threading.Thread.Sleep(100); }   // (pruebas) ¿hay internet? (Conexion.cs)
                 else if (b == "calma") c.FuerzaReposo();   // (pruebas) 20 s sin botones: sin nada sonando, la pared en calma (Color vivo entero)
                 else if (b == "spotify") c.EsperaSpotify(v, 6000);
                 else if (b.StartsWith("escribe:")) c.EscribeDePrueba(b.Substring(8));   // (pruebas) letras en el buscador abierto   // (pruebas) 6 s atendiendo Spotify: su programa, la biblioteca, el buscador
@@ -217,6 +218,15 @@ namespace Rocola
                         Console.WriteLine("Empezar la 1: " + se.Elapsed.TotalMilliseconds.ToString("0.0") + " ms");
                         for (int q = 2; q <= 5; q++) { m.AcaboLaSalida(); se.Restart(); m.EmpiezaSiguiente(); Console.WriteLine("Empezar la " + q + ": " + se.Elapsed.TotalMilliseconds.ToString("0.0") + " ms"); }
                     }
+                }
+                else if (b.StartsWith("raton:") || b == "clic" || b == "clicderecho" || b == "rueda+" || b == "rueda-")
+                {   // (pruebas, Raton.cs) raton:X,Y lo lleva ahi (pixeles); clic, clicderecho, rueda+ y rueda-: sobre lo que se ve ahora
+                    v.SiempreDibuja = true; v.Dibuja(c); v.Dibuja(c);   // dos cuadros: las zonas de lo que se ve
+                    if (b.StartsWith("raton:")) { string[] xy = b.Substring(6).Split(','); c.RatonDePrueba(4, (int)(float.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture) * 65535 / (c.PantallaW - 1)), (int)(float.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture) * 65535 / (c.PantallaH - 1))); }
+                    else if (b == "clic") c.RatonDePrueba(3, 1, 0);
+                    else if (b == "clicderecho") c.RatonDePrueba(3, 2, 0);
+                    else c.RatonDePrueba(2, b == "rueda+" ? 1 : -1, 0);
+                    c.AtiendeRatonDePrueba();
                 }
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido

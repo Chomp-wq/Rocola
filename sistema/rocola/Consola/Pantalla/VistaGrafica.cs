@@ -92,6 +92,7 @@ namespace Rocola
             if (!SiempreDibuja && unchecked(ahora - ultimo) < 4) return;
             ultimo = ahora;
             float W = sup.Ancho, H = sup.Alto;
+            c.EmpiezaZonas(W, H);   // (Raton.cs: lo que se puede tocar con el raton, que se apunta al dibujar)
             Reloj.Cuadros++; Perfil.Empieza(); d.Empieza(Fondo); caratulas.Recoge(4); Perfil.Marca("subir portadas");   // las portadas que ya se leyeron en el fondo, a la tarjeta
             Pulso(c); ColorVivoAlDia(c); CieloAlDia(c); Perfil.Marca("cielo al dia");   // (el cielo segun la hora, la fecha y el clima: CieloHora.cs)
             if (m.LetraNueva != letrasPedidas) CargaLetras(m.LetraNueva);   // L1 cambiada en Ctrl+F3: las letras, al momento
@@ -107,12 +108,12 @@ namespace Rocola
             if (reposoAlfa <= 0f) EstrellaDelCielo(c, W, H, 0f); Perfil.Marca("estrella del cielo");   // el astro principal de XP, detras de todo (en el reposo, tras el velo)
             CabeceraSuave(c, W, !(c.Atraccion && c.AtraccionActual != null) && !c.Buscando); Perfil.Marca("cabecera");   // en la atraccion y en el buscador, como en XP, sin cabecera
             float abajo = Horizonte(H);   // donde empieza lo que suena (bajo la linea de luz, como en XP)
-            if (c.AsistentePaso >= 0) { Transicion(W, H); Asistente(c, W, H); FinTransicion(); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
-            if (c.Atraccion && c.AtraccionActual != null) { Transicion(W, H); Atraccion(c, W, H); FinTransicion(); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.AsistentePaso >= 0) { Transicion(W, H); Asistente(c, W, H); FinTransicion(); Puntero(c); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.Atraccion && c.AtraccionActual != null) { Transicion(W, H); Atraccion(c, W, H); FinTransicion(); VeloAtraccion(c, W, H); Perfil.Marca("atraccion"); if (c.DiagEscena >= 0) chica.EscribeCentrado(d, c.DiagTexto, W / 2, H - 40 * k, Blanco); Puntero(c); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             atraccionAntes = false;
             if (c.AjusteSel >= 0 && (AjustesConPrevia(c) || m.VidrioAjustes))   // V28, o G9 (la pared detras del vidrio)
             { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); Suena(c, W, H, abajo); }   // V28: lo de detras, para ver el cambio
-            if (c.AjusteSel >= 0) { Transicion(W, H); Ajustes(c, W, H); FinTransicion(); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
+            if (c.AjusteSel >= 0) { Transicion(W, H); Ajustes(c, W, H); FinTransicion(); Perfil.Marca("ajustes"); AvisoEncima(c, W * 1.45f, 130 * k); Puntero(c); d.Termina(); sup.Presenta(); Fluidez.Cuadro(); return; }
             // EL REPOSO (muro_reposo= y estado_expandido= de XP): la pared se aparta (el cielo vuelve encima) y lo que suena crece.
             double tr = reloj.Elapsed.TotalSeconds, dtr = Math.Max(0, Math.Min(0.1, tr - reposoT)); reposoT = tr;
             reposoAlfa = Math.Max(0f, Math.Min(1f, reposoAlfa + (float)(c.Reposo ? dtr / 0.6 : -dtr / 0.35)));
@@ -146,8 +147,23 @@ namespace Rocola
             Perfil.Marca("avisos"); Efectos(c, W, H); Perfil.Marca("efectos");
             Ayuda(c, W, H); Perfil.Marca("ayuda");
             if (c.DiagEscena >= 0) { string dt = c.DiagTexto; float wd = chica.Mide(dt) + 30 * k; d.Redondo((W - wd) / 2, H - 150 * k, wd, 32 * k, 16 * k, Color4.Hex(0x7A1E1E, 0.95f)); chica.EscribeCentrado(d, dt, W / 2, H - 145 * k, Blanco); }
-            d.Termina(); Perfil.Marca("vaciar lotes");
+            Puntero(c); d.Termina(); Perfil.Marca("vaciar lotes");
             sup.Presenta(); Fluidez.Cuadro(); Perfil.Marca("presentar");
+        }
+
+        // LA FLECHITA DEL RATON (Raton.cs): blanca con su filo oscuro, encima de todo; se esconde sola a los 6 s quieta.
+        private void Puntero(Controlador c)
+        {
+            if (!c.RatonVisible) return;
+            d.SinRecorte();
+            float q = Math.Max(1f, k) * 1.25f, x = (float)Math.Round(c.RatonX), y = (float)Math.Round(c.RatonY);
+            float[] p = { 0, 0, 0, 17, 4.5f, 13, 7.5f, 19.5f, 10, 18.5f, 7, 12.5f, 12.5f, 12.5f };
+            for (int i = 0; i < p.Length; i++) p[i] = (i % 2 == 0 ? x : y) + p[i] * q;
+            Color4 blanco = new Color4(1, 1, 1, 0.97f), filo = new Color4(0.02f, 0.03f, 0.08f, 0.95f);
+            d.Brillo(x + 5 * q, y + 9 * q, 14 * q, new Color4(0, 0, 0, 0.18f));
+            int[] tri = { 0, 1, 2, 0, 2, 5, 0, 5, 6, 2, 3, 4, 2, 4, 5 };
+            for (int t = 0; t < tri.Length; t += 3) d.Triangulo(p[2 * tri[t]], p[2 * tri[t] + 1], p[2 * tri[t + 1]], p[2 * tri[t + 1] + 1], p[2 * tri[t + 2]], p[2 * tri[t + 2] + 1], blanco);
+            for (int i = 0; i < 7; i++) { int j = (i + 1) % 7; d.Linea(p[2 * i], p[2 * i + 1], p[2 * j], p[2 * j + 1], 1.3f * q, filo); }
         }
 
         // EL MODO ATRACCION (el escaparate de XP): la portada grande, que se mece un poco, y su ficha; debajo, un mensaje cada 5 s.

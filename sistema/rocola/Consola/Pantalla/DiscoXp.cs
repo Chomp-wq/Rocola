@@ -73,6 +73,7 @@ namespace Rocola
                 float y = y0 + (j - desdeF) * fila, fy = y + 4 * k, fh = fila - 8 * k, cy = fy + fh / 2;
                 float sobra = Math.Max(y0 - y, y + fila - (y0 + caben * fila)) / fila;
                 if (sobra >= 0.6f) continue;
+                { float za = Math.Max(y, y0), zb = Math.Min(y + fila, y0 + caben * fila); c.Zona(px, za, pw, zb - za, Controlador.ClicCancion, j); }   // (Raton.cs)
                 AlfaFila(1f - Math.Max(0f, sobra) / 0.6f);
                 bool sel = j == c.cursorCancion && c.cursorMas < 0;   // (en la tira, ninguna cancion elegida)
                 if (sel)

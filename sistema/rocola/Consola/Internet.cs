@@ -13,6 +13,10 @@ namespace Rocola
         internal static string TextoInternet()
         {
             StringBuilder sb = new StringBuilder();
+            // (7-11-2026) lo primero: si hay internet y, si no, donde se corta (Conexion.cs)
+            sb.Append(Conexion.Ahora == Conexion.Estado.Internet ? "CON INTERNET. " : Conexion.Ahora == Conexion.Estado.Mirando ? "" : "SIN INTERNET. ").Append(Conexion.Largo.Length > 0 ? Conexion.Largo : "Mirando la red...");
+            if (Conexion.Ahora != Conexion.Estado.Internet && Conexion.UltimaConInternet != DateTime.MinValue) sb.Append(" (tuvo internet por ultima vez a las ").Append(Conexion.UltimaConInternet.ToString("HH:mm")).Append(')');
+            sb.Append('\n');
                         sb.Append("Programa: version ").Append(Version.Numero).Append(" (").Append(Version.Commit).Append(")");
             string nueva = Leer("/rocola/datos/programa/nueva.version");
             if (nueva.Length > 0) sb.Append("   -> la ").Append(nueva).Append(" se pone cuando la rocola este libre");

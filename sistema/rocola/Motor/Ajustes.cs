@@ -129,10 +129,11 @@ namespace Rocola
         private void AplicaAfinado() { try { ApplyNormNow(); } catch (Exception ex) { LogError("Afinar el local", ex); } }   // al instante en la que suena
 
         // LAS PAGINAS (las pestanas de Ctrl+F3 de XP): Sonido, Pantalla y Detalles, en este orden al recorrerlas.
-        public static readonly string[] PaginasAjustes = { "Sonido", "Imagen", "Fondo", "Pantalla", "Detalles", "Colores" };
+        public static readonly string[] PaginasAjustes = { "Sonido", "Spotify", "Imagen", "Fondo", "Pantalla", "Detalles", "Colores" };
         public static string PaginaDe(string grupo)
         {
             if (grupo == "Pantalla") return "Pantalla";
+            if (grupo == "Spotify") return "Spotify";   // (7-11-2026: antes al final de Sonido, y en el A4 no se encontraba)
             if (grupo == "El cielo" || grupo == "Según la hora" || grupo == "Según la fecha" || grupo == "Clima y más") return "Fondo";
             if (Array.IndexOf(GruposImagen, grupo) >= 0) return "Imagen";
             if (grupo == "De que color es cada cancion" || grupo == "Cuanto azul" || grupo == "Cuanto negro") return "Colores";

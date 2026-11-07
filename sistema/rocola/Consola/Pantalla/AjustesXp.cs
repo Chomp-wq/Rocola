@@ -13,7 +13,7 @@ namespace Rocola
 {
     internal sealed partial class VistaGrafica
     {
-        private static readonly string[] PestanasXp = { "Colores", "Detalles", "Sonido", "Imagen", "Fondo", "Pantalla" };
+        private static readonly string[] PestanasXp = { "Colores", "Detalles", "Sonido", "Spotify", "Imagen", "Fondo", "Pantalla" };
         private float ajusteCorre;   // lo que la pagina va corrida (suave)
         private string ajustePagina = "";
         private string selloRocola;
@@ -22,6 +22,7 @@ namespace Rocola
         {
             if (pg == "Sonido") return "Todo se oye al instante en la cancion que suena.";
             if (pg == "Pantalla") return "Lo que se ve en la rocola. Cada cosa con su interruptor.";
+            if (pg == "Spotify") return "Spotify en la rocola, para las reuniones familiares: tu cuenta, tus listas y el buscador, con creditos.";
             if (pg == "Imagen") return "Las mejoras visuales de Rocola OS, cada una con su interruptor. Las de coste medio vienen apagadas.";
             if (pg == "Fondo") return "El cielo de la rocola: nebulosas, aurora y estrellas, y cómo cambia con la hora, las fiestas y el clima.";
             if (pg == "Colores") return "El color del cielo con cada cancion: cuanto manda la portada, cuanto azul y cuanto negro. Se ve al instante.";
@@ -42,6 +43,7 @@ namespace Rocola
                 case "Tu biblioteca": return Color4.Hex(0xFFA850);
                 case "Dejar como de fabrica": return Color4.Hex(0xF06460);
                 case "Mejoras con IA": return Color4.Hex(0xC08CFF);
+                case "Spotify": return Color4.Hex(0x1ED760);
                 default: return Color4.Hex(0x8CB4FF);
             }
         }
@@ -88,16 +90,23 @@ namespace Rocola
             else d.Degradado(wx, wy, ww, wh, Color4.Hex(0x10172E, previa ? 0.72f : 1f), Color4.Hex(0x0C1226, previa ? 0.72f : 1f));
             d.DegradadoH(wx, wy, ww, 26 * k, Color4.Hex(0x2456E6), Color4.Hex(0x1E44C8));
             string titulo = "Rocola - " + pagina + (selloRocola.Length > 0 ? "   ·   Esta rocola es del " + selloRocola : "");
-            fTit.Escribe(d, fTit.Ajusta(titulo, ww - 20 * k), wx + 10 * k, wy + 13 * k - fTit.Tam * 0.62f, Blanco);
+            // (7-11-2026) a la derecha de la barra, siempre: si hay internet (Conexion.cs), con su lucecita
+            string net = Conexion.Corto; bool hayNet = Conexion.Ahora == Conexion.Estado.Internet, mirando = Conexion.Ahora == Conexion.Estado.Mirando;
+            float nw = fTit.Mide(net) + 30 * k, nx = wx + ww - 10 * k - nw;
+            d.Redondo(nx, wy + 3 * k, nw, 20 * k, 10 * k, hayNet ? Color4.Hex(0x0E3A22, 0.9f) : mirando ? Color4.Hex(0x1A2350, 0.9f) : Color4.Hex(0x4A1418, 0.95f));
+            Circulo(nx + 12 * k, wy + 13 * k, 4.5f * k, hayNet ? Color4.Hex(0x58D888) : mirando ? Color4.Hex(0xA8B4D8) : Color4.Hex(0xFF5A5A));
+            fTit.Escribe(d, net, nx + 22 * k, wy + 13 * k - fTit.Tam * 0.62f, Blanco);
+            fTit.Escribe(d, fTit.Ajusta(titulo, nx - wx - 20 * k), wx + 10 * k, wy + 13 * k - fTit.Tam * 0.62f, Blanco);
 
             // el titulo de la pagina, su subtitulo y las pestanas
             float px = wx + 28 * k;
             fPag.Escribe(d, pagina, px, wy + 52 * k - fPag.Tam * 0.62f, Blanco);
             fChica.Escribe(d, SubtituloPagina(pagina), px + 2 * k, wy + 80 * k - fChica.Tam * 0.62f, tenue);
-            float tw = 100 * k, th = 30 * k, tg = 6 * k, tx = wx + ww - 22 * k - PestanasXp.Length * tw - (PestanasXp.Length - 1) * tg, ty = wy + 36 * k;
+            float tw = 88 * k, th = 30 * k, tg = 5 * k, tx = wx + ww - 22 * k - PestanasXp.Length * tw - (PestanasXp.Length - 1) * tg, ty = wy + 36 * k;
             foreach (string pe in PestanasXp)
             {
                 bool esta = pe == pagina, hay = Array.IndexOf(Form1.PaginasAjustes, pe) >= 0;
+                if (hay) c.Zona(tx, ty, tw, th, Controlador.ClicPestana, Array.IndexOf(Form1.PaginasAjustes, pe));   // (Raton.cs)
                 d.Redondo(tx, ty, tw, th, 7 * k, esta ? Color4.Hex(0x274A9E) : Color4.Hex(0x1A2240, 0.9f));
                 d.Contorno(tx, ty, tw, th, 7 * k, esta ? 1.6f * k : 1f * k, esta ? Color4.Hex(0x8CB4FF) : Color4.Hex(0x3A4570));
                 fPest.EscribeCentrado(d, pe, tx + tw / 2, ty + th / 2 - fPest.Tam * 0.62f, esta ? Blanco : hay ? Color4.Hex(0xAAB4D4) : Color4.Hex(0x5A6488));
@@ -111,11 +120,12 @@ namespace Rocola
             float lin = 16 * k, ra = recuadro ? 34 * k + Math.Min(6, lq.Length) * lin : 0, ry = by - 12 * k - ra;
             if (recuadro) Tarjeta(px - 8 * k, ry, ww - 40 * k, ra, c.RecuadroTitulo, Color4.Hex(0x58D888), fTit);
             for (int j = 0; recuadro && j < lq.Length && j < 6; j++) fChica.Escribe(d, fChica.Ajusta(lq[j], ww - 80 * k), px + 10 * k, ry + 32 * k + j * lin, j == 0 ? blancoX : tenue);
-            fChica.Escribe(d, "ARRIBA/ABAJO: elegir     IZQ/DER o PONER: cambiar     REGRESAR: guardar y salir", px, by + bh / 2 - fChica.Tam * 0.62f, tenue);
+            fChica.Escribe(d, "ARRIBA/ABAJO: elegir   IZQ/DER o PONER: cambiar   REGRESAR: guardar y salir   RePág/AvPág: otra hoja   (o con el ratón)", px, by + bh / 2 - fChica.Tam * 0.62f, tenue);
             float lw = 140 * k, lx = wx + ww - 22 * k - lw;
             d.Redondo(lx, by, lw, bh, 8 * k, Color4.Hex(0x1F6B3A));
             d.Contorno(lx, by, lw, bh, 8 * k, 1.4f * k, Color4.Hex(0x58D888));
             fNom.EscribeCentrado(d, "Listo", lx + lw / 2, by + bh / 2 - fNom.Tam * 0.62f, Blanco);
+            c.Zona(lx, by, lw, bh, Controlador.ClicListo, 0);   // (Raton.cs)
 
             // LAS TARJETAS de la pagina, en dos columnas (cada una a la columna mas corta), con lo elegido siempre a la vista
             float cy0 = wy + 98 * k, cy1 = ry - 10 * k, colW = (ww - 40 * k - 16 * k) / 2, fila = 30 * k, cab = 36 * k;
@@ -133,7 +143,7 @@ namespace Rocola
             for (int gi = 0; gi < grupos.Count; gi++)
             {
                 List<int> li = porGrupo[grupos[gi]];
-                if (li.Count <= 12) continue;
+                if (li.Count <= 12 && !(grupos.Count == 1 && li.Count > 4)) continue;   // (una pagina de un solo grupo, como Spotify: en las dos columnas)
                 int mitad = (li.Count + 1) / 2; string g2 = grupos[gi] + "\u0001";
                 porGrupo[g2] = li.GetRange(mitad, li.Count - mitad); porGrupo[grupos[gi]] = li.GetRange(0, mitad);
                 grupos.Insert(gi + 1, g2); gi++;
@@ -188,6 +198,7 @@ namespace Rocola
                 for (int f = 0; f < filas.Count; f++)
                 {
                     int i = filas[f]; bool es = i == sel; float hf = altoDe[i];
+                    { float za = Math.Max(yy, cy0), zb = Math.Min(yy + hf, cy1); c.Zona(cx + 8 * k, za, colW - 16 * k, zb - za, Controlador.ClicAjuste, i); }   // (Raton.cs)
                     if (es)
                     {
                         d.Redondo(cx + 8 * k, yy - 1 * k, colW - 16 * k, hf - 2 * k, 7 * k, Color4.Hex(0x24346A, 0.95f));
@@ -203,7 +214,11 @@ namespace Rocola
                         foreach (string r in nl) { fChica.Escribe(d, r, cx + 18 * k + sangria, ny, Color4.Hex(0x8A96BA)); ny += 14 * k; }
                     }
                     int? pos = l[i].Posicion;
-                    if (pos.HasValue) Deslizador(cx + 22 * k, ny + 10 * k, colW - 44 * k, pos.Value / 100f, ColorGrupo(g.TrimEnd('\u0001')), l[i].Motivo != null);
+                    if (pos.HasValue)
+                    {
+                        Deslizador(cx + 22 * k, ny + 10 * k, colW - 44 * k, pos.Value / 100f, ColorGrupo(g.TrimEnd('\u0001')), l[i].Motivo != null);
+                        if (ny + 20 * k > cy0 && ny < cy1) c.Zona(cx + 22 * k, Math.Max(ny, cy0), colW - 44 * k, Math.Min(ny + 20 * k, cy1) - Math.Max(ny, cy0), Controlador.ClicBarra, i);   // (Raton.cs)
+                    }
                     yy += hf;
                 }
             }
