@@ -86,9 +86,14 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   sonido lo saca mpv por ALSA (como el WMP, fuera de la cadena). El volumen del WMP se toma como amplitud lineal (lo que supone la cuenta
   de XP) y se pasa al volumen cúbico de mpv. La duración para la biblioteca, con ffprobe (`Type.GetTypeFromProgID` del WMP →
   `LlamadasWindows.TipoDeProgId`). Probado fuera de pantalla con un video de prueba: la letra VIDEOS, el disco, el crédito, el aviso, la
-  lista que se hace chica, el tiempo que corre (de mpv) y, al acabar, PlayNext como en XP; la imagen se ve los primeros segundos y después
-  sale de un color (con llvmpipe, sin tarjeta: el contexto de render se crea antes de cargar, y un `glFlush` tras cada cuadro; falta ver
-  por qué se estropea y probarlo en el A4, con r600).
+  lista que se hace chica, el tiempo que corre (de mpv) y, al acabar, PlayNext como en XP. El contexto de render se crea antes de cargar
+  el video y lleva un `glFlush` tras cada cuadro. **Arreglado (7-11-2026):** la imagen salía de un color a los pocos segundos. libmpv pide
+  OpenGL en su estado de fábrica y le llegaba el que deja la traducción de Direct3D (la mezcla encendida): cada pase de mpv se sumaba al
+  del cuadro anterior hasta quedar magenta. Ahora, antes de cada llamada a mpv, `EstadoDeFabrica` pone ese estado (con el área de dibujo
+  del tamaño del video). Y va sin girar (`FLIP_Y` 0: con 1 salía de cabeza). **Queda:** con llvmpipe, más o menos 1 de cada 3 vueltas el
+  video sale todo negro, solo con los escaladores de calidad de mpv sobre texturas de coma flotante; se busca la causa.
+  `rocola-xp --prueba-video RUTA [SEGUNDOS]` prueba el video solo, sin la rocola (corre al empezar el `Main` de XP: dentro del
+  inicializador del módulo, los hilos de mpv se quedaban esperando). No probado en el A4 (r600).
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
