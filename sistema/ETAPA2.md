@@ -1975,3 +1975,26 @@ arrancando en XP.
 - Lo que dejo la primera vez (`\rocola-os\a`, `datos.img`, el arranque de antes) se aprovecha: volver a instalar rehace la copia `a`,
   conserva `datos.img` y el arranque de antes guardado es el de XP.
 - Hace falta otra memoria USB con un sistema nuevo (el instalador va dentro). No probado todavia en el A4.
+
+### Revision a fondo del instalador y prueba de punta a punta (7 de noviembre de 2026)
+
+Pedido del dueño: «Revisa el instalador a fondo, no quiero más problemas». Se reviso rocola-instalar, el menu de GRUB que escribe, el
+initramfs que arranca desde el NTFS, rocola-discos y rocola-desinstalar, y se probo todo en QEMU con un disco como el del A4 (XP en el
+sector 63 con su ntldr, la musica en la segunda particion NTFS, una carpeta con rocola_config.txt en la Papelera como trampa, la llave de
+GitHub en la carpeta de XP) y la memoria USB conectada por USB:
+
+1. Instalar: elige /dev/sda2, la musica en /musica, los datos de XP en /Rocola (no la Papelera), XP en sda1; el arranque mide 31 284
+   bytes para un hueco de 31 744; copia, comprueba, crea lo aprendido con la llave de GitHub y pone GRUB sin error.
+2. Volver a instalar: pone la copia b, conserva lo aprendido y no vuelve a guardar el arranque de antes.
+3. Arrancar sin la memoria: GRUB, el nucleo, el initramfs (monta el NTFS y la copia por loop) y el sistema; la primera vez sale la prueba
+   de sonido y grafica (el cubo).
+4. ESC al prender: el menu con Rocola OS, la version anterior, la prueba y Windows XP; Windows XP pasa el arranque a la particion de XP.
+5. rocola-desinstalar: los 63 sectores del principio quedan identicos a los de antes de instalar (misma suma MD5).
+
+Arreglos de esta revision:
+- Si lo aprendido ya estaba (en el A4 quedo de la instalacion que fallo), se le anade la llave de GitHub de la carpeta de XP si le falta
+  (la primera vez se busco en la Papelera y no se copio).
+- Dos NTFS con el mismo numero de serie (UUID; paso en la prueba al formatearlas en el mismo segundo): el menu busca primero en la
+  particion donde se instalo (`--hint="$root"`) y la entrada de XP en la de XP (`--hint=hd0,msdosN`); el initramfs ya probaba las demas
+  NTFS si la del UUID no tiene el sistema.
+- Lo que no se pudo probar fuera del A4: un Windows XP de verdad al elegirlo en el menu, y la tarjeta grafica y el sonido del A4.

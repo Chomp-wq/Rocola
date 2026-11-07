@@ -104,6 +104,7 @@ done
 PART=$mejor; MIRA=/tmp/rocola-mira/$PART
 DISCO=$(basename "$(readlink -f "/sys/class/block/$PART/..")")
 UUID=$(blkid "/dev/$PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
+XP_N=$(cat "/sys/class/block/$XP_PART/partition" 2>/dev/null)
 XP_UUID=; [ -n "$XP_PART" ] && XP_UUID=$(blkid "/dev/$XP_PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
 musica=$(find "$MIRA" -maxdepth 3 -type d -iname musica 2>/dev/null | basura | head -5)
 canciones=$((mejor_n % 1000000))
@@ -193,6 +194,12 @@ di "Sistema copiado y comprobado."
 # 4. LO APRENDIDO (datos.img): se conserva si ya estaba. Nuevo: vacio, con lo que esta memoria ya tenga (si se probo antes en la
 # rocola: las rutas de su disco, /rocola/discos/<particion>/..., pasan a /rocola/disco/..., donde queda instalado) y la llave de GitHub
 # si estaba en la carpeta de la rocola de XP.
+# la llave de GitHub de la carpeta de la rocola de XP, si lo aprendido (montado en /tmp/rocola-datos) no la tiene
+llave_xp() {
+	[ -n "$datos_xp" ] && [ ! -f /tmp/rocola-datos/rocola_github.txt ] && g=$(find "$M${datos_xp#$MIRA}" -maxdepth 1 -iname rocola_github.txt | head -1) \
+		&& [ -n "$g" ] && tr -d ' \r\n' < "$g" > /tmp/rocola-datos/rocola_github.txt && apunta "llave de GitHub copiada de la carpeta de XP"
+	return 0
+}
 if [ ! -f "$D/datos.img" ]; then
 	di "Preparando lo aprendido..."
 	zcat $INST/datos.img.gz > "$D/datos.img.nuevo" || falla "No pude crear datos.img."
@@ -206,8 +213,7 @@ if [ ! -f "$D/datos.img" ]; then
 			# la prueba de sonido y grafica se vuelve a hacer en la rocola (la de la memoria pudo ser en otro equipo)
 			rm -f /tmp/rocola-datos/prueba_hecha
 		fi
-		[ -n "$datos_xp" ] && [ ! -f /tmp/rocola-datos/rocola_github.txt ] && g=$(find "$M${datos_xp#$MIRA}" -maxdepth 1 -iname rocola_github.txt | head -1) \
-			&& [ -n "$g" ] && tr -d ' \r\n' < "$g" > /tmp/rocola-datos/rocola_github.txt && apunta "llave de GitHub copiada de la carpeta de XP"
+		llave_xp
 		sync; umount /tmp/rocola-datos
 	else
 		apunta "datos.img: no se pudo montar para llenarlo (queda vacio)"
@@ -215,6 +221,10 @@ if [ ! -f "$D/datos.img" ]; then
 	mv -f "$D/datos.img.nuevo" "$D/datos.img"
 else
 	apunta "datos.img ya estaba: se conserva"
+	# la llave de GitHub, si le falta (en el A4 la primera vez se busco en la Papelera y no la copio)
+	if [ -n "$datos_xp" ] && mkdir -p /tmp/rocola-datos && mount -t ext4 -o loop "$D/datos.img" /tmp/rocola-datos 2>>$LOG; then
+		llave_xp; sync; umount /tmp/rocola-datos
+	fi
 fi
 
 # 5. EL ARRANQUE: GRUB en el disco (lee el NTFS), con su menu. El menu sale con ESC al prender.
@@ -226,7 +236,8 @@ set timeout_style=hidden
 set timeout=2
 insmod part_msdos
 insmod ntfs
-search --no-floppy --fs-uuid --set=root $UUID
+# primero la particion donde se instalo (\$root, la del arranque); el UUID por si cambio el orden (y si dos NTFS lo repiten, gana esta)
+search --no-floppy --fs-uuid --set=root --hint="\$root" $UUID
 set rocola_slot=a
 set rocola_otro=b
 if [ -f /$OS/arranque.cfg ]; then source /$OS/arranque.cfg; fi
@@ -247,7 +258,7 @@ menuentry "Rocola OS - prueba de sonido y grafica" {
 EOF
 if [ -n "$XP_UUID" ]; then cat >> "$D/boot/grub/grub.cfg" <<EOF
 menuentry "Windows XP (la rocola de antes)" {
-	search --no-floppy --fs-uuid --set=root $XP_UUID
+	search --no-floppy --fs-uuid --set=root --hint="hd0,msdos$XP_N" $XP_UUID
 	chainloader +1
 }
 EOF
