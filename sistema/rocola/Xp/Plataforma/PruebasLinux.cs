@@ -1,6 +1,14 @@
 // PRUEBAS DE LA TRADUCCION EN LINUX (no son de XP): se piden por la linea de ordenes y salen antes de abrir la rocola.
 //   rocola-xp --prueba-gpu ANCHO ALTO SALIDA.png [CUADROS]   el cielo y las estrellas de XP (GpuStarfield, la ventana de prueba F12 de
 //                                                            XP) pintados con Direct3DaGL fuera de pantalla, y el ultimo cuadro en PNG.
+// Y con la rocola entera (variables de entorno):
+//   ROCOLA_PANTALLA=fuera:1024x768   sin KMS (Anfitrion.cs)
+//   ROCOLA_CAPTURA=S:ruta.png,...    la pantalla a los S segundos; ROCOLA_CAPTURA_SALE=1 cierra despues de la ultima;
+//                                    ROCOLA_CAPTURA_CAPAS=1 tambien cada capa; ROCOLA_CAPTURA_TEXTURAS=nombre:AxB,... texturas de OpenGL
+//   ROCOLA_PULSA=S:VK,...            teclas de Windows a su hora (TeclasLinux.cs)
+//   ROCOLA_TRAZA_DIBUJOS=S           cada dibujo del primer cuadro despues de S segundos (Direct3DaGL.cs)
+//   ROCOLA_SALTA_DIBUJOS=k1,k2       no hace esos dibujos de cada cuadro (para buscar el que pinta mal)
+//   ROCOLA_VOLCADO_TEXTURAS=carpeta  cada textura grande que se sube, en PNG
 using System;
 using System.Runtime.CompilerServices;
 using SkiaSharp;

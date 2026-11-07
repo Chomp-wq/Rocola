@@ -280,6 +280,7 @@ namespace Rocola
                 foreach (DispositivoGl d in dispositivos)
                 {
                     d.EstadoSucio = true; d.FboPuesto = uint.MaxValue; d.VistaW = d.VistaH = -1; d.MezclaPuesta = -1;
+                    d.OrigenPuesto = d.DestinoPuesto = uint.MaxValue;   // (el anfitrion compone con su propia mezcla)
                     for (int i = 0; i < EtapasGl; i++) d.TexturaPuesta[i] = uint.MaxValue;
                     d.Programa = null; d.ProgramaSucio = true;
                 }
@@ -435,6 +436,7 @@ namespace Rocola
                 DispositivoGl d = Disp(self);
                 if (d == null || d.EnEscena || d.Fondo == null || d.Fondo.Textura == null) return D3DERR_INVALIDCALL;
                 d.Presentaciones++;
+                trazando = false;
                 Control control = Control.FromHandle(d.Ventana);
                 if (control != null)
                 {
@@ -548,10 +550,45 @@ namespace Rocola
                 GL.BindTexture(GL.TEXTURE_2D, t.Nombre);
                 GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4);
                 GL.TexSubImage2D(GL.TEXTURE_2D, 0, t.BX, t.BY, t.BW, t.BH, GL.RGBA, GL.UNSIGNED_BYTE, (void*)t.Bloqueo);
+                if (volcado != null && t.BW >= 64 && t.BH >= 64) Vuelca(t);
                 t.Bloqueada = false;
                 SueltaMemoriaBloqueo(t);
                 EstadoTocado();
                 return D3D_OK;
+            }
+
+            // (pruebas) ROCOLA_TRAZA_DIBUJOS=S: cada dibujo del cuadro que empieza a los S segundos (estado, textura y lo que ocupa)
+            private static readonly double traza = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_DIBUJOS") != null ? double.Parse(Environment.GetEnvironmentVariable("ROCOLA_TRAZA_DIBUJOS"), System.Globalization.CultureInfo.InvariantCulture) * 1000.0 : 0;
+            private static bool trazando, trazado;
+            // (pruebas) ROCOLA_SALTA_DIBUJOS=k1,k2: en cada cuadro no se hacen esos dibujos (para buscar cual pinta algo mal)
+            private static int dibujoEnCuadro;
+            private static readonly int[] salta = Environment.GetEnvironmentVariable("ROCOLA_SALTA_DIBUJOS") == null ? null : Array.ConvertAll(Environment.GetEnvironmentVariable("ROCOLA_SALTA_DIBUJOS").Split(','), int.Parse);
+            private static void Traza(DispositivoGl d, byte* v, int paso, int n)
+            {
+                float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue; uint c0 = 0;
+                for (int i = 0; i < n; i++) { float* f = (float*)(v + (long)i * paso); x0 = Math.Min(x0, f[0]); y0 = Math.Min(y0, f[1]); x1 = Math.Max(x1, f[0]); y1 = Math.Max(y1, f[1]); if (i == 0) c0 = *(uint*)(v + 16); }
+                TexturaGl t = ObjetoDe<TexturaGl>(d.Etapas[0].Textura);
+                Console.WriteLine("dibujo n=" + n + " caja=(" + x0.ToString("0") + "," + y0.ToString("0") + ")-(" + x1.ToString("0") + "," + y1.ToString("0") + ") color=" + c0.ToString("X8") +
+                    " mezcla=" + (d.Mezcla ? d.Origen + "/" + d.Destino2 : "no") + " etapas=" + Clave(d.Etapas) + " tex=" + (t != null ? t.W + "x" + t.H + "#" + t.Nombre : "-") + " filtro=" + d.Etapas[0].FiltroMin + "," + d.Etapas[0].FiltroMag +
+                    " destino=" + (d.Destino == d.Fondo ? "fondo" : d.Destino.W + "x" + d.Destino.H));
+            }
+
+            // (pruebas) ROCOLA_VOLCADO_TEXTURAS=carpeta: cada textura grande que se sube, en PNG (como la ve Direct3D: sin premultiplicar)
+            private static readonly string volcado = Environment.GetEnvironmentVariable("ROCOLA_VOLCADO_TEXTURAS");
+            private static int volcadas;
+            private static void Vuelca(TexturaGl t)
+            {
+                try
+                {
+                    using (SkiaSharp.SKBitmap b = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(t.BW, t.BH, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Unpremul)))
+                    {
+                        Buffer.MemoryCopy((void*)t.Bloqueo, (void*)b.GetPixels(), (long)t.BW * t.BH * 4, (long)t.BW * t.BH * 4);
+                        using (SkiaSharp.SKData d = b.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100))
+                        using (FileStream f = File.Create(Path.Combine(volcado, (++volcadas).ToString("0000") + "_" + (Escritorio.AhoraMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s_" + t.W + "x" + t.H + "_n" + t.Nombre + "_en" + t.BX + "," + t.BY + "_" + t.BW + "x" + t.BH + ".png")))
+                            d.SaveTo(f);
+                    }
+                }
+                catch { }
             }
 
             // [26] CreateVertexBuffer, IDirect3DVertexBuffer9::Lock [11] y Unlock [12]
@@ -642,6 +679,8 @@ namespace Rocola
                 if (d == null || d.EnEscena) return D3DERR_INVALIDCALL;
                 BorraPendientes();
                 d.EnEscena = true;
+                dibujoEnCuadro = 0;
+                if (traza > 0 && !trazado && Escritorio.AhoraMs >= traza) { trazando = true; trazado = true; Console.WriteLine("---- cuadro a los " + (Escritorio.AhoraMs / 1000).ToString("0.00") + " s"); }
                 return D3D_OK;
             }
             internal static int EndScene(IntPtr self)
@@ -741,6 +780,9 @@ namespace Rocola
                 uint modo; int n;
                 if (!Primitiva(tipo, cuantos, out modo, out n)) return D3DERR_INVALIDCALL;
                 if (!Prepara(d)) return D3DERR_INVALIDCALL;
+                if (trazando) Traza(d, (byte*)datos, (int)paso, n);
+                dibujoEnCuadro++;
+                if (salta != null && Array.IndexOf(salta, dibujoEnCuadro) >= 0) return D3D_OK;
                 GL.BindBuffer(GL.ARRAY_BUFFER, 0);
                 Atributos(d, (byte*)datos, (int)paso);
                 GL.DrawArrays(modo, 0, n);

@@ -48,6 +48,9 @@ namespace Rocola
             }
             Actual = new Anfitrion(s);
             Escritorio.Anfitrion = Actual;
+            // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
+            if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
+            TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
         }
 
         private Anfitrion(ISuperficie s)
@@ -195,8 +198,42 @@ namespace Rocola
             string ruta = capturas[0].Value;
             capturas.RemoveAt(0);
             GuardaPng(ruta);
+            string tx = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_TEXTURAS");   // (pruebas) "nombre:AxB,..." texturas de OpenGL tal cual estan en la tarjeta
+            if (!string.IsNullOrEmpty(tx))
+                foreach (string e in tx.Split(','))
+                {
+                    string[] p = e.Split(':'); if (p.Length != 2) continue; string[] m = p[1].Split('x');
+                    GuardaTextura(uint.Parse(p[0]), int.Parse(m[0]), int.Parse(m[1]), ruta + ".tex" + p[0] + ".png");
+                }
+            if (Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_CAPAS") == "1")
+            {
+                // (pruebas) cada capa por separado: las de la tarjeta (su textura) y las de Dibujo2D
+                int i = 0;
+                foreach (Capa c in Escritorio.Capas())
+                {
+                    i++;
+                    if (c.Nativa != null && c.Nativa.TexturaGl != 0) GuardaTextura(c.Nativa.TexturaGl, c.Nativa.AnchoGl, c.Nativa.AltoGl, ruta + ".capa" + i + "-tarjeta.png");
+                    else if (c.Imagen != null) { try { c.Imagen.Save(ruta + ".capa" + i + "-dibujo2d-" + c.Rect.X + "," + c.Rect.Y + "-" + c.Rect.Width + "x" + c.Rect.Height + ".png"); } catch { } }
+                }
+            }
             Console.WriteLine("Captura: " + ruta + " (" + (t / 1000).ToString("0.0", CultureInfo.InvariantCulture) + " s, " + Composiciones + " composiciones)");
             if (capturas.Count == 0 && saleTrasCapturas) Environment.Exit(0);
+        }
+        private void GuardaTextura(uint tex, int w, int h, string ruta)
+        {
+            uint f; GL.GenFramebuffers(1, &f);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, f);
+            GL.FramebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, tex, 0);
+            byte[] px = new byte[w * h * 4];
+            GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
+            fixed (byte* p = px) GL.ReadPixels(0, 0, w, h, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
+            GlMas.DeleteFramebuffers(1, &f);
+            using (SKBitmap b = new SKBitmap(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Unpremul)))   // la tarjeta guarda B, G, R, A, fila 0 arriba
+            {
+                Marshal.Copy(px, 0, b.GetPixels(), px.Length);
+                using (SKData data = b.Encode(SKEncodedImageFormat.Png, 100)) using (System.IO.FileStream fs = System.IO.File.Create(ruta)) data.SaveTo(fs);
+            }
         }
         internal void GuardaPng(string ruta)
         {

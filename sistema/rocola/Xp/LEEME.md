@@ -53,8 +53,17 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   la barra de arriba (Mover, Entrar / Poner, Volver, BUSCAR, ayuda, LETRA L), las pestañas de las letras, el disco con «3 canciones», el
   cielo con nebulosas, estrellas, aurora, luna y la estrella asistente, y la barra de abajo («Nada reproduciendose», En cola, Inserta una
   moneda). Todo dibujado por el código de XP. Las letras salen con DejaVu (aquí no están las de Windows); en el A4, las de XP.
+- **Las teclas** (`TeclasLinux.cs`): los teclados y placas de botones de `/dev/input` (también los que se conectan después) se pasan al
+  código de Windows con la tabla de `Motor/Botones.cs` (así `rocola_teclas.txt` del bar vale tal cual) y llegan al escritorio como
+  WM_KEYDOWN / WM_KEYUP; la repetición al dejar un botón apretado es la de XP de fábrica (500 ms y unas 30 por segundo), no la del núcleo.
+  Probado con teclas programadas (`ROCOLA_PULSA`): PONER abre el disco con su lista de canciones y la moneda da sus créditos («+4
+  creditos», «Creditos 8»), como en XP.
+- **Arreglado (7-11-2026):** dentro de un disco el fondo salía blanco y a manchas. El anfitrión compone con su propia mezcla y la traducción
+  creía que seguía puesta la suya: las nebulosas y la Vía Láctea (blancas casi transparentes) se sumaban enteras. Ahora, después de cada
+  composición, se olvida también la mezcla (`EstadoTocado`). Encontrado con las herramientas de prueba de `PruebasLinux.cs` (traza de
+  dibujos, volcado de texturas, saltar dibujos, capturar capas).
 - **Lo siguiente:**
-  - las teclas y botones por evdev (`Escritorio.Tecla`), y el ratón;
+  - el ratón;
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
 - **Medido con Mono:** el alto de renglón y `Font.Height` salen iguales a GDI+. Los anchos de texto quedan a 1 o 2 píxeles de libgdiplus,
