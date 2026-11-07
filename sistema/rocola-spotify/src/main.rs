@@ -103,6 +103,42 @@ fn arg(nombre: &str, por_omision: &str) -> String {
     a.iter().position(|x| x == nombre).and_then(|i| a.get(i + 1).cloned()).unwrap_or_else(|| por_omision.to_string())
 }
 
+// La llave de keymaster (el camino viejo): con todos los permisos o, si no la da, con los basicos.
+async fn llave_keymaster(se: &Session) -> Result<String, String> {
+    match se.token_provider().get_token(ALCANCE).await {
+        Ok(t) => Ok(t.access_token),
+        Err(e) => match se.token_provider().get_token(ALCANCE_BASICO).await {
+            Ok(t) => { warn!("la llave con todos los permisos no se dio ({e}): con los basicos"); Ok(t.access_token) }
+            Err(e2) => Err(format!("{e}; basica: {e2}")),
+        },
+    }
+}
+
+// Una consulta a la API web de Spotify con esa llave: el estado y el cuerpo, como los lee la rocola (Motor/Spotify.cs).
+async fn pide_api(se: &Session, ruta: &str, llave: &str) -> serde_json::Value {
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(format!("https://api.spotify.com{ruta}"))
+        .header(header::AUTHORIZATION, format!("Bearer {llave}"))
+        .header(header::ACCEPT, "application/json")
+        .body(Bytes::new());
+    let req = match req {
+        Ok(q) => q,
+        Err(e) => return json!({"ok": false, "error": format!("{e}")}),
+    };
+    match se.http_client().request(req).await {
+        Ok(resp) => {
+            let estado = resp.status().as_u16();
+            use http_body_util_compat::collect;
+            match collect(resp).await {
+                Ok(b) => json!({"ok": (200..300).contains(&estado), "estado": estado, "cuerpo": String::from_utf8_lossy(&b)}),
+                Err(e) => json!({"ok": false, "estado": estado, "error": e}),
+            }
+        }
+        Err(e) => json!({"ok": false, "error": format!("{e}")}),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let dentro = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
@@ -373,34 +409,25 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
                 return json!({"ok": false, "error": "ruta"});
             }
             let Some(se) = sesion(r) else { return json!({"ok": false, "error": "sin conexion con Spotify"}) };
-            let llave = match se.token_provider().get_token(ALCANCE).await {
-                Ok(t) => t,
-                Err(e) => match se.token_provider().get_token(ALCANCE_BASICO).await {
-                    Ok(t) => { warn!("la llave con todos los permisos no se dio ({e}): con los basicos"); t }
-                    Err(e2) => return json!({"ok": false, "error": format!("llave: {e}; basica: {e2}")}),
+            // LA LLAVE DE LA API WEB (7-11-2026: en el A4, «llave: Service unavailable ... hm://keymaster/token»). Spotify ya no da
+            // llaves por keymaster (el camino viejo); librespot 0.8 trae el nuevo, login5 (el que ya usa para las letras: spclient). Primero
+            // login5; keymaster queda de respaldo. Si la API web no acepta la de login5 (401/403), una vez con la de keymaster.
+            let llave5 = se.login5().auth_token().await;
+            let (llave, de_login5) = match &llave5 {
+                Ok(t) => (t.access_token.clone(), true),
+                Err(e5) => match llave_keymaster(&se).await {
+                    Ok(t) => (t, false),
+                    Err(e) => return json!({"ok": false, "error": format!("llave: login5: {e5}; keymaster: {e}")}),
                 },
             };
-            let req = Request::builder()
-                .method(Method::GET)
-                .uri(format!("https://api.spotify.com{ruta}"))
-                .header(header::AUTHORIZATION, format!("Bearer {}", llave.access_token))
-                .header(header::ACCEPT, "application/json")
-                .body(Bytes::new());
-            let req = match req {
-                Ok(q) => q,
-                Err(e) => return json!({"ok": false, "error": format!("{e}")}),
-            };
-            match se.http_client().request(req).await {
-                Ok(resp) => {
-                    let estado = resp.status().as_u16();
-                    use http_body_util_compat::collect;
-                    match collect(resp).await {
-                        Ok(b) => json!({"ok": (200..300).contains(&estado), "estado": estado, "cuerpo": String::from_utf8_lossy(&b)}),
-                        Err(e) => json!({"ok": false, "estado": estado, "error": e}),
-                    }
+            let mut res = pide_api(&se, ruta, &llave).await;
+            if de_login5 && matches!(res["estado"].as_u64(), Some(401) | Some(403)) {
+                if let Ok(t) = llave_keymaster(&se).await {
+                    warn!("la API web no acepto la llave de login5 ({}): con la de keymaster", res["estado"]);
+                    res = pide_api(&se, ruta, &t).await;
                 }
-                Err(e) => json!({"ok": false, "error": format!("{e}")}),
             }
+            res
         }
         "letra" => {
             let id = match SpotifyId::from_base62(v["id"].as_str().unwrap_or("")) {

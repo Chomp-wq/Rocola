@@ -77,7 +77,26 @@ pon_nueva
 el_mas_nuevo
 # El sistema se da por bueno cuando la rocola lleva 3 minutos en pie (una actualizacion del sistema en prueba: S99rocola y el initramfs).
 ( sleep 180; while ! pidof rocola-consola >/dev/null; do sleep 10; done; touch ${ROCOLA_RUN:-/run}/rocola-confirmado ) &
+# LA CONSOLA DE MANTENIMIENTO (7-11-2026: en el A4, «No puedo abrir la consola de mantenimiento con Ctrl+Alt+F2»). Ctrl+Alt+F2 si cambia a
+# la consola 2 (alli espera «login»), pero la rocola seguia pintando la pantalla encima (es la duena de la tarjeta grafica) y leyendo las
+# teclas. Ahora, si la consola de delante deja de ser la 1, la rocola se cierra como en una actualizacion (guarda su estado: los creditos
+# y la cola vuelven; si en 20 s no se cerro, como con el boton de encendido) y no se vuelve a abrir hasta volver a la 1 (Ctrl+Alt+F1).
+ACTIVA=${ROCOLA_VT_ACTIVA:-/sys/class/tty/tty0/active}
+EN_CONSOLA=${ROCOLA_RUN:-/run}/rocola-en-consola
+( while sleep 1; do
+	a=$(cat "$ACTIVA" 2>/dev/null)
+	[ -n "$a" ] && [ "$a" != tty1 ] && [ ! -f "$EN_CONSOLA" ] || continue
+	touch "$EN_CONSOLA"; touch ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya
+	i=0; while pidof rocola-consola >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+	pidof rocola-consola >/dev/null && killall -TERM rocola-consola 2>/dev/null
+	killall mpv 2>/dev/null
+  done ) &
 while :; do
+	# en la consola de mantenimiento: la rocola espera a que se vuelva a la 1
+	while [ -f "$EN_CONSOLA" ]; do
+		[ "$(cat "$ACTIVA" 2>/dev/null)" = tty1 ] && { rm -f "$EN_CONSOLA" ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya; break; }
+		sleep 1
+	done
 	[ -f $REGISTRO ] && [ "$(wc -c < $REGISTRO)" -gt 1048576 ] && mv $REGISTRO $REGISTRO.1
 	echo "--- $(date) arranca la rocola" >> $REGISTRO
 	volumen
@@ -87,6 +106,7 @@ while :; do
 	ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> $REGISTRO 2>&1
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
+	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; continue; fi   # (no es una caida)
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
 	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)
 	if [ "$r" = 44 ]; then apunta "Apagado pedido (desde casa o Ctrl+F3)"; sync; poweroff; sleep 60; fi   # salio para apagarse (rocola-buzon: «apagar», o Ctrl+F3)

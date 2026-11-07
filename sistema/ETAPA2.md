@@ -2035,6 +2035,21 @@ anade una prueba que decide:
 - El lanzador quita tambien el silencio de la salida digital (IEC958) de la tarjeta elegida: la del HDMI arranca muda.
 - Probado en QEMU con una tarjeta HDA emulada (la lista, el pitido, el registro, `usar` y `auto`); no en el A4.
 
+### La consola de mantenimiento y la llave de Spotify (7 de noviembre de 2026)
+
+- **«No puedo abrir la consola de mantenimiento con Ctrl+Alt+F2».** El nucleo si cambiaba a la consola 2 (con su «login»), pero la rocola
+  es la duena de la tarjeta grafica: seguia pintando encima y, como lee los botones por evdev, tambien las teclas que se escribian. Nunca se
+  habia probado con la rocola abierta (en QEMU se probaba sin ella). Ahora `/usr/bin/rocola` mira cada segundo la consola de delante
+  (`/sys/class/tty/tty0/active`): si deja de ser la 1, le pide a la rocola que se cierre como en una actualizacion
+  (`/run/rocola-reinicia-programa-ya`: guarda lo que sonaba, la cola y los creditos; la rocola lo mira cada 15 s) y, si a los 20 s sigue
+  abierta, la cierra como el boton de encendido. No la vuelve a abrir hasta volver a la consola 1 (Ctrl+Alt+F1), y ese cierre no cuenta como
+  caida. Probado con un programa falso que se cierra cuando se le pide.
+- **Spotify: «0 bien, 21 mal ... llave: Service unavailable ... hm://keymaster/token».** La cuenta entraba, pero cada consulta a la API web
+  (la biblioteca, las listas, el buscador) pedia su llave por keymaster, que Spotify ya no atiende. librespot 0.8 trae el camino nuevo,
+  login5 (`session.login5().auth_token()`), que ya usa el mismo para sus consultas (las letras). `rocola-spotify` pide la llave primero por
+  login5 y deja keymaster de respaldo, tambien si la API web rechaza la de login5 (401/403). Compila (cargo, el mismo Cargo.lock); no
+  probado con una cuenta real. Al cambiar un paquete, la compilacion del sistema es la COMPLETA (cerca de una hora).
+
 ## La compilacion rapida del sistema (7 de noviembre de 2026)
 
 El dueño pregunto como hacer mas rapidas las compilaciones del sistema y eligio «la 1». La completa tardaba unos 34 min, 30 de ellos
