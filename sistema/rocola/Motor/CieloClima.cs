@@ -72,7 +72,18 @@ namespace Rocola
         public enum TipoClima { Desconocido, Despejado, PocoNublado, Nublado, Neblina, Llovizna, Lluvia, LluviaFuerte, Tormenta, Nieve }
         private volatile int climaTipo; private float climaNubes, climaViento, climaTemp = float.NaN; private DateTime climaCuando;
         private string climaFallo = ""; private Thread hiloClima;
-        public TipoClima Clima { get { return ClimaCielo ? (TipoClima)climaTipo : TipoClima.Desconocido; } }
+        // El clima de afuera; uno de hace mas de 3 horas ya no vale (sin internet varios dias, el cielo no se queda lloviendo).
+        private bool climaForzado;
+        public TipoClima Clima
+        {
+            get
+            {
+                if (!ClimaCielo) return TipoClima.Desconocido;
+                if (climaForzado) return (TipoClima)climaTipo;
+                DateTime cu = climaCuando;
+                return cu == default(DateTime) || (DateTime.UtcNow - cu).TotalHours > 3 ? TipoClima.Desconocido : (TipoClima)climaTipo;
+            }
+        }
         public float ClimaNubes { get { return climaNubes; } }   // 0..1
         public float ClimaViento { get { return climaViento; } } // km/h
         public static string NombreClima(TipoClima c)
@@ -93,8 +104,8 @@ namespace Rocola
                 if (!ClimaCielo) return "El clima de afuera está apagado.";
                 string forzado = Environment.GetEnvironmentVariable("ROCOLA_CLIMA");
                 if (!string.IsNullOrEmpty(forzado)) return "Clima de prueba: " + NombreClima(Clima) + ".";
-                if (climaCuando == default(DateTime)) return "Aún no hay clima" + (climaFallo.Length > 0 ? " (" + climaFallo + ")" : " (se pide a internet al arrancar)") + ". Lugar: " + LugarBar + ".";
-                int min = (int)(DateTime.Now - climaCuando).TotalMinutes;
+                if (climaCuando == default(DateTime) || (DateTime.UtcNow - climaCuando).TotalHours > 3) return (climaCuando == default(DateTime) ? "Aún no hay clima" : "El último clima ya es viejo") + (climaFallo.Length > 0 ? " (" + climaFallo + ")" : " (se pide a internet al arrancar)") + ". Lugar: " + LugarBar + ".";
+                int min = (int)(DateTime.UtcNow - climaCuando).TotalMinutes;
                 return "Afuera: " + NombreClima(Clima) + (float.IsNaN(climaTemp) ? "" : ", " + Math.Round(climaTemp) + " °C") + " en " + LugarBar + " (hace " + Math.Max(0, min) + " min).";
             }
         }
@@ -104,7 +115,7 @@ namespace Rocola
         {
             if (!ClimaCielo || hiloClima != null) return;
             string forzado = Environment.GetEnvironmentVariable("ROCOLA_CLIMA");
-            if (!string.IsNullOrEmpty(forzado)) { climaTipo = (int)ClimaDePrueba(forzado); climaNubes = climaTipo >= (int)TipoClima.Nublado ? 0.95f : 0.4f; climaViento = 12; hiloClima = Thread.CurrentThread; return; }
+            if (!string.IsNullOrEmpty(forzado)) { climaForzado = true; climaTipo = (int)ClimaDePrueba(forzado); climaNubes = climaTipo >= (int)TipoClima.Nublado ? 0.95f : 0.4f; climaViento = 12; hiloClima = Thread.CurrentThread; return; }
             LeeClimaGuardado();
             hiloClima = new Thread(BucleClima) { IsBackground = true, Name = "clima", Priority = ThreadPriority.Lowest };
             hiloClima.Start();
@@ -135,7 +146,7 @@ namespace Rocola
                 string[] c = File.ReadAllText(ArchivoClima).Split('\t');
                 if (c.Length < 5) return;
                 DateTime cuando = DateTime.FromBinary(long.Parse(c[0], CultureInfo.InvariantCulture));
-                if ((DateTime.Now - cuando).TotalHours > 3) return;
+                if ((DateTime.UtcNow - cuando).TotalHours > 3) return;
                 climaTipo = int.Parse(c[1], CultureInfo.InvariantCulture); climaNubes = float.Parse(c[2], CultureInfo.InvariantCulture);
                 climaViento = float.Parse(c[3], CultureInfo.InvariantCulture); climaTemp = float.Parse(c[4], CultureInfo.InvariantCulture); climaCuando = cuando;
             }
@@ -156,7 +167,9 @@ namespace Rocola
                     }
                 }
                 catch (Exception ex) { climaFallo = ex.Message; espera = 5 * 60; }
-                Thread.Sleep(espera * 1000);
+                // espera en tramos de 30 s: si cambio la ciudad (o el lugar por internet), se pide el clima de alli al momento
+                double la = LatBar, lo = LonBar;
+                for (int s = 0; s < espera; s += 30) { Thread.Sleep(30000); if (Math.Abs(LatBar - la) > 0.01 || Math.Abs(LonBar - lo) > 0.01) break; }
             }
         }
         // Donde esta la conexion (aproximado: la ciudad del proveedor de internet), una vez por semana.
@@ -212,7 +225,7 @@ namespace Rocola
                 float nubes = (float)(Num(cur, "cloud_cover", 0) ?? 0) / 100f, viento = (float)(Num(cur, "wind_speed_10m", 0) ?? 0);
                 double? temp = Num(cur, "temperature_2m", double.NaN);
                 climaTipo = (int)DeCodigo(codigo, nubes); climaNubes = Math.Max(0f, Math.Min(1f, nubes)); climaViento = viento;
-                climaTemp = temp.HasValue ? (float)temp.Value : float.NaN; climaCuando = DateTime.Now; climaFallo = "";
+                climaTemp = temp.HasValue ? (float)temp.Value : float.NaN; climaCuando = DateTime.UtcNow; climaFallo = "";
             }
             try
             {
@@ -333,7 +346,7 @@ namespace Rocola
             if (m == 10 && d == 31) f |= Fiesta.Halloween;
             if ((m == 10 && d >= 28) || (m == 11 && d <= 2)) f |= Fiesta.Muertos;
             if (m == 12 && d == 12) f |= Fiesta.Guadalupe;
-            if ((m == 12 && d >= 13 && d <= 30) || (m == 1 && d <= 4)) f |= Fiesta.Navidad;
+            if ((m == 12 && d >= 13) || (m == 1 && d <= 4)) f |= Fiesta.Navidad;   // (tambien el 31: las luces no se apagan un dia)
             if ((m == 12 && d == 24 && h >= 18) || (m == 12 && d == 25)) f |= Fiesta.Nochebuena;
             return f;
         }

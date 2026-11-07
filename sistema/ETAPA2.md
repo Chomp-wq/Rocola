@@ -1650,3 +1650,19 @@ casilla escogida mostrando los resultados de dicho artista, y al volver estarás
 - **Lo que no cambia:** un artista que sí está en la rocola sigue llevando a sus discos de la pared.
 - **Probado** con el rocola-spotify simulado (búsqueda, zoom a medio camino, página con su tira y regreso); no con una cuenta real
   ni en el A4. Arreglo de paso: el número de seguidores se escribe sin cultura (el programa corre sin las tablas de idiomas).
+
+### Revisión de fallas del cielo (7-11-2026, «Busca bugs fallos errores y mejoras y cosas que no tienen sentido»)
+
+- **El sol y la luna saltaban de orilla.** En el centro de México, de mayo a julio el sol pasa a mediodía por el norte, y la luna a
+  veces también. El lado de la pantalla salía del rumbo de 60 a 300 grados, recortado: a mediodía se iba de la orilla izquierda a la
+  derecha de golpe. Ahora sale del seno del rumbo (este a la izquierda, oeste a la derecha, norte o sur en medio), que es continuo.
+- **El clima viejo se quedaba para siempre.** Sin internet varios días, el cielo seguía lloviendo con el último clima. Ahora uno de
+  más de 3 horas ya no vale y la hoja dice «El último clima ya es viejo».
+- **Al cambiar la ciudad del bar** el clima tardaba hasta 15 minutos en ser el de allí. Ahora el hilo espera en tramos de 30 s y, si
+  cambió el lugar, lo pide al momento.
+- **Navidad se apagaba el 31 de diciembre** y volvía el 1 de enero. Ahora sigue todo el 31.
+- **Orión salía todo el año**, y en las noches de verano no se ve. Ahora de mayo a octubre va el Escorpión en su lugar.
+- **La estrella de Belén caía en medio de Orión.** Ahora va arriba al centro.
+- **Los fuegos de las fiestas usaban una hora fija** (desde las 19:00), que en verano todavía es de día. Ahora salen cuando ya oscureció
+  según el sol.
+- **La hora del clima se guarda en UTC**, para no convertir la zona horaria en cada cuadro al ver si caducó.

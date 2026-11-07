@@ -142,7 +142,9 @@ namespace Rocola
 
         // ---- H2: EL SOL ----
         // Rumbo y altura a la pantalla: el este a la izquierda, el oeste a la derecha (mirando al sur, como se ven salir y ponerse).
-        private float XDeRumbo(double az, float W) { return W * (0.08f + 0.84f * (float)Math.Max(0, Math.Min(1, (az - 60) / 240))); }
+        // Por el seno del rumbo (este = izquierda, oeste = derecha, sur o norte = en medio): continuo. Antes era el rumbo de 60 a 300 grados,
+        // y en verano (el sol y la luna pasan por el norte en el centro de Mexico) saltaban de una orilla a la otra a mediodia.
+        private float XDeRumbo(double az, float W) { return W * (0.5f - 0.42f * (float)Math.Sin(az * Math.PI / 180)); }
         private float YDeAltura(double alt, float H) { float yh = Horizonte(H); return yh - 26 * k - (float)(Math.Sin(alt * Math.PI / 180) / Math.Sin(75 * Math.PI / 180)) * (yh - 150 * k); }
         private void Sol(float W, float H, float alfa)
         {
@@ -244,7 +246,7 @@ namespace Rocola
                 float x = (float)(((h3 * largo * 3.7 + t * vel) % largo + largo) % largo) - w;
                 float y = (30 + (yh * 0.48f - 30) * Hs(i, 4)) * (n > 6 ? 0.85f : 1f);
                 Color4 c = baseC;
-                if (hayLuna && mCielo.LunaArco != false)
+                if (hayLuna)
                 {
                     float dl = (float)Math.Sqrt((lx - (x + w / 2)) * (lx - (x + w / 2)) + (ly - (y + hh / 2)) * (ly - (y + hh / 2)));
                     c = Dibujo.Mezcla(c, new Color4(0.86f, 0.9f, 1f), 0.4f * Math.Max(0f, 1f - dl / (w * 1.1f)) * oscuridadSol);
@@ -369,20 +371,25 @@ namespace Rocola
         private static readonly float[][] ConsPuntos = {
             new float[] { .25f, .08f, .72f, .12f, .48f, 0f, .40f, .50f, .50f, .48f, .60f, .46f, .30f, .92f, .75f, .88f },
             new float[] { 0f, .30f, .05f, .62f, .30f, .70f, .33f, .40f, .52f, .33f, .72f, .30f, .98f, .45f },
-            new float[] { 0f, .20f, .25f, .85f, .50f, .35f, .75f, .90f, 1f, .10f } };
+            new float[] { 0f, .20f, .25f, .85f, .50f, .35f, .75f, .90f, 1f, .10f },
+            new float[] { .85f, 0f, .92f, .12f, .88f, .26f, .72f, .18f, .62f, .30f, .55f, .43f, .50f, .56f, .42f, .70f, .30f, .82f, .15f, .86f, .05f, .76f, .08f, .62f } };
         private static readonly int[][] ConsLineas = {
             new[] { 2, 0, 2, 1, 0, 3, 1, 5, 3, 4, 4, 5, 3, 6, 5, 7 },
             new[] { 0, 1, 1, 2, 2, 3, 3, 0, 3, 4, 4, 5, 5, 6 },
-            new[] { 0, 1, 1, 2, 2, 3, 3, 4 } };
-        private static readonly float[] ConsCaja = { .13f, .16f, .17f, .30f, .42f, .12f, .26f, .16f, .46f, .44f, .18f, .12f };
-        private static readonly string[] ConsNombre = { "Orión", "Osa Mayor", "Casiopea" };
+            new[] { 0, 1, 1, 2, 2, 3, 3, 4 },
+            new[] { 0, 3, 1, 3, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11 } };
+        private static readonly float[] ConsCaja = { .13f, .16f, .17f, .30f, .42f, .12f, .26f, .16f, .46f, .44f, .18f, .12f, .11f, .16f, .2f, .32f };
+        private static readonly string[] ConsNombre = { "Orión", "Osa Mayor", "Casiopea", "Escorpión" };
+        // Orion es de las noches de noviembre a abril; de mayo a octubre va el Escorpion en su lugar.
+        private int ConsDe(int i) { return i == 0 && cieloAhora.Month >= 5 && cieloAhora.Month <= 10 ? 3 : i; }
         private void Constelaciones(float W, float H, double t, float alfa)
         {
             if (mCielo == null || !mCielo.Constelaciones) return;
             float yh = Horizonte(H), vis = VisEstrella(0.25f) * alfa;
             if (vis <= 0.01f) return;
-            for (int c = 0; c < 3; c++)
+            for (int c0 = 0; c0 < 3; c0++)
             {
+                int c = ConsDe(c0);
                 float bx = ConsCaja[c * 4] * W, by = ConsCaja[c * 4 + 1] * yh, bw = ConsCaja[c * 4 + 2] * W, bh = ConsCaja[c * 4 + 3] * yh;
                 float[] p = ConsPuntos[c];
                 for (int i = 0; i < p.Length; i += 2)
@@ -393,7 +400,7 @@ namespace Rocola
                 }
             }
             if (viveza < 0.9f || oscuridadSol < 0.6f || verEstrellas < 0.5f) return;
-            int cual = (int)Math.Floor(t / 40.0) % 3; double fase = t % 40.0;
+            int cual = ConsDe((int)Math.Floor(t / 40.0) % 3); double fase = t % 40.0;
             if (fase > 9) return;
             float prog = (float)Math.Min(1, fase / 2), al = fase < 7 ? 1f : (float)(1 - (fase - 7) / 2);
             {
@@ -416,7 +423,7 @@ namespace Rocola
             if (fiesta == Fiesta.Ninguna) return;
             float yh = Horizonte(H), cuanto = 0.4f + 0.6f * viveza;
             double hora = cieloAhora.Hour + cieloAhora.Minute / 60.0;
-            bool deNoche = hora >= 19 || hora < 6;
+            bool deNoche = oscuridadSol > 0.4f;   // (por el sol, no por la hora: en junio oscurece mas tarde)
             if ((fiesta & Fiesta.Muertos) != 0)
             {
                 PapelPicado(W, H * 0.15f, t, alfa, ColoresMuertos, 0);
@@ -614,7 +621,7 @@ namespace Rocola
         // La estrella de Belen: grande, dorada, con sus rayos y una cola de luz hacia abajo.
         private void EstrellaDeBelen(float W, float yh, double t, float alfa)
         {
-            float x = W * 0.2f, y = yh * 0.2f, pulso = 0.85f + 0.15f * (float)Math.Sin(t * 1.5);
+            float x = W * 0.6f, y = yh * 0.13f, pulso = 0.85f + 0.15f * (float)Math.Sin(t * 1.5);
             Color4 oro = new Color4(1f, 0.86f, 0.5f);
             d.Brillo(x, y, 110 * k, oro.ConAlfa(0.22f * alfa * pulso));
             d.Cuatro(x - 7 * k, y, oro.ConAlfa(0.35f * alfa), x + 7 * k, y, oro.ConAlfa(0.35f * alfa), x + 30 * k, yh * 0.8f, oro.ConAlfa(0f), x - 30 * k, yh * 0.8f, oro.ConAlfa(0f));
