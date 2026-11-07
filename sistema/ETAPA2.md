@@ -2021,6 +2021,20 @@ puedo escribir en el disco sin arriesgarlo».
 - **El instalador nunca escribe con `force`:** un NTFS sin revisar puede tener mal la cuenta de lo ocupado y lo nuevo caeria encima de la
   musica. Probado en QEMU (el disco sucio, el aviso, la limpieza y una instalacion normal en un disco limpio); no en el A4.
 
+### ¿Por donde sale el sonido? (7 de noviembre de 2026)
+
+El dueño: «La rocola no se escucha». Rocola OS manda la musica a la primera salida que no sea HDMI (rocola-tarjeta): si en el A4 el
+amplificador recibe el sonido por la pantalla (HDMI), o la salida buena es otra, se queda mudo aunque todo funcione. Sin poder verlo, se
+anade una prueba que decide:
+
+- `rocola-sonido` (consola de mantenimiento, Ctrl+Alt+F2, usuario root): pausa la rocola, y por cada salida del equipo (`aplay -l`: la de
+  la placa, la del HDMI...) sube su volumen, escribe en grande «AHORA SUENA LA SALIDA N» y da un pitido de 3 s; despues la rocola sigue.
+  Deja en `/rocola/datos/rocola_sonido.txt` las tarjetas, sus codecs, que salidas abrieron y el estado del mezclador.
+- `rocola-sonido usar N`: la salida N queda fijada en `/rocola/datos/rocola_tarjeta.txt`; rocola-tarjeta la obedece mientras exista esa
+  tarjeta y esa salida (asi la usan el volumen del lanzador y el programa, por ROCOLA_ALSA). `rocola-sonido auto` la quita.
+- El lanzador quita tambien el silencio de la salida digital (IEC958) de la tarjeta elegida: la del HDMI arranca muda.
+- Probado en QEMU con una tarjeta HDA emulada (la lista, el pitido, el registro, `usar` y `auto`); no en el A4.
+
 ## La compilacion rapida del sistema (7 de noviembre de 2026)
 
 El dueño pregunto como hacer mas rapidas las compilaciones del sistema y eligio «la 1». La completa tardaba unos 34 min, 30 de ellos

@@ -1,0 +1,71 @@
+#!/bin/sh
+# ¿POR DONDE SALE EL SONIDO? (7-11-2026: «La rocola no se escucha»). En la consola de mantenimiento (Ctrl+Alt+F2, usuario root):
+#   rocola-sonido          hace sonar, una por una, TODAS las salidas de sonido del equipo (la de la placa, la del HDMI de la pantalla...)
+#                          con un pitido de 3 s y su numero en grande; asi se ve cual llega al amplificador. Despues dice el estado del
+#                          mezclador de cada tarjeta. Todo queda en /rocola/datos/rocola_sonido.txt (lo ve tambien Rocola en casa).
+#   rocola-sonido usar N   la rocola usa desde ahora la salida N de la lista (/rocola/datos/rocola_tarjeta.txt, que rocola-tarjeta
+#                          obedece), le sube el volumen y vuelve a abrir la rocola.
+#   rocola-sonido auto     vuelve a la eleccion automatica (la primera salida que no sea HDMI).
+# Mientras prueba, la rocola se pausa (no puede tener la tarjeta abierta a la vez) y despues sigue sola.
+DATOS=${ROCOLA_DATOS:-/rocola/datos}
+FIJA=$DATOS/rocola_tarjeta.txt
+LOG=$DATOS/rocola_sonido.txt
+# las salidas: «tarjeta salida nombre», una por linea, como las da aplay -l
+salidas() { aplay -l 2>/dev/null | sed -n 's/^card \([0-9]*\): [^,]*, device \([0-9]*\): \(.*\)$/\1 \2 \3/p'; }
+pausa_rocola() { killall -STOP rocola 2>/dev/null; killall rocola-consola 2>/dev/null; killall mpv 2>/dev/null; sleep 1; }
+sigue_rocola() { killall -CONT rocola 2>/dev/null; }
+# el volumen de una tarjeta: las salidas al maximo y sin silencio, el silencio automatico quitado y, si es HDMI, su salida digital
+sube() {
+	for c in Master PCM Speaker Headphone Front "Line Out" Surround Center LFE Side; do amixer -c "$1" -q sset "$c" 100% unmute 2>/dev/null; done
+	amixer -c "$1" -q sset "Auto-Mute Mode" Disabled 2>/dev/null
+	amixer -c "$1" -q sset "Independent HP" off 2>/dev/null
+	i=0; while [ $i -lt 8 ]; do amixer -c "$1" -q sset "IEC958,$i" unmute 2>/dev/null; i=$((i + 1)); done
+}
+
+case "$1" in
+	usar)
+		l=$(salidas | sed -n "${2:-0}p")
+		[ -n "$2" ] && [ -n "$l" ] || { echo "Uso: rocola-sonido usar N   (N = el numero de la salida que se oyo; rocola-sonido sin nada las enseña)"; exit 1; }
+		set -- $l
+		echo "plughw:$1,$2" > "$FIJA"; sync
+		sube "$1"
+		echo "Listo: la rocola usa la tarjeta $1, salida $2. Se vuelve a abrir."
+		printf '%s  se eligio a mano la salida plughw:%s,%s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" "$2" >> "$LOG"
+		killall rocola-consola 2>/dev/null
+		exit 0 ;;
+	auto)
+		rm -f "$FIJA"; sync
+		echo "Listo: la rocola elige sola la salida (la primera que no sea HDMI). Se vuelve a abrir."
+		killall rocola-consola 2>/dev/null
+		exit 0 ;;
+esac
+
+clear 2>/dev/null
+{ echo "===== $(date '+%Y-%m-%d %H:%M')  rocola-sonido"; cat /proc/asound/cards; echo "La rocola usa ahora: $(rocola-tarjeta)$( [ -f "$FIJA" ] && echo ' (elegida a mano)')"; } >> "$LOG"
+for c in /proc/asound/card[0-9]*; do head -1 "$c"/codec#* 2>/dev/null | grep -i codec | sed "s|^|tarjeta ${c##*card}: |" >> "$LOG"; done
+n=$(salidas | wc -l)
+[ "$n" -gt 0 ] || { echo "Linux no ve ninguna salida de sonido (aplay -l esta vacio). Mira $LOG."; aplay -l >> "$LOG" 2>&1; exit 1; }
+echo "PRUEBA DE LAS SALIDAS DE SONIDO ($n). Escucha el amplificador y fijate en el NUMERO que esta en pantalla cuando suena el pitido."
+echo "(La rocola se pausa mientras tanto.)"; echo
+pausa_rocola
+k=0
+salidas > /tmp/rocola-salidas.txt
+while read -r t d nombre; do
+	k=$((k + 1))
+	sube "$t"
+	echo "=================================================="
+	echo "   AHORA SUENA LA SALIDA  $k   (tarjeta $t, salida $d: $nombre)"
+	echo "=================================================="
+	timeout 3 speaker-test -D "plughw:$t,$d" -t sine -f 440 -c 2 >/dev/null 2>&1; r=$?
+	[ "$r" = 124 ] || [ "$r" = 143 ] || [ "$r" = 0 ] && e="sono" || e="FALLO al abrirla ($r)"
+	echo "   salida $k: $e"; echo
+	echo "salida $k: plughw:$t,$d ($nombre): $e" >> "$LOG"
+	sleep 1
+done < /tmp/rocola-salidas.txt
+for t in $(salidas | cut -d' ' -f1 | sort -u); do
+	echo "--- mezclador de la tarjeta $t" >> "$LOG"
+	amixer -c "$t" scontents 2>/dev/null | grep -E "^Simple|Playback|Mono:|Front L|Front R" >> "$LOG"
+done
+sigue_rocola
+echo "Si alguna se oyo, escribe:   rocola-sonido usar NUMERO     (por ejemplo: rocola-sonido usar 2)"
+echo "Si ninguna se oyo: manda una foto de esta pantalla y de:   tail -40 $LOG"

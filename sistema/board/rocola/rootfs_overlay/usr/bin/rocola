@@ -34,6 +34,8 @@ volumen() {
 	# si cree que hay audifonos en el frente; y que el frente y atras suenen a la vez
 	amixer ${T:+-c $T} -q sset "Auto-Mute Mode" Disabled 2>/dev/null
 	amixer ${T:+-c $T} -q sset "Independent HP" off 2>/dev/null
+	# (7-11-2026) si la salida elegida es la del HDMI de la pantalla (rocola-sonido usar N), su salida digital arranca en silencio
+	i=0; while [ $i -lt 8 ]; do amixer ${T:+-c $T} -q sset "IEC958,$i" unmute 2>/dev/null; i=$((i + 1)); done
 }
 volumen
 probando=0; fallos=0; rapidas=0

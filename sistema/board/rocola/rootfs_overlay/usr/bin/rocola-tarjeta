@@ -4,6 +4,20 @@
 # (plughw:TARJETA,SALIDA: sin el mezclador de ALSA, a la frecuencia de cada cancion) o, con -c, solo el numero de la tarjeta (para
 # amixer). Si no encuentra ninguna, «default» (o nada con -c). La misma eleccion que SalidaAlsa.Elige en la rocola.
 R=${ROCOLA_ASOUND:-/proc/asound}
+# ELEGIDA A MANO (rocola-sonido usar N, 7-11-2026: la del amplificador puede ser otra, por ejemplo la del HDMI de la pantalla): manda si
+# esa tarjeta y esa salida siguen existiendo
+F=${ROCOLA_DATOS:-/rocola/datos}/rocola_tarjeta.txt
+if [ -f "$F" ]; then
+	m=$(sed -n 's/^plughw:\([0-9]*\),\([0-9]*\)$/\1 \2/p' "$F" | head -1)
+	if [ -n "$m" ]; then
+		set -- "$1" $m
+		if [ -e "$R/card$2/pcm${3}p" ]; then
+			if [ "$1" = -c ]; then echo "$2"; else echo "plughw:$2,$3"; fi
+			exit 0
+		fi
+		set -- "$1"
+	fi
+fi
 for t in $(ls -d "$R"/card[0-9]* 2>/dev/null | sed 's/.*card//' | sort -n); do
 	for p in $(ls -d "$R/card$t"/pcm[0-9]*p 2>/dev/null | sed 's/.*pcm\([0-9]*\)p/\1/' | sort -n); do
 		grep -qiE 'HDMI|DisplayPort' "$R/card$t/pcm${p}p/info" 2>/dev/null && continue
