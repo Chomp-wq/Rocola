@@ -49,7 +49,7 @@ namespace Rocola
             if (!hay) sb.Append("Red: no hay tarjeta de red\n");
             string est = Leer("/run/rocola-actualiza.txt");
             sb.Append("Actualizacion: ").Append(est.Length > 0 ? est : "aun no ha revisado (lo hace al minuto de prender y cada hora)").Append('\n');
-            sb.Append("Llave de GitHub: ").Append(File.Exists("/rocola/datos/rocola_github.txt") ? "puesta" : "falta (rocola_github.txt en una memoria USB o junto a rocola_config.txt de la rocola de XP): sin ella no se actualiza sola");
+            sb.Append("Llave de GitHub: ").Append(File.Exists("/rocola/datos/rocola_github.txt") ? "puesta" : "no hace falta si el repositorio es publico (si es privado: rocola_github.txt en una memoria USB o junto a rocola_config.txt de XP)");
             string bz = Leer("/run/rocola-buzon.txt");   // el buzon para trabajar desde casa (rocola-buzon, 7-11-2026)
             sb.Append("\nDesde casa (buzon, opcional): ").Append(bz.Length > 0 ? bz : "aun no arranca (a los 90 s de prender)");
             return sb.ToString();

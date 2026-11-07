@@ -66,7 +66,9 @@ if [ -n "$f" ]; then
 	fi
 fi
 LLAVE=$(cat "$DATOS/rocola_github.txt" 2>/dev/null)
-[ -n "$LLAVE" ] || { estado "falta la llave de GitHub (rocola_github.txt en una memoria USB)"; exit 0; }
+# SIN LLAVE (7-11-2026: el dueno hizo publico el repositorio): se pregunta sin ella; con un repositorio privado GitHub contesta 404 y
+# se dice que falta. Con llave, como siempre.
+AUT=; [ -n "$LLAVE" ] && AUT="Authorization: Bearer $LLAVE"
 # «Actualizarse sola» apagado (actualizar_solo=0) y no pedida a mano: nada
 if grep -q '^actualizar_solo=0' "$DATOS/rocola_config.txt" 2>/dev/null && [ -z "$ROCOLA_PEDIDA" ]; then
 	estado "apagada («Actualizarse sola»): se busca solo con «Buscar actualizacion ahora»"; exit 0
@@ -74,18 +76,19 @@ fi
 
 
 pide() {   # pide RUTA_DE_LA_API ARCHIVO
-	curl -fsSL --connect-timeout 20 --max-time 60 -H "Authorization: Bearer $LLAVE" -H "Accept: application/vnd.github+json" \
+	curl -fsSL --connect-timeout 20 --max-time 60 ${AUT:+-H "$AUT"} -H "Accept: application/vnd.github+json" \
 		-H "X-GitHub-Api-Version: 2022-11-28" -H "User-Agent: rocola" "$API$1" -o "$2"
 }
 baja() {   # baja ID_DEL_ARCHIVO DESTINO (los archivos de una version; GitHub manda a otro sitio, que no recibe la llave)
-	curl -fsSL --connect-timeout 20 --max-time 1800 --retry 2 -H "Authorization: Bearer $LLAVE" -H "Accept: application/octet-stream" \
+	curl -fsSL --connect-timeout 20 --max-time 1800 --retry 2 ${AUT:+-H "$AUT"} -H "Accept: application/octet-stream" \
 		-H "User-Agent: rocola" "$API/repos/$REPO/releases/assets/$1" -o "$2"
 }
 estado "buscando..."
 if ! pide "/repos/$REPO/releases?per_page=50" "$TMP/versiones.json"; then
-	c=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 20 -H "Authorization: Bearer $LLAVE" -H "User-Agent: rocola" "$API/repos/$REPO" 2>/dev/null)
+	c=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 20 ${AUT:+-H "$AUT"} -H "User-Agent: rocola" "$API/repos/$REPO" 2>/dev/null)
 	case "$c" in
-		401|403|404) estado "la llave de GitHub no vale (caduco o no tiene permiso): pon otra"; apunta "La llave de GitHub no vale ($c)" ;;
+		401|403|404) if [ -z "$LLAVE" ]; then estado "el repositorio es privado y falta la llave de GitHub (rocola_github.txt en una memoria USB)"
+			else estado "la llave de GitHub no vale (caduco o no tiene permiso): pon otra"; apunta "La llave de GitHub no vale ($c)"; fi ;;
 		000) estado "sin internet (¿el cable?)" ;;
 		*) estado "GitHub no contesto ($c): se reintenta en una hora" ;;
 	esac
