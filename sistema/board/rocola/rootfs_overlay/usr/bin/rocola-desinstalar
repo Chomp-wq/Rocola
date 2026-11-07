@@ -2,11 +2,16 @@
 # DEJAR LA ROCOLA COMO ANTES DE INSTALAR ROCOLA OS (en la consola de mantenimiento, Ctrl+Alt+F2, usuario root): devuelve al disco el
 # arranque de Windows XP que rocola-instalar guardo (\rocola-os\arranque-xp.original.bin: el codigo del primer sector y el hueco hasta la
 # primera particion; la tabla de particiones no se toca) y la rocola vuelve a prender en Windows XP. No borra nada: \rocola-os se queda
-# (lo aprendido incluido) y se puede volver a instalar. Pide escribir SI.
+# (lo aprendido incluido) y se puede volver a instalar. Pide escribir SI. Lo mismo hace, desde Windows XP, \rocola-os\Desinstalar_Rocola_OS.cmd.
+# COMPROBADO ANTES DE ESCRIBIR (7-11-2026): la copia entera, con firma y sin GRUB (la de XP, nunca una de Rocola OS); el disco con GRUB
+# (si no, ya prende en XP y no hay nada que hacer); ninguna particion dentro de lo que se devuelve. Primero el primer sector (si se fuera
+# la luz a medias, XP prende igual: no usa el hueco) y despues el hueco; al final se lee del disco otra vez para comprobarlo.
 # (para probarlo fuera de la rocola: ROCOLA_DISCO, donde esta montado el disco, y ROCOLA_DISCO_DEV, el disco entero)
 RAIZ=${ROCOLA_DISCO:-/rocola/disco}
 OS=$RAIZ/rocola-os
 B=$OS/arranque-xp.original.bin
+es_grub() { tr -c 'A-Za-z' '\n' | grep -qx GRUB; }
+CD_XP="Hace falta el CD de Windows XP: prende con el CD, en la primera pantalla R (consola de recuperacion) y escribe fixmbr. No borres \\rocola-os mientras tanto."
 [ -f "$B" ] || { echo "No esta el arranque de antes ($B): no hay nada que devolver."; exit 1; }
 DISCO=$ROCOLA_DISCO_DEV
 if [ -z "$DISCO" ]; then
@@ -15,12 +20,30 @@ if [ -z "$DISCO" ]; then
 	DISCO=/dev/$(basename "$(readlink -f "/sys/class/block/$(basename "$PART")/..")")
 fi
 n=$(cat "$OS/arranque-xp.sectores" 2>/dev/null || echo $(( $(wc -c < "$B") / 512 )))
+case "$n" in ''|*[!0-9]*) n=0 ;; esac
+[ "$n" -ge 1 ] && [ "$n" -le 2048 ] && [ "$(wc -c < "$B")" -eq $((n * 512)) ] || { echo "La copia del arranque de XP ($B) esta incompleta: no se toco nada."; exit 1; }
+[ "$(od -An -tx1 -j 510 -N 2 "$B" | tr -d ' \n')" = 55aa ] || { echo "La copia ($B) no es un arranque: no se toco nada."; exit 1; }
+head -c 512 "$B" | es_grub && { echo "La copia ($B) es la de Rocola OS (GRUB), no la de Windows XP: no se devuelve. $CD_XP"; exit 1; }
+dd if="$DISCO" bs=512 count=1 2>/dev/null | es_grub || { echo "El disco ya no arranca con Rocola OS: ya prende en Windows XP. No hay nada que devolver."; exit 0; }
+d=${DISCO##*/}; primera=999999999
+for p in /sys/class/block/$d/$d*; do s=$(cat "$p/start" 2>/dev/null) && [ "$s" -lt "$primera" ] && primera=$s; done
+[ "$primera" -ge "$n" ] || { echo "Una particion empieza en el sector $primera, dentro de lo que se devolveria ($n sectores): no se toco nada."; exit 1; }
 echo "Se devuelve el arranque de Windows XP a $DISCO ($n sectores; la tabla de particiones no se toca)."
 echo "La rocola volvera a prender en Windows XP. \\rocola-os se queda. Escribe SI para seguir:"
 read r; [ "$r" = SI ] || { echo "No se toco nada."; exit 1; }
 # el codigo del primer sector (446 bytes, sin la tabla) y, despues, el hueco (los sectores 1 a n-1)
-dd if="$B" of="$DISCO" bs=446 count=1 conv=notrunc 2>/dev/null || { echo "No se pudo."; exit 1; }
-[ "$n" -gt 1 ] && dd if="$B" of="$DISCO" bs=512 skip=1 seek=1 count=$((n - 1)) conv=notrunc 2>/dev/null
+dd if="$B" of="$DISCO" bs=446 count=1 conv=notrunc 2>/dev/null || { echo "No se pudo escribir en $DISCO. No se toco nada."; exit 1; }
+[ "$n" -gt 1 ] && { dd if="$B" of="$DISCO" bs=512 skip=1 seek=1 count=$((n - 1)) conv=notrunc 2>/dev/null || echo "El hueco no se pudo escribir (XP prende igual: el primer sector ya es el suyo)."; }
 sync
+# comprobado leyendo del disco (no de lo que Linux tiene en memoria)
+echo 1 > /proc/sys/vm/drop_caches 2>/dev/null
+T=/tmp/rocola-desinstalar.$$; mkdir -p "$T"
+dd if="$DISCO" of="$T/ahora" bs=512 count="$n" 2>/dev/null
+dd if="$T/ahora" of="$T/a1" bs=446 count=1 2>/dev/null; dd if="$B" of="$T/b1" bs=446 count=1 2>/dev/null
+dd if="$T/ahora" of="$T/a2" bs=512 skip=1 2>/dev/null; dd if="$B" of="$T/b2" bs=512 skip=1 2>/dev/null
+if cmp -s "$T/a1" "$T/b1" && cmp -s "$T/a2" "$T/b2"; then ok=1; else ok=; fi
+rm -rf "$T"
+[ -n "$ok" ] || { echo "Lo escrito no quedo igual al leerlo otra vez: vuelve a intentarlo. No borres \\rocola-os."; exit 1; }
 printf '%s  se devolvio el arranque de Windows XP (rocola-desinstalar)\n' "$(date '+%Y-%m-%d %H:%M')" >> "$OS/sistema.txt"
-echo "Listo: al reiniciar prende Windows XP. Para volver a Rocola OS, el instalador de la memoria USB."
+echo "Listo (comprobado): al reiniciar prende Windows XP. Para volver a Rocola OS, el instalador de la memoria USB."
+echo "Desde Windows XP ya se puede borrar \\rocola-os si no la quieres (no hace falta para prender)."

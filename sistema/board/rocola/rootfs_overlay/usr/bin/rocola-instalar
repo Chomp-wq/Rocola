@@ -207,13 +207,28 @@ mkdir -p "$D/$otra" "$D/boot/grub" || para "No pude crear \\$OS en el disco."
 # Algo fallo a medias: se dice y se deja como estaba (lo de antes sigue arrancando: el arranque se cambia lo ultimo)
 falla() { rm -f "$D/$otra/sistema.img.nuevo" "$D/datos.img.nuevo"; cp -f $LOG "$D/instalar.txt" 2>/dev/null; sync; umount $M 2>/dev/null; para "$* La rocola sigue arrancando como antes."; }
 
-# 2. EL ARRANQUE DE ANTES, guardado (una vez: el de XP, no el de una instalacion anterior)
-if [ ! -f "$D/arranque-xp.original.bin" ]; then
-	n=$primera; [ "$n" -gt 2048 ] && n=2048
-	dd if="/dev/$DISCO" of="$D/arranque-xp.original.bin" bs=512 count=$n 2>>$LOG || falla "No pude guardar el arranque de antes."
-	echo "$n" > "$D/arranque-xp.sectores"
-	di "Arranque de antes guardado ($n sectores)."
+# 2. EL ARRANQUE DE ANTES, guardado (una vez: el de XP, no el de una instalacion anterior). NUNCA UNO DE ROCOLA OS (7-11-2026): si se
+# borro \rocola-os con Rocola OS instalado, el disco sigue arrancando con GRUB, y guardar eso como «el de XP» haria que desinstalar
+# devolviera GRUB. Una copia que es GRUB no vale (se aparta como .grub); con GRUB en el disco y sin copia buena no se guarda nada y se
+# avisa: Rocola OS se instala igual, pero para quitarlo despues hara falta el CD de Windows XP (fixmbr).
+es_grub() { tr -c 'A-Za-z' '\n' | grep -qx GRUB; }
+B=$D/arranque-xp.original.bin
+if [ -f "$B" ] && head -c 512 "$B" | es_grub; then mv -f "$B" "$B.grub"; apunta "la copia del arranque de XP era GRUB: apartada ($B.grub)"; fi
+if [ ! -f "$B" ]; then
+	if dd if="/dev/$DISCO" bs=512 count=1 2>/dev/null | es_grub; then
+		apunta "el disco ya arranca con GRUB y no hay copia del arranque de XP: no se guarda"
+		di "AVISO: no esta la copia del arranque de Windows XP (se borro \\$OS con Rocola OS instalado). Rocola OS se instala igual;"
+		di "para quitarlo despues hara falta el CD de Windows XP (consola de recuperacion, fixmbr)."
+	else
+		n=$primera; [ "$n" -gt 2048 ] && n=2048
+		dd if="/dev/$DISCO" of="$B" bs=512 count=$n 2>>$LOG || falla "No pude guardar el arranque de antes."
+		echo "$n" > "$D/arranque-xp.sectores"
+		di "Arranque de antes guardado ($n sectores)."
+	fi
 fi
+# EL DESINSTALADOR PARA WINDOWS XP (7-11-2026, el dueno: «Si haz un desinstalador»): en \rocola-os, para quitar Rocola OS desde XP
+# (doble clic en Desinstalar_Rocola_OS.cmd). S99rocola lo pone tambien en las rocolas ya instaladas.
+cp -f /usr/share/rocola/xp/* "$D/" 2>>$LOG || apunta "no se pudo copiar el desinstalador de XP"
 
 # 3. EL SISTEMA: la particion de esta memoria, copiada entera (en solo lectura mientras: la copia sale igual) y comprobada.
 # LOS ARCHIVOS DEL SISTEMA Y DE LO APRENDIDO SE ESCRIBEN ENTEROS, SIN HUECOS (dd y zcat escriben cada byte; nunca cp --sparse, truncate

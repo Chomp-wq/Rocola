@@ -174,8 +174,11 @@ A4. Para probar la rocola en otra PC (Intel o Ryzen, con cualquier tarjeta gráf
 
 Windows XP deja de arrancar, pero no se borra nada suyo: con **ESC al prender** sale el menú, que tiene «Windows XP (la rocola de
 antes)». El arranque de antes (el primer sector del disco y el hueco que usa GRUB, sin la tabla de particiones) queda guardado en
-`\rocola-os\arranque-xp.original.bin`; **para dejar la rocola como antes**, `rocola-desinstalar` en la consola de mantenimiento
-(Ctrl+Alt+F2, usuario `root`) lo devuelve y la rocola vuelve a prender en XP (no borra `\rocola-os`). Volver a instalar (otra versión)
+`\rocola-os\arranque-xp.original.bin`; **para dejar la rocola como antes**, en Rocola OS Ctrl+F3 → Detalles → «La rocola» →
+«Volver a Windows XP», o `rocola-desinstalar` en la consola de mantenimiento (Ctrl+Alt+F2, usuario `root`), lo devuelven y la rocola vuelve
+a prender en XP (no borran `\rocola-os`). **Desde Windows XP**: doble clic en `\rocola-os\Desinstalar_Rocola_OS.cmd` (hace lo mismo,
+comprueba todo antes de escribir y después ofrece borrar la carpeta). **No borres `\rocola-os` antes de desinstalar**: el arranque de
+Rocola OS lee su menú de esa carpeta y, sin ella, la computadora no prende (se queda en `grub rescue>`). Volver a instalar (otra versión)
 pone el sistema en la otra copia y conserva lo aprendido. Lo que hizo el instalador queda en `\rocola-os\instalar.txt`.
 
 **Probado (3-11-2026) en una máquina emulada** con el núcleo de sistema-5 y un disco como el de XP (NTFS desde el sector 63, con su

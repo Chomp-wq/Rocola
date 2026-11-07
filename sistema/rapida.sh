@@ -37,7 +37,11 @@ fi
 
 [ "$1" = arma ] || { echo "uso: rapida.sh decide BASE_SHA | arma BASE_SHA BASE SALIDA" >&2; exit 2; }
 BASE_SHA=$2; BASE=$(cd "$3" && pwd); mkdir -p "$4"; SALIDA=$(cd "$4" && pwd)
-[ -z "$(no_rapidos "$BASE_SHA")" ] || { echo "rapida.sh: hay cambios que necesitan la compilacion completa" >&2; exit 1; }
+# «rapida_ya» (RAPIDA_YA=1): se hace aunque haya cambios que piden la completa; esos (nucleo, paquetes...) no entran hasta la siguiente
+if [ -n "$(no_rapidos "$BASE_SHA")" ]; then
+	if [ "$RAPIDA_YA" = 1 ]; then no_rapidos "$BASE_SHA" | sed 's/^/rapida ya: no entra hasta la completa: /' >&2
+	else echo "rapida.sh: hay cambios que necesitan la compilacion completa" >&2; exit 1; fi
+fi
 cambio() { git -C "$REPO" diff --no-renames --name-only "$BASE_SHA" HEAD -- "$@" | grep -q .; }
 T=$(mktemp -d); M=$T/raiz
 trap 'mountpoint -q "$M" && sudo umount "$M"; rm -rf "$T"' EXIT

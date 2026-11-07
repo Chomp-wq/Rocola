@@ -2049,6 +2049,32 @@ con el controlador generico, que nombra su salida de otra forma, y se tomo por l
   analogica; con solo la del HDMI, `default`.
 - El programa usa la que le pasa el lanzador (`ROCOLA_ALSA`, de `rocola-tarjeta`). No probado en el A4.
 
+### Desinstalar desde Windows XP (7 de noviembre de 2026)
+
+El dueño preguntó si borrar `\rocola-os` desde XP lo desinstalaba. **No**: el arranque de Rocola OS (GRUB) está en el primer sector del
+disco y en el hueco de detrás, y lee su menú de `\rocola-os\boot\grub`; sin la carpeta la computadora se queda en `grub rescue>` y no llega
+ni a XP, y con ella se va la copia del arranque de XP que hace falta para desinstalar. Pidió un desinstalador («Si haz un desinstalador»):
+
+- **`\rocola-os\Desinstalar_Rocola_OS.cmd`** (doble clic en XP) compila `desinstalar-rocola-os.cs` con el compilador de C# que trae .NET en
+  Windows (`Framework\v3.5` o `v2.0.50727`; no se baja nada) y lo abre. Busca `\rocola-os` (la de su carpeta o en los discos fijos), saca el
+  disco físico de esa unidad (`IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS`) y, antes de escribir, comprueba: sectores de 512 bytes, el disco con
+  GRUB en el primer sector (si no, ya prende en XP: solo ofrece borrar la carpeta), la copia entera (`arranque-xp.sectores`), con firma,
+  con código y **sin GRUB**, ningún disco GPT y ninguna partición dentro de lo que se devuelve. Pide confirmar, escribe el código del primer
+  sector (sin la tabla) y después el hueco (si se fuera la luz a medias, XP prende igual: no usa el hueco), lo lee otra vez para
+  comprobarlo, lo apunta en `sistema.txt` y ofrece borrar la carpeta (diciendo cuánto ocupa). Hace falta una cuenta de administrador.
+  C# 2.0 y .NET 2.0 SP1 (lo del A4): compilado aquí con `mcs -langversion:ISO-2` contra las referencias de .NET 2.0.
+- **Rocola OS lo deja en `\rocola-os`**: el instalador al instalar, y `S99rocola` en cada arranque si falta o cambió (las rocolas ya
+  instaladas lo reciben con la primera actualización; nunca con el disco «sin revisar»). Vive en `rootfs_overlay/usr/share/rocola/xp/`.
+- **Nunca GRUB como «el arranque de XP».** Si se borrara `\rocola-os` con Rocola OS instalado y se volviera a instalar, el instalador
+  guardaba el GRUB del disco como la copia de XP, y desinstalar devolvía GRUB. Ahora una copia que es GRUB se aparta (`.grub`) y, con GRUB en
+  el disco y sin copia buena, no se guarda nada y se avisa (para quitarlo hará falta el CD de XP: consola de recuperación, `fixmbr`).
+  `rocola-desinstalar` hace las mismas comprobaciones que el de XP y también comprueba leyendo el disco al final.
+- **Probado**: el de XP con un disco simulado (Mono, `--prueba IMAGEN CARPETA RESPUESTAS`; ocho casos: quitar y dejar la carpeta, otra vez
+  y borrarla, copia GRUB, sin copia, partición en el sector 32, decir que no, GPT, copia cortada; los 63 sectores quedan idénticos a los de
+  antes de instalar y en los demás no se escribe nada); `rocola-desinstalar`, el paso 2 del instalador y la copia de `S99rocola` con el
+  BusyBox del sistema (chroot) y el `boot.img` de GRUB de verdad. **No probado en Windows XP** (abrir el disco, la ventana, el compilador
+  del A4) **ni en el A4.**
+
 ### La consola de mantenimiento y la llave de Spotify (7 de noviembre de 2026)
 
 - **«No puedo abrir la consola de mantenimiento con Ctrl+Alt+F2».** El nucleo si cambiaba a la consola 2 (con su «login»), pero la rocola
@@ -2078,6 +2104,10 @@ Buildroot rehaciendo todo (con ccache), aunque casi siempre solo cambian scripts
   otras rapidas.
 - Probado aqui con la compilacion de QEMU como base: 2 min 15 s con el programa; dentro, el instalador, el menu, el init, la version y
   el programa nuevos; las sumas bien, e2fsck limpio y el nucleo llega a /sbin/init. Aun no corrido en GitHub.
+- **«rapida_ya»** (casilla de Run workflow, 7-11-2026): la rapida aunque haya cambios que piden la completa (por ejemplo, para llevar ya
+  un arreglo de los scripts mientras la completa de un paquete espera). El trabajo «decidir» la elige y `rapida.sh arma` la acepta con
+  `RAPIDA_YA=1` (dice que cambios no entran); esos entran con la siguiente completa, que sigue tomando la misma base. La primera version de
+  la casilla no llegaba a pasarle `RAPIDA_YA` a `rapida.sh`, que la habria rechazado; arreglado antes de usarse.
 
 ## El raton, ver si hay internet y Spotify a la vista (7 de noviembre de 2026)
 

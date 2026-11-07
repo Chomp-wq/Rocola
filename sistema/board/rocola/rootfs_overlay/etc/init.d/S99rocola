@@ -24,6 +24,11 @@ case "$1" in
 		  [ -n "$dev" ] && [ -r "$v" ] || exit 0
 		  if [ "$(sed -n 6p "$v")" = dirty ]; then echo "$dev" > /run/rocola-disco-revisar; exit 0; fi
 		  while sleep 15; do [ -r "$v" ] || exit 0; [ "$(sed -n 7p "$v")" = dirty ] && sync; done ) &
+		# EL DESINSTALADOR PARA WINDOWS XP (7-11-2026, el dueno: «Si haz un desinstalador»): en \rocola-os, para quitar Rocola OS desde XP
+		# (doble clic en Desinstalar_Rocola_OS.cmd). Se pone si falta o cambio (en las rocolas instaladas antes, con la primera
+		# actualizacion); nunca con el disco «sin revisar». El sync lo hace el vigilante de arriba.
+		( sleep 20; [ -d /rocola/disco/rocola-os ] && [ ! -f /run/rocola-disco-revisar ] || exit 0
+		  for f in /usr/share/rocola/xp/*; do d=/rocola/disco/rocola-os/${f##*/}; cmp -s "$f" "$d" || cp -f "$f" "$d"; done ) &
 		# (el aviso de «Buscar actualizacion ahora» se borra al acabar de buscar: hasta entonces Ctrl+F3 dice BUSCANDO, y
 		# rocola-actualiza sabe que se pidio a mano: busca aunque «Actualizarse sola» este apagado)
 		( sleep 60

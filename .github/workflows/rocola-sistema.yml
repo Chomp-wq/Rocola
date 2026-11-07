@@ -91,6 +91,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release download "${{ needs.decidir.outputs.base_tag }}" -p sistema.img.gz -p disk.img.gz -p bzImage -p initrd.gz -D base
       - name: Poner los cambios encima
+        env:
+          RAPIDA_YA: ${{ inputs.rapida_ya && '1' || '' }}
         run: bash sistema/rapida.sh arma "${{ needs.decidir.outputs.base_sha }}" base pub
       - name: Probar que el nucleo arranca
         run: |
