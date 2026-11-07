@@ -1628,3 +1628,25 @@ Se suman a F1 (`fiestas_cielo=`), con el mismo interruptor:
 - **Día de Muertos:** ahora también llegan las mariposas monarca.
 
 Todas se revisaron con capturas con la fecha forzada; nada en el A4.
+
+## Extra (7-11-2026, doceava parte): artistas de Spotify en el buscador
+
+Pedido del dueño: «cuando salgan artistas que no hay en la rocola, debería salir el artista en Spotify [...] se hará zoom hacia la
+casilla escogida mostrando los resultados de dicho artista, y al volver estarás de nuevo en el buscador». Solo con el modo Spotify.
+
+- **Qué artistas salen:**
+  - La búsqueda de Spotify pide también artistas (`type=...,artist`).
+  - Solo los que no están en la rocola: ni por su pareja de SP4 ni por el nombre de algún disco tuyo (`ArtistaEnLaRocola`).
+  - Hasta tres. El primero que da Spotify va si su nombre se parece a lo escrito, a dos letras, también a medio escribir (`Cerca`);
+    los demás, si lo contienen o están contenidos.
+- **Cómo se ven:** la tarjeta dice ARTISTA y «Spotify · artista · 1,3 M de seguidores», con su foto. Van justo después de los
+  artistas tuyos que salgan primero; si no hay ninguno, hasta arriba.
+- **Al elegir uno:**
+  - Se abre su página de Spotify: lo más conocido y, debajo de la portada, la tira con sus discos (P2).
+  - La página crece desde la casilla elegida hasta la pantalla en 0,42 s, con un destello verde (`ZoomArtista`). Para eso, `Dibujo`
+    tiene ahora un zoom: lo que se dibuja con él puesto se escala, se corre y se aclara.
+  - REGRESAR vuelve siempre al buscador, con lo escrito y la misma elección. Los discos que se abran desde la tira se apilan como
+    siempre.
+- **Lo que no cambia:** un artista que sí está en la rocola sigue llevando a sus discos de la pared.
+- **Probado** con el rocola-spotify simulado (búsqueda, zoom a medio camino, página con su tira y regreso); no con una cuenta real
+  ni en el A4. Arreglo de paso: el número de seguidores se escribe sin cultura (el programa corre sin las tablas de idiomas).

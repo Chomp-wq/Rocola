@@ -268,6 +268,7 @@ namespace Rocola.Pantalla
         // Recorta lo que se dibuje a un rectangulo (coordenadas de pantalla, y hacia abajo); Suelta lo quita.
         internal void Recorta(float x, float y, float w, float h)
         {
+            if (Zoom) { x = x * ZoomS + ZoomX; y = y * ZoomS + ZoomY; w *= ZoomS; h *= ZoomS; }
             Vacia(); LimpiaSiFalta();
             GL.Enable(GL.SCISSOR_TEST); rx0 = x; ry0 = y; rx1 = x + w; ry1 = y + h;
             GL.Scissor((int)Math.Floor(x), (int)Math.Floor(Alto - y - h), Math.Max(0, (int)Math.Ceiling(w)), Math.Max(0, (int)Math.Ceiling(h)));
@@ -322,8 +323,12 @@ namespace Rocola.Pantalla
             if (opaca && area * 16f > (float)Ancho * Alto) { if (!loteOpaco) Vacia(); loteGrande = true; }
             else if (loteGrande && !opaca) Vacia();
         }
+        // EL ZOOM (7-11-2026: el artista de Spotify que se abre desde su casilla del buscador): lo que se dibuje con Zoom puesto se escala
+        // y se corre (x * ZoomS + ZoomX) y su alfa se multiplica por ZoomA. Apagado no cambia nada.
+        internal bool Zoom; internal float ZoomS = 1f, ZoomX, ZoomY, ZoomA = 1f;
         private void V(float x, float y, float u, float w, Color4 c)
         {
+            if (Zoom) { x = x * ZoomS + ZoomX; y = y * ZoomS + ZoomY; c.A *= ZoomA; }
             if (!opacoV || c.A < 1f) loteOpaco = false;
             int o = nv * 8;
             vertices[o] = x; vertices[o + 1] = y; vertices[o + 2] = u; vertices[o + 3] = w;

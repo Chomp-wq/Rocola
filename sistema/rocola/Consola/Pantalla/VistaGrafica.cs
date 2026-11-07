@@ -119,7 +119,7 @@ namespace Rocola
             float e = reposoAlfa * reposoAlfa * (3 - 2 * reposoAlfa);
             if (c.Buscando && c.ConPortadas) BuscadorPortadas(c, W, abajo);
             else if (c.Buscando) BuscadorPortadas(c, W, abajo);
-            else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else Disco(c, W, abajo); }
+            else if (e < 1f) { if (c.dentro == null) Pared(c, W, abajo); else if (!ZoomArtista(c, W, H)) Disco(c, W, abajo); else { Disco(c, W, abajo); d.Zoom = false; } }
             Perfil.Marca("pared, disco o buscador");
             if (e > 0f && e < 1f) Cielo(W, H, reloj.Elapsed.TotalSeconds, e);
             if (e > 0f) EstrellaDelCielo(c, W, H, e);
@@ -545,6 +545,24 @@ namespace Rocola
         }
 
         private float reposoAlfa; private double reposoT;
+
+        // EL ZOOM DESDE LA CASILLA (7-11-2026): al abrir un artista de Spotify desde el buscador, su pagina crece desde la casilla elegida
+        // hasta llenar la pantalla en 0,42 s (sale suave) y se va aclarando. Devuelve true si hay que dibujar con el zoom puesto.
+        private int zoomVisto; private Zona zoomDesde;
+        private bool ZoomArtista(Controlador c, float W, float H)
+        {
+            int z = c.ZoomDesdeBuscador;
+            if (z == 0) return false;
+            if (z != zoomVisto) { zoomVisto = z; zoomDesde = zSelResultado.Vacia ? new Zona(W * 0.4f, H * 0.4f, W * 0.2f, H * 0.2f) : zSelResultado; }
+            float u = unchecked(Environment.TickCount - z) / 420f;
+            if (u >= 1f || u < 0f) { c.ZoomDesdeBuscador = 0; return false; }
+            float e = 1f - (1f - u) * (1f - u) * (1f - u);
+            float x = zoomDesde.X * (1 - e), y = zoomDesde.Y * (1 - e), w = zoomDesde.W + (W - zoomDesde.W) * e, h = zoomDesde.H + (H - zoomDesde.H) * e;
+            float s = w / W;
+            d.Brillo(x + w / 2, y + h / 2, Math.Max(w, h) * 0.4f, new Color4(0.45f, 0.85f, 0.55f, 0.18f * (1f - e)));   // (un destello verde de Spotify)
+            d.Zoom = true; d.ZoomS = s; d.ZoomX = x; d.ZoomY = y + h / 2 - H * s / 2; d.ZoomA = Math.Min(1f, 0.25f + e * 1.2f);
+            return true;
+        }
 
         // EL COLOR DEL GENERO (color_genero= de XP): un resplandor de ese color que respira despacio (con su propio reloj de 5 s, no con la
         // musica: nada da saltos) detras de la portada.

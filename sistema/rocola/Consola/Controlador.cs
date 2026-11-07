@@ -493,6 +493,7 @@ namespace Rocola
             }
         }
         private bool volverAlBuscador;   // el disco abierto vino del buscador y no esta en la pared
+        internal int ZoomDesdeBuscador;   // cuando se abrio un artista de Spotify del buscador (la pantalla hace zoom desde su casilla)
 
         // SP6: al final del disco, las canciones de Spotify que le faltan (o ninguna: se quitan las que habia, si se apago).
         private void PonFaltantes(Form1.Disco dd, List<string> faltan)
@@ -533,8 +534,15 @@ namespace Rocola
             List<Form1.Resultado> todo = new List<Form1.Resultado>();
             HashSet<string> ya = new HashSet<string>(StringComparer.Ordinal);
             if (resultadosLetraDe == Escrito && resultadosLetra != null) foreach (Form1.Resultado r in resultadosLetra) { todo.Add(r); if (r.Ruta != null) ya.Add(r.Ruta); }
+            // los artistas de Spotify que no estan en la rocola, justo despues de los artistas tuyos que salgan primero (si no hay, arriba)
+            int pon = todo.Count;
+            foreach (Form1.Resultado r in resultadosLocales) if (r.Ruta == null || !ya.Contains(r.Ruta)) { if (r.Tipo != 0) break; pon++; }
             foreach (Form1.Resultado r in resultadosLocales) if (r.Ruta == null || !ya.Contains(r.Ruta)) todo.Add(r);
-            if (resultadosSpotifyDe == Escrito && resultadosSpotify != null) foreach (Form1.Resultado r in resultadosSpotify) if (r.Ruta == null || !ya.Contains(r.Ruta)) todo.Add(r);
+            if (resultadosSpotifyDe == Escrito && resultadosSpotify != null)
+            {
+                foreach (Form1.Resultado r in resultadosSpotify) if (r.Tipo == 0) todo.Insert(Math.Min(pon++, todo.Count), r);
+                foreach (Form1.Resultado r in resultadosSpotify) if (r.Tipo != 0 && (r.Ruta == null || !ya.Contains(r.Ruta))) todo.Add(r);
+            }
             Resultados = resultadosMezclados = todo;
         }
         private void RefrescaTop()
@@ -840,7 +848,10 @@ namespace Rocola
             {   // un disco o una lista de Spotify del buscador: se abre directo
                 Form1.Disco d = motor.DiscoSpotifyDe(r.Carpeta);
                 if (d == null) return;
-                if (string.IsNullOrEmpty(d.Nombre)) d.Nombre = r.Texto;
+                bool artista = r.Tipo == 0;   // un artista de Spotify que no esta en la rocola: su pagina, y REGRESAR al buscador
+                if (artista && string.IsNullOrEmpty(d.Artista)) d.Artista = r.Texto;
+                if (!artista && string.IsNullOrEmpty(d.Nombre)) d.Nombre = r.Texto;
+                if (artista) { volverAlBuscador = true; Buscando = false; dentro = d; cursorCancion = 0; cursorMas = -1; deDonde.Clear(); ZoomDesdeBuscador = Environment.TickCount | 1; return; }
                 // SI ESTA EN LA PARED (la letra SPOTIFY, o su letra con «Discos de Spotify en las letras»), la pared se queda en el, como
                 // con los tuyos, y REGRESAR vuelve a la pared. SI SOLO ESTA EN EL BUSCADOR (pedido del dueno del 7-11-2026), la pared no se
                 // mueve y REGRESAR vuelve al buscador, con lo que se habia escrito y la misma eleccion (alli no hay un sitio al que volver).

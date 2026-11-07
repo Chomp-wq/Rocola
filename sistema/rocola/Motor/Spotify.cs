@@ -588,7 +588,7 @@ namespace Rocola
             List<Resultado> r = new List<Resultado>();
             try
             {
-                using (JsonDocument d = Api(s, "/v1/search?type=track,album,playlist&limit=10&q=" + Q(texto)))
+                using (JsonDocument d = Api(s, "/v1/search?type=track,album,playlist,artist&limit=10&q=" + Q(texto)))
                     if (d != null)
                     {
                         JsonElement root = d.RootElement;
@@ -599,6 +599,29 @@ namespace Rocola
                                 PistaSpotify p; lock (spotifyCerrojo) p = spotifyPistas[ruta];
                                 r.Add(new Resultado { Tipo = 2, Ruta = ruta, Texto = p.Titulo, Detalle = "Spotify · " + p.Artista, Carpeta = p.DiscoCarpeta });
                             }
+                        // LOS ARTISTAS QUE NO ESTAN EN LA ROCOLA (pedido del dueno del 7-11-2026): su tarjeta de Spotify, con su foto; al
+                        // elegirla se abre su pagina (lo mas conocido y sus discos en la tira) y REGRESAR vuelve al buscador. Los que si estan
+                        // ya salen como siempre (y llevan a sus discos de la pared). El primero que da Spotify va siempre; los demas, solo si
+                        // su nombre casa con lo escrito. Hasta tres.
+                        if (root.TryGetProperty("artists", out JsonElement ar) && ar.TryGetProperty("items", out JsonElement ari))
+                        {
+                            string q = Normaliza(texto); int n = 0, i = 0;
+                            foreach (JsonElement a in ari.EnumerateArray())
+                            {
+                                if (a.ValueKind != JsonValueKind.Object) continue;
+                                string id = SpotifyEnVivo.Texto(a, "id"), nombre = SpotifyEnVivo.Texto(a, "name"), nn = Normaliza(nombre);
+                                bool primero = i++ == 0;
+                                if (id.Length == 0 || nn.Length == 0 || n >= 3) continue;
+                                // que se parezca a lo escrito: lo contiene o esta contenido, o (el primero, por si hay una falta) a dos letras
+                                bool casa = nn.Contains(q) || q.Contains(nn) || (primero && Cerca(nn, q, 2));
+                                if (!casa) continue;
+                                if (ArtistaEnLaRocola(id, nn)) continue;
+                                Disco disco = DiscoSpotify(RaizSpotify + "artist/" + id, "", nombre, Imagen(a));
+                                int seg = a.TryGetProperty("followers", out JsonElement fo) && fo.ValueKind == JsonValueKind.Object && fo.TryGetProperty("total", out JsonElement ft) && ft.ValueKind == JsonValueKind.Number ? ft.GetInt32() : 0;
+                                r.Insert(n, new Resultado { Tipo = 0, Carpeta = disco.Carpeta, Texto = nombre, Detalle = "Spotify · artista" + (seg >= 1000 ? " · " + Seguidores(seg) : "") });
+                                n++;
+                            }
+                        }
                         if (root.TryGetProperty("albums", out JsonElement al) && al.TryGetProperty("items", out JsonElement ai))
                             foreach (JsonElement a in ai.EnumerateArray())
                             {
@@ -628,6 +651,38 @@ namespace Rocola
                 if (url != null && clave != null) x.Portada = BajaPortada(s, url, clave);
             }
             spotifyVersion++;
+        }
+        // Si 'a' y 'b' estan a 'max' cambios de letra o menos (sin espacios), contando tambien que 'b' sea el principio de 'a'.
+        private static bool Cerca(string a, string b, int max)
+        {
+            a = a.Replace(" ", ""); b = b.Replace(" ", "");
+            if (a.Length == 0 || b.Length == 0 || Math.Abs(a.Length - b.Length) > max && !a.StartsWith(b.Substring(0, Math.Min(b.Length, 3)), StringComparison.Ordinal)) return false;
+            int[] p = new int[b.Length + 1], c = new int[b.Length + 1];
+            for (int j = 0; j <= b.Length; j++) p[j] = j;
+            int mejor = int.MaxValue;
+            for (int i2 = 1; i2 <= a.Length; i2++)
+            {
+                c[0] = i2;
+                for (int j = 1; j <= b.Length; j++) c[j] = Math.Min(Math.Min(c[j - 1] + 1, p[j] + 1), p[j - 1] + (a[i2 - 1] == b[j - 1] ? 0 : 1));
+                if (i2 >= b.Length - max) mejor = Math.Min(mejor, c[b.Length]);   // b contra el principio de a (a medio escribir)
+                int[] tt = p; p = c; c = tt;
+            }
+            return Math.Min(mejor, p[b.Length]) <= max;
+        }
+        private static string Seguidores(int n) { return n >= 1000000 ? (n / 1000000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " M de seguidores" : (n / 1000) + " mil seguidores"; }
+        // Si ese artista ya esta en la rocola: por su pareja de Spotify (SP4) o porque algun disco tuyo lleva su nombre.
+        private HashSet<string> nombresLocales; private int nombresLocalesDe = -1;
+        private bool ArtistaEnLaRocola(string id, string nombreNormalizado)
+        {
+            foreach (KeyValuePair<string, ArtistaLocal> kv in ArtistasDeBiblioteca()) if (kv.Key == id) return true;
+            HashSet<string> h = nombresLocales;
+            if (h == null || nombresLocalesDe != albums.Count)
+            {
+                h = new HashSet<string>(StringComparer.Ordinal);
+                try { foreach (Album a in albums.ToArray()) if (a != null && !a.IsTop && !string.IsNullOrEmpty(a.Artist)) h.Add(Normaliza(a.Artist)); } catch { }
+                nombresLocales = h; nombresLocalesDe = albums.Count;
+            }
+            return h.Contains(nombreNormalizado);
         }
         // Un disco de Spotify de un resultado del buscador (para abrirlo).
         public Disco DiscoSpotifyDe(string carpeta)
