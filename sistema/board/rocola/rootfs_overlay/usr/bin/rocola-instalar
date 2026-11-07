@@ -22,6 +22,9 @@ LOG=/tmp/rocola-instalar.txt
 INST=/usr/share/rocola/instalar
 # LO QUE NO ES DE LA ROCOLA: la Papelera ($RECYCLE.BIN, RECYCLER de XP) y lo de Windows (System Volume Information). En el A4 (7-11-2026)
 # los «datos de la de XP» salieron de una carpeta borrada en la Papelera.
+# DE VARIAS CARPETAS DE LA ROCOLA DE XP, LA QUE SE USA (7-11-2026: en el A4 habia una vieja y la de ahora en «Release1», y se tomo la
+# vieja): de los archivos que llegan (uno por linea), el mas reciente; su carpeta es la de la rocola que se usa
+reciente() { while IFS= read -r f; do printf '%s\t%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"; done | sort -rn | head -1 | cut -f2-; }
 basura() { grep -iv '/\$recycle\.bin/\|/recycler/\|/system volume information/'; }
 # EL ARRANQUE: los modulos de GRUB que van en el hueco del disco. Sin search_fs_uuid: en el mismo disco grub-install lo encuentra por la
 # particion, y con el la imagen (32 329 bytes) no cabia en el hueco de XP (62 sectores, 31 744 bytes; A4, 7-11-2026).
@@ -108,7 +111,7 @@ XP_N=$(cat "/sys/class/block/$XP_PART/partition" 2>/dev/null)
 XP_UUID=; [ -n "$XP_PART" ] && XP_UUID=$(blkid "/dev/$XP_PART" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p' | tr 'A-F' 'a-f')
 musica=$(find "$MIRA" -maxdepth 3 -type d -iname musica 2>/dev/null | basura | head -5)
 canciones=$((mejor_n % 1000000))
-datos_xp=$(find "$MIRA" -maxdepth 4 \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt \) 2>/dev/null | basura | grep -iv respaldo | head -1)
+datos_xp=$(find "$MIRA" -maxdepth 4 \( -iname rocola_config.txt -o -iname rocola_sonoridad.txt -o -iname rocola_stats.txt \) 2>/dev/null | basura | grep -iv respaldo | reciente)
 [ -n "$datos_xp" ] && datos_xp=$(dirname "$datos_xp")
 ya=; [ -f "$MIRA/$OS/arranque.cfg" ] && ya=1
 

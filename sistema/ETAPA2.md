@@ -2043,3 +2043,5 @@ conectado, no se veia. La rocola esta por cable.
   `Confirma`; `PideSalida` lo atiende el bucle del Controlador; `/usr/bin/rocola` sabe 45 y 46); «Traer otra vez lo aprendido en XP»
   (`Arranque.cs`, `rocola_reimportar_xp`).
 - Probado con capturas y una pelicula de cuadros (el odometro). No en el A4.
+
+- **Otra carpeta de XP (7-11-2026):** en el A4 habia una carpeta vieja de la rocola de XP y la de ahora (`Release1`); se importo la vieja. Ahora se elige la usada mas recientemente y, si ya se habia importado otra, se vuelve a importar todo de la buena (configuracion incluida, juntada con lo que solo tiene Rocola OS; lo de antes en `.antes-xp`).

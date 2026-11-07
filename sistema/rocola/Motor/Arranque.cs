@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace Rocola
 {
@@ -117,6 +118,22 @@ namespace Rocola
         }
 
         // La carpeta de datos de XP que encontro rocola-discos (/run/rocola-datos-xp; ROCOLA_DATOS_XP puede dar otra) y los discos montados.
+        // La configuracion recien traida de XP, mas lo que solo tenia la de Rocola OS (las claves que XP no conoce: Spotify, la pantalla...)
+        private void JuntaConfigDeAntes()
+        {
+            try
+            {
+                string c = RutaDatos("rocola_config.txt"), antes = c + ".antes-xp";
+                if (!File.Exists(c) || !File.Exists(antes)) return;
+                List<string> nuevas = new List<string>(File.ReadAllLines(c));
+                HashSet<string> claves = new HashSet<string>(StringComparer.Ordinal);
+                foreach (string l in nuevas) { int e = l.IndexOf('='); if (e > 0) claves.Add(l.Substring(0, e).Trim()); }
+                foreach (string l in File.ReadAllLines(antes)) { int e = l.IndexOf('='); if (e > 0 && !claves.Contains(l.Substring(0, e).Trim())) nuevas.Add(l); }
+                StringBuilder sb = new StringBuilder(); foreach (string l in nuevas) sb.Append(l).Append("\r\n");
+                EscribeYa(c, sb.ToString());
+            }
+            catch { }
+        }
         private void ImportaDeXPSiHay()
         {
             try
@@ -132,18 +149,33 @@ namespace Rocola
                 // «Traer otra vez lo aprendido en XP» (Ctrl+F3 -> La rocola): lo de aqui pasa a .antes-xp y se vuelve a importar (no la
                 // configuracion ni los botones de Rocola OS)
                 string otra = RutaDatos("rocola_reimportar_xp");
-                if (File.Exists(otra))
+                // OTRA CARPETA DE XP (7-11-2026: en el A4 habia una vieja y la de ahora, «Release1», y se importo la vieja; rocola-discos ya
+                // elige la mas reciente): si la de ahora no es de la que se importo, se importa TODO otra vez de la buena, tambien la
+                // configuracion (con lo que solo tiene Rocola OS, como Spotify) y los botones
+                bool todo = false;
+                try
+                {
+                    string marca = RutaDatos("rocola_importado_xp.txt");
+                    if (File.Exists(marca))
+                    {
+                        string l0 = File.ReadAllLines(marca)[0]; int a = l0.IndexOf('('), b = l0.LastIndexOf(") el ", StringComparison.Ordinal);
+                        if (a >= 0 && b > a && !string.Equals(l0.Substring(a + 1, b - a - 1).TrimEnd('/'), xp.TrimEnd('/'), StringComparison.Ordinal)) todo = true;
+                    }
+                }
+                catch { }
+                if (File.Exists(otra) || todo)
                 {
                     try { File.Delete(otra); } catch { }
                     foreach (string t in TablasXP)
                     {
-                        if (t == "rocola_config.txt" || t == "rocola_teclas.txt") continue;
+                        if (!todo && (t == "rocola_config.txt" || t == "rocola_teclas.txt")) continue;
                         string dst = RutaDatos(t);
                         if (File.Exists(dst) && File.Exists(Path.Combine(xp, t))) { try { File.Copy(dst, dst + ".antes-xp", true); File.Delete(dst); } catch { } }
                     }
                     try { File.Delete(RutaDatos("rocola_importado_xp.txt")); } catch { }
                 }
                 string informe = ImportaDeXP(xp, raices);
+                if (todo) JuntaConfigDeAntes();
                 if (informe != null) Diag(informe);
             }
             catch { }
