@@ -70,6 +70,10 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   la rueda, al control con el foco. La flecha (o la mano, `Cursors.Hand`) la dibuja el anfitrión cuando XP la enseña (`Cursor.Show`/`Hide`
   cuentan como ShowCursor). Probado con pasos programados (`ROCOLA_PULSA=7:17+114,10:clic:712:53`): Ctrl+F3 abre la ventana de ajustes de
   XP entera y un clic en la pestaña «Imagen» la cambia, con la mano sobre el botón.
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64`, como irá en Rocola OS): un programa nativo de 7,8 MB que arranca y hace lo
+  mismo fuera de pantalla (pantalla principal con la tarjeta del disco, disco abierto con monedas, Ctrl+F3). Avisos del compilador por la
+  reflexión de XP: el lector rápido de MP3 (`Mp3Ligero.cs`) busca campos privados de NAudio 1.9; con NAudio 3 no los encuentra y XP abre el
+  lector normal (el mismo sonido, con más basura para el recolector); el video por el reproductor de Windows (COM) va a mpv en su fase.
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
