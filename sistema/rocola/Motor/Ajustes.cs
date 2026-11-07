@@ -452,7 +452,7 @@ namespace Rocola
             l.Add(Interruptor("Internet", "Actualizarse sola desde internet", "actualizar_solo", () => ActualizarSolo, v => ActualizarSolo = v, false));
             { Ajuste x = Interruptor("Internet", "Buscar canciones por su letra (Genius)", "busca_letra", () => BuscaLetra, v => BuscaLetra = v, false);   // L1 (BuscaLetras.cs)
               x.Nota = () => HayLlaveGenius ? "Con una frase de 4 palabras o mas, el buscador pregunta a Genius de que cancion es (tu cancion, la de Spotify o cual es)."
-                                            : "Falta la llave de Genius: rocola_genius.txt en una memoria USB, o desde Rocola en casa (Ajustes).";
+                                            : "Opcional: necesita una llave de Genius (rocola_genius.txt). Sin ella no hace nada; la busqueda por letra de tus MP3 si funciona.";
               l.Add(x); }
             Ajuste ya = new Ajuste { Grupo = "Internet", Nombre = "Buscar actualización ahora", Herramienta = true };
             ya.Valor = delegate { return File.Exists("/run/rocola-buscar-ya") ? "BUSCANDO" : "BUSCAR"; };

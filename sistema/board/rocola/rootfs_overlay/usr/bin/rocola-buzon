@@ -66,6 +66,9 @@ mira_llave() {
 			printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Genius puesta (de $g)" >> "$DATOS/rocola_actualizaciones.txt"; fi
 	fi
 	LLAVE=$(sed -n 1p "$DATOS/rocola_buzon.txt" 2>/dev/null)
+	# (7-11-2026: el dueno, «me pide muchisimas llaves») sin la suya, la de GitHub: una sola llave para todo, si tiene permiso tambien
+	# para el repositorio del buzon
+	PRESTADA=; [ -n "$LLAVE" ] || { LLAVE=$(tr -d ' \r\n\t' < "$DATOS/rocola_github.txt" 2>/dev/null); [ -n "$LLAVE" ] && PRESTADA=1; }
 	REPO=${ROCOLA_BUZON:-$(sed -n 2p "$DATOS/rocola_buzon.txt" 2>/dev/null)}; REPO=${REPO:-Chomp-wq/rocola-buzon}
 }
 
@@ -272,7 +275,7 @@ while :; do
 		rm -f "$RUN/rocola-reinicia-programa-ya"; killall rocola-consola 2>/dev/null
 	fi
 	mira_llave
-	if [ -z "$LLAVE" ]; then dice "sin llave del buzon (rocola_buzon.txt en una memoria USB)"
+	if [ -z "$LLAVE" ]; then dice "apagado (opcional: usa la llave de GitHub si tiene permiso para el buzon)"
 	else
 		ULTIMO_CODIGO=
 		atiende_ordenes
@@ -283,7 +286,8 @@ while :; do
 		case "$c" in
 			200|304|404) mira_diagnostico; manda_estado && dice "al dia con el buzon $REPO" ;;   # (404: aun no hay ordenes)
 			000) dice "sin internet" ;;
-			401|403|sin_acceso) dice "la llave del buzon no vale para $REPO (o no tiene permiso sobre el)" ;;
+			401|403|sin_acceso) if [ -n "$PRESTADA" ]; then dice "apagado (opcional): la llave de GitHub no tiene permiso para el buzon $REPO"
+				else dice "la llave del buzon no vale para $REPO (o no tiene permiso sobre el)"; fi ;;
 			*) dice "GitHub no contesto ($c)" ;;
 		esac
 	fi
