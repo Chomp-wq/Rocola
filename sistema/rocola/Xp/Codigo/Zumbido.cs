@@ -217,6 +217,7 @@ namespace Rocola
             Array.Copy(a.est, est, est.Length); canal = a.canal; mezcla = a.mezcla;
         }
 
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             if (!empezo) { empezo = true; Hereda(); }

@@ -1734,6 +1734,7 @@ namespace Rocola
             }
             private WaveStream Lector { get { return (mp3 != null) ? (WaveStream)mp3 : wav; } }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             { return (r == null) ? canal.Read(buffer, offset, count) : r.Read(buffer, offset, count); }
             public float Volume { set { if (r == null) canal.Volume = value; else r.Volume = value; } }
@@ -1769,6 +1770,7 @@ namespace Rocola
                 finally { if (m != null) { try { m.Dispose(); } catch { } } }   // el canal fallo: el lector no se queda tirado
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return sample.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count) { return sample.Read(buffer, offset, count); }
             public float Volume { set { sample.Volume = value; } }
             public TimeSpan CurrentTime { get { return TiempoLector(mp3, false); } }
@@ -1793,6 +1795,7 @@ namespace Rocola
             private float pendiente; private bool hayPendiente;   // la segunda copia de una muestra, si se pidio un numero impar
             internal MonoComoEstereo(IAudioSource s) { this.s = s; formato = FormatoAudio.Flotante(s.WaveFormat.SampleRate, 2, 3); }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (count <= 0) return 0;
@@ -1950,6 +1953,7 @@ namespace Rocola
 
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 // Sin layout multicanal no adivinar LFE ni enlazar canales.
@@ -2703,6 +2707,7 @@ namespace Rocola
             // corre en CADA muestra de 16 bits, SIEMPRE, en el fierro modesto de la rocola.
             private float NextUni() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return (rs >> 8) * (1f / 16777216f); }
             public NAudio.Wave.WaveFormat WaveFormat { get { return fmt; } }
+            public int Read(Span<byte> destino) { return Puente.LeeBytes(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(byte[] buffer, int offset, int count)
             {
                 int need = count / 2;                                  // muestras de 16 bits que caben
@@ -2804,6 +2809,7 @@ namespace Rocola
                 return a < 0f ? 0f : (a > 1f ? 1f : a);
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
@@ -2956,6 +2962,7 @@ namespace Rocola
                     else { if (p < orig) delay[q] = p; }
                 }
             }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (srcEnded) return Drain(buffer, offset, count);
@@ -3117,6 +3124,7 @@ namespace Rocola
                 drainFrames -= frames;
                 return frames * ch;
             }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (count < ch) return 0;   // una lectura vacia no marca fin del origen
@@ -3192,6 +3200,7 @@ namespace Rocola
                 entradaHasta = entradaSec > 0 ? entradaDesde + Math.Max(1L, (long)(entradaSec * rate)) : entradaDesde;
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);
@@ -3353,6 +3362,7 @@ namespace Rocola
                 if(float.IsNaN(ex)||float.IsInfinity(ex))ex=audioReady?exciteRamp.Current:0f;
                 ex=ex>.001f?Math.Min(1f,ex):0f;
             }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (vaciando) return VaciaRealce(buffer, offset, count);

@@ -119,6 +119,7 @@ namespace Rocola
         // Hasta donde llena el hilo: el primer segundo mientras la salida no ha pedido nada; despues, el colchon.
         private int Hasta() { return salidaLeyo ? colchonN : anillo.Length; }
 
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             lock (cerrojo)

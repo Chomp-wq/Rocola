@@ -245,6 +245,7 @@ namespace Rocola
             private readonly float[] sale = new float[2];
             private int saleN;
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (!vale || canales != 2) return Lee(buffer, offset, count);
@@ -556,6 +557,7 @@ namespace Rocola
                 return p * 0.11;   // la escala de la receta; el nivel final lo fija RosaEficaz
             }
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int cuadros = count / 2, hechos = 0;

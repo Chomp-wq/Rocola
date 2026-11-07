@@ -302,6 +302,7 @@ namespace Rocola
             internal double MusicaOida(double segundosSalida)
             { return recorte.MusicaOida((long)Math.Round(Math.Max(0, segundosSalida) * tasa)) / (double)tasa; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return Interior.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count) { return recorte.Lee(buffer, offset, count); }
             public float Volume { set { Interior.Volume = value; } }
             public TimeSpan CurrentTime { get { return Interior.CurrentTime; } }

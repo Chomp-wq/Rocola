@@ -344,6 +344,7 @@ namespace Rocola
             emitidos++; canalCuadro = 0;
             return true;
         }
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] b, int o, int n)
         {
             if (b == null || o < 0 || n < 0 || o > b.Length - n) throw new ArgumentOutOfRangeException();
@@ -465,6 +466,7 @@ namespace Rocola
             }
         }
 
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             int hechos = 0;

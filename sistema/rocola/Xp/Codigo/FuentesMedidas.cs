@@ -53,6 +53,7 @@ namespace Rocola
             internal FuenteAudioSellada(string ruta, FuenteMedida fuente, IAudioSource lector)
             { Ruta = ruta; Fuente = fuente; interior = lector; }
             public NAudio.Wave.WaveFormat WaveFormat { get { return interior.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count) { return interior.Read(buffer, offset, count); }
             public float Volume { set { interior.Volume = value; } }
             public TimeSpan CurrentTime { get { return interior.CurrentTime; } }

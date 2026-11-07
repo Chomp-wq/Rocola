@@ -48,59 +48,38 @@ namespace Rocola
         }
 
         // Pone el volumen general al maximo y sin silencio. Devuelve lo que hizo, en una linea.
+        // EN LINUX (traduccion de XP): el volumen general es el de ALSA, el mezclador de cada tarjeta de sonido (amixer, de alsa-utils,
+        // como /usr/bin/rocola al arrancar). El «Master» es el control maestro de los altavoces de XP; el «PCM» es la linea «Onda» (lo
+        // que sale de los programas): se le quita el silencio y su nivel no se toca. Las entradas analogicas se miran y no se tocan.
         internal static string SubeVolumenWindows()
         {
-            OperatingSystem so = Environment.OSVersion;
-            if (so.Platform != PlatformID.Win32NT) return "no es Windows: nada que subir";
-            return so.Version.Major >= 6 ? SubeVolumenVista() : SubeVolumenXp();
+            return SubeVolumenAlsa();
         }
 
-        private static string SubeVolumenVista()
-        {
-            List<string> hecho = new List<string>();
-            using (NAudio.CoreAudioApi.MMDeviceEnumerator en = new NAudio.CoreAudioApi.MMDeviceEnumerator())
-            using (NAudio.CoreAudioApi.MMDevice d = en.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Console))
-            {
-                NAudio.CoreAudioApi.AudioEndpointVolume v = d.AudioEndpointVolume;
-                float antes = v.MasterVolumeLevelScalar; bool mudo = v.Mute;
-                if (mudo) v.Mute = false;
-                if (antes < 0.999f) v.MasterVolumeLevelScalar = 1f;
-                hecho.Add("general " + Pct(antes) + " -> 100 %" + (mudo ? ", sin silencio" : ""));
-                try
-                {
-                    NAudio.CoreAudioApi.SimpleAudioVolume s = d.AudioSessionManager.SimpleAudioVolume;
-                    float sa = s.Volume; bool sm = s.Mute;
-                    if (sm) s.Mute = false;
-                    if (sa < 0.999f) s.Volume = 1f;
-                    hecho.Add("la rocola en el mezclador " + Pct(sa) + " -> 100 %" + (sm ? ", sin silencio" : ""));
-                }
-                catch (Exception ex) { hecho.Add("la rocola en el mezclador: no se pudo (" + ex.GetType().Name + ")"); }
-            }
-            return string.Join("; ", hecho.ToArray());
-        }
-
-        private static string SubeVolumenXp()
+        private static string SubeVolumenAlsa()
         {
             List<string> hecho = new List<string>(), abiertas = new List<string>();
             bool mirado = false;
-            int tarjetas = NAudio.Mixer.Mixer.NumberOfDevices;
-            for (int i = 0; i < tarjetas; i++)
+            List<int> tarjetas = TarjetasAlsa();
+            foreach (int i in tarjetas)
             {
                 try
                 {
-                    NAudio.Mixer.Mixer m = new NAudio.Mixer.Mixer(i);
-                    foreach (NAudio.Mixer.MixerLine dest in m.Destinations)
+                    string[] controles = Amixer(i, "scontrols").Split('\n');
+                    List<string> nombres = new List<string>();
+                    foreach (string l in controles)
                     {
-                        if (dest.ComponentType != NAudio.Mixer.MixerLineComponentType.DestinationSpeakers) continue;
-                        string h = SubeLinea(dest, true);
-                        foreach (NAudio.Mixer.MixerLine src in dest.Sources)
-                        {
-                            if (src.ComponentType == NAudio.Mixer.MixerLineComponentType.SourceWaveOut) { string w = SubeLinea(src, false); if (w.Length > 0) h += "; onda: " + w; }
-                            else if (EsEntradaAnalogica(src.ComponentType)) { try { string a = EntradaAbierta(src); if (a != null) abiertas.Add((tarjetas > 1 ? "tarjeta " + i + ": " : "") + a); } catch { } }
-                        }
-                        mirado = true;
-                        hecho.Add("tarjeta " + i + ": " + (h.Length > 0 ? h : "sin control de volumen"));
+                        // «Simple mixer control 'Master',0»: el nombre entre comillas; solo los de indice 0
+                        int a = l.IndexOf('\''), b = l.LastIndexOf('\'');
+                        if (a >= 0 && b > a && l.Substring(b).StartsWith("',0")) { string n = l.Substring(a + 1, b - a - 1); if (!nombres.Contains(n)) nombres.Add(n); }
                     }
+                    if (!nombres.Contains("Master")) continue;
+                    string h = SubeLinea(i, "Master", true);
+                    if (nombres.Contains("PCM")) { string w = SubeLinea(i, "PCM", false); if (w.Length > 0) h += "; onda: " + w; }
+                    foreach (string n in nombres)
+                        if (EsEntradaAnalogica(n)) { try { string a = EntradaAbierta(i, n); if (a != null) abiertas.Add((tarjetas.Count > 1 ? "tarjeta " + i + ": " : "") + a); } catch { } }
+                    mirado = true;
+                    hecho.Add("tarjeta " + i + ": " + (h.Length > 0 ? h : "sin control de volumen"));
                 }
                 catch (Exception ex) { hecho.Add("tarjeta " + i + ": no se pudo (" + ex.GetType().Name + ")"); }
             }
@@ -108,64 +87,105 @@ namespace Rocola
             return hecho.Count > 0 ? string.Join("; ", hecho.ToArray()) : "no se pudo (no hay mezclador de altavoces)";
         }
 
-        // Las entradas analogicas de la tarjeta (las que meten ruido de fondo si se oyen por la salida). La onda y el sintetizador no.
-        internal static bool EsEntradaAnalogica(NAudio.Mixer.MixerLineComponentType t)
+        // Las tarjetas de sonido (/proc/asound/cards: « 0 [Generic        ]: ...»)
+        private static List<int> TarjetasAlsa()
         {
-            switch (t)
+            List<int> l = new List<int>();
+            try
             {
-                case NAudio.Mixer.MixerLineComponentType.SourceMicrophone:
-                case NAudio.Mixer.MixerLineComponentType.SourceLine:
-                case NAudio.Mixer.MixerLineComponentType.SourceCompactDisc:
-                case NAudio.Mixer.MixerLineComponentType.SourceAuxiliary:
-                case NAudio.Mixer.MixerLineComponentType.SourceAnalog:
-                case NAudio.Mixer.MixerLineComponentType.SourceTelephone:
-                case NAudio.Mixer.MixerLineComponentType.SourcePcSpeaker:
+                foreach (string s in System.IO.File.ReadAllLines("/proc/asound/cards"))
+                {
+                    string t = s.TrimStart(); int e = t.IndexOf(' '); int n;
+                    if (e > 0 && t.IndexOf('[') > e && int.TryParse(t.Substring(0, e), out n) && !l.Contains(n)) l.Add(n);
+                }
+            }
+            catch { }
+            return l;
+        }
+        // Una orden de amixer en esa tarjeta; lo que contesta («» si no esta amixer o fallo).
+        private static string Amixer(int tarjeta, params string[] orden)
+        {
+            try
+            {
+                System.Diagnostics.ProcessStartInfo pi = new System.Diagnostics.ProcessStartInfo("amixer");
+                pi.ArgumentList.Add("-c"); pi.ArgumentList.Add(tarjeta.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                foreach (string o in orden) pi.ArgumentList.Add(o);
+                pi.UseShellExecute = false; pi.RedirectStandardOutput = true; pi.RedirectStandardError = true;
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(pi))
+                {
+                    string r = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+                    return r;
+                }
+            }
+            catch { return ""; }
+        }
+        // Del estado de un control (sget): el volumen de reproduccion en % (el mayor de sus canales; -1 sin volumen) y si esta en silencio
+        // (algun canal «[off]»; false si no tiene interruptor).
+        private static void LeeControl(int tarjeta, string nombre, out double pct, out bool mudo, out bool tieneMudo)
+        {
+            pct = -1; mudo = false; tieneMudo = false;
+            foreach (string l in Amixer(tarjeta, "sget", nombre).Split('\n'))
+            {
+                string t = l.Trim();
+                if (!t.Contains(":") || t.StartsWith("Capabilities") || t.StartsWith("Playback channels") || t.StartsWith("Limits") || t.StartsWith("Capture") || t.StartsWith("Simple mixer")) continue;
+                if (!t.Contains("Playback") && !t.StartsWith("Mono:")) continue;
+                int a = t.IndexOf('['); 
+                while (a >= 0)
+                {
+                    int b = t.IndexOf(']', a); if (b < 0) break;
+                    string v = t.Substring(a + 1, b - a - 1);
+                    double x;
+                    if (v.EndsWith("%") && double.TryParse(v.TrimEnd('%'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out x)) { if (x > pct) pct = x; }
+                    else if (v == "off") { mudo = true; tieneMudo = true; }
+                    else if (v == "on") tieneMudo = true;
+                    a = t.IndexOf('[', b);
+                }
+            }
+        }
+
+        // Las entradas analogicas de la tarjeta (las que meten ruido de fondo si se oyen por la salida). La onda y el sintetizador no.
+        internal static bool EsEntradaAnalogica(string control)
+        {
+            switch (control)
+            {
+                case "Mic": case "Front Mic": case "Rear Mic": case "Internal Mic": case "Line": case "Line In": case "CD": case "Aux":
+                case "Video": case "Phone": case "Beep": case "PC Speaker":
                     return true;
             }
             return false;
         }
-        // "Microfono (75 %)" si la linea se oye (sin silencio y con volumen), o null. Solo LEE: no cambia nada.
-        private static string EntradaAbierta(NAudio.Mixer.MixerLine linea)
+        // "Mic (75 %)" si la linea se oye (sin silencio y con volumen), o null. Solo LEE: no cambia nada.
+        private static string EntradaAbierta(int tarjeta, string control)
         {
-            bool muda = false; double pct = -1;
-            foreach (NAudio.Mixer.MixerControl c in linea.Controls)
-            {
-                if (c.ControlType == NAudio.Mixer.MixerControlType.Mute) { NAudio.Mixer.BooleanMixerControl b = c as NAudio.Mixer.BooleanMixerControl; if (b != null) muda = b.Value; }
-                else if (c.ControlType == NAudio.Mixer.MixerControlType.Volume) { NAudio.Mixer.UnsignedMixerControl u = c as NAudio.Mixer.UnsignedMixerControl; if (u != null) pct = u.Percent; }
-            }
-            if (muda || pct == 0) return null;
-            return linea.Name + (pct >= 0 ? " (" + pct.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %)" : "");
+            double pct; bool muda, tieneMudo;
+            LeeControl(tarjeta, control, out pct, out muda, out tieneMudo);
+            if (muda || pct == 0 || (pct < 0 && !tieneMudo)) return null;
+            return control + (pct >= 0 ? " (" + pct.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %)" : "");
         }
+
+        // Quita el silencio del control y, si 'nivel', lo sube al maximo. Devuelve lo que hizo ("" si no habia nada).
+        private static string SubeLinea(int tarjeta, string control, bool nivel)
+        {
+            List<string> h = new List<string>();
+            double antes; bool mudo, tieneMudo;
+            LeeControl(tarjeta, control, out antes, out mudo, out tieneMudo);
+            if (nivel && antes >= 0)
+            {
+                Amixer(tarjeta, "-q", "sset", control, "100%");
+                h.Add(antes.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " % -> 100 %");
+            }
+            if (mudo) { Amixer(tarjeta, "-q", "sset", control, "unmute"); h.Add("sin silencio"); }
+            return string.Join(", ", h.ToArray());
+        }
+
         // La linea para rocola_error.txt (null si no hay ninguna abierta, o no se miro).
         internal static string TextoRuidoEntradas(string abiertas)
         {
             if (string.IsNullOrEmpty(abiertas)) return null;
             return "[Ruido en la salida] Se oyen por los altavoces entradas que la rocola no usa: " + abiertas + ". Su ruido de fondo (el del "
-                 + "microfono, sobre todo) sale por el amplificador aunque no haya nada enchufado. Para quitarlo: control de volumen de Windows, "
-                 + "Reproduccion, marcar Silencio en esas lineas. La rocola no las toca.";
-        }
-
-        // Quita el silencio de la linea y, si 'nivel', la sube al maximo. Devuelve lo que hizo ("" si no habia nada).
-        private static string SubeLinea(NAudio.Mixer.MixerLine linea, bool nivel)
-        {
-            List<string> h = new List<string>();
-            foreach (NAudio.Mixer.MixerControl c in linea.Controls)
-            {
-                if (nivel && c.ControlType == NAudio.Mixer.MixerControlType.Volume)
-                {
-                    NAudio.Mixer.UnsignedMixerControl u = c as NAudio.Mixer.UnsignedMixerControl;
-                    if (u == null) continue;
-                    double antes = u.Percent;
-                    if (u.Value != u.MaxValue) u.Value = u.MaxValue;
-                    h.Add(antes.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " % -> 100 %");
-                }
-                else if (c.ControlType == NAudio.Mixer.MixerControlType.Mute)
-                {
-                    NAudio.Mixer.BooleanMixerControl b = c as NAudio.Mixer.BooleanMixerControl;
-                    if (b != null && b.Value) { b.Value = false; h.Add("sin silencio"); }
-                }
-            }
-            return string.Join(", ", h.ToArray());
+                 + "microfono, sobre todo) sale por el amplificador aunque no haya nada enchufado. Para quitarlo: en la consola de mantenimiento "
+                 + "(Ctrl+Alt+F2), alsamixer, y silencio (tecla M) en esas lineas. La rocola no las toca.";
         }
 
         private static string Pct(float f) { return (f * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " %"; }

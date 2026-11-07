@@ -268,6 +268,7 @@ namespace Rocola
                 return desde + (int)k;
             }
             public WaveFormat WaveFormat { get { return formato; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int cuadros = count / 2, hechos = 0;

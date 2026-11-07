@@ -391,6 +391,7 @@ namespace Rocola
                 recorte = new RecorteRelleno(origen.Read, origen.WaveFormat.Channels, cuadrosFuera, cuadrosMusica);
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return s.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count) { int n = recorte.Lee(buffer, offset, count); if (n > 0) System.Threading.Interlocked.Add(ref muestrasMusica, n); return n; }
             public float Volume { set { s.Volume = value; } }
             public TimeSpan CurrentTime { get { return TiempoCuadros(System.Threading.Interlocked.Read(ref muestrasMusica) / Math.Max(1, WaveFormat.Channels)); } }

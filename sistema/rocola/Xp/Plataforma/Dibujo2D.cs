@@ -512,6 +512,31 @@ namespace Rocola.Dibujo2D
     }
     public sealed class BitmapData { public IntPtr Scan0; public int Stride, Width, Height; public PixelFormat PixelFormat; internal byte[] copia; internal GCHandle fijo; internal ImageLockMode modo; internal Rectangle zona; }
     public sealed class ImageFormat { public readonly string N; private ImageFormat(string n) { N = n; } public static readonly ImageFormat Png = new ImageFormat("png"), Jpeg = new ImageFormat("jpeg"), Bmp = new ImageFormat("bmp"); }
+    // LOS CODIFICADORES DE IMAGEN DE GDI+ (las miniaturas en JPEG con su calidad): el de JPEG y el de PNG, con Skia
+    public sealed class ImageCodecInfo
+    {
+        public string MimeType { get; private set; }
+        public string FormatDescription { get; private set; }
+        internal ImageFormat Formato;
+        private ImageCodecInfo() { }
+        public static ImageCodecInfo[] GetImageEncoders()
+        {
+            return new[] { new ImageCodecInfo { MimeType = "image/jpeg", FormatDescription = "JPEG", Formato = ImageFormat.Jpeg }, new ImageCodecInfo { MimeType = "image/png", FormatDescription = "PNG", Formato = ImageFormat.Png } };
+        }
+    }
+    public sealed class Encoder { public readonly string Nombre; private Encoder(string n) { Nombre = n; } public static readonly Encoder Quality = new Encoder("Quality"); }
+    public sealed class EncoderParameter : IDisposable
+    {
+        public readonly Encoder Encoder; public readonly long Valor;
+        public EncoderParameter(Encoder encoder, long value) { Encoder = encoder; Valor = value; }
+        public void Dispose() { }
+    }
+    public sealed class EncoderParameters : IDisposable
+    {
+        public EncoderParameter[] Param;
+        public EncoderParameters(int n) { Param = new EncoderParameter[n]; }
+        public void Dispose() { }
+    }
 
     public abstract class Image : IDisposable
     {
@@ -530,10 +555,17 @@ namespace Rocola.Dibujo2D
         public virtual void Dispose() { if (Sk != null) { Sk.Dispose(); Sk = null; } }
         public void Save(string ruta) { Save(ruta, ruta.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ? ImageFormat.Jpeg : ImageFormat.Png); }
         public void Save(string ruta, ImageFormat f) { using (FileStream fs = File.Create(ruta)) Save(fs, f); }
-        public void Save(Stream s, ImageFormat f)
+        public void Save(Stream s, ImageFormat f) { Guarda(s, f, 92); }
+        public void Save(string ruta, ImageCodecInfo codec, EncoderParameters ep)
+        {
+            int calidad = 75;   // la de fabrica del codificador JPEG de GDI+
+            if (ep != null && ep.Param != null) foreach (EncoderParameter p in ep.Param) if (p != null && p.Encoder == Encoder.Quality) calidad = (int)Math.Max(0, Math.Min(100, p.Valor));
+            using (FileStream fs = File.Create(ruta)) Guarda(fs, codec != null ? codec.Formato : ImageFormat.Png, calidad);
+        }
+        private void Guarda(Stream s, ImageFormat f, int calidad)
         {
             using (SKImage i = SKImage.FromBitmap(Sk))
-            using (SKData d = i.Encode(f == ImageFormat.Jpeg ? SKEncodedImageFormat.Jpeg : SKEncodedImageFormat.Png, 92)) d.SaveTo(s);
+            using (SKData d = i.Encode(f == ImageFormat.Jpeg ? SKEncodedImageFormat.Jpeg : SKEncodedImageFormat.Png, calidad)) d.SaveTo(s);
         }
     }
     public sealed class Bitmap : Image

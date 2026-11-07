@@ -255,6 +255,7 @@ namespace Rocola
             // Entera: desde el principio y hasta el final del archivo, o al menos el 90 % de lo que dura (el fundido de la siguiente y saltar
             // los silencios largos pueden dejar sin leer el final).
             internal bool Entera { get { return DesdeElPrincipio && (entera || (esperadas > 0 && leidas >= esperadas * 9 / 10)); } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);

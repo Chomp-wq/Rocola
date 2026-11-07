@@ -115,6 +115,7 @@ namespace Rocola
         // Lo que retrasa la senal (en cuadros): la cadena lo suma al de las demas etapas.
         public int DelayFrames { get { return activo ? h : 0; } }
 
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             if (!activo) return src.Read(buffer, offset, count);

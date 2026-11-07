@@ -467,6 +467,7 @@ namespace Rocola
 
             // Pedir menos de un cuadro (una muestra en estereo) NO es el fin: devolver 0 lo tomaba por tal el Encadenado. Se lee el
             // cuadro entero aparte, se entrega la parte pedida y el resto sale en la lectura siguiente (como GraveMono y SalaLocal).
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (count <= 0) return 0;

@@ -521,6 +521,7 @@ namespace Rocola
                 cebadoPorPasar = Math.Max(0, Cebado) * canales;
             }
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (count == 0) return 0;   // no consumir el relevo de filtros hasta la primera lectura de audio

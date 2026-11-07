@@ -186,6 +186,7 @@ namespace Rocola
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
             internal int DelayFrames { get { return D; } }
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (!vale) return src.Read(buffer, offset, count);

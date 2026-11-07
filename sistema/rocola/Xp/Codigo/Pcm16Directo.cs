@@ -45,6 +45,7 @@ namespace Rocola
 
         // Como Pcm16BitToSampleProvider de NAudio (pide el doble de bytes que muestras, convierte lo leido y devuelve la mitad de
         // los bytes), con la multiplicacion exacta en lugar de la division. Con volumen distinto de 1, como VolumeSampleProvider.
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             int pedidos = count * 2;

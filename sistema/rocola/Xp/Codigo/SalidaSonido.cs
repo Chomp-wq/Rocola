@@ -131,6 +131,7 @@ namespace Rocola
         internal FuenteLatenciaAudio(ISampleProvider s, PerfilLatenciaAudio p, int ms, bool consume)
         { src = s; perfil = p; latencia = ms; consumidor = consume; bomba = s as BombaSonido; }
         public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             long antes = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -319,8 +320,8 @@ namespace Rocola
         }
         private static bool EsFormatoRechazado(Exception ex)
         {
-            NAudio.MmException mm = ex as NAudio.MmException;
-            return mm != null && mm.Result == NAudio.MmResult.WaveBadFormat;
+            MmException mm = ex as MmException;
+            return mm != null && mm.Result == MmResult.WaveBadFormat;
         }
 
         // ------------------------------------------------------------------ 2) CUANDO FALLA EL APARATO
@@ -336,17 +337,17 @@ namespace Rocola
             for (Exception e = ex; e != null; e = e.InnerException)
             {
                 if (e is SalidaMudaException) return true;
-                NAudio.MmException mm = e as NAudio.MmException;
+                MmException mm = e as MmException;
                 if (mm != null)
                 {
                     switch (mm.Result)
                     {
-                        case NAudio.MmResult.BadDeviceId:        // no hay dispositivo con ese numero (desenchufado)
-                        case NAudio.MmResult.NotEnabled:         // controlador deshabilitado
-                        case NAudio.MmResult.AlreadyAllocated:   // lo tiene otro programa en exclusiva
-                        case NAudio.MmResult.InvalidHandle:      // el que estaba abierto ya no existe
-                        case NAudio.MmResult.NoDriver:           // no hay controlador
-                        case NAudio.MmResult.NoDriverCallback:
+                        case MmResult.BadDeviceId:        // no hay dispositivo con ese numero (desenchufado)
+                        case MmResult.NotEnabled:         // controlador deshabilitado
+                        case MmResult.AlreadyAllocated:   // lo tiene otro programa en exclusiva
+                        case MmResult.InvalidHandle:      // el que estaba abierto ya no existe
+                        case MmResult.NoDriver:           // no hay controlador
+                        case MmResult.NoDriverCallback:
                             return true;
                     }
                     return false;                                // formato rechazado u otro: es de la cancion
@@ -585,6 +586,7 @@ namespace Rocola
             private readonly ISampleProvider src;
             public Callada(ISampleProvider s) { src = s; }
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 int n = src.Read(buffer, offset, count);

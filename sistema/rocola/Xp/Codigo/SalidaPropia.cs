@@ -38,55 +38,7 @@ namespace Rocola
         int Posicion(IntPtr salida, out long bytes, WaveFormat formato);
     }
 
-    // La de verdad: winmm.dll (Windows XP en adelante).
-    internal sealed class WinmmWaveOut : ISistemaWaveOut
-    {
-        private const int WaveMapper = -1, CallbackEvent = 0x00050000, TimeBytes = 4, TimeSamples = 2, TimeMs = 1;
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MmTime { public int Tipo; public int Valor; public int Relleno; }
-        [DllImport("winmm.dll")] private static extern int waveOutOpen(out IntPtr hWaveOut, IntPtr uDeviceID, IntPtr lpFormat, IntPtr dwCallback, IntPtr dwInstance, int dwFlags);
-        [DllImport("winmm.dll")] private static extern int waveOutPrepareHeader(IntPtr hWaveOut, IntPtr lpWaveOutHdr, int uSize);
-        [DllImport("winmm.dll")] private static extern int waveOutUnprepareHeader(IntPtr hWaveOut, IntPtr lpWaveOutHdr, int uSize);
-        [DllImport("winmm.dll")] private static extern int waveOutWrite(IntPtr hWaveOut, IntPtr lpWaveOutHdr, int uSize);
-        [DllImport("winmm.dll")] private static extern int waveOutReset(IntPtr hWaveOut);
-        [DllImport("winmm.dll")] private static extern int waveOutPause(IntPtr hWaveOut);
-        [DllImport("winmm.dll")] private static extern int waveOutRestart(IntPtr hWaveOut);
-        [DllImport("winmm.dll")] private static extern int waveOutClose(IntPtr hWaveOut);
-        [DllImport("winmm.dll")] private static extern int waveOutGetPosition(IntPtr hWaveOut, ref MmTime mmTime, int uSize);
-
-        public int Abre(out IntPtr salida, WaveFormat formato, AutoResetEvent aviso)
-        {
-            // El formato, como WAVEFORMATEX (o EXTENSIBLE) en memoria no administrada: NAudio lo declara con la disposicion de Windows.
-            int tam = Marshal.SizeOf(formato);
-            IntPtr f = Marshal.AllocHGlobal(tam);
-            try
-            {
-                Marshal.StructureToPtr(formato, f, false);
-                return waveOutOpen(out salida, new IntPtr(WaveMapper), f, aviso.SafeWaitHandle.DangerousGetHandle(), IntPtr.Zero, CallbackEvent);
-            }
-            finally { Marshal.FreeHGlobal(f); }
-        }
-        public int Prepara(IntPtr salida, IntPtr cabecera, int tamano) { return waveOutPrepareHeader(salida, cabecera, tamano); }
-        public int Escribe(IntPtr salida, IntPtr cabecera, int tamano) { return waveOutWrite(salida, cabecera, tamano); }
-        public int Desprepara(IntPtr salida, IntPtr cabecera, int tamano) { return waveOutUnprepareHeader(salida, cabecera, tamano); }
-        public int Reinicia(IntPtr salida) { return waveOutReset(salida); }
-        public int Pausa(IntPtr salida) { return waveOutPause(salida); }
-        public int Sigue(IntPtr salida) { return waveOutRestart(salida); }
-        public int Cierra(IntPtr salida) { return waveOutClose(salida); }
-        public int Posicion(IntPtr salida, out long bytes, WaveFormat formato)
-        {
-            MmTime t = new MmTime(); t.Tipo = TimeBytes;
-            int r = waveOutGetPosition(salida, ref t, Marshal.SizeOf(typeof(MmTime)));
-            bytes = 0;
-            if (r != 0) return r;
-            uint v = unchecked((uint)t.Valor);   // de 32 bits: da la vuelta a los 4 GB (Form1.AmpliaRelojSalida lo cuenta)
-            if (t.Tipo == TimeBytes) bytes = v;
-            else if (t.Tipo == TimeSamples) bytes = (long)v * formato.BlockAlign;
-            else if (t.Tipo == TimeMs) bytes = (long)v * formato.AverageBytesPerSecond / 1000;
-            else bytes = v;
-            return 0;
-        }
-    }
+    // La de verdad: en Windows, winmm.dll; en Linux, ALSA (AlsaWaveOut, Plataforma/SonidoAlsa.cs; traduccion de XP).
 
     // Una WAVEHDR en memoria no administrada: lpData, dwBufferLength, dwBytesRecorded, dwUser, dwFlags, dwLoops, lpNext, reserved.
     [StructLayout(LayoutKind.Sequential)]
@@ -99,7 +51,7 @@ namespace Rocola
         internal static readonly int OffLargo = (int)Marshal.OffsetOf(typeof(CabeceraWave), "Largo");
         internal static readonly int OffBanderas = (int)Marshal.OffsetOf(typeof(CabeceraWave), "Banderas");
         // Windows de verdad; las pruebas ponen uno imitado.
-        internal static Func<ISistemaWaveOut> Sistema = delegate { return new WinmmWaveOut(); };
+        internal static Func<ISistemaWaveOut> Sistema = delegate { return new AlsaWaveOut(); };
 
         private readonly ISistemaWaveOut so;
         private readonly SynchronizationContext pantalla;
@@ -149,7 +101,7 @@ namespace Rocola
             IntPtr h;
             int r;
             lock (cerrojo) r = so.Abre(out h, formato, aviso);
-            if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutOpen");
+            if (r != 0) throw new MmException((MmResult)r, "waveOutOpen");
             salida = h;
             cabeceras = new IntPtr[n]; datos = new IntPtr[n]; lectura = new byte[largoBloque];
             try
@@ -161,7 +113,7 @@ namespace Rocola
                     CabeceraWave c = new CabeceraWave(); c.Datos = datos[i]; c.Largo = largoBloque;
                     Marshal.StructureToPtr(c, cabeceras[i], false);
                     lock (cerrojo) r = so.Prepara(salida, cabeceras[i], TamCabecera);
-                    if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutPrepareHeader");
+                    if (r != 0) throw new MmException((MmResult)r, "waveOutPrepareHeader");
                 }
             }
             catch { Libera(); throw; }
@@ -174,7 +126,7 @@ namespace Rocola
             if (estado == PlaybackState.Paused)
             {
                 int r; lock (cerrojo) r = so.Sigue(salida);
-                if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutRestart");
+                if (r != 0) throw new MmException((MmResult)r, "waveOutRestart");
                 estado = PlaybackState.Playing; aviso.Set();
                 return;
             }
@@ -193,7 +145,7 @@ namespace Rocola
         {
             if (estado != PlaybackState.Playing || salida == IntPtr.Zero) return;
             int r; lock (cerrojo) r = so.Pausa(salida);
-            if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutPause");
+            if (r != 0) throw new MmException((MmResult)r, "waveOutPause");
             estado = PlaybackState.Paused;
         }
 
@@ -210,7 +162,7 @@ namespace Rocola
             if (salida == IntPtr.Zero) return 0;
             long b; int r;
             lock (cerrojo) { if (salida == IntPtr.Zero) return 0; r = so.Posicion(salida, out b, formato); }
-            if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutGetPosition");
+            if (r != 0) throw new MmException((MmResult)r, "waveOutGetPosition");
             return b;
         }
 
@@ -237,7 +189,7 @@ namespace Rocola
                         if (n <= 0) { fin = true; break; }
                         int r;
                         lock (cerrojo) { if (parar || estado != PlaybackState.Playing) break; r = so.Escribe(salida, cabeceras[i], TamCabecera); }
-                        if (r != 0) throw new NAudio.MmException((NAudio.MmResult)r, "waveOutWrite");
+                        if (r != 0) throw new MmException((MmResult)r, "waveOutWrite");
                         escrito[i] = true;
                         siguiente = (i + 1) % cabeceras.Length;
                     }

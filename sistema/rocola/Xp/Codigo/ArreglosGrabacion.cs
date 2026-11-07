@@ -101,6 +101,7 @@ namespace Rocola
                 eL = a.eL; eR = a.eR; kL = a.kL; kR = a.kR; metaL = a.metaL; metaR = a.metaR; cuentaL = a.cuentaL; cuentaR = a.cuentaR;
             }
 
+            public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
             {
                 if (!activo) return src.Read(buffer, offset, count);

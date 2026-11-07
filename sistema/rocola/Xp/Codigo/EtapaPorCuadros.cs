@@ -43,6 +43,7 @@ namespace Rocola
         // Los cuadros enteros que hay que procesar.
         protected abstract void Proceso(float[] b, int o, int cuadros);
 
+        public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
         public int Read(float[] buffer, int offset, int count)
         {
             if (!vale || canales != 2) return Lee(buffer, offset, count);
