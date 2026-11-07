@@ -45,12 +45,16 @@ namespace Rocola
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 Dictionary<string, int> cuenta = new Dictionary<string, int>();
-                foreach (Track c in copias)
+                try   // (un error aqui, en un hilo del grupo, cerraria la rocola entera)
                 {
-                    Track l = Track.LeeEtiquetaAparte(c, null);
-                    if (string.IsNullOrEmpty(l.Genre)) continue;
-                    string e = GenreLabel(l.Genre); int n; cuenta.TryGetValue(e, out n); cuenta[e] = n + 1;
+                    foreach (Track c in copias)
+                    {
+                        Track l = Track.LeeEtiquetaAparte(c, null);
+                        if (string.IsNullOrEmpty(l.Genre)) continue;
+                        string e = GenreLabel(l.Genre); int n; cuenta.TryGetValue(e, out n); cuenta[e] = n + 1;
+                    }
                 }
+                catch { }
                 string mejor = ""; int m = 0;
                 foreach (KeyValuePair<string, int> kv in cuenta) if (kv.Value > m) { m = kv.Value; mejor = kv.Key; }
                 lock (generoDisco) generoDisco[carpeta] = mejor;

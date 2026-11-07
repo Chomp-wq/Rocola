@@ -35,6 +35,7 @@ namespace Rocola
         internal const float CorteDanada = 16000f;   // con los agudos cortados por debajo de esto (el repaso lo mide), mejor la de Spotify
 
         // ---------------- SP4: LAS PAREJAS ----------------
+        private static readonly long ArregloAcentos = new DateTime(2026, 11, 7, 12, 0, 0, DateTimeKind.Utc).Ticks;
         private sealed class Pareja { public string Id, AlbumId, ArtistaId, Portada, Disco, Anio, Generos; public long Ms; public bool Ninguna; public long Fecha; }
         private readonly Dictionary<string, Pareja> parejas = new Dictionary<string, Pareja>(StringComparer.OrdinalIgnoreCase);
         private bool parejasLeidas;
@@ -115,7 +116,10 @@ namespace Rocola
                     // (si rocola-spotify se cayo y se volvio a abrir, se sigue con el nuevo: antes este hilo se acababa y ya no emparejaba hasta reiniciar)
                     while (!s.Conectado) { Thread.Sleep(5000); if (spotify == null || !SpotifyOn) return; s = spotify; }
                     Pareja ya; lock (spotifyCerrojo) parejas.TryGetValue(t.Path, out ya);
-                    if (ya != null && (!ya.Ninguna || ahora - ya.Fecha < mes)) continue;
+                    // (las que no casaron antes del 7-11-2026 y llevan acentos se vuelven a buscar ya: sin las tablas de idiomas los acentos
+                    // no se quitaban y «Corazón» no casaba con «Corazon»; Acentos.cs)
+                    bool otraVez = ya != null && ya.Ninguna && ya.Fecha < ArregloAcentos && (Acentos.Quita(t.Title ?? "") != (t.Title ?? "") || Acentos.Quita(t.Artist ?? "") != (t.Artist ?? ""));
+                    if (ya != null && !otraVez && (!ya.Ninguna || ahora - ya.Fecha < mes)) continue;
                     if (!(SegundosDe(t.Path) > 10f)) { pendientes++; continue; }   // sin la duracion (el repaso aun no la mide) no se puede asegurar: en la otra vuelta
                     bool contesto = true;
                     try { contesto = BuscaPareja(s, t); } catch (Exception ex) { LogError("Spotify: emparejar " + Path.GetFileName(t.Path), ex); }
@@ -224,7 +228,7 @@ namespace Rocola
                 foreach (string w in ColasDeVersion)
                     if (cola.Contains(w)) { s = s.Substring(0, g); break; }
             }
-            string d = s.Normalize(NormalizationForm.FormD);
+            string d = Acentos.Quita(s.Normalize(NormalizationForm.FormD));   // (sin las tablas de idiomas Normalize no separa los acentos)
             StringBuilder b = new StringBuilder(d.Length);
             int prof = 0;
             foreach (char ch in d)
@@ -435,6 +439,8 @@ namespace Rocola
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string f = null;
+                try   // (un error aqui, en un hilo del grupo, cerraria la rocola entera)
+                {
                 using (JsonDocument a = Api(s, "/v1/artists/" + aid))
                     if (a != null)
                     {
@@ -447,6 +453,8 @@ namespace Rocola
                             }
                         if (url != null) f = BajaPortada(s, url, "artista_" + aid);
                     }
+                }
+                catch (Exception ex) { LogError("Spotify: la foto del artista", ex); }
                 lock (spotifyCerrojo) fotoArtista[aid] = f;
             });
             return null;

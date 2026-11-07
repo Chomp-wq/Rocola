@@ -54,6 +54,8 @@ namespace Rocola
                     long.TryParse(c[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out x.Tam);
                     long.TryParse(c[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out x.Fecha);
                     x.Palabras = c[3].Length == 0 ? null : c[3].Split(' ');
+                    // (palabras guardadas con acentos: de antes del 7-11-2026, cuando no se quitaban; se vuelven a leer en el repaso)
+                    if (x.Palabras != null) foreach (string w in x.Palabras) if (Acentos.Quita(w) != w) { x.Tam = -1; break; }
                     lock (letrasMp3) letrasMp3[c[0]] = x;
                 }
                 // SE COMPACTA (7-11-2026): el repaso solo anade lineas, asi que cada MP3 que cambia deja la suya de antes. Si sobra mas

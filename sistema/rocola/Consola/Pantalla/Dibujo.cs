@@ -678,7 +678,31 @@ namespace Rocola.Pantalla
             catch (IndexOutOfRangeException) { return false; }
             return em > 0 && sube > baja;
         }
-        private static int Indice(char c) { int k = c; if (k == 0x2026) k = '.'; if (k < 32 || k > 255) k = '?'; return k - 32; }
+        // LAS LETRAS DE FUERA (7-11-2026): las letras de la rocola van de la 32 a la 255 (Latin-1); lo demas salia como «?». Ahora las
+        // comillas y apostrofes tipograficos (’ “ ”), los guiones (– — −), la vineta y las letras del latin extendido (ł, ő, ş, č...: muchos
+        // titulos de Spotify y de MP3) se dibujan con su igual mas cercano. Lo que no tiene igual sigue como «?».
+        private const string LatinExtendido = "AaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnnNnOoOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs";
+        private static int Indice(char c)
+        {
+            int k = c;
+            if (k > 255)
+            {
+                if (k >= 0x100 && k < 0x180) k = LatinExtendido[k - 0x100];
+                else switch (k)
+                {
+                    case 0x2026: k = '.'; break;
+                    case 0x2018: case 0x2019: case 0x201A: case 0x2032: case 0x02BC: k = '\''; break;
+                    case 0x201C: case 0x201D: case 0x201E: case 0x2033: k = '"'; break;
+                    case 0x2010: case 0x2011: case 0x2012: case 0x2013: case 0x2014: case 0x2015: case 0x2212: k = '-'; break;
+                    case 0x2022: case 0x2219: case 0x30FB: k = 0xB7; break;
+                    case 0x2009: case 0x200A: case 0x202F: k = ' '; break;
+                    case 0x20AC: k = 'E'; break;
+                    default: k = '?'; break;
+                }
+            }
+            if (k < 32) k = '?';
+            return k - 32;
+        }
         internal float Mide(string s)
         {
             float w = 0; if (s == null) return 0;

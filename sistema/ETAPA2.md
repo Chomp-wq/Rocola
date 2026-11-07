@@ -1670,3 +1670,25 @@ casilla escogida mostrando los resultados de dicho artista, y al volver estarás
   cambiaba dejaba su línea vieja. Ahora, al leerlo, si sobra más de un tercio (y al menos 200 líneas), se reescribe con la última línea
   de cada archivo: aparte y cambiado de un golpe. No se mira si los archivos existen, porque con el disco de la música aún sin montar se
   perdería todo. Probado: 300 líneas de 50 archivos quedaron en 50.
+
+### Más pulido (7-11-2026, «Sigue buscando más de lo mismo, tenemos que pulir el programa al máximo»)
+
+- **Los acentos no se quitaban en ningún lado** (lo más grave). Rocola OS corre sin las tablas de idiomas (`InvariantGlobalization`,
+  por memoria y arranque en el A4), y en ese modo `string.Normalize(FormD)` no separa los acentos (comprobado: «Canción Ñandú» sigue
+  igual). Tres lugares dependían de eso:
+  - el buscador: «cancion» no encontraba «Canción» y «nandu perez» no encontraba «Ñandú Pérez»;
+  - la letra de la pared: los discos que empiezan con «Á», «É» o «Ñ» se iban a «#»;
+  - el emparejado con Spotify: «Corazón» no casaba con «Corazon».
+
+  Ahora `Motor/Acentos.cs` pasa cada letra de Latin-1 y del latin extendido A a su base, como hacía la normalización en la rocola de XP.
+  Lo que cambia con eso:
+  - el orden de los discos dentro de una letra tampoco mira los acentos («Ángel» entre «Ana» y «Aqua», no después de «Azul»);
+  - las canciones que no casaron con Spotify antes de este día y llevan acentos se vuelven a buscar ya, sin esperar el mes;
+  - las palabras de las letras de los MP3 guardadas con acentos se vuelven a leer.
+
+  Probado: «nandu perez», «osz», «cancion osz» y «angel rios» encuentran lo suyo, y «Ángel Ríos» queda en la A.
+- **Letras que salían como «?».** Las letras de la rocola van del código 32 al 255. El «−» de «−3 dB» en los ajustes del sonido, las
+  comillas y apóstrofes tipográficos (’ “ ”), los guiones largos y letras como ł, ő o ş (muchos títulos de Spotify y de MP3) salían
+  como «?». Ahora se dibujan con su igual más cercano.
+- **Dos trabajos de fondo sin protección**: la foto del artista de Spotify y el género de un disco. Un error ahí, en un hilo del grupo,
+  cerraba la rocola entera. Ahora se atrapa y se apunta.

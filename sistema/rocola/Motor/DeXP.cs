@@ -2821,9 +2821,12 @@ namespace Rocola
 
             albums.Sort(delegate (Album a, Album b)
             {
-                int c = string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase);
+                // sin mirar los acentos: «Ángel» entre «Ana» y «Aqua», no despues de «Azul» (a igualdad, como siempre)
+                int c = string.Compare(Acentos.Quita(a.Artist), Acentos.Quita(b.Artist), StringComparison.OrdinalIgnoreCase);
+                if (c == 0) c = string.Compare(a.Artist, b.Artist, StringComparison.OrdinalIgnoreCase);
                 if (c != 0) return c;
-                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+                c = string.Compare(Acentos.Quita(a.Name), Acentos.Quita(b.Name), StringComparison.OrdinalIgnoreCase);
+                return c != 0 ? c : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
             });
 
             byLetter = new Dictionary<char, List<Album>>();
@@ -3000,7 +3003,7 @@ namespace Rocola
             if (string.IsNullOrEmpty(s)) return '#';
             string n = s.Trim();
             if (n.Length == 0) return '#';
-            char c = char.ToUpperInvariant(n[0]);
+            char c = char.ToUpperInvariant(Acentos.Base(n[0]));   // «Ángel» en la A, «Ñengo» en la N (Acentos.cs)
             string norm = c.ToString().Normalize(NormalizationForm.FormD);
             for (int i = 0; i < norm.Length; i++)
                 if (CharUnicodeInfo.GetUnicodeCategory(norm[i]) != UnicodeCategory.NonSpacingMark) { c = char.ToUpperInvariant(norm[i]); break; }

@@ -44,6 +44,7 @@ namespace Rocola
                 decomposed = text.ToLowerInvariant();
                 try { decomposed = decomposed.Normalize(NormalizationForm.FormD); }
                 catch (ArgumentException) { } // Una etiqueta con un surrogate roto no debe tumbar la busqueda.
+                decomposed = Acentos.Quita(decomposed);   // (sin las tablas de idiomas, Normalize no separa los acentos: Acentos.cs)
             }
             StringBuilder result = new StringBuilder(decomposed.Length);
             bool space = false;
