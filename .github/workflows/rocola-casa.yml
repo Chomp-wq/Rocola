@@ -4,6 +4,10 @@ name: Rocola en casa
 
 on:
   workflow_dispatch:
+  # (7-11-2026) solo para que GitHub la registre: corre al cambiar ESTE archivo; los cambios del codigo no la lanzan
+  push:
+    branches: [claude/modest-carson-fa2v2n]
+    paths: ['.github/workflows/rocola-casa.yml']
 
 permissions:
   contents: write
