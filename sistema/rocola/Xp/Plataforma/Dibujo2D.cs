@@ -32,7 +32,10 @@ namespace Rocola.Dibujo2D
     public enum FillMode { Alternate = 0, Winding = 1 }
     public enum CombineMode { Replace = 0, Intersect = 1, Union = 2, Xor = 3, Exclude = 4, Complement = 5 }
     public enum GraphicsUnit { World = 0, Display = 1, Pixel = 2, Point = 3, Inch = 4, Document = 5, Millimeter = 6 }
-    public enum PixelFormat { Format24bppRgb = 137224, Format32bppRgb = 139273, Format32bppArgb = 2498570, Format32bppPArgb = 925707 }
+    public enum PixelFormat { Indexed = 65536, Alpha = 262144, PAlpha = 524288, Format8bppIndexed = 198659, Format24bppRgb = 137224, Format32bppRgb = 139273, Format32bppArgb = 2498570, Format32bppPArgb = 925707 }
+    [Flags] public enum ImageFlags { None = 0, Scalable = 1, HasAlpha = 2, HasTranslucent = 4, PartiallyScalable = 8, ColorSpaceRgb = 16, ColorSpaceCmyk = 32, ColorSpaceGray = 64, ColorSpaceYcbcr = 128, ColorSpaceYcck = 256, HasRealDpi = 4096, HasRealPixelSize = 8192, ReadOnly = 65536, Caching = 131072 }
+    public enum ColorMatrixFlag { Default = 0, SkipGrays = 1, AltGrays = 2 }
+    public enum ColorAdjustType { Default = 0, Bitmap = 1, Brush = 2, Pen = 3, Text = 4, Count = 5, Any = 6 }
     public enum ImageLockMode { ReadOnly = 1, WriteOnly = 2, ReadWrite = 3, UserInputBuffer = 4 }
     [Flags] public enum FontStyle { Regular = 0, Bold = 1, Italic = 2, Underline = 4, Strikeout = 8 }
     public enum StringAlignment { Near = 0, Center = 1, Far = 2 }
@@ -306,6 +309,7 @@ namespace Rocola.Dibujo2D
     {
         private readonly RectangleF caja;
         public Color CenterColor = Color.White;
+        public Blend Blend;   // de la orilla (posicion 0) al centro (1): cuanto del color del centro hay a esa distancia
         public Color[] SurroundColors = { Color.White };
         public PointF CenterPoint;
         public WrapMode WrapMode = WrapMode.Clamp;
@@ -315,7 +319,19 @@ namespace Rocola.Dibujo2D
             Color fuera = SurroundColors != null && SurroundColors.Length > 0 ? SurroundColors[0] : Color.Transparent;
             float rx = Math.Max(0.5f, caja.Width / 2f), ry = Math.Max(0.5f, caja.Height / 2f);
             SKMatrix m = SKMatrix.CreateScale(1f, ry / rx, CenterPoint.X, CenterPoint.Y);
-            p.Shader = SKShader.CreateRadialGradient(new SKPoint(CenterPoint.X, CenterPoint.Y), rx, new[] { Graphics.Sk(CenterColor), Graphics.Sk(fuera) }, null, SKShaderTileMode.Clamp, m);
+            SKColor[] cols; float[] pos = null;
+            if (Blend != null && Blend.Factors != null && Blend.Positions != null && Blend.Factors.Length >= 2)
+            {
+                int n = Blend.Factors.Length; cols = new SKColor[n]; pos = new float[n];
+                for (int i = 0; i < n; i++)   // Skia va del centro (0) a la orilla (1): al reves que el Blend de GDI+
+                {
+                    int j = n - 1 - i;
+                    pos[i] = 1f - Blend.Positions[j];
+                    cols[i] = Graphics.Sk(LinearGradientBrush.Mezcla(fuera, CenterColor, Blend.Factors[j]));
+                }
+            }
+            else cols = new[] { Graphics.Sk(CenterColor), Graphics.Sk(fuera) };
+            p.Shader = SKShader.CreateRadialGradient(new SKPoint(CenterPoint.X, CenterPoint.Y), rx, cols, pos, SKShaderTileMode.Clamp, m);
             p.Color = SKColors.Black;
         }
         public override Brush Clone() { return (PathGradientBrush)MemberwiseClone(); }
@@ -506,7 +522,7 @@ namespace Rocola.Dibujo2D
     {
         internal ColorMatrix Matriz; internal WrapMode Envoltura = WrapMode.Clamp;
         public void SetColorMatrix(ColorMatrix m) { Matriz = m; }
-        public void SetColorMatrix(ColorMatrix m, int flags, int tipo) { Matriz = m; }
+        public void SetColorMatrix(ColorMatrix m, ColorMatrixFlag flags, ColorAdjustType tipo) { Matriz = m; }
         public void SetWrapMode(WrapMode w) { Envoltura = w; }
         public void Dispose() { }
     }
@@ -545,6 +561,10 @@ namespace Rocola.Dibujo2D
         public int Height { get { return Sk.Height; } }
         public Size Size { get { return new Size(Sk.Width, Sk.Height); } }
         public PixelFormat PixelFormat { get; protected set; }
+        // ImageFlags de GDI+: si la imagen trae canal alfa (las que se leen de un archivo: lo dice su formato; las hechas aqui, si tienen alfa)
+        public int Flags { get { return TraeAlfa ? (int)ImageFlags.HasAlpha : 0; } }
+        internal bool TraeAlfa = true;
+        public static bool IsAlphaPixelFormat(PixelFormat f) { return (f & PixelFormat.Alpha) != 0 || (f & PixelFormat.PAlpha) != 0; }
         public object Tag;
         public static Image FromStream(Stream s)
         {
@@ -574,7 +594,7 @@ namespace Rocola.Dibujo2D
         public Bitmap(int w, int h, PixelFormat f)
         {
             Sk = new SKBitmap(new SKImageInfo(Math.Max(1, w), Math.Max(1, h), SKColorType.Bgra8888, SKAlphaType.Premul));
-            Sk.Erase(SKColors.Transparent); PixelFormat = f;
+            Sk.Erase(SKColors.Transparent); PixelFormat = f; TraeAlfa = IsAlphaPixelFormat(f);
         }
         public Bitmap(Image origen) : this(origen, origen.Width, origen.Height) { }
         public Bitmap(Image origen, Size s) : this(origen, s.Width, s.Height) { }
@@ -583,14 +603,28 @@ namespace Rocola.Dibujo2D
             using (Graphics g = Graphics.FromImage(this)) { g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(origen, new Rectangle(0, 0, w, h)); }
         }
         internal Bitmap(SKBitmap b, PixelFormat f) { Sk = b; PixelFormat = f; }
+        // LEER UNA IMAGEN: los puntos en BGRA premultiplicado y, como GDI+, el formato que dice el archivo: un JPEG (o un PNG sin alfa) es
+        // de 24 bits sin alfa, un GIF de paleta, y lo que trae alfa de 32 bits con alfa (la rocola lo mira para guardar sus miniaturas)
         internal static Bitmap Decodifica(byte[] datos)
         {
+            PixelFormat f = PixelFormat.Format32bppArgb; bool alfa = true;
+            try
+            {
+                using (SKCodec codec = SKCodec.Create(new SKMemoryStream(datos)))
+                    if (codec != null)
+                    {
+                        if (codec.EncodedFormat == SKEncodedImageFormat.Gif) { f = PixelFormat.Format8bppIndexed; alfa = false; }
+                        else if (codec.Info.AlphaType == SKAlphaType.Opaque) { f = PixelFormat.Format24bppRgb; alfa = false; }
+                    }
+            }
+            catch { }
             using (SKBitmap b = SKBitmap.Decode(datos))
             {
                 if (b == null) throw new ArgumentException("no es una imagen");
                 SKBitmap c = new SKBitmap(new SKImageInfo(b.Width, b.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
                 using (SKCanvas cv = new SKCanvas(c)) { cv.Clear(SKColors.Transparent); cv.DrawBitmap(b, 0, 0); }
-                return new Bitmap(c, PixelFormat.Format32bppArgb);
+                Bitmap r = new Bitmap(c, f); r.TraeAlfa = alfa;
+                return r;
             }
         }
         public Bitmap Clone(Rectangle r, PixelFormat f)

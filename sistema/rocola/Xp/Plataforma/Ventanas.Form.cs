@@ -29,6 +29,7 @@ namespace Rocola.Ventanas
         public bool ShowIcon { get; set; } = true;
         public double Opacity { get; set; } = 1.0;
         public Form Owner { get; set; }
+        public Icon Icon { get; set; }   // el icono de la barra de tareas de XP: en Rocola OS no hay barra (se guarda y no se usa)
         public IButtonControl AcceptButton { get; set; }
         public IButtonControl CancelButton { get; set; }
         public DialogResult DialogResult { get; set; }
@@ -164,6 +165,14 @@ namespace Rocola.Ventanas
         protected virtual void OnTick(EventArgs e) { Tick?.Invoke(this, e); }
         internal void Dispara() { OnTick(EventArgs.Empty); }
         protected override void Dispose(bool disposing) { Enabled = false; base.Dispose(disposing); }
+    }
+
+    // EL ICONO DE UNA VENTANA (en XP, el de la barra de tareas y Alt+Tab). En Rocola OS no hay barra de tareas: no se dibuja.
+    public sealed class Icon : IDisposable
+    {
+        private Icon() { }
+        public static Icon ExtractAssociatedIcon(string ruta) { return new Icon(); }
+        public void Dispose() { }
     }
 
     public class Screen

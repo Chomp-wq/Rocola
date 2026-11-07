@@ -132,6 +132,8 @@ namespace Rocola.Ventanas
         public bool Capture { get; set; }
         public string AccessibleName { get; set; }
         public string AccessibleDescription { get; set; }
+        public AccessibleRole AccessibleRole { get; set; }
+        public Region Region { get; set; }   // la forma del control (la pastilla del aviso con esquinas redondas)
         protected virtual bool DoubleBuffered { get; set; }
         protected bool ResizeRedraw { get { return GetStyle(ControlStyles.ResizeRedraw); } set { SetStyle(ControlStyles.ResizeRedraw, value); } }
         protected void SetStyle(ControlStyles flag, bool value) { estilos = value ? (estilos | flag) : (estilos & ~flag); }

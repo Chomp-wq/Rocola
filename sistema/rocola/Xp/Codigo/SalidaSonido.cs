@@ -557,9 +557,7 @@ namespace Rocola
             if (!FlotanteAdmitido()) return null;
             try
             {
-                using (NAudio.CoreAudioApi.MMDeviceEnumerator en = new NAudio.CoreAudioApi.MMDeviceEnumerator())
-                using (NAudio.CoreAudioApi.MMDevice d = en.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Console))
-                    return d.ID;
+                return AlsaWaveOut.Elige();   // (en Windows Vista, el aparato de WASAPI; en Linux, la tarjeta de ALSA: SonidoAlsa.cs)
             }
             catch { return null; }
         }

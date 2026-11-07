@@ -331,7 +331,7 @@ namespace Rocola
                 else
                 {
                     Func<byte[], NAudio.Wave.ISampleProvider> abre = AbreClip;
-                    NAudio.Wave.ISampleProvider sp = null; NAudio.Wave.Mp3FileReader r = null; MemoryStream ms = null;
+                    NAudio.Wave.ISampleProvider sp = null; Mp3FileReader r = null; MemoryStream ms = null;
                     try
                     {
                         if (abre != null) sp = abre(clip);

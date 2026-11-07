@@ -11,13 +11,15 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public class AudioFileReader : ISampleProvider, IDisposable
+    // Como el de NAudio: un WaveStream de coma flotante (Length y Position en bytes de esa salida) que tambien es ISampleProvider.
+    public class AudioFileReader : WaveStream, ISampleProvider
     {
         private readonly string ruta;
         private WaveStream lector;            // MP3, WAV, AIFF
         private ISampleProvider muestras;     // el de arriba en coma flotante
         private FfmpegLector ff;              // lo demas
         private float volumen = 1f;
+        private readonly WaveFormat formato;
         public AudioFileReader(string fileName)
         {
             ruta = fileName;
@@ -27,14 +29,21 @@ namespace Rocola
             else if (ext == ".aiff" || ext == ".aif") lector = new AiffFileReader(fileName);
             if (lector != null) muestras = new SampleChannel(lector, false);
             else ff = new FfmpegLector(fileName);
+            formato = muestras != null ? muestras.WaveFormat : ff.Formato;
         }
         public string FileName { get { return ruta; } }
-        public WaveFormat WaveFormat { get { return muestras != null ? muestras.WaveFormat : ff.Formato; } }
-        public TimeSpan TotalTime { get { return lector != null ? lector.TotalTime : ff.Duracion; } }
-        public TimeSpan CurrentTime
+        public override WaveFormat WaveFormat { get { return formato; } }
+        public override TimeSpan TotalTime { get { return lector != null ? lector.TotalTime : ff.Duracion; } }
+        public override TimeSpan CurrentTime
         {
             get { return lector != null ? lector.CurrentTime : ff.Posicion; }
             set { if (lector != null) lector.CurrentTime = value; else ff.Posicion = value; }
+        }
+        public override long Length { get { return (long)(TotalTime.TotalSeconds * formato.AverageBytesPerSecond) / formato.BlockAlign * formato.BlockAlign; } }
+        public override long Position
+        {
+            get { return (long)(CurrentTime.TotalSeconds * formato.AverageBytesPerSecond) / formato.BlockAlign * formato.BlockAlign; }
+            set { CurrentTime = TimeSpan.FromSeconds((double)value / formato.AverageBytesPerSecond); }
         }
         public float Volume { get { return volumen; } set { volumen = value; } }
         public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
@@ -44,10 +53,23 @@ namespace Rocola
             if (volumen != 1f) for (int i = 0; i < n; i++) buffer[offset + i] *= volumen;
             return n;
         }
-        public void Dispose()
+        private float[] apoyo = new float[0];
+        public override int Read(byte[] buffer, int offset, int count)
         {
-            if (lector != null) { lector.Dispose(); lector = null; }
-            if (ff != null) { ff.Dispose(); ff = null; }
+            int n = count / 4;
+            if (apoyo.Length < n) apoyo = new float[n];
+            int m = Read(apoyo, 0, n);
+            Buffer.BlockCopy(apoyo, 0, buffer, offset, m * 4);
+            return m * 4;
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (lector != null) { lector.Dispose(); lector = null; }
+                if (ff != null) { ff.Dispose(); ff = null; }
+            }
+            base.Dispose(disposing);
         }
     }
 

@@ -56,6 +56,7 @@ namespace Rocola.Ventanas
     public enum ImageLayout { None, Tile, Center, Stretch, Zoom }
     public enum RightToLeft { No, Yes, Inherit }
     public enum SelectionMode { None, One, MultiSimple, MultiExtended }
+    public enum AccessibleRole { Default = -1, None = 0, Grouping = 20, StaticText = 41, Text = 42, PushButton = 43, CheckButton = 44, RadioButton = 45, Slider = 51, PageTab = 37, PageTabList = 60, List = 33, ListItem = 34, Client = 10, Window = 9, Pane = 16 }
     // la alineacion del texto de una etiqueta (en .NET de Linux ya no esta: era de System.Drawing de Windows), con sus mismos valores
     public enum ContentAlignment { TopLeft = 1, TopCenter = 2, TopRight = 4, MiddleLeft = 16, MiddleCenter = 32, MiddleRight = 64, BottomLeft = 256, BottomCenter = 512, BottomRight = 1024 }
     [Flags] public enum BoundsSpecified { None = 0, X = 1, Y = 2, Location = 3, Width = 4, Height = 8, Size = 12, All = 15 }
