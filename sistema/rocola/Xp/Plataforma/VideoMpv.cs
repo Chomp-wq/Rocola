@@ -163,6 +163,30 @@ namespace Rocola
             Mpv.mpv_set_option_string(m, "osc", "no");
             Mpv.mpv_set_option_string(m, "osd-level", "0");
             Mpv.mpv_set_option_string(m, "volume-max", "100");
+            // LA IMAGEN COMO LA PINTABA LA TARJETA CON EL WMP DE XP: el cambio de tamano con su filtro bilineal, en una sola pasada (de YUV
+            // a RGB y al tamano del hueco a la vez), sin luz lineal ni tramado. Es el perfil «fast» de mpv: con esto mpv entra solo en su
+            // modo de una pasada («No advanced processing required. Enabling dumb mode»; si un video no se puede asi, como uno de 10 bits
+            // en una tarjeta sin texturas de 16 bits, mpv hace sus pasadas, tambien bilineales). Los escaladores de fabrica de mpv
+            // (lanczos para agrandar y para el color, hermite para achicar) no se usan, por dos motivos medidos el 7-11-2026:
+            //  - un fallo de mpv (0.37 de aqui y 0.40 de Rocola OS: reinit_scaler de video/out/gpu/video.c): la tabla de pesos de esos
+            //    escaladores se pide con talloc_array (sin poner a cero) y, cuando el filtro tiene 6 puntos (lanczos al agrandar y en el
+            //    color; hermite al achicar entre 2 y 3 veces), los dos ultimos huecos de cada fila se suben a la tarjeta con lo que
+            //    hubiera en esa memoria. mpv no los usa, pero lee la tabla con filtro lineal y, con la cuenta exacta de llvmpipe, un NaN
+            //    de esa basura por un peso de 0 da NaN: los pesos, el color y la imagen entera salen NaN, y en pantalla negro (0,0,0,255).
+            //    Depende de lo que dejo malloc en esa memoria: de ahi el video negro en 1 de cada 3 vueltas de la rocola y en casi todas
+            //    las de la prueba aislada. Pasa igual fuera de la rocola (un programa en C con libmpv: negro las 6 veces que la tabla
+            //    traia NaN y bien las 2 que no; con los NaN cambiados por 0, bien 10 de 10); en una tarjeta de verdad, segun como filtre;
+            //  - es mucho menos trabajo para la tarjeta del A4 (lo de fabrica pinta hasta seis pasadas en texturas intermedias de coma
+            //    flotante): con llvmpipe, unos 2-3 ms por cuadro (hasta 6 con la maquina cargada) frente a 13-25 ms con un video de
+            //    640x360, 38-59 ms con uno de 1280x720 y 72-78 ms con uno de 1920x1080 (que asi no llegaba a sus 25 cuadros por segundo).
+            // (No volver a poner escaladores con tabla -lanczos, spline36, hermite, mitchell...- sin arreglar antes lo de la tabla.)
+            Mpv.mpv_set_option_string(m, "scale", "bilinear");
+            Mpv.mpv_set_option_string(m, "cscale", "bilinear");
+            Mpv.mpv_set_option_string(m, "dscale", "bilinear");
+            Mpv.mpv_set_option_string(m, "correct-downscaling", "no");
+            Mpv.mpv_set_option_string(m, "linear-downscaling", "no");
+            Mpv.mpv_set_option_string(m, "sigmoid-upscaling", "no");
+            Mpv.mpv_set_option_string(m, "dither", "no");
             string registro = Environment.GetEnvironmentVariable("ROCOLA_VIDEO_REGISTRO");   // (pruebas) lo que dice mpv
             if (!string.IsNullOrEmpty(registro)) { Mpv.mpv_set_option_string(m, "log-file", registro); Mpv.mpv_set_option_string(m, "msg-level", "all=v"); }
             string alsa = Environment.GetEnvironmentVariable("ROCOLA_ALSA");
@@ -251,9 +275,8 @@ namespace Rocola
                 p[2].Tipo = 0; p[2].Dato = null;
                 IntPtr rc;
                 EstadoDeFabrica(Math.Max(1, host.Width), Math.Max(1, host.Height));
-                if (vuelcaEstado > 0) VuelcaEstado();
                 int er = Mpv.mpv_render_context_create(&rc, mpv, p);
-                if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_TRAZA") == "1") Console.Error.WriteLine("video: render de libmpv = " + er);
+                if (traza) Console.Error.WriteLine("video: render de libmpv = " + er);
                 if (er < 0) return;
                 render = rc;
                 propio = GCHandle.Alloc(this);
@@ -288,10 +311,9 @@ namespace Rocola
                 p[2].Tipo = Mpv.PARAM_SIN_BLOQUEO; p[2].Dato = &sinBloquear;
                 p[3].Tipo = 0; p[3].Dato = null;
                 EstadoDeFabrica(w, h);   // mpv cuenta con el estado de fabrica de OpenGL (ver abajo)
-                if (vuelcaEstado > 0) { vuelcaEstado--; VuelcaEstado(); }
                 int rr = Mpv.mpv_render_context_render(render, p);
-                if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_FINISH") == "1") GL.Finish(); else GlMas.Flush();   // sin esto, al componer la textura aun salia negra (medido con llvmpipe)
-                if (Environment.GetEnvironmentVariable("ROCOLA_VIDEO_TRAZA") == "1")
+                GlMas.Flush();   // (el orden no lo necesita -en un mismo contexto OpenGL lo respeta-: la tarjeta empieza el cuadro de mpv mientras se compone lo demas)
+                if (traza)   // (pruebas) ROCOLA_VIDEO_TRAZA=1: cada cuadro pintado, con el punto del centro
                 {
                     uint ge = GlMas.GetError();
                     GL.BindFramebuffer(GL.FRAMEBUFFER, fbo);
@@ -317,40 +339,9 @@ namespace Rocola
             ELEMENT_ARRAY_BUFFER = 0x8893, FUNC_ADD = 0x8006;
         [DllImport("libGLESv2.so.2", EntryPoint = "glBlendEquation")] private static extern void BlendEquation(uint modo);
         [DllImport("libGLESv2.so.2", EntryPoint = "glDepthMask")] private static extern void DepthMask(byte si);
-        // (pruebas) ROCOLA_VIDEO_ESTADO=N: el estado de OpenGL antes de las N primeras llamadas a mpv
-        private static int vuelcaEstado = int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_VIDEO_ESTADO"), out int ve) ? ve : 0;
-        [DllImport("libGLESv2.so.2", EntryPoint = "glIsEnabled")] private static extern byte IsEnabled(uint c);
-        [DllImport("libGLESv2.so.2", EntryPoint = "glGetVertexAttribfv")] private static extern void GetVertexAttribfv(uint i, uint q, float* v);
-        [DllImport("libGLESv2.so.2", EntryPoint = "glGetVertexAttribiv")] private static extern void GetVertexAttribiv(uint i, uint q, int* v);
-        private static void VuelcaEstado()
-        {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder("video: estado");
-            uint[] enteros = { 0x84E0, 0x8894, 0x8895, 0x85B5, 0x8B8D, 0x8CA6, 0x8CAA, 0x8CA7, 0x8069, 0x88ED, 0x88EF, 0x8A28, 0x8E25, 0x8919,
-                0x0CF5, 0x0D05, 0x0CF2, 0x0CF3, 0x0CF4, 0x806E, 0x806D, 0x0D02, 0x0D03, 0x0D04, 0x8825, 0x0C02, 0x8192, 0x8B8B, 0x0B44, 0x0B45, 0x0B46,
-                0x0B74, 0x0B92, 0x0B93, 0x0B94, 0x0B95, 0x0B96, 0x0B97, 0x0B98, 0x0BC1, 0x8009, 0x883D, 0x80C8, 0x80C9, 0x80CA, 0x80CB, 0x0B21, 0x0BC0, 0x0BC2 };
-            int* v = stackalloc int[4];
-            foreach (uint e in enteros) { v[0] = -12345; GL.GetIntegerv(e, v); sb.Append(' ').Append(e.ToString("x")).Append('=').Append(v[0]); GlMas.GetError(); }
-            uint[] capacidades = { 0x0BE2, 0x0C11, 0x0B71, 0x0B44, 0x0B90, 0x0BD0, 0x8037, 0x809E, 0x80A0, 0x8D69, 0x8C89, 0x8DB9, 0x8E50 };
-            foreach (uint c in capacidades) { sb.Append(" en").Append(c.ToString("x")).Append('=').Append(IsEnabled(c)); GlMas.GetError(); }
-            GL.GetIntegerv(0x0BA2, v); sb.Append(" vista=").Append(v[0]).Append(',').Append(v[1]).Append(',').Append(v[2]).Append(',').Append(v[3]);
-            GL.GetIntegerv(0x0C10, v); sb.Append(" recorte=").Append(v[0]).Append(',').Append(v[1]).Append(',').Append(v[2]).Append(',').Append(v[3]);
-            GL.GetIntegerv(0x0C23, v); 
-            float* f = stackalloc float[4];
-            for (uint a = 0; a < 8; a++)
-            {
-                int on = 0; GetVertexAttribiv(a, 0x8622, &on);
-                GetVertexAttribfv(a, 0x8626, f);
-                sb.Append(" atr").Append(a).Append('=').Append(on).Append(':').Append(f[0]).Append(',').Append(f[1]).Append(',').Append(f[2]).Append(',').Append(f[3]);
-            }
-            for (uint u = 0; u < 4; u++) { GL.ActiveTexture(GL.TEXTURE0 + u); int t = 0; GL.GetIntegerv(0x8069, &t); int sm = 0; GL.GetIntegerv(0x8919, &sm); sb.Append(" u").Append(u).Append('=').Append(t).Append('/').Append(sm); }
-            GL.ActiveTexture(GL.TEXTURE0);
-            sb.Append(" error=").Append(GlMas.GetError().ToString("x"));
-            Console.Error.WriteLine(sb.ToString());
-        }
         internal static void EstadoDeFabrica(int w, int h)
         {
-            GL.Viewport(0, 0, w, h);   // (el de fabrica es el tamano de la ventana; sin el -0x0 en una pantalla fuera de pantalla recien abierta- los
-                                       // escaladores de calidad de mpv pintaban negro: medido con llvmpipe)
+            GL.Viewport(0, 0, w, h);   // (la de una ventana nueva; mpv pone la suya en cada pasada: render_gl.h la deja fuera)
             GL.Disable(GL.BLEND); GL.Disable(GL.SCISSOR_TEST); GL.Disable(GlMas.DEPTH_TEST); GL.Disable(GlMas.CULL_FACE);
             GL.Disable(STENCIL_TEST); GL.Disable(POLYGON_OFFSET_FILL); GL.Disable(SAMPLE_ALPHA_TO_COVERAGE); GL.Disable(SAMPLE_COVERAGE);
             GL.BlendFunc(GL.ONE, GlMas.ZERO); BlendEquation(FUNC_ADD);
