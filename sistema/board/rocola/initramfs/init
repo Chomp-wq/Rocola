@@ -15,6 +15,13 @@ mount -t devtmpfs devtmpfs /dev
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 hwclock -s -l 2>/dev/null   # el reloj de la placa esta en hora local (como lo deja XP): las horas de sistema.txt, bien
+# SIN TECLADO EN EL BAR (7-11-2026): si no se puede arrancar, no quedarse para siempre en la linea de ordenes: con ENTER en 2 minutos, la
+# linea de ordenes (para quien venga a revisarla); si no, se reinicia sola (un disco que tardo en despertar o un fallo pasajero).
+atorado() {
+	echo "ENTER: linea de ordenes. Si no, reinicio solo en 2 minutos para volver a intentar."
+	if read -t 120 _ </dev/console 2>/dev/null; then exec sh; fi
+	sync; reboot -f
+}
 SLOT=$(sed -n 's/.*rocola\.slot=\([ab]\).*/\1/p' /proc/cmdline)
 [ -n "$SLOT" ] || SLOT=a
 OTRO=a; [ "$SLOT" = a ] && OTRO=b
@@ -47,7 +54,7 @@ if [ -z "$encontrado" ]; then
 	echo
 	echo "Rocola OS: no encuentro el disco con $OS/$SLOT/sistema.img."
 	echo "Apaga y prende la rocola; si sigue igual, ESC al prender -> Windows XP (la rocola de antes)."
-	exec sh
+	atorado
 fi
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "/disco$OS/sistema.txt"; }
 pon_arranque() { printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$1" "$2" > "/disco$OS/arranque.cfg.nuevo" && mv -f "/disco$OS/arranque.cfg.nuevo" "/disco$OS/arranque.cfg"; }
@@ -89,7 +96,7 @@ if ! sistema "$SLOT"; then
 	else
 		echo "Rocola OS: no pude montar $OS/$SLOT/sistema.img"; sync
 		echo "Vuelve a instalar con la memoria USB; ESC al prender da Windows XP."
-		exec sh
+		atorado
 	fi
 fi
 # Lo aprendido, aparte (si esta: una instalacion de antes de las dos copias lo tenia dentro del sistema)

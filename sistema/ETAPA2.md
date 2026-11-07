@@ -1905,3 +1905,13 @@ Los dos van en la compilacion del sistema (el lanzador y el actualizador) y la d
   ntfs3 monta en solo lectura aunque XP se haya apagado de golpe), la red (DHCP sin rendirse) y el vigilante del programa (cierra el
   programa si el bucle se cuelga; lo guardado se escribe aparte y se cambia de un tiron, asi que no queda a medias).
 
+### Tercera vuelta («Continua», 7 de noviembre de 2026)
+
+- **El arranque ya no se queda para siempre esperando un teclado**: si el initramfs no encuentra el disco de la rocola o no puede
+  montar ninguna de las dos copias del sistema, antes se quedaba en la linea de ordenes (en el bar, una rocola muerta hasta que alguien
+  la apagara). Ahora lo dice, espera 2 minutos un ENTER (para quien venga a revisarla) y si no, reinicia sola para volver a intentar
+  (un disco que tardo en despertar, un fallo pasajero). Va en la compilacion del sistema.
+- Revisado y sin cambio: la vuelta al sistema anterior (cuenta los arranques de la copia nueva y a la tercera sin confirmar vuelve y la
+  apunta como mala; una copia que no monta da paso a la otra), la reparacion de datos.img tras un apagon, y la hora (zona de Mexico,
+  el reloj de la placa en hora local como lo deja XP, corregida por NTP).
+
