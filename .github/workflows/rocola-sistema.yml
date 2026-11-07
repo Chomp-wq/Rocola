@@ -10,8 +10,17 @@ name: Sistema de la rocola (Rocola OS)
 # SOLO A PEDIDO (decision del dueno del 6-11-2026, al acabarse los 2 000 minutos de Actions del mes: cada compilacion del sistema tarda
 # cerca de una hora). Se lanza desde GitHub: Actions -> «Sistema de la rocola (Rocola OS)» -> Run workflow (o se le pide a Claude).
 # El programa de la rocola (rocola-programa.yml, unos 3 minutos) sigue compilandose solo en cada cambio.
+# RAPIDA O COMPLETA (peticion del dueno del 7-11-2026: que sean mas rapidas): si desde la ultima compilacion COMPLETA solo cambiaron
+# scripts del sistema (rootfs_overlay), el arranque del sistema instalado (initramfs/init), el menu de la memoria (grub-bios.cfg) o el
+# programa, se hace la rapida (sistema/rapida.sh: la ultima completa con eso encima, unos minutos); si cambio otra cosa (la configuracion
+# de Buildroot, el nucleo, los paquetes, post-build.sh...), la completa (unos 35 min). «completa» la fuerza.
 on:
   workflow_dispatch:
+    inputs:
+      completa:
+        description: 'Compilar el sistema entero aunque baste la rapida'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -21,7 +30,80 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # LA BASE (la ultima version completa) Y QUE COMPILACION HACE FALTA. Cada version dice en version.txt de que commit es; las rapidas,
+  # ademas, sobre que completa se hicieron («rapida base=sistema-N SHA»).
+  decidir:
+    runs-on: ubuntu-24.04
+    outputs:
+      modo: ${{ steps.d.outputs.modo }}
+      base_tag: ${{ steps.d.outputs.base_tag }}
+      base_sha: ${{ steps.d.outputs.base_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: d
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          modo=completa; base_tag=; base_sha=
+          ult=$(gh release list --limit 100 --json tagName -q '.[].tagName' | grep -E '^sistema-[0-9]+$' | sort -t- -k2 -n | tail -1)
+          if [ -n "$ult" ] && gh release download "$ult" -p version.txt -D /tmp/v; then
+            cat /tmp/v/version.txt
+            if grep -q ' base=' /tmp/v/version.txt; then
+              base_tag=$(sed -n 's/.* base=\([^ ]*\) \([0-9a-f]*\).*/\1/p' /tmp/v/version.txt)
+              base_sha=$(sed -n 's/.* base=\([^ ]*\) \([0-9a-f]*\).*/\2/p' /tmp/v/version.txt)
+            else
+              base_tag=$ult; base_sha=$(awk '{print $3}' /tmp/v/version.txt)
+            fi
+            [ -n "$base_sha" ] && modo=$(bash sistema/rapida.sh decide "$base_sha")
+          fi
+          [ "${{ inputs.completa }}" = true ] && modo=completa
+          echo "Compilacion: $modo (base: $base_tag $base_sha)"
+          echo "modo=$modo" >> "$GITHUB_OUTPUT"; echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"; echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+  # LA RAPIDA: la ultima completa con los cambios de ahora encima (sistema/rapida.sh), la misma prueba de arranque y los mismos archivos.
+  rapida:
+    needs: decidir
+    if: needs.decidir.outputs.modo == 'rapida'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ROCOLA_SISTEMA_VERSION: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Herramientas
+        run: sudo apt-get update -q && sudo apt-get install -y -q cpio rsync clang zlib1g-dev qemu-system-x86 e2fsprogs
+      - name: Bajar la base (${{ needs.decidir.outputs.base_tag }})
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ needs.decidir.outputs.base_tag }}" -p sistema.img.gz -p disk.img.gz -p bzImage -p initrd.gz -D base
+      - name: Poner los cambios encima
+        run: bash sistema/rapida.sh arma "${{ needs.decidir.outputs.base_sha }}" base pub
+      - name: Probar que el nucleo arranca
+        run: |
+          timeout 600 qemu-system-x86_64 -m 1024 -kernel pub/bzImage -append "console=ttyS0 root=PARTUUID=524f4341-01 rootwait panic=-1" \
+            -drive file=pub/disk.img,format=raw,if=ide,snapshot=on -display none -serial file:serie.txt -no-reboot || true
+          tail -n 20 serie.txt
+          grep -q "Run /sbin/init" serie.txt
+          rm -f pub/disk.img
+      - name: Publicar la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          echo "sistema $V ${GITHUB_SHA} rapida base=${{ needs.decidir.outputs.base_tag }} ${{ needs.decidir.outputs.base_sha }}" > pub/version.txt
+          { git log -1 --pretty='%s'; echo; echo "(compilacion rapida sobre ${{ needs.decidir.outputs.base_tag }})"; } > notas.txt
+          gh release create "sistema-$V" pub/* --target "$GITHUB_SHA" --title "Sistema de la rocola $V" --notes-file notas.txt
+
   compilar:
+    needs: decidir
+    if: needs.decidir.outputs.modo == 'completa'
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:

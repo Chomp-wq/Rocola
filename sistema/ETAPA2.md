@@ -1998,3 +1998,18 @@ Arreglos de esta revision:
   particion donde se instalo (`--hint="$root"`) y la entrada de XP en la de XP (`--hint=hd0,msdosN`); el initramfs ya probaba las demas
   NTFS si la del UUID no tiene el sistema.
 - Lo que no se pudo probar fuera del A4: un Windows XP de verdad al elegirlo en el menu, y la tarjeta grafica y el sonido del A4.
+
+## La compilacion rapida del sistema (7 de noviembre de 2026)
+
+El dueño pregunto como hacer mas rapidas las compilaciones del sistema y eligio «la 1». La completa tardaba unos 34 min, 30 de ellos
+Buildroot rehaciendo todo (con ccache), aunque casi siempre solo cambian scripts.
+
+- `.github/workflows/rocola-sistema.yml` empieza con «decidir»: busca la ultima version del sistema, lee su `version.txt` y saca la base
+  (la ultima completa: la misma, o la que dice `base=` si fue rapida), y `sistema/rapida.sh decide` dice si basta la rapida.
+- La rapida (`sistema/rapida.sh arma`): baja `sistema.img.gz`, `disk.img.gz`, `bzImage` e `initrd.gz` de la base; monta el sistema y le
+  copia rootfs_overlay entero (root, u=rwX,go=rX, como Buildroot), quita lo borrado desde la base, copia grub-bios.cfg, rehace initrd.gz
+  con el init de ahora, compila el programa si cambio sistema/rocola (el mismo dotnet publish del paquete, perfil del A4), escribe la
+  version, e2fsck, y pone el sistema en la particion 1 de disk.img. Siempre sobre la base: los cambios se acumulan sin depender de
+  otras rapidas.
+- Probado aqui con la compilacion de QEMU como base: 2 min 15 s con el programa; dentro, el instalador, el menu, el init, la version y
+  el programa nuevos; las sumas bien, e2fsck limpio y el nucleo llega a /sbin/init. Aun no corrido en GitHub.
