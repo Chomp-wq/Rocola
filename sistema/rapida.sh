@@ -63,8 +63,9 @@ sudo install -m 755 "$REPO/$B/initramfs/init" "$T/initrd/init"
 (cd "$T/initrd" && sudo find . | sudo cpio -o -H newc --quiet | gzip -9) > "$T/initrd.gz"
 sudo install -D -m 644 "$T/initrd.gz" "$M/usr/share/rocola/instalar/initrd.gz"
 
-# 5. EL PROGRAMA, si cambio (el mismo dotnet publish que el paquete rocola-consola de Buildroot, perfil del A4)
-if cambio sistema/rocola; then
+# 5. EL PROGRAMA, si cambio (el mismo dotnet publish que el paquete rocola-consola de Buildroot, perfil del A4). Solo cuentan el motor
+# y la consola: la traduccion de XP (sistema/rocola/Xp) aun no va en el sistema.
+if cambio sistema/rocola/Motor sistema/rocola/Consola; then
 	echo "el programa cambio: se compila"
 	(cd "$REPO/sistema/rocola/Consola" && DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 dotnet publish -c Release -r linux-x64 \
 		-p:RocolaPerfil=a4 -o "$T/programa" >/dev/null)

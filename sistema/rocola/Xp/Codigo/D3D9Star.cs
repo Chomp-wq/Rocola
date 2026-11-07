@@ -1,0 +1,4672 @@
+// ====================================================================================================
+//  RENDER POR GPU (Direct3D 9), por interop a d3d9.dll (sin SlimDX). Cielo + estrellas con glow/destello.
+// ----------------------------------------------------------------------------------------------------
+//  - D3D9 / D3D9Device : interop crudo y un dispositivo que dibuja sky + estrellas texturizadas.
+//  - GpuStarfield      : campo estrellado reusable (titileo + latido), teñible por genero.
+//  - GpuTestWindow     : ventana de prueba (F12) que lo muestra con FPS.
+//  - GpuPanel          : control D3D9 para usar el campo estrellado COMO FONDO de la vista de discos.
+//  Todo dentro de #if ROCOLA_GPU. Con el simbolo apagado, el archivo compila vacio.
+// ====================================================================================================
+#if ROCOLA_GPU
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Runtime.InteropServices;
+
+namespace Rocola
+{
+    // -------- Interop crudo con Direct3D 9 (sin SlimDX) --------
+    internal static partial class D3D9
+    {
+        [DllImport("d3d9.dll")] public static extern IntPtr Direct3DCreate9(uint sdkVersion);
+        // Copia bloque a bloque entre punteros sin pasar por un arreglo administrado (mitad de copias que Marshal.Copy).
+        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")] public static extern void CopyMemory(IntPtr dst, IntPtr src, UIntPtr len);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PresentParams
+        {
+            public uint BackBufferWidth, BackBufferHeight, BackBufferFormat, BackBufferCount;
+            public uint MultiSampleType, MultiSampleQuality, SwapEffect;
+            public IntPtr DeviceWindow;
+            public int Windowed, EnableAutoDepthStencil;
+            public uint AutoDepthStencilFormat, Flags, FullScreenRefreshRateInHz, PresentationInterval;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LockedRect { public int Pitch; public IntPtr Bits; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RectI { public int Left, Top, Right, Bottom; }
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int LockRegionDel(IntPtr self, uint level, out LockedRect lr, ref RectI rect, uint flags);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vtx { public float X, Y, Z, Rhw; public uint Color; public float U, V; }
+        public const uint FVF = 0x004 | 0x040 | 0x100;   // XYZRHW | DIFFUSE | TEX1
+        public const int VtxSize = 28;
+
+        public const uint DEVTYPE_HAL = 1;
+        public const uint CREATE_HARDWARE_VP = 0x40, CREATE_SOFTWARE_VP = 0x20, CREATE_FPU_PRESERVE = 0x2;
+        public const uint FMT_UNKNOWN = 0, FMT_A8R8G8B8 = 21;
+        public const uint POOL_MANAGED = 1;
+        public const uint SWAPEFFECT_DISCARD = 1;
+        public const uint CLEAR_TARGET = 1;
+        public const uint PT_TRIANGLELIST = 4;
+        public const uint RS_ZENABLE = 7, RS_CULLMODE = 22, RS_LIGHTING = 137;
+        public const uint RS_ALPHABLENDENABLE = 27, RS_SRCBLEND = 19, RS_DESTBLEND = 20;
+        public const uint BLEND_ONE = 2, BLEND_SRCALPHA = 5, BLEND_INVSRCALPHA = 6;
+        public const uint CULL_NONE = 1;
+        public const uint TSS_COLOROP = 1, TSS_COLORARG1 = 2, TSS_COLORARG2 = 3, TSS_ALPHAOP = 4, TSS_ALPHAARG1 = 5, TSS_ALPHAARG2 = 6;
+        public const uint TOP_SELECTARG1 = 2, TOP_MODULATE = 4, TA_DIFFUSE = 0, TA_TEXTURE = 2;
+        public const uint SAMP_ADDRESSU = 1, SAMP_ADDRESSV = 2, ADDRESS_WRAP = 1, ADDRESS_CLAMP = 3;
+        public const uint SAMP_MAGFILTER = 5, SAMP_MINFILTER = 6, TEXF_LINEAR = 2;
+        public const int E_DEVICELOST = unchecked((int)0x88760868);
+        public const int E_DEVICENOTRESET = unchecked((int)0x88760869);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateDeviceDel(IntPtr self, uint adapter, uint devType, IntPtr hwnd, uint behaviorFlags, ref PresentParams pp, out IntPtr device);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int HrSelf(IntPtr self);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate uint UintSelf(IntPtr self);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate void VoidSelf(IntPtr self);   // IDirect3DResource9::PreLoad devuelve void
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ResetDel(IntPtr self, ref PresentParams pp);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int PresentDel(IntPtr self, IntPtr a, IntPtr b, IntPtr c, IntPtr d);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ClearDel(IntPtr self, uint count, IntPtr rects, uint flags, uint color, float z, uint stencil);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU2Del(IntPtr self, uint a, uint b);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU1Del(IntPtr self, uint a);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetU3Del(IntPtr self, uint a, uint b, uint c);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int SetTexDel(IntPtr self, uint stage, IntPtr tex);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int DrawUpDel(IntPtr self, uint primType, uint primCount, IntPtr data, uint stride);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateVBDel(IntPtr self, uint length, uint usage, uint fvf, uint pool, out IntPtr vb, IntPtr shared);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockVBDel(IntPtr self, uint offset, uint size, out IntPtr data, uint flags);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int StreamDel(IntPtr self, uint stream, IntPtr vb, uint offset, uint stride);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int CreateTexDel(IntPtr self, uint w, uint h, uint levels, uint usage, uint format, uint pool, out IntPtr tex, IntPtr shared);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LockRectDel(IntPtr self, uint level, out LockedRect lr, IntPtr rect, uint flags);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int UnlockRectDel(IntPtr self, uint level);
+        // D3DSURFACE_DESC (Format, Type, Usage, Pool, MultiSampleType, MultiSampleQuality, Width, Height), con holgura.
+        [StructLayout(LayoutKind.Explicit, Size = 64)]
+        public struct SurfaceDesc { [FieldOffset(24)] public uint Width; [FieldOffset(28)] public uint Height; }
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int LevelDescDel(IntPtr self, uint level, ref SurfaceDesc d);
+        public const int SlotGetLevelDesc = 17;   // IDirect3DTexture9::GetLevelDesc
+
+        // Marshal.GetDelegateForFunctionPointer crea un delegado (y su puente a codigo no administrado) NUEVO en cada llamada: bloquear y
+        // desbloquear una textura, soltarla o cambiar la imagen intermedia del cielo a media resolucion reservaban cada vez. Un delegado
+        // solo depende de la direccion de la funcion y del tipo, y todas las texturas de un dispositivo comparten tabla de funciones, asi
+        // que se guardan los ultimos FnMax (direccion, tipo) por hilo (sin cerrojos) y se reusan (20-10-2026). Acotado: al llenarse se
+        // reemplaza el mas antiguo.
+        private sealed class FnGuardada { internal IntPtr Fn; internal Type Tipo; internal Delegate D; }
+        internal const int FnMax = 48;
+        [ThreadStatic] private static FnGuardada[] fnGuardadas;
+        [ThreadStatic] private static int fnN, fnSiguiente;
+        internal static int FnGuardadasEnEsteHilo { get { return fnN; } }
+        public static T Fn<T>(IntPtr punk, int slot) where T : class
+        {
+            IntPtr vtbl = Marshal.ReadIntPtr(punk);
+            IntPtr fn = Marshal.ReadIntPtr(vtbl, slot * IntPtr.Size);
+            Type tipo = typeof(T);
+            FnGuardada[] c = fnGuardadas;
+            if (c == null) { c = new FnGuardada[FnMax]; fnGuardadas = c; }
+            int n = fnN;
+            for (int i = 0; i < n; i++) { FnGuardada e = c[i]; if (e.Fn == fn && e.Tipo == tipo) return (T)(object)e.D; }
+            T d = (T)(object)Marshal.GetDelegateForFunctionPointer(fn, tipo);
+            FnGuardada g = new FnGuardada(); g.Fn = fn; g.Tipo = tipo; g.D = (Delegate)(object)d;
+            if (n < FnMax) { c[n] = g; fnN = n + 1; }
+            else { c[fnSiguiente] = g; fnSiguiente = (fnSiguiente + 1) % FnMax; }
+            return d;
+        }
+        public static void Release(IntPtr punk)
+        {
+            if (punk == IntPtr.Zero) return;
+            if (TexturasDivididasGpu.Libera(punk)) return;
+            PortadasCompartidasGpu.AlSoltar(punk);
+            try { Fn<UintSelf>(punk, 2)(punk); } catch { }
+        }
+    }
+
+    // -------- Dispositivo D3D9 sobre una ventana --------
+    internal sealed partial class D3D9Device
+    {
+        public uint CubeBaseColor = 0x003C466Eu;
+        private IntPtr d3d, dev;
+        private D3D9.Vtx[] verticesFijados;
+        private GCHandle pinVertices;
+        private IntPtr direccionVertices;
+        // Solo el ultimo array, durante una escena. Sin busquedas/listas ni arrays clavados entre cuadros.
+        private IntPtr FijaVertices(D3D9.Vtx[] datos, out GCHandle temporal)
+        {
+            temporal = new GCHandle();
+            if (inScene)
+            {
+                if (object.ReferenceEquals(verticesFijados, datos)) return direccionVertices;
+                SueltaPinesVertices();
+                long bytes = datos.LongLength * D3D9.VtxSize;
+                if (bytes <= 6 * 1024 * 1024)
+                {
+                    pinVertices = GCHandle.Alloc(datos, GCHandleType.Pinned);
+                    direccionVertices = pinVertices.AddrOfPinnedObject();
+                    verticesFijados = datos; return direccionVertices;
+                }
+            }
+            temporal = GCHandle.Alloc(datos, GCHandleType.Pinned);
+            return temporal.AddrOfPinnedObject();
+        }
+        private void SueltaPinesVertices()
+        {
+            if (pinVertices.IsAllocated) pinVertices.Free();
+            verticesFijados = null; direccionVertices = IntPtr.Zero;
+        }
+        // Anillo dinamico acotado. NOOVERWRITE nunca pisa vertices aun usados por la GPU.
+        private IntPtr verticesGpu;
+        private int verticesCap, verticesPos;
+        private bool verticesSinSoporte;
+        private bool verticesSoftware;
+        // Calibracion sobre dibujos reales, sin dibujos extra ni limite de FPS/CPU.
+        private int verticesModo, verticesPruebaTris, verticesPruebas;
+        private long verticesUpTicks, verticesVbTicks;
+        private D3D9.CreateVBDel creaVertices;
+        private D3D9.LockVBDel bloqueaVertices;
+        private D3D9.HrSelf sueltaVertices;
+        private D3D9.StreamDel flujoVertices;
+        private D3D9.SetU3Del dibujaVertices;
+        private D3D9.PresentParams pp;
+        private bool lost, resetPending, inScene, reiniciando;
+        private bool resetEspera;
+        private int resetProximo;
+        internal const int ReintentoDispositivoMs = 250;
+
+        private D3D9.PresentDel present; private D3D9.HrSelf begin, end;
+        private D3D9.SetU2Del setRS; private D3D9.SetU1Del setFVF; private D3D9.SetU3Del setTSS, setSamp;
+        private D3D9.SetTexDel setTex; private D3D9.DrawUpDel drawUp; private D3D9.HrSelf testCoop;
+        private D3D9.ResetDel reset; private D3D9.CreateTexDel createTex;
+
+        public bool Ok { get { return dev != IntPtr.Zero; } }
+        public uint EstimatedTextureMemory
+        {
+            get
+            {
+                if (dev == IntPtr.Zero || lost || resetPending || reiniciando) return 0;
+                try { return D3D9.Fn<D3D9.UintSelf>(dev, 4)(dev); }
+                catch { return 0; }
+            }
+        }
+
+        public D3D9Device(IntPtr hwnd, int w, int h)
+        {
+            try
+            {
+                d3d = D3D9.Direct3DCreate9(32);
+                if (d3d == IntPtr.Zero) return;
+                pp = MakePP(hwnd, w, h);
+                D3D9.CreateDeviceDel create = D3D9.Fn<D3D9.CreateDeviceDel>(d3d, 16);
+                IntPtr dv = IntPtr.Zero;
+                int hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_HARDWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
+                if (hr < 0)
+                {
+                    // Aunque un driver correcto devuelve NULL al fallar, no se deja escapar una referencia
+                    // defectuosa antes de intentar el camino por software.
+                    if (dv != IntPtr.Zero) D3D9.Release(dv);
+                    dv = IntPtr.Zero;
+                    verticesSoftware = true;
+                    hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
+                }
+                if (hr < 0 || dv == IntPtr.Zero)
+                {
+                    if (dv != IntPtr.Zero) D3D9.Release(dv);
+                    D3D9.Release(d3d); d3d = IntPtr.Zero;
+                    return;
+                }
+                dev = dv;
+                present = D3D9.Fn<D3D9.PresentDel>(dev, 17);
+                begin = D3D9.Fn<D3D9.HrSelf>(dev, 41);
+                end = D3D9.Fn<D3D9.HrSelf>(dev, 42);
+                setRS = D3D9.Fn<D3D9.SetU2Del>(dev, 57);
+                setFVF = D3D9.Fn<D3D9.SetU1Del>(dev, 89);
+                setTSS = D3D9.Fn<D3D9.SetU3Del>(dev, 67);
+                setSamp = D3D9.Fn<D3D9.SetU3Del>(dev, 69);
+                setTex = D3D9.Fn<D3D9.SetTexDel>(dev, 65);
+                drawUp = D3D9.Fn<D3D9.DrawUpDel>(dev, 83);
+                testCoop = D3D9.Fn<D3D9.HrSelf>(dev, 3);
+                reset = D3D9.Fn<D3D9.ResetDel>(dev, 16);
+                createTex = D3D9.Fn<D3D9.CreateTexDel>(dev, 23);
+                LeeLimitesTexturas();
+                juntar = true;   // las ordenes chicas seguidas se juntan (PerformanceGpu.cs)
+                if (!InitStates()) Dispose(); else preLoadOk = true;   // un dispositivo de verdad: sus texturas tienen la ranura 9 (PreLoad)
+            }
+            catch
+            {
+                // Direct3D puede no estar instalado o un controlador puede exponer una tabla COM incompleta.
+                // El fondo por CPU se encargara del dibujo; las referencias creadas hasta aqui se liberan.
+                Dispose();
+            }
+        }
+
+        // PRECARGAR UNA TEXTURA (IDirect3DResource9::PreLoad, ranura 9 de cualquier recurso). Las texturas son POOL_MANAGED: crearlas y
+        // llenarlas solo deja la copia en la memoria del sistema, y el controlador la sube a la memoria de la tarjeta la PRIMERA vez que
+        // un dibujo la usa, o sea dentro del cuadro del cambio de pagina. PreLoad hace esa subida en el hueco del adelanto de portadas.
+        // Solo se llama para las celdas de la pagina siguiente (WarmAheadCells) y solo en un dispositivo creado de verdad (en una tarjeta
+        // imitada la ranura 9 puede no existir). Si falla alguna vez, se apaga. 20-10-2026: no se ha medido en una tarjeta de verdad.
+        private bool preLoadOk;
+        internal int PreCargas;
+        internal bool PreLoadHabilitado { get { return preLoadOk; } set { preLoadOk = value; } }   // las pruebas
+        public bool PreloadTexture(IntPtr tex)
+        {
+            if (!preLoadOk || tex == IntPtr.Zero || dev == IntPtr.Zero || lost || resetPending || reiniciando) return false;
+            try
+            {
+                TexturasDivididasGpu.Surface s = TexturasDivididasGpu.Busca(tex);
+                if (s != null)
+                {
+                    foreach (TexturasDivididasGpu.Tile t in s.Tiles)
+                        if (t != null && t.Tex != IntPtr.Zero) { D3D9.Fn<D3D9.VoidSelf>(t.Tex, 9)(t.Tex); PreCargas++; }
+                    return true;
+                }
+                D3D9.Fn<D3D9.VoidSelf>(tex, 9)(tex); PreCargas++;
+                return true;
+            }
+            catch { preLoadOk = false; return false; }
+        }
+
+        public int BufAncho { get { return (int)pp.BackBufferWidth; } }
+        public int BufAlto { get { return (int)pp.BackBufferHeight; } }
+        // Quien esta dibujando, para el diagnostico y para las pruebas. El gemelo de Linux contesta aqui el
+        // nombre de la tarjeta y la version de OpenGL, que alli hace falta para saber si esta dibujando la
+        // tarjeta de verdad o el procesador haciendose pasar por ella.
+        public string Quien { get { return "Direct3D 9"; } }
+
+        // REHACE EL BUFFER DE DIBUJO al tamano nuevo de la ventana.
+        //
+        // Sin esto, al cambiar la resolucion de Windows con la rocola ABIERTA el buffer se quedaba del
+        // tamano VIEJO. Dos consecuencias, y las dos se veian:
+        //   - Cada cuadro habia que ESTIRARLO del tamano viejo al de la ventana, que es el camino lento del
+        //     driver: de ahi los tirones al hojear y el congelon al dejar pulsado el boton de pagina.
+        //   - Y todo lo que caia fuera del tamano viejo se RECORTABA, asi que a resoluciones altas se perdian
+        //     trozos de la pantalla por la derecha y por abajo.
+        // Arrancando ya en esa resolucion no pasaba nada, porque entonces el buffer se creaba del tamano bueno.
+        //
+        // Las texturas viven en el monton MANEJADO (POOL_MANAGED): sobreviven al reseteo solas, no hay que
+        // volver a subir ni una. Lo que SI se pierde son los estados del dispositivo, y por eso se rehacen.
+        public bool Redimensiona(int w, int h)
+        {
+            if (dev == IntPtr.Zero || reiniciando || w < 8 || h < 8) return false;
+            bool mismo = pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h;
+            if (mismo && !resetPending) return !lost;
+            if (!mismo) { pp.BackBufferWidth = (uint)w; pp.BackBufferHeight = (uint)h; }
+            resetPending = true;
+            if (inScene) { lost = true; return false; }
+            return PreparaDispositivo();
+        }
+
+        internal int Perdidas;   // veces que se perdio el dispositivo (lo lee el diagnostico completo, DiagnosticoCompleto.cs)
+        // EPISODIOS de perdida (de «bien» a «perdido»), no los reintentos cada 250 ms ni los Reset por cambio de tamano.
+        private void PerdidaNueva() { if (!lost) Perdidas++; }
+        private void EsperaDispositivo()
+        {
+            PerdidaNueva(); lost = true;
+            resetEspera = true;
+            resetProximo = unchecked(Environment.TickCount + ReintentoDispositivoMs);
+        }
+
+        // Se comprueba ANTES de preparar/subir contenido y tambien antes de BeginScene.
+        // Tras un Reset fallido solo se admiten Reset, TestCooperativeLevel y Release.
+        internal bool PreparaDispositivo()
+        {
+            if (dev == IntPtr.Zero || reiniciando || inScene) return false;
+            if (!lost && !resetPending) return true;
+            if (resetEspera && unchecked(Environment.TickCount - resetProximo) < 0) return false;
+            try
+            {
+                int tc = testCoop(dev);
+                if (tc == D3D9.E_DEVICELOST || (tc < 0 && tc != D3D9.E_DEVICENOTRESET))
+                { EsperaDispositivo(); return false; }
+                if (tc == D3D9.E_DEVICENOTRESET || resetPending) return ReiniciaDispositivo();
+                // Algunos controladores vuelven directamente a S_OK, sin necesitar Reset.
+                if (!InitStates()) { EsperaDispositivo(); return false; }
+                lost = false; resetEspera = false;
+                return true;
+            }
+            catch { EsperaDispositivo(); return false; }
+        }
+
+        private bool ReiniciaDispositivo()
+        {
+            // Reset puede enviar WM_PAINT sin salir de esta llamada. Ningun cuadro ni
+            // otro Reset debe entrar en el controlador mientras esta reiniciandose.
+            reiniciando = true; lost = true; resetPending = true;
+            bool ok = false;
+            try
+            {
+                SueltaPinesVertices();
+                LiberaVertices();
+                LiberaMedia(); juntaN = 0;
+                // D3D9 pone Width/Height/Count a cero AL VOLVER de Reset, incluso si falla.
+                // Nunca se le presta la configuracion que conservamos para el siguiente cuadro.
+                D3D9.PresentParams peticion = pp;
+                if (reset(dev, ref peticion) < 0 || !InitStates()) return false;
+                resetPending = false; lost = false; resetEspera = false; ok = true;
+                return true;
+            }
+            catch { return false; }
+            finally
+            {
+                reiniciando = false;
+                if (!ok) EsperaDispositivo();
+            }
+        }
+
+        private static D3D9.PresentParams MakePP(IntPtr hwnd, int w, int h)
+        {
+            D3D9.PresentParams p = new D3D9.PresentParams();
+            p.BackBufferWidth = (uint)Math.Max(1, w);
+            p.BackBufferHeight = (uint)Math.Max(1, h);
+            p.BackBufferFormat = D3D9.FMT_UNKNOWN;
+            p.BackBufferCount = 1;
+            p.SwapEffect = D3D9.SWAPEFFECT_DISCARD;
+            p.DeviceWindow = hwnd;
+            p.Windowed = 1;
+            p.PresentationInterval = 0;
+            return p;
+        }
+
+        // ESTADO ACTUAL del dispositivo. Cambiar un estado en Direct3D 9 es una llamada al driver, y una pantalla
+        // de la rocola son decenas de dibujos SEGUIDOS con el mismo estado (toda la rejilla de discos se pinta
+        // igual: textura modulada + mezcla normal). Sin esto, cada quad repetia 9 cambios identicos. Anotando lo
+        // que ya esta puesto, solo se manda al driver lo que de verdad cambia.
+        private int stTss, stBlend;                  // 0 = sin fijar, 1 = diffuse / 2 = modulate ; 1 = sin mezcla, 2 = aditiva, 3 = normal
+        // Lo que ya vale en la etapa 0 aunque haya cambiado el modo: los segundos argumentos (COLORARG2 y ALPHAARG2 = el color
+        // del vertice) no cambian entre «color de vertice» y «textura por color», y la mezcla suma o normal usa el mismo origen
+        // (alfa). No se vuelven a mandar al controlador. Se olvidan donde se olvida el resto (InitStates, EstadoFallido, dos texturas).
+        private bool stArg2Difuso, stOrigenAlfa;
+        private IntPtr stTex = new IntPtr(-1);       // -1 = sin fijar (IntPtr.Zero SI es un valor valido: sin textura)
+
+        private int stDireccion;
+        private bool InitStates()
+        {
+            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);   // tras crear o RESETEAR el dispositivo todo vuelve a su valor por defecto
+            stArg2Difuso = false; stOrigenAlfa = false;
+            stDireccion = 0; juntaN = 0;
+            if (dev == IntPtr.Zero) return false;
+            try
+            {
+                if (setRS(dev, D3D9.RS_ZENABLE, 0) < 0) return false;
+                if (setRS(dev, D3D9.RS_LIGHTING, 0) < 0) return false;
+                if (setRS(dev, D3D9.RS_CULLMODE, D3D9.CULL_NONE) < 0) return false;
+                if (setFVF(dev, D3D9.FVF) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR) < 0) return false;
+                if (setSamp(dev, 0, D3D9.SAMP_ADDRESSU, D3D9.ADDRESS_CLAMP) < 0 ||
+                    setSamp(dev, 0, D3D9.SAMP_ADDRESSV, D3D9.ADDRESS_CLAMP) < 0) return false;
+                stDireccion = 1;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private void EstadoFallido()
+        {
+            PerdidaNueva(); lost = true;
+            stTss = 0; stBlend = 0; stTex = new IntPtr(-1);
+            stArg2Difuso = false; stOrigenAlfa = false;
+        }
+
+        private void Direccion(bool repetir)
+        {
+            int modo = repetir ? 2 : 1;
+            if (dev == IntPtr.Zero || lost || stDireccion == modo) return;
+            uint valor = repetir ? D3D9.ADDRESS_WRAP : D3D9.ADDRESS_CLAMP;
+            Junta(); Cambios++;   // lo pendiente se pinta con el estado de antes (PerformanceGpu.cs)
+            try
+            {
+                if (setSamp(dev, 0, D3D9.SAMP_ADDRESSU, valor) < 0 || setSamp(dev, 0, D3D9.SAMP_ADDRESSV, valor) < 0)
+                { EstadoFallido(); return; }
+                stDireccion = modo;
+            }
+            catch { EstadoFallido(); }
+        }
+        private void Tex(IntPtr t)
+        { TexDireccion(t, false); }
+        private void TexDireccion(IntPtr t, bool repetir)
+        {
+            if (t != IntPtr.Zero) Direccion(repetir);
+            texturaLogica = t;
+            if (TexturasDivididasGpu.Busca(t) != null) return;
+            PonTexturaFisica(t);
+        }
+        private void PonTexturaFisica(IntPtr t)
+        {
+            if (dev == IntPtr.Zero || lost || stTex == t) return;
+            Junta(); Cambios++;
+            try
+            {
+                if (setTex(dev, 0, t) < 0) { EstadoFallido(); return; }
+                stTex = t;
+            }
+            catch { EstadoFallido(); }
+        }
+        private void Blend(int modo)   // 1 = sin mezcla, 2 = aditiva (brillos), 3 = normal (encima)
+        {
+            if (dev == IntPtr.Zero || lost || stBlend == modo) return;
+            Junta(); Cambios++;
+            try
+            {
+                if (modo == 1)
+                {
+                    if (setRS(dev, D3D9.RS_ALPHABLENDENABLE, 0) < 0) { EstadoFallido(); return; }
+                }
+                else
+                {
+                    if (stBlend <= 1 && setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1) < 0) { EstadoFallido(); return; }
+                    // Entre la suma y la normal el origen es el mismo (alfa): solo cambia el destino.
+                    if (!(stOrigenAlfa && stBlend > 1) && setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_SRCALPHA) < 0) { EstadoFallido(); return; }
+                    if (setRS(dev, D3D9.RS_DESTBLEND, modo == 2 ? D3D9.BLEND_ONE : D3D9.BLEND_INVSRCALPHA) < 0) { EstadoFallido(); return; }
+                    stOrigenAlfa = true;
+                }
+                stBlend = modo;
+            }
+            catch { EstadoFallido(); }
+        }
+
+        public IntPtr CreateTextureFromBitmap(Bitmap bmp)
+        {
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
+            IntPtr tex = IntPtr.Zero;
+            try
+            {
+                int w = bmp.Width, h = bmp.Height;
+                if (w < 1 || h < 1) return IntPtr.Zero;
+                if (createTex(dev, (uint)w, (uint)h, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
+                {
+                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                if (!SubeBitmap(tex, bmp, w, h))
+                {
+                    D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                return tex;
+            }
+            catch
+            {
+                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                return IntPtr.Zero;
+            }
+        }
+
+        // Bloquea y rellena una textura garantizando que tanto GDI+ como Direct3D quedan desbloqueados aun
+        // cuando el bitmap este corrupto, el driver rechace el recurso o falle una copia nativa.
+        private static bool SubeBitmap(IntPtr tex, Bitmap bmp, int w, int h)
+        { return SubeBitmapBorde(tex, bmp, w, h, w, h); }
+
+        private static bool SubeBitmapBorde(IntPtr tex, Bitmap bmp, int w, int h, int tw, int th)
+        {
+            D3D9.UnlockRectDel unlockR = null;
+            D3D9.LockedRect lr = new D3D9.LockedRect();
+            BitmapData bd = null;
+            bool texLocked = false, ok = false;
+            try
+            {
+                D3D9.LockRectDel lockR = D3D9.Fn<D3D9.LockRectDel>(tex, 19);
+                unlockR = D3D9.Fn<D3D9.UnlockRectDel>(tex, 20);
+                if (lockR(tex, 0, out lr, IntPtr.Zero, 0) < 0) return false;
+                texLocked = true;
+
+                bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                int rowBytes = checked(w * 4);
+                if (lr.Bits == IntPtr.Zero || lr.Pitch < tw * 4 || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < rowBytes)
+                    return false;
+                // Agrupa filas contiguas sin padding en bloques de hasta 64 KiB. Una copia gigante
+                // resulto mas lenta en la medicion; los bloques reducen interop sin ese retroceso.
+                // Stride negativo o pitch distinto conservan la copia exacta por filas.
+                if (lr.Pitch == rowBytes && bd.Stride == rowBytes)
+                {
+                    long total = (long)rowBytes * h;
+                    for (long offset = 0; offset < total; )
+                    {
+                        uint bytes = (uint)Math.Min(65536L, total - offset);
+                        D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + offset), new IntPtr(bd.Scan0.ToInt64() + offset), (UIntPtr)bytes);
+                        offset += bytes;
+                    }
+                }
+                else
+                    for (int y = 0; y < h; y++)
+                        D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)rowBytes);
+                // Bilineal necesita texeles vecinos: extruir el ultimo valido, sin arrays ni pixeladas GDI.
+                RellenaBorde(lr, w, h, tw, th);
+                ok = true;
+            }
+            catch { ok = false; }
+            finally
+            {
+                if (bd != null)
+                {
+                    try { bmp.UnlockBits(bd); }
+                    catch { ok = false; }
+                }
+                if (texLocked && unlockR != null)
+                {
+                    try { if (unlockR(tex, 0) < 0) ok = false; }
+                    catch { ok = false; }
+                }
+            }
+            return ok;
+        }
+
+        // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
+        public bool BeginFrame()
+        {
+            if (!PreparaDispositivo()) return false;
+            SueltaPinesVertices(); // tambien un cuadro anterior abandonado por perdida
+            try
+            {
+                // La textura apuntada se olvida en CADA cuadro: entre cuadro y cuadro se recrean texturas (portadas,
+                // UI) y una nueva puede caer en la MISMA direccion que una recien liberada. Los otros estados son
+                // numeros, no punteros, asi que esos si se conservan. Cuesta un cambio de textura por cuadro.
+                stTex = new IntPtr(-1);
+                // SIN BORRAR LA PANTALLA (rendimiento, 24-09-2026). Lo primero que se dibuja en cada cuadro es el
+                // cielo (GpuStarfield.Begin): dos cuadrilateros opacos, sin mezcla, que tapan todos los pixeles. Borrar
+                // antes era escribir la pantalla entera para nada, una vez por cuadro. El buffer se descarta al
+                // presentar (SWAPEFFECT_DISCARD): no hay nada viejo que respetar.
+                if (begin(dev) < 0) { PerdidaNueva(); lost = true; return false; }
+                inScene = true;
+                return true;
+            }
+            catch { PerdidaNueva(); lost = true; return false; }
+        }
+
+        public bool EndFrame()
+        {
+            if (dev == IntPtr.Zero || !inScene) { SueltaPinesVertices(); return false; }
+            try { Junta(); } catch { }   // lo que quedaba por juntar va dentro de esta escena (PerformanceGpu.cs)
+            inScene = false;
+            try
+            {
+                if (end(dev) < 0) { PerdidaNueva(); lost = true; return false; }
+                // No se cuenta una escena incompleta ni una presentacion rechazada.
+                if (lost) return false;
+                if (present(dev, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) < 0) { PerdidaNueva(); lost = true; return false; }
+                return true;
+            }
+            catch { PerdidaNueva(); lost = true; return false; }
+            finally { SueltaPinesVertices(); }
+        }
+
+        private void TssDiffuse()   // usa el color del vertice (sin textura)
+        {
+            if (dev == IntPtr.Zero || lost || stTss == 1) return;
+            Junta(); Cambios++;
+            try
+            {
+                if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_SELECTARG1) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_DIFFUSE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_DIFFUSE) < 0)
+                { EstadoFallido(); return; }
+                stTss = 1;
+            }
+            catch { EstadoFallido(); }
+        }
+        private void TssModulate()  // textura * color del vertice
+        {
+            if (dev == IntPtr.Zero || lost || stTss == 2) return;
+            Junta(); Cambios++;
+            try
+            {
+                if (setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE) < 0 ||
+                    (!stArg2Difuso && setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_DIFFUSE) < 0) ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_MODULATE) < 0 ||
+                    setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE) < 0 ||
+                    (!stArg2Difuso && setTSS(dev, 0, D3D9.TSS_ALPHAARG2, D3D9.TA_DIFFUSE) < 0))
+                { EstadoFallido(); return; }
+                stArg2Difuso = true;
+                stTss = 2;
+            }
+            catch { EstadoFallido(); }
+        }
+
+        // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
+        // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
+        public void DrawSky(D3D9.Vtx[] sky)
+        {
+            if (dev == IntPtr.Zero || lost) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
+            Draw(sky, 4);
+        }
+        // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
+        public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        {
+            if (dev == IntPtr.Zero || lost || starTris <= 0 || glowTex == IntPtr.Zero) return;
+            Tex(glowTex); TssModulate(); Blend(2);
+            Draw(stars, starTris);
+        }
+
+        // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
+        public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
+            Draw(v, tris);
+        }
+
+        // Malla PLANA: triangulos SIN textura, color en los vertices y mezcla NORMAL (encima, no sumada).
+        // Es lo que pinta el fondo reactivo: un relleno de color que la tarjeta degrada sola entre vertice y
+        // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
+        public void DrawMesh(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(3);
+            Draw(v, tris);
+        }
+
+        // La misma malla plana pero SUMANDO luz en vez de tapar. Un filo encendido se lee como neon
+        // justamente por esto: lo que hay debajo se sigue viendo y encima se le suma el brillo, asi que
+        // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
+        public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
+            Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
+            Draw(v, tris);
+        }
+
+        // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
+        public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
+        {
+            if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
+            Tex(tex); TssModulate(); Blend(3);
+            Draw(quad, 2);
+        }
+
+        // Solo para una superficie cuya textura y vertices son completamente opacos.
+        public void DrawOpaqueQuad(IntPtr tex, D3D9.Vtx[] quad)
+        {
+            if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
+            Tex(tex); TssModulate(); Blend(1); Draw(quad, 2);
+        }
+
+        // Una tanda de triangulos con mezcla NORMAL (encima), con textura o sin ella. Es la pieza con la
+        // que el archivo del dibujo arma los cubos: le pasa cara por cara y el cache de estados hace que
+        // repetir la peticion no cueste nada.
+        public void DrawQuads(IntPtr tex, D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0) return;
+            if (tex != IntPtr.Zero) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
+            Blend(3);
+            Draw(v, tris);
+        }
+
+        public void DrawQuadsWrap(IntPtr tex, D3D9.Vtx[] v, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || tris <= 0 || tex == IntPtr.Zero) return;
+            TexDireccion(tex, true); TssModulate(); Blend(3); Draw(v, tris);
+        }
+
+        // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
+        private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
+        private D3D9.Vtx[] cubeBatchV;
+        private readonly double[] cbx = new double[4];
+        private readonly double[] cbz = new double[4];
+        private readonly int[] cbo = new int[4];
+
+        // Dibuja un cubo GIRANDO (mismo aspecto que Cube.Draw del render por CPU) directo en GPU desde la
+        // textura de la portada: el giro es solo geometria (4 caras como cuadrangulos, ordenadas por
+        // profundidad y oscurecidas igual). Si tex es nulo usa un relleno azulado (portada aun cargando).
+        // alpha < 1 permite FUNDIR una portada sobre otra (discos TOP) en dos pasadas.
+        private sealed class CuboPose
+        {
+            internal float X, Y, W, H, U, V;
+            internal double Angulo, Inclinacion;
+            internal bool Textura;
+            internal uint Color, Alfa;
+            internal int N;
+            internal readonly D3D9.Vtx[] Vertices = new D3D9.Vtx[24];
+        }
+        private CuboPose[] cuboPoses;
+        private int cuboSiguiente;
+        internal int CubosCalculados, CubosReusados;
+        private CuboPose PreparaCubo(bool textured, float uMax, float vMax, float ax, float ay,
+            float aw, float ah, double angle, double tilt, uint av)
+        {
+            uint BlankCubeColor = textured ? 0u : CubeBaseColor & 0xFFFFFFu;
+            if (cuboPoses == null) cuboPoses = new CuboPose[4];
+            for (int i = 0; i < cuboPoses.Length; i++)
+            {
+                CuboPose cached = cuboPoses[i];
+                if (cached != null && cached.Angulo == angle && cached.Inclinacion == tilt
+                    && cached.X == ax && cached.Y == ay && cached.W == aw && cached.H == ah && cached.U == uMax && cached.V == vMax
+                    && cached.Textura == textured && cached.Color == BlankCubeColor)
+                {
+                    if (cached.Alfa != av) {
+                        for (int k = 0; k < cached.N; k++) cached.Vertices[k].Color = (cached.Vertices[k].Color & 0xFFFFFFu) | (av << 24);
+                        cached.Alfa = av;
+                    }
+                    CubosReusados++; return cached;
+                }
+            }
+            CuboPose pose = cuboPoses[cuboSiguiente];
+            if (pose == null) cuboPoses[cuboSiguiente] = pose = new CuboPose();
+            cuboSiguiente = (cuboSiguiente + 1) % cuboPoses.Length;
+            pose.X = ax; pose.Y = ay; pose.W = aw; pose.H = ah; pose.U = uMax; pose.V = vMax;
+            pose.Angulo = angle; pose.Inclinacion = tilt; pose.Textura = textured; pose.Color = BlankCubeColor; pose.Alfa = av;
+            double cx = ax + aw / 2.0; float y0 = ay; float Hh = ah; double R = aw / 2.0; double DEG = Math.PI / 180.0;
+            double cyc = y0 + Hh / 2.0, ct = Math.Cos(tilt), stt = Math.Sin(tilt);   // bamboleo: rota el cubo entero alrededor de su centro (igual que RotateTransform en CPU)
+            for (int k = 0; k < 4; k++) cbx[k] = cx + R * Math.Cos(angle + 45 * DEG + k * 90 * DEG);
+            for (int k = 0; k < 4; k++) cbz[k] = Math.Sin(angle + 90 * DEG + k * 90 * DEG);
+            cbo[0] = 0; cbo[1] = 1; cbo[2] = 2; cbo[3] = 3;
+            for (int i = 0; i < 4; i++)                          // ordena las caras de atras hacia adelante
+                for (int j = 0; j < 3 - i; j++)
+                    if (cbz[cbo[j]] > cbz[cbo[j + 1]]) { int t = cbo[j]; cbo[j] = cbo[j + 1]; cbo[j + 1] = t; }
+            int cubeCount = 0;
+            for (int oi = 0; oi < 4; oi++)
+            {
+                int k = cbo[oi];
+                if (cbz[k] <= 0.0) continue;                     // cara trasera: no se ve
+                float left = (float)Math.Round(Math.Min(cbx[k], cbx[(k + 1) % 4]));
+                float right = (float)Math.Round(Math.Max(cbx[k], cbx[(k + 1) % 4]));
+                if (right - left < 1f) continue;
+                int darken = (int)((1.0 - cbz[k]) * 130); if (darken < 0) darken = 0; if (darken > 255) darken = 255;
+                uint g = (uint)(255 - darken);
+                uint col = textured
+                    ? (av << 24) | (g << 16) | (g << 8) | g                                   // textura * gris (oscurecido por profundidad)
+                    : (av << 24) | ((((BlankCubeColor >> 16) & 255u) * g / 255u) << 16) | ((((BlankCubeColor >> 8) & 255u) * g / 255u) << 8) | ((BlankCubeColor & 255u) * g / 255u);
+                CubeFace(cubeFaceV, left, y0, right, y0 + Hh, cx, cyc, ct, stt, uMax, vMax, col);
+                Array.Copy(cubeFaceV, 0, pose.Vertices, cubeCount, 6);
+                cubeCount += 6;
+            }
+            pose.N = cubeCount; CubosCalculados++;
+            return pose;
+        }
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
+        {
+            if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
+            bool textured = tex != IntPtr.Zero;
+            uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
+            CuboPose pose = PreparaCubo(textured, uMax, vMax, ax, ay, aw, ah, angle, tilt, av);
+            if (textured) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
+            Blend(3);
+            // Solo geometria y sombreado: la textura y la opacidad siguen vivas en cada dibujo.
+            // Cuatro poses acotadas; ninguna referencia a texturas ni bitmaps en esta cache.
+            cubeBatchV = pose.Vertices;
+            if (pose.N > 0) Draw(cubeBatchV, pose.N / 3);
+        }
+        // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
+        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
+            double cx, double cy, double ct, double st, float uM, float vM, uint c)
+        {
+            float tlx, tly, trx, tryy, brx, bry, blx, bly;
+            RotP(x0, y0, cx, cy, ct, st, out tlx, out tly); RotP(x1, y0, cx, cy, ct, st, out trx, out tryy);
+            RotP(x1, y1, cx, cy, ct, st, out brx, out bry); RotP(x0, y1, cx, cy, ct, st, out blx, out bly);
+            CFV(ref v[0], tlx, tly, c, 0, 0); CFV(ref v[1], trx, tryy, c, uM, 0); CFV(ref v[2], brx, bry, c, uM, vM);
+            v[3] = v[0]; v[4] = v[2]; CFV(ref v[5], blx, bly, c, 0, vM);
+        }
+        private static void RotP(float x, float y, double cx, double cy, double ct, double st, out float ox, out float oy)
+        {
+            double dx = x - cx, dy = y - cy;
+            ox = (float)(cx + dx * ct - dy * st); oy = (float)(cy + dx * st + dy * ct);
+        }
+        private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
+
+        private static int Pow2(int n)
+        {
+            if (n < 1 || n > 0x40000000) return 0;
+            int p = 1;
+            while (p < n) p <<= 1;
+            return p;
+        }
+
+        // Crea una textura de tamano POTENCIA DE DOS (compatible con GPU vieja) y sube el bitmap en su
+        // esquina superior izquierda. Devuelve las coordenadas de textura maximas usadas (uMax, vMax).
+        // SIN MEMORIA PARA UNA TEXTURA (20-10-2026). Si el controlador dice que no hay memoria (D3DERR_OUTOFVIDEOMEMORY o E_OUTOFMEMORY), antes se
+        // volvia a pedir la misma textura en CADA cuadro, y cada intento es una llamada al controlador (y un bitmap leido para nada). Ahora, la primera
+        // vez se pide al controlador que saque de la memoria de la tarjeta lo que no se usa (EvictManagedResources, ranura 5; las texturas manejadas
+        // se vuelven a subir solas cuando hagan falta) y se reintenta UNA vez; si aun asi no hay sitio, durante 200 ms no se vuelve a pedir una
+        // textura de ese tamano o mayor (las mas chicas siguen intentandolo). Como mucho una evicion por segundo. Cualquier otro error: como siempre.
+        private const int HrSinMemoriaVideo = unchecked((int)0x8876017C), HrSinMemoria = unchecked((int)0x8007000E);
+        private double creaBloqueadoHasta, ultimaEvicion = -1e9; private long creaFallidaBytes; private bool evictOk = true;
+        internal int Eviciones, CreacionesSaltadas;
+        internal const double EsperaSinMemoriaMs = 200, EntreEvicionesMs = 1000;
+        private int CreaTexturaManejada(uint tw, uint th, out IntPtr tex)
+        {
+            tex = IntPtr.Zero;
+            long bytes = (long)tw * th * 4;
+            if (creaBloqueadoHasta > 0)
+            {
+                double ahora0 = GpuPanel.AhoraMs();
+                if (ahora0 < creaBloqueadoHasta && bytes >= creaFallidaBytes) { CreacionesSaltadas++; return HrSinMemoriaVideo; }
+            }
+            int hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
+            if (hr >= 0 && tex != IntPtr.Zero) return hr;
+            if (hr != HrSinMemoriaVideo && hr != HrSinMemoria) return hr;
+            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            double ahora = GpuPanel.AhoraMs();
+            if (evictOk && ahora - ultimaEvicion >= EntreEvicionesMs)
+            {
+                ultimaEvicion = ahora;
+                try { D3D9.Fn<D3D9.HrSelf>(dev, 5)(dev); Eviciones++; }
+                catch { evictOk = false; }
+                if (evictOk)
+                {
+                    hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
+                    if (hr >= 0 && tex != IntPtr.Zero) return hr;
+                    if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                }
+            }
+            creaBloqueadoHasta = GpuPanel.AhoraMs() + EsperaSinMemoriaMs; creaFallidaBytes = bytes;
+            return hr;
+        }
+        public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
+        {
+            uMax = 1f; vMax = 1f;
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
+            IntPtr tex = IntPtr.Zero;
+            try
+            {
+                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                if (tw == 0 || th == 0) return IntPtr.Zero;
+                if (tw > LimiteTexturaW || th > LimiteTexturaH) return CreaTexturaDividida(bmp, out uMax, out vMax);
+                if (CreaTexturaManejada((uint)tw, (uint)th, out tex) < 0 || tex == IntPtr.Zero)
+                {
+                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                if (!SubeBitmapBorde(tex, bmp, w, h, tw, th))
+                {
+                    D3D9.Release(tex);
+                    return IntPtr.Zero;
+                }
+                uMax = (float)w / tw; vMax = (float)h / th;
+                return tex;
+            }
+            catch
+            {
+                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                return IntPtr.Zero;
+            }
+        }
+
+        // Re-sube el contenido a una textura pow2 YA existente (mismo tamano de bitmap) en vez de crear una
+        // nueva: evita el churn de crear/destruir una textura a pantalla completa en cada reconstruccion de UI.
+        // El llamador garantiza el mismo tamano. Devuelve false si no pudo bloquearla (entonces se recrea).
+        // Actualiza solo la banda modificada. El rectangulo D3D marca tambien
+        // la region sucia de la textura MANAGED, sin resubir todo el panel.
+        public bool UpdateTextureRegion(IntPtr tex, Bitmap bmp, Rectangle area)
+        {
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando ||
+                tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
+                !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
+            TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
+            if (dividida != null) return ActualizaDividida(dividida, bmp, area);
+            if (MideMenos(tex, Pow2(bmp.Width), Pow2(bmp.Height))) return false;   // (la misma guarda que al subirla entera)
+            return ActualizaRegionBitmap(tex, bmp, area, area.Location, bmp.Width, bmp.Height);
+        }
+        public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
+        {
+            uMax = 1f; vMax = 1f;
+            if (dev == IntPtr.Zero || lost || resetPending || reiniciando || tex == IntPtr.Zero || bmp == null) return false;
+            try
+            {
+                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
+                if (dividida != null)
+                { uMax = vMax = 1f; return ActualizaDividida(dividida, bmp, new Rectangle(0, 0, w, h)); }
+                if (tw == 0 || th == 0 || MideMenos(tex, tw, th) || !SubeBitmapBorde(tex, bmp, w, h, tw, th)) return false;
+                uMax = (float)w / tw; vMax = (float)h / th;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // ¿La textura mide menos de lo que se le va a subir? (24-10-2026) Al bloquearla solo se mira el ancho (el paso de fila); si una
+        // cuenta de la rocola se equivocara de alto, la copia escribiria filas de mas en la memoria del controlador, que en XP no avisa
+        // hasta que algo truena mucho despues. Se le pregunta a Direct3D cuanto mide: una llamada que no espera a la tarjeta. Si no lo
+        // dice (un controlador que deja ceros), se sigue como antes; si falla, no se sube (el llamador la crea de nuevo).
+        private static bool MideMenos(IntPtr tex, int tw, int th)
+        {
+            D3D9.SurfaceDesc d = new D3D9.SurfaceDesc();
+            int hr;
+            try { hr = D3D9.Fn<D3D9.LevelDescDel>(tex, D3D9.SlotGetLevelDesc)(tex, 0, ref d); }
+            catch { return false; }   // (una tarjeta imitada de las pruebas sin esa ranura) no se sabe: como antes
+            if (hr < 0) return true;
+            if (d.Width == 0 && d.Height == 0) return false;
+            return d.Width < (uint)tw || d.Height < (uint)th;
+        }
+
+        private void Draw(D3D9.Vtx[] verts, int tris)
+        {
+            if (enMedia) { verts = EscalaMedia(verts, tris); if (verts == null) return; }   // a la imagen intermedia (PerformanceGpu.cs)
+            else if (VinetaPuntos) { verts = Vinetea(verts, tris); if (verts == null) return; }   // G2: la vineta en cada punto (PerformanceGpu.cs)
+            TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(texturaLogica);
+            if (dividida != null) { Junta(); DibujaDividida(dividida, verts, tris); return; }
+            DrawFisico(verts, tris);
+        }
+
+        private void DrawFisico(D3D9.Vtx[] verts, int tris)
+        {
+            if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
+            Pedidos++;
+            if (CuentaArea) AreaPx += AreaDe(verts, tris);
+            // JUNTAR ORDENES (PerformanceGpu.cs): lo chico con el mismo estado que lo anterior se manda junto. Lo grande va
+            // directo, como siempre, despues de lo que quedara pendiente.
+            if (tris < JuntaMaxTris && inScene && Encola(verts, tris)) return;
+            Junta();
+            GCHandle gh;
+            IntPtr datos = FijaVertices(verts, out gh);
+            bool prueba = false, usaBuffer = false;
+            long inicio = 0;
+            try
+            {
+                // Los dibujos pequenos conservan UP: para un quad es mas barato que tres llamadas COM.
+                if (tris >= 64 && !verticesSinSoporte)
+                {
+                    if (verticesPruebaTris == 0) verticesPruebaTris = tris;
+                    prueba = verticesModo == 0 && tris == verticesPruebaTris;
+                    usaBuffer = verticesModo == 2 || (prueba && (verticesPruebas & 1) != 0);
+                    if (prueba) inicio = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (usaBuffer && DibujaVertices(tris, datos)) { Envios++; return; }
+                }
+                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, datos, D3D9.VtxSize) < 0)
+                    EstadoFallido();
+                else Envios++;
+            }
+            catch { EstadoFallido(); }
+            finally
+            {
+                if (prueba && !lost && !verticesSinSoporte)
+                {
+                    long ticks = System.Diagnostics.Stopwatch.GetTimestamp() - inicio;
+                    // Las primeras parejas ceban recursos/JIT; no se comparan.
+                    if (verticesPruebas >= 4) { if (usaBuffer) verticesVbTicks += ticks; else verticesUpTicks += ticks; }
+                    if (++verticesPruebas >= 44)
+                    { verticesModo = verticesVbTicks < verticesUpTicks * .95 ? 2 : 1;
+                      if (verticesModo == 1) LiberaVertices(); }
+                }
+                if (gh.IsAllocated) gh.Free();
+            }
+        }
+        private bool DibujaVertices(int tris, IntPtr datos)
+        {
+            int n = tris * 3;
+            if (verticesSinSoporte || n > 196608) return false;
+            try
+            {
+                if (verticesGpu == IntPtr.Zero || n > verticesCap)
+                {
+                    LiberaVertices();
+                    if (creaVertices == null)
+                    {
+                        creaVertices = D3D9.Fn<D3D9.CreateVBDel>(dev, 26);
+                        flujoVertices = D3D9.Fn<D3D9.StreamDel>(dev, 100);
+                        dibujaVertices = D3D9.Fn<D3D9.SetU3Del>(dev, 81);
+                    }
+                    verticesCap = Math.Max(49152, n);
+                    // DYNAMIC | WRITEONLY, POOL_DEFAULT; liberado ANTES de cada Reset.
+                    if (creaVertices(dev, (uint)(verticesCap * D3D9.VtxSize), verticesSoftware ? 0x218u : 0x208u, D3D9.FVF, 0, out verticesGpu, IntPtr.Zero) < 0
+                        || verticesGpu == IntPtr.Zero)
+                    { LiberaVertices(); verticesSinSoporte = true; return false; }
+                    bloqueaVertices = D3D9.Fn<D3D9.LockVBDel>(verticesGpu, 11);
+                    sueltaVertices = D3D9.Fn<D3D9.HrSelf>(verticesGpu, 12);
+                }
+                if (verticesPos + n > verticesCap) verticesPos = 0;
+                IntPtr destino;
+                if (bloqueaVertices(verticesGpu, (uint)(verticesPos * D3D9.VtxSize), (uint)(n * D3D9.VtxSize),
+                    out destino, verticesPos == 0 ? 0x2000u : 0x1000u) < 0)
+                { LiberaVertices(); verticesSinSoporte = true; return false; }
+                if (destino == IntPtr.Zero)
+                { sueltaVertices(verticesGpu); LiberaVertices(); verticesSinSoporte = true; return false; }
+                bool copiado = false;
+                try { D3D9.CopyMemory(destino, datos, new UIntPtr((uint)(n * D3D9.VtxSize))); copiado = true; }
+                finally { if (sueltaVertices(verticesGpu) < 0) copiado = false; }
+                if (!copiado) { EstadoFallido(); return true; }
+                if (flujoVertices(dev, 0, verticesGpu, 0, D3D9.VtxSize) < 0 ||
+                    dibujaVertices(dev, D3D9.PT_TRIANGLELIST, (uint)verticesPos, (uint)tris) < 0)
+                { EstadoFallido(); return true; }
+                verticesPos += n;
+                return true;
+            }
+            catch { LiberaVertices(); verticesSinSoporte = true; EstadoFallido(); return true; }
+        }
+        private void LiberaVertices()
+        {
+            IntPtr v = verticesGpu; verticesGpu = IntPtr.Zero; verticesPos = verticesCap = 0;
+            if (v != IntPtr.Zero)
+            {
+                try { if (flujoVertices != null && dev != IntPtr.Zero) flujoVertices(dev, 0, IntPtr.Zero, 0, D3D9.VtxSize); } catch { }
+                D3D9.Release(v);
+            }
+            bloqueaVertices = null; sueltaVertices = null;
+        }
+
+        public void Dispose()
+        {
+            SueltaPinesVertices();
+            LiberaVertices();
+            LiberaMedia(); SueltaJunta();   // (PerformanceGpu.cs)
+            PerdidaNueva(); lost = true;
+            resetPending = false;
+            inScene = false;
+            IntPtr dv = dev; dev = IntPtr.Zero;
+            IntPtr d = d3d; d3d = IntPtr.Zero;
+            if (dv != IntPtr.Zero) D3D9.Release(dv);
+            if (d != IntPtr.Zero) D3D9.Release(d);
+        }
+    }
+
+    // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
+    internal sealed partial class GpuStarfield
+    {
+        private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
+        private float[] sx, sy, sphase, sspeed, ssize; private int[] skind, sforma; private uint[] scol; private int nStars;
+        private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
+        private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
+        // RELOJ DEL CAMPO DE ESTRELLAS. Igual que el de la aurora: en un bar la rocola no se apaga nunca, y
+        // "los segundos que llevo encendida" guardados en un float se quedan sin decimales a los pocos dias
+        // (el titileo empezaria a ir a saltos). Aqui el tiempo se lleva sumado en un double, que no se queda
+        // corto ni en anos, y el paso de cada cuadro se saca por RESTA del RELOJ FINO (ver GpuPanel.AhoraMs):
+        // el reloj de Windows solo contesta de 15.6 en 15.6 ms, y con el tope de cuadros puesto -un cuadro cada
+        // ~15 ms- el titileo avanzaria a tirones, un cuadro si y el siguiente no.
+        private double campoT; private double campoFinoAnt; private bool campoRelojOk;
+        private int patronW, patronH;
+        private int seed0;                                   // semilla base (el patron de cada minuto = seed0 + minuto*paso)
+        private int curMinute = int.MinValue;                // minuto del patron actual (cambia cada 60s)
+        // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
+        // el nuevo aparece, en vez de atenuar TODO el cielo. Asi el fondo nunca se queda sin estrellas.
+        private float[] px, py, pphase, pspeed, psize; private int[] pkind, pforma; private uint[] pcol; private int pnStars;
+        private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
+        private float[] starCenterX, starCenterY, starCenterRadius;
+        private int transStart; private bool transing;
+        private const int TransMs = 1300;                    // duracion del entrecruzado
+        // POR DEBAJO DE ESTO NO SE VE NADA. El brillo de una estrella acaba siendo un numero de 0 a 255, asi
+        // que un brillo de dos milesimas sale redondeado a cero: transparente del todo. Armar y mandar a la
+        // tarjeta un juego entero de estrellas para que dibuje nada es trabajo tirado.
+        private const float FadeMinimo = 0.002f;             // medio nivel de 255
+        // Estrellas FUGACES: en CPU se podian pero costaban; en GPU son un par de cuadrangulos aditivos.
+        // Cada una con tamaño, color, velocidad y largo de estela distintos.
+        private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; public bool Nace; }   // Nace: sale a media altura (lluvias, CieloVivoGpu.cs): entra suave
+        private readonly Shoot[] shoots = new Shoot[2];
+        private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
+        private int nextShoot; private double shootFinoAnt;   // la CITA de la proxima fugaz en ms de Windows (son segundos); su avance, con el reloj fino
+        private readonly Random srnd = new Random();
+        private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
+        // DERIVA con la musica: al sonar, el campo entero se desliza LENTO en diagonal (abajo-derecha, como las
+        // fugaces) y se envuelve por los bordes (bucle infinito). Es baratisimo: solo un desplazamiento + modulo
+        // por estrella dentro del bucle que ya existe; ni asignaciones ni draws extra.
+        private double driftFinoAnt;                         // ultimo Begin (reloj fino) para medir dt de la deriva
+        private float driftEnv;                              // envolvente 0..1: sube al sonar, baja al parar (arranque/paro suave)
+        private const float DriftVX = 18f, DriftVY = 9f;     // px/seg (derecha, abajo): lento, diagonal suave 2:1
+
+        // ...Y NO TODAS A LA VEZ: DE AQUI SALE LA PROFUNDIDAD.
+        //
+        // Hasta ahora las mil cuatrocientas estrellas se deslizaban con el MISMO desplazamiento, y por eso el
+        // cielo se movia como un papel pintado que alguien arrastra y no como un espacio con fondo. Lo que el
+        // ojo lee como distancia -sin que nadie se lo explique- es que lo lejano se mueva MENOS que lo cercano.
+        //
+        // Cada estrella ya lleva apuntado su tamano, asi que el polvo -las mas pequenas, las que hacen de
+        // fondo- deriva a un tercio de lo que derivan las grandes, y las medianas a poco mas de la mitad.
+        //
+        // Y SON TRES CUENTAS ACUMULADAS, no una multiplicada por tres factores. Tiene que ser asi: el
+        // desplazamiento se guarda ya envuelto entre cero y el ancho de la pantalla, o sea que al dar la
+        // vuelta salta del ancho a cero. Multiplicar DESPUES ese salto por un tercio movería el polvo de
+        // golpe un tercio de pantalla cada vez que la cuenta grande da la vuelta: un tiron cada dos minutos
+        // de musica. Acumulando cada tamano por su lado, la vuelta de cada uno es exacta y sus estrellas
+        // reaparecen por el otro borde sin que se note nada.
+        private static readonly float[] DerivaKind = { 0.33f, 0.58f, 1f };       // polvo, mediana, grande
+        private readonly float[] driftX = new float[3], driftY = new float[3];   // acumulado (px) de cada tamano, envuelto con w/h
+
+        public bool Ok { get { return gpu != null && gpu.Ok; } }
+        public uint EstimatedTextureMemory { get { return gpu != null ? gpu.EstimatedTextureMemory : 0; } }
+        internal int Perdidas { get { return gpu != null ? gpu.Perdidas : 0; } }   // (diagnostico completo)
+        public int Count { get { return nStars; } }
+        private float dim = 1f;   // atenuacion del campo (estrellas + fugaces) mientras se navega con musica
+        public void SetDim(float d) { dim = d < 0f ? 0f : (d > 1f ? 1f : d); }
+
+        // ===================== LAS PERILLAS DEL CIELO (Ctrl+F3 -> Imagen y rendimiento) =====================
+        // Tres cosas del cielo se pueden bajar cuando un equipo no da para todo. Estan juntas y aqui arriba a
+        // proposito: repartidas por el archivo, nadie sabria de un vistazo que se puede aflojar.
+        //
+        // Y van por NIVEL, no por si/no: entre "fugaces si" y "fugaces no" hay sitio para "menos fugaces", y
+        // eso es media rocola que no hay que afear para ganar los mismos cuadros.
+        //
+        //   densidad  cuantas estrellas hay, de 0.1 a 1 (1 = las de siempre)
+        //   fugaces   2 = dos a la vez cada 7-16 s;  1 = una cada 15-30 s;  0 = ninguna
+        //   relevo    2 = patron nuevo cada minuto;  1 = cada tres minutos;  0 = nunca
+        //
+        // Con las tres en alto (1, 2, 2) el cielo sale EXACTAMENTE como salia antes de que existieran:
+        // ninguna cuenta cambia. Solo al bajarlas se nota, que es de lo que se trata.
+        internal const int Alto = 2, Medio = 1, Bajo = 0;
+        private float densidad = 1f; private int fugaces = Alto, relevo = Alto;
+        public void SetEfectos(float dens, int fug, int rel, int w, int h)
+        {
+            if (dens < 0.1f) dens = 0.1f; else if (dens > 1f) dens = 1f;
+            fugaces = fug; relevo = rel;
+            if (Math.Abs(dens - densidad) < 0.001f) return;   // lo de siempre: esto se llama en CADA cuadro
+            densidad = dens;
+            if (!Ok || w < 8 || h < 8) return;
+            // Cambiar cuantas estrellas hay obliga a rehacer los datos, sin perder la capacidad de los buffers.
+            int minuto = (curMinute != int.MinValue) ? curMinute : 0;
+            ReconstruyePatron(w, h, unchecked(seed0 + minuto * 40503));
+        }
+
+        public GpuStarfield(IntPtr hwnd, int w, int h, int seed)
+        {
+            gpu = new D3D9Device(hwnd, w, h);
+            if (!gpu.Ok) return;
+            seed0 = seed;
+            using (Bitmap tex = BakeStarTexture(64)) glowTex = gpu.CreateTextureFromBitmap(tex);
+            using (Bitmap g2 = BakeRadialGlow(64)) uiGlowTex = gpu.CreateTextureFromBitmap(g2);   // glow LISO (sin chispa) para el destello del boton
+            BuildStars(w, h, seed);
+        }
+
+        // Ajusta el dispositivo al tamano nuevo de la ventana y REHACE el campo de estrellas, que vive en
+        // pixeles: sin rehacerlo se quedaria encogido en una esquina de la pantalla nueva.
+        public void Redimensiona(int w, int h)
+        {
+            if (!Ok || w < 8 || h < 8) return;
+            if (gpu.BufAncho == w && gpu.BufAlto == h && patronW == w && patronH == h) return;
+            if (!gpu.Redimensiona(w, h)) return;
+            int minuto = (curMinute != int.MinValue) ? curMinute : 0;
+            ReconstruyePatron(w, h, unchecked(seed0 + minuto * 40503));
+        }
+
+        internal bool PreparaDispositivo() { return Ok && gpu.PreparaDispositivo(); }
+
+        public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
+        public IntPtr CreateOverlay(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }
+        public IntPtr CreateCoverShared(Bitmap bmp, out float uMax, out float vMax) { return gpu.CreaPortadaCompartida(bmp, out uMax, out vMax); }
+        public bool UpdateOverlay(IntPtr tex, Bitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }
+        public bool UpdateOverlayRegion(IntPtr tex, Bitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }
+        public bool PreloadTexture(IntPtr tex) { return gpu != null && gpu.PreloadTexture(tex); }
+        public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
+        { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
+
+        // Un halo (glow radial ADITIVO) centrado en (cx,cy) de radio r, teñido/atenuado por 'argb'. Reusa la textura
+        // de glow de las estrellas. Sirve para el DESTELLO del boton pulsado del buscador: lo anima la GPU (alfa que
+        // baja) sin re-hornear ni re-subir la textura de UI -> el destello se desvanece suave y el tecleo va fluido.
+        // Un halo es un circulo de luz que se apaga hacia afuera, y su textura vale CERO fuera de ese circulo.
+        // Dibujarlo en un cuadrado significa pintar cuatro esquinas que no aportan NADA (el 17% de los pixeles).
+        // Se dibuja entonces en un OCTAGONO: el mismo cuadrado con las esquinas cortadas justo donde la luz ya
+        // vale cero. El resultado en pantalla es identico al pixel, y se pinta 17% menos. El octagono cabe
+        // entero dentro del cuadrado, asi que las coordenadas de textura siguen dentro de 0..1.
+        private const int HaloVtx = 18;                 // 6 triangulos en abanico
+        private const float HaloC = 0.41421356f;        // tan(22.5): donde se corta cada esquina
+        private static readonly float[] HaloX = { 1f, HaloC, -HaloC, -1f, -1f, -HaloC, HaloC, 1f };
+        private static readonly float[] HaloY = { -HaloC, -1f, -1f, -HaloC, HaloC, 1f, 1f, HaloC };
+        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[HaloVtx];
+        public void DrawGlow(float cx, float cy, float r, uint argb)
+        {
+            // El halo de la interfaz tiene su propia textura LISA. Antes, si esa no se creaba, se caia a la de
+            // las estrellas; ahora esa es un ATLAS de cuatro formas y caer ahi pintaria un cuarto de atlas con
+            // tres siluetas dentro. Si no hay textura lisa, no se dibuja el halo y ya: se pierde un adorno, no
+            // se ensucia la pantalla. (Las dos se crean con el mismo codigo seguido: si una sale, la otra sale.)
+            IntPtr t = uiGlowTex;
+            if (!Ok || t == IntPtr.Zero || r < 1f) return;
+            Halo(glowV, 0, cx, cy, r, argb);
+            gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
+        }
+        // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
+        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
+        // Con radios distintos a lo ancho y a lo alto sale una ELIPSE. Una luz de horizonte tiene que ser ancha
+        // y baja: si se dibuja redonda, sube tanto como se extiende y acaba brillando a media pantalla.
+        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, uint c)
+        {
+            Punto(a, i, cx, cy, rx, ry, 0, c);
+            Punto(a, i + 1, cx, cy, rx, ry, 1, c);
+            for (int k = 0; k < 6; k++)                  // abanico desde el vertice 0: (0,k+1,k+2)
+            {
+                // Ocho posiciones distintas, conservando los mismos dieciocho vertices enviados.
+                if (k > 0) { a[i + k * 3] = a[i]; a[i + k * 3 + 1] = a[i + k * 3 - 1]; }
+                Punto(a, i + k * 3 + 2, cx, cy, rx, ry, k + 2, c);
+            }
+        }
+        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, int k, uint c)
+        {
+            float dx = HaloX[k], dy = HaloY[k];
+            GV(a, i, cx + dx * rx, cy + dy * ry, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
+        }
+        private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
+        { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
+
+        // MUCHOS halos de UNA sola llamada de dibujo. La aurora son decenas de puntos por cuadro y en Direct3D 9
+        // lo caro no es el relleno sino la LLAMADA: uno por uno serian decenas de DrawPrimitive, cada una con su
+        // cambio de textura y de estado de mezcla (~10 llamadas al driver por halo). Aqui se acumulan todos en el
+        // mismo arreglo y se mandan juntos: mismo dibujo exacto, una sola llamada.
+        private D3D9.Vtx[] glowBatch;
+        private int glowBatchN;
+        public void GlowBatchBegin(int maxHalos)
+        {
+            if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new D3D9.Vtx[maxHalos * HaloVtx];
+            glowBatchN = 0;
+        }
+        public void GlowBatchAdd(float cx, float cy, float r, uint argb) { GlowBatchAdd(cx, cy, r, r, argb); }
+        public void GlowBatchAdd(float cx, float cy, float rx, float ry, uint argb)
+        {
+            if (rx < 1f || ry < 1f || glowBatch == null || (glowBatchN + 1) * HaloVtx > glowBatch.Length) return;
+            Halo(glowBatch, glowBatchN * HaloVtx, cx, cy, rx, ry, argb);
+            glowBatchN++;
+        }
+        public void GlowBatchEnd()
+        {
+            IntPtr t = uiGlowTex;   // ver DrawGlow: sin textura lisa no se dibuja halo (no se cae al atlas)
+            if (Ok && t != IntPtr.Zero && glowBatchN > 0) gpu.DrawStars(glowBatch, glowBatchN * (HaloVtx / 3), t);
+            glowBatchN = 0;
+        }
+
+        public void Render(int w, int h, float pulse) { if (Begin(w, h, pulse, pulse)) End(); }   // solo cielo+estrellas (ventana de prueba)
+
+        // Lo que se dibuja ENTRE el cielo y las estrellas (la aurora). Asi las estrellas quedan SIEMPRE encima:
+        // con la aurora tan presente como esta ahora, dibujarla despues las tapaba en media pantalla y parecia
+        // que el campo estrellado se hubiera apagado. Por detras de una aurora de verdad tambien se ven.
+        internal delegate void Dibuja();
+        public Dibuja TrasCielo;
+        public Dibuja TrasEstrellas;   // lo que va DELANTE de las estrellas y detras de las fugaces (la luna)
+
+        // Inicia el cuadro: dibuja el cielo + estrellas. Luego se pueden apilar texturas con DrawQuad y cerrar
+        // con End. 'pulse' ya viene atenuado (es brillo); 'pulseCrudo' NO, porque la deriva del campo es
+        // MOVIMIENTO: atenuar la pantalla no puede congelarlo.
+        public bool Begin(int w, int h, float pulse, float pulseCrudo)
+        {
+            if (!Ok) return false;
+            if (!gpu.BeginFrame()) return false;
+            int nowMs = Environment.TickCount;      // para las esperas LARGAS (entrecruzado de patron, proxima fugaz)
+            double finoMs = GpuPanel.AhoraMs();     // y el reloj FINO para el paso de cada cuadro (ver mas abajo)
+            if (campoRelojOk)
+            {
+                double dtc = (finoMs - campoFinoAnt) / 1000.0;
+                if (!(dtc > 0.0)) dtc = 0.0; else if (dtc > 0.25) dtc = 0.25;   // acota atascos (y atrapa NaN)
+                campoT += dtc;
+            }
+            campoFinoAnt = finoMs; campoRelojOk = true;
+            double t = campoT;
+
+            // DERIVA DIAGONAL con la musica: al sonar (pulse>0) el campo entero se desliza LENTO abajo-derecha
+            // y se envuelve por los bordes. Envolvente suave para arrancar/parar sin saltos. Coste ~nulo.
+            float ddt = (driftFinoAnt <= 0.0) ? 0f : (float)((finoMs - driftFinoAnt) / 1000.0);
+            driftFinoAnt = finoMs;
+            if (ddt < 0f) ddt = 0f; else if (ddt > 0.1f) ddt = 0.1f;   // acota saltos (p.ej. tras un atasco)
+            float dTgt = (pulseCrudo > 0.02f) ? 1f : 0f;
+            driftEnv += (dTgt - driftEnv) * (dTgt > driftEnv ? Math.Min(1f, ddt * 2.5f) : Math.Min(1f, ddt * 0.6f));   // ataque medio, caida lenta
+            float avX = driftEnv * DriftVX * ddt, avY = driftEnv * DriftVY * ddt;   // env>=0 -> solo crece
+            for (int k = 0; k < 3; k++)
+            {
+                driftX[k] += avX * DerivaKind[k]; if (w > 0) driftX[k] %= w;   // el modulo lo deja en [0,w)
+                driftY[k] += avY * DerivaKind[k]; if (h > 0) driftY[k] %= h;
+            }
+
+            // PATRON que cambia cada minuto, con ENTRECRUZADO: se conserva el patron anterior y se desvanece
+            // mientras el nuevo aparece (el cielo nunca se queda sin estrellas). Por GPU re-sortear es barato.
+            // PERILLA DE Ctrl+F3: cada cuanto se renueva el patron de estrellas. Lo caro no es sortearlas, es
+            // el segundo y pico de entrecruzado en que se dibujan DOS campos a la vez; espaciarlo a tres
+            // minutos deja ese gasto en la tercera parte sin que el cielo se quede clavado para siempre.
+            double cadaSeg = (relevo == Alto) ? 60.0 : 180.0;
+            int minute = (relevo == Bajo) ? curMinute : (int)(t / cadaSeg);
+            if (minute != curMinute)
+            {
+                if (curMinute != int.MinValue)
+                {
+                    RenuevaPatron(w, h, unchecked(seed0 + minute * 40503), nowMs);
+                }
+                curMinute = minute;
+            }
+            float tr = transing ? (nowMs - transStart) / (float)TransMs : 1f;
+            if (tr >= 1f) { transing = false; tr = 1f; }
+
+            // Cielo de 3 PARADAS como en CPU: negro arriba -> azul noche -> color del genero abajo (antes 2
+            // paradas: el genero teñia casi toda la pantalla). Dos quads apilados en la parada media.
+            //
+            // DONDE esta esa parada lo dice la perilla "cuanto negro" de Ctrl+F3, y el numero vive en Form1
+            // -fuera de este archivo- porque la pared horneada tiene que usar exactamente el mismo: si cada
+            // una llevara el suyo, la maquina del bar y la de repuesto pintarian cielos distintos.
+            float midY = h * Form1.CorteDelCielo;
+            // EL CIELO SEGUN LA HORA (CieloVivoGpu.cs): de madrugada mas hondo y al anochecer calido, solo de la parada
+            // media para abajo. Con el interruptor apagado los dos valen 0 y sale exactamente el cielo de siempre.
+            uint cMid = Form1.TineCielo(skyMid, Form1.HondoMedio * HoraHondo, Form1.CalorMedio * HoraCalor);
+            uint cBot = Form1.TineCielo(skyBot, Form1.HondoAbajo * HoraHondo, Form1.CalorAbajo * HoraCalor);
+            // C2 (PulidoGpu.cs): con "Colores con mas profundidad", el negro de arriba mas hondo y mas vida en los otros dos.
+            uint cTop = skyTop; ColoresCielo(ref cTop, ref cMid, ref cBot);
+            // Cielo azul/negro original; la paleta movil pertenece a la aurora. Con el cielo a media resolucion
+            // (Ctrl+F3 -> Imagen -> Performance) el cielo y las nebulosas salen de la imagen intermedia (PerformanceGpu.cs).
+            if (CieloBase == null || !CieloBase(w, h, midY, cTop, cMid, cBot)) CieloDirecto(w, h, midY, cTop, cMid, cBot, true);
+            if (TrasCielo != null) TrasCielo();   // la aurora va aqui: entre el cielo y las estrellas
+            // EL PATRON ANTERIOR, DESVANECIENDOSE. Mientras dura el cruce -1.3 segundos, una vez por
+            // minuto- se arman y se dibujan DOS juegos de estrellas en vez de uno, o sea el doble de trabajo:
+            // hasta 2800 estrellas por cuadro.
+            //
+            // Y la ultima parte de ese segundo y pico no se ve: el brillo de las estrellas es un numero de 0
+            // a 255, asi que en cuanto lo que queda del patron viejo baja de medio nivel, todas sus estrellas
+            // salen ya transparentes del todo. Armarlas y mandarlas a la tarjeta para que dibuje nada es
+            // trabajo tirado, y justo del caro. Se corta ahi: no se ve, porque no habia nada que ver.
+            float fadeAnt = (1f - tr) * dim;
+            EstrellasEnviadas = EstrellasOmitidas = 0;
+            if (transing && px != null && fadeAnt > FadeMinimo)
+            {
+                int anteriores = BuildStarVerts(starV2, px, py, pphase, pspeed, psize, pkind, pforma, pcol, pnStars, t, fadeAnt, pulse, driftX, driftY, w, h);
+                gpu.DrawStars(starV2, anteriores / 3, glowTex);
+                EstrellasEnviadas += anteriores / 6; EstrellasOmitidas += pnStars - anteriores / 6;
+            }
+            int actuales = BuildStarVerts(starV, sx, sy, sphase, sspeed, ssize, skind, sforma, scol, nStars, t, (transing ? tr : 1f) * dim, pulse, driftX, driftY, w, h);   // patron ACTUAL (x atenuacion al navegar)
+            gpu.DrawStars(starV, actuales / 3, glowTex);
+            EstrellasEnviadas += actuales / 6; EstrellasOmitidas += nStars - actuales / 6;
+            if (TrasEstrellas != null) TrasEstrellas();   // la luna va aqui: esta muchisimo mas cerca que las estrellas
+            UpdateAndDrawShoots(w, h, nowMs, finoMs);
+            return true;
+        }
+
+        // El degradado del cielo tal cual, a la pantalla (o, a tamano completo, a la imagen que lo guarda: PerformanceGpu.cs).
+        internal void CieloDirecto(int w, int h, float midY, uint cTop, uint cMid, uint cBot, bool sinLoTapado)
+        {
+            if (CieloSuave)   // C1: doce franjas; las que quedan bajo el estado opaco no se mandan (PulidoGpu.cs)
+                DibujaCieloSuave(CieloSuaveVisible(ArmaCieloSuave(w, h, midY, cTop, cMid, cBot, 0f), sinLoTapado ? EstrellasTapadasDesde : 0f));
+            else
+            {
+                SetQuad(skyV, 0, 0, 0, w, midY, cTop, cTop, cMid, cMid);
+                SetQuad(skyV, 6, 0, midY, w, h, cMid, cMid, cBot, cBot);
+                gpu.DrawSky(skyV);
+            }
+        }
+
+        // Construye los vertices de un campo de estrellas (titileo + latido) con un factor de brillo global
+        // (para el entrecruzado del patron). Reutilizable por el patron actual y por el anterior.
+        // EL TITILEO DE UNA ESTRELLA, POR TABLA Y NO POR SENO.
+        //
+        // Esto se hace una vez POR ESTRELLA Y POR CUADRO: hasta mil cuatrocientas estrellas a ciento ochenta
+        // cuadros por segundo son 252.000 senos por segundo, y el DOBLE durante el segundo en que se cruzan
+        // los dos patrones de estrellas, una vez por minuto. Medido: 24 milisegundos de cada mil.
+        //
+        // Un seno no se puede calcular; se aproxima. La tabla es otra aproximacion, y aqui la pregunta buena
+        // no es cual es "mas exacta" sino si la diferencia SE VE: lo que sale de aqui acaba siendo el alfa de
+        // un pixel, o sea un numero de 0 a 255. Con 1024 entradas y mezclando las dos vecinas, el error queda
+        // por debajo de una centesima de nivel. La bateria 'fondocoste' lo comprueba en 20.000 puntos.
+        private const int TitN = 1024;
+        private static readonly float[] TitTab = HazTitTab();
+        private static float[] HazTitTab()
+        {
+            float[] t = new float[TitN + 1];
+            for (int i = 0; i <= TitN; i++)
+                t[i] = (float)(0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(2.0 * Math.PI * i / TitN)));
+            return t;   // la ultima repite la primera: asi el mezclado del final no se sale de la tabla
+        }
+        // RECIBE UN DOUBLE, Y NO ES UN CAPRICHO. Justo aqui arriba esta escrito por que el reloj del campo
+        // de estrellas se lleva en double: en un bar la rocola no se apaga nunca, y "los segundos que llevo
+        // encendida" guardados en un float se quedan sin decimales a los pocos dias -a los 25 dias, un float
+        // ya solo distingue de 0.25 en 0.25 radianes- y el titileo empezaria a ir a saltos.
+        //
+        // La primera version de esta tabla recibia un float, o sea que tiraba el double a la basura JUSTO
+        // ANTES de usarlo y volvia a meter el fallo que ese comentario avisa de no meter. La vuelta a la
+        // rueda se hace aqui en double, y lo que se pasa a float es el resto, que siempre esta entre 0 y 1.
+        internal static float Titileo(double x)
+        {
+            double u = x * (1.0 / 6.28318530717958648);
+            u -= Math.Floor(u);
+            float f = (float)(u * TitN);
+            int i = (int)f;
+            if (i >= TitN) i = TitN - 1;
+            float r = f - i;
+            return TitTab[i] + (TitTab[i + 1] - TitTab[i]) * r;   // entre las dos vecinas: sin escalones
+        }
+
+        // EL AIRE QUE HAY DELANTE DE CADA ESTRELLA, TAMBIEN POR TABLA.
+        //
+        // Cuanto se apaga una estrella, cuanto enrojece y cuanto mas titila segun a que altura de la pantalla
+        // cae. La CURVA vive en Form1 -la comparten las dos paredes, la de tarjeta grafica y la horneada- y
+        // aqui se guarda ya masticada en bandas de altura, por el mismo motivo que el titileo va por tabla:
+        // esto se hace mil cuatrocientas veces por cuadro, y el doble durante el cruce de patrones.
+        //
+        // Los dos factores del COLOR van en enteros de 0 a 256 para que apagar y enrojecer salga con una
+        // multiplicacion y un desplazamiento, que es exactamente lo que ya costaba empaquetar el color.
+        //
+        // Enrojecer no es sumarle rojo: es QUITARLE azul, y algo menos de verde. Es lo que hace el aire de
+        // verdad -se traga el azul antes que el rojo, por eso el sol se pone naranja- y ademas asi una
+        // estrella nunca sale mas brillante de lo que era.
+        //
+        // La tabla NO depende del alto de la pantalla: la banda se pide con la altura ya en tanto por uno.
+        // Y VIENE YA MASTICADA DEL TODO. Apagarse y titilar mas son dos cuentas que acaban en un solo
+        // numero, asi que en vez de guardar las dos por separado y rehacer la mezcla mil cuatrocientas veces
+        // por cuadro, se guarda la mezcla ya hecha: el brillo de una estrella sale de "algo fijo mas el
+        // titileo por algo", que son una multiplicacion y una suma. El verde y el azul viajan juntos en un
+        // solo numero por la misma razon: una lectura de tabla en vez de dos.
+        private const int AireN = 128;
+        private const float TitMedia = 0.725f;   // el centro de TitTab (va de 0.45 a 1.0): el titileo se agranda ALREDEDOR de el
+        // Y SE REHACE AL TOCAR LA PERILLA, no al arrancar y nunca mas. La fuerza del aire se elige en
+        // Ctrl+F3 mirando la pared, asi que la tabla tiene que ponerse al dia sola en cuanto cambia. Se
+        // mira el paso puesto en cada cuadro -una comparacion de dos numeros- y se rehace solo si cambio:
+        // rellenar 128 bandas cuesta lo mismo que un pestaneo y pasa una vez, no cada cuadro.
+        private static readonly float[] AireP = new float[AireN];   // el trozo FIJO del brillo
+        private static readonly float[] AireQ = new float[AireN];   // y lo que multiplica al titileo
+        private static readonly uint[] AireGB = new uint[AireN];    // verde<<16 | azul, de 0 a 256 cada uno
+        private static int aireDe = -1;                             // con que paso de la perilla se lleno la tabla
+        internal static void HazAire()
+        {
+            int paso = Form1.AirePaso;
+            if (aireDe == paso) return;
+            for (int i = 0; i < AireN; i++)
+            {
+                float aire = Form1.AireDelCielo(i + 0.5f, AireN);   // 0 arriba del todo, 1 abajo del todo
+                float br = 1f - Form1.AireApaga * aire;             // el brillo que le queda
+                float ti = 1f + Form1.AireCentelleo * aire;         // cuanto se le agranda el titileo
+                // brillo = (TitMedia + (titileo - TitMedia) * ti) * br, desarmado en fijo + titileo * factor
+                AireP[i] = TitMedia * (1f - ti) * br;
+                AireQ[i] = ti * br;
+                float c = Form1.AireCalor * aire;
+                uint g = (uint)(256f * (1f - 0.35f * c) + 0.5f);
+                uint az = (uint)(256f * (1f - 0.75f * c) + 0.5f);
+                AireGB[i] = (g << 16) | az;
+            }
+            aireDe = paso;
+        }
+
+        public bool EstrellasFinas = true;
+        // Cero = sin zona tapada. Solo el estado opaco, asentado y subido de ESTE cuadro fija este limite.
+        // No altera el patron, deriva ni reloj: al destaparse salen en la posicion que les corresponde.
+        internal float EstrellasTapadasDesde;
+        internal int EstrellasEnviadas, EstrellasOmitidas;
+        private int BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
+        {
+            int vi = 0;
+            HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
+            float aireEsc = (h > 0f) ? (AireN / h) : 0f;   // de altura en pixeles a banda de la tabla del aire
+            float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez
+            for (int i = 0; i < n; i++)
+            {
+                int k = kd[i];   // 0 polvo, 1 mediana, 2 grande: manda la deriva Y el latido
+                // LA POSICION VA PRIMERO, y no es por gusto. Lo que se apaga, lo que enrojece y lo que titila
+                // depende de a que ALTURA acaba la estrella, o sea de DESPUES de la deriva. Calcular el color
+                // antes -como estaba- lo dejaria atado a donde nacio y no a donde se la ve.
+                float x = xs[i] + dx[k]; if (x >= w) x -= w;   // deriva la de SU tamano + envuelve (xs,dx en [0,w) -> x en [0,2w) -> 1 resta basta)
+                float y = ys[i] + dy[k]; if (y >= h) y -= h;
+                float s = sz[i];
+                if (k != 0 && pulse > 0.02f) s += pulse * (k == 2 ? 9f : 5f);   // latido: medianas/grandes crecen con la musica
+                // No cambiar el patron ni reconstruir el atlas al alternar: solo
+                // reducir las puntas grandes, dejando algunas estrellas protagonistas.
+                if (EstrellasFinas) s *= k == 0 ? 0.85f : (k == 1 ? 0.66f : (i % 5 == 0 ? 0.78f : 0.42f));
+                // Mantener entero cualquier sprite que roce el borde, incluido el medio pixel de D3D9.
+                // Se evita tambien el titileo/color; no se omite ninguna estrella parcialmente visible.
+                if (EstrellasTapadasDesde > 0f && y - s - .5f >= EstrellasTapadasDesde) continue;
+                int b = (int)(y * aireEsc); if (b < 0) b = 0; else if (b >= AireN) b = AireN - 1;
+
+                // EL TITILEO, MAS FUERTE ABAJO. Se agranda alrededor de su punto medio, no desde cero: asi la
+                // estrella centellea mas -sube y baja mas- sin quedarse de media ni mas clara ni mas oscura de
+                // lo que le toca. Lo de apagarse es el otro factor, y ese si le baja el brillo entero. Los dos
+                // vienen ya mezclados de la tabla (ver AireP/AireQ).
+                //
+                // El titileo se recoge en float y no en double a proposito: la tabla YA devuelve un float, asi
+                // que guardarlo en double no gana ni un decimal y arrastra toda la cuenta a double para nada.
+                // El double que importa es el del RELOJ, que es lo que entra ahi dentro.
+                float tw = Titileo(t * spd[i] + ph[i]);
+                float br = (AireP[b] + tw * AireQ[b]) * f255;
+                if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
+                uint a = (uint)(int)br; if (a > 255) a = 255;   // por entero: el mismo numero sin la conversion lenta
+                uint rgb = col[i], gb = AireGB[b];
+                uint c = (a << 24) | (rgb & 0x00FF0000u)                     // alfa = brillo; el rojo, entero
+                       | ((((rgb >> 8) & 0xFFu) * (gb >> 16) >> 8) << 8)      // el verde, algo comido
+                       | ((rgb & 0xFFu) * (gb & 0xFFFFu) >> 8);               // y el azul, comido del todo
+                int f = (fm != null) ? fm[i] : FormaEstrella;
+                SetQuadUV(buf, vi, x - s, y - s, x + s, y + s, c, AtlasU0[f], AtlasV0[f], AtlasU1[f], AtlasV1[f]);
+                vi += 6;
+            }
+            return vi;
+        }
+
+        // Estrellas FUGACES: una cada 7-16s, desde arriba-izquierda hacia abajo-derecha, con estela que se
+        // apaga. Igual logica que el render por CPU (DrawShoots), pero dibujada como cuadrangulos aditivos.
+        private void UpdateAndDrawShoots(int w, int h, int nowMs, double finoMs)
+        {
+            // PERILLA DE Ctrl+F3. Se sale ANTES de tocar el reloj a proposito: al volver a encenderlas, el
+            // primer cuadro las agenda de nuevo desde cero en vez de creerse que han pasado diez minutos y
+            // soltar las dos de golpe.
+            if (fugaces == Bajo) { shootFinoAnt = 0.0; festejoPedido = false; for (int i = 0; i < shoots.Length; i++) shoots[i].On = false; return; }
+            // En MEDIO va una sola a la vez (la segunda ranura no se usa) y con el doble de espera entre una
+            // y otra: sigue habiendo fugaces -que es lo que le da vida al cielo- pero cuestan la mitad.
+            int ranuras = (fugaces == Alto) ? shoots.Length : 1;
+            int esperaBase = (fugaces == Alto) ? 7000 : 15000, esperaAzar = (fugaces == Alto) ? 9000 : 15000;
+            if (shootFinoAnt <= 0.0) { shootFinoAnt = finoMs; nextShoot = nowMs + 4000 + srnd.Next(8000); return; }   // 1er cuadro: agenda la 1a, sin saltos
+            float dt = (float)((finoMs - shootFinoAnt) / 1000.0);
+            if (dt < 0f) dt = 0f; if (dt > 0.12f) dt = 0.12f;   // acota saltos
+            shootFinoAnt = finoMs;
+
+            // LA FUGAZ DE FESTEJO (moneda o cancion puesta; CieloVivoGpu.cs): dorada, en la primera ranura libre o en la
+            // que menos vida le queda. No cambia la cita de las demas.
+            if (festejoPedido)
+            {
+                festejoPedido = false;
+                int libre = -1;
+                for (int i = 0; i < ranuras; i++) if (!shoots[i].On) { libre = i; break; }
+                if (libre < 0) { libre = 0; for (int i = 1; i < ranuras; i++) if (shoots[i].Life < shoots[libre].Life) libre = i; }
+                Form1.TiraFugazFestejo(srnd, w, h, out shoots[libre].X, out shoots[libre].Y, out shoots[libre].VX, out shoots[libre].VY,
+                                       out shoots[libre].MaxLife, out shoots[libre].Wdt, out shoots[libre].Tail);
+                shoots[libre].Life = shoots[libre].MaxLife; shoots[libre].Col = Form1.FestejoColor;
+                shoots[libre].Nace = false; shoots[libre].On = true;
+            }
+            float lluvia = LluviaAhora;   // 0 fuera de las fechas: todo como siempre
+            if (lluvia > 0f) { esperaBase = (int)(esperaBase * (1f - 0.45f * lluvia)); esperaAzar = Math.Max(1, (int)(esperaAzar * (1f - 0.45f * lluvia))); }
+            if (nowMs - nextShoot >= 0)   // RESTA, no >=: sobrevive el desbordamiento de TickCount (~25 dias encendida)
+            {
+                nextShoot = nowMs + esperaBase + srnd.Next(esperaAzar);   // alto: una cada 7-16s; medio: cada 15-30s
+                for (int i = 0; i < ranuras; i++)
+                    if (!shoots[i].On)
+                    {
+                        shoots[i].On = true;
+                        // De donde sale y hacia donde va lo dice Form1, fuera de este archivo, para que las
+                        // dos paredes tiren las MISMAS fugaces (ver TiraFugaz).
+                        bool gorda;
+                        // EN LAS FECHAS DE UNA LLUVIA, parte nace a media altura y se aleja del radiante (CieloVivoGpu.cs).
+                        shoots[i].Nace = lluvia > 0f && srnd.NextDouble() < 0.75 * lluvia;
+                        if (shoots[i].Nace)
+                            Form1.TiraFugazRadiante(srnd, w, h, lluviaRx * w, lluviaRy * h, out shoots[i].X, out shoots[i].Y,
+                                                    out shoots[i].VX, out shoots[i].VY,
+                                                    out shoots[i].MaxLife, out shoots[i].Wdt, out shoots[i].Tail, out gorda);
+                        else
+                        Form1.TiraFugaz(srnd, w, h, out shoots[i].X, out shoots[i].Y,
+                                        out shoots[i].VX, out shoots[i].VY,
+                                        out shoots[i].MaxLife, out shoots[i].Wdt, out shoots[i].Tail, out gorda);
+                        shoots[i].Life = shoots[i].MaxLife;
+                        // Las gordas salen blancas o doradas: una bola de fuego no es rosa. Las demas, de la
+                        // paleta de siempre.
+                        shoots[i].Col = gorda ? ((srnd.Next(2) == 0) ? 0x00FFFFFFu : 0x00FFE6A0u)
+                                              : shootPal[srnd.Next(shootPal.Length)];
+                        break;
+                    }
+            }
+            int vi = 0;
+            for (int i = 0; i < shoots.Length; i++)
+            {
+                if (!shoots[i].On) continue;
+                Shoot s = shoots[i];
+                float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
+                if (s.Nace) { float edad = s.MaxLife - s.Life; if (edad < 0.15f) k *= Math.Max(0f, edad / 0.15f); }   // la de la lluvia entra suave
+                uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica
+                float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
+                float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
+                float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
+                float ox = -ny * s.Wdt, oy = nx * s.Wdt;   // perpendicular (medio ancho variado)
+                uint rgb = s.Col & 0x00FFFFFF;
+                uint headC = (la << 24) | rgb, tailC = rgb;   // estela: brillante en cabeza -> transparente en cola
+                VShoot(shootV, vi + 0, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 1, s.X - ox, s.Y - oy, headC); VShoot(shootV, vi + 2, tailX - ox, tailY - oy, tailC);
+                VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC);
+                vi += 6;
+                uint hc = (Math.Min(255u, la + 40u) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor
+                VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
+                VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
+                vi += 6;
+                s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
+                // POR LOS CUATRO LADOS, y no es un detalle: antes solo podian irse por la derecha o por
+                // abajo porque solo podian ir hacia alla. Con la direccion suelta, una que se vaya por la
+                // izquierda seguiria viva, invisible y ocupando una de las dos ranuras hasta que se le
+                // acabara la vida, y mientras tanto no saldria ninguna otra.
+                if (s.Life <= 0f || s.X > w + Form1.FugazBorra || s.X < -Form1.FugazBorra
+                                 || s.Y > h + Form1.FugazBorra || s.Y < -Form1.FugazBorra) s.On = false;
+                shoots[i] = s;
+            }
+            if (vi > 0) gpu.DrawShootStreaks(shootV, vi / 3);
+        }
+        private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
+        public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void DrawOpaqueQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawOpaqueQuad(tex, quad); }
+        public void DrawTexturedBatch(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        { if (Ok && tex != IntPtr.Zero) gpu.DrawQuads(tex, vertices, triangles); }
+        public void DrawTexturedBatchWrap(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        { if (Ok && tex != IntPtr.Zero) gpu.DrawQuadsWrap(tex, vertices, triangles); }
+        public void DrawColorQuad(D3D9.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
+        public uint BlankCubeColor { set { if (gpu != null) gpu.CubeBaseColor = value; } }
+        public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
+        public void DrawMeshAdd(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
+        public bool End() { return Ok && gpu.EndFrame(); }
+
+        public void Dispose()
+        {
+            if (glowTex != IntPtr.Zero) { D3D9.Release(glowTex); glowTex = IntPtr.Zero; }
+            if (uiGlowTex != IntPtr.Zero) { D3D9.Release(uiGlowTex); uiGlowTex = IntPtr.Zero; }
+            if (gpu != null) { gpu.Dispose(); gpu = null; }
+        }
+
+        // Un numero al azar con forma de campana (Box-Muller): sirve para que las estrellas caigan ALREDEDOR
+        // de un centro, apinandose cerca y ralas lejos, que es como se agrupan de verdad.
+        private static float Gauss(Random r)
+        {
+            double u1 = 1.0 - r.NextDouble(), u2 = r.NextDouble();
+            return (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
+        }
+
+        private static T[] ConCapacidad<T>(T[] buffer, int count)
+        { return buffer != null && buffer.Length >= count ? buffer : new T[count]; }
+
+        private static void IntercambiaCampo<T>(ref T[] actual, ref T[] anterior)
+        { T[] reusable = anterior; anterior = actual; actual = reusable; }
+
+        private void RenuevaPatron(int w, int h, int seed, int nowMs)
+        {
+            // El actual se convierte en anterior ANTES de escribir el nuevo. El anterior viejo ya no
+            // participa, incluso si se cambia de nivel durante un cruce, y sirve de segundo buffer.
+            // Tras el primer relevo ya existen los dos juegos: ni arreglos de estrellas ni un nuevo
+            // starV grande (LOH) cada 60/180 s. No se copia ni se pisa el patron que se desvanece.
+            IntercambiaCampo(ref sx, ref px); IntercambiaCampo(ref sy, ref py);
+            IntercambiaCampo(ref sphase, ref pphase); IntercambiaCampo(ref sspeed, ref pspeed);
+            IntercambiaCampo(ref ssize, ref psize); IntercambiaCampo(ref skind, ref pkind);
+            IntercambiaCampo(ref sforma, ref pforma); IntercambiaCampo(ref scol, ref pcol);
+            pnStars = nStars;
+            BuildStars(w, h, seed);
+            starV2 = ConCapacidad(starV2, pnStars * 6);
+            transing = true; transStart = nowMs;
+        }
+
+        private void ReconstruyePatron(int w, int h, int seed)
+        {
+            BuildStars(w, h, seed);
+            // Tamano/densidad: el cruce anterior se corta igual que antes. Se conserva su capacidad
+            // para reutilizarla en el siguiente relevo, pero nunca se dibuja porque transing es false.
+            transing = false;
+        }
+
+        private static readonly uint[] starTemperatures = {
+            0xFF9BB0FF, 0xFFAABFFF, 0xFFCAD7FF, 0xFFE4EBFF, 0xFFF8F7FF, 0xFFFFFFFA,
+            0xFFFFF4EA, 0xFFFFEDCD, 0xFFFFDAA5, 0xFFFFC78E, 0xFFFFB280 };
+
+        private void BuildStars(int w, int h, int seed)
+        {
+            patronW = w; patronH = h;
+            Random rnd = new Random(seed);
+            // MUCHAS MAS Y MUCHO MAS TENUES, igual que por CPU: un cielo de verdad tiene un punado de
+            // estrellas fuertes y cientos que apenas se adivinan, y eso es lo que da sensacion de fondo.
+            nStars = Math.Max(200, w * h / 1700);
+            if (nStars > 1400) nStars = 1400;
+            // Y la perilla de Ctrl+F3 lo recorta. El suelo de 200 se recorta CON ella: dejarlo fijo haria
+            // que pedir "un cielo al 20%" en una pantalla pequena no quitara ni una estrella.
+            if (densidad < 0.999f) { nStars = (int)(nStars * densidad); if (nStars < 24) nStars = 24; }
+            sx = ConCapacidad(sx, nStars); sy = ConCapacidad(sy, nStars); sphase = ConCapacidad(sphase, nStars);
+            sspeed = ConCapacidad(sspeed, nStars); ssize = ConCapacidad(ssize, nStars);
+            skind = ConCapacidad(skind, nStars); sforma = ConCapacidad(sforma, nStars); scol = ConCapacidad(scol, nStars);
+            // DE QUE COLOR ES UNA ESTRELLA. Las de verdad van de blanco-azulado a blanco, amarillo y naranja:
+            // no hay estrellas verdes ni violetas, y la inmensa mayoria de las que se ven son casi blancas.
+            // Con la paleta de rotulador de antes el cielo parecia confeti. (La misma que usa la version por
+            // CPU, para que el cielo se vea igual se juegue por donde se juegue.)
+            uint[] palTemp = starTemperatures;  // misma paleta constante, sin volver a asignarla por relevo
+            // DONDE SE PONEN. La MISMA receta que por CPU, para que el cielo se vea igual se juegue por
+            // donde se juegue. Un cielo de verdad tiene grumos, parejas y zonas mas vacias, asi que una
+            // CUARTA PARTE cae alrededor de unos centros y el resto suelta por cualquier sitio. Dos cosas
+            // estaban mal y las dos se veian, sobre todo en pantalla ancha:
+            //
+            // 1) LAS HILERAS DE LOS BORDES. La que caia fuera de la pantalla se PEGABA al borde en vez de
+            //    volver a tirarse. Como los grumos son campanas, muchas caian fuera... y acababan todas en
+            //    la misma linea: medido, el 15% del cielo formaba cuatro hileras pegadas a los cantos.
+            // 2) LOS GRUMOS ESTIRADOS. Salian mas anchos que altos (el 0.7 de la altura), o sea bandas
+            //    horizontales en vez de grumos. Ahora el radio es el mismo en los dos ejes.
+            int nc = 10 + rnd.Next(5);
+            // rnd.Next(5) da como maximo 14 centros. Reservarlos una vez evita tres arreglos chicos
+            // cuando otra semilla pide mas centros; solo se rellenan los nc que pide la receta.
+            starCenterX = ConCapacidad(starCenterX, 14); starCenterY = ConCapacidad(starCenterY, 14);
+            starCenterRadius = ConCapacidad(starCenterRadius, 14);
+            float[] ccx = starCenterX, ccy = starCenterY, ccr = starCenterRadius;
+            for (int c = 0; c < nc; c++)
+            {
+                // Los centros no se pegan al canto: uno con el centro en el borde deja media campana fuera
+                // y vuelve a amontonar todo en esa orilla.
+                ccx[c] = w * (0.10f + (float)rnd.NextDouble() * 0.80f);
+                ccy[c] = h * (0.10f + (float)rnd.NextDouble() * 0.80f);
+                ccr[c] = h * (0.10f + (float)rnd.NextDouble() * 0.14f);
+            }
+            for (int i = 0; i < nStars; i++)
+            {
+                float bx, by;
+                for (int intento = 0; ; intento++)
+                {
+                    if (intento < 6 && rnd.Next(100) < 25)
+                    {
+                        int c = rnd.Next(nc);
+                        bx = ccx[c] + Gauss(rnd) * ccr[c]; by = ccy[c] + Gauss(rnd) * ccr[c];
+                    }
+                    else { bx = (float)(rnd.NextDouble() * w); by = (float)(rnd.NextDouble() * h); }
+                    if (bx >= 2f && bx <= w - 2f && by >= 2f && by <= h - 2f) break;
+                }
+                sx[i] = bx; sy[i] = by;
+                sphase[i] = (float)(rnd.NextDouble() * Math.PI * 2);
+                sspeed[i] = 0.6f + (float)rnd.NextDouble() * 1.8f;
+                // Lo brillante que es, con una curva bien inclinada: casi todas debilisimas, unas pocas
+                // fuertes. De aqui salen el tamano, el color y a que grupo va.
+                double m = Math.Pow(rnd.NextDouble(), 4.6);
+                // DE QUE GRUPO ES. El corte de las medianas sube de 0.34 a 0.55: antes una de cada seis era
+                // "mediana" -unas noventa en pantalla- y eran justo las que se veian como pompas. Ahora son
+                // la mitad, y las que dejan de serlo pasan a ser polvo, que es como se ve de verdad la
+                // inmensa mayoria del cielo. (El mismo corte que por CPU.)
+                skind[i] = (m > 0.80) ? 2 : (m > 0.55) ? 1 : 0;
+                // Y el POLVO encoge de golpe: medía tres o cuatro de medio lado, o sea seis a nueve pixeles
+                // en pantalla, y con su halo salia una pompa. Un punto de luz sin forma solo pasa por
+                // estrella si es diminuto; de ahi para arriba tiene que tener silueta. Por CPU el polvo es
+                // un pixel clavado, asi que aqui se queda en dos o tres.
+                // Los tamanos salen de igualar el cielo por CPU midiendo los dos dibujados: alli la grande
+                // ocupa unos 34 px de halo con las puntas llegando a otros tantos -unos 67 px de punta a
+                // punta- y la mediana unos 18. Como aqui el cromo entero cabe en el cuadrangulo y este mide
+                // el doble de ssize, salen estos numeros. Antes la grande media 34 px en total: la mitad de
+                // lo que mide por CPU, y por eso los dos cielos no se parecian.
+                ssize[i] = (skind[i] == 2) ? (float)(20 + m * 14) : (skind[i] == 1) ? (float)(8 + m * 2) : (float)(1.0 + m * 1.2);
+                // TODA la que se vea lleva rayitas: la grande las largas y la mediana las cortas y tenues
+                // (son dos casillas distintas del atlas, asi que sigue costando UNA sola llamada de dibujo).
+                sforma[i] = (skind[i] == 0) ? FormaPunto : (skind[i] == 2) ? FormaRayos : FormaEstrella;
+                int q = rnd.Next(100);
+                int idx = (q < 14) ? rnd.Next(2) : (q < 34) ? 2 + rnd.Next(2) : (q < 68) ? 4 + rnd.Next(2)
+                        : (q < 88) ? 6 + rnd.Next(2) : (q < 97) ? 8 + rnd.Next(2) : 10;
+                uint col = palTemp[idx];
+                // El brillo entra en el ALFA del vertice: asi la de mas atras se ve como lo que es, un punto
+                // que apenas se adivina, sin tener que dibujarla distinta.
+                uint al = (uint)(255.0 * (0.26 + m * 0.74)); if (al > 255) al = 255;
+                scol[i] = (al << 24) | (col & 0x00FFFFFFu);
+            }
+            starV = ConCapacidad(starV, nStars * 6);   // el anterior se arma aparte en starV2; no necesita una copia
+        }
+
+        // LA BANDA DE LA VIA LACTEA, horneada a un cuarto de tamano. Es la MISMA receta que por CPU -las
+        // mismas manchas, el mismo desvanecido hacia abajo, las mismas vetas de polvo- para que el cielo se
+        // vea igual se juegue por donde se juegue.
+        internal static Bitmap BakeViaLactea(int mw, int mh)
+        {
+            Bitmap bmp = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
+            Random r = new Random(20260620);   // fijo: la misma via lactea siempre, no una distinta por arranque
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                float x0 = -mw * 0.08f, y0 = mh * 0.86f, x1 = mw * 1.08f, y1 = mh * 0.06f;
+                for (int i = 0; i < 240; i++)
+                {
+                    float t = (float)r.NextDouble();
+                    float ancho = mh * (0.075f + 0.045f * (float)Math.Sin(t * 3.1));
+                    float x = x0 + (x1 - x0) * t + Gauss(r) * ancho * 0.55f;
+                    float y = y0 + (y1 - y0) * t + Gauss(r) * ancho;
+                    // Se apaga hacia abajo: ahi el cielo lleva el resplandor del horizonte, y una neblina
+                    // blanca encima se lee como una mancha gris. Ademas es lo que pasa de verdad.
+                    float fy = 1f - y / mh; if (fy < 0f) fy = 0f; if (fy > 1f) fy = 1f;
+                    int al = (int)(6f * (0.10f + 0.90f * fy * fy)); if (al < 1) continue;
+                    Mancha(g, x, y, mh * (0.05f + (float)r.NextDouble() * 0.10f), Color.FromArgb(214, 226, 255), al);
+                }
+                for (int i = 0; i < 24; i++)   // las vetas de polvo que la cruzan
+                {
+                    float t = (float)r.NextDouble();
+                    float x = x0 + (x1 - x0) * t + Gauss(r) * mh * 0.05f;
+                    float y = y0 + (y1 - y0) * t + Gauss(r) * mh * 0.055f;
+                    Mancha(g, x, y, mh * (0.04f + (float)r.NextDouble() * 0.085f), Color.FromArgb(8, 10, 26), 34);
+                }
+            }
+            return bmp;
+        }
+
+        // LAS NEBULOSAS, en blanco: el color se lo pone la tarjeta al dibujarlas (el del genero que suena).
+        // Van en la mitad de arriba del cielo a proposito: abajo el degradado ya lleva el resplandor del
+        // genero, y una nebulosa del mismo color encima de el se lee como suciedad.
+        internal static Bitmap BakeNebulosas(int mw, int mh)
+        {
+            Bitmap bmp = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
+            Random r = new Random(20260621);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                for (int k = 0; k < 3; k++)
+                {
+                    float cx = mw * (0.14f + (float)r.NextDouble() * 0.72f);
+                    float cy = mh * (0.10f + (float)r.NextDouble() * 0.42f);
+                    for (int i = 0; i < 20; i++)
+                        Mancha(g, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,
+                               mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, AlfaNeb(4));
+                    Mancha(g, cx, cy, mh * 0.07f, Color.White, AlfaNeb(7));   // el corazon, un pelin mas encendido
+                }
+            }
+            return bmp;
+        }
+
+        // El alfa de una mancha de nebulosa a la fuerza elegida. El numero vive en Form1 -fuera del trozo de
+        // tarjeta grafica- porque esta pared y la horneada tienen que usar la MISMA: con dos numeros, el dia
+        // que alguien toque uno, la maquina del bar y la de repuesto pintarian fondos distintos.
+        private static int AlfaNeb(int alfa)
+        {
+            int a = (int)(alfa * Form1.NebFuerza + 0.5f);
+            return (a > 255) ? 255 : a;
+        }
+
+        // Una mancha de luz redonda que se desvanece hacia fuera: la pieza con la que estan hechas las dos.
+        private static void Mancha(Graphics g, float cx, float cy, float rad, Color c, int alfaCentro)
+        {
+            if (rad < 1f) rad = 1f;
+            using (GraphicsPath gp = new GraphicsPath())
+            {
+                gp.AddEllipse(cx - rad, cy - rad, rad * 2, rad * 2);
+                using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                {
+                    pgb.CenterPoint = new PointF(cx, cy);
+                    pgb.CenterColor = Color.FromArgb(alfaCentro, c);
+                    pgb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
+                    g.FillEllipse(pgb, cx - rad, cy - rad, rad * 2, rad * 2);
+                }
+            }
+        }
+
+        // Glow radial LISO (sin la chispa de 4 puntas de las estrellas): para el destello del boton pulsado del
+        // buscador, que debe verse como un halo suave (no como una estrellita).
+        private static Bitmap BakeRadialGlow(int size)
+        {
+            Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (GraphicsPath gp = new GraphicsPath())
+                {
+                    gp.AddEllipse(0, 0, size, size);
+                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    {
+                        pgb.CenterPoint = new PointF(size / 2f, size / 2f);
+                        pgb.CenterColor = Color.FromArgb(220, 255, 255, 255);
+                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
+                        g.FillEllipse(pgb, 0, 0, size, size);
+                    }
+                }
+            }
+            return bmp;
+        }
+
+        // LAS CUATRO FORMAS DE ESTRELLA, EN UNA SOLA TEXTURA.
+        //
+        // Antes todas las estrellas eran la misma figura -un destello de cuatro puntas- y solo cambiaban de
+        // tamano y de color, asi que el cielo se veia siempre igual. Ahora hay cuatro siluetas distintas.
+        //
+        // Van las cuatro en UNA textura (un atlas de 2x2) y cada estrella escoge su trozo con las
+        // coordenadas de textura. Eso importa: si cada forma fuera su propia textura habria que cambiar de
+        // textura entre grupos y el campo entero dejaria de dibujarse de una sola llamada. Asi sigue
+        // costando exactamente lo mismo que antes: una llamada para todas las estrellas.
+        internal const int FormaEstrella = 0, FormaRayos = 1, FormaPunto = 2;
+        internal const int NFormas = 3;   // el atlas es de 2x2: la cuarta casilla se queda vacia
+
+        // Coordenadas del trozo de cada forma dentro del atlas, ya metidas medio texel hacia dentro para que
+        // el filtrado no traiga pixeles de la casilla de al lado.
+        private static readonly float[] AtlasU0 = new float[NFormas], AtlasV0 = new float[NFormas],
+                                        AtlasU1 = new float[NFormas], AtlasV1 = new float[NFormas];
+        static GpuStarfield() { CalculaAtlas(64); }   // por si alguien pide vertices antes de hornear la textura
+        private static void CalculaAtlas(int celda)
+        {
+            float lado = celda * 2f, medio = 0.5f / lado;
+            for (int i = 0; i < NFormas; i++)
+            {
+                float cx = (i % 2) * 0.5f, cy = (i / 2) * 0.5f;
+                AtlasU0[i] = cx + medio; AtlasV0[i] = cy + medio;
+                AtlasU1[i] = cx + 0.5f - medio; AtlasV1[i] = cy + 0.5f - medio;
+            }
+        }
+
+        private static Bitmap BakeStarTexture(int celda)
+        {
+            CalculaAtlas(celda);
+            Bitmap bmp = new Bitmap(celda * 2, celda * 2, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                for (int forma = 0; forma < NFormas; forma++)
+                {
+                    int ox = (forma % 2) * celda, oy = (forma / 2) * celda;
+                    // El halo de fondo. Cada forma lleva el suyo: el punto uno apretado y brillante (es polvo
+                    // de estrellas, tiene que leerse aunque mida tres pixeles) y las figuras uno mas suave,
+                    // porque su silueta ya se ve sola y un halo fuerte la emborronaria.
+                    // El halo de fondo, que en un punto de luz es CASI TODO lo que se ve: el nucleo es
+                    // diminuto y lo que da la sensacion de estrella es el resplandor de alrededor.
+                    // CUANTO SITIO DE LA CASILLA OCUPA EL HALO, y es lo que decidia si la estrella se veia
+                    // como estrella o como pompa. Antes el halo llenaba la casilla ENTERA y las rayitas solo
+                    // llegaban a 0.46 de ella: o sea que las puntas ni asomaban del borron y todas las
+                    // estrellas salian redondas. Ahora el halo es un nucleo apretado y las rayitas salen muy
+                    // por fuera, que es exactamente lo que hace el cielo por CPU (halo de 34 px con puntas de
+                    // 34 px en la grande). El polvo si llena su casilla: ahi el halo ES la estrella.
+                    int centro = (forma == FormaPunto) ? 210 : (forma == FormaRayos) ? 190 : 150;
+                    float halo = (forma == FormaPunto) ? 1.00f : (forma == FormaRayos) ? 0.52f : 0.34f;
+                    float hd = celda * halo, hx = ox + (celda - hd) * 0.5f, hy = oy + (celda - hd) * 0.5f;
+                    using (GraphicsPath gp = new GraphicsPath())
+                    {
+                        gp.AddEllipse(hx, hy, hd, hd);
+                        using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                        {
+                            pgb.CenterPoint = new PointF(ox + celda / 2f, oy + celda / 2f);
+                            pgb.CenterColor = Color.FromArgb(centro, 255, 255, 255);
+                            pgb.SurroundColors = new Color[] { Color.FromArgb(0, 255, 255, 255) };
+                            g.FillEllipse(pgb, hx, hy, hd, hd);
+                        }
+                    }
+                    float c = celda / 2f, cx2 = ox + c, cy2 = oy + c;
+                    using (SolidBrush b = new SolidBrush(Color.White))
+                    {
+                        if (forma == FormaEstrella || forma == FormaRayos)
+                        {
+                            // UN PUNTO DE LUZ, que es lo que es una estrella: un nucleo diminuto y muy
+                            // brillante, el resplandor que ya puso el halo de arriba, y las cuatro rayitas
+                            // cruzadas. Las rayitas no las hace la estrella: las hace el diafragma de la
+                            // camara, y son justo lo que hace que una foto del cielo parezca una foto.
+                            //
+                            // Las lleva TODA la que se ve, pero la mediana las lleva mas cortas y bastante
+                            // mas tenues que la grande: esa diferencia es la que evita el efecto purpurina,
+                            // porque si todas las llevaran igual de marcadas serian sesenta chispas y no un
+                            // cielo. (Los mismos numeros que DrawRayos por CPU.)
+                            bool grande = (forma == FormaRayos);
+                            float largo = celda * (grande ? 0.47f : 0.40f), ancho = celda * 0.030f;
+                            int tope = grande ? 120 : 62;
+                            for (int paso = 0; paso < 3; paso++)
+                            {
+                                float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
+                                int alfa = Math.Min(tope, 34 + paso * 26);
+                                using (SolidBrush rb = new SolidBrush(Color.FromArgb(alfa, 255, 255, 255)))
+                                {
+                                    g.FillPolygon(rb, new PointF[] { new PointF(cx2 - L, cy2), new PointF(cx2, cy2 - A), new PointF(cx2 + L, cy2), new PointF(cx2, cy2 + A) });
+                                    g.FillPolygon(rb, new PointF[] { new PointF(cx2, cy2 - L), new PointF(cx2 + A, cy2), new PointF(cx2, cy2 + L), new PointF(cx2 - A, cy2) });
+                                }
+                            }
+                            float nn = celda * (grande ? 0.075f : 0.055f);
+                            g.FillEllipse(b, cx2 - nn, cy2 - nn, nn * 2, nn * 2);
+                        }
+                        else
+                        {
+                            // Punto: solo un nucleo redondo. El halo de arriba hace el resto.
+                            g.FillEllipse(b, cx2 - celda * 0.085f, cy2 - celda * 0.085f, celda * 0.17f, celda * 0.17f);
+                        }
+                    }
+                }
+            }
+            return bmp;
+        }
+
+        private static void SetQuad(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint cTL, uint cTR, uint cBR, uint cBL)
+        {
+            V(ref v[o + 0], x0, y0, cTL, 0, 0); V(ref v[o + 1], x1, y0, cTR, 1, 0); V(ref v[o + 2], x1, y1, cBR, 1, 1);
+            V(ref v[o + 3], x0, y0, cTL, 0, 0); V(ref v[o + 4], x1, y1, cBR, 1, 1); V(ref v[o + 5], x0, y1, cBL, 0, 1);
+        }
+        // El mismo quad pero escogiendo QUE TROZO de la textura se usa: asi las cuatro formas de estrella
+        // salen de una sola textura y de una sola llamada de dibujo.
+        private static void SetQuadUV(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint c,
+                                     float u0, float v0, float u1, float v1)
+        {
+            // Cuatro esquinas calculadas y dos copias (los vertices 3 y 4 repiten el 0 y el 2): los mismos seis vertices, bit a bit.
+            V(ref v[o + 0], x0, y0, c, u0, v0); V(ref v[o + 1], x1, y0, c, u1, v0); V(ref v[o + 2], x1, y1, c, u1, v1);
+            v[o + 3] = v[o + 0]; v[o + 4] = v[o + 2]; V(ref v[o + 5], x0, y1, c, u0, v1);
+        }
+        private static void V(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x; v.Y = y; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
+    }
+
+    // -------- Ventana de prueba (F12): muestra el campo estrellado por GPU con FPS --------
+    internal sealed class GpuTestWindow : Form
+    {
+        private static GpuTestWindow instance;
+        public static void Toggle()
+        {
+            if (instance != null) { instance.Close(); return; }
+            instance = new GpuTestWindow();
+            instance.Show();
+        }
+
+        private GpuStarfield stars;
+        private readonly Timer timer = new Timer();
+        private int frames, fpsTick, fps;
+        private const string BaseTitle = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar";
+
+        public GpuTestWindow()
+        {
+            Text = BaseTitle;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(1024, 700);
+            BackColor = Color.Black;
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            stars = new GpuStarfield(this.Handle, ClientSize.Width, ClientSize.Height, 1234);
+            if (!stars.Ok) { MessageBox.Show("No se pudo crear el dispositivo D3D9 para la ventana.", "GPU"); Close(); return; }
+            timer.Interval = 15;
+            timer.Tick += delegate { Frame(); };
+            timer.Start();
+        }
+
+        private void Frame()
+        {
+            if (stars == null || !stars.Ok) return;
+            stars.Render(ClientSize.Width, ClientSize.Height, 0f);
+            frames++;
+            if (Environment.TickCount - fpsTick >= 1000)
+            {
+                fps = frames; frames = 0; fpsTick = Environment.TickCount;
+                Text = BaseTitle + "   [" + fps + " FPS, " + stars.Count + " estrellas]";
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape || keyData == Keys.F12) { Close(); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            timer.Stop();
+            if (stars != null) { stars.Dispose(); stars = null; }
+            instance = null;
+            base.OnFormClosed(e);
+        }
+    }
+
+    // Datos de un cubo que GIRA para dibujarlo por GPU: celda, angulo y portada(s). Para discos TOP,
+    // CoverB + Fade hacen el fundido suave entre la portada actual y la siguiente.
+    internal struct GpuCubeInfo
+    {
+        public object Key;
+        public bool Has;
+        public float X, Y, W, H;       // celda donde va el cubo (coords del panel)
+        public double Angle;           // giro actual (radianes)
+        public Bitmap CoverA;          // portada principal (null si aun no cargo -> relleno azulado)
+        public Bitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)
+        public float Fade;             // 0..1 mezcla A->B
+        public float Tilt;             // bamboleo del cubo entero (radianes); los CubeBox grande/mini lo usan
+    }
+    internal struct GpuCubeState { public GpuCubeInfo Sel, Relay, Mini; public bool Pared; }   // album: seleccionado (gira) + relevo (decae); Mini = cubo de la barra inferior; Pared = Sel es el de la pared de discos
+
+    // Una CELDA de la rejilla de discos para dibujarla como su PROPIO quad con textura (en vez de recomponer una
+    // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
+    // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
+    internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At, Top, TopAt, Bottom, BottomAt, Left, LeftAt, Right, RightAt; public int Width, Height; public bool Separate, HideBlank; }
+    internal struct GpuGridCell { public string Key; public Bitmap Bmp, Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.
+    internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
+    // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
+    // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
+    // bamboleo y un destello detras, y se funde al llegar. Se dibuja con el MISMO DrawCube que los demas cubos,
+    // asi que aterriza calcada sobre el cubo de destino. X,Y,W,H = celda del cubo (igual que GpuCubeInfo).
+    internal struct GpuTrans
+    {
+        public int Key;
+        public bool Has; public Bitmap Bmp;
+        public float X, Y, W, H;   // celda donde va el cubo (coords de pantalla)
+        public float Alpha;        // 1 = opaca; baja al final para fundirse con el cubo de destino
+        public double Angle;       // giro (radianes)
+        public float Tilt;         // bamboleo del cubo entero (radianes)
+        public float Glow;         // 0..1 destello aditivo detras (0 = ninguno)
+    }
+    // VENTANA (el buscador) abriendo/cerrando, al estilo de una ventana de macOS: la ventana entera crece o
+    // se encoge desde SU CENTRO, sube/baja un poco y se funde. Bmp = null significa "anima la PROPIA textura
+    // de UI" (al abrir, esa textura YA es el buscador: no hay que copiar ni subir nada). HideUi = no dibujarla
+    // ademas a tamano normal. Al cerrar, la textura de UI ya es la de navegacion y se anima una instantanea.
+    // Robada = cerrando, con la textura que tenia la UI (sin copia: BuscadorLigeroGpu.cs); entonces Bmp es null.
+    internal struct GpuWin { public bool Has; public bool HideUi; public Bitmap Bmp; public bool Robada; public float Scale, ScaleY, Dy, Alpha; }
+    // AURORA DEL HORIZONTE: el visualizador de espectro, dibujado como parte del CIELO y no como un aparato
+    // encima. B = 8 bandas ya suavizadas (0..1, de graves a agudos); se interpolan a lo ancho y se pintan con
+    // halos aditivos MUY solapados, que es lo que convierte ocho valores sueltos en una franja continua de luz.
+    // DimFilo atenua SOLO lo afilado -el filo de neon y la raya del horizonte-, aparte del relleno. Bajarlo
+    // deja la aurora como una mancha de color suave, sin lineas duras: eso es lo que se lee como "difuminada".
+    internal struct GpuAurora { public bool Has; public float[] B; public float BaseY, Alto; public uint Rgb, Rgb2, RgbA, Rgb2A; public float Dim, DimFilo, Calma; }   // Rgb/Rgb2 = pie de la cortina (grave/agudo), RgbA/Rgb2A = su punta; Calma = cuanto hay de REPOSO (sin musica)
+    // AVISO ("moneda insertada", "cancion agregada"...). Antes era una etiqueta de Windows puesta ENCIMA del
+    // panel: cada vez que aparecia o se iba, Windows tenia que recortar el panel a su alrededor y repintar,
+    // y ese era un tiron justo en el momento en que el cliente mete la moneda. Ahora es un cuadro mas de la
+    // GPU: entra deslizandose desde arriba y se va desvaneciendo, y no interrumpe nada. Ver = version del
+    // texto (cambia al escribir uno nuevo); asi la textura se re-sube SOLO cuando de verdad cambio.
+    internal struct GpuToast { public bool Has; public Bitmap Bmp; public int Ver; public float X, Y, Alpha; }
+    internal delegate int GpuGridFetch(GpuGridCell[] buf);   // llena buf con las celdas de la pagina actual; devuelve cuantas (<= buf.Length)
+
+    // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
+    //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
+    //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
+    internal sealed partial class GpuPanel : Control
+    {
+        private GpuStarfield stars;
+        private bool idleHooked;
+        private int frames, fpsTick;
+        private int lastHeavyMs;                          // ultima reconstruccion PESADA de la UI (barras); limita su ritmo
+        private int heavyGapMs = 40;                      // espera minima entre reconstrucciones pesadas; SE AUTOAJUSTA al coste real (ver NoteHeavy)
+        // REJILLA DE DISCOS POR CELDAS: cada disco es su PROPIO quad con su textura (disco estatico + etiqueta),
+        // subida UNA vez y cacheada por Folder. Hojear = elegir texturas + posiciones y dibujar quads: instantaneo
+        // al revisitar, sin reconstruir ni resubir una textura a pantalla completa por pagina. Las subidas nuevas
+        // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
+        private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
+        private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; public bool Opaca; }   // Opaca: portada sin transparencia por dentro (DibujoLigeroGpu.cs, HuecosDePortadas)
+        private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
+        private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
+        private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
+        private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
+        private readonly GpuCellLayout[] gridLayouts = new GpuCellLayout[MaxCells];
+        private readonly D3D9.Vtx[] atlasQuad = new D3D9.Vtx[42];
+        public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
+        private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
+        public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
+        public Func<GpuToast> GetToast;                  // aviso flotante (moneda, cancion agregada...)
+        public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
+        private IntPtr winTex; private Bitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;
+        private IntPtr toastTex; private int toastVer = -1, toastBw, toastBh; private float toastU = 1f, toastV = 1f;
+        private readonly D3D9.Vtx[] toastQuad = new D3D9.Vtx[6];
+        private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
+        private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
+        private int gridN, cellFrame;
+        public GpuGridFetch GetGridAhead;
+        private readonly GpuGridCell[] aheadGrid = new GpuGridCell[36];
+        private long gridUploadCost;
+        private double lastAheadMs, lastFrameWork;
+        private long GridWorkLimit { get { return CoverControl != null ? CoverControl.RemainingTicks : CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
+        private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
+        private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
+        private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
+        // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
+        // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
+        private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
+        private Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)
+        private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
+        private int selBwA, selBhA, selBwB, selBhB, relBw, relBh, miniBw, miniBh;   // tamano ya subido en cada ranura (para reusar la textura)
+        // Textura PRINCIPAL de la UI: su alto depende del modo (en navegacion es solo la franja superior,
+        // ~7x mas barata de rehacer/subir que la pantalla completa). Se dibuja anclada ARRIBA, a su tamano real.
+        private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f; private int uiBmpW = -1, uiBmpH = -1;
+        private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
+        // Franja de ESTADO de abajo (sonando/tiempo/creditos/progreso) en SU PROPIA textura chica: el tic del
+        // reloj (~2 cambios/seg con musica) ya no rehace ni re-sube la textura principal. Anclada ABAJO.
+        private IntPtr uiBotTex; private int uiBotVer = -1; private float uiBotU = 1f, uiBotV = 1f; private int uiBotW = -1, uiBotH = -1;
+        private readonly D3D9.Vtx[] uiBotQuad = new D3D9.Vtx[6];
+        // LAS PIEZAS VIVAS: trozos chicos que van ENCIMA de la textura de UI y cambian por su cuenta (hoy, la
+        // tarjeta y la tecla elegidas del buscador). Antes iban horneados dentro de la textura grande, asi que
+        // mover el recuadro obligaba a rehacerla y re-subirla entera -7 MB a 1080p por pulsacion-. Cada pieza
+        // tiene su textura chica y solo se re-sube cuando de verdad cambia.
+        private const int MaxPiezas = 5;   // la 4: las tarjetas del buscador con portadas (BuscadorPortadasGpu.cs)
+        private readonly IntPtr[] piezaTex = new IntPtr[MaxPiezas];
+        private readonly int[] piezaVer = new int[MaxPiezas];
+        private readonly int[] piezaW = new int[MaxPiezas], piezaH = new int[MaxPiezas];
+        private readonly float[] piezaU = new float[MaxPiezas], piezaV = new float[MaxPiezas];
+        private readonly D3D9.Vtx[] piezaQuad = new D3D9.Vtx[6];
+        public Func<Bitmap> GetUiBot;                     // bitmap de la franja de estado (lo provee el form)
+        public Func<int> GetUiBotVersion;                 // cambia cuando algo de la franja cambia (re-subir textura)
+        // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
+        // obligaria a rehacerla (pantalla completa) 1 vez/seg -> el buscador oscilaba. Aparte cuesta nada.
+        private IntPtr fpsTex; private int fpsShown = int.MinValue, fpsFluidezMostrada = -1; private float fpsU = 1f, fpsV = 1f; private int fpsTW, fpsTH;
+        private readonly FluidezGpu fluidez = new FluidezGpu();
+        private int fpsBw, fpsBh;
+        internal Action<string> ReportFluidez;
+        // Un cuadro que truena (p. ej. "A generic error occurred in GDI+" al pintar una portada rara) ya no cierra la rocola: se apunta y se sigue.
+        internal Action<string, Exception> ReportError;
+        private int cuadrosFallidos, cuadrosFallidosApuntados;
+        private double cuadroFallidoApuntadoMs = -1e9;
+        private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
+        public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
+        public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
+        public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
+        public Func<Bitmap> GetUi;                        // bitmap transparente con las barras (lo provee el form)
+        public Func<bool> GetUiVacia;                     // true: no hay interfaz que subir ni dibujar (la atraccion con el escaparate: sus textos son suyos)
+        private bool uiVacia;                             // la textura principal de la UI se soltó a proposito (ver arriba); nada que dibujar ni que analizar
+        public Func<int> GetUiVersion;                    // cambia cuando alguna barra cambia (re-subir textura)
+        // DESTELLOS del boton pulsado (buscador): halos que se desvanecen. La GPU los dibuja como quads propios (no
+        // en la textura de UI), asi el desvanecido NO obliga a re-subir la textura -> tecleo fluido y brillo suave.
+        public struct UiGlow { public float Cx, Cy, R; public uint Argb; }
+        public Func<UiGlow[], int> GetUiGlows;            // el form llena el buffer con los destellos activos y devuelve cuantos
+        private readonly UiGlow[] uiGlowBuf = new UiGlow[10];   // 4 destellos de botones + 2 de letras + 2 del letrero MEJORADA, con holgura
+        public int Fps;                                   // cuadros por segundo (diagnostico)
+        public bool ShowFps;                              // dibujar el contador de FPS (oculto por defecto; el form lo alterna con Ctrl+F1)
+
+        // ================= LAS PERILLAS DE LOS EFECTOS (Ctrl+F3 -> Imagen y rendimiento) =================
+        // Cuatro cosas que se pueden bajar o apagar cuando un equipo no da para todo. El form las pone y este
+        // panel se las pasa al cielo en cada cuadro. De fabrica estan todas puestas y el dibujo sale
+        // exactamente igual que antes de que existieran.
+        // Van por NIVEL (2 alto, 1 medio, 0 bajo), no por si/no: un si/no no sabe decir "menos nieblas".
+        public int Nieblas = GpuStarfield.Alto;           // 2 = nebulosa + velo;  1 = solo la nebulosa;  0 = nada
+        public int Fugaces = GpuStarfield.Alto;           // 2 = dos cada 7-16 s;  1 = una cada 15-30 s;  0 = ninguna
+        public int RelevoPatron = GpuStarfield.Alto;      // 2 = patron nuevo cada minuto;  1 = cada tres;  0 = nunca
+        public float Estrellas = 1f;                      // cuantas estrellas, de 0.1 a 1 (1 = las de siempre)
+
+        // ================= LO QUE CUESTA ARMAR UN CUADRO, APARTE DE ESPERAR AL MONITOR =================
+        // El contador de arriba (Fps) NO dice si a un equipo le sobra. El bucle se sincroniza con el refresco
+        // de la pantalla, asi que en un equipo sobrado marca 60 tanto si el cuadro costo 2 ms como si costo
+        // 15: lo unico que cambia es cuanto se espera en Present. Por eso se cronometra APARTE el TRABAJO -de
+        // empezar el cuadro hasta justo ANTES de stars.End(), que es donde se espera al monitor-. Los dos
+        // numeros juntos distinguen "va a 30 porque el monitor va a 30" de "va a 30 porque no da para mas",
+        // que es lo unico que decide si hay que apagar algo.
+        //
+        // Es un promedio EXACTO (suma / cuadros) desde la ultima puesta a cero, no una media que arrastra:
+        // asi el medidor pide cero, espera un segundo y lee lo de ese segundo, sin restos del anterior.
+        private double msTrabSuma; private int msTrabN;
+        public double MsTrabajo { get { return (msTrabN > 0) ? (msTrabSuma / msTrabN) : 0.0; } }
+        public int CuadrosMedidos { get { return msTrabN; } }
+        public int FallosMedidos { get; private set; }
+        public void ReiniciaMedida() { msTrabSuma = 0.0; msTrabN = 0; FallosMedidos = 0; Fps = 0; frames = 0; fpsTick = Environment.TickCount; fluidez.Reinicia(); ReiniciaCuenta(); if (CoverControl != null) CoverControl.ResetMeasure(); }
+        public float Dim = 1f;                            // atenuacion del starfield mientras se navega con musica (el form la anima; 1 = normal)
+        public float WallOpacity = 1f;
+        public bool ProgresoFluido = true;
+        public Func<GpuProgress> GetProgress;
+        public bool IdleExpandTarget;
+        public Func<Bitmap> GetIdlePanel;
+        public int IdlePanelVersion;
+        public Rectangle IdlePanelDirty;
+        private int idleUploadedVersion = -1;
+        private float idleBlend;
+        private double idleClock;
+        private IntPtr idleTex;
+        private Bitmap idleLastBmp;
+        private int idleW, idleH;
+        private float idleU, idleV;
+        private float IdleRise { get { return Math.Max(0, idleH - uiBotH) * idleBlend; } }
+        internal static int IdlePanelHeight(int screenH) { return Math.Min(screenH, Math.Max(220, Math.Min(340, (int)(screenH * .32f)))); }
+        // Coordenada calculada al hornear el texto; no medir fuentes por cuadro.
+        public float IdleProgressStart;
+        internal static Rectangle IdleBadgeRect(int w, int h)
+        {
+            int x = IdleCoverRect(w, h).Right + 20;
+            return new Rectangle(x, h - 73, Math.Max(30, Math.Min(156, (int)(w * .52f) - x - 24)), 30);
+        }
+        internal RectangleF IdleBadgeGlow(RectangleF normal)
+        {
+            Rectangle badge = IdleBadgeRect(Width, idleH);
+            float y = StatusTopY + badge.Y;
+            return new RectangleF(normal.X + (badge.X - normal.X) * idleBlend,
+                normal.Y + (y - normal.Y) * idleBlend,
+                normal.Width + (badge.Width - normal.Width) * idleBlend,
+                normal.Height + (badge.Height - normal.Height) * idleBlend);
+        }
+        internal static Rectangle IdleCoverRect(int w, int h)
+        {
+            int side = Math.Max(32, Math.Min(h - 76, (int)(w * .22f)));
+            return new Rectangle(24, h - side - 8, side, side);
+        }
+        internal static float StepIdle(float actual, bool target, double dt)
+        {
+            dt = Math.Max(0, Math.Min(.1, dt));
+            float end = target ? 1f : 0f;
+            float next = actual + (end - actual) * (float)(1 - Math.Exp(-dt * (target ? 3.5 : 9)));
+            return Math.Abs(next - end) < .001f ? end : next;
+        }
+        private object progressKey;
+        private double progressDraw = -1, progressClock;
+        // Diez quads del tubo, en el orden original y con mezcla normal.
+        private readonly D3D9.Vtx[] progressV = new D3D9.Vtx[60];
+        public bool VinetaSuave = true, HaloSeleccion = true, EstrellasFinas = true, OndasSuaves = true;
+        private IntPtr vinetaTex;
+        private float vinetaU, vinetaV;
+        private int vinetaRetry;
+        private readonly D3D9.Vtx[] adornoQuad = new D3D9.Vtx[6];
+        public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
+        public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
+        public int PiezasN;                               // cuantas piezas vivas hay ahora (0 = ninguna)
+        public Func<int, Bitmap> GetPieza;                // la imagen chica de cada pieza viva
+        public Func<int, Rectangle> GetPiezaRect;         // donde va, en coords de pantalla
+        public Func<int, int> GetPiezaVersion;            // sube cuando su imagen cambia (la prepara por dentro)
+        public Func<Bitmap> GetContour;                   // sprite del contorno de seleccion
+        public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
+        public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
+        public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
+        // TOPE DE CUADROS POR SEGUNDO. Sin tope, este bucle dibujaba TAN RAPIDO COMO PUDIERA: en un equipo con
+        // tarjeta decente eso son mil y pico cuadros por segundo... de los que la pantalla solo ENSEÑA sesenta.
+        // Los otros mil se calculaban y se tiraban a la basura, y mientras se tiraban un nucleo entero se
+        // quedaba clavado al 100%: sin aire para el sonido, para el buscador ni para los repasos de fondo. De
+        // ahi los tirones. Y de ahi tambien lo que se veia raro al medirlo: al encender mas efectos BAJABAN los
+        // cuadros por segundo y la GRAFICA no subia su uso, porque la grafica nunca fue el cuello -iba sobrada,
+        // esperando- y el que se ahogaba era el procesador armando cuadros que nadie iba a ver nunca.
+        //
+        // Ahora se dibuja un 10% POR ENCIMA de lo que refresca la pantalla. Ese 10% de mas no es capricho: si se
+        // pidiera justo lo mismo que refresca, de vez en cuando un cuadro llegaria un pelo tarde y ese barrido
+        // de pantalla tendria que repetir el anterior (un salto que SE VE). Con un poco de sobra, cada barrido
+        // tiene siempre un cuadro nuevo esperando. Se ve exactamente igual que antes y sobra procesador.
+        //
+        // (23-09-2026) Ese 10 % de mas tenia su propio salto: con 66 cuadros para 60 refrescos, cada ~10 refrescos uno
+        // no llega a verse y todo aparece avanzado el doble. Con el compositor de Windows el bucle ya no va por su
+        // cuenta: dibuja uno por refresco, empezado justo despues de cada uno (OnIdle y RelojPantallaGpu.cs), y el tope
+        // queda de techo. Sin compositor (XP, o el tema basico) sigue valiendo lo de arriba.
+        public int TopeFps;                               // 0 = automatico (segun la pantalla); >0 = lo manda el config
+        private int topeMs = -1;                          // ms minimos entre cuadros, ya resueltos (-1 = aun sin resolver)
+        private const int VREFRESH = 116;                 // GetDeviceCaps: veces por segundo que refresca la pantalla
+        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+
+        // Cada cuantos ms toca un cuadro, como poco. Windows contesta 0 o 1 al preguntarle el refresco cuando
+        // no lo sabe (pantalla vieja, escritorio remoto, maquina virtual): ahi se toman 60, que es lo de siempre.
+        private int TopeMs()
+        {
+            if (topeMs >= 0) return topeMs;
+            int fps = TopeFps;
+            if (fps <= 0)
+            {
+                int hz = 0;
+                try
+                {
+                    IntPtr dc = GetDC(IntPtr.Zero);
+                    if (dc != IntPtr.Zero)
+                    {
+                        try { hz = GetDeviceCaps(dc, VREFRESH); }
+                        finally { ReleaseDC(IntPtr.Zero, dc); }
+                    }
+                }
+                catch { }
+                if (hz < 24 || hz > 400) hz = 60;
+                fps = hz + hz / 10;   // el 10% de sobra
+            }
+            if (fps < 24) fps = 24; else if (fps > 480) fps = 480;
+            topeMs = 1000 / fps; if (topeMs < 1) topeMs = 1;
+            return topeMs;
+        }
+        public int TopeFpsReal { get { int m = TopeMs(); return (m > 0) ? 1000 / m : 0; } }   // lo que quedo, para el contador
+        public void OlvidaTope() { topeMs = -1; }   // el tope se resuelve una vez y se guarda: al cambiarlo a mano hay que volver a resolverlo
+        // RELOJ FINO para el limitador. Environment.TickCount avanza a SALTOS de ~15.6 ms en Windows, asi
+        // que pidiendole "un cuadro cada 33 ms" solo podia contestar 46.8 (tres saltos): 21 cuadros por
+        // segundo en vez de 30, que es lo que se veia. Este reloj mide de verdad, en microsegundos.
+        // Un origen QPC unico tambien permite convertir el refresco de Windows SIN emparejar dos
+        // muestras tomadas en instantes distintos. Una consulta/pausa del hilo no mueve la rejilla.
+        internal static readonly long InicioRelojTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        internal static double AhoraMs()
+        { return (System.Diagnostics.Stopwatch.GetTimestamp() - InicioRelojTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency; }
+        private double proxCuadroMs;                      // cuando TOCA el proximo cuadro (ms del reloj fino)
+        private bool compactaAplazada, renderSuspendido;
+        private double vistoMs = -1;                      // cuando se VERA el que se esta dibujando (-1 = no se sabe)
+        private double periodoVistaMs;                   // rejilla de ESTE cuadro; se revalida despues de preparar UI
+        private double fluidezAgendaMs;
+        private bool fluidezContando;
+        public uint SkyTop = 0xFF06081A, SkyMid = 0xFF101C3A, SkyBot = 0xFF1A2C5A;   // el form los setea por genero (3 paradas)
+
+        // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
+        // permita el vsync (60 FPS) mientras no haya mensajes pendientes; al llegar un mensaje (tecla, timer)
+        // sale, lo procesa y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
+        [DllImport("user32.dll")] private static extern int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove);
+        private static bool AppIdle() { NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0; }   // 0 = PM_NOREMOVE
+
+        private bool PuedeDibujar()
+        {
+            Form ventana = FindForm();
+            if (ventana != null && ventana.WindowState == FormWindowState.Minimized)
+            { renderSuspendido = true; return false; }
+            if (renderSuspendido)
+            {
+                renderSuspendido = false;
+                proxCuadroMs = 0; vistoMs = -1; periodoVistaMs = 0;
+                lunaClock = idleClock = AhoraMs(); cuadroMs = lunaClock;
+                frames = 0; fpsTick = Environment.TickCount;
+                fluidez.Reinicia();
+            }
+            return true;
+        }
+
+        public GpuPanel()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
+            SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
+            trasCielo = delegate
+            {
+                aurDibujada = false;
+                if (!cieloMedioEsteCuadro) DibujaNieblas();   // si no, ya van en la imagen intermedia (PerformanceGpu.cs)
+                if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); }
+                if (!granoUnidoEsteCuadro && !capaUnicaEsteCuadro) DibujaRuido();   // si no, va con la vineta: en una pasada, o en el cielo (G2)
+            };
+            cieloBase = CieloMedioBase;
+            trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante
+        }
+
+        private static int MilisegundosEspera(double restante)
+        {
+            if (!(restante > 0.6)) return 0;
+            if (restante >= 8.6) return 8;
+            return Math.Max(1, (int)(restante - 0.6));
+        }
+        // La espera no consume mensajes ni bombea eventos de forma reentrante.
+        [DllImport("user32.dll")]
+        private static extern uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags);
+        internal static bool EsperaMensajes(int ms)
+        {
+            ms = Math.Max(1, Math.Min(8, ms));
+            try
+            {
+                // QS_ALLINPUT / MWMO_INPUTAVAILABLE: despierta incluso si PeekMessage ya vio la entrada.
+                uint r = MsgWaitForMultipleObjectsEx(0, IntPtr.Zero, (uint)ms, 0x04FF, 0x0004);
+                if (r != 0xFFFFFFFF) return r == 0;
+            }
+            catch { }
+            System.Threading.Thread.Sleep(1);
+            return false;
+        }
+
+        private void OnIdle(object sender, EventArgs e)
+        {
+            // SIEMPRE hay tope (ver TopeMs): lo que refresca la pantalla y un poco mas. Con video A LA VISTA
+            // el panel se puede limitar TODAVIA MAS (ThrottleMs ~33 = 30 fps) para dejarle equipo al video.
+            // La espera se interrumpe al llegar mensajes; al despertar, AppIdle entrega el control a WinForms.
+            // El plazo es acotado y no promete precision de 1 ms: la planificacion depende de Windows.
+            //
+            // DOS COSAS, y las dos hacen falta:
+            //  - Se mide con el RELOJ FINO. Con TickCount, que salta de ~15.6 en ~15.6 ms, pedir un cuadro
+            //    cada 33 ms daba uno cada 46.8: 21 cuadros por segundo en vez de 30. Eso era el fallo.
+            //  - Y el proximo cuadro se agenda sobre el OBJETIVO anterior, no sobre el momento en que se
+            //    dibujo. Windows no despierta cuando se le pide, despierta cuando puede; agendando sobre el
+            //    objetivo, un cuadro que llega tarde NO arrastra su retraso al siguiente y el promedio sale
+            //    el que se pidio, aunque el sueno de 1 ms se pase. Si se acumula mas de una vuelta de
+            //    retraso -la maquina no da mas de si- se resincroniza en vez de intentar recuperarla.
+            while (stars != null && stars.Ok && Visible && PuedeDibujar() && AppIdle())
+            {
+                int th = TopeMs();                        // el tope de la pantalla
+                if (ThrottleMs > th) th = ThrottleMs;      // con video a la vista se pide ir MAS lento todavia
+                double ahora = AhoraMs();
+                if (ahora + 0.6 < proxCuadroMs) { EsperaMensajes(MilisegundosEspera(proxCuadroMs - ahora)); continue; }
+                if (ShowFps)
+                {
+                    double agendaInicio = AhoraMs();
+                    AgendaCuadro(ahora, th);
+                    fluidezAgendaMs += AhoraMs() - agendaInicio;
+                }
+                else AgendaCuadro(ahora, th);
+                try { RenderFrame(); cuadrosFallidos = 0; }
+                catch (Exception ex)
+                {
+                    // Se sigue con el cuadro siguiente; si truena varios seguidos se espera un poco para no girar en vano. Una excepcion
+                    // aqui cerraba la rocola entera.
+                    ApuntaCuadroFallido(ex);
+                    if (cuadrosFallidos >= 3) EsperaMensajes(200);
+                }
+                vistoMs = -1;   // un cuadro pedido fuera de este bucle (WM_PAINT, el medidor) no sabe cuando se vera
+            }
+        }
+
+        // Se apunta (como mucho una vez cada 10 s, con cuantos van).
+        private void ApuntaCuadroFallido(Exception ex)
+        {
+            cuadrosFallidos++; cuadrosFallidosApuntados++;
+            double t = AhoraMs();
+            if (ReportError != null && t - cuadroFallidoApuntadoMs > 10000)
+            {
+                cuadroFallidoApuntadoMs = t;
+                try { ReportError("Un cuadro de la tarjeta fallo y se siguio (" + cuadrosFallidosApuntados + " desde el ultimo apunte)", ex); } catch { }
+                cuadrosFallidosApuntados = 0;
+            }
+        }
+
+        // Cuando toca el cuadro siguiente y cuando se vera el que empieza ahora. Con la rejilla de refrescos de Windows:
+        // un cuadro por refresco, empezado justo despues de uno, y la estrella colocada para cuando se vera
+        // (RelojPantallaGpu.cs). Sin ella, como siempre: 'th' despues del objetivo anterior, y sin saber cuando se vera.
+        internal static double PeriodoDiagnostico(double vistaMs, int limiteMs, int throttleMs)
+        { return Math.Max(vistaMs, Math.Max(limiteMs, throttleMs)); }
+
+        private void AgendaCuadro(double ahora, int th)
+        {
+            double refresco, periodo, sig = double.NaN;
+            if (RelojPantalla.Rejilla(ahora, out refresco, out periodo)) sig = RelojPantalla.Siguiente(ahora, th, refresco, periodo);
+            vistoMs = -1;
+            periodoVistaMs = 0;
+            if (!double.IsNaN(sig)) { proxCuadroMs = sig; periodoVistaMs = periodo; vistoMs = RelojPantalla.Despues(ahora, refresco, periodo); return; }
+            proxCuadroMs += th;
+            if (proxCuadroMs < ahora) proxCuadroMs = ahora + th;
+        }
+
+        public bool StartGpu()
+        {
+            if (stars == null || !stars.Ok)
+            {
+                if (stars != null) stars.Dispose();
+                stars = new GpuStarfield(this.Handle, Width, Height, 4321);
+                if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
+                cellTextureBudget = AdaptiveCellBudget(stars.EstimatedTextureMemory, Form1.CacheCeldasMb(), IntPtr.Size);
+            }
+            if (!idleHooked) { Application.Idle += OnIdle; idleHooked = true; }
+            return true;
+        }
+
+        public void StopGpu()
+        {
+            uiAnalisisTeselas = uiBotAnalisisTeselas = null;
+            compactaAplazada = false;
+            TrimLod(true);
+            SueltaCintasGpu();
+            ClearPaletteFade(); paletteKey = 0;
+            TrimRecentCovers(true);
+            if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
+            ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
+            if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
+            if (selTexA != IntPtr.Zero) { D3D9.Release(selTexA); selTexA = IntPtr.Zero; }
+            if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
+            if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
+            if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
+            if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
+            if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
+            SueltaPiezasVentana();   // las piezas que se llevo la ventana del buscador con portadas (BuscadorPortadasGpu.cs)
+            if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
+            SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
+            SueltaDiscoVivo();      // el boleto
+            SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
+            SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
+            SueltaAsistente();      // panel prestado del asistente y su textura GPU
+            SueltaAyudaIcono();
+            if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+            SueltaRepuestos();   // las guardadas para la interfaz (RespuestaGpu.cs), despues del fundido de colores, que las deja ahi
+            if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
+            if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
+            if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
+            if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
+            idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
+            vinetaRetry = 0;
+            if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
+            ResetStarEchoes();
+            if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
+            SueltaCieloVivo();      // la luna del cielo (CieloVivoGpu.cs)
+            if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
+            for (int i = 0; i < MaxPiezas; i++)
+            {
+                if (piezaTex[i] != IntPtr.Zero) { D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; }
+                piezaVer[i] = -1; piezaW[i] = piezaH[i] = -1;
+            }
+            if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
+            fpsBw = fpsBh = 0; fpsFluidezMostrada = -1; fluidez.Reinicia();
+            lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiVacia = false; uiBotVer = -1; fpsShown = int.MinValue;
+            selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
+            uiBmpW = uiBmpH = -1; uiBotW = uiBotH = -1;   // fuerza recrear las texturas reutilizables tras reiniciar el device
+            if (stars != null) { stars.Dispose(); stars = null; }
+        }
+
+        // Libera y olvida todas las texturas de celda (cache por Folder + fallback por slot). Al reiniciar el
+        // device o apagar la GPU: sus IntPtr dejan de ser validos.
+        private void ReleaseCellTex()
+        {
+            foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
+            cellTexCache.Clear();
+            ReleaseNativeCovers(); protectedAhead.Clear(); cellBudgetChecked = -2000;
+            cellBytesDirty = true;
+            for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
+            for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
+            gridN = 0;
+        }
+
+        // Sube la portada como textura SOLO si cambio respecto a la ranura (referencia distinta). Asi el
+        // cubo girando no sube nada en la mayoria de cuadros: solo al navegar o al ciclar un disco TOP.
+        // Sube la portada de una ANIMACION a su textura. Antes DESTRUIA la textura y CREABA una nueva cada vez
+        // que cambiaba la portada, y crear una textura es una peticion al driver que no siempre contesta rapido:
+        // ESE era el tiron de la primera vez que se veia cada animacion (y de cada cambio de portada despues).
+        // Ahora, si la portada nueva mide lo mismo que la anterior -que es SIEMPRE, todas se hornean del mismo
+        // tamano- se reaprovecha la textura y solo se re-copian los pixeles. La rejilla de discos ya lo hacia asi;
+        // las animaciones se habian quedado atras.
+        private void EnsureCover(ref IntPtr tex, ref Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Bitmap cur)
+        {
+            if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
+            if (cur == null)
+            {
+                if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                bw = bh = 0; last = null; return;
+            }
+            tex = Upload(tex, ref bw, ref bh, cur, out u, out v);   // mismo tamano: reusa. Distinto: recrea (raro).
+            last = cur;
+        }
+
+        private void EnsureImmutableCover(ref IntPtr tex, ref Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Bitmap cur)
+        {
+            if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
+            // Nunca actualizar una portada compartida: otro cubo puede estar usando
+            // la misma referencia. Las capas de interfaz siguen usando EnsureCover.
+            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            bw = bh = 0; last = null; u = v = 1;
+            if (cur == null) return;
+            tex = stars.CreateCoverShared(cur, out u, out v);
+            if (tex != IntPtr.Zero) { bw = cur.Width; bh = cur.Height; last = cur; }
+        }
+
+        private bool NoPresentado()
+        {
+            FallosMedidos++; Fps = 0; frames = 0;
+            if (diagSink != null) diagSink.Fallo();   // el diagnostico completo cuenta los cuadros sin presentar (DiagnosticoCompleto.cs)
+            fluidez.DescartaContinuidad(); fluidezAgendaMs = 0;
+            return false;
+        }
+        private bool renderEnCurso;
+        private bool RenderFrame()
+        {
+            if (renderEnCurso) return false;
+            renderEnCurso = true;
+            try
+            {
+            VigiaPantalla.Hace(VigiaPantalla.MarcaCuadro);   // "un cuadro de la tarjeta"
+            if (!PuedeDibujar()) return false; // no preparar UI/texturas de una ventana minimizada
+            if (stars == null || !stars.Ok) return NoPresentado();
+            double msTrab0 = AhoraMs();   // arranca el cronometro del TRABAJO de este cuadro (ver MsTrabajo)
+            if (libroOn) libro.Empieza(msTrab0);   // el libro de los peores cuadros: solo con diagnostico=1 (MedidaFluidezGpu.cs)
+            stars.EmpiezaCuenta(CuentaArea);   // ordenes de dibujo y area de este cuadro (PerformanceGpu.cs)
+            // Correlacionar Start->Start con el trabajo ANTERIOR y el hueco entre cuadros.
+            // Ctrl+F1 habilita GC/episodios; sin contador no se consultan los tres contadores GC.
+            if (fluidezContando != ShowFps)
+            { fluidezContando = ShowFps; fluidez.Reinicia(); fluidezAgendaMs = 0; }
+            double agendaDelHueco = fluidezAgendaMs; fluidezAgendaMs = 0;
+            int gc0Inicio = ShowFps ? GC.CollectionCount(0) : -1;
+            int gc1Inicio = ShowFps ? GC.CollectionCount(1) : -1;
+            int gc2Inicio = ShowFps ? GC.CollectionCount(2) : -1;
+            stars.SetEfectos(Estrellas, Fugaces, RelevoPatron, Width, Height);   // las perillas de Ctrl+F3
+            // Si la ventana cambio de tamano (resolucion de Windows, o el panel), el buffer de dibujo tiene
+            // que cambiar con ella. Se hace AQUI, antes de abrir el cuadro: resetear el dispositivo con la
+            // escena ya abierta no es valido en Direct3D 9.
+            stars.Redimensiona(Width, Height);
+            if (!stars.PreparaDispositivo()) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
+            stars.SetSky(SkyTop, SkyMid, SkyBot);
+            PasaPulido();   // C1 y C2 (PulidoGpu.cs)
+            // TRABAJO PESADO acotado: rehacer las barras (UI, bitmap a pantalla completa) cuesta; se limita a UNA
+            // por franja (heavyGapMs, que SE AUTOAJUSTA al coste real). La rejilla de discos ya NO es trabajo
+            // pesado: cada disco es su propio quad con textura cacheada (rejilla por celdas, mas abajo).
+            int nowMs = Environment.TickCount;
+            bool canHeavy = (nowMs - lastHeavyMs) >= heavyGapMs;
+            // REJILLA POR CELDAS: pedimos las celdas de la pagina y aseguramos (subimos si falta) su textura ANTES
+            // de Begin, repartiendo las subidas NUEVAS por cuadro (presupuesto) para no bajar los fps al barrer.
+            gridN = 0;
+            if (CoverControl != null) CoverControl.Begin(AhoraMs(), TopeFpsReal);
+            LM(LibroDeCuadros.FPre);
+            if (ShowAlbum && GetGrid != null)
+            {
+                gridN = GetGrid(gridBuf);
+                LM(LibroDeCuadros.FRejilla); LB(LibroDeCuadros.BPagina); if (libroOn) libro.Celdas = gridN;
+                cellFrame++;
+                RefreshCellBudget();
+                if (CoverControl != null) CoverControl.PendingUpload = false;
+                int upBudget = CoverControl != null ? 32 : GridUploadBudget;
+                long uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                for (int i = 0; i < gridN; i++)
+                {
+                    if (CoverControl != null && gridBuf[i].Slot < 18 && gridBuf[i].NeedsCover)
+                        CoverControl.VisitCover(gridBuf[i].Key, PreparedCover(gridBuf[i]));
+                    nativeGridTex[i] = PrepareNativeCover(gridBuf[i], ref upBudget, true, out nativeGridU[i], out nativeGridV[i]);
+                    IntPtr tex; float u, v;
+                    if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, true, false)) upBudget = 0;
+                    int beforeBudget = upBudget;
+                    long oneStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (gridBuf[i].Bmp != null && EnsureCellTex(gridBuf[i], ref upBudget, out tex, out u, out v))
+                    { gridTex[i] = tex; gridU[i] = u; gridV[i] = v; gridLayouts[i] = UploadedCellLayout(gridBuf[i]); }
+                    else gridTex[i] = IntPtr.Zero;   // aun sin hornear o sin presupuesto de subida: se salta este cuadro (aparece luego)
+                    if (upBudget < beforeBudget)
+                    {
+                        long spent = System.Diagnostics.Stopwatch.GetTimestamp() - oneStart;
+                        gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);
+                        if (CoverControl != null && beforeBudget - upBudget == 1) CoverControl.Spend(spent);
+                    }
+                    PrepareLod(i, gridBuf[i].Direct ? NativeCoverReady(gridBuf[i]) : gridTex[i] != IntPtr.Zero && UploadedCover(gridBuf[i]));
+                    if (CoverControl != null && gridBuf[i].Direct && gridBuf[i].FullCover != null && !NativeCoverReady(gridBuf[i])) CoverControl.PendingUpload = true;
+                    if (CoverControl != null && gridBuf[i].Bmp != null)
+                    {
+                        CellTex pending;
+                        if (gridBuf[i].Key != null && (!cellTexCache.TryGetValue(gridBuf[i].Key, out pending)
+                            || pending.Tex == IntPtr.Zero || pending.Bmp != gridBuf[i].Bmp)) CoverControl.PendingUpload = true;
+                    }
+                    if (CoverControl == null && upBudget < GridUploadBudget && upBudget > 0 &&
+                        !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp() - uploadStart, gridUploadCost, GridWorkLimit, false))
+                        upBudget = 0; // las texturas cacheadas siguen disponibles con presupuesto cero
+                }
+                EvictCellTex();
+                TrimLod(false);
+                if (CoverControl != null && gridN > 0)
+                {
+                    bool ready = true;
+                    for (int i = 0; i < gridN && gridBuf[i].Slot < 18; i++)
+                        if (gridTex[i] == IntPtr.Zero || (gridBuf[i].NeedsCover && !UploadedCover(gridBuf[i]))) ready = false;
+                    CoverControl.FinishPage(ready, AhoraMs());
+                }
+            }
+            LM(LibroDeCuadros.FPortadas);
+            // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
+            if (GetContour != null)
+            {
+                Bitmap cb = GetContour();
+                if (cb != lastContour || (cb != null && contourTex == IntPtr.Zero))
+                {
+                    if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
+                    if (cb != null) contourTex = stars.CreateOverlay(cb, out contU, out contV);
+                    lastContour = cb;
+                }
+            }
+            // Cubos que GIRAN (seleccionado + relevo): suben la PORTADA como textura SOLO cuando cambia
+            // (al navegar o al ciclar un disco TOP), no en cada cuadro. El giro luego es solo geometria.
+            BeginCubeFrame();
+            GpuCubeState cs = (GetCubeState != null) ? GetCubeState() : new GpuCubeState();
+            SampleCubePose(ref cs.Sel, 0); SampleCubePose(ref cs.Relay, 1); SampleCubePose(ref cs.Mini, 2);
+            if (ShowAlbum && cs.Sel.CoverA == null)
+                for (int i = 0; i < gridN; i++) if (gridBuf[i].Sel && gridBuf[i].Preview != null) { cs.Sel.CoverA = gridBuf[i].Preview; break; }
+            EnsureRecentCover(ref selTexA, ref selImgA, ref selBwA, ref selBhA, ref selUA, ref selVA, cs.Sel.CoverA);
+            EnsureRecentCover(ref selTexB, ref selImgB, ref selBwB, ref selBhB, ref selUB, ref selVB, cs.Sel.CoverB);
+            EnsureRecentCover(ref relTex, ref relImg, ref relBw, ref relBh, ref relU, ref relV, cs.Relay.CoverA);
+            EnsureImmutableCover(ref miniTex, ref miniImg, ref miniBw, ref miniBh, ref miniU, ref miniV, cs.Mini.CoverA);   // mini-cubo de la barra inferior
+            LM(LibroDeCuadros.FCubos);
+            AplicaEnfoque(ref cs);         // portada enfocada: agranda el cubo elegido y apaga un poco las demas (Ctrl+F3 -> Pantalla)
+            double idleNow = AhoraMs();
+            double idleDt = idleClock == 0 ? 0 : (idleNow - idleClock) / 1000.0; idleClock = idleNow;
+            if ((IdleExpandTarget || idleBlend > 0) && GetIdlePanel != null)
+            {
+                VigiaPantalla.Hace("preparar estado extendido");
+                Bitmap ib = GetIdlePanel();
+                if (ib != null)
+                {
+                    VigiaPantalla.Hace("subir estado extendido a la tarjeta");
+                    SubeEstadoExtendido(ib);
+                    LB(LibroDeCuadros.BEstado);
+                }
+            }
+            LM(LibroDeCuadros.FEstado);
+            if (libroOn) { if (IdleExpandTarget) libro.Banderas |= LibroDeCuadros.BReposo; if (idleBlend > 0f && idleBlend < 1f) libro.Banderas |= LibroDeCuadros.BTransicion; libro.Modo = sceneMode; }
+            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
+            // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
+            // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
+            // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
+            // de la UI, que ya venia subida de antes). Aqui se resuelven; abajo solo se dibujan.
+            GpuTrans tr = (GetTrans != null) ? GetTrans() : new GpuTrans();
+            SampleCubeFlight(ref tr);
+            if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transBw, ref transBh, ref transU, ref transV, tr.Bmp);
+            GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
+            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, gw.Bmp);
+            GpuToast tt = (GetToast != null) ? GetToast() : new GpuToast();
+            if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
+            { toastTex = Upload(toastTex, ref toastBw, ref toastBh, tt.Bmp, out toastU, out toastV); toastVer = tt.Ver; }
+            PreparaPantallaViva();         // el letrero de la elegida, la ficha rapida y el empujon del cielo al pasar de pagina
+            PreparaDiscoVivo();            // dentro del disco: las barritas de la que suena y el boleto que vuela
+            PreparaSuenaVivo();            // los avisos, la invitacion, la moneda y el panel de reposo en grande
+            PreparaAtraccion();            // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs)
+            LM(LibroDeCuadros.FVivos);
+            if (libroOn) { if (gw.Has) libro.Banderas |= LibroDeCuadros.BVentana; if (tr.Has) libro.Banderas |= LibroDeCuadros.BViaje; }
+            // Barras (UI) a textura: se re-sube solo cuando cambia algun texto/estado (firma del form), limitada a
+            // UNA por franja (heavyGapMs). UiUrgent: al CAMBIAR DE MODO (p.ej. cerrar el buscador) hay que rehacerla
+            // en ESTE mismo cuadro, sin esperar franja: si no, se veria la rejilla por los huecos del teclado un instante.
+            PreparePalette();
+            bool uiUrgent = UiUrgent; UiUrgent = false;
+            if (uiUrgent) LB(LibroDeCuadros.BUrgente);
+            if (GetUi != null && GetUiVersion != null && ((uiTex == IntPtr.Zero && !uiVacia) || uiUrgent || canHeavy))
+            {
+                int t0 = Environment.TickCount;
+                int uv = GetUiVersion();   // puede rehacer el bitmap de la UI por dentro
+                if (uv != uiVer || (uiTex == IntPtr.Zero && !uiVacia))
+                {
+                    if (GetUiVacia != null && GetUiVacia())
+                    {   // sin interfaz (la atraccion con el escaparate): ni mapa de bits, ni subida, ni analisis, ni dibujo; la textura se suelta y se crea al volver
+                        if (uiTex != IntPtr.Zero) { Repone(uiTex, uiBmpW, uiBmpH); uiTex = IntPtr.Zero; }   // al repuesto: al volver se usa (RespuestaGpu.cs)
+                        uiBmpW = uiBmpH = 0; uiU = uiV = 1f; uiVacia = true;
+                    }
+                    else
+                    {
+                        uiVacia = false;
+                        Bitmap ub = GetUi();
+                        SubeUi(ub, gw);   // reutiliza la textura, y en el buscador sube solo lo que cambio (BuscadorLigeroGpu.cs)
+                        LB(LibroDeCuadros.BInterfaz);
+                    }
+                    uiVer = uv;
+                    NoteHeavy(t0);   // mide el coste real y ajusta la espera (la UI cacheada es barata -> franja corta)
+                    uiTeselas = null; uiAnalisisTeselas = null; uiSubidaMs = AhoraMs();   // cancelar cualquier analisis de la version anterior
+                }
+                else if (uiTeselas == null && !uiVacia) uiTeselas = TeselasEnPasos(ref uiAnalisisTeselas, GetUi(), uiBmpW, uiBmpH, uiSubidaMs);
+            }
+            // Franja de ESTADO de abajo: textura chica aparte. El tic del reloj/progreso (~2/seg con musica)
+            // rehace y sube SOLO esta tira (~400KB), no la textura principal. Misma franja de trabajo pesado.
+            if (idleBlend < .997f && GetUiBot != null && GetUiBotVersion != null && (uiBotTex == IntPtr.Zero || uiUrgent || canHeavy || compactaAplazada))
+            {
+                int bv = GetUiBotVersion();   // puede rehacer el bitmap de la tira por dentro
+                if (bv != uiBotVer || uiBotTex == IntPtr.Zero)
+                {
+                    Bitmap bb = GetUiBot();
+                    if (bb != null) { SubeUiBot(bb); LB(LibroDeCuadros.BFranja); }   // el trozo que cambio, o entera (FranjaLigeraGpu.cs)
+                    uiBotVer = bv;
+                    uiBotTeselas = null; uiBotAnalisisTeselas = null; uiBotSubidaMs = AhoraMs();   // no conservar recortes de una version antigua
+                }
+                else if (uiBotTeselas == null) uiBotTeselas = TeselasEnPasos(ref uiBotAnalisisTeselas, GetUiBot(), uiBotW, uiBotH, uiBotSubidaMs);
+                compactaAplazada = false;
+            }
+            else if (idleBlend >= .997f) compactaAplazada = true;
+            // Las piezas vivas. Se preguntan SIEMPRE (no solo cuando toca trabajo pesado): son diminutas, y
+            // son justo lo que tiene que responder al instante cuando alguien se mueve entre casillas.
+            if (GetPiezaVersion != null && GetPieza != null)
+                for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
+                {
+                    int pv = GetPiezaVersion(i);   // prepara la imagen por dentro
+                    if (pv == piezaVer[i] && (piezaTex[i] != IntPtr.Zero || piezaW[i] == -1)) continue;
+                    Bitmap pb = GetPieza(i);
+                    if (pb != null) SubePieza(i, pb);
+                    else { if (piezaTex[i] != IntPtr.Zero) Repone(piezaTex[i], piezaW[i], piezaH[i]); piezaTex[i] = IntPtr.Zero; piezaW[i] = piezaH[i] = -1; }
+                    piezaVer[i] = pv;
+                }
+            LM(LibroDeCuadros.FInterfaz);
+            VigiaPantalla.Hace("preparar textos y adornos GPU");
+            PreparaCintasTexto();
+            EnsureNieblas();               // la via lactea y las nebulosas (una vez por tamano de pantalla)
+            EnsureVineta();
+            PreparaAsistente(); // texto/seleccion: una sola subida cuando realmente cambian
+            PreparaAyudaIcono(); // la interrogacion de AYUDA: horneada una vez por tamano (AyudaCasillaGpu.cs)
+            EnsureLuna(); // ninguna reserva/subida de la luna dentro de Begin
+            ActualizaCieloVivo(); EnsureLunaCielo(); VuelvenNieblas();   // el cielo vivo (CieloVivoGpu.cs): fuera de Begin tambien
+            stars.EstrellasFinas = EstrellasFinas;
+            if (ShowFps) EnsureFpsTex();   // crea/actualiza la textura del contador ANTES de Begin (solo si se pide, Ctrl+F1)
+            stars.SetDim(Dim);             // atenuacion mientras se navega con musica (estrellas/brillos; el cielo queda igual)
+            float pulseCrudo = (GetPulse != null) ? GetPulse() : 0f;
+            float pulse = pulseCrudo * Dim;   // el beat tambien baja mientras esta atenuado (la deriva NO: ver Begin)
+            // La aurora se dibuja DENTRO de Begin, justo despues del cielo y antes de las estrellas.
+            auCuadro = (GetAurora != null) ? GetAurora() : new GpuAurora();
+            // Se engancha SIEMPRE: aqui van la via lactea y las nebulosas, haya aurora o no.
+            auCuadro.Has = auCuadro.Has && auCuadro.B != null && auCuadro.B.Length >= 8;
+            auCuadro.BaseY = OndasUnidas && uiBotH > 0
+                ? AuroraBaseAtStatus(Height, uiBotH, idleH, idleBlend)
+                : auCuadro.BaseY - IdleRise;
+            AdvanceCoverPalette(AhoraMs());
+            stars.TrasCielo = trasCielo;
+            stars.TrasEstrellas = trasEstrellas;
+            stars.CieloBase = cieloBase;
+            LM(LibroDeCuadros.FAdornos);
+            // Dispositivo perdido (sesion bloqueada, cambio de pantalla...): sin este respiro, el bucle de
+            // Application.Idle reintentaria a TODA MAQUINA y clavaria un nucleo entero hasta recuperarlo.
+            double aheadNow = AhoraMs();
+            double uploadMs = gridUploadCost * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (ShowAlbum && GetGridAhead != null && !UiUrgent &&
+                aheadNow - lastAheadMs >= (CargaTrabajo.Procesadores <= 2 ? 40 : 20) &&
+                (CoverControl != null
+                    ? CoverControl.CanStart(gridUploadCost, false, false) && aheadNow - msTrab0 < 28
+                    : aheadNow - msTrab0 + uploadMs < GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency &&
+                      lastFrameWork + uploadMs < 850.0 / Math.Max(1, TopeFpsReal)))
+            {
+                lastAheadMs = aheadNow;
+                bool ready = gridN > 0;
+                for (int i = 0; i < gridN; i++) if (gridTex[i] == IntPtr.Zero) ready = false;
+                if (ready)
+                {
+                    double margin = CoverControl != null ? GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency
+                        : Math.Min(GridWorkLimit * 1000.0 / System.Diagnostics.Stopwatch.Frequency - (AhoraMs()-msTrab0),
+                          850.0 / Math.Max(1, TopeFpsReal) - lastFrameWork);
+                    aheadAvailableTicks = Math.Max(1L, (long)(margin * System.Diagnostics.Stopwatch.Frequency / 1000));
+                    WarmAheadCells();
+                    LB(LibroDeCuadros.BAdelanto);
+                }
+            }
+            LM(LibroDeCuadros.FAdelanto);
+            // La precarga opcional tambien puede consumir el refresco previsto. Actualizar la estrella
+            // DESPUES de ese trabajo, no antes, para que no conserve una pose de un plazo ya vencido.
+            UpdateMoonMusic(pulseCrudo);
+            AvanzaAsistente(); // reloj fino de ESTE cuadro, independiente del timer de la UI
+            double antesDibujo = AhoraMs();
+            HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
+            DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs)
+            VigiaPantalla.Hace("dibujar fondo, aurora y estrella");
+            bool fondoOk = stars.Begin(Width, Height, pulse, pulseCrudo);
+            VigiaPantalla.Hace("dibujar portadas e interfaz");
+            stars.VinetaPuntos = false;   // la vineta punto por punto (G2) es solo para el fondo: aqui termina
+            if (!fondoOk) { System.Threading.Thread.Sleep(5); return NoPresentado(); }
+            // Adornos solo del fondo: antes del muro y de toda la interfaz. Con «Fondo en una sola capa» (G2) la vineta y el
+            // grano ya van dentro del cielo.
+            if (VinetaSuave && vinetaTex != IntPtr.Zero && !capaUnicaEsteCuadro)
+            {
+                // Con "grano y vineta en una pasada" van los dos juntos aqui (PerformanceGpu.cs). Si esa pasada no se pudo, este
+                // cuadro van por separado.
+                if (!(granoUnidoEsteCuadro && DibujaGranoYVineta()))
+                {
+                    if (granoUnidoEsteCuadro) DibujaRuido();
+                    DibujaTeselasFondo(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente ni bajo las portadas (DibujoLigeroGpu.cs)
+                }
+            }
+            if (HaloSeleccion && ShowAlbum && GetContourRect != null)
+            {
+                Rectangle hr = GetContourRect();
+                if (hr.Width > 0 && hr.Height > 0)
+                {
+                    // Con la portada enfocada el halo crece con ella y toma su color (HaloArgb); si no, el de siempre.
+                    float hx = hr.X, hy = hr.Y, hw = hr.Width, hh = hr.Height;
+                    EnfocaCaja(ref hx, ref hy, ref hw, ref hh);
+                    stars.DrawGlow(hx + hw * 0.5f, hy + hh * 0.5f, Math.Max(hw, hh) * 0.85f, HaloArgb());
+                }
+            }
+            // Rejilla de discos: un quad por celda (textura ya resuelta arriba). Las celdas aun sin textura (recien
+            // horneadas o sin presupuesto de subida este cuadro) se saltan y aparecen en los cuadros siguientes.
+            if (ShowAlbum) DrawLod(true); // previews con marca: detras de la marca horneada
+            if (ShowAlbum)
+                for (int i = 0; i < gridN; i++)
+                    if (gridTex[i] != IntPtr.Zero || (gridBuf[i].Direct && nativeGridTex[i] != IntPtr.Zero))
+                    {
+                        GpuGridCell c = gridBuf[i];
+                        if (gridTex[i] != IntPtr.Zero) c.Layout = gridLayouts[i]; // puede ser una etiqueta anterior
+                        c.CoverReady = nativeGridTex[i] != IntPtr.Zero;
+                        if (c.X + c.W <= 0f || c.X >= Width) continue;   // hojeando: la casilla ya salio de la pantalla, no se pinta
+                        int ca = (int)(Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 255f + 0.5f);
+                        if (ca <= 0) continue;
+                        float apagada = atenua[i];   // portada enfocada: las demas, un poco mas oscuras (0 = como siempre)
+                        if (c.Direct) DrawNativeCover(i, c, ColorCelda(ca, apagada));
+                        if (gridTex[i] == IntPtr.Zero) continue;
+                        if (c.Layout.Width > 0)
+                        { DrawAtlasCell(gridTex[i], c, gridU[i], gridV[i], ColorCelda(ca, apagada)); continue; }
+                        if (ca >= 255 && !(apagada > 0f)) SetTexQuad(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i]);
+                        else SetTexQuadA(cellQuad, c.X, c.Y, c.X + c.W, c.Y + c.H, gridU[i], gridV[i], ColorCelda(ca, apagada));
+                        stars.DrawQuad(gridTex[i], cellQuad);
+                    }
+                    else if (gridBuf[i].Placeholder)
+                    {
+                        GpuGridCell c = gridBuf[i];
+                        RectangleF r = c.CoverRect;
+                        if (r.Right <= 0 || r.Left >= Width || r.Width <= 0 || r.Height <= 0) continue;
+                        stars.BlankCubeColor = SkyMid & 0x00FFFFFFu;
+                        stars.DrawCube(IntPtr.Zero, 1, 1, r.X, r.Y, r.Width, r.Height, 0.22,
+                            Math.Max(0f, Math.Min(1f, c.A * WallOpacity)) * 0.35f, 0);
+                        stars.BlankCubeColor = 0x003C466Eu;
+                    }
+            if (ShowAlbum) DrawLod(false);
+            if (ShowAlbum && contourTex != IntPtr.Zero && GetContourRect != null)
+            {
+                Rectangle r = GetContourRect();
+                if (r.Width > 0 && r.Height > 0)
+                {
+                    float rx = r.X, ry = r.Y, rw = r.Width, rh = r.Height;
+                    EnfocaCaja(ref rx, ref ry, ref rw, ref rh);   // el contorno crece con la portada enfocada
+                    SetTexQuadA(contourQuad, rx, ry, rx + rw, ry + rh, contU, contV, ((uint)(Math.Max(0f, Math.Min(1f, WallOpacity)) * 255f) << 24) | 0x00FFFFFFu);
+                    stars.DrawQuad(contourTex, contourQuad);
+                }
+            }
+            // Cubos girando ENCIMA del contorno (igual orden que en CPU): primero el relevo, luego el seleccionado.
+            if (cs.Relay.Has)
+                stars.DrawCube(relTex, relU, relV, cs.Relay.X, cs.Relay.Y, cs.Relay.W, cs.Relay.H, cs.Relay.Angle, WallOpacity, cs.Relay.Tilt);
+            if (cs.Sel.Has && sceneMode == 3) DibujaHaloGenero(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, ShowAlbum ? WallOpacity : 1f);   // dentro del disco, el color del genero detras, con el mismo alfa que el cubo (EstiloGpu.cs)
+            if (cs.Sel.Has)
+            {
+                stars.DrawCube(selTexA, selUA, selVA, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, ShowAlbum ? WallOpacity : 1f, cs.Sel.Tilt);
+                if (selTexA != IntPtr.Zero && !(cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f))   // O1: el brillo de cristal (PulidoGpu.cs)
+                    DibujaBrilloPortada(cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Tilt, ShowAlbum ? WallOpacity : 1f, AhoraMs());
+                if (cs.Sel.CoverB != null && cs.Sel.Fade > 0.002f)   // disco TOP: 2a portada encima con alfa = fundido
+                    stars.DrawCube(selTexB, selUB, selVB, cs.Sel.X, cs.Sel.Y, cs.Sel.W, cs.Sel.H, cs.Sel.Angle, cs.Sel.Fade * (ShowAlbum ? WallOpacity : 1f), cs.Sel.Tilt);
+                DibujaFoco(cs);   // "12 canciones · 38 min" sobre el borde de abajo de la portada enfocada
+            }
+            // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
+            // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
+            bool uiPropia = gw.Has && gw.Bmp == null && !gw.Robada;   // se anima la PROPIA textura de UI (abriendo el buscador)
+            if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
+            if (((uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0) || uiVacia) && !(gw.Has && gw.HideUi))
+            {
+                uint uiAlfa = (uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255);
+                if (uiAlfa > 0 && !uiVacia) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
+                if (uiAlfa > 0) DibujaInterrogacion(uiAlfa / 255f);   // la interrogacion dorada de AYUDA, animada (AyudaCasillaGpu.cs)
+            }
+            DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada
+            // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
+            // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
+            // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
+            if (GlassPieces) CaptureSongSlide();
+            if (GetPiezaRect != null && !(gw.Has && gw.HideUi))
+            {
+                DibujaCartasPrimero(0f, PaletteAlpha(), ControlsOpacity);   // las tarjetas del buscador con portadas, debajo de la elegida (BuscadorPortadasGpu.cs)
+                for (int i = 0; i < PiezasN && i < MaxPiezas; i++)
+                {
+                    if (i == PiezaCartas || piezaTex[i] == IntPtr.Zero) continue;
+                    Rectangle pr = GetPiezaRect(i);
+                    if (pr.Width < 1 || pr.Height < 1) continue;
+                    uint ink = GlassPieces ? (i == 0 ? GlassTint : 0xFFFFFFFFu) :
+                        ((uint)(FocusAlpha(i, pr) * PaletteAlpha() * (i == 2 ? CartaElegidaAlfa : 1f) * 255) << 24) | 0xFFFFFFu;
+                    if (GlassPieces) ink = (ink & 0xFFFFFFu) | ((uint)(SceneAlpha() * 255) << 24);
+                    ink = FadeArgb(ink, ControlsOpacity);
+                    if (GlassPieces && i == 1) { DrawSongPage(pr, GetPiezaRect(2), i, ink); continue; }
+                    if (GlassPieces && i > 1) { DrawPieceBand(pr, i, pr.Top, pr.Bottom, ink); continue; }
+                    SetTexQuadA(piezaQuad, pr.X, pr.Y, pr.X + pr.Width, pr.Y + pr.Height, piezaU[i], piezaV[i],
+                        ink);
+                    stars.DrawQuad(piezaTex[i], piezaQuad);
+                }
+            }
+            if (!(gw.Has && gw.HideUi)) DibujaCintasTexto(true);
+            if (!(gw.Has && gw.HideUi)) DibujaEq();   // las barritas de la que suena, encima de la lista y de su fila elegida
+            // VENTANA del buscador abriendo/cerrando: el mismo quad de la UI, escalado desde su centro y fundido.
+            if (gw.Has && gw.Alpha > 0.004f && gw.Scale > 0.01f)
+            {
+                IntPtr wt; float wu, wv, bw, bh;
+                if (uiPropia) { wt = uiTex; wu = uiU; wv = uiV; bw = uiBmpW; bh = uiBmpH; }
+                else if (gw.Robada) { wt = winTex; wu = winU; wv = winV; bw = winBw; bh = winBh; }   // cerrando: la textura que tenia la UI
+                else { wt = winTex; wu = winU; wv = winV; bw = gw.Bmp.Width; bh = gw.Bmp.Height; }
+                if (wt != IntPtr.Zero && bw > 1f && bh > 1f)
+                {
+                    float hw = bw * 0.5f, hh = bh * 0.5f;   // crece/encoge desde SU CENTRO (no desde una esquina)
+                    int wa = (int)(gw.Alpha * 255f + 0.5f); if (wa > 255) wa = 255; else if (wa < 0) wa = 0;
+                    SetTexQuadA(winQuad, hw - hw * gw.Scale, hh - hh * gw.ScaleY + gw.Dy,
+                                         hw + hw * gw.Scale, hh + hh * gw.ScaleY + gw.Dy,
+                                wu, wv, ((uint)wa << 24) | 0x00FFFFFFu);
+                    stars.DrawQuad(wt, winQuad);
+                }
+            }
+            PiezasConLaVentana(gw, uiPropia);   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
+            if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
+            {
+                uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda
+                if (botAlfa > 0) DibujaTeselas(uiBotTex, uiBotTeselas, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV, (botAlfa << 24) | 0x00FFFFFFu, uiBotQuad);   // (DibujoLigeroGpu.cs)
+            }
+            if (idleBlend > 0 && idleTex != IntPtr.Zero)
+            {
+                float py = StatusTopY;
+                SetTexQuadA(adornoQuad, 0, py, Width, py + idleH, idleU, idleV, ((uint)(idleBlend*255) << 24) | 0x00FFFFFFu);
+                if (EstadoOpacoListo) stars.DrawOpaqueQuad(idleTex, adornoQuad);
+                else stars.DrawQuad(idleTex, adornoQuad);
+                DibujaLatidoGenero(py);   // lo que suena, en grande: la pastilla del genero late con los graves
+                DibujaTituloReposo(py);   // y el titulo que no cabe se desliza
+            }
+            DibujaCintasTexto(false);
+            DrawSmoothProgress();
+            // DESTELLOS del boton pulsado (buscador): halos aditivos ENCIMA de la UI, animados por la GPU (sin re-subir textura).
+            if (GetUiGlows != null)
+            {
+                int ng = GetUiGlows(uiGlowBuf);
+                if (ng > 0)
+                {
+                    stars.GlowBatchBegin(uiGlowBuf.Length);   // los destellos tambien salen de una sola llamada
+                    for (int i = 0; i < ng && i < uiGlowBuf.Length; i++) { UiGlow ug = uiGlowBuf[i]; stars.GlowBatchAdd(ug.Cx, ug.Cy, ug.R, ug.Argb); }
+                    stars.GlowBatchEnd();
+                }
+            }
+            // Mini-cubo de la barra inferior (gira): cubo GPU, encima de la barra.
+            if (cs.Mini.Has)
+            {
+                if (idleBlend > 0)
+                {
+                    Rectangle large = IdleCoverRect(Width, idleH);
+                    cs.Mini.X += (large.X - cs.Mini.X) * idleBlend;
+                    cs.Mini.Y += (Height - idleH + large.Y - cs.Mini.Y) * idleBlend;
+                    cs.Mini.W += (large.Width - cs.Mini.W) * idleBlend;
+                    cs.Mini.H += (large.Height - cs.Mini.H) * idleBlend;
+                    cs.Mini.Tilt *= 1 - idleBlend;
+                }
+                DibujaHaloGenero(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, 1f);   // el color del genero detras de la portada (EstiloGpu.cs)
+                stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
+            }
+            DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos
+            // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
+            if (tr.Has && tr.Bmp != null && transTex != IntPtr.Zero && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
+            {
+                if (tr.Glow > 0.004f)   // DESTELLO detras: halo aditivo (el mismo camino que los brillos del buscador)
+                {
+                    int ga = (int)(tr.Glow * tr.Alpha * 104f + 0.5f); if (ga > 255) ga = 255;
+                    if (ga > 0) stars.DrawGlow(tr.X + tr.W * 0.5f, tr.Y + tr.H * 0.5f, tr.W * 0.66f, ((uint)ga << 24) | 0x00FFE2A8u);
+                }
+                stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
+            }
+            DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos
+            DibujaMoneda();   // la moneda que cae en la capsula de creditos y su "+4 creditos"
+            DibujaInvita();   // sin creditos: la tarjeta que invita a meter una moneda
+            // AVISO flotante (moneda, cancion agregada...) por ENCIMA de todo menos el contador de FPS.
+            if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)
+            {
+                int ta = (int)(tt.Alpha * 255f + 0.5f); if (ta > 255) ta = 255;
+                SetTexQuadA(toastQuad, tt.X, tt.Y, tt.X + tt.Bmp.Width, tt.Y + tt.Bmp.Height,
+                            toastU, toastV, ((uint)ta << 24) | 0x00FFFFFFu);
+                stars.DrawQuad(toastTex, toastQuad);
+            }
+            DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo
+            DibujaAsistente(); // personaje y ayuda delante de todas las vistas; musica sigue intacta
+            // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
+            if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, 0xFFFFFFFFu); stars.DrawQuad(fpsTex, fpsQuad); }
+            // El cronometro se para AQUI, justo antes de End: dentro de End esta Present, que es donde se
+            // espera al monitor. Un cuadro que se pasa media vuelta esperando no costo media vuelta.
+            double trabajo = AhoraMs() - msTrab0;
+            lastFrameWork = trabajo;
+            double antesPresentar = AhoraMs();
+            if (libroOn) libro.Marca(LibroDeCuadros.FDibujo, antesPresentar);
+            VigiaPantalla.Hace("presentar cuadro de la tarjeta");
+            if (!stars.End()) return NoPresentado();
+            double terminado = AhoraMs();
+            // Un tope de 24/50/60 puede saltar varios refrescos: no clasificar ese intervalo normal como tiron.
+            double periodoObjetivo = PeriodoDiagnostico(periodoVistaMs, TopeMs(), ThrottleMs);
+            if (libroOn) { libro.Marca(LibroDeCuadros.FPresentar, terminado); LibroTermina(terminado, periodoObjetivo); }
+            fluidez.TomaCuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo,
+                terminado - antesPresentar, periodoObjetivo, agendaDelHueco, gc0Inicio, gc1Inicio, gc2Inicio);
+            if (diagSink != null) diagSink.Cuadro(msTrab0, terminado, antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar, libroOn ? libro : null);   // diagnostico completo
+            if (ShowFps && ReportFluidez != null)
+            {
+                if (fluidez.Resume(terminado)) ReportFluidez(fluidez.Resumen());
+                string episodios = fluidez.DrenaEpisodios(terminado);
+                if (episodios.Length > 0) ReportFluidez(episodios);
+            }
+            if (CoverControl != null) CoverControl.Observe(AhoraMs(), trabajo, TopeFpsReal);
+            msTrabSuma += trabajo; msTrabN++;
+            TerminaCuenta(antesDibujo - msTrab0, antesPresentar - antesDibujo, terminado - antesPresentar);   // (PerformanceGpu.cs)
+            frames++;
+            int transcurrido = unchecked(Environment.TickCount - fpsTick);
+            if (transcurrido >= 1000) { Fps = (int)Math.Round(frames * 1000.0 / transcurrido); frames = 0; fpsTick = Environment.TickCount; }
+            return true;
+            }
+            finally { renderEnCurso = false; }
+        }
+
+        // Asegura (subiendo si hace falta) la textura de una celda y devuelve tex/u/v. Cachea por Key (Folder; los
+        // discos TOP llevan Folder+portada) para que revisitar una pagina no resuba NADA (instantaneo). Celdas SIN
+        // Key (raras: album sin carpeta) usan una textura por SLOT (no cruza paginas). Respeta el presupuesto de
+        // subidas por cuadro: si se agota y no hay textura previa, devuelve false (la celda aparece al siguiente cuadro).
+        private bool EnsureCellTex(GpuGridCell c, ref int upBudget, out IntPtr tex, out float u, out float v)
+        {
+            tex = IntPtr.Zero; u = 1f; v = 1f;
+            if (c.Key != null)
+            {
+                CellTex ct;
+                if (cellTexCache.TryGetValue(c.Key, out ct))
+                {
+                    ct.Frame = cellFrame;
+                    if (ReferenceEquals(ct.Bmp, c.Bmp) && ct.Tex != IntPtr.Zero) { tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // ya subida y sin cambios
+                    if (upBudget <= 0) { if (ct.Tex == IntPtr.Zero) return false; tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // sin presupuesto: usa la vieja (p.ej. placeholder) hasta que toque
+                    upBudget--;
+                    cellBytesDirty = true;
+                    ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)
+                    ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.HasCover = c.HasCover;
+                    if (ct.Tex == IntPtr.Zero) return false;
+                    tex = ct.Tex; u = ct.U; v = ct.V; return true;
+                }
+                if (upBudget <= 0) return false;   // celda nueva sin presupuesto: se salta este cuadro
+                if (cellTexCache.Count >= cellTextureCapacity + MaxCells) return false;
+                upBudget--;
+                ct = new CellTex();
+                cellBytesDirty = true;
+                ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);
+                ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.Frame = cellFrame; ct.HasCover = c.HasCover;
+                cellTexCache[c.Key] = ct;
+                if (ct.Tex == IntPtr.Zero) return false;
+                tex = ct.Tex; u = ct.U; v = ct.V; return true;
+            }
+            int s = c.Slot; if (s < 0 || s >= slotTex.Length) return false;   // celda sin Folder (TOP): textura por slot
+            CellTex st = slotTex[s]; if (st == null) { st = new CellTex(); slotTex[s] = st; }
+            st.Frame = cellFrame;
+            if (!ReferenceEquals(st.Bmp, c.Bmp) || st.Tex == IntPtr.Zero)
+            {
+                if (upBudget <= 0) { if (st.Tex == IntPtr.Zero) return false; tex = st.Tex; u = st.U; v = st.V; return true; }
+                upBudget--;
+                cellBytesDirty = true;
+                st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);
+                st.Bmp = c.Bmp; st.Layout = c.Layout; st.HasCover = c.HasCover;
+                if (st.Tex == IntPtr.Zero) return false;
+            }
+            tex = st.Tex; u = st.U; v = st.V; return true;
+        }
+        private bool PreparedCover(GpuGridCell c)
+        {
+            CellTex cached;
+            return c.Bmp != null && c.HasCover && c.Key != null
+                && cellTexCache.TryGetValue(c.Key, out cached) && cached.Tex != IntPtr.Zero
+                && (c.Direct ? NativeCoverReady(c) : cached.HasCover) && ReferenceEquals(cached.Bmp, c.Bmp);
+        }
+        private GpuCellLayout UploadedCellLayout(GpuGridCell c)
+        {
+            CellTex ct = null;
+            if (c.Key != null) cellTexCache.TryGetValue(c.Key, out ct);
+            else if (c.Slot >= 0 && c.Slot < slotTex.Length) ct = slotTex[c.Slot];
+            return ct != null ? ct.Layout : new GpuCellLayout();
+        }
+        private void DrawAtlasCell(IntPtr tex, GpuGridCell c, float u, float v, uint color)
+        {
+            AtlasCellVertices(c, u, v, color, atlasQuad);
+            stars.DrawTexturedBatch(tex, atlasQuad, c.Layout.Separate ? 14 : 6); // etiquetas/contorno, un envio
+        }
+        internal static void AtlasCellVertices(GpuGridCell c, float u, float v, uint color, D3D9.Vtx[] result)
+        {
+            GpuCellLayout p = c.Layout;
+            if (p.Separate) { SeparatedVertices(c, u, v, color, result); return; }
+            float sx = c.W / (p.Text1At.Width + p.Text2At.Width);
+            float sy = c.H / p.Text2At.Bottom;
+            AtlasPart(result, 0, c.X, c.Y, sx, sy, p.Face, p.FaceAt, u / p.Width, v / p.Height, color);
+            AtlasPart(result, 6, c.X, c.Y, sx, sy, p.Text1, p.Text1At, u / p.Width, v / p.Height, color);
+            AtlasPart(result, 12, c.X, c.Y, sx, sy, p.Text2, p.Text2At, u / p.Width, v / p.Height, color);
+        }
+        private static void AtlasPart(D3D9.Vtx[] r, int o, float x, float y, float sx, float sy,
+            Rectangle src, Rectangle at, float u, float v, uint color)
+        {
+            float x0 = x + at.X * sx, x1 = x + at.Right * sx, y0 = y + at.Y * sy, y1 = y + at.Bottom * sy;
+            float u0 = src.X * u, u1 = src.Right * u, v0 = src.Y * v, v1 = src.Bottom * v;
+            SetV(ref r[o], x0, y0, u0, v0); r[o].Color = color;
+            SetV(ref r[o + 1], x1, y0, u1, v0); r[o + 1].Color = color;
+            SetV(ref r[o + 2], x1, y1, u1, v1); r[o + 2].Color = color;
+            r[o + 3] = r[o]; r[o + 4] = r[o + 2];
+            SetV(ref r[o + 5], x0, y1, u0, v1); r[o + 5].Color = color;
+        }
+
+        private bool AheadContains(string key, int count)
+        {
+            for (int i = 0; i < count; i++) if (aheadGrid[i].Key == key) return true;
+            return false;
+        }
+
+        // Nunca expulsar visibles ni las vecinas ya preparadas: evita un ciclo de subidas/expulsiones
+        // cuando a resolucion alta no caben las tres paginas en el presupuesto.
+        private bool ReserveAheadSpace(GpuGridCell cell, int aheadCount)
+        {
+            long w = 1, h = 1;
+            while (w < cell.Bmp.Width) w <<= 1;
+            while (h < cell.Bmp.Height) h <<= 1;
+            long incoming = w * h * 4;
+            if (cell.Direct && cell.FullCover != null && !NativeCoverReady(cell)) {
+                long nw = 1, nh = 1;
+                while (nw < cell.FullCover.Width) nw <<= 1;
+                while (nh < cell.FullCover.Height) nh <<= 1;
+                incoming += nw * nh * 4;
+            }
+            if (incoming > cellTextureBudget) return false;
+            CellTex old; cellTexCache.TryGetValue(cell.Key, out old);
+            int extra = old == null ? 1 : 0;
+            while (CachedCellBytes() - CellBytes(old) + incoming > cellTextureBudget ||
+                cellTexCache.Count + extra > cellTextureCapacity)
+            {
+                string victim = null; int oldest = 0;
+                foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
+                {
+                    int age = unchecked(cellFrame - kv.Value.Frame);
+                    if (age > oldest && !AheadContains(kv.Key, aheadCount))
+                    { oldest = age; victim = kv.Key; }
+                }
+                if (victim == null) { if (DiscardUnusedNative(false)) continue; return false; }
+                CellTex removed = cellTexCache[victim];
+                if (!ReleaseCoverTexture(removed.Tex)) return false;
+                cellTexCache.Remove(victim); cellBytesDirty = true;
+            }
+            return true;
+        }
+
+        // Precarga una textura y devuelve cuanto tardo (0 si no se hizo).
+        private long PreCarga(IntPtr tex)
+        {
+            if (tex == IntPtr.Zero) return 0;
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            return stars.PreloadTexture(tex) ? System.Diagnostics.Stopwatch.GetTimestamp() - t0 : 0;
+        }
+        private void WarmAheadCells()
+        {
+            if (GetGridAhead == null) return;
+            int count = Math.Max(0, Math.Min(aheadGrid.Length, GetGridAhead(aheadGrid)));
+            protectedAhead.Clear(); protectedNativeAhead.Clear();
+            for (int i = 0; i < count; i++) {
+                if (aheadGrid[i].Key != null) protectedAhead.Add(aheadGrid[i].Key);
+                if (aheadGrid[i].FullCover != null) protectedNativeAhead.Add(aheadGrid[i].FullCover);
+            }
+            int remaining = CoverControl != null ? 32 : AheadUploadAllowance(CargaTrabajo.Procesadores);
+            int initial = remaining;
+            long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+            long available = aheadAvailableTicks > 0 ? Math.Min(GridWorkLimit, aheadAvailableTicks) : GridWorkLimit;
+            for (int i = 0; i < count; i++)
+            {
+                if (remaining <= 0 || (CoverControl == null && !CargaTrabajo.PuedeEmpezar(System.Diagnostics.Stopwatch.GetTimestamp()-begin,
+                    gridUploadCost, available, remaining == initial))) break;
+                GpuGridCell cell = aheadGrid[i];
+                if (cell.Key == null || cell.Bmp == null) continue;
+                CellTex old;
+                if (cellTexCache.TryGetValue(cell.Key, out old) &&
+                    (old.Frame == cellFrame || (old.Tex != IntPtr.Zero && ReferenceEquals(old.Bmp, cell.Bmp) && (!cell.Direct || cell.FullCover == null || NativeCoverReady(cell))))) continue;
+                if (!ReserveAheadSpace(cell, count)) continue;
+                if (CoverControl != null && !CoverControl.CanStart(gridUploadCost, false, false)) break;
+                int budget = remaining; float nu, nv;
+                IntPtr nativa = PrepareNativeCover(cell, ref budget, false, out nu, out nv);
+                long precarga = budget < remaining ? PreCarga(nativa) : 0;   // la portada recien creada, a la memoria de la tarjeta ya (ver PreloadTexture)
+                remaining = budget; if (remaining <= 0) { if (precarga > 0 && CoverControl != null) CoverControl.Spend(precarga); break; }
+                budget = 1; IntPtr tex; float u, v;
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                EnsureCellTex(cell, ref budget, out tex, out u, out v);
+                long spent = System.Diagnostics.Stopwatch.GetTimestamp() - start;
+                gridUploadCost = CargaTrabajo.AprendeCoste(gridUploadCost, spent);   // (sin la precarga: la subida de una celda visible no la hace)
+                if (CoverControl != null && budget == 0) CoverControl.Spend(spent);
+                if (budget == 0) precarga += PreCarga(tex);   // la etiqueta recien subida, igual
+                if (precarga > 0 && CoverControl != null) CoverControl.Spend(precarga);   // lo que cuesta la precarga cuenta en el regulador
+                if (cellTexCache.TryGetValue(cell.Key, out old)) old.Frame = unchecked(cellFrame - 1);
+                remaining--; // presupuesto compartido; sin regulador, conservar 1/2/4
+            }
+            Array.Clear(aheadGrid, 0, aheadGrid.Length); // no retener bitmaps expulsados por la cache de composicion
+        }
+
+        // Expulsa las texturas de celda mas VIEJAS (no usadas este cuadro) cuando se pasa del tope, para acotar VRAM.
+        // La "edad" se calcula por RESTA (cellFrame - Frame): sobrevive el desbordamiento del contador de cuadros
+        // (int a 60fps se desborda a los ~414 dias encendida; misma familia que el TickCount de las fugaces).
+        // Presupuesto de texeles ARGB (incluye redondeo POT), no una lectura de VRAM del driver.
+        // Las visibles se conservan incluso si una pagina por si sola supera el presupuesto.
+        private const long CellTexBytesCap = 32L * 1024 * 1024;
+        private long cellTextureBudget = CellTexBytesCap;
+        private long cellBytesTotal;
+        private bool cellBytesDirty = true;
+        private static long CellBytes(CellTex ct)
+        {
+            if (ct == null || ct.Tex == IntPtr.Zero || ct.Bw < 1 || ct.Bh < 1) return 0;
+            long w = 1, h = 1;
+            while (w < ct.Bw) w <<= 1;
+            while (h < ct.Bh) h <<= 1;
+            // Dimensiones imposibles no deben desbordar el total ni desactivar la poda.
+            if (w > 0x40000000L || h > 0x40000000L) return long.MaxValue / 128;
+            return Math.Min(w * h * 4L, long.MaxValue / 128);
+        }
+        private long CachedCellBytes()
+        {
+            if (!cellBytesDirty) return cellBytesTotal;
+            long bytes = 0;
+            foreach (CellTex ct in cellTexCache.Values) bytes += CellBytes(ct);
+            foreach (CellTex ct in nativeCovers.Values) bytes += CellBytes(ct);
+            for (int i = 0; i < slotTex.Length; i++) bytes += CellBytes(slotTex[i]);
+            cellBytesTotal = bytes; cellBytesDirty = false;
+            return bytes;
+        }
+        private void EvictCellTex()
+        {
+            EvictNativeCovers();
+            long bytes = CachedCellBytes();
+            while (cellTexCache.Count > cellTextureCapacity || bytes > cellTextureBudget)
+            {
+                string oldestKey = null; int oldestAge = 0, oldestSlot = -1;
+                foreach (KeyValuePair<string, CellTex> kv in cellTexCache)
+                { int age = unchecked(cellFrame - kv.Value.Frame); if (age > oldestAge && !protectedAhead.Contains(kv.Key)) { oldestAge = age; oldestKey = kv.Key; } }
+                if (oldestKey == null)
+                    foreach (KeyValuePair<string, CellTex> kv in cellTexCache) {
+                        int age = unchecked(cellFrame - kv.Value.Frame);
+                        if (age > oldestAge) { oldestAge = age; oldestKey = kv.Key; }
+                    }
+                // Los slots sin carpeta tambien ocupan memoria. Solo compiten si se exceden los bytes.
+                if (bytes > cellTextureBudget)
+                    for (int i = 0; i < slotTex.Length; i++)
+                    {
+                        CellTex st = slotTex[i]; if (st == null) continue;
+                        int age = unchecked(cellFrame - st.Frame);
+                        if (age > oldestAge) { oldestAge = age; oldestKey = null; oldestSlot = i; }
+                    }
+                if (oldestKey == null && oldestSlot < 0) break;
+                CellTex ct = oldestSlot >= 0 ? slotTex[oldestSlot] : cellTexCache[oldestKey];
+                if (!ReleaseCoverTexture(ct.Tex)) break;
+                bytes -= CellBytes(ct);
+                cellBytesTotal = bytes;
+                if (oldestSlot >= 0) slotTex[oldestSlot] = null;
+                else cellTexCache.Remove(oldestKey);
+            }
+        }
+
+        // Rehace la textura del contador SOLO cuando cambia el numero (~1/seg). Es diminuta: coste despreciable.
+        private void EnsureFpsTex()
+        {
+            if (fpsTex != IntPtr.Zero && fpsShown == Fps && fpsFluidezMostrada == fluidez.Version) return;
+            fpsShown = Fps; fpsFluidezMostrada = fluidez.Version;
+            fpsTW = Math.Min(420, Math.Max(260, Width - 20)); fpsTH = 46;
+            using (Bitmap bmp = new Bitmap(fpsTW, fpsTH, PixelFormat.Format32bppPArgb))
+            {
+                using (Graphics g = Graphics.FromImage(bmp))
+                using (Font f = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold))
+                using (SolidBrush bg = new SolidBrush(Color.FromArgb(190, 0, 0, 0)))
+                using (SolidBrush yb = new SolidBrush(Color.FromArgb(235, 245, 225, 60)))
+                {
+                    g.Clear(Color.Transparent);
+                    g.TextRenderingHint = TextRenderingHint.AntiAlias;
+                    g.FillRectangle(bg, 0, 0, fpsTW, fpsTH);
+                    g.DrawString("GPU D3D9: " + Fps + " FPS  (tope " + TopeFpsReal + ")", f, yb, 6, 4);
+                    g.DrawString("p95 " + FluidezGpu.Numero(fluidez.P95) + " ms | max " + FluidezGpu.Numero(fluidez.Maximo) + " ms", f, yb, 6, 23);
+                }
+                fpsTex = Upload(fpsTex, ref fpsBw, ref fpsBh, bmp, out fpsU, out fpsV);
+            }
+        }
+
+        // Ajusta la espera entre reconstrucciones pesadas al COSTE REAL de la ultima: la espera es ~1.5x el
+        // coste, asi el trabajo pesado ocupa como mucho ~40% del tiempo y el fondo siempre respira.
+        // Reconstruccion barata (UI cacheada del buscador) -> espera corta -> fluido; rejilla cara (paginar
+        // discos) -> espera larga -> el fondo no se atasca. Se auto-ajusta al equipo (banco potente o rocola vieja).
+        private void NoteHeavy(int t0)
+        {
+            lastHeavyMs = Environment.TickCount;
+            int cost = lastHeavyMs - t0; if (cost < 0) cost = 0;
+            int g = cost + cost / 2;   // ~1.5x el coste
+            heavyGapMs = g < 16 ? 16 : (g > 250 ? 250 : g);
+        }
+
+        // El estado es una textura mutable propia, no una portada compartida. Una actualizacion de
+        // texto reusa su memoria GPU; el reloj solo sube la region marcada de la revision inmediata.
+        private void SubeEstadoExtendido(Bitmap bitmap)
+        {
+            if (bitmap == null) return;
+            if (ReferenceEquals(bitmap, idleLastBmp) && idleTex != IntPtr.Zero && IdlePanelVersion == idleUploadedVersion) return;
+            bool regional = ReferenceEquals(bitmap, idleLastBmp) && idleTex != IntPtr.Zero
+                && unchecked(IdlePanelVersion - idleUploadedVersion) == 1 && !IdlePanelDirty.IsEmpty
+                && idleW == bitmap.Width && idleH == bitmap.Height;
+            if (!(regional && stars.UpdateOverlayRegion(idleTex, bitmap, IdlePanelDirty)))
+                idleTex = Upload(idleTex, ref idleW, ref idleH, bitmap, out idleU, out idleV);
+            if (idleTex != IntPtr.Zero) { idleLastBmp = bitmap; idleUploadedVersion = IdlePanelVersion; }
+            else { idleLastBmp = null; idleUploadedVersion = -1; }
+        }
+
+        // Sube 'bmp' a 'tex' REUTILIZANDO la textura si el bitmap tiene el mismo tamano (barato: solo re-copia
+        // el contenido); si cambio de tamano o no habia, la recrea. Evita crear/destruir una textura a pantalla
+        // completa en cada reconstruccion (lo caro), p.ej. la UI ~13fps por el brillo de la letra en navegacion.
+        private IntPtr Upload(IntPtr tex, ref int bw, ref int bh, Bitmap bmp, out float u, out float v)
+        {
+            if (libroOn) libro.Subidas++;
+            if (tex != IntPtr.Zero && bw == bmp.Width && bh == bmp.Height && stars.UpdateOverlay(tex, bmp, out u, out v))
+                return tex;   // actualizada in situ (misma textura)
+            if (tex != IntPtr.Zero) D3D9.Release(tex);
+            tex = stars.CreateOverlay(bmp, out u, out v);
+            if (tex == IntPtr.Zero) sondeoMemoriaPedido = true;   // no se pudo crear: quiza falta memoria, que se vuelva a preguntar cuanta hay
+            bw = bmp.Width; bh = bmp.Height;
+            return tex;
+        }
+
+        private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
+        {
+            SetTexQuadA(v, x0, y0, x1, y1, uMax, vMax, 0xFFFFFFFFu);
+        }
+        // Igual que SetTexQuad pero con COLOR (el alfa del vertice modula la textura): asi el desvanecido
+        // de la transicion no cuesta nada, lo hace la GPU al mezclar.
+        private static void SetTexQuadA(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb)
+        {
+            // Cuatro esquinas y dos copias exactas; sin segunda pasada para cambiar el color.
+            SetV(ref v[0], x0, y0, 0, 0); v[0].Color = argb;
+            SetV(ref v[1], x1, y0, uMax, 0); v[1].Color = argb;
+            SetV(ref v[2], x1, y1, uMax, vMax); v[2].Color = argb;
+            SetV(ref v[5], x0, y1, 0, vMax); v[5].Color = argb;
+            v[3] = v[0]; v[4] = v[2];
+        }
+        // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
+        // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
+        private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
+
+        // FONDO REACTIVO: una AURORA BOREAL. Se dibuja como una malla de columnas (dos triangulos por trozo)
+        // sin textura y con mezcla normal: el color va en los vertices y la tarjeta lo degrada sola. Nada se
+        // suma, asi que nunca se lava hacia el blanco -eso era lo que manchaba con los halos- y todo cuesta
+        // UNA sola llamada de dibujo.
+        //
+        // Lo que la hace parecer una aurora de verdad y no una barra de niveles:
+        //   1) CORTINAS. Encima de la forma que dictan las bandas va un ondeo de rayos verticales que se
+        //      desliza despacio (AurRayo). Es lo que da las vetas de luz de una aurora; no depende de la
+        //      musica, vive por su cuenta, y por eso el fondo respira aunque la cancion este tranquila.
+        //   2) DOS COLORES A LO ALTO. El pie de la cortina lleva el color de la cancion y la punta el mismo
+        //      color girado en la rueda hacia otro tono, como el verde que se vuelve morado en las de verdad.
+        //   3) HORIZONTE. Por debajo de donde nace la cortina el color se HUNDE -de tono y de presencia- hasta
+        //      fundirse con el cielo en el borde de la pantalla: es el suelo oscuro de las fotos de auroras y,
+        //      de paso, deja leerse el texto de la franja de estado. Es un degradado que muere en el mismo
+        //      color del cielo, asi que no hay ningun corte: todo sigue siendo una sola pieza.
+        private const int AurCols = 144;      // trozos a lo ancho (145 puntos): hacen falta para las vetas finas
+        private const int AurFilas = 6;       // franjas apiladas a lo alto: cuantas mas, mas suave el degradado
+        private const float AurPiso = 0.20f;  // suelo: aunque la cancion afloje, la cortina no desaparece
+        private const float AurAlfaBase = 0.46f, AurAlfaPico = 0.48f;   // opacidad del relleno (flojo -> fuerte)
+        private const int AurSuelo = 4;       // franjas por DEBAJO del horizonte (el suelo)
+        private const float AurHondo = 0.10f; // que tan hundido queda el tono al pie de la pantalla (0 = lo mas hondo)
+        // Ancho del LOBULO de cada banda, medido en bandas. Al ser MENOR que 1, el lobulo de una banda se
+        // apaga ANTES de llegar al centro de su vecina: asi una banda fuerte no se traga a la de al lado y se
+        // ven los ocho bultos separados por su valle. Esto es lo que hace que se distingan las frecuencias.
+        private const float AurLobulo = 0.72f;
+
+        // ---------------- EL FILO DE NEON ----------------
+        // El relleno se apaga hacia arriba sin dejar borde: la forma se intuye, pero no se ve DIBUJADA.
+        // Encima de esa silueta va ahora un filo encendido -un nucleo fino y clarisimo y un resplandor
+        // del mismo color a los dos lados- que se SUMA a lo que ya hay en vez de taparlo. Asi es como se
+        // lee un tubo de neon: el centro casi quema y el color se derrama alrededor.
+        private const float AurNeonNucleo = 1.6f;    // medio grosor del filo encendido, en pixeles
+        private const float AurNeonFuera = 15f;      // hasta donde llega el resplandor por ENCIMA de la silueta
+        private const float AurNeonDentro = 11f;     // y hacia dentro de la cortina
+        private const float AurNeonQuiebre = 0.36f;  // donde se parte el desvanecido de fuera (para que caiga en curva, no en linea)
+        private const float AurNeonBase = 0.30f, AurNeonPico = 0.52f;   // brillo del filo (la cancion floja -> el pico)
+        private const float AurNeonBlanco = 0.45f;   // cuanto se aclara el NUCLEO respecto a su color (0 = el mismo)
+        private const float AurNeonHalo = 0.34f;     // brillo del resplandor respecto al del nucleo
+
+        // ---------------- LA LINEA DEL HORIZONTE ----------------
+        // El filo sobre el que la aurora esta PARADA, de lado a lado de la pantalla: una raya fina y
+        // clarisima con su resplandor desvaneciendose, como el anillo que cruza el agujero negro.
+        //
+        // DONDE VA. El relleno nace en BaseY, que cae 2 pixeles DENTRO de la primera linea del titulo de
+        // la cancion (esa linea suele ir vacia, pero se usa cuando el titulo no cabe en una sola). Poner
+        // ahi la raya encendida seria ponerla encima de ese texto. Asi que la raya se levanta un poco
+        // (AurLineaAlza) y su resplandor hacia abajo se acaba JUSTO antes de donde el texto empieza.
+        // Los pixeles de relleno que quedan por debajo de la raya no sobran: hacen de brillo por dentro,
+        // que es justo como se ve la linea que cruza el agujero negro (luz por encima y por debajo).
+        private const float AurLineaNucleo = 1.4f;
+        private const float AurLineaAlza = 14f;
+        private const float AurLineaArriba = 34f, AurLineaAbajo = 11f;
+        private const float AurLineaQuiebre = 0.34f;
+        private const float AurLineaBase = 0.50f, AurLineaPico = 0.50f;
+        private const float AurLineaHalo = 0.30f;
+        // La raya es PLANA: su forma no cambia a lo ancho, solo su brillo, y eso va cambiando muy despacio.
+        // Asi que no le hacen falta las 144 columnas de la cortina: con 36 (una de cada cuatro) sale igual y
+        // se ahorran 3.240 vertices por cuadro, que en la maquina modesta es lo que hay que cuidar.
+        private const int AurLineaCols = 36;
+        // El CONTORNO, al reves, va al DOBLE de puntos que la cortina y por una CURVA. El relleno se apaga
+        // hacia arriba y su borde no llega a verse, asi que da igual que lo una con rectas; pero el filo es
+        // una raya fina y ahi cualquier esquina canta -en una pantalla ancha, cada tramo mide 14 pixeles y
+        // las cimas salian en punta, como un triangulo-. Con el doble de puntos y pasando por una curva que
+        // toca los mismos (Catmull-Rom), las cimas salen redondas y los valles tambien.
+        private const int AurContCols = AurCols * 2;
+        private const int AurBrilloVtx = (4 * AurContCols + 5 * AurLineaCols) * 6;   // 4 franjas el contorno + 5 la raya
+
+        private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
+        private D3D9.Vtx[] aurVb;                              // y los del brillo (el neon, que va sumado aparte)
+        private float[] aurH, aurHs, aurA, aurR;             // alto (crudo y ya suavizado), opacidad y ondeo de cada columna
+        private float[] aurNi, aurLi;                        // brillo del filo y de la linea, columna a columna
+        private uint[] aurNc, aurLc;                         // y sus colores (el de la punta y el del pie)
+        private uint[] aurCortina, aurSueloC;                // colores por franja: la cortina y el suelo
+        private uint[] aurRampPie, aurRampAgu;               // el degradado pie->punta de cada extremo (una vez por cuadro)
+        // RELOJ DE LA AURORA. Antes era "los segundos que llevo encendida", sacados de Environment.TickCount.
+        // En un bar la rocola no se apaga NUNCA, y eso trae dos problemas de los que solo se ven despues de
+        // semanas: a los 24 dias el reloj de Windows da la vuelta, y mucho antes -a los pocos dias- ese numero
+        // se hace tan grande que un float ya no puede guardar decimales y el tiempo empieza a avanzar A SALTOS
+        // de un cuarto de segundo: la aurora se veria ir a tirones sin motivo aparente.
+        //
+        // Aqui se lleva el tiempo a mano, sumando el paso de cada cuadro (la resta de TickCount da bien el paso
+        // aunque el reloj de la vuelta), y se le da la vuelta cada 628.3185 segundos. Ese numero no es
+        // cualquiera: es 2*pi/0.01, y TODAS las ondas del fondo giran a un multiplo exacto de 0.01, asi que al
+        // dar la vuelta cada una vuelve EXACTAMENTE a donde estaba. El salto no existe: es el mismo dibujo.
+        private const double AurVuelta = 628.3185307179586;   // 2*pi/0.01
+        private double aurT;                                  // segundos de animacion, ya dada la vuelta
+        private double aurFinoAnt; private bool aurRelojOk;   // para medir el paso de cada cuadro (reloj FINO: ver AhoraMs)
+        private GpuAurora auCuadro;                          // la aurora de ESTE cuadro (la pide el render y la dibuja TrasCielo)
+        private readonly GpuStarfield.Dibuja trasCielo;      // delegado creado UNA vez (nada de basura por cuadro)
+        private readonly GpuStarfield.DibujaBase cieloBase;  // el cielo a media resolucion (PerformanceGpu.cs)
+        private readonly GpuStarfield.Dibuja trasEstrellas; // idem: la luna, delante de las estrellas
+
+        // LA VIA LACTEA Y LAS NEBULOSAS. Son manchas grandes y muy suaves, o sea justo lo que se puede
+        // dibujar CHIQUITO y estirar sin que se note: se hornean a un CUARTO de tamano y la tarjeta las
+        // estira al dibujarlas. Dos cuadrangulos a pantalla completa por cuadro, que para una tarjeta es
+        // nada, y ni una mancha que recalcular.
+        //
+        // Van en DOS texturas y no en una porque las nebulosas se tinen con el color del genero que suena y
+        // la neblina no: la neblina es del blanco azulado del que esta hecha de verdad.
+        private IntPtr nebTex, hazTex;
+        private int nebTW = -1, nebTH = -1, hazTW = -1, hazTH = -1;
+        private float nebU = 1f, nebV = 1f, hazU = 1f, hazV = 1f;
+        private int nieblaW = -1, nieblaH = -1;
+        private int nieblaRetryMs; private bool nieblaRetryPending;
+        private readonly D3D9.Vtx[] nieblaQuad = new D3D9.Vtx[6];
+        // LAS DOS NEBULOSAS. El form las pone: una con el color del GENERO y otra con el de la CARATULA
+        // (ver ColoresNebulosa). NebFase es la misma cuenta lenta que las hace ir a la deriva.
+        public uint NebColor = 0xFF8C78FF, NebColor2 = 0xFF8C78FF;
+        public float HazFase = 0f;   // el reloj LENTO de la via lactea (una vuelta cada ~3 min); lo lleva Form1
+        public bool ConLuna = true;  // perilla de Ctrl+F3 (pestana DETALLES)
+        public float NebFase = 0f;
+        // CUANTO SE SALEN DE LA PANTALLA. Las dos capas van a la deriva, y para que al moverse no asome el
+        // borde se dibujan un poco mas grandes que la pantalla y se mueven DENTRO de ese margen. Por eso no
+        // hace falta que la textura se repita: nunca se ve donde acaba.
+        private const float NebDeriva = 0.06f;
+        // CUANTO SE MUEVE LA VIA LACTEA, en parte de pantalla. La mitad que las nebulosas y con la vuelta
+        // seis veces mas larga: es lo que esta mas lejos de todo.
+        //
+        // Y SE MUEVE EN CIRCULO ACOTADO, no dando la vuelta por el borde como hacen las estrellas. Tiene que
+        // ser asi: una estrella que sale por la derecha reaparece por la izquierda y nadie lo nota porque es
+        // un punto, pero la via lactea es una BANDA que cruza la pantalla entera y su dibujo llega hasta los
+        // dos cantos. Envolverla partiria la banda por la mitad con una costura recta.
+        //
+        // El seno y el coseno se cierran EXACTOS en la vuelta del reloj, asi que no hay salto ni tiron al
+        // completarse: es el mismo truco que ya usan las nebulosas.
+        private const float HazDeriva = 0.035f;
+        // Las dos capas van a TINTA ENTERA: cuanto se notan se decide en el dibujo (ver Form1.NebFuerza), no
+        // aqui. Poner la fuerza en el alfa del vertice no valdria: ese alfa es un byte y no puede pasar de
+        // uno, y lo que se eligio mirando es cuatro veces lo de antes.
+        private const float NebAlfa = 1f;
+
+        // CUANTO ESPERA EL MAPA ANTES DE REHORNEARSE POR EL DESLIZADOR.
+        //
+        // El interruptor del detalle natural es un clic: rehornea al momento y se acabo. El DESLIZADOR
+        // no, y esa es toda la diferencia. Arrastrarlo de punta a punta suelta un aviso POR CADA UNIDAD
+        // -cien-, y hornear el mapa cuesta 23 ms en la pantalla del bar, medido. Un cuadro a sesenta por
+        // segundo dura 16,7: un solo horneado ya se pasa. Cien seguidos son dos segundos y pico de
+        // tirones, mas cien veces destruir y crear la textura, que es lo que peor le sienta al
+        // controlador de la tarjeta.
+        //
+        // Asi que la fuerza se apunta al vuelo -el numero sube mientras arrastras- pero el mapa se
+        // hornea como mucho una vez cada NebEspera. Al soltar, el ultimo valor entra en la ronda
+        // siguiente: nunca se queda sin hornear, y nunca tarda mas de esta espera en verse.
+        internal const int NebEspera = 150;
+        private int nebFuerzaMs;
+        // LA DECISION VA APARTE Y ES PURA: recibe si cambio el interruptor, si cambio la fuerza, el reloj
+        // de ahora y cuando se horneo la ultima vez, y dice si toca. Asi se puede probar sin tarjeta
+        // grafica, que aqui no hay ninguna. Es el mismo apaño que PasoMuro, StepIdle o SmoothProgress.
+        internal static bool TocaRehornear(bool cambioMando, bool cambioFuerza, int ahora, int ultimo)
+        {
+            if (cambioMando) return true;        // el interruptor es un clic: al momento
+            if (!cambioFuerza) return false;
+            return unchecked(ahora - ultimo) >= NebEspera;   // el deslizador se junta
+        }
+        private void EnsureNieblas()
+        {
+            bool cambioMando = nebNaturalDe != CieloProfundo;
+            bool cambioFuerza = nebFuerzaDe != Form1.nebNaturalFuerza;
+            int ahoraNeb = Environment.TickCount;
+            if (TocaRehornear(cambioMando, cambioFuerza, ahoraNeb, nebFuerzaMs))
+            { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nieblaRetryPending = false; }
+            bool nuevoTamano = nieblaW != Width || nieblaH != Height;
+            if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && (SinGrano || ruidoTex != IntPtr.Zero)) return;
+            int now = Environment.TickCount;
+            if (!nuevoTamano && nieblaRetryPending && unchecked(now - nieblaRetryMs) < 250) return;
+            nieblaW = Width; nieblaH = Height;
+            int mw = Math.Max(8, Width / 4), mh = Math.Max(8, Height / 4);
+            // Un fallo parcial solo reintenta la capa pendiente; no vuelve a hornear las que ya llegaron.
+            if (nuevoTamano || hazTex == IntPtr.Zero)
+                using (Bitmap hz = GpuStarfield.BakeViaLactea(mw, mh))
+                {
+                    hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV); nieblasVer++;   // (G1: el cielo guardado ya no vale)
+                    hazTeselas = TeselasVisibles.De(hz, TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)
+                }
+            if (nuevoTamano || nebTex == IntPtr.Zero)
+            {
+                // CON QUE se horneo se apunta AQUI, no arriba al soltar la textura: si se apuntara antes
+                // de saber que el horneado ocurre, un mapa que no llego a hacerse quedaria dado por bueno
+                // y el mando no se veria hasta el siguiente cambio.
+                nebNaturalDe = CieloProfundo; nebFuerzaDe = Form1.nebNaturalFuerza; nebFuerzaMs = ahoraNeb;
+                using (Bitmap nb = CieloProfundo ? BakeNatural(mw, mh) : GpuStarfield.BakeNebulosas(mw, mh))
+                {
+                    nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV); nieblasVer++;
+                    // Sin el detalle natural, la mitad de la nebulosa es transparente del todo, y se pintaba dos veces
+                    // por cuadro a pantalla completa. Con el detalle, casi toda tiene algo: va entera, como siempre.
+                    nebTeselas = SiAhorran(TeselasVisibles.De(nb, TeselasVisibles.LadoTesela, true));   // (DibujoLigeroGpu.cs)
+                }
+            }
+            if (!SinGrano && ruidoTex == IntPtr.Zero)
+                using (Bitmap rd = Form1.BakeRuidoGrande(RuidoTeja)) { ruidoTex = Upload(ruidoTex, ref ruTW, ref ruTH, rd, out ruU, out ruV); nieblasVer++; }
+            nieblaRetryPending = hazTex == IntPtr.Zero || nebTex == IntPtr.Zero || (!SinGrano && ruidoTex == IntPtr.Zero);
+            nieblaRetryMs = Environment.TickCount;   // un fallo persistente no rehornea las capas en cada cuadro
+        }
+
+        // EL GRANO QUE DESHACE LAS FRANJAS DEL CIELO. El por que esta en Form1, junto al dibujito: el cielo
+        // se pintaba en unas treinta franjas planas porque el canal que menos se mueve cambia un nivel de 255
+        // cada treinta pixeles, y el ojo engancha ese canto recto. Un grano de un nivel se lo quita.
+        //
+        // Va DESPUES del cielo, de las nieblas y de la aurora -que son las tres cosas que hacen bandas- y
+        // ANTES de las estrellas, que no las hacen y a las que no tiene nada que aportarles.
+        //
+        // Y va en trozos porque las texturas de aqui estan en modo "pegado al borde" y no se repiten solas:
+        // una teja de 1024 cubre una pantalla de bar en cuatro estampados, y una de 1024x768 en uno.
+        private const int RuidoTeja = 1024;
+        private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
+        private D3D9.Vtx[] ruidoMalla;
+        private int ruidoAncho, ruidoAlto, ruidoTriangulos;
+        private float ruidoU, ruidoV;
+
+        // ESTRELLA GPU: superficie neutra preparada una vez por estilo (detallado/sencillo).
+        // El color musical y el movimiento van en los vertices, sin rehornear ni subir
+        // texturas al cambiar de cancion. Se conservan las claves de configuracion lunar.
+        // La pared CPU mantiene su luna original, sin cambios.
+        private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
+        private int lunaDe = -1;
+        private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
+        private void EnsureLuna()
+        {
+            if (Estrella3D) return; // el cuerpo 3D y la ayuda 3D usan geometria, nunca este mapa 2D
+            if ((!ConLuna && (!AsistenteOcultaFondo || Estrella3D)) || Height < 64) return;
+            int moonKey = MoonTextureSize;
+            if (lunaTex == IntPtr.Zero || lunaDe != moonKey || lunaDetalleDe != LunaRealista)
+            {
+                using (Bitmap lb = BakeStar(LunaRealista))
+                {
+                    lunaTex = Upload(lunaTex, ref luTW, ref luTH, lb, out luU, out luV);
+                }
+                if (lunaTex != IntPtr.Zero) {
+                    lunaDe = moonKey; lunaDetalleDe = LunaRealista;
+                }
+            }
+        }
+        private void DibujaLuna()
+        {
+            if (AsistenteOcultaFondo) return; // no duplicar estrella ni ecos durante el viaje al frente
+            if (!ConLuna || Height < 64) return;
+            if (!Estrella3D && lunaTex == IntPtr.Zero) return;
+            DrawDetailedMoon();
+        }
+        private void DibujaRuido()
+        {
+            D3D9.Vtx[] malla; int n = MallaRuido(out malla);
+            if (n > 0) stars.DrawTexturedBatchWrap(ruidoTex, malla, n / 3);
+        }
+        // Los vertices del grano de este cuadro (los mismos para la pasada sola y para la unida con la vineta). Devuelve
+        // cuantos; 'malla' es un arreglo reusado: se usa antes de volver a pedir trozos.
+        private int MallaRuido(out D3D9.Vtx[] malla)
+        {
+            malla = null;
+            if (SinGrano || ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return 0;
+            PreparaMallaRuido();
+            if (ruidoMalla == null) return 0;
+            if (nHuecos > 0)
+            {
+                // Sin pintar debajo de las portadas (DibujoLigeroGpu.cs): cada teja, menos los huecos.
+                int v = 0;
+                for (int p = 0; p + 5 < ruidoTriangulos * 3; p += 6)
+                {
+                    D3D9.Vtx a = ruidoMalla[p], c = ruidoMalla[p + 2];
+                    v = Trozos(v, a.X + 0.5f, a.Y + 0.5f, c.X + 0.5f, c.Y + 0.5f, a.U, a.V, c.U, c.V, a.Color);
+                }
+                malla = trozosHuecos;
+                return v;
+            }
+            malla = ruidoMalla;
+            return ruidoTriangulos * 3;
+        }
+        private void PreparaMallaRuido()
+        {
+            int ancho = Width, alto = Height;
+            if (ancho <= 0 || alto <= 0) { ruidoMalla = null; ruidoTriangulos = 0; return; }
+            if (ruidoMalla != null && ruidoAncho == ancho && ruidoAlto == alto
+                && ruidoU == ruU && ruidoV == ruV) return;
+            int n = checked(checked(((ancho - 1) / RuidoTeja + 1) * ((alto - 1) / RuidoTeja + 1)) * 6);
+            // Solo retener lo que necesita la geometria actual, nunca el maximo historico.
+            if (ruidoMalla == null || ruidoMalla.Length != n) ruidoMalla = new D3D9.Vtx[n];
+            int pos = 0;
+            for (int y = 0; y < alto; y += RuidoTeja)
+                for (int x = 0; x < ancho; x += RuidoTeja)
+                {
+                    float aw = Math.Min(RuidoTeja, ancho - x), ah = Math.Min(RuidoTeja, alto - y);
+                    float u = ruU * (aw / RuidoTeja), v = ruV * (ah / RuidoTeja);
+                    // Mismos triangulos, UV parciales, orden y centro de pixel que cada
+                    // estampado original. La teja es estatica: no reconstruir por cuadro.
+                    SetV(ref ruidoMalla[pos], x, y, 0, 0); SetV(ref ruidoMalla[pos + 1], x + aw, y, u, 0);
+                    SetV(ref ruidoMalla[pos + 2], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 3], x, y, 0, 0);
+                    SetV(ref ruidoMalla[pos + 4], x + aw, y + ah, u, v); SetV(ref ruidoMalla[pos + 5], x, y + ah, 0, v);
+                    pos += 6;
+                }
+            ruidoAncho = ancho; ruidoAlto = alto; ruidoU = ruU; ruidoV = ruV;
+            ruidoTriangulos = n / 3;
+        }
+
+        // Aqui hay DOS capas a pantalla completa, y ahi esta el escalon de en medio: la nebulosa lleva el
+        // color del genero -es la que se ve y la que ata el fondo con la cancion- y la neblina es un velo
+        // encima que casi no se nota por si solo. En MEDIO se queda la nebulosa y se va el velo: la mitad de
+        // pantalla pintada, y de lejos el fondo sigue siendo el mismo.
+        public bool NebulosasCine = true;
+        public bool NeonIntenso = true, CieloProfundo = true, AuroraBandas = true;
+        private bool nebNaturalDe;
+        private float nebFuerzaDe = -1f;   // con que fuerza se horneo el mapa que hay puesto
+
+        internal static double SmoothProgress(double current, double target, double seconds)
+        {
+            if (double.IsNaN(target) || double.IsInfinity(target)) target = 0;
+            target = Math.Max(0, Math.Min(1, target));
+            if (current < 0 || Math.Abs(target - current) > 0.02 || target == 0 || target == 1) return target;
+            seconds = Math.Max(0, Math.Min(0.25, seconds));
+            return current + (target - current) * (1 - Math.Exp(-seconds * 18));
+        }
+        private void DrawSmoothProgress()
+        {
+            if (GetProgress == null) { progressDraw = -1; progressKey = null; return; }
+            GpuProgress p = GetProgress();
+            if (!ProgresoFluido && !(NeonIntenso && p.Neon) && idleBlend <= 0) { progressDraw = -1; return; }
+            if (!p.Has || p.Rect.Width < 4 || p.Rect.Height < 4) { progressDraw = -1; progressKey = null; return; }
+            double now = AhoraMs();
+            if (!ReferenceEquals(progressKey, p.Key)) progressDraw = -1;
+            progressDraw = SmoothProgress(progressDraw, p.Value, (now - progressClock) / 1000.0);
+            if (!ProgresoFluido) progressDraw = Math.Max(0, Math.Min(1, p.Value));
+            progressClock = now; progressKey = p.Key;
+            float h = p.Rect.Height, x = p.Rect.X + Math.Min(4f, (h - 1) * 0.5f);
+            float y = p.Rect.Y + (h - 1) * 0.5f;
+            float width = Math.Max(0, p.Rect.Right - 1 - (x - p.Rect.X) - x);
+            if (idleBlend > 0)
+            {
+                float expandedX = IdleProgressStart > 0 ? IdleProgressStart : IdleCoverRect(Width, idleH).Right + 180;
+                x += (expandedX - x) * idleBlend;
+                y += (Height - 18 - y) * idleBlend;
+                width += (Math.Max(0, Width - 24 - expandedX) - width) * idleBlend;
+            }
+            ProgressBand(x, y, width, Math.Max(1, h - 2), 0x87080F23u);
+            float length = (float)(width * progressDraw);
+            if (!(length > 0)) return;
+            uint tint = ProgressLight(p.Color, 0.35f);
+            if (p.Neon) { TuboNeon(x, y, length, h, p.Color, NeonIntenso, now); return; }
+            ProgressBand(x, y, length, Math.Max(1, h * 0.48f), 0xA0000000u | tint);
+        }
+
+        // EL TUBO DE NEON, REDISENADO (peticion del 12-10-2026: "la barra de progreso con el neon activado se ve rara").
+        // Antes eran cuatro franjas planas una encima de otra: el "resplandor" era un rectangulo de bordes duros arriba y
+        // abajo, y la punta, cuadrada. Ahora es como un tubo de verdad:
+        //  - el resplandor se desvanece hacia arriba y hacia abajo (degradado en los vertices, sin textura);
+        //  - el tubo es de su color en los bordes y mas claro en medio;
+        //  - un nucleo fino casi blanco, la luz del gas;
+        //  - en la punta, una chispa redonda que late: alli es donde va la cancion.
+        // Sin "neon intenso", lo mismo pero mas tenue. Todo son cuadros de color y un halo: nada se hornea por cuadro.
+        private void TuboNeon(float x, float y, float largo, float h, uint color, bool intenso, double ahoraMs)
+        {
+            uint tint = ProgressLight(color, 0.18f), claro = ProgressLight(color, 0.66f), nucleo = ProgressLight(color, 0.95f);
+            int n = 0;
+            float halo = h * (intenso ? 2.6f : 1.7f);
+            BandaSuave(ref n, x, y, largo, halo, tint, (intenso ? 0x6E000000u : 0x34u << 24) | tint);
+            float tubo = Math.Max(2f, h * 0.70f);
+            BandaSuave(ref n, x, y, largo, tubo, (intenso ? 0xB4000000u : 0x8C000000u) | tint, 0xF2000000u | claro);
+            PreparaProgressBand(ref n, x, y, largo, Math.Max(1f, h * 0.20f), 0xFF000000u | nucleo);
+            stars.DrawMesh(progressV, n / 3);
+            double t = (double.IsNaN(ahoraMs) ? 0 : ahoraMs) / 1000.0;
+            float latido = 0.5f + 0.5f * (float)Math.Sin(t * 4.6);
+            uint a = (uint)((intenso ? 150 : 95) * (0.72f + 0.28f * latido));
+            stars.GlowBatchBegin(2);
+            stars.GlowBatchAdd(x + largo, y, h * (1.7f + 0.5f * latido), (a << 24) | claro);
+            stars.GlowBatchAdd(x + largo, y, h * 0.75f, (Math.Min(255u, a + 70u) << 24) | nucleo);
+            stars.GlowBatchEnd();
+        }
+        // Una banda horizontal que se desvanece hacia arriba y hacia abajo: 'borde' en los filos, 'centro' en medio
+        // (el alfa va en el color). La punta derecha tambien se desvanece, como ProgressBand.
+        private void BandaSuave(ref int n, float x, float y, float w, float alto, uint borde, uint centro)
+        {
+            if (!(w > 0) || !(alto > 0)) return;
+            if ((borde >> 24) == 0) borde &= 0x00FFFFFFu;
+            MediaBanda(ref n, x, y - alto * 0.5f, y, w, borde, centro);
+            MediaBanda(ref n, x, y, y + alto * 0.5f, w, centro, borde);
+        }
+        private void MediaBanda(ref int n, float x, float y0, float y1, float w, uint arriba, uint abajo)
+        {
+            float edge = Math.Min(1.5f, w * 0.5f);
+            ProgressRect(ref n, x, y0, x + w - edge, y1, arriba, abajo, false);
+            ProgressRect(ref n, x + w - edge, y0, x + w + edge, y1, arriba, abajo, true);
+        }
+        private void ProgressRect(ref int n, float x0, float y0, float x1, float y1, uint arriba, uint abajo, bool punta)
+        {
+            SetV(ref progressV[n], x0, y0, 0, 0); progressV[n].Color = arriba;
+            SetV(ref progressV[n + 1], x1, y0, 1, 0); progressV[n + 1].Color = punta ? arriba & 0x00FFFFFFu : arriba;
+            SetV(ref progressV[n + 2], x1, y1, 1, 1); progressV[n + 2].Color = punta ? abajo & 0x00FFFFFFu : abajo;
+            SetV(ref progressV[n + 5], x0, y1, 0, 1); progressV[n + 5].Color = abajo;
+            progressV[n + 3] = progressV[n]; progressV[n + 4] = progressV[n + 2];
+            n += 6;
+        }
+        private static uint ProgressLight(uint c, float f)
+        {
+            uint r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            return ((uint)(r + (255-r)*f) << 16) | ((uint)(g + (255-g)*f) << 8) | (uint)(b + (255-b)*f);
+        }
+        // Coordenadas fraccionarias y borde de un pixel interpolado por GPU:
+        // no cuantizar ni rehornear toda la barra de estado al avanzar.
+        private void ProgressBand(float x, float y, float w, float h, uint color)
+        {
+            int n = 0;
+            PreparaProgressBand(ref n, x, y, w, h, color);
+            stars.DrawMesh(progressV, n / 3);
+        }
+        private void PreparaProgressBand(ref int n, float x, float y, float w, float h, uint color)
+        {
+            float edge = Math.Min(1f, w * 0.5f);
+            float top = y - h * 0.5f, bottom = y + h * 0.5f;
+            ProgressRect(ref n, x, top, x + w - edge, bottom, color, color, false);
+            ProgressRect(ref n, x + w - edge, top, x + w + edge, bottom, color, color, true);
+        }
+
+        // MISMOS PIXELES QUE ANTES, escritos de otra manera. SetPixel es una llamada a GDI+ por
+        // pixel -16 384 aqui- y esto son 2 ms que se pagan en cada reinicio del dispositivo. La
+        // hermana de al lado, BakeNatural, ya lo hacia con LockBits y una sola copia por fila.
+        internal static Bitmap BakeVineta(int n)
+        {
+            if (n < 2) throw new ArgumentOutOfRangeException("n");
+            Bitmap b = new Bitmap(n, n, PixelFormat.Format32bppArgb);
+            int[] pixels = new int[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                    pixels[y * n + x] = unchecked((int)((uint)(VinetaAlfa(x, y, n) + 0.5) << 24));   // negro; solo cambia el alfa
+            BitmapData data = b.LockBits(new Rectangle(0, 0, n, n), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try { for (int y = 0; y < n; y++) Marshal.Copy(pixels, y * n, new IntPtr(data.Scan0.ToInt64() + y * (long)data.Stride), n); }
+            finally { b.UnlockBits(data); }
+            return b;
+        }
+        // El alfa de la vineta en el texel (x, y) de un mapa de n x n (0 a 110). Tambien la usa la vineta punto por punto de
+        // «Fondo en una sola capa» (PerformanceGpu.cs), con el texel en decimales.
+        internal static double VinetaAlfa(double x, double y, int n)
+        {
+            double dx = 2.0 * x / (n - 1) - 1.0, dy = 2.0 * y / (n - 1) - 1.0;
+            double f = Math.Max(0.0, Math.Min(1.0, (dx * dx + dy * dy - 0.18) / 1.82));
+            f = f * f * (3.0 - 2.0 * f);
+            return 110.0 * f;
+        }
+        internal const int VinetaLado = 128;   // el mapa que se hornea (EnsureVineta)
+        // Lo que deja pasar la vineta en el texel (tx, ty) del mapa estirado a la pantalla: 1 en el centro, 1 - 110/255 en
+        // las esquinas. Pegado al borde, como la textura (que va en modo "pegado al borde").
+        // Solo depende de la distancia al centro (dx^2 + dy^2, de 0 a 2), asi que va por tabla: se hace en cada vertice del
+        // fondo y cada cuadro (unos doce mil), y con la cuenta entera costaba mas de medio milisegundo aqui.
+        private const int VinetaTabN = 2048;
+        private static readonly float[] VinetaTab = HazVinetaTab();
+        // La misma cuenta en una rejilla de 257 x 257 sobre la pantalla (de 0 a 1 en cada lado), en 256avos: lo que deja pasar
+        // la vineta en ese punto. La usa la vineta punto por punto (PerformanceGpu.cs, Vinetea). De un punto de la rejilla
+        // al siguiente la vineta cambia como mucho un nivel y medio de 255.
+        internal const int VinetaRejillaLado = 256;
+        private static int[] vinetaRejilla;
+        internal static int[] VinetaRejilla
+        {
+            get
+            {
+                int[] r = vinetaRejilla;
+                if (r != null) return r;
+                r = new int[(VinetaRejillaLado + 1) * (VinetaRejillaLado + 1)];
+                for (int y = 0; y <= VinetaRejillaLado; y++)
+                    for (int x = 0; x <= VinetaRejillaLado; x++)
+                    {
+                        float tx = (x + 0.5f) / VinetaRejillaLado * VinetaLado - 0.5f, ty = (y + 0.5f) / VinetaRejillaLado * VinetaLado - 0.5f;
+                        r[y * (VinetaRejillaLado + 1) + x] = (int)Math.Round(256.0 * VinetaDeja(tx, ty));
+                    }
+                vinetaRejilla = r;
+                return r;
+            }
+        }
+        private static float[] HazVinetaTab()
+        {
+            float[] t = new float[VinetaTabN + 2];
+            for (int i = 0; i <= VinetaTabN + 1; i++)
+            {
+                double r = 2.0 * i / VinetaTabN;
+                double f = Math.Max(0.0, Math.Min(1.0, (r - 0.18) / 1.82));
+                f = f * f * (3.0 - 2.0 * f);
+                t[i] = (float)(1.0 - 110.0 * f / 255.0);
+            }
+            return t;
+        }
+        internal static float VinetaDeja(float tx, float ty)
+        {
+            if (tx < 0f) tx = 0f; else if (tx > VinetaLado - 1) tx = VinetaLado - 1;
+            if (ty < 0f) ty = 0f; else if (ty > VinetaLado - 1) ty = VinetaLado - 1;
+            float dx = 2f * tx / (VinetaLado - 1) - 1f, dy = 2f * ty / (VinetaLado - 1) - 1f;
+            float r = dx * dx + dy * dy;
+            if (r <= 0.18f) return 1f;   // el centro: la vineta no hace nada
+            float p = r * (VinetaTabN / 2f);
+            int i = (int)p; if (i > VinetaTabN) i = VinetaTabN;
+            float fr = p - i;
+            return VinetaTab[i] + (VinetaTab[i + 1] - VinetaTab[i]) * fr;
+        }
+        // EL MAPA SE HORNEA UNA VEZ Y SE GUARDA. Lo que puede fallar en el reintento es la SUBIDA a la
+        // tarjeta -al arrancar, o cuando Windows se lleva el dispositivo al bloquear la sesion-, nunca
+        // el horneado. Antes se rehorneaba entero en cada reintento, o sea cada segundo mientras durara
+        // el fallo. Es la misma precaucion que ya tenia EnsureNieblas dos funciones mas arriba.
+        //
+        // Y al APAGAR el interruptor se suelta todo: antes la textura se quedaba puesta en la tarjeta
+        // hasta cerrar la rocola, aunque ya no se dibujara.
+        private Bitmap vinetaMapa;
+        private void EnsureVineta()
+        {
+            if (!VinetaSuave)
+            {
+                if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
+                if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }
+                vinetaTeselas = null;
+                vinetaRetry = 0;
+                return;
+            }
+            if (vinetaTex != IntPtr.Zero) return;
+            int now = Environment.TickCount;
+            if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
+            vinetaRetry = now;
+            if (vinetaMapa == null) vinetaMapa = BakeVineta(128);
+            if (vinetaTeselas == null) vinetaTeselas = TeselasVisibles.De(vinetaMapa, TeselasVisibles.LadoTesela, true);   // su centro es transparente (DibujoLigeroGpu.cs)
+            vinetaTex = stars.CreateOverlay(vinetaMapa, out vinetaU, out vinetaV);
+        }
+
+        // Solo tinte de los vertices GPU: mismas texturas y dos pasadas, sin buffers
+        // ni asignaciones nuevas por cuadro. Conserva parte del acento musical.
+        internal static uint TinteNebulosa(uint original, bool segunda, bool activo)
+        {
+            if (!activo) return original & 0x00FFFFFFu;
+            uint baseColor = segunda ? 0x009C70E8u : 0x003899D8u;
+            uint r = ((((original >> 16) & 255) * 35 + ((baseColor >> 16) & 255) * 65 + 50) / 100);
+            uint g = ((((original >> 8) & 255) * 35 + ((baseColor >> 8) & 255) * 65 + 50) / 100);
+            uint b = (((original & 255) * 35 + (baseColor & 255) * 65 + 50) / 100);
+            return (r << 16) | (g << 8) | b;
+        }
+
+        private void DibujaNieblas()
+        {
+            if (Nieblas == GpuStarfield.Bajo) return;   // perilla de Ctrl+F3
+            if (hazTex == IntPtr.Zero && nebTex == IntPtr.Zero) return;
+            if (nebTex != IntPtr.Zero)
+            {
+                // El color va en el VERTICE: la tarjeta multiplica la textura por el y las nebulosas cambian
+                // de color con la cancion sin volver a subir nada.
+                //
+                // Y AQUI ESTA EL MOVIMIENTO. La misma capa se dibuja DOS VECES -una del color del genero y
+                // otra del de la caratula- yendo a la deriva en sentidos contrarios. Donde se cruzan sale la
+                // mezcla de los dos colores, y como las dos se mueven, la mezcla se mueve. Son dos
+                // cuadrilateros a pantalla completa en vez de uno: para la tarjeta no es nada.
+                uint a = (uint)(NebAlfa * 255f + 0.5f); if (a > 255) a = 255;
+                float mx = Width * NebDeriva, my = Height * NebDeriva;
+                float c = (float)Math.Cos(NebFase), sn = (float)Math.Sin(NebFase);
+                // MAS PROFUNDIDAD AL PASAR DE PAGINA (CieloVivoGpu.cs): se suma lo que se corrieron, sin salirse nunca del
+                // margen (asi el borde no asoma y la capa no cambia de tamano). Sin empuje, la cuenta de siempre.
+                NieblaDeriva(mx, my, EnMargen(c * mx + nebEmpuje, mx), sn * my, (a << 24) | TinteNeb(NebColor, false));
+                NieblaDeriva(mx, my, EnMargen(-c * mx + nebEmpuje, mx), -sn * my, (a << 24) | TinteNeb(NebColor2, true));
+            }
+            if (hazTex != IntPtr.Zero && Nieblas == GpuStarfield.Alto)
+            {
+                // El cuadrilatero se sale de la pantalla lo que dice el margen por los cuatro lados, asi que
+                // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
+                float mx = Width * HazDeriva, my = Height * HazDeriva;
+                float ox = EnMargen((float)Math.Sin(HazFase) * mx + hazEmpuje, mx), oy = (float)Math.Cos(HazFase) * my;
+                DibujaTeselasFondo(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente ni queda bajo una portada (DibujoLigeroGpu.cs)
+            }
+        }
+
+        private static float EnMargen(float v, float m) { return v > m ? m : (v < -m ? -m : v); }
+        // Una pasada de la nebulosa, corrida (dx, dy) de su sitio. El cuadrilatero se sale de la pantalla por
+        // los cuatro lados lo que dice el margen, asi que por mucho que se mueva nunca asoma su borde.
+        // Solo lo que no es transparente (DibujoLigeroGpu.cs): sin teselas, el cuadrilatero entero de siempre.
+        private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
+        {
+            DibujaTeselasFondo(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);   // sin pintar debajo de las portadas
+        }
+
+        // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
+        // hacia el BLANCO -eso lava el color y es lo que se veia feo- sino recorriendo TONOS DE LA MISMA
+        // FAMILIA. Si el genero es morado: lo flojo sale morado oscuro y profundo, lo medio sale del morado
+        // del genero, y lo fuerte sale de un morado claro, casi lila. Nunca se sale de su color.
+        //
+        // La cuenta: al subir la intensidad sube el BRILLO del tono y baja su SATURACION, que es justo lo que
+        // distingue un tono oscuro de uno claro dentro de una misma familia. La saturacion nunca baja del 45%,
+        // que es el seguro para que jamas llegue a blanco.
+        private static void TonoPorNivel(ref float r, ref float g, ref float b, float v)
+        {
+            if (!(v > 0f)) v = 0f; else if (v > 1f) v = 1f;   // "no es mayor que 0" tambien atrapa NaN
+            float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+            if (mx < 1f) return;                                   // practicamente negro: nada que matizar
+            float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+            float sat = (mx - mn) / mx;                            // 0 = gris, 1 = color puro
+            float val = mx * (0.50f + 0.50f * v);                  // hundido cuando esta flojo, claro cuando pega
+            if (val > 255f) val = 255f;
+            float satNueva = sat * (1f - 0.09f * v);               // al aclararse pierde algo de saturacion, como un tono claro real
+            // Se reconstruye conservando el TONO: cada canal guarda su posicion relativa dentro de la saturacion,
+            // y esa posicion se vuelve a estirar contra la saturacion nueva.
+            float piso = 1f - sat;
+            float inv = (sat > 0.0001f) ? (1f / sat) : 0f;
+            float tr = (sat > 0.0001f) ? ((r / mx) - piso) * inv : 1f;
+            float tg = (sat > 0.0001f) ? ((g / mx) - piso) * inv : 1f;
+            float tb = (sat > 0.0001f) ? ((b / mx) - piso) * inv : 1f;
+            float pisoNuevo = 1f - satNueva;
+            r = val * (pisoNuevo + satNueva * tr);
+            g = val * (pisoNuevo + satNueva * tg);
+            b = val * (pisoNuevo + satNueva * tb);
+            if (r < 0f) r = 0f; else if (r > 255f) r = 255f;
+            if (g < 0f) g = 0f; else if (g > 255f) g = 255f;
+            if (b < 0f) b = 0f; else if (b > 255f) b = 255f;
+        }
+
+        // Las cinco filas del suelo parten del MISMO color. Su tono/saturacion
+        // se descomponen una vez por columna; solo varia el nivel de cada fila.
+        // Mantener las operaciones y el redondeo de TonoPorNivel, sin aproximaciones.
+        private static readonly float[] aurNivelesSuelo = NivelesSuelo();
+        private static float[] NivelesSuelo()
+        {
+            float[] levels = new float[AurSuelo + 1];
+            for (int k = 0; k < levels.Length; k++) levels[k] = AurSueloTono((float)k / AurSuelo);
+            return levels;
+        }
+        private static void AurColoresSuelo(uint[] colors, int puntos, int columna, uint color, float nivel)
+        {
+            float r = (int)((color >> 16) & 255), g = (int)((color >> 8) & 255), b = (int)(color & 255);
+            float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+            if (mx < 1f)
+            {
+                for (int k = 0; k <= AurSuelo; k++) colors[k * puntos + columna] = color & 0xFFFFFFu;
+                return;
+            }
+            float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+            float sat = (mx - mn) / mx, piso = 1f - sat;
+            float inv = (sat > .0001f) ? 1f / sat : 0f;
+            float tr = (sat > .0001f) ? ((r / mx) - piso) * inv : 1f;
+            float tg = (sat > .0001f) ? ((g / mx) - piso) * inv : 1f;
+            float tb = (sat > .0001f) ? ((b / mx) - piso) * inv : 1f;
+            for (int k = 0; k <= AurSuelo; k++)
+            {
+                float v = nivel * aurNivelesSuelo[k];
+                if (!(v > 0f)) v = 0f; else if (v > 1f) v = 1f;
+                float val = mx * (.50f + .50f * v); if (val > 255f) val = 255f;
+                float satNueva = sat * (1f - .09f * v), pisoNuevo = 1f - satNueva;
+                float rd = val * (pisoNuevo + satNueva * tr), gd = val * (pisoNuevo + satNueva * tg), bd = val * (pisoNuevo + satNueva * tb);
+                if (rd < 0f) rd = 0f; else if (rd > 255f) rd = 255f;
+                if (gd < 0f) gd = 0f; else if (gd > 255f) gd = 255f;
+                if (bd < 0f) bd = 0f; else if (bd > 255f) bd = 255f;
+                colors[k * puntos + columna] = ((uint)(int)rd << 16) | ((uint)(int)gd << 8) | (uint)(int)bd;
+            }
+        }
+
+        // SILUETA. Devuelve, para una posicion de 0 (izquierda) a 1 (derecha) de la pantalla, que tan alto
+        // llega el color ahi. Cada banda pone un LOBULO redondeado centrado en su sitio -la primera pegada al
+        // borde izquierdo, la ultima al derecho- y se toma el MAS ALTO de los que alcanzan ese punto. Tomando
+        // el mas alto (en vez de sumarlos) cada banda conserva su propio bulto y entre bulto y bulto queda un
+        // valle: por eso se distinguen las frecuencias, en vez de salir una loma sin forma.
+        //
+        // El "mas alto" se toma SUAVE (la raiz cuarta de la suma de las cuartas potencias) y no a secas. El
+        // maximo a secas deja un PICO en el cruce de dos lobulos, y la malla, que une los puntos con rectas,
+        // corta ese pico y deja una esquina a la vista. Asi la silueta no tiene ni un solo pico: la banda que
+        // manda sigue mandando igual, pero el cruce con la vecina pasa redondo.
+        internal static float AurPerfil(float[] B, float fx)
+        {
+            int n = (B != null) ? B.Length : 0;
+            if (n < 2) return 0f;
+            float t = fx * (n - 1);
+            int b0 = (int)t - 1; if (b0 < 0) b0 = 0;
+            double suma = 0.0;
+            for (int b = b0; b < n && b <= b0 + 3; b++)
+            {
+                float d = t - b; if (d < 0f) d = -d;
+                d /= AurLobulo; if (d >= 1f) continue;
+                float k = 1f - d * d * (3f - 2f * d);   // 1 en el centro de la banda, 0 en su borde, sin picos
+                double v = B[b] * k; v *= v;            // al cuadrado
+                suma += v * v;                          // ...y otra vez: la cuarta potencia
+            }
+            if (suma <= 0.0) return 0f;
+            return (float)Math.Sqrt(Math.Sqrt(suma));
+        }
+
+        // CORTINAS. El multiplicador de altura de la columna que esta en fx (0..1) en el segundo t. Son tres
+        // ondas de periodos que no encajan entre si, cada una deslizandose a su ritmo: por eso el dibujo NUNCA
+        // se repite igual y no se ve un patron. Las de periodo corto hacen las vetas finas de luz y la larga
+        // mece la cortina entera de un lado a otro. Va acotado para que ninguna columna se dispare ni se apague.
+        internal static float AurRayo(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 17.9 + t * 0.44);   // vetas finas (las que dan el aire de cortina)
+            float b = (float)Math.Sin(x * 9.3 - t * 0.31);    // vetas anchas
+            float c = (float)Math.Sin(x * 3.7 + t * 0.55);    // ondas medianas
+            float d = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
+            float v = 1f + 0.09f * a + 0.11f * b + 0.09f * c + 0.07f * d;
+            if (!(v > 0.64f)) v = 0.64f; else if (v > 1.36f) v = 1.36f;   // el "no es mayor que" atrapa tambien NaN
+            return v;
+        }
+
+        // Mismas operaciones y precision que AurRayo/AurOndaAlto; solo se comparten los dos senos
+        // identicos. Cinco senos por columna en lugar de siete, sin tabla ni cambio de cadencia.
+        internal static void AurOndas(float fx, float t, out float rayo, out float altura)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 17.9 + t * 0.44);
+            float b = (float)Math.Sin(x * 9.3 - t * 0.31);
+            float c = (float)Math.Sin(x * 3.7 + t * 0.55);
+            float d = (float)Math.Sin(x * 1.3 + t * 0.13);
+            float e = (float)Math.Sin(x * 2.3 - t * 0.29);
+            rayo = 1f + 0.09f * a + 0.11f * b + 0.09f * c + 0.07f * d;
+            if (!(rayo > 0.64f)) rayo = 0.64f; else if (rayo > 1.36f) rayo = 1.36f;
+            altura = 1f + 0.11f * c + 0.08f * e + 0.09f * d;
+            if (!(altura > 0.72f)) altura = 0.72f; else if (altura > 1.28f) altura = 1.28f;
+        }
+
+        // SUAVIZADO DE LA SILUETA. Donde se cruzan dos bandas vecinas queda un valle estrecho -cuatro
+        // columnas- y el fondo de ese valle es una punta con el radio de una aguja: ocho pixeles. En el
+        // relleno no se veia, porque su borde se desvanece; el filo de neon lo dibuja, y ahi se ve como un
+        // diente de sierra. Por muchos puntos que se le echen encima, una punta de ocho pixeles se sigue
+        // viendo en punta: hay que redondear la forma, no dibujarla mas fino.
+        //
+        // Se le pasa una media pesada de cinco columnas (1-4-6-4-1). Las lomas y los valles se quedan donde
+        // estaban y casi con la misma hondura -son mucho mas anchos que la media-, pero ninguna punta queda
+        // ya con radio de aguja. Cuesta 145 sumas por cuadro.
+        internal static void AurSuaviza(float[] src, float[] dst)
+        {
+            int n = AurCols;
+            for (int i = 0; i <= n; i++)
+            {
+                int a = i - 2; if (a < 0) a = 0;
+                int b = i - 1; if (b < 0) b = 0;
+                int c = i + 1; if (c > n) c = n;
+                int d = i + 2; if (d > n) d = n;
+                dst[i] = (src[a] + 4f * src[b] + 6f * src[i] + 4f * src[c] + src[d]) * 0.0625f;
+            }
+        }
+        // LA FORMA EN REPOSO. Cuando no suena nada no hay bandas que seguir y la cortina se queda PLANA,
+        // y una raya recta no parece una aurora: parece una neblina. Esto le pone unas lomas anchas que se
+        // van corriendo muy despacio de un lado a otro -media vuelta tarda casi un minuto-, que es lo unico
+        // que se mueve con la rocola callada. Por eso va lenta: tiene que estar viva sin llamar la atencion.
+        //
+        // Se toma la MAS ALTA entre esto y lo que traen las bandas, no la suma: en cuanto vuelve la musica,
+        // la musica manda y esto desaparece por debajo sin que se note el relevo.
+        internal static float AurCalma(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 1.7 + t * 0.11);   // las lomas grandes
+            float b = (float)Math.Sin(x * 2.9 - t * 0.07);   // otras que no encajan con las primeras
+            float v = 0.30f + 0.13f * a + 0.09f * b;
+            if (!(v > 0.05f)) v = 0.05f; else if (v > 0.55f) v = 0.55f;   // acotada como las demas (y atrapa NaN)
+            return v;
+        }
+        // LO QUE ONDULA LA ALTURA de la cortina. Antes era el mismo AurRayo que pone las vetas, y ahi
+        // estaba el problema: la veta fina va y viene casi dieciocho veces de lado a lado de la pantalla
+        // -un diente cada 39 pixeles- y, metida en la ALTURA, dejaba la silueta hecha un serrucho. Un
+        // diente asi tiene el radio de una aguja: por muchos puntos que se le echen encima, en el filo
+        // se ve como una sierra. Mientras el relleno se desvanecia arriba sin dejar borde no se notaba;
+        // con el filo de neon dibujando la silueta, se veia entero.
+        //
+        // Asi que la altura se queda solo con las ondas LARGAS, las que mecen la cortina de un lado a
+        // otro, y las vetas finas se quedan donde de verdad se ven: en el BRILLO (ver AurRayo). Que es
+        // ademas como es una aurora de verdad: el borde va limpio y lo que titila es la luz.
+        internal static float AurOndaAlto(float fx, float t)
+        {
+            double x = fx * 6.2831853;
+            float a = (float)Math.Sin(x * 3.7 + t * 0.55);    // el ondeo mediano
+            float b = (float)Math.Sin(x * 2.3 - t * 0.29);    // otro que no encaja con el anterior
+            float c = (float)Math.Sin(x * 1.3 + t * 0.13);    // el meneo lento de toda la cortina
+            float v = 1f + 0.11f * a + 0.08f * b + 0.09f * c;
+            if (!(v > 0.72f)) v = 0.72f; else if (v > 1.28f) v = 1.28f;   // idem
+            return v;
+        }
+        // DESVANECIDO a lo alto: cuanta opacidad le queda al color a la altura f (0 = donde nace, 1 = la
+        // punta).
+        //
+        // Antes era una S que a media altura ya iba por la mitad y a tres cuartos no quedaba casi nada: la
+        // cortina tenia color pegado abajo y de ahi para arriba era una neblina. Con el filo de neon
+        // dibujando la silueta, ese hueco entre el filo y el color se notaba muchisimo -se veian las rayas
+        // y poco mas-, asi que ahora el color LLENA la cortina: a media altura conserva cuatro quintos y a
+        // tres cuartos, la mitad larga. El ultimo tramo si se apaga deprisa y llega a cero con la pendiente
+        // tambien a cero, para que el relleno muera sin dejar canto por debajo del filo.
+        internal static float AurBaja(float f)
+        {
+            if (!(f > 0f)) return 1f;   // tambien atrapa NaN
+            if (f >= 1f) return 0f;
+            float cuerpo = 1f - (float)Math.Pow(f, 2.2);      // el cuerpo, que ahora aguanta arriba
+            float f4 = f * f; f4 *= f4;
+            return cuerpo * (1f - f4 * f4);                   // y el remate: se acaba en la punta, sin canto
+        }
+
+        // Cuanto del ONDEO se deja ver a la altura f. En el horizonte, NADA (ahi va el texto de la franja y no
+        // se le puede estar encendiendo y apagando el fondo debajo); de media cortina para arriba, TODO. Sin
+        // esto el ondeo solo movia la altura de la columna, y como el borde de arriba se desvanece sin filo, el
+        // ojo no lo veia: la aurora salia como una neblina lisa. La veta se ve porque cambia el BRILLO.
+        internal static float AurRampa(float f)
+        {
+            float r = f * 2f;
+            if (!(r > 0f)) r = 0f; else if (r > 1f) r = 1f;
+            return r;
+        }
+
+        // EL SUELO, por debajo del horizonte (fs: 0 = el horizonte, 1 = el borde de abajo de la pantalla).
+        // El color se hunde a un tono profundo de la misma familia Y ademas pierde presencia, hasta quedarse
+        // exactamente en el cielo al llegar al borde. Asi el fondo no se corta en ningun sitio -abajo del todo
+        // simplemente ya es el cielo- y el texto de la franja de estado queda sobre oscuro, que es donde se lee.
+        // Las dos caen DEPRISA nada mas pasar el horizonte: asi la cortina puede ser mucho mas presente
+        // arriba sin comerse el texto de la franja, que empieza a solo 22 pixeles por debajo.
+        internal static float AurSueloTono(float fs)
+        {
+            float k = 1f - fs; if (!(k > 0f)) k = 0f; else if (k > 1f) k = 1f;
+            return AurHondo + (1f - AurHondo) * k * k * k;
+        }
+        internal static float AurSueloAlfa(float fs)
+        {
+            float k = 1f - fs; if (!(k > 0f)) k = 0f; else if (k > 1f) k = 1f;
+            k *= k;
+            return k * k;
+        }
+
+        // MEZCLA DE TONOS. Entre el color del pie y el de la punta hay bastantes grados de rueda, y mezclarlos
+        // "a lo bruto" (canal a canal) atraviesa el centro de la rueda: a media altura el color se ensucia y
+        // pierde fuerza, que es lo que hacia que los picos no se vieran parejos. Aqui la mezcla se hace por el
+        // BORDE de la rueda -girando el tono por el camino corto- y ademas se mezclan aparte la viveza y el
+        // brillo, asi que el degradado sale limpio de arriba abajo.
+        private static uint AurTonoMezcla(uint c0, uint c1, float f)
+        {
+            if (f <= 0f) return c0;
+            if (f >= 1f) return c1;
+            float h0, s0, v0, h1, s1, v1;
+            AurHsv(c0, out h0, out s0, out v0);
+            AurHsv(c1, out h1, out s1, out v1);
+            float d = h1 - h0;
+            while (d > 180f) d -= 360f; while (d < -180f) d += 360f;   // siempre por el camino corto
+            float h = h0 + d * f;
+            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
+            return AurRgb(h, s0 + (s1 - s0) * f, v0 + (v1 - v0) * f);
+        }
+        private static void AurHsv(uint c, out float h, out float s, out float v)
+        {
+            float r = ((c >> 16) & 0xFF) / 255f, g = ((c >> 8) & 0xFF) / 255f, b = (c & 0xFF) / 255f;
+            float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+            float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+            v = mx; float d = mx - mn;
+            s = (mx <= 0.0001f) ? 0f : d / mx;
+            if (d <= 0.0001f) { h = 0f; return; }
+            if (mx == r) h = 60f * (((g - b) / d) % 6f);
+            else if (mx == g) h = 60f * ((b - r) / d + 2f);
+            else h = 60f * ((r - g) / d + 4f);
+            while (h < 0f) h += 360f; while (h >= 360f) h -= 360f;
+        }
+        private static uint AurRgb(float h, float s, float v)
+        {
+            if (s < 0f) s = 0f; else if (s > 1f) s = 1f;
+            if (v < 0f) v = 0f; else if (v > 1f) v = 1f;
+            float c = v * s, x = c * (1f - Math.Abs((h / 60f) % 2f - 1f)), m = v - c;
+            float r, g, b;
+            if (h < 60f) { r = c; g = x; b = 0f; }
+            else if (h < 120f) { r = x; g = c; b = 0f; }
+            else if (h < 180f) { r = 0f; g = c; b = x; }
+            else if (h < 240f) { r = 0f; g = x; b = c; }
+            else if (h < 300f) { r = x; g = 0f; b = c; }
+            else { r = c; g = 0f; b = x; }
+            uint ri = (uint)((r + m) * 255f + 0.5f), gi = (uint)((g + m) * 255f + 0.5f), bi = (uint)((b + m) * 255f + 0.5f);
+            if (ri > 255) ri = 255; if (gi > 255) gi = 255; if (bi > 255) bi = 255;
+            return (ri << 16) | (gi << 8) | bi;
+        }
+        // Mezcla canal a canal: solo para lo ANCHO, donde los dos tonos estan a 32 grados y no hay nada que ensuciar.
+        // Por entero y no por "sin signo": son los mismos numeros (de 0 a 255, con f entre 0 y 1) y se ahorra la
+        // conversion lenta entre decimales y enteros sin signo, que aqui se hace miles de veces por cuadro.
+        private static uint AurLerpRgb(uint c0, uint c1, float f)
+        {
+            int r0 = (int)((c0 >> 16) & 0xFF), g0 = (int)((c0 >> 8) & 0xFF), b0 = (int)(c0 & 0xFF);
+            uint r = (uint)(int)(r0 + (((int)((c1 >> 16) & 0xFF) - r0) * f));
+            uint g = (uint)(int)(g0 + (((int)((c1 >> 8) & 0xFF) - g0) * f));
+            uint b = (uint)(int)(b0 + (((int)(c1 & 0xFF) - b0) * f));
+            return (r << 16) | (g << 8) | b;
+        }
+
+        private static uint AurArgb(uint rgb, float a)
+        {
+            int v = (int)(a * 255f + 0.5f);
+            if (v < 0) v = 0; else if (v > 255) v = 255;
+            return ((uint)v << 24) | rgb;
+        }
+        // Por referencia: una comprobacion de limites por vertice en vez de siete (se escriben miles por cuadro).
+        private static void AurV3(ref D3D9.Vtx a, float x, float y, uint c)
+        { a.X = x - 0.5f; a.Y = y - 0.5f; a.Z = 0f; a.Rhw = 1f; a.Color = c; a.U = 0f; a.V = 0f; }
+
+        // Arma la malla entera y devuelve cuantos vertices escribio. Aparte del dibujo para poder comprobarla
+        // sin tarjeta. 'alturaPanel' es el borde de abajo de la PANTALLA: el color baja hasta ahi (por detras
+        // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
+        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+                                     float ancho, float baseY, float alturaPanel)
+        { return AurMallaLigera(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, 1); }
+
+        internal static int AurMallaLigera(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+                                     float ancho, float baseY, float alturaPanel, int saltoCols)
+        { return AurMallaVisible(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, saltoCols, true); }
+
+        internal static int AurMallaVisible(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+                                     float ancho, float baseY, float alturaPanel, int saltoCols, bool suelo)
+        {
+            int puntos = AurCols + 1;
+            saltoCols = saltoCols == 2 ? 2 : 1;
+            if (v == null || hCol == null || cCortina == null || cSuelo == null || aCol == null || rCol == null) return 0;
+            if (v.Length < (AurFilas + AurSuelo) * AurCols * 6) return 0;
+            if (hCol.Length < puntos || aCol.Length < puntos || rCol.Length < puntos) return 0;
+            if (cCortina.Length < (AurFilas + 1) * puntos) return 0;
+            if (cSuelo.Length < (AurSuelo + 1) * puntos) return 0;
+            float borde = (alturaPanel > baseY) ? alturaPanel : baseY;   // el borde de abajo de la pantalla
+            float hondo = borde - baseY;
+            float paso = ancho / AurCols;
+            int n = 0;
+            // Primero EL SUELO (del horizonte al borde de abajo) y luego la cortina. Las dos partes comparten
+            // el color y la opacidad exactos del horizonte, asi que ahi no hay ni un salto: es la misma pieza.
+            for (int j = 0; suelo && j < AurSuelo; j++)
+            {
+                float s0 = (float)j / AurSuelo, s1 = (float)(j + 1) / AurSuelo;
+                float m0 = AurSueloAlfa(s0), m1 = AurSueloAlfa(s1);
+                int k0 = j * puntos, k1 = (j + 1) * puntos;
+                float y0 = baseY + hondo * s0, y1 = baseY + hondo * s1;
+                // El borde DERECHO de una celda es el IZQUIERDO de la de al lado: mismo color, misma opacidad,
+                // misma cuenta. Se arrastra en vez de calcularlo dos veces.
+                uint cL0 = AurArgb(cSuelo[k0], aCol[0] * m0), cL1 = AurArgb(cSuelo[k1], aCol[0] * m1);
+                for (int i = 0; i < AurCols; i += saltoCols)
+                {
+                    float x0 = i * paso, x1 = x0 + paso * saltoCols;
+                    uint cR0 = AurArgb(cSuelo[k0 + i + saltoCols], aCol[i + saltoCols] * m0), cR1 = AurArgb(cSuelo[k1 + i + saltoCols], aCol[i + saltoCols] * m1);
+                    AurV3(ref v[n + 0], x0, y0, cL0); AurV3(ref v[n + 1], x1, y0, cR0); AurV3(ref v[n + 2], x0, y1, cL1);
+                    AurV3(ref v[n + 3], x1, y0, cR0); AurV3(ref v[n + 4], x1, y1, cR1); AurV3(ref v[n + 5], x0, y1, cL1);
+                    n += 6;
+                    cL0 = cR0; cL1 = cR1;
+                }
+            }
+            for (int j = 0; j < AurFilas; j++)
+            {
+                float f0 = (float)j / AurFilas, f1 = (float)(j + 1) / AurFilas;
+                float m0 = AurBaja(f0), m1 = AurBaja(f1);
+                float g0 = AurRampa(f0), g1 = AurRampa(f1);   // cuanto ondeo se deja ver a esa altura
+                int k0 = j * puntos, k1 = (j + 1) * puntos;
+                // Lo mismo que en el suelo: el lado derecho de una celda es el izquierdo de la siguiente, y eso
+                // son dos alturas, dos pesos y dos colores por celda que se estaban calculando dos veces. El
+                // ondeo enciende y apaga el BRILLO de la veta, pero NO le cambia el color: asi todas las
+                // cortinas llevan el mismo degradado y los picos se ven parejos entre si.
+                float yL0 = baseY - hCol[0] * f0, yL1 = baseY - hCol[0] * f1;
+                float wL0 = aCol[0] * m0 * (1f + (rCol[0] - 1f) * g0), wL1 = aCol[0] * m1 * (1f + (rCol[0] - 1f) * g1);
+                uint cL0 = AurArgb(cCortina[k0], wL0), cL1 = AurArgb(cCortina[k1], wL1);
+                for (int i = 0; i < AurCols; i += saltoCols)
+                {
+                    float x0 = i * paso, x1 = x0 + paso * saltoCols;
+                    float hR = hCol[i + saltoCols];
+                    float yR0 = baseY - hR * f0, yR1 = baseY - hR * f1;
+                    float wR0 = aCol[i + saltoCols] * m0 * (1f + (rCol[i + saltoCols] - 1f) * g0), wR1 = aCol[i + saltoCols] * m1 * (1f + (rCol[i + saltoCols] - 1f) * g1);
+                    uint cR0 = AurArgb(cCortina[k0 + i + saltoCols], wR0);
+                    uint cR1 = AurArgb(cCortina[k1 + i + saltoCols], wR1);
+                    AurV3(ref v[n + 0], x0, yL1, cL1); AurV3(ref v[n + 1], x1, yR1, cR1); AurV3(ref v[n + 2], x0, yL0, cL0);
+                    AurV3(ref v[n + 3], x1, yR1, cR1); AurV3(ref v[n + 4], x1, yR0, cR0); AurV3(ref v[n + 5], x0, yL0, cL0);
+                    n += 6;
+                    yL0 = yR0; yL1 = yR1; cL0 = cR0; cL1 = cR1;
+                }
+            }
+            return n;
+        }
+
+        // ACLARA un color hacia el blanco sin cambiarle el tono: k=0 lo deja igual, k=1 lo deja blanco. Es
+        // lo que hace que el NUCLEO del filo se lea como neon encendido y no como una raya de color mas.
+        private static uint AurNeon(uint rgb, float k)
+        {
+            if (k <= 0f) return rgb;
+            if (k > 1f) k = 1f;
+            uint r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            r = (uint)(r + (255f - r) * k); g = (uint)(g + (255f - g) * k); b = (uint)(b + (255f - b) * k);
+            return (r << 16) | (g << 8) | b;
+        }
+
+        // ALTURA DE LA SILUETA EN MEDIO DE DOS PUNTOS, por una curva que pasa por todos ellos. Es la de
+        // siempre para esto (Catmull-Rom): mira tambien al punto de antes y al de despues, asi que en una
+        // cima no corta en recta sino que la redondea.
+        //
+        // En los DOS EXTREMOS de la pantalla no hay punto de antes ni de despues. Repetir el del borde
+        // -que es lo primero que uno hace- le miente a la curva diciendole que ahi la silueta se aplana, y
+        // el resultado era un codo justo en el borde izquierdo, el peor de toda la pantalla. Se prolonga la
+        // recta que traen los dos primeros (o los dos ultimos), que es como si la silueta siguiera igual.
+        internal static float AurCurvaH(float[] h, int i, float u)
+        {
+            if (u <= 0f) return !(h[i] > 0f) ? 0f : h[i];   // en los puntos, la altura tal cual (nunca negativa)
+            float p1 = h[i];
+            float p2 = h[i < AurCols ? i + 1 : AurCols];
+            float p0 = (i > 0) ? h[i - 1] : (2f * p1 - p2);
+            float p3 = (i + 2 <= AurCols) ? h[i + 2] : (2f * p2 - p1);
+            float c1 = p2 - p0;
+            float c2 = 2f * p0 - 5f * p1 + 4f * p2 - p3;
+            float c3 = 3f * p1 - 3f * p2 + p3 - p0;
+            float v = 0.5f * (2f * p1 + (c1 + (c2 + c3 * u) * u) * u);
+            return !(v > 0f) ? 0f : v;   // tambien atrapa NaN
+        }
+
+        // Una franja horizontal de la malla: dos alturas (la de arriba y la de abajo) por cada lado, con su
+        // color y su brillo ya resueltos. Todo el neon se arma llamando a esto unas cuantas veces.
+        private static int AurBanda(D3D9.Vtx[] v, int n, float x0, float x1,
+                                    float yL0, float yR0, float yL1, float yR1,
+                                    uint cL0, uint cR0, uint cL1, uint cR1)
+        {
+            AurV3(ref v[n + 0], x0, yL0, cL0); AurV3(ref v[n + 1], x1, yR0, cR0); AurV3(ref v[n + 2], x0, yL1, cL1);
+            AurV3(ref v[n + 3], x1, yR0, cR0); AurV3(ref v[n + 4], x1, yR1, cR1); AurV3(ref v[n + 5], x0, yL1, cL1);
+            return n + 6;
+        }
+
+        // EL BRILLO: el contorno de neon que sigue la silueta de la cortina y la linea encendida del
+        // horizonte sobre la que la aurora esta parada. Va en su propia malla porque se dibuja SUMANDO luz,
+        // no tapando (ver DrawMeshAdd). Aparte del dibujo, como AurMalla, para poder comprobarla sin tarjeta.
+        //   hCol  = altura de la cortina en cada punto (el filo la sigue)
+        //   cNeon = color del filo en cada punto (el de la PUNTA de esa columna)
+        //   nCol  = brillo del filo en cada punto (0..1)
+        //   cLinea/gCol = lo mismo para la linea del horizonte (color del PIE y su brillo)
+        internal static int AurBrillo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY)
+        { return AurBrilloLigero(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, 1); }
+
+        internal static int AurBrilloLigero(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols)
+        { return AurBrilloConHalo(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, saltoCols, false); }
+
+        // El ahorro visual solo estrecha el halo de la cresta. Su nucleo y el horizonte son los mismos.
+        internal static int AurBrilloConHalo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+                                      uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols, bool compacto)
+        {
+            int puntos = AurCols + 1;
+            saltoCols = saltoCols == 2 ? 2 : 1;
+            if (v == null || hCol == null || cNeon == null || nCol == null || cLinea == null || gCol == null) return 0;
+            if (v.Length < AurBrilloVtx) return 0;
+            if (hCol.Length < puntos || nCol.Length < puntos || gCol.Length < puntos) return 0;
+            if (cNeon.Length < puntos || cLinea.Length < puntos) return 0;
+            int n = 0;
+            // ---- LA LINEA DEL HORIZONTE (primero: el contorno va encima) ----
+            float lqA = AurLineaArriba * AurLineaQuiebre, lqB = AurLineaAbajo * AurLineaQuiebre;
+            float ejeY = baseY - AurLineaAlza;   // la raya va un poco por encima del pie (ver AurLineaAlza)
+            float yFa = ejeY - AurLineaArriba, yMa = ejeY - lqA, yNa = ejeY - AurLineaNucleo;
+            float yNb = ejeY + AurLineaNucleo, yMb = ejeY + lqB, yFb = ejeY + AurLineaAbajo;
+            int salto = AurCols / AurLineaCols;
+            float pasoL = ancho / AurLineaCols;
+            // El borde DERECHO de un tramo es exactamente el IZQUIERDO del siguiente: mismo color y misma
+            // opacidad. Se arrastran en vez de volver a calcularlos -eran cuatro cuentas de bits por tramo
+            // hechas dos veces- y de paso desaparece el par mLb/mRb, que era literalmente mLa/mRa otra vez.
+            uint pL = cLinea[0];
+            uint kL = AurNeon(pL, AurNeonBlanco);
+            float aL = gCol[0];
+            uint fL = AurArgb(pL, 0f);                                                 // el borde del resplandor: apagado
+            uint mL = AurArgb(pL, aL * AurLineaHalo);
+            uint nLc = AurArgb(kL, aL);                                                // el nucleo, aclarado
+            for (int i = 0; i < AurLineaCols; i += saltoCols)
+            {
+                float x0 = i * pasoL, x1 = x0 + pasoL * saltoCols;
+                int j1 = (i + saltoCols) * salto;
+                uint pR = cLinea[j1];
+                uint kR = AurNeon(pR, AurNeonBlanco);
+                float aR = gCol[j1];
+                uint fR = AurArgb(pR, 0f);
+                uint mR = AurArgb(pR, aR * AurLineaHalo);
+                uint nRc = AurArgb(kR, aR);
+                n = AurBanda(v, n, x0, x1, yFa, yFa, yMa, yMa, fL, fR, mL, mR);
+                n = AurBanda(v, n, x0, x1, yMa, yMa, yNa, yNa, mL, mR, nLc, nRc);
+                n = AurBanda(v, n, x0, x1, yNa, yNa, yNb, yNb, nLc, nRc, nLc, nRc);
+                n = AurBanda(v, n, x0, x1, yNb, yNb, yMb, yMb, nLc, nRc, mL, mR);
+                n = AurBanda(v, n, x0, x1, yMb, yMb, yFb, yFb, mL, mR, fL, fR);
+                fL = fR; mL = mR; nLc = nRc;
+            }
+            // ---- EL CONTORNO, siguiendo la silueta por la curva (ver AurContCols) ----
+            float qf = AurNeonFuera * AurNeonQuiebre;
+            int sub = AurContCols / AurCols;
+            float pasoC = ancho / AurContCols;
+            float tL = baseY - hCol[0];
+            uint cIz = cNeon[0]; float aIz = nCol[0];
+            // Igual que en la raya: el extremo derecho de una columna ES el izquierdo de la siguiente. Antes se
+            // recalculaban los cuatro colores en cada vuelta -288 vueltas por cuadro, cuatro cuentas de bits
+            // cada una, todas repetidas-; ahora se arrastran.
+            uint kIz = AurNeon(cIz, AurNeonBlanco);
+            uint cfL = AurArgb(cIz, 0f);
+            uint cmL = AurArgb(cIz, aIz * AurNeonHalo);
+            uint cnL = AurArgb(kIz, aIz);
+            for (int q = 0; q < AurContCols; q += saltoCols)
+            {
+                int k = q + saltoCols;
+                int i = k / sub; float u = (k - i * sub) / (float)sub;
+                if (i > AurCols) { i = AurCols; u = 0f; }
+                int i2 = (i < AurCols) ? i + 1 : AurCols;
+                float tR = baseY - AurCurvaH(hCol, i, u);              // la cresta al final de este tramo
+                uint cDe = (u <= 0f) ? cNeon[i] : AurLerpRgb(cNeon[i], cNeon[i2], u);
+                float aDe = nCol[i] + (nCol[i2] - nCol[i]) * u;
+                float x0 = q * pasoC, x1 = x0 + pasoC * saltoCols;
+                uint kR = AurNeon(cDe, AurNeonBlanco);
+                uint cfR = AurArgb(cDe, 0f);
+                uint cmR = AurArgb(cDe, aDe * AurNeonHalo);
+                uint cnR = AurArgb(kR, aDe);
+                if (compacto)
+                    n = AurBanda(v, n, x0, x1, tL - 4f, tR - 4f, tL - AurNeonNucleo, tR - AurNeonNucleo, cfL, cfR, cnL, cnR);
+                else
+                {
+                    n = AurBanda(v, n, x0, x1, tL - AurNeonFuera, tR - AurNeonFuera, tL - qf, tR - qf, cfL, cfR, cmL, cmR);
+                    n = AurBanda(v, n, x0, x1, tL - qf, tR - qf, tL - AurNeonNucleo, tR - AurNeonNucleo, cmL, cmR, cnL, cnR);
+                }
+                n = AurBanda(v, n, x0, x1, tL - AurNeonNucleo, tR - AurNeonNucleo, tL + AurNeonNucleo, tR + AurNeonNucleo, cnL, cnR, cnL, cnR);
+                float dentro = compacto ? 4f : AurNeonDentro;
+                n = AurBanda(v, n, x0, x1, tL + AurNeonNucleo, tR + AurNeonNucleo, tL + dentro, tR + dentro, cnL, cnR, cfL, cfR);
+                tL = tR; aIz = aDe;
+                cfL = cfR; cmL = cmR; cnL = cnR;
+            }
+            return n;
+        }
+
+        private bool aurHaloCompactoDe;
+        private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk; private int aurMallaSalto; private bool aurMallaSuelo;   // la ultima malla armada
+        private void DrawAurora(GpuAurora au)
+        {
+            bool updateWave = SampleWave(ref au);
+            // au es una copia: no modificar el espectro ni el renderizador CPU.
+            if (OndasSuaves) { au.Alto *= 0.78f; au.Dim *= 0.85f; au.DimFilo *= 0.65f; }
+            if (au.Alto < 2f || au.Dim <= 0.02f) return;
+            bool suelo = !AuroraSinSuelo && !EstadoOcultaDesde(au.BaseY);
+            if (suelo != aurMallaSuelo) updateWave = true; // al volver, no usar colores de un suelo antiguo
+            int puntos = AurCols + 1;
+            if (aurH == null)
+            {
+                aurH = new float[puntos]; aurHs = new float[puntos]; aurA = new float[puntos]; aurR = new float[puntos];
+                aurNi = new float[puntos]; aurLi = new float[puntos];
+                aurNc = new uint[puntos]; aurLc = new uint[puntos];
+                aurCortina = new uint[(AurFilas + 1) * puntos]; aurSueloC = new uint[(AurSuelo + 1) * puntos];
+                aurRampPie = new uint[AurFilas + 1]; aurRampAgu = new uint[AurFilas + 1];
+            }
+            int nv = (AurFilas + AurSuelo) * AurCols * 6;
+            if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
+            int nb = AurBrilloVtx;
+            if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
+            double tkAur = waveCadence.SampleMs;   // reloj independiente de 24/50/60, sin frenar el resto del panel
+                                        // Windows -que salta de 15.6 en 15.6- haria avanzar la aurora a tirones
+            if (aurRelojOk)
+            {
+                double dt = (tkAur - aurFinoAnt) / 1000.0;
+                if (!(dt > 0.0)) dt = 0.0; else if (dt > 0.25) dt = 0.25;   // acota atascos (y atrapa NaN)
+                aurT += dt;
+                if (aurT >= AurVuelta) aurT -= AurVuelta;
+            }
+            aurFinoAnt = tkAur; aurRelojOk = true;
+            float t = (float)aurT;
+            if (updateWave) {
+            reflejoListo = false; // sus alturas/colores/brillos van a cambiar en esta muestra
+            // DEGRADADO del pie a la punta de los dos extremos (grave y agudo), girando el tono por el BORDE de la
+            // rueda (ver AurTonoMezcla): asi a media altura el color sigue siendo un color y no una mezcla sucia. Con
+            // el ancho y la paleta de la portada da el color de partida de cada franja; se guarda y solo se rehace
+            // cuando cambia algo de eso (AurBases, en DibujoLigeroGpu.cs).
+            AurBases(au, puntos);
+            for (int i = 0; i < puntos; i++)
+            {
+                float fx = (float)i / AurCols;
+                float v = AurPerfilColumna(au.B, i, AuroraBandas);
+                if (au.Calma > 0f) { float vc = AurCalma(fx, t) * au.Calma; if (vc > v) v = vc; }   // en reposo manda la forma lenta
+                if (v > 1f) v = 1f;
+                float alt = AurPiso + (1f - AurPiso) * v;
+                float rayo, onda;
+                AurOndas(fx, t, out rayo, out onda); // comparten dos senos exactos, calculados una vez
+                aurR[i] = rayo;
+                aurH[i] = au.Alto * alt * onda;      // la forma la pone la musica; el ondeo largo la mece
+                // COLOR de la columna, franja por franja. A lo ancho se funde el tono del extremo grave con el
+                // del agudo (estan a 32 grados: se mezclan sin ensuciarse) y, segun la INTENSIDAD, se elige un
+                // tono de esa misma familia (ver TonoPorNivel). El ondeo NO entra aqui: solo cambia el brillo,
+                // para que todas las cortinas lleven el MISMO degradado y los picos salgan parejos entre si.
+                for (int k = 0; k <= AurFilas; k++)
+                {
+                    uint c = FlowColor(aurBase[k * puntos + i],fx,(au.BaseY-aurH[i]*k/AurFilas)/Math.Max(1,Height));   // la base: AurBases
+                    // Por entero y no por "sin signo": el mismo numero (van de 0 a 255) sin la conversion lenta.
+                    float rr = (int)((c >> 16) & 0xFF), gg = (int)((c >> 8) & 0xFF), bb = (int)(c & 0xFF);
+                    TonoPorNivel(ref rr, ref gg, ref bb, v);
+                    aurCortina[k * puntos + i] = ((uint)(int)rr << 16) | ((uint)(int)gg << 8) | (uint)(int)bb;
+                }
+                // EL FILO lleva el color de la PUNTA de su columna (el mismo de la cortina ahi arriba, no
+                // otro): asi el contorno es del color de la aurora, encendido, y no una raya postiza.
+                aurNc[i] = aurCortina[AurFilas * puntos + i];
+                uint cPie = FlowColor(aurBasePie[i],fx,au.BaseY/Math.Max(1,Height));   // la base: AurBases
+                if (suelo) AurColoresSuelo(aurSueloC, puntos, i, cPie, v);
+                float al = (AurAlfaBase + AurAlfaPico * v) * au.Dim;
+                if (al < 0f) al = 0f; else if (al > 1f) al = 1f;
+                aurA[i] = al;
+                // Brillo del FILO: sube con la banda y ademas con el ondeo, para que la veta se vea
+                // recorriendo el contorno igual que recorre la cortina.
+                float ne = (AurNeonBase + AurNeonPico * v) * rayo * au.Dim * au.DimFilo;
+                if (ne < 0f) ne = 0f; else if (ne > 1f) ne = 1f;
+                aurNi[i] = ne;
+                // La LINEA del horizonte lleva el color del pie sin matizar (limpio de lado a lado) y su
+                // brillo late con la musica, pero nunca se apaga: es el suelo sobre el que todo se apoya.
+                aurLc[i] = cPie;
+                float li = (AurLineaBase + AurLineaPico * v) * au.Dim * au.DimFilo;
+                if (li < 0f) li = 0f; else if (li > 1f) li = 1f;
+                aurLi[i] = li;
+            }
+            // TRES pasadas, de ida y vuelta entre los dos arreglos: una sola no basta para el fondo de los
+            // valles, que es lo mas puntiagudo que hay en la silueta. Se dibuja el resultado -el mismo para el
+            // relleno y para el filo, o se despegarian.
+            AurSuaviza(aurH, aurHs);
+            if (!AuroraBandas) { AurSuaviza(aurHs, aurH); AurSuaviza(aurH, aurHs); }
+            }
+            // LA MALLA SOLO SE REHACE SI CAMBIO ALGO DE LO QUE LA FORMA (fondo ligero, 12-10-2026). Sale de las alturas,
+            // colores y brillos de cada columna -que solo cambian arriba, cuando toca muestra de la onda-, del ancho, del
+            // alto y de donde va el horizonte. En los cuadros en que nada de eso cambio (pantalla de mas de 60 Hz, ondas a
+            // 24 o 30 por segundo, o el reposo quieto) saldria la misma malla, numero por numero: se dibuja la que ya esta.
+            int salto = AuroraLigera ? 2 : 1;
+            bool mismaMalla = aurMallaSuelo == suelo && aurMallaSalto == salto && !updateWave && aurMallaOk && aurMallaBase == au.BaseY && aurMallaAncho == Width && aurMallaAlto == Height;
+            int n = mismaMalla ? aurMallaN : AurMallaVisible(aurV, aurHs, aurCortina, aurSueloC, aurA, aurR, Width, au.BaseY, Height, salto, suelo);
+            if (n >= 3) stars.DrawMesh(aurV, n / 3);   // TODO el relleno en UNA sola llamada de dibujo
+            // Y encima el BRILLO -el filo de neon y la linea del horizonte- en otra sola llamada, esta
+            // sumando luz en vez de tapar. Dos llamadas de dibujo para toda la aurora.
+            int nb2 = mismaMalla && aurHaloCompactoDe == AuroraHaloCompacto ? aurBrilloN
+                : AurBrilloConHalo(aurVb, aurHs, aurNc, aurNi, aurLc, aurLi, Width, au.BaseY, salto, AuroraHaloCompacto);
+            aurHaloCompactoDe = AuroraHaloCompacto;
+            aurMallaSuelo = suelo; aurMallaSalto = salto; aurMallaN = n; aurBrilloN = nb2; aurMallaBase = au.BaseY; aurMallaAncho = Width; aurMallaAlto = Height; aurMallaOk = true;
+            if (nb2 >= 3) stars.DrawMeshAdd(aurVb, nb2 / 3);
+            aurDibujada = n >= 3; aurDibujadaBase = au.BaseY;   // para su reflejo (CieloVivoGpu.cs)
+        }
+
+        // PRE-CALENTADO. Crear una textura es una peticion al driver y no siempre contesta rapido: si la
+        // primera se pide justo cuando arranca una animacion, esa animacion se ve trabada. Aqui se crean de
+        // una vez, mientras la rocola esta arrancando y nadie mira, con el tamano en que SIEMPRE vienen las
+        // portadas y los avisos. De ahi en adelante todas se reaprovechan y ninguna animacion vuelve a pagar.
+        public void PrecalientaAnimaciones(int coverPx, int toastW, int toastH)
+        {
+            if (stars == null || !stars.Ok) return;
+            if (coverPx >= 8 && transTex == IntPtr.Zero)
+            {
+                using (Bitmap b = new Bitmap(coverPx, coverPx, PixelFormat.Format32bppArgb))
+                    transTex = Upload(transTex, ref transBw, ref transBh, b, out transU, out transV);
+                transLastBmp = null;   // no es una portada de verdad: la primera real se sube encima y la reusa
+            }
+            if (toastW >= 8 && toastH >= 8 && toastTex == IntPtr.Zero)
+            {
+                using (Bitmap b = new Bitmap(toastW, toastH, PixelFormat.Format32bppArgb))
+                    toastTex = Upload(toastTex, ref toastBw, ref toastBh, b, out toastU, out toastV);
+                toastVer = -1;
+            }
+        }
+
+        // WM_PAINT -> dibuja por D3D9. Con su try (24-10-2026), como el bucle de arriba: en .NET 2.0 una excepcion que se escapa de
+        // OnPaint marca el control y desde entonces solo se pinta la X roja, sin volver a llamar a OnPaint hasta reiniciar la rocola.
+        // WM_PAINT llega al destaparse la ventana (al volver del inicio de sesion de Windows, al cerrar Ctrl+F3).
+        protected override void OnPaint(PaintEventArgs e) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }
+
+        // UN CUADRO, PEDIDO A MANO. Lo usa el medidor de Ctrl+F3: medir ocurre dentro de una pulsacion, o sea
+        // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje
+        // seria esperar sentado. Es el MISMO cuadro que dibuja la rocola encendida, por el mismo camino: si
+        // aqui se midiera otra cosa, la medida no valdria para nada.
+        public bool DibujaUnCuadro() { return RenderFrame(); }
+        protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                StopGpu();
+                if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
+            }
+            base.Dispose(disposing);
+        }
+    }
+}
+#endif
