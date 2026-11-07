@@ -13,7 +13,9 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   Lo que es de Windows se traduce a mano, archivo por archivo: las llamadas a `user32`, `kernel32` y `winmm`, Direct3D 9 y el reproductor
   de video. Si mientras tanto cambia `Rocola/`, el cambio se pasa también aquí.
 - `Plataforma/`: lo nativo de Linux con que se traduce:
-  - `Dibujo2D.cs`: GDI+ hecho con SkiaSharp. Usa las letras de XP de `/rocola/datos/letras` (si faltan, DejaVu Sans) con el alto de
+  - `Dibujo2D.cs`: GDI+ hecho con SkiaSharp. Usa las letras de XP de `/rocola/datos/letras` (las copia `rocola-discos` del disco de
+    Windows: Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial y, desde el 7-11-2026, Times New Roman y Courier New, las
+    genéricas de GDI+; si faltan, DejaVu Sans) con el alto de
     renglón sacado de las tablas de cada letra, el margen de 1/6 de letra de GDI+, el corte con «…» y el ajuste a los píxeles.
   - `Ventanas.Tipos.cs`: las teclas y los tipos sencillos de las ventanas, con los valores de Windows.
   - `Traduccion.cs`: los `global using`, para que cada archivo traducido quede línea por línea como el de XP.

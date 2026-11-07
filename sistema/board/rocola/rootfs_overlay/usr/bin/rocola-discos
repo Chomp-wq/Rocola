@@ -69,7 +69,8 @@ for p in /sys/class/block/*; do
 		echo "$m" >> "$LISTA"   # una memoria USB sin carpeta "musica": entera
 	fi
 	carpetas_xp "$m" >> /run/rocola-datos-xp.todas   # las de todos los discos; abajo se elige la que se usa
-	# LAS LETRAS DE LA ROCOLA DE XP (Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial): Rocola OS no las trae (son de
+	# LAS LETRAS DE LA ROCOLA DE XP (Microsoft Sans Serif, Trebuchet MS, Tahoma, Segoe UI, Arial; y, para la traduccion de XP, las
+	# genericas de Windows: Times New Roman y Courier New, y las cursivas de Arial): Rocola OS no las trae (son de
 	# Windows); si el disco de XP las tiene, se copian una vez a /rocola/datos/letras para que la pantalla use las mismas (Letras.cs).
 	# Del disco solo se lee.
 	if [ "$tipo" = ntfs ]; then
@@ -79,7 +80,7 @@ for p in /sys/class/block/*; do
 			n=0
 			for f in "$fuentes"/*; do
 				b=$(basename "$f" | tr 'A-Z' 'a-z')
-				case "$b" in micross.ttf|trebuc*.ttf|tahoma*.ttf|segoeui*.ttf|arial.ttf|arialbd.ttf) ;; *) continue ;; esac
+				case "$b" in micross.ttf|trebuc*.ttf|tahoma*.ttf|segoeui*.ttf|arial.ttf|arialbd.ttf|ariali.ttf|arialbi.ttf|times.ttf|timesbd.ttf|timesi.ttf|timesbi.ttf|cour.ttf|courbd.ttf|couri.ttf|courbi.ttf) ;; *) continue ;; esac
 				[ -e "/rocola/datos/letras/$b" ] && continue
 				cp "$f" "/rocola/datos/letras/$b" 2>/dev/null && n=$((n + 1))
 			done
