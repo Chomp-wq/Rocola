@@ -74,6 +74,10 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   mismo fuera de pantalla (pantalla principal con la tarjeta del disco, disco abierto con monedas, Ctrl+F3). Avisos del compilador por la
   reflexión de XP: el lector rápido de MP3 (`Mp3Ligero.cs`) busca campos privados de NAudio 1.9; con NAudio 3 no los encuentra y XP abre el
   lector normal (el mismo sonido, con más basura para el recolector); el video por el reproductor de Windows (COM) va a mpv en su fase.
+- **Pedir una canción** (con monedas y PONER) funciona: aviso «Pusiste ... ya está sonando», se gasta el crédito y el MP3 se abre y se
+  descomprime (libmpg123: XP mide 529 muestras de retraso para el «sin huecos»). Hubo que quitar en `AperturaAudio.cs` el
+  `Thread.SetApartmentState(STA)` de XP: en Linux no hay COM y lanzaba `PlatformNotSupportedException` (la canción quedaba como
+  incompatible). Probado con la salida nula de ALSA (`ROCOLA_ALSA=null`, que no lleva el ritmo); el sonido de verdad, en el A4.
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).

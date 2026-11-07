@@ -47,7 +47,7 @@ namespace Rocola
                     Thread worker = new Thread(Run);
                     worker.IsBackground = true;
                     worker.Priority = ThreadPriority.BelowNormal;
-                    worker.SetApartmentState(ApartmentState.STA);
+                    // Linux: no hay COM ni apartamentos (en XP, STA para abrir el audio); SetApartmentState lanzaria PlatformNotSupportedException
                     worker.Start();
                 }
                 catch { lock (gate) { running = false; pending = null; } throw; }
