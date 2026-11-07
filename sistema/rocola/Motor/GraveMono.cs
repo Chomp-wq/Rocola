@@ -444,7 +444,6 @@ namespace Rocola
             public NAudio.Wave.WaveFormat WaveFormat { get { return src.WaveFormat; } }
             internal bool Activo { get { return activo; } }
             internal float Ancho { get { return (ajustable && anchoOn) ? ancho : 1f; } }
-            internal bool ConSubgrave { get { return sub && subOn; } }
             // Los interruptores de Ctrl+F3, en vivo: el hilo del sonido los toma en su siguiente lectura.
             internal void Ajusta(bool conAncho, bool conSubgrave)
             {

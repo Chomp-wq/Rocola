@@ -233,14 +233,6 @@ namespace Rocola
             double r = d - PlanSilencios.SegundosSaltados(m, crossfadeSec);
             return (r > 1.0) ? (float)r : d;
         }
-        // Lo que le queda a la que suena si va envuelta: desde donde va, sin lo que aun falte por saltar (-1: no va).
-        private static double QuedaSinSilencios(IAudioSource r, double totalSeg)
-        {
-            FuenteSinSilencios s = r as FuenteSinSilencios;
-            if (s == null || !(totalSeg > 0)) return -1;
-            int hz = Math.Max(1, s.WaveFormat.SampleRate);
-            return s.Salen((long)(totalSeg * hz)) / (double)hz;
-        }
 
         // EL INTERRUPTOR VALE DESDE LA SIGUIENTE, DE VERDAD. Los silencios se deciden al abrir la cancion (OpenAudio), y
         // la siguiente se abre antes de que le toque: el calentador la deja abierta poco despues de empezar cada cancion

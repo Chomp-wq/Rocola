@@ -107,7 +107,6 @@ namespace Rocola
         //   - La cantidad de realce, la de fabrica (RealceBillarCantidad) y el bajo psicoacustico, en automatico: los decide el modo, no la barra.
         //   - Los arreglos de la grabacion (un canal mudo, la continua y el zumbido): siempre. Solo actuan en las canciones con ese defecto.
         // El interruptor guardado de cada uno se conserva y vuelve al apagar el modo.
-        private bool DseeEfectivo { get { return sbrOn && !localAuto; } }
         // EL DSEE EN EL BILLAR, SOLO EN LAS MUY CORTADAS (3-11-2026, decision del dueno: «1 y 2»). Con el modo billar el DSEE sigue
         // apagado (arriba de unos 13 kHz las cornetas y la nave se comen lo que recrea: +0,2 a +0,4 dB medidos el 27-10), salvo con este
         // interruptor (dsee_billar_cortes=, APAGADO de fabrica, en Mejoras con IA) y solo en las canciones con el corte medido por debajo

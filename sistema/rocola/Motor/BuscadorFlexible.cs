@@ -152,36 +152,6 @@ namespace Rocola
             }
             return 0;
         }
-        // Lo bien que casa una palabra de la busqueda con alguna de las palabras de la clave (0: nada; 100: igual).
-        internal static int MejorPalabra(string t, string[] palabras)
-        {
-            if (palabras == null) return 0;
-            int mejor = 0, tol = Tolerancia(t.Length);
-            for (int i = 0; i < palabras.Length; i++)
-            {
-                string w = palabras[i];
-                if (w.Length == 0) continue;
-                int v = 0;
-                if (w == t) return 100;
-                if (w.Length > t.Length && w.StartsWith(t, StringComparison.Ordinal)) v = t.Length >= 2 ? 85 : 50;   // a medio escribir
-                else if (t.Length >= 3 && w.IndexOf(t, StringComparison.Ordinal) > 0) v = 60;
-                else if (tol > 0)
-                {
-                    if (Math.Abs(w.Length - t.Length) <= tol)
-                    {
-                        int d = Distancia(t, t.Length, w, w.Length, tol);
-                        if (d <= tol) v = d == 1 ? 55 : 40;
-                    }
-                    if (v == 0 && w.Length > t.Length + tol)
-                    {   // con faltas, pero a medio escribir: contra el principio de la palabra
-                        int d = Distancia(t, t.Length, w, t.Length, tol);
-                        if (d <= tol) v = d == 1 ? 45 : 32;
-                    }
-                }
-                if (v > mejor) mejor = v;
-            }
-            return mejor;
-        }
     }
 
     public partial class Form1

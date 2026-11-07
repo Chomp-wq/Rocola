@@ -424,11 +424,6 @@ namespace Rocola
             }
             return crc ^ 0xFFFFFFFFu;
         }
-        private bool IaAppendPairs(List<float> pairs) { return IaAppendPairsOrigen(pairs, null); }
-        private bool IaAppendPairsOrigen(List<float> pairs, IaOrigen origen)
-        {
-            return IaAppendPairsLote(new List<float>[] { pairs }, new IaOrigen[] { origen })[0];
-        }
         // LOS CANALES DE UNA CANCION, UNA CONFIRMACION POR ARCHIVO (19-10-2026). La cosecha escribia cada canal por su cuenta: datos, confirmacion en
         // disco (FlushFileBuffers), entrada del indice, confirmacion, linea de genero, confirmacion: seis confirmaciones por cancion en estereo, cada una
         // una espera de disco en un hilo de fondo. Aqui los lotes (uno por canal, en orden) se anexan igual que antes, uno tras otro y con las mismas
@@ -856,7 +851,6 @@ namespace Rocola
         }
         // Lo que dice la tarjeta de la biblioteca del material (IaInfoText de XP)
         public string TextoMaterialIa { get { return iaHarvestOn ? "Material para la IA: " + IaInfoText() + "." : "Material para la IA: apagado (lo demas se sigue midiendo igual)."; } }
-        public bool JuntaMaterialIa { get { return iaHarvestOn; } }
 
         // PRUEBA (rocola-consola --mide-repaso archivo...): cuanto tarda cada forma de medir una cancion. No publica nada.
         public string PruebaRepaso(string ruta)

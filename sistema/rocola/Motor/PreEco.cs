@@ -119,7 +119,6 @@ namespace Rocola
             while (j > k - SubidaMax && edb[(int)(j % Anillo)] > e - CaidaDb) j--;
             subidas[(int)(k - j)]++; golpes++; ultimoGolpe = k;
         }
-        internal int Golpes { get { return golpes; } }
         // La mediana de las subidas (ms) si hubo golpes suficientes.
         internal bool Resultado(out float subidaMs, out int cuantos)
         {

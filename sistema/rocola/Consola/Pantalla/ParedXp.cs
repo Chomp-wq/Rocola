@@ -14,21 +14,6 @@ namespace Rocola
         private static readonly Color4 AzulBorde = Color4.Hex(0x5AAEFF), OroBorde = Color4.Hex(0xE6B43C), Lavanda = Color4.Hex(0xB9C4FF),
             Leyenda = Color4.Hex(0xD7DDF5), VerdeTexto = Color4.Hex(0x6EE590), AzulNumero = Color4.Hex(0x7FB8FF), TintaPastilla = Color4.Hex(0x0B1434);
 
-        // La letra en negrita junto a la normal (DejaVuSans.ttf -> DejaVuSans-Bold.ttf); null si no esta.
-        internal static string Negrita(string ruta)
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(ruta), nom = Path.GetFileNameWithoutExtension(ruta), ext = Path.GetExtension(ruta);
-                foreach (string n in new[] { nom + "-Bold", nom + "Bold", nom + "-bold", nom.Replace("-Regular", "-Bold") })
-                {
-                    string r = Path.Combine(dir, n + ext);
-                    if (r != ruta && File.Exists(r)) return r;
-                }
-            }
-            catch { }
-            return null;
-        }
 
         // ---------------- LA CABECERA ----------------
         private void Cabecera(Controlador c, float W)

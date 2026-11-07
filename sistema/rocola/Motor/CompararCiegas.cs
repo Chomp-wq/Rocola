@@ -31,7 +31,6 @@ namespace Rocola
         private bool presenciaSinGrave = true;   // la presencia del billar mide sin el grave (P1); false solo en un tramo "de antes"
         private bool ciegoActivo, ciegoGuardado;
         public bool CiegoActivo { get { return ciegoActivo; } }
-        public int CiegoQue { get { return ciegoQue; } }
         private int ciegoQue;
         private bool[] ciegoOrden, ciegoVotado;   // true: el tramo es del modo billar (o con la afinacion) / ya votado (se arman al empezar)
         private int ciegoVotosBillar, ciegoVotosFabrica, ciegoTramo = -1;

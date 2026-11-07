@@ -1657,7 +1657,6 @@ namespace Rocola
         private sealed class GenerosIa
         {
             internal Dictionary<string, string> PorCarpeta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            internal Dictionary<ulong, string> PorCancion = new Dictionary<ulong, string>();
         }
         // de Form1.Ia.cs
         private static string IaGeneroFiable(string genero)
@@ -1953,8 +1952,6 @@ namespace Rocola
             if (fuera >= n) fuera = n - 1;
             return (float)(Math.Floor(h[fuera] * 10.0) / 10.0);   // a la decima, hacia abajo
         }
-        // de SubirTodo.cs
-        private bool subirEnFondo;                         // hay una cuenta del techo en marcha fuera de la pantalla
         // de BombaSonido.cs
         // EL ARRANQUE DE LA SALIDA CLASICA, SIN PARAR LA PANTALLA. En vez de llamar a Play ya (que espera a que el hilo
         // de la musica haga el primer segundo entero), se le pide al hilo que avise cuando lo tenga, y 'arranca' se hace
@@ -3065,8 +3062,6 @@ namespace Rocola
         // de EscaneoMemo.cs
         private sealed class ScanDirectoryMemo
         {
-            internal const int MaxDirectories = 2048, MaxPaths = 32768;
-            internal const long MaxBytes = 8L * 1024 * 1024;
             private sealed class Entry
             {
                 internal long Stamp, Bytes;
@@ -3075,19 +3070,6 @@ namespace Rocola
             private readonly Dictionary<string, Entry> entries = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
             internal long Bytes;
             internal int Paths, Hits, Misses;
-            internal bool CanCapture(int files)
-            { return entries.Count < MaxDirectories && files <= MaxPaths - Paths && Bytes < MaxBytes; }
-            internal void Remember(string dir, long stamp, string[] files, string[] subdirs)
-            {
-                if (!CanCapture(files.Length + subdirs.Length) || entries.ContainsKey(dir)) return;
-                long bytes = 192L + dir.Length * 2L;
-                for (int i = 0; i < files.Length; i++) bytes += 40L + files[i].Length * 2L;
-                for (int i = 0; i < subdirs.Length; i++) bytes += 40L + subdirs[i].Length * 2L;
-                if (bytes > MaxBytes - Bytes) return;
-                // Files ya es una copia privada. Subdirs se ordenara para la firma: conservar orden original.
-                entries.Add(dir, new Entry { Stamp = stamp, Bytes = bytes, Files = files, Subdirs = (string[])subdirs.Clone() });
-                Bytes += bytes; Paths += files.Length + subdirs.Length;
-            }
             internal bool Take(string dir, out string[] files, out string[] subdirs)
             {
                 files = subdirs = null;

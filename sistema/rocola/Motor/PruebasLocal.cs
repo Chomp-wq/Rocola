@@ -37,7 +37,6 @@ namespace Rocola
         // El programa avisa que esa termino sola.
         public void PruebaAcabo(ISampleProvider p) { if (object.ReferenceEquals(p, pruebaActual)) ParaPrueba(); }
         public bool ProbandoBocinas { get { return pruebaSonando != null; } }
-        public bool ProbandoBandas { get { return bandaSonando != null; } }
 
         // Que esta sonando ahora ("" si nada), como EstadoPrueba de XP.
         public string EstadoPrueba()
@@ -191,8 +190,6 @@ namespace Rocola
             internal int Desde { get { return desde; } }
             internal int Cuantas { get { return cuantas; } }
             internal bool Varias { get { return cuantas > 1; } }
-            internal double Nivel { get { return nivel[0]; } }
-            internal double NivelDe(int k) { return nivel[k]; }
             internal long Total { get { return total; } }
             // La banda que se oye con 'retrasoMs' de salida por delante (-1: en un silencio entre bandas o antes de empezar).
             internal int BandaOida(int retrasoMs)

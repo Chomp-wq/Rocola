@@ -46,14 +46,6 @@ namespace Rocola
             try { if (c != null) { double q = c.Lector.TotalTime.TotalSeconds - c.Lector.CurrentTime.TotalSeconds; return q > 0 ? q : 0; } } catch { }
             return -1;
         }
-        // Las siguientes de la cola (para la pantalla).
-        public List<string> ProximasEnCola(int n)
-        {
-            List<string> r = new List<string>();
-            for (int i = 0; i < queue.Count && r.Count < n; i++)
-                r.Add(queue[i].IsVideo ? Path.GetFileNameWithoutExtension(queue[i].VideoPath) : queue[i].Song.ToString());
-            return r;
-        }
 
         // PEDIR UNA CANCION (AddItem de XP, sin la pantalla).
         public Pedido Pide(string ruta)
@@ -172,17 +164,9 @@ namespace Rocola
     }
     // de CreditosServicio.cs (tal cual)
     // Acceso local oculto, no autenticacion: quien conozca el texto puede utilizarlo.
-    internal sealed class SecretCreditGate
+    // El codigo de servicio (los 5 s mantenido los cuenta el Controlador: ActualizaCodigo)
+    internal static class SecretCreditGate
     {
-        private bool armed;
-        private uint since;
-        internal bool Ready { get; private set; }
         internal static bool Matches(string text) { return string.Equals(text, "CHOMPS21", StringComparison.OrdinalIgnoreCase); }
-        internal void Update(bool open, string text, uint now)
-        {
-            if (!open || !Matches(text)) { armed = false; Ready = false; return; }
-            if (!armed) { armed = true; since = now; Ready = false; }
-            if (unchecked(now - since) >= 5000u) Ready = true;
-        }
     }
 }

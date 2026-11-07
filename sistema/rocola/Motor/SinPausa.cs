@@ -393,9 +393,7 @@ namespace Rocola
         }
 
         public WaveFormat WaveFormat { get { return formato; } }
-        internal long CuadrosEntregados { get { return Interlocked.Read(ref muestras) / ch; } }
         internal bool Terminado { get { lock (cerrojo) return terminado; } }
-        internal bool HayPreparada { get { lock (cerrojo) return siguiente != null; } }
         internal bool HayRelevoPendiente { get { lock (cerrojo) return relevoPendiente != null; } }
 
         // Mismo formato de muestras: la salida no cambia de frecuencia ni de canales a media lectura.

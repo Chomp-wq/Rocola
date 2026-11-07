@@ -1915,3 +1915,26 @@ Los dos van en la compilacion del sistema (el lanzador y el actualizador) y la d
   apunta como mala; una copia que no monta da paso a la otra), la reparacion de datos.img tras un apagon, y la hora (zona de Mexico,
   el reloj de la placa en hora local como lo deja XP, corregida por NTP).
 
+## Codigo muerto (7 de noviembre de 2026)
+
+Peticion del dueño: «busca codigo muerto». Se buscaron, en el programa de Rocola OS (`sistema/rocola`, con el proyecto de pruebas),
+los metodos, propiedades, campos y clases que no usa nadie (el nombre solo aparece en su declaracion), en tres pasadas (al quitar unos,
+quedan sin uso los que solo ellos usaban). No habia clases enteras muertas.
+
+- **Quitados (unos 60, cerca de 260 lineas)**: restos de la rocola de XP que Rocola OS hace de otra forma o no necesita (textos del
+  tono y del balance de la ventana de XP, la cola para su pantalla, presupuestos de GPU de XP, el recuerdo de carpetas, el seguro de
+  5 s del codigo de servicio -lo cuenta el Controlador-), lecturas de diagnostico sin lector (ganancias y picos de las etapas, «esta
+  mejorando», «hay preparada»...), metodos de ayuda reemplazados (el pico real muestra a muestra, la negrita, el espaciado chico, la
+  firma de los ajustes) y campos que nadie lee. Se conservaron, aunque nadie los llame por su nombre: `Peek` (lo usa .NET), la constante
+  `FL` (con sus hermanas de la mascara de canales) y `AfinaSinMedir` (explica el deslizador).
+- **No era codigo muerto, era algo sin conectar** (se conecto, como en XP):
+  - el **resumen de la bitacora del billar** (decision del 27-10-2026): ni se cargaba ni se veia; ahora se lee al arrancar y va en la
+    nota del interruptor «Modo billar», con lo que dice XP de ese interruptor (`TextoBitacoraTarjeta`, `NombreLocal`);
+  - **«Saltar los silencios largos» vale desde la siguiente cancion**: al cambiarlo, la siguiente ya abierta se retira y se abre con el
+    ajuste nuevo (`SiguienteConElInterruptor`); antes el cambio se notaba una cancion tarde;
+  - **un fallo al leer a media cancion se apunta** en rocola_error.txt («Se corto al leer ...»; `Encadenado.TomaFallo`, como XP);
+    antes la cancion solo se cortaba sin dejar rastro.
+
+Comprobado: compila sin errores el programa y las pruebas; `--prueba-sp2` y las capturas, bien; una cancion de 70 s por la cadena
+entera sale igual que antes (mismo largo, a lo mas 2 escalones de diferencia: el dither, que es aleatorio en cada pasada).
+

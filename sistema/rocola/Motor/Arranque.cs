@@ -45,6 +45,7 @@ namespace Rocola
             LeeConfiguracion();
             SumaMusicaDeOtrosDiscos();
             CargaParejo();       // el volumen parejo aprendido del modo billar (VolumenParejo.cs)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate { CargaResumenBitacora(); });   // y el resumen de su bitacora (BitacoraBillar.cs; como XP)
             Diag("rocola del " + DeCuandoEs());
             int iasOrdenadas = OrdenaIas();   // los modelos sueltos de la carpeta de datos, a IAS/
             if (iasOrdenadas > 0) Diag("IAS: " + iasOrdenadas + " modelo(s) pasados a la carpeta IAS");

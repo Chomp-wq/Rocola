@@ -175,7 +175,6 @@ namespace Rocola
         // Las canciones con una medida adoptada sin certificar (ver arriba). Solo en memoria: el registro ya lleva el sello de hoy, y
         // tras reiniciar la medida vale como cualquier otra. La tanda larga las pone delante (TandaIntegrada).
         private readonly HashSet<string> porVerificar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private bool PorVerificar(string ruta) { lock (fuentesCerrojo) return ruta != null && porVerificar.Contains(ruta); }
         // Este filtro tambien se usa desde el abridor en fondo. No muta tablas UI.
         private bool FuenteDelMapa(string ruta, MapaSilencios mapa)
         {

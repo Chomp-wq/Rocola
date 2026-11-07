@@ -161,81 +161,10 @@ namespace Rocola
                 genero = (t.Genre ?? "").Trim();
             }
 
-            public static string SoloGenero(string path)
-            {
-                Track t = new Track();
-                t.Path = path; t.Artist = ""; t.Title = ""; t.Album = ""; t.Genre = "";
-                try
-                {
-                    if (System.IO.Path.GetExtension(path).ToLowerInvariant() != ".mp3") return "";
-                    using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
-                        ReadGenreStream(fs, t);
-                }
-                catch { }
-                return t.Genre ?? "";
-            }
 
-            private static void ReadGenreStream(Stream fs, Track t)
-            {
-                // Si v2 esta truncada/corrupta, intentar v1 sin abrir otro archivo.
-                try
-                {
-                    fs.Position = 0;
-                    byte[] cab = new byte[10];
-                    if (ReadFully(fs, cab, 0, 10) == 10 && cab[0] == (byte)'I' && cab[1] == (byte)'D' && cab[2] == (byte)'3'
-                        && cab[3] >= 3 && cab[3] <= 4)   // 2.2 y versiones futuras tienen otra forma
-                    {
-                        int major = cab[3];
-                        // En 2.3 la des-sincronizacion cubre el cuerpo entero y cambia sus posiciones.
-                        // Es un caso raro: se usa el lector completo, que la revierte antes de separar marcos.
-                        if (major <= 3 && (cab[5] & 0x80) != 0)
-                        {
-                            ReadId3Stream(fs, t);
-                            return;
-                        }
-                        long size = SyncSafe4(cab, 6);
-                        long fin = 10 + size;
-                        if (size <= 0 || fin > fs.Length) throw new InvalidDataException("ID3 truncado");
-                        if ((cab[5] & 0x40) != 0)
-                        {
-                            byte[] eh = new byte[4]; if (ReadFully(fs, eh, 0, 4) != 4) throw new EndOfStreamException();
-                            int es = (major >= 4) ? SyncSafe4(eh, 0) : BigEndian4(eh, 0);
-                            long resta = (major >= 4) ? es - 4L : es;
-                            if (es < (major >= 4 ? 6 : 0) || resta < 0 || fs.Position + resta > fin) throw new InvalidDataException("ID3 extendido invalido");
-                            fs.Position += resta;
-                        }
-                        byte[] fh = new byte[10];
-                        while (fs.Position + 10 <= fin)
-                        {
-                            if (ReadFully(fs, fh, 0, 10) != 10) break;
-                            if (fh[0] == 0) break;   // relleno: se acabaron los marcos
-                            int fsz;
-                            if (major >= 4) fsz = SyncSafe4(fh, 4);
-                            else fsz = BigEndian4(fh, 4);
-                            if (fsz <= 0 || fs.Position + fsz > fin) break;
-                            bool esGenero = (fh[0] == (byte)'T' && fh[1] == (byte)'C' && fh[2] == (byte)'O' && fh[3] == (byte)'N');
-                            if (esGenero && fsz <= 4096)
-                            {
-                                // Se le pasa el marco entero (cabecera incluida) al mismo lector de siempre,
-                                // asi el genero se interpreta exactamente igual que cuando se lee todo.
-                                byte[] uno = new byte[10 + fsz];
-                                Array.Copy(fh, 0, uno, 0, 10);
-                                int leidos = 0, r;
-                                while (leidos < fsz && (r = fs.Read(uno, 10 + leidos, fsz - leidos)) > 0) leidos += r;
-                                ParseId3v2(uno, 10 + leidos, major, cab[5] & 0x80, t);
-                                if (!string.IsNullOrEmpty(t.Genre)) break;
-                            }
-                            else fs.Position += fsz;   // la caratula y lo demas: ni se tocan
-                        }
-                    }
-                }
-                catch { }
-                if (string.IsNullOrEmpty(t.Genre)) { try { ReadId3v1Stream(fs, t); } catch { } }
-            }
 
             // Lee el ID3 bajo demanda (una sola vez), sobre todo para el GENERO (color de fondo).
             private bool tagsLoaded = false;
-            public bool TagsLoaded { get { return tagsLoaded; } }
             public void EnsureTags()
             {
                 if (tagsLoaded) return;
@@ -279,12 +208,6 @@ namespace Rocola
                 }
                 catch { }
                 return c;
-            }
-            // Y la deja lista para 'cancion', con la firma que tenia el archivo ANTES de leerlo.
-            public static void PonEtiquetaLeida(Track cancion, Track antes, Track leida, string firma)
-            {
-                if (cancion == null || antes == null || leida == null || firma == null) return;
-                lock (etiquetaCerrojo) { etiquetaDe = cancion; etiquetaAntes = antes; etiquetaLeida = leida; etiquetaFirma = firma; }
             }
             private bool TomaEtiquetaLeida()
             {
@@ -497,8 +420,6 @@ namespace Rocola
             public List<string> VideoFiles = new List<string>();
             public bool IsTop = false;             // disco virtual de "lo mas sonado" por genero
             public bool TopIsVideo = false;        // (TOP) este disco virtual contiene VIDEOS, no canciones
-            public string KeyCache, KeyFrom;       // clave de la casilla ya armada (ver CellKey): se pide en cada cuadro
-            public string KeyQ, KeyQDe;            // y su variante con el palomito (ver ClaveCasilla), tambien armada una vez
             public List<string> CycleCovers;       // (TOP) caratulas distintas para ciclar en el cubo seleccionado
             public List<string> TrackCovers;       // (TOP) caratula de origen por cada cancion (alineado con Tracks)
             public List<string> TrackInfo;         // (TOP) "Artista - Album" de origen por cada cancion
@@ -533,23 +454,6 @@ namespace Rocola
                 return (Song != null) ? (Song.Artist + " - " + Song.Title) : "";
             }
 
-            // Lo mismo, pero PARTIDO: arriba lo que suena y debajo de quien es. La franja de abajo los pone en
-            // dos renglones distintos, con distinto tamano y distinto color, asi que no vale con una sola
-            // cadena "Artista - Titulo" cortada por el guion (hay titulos con guiones).
-            public void TituloArtista(out string titulo, out string artista)
-            {
-                if (IsVideo)
-                {
-                    string disc = (Disc != null && !string.IsNullOrEmpty(Disc.Artist)) ? Disc.Artist : "";
-                    string file = "";
-                    try { file = System.IO.Path.GetFileNameWithoutExtension(VideoPath); } catch { }
-                    titulo = (file.Length > 0) ? file : disc;
-                    artista = "\u25BA Video" + ((disc.Length > 0 && file.Length > 0) ? ("  -  " + disc) : "");
-                    return;
-                }
-                titulo = (Song != null && !string.IsNullOrEmpty(Song.Title)) ? Song.Title : "";
-                artista = (Song != null && !string.IsNullOrEmpty(Song.Artist)) ? Song.Artist : "";
-            }
         }
     }
 }

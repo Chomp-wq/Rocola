@@ -84,7 +84,6 @@ namespace Rocola
                 return cu == default(DateTime) || (DateTime.UtcNow - cu).TotalHours > 3 ? TipoClima.Desconocido : (TipoClima)climaTipo;
             }
         }
-        public float ClimaNubes { get { return climaNubes; } }   // 0..1
         public float ClimaViento { get { return climaViento; } } // km/h
         public static string NombreClima(TipoClima c)
         {

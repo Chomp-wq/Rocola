@@ -116,12 +116,6 @@ namespace Rocola
             return luz;
         }
 
-        // E3 (PulidoGpu.cs): el brillo de la luz principal con la potencia que se pida (16 de siempre; mas, mas nitido).
-        internal static float Especular(float nx, float ny, float nz, float potencia)
-        {
-            float h = nx * H1x + ny * H1y + nz * H1z;
-            return h > 0f ? (float)Math.Pow(h, potencia) : 0f;
-        }
         // El color de una cara: el metal (plata azulada) tenido con el color de la cancion, por su luz, mas el reflejo
         // en blanco. Alfa aparte.
         internal static uint ColorCara(uint tinte, float luz, float reflejo, uint alfa)

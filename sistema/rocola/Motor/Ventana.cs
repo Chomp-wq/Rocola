@@ -140,8 +140,6 @@ namespace Rocola
             internal Dictionary<string, int> Canciones, VideoCounts;
             internal Dictionary<string, long> Sec, VideoSec;
             internal HashSet<string> Deep, Cola;
-            internal bool Tintes;
-            internal int Firma, LoudCount;
             // Los dos planes iniciales comparten solamente datos privados e inmutables.
             // Cancelacion y tablas de analisis adicionales siguen siendo independientes.
             internal LecturaBiblioteca BaseCompartida;

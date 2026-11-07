@@ -39,13 +39,6 @@ namespace Rocola
         private static Dictionary<string, float> parejoDb = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
         private string ParejoFile() { return RutaDatos("rocola_billar_nivel.txt"); }
 
-        // Lo aprendido de esta cancion (dB), 0 si nada.
-        internal static float ParejoDe(string path)
-        {
-            if (path == null) return 0f;
-            float v;
-            lock (parejoCerrojo) return parejoDb.TryGetValue(path, out v) ? v : 0f;
-        }
         // Lo que se le aplica al sonar (dB): en el billar lo suyo (o lo estimado), o el menor de su disco si suena en racha con otra de el.
         private float ParejoAplicado(Track t)
         {

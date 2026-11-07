@@ -99,42 +99,6 @@ namespace Rocola
             Array.Copy(a.hist, hist, hist.Length); pos = a.pos; desdeAlta = a.desdeAlta; previo = a.previo;
         }
 
-        // Entra una muestra; devuelve el pico de la onda reconstruida en el intervalo que empieza Retraso
-        // muestras atras (entre esa muestra y la siguiente, ambas incluidas). Si no puede pasar del techo, lo que
-        // devuelve es solo el mayor de sus dos extremos: sirve igual, porque por debajo del techo no manda.
-        internal float Empuja(float x)
-        {
-            pos--; if (pos < 0) pos = Taps - 1;
-            hist[pos] = x; hist[pos + Taps] = x;
-            float ax = x < 0f ? -x : x;
-            if (ax > umbral) desdeAlta = 0; else if (desdeAlta < int.MaxValue / 2) desdeAlta++;
-            // hist[pos + i] = x[m - i], i = 0..Taps-1. El intervalo es el de x[m - Retraso] .. x[m - Retraso + 1].
-            float a0 = (float)Math.Abs(hist[pos + Retraso]), a4 = (float)Math.Abs(hist[pos + Retraso - 1]);
-            if (desdeAlta >= Taps)
-            {
-                previo = a0;   // la rejilla fina no se calculo: para la parabola de la vuelta siguiente vale el extremo
-                return a0 > a4 ? a0 : a4;
-            }
-            double u = 0, v = 0, w = 0;
-            int mitad = Taps / 2;
-            for (int i = 0; i < mitad; i++)
-            {
-                double a = hist[pos + i], b = hist[pos + Taps - 1 - i];
-                u += P[i] * (a + b);
-                v += M[i] * (a - b);
-                w += Q[i] * (a + b);
-            }
-            float g1 = (float)Math.Abs(u + v), g2 = (float)Math.Abs(w), g3 = (float)Math.Abs(u - v);
-            float pico = a0;
-            if (g1 > pico) pico = g1; if (g2 > pico) pico = g2; if (g3 > pico) pico = g3; if (a4 > pico) pico = a4;
-            // Afinar con una parabola donde la rejilla tiene un maximo: el pico de verdad suele caer entre puntos.
-            pico = Afina(previo, a0, g1, pico);
-            pico = Afina(a0, g1, g2, pico);
-            pico = Afina(g1, g2, g3, pico);
-            pico = Afina(g2, g3, a4, pico);
-            previo = g3;
-            return pico;
-        }
         // LO MISMO QUE Empuja, PARA UN BLOQUE ENTERO de un canal (muestras separadas por 'salto'), con el estado
         // en variables locales: sin una llamada por muestra. La cuenta es identica (la bateria lo compara bit a
         // bit). 'picos[f]' se queda con el mayor entre lo que ya tenia y este canal, salvo en el primero.
@@ -229,15 +193,6 @@ namespace Rocola
                 if (primero || pico > picos[f]) picos[f] = pico;
             }
             pos = p; desdeAlta = alta; previo = prev;
-        }
-        private static float Afina(float y0, float y1, float y2, float pico)
-        {
-            if (y1 < y0 || y1 < y2) return pico;
-            float den = y0 - 2f * y1 + y2;
-            if (!(den < 0f)) return pico;
-            float d = 0.5f * (y0 - y2) / den;
-            float v = y1 - 0.25f * (y0 - y2) * d;
-            return v > pico ? v : pico;
         }
     }
 

@@ -73,8 +73,6 @@ namespace Rocola
         }
 
         internal bool Encendido { get { return encendido; } }
-        internal double GananciaDb { get { return gdb; } }
-        internal double PicoRecordado { get { return picoEnv; } }
         internal void Ajusta(bool encender) { if (vale) encendido = encender; }
         // Lo que mas bajo (negativo) y mas subio (positivo) la ganancia desde la ultima vez que se pregunto, en dB. Lo lee la pantalla (S5).
         internal void Toma(out double bajo, out double alto) { bajo = bajaMax; alto = subeMax; bajaMax = 0; subeMax = 0; }

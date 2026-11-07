@@ -57,7 +57,6 @@ namespace Rocola
             UpdateCredits(); SaveState();
             Avisa(porque + ": se devuelve el credito");
         }
-        public int VolumenVideos { get { return videoVol; } }
         // EL VOLUMEN DE UN VIDEO EN ROCOLA OS (3-11-2026; en XP, VideoVolumeFor de Form1.Video.cs), como factor de la amplitud del archivo.
         // En XP el reproductor de Windows solo sabia BAJAR (0 a 100): por eso la perilla dejaba hueco (85) y un video flojo se quedaba
         // flojo. Aqui mpv puede subir, y el sonido de los videos se mide (AudioDeVideo.cs): uno medido, con el nivelado encendido, va al
@@ -71,7 +70,6 @@ namespace Rocola
                 return Math.Max(0.15, Math.Min(4.0, normTarget / rms));
             return videoVol / 100.0;
         }
-        public bool VideoMedido(string ruta) { float rms; return ruta != null && loudCache.TryGetValue(ruta, out rms) && rms > 0.0001f; }
         public float TechoVideos { get { return TechoPicoReal; } }
         public bool SonandoVideo { get { PlayItem p = nowPlaying; return p != null && p.IsVideo; } }
         public string Sonando { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? p.Song.Path : null; } }
@@ -312,6 +310,15 @@ namespace Rocola
             Encadenado s = secuencia;
             if (s != null)
             {
+                // (7-11-2026) un fallo al leer a media cancion (archivo danado por la mitad): se acaba como siempre, pero se apunta de cual y que
+                // paso (como XP, RecogeAlParar); antes se quedaba guardado sin que nadie lo recogiera
+                object quien; Exception fallo;
+                if (s.TomaFallo(out quien, out fallo))
+                {
+                    CadenaCancion fc = quien as CadenaCancion;
+                    string cual = fc != null && fc.Cancion != null ? System.IO.Path.GetFileName(fc.Cancion.Path) : "la que sonaba";
+                    LogError("Se corto al leer " + cual, fallo);
+                }
                 Encadenado.Relevo r = s.TomaRelevo(Environment.TickCount, int.MinValue);
                 CadenaCancion b = r != null ? r.Ficha as CadenaCancion : null;
                 if (b != null) { b.CuadroComienzo = r.Cuadro; PasaRelevo(b); }

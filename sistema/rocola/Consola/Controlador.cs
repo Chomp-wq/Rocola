@@ -564,7 +564,6 @@ namespace Rocola
         internal bool RojoDePrueba;
         internal bool RojoMantenido { get { return RojoDePrueba || (botones != null && botones.Apretado(Boton.Regresar)); } }
         internal int SentidoPagina = 1;   // la ultima flecha de pagina: +1 ARRIBA (la siguiente), -1 ABAJO (la anterior); para deslizar
-        internal int DiscosEn(int i) { return i >= 0 && i < letras.Count ? porLetra[letras[i]].Count : 0; }
         // Las canciones (o videos) de una letra: el numero que XP pone bajo cada letra (letterBar.Counts).
         internal int CancionesEn(int i)
         {

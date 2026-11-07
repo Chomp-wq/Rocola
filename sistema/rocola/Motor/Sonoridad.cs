@@ -151,7 +151,6 @@ namespace Rocola
         internal double PesoTotal { get { return pesoTotal; } }
         internal long Cuadros { get { return cuadros; } }
         internal int Bloques { get { return nBloques; } }
-        internal bool CuadroPartido { get { return fase != 0; } }
 
         // LA PONDERACION K A CUALQUIER FRECUENCIA DE MUESTREO.
         //

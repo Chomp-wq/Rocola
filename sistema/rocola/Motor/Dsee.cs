@@ -103,11 +103,6 @@ namespace Rocola
             private const float PotenciaDeAntes = 0.375f;  // 3/8, en potencia
 
             private volatile bool mejoro;                  // ya reconstruyo al menos UNA vez en esta cancion
-            // La cancion FUE mejorada en esta reproduccion: en cuanto Regenerate() actua un cuadro, esto
-            // queda prendido hasta que la cancion cambie (cada cancion estrena su propio SpectralTap).
-            // Es un SEGURO, no un termometro: el letrero MEJORADA no parpadea aunque la medicion del
-            // acantilado vaya y venga; una cancion ya completa (que nunca se reconstruye) jamas lo prende.
-            public bool Mejorando { get { return Active && mejoro; } }
 
             public SpectralTap(NAudio.Wave.ISampleProvider s)
             {

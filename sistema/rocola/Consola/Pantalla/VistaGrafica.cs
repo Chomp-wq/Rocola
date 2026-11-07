@@ -249,10 +249,6 @@ namespace Rocola
         {
             foreach (char ch in s) { string l = ch.ToString(); f.Escribe(d, l, x, y, c); x += f.Mide(l) + aire; }
         }
-        private void EspaciadoChico(string s, float x, float y, Color4 c)
-        {
-            foreach (char ch in s) { string l = ch.ToString(); mini.Escribe(d, l, x, y, c); x += mini.Mide(l) + (ch == ' ' ? 5 * k : 3 * k); }
-        }
 
         // La lista de la noche: el cubo chico en la esquina, la cabecera a su lado y las cinco filas, que entran una a una desde la
         // izquierda con su portada y una barra que crece con las veces que se pidio cada una.
@@ -286,12 +282,6 @@ namespace Rocola
             }
         }
 
-        private static string FirmaAjustes(Controlador c)
-        {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            foreach (Form1.Ajuste a in c.ListaAjustes) sb.Append(a.Texto).Append(a.Motivo != null ? "g" : "").Append(',');
-            return sb.ToString();
-        }
         private void AvisoEncima(Controlador c, float W, float y)
         {
             string av = c.AvisoVigente; if (av.Length == 0) return;

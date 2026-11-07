@@ -73,7 +73,6 @@ namespace Rocola
         internal bool ConClaridad { get { return claridad; } }
         internal double CorteAhora { get { return corteAplicado; } }
         internal double MediaRazonDb { get { return media; } }
-        internal double CapDb { get { return capDinamico; } }
         // El presupuesto (dB) que deja el corte estatico: lo que falte para PresupuestoDb en total, sin pasar del tope (con la claridad, 3 dB).
         internal static double CapDinamicoDb(double estaticoDb, bool conClaridad)
         {

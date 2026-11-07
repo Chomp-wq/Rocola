@@ -25,7 +25,6 @@ namespace Rocola
             public int? Posicion { get { return Barra != null ? Barra() : (int?)null; } }
             public string Explicacion { get { return Nota != null ? Nota() : null; } }
             public string Texto { get { return Valor(); } }
-            public string ComoSeGuarda { get { return Guardado != null ? Guardado() : null; } }
             public string Motivo { get { return Bloqueo != null ? Bloqueo() : null; } }
             public void Mueve(int d) { if (Motivo == null) Cambia(d); }
         }
@@ -173,7 +172,15 @@ namespace Rocola
             l.Add(obj);
             Ajuste billar = Interruptor("El billar", "Modo billar (la cadena para las bocinas del billar)", "local_auto", () => localAuto, v => localAuto = v, false);
             billar.Guardado = delegate { return LocalAutoAGuardar ? "1" : "0"; };
-            billar.Valor = delegate { return LocalAutoAGuardar ? "SÍ" : "NO"; };   // a ciegas no se ve cual suena   // durante la comparacion a ciegas, el de antes (como XP)
+            billar.Valor = delegate { return LocalAutoAGuardar ? "SÍ" : "NO"; };
+            // (7-11-2026) lo que dice la tarjeta del billar en XP, con el resumen de su bitacora (decision del 27-10-2026; en Rocola OS no se
+            // habia pasado: TextoBitacoraTarjeta y NombreLocal no los usaba nadie)
+            billar.Nota = delegate
+            {
+                return localAuto
+                    ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave, voz, presencia, eses, retumbe...). Lo que decide, en gris.\n" + TextoBitacoraTarjeta()
+                    : "Apagado: el sonido sale como lo dejes en «Ajustes del sonido». Encendido, la rocola ajusta sola cada cancion a las bocinas del billar (" + NombreLocal + ").";
+            };   // a ciegas no se ve cual suena   // durante la comparacion a ciegas, el de antes (como XP)
             l.Add(billar);
             // TU BIBLIOTECA: el boton de repasar a fondo (la tarjeta pone encima la calidad y como va el repaso)
             Ajuste fondo = new Ajuste { Grupo = "Tu biblioteca", Nombre = "Repasar la biblioteca a fondo", Herramienta = true };
@@ -230,7 +237,7 @@ namespace Rocola
             voto.Cambia = delegate (int d) { VotaCiego(); };
             voto.Bloqueo = delegate { return ciegoActivo ? null : "solo durante una comparación"; };
             l.Add(voto);
-            l.Add(Interruptor("Lo que suena ahora", "Saltar los silencios largos", "saltar_silencios", () => saltaSilencios, v => saltaSilencios = v, false));
+            l.Add(Interruptor("Lo que suena ahora", "Saltar los silencios largos", "saltar_silencios", () => saltaSilencios, v => { if (saltaSilencios != v) { saltaSilencios = v; SiguienteConElInterruptor(); } }, false));   // (7-11-2026: lo ya abierto para la siguiente traia el de antes; como XP)
             l.Add(Interruptor("Lo que suena ahora", "Quitar el zumbido de la corriente", "quita_zumbido", () => quitaZumbido, v => quitaZumbido = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Quitar el pre-eco de los MP3 viejos", "quita_preeco", () => quitaPreEco, v => quitaPreEco = v, false));
             l.Add(Interruptor("Lo que suena ahora", "Un canal mudo, por los dos", "canal_mudo", () => canalMudo, v => canalMudo = v, false));

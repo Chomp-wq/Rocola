@@ -58,21 +58,12 @@ namespace Rocola
             if (!int.TryParse(texto.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out v)) return actual;
             return Math.Max(-SalaLocal.TonoMax, Math.Min(SalaLocal.TonoMax, v));
         }
-        internal static string TextoTono(int db)
-        {
-            return db == 0 ? "0 dB" : (db > 0 ? "+" + db + " dB" : "−" + (-db) + " dB");
-        }
 
         internal static int BalanceDb(string texto)
         {
             int v;
             if (!int.TryParse(texto.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out v)) return balanceDb;
             return Math.Max(-SalaLocal.BalanceMax, Math.Min(SalaLocal.BalanceMax, v));
-        }
-        internal static string TextoBalance(int db)
-        {
-            if (db == 0) return "Centrado";
-            return db < 0 ? ("Derecha −" + (-db) + " dB") : ("Izquierda −" + db + " dB");
         }
 
         private sealed class SalaLocal : ISampleProvider
@@ -195,9 +186,6 @@ namespace Rocola
             internal bool ConClaridad { get { return claridadOn; } }
             internal int Graves { get { return gravesObj; } }
             internal int Agudos { get { return agudosObj; } }
-            internal double GravesAhora { get { return gravesDb; } }
-            internal double AgudosAhora { get { return agudosDb; } }
-            internal bool ConSuaves { get { return suavesOn; } }
             internal int Balance { get { return balance; } }
             internal double Subida { get { return sube; } }   // lo que sube ahora (1 = nada); para las pruebas
 
