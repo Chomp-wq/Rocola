@@ -21,6 +21,10 @@ on:
         description: 'Compilar el sistema entero aunque baste la rapida'
         type: boolean
         default: false
+      rapida_ya:
+        description: 'Rapida YA, aunque haya cambios que piden la completa (esos esperan a la siguiente completa)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -59,6 +63,9 @@ jobs:
             [ -n "$base_sha" ] && modo=$(bash sistema/rapida.sh decide "$base_sha")
           fi
           [ "${{ inputs.completa }}" = true ] && modo=completa
+          # RAPIDA YA (7-11-2026, «¿No hay forma de que compile mas rapido?»): los scripts y el programa en unos minutos; lo que pide la
+          # completa (el nucleo, los paquetes como rocola-spotify) espera a la siguiente completa, que sigue tomando esa misma base
+          [ "${{ inputs.rapida_ya }}" = true ] && [ -n "$base_sha" ] && [ "${{ inputs.completa }}" != true ] && modo=rapida
           echo "Compilacion: $modo (base: $base_tag $base_sha)"
           echo "modo=$modo" >> "$GITHUB_OUTPUT"; echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"; echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
 
