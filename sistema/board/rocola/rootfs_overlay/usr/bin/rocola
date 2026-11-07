@@ -87,7 +87,12 @@ while :; do
 	duro=$(( $(date +%s) - t0 ))
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
 	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)
-	if [ "$r" = 44 ]; then apunta "Apagado pedido desde casa"; sync; poweroff; sleep 60; fi   # salio para apagarse (rocola-buzon: «apagar»)
+	if [ "$r" = 44 ]; then apunta "Apagado pedido (desde casa o Ctrl+F3)"; sync; poweroff; sleep 60; fi   # salio para apagarse (rocola-buzon: «apagar», o Ctrl+F3)
+	if [ "$r" = 46 ]; then apunta "Reinicio del equipo pedido en Ctrl+F3"; sync; reboot; sleep 60; fi
+	if [ "$r" = 45 ]; then   # Ctrl+F3 -> «Volver a Windows XP»: el arranque de XP de vuelta (rocola-desinstalar) y a reiniciar
+		if echo SI | rocola-desinstalar >> $REGISTRO 2>&1; then apunta "Vuelta a Windows XP pedida en Ctrl+F3"; sync; reboot; sleep 60
+		else apunta "No se pudo volver a Windows XP (¿Rocola OS desde la memoria USB?)"; fi
+	fi
 	if [ "$probando" = 1 ]; then
 		if [ "$duro" -lt 120 ] && [ "$r" != 0 ]; then
 			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras

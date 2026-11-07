@@ -129,6 +129,20 @@ namespace Rocola
                 List<string> raices = new List<string>();
                 if (Directory.Exists(discos)) raices.AddRange(Directory.GetDirectories(discos));
                 if (Directory.Exists("/rocola/disco")) raices.Add("/rocola/disco");   // instalado: el disco de la rocola (rocola-instalar)
+                // «Traer otra vez lo aprendido en XP» (Ctrl+F3 -> La rocola): lo de aqui pasa a .antes-xp y se vuelve a importar (no la
+                // configuracion ni los botones de Rocola OS)
+                string otra = RutaDatos("rocola_reimportar_xp");
+                if (File.Exists(otra))
+                {
+                    try { File.Delete(otra); } catch { }
+                    foreach (string t in TablasXP)
+                    {
+                        if (t == "rocola_config.txt" || t == "rocola_teclas.txt") continue;
+                        string dst = RutaDatos(t);
+                        if (File.Exists(dst) && File.Exists(Path.Combine(xp, t))) { try { File.Copy(dst, dst + ".antes-xp", true); File.Delete(dst); } catch { } }
+                    }
+                    try { File.Delete(RutaDatos("rocola_importado_xp.txt")); } catch { }
+                }
                 string informe = ImportaDeXP(xp, raices);
                 if (informe != null) Diag(informe);
             }

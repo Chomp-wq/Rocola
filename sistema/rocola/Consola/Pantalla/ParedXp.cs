@@ -47,6 +47,11 @@ namespace Rocola
                     d.Redondo(xl - 16 * k, cy - 13 * k, 5 * k, 26 * k, 2.5f * k, cl);
                     if (c.motor.TitulosDegradado) EscribeDegradado(nGrande, l, xl, cy - nGrande.Tam * 0.62f, 0);   // C2
                     else nGrande.Escribe(d, l, xl, cy - nGrande.Tam * 0.62f, c.motor.LetrasColor ? Dibujo.Mezcla(cl, Blanco, 0.35f) : Lavanda);
+                    // EL NUMERO DE PAGINA SIEMPRE SE DICE (XP, Form1.Vistas.cs): «Página 2 de 5», a la izquierda de la letra, si cabe
+                    int nd = c.DiscosDeLetra().Count, pp = Controlador.DiscosPorPagina, pags = Math.Max(1, (nd + pp - 1) / pp), pg = Math.Min(pags, c.cursorDisco / pp + 1);
+                    string tp = "Página " + pg + " de " + pags; float wp = mini.Mide(tp), xp = xl - 30 * k - wp;
+                    if (xp <= zAyuda.X + zAyuda.W + 10 * k) { tp = pg + "/" + pags; wp = mini.Mide(tp); xp = xl - 26 * k - wp; }   // (no cabe: corto)
+                    if (xp > zAyuda.X + zAyuda.W + 8 * k) mini.Escribe(d, tp, xp, cy - mini.Tam * 0.62f, Leyenda);
                 }
             }
         }
@@ -289,6 +294,7 @@ namespace Rocola
         }
 
         // ---------------- LO QUE SUENA (bajo el horizonte) ----------------
+        private int crVisto, crAntes; private double crCambio = -9;   // el odometro de los creditos
         private void Suena(Controlador c, float W, float H, float abajo)
         {
             Form1 m = c.motor;
@@ -305,14 +311,30 @@ namespace Rocola
             float hp = 35 * k;
             float wcr = m.Creditos > 0 ? nChica.Mide("Créditos") + nGrande.Mide(cr) + 34 * k : nChica.Mide("Inserta una moneda") + 30 * k;
             float xcr = W - 14 * k - wcr;
+            // LA SACUDIDA (la de XP, Form1.Vistas.cs): sin creditos al pedir, la pastilla va y viene dos veces y se calma (0,45 s)
+            int eSac = c.InvitaTick != 0 ? unchecked(Environment.TickCount - c.InvitaTick) : int.MaxValue;
+            float sac = eSac < 450 ? 9 * k * (float)Math.Sin(eSac * 2 * Math.PI / 220) * (1f - eSac / 450f) : 0f;
+            xcr += sac;
             Pastilla(xcr, y + 1 * k, wcr, hp);
             if (m.Creditos > 0)
             {
                 nChica.Escribe(d, "Créditos", xcr + 14 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xC4CCE8));
-                nGrande.Escribe(d, cr, xcr + 22 * k + nChica.Mide("Créditos"), y + 1 * k + hp / 2 - nGrande.Tam * 0.64f, VerdeTexto);
+                // EL NUMERO RUEDA COMO UN ODOMETRO (XP): al cambiar, el de antes sube y se va y el nuevo entra por abajo (0,35 s)
+                if (m.Creditos != crVisto) { crAntes = crVisto; crVisto = m.Creditos; crCambio = reloj.Elapsed.TotalSeconds; }
+                float nx = xcr + 22 * k + nChica.Mide("Créditos"), ny = y + 1 * k + hp / 2 - nGrande.Tam * 0.64f;
+                float u = m.MonedaCae && crAntes > 0 ? (float)Math.Min(1, (reloj.Elapsed.TotalSeconds - crCambio) / 0.35) : 1f;
+                if (u < 1f)
+                {
+                    float e = 1f - (1f - u) * (1f - u), sube = hp * 0.8f;
+                    d.Recorta(xcr, y + 1 * k, wcr, hp);
+                    nGrande.Escribe(d, crAntes.ToString(), nx, ny - sube * e, VerdeTexto.ConAlfa(1f - e));
+                    nGrande.Escribe(d, cr, nx, ny + sube * (1f - e), VerdeTexto.ConAlfa(e));
+                    d.SinRecorte();
+                }
+                else nGrande.Escribe(d, cr, nx, ny, VerdeTexto);
             }
-            else nChica.Escribe(d, "Inserta una moneda", xcr + 15 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xE2E6F8));
-            zCreditos = new Zona(xcr, y + 1 * k, wcr, hp);
+            else { crVisto = 0; nChica.Escribe(d, "Inserta una moneda", xcr + 15 * k, y + 1 * k + hp / 2 - nChica.Tam * 0.62f, Color4.Hex(0xE2E6F8)); }
+            zCreditos = new Zona(xcr - sac, y + 1 * k, wcr, hp);
             string q = m.EnCola.ToString();
             bool conPortadas = m.ColaPortadas;   // cola_portadas= (XP: ConPortadas)
             float wq = nChica.Mide("En cola") + nGrande.Mide(q) + (conPortadas ? 3 * 20 * k : 0) + 34 * k, xq = xcr - 12 * k - wq;

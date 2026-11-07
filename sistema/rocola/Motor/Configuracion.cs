@@ -16,7 +16,9 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ConfigFile)) return;
-                foreach (string line in File.ReadAllLines(ConfigFile)) AplicaLineaConfig(line.Trim());
+                bool medio = false;
+                foreach (string line in File.ReadAllLines(ConfigFile)) { string t = line.Trim(); if (t == MarcaMedio) medio = true; AplicaLineaConfig(t); }
+                if (!medio) EnciendeMedio();   // (7-11-2026) una sola vez: las de coste medio, encendidas como en XP
             }
             catch { }
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si

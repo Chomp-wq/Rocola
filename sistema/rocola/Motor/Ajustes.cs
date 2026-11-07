@@ -137,7 +137,7 @@ namespace Rocola
             if (grupo == "El cielo" || grupo == "Según la hora" || grupo == "Según la fecha" || grupo == "Clima y más") return "Fondo";
             if (Array.IndexOf(GruposImagen, grupo) >= 0) return "Imagen";
             if (grupo == "De que color es cada cancion" || grupo == "Cuanto azul" || grupo == "Cuanto negro") return "Colores";
-            if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico") return "Detalles";
+            if (grupo == "Al pedir canciones" || grupo == "El fondo y la barra" || grupo == "Internet" || grupo == "Diagnóstico" || grupo == "La rocola") return "Detalles";
             return "Sonido";
         }
         private static readonly string[] GruposImagen = { "La pared", "Dentro de un disco", "La franja de lo que suena", "En reposo", "Buscador y ayuda", "La atraccion", "Monedas y avisos", "Ajustes y pantalla", "Vidrio y letra", "Color vivo", "Movimiento" };
@@ -145,7 +145,7 @@ namespace Rocola
         private Ajuste Visual(string grupo, string nombre, string clave, Func<bool> lee, Action<bool> pon, bool medio, string nota)
         {
             Ajuste a = Interruptor(grupo, nombre, clave, lee, pon, false);
-            a.Nota = () => nota + (medio ? " Coste medio: apagada de fabrica hasta medirla en el A4." : "");
+            a.Nota = () => nota;   // (7-11-2026: las de coste medio, encendidas de fabrica como las de XP; ya no lo dice)
             return a;
         }
         public IList<Ajuste> Ajustes()
@@ -459,6 +459,13 @@ namespace Rocola
             ya.Cambia = delegate (int d) { try { File.WriteAllText("/run/rocola-buscar-ya", ""); } catch { } };
             ya.Bloqueo = delegate { return ActualizarSolo ? null : "necesita «Actualizarse sola»"; };
             l.Add(ya);
+            // LA ROCOLA (7-11-2026, el dueno: «faltan elementos esenciales»; en XP estaba Windows): reiniciar el programa o el equipo, apagar,
+            // volver a Windows XP y traer otra vez lo aprendido en XP, sin teclado ni consola. Cada uno pide un segundo toque en 5 s.
+            l.Add(Confirma("Reiniciar el programa de la rocola", "Se cierra y se vuelve a abrir en unos segundos. Los creditos y la cola se guardan.", () => PideSalida = 42));
+            l.Add(Confirma("Reiniciar la rocola (el equipo)", "Se reinicia todo el equipo. Los creditos y la cola se guardan.", () => PideSalida = 46));
+            l.Add(Confirma("Apagar la rocola", "Se apaga. Los creditos y la cola vuelven al prender.", () => PideSalida = 44));
+            l.Add(Confirma("Volver a Windows XP (la rocola de antes)", "Devuelve el arranque de XP y reinicia: prende en XP siempre. No borra nada (tu musica, lo de XP y lo aprendido aqui se quedan). Para volver: instalar con la memoria USB.", () => PideSalida = 45));
+            l.Add(Confirma("Traer otra vez lo aprendido en XP", "Las medidas, el volumen, el EQ, las estadisticas y lo del billar de la rocola de XP (lo de aqui queda en copias .antes-xp). No toca tu configuracion ni tus botones. Reinicia el programa.", () => { try { File.WriteAllText(RutaDatos("rocola_reimportar_xp"), ""); } catch { } PideSalida = 42; }));
             // SPOTIFY (decision del dueno del 6-11-2026, Spotify.cs): para las reuniones familiares, apagado de fabrica. El recuadro de abajo dice
             // como conectarse y lo que suena.
             { Ajuste x = Interruptor("Spotify", "Spotify en la rocola (reuniones familiares)", "spotify", () => SpotifyOn, v => SpotifyOn = v, false);
@@ -546,6 +553,24 @@ namespace Rocola
         }
 
         // A rocola_config.txt: cada clave de los ajustes en su linea (cambiada o anadida); lo demas, tal cual.
+        // Lo que la rocola debe hacer al salir (42 reiniciar el programa, 44 apagar, 45 volver a XP, 46 reiniciar el equipo): lo atiende el
+        // Controlador en su bucle (guarda el estado y sale con ese codigo; /usr/bin/rocola hace lo demas). 0: nada.
+        public volatile int PideSalida;
+        // Un boton que hay que tocar dos veces (en 5 s): el primero avisa, el segundo lo hace.
+        private Ajuste Confirma(string nombre, string nota, Action hace)
+        {
+            Ajuste a = new Ajuste { Grupo = "La rocola", Nombre = nombre, Herramienta = true };
+            int armado = 0;
+            Func<bool> listo = () => armado != 0 && unchecked(Environment.TickCount - armado) < 5000;
+            a.Valor = delegate { return listo() ? "¿SEGURO? OTRA VEZ" : ""; };
+            a.Cambia = delegate (int d)
+            {
+                if (listo()) { armado = 0; hace(); }
+                else { armado = Environment.TickCount | 1; Avisa("Para " + char.ToLowerInvariant(nombre[0]) + nombre.Substring(1) + ": toca otra vez en 5 s"); }
+            };
+            a.Nota = () => nota;
+            return a;
+        }
         public void GuardaAjustes()
         {
             List<string> lineas = new List<string>();
@@ -557,6 +582,7 @@ namespace Rocola
                 int i = lineas.FindIndex(x => x.Trim().StartsWith(a.Clave + "=", StringComparison.Ordinal));
                 if (i >= 0) lineas[i] = linea; else lineas.Add(linea);
             }
+            if (!lineas.Exists(x => x.Trim() == MarcaMedio)) lineas.Add(MarcaMedio);   // (las de coste medio ya se encendieron una vez)
             StringBuilder sb = new StringBuilder();
             foreach (string x in lineas) sb.Append(x).Append("\r\n");
             EscribeYa(ConfigFile, sb.ToString());

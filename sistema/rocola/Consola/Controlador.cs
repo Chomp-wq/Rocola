@@ -244,6 +244,12 @@ namespace Rocola
                             if (fin) break;
                             AtiendeRaton();   // el raton (Raton.cs), como los botones: antes de dibujar
                             Conexion.Prisa = AjusteSel >= 0;
+                            if (motor.PideSalida != 0)
+                            {   // (Ctrl+F3 -> La rocola) reiniciar, apagar o volver a XP: se guarda y se sale con su codigo (/usr/bin/rocola)
+                                int cod = motor.PideSalida; motor.PideSalida = 0;
+                                try { motor.GuardaAjustes(); } catch { }
+                                motor.GuardaEstado(); CodigoSalida = cod; salir = true; break;
+                            }
                             motor.PublicaMedidas();
                             ActualizaCodigo();
                             RevisaAtraccion();

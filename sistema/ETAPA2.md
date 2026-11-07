@@ -2033,3 +2033,13 @@ conectado, no se veia. La rocola esta por cable.
   dice si la API web de Spotify falla (cuantas peticiones bien y mal y el ultimo codigo): sin eso, conectado y sin nada a la vista no
   se sabia por que.
 - No probado en el A4: el raton real, la red del bar ni la cuenta de Spotify.
+
+## Pasos 2 y 4 de la revision contra XP (7 de noviembre de 2026)
+
+- **Paso 2:** V1, V7, V13, V14, V15, V20, G4, G9, G10 y G11 encendidas de fabrica (`MejorasVisuales.cs`). Una rocola que ya guardo
+  Ctrl+F3 las tenia escritas apagadas: `LeeConfiguracion` las enciende una vez si falta `medio_encendido=1`, que `GuardaAjustes` escribe.
+- **Paso 4:** el odometro de los creditos y la sacudida sin creditos (`ParedXp.cs`, como Form1.Vistas.cs de XP); «Pagina N de M» en la
+  cabecera (corto «N/M» si no cabe en 1024); Ctrl+F3 -> Detalles -> «La rocola» con cinco botones de doble toque (`Ajustes.cs`,
+  `Confirma`; `PideSalida` lo atiende el bucle del Controlador; `/usr/bin/rocola` sabe 45 y 46); «Traer otra vez lo aprendido en XP»
+  (`Arranque.cs`, `rocola_reimportar_xp`).
+- Probado con capturas y una pelicula de cuadros (el odometro). No en el A4.

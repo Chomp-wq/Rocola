@@ -11,26 +11,26 @@ namespace Rocola
     public partial class Form1
     {
         // ---- los interruptores (clave de configuracion entre comillas) ----
-        public bool NebulosasVivas = false;     // V1 "nebulosas_vivas=" (medio)
+        public bool NebulosasVivas = true;      // V1 "nebulosas_vivas=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public bool AuroraMusica = true;        // V2 "aurora_musica="
         public bool EstrellasAire = true;       // V3 "estrellas_aire="
         // INTERRUPTORES RETIRADOS (7-11-2026, «borra interruptores que sean innecesarios»): ya no se pueden apagar; las claves se ignoran
         public bool PortadasNitidas { get { return true; } }     // V4 (portadas_nitidas=): siempre (los mipmaps se hacen en el hilo de las portadas)
         public bool CuboLuz = true;             // V5 "cubo_luz="
-        public bool DiscoVidrio = false;        // V7 "disco_vidrio=" (medio)
+        public bool DiscoVidrio = true;         // V7 "disco_vidrio=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public bool ListaColores = true;        // V8 "lista_colores="
         public bool EqReal { get { return true; } }              // V9 (eq_real=): siempre el sonido real
         public bool BarraForma = true;          // V10 "barra_forma="
         public bool EspectroFranja = true;      // V11 "espectro_franja="
         public bool TituloTransicion = true;    // V12 "titulo_transicion="
-        public bool ReposoLuz = false;          // V13 "reposo_luz=" (medio)
-        public bool AnilloMusica = false;       // V14 "anillo_musica=" (medio)
-        public bool ColaCarrusel = false;       // V15 "cola_carrusel=" (medio)
+        public bool ReposoLuz = true;           // V13 "reposo_luz=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
+        public bool AnilloMusica = true;        // V14 "anillo_musica=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
+        public bool ColaCarrusel = true;        // V15 "cola_carrusel=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public bool TecladoVivo = true;         // V16 "teclado_vivo="
         public bool ResultadosCascada = true;   // V17 "resultados_cascada="
         public bool EstrellaLuz = true;         // V18 "estrella_luz="
         public bool AtraccionCine = true;       // V19 "atraccion_cine="
-        public bool MosaicoExitos = false;      // V20 "mosaico_exitos=" (medio)
+        public bool MosaicoExitos = true;       // V20 "mosaico_exitos=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public bool AtraccionFundidos { get { return true; } }   // V21 (atraccion_fundidos=): siempre con fundidos
         public bool MonedaMetal = true;         // V22 "moneda_metal="
         public bool ChispasPedir = true;        // V23 "chispas_pedir="
@@ -59,14 +59,14 @@ namespace Rocola
         public bool VidrioCabecera = true;      // G1 "vidrio_cabecera="
         public bool VidrioLetras = true;        // G2 "vidrio_letras="
         public bool VidrioSuena = true;         // G3 "vidrio_suena="
-        public bool VidrioFicha = false;        // G4 "vidrio_ficha=" (medio)
+        public bool VidrioFicha = true;         // G4 "vidrio_ficha=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public bool VidrioDisco = true;         // G5 "vidrio_disco="
         public bool VidrioReposo = true;        // G6 "vidrio_reposo="
         public bool VidrioBuscador = true;      // G7 "vidrio_buscador="
         public bool VidrioAtraccion = true;     // G8 "vidrio_atraccion="
-        public bool VidrioAjustes = false;      // G9 "vidrio_ajustes=" (medio)
-        public bool VidrioAvisos = false;       // G10 "vidrio_avisos=" (medio)
-        public bool VidrioAyuda = false;        // G11 "vidrio_ayuda=" (medio)
+        public bool VidrioAjustes = true;       // G9 "vidrio_ajustes=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
+        public bool VidrioAvisos = true;        // G10 "vidrio_avisos=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
+        public bool VidrioAyuda = true;         // G11 "vidrio_ayuda=" (medio; encendida de fabrica desde el 7-11-2026, como XP)
         public static bool LetraNuevaFalta;     // la pantalla avisa si no encontro los archivos de L1 (el interruptor, en gris)
         // Alguno de los vidrios del cielo: la pantalla prepara la copia desenfocada del cielo solo si hace falta.
         public bool AlgunVidrioDelCielo { get { return VidrioCabecera || VidrioLetras || VidrioSuena || VidrioDisco || VidrioReposo || VidrioBuscador || VidrioAtraccion; } }
@@ -94,6 +94,15 @@ namespace Rocola
             }
             catch { }
             return defecto;
+        }
+        // LAS DE COSTE MEDIO, ENCENDIDAS COMO EN XP (decision del dueno del 7-11-2026, «2»: la rocola de Linux se veia recortada frente a la
+        // de XP). Una rocola que ya guardo Ctrl+F3 las tenia escritas apagadas: se encienden UNA vez (la marca va en rocola_config.txt al
+        // guardar); despues manda lo que el dueno elija.
+        internal const string MarcaMedio = "medio_encendido=1";
+        private void EnciendeMedio()
+        {
+            NebulosasVivas = DiscoVidrio = ReposoLuz = AnilloMusica = ColaCarrusel = MosaicoExitos = true;
+            VidrioFicha = VidrioAjustes = VidrioAvisos = VidrioAyuda = true;
         }
         // Las claves, para leerlas y guardarlas de una sola tabla.
         private KeyValuePair<string, Func<bool>>[] clavesVisuales;
