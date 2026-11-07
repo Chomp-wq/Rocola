@@ -1894,3 +1894,14 @@ Dos arreglos:
 
 Los dos van en la compilacion del sistema (el lanzador y el actualizador) y la del programa (la fecha).
 
+### Segunda vuelta («Continua», 7 de noviembre de 2026)
+
+- **El buzon dice cuando su llave no vale**: GitHub contesta 404 tanto si aun no hay ordenes como si la llave no tiene acceso al buzon
+  privado; el buzon lo tomaba siempre como «aun no hay ordenes» y solo decia «no se pudo subir». Ahora, ante un 404, pregunta por el
+  repositorio: si tampoco lo ve, dice «la llave del buzon no vale (o no tiene permiso)». Probado con un GitHub simulado (llave sin
+  acceso y llave buena sin ordenes).
+- Revisado y sin cambio: el resto del buzon (los archivos que se pueden pedir excluyen las llaves y la cuenta de Spotify; cada orden se
+  apunta como hecha antes de cumplirla y se baja al disco antes de reiniciar o apagar), el montaje de los discos (todo en solo lectura;
+  ntfs3 monta en solo lectura aunque XP se haya apagado de golpe), la red (DHCP sin rendirse) y el vigilante del programa (cierra el
+  programa si el bucle se cuelga; lo guardado se escribe aparte y se cambia de un tiron, asi que no queda a medias).
+

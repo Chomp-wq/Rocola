@@ -277,10 +277,13 @@ while :; do
 		ULTIMO_CODIGO=
 		atiende_ordenes
 		c=$ULTIMO_CODIGO
+		# (7-11-2026) un 404 puede ser «aun no hay ordenes» o una llave sin acceso al buzon (GitHub contesta 404 a lo privado que no
+		# se puede ver): se pregunta por el repositorio mismo
+		if [ "$c" = 404 ]; then r=$(gh GET "/repos/$REPO"); case "$r" in 401|403|404) c=sin_acceso ;; esac; fi
 		case "$c" in
 			200|304|404) mira_diagnostico; manda_estado && dice "al dia con el buzon $REPO" ;;   # (404: aun no hay ordenes)
 			000) dice "sin internet" ;;
-			401|403|404) dice "la llave del buzon no vale para $REPO ($c)" ;;
+			401|403|sin_acceso) dice "la llave del buzon no vale para $REPO (o no tiene permiso sobre el)" ;;
 			*) dice "GitHub no contesto ($c)" ;;
 		esac
 	fi
