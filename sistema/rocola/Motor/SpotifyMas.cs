@@ -97,6 +97,7 @@ namespace Rocola
         }
         private void Empareja()
         {
+            Prioridad.Fondo();   // nice 19 (BelowNormal no hace nada en Linux)
             try { EmparejaVueltas(); }
             catch (Exception ex) { LogError("Spotify: el emparejador", ex); }   // (una excepcion aqui cerraria la rocola entera)
         }

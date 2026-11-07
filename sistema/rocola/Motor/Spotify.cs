@@ -279,6 +279,21 @@ namespace Rocola
         public List<Disco> DiscosSpotify() { lock (spotifyCerrojo) return new List<Disco>(spotifyPared); }
 
         // Llamarlo a menudo (el bucle de la rocola): abre o cierra el programa segun el interruptor y trae la biblioteca.
+        // LA SIGUIENTE, YA BAJADA (7-11-2026, «que todo cargue extremadamente rapido»): si la primera de la cola va a sonar desde Spotify
+        // (de Spotify, o tuya sustituida: SP2), se le pide a rocola-spotify que la vaya bajando; al tocarla, empieza al momento en vez de
+        // esperar a que llegue. Una vez por cancion, en segundo plano (la orden vuelve al instante). Si la cola cambia, no pasa nada.
+        private string precargada;
+        private void PrecargaSiguiente()
+        {
+            SpotifyEnVivo s = spotify;
+            if (s == null || !s.Conectado || queue.Count == 0) return;
+            PlayItem it = queue[0]; string id = null;
+            if (EsItemSpotify(it)) { id = it.Song.Path.Substring(RaizSpotify.Length); int barra = id.IndexOf('/'); if (barra > 0) id = id.Substring(0, barra); }
+            else id = IdParaSustituir(it);
+            if (id == null || id == precargada) return;
+            precargada = id; string uri = "spotify:track:" + id;
+            ThreadPool.QueueUserWorkItem(delegate { try { using (s.Toca.Pide(ControlSpotify.Orden("precarga", "uri", uri), 1500)) { } } catch { } });
+        }
         public void AtiendeSpotify()
         {
             int ahora = Environment.TickCount;
@@ -306,6 +321,7 @@ namespace Rocola
                 catch (Exception ex) { spotifyFallos++; LogError("Spotify: no se pudo abrir rocola-spotify", ex); }
                 return;
             }
+            PrecargaSiguiente();
             // LA BIBLIOTECA: al entrar y cada 30 min (listas nuevas), en segundo plano.
             if (spotify.Conectado && !spotifyCargandoPared && (spotifyBibliotecaDesde == 0 || unchecked(ahora - spotifyBibliotecaDesde) > 30 * 60 * 1000))
             {

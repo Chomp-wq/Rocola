@@ -123,6 +123,7 @@ namespace Rocola
         }
         private void Discografo()
         {
+            Prioridad.Fondo();   // nice 19 (BelowNormal no hace nada en Linux)
             try
             {
                 while (true)

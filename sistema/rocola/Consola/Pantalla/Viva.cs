@@ -158,7 +158,7 @@ namespace Rocola
             }
             // TextoCuenta de XP: se ensenan las 40 mejores, pero la casilla dice todas las coincidencias; sin ninguna, «Sin resultados»
             bool servicio = c.Resultados.Count > 0 && c.Resultados[0].Tipo == 3;
-            int total = c.Escrito.Length > 0 && !Form1.EsCodigoDeServicio(c.Escrito) ? Math.Max(m.TotalUltimaBusqueda, c.Resultados.Count) : c.Resultados.Count;
+            int total = c.Escrito.Length > 0 && !Form1.EsCodigoDeServicio(c.Escrito) ? Math.Max(c.TotalBusqueda, c.Resultados.Count) : c.Resultados.Count;
             if (!servicio && (total > 0 || c.Escrito.Length > 0))
             {
                 string cu = total <= 0 ? "Sin resultados" : total == 1 ? "1 resultado" : total.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " resultados";

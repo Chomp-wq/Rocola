@@ -146,14 +146,32 @@ namespace Rocola.Pantalla
             return new Textura { Id = t, Ancho = ancho, Alto = alto };
         }
         // Con sus tamanos reducidos (mipmaps; lados potencia de 2, como pide OpenGL ES 2): se achica sin granos (V4).
-        internal Textura SubeConMipmaps(byte[] rgba, int lado)
+        // Lo mismo con los tamanos reducidos ya hechos (en el hilo de las portadas): la tarjeta solo los copia, sin calcular nada en el cuadro.
+        internal Textura SubeConNiveles(byte[][] niveles, int lado)
         {
-            Textura t = Sube(rgba, lado, lado);
+            Textura t = Sube(niveles[0], lado, lado);
             GL.BindTexture(GL.TEXTURE_2D, t.Id);
-            GL.GenerateMipmap(GL.TEXTURE_2D);
+            for (int i = 1; i < niveles.Length; i++) { int l = Math.Max(1, lado >> i); fixed (byte* p = niveles[i]) GL.TexImage2D(GL.TEXTURE_2D, i, (int)GL.RGBA, l, l, 0, GL.RGBA, GL.UNSIGNED_BYTE, p); }
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR_MIPMAP_LINEAR);
             texActual = 0; texActualT = null;
             return t;
+        }
+        // Los tamanos reducidos de una imagen cuadrada potencia de 2 (promedio de 2x2, como el de la tarjeta), hasta 1x1.
+        internal static byte[][] Niveles(byte[] px, int lado)
+        {
+            List<byte[]> l = new List<byte[]> { px };
+            while (lado > 1)
+            {
+                int n = lado / 2; byte[] a = l[l.Count - 1], b = new byte[n * n * 4];
+                for (int y = 0; y < n; y++)
+                    for (int x = 0; x < n; x++)
+                    {
+                        int o0 = ((2 * y) * lado + 2 * x) * 4, o1 = o0 + lado * 4, o = (y * n + x) * 4;
+                        for (int c = 0; c < 4; c++) b[o + c] = (byte)((a[o0 + c] + a[o0 + 4 + c] + a[o1 + c] + a[o1 + 4 + c] + 2) >> 2);
+                    }
+                l.Add(b); lado = n;
+            }
+            return l.ToArray();
         }
         // V24: lo que ya esta dibujado en un rectangulo de la pantalla, copiado a una textura (siempre la misma: una a la vez). Las filas
         // vienen de abajo arriba (como las da OpenGL): se dibuja con v de 1 a 0.
@@ -794,7 +812,7 @@ namespace Rocola.Pantalla
         // prueba (AlMomento) se lee en el sitio, como antes.
         internal static bool AlMomento;
         private enum Clase { Normal, Grande, Borrosa }
-        private sealed class Listo { public string Ruta; public Clase Que; public byte[] Px; public int W, H, S; public bool Mip, Falla, Opaca; public Color4 Media; public Rocola.VistaGrafica.C3 Prom, Uno, Dos; }
+        private sealed class Listo { public string Ruta; public Clase Que; public byte[] Px; public byte[][] Niveles; public int W, H, S; public bool Mip, Falla, Opaca; public Color4 Media; public Rocola.VistaGrafica.C3 Prom, Uno, Dos; }
         private readonly LinkedList<KeyValuePair<string, Clase>> pedidas = new LinkedList<KeyValuePair<string, Clase>>();
         private readonly HashSet<string> enCamino = new HashSet<string>(StringComparer.Ordinal);
         private readonly System.Collections.Concurrent.ConcurrentQueue<Listo> listas = new System.Collections.Concurrent.ConcurrentQueue<Listo>();
@@ -841,11 +859,14 @@ namespace Rocola.Pantalla
         // Lo que ya esta leido, a la tarjeta (llamar una vez por cuadro, desde el hilo de la pantalla): como mucho 'cuantas'.
         internal void Recoge(int cuantas)
         {
-            Listo l;
-            for (int i = 0; i < cuantas && listas.TryDequeue(out l); i++)
+            // SIN TIRONES (7-11-2026): como mucho ~300 000 puntos por cuadro (una grande, o cuatro normales con sus reducidas); lo demas,
+            // en los cuadros siguientes. Subir varias de golpe se comia 15-20 ms de un solo cuadro.
+            Listo l; long puntos = 0;
+            for (int i = 0; i < cuantas && puntos < 300000 && listas.TryDequeue(out l); i++)
             {
                 lock (pedidas) enCamino.Remove((int)l.Que + l.Ruta);
                 Pon(l);
+                if (!l.Falla) puntos += (long)(l.Mip ? l.S * l.S * 4 / 3 : l.W * l.H);
             }
         }
         internal const long PortadaMaxPx = 64L * 1000 * 1000;
@@ -888,7 +909,7 @@ namespace Rocola.Pantalla
                 if (nitidas)
                 {
                     int sz = 1; while (sz * 2 <= Math.Max(64, max)) sz *= 2;   // el lado potencia de 2 que cabe
-                    l.Px = Escala(pxs, w, h, sz, sz); l.S = sz; l.Mip = true;
+                    l.Px = Escala(pxs, w, h, sz, sz); l.S = sz; l.Mip = true; l.Niveles = Dibujo.Niveles(l.Px, sz);   // (en este hilo, no en el cuadro)
                 }
                 else l.Px = pxs;
                 bool op = true; byte[] q = l.Px;
@@ -907,7 +928,7 @@ namespace Rocola.Pantalla
             int cuantas = l.Que == Clase.Normal ? 96 : l.Que == Clase.Grande ? 6 : 8;
             if (cache.ContainsKey(l.Ruta)) return;
             Textura t;
-            if (l.Mip) { t = d.SubeConMipmaps(l.Px, l.S); t.Ancho = l.W; t.Alto = l.H; }   // la forma de la portada (la textura va estirada al cuadrado)
+            if (l.Mip) { t = d.SubeConNiveles(l.Niveles, l.S); t.Ancho = l.W; t.Alto = l.H; }   // la forma de la portada (la textura va estirada al cuadrado)
             else t = d.Sube(l.Px, l.W, l.H);
             t.Media = l.Media; t.Prom = l.Prom; t.Uno = l.Uno; t.Dos = l.Dos; t.Opaca = l.Opaca;
             cache[l.Ruta] = t; ord.AddFirst(l.Ruta);

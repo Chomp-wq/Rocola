@@ -152,6 +152,7 @@ namespace Rocola
                 d.Brillo(W * 0.5f, top, W * 0.35f, Color4.Hex(0x6A7CFF, 0.12f));
             }
             string t = m.SonandoTitulo; if (t == null) return;
+            Perfil.Marca("ext vidrio");
             // SP11: la foto del artista de fondo (Spotify), estirada y tenue (la foto es chica: estirada ya se ve difuminada)
             string anio; string foto = m.FotoArtistaSonando(out anio);
             Textura tfa = foto != null ? caratulas.De(foto) : null;
@@ -163,7 +164,9 @@ namespace Rocola
                 d.DegradadoH(W - ladoFoto, top, ladoFoto * 0.6f, ph, Color4.Hex(0x0A1028, 0.95f), Color4.Hex(0x0A1028, 0f));
                 d.SinRecorte();
             }
+            Perfil.Marca("ext foto");
             List<Form1.EnColaVista> cola = m.ColaParaPantalla(m.ColaCarrusel ? 7 : m.ColaDoce ? 12 : 3);
+            Perfil.Marca("ext cola");
             float xc = cola.Count == 0 ? W : W * 0.52f;   // donde empieza la cola
             // LAS LETRAS DEL PANEL DE XP (RenderIdlePanelEn): Trebuchet MS en negrita, a la escala del alto del panel
             float sc = Math.Max(.8f, Math.Min(1.3f, ph / (260f * k))) * k;
@@ -178,6 +181,7 @@ namespace Rocola
             else d.Brillo(lx + lado / 2, ly + lado / 2, lado * 0.85f, (tx != null ? tx.Media : Dorado).ConAlfa(0.30f + 0.25f * pGraves));
             if (m.PortadasBrillan) d.Brillo(lx + lado / 2, ly + lado / 2, lado * 1.0f, vivo1.ConAlfa((0.18f + 0.22f * pGraves) * viveza));   // C9
             Cubo(m.SonandoPortada, m.SonandoDisco ?? t, lx, ly, lado, reloj.Elapsed.TotalSeconds * 0.5);
+            Perfil.Marca("ext cubo");
             float x = lx + lado + 22 * k, ancho = xc - x - 24 * k;
             // el titulo, en hasta dos renglones con puntos (como el DrawString con LineLimit de XP, en un alto de min(90, 0,28 del panel))
             List<string> rt = Envuelve(t, big, ancho);
@@ -211,6 +215,7 @@ namespace Rocola
                 d.RedondoDegradado(bx, by - hb / 2, wp, hb, hb / 2, Dibujo.Mezcla(neon, Blanco, 0.5f), neon);
                 d.Brillo(bx + wp, by, 14 * k, Blanco.ConAlfa(0.7f)); d.Brillo(bx + wp, by, 4 * k, Blanco);
             }
+            Perfil.Marca("ext textos");
             if (cola.Count == 0) return;
             if (m.ColaCarrusel) { Carrusel(m, cola, xc, top, W, H, small, normal); return; }   // V15
             // A CONTINUACION: tarjetas en tres columnas (dos si caben pocas)

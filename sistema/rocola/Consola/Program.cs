@@ -208,7 +208,13 @@ namespace Rocola
                     // algo sonando y cinco en la cola, en la pared (sin salida: solo para ver la pantalla)
                     m.Moneda(); m.Moneda();
                     foreach (Form1.Disco dd in c.discos) foreach (string r in dd.Rutas) if (!dd.Videos && m.EnCola < 6) m.Pide(r);
+                    System.Diagnostics.Stopwatch se = System.Diagnostics.Stopwatch.StartNew();
                     m.EmpiezaSiguiente();
+                    if (Environment.GetEnvironmentVariable("ROCOLA_MIDE_EMPIEZA") != null)
+                    {   // (pruebas) cuanto tarda empezar una cancion en el hilo que la pide: la primera y cuatro mas
+                        Console.WriteLine("Empezar la 1: " + se.Elapsed.TotalMilliseconds.ToString("0.0") + " ms");
+                        for (int q = 2; q <= 5; q++) { m.AcaboLaSalida(); se.Restart(); m.EmpiezaSiguiente(); Console.WriteLine("Empezar la " + q + ": " + se.Elapsed.TotalMilliseconds.ToString("0.0") + " ms"); }
+                    }
                 }
                 else if (b.StartsWith("#")) c.PulsaTecla(int.Parse(b.Substring(1)));   // --tecla 119: F8 (el asistente), o cualquier codigo de Windows
                 else if (b.StartsWith("regresar+")) c.Pulsa((Boton)Enum.Parse(typeof(Boton), b.Substring(9), true), true);   // con REGRESAR mantenido
@@ -231,6 +237,7 @@ namespace Rocola
                     long a = GC.GetAllocatedBytesForCurrentThread(); sw.Restart();
                     v.Dibuja(c);
                     ms.Add(sw.Elapsed.TotalMilliseconds); bytes += GC.GetAllocatedBytesForCurrentThread() - a;
+                    if (Perfil.Activo && sw.Elapsed.TotalMilliseconds > 4) { var lc = new List<KeyValuePair<string, double>>(Perfil.Cuadro); lc.Sort((x, y) => y.Value.CompareTo(x.Value)); var sb = new System.Text.StringBuilder(); for (int q = 0; q < Math.Min(5, lc.Count); q++) sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0} {1:0.0}; ", lc[q].Key, lc[q].Value)); Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "  LENTO cuadro {0}: {1:0.0} ms ({2})", i, sw.Elapsed.TotalMilliseconds, sb)); }
                 }
                 ms.Sort();
                 Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "BANCO {0}x{10}: mediana {1:0.00} ms, p95 {2:0.00}, peor {3:0.00}, {4:0.0} KB por cuadro, {5} recolecciones, {6} dibujos y {7} vertices por cuadro, {8:0.00} pantallas pintadas ({9:0.00} mezcladas)", Rocola.Pantalla.Dibujo.Actual.Ancho, ms[ms.Count / 2], ms[(int)(ms.Count * 0.95)], ms[ms.Count - 1], bytes / 1024.0 / nb, GC.CollectionCount(0) - gc0, Rocola.Pantalla.Dibujo.Dibujos / nb, Rocola.Pantalla.Dibujo.Vertices / nb, Rocola.Pantalla.Dibujo.Relleno / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto), Rocola.Pantalla.Dibujo.RellenoMezclado / nb / ((double)Rocola.Pantalla.Dibujo.Actual.Ancho * Rocola.Pantalla.Dibujo.Actual.Alto), Rocola.Pantalla.Dibujo.Actual.Alto));

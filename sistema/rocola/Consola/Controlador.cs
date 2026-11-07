@@ -82,7 +82,7 @@ namespace Rocola
         internal void Pulsa(Boton b) { Maneja(b); TrasBoton(); }
         // Una tecla (codigo de Windows), como si llegara de los botones (las pruebas).
         internal void PulsaTecla(int vk) { Tecla(vk); }
-        internal void EscribeDePrueba(string t) { foreach (char ch in t.ToUpperInvariant()) Tecla(DeTexto - ch); }
+        internal void EscribeDePrueba(string t) { foreach (char ch in t.ToUpperInvariant()) Tecla(DeTexto - ch); EsperaBusqueda(); }
 
         internal void EmpiezaAsistente() { AsistentePaso = 0; AsistenteAviso = ""; }
 
@@ -366,7 +366,7 @@ namespace Rocola
         internal void EsperaSpotify(IVista v, int ms)
         {
             int t0 = Environment.TickCount;
-            while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaLetrasSpotify(); RevisaMas(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
+            while (unchecked(Environment.TickCount - t0) < ms) { motor.AtiendeSpotify(); RevisaSpotify(); RevisaLetrasSpotify(); RevisaMas(); RecogeBusqueda(); RevisaBusquedaSpotify(); v.Dibuja(this); System.Threading.Thread.Sleep(100); }
         }
         // P1 (Motor/SpotifyPortadas.cs): los discos de Spotify en las letras, junto a los del mismo artista (o en su sitio por el nombre). Se
         // rehace cuando el motor trae discos nuevos; lo que se mira se queda elegido (el mismo disco, aunque cambie de sitio).
@@ -512,7 +512,7 @@ namespace Rocola
             if (object.ReferenceEquals(dentro, dd) && cursorCancion >= rutas.Count) cursorCancion = Math.Max(0, rutas.Count - 1);
         }
         // Los resultados de Spotify, detras de los de la biblioteca, en cuanto llegan (el motor busca cuando se deja de escribir).
-        private List<Form1.Resultado> resultadosLocales, resultadosMezclados;
+        private List<Form1.Resultado> resultadosLocales, resultadosMezclados; private string resultadosLocalesDe;
         private string resultadosSpotifyDe;
         // Y BUSCAR POR LA LETRA (L1, Motor/BuscaLetras.cs): con una frase, lo que dice Genius va DELANTE (es lo que se buscaba: alguien no
         // escribe cuatro palabras de una letra por casualidad), sin repetir lo que ya estaba.
@@ -520,7 +520,7 @@ namespace Rocola
         private string resultadosLetraDe;
         private void RevisaBusquedaSpotify()
         {
-            if (!Buscando || resultadosLocales == null || Form1.EsCodigoDeServicio(Escrito)) return;
+            if (!Buscando || resultadosLocales == null || resultadosLocalesDe != Escrito || Form1.EsCodigoDeServicio(Escrito)) return;   // (lo local de lo escrito ya llego)
             // solo sobre lo que se busco escribiendo (no sobre «Lo mas pedido hoy» ni otro atajo)
             if (!object.ReferenceEquals(Resultados, resultadosLocales) && !object.ReferenceEquals(Resultados, resultadosMezclados)) return;
             bool cambio = false;
@@ -774,9 +774,52 @@ namespace Rocola
             if (a.Tipo == 0) { Resultados = motor.MasPedidoHoy(); EnResultados = Resultados.Count > 0; SelResultado = 0; Escrito = ""; }
             else if (a.Tipo == 1) { int i = letras.IndexOf(Form1.LetraVideos); if (i >= 0) { letra = i; cursorDisco = 0; dentro = null; Buscando = false; } }
             else if (a.Tipo == 3 || a.Tipo == 4) { Resultados = motor.AtajoSpotify(a.Tipo - 3) ?? new List<Form1.Resultado>(); EnResultados = Resultados.Count > 0; SelResultado = 0; Escrito = ""; }
-            else { Escrito = a.Busqueda; Resultados = motor.Busca(Escrito); SelResultado = 0; EnResultados = Resultados.Count > 0; }
+            else { Escrito = a.Busqueda; Resultados = new List<Form1.Resultado>(); SelResultado = 0; EnResultados = false; atajoBuscando = true; PideBusqueda(Escrito); }
         }
         private void CierraBuscador() { Buscando = false; }
+        // LA BUSQUEDA EN SU HILO (7-11-2026, «que no haya tirones»): buscar en 20 000 canciones cuesta de 2 a 8 ms aqui y mas en el A4;
+        // en el hilo de la pantalla eso era un cuadro perdido por tecla. Un hilo propio busca lo ULTIMO que se escribio (si se teclea mas
+        // rapido de lo que busca, las intermedias se saltan) y la pantalla lo recoge en su vuelta. Solo ese hilo llama a motor.Busca.
+        private readonly object buscaLock = new object(); private string buscaPedida, buscaHecha; private List<Form1.Resultado> buscaRes;
+        private int buscaTotal; private bool atajoBuscando; private System.Threading.Thread buscaHilo;
+        private readonly System.Threading.AutoResetEvent buscaHay = new System.Threading.AutoResetEvent(false);
+        internal int TotalBusqueda;   // cuantas casan en lo que se ensena (la casilla)
+        private void PideBusqueda(string texto)
+        {
+            lock (buscaLock) { buscaPedida = texto; }
+            if (buscaHilo == null)
+            {
+                buscaHilo = new System.Threading.Thread(BucleBusca) { IsBackground = true, Name = "buscador" };
+                buscaHilo.Start();
+            }
+            buscaHay.Set();
+        }
+        private void BucleBusca()
+        {
+            while (true)
+            {
+                buscaHay.WaitOne();
+                string q;
+                lock (buscaLock) { q = buscaPedida; buscaPedida = null; }
+                if (q == null) continue;
+                List<Form1.Resultado> res; int total;
+                try { res = motor.Busca(q); total = motor.TotalUltimaBusqueda; }
+                catch (Exception e) { motor.ApuntaError("Buscador", e); res = new List<Form1.Resultado>(); total = 0; }
+                lock (buscaLock) { buscaHecha = q; buscaRes = res; buscaTotal = total; }
+            }
+        }
+        // En cada vuelta (y en las pruebas): si ya llego lo de lo escrito, a la pantalla.
+        private void RecogeBusqueda()
+        {
+            List<Form1.Resultado> res = null; int total = 0;
+            lock (buscaLock) { if (buscaRes != null && buscaHecha == Escrito) { res = buscaRes; total = buscaTotal; } if (buscaRes != null && buscaHecha != null) { buscaRes = null; } }
+            if (res == null || !Buscando) return;
+            Resultados = resultadosLocales = res; resultadosLocalesDe = Escrito; TotalBusqueda = total; resultadosSpotifyDe = null; resultadosLetraDe = null;
+            if (SelResultado >= res.Count) SelResultado = 0;
+            if (atajoBuscando) { atajoBuscando = false; SelResultado = 0; EnResultados = res.Count > 0; }
+        }
+        // (pruebas) esperar a que el buscador acabe lo pedido
+        internal void EsperaBusqueda() { for (int i = 0; i < 400; i++) { lock (buscaLock) { if (buscaPedida == null && buscaHecha == Escrito && buscaRes != null) break; } System.Threading.Thread.Sleep(5); } RecogeBusqueda(); }
         // El codigo de servicio de XP: escrito y mantenido 5 s, aparece "+4 creditos" como resultado (Tipo 3).
         private int codigoDesde = -1;
         private void ActualizaCodigo()
@@ -793,8 +836,10 @@ namespace Rocola
         {
             if (ch == '\u0002') { if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1); }
             else Escrito += ch == '\u0001' ? ' ' : ch;
-            Resultados = Form1.EsCodigoDeServicio(Escrito) ? new List<Form1.Resultado>() : motor.Busca(Escrito); SelResultado = 0;   // el codigo no busca
-            resultadosLocales = Resultados; resultadosSpotifyDe = null; resultadosLetraDe = null;
+            SelResultado = 0; atajoBuscando = false;
+            if (Form1.EsCodigoDeServicio(Escrito)) { Resultados = new List<Form1.Resultado>(); resultadosLocales = Resultados; }   // el codigo no busca
+            else PideBusqueda(Escrito);   // (en su hilo: llega en unos ms, sin parar la pantalla; mientras, quedan los de antes)
+            resultadosSpotifyDe = null; resultadosLetraDe = null;
             if (!Form1.EsCodigoDeServicio(Escrito)) { motor.PideBusquedaSpotify(Escrito); motor.PideBusquedaLetra(Escrito); }   // y en Spotify y por la letra, si toca (llegan despues)
         }
         private void ManejaBuscador(Boton b)
@@ -1156,6 +1201,7 @@ namespace Rocola
             RevisaSpotify();
             RevisaLetrasSpotify();
             RevisaMas();
+            RecogeBusqueda();
             RevisaBusquedaSpotify();
             if (salida == null && video == null)
             {

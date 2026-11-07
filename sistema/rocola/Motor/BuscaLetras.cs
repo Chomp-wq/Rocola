@@ -84,6 +84,7 @@ namespace Rocola
             if (repasoLetras != null && repasoLetras.IsAlive) return;
             repasoLetras = new Thread(delegate ()
             {
+                Prioridad.Fondo();   // nice 19 (en Linux, Priority no hace nada): solo lo que sobra, sin quitarle a la pantalla
                 try
                 {
                     if (letrasMp3.Count == 0) LeeLetrasMp3();

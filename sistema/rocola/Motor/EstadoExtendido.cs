@@ -24,16 +24,33 @@ namespace Rocola
                     TimeSpan cur = c.Lector.CurrentTime, tot = c.Lector.TotalTime;
                     if (tot.TotalSeconds <= 0 || cur.TotalSeconds < 0) return "";
                     if (cur > tot) cur = tot;
-                    return Reloj(cur) + " / " + Reloj(tot);
+                    int sc = (int)cur.TotalSeconds, st = (int)tot.TotalSeconds;
+                    if (sc != tiempoCur || st != tiempoTot || tiempoTexto == null) { tiempoCur = sc; tiempoTot = st; tiempoTexto = Reloj(cur) + " / " + Reloj(tot); }   // (un texto nuevo por segundo, no por cuadro)
+                    return tiempoTexto;
                 }
                 catch { return ""; }
             }
         }
+        private int tiempoCur = -1, tiempoTot = -1; private string tiempoTexto;
         private static string Reloj(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
         public string SonandoGenero { get { PlayItem p = nowPlaying; return p != null && p.Song != null ? (p.Song.Genre ?? "") : ""; } }
 
         public sealed class EnColaVista { public string Titulo, Disco, Portada, Ruta; public int Minutos; public bool Video; }
+        // LA COLA PARA LA PANTALLA, RECORDADA (7-11-2026): se pide en cada cuadro (dentro de un disco, en el reposo, en el buscador) y armarla
+        // son textos nuevos cada vez (basura para el recolector). Se rehace si cambia la cola, lo que suena o pasa 1 s (los minutos de
+        // espera); si no, la misma lista. Quien la recibe solo la lee.
+        private List<EnColaVista> colaVista; private int colaVistaN, colaVistaFirma, colaVistaDesde;
         public List<EnColaVista> ColaParaPantalla(int n)
+        {
+            int firma = queue.Count * 31 + n + (nowPlaying != null ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(nowPlaying) : 0);
+            for (int i = 0; i < queue.Count && i < n; i++) firma = firma * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(queue[i]);
+            int ahora = Environment.TickCount;
+            if (colaVista != null && colaVistaN == n && colaVistaFirma == firma && unchecked(ahora - colaVistaDesde) < 1000) return colaVista;
+            List<EnColaVista> r = ArmaColaParaPantalla(n);
+            colaVista = r; colaVistaN = n; colaVistaFirma = firma; colaVistaDesde = ahora;
+            return r;
+        }
+        private List<EnColaVista> ArmaColaParaPantalla(int n)
         {
             List<EnColaVista> r = new List<EnColaVista>();
             double s = RestanDeLaQueSuena();

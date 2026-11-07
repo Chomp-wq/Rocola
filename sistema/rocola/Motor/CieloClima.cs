@@ -154,6 +154,7 @@ namespace Rocola
         }
         private void BucleClima()
         {
+            Prioridad.Fondo();   // nice 19 (Lowest no hace nada en Linux; curl lo hereda)
             if (Environment.GetEnvironmentVariable("ROCOLA_CLIMA_YA") == null) Thread.Sleep(20000);   // que arranque primero lo demas (ROCOLA_CLIMA_YA: para probar)
             while (true)
             {

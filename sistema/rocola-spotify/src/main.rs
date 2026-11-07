@@ -10,6 +10,7 @@
 //     {"op":"api","ruta":"/v1/search?q=..."}   -> la API web de Spotify con la llave de la sesion: {"ok":true,"estado":200,"cuerpo":"..."}
 //     {"op":"baja","url":"https://i.scdn.co/...","archivo":"/run/..."}   -> una portada a un archivo
 //     {"op":"toca","uri":"spotify:track:..."}  -> la toca desde el principio
+//     {"op":"precarga","uri":"spotify:track:..."}  -> la baja ya, para que "toca" con la misma empiece al momento
 //     {"op":"para"}                            -> calla
 //     {"op":"letra","id":"<id de la cancion>"} -> la letra que da Spotify (sincronizada por lineas si la tiene): {"ok":true,"cuerpo":"..."};
 //                                                 se pide al momento y no se guarda
@@ -298,6 +299,19 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
                     p.load(id, true, 0);
                     json!({"ok": true, "seq": seq})
                 }
+                None => json!({"ok": false, "error": "aun no hay cuenta"}),
+            }
+        }
+        "precarga" => {
+            // la siguiente de la cola, bajada mientras suena la de ahora: al pedirla con "toca" empieza al momento (librespot usa lo ya
+            // precargado si es la misma)
+            let uri = v["uri"].as_str().unwrap_or("");
+            let id = match SpotifyUri::from_uri(uri) {
+                Ok(id) => id,
+                Err(e) => return json!({"ok": false, "error": format!("uri: {e}")}),
+            };
+            match r.jugador.lock().unwrap().clone() {
+                Some(p) => { p.preload(id); json!({"ok": true}) }
                 None => json!({"ok": false, "error": "aun no hay cuenta"}),
             }
         }

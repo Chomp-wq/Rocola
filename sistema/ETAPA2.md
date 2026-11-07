@@ -1731,3 +1731,29 @@ atraccion. El renglon de los ajustes sigue saltando (su desplazamiento ya era su
 `ROCOLA_RELOJ_FIJO` y `ROCOLA_RELOJ_PASO`) guarda N cuadros tras cada boton de `--captura`; revisado cuadro a cuadro. Banco del disco
 abierto en llvmpipe: 14 ms de mediana, 1,2 KB por cuadro, sin recolecciones. No medido ni visto en el A4.
 
+## Sin tirones y carga rapida (7 de noviembre de 2026)
+
+Peticion del dueño: «optimizar la utilizacion de recursos al maximo, no puede haber tirones ni bajones de rendimiento, y todo tiene que
+cargar extremadamente rapido». Todo automatico y sin interruptor (no cambia el aspecto ni el sonido). Medido con el banco
+(`ROCOLA_BANCO`, `ROCOLA_PERFIL`; ahora apunta cada cuadro de mas de 4 ms y en que se fue: «LENTO») en la version NATIVA (NativeAOT,
+como corre en el A4; la de pruebas con JIT da picos que en la rocola no existen):
+
+- **Portadas a la tarjeta sin tirones**: subir varias portadas en el mismo cuadro, cada una calculando sus tamanos reducidos
+  (mipmaps) en la tarjeta, se comia 15-20 ms de un cuadro. Ahora los tamanos reducidos se calculan en el hilo de las portadas
+  (promedio de 2x2) y cada cuadro sube como mucho ~300 000 puntos (una grande o cuatro normales); lo demas, en los siguientes.
+- **La busqueda en su hilo**: buscar en 20 000 canciones cuesta 2-8 ms aqui (mas en el A4) y se hacia en el hilo de la pantalla en
+  cada tecla. Ahora un hilo propio busca lo ultimo escrito (si se teclea mas rapido, las intermedias se saltan) y la pantalla lo recoge
+  en su vuelta; Spotify se mezcla solo con lo local de lo escrito.
+- **Spotify: la siguiente ya bajada**: si la primera de la cola va a sonar desde Spotify (de Spotify o tuya sustituida, SP2), se le pide
+  a rocola-spotify que la vaya bajando (orden nueva «precarga», `Player::preload` de librespot); al tocarla, librespot usa lo ya bajado
+  y empieza al momento. Probado con el rocola-spotify simulado (llega la orden); no con una cuenta real.
+- **Hilos de fondo de verdad abajo**: en Linux `Thread.Priority` no hace nada; el repaso de las letras, los discos de los artistas y las
+  parejas de Spotify y el clima ahora piden nice 19 (como ya lo hacian el repaso, las portadas, la IA y las conversiones).
+- **Menos basura por cuadro**: la cola para la pantalla se recuerda (se rehace si cambia la cola o pasa 1 s) y el reloj de lo que suena
+  es un texto nuevo por segundo, no por cuadro.
+
+Medido aqui (version nativa, sin la tarjeta): el programa gasta de 0,16 a 0,34 ms de CPU por cuadro de mediana en pared, disco,
+buscador, reposo y atraccion, y el peor cuadro de 600 no pasa de ~2 ms (antes de este cambio la subida de portadas daba 18-20 ms);
+de 1 a 9 KB de memoria por cuadro, sin recolecciones en el banco. Empezar una cancion local en el hilo principal: ~1 ms (la primera,
+~6). Arrancar con 19 000 canciones (con la cache): 0,56 s hasta la primera captura. No medido en el A4.
+
