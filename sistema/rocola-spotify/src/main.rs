@@ -45,6 +45,39 @@ const ALCANCE: &str = "user-read-private,playlist-read-private,playlist-read-col
 // Si Spotify no da la llave con todos (no todos se permiten a cualquier programa), con lo basico: buscar, tus listas y tus discos.
 const ALCANCE_BASICO: &str = "user-read-private,playlist-read-private,user-library-read";
 
+// EL VOLUMEN DE CADA CANCION (7-11-2026, V3): librespot no lo publica, pero al empezar a tocar una escribe en su registro (debug) su
+// ganancia y su pico («Normalisation Data: ...») y el factor que aplica («Calculated Normalisation Factor ...: N%»). Este registrador
+// deja pasar lo de siempre (env_logger) y ademas lee esas dos lineas; la rocola las pide con «estado» (norm_n sube con cada cancion).
+#[derive(Default, Clone, Copy)]
+struct Norm { gain_db: f64, peak: f64, factor: f64, n: u64 }
+static NORM: Mutex<Norm> = Mutex::new(Norm { gain_db: 0.0, peak: 0.0, factor: 1.0, n: 0 });
+struct Registro { dentro: env_logger::Logger }
+impl log::Log for Registro {
+    fn enabled(&self, m: &log::Metadata) -> bool { self.dentro.enabled(m) || (m.level() <= log::Level::Debug && m.target().starts_with("librespot_playback")) }
+    fn log(&self, r: &log::Record) {
+        if r.level() == log::Level::Debug && r.target().starts_with("librespot_playback") {
+            let t = r.args().to_string();
+            if let Some(resto) = t.strip_prefix("Normalisation Data: ") {
+                let num = |k: &str| -> Option<f64> {
+                    let i = resto.find(k)? + k.len();
+                    let f: String = resto[i..].chars().take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-' || *c == 'e' || *c == 'E').collect();
+                    f.parse().ok()
+                };
+                let mut n = NORM.lock().unwrap();
+                n.gain_db = num("track_gain_db: ").unwrap_or(0.0);
+                n.peak = num("track_peak: ").unwrap_or(0.0);
+            } else if t.starts_with("Calculated Normalisation Factor") {
+                if let Some(i) = t.rfind(": ") {
+                    let f: String = t[i + 2..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                    if let Ok(v) = f.parse::<f64>() { let mut n = NORM.lock().unwrap(); n.factor = v / 100.0; n.n += 1; }
+                }
+            }
+        }
+        if self.dentro.enabled(r.metadata()) { self.dentro.log(r); }
+    }
+    fn flush(&self) { self.dentro.flush(); }
+}
+
 #[derive(Default)]
 struct Estado {
     conectado: bool,
@@ -72,7 +105,18 @@ fn arg(nombre: &str, por_omision: &str) -> String {
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let dentro = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
+    let nivel = dentro.filter().max(log::LevelFilter::Debug);
+    if log::set_boxed_logger(Box::new(Registro { dentro })).is_ok() { log::set_max_level(nivel); }
+    if std::env::args().any(|a| a == "--prueba-norm") {
+        // (prueba) las dos lineas de librespot, con su mismo formato, y lo que se leyo de ellas
+        let data = librespot_playback::player::NormalisationData { track_gain_db: -7.25, track_peak: 0.987654, album_gain_db: -6.5, album_peak: 1.0 };
+        log::debug!(target: "librespot_playback::player", "Normalisation Data: {data:?}");
+        log::debug!(target: "librespot_playback::player", "Calculated Normalisation Factor for {:?}: {:.2}%", "Track", 43.55);
+        let n = *NORM.lock().unwrap();
+        println!("{}", json!({"norm_n": n.n, "norm_ganancia_db": n.gain_db, "norm_pico": n.peak, "norm_factor": n.factor}));
+        return;
+    }
     let cache_dir = PathBuf::from(arg("--cache", "/rocola/datos/spotify"));
     let nombre = arg("--nombre", "Rocola");
     let control = PathBuf::from(arg("--control", "/run/rocola-spotify/control.sock"));
@@ -276,8 +320,10 @@ async fn orden(r: &Arc<Rocola>, v: &Value) -> Value {
     match op {
         "estado" => {
             let s = r.estado.lock().unwrap();
+            let n = *NORM.lock().unwrap();
             json!({"ok": true, "conectado": s.conectado, "esperando_cuenta": s.esperando_cuenta, "usuario": s.usuario,
-                   "sonando": s.sonando, "acabo": s.acabo, "no_disponible": s.no_disponible, "seq": s.seq, "error": s.error})
+                   "sonando": s.sonando, "acabo": s.acabo, "no_disponible": s.no_disponible, "seq": s.seq, "error": s.error,
+                   "norm_n": n.n, "norm_ganancia_db": n.gain_db, "norm_pico": n.peak, "norm_factor": n.factor})
         }
         "toca" => {
             let uri = v["uri"].as_str().unwrap_or("");

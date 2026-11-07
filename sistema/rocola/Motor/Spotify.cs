@@ -101,6 +101,10 @@ namespace Rocola
         // Lo que dice el programa (lo pregunta un hilo cada 400 ms).
         internal volatile bool Conectado, EsperandoCuenta;
         internal volatile string Usuario = "", Acabo = "", Error = "";
+        // V3 (7-11-2026): los datos de volumen de la ultima cancion que empezo (rocola-spotify los lee del registro de librespot): su pico
+        // y el factor que ya le aplico la normalizacion de Spotify; NormN sube con cada cancion (0: un rocola-spotify viejo, sin ellos)
+        internal long NormN; internal volatile float NormPico, NormFactor = 1f;
+        internal volatile bool QuiereNorm, ConNorm;   // ConNorm: este rocola-spotify sabe darlos (uno viejo no: no se le espera)   // una cancion espera sus datos: se pregunta mas seguido
         private long seq;
         internal long Seq { get { return Interlocked.Read(ref seq); } }   // cuantas acabaron (o no se pudieron tocar) desde que abrio
 
@@ -187,13 +191,20 @@ namespace Rocola
                             Conectado = Bool(r, "conectado"); EsperandoCuenta = Bool(r, "esperando_cuenta");
                             Usuario = Texto(r, "usuario"); Error = Texto(r, "error");
                             long sq = r.TryGetProperty("seq", out JsonElement se) && se.ValueKind == JsonValueKind.Number ? se.GetInt64() : 0;
-                            Acabo = Texto(r, "acabo"); Interlocked.Exchange(ref seq, sq);   // (primero cual, luego el numero: quien vea el numero ve cual)
+                            Acabo = Texto(r, "acabo"); Interlocked.Exchange(ref seq, sq);
+                            if (r.TryGetProperty("norm_n", out JsonElement nn) && nn.ValueKind == JsonValueKind.Number)
+                            {
+                                NormPico = r.TryGetProperty("norm_pico", out JsonElement np) && np.ValueKind == JsonValueKind.Number ? (float)np.GetDouble() : 0f;
+                                NormFactor = r.TryGetProperty("norm_factor", out JsonElement nf) && nf.ValueKind == JsonValueKind.Number ? (float)nf.GetDouble() : 1f;
+                                Interlocked.Exchange(ref NormN, nn.GetInt64());   // (primero los datos, luego el numero)
+                                ConNorm = true;
+                            }   // (primero cual, luego el numero: quien vea el numero ve cual)
                         }
                         else Conectado = false;
                     }
                 }
                 catch { }
-                Thread.Sleep(400);
+                Thread.Sleep(QuiereNorm ? 80 : 400);
             }
         }
         internal static bool Bool(JsonElement e, string k) { JsonElement v; return e.TryGetProperty(k, out v) && v.ValueKind == JsonValueKind.True; }
@@ -312,6 +323,7 @@ namespace Rocola
             if (spotifyMirado != 0 && unchecked(ahora - spotifyMirado) < 250) return;
             spotifyMirado = ahora | 1;
             try { SigueVerificacion(); } catch (Exception ex) { LogError("Spotify: comprobar la pareja", ex); }   // C (SustitucionSpotify.cs)
+            try { SigueMedidaSpotify(); } catch (Exception ex) { LogError("Spotify: medir el volumen", ex); }   // V1 (VolumenSpotify.cs)
             bool quiere = SpotifyOn && File.Exists(SpotifyEnVivo.Binario);
             if (!quiere)
             {
@@ -797,6 +809,7 @@ namespace Rocola
                 seq0 = d.RootElement.TryGetProperty("seq", out JsonElement sq) && sq.ValueKind == JsonValueKind.Number ? sq.GetInt64() : s.Seq;
             }
             FuenteSpotify f = new FuenteSpotify(s, this, uri, seq0, p != null ? p.Ms : 0, sustituida ? SustitutaSinSonidoMs : SpotifySinSonidoMs);
+            PreparaVolumenSpotify(f, pista);   // V1-V3 (VolumenSpotify.cs)
             try
             {
                 sonoAntes = nowPlaying; nowPlaying = it;
@@ -854,8 +867,8 @@ namespace Rocola
         private float GananciaSpotify(Track t)
         {
             float g = 1f, rms;
-            if (normalizeOn && SonoridadParaNivelar(t.Path, out rms)) return NormGainFor(t.Path) * MargenDelTono(t);   // SP3: ya medida, al limite como las tuyas
-            if (normalizeOn) g = Math.Max(0.5f, Math.Min(4f, normTarget / RmsSpotify));
+            if (normalizeOn && TieneP90(t.Path)) return NormGainFor(t.Path) * MargenDelTono(t);   // V1: ya medida al limite, como las tuyas
+            if (normalizeOn) g = GananciaBaseSpotify(t);   // V2 (y V3 la corrige en la fuente con su pico: VolumenSpotify.cs)
             float m = MargenDelTono(t);
             return m == 1f ? g : g * m;
         }
@@ -898,6 +911,11 @@ namespace Rocola
             private readonly long ms, seq0;
             private readonly WaveFormat formato = WaveFormat.CreateIeeeFloatWaveFormat(SpotifyEnVivo.Hz, SpotifyEnVivo.Canales);
             private volatile float volumen = 1f;
+            // V1-V3 (VolumenSpotify.cs): el medidor (lo que llega, antes de cualquier ajuste) y el ajuste de la primera vez
+            internal MedidorBs1770 Medidor; internal bool Estimar; internal float Fuerza = 1f, Base = 1f, R99 = 0.7f, R90 = 0.5f;
+            internal long NormN0; internal volatile bool Acabada; internal float Ajuste = 1f; internal string Decision;
+            private bool decidido; private int esperaDesde; private float[] copia;
+            internal long CuadrosLeidos { get { return Interlocked.Read(ref cuadros); } }
             private long cuadros;   // los que de verdad llegaron (los huecos de silencio no cuentan: la posicion de la cancion, para las letras)
             private readonly int desde = Environment.TickCount;
             private int ultimo;
@@ -907,9 +925,25 @@ namespace Rocola
             public WaveFormat WaveFormat { get { return formato; } }
             public int Read(Span<float> d)
             {
-                if (acabada) return 0;
-                if (s.Callado || !object.ReferenceEquals(f.spotify, s)) { acabada = true; return 0; }
+                if (acabada) { Acabada = true; return 0; }
+                if (s.Callado || !object.ReferenceEquals(f.spotify, s)) { acabada = Acabada = true; return 0; }
+                // V3: antes del primer cuadro, sus datos de volumen (llegan con el aviso de que empezo; hasta 0,7 s): la primera vez
+                // suena ya ajustada, desde el principio (nunca cambia a media cancion)
+                if (!decidido && s.Disponible > 0)
+                {
+                    if (esperaDesde == 0) esperaDesde = Environment.TickCount | 1;
+                    bool hay = Interlocked.Read(ref s.NormN) > NormN0;
+                    if (Estimar && s.ConNorm && !hay && unchecked(Environment.TickCount - esperaDesde) < 700) { s.QuiereNorm = true; d.Clear(); return d.Length; }
+                    decidido = true; s.QuiereNorm = false;
+                    if (Estimar && hay) Decide(s.NormPico * s.NormFactor);
+                }
                 int n = s.Toma(d);
+                if (n > 0 && Medidor != null)
+                {   // V1: lo que llega tal cual (el ajuste va despues), para medirla como el repaso mide tus canciones
+                    if (copia == null || copia.Length < n) copia = new float[Math.Max(n, 8192)];
+                    d.Slice(0, n).CopyTo(copia);
+                    lock (Medidor) Medidor.Procesa(copia, 0, n);
+                }
                 int ahora = Environment.TickCount;
                 if (n > 0) { llego = true; ultimo = ahora; }
                 if (n < d.Length)
@@ -917,21 +951,21 @@ namespace Rocola
                     // acabo (el programa lo dijo DESPUES de pedirla: su numero paso del de entonces) y ya no queda nada: el final de verdad
                     if (s.Seq > seq0 && s.Acabo == uri)
                     {
-                        acabada = true;
+                        acabada = Acabada = true;
                         if (!llego) f.spotifyFallida = true;   // (no disponible: ni un cuadro)
                         Aplica(d.Slice(0, n)); Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales); return n;
                     }
-                    if (!llego && unchecked(ahora - desde) > plazo) { acabada = true; f.spotifyFallida = true; return 0; }
+                    if (!llego && unchecked(ahora - desde) > plazo) { acabada = Acabada = true; f.spotifyFallida = true; return 0; }
                     // YA SONO ENTERA (7-11-2026): sin esperar a que el programa lo diga (se le pregunta cada 400 ms: hasta medio segundo de
                     // silencio entre canciones). Con su duracion sabida, si ya llego todo menos 250 ms y no queda nada, se acabo.
                     if (llego && ms > 0 && n < d.Length && Interlocked.Read(ref cuadros) * 1000L / SpotifyEnVivo.Hz + (n / SpotifyEnVivo.Canales) * 1000L / SpotifyEnVivo.Hz >= ms - 250)
                     {
-                        acabada = true;
+                        acabada = Acabada = true;
                         Aplica(d.Slice(0, n)); Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales); return n;
                     }
                     if (llego && n == 0 && unchecked(ahora - ultimo) > AtascoMs)
                     {   // se atasco a media cancion: si no llego a la mitad, como si no hubiera sonado (credito, o tu MP3)
-                        acabada = true;
+                        acabada = Acabada = true;
                         if (ms <= 0 || Interlocked.Read(ref cuadros) * 1000L / SpotifyEnVivo.Hz < ms / 2) f.spotifyFallida = true;
                         return 0;
                     }
@@ -941,9 +975,20 @@ namespace Rocola
                 Interlocked.Add(ref cuadros, n / SpotifyEnVivo.Canales);
                 return d.Length;
             }
+            // V3: con el pico que traera (el de Spotify por su factor), su ganancia al limite estimada con las proporciones aprendidas, frente
+            // a la base que ya puso la cadena; entre -6 y +6 dB
+            internal void Decide(float pico)
+            {
+                if (!(pico > 1e-4f) || !(Base > 0f)) return;
+                float g = GananciaAlLimite(Fuerza, pico, pico * R99, pico * R90) / Base;
+                if (float.IsNaN(g) || float.IsInfinity(g)) return;
+                Ajuste = Math.Max(0.5f, Math.Min(2f, g));
+                Decision = "pico " + (20 * Math.Log10(pico)).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " dBFS, ajuste "
+                    + (20 * Math.Log10(Ajuste)).ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture) + " dB";
+            }
             private void Aplica(Span<float> d)
             {
-                float v = volumen;
+                float v = volumen * Ajuste;
                 if (v != 1f) for (int i = 0; i < d.Length; i++) d[i] *= v;
             }
             public int Read(float[] buffer, int offset, int count) { return Read(buffer.AsSpan(offset, count)); }

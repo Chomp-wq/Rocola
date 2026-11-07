@@ -1855,3 +1855,24 @@ Tambien se quito el dibujo viejo del buscador (`Buscador()`), que ya nadie llama
   ya tienen tope o se compactan; compilar con `OptimizationPreference=Speed` no gana nada medible (cadena entera de 70 s en 0,8 s,
   busquedas, portadas y cuadros iguales dentro del ruido) y el programa crece 400 KB: no se cambio.
 
+## El volumen de Spotify: medido al limite, primera vez calibrada y con los datos de cada cancion (7 de noviembre de 2026)
+
+Pregunta del dueño: «¿como haremos que las canciones de Spotify tengan el volumen correcto?»; eligio «V1, V2 y V3»
+(`Motor/VolumenSpotify.cs`). Antes: la normalizacion de Spotify (cerca de -14 LUFS, que no sube lo que se recortaria) y encima una
+ganancia fija la primera vez; despues, solo la medida de energia (la regla vieja), nunca «al limite» como tu biblioteca.
+
+- **V1**: mientras suena, lo que llega de Spotify (antes de cualquier ajuste) pasa por el mismo medidor del repaso (`MedidorBs1770`:
+  sonoridad y picos por bloque, en el hilo del sonido); si sono el 97 % o mas (y dura 30 s o mas), la medida se apunta bajo su ruta de
+  Spotify en `rocola_sonoridad.txt` y desde la siguiente vez va al limite con `GananciaAlLimite`, como tus canciones.
+- **V2**: la primera vez, la mediana de la ganancia al limite de las de Spotify ya medidas (con 5 o mas); antes, la de siempre.
+- **V3**: rocola-spotify lee del registro de librespot (debug, `Normalisation Data` y `Calculated Normalisation Factor`, sin
+  imprimirlos) la ganancia y el pico de cada cancion y el factor aplicado, y los da en «estado» (`norm_n`, `norm_pico`,
+  `norm_factor`, `norm_ganancia_db`). La rocola espera esos datos antes del primer cuadro (hasta 0,7 s; solo si su rocola-spotify los
+  sabe dar) y, con el pico que traera y las proporciones P99/P90 frente al pico aprendidas (de las de Spotify medidas, si no de tu
+  biblioteca, si no 2 y 5 dB), corrige la base entre -6 y +6 dB desde el principio. Nunca cambia a media cancion.
+
+Probado: `rocola-spotify --prueba-norm` (las lineas de librespot con su formato: se leen bien y no salen en el registro) y de punta a
+punta con el simulado (la primera vez, el pico que mando y el ajuste; al acabar, «medida al limite»; la vez siguiente, sin estimar,
+con la medida guardada; con un rocola-spotify sin los datos, sin esperas). No con una cuenta real ni en el A4. V3 llega con la
+siguiente compilacion del sistema (rocola-spotify); V1 y V2 con la del programa.
+
