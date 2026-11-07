@@ -66,6 +66,9 @@ for t in $(salidas | cut -d' ' -f1 | sort -u); do
 	echo "--- mezclador de la tarjeta $t" >> "$LOG"
 	amixer -c "$t" scontents 2>/dev/null | grep -E "^Simple|Playback|Mono:|Front L|Front R" >> "$LOG"
 done
+# lo que dijo la rocola de su salida de sonido (si el pitido se oye y la rocola no, el fallo esta en el programa)
+{ echo "--- la rocola: lo ultimo de su salida de sonido"; grep -iE "sonido|alsa|salida|snd_|tarjeta|plughw" "$DATOS/rocola.txt" 2>/dev/null | tail -12
+  echo "--- rocola_error.txt (lo ultimo)"; tail -12 "$DATOS/rocola_error.txt" 2>/dev/null; } >> "$LOG"
 sigue_rocola
 echo "Si alguna se oyo, escribe:   rocola-sonido usar NUMERO     (por ejemplo: rocola-sonido usar 2)"
 echo "Si ninguna se oyo: manda una foto de esta pantalla y de:   tail -40 $LOG"
