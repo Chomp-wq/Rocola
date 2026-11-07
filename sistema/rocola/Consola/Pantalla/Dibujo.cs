@@ -846,6 +846,8 @@ namespace Rocola.Pantalla
         internal Textura Borrosa(string ruta) { return Carga(ruta, Clase.Borrosa, false); }
         // Que se vaya leyendo (la pagina de al lado): sin prisa, detras de lo que se esta viendo.
         internal void Precarga(string ruta) { Carga(ruta, Clase.Normal, true); }
+        // La copia grande, adelantada (el disco en el que se quedo el cursor: al entrar, su portada grande ya esta).
+        internal void PrecargaGrande(string ruta) { if (Nitidas) Carga(ruta, Clase.Grande, true); }
 
         // LEER UNA PORTADA SIN PARAR LA PANTALLA (2-11-2026): leer el archivo y descomprimirlo (lo que tarda: decenas de milisegundos en
         // el A4) va en un hilo de fondo de prioridad baja, de una en una; la pantalla solo la sube a la tarjeta (unas pocas por cuadro).
@@ -860,6 +862,7 @@ namespace Rocola.Pantalla
         private readonly System.Threading.SemaphoreSlim hay = new System.Threading.SemaphoreSlim(0);
         private System.Threading.Thread lector;
         private bool nitidasPedidas;
+        private LinkedListNode<KeyValuePair<string, Clase>> ultimaYa; private int cuadroYa = -1, cuadroRecoge;
         private Textura Carga(string ruta, Clase que, bool precarga)
         {
             if (string.IsNullOrEmpty(ruta) || sinImagen.Contains(ruta)) return null;
@@ -875,7 +878,11 @@ namespace Rocola.Pantalla
                 if (precarga && pedidas.Count >= 48) return null;   // la cola de lo que se adelanta, acotada
                 enCamino.Add(clave);
                 KeyValuePair<string, Clase> p = new KeyValuePair<string, Clase>(ruta, que);
-                if (precarga) pedidas.AddLast(p); else pedidas.AddFirst(p);   // lo que se ve, antes que lo que se adelanta
+                // lo que se ve, antes que lo que se adelanta; lo de este cuadro en el orden en que se dibuja (de arriba a la izquierda), y lo
+                // de un cuadro mas nuevo delante de lo de antes (7-11-2026: antes cada una iba al principio y la ultima casilla cargaba primero)
+                if (precarga) pedidas.AddLast(p);
+                else if (ultimaYa != null && ultimaYa.List == pedidas && cuadroYa == cuadroRecoge) ultimaYa = pedidas.AddAfter(ultimaYa, p);
+                else { ultimaYa = pedidas.AddFirst(p); cuadroYa = cuadroRecoge; }
                 nitidasPedidas = Nitidas;
             }
             if (lector == null)
@@ -902,6 +909,7 @@ namespace Rocola.Pantalla
         {
             // SIN TIRONES (7-11-2026): como mucho ~300 000 puntos por cuadro (una grande, o cuatro normales con sus reducidas); lo demas,
             // en los cuadros siguientes. Subir varias de golpe se comia 15-20 ms de un solo cuadro.
+            cuadroRecoge++;
             Listo l; long puntos = 0;
             for (int i = 0; i < cuantas && puntos < 300000 && listas.TryDequeue(out l); i++)
             {

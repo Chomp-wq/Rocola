@@ -1834,3 +1834,14 @@ si su valor se lee en algun sitio fuera de los ajustes y la configuracion) y se 
 
 Tambien se quito el dibujo viejo del buscador (`Buscador()`), que ya nadie llamaba.
 
+### Cuarta tanda («Busca mas mejoras», 7 de noviembre de 2026)
+
+- **La portada grande, adelantada**: con el cursor 0,4 s quieto en un disco de la pared se lee su copia grande (`PrecargaGrande`,
+  detras de lo que se ve); al entrar, la portada del cubo ya sale nitida en vez de verse estirada un momento.
+- **Las letras de al lado, adelantadas**: con la pared quieta 0,6 s se va leyendo la primera pagina de la letra anterior y la
+  siguiente (como ya se hacia con las paginas de al lado): al cambiar de letra, sus portadas ya estan.
+- **Las portadas en el orden en que se ven**: cada portada pedida iba al principio de la cola, asi que en un mismo cuadro la ultima
+  (abajo a la derecha del buscador) cargaba primero. Ahora lo pedido en un cuadro va en su orden y lo de un cuadro mas nuevo delante.
+- «Rocola en casa» compilada (casa-1): su compilacion no estaba registrada en GitHub (nunca habia corrido); ahora corre tambien al
+  cambiar su propio archivo de compilacion (solo eso) y desde Actions.
+

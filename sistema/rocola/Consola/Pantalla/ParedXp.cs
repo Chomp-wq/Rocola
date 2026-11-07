@@ -192,6 +192,16 @@ namespace Rocola
             Pagina(c, ds, pag, true, top, margen, celW, celH, lado, cols, porPag, col => desliza ? pagDir * W * (1f - CurvaPagina(ahora - pagDesde, col, cols)) : 0f);
             // las paginas de al lado, que se vayan leyendo (sin prisa: asi al pasar de pagina ya estan)
             for (int dp = 1; dp >= -1; dp -= 2) { int p2 = pag + dp; if (p2 < 0) continue; for (int i = 0; i < porPag; i++) { int n = p2 * porPag + i; if (n >= ds.Count) break; m.QuierePortada(ds[n]); caratulas.Precarga(ds[n].Portada); } }
+            // (7-11-2026) el disco elegido, su portada grande (tras 0,4 s quieto: al entrar ya esta nitida), y la primera pagina de las letras
+            // de al lado (al cambiar de letra ya estan); todo detras de lo que se ve
+            if (c.cursorDisco >= 0 && c.cursorDisco < ds.Count && ahora - focoDesde > 400) caratulas.PrecargaGrande(ds[c.cursorDisco].Portada);
+            if (!desliza && ahora - focoDesde > 600)
+                for (int dl = -1; dl <= 1; dl += 2)
+                {
+                    int nl = c.letras.Count; if (nl < 2) break;
+                    List<Form1.Disco> vecina = c.DiscosEnLetra(((c.letra + dl) % nl + nl) % nl);
+                    for (int i = 0; i < porPag && i < vecina.Count; i++) caratulas.Precarga(vecina[i].Portada);
+                }
             if (!desliza && m.FichaDisco && !c.Reposo && !c.AyudaAbierta && c.letras[c.letra] != Form1.LetraTop && c.cursorDisco < ds.Count)
                 FichaRapida(c, ds[c.cursorDisco], ahora - focoDesde, new Zona(margen, top, W - 2 * margen, alto), celW, celH);
             // las paginas: unos puntos a la derecha de abajo (la pagina en la que se esta, encendida)
