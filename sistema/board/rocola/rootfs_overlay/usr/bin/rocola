@@ -29,7 +29,11 @@ export ROCOLA_ALSA=${ROCOLA_ALSA:-$(rocola-tarjeta)}
 [ -z "$ROCOLA_COPIAS" ] && [ -d /rocola/disco/rocola-os ] && export ROCOLA_COPIAS=/rocola/disco/rocola-os/copias
 volumen() {
 	T=$(rocola-tarjeta -c)
-	for c in Master PCM Speaker Headphone Front "Line Out"; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
+	for c in Master PCM Speaker Headphone Front "Line Out" Surround Center LFE Side; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
+	# (7-11-2026, en el A4 no se oia nada) el «silencio automatico» de las HDA (Realtek): calla la salida de atras, la del amplificador,
+	# si cree que hay audifonos en el frente; y que el frente y atras suenen a la vez
+	amixer ${T:+-c $T} -q sset "Auto-Mute Mode" Disabled 2>/dev/null
+	amixer ${T:+-c $T} -q sset "Independent HP" off 2>/dev/null
 }
 volumen
 probando=0; fallos=0; rapidas=0
