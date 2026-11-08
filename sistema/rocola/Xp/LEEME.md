@@ -104,6 +104,36 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   `Main` de XP: dentro del inicializador del módulo, los hilos de mpv se quedaban esperando) y dice al final cuántas lecturas salieron
   negras; `ROCOLA_VIDEO_TEXTURAS=S` vuelca las texturas de mpv con sus NaN (ver la cabecera de `PruebasLinux.cs`). No probado en el A4
   (r600).
+- **Revisión de pantallas (fases 2 a 7, 7-11-2026):** se recorrieron fuera de pantalla:
+  - la pared con la barra de letras (dos páginas y el deslizamiento);
+  - el disco;
+  - lo que suena, con créditos, cola y estado extendido;
+  - el fondo, el buscador y la atracción;
+  - la ayuda con el asistente y la guía del rojo mantenido.
+
+  Se probó con música inventada (34 discos) y con una salida de ALSA que lleva el ritmo real (el complemento `file` de ALSA manda el
+  sonido a una tubería que lo consume al ritmo del WAV). Arreglado en `Dibujo2D.cs`:
+  - la lista del disco escribía dos veces, encimado, el renglón de debajo del elegido: los límites del recorte de Skia traen un píxel
+    de más por lado, y ahora son exactos, como en GDI+;
+  - las formas suavizadas siguen el medio píxel de GDI+ (el centro de los píxeles en las coordenadas enteras): las rayas de 1 px salen
+    nítidas y los bordes de los rellenos a medias;
+  - los recortes no se suavizan, como las regiones de GDI+;
+  - la clave de color tolera un punto, por el redondeo de Skia;
+  - el degradado con el centro corrido (la moneda que cae) es cónico, como en GDI+;
+  - `HighQualityBilinear` y `HighQualityBicubic` prefiltran al achicar: las portaditas ya no salen a granos;
+  - la pluma tiene el límite de esquinas 10 de GDI+;
+  - `FontFamily` lanza si la familia no está en las letras de XP: en el A4, sin Segoe UI, Ctrl+F3 queda en Tahoma, como en XP.
+
+  **Arreglado también, en `Ventanas.Escritorio.cs`:** el WM_KEYDOWN de la repetición (una tecla mantenida) no llevaba el bit 30 de
+  lParam, que XP mira para no contar otra moneda, ni saltar otra vez, ni repetir sus atajos. La moneda mantenida 1,5 s daba 128
+  créditos; ahora da 4, igual que una moneda corta.
+
+  `ROCOLA_PULSA=S:VK~MS` deja una tecla apretada MS milisegundos, con la repetición de XP. Comportamientos que son de XP y no de la
+  traducción:
+  - un disco sin portada no tiene cara en la pared;
+  - con la ayuda preguntando, ROJO+ABAJO la cierra con el rojo y la vuelve a abrir con abajo.
+
+  Sin comprobar: si GDI+ corre también medio píxel el texto y las imágenes escaladas. No probado en el A4.
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).

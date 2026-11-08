@@ -288,7 +288,7 @@ namespace Rocola.Ventanas
                      : tecla == Keys.Menu || tecla == Keys.LMenu || tecla == Keys.RMenu ? Keys.Alt : Keys.None;
             if (mod != Keys.None) tecla = mod == Keys.Shift ? Keys.ShiftKey : mod == Keys.Control ? Keys.ControlKey : Keys.Menu;
             if (abajo) Modificadores |= mod;
-            int vk = (int)tecla & 0xFF; TeclasAbajo[vk] = abajo;
+            int vk = (int)tecla & 0xFF; bool repetida = abajo && TeclasAbajo[vk]; TeclasAbajo[vk] = abajo;
             Keys datos = tecla | Modificadores;
             Form f = Activa;
             Control destino = Foco != null && !Foco.IsDisposed && Foco.Visible ? Foco : f;
@@ -296,7 +296,10 @@ namespace Rocola.Ventanas
             if (f == null) f = destino.FindForm();
             if (abajo)
             {
-                Message m = Message.Create(destino.Handle, 0x100, (IntPtr)(int)tecla, IntPtr.Zero);
+                // el lParam de WM_KEYDOWN como en Windows: una vez (bits 0-15) y, si la tecla ya estaba apretada (la repeticion al dejarla
+                // apretada), el bit 30. XP lo mira para no contar otra moneda, ni saltar otra vez, ni repetir sus atajos (Form1.cs,
+                // Form1.Ajustes.cs, AsistenteRocola.cs): sin el, la moneda mantenida 1,5 s daba 128 creditos en vez de 4.
+                Message m = Message.Create(destino.Handle, 0x100, (IntPtr)(int)tecla, (IntPtr)(repetida ? 0x40000001 : 1));
                 if (destino.LlamaProcessCmdKey(ref m, datos)) return;
                 if (!destino.LlamaIsInputKey(datos) && destino.LlamaProcessDialogKey(datos)) return;
                 KeyEventArgs e = new KeyEventArgs(datos);
