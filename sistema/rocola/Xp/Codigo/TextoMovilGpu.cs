@@ -1,7 +1,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las cintas del texto que se desliza y el texto que se mueve dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 
 namespace Rocola
 {
@@ -9,7 +9,7 @@ namespace Rocola
     {
         internal string Key, Identity;
         internal RectangleF Rect;
-        internal Bitmap[] Tiles;
+        internal SKBitmap[] Tiles;   // EN LINUX: los mapas de la cinta son SKBitmap (a la tarjeta le llegan prestados: GpuPanel.SubeCinta)
         internal int Width, Born;
         private bool desplazamientoListo;
         private int desplazamientoTick, desplazamientoBorn;
@@ -25,7 +25,7 @@ namespace Rocola
             }
             return desplazamientoValor;
         }
-        public void Dispose() { if (Tiles != null) foreach (Bitmap b in Tiles) b.Dispose(); }
+        public void Dispose() { if (Tiles != null) foreach (SKBitmap b in Tiles) b.Dispose(); }   // EN LINUX: SKBitmap
     }
     internal sealed class CintasTexto : IDisposable
     {
@@ -51,25 +51,25 @@ namespace Rocola
         {
             while (Items.Count > used) { int i = Items.Count - 1; Items[i].Dispose(); Items.RemoveAt(i); }
         }
-        internal bool Add(Graphics source, string text, Font font, Color color, RectangleF rect, StringFormat format)
+        internal bool Add(SKCanvas source, AjusteLetra ajuste, string text, Rocola.Nativo.Letra font, Color color, RectangleF rect, FormatoTexto format)   // EN LINUX: el lienzo de Skia y su modo de letra (lo unico del estado del Graphics que se usa aqui; el recorte y la matriz van en el lienzo), una Letra y un FormatoTexto
         {
             if (string.IsNullOrEmpty(text) || rect.Width < 12 || rect.Height < 8 || used >= 48
-                || !rect.IntersectsWith(source.VisibleClipBounds)) return false;
-            using (StringFormat sf = (StringFormat)format.Clone())
+                || !rect.IntersectsWith(RecorteLienzo.Limites(source))) return false;   // EN LINUX: VisibleClipBounds: los limites exactos del recorte (Nativo/RecorteLienzo.cs)
+            FormatoTexto sf = new FormatoTexto(format);   // EN LINUX: using (StringFormat sf = (StringFormat)format.Clone()): una copia (un FormatoTexto, que no se suelta: lo de abajo queda como bloque)
             {
-                sf.FormatFlags |= StringFormatFlags.NoWrap;
-                sf.Trimming = StringTrimming.None; sf.Alignment = StringAlignment.Near;
-                float measured = source.MeasureString(text, font, new SizeF(100000, rect.Height), sf).Width;
+                sf.Banderas |= BanderasTexto.SinPartir;   // EN LINUX: FormatFlags |= NoWrap
+                sf.Corte = CorteTexto.Nada; sf.Horizontal = Alinea.Cerca;   // EN LINUX: Trimming = None; Alignment = Near
+                float measured = TextoGdiPlus.Mide(text, font, ajuste, new SizeF(100000, rect.Height), sf).Width;   // EN LINUX: source.MeasureString (Nativo/TextoGdiPlus.cs) con el modo de letra del lienzo
                 if (measured <= rect.Width - 1) return false;
                 int width = (int)Math.Ceiling(measured) + 4, height = (int)Math.Ceiling(rect.Height);
                 // Limite de memoria ante metadatos corruptos; las tiras caben incluso en texturas de 1024.
                 if (width > 16384 || height > 256 || width * height > 2097152 - pixels) return false;
                 pixels += width * height;
                 PointF[] points = { new PointF(rect.X, rect.Y) };
-                using (Matrix m = source.Transform) m.TransformPoints(points);
+                for (int k = 0; k < points.Length; k++) { SKPoint q = source.TotalMatrix.MapPoint(points[k].X, points[k].Y); points[k] = new PointF(q.X, q.Y); }   // EN LINUX: source.Transform y TransformPoints: la matriz del lienzo (la del HDC es la identidad: las cintas solo se apuntan al hornear mapas de bits)
                 RectangleF target = new RectangleF(points[0].X, points[0].Y, rect.Width, rect.Height);
-                string identity = text + "|" + font.Name + "|" + font.Size + "|" + (int)font.Style + "|" + (int)font.Unit
-                    + "|" + rect.Width + "|" + height + "|" + (int)sf.LineAlignment;
+                string identity = text + "|" + font.Familia + "|" + font.Tamano + "|" + ((font.Negrita ? 1 : 0) | (font.Cursiva ? 2 : 0) | (font.Subrayada ? 4 : 0)) + "|" + (font.UnidadPixel ? 2 : 3)   // EN LINUX: Name, Size, (int)Style y (int)Unit de la Font: los de la Letra (Bold 1, Italic 2, Underline 4; Pixel 2, Point 3, las unidades que XP usa)
+                    + "|" + rect.Width + "|" + height + "|" + (int)sf.Vertical;   // EN LINUX: (int)sf.LineAlignment
                 string key = identity + "|" + color.ToArgb();
                 CintaTexto run = used < Items.Count ? Items[used] : null;
                 // El orden cambia si otro titulo empieza/deja de desbordarse. Conservar la cinta
@@ -87,24 +87,24 @@ namespace Rocola
                         if (Items[i].Identity == identity) { prior = Items[i]; break; }
                     CintaTexto next = new CintaTexto { Key = key, Identity = identity, Width = width,
                         Born = prior != null ? prior.Born : Environment.TickCount,
-                        Tiles = new Bitmap[(width + 1023) / 1024] };
+                        Tiles = new SKBitmap[(width + 1023) / 1024] };   // EN LINUX: SKBitmap
                     try
                     {
                         for (int i = 0; i < next.Tiles.Length; i++)
                         {
-                            Bitmap b = new Bitmap(Math.Min(1024, width - i * 1024), height, PixelFormat.Format32bppPArgb);
+                            SKBitmap b = Mapas.Nuevo(Math.Min(1024, width - i * 1024), height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
                             next.Tiles[i] = b;
-                            using (Graphics g = Graphics.FromImage(b))
-                            using (SolidBrush brush = new SolidBrush(color))
+                            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage
+                            using (SKPaint brush = new SKPaint { Color = color.Sk() })   // EN LINUX: SolidBrush
                             {
-                                g.Clear(Color.Transparent);
-                                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                                g.TranslateTransform(-i * 1024, 0);
-                                g.DrawString(text, font, brush, new RectangleF(0, 0, width, height), sf);
+                                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                                AjusteLetra ajusteTira = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable (la copia y el medio pixel, los de fabrica del Graphics nuevo)
+                                g.Translate(-i * 1024, 0);   // EN LINUX: TranslateTransform
+                                TextoGdiPlus.Escribe(g, text, font, ajusteTira, brush, new RectangleF(0, 0, width, height), sf, false, false);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                             }
                         }
                     }
-                    catch { foreach (Bitmap b in next.Tiles) if (b != null) b.Dispose(); throw; }
+                    catch { foreach (SKBitmap b in next.Tiles) if (b != null) b.Dispose(); throw; }   // EN LINUX: SKBitmap
                     if (prior != null) { Items.Remove(prior); prior.Dispose(); }
                     Items.Insert(used, next);
                     run = next;
@@ -138,20 +138,20 @@ namespace Rocola
             if (!textosDeslizantes || !gpuEnabled) { cintasTexto[group].Dispose(); return new CapturaCintas(null); }
             return new CapturaCintas(cintasTexto[group]);
         }
-        internal static bool CintaVistaPrevia(Graphics g, string text, Font font, Color color, Rectangle rect)
+        internal static bool CintaVistaPrevia(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra font, Color color, Rectangle rect)   // EN LINUX: el lienzo de Skia y su modo de letra, y una Letra; quien aun pasa un Graphics y una Font llega por el puente (Plataforma/Puente.reposo.cs)
         {
-            using (StringFormat sf = new StringFormat())
+            FormatoTexto sf = new FormatoTexto();   // EN LINUX: using (StringFormat sf = new StringFormat()): un FormatoTexto, que no se suelta (lo de abajo queda como bloque)
             {
-                sf.FormatFlags = StringFormatFlags.NoWrap;
-                return TextoConCinta(g, text, font, color, rect, sf);
+                sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap
+                return TextoConCinta(g, ajuste, text, font, color, rect, sf);   // EN LINUX: con el lienzo y su modo de letra
             }
         }
-        internal static void PintaTextoMovil(Graphics g, string text, Font f, Brush brush, RectangleF rect, StringFormat sf)
+        internal static void PintaTextoMovil(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, string text, Rocola.Nativo.Letra f, SKPaint brush, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel), una Letra, el pincel en un SKPaint y un FormatoTexto; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
         {
-            SolidBrush solid = brush as SolidBrush;
-            if (solid == null || !TextoConCinta(g, text, f, solid.Color, rect, sf)) g.DrawString(text, f, brush, rect, sf);
+            SKPaint solid = brush != null && brush.Shader == null ? brush : null;   // EN LINUX: brush as SolidBrush: un pincel de un color es un SKPaint sin Shader (los degradados y las texturas lo llevan)
+            if (solid == null || !TextoConCinta(g, ajuste, text, f, ColorSk.DeSk(solid.Color), rect, sf)) TextoGdiPlus.Escribe(g, text, f, ajuste, brush, rect, sf, copia, medio);   // EN LINUX: solid.Color, el de .NET; g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del que llama
         }
-        private void PintaArtistaCompacto(Graphics g)
+        private void PintaArtistaCompacto(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
         {
             if (lblNow == null) return;
             Rectangle r = lblNow.Bounds;
@@ -161,23 +161,23 @@ namespace Rocola
             bool alta; Rectangle next = CajaSiguienteForma(out alta);
             if (alta) right = Math.Min(right, next.Left - 16);   // la tarjeta baja va por encima del renglon: no lo corta
             r.Width = Math.Max(0, right - r.Left);
-            using (StringFormat sf = new StringFormat())
+            FormatoTexto sf = new FormatoTexto();   // EN LINUX: using (StringFormat sf = new StringFormat()): un FormatoTexto, que no se suelta (lo de abajo queda como bloque)
             {
-                sf.FormatFlags = StringFormatFlags.NoWrap;
+                sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap
                 ContentAlignment align = lblNow.TextAlign;
-                sf.LineAlignment = (align & (ContentAlignment.MiddleLeft | ContentAlignment.MiddleCenter | ContentAlignment.MiddleRight)) != 0
-                    ? StringAlignment.Center : (align & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0
-                    ? StringAlignment.Far : StringAlignment.Near;
-                if (TextoConCinta(g, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, sf)) return;
+                sf.Vertical = (align & (ContentAlignment.MiddleLeft | ContentAlignment.MiddleCenter | ContentAlignment.MiddleRight)) != 0   // EN LINUX: sf.LineAlignment
+                    ? Alinea.Centro : (align & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0   // EN LINUX: StringAlignment.Center
+                    ? Alinea.Lejos : Alinea.Cerca;   // EN LINUX: StringAlignment.Far y Near
+                if (TextoConCinta(g, ajuste, lblNow.Text, PuenteDibujo.Letra(lblNow.Font), lblNow.ForeColor, r, sf)) return;   // EN LINUX: con el modo de letra del lienzo; la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
                 // Si no cabe, con sus puntos suspensivos donde se acaba SU sitio (r), como el titulo. Antes se recortaba la
                 // etiqueta entera con un SetClip y la ultima palabra quedaba partida a la mitad (barrido del 12-10-2026).
-                if (g.MeasureString(lblNow.Text, lblNow.Font).Width > r.Width)
-                    PintaRenglonLejos(g, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, StringAlignment.Near);
-                else DrawLabelOverlay(g, lblNow, lblNow.ForeColor, r);
+                if (TextoGdiPlus.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font), ajuste, SizeF.Empty, null).Width > r.Width)   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs)
+                    PintaRenglonLejosReposo(g, ajuste, copia, medio, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
+                else DrawLabelOverlayReposo(g, ajuste, copia, medio, lblNow, lblNow.ForeColor, r);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
             }
         }
-        internal static bool TextoConCinta(Graphics g, string text, Font f, Color color, RectangleF rect, StringFormat sf)
-        { return capturandoCintas != null && capturandoCintas.Add(g, text, f, color, rect, sf); }
+        internal static bool TextoConCinta(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra f, Color color, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y su modo de letra, una Letra y un FormatoTexto; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
+        { return capturandoCintas != null && capturandoCintas.Add(g, ajuste, text, f, color, rect, sf); }   // EN LINUX: con el modo de letra del lienzo
         private void SueltaCintasTexto()
         {
             if (cintasTexto != null) foreach (CintasTexto group in cintasTexto) if (group != null) group.Dispose();
@@ -190,15 +190,15 @@ namespace Rocola
         private sealed class CintaTile
         {
             internal IntPtr Tex;
-            internal Bitmap Source;
+            internal SKBitmap Source;   // EN LINUX: SKBitmap (el de la cinta)
             internal CintaTexto Run;
             internal int W, H, Group, Part;
             internal float U, V;
             internal bool Seen;
         }
         private readonly List<CintaTile> cintaTiles = new List<CintaTile>();
-        private readonly Dictionary<Bitmap, CintaTile> cintaByBitmap = new Dictionary<Bitmap, CintaTile>();
-        private readonly List<Bitmap> cintaOldSources = new List<Bitmap>();
+        private readonly Dictionary<SKBitmap, CintaTile> cintaByBitmap = new Dictionary<SKBitmap, CintaTile>();   // EN LINUX: SKBitmap (por identidad, como el Bitmap de XP)
+        private readonly List<SKBitmap> cintaOldSources = new List<SKBitmap>();   // EN LINUX: SKBitmap
         private readonly List<IntPtr> cintaRetiradas = new List<IntPtr>();
         private readonly List<CintaTile> cintaPendientes = new List<CintaTile>();
         private CintasTexto[] cintaGrupos;
@@ -229,7 +229,7 @@ namespace Rocola
                         for (int part = 0; part < run.Tiles.Length; part++)
                         {
                             CintaTile tile;
-                            Bitmap source = run.Tiles[part];
+                            SKBitmap source = run.Tiles[part];   // EN LINUX: SKBitmap
                             if (!cintaByBitmap.TryGetValue(source, out tile))
                             {
                                 tile = new CintaTile(); tile.Source = source; cintaByBitmap.Add(source, tile);
@@ -240,9 +240,9 @@ namespace Rocola
                         }
                 }
             cintaOldSources.Clear();
-            foreach (KeyValuePair<Bitmap, CintaTile> kv in cintaByBitmap)
+            foreach (KeyValuePair<SKBitmap, CintaTile> kv in cintaByBitmap)   // EN LINUX: SKBitmap
                 if (!kv.Value.Seen) cintaOldSources.Add(kv.Key);
-            foreach (Bitmap source in cintaOldSources)
+            foreach (SKBitmap source in cintaOldSources)   // EN LINUX: SKBitmap
             {
                 CintaTile tile = cintaByBitmap[source];
                 if (tile.Tex != IntPtr.Zero) cintaRetiradas.Add(tile.Tex);
@@ -298,7 +298,7 @@ namespace Rocola
             return CintaDeLista(group);
         }
         private void SubeCinta(CintaTile tile)
-        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }
+        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, PuenteDibujo.Bitmap(tile.Source), out tile.U, out tile.V); }   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mismo prestado para el mismo mapa (Plataforma/Puente.cs; no suelta los puntos)
 
         private bool CintaVisible(CintaTile tile, int now)
         {

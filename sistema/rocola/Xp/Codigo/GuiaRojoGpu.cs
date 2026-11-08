@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la guia del rojo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; RoundedPath (Form1.Fondo.cs, aun sin traducir) le llega por el puente (Plataforma/Puente.cs)
 
 namespace Rocola
 {
@@ -63,8 +63,8 @@ namespace Rocola
                 barra.Top + (barra.Height - alto) / 2, ancho, alto);
         }
 
-        internal static void PintaGuiaRojo(Graphics g, Rectangle barra, Rectangle busca)
-        { PintaGuiaRojoAyuda(g, barra, busca, Rectangle.Empty, Rectangle.Empty, Rectangle.Empty); }
+        internal static void PintaGuiaRojo(SKCanvas g, bool suave, bool copia, bool medio, Rectangle barra, Rectangle busca)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del Graphics (suavizado, copia y medio pixel), como parametros
+        { PintaGuiaRojoAyuda(g, suave, copia, medio, barra, busca, Rectangle.Empty, Rectangle.Empty, Rectangle.Empty); }   // EN LINUX: con el lienzo y su estado
 
         // LAS FLECHAS DE BUSCAR Y AYUDA, LAS DE SU CASILLA (peticion del 12-10-2026: "en vez de que aparezcan las
         // flechitas feas al presionar el boton rojo, que mejor se resalten las que ya tienen en su contenedor"). Cada
@@ -72,33 +72,33 @@ namespace Rocola
         // ademas un triangulito suelto en el hueco de al lado; ahora no sale nada fuera: la tecla de dentro se enciende
         // (un filo claro y un velo encima, aqui) y la tarjeta le pone el brillo que late (FillGuiaRojoGlows), mas
         // fuerte al apretar esa direccion. 'teclaBusca'/'teclaAyuda' van en las mismas coordenadas que las casillas.
-        internal static void PintaGuiaRojoAyuda(Graphics g, Rectangle barra, Rectangle busca, Rectangle ayuda, Rectangle teclaBusca, Rectangle teclaAyuda)
+        internal static void PintaGuiaRojoAyuda(SKCanvas g, bool suave, bool copia, bool medio, Rectangle barra, Rectangle busca, Rectangle ayuda, Rectangle teclaBusca, Rectangle teclaAyuda)   // EN LINUX: el lienzo de Skia y el estado del Graphics que pesa aqui (suavizado, copia y medio pixel)
         {
             if (ayuda.Width > 0 && ayuda.Height > 0)
             {
-                using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
-                using (GraphicsPath contorno = RoundedPath(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))
-                    g.DrawPath(borde, contorno);
-                ResaltaTecla(g, teclaAyuda, false);
+                using (SKPaint borde = new SKPaint { Color = Color.FromArgb(230, 255, 214, 94).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2): la pluma es un SKPaint con su color y su ancho (Pixel.Traza le pone lo de GDI+)
+                using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
+                    Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno) (Nativo/Pixel.cs)
+                ResaltaTecla(g, suave, copia, medio, teclaAyuda, false);   // EN LINUX: con el lienzo y su estado
             }
-            using (Pen borde = new Pen(Color.FromArgb(230, 255, 214, 94), 2f))
-            using (SolidBrush oro = new SolidBrush(Color.FromArgb(255, 255, 222, 102)))
+            using (SKPaint borde = new SKPaint { Color = Color.FromArgb(230, 255, 214, 94).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2)
+            using (SKPaint oro = new SKPaint { Color = Color.FromArgb(255, 255, 222, 102).Sk() })   // EN LINUX: SolidBrush: un SKPaint de ese color
             {
-                using (GraphicsPath contorno = RoundedPath(new Rectangle(barra.X, barra.Y, Math.Max(1, barra.Width - 1), Math.Max(1, barra.Height - 1)), Math.Min(12, barra.Height / 2)))
-                    g.DrawPath(borde, contorno);
+                using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(barra.X, barra.Y, Math.Max(1, barra.Width - 1), Math.Max(1, barra.Height - 1)), Math.Min(12, barra.Height / 2)))   // EN LINUX: RoundedPath, por el puente (arriba)
+                    Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
                 for (int i = 0; i < 2; i++)
                 {
                     Rectangle r = GuiaRojoFlecha(barra, i != 0);
-                    g.FillPolygon(oro, new PointF[] {
+                    Pixel.RellenaPoligono(g, new PointF[] {   // EN LINUX: g.FillPolygon(oro, puntos): relleno Alternate, el de fabrica (Nativo/Pixel.cs)
                         new PointF(i == 0 ? r.Left : r.Right, r.Top + r.Height * .5f),
                         new PointF(i == 0 ? r.Right : r.Left, r.Top),
-                        new PointF(i == 0 ? r.Right : r.Left, r.Bottom) });
+                        new PointF(i == 0 ? r.Right : r.Left, r.Bottom) }, oro, suave, true, medio, copia);   // EN LINUX: el pincel y el estado del dibujo
                 }
                 if (busca.Width > 0 && busca.Height > 0)
                 {
-                    using (GraphicsPath contorno = RoundedPath(new Rectangle(busca.X, busca.Y, busca.Width - 1, busca.Height - 1), Math.Min(14, busca.Height / 2)))
-                        g.DrawPath(borde, contorno);
-                    ResaltaTecla(g, teclaBusca, true);
+                    using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(busca.X, busca.Y, busca.Width - 1, busca.Height - 1), Math.Min(14, busca.Height / 2)))   // EN LINUX: RoundedPath, por el puente (arriba)
+                        Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
+                    ResaltaTecla(g, suave, copia, medio, teclaBusca, true);   // EN LINUX: con el lienzo y su estado
                 }
             }
         }
@@ -106,22 +106,22 @@ namespace Rocola
         // La tecla encendida, como una tecla de verdad cuando se ilumina: llena de rojo vivo, la flecha en blanco
         // encima (en el mismo sitio y con la misma forma que la de la casilla) y un filo claro un poco por fuera, sin
         // salirse de la casilla. Un velo claro encima la dejaba deslavada (se vio en la vista previa).
-        internal static void ResaltaTecla(Graphics g, Rectangle k, bool arriba)
+        internal static void ResaltaTecla(SKCanvas g, bool suave, bool copia, bool medio, Rectangle k, bool arriba)   // EN LINUX: el lienzo de Skia y el estado del Graphics que pesa aqui (suavizado, copia y medio pixel)
         {
             if (k.Width < 4 || k.Height < 4) return;
             int radio = Math.Max(3, k.Width / 4);
-            using (GraphicsPath dentro = RoundedPath(k, radio))
-            using (SolidBrush rojo = new SolidBrush(Color.FromArgb(250, 232, 70, 66)))
-                g.FillPath(rojo, dentro);
+            using (Rocola.Dibujo2D.GraphicsPath dentro = RoundedPath(k, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta)
+            using (SKPaint rojo = new SKPaint { Color = Color.FromArgb(250, 232, 70, 66).Sk() })   // EN LINUX: SolidBrush
+                Pixel.Rellena(g, PuenteDibujo.Ruta(dentro), rojo, suave, medio, copia);   // EN LINUX: g.FillPath(rojo, dentro) (Nativo/Pixel.cs)
             Rectangle f = Rectangle.Inflate(k, 2, 2);
-            using (GraphicsPath filo = RoundedPath(f, radio + 2))
-            using (Pen pn = new Pen(Color.FromArgb(240, 255, 214, 200), 2f))
-                g.DrawPath(pn, filo);
+            using (Rocola.Dibujo2D.GraphicsPath filo = RoundedPath(f, radio + 2))   // EN LINUX: RoundedPath, por el puente (arriba)
+            using (SKPaint pn = new SKPaint { Color = Color.FromArgb(240, 255, 214, 200).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2)
+                Pixel.Traza(g, PuenteDibujo.Ruta(filo), pn, suave, medio, copia);   // EN LINUX: g.DrawPath(pn, filo)
             // Las mismas cuentas que Flecha (BUSCAR) y FlechaAbajo (AYUDA).
             int d = k.Width, cy = k.Y + d / 2;
             float cx = k.X + d / 2f, t = d * 0.30f, an = d * 0.24f, s = arriba ? 1f : -1f;
-            using (SolidBrush blanco = new SolidBrush(Color.FromArgb(255, 255, 250, 246)))
-                g.FillPolygon(blanco, new PointF[] { new PointF(cx, cy - s * t), new PointF(cx - an, cy + s * t * 0.62f), new PointF(cx + an, cy + s * t * 0.62f) });
+            using (SKPaint blanco = new SKPaint { Color = Color.FromArgb(255, 255, 250, 246).Sk() })   // EN LINUX: SolidBrush
+                Pixel.RellenaPoligono(g, new PointF[] { new PointF(cx, cy - s * t), new PointF(cx - an, cy + s * t * 0.62f), new PointF(cx + an, cy + s * t * 0.62f) }, blanco, suave, true, medio, copia);   // EN LINUX: g.FillPolygon(blanco, puntos): relleno Alternate, el de fabrica
         }
 
         // La tecla de la flecha de una casilla, en coordenadas de la pantalla (vacia si la casilla no se ve o aun no se
@@ -137,10 +137,10 @@ namespace Rocola
         private Rectangle TeclaAyuda()
         { return ayudaView != null && ayudaView.Visible ? GuiaRojoTecla(ayudaView.Bounds, ayudaView.Tecla) : Rectangle.Empty; }
 
-        private void DrawGuiaRojo(Graphics g)
+        private void DrawGuiaRojo(SKCanvas g, bool suave, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la imagen de la interfaz; EnsureUiOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
         {
             if (!GuiaRojoVisible()) return;
-            PintaGuiaRojoAyuda(g, letterBar.Bounds,
+            PintaGuiaRojoAyuda(g, suave, copia, medio, letterBar.Bounds,   // EN LINUX: con el lienzo y su estado
                 buscaView != null && buscaView.Visible ? buscaView.Bounds : Rectangle.Empty,
                 ayudaView != null && ayudaView.Visible ? ayudaView.Bounds : Rectangle.Empty,
                 TeclaBusca(), TeclaAyuda());
