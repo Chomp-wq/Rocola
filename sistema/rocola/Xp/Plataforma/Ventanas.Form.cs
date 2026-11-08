@@ -30,8 +30,46 @@ namespace Rocola.Ventanas
         public double Opacity { get; set; } = 1.0;
         public Form Owner { get; set; }
         public Icon Icon { get; set; }   // el icono de la barra de tareas de XP: en Rocola OS no hay barra (se guarda y no se usa)
-        public IButtonControl AcceptButton { get; set; }
+        private IButtonControl aceptar, porDefecto;
+        // EL BOTON POR DEFECTO (Form.AcceptButton y UpdateDefaultButton de WinForms): el boton que tiene el foco, o si no el de aceptar;
+        // Intro lo pulsa (ProcessDialogKey). Escape pulsa el de cancelar.
+        public IButtonControl AcceptButton { get { return aceptar; } set { aceptar = value; ActualizaBotonPorDefecto(); } }
         public IButtonControl CancelButton { get; set; }
+        internal void ActualizaBotonPorDefecto()
+        {
+            IButtonControl nuevo = ActiveControl as IButtonControl ?? aceptar;
+            if (nuevo == porDefecto) return;
+            if (porDefecto != null) porDefecto.NotifyDefault(false);
+            porDefecto = nuevo;
+            if (nuevo != null) nuevo.NotifyDefault(true);
+        }
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            if ((keyData & (Keys.Alt | Keys.Control)) == Keys.None)
+            {
+                Keys k = keyData & Keys.KeyCode;
+                if (k == Keys.Enter && porDefecto != null) { if (porDefecto is Control) porDefecto.PerformClick(); return true; }
+                if (k == Keys.Escape && CancelButton != null) { CancelButton.PerformClick(); return true; }
+            }
+            return base.ProcessDialogKey(keyData);
+        }
+        // En un formulario, Tab da la vuelta (Form.ProcessTabKey)
+        protected override bool ProcessTabKey(bool forward) { return SelectNextControl(ActiveControl, forward, true, true, true); }
+        // Al activarse (Form.Active de WinForms): el foco vuelve a su control activo si se ve, o a la hoja; sin control activo, al primero
+        // del tabulador (asi al abrir Ctrl+F3 el foco esta en la pestana «Sonido», como en XP).
+        internal void EnfocaAlActivar()
+        {
+            if (IsDisposed || !Visible) return;
+            Control a = ActiveControl;
+            if (a == null) { if (!SelectNextControl(null, true, true, true, false)) Escritorio.PonFoco(this, false); return; }
+            if (a.Visible) Escritorio.PonFoco(a, false); else Escritorio.PonFoco(this, false);
+        }
+        internal void LlamaActivada() { OnActivated(EventArgs.Empty); }
+        internal void LlamaDesactivada() { OnDeactivate(EventArgs.Empty); }
+        // LA «X» DE CERRAR de la barra de titulo (en coordenadas de la ventana) y como esta: 0 normal, 1 con el raton encima, 2 apretada.
+        internal Rectangle CajaCerrar { get { return new Rectangle(Width - 5 - 21, (Titulo + Borde - 21) / 2 + 1, 21, 21); } }
+        internal int EstadoCerrar { get; private set; }
+        internal void PonEstadoCerrar(int e) { if (EstadoCerrar == e) return; EstadoCerrar = e; Escritorio.Ensucia(this); }
         public DialogResult DialogResult { get; set; }
         public bool Modal { get { return modal; } }
         public static Form ActiveForm { get { return Escritorio.Activa; } }
@@ -56,12 +94,12 @@ namespace Rocola.Ventanas
             base.SetVisibleCore(value);
             if (value)
             {
-                Escritorio.Agrega(this); Activate();
+                Escritorio.Agrega(this); Activate();   // (y el foco: Form.Active)
                 if (!mostrada) { mostrada = true; Escritorio.Encola(new Action(delegate { if (!IsDisposed) OnShown(EventArgs.Empty); }), null, false); }
             }
             else Escritorio.Oculta(this);
         }
-        public void Activate() { Escritorio.Activa = this; Escritorio.AlFrente(this); OnActivated(EventArgs.Empty); }
+        public void Activate() { if (!Visible || Escritorio.Deshabilitada(this)) return; Escritorio.AlFrente(this); Escritorio.ActivaForma(this, true); }
         public void Close()
         {
             if (cerrando || cerrada) return;
@@ -86,7 +124,20 @@ namespace Rocola.Ventanas
             if (owner is Form) Owner = (Form)owner;
             modal = true; cerrada = false; DialogResult = DialogResult.None;
             Visible = true;
-            Escritorio.BucleModal(this);
+            while (true)
+            {
+                Escritorio.BucleModal(this);
+                if (cerrada || IsDisposed || Application.Saliendo || DialogResult == DialogResult.None) break;
+                // se cierra porque se puso DialogResult (un boton con el suyo): FormClosing, que puede impedirlo, y FormClosed, como
+                // CheckCloseDialog de WinForms
+                FormClosingEventArgs e = new FormClosingEventArgs(CloseReason.None, false);
+                OnFormClosing(e);
+                if (e.Cancel) { DialogResult = DialogResult.None; continue; }
+                cerrada = true;
+                OnFormClosed(new FormClosedEventArgs(CloseReason.None));
+                break;
+            }
+            if (!IsDisposed) Visible = false;
             modal = false;
             if (DialogResult == DialogResult.None) DialogResult = DialogResult.Cancel;
             return DialogResult;
@@ -214,19 +265,122 @@ namespace Rocola.Ventanas
         public static Cursor No { get; } = new Cursor("No");
     }
 
-    // LOS AVISOS DE WINDOWS (MessageBox): en la rocola no hay quien haga clic. Se apuntan (en la salida de errores) y se dan por aceptados.
+    // LOS AVISOS DE WINDOWS (MessageBox), como los de XP: una hoja modal gris con su icono, el texto y sus botones (en espanol, como el XP
+    // del bar). Intro pulsa el boton por defecto (el que tiene el foco) y Escape el de cancelar, o Aceptar si es el unico; con Si/No la
+    // «X» no cierra. La rocola espera la respuesta, como en XP (se contesta con PONER, que es Intro). Ademas se apunta en la salida de
+    // errores. Pedido desde otro hilo que no es el de la pantalla no se puede ensenar: se apunta y se da por aceptado.
     public class MessageBox
     {
         private MessageBox() { }
-        public static DialogResult Show(string text) { return Show(text, ""); }
-        public static DialogResult Show(string text, string caption) { Console.Error.WriteLine("[Aviso] " + caption + ": " + text); return DialogResult.OK; }
-        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons) { Show(text, caption); return buttons == MessageBoxButtons.YesNo || buttons == MessageBoxButtons.YesNoCancel ? DialogResult.Yes : DialogResult.OK; }
-        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon) { return Show(text, caption, buttons); }
-        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, MessageBoxDefaultButton b) { return Show(text, caption, buttons); }
-        public static DialogResult Show(IWin32Window owner, string text) { return Show(text); }
-        public static DialogResult Show(IWin32Window owner, string text, string caption) { return Show(text, caption); }
-        public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons) { return Show(text, caption, buttons); }
-        public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon) { return Show(text, caption, buttons); }
+        public static DialogResult Show(string text) { return Muestra(null, text, "", MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(string text, string caption) { return Muestra(null, text, caption, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons) { return Muestra(null, text, caption, buttons, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon) { return Muestra(null, text, caption, buttons, icon, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, MessageBoxDefaultButton b) { return Muestra(null, text, caption, buttons, icon, b); }
+        public static DialogResult Show(IWin32Window owner, string text) { return Muestra(owner, text, "", MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(IWin32Window owner, string text, string caption) { return Muestra(owner, text, caption, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons) { return Muestra(owner, text, caption, buttons, MessageBoxIcon.None, MessageBoxDefaultButton.Button1); }
+        public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon) { return Muestra(owner, text, caption, buttons, icon, MessageBoxDefaultButton.Button1); }
+        private static DialogResult Muestra(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, MessageBoxDefaultButton b)
+        {
+            Console.Error.WriteLine("[Aviso] " + caption + ": " + text);
+            if (Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi)
+                return buttons == MessageBoxButtons.YesNo || buttons == MessageBoxButtons.YesNoCancel ? DialogResult.Yes : DialogResult.OK;
+            using (CajaAviso c = new CajaAviso(text ?? "", caption ?? "", buttons, icon, b)) return c.ShowDialog(owner);
+        }
+    }
+
+    // LA HOJA DEL AVISO, medida como la de user32 (SoftModalMessageBox): letra de mensajes de XP (Tahoma de 8), margen de 12, 16 entre el icono,
+    // el texto y los botones, botones de 75x23 separados 6 y centrados, el texto partido a lo mas en 4/5 del ancho de la pantalla.
+    internal sealed class CajaAviso : Form
+    {
+        private const int Margen = 12, Espacio = 16, EntreBotones = 6, BotonAncho = 75, BotonAlto = 23, Icono = 32;
+        private readonly MessageBoxIcon icono;
+        private readonly Rectangle sitioIcono;
+        internal CajaAviso(string texto, string titulo, MessageBoxButtons botones, MessageBoxIcon icon, MessageBoxDefaultButton porDefecto)
+        {
+            icono = icon;
+            Text = titulo;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false; ShowIcon = false;
+            StartPosition = FormStartPosition.CenterParent;
+            Font = new Font("Tahoma", 8f);
+            string[] nombres; DialogResult[] res;
+            switch (botones)
+            {
+                case MessageBoxButtons.OKCancel: nombres = new[] { "Aceptar", "Cancelar" }; res = new[] { DialogResult.OK, DialogResult.Cancel }; break;
+                case MessageBoxButtons.AbortRetryIgnore: nombres = new[] { "Anular", "Reintentar", "Omitir" }; res = new[] { DialogResult.Abort, DialogResult.Retry, DialogResult.Ignore }; break;
+                case MessageBoxButtons.YesNoCancel: nombres = new[] { "Sí", "No", "Cancelar" }; res = new[] { DialogResult.Yes, DialogResult.No, DialogResult.Cancel }; break;
+                case MessageBoxButtons.YesNo: nombres = new[] { "Sí", "No" }; res = new[] { DialogResult.Yes, DialogResult.No }; break;
+                case MessageBoxButtons.RetryCancel: nombres = new[] { "Reintentar", "Cancelar" }; res = new[] { DialogResult.Retry, DialogResult.Cancel }; break;
+                default: nombres = new[] { "Aceptar" }; res = new[] { DialogResult.OK }; break;
+            }
+            bool conIcono = icon != MessageBoxIcon.None;
+            Size t = TextRenderer.MeasureText(texto, Font, new Size(Escritorio.Pantalla.Width / 5 * 4, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.ExpandTabs);
+            int fila = nombres.Length * (BotonAncho + EntreBotones) - EntreBotones;
+            int izq, xBotones, ancho = t.Width + (conIcono ? Icono + Espacio : 0);
+            if (fila > ancho) { izq = Margen + (fila - ancho) / 2; xBotones = Margen; }
+            else { izq = Margen; xBotones = Margen + ancho / 2 - fila / 2; }
+            int yTexto = Math.Max(Margen, Margen + (conIcono ? Icono : 0) / 2 - t.Height / 2);
+            sitioIcono = new Rectangle(izq, Margen, Icono, Icono);
+            int yBotones = Math.Max(yTexto + t.Height, conIcono ? Margen + Icono : 0) + Espacio;
+            ClientSize = new Size(Math.Max(xBotones + fila, izq + ancho) + Margen, yBotones + BotonAlto + Margen);
+            Label l = new Label();
+            l.SetBounds(izq + (conIcono ? Icono + Espacio : 0), yTexto, t.Width + 1, t.Height);
+            l.UseMnemonic = false; l.Text = texto; l.BackColor = Color.Transparent;
+            Controls.Add(l);
+            Button elegido = null, cancelar = null;
+            int cual = Math.Min(nombres.Length - 1, (int)porDefecto / 256);   // Button1 = 0, Button2 = 256, Button3 = 512
+            for (int i = 0; i < nombres.Length; i++)
+            {
+                Button b = new Button();
+                b.SetBounds(xBotones + i * (BotonAncho + EntreBotones), yBotones, BotonAncho, BotonAlto);
+                b.Text = nombres[i]; b.DialogResult = res[i];   // (como el de WinForms: al pulsarlo, la hoja se cierra con ese resultado)
+                Controls.Add(b);
+                if (i == cual) elegido = b;
+                if (res[i] == DialogResult.Cancel || (nombres.Length == 1 && res[i] == DialogResult.OK)) cancelar = b;
+            }
+            CancelButton = cancelar;
+            ControlBox = true;
+            alCerrar = cancelar != null ? cancelar.DialogResult : DialogResult.None;   // (Si/No y Anular/Reintentar/Omitir: la «X» no hace nada)
+            if (elegido != null) ActiveControl = elegido;
+        }
+        private readonly DialogResult alCerrar;
+        // la «X» es como el boton de cancelar (en un aviso con solo Aceptar, devuelve OK, como user32)
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (DialogResult == DialogResult.None) { if (alCerrar == DialogResult.None) e.Cancel = true; else DialogResult = alCerrar; }
+            base.OnFormClosing(e);
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (icono == MessageBoxIcon.None) return;
+            Graphics g = e.Graphics;
+            Rectangle r = sitioIcono;
+            SmoothingMode sm = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (icono == MessageBoxIcon.Warning)
+            {   // el triangulo amarillo con la admiracion
+                PointF[] p = { new PointF(r.X + 16, r.Y + 2), new PointF(r.Right - 1, r.Bottom - 3), new PointF(r.X + 1, r.Bottom - 3) };
+                using (LinearGradientBrush b = new LinearGradientBrush(r, Color.FromArgb(255, 238, 120), Color.FromArgb(240, 190, 20), LinearGradientMode.Vertical)) g.FillPolygon(b, p);
+                using (Pen pn = new Pen(Color.FromArgb(150, 110, 0))) g.DrawPolygon(pn, p);
+                using (SolidBrush b = new SolidBrush(Color.Black)) { g.FillRectangle(b, r.X + 14.5f, r.Y + 10, 3, 11); g.FillEllipse(b, r.X + 14.5f, r.Y + 23, 3, 3); }
+            }
+            else if (icono == MessageBoxIcon.Error)
+            {   // el circulo rojo con la equis blanca
+                using (LinearGradientBrush b = new LinearGradientBrush(r, Color.FromArgb(255, 110, 90), Color.FromArgb(190, 0, 0), LinearGradientMode.Vertical)) g.FillEllipse(b, r.X + 1, r.Y + 1, 30, 30);
+                using (Pen pn = new Pen(Color.FromArgb(130, 0, 0))) g.DrawEllipse(pn, r.X + 1, r.Y + 1, 30, 30);
+                using (Pen pn = new Pen(Color.White, 3f)) { g.DrawLine(pn, r.X + 10, r.Y + 10, r.X + 22, r.Y + 22); g.DrawLine(pn, r.X + 22, r.Y + 10, r.X + 10, r.Y + 22); }
+            }
+            else
+            {   // informacion (i) y pregunta (?): el circulo azul
+                using (LinearGradientBrush b = new LinearGradientBrush(r, Color.FromArgb(120, 170, 255), Color.FromArgb(20, 70, 190), LinearGradientMode.Vertical)) g.FillEllipse(b, r.X + 1, r.Y + 1, 30, 30);
+                using (Pen pn = new Pen(Color.FromArgb(10, 40, 130))) g.DrawEllipse(pn, r.X + 1, r.Y + 1, 30, 30);
+                using (Font f = new Font("Tahoma", 16f, FontStyle.Bold))
+                    TextRenderer.DrawText(g, icono == MessageBoxIcon.Question ? "?" : "i", f, r, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+            g.SmoothingMode = sm;
+        }
     }
 
     // EL HUECO DE UN CONTROL ACTIVEX (en XP, el reproductor de video de Windows Media, por su CLSID). En Linux no hay ActiveX: el objeto lo

@@ -69,13 +69,16 @@ namespace Rocola.Ventanas
         {
             Rectangle antes = bounds;
             bounds = new Rectangle(x, y, width, height);
-            if (antes.Location != bounds.Location) { OnLocationChanged(EventArgs.Empty); OnMove(EventArgs.Empty); }
+            // (como Control.UpdateBounds de WinForms: OnLocationChanged llama a OnMove y OnSizeChanged a OnResize, antes de sus avisos)
+            if (antes.Location != bounds.Location) OnLocationChanged(EventArgs.Empty);
             if (antes.Size != bounds.Size)
             {
-                OnSizeChanged(EventArgs.Empty); OnResize(EventArgs.Empty); OnClientSizeChanged(EventArgs.Empty);
+                OnSizeChanged(EventArgs.Empty); OnClientSizeChanged(EventArgs.Empty);
                 if (GetStyle(ControlStyles.ResizeRedraw)) Invalidate();
             }
-            EnsuciaPadre();
+            // una ventana que solo se mueve (arrastrada por su barra de titulo) no se vuelve a pintar: su capa cambia de sitio
+            if (parent == null && antes.Size == bounds.Size && this is Form) Escritorio.Mueve();
+            else EnsuciaPadre();
         }
         public Point PointToScreen(Point p) { Point o = OrigenEnPantalla(); return new Point(p.X + o.X, p.Y + o.Y); }
         public Point PointToClient(Point p) { Point o = OrigenEnPantalla(); return new Point(p.X - o.X, p.Y - o.Y); }
@@ -130,7 +133,16 @@ namespace Rocola.Ventanas
         public ImageLayout BackgroundImageLayout { get; set; }
         public Cursor Cursor { get; set; }
         public RightToLeft RightToLeft { get; set; }
-        public int TabIndex { get; set; }
+        // EL ORDEN DEL TABULADOR, como WinForms: sin poner, vale -1 (se lee 0) y al meterlo en un padre toma el mayor de sus hermanos + 1
+        // (ControlCollection.Add); asi el orden es el de entrada, salvo los que XP pone a mano (HojasFondo, FluidezAnimaciones).
+        internal int tabIndex = -1;
+        public int TabIndex
+        {
+            get { return tabIndex == -1 ? 0 : tabIndex; }
+            set { if (value < 0) throw new ArgumentOutOfRangeException("TabIndex"); if (tabIndex != value) { tabIndex = value; OnTabIndexChanged(EventArgs.Empty); } }
+        }
+        public event EventHandler TabIndexChanged;
+        protected virtual void OnTabIndexChanged(EventArgs e) { TabIndexChanged?.Invoke(this, e); }
         public bool TabStop { get; set; } = true;
         public bool CausesValidation { get; set; } = true;
         public bool Capture { get; set; }
@@ -169,21 +181,36 @@ namespace Rocola.Ventanas
             set { SetVisibleCore(value); }
         }
         internal bool VisiblePropio { get { return visible; } }
+        // COMO WINFORMS (Control.SetVisibleCore): se compara con lo que de verdad se ve (con los padres). Al esconder el que tiene el foco
+        // (o al que lo contiene), el foco pasa antes al siguiente en el orden del tabulador (SelectNextIfFocused). El aviso VisibleChanged
+        // sale si cambia lo que se ve, y tambien al ensenar un control cuyo padre esta escondido; esconderlo con el padre escondido solo
+        // cambia lo suyo, sin aviso.
         protected virtual void SetVisibleCore(bool value)
         {
-            if (visible == value) return;
-            visible = value;
-            if (value) CreateControl();
-            OnVisibleChanged(EventArgs.Empty);
+            if (Visible != value)
+            {
+                if (!value) SelectNextIfFocused();
+                visible = value;
+                if (value) CreateControl();
+                OnVisibleChanged(EventArgs.Empty);
+            }
+            else if (visible == value) return;
+            else visible = value;
             EnsuciaPadre(); Invalidate();
-            if (!value && Escritorio.Foco != null && (Escritorio.Foco == this || Contains(Escritorio.Foco))) Escritorio.QuitaFoco(this);
         }
         public void Show() { Visible = true; }
         public void Hide() { Visible = false; }
         public bool Enabled
         {
             get { return enabled && (parent == null || parent.Enabled); }
-            set { if (enabled == value) return; enabled = value; OnEnabledChanged(EventArgs.Empty); Invalidate(); }
+            set
+            {
+                bool antes = Enabled;
+                enabled = value;
+                if (antes == Enabled) return;
+                if (!value) SelectNextIfFocused();   // (como WinForms: el foco no se queda en uno en gris)
+                OnEnabledChanged(EventArgs.Empty); Invalidate();
+            }
         }
         public IntPtr Handle { get { CreateHandle(); return handle; } }
         public bool IsHandleCreated { get { return handle != IntPtr.Zero; } }
@@ -221,13 +248,144 @@ namespace Rocola.Ventanas
             base.Dispose(disposing);
         }
 
-        // ---------- foco ----------
-        public bool Focus() { if (!CanFocus) return false; Escritorio.PonFoco(this); return true; }
-        public void Select() { Focus(); }
-        public bool CanFocus { get { return Visible && Enabled; } }
-        public bool CanSelect { get { return CanFocus && GetStyle(ControlStyles.Selectable); } }
+        // ---------- foco (como WinForms: Focus, Select, el orden del tabulador y SelectNextControl) ----------
+        // Focus() es el del raton (SetFocus de Windows); Select() el del teclado (el ActiveControl del contenedor). Un contenedor (el
+        // formulario) que recibe el foco se lo da a su control activo, si lo tiene y se ve (ContainerControl.WmSetFocus).
+        public bool Focus()
+        {
+            if (!CanFocus) return false;
+            ContainerControl cc = this as ContainerControl;
+            Control a = cc != null ? cc.activo : null;
+            if (a != null && !a.IsDisposed && cc.Contains(a) && a.Visible) Escritorio.PonFoco(a, false);
+            else Escritorio.PonFoco(this, false);
+            return ContainsFocus;
+        }
+        public void Select() { Select(false, true); }
+        protected virtual void Select(bool directed, bool forward) { if (CanSelect) Escritorio.PonFoco(this, true); }
+        public bool CanFocus { get { return Visible && Enabled && !Escritorio.Deshabilitada(this as Form ?? FindForm()); } }   // (debajo de una hoja modal, no)
+        public bool CanSelect
+        {
+            get
+            {
+                if (!GetStyle(ControlStyles.Selectable)) return false;
+                for (Control c = this; c != null; c = c.parent) if (!c.enabled || !c.visible) return false;
+                return true;
+            }
+        }
         public bool Focused { get { return Escritorio.Foco == this; } }
         public bool ContainsFocus { get { Control f = Escritorio.Foco; return f != null && (f == this || Contains(f)); } }
+        // El contenedor que lleva el foco de este control (GetContainerControl de WinForms): normalmente, el formulario.
+        internal ContainerControl ContenedorDelFoco()
+        {
+            Control c = this is ContainerControl ? parent : this;
+            while (c != null && !(c is ContainerControl)) c = c.parent;
+            return (ContainerControl)c;
+        }
+        // Al esconder o apagar el que tiene el foco (o al que lo contiene), el foco pasa al siguiente, con vuelta (SelectNextIfFocused). Ojo,
+        // como en WinForms: se mira antes de esconderlo, asi que hacia delante el siguiente puede ser su primer hijo.
+        private void SelectNextIfFocused()
+        {
+            if (!ContainsFocus || parent == null) return;
+            ContainerControl c = parent.ContenedorDelFoco();
+            if (c != null) c.SelectNextControl(this, true, true, true, true);
+        }
+        public bool SelectNextControl(Control ctl, bool forward, bool tabStopOnly, bool nested, bool wrap)
+        {
+            Control sig = SiguienteElegible(ctl, forward, tabStopOnly, nested, wrap);
+            if (sig == null) return false;
+            sig.Select(true, forward);
+            return true;
+        }
+        private Control SiguienteElegible(Control ctl, bool forward, bool tabStopOnly, bool nested, bool wrap)
+        {
+            if (!Contains(ctl) || (!nested && ctl.parent != this)) ctl = null;
+            bool yaDioVuelta = false;
+            Control inicio = ctl;
+            do
+            {
+                ctl = GetNextControl(ctl, forward);
+                if (ctl == null)
+                {
+                    if (!wrap) break;
+                    if (yaDioVuelta) return null;
+                    yaDioVuelta = true;
+                }
+                else if (ctl.CanSelect && (!tabStopOnly || ctl.TabStop) && (nested || ctl.parent == this)) return ctl;
+            }
+            while (ctl != inicio);
+            return null;
+        }
+        private static bool ManejaFoco(Control c) { return c is ContainerControl && c.GetStyle(ControlStyles.ContainerControl); }
+        // EL SIGUIENTE EN EL ORDEN DEL TABULADOR (Control.GetNextControl de WinForms, paso por paso): hacia delante se entra en los hijos y
+        // despues se busca el hermano con el TabIndex siguiente (a igualdad, el que va despues en la lista); hacia atras, el hermano anterior
+        // y su ultimo hijo. null al pasar del ultimo.
+        public Control GetNextControl(Control ctl, bool forward)
+        {
+            if (!Contains(ctl)) ctl = this;
+            if (forward)
+            {
+                if (ctl.Controls.Count > 0 && (ctl == this || !ManejaFoco(ctl)))
+                {
+                    Control primero = ctl.PrimeroEnOrden(true);
+                    if (primero != null) return primero;
+                }
+                while (ctl != this)
+                {
+                    int objetivo = ctl.tabIndex;
+                    bool vistoCtl = false;
+                    Control hallado = null;
+                    List<Control> hs = ctl.parent.Controls.Lista;
+                    for (int c = 0; c < hs.Count; c++)
+                    {
+                        if (hs[c] != ctl)
+                        {
+                            if (hs[c].tabIndex >= objetivo && (hallado == null || hallado.tabIndex > hs[c].tabIndex) && (hs[c].tabIndex != objetivo || vistoCtl))
+                                hallado = hs[c];
+                        }
+                        else vistoCtl = true;
+                    }
+                    if (hallado != null) return hallado;
+                    ctl = ctl.parent;
+                }
+            }
+            else
+            {
+                if (ctl != this)
+                {
+                    int objetivo = ctl.tabIndex;
+                    bool vistoCtl = false;
+                    Control hallado = null;
+                    Control p = ctl.parent;
+                    List<Control> hs = p.Controls.Lista;
+                    for (int c = hs.Count - 1; c >= 0; c--)
+                    {
+                        if (hs[c] != ctl)
+                        {
+                            if (hs[c].tabIndex <= objetivo && (hallado == null || hallado.tabIndex < hs[c].tabIndex) && (hs[c].tabIndex != objetivo || vistoCtl))
+                                hallado = hs[c];
+                        }
+                        else vistoCtl = true;
+                    }
+                    if (hallado != null) ctl = hallado;
+                    else return p == this ? null : p;
+                }
+                while (ctl.Controls.Count > 0 && (ctl == this || !ManejaFoco(ctl)))
+                {
+                    Control ultimo = ctl.PrimeroEnOrden(false);
+                    if (ultimo == null) break;
+                    ctl = ultimo;
+                }
+            }
+            return ctl == this ? null : ctl;
+        }
+        private Control PrimeroEnOrden(bool forward)
+        {
+            List<Control> hs = Controls.Lista;
+            Control hallado = null;
+            if (forward) { for (int c = 0; c < hs.Count; c++) if (hallado == null || hallado.tabIndex > hs[c].tabIndex) hallado = hs[c]; }
+            else { for (int c = hs.Count - 1; c >= 0; c--) if (hallado == null || hallado.tabIndex < hs[c].tabIndex) hallado = hs[c]; }
+            return hallado;
+        }
 
         // ---------- pintura ----------
         public void Invalidate() { Invalidate(true); }
@@ -291,8 +449,10 @@ namespace Rocola.Ventanas
         internal void LlamaKeyDown(KeyEventArgs e) { OnKeyDown(e); }
         internal void LlamaKeyUp(KeyEventArgs e) { OnKeyUp(e); }
         internal void LlamaKeyPress(KeyPressEventArgs e) { OnKeyPress(e); }
-        internal void LlamaGotFocus() { OnGotFocus(EventArgs.Empty); OnEnter(EventArgs.Empty); }
-        internal void LlamaLostFocus() { OnLeave(EventArgs.Empty); OnLostFocus(EventArgs.Empty); }
+        internal void LlamaGotFocus() { OnGotFocus(EventArgs.Empty); }
+        internal void LlamaLostFocus() { OnLostFocus(EventArgs.Empty); }
+        internal void LlamaEnter() { OnEnter(EventArgs.Empty); }
+        internal void LlamaLeave() { OnLeave(EventArgs.Empty); }
         internal void LlamaMouse(int tipo, MouseEventArgs e)
         {
             switch (tipo)
@@ -324,12 +484,24 @@ namespace Rocola.Ventanas
         protected virtual void OnClick(EventArgs e) { Click?.Invoke(this, e); }
         protected virtual void OnDoubleClick(EventArgs e) { DoubleClick?.Invoke(this, e); }
         protected virtual void OnResize(EventArgs e) { Resize?.Invoke(this, e); }
-        protected virtual void OnSizeChanged(EventArgs e) { SizeChanged?.Invoke(this, e); }
+        protected virtual void OnSizeChanged(EventArgs e) { OnResize(EventArgs.Empty); SizeChanged?.Invoke(this, e); }
         protected virtual void OnClientSizeChanged(EventArgs e) { ClientSizeChanged?.Invoke(this, e); }
-        protected virtual void OnLocationChanged(EventArgs e) { LocationChanged?.Invoke(this, e); }
+        protected virtual void OnLocationChanged(EventArgs e) { OnMove(EventArgs.Empty); LocationChanged?.Invoke(this, e); }
         protected virtual void OnMove(EventArgs e) { Move?.Invoke(this, e); }
-        protected virtual void OnVisibleChanged(EventArgs e) { VisibleChanged?.Invoke(this, e); }
-        protected virtual void OnEnabledChanged(EventArgs e) { EnabledChanged?.Invoke(this, e); }
+        // Como WinForms: el aviso baja a los hijos que se ven (al ensenarse el padre) y a los habilitados por su cuenta.
+        protected virtual void OnVisibleChanged(EventArgs e)
+        {
+            VisibleChanged?.Invoke(this, e);
+            foreach (Control c in Controls.Lista.ToArray()) if (c.Visible) c.OnParentVisibleChanged(e);
+        }
+        protected virtual void OnParentVisibleChanged(EventArgs e) { if (visible) OnVisibleChanged(e); }
+        protected virtual void OnEnabledChanged(EventArgs e)
+        {
+            if (creado && GetStyle(ControlStyles.UserPaint)) Invalidate();
+            EnabledChanged?.Invoke(this, e);
+            foreach (Control c in Controls.Lista.ToArray()) c.OnParentEnabledChanged(e);
+        }
+        protected virtual void OnParentEnabledChanged(EventArgs e) { if (enabled) OnEnabledChanged(e); }
         protected virtual void OnGotFocus(EventArgs e) { GotFocus?.Invoke(this, e); }
         protected virtual void OnLostFocus(EventArgs e) { LostFocus?.Invoke(this, e); }
         protected virtual void OnEnter(EventArgs e) { Enter?.Invoke(this, e); }
@@ -369,9 +541,16 @@ namespace Rocola.Ventanas
             public Control this[string key] { get { foreach (Control c in Lista) if (c.Name == key) return c; return null; } }
             public virtual void Add(Control value)
             {
-                if (value == null || value.parent == dueno) return;
+                if (value == null) return;
+                if (value.parent == dueno) { value.SendToBack(); return; }   // (como WinForms: meterlo otra vez lo manda al fondo)
                 if (value.parent != null) value.parent.Controls.Remove(value);
                 Lista.Add(value);
+                if (value.tabIndex == -1)
+                {   // sin TabIndex puesto: el mayor de sus hermanos + 1 (WinForms)
+                    int sig = 0;
+                    for (int c = 0; c < Lista.Count - 1; c++) { int t = Lista[c].TabIndex; if (sig <= t) sig = t + 1; }
+                    value.tabIndex = sig;
+                }
                 value.PonPadre(dueno);
                 if (dueno.creado && value.visible) value.CreateControl();
                 dueno.LlamaControlAdded(value);
@@ -379,10 +558,16 @@ namespace Rocola.Ventanas
             public void AddRange(Control[] controls) { foreach (Control c in controls) Add(c); }
             public virtual void Remove(Control value)
             {
-                if (value == null || !Lista.Remove(value)) return;
+                if (value == null || value.parent != dueno) return;
+                bool conFoco = value.ContainsFocus;
+                ContainerControl cc = conFoco ? dueno.ContenedorDelFoco() ?? dueno as ContainerControl : null;
+                Lista.Remove(value);
                 value.PonPadre(null);
                 dueno.Invalidate();
                 dueno.LlamaControlRemoved(value);
+                // el foco se iba con el: al primero que se pueda (ContainerControl.AfterControlRemoved de WinForms)
+                if (conFoco && Escritorio.Foco != null && (Escritorio.Foco == value || value.Contains(Escritorio.Foco)))
+                    if (cc == null || !cc.SelectNextControl(value, true, true, true, true)) Escritorio.QuitaFoco(value);
             }
             public void RemoveAt(int index) { Remove(Lista[index]); }
             public void Clear() { foreach (Control c in Lista.ToArray()) Remove(c); }
@@ -396,17 +581,54 @@ namespace Rocola.Ventanas
         }
     }
 
-    public class ScrollableControl : Control { public bool AutoScroll { get; set; } }
+    public class ScrollableControl : Control
+    {
+        public ScrollableControl() { SetStyle(ControlStyles.ContainerControl, true); SetStyle(ControlStyles.AllPaintingInWmPaint, false); }
+        public bool AutoScroll { get; set; }
+    }
+    // EL CONTENEDOR QUE LLEVA EL FOCO (el formulario): recuerda su control activo y atiende las teclas de dialogo como WinForms: Tab y
+    // Mayus+Tab recorren los controles en el orden del tabulador (entrando en las tarjetas); las flechas pasan al siguiente dentro del
+    // mismo padre (con vuelta y sin entrar en los hijos), salvo en los controles que las quieren (IsInputKey: los deslizadores).
     public class ContainerControl : ScrollableControl
     {
-        public Control ActiveControl { get { Control f = Escritorio.Foco; return f != null && Contains(f) ? f : null; } set { if (value != null) value.Focus(); } }
+        internal Control activo;
+        public Control ActiveControl
+        {
+            get { Control a = activo; return a != null && !a.IsDisposed && Contains(a) ? a : null; }
+            set
+            {
+                if (value == null) { activo = null; return; }
+                if (!Contains(value)) throw new ArgumentException("El control no es de este contenedor");
+                activo = value;
+                if (ContainsFocus || Escritorio.Activa == FindForm()) Escritorio.PonFoco(value, true);
+            }
+        }
         public SizeF AutoScaleDimensions { get; set; }
         public AutoScaleMode AutoScaleMode { get; set; }
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            if ((keyData & (Keys.Alt | Keys.Control)) == Keys.None)
+            {
+                Keys k = keyData & Keys.KeyCode;
+                if (k == Keys.Tab) { if (ProcessTabKey((keyData & Keys.Shift) == Keys.None)) return true; }
+                else if (k == Keys.Left || k == Keys.Right || k == Keys.Up || k == Keys.Down) { if (ProcessArrowKey(k == Keys.Right || k == Keys.Down)) return true; }
+            }
+            return base.ProcessDialogKey(keyData);
+        }
+        protected virtual bool ProcessTabKey(bool forward) { return SelectNextControl(ActiveControl, forward, true, true, false); }
+        internal virtual bool ProcessArrowKey(bool forward)
+        {
+            Control a = ActiveControl;
+            Control grupo = a != null ? a.Parent : this;
+            return grupo.SelectNextControl(a, forward, false, false, true);
+        }
     }
     public class UserControl : ContainerControl { }
 
     public class Panel : ScrollableControl
     {
+        // como el de WinForms: no toma el foco ni entra en el tabulador (sus hijos si)
+        public Panel() { TabStop = false; SetStyle(ControlStyles.Selectable, false); SetStyle(ControlStyles.SupportsTransparentBackColor, true); }
         private BorderStyle borde;
         public BorderStyle BorderStyle { get { return borde; } set { borde = value; Invalidate(); } }
         protected override void OnPaint(PaintEventArgs e)
@@ -451,10 +673,12 @@ namespace Rocola.Ventanas
         protected override void OnPaint(PaintEventArgs e)
         {
             if (Image != null) e.Graphics.DrawImage(Image, 0, 0);
-            TextFormatFlags f = DeAlineacion(alin) | TextFormatFlags.WordBreak;
+            // ControlPaint.CreateTextFormatFlags de WinForms: WordBreak y TextBoxControl (DT_EDITCONTROL: el ultimo renglon que no cabe
+            // entero no se pinta); en gris, TextRenderer.DisabledTextColor (ControlDark, o el fondo oscurecido si es mas oscuro)
+            TextFormatFlags f = DeAlineacion(alin) | TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
             if (AutoEllipsis) f |= TextFormatFlags.EndEllipsis;
             if (!UseMnemonic) f |= TextFormatFlags.NoPrefix;
-            Color c = Enabled ? ForeColor : Color.FromArgb(172, 168, 153);
+            Color c = Enabled ? ForeColor : ColoresXp.ColorEnGris(BackColor);
             TextRenderer.DrawText(e.Graphics, Texto, Font, ClientRectangle, c, f);
             if (BorderStyle != BorderStyle.None) using (Pen p = new Pen(Color.FromArgb(172, 168, 153))) e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
             base.OnPaint(e);
@@ -469,33 +693,170 @@ namespace Rocola.Ventanas
         public Image Image { get; set; }
         public FlatButtonAppearance FlatAppearance { get; } = new FlatButtonAppearance();
     }
-    public class FlatButtonAppearance { public Color BorderColor { get; set; } public int BorderSize { get; set; } = 1; public Color MouseOverBackColor { get; set; } public Color MouseDownBackColor { get; set; } }
+    public class FlatButtonAppearance { public Color BorderColor { get; set; } public int BorderSize { get; set; } = 1; public Color MouseOverBackColor { get; set; } public Color MouseDownBackColor { get; set; } public Color CheckedBackColor { get; set; } }
+    // EL BOTON DE WINFORMS (el de Ctrl+F2 y los avisos): se aprieta con el raton (y toma el foco), con Espacio (al soltar) y con Intro si es
+    // el boton por defecto (el que tiene el foco o el AcceptButton: ProcessDialogKey del formulario). Se pinta como en XP: plano
+    // (FlatStyle.Flat: ButtonFlatAdapter, con los colores que calcula ControlPaint) o con el tema Luna (el resto).
     public class Button : ButtonBase, IButtonControl
     {
+        private bool porDefecto, encima, apretado, espacio;
         public DialogResult DialogResult { get; set; }
-        public void NotifyDefault(bool value) { }
-        public void PerformClick() { OnClick(EventArgs.Empty); }
+        public void NotifyDefault(bool value) { if (porDefecto != value) { porDefecto = value; Invalidate(); } }
+        protected bool IsDefault { get { return porDefecto; } }
+        public void PerformClick() { if (CanSelect) OnClick(EventArgs.Empty); }
         protected override void OnClick(EventArgs e)
         {
+            Form f = FindForm();
+            if (f != null) f.DialogResult = DialogResult;   // (como Button.OnClick de WinForms, tambien con None)
             base.OnClick(e);
-            if (DialogResult != DialogResult.None) { Form f = FindForm(); if (f != null) f.DialogResult = DialogResult; }
         }
-        protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); if (!e.Handled && (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)) PerformClick(); }
+        protected override void OnMouseEnter(EventArgs e) { encima = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { encima = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { Focus(); apretado = true; Invalidate(); }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            bool dentro = ClientRectangle.Contains(e.X, e.Y);
+            if (apretado && encima != dentro) { encima = dentro; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseUp(MouseEventArgs e) { if (apretado) { apretado = false; Invalidate(); } base.OnMouseUp(e); }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyData == Keys.Space) { if (!espacio) { espacio = true; Invalidate(); } e.Handled = true; }
+            base.OnKeyDown(e);
+        }
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            if (espacio)
+            {
+                espacio = false; Invalidate();
+                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) OnClick(EventArgs.Empty);
+                e.Handled = true;
+            }
+            base.OnKeyUp(e);
+        }
+        protected override void OnLostFocus(EventArgs e) { espacio = false; Invalidate(); base.OnLostFocus(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        private bool Abajo { get { return espacio || (apretado && encima); } }
         protected override void OnPaint(PaintEventArgs e)
         {
-            Rectangle r = ClientRectangle; r.Width--; r.Height--;
-            using (Pen p = new Pen(Focused ? Color.FromArgb(49, 106, 197) : Color.FromArgb(0, 60, 116))) e.Graphics.DrawRectangle(p, r);
-            TextRenderer.DrawText(e.Graphics, Text.Replace("&", ""), Font, ClientRectangle, Enabled ? ForeColor : Color.FromArgb(172, 168, 153), Label.DeAlineacion(TextAlign));
+            Graphics g = e.Graphics;
+            string t = Text.Replace("&&", "\u0001").Replace("&", "").Replace("\u0001", "&");
+            TextFormatFlags fl = Label.DeAlineacion(TextAlign) | TextFormatFlags.WordBreak;
+            Rectangle r = ClientRectangle;
+            if (FlatStyle == FlatStyle.Flat)
+            {
+                // ButtonFlatAdapter (PaintUp, PaintOver y PaintDown) con los colores de ButtonBaseAdapter.ColorOptions.Calculate
+                Color fondo = BackColor, marco = FlatAppearance.BorderColor.IsEmpty ? ForeColor : FlatAppearance.BorderColor;
+                if (Enabled && Abajo)
+                {
+                    Color luz = ColoresXp.LightLight(BackColor);
+                    fondo = !FlatAppearance.MouseDownBackColor.IsEmpty ? FlatAppearance.MouseDownBackColor : ColoresXp.Ajusta(luz, luz.GetBrightness() < .5f ? 1.2f : 0.9f);
+                }
+                else if (Enabled && encima) fondo = !FlatAppearance.MouseOverBackColor.IsEmpty ? FlatAppearance.MouseOverBackColor : ColoresXp.Ajusta(BackColor, BackColor.GetBrightness() < .5f ? 1.2f : 0.9f);
+                using (SolidBrush b = new SolidBrush(fondo)) g.FillRectangle(b, r);
+                Rectangle rt = r; rt.Inflate(-2, -2); if (Enabled && Abajo) rt.Offset(1, 1);
+                TextRenderer.DrawText(g, t, Font, rt, Enabled ? ForeColor : ColoresXp.Dark(BackColor), fl);
+                Rectangle rm = r;
+                if (porDefecto && FlatAppearance.BorderSize > 0) { using (Pen p = new Pen(marco)) g.DrawRectangle(p, rm.X, rm.Y, rm.Width - 1, rm.Height - 1); rm.Inflate(-1, -1); }
+                for (int k = 0; k < FlatAppearance.BorderSize; k++, rm.Inflate(-1, -1)) using (Pen p = new Pen(marco)) g.DrawRectangle(p, rm.X, rm.Y, rm.Width - 1, rm.Height - 1);
+            }
+            else
+            {
+                // el boton de Windows XP con el tema Luna: marco azul oscuro redondeado, cara blanca que se oscurece hacia abajo, anaranjado
+                // con el raton encima, azul si es el boton por defecto, y gris si no se puede usar
+                SmoothingMode sm = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+                RectangleF rf = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
+                using (GraphicsPath gp = ColoresXp.Redondo(rf, 3f))
+                {
+                    Color c1 = !Enabled ? Color.FromArgb(245, 244, 234) : Abajo ? Color.FromArgb(229, 228, 221) : Color.FromArgb(255, 255, 255);
+                    Color c2 = !Enabled ? Color.FromArgb(245, 244, 234) : Abajo ? Color.FromArgb(242, 241, 238) : Color.FromArgb(236, 235, 230);
+                    using (LinearGradientBrush b = new LinearGradientBrush(r, c1, c2, LinearGradientMode.Vertical)) g.FillPath(b, gp);
+                    if (Enabled && (encima || porDefecto) && !Abajo)
+                    {
+                        Color e1 = encima ? Color.FromArgb(255, 240, 207) : Color.FromArgb(206, 231, 255), e2 = encima ? Color.FromArgb(229, 151, 0) : Color.FromArgb(105, 130, 238);
+                        using (Pen p1 = new Pen(e1)) using (Pen p2 = new Pen(e2, 2f))
+                        { g.DrawRectangle(p2, 2f, 2f, Width - 4f, Height - 4f); g.DrawLine(p1, 2f, 1.5f, Width - 2f, 1.5f); }
+                    }
+                    using (Pen p = new Pen(Enabled ? Color.FromArgb(0, 60, 116) : Color.FromArgb(201, 199, 186))) g.DrawPath(p, gp);
+                }
+                g.SmoothingMode = sm;
+                Rectangle rt = r; rt.Inflate(-3, -3);
+                TextRenderer.DrawText(g, t, Font, rt, Enabled ? ForeColor : Color.FromArgb(161, 161, 146), fl);
+            }
             base.OnPaint(e);
         }
     }
 
+    // LOS COLORES QUE CALCULA WINFORMS PARA PINTAR SUS CONTROLES (ControlPaint de .NET, con su HLS de 0 a 240): los del boton plano.
+    internal static class ColoresXp
+    {
+        internal static Color Ajusta(Color c, float f) { return Color.FromArgb(Math.Min(255, (int)(f * c.R)), Math.Min(255, (int)(f * c.G)), Math.Min(255, (int)(f * c.B))); }
+        internal static Color Dark(Color c) { Hls h = new Hls(c); int cero = h.Luma(-333); return h.Color(cero - (int)(cero * 0.5f)); }
+        // TextRenderer.DisabledTextColor: ControlDark de XP, o el fondo oscurecido si el fondo es mas oscuro que el gris de las ventanas
+        internal static Color ColorEnGris(Color fondo)
+        {
+            if (fondo.A > 0 && new Hls(fondo).L < new Hls(Control.ColorDeFondo).L) return Dark(fondo);
+            return Color.FromArgb(172, 168, 153);
+        }
+        internal static Color LightLight(Color c) { Hls h = new Hls(c); int uno = h.Luma(500); return h.Color(h.L + (int)((uno - h.L) * 1.0f)); }
+        internal static GraphicsPath Redondo(RectangleF r, float radio)
+        {
+            GraphicsPath gp = new GraphicsPath(); float d = radio * 2;
+            gp.AddArc(r.X, r.Y, d, d, 180, 90); gp.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            gp.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); gp.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            gp.CloseFigure(); return gp;
+        }
+        private struct Hls
+        {
+            private const int Max = 240, RgbMax = 255, Indefinido = Max * 2 / 3;
+            internal int H, L, S;
+            internal Hls(Color c)
+            {
+                int r = c.R, g = c.G, b = c.B, max = Math.Max(Math.Max(r, g), b), min = Math.Min(Math.Min(r, g), b), suma = max + min, dif = max - min;
+                L = (suma * Max + RgbMax) / (2 * RgbMax);
+                if (dif == 0) { S = 0; H = Indefinido; return; }
+                S = L <= Max / 2 ? (dif * Max + suma / 2) / suma : (dif * Max + (2 * RgbMax - suma) / 2) / (2 * RgbMax - suma);
+                int dr = ((max - r) * (Max / 6) + dif / 2) / dif, dg = ((max - g) * (Max / 6) + dif / 2) / dif, db = ((max - b) * (Max / 6) + dif / 2) / dif;
+                H = r == max ? db - dg : g == max ? Max / 3 + dr - db : 2 * Max / 3 + dg - dr;
+                if (H < 0) H += Max;
+                if (H > Max) H -= Max;
+            }
+            internal int Luma(int n) { return n > 0 ? (int)((L * (1000L - n) + (Max + 1L) * n) / 1000) : (int)((L * (n + 1000L)) / 1000); }
+            internal Color Color(int lum)
+            {
+                if (S == 0) { int v = lum * RgbMax / Max; return System.Drawing.Color.FromArgb(v, v, v); }
+                int m2 = lum <= Max / 2 ? (lum * (Max + S) + Max / 2) / Max : lum + S - (lum * S + Max / 2) / Max, m1 = 2 * lum - m2;
+                return System.Drawing.Color.FromArgb(Byte(m1, m2, H + Max / 3), Byte(m1, m2, H), Byte(m1, m2, H - Max / 3));
+            }
+            private static int Byte(int n1, int n2, int h) { return (byte)((Tono(n1, n2, h) * RgbMax + Max / 2) / Max); }
+            private static int Tono(int n1, int n2, int h)
+            {
+                if (h < 0) h += Max;
+                if (h > Max) h -= Max;
+                if (h < Max / 6) return n1 + ((n2 - n1) * h + Max / 12) / (Max / 6);
+                if (h < Max / 2) return n2;
+                if (h < Max * 2 / 3) return n1 + ((n2 - n1) * (Max * 2 / 3 - h) + Max / 12) / (Max / 6);
+                return n1;
+            }
+        }
+    }
+
+    // LA LISTA DE WINDOWS (la de las carpetas de Ctrl+F2): renglones del alto de la letra, el elegido en el azul de seleccion de XP; se
+    // elige con el raton o con las flechas, Inicio, Fin y AvPag/RePag (quiere esas teclas: no mueven el foco), y lleva barras de
+    // desplazamiento cuando hace falta (la horizontal solo con HorizontalScrollbar, para las rutas largas). El borde: Fixed3D, el del tema
+    // (azul grisaceo); FixedSingle, una linea negra (WS_BORDER).
     public class ListBox : Control
     {
-        private int sel = -1;
+        private int sel = -1, top, desplazaX, altoRenglon;
+        internal const int Barra = 17;   // SM_CXVSCROLL / SM_CYHSCROLL de XP
         public ListBox() { Items = new ObjectCollection(this); BackColor = Color.White; }
         public ObjectCollection Items { get; }
-        public int ItemHeight { get; set; } = 16;
+        public int ItemHeight { get { return altoRenglon > 0 ? altoRenglon : Math.Max(1, Font.Height); } set { altoRenglon = value; Invalidate(); } }
         public BorderStyle BorderStyle { get; set; } = BorderStyle.Fixed3D;
         public bool IntegralHeight { get; set; } = true;
         public bool HorizontalScrollbar { get; set; }
@@ -503,33 +864,123 @@ namespace Rocola.Ventanas
         public int SelectedIndex
         {
             get { return sel; }
-            set { if (value < -1 || value >= Items.Count) value = -1; if (sel == value) return; sel = value; OnSelectedIndexChanged(EventArgs.Empty); Invalidate(); }
+            set { if (value < -1 || value >= Items.Count) value = -1; if (sel == value) return; sel = value; AVista(); OnSelectedIndexChanged(EventArgs.Empty); Invalidate(); }
         }
         public object SelectedItem { get { return sel >= 0 && sel < Items.Count ? Items[sel] : null; } set { SelectedIndex = Items.IndexOf(value); } }
-        public int TopIndex { get; set; }
+        public int TopIndex { get { return top; } set { top = Math.Max(0, Math.Min(value, Math.Max(0, Items.Count - Visibles))); Invalidate(); } }
         public event EventHandler SelectedIndexChanged;
         protected virtual void OnSelectedIndexChanged(EventArgs e) { SelectedIndexChanged?.Invoke(this, e); }
         public void BeginUpdate() { }
         public void EndUpdate() { Invalidate(); }
+        private int Marco { get { return BorderStyle == BorderStyle.None ? 0 : 1; } }
+        private int AnchoMayor()
+        {
+            int w = 0;
+            foreach (object o in Items) w = Math.Max(w, TextRenderer.MeasureText(Convert.ToString(o), Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width + 3);
+            return w;
+        }
+        // lo que queda para los renglones y si van las barras (la vertical si no caben; la horizontal si un renglon es mas ancho)
+        private void Zonas(out Rectangle util, out bool vert, out bool horiz)
+        {
+            int m = Marco;
+            Rectangle r = new Rectangle(m, m, Math.Max(0, Width - 2 * m), Math.Max(0, Height - 2 * m));
+            vert = false; horiz = false;
+            for (int vuelta = 0; vuelta < 2; vuelta++)
+            {
+                int w = r.Width - (vert ? Barra : 0), h = r.Height - (horiz ? Barra : 0);
+                vert = Items.Count * ItemHeight > h;
+                horiz = HorizontalScrollbar && AnchoMayor() > w;
+            }
+            util = new Rectangle(r.X, r.Y, Math.Max(0, r.Width - (vert ? Barra : 0)), Math.Max(0, r.Height - (horiz ? Barra : 0)));
+        }
+        private int Visibles { get { Rectangle u; bool v, h; Zonas(out u, out v, out h); return Math.Max(1, u.Height / Math.Max(1, ItemHeight)); } }
+        private void AVista() { if (sel < 0) return; int n = Visibles; if (sel < top) top = sel; else if (sel >= top + n) top = sel - n + 1; }
+        protected override bool IsInputKey(Keys keyData)
+        {
+            Keys k = keyData & Keys.KeyCode;
+            if (k == Keys.Up || k == Keys.Down || k == Keys.Left || k == Keys.Right || k == Keys.PageUp || k == Keys.PageDown || k == Keys.Home || k == Keys.End) return true;
+            return base.IsInputKey(keyData);
+        }
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            if (e.Handled) return;
-            if (e.KeyCode == Keys.Down && sel < Items.Count - 1) { SelectedIndex = sel + 1; e.Handled = true; }
-            else if (e.KeyCode == Keys.Up && sel > 0) { SelectedIndex = sel - 1; e.Handled = true; }
+            if (e.Handled || Items.Count == 0) return;
+            int n = Visibles, i;
+            switch (e.KeyCode)
+            {
+                case Keys.Down: i = Math.Min(Items.Count - 1, sel + 1); break;
+                case Keys.Up: i = Math.Max(0, sel - 1); break;
+                case Keys.PageDown: i = Math.Min(Items.Count - 1, Math.Max(0, sel) + n - 1); break;
+                case Keys.PageUp: i = Math.Max(0, sel - n + 1); break;
+                case Keys.Home: i = 0; break;
+                case Keys.End: i = Items.Count - 1; break;
+                case Keys.Left: desplazaX = Math.Max(0, desplazaX - 8); Invalidate(); e.Handled = true; return;
+                case Keys.Right: desplazaX += 8; Invalidate(); e.Handled = true; return;
+                default: return;
+            }
+            SelectedIndex = i; e.Handled = true;
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            Focus();
+            Rectangle u; bool v, h; Zonas(out u, out v, out h);
+            if (v && e.X >= u.Right && e.Y < u.Bottom)
+            {   // la barra vertical: las flechas de una en una, el canal de pagina en pagina
+                int n = Visibles;
+                if (e.Y < u.Top + Barra) TopIndex = top - 1; else if (e.Y >= u.Bottom - Barra) TopIndex = top + 1;
+                else TopIndex = e.Y < PulgarV(u).Top ? top - n : top + n;
+            }
+            else if (h && e.Y >= u.Bottom && e.X < u.Right)
+            {
+                int max = Math.Max(0, AnchoMayor() - u.Width);
+                if (e.X < u.Left + Barra) desplazaX -= 8; else if (e.X >= u.Right - Barra) desplazaX += 8;
+                else desplazaX += e.X < PulgarH(u).Left ? -u.Width : u.Width;
+                desplazaX = Math.Max(0, Math.Min(max, desplazaX)); Invalidate();
+            }
+            else if (u.Contains(e.X, e.Y))
+            {
+                int i = top + (e.Y - u.Top) / Math.Max(1, ItemHeight);
+                if (i < Items.Count) SelectedIndex = i;
+            }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseWheel(MouseEventArgs e) { TopIndex = top - e.Delta / 120 * 3; base.OnMouseWheel(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+        private Rectangle PulgarV(Rectangle u)
+        {
+            int canal = u.Height - 2 * Barra, n = Visibles, total = Math.Max(n, Items.Count);
+            int largo = Math.Max(8, canal * n / Math.Max(1, total)), y = u.Top + Barra + (total > n ? (canal - largo) * top / (total - n) : 0);
+            return new Rectangle(u.Right, y, Barra, largo);
+        }
+        private Rectangle PulgarH(Rectangle u)
+        {
+            int canal = u.Width - 2 * Barra, total = Math.Max(u.Width, AnchoMayor());
+            int largo = Math.Max(8, canal * u.Width / Math.Max(1, total)), x = u.Left + Barra + (total > u.Width ? (canal - largo) * desplazaX / (total - u.Width) : 0);
+            return new Rectangle(x, u.Bottom, largo, Barra);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            int alto = Math.Max(1, ItemHeight), visibles = Math.Max(1, Height / alto);
-            if (sel >= 0) { if (sel < TopIndex) TopIndex = sel; if (sel >= TopIndex + visibles) TopIndex = sel - visibles + 1; }
-            for (int i = TopIndex, y = 0; i < Items.Count && y < Height; i++, y += alto)
+            Graphics g = e.Graphics;
+            Rectangle u; bool v, h; Zonas(out u, out v, out h);
+            int alto = Math.Max(1, ItemHeight), mayor = AnchoMayor();
+            desplazaX = h ? Math.Max(0, Math.Min(desplazaX, mayor - u.Width)) : 0;
+            top = Math.Max(0, Math.Min(top, Math.Max(0, Items.Count - Math.Max(1, u.Height / alto))));
+            GraphicsState st = g.Save();
+            g.IntersectClip(u);
+            for (int i = top, y = u.Top; i < Items.Count && y < u.Bottom; i++, y += alto)
             {
-                Rectangle r = new Rectangle(0, y, Width, alto);
                 bool elegido = i == sel;
-                if (elegido) using (SolidBrush b = new SolidBrush(Color.FromArgb(49, 106, 197))) e.Graphics.FillRectangle(b, r);
-                TextRenderer.DrawText(e.Graphics, Convert.ToString(Items[i]), Font, r, elegido ? Color.White : ForeColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                if (elegido) using (SolidBrush b = new SolidBrush(Color.FromArgb(49, 106, 197))) g.FillRectangle(b, new Rectangle(u.Left, y, u.Width, alto));
+                Rectangle rt = new Rectangle(u.Left + 1 - desplazaX, y, Math.Max(u.Width, mayor) + 8, alto);
+                TextRenderer.DrawText(g, Convert.ToString(Items[i]), Font, rt, elegido ? Color.White : ForeColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             }
-            if (BorderStyle != BorderStyle.None) using (Pen p = new Pen(Color.FromArgb(127, 157, 185))) e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+            g.Restore(st);
+            if (v) BarraXp.Pinta(g, new Rectangle(u.Right, u.Top, Barra, u.Height), true, PulgarV(u));
+            if (h) BarraXp.Pinta(g, new Rectangle(u.Left, u.Bottom, u.Width, Barra), false, PulgarH(u));
+            if (v && h) using (SolidBrush b = new SolidBrush(Color.FromArgb(236, 233, 216))) g.FillRectangle(b, u.Right, u.Bottom, Barra, Barra);
+            if (BorderStyle != BorderStyle.None)
+                using (Pen p = new Pen(BorderStyle == BorderStyle.FixedSingle ? Color.Black : Color.FromArgb(127, 157, 185))) g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
             base.OnPaint(e);
         }
         public class ObjectCollection : IList
@@ -552,6 +1003,51 @@ namespace Rocola.Ventanas
             public object SyncRoot { get { return l; } }
             public void CopyTo(Array array, int index) { ((ICollection)l).CopyTo(array, index); }
             public IEnumerator GetEnumerator() { return l.GetEnumerator(); }
+        }
+    }
+
+    // LA BARRA DE DESPLAZAMIENTO DE XP (tema Luna): el canal claro, las flechas y el pulgar azul claro redondeados, con su flecha y sus rayas.
+    internal static class BarraXp
+    {
+        internal static void Pinta(Graphics g, Rectangle r, bool vertical, Rectangle pulgar)
+        {
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(243, 241, 236))) g.FillRectangle(b, r);
+            int n = ListBox.Barra;
+            Rectangle a = vertical ? new Rectangle(r.X, r.Y, r.Width, n) : new Rectangle(r.X, r.Y, n, r.Height);
+            Rectangle z = vertical ? new Rectangle(r.X, r.Bottom - n, r.Width, n) : new Rectangle(r.Right - n, r.Y, n, r.Height);
+            SmoothingMode sm = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+            Pieza(g, a, vertical); Pieza(g, z, vertical); Pieza(g, pulgar, vertical);
+            using (SolidBrush f = new SolidBrush(Color.FromArgb(77, 97, 133)))
+            {
+                float cx = a.X + a.Width / 2f, cy = a.Y + a.Height / 2f, dx = z.X + z.Width / 2f, dy = z.Y + z.Height / 2f;
+                if (vertical)
+                {
+                    g.FillPolygon(f, new PointF[] { new PointF(cx - 4, cy + 2), new PointF(cx + 4, cy + 2), new PointF(cx, cy - 2) });
+                    g.FillPolygon(f, new PointF[] { new PointF(dx - 4, dy - 2), new PointF(dx + 4, dy - 2), new PointF(dx, dy + 2) });
+                }
+                else
+                {
+                    g.FillPolygon(f, new PointF[] { new PointF(cx + 2, cy - 4), new PointF(cx + 2, cy + 4), new PointF(cx - 2, cy) });
+                    g.FillPolygon(f, new PointF[] { new PointF(dx - 2, dy - 4), new PointF(dx - 2, dy + 4), new PointF(dx + 2, dy) });
+                }
+            }
+            g.SmoothingMode = sm;
+            using (Pen p = new Pen(Color.FromArgb(140, 166, 222)))
+            {
+                float cx = pulgar.X + pulgar.Width / 2f, cy = pulgar.Y + pulgar.Height / 2f;
+                for (int k = -3; k <= 3; k += 2)
+                    if (vertical) { if (pulgar.Height > 14) g.DrawLine(p, cx - 3, cy + k, cx + 3, cy + k); }
+                    else if (pulgar.Width > 14) g.DrawLine(p, cx + k, cy - 3, cx + k, cy + 3);
+            }
+        }
+        private static void Pieza(Graphics g, Rectangle r, bool vertical)
+        {
+            if (r.Width <= 2 || r.Height <= 2) return;
+            RectangleF rf = new RectangleF(r.X + 0.5f, r.Y + 0.5f, r.Width - 1f, r.Height - 1f);
+            using (GraphicsPath gp = ColoresXp.Redondo(rf, 2f))
+            using (LinearGradientBrush b = new LinearGradientBrush(r, Color.FromArgb(225, 234, 254), Color.FromArgb(193, 211, 251), vertical ? LinearGradientMode.Horizontal : LinearGradientMode.Vertical))
+            using (Pen p = new Pen(Color.FromArgb(180, 200, 246)))
+            { g.FillPath(b, gp); g.DrawPath(p, gp); }
         }
     }
 }

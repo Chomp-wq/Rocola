@@ -845,6 +845,9 @@ namespace Rocola.Dibujo2D
             if (!conRecorte) { baseCuenta = C.Save(); conRecorte = true; }
             C.ClipPath(rg.P, m == CombineMode.Exclude ? SKClipOperation.Difference : SKClipOperation.Intersect, false);
         }
+        // (Ventanas.Escritorio) el recorte de ahora pasa a ser la base, como la region de la ventana de un control en Windows: lo que el
+        // control haga despues con SetClip o ResetClip se queda dentro de el
+        internal void SellaRecorte() { conRecorte = false; recorte = null; baseCuenta = C.SaveCount; }
         public void IntersectClip(RectangleF r) { SetClip(r, CombineMode.Intersect); }
         public void IntersectClip(Rectangle r) { SetClip((RectangleF)r, CombineMode.Intersect); }
         public void ExcludeClip(Rectangle r) { SetClip((RectangleF)r, CombineMode.Exclude); }
@@ -1047,6 +1050,7 @@ namespace Rocola.Dibujo2D
             sf.LineAlignment = (fl & TextFormatFlags.VerticalCenter) != 0 ? StringAlignment.Center : (fl & TextFormatFlags.Bottom) != 0 ? StringAlignment.Far : StringAlignment.Near;
             if ((fl & TextFormatFlags.WordBreak) == 0) sf.FormatFlags |= StringFormatFlags.NoWrap;
             if ((fl & TextFormatFlags.NoClipping) != 0) sf.FormatFlags |= StringFormatFlags.NoClip;
+            if ((fl & TextFormatFlags.TextBoxControl) != 0) sf.FormatFlags |= StringFormatFlags.LineLimit;   // DT_EDITCONTROL: sin el renglon a medias
             sf.Trimming = (fl & TextFormatFlags.EndEllipsis) != 0 ? StringTrimming.EllipsisCharacter : (fl & TextFormatFlags.WordEllipsis) != 0 ? StringTrimming.EllipsisWord : StringTrimming.None;
             // GDI: sin NoPadding deja un sexto de letra a los lados (como el margen de GDI+); con NoPadding, nada
             sf.Tipografico = (fl & TextFormatFlags.NoPadding) != 0;
@@ -1055,6 +1059,10 @@ namespace Rocola.Dibujo2D
         public static void DrawText(Graphics g, string s, Font f, Rectangle r, Color c) { DrawText(g, s, f, r, c, TextFormatFlags.Default); }
         public static void DrawText(Graphics g, string s, Font f, Rectangle r, Color c, TextFormatFlags fl)
         {
+            // GDI no centra en vertical varios renglones: WinForms lo hace a mano (AdjustForVerticalAlignment) y, si no caben, van arriba
+            if ((fl & (TextFormatFlags.VerticalCenter | TextFormatFlags.Bottom)) != 0 && (fl & TextFormatFlags.SingleLine) == 0 && r.Height > 0 && !string.IsNullOrEmpty(s)
+                && MeasureText(s, f, new Size(r.Width, int.MaxValue), fl & ~TextFormatFlags.TextBoxControl).Height > r.Height)
+                fl &= ~(TextFormatFlags.VerticalCenter | TextFormatFlags.Bottom);
             using (SolidBrush b = new SolidBrush(c)) g.DrawString(s, f, b, (RectangleF)r, Formato(fl));
         }
         public static void DrawText(Graphics g, string s, Font f, Point p, Color c) { DrawText(g, s, f, p, c, TextFormatFlags.Default); }
