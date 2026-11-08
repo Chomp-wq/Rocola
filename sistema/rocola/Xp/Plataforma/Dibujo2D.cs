@@ -49,13 +49,19 @@ namespace Rocola.Dibujo2D
     public sealed class FontFamily : IDisposable
     {
         public readonly string Name;
-        public FontFamily(string nombre) { Name = nombre; }
+        // COMO GDI+: pedir por su nombre una familia que no esta instalada lanza ArgumentException. La rocola de XP prueba asi Segoe UI,
+        // Tahoma y Verdana para Ctrl+F3 (FamiliaUi): en Windows XP no hay Segoe UI y queda Tahoma. Instalada = sus letras estan en la
+        // carpeta de las letras de XP (Letras.Instalada); sin esa carpeta no hay ninguna y queda la generica, como antes.
+        public FontFamily(string nombre) { if (!Letras.Instalada(nombre)) throw new ArgumentException("Font '" + nombre + "' cannot be found."); Name = nombre; }
+        internal FontFamily(string nombre, bool sinMirar) { Name = nombre; }
         public FontFamily(GenericFontFamilies g) { Name = g == GenericFontFamilies.Serif ? "Times New Roman" : g == GenericFontFamilies.Monospace ? "Courier New" : "Microsoft Sans Serif"; }
         public void Dispose() { }
         // En Windows XP la generica sin remates es Microsoft Sans Serif; la de ancho fijo, Courier New; la de remates, Times New Roman.
-        public static FontFamily GenericSansSerif { get { return new FontFamily("Microsoft Sans Serif"); } }
-        public static FontFamily GenericMonospace { get { return new FontFamily("Courier New"); } }
-        public static FontFamily GenericSerif { get { return new FontFamily("Times New Roman"); } }
+        public static FontFamily GenericSansSerif { get { return new FontFamily("Microsoft Sans Serif", true); } }
+        public static FontFamily GenericMonospace { get { return new FontFamily("Courier New", true); } }
+        public static FontFamily GenericSerif { get { return new FontFamily("Times New Roman", true); } }
+        // new Font("una que no esta", ...) no lanza: GDI+ pone Microsoft Sans Serif (la generica) en su lugar
+        internal static FontFamily DeFont(string nombre) { return new FontFamily(nombre != null && Letras.Instalada(nombre) ? nombre : "Microsoft Sans Serif", true); }
         public override string ToString() { return Name; }
     }
 
@@ -66,9 +72,9 @@ namespace Rocola.Dibujo2D
         public readonly FontStyle Style;
         public readonly GraphicsUnit Unit;
         public readonly Letras.Letra Cara; // la letra de verdad (y si la negrita hay que inventarla)
-        public Font(string familia, float tam) : this(new FontFamily(familia), tam, FontStyle.Regular, GraphicsUnit.Point) { }
-        public Font(string familia, float tam, FontStyle estilo) : this(new FontFamily(familia), tam, estilo, GraphicsUnit.Point) { }
-        public Font(string familia, float tam, FontStyle estilo, GraphicsUnit unidad) : this(new FontFamily(familia), tam, estilo, unidad) { }
+        public Font(string familia, float tam) : this(FontFamily.DeFont(familia), tam, FontStyle.Regular, GraphicsUnit.Point) { }
+        public Font(string familia, float tam, FontStyle estilo) : this(FontFamily.DeFont(familia), tam, estilo, GraphicsUnit.Point) { }
+        public Font(string familia, float tam, FontStyle estilo, GraphicsUnit unidad) : this(FontFamily.DeFont(familia), tam, estilo, unidad) { }
         public Font(FontFamily familia, float tam) : this(familia, tam, FontStyle.Regular, GraphicsUnit.Point) { }
         public Font(FontFamily familia, float tam, FontStyle estilo) : this(familia, tam, estilo, GraphicsUnit.Point) { }
         public Font(FontFamily familia, float tam, GraphicsUnit unidad) : this(familia, tam, FontStyle.Regular, unidad) { }
@@ -164,6 +170,21 @@ namespace Rocola.Dibujo2D
                 catch { }
             }
             return null;
+        }
+        // Si la familia esta "instalada": alguna de sus letras esta en la carpeta de las letras de XP (se mira una vez por familia)
+        private static readonly Dictionary<string, bool> instaladas = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        public static bool Instalada(string familia)
+        {
+            if (string.IsNullOrEmpty(familia)) return false;
+            lock (instaladas)
+            {
+                bool si;
+                if (instaladas.TryGetValue(familia, out si)) return si;
+                string[] a;
+                if (archivos.TryGetValue(familia, out a)) foreach (string f in a) if (EnCarpetas(f) != null) { si = true; break; }
+                instaladas[familia] = si;
+                return si;
+            }
         }
         // las de repuesto (libres), por orden
         private static readonly string[] Repuesto = { "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf" };
@@ -307,7 +328,10 @@ namespace Rocola.Dibujo2D
         public override Brush Clone() { LinearGradientBrush b = (LinearGradientBrush)MemberwiseClone(); return b; }
     }
     // EL DEGRADADO DE UN TRAZO (PathGradientBrush): del color del centro al de la orilla. La rocola lo usa con elipses (halos y brillos):
-    // aqui es un degradado radial desde el centro hasta la orilla de la elipse, estirado a su forma.
+    // aqui es un degradado radial desde el centro hasta la orilla de la elipse, estirado a su forma. Con el centro corrido (CenterPoint
+    // fuera del medio: la moneda que cae, la luna) GDI+ va en linea recta del centro a cada punto de la orilla, y la orilla entera lleva
+    // el color de fuera: eso es un degradado conico de dos puntos (de radio 0 en el centro al circulo de la elipse), no un circulo
+    // alrededor del centro corrido (que se pasaba por un lado y no llegaba a la orilla por el otro).
     public sealed class PathGradientBrush : Brush
     {
         private readonly RectangleF caja;
@@ -321,7 +345,9 @@ namespace Rocola.Dibujo2D
         {
             Color fuera = SurroundColors != null && SurroundColors.Length > 0 ? SurroundColors[0] : Color.Transparent;
             float rx = Math.Max(0.5f, caja.Width / 2f), ry = Math.Max(0.5f, caja.Height / 2f);
-            SKMatrix m = SKMatrix.CreateScale(1f, ry / rx, CenterPoint.X, CenterPoint.Y);
+            float ex = caja.X + caja.Width / 2f, ey = caja.Y + caja.Height / 2f;   // el medio de la elipse
+            bool corrido = Math.Abs(CenterPoint.X - ex) > 0.01f || Math.Abs(CenterPoint.Y - ey) > 0.01f;
+            SKMatrix m = corrido ? SKMatrix.CreateScale(1f, ry / rx, ex, ey) : SKMatrix.CreateScale(1f, ry / rx, CenterPoint.X, CenterPoint.Y);
             SKColor[] cols; float[] pos = null;
             if (Blend != null && Blend.Factors != null && Blend.Positions != null && Blend.Factors.Length >= 2)
             {
@@ -334,7 +360,10 @@ namespace Rocola.Dibujo2D
                 }
             }
             else cols = new[] { Graphics.Sk(CenterColor), Graphics.Sk(fuera) };
-            p.Shader = SKShader.CreateRadialGradient(new SKPoint(CenterPoint.X, CenterPoint.Y), rx, cols, pos, SKShaderTileMode.Clamp, m);
+            if (corrido)   // en el espacio del circulo (y estirada a rx alrededor del medio): del centro corrido al circulo entero
+                p.Shader = SKShader.CreateTwoPointConicalGradient(new SKPoint(CenterPoint.X, ey + (CenterPoint.Y - ey) * rx / ry), 0f,
+                    new SKPoint(ex, ey), rx, cols, pos, SKShaderTileMode.Clamp, m);
+            else p.Shader = SKShader.CreateRadialGradient(new SKPoint(CenterPoint.X, CenterPoint.Y), rx, cols, pos, SKShaderTileMode.Clamp, m);
             p.Color = SKColors.Black;
         }
         public override Brush Clone() { return (PathGradientBrush)MemberwiseClone(); }
@@ -382,6 +411,7 @@ namespace Rocola.Dibujo2D
             if (Brush != null) Brush.Pon(p); else { p.Shader = null; p.Color = Graphics.Sk(Color); }
             p.StrokeWidth = Width <= 1f ? Math.Max(Width, 1f) : Width;   // GDI+: una pluma de 0 o 1 es de un pixel
             p.StrokeJoin = LineJoin == LineJoin.Round ? SKStrokeJoin.Round : LineJoin == LineJoin.Bevel ? SKStrokeJoin.Bevel : SKStrokeJoin.Miter;
+            p.StrokeMiter = 10f;   // el limite de las esquinas en punta de GDI+ (MiterLimit de fabrica); el de Skia es 4 y las achataba antes
             p.StrokeCap = StartCap == LineCap.Round || EndCap == LineCap.Round ? SKStrokeCap.Round : StartCap == LineCap.Square || EndCap == LineCap.Square ? SKStrokeCap.Square : SKStrokeCap.Butt;
             p.IsAntialias = suave;
             float w = Math.Max(1f, Width);
@@ -746,6 +776,25 @@ namespace Rocola.Dibujo2D
         }
         private static SKRect R(RectangleF r) { return new SKRect(r.Left, r.Top, r.Right, r.Bottom); }
         // GDI+ sin suavizado y sin desplazamiento de medio pixel pinta los bordes en los pixeles enteros: igual que Skia sin antialias
+        // EL MEDIO PIXEL DE GDI+ AL SUAVIZAR (revision del 7-11-2026). Con PixelOffsetMode de fabrica (Default, HighSpeed o None) GDI+ pone
+        // el centro de cada pixel en las coordenadas ENTERAS ("pixel centers have integer coordinates"); Skia, en el medio (i + 0.5). Con
+        // suavizado eso se ve: en XP una raya de 1 en una coordenada entera sale nitida y el borde de un relleno en una entera sale a medias;
+        // en Skia salia al reves (la raya del riel de las letras, en dos filas a medias). Las formas suavizadas se corren medio pixel en la
+        // pantalla (despues de la transformacion, donde lo hace GDI+), como libgdiplus con Cairo. Sin suavizado no: el redondeo de Skia ya
+        // da los mismos pixeles que GDI+ en las coordenadas enteras. Con Half o HighQuality tampoco. El texto y las imagenes no se tocan.
+        private struct Corrido : IDisposable
+        {
+            private readonly SKCanvas c; private readonly int n;
+            internal Corrido(SKCanvas c, int n) { this.c = c; this.n = n; }
+            public void Dispose() { if (c != null) c.RestoreToCount(n); }
+        }
+        private Corrido Corre()
+        {
+            if (!Suave || PixelOffsetMode == PixelOffsetMode.Half || PixelOffsetMode == PixelOffsetMode.HighQuality) return default(Corrido);
+            int n = C.Save();
+            C.SetMatrix(SKMatrix.CreateTranslation(0.5f, 0.5f).PreConcat(C.TotalMatrix));
+            return new Corrido(C, n);
+        }
 
         public void Clear(Color c) { C.Clear(Sk(c)); }
 
@@ -768,7 +817,9 @@ namespace Rocola.Dibujo2D
         public void ResetTransform() { C.ResetMatrix(); }
         public Matrix Transform { get { return new Matrix { M = C.TotalMatrix }; } set { C.SetMatrix(value.M); } }
 
-        // --- el recorte (SetClip cambia el de antes; Intersect, Exclude y los demas lo combinan)
+        // --- el recorte (SetClip cambia el de antes; Intersect, Exclude y los demas lo combinan). Las regiones de recorte de GDI+ son
+        // siempre de pixeles enteros, sin suavizar, aunque el dibujo vaya suavizado (una portadita recortada en redondo sale con las
+        // esquinas en escalera en XP): aqui igual.
         public void SetClip(RectangleF r) { SetClip(r, CombineMode.Replace); }
         public void SetClip(Rectangle r) { SetClip((RectangleF)r, CombineMode.Replace); }
         public void SetClip(Rectangle r, CombineMode m) { SetClip((RectangleF)r, m); }
@@ -776,7 +827,7 @@ namespace Rocola.Dibujo2D
         {
             if (m == CombineMode.Replace) QuitaRecorte();
             if (!conRecorte) { baseCuenta = C.Save(); conRecorte = true; }
-            if (m == CombineMode.Exclude) C.ClipRect(R(r), SKClipOperation.Difference, Suave);
+            if (m == CombineMode.Exclude) C.ClipRect(R(r), SKClipOperation.Difference, false);
             else C.ClipRect(R(r), SKClipOperation.Intersect, false);
             recorte = r;
         }
@@ -785,14 +836,14 @@ namespace Rocola.Dibujo2D
         {
             if (m == CombineMode.Replace) QuitaRecorte();
             if (!conRecorte) { baseCuenta = C.Save(); conRecorte = true; }
-            C.ClipPath(gp.P, m == CombineMode.Exclude ? SKClipOperation.Difference : SKClipOperation.Intersect, Suave);
+            C.ClipPath(gp.P, m == CombineMode.Exclude ? SKClipOperation.Difference : SKClipOperation.Intersect, false);
             recorte = gp.GetBounds();
         }
         public void SetClip(Region rg, CombineMode m)
         {
             if (m == CombineMode.Replace) QuitaRecorte();
             if (!conRecorte) { baseCuenta = C.Save(); conRecorte = true; }
-            C.ClipPath(rg.P, m == CombineMode.Exclude ? SKClipOperation.Difference : SKClipOperation.Intersect, Suave);
+            C.ClipPath(rg.P, m == CombineMode.Exclude ? SKClipOperation.Difference : SKClipOperation.Intersect, false);
         }
         public void IntersectClip(RectangleF r) { SetClip(r, CombineMode.Intersect); }
         public void IntersectClip(Rectangle r) { SetClip((RectangleF)r, CombineMode.Intersect); }
@@ -805,52 +856,76 @@ namespace Rocola.Dibujo2D
             C.RestoreToCount(baseCuenta); C.SetMatrix(m);   // (el recorte se va; la posicion se queda)
             conRecorte = false; recorte = null;
         }
-        public RectangleF ClipBounds { get { SKRect b = C.LocalClipBounds; return RectangleF.FromLTRB(b.Left, b.Top, b.Right, b.Bottom); } }
+        // LOS LIMITES DEL RECORTE, EXACTOS. LocalClipBounds de Skia los agranda un pixel por cada lado (por si el recorte fuera suavizado);
+        // GDI+ no. Con ese pixel de mas, el renglon de al lado de un recorte "tocaba" el recorte: la lista del disco, al pintar el renglon
+        // elegido, se quedaba tambien con la cinta del renglon de abajo (TextoMovilGpu.cs) y ese renglon salia escrito dos veces, encimado.
+        public RectangleF ClipBounds
+        {
+            get
+            {
+                SKRectI d = C.DeviceClipBounds; SKMatrix inv;
+                if (d.IsEmpty || !C.TotalMatrix.TryInvert(out inv)) return RectangleF.Empty;
+                SKRect b = inv.MapRect(new SKRect(d.Left, d.Top, d.Right, d.Bottom));
+                return RectangleF.FromLTRB(b.Left, b.Top, b.Right, b.Bottom);
+            }
+        }
         public RectangleF VisibleClipBounds { get { return ClipBounds; } }
 
         // --- formas
-        public void FillRectangle(Brush b, RectangleF r) { using (SKPaint p = Relleno(b)) { if (!Suave) p.IsAntialias = false; C.DrawRect(R(r), p); } }
+        public void FillRectangle(Brush b, RectangleF r) { using (Corre()) using (SKPaint p = Relleno(b)) { if (!Suave) p.IsAntialias = false; C.DrawRect(R(r), p); } }
         public void FillRectangle(Brush b, Rectangle r) { FillRectangle(b, (RectangleF)r); }
         public void FillRectangle(Brush b, float x, float y, float w, float h) { FillRectangle(b, new RectangleF(x, y, w, h)); }
         public void FillRectangle(Brush b, int x, int y, int w, int h) { FillRectangle(b, new RectangleF(x, y, w, h)); }
         public void FillRectangles(Brush b, RectangleF[] rs) { foreach (RectangleF r in rs) FillRectangle(b, r); }
-        public void DrawRectangle(Pen pen, RectangleF r) { using (SKPaint p = Trazo(pen)) C.DrawRect(R(r), p); }
+        public void DrawRectangle(Pen pen, RectangleF r) { using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawRect(R(r), p); }
         public void DrawRectangle(Pen pen, Rectangle r) { DrawRectangle(pen, (RectangleF)r); }
         public void DrawRectangle(Pen pen, float x, float y, float w, float h) { DrawRectangle(pen, new RectangleF(x, y, w, h)); }
         public void DrawRectangle(Pen pen, int x, int y, int w, int h) { DrawRectangle(pen, new RectangleF(x, y, w, h)); }
-        public void FillEllipse(Brush b, RectangleF r) { using (SKPaint p = Relleno(b)) C.DrawOval(R(r), p); }
+        public void FillEllipse(Brush b, RectangleF r) { using (Corre()) using (SKPaint p = Relleno(b)) C.DrawOval(R(r), p); }
         public void FillEllipse(Brush b, Rectangle r) { FillEllipse(b, (RectangleF)r); }
         public void FillEllipse(Brush b, float x, float y, float w, float h) { FillEllipse(b, new RectangleF(x, y, w, h)); }
         public void FillEllipse(Brush b, int x, int y, int w, int h) { FillEllipse(b, new RectangleF(x, y, w, h)); }
-        public void DrawEllipse(Pen pen, RectangleF r) { using (SKPaint p = Trazo(pen)) C.DrawOval(R(r), p); }
+        public void DrawEllipse(Pen pen, RectangleF r) { using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawOval(R(r), p); }
         public void DrawEllipse(Pen pen, Rectangle r) { DrawEllipse(pen, (RectangleF)r); }
         public void DrawEllipse(Pen pen, float x, float y, float w, float h) { DrawEllipse(pen, new RectangleF(x, y, w, h)); }
         public void DrawEllipse(Pen pen, int x, int y, int w, int h) { DrawEllipse(pen, new RectangleF(x, y, w, h)); }
-        public void FillPath(Brush b, GraphicsPath gp) { using (SKPaint p = Relleno(b)) C.DrawPath(gp.P, p); }
-        public void DrawPath(Pen pen, GraphicsPath gp) { using (SKPaint p = Trazo(pen)) C.DrawPath(gp.P, p); }
-        public void FillRegion(Brush b, Region rg) { using (SKPaint p = Relleno(b)) C.DrawPath(rg.P, p); }
-        public void DrawLine(Pen pen, float x1, float y1, float x2, float y2) { using (SKPaint p = Trazo(pen)) C.DrawLine(x1, y1, x2, y2, p); }
+        public void FillPath(Brush b, GraphicsPath gp) { using (Corre()) using (SKPaint p = Relleno(b)) C.DrawPath(gp.P, p); }
+        public void DrawPath(Pen pen, GraphicsPath gp) { using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawPath(gp.P, p); }
+        public void FillRegion(Brush b, Region rg) { using (Corre()) using (SKPaint p = Relleno(b)) C.DrawPath(rg.P, p); }
+        public void DrawLine(Pen pen, float x1, float y1, float x2, float y2) { using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawLine(x1, y1, x2, y2, p); }
         public void DrawLine(Pen pen, int x1, int y1, int x2, int y2) { DrawLine(pen, (float)x1, y1, x2, y2); }
         public void DrawLine(Pen pen, PointF a, PointF b) { DrawLine(pen, a.X, a.Y, b.X, b.Y); }
         public void DrawLine(Pen pen, Point a, Point b) { DrawLine(pen, a.X, a.Y, b.X, b.Y); }
-        public void DrawLines(Pen pen, PointF[] ps) { if (ps == null || ps.Length < 2) return; using (SKPath sp = new SKPath()) { sp.MoveTo(ps[0].X, ps[0].Y); for (int i = 1; i < ps.Length; i++) sp.LineTo(ps[i].X, ps[i].Y); using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); } }
+        public void DrawLines(Pen pen, PointF[] ps) { if (ps == null || ps.Length < 2) return; using (SKPath sp = new SKPath()) { sp.MoveTo(ps[0].X, ps[0].Y); for (int i = 1; i < ps.Length; i++) sp.LineTo(ps[i].X, ps[i].Y); using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); } }
         public void DrawLines(Pen pen, Point[] ps) { if (ps == null) return; PointF[] f = new PointF[ps.Length]; for (int i = 0; i < ps.Length; i++) f[i] = ps[i]; DrawLines(pen, f); }
         private static SKPath Poligono(PointF[] ps, FillMode m) { SKPath sp = new SKPath { FillType = m == FillMode.Alternate ? SKPathFillType.EvenOdd : SKPathFillType.Winding }; sp.MoveTo(ps[0].X, ps[0].Y); for (int i = 1; i < ps.Length; i++) sp.LineTo(ps[i].X, ps[i].Y); sp.Close(); return sp; }
         public void FillPolygon(Brush b, PointF[] ps) { FillPolygon(b, ps, FillMode.Alternate); }
-        public void FillPolygon(Brush b, PointF[] ps, FillMode m) { if (ps == null || ps.Length < 3) return; using (SKPath sp = Poligono(ps, m)) using (SKPaint p = Relleno(b)) C.DrawPath(sp, p); }
+        public void FillPolygon(Brush b, PointF[] ps, FillMode m) { if (ps == null || ps.Length < 3) return; using (SKPath sp = Poligono(ps, m)) using (Corre()) using (SKPaint p = Relleno(b)) C.DrawPath(sp, p); }
         public void FillPolygon(Brush b, Point[] ps) { if (ps == null) return; PointF[] f = new PointF[ps.Length]; for (int i = 0; i < ps.Length; i++) f[i] = ps[i]; FillPolygon(b, f); }
-        public void DrawPolygon(Pen pen, PointF[] ps) { if (ps == null || ps.Length < 2) return; using (SKPath sp = Poligono(ps, FillMode.Alternate)) using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); }
+        public void DrawPolygon(Pen pen, PointF[] ps) { if (ps == null || ps.Length < 2) return; using (SKPath sp = Poligono(ps, FillMode.Alternate)) using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); }
         public void DrawPolygon(Pen pen, Point[] ps) { if (ps == null) return; PointF[] f = new PointF[ps.Length]; for (int i = 0; i < ps.Length; i++) f[i] = ps[i]; DrawPolygon(pen, f); }
-        public void DrawArc(Pen pen, RectangleF r, float inicio, float barrido) { using (SKPaint p = Trazo(pen)) C.DrawArc(R(r), inicio, barrido, false, p); }
+        public void DrawArc(Pen pen, RectangleF r, float inicio, float barrido) { using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawArc(R(r), inicio, barrido, false, p); }
         public void DrawArc(Pen pen, Rectangle r, float inicio, float barrido) { DrawArc(pen, (RectangleF)r, inicio, barrido); }
         public void DrawArc(Pen pen, float x, float y, float w, float h, float inicio, float barrido) { DrawArc(pen, new RectangleF(x, y, w, h), inicio, barrido); }
-        public void FillPie(Brush b, RectangleF r, float inicio, float barrido) { using (SKPaint p = Relleno(b)) C.DrawArc(R(r), inicio, barrido, true, p); }
+        public void FillPie(Brush b, RectangleF r, float inicio, float barrido) { using (Corre()) using (SKPaint p = Relleno(b)) C.DrawArc(R(r), inicio, barrido, true, p); }
         public void FillPie(Brush b, float x, float y, float w, float h, float inicio, float barrido) { FillPie(b, new RectangleF(x, y, w, h), inicio, barrido); }
-        public void DrawBezier(Pen pen, PointF a, PointF b, PointF c, PointF d) { using (SKPath sp = new SKPath()) { sp.MoveTo(a.X, a.Y); sp.CubicTo(b.X, b.Y, c.X, c.Y, d.X, d.Y); using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); } }
+        public void DrawBezier(Pen pen, PointF a, PointF b, PointF c, PointF d) { using (SKPath sp = new SKPath()) { sp.MoveTo(a.X, a.Y); sp.CubicTo(b.X, b.Y, c.X, c.Y, d.X, d.Y); using (Corre()) using (SKPaint p = Trazo(pen)) C.DrawPath(sp, p); } }
 
         // --- imagenes
-        private SKSamplingOptions Muestreo()
+        // HighQualityBilinear, HighQualityBicubic y High de GDI+ "prefiltran" al achicar: una portada de 500 px achicada a 20 px sale
+        // lisa (Form1.Vistas.cs: "sin que salga a granos"); un bilineal o un bicubico de Skia sin mas toma cuatro o dieciseis puntos y
+        // sale a granos. Al achicar, esos modos van con mipmaps (cada nivel es la mitad, promediada). Bilinear y Bicubic no prefiltran,
+        // como en GDI+.
+        private SKSamplingOptions Muestreo(SKRect origen, SKRect destino)
         {
+            bool previo = InterpolationMode == InterpolationMode.HighQualityBilinear || InterpolationMode == InterpolationMode.HighQualityBicubic || InterpolationMode == InterpolationMode.High;
+            if (previo)
+            {
+                SKMatrix m = C.TotalMatrix;
+                float ex = (float)Math.Sqrt(m.ScaleX * m.ScaleX + m.SkewY * m.SkewY), ey = (float)Math.Sqrt(m.SkewX * m.SkewX + m.ScaleY * m.ScaleY);
+                if (destino.Width * ex < origen.Width * 0.99f || destino.Height * ey < origen.Height * 0.99f)
+                    return new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
+            }
             switch (InterpolationMode)
             {
                 case InterpolationMode.NearestNeighbor: return new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
@@ -872,10 +947,10 @@ namespace Rocola.Dibujo2D
                     if (o.Width <= 0 || o.Height <= 0) return;
                     using (SKBitmap trozo = ConClave(img.Sk, o, ia.ClaveBaja, ia.ClaveAlta))
                     using (SKImage si = SKImage.FromBitmap(trozo))
-                        C.DrawImage(si, new SKRect(origen.Left - o.Left, origen.Top - o.Top, origen.Right - o.Left, origen.Bottom - o.Top), destino, Muestreo(), p);
+                        C.DrawImage(si, new SKRect(origen.Left - o.Left, origen.Top - o.Top, origen.Right - o.Left, origen.Bottom - o.Top), destino, Muestreo(origen, destino), p);
                     return;
                 }
-                using (SKImage si = SKImage.FromBitmap(img.Sk)) C.DrawImage(si, origen, destino, Muestreo(), p);
+                using (SKImage si = SKImage.FromBitmap(img.Sk)) C.DrawImage(si, origen, destino, Muestreo(origen, destino), p);
             }
         }
         private static unsafe SKBitmap ConClave(SKBitmap b, SKRectI o, Color bajo, Color alto)
@@ -891,7 +966,10 @@ namespace Rocola.Dibujo2D
                     int a = f[3]; if (a == 0) continue;
                     int bb = f[0], g = f[1], r = f[2];
                     if (a < 255) { bb = (bb * 255 + a / 2) / a; g = (g * 255 + a / 2) / a; r = (r * 255 + a / 2) / a; }   // sin premultiplicar, como lo ve GDI+
-                    if (r >= bajo.R && r <= alto.R && g >= bajo.G && g <= alto.G && bb >= bajo.B && bb <= alto.B) { f[0] = f[1] = f[2] = f[3] = 0; }
+                    // con un punto de holgura: Skia, al mezclar un borde suavizado de un color sobre ese mismo color, redondea
+                    // hacia abajo (49 -> 48) y GDI+ no; sin ella el fondo de la lista del disco (pintado dos veces) dejaba su
+                    // primera fila y su primera columna sin quitar: una raya oscura encima de la cancion elegida
+                    if (r >= bajo.R - 1 && r <= alto.R + 1 && g >= bajo.G - 1 && g <= alto.G + 1 && bb >= bajo.B - 1 && bb <= alto.B + 1) { f[0] = f[1] = f[2] = f[3] = 0; }
                 }
             }
             return t;

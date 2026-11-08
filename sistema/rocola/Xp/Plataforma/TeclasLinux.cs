@@ -4,7 +4,8 @@
 // del bar vale tal cual) y se entregan en el hilo de la pantalla al escritorio (Escritorio.Tecla), que hace lo que haria Windows.
 // LA REPETICION AL DEJARLO APRETADO es la de Windows XP de fabrica (no la del nucleo, que va mas rapido): la ultima tecla apretada se
 // repite a los 500 ms y despues unas 30 veces por segundo (KeyboardDelay 1, KeyboardSpeed 31), como WM_KEYDOWN repetidos.
-//   ROCOLA_PULSA=S:VK[,S:VK...]  (pruebas) aprieta y suelta la tecla VK (codigo de Windows) a los S segundos de arrancar.
+//   ROCOLA_PULSA=S:VK[,S:VK...]  (pruebas) aprieta y suelta la tecla VK (codigo de Windows) a los S segundos de arrancar; S:VK~MS la
+//   deja apretada MS milisegundos, con la repeticion de XP (para la guia del rojo mantenido; otra tecla entre medias va con ella apretada).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -29,6 +30,12 @@ namespace Rocola
             arrancado = true;
             AbreNuevos(carpeta);
             new Thread(delegate () { while (true) { Thread.Sleep(2000); try { AbreNuevos(carpeta); } catch { } } }) { IsBackground = true, Name = "teclas nuevas" }.Start();
+            ArrancaRepeticion();
+        }
+        private static bool repeticionArrancada;
+        private static void ArrancaRepeticion()
+        {
+            lock (candado) { if (repeticionArrancada) return; repeticionArrancada = true; }
             new Thread(Repite) { IsBackground = true, Name = "teclas: repeticion" }.Start();
         }
 
@@ -42,7 +49,17 @@ namespace Rocola
             foreach (string e in lista.Split(','))
             {
                 int k = e.IndexOf(':'); double s;
-                if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out s)) l.Add(new KeyValuePair<double, string>(s * 1000.0, e.Substring(k + 1)));
+                if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out s))
+                {
+                    string v = e.Substring(k + 1);
+                    int m = v.IndexOf('~'), ms;
+                    if (m > 0 && int.TryParse(v.Substring(m + 1), out ms))   // S:VK~MS: apretarla y soltarla MS despues
+                    {
+                        l.Add(new KeyValuePair<double, string>(s * 1000.0, "baja:" + v.Substring(0, m)));
+                        l.Add(new KeyValuePair<double, string>(s * 1000.0 + ms, "suelta:" + v.Substring(0, m)));
+                    }
+                    else l.Add(new KeyValuePair<double, string>(s * 1000.0, v));
+                }
             }
             l.Sort((a, b) => a.Key.CompareTo(b.Key));
             new Thread(delegate ()
@@ -64,6 +81,20 @@ namespace Rocola
                         continue;
                     }
                     if (q[0] == "rueda" && q.Length == 2) { int m = int.Parse(q[1]); Escritorio.Entrada(delegate { Escritorio.RatonRueda(m); }); continue; }
+                    if ((q[0] == "baja" || q[0] == "suelta") && q.Length == 2)
+                    {
+                        // mantenida: llega como una tecla de verdad (WM_KEYDOWN, y repetida a los 500 ms como en XP, hasta soltarla)
+                        int vk; if (!int.TryParse(q[1], out vk)) continue;
+                        bool abajo = q[0] == "baja"; Keys tk = (Keys)vk;
+                        Escritorio.Entrada(delegate { Escritorio.Tecla(tk, abajo); });
+                        ArrancaRepeticion();
+                        lock (candado)
+                        {
+                            if (abajo) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
+                            else if (vk == repiteVk) repiteVk = 0;
+                        }
+                        continue;
+                    }
                     string[] teclas = p.Value.Split('+');
                     Keys mod = teclas.Length == 2 ? (Keys)int.Parse(teclas[0]) : Keys.None;
                     Keys t = (Keys)int.Parse(teclas[teclas.Length - 1]);
