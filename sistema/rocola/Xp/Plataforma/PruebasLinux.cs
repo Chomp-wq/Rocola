@@ -9,6 +9,14 @@
 //                                        de pesos de los escaladores) con su medida, formato y contenido (NaN, minimo, maximo, centro)
 //   rocola-xp --prueba-aot / --prueba-mp3 ...                lo que XP hace con reflexion y estructuras de Windows, y el lector de MP3
 //                                                            de XP (Mp3Xp.cs), para comparar JIT con NativeAOT (ver PruebaAot.cs)
+//   rocola-xp --prueba-lector ARCHIVO...                      cada archivo con el lector de lo que no es MP3 ni WAV de siempre (lo que en
+//                                                            XP era AudioFileReader: Nativo/LectorAudio.cs): formato, largo, duracion y
+//                                                            una huella de las muestras; o la excepcion y como la toma XP (MotivoFallo,
+//                                                            EsArchivoDanado). Un video (.mp4, .avi, .mpg, .wmv...): su duracion con el
+//                                                            medidor (Nativo/MedidorVideo.cs), como Form1.MideDuracionVideo.
+//   rocola-xp --prueba-salida SEGUNDOS [PARA]                la salida de XP (WaveOutPropio, SalidaPropia.cs) sobre ALSA (ROCOLA_ALSA): un
+//                                                            tono de 440 Hz de SEGUNDOS, la posicion (GetPosition) frente al reloj cada
+//                                                            100 ms y el aviso de parada; con PARA, Stop a esos segundos.
 // El video, aqui y en la rocola entera (Nativo/ReproductorVideo.cs):
 //   ROCOLA_VIDEO_TRAZA=1             los avisos de mpv, cada volumen que se le pone y cada cuadro pintado, con el punto del centro
 //   ROCOLA_VIDEO_REGISTRO=ruta       lo que dice mpv (su registro, con msg-level=all=v)
@@ -42,6 +50,7 @@ namespace Rocola
             // (el video necesita hilos: mientras corre el inicializador del modulo, cualquier otro hilo que entre al modulo -el de los avisos
             // de mpv y su aviso de cuadro nuevo- se queda esperando; por eso esa prueba corre despues, al empezar el Main de XP)
             if (a.Length >= 3 && a[1] == "--prueba-video") { videoPendiente = a; return; }
+            if (a.Length >= 3 && (a[1] == "--prueba-lector" || a[1] == "--prueba-salida")) { videoPendiente = a; return; }   // (tambien con hilos: ffmpeg, la salida)
             // la rocola: la pantalla (KMS, o fuera de pantalla) y OpenGL en este hilo, antes del Main de XP (Anfitrion.cs)
             Anfitrion.Arranca();
         }
@@ -51,6 +60,8 @@ namespace Rocola
         {
             string[] a = videoPendiente;
             if (a == null) return;
+            if (a[1] == "--prueba-lector") { string[] r = new string[a.Length - 2]; Array.Copy(a, 2, r, 0, r.Length); Environment.Exit(PruebasSonido.Lector(r)); }
+            if (a[1] == "--prueba-salida") Environment.Exit(PruebasSonido.Salida(double.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture), a.Length >= 4 ? double.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture) : -1));
             Environment.Exit(PruebaVideo(a[2], a.Length >= 4 ? double.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture) : 8));
         }
 

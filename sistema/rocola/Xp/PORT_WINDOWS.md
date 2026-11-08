@@ -52,13 +52,13 @@ NativeAOT (`Aot.cs`).
 **Cómo se comprobó (8-11-2026, JIT).**
 
 - La prueba aislada del video (`rocola-xp --prueba-video`, libmpv pintando en su textura de 498x606 y el punto del centro cada 0,25 s):
-  `herramientas/aislada.sh mio 20 3` → **20 de 20 bien** (ninguna lectura negra, todas amarillas como el video de prueba).
-- La rocola entera con un video de 30 s, contra la referencia (`herramientas/video.sh ref|mio NOMBRE`: REGRESAR+DERECHA dos veces, PONER,
+  `Pruebas/Windows/aislada.sh prog-mio 20 3` → **20 de 20 bien** (ninguna lectura negra, todas amarillas como el video de prueba).
+- La rocola entera con un video de 30 s, contra la referencia (`Pruebas/Windows/video.sh prog-ref|prog-mio NOMBRE`: REGRESAR+DERECHA dos veces, PONER,
   MONEDA, PONER; el video suena en ventana, a los 8 s sin botones pasa a pantalla completa con la franja de la atracción encima y al
   acabar vuelve la pared; capturas a los 16, 24, 44 y 50 s; el sonido de mpv a un WAV por ALSA `file:`):
   - el sonido del video (`video.wav`, 10 584 108 bytes, 30 s a 44,1 kHz estéreo de 32 bits): **igual byte a byte** que el de la
     referencia (con la curva de volumen de XP: el arranque, el nivel por el disco y el fundido del final);
-  - los 12 `rocola_*.txt` del final, quitando las horas de los archivos copiados (`compara.py`): **iguales**, incluido
+  - los 12 `rocola_*.txt` del final, quitando las horas de los archivos copiados (`Pruebas/Windows/compara.py`): **iguales**, incluido
     `rocola_duracion.txt` (`30|.../Un video largo.mp4` y `8|.../Video de prueba.mp4`, como la referencia; con la duración de libmpv salía
     `30.02` y `8.02`);
   - las capas que compone la pantalla, una vez por segundo (`ROCOLA_TRAZA_CAPAS=1`): la misma sucesión (12 s la pared; 8 s el video en
@@ -68,3 +68,111 @@ NativeAOT (`Aot.cs`).
   - las capturas: el video se ve en el mismo sitio y con el mismo cuadro de prueba, y la franja «¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !»
     encima a pantalla completa; los píxeles distintos son los del cielo animado y del cuadro del video, que también cambian entre dos
     corridas de la referencia (26 000 a 540 000 píxeles entre la referencia y esta; 107 000 a 450 000 entre dos de la referencia).
+
+## W2. El sonido (winmm, el ACM y el AudioFileReader)
+
+**Antes.** `SalidaPropia.cs` (la salida con hilo propio de XP, `WaveOutPropio`) hablaba con Windows por la interfaz `ISistemaWaveOut`
+(con forma de winmm: `Prepara`/`Escribe`/`Desprepara` con WAVEHDR en memoria no administrada, la bandera WHDR_DONE, los MMSYSERR) y la
+traducción la contestaba con una imitación de winmm sobre ALSA (`Plataforma/SonidoAlsa.cs`: `AlsaWaveOut` con su propio hilo y sus
+WAVEHDR, `MmResult`, `MmException` y un `WaveOut` con la forma del de NAudio para «la de siempre»). Los MP3 se descomprimían con
+`Mp3FileReader.CreateAcmFrameDecompressor` (el ACM de Windows, contestado con libmpg123) y lo demás con un `AudioFileReader` que imitaba
+al de NAudio 1.9 pero abría con ffmpeg todo lo que en XP abre Media Foundation (que Windows XP no tiene).
+
+**Ahora.**
+
+- `Nativo/SalidaAlsa.cs`: la tarjeta por libasound, sin disfraz. `Abre` (snd_pcm_open de la tarjeta de la rocola -ROCOLA_ALSA, o la
+  primera que no sea HDMI-, el formato tal cual, la frecuencia exacta con plughw convirtiendo, un periodo de un bloque de XP -50 ms- y un
+  búfer de todos los bloques -750 a 1000 ms-, umbral de arranque 1 como `waveOutWrite`), `Libres`/`Escribe` (snd_pcm_avail, snd_pcm_writei;
+  un XRUN se recupera solo, como winmm, que se calla un momento), `Sonado` (lo escrito menos snd_pcm_delay), `Vacia` (`waveOutReset`:
+  snd_pcm_drop, la cuenta a 0), `Pausa`, `Cierra`. Los errores son `ErrorAlsa` (el -errno de ALSA y la función; `Formato` cuando la tarjeta
+  no acepta el formato).
+- `WaveOutPropio` (Codigo/SalidaPropia.cs) la llama directo: los mismos bloques de 50 ms, el mismo orden, el mismo hilo, la misma espera
+  de 100 ms como mucho, el mismo final y la misma parada. Lo que en XP contestaba Windows sobre los bloques se calcula con lo sonado: un
+  bloque «ya sonó» (WHDR_DONE) cuando lo sonado pasa de donde acaba, y el hilo espera justo hasta que acabe el más viejo (en XP, Windows
+  señala el evento en ese momento). El reloj (`GetPosition`) es lo sonado en bytes y de 32 bits, como el MMTIME de `waveOutGetPosition`
+  (Form1.AmpliaRelojSalida cuenta sus vueltas).
+- Las decisiones de XP con cada MMSYSERR (`SalidaSonido.cs`), con los errores de ALSA que dicen lo mismo:
+  | XP (winmm) | Linux (ALSA) | XP decide |
+  |---|---|---|
+  | BadDeviceId (desenchufado) | ENOENT (no hay tarjeta con ese nombre), ENXIO, ENODEV (ya no está) | el aparato: se espera y se retoma la misma canción |
+  | AlreadyAllocated | EBUSY (la tiene otro programa; antes se espera 1,5 s por si es el video que aún la suelta: en Windows los dos suenan a la vez por el mezclador) | el aparato |
+  | InvalidHandle | EBADFD, ENODEV con la salida abierta, EIO (dejó de contestar) | el aparato |
+  | NoDriver | no está libasound (ErrorAlsa.SinAlsa) | el aparato |
+  | NotEnabled, NoDriverCallback | no pueden darse en Linux (un controlador quitado es una tarjeta que no está; ALSA no avisa por el controlador) | — |
+  | WaveBadFormat | EINVAL al poner formato, canales, frecuencia o acceso (`ErrorAlsa.Formato`) | el formato: en Vista, de coma flotante a 16 bits |
+  | otro | otro | de la canción (o, si falló la salida propia por sí misma, la de siempre) |
+  «La de siempre» (en XP, el WaveOut de NAudio, con winmm y aviso por ventana) no existe en Linux: es otra salida propia nueva sobre la misma
+  ALSA, marcada `LaDeSiempre` para que Form1 decida con ella exactamente lo mismo que con el WaveOut (`EsLaPropia`: `w is WaveOutPropio` de
+  XP; `salida is WaveOut` en el reloj de 32 bits). `FlotanteAdmitido` es lo que decidía en el A4 con Windows XP 5.1 (no: 16 bits con
+  dither) y no la versión del núcleo; con eso `IdSalidaPorDefecto` sigue sin preguntar, como en XP.
+- `Nativo/DescompresorMp3.cs`: lo que en XP era el ACM (`DescompresorMp3.Crea`, llamado directo desde Form1.Sonido.cs y
+  CancionEnMemoria.cs): **libmpg123** (la biblioteca nativa de MP3; Rocola OS la trae) y, sin ella, NLayer en 16 bits. Se queda libmpg123
+  delante aunque el encargo decía NLayer, por tres razones medidas: es lo que usa la referencia (así el sonido sale igual muestra a
+  muestra), es lo que se eligió para Rocola OS el 2-11-2026 («NLayer se comía un cuadro en algunos y es ~8 veces más lento») y, con estas
+  canciones de prueba, NLayer descomprime distinto algunos cuadros (error eficaz de 265 frente a una señal de 1 099 en la primera canción,
+  concentrado en unos pocos cuadros). El respaldo con NLayer de la referencia **no sonaba nunca** (su adaptador de cuadros leía desde la
+  cabecera y NLayer se salía del arreglo en el primer cuadro: con `ROCOLA_SIN_MPG123=1`, las tres canciones fallaban con
+  IndexOutOfRangeException en la referencia); aquí usa el adaptador de XP (`CuadroNLayer` de FlotanteNLayer.cs) y suenan las tres.
+  `Mp3FileReader.CreateAcmFrameDecompressor` sale del lector de NAudio 1.9 traducido (`Mp3Xp.cs`, que se queda: es una biblioteca, no
+  Windows).
+- `Nativo/LectorAudio.cs`: lo que hace el `AudioFileReader` de NAudio 1.9 para lo que no es un MP3 ni un WAV de siempre (Form1.Sonido.cs:
+  `FileAudioSource` y `LectorMedida`), con los lectores de NAudio.Core que no son de Windows (WaveFileReader, AiffFileReader,
+  SampleChannel) y sus mismas cuentas de largo y posición. El WAV comprimido, que en XP abre el ACM, lo descomprime ffmpeg a PCM de 16 bits
+  (lo que sugiere el codec) solo en los formatos con codec ACM en un XP de fábrica (Microsoft e IMA ADPCM, ley A y mu, GSM 6.10,
+  MPEG Layer-3, TrueSpeech, G.723.1, WMA 1 y 2), con el largo que calcula el codec (bloques enteros por muestras de cada bloque en los ADPCM
+  y el GSM); los demás no abren. Lo que en Windows abre Media Foundation **no abre**, como en el A4 con XP (`FormatoSinLector`: XP lo toma
+  como su DllNotFoundException de mfplat.dll, «no se pudo abrir», sin darla por dañada); la referencia lo abría con ffmpeg.
+
+Se fueron: `Plataforma/SonidoAlsa.cs` (AlsaWaveOut, MmResult, MmException, WaveOut), `Plataforma/AudioXp.cs` (AudioFileReader y su
+FfmpegLector), `ISistemaWaveOut`, `CabeceraWave` y las banderas WHDR de SalidaPropia.cs, `CreateAcmFrameDecompressor` y el aviso IL3050 de
+la WAVEHDR (`Aot.cs`).
+
+**Cómo se comprobó (8-11-2026, JIT).**
+
+- Una tarjeta de prueba con reloj (`Pruebas/Windows/alsa/reloj.c`, un plugin de ALSA: suena a su ritmo como una tarjeta de verdad, guarda
+  en crudo lo que de verdad sonó -lo que se tira con drop no- y apunta cada arranque, parada y XRUN). Con ALSA `null` o `file` todo
+  «suena» al instante (el puntero no avanza con el reloj) y no se ve nada de los tiempos.
+- `rocola-xp --prueba-salida 3` (la salida de XP con un tono de 3 s): abre en 7-12 ms con 20 bloques, la posición sigue al reloj con
+  ~18 ms de diferencia (lo que tarda en empezar), lo leído va ~0,95 s por delante (el colchón de XP), el aviso de parada llega a los 3,022 s
+  sin error y la posición final es 529 200 bytes (3,000 s). Con `--prueba-salida 3 1.5` (Stop a media): el aviso llega en 1 ms, lo que no
+  sonó se tira (sonaron 1,51 s) y la posición vuelve a 0, como `waveOutReset`. Con una tarjeta que no existe: `ErrorAlsa` ENOENT y Form1 lo
+  toma como fallo del aparato.
+- La rocola entera con tres canciones del primer disco (`Pruebas/Windows/sonido.sh` y `variantes.sh`: MONEDA mantenida, PONER, PONER, ABAJO+PONER dos veces;
+  con el dither de 16 bits con semilla fija en las dos -`Pruebas/Windows/prueba-fuente.sh` compila copias de las dos fuentes con ese único
+  cambio, solo para comparar-, la música copiada con sus fechas y las tablas ya medidas, `datos-estables`):
+  - la referencia no sale igual de una corrida a otra: en 3 corridas dio 3 sonidos distintos (siempre iguales en la primera canción hasta
+    los 2,70 s; las diferencias empiezan en un relevo entre canciones, de unas 47 000 muestras: decisiones de XP que dependen de cuándo
+    acaba cada hilo);
+  - esta rama, en 3 corridas, dio 2 de esos mismos 3, **iguales byte a byte** a corridas de la referencia (1 694 140 bytes). Antes, con
+    las tablas sin medir, 5 corridas de la referencia y 4 de esta: 6 de las 9 con la misma huella (3 de cada una), las otras tres con una
+    huella cada una (las diferencias, otra vez desde un relevo);
+  - la firma de la biblioteca (`sig=7:7:bcb5f46874067ab0`) y los 12 `rocola_*.txt`, iguales en todas.
+- `rocola-xp --prueba-lector` con WAV de prueba hechos con ffmpeg: IMA ADPCM 2,0063 s (88 479 cuadros: 87 bloques de 1 017, como el
+  codec), MS ADPCM, ley mu y ley A, GSM 6.10 (2,0 s) y MP3 dentro de un WAV abren y su pico coincide con el de ffmpeg; G.726 (sin codec en
+  XP), M4A y FLAC (Media Foundation) y un WAV de 24 bits extensible (en XP lo abre antes WavDirecto, nunca llega aquí) no abren, con «no se
+  pudo abrir» y sin darlos por dañados; AIFF abre.
+- Con `ROCOLA_SIN_MPG123=1`, esta rama toca las tres canciones (847 070 muestras, como con libmpg123) y la referencia ninguna.
+
+## Las herramientas (`Pruebas/Windows/`, fuera del programa)
+
+Todas cargan `comun.sh`: `W` es la carpeta de trabajo fuera del repositorio (por omisión `/root/rocola-trabajo/port/windows`), `ROCOLA`
+esta rama, `REF` la referencia congelada (`/root/rocola-trabajo/referencia-xp/sistema/rocola`, solo se lee) y `DATOSXP` los datos de prueba
+(`/home/user/Rocola/sistema/rocola/Xp/bin/Release/net10.0`). Cada corrida usa una copia nueva de los datos en `W/run` (rutas iguales en
+todas) y deja lo suyo en `W/runs/NOMBRE`.
+
+- `prepara.sh ref|mio`: copia el programa compilado (JIT) a `W/prog-ref` o `W/prog-mio`.
+- `corre.sh PROG NOMBRE SEGUNDOS [VAR=valor...]`: la rocola fuera de pantalla con ALSA nula (`EXTRA=` un video más; `DATOS=` las tablas de
+  partida; la música con sus fechas).
+- `video.sh PROG NOMBRE`: la escena del video de 30 s (capturas, capas, `video.wav`); `aislada.sh PROG VUELTAS SEGUNDOS`: la prueba
+  aislada del video.
+- `prueba-fuente.sh ref|mio`: copias de las dos fuentes con el dither de semilla fija (solo para comparar el sonido), compiladas en
+  `W/prog-ref-semilla` y `W/prog-mio-semilla`.
+- `sonido.sh PROG NOMBRE SEGUNDOS TECLAS`: la rocola con la tarjeta de prueba con reloj (`alsa/reloj.c`, se compila sola con gcc y
+  libasound); `variantes.sh PREFIJO VUELTAS`: la escena de las tres canciones con las dos, alternadas, y la huella de cada sonido.
+- `compara.py A B` (las tablas sin las horas de los archivos copiados, las capturas y `video.wav`), `difsonido.py A.raw B.raw` (dos
+  crudos de 16 bits, muestra a muestra, por tramos), `difxp.sh ARCHIVO.cs` (lo que cambia la traducción frente a `Rocola/`, sin lo
+  mecánico) y `finales.py REV ARCHIVO...` (devuelve a cada línea el fin de línea que tenía en REV: muchos archivos de XP mezclan CRLF y LF).
+- En el programa: `rocola-xp --prueba-video`, `--prueba-lector ARCHIVO...` (el lector de lo que no es MP3 ni WAV de siempre, y la
+  duración de un video con el medidor) y `--prueba-salida SEGUNDOS [PARA]` (la salida de XP con un tono, la posición frente al reloj y la
+  parada); se piden con `ROCOLA_ALSA=reloj` y `ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:<un .conf como el que escribe sonido.sh>` para
+  oírlas con la tarjeta de prueba.

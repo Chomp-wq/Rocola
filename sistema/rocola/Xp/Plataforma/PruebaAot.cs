@@ -69,7 +69,6 @@ namespace Rocola
             Prueba("marshal.memex", () => Marshal.SizeOf(typeof(ComoMemEx)));
             Prueba("marshal.pantalla", () => Marshal.SizeOf(typeof(ComoPantalla)));
             Prueba("marshal.finddata (RecorridoRapido, 592 en Windows)", () => ListadoWin32.TamanoEstructura());
-            Prueba("marshal.wavehdr (SalidaPropia)", () => WaveOutPropio.TamCabecera + " largo@" + WaveOutPropio.OffLargo + " banderas@" + WaveOutPropio.OffBanderas);
             Prueba("form1.tope_portadas (MemStatusEx)", () => Form1.TopeDePortadas());
             Prueba("form1.cache_celdas_mb (MemStatusEx)", () => Form1.CacheCeldasMb());
             Prueba("diag.cpu", () => DiagEquipo.Cpu());
@@ -178,7 +177,7 @@ namespace Rocola
             for (int k = 0; k < 2; k++)
             {
                 bool xp = k == 0;
-                Func<WaveStream> abre = xp ? (Func<WaveStream>)(() => new Mp3FileReader(ruta)) : () => new Mp3FileReaderBase(ruta, Mp3FileReader.CreateAcmFrameDecompressor);
+                Func<WaveStream> abre = xp ? (Func<WaveStream>)(() => new Mp3FileReader(ruta)) : () => new Mp3FileReaderBase(ruta, DescompresorMp3.Crea);
                 long alAbrir, alFinal, leidos = 0; ulong huella = 14695981039346656037UL; int alineado;
                 using (WaveStream s = abre())
                 {

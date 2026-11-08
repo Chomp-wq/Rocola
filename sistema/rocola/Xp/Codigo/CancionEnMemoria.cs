@@ -163,10 +163,10 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
-            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+            { return DescompresorMp3.Crea(f); };   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
-                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DescompresorMp3.Crea(wf);   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
                 hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                 return hecho;
             };

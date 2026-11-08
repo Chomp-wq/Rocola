@@ -237,8 +237,9 @@ namespace Rocola
         // Windows Vista o posterior: alli la salida clasica pasa por el motor de audio, que mezcla en coma flotante.
         private static bool FlotanteAdmitido()
         {
-            OperatingSystem so = Environment.OSVersion;
-            return so.Platform == PlatformID.Win32NT && so.Version.Major >= 6;
+            // EN LINUX: (Environment.OSVersion: Win32NT y Version.Major >= 6) lo que decidia en el A4, con Windows XP (5.1): no. La tarjeta recibe
+            // 16 bits con dither, como en el bar (en Linux la version seria la del nucleo, 6.x, y diria que si).
+            return false;
         }
 
         // T5 (SalidaPropia.cs): la salida con su propio hilo, salvo que en esta sesion no haya abierto o haya fallado por si misma.
@@ -255,7 +256,9 @@ namespace Rocola
             }
             // WaveOut con callback por VENTANA, no WaveOutEvent: el de eventos llama a WaitHandle.WaitOne(Int32),
             // que NO existe en .NET 3.5 sin Service Pack 1 (el de la rockola de XP) y truena. Este no lo usa.
-            WaveOut wo = new WaveOut();
+            // EN LINUX: (new WaveOut(): el WaveOut de NAudio, winmm con aviso por ventana) no hay otro camino a la tarjeta que ALSA: la de
+            // siempre es otra salida propia nueva, con la misma latencia y los mismos bloques de 50 ms
+            WaveOutPropio wo = new WaveOutPropio(); wo.LaDeSiempre = true;
             // El audio se rellena desde el bucle de mensajes de la interfaz; con 1 SEGUNDO de colchon la musica
             // aguanta cualquier atoron (paginas, caratulas, GC, video) sin cortarse.
             wo.DesiredLatency = latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000;
@@ -304,7 +307,7 @@ namespace Rocola
             {
                 w.PlaybackStopped -= Output_PlaybackStopped; output = null;
                 try { w.Dispose(); } catch { }
-                if (!(w is WaveOutPropio) || EsFalloDelDispositivo(ex) || EsFormatoRechazado(ex)) throw;
+                if (!EsLaPropia(w) || EsFalloDelDispositivo(ex) || EsFormatoRechazado(ex)) throw;   // EN LINUX: (w is WaveOutPropio) EsLaPropia
                 salidaPropiaFallo = true;
                 LogError("La salida de sonido con hilo propio no abrio: sigue la de siempre en esta sesion", ex);
             }
@@ -318,10 +321,15 @@ namespace Rocola
                 throw;
             }
         }
+        // EN LINUX: ¿es la salida con hilo propio (T5) y no la de siempre? En XP, «is WaveOutPropio» (la de siempre era el WaveOut de NAudio);
+        // aqui las dos son WaveOutPropio sobre ALSA y la de siempre lleva LaDeSiempre.
+        private static bool EsLaPropia(object salida) { WaveOutPropio p = salida as WaveOutPropio; return p != null && !p.LaDeSiempre; }
         private static bool EsFormatoRechazado(Exception ex)
         {
-            MmException mm = ex as MmException;
-            return mm != null && mm.Result == MmResult.WaveBadFormat;
+            // EN LINUX: (NAudio.MmException con MmResult.WaveBadFormat) ErrorAlsa de la tarjeta que no acepto el formato, los canales o la
+            // frecuencia (snd_pcm_hw_params_set_* con EINVAL; Nativo/SalidaAlsa.cs)
+            ErrorAlsa al = ex as ErrorAlsa;
+            return al != null && al.Formato;
         }
 
         // ------------------------------------------------------------------ 2) CUANDO FALLA EL APARATO
@@ -337,17 +345,22 @@ namespace Rocola
             for (Exception e = ex; e != null; e = e.InnerException)
             {
                 if (e is SalidaMudaException) return true;
-                MmException mm = e as MmException;
+                // EN LINUX: (NAudio.MmException y su MmResult, el error de winmm) ErrorAlsa y su numero de ALSA (Nativo/SalidaAlsa.cs), con
+                // los que dicen lo mismo
+                ErrorAlsa mm = e as ErrorAlsa;
                 if (mm != null)
                 {
-                    switch (mm.Result)
+                    switch (mm.Codigo)
                     {
-                        case MmResult.BadDeviceId:        // no hay dispositivo con ese numero (desenchufado)
-                        case MmResult.NotEnabled:         // controlador deshabilitado
-                        case MmResult.AlreadyAllocated:   // lo tiene otro programa en exclusiva
-                        case MmResult.InvalidHandle:      // el que estaba abierto ya no existe
-                        case MmResult.NoDriver:           // no hay controlador
-                        case MmResult.NoDriverCallback:
+                        case -ErrorAlsa.ENOENT:           // no hay dispositivo con ese numero (desenchufado)   // EN LINUX: (BadDeviceId) no hay tarjeta con ese nombre
+                        case -ErrorAlsa.ENXIO:            // EN LINUX: (BadDeviceId) ni ese numero de tarjeta
+                        case -ErrorAlsa.ENODEV:           // EN LINUX: (BadDeviceId e InvalidHandle) la tarjeta ya no esta (se desenchufo, tambien con la salida abierta)
+                        // EN LINUX: (NotEnabled, controlador deshabilitado) no puede darse: en Linux un controlador quitado es una tarjeta que no esta (ENOENT)
+                        case -ErrorAlsa.EBUSY:            // lo tiene otro programa en exclusiva   // EN LINUX: (AlreadyAllocated) la tiene otro programa (ALSA directo: de uno solo)
+                        case -ErrorAlsa.EBADFD:           // el que estaba abierto ya no existe   // EN LINUX: (InvalidHandle) la abierta quedo inservible
+                        case -ErrorAlsa.EIO:              // EN LINUX: (InvalidHandle) la tarjeta dejo de contestar o de pedir sonido
+                        case ErrorAlsa.SinAlsa:           // no hay controlador   // EN LINUX: (NoDriver) no esta ALSA (libasound)
+                        // EN LINUX: (NoDriverCallback) no puede darse: ALSA no avisa por el controlador
                             return true;
                     }
                     return false;                                // formato rechazado u otro: es de la cancion
@@ -436,7 +449,7 @@ namespace Rocola
             if (!object.ReferenceEquals(relojSalida, salida))
             { relojSalida = salida; relojAnterior = 0; relojVueltas = 0; relojReiniciado = false; }
             if (bytes < 0 || relojReiniciado) return -1;
-            if (!latenciaClasica && !(salida is WaveOut)) return bytes; // WASAPI ya da 64 bits
+            if (!latenciaClasica && !(salida is WaveOutPropio && ((WaveOutPropio)salida).LaDeSiempre)) return bytes; // WASAPI ya da 64 bits   // EN LINUX: (salida is WaveOut) la de siempre: una WaveOutPropio con LaDeSiempre
             if (bytes > uint.MaxValue) return -1;
             if (bytes < relojAnterior)
             {
@@ -557,7 +570,9 @@ namespace Rocola
             if (!FlotanteAdmitido()) return null;
             try
             {
-                return AlsaWaveOut.Elige();   // (en Windows Vista, el aparato de WASAPI; en Linux, la tarjeta de ALSA: SonidoAlsa.cs)
+                // EN LINUX: (el id del aparato predeterminado de WASAPI: MMDeviceEnumerator.GetDefaultAudioEndpoint(Render, Console).ID) la
+                // tarjeta de la rocola en ALSA. No se llega: FlotanteAdmitido es lo de XP (no), y en XP aqui no se pregunta.
+                return SalidaAlsa.Tarjeta();
             }
             catch { return null; }
         }
