@@ -270,3 +270,201 @@ Comprobaciones repetidas (8-11-2026, maquina compartida, carga de 3 a 7):
   capas iguales; rocola_estado.txt como debe.
 - `diff-xp.py -v` en los 9 archivos: lo mismo que dice el paso (sin marca solo las lineas de otras pistas y la linea en blanco de Form1.cs).
 - Nada de esto se ha probado en el A4.
+
+## H. La hoja y sus piezas: Ctrl+F2 y los avisos
+
+Lo que en XP eran las ventanas de dialogo de WinForms (Form con Label, ListBox y Button; MessageBox; FolderBrowserDialog) pasa a piezas
+nativas de la rocola en `Nativo/`, y el codigo de XP de Ctrl+F2 y de los avisos las llama directo. Base: d94eaed (la rama principal con el
+paso T ya juntado; el merge del principio fue un avance rapido). Nada de esto se ha probado en el A4.
+
+### Lo que se convirtio en el codigo de XP
+
+Cada linea en su sitio, con su «EN LINUX», sin anadir ni quitar lineas y con sus finales (Form1.Datos.cs: 3436 lineas, 3426 CRLF;
+Form1.Ajustes.cs: 2044, 2011 CRLF; Program.cs: 148, LF; `git diff --stat`: 23 lineas cambiadas, las de abajo). El guion que las cambio
+queda como registro: `/root/rocola-trabajo/port/ventanas2/h/traduce_h.py` (avisa si una linea no estaba como se esperaba).
+
+- Ctrl+F2 (`ShowMusicDirManager`, Form1.Datos.cs:1871-1957), 18 lineas: `new Font(FontFamily.GenericSansSerif, 10f)` ->
+  `Letra.EnPuntos(Letras.SinRemates, 10f)` (la misma letra, ya nativa: la de la hoja); `new Form()` -> `new Hoja(MarcoXp.Dialogo)`; las
+  lineas de `FormBorderStyle.FixedDialog`, `MaximizeBox/MinimizeBox/ShowInTaskbar/ShowIcon` y `StartPosition.CenterParent` quedan en
+  comentario (es lo que da `MarcoXp.Dialogo`); `Label` -> `Rotulo`; `ListBox` -> `ListaXp`; `BorderStyle.FixedSingle` ->
+  `BordeXp.FixedSingle` y `FlatStyle.Flat` -> `EstiloBoton.Flat` (los mismos nombres, como Tecla con Keys); `Button` -> `BotonXp` (dos
+  lineas); `FolderBrowserDialog` -> `SelectorCarpetas` y `fb.ShowDialog(dlg) != DialogResult.OK` -> `fb.MuestraModal(dlg) != Resultado.OK`;
+  `MessageBox.Show(dlg, ...)` -> `AvisoXp.Muestra(dlg, ...)` (tres); `dlg.CancelButton = bOk` -> `dlg.BotonCancelar = bOk`;
+  `dlg.ShowDialog(this)` -> `dlg.MuestraModal(this)`. Las demas lineas de armado (SetBounds, Text, ClientSize, BackColor, ForeColor, Font,
+  IntegralHeight, HorizontalScrollbar, FlatAppearance.BorderColor, Items.Clear/Add, SelectedIndex, Enabled, Click, Controls.Add, Close,
+  Description, ShowNewFolderButton, SelectedPath) no cambian: las piezas tienen esos miembros, y solo esos.
+- `MonedaTambienAqui` (Form1.Ajustes.cs:2009-2021), 4 lineas: `(Form dlg)` -> `(ITeclasAntes dlg)`; `dlg.KeyPreview = true;` queda en
+  comentario (suscribirse a TeclaAntes y TeclaArribaAntes lo pone); `dlg.KeyDown += delegate (object so, KeyEventArgs ke)` ->
+  `dlg.TeclaAntes += delegate (PulsoTecla ke)` y el KeyUp igual con `TeclaArribaAntes`. La llaman Ctrl+F2 (ya hoja) y Ctrl+F3 y el
+  historial de caratulas (aun de la capa: paso C), por eso el tipo es la interfaz y la capa la cumple mientras dure.
+- Program.cs:98: `MessageBox.Show(aviso, "Rocola - Carpeta de datos", MessageBoxButtons.OK, MessageBoxIcon.Warning)` ->
+  `AvisoXp.Muestra(aviso, "Rocola - Carpeta de datos", BotonesAviso.OK, IconoAviso.Warning)`.
+- El inventario con el compilador (`Pruebas/Inventario`, la copia de `/root/rocola-trabajo/port/ventanas2/inv`, 177 archivos, 0 errores):
+  referencias a WinForms de 4148 a 4058. En Ctrl+F2 (Form1.Datos.cs:1860-1972) y en MonedaTambienAqui ya no queda ninguna; de MessageBox
+  queda solo D3D9Star.cs:1885 (el de la ventana F12, que va con el panel de la tarjeta). En Program.cs queda `Application.StartupPath`
+  (linea 29, el texto del aviso: la carpeta del programa; no es de las ventanas).
+
+### Las piezas nativas
+
+Sin clase base comun para las piezas y sin la API de WinForms (ni Handle, ni mensajes, ni Invoke, ni IWin32Window, ni Dock, Anchor,
+AutoScroll o maquetado). Lo que toda pieza tiene en comun va en su CAJA (`CajaPieza`, una por pieza, por composicion), y cada pieza expone
+de ella solo lo que XP usa de esa pieza; lo que solo usan la pantalla, la composicion y las pruebas es `internal`. Cada regla cita su linea
+de la fuente de WinForms (`/tmp/claude-0/agente-winforms/ref`), comprobada una por una contra esos archivos (las de la primera escritura,
+de memoria, casi todas apuntaban a otras lineas: solo coincidian BringToFront, Form.Activate y Control.ProcessCmdKey; se corrigieron todas
+con el principio y el final de cada metodo). Las reglas se PORTARON de la capa (Ventanas.Form.cs,
+Ventanas.Control.cs y Ventanas.Escritorio.cs, revisadas contra la fuente), con las mismas llamadas a las funciones nativas del dibujo y los
+mismos argumentos que les pasaba la capa: por eso los puntos salen iguales.
+
+- `Nativo/Pieza.cs`: `IPieza` (la caja y lo que la pieza hace al pintarse, con las teclas, con el raton y con el foco; lo de fabrica, con
+  metodos por defecto de la interfaz: no hacer nada, como los On* de Control); `CajaPieza` (sitio y SetBounds, el padre, BackColor con
+  IsValidBackColor y el error de un fondo transparente, ForeColor y Font heredados, Text, TabIndex sin poner = -1, TabStop, Visible y
+  Enabled efectivos con SelectNextIfFocused, VisibleChanged que baja a las hijas que se ven, el pintado con la «X» roja de
+  PaintWithErrorHandling, BringToFront, Dispose en cascada con Disposed); `IContenedor` (la hoja y los grupos); `Piezas`
+  (ControlCollection: Controls[0] arriba, Add con SendToBack y el TabIndex siguiente, Remove con el foco que se va); `Raton`
+  (MouseEventArgs con Handled de la rueda); `ITeclasAntes`; y los tipos con los numeros y nombres de WinForms que XP o las trazas usan:
+  `Resultado` (DialogResult), `RazonCierre` (CloseReason), `AlineaTexto` (ContentAlignment), `BordeXp` (BorderStyle), `BotonRaton`.
+- `Nativo/Hoja.cs` (y `Hoja.Foco.cs`, `Hoja.Entrada.cs`, `Hoja.Pinta.cs`): la ventana. El marco de XP Luna (barra de 26 y borde de 3:
+  966x764 para 960x732, 646x404 para Ctrl+F2), el titulo, la «X» con sus tres estados (normal, encima, apretada), el arrastre por la barra
+  y el borde (las zonas de WM_NCHITTEST); CenterParent sobre su duena con los topes del area de trabajo, y CenterScreen sin duena; el modal
+  (ShowDialog: duena dada o la activa; el mismo bucle de la pantalla anidado, PantallaRocola.CorreModal, asi siguen los relojes, los
+  encargos y la tarjeta; las ventanas de debajo sin teclas ni raton y sin tocar su Enabled; al acabar, la que estaba activa vuelve, se
+  esconde, se destruye su ventana y los encargos pendientes con ella se pierden); Close y WmClose con UserClosing, CheckCloseDialog
+  (closing una vez, closed al acabar), el apagado (WM_QUERYENDSESSION y WM_ENDSESSION con WindowsShutDown, y FormOwnerClosing a las suyas);
+  la activacion y el orden (las suyas encima de su duena); el foco (al abrir, la primera del tabulador; Tab y Mayus+Tab entrando en los
+  grupos con el GetNextControl de WinForms; flechas dentro del mismo padre con vuelta; la del foco que se esconde, se apaga o se quita pasa
+  a la siguiente; al cerrar, de vuelta a su sitio; LostFocus y GotFocus en su orden); las teclas en el orden de WinForms (ProcessCmdKey
+  -false en una hoja de XP-, IsInputKey, ProcessDialogKey de la pieza a la hoja: Intro al boton por defecto, Escape al de cancelar, Tab y
+  flechas; KeyDown primero en la hoja con KeyPreview y despues en la pieza; el caracter salvo con SuppressKeyPress; Alt+F4 sin atender cierra
+  la hoja por la cola; KeyUp); el raton (la de encima de todo, MouseEnter/Leave, captura al bajar, Click y MouseClick solo soltando encima de
+  la misma pieza, doble clic de 500 ms y 4 puntos -el de XP-, la rueda a la del foco que sube al padre si no la atiende, la mano); el
+  pintado (la hoja entera en su superficie cuando algo cambio, como la capa de la referencia: el marco, lo de dentro recortado al cliente y
+  las piezas de la ultima a la primera, cada una recortada por las hermanas de encima como WS_CLIPSIBLINGS -una transparente ensena a su
+  padre y no a las de debajo-, con la «X» roja de la que lance). Una hoja nueva y cada pieza ponen el contexto del hilo de la pantalla
+  (InstallIfNeeded), como un control de WinForms. No hay hojas no modales: XP solo abre asi la ventana F12, que va con el panel.
+- `Nativo/Rotulo.cs`: `Rotulo` (Label: no toma el foco; TextoGdi con WordBreak, TextBoxControl, EndEllipsis con AutoEllipsis, NoPrefix sin
+  UseMnemonic, las nueve alineaciones; el gris de deshabilitado de TextRenderer.DisabledTextColor; 100x23) y `Grupo` (Panel: sin foco,
+  sus piezas si; VisibleChanged y Disposed como los usan las paginas de Ctrl+F3; el borde gris de XP; 200x100).
+- `Nativo/BotonXp.cs`: `BotonXp` (Button: el clic al soltar el izquierdo encima del mismo boton, Espacio que lo aprieta al bajar y lo pulsa
+  al soltar, Intro si es el boton por defecto; PerformClick; al pulsarlo la hoja toma su resultado; pintado plano con los colores de
+  ControlPaint -ButtonFlatAdapter- o con el tema Luna, el de los avisos; 75x23), `EstiloBoton` (FlatStyle) y `AspectoPlano`
+  (FlatAppearance: solo BorderColor, lo unico que XP le pone).
+- `Nativo/ListaXp.cs`: `ListaXp` (el ListBox de Ctrl+F2: renglones del alto de la letra, el elegido en el azul de XP, flechas, Inicio, Fin,
+  AvPag y RePag que la lista se queda, la rueda de 3 en 3 que no sube, las barras de 17 puntos con el pulgar que se arrastra, la horizontal
+  con HorizontalScrollbar, el borde FixedSingle o Fixed3D; 120x96) y `RenglonesLista` (Items: Clear y Add).
+- `Nativo/AvisoXp.cs`: `AvisoXp` (MessageBox, una hoja: las medidas de user32 -Tahoma 8, margenes de 12, 16 entre icono, texto y botones,
+  botones de 75x23 en espanol, el texto en 4/5 de la pantalla-, el icono de advertencia, Aceptar como boton por defecto y de cancelar, y la
+  «X» o Alt+F4 contestan Aceptar como user32; desde otro hilo se da por aceptado), `BotonesAviso` y `IconoAviso` (solo lo que XP usa: OK;
+  Warning o ninguno).
+- `Nativo/SelectorCarpetas.cs`: `SelectorCarpetas` (FolderBrowserDialog: el «Buscar carpeta» de XP, nativo, con la primera raiz elegida y
+  Aceptar como boton por defecto) y su arbol `ArbolCarpetas` (las raices: /rocola y los discos montados de /proc/mounts, sin los del
+  sistema; sin la Papelera ni System Volume Information; teclado y raton como el TreeView de Windows). `ROCOLA_CARPETAS_RAIZ` (pruebas)
+  cambia las raices.
+- `Nativo/PinturaXp.cs`: lo que pintan todas: la barra de titulo de Luna, la «X» roja (Control.PaintException), la barra de desplazamiento
+  de XP, los colores de ControlPaint (HLS de 0 a 240) y lo que GDI+ hace con un pincel, una pluma y un trazo (GraphicsPath: Alternate, los
+  arcos unidos), con Pixel, Degradado y TextoGdi de la pista del dibujo.
+- `Nativo/PantallaRocola.Teclado.cs`: `CaracterDe`, la tabla del caracter de cada tecla (WM_CHAR), que estaba en la capa
+  (Escritorio.Caracter, que ahora la llama).
+
+### Lo que convive con la capa, y cuando se quita
+
+- Las teclas y el raton los sigue leyendo la capa (Escritorio, desde TeclasLinux): con una hoja activa le pasa la tecla (con los
+  modificadores de ahora y la repeticion de PantallaRocola.AnotaTecla); con el raton encima de una hoja, con una hoja modal abierta o con
+  algo capturado por una hoja, el raton (y a las de la capa les manda antes MouseLeave). La rueda va a la hoja activa. Se va con «Form1 sin
+  Form», cuando la pantalla de la rocola reciba la entrada directo.
+- `Escritorio.Capas` pone encima de las capas de la capa la superficie de cada hoja (`Capa.Mapa`), que el anfitrion sube a la tarjeta solo
+  si cambio (su Version), en el orden de las hojas; con `ROCOLA_CAPTURA_CAPAS=1` la guarda como `capaN-hoja-X,Y-WxH.png`.
+- Los ganchos de la hoja a la capa (`Hoja.ActivaDeLaCapa`, `CedeLaCapa`, `QuitaFocoALaCapa`, `ActivaLaDeLaCapa`,
+  `ActivaLaDeArribaDeLaCapa`, `VivaEnLaCapa`, `SitioEnLaCapa`, `HayQueComponer`) y de la capa a la hoja (`Escritorio.ActivaForma` desactiva
+  la hoja activa, `PonFoco` le quita el foco, `Deshabilitada` cuenta una hoja modal, `FinDeSesion` pregunta primero a las hojas y
+  `Form.FinDeSesion` avisa con FormOwnerClosing a las hojas de las que es duena). Se van con la capa.
+- La `Form` de la capa cumple `ITeclasAntes` (Ctrl+F3 y el historial de caratulas, en el paso C): sus TeclaAntes y TeclaArribaAntes salen
+  despues del KeyDown/KeyUp de WinForms, en el orden en que XP se suscribia (primero el Escape de la hoja, despues la moneda).
+- Los ganchos de prueba (`TrazaVentanas.Pieza`, `VolcadoEstado`) nombran las hojas y las piezas nativas con su clase y su texto, igual que a
+  las de la capa.
+
+### Diferencias con la referencia, cada una porque XP hace lo nuevo o por una decision
+
+1. «Agregar carpeta...» abre el selector de carpetas nativo (decision del 8-11-2026, diseno del port nativo); la referencia contestaba
+   Cancelar sin ensenar nada (su FolderBrowserDialog de mentira). En XP abre el «Buscar carpeta» de Windows. Escena `f2agrega`: igual al
+   programa del paso T hasta pulsar Agregar; despues el selector, la carpeta elegida con el teclado y su `dir=` en rocola_config.txt.
+2. El apagado (SIGTERM) con Ctrl+F2 abierto: como lo acepto V2 (la referencia no lo atiende). Comparado con el programa del paso T (Ctrl+F2
+   aun de la capa): la misma secuencia (closing de la hoja con WindowsShutDown, closing con FormOwnerClosing, closing de la rocola, closed
+   de la hoja, el foco, closed de la rocola, dialogo-fin Cancel, pck 1) y `rocola_estado.txt` borrado en los dos.
+3. (No es de comportamiento) En las trazas y los estados las hojas y las piezas nativas salen con su clase (Hoja, Rotulo, ListaXp, BotonXp,
+   AvisoXp, Grupo): `compara_trazas.py` y `compara_escena.py` llevan la tabla de equivalencias del diseno (Hoja = Form, Rotulo = Label,
+   ListaXp = ListBox, BotonXp = Button, AvisoXp = CajaAviso, Grupo = Panel), solo en los sitios donde la traza nombra una pieza, y la capa
+   `-hoja-` se compara con la `-dibujo2d-` de la referencia, punto por punto.
+
+Lo que no se hizo porque XP no lo usa: Enter y Leave (ninguna pieza de XP los escucha), las hojas no modales (solo F12), el boton «Crear
+nueva carpeta» del selector (XP pone ShowNewFolderButton = false), otros botones e iconos de MessageBox.
+
+### El banco, lo nuevo
+
+- Escenas (`escenas.sh`, no estan en «todas»; datos de `datos_h.sh` en `$DH`, por defecto `/root/rocola-trabajo/port/ventanas2/datos`):
+  `f2` (Ctrl+F2 con la musica de siempre: la lista con el foco, Abajo, Tab y Mayus+Tab, la moneda con la hoja abierta, clics en la lista, en
+  el boton apagado y en Listo, y otra vez abrir y cerrar con Escape, Alt+F4 y la «X»), `f2barras` (21 carpetas de mas: las dos barras, Fin,
+  derecha, Inicio, AvPag, la rueda, clics en las flechas y el canal, Quitar una carpeta, los dos avisos de Quitar con Intro y Escape, Listo:
+  rocola_config.txt byte a byte), `f2sin` (sin la carpeta de la musica: la hoja se abre sola), `aviso` (la carpeta de datos no se puede
+  usar: el aviso de Program.cs antes de la rocola, con su captura), `f2sigterm` y `f2agrega`. `corre.sh`: `CORRIDA` (la carpeta de la
+  corrida con el mismo nombre en las dos: Ctrl+F2 ensena la ruta de la musica) y `SIN_DATOS=1` (el programa se copia junto a los datos y
+  ROCOLA_DATOS no se puede usar).
+- `Pruebas/Ventanas/Hoja` (`guiones/pruebas_hoja.sh`, con `AOT=1` tambien NativeAOT): 48 pruebas con los mismos archivos del programa. Las de
+  las 41 que miran ventanas de dialogo y sus controles, contra Hoja y las piezas con las mismas cadenas de WinForms (de la vida de la ventana
+  se quitan HandleCreated, Load, Activated, Deactivate y HandleDestroyed, que la hoja no tiene porque XP no los usa); y las nuevas: medidas
+  de Ctrl+F2, KeyPreview con y sin Handled, Escape al boton de cancelar, Intro al del foco, Espacio al soltarlo, Tab y Mayus+Tab por un grupo,
+  flechas con vuelta, LostFocus/GotFocus, el foco que se va al esconder o apagar la del foco, VisibleChanged y Disposed de un grupo, la
+  lista con el teclado y la rueda, Alt+F4 y la «X» de una hoja, los avisos (Alt+F4, Escape, Intro, la «X», el foco de vuelta en la duena)
+  y el selector de carpetas (aceptar con el teclado; Escape).
+- Las reglas de la pantalla compilan tambien `Nativo/Tecla.cs` (por CaracterDe).
+- El ruido de la referencia en las escenas nuevas (3 corridas, RH1-RH3; la secuencia igual en las tres):
+  `/root/rocola-trabajo/port/ventanas2/ruido/{f2,f2barras,f2sin,aviso}.json`.
+
+### Comprobaciones (8-11-2026, maquina compartida con otras pistas, carga de 4 a 8, llvmpipe)
+
+- Compila (`dotnet build -c Release`): 0 errores y los mismos 15 avisos de la base, en los mismos archivos y lineas (comparada la lista
+  archivo:linea:codigo con la de d94eaed).
+- Las 41 pruebas de la capa: 41 de 41 (la capa sigue para Ctrl+F3, las vistas y Form1).
+- Las pruebas de la hoja: 48 de 48 en JIT y en NativeAOT (0 avisos de AOT).
+- Las reglas de la pantalla (`pruebas_pantalla.sh`, AOT=1): 32 de 32 en JIT y en NativeAOT (los dos CS0649 de siempre del banco).
+- Las escenas alternando referencia (RH) y traduccion (H), JIT:
+  - RH4/H4: arranque, moneda, video, buscador, cierreq, altf4, kill9 y asistente IGUALES; captura y salirq IGUALES con el ruido de seis
+    corridas (`ventanas2/rv/ruido`, como en la revision del paso T); sigterm y f3sigterm, lo aceptado en V2; tab con la carrera conocida del
+    repaso (el encargo de Form1.Biblioteca.cs:1735 y «faltan 4 archivos» en la hoja de Ctrl+F3, que es aun de la capa: ver el paso T), y
+    otra vez alternando (RH5/H5, RH6/H6) IGUAL.
+  - Las nuevas, RH4/H4: f2, f2barras, f2sin y aviso IGUALES con el ruido medido: la secuencia (teclas, KeyDown, caracteres, KeyUp, el raton
+    con sus destinos, el foco, la hoja abierta y cerrada, closing, closed, dialogo-fin con su resultado), los estados de XP y de cada pieza,
+    las capas de las hojas a 0 puntos distintos (6 de Ctrl+F2 en f2, con el foco en la lista, Agregar, Listo y la lista con eleccion; 10 en
+    f2barras, con las barras, la lista corrida, el boton de Quitar con el foco y los dos avisos encima; 2 en f2sin; y en `aviso` -RH7/H7, la
+    escena corregida para que la pantalla se componga con el aviso abierto- la del aviso con su icono), rocola_config.txt byte a byte despues
+    de Quitar, y `rocola_estado.txt` como XP.
+  - f2sigterm contra el programa del paso T (TT4/H4): la misma secuencia y `rocola_estado.txt` borrado en los dos.
+- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true`): 0 avisos de IL ni de AOT (los 15 de compilacion de siempre).
+  Contra la referencia (RHA1/HA1, RHA2/HA2): arranque, cierreq, kill9 y f2barras IGUALES; sigterm, lo aceptado; f2, f2sin y aviso con la
+  secuencia, los estados, las capas y los archivos iguales y mas relojes del vigia en total (NativeAOT arranca antes y no se atrasa; la
+  referencia en JIT iba cargada: 360 frente a 273 vencimientos del reloj de 42 ms en f2), como ya se vio en V3 y en el paso T.
+- `diff-xp.py -v` en Form1.Datos.cs, Form1.Ajustes.cs y Program.cs: todas las lineas de este paso con su «EN LINUX»; las que salen sin
+  marca son de antes y de otras pistas (el fsync y las prioridades de la pista windows, los comentarios del registro, las TextRenderingHint
+  del dibujo, el SetForegroundWindow de la otra rocola).
+
+### Lo que queda
+
+- Paso C: Ctrl+F3 y el historial de caratulas como hojas (MonedaTambienAqui recibira solo hojas; la `Form` de la capa deja de cumplir
+  `ITeclasAntes`). Las piezas propias de XP (Tarjeta : Panel; Deslizador, Interruptor y BotonPlano : Control, Form1.Ajustes.cs:379-620)
+  no pueden ganar lineas: tendran que heredar de una pieza nativa que les de lo que les daba Control (sitio, letra, colores, foco, Invalidate)
+  o cumplir IPieza en sus mismas lineas; se decide en ese paso.
+- Con el panel de la tarjeta: la ventana F12 (una hoja no modal FixedSingle centrada en la pantalla, con su ProcessCmdKey) y el aviso de
+  D3D9Star.cs:1885. Con «Form1 sin Form»: la entrada directo a la pantalla y a las hojas, sin pasar por Escritorio.
+- El selector de carpetas no tiene referencia contra que comparar sus puntos: imita el «Buscar carpeta» de XP a la vista (marco, letra,
+  botones y barras de la hoja; el arbol con su cuadrito y la carpeta amarilla). Que en Rocola OS las raices sean /rocola y los discos
+  montados sale del diseno; no se ha visto en el A4.
+- Nada de esto se ha probado en el A4.
+
+### Riesgos
+
+- El «&» de Label y Button: la referencia lo quita a mano y despues el texto de GDI lo vuelve a tratar como prefijo (un «&&» saldria como
+  un subrayado, no como «&»). Se porto igual (la referencia manda); ningun texto de Ctrl+F2 ni de los avisos lleva «&». Mirarlo en el paso C
+  con los textos de Ctrl+F3.
+- KeyPreview: en XP lo pone una linea (`dlg.KeyPreview = true`); aqui lo pone suscribirse a TeclaAntes/TeclaArribaAntes. Es lo mismo en todo
+  lo que XP hace (cada hoja de XP que escucha teclas pone KeyPreview), pero una hoja con KeyPreview sin escuchar nada no se puede expresar.
+- El caracter de cada tecla sigue con la tabla de la referencia (un teclado de EE. UU.); la distribucion del A4 (acentos, la ñ) sigue
+  siendo un riesgo del diseno.
