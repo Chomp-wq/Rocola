@@ -163,3 +163,83 @@ en los hornos, el de fábrica en lo demás, medio píxel y copia de fábrica, la
 - Juntar `Nativo/VolcadoTexturas.cs` antes que las comparaciones de los demás grupos (sin él, sus recorridos no tienen texturas).
 - Al final, borrar `Plataforma/Puente.frontera.cs` con `Dibujo2D.cs` y `Puente.cs`. Las líneas de pruebas de la grabadora y del volcado
   (`(pruebas: ROCOLA_CINTA, ...)` y `(pruebas: ROCOLA_VOLCADO_TEXTURAS, ...)`) se quedan mientras haga falta comparar.
+
+## Revisión (revisor independiente, 8-11-2026)
+
+Se revisó el diff b6093196..port-frontera entero contra `Rocola/` (XP) y contra lo que hacía la capa delgada (`Plataforma/Dibujo2D.cs`) en
+cada llamada traducida, y se repitieron las comprobaciones sin fiarse de las salidas de la pista (todo en
+`/root/rocola-trabajo/port/frontera/revision`).
+
+### Lo que se miró
+
+- **GDI+ que queda** en `D3D9Star.cs` y `TexturasCompatiblesGpu.cs`: solo los `Rocola.Dibujo2D.Bitmap` de las costuras (campos y firmas
+  compartidos con archivos de otros grupos), los 9 `PuenteDibujo.Mapa` y los 3 `PuenteDibujo.Bitmap(…, Format32bppArgb)` de
+  `TeselasVisibles.De`. Ningún `Graphics`, `Font`, pincel, pluma, `GraphicsPath`, `StringFormat`, `TextRenderer`, `LockBits` ni
+  `using Rocola.Dibujo2D`.
+- **Los hornos contra la capa**: `new PathGradientBrush(gp)` toma `GetBounds()`, que en la capa es `SKPath.Bounds` por
+  `RectangleF.FromLTRB`, y `AddEllipse` es `AddOval(x, y, x + w, y + h)`: lo mismo que la traducción. `Pon` pone el shader de
+  `Degradado.DeTrazo` con el primero de `SurroundColors` y el color negro opaco, que es el de fábrica de un `SKPaint` nuevo (el alfa del
+  pincel con shader no cambia). `FillEllipse`, `FillPolygon` y `FillRectangle` son `Pixel.RellenaOvalo`, `RellenaPoligono` (par-impar) y
+  `Rellena` con `Medio` y `Copia` en falso (medio píxel y copia de fábrica). `DrawString(s, f, b, x, y)` es `TextoGdiPlus.Escribe` en la
+  caja (x, y, 0, 0) con el formato de fábrica (`null` es `SinFormato` en los dos lados). `Font(FontFamily.GenericMonospace, 9,5, Bold)` es
+  `Letra.EnPuntos("Courier New", 9,5, negrita)`. El `suave` que se añade a `Mancha` no gasta números al azar: los `NextDouble` y `Gauss`
+  de sus argumentos van en el mismo orden.
+- **El estado**: en `estado_por_linea.tsv` todas las líneas de estos archivos tienen `varia` = «-» (suavizado AntiAlias en los rellenos de
+  los hornos; medio píxel, copia, matriz y recorte de fábrica). Las que no están en la tabla (`BakeNebulosas`, `EnsureFpsTex`) ponen su
+  estado ellas mismas, como en XP.
+- **La subida**: `Pixeles.CopiaSinPremultiplicar` hace la misma cuenta que el `LockBits(Format32bppArgb)` de la referencia (la tabla
+  truncada) y, como allí, no mira el `PixelFormat` del mapa; escribe `w * 4` bytes por fila con el paso de lo bloqueado y deja el resto a
+  `RellenaBorde`, como las dos copias de XP. La guarda nueva (`GetPixels`, `RowBytes`) no salta donde la de XP no saltaba, y
+  `ActualizaRegionBitmap` solo lee zonas dentro del mapa (las acotan el `Contains` de `UpdateTextureRegion` y el `Intersect` de las teselas).
+- **Identidad y dueños**: `SKBitmap` no redefine `Equals` ni `GetHashCode` (comprobado por reflexión con SkiaSharp 3.116.1; el hash no
+  cambia al soltarlo), así que las portadas compartidas siguen yendo por identidad; tras `Dispose` el `Handle` es 0, que es lo que mira la
+  grabadora. Cada mapa horneado lo suelta un solo `using` (o `vinetaMapa.Dispose()`, en los dos sitios de XP); el prestado a
+  `TeselasVisibles` no suelta nada. Ningún hilo de fondo toca estos mapas.
+- **Archivos**: las líneas y los finales de línea de los seis de `Codigo/` son los de la base (`Form1.Fondo.cs` con sus 2 343 CRLF); fuera de
+  lo permitido solo `Nativo/CintaTarjeta.cs` (hacía falta: la grabadora llama al dispositivo) y el reproductor de cintas (lo pedía la tarea).
+
+### Lo encontrado
+
+1. **(menor, arreglado: commit «la nota EN LINUX de HorneaLuna dice lo que pasa ahora»)** `CieloVivoGpu.cs:77`: la nota `EN LINUX` de
+   `HorneaLuna` seguía diciendo que `EnsureLunaCielo` pasa el mapa «por el puente a Upload (D3D9Star.cs, aún sin traducir)»; desde esta
+   pista `Upload` recibe el `SKBitmap` tal cual. Solo cambia el comentario (la misma línea, los mismos finales de línea).
+2. **(nota para los demás grupos; hoy no falla nada)** La subida supone que el `SKBitmap` es como los de la rocola: Bgra8888 premultiplicado
+   (los de `Mapas.Nuevo`, `Imagenes.Lee`, `Mapas.Copia` y los puntos de un `Bitmap` de la capa). El `LockBits` de GDI+ convertía desde
+   cualquier formato; la capa de la referencia siempre guardaba Bgra8888 premultiplicado, así que hoy sale lo mismo. Un grupo que pase a
+   `Upload`, `CreateOverlay` o las demás un `SKBitmap` hecho de otra manera (otro `SKColorType`, o `Unpremul`) lo subiría mal: que lo haga
+   con esas funciones.
+
+No se encontró ninguna línea de la lógica de XP cambiada, ni GDI+ sin traducir fuera de las costuras, ni un estado del `Graphics` distinto
+del de la tabla.
+
+### Comprobaciones repetidas
+
+- **Compila** (`dotnet build -c Release --no-incremental`): 0 errores y 15 avisos, la misma lista que la base, todos en archivos que esta
+  pista no toca.
+- **diff contra XP** (`diff-xp.py -v`): los números de arriba (401/265 con 12 sin marca: 11 de la pista de la tarjeta y una llave de XP que
+  el diff mete en el trozo de `EnsureFpsTex`; 54/46 con 5; 23/21 con 1; 7/6 y 11/10 con 0).
+- **Banco por función** (compilado otra vez): semillas 7 y 11 con las letras de XP falsas y 5 con DejaVu, 3 000 casos, ejecutores `gdi`,
+  `nativo` y `puente` contra el congelado: **0 distintos** en 27 000; `puente-objetos`: **407 bien, 0 mal**.
+- **Arnés de la frontera** (traducción y referencia compiladas otra vez): las cuatro corridas, 106 líneas y 153 texturas volcadas, **0
+  distintas**. Y el **banco de vistas de D4** (`Pruebas/BancoVistas`, porque `BakeStar`, `BakeNatural`, `BakeRuidoGrande` y `HorneaLuna`
+  cambiaron de firma): **128 mapas iguales** a la referencia, con las letras de XP falsas y con DejaVu.
+- **Cintas** (reproductor compilado otra vez): **29 de 29 iguales**, 6 616 cuadros. La salida de referencia de
+  `09-medir --redimensiona 40:1280x1024,200:800x600`, que se rehízo durante la tanda (la vieja quedó en `.ref.viejo.txt`), la volví a hacer
+  con el programa de la referencia congelada: byte a byte la guardada. Los controles negativos de la pista dan salidas completas (16, 335 y
+  109 cuadros), no vacías.
+- **Recorridos** (los nueve, con el candado, `revision/cmp`, contra `cmp-ref` y `cmp-ref2`): capas de Dibujo2D quietas **217 de 217
+  idénticas**; texturas quietas **475 de 487**, con la máquina cargada (otro agente compilando; el `rocola_error.txt` de `pared2` apunta
+  dos «Pantalla parada 836 ms»). De las 12: 6 son la tanda de subidas que hace SALTAR (la tecla de los 62 s de `pared2`), que esta corrida
+  hizo a los 64,7 s y con lo de ese momento, 2 más de `pared2` que vienen después, 2 de `ayuda`, 1 del buscador (e843916c) y 1 de la
+  atracción (el escaparate que rota). Que es la hora y no la traducción:
+  - `pared2`, `buscador`, `ayuda` y `atraccion` otra vez, en pares seguidos traducción-referencia y con la misma carga (`revision/cmp-b2` y
+    `revision/cmp-r4`; 274 texturas quietas): a la traducción le faltan 8 y a la **referencia 18** (a ella también le faltan la tanda de
+    SALTAR y la e843916c del buscador, que no sale en ninguna de las cuatro corridas de la traducción ni en esta de la referencia);
+  - con todas las corridas que hay de cada lado (traducción: las dos de la pista y las dos de la revisión; referencia: `cmp-ref`,
+    `cmp-ref2`, la REF3 de la pista y la de la revisión), en los nueve recorridos: **ninguna textura sale en todas las de la traducción y en
+    ninguna de la referencia, ni al revés**; lo que sale en un solo lado son estados intermedios de las animaciones, en números parecidos
+    (`pared2` 128 y 138, `pared` 58 y 77, `buscador` 60 y 58, `video` 20 y 22, `ayuda` 4 y 3, los demás 0 y 0).
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64`): **0 avisos IL/AOT**, los mismos 15 del compilador. El binario nativo corrió 30 s
+  fuera de pantalla (estrella 2D, nebulosas sin el cielo profundo, Ctrl+F1, un disco, el buscador escribiendo; capturas a los 7, 12,5, 21 y
+  30 s con el contador, el atlas, la estrella y el buscador) **sin excepciones**; en `rocola_error.txt`, solo «Volumen de Windows al
+  arrancar: no se pudo (no hay mezclador de altavoces)», sin excepción.
