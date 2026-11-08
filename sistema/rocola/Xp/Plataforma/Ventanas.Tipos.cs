@@ -123,6 +123,12 @@ namespace Rocola.Ventanas
         public int Delta { get; }
         public Point Location { get { return new Point(X, Y); } }
     }
+    // LA RUEDA (WmMouseWheel de WinForms): si nadie la atiende (Handled), sube al padre (DefWindowProc la pasa)
+    public class HandledMouseEventArgs : MouseEventArgs
+    {
+        public HandledMouseEventArgs(MouseButtons button, int clicks, int x, int y, int delta) : base(button, clicks, x, y, delta) { }
+        public bool Handled { get; set; }
+    }
     public class PaintEventArgs : EventArgs, IDisposable
     {
         public PaintEventArgs(Graphics graphics, Rectangle clipRect) { Graphics = graphics; ClipRectangle = clipRect; }

@@ -33,9 +33,18 @@ namespace Rocola.Ventanas
         internal bool TexturaGlRgba;   // la textura va en el orden de OpenGL (el video de libmpv), no en el de Direct3D
         public ControlCollection Controls { get; }
 
-        public Control() { Controls = CreateControlsInstance(); }
+        // COMO EL CONSTRUCTOR DE WINFORMS: la medida de fabrica de cada clase (DefaultSize: Label 100x23, Button 75x23, Panel 200x100,
+        // ListBox 120x96, Form 300x300; Control 0x0), sin avisos; y el contexto de la pantalla en el hilo que lo crea
+        // (WindowsFormsSynchronizationContext.InstallIfNeeded), asi SynchronizationContext.Current ya vale en el constructor de Form1.
+        public Control()
+        {
+            Controls = CreateControlsInstance();
+            Size d = DefaultSize; bounds = new Rectangle(0, 0, d.Width, d.Height);
+            if (Escritorio.HiloUi == null || Thread.CurrentThread == Escritorio.HiloUi) ContextoVentana.Pon();
+        }
         public Control(string text) : this() { Text = text; }
         protected virtual ControlCollection CreateControlsInstance() { return new ControlCollection(this); }
+        protected virtual Size DefaultSize { get { return Size.Empty; } }
 
         // ---------- sitio y medida ----------
         public Rectangle Bounds { get { return bounds; } set { SetBounds(value.X, value.Y, value.Width, value.Height); } }
@@ -47,7 +56,9 @@ namespace Rocola.Ventanas
         public int Height { get { return bounds.Height; } set { SetBounds(bounds.X, bounds.Y, bounds.Width, value); } }
         public int Right { get { return bounds.Right; } }
         public int Bottom { get { return bounds.Bottom; } }
-        public virtual Size ClientSize { get { return ClienteDe(bounds.Size); } set { Size = TamanoPorCliente(value); } }
+        public virtual Size ClientSize { get { return ClienteDe(bounds.Size); } set { SetClientSizeCore(value.Width, value.Height); } }
+        // (Control.SetClientSizeCore de WinForms: la medida con el borde, y el aviso de ClientSizeChanged otra vez)
+        protected virtual void SetClientSizeCore(int x, int y) { Size = TamanoPorCliente(new Size(x, y)); OnClientSizeChanged(EventArgs.Empty); }
         public Rectangle ClientRectangle { get { return new Rectangle(Point.Empty, ClientSize); } }
         public virtual Rectangle DisplayRectangle { get { return ClientRectangle; } }
         internal virtual Size ClienteDe(Size s) { return s; }
@@ -104,15 +115,33 @@ namespace Rocola.Ventanas
 
         // ---------- aspecto ----------
         public static readonly Color ColorDeFondo = Color.FromArgb(236, 233, 216);   // el gris de las ventanas de XP (Luna)
+        // LAS PROPIEDADES QUE SE HEREDAN (BackColor, ForeColor, Font), como Control de WinForms: sin valor propio, la del padre (el fondo,
+        // solo si este control acepta su transparencia: IsValidBackColor; si no, el gris de las ventanas). Al cambiar la que se ve, su
+        // aviso (OnXChanged, que repinta) y los hijos sin valor propio reciben OnParentXChanged. La letra se compara por lo que es
+        // (Font.Equals de GDI+: familia, tamano, estilo y unidad), no por el objeto.
         public virtual Color BackColor
         {
-            get { if (!backColor.IsEmpty) return backColor; return parent != null ? parent.BackColor : ColorDeFondo; }
-            set { if (backColor == value) return; backColor = value; OnBackColorChanged(EventArgs.Empty); Invalidate(); }
+            get
+            {
+                if (!backColor.IsEmpty) return backColor;
+                if (parent != null) { Color c = parent.BackColor; if (FondoValido(c)) return c; }
+                return ColorDeFondo;
+            }
+            set
+            {
+                // (WinForms: un fondo con transparencia en un control que no la acepta es un error)
+                if (!value.IsEmpty && !GetStyle(ControlStyles.SupportsTransparentBackColor) && value.A < 255)
+                    throw new ArgumentException("Control does not support transparent background colors.");
+                Color antes = BackColor;
+                backColor = value;
+                if (!antes.Equals(BackColor)) OnBackColorChanged(EventArgs.Empty);
+            }
         }
+        internal bool FondoValido(Color c) { return c.IsEmpty || GetStyle(ControlStyles.SupportsTransparentBackColor) || c.A == 255; }
         public virtual Color ForeColor
         {
             get { if (!foreColor.IsEmpty) return foreColor; return parent != null ? parent.ForeColor : Color.Black; }
-            set { if (foreColor == value) return; foreColor = value; OnForeColorChanged(EventArgs.Empty); Invalidate(); }
+            set { Color antes = ForeColor; foreColor = value; if (!antes.Equals(ForeColor)) OnForeColorChanged(EventArgs.Empty); }
         }
         private static Font letraDeFabrica;
         // la letra de fabrica de los controles de Windows XP: Microsoft Sans Serif de 8,25 puntos
@@ -120,12 +149,28 @@ namespace Rocola.Ventanas
         public virtual Font Font
         {
             get { if (font != null) return font; return parent != null ? parent.Font : DefaultFont; }
-            set { if (ReferenceEquals(font, value)) return; font = value; OnFontChanged(EventArgs.Empty); Invalidate(); }
+            set
+            {
+                // (Control.Font de WinForms: la propia solo se cambia si es otra letra -una igual deja el objeto de antes- y el aviso sale
+                // si la que se ve no es igual a la nueva: resolved.Equals(value))
+                Font antes = Font;
+                if (value == null ? font != null : (font == null || !IgualLetra(value, font))) font = value;
+                if (value == null || !IgualLetra(antes, value)) OnFontChanged(EventArgs.Empty);
+            }
         }
+        // Font.Equals de GDI+: la misma familia (GDI+ guarda una por nombre, sin mayusculas), tamano, estilo y unidad
+        internal static bool IgualLetra(Font a, Font b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            return string.Equals(a.FontFamily.Name, b.FontFamily.Name, StringComparison.OrdinalIgnoreCase) && a.Size == b.Size && a.Style == b.Style && a.Unit == b.Unit;
+        }
+        // (WinForms: cambiar el texto no repinta un control propio; lo repintan los que lo ensenan: Label, ButtonBase, la barra de
+        // titulo del formulario)
         public virtual string Text
         {
             get { return text; }
-            set { if (value == null) value = ""; if (text == value) return; text = value; OnTextChanged(EventArgs.Empty); Invalidate(); }
+            set { if (value == null) value = ""; if (text == value) return; text = value; OnTextChanged(EventArgs.Empty); }
         }
         public string Name { get; set; } = "";
         public object Tag { get; set; }
@@ -162,7 +207,26 @@ namespace Rocola.Ventanas
             get { return parent; }
             set { if (parent == value) return; if (parent != null) parent.Controls.Remove(this); if (value != null) value.Controls.Add(this); }
         }
-        internal void PonPadre(Control p) { parent = p; OnParentChanged(EventArgs.Empty); EnsuciaPadre(); }
+        // AssignParent de WinForms: el padre nuevo, ParentChanged y, si con el cambian, los avisos de lo heredado (habilitado, visible,
+        // letra y colores), como si se hubieran cambiado a mano.
+        internal void PonPadre(Control p)
+        {
+            Font f0 = Font; Color fc0 = ForeColor, bc0 = BackColor; bool en0 = Enabled, vis0 = Visible;
+            parent = p;
+            OnParentChanged(EventArgs.Empty);
+            if (!EnDesecho())
+            {
+                if (en0 != Enabled) OnEnabledChanged(EventArgs.Empty);
+                bool vis1 = Visible;
+                if (vis0 != vis1 && !(!vis0 && vis1 && parent == null && !(this is Form))) OnVisibleChanged(EventArgs.Empty);
+                if (!IgualLetra(f0, Font)) OnFontChanged(EventArgs.Empty);
+                if (!fc0.Equals(ForeColor)) OnForeColorChanged(EventArgs.Empty);
+                if (!bc0.Equals(BackColor)) OnBackColorChanged(EventArgs.Empty);
+            }
+            EnsuciaPadre();
+        }
+        // GetAnyDisposingInHierarchy: el o algun padre se esta desechando (entonces no se avisa de lo heredado)
+        internal bool EnDesecho() { for (Control c = this; c != null; c = c.parent) if (c.Disposing) return true; return false; }
         public Form FindForm() { for (Control c = this; c != null; c = c.parent) { Form f = c as Form; if (f != null) return f; } return null; }
         public Control TopLevelControl { get { Control c = this; while (c.parent != null) c = c.parent; return c; } }
         public bool Contains(Control ctl) { for (Control c = ctl; c != null; c = c.parent) if (c.parent == this) return true; return false; }
@@ -200,6 +264,7 @@ namespace Rocola.Ventanas
         }
         public void Show() { Visible = true; }
         public void Hide() { Visible = false; }
+        // (Control.Enabled de WinForms: avisa si el valor nuevo no es el que se veia, aunque el padre siga en gris)
         public bool Enabled
         {
             get { return enabled && (parent == null || parent.Enabled); }
@@ -207,45 +272,82 @@ namespace Rocola.Ventanas
             {
                 bool antes = Enabled;
                 enabled = value;
-                if (antes == Enabled) return;
+                if (antes == value) return;
                 if (!value) SelectNextIfFocused();   // (como WinForms: el foco no se queda en uno en gris)
-                OnEnabledChanged(EventArgs.Empty); Invalidate();
+                OnEnabledChanged(EventArgs.Empty);
             }
         }
-        public IntPtr Handle { get { CreateHandle(); return handle; } }
+        // LA VENTANA DE CADA CONTROL (su handle), como en WinForms: Handle la crea si no esta (y lanza si el control ya se desecho);
+        // CreateControl crea la suya y la de los hijos que se ven (un hijo escondido no tiene ventana hasta que se ensena) y avisa
+        // OnCreateControl; DestroyHandle la destruye (al desechar, y al acabar ShowDialog): HandleDestroyed del control y despues de sus
+        // hijos, e IsHandleCreated vuelve a false. Lo pedido con BeginInvoke que no se atendio se pierde con ella.
+        public IntPtr Handle { get { if (handle == IntPtr.Zero) CreateHandle(); return handle; } }
+        internal IntPtr HandleActual { get { return handle; } }   // (sin crearla; se puede leer desde otro hilo)
+        internal void PonVisibleSinAviso(bool v) { visible = v; }   // (el bit de visible, sin VisibleChanged: el formulario nuevo nace escondido)
         public bool IsHandleCreated { get { return handle != IntPtr.Zero; } }
         public bool Created { get { return creado; } }
         public bool IsDisposed { get { return disposed; } }
         public bool Disposing { get; private set; }
-        public void CreateControl()
+        public void CreateControl() { CreaControl(false); }
+        internal void CreaControl(bool ignoraVisible)
         {
-            if (creado || disposed) return;
-            creado = true; CreateHandle();
-            foreach (Control c in Controls.Lista.ToArray()) if (c.visible) c.CreateControl();
+            if (!((!creado && Visible) || ignoraVisible)) return;
+            creado = true;
+            if (handle == IntPtr.Zero) CreateHandle();
+            foreach (Control c in Controls.Lista.ToArray()) c.CreaControl(ignoraVisible);
+            OnCreateControl();
         }
+        protected virtual void OnCreateControl() { }
         protected virtual void CreateHandle()
         {
-            if (handle != IntPtr.Zero || disposed) return;
+            if (disposed) throw new ObjectDisposedException(GetType().Name);
+            if (handle != IntPtr.Zero) return;
             lock (porHandle) { handle = new IntPtr(Interlocked.Increment(ref ultimoHandle)); porHandle[handle] = this; }
             if (Escritorio.HiloUi == null) Escritorio.HiloUi = Thread.CurrentThread;
             if (Thread.CurrentThread == Escritorio.HiloUi) ContextoVentana.Pon();
             OnHandleCreated(EventArgs.Empty);
         }
+        protected virtual void DestroyHandle()
+        {
+            if (handle == IntPtr.Zero) return;
+            AvisaDestruccion();
+            QuitaHandles();
+        }
+        // WM_DESTROY: al de arriba y despues a sus hijos (el foco, si lo tenia, se va: WM_KILLFOCUS)
+        private void AvisaDestruccion()
+        {
+            Control f = Escritorio.Foco;
+            if (f != null && (f == this || Contains(f))) Escritorio.QuitaFoco(f);
+            try { OnHandleDestroyed(EventArgs.Empty); } catch (Exception ex) { Application.Avisa(ex); }
+            if (!Disposing) creado = false;   // (se podra volver a crear)
+            foreach (Control c in Controls.Lista.ToArray()) if (c.handle != IntPtr.Zero) c.AvisaDestruccion();
+        }
+        // WM_NCDESTROY: ya no hay ventana
+        private void QuitaHandles()
+        {
+            foreach (Control c in Controls.Lista.ToArray()) if (c.handle != IntPtr.Zero) c.QuitaHandles();
+            lock (porHandle) porHandle.Remove(handle);
+            handle = IntPtr.Zero;
+        }
         public static Control FromHandle(IntPtr h) { lock (porHandle) { Control c; return porHandle.TryGetValue(h, out c) ? c : null; } }
+        // Control.Dispose de WinForms: se destruye la ventana, sale de su padre, se desechan los hijos (sin padre) y al final Disposed;
+        // IsDisposed vale desde que acaba (mientras, Disposing). (Aqui sale del padre antes de destruir la ventana: asi el foco pasa al
+        // siguiente por el camino de ControlCollection.Remove, que mira el foco y no el control activo del contenedor.)
         protected override void Dispose(bool disposing)
         {
-            if (disposed) return;
+            if (!disposing) { base.Dispose(disposing); return; }
+            if (Disposing || disposed) return;
             Disposing = true;
-            if (disposing)
+            try
             {
-                foreach (Control c in Controls.Lista.ToArray()) c.Dispose();
                 if (parent != null) parent.Controls.Remove(this);
-                if (Escritorio.Foco == this) Escritorio.QuitaFoco(this);
+                if (handle != IntPtr.Zero) DestroyHandle();
+                Control[] hijos = Controls.Lista.ToArray();
+                Controls.Lista.Clear();
+                foreach (Control c in hijos) { c.parent = null; c.Dispose(); }
+                base.Dispose(disposing);
             }
-            if (handle != IntPtr.Zero) { OnHandleDestroyed(EventArgs.Empty); lock (porHandle) porHandle.Remove(handle); }
-            disposed = true;
-            Disposing = false;
-            base.Dispose(disposing);
+            finally { Disposing = false; disposed = true; }
         }
 
         // ---------- foco (como WinForms: Focus, Select, el orden del tabulador y SelectNextControl) ----------
@@ -388,12 +490,18 @@ namespace Rocola.Ventanas
         }
 
         // ---------- pintura ----------
-        public void Invalidate() { Invalidate(true); }
-        public void Invalidate(bool invalidateChildren) { sucio = true; Escritorio.Ensucia(this); }
-        public void Invalidate(Rectangle rc) { Invalidate(true); }
-        public void Invalidate(Rectangle rc, bool invalidateChildren) { Invalidate(true); }
+        // (WinForms: Invalidate() es Invalidate(false); con true se repintan tambien los hijos. Aqui lo de Dibujo2D de un control se
+        // repinta en su capa; los hijos que pinta la tarjeta -el GpuPanel- tienen su propio WM_PAINT, que se pide solo con true)
+        public void Invalidate() { Invalidate(false); }
+        public void Invalidate(bool invalidateChildren)
+        {
+            sucio = true; Escritorio.Ensucia(this);
+            if (invalidateChildren) foreach (Control c in Controls.Lista.ToArray()) if (c.Nativa || c.Controls.Count > 0) c.Invalidate(true);
+        }
+        public void Invalidate(Rectangle rc) { Invalidate(false); }   // (la capa se repinta entera: el rectangulo solo acota en Windows)
+        public void Invalidate(Rectangle rc, bool invalidateChildren) { Invalidate(invalidateChildren); }
         public void Update() { Escritorio.PintaYa(this); }
-        public virtual void Refresh() { Invalidate(); Update(); }
+        public virtual void Refresh() { Invalidate(true); Update(); }
         internal void EnsuciaPadre() { if (parent != null) parent.Invalidate(); else Escritorio.Ensucia(this); }
         public Graphics CreateGraphics() { return Graphics.FromImage(Escritorio.LienzoSuelto); }
         protected virtual void OnPaintBackground(PaintEventArgs pevent)
@@ -406,14 +514,40 @@ namespace Rocola.Ventanas
         protected virtual void OnPaint(PaintEventArgs e) { PaintEventHandler h = Paint; if (h != null) h(this, e); }
         protected void InvokePaint(Control c, PaintEventArgs e) { c.OnPaint(e); }
         protected void InvokePaintBackground(Control c, PaintEventArgs e) { c.OnPaintBackground(e); }
+        // WM_PAINT (PaintWithErrorHandling de WinForms): el fondo (si no es Opaque) y el contenido. Si uno de los dos lanza, el control
+        // queda marcado para siempre y en adelante solo pinta la «X» roja de .NET (PaintException); la excepcion sigue su camino
+        // (ThreadException).
+        private bool excepcionPintando;
         internal void PintaFondoYContenido(Graphics g, Rectangle recorte)
         {
+            sucio = false;
             using (PaintEventArgs e = new PaintEventArgs(g, recorte))
             {
-                if (!GetStyle(ControlStyles.Opaque)) OnPaintBackground(e);
-                OnPaint(e);
+                if (excepcionPintando) { PintaExcepcion(g); return; }
+                bool lanzo = true;
+                try
+                {
+                    if (!GetStyle(ControlStyles.Opaque)) OnPaintBackground(e);
+                    lanzo = false;
+                }
+                finally { if (lanzo) { excepcionPintando = true; Invalidate(); } }
+                lanzo = true;
+                try { OnPaint(e); lanzo = false; }
+                finally { if (lanzo) { excepcionPintando = true; Invalidate(); } }
             }
-            sucio = false;
+        }
+        private void PintaExcepcion(Graphics g)
+        {
+            Rectangle cr = ClientRectangle, r = cr;
+            r.X++; r.Y++; r.Width--; r.Height--;
+            using (Pen p = new Pen(Color.Red, 2))
+            {
+                g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
+                r.Inflate(-1, -1);
+                using (SolidBrush b = new SolidBrush(Color.White)) g.FillRectangle(b, r);
+                g.DrawLine(p, cr.Left, cr.Top, cr.Right, cr.Bottom);
+                g.DrawLine(p, cr.Left, cr.Bottom, cr.Right, cr.Top);
+            }
         }
         public void DrawToBitmap(Bitmap bitmap, Rectangle targetBounds)
         {
@@ -421,15 +555,38 @@ namespace Rocola.Ventanas
         }
 
         // ---------- hilo ----------
-        public bool InvokeRequired { get { return Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi; } }
+        // INVOKE Y BEGININVOKE, como WinForms (MarshaledInvoke): van por la ventana del control o, si aun no tiene, por la del padre mas
+        // cercano que si (FindMarshalingControl); sin ninguna, InvalidOperationException. El pedido viaja con esa ventana: si se
+        // destruye antes de atenderlo, se pierde (no corre). InvokeRequired: false si no hay ventana en la que mirar.
+        private Control Marshal()
+        {
+            Control c = this;
+            while (c != null && c.handle == IntPtr.Zero) c = c.parent;
+            return c ?? this;
+        }
+        private Control MarshalConVentana()
+        {
+            Control c = Marshal();
+            if (c.handle == IntPtr.Zero) throw new InvalidOperationException("Invoke or BeginInvoke cannot be called on a control until the window handle has been created.");
+            return c;
+        }
+        public bool InvokeRequired
+        {
+            get
+            {
+                if (Marshal().handle == IntPtr.Zero) return false;
+                return Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi;
+            }
+        }
         public IAsyncResult BeginInvoke(Delegate method) { return BeginInvoke(method, null); }
-        public IAsyncResult BeginInvoke(Delegate method, params object[] args) { return Escritorio.Encola(method, args, false); }
-        public IAsyncResult BeginInvoke(Action method) { return Escritorio.Encola(method, null, false); }
+        public IAsyncResult BeginInvoke(Delegate method, params object[] args) { Control m = MarshalConVentana(); return Escritorio.Encola(method, args, false, m); }
+        public IAsyncResult BeginInvoke(Action method) { return BeginInvoke((Delegate)method, null); }
         public object Invoke(Delegate method) { return Invoke(method, null); }
         public object Invoke(Delegate method, params object[] args)
         {
+            Control m = MarshalConVentana();
             if (!InvokeRequired) return Escritorio.Llama(method, args);
-            Escritorio.Pendiente p = Escritorio.Encola(method, args, true);
+            Escritorio.Pendiente p = Escritorio.Encola(method, args, true, m);
             p.AsyncWaitHandle.WaitOne();
             if (p.Error != null) throw p.Error;
             return p.Resultado;
@@ -462,7 +619,9 @@ namespace Rocola.Ventanas
                 case 2: OnMouseMove(e); break;
                 case 3: OnMouseEnter(EventArgs.Empty); break;
                 case 4: OnMouseLeave(EventArgs.Empty); break;
-                case 5: OnDoubleClick(e); OnMouseDoubleClick(e); OnMouseUp(e); break;     // soltar el segundo clic
+                case 5:                                                                   // soltar el segundo clic (los avisos del doble, con 2)
+                    MouseEventArgs d = new MouseEventArgs(e.Button, 2, e.X, e.Y, 0);
+                    OnDoubleClick(d); OnMouseDoubleClick(d); OnMouseUp(e); break;
                 case 6: OnMouseWheel(e); break;
                 case 7: OnMouseUp(e); break;                                              // soltar fuera: sin clic
             }
@@ -497,7 +656,8 @@ namespace Rocola.Ventanas
         protected virtual void OnParentVisibleChanged(EventArgs e) { if (visible) OnVisibleChanged(e); }
         protected virtual void OnEnabledChanged(EventArgs e)
         {
-            if (creado && GetStyle(ControlStyles.UserPaint)) Invalidate();
+            if (EnDesecho()) return;
+            if (IsHandleCreated && GetStyle(ControlStyles.UserPaint)) Invalidate();
             EnabledChanged?.Invoke(this, e);
             foreach (Control c in Controls.Lista.ToArray()) c.OnParentEnabledChanged(e);
         }
@@ -507,9 +667,32 @@ namespace Rocola.Ventanas
         protected virtual void OnEnter(EventArgs e) { Enter?.Invoke(this, e); }
         protected virtual void OnLeave(EventArgs e) { Leave?.Invoke(this, e); }
         protected virtual void OnTextChanged(EventArgs e) { TextChanged?.Invoke(this, e); }
-        protected virtual void OnFontChanged(EventArgs e) { FontChanged?.Invoke(this, e); }
-        protected virtual void OnBackColorChanged(EventArgs e) { BackColorChanged?.Invoke(this, e); }
-        protected virtual void OnForeColorChanged(EventArgs e) { ForeColorChanged?.Invoke(this, e); }
+        // (WinForms: repintan, avisan y bajan a los hijos que heredan el valor)
+        protected virtual void OnFontChanged(EventArgs e)
+        {
+            if (EnDesecho()) return;
+            Invalidate();
+            FontChanged?.Invoke(this, e);
+            foreach (Control c in Controls.Lista.ToArray()) c.OnParentFontChanged(e);
+        }
+        protected virtual void OnBackColorChanged(EventArgs e)
+        {
+            if (EnDesecho()) return;
+            Invalidate();
+            BackColorChanged?.Invoke(this, e);
+            foreach (Control c in Controls.Lista.ToArray()) c.OnParentBackColorChanged(e);
+        }
+        protected virtual void OnForeColorChanged(EventArgs e)
+        {
+            if (EnDesecho()) return;
+            Invalidate();
+            ForeColorChanged?.Invoke(this, e);
+            foreach (Control c in Controls.Lista.ToArray()) c.OnParentForeColorChanged(e);
+        }
+        protected virtual void OnParentFontChanged(EventArgs e) { if (font == null) OnFontChanged(e); }
+        protected virtual void OnParentBackColorChanged(EventArgs e) { if (backColor.IsEmpty) OnBackColorChanged(e); }
+        protected virtual void OnParentForeColorChanged(EventArgs e) { if (foreColor.IsEmpty) OnForeColorChanged(e); }
+        internal bool TieneEstilo(ControlStyles f) { return GetStyle(f); }
         protected virtual void OnHandleCreated(EventArgs e) { HandleCreated?.Invoke(this, e); }
         protected virtual void OnHandleDestroyed(EventArgs e) { HandleDestroyed?.Invoke(this, e); }
         protected virtual void OnParentChanged(EventArgs e) { ParentChanged?.Invoke(this, e); }
@@ -552,7 +735,7 @@ namespace Rocola.Ventanas
                     value.tabIndex = sig;
                 }
                 value.PonPadre(dueno);
-                if (dueno.creado && value.visible) value.CreateControl();
+                if (dueno.creado && value.Visible) value.CreateControl();
                 dueno.LlamaControlAdded(value);
             }
             public void AddRange(Control[] controls) { foreach (Control c in controls) Add(c); }
@@ -623,12 +806,13 @@ namespace Rocola.Ventanas
             return grupo.SelectNextControl(a, forward, false, false, true);
         }
     }
-    public class UserControl : ContainerControl { }
+    public class UserControl : ContainerControl { protected override Size DefaultSize { get { return new Size(150, 150); } } }
 
     public class Panel : ScrollableControl
     {
         // como el de WinForms: no toma el foco ni entra en el tabulador (sus hijos si)
         public Panel() { TabStop = false; SetStyle(ControlStyles.Selectable, false); SetStyle(ControlStyles.SupportsTransparentBackColor, true); }
+        protected override Size DefaultSize { get { return new Size(200, 100); } }
         private BorderStyle borde;
         public BorderStyle BorderStyle { get { return borde; } set { borde = value; Invalidate(); } }
         protected override void OnPaint(PaintEventArgs e)
@@ -644,7 +828,8 @@ namespace Rocola.Ventanas
     {
         private ContentAlignment alin = ContentAlignment.TopLeft;
         private bool autoSize;
-        public Label() { SetStyle(ControlStyles.Selectable, false); TabStop = false; }
+        public Label() { SetStyle(ControlStyles.Selectable, false); SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.ResizeRedraw, true); TabStop = false; }
+        protected override Size DefaultSize { get { return new Size(100, 23); } }
         public ContentAlignment TextAlign { get { return alin; } set { alin = value; Invalidate(); } }
         public bool AutoEllipsis { get; set; }
         public bool UseMnemonic { get; set; } = true;
@@ -658,7 +843,7 @@ namespace Rocola.Ventanas
         public Size PreferredSize { get { return TextRenderer.MeasureText(Texto, Font); } }
         public Size GetPreferredSize(Size proposed) { return PreferredSize; }
         private string Texto { get { return UseMnemonic ? Text.Replace("&&", "\u0001").Replace("&", "").Replace("\u0001", "&") : Text; } }
-        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); if (autoSize) Ajusta(); }
+        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); if (autoSize) Ajusta(); Invalidate(); }   // (Label.OnTextChanged)
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (autoSize) Ajusta(); }
         private void Ajusta() { Size = PreferredSize; }
         internal static TextFormatFlags DeAlineacion(ContentAlignment a)
@@ -687,6 +872,9 @@ namespace Rocola.Ventanas
 
     public class ButtonBase : Control
     {
+        // (como el de WinForms: acepta el fondo transparente, repinta al cambiar de medida y al cambiar el texto)
+        public ButtonBase() { SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.ResizeRedraw, true); }
+        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
         public FlatStyle FlatStyle { get; set; } = FlatStyle.Standard;
         public bool UseVisualStyleBackColor { get; set; }
         public ContentAlignment TextAlign { get; set; } = ContentAlignment.MiddleCenter;
@@ -700,6 +888,9 @@ namespace Rocola.Ventanas
     public class Button : ButtonBase, IButtonControl
     {
         private bool porDefecto, encima, apretado, espacio;
+        // (como el de WinForms: el clic no es el de Control -StandardClick- sino el suyo, en OnMouseUp; y un doble clic son dos clics)
+        public Button() { SetStyle(ControlStyles.StandardClick | ControlStyles.StandardDoubleClick, false); }
+        protected override Size DefaultSize { get { return new Size(75, 23); } }
         public DialogResult DialogResult { get; set; }
         public void NotifyDefault(bool value) { if (porDefecto != value) { porDefecto = value; Invalidate(); } }
         protected bool IsDefault { get { return porDefecto; } }
@@ -723,7 +914,14 @@ namespace Rocola.Ventanas
             if (apretado && encima != dentro) { encima = dentro; Invalidate(); }
             base.OnMouseMove(e);
         }
-        protected override void OnMouseUp(MouseEventArgs e) { if (apretado) { apretado = false; Invalidate(); } base.OnMouseUp(e); }
+        // Button.OnMouseUp de WinForms: el clic es del boton izquierdo, apretado aqui y soltado encima del mismo boton (WindowFromPoint)
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            bool estaba = apretado;
+            if (apretado) { apretado = false; Invalidate(); }
+            if (e.Button == MouseButtons.Left && estaba && Escritorio.ControlEn(Escritorio.PosicionRaton) == this) { OnClick(e); OnMouseClick(e); }
+            base.OnMouseUp(e);
+        }
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (e.KeyData == Keys.Space) { if (!espacio) { espacio = true; Invalidate(); } e.Handled = true; }
@@ -855,6 +1053,7 @@ namespace Rocola.Ventanas
         private int sel = -1, top, desplazaX, altoRenglon;
         internal const int Barra = 17;   // SM_CXVSCROLL / SM_CYHSCROLL de XP
         public ListBox() { Items = new ObjectCollection(this); BackColor = Color.White; }
+        protected override Size DefaultSize { get { return new Size(120, 96); } }
         public ObjectCollection Items { get; }
         public int ItemHeight { get { return altoRenglon > 0 ? altoRenglon : Math.Max(1, Font.Height); } set { altoRenglon = value; Invalidate(); } }
         public BorderStyle BorderStyle { get; set; } = BorderStyle.Fixed3D;
@@ -925,16 +1124,18 @@ namespace Rocola.Ventanas
             Focus();
             Rectangle u; bool v, h; Zonas(out u, out v, out h);
             if (v && e.X >= u.Right && e.Y < u.Bottom)
-            {   // la barra vertical: las flechas de una en una, el canal de pagina en pagina
-                int n = Visibles;
+            {   // la barra vertical: las flechas de una en una, el canal de pagina en pagina, y el pulgar se arrastra (SB_THUMBTRACK)
+                int n = Visibles; Rectangle pv = PulgarV(u);
                 if (e.Y < u.Top + Barra) TopIndex = top - 1; else if (e.Y >= u.Bottom - Barra) TopIndex = top + 1;
-                else TopIndex = e.Y < PulgarV(u).Top ? top - n : top + n;
+                else if (pv.Contains(e.X, e.Y)) agarreV = e.Y - pv.Top;
+                else TopIndex = e.Y < pv.Top ? top - n : top + n;
             }
             else if (h && e.Y >= u.Bottom && e.X < u.Right)
             {
-                int max = Math.Max(0, AnchoMayor() - u.Width);
+                int max = Math.Max(0, AnchoMayor() - u.Width); Rectangle ph = PulgarH(u);
                 if (e.X < u.Left + Barra) desplazaX -= 8; else if (e.X >= u.Right - Barra) desplazaX += 8;
-                else desplazaX += e.X < PulgarH(u).Left ? -u.Width : u.Width;
+                else if (ph.Contains(e.X, e.Y)) agarreH = e.X - ph.Left;
+                else desplazaX += e.X < ph.Left ? -u.Width : u.Width;
                 desplazaX = Math.Max(0, Math.Min(max, desplazaX)); Invalidate();
             }
             else if (u.Contains(e.X, e.Y))
@@ -944,7 +1145,34 @@ namespace Rocola.Ventanas
             }
             base.OnMouseDown(e);
         }
-        protected override void OnMouseWheel(MouseEventArgs e) { TopIndex = top - e.Delta / 120 * 3; base.OnMouseWheel(e); }
+        // ARRASTRAR EL PULGAR: la lista sigue al pulgar mientras se mueve (la posicion por la proporcion del canal, como la barra de
+        // Windows), y al soltar queda donde se dejo
+        private int agarreV = -1, agarreH = -1;
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (agarreV >= 0 || agarreH >= 0)
+            {
+                Rectangle u; bool v, h; Zonas(out u, out v, out h);
+                if (agarreV >= 0 && v)
+                {
+                    Rectangle pv = PulgarV(u); int canal = u.Height - 2 * Barra - pv.Height, sobra = Math.Max(0, Items.Count - Visibles);
+                    if (canal > 0) TopIndex = (int)Math.Round((double)(e.Y - agarreV - (u.Top + Barra)) * sobra / canal);
+                }
+                if (agarreH >= 0 && h)
+                {
+                    Rectangle ph = PulgarH(u); int canal = u.Width - 2 * Barra - ph.Width, sobra = Math.Max(0, AnchoMayor() - u.Width);
+                    if (canal > 0) { desplazaX = Math.Max(0, Math.Min(sobra, (int)Math.Round((double)(e.X - agarreH - (u.Left + Barra)) * sobra / canal))); Invalidate(); }
+                }
+            }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseUp(MouseEventArgs e) { agarreV = agarreH = -1; base.OnMouseUp(e); }
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            TopIndex = top - e.Delta / 120 * 3;
+            HandledMouseEventArgs h = e as HandledMouseEventArgs; if (h != null) h.Handled = true;   // (la lista de Windows se la queda: no sube)
+            base.OnMouseWheel(e);
+        }
         protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
         private Rectangle PulgarV(Rectangle u)
