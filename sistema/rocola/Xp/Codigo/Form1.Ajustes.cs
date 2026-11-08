@@ -1687,7 +1687,7 @@ namespace Rocola
                     dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Keys.Escape) dlg.Close(); };
                     MonedaTambienAqui(dlg);   // y una moneda con la ventana abierta tambien cuenta
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
-                    Timer tTrain = new Timer();
+                    Reloj tTrain = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
                     tTrain.Interval = 500;
                     // A1: despues de cualquier cambio se repasan las dependencias, y se ponen ya como estan.
                     EnganchaRequisitos(dlg);

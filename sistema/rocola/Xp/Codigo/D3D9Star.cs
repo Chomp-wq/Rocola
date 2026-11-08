@@ -1994,7 +1994,7 @@ namespace Rocola
         }
 
         private GpuStarfield stars;
-        private readonly Timer timer = new Timer();
+        private readonly Reloj timer = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
         private int frames, fpsTick, fps;
         private const string BaseTitle = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar";
 

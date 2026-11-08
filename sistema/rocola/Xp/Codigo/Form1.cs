@@ -69,8 +69,8 @@ namespace Rocola
         private SongListView songList;
         private CubeBox cubeBox;
         private ProgressView progress;
-        private Timer progressTimer, animTimer, toastTimer;
-        private Timer focusTimer;                 // vigia de foco al arrancar (autoarranque)
+        private Reloj progressTimer, animTimer, toastTimer;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
+        private Reloj focusTimer;                 // vigia de foco al arrancar (autoarranque); EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
         // F10: pausa de mantenimiento del vigia de foco. ENCENDIDO O APAGADO, sin reloj: antes se
         // reactivaba sola a la media hora "por si se olvida", y eso mordia justo cuando hacia falta -en
         // mitad de un mantenimiento largo la rocola volvia a robar el foco sin avisar, y con las manos
@@ -715,16 +715,16 @@ namespace Rocola
             BeginStartupDataLoad();
             try { BuildUi(); } catch { CancelStartupDataLoad(); throw; }
             needConfig = !LoadKeys();   // si no hay botones guardados, lanzamos el asistente al mostrarse
-            progressTimer = new Timer(); progressTimer.Interval = 500; progressTimer.Tick += ProgressTimer_Tick;
-            coverSettleTimer = new Timer(); coverSettleTimer.Interval = 120; coverSettleTimer.Tick += CoverSettle_Tick;   // 0.12s: con SSD, casi inmediato pero sigue filtrando el hojeo
+            progressTimer = new Reloj(); progressTimer.Interval = 500; progressTimer.Tick += ProgressTimer_Tick;   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
+            coverSettleTimer = new Reloj(); coverSettleTimer.Interval = 120; coverSettleTimer.Tick += CoverSettle_Tick;   // 0.12s: con SSD, casi inmediato pero sigue filtrando el hojeo; EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
             // El mismo patron que el de arriba, para las letras del buscador: se espera a que la persona
             // pare de teclear antes de mover los resultados (ver PosarMs).
-            posaTimer = new Timer(); posaTimer.Interval = PosarMs;
+            posaTimer = new Reloj(); posaTimer.Interval = PosarMs;   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
             posaTimer.Tick += delegate (object s2, EventArgs e2) { posaTimer.Stop(); if (searchOverlay != null) searchOverlay.PosaConsulta(); };
-            animTimer = new Timer(); animTimer.Interval = 42; animTimer.Tick += AnimTimer_Tick; animTimer.Start();   // ~24fps (giros y pulsos); el fondo completo va 1 de cada 3 cuadros
-            toastTimer = new Timer(); toastTimer.Interval = 1300; toastTimer.Tick += delegate (object s, EventArgs e) { toastTimer.Stop(); lblToast.Visible = false; if (searchOverlay != null) { searchOverlay.ToastOn = false; searchOverlay.Invalidate(); } };
-            videoPoll = new Timer(); videoPoll.Interval = 400; videoPoll.Tick += VideoPoll_Tick;
-            statsTimer = new Timer(); statsTimer.Interval = 60000; statsTimer.Tick += StatsTimer_Tick; statsTimer.Start();   // guarda estadisticas cada minuto si hubo cambios
+            animTimer = new Reloj(); animTimer.Interval = 42; animTimer.Tick += AnimTimer_Tick; animTimer.Start();   // ~24fps (giros y pulsos); el fondo completo va 1 de cada 3 cuadros; EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
+            toastTimer = new Reloj(); toastTimer.Interval = 1300; toastTimer.Tick += delegate (object s, EventArgs e) { toastTimer.Stop(); lblToast.Visible = false; if (searchOverlay != null) { searchOverlay.ToastOn = false; searchOverlay.Invalidate(); } };   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
+            videoPoll = new Reloj(); videoPoll.Interval = 400; videoPoll.Tick += VideoPoll_Tick;   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
+            statsTimer = new Reloj(); statsTimer.Interval = 60000; statsTimer.Tick += StatsTimer_Tick; statsTimer.Start();   // guarda estadisticas cada minuto si hubo cambios; EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -786,7 +786,7 @@ namespace Rocola
             maintMode = false;
             if (focusTimer == null)
             {
-                focusTimer = new Timer();
+                focusTimer = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
                 focusTimer.Interval = 1500;
                 focusTimer.Tick += FocusTimer_Tick;
             }
@@ -870,7 +870,7 @@ namespace Rocola
         private void DetieneVigiaFoco()
         {
             focoCerrando = true; // un Tick ya encolado tampoco puede recrear el Handle
-            Timer anterior = focusTimer;
+            Reloj anterior = focusTimer;   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
             focusTimer = null;
             if (anterior != null)
             {

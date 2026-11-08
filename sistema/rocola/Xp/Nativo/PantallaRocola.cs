@@ -46,7 +46,7 @@ namespace Rocola
     // los pendientes con ObjectDisposedException al destruir la ventana, sin ThreadException (Control.cs:5255-5276).
     internal interface IDuenoDeEncargos { long Vida { get; } }
 
-    internal static class PantallaRocola
+    internal static partial class PantallaRocola
     {
         // ---------- el reloj y el hilo ----------
         // El reloj de la pantalla: milisegundos desde el arranque (el mismo de los relojes, ROCOLA_PULSA, ROCOLA_CAPTURA y las trazas).

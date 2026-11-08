@@ -114,3 +114,24 @@ Pendiente de V2, fuera del programa: que el apagado de Rocola OS de tiempo a la 
 SIGKILL un segundo despues, y `S99rocola stop` solo pone el WOL: el cierre de XP (GuardaTodoAlCerrar, BorraEstado,
 Bitacora.Vacia(3000); Form1.Video.cs:1877-1905) puede quedarse a medias. Hay que mandarle SIGTERM desde `S99rocola stop` (o el
 `::shutdown` de inittab) y esperar a que salga. No se toco (es de la imagen del sistema, no de esta pista).
+
+## V3. Lo de ventanas que no depende de la herencia, en el codigo de XP
+
+Cada linea cambia en su sitio, sin anadir ni quitar lineas (las trazas nombran los relojes y los encargos por archivo:linea, y asi
+salen igual que en la referencia), con su «EN LINUX». Guion: `/root/rocola-trabajo/port/ventanas/v3/traduce_v3.py` (fuera del
+repositorio: la lista de lineas, lo que tenian y lo que tienen; avisa si una no esta como se esperaba).
+
+1. Program.cs y los relojes:
+   - `PantallaRocola.AlFallar = delegate (Exception ex) { LogCrash("ThreadException", ex); };` en vez de Application.ThreadException;
+     `PantallaRocola.Corre(new Form1());` en vez de Application.Run (`Nativo/PantallaRocola.Rocola.cs`, aparte porque es lo unico de
+     la pantalla que conoce a la rocola: mientras Form1 herede la ventana de la capa, la capa la ensena, avisa al cerrarse y la cierra
+     en el apagado). Quedan SetUnhandledExceptionMode, EnableVisualStyles y SetCompatibleTextRenderingDefault: en la capa no hacen
+     nada (el primero es ademas el gancho de `--prueba-video`, PruebasLinux.DespuesDelInicio); se van con la capa.
+   - Los 11 relojes de XP pasan de Timer a Reloj (declaracion y `new`): Form1.cs (los 7 del constructor, focusTimer y `anterior` de
+     DetieneVigiaFoco), Form1.Biblioteca.cs, Form1.Datos.cs, Form1.Portadas.cs, Form1.Video.cs, SalidaSonido.cs (reintentoSalida),
+     Form1.Ajustes.cs (tTrain de Ctrl+F3) y D3D9Star.cs (el de la ventana F12). Ningun manejador de Tick usa el remitente.
+   - Comprobado: compila (los 15 avisos de siempre), 41 de 41, y las 10 escenas alternando con la referencia (R7/N5): arranque,
+     video, buscador, cierreq, altf4 y kill9 IGUALES; sigterm y f3sigterm, el apagado como en V2. Dos diferencias que no son de
+     este cambio: en moneda la repeticion de la moneda mantenida llego despues de soltarla y conto como otra moneda (8 creditos en vez
+     de 4: un fallo de TeclasLinux.cs que la referencia tambien tiene; se arregla abajo) y en tab el estado de los 22 s se cruzo con
+     la ultima captura (como en V2).

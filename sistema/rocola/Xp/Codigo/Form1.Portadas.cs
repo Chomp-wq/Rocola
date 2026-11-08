@@ -27,7 +27,7 @@ namespace Rocola
         private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
         private volatile int coverGen = 0;     // solo invalida contenido (F5), no lecturas utiles al cambiar pagina
-        private Timer coverSettleTimer;   // espera 120 ms antes de precargar vecinas
+        private Reloj coverSettleTimer;   // espera 120 ms antes de precargar vecinas; EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         // CARRILES: tope global segun CPU (uno en 2C/2T); cada unidad HDD admite un lector,
         // SSD admite paralelismo dentro del tope. El semaforo se comparte con el generador
         // de miniaturas, que cede a las peticiones visibles. No se promete latencia fija de disco.

@@ -43,7 +43,7 @@ namespace Rocola
         private HashSet<string> deepDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private long statsTotal = 0, statsSongTotal = 0, statsVideoTotal = 0, statsCoins = 0, statsCreditsAdded = 0;
         private volatile bool statsDirty = false;
-        private Timer statsTimer;
+        private Reloj statsTimer;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         private long statsSeq = 0;
 
         // Datos preparados sin tocar el formulario. Se publican juntos en OnShown, antes

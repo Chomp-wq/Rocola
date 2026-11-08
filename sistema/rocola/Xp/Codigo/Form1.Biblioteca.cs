@@ -3261,7 +3261,7 @@ namespace Rocola
         // posa en cada letra, como siempre.
         internal const int PosarMs = 220;
         private int tecleoUltimo;                       // cuando entro la ultima letra
-        private Timer posaTimer;
+        private Reloj posaTimer;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
 
         // ¿Se posa YA, o se espera a que pare? Tras un rato sin teclear -abrir el buscador y escribir la
         // primera letra- se posa en el acto: si esa primera tardara, se notaria y pareceria que la rocola
