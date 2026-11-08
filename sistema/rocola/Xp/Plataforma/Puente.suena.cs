@@ -76,7 +76,8 @@ namespace Rocola
     {
         // un pincel de color (SKPaint sin shader) de un archivo traducido para uno que no lo esta y lo pide como Brush: el SolidBrush de ese
         // color (el mismo ARGB). Uno con shader (un degradado o una textura) no tiene vuelta: XP solo pasa por aqui pinceles de color
-        // (EstadoReposoGpu.cs: white, color y muted, todos SolidBrush), asi que si llegara uno se dice en vez de pintar otra cosa.
+        // (EstadoReposoGpu.cs: color, el del artista de PintaTituloGrande, y muted, el tenue de PintaMinutosCola, los dos SolidBrush; white
+        // solo va al DrawString del titulo, por PuenteDibujo.Pincel), asi que si llegara uno se dice en vez de pintar otra cosa.
         internal static Brush BrochaSuena(SKPaint p)
         {
             if (p == null) return null;

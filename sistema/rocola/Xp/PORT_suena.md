@@ -56,7 +56,8 @@ Ninguna de estas funciones dibuja imágenes, así que el filtro no hace falta.
 `PintaTextoMovilSuena` hace el `Graphics` con el filtro de fábrica (el texto no lo usa) y la matriz del HDC de un mapa de bits, la
 identidad: quien llama a `PintaTituloGrande` y `PintaMinutosCola` es el panel de reposo, que pinta en un mapa (con un `Graphics` de un
 mapa, la traslación que el código le ponga se ve igual en `Transform`, que es lo que mira la cinta). `BrochaSuena` solo sabe pasar un
-pincel de color (XP solo pasa por ahí `SolidBrush`: `white`, `color` y `muted`); uno con shader lanza en vez de pintar otra cosa.
+pincel de color (XP solo pasa por ahí `SolidBrush`: `color`, el del artista de `PintaTituloGrande`, y `muted`, el `tenue` de
+`PintaMinutosCola`; `white` solo va al `DrawString` del título, por `PuenteDibujo.Pincel`); uno con shader lanza en vez de pintar otra cosa.
 
 ## Comprobaciones
 
