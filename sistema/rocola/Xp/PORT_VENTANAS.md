@@ -118,8 +118,8 @@ Bitacora.Vacia(3000); Form1.Video.cs:1877-1905) puede quedarse a medias. Hay que
 ## V3. Lo de ventanas que no depende de la herencia, en el codigo de XP
 
 Cada linea cambia en su sitio, sin anadir ni quitar lineas (las trazas nombran los relojes y los encargos por archivo:linea, y asi
-salen igual que en la referencia), con su «EN LINUX». Guion: `/root/rocola-trabajo/port/ventanas/v3/traduce_v3.py` (fuera del
-repositorio: la lista de lineas, lo que tenian y lo que tienen; avisa si una no esta como se esperaba).
+salen igual que en la referencia), con su «EN LINUX». Guion: `Pruebas/Ventanas/guiones/traduce_v3.py CARPETA_CODIGO relojes|encargos` (la lista de
+lineas, lo que tenian y lo que tienen; avisa si una no esta como se esperaba; ya aplicado: es el registro de lo que se cambio).
 
 1. Program.cs y los relojes:
    - `PantallaRocola.AlFallar = delegate (Exception ex) { LogCrash("ThreadException", ex); };` en vez de Application.ThreadException;
@@ -135,3 +135,12 @@ repositorio: la lista de lineas, lo que tenian y lo que tienen; avisa si una no 
      este cambio: en moneda la repeticion de la moneda mantenida llego despues de soltarla y conto como otra moneda (8 creditos en vez
      de 4: un fallo de TeclasLinux.cs que la referencia tambien tiene; se arregla abajo) y en tab el estado de los 22 s se cruzo con
      la ultima captura (como en V2).
+
+   - La repeticion despues de soltar (TeclasLinux.cs, lo nativo de la entrada): el hilo que repite la tecla mantenida comprobaba
+     que seguia apretada y la entregaba fuera del candado; si se soltaba justo entre las dos cosas, la repeticion llegaba detras del
+     soltar y la capa la tomaba por una pulsacion nueva (en la escena moneda, otra moneda: 8 creditos en vez de 4). En Windows una
+     repeticion nunca llega despues de WM_KEYUP. Ahora la pulsacion, el soltar y cada repeticion se entregan dentro del mismo candado
+     (en la lectura de evdev, en la repeticion y en las teclas de prueba): una repeticion va antes del soltar o ya no sale. Es un
+     cruce raro (una vez en unas 30 corridas con teclas mantenidas; 30 pulsaciones de 503 a 706 ms seguidas no lo dieron ni en la
+     referencia ni aqui), arreglado por construccion. moneda, cierreq y tab otra vez alternando (R8/N6): IGUALES. La escena tab pide
+     su ultimo estado a los 21,5 s.

@@ -86,10 +86,10 @@ namespace Rocola
                         // mantenida: llega como una tecla de verdad (WM_KEYDOWN, y repetida a los 500 ms como en XP, hasta soltarla)
                         int vk; if (!int.TryParse(q[1], out vk)) continue;
                         bool abajo = q[0] == "baja"; Keys tk = (Keys)vk;
-                        Escritorio.Entrada(delegate { Escritorio.Tecla(tk, abajo); });
                         ArrancaRepeticion();
                         lock (candado)
                         {
+                            Escritorio.Entrada(delegate { Escritorio.Tecla(tk, abajo); });   // (dentro del candado: ver Lee)
                             if (abajo) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
                             else if (vk == repiteVk) repiteVk = 0;
                         }
@@ -182,9 +182,11 @@ namespace Rocola
                 if (vk == 0) continue;
                 bool abajo = valor == 1;
                 Keys t = (Keys)vk;
-                Escritorio.Entrada(delegate { Escritorio.Tecla(t, abajo); });
                 lock (candado)
                 {
+                    // (port nativo: la tecla se entrega dentro del candado de la repeticion, asi una repeticion nunca llega despues de
+                    // soltarla, como en Windows; antes podia colarse detras del soltar y contar como otra pulsacion)
+                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, abajo); });
                     bool modificador = vk == 0x10 || vk == 0x11 || vk == 0x12 || vk == 0x14;
                     if (abajo && !modificador) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
                     else if (!abajo && vk == repiteVk) repiteVk = 0;
@@ -206,9 +208,10 @@ namespace Rocola
                     if (repiteVk != vk || repiteEn != en) continue;
                     repiteEn = en + RepeticionMs;
                     if (repiteEn < Escritorio.AhoraMs) repiteEn = Escritorio.AhoraMs + RepeticionMs;   // (sin rafagas si se atraso)
+                    // (dentro del candado: si en este momento se suelta la tecla, el soltar va despues y la repeticion ya no sale)
+                    Keys t = (Keys)vk;
+                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
                 }
-                Keys t = (Keys)vk;
-                Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
             }
         }
     }
