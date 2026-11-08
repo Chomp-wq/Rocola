@@ -20,7 +20,7 @@
 // ====================================================================================================
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el mapa tramado (HorneaMapaDegradado) ya va con SkiaSharp y las funciones nativas (Xp/Nativo)
 
 namespace Rocola
 {
@@ -153,7 +153,7 @@ namespace Rocola
                     TextureBrush copia = CopiaDegradado(d.Mapa, r.Location);
                     DegradadosReusados++; return copia;
                 }
-                Bitmap fuente = HorneaMapaDegradado(r.Height, c0, c1);
+                Bitmap fuente = PuenteDibujo.Entrega(HorneaMapaDegradado(r.Height, c0, c1));   // EN LINUX: el mapa nativo, como Bitmap para el TextureBrush de GDI+ de aqui (aun sin traducir), por el puente (Plataforma/Puente.cs)
                 TextureBrush nuevo;
                 try { nuevo = CopiaDegradado(fuente, r.Location); }
                 catch { fuente.Dispose(); throw; }
@@ -173,14 +173,14 @@ namespace Rocola
         }
         private static Brush HorneaDegradadoV(Rectangle r, Color c0, Color c1)
         {
-            using (Bitmap b = HorneaMapaDegradado(r.Height, c0, c1)) return CopiaDegradado(b, r.Location);
+            using (Bitmap b = PuenteDibujo.Entrega(HorneaMapaDegradado(r.Height, c0, c1))) return CopiaDegradado(b, r.Location);   // EN LINUX: el mapa nativo, como Bitmap, por el puente
         }
-        private static Bitmap HorneaMapaDegradado(int alto, Color c0, Color c1)
+        private static SKBitmap HorneaMapaDegradado(int alto, Color c0, Color c1)   // EN LINUX: un SKBitmap; DegradadoV y HorneaDegradadoV (aun con GDI+) lo reciben por el puente
         {
-            Bitmap b = new Bitmap(4, alto, PixelFormat.Format32bppArgb);
+            SKBitmap b = Mapas.Nuevo(4, alto);   // EN LINUX: new Bitmap(4, alto, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             try
             {
-                BitmapData d = b.LockBits(new Rectangle(0, 0, 4, alto), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                int[] puntos = new int[4 * alto];   // EN LINUX: LockBits(WriteOnly, Format32bppArgb): la copia sin premultiplicar, de 4 puntos por fila
                 try
                 {
                     int[] fila = new int[4];
@@ -193,10 +193,10 @@ namespace Rocola
                             float u = (Bayer4[(y & 3) * 4 + x] + .5f) / 16f;
                             fila[x] = (Tramo(fa, u) << 24) | (Tramo(fr, u) << 16) | (Tramo(fg, u) << 8) | Tramo(fb, u);
                         }
-                        System.Runtime.InteropServices.Marshal.Copy(fila, 0, new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride), 4);
+                        Array.Copy(fila, 0, puntos, y * 4, 4);   // EN LINUX: Marshal.Copy a la fila 'y' de la copia
                     }
                 }
-                finally { b.UnlockBits(d); }
+                finally { Pixeles.EscribeSinPremultiplicar(b, puntos, 4); }   // EN LINUX: UnlockBits: la copia, premultiplicada, al mapa (Nativo/Pixeles.cs)
                 return b;
             }
             catch { b.Dispose(); throw; }

@@ -33,6 +33,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1): la cinta lee los Bitmap que le llegan al dispositivo
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;

@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 namespace Rocola
 {
     // Reloj por familia: no limita el render, la entrada, el progreso ni el audio.

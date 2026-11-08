@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el horno del cielo profundo hace su mapa con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 using System.Runtime.InteropServices;
 namespace Rocola
 {
@@ -19,10 +19,10 @@ namespace Rocola
             float a=NoiseHash(ix,iy),b=NoiseHash(ix+1,iy),c=NoiseHash(ix,iy+1),d=NoiseHash(ix+1,iy+1);
             return (a+(b-a)*fx)*(1-fy)+(c+(d-c)*fx)*fy;
         }
-        internal static Bitmap BakeNatural(int w,int h)
+        internal static Rocola.Dibujo2D.Bitmap BakeNatural(int w,int h)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
         {
             if(w<1||h<1)throw new ArgumentOutOfRangeException("w");
-            Bitmap b=new Bitmap(w,h,PixelFormat.Format32bppArgb);
+            SKBitmap b=Mapas.Nuevo(w,h);   // EN LINUX: new Bitmap(w,h,Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             int[] pixels=new int[w*h];
             for(int y=0;y<h;y++)for(int x=0;x<w;x++)
             {
@@ -38,10 +38,10 @@ namespace Rocola
                 int alpha=(int)Math.Min(125,value*180*Form1.NebFuerza*Form1.nebNaturalFuerza);
                 pixels[y*w+x]=unchecked((int)((uint)alpha<<24|0x00FFFFFFu));
             }
-            BitmapData data=b.LockBits(new Rectangle(0,0,w,h),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
-            try{for(int y=0;y<h;y++)Marshal.Copy(pixels,y*w,new IntPtr(data.Scan0.ToInt64()+y*(long)data.Stride),w);}
-            finally{b.UnlockBits(data);}
-            return b;
+            // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
+            Pixeles.EscribeSinPremultiplicar(b,pixels,w);   // EN LINUX: (Nativo/Pixeles.cs)
+            // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
+            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
         }
         internal static float PerfilDefinido(float[] bands,float x)
         {

@@ -1,0 +1,88 @@
+(a) LockBits Format32bppArgb sobre un mapa premultiplicado: 63795 de 65536 parejas (alfa, canal) no vuelven igual; diferencia maxima 255
+    alfa 1: 254 de 256 canales cambian; alfa 32: 254; alfa 128: 254; alfa 254: 254; alfa 0 pierde el color (los 255 distintos de 0)
+    ejemplo: alfa 1, canal B0 -> premultiplicado 0 -> se lee 00
+    ejemplo: alfa 1, canal CF -> premultiplicado 0 -> se lee 00
+    ejemplo: alfa 32, canal B0 -> premultiplicado 22 -> se lee AF
+    ejemplo: alfa 32, canal CF -> premultiplicado 25 -> se lee C7
+    EstrellaGpu.cs (BakeStar): 37036 puntos del halo con alfa 1-32; 74072 canales salen distintos al leerlos (hasta 207 niveles del canal, que con su alfa pesan como mucho 1.02 niveles en la pantalla), antes de pintar la estrella encima
+    en general (alfa 1-254): lo que se pierde pesa como mucho 1.98 niveles en la pantalla (la diferencia por su alfa)
+(b) texto con ClearTypeGridFit (en XP, ClearType con flecos de color; la referencia, gris): 7 lineas, 4920 llamadas
+    Codigo/Form1.Ajustes.cs:407 Graphics.DrawString x346
+    Codigo/Form1.Ajustes.cs:561 Graphics.DrawString x658
+    Codigo/Form1.Ajustes.cs:566 Graphics.DrawString x12
+    Codigo/Form1.Ajustes.cs:617 Graphics.DrawString x2141
+    Codigo/Form1.Pared.cs:127 Graphics.DrawString x9
+    Codigo/Form1.Pared.cs:130 Graphics.DrawString x9
+    Codigo/Form1.Pared.cs:262 Graphics.DrawString x1745
+(b2) TextRenderer con el modo de letra del sistema (SystemDefault: en XP, el suavizado que tenga Windows): 5 lineas, 5272 llamadas
+    Plataforma/Ventanas.Control.cs:1204 x1
+    Plataforma/Ventanas.Control.cs:867 x5001
+    Plataforma/Ventanas.Control.cs:961 x3
+    Plataforma/Ventanas.Escritorio.cs:732 x132
+    Plataforma/Ventanas.Escritorio.cs:733 x135
+(c) plumas con dos puntas distintas (la referencia usa una sola para las dos): 0 lineas, 0 llamadas
+(d) plumas de menos de 1 px con escala o giro (la referencia pone 1 px en el lienzo; GDI+ 1 px en la pantalla): 0 lineas, 0 llamadas
+(e1) DrawImage con PixelOffsetMode de fabrica (la referencia corre medio punto la imagen; sin comprobar en GDI+ cuando se escala): 20 lineas, 3223 llamadas
+    Codigo/AcabadoGpu.cs:115 i=Bilinear x29
+    Codigo/AcabadoGpu.cs:142 i=Bilinear x21
+    Codigo/AcabadoGpu.cs:164 i=Bilinear x29
+    Codigo/AtraccionGpu.cs:743 i=NearestNeighbor x5
+    Codigo/BuscadorPortadasGpu.cs:624 i=Bilinear x28
+    Codigo/CaratulasAdaptativas.cs:362 i=HighQualityBilinear x27
+    Codigo/DiscoVivoGpu.cs:272 i=HighQualityBilinear x8
+    Codigo/EstadoReposoGpu.cs:422 i=Bilinear x2
+    Codigo/Form1.Fondo.cs:1743 i=Bilinear x477
+    Codigo/Form1.Fondo.cs:1768 i=Bilinear x22
+    Codigo/Form1.Fondo.cs:1795 i=Bilinear x2
+    Codigo/Form1.Fondo.cs:1802 i=Bilinear x11
+    Codigo/Form1.Fondo.cs:1855 i=Bilinear x2
+    Codigo/Form1.Fondo.cs:2127 i=Bilinear x838
+    Codigo/Form1.Fondo.cs:2156 i=Bilinear x27
+    Codigo/Form1.Fondo.cs:2305 i=Bilinear x6
+    Codigo/Form1.Fondo.cs:2310 i=Bilinear x890
+    Codigo/Form1.Pared.cs:174 i=Bilinear x697
+    Codigo/Form1.Vistas.cs:1458 i=HighQualityBilinear x55
+    Codigo/PantallaVivaGpu.cs:613 i=HighQualityBilinear x47
+(e2) DrawString con traslacion fraccionaria, escala o giro (la referencia no corre el texto medio pixel): 42 lineas, 6218 llamadas
+    Codigo/AsistenteGuiaRocola.cs:295 m=I x9
+    Codigo/AsistenteRocola.cs:406 m=I x9
+    Codigo/AtraccionGpu.cs:697 m=I x5
+    Codigo/AtraccionGpu.cs:828 m=I x5
+    Codigo/AtraccionGpu.cs:913 m=I x7
+    Codigo/DiscoVivoGpu.cs:282 m=I x9
+    Codigo/EstadoReposoGpu.cs:378 m=I x13
+    Codigo/EstadoReposoGpu.cs:382 m=I x9
+    Codigo/EstadoReposoGpu.cs:405 m=I x13
+    Codigo/EstadoReposoGpu.cs:438 m=I x2
+    Codigo/Form1.Ajustes.cs:617 m=I x2141
+    Codigo/Form1.Pared.cs:262 m=I x434
+    Codigo/Form1.Pared.cs:262 m=T x164
+    Codigo/Form1.Vistas.cs:484 m=I x218
+    Codigo/Form1.Vistas.cs:484 m=S x351
+    Codigo/Form1.Vistas.cs:486 m=I x218
+    Codigo/Form1.Vistas.cs:486 m=S x351
+    Codigo/Form1.Vistas.cs:488 m=I x218
+    Codigo/Form1.Vistas.cs:488 m=S x351
+    Codigo/Form1.Vistas.cs:539 m=I x45
+    Codigo/Form1.Vistas.cs:700 m=I x348
+    Codigo/Form1.Vistas.cs:876 m=S x163
+    Codigo/PantallaVivaGpu.cs:409 m=I x67
+    Codigo/PantallaVivaGpu.cs:626 m=I x59
+    Codigo/PantallaVivaGpu.cs:631 m=I x9
+    Codigo/PantallaVivaGpu.cs:635 m=I x59
+    Codigo/PantallaVivaGpu.cs:645 m=I x59
+    Codigo/PantallaVivaGpu.cs:657 m=I x133
+    Codigo/PantallaVivaGpu.cs:664 m=I x39
+    Codigo/PantallaVivaGpu.cs:674 m=I x117
+    Codigo/PantallaVivaGpu.cs:679 m=I x133
+    Codigo/PantallaVivaGpu.cs:685 m=I x59
+    Codigo/PantallaVivaGpu.cs:702 m=I x22
+    Codigo/SuenaVivoGpu.cs:247 m=I x20
+    Codigo/SuenaVivoGpu.cs:250 m=I x18
+    Codigo/SuenaVivoGpu.cs:385 m=I x9
+    Codigo/SuenaVivoGpu.cs:387 m=I x9
+    Codigo/SuenaVivoGpu.cs:389 m=I x9
+    Codigo/SuenaVivoGpu.cs:462 m=I x72
+    Codigo/SuenaVivoGpu.cs:633 m=I x2
+    Codigo/SuenaVivoGpu.cs:752 m=I x9
+    Codigo/TextoMovilGpu.cs:152 m=I x231

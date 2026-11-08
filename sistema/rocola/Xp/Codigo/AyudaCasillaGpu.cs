@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el signo de interrogacion y su horno ya van con SkiaSharp y las funciones nativas (Xp/Nativo)
 
 namespace Rocola
 {
@@ -82,7 +82,7 @@ namespace Rocola
                 }
                 int cy = h / 2, d = Sim(h);
                 RectangleF ic = Icono();
-                if (!forGpu) PintaInterrogacion(g, ic, 1f);
+                if (!forGpu) { EstadoLienzo e = PuenteDibujo.Estado(g); PintaInterrogacion(PuenteDibujo.Lienzo(g), e.Suave, e.Medio, e.Copia, ic, 1f); }   // EN LINUX: el signo ya va con SkiaSharp y este dibujo por procesador aun no: el lienzo y su estado, por el puente (Plataforma/Puente.cs)
                 float x = ic.Right;
                 Color tinta = Color.FromArgb(255, 255, 240, 205);
                 if (!Compacta) x = CtrlTxt(g, fTxt, "AYUDA", x + 8, cy, tinta);
@@ -112,23 +112,23 @@ namespace Rocola
 
         // El signo dorado: degradado de oro, filo oscuro y un brillo arriba. Lo usan la casilla sin tarjeta y
         // la textura que anima la tarjeta (asi los dos se ven iguales).
-        internal static void PintaInterrogacion(Graphics g, RectangleF r, float alfa)
+        internal static void PintaInterrogacion(SKCanvas g, bool suave, bool medio, bool copia, RectangleF r, float alfa)   // EN LINUX: el lienzo de Skia y el estado del dibujo que pesa aqui (suavizado, medio pixel y copia)
         {
             if (r.Width < 4 || r.Height < 4) return;
             int a = (int)(255 * Math.Max(0f, Math.Min(1f, alfa)));
-            using (GraphicsPath p = new GraphicsPath())
-            using (FontFamily fam = new FontFamily(GenericFontFamilies.Serif))
-            using (StringFormat sf = new StringFormat())
-            {
-                sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                p.AddString("?", fam, (int)FontStyle.Bold, r.Height * 1.02f, new RectangleF(r.X - r.Width * .3f, r.Y + r.Height * .04f, r.Width * 1.6f, r.Height), sf);
-                using (LinearGradientBrush oro = new LinearGradientBrush(new RectangleF(r.X, r.Y, r.Width, r.Height + 1),
-                    Color.FromArgb(a, 255, 238, 150), Color.FromArgb(a, 214, 140, 24), 90f))
-                using (Pen filo = new Pen(Color.FromArgb(a * 3 / 4, 70, 40, 6), Math.Max(1.2f, r.Height * .06f)))
+            using (SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (su relleno de fabrica, Alternate, es par-impar)
+            using (Rocola.Nativo.Letra fam = Rocola.Nativo.Letra.EnPixeles(Letras.ConRemates, r.Height * 1.02f, true))   // EN LINUX: FontFamily(Serif) es Times New Roman, y AddString hace con ella la letra en pixeles y en negrita (FontStyle.Bold); Letra con su espacio entero (Form1 tiene un metodo Letra)
+            {   // EN LINUX: (el StringFormat es un FormatoTexto, que no se suelta: va dentro)
+                FormatoTexto sf = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: Alignment y LineAlignment = Center
+                TextoGdiPlus.Trazo(p, "?", fam, new RectangleF(r.X - r.Width * .3f, r.Y + r.Height * .04f, r.Width * 1.6f, r.Height), sf);   // EN LINUX: p.AddString (Nativo/TextoGdiPlus.cs)
+                using (SKShader degradado = Degradado.Lineal(new RectangleF(r.X, r.Y, r.Width, r.Height + 1),   // EN LINUX: LinearGradientBrush(caja, a, b, 90): su shader (Nativo/Degradado.cs) en un SKPaint
+                    Color.FromArgb(a, 255, 238, 150), Color.FromArgb(a, 214, 140, 24), 90f)) using (SKPaint oro = new SKPaint { Shader = degradado })
+                using (SKPaint filo = new SKPaint { Color = Color.FromArgb(a * 3 / 4, 70, 40, 6).Sk(), StrokeWidth = Math.Max(1.2f, r.Height * .06f) })   // EN LINUX: Pen(color, ancho)
                 {
-                    filo.LineJoin = LineJoin.Round;
-                    g.DrawPath(filo, p);
-                    g.FillPath(oro, p);
+                    filo.StrokeJoin = SKStrokeJoin.Round;   // EN LINUX: LineJoin.Round
+                    Pixel.Traza(g, p, filo, suave, medio, copia);   // EN LINUX: g.DrawPath (Nativo/Pixel.cs)
+                    Pixel.Rellena(g, p, oro, suave, medio, copia);   // EN LINUX: g.FillPath
                 }
             }
         }
@@ -271,19 +271,19 @@ namespace Rocola
             if (ayudaRect.Width < 4) return;
             int lado = Math.Max(16, Math.Min(256, (int)(ayudaRect.Height * 2f)));
             if (ayudaTex != IntPtr.Zero && lado == ayudaLado) return;
-            using (Bitmap b = BakeInterrogacion(lado))
+            using (Bitmap b = PuenteDibujo.Entrega(BakeInterrogacion(lado)))   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mapa le llega por el puente (Plataforma/Puente.cs)
                 ayudaTex = Upload(ayudaTex, ref ayudaTW, ref ayudaTH, b, out ayudaU, out ayudaV);
             ayudaLado = ayudaTex != IntPtr.Zero ? lado : -1;
         }
-        internal static Bitmap BakeInterrogacion(int lado)
+        internal static SKBitmap BakeInterrogacion(int lado)   // EN LINUX: un SKBitmap; PreparaAyudaIcono lo pasa por el puente a Upload (D3D9Star.cs, aun sin traducir)
         {
             if (lado < 8 || lado > 1024) throw new ArgumentOutOfRangeException("lado");
-            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
-            using (Graphics g = Graphics.FromImage(b))
+            SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage
             {
-                g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                Form1.PintaInterrogacion(g, new RectangleF(lado * .08f, lado * .06f, lado * .84f, lado * .84f), 1f);
+                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (el estado del dibujo va aparte; medio pixel y copia, los de fabrica)
+                Form1.PintaInterrogacion(g, suave, false, false, new RectangleF(lado * .08f, lado * .06f, lado * .84f, lado * .84f), 1f);   // EN LINUX: el lienzo y su estado
             }
             return b;
         }

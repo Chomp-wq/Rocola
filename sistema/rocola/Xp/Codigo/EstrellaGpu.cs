@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el horno de la estrella dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 using System.Runtime.InteropServices;
 namespace Rocola
 {
@@ -9,7 +9,7 @@ namespace Rocola
     {
         // Cinco puntas facetadas como rocola.ico. Geometria propia horneada una vez
         // para la GPU: no se modifica el icono ni el renderizador CPU.
-        internal static Bitmap BakeStar(bool detailed)
+        internal static Rocola.Dibujo2D.Bitmap BakeStar(bool detailed)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
         {
             const int n = MoonTextureSize;
             int[] pixels = new int[n*n];
@@ -19,10 +19,10 @@ namespace Rocola
                 int a=r>=1?0:(int)(32*Math.Exp(-r*3)*(1-r));
                 pixels[y*n+x]=unchecked((int)((uint)a<<24))|0xB0CFFF;
             }
-            Bitmap b=new Bitmap(n,n,PixelFormat.Format32bppArgb);
-            BitmapData data=b.LockBits(new Rectangle(0,0,n,n),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
-            try { for(int y=0;y<n;y++)Marshal.Copy(pixels,y*n,new IntPtr(data.Scan0.ToInt64()+y*(long)data.Stride),n); }
-            finally { b.UnlockBits(data); }
+            SKBitmap b=Mapas.Nuevo(n,n);   // EN LINUX: new Bitmap(n,n,Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
+            Pixeles.EscribeSinPremultiplicar(b,pixels,n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de transicion; diferencia (a) de PORT_DIBUJO.md)
+            // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
             PointF center=new PointF(127.5f,127.5f);
             PointF[] edge=new PointF[10];
             for(int i=0;i<10;i++){
@@ -30,11 +30,11 @@ namespace Rocola
                 float r=i%2==0?110f:49f;
                 edge[i]=new PointF(center.X+r*(float)Math.Cos(angle),center.Y+r*(float)Math.Sin(angle));
             }
-            using(Graphics g=Graphics.FromImage(b))
-            using(SolidBrush body=new SolidBrush(Color.FromArgb(185,201,230)))
-            using(Pen rim=new Pen(Color.FromArgb(235,22,34,61),3f)){
-                g.SmoothingMode=SmoothingMode.AntiAlias;
-                g.FillPolygon(body,edge);
+            using(SKCanvas g=new SKCanvas(b))   // EN LINUX: Graphics.FromImage
+            using(SKPaint body=new SKPaint{Color=Color.FromArgb(185,201,230).Sk()})   // EN LINUX: SolidBrush
+            using(SKPaint rim=new SKPaint{Color=Color.FromArgb(235,22,34,61).Sk(),StrokeWidth=3f}){   // EN LINUX: Pen(color, 3)
+                bool suave=true;   // EN LINUX: g.SmoothingMode=AntiAlias; el estado del dibujo va en variables (medio pixel y copia, los de fabrica)
+                Pixel.RellenaPoligono(g,edge,body,suave);   // EN LINUX: g.FillPolygon(body,edge), relleno Alternate (Nativo/Pixel.cs)
                 if(detailed){
                     // Caras plata a la izquierda y acero azulado a la derecha; siguen admitiendo tinte.
                     Color[] facets={Color.FromArgb(231,239,255),Color.FromArgb(125,166,228),
@@ -42,22 +42,22 @@ namespace Rocola
                         Color.FromArgb(27,44,77),Color.FromArgb(139,156,188),Color.FromArgb(222,230,246),
                         Color.FromArgb(170,192,226),Color.FromArgb(244,248,255)};
                     for(int i=0;i<10;i++)
-                    using(LinearGradientBrush face=new LinearGradientBrush(center,edge[i],
-                        facets[i],Color.FromArgb(255,Math.Min(255,facets[i].R+14),Math.Min(255,facets[i].G+14),Math.Min(255,facets[i].B+14))))
-                        g.FillPolygon(face,new PointF[]{center,edge[i],edge[(i+1)%10]});
+                    using(SKShader degradado=Degradado.Lineal(center,edge[i],   // EN LINUX: LinearGradientBrush(punto, punto, color, color): su shader (Nativo/Degradado.cs) en un SKPaint
+                        facets[i],Color.FromArgb(255,Math.Min(255,facets[i].R+14),Math.Min(255,facets[i].G+14),Math.Min(255,facets[i].B+14)))) using(SKPaint face=new SKPaint{Shader=degradado})
+                        Pixel.RellenaPoligono(g,new PointF[]{center,edge[i],edge[(i+1)%10]},face,suave);   // EN LINUX: g.FillPolygon
                 }
-                g.DrawPolygon(rim,edge);
-                using(Pen bevel=new Pen(Color.FromArgb(150,225,238,255),1.2f))
-                    for(int i=0;i<10;i+=2)g.DrawLine(bevel,center,edge[i]);
+                Pixel.TrazaPoligono(g,edge,rim,suave);   // EN LINUX: g.DrawPolygon(rim,edge)
+                using(SKPaint bevel=new SKPaint{Color=Color.FromArgb(150,225,238,255).Sk(),StrokeWidth=1.2f})   // EN LINUX: Pen(color, 1.2)
+                    for(int i=0;i<10;i+=2)Pixel.Linea(g,center.X,center.Y,edge[i].X,edge[i].Y,bevel,suave);   // EN LINUX: g.DrawLine(bevel,center,edge[i])
                 if(detailed){
-                    PaintStarGlint(g,29,96,15);
-                    PaintStarGlint(g,173,166,9);
+                    PaintStarGlint(g,suave,29,96,15);   // EN LINUX: con el suavizado del lienzo
+                    PaintStarGlint(g,suave,173,166,9);   // EN LINUX: con el suavizado del lienzo
                 }
             }
-            return b;
+            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
         }
-        private static void PaintStarGlint(Graphics g,float x,float y,float r)
-        { g.FillPolygon(Brushes.White,new PointF[]{new PointF(x,y-r),new PointF(x+2,y-2),new PointF(x+r,y),new PointF(x+2,y+2),new PointF(x,y+r),new PointF(x-2,y+2),new PointF(x-r,y),new PointF(x-2,y-2)}); }
+        private static void PaintStarGlint(SKCanvas g,bool suave,float x,float y,float r)   // EN LINUX: el lienzo de Skia y su suavizado
+        { using(SKPaint blanco=new SKPaint{Color=Color.White.Sk()}) Pixel.RellenaPoligono(g,new PointF[]{new PointF(x,y-r),new PointF(x+2,y-2),new PointF(x+r,y),new PointF(x+2,y+2),new PointF(x,y+r),new PointF(x-2,y+2),new PointF(x-r,y),new PointF(x-2,y-2)},blanco,suave); }   // EN LINUX: g.FillPolygon(Brushes.White, ...)
 
         public Func<StarMusic> GetStarMusic;
         private string starGenre;
