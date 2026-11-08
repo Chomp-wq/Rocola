@@ -70,5 +70,20 @@ namespace Rocola
             p.Dispose();
         }
     }
+
+    // ================================================================ FranjaLigeraGpu.cs
+    public partial class Form1
+    {
+        // ---- LA FIRMA DE XP DE EmpiezaRecuadro, PARA Form1.Video.cs (EnsureUiBotOverlay)
+        // La traducida deja el recorte del recuadro en el lienzo (en un Save, como SetClip). Para que el Graphics de quien llama lleve su cuenta
+        // como en XP (un SetClip que reemplaza, ResetClip y Restore lo quitan), el mismo recorte se le pone ANTES por el Graphics: el de la
+        // traducida cae dentro (el mismo rectangulo otra vez: no cambia que pixeles se pintan) y se va con el.
+        private static void EmpiezaRecuadro(Graphics g, Rectangle zona)
+        {
+            g.SetClip(zona);
+            EstadoLienzo e = PuenteDibujo.Estado(g);
+            EmpiezaRecuadro(PuenteDibujo.Lienzo(g), e.Suave, e.Medio, zona);
+        }
+    }
 }
 #endif
