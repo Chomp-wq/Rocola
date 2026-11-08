@@ -146,7 +146,7 @@ namespace Rocola
                 TeclaBusca(), TeclaAyuda());
         }
 
-        private bool GuiaDireccionHeld(Keys configurada, Keys flecha)
+        private bool GuiaDireccionHeld(Tecla configurada, Tecla flecha)   // EN LINUX: Keys -> Tecla, los mismos numeros
         { return KeyHeld(configurada) || (KeyHeld(flecha) && !IsConfiguredKey(flecha)); }
 
         private int FillGuiaRojoGlows(GpuPanel.UiGlow[] buf, int n)
@@ -159,14 +159,14 @@ namespace Rocola
                 if (i < 2)
                 {
                     r = GuiaRojoFlecha(letterBar.Bounds, i == 1);
-                    pulsa = GuiaDireccionHeld(i == 0 ? keyLeft : keyRight, i == 0 ? Keys.Left : Keys.Right);
+                    pulsa = GuiaDireccionHeld(i == 0 ? keyLeft : keyRight, i == 0 ? Tecla.Left : Tecla.Right);   // EN LINUX: Keys -> Tecla, los mismos numeros
                 }
                 else
                 {
                     // El brillo va sobre la tecla de la flecha de la casilla (la roja de dentro), no en el hueco de fuera.
                     r = i == 2 ? TeclaBusca() : TeclaAyuda();
                     if (r.Width <= 0) continue;
-                    pulsa = i == 2 ? GuiaDireccionHeld(keyUp, Keys.Up) : GuiaDireccionHeld(keyDown, Keys.Down);
+                    pulsa = i == 2 ? GuiaDireccionHeld(keyUp, Tecla.Up) : GuiaDireccionHeld(keyDown, Tecla.Down);   // EN LINUX: Keys -> Tecla, los mismos numeros
                 }
                 buf[n].Cx = r.Left + r.Width * .5f;
                 buf[n].Cy = r.Top + r.Height * .5f;

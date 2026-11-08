@@ -1900,10 +1900,10 @@ namespace Rocola
             }
         }
 
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        internal bool ProcessCmdKey(ref PulsoTecla msg, Tecla keyData)   // EN LINUX: (protected override, Message y Keys) no sobrescribe nada: le llegan las teclas de su ventana (Escritorio.TeclaDeMando)
         {
-            if (keyData == Keys.Escape || keyData == Keys.F12) { Close(); return true; }
-            return base.ProcessCmdKey(ref msg, keyData);
+            if (keyData == Tecla.Escape || keyData == Tecla.F12) { Close(); return true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+            return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895)
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

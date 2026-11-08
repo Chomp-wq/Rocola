@@ -71,9 +71,12 @@ namespace Rocola.Ventanas
                 else if (value == FormWindowState.Normal) Bounds = limitesNormales;
             }
         }
+        // el area de trabajo de la pantalla (Screen.PrimaryScreen.WorkingArea): en Rocola OS no hay barra de tareas, es la pantalla entera
+        // (port nativo, ventanas2 T: su medida es de la pantalla nativa, PantallaRocola.Ancho y Alto)
+        private static Rectangle AreaDeTrabajo { get { return new Rectangle(0, 0, PantallaRocola.Ancho, PantallaRocola.Alto); } }
         private Rectangle Maximizada()
         {
-            Rectangle wa = Screen.PrimaryScreen.WorkingArea; int m = Marco;
+            Rectangle wa = AreaDeTrabajo; int m = Marco;
             return new Rectangle(wa.X - m, wa.Y - m, wa.Width + 2 * m, wa.Height + 2 * m);
         }
         public FormStartPosition StartPosition { get; set; } = FormStartPosition.WindowsDefaultLocation;
@@ -101,13 +104,13 @@ namespace Rocola.Ventanas
             porDefecto = nuevo;
             if (nuevo != null) nuevo.NotifyDefault(true);
         }
-        protected override bool ProcessDialogKey(Keys keyData)
+        protected override bool ProcessDialogKey(Tecla keyData)
         {
-            if ((keyData & (Keys.Alt | Keys.Control)) == Keys.None)
+            if ((keyData & (Tecla.Alt | Tecla.Control)) == Tecla.None)
             {
-                Keys k = keyData & Keys.KeyCode;
-                if (k == Keys.Enter && porDefecto != null) { if (porDefecto is Control) porDefecto.PerformClick(); return true; }
-                if (k == Keys.Escape && CancelButton != null) { CancelButton.PerformClick(); return true; }
+                Tecla k = keyData & Tecla.KeyCode;
+                if (k == Tecla.Enter && porDefecto != null) { if (porDefecto is Control) porDefecto.PerformClick(); return true; }
+                if (k == Tecla.Escape && CancelButton != null) { CancelButton.PerformClick(); return true; }
             }
             return base.ProcessDialogKey(keyData);
         }
@@ -151,7 +154,7 @@ namespace Rocola.Ventanas
             if (clienteFijado) Size = TamanoPorCliente(clienteGuardado);
             if (!modal && StartPosition == FormStartPosition.CenterScreen && estado != FormWindowState.Maximized)
             {
-                Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+                Rectangle wa = AreaDeTrabajo;
                 Location = new Point(Math.Max(wa.X, wa.X + (wa.Width - Width) / 2), Math.Max(wa.Y, wa.Y + (wa.Height - Height) / 2));
             }
             CreateHandle();
@@ -346,7 +349,7 @@ namespace Rocola.Ventanas
         {
             Form d = DuenoVentana;
             if (d == null || d.IsDisposed) { CentraEnPantalla(); return; }
-            Rectangle wa = Screen.PrimaryScreen.WorkingArea, o = d.Bounds;
+            Rectangle wa = AreaDeTrabajo, o = d.Bounds;
             int x = (o.Left + o.Right - Width) / 2, y = (o.Top + o.Bottom - Height) / 2;
             if (x < wa.X) x = wa.X; else if (x + Width > wa.Right) x = wa.Right - Width;
             if (y < wa.Y) y = wa.Y; else if (y + Height > wa.Bottom) y = wa.Bottom - Height;
@@ -355,7 +358,7 @@ namespace Rocola.Ventanas
         // Form.CenterToScreen
         private void CentraEnPantalla()
         {
-            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            Rectangle wa = AreaDeTrabajo;
             Location = new Point(Math.Max(wa.X, wa.X + (wa.Width - Width) / 2), Math.Max(wa.Y, wa.Y + (wa.Height - Height) / 2));
         }
         protected virtual void OnShown(EventArgs e) { Shown?.Invoke(this, e); }
@@ -392,9 +395,6 @@ namespace Rocola.Ventanas
         public static string ExecutablePath { get { return Environment.ProcessPath ?? System.IO.Path.Combine(StartupPath, "rocola-xp"); } }
         public static string ProductName { get { return "Rocola"; } }
         public static string ProductVersion { get { return "1.0"; } }
-        public static void EnableVisualStyles() { }
-        public static void SetCompatibleTextRenderingDefault(bool defaultValue) { }
-        public static void SetUnhandledExceptionMode(UnhandledExceptionMode mode) { PruebasLinux.DespuesDelInicio(); }   // (pruebas de Linux que necesitan hilos: aqui ya acabo el inicializador del modulo)
         public static void DoEvents() { PantallaRocola.Bombea(); }   // (todo lo pendiente, sin Idle)
         public static void Exit() { PantallaRocola.Sal(); }
         public static void ExitThread() { Exit(); }
@@ -402,7 +402,7 @@ namespace Rocola.Ventanas
         // la cierra como el de Windows (Escritorio.FinDeSesion: WM_QUERYENDSESSION y WM_ENDSESSION, CloseReason.WindowsShutDown)
         public static void Run(Form mainForm)
         {
-            Escritorio.HiloUi = Thread.CurrentThread; ContextoVentana.Pon();
+            Escritorio.HiloUi = Thread.CurrentThread; PantallaRocola.PonContexto();
             PantallaRocola.Principal = mainForm;
             PantallaRocola.AlApagar = Escritorio.FinDeSesion;
             bool cerrada = false;
@@ -442,32 +442,14 @@ namespace Rocola.Ventanas
         public void Dispose() { }
     }
 
-    public class Screen
-    {
-        private Screen() { }
-        public static Screen PrimaryScreen { get { return new Screen(); } }
-        public static Screen[] AllScreens { get { return new Screen[] { PrimaryScreen }; } }
-        public static Screen FromControl(Control c) { return PrimaryScreen; }
-        public static Screen FromHandle(IntPtr h) { return PrimaryScreen; }
-        public static Screen FromPoint(Point p) { return PrimaryScreen; }
-        public Rectangle Bounds { get { return new Rectangle(Point.Empty, Escritorio.Pantalla); } }
-        public Rectangle WorkingArea { get { return Bounds; } }
-        public string DeviceName { get { return "pantalla"; } }
-        public bool Primary { get { return true; } }
-        public int BitsPerPixel { get { return 32; } }
-    }
-
-    // EL CURSOR: la rocola de XP lo esconde; aqui no hay flecha que esconder (el raton es cosa de Rocola OS, fase 11).
+    // LA FLECHA DE UN CONTROL (Control.Cursor: la mano de las piezas de Ctrl+F3). (Port nativo, ventanas2 T: la flecha misma -esconderla,
+    // ensenarla, moverla- y la medida de la pantalla ya son de la pantalla nativa, Nativo/PantallaRocola.Teclado.cs; esto se va con las
+    // piezas.)
     public sealed class Cursor : IDisposable
     {
         private readonly string nombre;
         internal Cursor(string n) { nombre = n; }
-        public static Point Position { get { return Escritorio.PosicionRaton; } set { Escritorio.PosicionRaton = value; } }   // (moverla no avisa a nadie, como en Windows)
-        public static Cursor Current { get; set; }
-        public static void Hide() { Escritorio.VisibilidadCursor--; }   // la cuenta de ShowCursor de Windows
-        public static void Show() { Escritorio.VisibilidadCursor++; }
         internal string Nombre { get { return nombre; } }
-        public static Rectangle Clip { get; set; }
         public void Dispose() { }
         public override string ToString() { return "[Cursor: " + nombre + "]"; }
     }
@@ -611,19 +593,5 @@ namespace Rocola.Ventanas
         public string SelectedPath { get; set; } = "";
         public bool ShowNewFolderButton { get; set; } = true;
         public Environment.SpecialFolder RootFolder { get; set; }
-    }
-
-    // Lo que se manda a la pantalla desde otros hilos con SynchronizationContext.Post llega al hilo de la pantalla.
-    public sealed class ContextoVentana : SynchronizationContext
-    {
-        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false, null, "contexto"); }
-        public override void Send(SendOrPostCallback d, object state)
-        {
-            if (Thread.CurrentThread == Escritorio.HiloUi) { d(state); return; }
-            Escritorio.Pendiente p = Escritorio.Encola(new Action(delegate { d(state); }), null, true);
-            p.AsyncWaitHandle.WaitOne(); if (p.Error != null) throw p.Error;
-        }
-        public override SynchronizationContext CreateCopy() { return this; }
-        internal static void Pon() { if (!(SynchronizationContext.Current is ContextoVentana)) SynchronizationContext.SetSynchronizationContext(new ContextoVentana()); }
     }
 }

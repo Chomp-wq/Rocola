@@ -1867,7 +1867,7 @@ namespace Rocola
             bool changed = false;
             try
             {
-                Cursor.Show();
+                PantallaRocola.EnsenaFlecha();   // EN LINUX: Cursor.Show(): ShowCursor(TRUE), la cuenta de la flecha (Cursor.cs:611-614)
                 using (Font fUi = new Font(FontFamily.GenericSansSerif, 10f))
                 using (Form dlg = new Form())
                 {
@@ -1967,7 +1967,7 @@ namespace Rocola
             catch { }
             // OJO CON EL ORDEN: el "changed" de arriba vuelve a cargar la musica, y eso puede volver a pedir
             // esta misma ventana. Se suelta la marca DESPUES, cuando ya no hay nada en curso.
-            finally { gestorAbierto = false; try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+            finally { gestorAbierto = false; try { PantallaRocola.EscondeFlecha(); } catch { } maintMode = wasMaint; ForceFocus(); }   // EN LINUX: Cursor.Hide(): ShowCursor(FALSE) (Cursor.cs:483-486)
         }
 
         // Busca automaticamente una carpeta llamada "musica" junto a los datos o hasta 3 niveles arriba

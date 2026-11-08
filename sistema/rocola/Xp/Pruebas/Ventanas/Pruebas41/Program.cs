@@ -9,6 +9,9 @@ using System.Threading;
 using Rocola.Ventanas;
 using Rocola.Dibujo2D;
 using Timer = Rocola.Ventanas.Timer;
+#if NATIVO
+using Keys = Rocola.Tecla;   // (port nativo, ventanas2 T: las teclas son Tecla, con los mismos numeros y los mismos nombres; pruebas41.sh lo pone solo)
+#endif
 
 static class P
 {

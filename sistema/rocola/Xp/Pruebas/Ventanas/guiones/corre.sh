@@ -4,7 +4,7 @@
 # pantalla, con una COPIA NUEVA de los datos de prueba (al cerrar a proposito la rocola borra su estado, como XP), las teclas de PULSA
 # (ROCOLA_PULSA) y las capturas de CAPTURAS ("S:nombre,..."). Deja en $SAL/NOMBRE: salida.txt, traza.txt (ROCOLA_TRAZA_VENTANAS),
 # las capturas, los estados pedidos con ESTADO="S:nombre,..." (ROCOLA_ESTADO_EN) y los archivos de datos que quedaron (rocola_estado.txt
-# solo si sobrevivio, rocola_config.txt, rocola_error.txt). Las variables de mas (VAR=valor) van al programa.
+# solo si sobrevivio, rocola_config.txt, rocola_error.txt, rocola_teclas.txt). Las variables de mas (VAR=valor) van al programa.
 #   W       la carpeta de trabajo (fuera del repositorio; por defecto /root/rocola-trabajo/port/ventanas)
 #   DATOS0  los datos de prueba de partida (por defecto $W/datos0: copia de los de sistema/rocola/Xp/bin/Release/net10.0)
 #   SAL     donde quedan las salidas (por defecto $W/salidas)
@@ -27,7 +27,7 @@ inicio=$(date +%s.%N)
     ROCOLA_CAPTURA_SALE=${SALE:-1} ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_ESTADO_EN="$e" "$@" \
     timeout -s ${SENAL:-TERM} -k 30 "$seg" "${cmd[@]}" > "$o/salida.txt" 2>&1; echo "salio con $?" >> "$o/salida.txt" )
 fin=$(date +%s.%N)
-for f in rocola_estado.txt rocola_config.txt rocola_error.txt; do [ -f "$d/$f" ] && cp "$d/$f" "$o/$f"; done
+for f in rocola_estado.txt rocola_config.txt rocola_error.txt rocola_teclas.txt; do [ -f "$d/$f" ] && cp "$d/$f" "$o/$f"; done
 echo "duro $(echo "$fin - $inicio" | bc) s" >> "$o/salida.txt"
 rm -rf "$d"
 tail -2 "$o/salida.txt"

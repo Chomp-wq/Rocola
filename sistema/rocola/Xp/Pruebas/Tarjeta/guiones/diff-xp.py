@@ -14,8 +14,12 @@ for n in [a for a in sys.argv[1:] if a != "-v"]:
     xp = xp.replace("D3D9.Release(", "Tarjeta.Suelta(")
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".cs", delete=False) as t:
         t.write(xp); tmp = t.name
-    d = subprocess.run(["diff", tmp, os.path.join(raiz, "sistema/rocola/Xp/Codigo", n)], capture_output=True, text=True).stdout
-    os.unlink(tmp)
+    # (los dos lados sin CR: un archivo de XP con CRLF se compara linea por linea con su traduccion, que conserva sus finales)
+    cod = open(os.path.join(raiz, "sistema/rocola/Xp/Codigo", n), encoding="utf-8").read().replace("\r\n", "\n")
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".cs", delete=False) as t:
+        t.write(cod); tmp2 = t.name
+    d = subprocess.run(["diff", tmp, tmp2], capture_output=True, text=True).stdout
+    os.unlink(tmp); os.unlink(tmp2)
     puestas = [l for l in d.splitlines() if l.startswith(">")]
     quitadas = [l for l in d.splitlines() if l.startswith("<")]
     sin = [l for l in puestas if not ("EN LINUX" in l or "Linux" in l or "(pruebas" in l)]

@@ -11,6 +11,13 @@
 #   sigterm    SIGTERM a los 10 s (el apagado del sistema: WindowsShutDown, rocola_estado.txt debe faltar)
 #   f3sigterm  SIGTERM con Ctrl+F3 abierto
 #   kill9      SIGKILL a los 10 s (el apagon: rocola_estado.txt debe quedar)
+# Y las de las teclas (ventanas2, paso T), que no estan en «todas» (pidalas por su nombre):
+#   asistente  la ayuda con ROJO + ABAJO (ROJO mantenido 1,5 s y ABAJO: lo ya atendido, GetKeyState, y el estado fisico, GetAsyncKeyState),
+#              ABAJO con la ayuda abierta (se lo queda la ayuda: la letra no cambia), ABAJO mantenido 0,8 s y ROJO (la cierra; su
+#              repeticion acaba dentro del regreso animado de 0,8 s) y ABAJO (ahora si cambia la letra)
+#   captura    F8 y el asistente de los botones (CaptureConfigKey): una tecla mantenida 1,2 s (su repeticion no cuenta), la misma otra vez
+#              (ya usada), las otras siete; despues la moneda nueva da creditos; rocola_teclas.txt byte a byte
+#   salirq     Ctrl+Alt+Q con la Q mantenida 1,2 s (su repeticion no cuenta: msg.Repetida) y dos Q mas: se cierra (UserClosing)
 G=$(dirname "$(readlink -f "$0")")
 prog="$1"; et="$2"; shift 2
 todas="arranque moneda video tab buscador cierreq altf4 sigterm f3sigterm kill9"
@@ -28,6 +35,9 @@ for e in $esc; do
     sigterm)   SALE=0 SENAL=TERM ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67" "" 10 ;;
     f3sigterm) SALE=0 SENAL=TERM ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67,8:17+114" "" 10 ;;
     kill9)     SALE=0 SENAL=KILL ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67" "" 10 ;;
+    asistente) ESTADO="9:abierta,10.6:abajo,13:cerrada,14.6:abajo2" "$G/corre.sh" "$prog" "$et-$e" "7:27~1500,7.6:40,9.5:40,11:40~800,11.6:27,13.5:40" "15.2:fin" 18 ROCOLA_CAPTURA_CAPAS=1 ;;
+    captura)   ESTADO="8:config,13.2:hecha,14.6:moneda" "$G/corre.sh" "$prog" "$et-$e" "7:119,8.5:68~1200,10:68,10.4:69,10.8:70,11.2:71,11.6:72,12:74,12.4:75,12.8:76,13.6:75" "15.2:fin" 18 ROCOLA_CAPTURA_CAPAS=1 ;;
+    salirq)    SALE=0 ESTADO="9:antes,10.9:mantenida" "$G/corre.sh" "$prog" "$et-$e" "7:67,9.5:17~2600,9.55:18~2500,9.65:81~1200,11.3:81,11.6:81" "" 25 ;;
     *) echo "escena desconocida: $e" ;;
   esac
 done
