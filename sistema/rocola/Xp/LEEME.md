@@ -267,6 +267,32 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   - las excepciones en Idle y en ProcessCmdKey: aquí se apuntan y la rocola sigue; en WinForms probablemente la cerrarían.
 
   No probado en el A4.
+- **GDI+ función por función (8-11-2026, `Plataforma/Dibujo2D.cs`):** se listaron con el compilador los 369 miembros de GDI+ que usa
+  `Codigo/` y se compararon con lo que hacen GDI+ y GDI en Windows (fuente de dotnet/winforms y pruebas de Wine, que fijan con números
+  lo que da Windows). Arreglado:
+  - el texto de GDI+: el recorte del último renglón («LO MAS SONAD»), LineLimit, el guion y MeasureString con el alto cortado a la caja;
+  - `StringFormat.GenericTypographic` y `GenericDefault` son compartidos, como en GDI+: XP cambia el tipográfico en `EstadoReposoGpu.cs`
+    y los que se crean después lo heredan, en XP y aquí;
+  - TextRenderer es GDI, no GDI+ (lo que usan las etiquetas de WinForms en Ctrl+F3, porque XP pide
+    `SetCompatibleTextRenderingDefault(false)`):
+    - letra de `ceil(96·pt/72)` px, el alto de VDMX y los anchos de hdmx;
+    - la negrita inventada de +1 px;
+    - márgenes de `ceil(alto/6)`;
+    - el DrawTextEx de user32 con «...», «&» y divisiones enteras;
+  - DrawImage con los centros de los píxeles en los enteros, fuera de la imagen transparente, y `SetWrapMode`;
+  - los pinceles toman su color en el centro del píxel; TextureBrush con Clamp transparente;
+  - los degradados por modo son ángulos escalables;
+  - los rellenos sin suavizar con coordenadas no enteras, y FillRegion sin suavizar;
+  - `Graphics.Transform` es relativo al control;
+  - LockBits es cuatro veces más rápido.
+
+  Probado con 72 pruebas pequeñas y con la rocola entera fuera de pantalla: sale igual salvo el texto de WinForms en Ctrl+F3, que ahora
+  es el de GDI (las seis páginas revisadas: nada se corta ni se encima). Queda:
+  - ClearType sale en gris (en XP es LCD por subpíxeles);
+  - lo que depende de las letras de XP o de Windows: los anchos ajustados de GDI+, su negrita inventada y sus filtros de alta calidad.
+- **Todo junto, otra vez (8-11-2026):** con las tres revisiones (GDI+, WinForms y Direct3D 9), el acento y el resto, el programa de JIT y
+  el de NativeAOT (8,1 MB, 0 avisos) pasan por el mismo camino sin excepciones: la moneda mantenida 1,5 s suma 4, pedir canción, Ctrl+F3
+  con sus seis páginas, y el video con su imagen en todos los cuadros. No probado en el A4.
 - **Lo siguiente:**
   - sin capturas (decisión del dueño del 8-11-2026): «idéntico» se asegura por el código. `Codigo/` frente a `Rocola/` (diff sin lo
     mecánico, 8-11-2026): 494 líneas en 35 archivos, todas de traducción (el puente de NAudio 3, winmm a ALSA, el mezclador a amixer,
