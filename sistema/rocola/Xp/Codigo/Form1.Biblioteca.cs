@@ -89,13 +89,13 @@ namespace Rocola
             bitacoraBiblioteca = Environment.TickCount; bitacoraFirmaMs = -1;   // (bitacora: MedidasBitacora.cs)
             try
             {
-                try { thread.Priority = System.Threading.ThreadPriority.BelowNormal; } catch { }
+                try { PrioridadHilo.Pon(thread, System.Threading.ThreadPriority.BelowNormal); } catch { }   // EN LINUX: (thread.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)
                 ScanLibraryCore(sender, e);
             }
             finally
             {
                 scanDirectoryMemo.Clear(); scanDirectoryMemo = null;
-                try { thread.Priority = previous; } catch { }
+                try { PrioridadHilo.Pon(thread, previous); } catch { }   // EN LINUX: (thread.Priority = previous) la prioridad y su nice
             }
         }
 
@@ -896,6 +896,7 @@ namespace Rocola
             {
             durScanTh = new System.Threading.Thread(delegate ()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("duraciones (escaneo)");
                 try
                 {
@@ -1523,6 +1524,7 @@ namespace Rocola
             {
             preparaRepasoTh = new System.Threading.Thread(delegate ()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("repaso de la biblioteca (preparacion)");
                 bool compartida = false;
                 try
@@ -1599,6 +1601,7 @@ namespace Rocola
             for (int carril = 0; carril < carriles; carril++)
             preScanTh[carril] = new System.Threading.Thread(delegate ()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("repaso de la biblioteca (carriles)");
                 try
                 {
@@ -1939,7 +1942,10 @@ namespace Rocola
         }
         // De donde sale la lista de la carpeta con CLR 2: el recorrido de Windows (null en otros sistemas y en CLR 4, que ya reutiliza los
         // metadatos de la enumeracion). Las pruebas lo cambian por una lista inventada para comprobar el mismo camino sin Windows.
-        private static FuenteListado fuenteListado = ListadoWin32.Disponible() ? new FuenteListado(ListadoWin32.Lee) : null;
+        // EN LINUX: (ListadoWin32.Disponible() ? ListadoWin32.Lee : null; ListadoWin32 es FindFirstFile y solo vale con CLR 2 en Windows) null:
+        // con .NET 10 (CLR 4 o mas) XP ya recorre con DirectoryInfo.GetFiles, que trae los datos de cada entrada en el mismo recorrido (en Linux,
+        // readdir); el recorrido de Windows no se usaria tampoco en Windows con este .NET
+        private static FuenteListado fuenteListado = null;
         // Lo mismo que el camino de siempre, partiendo de la lista ya leida: mismos archivos en el mismo orden (por nombre, sin mayusculas),
         // mismas tres cosas apuntadas de cada uno, la misma memoria del recorrido (archivos y carpetas en el orden del sistema) y las mismas
         // carpetas por visitar (de la ultima a la primera, sin atajos ni carpetas del sistema).
@@ -2324,7 +2330,7 @@ namespace Rocola
                 int desde = k * trozo;
                 int hasta = Math.Min(n, desde + trozo);
                 int yo = k - 1;
-                th[k - 1] = new System.Threading.Thread(delegate () { try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });
+                th[k - 1] = new System.Threading.Thread(delegate () { PrioridadHilo.AlArrancar(); try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });   // EN LINUX: AlArrancar: la prioridad que XP le pone antes de Start (Nativo/PrioridadHilo.cs)
                 th[k - 1].IsBackground = true;
                 th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
                 th[k - 1].Start();
@@ -2545,7 +2551,7 @@ namespace Rocola
                 if (coverPumpCount < coverCarriles)
                 {
                     coverPumpCount++;
-                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
                     t.Priority = System.Threading.ThreadPriority.BelowNormal;   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)
                     t.Start();
@@ -2574,7 +2580,7 @@ namespace Rocola
                 if (coverPumpCount < coverCarriles)   // SSD: un carril por nucleo (hasta 4); HDD: carril unico (cabezal)
                 {
                     coverPumpCount++;
-                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
                     t.Priority = System.Threading.ThreadPriority.BelowNormal;   // idem: la caratula puede esperar; un cuadro perdido se NOTA
                     t.Start();

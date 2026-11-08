@@ -42,23 +42,14 @@ namespace Rocola
             ulong libre = MemoriaLibre();
             return libre == 0 || (ulong)largo * 8UL <= libre;
         }
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct EstadoMemoria { public uint Largo, Carga; public ulong Fisica, FisicaLibre, Paginacion, PaginacionLibre, Virtual, VirtualLibre, Extendida; }
-        // EN LINUX: la memoria de /proc/meminfo (Plataforma/LlamadasWindows.cs)
-        private static bool PideEstadoMemoria(ref EstadoMemoria e)
-        {
-            ulong t, d; uint u;
-            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
-            e.Fisica = t; e.FisicaLibre = d; e.Carga = u;
-            return true;
-        }
+        // EN LINUX: aqui XP declara EstadoMemoria (la MEMORYSTATUSEX de Windows) y PideEstadoMemoria (GlobalMemoryStatusEx de kernel32). La
+        // memoria del equipo la da Linux (Nativo/Equipo.cs, de /proc/meminfo).
         private static ulong MemoriaLibre()
         {
             try
             {
-                EstadoMemoria e = new EstadoMemoria();
-                e.Largo = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(EstadoMemoria));
-                if (PideEstadoMemoria(ref e)) return e.FisicaLibre;
+                ulong fisica, fisicaLibre; uint carga;   // EN LINUX: (EstadoMemoria y su Largo) lo que se pregunta
+                if (Equipo.Memoria(out fisica, out fisicaLibre, out carga)) return fisicaLibre;   // EN LINUX: (PideEstadoMemoria: GlobalMemoryStatusEx) /proc/meminfo
             }
             catch { }
             return 0;   // no se sabe (otro sistema): no se pone pega

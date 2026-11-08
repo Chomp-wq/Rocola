@@ -153,6 +153,68 @@ la WAVEHDR (`Aot.cs`).
   pudo abrir» y sin darlos por dañados; AIFF abre.
 - Con `ROCOLA_SIN_MPG123=1`, esta rama toca las tres canciones (847 070 muestras, como con libmpg123) y la referencia ninguna.
 
+## W3. Lo demás de Windows (las llamadas sueltas)
+
+**Antes.** En cada archivo de XP la traducción dejaba la llamada de Windows con su nombre y su estructura, y debajo una función falsa
+que contestaba con Linux: `GlobalMemoryStatusEx(ref MemStatusEx)` llenaba la MEMORYSTATUSEX con `/proc/meminfo`, `FlushFileBuffers(IntPtr)`
+hacía fsync del descriptor, `timeBeginPeriod`/`timeEndPeriod` devolvían 0, `EnumDisplayDevices(..., ref DispositivoPantalla, ...)` llenaba
+la DISPLAY_DEVICE; lo de debajo estaba en `Plataforma/LlamadasWindows.cs` (`Memoria`, `Direcciones`, `AlDisco`, `Adaptador`, `TarjetaDrm`,
+`PrioridadDelProceso`). Lo demás quedaba como en XP y en Linux fallaba o no hacía nada: el registro (`Microsoft.Win32.Registry` en Form1 y
+DiagnosticoCompleto: en Linux lanza PlatformNotSupportedException y los MHz salían 0; advapi32 en Form1.Ajustes: DllNotFoundException),
+`Thread.Priority` (en .NET de Linux se guarda y no hace nada: todos los hilos iban en la del programa), las declaraciones de kernel32 del
+diagnóstico (nunca se llamaban: XP ya toma su camino de Unix) y `ListadoWin32` (FindFirstFileW, solo con CLR 2 en Windows).
+
+**Ahora.** El código de XP llama directo a Linux, con dos piezas propias en `Nativo/` (`Equipo.cs` y `PrioridadHilo.cs`); en el sitio de
+cada declaración de Windows queda un comentario `EN LINUX` que dice qué era.
+
+| XP (Windows) | Ahora (Linux) | Dónde |
+|---|---|---|
+| `GlobalMemoryStatusEx`: ullTotalPhys, ullAvailPhys, dwMemoryLoad | `Equipo.Memoria`: MemTotal y MemAvailable de `/proc/meminfo`, el uso en % | Form1 (tope de portadas, casillas horneadas, nivel del audio), CancionEnMemoria, MedidasBitacora, DiagnosticoCompleto |
+| ullTotalVirtual, ullAvailVirtual (los 2 GB de un programa de 32 bits) | `Equipo.Direcciones`: 128 TB menos VmSize de `/proc/self/status` | MedidasBitacora (`direcciones_libres`) |
+| `FlushFileBuffers` | `FileStream.Flush(true)` (fsync); `RespaldoEnDisco`: false si fsync falla (IOException), como XP con la llamada que falla | Form1.Datos, DiarioTablas, Form1.Ia (11 llamadas) |
+| registro: `ProcessorNameString` y `~MHz` | `Equipo.Procesador` («model name» de `/proc/cpuinfo`, el mismo texto de CPUID) y `Equipo.ProcesadorMhz` (cpufreq `cpuinfo_max_freq`; sin cpufreq, «cpu MHz») | Form1 (`ProbeAudioTier`), DiagnosticoCompleto |
+| registro: `MMDevices\Audio\Render` (advapi32, la clave de Vista) | nada: lista vacía, la misma que da XP en el A4 (esa clave no existe en Windows XP) | Form1.Ajustes |
+| `EnumDisplayDevices` (el principal, su DeviceString) | `Equipo.Adaptador`: GL_RENDERER y el controlador y el número PCI de `/sys/class/drm` | DiagnosticoCompleto |
+| `GetSystemTimes`, `OpenThread`, `GetThreadTimes`, `CloseHandle`, `GetCurrentThreadId` | `/proc/stat`, `/proc/self/task/N/stat` y gettid: el camino de Unix que XP ya tenía (`EsUnix` siempre) | DiagnosticoCompleto |
+| `FindFirstFileW`/`FindNextFileW`/`FindClose` (`ListadoWin32`) | nada: con .NET 10 XP recorre con `DirectoryInfo.GetFiles`, que trae los datos de cada entrada en el mismo recorrido (readdir); `fuenteListado` = null. Tampoco en Windows se usaría con este .NET | RecorridoRapido, Form1.Biblioteca |
+| `Environment.OSVersion` en el texto del diagnóstico | `Equipo.SistemaOperativo`: «Linux» y el núcleo (`/proc/sys/kernel/osrelease`), y el nombre del sistema (`PRETTY_NAME` de `/etc/os-release`) | Form1.DiagnosticoCompleto |
+| `Environment.OSVersion` en una decisión | lo que decidía en el A4 (Windows XP, 5.1): coma flotante a la tarjeta no (W2), videos sin medir (ya estaba), `EsUnix` sí | SalidaSonido, Form1.Video, DiagnosticoCompleto |
+| `timeBeginPeriod(1)` / `timeEndPeriod(1)` | nada: Linux ya despierta al milisegundo (`Sleep(1)` = 1,2 ms medido) | Form1 |
+| `SetPriorityClass` (`Process.PriorityClass = AboveNormal`) | `PrioridadHilo.DelProceso` | Program |
+| `SetThreadPriority` (`Thread.Priority`, 20 sitios en 9 archivos) | `PrioridadHilo.Con`/`AlArrancar` (al arrancar el hilo) y `Pon` (el hilo que llama): setpriority del hilo (gettid) | AperturaAudio, BombaSonido, CaratulasAdaptativas, Form1, Form1.Biblioteca, Form1.Datos, Form1.Portadas, SalidaPropia, SinPausa |
+
+La correspondencia de las prioridades (`Nativo/PrioridadHilo.cs`, a la vista). La clase del programa, como la traduce .NET (tiempo real
+-19, alta -11, por encima de lo normal -6, normal 0, por debajo de lo normal 10, inactiva 19); en Windows es de todo el proceso, así que
+todos los hilos de `/proc/self/task` se mueven lo mismo que el principal (los de .NET y Mesa que ya existían). El nivel de cada hilo, sobre la
+del programa: la más alta -10, por encima -5, normal 0, por debajo +5, la mínima +10. Con la rocola (por encima de lo normal): la salida de
+sonido -16, la música -11, la pantalla -6, las portadas y lo que va por debajo -1, el repaso y lo mínimo +4. El planificador de Windows
+atiende siempre primero la prioridad más alta; el de Linux (CFS) reparte por pesos, 1,25 veces por punto: 5 puntos son unas 3 veces el
+procesador por nivel, que acerca ese «primero el de arriba» sin dejar sin nada al de abajo. Lo que no puede ser igual: en Linux un hilo
+nuevo hereda el nice del que lo crea (en Windows nace en la normal). Por eso todos los hilos que crea el código de XP se ponen la suya al
+arrancar (la que XP les puso antes de `Start` o, si no les puso ninguna -FlotanteNLayer, MedidasBitacora-, la normal); los del grupo de
+hilos de .NET y los de las bibliotecas heredan la del que los pide.
+
+Se fueron: las estructuras y declaraciones de Windows de Form1, CancionEnMemoria, MedidasBitacora y DiagnosticoCompleto
+(MEMORYSTATUSEX, DISPLAY_DEVICE, WIN32_FIND_DATA, `RegistroAudio`, `ListadoWin32`, las de kernel32 del diagnóstico), las funciones falsas
+(`GlobalMemoryStatusEx`, `FlushFileBuffers`, `timeBeginPeriod`...), de `LlamadasWindows.cs` todo menos lo de las otras pistas (teclas,
+foco, refresco de la pantalla), y los ocho avisos IL3050 de `Marshal.SizeOf(typeof(...))` de `Aot.cs`.
+
+**Cómo se comprobó (8-11-2026, JIT).**
+
+- `rocola-xp --prueba-aot`, antes y después: lo mismo salvo lo que debía cambiar. `diag.cpu` dice ahora los MHz, como XP en el A4
+  («Intel(R) Xeon(R) Processor @ 2.30GHz (2300 MHz), 4 nucleo(s)/hilo(s)» en la máquina de pruebas; la referencia, sin los MHz, porque su
+  registro fallaba); `win.sistema` = «Linux 6.18.44-fc-v310 (Ubuntu 24.04.5 LTS)» aquí; la memoria, las direcciones, el adaptador
+  (`llvmpipe (LLVM 20.1.2, 256 bits)`) y la tarjeta de `/sys/class/drm` de prueba (`radeon|1002:990C|HDMI-A-1`), iguales; `win.prioridad`:
+  todos los hilos que había (15 en esa corrida) pasan de 0 a -6; `win.prioridad_hilo`: Highest -16, AboveNormal -11, Normal -6,
+  BelowNormal -1, Lowest +4 y de vuelta -6.
+- La rocola entera, el nice de cada hilo a los 13 s de la escena de las tres canciones (`/proc/PID/task/*/stat`): «audio (salida)» -16,
+  «Rocola: la música» -11, la pantalla, el vigía de la pantalla, los de .NET (también los 4 del grupo de hilos) y los de Mesa -6, un hilo
+  de lo mínimo +4 y el de la caché de sombreadores de Mesa +13 (Mesa lo pone en 19). En la referencia, todos los de la rocola en -6.
+- El sonido con las tablas medidas (`sonido.sh`, 5 corridas): las 5 iguales byte a byte a la corrida 1 de la referencia (huella
+  `708cb13b725e`, 1 694 140 bytes), la misma variante que antes de W3.
+- La escena del video (`video.sh`, otra vez con la referencia): `video.wav` igual byte a byte, los 12 `rocola_*.txt` iguales, y las capas
+  en el mismo orden (12 s la pared, 8 s el video en ventana, 19-20 s a pantalla completa, la pared; el segundo de la transición cae o no).
+
 ## Las herramientas (`Pruebas/Windows/`, fuera del programa)
 
 Todas cargan `comun.sh`: `W` es la carpeta de trabajo fuera del repositorio (por omisión `/root/rocola-trabajo/port/windows`), `ROCOLA`

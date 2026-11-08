@@ -4,10 +4,8 @@
 // programa de JIT y con el de NativeAOT (rocola-xp --prueba-aot, PruebaAot.cs, y la rocola entera fuera de pantalla) y se apaga aqui solo
 // cuando los dos hacen lo mismo, diciendo por que. Codigo/ queda como XP.
 //
-//  IL3050 Marshal.SizeOf(typeof(...)) (CancionEnMemoria, DiagnosticoCompleto, Form1, MedidasBitacora, RecorridoRapido): lo avisa el
-//    analizador al compilar; el compilador de NativeAOT no, porque con el tipo escrito (typeof) genera los datos de la estructura.
-//    Comprobado: mismos tamanos (64, 424 y 592) y la misma memoria en las dos. (La WAVEHDR de SalidaPropia se fue con el port nativo del
-//    sonido: la salida llama a ALSA directo, Nativo/SalidaAlsa.cs.)
+//  (IL3050 Marshal.SizeOf(typeof(...)): las estructuras de Windows que XP media asi -MEMORYSTATUSEX, DISPLAY_DEVICE, WIN32_FIND_DATA y la
+//    WAVEHDR- se fueron con el port nativo: la memoria, el adaptador y el sonido los da Linux directo, Nativo/Equipo.cs y SalidaAlsa.cs.)
 //  IL2075 FormatoAudio.Mascara (AudioControles): busca una propiedad «Mascara» en el formato; ningun formato de NAudio ni de la rocola la
 //    tiene, asi que en las dos da null y sigue con la mascara de siempre (el campo dwChannelMask de NAudio lo busca con typeof y su nombre,
 //    y eso el compilador lo conserva: la mascara 5.1 sale igual).
@@ -23,14 +21,6 @@
 //    mismo sonido (el lector de siempre es el de 1.9), con mas basura para el recolector. Para encenderlo hay que tocar Mp3Ligero.cs.
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.Form1.MemoriaLibre", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.Form1.CacheCeldasMb", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.Form1.ProbeAudioTier", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.Form1.TopeDePortadas", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.Form1.ContextoDeParada", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.DiagEquipo.Memoria(System.Int64@,System.Int64@)", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.DiagEquipo.Tarjeta", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "M:Rocola.ListadoWin32.TamanoEstructura", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.FormatoAudio.Mascara(NAudio.Wave.WaveFormat)", Justification = "Ningun formato tiene la propiedad Mascara: null con JIT y con NativeAOT (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2026", Scope = "member", Target = "M:Rocola.NLayerIncluido.Resuelve(System.Object,System.ResolveEventArgs)", Justification = "NLayer va compilada dentro: el evento no llega nunca (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2070", Scope = "member", Target = "M:Rocola.LectorMp3Ligero.Campo(System.Type,System.String,System.Type)", Justification = "Piezas de NAudio 1.9: no estan con NAudio 3 ni con JIT ni con NativeAOT (Aot.cs)")]

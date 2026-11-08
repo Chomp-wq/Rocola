@@ -61,122 +61,17 @@ namespace Rocola
         private static List<SalidaWin> LeeSalidasWindows()
         {
             List<SalidaWin> r = new List<SalidaWin>();
-            try
-            {
-                using (RegistroAudio raiz = RegistroAudio.AbreSalidas())
-                {
-                    if (raiz == null) return r;
-                    foreach (string id in raiz.GetSubKeyNames())
-                    {
-                        try
-                        {
-                            using (RegistroAudio ep = raiz.OpenSubKey(id))
-                            {
-                                if (ep == null) continue;
-                                object est = ep.GetValue("DeviceState");
-                                if (est is int && (int)est != 1) continue;   // 1 = activa (las desconectadas no cuentan)
-                                using (RegistroAudio pr = ep.OpenSubKey("Properties"))
-                                {
-                                    if (pr == null) continue;
-                                    SalidaWin s2 = new SalidaWin();
-                                    s2.Nombre = (pr.GetValue(PkNombre) as string) ?? (pr.GetValue(PkDesc) as string) ?? "salida de sonido";
-                                    byte[] fmt = pr.GetValue(PkFormato) as byte[];
-                                    LeeFormatoSalida(fmt, out s2.Canales, out s2.Hz, out s2.Bits);
-                                    object bo = pr.GetValue(PkBocinas); if (bo is int) s2.Bocinas = (int)bo;
-                                    object rc = pr.GetValue(PkRango);   if (rc is int) s2.RangoCompleto = (int)rc;
-                                    object fx = pr.GetValue(PkSinFx);
-                                    s2.Efectos = (fx is int) ? (((int)fx != 0) ? 0 : 1) : -1;   // el valor dice "deshabilitar", asi que va al reves
-                                    r.Add(s2);
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-                }
-            }
-            catch { }
+            // EN LINUX: aqui XP lee del registro de Windows (RegistroAudio: RegOpenKeyEx y compania de advapi32) la clave
+            // MMDevices\Audio\Render de cada salida activa: su nombre, con que mezcla Windows, las bocinas y si tiene «mejoras». Esa clave es de
+            // Windows Vista: en el A4, con Windows XP, no existe y la lista sale vacia (lo que dice la ventana: en XP eso solo esta en el panel de
+            // la tarjeta). En Linux no hay registro, ni un mezclador del sistema entre la rocola y la tarjeta: la lista sale vacia, igual que en
+            // el bar.
             return r;
         }
 
 
-        // Lector limitado a diagnostico de audio. La vista de 64 bits evita que
-        // un proceso x86 mire la rama redirigida vacia. Sin APIs de .NET 4 (XP).
-        private sealed class RegistroAudio : IDisposable
-        {
-            private IntPtr handle;
-            private int vista;
-            [System.Runtime.InteropServices.DllImport("advapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-            private static extern int RegOpenKeyEx(IntPtr key, string name, int options, int access, out IntPtr result);
-            [System.Runtime.InteropServices.DllImport("advapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-            private static extern int RegEnumKeyEx(IntPtr key, uint index, StringBuilder name, ref uint length,
-                IntPtr reserved, IntPtr className, IntPtr classLength, IntPtr time);
-            [System.Runtime.InteropServices.DllImport("advapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-            private static extern int RegQueryValueEx(IntPtr key, string name, IntPtr reserved, out uint type,
-                [System.Runtime.InteropServices.Out] byte[] data, ref uint length);
-            [System.Runtime.InteropServices.DllImport("advapi32.dll")]
-            private static extern int RegCloseKey(IntPtr key);
-
-            private static RegistroAudio Abre(IntPtr parent, string name, int view)
-            {
-                RegistroAudio result = new RegistroAudio();
-                if (RegOpenKeyEx(parent, name, 0, 0x20019 | view, out result.handle) != 0) return null;
-                result.vista = view;
-                return result;
-            }
-            internal static RegistroAudio AbreSalidas()
-            {
-                IntPtr machine = new IntPtr(unchecked((int)0x80000002));
-                return Abre(machine, MMDev, 0x100) ?? Abre(machine, MMDev, 0);
-            }
-            internal RegistroAudio OpenSubKey(string name)
-            {
-                return handle == IntPtr.Zero ? null : Abre(handle, name, vista);
-            }
-            internal string[] GetSubKeyNames()
-            {
-                List<string> names = new List<string>();
-                if (handle == IntPtr.Zero) return names.ToArray();
-                StringBuilder name = new StringBuilder(256);
-                for (uint i = 0; i < 4096; i++)
-                {
-                    name.Length = 0; uint length = 256;
-                    int error = RegEnumKeyEx(handle, i, name, ref length, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-                    if (error != 0) break;
-                    names.Add(name.ToString());
-                }
-                return names.ToArray();
-            }
-            internal object GetValue(string name)
-            {
-                if (handle == IntPtr.Zero) return null;
-                // Una propiedad que cambia entre consultas no se interpreta parcialmente.
-                for (int attempt = 0; attempt < 2; attempt++)
-                {
-                    uint length = 0, type;
-                    if (RegQueryValueEx(handle, name, IntPtr.Zero, out type, null, ref length) != 0
-                        || length > 65536) return null;
-                    byte[] data = new byte[(int)length];
-                    int error = RegQueryValueEx(handle, name, IntPtr.Zero, out type, data, ref length);
-                    if (error == 234) continue; // ERROR_MORE_DATA
-                    if (error != 0 || length > data.Length) return null;
-                    if (type == 4 && length == 4) return BitConverter.ToInt32(data, 0);
-                    if (type == 3)
-                    {
-                        if (length != data.Length) Array.Resize(ref data, (int)length);
-                        return data;
-                    }
-                    if ((type == 1 || type == 2) && (length & 1) == 0)
-                        return Encoding.Unicode.GetString(data, 0, (int)length).TrimEnd('\0');
-                    return null;
-                }
-                return null;
-            }
-            public void Dispose()
-            {
-                if (handle == IntPtr.Zero) return;
-                IntPtr old = handle; handle = IntPtr.Zero; RegCloseKey(old);
-            }
-        }
+        // EN LINUX: aqui XP tiene RegistroAudio, el lector del registro de Windows (RegOpenKeyEx, RegEnumKeyEx, RegQueryValueEx y RegCloseKey
+        // de advapi32, con la vista de 64 bits) que usa LeeSalidasWindows. En Linux no hay registro (ver arriba).
 
         // El registro puede envolver WAVEFORMATEX en una propiedad binaria (8 bytes).
         // Leer ese prefijo como audio daba 1 Hz y la pantalla acababa mostrando "0 kHz".

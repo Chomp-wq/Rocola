@@ -200,6 +200,7 @@ namespace Rocola
             StartupLoad load = new StartupLoad(); load.Paths = (string[])paths.Clone();
             System.Threading.Thread worker = new System.Threading.Thread(delegate()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 StartupData data = null;
                 try { data = ReadStartupData(load); } catch { }   // fallback de lectura en el hilo original
                 finally
@@ -909,15 +910,18 @@ namespace Rocola
         // entonces se pone en el sitio del bueno de un tiron. Pase lo que pase, en el disco queda siempre un
         // archivo COMPLETO: el nuevo si dio tiempo, y el de antes si no. Y el de antes se conserva como
         // copia (.bak) por si el bueno se estropeara por cualquier otro motivo.
-        // EN LINUX: fsync del archivo (Plataforma/LlamadasWindows.cs): que de verdad llegue al disco
-        private static bool FlushFileBuffers(IntPtr hFile) { return LlamadasWindows.AlDisco(hFile); }
+        // EN LINUX: aqui XP declara FlushFileBuffers de kernel32 (que baja al disco lo que Windows tiene en memoria). En Linux es fsync, y .NET
+        // lo hace con FileStream.Flush(true): cada sitio lo llama directo.
         // El respaldo exige que Windows confirme que esta en el disco. Si la llamada no existe en el sistema (no es Windows: las pruebas en
         // Linux) basta el Flush que ya se hizo; en Windows, si falla, sigue siendo un error (28-10-2026).
         private static bool RespaldoEnDisco(FileStream fs)
         {
-            try { return FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); }
-            catch (EntryPointNotFoundException) { return true; }
-            catch (DllNotFoundException) { return true; }
+            // EN LINUX: (return FlushFileBuffers(handle), que dice si Windows lo confirmo) Flush(true) hace fsync y, si falla, lanza
+            // IOException: eso es «no confirmado» (false). La llamada siempre existe en Linux (lo de EntryPointNotFound y DllNotFound, que XP
+            // atiende para las pruebas fuera de Windows, no llega); un sistema de archivos que no sabe hacer fsync no es un fallo (.NET lo deja
+            // pasar), como XP con la llamada que no esta.
+            try { fs.Flush(true); return true; }
+            catch (IOException) { return false; }
         }
 
         // UN CANDADO POR ARCHIVO. Dos hilos guardando EL MISMO archivo a la vez se pisarian el archivo de
@@ -990,7 +994,7 @@ namespace Rocola
                 // Flush solo deja lo escrito en la memoria de Windows. Esto lo baja al disco de verdad, que
                 // es lo unico que sobrevive a un corte de luz. Si el sistema no tiene esta llamada (o no es
                 // Windows), se sigue adelante: se pierde la garantia dura, no el resto.
-                try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
             }
             PublicaGuardadoSeguro(ruta, tmp, bak);
         }
@@ -1057,7 +1061,7 @@ namespace Rocola
                         {
                             if (!escribe(writer) || (vigente != null && !vigente())) return false;
                             writer.Flush(); fs.Flush();
-                            try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                            try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                         }
                     }
                     if (vigente != null && !vigente()) return false;
@@ -1136,7 +1140,7 @@ namespace Rocola
                             output.Write(buffer, 0, n); faltan -= n;
                         }
                         output.Write(datos, 0, datos.Length); output.Flush();
-                        try { FlushFileBuffers(output.SafeFileHandle.DangerousGetHandle()); } catch { }
+                        try { output.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                     }
                     PublicaGuardadoSeguro(ruta, tmp, ruta + ".bak");
                     return;
@@ -1147,7 +1151,7 @@ namespace Rocola
                     fs.Position = fs.Length;
                     fs.Write(datos, 0, datos.Length);
                     fs.Flush();
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                 }
             }
         }
@@ -2501,13 +2505,13 @@ namespace Rocola
                 System.Threading.ThreadPriority anterior = th.Priority;
                 try
                 {
-                    th.Priority = System.Threading.ThreadPriority.Lowest;
+                    PrioridadHilo.Pon(th, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (th.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)
                     string stamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmssfff", CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
                     BackupDestinoCapturado(baseDir, stamp, captura);
                     if (!string.IsNullOrEmpty(second)) BackupDestinoCapturado(Path.Combine(second, "respaldo_rocola"), stamp, captura);
                 }
                 catch { }
-                finally { captura.Dispose(); try { th.Priority = anterior; } catch { } }
+                finally { captura.Dispose(); try { PrioridadHilo.Pon(th, anterior); } catch { } }   // EN LINUX: (th.Priority = anterior) la prioridad y su nice
             });
         }
         private void BackupDestinoCapturado(string root, string stamp, RespaldoCapturado captura)

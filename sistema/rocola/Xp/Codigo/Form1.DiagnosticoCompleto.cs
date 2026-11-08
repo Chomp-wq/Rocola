@@ -398,7 +398,7 @@ namespace Rocola
             string nl = "\r\n";
             StringBuilder sb = new StringBuilder();
             long total, libre;
-            sb.Append("Sistema operativo: ").Append(Environment.OSVersion.ToString()).Append(" (.NET ").Append(Environment.Version).Append(IntPtr.Size == 8 ? ", 64 bits" : ", 32 bits").Append(")").Append(nl);
+            sb.Append("Sistema operativo: ").Append(Equipo.SistemaOperativo()).Append(" (.NET ").Append(Environment.Version).Append(IntPtr.Size == 8 ? ", 64 bits" : ", 32 bits").Append(")").Append(nl);   // EN LINUX: (Environment.OSVersion: «Microsoft Windows NT 5.1.2600 Service Pack 3») el nucleo y el sistema (Nativo/Equipo.cs)
             sb.Append("Procesador: ").Append(DiagEquipo.Cpu()).Append(nl);
             sb.Append("Memoria: ").Append(DiagEquipo.Memoria(out total, out libre)).Append(nl);
             sb.Append("Tarjeta grafica: ").Append(DiagEquipo.Tarjeta()).Append("; Direct3D 9").Append(gpuEnabled ? ", dispositivo creado" : "").Append(nl);

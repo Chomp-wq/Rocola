@@ -157,7 +157,7 @@ namespace Rocola
 
         private void Arranca()
         {
-            Thread h = new Thread(Bombea);
+            Thread h = new Thread(PrioridadHilo.Con(Bombea));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
             h.IsBackground = true;
             h.Name = "Rocola: la musica";
             try { h.Priority = ThreadPriority.AboveNormal; } catch { }   // por delante de la pantalla: la musica no se puede cortar

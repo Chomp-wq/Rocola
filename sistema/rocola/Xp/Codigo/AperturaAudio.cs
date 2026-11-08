@@ -44,7 +44,7 @@ namespace Rocola
             {
                 try
                 {
-                    Thread worker = new Thread(Run);
+                    Thread worker = new Thread(PrioridadHilo.Con(Run));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     worker.IsBackground = true;
                     worker.Priority = ThreadPriority.BelowNormal;
                     // Linux: no hay COM ni apartamentos (en XP, STA para abrir el audio); SetApartmentState lanzaria PlatformNotSupportedException

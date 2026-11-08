@@ -14,6 +14,7 @@ namespace Rocola
     //     EN QUE VIENEN (el mismo que da Directory.GetFiles/GetDirectories, que tambien recorren con FindNextFile), y sale con null ante
     //     cualquier cosa que no sea el caso limpio. Con null la firma hace EXACTAMENTE lo de siempre para esa carpeta, errores incluidos.
     //   - ListadoWin32.Lee: las llamadas de Windows (solo con CLR 2 en Windows). Esta parte NO se ha podido ejecutar fuera de Windows.
+//     EN LINUX: no esta (ver abajo).
     internal struct EntradaListado
     {
         public string Nombre;          // solo el nombre, como lo da el sistema
@@ -92,62 +93,7 @@ namespace Rocola
             return l;
         }
     }
-    // Las llamadas de Windows. Solo se usa con CLR 2 en Windows (ver Form1.fuenteListado); en Mono/Linux no se llama nunca.
-    internal static class ListadoWin32
-    {
-        [StructLayout(LayoutKind.Sequential)]
-        private struct Filetime { public uint Bajo; public uint Alto; }
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        private struct FindData
-        {
-            public uint dwFileAttributes;
-            public Filetime ftCreationTime, ftLastAccessTime, ftLastWriteTime;
-            public uint nFileSizeHigh, nFileSizeLow, dwReserved0, dwReserved1;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string cFileName;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)] public string cAlternateFileName;
-        }
-        [DllImport("kernel32.dll", EntryPoint = "FindFirstFileW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
-        private static extern IntPtr FindFirstFile(string patron, out FindData datos);
-        [DllImport("kernel32.dll", EntryPoint = "FindNextFileW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
-        private static extern bool FindNextFile(IntPtr buscador, out FindData datos);
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool FindClose(IntPtr buscador);
-        private const int ErrorNoHayMas = 18;   // ERROR_NO_MORE_FILES
-
-        // Lo que mide la estructura para Windows (tiene que ser 592 bytes): la bateria firmarapida lo comprueba en cualquier sistema.
-        internal static int TamanoEstructura() { return Marshal.SizeOf(typeof(FindData)); }
-
-        internal static bool Disponible()
-        { return Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.Version.Major < 4; }
-
-        internal static ListadoCarpeta Lee(string carpeta)
-        {
-            if (!ListadoCarpeta.RutaNormal(carpeta)) return null;   // solo rutas de unidad o de red, normales
-            try { return ListadoCarpeta.Construye(carpeta, Entradas(carpeta)); }
-            catch { return null; }   // cualquier fallo: lo de siempre, que lanza el error de siempre
-        }
-        private static IEnumerable<EntradaListado> Entradas(string carpeta)
-        {
-            FindData d;
-            IntPtr h = FindFirstFile((carpeta[carpeta.Length - 1] == '\\' ? carpeta : carpeta + "\\") + "*", out d);
-            if (h == new IntPtr(-1)) throw new IOException("FindFirstFile");   // sin permiso, desaparecida, demasiado larga...
-            try
-            {
-                while (true)
-                {
-                    EntradaListado e;
-                    e.Nombre = d.cFileName; e.Atributos = d.dwFileAttributes;
-                    e.FechaEscritura = ((long)d.ftLastWriteTime.Alto << 32) | d.ftLastWriteTime.Bajo;
-                    e.Largo = ((long)d.nFileSizeHigh << 32) | d.nFileSizeLow;
-                    yield return e;
-                    if (!FindNextFile(h, out d))
-                    {
-                        if (Marshal.GetLastWin32Error() != ErrorNoHayMas) throw new IOException("FindNextFile");
-                        yield break;
-                    }
-                }
-            }
-            finally { FindClose(h); }
-        }
-    }
+    // EN LINUX: aqui XP tiene ListadoWin32, las llamadas de Windows (FindFirstFileW, FindNextFileW y FindClose de kernel32, con su
+    // WIN32_FIND_DATA y su FILETIME) para leer una carpeta de una pasada con CLR 2. Con .NET 10 XP recorre con DirectoryInfo.GetFiles, que ya
+    // trae los datos de cada entrada en el mismo recorrido (en Linux, readdir): Form1.fuenteListado queda en null (Form1.Biblioteca.cs).
 }

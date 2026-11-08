@@ -115,11 +115,11 @@ namespace Rocola
                 {
                     double[] tabla = null;
                     ThreadPriority prioridad = Thread.CurrentThread.Priority;
-                    try { Thread.CurrentThread.Priority = ThreadPriority.BelowNormal; tabla = CreaFiltro(hzIn, hzOut); }
+                    try { PrioridadHilo.Pon(Thread.CurrentThread, ThreadPriority.BelowNormal); tabla = CreaFiltro(hzIn, hzOut); }   // EN LINUX: (Thread.CurrentThread.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)
                     catch { } // si no se pudo preparar, no se encadena ni se corta la musica actual
                     finally
                     {
-                        try { Thread.CurrentThread.Priority = prioridad; } catch { }
+                        try { PrioridadHilo.Pon(Thread.CurrentThread, prioridad); } catch { }   // EN LINUX: (Thread.CurrentThread.Priority = prioridad) la prioridad y su nice
                         lock (tablaCerrojo) { if (tabla != null) ConservaTabla(hzIn, hzOut, tabla); calentando = false; }
                     }
                 })) return null;

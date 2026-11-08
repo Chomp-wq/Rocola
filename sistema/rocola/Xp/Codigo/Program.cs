@@ -120,8 +120,9 @@ namespace Rocola
         // IA) no la heredan: Windows les da la normal. Si Windows no deja cambiarla, sigue como siempre.
         internal static void PrioridadDeLaRocola()
         {
-            // EN LINUX: Process.PriorityClass solo cambia el hilo principal; aqui, todos los hilos, como en Windows (Plataforma/LlamadasWindows.cs)
-            try { LlamadasWindows.PrioridadDelProceso(System.Diagnostics.ProcessPriorityClass.AboveNormal); }
+            // EN LINUX: (Process.GetCurrentProcess().PriorityClass = AboveNormal: SetPriorityClass) en Linux .NET solo cambia el hilo principal:
+            // aqui el nice de todos los hilos y la base de los que nazcan, como la clase de Windows (Nativo/PrioridadHilo.cs)
+            try { PrioridadHilo.DelProceso(System.Diagnostics.ProcessPriorityClass.AboveNormal); }
             catch { }
         }
 

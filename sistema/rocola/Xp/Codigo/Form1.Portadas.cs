@@ -110,6 +110,7 @@ namespace Rocola
             Track etiquetaAntes = (cancion != null && !cancion.TagsLoaded) ? cancion.CopiaEtiqueta() : null;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("calentador de la cancion siguiente");
                 try
                 {
@@ -1123,6 +1124,7 @@ namespace Rocola
             precalAudioLanzado = true;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
             {
+                PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 try
                 {
                     for (int paso = 0; paso < 4 && !startupClosing; paso++)

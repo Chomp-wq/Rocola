@@ -376,7 +376,7 @@ namespace Rocola
         private static int CompruebaEnOtroHilo(WaveFormat mp3, string ruta, Func<WaveFormat, IMp3FrameDecompressor> acmNuevo, out string detalle)
         {
             int r = 0; string d = "no contesto a tiempo; se sigue con el de siempre";
-            Thread t = new Thread(delegate()
+            Thread t = new Thread(PrioridadHilo.Con(delegate()   // EN LINUX: (new Thread(X)) nace en la prioridad normal del programa, como en Windows: en Linux heredaria la del hilo que lo crea (Nativo/PrioridadHilo.cs)
             {
                 try
                 {
@@ -384,7 +384,7 @@ namespace Rocola
                     { string dd; r = Compara(mp3, fs, acmNuevo, FabricaNLayer, out dd); d = dd; }
                 }
                 catch (Exception ex) { r = 0; d = "no se pudo leer (" + Resumen(ex) + "); se sigue con el de siempre"; }
-            });
+            }));
             t.IsBackground = true;
             try { t.SetApartmentState(ApartmentState.MTA); } catch { }
             t.Start();

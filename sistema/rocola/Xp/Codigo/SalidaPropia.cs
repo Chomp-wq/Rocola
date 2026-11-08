@@ -112,7 +112,7 @@ namespace Rocola
             estado = PlaybackState.Playing; parar = false; fin = false; Interlocked.Exchange(ref avisado, 0);
             if (hilo == null || !hilo.IsAlive)
             {
-                hilo = new Thread(Bucle);
+                hilo = new Thread(PrioridadHilo.Con(Bucle));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 hilo.IsBackground = true; hilo.Name = "audio (salida)";
                 try { hilo.Priority = ThreadPriority.Highest; } catch { }
                 hilo.Start();
