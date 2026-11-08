@@ -675,7 +675,14 @@ namespace Rocola
     {
         [StructLayout(LayoutKind.Sequential)]
         private struct MemEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        [DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemEx m);
+        // EN LINUX (traduccion de XP): la memoria de /proc/meminfo y /proc/self/status (Plataforma/LlamadasWindows.cs)
+        private static bool GlobalMemoryStatusEx(ref MemEx m)
+        {
+            ulong t, d; uint u;
+            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
+            m.TotalPhys = t; m.AvailPhys = d; m.MemoryLoad = u; LlamadasWindows.Direcciones(out m.TotalVirtual, out m.AvailVirtual);
+            return true;
+        }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         private struct DispositivoPantalla
         {
@@ -686,7 +693,15 @@ namespace Rocola
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Clave;
         }
-        [DllImport("user32.dll", CharSet = CharSet.Ansi)] private static extern bool EnumDisplayDevices(string dispositivo, uint num, ref DispositivoPantalla dd, uint flags);
+        // EN LINUX (traduccion de XP): el adaptador de la pantalla lo dicen OpenGL y /sys/class/drm (Plataforma/LlamadasWindows.cs); uno solo,
+        // el principal (DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE)
+        private static bool EnumDisplayDevices(string dispositivo, uint num, ref DispositivoPantalla dd, uint flags)
+        {
+            string nombre, conector, id;
+            if (dispositivo != null || num != 0 || !LlamadasWindows.Adaptador(out nombre, out conector, out id)) return false;
+            dd.Nombre = conector; dd.Cadena = nombre; dd.Estado = 1 | 4; dd.Id = id; dd.Clave = "";
+            return true;
+        }
 
         internal static string Cpu()
         {

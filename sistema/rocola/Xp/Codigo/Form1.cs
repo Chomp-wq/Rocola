@@ -413,7 +413,7 @@ namespace Rocola
         {
             ulong t, d; uint u;
             if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
-            b.TotalPhys = t; b.AvailPhys = d; b.MemoryLoad = u; b.TotalVirtual = 1UL << 47; b.AvailVirtual = 1UL << 47;
+            b.TotalPhys = t; b.AvailPhys = d; b.MemoryLoad = u; LlamadasWindows.Direcciones(out b.TotalVirtual, out b.AvailVirtual);
             return true;
         }
 

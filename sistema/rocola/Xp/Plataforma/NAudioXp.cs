@@ -3,7 +3,7 @@
 //  - Puente: en NAudio 3 ISampleProvider lee con Span<float>; las etapas de XP leen con (float[], offset, count). Cada etapa gana la
 //    lectura con Span que llama a la suya (una linea, «NAudio 3 (Puente.cs)»), y las llamadas de siempre a la etapa de delante
 //    (src.Read(buffer, offset, count)) siguen valiendo con la extension de abajo. Igual que sistema/rocola/Motor/Puente.cs.
-//  - Mp3FileReader: el lector de MP3 de NAudio (Mp3FileReaderBase, el mismo codigo: tabla de cuadros, duracion, saltos) con el
+//  - Mp3FileReader: el lector de MP3 de NAudio 1.9 traducido (Mp3Xp.cs: el de NAudio 3, Mp3FileReaderBase, ya no hace lo mismo) con el
 //    descompresor de Windows (ACM) traducido a libmpg123, la biblioteca nativa de MP3 del sistema (como Motor/Mpg123.cs), que como el ACM
 //    entrega enteros de 16 bits cuadro a cuadro. Sin libmpg123, NLayer (managed).
 using System;
@@ -58,22 +58,10 @@ namespace Rocola
         internal static int Read(this IWaveProvider p, byte[] buffer, int offset, int count) { return p.Read(buffer.AsSpan(offset, count)); }
     }
 
-    // EL LECTOR DE MP3 DE LA ROCOLA DE XP: el de NAudio (Mp3FileReaderBase) con el descompresor que diga quien lo abre; el «de Windows»
-    // (CreateAcmFrameDecompressor) es aqui el de libmpg123.
-    public class Mp3FileReader : Mp3FileReaderBase
-    {
-        public Mp3FileReader(string mp3FileName) : base(mp3FileName, CreateAcmFrameDecompressor) { }
-        public Mp3FileReader(string mp3FileName, FrameDecompressorBuilder frameDecompressorBuilder) : base(mp3FileName, frameDecompressorBuilder) { }
-        public Mp3FileReader(Stream inputStream) : base(inputStream, CreateAcmFrameDecompressor) { }
-        public Mp3FileReader(Stream inputStream, FrameDecompressorBuilder frameDecompressorBuilder) : base(inputStream, frameDecompressorBuilder) { }
-        public static IMp3FrameDecompressor CreateAcmFrameDecompressor(WaveFormat mp3Format)
-        {
-            IMp3FrameDecompressor d = DescompresorMpg123.Crea(mp3Format);
-            return d ?? new DescompresorNLayer16(mp3Format);
-        }
-    }
+    // (EL LECTOR DE MP3 DE LA ROCOLA DE XP, Mp3FileReader, es el de NAudio 1.9 traducido: Mp3Xp.cs. El descompresor «de Windows» que da su
+    // CreateAcmFrameDecompressor es el de aqui abajo.)
 
-    // EL DESCOMPRESOR NATIVO: libmpg123 en modo «alimentar». Cada cuadro de MP3 que da Mp3FileReaderBase entra entero y sale lo que mpg123
+    // EL DESCOMPRESOR NATIVO: libmpg123 en modo «alimentar». Cada cuadro de MP3 que da el lector (Mp3Xp.cs) entra entero y sale lo que mpg123
     // tiene listo, en enteros de 16 bits (como el ACM de Windows). Reset (al saltar) vacia lo que tenia dentro.
     internal sealed unsafe class DescompresorMpg123 : IMp3FrameDecompressor
     {
