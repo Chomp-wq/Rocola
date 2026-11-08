@@ -262,8 +262,12 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   Probado con 41 pruebas pequeñas contra lo que da WinForms (la versión de antes pasaba 8) y con la rocola entera fuera de pantalla, con
   JIT y con NativeAOT (sin avisos). Al juntarlo: la moneda mantenida, pedir canción, Ctrl+F3 con clic, Tab y Espacio, y el video,
   sin excepciones. Queda por decidir al llevarlo al sistema:
-  - que el apagado de Linux (SIGTERM) llegue como `CloseReason.WindowsShutDown`, como el apagado de Windows en XP; con UserClosing, la
-    rocola borraría los créditos en cada reinicio por actualización;
+  - que el apagado de Linux (el botón de poder: el sistema se apaga y para el programa con SIGTERM) llegue como
+    `CloseReason.WindowsShutDown`, igual que el apagado de Windows en XP. Ahí XP BORRA el estado (créditos y cola) para que arranque
+    limpia (`Form1.Video.cs`, `OnFormClosing`; también con Alt+F4). Solo tras un apagón, que no deja correr nada, el estado sobrevive y
+    la rocola reanuda. (Corregido el 8-11-2026: antes decía, mal, que así se guardaban los créditos.) Lo que es propio de Rocola OS y
+    no existe en XP, como reiniciar el programa por una actualización o al pasar a la consola de mantenimiento, va en la fase 11;
+    para que no se lleve los créditos tendría que llegar por la vía de XP que sí los conserva («cierre por otra causa»);
   - las excepciones en Idle y en ProcessCmdKey: aquí se apuntan y la rocola sigue; en WinForms probablemente la cerrarían.
 
   No probado en el A4.
