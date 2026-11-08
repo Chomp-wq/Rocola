@@ -35,6 +35,12 @@ un Direct3D o un WinForms de mentira):
 
 ## La referencia
 
+**Decisión del dueño del 8-11-2026: no hacen falta capturas.** «Idéntico» se asegura por el código:
+- `Xp/Codigo` es `Rocola/` con solo las diferencias de traducción, revisadas con un diff que quita lo mecánico;
+- la capa de `Plataforma` hace lo que GDI+, WinForms, Direct3D 9 y el WMP hacen en Windows XP.
+
+Lo de abajo es lo que se pensaba antes y queda como historia:
+
 «Idéntico» se comprueba contra la rocola de XP de verdad, no contra fotos sueltas:
 
 - **Capturas de referencia del A4**: un modo de captura en el programa de XP (Ctrl+F12, por ejemplo) que recorre las pantallas (la pared,

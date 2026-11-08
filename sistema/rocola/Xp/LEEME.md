@@ -203,7 +203,10 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
 
   Con NativeAOT la fecha de la versión sale bien; con JIT da la del programa `dotnet`.
 - **Lo siguiente:**
-  - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP): las pide al dueño;
+  - sin capturas (decisión del dueño del 8-11-2026): «idéntico» se asegura por el código. `Codigo/` frente a `Rocola/` (diff sin lo
+    mecánico, 8-11-2026): 494 líneas en 35 archivos, todas de traducción (el puente de NAudio 3, winmm a ALSA, el mezclador a amixer,
+    Direct3D a `EnGl`, las ventanas, el foco, la memoria y el reloj de Windows a los de Linux, COM fuera, `videoSinMedir` como en el A4).
+    Lo que queda es revisar la capa de `Plataforma` función por función contra lo que hacen GDI+, WinForms y Direct3D 9 en XP;
   - la prioridad de cada hilo (`Thread.Priority` no hace nada en Linux) y los `Mp3Frame.LoadFromStream` directos;
   - llevar el programa a la imagen del sistema: se le propone antes al dueño.
 - **Medido con Mono:** el alto de renglón y `Font.Height` salen iguales a GDI+. Los anchos de texto quedan a 1 o 2 píxeles de libgdiplus,
