@@ -61,15 +61,15 @@ namespace Rocola
         private static bool Vivo(int i) { WeakReference w = hilos[i]; Thread t = w != null ? w.Target as Thread : null; return t != null && t.IsAlive; }
         private static int cuantos;
 
-        [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+        // EN LINUX: (GetCurrentThreadId de kernel32) el numero del hilo lo da Linux: gettid, por syscall (abajo)
         [DllImport("libc", EntryPoint = "syscall")] private static extern long LlamadaLinux(long numero);
 
-        internal static bool EsUnix { get { int p = (int)Environment.OSVersion.Platform; return p == 4 || p == 6 || p == 128; } }
+        internal static bool EsUnix { get { return true; } }   // EN LINUX: (Environment.OSVersion.Platform: 4, 6 o 128) siempre: lo contesta Linux (/proc y gettid), que es el camino de Unix de XP
 
         // El identificador nativo del hilo que llama (el de GetThreadTimes, o el de /proc en Linux), o -1 si no se pudo.
         internal static long IdNativoActual()
         {
-            try { return EsUnix ? LlamadaLinux(186) : (long)GetCurrentThreadId(); }
+            try { return LlamadaLinux(186); }   // EN LINUX: (EsUnix ? gettid : GetCurrentThreadId) gettid
             catch { return -1; }
         }
 
@@ -125,11 +125,11 @@ namespace Rocola
     // NT. En Linux (las pruebas) se lee /proc, que es lo unico que permite comprobar las cuentas sin Windows.
     internal static class LectorCpu
     {
-        [DllImport("kernel32.dll")] private static extern bool GetSystemTimes(out long inactivo, out long nucleo, out long usuario);
-        [DllImport("kernel32.dll")] private static extern IntPtr OpenThread(uint acceso, bool hereda, uint id);
-        [DllImport("kernel32.dll")] private static extern bool GetThreadTimes(IntPtr h, out long creado, out long salido, out long nucleo, out long usuario);
-        [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr h);
-        private const uint ThreadQueryInformation = 0x0040;   // el unico permiso de hilo que conoce XP
+        // EN LINUX: aqui XP declara GetSystemTimes, OpenThread, GetThreadTimes y CloseHandle (kernel32) y el permiso THREAD_QUERY_INFORMATION.
+        // Linux lo da en /proc (/proc/stat y /proc/self/task/N/stat): el camino de Unix de XP, el unico que queda.
+        // EN LINUX: (XP) [DllImport("kernel32.dll")] private static extern bool GetThreadTimes(IntPtr h, out long creado, out long salido, out long nucleo, out long usuario);
+        // EN LINUX: (XP) [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr h);
+        // EN LINUX: (XP) private const uint ThreadQueryInformation = 0x0040;   // el unico permiso de hilo que conoce XP
 
         // El tiempo de procesador acumulado del proceso, en ms (suma todos los hilos, tambien los que ya murieron).
         internal static double ProcesoMs()
@@ -160,11 +160,11 @@ namespace Rocola
                     total = suma * 10.0; ocupado = (suma - inactivo) * 10.0;   // USER_HZ = 100: 10 ms por tic
                     return true;
                 }
-                long idle, kernel, user;
-                if (!GetSystemTimes(out idle, out kernel, out user)) return false;
-                total = (kernel + user) / 10000.0;                  // el tiempo de nucleo YA incluye el inactivo
-                ocupado = (kernel - idle + user) / 10000.0;
-                return true;
+                // EN LINUX: aqui XP pide GetSystemTimes (el inactivo, el de nucleo -que ya incluye el inactivo- y el de usuario, en 100 ns)
+                return false;
+                // EN LINUX: (XP) total = (kernel + user) / 10000.0;                  // el tiempo de nucleo YA incluye el inactivo
+                // EN LINUX: (XP) ocupado = (kernel - idle + user) / 10000.0;
+                // EN LINUX: (XP) return true;
             }
             catch { ocupado = total = -1; return false; }
         }
@@ -184,15 +184,15 @@ namespace Rocola
                     if (p.Length < 13) return -1;
                     return (double.Parse(p[11], CultureInfo.InvariantCulture) + double.Parse(p[12], CultureInfo.InvariantCulture)) * 10.0;
                 }
-                IntPtr h = OpenThread(ThreadQueryInformation, false, (uint)id);
-                if (h == IntPtr.Zero) return -1;
-                try
-                {
-                    long c, e, k, u;
-                    if (!GetThreadTimes(h, out c, out e, out k, out u)) return -1;
-                    return (k + u) / 10000.0;
-                }
-                finally { CloseHandle(h); }
+                // EN LINUX: aqui XP abre el hilo (OpenThread), le pide GetThreadTimes (nucleo + usuario, en 100 ns) y lo cierra (CloseHandle)
+                return -1;
+                // EN LINUX: (XP) try
+                // EN LINUX: (XP) {
+                    // EN LINUX: (XP) long c, e, k, u;
+                    // EN LINUX: (XP) if (!GetThreadTimes(h, out c, out e, out k, out u)) return -1;
+                    // EN LINUX: (XP) return (k + u) / 10000.0;
+                // EN LINUX: (XP) }
+                // EN LINUX: (XP) finally { CloseHandle(h); }
             }
             catch { return -1; }
         }
@@ -673,49 +673,49 @@ namespace Rocola
     // ============================ LO QUE SE SABE DEL EQUIPO ============================
     internal static class DiagEquipo
     {
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MemEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        // EN LINUX (traduccion de XP): la memoria de /proc/meminfo y /proc/self/status (Plataforma/LlamadasWindows.cs)
-        private static bool GlobalMemoryStatusEx(ref MemEx m)
-        {
-            ulong t, d; uint u;
-            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
-            m.TotalPhys = t; m.AvailPhys = d; m.MemoryLoad = u; LlamadasWindows.Direcciones(out m.TotalVirtual, out m.AvailVirtual);
-            return true;
-        }
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        private struct DispositivoPantalla
-        {
-            public int Tam;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Nombre;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Cadena;
-            public int Estado;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Clave;
-        }
-        // EN LINUX (traduccion de XP): el adaptador de la pantalla lo dicen OpenGL y /sys/class/drm (Plataforma/LlamadasWindows.cs); uno solo,
-        // el principal (DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE)
-        private static bool EnumDisplayDevices(string dispositivo, uint num, ref DispositivoPantalla dd, uint flags)
-        {
-            string nombre, conector, id;
-            if (dispositivo != null || num != 0 || !LlamadasWindows.Adaptador(out nombre, out conector, out id)) return false;
-            dd.Nombre = conector; dd.Cadena = nombre; dd.Estado = 1 | 4; dd.Id = id; dd.Clave = "";
-            return true;
-        }
+        // EN LINUX: aqui XP declara MemEx (la MEMORYSTATUSEX de Windows) con GlobalMemoryStatusEx (kernel32), y DispositivoPantalla (la
+        // DISPLAY_DEVICE) con EnumDisplayDevices (user32). Lo contesta Linux (Nativo/Equipo.cs): la memoria de /proc/meminfo y el adaptador,
+        // de OpenGL y /sys/class/drm.
+        // EN LINUX: (XP) private static bool GlobalMemoryStatusEx(ref MemEx m)
+        // EN LINUX: (XP) {
+            // EN LINUX: (XP) ulong t, d; uint u;
+            // EN LINUX: (XP) if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
+            // EN LINUX: (XP) m.TotalPhys = t; m.AvailPhys = d; m.MemoryLoad = u; LlamadasWindows.Direcciones(out m.TotalVirtual, out m.AvailVirtual);
+            // EN LINUX: (XP) return true;
+        // EN LINUX: (XP) }
+        // EN LINUX: (XP) [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        // EN LINUX: (XP) private struct DispositivoPantalla
+        // EN LINUX: (XP) {
+            // EN LINUX: (XP) public int Tam;
+            // EN LINUX: (XP) [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Nombre;
+            // EN LINUX: (XP) [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Cadena;
+            // EN LINUX: (XP) public int Estado;
+            // EN LINUX: (XP) [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
+            // EN LINUX: (XP) [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Clave;
+        // EN LINUX: (XP) }
+        // EN LINUX: (XP) // EN LINUX (traduccion de XP): el adaptador de la pantalla lo dicen OpenGL y /sys/class/drm (Plataforma/LlamadasWindows.cs); uno solo,
+        // EN LINUX: (XP) // el principal (DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE)
+        // EN LINUX: (XP) private static bool EnumDisplayDevices(string dispositivo, uint num, ref DispositivoPantalla dd, uint flags)
+        // EN LINUX: (XP) {
+            // EN LINUX: (XP) string nombre, conector, id;
+            // EN LINUX: (XP) if (dispositivo != null || num != 0 || !LlamadasWindows.Adaptador(out nombre, out conector, out id)) return false;
+            // EN LINUX: (XP) dd.Nombre = conector; dd.Cadena = nombre; dd.Estado = 1 | 4; dd.Id = id; dd.Clave = "";
+            // EN LINUX: (XP) return true;
+        // EN LINUX: (XP) }
 
         internal static string Cpu()
         {
             string nombre = "", mhz = "";
             try
             {
-                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
-                {
-                    if (k != null)
-                    {
-                        object v = k.GetValue("ProcessorNameString"); if (v != null) nombre = v.ToString().Trim();
-                        object m = k.GetValue("~MHz"); if (m != null) mhz = m.ToString();
-                    }
-                }
+                // EN LINUX: (los valores «ProcessorNameString» y «~MHz» de HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0 en el registro
+                // de Windows) el mismo texto del procesador (la marca de CPUID: «model name» de /proc/cpuinfo) y la mayor velocidad que da el
+                // nucleo (Nativo/Equipo.cs)
+                nombre = Equipo.Procesador();
+                int m = Equipo.ProcesadorMhz(); if (m > 0) mhz = m.ToString(CultureInfo.InvariantCulture);
+                        // EN LINUX: (XP) object m = k.GetValue("~MHz"); if (m != null) mhz = m.ToString();
+                    // EN LINUX: (XP) }
+                // EN LINUX: (XP) }
             }
             catch { }
             if (nombre.Length == 0 && HilosRocola.EsUnix)
@@ -736,8 +736,8 @@ namespace Rocola
             totalMb = libreMb = -1;
             try
             {
-                MemEx m = new MemEx(); m.Length = (uint)Marshal.SizeOf(typeof(MemEx));
-                if (GlobalMemoryStatusEx(ref m)) { totalMb = (long)(m.TotalPhys >> 20); libreMb = (long)(m.AvailPhys >> 20); return totalMb + " MB en total, " + libreMb + " MB libres (carga " + m.MemoryLoad + " %)"; }
+                ulong totalPhys, availPhys; uint memoryLoad;   // EN LINUX: (MemEx y su Length) lo que se pregunta
+                if (Equipo.Memoria(out totalPhys, out availPhys, out memoryLoad)) { totalMb = (long)(totalPhys >> 20); libreMb = (long)(availPhys >> 20); return totalMb + " MB en total, " + libreMb + " MB libres (carga " + memoryLoad + " %)"; }   // EN LINUX: (GlobalMemoryStatusEx) /proc/meminfo
             }
             catch { }
             if (HilosRocola.EsUnix)
@@ -762,13 +762,13 @@ namespace Rocola
         {
             try
             {
-                DispositivoPantalla d = new DispositivoPantalla(); d.Tam = Marshal.SizeOf(typeof(DispositivoPantalla));
-                for (uint i = 0; i < 8; i++)
-                {
-                    d = new DispositivoPantalla(); d.Tam = Marshal.SizeOf(typeof(DispositivoPantalla));
-                    if (!EnumDisplayDevices(null, i, ref d, 0)) break;
-                    if ((d.Estado & 4) != 0 && !string.IsNullOrEmpty(d.Cadena)) return d.Cadena.Trim();   // DISPLAY_DEVICE_PRIMARY_DEVICE
-                }
+                // EN LINUX: (EnumDisplayDevices, uno por uno hasta el principal -DISPLAY_DEVICE_PRIMARY_DEVICE-, y su DeviceString) el adaptador de
+                // la pantalla: hay uno, el de OpenGL y /sys/class/drm (Nativo/Equipo.cs)
+                string cadena, conector, id;
+                if (Equipo.Adaptador(out cadena, out conector, out id) && !string.IsNullOrEmpty(cadena)) return cadena.Trim();
+                    // EN LINUX: (XP) if (!EnumDisplayDevices(null, i, ref d, 0)) break;
+                    // EN LINUX: (XP) if ((d.Estado & 4) != 0 && !string.IsNullOrEmpty(d.Cadena)) return d.Cadena.Trim();   // DISPLAY_DEVICE_PRIMARY_DEVICE
+                // EN LINUX: (XP) }
             }
             catch { }
             return "(el sistema no dijo el nombre del adaptador)";

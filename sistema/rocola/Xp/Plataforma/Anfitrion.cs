@@ -52,7 +52,7 @@ namespace Rocola
             }
             Actual = new Anfitrion(s);
             Escritorio.Anfitrion = Actual;
-            ReproductorWmp.Engancha();   // el video de XP (el control del WMP) con libmpv (VideoMpv.cs)
+            ReproductorVideo.Pantalla = new VideoEnVentanas();   // la capa del video (Nativo/ReproductorVideo.cs) entre las ventanas de XP
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
             TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
@@ -115,9 +115,9 @@ namespace Rocola
         public void Compone()
         {
             Programa();
-            // los videos (VideoMpv.cs): libmpv pinta su cuadro nuevo en su textura antes de componer
-            ReproductorWmp[] rs; lock (ReproductorWmp.Vivos) rs = ReproductorWmp.Vivos.ToArray();
-            foreach (ReproductorWmp r in rs) { try { r.Pinta(); } catch (Exception ex) { Application.Avisa(ex); } }
+            // los videos (Nativo/ReproductorVideo.cs): libmpv pinta su cuadro nuevo en su textura antes de componer
+            ReproductorVideo[] rs = ReproductorVideo.Vivos();
+            foreach (ReproductorVideo r in rs) { try { r.Pinta(); } catch (Exception ex) { Application.Avisa(ex); } }
             GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
             GL.Viewport(0, 0, ancho, alto);
             GlMas.ColorMask(1, 1, 1, 1);
@@ -174,7 +174,7 @@ namespace Rocola
             if (conFlecha) { Flecha(); Capturas(); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
             else { Capturas(); Flecha(); }   // como las capturas de Windows: sin la flecha
             sup.Presenta();
-            foreach (ReproductorWmp r in rs) r.TrasPresentar();
+            foreach (ReproductorVideo r in rs) r.TrasPresentar();
             PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
         }
         // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la

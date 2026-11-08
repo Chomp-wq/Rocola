@@ -109,7 +109,7 @@ namespace Rocola
             // cancion no se toca hasta que la pantalla la empiece (Track.EnsureTags).
             Track etiquetaAntes = (cancion != null && !cancion.TagsLoaded) ? cancion.CopiaEtiqueta() : null;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("calentador de la cancion siguiente");
                 try
                 {
@@ -230,7 +230,7 @@ namespace Rocola
                 catch { }
             });
             t.IsBackground = true;
-            t.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             t.Start();
         }
 
@@ -1122,7 +1122,7 @@ namespace Rocola
                 || Environment.TickCount - lastInputTick < PrecalQuieta) return;
             precalAudioLanzado = true;
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 try
                 {
                     for (int paso = 0; paso < 4 && !startupClosing; paso++)
@@ -1148,7 +1148,7 @@ namespace Rocola
                 catch { } // un lujo de arranque: la primera llamada normal conserva su inicializacion
                 finally { precalAudioEnCurso = false; }
             });
-            t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.Lowest; t.Start();
+            t.IsBackground = true; PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest); t.Start();   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
         }
 #endif
 

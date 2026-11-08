@@ -103,7 +103,7 @@ namespace Rocola
                     if (fs.Length != valido)
                     {
                         fs.SetLength(valido); fs.Flush();
-                        try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                        try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                     }
                     iaPairsTotal = (completos > int.MaxValue) ? int.MaxValue : (int)completos;
                 }
@@ -224,7 +224,7 @@ namespace Rocola
         {
             if (!pendiente) return;
             fs.Flush();
-            try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+            try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
             pendiente = false;
         }
 
@@ -334,7 +334,7 @@ namespace Rocola
                 using (FileStream fs = new FileStream(ruta, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
                     fs.Write(texto, 0, texto.Length); fs.Flush();
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                 }
             }
             catch { }   // No poder escribir metadata no invalida pares/index ya verificados.
@@ -532,7 +532,7 @@ namespace Rocola
                 using (FileStream fs = new FileStream(tsv, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
                     fs.Write(texto, 0, texto.Length); fs.Flush();
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                 }
                 GenerosCompletados = n;
             }
@@ -608,7 +608,7 @@ namespace Rocola
                         fs.Write(e, 0, 64);
                     }
                     fs.Flush();
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                 }
                 List<IaOrigen> paraGeneros = new List<IaOrigen>();
                 for (int k = 0; k < cuales.Count; k++) paraGeneros.Add(origenes[cuales[k]]);

@@ -32,21 +32,6 @@ namespace Rocola
             if (a.Length >= 3 && a[1] == "--prueba-mp3") { string[] r = new string[a.Length - 2]; Array.Copy(a, 2, r, 0, r.Length); ComparaMp3.Corre(r, Console.Out); Environment.Exit(0); }
         }
 
-        // Las mismas formas que las estructuras privadas de XP que se miden con Marshal.SizeOf(typeof(...)): MemStatusEx / MemEx /
-        // EstadoMemoria (Form1, DiagEquipo, CancionEnMemoria: sin conversion) y DispositivoPantalla (DiagEquipo: con textos de largo fijo).
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ComoMemEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        private struct ComoPantalla
-        {
-            public int Tam;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Nombre;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Cadena;
-            public int Estado;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Clave;
-        }
-
         [DllImport("libc", EntryPoint = "syscall")] private static extern long Llamada(long numero);
         [DllImport("libEGL.so.1")] private static extern IntPtr eglGetCurrentContext();
 
@@ -65,13 +50,9 @@ namespace Rocola
             Di("~ modo", Path.GetFileName(Environment.ProcessPath ?? "") == "dotnet" ? "JIT" : "NativeAOT");
             Di("~ sistema", Environment.OSVersion + ", .NET " + Environment.Version);
 
-            // ---- 1) Marshal.SizeOf / OffsetOf (IL3050): el compilador genera los datos de la estructura cuando el tipo es fijo (typeof)
-            Prueba("marshal.memex", () => Marshal.SizeOf(typeof(ComoMemEx)));
-            Prueba("marshal.pantalla", () => Marshal.SizeOf(typeof(ComoPantalla)));
-            Prueba("marshal.finddata (RecorridoRapido, 592 en Windows)", () => ListadoWin32.TamanoEstructura());
-            Prueba("marshal.wavehdr (SalidaPropia)", () => WaveOutPropio.TamCabecera + " largo@" + WaveOutPropio.OffLargo + " banderas@" + WaveOutPropio.OffBanderas);
-            Prueba("form1.tope_portadas (MemStatusEx)", () => Form1.TopeDePortadas());
-            Prueba("form1.cache_celdas_mb (MemStatusEx)", () => Form1.CacheCeldasMb());
+            // ---- 1) lo que XP decide con la memoria del equipo (en XP con GlobalMemoryStatusEx; aqui Nativo/Equipo.cs)
+            Prueba("form1.tope_portadas (memoria)", () => Form1.TopeDePortadas());
+            Prueba("form1.cache_celdas_mb (memoria)", () => Form1.CacheCeldasMb());
             Prueba("diag.cpu", () => DiagEquipo.Cpu());
             Prueba("diag.memoria.con_carga", () => { long t, l; return DiagEquipo.Memoria(out t, out l).Contains("(carga ") + " total>0=" + (t > 0) + " libre>0=" + (l > 0); });
             Prueba("~ diag.memoria", () => { long t, l; return DiagEquipo.Memoria(out t, out l); });
@@ -82,25 +63,15 @@ namespace Rocola
             Prueba("audio.flotante 5.1", () => { WaveFormat f = FormatoAudio.Flotante(48000, 6, 0x3F); return f.GetType().Name + " " + f.Encoding + " mascara=" + FormatoAudio.Mascara(f).ToString("X"); });
             Prueba("mp3ligero.posible", () => LectorMp3Ligero.Posible + " indice=" + LectorMp3Ligero.IndicePosible);
             Prueba("nlayer", () => { NLayer.MpegFrameDecoder d = new NLayer.MpegFrameDecoder(); return typeof(NLayer.MpegFrameDecoder).Assembly.GetName().Name; });
-            Prueba("wmp.progid", () => { Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7"); return t != null ? t.Name : "null"; });
-            Prueba("wmp.reflexion (como Form1.MideDuracionVideo y Form1.Video)", () =>
+            // (La duracion que mide no se puede ver aqui: ffmpeg contesta por otro hilo, y otro hilo que entre al modulo espera a que acabe
+            // esta prueba. Se comprueba con la rocola entera: el video de la biblioteca sale medido en rocola_duracion.txt.)
+            Prueba("video.medidor (como Form1.MideDuracionVideo: Nativo/MedidorVideo.cs)", () =>
             {
-                Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7");
-                object w = Activator.CreateInstance(t);
-                Set(w, "uiMode", "none");
-                object s = Get(w, "settings");
-                Set(s, "autoStart", false); Set(s, "volume", 0);
-                string r = "uiMode=" + Get(w, "uiMode") + " volume=" + Get(s, "volume") + " autoStart=" + Get(s, "autoStart") + " playState=" + Get(w, "playState");
-                object c = Get(w, "controls");
-                r += " currentPosition=" + Get(c, "currentPosition");
-                Set(w, "stretchToFit", true); Set(w, "enableContextMenu", false);
-                r += " stretchToFit=" + Get(w, "stretchToFit") + " enableContextMenu=" + Get(w, "enableContextMenu") + " currentMedia=" + (Get(w, "currentMedia") ?? "null");
-                if (video != null)
-                {
-                    object m = Call(w, "newMedia", video);
-                    r += " duration=" + Convert.ToDouble(Get(m, "duration")).ToString("0.00", CultureInfo.InvariantCulture) + " name=" + Get(m, "name");
-                }
-                Call(w, "close");
+                MedidorVideo w = MedidorVideo.Crea();
+                if (w == null) return "sin ffmpeg";
+                string r = "duracion antes=" + w.Duracion.ToString("0.00", CultureInfo.InvariantCulture);
+                if (video != null) { r += " pedida=" + w.PideDuracion(video); w.QuitaArchivo(); r += " al dejarlo=" + w.Duracion.ToString("0.00", CultureInfo.InvariantCulture); }
+                w.Dispose();
                 return r;
             });
 
@@ -111,31 +82,55 @@ namespace Rocola
             Prueba("diag.cpu_proceso", () => LectorCpu.ProcesoMs() >= 0);
             Prueba("~ procesadores", () => CargaTrabajo.Procesadores + " de " + Environment.ProcessorCount);
 
-            // ---- 4) las llamadas a Windows con su version de Linux
-            Prueba("win.direcciones", () => { ulong t, l; bool b = LlamadasWindows.Direcciones(out t, out l); return b + " total=" + t + " libres<total " + (l < t); });
-            Prueba("~ win.direcciones_libres_mb", () => { ulong t, l; LlamadasWindows.Direcciones(out t, out l); return l >> 20; });
+            // ---- 4) lo de Windows que contesta Linux directo (Nativo/Equipo.cs, Nativo/PrioridadHilo.cs)
+            Prueba("win.direcciones", () => { ulong t, l; bool b = Equipo.Direcciones(out t, out l); return b + " total=" + t + " libres<total " + (l < t); });
+            Prueba("~ win.direcciones_libres_mb", () => { ulong t, l; Equipo.Direcciones(out t, out l); return l >> 20; });
+            Prueba("~ win.procesador_mhz", () => Equipo.ProcesadorMhz());
+            Prueba("~ win.sistema", () => Equipo.SistemaOperativo());
             Prueba("win.drm (carpeta de prueba)", () => DrmDePrueba());
-            Prueba("win.drm (/sys/class/drm)", () => { string c, p, k; return LlamadasWindows.TarjetaDrm("/sys/class/drm", out c, out p, out k) + " [" + c + "|" + p + "|" + k + "]"; });
+            Prueba("win.drm (/sys/class/drm)", () => { string c, p, k; return Equipo.TarjetaDrm("/sys/class/drm", out c, out p, out k) + " [" + c + "|" + p + "|" + k + "]"; });
             Rocola.Pantalla.FueraDePantalla fp = null;
             if (eglGetCurrentContext() == IntPtr.Zero) try { fp = new Rocola.Pantalla.FueraDePantalla(64, 64); } catch { }
-            Prueba("win.adaptador", () => { string n, c, i; return LlamadasWindows.Adaptador(out n, out c, out i) + " [" + n + "]"; });
+            Prueba("win.adaptador", () => { string n, c, i; return Equipo.Adaptador(out n, out c, out i) + " [" + n + "]"; });
             Prueba("diag.tarjeta", () => DiagEquipo.Tarjeta());
             if (fp != null) fp.Dispose();
             string nices = "";
             Prueba("win.prioridad", () =>
             {
                 Dictionary<uint, int> antes = new Dictionary<uint, int>();
-                foreach (string h in Directory.GetDirectories("/proc/self/task")) { uint t = uint.Parse(Path.GetFileName(h)); antes[t] = LlamadasWindows.NiceDelHilo(t); }
-                LlamadasWindows.PrioridadDelProceso(System.Diagnostics.ProcessPriorityClass.AboveNormal);
+                foreach (string h in Directory.GetDirectories("/proc/self/task")) { uint t = uint.Parse(Path.GetFileName(h)); antes[t] = PrioridadHilo.NiceDelHilo(t); }
+                PrioridadHilo.DelProceso(System.Diagnostics.ProcessPriorityClass.AboveNormal);
                 int movidos = 0, mal = 0;
                 foreach (KeyValuePair<uint, int> k in antes)
                 {
-                    int d = LlamadasWindows.NiceDelHilo(k.Key);
+                    int d = PrioridadHilo.NiceDelHilo(k.Key);
                     if (d == int.MinValue) continue;
                     if (d == Math.Max(-20, Math.Min(19, k.Value - 6))) movidos++; else mal++;
                     nices += k.Value + "->" + d + " ";
                 }
-                return "principal " + LlamadasWindows.NiceDelHilo((uint)Environment.ProcessId) + (mal == 0 ? ", todos los hilos movidos 6 hacia arriba" : ", " + mal + " hilos mal");
+                return "principal " + PrioridadHilo.NiceDelHilo((uint)Environment.ProcessId) + (mal == 0 ? ", todos los hilos movidos 6 hacia arriba" : ", " + mal + " hilos mal");
+            });
+            // Thread.Priority de XP en el hilo que llama (PrioridadHilo.Pon), tras la clase de arriba. (La de un hilo nuevo, PrioridadHilo.Con, no
+            // se puede ver aqui: el hilo nuevo esperaria a que acabe esta prueba; se ve con la rocola entera, en /proc/PID/task.)
+            Prueba("win.prioridad_hilo (la correspondencia, en este hilo)", () =>
+            {
+                string r = "";
+                foreach (System.Threading.ThreadPriority p in new[] { System.Threading.ThreadPriority.Highest, System.Threading.ThreadPriority.AboveNormal, System.Threading.ThreadPriority.Normal, System.Threading.ThreadPriority.BelowNormal, System.Threading.ThreadPriority.Lowest })
+                {
+                    PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, p);
+                    r += p + "=" + PrioridadHilo.NiceDelHilo(PrioridadHilo.Este()) + (PrioridadHilo.De(System.Threading.Thread.CurrentThread) == p ? "" : "(De dice otra)") + " ";
+                }
+                PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Normal);
+                return r + "y de vuelta Normal=" + PrioridadHilo.NiceDelHilo(PrioridadHilo.Este());
+            });
+            // Lo que .NET devuelve de Thread.Priority de un hilo que ya corre (por eso XP lee la suya con PrioridadHilo.De): con JIT, la puesta;
+            // con NativeAOT, siempre Normal
+            Prueba("~ win.thread_priority_de_net (tras ponerle Lowest)", () =>
+            {
+                PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Lowest);
+                string r = ".NET dice " + System.Threading.Thread.CurrentThread.Priority + ", De dice " + PrioridadHilo.De(System.Threading.Thread.CurrentThread);
+                PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Normal);
+                return r;
             });
             Di("~ win.prioridad_hilos", nices);
             Prueba("~ win.sleep1_ms", () =>
@@ -156,15 +151,6 @@ namespace Rocola
             return 0;
         }
 
-        // Form1.Get / Set / Call (Form1.Video.cs), igual: InvokeMember sobre el tipo del objeto
-        private const string ComoXp = "Lo mismo que Form1.Get/Set/Call: el reproductor se conserva con DynamicDependency (VideoMpv.cs, Aot.cs)";
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static object Get(object o, string prop) { return o.GetType().InvokeMember(prop, BindingFlags.GetProperty, null, o, null); }
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static void Set(object o, string prop, object val) { o.GetType().InvokeMember(prop, BindingFlags.SetProperty, null, o, new object[] { val }); }
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static object Call(object o, string metodo, params object[] args) { return o.GetType().InvokeMember(metodo, BindingFlags.InvokeMethod, null, o, args); }
-
         // Una carpeta como /sys/class/drm con dos tarjetas: la primera sin nada enchufado, la segunda con su HDMI enchufado
         private static string DrmDePrueba()
         {
@@ -180,7 +166,7 @@ namespace Rocola
                 File.WriteAllText(Path.Combine(r, "card1-HDMI-A-1", "status"), "connected\n");
                 File.WriteAllText(Path.Combine(r, "card1-DVI-D-1", "status"), "disconnected\n");
                 string c, p, k;
-                bool b = LlamadasWindows.TarjetaDrm(r, out c, out p, out k);
+                bool b = Equipo.TarjetaDrm(r, out c, out p, out k);
                 return b + " [" + c + "|" + p + "|" + k + "]";
             }
             finally { try { Directory.Delete(r, true); } catch { } }
@@ -197,7 +183,7 @@ namespace Rocola
             for (int k = 0; k < 2; k++)
             {
                 bool xp = k == 0;
-                Func<WaveStream> abre = xp ? (Func<WaveStream>)(() => new Mp3FileReader(ruta)) : () => new Mp3FileReaderBase(ruta, Mp3FileReader.CreateAcmFrameDecompressor);
+                Func<WaveStream> abre = xp ? (Func<WaveStream>)(() => new Mp3FileReader(ruta)) : () => new Mp3FileReaderBase(ruta, DescompresorMp3.Crea);
                 long alAbrir, alFinal, leidos = 0; ulong huella = 14695981039346656037UL; int alineado;
                 using (WaveStream s = abre())
                 {

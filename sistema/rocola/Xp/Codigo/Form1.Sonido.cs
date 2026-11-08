@@ -384,10 +384,10 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Func<NAudio.Wave.WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(NAudio.Wave.WaveFormat f)
-            { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+            { return DescompresorMp3.Crea(f); };   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
-                hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                hecho = DescompresorMp3.Crea(wf);   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
                 hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // coma flotante con NLayer si la cancion llega al maximo (FlotanteNLayer.cs)
                 return hecho;
             };
@@ -408,7 +408,7 @@ namespace Rocola
         {
             NAudio.Wave.IMp3FrameDecompressor hecho = null;
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
-            { hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf); return hecho; };
+            { hecho = DescompresorMp3.Crea(wf); return hecho; };   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
             try { return new Mp3FileReader(flujo, armador); }
             catch { if (hecho != null) { try { hecho.Dispose(); } catch { } } throw; }
         }
@@ -424,7 +424,7 @@ namespace Rocola
             private readonly WaveStream wav;
             private readonly SampleChannel canal;
             private readonly Pcm16Directo directo;   // los 16 bits enteros (MP3 del sistema, WAV de 16 bits) sin el SampleChannel (Pcm16Directo.cs)
-            private readonly AudioFileReader otro;
+            private readonly LectorAudio otro;   // EN LINUX: (el AudioFileReader de NAudio 1.9, que en Windows usa el ACM y Media Foundation) el de Nativo/LectorAudio.cs
             private readonly Stream flujoMp3;   // Mp3FileReader(Stream, ...) NO cierra el stream que recibe
 
             // NAudio 1.9 copia DOS VECES el ID3 completo al abrir un MP3. Una caratula incrustada grande deja
@@ -552,10 +552,10 @@ namespace Rocola
                     if (inicio == 0) { vista = archivo; archivo = null; }
                     else { vista = new VistaMp3(archivo, inicio); archivo = null; }   // la vista pasa a ser duena del archivo
                     Func<WaveFormat, NAudio.Wave.IMp3FrameDecompressor> otroAcm = delegate(WaveFormat f)
-                    { return Mp3FileReader.CreateAcmFrameDecompressor(f); };
+                    { return DescompresorMp3.Crea(f); };   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
                     Mp3FileReader.FrameDecompressorBuilder armador = delegate(WaveFormat wf)
                     {
-                        hecho = Mp3FileReader.CreateAcmFrameDecompressor(wf);
+                        hecho = DescompresorMp3.Crea(wf);   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
                         hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
                         return hecho;
                     };
@@ -602,7 +602,7 @@ namespace Rocola
                             }
                             finally { if (f != null) { try { f.Dispose(); } catch { } } }
                         }
-                        else otro = new AudioFileReader(ruta);
+                        else otro = new LectorAudio(ruta);   // EN LINUX: (new AudioFileReader(ruta)) Nativo/LectorAudio.cs
                     }
                     formato = FormatoAudio.DeArchivo((otro != null) ? otro.WaveFormat : (directo != null ? directo.WaveFormat : canal.WaveFormat), ruta);
                 }
@@ -1583,7 +1583,7 @@ namespace Rocola
             if (secuencia != null) e = RecogeAlParar(e);
             // LA SALIDA CON HILO PROPIO FALLO POR SI MISMA (T5, SalidaPropia.cs): ni el aparato ni la cancion. Desde ahora, la de siempre, y
             // la misma cancion se retoma desde donde iba (como cuando falla el aparato), sin devolver el credito ni darla por rota.
-            WaveOutPropio propia = sender as WaveOutPropio;
+            WaveOutPropio propia = EsLaPropia(sender) ? (WaveOutPropio)sender : null;   // EN LINUX: (sender as WaveOutPropio) la propia, no la de siempre (SalidaSonido.cs, EsLaPropia)
             if (deLaSalida != null && propia != null && propia.FalloPropio && !EsFalloDelDispositivo(deLaSalida))
             {
                 salidaPropiaFallo = true;
@@ -1700,7 +1700,7 @@ namespace Rocola
             private readonly Mp3FileReader mp3;
             private readonly WaveStream wav;
             private readonly SampleChannel canal;
-            private readonly AudioFileReader r;
+            private readonly LectorAudio r;   // EN LINUX: (el AudioFileReader de NAudio 1.9, que en Windows usa el ACM y Media Foundation) el de Nativo/LectorAudio.cs
             private MemoryStream enMemoria;   // la cancion entera, si se abrio desde la memoria (CancionEnMemoria.cs)
             internal bool EnMemoria { get { return enMemoria != null; } }
             public FileAudioSource(string path)
@@ -1728,7 +1728,7 @@ namespace Rocola
                         try { canal = new SampleChannel(f, false); wav = f; f = null; }
                         finally { if (f != null) { try { f.Dispose(); } catch { } } }
                     }
-                    else r = new AudioFileReader(path);
+                    else r = new LectorAudio(path);   // EN LINUX: (new AudioFileReader(path)) Nativo/LectorAudio.cs
                 }
                 formato = FormatoAudio.DeArchivo((r == null) ? canal.WaveFormat : r.WaveFormat, path);
             }

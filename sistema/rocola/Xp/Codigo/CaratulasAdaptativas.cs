@@ -483,8 +483,8 @@ namespace Rocola
                 int wanted = WantedCoverReaders();
                 while (coverPumpCount < wanted)
                 {
-                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
-                    t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.BelowNormal;
+                    System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
+                    t.IsBackground = true; PrioridadHilo.Pon(t, System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     coverPumpCount++;
                     try { t.Start(); coverWorkersStarted++; } catch { coverPumpCount--; break; }
                 }

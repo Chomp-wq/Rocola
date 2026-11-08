@@ -302,7 +302,7 @@ namespace Rocola
                     fs.Write(datos, 0, datos.Length);
                     fs.Flush();
                     // Igual que el guardado entero: bajado al disco de verdad, no solo a la memoria de Windows.
-                    try { FlushFileBuffers(fs.SafeFileHandle.DangerousGetHandle()); } catch { }
+                    try { fs.Flush(true); } catch { }   // EN LINUX: (FlushFileBuffers de kernel32) Flush(true): fsync del archivo, que lo baja al disco de verdad
                     largoArchivo = fs.Length;
                 }
                 ObservaArchivo(ruta);

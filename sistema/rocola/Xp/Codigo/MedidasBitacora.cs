@@ -106,7 +106,7 @@ namespace Rocola
         internal void Arranca()
         {
             if (hilo != null) return;
-            hilo = new Thread(Bucle);
+            hilo = new Thread(PrioridadHilo.Con(Bucle));   // EN LINUX: (new Thread(X)) nace en la prioridad normal del programa, como en Windows: en Linux heredaria la del hilo que lo crea (Nativo/PrioridadHilo.cs)
             hilo.IsBackground = true; hilo.Name = "vigia de la pantalla";
             hilo.Start();
         }
@@ -180,9 +180,9 @@ namespace Rocola
                 string sis = "";
                 try
                 {
-                    MemStatusEx m = new MemStatusEx(); m.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                    if (GlobalMemoryStatusEx(ref m))
-                        sis = "; ram_libre=" + (m.AvailPhys >> 20) + " de " + (m.TotalPhys >> 20) + " MB (carga " + m.MemoryLoad + " %), direcciones_libres=" + (m.AvailVirtual >> 20) + " MB";
+                    ulong totalPhys, availPhys, totalVirtual, availVirtual; uint memoryLoad;   // EN LINUX: (MemStatusEx y su Length) lo que se pregunta
+                    if (Equipo.Memoria(out totalPhys, out availPhys, out memoryLoad))   // EN LINUX: (GlobalMemoryStatusEx) /proc/meminfo
+                    { Equipo.Direcciones(out totalVirtual, out availVirtual); sis = "; ram_libre=" + (availPhys >> 20) + " de " + (totalPhys >> 20) + " MB (carga " + memoryLoad + " %), direcciones_libres=" + (availVirtual >> 20) + " MB"; }   // EN LINUX: (ullTotalVirtual, ullAvailVirtual) /proc/self/status
                 }
                 catch { }
                 return "; " + gc + mem + sis;

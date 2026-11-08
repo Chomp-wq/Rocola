@@ -46,9 +46,9 @@ namespace Rocola
 
         // Sube la resolucion del reloj del sistema a 1ms para que el temporizador de animacion
         // dispare parejo (en XP, sin esto, un intervalo de ~33ms se "redondea" y la animacion se entrecorta).
-        // EN LINUX: los relojes ya van al milisegundo; nada que pedir (TIMERR_NOERROR)
-        private static uint timeBeginPeriod(uint p) { return 0; }
-        private static uint timeEndPeriod(uint p) { return 0; }
+        // EN LINUX: aqui XP declara timeBeginPeriod y timeEndPeriod (winmm). Los relojes de Linux ya van al milisegundo: no se piden.
+        // EN LINUX: (XP) private static uint timeBeginPeriod(uint p) { return 0; }
+        // EN LINUX: (XP) private static uint timeEndPeriod(uint p) { return 0; }
         private bool timerResRaised = false;
 
         private static readonly Color DefaultAccent = Color.FromArgb(45, 95, 205);
@@ -406,16 +406,16 @@ namespace Rocola
             }
             catch { }
         }
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct MemStatusEx { public uint Length, MemoryLoad; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
-        // EN LINUX: la memoria de /proc/meminfo (Plataforma/LlamadasWindows.cs)
-        private static bool GlobalMemoryStatusEx(ref MemStatusEx b)
-        {
-            ulong t, d; uint u;
-            if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
-            b.TotalPhys = t; b.AvailPhys = d; b.MemoryLoad = u; LlamadasWindows.Direcciones(out b.TotalVirtual, out b.AvailVirtual);
-            return true;
-        }
+        // EN LINUX: aqui XP declara MemStatusEx (la MEMORYSTATUSEX de Windows) y GlobalMemoryStatusEx (kernel32). La memoria del equipo la da
+        // Linux (Nativo/Equipo.cs: Memoria, de /proc/meminfo; Direcciones, de /proc/self/status).
+        // EN LINUX: (XP) // EN LINUX: la memoria de /proc/meminfo (Plataforma/LlamadasWindows.cs)
+        // EN LINUX: (XP) private static bool GlobalMemoryStatusEx(ref MemStatusEx b)
+        // EN LINUX: (XP) {
+            // EN LINUX: (XP) ulong t, d; uint u;
+            // EN LINUX: (XP) if (!LlamadasWindows.Memoria(out t, out d, out u)) return false;
+            // EN LINUX: (XP) b.TotalPhys = t; b.AvailPhys = d; b.MemoryLoad = u; LlamadasWindows.Direcciones(out b.TotalVirtual, out b.AvailVirtual);
+            // EN LINUX: (XP) return true;
+        // EN LINUX: (XP) }
 
         // CUANTA MEMORIA SE LE DEJA AL CAJON DE CASILLAS HORNEADAS.
         //
@@ -466,9 +466,9 @@ namespace Rocola
             ulong ramMb = 0;
             try
             {
-                MemStatusEx ms = new MemStatusEx();
-                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+                ulong totalPhys, availPhys; uint memoryLoad;   // EN LINUX: (MemStatusEx y su Length) lo que se pregunta
+                if (Equipo.Memoria(out totalPhys, out availPhys, out memoryLoad)) ramMb = totalPhys / (1024UL * 1024UL);   // EN LINUX: (GlobalMemoryStatusEx) /proc/meminfo
+                // EN LINUX: (XP) if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
             }
             catch { }
             // En 32 bits el programa no pasa de ~2 GB por mucha RAM que haya, asi que el techo se queda
@@ -492,15 +492,15 @@ namespace Rocola
             try { cores = Environment.ProcessorCount; } catch { }
             try
             {
-                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
-                { object v = (k != null) ? k.GetValue("~MHz") : null; if (v != null) mhz = Convert.ToInt32(v); }
+                // EN LINUX: (el valor «~MHz» de HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0 en el registro de Windows: la velocidad de
+                mhz = Equipo.ProcesadorMhz();   // fabrica que Windows mide al arrancar) la mayor que da el nucleo (Nativo/Equipo.cs: cpufreq, o «cpu MHz» de /proc/cpuinfo)
             }
             catch { }
             try
             {
-                MemStatusEx ms = new MemStatusEx();
-                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+                ulong totalPhys, availPhys; uint memoryLoad;   // EN LINUX: (MemStatusEx y su Length) lo que se pregunta
+                if (Equipo.Memoria(out totalPhys, out availPhys, out memoryLoad)) ramMb = totalPhys / (1024UL * 1024UL);   // EN LINUX: (GlobalMemoryStatusEx) /proc/meminfo
+                // EN LINUX: (XP) if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
             }
             catch { }
             bool cpuOk = (cores >= 2) || (mhz >= 2200);
@@ -552,9 +552,9 @@ namespace Rocola
             ulong ramMb = 0;
             try
             {
-                MemStatusEx ms = new MemStatusEx();
-                ms.Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MemStatusEx));
-                if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
+                ulong totalPhys, availPhys; uint memoryLoad;   // EN LINUX: (MemStatusEx y su Length) lo que se pregunta
+                if (Equipo.Memoria(out totalPhys, out availPhys, out memoryLoad)) ramMb = totalPhys / (1024UL * 1024UL);   // EN LINUX: (GlobalMemoryStatusEx) /proc/meminfo
+                // EN LINUX: (XP) if (GlobalMemoryStatusEx(ref ms)) ramMb = ms.TotalPhys / (1024UL * 1024UL);
             }
             catch { }
             topePortadas = TopeDePortadasPara(ramMb);
@@ -695,7 +695,7 @@ namespace Rocola
         private float nebFase = 0f;
 
         // ---- Reproductor de video (Windows Media Player ActiveX, hosteado por codigo) ----
-        private VideoHost video;
+        private ReproductorVideo video;   // EN LINUX: el reproductor de libmpv y su capa (Nativo/ReproductorVideo.cs), no el control ActiveX del WMP
         private DateTime lastInput = DateTime.Now; // ultima tecla (para detectar inactividad)
         private Label lblAttract;                  // aviso amarillo pulsante "toca una tecla"
         private StartupLoad startupLoad;
@@ -708,7 +708,7 @@ namespace Rocola
             DecodificacionFlotante.LaNecesita = LlegaAlMaximo;   // que MP3 se descomprimen en coma flotante (FlotanteNLayer.cs)
             formStars.Density = 1f;      // MISMA densidad que albumView: el borde entre secciones deja de notarse
             formStars.QuietBands = true;   // y ademas evitar acumularlas en el abecedario (arriba) y la barra de estado (abajo)
-            try { if (timeBeginPeriod(1) == 0) timerResRaised = true; } catch { }   // reloj a 1ms -> animacion pareja
+            // reloj a 1ms -> animacion pareja   // EN LINUX: (timeBeginPeriod(1) de winmm) los relojes de Linux ya van al milisegundo (Sleep(1) = 1,1 a 1,2 ms): nada que pedir
             try { int wt, ct; System.Threading.ThreadPool.GetMinThreads(out wt, out ct); System.Threading.ThreadPool.SetMinThreads(Math.Max(wt, 3), ct); } catch { }  // arranque de cargas mas agil
             this.KeyPreview = true;                 // el formulario ve KeyPress aunque otro control tenga el foco
             this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)
@@ -736,7 +736,7 @@ namespace Rocola
             try { if (statsDirty) { statsDirty = false; SaveStats(false); } } catch { }   // guardar estadisticas pendientes
             try { GuardaNoche(false); } catch { }   // y lo mas pedido esta noche (AtraccionGpu.cs)
             WaitDataWrites(5000);   // ultima barrera por si Windows cerro la ventana por otra ruta
-            try { if (timerResRaised) { timeEndPeriod(1); timerResRaised = false; } } catch { }
+            // EN LINUX: (timeEndPeriod(1)) no se pidio nada: nada que devolver
             base.OnFormClosed(e);
         }
 
@@ -1371,8 +1371,8 @@ namespace Rocola
             {
                 int strip = 46;
                 lblAttract.SetBounds(0, 0, W, strip);
-                video.SetBounds(0, strip, W, H - strip);
-                video.BringToFront();
+                video.PonSitio(0, strip, W, H - strip);   // EN LINUX: SetBounds: el sitio de la capa del video
+                video.AlFrente();   // EN LINUX: BringToFront
                 lblAttract.BringToFront();
                 if (helpBar != null) helpBar.Visible = false;
                 if (buscaView != null) buscaView.Visible = false;
@@ -1521,7 +1521,7 @@ namespace Rocola
                 int vy = lettersY;
                 int vw = Math.Max(120, (W - pad) - vx);
                 int vh = Math.Max(90, albumBottom - vy);
-                video.SetBounds(vx, vy, vw, vh);
+                video.PonSitio(vx, vy, vw, vh);   // EN LINUX: SetBounds: el sitio de la capa del video
                 video.Visible = videoOn && !searchOpen;   // garantia: oculto si no hay video sonando (o si el buscador esta abierto)
 #if ROCOLA_GPU
                 if (AsistenteVisible) video.Visible = false;
@@ -1782,7 +1782,7 @@ namespace Rocola
             int myGen = AdvanceThumbWarm();
             List<Album> snap = new List<Album>(albums);
             System.Threading.Thread t = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("calentador de miniaturas");
                 try
                 {
@@ -1872,7 +1872,7 @@ namespace Rocola
                 finally { PublishThumbRemaining(myGen, 0); }
             });
             t.IsBackground = true;
-            t.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             t.Start();
         }
 

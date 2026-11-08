@@ -601,24 +601,7 @@ namespace Rocola.Ventanas
         }
     }
 
-    // EL HUECO DE UN CONTROL ACTIVEX (en XP, el reproductor de video de Windows Media, por su CLSID). En Linux no hay ActiveX: el objeto lo
-    // pone quien sepa hacerlo (Fabrica; el video se traduce a mpv en la fase 9). Sin ella, GetOcx da null, como en un XP sin el reproductor.
-    public abstract class AxHost : Control, ISupportInitialize
-    {
-        public static Func<string, AxHost, object> Fabrica;
-        private readonly string clsid;
-        private object ocx;
-        protected AxHost(string clsid) { this.clsid = clsid; }
-        protected AxHost(string clsid, int flags) : this(clsid) { }
-        protected object GetOcx()
-        {
-            if (ocx == null && Fabrica != null) try { ocx = Fabrica(clsid, this); } catch { ocx = null; }
-            return ocx;
-        }
-        public void BeginInit() { }
-        public void EndInit() { }
-        protected override void Dispose(bool disposing) { IDisposable d = ocx as IDisposable; ocx = null; if (d != null) try { d.Dispose(); } catch { } base.Dispose(disposing); }
-    }
+    // (El hueco del control ActiveX del reproductor de Windows Media, AxHost, se fue con el port nativo del video: Nativo/ReproductorVideo.cs.)
 
     // ELEGIR UNA CARPETA CON EL RATON (Ctrl+F2 de XP): en Rocola OS las carpetas de la musica las encuentra rocola-discos; aqui se cancela.
     public class CommonDialog : Component { public DialogResult ShowDialog() { return DialogResult.Cancel; } public DialogResult ShowDialog(IWin32Window owner) { return DialogResult.Cancel; } }

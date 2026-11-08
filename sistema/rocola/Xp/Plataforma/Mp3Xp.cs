@@ -57,10 +57,10 @@ namespace Rocola
         private readonly UnCuadro cuadro = new UnCuadro();
         private readonly Func<byte[], int, int, int> leeArreglo;
 
-        public Mp3FileReader(string mp3FileName) : this(File.OpenRead(mp3FileName), CreateAcmFrameDecompressor, true) { }
+        public Mp3FileReader(string mp3FileName) : this(File.OpenRead(mp3FileName), DescompresorMp3.Crea, true) { }
         public Mp3FileReader(string mp3FileName, FrameDecompressorBuilder frameDecompressorBuilder) : this(File.OpenRead(mp3FileName), frameDecompressorBuilder, true) { }
         // Desde un flujo: NO lo cierra al acabar
-        public Mp3FileReader(Stream inputStream) : this(inputStream, CreateAcmFrameDecompressor, false) { }
+        public Mp3FileReader(Stream inputStream) : this(inputStream, DescompresorMp3.Crea, false) { }
         public Mp3FileReader(Stream inputStream, FrameDecompressorBuilder frameDecompressorBuilder) : this(inputStream, frameDecompressorBuilder, false) { }
 
         private Mp3FileReader(Stream inputStream, FrameDecompressorBuilder frameDecompressorBuilder, bool ownInputStream)
@@ -144,13 +144,8 @@ namespace Rocola
         // Lo que arma el descompresor de cuadros
         public delegate IMp3FrameDecompressor FrameDecompressorBuilder(WaveFormat mp3Format);
 
-        // El descompresor «de Windows» (en XP, el ACM): aqui libmpg123, la biblioteca de MP3 del sistema, que como el ACM entrega enteros de
-        // 16 bits cuadro a cuadro (NAudioXp.cs). Sin libmpg123, NLayer.
-        public static IMp3FrameDecompressor CreateAcmFrameDecompressor(WaveFormat mp3Format)
-        {
-            IMp3FrameDecompressor d = DescompresorMpg123.Crea(mp3Format);
-            return d ?? new DescompresorNLayer16(mp3Format);
-        }
+        // (En NAudio 1.9 aqui esta CreateAcmFrameDecompressor, el descompresor de Windows: el ACM. El de Linux es Nativo/DescompresorMp3.cs, y
+        // es el que usan los constructores sin descompresor.)
 
         private void CreateTableOfContents()
         {

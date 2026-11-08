@@ -84,18 +84,18 @@ namespace Rocola
         {
             // El BackgroundWorker usa un hilo compartido: restaurar su prioridad al salir.
             System.Threading.Thread thread = System.Threading.Thread.CurrentThread;
-            System.Threading.ThreadPriority previous = thread.Priority;
+            System.Threading.ThreadPriority previous = PrioridadHilo.De(thread);   // EN LINUX: (thread.Priority) la que se le apunto (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             scanDirectoryMemo = new ScanDirectoryMemo();
             bitacoraBiblioteca = Environment.TickCount; bitacoraFirmaMs = -1;   // (bitacora: MedidasBitacora.cs)
             try
             {
-                try { thread.Priority = System.Threading.ThreadPriority.BelowNormal; } catch { }
+                try { PrioridadHilo.Pon(thread, System.Threading.ThreadPriority.BelowNormal); } catch { }   // EN LINUX: (thread.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)
                 ScanLibraryCore(sender, e);
             }
             finally
             {
                 scanDirectoryMemo.Clear(); scanDirectoryMemo = null;
-                try { thread.Priority = previous; } catch { }
+                try { PrioridadHilo.Pon(thread, previous); } catch { }   // EN LINUX: (thread.Priority = previous) la prioridad y su nice
             }
         }
 
@@ -895,7 +895,7 @@ namespace Rocola
             try
             {
             durScanTh = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("duraciones (escaneo)");
                 try
                 {
@@ -1002,7 +1002,7 @@ namespace Rocola
 
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
-                object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
+                MedidorVideo medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs (ffmpeg), no un reproductor de Windows suelto
                 VotosTinte<char> votos = new VotosTinte<char>(EqualityComparer<char>.Default);
                 VotosTinte<string> votosD = new VotosTinte<string>(StringComparer.OrdinalIgnoreCase);
                 int durHechas = 0, genHechas = 0;
@@ -1127,10 +1127,10 @@ namespace Rocola
                 finally { lecturaPlan = null; FinalizaLecturaBiblioteca(lectura, false, myGen); }
             });
             durScanTh.IsBackground = true;
-            durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(durScanTh, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (durScanTh.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             // El reproductor de Windows es un objeto COM y solo se deja usar desde un hilo STA. Sin esto, la
             // duracion de los videos no se podria medir aqui.
-            try { durScanTh.SetApartmentState(System.Threading.ApartmentState.STA); } catch { }
+            // EN LINUX: (durScanTh.SetApartmentState(ApartmentState.STA)) sin COM no hay apartamentos: el medidor se usa desde cualquier hilo
             durScanTh.Start();
             }
             catch { FinalizaLecturaBiblioteca(lectura, false, myGen); throw; }
@@ -1288,48 +1288,48 @@ namespace Rocola
         // El medidor se crea UNA vez por tanda y lo lleva el propio hilo (por eso va por referencia y no en un
         // campo): crearlo por archivo seria carisimo, y tenerlo en un campo compartido se cruzaria con la tanda
         // siguiente si alguien vuelve a escanear la biblioteca mientras esta corre.
-        private float MideDuracionVideo(string ruta, ref object wmpMedidor)
+        private float MideDuracionVideo(string ruta, ref MedidorVideo wmpMedidor)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs (la duracion del contenedor, con ffmpeg)
         {
             try
             {
                 if (wmpMedidor == null)
                 {
-                    Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7");   // Linux: el reproductor de libmpv (VideoMpv.cs)
-                    if (t == null) t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX");
-                    if (t == null) return 0f;                       // sin reproductor de Windows: no se puede medir
-                    wmpMedidor = Activator.CreateInstance(t);
-                    try { Set(wmpMedidor, "uiMode", "none"); } catch { }
-                    try { object s2 = Get(wmpMedidor, "settings"); if (s2 != null) { Set(s2, "autoStart", false); Set(s2, "volume", 0); } } catch { }
+                    // EN LINUX: (el tipo del ProgID WMPlayer.OCX.7, si no WMPlayer.OCX, creado con Activator.CreateInstance, con uiMode "none",
+                    // autoStart false y volume 0) el medidor de Nativo/MedidorVideo.cs: no reproduce ni suena, solo lee la cabecera
+                    wmpMedidor = MedidorVideo.Crea();
+                    if (wmpMedidor == null) return 0f;                       // sin reproductor de Windows: no se puede medir   // EN LINUX: sin ffmpeg
+                    // EN LINUX: (XP) try { Set(wmpMedidor, "uiMode", "none"); } catch { }
+                    // EN LINUX: (XP) try { object s2 = Get(wmpMedidor, "settings"); if (s2 != null) { Set(s2, "autoStart", false); Set(s2, "volume", 0); } } catch { }
                 }
-                object media = Call(wmpMedidor, "newMedia", ruta);
-                if (media == null) return 0f;
+                if (!wmpMedidor.PideDuracion(ruta)) return 0f;   // EN LINUX: object media = newMedia(ruta), que no reproduce nada; if (media == null) return 0f
+                // EN LINUX: (XP) if (media == null) return 0f;
                 try
                 {
                     for (int intento = 0; intento < 30; intento++)   // hasta ~3 s, mirando cada 100 ms
                     {
                         double d = 0;
-                        try { object o = Get(media, "duration"); if (o != null) d = Convert.ToDouble(o); } catch { }
+                        try { d = wmpMedidor.Duracion; } catch { }   // EN LINUX: media.duration
                         if (d > 0.05 && d < 36000) return (float)d;
                         if (preScanStop) break;
                         // El reproductor puede tardar en rellenar la duracion, y cuando lo hace avisa por la
                         // cola de mensajes de ESTE hilo. Si nadie la vacia, el aviso no llega nunca y todos los
                         // videos se irian por el tope de tres segundos sin duracion. Este hilo no tiene ventanas
                         // propias, asi que vaciarla aqui no puede repintar ni disparar nada de la rocola.
-                        try { Application.DoEvents(); } catch { }
+                        // EN LINUX: (Application.DoEvents) el medidor recibe la duracion por su propio hilo: aqui no hay cola de mensajes que vaciar
                         System.Threading.Thread.Sleep(100);
                     }
                 }
-                finally { try { System.Runtime.InteropServices.Marshal.ReleaseComObject(media); } catch { } }
+                finally { try { wmpMedidor.QuitaArchivo(); } catch { } }   // EN LINUX: (Marshal.ReleaseComObject(media)) deja el archivo
             }
             catch { }
             return 0f;
         }
-        private static void SueltaMedidorVideo(ref object wmpMedidor)
+        private static void SueltaMedidorVideo(ref MedidorVideo wmpMedidor)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs
         {
-            object w = wmpMedidor; wmpMedidor = null;
+            MedidorVideo w = wmpMedidor; wmpMedidor = null;   // EN LINUX: el medidor de Nativo/MedidorVideo.cs
             if (w == null) return;
-            try { Call(w, "close"); } catch { }
-            try { System.Runtime.InteropServices.Marshal.ReleaseComObject(w); } catch { }
+            try { w.Dispose(); } catch { }   // EN LINUX: (Call(w, "close") y Marshal.ReleaseComObject(w)) suelta el medidor
+            // EN LINUX: (XP) try { System.Runtime.InteropServices.Marshal.ReleaseComObject(w); } catch { }
         }
 
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
@@ -1526,7 +1526,7 @@ namespace Rocola
             try
             {
             preparaRepasoTh = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("repaso de la biblioteca (preparacion)");
                 bool compartida = false;
                 try
@@ -1602,7 +1602,7 @@ namespace Rocola
             preScanTh = new System.Threading.Thread[carriles];
             for (int carril = 0; carril < carriles; carril++)
             preScanTh[carril] = new System.Threading.Thread(delegate ()
-            {
+            { PrioridadHilo.AlArrancar();   // EN LINUX: la prioridad que XP le pone a este hilo antes de Start (Thread.Priority) se toma aqui: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 HilosRocola.Nombra("repaso de la biblioteca (carriles)");
                 try
                 {
@@ -1776,7 +1776,7 @@ namespace Rocola
             // quitaba el turno al dibujado, y el fondo estrellado se veia ir lento o a tirones. Por debajo de lo
             // normal sigue quedandose con TODO el tiempo que la interfaz no usa (que es casi todo), pero en
             // cuanto hay un cuadro que dibujar, manda el cuadro. En automatico, la minima de todas.
-                preScanTh[carril].Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
+                PrioridadHilo.Pon(preScanTh[carril], turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest);   // EN LINUX: (preScanTh[carril].Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 System.Threading.Interlocked.Increment(ref vivos);
                 try { preScanTh[carril].Start(); }
                 catch { finDeCarril(); throw; }
@@ -1792,7 +1792,7 @@ namespace Rocola
                 finally { lecturaPlan = null; if (!compartida) FinalizaLecturaBiblioteca(lectura, true, myGen); }
             });
             preparaRepasoTh.IsBackground = true;
-            preparaRepasoTh.Priority = System.Threading.ThreadPriority.BelowNormal;
+            PrioridadHilo.Pon(preparaRepasoTh, System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (preparaRepasoTh.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             preparaRepasoTh.Start();
             }
             catch { FinalizaLecturaBiblioteca(lectura, true, myGen); throw; }
@@ -1943,7 +1943,7 @@ namespace Rocola
         }
         // De donde sale la lista de la carpeta con CLR 2: el recorrido de Windows (null en otros sistemas y en CLR 4, que ya reutiliza los
         // metadatos de la enumeracion). Las pruebas lo cambian por una lista inventada para comprobar el mismo camino sin Windows.
-        private static FuenteListado fuenteListado = ListadoWin32.Disponible() ? new FuenteListado(ListadoWin32.Lee) : null;
+        private static FuenteListado fuenteListado = null;   // EN LINUX: (ListadoWin32.Disponible() ? ListadoWin32.Lee : null; ListadoWin32 es FindFirstFile y solo vale con CLR 2 en Windows) null: / con .NET 10 (CLR 4 o mas) XP ya recorre con DirectoryInfo.GetFiles, que trae los datos de cada entrada en el mismo recorrido (en Linux, / readdir); el recorrido de Windows no se usaria tampoco en Windows con este .NET
         // Lo mismo que el camino de siempre, partiendo de la lista ya leida: mismos archivos en el mismo orden (por nombre, sin mayusculas),
         // mismas tres cosas apuntadas de cada uno, la misma memoria del recorrido (archivos y carpetas en el orden del sistema) y las mismas
         // carpetas por visitar (de la ultima a la primera, sin atajos ni carpetas del sistema).
@@ -2328,9 +2328,9 @@ namespace Rocola
                 int desde = k * trozo;
                 int hasta = Math.Min(n, desde + trozo);
                 int yo = k - 1;
-                th[k - 1] = new System.Threading.Thread(delegate () { try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });
+                th[k - 1] = new System.Threading.Thread(delegate () { PrioridadHilo.AlArrancar(); try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });   // EN LINUX: AlArrancar: la prioridad que XP le pone antes de Start (Nativo/PrioridadHilo.cs)
                 th[k - 1].IsBackground = true;
-                th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
+                PrioridadHilo.Pon(th[k - 1], System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (th[k - 1].Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 th[k - 1].Start();
             }
             TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
@@ -2549,9 +2549,9 @@ namespace Rocola
                 if (coverPumpCount < coverCarriles)
                 {
                     coverPumpCount++;
-                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
-                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)
+                    PrioridadHilo.Pon(t, System.Threading.ThreadPriority.BelowNormal);   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     t.Start();
                 }
             }
@@ -2578,9 +2578,9 @@ namespace Rocola
                 if (coverPumpCount < coverCarriles)   // SSD: un carril por nucleo (hasta 4); HDD: carril unico (cabezal)
                 {
                     coverPumpCount++;
-                    System.Threading.Thread t = new System.Threading.Thread(CoverPump);
+                    System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
-                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // idem: la caratula puede esperar; un cuadro perdido se NOTA
+                    PrioridadHilo.Pon(t, System.Threading.ThreadPriority.BelowNormal);   // idem: la caratula puede esperar; un cuadro perdido se NOTA   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     t.Start();
                 }
             }
@@ -3335,7 +3335,7 @@ namespace Rocola
 #if ROCOLA_GPU
                 if (AsistenteVisible) video.Visible = false;
 #endif
-                if (video.Visible) video.BringToFront(); }
+                if (video.Visible) video.AlFrente(); }   // EN LINUX: BringToFront: la capa del video
             this.Focus();
 #if ROCOLA_GPU
             // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms). SyncGpuFullScreen detecta la
