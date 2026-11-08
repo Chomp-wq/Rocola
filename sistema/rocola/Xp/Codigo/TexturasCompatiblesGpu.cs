@@ -166,7 +166,7 @@ namespace Rocola
             finally
             {
                 // EN LINUX: (sin UnlockBits: los puntos se leyeron directo del SKBitmap y no queda nada de GDI+ que soltar; en XP: if (bd != null) try { bmp.UnlockBits(bd); } catch { ok = false; })
-                if (locked) { try { if (!TexturasGl.Sube((uint)tex, lx, ly, lw, lh, bits)) ok = false; } catch { ok = false; } TexturasGl.SueltaMemoria(bits, propia); }   // EN LINUX: UnlockRect = subir la zona (glTexSubImage2D) y soltar la memoria
+                if (locked) { try { if (!TexturasGl.Sube((uint)tex, lx, ly, lw, lh, bits)) ok = false; else if (VolcadoTexturas.Vuelca) VolcadoTexturas.Apunta((uint)tex, lx, ly, lw, lh, bits); } catch { ok = false; } TexturasGl.SueltaMemoria(bits, propia); }   // EN LINUX: UnlockRect = subir la zona (glTexSubImage2D) y soltar la memoria   (pruebas: ROCOLA_VOLCADO_TEXTURAS, Nativo/VolcadoTexturas.cs)
             }
             return ok;
         }

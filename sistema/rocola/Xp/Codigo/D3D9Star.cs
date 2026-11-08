@@ -420,7 +420,7 @@ namespace Rocola
                 // EN LINUX:     catch { ok = false; }   }
                 if (texLocked)   // EN LINUX: UnlockRect = subir lo escrito (glTexSubImage2D por la unidad 2) y soltar la memoria
                 {
-                    try { if (!TexturasGl.Sube((uint)tex, 0, 0, lw, lh, bits)) ok = false; }   // EN LINUX
+                    try { if (!TexturasGl.Sube((uint)tex, 0, 0, lw, lh, bits)) ok = false; else if (VolcadoTexturas.Vuelca) VolcadoTexturas.Apunta((uint)tex, 0, 0, lw, lh, bits); }   // EN LINUX   (pruebas: ROCOLA_VOLCADO_TEXTURAS, Nativo/VolcadoTexturas.cs)
                     catch { ok = false; }
                     TexturasGl.SueltaMemoria(bits, propia);   // EN LINUX
                 }
