@@ -121,3 +121,91 @@ Comprobación:
   framebuffer de una X8 en (0, 0, 0, 1) dejando el framebuffer y la máscara de antes; la memoria que baja con las texturas; borrar avisa y
   la quita del registro; los tres programas compilan; sin errores de OpenGL).
 - Con las piezas en el programa (sin usar), las cintas siguen dando lo mismo que la referencia.
+
+## T3. El dispositivo, en un paso
+
+`Codigo/D3D9Star.cs` (el dispositivo y el refresco del `GpuPanel`), `Codigo/PerformanceGpu.cs` y `Codigo/TexturasCompatiblesGpu.cs`
+llaman a OpenGL ES 2 directo. Solo cambian las líneas que llamaban a Direct3D 9 y los bloques de interop (los delegados de la tabla de
+COM y su caché, las constantes, `D3DPRESENT_PARAMETERS`, `D3DLOCKED_RECT`, `D3DCAPS9`); cada trozo cambiado lleva «EN LINUX» (60, 24 y
+20 trozos; un guion lo mira: ninguno sin la marca). La lógica de XP no cambia: las cachés de estado (`stTss`, `stBlend`, `stTex`,
+`stDireccion`, `stArg2Difuso`, `stOrigenAlfa`), juntar órdenes, los contadores, las potencias de 2 con su borde, la imagen intermedia,
+las teselas, las portadas compartidas, la calibración UP o búfer, el reintento sin memoria y la pérdida del dispositivo. El diff contra
+`Rocola/` quitando los renombres de T1: `D3D9Star.cs` 261 líneas fuera y 125 dentro, `PerformanceGpu.cs` 79 y 42,
+`TexturasCompatiblesGpu.cs` 40 y 32; las de dentro llevan «EN LINUX» o van bajo su comentario «EN LINUX», salvo tres de antes de esta
+pista (la espera del bucle y el texto de los FPS, de la pista de las ventanas y la del dibujo).
+
+Lo de OpenGL que necesita los campos del dispositivo va en `Nativo/DispositivoTarjetaGl.cs` (otra parte de la misma clase). Salen del
+programa `Plataforma/Direct3DaGL.cs` (1 406 líneas) y `Plataforma/D3D9Device.Gl.cs`.
+
+| Direct3D 9 en XP | En Linux |
+|---|---|
+| `Direct3DCreate9` + `CreateDevice` (HARDWARE_VP y, si falla, SOFTWARE_VP) | `CreaFondo`: el fondo (una textura X8 con su framebuffer) y los tres programas, en el contexto de OpenGL del hilo de la pantalla; sin segundo intento (los vértices de XP ya vienen transformados) |
+| `Reset` | `RehaceFondo` (el fondo a la medida pedida) y el `InitStates` de XP |
+| `TestCooperativeLevel` | nada: en Rocola OS no pasa lo que en XP perdía el dispositivo (Ctrl+Alt+Supr, otra resolución, otro programa a pantalla completa; cambiar de consola cierra la rocola), y la capa siempre contestaba `D3D_OK`; la lógica de pérdida de XP sigue (la usan un dibujo que falla y la falta de memoria) |
+| `BeginScene` / `EndScene` / `Present` | `EmpiezaEscena` (lo soltado desde otros hilos, la traza y, si otro tocó OpenGL, el estado otra vez) / nada / `PresentaFondo` (el fondo al control de la ventana: `Nativo/PantallaTarjeta.cs`) |
+| `SetRenderState` (ZENABLE, CULLMODE, LIGHTING, ALPHABLENDENABLE, SRCBLEND, DESTBLEND) y `SetFVF` | `glDisable`/`glEnable` y `glBlendFunc`; el FVF son los punteros de cada dibujo |
+| `SetTextureStageState` (las combinaciones de XP) | `SombreadoresTarjeta.Usa` del programa fijo |
+| `SetTexture(0, t)` | `glBindTexture` en la unidad 0 con la dirección de la etapa 0; una textura ya soltada da `INVALIDCALL`, como antes |
+| `SetSamplerState` ADDRESSU/V y MIN/MAGFILTER | `TexturasGl.Envoltura` de la textura puesta (en OpenGL ES 2 va con la textura); LINEAR al crearla |
+| `CreateTexture` (A8R8G8B8, MANAGED) | `TexturasGl.Nueva`; sin memoria, `D3DERR_OUTOFVIDEOMEMORY` |
+| `LockRect` / `UnlockRect` | una memoria aparte de la medida de la textura (`TexturasGl.Memoria`), `RellenaBorde` sobre ella y `TexturasGl.Sube` (glTexSubImage2D por la unidad 2) |
+| `GetLevelDesc` | `TexturasGl.Medida` |
+| `PreLoad`, `EvictManagedResources`, `AddRef` | nada: OpenGL ya subió la textura y no guarda copia manejada; la portada compartida lleva sus dueños (`AlSoltar` dice si le quedan) |
+| `GetAvailableTextureMem` | `MemoriaTarjeta.Libre` |
+| `GetDeviceCaps` (límite de textura, presentar sin esperar, dos texturas) | `GL_MAX_TEXTURE_SIZE`; las otras dos, sí (lo que contestaba la traducción con capas) |
+| `DrawPrimitiveUP` | `Triangulos` y `Triangulos2` (glDrawArrays desde la memoria del programa) |
+| `CreateVertexBuffer`, `Lock` (DISCARD o NOOVERWRITE), `Unlock`, `SetStreamSource`, `DrawPrimitive` | `glBufferData`, `glBufferData` sin datos (DISCARD) y `glBufferSubData`, `glDrawArrays` del búfer |
+| `CreateTexture` RENDERTARGET, `GetSurfaceLevel`, `GetRenderTarget` y `SetRenderTarget` | `TexturasGl.Nueva`, `TexturasGl.Framebuffer` (X8: el alfa en 1) y `PonDestino` |
+| la etapa 1 (la viñeta) y `ValidateDevice` | `DosTexturas` / `FinDosTexturas` (el programa «dos texturas», la viñeta en la unidad 1); una pasada |
+| `GetDC` + `GetDeviceCaps(VREFRESH)` + `ReleaseDC` | `PantallaTarjeta.RefrescoHz` |
+| `CopyMemory` | `Buffer.MemoryCopy` |
+| `Release` de una textura | `Tarjeta.Suelta`: las teselas, las portadas compartidas o `TexturasGl.Borra` |
+
+OpenGL es uno para todos (el compositor, el video de libmpv, la flecha, cada dispositivo). Quien lo toca sube
+`PantallaTarjeta.Generacion` (el anfitrión al presentar y el video: una línea en `Plataforma/Anfitrion.cs` y cuatro en
+`Plataforma/VideoMpv.cs`) y `EmpiezaEscena` vuelve a poner en OpenGL lo que el dispositivo tenía puesto (`RestauraGl`: el estado de
+fábrica, el programa de `stTss` y la mezcla de `stBlend`) sin tocar las cachés de XP. En Direct3D 9 nadie más tocaba el estado del
+dispositivo, así que la cuenta de cambios de XP sale como en la referencia. Las cintas vieron dos fallos de las primeras versiones: con
+el `InitStates` de XP en lugar de `RestauraGl` los cuadros salían iguales pero `cambios` sumaba 1, y sin apagar la profundidad y las
+caras al restaurar, el ensuciado con `CULL_FACE FRONT` cambiaba un cuadro.
+
+Fuera de los tres archivos: `Plataforma/PruebasLinux.cs` (`--prueba-gpu` lee el fondo con `LeeFondo` y las texturas vivas con
+`TexturasGl.Vivas`) y `Plataforma/LlamadasWindows.cs` (fuera `CapacidadPantalla`). `ROCOLA_TRAZA_DIBUJOS` y `ROCOLA_SALTA_DIBUJOS`
+siguen con su formato (`Nativo/TrazaTarjeta.cs`); con `ROCOLA_ERRORES_GL=1` el dispositivo mira `glGetError` al presentar cada cuadro y
+lo escribe.
+
+Comprobación (todo fuera de pantalla con llvmpipe, en la máquina de pruebas):
+- Las 14 cintas en la referencia congelada y en la traducción salen iguales línea por línea (por cuadro: el SHA-256 del fondo, los
+  contadores y `glGetError` 0; y lo que devuelve cada llamada): 00-sintetica 16 cuadros, 01 335, 02 116, 03 97, 04 61, 05 121, 06 109,
+  07 134, 08 263, 09 830, 10 97, 11 95, 12 193 y la de T1 107: 2 574 cuadros, 0 bytes distintos. También con `--limite-textura 256`
+  (00, 01, 08, 09 y 10) y 64 (00), con `--redimensiona 40:1280x1024,200:800x600,500:1024x768` (09), `5:640x480,20:1366x768` (06) y
+  `10:1600x900` con `--limite-textura 512` (05).
+- Dos cintas grabadas con la traducción misma: n1 (JIT; pared, disco, buscador, video y Performance con el cielo a media y el grano,
+  175 cuadros) y n2 (NativeAOT; Ctrl+F3 y la pared, 107 cuadros): iguales en la referencia y en la traducción, también con
+  `--limite-textura 256`.
+- Controles negativos (la traducción con un fallo puesto a propósito tiene que salir distinta de la referencia): sin avisar de que otro
+  tocó OpenGL (la opción `--sin-avisar` del reproductor: el dispositivo no restaura su estado), 9 de 16 cuadros distintos en la
+  sintética, 334 de 335 en la 01 y 108 de 109 en la 06; sin la envoltura por textura (compilada aparte con el guion `control.sh`), 3 de
+  16 en la sintética (las cintas de la rocola no lo ven: el grano se lee en el centro de los texeles); sin el +0,5 del vértice (igual),
+  16 de 16, 335 de 335 y 109 de 109.
+- La rocola entera, JIT y NativeAOT, contra la referencia: la traza de un cuadro de cada pantalla (pared, disco, buscador, asistente,
+  video, Ctrl+F3, atracción y Performance con media, grano y todo junto). Las corridas de la rocola entera no se repiten igual (azar sin
+  semilla, la hora), ni siquiera dos de la referencia, así que se comparan los estados de dibujo de cada pantalla (mezcla, etapas,
+  textura y destino; `estados.py`): ninguno fuera de los de la referencia y ninguno de los comunes que falte. Las capturas de esas
+  pantallas, referencia y NativeAOT, iguales a la vista (el video incluido).
+- El video: `--prueba-video` (centro negro en 0 de 23 cuadros) con JIT, con NativeAOT y con la referencia, y la rocola con el video
+  sonando (cintas 03 y n1).
+- `--prueba-gpu`: bien, «texturas vivas al soltar: 0». `ROCOLA_ERRORES_GL=1`: 0 errores en todas las pantallas (JIT y NativeAOT).
+- NativeAOT (`dotnet publish -c Release -r linux-x64`): 0 avisos de IL o de AOT; los 15 avisos del compilador son los de antes (de
+  otros archivos).
+- No probado en el A4 (Mesa r600): no lo puedo probar desde aquí. Todo lo de arriba es con llvmpipe.
+
+Diferencias que quedan:
+- Con la referencia: la memoria libre no descuenta los 4 bytes de la textura negra de la capa (no hace falta).
+- Con Direct3D 9 de XP (igual que la referencia): una textura soltada se borra al momento (en Direct3D seguía viva mientras estaba
+  puesta en una etapa, por la cuenta de COM); el dispositivo la olvida (`OlvidaTextura`) y XP la vuelve a poner antes de cada dibujo,
+  así que solo cambia si XP dibujara con una textura que ya soltó (la sintética lo hace: el dispositivo se da por perdido, como en la
+  referencia). `TestCooperativeLevel` no da nunca pérdida, y las dos capacidades de Performance son siempre sí (como contestaba la capa).
+- La presentación sigue pasando por el escritorio de hoy (`Nativo/PantallaTarjeta.cs`, la única costura: cuando la pista de las
+  ventanas cambie el escritorio, cambia ese archivo) y `SubeBitmapBorde` y `ActualizaRegionBitmap` siguen leyendo el `Bitmap` (la pista
+  del dibujo).

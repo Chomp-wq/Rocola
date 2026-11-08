@@ -47,16 +47,18 @@ namespace Rocola
             return maxima;
         }
 
-        // Una textura nueva de ancho x alto, sin datos, LINEAR y CLAMP (la unidad 2, y despues la 0 activa). 0 si no hay memoria.
+        // Una textura nueva de ancho x alto, sin datos, LINEAR y CLAMP (la unidad 2, y despues la 0 activa). 0 si no hay memoria (o si
+        // OpenGL no la hace: mas grande que GL_MAX_TEXTURE_SIZE, que en Direct3D era D3DERR_INVALIDCALL).
         internal static uint Nueva(int ancho, int alto)
         {
             if (hiloGl < 0) hiloGl = Thread.CurrentThread.ManagedThreadId;
+            if (ancho <= 0 || alto <= 0 || ancho > Maxima() || alto > Maxima()) return 0;
             while (GlMas.GetError() != 0) { }
             uint n; GL.GenTextures(1, &n);
             GL.ActiveTexture(GL.TEXTURE0 + 2);
             GL.BindTexture(GL.TEXTURE_2D, n);
             GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, ancho, alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
-            if (GlMas.GetError() == GlMas.OUT_OF_MEMORY) { GL.DeleteTextures(1, &n); GL.ActiveTexture(GL.TEXTURE0); return 0; }
+            if (GlMas.GetError() != 0) { GL.DeleteTextures(1, &n); GL.ActiveTexture(GL.TEXTURE0); return 0; }
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
             GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
             GL.ActiveTexture(GL.TEXTURE0);
@@ -70,10 +72,16 @@ namespace Rocola
         // mascara de color que habia. 0 si OpenGL no lo deja pintar.
         internal static uint Framebuffer(uint textura, bool sinAlfa)
         {
+            uint f; GL.GenFramebuffers(1, &f);
+            if (!Adjunta(f, textura, sinAlfa)) { GlMas.DeleteFramebuffers(1, &f); return 0; }
+            return f;
+        }
+        // El mismo framebuffer, a pintar en otra textura (el fondo de un dispositivo, al cambiar de tamano: su framebuffer no cambia).
+        internal static bool Adjunta(uint f, uint textura, bool sinAlfa)
+        {
             int antes = 0; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &antes);
             byte* mascara = stackalloc byte[4]; GlMas.GetBooleanv(GlMas.COLOR_WRITEMASK, mascara);
             bool recorte = GlMas.IsEnabled(GL.SCISSOR_TEST) != 0;
-            uint f; GL.GenFramebuffers(1, &f);
             GL.BindFramebuffer(GL.FRAMEBUFFER, f);
             GL.FramebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, textura, 0);
             bool ok = GL.CheckFramebufferStatus(GL.FRAMEBUFFER) == GL.FRAMEBUFFER_COMPLETE;
@@ -85,8 +93,7 @@ namespace Rocola
                 if (recorte) GL.Enable(GL.SCISSOR_TEST);
             }
             GL.BindFramebuffer(GL.FRAMEBUFFER, (uint)antes);
-            if (!ok) { GlMas.DeleteFramebuffers(1, &f); return 0; }
-            return f;
+            return ok;
         }
         internal static void BorraFramebuffer(uint f)
         {

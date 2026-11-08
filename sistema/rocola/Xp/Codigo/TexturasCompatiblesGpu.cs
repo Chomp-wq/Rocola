@@ -65,8 +65,7 @@ namespace Rocola
                 {
                     // Una textura dividida contiene referencias normales, pero su identificador
                     // logico no es COM. Las portadas normales caben; si no, no se comparten.
-                    try { D3D9.EnGl.AddRef(e.Tex); }
-                    catch { return IntPtr.Zero; }
+                    // EN LINUX: sin AddRef: la textura vive mientras la entrada tenga duenos (AlSoltar, desde Tarjeta.Suelta)
                     e.Owners++; u = e.U; v = e.V; return e.Tex;
                 }
                 IntPtr tex = owner.CreateTexturePow2(bmp, out u, out v);
@@ -77,36 +76,26 @@ namespace Rocola
                 return tex;
             }
         }
-        internal static void AlSoltar(IntPtr tex)
+        internal static bool AlSoltar(IntPtr tex)   // EN LINUX: dice si aun le quedan duenos (la cuenta de referencias la llevaba Direct3D)
         {
-            if (cantidad == 0) return;
+            if (cantidad == 0) return false;   // EN LINUX
             lock (candado)
             {
                 Entry e;
-                if (!referencias.TryGetValue(tex, out e) || --e.Owners > 0) return;
+                if (!referencias.TryGetValue(tex, out e)) return false;   // EN LINUX
+                if (--e.Owners > 0) return true;   // EN LINUX
                 referencias.Remove(tex);
                 Dictionary<Bitmap, Entry> mapa = dispositivos[e.Owner]; mapa.Remove(e.Bmp);
                 if (mapa.Count == 0) dispositivos.Remove(e.Owner);
                 cantidad = referencias.Count;
             }
+            return false;   // EN LINUX
         }
     }
 
     internal sealed partial class DispositivoTarjeta
     {
-        // D3DCAPS9: prefijo documentado, dos DWORD en 88/92. El buffer completo
-        // tiene holgura para que GetDeviceCaps escriba el resto de la estructura.
-        [StructLayout(LayoutKind.Explicit, Size = 512)]
-        private struct CapsTextura
-        {
-            [FieldOffset(88)] public uint W; [FieldOffset(92)] public uint H;
-            // Lo que piden los ahorros de Performance (PerformanceGpu.cs), con los desplazamientos de D3DCAPS9.
-            [FieldOffset(20)] public uint Intervalos; [FieldOffset(44)] public uint MezclaOrigen;
-            [FieldOffset(140)] public uint Fvf; [FieldOffset(144)] public uint OperacionesTextura;
-            [FieldOffset(152)] public uint TexturasALaVez;
-        }
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int CapsDel(IntPtr self, ref CapsTextura caps);
+        // EN LINUX: (sin D3DCAPS9 ni GetDeviceCaps: lo que se preguntaba se lee de OpenGL en LeeLimitesTexturas)
         private int limiteTexturaW, limiteTexturaH;
         private int LimiteTexturaW { get { return limiteTexturaW > 2 ? limiteTexturaW : 2048; } }
         private int LimiteTexturaH { get { return limiteTexturaH > 2 ? limiteTexturaH : 2048; } }
@@ -116,11 +105,14 @@ namespace Rocola
         {
             try
             {
-                CapsTextura caps = new CapsTextura();
-                if (GetDeviceCaps(dev, ref caps) >= 0)   // Linux: DispositivoTarjeta.Gl.cs
+                uint max = (uint)TexturasGl.Maxima();   // EN LINUX: GetDeviceCaps: MaxTextureWidth y MaxTextureHeight = GL_MAX_TEXTURE_SIZE
+                if (max > 0)   // EN LINUX
                 {
-                    limiteTexturaW = PotenciaInferior(caps.W); limiteTexturaH = PotenciaInferior(caps.H);
-                    LeeCapacidades(caps.Intervalos, caps.MezclaOrigen, caps.Fvf, caps.OperacionesTextura, caps.TexturasALaVez);
+                    limiteTexturaW = PotenciaInferior(max); limiteTexturaH = PotenciaInferior(max);   // EN LINUX
+                    // EN LINUX: lo que pedian los ahorros (LeeCapacidades, con los bits de D3DCAPS9): presentar sin esperar al barrido (el cambio
+                    // de pagina de KMS sin esperar) y dos texturas en una pasada (OpenGL ES 2 tiene al menos 8 unidades y el programa fijo
+                    // «dos texturas» hace la combinacion: Nativo/SombreadoresTarjeta.cs)
+                    CapsSinEspera = true; CapsDosTexturas = true;
                 }
             }
             catch { } // limite conservador si el driver no expone las capacidades
@@ -130,50 +122,51 @@ namespace Rocola
         internal IntPtr CreaPortadaCompartida(Bitmap bmp, out float u, out float v)
         { if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.CreaPortadaCompartida(this, bmp, out u, out v); return PortadasCompartidasGpu.Toma(this, bmp, out u, out v); }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
 
-        private static void RellenaBorde(D3D9.LockedRect lr, int w, int h, int tw, int th)
+        private static unsafe void RellenaBorde(IntPtr bits, int pitch, int w, int h, int tw, int th)   // EN LINUX: lo bloqueado (antes D3DLOCKED_RECT); unsafe (las copias)
         {
             if (tw > w)
                 for (int y = 0; y < h; y++)
                 {
-                    IntPtr inicio = new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch + (long)(w - 1) * 4);
+                    IntPtr inicio = new IntPtr(bits.ToInt64() + (long)y * pitch + (long)(w - 1) * 4);   // EN LINUX: (lr.Bits, lr.Pitch)
                     int hecho = 1, faltan = tw - w;
                     while (faltan > 0)
                     {
                         int n = Math.Min(hecho, faltan);
-                        D3D9.CopyMemory(new IntPtr(inicio.ToInt64() + (long)hecho * 4), inicio, (UIntPtr)(uint)(n * 4));
+                        Buffer.MemoryCopy((void*)inicio, (void*)(inicio.ToInt64() + (long)hecho * 4), n * 4, n * 4);   // EN LINUX: CopyMemory (RtlMoveMemory) = Buffer.MemoryCopy
                         hecho += n; faltan -= n;
                     }
                 }
-            IntPtr ultima = new IntPtr(lr.Bits.ToInt64() + (long)(h - 1) * lr.Pitch);
+            IntPtr ultima = new IntPtr(bits.ToInt64() + (long)(h - 1) * pitch);   // EN LINUX: (lr.Bits, lr.Pitch)
             for (int y = h; y < th; y++)
-                D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), ultima, (UIntPtr)(uint)(tw * 4));
+                Buffer.MemoryCopy((void*)ultima, (void*)(bits.ToInt64() + (long)y * pitch), tw * 4, tw * 4);   // EN LINUX: CopyMemory
         }
-        private static bool ActualizaRegionBitmap(IntPtr tex, Bitmap bmp, Rectangle origen, Point destino, int w, int h)
+        private static unsafe bool ActualizaRegionBitmap(IntPtr tex, Bitmap bmp, Rectangle origen, Point destino, int w, int h)   // EN LINUX: unsafe (las copias)
         {
-            D3D9.UnlockRectDel unlock = null;
+            IntPtr bits = IntPtr.Zero; int pitch = 0, lx = 0, ly = 0, lw = 0, lh = 0, tw0, th0; bool propia = false;   // EN LINUX: lo bloqueado (antes D3DLOCKED_RECT)
             BitmapData bd = null; bool locked = false, ok = false;
             try
             {
                 int right = destino.X + origen.Width, bottom = destino.Y + origen.Height;
                 int r = right == w ? Pow2(w) : right, b = bottom == h ? Pow2(h) : bottom;
-                D3D9.RectI region = new D3D9.RectI { Left = destino.X, Top = destino.Y, Right = r, Bottom = b };
-                D3D9.LockedRect lr;
-                unlock = D3D9.EnGl.UnlockRect;
-                if (D3D9.EnGl.LockRect(tex, 0, out lr, ref region, 0) < 0) return false;
+                lx = destino.X; ly = destino.Y; lw = r - destino.X; lh = b - destino.Y;   // EN LINUX: la zona (antes D3DRECT)
+                // EN LINUX: LockRect de la zona = una memoria aparte de su medida (Nativo/TexturasGl.cs), que se sube al soltarla; como Direct3D,
+                // no si la zona no cabe en la textura
+                if (!TexturasGl.Medida((uint)tex, out tw0, out th0) || lx < 0 || ly < 0 || lw <= 0 || lh <= 0 || lx + lw > tw0 || ly + lh > th0) return false;
+                bits = TexturasGl.Memoria((long)lw * lh * 4, out propia); pitch = lw * 4;   // EN LINUX
                 locked = true;
                 bd = bmp.LockBits(origen, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 int bytes = checked(origen.Width * 4);
-                if (lr.Bits == IntPtr.Zero || lr.Pitch < (r - destino.X) * 4 || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < bytes) return false;
+                if (bits == IntPtr.Zero || pitch < (r - destino.X) * 4 || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < bytes) return false;   // EN LINUX: (lr.Bits, lr.Pitch)
                 for (int y = 0; y < origen.Height; y++)
-                    D3D9.CopyMemory(new IntPtr(lr.Bits.ToInt64() + (long)y * lr.Pitch), new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), (UIntPtr)(uint)bytes);
-                RellenaBorde(lr, origen.Width, origen.Height, r - destino.X, b - destino.Y);
+                    Buffer.MemoryCopy((void*)(bd.Scan0.ToInt64() + (long)y * bd.Stride), (void*)(bits.ToInt64() + (long)y * pitch), bytes, bytes);   // EN LINUX: CopyMemory
+                RellenaBorde(bits, pitch, origen.Width, origen.Height, r - destino.X, b - destino.Y);   // EN LINUX: (lr)
                 ok = true;
             }
             catch { ok = false; }
             finally
             {
                 if (bd != null) try { bmp.UnlockBits(bd); } catch { ok = false; }
-                if (locked && unlock != null) try { if (unlock(tex, 0) < 0) ok = false; } catch { ok = false; }
+                if (locked) { try { if (!TexturasGl.Sube((uint)tex, lx, ly, lw, lh, bits)) ok = false; } catch { ok = false; } TexturasGl.SueltaMemoria(bits, propia); }   // EN LINUX: UnlockRect = subir la zona (glTexSubImage2D) y soltar la memoria
             }
             return ok;
         }
@@ -196,7 +189,7 @@ namespace Rocola
                     Rectangle source = core; source.Inflate(1, 1); source.Intersect(new Rectangle(0, 0, w, h));
                     TexturasDivididasGpu.Tile t = new TexturasDivididasGpu.Tile { Core = core, Source = source, W = Pow2(source.Width), H = Pow2(source.Height) };
                     s.Tiles[i++] = t;
-                    if (createTex(dev, (uint)t.W, (uint)t.H, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out t.Tex, IntPtr.Zero) < 0 || t.Tex == IntPtr.Zero ||
+                    if ((t.Tex = (IntPtr)TexturasGl.Nueva(t.W, t.H)) == IntPtr.Zero ||   // EN LINUX: CreateTexture (A8R8G8B8, MANAGED) = glTexImage2D
                         !ActualizaRegionBitmap(t.Tex, bmp, source, Point.Empty, source.Width, source.Height)) return IntPtr.Zero;
                 }
                 IntPtr id = TexturasDivididasGpu.Registra(s); ok = true; return id;

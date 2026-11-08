@@ -88,9 +88,7 @@ namespace Rocola
             try { return fsync(manejador.ToInt32()) == 0; } catch { return false; }
         }
 
-        // GetDeviceCaps de la pantalla (gdi32): VREFRESH (116), las veces por segundo que refresca; lo dice el anfitrion (KMS: el modo
-        // puesto). Lo demas no se pregunta.
-        internal static int CapacidadPantalla(int que) { return que == 116 ? Escritorio.RefrescoHz : 0; }
+        // (GetDeviceCaps de la pantalla, VREFRESH: lo pregunta la tarjeta a Nativo/PantallaTarjeta.cs, RefrescoHz)
 
         // EnumDisplayDevices (user32): el adaptador de la pantalla principal. En XP, la cadena del controlador de la tarjeta (la que se ve en
         // el Administrador de dispositivos); en Linux, el nombre que da OpenGL (GL_RENDERER, el de Mesa: «AMD ARUBA (DRM 2.50.0 / 6.12...)»

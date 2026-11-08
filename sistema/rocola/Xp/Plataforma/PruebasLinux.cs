@@ -1,6 +1,6 @@
 // PRUEBAS DE LA TRADUCCION EN LINUX (no son de XP): se piden por la linea de ordenes y salen antes de abrir la rocola.
 //   rocola-xp --prueba-gpu ANCHO ALTO SALIDA.png [CUADROS]   el cielo y las estrellas de XP (GpuStarfield, la ventana de prueba F12 de
-//                                                            XP) pintados con Direct3DaGL fuera de pantalla, y el ultimo cuadro en PNG.
+//                                                            XP) pintados con OpenGL ES 2 fuera de pantalla, y el ultimo cuadro en PNG.
 //   rocola-xp --prueba-video RUTA [SEGUNDOS]                 el video solo (VideoMpv.cs: libmpv en su textura de 498x606, sin la
 //                                                            rocola): el punto del centro cada 0,25 s y, al final, en cuantas lecturas
 //                                                            salio negro (RUTA absoluta; con el video de prueba el centro es amarillo).
@@ -18,7 +18,7 @@
 //   ROCOLA_CAPTURA=S:ruta.png,...    la pantalla a los S segundos; ROCOLA_CAPTURA_SALE=1 cierra despues de la ultima;
 //                                    ROCOLA_CAPTURA_CAPAS=1 tambien cada capa; ROCOLA_CAPTURA_TEXTURAS=nombre:AxB,... texturas de OpenGL
 //   ROCOLA_PULSA=S:VK,...            teclas de Windows a su hora (TeclasLinux.cs)
-//   ROCOLA_TRAZA_DIBUJOS=S           cada dibujo del primer cuadro despues de S segundos (Direct3DaGL.cs)
+//   ROCOLA_TRAZA_DIBUJOS=S           cada dibujo del primer cuadro despues de S segundos (Nativo/TrazaTarjeta.cs)
 //   ROCOLA_SALTA_DIBUJOS=k1,k2       no hace esos dibujos de cada cuadro (para buscar el que pinta mal)
 //   ROCOLA_VOLCADO_TEXTURAS=carpeta  cada textura grande que se sube, en PNG
 using System;
@@ -28,7 +28,6 @@ using SkiaSharp;
 namespace Rocola
 {
     internal sealed partial class GpuStarfield { internal DispositivoTarjeta Dispositivo { get { return gpu; } } }
-    internal sealed partial class DispositivoTarjeta { internal IntPtr DispositivoGl { get { return dev; } } }
 
     internal static class PruebasLinux
     {
@@ -189,16 +188,16 @@ namespace Rocola
                 Rocola.Pantalla.GL.Finish();
                 double ms = reloj.Elapsed.TotalMilliseconds;
                 int bw, bh;
-                byte[] px = D3D9.EnGl.LeeFondo(s.Dispositivo.DispositivoGl, out bw, out bh);
+                byte[] px = s.Dispositivo.LeeFondo(out bw, out bh);   // (Nativo/DispositivoTarjetaGl.cs)
                 if (px == null) { Console.WriteLine("Sin fondo que leer"); return 1; }
                 using (SKBitmap b = new SKBitmap(new SKImageInfo(bw, bh, SKColorType.Bgra8888, SKAlphaType.Opaque)))
                 {
                     fixed (byte* p = px) Buffer.MemoryCopy(p, (void*)b.GetPixels(), px.Length, px.Length);
                     using (SKData d = b.Encode(SKEncodedImageFormat.Png, 100)) using (System.IO.FileStream f = System.IO.File.Create(salida)) d.SaveTo(f);
                 }
-                Console.WriteLine(cuadros + " cuadros en " + ms.ToString("0.0") + " ms (" + (ms / cuadros).ToString("0.00") + " ms por cuadro); objetos vivos: " + D3D9.ObjetosGlVivos);
+                Console.WriteLine(cuadros + " cuadros en " + ms.ToString("0.0") + " ms (" + (ms / cuadros).ToString("0.00") + " ms por cuadro); texturas vivas: " + TexturasGl.Vivas);
                 s.Dispose();
-                Console.WriteLine("objetos vivos al soltar: " + D3D9.ObjetosGlVivos);
+                Console.WriteLine("texturas vivas al soltar: " + TexturasGl.Vivas);
             }
             return 0;
         }

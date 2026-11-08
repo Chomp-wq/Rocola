@@ -282,7 +282,7 @@ namespace Rocola
                 propio = GCHandle.Alloc(this);
                 Mpv.mpv_render_context_set_update_callback(render, &HayCuadro, GCHandle.ToIntPtr(propio));
                 hayCuadro = true;
-                D3D9.EnGl.EstadoTocado();
+                PantallaTarjeta.Tocada();
             }
         }
         private void PintaCuadro(int w, int h)
@@ -325,7 +325,7 @@ namespace Rocola
                 hayCuadro = false;
             }
             host.TexturaGl = tex; host.AnchoGl = w; host.AltoGl = h; host.TexturaGlRgba = true;
-            D3D9.EnGl.EstadoTocado();
+            PantallaTarjeta.Tocada();
         }
 
         // EL ESTADO DE OPENGL ENTRE MPV Y LA ROCOLA (el mismo contexto). libmpv pide que cuando se le llama OpenGL este «en sus valores de
@@ -379,7 +379,7 @@ namespace Rocola
             fin = true;
             lock (Vivos) Vivos.Remove(this);
             IntPtr rc = render; render = IntPtr.Zero;
-            if (rc != IntPtr.Zero) { EstadoDeFabrica(Math.Max(1, texW), Math.Max(1, texH)); Mpv.mpv_render_context_free(rc); D3D9.EnGl.EstadoTocado(); }   // (en el hilo de la pantalla: el AxHost se suelta ahi)
+            if (rc != IntPtr.Zero) { EstadoDeFabrica(Math.Max(1, texW), Math.Max(1, texH)); Mpv.mpv_render_context_free(rc); PantallaTarjeta.Tocada(); }   // (en el hilo de la pantalla: el AxHost se suelta ahi)
             if (propio.IsAllocated) propio.Free();
             IntPtr m = mpv;
             if (m != IntPtr.Zero)
@@ -389,7 +389,7 @@ namespace Rocola
                 mpv = IntPtr.Zero;
                 Mpv.mpv_terminate_destroy(m);
             }
-            if (tex != 0) { uint t = tex, f = fbo; GL.DeleteTextures(1, &t); GlMas.DeleteFramebuffers(1, &f); tex = fbo = 0; D3D9.EnGl.EstadoTocado(); }
+            if (tex != 0) { uint t = tex, f = fbo; GL.DeleteTextures(1, &t); GlMas.DeleteFramebuffers(1, &f); tex = fbo = 0; PantallaTarjeta.Tocada(); }
             if (host != null) host.TexturaGl = 0;
         }
     }

@@ -174,7 +174,7 @@ namespace Rocola
             else { Capturas(); Flecha(); }   // como las capturas de Windows: sin la flecha
             sup.Presenta();
             foreach (ReproductorWmp r in rs) r.TrasPresentar();
-            D3D9.EnGl.EstadoTocado();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta
+            PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
         }
         // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la
         // mano (Cursors.Hand), dibujadas una vez como las de Windows XP (blanca con borde negro; la mano, con el dedo arriba).

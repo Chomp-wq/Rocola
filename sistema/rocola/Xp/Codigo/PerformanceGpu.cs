@@ -25,23 +25,12 @@
 #if ROCOLA_GPU
 using System;
 using System.Runtime.InteropServices;
+using Rocola.Pantalla;   // EN LINUX: OpenGL ES 2 (GL, de Consola/Pantalla/Gl.cs)
 
 namespace Rocola
 {
-    internal static partial class D3D9
-    {
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int GetPtrDel(IntPtr self, uint a, out IntPtr result);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ValidaDel(IntPtr self, out uint passes);
-        public const uint FVF2 = 0x004 | 0x040 | 0x200;   // XYZRHW | DIFFUSE | TEX2
-        public const uint USAGE_RENDERTARGET = 1, POOL_DEFAULT = 0, FMT_X8R8G8B8 = 22;
-        public const uint PRESENT_INTERVAL_IMMEDIATE = 0x80000000u;
-        public const uint TSS_TEXCOORDINDEX = 11;
-        public const uint TOP_DISABLE = 1, TOP_ADDSMOOTH = 11;
-        public const uint TA_CURRENT = 1, TA_COMPLEMENT = 0x10, TA_ALPHAREPLICATE = 0x20;
-        // Los huecos de la tabla del dispositivo y de la textura que se usan aqui (IDirect3DDevice9 / IDirect3DTexture9).
-        public const int SlotSetRenderTarget = 37, SlotGetRenderTarget = 38, SlotValidateDevice = 70, SlotGetSurfaceLevel = 18;
-    }
-
+    // EN LINUX: no hay interop con Direct3D 9 (los delegados, las constantes y los huecos de la tabla de COM de este bloque): queda el
+    // vertice de dos texturas (Tarjeta.Vtx2, el de D3D9.Vtx2: 36 bytes, XYZRHW | DIFFUSE | TEX2)
     internal static partial class Tarjeta   // EN LINUX: el vertice de dos texturas va en Tarjeta (en XP, en D3D9)
     {
         [StructLayout(LayoutKind.Sequential)]
@@ -53,14 +42,7 @@ namespace Rocola
     {
         // ---------------- LO QUE PUEDE LA TARJETA ----------------
         internal bool CapsDosTexturas, CapsSinEspera;
-        private void LeeCapacidades(uint intervalos, uint mezclaOrigen, uint fvf, uint operaciones, uint texturasALaVez)
-        {
-            CapsSinEspera = (intervalos & D3D9.PRESENT_INTERVAL_IMMEDIATE) != 0;
-            // Dos texturas a la vez, dos juegos de coordenadas, mezcla con "uno" de origen, y las operaciones que usa la
-            // pasada unida: modular, elegir y la suma suave (a + b - a*b).
-            CapsDosTexturas = texturasALaVez >= 2 && (fvf & 0xFFFF) >= 2 && (mezclaOrigen & 0x2) != 0
-                && (operaciones & 0x8) != 0 && (operaciones & 0x2) != 0 && (operaciones & 0x400) != 0;
-        }
+        // EN LINUX: (LeeCapacidades leia los bits de D3DCAPS9; lo que la tarjeta puede lo pone LeeLimitesTexturas, TexturasCompatiblesGpu.cs)
 
         // ---------------- CONTAR (1) ----------------
         // Pedidos: ordenes que pide el programa. Envios: las que llegan al controlador (menos, si se juntan). Cambios:
@@ -74,7 +56,7 @@ namespace Rocola
         // exacta; para lo girado (cubos, halos) es una aproximacion buena.
         private double AreaDe(Tarjeta.Vtx[] v, int tris)
         {
-            float w = enMedia ? mediaW : (float)pp.BackBufferWidth, h = enMedia ? mediaH : (float)pp.BackBufferHeight;
+            float w = enMedia ? mediaW : (float)bufAncho, h = enMedia ? mediaH : (float)bufAlto;   // EN LINUX: (antes BackBufferWidth/Height)
             double a = 0;
             for (int i = 0, o = 0; i < tris; i++, o += 3)
             {
@@ -124,7 +106,7 @@ namespace Rocola
             if (dev == IntPtr.Zero || lost) return;
             try
             {
-                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)(n / 3), juntaDir, Tarjeta.VtxSize) < 0) EstadoFallido();
+                if (!Triangulos(juntaDir, n / 3)) EstadoFallido();   // EN LINUX: DrawPrimitiveUP = glDrawArrays (Nativo/DispositivoTarjetaGl.cs)
                 else Envios++;
             }
             catch { EstadoFallido(); }
@@ -177,12 +159,10 @@ namespace Rocola
             IntPtr fondo = IntPtr.Zero;
             try
             {
-                if (D3D9.EnGl.GetRenderTarget(dev, 0, out fondo) < 0 || fondo == IntPtr.Zero)
-                { if (fondo != IntPtr.Zero) Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
-                if (D3D9.EnGl.SetRenderTarget(dev, 0, mediaSup) < 0)
-                { Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
+                fondo = (IntPtr)destinoFbo;   // EN LINUX: GetRenderTarget = el framebuffer donde se pinta ahora (el del fondo); sin referencia que soltar
+                PonDestino((uint)mediaSup, mediaTW, mediaTH);   // EN LINUX: SetRenderTarget(la imagen intermedia) = su framebuffer y su vista (Nativo/DispositivoTarjetaGl.cs)
             }
-            catch { if (fondo != IntPtr.Zero) Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
+            catch { mediaSinSoporte = true; return false; }   // EN LINUX: (sin referencia que soltar)
             mediaFondo = fondo; mediaW = mw; mediaH = mh; mediaDiv = div; enMedia = true; Cambios++;
             return true;
         }
@@ -192,16 +172,13 @@ namespace Rocola
             IntPtr t = IntPtr.Zero;
             try
             {
-                foreach (uint formato in new uint[] { D3D9.FMT_X8R8G8B8, D3D9.FMT_A8R8G8B8 })
-                {
-                    t = IntPtr.Zero;
-                    if (createTex(dev, (uint)tw, (uint)th, 1, D3D9.USAGE_RENDERTARGET, formato, D3D9.POOL_DEFAULT, out t, IntPtr.Zero) >= 0 && t != IntPtr.Zero) break;
-                    if (t != IntPtr.Zero) Tarjeta.Suelta(t);
-                    t = IntPtr.Zero;
-                }
+                // EN LINUX: CreateTexture RENDERTARGET en POOL_DEFAULT, X8R8G8B8 y, si no, A8R8G8B8 = una textura RGBA de OpenGL (con LINEAR y CLAMP);
+                // lo X8 es el alfa en 1, que pone su framebuffer (abajo)
+                t = (IntPtr)TexturasGl.Nueva(tw, th);
                 if (t == IntPtr.Zero) return false;
                 IntPtr sup;
-                if (D3D9.EnGl.GetSurfaceLevel(t, 0, out sup) < 0 || sup == IntPtr.Zero)
+                sup = (IntPtr)TexturasGl.Framebuffer((uint)t, true);   // EN LINUX: GetSurfaceLevel = el framebuffer para pintar en ella (X8: empieza en (0, 0, 0, 1))
+                if (sup == IntPtr.Zero)   // EN LINUX
                 { Tarjeta.Suelta(t); return false; }
                 mediaTex = t; mediaSup = sup; mediaTW = tw; mediaTH = th; mediaGen++;
                 return true;
@@ -218,9 +195,9 @@ namespace Rocola
             enMedia = false;
             IntPtr fondo = mediaFondo; mediaFondo = IntPtr.Zero;
             bool ok;
-            try { ok = D3D9.EnGl.SetRenderTarget(dev, 0, fondo) >= 0; }
+            try { PonDestino((uint)fondo, fondoAncho, fondoAlto); ok = true; }   // EN LINUX: SetRenderTarget(el fondo) = su framebuffer y su vista
             catch { ok = false; }
-            Tarjeta.Suelta(fondo);
+            // EN LINUX: (GetRenderTarget no dio referencia que soltar)
             Cambios++;
             if (!ok) { EstadoFallido(); resetPending = true; mediaSinSoporte = true; }
             return ok;
@@ -250,11 +227,11 @@ namespace Rocola
         private void LiberaMedia()
         {
             mediaGen++;   // lo que tenia pintado ya no vale (G1)
-            if (enMedia) { enMedia = false; if (mediaFondo != IntPtr.Zero) Tarjeta.Suelta(mediaFondo); mediaFondo = IntPtr.Zero; }
+            if (enMedia) { enMedia = false; mediaFondo = IntPtr.Zero; }   // EN LINUX: (GetRenderTarget no dio referencia que soltar)
             IntPtr s = mediaSup, t = mediaTex;
             mediaSup = mediaTex = IntPtr.Zero; mediaTW = mediaTH = 0;
             if (t != IntPtr.Zero && stTex == t) stTex = new IntPtr(-1);
-            if (s != IntPtr.Zero) Tarjeta.Suelta(s);
+            if (s != IntPtr.Zero) TexturasGl.BorraFramebuffer((uint)s);   // EN LINUX: soltar la superficie = borrar su framebuffer
             if (t != IntPtr.Zero) Tarjeta.Suelta(t);
         }
         // ---------------- G2: LA VINETA, PUNTO POR PUNTO (14-10-2026) ----------------
@@ -271,7 +248,7 @@ namespace Rocola
             if (v == null || tris <= 0 || tris > v.Length / 3) return null;
             int n = tris * 3;
             if (vinetaVerts == null || vinetaVerts.Length < n) vinetaVerts = new Tarjeta.Vtx[Math.Max(n, 64)];
-            float w = Math.Max(1f, (float)pp.BackBufferWidth), h = Math.Max(1f, (float)pp.BackBufferHeight);
+            float w = Math.Max(1f, (float)bufAncho), h = Math.Max(1f, (float)bufAlto);   // EN LINUX: (antes BackBufferWidth/Height)
             Array.Copy(v, 0, vinetaVerts, 0, n);   // de golpe; luego solo se toca el color de los que caen en la vineta
             Tarjeta.Vtx[] o = vinetaVerts;
             // Por tabla de enteros sobre la pantalla (GpuPanel.VinetaRejilla): se hace con cada vertice y cada cuadro, y
@@ -326,39 +303,21 @@ namespace Rocola
             {
                 Cambios += 3;
                 segunda = true;
-                bool ok =
-                    setTSS(dev, 0, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) >= 0 &&
-                    setTSS(dev, 0, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE) >= 0 &&
-                    setTSS(dev, 0, D3D9.TSS_COLORARG2, D3D9.TA_TEXTURE | D3D9.TA_ALPHAREPLICATE) >= 0 &&
-                    setTSS(dev, 0, D3D9.TSS_ALPHAOP, D3D9.TOP_SELECTARG1) >= 0 &&
-                    setTSS(dev, 0, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE) >= 0 &&
-                    setTex(dev, 1, t1) >= 0 &&
-                    setSamp(dev, 1, D3D9.SAMP_ADDRESSU, D3D9.ADDRESS_CLAMP) >= 0 &&
-                    setSamp(dev, 1, D3D9.SAMP_ADDRESSV, D3D9.ADDRESS_CLAMP) >= 0 &&
-                    setSamp(dev, 1, D3D9.SAMP_MAGFILTER, D3D9.TEXF_LINEAR) >= 0 &&
-                    setSamp(dev, 1, D3D9.SAMP_MINFILTER, D3D9.TEXF_LINEAR) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_TEXCOORDINDEX, 1) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_COLOROP, D3D9.TOP_MODULATE) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_COLORARG1, D3D9.TA_TEXTURE | D3D9.TA_ALPHAREPLICATE | D3D9.TA_COMPLEMENT) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_COLORARG2, D3D9.TA_CURRENT) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_ALPHAOP, D3D9.TOP_ADDSMOOTH) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_ALPHAARG1, D3D9.TA_TEXTURE) >= 0 &&
-                    setTSS(dev, 1, D3D9.TSS_ALPHAARG2, D3D9.TA_CURRENT) >= 0 &&
-                    setRS(dev, D3D9.RS_ALPHABLENDENABLE, 1) >= 0 &&
-                    setRS(dev, D3D9.RS_SRCBLEND, D3D9.BLEND_ONE) >= 0 &&
-                    setRS(dev, D3D9.RS_DESTBLEND, D3D9.BLEND_INVSRCALPHA) >= 0;
+                // EN LINUX: las etapas 0 (MODULATE(TEXTURE, TEXTURE|ALPHAREPLICATE), SELECTARG1(TEXTURE)) y 1 (la vineta: MODULATE(TEXTURE|
+                // ALPHAREPLICATE|COMPLEMENT, CURRENT), ADDSMOOTH(TEXTURE, CURRENT), su juego de coordenadas, CLAMP y LINEAR) y la mezcla ONE /
+                // INVSRCALPHA = el programa fijo «dos texturas», la vineta en la unidad 1 y glBlendFunc (Nativo/DispositivoTarjetaGl.cs)
+                bool ok = DosTexturas(t1);
                 // La primera vez se le pregunta al controlador si esta combinacion la hace en una pasada.
                 if (ok && !dosTexturasValidado)
                 {
-                    uint pasadas;
-                    ok = D3D9.EnGl.ValidateDevice(dev, out pasadas) >= 0 && pasadas <= 1;
+                    // EN LINUX: ValidateDevice: el programa fijo la hace en una pasada
                     dosTexturasValidado = ok;
                 }
-                if (ok) { fvfCambiado = true; ok = setFVF(dev, D3D9.FVF2) >= 0; }
+                if (ok) { fvfCambiado = true; }   // EN LINUX: SetFVF(XYZRHW | DIFFUSE | TEX2): los punteros de 36 bytes los pone el dibujo
                 if (ok)
                 {
                     gh = GCHandle.Alloc(v, GCHandleType.Pinned);
-                    ok = drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), Tarjeta.Vtx2Size) >= 0;
+                    ok = Triangulos2(gh.AddrOfPinnedObject(), tris);   // EN LINUX: DrawPrimitiveUP de los vertices de dos texturas
                     if (ok)
                     {
                         dibujado = true; Envios++; Pedidos++;
@@ -373,11 +332,10 @@ namespace Rocola
                 if (gh.IsAllocated) gh.Free();
                 try
                 {
-                    if (fvfCambiado && setFVF(dev, D3D9.FVF) < 0) EstadoFallido();
+                    // EN LINUX: SetFVF(XYZRHW | DIFFUSE | TEX1): cada dibujo pone sus punteros (el atributo del segundo juego ya se apago)
                     if (segunda)
                     {
-                        if (setTSS(dev, 1, D3D9.TSS_COLOROP, D3D9.TOP_DISABLE) < 0 || setTSS(dev, 1, D3D9.TSS_ALPHAOP, D3D9.TOP_DISABLE) < 0
-                            || setTex(dev, 1, IntPtr.Zero) < 0) EstadoFallido();
+                        FinDosTexturas();   // EN LINUX: la etapa 1 apagada y SetTexture(1, NULL) = la unidad 1 sin textura (Nativo/DispositivoTarjetaGl.cs)
                     }
                 }
                 catch { EstadoFallido(); }
@@ -387,7 +345,7 @@ namespace Rocola
         }
         private double AreaDe2(Tarjeta.Vtx2[] v, int tris)
         {
-            float w = pp.BackBufferWidth, h = pp.BackBufferHeight;
+            float w = bufAncho, h = bufAlto;   // EN LINUX: (antes BackBufferWidth/Height)
             double a = 0;
             for (int i = 0, o = 0; i < tris; i++, o += 3)
             {
@@ -403,15 +361,15 @@ namespace Rocola
         // Con la espera, un cuadro de 17 ms se ensena a los 33: el numero salta de 60 a 30 y no dice cuanto falta. Sin
         // ella, el ritmo es el que dan el procesador y la tarjeta. Cambiarlo pide reiniciar el dispositivo (lo hace el
         // proximo BeginFrame); las texturas de siempre sobreviven (POOL_MANAGED). Solo lo usa el medidor, y lo devuelve.
-        internal bool SinEspera { get { return pp.PresentationInterval == D3D9.PRESENT_INTERVAL_IMMEDIATE; } }
+        internal bool SinEspera { get { return presentaSinEspera; } }   // EN LINUX: (antes PresentationInterval IMMEDIATE)
         internal bool PideSinEspera(bool sinEspera)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.PideSinEspera(this, sinEspera);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero) return false;
             if (sinEspera && !CapsSinEspera) return false;
-            uint quiere = sinEspera ? D3D9.PRESENT_INTERVAL_IMMEDIATE : 0u;
-            if (pp.PresentationInterval == quiere) return true;
-            pp.PresentationInterval = quiere;
+            // EN LINUX: (PresentationInterval IMMEDIATE o 0: si se espera al barrido)
+            if (presentaSinEspera == sinEspera) return true;   // EN LINUX
+            presentaSinEspera = sinEspera;   // EN LINUX
             resetPending = true;
             return true;
         }
@@ -756,12 +714,7 @@ namespace Rocola
                 int hz = 0;
                 try
                 {
-                    IntPtr dc = GetDC(IntPtr.Zero);
-                    if (dc != IntPtr.Zero)
-                    {
-                        try { hz = GetDeviceCaps(dc, VREFRESH); }
-                        finally { ReleaseDC(IntPtr.Zero, dc); }
-                    }
+                    hz = PantallaTarjeta.RefrescoHz;   // EN LINUX: GetDC + GetDeviceCaps(VREFRESH) + ReleaseDC = el refresco del modo de la pantalla (KMS; fuera de pantalla, 60)
                 }
                 catch { }
                 return (hz < 24 || hz > 400) ? 60 : hz;
