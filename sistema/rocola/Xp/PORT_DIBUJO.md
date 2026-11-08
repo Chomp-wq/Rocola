@@ -251,3 +251,68 @@ Comprobado:
   sale con el cambio y es otro objeto), un formato prestado no se copia, el estado del lienzo va y vuelve (2 × 2 × 2 × 6 × 8 combinaciones
   de suavizado, copia, medio píxel, modo de letra y filtro, con su matriz del HDC), un mapa prestado no se suelta al soltar el `Bitmap` y una
   letra vuelve con los mismos datos (nombre, tamaño, unidad, estilo, alto).
+
+## D4. Los hornos sueltos, traducidos a SkiaSharp directo
+
+Los hornos que no tocan la tarjeta (hacen un mapa una vez y otro lo sube) ya dibujan con SkiaSharp y las funciones nativas, línea por línea
+como en XP: cada línea que cambia lleva su `// EN LINUX: ...` y los archivos conservan su número de líneas (donde XP usaba varias líneas
+para una llamada a Windows, las demás quedan como comentario `EN LINUX`), para que la tabla de estado por línea y un diff contra la
+referencia sigan alineados. El estado del `Graphics` va en variables (`bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias`), los
+pinceles y plumas son `SKPaint` (con el shader de `Degradado` en un `using`), el `LockBits` + `Marshal.Copy` + `UnlockBits` de los puntos
+sin premultiplicar es `Pixeles.EscribeSinPremultiplicar` y el `new Bitmap(w, h, Format32bppArgb)` es `Mapas.Nuevo`.
+
+| Archivo | Función | Quién pide el mapa | Cómo le llega |
+|---|---|---|---|
+| `EstrellaGpu.cs` | `BakeStar` (y `PaintStarGlint`) | `D3D9Star.cs` (no se toca en esta pista) | el horno lo devuelve con `PuenteDibujo.Entrega` |
+| `LunaGpu.cs` | `BakeDetailedMoon` | nadie (tampoco en XP) | `SKBitmap`, sin puente |
+| `CieloNaturalGpu.cs` | `BakeNatural` | `D3D9Star.cs` | el horno lo devuelve con `Entrega` |
+| `CieloVivoGpu.cs` | `HorneaLuna` | `EnsureLunaCielo` (mismo archivo) para `Upload` de `D3D9Star.cs` | `SKBitmap`; `Entrega` en la llamada |
+| `PulidoGpu.cs` | `HorneaMapaDegradado` | `DegradadoV` y `HorneaDegradadoV` (mismo archivo, pinceles de GDI+ aún sin traducir) | `SKBitmap`; `Entrega` en las llamadas |
+| `Form1.Fondo.cs` | `BakeRuido` | `BakeRuidoGrande` (traducido) y `EnsureRuido` (el dibujo por procesador, sin traducir) | `SKBitmap`; `Entrega` en `EnsureRuido` |
+| `Form1.Fondo.cs` | `BakeRuidoGrande` | `D3D9Star.cs` | el horno lo devuelve con `Entrega` |
+| `AyudaCasillaGpu.cs` | `BakeInterrogacion` | `PreparaAyudaIcono` (mismo archivo) para `Upload` | `SKBitmap`; `Entrega` en la llamada |
+| `AyudaCasillaGpu.cs` | `PintaInterrogacion` (el signo) | `BakeInterrogacion` (traducido) y `RenderContent`, el dibujo por procesador de la casilla (sin traducir) | `SKCanvas` y el estado; `RenderContent` le pasa su lienzo y su estado por el puente |
+
+La regla: el puente va del lado de lo que todavía no está traducido. Si ese lado es `D3D9Star.cs` (de la pista de la tarjeta, que esta pista
+no toca), la entrega va en el `return` del horno, que sigue devolviendo `Rocola.Dibujo2D.Bitmap`; cuando `D3D9Star.cs` reciba un `SKBitmap`,
+esas tres firmas pasan a `SKBitmap` y la entrega desaparece. `PuenteDibujo.Entrega(mapa, formato)` (nuevo en `Puente.cs`) hace un `Bitmap`
+DUEÑO de los puntos con el formato con que XP los creaba (Format32bppArgb), como `new Bitmap(w, h, formato)`. `EstrellaGpu.cs`,
+`LunaGpu.cs`, `CieloNaturalGpu.cs` y `CieloVivoGpu.cs` ya no ven los tipos que imitan a GDI+ (`using Rocola.Dibujo2D` fuera; solo el
+`Rocola.Dibujo2D.Bitmap` de la entrega, escrito entero); `PulidoGpu.cs`, `Form1.Fondo.cs` y `AyudaCasillaGpu.cs` lo siguen viendo por lo que
+falta traducir en ellos.
+
+Comprobado:
+
+- banco de vistas: los 56 mapas de antes y 72 del signo de la ayuda (`PintaInterrogacion` sobre un fondo, con 6 estados del `Graphics`
+  —suavizado o no, medio píxel, copia, traslación con decimales, escala y giro— × 4 cajas × 3 alfas: en la referencia con GDI+ y en la
+  traducción como lo llama el dibujo por procesador, con el lienzo y su estado por el puente): **los 128 iguales** a la referencia, los
+  puntos tal cual y como los sube la tarjeta, con las letras de XP falsas y con DejaVu;
+- `puente-objetos`: 401 comprobaciones bien (las 397 de D3 y 4 de `Entrega`: los mismos puntos, Format32bppArgb y las marcas de
+  `new Bitmap(w, h, Format32bppArgb)`, y al soltar el `Bitmap` se sueltan los puntos);
+- banco por función: los 30 000 casos en los tres ejecutores (`gdi`, `nativo`, `puente`), 0 distintos;
+- el programa entero (los nueve recorridos, contra las dos corridas de la referencia de D2): las **217 capas de Dibujo2D quietas idénticas**
+  y 480 de las 487 texturas quietas; las 7 que faltan son de la hora, como en D2: 4 salen idénticas pero menos veces y 3 de `pared2` (el
+  contador que rueda de «En cola» y dos del reloj de la canción, a los 62 y 69 s) salen con el otro contenido de ese instante (en otras
+  corridas la referencia da el de la copia y la copia el de la referencia); todas las texturas quietas de las medidas de los hornos
+  (256×256, 128×128, 64×64, 512×256, 1024×512, 1024×1024) están;
+- NativeAOT: el binario nativo (`dotnet publish -c Release -r linux-x64`) sale sin avisos de AOT ni de recorte (ningún IL2xxx/IL3xxx); los 15
+  avisos del compilador de C# que salen al compilar todo (11 sitios: `Thread.VolatileRead`, `FormatterServices`, `Control.bounds`, dos
+  `Stream.Read`, un `stackalloc`) son exactamente los de la base 34cb741, en código que esta pista no toca. El binario nativo arranca fuera de
+  pantalla con la estrella 2D, la luna, el cielo profundo y la interfaz tramada y pinta la pared, la estrella horneada y el signo de la ayuda.
+
+OJO al traducir dentro de `Form1`: tiene un método `Letra(float)` (`AtraccionGpu.cs`), así que allí el tipo nativo se escribe
+`Rocola.Nativo.Letra` (`PintaInterrogacion`).
+
+## Lo que queda (pista del dibujo)
+
+- Traducir el resto del código de XP que dibuja, archivo por archivo, con la receta de `EjecutaNativo.cs` y la regla del puente de D4: las
+  729 líneas de la tabla de estado por línea en 36 archivos, menos las de los hornos de D4 (en las 94 donde el estado cambia entre llamadas,
+  el estado va como parámetro); los que más tienen: `Form1.Vistas.cs`, `Form1.Fondo.cs`, `SuenaVivoGpu.cs`, `PantallaVivaGpu.cs`,
+  `Form1.Pared.cs` y `BuscadorPortadasGpu.cs`. Y lo que no pasó por los recorridos: el dibujo por procesador (los `OnPaint` de las vistas).
+- Las fronteras: con la tarjeta (`Upload` y `CreateTextureFromBitmap` de `D3D9Star.cs` reciben `Bitmap`; cuando reciban `SKBitmap`,
+  `BakeStar`, `BakeNatural` y `BakeRuidoGrande` devolverán `SKBitmap` y se irá su `Entrega`) y con las ventanas (los `OnPaint` con su
+  `Graphics`; `RenderContent` de la casilla de ayuda ya le pasa al signo su lienzo y su estado por el puente).
+- Al final, borrar `Plataforma/Dibujo2D.cs` y `Plataforma/Puente.cs`, y los `using Rocola.Dibujo2D` que queden.
+- Las diferencias (a)-(e) frente a GDI+ de verdad (D0): la traducción copia la referencia; corregir cada una, en su función nativa, lo decide
+  el dueño.
+- Nada de esto se probó en el A4.

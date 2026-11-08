@@ -55,6 +55,14 @@ namespace Banco
             using (Bitmap bm = PuenteDibujo.Bitmap(pres)) Mira(ReferenceEquals(PuenteDibujo.Mapa(bm), pres) && bm.GetPixel(1, 1).R == 10, "el Bitmap prestado tiene los mismos puntos");
             Mira(pres.Handle != IntPtr.Zero && pres.GetPixel(1, 1).Green == 20, "al soltar el Bitmap prestado los puntos siguen");
             pres.Dispose();
+            // el mapa de un horno traducido (D4), entregado a quien lo pide como Bitmap: los mismos puntos, el formato de XP, y se hace su dueno
+            SKBitmap ent = Mapas.Nuevo(3, 3); ent.SetPixel(2, 2, new SKColor(1, 2, 3, 255));
+            Bitmap be = PuenteDibujo.Entrega(ent);
+            Mira(ReferenceEquals(PuenteDibujo.Mapa(be), ent) && be.PixelFormat == PixelFormat.Format32bppArgb && be.GetPixel(2, 2).B == 3, "el mapa entregado: los mismos puntos y Format32bppArgb");
+            using (Bitmap nb = new Bitmap(3, 3, PixelFormat.Format32bppArgb)) Mira(be.Flags == nb.Flags && be.Width == nb.Width && be.Height == nb.Height, "como un new Bitmap(w, h, Format32bppArgb): las mismas marcas (con alfa)");
+            be.Dispose();
+            Mira(ent.Handle == IntPtr.Zero, "al soltar el Bitmap entregado se sueltan los puntos (se hizo su dueno)");
+            Mira(PuenteDibujo.Entrega(null) == null, "nada entregado, nada");
             // una letra y su Font: los mismos datos
             using (Font fo = new Font("Trebuchet MS", 15.3f, FontStyle.Bold, GraphicsUnit.Pixel))
             {

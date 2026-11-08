@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el horno de la luna hace su mapa con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 using System.Runtime.InteropServices;
 namespace Rocola
 {
@@ -11,7 +11,7 @@ namespace Rocola
         internal const int MoonTextureSize = 256;
         // Solo prepara una textura del renderizador GPU, nunca la pared CPU.
         // Mapa determinista de mares/crateres; no se calcula ni se sube por cuadro.
-        internal static Bitmap BakeDetailedMoon()
+        internal static SKBitmap BakeDetailedMoon()   // EN LINUX: un SKBitmap (nadie lo pide como Bitmap: no lo llama nadie, tampoco en XP)
         {
             const int n = MoonTextureSize;
             float[] relief = new float[n * n];
@@ -70,10 +70,10 @@ namespace Rocola
                     int red=(int)(255*v), green=(int)(250*v), blue=(int)(241*v+5*(1-sun));
                     pixels[i]=(a<<24)|(red<<16)|(green<<8)|Math.Min(255,blue);
                 }
-            Bitmap bitmap = new Bitmap(n,n,PixelFormat.Format32bppArgb);
-            BitmapData data = bitmap.LockBits(new Rectangle(0,0,n,n),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
-            try { for(int y=0;y<n;y++) Marshal.Copy(pixels,y*n,new IntPtr(data.Scan0.ToInt64()+y*data.Stride),n); }
-            finally { bitmap.UnlockBits(data); }
+            SKBitmap bitmap = Mapas.Nuevo(n,n);   // EN LINUX: new Bitmap(n,n,Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
+            Pixeles.EscribeSinPremultiplicar(bitmap,pixels,n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de transicion; diferencia (a) de PORT_DIBUJO.md)
+            // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
             return bitmap;
         }
         internal static float MoonEmphasis(float backgroundDim, bool enabled)

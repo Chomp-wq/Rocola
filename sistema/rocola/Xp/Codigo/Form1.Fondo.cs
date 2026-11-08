@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el grano (BakeRuido, BakeRuidoGrande) ya va con SkiaSharp y las funciones nativas (Xp/Nativo)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -306,14 +306,14 @@ namespace Rocola
         // exacta y son dos copias de ocho megas mas el recorrido, contra UN relleno: no compensa por un nivel.
         internal const int RuidoLado = 64;
         internal const int RuidoAlfa = 2;    // de 255: sobre este cielo son dos niveles arriba o ninguno
-        internal static Bitmap BakeRuido()
+        internal static SKBitmap BakeRuido()   // EN LINUX: un SKBitmap; el dibujo por procesador (EnsureRuido, aun con GDI+) lo recibe por el puente
         {
-            Bitmap b = new Bitmap(RuidoLado, RuidoLado, PixelFormat.Format32bppArgb);
+            SKBitmap b = Mapas.Nuevo(RuidoLado, RuidoLado);   // EN LINUX: new Bitmap(..., Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             Random r = new Random(20260903);   // fijo: el mismo grano siempre, no uno distinto por arranque
             Color cl = Color.FromArgb(RuidoAlfa, 255, 255, 255), os = Color.FromArgb(RuidoAlfa, 0, 0, 0);
             for (int y = 0; y < RuidoLado; y++)
                 for (int x = 0; x < RuidoLado; x++)
-                    b.SetPixel(x, y, (r.Next(2) == 0) ? cl : os);
+                    b.SetPixel(x, y, ((r.Next(2) == 0) ? cl : os).Sk());   // EN LINUX: Bitmap.SetPixel = SKBitmap.SetPixel con el color sin premultiplicar
             return b;
         }
 
@@ -321,18 +321,18 @@ namespace Rocola
         // al vuelo -las texturas van en modo "pegado al borde", no en modo repetir- asi que hay que subirle
         // uno ya grande y estamparlo en unos pocos trozos. Se arma repitiendo el de 64 con UN relleno, no
         // pixel a pixel: un millon de pixeles de uno en uno tardaria segundos al arrancar.
-        internal static Bitmap BakeRuidoGrande(int lado)
+        internal static Bitmap BakeRuidoGrande(int lado)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
         {
-            Bitmap chico = BakeRuido();
-            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
-            using (Graphics g = Graphics.FromImage(b))
-            using (TextureBrush tb = new TextureBrush(chico, WrapMode.Tile))
+            SKBitmap chico = BakeRuido();   // EN LINUX: un SKBitmap
+            SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb) (Nativo/Mapas.cs)
+            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage
+            using (SKShader grano = Degradado.Textura(chico, Envoltura.Repite, SKMatrix.Identity, false)) using (SKPaint tb = new SKPaint { Shader = grano })   // EN LINUX: TextureBrush(chico, WrapMode.Tile), con el medio pixel de fabrica (Nativo/Degradado.cs)
             {
-                g.CompositingMode = CompositingMode.SourceCopy;   // se COPIA el grano con su alfa, no se mezcla
-                g.FillRectangle(tb, 0, 0, lado, lado);
+                bool copia = true;   // EN LINUX: g.CompositingMode = SourceCopy, en una variable (el estado del dibujo va aparte). Se COPIA el grano con su alfa, no se mezcla
+                Pixel.Rellena(g, new RectangleF(0, 0, lado, lado), tb, false, false, copia);   // EN LINUX: g.FillRectangle(tb, 0, 0, lado, lado), sin suavizar (Nativo/Pixel.cs)
             }
             chico.Dispose();
-            return b;
+            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
         }
 
         // ===================== LA LUNA =====================
@@ -1804,7 +1804,7 @@ namespace Rocola
             private int nblW = -1, nblH = -1;
             // El dibujito del grano: 64x64, uno para toda la rocola. Se hace una vez y se repite al estamparlo.
             private static Bitmap ruidoTeja;
-            private static void EnsureRuido() { if (ruidoTeja == null) ruidoTeja = BakeRuido(); }
+            private static void EnsureRuido() { if (ruidoTeja == null) ruidoTeja = PuenteDibujo.Entrega(BakeRuido()); }   // EN LINUX: el grano nativo, como Bitmap para este dibujo por procesador (aun con GDI+), por el puente
 
             // LA LUNA. El dibujo se hornea una vez por tamano de pantalla (ver Form1.BakeLuna) y luego esto
             // es UN pegado de unos 180 pixeles de lado por cuadro, que es lo unico de esta tanda que cabe en

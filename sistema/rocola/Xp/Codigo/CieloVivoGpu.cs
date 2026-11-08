@@ -22,7 +22,7 @@
 // la malla aditiva): sin pasadas nuevas de pantalla completa, sin memoria por cuadro y sin hornear al dibujar.
 // Las cuentas son funciones puras (pruebas/cielovivo.cs las comprueba sin tarjeta grafica).
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la luna del cielo vivo se hornea con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 
 namespace Rocola
 {
@@ -74,12 +74,12 @@ namespace Rocola
 
         // La luna horneada (lado x lado, ARGB). Lo iluminado en blanco calido; lo apagado en un azul gris tenue (la luz
         // cenicienta) y casi opaco, para que tape las estrellas de detras. Borde suavizado de un pixel.
-        internal static Bitmap HorneaLuna(int lado, double fase)
+        internal static SKBitmap HorneaLuna(int lado, double fase)   // EN LINUX: un SKBitmap; EnsureLunaCielo lo pasa por el puente a Upload (D3D9Star.cs, aun sin traducir)
         {
             if (lado < 8) lado = 8;
-            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
-            BitmapData d = b.LockBits(new Rectangle(0, 0, lado, lado), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-            try
+            SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            // EN LINUX: LockBits(WriteOnly, Format32bppArgb): los puntos sin premultiplicar se juntan en 'px' y van al mapa al final
+            // EN LINUX: (sin try: no queda nada bloqueado que soltar si algo falla)
             {
                 int[] px = new int[lado * lado];
                 double ang = 2.0 * Math.PI * fase, sx = Math.Sin(ang), sz = -Math.Cos(ang);   // de donde le da el sol
@@ -116,9 +116,9 @@ namespace Rocola
                         int A = Clamp255(a * 255.0), Rr = Clamp255(r), G = Clamp255(g), B = Clamp255(bl);
                         px[y * lado + x] = (A << 24) | (Rr << 16) | (G << 8) | B;
                     }
-                System.Runtime.InteropServices.Marshal.Copy(px, 0, d.Scan0, px.Length);
+                Pixeles.EscribeSinPremultiplicar(b, px, lado);   // EN LINUX: Marshal.Copy y UnlockBits: 'px', premultiplicado, al mapa (Nativo/Pixeles.cs)
             }
-            finally { b.UnlockBits(d); }
+            // EN LINUX: (el finally con UnlockBits va en la linea de arriba)
             return b;
         }
         private static int Clamp255(double v) { return v <= 0 ? 0 : v >= 255 ? 255 : (int)(v + 0.5); }
@@ -305,7 +305,7 @@ namespace Rocola
             int paso = (int)(faseLuna * 120.0) % 120;
             if (lunaCieloTex != IntPtr.Zero && paso == lunaCieloPaso && lado == lunaCieloLado) return;
             if (Form1.LunaIluminada(faseLuna) < Form1.LunaMinima) return;   // cerca de la nueva no se ve: nada que hornear
-            using (Bitmap b = Form1.HorneaLuna(lado, (paso + 0.5) / 120.0))
+            using (Rocola.Dibujo2D.Bitmap b = PuenteDibujo.Entrega(Form1.HorneaLuna(lado, (paso + 0.5) / 120.0)))   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mapa le llega por el puente (Plataforma/Puente.cs)
                 lunaCieloTex = Upload(lunaCieloTex, ref lunaCieloBw, ref lunaCieloBh, b, out lunaCieloU, out lunaCieloV);
             lunaCieloPaso = paso; lunaCieloLado = lado;
         }
