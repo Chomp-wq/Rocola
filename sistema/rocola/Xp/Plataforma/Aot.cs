@@ -13,11 +13,8 @@
 //  IL2026 Assembly.Load(byte[]) (FlotanteNLayer: NLayerIncluido.Resuelve): en XP, NLayer.dll va dentro de Rocola.exe y se carga a mano
 //    si .NET no la encuentra. Aqui NLayer es parte del programa (NuGet) y .NET siempre la encuentra: el evento no llega nunca, y ademas el
 //    recurso no esta (sin recurso, devuelve null antes de cargar nada).
-//  IL2072 Activator.CreateInstance (Form1.MideDuracionVideo): arreglado en LlamadasWindows.TipoDeProgId (su constructor queda marcado).
-//  IL2075 InvokeMember (Form1.Get, Set y Call de Form1.Video.cs): XP le habla asi al reproductor de video (ReproductorWmp, AjustesWmp,
-//    ControlesWmp, MedioWmp de VideoMpv.cs), que los conserva enteros con DynamicDependency en ReproductorWmp.Engancha (la llama el
-//    anfitrion al arrancar). Comprobado propiedad por propiedad y con el video sonando (estado, tiempo y fin). Si se cambian esas clases,
-//    sus DynamicDependency van con ellas.
+//  (El reproductor de video ya no va por reflexion: el codigo de XP llama directo al de libmpv, Nativo/ReproductorVideo.cs. Se fueron los
+//    IL2072 de Activator.CreateInstance y los IL2075 de InvokeMember que traian Form1.MideDuracionVideo y Form1.Get, Set y Call.)
 //  IL2070 / IL2075 LectorMp3Ligero.Campo y PosicionEnTabla (Mp3Ligero): el lector de MP3 sin basura de XP busca piezas privadas de NAudio
 //    1.9. Las del lector ya estan, con los nombres de 1.9 (Mp3Xp.cs es el Mp3FileReader de 1.9 traducido), pero Mp3Frame es el de NAudio 3
 //    y su IsValidHeader recibe ahora ReadOnlySpan<byte> (no byte[]), que no se puede pasar por reflexion: no lo encuentra ni con JIT ni con
@@ -36,8 +33,5 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: UnconditionalSuppressMessage("AOT", "IL3050", Scope = "member", Target = "F:Rocola.WaveOutPropio.TamCabecera", Justification = "Marshal.SizeOf(typeof): NativeAOT genera los datos de la estructura (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.FormatoAudio.Mascara(NAudio.Wave.WaveFormat)", Justification = "Ningun formato tiene la propiedad Mascara: null con JIT y con NativeAOT (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2026", Scope = "member", Target = "M:Rocola.NLayerIncluido.Resuelve(System.Object,System.ResolveEventArgs)", Justification = "NLayer va compilada dentro: el evento no llega nunca (Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.Form1.Get(System.Object,System.String)", Justification = "El reproductor de video se conserva con DynamicDependency (VideoMpv.cs, Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.Form1.Set(System.Object,System.String,System.Object)", Justification = "El reproductor de video se conserva con DynamicDependency (VideoMpv.cs, Aot.cs)")]
-[assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.Form1.Call(System.Object,System.String,System.Object[])", Justification = "El reproductor de video se conserva con DynamicDependency (VideoMpv.cs, Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2070", Scope = "member", Target = "M:Rocola.LectorMp3Ligero.Campo(System.Type,System.String,System.Type)", Justification = "Piezas de NAudio 1.9: no estan con NAudio 3 ni con JIT ni con NativeAOT (Aot.cs)")]
 [assembly: UnconditionalSuppressMessage("Trimming", "IL2075", Scope = "member", Target = "M:Rocola.LectorMp3Ligero.PosicionEnTabla(System.Int32)", Justification = "Piezas de NAudio 1.9: no estan con NAudio 3 ni con JIT ni con NativeAOT (Aot.cs)")]

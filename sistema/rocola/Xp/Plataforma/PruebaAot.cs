@@ -82,25 +82,15 @@ namespace Rocola
             Prueba("audio.flotante 5.1", () => { WaveFormat f = FormatoAudio.Flotante(48000, 6, 0x3F); return f.GetType().Name + " " + f.Encoding + " mascara=" + FormatoAudio.Mascara(f).ToString("X"); });
             Prueba("mp3ligero.posible", () => LectorMp3Ligero.Posible + " indice=" + LectorMp3Ligero.IndicePosible);
             Prueba("nlayer", () => { NLayer.MpegFrameDecoder d = new NLayer.MpegFrameDecoder(); return typeof(NLayer.MpegFrameDecoder).Assembly.GetName().Name; });
-            Prueba("wmp.progid", () => { Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7"); return t != null ? t.Name : "null"; });
-            Prueba("wmp.reflexion (como Form1.MideDuracionVideo y Form1.Video)", () =>
+            // (La duracion que mide no se puede ver aqui: ffmpeg contesta por otro hilo, y otro hilo que entre al modulo espera a que acabe
+            // esta prueba. Se comprueba con la rocola entera: el video de la biblioteca sale medido en rocola_duracion.txt.)
+            Prueba("video.medidor (como Form1.MideDuracionVideo: Nativo/MedidorVideo.cs)", () =>
             {
-                Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7");
-                object w = Activator.CreateInstance(t);
-                Set(w, "uiMode", "none");
-                object s = Get(w, "settings");
-                Set(s, "autoStart", false); Set(s, "volume", 0);
-                string r = "uiMode=" + Get(w, "uiMode") + " volume=" + Get(s, "volume") + " autoStart=" + Get(s, "autoStart") + " playState=" + Get(w, "playState");
-                object c = Get(w, "controls");
-                r += " currentPosition=" + Get(c, "currentPosition");
-                Set(w, "stretchToFit", true); Set(w, "enableContextMenu", false);
-                r += " stretchToFit=" + Get(w, "stretchToFit") + " enableContextMenu=" + Get(w, "enableContextMenu") + " currentMedia=" + (Get(w, "currentMedia") ?? "null");
-                if (video != null)
-                {
-                    object m = Call(w, "newMedia", video);
-                    r += " duration=" + Convert.ToDouble(Get(m, "duration")).ToString("0.00", CultureInfo.InvariantCulture) + " name=" + Get(m, "name");
-                }
-                Call(w, "close");
+                MedidorVideo w = MedidorVideo.Crea();
+                if (w == null) return "sin ffmpeg";
+                string r = "duracion antes=" + w.Duracion.ToString("0.00", CultureInfo.InvariantCulture);
+                if (video != null) { r += " pedida=" + w.PideDuracion(video); w.QuitaArchivo(); r += " al dejarlo=" + w.Duracion.ToString("0.00", CultureInfo.InvariantCulture); }
+                w.Dispose();
                 return r;
             });
 
@@ -155,15 +145,6 @@ namespace Rocola
             }
             return 0;
         }
-
-        // Form1.Get / Set / Call (Form1.Video.cs), igual: InvokeMember sobre el tipo del objeto
-        private const string ComoXp = "Lo mismo que Form1.Get/Set/Call: el reproductor se conserva con DynamicDependency (VideoMpv.cs, Aot.cs)";
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static object Get(object o, string prop) { return o.GetType().InvokeMember(prop, BindingFlags.GetProperty, null, o, null); }
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static void Set(object o, string prop, object val) { o.GetType().InvokeMember(prop, BindingFlags.SetProperty, null, o, new object[] { val }); }
-        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ComoXp)]
-        private static object Call(object o, string metodo, params object[] args) { return o.GetType().InvokeMember(metodo, BindingFlags.InvokeMethod, null, o, args); }
 
         // Una carpeta como /sys/class/drm con dos tarjetas: la primera sin nada enchufado, la segunda con su HDMI enchufado
         private static string DrmDePrueba()

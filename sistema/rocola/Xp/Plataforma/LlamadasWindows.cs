@@ -13,7 +13,6 @@
 //   - EnumDisplayDevices (DiagnosticoCompleto): el adaptador, de OpenGL y de /sys/class/drm.
 //   - SetPriorityClass (Program, por Process.PriorityClass): el nice de todos los hilos del proceso.
 //   - GetForegroundWindow / SetForegroundWindow / SetFocus (Form1): las ventanas de la rocola.
-//   - WMPlayer.OCX (Form1.Biblioteca, Form1.Video): el reproductor de libmpv (VideoMpv.cs).
 //   - waveOut* (SalidaPropia) y el volumen (VolumenWindows): ALSA (SonidoAlsa.cs, amixer). Direct3D 9: OpenGL ES 2 (Direct3DaGL.cs).
 //   - GetSystemTimes, OpenThread/GetThreadTimes, GetCurrentThreadId (DiagnosticoCompleto): XP ya lee /proc en Linux (HilosRocola.EsUnix:
 //     syscall gettid, /proc/stat, /proc/self/task/N/stat), asi que esas declaraciones de Windows no se llaman nunca aqui.
@@ -215,15 +214,6 @@ namespace Rocola
                 if (!uint.TryParse(Path.GetFileName(h), out tid) || tid == yo || (n = NiceDelHilo(tid)) == int.MinValue) continue;   // (uno que ya acabo)
                 setpriority(PrioProceso, tid, Math.Max(-20, Math.Min(19, n + nice - antes)));
             }
-        }
-
-        // Type.GetTypeFromProgID del reproductor de Windows Media (el medidor de duraciones de los videos): el de libmpv (VideoMpv.cs). Con su
-        // constructor sin parametros marcado para NativeAOT: XP lo crea con Activator.CreateInstance (Form1.MideDuracionVideo).
-        [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
-        internal static Type TipoDeProgId(string progId)
-        {
-            if (progId != null && progId.StartsWith("WMPlayer.OCX", StringComparison.OrdinalIgnoreCase)) return typeof(ReproductorWmp);
-            return null;
         }
 
         // La ventana de delante: la activa del escritorio (en Rocola OS no hay otros programas con ventana)

@@ -1,7 +1,7 @@
 // PRUEBAS DE LA TRADUCCION EN LINUX (no son de XP): se piden por la linea de ordenes y salen antes de abrir la rocola.
 //   rocola-xp --prueba-gpu ANCHO ALTO SALIDA.png [CUADROS]   el cielo y las estrellas de XP (GpuStarfield, la ventana de prueba F12 de
 //                                                            XP) pintados con Direct3DaGL fuera de pantalla, y el ultimo cuadro en PNG.
-//   rocola-xp --prueba-video RUTA [SEGUNDOS]                 el video solo (VideoMpv.cs: libmpv en su textura de 498x606, sin la
+//   rocola-xp --prueba-video RUTA [SEGUNDOS]                 el video solo (Nativo/ReproductorVideo.cs: libmpv en su textura de 498x606, sin la
 //                                                            rocola): el punto del centro cada 0,25 s y, al final, en cuantas lecturas
 //                                                            salio negro (RUTA absoluta; con el video de prueba el centro es amarillo).
 //       ROCOLA_VIDEO_VOLCADO=prefijo     la textura entera en PNG en cada lectura (prefijo-NNN.png)
@@ -9,8 +9,8 @@
 //                                        de pesos de los escaladores) con su medida, formato y contenido (NaN, minimo, maximo, centro)
 //   rocola-xp --prueba-aot / --prueba-mp3 ...                lo que XP hace con reflexion y estructuras de Windows, y el lector de MP3
 //                                                            de XP (Mp3Xp.cs), para comparar JIT con NativeAOT (ver PruebaAot.cs)
-// El video, aqui y en la rocola entera (VideoMpv.cs):
-//   ROCOLA_VIDEO_TRAZA=1             los avisos de mpv y cada cuadro pintado, con el punto del centro
+// El video, aqui y en la rocola entera (Nativo/ReproductorVideo.cs):
+//   ROCOLA_VIDEO_TRAZA=1             los avisos de mpv, cada volumen que se le pone y cada cuadro pintado, con el punto del centro
 //   ROCOLA_VIDEO_REGISTRO=ruta       lo que dice mpv (su registro, con msg-level=all=v)
 //   ROCOLA_VIDEO_OPCIONES="k=v;..."  mas opciones de mpv, despues de las de la rocola (para probar otras: escaladores, gpu-dumb-mode...)
 // Y con la rocola entera (variables de entorno):
@@ -54,9 +54,9 @@ namespace Rocola
             Environment.Exit(PruebaVideo(a[2], a.Length >= 4 ? double.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture) : 8));
         }
 
-        // EL VIDEO SOLO (VideoMpv.cs), sin la rocola: libmpv pinta en su textura (el hueco del video de XP, 498x606) como con el anfitrion
+        // EL VIDEO SOLO (Nativo/ReproductorVideo.cs), sin la rocola: libmpv pinta en su textura (el hueco del video de XP, 498x606) como con el anfitrion
         // (Pinta, y TrasPresentar despues de cada vuelta) y cada cuarto de segundo se lee el punto del centro. Al final, en cuantas de las
-        // lecturas con el video ya empezado salio negro (0,0,0): lo que pasaba con los escaladores de fabrica de mpv (VideoMpv.Abre).
+        // lecturas con el video ya empezado salio negro (0,0,0): lo que pasaba con los escaladores de fabrica de mpv (ReproductorVideo.Inicia).
         private const int VideoW = 498, VideoH = 606;
         private static unsafe int PruebaVideo(string ruta, double segundos)
         {
@@ -66,10 +66,10 @@ namespace Rocola
             using (Rocola.Pantalla.FueraDePantalla fp = new Rocola.Pantalla.FueraDePantalla(1024, 768))
             {
                 Console.WriteLine("OpenGL: " + fp.Descripcion);
-                Control host = new Control();
-                host.Size = new System.Drawing.Size(VideoW, VideoH);
-                ReproductorWmp r = new ReproductorWmp(host);
-                r.URL = ruta;
+                ReproductorVideo r = new ReproductorVideo();
+                r.PonSitio(0, 0, VideoW, VideoH);
+                r.Inicia();
+                r.Carga(ruta);
                 int pantalla; Rocola.Pantalla.GL.GetIntegerv(Rocola.Pantalla.GL.FRAMEBUFFER_BINDING, &pantalla);
                 uint f; Rocola.Pantalla.GL.GenFramebuffers(1, &f);
                 System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
@@ -79,17 +79,17 @@ namespace Rocola
                 {
                     r.Pinta();
                     double t = reloj.Elapsed.TotalSeconds;
-                    if (t >= siguiente && host.TexturaGl != 0)
+                    if (t >= siguiente && r.TexturaGl != 0)
                     {
                         siguiente += 0.25; n++;
                         Rocola.Pantalla.GL.BindFramebuffer(Rocola.Pantalla.GL.FRAMEBUFFER, f);
-                        Rocola.Pantalla.GL.FramebufferTexture2D(Rocola.Pantalla.GL.FRAMEBUFFER, Rocola.Pantalla.GL.COLOR_ATTACHMENT0, Rocola.Pantalla.GL.TEXTURE_2D, host.TexturaGl, 0);
+                        Rocola.Pantalla.GL.FramebufferTexture2D(Rocola.Pantalla.GL.FRAMEBUFFER, Rocola.Pantalla.GL.COLOR_ATTACHMENT0, Rocola.Pantalla.GL.TEXTURE_2D, r.TexturaGl, 0);
                         Rocola.Pantalla.GL.PixelStorei(Rocola.Pantalla.GL.PACK_ALIGNMENT, 4);
                         byte* px = stackalloc byte[4];
                         Rocola.Pantalla.GL.ReadPixels(VideoW / 2, VideoH / 2, 1, 1, Rocola.Pantalla.GL.RGBA, Rocola.Pantalla.GL.UNSIGNED_BYTE, px);
                         double pos = r.NumeroMpv("time-pos");
                         if (pos > 0.3) { lecturas++; if (px[0] == 0 && px[1] == 0 && px[2] == 0) negras++; }
-                        Console.WriteLine(t.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " s estado " + r.playState + " centro " + px[0] + "," + px[1] + "," + px[2] + "," + px[3]
+                        Console.WriteLine(t.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " s estado " + (int)r.Estado + " centro " + px[0] + "," + px[1] + "," + px[2] + "," + px[3]
                             + " pos " + pos.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " tirados " + r.NumeroMpv("frame-drop-count") + " cuadro " + r.NumeroMpv("estimated-frame-number"));
                         if (!string.IsNullOrEmpty(volcado))   // ROCOLA_VIDEO_VOLCADO=prefijo: la textura entera (la fila 0 es la de arriba)
                             using (SKBitmap b = new SKBitmap(new SKImageInfo(VideoW, VideoH, SKColorType.Rgba8888, SKAlphaType.Unpremul)))
@@ -112,7 +112,7 @@ namespace Rocola
 
         // ROCOLA_VIDEO_TEXTURAS=S: todas las texturas de OpenGL (las de mpv: los planos del video, sus pasadas intermedias y las tablas de
         // pesos de sus escaladores) con su medida, su formato interno, sus filtros y lo que tienen (NaN, infinitos, minimo, maximo, centro);
-        // de las tablas de pesos (256 filas), las filas con NaN. Asi se encontro la tabla con basura de mpv (VideoMpv.Abre).
+        // de las tablas de pesos (256 filas), las filas con NaN. Asi se encontro la tabla con basura de mpv (ReproductorVideo.Inicia).
         [System.Runtime.InteropServices.DllImport("libGLESv2.so.2", EntryPoint = "glIsTexture")] private static extern byte IsTexture(uint t);
         [System.Runtime.InteropServices.DllImport("libGLESv2.so.2", EntryPoint = "glGetTexLevelParameteriv")] private static unsafe extern void GetTexLevelParameteriv(uint d, int nivel, uint q, int* v);
         [System.Runtime.InteropServices.DllImport("libGLESv2.so.2", EntryPoint = "glGetTexParameteriv")] private static unsafe extern void GetTexParameteriv(uint d, uint q, int* v);

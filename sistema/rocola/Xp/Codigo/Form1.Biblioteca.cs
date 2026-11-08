@@ -1002,7 +1002,7 @@ namespace Rocola
 
                 List<string> lote = new List<string>(128);
                 List<float> lotd = new List<float>(128);
-                object medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)
+                MedidorVideo medidorVideo = null;   // el reproductor con el que se miden los videos (de este hilo)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs (ffmpeg), no un reproductor de Windows suelto
                 VotosTinte<char> votos = new VotosTinte<char>(EqualityComparer<char>.Default);
                 VotosTinte<string> votosD = new VotosTinte<string>(StringComparer.OrdinalIgnoreCase);
                 int durHechas = 0, genHechas = 0;
@@ -1130,7 +1130,7 @@ namespace Rocola
             durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
             // El reproductor de Windows es un objeto COM y solo se deja usar desde un hilo STA. Sin esto, la
             // duracion de los videos no se podria medir aqui.
-            try { durScanTh.SetApartmentState(System.Threading.ApartmentState.STA); } catch { }
+            // EN LINUX: (durScanTh.SetApartmentState(ApartmentState.STA)) sin COM no hay apartamentos: el medidor se usa desde cualquier hilo
             durScanTh.Start();
             }
             catch { FinalizaLecturaBiblioteca(lectura, false, myGen); throw; }
@@ -1288,48 +1288,44 @@ namespace Rocola
         // El medidor se crea UNA vez por tanda y lo lleva el propio hilo (por eso va por referencia y no en un
         // campo): crearlo por archivo seria carisimo, y tenerlo en un campo compartido se cruzaria con la tanda
         // siguiente si alguien vuelve a escanear la biblioteca mientras esta corre.
-        private float MideDuracionVideo(string ruta, ref object wmpMedidor)
+        private float MideDuracionVideo(string ruta, ref MedidorVideo wmpMedidor)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs (la duracion del contenedor, con ffmpeg)
         {
             try
             {
                 if (wmpMedidor == null)
                 {
-                    Type t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX.7");   // Linux: el reproductor de libmpv (VideoMpv.cs)
-                    if (t == null) t = LlamadasWindows.TipoDeProgId("WMPlayer.OCX");
-                    if (t == null) return 0f;                       // sin reproductor de Windows: no se puede medir
-                    wmpMedidor = Activator.CreateInstance(t);
-                    try { Set(wmpMedidor, "uiMode", "none"); } catch { }
-                    try { object s2 = Get(wmpMedidor, "settings"); if (s2 != null) { Set(s2, "autoStart", false); Set(s2, "volume", 0); } } catch { }
+                    // EN LINUX: (el tipo del ProgID WMPlayer.OCX.7, si no WMPlayer.OCX, creado con Activator.CreateInstance, con uiMode "none",
+                    // autoStart false y volume 0) el medidor de Nativo/MedidorVideo.cs: no reproduce ni suena, solo lee la cabecera
+                    wmpMedidor = MedidorVideo.Crea();
+                    if (wmpMedidor == null) return 0f;                       // sin reproductor de Windows: no se puede medir   // EN LINUX: sin ffmpeg
                 }
-                object media = Call(wmpMedidor, "newMedia", ruta);
-                if (media == null) return 0f;
+                if (!wmpMedidor.PideDuracion(ruta)) return 0f;   // EN LINUX: object media = newMedia(ruta), que no reproduce nada; if (media == null) return 0f
                 try
                 {
                     for (int intento = 0; intento < 30; intento++)   // hasta ~3 s, mirando cada 100 ms
                     {
                         double d = 0;
-                        try { object o = Get(media, "duration"); if (o != null) d = Convert.ToDouble(o); } catch { }
+                        try { d = wmpMedidor.Duracion; } catch { }   // EN LINUX: media.duration
                         if (d > 0.05 && d < 36000) return (float)d;
                         if (preScanStop) break;
                         // El reproductor puede tardar en rellenar la duracion, y cuando lo hace avisa por la
                         // cola de mensajes de ESTE hilo. Si nadie la vacia, el aviso no llega nunca y todos los
                         // videos se irian por el tope de tres segundos sin duracion. Este hilo no tiene ventanas
                         // propias, asi que vaciarla aqui no puede repintar ni disparar nada de la rocola.
-                        try { Application.DoEvents(); } catch { }
+                        // EN LINUX: (Application.DoEvents) el medidor recibe la duracion por su propio hilo: aqui no hay cola de mensajes que vaciar
                         System.Threading.Thread.Sleep(100);
                     }
                 }
-                finally { try { System.Runtime.InteropServices.Marshal.ReleaseComObject(media); } catch { } }
+                finally { try { wmpMedidor.QuitaArchivo(); } catch { } }   // EN LINUX: (Marshal.ReleaseComObject(media)) deja el archivo
             }
             catch { }
             return 0f;
         }
-        private static void SueltaMedidorVideo(ref object wmpMedidor)
+        private static void SueltaMedidorVideo(ref MedidorVideo wmpMedidor)   // EN LINUX: el medidor de Nativo/MedidorVideo.cs
         {
-            object w = wmpMedidor; wmpMedidor = null;
+            MedidorVideo w = wmpMedidor; wmpMedidor = null;   // EN LINUX: el medidor de Nativo/MedidorVideo.cs
             if (w == null) return;
-            try { Call(w, "close"); } catch { }
-            try { System.Runtime.InteropServices.Marshal.ReleaseComObject(w); } catch { }
+            try { w.Dispose(); } catch { }   // EN LINUX: (Call(w, "close") y Marshal.ReleaseComObject(w)) suelta el medidor
         }
 
         private const double PreSegSec = 20.0;    // duracion de cada tramo analizado
@@ -3335,7 +3331,7 @@ namespace Rocola
 #if ROCOLA_GPU
                 if (AsistenteVisible) video.Visible = false;
 #endif
-                if (video.Visible) video.BringToFront(); }
+                if (video.Visible) video.AlFrente(); }   // EN LINUX: BringToFront: la capa del video
             this.Focus();
 #if ROCOLA_GPU
             // Aplica el cambio de modo YA (no esperes al proximo AnimTimer, ~40ms). SyncGpuFullScreen detecta la

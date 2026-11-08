@@ -695,7 +695,7 @@ namespace Rocola
         private float nebFase = 0f;
 
         // ---- Reproductor de video (Windows Media Player ActiveX, hosteado por codigo) ----
-        private VideoHost video;
+        private ReproductorVideo video;   // EN LINUX: el reproductor de libmpv y su capa (Nativo/ReproductorVideo.cs), no el control ActiveX del WMP
         private DateTime lastInput = DateTime.Now; // ultima tecla (para detectar inactividad)
         private Label lblAttract;                  // aviso amarillo pulsante "toca una tecla"
         private StartupLoad startupLoad;
@@ -1371,8 +1371,8 @@ namespace Rocola
             {
                 int strip = 46;
                 lblAttract.SetBounds(0, 0, W, strip);
-                video.SetBounds(0, strip, W, H - strip);
-                video.BringToFront();
+                video.PonSitio(0, strip, W, H - strip);   // EN LINUX: SetBounds: el sitio de la capa del video
+                video.AlFrente();   // EN LINUX: BringToFront
                 lblAttract.BringToFront();
                 if (helpBar != null) helpBar.Visible = false;
                 if (buscaView != null) buscaView.Visible = false;
@@ -1521,7 +1521,7 @@ namespace Rocola
                 int vy = lettersY;
                 int vw = Math.Max(120, (W - pad) - vx);
                 int vh = Math.Max(90, albumBottom - vy);
-                video.SetBounds(vx, vy, vw, vh);
+                video.PonSitio(vx, vy, vw, vh);   // EN LINUX: SetBounds: el sitio de la capa del video
                 video.Visible = videoOn && !searchOpen;   // garantia: oculto si no hay video sonando (o si el buscador esta abierto)
 #if ROCOLA_GPU
                 if (AsistenteVisible) video.Visible = false;

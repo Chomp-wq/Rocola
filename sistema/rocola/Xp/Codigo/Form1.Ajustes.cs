@@ -1844,7 +1844,7 @@ namespace Rocola
         // con un video sonando se veian partidos por la mitad, o nada: "Pusiste...", "Inserta una moneda", la invitacion.
         // Devuelve hasta donde llega, por la derecha, la parte de la pantalla que se ve: con video, hasta el video.
         private int BordeLibreAvisos()
-        { return BordeLibre(ClientSize.Width, videoOn && !videoFull && video != null && video.Visible, video != null ? video.Left : 0); }
+        { return BordeLibre(ClientSize.Width, videoOn && !videoFull && video != null && video.Visible, video != null ? video.Sitio.Left : 0); }   // EN LINUX: video.Left: el borde izquierdo de la capa del video
         // Pura: se prueba sin ventana ni video.
         internal static int BordeLibre(int ancho, bool videoEnVentana, int videoIzquierda)
         {

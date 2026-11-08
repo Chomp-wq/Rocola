@@ -98,7 +98,7 @@ namespace Rocola
             if (videoFull || !videoOn || video == null) return;
             videoFull = true;
             LayoutControls();
-            video.BringToFront();
+            video.AlFrente();   // EN LINUX: BringToFront: la capa del video, encima en la pantalla
             if (lblAttract != null) { lblAttract.Visible = true; lblAttract.BringToFront(); }
         }
         private void ExitVideoFull()
@@ -233,8 +233,8 @@ namespace Rocola
             try
             {
                 if (video == null) return;
-                object ocx = video.GetOcxObj(); if (ocx == null) return;
-                object settings = Get(ocx, "settings"); if (settings != null) Set(settings, "volume", v);
+                if (!video.Disponible) return;   // EN LINUX: (GetOcxObj() == null) sin libmpv no hay reproductor (Nativo/ReproductorVideo.cs)
+                video.Volumen = v;   // EN LINUX: settings.volume del WMP: el volumen del reproductor de libmpv, de 0 a 100 como el del WMP
             }
             catch { }
         }
@@ -248,37 +248,34 @@ namespace Rocola
             {
                 if (video == null)
                 {
-                    video = new VideoHost();
-                    video.TabStop = false;
-                    Controls.Add(video);
-                    IntPtr forceHandle = video.Handle;   // fuerza la creacion del control ActiveX
+                    video = new ReproductorVideo();   // EN LINUX: el reproductor de libmpv (Nativo/ReproductorVideo.cs) en lugar del control ActiveX del WMP
+                    // EN LINUX: (TabStop = false) la capa del video no es una ventana: nunca toma el foco
+                    video.EnPantalla(this);   // EN LINUX: (Controls.Add) la capa del video entra en la pantalla de la rocola, debajo de lo que ya hay, como el control
+                    video.Inicia();   // EN LINUX: (video.Handle, que crea el control ActiveX) abre libmpv
                 }
                 video.Visible = !searchOpen;   // si el buscador esta abierto, el cuadro queda oculto (el audio sigue)
 #if ROCOLA_GPU
                 if (AsistenteVisible) video.Visible = false;
 #endif
 
-                object ocx = video.GetOcxObj();
-                if (ocx == null) throw new Exception("control WMP nulo");
+                if (!video.Disponible) throw new Exception("control WMP nulo");   // EN LINUX: (GetOcxObj() == null) sin libmpv no hay reproductor, como un XP sin el WMP
 
-                Set(ocx, "uiMode", "none");
-                Set(ocx, "stretchToFit", true);
+                // EN LINUX: (uiMode "none" y stretchToFit) libmpv pinta solo la imagen, sin botones, ajustada al hueco sin deformarla
                 // Sin el menu del reproductor (novena tanda): con el boton derecho, o dejando el dedo en una pantalla tactil,
                 // salia el de Windows Media Player, con Pausa, Detener y Pantalla completa a mano del cliente.
-                try { Set(ocx, "enableContextMenu", false); } catch { }
-                object settings = Get(ocx, "settings");
+                // EN LINUX: (enableContextMenu = false) el video de libmpv no tiene menu: los clics los recibe la rocola
                 videoVolSet = -1;   // fuerza el primer envio del volumen a este WMP recien apuntado
                 int vol0 = VideoVolumeFor(path);
-                if (settings != null) { Set(settings, "autoStart", true); Set(settings, "volume", vol0); }
+                video.Volumen = vol0;   // EN LINUX: settings.volume (y settings.autoStart = true: Carga empieza a tocar en cuanto abre, como el WMP con autoStart)
                 videoVolSet = vol0;
-                Set(ocx, "URL", path);   // con autoStart=true deberia arrancar solo
-                try { object c0 = Get(ocx, "controls"); if (c0 != null) Call(c0, "play"); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX
+                video.Carga(path);   // con autoStart=true deberia arrancar solo   // EN LINUX: URL = path
+                try { video.Toca(); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX   // EN LINUX: controls.play()
 
                 videoOn = true;
                 progress.Value = 0; lblTime.Text = "0:00 / 0:00";   // limpia el tiempo de la cancion anterior; VideoPoll lo llena con pos/dur del video
                 videoLastPos = -1; videoProgressTick = Environment.TickCount; videoNudged = false; videoMaxPos = 0;   // arrancar el vigia de avance
                 videoPoll.Interval = 400;   // sondeo normal (baja a 80 ms durante el fundido del final)
-                video.BringToFront();
+                video.AlFrente();   // EN LINUX: BringToFront: la capa del video, encima en la pantalla
                 videoPoll.Start();
                 Diag("video: inicia");
             }
@@ -305,13 +302,13 @@ namespace Rocola
         // intentar desde cero, y si tampoco, devuelve el credito igual.
         private void SueltaVideoRoto()
         {
-            VideoHost v = video;
+            ReproductorVideo v = video;   // EN LINUX: el reproductor de libmpv (VideoHost en XP)
             if (v == null) return;
             bool sirve = false;
-            try { sirve = v.GetOcxObj() != null; } catch { }
+            try { sirve = v.Disponible; } catch { }   // EN LINUX: GetOcxObj() != null
             if (sirve) return;   // el reproductor esta: fallo ESE video, el control se queda para el siguiente
             video = null;
-            try { Controls.Remove(v); } catch { }
+            try { v.FueraDePantalla(); } catch { }   // EN LINUX: (Controls.Remove) la capa del video sale de la pantalla
             try { v.Dispose(); } catch { }
             Diag("video: reproductor no disponible, se suelta el control");
         }
@@ -325,12 +322,10 @@ namespace Rocola
             {
                 if (video != null)
                 {
-                    object ocx = video.GetOcxObj();
-                    if (ocx != null)
+                    if (video.Disponible)   // EN LINUX: GetOcxObj() != null
                     {
-                        object controls = Get(ocx, "controls");
-                        if (controls != null) Call(controls, "stop");
-                        Set(ocx, "URL", "");
+                        video.Para();   // EN LINUX: controls.stop()
+                        video.QuitaArchivo();   // EN LINUX: URL = ""
                     }
                 }
             }
@@ -347,15 +342,11 @@ namespace Rocola
             int st = -1; double pos = -1, dur = -1;
             try
             {
-                object ocx = video.GetOcxObj();
-                if (ocx != null)
+                if (video.Disponible)   // EN LINUX: GetOcxObj() != null
                 {
-                    object ps = Get(ocx, "playState");
-                    if (ps != null) st = Convert.ToInt32(ps);
-                    object controls = Get(ocx, "controls");
-                    if (controls != null) { object cp = Get(controls, "currentPosition"); if (cp != null) pos = Convert.ToDouble(cp); }
-                    object media = Get(ocx, "currentMedia");
-                    if (media != null) { object d = Get(media, "duration"); if (d != null) dur = Convert.ToDouble(d); }
+                    st = (int)video.Estado;   // EN LINUX: playState (EstadoVideo lleva los mismos numeros: 1 detenido, 2 en pausa, 3 sonando, 8 acabo, 9 abriendo)
+                    pos = video.Posicion;   // EN LINUX: controls.currentPosition
+                    if (video.TieneArchivo) dur = video.Duracion;   // EN LINUX: currentMedia.duration (sin archivo no hay currentMedia: dur se queda en -1)
                 }
             }
             catch { }
@@ -415,7 +406,7 @@ namespace Rocola
                 // 6s sin avanzar: un EMPUJON de rescate (play explicito) por si fue una traba transitoria
                 // (no el codec). Si el archivo es reproducible pero se atoro, esto suele revivirlo.
                 videoNudged = true;
-                try { object oc = video.GetOcxObj(); if (oc != null) { object c = Get(oc, "controls"); if (c != null) Call(c, "play"); } } catch { }
+                try { if (video.Disponible) video.Toca(); } catch { }   // EN LINUX: controls.play()
             }
             else if (now - videoProgressTick > 12000)
             {
@@ -429,20 +420,8 @@ namespace Rocola
             }
         }
 
-        // Late-binding por reflexion: le hablamos al control WMP sin referencias COM ni 'dynamic'
-        // (asi funciona igual en .NET 6 y en .NET 3.5/4.0 de XP).
-        private static object Get(object o, string prop)
-        {
-            return o.GetType().InvokeMember(prop, BindingFlags.GetProperty, null, o, null);
-        }
-        private static void Set(object o, string prop, object val)
-        {
-            o.GetType().InvokeMember(prop, BindingFlags.SetProperty, null, o, new object[] { val });
-        }
-        private static object Call(object o, string method, params object[] args)
-        {
-            return o.GetType().InvokeMember(method, BindingFlags.InvokeMethod, null, o, args);
-        }
+        // EN LINUX: aqui XP tiene Get, Set y Call, la reflexion (InvokeMember) con que le habla al COM del reproductor de Windows Media
+        // sin referencias COM ni 'dynamic'. El reproductor de libmpv (Nativo/ReproductorVideo.cs) se llama directo: no hacen falta.
 
         private void ApplyGenreBackground(Track t, Album org)
         {
@@ -1107,7 +1086,7 @@ namespace Rocola
         // (ambos se componen por GPU). En disco/video/atraccion/config se oculta y deja ver los controles CPU.
         // El cuadro del video (WMP) es una ventana HIJA hermana del panel GPU: si el panel acaba de
         // mostrarse, su BringToFront lo dejo por delante y taparia el video. Esto lo regresa arriba.
-        private void KeepVideoOnTop() { try { if (!AsistenteVisible && videoOn && video != null && video.Visible) video.BringToFront(); } catch { } }
+        private void KeepVideoOnTop() { try { if (!AsistenteVisible && videoOn && video != null && video.Visible) video.AlFrente(); } catch { } }   // EN LINUX: BringToFront: la capa del video
 
         private void SyncGpuFullScreen()
         {
@@ -1905,12 +1884,8 @@ namespace Rocola
         }
 
         // ==========  VIDEO: host del control ActiveX de Windows Media Player  ==========
-        // (CLSID del OCX de wmp.dll)
-        private class VideoHost : AxHost
-        {
-            public VideoHost() : base("6bf52a52-394a-11d3-b153-00c04f79faa6") { }
-            public object GetOcxObj() { return this.GetOcx(); }
-        }
+        // EN LINUX: aqui XP tiene VideoHost, el AxHost del control ActiveX de Windows Media Player (CLSID del OCX de wmp.dll). En Linux no hay
+        // ActiveX: el video es Nativo/ReproductorVideo.cs (libmpv), con su capa en la pantalla.
 
         // Un elemento de la cola: una cancion O un video. Disc = disco para el cubo de abajo.
         private class PlayItem
