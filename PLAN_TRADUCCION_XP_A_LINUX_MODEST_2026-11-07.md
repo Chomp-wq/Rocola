@@ -33,6 +33,37 @@ un Direct3D o un WinForms de mentira):
 | winmm / WaveOut, el volumen de Windows | ALSA (ya hecho) |
 | El renderizado por CPU de XP (obsoleto y congelado desde el 8-9-2026) | Propuesta: no se traduce; el A4 usa el de tarjeta gráfica, y ese es el que se traduce |
 
+## El port nativo (8-11-2026): cómo se traduce de verdad
+
+Aclaración del dueño del 8-11-2026: lo hecho hasta ese día dejó el código de XP llamando a WinForms, GDI+, Direct3D 9 y el WMP, con
+una capa debajo que los imita. Eso no es lo pedido: el código de cada archivo de XP se traduce para que llame directo a lo nativo de
+Linux, sin capas («ningún layer de traducción, ya que eso frenaría el procesador»). El diseño sale de un inventario hecho con el
+compilador (15 646 referencias: WinForms 2 469 líneas en 57 archivos, GDI+ 2 903 en 45, Direct3D 9 518 en 22, WMP 41 en 3, otras de
+Windows 183 en 26; 40 archivos no usan nada de Windows) y de tres estudios de estructura con prueba de concepto.
+
+| En XP | En el port nativo |
+|---|---|
+| Direct3D 9 (D3D9Device: 107 líneas con llamadas) | El dispositivo llama a **OpenGL ES 2** directo: 3 programas fijos (las 3 combinaciones de etapas que usa XP), texturas con su envoltura y su filtro, el búfer de fondo como textura con framebuffer. La lógica del dispositivo (cachés de estado, juntar dibujos, potencias de 2, imagen intermedia, teselas) no cambia. Prueba de concepto: 5 de 5 cuadros iguales byte a byte a la referencia. |
+| GDI+ y el TextRenderer de GDI | Cada archivo dibuja con **SkiaSharp** directo (SKCanvas, SKPaint, SKPath, SKBitmap) y llama a funciones propias (carpeta `Nativo/`) solo donde GDI+ hace las cuentas distinto que Skia: el centro de los píxeles, el acomodo del texto, la letra de GDI, el muestreo de las imágenes, los degradados, el premultiplicado. Sin clases con la forma de Graphics, Font, Brush, Pen o Bitmap. Prueba de concepto: 1 800 comparaciones, 0 bytes distintos. |
+| WinForms | Ninguna clase de XP hereda de nada de Windows: Form1 es la rocola y su ventana es la pantalla. Un bucle propio (`Pantalla`: encargos de otros hilos, teclas por evdev, relojes con la regla de WM_TIMER, el reposo) y, para lo que XP abre como ventana (Ctrl+F3, Ctrl+F2, avisos, F12), una hoja propia con el foco, el tabulador y el ratón que XP espera, pintada con SkiaSharp. Solo lo que XP usa, con nombres propios. |
+| Reproductor de Windows Media | La lógica de Form1.Video llama directo a un reproductor propio sobre **libmpv**, sin imitar el modelo de objetos del WMP. |
+| Otras de Windows (memoria, registro, foco, archivos, prioridades, winmm, ACM) | Lo de Linux directo (/proc, fsync, readdir, nice, ALSA, NLayer). |
+| El dibujo por procesador (sin tarjeta) | Se traduce también (a SkiaSharp, con su mismo aspecto): en Rocola OS es lo que se ve si falla la tarjeta. |
+
+Decisiones tomadas para no detener la traducción (el dueño puede cambiarlas):
+- «Agregar carpeta...» de Ctrl+F2: un selector de carpetas nativo, en lugar del FolderBrowserDialog de Windows.
+- Lo que no está en el código sino en el Windows XP del A4 se toma como lo supone la referencia: el tema Luna, la repetición de teclas
+  (500 ms y unas 30 por segundo) y el doble clic (500 ms y 4 puntos). Leerlo del registro del disco de XP queda como mejora.
+- Una excepción en el reposo (Application.Idle) sale del programa, como en WinForms; lo demás se apunta y la rocola sigue
+  (CatchException), como en XP.
+
+Cómo se asegura que es idéntico (sin capturas del A4): una copia congelada de la versión con capas (`/root/rocola-trabajo/referencia-xp`,
+commit aef2211, fuera del repositorio) sirve de referencia. La tarjeta se comprueba con cintas (cada llamada grabada se reproduce en las
+dos y el fondo se compara byte a byte); el dibujo, con un banco por función, la traza por línea de XP y un banco de vistas; las ventanas,
+con las 41 pruebas de WinForms, la traza de lo que llega al código de XP y su estado. Todo en JIT y en NativeAOT. Mientras dura, la
+versión a medio traducir no entra en Rocola OS. Al final se borran las capas (Ventanas.*.cs, Dibujo2D.cs, Direct3DaGL.cs,
+ReproductorWmp).
+
 ## La referencia
 
 **Decisión del dueño del 8-11-2026: no hacen falta capturas.** «Idéntico» se asegura por el código:
