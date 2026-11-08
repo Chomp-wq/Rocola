@@ -296,6 +296,8 @@ namespace PruebasTarjeta
         {
             if (args.Length >= 3 && args[0] == "--compara") return Compara(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "--sintetica") return CintaSintetica.Escribe(args[1]);
+            if (args.Length >= 3 && args[0] == "--fuentes") return Fuentes.Escribe(args[1], args[2]);
+            if (args.Length >= 2 && args[0] == "--piezas") return Piezas.Prueba(args[1]);
             string dir = null, cinta = null, sale = null, volcado = null;
             int limite = 0, hasta = int.MaxValue;
             bool sinAvisar = false, sinEnsuciar = false;

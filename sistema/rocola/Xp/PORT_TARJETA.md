@@ -89,3 +89,35 @@ dentro de `Form1`, `Tarjeta` es la tarjeta de Ctrl+F3 (`Form1.Ajustes.cs:379`).
 Comprobación: el diff contra el paso anterior, quitando esos seis cambios, son 39 líneas: las definiciones movidas a `Tarjeta`, el
 `Buffer.MemoryCopy`, las dos de `Rocola.Tarjeta` y la línea de la grabadora que pasa de `Release` a `Suelta`. Las 14 cintas dan lo mismo
 que la referencia congelada (también `--limite-textura 256` con la sintética y la 01), y una cinta grabada con este paso también.
+
+## T2. Las piezas nativas (aún sin usar)
+
+En `Nativo/`:
+
+- `GlMas.cs`: lo de OpenGL ES 2 que no está en `Gl.cs` (que es del programa de Linux de ahora y no se toca). Antes estaba dentro de
+  `Direct3DaGL.cs`; ahora en su archivo, con `glBlendEquation`, `glDeleteProgram`, `glIsEnabled` y `glGetBooleanv` además.
+- `SombreadoresTarjeta.cs`: los tres programas fijos de XP («color», «textura por color» y «dos texturas») con el texto EXACTO que
+  generaba la traducción con capas, compilados una vez por dispositivo, con los atributos p, c, t0, t1 y e en 0 a 4 y el uniforme `m` por
+  programa (solo se manda si cambia la medida del destino). `Triangulos` (28 bytes, de la memoria del programa: `DrawPrimitiveUP`),
+  `TriangulosDeBufer` (del búfer de vértices: `DrawPrimitive`) y `Triangulos2` (36 bytes, el segundo juego en el atributo 3, que se apaga
+  al acabar). Guarda, solo para la traza, lo que XP le pedía a Direct3D en las etapas 0 y 1 (los números de D3DTSS).
+- `TexturasGl.cs`: `Nueva` (LINEAR y CLAMP al crearla; `GL_OUT_OF_MEMORY` da 0), `Framebuffer` (las que eran X8R8G8B8 empiezan en
+  (0, 0, 0, 1); deja puestos el framebuffer y la máscara que había), `Sube` (por la unidad 2, desde una memoria aparte que se reusa;
+  `false` si la zona no cabe, como `LockRect`), `Medida` y `Existe` (el registro por textura), `Envoltura` (CLAMP o REPEAT de la textura
+  puesta, solo si cambia: en OpenGL ES 2 va con la textura y no con la etapa), `Borra` (con cola si llega de otro hilo, y el aviso
+  `AlBorrar` para que el dispositivo olvide la textura puesta: OpenGL repite los nombres) y `Bytes`.
+- `MemoriaTarjeta.cs`: VRAM + GTT por `DRM_IOCTL_RADEON_GEM_INFO` (512 MB si no es la radeon) menos `TexturasGl.Bytes`, en MB.
+- `TrazaTarjeta.cs`: `ROCOLA_TRAZA_DIBUJOS` y `ROCOLA_SALTA_DIBUJOS` con el formato de antes; la mezcla, la textura y el destino los
+  pregunta a OpenGL al trazar.
+- `PantallaTarjeta.cs`: la única costura con el escritorio de hoy: `Presenta` (el fondo al control de la ventana y el anfitrión compone;
+  sin ventana, `glFlush`), `Generacion`/`Tocada` (quien toca OpenGL sube la generación), `RefrescoHz` y `AhoraMs`.
+
+Comprobación:
+- Los textos: `reproductor-cintas --fuentes DIR SALIDA` escribe los de `SombreadoresTarjeta` (traducción) o los que genera
+  `FuenteEtapas` de la referencia congelada para las tres combinaciones de XP, con los estados que pone XP. Los dos archivos son iguales
+  byte a byte (1 815 bytes, MD5 `c88436cffffdd7b58f3204fa1bc7c238`).
+- Las piezas solas: `reproductor-cintas --piezas DIR`: 22 de 22 (textura nueva con su medida, LINEAR y CLAMP, la unidad 0 activa al
+  acabar; subir y leer lo mismo con 0 bytes distintos sin tocar la textura puesta en la unidad 0; zonas que no caben; REPEAT y CLAMP; el
+  framebuffer de una X8 en (0, 0, 0, 1) dejando el framebuffer y la máscara de antes; la memoria que baja con las texturas; borrar avisa y
+  la quita del registro; los tres programas compilan; sin errores de OpenGL).
+- Con las piezas en el programa (sin usar), las cintas siguen dando lo mismo que la referencia.
