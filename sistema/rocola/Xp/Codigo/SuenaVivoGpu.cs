@@ -14,7 +14,7 @@
 //    cuidado, error, novedad), en dos renglones, y con una linea que va enseñando cuanto les queda.
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 
 namespace Rocola
 {

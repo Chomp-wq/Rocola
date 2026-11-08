@@ -34,7 +34,7 @@
 // por debajo de la interfaz (Form1.Portadas.cs). Ya escaladas, se guardan las ultimas 64.
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 using System.Globalization;
 
 namespace Rocola

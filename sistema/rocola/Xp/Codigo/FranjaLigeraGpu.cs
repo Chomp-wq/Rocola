@@ -15,7 +15,7 @@
 // La bateria 'franjareloj' lo compara pixel a pixel con la imagen rehecha entera, en muchas combinaciones.
 #if ROCOLA_GPU
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 
 namespace Rocola
 {

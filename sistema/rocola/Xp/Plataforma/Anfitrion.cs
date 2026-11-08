@@ -13,6 +13,7 @@ using System.Text;
 using Rocola.Pantalla;
 using SkiaSharp;
 using Point = System.Drawing.Point;
+using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1)
 
 namespace Rocola
 {

@@ -22,7 +22,7 @@
 // la malla aditiva): sin pasadas nuevas de pantalla completa, sin memoria por cuadro y sin hornear al dibujar.
 // Las cuentas son funciones puras (pruebas/cielovivo.cs las comprueba sin tarjeta grafica).
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 
 namespace Rocola
 {

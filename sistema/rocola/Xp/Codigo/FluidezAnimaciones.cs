@@ -1,7 +1,7 @@
 // CTRL+F3: cadencia visual independiente del dibujo general y del audio.
 // Los dos ajustes existen en ambos proyectos; solo se aplican al renderizador GPU.
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 
 namespace Rocola
 {

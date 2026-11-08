@@ -142,3 +142,16 @@ con el banco de vistas (D4).
 
 La traducción copia la referencia tal cual (para que las comparaciones sigan siendo exactas); cada diferencia se corregirá después en su
 función nativa, en un solo sitio, con la lista a la vista del dueño.
+
+## D1. GDI+ ya no es global
+
+`Plataforma/Traduccion.cs` ya no lleva `global using Rocola.Dibujo2D` ni el alias global de `Encoder`. Cada archivo que todavía usa los
+tipos que imitan a GDI+ lo pone arriba: los 45 de `Codigo/` en la MISMA línea que `using System.Drawing;` (`using System.Drawing; using
+Rocola.Dibujo2D;   // EN LINUX: ...`; `Form1.Biblioteca.cs` también `using Encoder = Rocola.Dibujo2D.Encoder;`, el único que lo usa), para
+que los números de línea del código de XP no cambien y la tabla de estado por línea de la referencia valga tal cual; los 5 de `Plataforma/`
+(Anfitrion, Ventanas.Control, Ventanas.Escritorio, Ventanas.Form, Ventanas.Tipos) en una línea nueva. Así un archivo ya traducido no ve por
+descuido los tipos que imitan. Los finales de línea de XP (CRLF) se conservan.
+
+Comprobado: compilado desde cero con `-p:DebugType=none -p:Deterministic=true` el programa sale **byte a byte igual** que antes del cambio
+(`rocola-xp.dll` con MD5 c53145390fc67a67a5f768d48fd5f966 las dos veces; dos compilaciones limpias de antes también dan ese mismo MD5). Con
+el mismo ensamblado, las capturas y la traza son las mismas por construcción.

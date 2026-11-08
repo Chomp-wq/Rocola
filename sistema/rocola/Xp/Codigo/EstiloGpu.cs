@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing;
+using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
 
 namespace Rocola
 {
