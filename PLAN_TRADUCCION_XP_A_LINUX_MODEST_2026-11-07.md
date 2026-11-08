@@ -70,6 +70,9 @@ Cada fase se traduce entera, se compara con la referencia y se publica. El bar s
 9. **El video** (Form1.Video).
 10. **Lo no visual que falta**, función por función (Form1.Biblioteca, Form1.Datos, Form1.Sonido, Form1.Ia, las salidas, el resto).
 11. **Lo de Rocola OS, encima y con cuidado**: el ratón, internet, Spotify (todo SP y P), el cielo por hora y fecha y el clima, el color
+    **Decisión del dueño del 8-11-2026:** empieza cuando la traducción esté lista. Lo no visual se pone encima. Lo visual del programa
+    de Linux anterior no se trasplanta: se proponen ideas visuales nuevas que conserven el aspecto de XP y solo le añadan, y el dueño
+    elige antes de hacerlas.
     vivo, el movimiento, el vidrio y la letra, el buscador flexible y por letra, la conversión de archivos, Rocola en casa y el buzón,
     las actualizaciones, los botones de La rocola. Cada uno como opción coherente con lo traducido, con su interruptor donde toque.
 

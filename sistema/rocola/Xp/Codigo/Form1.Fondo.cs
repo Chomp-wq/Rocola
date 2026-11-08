@@ -804,7 +804,7 @@ namespace Rocola
                 for (int k = 0; k < n; k++) { char c = s[k]; b[k] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
                 return new string(b);
             }
-            string formd = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            string formd = UnicodeXp.FormaD(s.ToLowerInvariant());   // EN LINUX: Normalize(FormD) (Plataforma/UnicodeXp.cs)
             StringBuilder sb = new StringBuilder(formd.Length);
             for (int k = 0; k < formd.Length; k++)
                 if (CharUnicodeInfo.GetUnicodeCategory(formd[k]) != UnicodeCategory.NonSpacingMark) sb.Append(formd[k]);
@@ -823,7 +823,7 @@ namespace Rocola
             CacheTramos cache = cacheTramos;
             TextoTramo dato;
             if (cache != null && cache.Textos.TryGetValue(texto, out dato)) return dato;
-            string formd = texto.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            string formd = UnicodeXp.FormaD(texto.ToLowerInvariant());   // EN LINUX: Normalize(FormD) (Plataforma/UnicodeXp.cs)
             StringBuilder sb = new StringBuilder(formd.Length);
             int[] mapa = new int[formd.Length];
             // El mapa dice, por cada letra ya limpia, de que letra del texto original salio. Se avanza sobre la

@@ -2370,7 +2370,7 @@ namespace Rocola
             string n = s.Trim();
             if (n.Length == 0) return '#';
             char c = char.ToUpperInvariant(n[0]);
-            string norm = c.ToString().Normalize(NormalizationForm.FormD);
+            string norm = UnicodeXp.FormaD(c.ToString());   // EN LINUX: Normalize(FormD) sin ICU no separa los acentos (Plataforma/UnicodeXp.cs)
             for (int i = 0; i < norm.Length; i++)
                 if (CharUnicodeInfo.GetUnicodeCategory(norm[i]) != UnicodeCategory.NonSpacingMark) { c = char.ToUpperInvariant(norm[i]); break; }
             if (c >= 'A' && c <= 'Z') return c;

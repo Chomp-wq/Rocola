@@ -202,6 +202,17 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   - el video sale con su imagen en todos los cuadros.
 
   Con NativeAOT la fecha de la versión sale bien; con JIT da la del programa `dotnet`.
+- **Los acentos (8-11-2026):** el programa corre sin los datos de idioma (`InvariantGlobalization`; Rocola OS no lleva ICU) y ahí
+  `Normalize(FormD)` devuelve el texto tal cual. XP lo usa en 4 sitios para quitar los acentos: la letra de la pared, el buscador (dos)
+  y el motor de búsqueda. Con eso «Ángel» se iba a «#» y «cancion» no encontraba «canción». Ahora esos 4 sitios llaman a
+  `UnicodeXp.FormaD` (`Plataforma/UnicodeXp.cs`, una línea «EN LINUX» cada uno), que es la misma descomposición sacada de ICU (2061
+  puntos de código, más el coreano con su regla). Comprobado:
+  - igual que ICU en los 1 112 064 puntos de código, y lanza la misma excepción con un sustituto suelto o U+FFFE;
+  - en textos con varias marcas seguidas solo cambia el orden de las marcas, que XP quita justo después;
+  - en la rocola, un disco «Ángeles de Prueba» sale en la letra A, como en XP.
+
+  Lo demás del idioma da igual que en XP si el A4 está en español de México: XP compara casi todo en ordinal (`OrdinalIgnoreCase`),
+  escribe las fechas con su formato («dd/MM/yyyy HH:mm») y los números con `#,0` y `0.0`, que en es-MX salen igual que sin idioma.
 - **Lo siguiente:**
   - sin capturas (decisión del dueño del 8-11-2026): «idéntico» se asegura por el código. `Codigo/` frente a `Rocola/` (diff sin lo
     mecánico, 8-11-2026): 494 líneas en 35 archivos, todas de traducción (el puente de NAudio 3, winmm a ALSA, el mezclador a amixer,

@@ -42,7 +42,7 @@ namespace Rocola
             if (!ascii)
             {
                 decomposed = text.ToLowerInvariant();
-                try { decomposed = decomposed.Normalize(NormalizationForm.FormD); }
+                try { decomposed = UnicodeXp.FormaD(decomposed); }   // EN LINUX: Normalize(FormD) (Plataforma/UnicodeXp.cs)
                 catch (ArgumentException) { } // Una etiqueta con un surrogate roto no debe tumbar la busqueda.
             }
             StringBuilder result = new StringBuilder(decomposed.Length);
