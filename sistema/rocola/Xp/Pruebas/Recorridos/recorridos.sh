@@ -1,7 +1,7 @@
 #!/bin/bash
 # recorridos.sh PROG SALIDA [nombres...]: los recorridos de la rocola (pantallas de XP) con el programa de PROG, cada uno con una copia
 # nueva de los datos (corre.sh). TRAZA=1 apunta la traza por linea de GDI+ (solo la copia instrumentada la escribe); CAPAS=1 guarda cada
-# capa en las capturas; VOLCADO=1 vuelca las texturas que se suben.
+# capa en las capturas; VOLCADO=1 vuelca las texturas que se suben; HUELLAS=1 cambia los PNG por sus huellas (huellas.py, para compara.py).
 set -u
 PROG=$1; SAL=$2; shift 2
 W=${ROCOLA_TRABAJO:-/root/rocola-trabajo/port/dibujo}
@@ -45,5 +45,6 @@ for n in $NOMBRES; do
   export CONFIG="${K[$n]:-}"
   [ "${SIN_CAPTURAS:-0}" = 1 ] && caps="${T[$n]}:$S/fin.png"
   TIEMPO=$(( ${T[$n]} + 25 )) "$(dirname "$0")/corre.sh" "$PROG" "$S" ROCOLA_PULSA="${P[$n]}" ROCOLA_CAPTURA="$caps" ROCOLA_CAPTURA_SALE=1 "${extra[@]}"
+  [ "${HUELLAS:-0}" = 1 ] && python3 "$(dirname "$0")/huellas.py" "$S"
   echo "$n: $(tail -1 $S/salida.txt)"
 done

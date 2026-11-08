@@ -155,3 +155,67 @@ descuido los tipos que imitan. Los finales de línea de XP (CRLF) se conservan.
 Comprobado: compilado desde cero con `-p:DebugType=none -p:Deterministic=true` el programa sale **byte a byte igual** que antes del cambio
 (`rocola-xp.dll` con MD5 c53145390fc67a67a5f768d48fd5f966 las dos veces; dos compilaciones limpias de antes también dan ese mismo MD5). Con
 el mismo ensamblado, las capturas y la traza son las mismas por construcción.
+
+## D2. Las funciones nativas (`Nativo/`)
+
+Las cuentas de `Plataforma/Dibujo2D.cs` (la revisión del 8-11-2026, la que toman por referencia todas las comparaciones) se MOVIERON, sin
+cambiar ninguna, a funciones nativas en `Xp/Nativo` (espacio `Rocola.Nativo`), y `Dibujo2D.cs` quedó como una capa delgada que las llama
+(de 1 979 a 773 líneas): el código de XP que todavía no está traducido pinta igual que antes y el que se traduzca llamará directo a lo mismo.
+Las funciones no tienen estado de dibujo: lo que en XP era estado del `Graphics` llega como parámetro (`suave` = SmoothingMode AntiAlias o
+HighQuality, `medio` = PixelOffsetMode Half o HighQuality, `copia` = CompositingMode.SourceCopy, el modo de letra `AjusteLetra`, el filtro
+`Filtro`); la matriz y el recorte son los del `SKCanvas`, y los pinceles y plumas son `SKPaint` (con su `Color`, o con el `Shader` de
+`Degradado`). Ninguna clase tiene la forma ni el nombre de una de GDI+.
+
+| Archivo | Qué tiene | Lo que era en XP |
+|---|---|---|
+| `Letras.cs` | `Letra` (`EnPuntos`, `EnPixeles`; `Px`, `Puntos`, `AltoRenglon`, `AltoEntero`; `Skia(ajuste)`: su `SKFont` por modo de letra), `Letras` (dónde están las letras de XP; `ConRemates`, `SinRemates`, `AnchoFijo`; `Familia`, `Resuelve`, `Instalada`), `Cara`, `AjusteLetra` | `Font`, `FontFamily`, `TextRenderingHint` |
+| `TextoGdiPlus.cs` | `Escribe`, `Mide` (también con letras y renglones que caben), `Trazo`; `FormatoTexto` con `TipograficoCompartido`, `NormalCompartido` y `SinFormato`; `BanderasTexto`, `CorteTexto`, `Alinea` | `DrawString`, `MeasureString`, `GraphicsPath.AddString`, `StringFormat` |
+| `TextoGdi.cs` | `Escribe` (también con la matriz del HDC), `Mide`; `BanderasGdi` | `TextRenderer.DrawText` y `MeasureText`, `TextFormatFlags` |
+| `Pixel.cs` | `Rellena`, `RellenaOvalo`, `RellenaPoligono`, `RellenaPorcion`, `RellenaRegion`, `Traza`, `TrazaRect`, `TrazaOvalo`, `Linea`, `Lineas`, `TrazaPoligono`, `Arco`, `Bezier` | los `Fill*` y `Draw*` |
+| `Degradado.cs` | `Lineal` (de dos puntos, de caja con ángulo y escalable, con colores intermedios), `Extremos`, `LinealCon`, `Mezcla`, `DeTrazo`, `Textura` | `LinearGradientBrush`, `PathGradientBrush`, `TextureBrush` |
+| `Imagenes.cs` | `Pinta` (filtros, envolturas, matriz de color, clave de color, medio texel), `Lee`, `GuardaJpeg`, `GuardaPng`; `Filtro`, `Envoltura`, `FormatoImagen`, `MatrizColor` | `DrawImage` con `ImageAttributes`, `Image.FromStream`, `Save` |
+| `Pixeles.cs` | `Paso`, `Lee`, `Escribe`, `LeeSinPremultiplicar`, `EscribeSinPremultiplicar` (también desde un `int[]`), `CopiaSinPremultiplicar`; `FormatoPuntos` | `LockBits` y `UnlockBits` |
+| `RecorteLienzo.cs` | `Limites` (exactos, sin el píxel de más de Skia), `Quita` (conserva la matriz) | `ClipBounds`, `ResetClip`, `SetClip` que reemplaza |
+| `Mapas.cs` | `Nuevo`, `Copia`; `ColorSk` (`Sk`, `DeSk`) | `new Bitmap`, `Bitmap.Clone` |
+
+El diseño llamaba «Recorte» a dos cosas: el recorte del lienzo es `RecorteLienzo` y el de las letras que no caben (`StringTrimming`) es
+`CorteTexto`.
+
+`Pruebas/BancoDibujo/EjecutaNativo.cs` hace todos los casos del banco llamando DIRECTO a las funciones nativas, sin `Graphics`, `Font`,
+`Brush`, `Pen`, `Bitmap` ni `StringFormat`: es también la receta de la traducción (el estado del `Graphics` en variables, el `SetClip` en un
+`Save` del lienzo que `RecorteLienzo.Quita` deshace, los pinceles en `SKPaint`, las letras en `Letra`, los formatos en `FormatoTexto`).
+
+`Pruebas/BancoVistas` es el banco de vistas: compila el programa entero de una carpeta `Xp` (esta copia o, con
+`-p:Fuente=/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp`, la referencia) con otra entrada (`Hornos.cs`) que llama a los hornos de XP
+con datos fijos y da la huella de cada mapa, tal cual y como lo sube la tarjeta (`LockBits` Format32bppArgb).
+
+```
+cd sistema/rocola/Xp/Pruebas/BancoVistas && dotnet build -c Release     # (la referencia: copiar la carpeta y -p:Fuente=...)
+ROCOLA_PANTALLA=fuera:64x64 dotnet bin/Release/net10.0/BancoVistas.dll > nuevo.tsv     # [vuelca CARPETA]: los mapas en PNG
+```
+
+`Recorridos/`: `corre.sh` pone al estado guardado (créditos y cola) la hora de ahora (la rocola, como XP, descarta el de antes de las 7 de
+la mañana, y los recorridos daban otra cosa según la hora; con eso la traza de D0 se repitió y dio 727 líneas: las dos de menos,
+`Form1.Pared.cs:1456` y `1458`, rehacen la celda cuando la portada llega tarde y dependen de cuándo llega, así que la tabla del
+repositorio sigue siendo la primera, que las tiene todas); `HUELLAS=1` cambia los PNG de las capturas por capas y de las texturas volcadas
+por sus huellas (`huellas.py`), y `compara.py A B [A2]` compara dos corridas; con `A2` (otra corrida del mismo programa que `A`) separa lo
+QUIETO (lo que sale igual en `A` y en `A2`: lo que no depende de la hora ni del reloj de la música) y cuenta cuánto de eso sale idéntico en
+`B`.
+
+Comprobado:
+
+- banco por función, la capa congelada contra la delgada (los mismos casos con la API que imita a GDI+): 10 semillas × 3 000 casos (8 con
+  las letras de XP falsas y 2 con DejaVu, las 13 clases), **0 distintos**;
+- la capa congelada contra el ejecutor NATIVO (`ejecutor nativo`, sin la capa): los mismos 30 000 casos, **0 distintos**;
+- banco de vistas: los 56 mapas de los hornos (estrella 2D sencilla y detallada; luna con detalle; cielo profundo en 4 medidas; luna del
+  cielo vivo en 5 lados × 5 fases; 12 degradados tramados; el grano y el grano grande en 5 lados; la interrogación en 6 lados), los
+  puntos tal cual y como los sube la tarjeta, **iguales** a la referencia, con las letras de XP falsas y con DejaVu;
+- el programa entero: los nueve recorridos con capturas por capa y texturas volcadas (`VOLCADO=1 CAPAS=1 HUELLAS=1`), la referencia dos
+  veces y esta copia una. Entre las dos corridas de la referencia ya cambian 4 capas de Dibujo2D y 116 de 603 texturas (el reloj de la
+  canción, los números que ruedan, cuántas veces se resube una textura). De lo QUIETO (igual en las dos de la referencia): las **217 capas
+  de Dibujo2D salen idénticas**, y 479 de las 487 texturas. Las 8 que faltan son de la hora: 3 salen idénticas pero menos veces, 2 resubidas
+  del asistente que esta vez no hicieron falta, y 3 de `pared2` con otro contenido en el mismo instante (un cuadro de una animación, el
+  contador que rueda de «En cola» y el reloj «0:07»/«0:08»); repitiendo `pared2` con los PNG, los mismos contenidos salen en las dos (la
+  referencia dio esta vez el de la copia y al revés);
+- compila sin errores ni avisos nuevos (los avisos del compilador que salen al compilar todo son los de siempre, de código de XP que esta
+  pista no toca: `Thread.VolatileRead`, `FormatterServices`, `Control.bounds`, dos `Stream.Read` y un `stackalloc`).

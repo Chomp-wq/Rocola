@@ -9,7 +9,11 @@ C=$W/corrida
 rm -rf "$C"; mkdir -p "$C/runtimes" "$SAL"
 cp -p "$PROG"/*.dll "$PROG"/*.json "$PROG"/rocola-xp "$C/" 2>/dev/null; cp -p "$PROG"/*.pdb "$C/" 2>/dev/null
 cp -rp "$PROG/runtimes/linux-x64" "$C/runtimes/"
-cp -rp "$W/datos-base/." "$C/"; [ "${SIN_TECLAS:-0}" = 1 ] && rm -f "$C/rocola_teclas.txt"; [ -n "${CONFIG:-}" ] && printf "%s\r\n" ${CONFIG//;/ } > "$C/rocola_config.txt"
+cp -rp "$W/datos-base/." "$C/"
+# el estado guardado (creditos y cola) con la hora de ahora: la rocola descarta el de antes de las 7 de la manana (como XP) y los recorridos
+# darian otra cosa segun la hora a la que se corran
+[ -f "$C/rocola_estado.txt" ] && sed -i "s/^ts=.*/ts=$(( ($(date +%s) + 62135596800) * 10000000 ))/" "$C/rocola_estado.txt"
+[ "${SIN_TECLAS:-0}" = 1 ] && rm -f "$C/rocola_teclas.txt"; [ -n "${CONFIG:-}" ] && printf "%s\r\n" ${CONFIG//;/ } > "$C/rocola_config.txt"
 FIFO=$W/ritmo.fifo; [ -p "$FIFO" ] || mkfifo "$FIFO"
 python3 "$(dirname "$0")/ritmo.py" "$FIFO" & RP=$!
 (cd "$C" && env ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_ALSA="file:FILE=$FIFO,FORMAT=wav" "$@" timeout -s TERM "${TIEMPO:-120}" dotnet "$C/rocola-xp.dll" > "$SAL/salida.txt" 2>&1)

@@ -10,6 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>latest</LangVersion>
+    <DefineConstants>$(DefineConstants);NATIVO</DefineConstants>
     <NoWarn>$(NoWarn);CS0168;CS0169;CS0219;CS0414;CS0649;CS0162;CS0618;CA1416;CA2022</NoWarn>
   </PropertyGroup>
   <ItemGroup>
@@ -18,7 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="**/*.cs" />
-    <Compile Include="../Casos.cs;../EjecutaGdi.cs;../Programa.cs" />
+    <Compile Include="../Casos.cs;../EjecutaGdi.cs;../EjecutaNativo.cs;../Programa.cs" />
     <Compile Include="../../../Plataforma/Dibujo2D.cs" Link="Plataforma/Dibujo2D.cs" />
+    <Compile Include="../../../Nativo/*.cs" LinkBase="Nativo" />
   </ItemGroup>
 </Project>
