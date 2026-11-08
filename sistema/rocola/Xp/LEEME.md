@@ -168,9 +168,44 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   - el nombre de la tarjeta por DRM, probado solo con una carpeta simulada.
 
   No probado en el A4.
+- **Ctrl+F3 y los demás formularios (fase 8, 8-11-2026, en `Ventanas.*.cs`):** la capa de ventanas hace lo que WinForms en XP:
+  - cada control se recorta por los hermanos que tiene encima; uno transparente enseña lo que pinta su padre, no lo de debajo (en «Lo que
+    suena ahora» el «Necesita: …» salía encima de la nota);
+  - el foco y el teclado son los de WinForms:
+    - el orden del tabulador es el orden de entrada; Tab y Mayús+Tab entran en las tarjetas; las flechas se mueven dentro del mismo padre;
+    - el foco empieza en la pestaña «Sonido»;
+    - al esconder el control con el foco, el foco pasa al siguiente, y al cerrar una hoja vuelve a su sitio;
+    - Intro pulsa el botón por defecto y Escape el de cancelar (Ctrl+F2 ya se cierra con Escape);
+  - las hojas modales deshabilitan lo de debajo, y las ventanas con dueño quedan encima de su dueña;
+  - la barra de título es la de XP, con su «X», y la hoja se arrastra;
+  - MessageBox se ve como en XP y espera a Intro (PONER);
+  - el botón y la lista de Ctrl+F2 se pintan como en XP;
+  - la ventana de prueba F12 enseña su cielo.
+
+  Probado fuera de pantalla:
+  - las 6 páginas y sus 22 hojas, el teclado y lo guardado (32 vistas comparadas antes y después: iguales salvo lo arreglado);
+  - «Medir», «Comparar perfiles» y el diagnóstico;
+  - Ctrl+F2, el aviso de la carpeta de datos, F12 y el asistente de botones.
+
+  Comportamientos que son de XP y se conservan:
+  - tras «Ajustes del sonido…» con el teclado, el foco se queda en «Modo billar» ya escondido;
+  - sin la pausa F10, la rocola tapa la ventana F12;
+  - SALTAR sin nada sonando borra los créditos.
+
+  Quedan: probar el arrastre de la hoja (ROCOLA_PULSA no sabe arrastrar), Alt+F4 (en XP cierra también la rocola), los iconos de MessageBox
+  (dibujos aproximados) y el margen de TextRenderer (unos 1 px menos que GDI).
+- **Todo junto (8-11-2026):** con los cuatro trabajos juntos (video, pantallas, NativeAOT y llamadas a Windows, Ctrl+F3), el programa de
+  JIT y el de NativeAOT (`dotnet publish -c Release -r linux-x64`: 0 avisos, 7,9 MB) se probaron por el mismo camino, sin excepciones:
+  - la moneda mantenida 1,5 s suma 4 créditos;
+  - pedir una canción la toca a ritmo real;
+  - Ctrl+F3 en la pestaña Imagen sale igual en los dos;
+  - el video sale con su imagen en todos los cuadros.
+
+  Con NativeAOT la fecha de la versión sale bien; con JIT da la del programa `dotnet`.
 - **Lo siguiente:**
-  - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
-  - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).
+  - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP): las pide al dueño;
+  - la prioridad de cada hilo (`Thread.Priority` no hace nada en Linux) y los `Mp3Frame.LoadFromStream` directos;
+  - llevar el programa a la imagen del sistema: se le propone antes al dueño.
 - **Medido con Mono:** el alto de renglón y `Font.Height` salen iguales a GDI+. Los anchos de texto quedan a 1 o 2 píxeles de libgdiplus,
   que no pone el margen de 1/6 de GDI+; por eso la referencia buena son las capturas de la rocola de XP, no Mono.
 - Ninguna compilación del sistema ni del programa lo usa todavía (`sistema/rapida.sh` solo recompila el programa si cambian `Motor/` o
