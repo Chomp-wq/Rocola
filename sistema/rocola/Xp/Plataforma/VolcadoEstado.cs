@@ -32,7 +32,7 @@ namespace Rocola
         internal static void Mira(object principal)
         {
             if (pendientes.Count == 0) return;
-            double t = Escritorio.AhoraMs;
+            double t = PantallaRocola.AhoraMs;
             while (pendientes.Count > 0 && t >= pendientes[0].Key)
             {
                 string ruta = pendientes[0].Value;

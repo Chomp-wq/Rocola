@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace Rocola.Ventanas
 {
-    public class Control : Component, ISynchronizeInvoke, IWin32Window
+    public class Control : Component, ISynchronizeInvoke, IWin32Window, IDuenoDeEncargos
     {
         private static int ultimoHandle = 0x1000;
         private static readonly Dictionary<IntPtr, Control> porHandle = new Dictionary<IntPtr, Control>();
@@ -283,6 +283,7 @@ namespace Rocola.Ventanas
         // hijos, e IsHandleCreated vuelve a false. Lo pedido con BeginInvoke que no se atendio se pierde con ella.
         public IntPtr Handle { get { if (handle == IntPtr.Zero) CreateHandle(); return handle; } }
         internal IntPtr HandleActual { get { return handle; } }   // (sin crearla; se puede leer desde otro hilo)
+        long IDuenoDeEncargos.Vida { get { return (long)handle; } }   // (port nativo: los encargos de PantallaRocola viajan con la ventana de ahora)
         internal void PonVisibleSinAviso(bool v) { visible = v; }   // (el bit de visible, sin VisibleChanged: el formulario nuevo nace escondido)
         public bool IsHandleCreated { get { return handle != IntPtr.Zero; } }
         public bool Created { get { return creado; } }

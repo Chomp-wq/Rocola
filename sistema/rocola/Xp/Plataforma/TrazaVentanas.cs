@@ -40,7 +40,7 @@ namespace Rocola
         internal static void Apunta(string que)
         {
             if (!Activa) return;
-            string ms = ((long)Escritorio.AhoraMs).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string ms = ((long)PantallaRocola.AhoraMs).ToString(System.Globalization.CultureInfo.InvariantCulture);
             lock (candado) { try { salida.WriteLine(ms + "\t" + que); } catch { } }
         }
 

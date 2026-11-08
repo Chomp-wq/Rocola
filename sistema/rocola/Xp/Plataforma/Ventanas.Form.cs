@@ -210,6 +210,55 @@ namespace Rocola.Ventanas
             OnFormClosed(new FormClosedEventArgs(razonCierre));
             Dispose();
         }
+        // EL APAGADO DE WINDOWS (port nativo, V2: lo pide la pantalla nativa con el SIGTERM del sistema; Escritorio.FinDeSesion). WinForms
+        // pone CloseReason.WindowsShutDown y pasa por WmClose (Form.cs:7208-7211 y 6638-6790): con WM_QUERYENDSESSION (consulta) un dialogo
+        // avisa FormClosing por CheckCloseDialog (con DialogResult.Cancel si no tenia); uno que no lo es, antes FormClosing a las suyas con
+        // FormOwnerClosing y despues el suyo; y dice si se puede. Con WM_ENDSESSION (si la sesion se acaba), FormClosed a las suyas, el suyo
+        // y Dispose (tambien el dialogo).
+        internal bool FinDeSesion(bool consulta, bool seAcaba)
+        {
+            if (IsDisposed || !IsHandleCreated) return true;
+            razonCierre = CloseReason.WindowsShutDown;
+            if (consulta)
+            {
+                FormClosingEventArgs e = new FormClosingEventArgs(razonCierre, false);
+                if (modal)
+                {
+                    if (DialogResult == DialogResult.None) DialogResult = DialogResult.Cancel;
+                    llamadoClosing = false;
+                    return CheckCloseDialog(true);
+                }
+                Form[] suyas = Suyas();
+                for (int i = suyas.Length - 1; i >= 0; i--)
+                {
+                    FormClosingEventArgs cfe = new FormClosingEventArgs(CloseReason.FormOwnerClosing, e.Cancel);
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(suyas[i]) + " " + CloseReason.FormOwnerClosing);
+                    suyas[i].OnFormClosing(cfe);
+                    if (cfe.Cancel) { e.Cancel = true; break; }
+                }
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+                OnFormClosing(e);
+                return !e.Cancel;
+            }
+            if (!seAcaba) return true;
+            Form[] s2 = Suyas();
+            for (int i = s2.Length - 1; i >= 0; i--)
+            {
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(s2[i]) + " " + CloseReason.FormOwnerClosing);
+                s2[i].OnFormClosed(new FormClosedEventArgs(CloseReason.FormOwnerClosing));
+            }
+            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+            OnFormClosed(new FormClosedEventArgs(razonCierre));
+            Dispose();
+            return true;
+        }
+        // las que son suyas (OwnedForms; aqui, las que estan a la vista)
+        private Form[] Suyas()
+        {
+            System.Collections.Generic.List<Form> l = new System.Collections.Generic.List<Form>();
+            foreach (Form o in Escritorio.Formas) if (o != this && !o.IsDisposed && o.Owner == this) l.Add(o);
+            return l.ToArray();
+        }
         // Form.CheckCloseDialog: si el dialogo ya tiene DialogResult (o se escondio), FormClosing (una vez; si se cancela, DialogResult
         // vuelve a None) y, si no es solo eso, FormClosed. true = el dialogo se acaba.
         internal bool CheckCloseDialog(bool soloClosing)
@@ -319,19 +368,24 @@ namespace Rocola.Ventanas
     public sealed class Application
     {
         private Application() { }
-        internal static volatile bool Saliendo;
-        public static event EventHandler Idle;
-        public static event ThreadExceptionEventHandler ThreadException;
-        public static event EventHandler ApplicationExit;
-        // (ThreadContext.FDoIdle de WinForms: el que avisa es el hilo. Lo que lance se apunta en ThreadException, como lo de las ventanas;
-        // en WinForms saldria de Application.Run)
-        internal static void LlamaIdle() { EventHandler h = Idle; if (h != null) try { h(Thread.CurrentThread, EventArgs.Empty); } catch (Exception ex) { Avisa(ex); } }
-        internal static void Avisa(Exception ex)
+        internal static bool Saliendo { get { return PantallaRocola.Saliendo; } }
+        // (port nativo, V2: el bucle, Idle, DoEvents y Exit son de la pantalla nativa, Nativo/PantallaRocola.cs)
+        public static event EventHandler Idle { add { PantallaRocola.Libre += value; } remove { PantallaRocola.Libre -= value; } }
+        // (lo que se lanza en el hilo de la pantalla va a PantallaRocola.Falla y de ahi a quien lo atienda, AlFallar: quien se apunta a
+        // ThreadException pasa a ser ese)
+        private static ThreadExceptionEventHandler threadException;
+        public static event ThreadExceptionEventHandler ThreadException
         {
-            ThreadExceptionEventHandler h = ThreadException;
-            if (h != null) { try { h(null, new ThreadExceptionEventArgs(ex)); } catch (Exception otra) { Console.Error.WriteLine("[ventanas] " + otra); } }
-            else Console.Error.WriteLine("[ventanas] " + ex);
+            add { threadException += value; PantallaRocola.AlFallar = AvisaThreadException; }
+            remove { threadException -= value; }
         }
+        private static void AvisaThreadException(Exception ex)
+        {
+            ThreadExceptionEventHandler h = threadException;
+            if (h != null) h(null, new ThreadExceptionEventArgs(ex)); else Console.Error.WriteLine("[ventanas] " + ex);
+        }
+        public static event EventHandler ApplicationExit;
+        internal static void Avisa(Exception ex) { PantallaRocola.Falla(ex); }
         // la carpeta del programa (en XP, la de Rocola.exe: ahi guarda sus datos si no hay ROCOLA_DATOS)
         public static string StartupPath { get { return AppContext.BaseDirectory.TrimEnd('/', '\\'); } }
         public static string ExecutablePath { get { return Environment.ProcessPath ?? System.IO.Path.Combine(StartupPath, "rocola-xp"); } }
@@ -340,48 +394,43 @@ namespace Rocola.Ventanas
         public static void EnableVisualStyles() { }
         public static void SetCompatibleTextRenderingDefault(bool defaultValue) { }
         public static void SetUnhandledExceptionMode(UnhandledExceptionMode mode) { PruebasLinux.DespuesDelInicio(); }   // (pruebas de Linux que necesitan hilos: aqui ya acabo el inicializador del modulo)
-        public static void DoEvents() { Escritorio.Bombea(); }   // (todo lo pendiente, sin Idle)
-        public static void Exit() { Saliendo = true; Escritorio.Despierta(); }
+        public static void DoEvents() { PantallaRocola.Bombea(); }   // (todo lo pendiente, sin Idle)
+        public static void Exit() { PantallaRocola.Sal(); }
         public static void ExitThread() { Exit(); }
-        internal static Form Principal;   // (pruebas: VolcadoEstado) la ventana de Run
+        // Application.Run: la ventana se ensena y la pantalla nativa corre su bucle hasta que se cierra; el apagado del sistema (SIGTERM)
+        // la cierra como el de Windows (Escritorio.FinDeSesion: WM_QUERYENDSESSION y WM_ENDSESSION, CloseReason.WindowsShutDown)
         public static void Run(Form mainForm)
         {
             Escritorio.HiloUi = Thread.CurrentThread; ContextoVentana.Pon();
-            Principal = mainForm;
+            PantallaRocola.Principal = mainForm;
+            PantallaRocola.AlApagar = Escritorio.FinDeSesion;
             bool cerrada = false;
             mainForm.FormClosed += delegate { cerrada = true; };
             mainForm.Visible = true;
-            Escritorio.Bucle(delegate { return !cerrada && !Saliendo && !mainForm.IsDisposed; });
+            PantallaRocola.Corre(delegate { return !cerrada && !PantallaRocola.Saliendo && !mainForm.IsDisposed; });
             ApplicationExit?.Invoke(null, EventArgs.Empty);
         }
     }
 
-    // EL TEMPORIZADOR DE LA VENTANA: avisa en el hilo de la pantalla, como el de Windows (el escritorio lo despierta a su hora).
+    // EL TEMPORIZADOR DE LA VENTANA: avisa en el hilo de la pantalla, como el de Windows (port nativo, V2: es un Reloj de la pantalla
+    // nativa, Nativo/Reloj.cs, con las reglas de WM_TIMER; Tick llega con este Timer de remitente, como en WinForms).
     public class Timer : Component
     {
-        private int intervalo = 100;
-        private bool activo;
-        internal double Proximo;
-        internal readonly string Nombre;   // (pruebas: TrazaVentanas) donde se creo: archivo:linea
-        public Timer([System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { Nombre = TrazaVentanas.Sitio(archivo, linea); }
+        internal readonly Reloj R;
+        public Timer([System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0)
+        {
+            R = new Reloj(TrazaVentanas.Sitio(archivo, linea), this);   // (pruebas: TrazaVentanas apunta cada Tick con donde se creo)
+            R.Tick += delegate { OnTick(EventArgs.Empty); };
+        }
         public Timer(IContainer container) : this() { if (container != null) container.Add(this); }
-        public int Interval
-        {
-            get { return intervalo; }
-            set { if (value < 1) throw new ArgumentOutOfRangeException("Interval"); intervalo = value; if (activo) Proximo = Escritorio.AhoraMs + Math.Max(Escritorio.TimerMinimo, intervalo); }
-        }
-        public bool Enabled
-        {
-            get { return activo; }
-            set { if (activo == value) return; activo = value; if (value) { Proximo = Escritorio.AhoraMs + Math.Max(Escritorio.TimerMinimo, intervalo); Escritorio.AgregaTimer(this); } else Escritorio.QuitaTimer(this); }
-        }
+        public int Interval { get { return R.Interval; } set { R.Interval = value; } }
+        public bool Enabled { get { return R.Enabled; } set { R.Enabled = value; } }
         public object Tag { get; set; }
         public void Start() { Enabled = true; }
         public void Stop() { Enabled = false; }
         public event EventHandler Tick;
         protected virtual void OnTick(EventArgs e) { Tick?.Invoke(this, e); }
-        internal void Dispara() { OnTick(EventArgs.Empty); }
-        protected override void Dispose(bool disposing) { Enabled = false; base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) { R.Enabled = false; base.Dispose(disposing); }
     }
 
     // EL ICONO DE UNA VENTANA (en XP, el de la barra de tareas y Alt+Tab). En Rocola OS no hay barra de tareas: no se dibuja.

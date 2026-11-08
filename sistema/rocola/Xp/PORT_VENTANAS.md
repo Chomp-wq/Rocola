@@ -47,3 +47,70 @@ Comprobado (8-11-2026, maquina de pruebas compartida con otras pistas, llvmpipe,
 Herramientas: `Pruebas/Ventanas/guiones/` (datos.sh, referencia.sh, escenas.sh, corre.sh, ruido.sh, compara.sh, compara_trazas.py,
 compara_escena.py, pruebas41.sh, teclas_tab.py) y `Pruebas/Inventario/` (Roslyn: 0 errores de compilacion, 4 578 referencias a
 WinForms, como el inventario del diseno).
+
+## V2. La pantalla y los relojes nativos, debajo de la capa
+
+Piezas nuevas en `Nativo/` (el codigo de XP aun no cambia: la capa de `Plataforma/Ventanas.*.cs` les pasa todo):
+
+- `PantallaRocola.cs`, el bucle de la rocola en su hilo, con el orden de GetMessage que XP supone: cada vuelta UNA cosa, la primera
+  de: un encargo (BeginInvoke) en orden, una entrada (tecla o raton de evdev) en orden, el pintado de lo sucio (WM_PAINT), un reloj
+  vencido (WM_TIMER); con la cola vacia, Libre (Application.Idle) una vez y a esperar con el AutoResetEvent hasta que llegue algo,
+  venza un reloj o toque pintar. `Encola`/`EncolaDesde` (con la vida de su dueno: sin ventana lanza; si su ventana cambio, el encargo
+  se pierde sin ThreadException), `Entrada`, `Despierta`, `EnSuHilo` (lo contrario de InvokeRequired), `Bombea` (DoEvents: todo sin
+  Libre, y solo en su hilo), `HayPendientes` (PeekMessage), `EsperaPendientes` (MsgWaitForMultipleObjectsEx con MWMO_INPUTAVAILABLE),
+  `Corre` y `CorreModal` (Application.Run y el bucle anidado de ShowDialog), `Sal`, `AlFallar`/`Falla` (ThreadException) y el apagado:
+  SIGTERM (PosixSignalRegistration, sin cortar el programa) encola «Apagado» al hilo de la pantalla, que llama a `AlApagar`.
+  Se llama PantallaRocola y no Pantalla porque `Rocola.Pantalla` es el espacio de nombres de Consola/Pantalla (Gl.cs, Kms.cs, que no
+  se tocan): desde el codigo de XP, en el espacio Rocola, `Pantalla.X` seria siempre ese espacio de nombres.
+- `Reloj.cs`, el temporizador con las reglas de WM_TIMER y de Timer.cs: plazo fijo desde el vencimiento anterior, los atrasados salen
+  una vez, minimo 10 ms, 100 ms de fabrica, menos de 1 lanza, cambiar Interval en marcha lo reinicia (el mismo valor no), Tick con su
+  remitente.
+- Cada regla cita su linea de la fuente de WinForms (`/tmp/claude-0/agente-winforms/ref`: Application.cs, Control.cs,
+  NativeWindow.cs, Form.cs, Timer.cs) en la cabecera de los dos archivos.
+
+En la capa: `Escritorio` (AhoraMs, HiloUi, la cola -Pendiente envuelve el encargo nativo-, la entrada, HayMensajes, EsperaMensajes,
+Bombea) llama a PantallaRocola y le da el pintado (PintaUno, HaySucio, ProximoPintado: el panel de la tarjeta y la composicion de las
+hojas); `Application` (Run, Idle, DoEvents, Exit, ThreadException) y `Timer` (envuelve un Reloj, con el Timer de remitente) tambien.
+Para el apagado, `Escritorio.FinDeSesion` y `Form.FinDeSesion` hacen lo de WinForms con WM_QUERYENDSESSION y WM_ENDSESSION
+(Form.cs:7208-7211 y WmClose, 6638-6790): de arriba abajo, FormClosing con CloseReason.WindowsShutDown (un dialogo por
+CheckCloseDialog; uno que no lo es, antes a las suyas con FormOwnerClosing) y despues FormClosed y Dispose.
+
+Diferencias con la referencia, cada una porque XP (WinForms) hace lo nuevo:
+
+1. SIGTERM es el apagado de Windows (regla del 8-11-2026): la rocola se cierra con WindowsShutDown y XP borra su estado; la
+   referencia no atendia SIGTERM y el estado quedaba.
+2. Lo que lanza un manejador de Libre sale de Corre (FDoIdle sin try, Application.cs:3869-3873; RunMessageLoopInner solo con
+   try/finally, 3348-3420); de un modal sube a la tecla que lo abrio, que lo da a ThreadException. La referencia lo apuntaba y seguia.
+3. Lo que lanza un encargo llega a ThreadException como t.GetBaseException() (Control.cs:6800-6823).
+4. Poner el mismo Interval con el reloj en marcha no lo reinicia (Timer.cs:153); la referencia lo reiniciaba.
+5. DoEvents desde otro hilo no atiende la cola de la pantalla (vacia la del hilo que lo llama, ThreadContext.FromCurrent,
+   Application.cs:958-961). La referencia la atendia en ese hilo: la medida de la duracion de los videos del repaso
+   (Form1.Biblioteca.cs:1318) podia correr relojes, teclas y encargos de la rocola fuera de su hilo.
+6. EsperaPendientes espera su plazo aunque quede una senal de antes (MsgWaitForMultipleObjectsEx vuelve solo si hay algo en la cola);
+   la referencia volvia antes de tiempo y el bucle de la tarjeta daba una vuelta de mas.
+
+Comprobado (8-11-2026, JIT, llvmpipe, con la maquina compartida):
+
+- Las reglas una por una (`Pruebas/Ventanas/Pantalla`, con los mismos archivos del programa): 27 de 27 (orden de una vuelta, Libre
+  una vez por vaciado, Bombea sin Libre y no desde otro hilo, relojes: fabrica, Interval 0, minimo de 10 ms, vencimientos juntados y
+  el siguiente en su sitio, mismo Interval no reinicia, otro si, remitente; excepciones de encargo, Invoke, tecla, reloj, pintado,
+  Libre en Corre y en un modal; encargo sin ventana y de una ventana destruida; HayPendientes y la espera; el modal; SIGTERM).
+- Las 41 pruebas de WinForms sobre la capa (que ya llama a la pantalla nativa): 41 de 41.
+- Las 10 escenas, alternando referencia y traduccion para que las dos corran con la misma carga, dos veces (R4/N2 y, con el
+  programa final, R5/N3): arranque, moneda, video, tab, buscador, cierreq, altf4 y kill9 IGUALES (secuencia igual; relojes,
+  encargos y repeticiones dentro del ruido de 5 corridas de la referencia; estados de XP iguales; las capas de las hojas igual pixel a
+  pixel); sigterm y f3sigterm distintos solo en lo que debia cambiar: «encargo Apagado», FormClosing y FormClosed con WindowsShutDown
+  (con Ctrl+F3 abierto: la hoja, FormOwnerClosing a la hoja, la rocola; el ShowDialog acaba con Cancel) y `rocola_estado.txt`
+  borrado. Tres escenas pedian el ultimo estado en el mismo instante que la ultima captura, que cierra el programa, y a veces no
+  llegaba (en la referencia tambien): ahora lo piden antes (arranque 8,5 s, moneda 17,5 s, video 15,5 s; R6/N4: IGUALES).
+- NativeAOT (`dotnet publish -c Release -r linux-x64`): 0 avisos de IL ni de AOT (quedan los 15 avisos de compilacion del codigo de
+  XP, los mismos de la referencia: CA2014, CA2022, CS1690, SYSLIB0050, SYSLIB0054). Las reglas una por una: 27 de 27 tambien en
+  NativeAOT. Las escenas arranque, moneda, cierreq, altf4, sigterm, f3sigterm y kill9 con el ejecutable nativo (A1) contra la
+  referencia: como en JIT; la unica diferencia de pixeles (544, en la hoja de Ctrl+F3) es la fecha del programa en su titulo (con
+  JIT es la de dotnet; con NativeAOT, la del ejecutable): la caja de la diferencia es 141x11 en (316, 11), la barra de titulo.
+- `rocola_estado.txt`: falta tras Ctrl+Alt+Q x3, tras Alt+F4 y tras SIGTERM; queda tras SIGKILL (el apagon); en JIT y en NativeAOT.
+
+Pendiente de V2, fuera del programa: que el apagado de Rocola OS de tiempo a la rocola. El init de BusyBox manda SIGTERM a todo y
+SIGKILL un segundo despues, y `S99rocola stop` solo pone el WOL: el cierre de XP (GuardaTodoAlCerrar, BorraEstado,
+Bitacora.Vacia(3000); Form1.Video.cs:1877-1905) puede quedarse a medias. Hay que mandarle SIGTERM desde `S99rocola stop` (o el
+`::shutdown` de inittab) y esperar a que salga. No se toco (es de la imagen del sistema, no de esta pista).

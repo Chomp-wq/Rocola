@@ -7,6 +7,9 @@ esta en `../../PORT_VENTANAS.md`.
 
 - `Pruebas41/`: las 41 pruebas de la capa de ventanas contra lo que hace WinForms (cada una dice lo que daria WinForms si falla).
   `guiones/pruebas41.sh PROGRAMA ETIQUETA` las compila contra el `rocola-xp.dll` de PROGRAMA y las corre fuera de pantalla.
+- `Pantalla/`: las reglas de la pantalla nativa una por una (orden de una vuelta, Libre, DoEvents, relojes, excepciones, encargos,
+  espera, modal, SIGTERM), compiladas con los mismos `Nativo/PantallaRocola.cs` y `Reloj.cs` del programa.
+  `guiones/pruebas_pantalla.sh [ETIQUETA]` (con `AOT=1`, tambien en NativeAOT).
 - Ganchos en el programa (en `Plataforma/`, para que sigan cuando se retire la imitacion):
   - `ROCOLA_TRAZA_VENTANAS=ruta`: una linea por suceso (`Plataforma/TrazaVentanas.cs` explica el formato).
   - `ROCOLA_ESTADO_EN=S:ruta,...`: el estado de XP y el de cada pieza de las hojas abiertas a los S segundos (`Plataforma/VolcadoEstado.cs`).
