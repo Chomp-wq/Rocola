@@ -21,7 +21,9 @@
     <Compile Remove="**/*.cs" />
     <Compile Include="../Casos.cs;../EjecutaGdi.cs;../EjecutaNativo.cs;../PruebaPuente.cs;../Programa.cs" />
     <Compile Include="../../../Plataforma/Dibujo2D.cs" Link="Plataforma/Dibujo2D.cs" />
-    <Compile Include="../../../Nativo/*.cs" LinkBase="Nativo" />
+    <!-- De Nativo/ solo el dibujo y la tarjeta (lo que el banco compilaba hasta b609319): lo demas que entro despues -el sonido por ALSA,
+         el lector de audio y de MP3, el video, la pantalla y las teclas de la rocola- pide el programa entero (NAudio, NLayer, Form1). -->
+    <Compile Include="../../../Nativo/CintaTarjeta.cs;../../../Nativo/Degradado.cs;../../../Nativo/DispositivoTarjetaGl.cs;../../../Nativo/GlMas.cs;../../../Nativo/Imagenes.cs;../../../Nativo/Letras.cs;../../../Nativo/Mapas.cs;../../../Nativo/MemoriaTarjeta.cs;../../../Nativo/PantallaTarjeta.cs;../../../Nativo/Pixel.cs;../../../Nativo/Pixeles.cs;../../../Nativo/RecorteLienzo.cs;../../../Nativo/SombreadoresTarjeta.cs;../../../Nativo/TextoGdi.cs;../../../Nativo/TextoGdiPlus.cs;../../../Nativo/TexturasGl.cs;../../../Nativo/TrazaTarjeta.cs;../../../Nativo/VolcadoTexturas.cs" LinkBase="Nativo" />
     <Compile Include="../../../Plataforma/Puente.cs" Link="Plataforma/Puente.cs" />
   </ItemGroup>
 </Project>
