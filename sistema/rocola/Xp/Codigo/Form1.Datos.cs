@@ -43,7 +43,7 @@ namespace Rocola
         private HashSet<string> deepDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private long statsTotal = 0, statsSongTotal = 0, statsVideoTotal = 0, statsCoins = 0, statsCreditsAdded = 0;
         private volatile bool statsDirty = false;
-        private Timer statsTimer;
+        private Reloj statsTimer;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         private long statsSeq = 0;
 
         // Datos preparados sin tocar el formulario. Se publican juntos en OnShown, antes
@@ -2516,7 +2516,7 @@ namespace Rocola
             catch (Exception ex)
             {
                 LogError("Respaldo incompleto en " + root + " (se conservan los anteriores)", ex);
-                try { BeginInvoke((MethodInvoker)delegate { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt", Color.FromArgb(200, 80, 70)); }); } catch { }
+                try { PantallaRocola.Encola(this, delegate { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt", Color.FromArgb(200, 80, 70)); }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             }
         }
 

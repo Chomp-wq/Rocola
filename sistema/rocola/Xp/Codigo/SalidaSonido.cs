@@ -372,7 +372,7 @@ namespace Rocola
         }
 
         private const int MaxCaidasAMedias = 5;   // caidas seguidas a media cancion del mismo elemento de la cola
-        private Timer reintentoSalida;
+        private Reloj reintentoSalida;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         private Track reintentoCancion;           // la cancion que espera a que vuelva el aparato
         private double reintentoDesde;            // desde donde se retoma (s)
         private int reintentos;                   // intentos seguidos sin salida
@@ -492,7 +492,7 @@ namespace Rocola
             reintentoCancion = t; reintentoDesde = desde;
             int espera = EsperaReintento(reintentos);
             reintentos++;
-            if (reintentoSalida == null) { reintentoSalida = new Timer(); reintentoSalida.Tick += ReintentoSalida_Tick; }
+            if (reintentoSalida == null) { reintentoSalida = new Reloj(); reintentoSalida.Tick += ReintentoSalida_Tick; }   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
             reintentoSalida.Interval = espera;
             reintentoSalida.Start();
             // Mientras se reintenta sigue puesto (cada reintento lo renueva); cuando el aparato vuelve, se va solo.

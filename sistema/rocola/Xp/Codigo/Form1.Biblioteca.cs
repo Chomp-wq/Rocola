@@ -997,7 +997,7 @@ namespace Rocola
             int durTotal = 0;
             for (int i = 0; i < visitas.Count; i++) if (visitas[i].Dur) durTotal++;
             int genTotal = (gLet != null) ? gLet.Length : 0;
-            try { BeginInvoke((MethodInvoker)delegate { if (!lectura.Cancelada && myGen == durScanGen) durScanLeft = durTotal; }); }
+            try { PantallaRocola.Encola(this, delegate { if (!lectura.Cancelada && myGen == durScanGen) durScanLeft = durTotal; }); }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             catch { return; }
 
                 List<string> lote = new List<string>(128);
@@ -1054,7 +1054,7 @@ namespace Rocola
                                 try
                                 {
                                     if (!IsHandleCreated) break;
-                                    BeginInvoke((MethodInvoker)delegate { PublicaDuraciones(myGen, rr, dd, faltan); });
+                                    PantallaRocola.Encola(this, delegate { PublicaDuraciones(myGen, rr, dd, faltan); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                 }
                                 catch { break; }
                             }
@@ -1095,7 +1095,7 @@ namespace Rocola
                                 try
                                 {
                                     if (!IsHandleCreated) break;
-                                    BeginInvoke((MethodInvoker)delegate { PublicaTintes(myGen, ka, va, dka, dva, ult, firmaLet); });
+                                    PantallaRocola.Encola(this, delegate { PublicaTintes(myGen, ka, va, dka, dva, ult, firmaLet); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                 }
                                 catch { break; }
                             }
@@ -1541,7 +1541,7 @@ namespace Rocola
             List<string> pendInteg = TandaIntegrada();
             if (lectura.Cancelada || preScanStop || myGen != preScanGen) return;
             compartida = true;
-            try { BeginInvoke((MethodInvoker)delegate
+            try { PantallaRocola.Encola(this, delegate   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             {
             bool repartida = false;
             try
@@ -1593,7 +1593,7 @@ namespace Rocola
             {
                 if (System.Threading.Interlocked.Decrement(ref vivos) != 0) return;
                 FinalizaLecturaBiblioteca(lectura, true, myGen);
-                try { if (IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                try { if (IsHandleCreated && (hechasTot > 0 || hechasInteg > 0)) PantallaRocola.Encola(this, delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             };
             repartida = true;
             try
@@ -1658,7 +1658,7 @@ namespace Rocola
                             try
                             {
                                 if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
-                                 BeginInvoke((MethodInvoker)delegate
+                                 PantallaRocola.Encola(this, delegate   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                  {
                                      try
                                      {
@@ -1677,7 +1677,7 @@ namespace Rocola
                         finally { if (!queued) SueltaMedida(ruta); }
                         int hechas = System.Threading.Interlocked.Increment(ref hechasTot);
                         if ((hechas % guardaCada) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }
+                            try { if (IsHandleCreated) PantallaRocola.Encola(this, delegate { SaveLoudCache(); SaveIntegCache(); FlushEqIfDirty(); if (iaDoneDirty) { iaDoneDirty = false; SaveIaDone(); } if (deepDoneDirty) { deepDoneDirty = false; SaveDeepDone(); } }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                         // Respiro entre archivos. En ENTRENAMIENTO A FONDO practicamente no hay: la maquina se
                         // dedica a esto. En modo normal, con algo SONANDO se descansa mas (decodificar cuesta CPU
                         // y no vale la pena arriesgar un corte), y la espera se ajusta al equipo: con UN SOLO
@@ -1732,7 +1732,7 @@ namespace Rocola
                             try
                             {
                                 if (!IsHandleCreated || preScanStop || myGen != preScanGen) break;
-                                BeginInvoke((MethodInvoker)delegate
+                                PantallaRocola.Encola(this, delegate   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                 {
                                     try
                                     {
@@ -1748,7 +1748,7 @@ namespace Rocola
                         }
                         finally { if (!enCola) SueltaMedida(ruta); }
                         if ((System.Threading.Interlocked.Increment(ref hechasInteg) % guardaCada) == 0)
-                            try { if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate { SaveIntegCache(); }); } catch { }
+                            try { if (IsHandleCreated) PantallaRocola.Encola(this, delegate { SaveIntegCache(); }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                         // RESPIRO PROPORCIONAL. Medir una cancion entera es descomprimirla entera: unas cuatro veces
                         // lo de los tramos. Con musica sonando se descansa al menos tanto como se trabajo, o sea como
                         // mucho la mitad de UN nucleo, y en prioridad minima. Sola, no hay de quien descansar.
@@ -3261,7 +3261,7 @@ namespace Rocola
         // posa en cada letra, como siempre.
         internal const int PosarMs = 220;
         private int tecleoUltimo;                       // cuando entro la ultima letra
-        private Timer posaTimer;
+        private Reloj posaTimer;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
 
         // ¿Se posa YA, o se espera a que pare? Tras un rato sin teclear -abrir el buscador y escribir la
         // primera letra- se posa en el acto: si esa primera tardara, se notaria y pareceria que la rocola

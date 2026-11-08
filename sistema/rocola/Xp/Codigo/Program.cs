@@ -87,8 +87,8 @@ namespace Rocola
             // Registro de errores: la UI puede continuar tras algunos fallos, sin garantia de estado sano.
             // UnhandledException de otros hilos puede terminar el proceso; registrar no lo recupera.
             // No hay reinicio automatico ni se oculta esa limitacion al operador.
-            Application.ThreadException += delegate (object s, System.Threading.ThreadExceptionEventArgs e)
-            { LogCrash("ThreadException", e.Exception); };
+            PantallaRocola.AlFallar = delegate (Exception ex)   // EN LINUX: lo que lance una tecla, un reloj, un encargo o un pintado en la pantalla nativa (en XP, Application.ThreadException) se apunta y la rocola sigue
+            { LogCrash("ThreadException", ex); };   // EN LINUX: la excepcion llega sola
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
             { LogCrash("UnhandledException", e.ExceptionObject as Exception); };   // hilos de fondo: al menos queda el rastro
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -103,7 +103,7 @@ namespace Rocola
             PrioridadDeLaRocola();   // la musica y la pantalla, por delante de las tareas de Windows (ver abajo)
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            PantallaRocola.Corre(new Form1());   // EN LINUX: la pantalla nativa (en XP, Application.Run): la rocola, sus relojes, encargos y teclas en este hilo hasta que se cierra; el apagado del sistema la cierra como el de Windows
             Bitacora.Vacia(3000);   // lo que quedara por apuntar (la bitacora escribe detras: MedidasBitacora.cs)
             // Se suelta al salir por las buenas. (Ademas hay que TOCAR la variable en algun sitio: si solo
             // se guardara y nunca se usara, el recolector de basura podria llevarsela con la rocola aun

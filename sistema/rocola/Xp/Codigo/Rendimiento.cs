@@ -614,7 +614,7 @@ namespace Rocola
                 if (escena == EscReposo) gpuPanel.IdleExpandTarget = true;
                 bool presentado = gpuPanel.DibujaUnCuadro();
                 if (contando && presentado) cuadros++;
-                Application.DoEvents();   // de aqui come el audio: sin esto la musica no entraria en la cuenta
+                PantallaRocola.Bombea();   // de aqui come el audio: sin esto la musica no entraria en la cuenta; EN LINUX: todo lo pendiente de la pantalla nativa, sin Libre (en XP, Application.DoEvents)
             }
             msReales = Environment.TickCount - tCuenta;
             if (msReales < 1) msReales = 1;
@@ -629,7 +629,7 @@ namespace Rocola
                 if (ahora - ultTick >= 42) { ultTick = ahora; try { AnimTimer_Tick(null, EventArgs.Empty); } catch { } }
                 if (!bancoConMusica) PulsoDeMentira();
                 gpuPanel.DibujaUnCuadro();
-                Application.DoEvents();
+                PantallaRocola.Bombea();   // EN LINUX: todo lo pendiente de la pantalla nativa, sin Libre (en XP, Application.DoEvents)
             }
         }
 

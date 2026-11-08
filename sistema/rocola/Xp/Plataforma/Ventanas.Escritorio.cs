@@ -26,50 +26,52 @@ namespace Rocola.Ventanas
         public float Opacidad = 1f;
     }
 
+    // (port nativo, V2: el bucle, la cola, los encargos, la entrada, los relojes, Libre y el apagado ya son nativos -Nativo/PantallaRocola.cs
+    // y Reloj.cs-; aqui queda lo de las ventanas -las formas, el foco, el raton, las teclas y la pintura-, que les pasa todo lo demas)
     public static class Escritorio
     {
         public static IAnfitrion Anfitrion;
         public static Size Pantalla = new Size(1024, 768);
         public static int RefrescoHz = 60;   // lo pone el anfitrion (KMS: el del modo de la pantalla)
-        public static Thread HiloUi;
-        private static readonly Stopwatch reloj = Stopwatch.StartNew();
-        public static double AhoraMs { get { return reloj.Elapsed.TotalMilliseconds; } }
+        public static Thread HiloUi { get { return PantallaRocola.Hilo; } set { PantallaRocola.Hilo = value; } }
+        public static double AhoraMs { get { return PantallaRocola.AhoraMs; } }
+        // lo que la pantalla nativa le pide a la capa mientras dure la transicion: el pintado (WM_PAINT)
+        static Escritorio()
+        {
+            PantallaRocola.PintaUno = PintaUno;
+            PantallaRocola.HaySucio = HaySucio;
+            PantallaRocola.ProximoPintado = ProximoPintado;
+        }
         internal static Control Foco;
         internal static Form Activa;
         public static Keys Modificadores;
         public static MouseButtons BotonesRaton;
         public static readonly bool[] TeclasAbajo = new bool[256];   // lo que en XP pregunta GetKeyState/GetAsyncKeyState
 
-        // ---------- la cola ----------
+        // ---------- la cola (nativa: PantallaRocola) ----------
+        // Lo que devuelve BeginInvoke: el encargo de la pantalla y lo que dio el metodo (Invoke y EndInvoke).
         public sealed class Pendiente : IAsyncResult
         {
-            public Delegate Metodo; public object[] Args; public object Resultado; public Exception Error; public bool Espera;
-            internal Control Dueno; internal IntPtr HandleDueno;   // la ventana por la que viaja (BeginInvoke); sin ella, SynchronizationContext
-            private readonly ManualResetEvent hecho = new ManualResetEvent(false);
-            public volatile bool Completo;
-            public void Termina() { Completo = true; hecho.Set(); }
+            internal PantallaRocola.Encargo E;
+            public object Resultado;
+            public Exception Error { get { return E.Error; } }
             public object AsyncState { get { return null; } }
-            public WaitHandle AsyncWaitHandle { get { return hecho; } }
+            public WaitHandle AsyncWaitHandle { get { return E.SenalHecho; } }
             public bool CompletedSynchronously { get { return false; } }
-            public bool IsCompleted { get { return Completo; } }
+            public bool IsCompleted { get { return E.Hecho; } }
         }
-        private static readonly object cerrojo = new object();
-        private static readonly Queue<Pendiente> cola = new Queue<Pendiente>();
-        private static readonly Queue<Action> entrada = new Queue<Action>();
-        private static readonly AutoResetEvent senal = new AutoResetEvent(false);
-        public static Pendiente Encola(Delegate d, object[] args, bool espera) { return Encola(d, args, espera, null); }
+        public static Pendiente Encola(Delegate d, object[] args, bool espera) { return Encola(d, args, espera, null, null); }
+        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno) { return Encola(d, args, espera, dueno, null); }
         // (PostMessage a la ventana del control: si esa ventana se destruye antes de atenderlo, el pedido se pierde, como en WinForms)
-        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno)
+        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno, string nombre)
         {
-            Pendiente p = new Pendiente(); p.Metodo = d; p.Args = args; p.Espera = espera;
-            if (dueno != null) { p.Dueno = dueno; p.HandleDueno = dueno.HandleActual; }
-            lock (cerrojo) cola.Enqueue(p);
-            senal.Set();
+            Pendiente p = new Pendiente();
+            p.E = PantallaRocola.EncolaDesde(dueno, delegate { p.Resultado = Llama(d, args); }, nombre, espera);
             return p;
         }
         // La entrada (teclas y raton) la manda el anfitrion desde su hilo.
-        public static void Entrada(Action a) { lock (cerrojo) entrada.Enqueue(a); senal.Set(); }
-        public static void Despierta() { senal.Set(); }
+        public static void Entrada(Action a) { PantallaRocola.Entrada(a); }
+        public static void Despierta() { PantallaRocola.Despierta(); }
         internal static object Llama(Delegate d, object[] args)
         {
             Action a = d as Action; if (a != null) { a(); return null; }
@@ -78,81 +80,32 @@ namespace Rocola.Ventanas
             return d.DynamicInvoke(args);
         }
 
-        // ---------- los temporizadores ----------
-        // EL TEMPORIZADOR DE WINDOWS (SetTimer y WM_TIMER): vence cada Interval desde la vez anterior (el plazo no se corre si la rocola se
-        // tarda en atenderlo); los vencimientos que se juntan mientras la pantalla esta ocupada salen como uno solo (Windows no acumula
-        // WM_TIMER), y el siguiente sigue en su sitio. Menos de 10 ms es 10 (USER_TIMER_MINIMUM, XP SP2). Con el reloj fino que pide
-        // Form1 (timeBeginPeriod(1)), vence a su hora, como aqui con el reloj de Linux.
-        private static readonly List<Timer> timers = new List<Timer>();
-        internal const int TimerMinimo = 10;
-        internal static void AgregaTimer(Timer t) { lock (cerrojo) if (!timers.Contains(t)) timers.Add(t); senal.Set(); }
-        internal static void QuitaTimer(Timer t) { lock (cerrojo) timers.Remove(t); }
-        private static double ProximoTimer()
-        {
-            double m = double.MaxValue;
-            lock (cerrojo) foreach (Timer t in timers) if (t.Proximo < m) m = t.Proximo;
-            return m;
-        }
-        // el temporizador vencido que toca (el que vencio antes), ya movido a su siguiente vencimiento
-        private static Timer TimerVencido()
-        {
-            double ahora = AhoraMs; Timer v = null;
-            lock (cerrojo)
-            {
-                foreach (Timer t in timers) if (t.Proximo <= ahora && (v == null || t.Proximo < v.Proximo)) v = t;
-                if (v != null) { double p = Math.Max(TimerMinimo, v.Interval); do v.Proximo += p; while (v.Proximo <= ahora); }
-            }
-            return v;
-        }
+        // ---------- lo que hay pendiente (PeekMessage de XP) y la espera (MsgWaitForMultipleObjects): nativos ----------
+        public static bool HayMensajes() { return PantallaRocola.HayPendientes; }
+        public static bool EsperaMensajes(int ms) { return PantallaRocola.EsperaPendientes(ms); }
+        // Atiende todo lo pendiente (DoEvents).
+        public static void Bombea() { PantallaRocola.Bombea(); }
+        private static void Protege(Action a) { PantallaRocola.Protege(a); }
 
-        // ---------- lo que hay pendiente (PeekMessage de XP) ----------
+        // ---------- el pintado (WM_PAINT): lo que la pantalla nativa le pide a la capa ----------
         private static readonly List<Control> nativasPorPintar = new List<Control>();
-        public static bool HayMensajes()
+        private static readonly object cerrojo = new object();
+        // lo primero sucio: el OnPaint de un control de la tarjeta o, si la tarjeta no esta presentando, la composicion de lo de Dibujo2D
+        private static bool PintaUno()
         {
-            lock (cerrojo) { if (cola.Count > 0 || entrada.Count > 0 || nativasPorPintar.Count > 0) return true; }
-            return ComposicionPendiente() || ProximoTimer() <= AhoraMs;
-        }
-        // Espera hasta ms o hasta que llegue algo (MsgWaitForMultipleObjects de XP). true si llego algo.
-        public static bool EsperaMensajes(int ms)
-        {
-            if (HayMensajes()) return true;
-            double t = ProximoTimer() - AhoraMs;
-            if (t < ms) ms = Math.Max(0, (int)Math.Ceiling(t));
-            senal.WaitOne(ms);
-            return HayMensajes();
-        }
-
-        // UN MENSAJE, en el orden en que los da GetMessage de Windows: lo enviado con PostMessage (BeginInvoke), despues la entrada
-        // (teclas y raton), despues WM_PAINT (los controles de la tarjeta y, si la tarjeta no esta presentando, la composicion de lo de
-        // Dibujo2D) y al final WM_TIMER. false si no habia ninguno.
-        internal static bool UnMensaje()
-        {
-            Pendiente p = null; Action a = null;
-            lock (cerrojo) { if (cola.Count > 0) p = cola.Dequeue(); else if (entrada.Count > 0) a = entrada.Dequeue(); }
-            if (p != null)
-            {
-                if (p.Dueno != null && (p.HandleDueno == IntPtr.Zero || p.Dueno.HandleActual != p.HandleDueno))
-                    p.Error = new ObjectDisposedException(p.Dueno.GetType().Name);   // su ventana ya no esta: no corre
-                else
-                {
-                    try { p.Resultado = Llama(p.Metodo, p.Args); }
-                    catch (Exception ex) { if (p.Espera) p.Error = ex; else Application.Avisa(ex); }
-                }
-                p.Termina();
-                return true;
-            }
-            if (a != null) { Protege(a); return true; }
             Control np = null;
             lock (cerrojo) if (nativasPorPintar.Count > 0) { np = nativasPorPintar[0]; nativasPorPintar.RemoveAt(0); }
             if (np != null) { PintaYa(np); return true; }
             if (ComposicionPendiente()) { Compone(); return true; }
-            Timer t = TimerVencido();
-            if (t != null) { if (t.Enabled) Protege(t.Dispara); return true; }
             return false;
         }
-        // Atiende todo lo pendiente (DoEvents).
-        public static void Bombea() { while (UnMensaje()) { } }
-        private static void Protege(Action a) { try { a(); } catch (Exception ex) { Application.Avisa(ex); } }
+        private static bool HaySucio()
+        {
+            lock (cerrojo) { if (nativasPorPintar.Count > 0) return true; }
+            return ComposicionPendiente();
+        }
+        // la composicion que toca aunque no llegue nada: algo cambio y la tarjeta dejo de presentar
+        private static double ProximoPintado() { return Anfitrion != null && Cambios != compuesto ? UltimaPresentacionNativa + 100.5 : double.MaxValue; }
 
         // ---------- las ventanas ----------
         private static readonly List<Form> formas = new List<Form>();   // la ultima, la de mas arriba
@@ -162,7 +115,7 @@ namespace Rocola.Ventanas
         {
             lock (formas) formas.Remove(f);
             bool teniaFoco = Foco != null && (Foco == f || f.Contains(Foco));
-            if (teniaFoco) { Control antes = Foco; Foco = null; if (!antes.IsDisposed) Protege(antes.LlamaLostFocus); }
+            if (teniaFoco) { Control antes = Foco; Foco = null; if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco nadie"); if (!antes.IsDisposed) Protege(antes.LlamaLostFocus); }
             if (Activa == f)
             {
                 Form otra = null; lock (formas) for (int i = formas.Count - 1; i >= 0 && otra == null; i--) if (!formas[i].IsDisposed && formas[i].Visible) otra = formas[i];
@@ -217,6 +170,7 @@ namespace Rocola.Ventanas
             if (f != null && f.Visible && Activa != f) ActivaForma(f, false);
             if (porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
             Foco = c;
+            if (TrazaVentanas.Activa && antes != c) TrazaVentanas.Apunta("foco " + TrazaVentanas.Pieza(c));
             if (antes != null && antes != c && !antes.IsDisposed) Protege(antes.LlamaLostFocus);
             if (!porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
             if (antes != c) Protege(c.LlamaGotFocus);
@@ -233,7 +187,7 @@ namespace Rocola.Ventanas
             foreach (Control x in sale) if (!x.IsDisposed) Protege(x.LlamaLeave);
             foreach (Control x in entra) if (!x.IsDisposed) Protege(x.LlamaEnter);
         }
-        internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
+        internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (TrazaVentanas.Activa && antes != null) TrazaVentanas.Apunta("foco nadie"); if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
 
         // LAS VENTANAS MODALES (ShowDialog): mientras hay una abierta, Windows deshabilita las de debajo (no reciben el raton).
         private static readonly List<Form> modales = new List<Form>();
@@ -308,6 +262,8 @@ namespace Rocola.Ventanas
         private static void Llama(Control c, int tipo, MouseEventArgs e)
         {
             if (c == null || c.IsDisposed) return;
+            if (TrazaVentanas.Activa)
+                TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[tipo] + " " + TrazaVentanas.Pieza(c) + (e == null ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
             try { c.LlamaMouse(tipo, e); } catch (Exception ex) { Application.Avisa(ex); }
         }
         // el raton se movio (dx, dy) o esta en (x, y); queda dentro de la pantalla
@@ -450,7 +406,10 @@ namespace Rocola.Ventanas
                 // (con Alt, o F10, es WM_SYSKEYDOWN, con el bit 29 si Alt esta apretada)
                 bool alt = (Modificadores & Keys.Alt) != 0, sys = alt || tecla == Keys.F10;
                 Message m = Message.Create(destino.Handle, sys ? 0x104 : 0x100, (IntPtr)(int)tecla, (IntPtr)((repetida ? 0x40000001 : 1) | (alt ? 0x20000000 : 0)));
-                if (destino.LlamaProcessCmdKey(ref m, datos)) return;
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tecla " + TrazaVentanas.Datos((int)datos) + (repetida ? " rep" : "") + " a " + TrazaVentanas.Pieza(destino));
+                bool pck = destino.LlamaProcessCmdKey(ref m, datos);
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("pck " + (pck ? "1" : "0"));
+                if (pck) return;
                 if (!destino.LlamaIsInputKey(datos) && destino.LlamaProcessDialogKey(datos)) return;
                 // ProcessKeyMessage de WinForms: KeyDown primero en el formulario con KeyPreview y, si no la atendio (Handled), en el
                 // control, cada uno con sus KeyEventArgs. Handled solo quita el KeyDown del control y lo que haria Windows con la tecla
@@ -460,18 +419,20 @@ namespace Rocola.Ventanas
                 {
                     KeyEventArgs ef = new KeyEventArgs(datos);
                     f.LlamaKeyDown(ef); atendida = ef.Handled; suprime = ef.SuppressKeyPress;
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + TrazaVentanas.Pieza(f) + (atendida ? " h" : "") + (suprime ? " s" : ""));
                 }
                 if (!atendida && !destino.IsDisposed)
                 {
                     KeyEventArgs e = new KeyEventArgs(datos);
                     destino.LlamaKeyDown(e); atendida = e.Handled; suprime |= e.SuppressKeyPress;
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + TrazaVentanas.Pieza(destino) + (e.Handled ? " h" : "") + (e.SuppressKeyPress ? " s" : ""));
                 }
                 // DefWindowProc de WM_SYSKEYDOWN: Alt+F4 cierra la ventana de arriba de la del foco (SC_CLOSE, CloseReason.UserClosing),
                 // por la cola, como el WM_SYSCOMMAND que manda Windows
                 if (!atendida && alt && tecla == Keys.F4 && (Modificadores & Keys.Control) == 0)
                 {
                     Form raiz = destino.TopLevelControl as Form;
-                    if (raiz != null && !raiz.IsDisposed) Encola(new Action(delegate { if (!raiz.IsDisposed && raiz.IsHandleCreated) raiz.CierraPorSistema(); }), null, false, raiz);
+                    if (raiz != null && !raiz.IsDisposed) Encola(new Action(delegate { if (!raiz.IsDisposed && raiz.IsHandleCreated) raiz.CierraPorSistema(); }), null, false, raiz, "Alt+F4");
                 }
                 if (!suprime)
                 {
@@ -479,7 +440,12 @@ namespace Rocola.Ventanas
                     if (ch != '\0' && !destino.IsDisposed)
                     {
                         KeyPressEventArgs kp = new KeyPressEventArgs(ch);
-                        if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyPress(kp); if (kp.Handled) return; }
+                        if (f != null && f.KeyPreview && f != destino)
+                        {
+                            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + TrazaVentanas.Pieza(f));
+                            f.LlamaKeyPress(kp); if (kp.Handled) return;
+                        }
+                        if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + TrazaVentanas.Pieza(destino));
                         destino.LlamaKeyPress(kp);
                     }
                 }
@@ -488,7 +454,12 @@ namespace Rocola.Ventanas
             {
                 Modificadores &= ~mod;
                 KeyEventArgs e = new KeyEventArgs(tecla | Modificadores);
-                if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyUp(e); if (e.Handled) return; }
+                if (f != null && f.KeyPreview && f != destino)
+                {
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(f));
+                    f.LlamaKeyUp(e); if (e.Handled) return;
+                }
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(destino));
                 destino.LlamaKeyUp(e);
             }
         }
@@ -534,14 +505,14 @@ namespace Rocola.Ventanas
         public static int Cambios { get { return Volatile.Read(ref cambios); } }
         internal static void Ensucia(Control c)
         {
-            if (c != null && c.Nativa) { lock (cerrojo) if (!nativasPorPintar.Contains(c)) nativasPorPintar.Add(c); senal.Set(); return; }
+            if (c != null && c.Nativa) { lock (cerrojo) if (!nativasPorPintar.Contains(c)) nativasPorPintar.Add(c); PantallaRocola.Despierta(); return; }
             Form f = c == null ? null : c.TopLevelControl as Form;
             if (f != null) lock (versiones) { int v; versiones.TryGetValue(f, out v); versiones[f] = v + 1; }
             Interlocked.Increment(ref cambios);
-            senal.Set();
+            PantallaRocola.Despierta();
         }
         // una ventana cambio de sitio: hay que volver a componer, no a pintar (ArmaCapas mueve sus capas)
-        internal static void Mueve() { Interlocked.Increment(ref cambios); senal.Set(); }
+        internal static void Mueve() { Interlocked.Increment(ref cambios); PantallaRocola.Despierta(); }
         // WM_PAINT de un control de la tarjeta: su OnPaint (lo que lance va a ThreadException, como desde la ventana en WinForms)
         internal static void PintaYa(Control c)
         {
@@ -778,34 +749,21 @@ namespace Rocola.Ventanas
             compuesto = Cambios;
             try { Anfitrion.Compone(); } catch (Exception ex) { Application.Avisa(ex); }
         }
-        // EL BUCLE DE MENSAJES (Application.Run y ShowDialog, el de ComponentManager.FPushMessageLoop de WinForms): un mensaje cada vez,
-        // mirando entre uno y otro si el bucle sigue (en un dialogo, CheckCloseDialog); con la cola vacia, Application.Idle una vez, y a
-        // esperar a que llegue otro (WaitMessage). Idle vuelve a salir despues de atender algo.
-        internal static void Bucle(Func<bool> sigue)
+        // EL APAGADO DEL SISTEMA (port nativo, V2: el SIGTERM llega a la pantalla nativa, que lo encola y llama aqui; en XP, el apagado de
+        // Windows): WM_QUERYENDSESSION a cada ventana de arriba abajo (el orden de EnumWindows) y, si ninguna lo impidio, WM_ENDSESSION
+        // con la sesion acabandose en el mismo orden; si una lo impidio, las que ya contestaron reciben WM_ENDSESSION sin acabarse.
+        internal static void FinDeSesion()
         {
-            if (HiloUi == null) HiloUi = Thread.CurrentThread;
-            bool idleDado = false;
-            while (sigue())
-            {
-                if (UnMensaje()) { idleDado = false; continue; }
-                if (!idleDado) { idleDado = true; Application.LlamaIdle(); continue; }
-                EsperaNuevo();
-            }
-        }
-        // WaitMessage: hasta que llegue algo, venza un temporizador o toque componer porque la tarjeta dejo de presentar (y, por si
-        // acaso, no mas de 100 ms: despertar sin nada que hacer no da otro Idle)
-        private static void EsperaNuevo()
-        {
-            if (HayMensajes()) return;
-            double hasta = Math.Min(ProximoTimer(), AhoraMs + 100);
-            if (Anfitrion != null && Cambios != compuesto) hasta = Math.Min(hasta, UltimaPresentacionNativa + 100.5);
-            senal.WaitOne(Math.Max(1, (int)Math.Ceiling(hasta - AhoraMs)));
+            Form[] fs = Formas;
+            bool seAcaba = true; int hasta = -1;
+            for (int i = fs.Length - 1; i >= 0; i--) { hasta = i; if (!fs[i].FinDeSesion(true, true)) { seAcaba = false; break; } }
+            for (int i = fs.Length - 1; i >= hasta && i >= 0; i--) fs[i].FinDeSesion(false, seAcaba);
         }
         // el bucle de una hoja modal (lo esconde ShowDialog al acabar)
         internal static void BucleModal(Form f)
         {
             lock (modales) modales.Add(f);
-            try { Bucle(delegate { return f.SigueModal && !Application.Saliendo; }); }
+            try { PantallaRocola.CorreModal(delegate { return f.SigueModal && !PantallaRocola.Saliendo; }); }
             finally { lock (modales) modales.Remove(f); }
         }
     }

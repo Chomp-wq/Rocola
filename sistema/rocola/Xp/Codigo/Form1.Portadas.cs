@@ -27,7 +27,7 @@ namespace Rocola
         private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Image> coverTrash = new List<Image>();   // expulsadas, a liberar de forma segura (en el timer)
         private volatile int coverGen = 0;     // solo invalida contenido (F5), no lecturas utiles al cambiar pagina
-        private Timer coverSettleTimer;   // espera 120 ms antes de precargar vecinas
+        private Reloj coverSettleTimer;   // espera 120 ms antes de precargar vecinas; EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         // CARRILES: tope global segun CPU (uno en 2C/2T); cada unidad HDD admite un lector,
         // SSD admite paralelismo dentro del tope. El semaforo se comparte con el generador
         // de miniaturas, que cede a las peticiones visibles. No se promete latencia fija de disco.
@@ -169,7 +169,7 @@ namespace Rocola
                     try
                     {
                         if (IsHandleCreated)
-                            BeginInvoke((MethodInvoker)delegate { if (mio == warmSongGen && !preScanStop) PideLookahead(ruta); });
+                            PantallaRocola.Encola(this, delegate { if (mio == warmSongGen && !preScanStop) PideLookahead(ruta); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                     }
                     catch { }
 
@@ -216,7 +216,7 @@ namespace Rocola
                         {
                             if (IsHandleCreated)
                             {
-                                BeginInvoke((MethodInvoker)delegate {
+                                PantallaRocola.Encola(this, delegate {   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                     try { if (mio == warmSongGen && !preScanStop) { PublicaMedidaDeFuente(ruta, wrms, wdur, weq, wfuente); if (whay) PublicaIntegradaDeFuente(ruta, wentera, wfuente); } }
                                     finally { SueltaMedida(ruta); }
                                 });
@@ -650,7 +650,7 @@ namespace Rocola
                         {
                             if (this.IsHandleCreated && RegisterCoverArrival(key, j.Gen))
                             {
-                                try { this.BeginInvoke((MethodInvoker)FlushCoverArrivals); }
+                                try { PantallaRocola.Encola(this, FlushCoverArrivals); }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                 catch
                                 {
                                     lock (coverLock) { coverArrivals.Clear(); coverArrivalsPosted = false; }

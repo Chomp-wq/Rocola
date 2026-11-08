@@ -1651,7 +1651,7 @@ namespace Rocola
                         System.Threading.ThreadPool.QueueUserWorkItem(delegate
                         {
                             CargaModelosPorGenero();
-                            try { if (!dlg.IsDisposed && dlg.IsHandleCreated) dlg.BeginInvoke((MethodInvoker)delegate { if (!dlg.IsDisposed) pintaIa(); }); }
+                            try { if (!dlg.IsDisposed && dlg.IsHandleCreated) PantallaRocola.Encola(dlg, delegate { if (!dlg.IsDisposed) pintaIa(); }); }   // EN LINUX: un encargo al hilo de la pantalla nativa, con la vida de la hoja (en XP, dlg.BeginInvoke)
                             catch (InvalidOperationException) { }   // la ventana se cerro mientras tanto
                         });
                     };
@@ -1687,7 +1687,7 @@ namespace Rocola
                     dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Keys.Escape) dlg.Close(); };
                     MonedaTambienAqui(dlg);   // y una moneda con la ventana abierta tambien cuenta
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
-                    Timer tTrain = new Timer();
+                    Reloj tTrain = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
                     tTrain.Interval = 500;
                     // A1: despues de cualquier cambio se repasan las dependencias, y se ponen ya como estan.
                     EnganchaRequisitos(dlg);

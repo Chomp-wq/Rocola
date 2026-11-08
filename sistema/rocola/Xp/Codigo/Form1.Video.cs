@@ -28,7 +28,7 @@ namespace Rocola
         private Dictionary<string, long> videoSeq = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private List<Album> videoAlbums = new List<Album>();   // discos que tienen archivo(s) de video
         private const char VideoMark = '\u25BA';   // "letra" especial = seccion VIDEOS
-        private Timer videoPoll;
+        private Reloj videoPoll;   // EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         private bool videoOn = false;              // hay un video cargado/reproduciendose
         // VOLUMEN DE LOS VIDEOS: el video lo reproduce Windows Media Player, cuyo sonido va DIRECTO a la
         // tarjeta sin pasar por la cadena de audio de la rocola (nivelado, limitador, EQ...). Por eso los
@@ -293,7 +293,7 @@ namespace Rocola
                 LogError("Video " + Path.GetFileName(path ?? ""), ex);   // el detalle, que antes solo se veia en la linea de estado
                 Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
-                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+                try { if (this.IsHandleCreated) PantallaRocola.Encola(this, delegate { PlayNext(); }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             }
         }
 

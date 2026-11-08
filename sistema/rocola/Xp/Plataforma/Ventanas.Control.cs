@@ -12,7 +12,7 @@ using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global
 
 namespace Rocola.Ventanas
 {
-    public class Control : Component, ISynchronizeInvoke, IWin32Window
+    public class Control : Component, ISynchronizeInvoke, IWin32Window, IDuenoDeEncargos
     {
         private static int ultimoHandle = 0x1000;
         private static readonly Dictionary<IntPtr, Control> porHandle = new Dictionary<IntPtr, Control>();
@@ -284,6 +284,7 @@ namespace Rocola.Ventanas
         // hijos, e IsHandleCreated vuelve a false. Lo pedido con BeginInvoke que no se atendio se pierde con ella.
         public IntPtr Handle { get { if (handle == IntPtr.Zero) CreateHandle(); return handle; } }
         internal IntPtr HandleActual { get { return handle; } }   // (sin crearla; se puede leer desde otro hilo)
+        long IDuenoDeEncargos.Vida { get { return (long)handle; } }   // (port nativo: los encargos de PantallaRocola viajan con la ventana de ahora)
         internal void PonVisibleSinAviso(bool v) { visible = v; }   // (el bit de visible, sin VisibleChanged: el formulario nuevo nace escondido)
         public bool IsHandleCreated { get { return handle != IntPtr.Zero; } }
         public bool Created { get { return creado; } }
@@ -579,9 +580,11 @@ namespace Rocola.Ventanas
                 return Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi;
             }
         }
-        public IAsyncResult BeginInvoke(Delegate method) { return BeginInvoke(method, null); }
+        // (pruebas: TrazaVentanas apunta cada encargo con el archivo:linea de su BeginInvoke)
+        public IAsyncResult BeginInvoke(Delegate method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0)
+        { Control m = MarshalConVentana(); return Escritorio.Encola(method, null, false, m, TrazaVentanas.Sitio(archivo, linea)); }
         public IAsyncResult BeginInvoke(Delegate method, params object[] args) { Control m = MarshalConVentana(); return Escritorio.Encola(method, args, false, m); }
-        public IAsyncResult BeginInvoke(Action method) { return BeginInvoke((Delegate)method, null); }
+        public IAsyncResult BeginInvoke(Action method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { return BeginInvoke((Delegate)method, archivo, linea); }
         public object Invoke(Delegate method) { return Invoke(method, null); }
         public object Invoke(Delegate method, params object[] args)
         {

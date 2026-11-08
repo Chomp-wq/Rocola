@@ -290,21 +290,21 @@ namespace Rocola
         // de la musica haga el primer segundo entero), se le pide al hilo que avise cuando lo tenga, y 'arranca' se hace
         // entonces en el hilo de la pantalla. Si mientras tanto se salto o se paro la cancion (otra salida u otra bomba),
         // no se hace nada. Sin ventana a la que volver (y sin prueba que lo pida) devuelve false: se arranca como antes.
-        internal Action<MethodInvoker> vuelveALaPantalla = null;   // solo las pruebas (null = BeginInvoke)
+        internal Action<Action> vuelveALaPantalla = null;   // solo las pruebas (null = BeginInvoke); EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
         private bool ArrancaCuandoEsteLista(MethodInvoker arranca)
         {
             BombaSonido b = bomba; IWavePlayer o = output;
-            Action<MethodInvoker> vuelve = vuelveALaPantalla;
+            Action<Action> vuelve = vuelveALaPantalla;   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
             if (b == null || o == null || arranca == null || (vuelve == null && !IsHandleCreated)) return false;
             b.CuandoEsteLista(delegate
             {
-                MethodInvoker enLaPantalla = delegate
+                Action enLaPantalla = delegate   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
                 {
                     if (!object.ReferenceEquals(b, bomba) || !object.ReferenceEquals(o, output)) return;   // se salto o se paro mientras
                     arranca();
                 };
                 if (vuelve != null) { vuelve(enLaPantalla); return; }
-                try { BeginInvoke(enLaPantalla); }
+                try { PantallaRocola.Encola(this, enLaPantalla); }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                 catch (InvalidOperationException) { }   // la ventana ya se cerro: no queda nada que arrancar
             });
             return true;

@@ -1,0 +1,460 @@
+diff --git a/sistema/rocola/Xp/Plataforma/TrazaVentanas.cs b/sistema/rocola/Xp/Plataforma/TrazaVentanas.cs
+new file mode 100644
+index 0000000..7cb2f52
+--- /dev/null
++++ b/sistema/rocola/Xp/Plataforma/TrazaVentanas.cs
+@@ -0,0 +1,83 @@
++// PRUEBAS DEL PORT NATIVO, LAS VENTANAS (no son de XP): lo que le llega al codigo de XP desde las ventanas, en orden, para compararlo con
++// la copia congelada de la referencia (la misma traza va en una copia de trabajo de ella, solo en su Plataforma). Se apunta en el sitio
++// por donde pasa cada cosa (hoy la capa de ventanas; despues Pantalla y la hoja nativas), asi la traza sobrevive a la traduccion.
++//   ROCOLA_TRAZA_VENTANAS=ruta   una linea por suceso: «MS<tab>QUE», MS = milisegundos desde el arranque (el mismo reloj que
++//                                ROCOLA_PULSA y ROCOLA_CAPTURA). QUE es uno de:
++//     tecla DATOS [rep] a PIEZA       una tecla abajo: keyData (en hexadecimal, con los bits de Mayus/Ctrl/Alt), «rep» si es la
++//                                     repeticion de la tecla mantenida (el bit 30 de WM_KEYDOWN) y quien la recibe (ProcessCmdKey)
++//     pck 0|1                         lo que devolvio ProcessCmdKey (1 = atendida)
++//     keydown DATOS a PIEZA [h|s]     KeyDown (con KeyPreview, primero el de la hoja); h = Handled, s = SuppressKeyPress
++//     caracter N a PIEZA              el caracter (WM_CHAR) a KeyPress: en la rocola, Form_KeyPress por KeyPreview
++//     keyup DATOS a PIEZA             la tecla arriba
++//     tick RELOJ MS                   un reloj vencido (RELOJ = archivo:linea donde se creo; MS = su Interval)
++//     encargo QUE / encargo-perdido   un BeginInvoke atendido (QUE = archivo:linea de la llamada) o perdido (su ventana ya no estaba)
++//     raton EVENTO PIEZA X,Y B C D    un aviso del raton (baja, arriba, clic, doble, mueve, entra, sale, rueda) con su destino
++//     foco PIEZA|nadie                quien tiene el foco del teclado
++//     ventana-ve / ventana-esconde    una ventana (la rocola, una hoja) se ensena o se esconde (con su DialogResult)
++//     dialogo-fin PIEZA RESULTADO     ShowDialog acabo
++//     shown / closing / closed        OnShown, OnFormClosing y OnFormClosed (con la razon del cierre)
++//     estado RUTA                     se escribio el estado de XP (ROCOLA_ESTADO_EN, VolcadoEstado.cs)
++using System;
++using System.IO;
++using System.Text;
++
++namespace Rocola
++{
++    internal static class TrazaVentanas
++    {
++        internal static readonly bool Activa;
++        private static readonly StreamWriter salida;
++        private static readonly object candado = new object();
++
++        static TrazaVentanas()
++        {
++            string r = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_VENTANAS");
++            if (string.IsNullOrEmpty(r)) return;
++            try { salida = new StreamWriter(r, false, new UTF8Encoding(false)); salida.AutoFlush = true; Activa = true; }
++            catch (Exception ex) { Console.Error.WriteLine("[traza de ventanas] " + ex.Message); }
++        }
++
++        internal static void Apunta(string que)
++        {
++            if (!Activa) return;
++            string ms = ((long)Escritorio.AhoraMs).ToString(System.Globalization.CultureInfo.InvariantCulture);
++            lock (candado) { try { salida.WriteLine(ms + "\t" + que); } catch { } }
++        }
++
++        // ---- los nombres de lo que se apunta (iguales en los dos programas) ----
++        internal static string Datos(int keyData) { return keyData.ToString("X", System.Globalization.CultureInfo.InvariantCulture); }
++        // una pieza: su clase y, si tiene, su texto (sin saltos de linea ni tabuladores, para que la linea siga siendo una)
++        internal static string Pieza(object o)
++        {
++            if (o == null) return "nadie";
++            string n = o.GetType().Name;
++            Control c = o as Control;
++            if (c == null) return n;
++            string t = null;
++            try { t = c.Text; } catch { }
++            if (!string.IsNullOrEmpty(t)) n += "'" + Limpio(t) + "'";
++            return n;
++        }
++        internal static string Limpio(string t)
++        {
++            if (t == null) return "";
++            StringBuilder sb = new StringBuilder(t.Length);
++            foreach (char ch in t)
++            {
++                if (ch == '\r') continue;
++                if (ch == '\n') sb.Append("\\n");
++                else if (ch == '\t') sb.Append("\\t");
++                else sb.Append(ch);
++            }
++            return sb.ToString();
++        }
++        // donde se escribio una llamada (archivo:linea), sin la carpeta: la misma en la copia de la referencia y en la traduccion
++        internal static string Sitio(string archivo, int linea)
++        {
++            if (string.IsNullOrEmpty(archivo)) return "?";
++            int i = Math.Max(archivo.LastIndexOf('/'), archivo.LastIndexOf('\\'));
++            return (i >= 0 ? archivo.Substring(i + 1) : archivo) + ":" + linea.ToString(System.Globalization.CultureInfo.InvariantCulture);
++        }
++        internal static readonly string[] EventoRaton = { "baja", "clic", "mueve", "entra", "sale", "doble", "rueda", "arriba" };
++    }
++}
+diff --git a/sistema/rocola/Xp/Plataforma/Ventanas.Control.cs b/sistema/rocola/Xp/Plataforma/Ventanas.Control.cs
+index 242e99e..0e1c88d 100644
+--- a/sistema/rocola/Xp/Plataforma/Ventanas.Control.cs
++++ b/sistema/rocola/Xp/Plataforma/Ventanas.Control.cs
+@@ -578,9 +578,11 @@ namespace Rocola.Ventanas
+                 return Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi;
+             }
+         }
+-        public IAsyncResult BeginInvoke(Delegate method) { return BeginInvoke(method, null); }
++        // (pruebas: TrazaVentanas apunta cada encargo con el archivo:linea de su BeginInvoke)
++        public IAsyncResult BeginInvoke(Delegate method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0)
++        { Control m = MarshalConVentana(); return Escritorio.Encola(method, null, false, m, TrazaVentanas.Sitio(archivo, linea)); }
+         public IAsyncResult BeginInvoke(Delegate method, params object[] args) { Control m = MarshalConVentana(); return Escritorio.Encola(method, args, false, m); }
+-        public IAsyncResult BeginInvoke(Action method) { return BeginInvoke((Delegate)method, null); }
++        public IAsyncResult BeginInvoke(Action method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { return BeginInvoke((Delegate)method, archivo, linea); }
+         public object Invoke(Delegate method) { return Invoke(method, null); }
+         public object Invoke(Delegate method, params object[] args)
+         {
+diff --git a/sistema/rocola/Xp/Plataforma/Ventanas.Escritorio.cs b/sistema/rocola/Xp/Plataforma/Ventanas.Escritorio.cs
+index e72946b..926fd3c 100644
+--- a/sistema/rocola/Xp/Plataforma/Ventanas.Escritorio.cs
++++ b/sistema/rocola/Xp/Plataforma/Ventanas.Escritorio.cs
+@@ -43,6 +43,7 @@ namespace Rocola.Ventanas
+         public sealed class Pendiente : IAsyncResult
+         {
+             public Delegate Metodo; public object[] Args; public object Resultado; public Exception Error; public bool Espera;
++            internal string Nombre;   // (pruebas: TrazaVentanas) de donde viene: el archivo:linea del BeginInvoke
+             internal Control Dueno; internal IntPtr HandleDueno;   // la ventana por la que viaja (BeginInvoke); sin ella, SynchronizationContext
+             private readonly ManualResetEvent hecho = new ManualResetEvent(false);
+             public volatile bool Completo;
+@@ -56,11 +57,12 @@ namespace Rocola.Ventanas
+         private static readonly Queue<Pendiente> cola = new Queue<Pendiente>();
+         private static readonly Queue<Action> entrada = new Queue<Action>();
+         private static readonly AutoResetEvent senal = new AutoResetEvent(false);
+-        public static Pendiente Encola(Delegate d, object[] args, bool espera) { return Encola(d, args, espera, null); }
++        public static Pendiente Encola(Delegate d, object[] args, bool espera) { return Encola(d, args, espera, null, null); }
++        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno) { return Encola(d, args, espera, dueno, null); }
+         // (PostMessage a la ventana del control: si esa ventana se destruye antes de atenderlo, el pedido se pierde, como en WinForms)
+-        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno)
++        internal static Pendiente Encola(Delegate d, object[] args, bool espera, Control dueno, string nombre)
+         {
+-            Pendiente p = new Pendiente(); p.Metodo = d; p.Args = args; p.Espera = espera;
++            Pendiente p = new Pendiente(); p.Metodo = d; p.Args = args; p.Espera = espera; p.Nombre = nombre;
+             if (dueno != null) { p.Dueno = dueno; p.HandleDueno = dueno.HandleActual; }
+             lock (cerrojo) cola.Enqueue(p);
+             senal.Set();
+@@ -131,9 +133,13 @@ namespace Rocola.Ventanas
+             if (p != null)
+             {
+                 if (p.Dueno != null && (p.HandleDueno == IntPtr.Zero || p.Dueno.HandleActual != p.HandleDueno))
++                {
+                     p.Error = new ObjectDisposedException(p.Dueno.GetType().Name);   // su ventana ya no esta: no corre
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("encargo-perdido " + (p.Nombre ?? "?"));
++                }
+                 else
+                 {
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("encargo " + (p.Nombre ?? "?"));
+                     try { p.Resultado = Llama(p.Metodo, p.Args); }
+                     catch (Exception ex) { if (p.Espera) p.Error = ex; else Application.Avisa(ex); }
+                 }
+@@ -146,7 +152,15 @@ namespace Rocola.Ventanas
+             if (np != null) { PintaYa(np); return true; }
+             if (ComposicionPendiente()) { Compone(); return true; }
+             Timer t = TimerVencido();
+-            if (t != null) { if (t.Enabled) Protege(t.Dispara); return true; }
++            if (t != null)
++            {
++                if (t.Enabled)
++                {
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tick " + t.Nombre + " " + t.Interval.ToString(System.Globalization.CultureInfo.InvariantCulture));
++                    Protege(t.Dispara);
++                }
++                return true;
++            }
+             return false;
+         }
+         // Atiende todo lo pendiente (DoEvents).
+@@ -161,7 +175,7 @@ namespace Rocola.Ventanas
+         {
+             lock (formas) formas.Remove(f);
+             bool teniaFoco = Foco != null && (Foco == f || f.Contains(Foco));
+-            if (teniaFoco) { Control antes = Foco; Foco = null; if (!antes.IsDisposed) Protege(antes.LlamaLostFocus); }
++            if (teniaFoco) { Control antes = Foco; Foco = null; if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco nadie"); if (!antes.IsDisposed) Protege(antes.LlamaLostFocus); }
+             if (Activa == f)
+             {
+                 Form otra = null; lock (formas) for (int i = formas.Count - 1; i >= 0 && otra == null; i--) if (!formas[i].IsDisposed && formas[i].Visible) otra = formas[i];
+@@ -216,6 +230,7 @@ namespace Rocola.Ventanas
+             if (f != null && f.Visible && Activa != f) ActivaForma(f, false);
+             if (porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
+             Foco = c;
++            if (TrazaVentanas.Activa && antes != c) TrazaVentanas.Apunta("foco " + TrazaVentanas.Pieza(c));
+             if (antes != null && antes != c && !antes.IsDisposed) Protege(antes.LlamaLostFocus);
+             if (!porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
+             if (antes != c) Protege(c.LlamaGotFocus);
+@@ -232,7 +247,7 @@ namespace Rocola.Ventanas
+             foreach (Control x in sale) if (!x.IsDisposed) Protege(x.LlamaLeave);
+             foreach (Control x in entra) if (!x.IsDisposed) Protege(x.LlamaEnter);
+         }
+-        internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
++        internal static void QuitaFoco(Control c) { Control antes = Foco; Foco = null; if (TrazaVentanas.Activa && antes != null) TrazaVentanas.Apunta("foco nadie"); if (antes != null && !antes.IsDisposed) Protege(antes.LlamaLostFocus); }
+ 
+         // LAS VENTANAS MODALES (ShowDialog): mientras hay una abierta, Windows deshabilita las de debajo (no reciben el raton).
+         private static readonly List<Form> modales = new List<Form>();
+@@ -307,6 +322,8 @@ namespace Rocola.Ventanas
+         private static void Llama(Control c, int tipo, MouseEventArgs e)
+         {
+             if (c == null || c.IsDisposed) return;
++            if (TrazaVentanas.Activa)
++                TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[tipo] + " " + TrazaVentanas.Pieza(c) + (e == null ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
+             try { c.LlamaMouse(tipo, e); } catch (Exception ex) { Application.Avisa(ex); }
+         }
+         // el raton se movio (dx, dy) o esta en (x, y); queda dentro de la pantalla
+@@ -449,7 +466,10 @@ namespace Rocola.Ventanas
+                 // (con Alt, o F10, es WM_SYSKEYDOWN, con el bit 29 si Alt esta apretada)
+                 bool alt = (Modificadores & Keys.Alt) != 0, sys = alt || tecla == Keys.F10;
+                 Message m = Message.Create(destino.Handle, sys ? 0x104 : 0x100, (IntPtr)(int)tecla, (IntPtr)((repetida ? 0x40000001 : 1) | (alt ? 0x20000000 : 0)));
+-                if (destino.LlamaProcessCmdKey(ref m, datos)) return;
++                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tecla " + TrazaVentanas.Datos((int)datos) + (repetida ? " rep" : "") + " a " + TrazaVentanas.Pieza(destino));
++                bool pck = destino.LlamaProcessCmdKey(ref m, datos);
++                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("pck " + (pck ? "1" : "0"));
++                if (pck) return;
+                 if (!destino.LlamaIsInputKey(datos) && destino.LlamaProcessDialogKey(datos)) return;
+                 // ProcessKeyMessage de WinForms: KeyDown primero en el formulario con KeyPreview y, si no la atendio (Handled), en el
+                 // control, cada uno con sus KeyEventArgs. Handled solo quita el KeyDown del control y lo que haria Windows con la tecla
+@@ -459,18 +479,20 @@ namespace Rocola.Ventanas
+                 {
+                     KeyEventArgs ef = new KeyEventArgs(datos);
+                     f.LlamaKeyDown(ef); atendida = ef.Handled; suprime = ef.SuppressKeyPress;
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + TrazaVentanas.Pieza(f) + (atendida ? " h" : "") + (suprime ? " s" : ""));
+                 }
+                 if (!atendida && !destino.IsDisposed)
+                 {
+                     KeyEventArgs e = new KeyEventArgs(datos);
+                     destino.LlamaKeyDown(e); atendida = e.Handled; suprime |= e.SuppressKeyPress;
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + TrazaVentanas.Pieza(destino) + (e.Handled ? " h" : "") + (e.SuppressKeyPress ? " s" : ""));
+                 }
+                 // DefWindowProc de WM_SYSKEYDOWN: Alt+F4 cierra la ventana de arriba de la del foco (SC_CLOSE, CloseReason.UserClosing),
+                 // por la cola, como el WM_SYSCOMMAND que manda Windows
+                 if (!atendida && alt && tecla == Keys.F4 && (Modificadores & Keys.Control) == 0)
+                 {
+                     Form raiz = destino.TopLevelControl as Form;
+-                    if (raiz != null && !raiz.IsDisposed) Encola(new Action(delegate { if (!raiz.IsDisposed && raiz.IsHandleCreated) raiz.CierraPorSistema(); }), null, false, raiz);
++                    if (raiz != null && !raiz.IsDisposed) Encola(new Action(delegate { if (!raiz.IsDisposed && raiz.IsHandleCreated) raiz.CierraPorSistema(); }), null, false, raiz, "Alt+F4");
+                 }
+                 if (!suprime)
+                 {
+@@ -478,7 +500,12 @@ namespace Rocola.Ventanas
+                     if (ch != '\0' && !destino.IsDisposed)
+                     {
+                         KeyPressEventArgs kp = new KeyPressEventArgs(ch);
+-                        if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyPress(kp); if (kp.Handled) return; }
++                        if (f != null && f.KeyPreview && f != destino)
++                        {
++                            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + TrazaVentanas.Pieza(f));
++                            f.LlamaKeyPress(kp); if (kp.Handled) return;
++                        }
++                        if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + TrazaVentanas.Pieza(destino));
+                         destino.LlamaKeyPress(kp);
+                     }
+                 }
+@@ -487,7 +514,12 @@ namespace Rocola.Ventanas
+             {
+                 Modificadores &= ~mod;
+                 KeyEventArgs e = new KeyEventArgs(tecla | Modificadores);
+-                if (f != null && f.KeyPreview && f != destino) { f.LlamaKeyUp(e); if (e.Handled) return; }
++                if (f != null && f.KeyPreview && f != destino)
++                {
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(f));
++                    f.LlamaKeyUp(e); if (e.Handled) return;
++                }
++                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(destino));
+                 destino.LlamaKeyUp(e);
+             }
+         }
+@@ -786,6 +818,7 @@ namespace Rocola.Ventanas
+             bool idleDado = false;
+             while (sigue())
+             {
++                VolcadoEstado.Mira(Application.Principal);   // (pruebas: ROCOLA_ESTADO_EN)
+                 if (UnMensaje()) { idleDado = false; continue; }
+                 if (!idleDado) { idleDado = true; Application.LlamaIdle(); continue; }
+                 EsperaNuevo();
+diff --git a/sistema/rocola/Xp/Plataforma/Ventanas.Form.cs b/sistema/rocola/Xp/Plataforma/Ventanas.Form.cs
+index 467e505..a4eb9be 100644
+--- a/sistema/rocola/Xp/Plataforma/Ventanas.Form.cs
++++ b/sistema/rocola/Xp/Plataforma/Ventanas.Form.cs
+@@ -173,6 +173,7 @@ namespace Rocola.Ventanas
+                 if (modal && DialogResult != DialogResult.None) value = false;   // (Load puso DialogResult: el dialogo no se ensena)
+             }
+             base.SetVisibleCore(value);
++            if (TrazaVentanas.Activa) TrazaVentanas.Apunta(value ? "ventana-ve " + TrazaVentanas.Pieza(this) + (modal ? " modal" : "") : "ventana-esconde " + TrazaVentanas.Pieza(this) + " " + DialogResult);
+             if (value) { Escritorio.Agrega(this); Activate(); }   // (y el foco: Form.Active)
+             else Escritorio.Oculta(this);
+         }
+@@ -202,8 +203,10 @@ namespace Rocola.Ventanas
+                 return;
+             }
+             FormClosingEventArgs e = new FormClosingEventArgs(razonCierre, false);
++            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+             OnFormClosing(e);
+             if (e.Cancel) return;
++            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+             OnFormClosed(new FormClosedEventArgs(razonCierre));
+             Dispose();
+         }
+@@ -218,11 +221,13 @@ namespace Rocola.Ventanas
+                 FormClosingEventArgs e = new FormClosingEventArgs(razonCierre, false);
+                 if (!llamadoClosing)
+                 {
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+                     OnFormClosing(e);
+                     if (e.Cancel) DialogResult = DialogResult.None; else llamadoClosing = true;
+                 }
+                 if (!soloClosing && DialogResult != DialogResult.None)
+                 {
++                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+                     OnFormClosed(new FormClosedEventArgs(razonCierre));
+                     llamadoClosing = false;
+                 }
+@@ -266,6 +271,7 @@ namespace Rocola.Ventanas
+                 }
+             }
+             finally { Owner = antes; duenoVentana = null; }
++            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("dialogo-fin " + TrazaVentanas.Pieza(this) + " " + DialogResult);
+             return DialogResult;
+         }
+         // (el bucle de la hoja: mientras CheckCloseDialog no la acabe)
+@@ -283,7 +289,7 @@ namespace Rocola.Ventanas
+                 else if (StartPosition == FormStartPosition.CenterScreen) CentraEnPantalla();
+             }
+             Load?.Invoke(this, e);
+-            if (IsHandleCreated) Escritorio.Encola(new Action(delegate { OnShown(EventArgs.Empty); }), null, false, this);
++            if (IsHandleCreated) Escritorio.Encola(new Action(delegate { if (TrazaVentanas.Activa) TrazaVentanas.Apunta("shown " + TrazaVentanas.Pieza(this)); OnShown(EventArgs.Empty); }), null, false, this, "Shown");
+         }
+         // Form.CenterToParent: en medio de su dueno de Windows ((izq + der - ancho) / 2), sin salirse del area de trabajo
+         private void CentraEnDueno()
+@@ -337,9 +343,11 @@ namespace Rocola.Ventanas
+         public static void DoEvents() { Escritorio.Bombea(); }   // (todo lo pendiente, sin Idle)
+         public static void Exit() { Saliendo = true; Escritorio.Despierta(); }
+         public static void ExitThread() { Exit(); }
++        internal static Form Principal;   // (pruebas: VolcadoEstado) la ventana de Run
+         public static void Run(Form mainForm)
+         {
+             Escritorio.HiloUi = Thread.CurrentThread; ContextoVentana.Pon();
++            Principal = mainForm;
+             bool cerrada = false;
+             mainForm.FormClosed += delegate { cerrada = true; };
+             mainForm.Visible = true;
+@@ -354,7 +362,8 @@ namespace Rocola.Ventanas
+         private int intervalo = 100;
+         private bool activo;
+         internal double Proximo;
+-        public Timer() { }
++        internal readonly string Nombre;   // (pruebas: TrazaVentanas) donde se creo: archivo:linea
++        public Timer([System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { Nombre = TrazaVentanas.Sitio(archivo, linea); }
+         public Timer(IContainer container) : this() { if (container != null) container.Add(this); }
+         public int Interval
+         {
+@@ -574,7 +583,7 @@ namespace Rocola.Ventanas
+     // Lo que se manda a la pantalla desde otros hilos con SynchronizationContext.Post llega al hilo de la pantalla.
+     public sealed class ContextoVentana : SynchronizationContext
+     {
+-        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false); }
++        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false, null, "contexto"); }
+         public override void Send(SendOrPostCallback d, object state)
+         {
+             if (Thread.CurrentThread == Escritorio.HiloUi) { d(state); return; }
+diff --git a/sistema/rocola/Xp/Plataforma/VolcadoEstado.cs b/sistema/rocola/Xp/Plataforma/VolcadoEstado.cs
+new file mode 100644
+index 0000000..c76e799
+--- /dev/null
++++ b/sistema/rocola/Xp/Plataforma/VolcadoEstado.cs
+@@ -0,0 +1,98 @@
++// PRUEBAS DEL PORT NATIVO, LAS VENTANAS (no son de XP): el estado de XP en puntos fijos, para compararlo con la copia congelada de la
++// referencia (el mismo archivo va en una copia de trabajo de ella, solo en su Plataforma). Lo lee el bucle de la pantalla entre un
++// mensaje y otro, en su hilo, sin reflexion (es un trozo de Form1: ve sus campos tal cual).
++//   ROCOLA_ESTADO_EN=S:ruta[,S2:ruta2...]   a los S segundos de arrancar escribe en «ruta»: creditos, la cola, lo que suena, la letra,
++//                                           la pagina, el disco y la cancion elegidos, el buscador y lo escrito, el asistente de los
++//                                           botones, la atraccion, el mantenimiento (F10), la pestana de Ctrl+F3, quien tiene el foco y,
++//                                           de cada hoja abierta (Ctrl+F3, Ctrl+F2, un aviso), cada pieza: clase, texto, sitio, si se
++//                                           ve, si esta activa, su orden del tabulador, Checked o Value, y la del foco.
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using System.Text;
++
++namespace Rocola
++{
++    internal static class VolcadoEstado
++    {
++        private static readonly List<KeyValuePair<double, string>> pendientes = new List<KeyValuePair<double, string>>();
++        static VolcadoEstado()
++        {
++            string c = Environment.GetEnvironmentVariable("ROCOLA_ESTADO_EN");
++            if (string.IsNullOrEmpty(c)) return;
++            foreach (string e in c.Split(','))
++            {
++                int k = e.IndexOf(':'); double s;
++                if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out s)) pendientes.Add(new KeyValuePair<double, string>(s * 1000.0, e.Substring(k + 1)));
++            }
++            pendientes.Sort((x, y) => x.Key.CompareTo(y.Key));
++        }
++        // (el bucle de la pantalla, entre un mensaje y otro)
++        internal static void Mira(object principal)
++        {
++            if (pendientes.Count == 0) return;
++            double t = Escritorio.AhoraMs;
++            while (pendientes.Count > 0 && t >= pendientes[0].Key)
++            {
++                string ruta = pendientes[0].Value;
++                pendientes.RemoveAt(0);
++                try
++                {
++                    StringBuilder sb = new StringBuilder();
++                    sb.Append("t=").Append(((long)t).ToString(CultureInfo.InvariantCulture)).Append('\n');
++                    Form1 f = principal as Form1;
++                    if (f != null) f.EscribeEstadoPrueba(sb); else sb.Append("sin rocola\n");
++                    File.WriteAllText(ruta, sb.ToString(), new UTF8Encoding(false));
++                }
++                catch (Exception ex) { Console.Error.WriteLine("[estado de prueba] " + ex.Message); }
++                TrazaVentanas.Apunta("estado " + ruta);
++            }
++        }
++        internal static string B(bool b) { return b ? "1" : "0"; }
++        internal static string N(int n) { return n.ToString(CultureInfo.InvariantCulture); }
++    }
++
++    public partial class Form1
++    {
++        internal void EscribeEstadoPrueba(StringBuilder sb)
++        {
++            sb.Append("creditos=").Append(VolcadoEstado.N(credits)).Append('\n');
++            sb.Append("cola=").Append(VolcadoEstado.N(queue.Count));
++            foreach (PlayItem p in queue) sb.Append(" | ").Append(TrazaVentanas.Limpio(p.Display()));
++            sb.Append('\n');
++            sb.Append("suena=").Append(nowPlaying != null ? TrazaVentanas.Limpio(nowPlaying.Display()) : "").Append('\n');
++            sb.Append("letra=").Append(currentLetter).Append('\n');
++            sb.Append("pagina=").Append(VolcadoEstado.N(page)).Append('\n');
++            sb.Append("disco=").Append(VolcadoEstado.N(selAlbumIndex)).Append('\n');
++            sb.Append("cancion=").Append(VolcadoEstado.N(songSel)).Append('\n');
++            sb.Append("buscador=").Append(VolcadoEstado.B(searchOpen)).Append(" escrito=").Append(searchOverlay != null ? TrazaVentanas.Limpio(searchOverlay.Query) : "").Append('\n');
++            sb.Append("asistente_botones=").Append(VolcadoEstado.B(configMode)).Append('\n');
++            sb.Append("atraccion=").Append(VolcadoEstado.B(attractOn)).Append('\n');
++            sb.Append("mantenimiento=").Append(VolcadoEstado.B(maintMode)).Append('\n');
++            sb.Append("f3pagina=").Append(VolcadoEstado.N(f3Pagina)).Append('\n');
++            sb.Append("foco=").Append(TrazaVentanas.Pieza(Escritorio.Foco)).Append('\n');
++            sb.Append("activa=").Append(TrazaVentanas.Pieza(Escritorio.Activa)).Append('\n');
++            foreach (Form h in Escritorio.Formas)
++            {
++                if (h == this || h.IsDisposed || !h.Visible) continue;
++                sb.Append("hoja ").Append(TrazaVentanas.Pieza(h)).Append(" @").Append(CajaPrueba(h.Bounds)).Append('\n');
++                PiezasPrueba(h, sb, "  ");
++            }
++        }
++        private static string CajaPrueba(System.Drawing.Rectangle r) { return VolcadoEstado.N(r.X) + "," + VolcadoEstado.N(r.Y) + "," + VolcadoEstado.N(r.Width) + "x" + VolcadoEstado.N(r.Height); }
++        private static void PiezasPrueba(Control padre, StringBuilder sb, string sangria)
++        {
++            foreach (Control c in padre.Controls)
++            {
++                sb.Append(sangria).Append(TrazaVentanas.Pieza(c)).Append(" @").Append(CajaPrueba(c.Bounds))
++                  .Append(c.Visible ? " v" : " -").Append(c.Enabled ? "e" : "-").Append(" t").Append(VolcadoEstado.N(c.TabIndex));
++                Interruptor i = c as Interruptor; if (i != null) sb.Append(" checked=").Append(VolcadoEstado.B(i.Checked));
++                Deslizador d = c as Deslizador; if (d != null) sb.Append(" value=").Append(VolcadoEstado.N(d.Value));
++                if (Escritorio.Foco == c) sb.Append(" FOCO");
++                sb.Append('\n');
++                if (c.Controls.Count > 0) PiezasPrueba(c, sb, sangria + "  ");
++            }
++        }
++    }
++}

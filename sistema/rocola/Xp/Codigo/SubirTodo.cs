@@ -126,7 +126,7 @@ namespace Rocola
         private bool RehaceTechoEnFondo(int ahora)
         {
             if (subirEnFondo) return true;   // ya hay una en marcha: mientras, el de antes
-            Action<MethodInvoker> vuelve = vuelveALaPantalla;
+            Action<Action> vuelve = vuelveALaPantalla;   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
             Dictionary<string, SonoridadIntegrada> t = integCache;
             if (t == null || (vuelve == null && !IsHandleCreated)) return false;
             SonoridadIntegrada[] valores = new SonoridadIntegrada[t.Count];
@@ -137,7 +137,7 @@ namespace Rocola
             {
                 int n;
                 float techo = TechoDeTabla(valores, nivela, objetivo, fuerza, out n);
-                MethodInvoker pon = delegate
+                Action pon = delegate   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
                 {
                     subirEnFondo = false;
                     // Si mientras tanto cambiaron los ajustes o la tabla, ya se rehizo en la pantalla con lo nuevo.
@@ -145,7 +145,7 @@ namespace Rocola
                     subirTecho = techo; subirMedidas = n;
                 };
                 if (vuelve != null) { vuelve(pon); return; }
-                try { BeginInvoke(pon); }
+                try { PantallaRocola.Encola(this, pon); }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                 catch (InvalidOperationException) { }   // la ventana ya se cerro
             });
             return true;
