@@ -27,13 +27,15 @@
 //   4 CAMPO    int disp, byte campo (1 VinetaPuntos, 2 CubeBaseColor), uint valor
 // Vertices: int largo del arreglo (-1 = null), int cuantos se guardan, y sus bytes (28 o 36 por vertice). Mapa de bits: int id (-1 =
 // null; el mismo objeto, el mismo id), int ancho, int alto, int formato, int x, int y, int w, int h (la zona que se guarda; w = 0:
-// ninguna) y sus puntos tal como estan guardados (BGRA premultiplicado, fila a fila).
+// ninguna) y sus puntos tal como estan guardados (BGRA premultiplicado, fila a fila). Desde que la subida recibe SKBitmap (port nativo,
+// tanda 2, grupo frontera) el id es el del SKBitmap y el formato es siempre Format32bppPArgb (925707: como guarda los puntos un
+// SKBitmap; el dispositivo no lo mira).
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1): la cinta lee los Bitmap que le llegan al dispositivo
+using SkiaSharp;   // la cinta lee los SKBitmap que le llegan al dispositivo (antes los Bitmap de la capa, Dibujo2D.cs)
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
@@ -69,7 +71,7 @@ namespace Rocola
         private sealed class Disp { internal int Id; internal bool EnCuadro, CuadroGrabado; internal bool Vineta; internal uint Cubo; internal bool CamposVistos; }
         private static readonly ConditionalWeakTable<DispositivoTarjeta, Disp> disps = new ConditionalWeakTable<DispositivoTarjeta, Disp>();
         private sealed class IdMapa { internal int Id; }
-        private static readonly ConditionalWeakTable<Bitmap, IdMapa> mapas = new ConditionalWeakTable<Bitmap, IdMapa>();
+        private static readonly ConditionalWeakTable<SKBitmap, IdMapa> mapas = new ConditionalWeakTable<SKBitmap, IdMapa>();
         [ThreadStatic] private static MemoryStream ms;
         [ThreadStatic] private static BinaryWriter bw;
         internal static long Registros, Bytes;
@@ -181,17 +183,18 @@ namespace Rocola
             w.Write(v.Length); w.Write(n);
             if (n > 0) w.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<Tarjeta.Vtx2>(v, 0, n)));
         }
-        private static void Mapa(BinaryWriter w, Bitmap b, Rectangle zona)
+        private const int FormatoPArgb = 925707;   // PixelFormat.Format32bppPArgb (Dibujo2D.cs): como guarda sus puntos un SKBitmap de la rocola
+        private static void Mapa(BinaryWriter w, SKBitmap b, Rectangle zona)
         {
-            if (b == null || b.Sk == null) { w.Write(-1); return; }
+            if (b == null || b.Handle == IntPtr.Zero) { w.Write(-1); return; }
             IdMapa id;
             lock (candado) { if (!mapas.TryGetValue(b, out id)) { id = new IdMapa(); id.Id = ++siguienteMapa; mapas.Add(b, id); } }
-            w.Write(id.Id); w.Write(b.Width); w.Write(b.Height); w.Write((int)b.PixelFormat);
+            w.Write(id.Id); w.Write(b.Width); w.Write(b.Height); w.Write(FormatoPArgb);
             Rectangle r = Rectangle.Intersect(zona, new Rectangle(0, 0, b.Width, b.Height));
-            if (r.Width <= 0 || r.Height <= 0 || b.Sk.ColorType != SkiaSharp.SKColorType.Bgra8888 || b.Sk.AlphaType != SkiaSharp.SKAlphaType.Premul)
+            if (r.Width <= 0 || r.Height <= 0 || b.ColorType != SKColorType.Bgra8888 || b.AlphaType != SKAlphaType.Premul)
             { w.Write(0); w.Write(0); w.Write(0); w.Write(0); return; }
             w.Write(r.X); w.Write(r.Y); w.Write(r.Width); w.Write(r.Height);
-            byte* p = (byte*)b.Sk.GetPixels(); int rb = b.Sk.RowBytes;
+            byte* p = (byte*)b.GetPixels(); int rb = b.RowBytes;
             for (int y = 0; y < r.Height; y++) w.Write(new ReadOnlySpan<byte>(p + (long)(r.Y + y) * rb + (long)r.X * 4, r.Width * 4));
         }
         private static void Antes(DispositivoTarjeta d, out Disp x) { x = DeDisp(d); if (hiloPantalla < 0) hiloPantalla = Thread.CurrentThread.ManagedThreadId; dentro++; }
@@ -238,35 +241,35 @@ namespace Rocola
             try { BinaryWriter b = Llamada(x, MPreloadTexture, true); b.Write((long)t); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreateTextureFromBitmap(DispositivoTarjeta d, Bitmap bmp)
+        internal static IntPtr CreateTextureFromBitmap(DispositivoTarjeta d, SKBitmap bmp)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreateTextureFromBitmap(bmp); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreateTextureFromBitmap, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreateTexturePow2(DispositivoTarjeta d, Bitmap bmp, out float u, out float v)
+        internal static IntPtr CreateTexturePow2(DispositivoTarjeta d, SKBitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreateTexturePow2(bmp, out u, out v); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreateTexturePow2, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); b.Write(u); b.Write(v); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreaPortadaCompartida(DispositivoTarjeta d, Bitmap bmp, out float u, out float v)
+        internal static IntPtr CreaPortadaCompartida(DispositivoTarjeta d, SKBitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreaPortadaCompartida(bmp, out u, out v); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreaPortadaCompartida, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); b.Write(u); b.Write(v); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool UpdateTextureRegion(DispositivoTarjeta d, IntPtr t, Bitmap bmp, Rectangle area)
+        internal static bool UpdateTextureRegion(DispositivoTarjeta d, IntPtr t, SKBitmap bmp, Rectangle area)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.UpdateTextureRegion(t, bmp, area); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MUpdateTextureRegion, true); b.Write((long)t); Mapa(b, bmp, area); b.Write(area.X); b.Write(area.Y); b.Write(area.Width); b.Write(area.Height); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool UpdateTexturePow2(DispositivoTarjeta d, IntPtr t, Bitmap bmp, out float u, out float v)
+        internal static bool UpdateTexturePow2(DispositivoTarjeta d, IntPtr t, SKBitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.UpdateTexturePow2(t, bmp, out u, out v); } finally { Despues(); }

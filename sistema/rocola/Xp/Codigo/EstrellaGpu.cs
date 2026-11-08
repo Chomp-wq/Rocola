@@ -9,7 +9,7 @@ namespace Rocola
     {
         // Cinco puntas facetadas como rocola.ico. Geometria propia horneada una vez
         // para la GPU: no se modifica el icono ni el renderizador CPU.
-        internal static Rocola.Dibujo2D.Bitmap BakeStar(bool detailed)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
+        internal static SKBitmap BakeStar(bool detailed)   // EN LINUX: un SKBitmap: lo sube D3D9Star.cs (EnsureLuna), que ya recibe SKBitmap
         {
             const int n = MoonTextureSize;
             int[] pixels = new int[n*n];
@@ -54,7 +54,7 @@ namespace Rocola
                     PaintStarGlint(g,suave,173,166,9);   // EN LINUX: con el suavizado del lienzo
                 }
             }
-            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
+            return b;
         }
         private static void PaintStarGlint(SKCanvas g,bool suave,float x,float y,float r)   // EN LINUX: el lienzo de Skia y su suavizado
         { using(SKPaint blanco=new SKPaint{Color=Color.White.Sk()}) Pixel.RellenaPoligono(g,new PointF[]{new PointF(x,y-r),new PointF(x+2,y-2),new PointF(x+r,y),new PointF(x+2,y+2),new PointF(x,y+r),new PointF(x-2,y+2),new PointF(x-r,y),new PointF(x-2,y-2)},blanco,suave); }   // EN LINUX: g.FillPolygon(Brushes.White, ...)

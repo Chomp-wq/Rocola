@@ -19,7 +19,7 @@ namespace Rocola
             float a=NoiseHash(ix,iy),b=NoiseHash(ix+1,iy),c=NoiseHash(ix,iy+1),d=NoiseHash(ix+1,iy+1);
             return (a+(b-a)*fx)*(1-fy)+(c+(d-c)*fx)*fy;
         }
-        internal static Rocola.Dibujo2D.Bitmap BakeNatural(int w,int h)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
+        internal static SKBitmap BakeNatural(int w,int h)   // EN LINUX: un SKBitmap: lo sube D3D9Star.cs (EnsureNieblas), que ya recibe SKBitmap
         {
             if(w<1||h<1)throw new ArgumentOutOfRangeException("w");
             SKBitmap b=Mapas.Nuevo(w,h);   // EN LINUX: new Bitmap(w,h,Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
@@ -41,7 +41,7 @@ namespace Rocola
             // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
             Pixeles.EscribeSinPremultiplicar(b,pixels,w);   // EN LINUX: (Nativo/Pixeles.cs)
             // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
-            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
+            return b;
         }
         internal static float PerfilDefinido(float[] bands,float x)
         {

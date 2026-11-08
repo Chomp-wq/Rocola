@@ -7,7 +7,9 @@
 // cada llamada que devuelve algo (las texturas con un nombre propio de la corrida: t1, t2...). Dos corridas son iguales si sus salidas
 // son iguales linea por linea (diff). Entre cuadro y cuadro ensucia OpenGL como el compositor (otro framebuffer, otro programa, otras
 // texturas en las unidades 0 a 3, mezcla, recorte, ARRAY_BUFFER y atributos de otro bufer...) y avisa al dispositivo como el anfitrion
-// (la referencia: D3D9.EnGl.EstadoTocado; la traduccion: PantallaTarjeta.Tocada).
+// (la referencia: D3D9.EnGl.EstadoTocado; la traduccion: PantallaTarjeta.Tocada). Los mapas de la cinta se le dan al dispositivo como los
+// recibe: a la referencia, un Bitmap de la capa (Dibujo2D.cs) sobre los puntos grabados; a la traduccion (desde la tanda 2, grupo frontera:
+// la subida recibe SKBitmap), el SKBitmap mismo. El mismo id de la cinta es siempre el mismo objeto (las portadas compartidas lo miran).
 //
 //   reproductor-cintas --programa DIR --cinta CINTA --sale SALIDA.txt [opciones]
 //     --limite-textura N      el limite de textura del dispositivo en N (las texturas mas grandes van en teselas)
@@ -47,6 +49,19 @@ namespace PruebasTarjeta
         static ConstructorInfo cDisp, cMapa;
         static readonly Dictionary<string, MethodInfo> metodos = new Dictionary<string, MethodInfo>();
         static string variante;
+        // la subida recibe SKBitmap (la traduccion desde la tanda 2, grupo frontera) o el Bitmap de la capa (la referencia congelada): los mapas
+        // de la cinta se le dan como los pide, y de un metodo con las dos firmas (un puente de la transicion) se toma la que no es de la capa
+        static bool subeSk;
+        static bool Toma(MethodInfo x)
+        {
+            foreach (ParameterInfo p in x.GetParameters())
+            {
+                Type t = p.ParameterType.IsByRef ? p.ParameterType.GetElementType() : p.ParameterType;
+                if (subeSk && t == tMapa) return false;
+                if (!subeSk && t == typeof(SKBitmap)) return false;
+            }
+            return true;
+        }
 
         static MethodInfo M(string nombre, int parametros)
         {
@@ -54,7 +69,7 @@ namespace PruebasTarjeta
             MethodInfo m;
             if (metodos.TryGetValue(k, out m)) return m;
             foreach (MethodInfo x in tDisp.GetMethods(Todo))
-                if (x.Name == nombre && x.GetParameters().Length == parametros && !x.IsStatic) { m = x; break; }
+                if (x.Name == nombre && x.GetParameters().Length == parametros && !x.IsStatic && Toma(x)) { m = x; break; }
             if (m == null) throw new MissingMethodException(tDisp.Name + "." + nombre + "/" + parametros);
             metodos[k] = m;
             return m;
@@ -84,6 +99,7 @@ namespace PruebasTarjeta
                 if (p.Length == 2 && p[0].ParameterType == typeof(SKBitmap)) cMapa = c;
             }
             cDisp = tDisp.GetConstructor(Todo, null, new[] { typeof(IntPtr), typeof(int), typeof(int) }, null);
+            subeSk = tDisp.GetMethod("CreateTextureFromBitmap", Todo, null, new[] { typeof(SKBitmap) }, null) != null;
             mLeeFondoNat = tDisp.GetMethod("LeeFondo", Todo);
             Type tEnGl = asm.GetType("Rocola.D3D9+EnGl");
             if (mLeeFondoNat == null) mLeeFondoRef = tEnGl.GetMethod("LeeFondo", Todo);
@@ -96,7 +112,7 @@ namespace PruebasTarjeta
             fVineta = tDisp.GetField("VinetaPuntos", Todo); fCubo = tDisp.GetField("CubeBaseColor", Todo);
             fLimW = tDisp.GetField("limiteTexturaW", Todo); fLimH = tDisp.GetField("limiteTexturaH", Todo);
             variante = tDisp.Name + (mLeeFondoNat != null ? " (OpenGL directo)" : " (Direct3DaGL)") + ", soltar " + mSuelta.DeclaringType.Name + "." + mSuelta.Name +
-                ", aviso " + mTocado.DeclaringType.Name + "." + mTocado.Name;
+                ", aviso " + mTocado.DeclaringType.Name + "." + mTocado.Name + ", mapas " + (subeSk ? "SKBitmap" : "Bitmap de la capa");
             // el inicializador del modulo de la rocola abre la pantalla fuera de pantalla y OpenGL en este hilo (PruebasLinux.cs)
             RuntimeHelpers.RunModuleConstructor(asm.ManifestModule.ModuleHandle);
             if (eglGetCurrentContext() == IntPtr.Zero)
@@ -266,7 +282,7 @@ namespace PruebasTarjeta
             {
                 sk = new SKBitmap(new SKImageInfo(Math.Max(1, w), Math.Max(1, h), SKColorType.Bgra8888, SKAlphaType.Premul));
                 sk.Erase(SKColors.Transparent);
-                m = cMapa.Invoke(new object[] { sk, Enum.ToObject(tFormato, formato) });
+                m = subeSk ? (object)sk : cMapa.Invoke(new object[] { sk, Enum.ToObject(tFormato, formato) });   // la traduccion sube el SKBitmap mismo
                 e.mapas[id] = m; e.mapasSk[id] = sk;
             }
             sk = e.mapasSk[id];
