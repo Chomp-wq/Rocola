@@ -578,9 +578,11 @@ namespace Rocola.Ventanas
                 return Escritorio.HiloUi != null && Thread.CurrentThread != Escritorio.HiloUi;
             }
         }
-        public IAsyncResult BeginInvoke(Delegate method) { return BeginInvoke(method, null); }
+        // (pruebas: TrazaVentanas apunta cada encargo con el archivo:linea de su BeginInvoke)
+        public IAsyncResult BeginInvoke(Delegate method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0)
+        { Control m = MarshalConVentana(); return Escritorio.Encola(method, null, false, m, TrazaVentanas.Sitio(archivo, linea)); }
         public IAsyncResult BeginInvoke(Delegate method, params object[] args) { Control m = MarshalConVentana(); return Escritorio.Encola(method, args, false, m); }
-        public IAsyncResult BeginInvoke(Action method) { return BeginInvoke((Delegate)method, null); }
+        public IAsyncResult BeginInvoke(Action method, [System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { return BeginInvoke((Delegate)method, archivo, linea); }
         public object Invoke(Delegate method) { return Invoke(method, null); }
         public object Invoke(Delegate method, params object[] args)
         {

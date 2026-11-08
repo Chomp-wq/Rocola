@@ -173,6 +173,7 @@ namespace Rocola.Ventanas
                 if (modal && DialogResult != DialogResult.None) value = false;   // (Load puso DialogResult: el dialogo no se ensena)
             }
             base.SetVisibleCore(value);
+            if (TrazaVentanas.Activa) TrazaVentanas.Apunta(value ? "ventana-ve " + TrazaVentanas.Pieza(this) + (modal ? " modal" : "") : "ventana-esconde " + TrazaVentanas.Pieza(this) + " " + DialogResult);
             if (value) { Escritorio.Agrega(this); Activate(); }   // (y el foco: Form.Active)
             else Escritorio.Oculta(this);
         }
@@ -202,8 +203,10 @@ namespace Rocola.Ventanas
                 return;
             }
             FormClosingEventArgs e = new FormClosingEventArgs(razonCierre, false);
+            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
             OnFormClosing(e);
             if (e.Cancel) return;
+            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
             OnFormClosed(new FormClosedEventArgs(razonCierre));
             Dispose();
         }
@@ -218,11 +221,13 @@ namespace Rocola.Ventanas
                 FormClosingEventArgs e = new FormClosingEventArgs(razonCierre, false);
                 if (!llamadoClosing)
                 {
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
                     OnFormClosing(e);
                     if (e.Cancel) DialogResult = DialogResult.None; else llamadoClosing = true;
                 }
                 if (!soloClosing && DialogResult != DialogResult.None)
                 {
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
                     OnFormClosed(new FormClosedEventArgs(razonCierre));
                     llamadoClosing = false;
                 }
@@ -266,6 +271,7 @@ namespace Rocola.Ventanas
                 }
             }
             finally { Owner = antes; duenoVentana = null; }
+            if (TrazaVentanas.Activa) TrazaVentanas.Apunta("dialogo-fin " + TrazaVentanas.Pieza(this) + " " + DialogResult);
             return DialogResult;
         }
         // (el bucle de la hoja: mientras CheckCloseDialog no la acabe)
@@ -283,7 +289,7 @@ namespace Rocola.Ventanas
                 else if (StartPosition == FormStartPosition.CenterScreen) CentraEnPantalla();
             }
             Load?.Invoke(this, e);
-            if (IsHandleCreated) Escritorio.Encola(new Action(delegate { OnShown(EventArgs.Empty); }), null, false, this);
+            if (IsHandleCreated) Escritorio.Encola(new Action(delegate { if (TrazaVentanas.Activa) TrazaVentanas.Apunta("shown " + TrazaVentanas.Pieza(this)); OnShown(EventArgs.Empty); }), null, false, this, "Shown");
         }
         // Form.CenterToParent: en medio de su dueno de Windows ((izq + der - ancho) / 2), sin salirse del area de trabajo
         private void CentraEnDueno()
@@ -337,9 +343,11 @@ namespace Rocola.Ventanas
         public static void DoEvents() { Escritorio.Bombea(); }   // (todo lo pendiente, sin Idle)
         public static void Exit() { Saliendo = true; Escritorio.Despierta(); }
         public static void ExitThread() { Exit(); }
+        internal static Form Principal;   // (pruebas: VolcadoEstado) la ventana de Run
         public static void Run(Form mainForm)
         {
             Escritorio.HiloUi = Thread.CurrentThread; ContextoVentana.Pon();
+            Principal = mainForm;
             bool cerrada = false;
             mainForm.FormClosed += delegate { cerrada = true; };
             mainForm.Visible = true;
@@ -354,7 +362,8 @@ namespace Rocola.Ventanas
         private int intervalo = 100;
         private bool activo;
         internal double Proximo;
-        public Timer() { }
+        internal readonly string Nombre;   // (pruebas: TrazaVentanas) donde se creo: archivo:linea
+        public Timer([System.Runtime.CompilerServices.CallerFilePath] string archivo = null, [System.Runtime.CompilerServices.CallerLineNumber] int linea = 0) { Nombre = TrazaVentanas.Sitio(archivo, linea); }
         public Timer(IContainer container) : this() { if (container != null) container.Add(this); }
         public int Interval
         {
@@ -574,7 +583,7 @@ namespace Rocola.Ventanas
     // Lo que se manda a la pantalla desde otros hilos con SynchronizationContext.Post llega al hilo de la pantalla.
     public sealed class ContextoVentana : SynchronizationContext
     {
-        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false); }
+        public override void Post(SendOrPostCallback d, object state) { Escritorio.Encola(new Action(delegate { d(state); }), null, false, null, "contexto"); }
         public override void Send(SendOrPostCallback d, object state)
         {
             if (Thread.CurrentThread == Escritorio.HiloUi) { d(state); return; }
