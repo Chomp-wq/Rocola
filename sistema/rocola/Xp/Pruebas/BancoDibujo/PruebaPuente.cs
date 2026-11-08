@@ -54,6 +54,13 @@ namespace Banco
             SKBitmap pres = Mapas.Nuevo(4, 4); pres.SetPixel(1, 1, new SKColor(10, 20, 30, 255));
             using (Bitmap bm = PuenteDibujo.Bitmap(pres)) Mira(ReferenceEquals(PuenteDibujo.Mapa(bm), pres) && bm.GetPixel(1, 1).R == 10, "el Bitmap prestado tiene los mismos puntos");
             Mira(pres.Handle != IntPtr.Zero && pres.GetPixel(1, 1).Green == 20, "al soltar el Bitmap prestado los puntos siguen");
+            // el mismo SKBitmap da el mismo Bitmap (XP compara por identidad para no volver a subir); soltado u otro formato, otro
+            Bitmap p1 = PuenteDibujo.Bitmap(pres), p2 = PuenteDibujo.Bitmap(pres);
+            Mira(ReferenceEquals(p1, p2), "el mismo SKBitmap da el mismo Bitmap prestado");
+            Bitmap p3 = PuenteDibujo.Bitmap(pres, PixelFormat.Format32bppArgb);
+            Mira(!ReferenceEquals(p1, p3) && p3.PixelFormat == PixelFormat.Format32bppArgb && ReferenceEquals(PuenteDibujo.Mapa(p3), pres), "pedido con otro formato, otro Bitmap con los mismos puntos");
+            p3.Dispose(); Bitmap p4 = PuenteDibujo.Bitmap(pres, PixelFormat.Format32bppArgb);
+            Mira(!ReferenceEquals(p3, p4) && ReferenceEquals(PuenteDibujo.Mapa(p4), pres) && pres.GetPixel(1, 1).Red == 10, "soltado el prestado, el siguiente es otro (y los puntos siguen)");
             pres.Dispose();
             // el mapa de un horno traducido (D4), entregado a quien lo pide como Bitmap: los mismos puntos, el formato de XP, y se hace su dueno
             SKBitmap ent = Mapas.Nuevo(3, 3); ent.SetPixel(2, 2, new SKColor(1, 2, 3, 255));

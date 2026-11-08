@@ -22,7 +22,8 @@ namespace Rocola
         public EstadoLienzo(bool suave, AjusteLetra letra, bool copia, Filtro filtro, bool medio, SKMatrix hdc) { Suave = suave; Letra = letra; Copia = copia; Filtro = filtro; Medio = medio; Hdc = hdc; }
     }
 
-    internal static class PuenteDibujo
+    // partial: cada grupo de la traduccion pone lo que le falte en su propio archivo (Plataforma/Puente.<grupo>.cs), sin tocar este
+    internal static partial class PuenteDibujo
     {
         // ---- el lienzo
         internal static SKCanvas Lienzo(Graphics g) { return g.C; }
@@ -47,7 +48,22 @@ namespace Rocola
 
         // ---- los mapas: los mismos puntos, sin hacerse dueno
         internal static SKBitmap Mapa(Image i) { return i != null ? i.Sk : null; }
-        internal static Bitmap Bitmap(SKBitmap b, PixelFormat formato = PixelFormat.Format32bppPArgb) { return b == null ? null : new Bitmap(b, formato) { Ajeno = true }; }
+        // El MISMO Bitmap para el mismo SKBitmap mientras no se suelte: el codigo de XP que no esta traducido compara las imagenes por
+        // identidad (D3D9Star.cs: winLastBmp, transLastBmp, selImgA... para no volver a subir la misma) y un Bitmap nuevo en cada llamada
+        // le haria creer que cambio. Si XP suelta el prestado (Dispose: Sk = null) o lo pide con otro formato, se hace otro.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SKBitmap, Bitmap> prestados = new System.Runtime.CompilerServices.ConditionalWeakTable<SKBitmap, Bitmap>();
+        internal static Bitmap Bitmap(SKBitmap b, PixelFormat formato = PixelFormat.Format32bppPArgb)
+        {
+            if (b == null) return null;
+            lock (prestados)
+            {
+                Bitmap w;
+                if (prestados.TryGetValue(b, out w) && w.Sk != null && w.PixelFormat == formato) return w;
+                w = new Bitmap(b, formato) { Ajeno = true };
+                prestados.AddOrUpdate(b, w);
+                return w;
+            }
+        }
         // un mapa que hizo un archivo ya traducido (los hornos, D4) para uno que no lo esta y lo pide como Bitmap (Upload y
         // CreateTextureFromBitmap de D3D9Star.cs, un TextureBrush de GDI+): el Bitmap se hace su DUENO (al soltarlo se sueltan los puntos) y
         // lleva el formato con que XP lo creaba (los hornos: Format32bppArgb), como new Bitmap(w, h, formato)
