@@ -7,8 +7,8 @@ del 8-11-2026): la logica de XP no cambia, cada linea cambiada lleva su «EN LIN
 finales, y cada regla de una pieza nativa cita su linea de la fuente de WinForms (dotnet/winforms release/3.0, portada de .NET
 Framework 4.8: `/tmp/claude-0/agente-winforms/ref`; ahi se bajaron tambien `Keys.cs` y `KeyPressEventArgs.cs` con su `baja.sh`) o la
 documentacion de Win32. Se compara siempre contra la copia congelada de la referencia (`/root/rocola-trabajo/referencia-xp`, aef2211)
-con los ganchos de las trazas (`$W/ref-trazas`). Rama `port-ventanas2`, desde a6eba8b mas la pista windows juntada (9cb5ba0). Nada de
-esto se ha probado en el A4.
+con los ganchos de las trazas (`$W/ref-trazas`). Rama `port-ventanas2`, desde a6eba8b mas la pista windows (9cb5ba0) y el grupo
+frontera (564788b) juntados. Nada de esto se ha probado en el A4.
 
 ## T. Las teclas, la flecha, el foco y el contexto del hilo
 
@@ -122,10 +122,10 @@ Cada linea en su sitio, sin anadir ni quitar lineas, con sus finales (CRLF o LF)
     GetAsyncKeyState); ABAJO con la ayuda abierta (se lo queda la ayuda: la letra sigue en L); ABAJO mantenido 0,8 s y ROJO (la cierra:
     AbajoMantenido; la repeticion acaba dentro del regreso animado de 0,8 s, si no la letra cambiaria segun la hora); ABAJO (ahora si cambia
     la letra). En las dos queda en rocola_error.txt «Rojo mantenido sin pistas: la ayuda esta preguntando».
-  - `captura`: F8 y el asistente de los botones (CaptureConfigKey): una tecla mantenida 1,2 s (su repeticion no cuenta: msg.Repetida),
+  - `captura`: F8 y el asistente de los botones (CaptureConfigKey): una tecla mantenida 1,2 s (sus 21-22 repeticiones no cuentan: msg.Repetida),
     la misma otra vez («ya usada»), las otras siete; despues la moneda nueva da 4 creditos. rocola_teclas.txt se compara byte a byte
     (corre.sh lo guarda y compara_escena.py lo compara, como rocola_config.txt).
-  - `salirq`: Ctrl+Alt+Q con la Q mantenida 1,2 s (21 repeticiones que no cuentan) y dos Q mas: se cierra con UserClosing y
+  - `salirq`: Ctrl+Alt+Q con la Q mantenida 1,2 s (22 repeticiones, que no cuentan) y dos Q mas: se cierra con UserClosing y
     rocola_estado.txt falta.
 - Su ruido, de la referencia contra si misma (3 corridas, RT1-RT3): `RUIDO=/root/rocola-trabajo/port/ventanas2/ruido` (compara.sh
   busca ahi primero y despues en `$W/ruido`; ruido.sh lo escribe ahi y con `PREFIJO=RT` mide las RT1..RTN). Las tres, secuencia igual.
@@ -141,10 +141,11 @@ Cada linea en su sitio, sin anadir ni quitar lineas, con sus finales (CRLF o LF)
 ### Comprobaciones (8-11-2026, maquina de pruebas compartida con otras pistas, carga de 4 a 7, llvmpipe)
 
 - Compila (`dotnet build -c Release`): 0 errores y los mismos 15 avisos de la base, en los mismos archivos y lineas (CA2014, CA2022,
-  CS1690, SYSLIB0050, SYSLIB0054).
+  CS1690, SYSLIB0050, SYSLIB0054), antes y despues de juntar la rama principal.
+- `--prueba-lector` (el gancho de Program.cs:94) sigue corriendo antes de abrir la rocola: lee un MP3 de prueba y sale.
 - Las reglas de la pantalla nativa: 32 de 32 (28 de antes y 4 nuevas) en JIT y en NativeAOT.
-- Las 41 pruebas: 41 de 41 con este programa y 41 de 41 con la referencia de los ganchos, con el mismo fuente; la salida de las dos es la
-  misma linea por linea.
+- Las 41 pruebas: 41 de 41 con este programa (antes y despues de juntar) y 41 de 41 con la referencia de los ganchos, con el mismo
+  fuente; la salida de las dos es la misma linea por linea.
 - Las escenas, alternando referencia (RT) y traduccion (T) para que corran con la misma carga:
   - RT1/T1: arranque, moneda, video, buscador, cierreq y kill9 IGUALES; sigterm y f3sigterm distintos solo en lo aceptado en V2
     (encargo Apagado, FormClosing y FormClosed con WindowsShutDown, `rocola_estado.txt` borrado). tab: traza igual, pero en la hoja de
@@ -154,10 +155,20 @@ Cada linea en su sitio, sin anadir ni quitar lineas, con sus finales (CRLF o LF)
     contra si misma (RT1 contra RT2) en altf4 tambien sale del ruido medido (163 frente a 206 encargos del vigia): es la carga.
   - asistente, captura y salirq (RT1/T1, con su ruido): IGUALES (secuencia, estados, rocola_teclas.txt byte a byte, las capas de
     Dibujo2D a 0 puntos distintos, `rocola_estado.txt` como XP).
-- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true`): 0 avisos de IL ni de AOT (los 15 de compilacion de siempre).
-  Con el ejecutable nativo (AT1) contra la referencia (RT3): arranque, cierreq y kill9 IGUALES; sigterm, lo aceptado; asistente,
-  captura y salirq con la secuencia, los estados, rocola_teclas.txt y las capas iguales y mas relojes en el primer segundo (19-21 frente
-  a 5-9: NativeAOT arranca antes; lo mismo que se vio en V3).
+  - Despues de juntar la rama principal (564788b: el grupo frontera), las 13 alternadas (RT4/T4): arranque, moneda, video, buscador,
+    cierreq, altf4, kill9, asistente y captura IGUALES; sigterm y f3sigterm, lo aceptado; salirq con la secuencia y los estados iguales
+    y 6 relojes de 42 ms mas en total (254 frente a 260, holgura 4: el ruido de tres corridas es corto); tab otra vez con el repaso
+    atrasado en la hoja de Ctrl+F3.
+  - El repaso atrasado de tab no es de este paso: es una carrera de los dos carriles del repaso con la pantalla (si la pantalla aun no
+    publico la medida entera de una cancion cuando el otro carril llega a la segunda tanda, la vuelve a medir: el encargo de
+    Form1.Biblioteca.cs:1735, y a los 17,4 s aun «faltan 2 archivos»). Pasa en la referencia (R7-tab de V3) y en el programa de la rama
+    principal sin este paso (564788b contra la referencia, 3 pares: M1 con «faltan 5 archivos» y el encargo de 1735, M2 y M3 al dia);
+    con este paso: T1, T4 y T5 atrasadas, T2 y T6 al dia (T6 corrida antes que su referencia); la referencia al dia en RT1-RT6. En las
+    corridas en que el repaso llega a tiempo, tab sale IGUAL (RT2/T2, RT6/T6).
+- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true`): 0 avisos de IL ni de AOT (los 15 de compilacion de siempre),
+  antes y despues de juntar. Con el ejecutable nativo contra la referencia (AT1/RT3 y, ya junto, AT2/RT7): arranque, cierreq y kill9
+  IGUALES; sigterm, lo aceptado; asistente, captura y salirq con la secuencia, los estados, rocola_teclas.txt y las capas iguales y mas
+  relojes en el primer segundo (19-22 frente a 5-11: NativeAOT arranca antes; lo mismo que se vio en V3).
 - `rocola_estado.txt`: falta tras Ctrl+Alt+Q x3 (cierreq y salirq), Alt+F4 y SIGTERM; queda tras SIGKILL; en JIT y en NativeAOT.
 - `diff-xp.py` en los 9 archivos de XP tocados: todas las lineas cambiadas en este paso llevan su «EN LINUX»; las que salen sin marca
   son de antes y de otras pistas (las TextRenderingHint del dibujo, Equipo.ProcesadorMhz y PrioridadHilo de la pista windows, el
