@@ -291,3 +291,25 @@ todas) y deja lo suyo en `W/runs/NOMBRE`.
 - `Plataforma/LlamadasWindows.cs` conserva lo de otras pistas: las teclas (`TeclaAbajo`), la ventana de delante y el foco.
 - Los hilos que crea .NET (su grupo de hilos y los temporizadores) y las bibliotecas heredan el nice del hilo que los pide; en Windows
   nacen en la normal. En las corridas medidas estaban todos en la normal.
+
+## Al juntar con la rama principal (8-11-2026, el coordinador)
+
+- Los cuatro choques de `Plataforma/`, como se preveía: en `Anfitrion.Compone` va el reproductor nuevo (`ReproductorVideo.TrasPresentar`)
+  con la llamada de la tarjeta (`PantallaTarjeta.Tocada()`); `VideoEnVentanas.OpenGlTocado` llama a `PantallaTarjeta.Tocada()`;
+  `VideoMpv.cs` se borra; de `LlamadasWindows.cs` se van lo de esta pista (a `Nativo/Equipo.cs` y `FileStream.Flush(true)`) y
+  `CapacidadPantalla` (a `PantallaTarjeta.RefrescoHz`); en `PruebasLinux.cs`, las dos líneas de la ayuda juntas.
+- El número de líneas: esta pista había cambiado el de 13 archivos de `Codigo/` (Form1.Ajustes.cs 2 044 → 1 939, Form1.cs 2 785 → 2 774,
+  SalidaSonido.cs 598 → 613...). La tabla de estado por línea del dibujo y las trazas de las ventanas (que nombran cada reloj y cada
+  encargo por archivo:línea, `Nativo/Reloj.cs` y `PantallaRocola.Encola`) dependen de que cada archivo siga línea por línea con el de XP,
+  así que los 13 vuelven a tener las líneas y los finales de línea de XP, trozo por trozo: lo que sobraba de XP queda como su código
+  comentado (`// EN LINUX: (XP) ...`) y lo añadido se junta en su línea (el código seguido, los comentarios al final). La parte de
+  `SalidaPropia.cs` que en XP contestaba Windows (`Sonado`, `Libres`, `EsperaMs`, `Reinicia` y la cabecera de la traducción) va aparte,
+  en `Nativo/SalidaPropiaAlsa.cs` (`WaveOutPropio` es `partial`), para no juntar cuatro métodos en una línea.
+- Comprobado con todo junto (tarjeta, dibujo, ventanas y esta pista), JIT: compila (0 errores, los 15 avisos de siempre); las 17 cintas
+  de la tarjeta y las 3 con texturas de 256, iguales byte a byte; las 41 pruebas de las ventanas 41 de 41 y las 28 reglas de la pantalla
+  (JIT y NativeAOT); la prueba aislada del video 10 de 10; la escena del video frente a la referencia: `video.wav` igual byte a byte, las
+  tablas iguales y las capas en el mismo orden; el sonido de las tres canciones (semilla fija, tablas medidas) 3 de 3 iguales byte a byte
+  a la corrida 1 de la referencia (`708cb13b725e`); las 10 escenas de las ventanas alternadas con la referencia, iguales salvo
+  `sigterm` y `f3sigterm` (el cierre por apagado borra el estado: la diferencia aceptada de V2). NativeAOT: 0 avisos IL/AOT; las escenas
+  arranque, cierreq y kill9 iguales y sigterm borra el estado; la prueba aislada 10 de 10; la escena del video con `video.wav` igual y
+  las tablas iguales salvo la fecha del ejecutable en `rocola_error.txt`; el sonido 2 de 2 iguales a `708cb13b725e`.

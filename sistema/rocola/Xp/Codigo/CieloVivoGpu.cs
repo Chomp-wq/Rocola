@@ -305,7 +305,7 @@ namespace Rocola
             int paso = (int)(faseLuna * 120.0) % 120;
             if (lunaCieloTex != IntPtr.Zero && paso == lunaCieloPaso && lado == lunaCieloLado) return;
             if (Form1.LunaIluminada(faseLuna) < Form1.LunaMinima) return;   // cerca de la nueva no se ve: nada que hornear
-            using (Rocola.Dibujo2D.Bitmap b = PuenteDibujo.Entrega(Form1.HorneaLuna(lado, (paso + 0.5) / 120.0)))   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mapa le llega por el puente (Plataforma/Puente.cs)
+            using (SKBitmap b = Form1.HorneaLuna(lado, (paso + 0.5) / 120.0))   // EN LINUX: el horno da un SKBitmap y Upload (D3D9Star.cs) lo recibe tal cual
                 lunaCieloTex = Upload(lunaCieloTex, ref lunaCieloBw, ref lunaCieloBh, b, out lunaCieloU, out lunaCieloV);
             lunaCieloPaso = paso; lunaCieloLado = lado;
         }
