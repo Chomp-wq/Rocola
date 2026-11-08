@@ -39,7 +39,9 @@ namespace Rocola
         private bool videoAuto = true;             // "video_automatico=": el volumen base de los videos lo elige el programa
         private int videoBaseAuto = -1;            // lo que eligio (-1 = aun sin calcular)
         private int videoBaseFirma = -1;           // con que datos lo calculo (para rehacerlo cuando cambien)
-        private volatile bool videoSinMedir = Environment.OSVersion.Version.Major < 6; // Media Foundation no existe antes de Vista
+        // EN LINUX (traduccion de XP): en el A4, con Windows XP, los videos no se miden (Media Foundation no existe antes de Vista); aqui
+        // la version del sistema seria la del nucleo (6.x) y los mediria. Igual que en el bar: sin medir (medirlos va despues, en la fase 11).
+        private volatile bool videoSinMedir = true; // Media Foundation no existe antes de Vista
         private double videoLastPos = -1;          // ultima posicion del video (para detectar si NO avanza)
         private int videoProgressTick = 0;         // momento del ultimo avance real (vigia de video colgado)
         private bool videoNudged = false;          // ya se intento el empujon de rescate (play explicito)

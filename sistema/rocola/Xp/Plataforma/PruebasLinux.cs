@@ -7,6 +7,8 @@
 //       ROCOLA_VIDEO_VOLCADO=prefijo     la textura entera en PNG en cada lectura (prefijo-NNN.png)
 //       ROCOLA_VIDEO_TEXTURAS=S          a los S segundos, todas las texturas de OpenGL (las de mpv: planos, pasadas intermedias y tablas
 //                                        de pesos de los escaladores) con su medida, formato y contenido (NaN, minimo, maximo, centro)
+//   rocola-xp --prueba-aot / --prueba-mp3 ...                lo que XP hace con reflexion y estructuras de Windows, y el lector de MP3
+//                                                            de XP (Mp3Xp.cs), para comparar JIT con NativeAOT (ver PruebaAot.cs)
 // El video, aqui y en la rocola entera (VideoMpv.cs):
 //   ROCOLA_VIDEO_TRAZA=1             los avisos de mpv y cada cuadro pintado, con el punto del centro
 //   ROCOLA_VIDEO_REGISTRO=ruta       lo que dice mpv (su registro, con msg-level=all=v)

@@ -134,6 +134,40 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   - con la ayuda preguntando, ROJO+ABAJO la cierra con el rojo y la vuelve a abrir con abajo.
 
   Sin comprobar: si GDI+ corre también medio píxel el texto y las imágenes escaladas. No probado en el A4.
+- **NativeAOT sin avisos y las llamadas a Windows (8-11-2026):** los 18 avisos de reflexión y de estructuras de Windows
+  (IL2xxx/IL3xxx) se revisaron uno por uno. Se comprobó que el programa de JIT y el de NativeAOT hacen lo mismo, y cada supresión va con
+  su motivo en `Plataforma/Aot.cs`. Al compilar y al publicar quedan 0 avisos. Se probó así:
+  - con `rocola-xp --prueba-aot` (32 respuestas iguales en los dos);
+  - con la rocola entera fuera de pantalla: pantalla principal, disco, moneda, pedir canción, el video con su tiempo y su fin, Ctrl+F3
+    y el diagnóstico completo;
+  - con el repaso, que da las mismas medidas.
+
+  **El lector de MP3 de XP** es ahora el de NAudio 1.9 traducido línea por línea (`Plataforma/Mp3Xp.cs`, licencia MIT de NAudio). El de
+  NAudio 3 no hacía lo mismo:
+  - devolvía silencio tras dos saltos seguidos;
+  - estimaba la duración al abrir;
+  - se saltaba el cuadro «Info» de LAME;
+  - perdía cuadros junto a trozos rotos y a etiquetas APE.
+
+  Comparado con NAudio 1.9 de verdad (con Mono y `rocola-xp --prueba-mp3`) en 14 MP3 raros, sale igual línea por línea. Pedir una
+  canción la toca con el «sin huecos» de XP (529 muestras de retraso). El lector ligero de XP (`Mp3Ligero.cs`) sigue apagado, como manda
+  XP cuando NAudio no es la 1.9.
+
+  **Las llamadas a Windows** están listadas en la cabecera de `LlamadasWindows.cs`:
+  - el diagnóstico completo dice la tarjeta (OpenGL y `/sys/class/drm`) y la carga de la memoria;
+  - la bitácora apunta las direcciones libres de verdad;
+  - la prioridad «por encima de lo normal» del proceso llega a todos sus hilos (nice −6), como en Windows; antes solo llegaba al principal.
+
+  `videoSinMedir` queda como en el A4 con Windows XP (los videos no se miden): en Linux la versión del sistema es la del núcleo y los
+  habría medido. Medirlos va en la fase 11.
+
+  Pendiente:
+  - la prioridad de cada hilo (`Thread.Priority` no hace nada en Linux);
+  - los `Mp3Frame.LoadFromStream` directos (comparar NLayer y el camino tolerante de `Form1.Sonido`), que siguen buscando cuadros como
+    NAudio 3;
+  - el nombre de la tarjeta por DRM, probado solo con una carpeta simulada.
+
+  No probado en el A4.
 - **Lo siguiente:**
   - comparar pantalla por pantalla con capturas de la rocola de XP del A4 (con las letras de XP);
   - lo de NativeAOT que avisa el compilador (`Marshal.SizeOf(Type)`, `Assembly.Load(byte[])`).

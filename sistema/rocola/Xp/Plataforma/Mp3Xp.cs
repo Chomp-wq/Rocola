@@ -1,4 +1,5 @@
 // EL LECTOR DE MP3 DE LA ROCOLA DE XP: Mp3FileReader de NAudio 1.9, traducido (traduccion de XP, 7-11-2026).
+// NAudio: (c) Mark Heath y colaboradores, licencia MIT (https://github.com/naudio/NAudio); esta adaptacion conserva esa licencia.
 // La rocola de XP lee los MP3 con Mp3FileReader de NAudio 1.9 (y el descompresor ACM de Windows). En Linux va NAudio 3 (NAudio.Core), y su
 // lector (Mp3FileReaderBase) ya no hace lo mismo:
 //   - dos saltos en menos de 30 ms lo ponen en «modo de arrastre»: durante 50 ms cada lectura devuelve SILENCIO como si fuera la cancion, y
