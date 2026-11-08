@@ -181,7 +181,7 @@ cada declaración de Windows queda un comentario `EN LINUX` que dice qué era.
 | `Environment.OSVersion` en una decisión | lo que decidía en el A4 (Windows XP, 5.1): coma flotante a la tarjeta no (W2), videos sin medir (ya estaba), `EsUnix` sí | SalidaSonido, Form1.Video, DiagnosticoCompleto |
 | `timeBeginPeriod(1)` / `timeEndPeriod(1)` | nada: Linux ya despierta al milisegundo (`Sleep(1)` = 1,2 ms medido) | Form1 |
 | `SetPriorityClass` (`Process.PriorityClass = AboveNormal`) | `PrioridadHilo.DelProceso` | Program |
-| `SetThreadPriority` (`Thread.Priority`, 20 sitios en 9 archivos) | `PrioridadHilo.Con`/`AlArrancar` (al arrancar el hilo) y `Pon` (el hilo que llama): setpriority del hilo (gettid) | AperturaAudio, BombaSonido, CaratulasAdaptativas, Form1, Form1.Biblioteca, Form1.Datos, Form1.Portadas, SalidaPropia, SinPausa |
+| `SetThreadPriority` y `GetThreadPriority` (`Thread.Priority`: 20 sitios que la ponen y 3 que la leen, en 9 archivos) | `PrioridadHilo.Pon` (la apunta y, si es el hilo que llama, se la pone ya), `PrioridadHilo.De` (la apuntada) y `Con`/`AlArrancar` (se la pone al arrancar): setpriority del hilo (gettid) | AperturaAudio, BombaSonido, CaratulasAdaptativas, Form1, Form1.Biblioteca, Form1.Datos, Form1.Portadas, SalidaPropia, SinPausa |
 
 La correspondencia de las prioridades (`Nativo/PrioridadHilo.cs`, a la vista). La clase del programa, como la traduce .NET (tiempo real
 -19, alta -11, por encima de lo normal -6, normal 0, por debajo de lo normal 10, inactiva 19); en Windows es de todo el proceso, así que
@@ -192,7 +192,9 @@ atiende siempre primero la prioridad más alta; el de Linux (CFS) reparte por pe
 procesador por nivel, que acerca ese «primero el de arriba» sin dejar sin nada al de abajo. Lo que no puede ser igual: en Linux un hilo
 nuevo hereda el nice del que lo crea (en Windows nace en la normal). Por eso todos los hilos que crea el código de XP se ponen la suya al
 arrancar (la que XP les puso antes de `Start` o, si no les puso ninguna -FlotanteNLayer, MedidasBitacora-, la normal); los del grupo de
-hilos de .NET y los de las bibliotecas heredan la del que los pide.
+hilos de .NET y los de las bibliotecas heredan la del que los pide. Y XP no pone ni lee `Thread.Priority` directo: con NativeAOT, .NET
+devuelve siempre Normal de un hilo que ya corre (con JIT, la puesta), y la salida de sonido arrancaba en la normal (-6, medido); por eso
+la prioridad de cada hilo se apunta en una tabla propia (`Pon`) y se lee de ella (`De`), igual con los dos.
 
 Se fueron: las estructuras y declaraciones de Windows de Form1, CancionEnMemoria, MedidasBitacora y DiagnosticoCompleto
 (MEMORYSTATUSEX, DISPLAY_DEVICE, WIN32_FIND_DATA, `RegistroAudio`, `ListadoWin32`, las de kernel32 del diagnóstico), las funciones falsas
@@ -210,10 +212,43 @@ foco, refresco de la pantalla), y los ocho avisos IL3050 de `Marshal.SizeOf(type
 - La rocola entera, el nice de cada hilo a los 13 s de la escena de las tres canciones (`/proc/PID/task/*/stat`): «audio (salida)» -16,
   «Rocola: la música» -11, la pantalla, el vigía de la pantalla, los de .NET (también los 4 del grupo de hilos) y los de Mesa -6, un hilo
   de lo mínimo +4 y el de la caché de sombreadores de Mesa +13 (Mesa lo pone en 19). En la referencia, todos los de la rocola en -6.
-- El sonido con las tablas medidas (`sonido.sh`, 5 corridas): las 5 iguales byte a byte a la corrida 1 de la referencia (huella
-  `708cb13b725e`, 1 694 140 bytes), la misma variante que antes de W3.
+- El sonido con las tablas medidas (`sonido.sh`, 8 corridas: 5 antes de apuntar las prioridades -ver NativeAOT, abajo- y 3 después):
+  las 8 iguales byte a byte a la corrida 1 de la referencia (huella `708cb13b725e`, 1 694 140 bytes), la misma variante que antes de W3.
 - La escena del video (`video.sh`, otra vez con la referencia): `video.wav` igual byte a byte, los 12 `rocola_*.txt` iguales, y las capas
   en el mismo orden (12 s la pared, 8 s el video en ventana, 19-20 s a pantalla completa, la pared; el segundo de la transición cae o no).
+
+## NativeAOT (W1, W2 y W3)
+
+El programa de Rocola OS es el de NativeAOT, así que todo lo de arriba se repitió con él (8-11-2026).
+
+- La publicación (`dotnet publish -c Release -r linux-x64`): sin errores y **0 avisos de NativeAOT o de recorte** (IL2xxx, IL3xxx). El
+  compilador de C# da 15 avisos (SYSLIB0054 ×9, CA2022 ×2, CS1690 ×2, CA2014 y SYSLIB0050), todos en líneas que ya estaban así en la base
+  (`34cb741`) y que esta pista no toca. El ejecutable mide 8,2 MB (más `libSkiaSharp.so`).
+- `rocola-xp --prueba-aot` con JIT y con NativeAOT (con la música y el video de prueba): lo mismo, salvo lo que cambia de una corrida a otra
+  (la memoria libre, las direcciones, cuántos hilos tiene .NET, `Sleep(1)`) y `win.thread_priority_de_net`: tras ponerle Lowest al hilo,
+  con JIT .NET devuelve «Lowest» y con NativeAOT «Normal».
+- Eso se vio en la rocola entera: con NativeAOT la salida de sonido y la música arrancaban en -6 (lo que .NET les devolvía al arrancar). Por
+  eso la prioridad de cada hilo va apuntada (`PrioridadHilo.Pon` y `De`, W3); con eso, NativeAOT da los mismos nice que JIT: «audio
+  (salida)» -16, «Rocola: la música» -11, la pantalla y los demás -6, un hilo de lo mínimo +4.
+- El sonido de la escena de las tres canciones (`sonido.sh` con las tablas medidas, las dos fuentes con la semilla fija del dither,
+  `prueba-fuente.sh ref|mio aot`): esta rama con NativeAOT, 4 de 4 corridas iguales byte a byte entre sí y a la corrida 1 de la
+  referencia con JIT (huella `708cb13b725e`); con JIT, ya con la tabla de prioridades, 3 de 3 iguales a esa. La referencia con NativeAOT,
+  3 de 3 en la otra variante que también da la referencia con JIT (`4654523839fc`, su corrida 2): las dos se separan a los 5,904 s, en un
+  relevo entre canciones (46 860 muestras distintas), lo mismo que entre dos corridas de la referencia con JIT. NativeAOT
+  no cambia ninguna cuenta del sonido (con la misma variante, iguales byte a byte las dos maneras de compilar).
+- La escena del video con NativeAOT frente a la referencia con JIT (`video.sh prog-aot`): `video.wav` igual byte a byte, las capas en el
+  mismo orden (12 s la pared, 8 s el video en ventana, 20 s a pantalla completa, la pared), y los 12 `rocola_*.txt` iguales salvo una
+  línea de `rocola_error.txt`: «(rocola del 26/10/2026 19:11)» frente a «(rocola del 08/11/2026 11:32)», la fecha del ejecutable, que con
+  JIT es la del programa `dotnet` y con NativeAOT la de `rocola-xp` (no es de esta pista).
+- La prueba aislada del video con NativeAOT (`aislada.sh prog-aot 20 3`): **20 de 20 bien** (libmpv pinta en su textura y avisa de cada
+  cuadro por las llamadas de vuelta `UnmanagedCallersOnly`; ninguna lectura negra).
+- `--prueba-salida 3` con NativeAOT y la tarjeta de prueba con reloj: la posición sigue al reloj (1 ms de diferencia), el aviso de parada
+  llega a los 3,002 s sin error y la posición final es 529 200 bytes (3,000 s); con `--prueba-salida 3 1.5`, el aviso llega al pararla
+  (1,505 s) y la posición vuelve a 0, como con JIT.
+- `--prueba-lector` con los WAV comprimidos, el M4A, el FLAC, el AIFF y el video de prueba: lo mismo con JIT y con NativeAOT (las 12 líneas,
+  huellas incluidas).
+- El respaldo de NLayer con NativeAOT (`ROCOLA_SIN_MPG123=1`): toca las tres canciones (847 070 muestras, como con libmpg123), sin
+  excepciones.
 
 ## Las herramientas (`Pruebas/Windows/`, fuera del programa)
 
@@ -222,13 +257,14 @@ esta rama, `REF` la referencia congelada (`/root/rocola-trabajo/referencia-xp/si
 (`/home/user/Rocola/sistema/rocola/Xp/bin/Release/net10.0`). Cada corrida usa una copia nueva de los datos en `W/run` (rutas iguales en
 todas) y deja lo suyo en `W/runs/NOMBRE`.
 
-- `prepara.sh ref|mio`: copia el programa compilado (JIT) a `W/prog-ref` o `W/prog-mio`.
+- `prepara.sh ref|mio|aot`: copia el programa compilado (JIT) a `W/prog-ref` o `W/prog-mio`, o el de NativeAOT de esta rama
+  (`dotnet publish -c Release -r linux-x64`, sin los `.dbg`) a `W/prog-aot`.
 - `corre.sh PROG NOMBRE SEGUNDOS [VAR=valor...]`: la rocola fuera de pantalla con ALSA nula (`EXTRA=` un video más; `DATOS=` las tablas de
-  partida; la música con sus fechas).
+  partida; la música con sus fechas); con JIT si la carpeta tiene `rocola-xp.dll`, si no el ejecutable de NativeAOT.
 - `video.sh PROG NOMBRE`: la escena del video de 30 s (capturas, capas, `video.wav`); `aislada.sh PROG VUELTAS SEGUNDOS`: la prueba
   aislada del video.
-- `prueba-fuente.sh ref|mio`: copias de las dos fuentes con el dither de semilla fija (solo para comparar el sonido), compiladas en
-  `W/prog-ref-semilla` y `W/prog-mio-semilla`.
+- `prueba-fuente.sh ref|mio [aot]`: copias de las dos fuentes con el dither de semilla fija (solo para comparar el sonido), compiladas en
+  `W/prog-ref-semilla` y `W/prog-mio-semilla` o, con `aot`, publicadas con NativeAOT en `W/prog-ref-aot-semilla` y `W/prog-mio-aot-semilla`.
 - `sonido.sh PROG NOMBRE SEGUNDOS TECLAS`: la rocola con la tarjeta de prueba con reloj (`alsa/reloj.c`, se compila sola con gcc y
   libasound); `variantes.sh PREFIJO VUELTAS`: la escena de las tres canciones con las dos, alternadas, y la huella de cada sonido.
 - `compara.py A B` (las tablas sin las horas de los archivos copiados, las capturas y `video.wav`), `difsonido.py A.raw B.raw` (dos
@@ -238,3 +274,20 @@ todas) y deja lo suyo en `W/runs/NOMBRE`.
   duración de un video con el medidor) y `--prueba-salida SEGUNDOS [PARA]` (la salida de XP con un tono, la posición frente al reloj y la
   parada); se piden con `ROCOLA_ALSA=reloj` y `ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:<un .conf como el que escribe sonido.sh>` para
   oírlas con la tarjeta de prueba.
+
+## Lo que queda (y lo que hay que saber al juntar)
+
+- Nada de esto está probado en el A4: ni el video con r600 y su escalado, ni la salida de sonido con la tarjeta de la placa (plughw, el
+  período de 50 ms, los errores de ALSA que de verdad dé), ni las prioridades con sus dos núcleos, ni lo que diga su cpufreq de los MHz.
+- `Plataforma/VideoEnVentanas.cs` es un puente mientras sigan las ventanas que imitan a WinForms: pone la capa del video en la lista de
+  controles de la ventana de la rocola. Cuando la pantalla sea nativa, su lista de capas toma ese lugar (por `IPantallaDelVideo` e
+  `ILugarDelVideo`, `Nativo/ReproductorVideo.cs`) y el puente se borra.
+- Al juntar con la rama principal (`claude/modest-carson-fa2v2n`; prueba en seco con `git merge-tree` el 8-11-2026): todos los archivos
+  de `Codigo/` se juntan sin choque de texto (falta compilar y probar lo juntado) y chocan cuatro de `Plataforma/`: `VideoMpv.cs` (aquí
+  se borra; allí solo cambió `D3D9.EnGl.EstadoTocado()` por `PantallaTarjeta.Tocada()`, que hay que poner en
+  `VideoEnVentanas.OpenGlTocado` y en `Anfitrion.Compone`), `Anfitrion.cs` (lo mismo, en `Compone`, junto a la llamada al video),
+  `LlamadasWindows.cs` (allí se fue `CapacidadPantalla`; aquí, todo lo de esta pista) y `PruebasLinux.cs` (allí, las pruebas de la
+  tarjeta con `DispositivoTarjeta`; aquí, la prueba aislada del video: líneas vecinas).
+- `Plataforma/LlamadasWindows.cs` conserva lo de otras pistas: las teclas (`TeclaAbajo`), la ventana de delante y el foco.
+- Los hilos que crea .NET (su grupo de hilos y los temporizadores) y las bibliotecas heredan el nice del hilo que los pide; en Windows
+  nacen en la normal. En las corridas medidas estaban todos en la normal.
