@@ -117,6 +117,7 @@ namespace Rocola
         }
         public static void Release(IntPtr punk)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.Release(punk); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (punk == IntPtr.Zero) return;
             if (TexturasDivididasGpu.Libera(punk)) return;
             PortadasCompartidasGpu.AlSoltar(punk);
@@ -193,6 +194,7 @@ namespace Rocola
 
         public D3D9Device(IntPtr hwnd, int w, int h)
         {
+            if (CintaTarjeta.Graba) CintaTarjeta.Nuevo(this, hwnd, w, h);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             try
             {
                 d3d = D3D9.Direct3DCreate9(32);
@@ -251,6 +253,7 @@ namespace Rocola
         internal bool PreLoadHabilitado { get { return preLoadOk; } set { preLoadOk = value; } }   // las pruebas
         public bool PreloadTexture(IntPtr tex)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.PreloadTexture(this, tex);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (!preLoadOk || tex == IntPtr.Zero || dev == IntPtr.Zero || lost || resetPending || reiniciando) return false;
             try
             {
@@ -288,6 +291,7 @@ namespace Rocola
         // volver a subir ni una. Lo que SI se pierde son los estados del dispositivo, y por eso se rehacen.
         public bool Redimensiona(int w, int h)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.Redimensiona(this, w, h);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || reiniciando || w < 8 || h < 8) return false;
             bool mismo = pp.BackBufferWidth == (uint)w && pp.BackBufferHeight == (uint)h;
             if (mismo && !resetPending) return !lost;
@@ -311,6 +315,7 @@ namespace Rocola
         // Tras un Reset fallido solo se admiten Reset, TestCooperativeLevel y Release.
         internal bool PreparaDispositivo()
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.PreparaDispositivo(this);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || reiniciando || inScene) return false;
             if (!lost && !resetPending) return true;
             if (resetEspera && unchecked(Environment.TickCount - resetProximo) < 0) return false;
@@ -468,6 +473,7 @@ namespace Rocola
 
         public IntPtr CreateTextureFromBitmap(Bitmap bmp)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.CreateTextureFromBitmap(this, bmp);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
             IntPtr tex = IntPtr.Zero;
             try
@@ -555,6 +561,7 @@ namespace Rocola
         // Inicia el cuadro (maneja perdida de dispositivo). Devuelve true si se puede dibujar.
         public bool BeginFrame()
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.BeginFrame(this);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (!PreparaDispositivo()) return false;
             SueltaPinesVertices(); // tambien un cuadro anterior abandonado por perdida
             try
@@ -576,6 +583,7 @@ namespace Rocola
 
         public bool EndFrame()
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.EndFrame(this);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || !inScene) { SueltaPinesVertices(); return false; }
             try { Junta(); } catch { }   // lo que quedaba por juntar va dentro de esta escena (PerformanceGpu.cs)
             inScene = false;
@@ -629,6 +637,7 @@ namespace Rocola
         // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
         public void DrawSky(D3D9.Vtx[] sky)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawSky(this, sky); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, 4);
@@ -636,6 +645,7 @@ namespace Rocola
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
         public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawStars(this, stars, starTris, glowTex); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || starTris <= 0 || glowTex == IntPtr.Zero) return;
             Tex(glowTex); TssModulate(); Blend(2);
             Draw(stars, starTris);
@@ -644,6 +654,7 @@ namespace Rocola
         // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
         public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawShootStreaks(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
@@ -654,6 +665,7 @@ namespace Rocola
         // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
         public void DrawMesh(D3D9.Vtx[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawMesh(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(3);
             Draw(v, tris);
@@ -664,6 +676,7 @@ namespace Rocola
         // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
         public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawMeshAdd(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(2);
             Draw(v, tris);
@@ -672,6 +685,7 @@ namespace Rocola
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
         public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawTexQuad(this, tex, quad); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
             Tex(tex); TssModulate(); Blend(3);
             Draw(quad, 2);
@@ -680,6 +694,7 @@ namespace Rocola
         // Solo para una superficie cuya textura y vertices son completamente opacos.
         public void DrawOpaqueQuad(IntPtr tex, D3D9.Vtx[] quad)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawOpaqueQuad(this, tex, quad); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
             Tex(tex); TssModulate(); Blend(1); Draw(quad, 2);
         }
@@ -689,6 +704,7 @@ namespace Rocola
         // repetir la peticion no cueste nada.
         public void DrawQuads(IntPtr tex, D3D9.Vtx[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawQuads(this, tex, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
             if (tex != IntPtr.Zero) { Tex(tex); TssModulate(); } else { Tex(IntPtr.Zero); TssDiffuse(); }
             Blend(3);
@@ -697,6 +713,7 @@ namespace Rocola
 
         public void DrawQuadsWrap(IntPtr tex, D3D9.Vtx[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawQuadsWrap(this, tex, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0 || tex == IntPtr.Zero) return;
             TexDireccion(tex, true); TssModulate(); Blend(3); Draw(v, tris);
         }
@@ -778,6 +795,7 @@ namespace Rocola
         }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawCube(this, tex, uMax, vMax, ax, ay, aw, ah, angle, alpha, tilt); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || alpha <= 0.001f || aw < 1f || ah < 1f) return;
             bool textured = tex != IntPtr.Zero;
             uint av = (uint)(alpha * 255f + 0.5f); if (av > 255) av = 255;
@@ -856,6 +874,7 @@ namespace Rocola
         }
         public IntPtr CreateTexturePow2(Bitmap bmp, out float uMax, out float vMax)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.CreateTexturePow2(this, bmp, out uMax, out vMax);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             uMax = 1f; vMax = 1f;
             if (dev == IntPtr.Zero || lost || resetPending || reiniciando || bmp == null) return IntPtr.Zero;
             IntPtr tex = IntPtr.Zero;
@@ -891,6 +910,7 @@ namespace Rocola
         // la region sucia de la textura MANAGED, sin resubir todo el panel.
         public bool UpdateTextureRegion(IntPtr tex, Bitmap bmp, Rectangle area)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.UpdateTextureRegion(this, tex, bmp, area);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || resetPending || reiniciando ||
                 tex == IntPtr.Zero || bmp == null || area.Width <= 0 || area.Height <= 0 ||
                 !new Rectangle(0, 0, bmp.Width, bmp.Height).Contains(area)) return false;
@@ -901,6 +921,7 @@ namespace Rocola
         }
         public bool UpdateTexturePow2(IntPtr tex, Bitmap bmp, out float uMax, out float vMax)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.UpdateTexturePow2(this, tex, bmp, out uMax, out vMax);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             uMax = 1f; vMax = 1f;
             if (dev == IntPtr.Zero || lost || resetPending || reiniciando || tex == IntPtr.Zero || bmp == null) return false;
             try
@@ -1038,6 +1059,7 @@ namespace Rocola
 
         public void Dispose()
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.Dispose(this); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             SueltaPinesVertices();
             LiberaVertices();
             LiberaMedia(); SueltaJunta();   // (PerformanceGpu.cs)

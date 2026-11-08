@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- EL REPRODUCTOR DE CINTAS DE LA TARJETA (pruebas del port nativo; no va en el programa ni en Rocola OS). Carga por reflexion el
+       rocola-xp.dll que se le diga (la copia congelada con capas o la traduccion nativa, en JIT) y le hace las llamadas de una cinta
+       grabada con ROCOLA_CINTA (Nativo/CintaTarjeta.cs). Ver PORT_TARJETA.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>PruebasTarjeta</RootNamespace>
+    <AssemblyName>reproductor-cintas</AssemblyName>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- la misma SkiaSharp que el programa: el mapa de bits de la rocola se arma sobre un SKBitmap -->
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
+  </ItemGroup>
+</Project>

@@ -64,7 +64,7 @@ namespace Rocola
         internal int Pedidos, Envios, Cambios;
         internal double AreaPx;
         internal bool CuentaArea;
-        internal void EmpiezaCuenta(bool area) { Pedidos = Envios = Cambios = 0; AreaPx = 0; CuentaArea = area; }
+        internal void EmpiezaCuenta(bool area) { if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.EmpiezaCuenta(this, area); return; } Pedidos = Envios = Cambios = 0; AreaPx = 0; CuentaArea = area; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
         private static float Recorta(float v, float max) { return v < 0f ? 0f : (v > max ? max : v); }
         // El area de los triangulos dentro del destino, con la regla de centros de pixel. Para lo recto (casi todo) es
         // exacta; para lo girado (cubos, halos) es una aproximacion buena.
@@ -158,6 +158,7 @@ namespace Rocola
         internal bool EmpiezaMedia(int w, int h) { return EmpiezaMedia(w, h, 2); }
         internal bool EmpiezaMedia(int w, int h, int div)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.EmpiezaMedia(this, w, h, div);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (div != 4) div = 2;
             if (dev == IntPtr.Zero || lost || !inScene || enMedia || mediaSinSoporte || w < 8 * div || h < 8 * div) return false;
             int mw = MediaLado(w, div), mh = MediaLado(h, div);
@@ -207,6 +208,7 @@ namespace Rocola
         // como destino) y la imagen intermedia no se vuelve a intentar.
         internal bool TerminaMedia()
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.TerminaMedia(this);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (!enMedia) return false;
             Junta();
             enMedia = false;
@@ -222,6 +224,7 @@ namespace Rocola
         // La imagen estirada a la pantalla, opaca y sin mezcla: hace de cielo (el primero que tapa cada pixel).
         internal void DibujaMedia(D3D9.Vtx[] quad, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DibujaMedia(this, quad, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || mediaTex == IntPtr.Zero || enMedia) return;
             Tex(mediaTex); TssModulate(); Blend(1);
             Draw(quad, tris);
@@ -288,6 +291,7 @@ namespace Rocola
 
         public void DrawSkyN(D3D9.Vtx[] sky, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawSkyN(this, sky, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost) return;
             Tex(IntPtr.Zero); TssDiffuse(); Blend(1);
             Draw(sky, tris);
@@ -304,6 +308,7 @@ namespace Rocola
         internal bool PuedeDosTexturas { get { return CapsDosTexturas && !dosTexturasFallo && dev != IntPtr.Zero; } }
         internal bool DibujaDosTexturas(IntPtr t0, IntPtr t1, D3D9.Vtx2[] v, int tris)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.DibujaDosTexturas(this, t0, t1, v, tris);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (!PuedeDosTexturas || lost || !inScene || enMedia || t0 == IntPtr.Zero || t1 == IntPtr.Zero
                 || v == null || tris <= 0 || tris > v.Length / 3) return false;
             if (TexturasDivididasGpu.Busca(t0) != null || TexturasDivididasGpu.Busca(t1) != null) return false;
@@ -397,6 +402,7 @@ namespace Rocola
         internal bool SinEspera { get { return pp.PresentationInterval == D3D9.PRESENT_INTERVAL_IMMEDIATE; } }
         internal bool PideSinEspera(bool sinEspera)
         {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.PideSinEspera(this, sinEspera);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero) return false;
             if (sinEspera && !CapsSinEspera) return false;
             uint quiere = sinEspera ? D3D9.PRESENT_INTERVAL_IMMEDIATE : 0u;

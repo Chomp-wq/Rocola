@@ -128,7 +128,7 @@ namespace Rocola
         private static int PotenciaInferior(uint n)
         { int p = 1; while ((uint)p <= n / 2 && p < 0x40000000) p <<= 1; return n >= 4 ? p : 0; }
         internal IntPtr CreaPortadaCompartida(Bitmap bmp, out float u, out float v)
-        { return PortadasCompartidasGpu.Toma(this, bmp, out u, out v); }
+        { if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.CreaPortadaCompartida(this, bmp, out u, out v); return PortadasCompartidasGpu.Toma(this, bmp, out u, out v); }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
 
         private static void RellenaBorde(D3D9.LockedRect lr, int w, int h, int tw, int th)
         {
