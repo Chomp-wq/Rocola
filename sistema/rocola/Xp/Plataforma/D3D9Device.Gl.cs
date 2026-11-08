@@ -13,9 +13,10 @@ namespace Rocola
             uint max = (uint)D3D9.EnGl.MaxTextura();      // GL_MAX_TEXTURE_SIZE
             caps.W = max; caps.H = max;                   // MaxTextureWidth / MaxTextureHeight
             caps.Intervalos = 0x80000001u;                // PresentationIntervals: IMMEDIATE y ONE
-            caps.MezclaOrigen = 0x1FFFu;                  // SrcBlendCaps: todas las de OpenGL ES 2
+            caps.MezclaOrigen = 0x3FFFu;                  // SrcBlendCaps: de ZERO a BOTHINVSRCALPHA, y BLENDFACTOR (con INVBLENDFACTOR)
             caps.Fvf = 8u;                                // FVFCaps: hasta 8 juegos de coordenadas de textura
-            caps.OperacionesTextura = 0xDFFFu;            // TextureOpCaps: las de las etapas que hace Direct3DaGL (todas menos BLENDFACTORALPHA)
+            caps.OperacionesTextura = 0x039EFFFFu;        // TextureOpCaps: las de las etapas que hace Direct3DaGL (todas menos PREMODULATE y
+                                                          // BUMPENVMAP / BUMPENVMAPLUMINANCE)
             caps.TexturasALaVez = (uint)D3D9.EtapasGl;    // MaxSimultaneousTextures
             return D3D9.D3D_OK;
         }
