@@ -213,6 +213,34 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
 
   Lo demás del idioma da igual que en XP si el A4 está en español de México: XP compara casi todo en ordinal (`OrdinalIgnoreCase`),
   escribe las fechas con su formato («dd/MM/yyyy HH:mm») y los números con `#,0` y `0.0`, que en es-MX salen igual que sin idioma.
+- **Direct3D 9, estado por estado (8-11-2026):** `Direct3DaGL.cs` se revisó contra la referencia de Direct3D 9 con todo lo que XP
+  le pide:
+  - 23 funciones;
+  - ZENABLE, LIGHTING, CULLMODE NONE;
+  - la mezcla SRCALPHA/ONE/INVSRCALPHA;
+  - las dos maneras de la etapa 0 y la pasada de dos texturas;
+  - LINEAR con CLAMP o WRAP;
+  - A8R8G8B8 y X8R8G8B8;
+  - DISCARD/NOOVERWRITE;
+  - TRIANGLELIST con los FVF 0x144 y 0x244.
+
+  Un banco aparte pinta con `D3D9.EnGl` y lo compara píxel a píxel con un modelo de Direct3D 9: 71 de 71 pruebas bien con llvmpipe. El
+  rasterizado (regla de arriba a la izquierda con el centro del píxel en el entero) y la interpolación salen exactos en 2,6 millones de
+  píxeles; el filtro LINEAR y la mezcla, a ±1. Lo que usa XP sale byte a byte igual que antes.
+
+  Se arregló lo que no hacía como Direct3D 9:
+  - una etapa sin textura que pide D3DTA_TEXTURE (Direct3D da el color del vértice; aquí salía negro);
+  - CULLMODE CW/CCW;
+  - las X8R8G8B8 con alfa 1 desde que se crean;
+  - SetRenderTarget sin borrar;
+  - los 210 estados de render con sus valores de fábrica, también tras Reset;
+  - el resto de la mezcla, de las operaciones y del FVF;
+  - la clave de los programas sin basura de memoria por cuadro.
+
+  El anfitrión estira el fondo de la tarjeta al control, como `Present` sin rectángulos (solo se nota en el cuadro de un cambio de
+  tamaño). No se hace porque XP no lo usa: SHADEMODE FLAT, niebla, profundidad y stencil, mipmaps, más de dos etapas, D3DTA_CONSTANT,
+  BUMPENVMAP y vértices sin transformar. No probado en el A4 (Radeon r600): allí la regla de relleno debería ser la misma, y el filtro
+  y la mezcla los hace la misma tarjeta que en XP.
 - **Lo siguiente:**
   - sin capturas (decisión del dueño del 8-11-2026): «idéntico» se asegura por el código. `Codigo/` frente a `Rocola/` (diff sin lo
     mecánico, 8-11-2026): 494 líneas en 35 archivos, todas de traducción (el puente de NAudio 3, winmm a ALSA, el mezclador a amixer,

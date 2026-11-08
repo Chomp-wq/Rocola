@@ -146,9 +146,11 @@ namespace Rocola
                     GL.BindTexture(GL.TEXTURE_2D, n.TexturaGl);
                     GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
                     GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-                    // el control enseña la esquina de arriba a la izquierda del fondo (el fondo puede ser mas grande)
+                    // el fondo de la tarjeta (Direct3D 9): Present sin rectangulos lo estira entero al control (si aun no tiene su medida
+                    // -el cuadro de un cambio de tamano, antes del Reset de XP-, estirado, como en XP); el video, la esquina de su textura
                     if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 1f);
-                    Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, Math.Min(1f, (float)c.Rect.Width / n.AnchoGl), Math.Min(1f, (float)c.Rect.Height / n.AltoGl), 1f);
+                    if (n.TexturaGlRgba) Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, Math.Min(1f, (float)c.Rect.Width / n.AnchoGl), Math.Min(1f, (float)c.Rect.Height / n.AltoGl), 1f);
+                    else Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, 1f);
                     if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 0f);
                     continue;
                 }
