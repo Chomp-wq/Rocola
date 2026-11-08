@@ -209,3 +209,26 @@ Diferencias que quedan:
 - La presentación sigue pasando por el escritorio de hoy (`Nativo/PantallaTarjeta.cs`, la única costura: cuando la pista de las
   ventanas cambie el escritorio, cambia ese archivo) y `SubeBitmapBorde` y `ActualizaRegionBitmap` siguen leyendo el `Bitmap` (la pista
   del dibujo).
+
+## T4. El reloj de la pantalla, sin compositor
+
+`Codigo/RelojPantallaGpu.cs` le preguntaba al compositor de Windows (`DwmGetCompositionTimingInfo`, de `dwmapi.dll`, que existe de
+Vista en adelante) cada cuánto refresca la pantalla y cuándo fue el último refresco, para empezar cada cuadro justo después de uno. En
+el A4, con Windows XP, no hay `dwmapi.dll`: la primera llamada fallaba, `sinCompositor` quedaba puesto y `Rejilla` daba falso (el bucle
+sigue con su tope de cuadros, «todo sigue como siempre»). En Rocola OS tampoco hay compositor que lo diga (el escritorio presenta por
+KMS): fuera la llamada, su estructura y lo que se recordaba de ella; `Rejilla` da falso salvo con el compositor de mentira de las pruebas
+(`RelojPantalla.Prueba`), como antes. Tres trozos, cada uno con «EN LINUX»; la cuenta (`EnMs`, `Tras`, `Despues`, `MomentoVista`,
+`Siguiente`) no cambia.
+
+Comprobación:
+- `reproductor-cintas --reloj DIR SALIDA` (`Pruebas/Tarjeta/Reloj.cs`) escribe lo que contesta `RelojPantalla`: `Rejilla` sin
+  compositor (seis veces, a distintas horas), con uno de mentira (6 frecuencias por 4 fases, y otra vez sin él) y la cuenta sola en una
+  rejilla de valores. La referencia congelada (con la llamada a `dwmapi.dll`, que en Linux falla como en XP) y la traducción escriben el
+  mismo archivo: 405 líneas iguales.
+- NativeAOT: el ejecutable ya no nombra `dwmapi` (`strings`; antes de T4, sí); 0 avisos de IL o de AOT.
+- La rocola entera en NativeAOT por sus pantallas, con la traza de un cuadro de cada una y `ROCOLA_ERRORES_GL=1`: 0 errores de OpenGL y
+  ningún estado de dibujo fuera de los de la referencia. Los que faltan en alguna corrida (el brillo que suma del asistente; la imagen
+  intermedia, que no se repinta si el cielo no cambió) salen en otras: es cuestión del momento del cuadro trazado. Para comprobarlo, una
+  cinta grabada en NativeAOT en el asistente con la traza en un cuadro de su tramo (n3-aot-asistente, 31 cuadros: la traza tiene los 13
+  estados de la referencia) da lo mismo en la referencia y en la traducción.
+- No probado en el A4: no lo puedo probar desde aquí.

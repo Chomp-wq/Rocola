@@ -70,7 +70,7 @@ namespace PruebasTarjeta
             // subir por la unidad 2 y leer lo mismo (B, G, R, A tal cual)
             Random z = new Random(7);
             byte[] datos = new byte[300 * 200 * 4]; z.NextBytes(datos);
-            bool propia; IntPtr m = (IntPtr)tt.GetMethod("Memoria", Todo).Invoke(null, new object[] { (long)datos.Length, null });
+            IntPtr m = (IntPtr)tt.GetMethod("Memoria", Todo).Invoke(null, new object[] { (long)datos.Length, null });
             Marshal.Copy(datos, 0, m, datos.Length);
             glBindTexture(TEXTURE_2D, 0);
             Mira((bool)T("Sube", new object[] { t, 0, 0, 300, 200, m }), "Sube 300x200");

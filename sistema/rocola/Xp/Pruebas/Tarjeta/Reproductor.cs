@@ -17,6 +17,10 @@
 //     --vuelca K1,K2,... DIR  guarda el fondo de esos cuadros (BGRA crudo, fila 0 arriba) en DIR/cuadro-K.bgra
 //     --hasta K               solo los primeros K cuadros
 //   reproductor-cintas --compara DIR1 DIR2   compara los volcados punto a punto (bytes distintos, el mayor, el primero)
+//   reproductor-cintas --sintetica CINTA      escribe la cinta hecha a mano (CintaSintetica.cs)
+//   reproductor-cintas --fuentes DIR SALIDA   los textos de los programas de sombreado (Fuentes.cs)
+//   reproductor-cintas --piezas DIR           las piezas nativas solas (Piezas.cs)
+//   reproductor-cintas --reloj DIR SALIDA     lo que contesta el reloj de la pantalla (Reloj.cs)
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -298,6 +302,7 @@ namespace PruebasTarjeta
             if (args.Length >= 2 && args[0] == "--sintetica") return CintaSintetica.Escribe(args[1]);
             if (args.Length >= 3 && args[0] == "--fuentes") return Fuentes.Escribe(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "--piezas") return Piezas.Prueba(args[1]);
+            if (args.Length >= 3 && args[0] == "--reloj") return Reloj.Escribe(args[1], args[2]);
             string dir = null, cinta = null, sale = null, volcado = null;
             int limite = 0, hasta = int.MaxValue;
             bool sinAvisar = false, sinEnsuciar = false;

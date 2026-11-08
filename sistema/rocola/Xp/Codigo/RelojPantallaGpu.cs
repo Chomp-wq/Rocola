@@ -18,6 +18,9 @@
 //
 // Sin compositor (Windows XP, o Vista y 7 con el tema basico), o con un tope de cuadros puesto a mano que no cae en un
 // numero entero de refrescos (45 en una pantalla de 60 Hz), todo sigue como siempre.
+//
+// EN LINUX: Rocola OS no tiene compositor que diga los refrescos (el escritorio presenta por KMS), como Windows XP en el A4: sin
+// compositor, todo sigue como siempre (Rejilla da falso salvo en las pruebas).
 #if ROCOLA_GPU
 using System;
 using System.Diagnostics;
@@ -27,17 +30,9 @@ namespace Rocola
 {
     internal static class RelojPantalla
     {
-        [StructLayout(LayoutKind.Explicit, Size = 292)]
-        private struct Tiempos
-        {
-            [FieldOffset(0)] public uint Tamano;
-            [FieldOffset(12)] public ulong Periodo;     // qpcRefreshPeriod
-            [FieldOffset(28)] public ulong Refresco;    // qpcVBlank
-        }
-        [DllImport("dwmapi.dll")] private static extern int DwmGetCompositionTimingInfo(IntPtr hwnd, ref Tiempos t);
-        private static bool sinCompositor;              // no hay (XP) o fallo del todo: ya no se pregunta
-        private static long periodo, refresco;          // lo ultimo que dijo Windows, en ticks del reloj fino (QPC)
-        private static double preguntadoMs = -1e9;
+        // EN LINUX: sin DwmGetCompositionTimingInfo (dwmapi.dll) ni su estructura (DWM_TIMING_INFO): no hay compositor. En XP la primera
+        // llamada fallaba (no hay dwmapi.dll) y sinCompositor quedaba puesto; aqui no hay nada que preguntar ni que recordar (sinCompositor,
+        // periodo, refresco, preguntadoMs).
         internal static Func<long[]> Prueba = null;     // solo las pruebas: {periodo, refresco} de mentira
 
         // La rejilla de refrescos en el reloj de la rocola (GpuPanel.AhoraMs, que es 'ahoraMs'): un refresco y el
@@ -48,22 +43,7 @@ namespace Rocola
             if (!Stopwatch.IsHighResolution) return false;
             long per, refr;
             if (Prueba != null) { long[] p = Prueba(); per = p[0]; refr = p[1]; }
-            else
-            {
-                if (sinCompositor) return false;
-                if (ahoraMs - preguntadoMs >= 250.0)
-                {
-                    preguntadoMs = ahoraMs;
-                    try
-                    {
-                        Tiempos t = new Tiempos(); t.Tamano = 292;
-                        if (DwmGetCompositionTimingInfo(IntPtr.Zero, ref t) == 0) { periodo = (long)t.Periodo; refresco = (long)t.Refresco; }
-                        else periodo = 0;   // compositor apagado (tema basico): se vuelve a probar en 250 ms
-                    }
-                    catch { sinCompositor = true; return false; }   // sin dwmapi.dll (XP)
-                }
-                per = periodo; refr = refresco;
-            }
+            else return false;   // EN LINUX: sin compositor (en XP, sinCompositor: sin dwmapi.dll), como en el A4
             // Antes se emparejaba 'ahoraMs' (tomado antes de consultar DWM) con un QPC tomado DESPUES.
             // La duracion variable de la consulta desplazaba el refresco. El origen es ahora el mismo
             // que usa AhoraMs: la conversion no depende de lo que tarde la consulta ni el llamador.
