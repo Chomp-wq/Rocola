@@ -62,6 +62,11 @@ namespace Banco
             p3.Dispose(); Bitmap p4 = PuenteDibujo.Bitmap(pres, PixelFormat.Format32bppArgb);
             Mira(!ReferenceEquals(p3, p4) && ReferenceEquals(PuenteDibujo.Mapa(p4), pres) && pres.GetPixel(1, 1).Red == 10, "soltado el prestado, el siguiente es otro (y los puntos siguen)");
             pres.Dispose();
+            // el trazo, la region y la matriz de uno sin traducir: el mismo objeto; la pluma, como la pone GDI+
+            using (GraphicsPath gp = new GraphicsPath()) { gp.AddEllipse(1, 2, 3, 4); Mira(ReferenceEquals(PuenteDibujo.Ruta(gp), gp.P) && PuenteDibujo.Ruta(gp).PointCount == gp.PointCount, "el trazo prestado es el mismo SKPath"); }
+            using (Matrix mx = new Matrix(1, 2, 3, 4, 5, 6)) Mira(PuenteDibujo.Matriz(mx).Equals(mx.M), "la matriz prestada es la misma");
+            using (Pen pn = new Pen(Color.FromArgb(200, 10, 20, 30), 2.5f) { LineJoin = LineJoin.Round, DashStyle = DashStyle.Dash })
+            using (SKPaint pp = PuenteDibujo.Pluma(pn, false)) { SKPaint q = new SKPaint(); pn.Pon(q, true); Mira(pp.Color == q.Color && pp.StrokeWidth == 2.5f && pp.StrokeJoin == SKStrokeJoin.Round && pp.PathEffect != null, "la pluma prestada lleva color, ancho, union y guiones"); q.Dispose(); }
             // el mapa de un horno traducido (D4), entregado a quien lo pide como Bitmap: los mismos puntos, el formato de XP, y se hace su dueno
             SKBitmap ent = Mapas.Nuevo(3, 3); ent.SetPixel(2, 2, new SKColor(1, 2, 3, 255));
             Bitmap be = PuenteDibujo.Entrega(ent);
