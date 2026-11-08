@@ -32,7 +32,7 @@ sobrantes como comentario `EN LINUX`) y sus finales de línea (LF). La lógica d
 |---|---|---|---|---|---|---|
 | `GuiaRojoGpu.cs` (líneas 81-124 de la tabla) | parámetro | — | parámetro | — | parámetro | `DrawGuiaRojo` la llama `EnsureUiOverlay` (`Form1.Video.cs`, sin traducir) con su `Graphics`: el puente le pasa su lienzo y su estado (en los recorridos, 7 de los 9 y 440 llamadas: siempre `AntiAlias`, sin copia, `Default`, identidad, sin recorte) |
 | `EstiloGpu.cs` (77, 85, 98-103, 110, 171-174, 196, 214) | parámetro | parámetro | parámetro | — | parámetro | la franja la pinta `EnsureUiBotOverlay` (sin traducir): siempre `AntiAlias`, `AntiAliasGridFit`, `SourceOver`, `Bilinear`, `Default`, trasladada (`m=T`), en los 9 recorridos; lo único que cambia entre llamadas (las 8 líneas «que varían» de la tabla) es el recorte (`r=si` x95 / `no` x32 en 98-103: el recuadro de `EmpiezaRecuadro` cuando solo cambia el reloj), que lleva el lienzo |
-| `AcabadoGpu.cs`, cada `Graphics.FromImage` (84-164, 344-355) | fijo | fijo | fijo | fijo | fijo | un `Graphics` nuevo: `None`, `SystemDefault`, `SourceOver`, `Bilinear`, `Default`, identidad (tabla: de 8 a 50 llamadas por línea, iguales, en 6 recorridos); `SourceCopy` donde XP lo pone (101 y 113: variable `copia`, devuelta en el `finally` como en XP) y `AntiAlias` en el vidrio (356) |
+| `AcabadoGpu.cs`, cada `Graphics.FromImage` (84-164, 344-355) | fijo | fijo | fijo | fijo | fijo | un `Graphics` nuevo: `None`, `SystemDefault`, `SourceOver`, `Bilinear`, `Default`, identidad (tabla: de 8 a 50 llamadas por línea, iguales, en 6 recorridos); `SourceCopy` donde XP lo pone (99: la variable `copia`, devuelta en el `finally` como en XP; 113: `copiaCopy`, la del `Graphics` nuevo de la fila) y `AntiAlias` en el vidrio (354) |
 | `RenderTransparentGpuTint`, `RenderOpaqueGpu`, `DrawSongPagerGpu` | parámetro | parámetro | parámetro | parámetro | parámetro | no salen en la tabla (los recorridos usan el vidrio en piezas y discos de una página): los llama `EnsureUiOverlay` con su `Graphics` (`AntiAlias`, `AntiAliasGridFit`, trasladado, con el recorte de la lista); razonado desde el código y comprobado con el arnés (abajo) con 6 modos de letra, 4 de suavizado, copia, 4 de medio píxel, 4 filtros, traslaciones, escala, giro y recortes |
 
 Ninguna de las funciones traducidas le cambia el estado al `Graphics` del que llama sin devolverlo (las que lo cambian lo guardan y lo
@@ -173,3 +173,104 @@ Carpeta de trabajo, fuera del repositorio: `/root/rocola-trabajo/port/acabado-es
 - Las diferencias (a)-(e) de la referencia frente a GDI+ de verdad siguen como estaban (`PORT_DIBUJO.md`); corregirlas, en su función
   nativa, lo decide el dueño.
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 8-11-2026)
+
+Se revisó el diff `b609319..port-acabado-estilo` contra `Rocola/` (XP), contra lo que hacía cada llamada en la capa (`Dibujo2D.cs`) y
+contra `estado_por_linea.tsv`, y se repitieron las comprobaciones sin fiarse del informe. **No se encontró ningún fallo en el código**: la
+traducción hace, línea por línea, las mismas llamadas a las funciones nativas que hacía la capa, con el mismo estado y en el mismo orden.
+Solo se corrigió documentación (abajo). Carpeta de trabajo de la revisión: `/root/rocola-trabajo/port/acabado-estilo/revision2`.
+
+### Lo mirado en el código
+
+- **Lo que queda de GDI+** (grep de `Graphics`, `Bitmap`, `Font`, `Brush`, `Pen`, `GraphicsPath`, `StringFormat`, `TextRenderer`,
+  `ImageAttributes`, `LockBits`, `Dibujo2D` en los cuatro archivos): solo las costuras de la tabla, escritas enteras; ningún
+  `using Rocola.Dibujo2D`.
+- **Cada llamada contra la capa**: `DrawImage(..., ImageAttributes)` es `Imagenes.Pinta` con `Envoltura.Transparente` (la de fábrica de
+  `ImageAttributes`, `Clamp`) y la clave baja y la alta del mismo color, o con la matriz de color; `DrawImageUnscaled(img, x, y)` es el trozo
+  `(0, 0, ancho, alto)` en `(x, y, x + ancho, y + alto)`; los `Fill*` y `Draw*` son `Pixel.*` con el mismo suavizado, medio píxel y copia
+  (`FillPolygon` con `Alternate`); `Pen(color[, ancho])` y `SolidBrush` son un `SKPaint` con lo mismo que les ponía la capa (`Pen.Pon`:
+  unión `Miter`, puntas `Butt`, sin guiones, que son los de fábrica de un `SKPaint`); `LinearGradientBrush(caja, a, b, 115)` es
+  `Degradado.Lineal` (no escalable, `Repeat`); `new Font(GenericSansSerif, px, Bold, Pixel)` es `Letra.EnPixeles(Letras.SinRemates, px,
+  true)`; `new Font(f.FontFamily, f.Size * e, f.Style, f.Unit)` da la misma `Letra` que la capa en `Point`, `Pixel`, `World` y `Display`
+  (las etiquetas de la franja son `Bold(tamaño)`, en puntos); `TextRenderer.MeasureText(s, f)` es `TextoGdi.Mide(s, letra)` (`Abajo`, caja
+  sin fin); `FormatFlags = NoWrap` deja solo `SinPartir`, `|= NoWrap` y `&= ~LineLimit` (`SoloEnteros`) igual, el `Clone()` del tipográfico
+  es `new FormatoTexto(TipograficoCompartido)` y las medidas usan el MISMO objeto compartido; `SetClip(caja, Intersect)` dentro del `Save`
+  es `ClipRect(Intersect)` sin suavizar, que quita el `RestoreToCount`; la `ColorMatrix` es `MatrizColor.Identidad()` con `[0][0]`,
+  `[1][1]` y `[2][2]`. Las imágenes nulas o soltadas no pintan o lanzan lo mismo que en la capa.
+- **El estado**: el de la tabla de arriba, línea por línea (en las 8 líneas de `EstiloGpu.cs` que varían solo cambia el recorte, que va en
+  el lienzo). `CtrlDirLeft`/`CtrlDirRight` (`Form1.Pared.cs`) no le cambian el estado al `Graphics` (solo `FillPolygon` y `DrawPolygon`
+  con su pincel y su pluma), así que el de `GraphicsAcabado` les basta; lo que llama `FranjaLejos` con `gg` tampoco lo deja cambiado
+  (`GeneroView` pone `AntiAlias` dentro del `Save`/`Restore` de `DrawCtrlOverlay`).
+- **El riesgo del `Restore` de la capa** (arriba, «Riesgos»), comprobado en lo que pinta `EnsureUiBotOverlay` después de la franja
+  (`DrawLabelOverlay(lblTime)`; `DrawCtrlOverlay` de `pastCred`, `pastCola` y `progress`): `PastillaView` solo usa `SetClip(...,
+  Intersect)` dentro de su `Save`/`Restore` y `ProgressView` ningún recorte, así que el recorte con que pintan es el mismo con el `Graphics`
+  que se entera del `Restore` (la referencia) y con el que no (la traducción): no cambia ningún punto. (El `SetClip(pt)` que reemplaza de
+  `DiscoVivoGpu.cs` es del `Graphics` propio de `PintaBoleto`.)
+- **Costuras**: las piezas (`uiPieza`) van con `Entrega` (un `Bitmap` dueño y nuevo cada vez, como el `new Bitmap` de XP; el préstamo con
+  identidad no hace falta); nada se suelta dos veces ni se queda sin soltar (el `SKBitmap` del horno pasa a la pieza; el del vidrio y los de
+  las filas los suelta `SueltaAcabadoGpu`; `hornoPag` y `hornoAnt` solo se prestan); el `SKPaint` del velo solo lo usa el hilo de la
+  pantalla y `Pixel` le devuelve lo que le pone.
+- **La nota de la tarea** decía que a `EstiloGpu.cs` lo llaman `AtraccionGpu.cs` (~771, ~906), `BuscadorPortadasGpu.cs` (~512, ~521),
+  `Form1.Ajustes.cs` (~286, ~311) y `Form1.Vistas.cs` (~791, ~1782, ~1841): esas líneas no llaman a ninguna función de este grupo; usan
+  `StringFormat.GenericTypographic`, el tipográfico compartido, que `EstiloGpu.cs` mide con el MISMO objeto. Lo de estos archivos solo lo
+  llaman `Form1.Video.cs` y `TextoMovilGpu.cs` (y `Form1.Buscador.cs` a `DrawExtraGpu`, `Form1.Vistas.cs` a `SueltaAcabadoGpu`), por los
+  puentes.
+
+### Lo encontrado y lo hecho
+
+- (menor, documentación) La tabla del estado mezclaba la numeración de `Rocola/` con la de `Xp/Codigo` (la de la tabla de estado por
+  línea): «101 y 113» y «(356)» son 99 y 113 y 354 en `Xp/Codigo/AcabadoGpu.cs`, y la copia de la 113 es `copiaCopy` (la del `Graphics`
+  nuevo de la fila), no la `copia` que se devuelve en el `finally`. Corregido en la tabla.
+- En el código, nada que arreglar.
+
+### Comprobaciones repetidas
+
+- **(a) Compila**: `dotnet build -c Release --no-incremental`: 0 errores y 15 avisos; la base `b609319` compilada aparte (`git archive`)
+  da los mismos 15, por archivo y línea (diff vacío).
+- **(b) Banco** (Congelado y Nuevo compilados de nuevo): semillas 7 y 11 con las letras de XP falsas y 5 con DejaVu, ejecutores `gdi`,
+  `nativo` y `puente`: **0 distintos de 27 000**; `puente-objetos`: **407 bien, 0 mal** (`Nativo/`, `Dibujo2D.cs` y `Puente.cs` son los de
+  la base byte a byte; el banco no compila `Puente.acabado-estilo.cs`).
+- **(c) Recorridos** (la copia instrumentada de esta rama con `instrumenta-volcado.sh` del grupo «suena», siempre con el candado):
+  - los nueve, con la máquina compartida (carga de 4,6 a 6,8 en 4 núcleos: otras revisiones y la junta compilando y corriendo a la vez):
+    capas de Dibujo2D quietas **216 de 217** (la otra, `hojas` c18 capa4, es una hoja de Ctrl+F3, que estos archivos no pintan; repetida: 37
+    de 37) y texturas quietas 449 de 487 (358 de 381 distintas). Con la máquina así cambia hasta lo que pasa: en `buscador` se abrió otro
+    disco (el del video) y en `video` la pantalla del video llegó 3 s tarde (a los 14,1 s y no a los 11,1), con el reloj de la franja en
+    otro segundo;
+  - por eso, **A/B**: la base `b609319` (instrumentada igual) y esta rama, una justo después de la otra con el mismo candado, por
+    `buscador`, `video`, `ayuda`, `hojas`, `pared` y `pared2`: texturas quietas distintas **la base 279 de 304, esta rama 298 de 304**;
+    capas 136 de 137 las dos (la misma c18 de `hojas`). En esa pasada fue la base la que se apartó en `buscador` (a los 27,5 s no abrió
+    ningún disco); esta rama dio justo las de la referencia al abrir el disco (la imagen de la interfaz `70a892bd…`, las páginas `3f0fd9e9…`
+    y `1332c023…`, las filas `6c2d6060…`, `602f424e…` y `f80538a4…` y las de los 29 a los 32 s);
+  - juntando todas las corridas de esta traducción (las del grupo y las de la revisión: de 2 a 5 por pantalla), **380 de las 381 texturas
+    quietas distintas salen en alguna**; la que no (`e843916c…`, `buscador` a los 8,5 s) es la barra del buscador con la «l» escrita (en el
+    PNG de otra corrida, la de los 8,6 s es esa barra con «la»), que tampoco sale en la base: no es de estos archivos;
+  - **el disco sin piezas** (`disco.sh`: `RenderTransparentGpuTint` con el vidrio y con el velo, y `RenderOpaqueGpu`, un recorrido sin
+    reloj): esta rama contra las dos de la referencia: capas **60 de 60**, texturas quietas 99 de 100 (una resubida de 512x256 menos), **72
+    de 72 distintas y 0 que no estén en la referencia**; la base en la misma pasada: 97 de 100 y 72 de 72; las 97 de la base salen idénticas
+    en esta rama.
+- **(d) Arnés** (`compara.sh`, el programa entero con la referencia, la base y esta rama): 6 607 líneas por juego de letras, 0 excepciones;
+  **contra la referencia 0 distintas de 6 603, contra la base 0 de 6 607**, con las letras de XP falsas y con DejaVu. No es trivial: 276
+  huellas distintas en 887 renglones, 229 en 297 tarjetas, 269 en 300 guías, 321 en 378 líneas de listas, 129 en 164 de franjas.
+- **(e) Cintas**: no aplica (no cambia el dispositivo ni lo que se sube).
+- **(f) NativeAOT**: `dotnet publish -c Release -r linux-x64`: 0 avisos IL/AOT, los mismos 15 de C#; `aot-corre.sh` de fábrica y con
+  `glass_capas=0`: salida 0, 13 capturas cada vez, 0 `Exception` en lo que escribió y en `rocola_error.txt` (solo el apunte del volumen de
+  Windows). En las capturas, la guía del rojo (c18) y la lista con el vidrio pintado en la imagen de la interfaz (c12, `glass_capas=0`).
+- **(g) diff contra XP**: `diff-xp.py -v`: 97/95, 54/52, 30/28 y 2/2, 0 sin marca; con `git diff -U0`, todas las líneas puestas llevan
+  `// EN LINUX`; 411, 259, 182 y 64 líneas y finales LF como la base; fuera de lo permitido no se tocó nada (`Nativo/`, `Dibujo2D.cs`,
+  `Puente.cs`, `AGENTS.md`, `LEEME.md`, `ETAPA2.md` y Consola, sin cambios).
+- **Con la rama principal de ahora** (`f2f9dcb`, que ya trae el grupo «reposo»: `TextoMovilGpu.cs`, `FranjaLigeraGpu.cs` y
+  `EstadoReposoGpu.cs` traducidos, y las teclas de ventanas2): `git merge-tree` sin conflictos (`GuiaRojoGpu.cs` cambió allí en otras
+  líneas, `Keys` → `Tecla`); lo juntado compila (0 errores, 15 avisos) y el arnés de este grupo compilado con lo juntado da **0 distintas
+  de la referencia (6 603) y de esta rama (6 607)**, con las dos letras.
+
+### Lo que queda (para quien junte)
+
+- Con «reposo» ya en la rama principal, el renglón del artista de la franja pasa por puentes de los dos grupos: `FranjaLejos` (traducida)
+  → `PintaArtistaCompacto(gg)` (el puente de `Puente.reposo.cs`) → `PintaRenglonLejosReposo` → `PintaRenglonLejos(Graphics, ...)` (el de
+  `Puente.acabado-estilo.cs`) → `PintaRenglonLejos` traducida → `TextoConCintaAcabado` → `TextoConCinta(Graphics, ...)` (el de
+  `Puente.reposo.cs`) → `TextoConCinta` traducida. Da lo mismo (el arnés con lo juntado, 0 distintas), pero al juntar se puede llamar
+  directo: en `FranjaLejos`, `PintaArtistaCompacto(g, ajuste, copia, medio)`; en `PintaArtistaCompacto`, `PintaRenglonLejos(g, suave,
+  ajuste, copia, medio, ..., PuenteDibujo.Letra(lblNow.Font), ...)`; en `PintaRenglonLejos`, `TextoConCinta(g, ajuste, texto, f, c, r,
+  sf)`; y quitar `TextoConCintaAcabado`, `PintaRenglonLejos(Graphics, ...)` y `PintaRenglonLejosReposo` si nadie más los usa.
+- Lo demás de «Lo que queda» de arriba sigue igual. Nada probado en el A4.
