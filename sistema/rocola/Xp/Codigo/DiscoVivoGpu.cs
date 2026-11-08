@@ -476,7 +476,7 @@ namespace Rocola
         private GpuBoleto boletoCuadro;
         private double discoUltMs, discoRelojMs;
         private readonly float[] eqAlto = new float[4];
-        private readonly D3D9.Vtx[] boletoQuad = new D3D9.Vtx[6], eqV = new D3D9.Vtx[4 * 6];
+        private readonly Tarjeta.Vtx[] boletoQuad = new Tarjeta.Vtx[6], eqV = new Tarjeta.Vtx[4 * 6];
 
         // El momento del cuadro que se esta dibujando (el de cuando se VERA, si se sabe), sin ir nunca hacia atras.
         private double MomentoDisco()
@@ -498,7 +498,7 @@ namespace Rocola
             PasoEq(ahora, dt);
         }
         // Un cuadro con textura GIRADO 'ang' alrededor de su centro, con su tramo de textura (u0,v0)-(u1,v1).
-        internal static void SetTexQuadGiro(D3D9.Vtx[] v, float cx, float cy, float hw, float hh, float ang,
+        internal static void SetTexQuadGiro(Tarjeta.Vtx[] v, float cx, float cy, float hw, float hh, float ang,
                                             float u0, float v0, float u1, float v1, uint argb)
         {
             float c = (float)Math.Cos(ang), s = (float)Math.Sin(ang);
@@ -613,7 +613,7 @@ namespace Rocola
         }
         private void SueltaDiscoVivo()
         {
-            if (boletoTex != IntPtr.Zero) { D3D9.Release(boletoTex); boletoTex = IntPtr.Zero; }
+            if (boletoTex != IntPtr.Zero) { Tarjeta.Suelta(boletoTex); boletoTex = IntPtr.Zero; }
             boletoVer = -1; boletoBw = boletoBh = 0;
         }
     }

@@ -197,7 +197,7 @@ namespace Rocola
         internal const uint FestejoColor = 0x00FFE08Au;   // dorado
         internal const int FestejoCadaMs = 2500;           // como mucho una cada 2,5 s
 
-        private static void V3(D3D9.Vtx[] v, int i, float x, float y, uint c) { v[i].X = x; v[i].Y = y; v[i].Z = 0f; v[i].Rhw = 1f; v[i].Color = c; v[i].U = 0f; v[i].V = 0f; }
+        private static void V3(Rocola.Tarjeta.Vtx[] v, int i, float x, float y, uint c) { v[i].X = x; v[i].Y = y; v[i].Z = 0f; v[i].Rhw = 1f; v[i].Color = c; v[i].U = 0f; v[i].V = 0f; }   // EN LINUX: Rocola.Tarjeta (en Form1, «Tarjeta» es la de Ctrl+F3)
 
         // ---------------- 6) EL CIELO SEGUN LA HORA
         // hondo: 1 de 0:30 a 4:30 (y en rampa desde las 22:30 y hasta las 6:00). calor: el anochecer (19:30) y algo el
@@ -234,7 +234,7 @@ namespace Rocola
         internal static float ReflejoHueco(float altoPanel) { return Math.Max(6f, Math.Min(16f, altoPanel * 0.021f)); }
         // Bajo el horizonte, cada columna refleja su pico (aplastado y sin pasar del hueco) con el color de su filo, y se
         // apaga hacia abajo. Triangulos aditivos. Devuelve cuantos vertices escribio.
-        internal static int AurReflejo(D3D9.Vtx[] v, float[] hCol, uint[] cFilo, float[] iFilo, int columnas, float ancho, float baseY, float hueco)
+        internal static int AurReflejo(Rocola.Tarjeta.Vtx[] v, float[] hCol, uint[] cFilo, float[] iFilo, int columnas, float ancho, float baseY, float hueco)   // EN LINUX: Rocola.Tarjeta (en Form1, «Tarjeta» es la de Ctrl+F3)
         {
             if (v == null || hCol == null || cFilo == null || iFilo == null || columnas < 1) return 0;
             if (hCol.Length < columnas + 1 || cFilo.Length < columnas + 1 || iFilo.Length < columnas + 1 || v.Length < columnas * 6) return 0;
@@ -294,7 +294,7 @@ namespace Rocola
         // ---------------- 1) la luna
         private IntPtr lunaCieloTex; private int lunaCieloBw, lunaCieloBh; private float lunaCieloU, lunaCieloV;
         private int lunaCieloPaso = -1, lunaCieloLado;
-        private readonly D3D9.Vtx[] lunaCieloQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] lunaCieloQuad = new Tarjeta.Vtx[6];
         // Antes de Begin (nada se hornea ni se sube dentro del cuadro): se rehace al cambiar de paso de fase (120 pasos
         // por mes, ~6 h) o de tamano.
         private void EnsureLunaCielo()
@@ -312,7 +312,7 @@ namespace Rocola
         // Al reiniciar o soltar la tarjeta (como las demas texturas): se vuelve a hornear en el siguiente cuadro.
         private void SueltaCieloVivo()
         {
-            if (lunaCieloTex != IntPtr.Zero) { D3D9.Release(lunaCieloTex); lunaCieloTex = IntPtr.Zero; }
+            if (lunaCieloTex != IntPtr.Zero) { Tarjeta.Suelta(lunaCieloTex); lunaCieloTex = IntPtr.Zero; }
             lunaCieloBw = lunaCieloBh = 0; lunaCieloPaso = -1; lunaCieloLado = 0;
             aurDibujada = false; nebEmpuje = hazEmpuje = nebCrudo = hazCrudo = 0f;
         }
@@ -331,7 +331,7 @@ namespace Rocola
         }
 
         // ---------------- 7) el reflejo de la aurora (lo que dejo DrawAurora en este cuadro)
-        private D3D9.Vtx[] reflejoV; private bool aurDibujada; private float aurDibujadaBase;
+        private Tarjeta.Vtx[] reflejoV; private bool aurDibujada; private float aurDibujadaBase;
         private bool reflejoListo;
         private int reflejoN, reflejoAncho;
         private float reflejoBase, reflejoHueco;
@@ -340,7 +340,7 @@ namespace Rocola
         {
             if ((ReposoSinReflejo && AhorroReposo) || !ReflejoAurora || !aurDibujada || aurHs == null || aurNc == null || aurNi == null) return;
             if (EstadoOcultaDesde(aurDibujadaBase - AurLineaAlza + 1f)) return; // completamente tapado: no cambia ningun pixel visible
-            if (reflejoV == null) reflejoV = new D3D9.Vtx[AurCols * 6];
+            if (reflejoV == null) reflejoV = new Tarjeta.Vtx[AurCols * 6];
             // PEGADO A LA RAYA (foto del 13-10-2026: «la barra de estado queda un poco despegada del espectro»). Nacia en el pie
             // del relleno, 15 px por debajo de la raya del horizonte (AurLineaAlza): entre el brillo de la raya y el reflejo
             // quedaba una franja oscura, y la raya se veia suelta encima de la barra. Ahora nace justo bajo el nucleo de la raya.

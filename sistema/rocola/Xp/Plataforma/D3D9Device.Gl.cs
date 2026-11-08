@@ -5,7 +5,7 @@ using System;
 
 namespace Rocola
 {
-    internal sealed partial class D3D9Device
+    internal sealed partial class DispositivoTarjeta
     {
         private int GetDeviceCaps(IntPtr dispositivo, ref CapsTextura caps)
         {

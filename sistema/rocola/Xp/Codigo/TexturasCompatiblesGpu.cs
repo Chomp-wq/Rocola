@@ -13,7 +13,7 @@ namespace Rocola
         internal sealed class Tile
         { public Rectangle Core, Source; public IntPtr Tex; public int W, H; }
         internal sealed class Surface
-        { public D3D9Device Owner; public int W, H; public Tile[] Tiles; }
+        { public DispositivoTarjeta Owner; public int W, H; public Tile[] Tiles; }
         private static readonly object candado = new object();
         private static readonly Dictionary<IntPtr, Surface> superficies = new Dictionary<IntPtr, Surface>();
         private static volatile int cantidad;
@@ -38,7 +38,7 @@ namespace Rocola
                 superficies.Remove(textura); cantidad = superficies.Count;
             }
             Marshal.FreeHGlobal(textura);
-            foreach (Tile t in s.Tiles) if (t != null && t.Tex != IntPtr.Zero) D3D9.Release(t.Tex);
+            foreach (Tile t in s.Tiles) if (t != null && t.Tex != IntPtr.Zero) Tarjeta.Suelta(t.Tex);
             return true;
         }
     }
@@ -48,12 +48,12 @@ namespace Rocola
     internal static class PortadasCompartidasGpu
     {
         private sealed class Entry
-        { public D3D9Device Owner; public Bitmap Bmp; public IntPtr Tex; public float U, V; public int Owners; }
+        { public DispositivoTarjeta Owner; public Bitmap Bmp; public IntPtr Tex; public float U, V; public int Owners; }
         private static readonly object candado = new object();
         private static readonly Dictionary<IntPtr, Entry> referencias = new Dictionary<IntPtr, Entry>();
-        private static readonly Dictionary<D3D9Device, Dictionary<Bitmap, Entry>> dispositivos = new Dictionary<D3D9Device, Dictionary<Bitmap, Entry>>();
+        private static readonly Dictionary<DispositivoTarjeta, Dictionary<Bitmap, Entry>> dispositivos = new Dictionary<DispositivoTarjeta, Dictionary<Bitmap, Entry>>();
         private static volatile int cantidad;
-        internal static IntPtr Toma(D3D9Device owner, Bitmap bmp, out float u, out float v)
+        internal static IntPtr Toma(DispositivoTarjeta owner, Bitmap bmp, out float u, out float v)
         {
             u = v = 1;
             if (bmp == null) return IntPtr.Zero;
@@ -92,7 +92,7 @@ namespace Rocola
         }
     }
 
-    internal sealed partial class D3D9Device
+    internal sealed partial class DispositivoTarjeta
     {
         // D3DCAPS9: prefijo documentado, dos DWORD en 88/92. El buffer completo
         // tiene holgura para que GetDeviceCaps escriba el resto de la estructura.
@@ -111,13 +111,13 @@ namespace Rocola
         private int LimiteTexturaW { get { return limiteTexturaW > 2 ? limiteTexturaW : 2048; } }
         private int LimiteTexturaH { get { return limiteTexturaH > 2 ? limiteTexturaH : 2048; } }
         private IntPtr texturaLogica;
-        private D3D9.Vtx[] recortaA, recortaB, recortaDibujo;
+        private Tarjeta.Vtx[] recortaA, recortaB, recortaDibujo;
         private void LeeLimitesTexturas()
         {
             try
             {
                 CapsTextura caps = new CapsTextura();
-                if (GetDeviceCaps(dev, ref caps) >= 0)   // Linux: D3D9Device.Gl.cs
+                if (GetDeviceCaps(dev, ref caps) >= 0)   // Linux: DispositivoTarjeta.Gl.cs
                 {
                     limiteTexturaW = PotenciaInferior(caps.W); limiteTexturaH = PotenciaInferior(caps.H);
                     LeeCapacidades(caps.Intervalos, caps.MezclaOrigen, caps.Fvf, caps.OperacionesTextura, caps.TexturasALaVez);
@@ -202,7 +202,7 @@ namespace Rocola
                 IntPtr id = TexturasDivididasGpu.Registra(s); ok = true; return id;
             }
             catch { return IntPtr.Zero; }
-            finally { if (!ok) foreach (TexturasDivididasGpu.Tile t in s.Tiles) if (t != null && t.Tex != IntPtr.Zero) D3D9.Release(t.Tex); }
+            finally { if (!ok) foreach (TexturasDivididasGpu.Tile t in s.Tiles) if (t != null && t.Tex != IntPtr.Zero) Tarjeta.Suelta(t.Tex); }
         }
         private bool ActualizaDividida(TexturasDivididasGpu.Surface s, Bitmap bmp, Rectangle area)
         {
@@ -218,10 +218,10 @@ namespace Rocola
 
         // Recorte de triangulos por UV, sin asignaciones por cuadro. El quad mantiene
         // posicion, opacidad y colores originales incluso mientras se anima.
-        private void DibujaDividida(TexturasDivididasGpu.Surface s, D3D9.Vtx[] datos, int tris)
+        private void DibujaDividida(TexturasDivididasGpu.Surface s, Tarjeta.Vtx[] datos, int tris)
         {
             if (s.Owner != this || dev == IntPtr.Zero || lost || datos == null || tris <= 0 || tris > datos.Length / 3) return;
-            if (recortaA == null) { recortaA = new D3D9.Vtx[8]; recortaB = new D3D9.Vtx[8]; recortaDibujo = new D3D9.Vtx[18]; }
+            if (recortaA == null) { recortaA = new Tarjeta.Vtx[8]; recortaB = new Tarjeta.Vtx[8]; recortaDibujo = new Tarjeta.Vtx[18]; }
             for (int tr = 0; tr < tris; tr++) foreach (TexturasDivididasGpu.Tile tile in s.Tiles)
             {
                 recortaA[0] = datos[tr * 3]; recortaA[1] = datos[tr * 3 + 1]; recortaA[2] = datos[tr * 3 + 2];
@@ -236,19 +236,19 @@ namespace Rocola
                 PonTexturaFisica(tile.Tex); DrawFisico(recortaDibujo, vtx / 3);
             }
         }
-        private static D3D9.Vtx UvTesela(D3D9.Vtx q, TexturasDivididasGpu.Surface s, TexturasDivididasGpu.Tile t)
+        private static Tarjeta.Vtx UvTesela(Tarjeta.Vtx q, TexturasDivididasGpu.Surface s, TexturasDivididasGpu.Tile t)
         { q.U = (q.U * s.W - t.Source.X) / t.W; q.V = (q.V * s.H - t.Source.Y) / t.H; return q; }
-        private static int Recorta(D3D9.Vtx[] from, int n, D3D9.Vtx[] to, bool horizontal, float edge, bool greater)
+        private static int Recorta(Tarjeta.Vtx[] from, int n, Tarjeta.Vtx[] to, bool horizontal, float edge, bool greater)
         {
             if (n == 0) return 0;
-            int count = 0; D3D9.Vtx prev = from[n - 1];
+            int count = 0; Tarjeta.Vtx prev = from[n - 1];
             float p = horizontal ? prev.U : prev.V; bool inside = greater ? p >= edge : p <= edge;
             for (int i = 0; i < n; i++)
             {
-                D3D9.Vtx cur = from[i]; float c = horizontal ? cur.U : cur.V; bool ci = greater ? c >= edge : c <= edge;
+                Tarjeta.Vtx cur = from[i]; float c = horizontal ? cur.U : cur.V; bool ci = greater ? c >= edge : c <= edge;
                 if (inside != ci)
                 {
-                    D3D9.Vtx cut = Entre(prev, cur, (edge - p) / (c - p));
+                    Tarjeta.Vtx cut = Entre(prev, cur, (edge - p) / (c - p));
                     if (horizontal) cut.U = edge; else cut.V = edge;
                     to[count++] = cut;
                 }
@@ -257,9 +257,9 @@ namespace Rocola
             }
             return count;
         }
-        private static D3D9.Vtx Entre(D3D9.Vtx a, D3D9.Vtx b, float t)
+        private static Tarjeta.Vtx Entre(Tarjeta.Vtx a, Tarjeta.Vtx b, float t)
         {
-            D3D9.Vtx q = new D3D9.Vtx { X = a.X + (b.X - a.X) * t, Y = a.Y + (b.Y - a.Y) * t,
+            Tarjeta.Vtx q = new Tarjeta.Vtx { X = a.X + (b.X - a.X) * t, Y = a.Y + (b.Y - a.Y) * t,
                 Z = a.Z + (b.Z - a.Z) * t, Rhw = a.Rhw + (b.Rhw - a.Rhw) * t, U = a.U + (b.U - a.U) * t, V = a.V + (b.V - a.V) * t };
             uint color = 0;
             for (int shift = 0; shift < 32; shift += 8)

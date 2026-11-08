@@ -27,8 +27,8 @@ using SkiaSharp;
 
 namespace Rocola
 {
-    internal sealed partial class GpuStarfield { internal D3D9Device Dispositivo { get { return gpu; } } }
-    internal sealed partial class D3D9Device { internal IntPtr DispositivoGl { get { return dev; } } }
+    internal sealed partial class GpuStarfield { internal DispositivoTarjeta Dispositivo { get { return gpu; } } }
+    internal sealed partial class DispositivoTarjeta { internal IntPtr DispositivoGl { get { return dev; } } }
 
     internal static class PruebasLinux
     {

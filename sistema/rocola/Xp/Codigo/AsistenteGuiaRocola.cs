@@ -352,8 +352,8 @@ namespace Rocola
         private AsistentePoseGpu asistenteSigue; private bool asistenteSigueListo;
         private RectangleF asistenteGuiaPanel; private bool asistenteGuiaListo, asistenteGuiaVisibleAntes;
         private Rectangle asistenteGuiaMeta;   // la esquina elegida (el globo se desliza hacia ella)
-        private readonly D3D9.Vtx[] asistenteMarco = new D3D9.Vtx[72];
-        private readonly D3D9.Vtx[] asistenteFlecha = new D3D9.Vtx[36];
+        private readonly Tarjeta.Vtx[] asistenteMarco = new Tarjeta.Vtx[72];
+        private readonly Tarjeta.Vtx[] asistenteFlecha = new Tarjeta.Vtx[36];
 
         private void AvanzaGlobosGuia(double dt)
         {
@@ -438,7 +438,7 @@ namespace Rocola
         }
 
         // Marco de esquinas en inglete: un nucleo dorado y un resplandor que se apaga hacia fuera y hacia dentro.
-        internal static int MarcoGuia(D3D9.Vtx[] v, RectangleF r, float grosor, float halo, float fuerza)
+        internal static int MarcoGuia(Tarjeta.Vtx[] v, RectangleF r, float grosor, float halo, float fuerza)
         {
             if (v == null || v.Length < 72 || !(r.Width > 0) || !(r.Height > 0)) return 0;
             fuerza = SafeMoonLevel(fuerza);
@@ -452,7 +452,7 @@ namespace Rocola
             BandaGuia(v, ref n, RectangleF.Inflate(r, -dentro, -dentro), r, oro, suave);
             return n;
         }
-        private static void BandaGuia(D3D9.Vtx[] v, ref int n, RectangleF a, RectangleF b, uint ca, uint cb)
+        private static void BandaGuia(Tarjeta.Vtx[] v, ref int n, RectangleF a, RectangleF b, uint ca, uint cb)
         {
             AsistenteCuadro(v, ref n, b.Left, b.Top, b.Right, b.Top, a.Right, a.Top, a.Left, a.Top, cb, cb, ca, ca);
             AsistenteCuadro(v, ref n, b.Right, b.Top, b.Right, b.Bottom, a.Right, a.Bottom, a.Right, a.Top, cb, cb, ca, ca);
@@ -505,7 +505,7 @@ namespace Rocola
             if (n > 0) stars.DrawMesh(asistenteFlecha, n / 3);
         }
 
-        internal static int FlechaGuia(D3D9.Vtx[] v, float px, float py, float dx, float dy, float largo, float fuerza)
+        internal static int FlechaGuia(Tarjeta.Vtx[] v, float px, float py, float dx, float dy, float largo, float fuerza)
         {
             if (v == null || v.Length < 36 || !(largo > 0) || float.IsNaN(px) || float.IsNaN(py)) return 0;
             fuerza = SafeMoonLevel(fuerza);

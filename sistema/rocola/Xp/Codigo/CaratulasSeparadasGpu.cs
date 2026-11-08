@@ -132,14 +132,14 @@ namespace Rocola
         private readonly float[] nativeGridU = new float[MaxCells], nativeGridV = new float[MaxCells];
         private sealed class CubiertaGuardada
         {
-            internal readonly D3D9.Vtx[] Vertices = new D3D9.Vtx[54];
+            internal readonly Tarjeta.Vtx[] Vertices = new Tarjeta.Vtx[54];
             internal bool Lista; internal float X, Y, W, H, U, V; internal int Bw, Bh; internal uint Color;
         }
         private readonly CubiertaGuardada[] cubiertas = new CubiertaGuardada[MaxCells];
         internal int CubiertasCalculadas, CubiertasReusadas;
-        private readonly D3D9.Vtx[] nativeQuad = new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] nativeSoftQuad = new D3D9.Vtx[54];
-        private readonly D3D9.Vtx[] nativeCorners = new D3D9.Vtx[16];
+        private readonly Tarjeta.Vtx[] nativeQuad = new Tarjeta.Vtx[6];
+        private readonly Tarjeta.Vtx[] nativeSoftQuad = new Tarjeta.Vtx[54];
+        private readonly Tarjeta.Vtx[] nativeCorners = new Tarjeta.Vtx[16];
         private readonly float[] nativeXs = new float[4], nativeYs = new float[4], nativeUs = new float[4], nativeVs = new float[4];
         private long nativeUploadCost;
         private int maintenanceFrame = -1, maintenanceCount;
@@ -156,7 +156,7 @@ namespace Rocola
             if (maintenanceCount > 0 && (maintenanceCount >= 4 ||
                 now - maintenanceStart + maintenanceCost >= Stopwatch.Frequency * .00075 ||
                 (CoverControl != null && !CoverControl.CanStart(maintenanceCost, false, false)))) return false;
-            D3D9.Release(texture); maintenanceCount++;
+            Tarjeta.Suelta(texture); maintenanceCount++;
             long spent = Stopwatch.GetTimestamp() - now;
             maintenanceCost = CargaTrabajo.AprendeCoste(maintenanceCost, spent);
             if (CoverControl != null) CoverControl.Spend(spent);
@@ -228,7 +228,7 @@ namespace Rocola
             // 54 vertices finales y el alfa del borde, calculando cada esquina una vez.
             for (int row = 0; row < 4; row++) for (int col = 0; col < 4; col++)
                 NativeCorner(row * 4 + col, col, row, color);
-            D3D9.Vtx[] malla = g != null ? g.Vertices : nativeSoftQuad;
+            Tarjeta.Vtx[] malla = g != null ? g.Vertices : nativeSoftQuad;
             int n = 0;
             for (int row = 0; row < 3; row++) for (int col = 0; col < 3; col++) {
                 int a = row * 4 + col;
@@ -249,7 +249,7 @@ namespace Rocola
         }
         private void ReleaseNativeCovers()
         {
-            foreach (CellTex texture in nativeCovers.Values) if (texture.Tex != IntPtr.Zero) D3D9.Release(texture.Tex);
+            foreach (CellTex texture in nativeCovers.Values) if (texture.Tex != IntPtr.Zero) Tarjeta.Suelta(texture.Tex);
             nativeCovers.Clear(); protectedNativeAhead.Clear(); Array.Clear(nativeGridTex, 0, nativeGridTex.Length); cellBytesDirty = true;
         }
         private bool DiscardUnusedNative(bool allowAdjacent)
@@ -271,14 +271,14 @@ namespace Rocola
             while (nativeCovers.Count > cellTextureCapacity || CachedCellBytes() > cellTextureBudget)
                 if (!DiscardUnusedNative(true)) break; // visibles siempre protegidas; vecinas solo ceden bajo presion real
         }
-        private static void AtlasStraightEdge(D3D9.Vtx[] result, int offset, GpuGridCell cell, Rectangle src, Rectangle at, float u, float v, uint color)
+        private static void AtlasStraightEdge(Tarjeta.Vtx[] result, int offset, GpuGridCell cell, Rectangle src, Rectangle at, float u, float v, uint color)
         {
             float sx = cell.W / (cell.Layout.Text1At.Width + cell.Layout.Text2At.Width), sy = cell.H / cell.Layout.Text2At.Bottom;
             AtlasPart(result, offset, cell.X, cell.Y, sx, sy, src, at, u, v, color);
             // Centro de la fila unica: sin interpolar con el relleno transparente al estirar.
             for (int i = 0; i < 6; i++) result[offset + i].V = (src.Y + .5f) * v;
         }
-        private static void SeparatedVertices(GpuGridCell cell, float uMax, float vMax, uint color, D3D9.Vtx[] result)
+        private static void SeparatedVertices(GpuGridCell cell, float uMax, float vMax, uint color, Tarjeta.Vtx[] result)
         {
             GpuCellLayout p = cell.Layout;
             float u = uMax / p.Width, v = vMax / p.Height;

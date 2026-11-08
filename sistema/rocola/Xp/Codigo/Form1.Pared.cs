@@ -482,9 +482,9 @@ namespace Rocola
                 {
                     s = source.LockBits(src, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
                     d = dest.LockBits(dst, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
-                    for (int y = 0; y < src.Height; y++) D3D9.CopyMemory(
-                        new IntPtr(d.Scan0.ToInt64() + (long)y * d.Stride),
-                        new IntPtr(s.Scan0.ToInt64() + (long)y * s.Stride), (UIntPtr)(uint)(src.Width * 4));
+                    for (int y = 0; y < src.Height; y++) unsafe { Buffer.MemoryCopy(   // EN LINUX: RtlMoveMemory de kernel32 = Buffer.MemoryCopy (origen, destino; vale aunque se pisen)
+                        (void*)(s.Scan0.ToInt64() + (long)y * s.Stride),
+                        (void*)(d.Scan0.ToInt64() + (long)y * d.Stride), src.Width * 4, src.Width * 4); }
                 }
                 finally { try { if (d != null) dest.UnlockBits(d); } finally { if (s != null) source.UnlockBits(s); } }
             }

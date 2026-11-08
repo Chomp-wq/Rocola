@@ -41,12 +41,12 @@ namespace Rocola
         private int asistenteTextoClave = -1;
         private double asistenteTextoInicio;
         private float asistenteU, asistenteV;
-        private readonly D3D9.Vtx[] asistenteQuad = new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] asistenteVelo = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] asistenteQuad = new Tarjeta.Vtx[6];
+        private readonly Tarjeta.Vtx[] asistenteVelo = new Tarjeta.Vtx[6];
         // Dos lotes de miembros alrededor del cuerpo, < 72 KiB en total.
         // No hay cara ni geometria facial, ni reservas por cuadro.
-        private readonly D3D9.Vtx[] asistenteMiembros = new D3D9.Vtx[1900];
-        private readonly D3D9.Vtx[] asistenteBrazos = new D3D9.Vtx[700];
+        private readonly Tarjeta.Vtx[] asistenteMiembros = new Tarjeta.Vtx[1900];
+        private readonly Tarjeta.Vtx[] asistenteBrazos = new Tarjeta.Vtx[700];
         private static readonly float[] asistenteCirculoX = AsistenteCirculo(true);
         private static readonly float[] asistenteCirculoY = AsistenteCirculo(false);
         internal const double AsistenteSaltoSegundos = .72;
@@ -400,7 +400,7 @@ namespace Rocola
 
         // Geometria negra con extremos redondos y filo suavizado. Se puede probar
         // sin dispositivo D3D; un unico lote para brazos, manos, piernas y zapatos.
-        internal static int AsistenteMallaMiembros(D3D9.Vtx[] v, float cx, float cy,
+        internal static int AsistenteMallaMiembros(Tarjeta.Vtx[] v, float cx, float cy,
             float radio, float cantidad, float gesto, float alfa)
         {
             if (!AsistenteGeometriaValida(v, 2600, cx, cy, radio)) return 0;
@@ -414,7 +414,7 @@ namespace Rocola
             return n;
         }
 
-        private static void AsistenteSegmento(D3D9.Vtx[] v, ref int n, float x0, float y0,
+        private static void AsistenteSegmento(Tarjeta.Vtx[] v, ref int n, float x0, float y0,
             float x1, float y1, float ancho, uint color)
         {
             float dx = x1 - x0, dy = y1 - y0;
@@ -433,7 +433,7 @@ namespace Rocola
             AsistenteDisco(v, ref n, x1, y1, ancho, color);
         }
 
-        private static void AsistenteCuadro(D3D9.Vtx[] v, ref int n, float x0, float y0,
+        private static void AsistenteCuadro(Tarjeta.Vtx[] v, ref int n, float x0, float y0,
             float x1, float y1, float x2, float y2, float x3, float y3,
             uint c0, uint c1, uint c2, uint c3)
         {
@@ -441,7 +441,7 @@ namespace Rocola
             V3(v, n++, x0, y0, c0); V3(v, n++, x2, y2, c2); V3(v, n++, x3, y3, c3);
         }
 
-        private static void AsistenteDisco(D3D9.Vtx[] v, ref int n, float x, float y, float r, uint color)
+        private static void AsistenteDisco(Tarjeta.Vtx[] v, ref int n, float x, float y, float r, uint color)
         {
             const int pasos = 12;
             float x0 = r, y0 = 0;
@@ -476,7 +476,7 @@ namespace Rocola
 
         private void SueltaPanelAsistente()
         {
-            if (asistenteTex != IntPtr.Zero) { D3D9.Release(asistenteTex); asistenteTex = IntPtr.Zero; }
+            if (asistenteTex != IntPtr.Zero) { Tarjeta.Suelta(asistenteTex); asistenteTex = IntPtr.Zero; }
             asistenteBmp = null; asistenteVer = -1; asistenteW = asistenteH = 0;
             asistenteTextoClave = -1;
         }

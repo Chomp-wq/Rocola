@@ -75,3 +75,17 @@ fuera de pantalla con llvmpipe, en `/root/rocola-trabajo/port/tarjeta/cintas` (f
 Comprobación de las herramientas (antes de traducir): cada cinta da la misma salida en la referencia congelada y en este árbol (con las
 líneas de la grabadora), también con `--limite-textura 256` y con `--redimensiona 40:1280x1024,200:800x600`; dos corridas de la
 referencia dan lo mismo; y saltando un dibujo (`ROCOLA_SALTA_DIBUJOS=5`) salen distintos los 57 cuadros de una cinta de prueba.
+
+## T1. Los renombres mecánicos
+
+En los 22 archivos de `Codigo/` que los usan (y en `Plataforma/D3D9Device.Gl.cs`, `Plataforma/PruebasLinux.cs` y la grabadora):
+`D3D9.Vtx` → `Tarjeta.Vtx`, `D3D9.VtxSize` → `Tarjeta.VtxSize`, `D3D9.Vtx2` → `Tarjeta.Vtx2`, `D3D9.Vtx2Size` → `Tarjeta.Vtx2Size`,
+`D3D9.Release` → `Tarjeta.Suelta` y `D3D9Device` → `DispositivoTarjeta` (también en los comentarios, para que el diff contra `Rocola/`
+los quite como mecánicos). `Tarjeta` es una clase nueva con el vértice (28 y 36 bytes, sin cambiar) y `Suelta`, que en este paso aún
+llama al `D3D9.Release` de antes. El `CopyMemory` (RtlMoveMemory) de `Form1.Pared.cs:485` pasa a `Buffer.MemoryCopy` (que también vale
+con origen y destino que se pisan). En los archivos que son parte de `Form1` (`CieloVivoGpu.cs`, dos líneas) va `Rocola.Tarjeta.Vtx`:
+dentro de `Form1`, `Tarjeta` es la tarjeta de Ctrl+F3 (`Form1.Ajustes.cs:379`).
+
+Comprobación: el diff contra el paso anterior, quitando esos seis cambios, son 39 líneas: las definiciones movidas a `Tarjeta`, el
+`Buffer.MemoryCopy`, las dos de `Rocola.Tarjeta` y la línea de la grabadora que pasa de `Release` a `Suelta`. Las 14 cintas dan lo mismo
+que la referencia congelada (también `--limite-textura 256` con la sintética y la 01), y una cinta grabada con este paso también.

@@ -169,15 +169,15 @@ namespace Rocola
         private readonly bool[] e3mira = new bool[Estrella3d.Caras];
         private readonly int[] e3orden = new int[Estrella3d.Caras];
         private readonly uint[] e3col = new uint[Estrella3d.Caras];
-        private readonly D3D9.Vtx[] e3caras = new D3D9.Vtx[Estrella3d.Caras * 3];
-        private readonly D3D9.Vtx[] e3filo = new D3D9.Vtx[Estrella3d.Aristas * 6];
-        private readonly D3D9.Vtx[] e3ecos = new D3D9.Vtx[12 * Estrella3d.Caras * 3];
-        private readonly D3D9.Vtx[] e3ecoFilo = new D3D9.Vtx[12 * Estrella3d.Aristas * 6];
+        private readonly Tarjeta.Vtx[] e3caras = new Tarjeta.Vtx[Estrella3d.Caras * 3];
+        private readonly Tarjeta.Vtx[] e3filo = new Tarjeta.Vtx[Estrella3d.Aristas * 6];
+        private readonly Tarjeta.Vtx[] e3ecos = new Tarjeta.Vtx[12 * Estrella3d.Caras * 3];
+        private readonly Tarjeta.Vtx[] e3ecoFilo = new Tarjeta.Vtx[12 * Estrella3d.Aristas * 6];
         // Los ecos son poses congeladas: solo cambia su alfa, no su proyeccion ni su luz.
         // Cache fija por slot del anillo, independiente del lote compacto que se manda a D3D.
         // 80 KiB de vertices como maximo por panel; ninguna reserva durante el dibujo.
-        private readonly D3D9.Vtx[] e3ecoPose = new D3D9.Vtx[12 * Estrella3d.Caras * 3];
-        private readonly D3D9.Vtx[] e3ecoBorde = new D3D9.Vtx[12 * Estrella3d.Aristas * 6];
+        private readonly Tarjeta.Vtx[] e3ecoPose = new Tarjeta.Vtx[12 * Estrella3d.Caras * 3];
+        private readonly Tarjeta.Vtx[] e3ecoBorde = new Tarjeta.Vtx[12 * Estrella3d.Aristas * 6];
         private readonly StarEcho[] e3ecoClave = new StarEcho[12];
         private readonly bool[] e3ecoValida = new bool[12];
         private readonly bool[] e3ecoDegradado = new bool[12];
@@ -227,7 +227,7 @@ namespace Rocola
         // Una pose de la estrella en triangulos: sus caras visibles de atras hacia adelante en 'caras' y la franja de
         // la silueta en 'filo' (se desvanece hacia afuera en 'ancho' pixeles). Con 'eco', color de holograma. Devuelve
         // cuantos vertices de caras escribio.
-        private int PoseEstrella(D3D9.Vtx[] caras, int c0, D3D9.Vtx[] filo, int f0, float cx, float cy, float r,
+        private int PoseEstrella(Tarjeta.Vtx[] caras, int c0, Tarjeta.Vtx[] filo, int f0, float cx, float cy, float r,
             double yaw, double pitch, double roll, uint tinte, float alfa, bool eco, float ancho,
             out int nFilo, out int mejor, out float brillo)
         {
@@ -308,7 +308,7 @@ namespace Rocola
             nFilo = f - f0;
             return v - c0;
         }
-        private static void V3(D3D9.Vtx[] a, int i, float x, float y, uint c)
+        private static void V3(Tarjeta.Vtx[] a, int i, float x, float y, uint c)
         { a[i].X = x - .5f; a[i].Y = y - .5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = 0f; a[i].V = 0f; }
 
         // Holograma: el color de la copia, vivo (algo mas saturado que el de la cancion) y con sus facetas todavia
@@ -396,13 +396,13 @@ namespace Rocola
                 uint a8 = alfa <= 0 ? 0u : alfa >= 255 ? 255u : (uint)(alfa + .5f);
                 for (int k = 0; k < e3ecoN[slot]; k++)
                 {
-                    D3D9.Vtx vertex = e3ecoPose[c0 + k];
+                    Tarjeta.Vtx vertex = e3ecoPose[c0 + k];
                     vertex.Color = (a8 << 24) | (vertex.Color & 0xFFFFFFu);
                     e3ecos[v++] = vertex;
                 }
                 for (int k = 0; k < e3ecoBordeN[slot]; k++)
                 {
-                    D3D9.Vtx vertex = e3ecoBorde[f0 + k];
+                    Tarjeta.Vtx vertex = e3ecoBorde[f0 + k];
                     vertex.Color = (vertex.Color & 0xFFFFFFu) | (vertex.Color >= 0x1000000u ? (a8 / 2) << 24 : 0u);
                     e3ecoFilo[f++] = vertex;
                 }

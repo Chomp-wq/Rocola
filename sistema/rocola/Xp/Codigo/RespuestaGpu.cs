@@ -88,10 +88,10 @@ namespace Rocola
         {
             if (tex == IntPtr.Zero) return;
             int tw = Pot2(bw), th = Pot2(bh);
-            if (tw == 0 || th == 0 || TexturasDivididasGpu.Busca(tex) != null) { D3D9.Release(tex); return; }   // (las divididas, no)
+            if (tw == 0 || th == 0 || TexturasDivididasGpu.Busca(tex) != null) { Tarjeta.Suelta(tex); return; }   // (las divididas, no)
             int k = -1;
             for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] == IntPtr.Zero) { k = i; break; }
-            if (k < 0) { k = repuestoTurno; repuestoTurno = (repuestoTurno + 1) % RepuestoMax; D3D9.Release(repuestoTex[k]); }
+            if (k < 0) { k = repuestoTurno; repuestoTurno = (repuestoTurno + 1) % RepuestoMax; Tarjeta.Suelta(repuestoTex[k]); }
             repuestoTex[k] = tex; repuestoTw[k] = tw; repuestoTh[k] = th; RepuestosGuardados++;
         }
         private IntPtr TomaRepuesto(int bw, int bh)
@@ -105,7 +105,7 @@ namespace Rocola
         }
         private void SueltaRepuestos()
         {
-            for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] != IntPtr.Zero) { D3D9.Release(repuestoTex[i]); repuestoTex[i] = IntPtr.Zero; }
+            for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] != IntPtr.Zero) { Tarjeta.Suelta(repuestoTex[i]); repuestoTex[i] = IntPtr.Zero; }
         }
         // Como Upload, pero una textura de otra medida se guarda en vez de destruirse, y se usa una guardada que valga.
         private IntPtr SubeReponiendo(IntPtr tex, ref int bw, ref int bh, Bitmap bmp, out float u, out float v)
@@ -118,7 +118,7 @@ namespace Rocola
                 {
                     if (libroOn) libro.Subidas++;
                     if (stars.UpdateOverlay(r, bmp, out u, out v)) { bw = bmp.Width; bh = bmp.Height; RepuestosUsados++; return r; }
-                    D3D9.Release(r);
+                    Tarjeta.Suelta(r);
                 }
             }
             return Upload(tex, ref bw, ref bh, bmp, out u, out v);
@@ -296,7 +296,7 @@ namespace Rocola
                 if (old < 0) break;
                 CoverSlot s = recentCovers[old];
                 total -= CoverBytes(s.W, s.H);
-                if (s.Tex != IntPtr.Zero) D3D9.Release(s.Tex);
+                if (s.Tex != IntPtr.Zero) Tarjeta.Suelta(s.Tex);
                 recentCovers[old] = null; // no somos duenos del Bitmap
             }
         }

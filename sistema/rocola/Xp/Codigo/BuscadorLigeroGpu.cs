@@ -54,7 +54,7 @@ namespace Rocola
         internal bool RobaUiParaVentana(int version)
         {
             if (uiTex == IntPtr.Zero || version != uiVer || uiBmpW < 1 || uiBmpH < 1) return false;   // (sin interfaz: uiTex es cero)
-            if (winTex != IntPtr.Zero) D3D9.Release(winTex);
+            if (winTex != IntPtr.Zero) Tarjeta.Suelta(winTex);
             winTex = uiTex; winBw = uiBmpW; winBh = uiBmpH; winU = uiU; winV = uiV; winLastBmp = null;
             uiTex = IntPtr.Zero; uiBmpW = uiBmpH = 0; uiTeselas = null;
             return true;

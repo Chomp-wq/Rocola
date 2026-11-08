@@ -213,7 +213,7 @@ namespace Rocola
         // C1 y C2 (Ctrl+F3 -> Fondo -> Pulido). Encendidos de fabrica; apagados, el cielo de siempre.
         public bool CieloSuave = true, ColoresProfundos = true;
         internal const int CieloFranjas = 6;   // por tramo: doce en total
-        private D3D9.Vtx[] skySuave;
+        private Tarjeta.Vtx[] skySuave;
         private bool cieloSuaveListo;
         private float cieloSuaveAncho, cieloSuaveAlto, cieloSuaveMedio, cieloSuaveExtra;
         private uint cieloSuaveArriba, cieloSuaveCentro, cieloSuaveAbajo;
@@ -235,7 +235,7 @@ namespace Rocola
             { CielosSuavesReusados++; return cieloSuaveTris; }
             cieloSuaveListo = false;
             int n = 2 * CieloFranjas * 6 + 6;
-            if (skySuave == null || skySuave.Length < n) skySuave = new D3D9.Vtx[n];
+            if (skySuave == null || skySuave.Length < n) skySuave = new Tarjeta.Vtx[n];
             float x1 = h > 0f ? midY / h : 0.5f;
             int v = 0;
             for (int tramo = 0; tramo < 2; tramo++)
@@ -362,7 +362,7 @@ namespace Rocola
         }
 
         // E3: ocho puntas (cuatro largas y cuatro cortas) que se apagan hacia la punta, sumando luz, y un nucleo pequeño.
-        private readonly D3D9.Vtx[] destelloV = new D3D9.Vtx[8 * 3];
+        private readonly Tarjeta.Vtx[] destelloV = new Tarjeta.Vtx[8 * 3];
         private void DibujaDestello(float x, float y, float r, float brillo, double now)
         {
             float a = Math.Min(1f, brillo);
@@ -386,17 +386,17 @@ namespace Rocola
 
         // E5: la pose de ahora (e3caras), invertida bajo la raya del horizonte, tenue y desvaneciendose hacia abajo. Solo si
         // la estrella entera esta por encima de la raya. Misma mezcla que la estrella; como mucho un tercio de su alfa.
-        private D3D9.Vtx[] espejoV;
+        private Tarjeta.Vtx[] espejoV;
         internal float Horizonte() { return aurDibujada ? aurDibujadaBase - AurLineaAlza : StatusTopY; }
         private void DibujaEspejoEstrella(int n, float cx, float cy, float r)
         {
             float hy = Horizonte();
             if (n <= 0 || cy + r * 1.05f >= hy || hy >= Height) return;
-            if (espejoV == null || espejoV.Length < n) espejoV = new D3D9.Vtx[Math.Max(n, Estrella3d.Caras * 3)];
+            if (espejoV == null || espejoV.Length < n) espejoV = new Tarjeta.Vtx[Math.Max(n, Estrella3d.Caras * 3)];
             float fade = r * 1.6f;
             for (int i = 0; i < n; i++)
             {
-                D3D9.Vtx q = e3caras[i];
+                Tarjeta.Vtx q = e3caras[i];
                 float y2 = 2f * hy - (q.Y + .5f);
                 float k = 1f - (y2 - hy) / fade; if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
                 uint c = q.Color;
@@ -414,7 +414,7 @@ namespace Rocola
         // cara casi de frente (mientras gira no se ve) y sin bamboleo.
         public bool PortadaBrillo = true;
         internal const double BrilloPeriodo = 6.5, BrilloBarrido = 1.2;
-        private readonly D3D9.Vtx[] brilloV = new D3D9.Vtx[2 * 6 * 3];
+        private readonly Tarjeta.Vtx[] brilloV = new Tarjeta.Vtx[2 * 6 * 3];
         private readonly float[] clipU = new float[12], clipV = new float[12], clipU2 = new float[12], clipV2 = new float[12];
         // Donde va la franja en este momento (u + v, de -0,3 a 2,3), o NaN si no toca.
         internal static float FranjaBrillo(double segundos)

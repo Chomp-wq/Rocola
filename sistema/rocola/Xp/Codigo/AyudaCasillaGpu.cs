@@ -262,7 +262,7 @@ namespace Rocola
         private IntPtr ayudaTex; private int ayudaTW, ayudaTH; private float ayudaU = 1f, ayudaV = 1f;
         private int ayudaLado = -1;
         private RectangleF ayudaRect;
-        private readonly D3D9.Vtx[] ayudaQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] ayudaQuad = new Tarjeta.Vtx[6];
 
         // Antes de Begin: se hornea una vez por tamano (nunca por cuadro).
         private void PreparaAyudaIcono()
@@ -321,7 +321,7 @@ namespace Rocola
 
         private void SueltaAyudaIcono()
         {
-            if (ayudaTex != IntPtr.Zero) { D3D9.Release(ayudaTex); ayudaTex = IntPtr.Zero; }
+            if (ayudaTex != IntPtr.Zero) { Tarjeta.Suelta(ayudaTex); ayudaTex = IntPtr.Zero; }
             ayudaLado = -1;
         }
     }

@@ -1712,7 +1712,7 @@ namespace Rocola
         public float CartaElegidaAlfa = 1f;   // la de este cuadro: la usa la tarjeta elegida (pieza 2)
         internal const int PiezaCartas = 4;
         private readonly CartaGpu[] cartasBuf = new CartaGpu[24];
-        private readonly D3D9.Vtx[] cartasVtx = new D3D9.Vtx[24 * 6];
+        private readonly Tarjeta.Vtx[] cartasVtx = new Tarjeta.Vtx[24 * 6];
 
         // Va ANTES que las demas piezas: la tarjeta elegida y la tecla elegida se dibujan encima. 'dy' la corre hacia abajo
         // (con la ventana del buscador subiendo) y 'alfa' y 'opacidad' son los de lo que tiene debajo.
@@ -1751,7 +1751,7 @@ namespace Rocola
             }
             if (m > 0) stars.DrawTexturedBatch(tex, cartasVtx, m * 2);
         }
-        private static void VC(ref D3D9.Vtx x, float px, float py, uint c, float u, float v)
+        private static void VC(ref Tarjeta.Vtx x, float px, float py, uint c, float u, float v)
         { x.X = px; x.Y = py; x.Z = 0; x.Rhw = 1; x.Color = c; x.U = u; x.V = v; }
 
         // ---- CON LA VENTANA DEL BUSCADOR (sube al abrir y baja al cerrar: BuildWinState en Form1.Sonido.cs) ----
@@ -1789,7 +1789,7 @@ namespace Rocola
         internal void SueltaPiezasVentana()
         {
             for (int i = 0; i < MaxPiezas; i++)
-                if (ventPiezaTex[i] != IntPtr.Zero) { D3D9.Release(ventPiezaTex[i]); ventPiezaTex[i] = IntPtr.Zero; }
+                if (ventPiezaTex[i] != IntPtr.Zero) { Tarjeta.Suelta(ventPiezaTex[i]); ventPiezaTex[i] = IntPtr.Zero; }
         }
         // Despues de dibujar la ventana (D3D9Star.cs). 'uiPropia' = la ventana es la propia imagen de la UI (abriendo).
         private void PiezasConLaVentana(GpuWin gw, bool uiPropia)

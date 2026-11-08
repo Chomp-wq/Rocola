@@ -741,7 +741,7 @@ namespace Rocola
         private readonly float[] atenua = new float[MaxCells];
         private IntPtr focoTex; private int focoVer = -1, focoBw, focoBh; private float focoU = 1f, focoV = 1f;
         private IntPtr fichaTex; private int fichaVer = -1, fichaBw, fichaBh; private float fichaU = 1f, fichaV = 1f;
-        private readonly D3D9.Vtx[] focoQuad = new D3D9.Vtx[6], fichaQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] focoQuad = new Tarjeta.Vtx[6], fichaQuad = new Tarjeta.Vtx[6];
 
         // Crece desde el borde de abajo, centrado: hacia abajo no se mueve, que ahi va el nombre del disco.
         internal static void Enfoca(float s, ref float x, ref float y, ref float w, ref float h)
@@ -936,8 +936,8 @@ namespace Rocola
         }
         private void SueltaPantallaViva()
         {
-            if (focoTex != IntPtr.Zero) { D3D9.Release(focoTex); focoTex = IntPtr.Zero; }
-            if (fichaTex != IntPtr.Zero) { D3D9.Release(fichaTex); fichaTex = IntPtr.Zero; }
+            if (focoTex != IntPtr.Zero) { Tarjeta.Suelta(focoTex); focoTex = IntPtr.Zero; }
+            if (fichaTex != IntPtr.Zero) { Tarjeta.Suelta(fichaTex); fichaTex = IntPtr.Zero; }
             focoVer = fichaVer = -1; focoBw = focoBh = fichaBw = fichaBh = 0;
             enfoque = 0f; enfoqueX = float.NaN; enfoqueDe = null; haloR = -1f; relevoDesde = 0f;
         }

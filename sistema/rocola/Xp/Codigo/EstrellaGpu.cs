@@ -144,8 +144,8 @@ namespace Rocola
             internal float Pitch;
         }
         private readonly StarEcho[] starEchoes=new StarEcho[12];
-        private readonly D3D9.Vtx[] starEchoQuad=new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] starEchoBatch=new D3D9.Vtx[12*6];
+        private readonly Tarjeta.Vtx[] starEchoQuad=new Tarjeta.Vtx[6];
+        private readonly Tarjeta.Vtx[] starEchoBatch=new Tarjeta.Vtx[12*6];
         private int starEchoHead,starEchoCount,starEchoWidth,starEchoHeight;
         private double starEchoLast=-1,starEchoClock=-1;
         private float starEchoVisibility;
@@ -196,7 +196,7 @@ namespace Rocola
             return 0xFF000000u|((48+((rgb>>16)&255)*207/255)<<16)|
                 ((48+((rgb>>8)&255)*207/255)<<8)|(48+(rgb&255)*207/255);
         }
-        private static void RotateStarQuad(D3D9.Vtx[] quad,float x,float y,float angle)
+        private static void RotateStarQuad(Tarjeta.Vtx[] quad,float x,float y,float angle)
         {
             float co=(float)Math.Cos(angle),si=(float)Math.Sin(angle);
             for(int i=0;i<quad.Length;i++)

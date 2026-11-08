@@ -1,7 +1,7 @@
 // ====================================================================================================
 //  RENDER POR GPU (Direct3D 9), por interop a d3d9.dll (sin SlimDX). Cielo + estrellas con glow/destello.
 // ----------------------------------------------------------------------------------------------------
-//  - D3D9 / D3D9Device : interop crudo y un dispositivo que dibuja sky + estrellas texturizadas.
+//  - D3D9 / DispositivoTarjeta : interop crudo y un dispositivo que dibuja sky + estrellas texturizadas.
 //  - GpuStarfield      : campo estrellado reusable (titileo + latido), teñible por genero.
 //  - GpuTestWindow     : ventana de prueba (F12) que lo muestra con FPS.
 //  - GpuPanel          : control D3D9 para usar el campo estrellado COMO FONDO de la vista de discos.
@@ -39,10 +39,7 @@ namespace Rocola
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int LockRegionDel(IntPtr self, uint level, out LockedRect lr, ref RectI rect, uint flags);
 
-        [StructLayout(LayoutKind.Sequential)]
-        public struct Vtx { public float X, Y, Z, Rhw; public uint Color; public float U, V; }
         public const uint FVF = 0x004 | 0x040 | 0x100;   // XYZRHW | DIFFUSE | TEX1
-        public const int VtxSize = 28;
 
         public const uint DEVTYPE_HAL = 1;
         public const uint CREATE_HARDWARE_VP = 0x40, CREATE_SOFTWARE_VP = 0x20, CREATE_FPU_PRESERVE = 0x2;
@@ -117,7 +114,6 @@ namespace Rocola
         }
         public static void Release(IntPtr punk)
         {
-            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.Release(punk); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (punk == IntPtr.Zero) return;
             if (TexturasDivididasGpu.Libera(punk)) return;
             PortadasCompartidasGpu.AlSoltar(punk);
@@ -125,23 +121,36 @@ namespace Rocola
         }
     }
 
+    // EN LINUX: el vertice de la tarjeta y soltar una textura van en Tarjeta (en XP, en D3D9, el interop de Direct3D 9)
+    internal static partial class Tarjeta
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vtx { public float X, Y, Z, Rhw; public uint Color; public float U, V; }
+        public const int VtxSize = 28;
+        public static void Suelta(IntPtr punk)   // EN LINUX: D3D9.Release
+        {
+            if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.Suelta(punk); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
+            D3D9.Release(punk);
+        }
+    }
+
     // -------- Dispositivo D3D9 sobre una ventana --------
-    internal sealed partial class D3D9Device
+    internal sealed partial class DispositivoTarjeta
     {
         public uint CubeBaseColor = 0x003C466Eu;
         private IntPtr d3d, dev;
-        private D3D9.Vtx[] verticesFijados;
+        private Tarjeta.Vtx[] verticesFijados;
         private GCHandle pinVertices;
         private IntPtr direccionVertices;
         // Solo el ultimo array, durante una escena. Sin busquedas/listas ni arrays clavados entre cuadros.
-        private IntPtr FijaVertices(D3D9.Vtx[] datos, out GCHandle temporal)
+        private IntPtr FijaVertices(Tarjeta.Vtx[] datos, out GCHandle temporal)
         {
             temporal = new GCHandle();
             if (inScene)
             {
                 if (object.ReferenceEquals(verticesFijados, datos)) return direccionVertices;
                 SueltaPinesVertices();
-                long bytes = datos.LongLength * D3D9.VtxSize;
+                long bytes = datos.LongLength * Tarjeta.VtxSize;
                 if (bytes <= 6 * 1024 * 1024)
                 {
                     pinVertices = GCHandle.Alloc(datos, GCHandleType.Pinned);
@@ -192,7 +201,7 @@ namespace Rocola
             }
         }
 
-        public D3D9Device(IntPtr hwnd, int w, int h)
+        public DispositivoTarjeta(IntPtr hwnd, int w, int h)
         {
             if (CintaTarjeta.Graba) CintaTarjeta.Nuevo(this, hwnd, w, h);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             try
@@ -207,15 +216,15 @@ namespace Rocola
                 {
                     // Aunque un driver correcto devuelve NULL al fallar, no se deja escapar una referencia
                     // defectuosa antes de intentar el camino por software.
-                    if (dv != IntPtr.Zero) D3D9.Release(dv);
+                    if (dv != IntPtr.Zero) Tarjeta.Suelta(dv);
                     dv = IntPtr.Zero;
                     verticesSoftware = true;
                     hr = create(d3d, 0, D3D9.DEVTYPE_HAL, hwnd, D3D9.CREATE_SOFTWARE_VP | D3D9.CREATE_FPU_PRESERVE, ref pp, out dv);
                 }
                 if (hr < 0 || dv == IntPtr.Zero)
                 {
-                    if (dv != IntPtr.Zero) D3D9.Release(dv);
-                    D3D9.Release(d3d); d3d = IntPtr.Zero;
+                    if (dv != IntPtr.Zero) Tarjeta.Suelta(dv);
+                    Tarjeta.Suelta(d3d); d3d = IntPtr.Zero;
                     return;
                 }
                 dev = dv;
@@ -482,19 +491,19 @@ namespace Rocola
                 if (w < 1 || h < 1) return IntPtr.Zero;
                 if (createTex(dev, (uint)w, (uint)h, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero) < 0 || tex == IntPtr.Zero)
                 {
-                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    if (tex != IntPtr.Zero) Tarjeta.Suelta(tex);
                     return IntPtr.Zero;
                 }
                 if (!SubeBitmap(tex, bmp, w, h))
                 {
-                    D3D9.Release(tex);
+                    Tarjeta.Suelta(tex);
                     return IntPtr.Zero;
                 }
                 return tex;
             }
             catch
             {
-                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                if (tex != IntPtr.Zero) Tarjeta.Suelta(tex);
                 return IntPtr.Zero;
             }
         }
@@ -635,7 +644,7 @@ namespace Rocola
 
         // Cielo (color del vertice, sin mezcla) + estrellas (textura de glow, aditivo).
         // Cielo (color del vertice, sin mezcla). 2 quads apilados = degradado de 3 paradas (4 triangulos).
-        public void DrawSky(D3D9.Vtx[] sky)
+        public void DrawSky(Tarjeta.Vtx[] sky)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawSky(this, sky); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost) return;
@@ -643,7 +652,7 @@ namespace Rocola
             Draw(sky, 4);
         }
         // Estrellas (textura de glow, aditivo). Se puede llamar 2 veces (patron anterior + nuevo) en el entrecruzado.
-        public void DrawStars(D3D9.Vtx[] stars, int starTris, IntPtr glowTex)
+        public void DrawStars(Tarjeta.Vtx[] stars, int starTris, IntPtr glowTex)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawStars(this, stars, starTris, glowTex); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || starTris <= 0 || glowTex == IntPtr.Zero) return;
@@ -652,7 +661,7 @@ namespace Rocola
         }
 
         // Estelas de estrellas fugaces: cuadrangulos BLANCOS con mezcla ADITIVA y SIN textura (color del vertice).
-        public void DrawShootStreaks(D3D9.Vtx[] v, int tris)
+        public void DrawShootStreaks(Tarjeta.Vtx[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawShootStreaks(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
@@ -663,7 +672,7 @@ namespace Rocola
         // Malla PLANA: triangulos SIN textura, color en los vertices y mezcla NORMAL (encima, no sumada).
         // Es lo que pinta el fondo reactivo: un relleno de color que la tarjeta degrada sola entre vertice y
         // vertice. Al no sumar luz nunca se lava hacia el blanco, que es lo que manchaba con los halos.
-        public void DrawMesh(D3D9.Vtx[] v, int tris)
+        public void DrawMesh(Tarjeta.Vtx[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawMesh(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
@@ -674,7 +683,7 @@ namespace Rocola
         // La misma malla plana pero SUMANDO luz en vez de tapar. Un filo encendido se lee como neon
         // justamente por esto: lo que hay debajo se sigue viendo y encima se le suma el brillo, asi que
         // el nucleo satura a claro y el resplandor de alrededor tine sin borrar. Tapando no hay neon.
-        public void DrawMeshAdd(D3D9.Vtx[] v, int tris)
+        public void DrawMeshAdd(Tarjeta.Vtx[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawMeshAdd(this, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
@@ -683,7 +692,7 @@ namespace Rocola
         }
 
         // Un cuadro texturizado (2 triangulos) con mezcla NORMAL (encima): para los cubos, etiquetas, etc.
-        public void DrawTexQuad(IntPtr tex, D3D9.Vtx[] quad)
+        public void DrawTexQuad(IntPtr tex, Tarjeta.Vtx[] quad)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawTexQuad(this, tex, quad); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
@@ -692,7 +701,7 @@ namespace Rocola
         }
 
         // Solo para una superficie cuya textura y vertices son completamente opacos.
-        public void DrawOpaqueQuad(IntPtr tex, D3D9.Vtx[] quad)
+        public void DrawOpaqueQuad(IntPtr tex, Tarjeta.Vtx[] quad)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawOpaqueQuad(this, tex, quad); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tex == IntPtr.Zero) return;
@@ -702,7 +711,7 @@ namespace Rocola
         // Una tanda de triangulos con mezcla NORMAL (encima), con textura o sin ella. Es la pieza con la
         // que el archivo del dibujo arma los cubos: le pasa cara por cara y el cache de estados hace que
         // repetir la peticion no cueste nada.
-        public void DrawQuads(IntPtr tex, D3D9.Vtx[] v, int tris)
+        public void DrawQuads(IntPtr tex, Tarjeta.Vtx[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawQuads(this, tex, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0) return;
@@ -711,7 +720,7 @@ namespace Rocola
             Draw(v, tris);
         }
 
-        public void DrawQuadsWrap(IntPtr tex, D3D9.Vtx[] v, int tris)
+        public void DrawQuadsWrap(IntPtr tex, Tarjeta.Vtx[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawQuadsWrap(this, tex, v, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || tris <= 0 || tex == IntPtr.Zero) return;
@@ -719,8 +728,8 @@ namespace Rocola
         }
 
         // Buffers reutilizables del cubo (evita asignar por cuadro). Solo se usan desde el hilo de render.
-        private readonly D3D9.Vtx[] cubeFaceV = new D3D9.Vtx[6];
-        private D3D9.Vtx[] cubeBatchV;
+        private readonly Tarjeta.Vtx[] cubeFaceV = new Tarjeta.Vtx[6];
+        private Tarjeta.Vtx[] cubeBatchV;
         private readonly double[] cbx = new double[4];
         private readonly double[] cbz = new double[4];
         private readonly int[] cbo = new int[4];
@@ -736,7 +745,7 @@ namespace Rocola
             internal bool Textura;
             internal uint Color, Alfa;
             internal int N;
-            internal readonly D3D9.Vtx[] Vertices = new D3D9.Vtx[24];
+            internal readonly Tarjeta.Vtx[] Vertices = new Tarjeta.Vtx[24];
         }
         private CuboPose[] cuboPoses;
         private int cuboSiguiente;
@@ -808,7 +817,7 @@ namespace Rocola
             if (pose.N > 0) Draw(cubeBatchV, pose.N / 3);
         }
         // Construye la cara (2 triangulos) con sus 4 esquinas ROTADAS el bamboleo alrededor de (cx,cy).
-        private static void CubeFace(D3D9.Vtx[] v, float x0, float y0, float x1, float y1,
+        private static void CubeFace(Tarjeta.Vtx[] v, float x0, float y0, float x1, float y1,
             double cx, double cy, double ct, double st, float uM, float vM, uint c)
         {
             float tlx, tly, trx, tryy, brx, bry, blx, bly;
@@ -822,7 +831,7 @@ namespace Rocola
             double dx = x - cx, dy = y - cy;
             ox = (float)(cx + dx * ct - dy * st); oy = (float)(cy + dx * st + dy * ct);
         }
-        private static void CFV(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
+        private static void CFV(ref Tarjeta.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x - 0.5f; v.Y = y - 0.5f; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
 
         private static int Pow2(int n)
         {
@@ -855,7 +864,7 @@ namespace Rocola
             int hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
             if (hr >= 0 && tex != IntPtr.Zero) return hr;
             if (hr != HrSinMemoriaVideo && hr != HrSinMemoria) return hr;
-            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
             double ahora = GpuPanel.AhoraMs();
             if (evictOk && ahora - ultimaEvicion >= EntreEvicionesMs)
             {
@@ -866,7 +875,7 @@ namespace Rocola
                 {
                     hr = createTex(dev, tw, th, 1, 0, D3D9.FMT_A8R8G8B8, D3D9.POOL_MANAGED, out tex, IntPtr.Zero);
                     if (hr >= 0 && tex != IntPtr.Zero) return hr;
-                    if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                    if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
                 }
             }
             creaBloqueadoHasta = GpuPanel.AhoraMs() + EsperaSinMemoriaMs; creaFallidaBytes = bytes;
@@ -885,12 +894,12 @@ namespace Rocola
                 if (tw > LimiteTexturaW || th > LimiteTexturaH) return CreaTexturaDividida(bmp, out uMax, out vMax);
                 if (CreaTexturaManejada((uint)tw, (uint)th, out tex) < 0 || tex == IntPtr.Zero)
                 {
-                    if (tex != IntPtr.Zero) D3D9.Release(tex);
+                    if (tex != IntPtr.Zero) Tarjeta.Suelta(tex);
                     return IntPtr.Zero;
                 }
                 if (!SubeBitmapBorde(tex, bmp, w, h, tw, th))
                 {
-                    D3D9.Release(tex);
+                    Tarjeta.Suelta(tex);
                     return IntPtr.Zero;
                 }
                 uMax = (float)w / tw; vMax = (float)h / th;
@@ -898,7 +907,7 @@ namespace Rocola
             }
             catch
             {
-                if (tex != IntPtr.Zero) D3D9.Release(tex);
+                if (tex != IntPtr.Zero) Tarjeta.Suelta(tex);
                 return IntPtr.Zero;
             }
         }
@@ -952,7 +961,7 @@ namespace Rocola
             return d.Width < (uint)tw || d.Height < (uint)th;
         }
 
-        private void Draw(D3D9.Vtx[] verts, int tris)
+        private void Draw(Tarjeta.Vtx[] verts, int tris)
         {
             if (enMedia) { verts = EscalaMedia(verts, tris); if (verts == null) return; }   // a la imagen intermedia (PerformanceGpu.cs)
             else if (VinetaPuntos) { verts = Vinetea(verts, tris); if (verts == null) return; }   // G2: la vineta en cada punto (PerformanceGpu.cs)
@@ -961,7 +970,7 @@ namespace Rocola
             DrawFisico(verts, tris);
         }
 
-        private void DrawFisico(D3D9.Vtx[] verts, int tris)
+        private void DrawFisico(Tarjeta.Vtx[] verts, int tris)
         {
             if (dev == IntPtr.Zero || lost || verts == null || tris <= 0 || tris > verts.Length / 3) return;
             Pedidos++;
@@ -985,7 +994,7 @@ namespace Rocola
                     if (prueba) inicio = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (usaBuffer && DibujaVertices(tris, datos)) { Envios++; return; }
                 }
-                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, datos, D3D9.VtxSize) < 0)
+                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, datos, Tarjeta.VtxSize) < 0)
                     EstadoFallido();
                 else Envios++;
             }
@@ -1021,7 +1030,7 @@ namespace Rocola
                     }
                     verticesCap = Math.Max(49152, n);
                     // DYNAMIC | WRITEONLY, POOL_DEFAULT; liberado ANTES de cada Reset.
-                    if (creaVertices(dev, (uint)(verticesCap * D3D9.VtxSize), verticesSoftware ? 0x218u : 0x208u, D3D9.FVF, 0, out verticesGpu, IntPtr.Zero) < 0
+                    if (creaVertices(dev, (uint)(verticesCap * Tarjeta.VtxSize), verticesSoftware ? 0x218u : 0x208u, D3D9.FVF, 0, out verticesGpu, IntPtr.Zero) < 0
                         || verticesGpu == IntPtr.Zero)
                     { LiberaVertices(); verticesSinSoporte = true; return false; }
                     bloqueaVertices = D3D9.EnGl.LockVB;
@@ -1029,16 +1038,16 @@ namespace Rocola
                 }
                 if (verticesPos + n > verticesCap) verticesPos = 0;
                 IntPtr destino;
-                if (bloqueaVertices(verticesGpu, (uint)(verticesPos * D3D9.VtxSize), (uint)(n * D3D9.VtxSize),
+                if (bloqueaVertices(verticesGpu, (uint)(verticesPos * Tarjeta.VtxSize), (uint)(n * Tarjeta.VtxSize),
                     out destino, verticesPos == 0 ? 0x2000u : 0x1000u) < 0)
                 { LiberaVertices(); verticesSinSoporte = true; return false; }
                 if (destino == IntPtr.Zero)
                 { sueltaVertices(verticesGpu); LiberaVertices(); verticesSinSoporte = true; return false; }
                 bool copiado = false;
-                try { D3D9.CopyMemory(destino, datos, new UIntPtr((uint)(n * D3D9.VtxSize))); copiado = true; }
+                try { D3D9.CopyMemory(destino, datos, new UIntPtr((uint)(n * Tarjeta.VtxSize))); copiado = true; }
                 finally { if (sueltaVertices(verticesGpu) < 0) copiado = false; }
                 if (!copiado) { EstadoFallido(); return true; }
-                if (flujoVertices(dev, 0, verticesGpu, 0, D3D9.VtxSize) < 0 ||
+                if (flujoVertices(dev, 0, verticesGpu, 0, Tarjeta.VtxSize) < 0 ||
                     dibujaVertices(dev, D3D9.PT_TRIANGLELIST, (uint)verticesPos, (uint)tris) < 0)
                 { EstadoFallido(); return true; }
                 verticesPos += n;
@@ -1051,8 +1060,8 @@ namespace Rocola
             IntPtr v = verticesGpu; verticesGpu = IntPtr.Zero; verticesPos = verticesCap = 0;
             if (v != IntPtr.Zero)
             {
-                try { if (flujoVertices != null && dev != IntPtr.Zero) flujoVertices(dev, 0, IntPtr.Zero, 0, D3D9.VtxSize); } catch { }
-                D3D9.Release(v);
+                try { if (flujoVertices != null && dev != IntPtr.Zero) flujoVertices(dev, 0, IntPtr.Zero, 0, Tarjeta.VtxSize); } catch { }
+                Tarjeta.Suelta(v);
             }
             bloqueaVertices = null; sueltaVertices = null;
         }
@@ -1068,17 +1077,17 @@ namespace Rocola
             inScene = false;
             IntPtr dv = dev; dev = IntPtr.Zero;
             IntPtr d = d3d; d3d = IntPtr.Zero;
-            if (dv != IntPtr.Zero) D3D9.Release(dv);
-            if (d != IntPtr.Zero) D3D9.Release(d);
+            if (dv != IntPtr.Zero) Tarjeta.Suelta(dv);
+            if (d != IntPtr.Zero) Tarjeta.Suelta(d);
         }
     }
 
     // -------- Campo estrellado reusable (titileo + latido), teñible por genero --------
     internal sealed partial class GpuStarfield
     {
-        private D3D9Device gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
+        private DispositivoTarjeta gpu; private IntPtr glowTex; private IntPtr uiGlowTex;   // glow de estrella (con chispa) / glow radial LISO para el destello de UI
         private float[] sx, sy, sphase, sspeed, ssize; private int[] skind, sforma; private uint[] scol; private int nStars;
-        private D3D9.Vtx[] skyV = new D3D9.Vtx[12]; private D3D9.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
+        private Tarjeta.Vtx[] skyV = new Tarjeta.Vtx[12]; private Tarjeta.Vtx[] starV;   // cielo = 2 quads apilados (3 paradas de color)
         private uint skyTop = 0xFF06081A, skyMid = 0xFF101C3A, skyBot = 0xFF1A2C5A;
         // RELOJ DEL CAMPO DE ESTRELLAS. Igual que el de la aurora: en un bar la rocola no se apaga nunca, y
         // "los segundos que llevo encendida" guardados en un float se quedan sin decimales a los pocos dias
@@ -1093,7 +1102,7 @@ namespace Rocola
         // ENTRECRUZADO del patron: al cambiar de minuto se conserva el patron anterior y se desvanece mientras
         // el nuevo aparece, en vez de atenuar TODO el cielo. Asi el fondo nunca se queda sin estrellas.
         private float[] px, py, pphase, pspeed, psize; private int[] pkind, pforma; private uint[] pcol; private int pnStars;
-        private D3D9.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
+        private Tarjeta.Vtx[] starV2;                            // vertices del patron ANTERIOR durante el entrecruzado
         private float[] starCenterX, starCenterY, starCenterRadius;
         private int transStart; private bool transing;
         private const int TransMs = 1300;                    // duracion del entrecruzado
@@ -1105,7 +1114,7 @@ namespace Rocola
         // Cada una con tamaño, color, velocidad y largo de estela distintos.
         private struct Shoot { public bool On; public float X, Y, VX, VY, Life, MaxLife, Wdt, Tail; public uint Col; public bool Nace; }   // Nace: sale a media altura (lluvias, CieloVivoGpu.cs): entra suave
         private readonly Shoot[] shoots = new Shoot[2];
-        private D3D9.Vtx[] shootV = new D3D9.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
+        private Tarjeta.Vtx[] shootV = new Tarjeta.Vtx[2 * 12];    // 2 fugaces x (estela 6 + cabeza 6) vertices
         private int nextShoot; private double shootFinoAnt;   // la CITA de la proxima fugaz en ms de Windows (son segundos); su avance, con el reloj fino
         private readonly Random srnd = new Random();
         private static readonly uint[] shootPal = { 0x00FFFFFF, 0x00FFFFFF, 0x00CFE6FF, 0x00FFE6A0, 0x00A0FFE0, 0x00FFC0E0 };   // blanco (x2), azul, dorado, aqua, rosa
@@ -1170,7 +1179,7 @@ namespace Rocola
 
         public GpuStarfield(IntPtr hwnd, int w, int h, int seed)
         {
-            gpu = new D3D9Device(hwnd, w, h);
+            gpu = new DispositivoTarjeta(hwnd, w, h);
             if (!gpu.Ok) return;
             seed0 = seed;
             using (Bitmap tex = BakeStarTexture(64)) glowTex = gpu.CreateTextureFromBitmap(tex);
@@ -1212,7 +1221,7 @@ namespace Rocola
         private const float HaloC = 0.41421356f;        // tan(22.5): donde se corta cada esquina
         private static readonly float[] HaloX = { 1f, HaloC, -HaloC, -1f, -1f, -HaloC, HaloC, 1f };
         private static readonly float[] HaloY = { -HaloC, -1f, -1f, -HaloC, HaloC, 1f, 1f, HaloC };
-        private readonly D3D9.Vtx[] glowV = new D3D9.Vtx[HaloVtx];
+        private readonly Tarjeta.Vtx[] glowV = new Tarjeta.Vtx[HaloVtx];
         public void DrawGlow(float cx, float cy, float r, uint argb)
         {
             // El halo de la interfaz tiene su propia textura LISA. Antes, si esa no se creaba, se caia a la de
@@ -1225,10 +1234,10 @@ namespace Rocola
             gpu.DrawStars(glowV, HaloVtx / 3, t);   // mismo camino aditivo que las estrellas
         }
         // Escribe UN halo (6 triangulos en abanico) a partir del hueco i del arreglo que se le pase.
-        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
+        private static void Halo(Tarjeta.Vtx[] a, int i, float cx, float cy, float r, uint c) { Halo(a, i, cx, cy, r, r, c); }
         // Con radios distintos a lo ancho y a lo alto sale una ELIPSE. Una luz de horizonte tiene que ser ancha
         // y baja: si se dibuja redonda, sube tanto como se extiende y acaba brillando a media pantalla.
-        private static void Halo(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, uint c)
+        private static void Halo(Tarjeta.Vtx[] a, int i, float cx, float cy, float rx, float ry, uint c)
         {
             Punto(a, i, cx, cy, rx, ry, 0, c);
             Punto(a, i + 1, cx, cy, rx, ry, 1, c);
@@ -1239,23 +1248,23 @@ namespace Rocola
                 Punto(a, i + k * 3 + 2, cx, cy, rx, ry, k + 2, c);
             }
         }
-        private static void Punto(D3D9.Vtx[] a, int i, float cx, float cy, float rx, float ry, int k, uint c)
+        private static void Punto(Tarjeta.Vtx[] a, int i, float cx, float cy, float rx, float ry, int k, uint c)
         {
             float dx = HaloX[k], dy = HaloY[k];
             GV(a, i, cx + dx * rx, cy + dy * ry, c, 0.5f + 0.5f * dx, 0.5f + 0.5f * dy);
         }
-        private static void GV(D3D9.Vtx[] a, int i, float x, float y, uint c, float u, float v)
+        private static void GV(Tarjeta.Vtx[] a, int i, float x, float y, uint c, float u, float v)
         { a[i].X = x - 0.5f; a[i].Y = y - 0.5f; a[i].Z = 0f; a[i].Rhw = 1f; a[i].Color = c; a[i].U = u; a[i].V = v; }
 
         // MUCHOS halos de UNA sola llamada de dibujo. La aurora son decenas de puntos por cuadro y en Direct3D 9
         // lo caro no es el relleno sino la LLAMADA: uno por uno serian decenas de DrawPrimitive, cada una con su
         // cambio de textura y de estado de mezcla (~10 llamadas al driver por halo). Aqui se acumulan todos en el
         // mismo arreglo y se mandan juntos: mismo dibujo exacto, una sola llamada.
-        private D3D9.Vtx[] glowBatch;
+        private Tarjeta.Vtx[] glowBatch;
         private int glowBatchN;
         public void GlowBatchBegin(int maxHalos)
         {
-            if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new D3D9.Vtx[maxHalos * HaloVtx];
+            if (glowBatch == null || glowBatch.Length < maxHalos * HaloVtx) glowBatch = new Tarjeta.Vtx[maxHalos * HaloVtx];
             glowBatchN = 0;
         }
         public void GlowBatchAdd(float cx, float cy, float r, uint argb) { GlowBatchAdd(cx, cy, r, r, argb); }
@@ -1480,7 +1489,7 @@ namespace Rocola
         // No altera el patron, deriva ni reloj: al destaparse salen en la posicion que les corresponde.
         internal float EstrellasTapadasDesde;
         internal int EstrellasEnviadas, EstrellasOmitidas;
-        private int BuildStarVerts(D3D9.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
+        private int BuildStarVerts(Tarjeta.Vtx[] buf, float[] xs, float[] ys, float[] ph, float[] spd, float[] sz, int[] kd, int[] fm, uint[] col, int n, double t, float fade, float pulse, float[] dx, float[] dy, float w, float h)
         {
             int vi = 0;
             HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
@@ -1619,23 +1628,23 @@ namespace Rocola
             }
             if (vi > 0) gpu.DrawShootStreaks(shootV, vi / 3);
         }
-        private static void VShoot(D3D9.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
-        public void DrawQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
-        public void DrawOpaqueQuad(IntPtr tex, D3D9.Vtx[] quad) { if (Ok) gpu.DrawOpaqueQuad(tex, quad); }
-        public void DrawTexturedBatch(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        private static void VShoot(Tarjeta.Vtx[] v, int o, float x, float y, uint c) { v[o].X = x; v[o].Y = y; v[o].Z = 0f; v[o].Rhw = 1f; v[o].Color = c; v[o].U = 0f; v[o].V = 0f; }
+        public void DrawQuad(IntPtr tex, Tarjeta.Vtx[] quad) { if (Ok) gpu.DrawTexQuad(tex, quad); }
+        public void DrawOpaqueQuad(IntPtr tex, Tarjeta.Vtx[] quad) { if (Ok) gpu.DrawOpaqueQuad(tex, quad); }
+        public void DrawTexturedBatch(IntPtr tex, Tarjeta.Vtx[] vertices, int triangles)
         { if (Ok && tex != IntPtr.Zero) gpu.DrawQuads(tex, vertices, triangles); }
-        public void DrawTexturedBatchWrap(IntPtr tex, D3D9.Vtx[] vertices, int triangles)
+        public void DrawTexturedBatchWrap(IntPtr tex, Tarjeta.Vtx[] vertices, int triangles)
         { if (Ok && tex != IntPtr.Zero) gpu.DrawQuadsWrap(tex, vertices, triangles); }
-        public void DrawColorQuad(D3D9.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
+        public void DrawColorQuad(Tarjeta.Vtx[] quad) { if (Ok) gpu.DrawQuads(IntPtr.Zero, quad, 2); }
         public uint BlankCubeColor { set { if (gpu != null) gpu.CubeBaseColor = value; } }
-        public void DrawMesh(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
-        public void DrawMeshAdd(D3D9.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
+        public void DrawMesh(Tarjeta.Vtx[] v, int tris) { if (Ok) gpu.DrawMesh(v, tris); }   // malla plana (fondo reactivo)
+        public void DrawMeshAdd(Tarjeta.Vtx[] v, int tris) { if (Ok) gpu.DrawMeshAdd(v, tris); }   // malla plana SUMANDO luz (el neon)
         public bool End() { return Ok && gpu.EndFrame(); }
 
         public void Dispose()
         {
-            if (glowTex != IntPtr.Zero) { D3D9.Release(glowTex); glowTex = IntPtr.Zero; }
-            if (uiGlowTex != IntPtr.Zero) { D3D9.Release(uiGlowTex); uiGlowTex = IntPtr.Zero; }
+            if (glowTex != IntPtr.Zero) { Tarjeta.Suelta(glowTex); glowTex = IntPtr.Zero; }
+            if (uiGlowTex != IntPtr.Zero) { Tarjeta.Suelta(uiGlowTex); uiGlowTex = IntPtr.Zero; }
             if (gpu != null) { gpu.Dispose(); gpu = null; }
         }
 
@@ -1987,21 +1996,21 @@ namespace Rocola
             return bmp;
         }
 
-        private static void SetQuad(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint cTL, uint cTR, uint cBR, uint cBL)
+        private static void SetQuad(Tarjeta.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint cTL, uint cTR, uint cBR, uint cBL)
         {
             V(ref v[o + 0], x0, y0, cTL, 0, 0); V(ref v[o + 1], x1, y0, cTR, 1, 0); V(ref v[o + 2], x1, y1, cBR, 1, 1);
             V(ref v[o + 3], x0, y0, cTL, 0, 0); V(ref v[o + 4], x1, y1, cBR, 1, 1); V(ref v[o + 5], x0, y1, cBL, 0, 1);
         }
         // El mismo quad pero escogiendo QUE TROZO de la textura se usa: asi las cuatro formas de estrella
         // salen de una sola textura y de una sola llamada de dibujo.
-        private static void SetQuadUV(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint c,
+        private static void SetQuadUV(Tarjeta.Vtx[] v, int o, float x0, float y0, float x1, float y1, uint c,
                                      float u0, float v0, float u1, float v1)
         {
             // Cuatro esquinas calculadas y dos copias (los vertices 3 y 4 repiten el 0 y el 2): los mismos seis vertices, bit a bit.
             V(ref v[o + 0], x0, y0, c, u0, v0); V(ref v[o + 1], x1, y0, c, u1, v0); V(ref v[o + 2], x1, y1, c, u1, v1);
             v[o + 3] = v[o + 0]; v[o + 4] = v[o + 2]; V(ref v[o + 5], x0, y1, c, u0, v1);
         }
-        private static void V(ref D3D9.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x; v.Y = y; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
+        private static void V(ref Tarjeta.Vtx v, float x, float y, uint c, float u, float vv) { v.X = x; v.Y = y; v.Z = 0f; v.Rhw = 1f; v.Color = c; v.U = u; v.V = vv; }
     }
 
     // -------- Ventana de prueba (F12): muestra el campo estrellado por GPU con FPS --------
@@ -2144,7 +2153,7 @@ namespace Rocola
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
         private readonly IntPtr[] gridTex = new IntPtr[MaxCells];     // textura resuelta por celda (subida ANTES de Begin, dibujada despues)
         private readonly GpuCellLayout[] gridLayouts = new GpuCellLayout[MaxCells];
-        private readonly D3D9.Vtx[] atlasQuad = new D3D9.Vtx[42];
+        private readonly Tarjeta.Vtx[] atlasQuad = new Tarjeta.Vtx[42];
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
         private IntPtr transTex; private Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;
         public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
@@ -2152,8 +2161,8 @@ namespace Rocola
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
         private IntPtr winTex; private Bitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;
         private IntPtr toastTex; private int toastVer = -1, toastBw, toastBh; private float toastU = 1f, toastV = 1f;
-        private readonly D3D9.Vtx[] toastQuad = new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] winQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] toastQuad = new Tarjeta.Vtx[6];
+        private readonly Tarjeta.Vtx[] winQuad = new Tarjeta.Vtx[6];
         private readonly float[] gridU = new float[MaxCells], gridV = new float[MaxCells];
         private int gridN, cellFrame;
         public GpuGridFetch GetGridAhead;
@@ -2161,9 +2170,9 @@ namespace Rocola
         private long gridUploadCost;
         private double lastAheadMs, lastFrameWork;
         private long GridWorkLimit { get { return CoverControl != null ? CoverControl.RemainingTicks : CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
-        private readonly D3D9.Vtx[] cellQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] cellQuad = new Tarjeta.Vtx[6];
         private IntPtr contourTex; private Bitmap lastContour; private float contU = 1f, contV = 1f;
-        private readonly D3D9.Vtx[] contourQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] contourQuad = new Tarjeta.Vtx[6];
         // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
         // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
         private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
@@ -2173,11 +2182,11 @@ namespace Rocola
         // Textura PRINCIPAL de la UI: su alto depende del modo (en navegacion es solo la franja superior,
         // ~7x mas barata de rehacer/subir que la pantalla completa). Se dibuja anclada ARRIBA, a su tamano real.
         private IntPtr uiTex; private int uiVer = -1; private float uiU = 1f, uiV = 1f; private int uiBmpW = -1, uiBmpH = -1;
-        private readonly D3D9.Vtx[] uiQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] uiQuad = new Tarjeta.Vtx[6];
         // Franja de ESTADO de abajo (sonando/tiempo/creditos/progreso) en SU PROPIA textura chica: el tic del
         // reloj (~2 cambios/seg con musica) ya no rehace ni re-sube la textura principal. Anclada ABAJO.
         private IntPtr uiBotTex; private int uiBotVer = -1; private float uiBotU = 1f, uiBotV = 1f; private int uiBotW = -1, uiBotH = -1;
-        private readonly D3D9.Vtx[] uiBotQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] uiBotQuad = new Tarjeta.Vtx[6];
         // LAS PIEZAS VIVAS: trozos chicos que van ENCIMA de la textura de UI y cambian por su cuenta (hoy, la
         // tarjeta y la tecla elegidas del buscador). Antes iban horneados dentro de la textura grande, asi que
         // mover el recuadro obligaba a rehacerla y re-subirla entera -7 MB a 1080p por pulsacion-. Cada pieza
@@ -2187,7 +2196,7 @@ namespace Rocola
         private readonly int[] piezaVer = new int[MaxPiezas];
         private readonly int[] piezaW = new int[MaxPiezas], piezaH = new int[MaxPiezas];
         private readonly float[] piezaU = new float[MaxPiezas], piezaV = new float[MaxPiezas];
-        private readonly D3D9.Vtx[] piezaQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] piezaQuad = new Tarjeta.Vtx[6];
         public Func<Bitmap> GetUiBot;                     // bitmap de la franja de estado (lo provee el form)
         public Func<int> GetUiBotVersion;                 // cambia cuando algo de la franja cambia (re-subir textura)
         // Contador de FPS (diagnostico) en su PROPIA textura pequeña: si fuera parte de la textura de UI
@@ -2200,7 +2209,7 @@ namespace Rocola
         internal Action<string, Exception> ReportError;
         private int cuadrosFallidos, cuadrosFallidosApuntados;
         private double cuadroFallidoApuntadoMs = -1e9;
-        private readonly D3D9.Vtx[] fpsQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] fpsQuad = new Tarjeta.Vtx[6];
         public Rectangle AlbumRect;                       // donde van los cubos del album (coords del panel = pantalla); el form la fija
         public bool ShowAlbum = true;                     // navegacion: dibuja la rejilla de cubos + contorno. Buscador: false (lo cubre el buscador)
         public bool UiUrgent;                             // el form lo pone al cambiar de modo: rehacer la UI YA (sin esperar franja) para que la transicion sea atomica
@@ -2289,12 +2298,12 @@ namespace Rocola
         private object progressKey;
         private double progressDraw = -1, progressClock;
         // Diez quads del tubo, en el orden original y con mezcla normal.
-        private readonly D3D9.Vtx[] progressV = new D3D9.Vtx[60];
+        private readonly Tarjeta.Vtx[] progressV = new Tarjeta.Vtx[60];
         public bool VinetaSuave = true, HaloSeleccion = true, EstrellasFinas = true, OndasSuaves = true;
         private IntPtr vinetaTex;
         private float vinetaU, vinetaV;
         private int vinetaRetry;
-        private readonly D3D9.Vtx[] adornoQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] adornoQuad = new Tarjeta.Vtx[6];
         public Func<float> GetPulse;                      // el form provee el nivel de audio (0..1)
         public GpuGridFetch GetGrid;                      // el form llena el buffer con las celdas de la pagina actual (rejilla por quads)
         public int PiezasN;                               // cuantas piezas vivas hay ahora (0 = ninguna)
@@ -2530,41 +2539,41 @@ namespace Rocola
             TrimRecentCovers(true);
             if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
             ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
-            if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
-            if (selTexA != IntPtr.Zero) { D3D9.Release(selTexA); selTexA = IntPtr.Zero; }
-            if (selTexB != IntPtr.Zero) { D3D9.Release(selTexB); selTexB = IntPtr.Zero; }
-            if (relTex != IntPtr.Zero) { D3D9.Release(relTex); relTex = IntPtr.Zero; }
-            if (miniTex != IntPtr.Zero) { D3D9.Release(miniTex); miniTex = IntPtr.Zero; }
-            if (transTex != IntPtr.Zero) { D3D9.Release(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
-            if (winTex != IntPtr.Zero) { D3D9.Release(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
+            if (contourTex != IntPtr.Zero) { Tarjeta.Suelta(contourTex); contourTex = IntPtr.Zero; }
+            if (selTexA != IntPtr.Zero) { Tarjeta.Suelta(selTexA); selTexA = IntPtr.Zero; }
+            if (selTexB != IntPtr.Zero) { Tarjeta.Suelta(selTexB); selTexB = IntPtr.Zero; }
+            if (relTex != IntPtr.Zero) { Tarjeta.Suelta(relTex); relTex = IntPtr.Zero; }
+            if (miniTex != IntPtr.Zero) { Tarjeta.Suelta(miniTex); miniTex = IntPtr.Zero; }
+            if (transTex != IntPtr.Zero) { Tarjeta.Suelta(transTex); transTex = IntPtr.Zero; transLastBmp = null; }
+            if (winTex != IntPtr.Zero) { Tarjeta.Suelta(winTex); winTex = IntPtr.Zero; winLastBmp = null; }
             SueltaPiezasVentana();   // las piezas que se llevo la ventana del buscador con portadas (BuscadorPortadasGpu.cs)
-            if (toastTex != IntPtr.Zero) { D3D9.Release(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
+            if (toastTex != IntPtr.Zero) { Tarjeta.Suelta(toastTex); toastTex = IntPtr.Zero; toastVer = -1; }
             SueltaPantallaViva();   // el letrero de la elegida y la ficha rapida
             SueltaDiscoVivo();      // el boleto
             SueltaSuenaVivo();      // los avisos, la invitacion, la moneda y lo del panel de reposo
             SueltaAtraccion();      // las fichas del escaparate, sus mensajes y la lista de la noche
             SueltaAsistente();      // panel prestado del asistente y su textura GPU
             SueltaAyudaIcono();
-            if (uiTex != IntPtr.Zero) { D3D9.Release(uiTex); uiTex = IntPtr.Zero; }
+            if (uiTex != IntPtr.Zero) { Tarjeta.Suelta(uiTex); uiTex = IntPtr.Zero; }
             SueltaRepuestos();   // las guardadas para la interfaz (RespuestaGpu.cs), despues del fundido de colores, que las deja ahi
-            if (hazTex != IntPtr.Zero) { D3D9.Release(hazTex); hazTex = IntPtr.Zero; }
-            if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; }
-            if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
-            if (idleTex != IntPtr.Zero) { D3D9.Release(idleTex); idleTex = IntPtr.Zero; }
+            if (hazTex != IntPtr.Zero) { Tarjeta.Suelta(hazTex); hazTex = IntPtr.Zero; }
+            if (nebTex != IntPtr.Zero) { Tarjeta.Suelta(nebTex); nebTex = IntPtr.Zero; }
+            if (vinetaTex != IntPtr.Zero) { Tarjeta.Suelta(vinetaTex); vinetaTex = IntPtr.Zero; }
+            if (idleTex != IntPtr.Zero) { Tarjeta.Suelta(idleTex); idleTex = IntPtr.Zero; }
             idleLastBmp = null; idleBlend = 0; idleClock = 0; idleUploadedVersion = -1;
             vinetaRetry = 0;
-            if (ruidoTex != IntPtr.Zero) { D3D9.Release(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
+            if (ruidoTex != IntPtr.Zero) { Tarjeta.Suelta(ruidoTex); ruidoTex = IntPtr.Zero; ruTW = ruTH = 0; }
             ruidoMalla = null; ruidoAncho = ruidoAlto = ruidoTriangulos = 0;
             ResetStarEchoes();
-            if (lunaTex != IntPtr.Zero) { D3D9.Release(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
+            if (lunaTex != IntPtr.Zero) { Tarjeta.Suelta(lunaTex); lunaTex = IntPtr.Zero; luTW = luTH = 0; lunaDe = -1; }
             SueltaCieloVivo();      // la luna del cielo (CieloVivoGpu.cs)
-            if (uiBotTex != IntPtr.Zero) { D3D9.Release(uiBotTex); uiBotTex = IntPtr.Zero; }
+            if (uiBotTex != IntPtr.Zero) { Tarjeta.Suelta(uiBotTex); uiBotTex = IntPtr.Zero; }
             for (int i = 0; i < MaxPiezas; i++)
             {
-                if (piezaTex[i] != IntPtr.Zero) { D3D9.Release(piezaTex[i]); piezaTex[i] = IntPtr.Zero; }
+                if (piezaTex[i] != IntPtr.Zero) { Tarjeta.Suelta(piezaTex[i]); piezaTex[i] = IntPtr.Zero; }
                 piezaVer[i] = -1; piezaW[i] = piezaH[i] = -1;
             }
-            if (fpsTex != IntPtr.Zero) { D3D9.Release(fpsTex); fpsTex = IntPtr.Zero; }
+            if (fpsTex != IntPtr.Zero) { Tarjeta.Suelta(fpsTex); fpsTex = IntPtr.Zero; }
             fpsBw = fpsBh = 0; fpsFluidezMostrada = -1; fluidez.Reinicia();
             lastContour = null; selImgA = selImgB = relImg = miniImg = null; uiVer = -1; uiVacia = false; uiBotVer = -1; fpsShown = int.MinValue;
             selBwA = selBhA = selBwB = selBhB = relBw = relBh = miniBw = miniBh = transBw = transBh = winBw = winBh = 0;   // sin textura no hay tamano subido
@@ -2576,11 +2585,11 @@ namespace Rocola
         // device o apagar la GPU: sus IntPtr dejan de ser validos.
         private void ReleaseCellTex()
         {
-            foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex);
+            foreach (CellTex ct in cellTexCache.Values) if (ct.Tex != IntPtr.Zero) Tarjeta.Suelta(ct.Tex);
             cellTexCache.Clear();
             ReleaseNativeCovers(); protectedAhead.Clear(); cellBudgetChecked = -2000;
             cellBytesDirty = true;
-            for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) D3D9.Release(ct.Tex); slotTex[i] = null; }
+            for (int i = 0; i < slotTex.Length; i++) { CellTex ct = slotTex[i]; if (ct != null && ct.Tex != IntPtr.Zero) Tarjeta.Suelta(ct.Tex); slotTex[i] = null; }
             for (int i = 0; i < gridTex.Length; i++) gridTex[i] = IntPtr.Zero;
             gridN = 0;
         }
@@ -2598,7 +2607,7 @@ namespace Rocola
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             if (cur == null)
             {
-                if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+                if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
                 bw = bh = 0; last = null; return;
             }
             tex = Upload(tex, ref bw, ref bh, cur, out u, out v);   // mismo tamano: reusa. Distinto: recrea (raro).
@@ -2610,7 +2619,7 @@ namespace Rocola
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             // Nunca actualizar una portada compartida: otro cubo puede estar usando
             // la misma referencia. Las capas de interfaz siguen usando EnsureCover.
-            if (tex != IntPtr.Zero) { D3D9.Release(tex); tex = IntPtr.Zero; }
+            if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
             bw = bh = 0; last = null; u = v = 1;
             if (cur == null) return;
             tex = stars.CreateCoverShared(cur, out u, out v);
@@ -2719,7 +2728,7 @@ namespace Rocola
                 Bitmap cb = GetContour();
                 if (cb != lastContour || (cb != null && contourTex == IntPtr.Zero))
                 {
-                    if (contourTex != IntPtr.Zero) { D3D9.Release(contourTex); contourTex = IntPtr.Zero; }
+                    if (contourTex != IntPtr.Zero) { Tarjeta.Suelta(contourTex); contourTex = IntPtr.Zero; }
                     if (cb != null) contourTex = stars.CreateOverlay(cb, out contU, out contV);
                     lastContour = cb;
                 }
@@ -3192,7 +3201,7 @@ namespace Rocola
             AtlasCellVertices(c, u, v, color, atlasQuad);
             stars.DrawTexturedBatch(tex, atlasQuad, c.Layout.Separate ? 14 : 6); // etiquetas/contorno, un envio
         }
-        internal static void AtlasCellVertices(GpuGridCell c, float u, float v, uint color, D3D9.Vtx[] result)
+        internal static void AtlasCellVertices(GpuGridCell c, float u, float v, uint color, Tarjeta.Vtx[] result)
         {
             GpuCellLayout p = c.Layout;
             if (p.Separate) { SeparatedVertices(c, u, v, color, result); return; }
@@ -3202,7 +3211,7 @@ namespace Rocola
             AtlasPart(result, 6, c.X, c.Y, sx, sy, p.Text1, p.Text1At, u / p.Width, v / p.Height, color);
             AtlasPart(result, 12, c.X, c.Y, sx, sy, p.Text2, p.Text2At, u / p.Width, v / p.Height, color);
         }
-        private static void AtlasPart(D3D9.Vtx[] r, int o, float x, float y, float sx, float sy,
+        private static void AtlasPart(Tarjeta.Vtx[] r, int o, float x, float y, float sx, float sy,
             Rectangle src, Rectangle at, float u, float v, uint color)
         {
             float x0 = x + at.X * sx, x1 = x + at.Right * sx, y0 = y + at.Y * sy, y1 = y + at.Bottom * sy;
@@ -3423,20 +3432,20 @@ namespace Rocola
             if (libroOn) libro.Subidas++;
             if (tex != IntPtr.Zero && bw == bmp.Width && bh == bmp.Height && stars.UpdateOverlay(tex, bmp, out u, out v))
                 return tex;   // actualizada in situ (misma textura)
-            if (tex != IntPtr.Zero) D3D9.Release(tex);
+            if (tex != IntPtr.Zero) Tarjeta.Suelta(tex);
             tex = stars.CreateOverlay(bmp, out u, out v);
             if (tex == IntPtr.Zero) sondeoMemoriaPedido = true;   // no se pudo crear: quiza falta memoria, que se vuelva a preguntar cuanta hay
             bw = bmp.Width; bh = bmp.Height;
             return tex;
         }
 
-        private static void SetTexQuad(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
+        private static void SetTexQuad(Tarjeta.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax)
         {
             SetTexQuadA(v, x0, y0, x1, y1, uMax, vMax, 0xFFFFFFFFu);
         }
         // Igual que SetTexQuad pero con COLOR (el alfa del vertice modula la textura): asi el desvanecido
         // de la transicion no cuesta nada, lo hace la GPU al mezclar.
-        private static void SetTexQuadA(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb)
+        private static void SetTexQuadA(Tarjeta.Vtx[] v, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb)
         {
             // Cuatro esquinas y dos copias exactas; sin segunda pasada para cambiar el color.
             SetV(ref v[0], x0, y0, 0, 0); v[0].Color = argb;
@@ -3447,7 +3456,7 @@ namespace Rocola
         }
         // -0.5 px: regla de D3D9 (el centro del pixel esta en x+0.5). Sin este ajuste, una textura mapeada
         // 1:1 (los cubos y sobre todo el TEXTO de las etiquetas) se muestrea entre texeles y se ve borrosa.
-        private static void SetV(ref D3D9.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
+        private static void SetV(ref Tarjeta.Vtx vx, float x, float y, float u, float vv) { vx.X = x - 0.5f; vx.Y = y - 0.5f; vx.Z = 0; vx.Rhw = 1; vx.Color = 0xFFFFFFFF; vx.U = u; vx.V = vv; }
 
         // FONDO REACTIVO: una AURORA BOREAL. Se dibuja como una malla de columnas (dos triangulos por trozo)
         // sin textura y con mezcla normal: el color va en los vertices y la tarjeta lo degrada sola. Nada se
@@ -3516,8 +3525,8 @@ namespace Rocola
         private const int AurContCols = AurCols * 2;
         private const int AurBrilloVtx = (4 * AurContCols + 5 * AurLineaCols) * 6;   // 4 franjas el contorno + 5 la raya
 
-        private D3D9.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
-        private D3D9.Vtx[] aurVb;                              // y los del brillo (el neon, que va sumado aparte)
+        private Tarjeta.Vtx[] aurV;                               // vertices de la malla (se reusan, no se asigna por cuadro)
+        private Tarjeta.Vtx[] aurVb;                              // y los del brillo (el neon, que va sumado aparte)
         private float[] aurH, aurHs, aurA, aurR;             // alto (crudo y ya suavizado), opacidad y ondeo de cada columna
         private float[] aurNi, aurLi;                        // brillo del filo y de la linea, columna a columna
         private uint[] aurNc, aurLc;                         // y sus colores (el de la punta y el del pie)
@@ -3553,7 +3562,7 @@ namespace Rocola
         private float nebU = 1f, nebV = 1f, hazU = 1f, hazV = 1f;
         private int nieblaW = -1, nieblaH = -1;
         private int nieblaRetryMs; private bool nieblaRetryPending;
-        private readonly D3D9.Vtx[] nieblaQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] nieblaQuad = new Tarjeta.Vtx[6];
         // LAS DOS NEBULOSAS. El form las pone: una con el color del GENERO y otra con el de la CARATULA
         // (ver ColoresNebulosa). NebFase es la misma cuenta lenta que las hace ir a la deriva.
         public uint NebColor = 0xFF8C78FF, NebColor2 = 0xFF8C78FF;
@@ -3609,7 +3618,7 @@ namespace Rocola
             bool cambioFuerza = nebFuerzaDe != Form1.nebNaturalFuerza;
             int ahoraNeb = Environment.TickCount;
             if (TocaRehornear(cambioMando, cambioFuerza, ahoraNeb, nebFuerzaMs))
-            { if (nebTex != IntPtr.Zero) { D3D9.Release(nebTex); nebTex = IntPtr.Zero; } nieblaRetryPending = false; }
+            { if (nebTex != IntPtr.Zero) { Tarjeta.Suelta(nebTex); nebTex = IntPtr.Zero; } nieblaRetryPending = false; }
             bool nuevoTamano = nieblaW != Width || nieblaH != Height;
             if (!nuevoTamano && hazTex != IntPtr.Zero && nebTex != IntPtr.Zero && (SinGrano || ruidoTex != IntPtr.Zero)) return;
             int now = Environment.TickCount;
@@ -3654,7 +3663,7 @@ namespace Rocola
         // una teja de 1024 cubre una pantalla de bar en cuatro estampados, y una de 1024x768 en uno.
         private const int RuidoTeja = 1024;
         private IntPtr ruidoTex; private int ruTW, ruTH; private float ruU = 1f, ruV = 1f;
-        private D3D9.Vtx[] ruidoMalla;
+        private Tarjeta.Vtx[] ruidoMalla;
         private int ruidoAncho, ruidoAlto, ruidoTriangulos;
         private float ruidoU, ruidoV;
 
@@ -3664,7 +3673,7 @@ namespace Rocola
         // La pared CPU mantiene su luna original, sin cambios.
         private IntPtr lunaTex; private int luTW, luTH; private float luU = 1f, luV = 1f;
         private int lunaDe = -1;
-        private D3D9.Vtx[] lunaQuad = new D3D9.Vtx[6];
+        private Tarjeta.Vtx[] lunaQuad = new Tarjeta.Vtx[6];
         private void EnsureLuna()
         {
             if (Estrella3D) return; // el cuerpo 3D y la ayuda 3D usan geometria, nunca este mapa 2D
@@ -3690,12 +3699,12 @@ namespace Rocola
         }
         private void DibujaRuido()
         {
-            D3D9.Vtx[] malla; int n = MallaRuido(out malla);
+            Tarjeta.Vtx[] malla; int n = MallaRuido(out malla);
             if (n > 0) stars.DrawTexturedBatchWrap(ruidoTex, malla, n / 3);
         }
         // Los vertices del grano de este cuadro (los mismos para la pasada sola y para la unida con la vineta). Devuelve
         // cuantos; 'malla' es un arreglo reusado: se usa antes de volver a pedir trozos.
-        private int MallaRuido(out D3D9.Vtx[] malla)
+        private int MallaRuido(out Tarjeta.Vtx[] malla)
         {
             malla = null;
             if (SinGrano || ruidoTex == IntPtr.Zero || Width <= 0 || Height <= 0) return 0;
@@ -3707,7 +3716,7 @@ namespace Rocola
                 int v = 0;
                 for (int p = 0; p + 5 < ruidoTriangulos * 3; p += 6)
                 {
-                    D3D9.Vtx a = ruidoMalla[p], c = ruidoMalla[p + 2];
+                    Tarjeta.Vtx a = ruidoMalla[p], c = ruidoMalla[p + 2];
                     v = Trozos(v, a.X + 0.5f, a.Y + 0.5f, c.X + 0.5f, c.Y + 0.5f, a.U, a.V, c.U, c.V, a.Color);
                 }
                 malla = trozosHuecos;
@@ -3724,7 +3733,7 @@ namespace Rocola
                 && ruidoU == ruU && ruidoV == ruV) return;
             int n = checked(checked(((ancho - 1) / RuidoTeja + 1) * ((alto - 1) / RuidoTeja + 1)) * 6);
             // Solo retener lo que necesita la geometria actual, nunca el maximo historico.
-            if (ruidoMalla == null || ruidoMalla.Length != n) ruidoMalla = new D3D9.Vtx[n];
+            if (ruidoMalla == null || ruidoMalla.Length != n) ruidoMalla = new Tarjeta.Vtx[n];
             int pos = 0;
             for (int y = 0; y < alto; y += RuidoTeja)
                 for (int x = 0; x < ancho; x += RuidoTeja)
@@ -3949,7 +3958,7 @@ namespace Rocola
         {
             if (!VinetaSuave)
             {
-                if (vinetaTex != IntPtr.Zero) { D3D9.Release(vinetaTex); vinetaTex = IntPtr.Zero; }
+                if (vinetaTex != IntPtr.Zero) { Tarjeta.Suelta(vinetaTex); vinetaTex = IntPtr.Zero; }
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }
                 vinetaTeselas = null;
                 vinetaRetry = 0;
@@ -4320,21 +4329,21 @@ namespace Rocola
             return ((uint)v << 24) | rgb;
         }
         // Por referencia: una comprobacion de limites por vertice en vez de siete (se escriben miles por cuadro).
-        private static void AurV3(ref D3D9.Vtx a, float x, float y, uint c)
+        private static void AurV3(ref Tarjeta.Vtx a, float x, float y, uint c)
         { a.X = x - 0.5f; a.Y = y - 0.5f; a.Z = 0f; a.Rhw = 1f; a.Color = c; a.U = 0f; a.V = 0f; }
 
         // Arma la malla entera y devuelve cuantos vertices escribio. Aparte del dibujo para poder comprobarla
         // sin tarjeta. 'alturaPanel' es el borde de abajo de la PANTALLA: el color baja hasta ahi (por detras
         // de la franja de estado) hundiendose al tono profundo, para que no quede ninguna raya donde se acaba.
-        internal static int AurMalla(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+        internal static int AurMalla(Tarjeta.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel)
         { return AurMallaLigera(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, 1); }
 
-        internal static int AurMallaLigera(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+        internal static int AurMallaLigera(Tarjeta.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel, int saltoCols)
         { return AurMallaVisible(v, hCol, cCortina, cSuelo, aCol, rCol, ancho, baseY, alturaPanel, saltoCols, true); }
 
-        internal static int AurMallaVisible(D3D9.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
+        internal static int AurMallaVisible(Tarjeta.Vtx[] v, float[] hCol, uint[] cCortina, uint[] cSuelo, float[] aCol, float[] rCol,
                                      float ancho, float baseY, float alturaPanel, int saltoCols, bool suelo)
         {
             int puntos = AurCols + 1;
@@ -4434,7 +4443,7 @@ namespace Rocola
 
         // Una franja horizontal de la malla: dos alturas (la de arriba y la de abajo) por cada lado, con su
         // color y su brillo ya resueltos. Todo el neon se arma llamando a esto unas cuantas veces.
-        private static int AurBanda(D3D9.Vtx[] v, int n, float x0, float x1,
+        private static int AurBanda(Tarjeta.Vtx[] v, int n, float x0, float x1,
                                     float yL0, float yR0, float yL1, float yR1,
                                     uint cL0, uint cR0, uint cL1, uint cR1)
         {
@@ -4450,16 +4459,16 @@ namespace Rocola
         //   cNeon = color del filo en cada punto (el de la PUNTA de esa columna)
         //   nCol  = brillo del filo en cada punto (0..1)
         //   cLinea/gCol = lo mismo para la linea del horizonte (color del PIE y su brillo)
-        internal static int AurBrillo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+        internal static int AurBrillo(Tarjeta.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY)
         { return AurBrilloLigero(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, 1); }
 
-        internal static int AurBrilloLigero(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+        internal static int AurBrilloLigero(Tarjeta.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols)
         { return AurBrilloConHalo(v, hCol, cNeon, nCol, cLinea, gCol, ancho, baseY, saltoCols, false); }
 
         // El ahorro visual solo estrecha el halo de la cresta. Su nucleo y el horizonte son los mismos.
-        internal static int AurBrilloConHalo(D3D9.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
+        internal static int AurBrilloConHalo(Tarjeta.Vtx[] v, float[] hCol, uint[] cNeon, float[] nCol,
                                       uint[] cLinea, float[] gCol, float ancho, float baseY, int saltoCols, bool compacto)
         {
             int puntos = AurCols + 1;
@@ -4565,9 +4574,9 @@ namespace Rocola
                 aurRampPie = new uint[AurFilas + 1]; aurRampAgu = new uint[AurFilas + 1];
             }
             int nv = (AurFilas + AurSuelo) * AurCols * 6;
-            if (aurV == null || aurV.Length < nv) aurV = new D3D9.Vtx[nv];
+            if (aurV == null || aurV.Length < nv) aurV = new Tarjeta.Vtx[nv];
             int nb = AurBrilloVtx;
-            if (aurVb == null || aurVb.Length < nb) aurVb = new D3D9.Vtx[nb];
+            if (aurVb == null || aurVb.Length < nb) aurVb = new Tarjeta.Vtx[nb];
             double tkAur = waveCadence.SampleMs;   // reloj independiente de 24/50/60, sin frenar el resto del panel
                                         // Windows -que salta de 15.6 en 15.6- haria avanzar la aurora a tirones
             if (aurRelojOk)

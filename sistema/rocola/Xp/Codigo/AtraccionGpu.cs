@@ -1075,8 +1075,8 @@ namespace Rocola
         private int atrSlotA = -1, atrSlotB = -1;
         private IntPtr msgsTex, topTex; private int msgsTexVer = -1, topTexVer = -1, msgsBw, msgsBh, topBw, topBh;
         private float msgsU, msgsV, topU, topV;
-        private readonly D3D9.Vtx[] atrQuad = new D3D9.Vtx[6];
-        private readonly D3D9.Vtx[] atrFilas = new D3D9.Vtx[6 * Form1.TopFilas], atrBarras = new D3D9.Vtx[6 * Form1.TopFilas];
+        private readonly Tarjeta.Vtx[] atrQuad = new Tarjeta.Vtx[6];
+        private readonly Tarjeta.Vtx[] atrFilas = new Tarjeta.Vtx[6 * Form1.TopFilas], atrBarras = new Tarjeta.Vtx[6 * Form1.TopFilas];
         private readonly float[] brilloX = new float[Form1.TopFilas], brilloY = new float[Form1.TopFilas], brilloR = new float[Form1.TopFilas];
         private readonly uint[] brilloC = new uint[Form1.TopFilas];
 
@@ -1191,25 +1191,25 @@ namespace Rocola
             return r;
         }
         // Un rectangulo de textura con su trozo (u0,v0)-(u1,v1), a partir del vertice 'o' de la tanda.
-        private static void QuadUV(D3D9.Vtx[] v, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint argb)
+        private static void QuadUV(Tarjeta.Vtx[] v, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint argb)
         { QuadUV(v, 0, x0, y0, x1, y1, u0, v0, u1, v1, argb); }
-        internal static void QuadUV(D3D9.Vtx[] v, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint argb)
+        internal static void QuadUV(Tarjeta.Vtx[] v, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint argb)
         {
             SetV(ref v[o + 0], x0, y0, u0, v0); SetV(ref v[o + 1], x1, y0, u1, v0); SetV(ref v[o + 2], x1, y1, u1, v1);
             SetV(ref v[o + 3], x0, y0, u0, v0); SetV(ref v[o + 4], x1, y1, u1, v1); SetV(ref v[o + 5], x0, y1, u0, v1);
             for (int i = 0; i < 6; i++) v[o + i].Color = argb;
         }
         // Un rectangulo de color en la tanda, de c0 a la izquierda a c1 a la derecha.
-        internal static void BarraEn(D3D9.Vtx[] v, int o, float x, float y, float w, float h, uint c0, uint c1)
+        internal static void BarraEn(Tarjeta.Vtx[] v, int o, float x, float y, float w, float h, uint c0, uint c1)
         {
             QuadUV(v, o, x, y, x + w, y + h, 0f, 0f, 0f, 0f, c0);
             v[o + 1].Color = v[o + 2].Color = v[o + 4].Color = c1;
         }
         private void SueltaAtraccion()
         {
-            for (int i = 0; i < 2; i++) { if (vitTex[i] != IntPtr.Zero) { D3D9.Release(vitTex[i]); vitTex[i] = IntPtr.Zero; } vitTexVer[i] = -1; vitTexW[i] = vitTexH[i] = 0; }
-            if (msgsTex != IntPtr.Zero) { D3D9.Release(msgsTex); msgsTex = IntPtr.Zero; }
-            if (topTex != IntPtr.Zero) { D3D9.Release(topTex); topTex = IntPtr.Zero; }
+            for (int i = 0; i < 2; i++) { if (vitTex[i] != IntPtr.Zero) { Tarjeta.Suelta(vitTex[i]); vitTex[i] = IntPtr.Zero; } vitTexVer[i] = -1; vitTexW[i] = vitTexH[i] = 0; }
+            if (msgsTex != IntPtr.Zero) { Tarjeta.Suelta(msgsTex); msgsTex = IntPtr.Zero; }
+            if (topTex != IntPtr.Zero) { Tarjeta.Suelta(topTex); topTex = IntPtr.Zero; }
             msgsTexVer = topTexVer = -1; msgsBw = msgsBh = topBw = topBh = 0; atrSlotA = atrSlotB = -1;
         }
     }

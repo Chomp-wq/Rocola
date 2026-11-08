@@ -1,7 +1,7 @@
 // EL DIBUJO MAS LIGERO (rendimiento, 24-09-2026). Solo con tarjeta grafica, automatico y sin interruptor: lo que se
 // ve es lo mismo, cuesta menos pintarlo. Tres cosas:
 //
-//  1) SIN BORRAR LA PANTALLA en cada cuadro (D3D9Device.BeginFrame): el cielo, que es lo primero que se dibuja, es opaco
+//  1) SIN BORRAR LA PANTALLA en cada cuadro (DispositivoTarjeta.BeginFrame): el cielo, que es lo primero que se dibuja, es opaco
 //     y la tapa entera.
 //  2) SIN PINTAR LO TRANSPARENTE de las capas grandes del cielo (la via lactea y la vineta) y de la interfaz (la imagen
 //     principal y la franja de abajo, cuando llevan un rato quietas). Ver TeselasVisibles. Y lo que va con opacidad
@@ -39,7 +39,7 @@ namespace Rocola
         internal int Ancho, Alto;            // la imagen horneada, en texeles
         internal int[] Rect = new int[0];    // x0,y0,x1,y1 de cada rectangulo a pintar (texeles; x1,y1 excluidos)
         internal int N;                      // cuantos rectangulos
-        internal D3D9.Vtx[] Vtx = new D3D9.Vtx[0];   // seis vertices por rectangulo, reusados en cada cuadro
+        internal Tarjeta.Vtx[] Vtx = new Tarjeta.Vtx[0];   // seis vertices por rectangulo, reusados en cada cuadro
         internal double Fraccion = 1.0;      // lo que queda por pintar, en parte del area de la imagen
         // Rect/Ancho/Alto son inmutables una vez publicado el analisis. Su malla pertenece a esta
         // instancia: reusarla no retiene imagenes y no necesita un segundo buffer de vertices.
@@ -136,7 +136,7 @@ namespace Rocola
             }
             TeselasVisibles v = new TeselasVisibles();
             v.Ancho = w; v.Alto = h; v.Rect = r.ToArray(); v.N = r.Count / 4;
-            v.Vtx = new D3D9.Vtx[v.N * 6];
+            v.Vtx = new Tarjeta.Vtx[v.N * 6];
             for (int i = 0; i < v.Vtx.Length; i++) { v.Vtx[i].Z = 0f; v.Vtx[i].Rhw = 1f; }
             v.Fraccion = (double)pintado / ((double)w * h);
             return v;
@@ -220,7 +220,7 @@ namespace Rocola
                         resultado = new TeselasVisibles();
                         resultado.Ancho = w; resultado.Alto = h;
                         resultado.Rect = r.ToArray(); resultado.N = r.Count / 4;
-                        resultado.Vtx = new D3D9.Vtx[resultado.N * 6];
+                        resultado.Vtx = new Tarjeta.Vtx[resultado.N * 6];
                         resultado.Fraccion = (double)pintado / ((double)w * h);
                     }
                     int hasta = Math.Min(resultado.Vtx.Length, vertice + 256);
@@ -275,7 +275,7 @@ namespace Rocola
         // La imagen 't' estirada de (x0,y0) a (x1,y1) con (0,0)-(uMax,vMax) de su textura: lo mismo que un SetTexQuad +
         // DrawQuad, pero solo sus rectangulos con algo, en UNA llamada. Cada rectangulo va exactamente donde caia dentro
         // del cuadrilatero entero y con las mismas coordenadas de textura; sin teselas, el cuadrilatero de siempre.
-        private void DibujaTeselas(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, D3D9.Vtx[] quad)
+        private void DibujaTeselas(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, Tarjeta.Vtx[] quad)
         {
             if (tex == IntPtr.Zero) return;
             if (t == null || t.Ancho < 1 || t.Alto < 1)
@@ -289,7 +289,7 @@ namespace Rocola
             { stars.DrawTexturedBatch(tex, t.Vtx, t.N * 2); return; }
             double sx = ((double)x1 - x0) / t.Ancho, sy = ((double)y1 - y0) / t.Alto;
             double su = (double)uMax / t.Ancho, sv = (double)vMax / t.Alto;
-            D3D9.Vtx[] v = t.Vtx;
+            Tarjeta.Vtx[] v = t.Vtx;
             for (int i = 0, o = 0; i < t.N; i++, o += 6)
             {
                 int a = t.Rect[i * 4], b = t.Rect[i * 4 + 1], c = t.Rect[i * 4 + 2], d = t.Rect[i * 4 + 3];
@@ -302,7 +302,7 @@ namespace Rocola
             t.GuardaGeometria(x0, y0, x1, y1, uMax, vMax, argb);
             stars.DrawTexturedBatch(tex, v, t.N * 2);
         }
-        private static void TV(ref D3D9.Vtx x, float px, float py, uint c, float u, float v) { x.X = px; x.Y = py; x.Color = c; x.U = u; x.V = v; }
+        private static void TV(ref Tarjeta.Vtx x, float px, float py, uint c, float u, float v) { x.X = px; x.Y = py; x.Color = c; x.U = u; x.V = v; }
 
         // 4) EL CIELO NO SE PINTA DEBAJO DE LAS PORTADAS (13-10-2026). En la pared, las portadas tapan buena parte de la
         // pantalla, y debajo de cada una la tarjeta pintaba antes, para nada, las capas del cielo que van mezcladas: las dos
@@ -329,7 +329,7 @@ namespace Rocola
         internal const float HuecoMinimo = 8f;    // un hueco mas chico no ahorra nada
         private readonly int[] huecos = new int[4 * (MaxCells + 1)];   // x0,y0,x1,y1 en pixeles (x1,y1 excluidos)
         private int nHuecos;
-        private D3D9.Vtx[] trozosHuecos = new D3D9.Vtx[0];
+        private Tarjeta.Vtx[] trozosHuecos = new Tarjeta.Vtx[0];
         private readonly float[] cortesHuecos = new float[2 * (MaxCells + 1) + 2];
         private readonly int[] tapanHuecos = new int[MaxCells + 1];
         internal long PixelesHueco;                // las pruebas: cuanto se dejo de pintar en el ultimo cuadro (sin contar capas)
@@ -407,7 +407,7 @@ namespace Rocola
         private sealed class RecorteGuardado
         {
             internal const int MaxVertices = 8192;
-            internal D3D9.Vtx[] Vertices;
+            internal Tarjeta.Vtx[] Vertices;
             internal int N;
             private TeselasVisibles teselas;
             private float x0, y0, x1, y1, u, v;
@@ -422,12 +422,12 @@ namespace Rocola
                 for (int i = 0; i < n * 4; i++) if (huecosDe[i] != huecos[i]) return false;
                 return true;
             }
-            internal void Guarda(D3D9.Vtx[] fuente, int vertices, TeselasVisibles t,
+            internal void Guarda(Tarjeta.Vtx[] fuente, int vertices, TeselasVisibles t,
                 float a, float b, float c, float d, float uu, float vv, uint argb, int[] huecos, int n)
             {
                 if (vertices > MaxVertices) return; // el recorte muy grande conserva el camino sin cache
                 if (Vertices == null || Vertices.Length < vertices)
-                    Vertices = new D3D9.Vtx[Math.Min(MaxVertices, Math.Max(vertices, Vertices == null ? 96 : Vertices.Length * 2))];
+                    Vertices = new Tarjeta.Vtx[Math.Min(MaxVertices, Math.Max(vertices, Vertices == null ? 96 : Vertices.Length * 2))];
                 Array.Copy(fuente, Vertices, vertices); N = vertices;
                 teselas = t; x0 = a; y0 = b; x1 = c; y1 = d; u = uu; v = vv; color = argb;
                 Array.Copy(huecos, huecosDe, n * 4); cuantos = n;
@@ -439,7 +439,7 @@ namespace Rocola
         internal int RecortesCalculados, RecortesReusados;
 
         // Una capa del cielo con huecos: lo mismo que DibujaTeselas, sin lo que cae dentro de un hueco.
-        private void DibujaTeselasFondo(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, D3D9.Vtx[] quad)
+        private void DibujaTeselasFondo(IntPtr tex, TeselasVisibles t, float x0, float y0, float x1, float y1, float uMax, float vMax, uint argb, Tarjeta.Vtx[] quad)
         {
             if (tex == IntPtr.Zero) return;
             if (nHuecos == 0 || !TocaHueco(x0, y0, x1, y1)) { DibujaTeselas(tex, t, x0, y0, x1, y1, uMax, vMax, argb, quad); return; }
@@ -543,7 +543,7 @@ namespace Rocola
             double su = ((double)u1 - u0) / ((double)x1 - x0), sv = ((double)v1 - v0) / ((double)y1 - y0);
             float ua = a0 == x0 ? u0 : (float)(u0 + (a0 - (double)x0) * su), ub = a1 == x1 ? u1 : (float)(u0 + (a1 - (double)x0) * su);
             float va = b0 == y0 ? v0 : (float)(v0 + (b0 - (double)y0) * sv), vb = b1 == y1 ? v1 : (float)(v0 + (b1 - (double)y0) * sv);
-            D3D9.Vtx[] q = trozosHuecos;
+            Tarjeta.Vtx[] q = trozosHuecos;
             float pa = a0 - 0.5f, pb = a1 - 0.5f, qa = b0 - 0.5f, qb = b1 - 0.5f;
             TV(ref q[v], pa, qa, argb, ua, va); TV(ref q[v + 1], pb, qa, argb, ub, va); TV(ref q[v + 2], pb, qb, argb, ub, vb);
             TV(ref q[v + 3], pa, qa, argb, ua, va); TV(ref q[v + 4], pb, qb, argb, ub, vb); TV(ref q[v + 5], pa, qb, argb, ua, vb);

@@ -66,7 +66,7 @@ namespace Rocola
         private static int hiloPantalla = -1;
         private static int siguienteDisp, siguienteMapa;
         private sealed class Disp { internal int Id; internal bool EnCuadro, CuadroGrabado; internal bool Vineta; internal uint Cubo; internal bool CamposVistos; }
-        private static readonly ConditionalWeakTable<D3D9Device, Disp> disps = new ConditionalWeakTable<D3D9Device, Disp>();
+        private static readonly ConditionalWeakTable<DispositivoTarjeta, Disp> disps = new ConditionalWeakTable<DispositivoTarjeta, Disp>();
         private sealed class IdMapa { internal int Id; }
         private static readonly ConditionalWeakTable<Bitmap, IdMapa> mapas = new ConditionalWeakTable<Bitmap, IdMapa>();
         [ThreadStatic] private static MemoryStream ms;
@@ -141,7 +141,7 @@ namespace Rocola
                 catch (Exception ex) { roto = true; Console.Error.WriteLine("Cinta de la tarjeta: fallo al escribir (" + ex.Message + ")"); try { salida.Dispose(); } catch { } salida = null; }
             }
         }
-        private static Disp DeDisp(D3D9Device d)
+        private static Disp DeDisp(DispositivoTarjeta d)
         {
             Disp x;
             lock (candado)
@@ -151,7 +151,7 @@ namespace Rocola
             return x;
         }
         // Lo que XP escribe directo en el dispositivo (sin llamada): se apunta antes de la llamada que lo usa, si cambio.
-        private static void Campos(D3D9Device d, Disp x)
+        private static void Campos(DispositivoTarjeta d, Disp x)
         {
             if (x.CamposVistos && x.Vineta == d.VinetaPuntos && x.Cubo == d.CubeBaseColor) return;
             if (!x.CamposVistos || x.Vineta != d.VinetaPuntos) { BinaryWriter w = Empieza(TCampo); w.Write(x.Id); w.Write((byte)1); w.Write(d.VinetaPuntos ? 1u : 0u); Termina(); }
@@ -166,19 +166,19 @@ namespace Rocola
             w.Write(x.Id); w.Write(metodo); w.Write(AhoraMs);
             return w;
         }
-        private static void Vertices(BinaryWriter w, D3D9.Vtx[] v, int necesarios)
+        private static void Vertices(BinaryWriter w, Tarjeta.Vtx[] v, int necesarios)
         {
             if (v == null) { w.Write(-1); w.Write(0); return; }
             int n = Math.Max(0, Math.Min(necesarios, v.Length));
             w.Write(v.Length); w.Write(n);
-            if (n > 0) w.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<D3D9.Vtx>(v, 0, n)));
+            if (n > 0) w.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<Tarjeta.Vtx>(v, 0, n)));
         }
-        private static void Vertices2(BinaryWriter w, D3D9.Vtx2[] v, int necesarios)
+        private static void Vertices2(BinaryWriter w, Tarjeta.Vtx2[] v, int necesarios)
         {
             if (v == null) { w.Write(-1); w.Write(0); return; }
             int n = Math.Max(0, Math.Min(necesarios, v.Length));
             w.Write(v.Length); w.Write(n);
-            if (n > 0) w.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<D3D9.Vtx2>(v, 0, n)));
+            if (n > 0) w.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<Tarjeta.Vtx2>(v, 0, n)));
         }
         private static void Mapa(BinaryWriter w, Bitmap b, Rectangle zona)
         {
@@ -193,12 +193,12 @@ namespace Rocola
             byte* p = (byte*)b.Sk.GetPixels(); int rb = b.Sk.RowBytes;
             for (int y = 0; y < r.Height; y++) w.Write(new ReadOnlySpan<byte>(p + (long)(r.Y + y) * rb + (long)r.X * 4, r.Width * 4));
         }
-        private static void Antes(D3D9Device d, out Disp x) { x = DeDisp(d); if (hiloPantalla < 0) hiloPantalla = Thread.CurrentThread.ManagedThreadId; dentro++; }
+        private static void Antes(DispositivoTarjeta d, out Disp x) { x = DeDisp(d); if (hiloPantalla < 0) hiloPantalla = Thread.CurrentThread.ManagedThreadId; dentro++; }
         private static void Despues() { dentro--; }
         private static void Falla(Exception ex) { if (!roto) Console.Error.WriteLine("Cinta de la tarjeta: " + ex.Message); }
 
         // ================================================================ las llamadas
-        internal static void Nuevo(D3D9Device d, IntPtr ventana, int w, int h)
+        internal static void Nuevo(DispositivoTarjeta d, IntPtr ventana, int w, int h)
         {
             try
             {
@@ -208,84 +208,84 @@ namespace Rocola
             }
             catch (Exception ex) { Falla(ex); }
         }
-        internal static void Release(IntPtr t)
+        internal static void Suelta(IntPtr t)
         {
             dentro++;
-            try { D3D9.Release(t); }
+            try { Tarjeta.Suelta(t); }
             finally { dentro--; }
             try { BinaryWriter b = Empieza(TSuelta); b.Write((long)t); b.Write(Thread.CurrentThread.ManagedThreadId == hiloPantalla); b.Write(AhoraMs); Termina(); }
             catch (Exception ex) { Falla(ex); }
         }
-        internal static bool Redimensiona(D3D9Device d, int w, int h)
+        internal static bool Redimensiona(DispositivoTarjeta d, int w, int h)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.Redimensiona(w, h); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MRedimensiona, true); b.Write(w); b.Write(h); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool PreparaDispositivo(D3D9Device d)
+        internal static bool PreparaDispositivo(DispositivoTarjeta d)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.PreparaDispositivo(); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MPreparaDispositivo, true); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool PreloadTexture(D3D9Device d, IntPtr t)
+        internal static bool PreloadTexture(DispositivoTarjeta d, IntPtr t)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.PreloadTexture(t); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MPreloadTexture, true); b.Write((long)t); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreateTextureFromBitmap(D3D9Device d, Bitmap bmp)
+        internal static IntPtr CreateTextureFromBitmap(DispositivoTarjeta d, Bitmap bmp)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreateTextureFromBitmap(bmp); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreateTextureFromBitmap, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreateTexturePow2(D3D9Device d, Bitmap bmp, out float u, out float v)
+        internal static IntPtr CreateTexturePow2(DispositivoTarjeta d, Bitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreateTexturePow2(bmp, out u, out v); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreateTexturePow2, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); b.Write(u); b.Write(v); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static IntPtr CreaPortadaCompartida(D3D9Device d, Bitmap bmp, out float u, out float v)
+        internal static IntPtr CreaPortadaCompartida(DispositivoTarjeta d, Bitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); IntPtr r;
             try { r = d.CreaPortadaCompartida(bmp, out u, out v); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MCreaPortadaCompartida, true); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write((long)r); b.Write(u); b.Write(v); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool UpdateTextureRegion(D3D9Device d, IntPtr t, Bitmap bmp, Rectangle area)
+        internal static bool UpdateTextureRegion(DispositivoTarjeta d, IntPtr t, Bitmap bmp, Rectangle area)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.UpdateTextureRegion(t, bmp, area); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MUpdateTextureRegion, true); b.Write((long)t); Mapa(b, bmp, area); b.Write(area.X); b.Write(area.Y); b.Write(area.Width); b.Write(area.Height); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool UpdateTexturePow2(D3D9Device d, IntPtr t, Bitmap bmp, out float u, out float v)
+        internal static bool UpdateTexturePow2(DispositivoTarjeta d, IntPtr t, Bitmap bmp, out float u, out float v)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.UpdateTexturePow2(t, bmp, out u, out v); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MUpdateTexturePow2, true); b.Write((long)t); Mapa(b, bmp, bmp != null ? new Rectangle(0, 0, bmp.Width, bmp.Height) : Rectangle.Empty); b.Write(r); b.Write(u); b.Write(v); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static void Dispose(D3D9Device d)
+        internal static void Dispose(DispositivoTarjeta d)
         {
             Disp x; Antes(d, out x);
             try { d.Dispose(); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MDispose, true); Termina(); x.EnCuadro = false; } catch (Exception ex) { Falla(ex); }
         }
-        internal static bool PideSinEspera(D3D9Device d, bool sinEspera)
+        internal static bool PideSinEspera(DispositivoTarjeta d, bool sinEspera)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.PideSinEspera(sinEspera); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MPideSinEspera, true); b.Write(sinEspera); b.Write(r); Termina(); } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static void EmpiezaCuenta(D3D9Device d, bool area)
+        internal static void EmpiezaCuenta(DispositivoTarjeta d, bool area)
         {
             Disp x; Antes(d, out x);
             try { d.EmpiezaCuenta(area); } finally { Despues(); }
@@ -293,7 +293,7 @@ namespace Rocola
         }
 
         // ---- los cuadros ----
-        internal static bool BeginFrame(D3D9Device d)
+        internal static bool BeginFrame(DispositivoTarjeta d)
         {
             Disp x; Antes(d, out x); bool r;
             double t = AhoraMs;
@@ -306,7 +306,7 @@ namespace Rocola
             catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool EndFrame(D3D9Device d)
+        internal static bool EndFrame(DispositivoTarjeta d)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.EndFrame(); } finally { Despues(); }
@@ -320,31 +320,31 @@ namespace Rocola
             catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool EmpiezaMedia(D3D9Device d, int w, int h, int div)
+        internal static bool EmpiezaMedia(DispositivoTarjeta d, int w, int h, int div)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.EmpiezaMedia(w, h, div); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MEmpiezaMedia, false); if (b != null) { b.Write(w); b.Write(h); b.Write(div); b.Write(r); Termina(); } } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool TerminaMedia(D3D9Device d)
+        internal static bool TerminaMedia(DispositivoTarjeta d)
         {
             Disp x; Antes(d, out x); bool r;
             try { r = d.TerminaMedia(); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MTerminaMedia, false); if (b != null) { b.Write(r); Termina(); } } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        internal static bool DibujaDosTexturas(D3D9Device d, IntPtr t0, IntPtr t1, D3D9.Vtx2[] v, int tris)
+        internal static bool DibujaDosTexturas(DispositivoTarjeta d, IntPtr t0, IntPtr t1, Tarjeta.Vtx2[] v, int tris)
         {
             Disp x; Antes(d, out x); bool r;
             try { Campos2(d, x); r = d.DibujaDosTexturas(t0, t1, v, tris); } finally { Despues(); }
             try { BinaryWriter b = Llamada(x, MDibujaDosTexturas, false); if (b != null) { b.Write((long)t0); b.Write((long)t1); b.Write(tris); Vertices2(b, v, tris * 3); b.Write(r); Termina(); } } catch (Exception ex) { Falla(ex); }
             return r;
         }
-        private static void Campos2(D3D9Device d, Disp x) { if (x.EnCuadro && x.CuadroGrabado) Campos(d, x); }
+        private static void Campos2(DispositivoTarjeta d, Disp x) { if (x.EnCuadro && x.CuadroGrabado) Campos(d, x); }
 
         // ---- los dibujos (los vertices que lee cada uno: DrawSky 12, DrawTexQuad y DrawOpaqueQuad 6, los demas tris * 3) ----
-        private static void Dibujo(D3D9Device d, byte metodo, IntPtr tex, D3D9.Vtx[] v, int tris, int necesarios, bool conTex, bool conTris)
+        private static void Dibujo(DispositivoTarjeta d, byte metodo, IntPtr tex, Tarjeta.Vtx[] v, int tris, int necesarios, bool conTex, bool conTris)
         {
             Disp x = DeDisp(d);
             if (!(x.EnCuadro && x.CuadroGrabado)) return;
@@ -360,18 +360,18 @@ namespace Rocola
             catch (Exception ex) { Falla(ex); }
         }
         // (el dibujo se apunta ANTES de hacerlo: lo que se apunta es lo mismo, y asi los campos van antes del dibujo)
-        internal static void DrawSky(D3D9Device d, D3D9.Vtx[] v) { Dibujo(d, MDrawSky, IntPtr.Zero, v, 4, 12, false, false); dentro++; try { d.DrawSky(v); } finally { dentro--; } }
-        internal static void DrawStars(D3D9Device d, D3D9.Vtx[] v, int tris, IntPtr t) { Dibujo(d, MDrawStars, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawStars(v, tris, t); } finally { dentro--; } }
-        internal static void DrawShootStreaks(D3D9Device d, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawShootStreaks, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawShootStreaks(v, tris); } finally { dentro--; } }
-        internal static void DrawMesh(D3D9Device d, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawMesh, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawMesh(v, tris); } finally { dentro--; } }
-        internal static void DrawMeshAdd(D3D9Device d, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawMeshAdd, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawMeshAdd(v, tris); } finally { dentro--; } }
-        internal static void DrawTexQuad(D3D9Device d, IntPtr t, D3D9.Vtx[] v) { Dibujo(d, MDrawTexQuad, t, v, 2, 6, true, false); dentro++; try { d.DrawTexQuad(t, v); } finally { dentro--; } }
-        internal static void DrawOpaqueQuad(D3D9Device d, IntPtr t, D3D9.Vtx[] v) { Dibujo(d, MDrawOpaqueQuad, t, v, 2, 6, true, false); dentro++; try { d.DrawOpaqueQuad(t, v); } finally { dentro--; } }
-        internal static void DrawQuads(D3D9Device d, IntPtr t, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawQuads, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawQuads(t, v, tris); } finally { dentro--; } }
-        internal static void DrawQuadsWrap(D3D9Device d, IntPtr t, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawQuadsWrap, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawQuadsWrap(t, v, tris); } finally { dentro--; } }
-        internal static void DibujaMedia(D3D9Device d, D3D9.Vtx[] v, int tris) { Dibujo(d, MDibujaMedia, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DibujaMedia(v, tris); } finally { dentro--; } }
-        internal static void DrawSkyN(D3D9Device d, D3D9.Vtx[] v, int tris) { Dibujo(d, MDrawSkyN, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawSkyN(v, tris); } finally { dentro--; } }
-        internal static void DrawCube(D3D9Device d, IntPtr t, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
+        internal static void DrawSky(DispositivoTarjeta d, Tarjeta.Vtx[] v) { Dibujo(d, MDrawSky, IntPtr.Zero, v, 4, 12, false, false); dentro++; try { d.DrawSky(v); } finally { dentro--; } }
+        internal static void DrawStars(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris, IntPtr t) { Dibujo(d, MDrawStars, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawStars(v, tris, t); } finally { dentro--; } }
+        internal static void DrawShootStreaks(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawShootStreaks, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawShootStreaks(v, tris); } finally { dentro--; } }
+        internal static void DrawMesh(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawMesh, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawMesh(v, tris); } finally { dentro--; } }
+        internal static void DrawMeshAdd(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawMeshAdd, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawMeshAdd(v, tris); } finally { dentro--; } }
+        internal static void DrawTexQuad(DispositivoTarjeta d, IntPtr t, Tarjeta.Vtx[] v) { Dibujo(d, MDrawTexQuad, t, v, 2, 6, true, false); dentro++; try { d.DrawTexQuad(t, v); } finally { dentro--; } }
+        internal static void DrawOpaqueQuad(DispositivoTarjeta d, IntPtr t, Tarjeta.Vtx[] v) { Dibujo(d, MDrawOpaqueQuad, t, v, 2, 6, true, false); dentro++; try { d.DrawOpaqueQuad(t, v); } finally { dentro--; } }
+        internal static void DrawQuads(DispositivoTarjeta d, IntPtr t, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawQuads, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawQuads(t, v, tris); } finally { dentro--; } }
+        internal static void DrawQuadsWrap(DispositivoTarjeta d, IntPtr t, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawQuadsWrap, t, v, tris, tris * 3, true, true); dentro++; try { d.DrawQuadsWrap(t, v, tris); } finally { dentro--; } }
+        internal static void DibujaMedia(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDibujaMedia, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DibujaMedia(v, tris); } finally { dentro--; } }
+        internal static void DrawSkyN(DispositivoTarjeta d, Tarjeta.Vtx[] v, int tris) { Dibujo(d, MDrawSkyN, IntPtr.Zero, v, tris, tris * 3, false, true); dentro++; try { d.DrawSkyN(v, tris); } finally { dentro--; } }
+        internal static void DrawCube(DispositivoTarjeta d, IntPtr t, float uMax, float vMax, float ax, float ay, float aw, float ah, double angle, float alpha, double tilt)
         {
             Disp x = DeDisp(d);
             if (x.EnCuadro && x.CuadroGrabado)

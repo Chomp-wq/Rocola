@@ -32,10 +32,7 @@ namespace Rocola
     {
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int GetPtrDel(IntPtr self, uint a, out IntPtr result);
         [UnmanagedFunctionPointer(CallingConvention.StdCall)] public delegate int ValidaDel(IntPtr self, out uint passes);
-        [StructLayout(LayoutKind.Sequential)]
-        public struct Vtx2 { public float X, Y, Z, Rhw; public uint Color; public float U, V, U2, V2; }
         public const uint FVF2 = 0x004 | 0x040 | 0x200;   // XYZRHW | DIFFUSE | TEX2
-        public const int Vtx2Size = 36;
         public const uint USAGE_RENDERTARGET = 1, POOL_DEFAULT = 0, FMT_X8R8G8B8 = 22;
         public const uint PRESENT_INTERVAL_IMMEDIATE = 0x80000000u;
         public const uint TSS_TEXCOORDINDEX = 11;
@@ -45,7 +42,14 @@ namespace Rocola
         public const int SlotSetRenderTarget = 37, SlotGetRenderTarget = 38, SlotValidateDevice = 70, SlotGetSurfaceLevel = 18;
     }
 
-    internal sealed partial class D3D9Device
+    internal static partial class Tarjeta   // EN LINUX: el vertice de dos texturas va en Tarjeta (en XP, en D3D9)
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vtx2 { public float X, Y, Z, Rhw; public uint Color; public float U, V, U2, V2; }
+        public const int Vtx2Size = 36;
+    }
+
+    internal sealed partial class DispositivoTarjeta
     {
         // ---------------- LO QUE PUEDE LA TARJETA ----------------
         internal bool CapsDosTexturas, CapsSinEspera;
@@ -68,7 +72,7 @@ namespace Rocola
         private static float Recorta(float v, float max) { return v < 0f ? 0f : (v > max ? max : v); }
         // El area de los triangulos dentro del destino, con la regla de centros de pixel. Para lo recto (casi todo) es
         // exacta; para lo girado (cubos, halos) es una aproximacion buena.
-        private double AreaDe(D3D9.Vtx[] v, int tris)
+        private double AreaDe(Tarjeta.Vtx[] v, int tris)
         {
             float w = enMedia ? mediaW : (float)pp.BackBufferWidth, h = enMedia ? mediaH : (float)pp.BackBufferHeight;
             double a = 0;
@@ -90,19 +94,19 @@ namespace Rocola
         internal const int JuntaMaxTris = 64;
         private const int JuntaCap = 6144;   // vertices pendientes como mucho (2048 triangulos)
         private bool juntar;   // lo enciende el constructor; los dispositivos imitados de las pruebas, solo si lo piden
-        private D3D9.Vtx[] junta;
+        private Tarjeta.Vtx[] junta;
         private GCHandle juntaPin;
         private IntPtr juntaDir;
         private int juntaN;
         internal bool Juntar { get { return juntar; } set { if (!value) Junta(); juntar = value; } }
-        private bool Encola(D3D9.Vtx[] verts, int tris)
+        private bool Encola(Tarjeta.Vtx[] verts, int tris)
         {
             if (!juntar) return false;
             int n = tris * 3;
             if (n > JuntaCap) return false;
             if (junta == null)
             {
-                junta = new D3D9.Vtx[JuntaCap];
+                junta = new Tarjeta.Vtx[JuntaCap];
                 juntaPin = GCHandle.Alloc(junta, GCHandleType.Pinned);
                 juntaDir = juntaPin.AddrOfPinnedObject();
             }
@@ -120,7 +124,7 @@ namespace Rocola
             if (dev == IntPtr.Zero || lost) return;
             try
             {
-                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)(n / 3), juntaDir, D3D9.VtxSize) < 0) EstadoFallido();
+                if (drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)(n / 3), juntaDir, Tarjeta.VtxSize) < 0) EstadoFallido();
                 else Envios++;
             }
             catch { EstadoFallido(); }
@@ -147,7 +151,7 @@ namespace Rocola
         // J2 (14-10-2026): la imagen va a la mitad (2) o a un cuarto (4) de la pantalla en cada lado.
         private int mediaDiv = 2;
         internal int MediaDiv { get { return mediaDiv; } }
-        private D3D9.Vtx[] mediaVerts;
+        private Tarjeta.Vtx[] mediaVerts;
         internal bool EnMedia { get { return enMedia; } }
         internal int MediaTW { get { return mediaTW; } }
         internal int MediaTH { get { return mediaTH; } }
@@ -174,11 +178,11 @@ namespace Rocola
             try
             {
                 if (D3D9.EnGl.GetRenderTarget(dev, 0, out fondo) < 0 || fondo == IntPtr.Zero)
-                { if (fondo != IntPtr.Zero) D3D9.Release(fondo); mediaSinSoporte = true; return false; }
+                { if (fondo != IntPtr.Zero) Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
                 if (D3D9.EnGl.SetRenderTarget(dev, 0, mediaSup) < 0)
-                { D3D9.Release(fondo); mediaSinSoporte = true; return false; }
+                { Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
             }
-            catch { if (fondo != IntPtr.Zero) D3D9.Release(fondo); mediaSinSoporte = true; return false; }
+            catch { if (fondo != IntPtr.Zero) Tarjeta.Suelta(fondo); mediaSinSoporte = true; return false; }
             mediaFondo = fondo; mediaW = mw; mediaH = mh; mediaDiv = div; enMedia = true; Cambios++;
             return true;
         }
@@ -192,17 +196,17 @@ namespace Rocola
                 {
                     t = IntPtr.Zero;
                     if (createTex(dev, (uint)tw, (uint)th, 1, D3D9.USAGE_RENDERTARGET, formato, D3D9.POOL_DEFAULT, out t, IntPtr.Zero) >= 0 && t != IntPtr.Zero) break;
-                    if (t != IntPtr.Zero) D3D9.Release(t);
+                    if (t != IntPtr.Zero) Tarjeta.Suelta(t);
                     t = IntPtr.Zero;
                 }
                 if (t == IntPtr.Zero) return false;
                 IntPtr sup;
                 if (D3D9.EnGl.GetSurfaceLevel(t, 0, out sup) < 0 || sup == IntPtr.Zero)
-                { D3D9.Release(t); return false; }
+                { Tarjeta.Suelta(t); return false; }
                 mediaTex = t; mediaSup = sup; mediaTW = tw; mediaTH = th; mediaGen++;
                 return true;
             }
-            catch { if (t != IntPtr.Zero) D3D9.Release(t); return false; }
+            catch { if (t != IntPtr.Zero) Tarjeta.Suelta(t); return false; }
         }
         // Vuelve a la pantalla. Si no se puede, el dispositivo se reinicia en el proximo cuadro (eso devuelve la pantalla
         // como destino) y la imagen intermedia no se vuelve a intentar.
@@ -216,28 +220,28 @@ namespace Rocola
             bool ok;
             try { ok = D3D9.EnGl.SetRenderTarget(dev, 0, fondo) >= 0; }
             catch { ok = false; }
-            D3D9.Release(fondo);
+            Tarjeta.Suelta(fondo);
             Cambios++;
             if (!ok) { EstadoFallido(); resetPending = true; mediaSinSoporte = true; }
             return ok;
         }
         // La imagen estirada a la pantalla, opaca y sin mezcla: hace de cielo (el primero que tapa cada pixel).
-        internal void DibujaMedia(D3D9.Vtx[] quad, int tris)
+        internal void DibujaMedia(Tarjeta.Vtx[] quad, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DibujaMedia(this, quad, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost || mediaTex == IntPtr.Zero || enMedia) return;
             Tex(mediaTex); TssModulate(); Blend(1);
             Draw(quad, tris);
         }
-        private D3D9.Vtx[] EscalaMedia(D3D9.Vtx[] v, int tris)
+        private Tarjeta.Vtx[] EscalaMedia(Tarjeta.Vtx[] v, int tris)
         {
             if (v == null || tris <= 0 || tris > v.Length / 3) return null;
             int n = tris * 3;
-            if (mediaVerts == null || mediaVerts.Length < n) mediaVerts = new D3D9.Vtx[Math.Max(n, 64)];
+            if (mediaVerts == null || mediaVerts.Length < n) mediaVerts = new Tarjeta.Vtx[Math.Max(n, 64)];
             float e = 1f / mediaDiv;
             for (int i = 0; i < n; i++)
             {
-                D3D9.Vtx x = v[i];
+                Tarjeta.Vtx x = v[i];
                 x.X = (x.X + 0.5f) * e - 0.5f; x.Y = (x.Y + 0.5f) * e - 0.5f;
                 mediaVerts[i] = x;
             }
@@ -246,12 +250,12 @@ namespace Rocola
         private void LiberaMedia()
         {
             mediaGen++;   // lo que tenia pintado ya no vale (G1)
-            if (enMedia) { enMedia = false; if (mediaFondo != IntPtr.Zero) D3D9.Release(mediaFondo); mediaFondo = IntPtr.Zero; }
+            if (enMedia) { enMedia = false; if (mediaFondo != IntPtr.Zero) Tarjeta.Suelta(mediaFondo); mediaFondo = IntPtr.Zero; }
             IntPtr s = mediaSup, t = mediaTex;
             mediaSup = mediaTex = IntPtr.Zero; mediaTW = mediaTH = 0;
             if (t != IntPtr.Zero && stTex == t) stTex = new IntPtr(-1);
-            if (s != IntPtr.Zero) D3D9.Release(s);
-            if (t != IntPtr.Zero) D3D9.Release(t);
+            if (s != IntPtr.Zero) Tarjeta.Suelta(s);
+            if (t != IntPtr.Zero) Tarjeta.Suelta(t);
         }
         // ---------------- G2: LA VINETA, PUNTO POR PUNTO (14-10-2026) ----------------
         // Con «Fondo en una sola capa» la vineta va dentro de la imagen intermedia, DEBAJO de la aurora, las estrellas, la
@@ -261,15 +265,15 @@ namespace Rocola
         // que la vineta encima, en el centro de cada punto; entre vertice y vertice la tarjeta lo degrada. La cuenta es la de
         // BakeVineta (GpuPanel.VinetaAlfa), sin la textura: en el centro de la pantalla no hace nada y se copia tal cual.
         internal bool VinetaPuntos;
-        private D3D9.Vtx[] vinetaVerts;
-        private D3D9.Vtx[] Vinetea(D3D9.Vtx[] v, int tris)
+        private Tarjeta.Vtx[] vinetaVerts;
+        private Tarjeta.Vtx[] Vinetea(Tarjeta.Vtx[] v, int tris)
         {
             if (v == null || tris <= 0 || tris > v.Length / 3) return null;
             int n = tris * 3;
-            if (vinetaVerts == null || vinetaVerts.Length < n) vinetaVerts = new D3D9.Vtx[Math.Max(n, 64)];
+            if (vinetaVerts == null || vinetaVerts.Length < n) vinetaVerts = new Tarjeta.Vtx[Math.Max(n, 64)];
             float w = Math.Max(1f, (float)pp.BackBufferWidth), h = Math.Max(1f, (float)pp.BackBufferHeight);
             Array.Copy(v, 0, vinetaVerts, 0, n);   // de golpe; luego solo se toca el color de los que caen en la vineta
-            D3D9.Vtx[] o = vinetaVerts;
+            Tarjeta.Vtx[] o = vinetaVerts;
             // Por tabla de enteros sobre la pantalla (GpuPanel.VinetaRejilla): se hace con cada vertice y cada cuadro, y
             // con decimales costaba seis veces lo que estirar los vertices a la imagen intermedia.
             int[] tab = GpuPanel.VinetaRejilla;
@@ -289,7 +293,7 @@ namespace Rocola
             return o;
         }
 
-        public void DrawSkyN(D3D9.Vtx[] sky, int tris)
+        public void DrawSkyN(Tarjeta.Vtx[] sky, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) { CintaTarjeta.DrawSkyN(this, sky, tris); return; }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (dev == IntPtr.Zero || lost) return;
@@ -306,7 +310,7 @@ namespace Rocola
         // Mezcla: origen UNO, destino 1 - alfa. Lo unico que cambia es el redondeo a 8 bits entre pasos.
         private bool dosTexturasFallo, dosTexturasValidado;
         internal bool PuedeDosTexturas { get { return CapsDosTexturas && !dosTexturasFallo && dev != IntPtr.Zero; } }
-        internal bool DibujaDosTexturas(IntPtr t0, IntPtr t1, D3D9.Vtx2[] v, int tris)
+        internal bool DibujaDosTexturas(IntPtr t0, IntPtr t1, Tarjeta.Vtx2[] v, int tris)
         {
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.DibujaDosTexturas(this, t0, t1, v, tris);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             if (!PuedeDosTexturas || lost || !inScene || enMedia || t0 == IntPtr.Zero || t1 == IntPtr.Zero
@@ -354,7 +358,7 @@ namespace Rocola
                 if (ok)
                 {
                     gh = GCHandle.Alloc(v, GCHandleType.Pinned);
-                    ok = drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), D3D9.Vtx2Size) >= 0;
+                    ok = drawUp(dev, D3D9.PT_TRIANGLELIST, (uint)tris, gh.AddrOfPinnedObject(), Tarjeta.Vtx2Size) >= 0;
                     if (ok)
                     {
                         dibujado = true; Envios++; Pedidos++;
@@ -381,7 +385,7 @@ namespace Rocola
             }
             return dibujado;
         }
-        private double AreaDe2(D3D9.Vtx2[] v, int tris)
+        private double AreaDe2(Tarjeta.Vtx2[] v, int tris)
         {
             float w = pp.BackBufferWidth, h = pp.BackBufferHeight;
             double a = 0;
@@ -418,14 +422,14 @@ namespace Rocola
         // El cielo de abajo de todo. Si devuelve true, ya se pinto (con las nebulosas, en la imagen intermedia).
         internal delegate bool DibujaBase(int w, int h, float midY, uint top, uint mid, uint bot);
         public DibujaBase CieloBase;
-        private D3D9.Vtx[] skyAmplio;
+        private Tarjeta.Vtx[] skyAmplio;
         // El mismo degradado de tres paradas, mas ancho y mas alto que la pantalla: en la imagen intermedia, la columna y
         // la fila de sobra tienen que tener cielo (el color no cambia de lado a lado, y abajo sigue el de abajo).
         internal void CieloAmplio(int w, int h, float midY, uint top, uint mid, uint bot)
         {
             if (gpu == null) return;
             if (CieloSuave) { DibujaCieloSuave(ArmaCieloSuave(w + 8f, h, midY, top, mid, bot, 8f)); return; }   // C1 (PulidoGpu.cs)
-            if (skyAmplio == null) skyAmplio = new D3D9.Vtx[18];
+            if (skyAmplio == null) skyAmplio = new Tarjeta.Vtx[18];
             float ancho = w + 8f;
             SetQuad(skyAmplio, 0, 0, 0, ancho, midY, top, top, mid, mid);
             SetQuad(skyAmplio, 6, 0, midY, ancho, h, mid, mid, bot, bot);
@@ -438,12 +442,12 @@ namespace Rocola
         internal int MediaGen { get { return gpu != null ? gpu.MediaGen : 0; } }
         internal bool VinetaPuntos { get { return gpu != null && gpu.VinetaPuntos; } set { if (gpu != null) gpu.VinetaPuntos = value; } }
         internal bool TerminaMedia() { return Ok && gpu.TerminaMedia(); }
-        internal void DibujaMedia(D3D9.Vtx[] quad, int tris) { if (Ok) gpu.DibujaMedia(quad, tris); }
+        internal void DibujaMedia(Tarjeta.Vtx[] quad, int tris) { if (Ok) gpu.DibujaMedia(quad, tris); }
         internal int MediaTW { get { return gpu != null ? gpu.MediaTW : 0; } }
         internal int MediaTH { get { return gpu != null ? gpu.MediaTH : 0; } }
         internal bool PuedeMedia { get { return Ok && !gpu.MediaSinSoporte; } }
         internal bool PuedeDosTexturas { get { return Ok && gpu.PuedeDosTexturas; } }
-        internal bool DibujaDosTexturas(IntPtr t0, IntPtr t1, D3D9.Vtx2[] v, int tris) { return Ok && gpu.DibujaDosTexturas(t0, t1, v, tris); }
+        internal bool DibujaDosTexturas(IntPtr t0, IntPtr t1, Tarjeta.Vtx2[] v, int tris) { return Ok && gpu.DibujaDosTexturas(t0, t1, v, tris); }
         internal void EmpiezaCuenta(bool area) { if (gpu != null) gpu.EmpiezaCuenta(area); }
         internal int Pedidos { get { return gpu != null ? gpu.Pedidos : 0; } }
         internal int Envios { get { return gpu != null ? gpu.Envios : 0; } }
@@ -472,8 +476,8 @@ namespace Rocola
         public bool CuentaArea;
         internal bool EstadoExtendidoAsentado { get { return idleBlend >= 1f && idleTex != IntPtr.Zero; } }
         private bool cieloMedioEsteCuadro, granoUnidoEsteCuadro, capaUnicaEsteCuadro;
-        private readonly D3D9.Vtx[] mediaQuad = new D3D9.Vtx[24];
-        private D3D9.Vtx2[] granoVineta2;
+        private readonly Tarjeta.Vtx[] mediaQuad = new Tarjeta.Vtx[24];
+        private Tarjeta.Vtx2[] granoVineta2;
 
         // Antes de abrir la escena: que va a ir en una pasada este cuadro.
         private void DecideAhorros()
@@ -555,7 +559,7 @@ namespace Rocola
                     if (capa)
                     {
                         // G2: el grano (un granito por pixel de la imagen: 2x2 en la pantalla) y la vineta, aqui dentro.
-                        if (ruido != IntPtr.Zero) { D3D9.Vtx[] malla; int n = MallaRuidoMedia(div, out malla); if (n > 0) stars.DrawTexturedBatchWrap(ruido, malla, n / 3); }
+                        if (ruido != IntPtr.Zero) { Tarjeta.Vtx[] malla; int n = MallaRuidoMedia(div, out malla); if (n > 0) stars.DrawTexturedBatchWrap(ruido, malla, n / 3); }
                         if (vineta != IntPtr.Zero)
                             DibujaTeselasFondo(vineta, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);
                     }
@@ -626,10 +630,10 @@ namespace Rocola
 
         // G2: la malla del grano para la imagen intermedia. Tejas de 2048 pixeles de pantalla, que alli son 1024: un texel
         // del grano por pixel de la imagen, alineado con su centro. Se rehace solo si cambia la pantalla o el grano.
-        private D3D9.Vtx[] ruidoMediaMalla;
+        private Tarjeta.Vtx[] ruidoMediaMalla;
         private int ruidoMediaAncho, ruidoMediaAlto, ruidoMediaN, ruidoMediaDiv;
         private float ruidoMediaU, ruidoMediaV;
-        private int MallaRuidoMedia(int div, out D3D9.Vtx[] malla)
+        private int MallaRuidoMedia(int div, out Tarjeta.Vtx[] malla)
         {
             malla = null;
             int ancho = Width, alto = Height, teja = div * RuidoTeja;   // con el cielo a un cuarto (J2), tejas de 4096
@@ -638,7 +642,7 @@ namespace Rocola
                 || ruidoMediaDiv != div)
             {
                 int n = checked(((ancho - 1) / teja + 1) * ((alto - 1) / teja + 1) * 6);
-                if (ruidoMediaMalla == null || ruidoMediaMalla.Length != n) ruidoMediaMalla = new D3D9.Vtx[n];
+                if (ruidoMediaMalla == null || ruidoMediaMalla.Length != n) ruidoMediaMalla = new Tarjeta.Vtx[n];
                 int pos = 0;
                 for (int y = 0; y < alto; y += teja)
                     for (int x = 0; x < ancho; x += teja)
@@ -664,8 +668,8 @@ namespace Rocola
         // imagen (la que cubre los ultimos pixeles de dentro), la de abajo la ultima fila buena, y la esquina las dos.
         // Mismo dibujo y misma textura: una sola orden de 8 triangulos. Con el cielo a un cuarto (J2), lo mismo con 4: el
         // pixel p cae en (p + 0.5) / 4, y la ultima columna buena es la que cubre cuatro pixeles enteros de dentro.
-        internal static void ArmaEstirado(D3D9.Vtx[] q, int w, int h, int tw, int th) { ArmaEstirado(q, w, h, tw, th, 2); }
-        internal static void ArmaEstirado(D3D9.Vtx[] q, int w, int h, int tw, int th, int div)
+        internal static void ArmaEstirado(Tarjeta.Vtx[] q, int w, int h, int tw, int th) { ArmaEstirado(q, w, h, tw, th, 2); }
+        internal static void ArmaEstirado(Tarjeta.Vtx[] q, int w, int h, int tw, int th, int div)
         {
             float[] p = new float[32];
             PiezasEstirado(p, w, h, tw, th, div);
@@ -693,7 +697,7 @@ namespace Rocola
         }
         private static void Pieza(float[] p, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1)
         { p[o] = x0; p[o + 1] = y0; p[o + 2] = x1; p[o + 3] = y1; p[o + 4] = u0; p[o + 5] = v0; p[o + 6] = u1; p[o + 7] = v1; }
-        private static void Trozo(D3D9.Vtx[] q, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1)
+        private static void Trozo(Tarjeta.Vtx[] q, int o, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1)
         {
             SetV(ref q[o], x0, y0, u0, v0); SetV(ref q[o + 1], x1, y0, u1, v0); SetV(ref q[o + 2], x1, y1, u1, v1);
             SetV(ref q[o + 3], x0, y0, u0, v0); SetV(ref q[o + 4], x1, y1, u1, v1); SetV(ref q[o + 5], x0, y1, u0, v1);
@@ -703,14 +707,14 @@ namespace Rocola
         // coordenadas para la vineta, que se estira a toda la pantalla igual que cuando va sola.
         private bool DibujaGranoYVineta()
         {
-            D3D9.Vtx[] malla; int n = MallaRuido(out malla);
+            Tarjeta.Vtx[] malla; int n = MallaRuido(out malla);
             if (n <= 0 || malla == null) return n == 0;
-            if (granoVineta2 == null || granoVineta2.Length < n) granoVineta2 = new D3D9.Vtx2[n];
+            if (granoVineta2 == null || granoVineta2.Length < n) granoVineta2 = new Tarjeta.Vtx2[n];
             float su = vinetaU / Math.Max(1, Width), sv = vinetaV / Math.Max(1, Height);
             for (int i = 0; i < n; i++)
             {
-                D3D9.Vtx a = malla[i];
-                D3D9.Vtx2 b;
+                Tarjeta.Vtx a = malla[i];
+                Tarjeta.Vtx2 b;
                 b.X = a.X; b.Y = a.Y; b.Z = a.Z; b.Rhw = a.Rhw; b.Color = a.Color; b.U = a.U; b.V = a.V;
                 b.U2 = (a.X + 0.5f) * su; b.V2 = (a.Y + 0.5f) * sv;
                 granoVineta2[i] = b;

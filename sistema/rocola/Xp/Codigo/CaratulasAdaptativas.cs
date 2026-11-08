@@ -538,7 +538,7 @@ namespace Rocola
                 IntPtr tex = stars.CreateOverlay(cell.Preview, out u, out v);
                 if (CoverControl != null) CoverControl.Spend(Stopwatch.GetTimestamp() - start);
                 if (tex == IntPtr.Zero) return;
-                if (l != null && l.Tex != IntPtr.Zero) D3D9.Release(l.Tex);
+                if (l != null && l.Tex != IntPtr.Zero) Tarjeta.Suelta(l.Tex);
                 l = new LodTex { Tex = tex, Bmp = cell.Preview, U = u, V = v }; lodTextures[cell.Key] = l;
             }
             l.Frame = cellFrame;
@@ -572,7 +572,7 @@ namespace Rocola
         private void TrimLod(bool all)
         {
             if (all) {
-                foreach (LodTex texture in lodTextures.Values) D3D9.Release(texture.Tex);
+                foreach (LodTex texture in lodTextures.Values) Tarjeta.Suelta(texture.Tex);
                 lodTextures.Clear(); return;
             }
             // Conservar seis paginas de siluetas (432 KiB a 32x32). Antes se destruian

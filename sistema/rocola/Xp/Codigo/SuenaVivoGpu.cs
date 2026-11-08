@@ -694,7 +694,7 @@ namespace Rocola
         private GpuAviso avisoCuadro; private GpuInvita invitaCuadro; private GpuMoneda monedaCuadro; private GpuReposo reposoCuadro;
         private Bitmap monedaBmp;
         private double tituloRepDesde = -1; private int tituloRepDe = -1;
-        private readonly D3D9.Vtx[] svQuad = new D3D9.Vtx[6], svTira = new D3D9.Vtx[18];
+        private readonly Tarjeta.Vtx[] svQuad = new Tarjeta.Vtx[6], svTira = new Tarjeta.Vtx[18];
 
         // Texturas, ANTES de Begin como las demas: solo se suben cuando cambia su version.
         private void PreparaSuenaVivo()
@@ -973,11 +973,11 @@ namespace Rocola
 
         private void SueltaSuenaVivo()
         {
-            if (avisoTex != IntPtr.Zero) { D3D9.Release(avisoTex); avisoTex = IntPtr.Zero; }
-            if (invitaTex != IntPtr.Zero) { D3D9.Release(invitaTex); invitaTex = IntPtr.Zero; }
-            if (monedaTex != IntPtr.Zero) { D3D9.Release(monedaTex); monedaTex = IntPtr.Zero; }
-            if (masTex != IntPtr.Zero) { D3D9.Release(masTex); masTex = IntPtr.Zero; }
-            if (tituloRepTex != IntPtr.Zero) { D3D9.Release(tituloRepTex); tituloRepTex = IntPtr.Zero; }
+            if (avisoTex != IntPtr.Zero) { Tarjeta.Suelta(avisoTex); avisoTex = IntPtr.Zero; }
+            if (invitaTex != IntPtr.Zero) { Tarjeta.Suelta(invitaTex); invitaTex = IntPtr.Zero; }
+            if (monedaTex != IntPtr.Zero) { Tarjeta.Suelta(monedaTex); monedaTex = IntPtr.Zero; }
+            if (masTex != IntPtr.Zero) { Tarjeta.Suelta(masTex); masTex = IntPtr.Zero; }
+            if (tituloRepTex != IntPtr.Zero) { Tarjeta.Suelta(tituloRepTex); tituloRepTex = IntPtr.Zero; }
             avisoVer = invitaVer = masVer = tituloRepVer = -1;
             avisoBw = avisoBh = invitaBw = invitaBh = monedaBw = monedaBh = masBw = masBh = 0;
             tituloRepBw = tituloRepBh = 0;

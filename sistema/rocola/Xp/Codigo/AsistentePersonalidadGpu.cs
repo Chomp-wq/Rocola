@@ -290,7 +290,7 @@ namespace Rocola
                 AsistenteSuaviza((ahora-asistenteMezclaInicio)/.14)) : AsistenteNeutral();
         }
 
-        internal static int AsistenteMiembrosExpresivos(D3D9.Vtx[] v, float cx, float cy, float radio,
+        internal static int AsistenteMiembrosExpresivos(Tarjeta.Vtx[] v, float cx, float cy, float radio,
             float cantidad, float alfa, AsistenteExpresionGpu e, float giro)
         {
             if (!AsistenteGeometriaValida(v, 1900, cx, cy, radio)) return 0;
@@ -312,7 +312,7 @@ namespace Rocola
             AsistenteRotaMalla(v,n,cx,cy,giro); return n;
         }
 
-        internal static int AsistenteBrazosExpresivos(D3D9.Vtx[] v, float cx, float cy, float radio,
+        internal static int AsistenteBrazosExpresivos(Tarjeta.Vtx[] v, float cx, float cy, float radio,
             float cantidad, float alfa, AsistenteExpresionGpu e, float giro)
         {
             if (!AsistenteGeometriaValida(v, 700, cx, cy, radio)) return 0;
@@ -324,13 +324,13 @@ namespace Rocola
             AsistenteRotaMalla(v,n,cx,cy,giro); return n;
         }
 
-        private static bool AsistenteGeometriaValida(D3D9.Vtx[] v, int capacidad, float cx, float cy, float radio)
+        private static bool AsistenteGeometriaValida(Tarjeta.Vtx[] v, int capacidad, float cx, float cy, float radio)
         {
             return v != null && v.Length >= capacidad && radio > 0 && !float.IsInfinity(radio)
                 && !float.IsNaN(cx) && !float.IsInfinity(cx) && !float.IsNaN(cy) && !float.IsInfinity(cy);
         }
 
-        private static void AsistenteArmaBrazos(D3D9.Vtx[] v, ref int n, float cx, float cy,
+        private static void AsistenteArmaBrazos(Tarjeta.Vtx[] v, ref int n, float cx, float cy,
             float r, float ancho, uint negro, AsistenteExpresionGpu e)
         {
             float izqY = .18f + .20f*e.ManoIzqY, derY = .12f + .20f*e.ManoDerY;
@@ -342,7 +342,7 @@ namespace Rocola
 
         // Estira o aplasta lo ya armado alrededor de un ancla (los pies): x se ensancha cuando y se encoge, como una pelota
         // de goma. 'estira' > 0 alarga hacia arriba. En el sitio, sin reservar nada.
-        internal static void AsistenteEstiraMalla(D3D9.Vtx[] v, int n, float ax, float ay, float estira)
+        internal static void AsistenteEstiraMalla(Tarjeta.Vtx[] v, int n, float ax, float ay, float estira)
         {
             if (v == null || n <= 0 || float.IsNaN(estira) || float.IsInfinity(estira) || Math.Abs(estira) < .0005f) return;
             if (estira > .35f) estira = .35f; else if (estira < -.35f) estira = -.35f;
@@ -351,7 +351,7 @@ namespace Rocola
             for (int i = 0; i < n; i++) { v[i].X = ax + (v[i].X - ax) * sx; v[i].Y = ay + (v[i].Y - ay) * sy; }
         }
 
-        private static void AsistenteRotaMalla(D3D9.Vtx[] v,int n,float cx,float cy,float giro)
+        private static void AsistenteRotaMalla(Tarjeta.Vtx[] v,int n,float cx,float cy,float giro)
         {
             if(float.IsNaN(giro)||float.IsInfinity(giro)||Math.Abs(giro)<.00001f) return;
             float c=(float)Math.Cos(giro),s=(float)Math.Sin(giro);

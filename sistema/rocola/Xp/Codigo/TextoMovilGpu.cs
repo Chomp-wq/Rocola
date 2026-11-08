@@ -205,7 +205,7 @@ namespace Rocola
         private long[] cintaVersiones;
         private bool cintaListaValida;
         internal int CintasListasCalculadas, CintasListasReusadas;
-        private readonly D3D9.Vtx[] cintaQuad = new D3D9.Vtx[6];
+        private readonly Tarjeta.Vtx[] cintaQuad = new Tarjeta.Vtx[6];
         private bool MismaListaCintas(CintasTexto[] groups)
         {
             int n = groups != null ? groups.Length : 0;
@@ -285,7 +285,7 @@ namespace Rocola
             while (cintaRetiradas.Count > 0)
             {
                 int i = cintaRetiradas.Count - 1;
-                D3D9.Release(cintaRetiradas[i]); cintaRetiradas.RemoveAt(i);
+                Tarjeta.Suelta(cintaRetiradas[i]); cintaRetiradas.RemoveAt(i);
                 if (cintaRetiradas.Count <= 256 && System.Diagnostics.Stopwatch.GetTimestamp() - inicio >= presupuesto) break;
             }
         }
@@ -379,8 +379,8 @@ namespace Rocola
         }
         private void SueltaCintasGpu()
         {
-            foreach (CintaTile t in cintaByBitmap.Values) if (t.Tex != IntPtr.Zero) D3D9.Release(t.Tex);
-            foreach (IntPtr tex in cintaRetiradas) D3D9.Release(tex);
+            foreach (CintaTile t in cintaByBitmap.Values) if (t.Tex != IntPtr.Zero) Tarjeta.Suelta(t.Tex);
+            foreach (IntPtr tex in cintaRetiradas) Tarjeta.Suelta(tex);
             cintaRetiradas.Clear();
             cintaByBitmap.Clear(); cintaTiles.Clear(); cintaOldSources.Clear();
             cintaPendientes.Clear(); cintaGrupos = null; cintaVersiones = null; cintaListaValida = false;
