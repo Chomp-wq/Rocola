@@ -1,7 +1,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la subida a la tarjeta lee los puntos de un SKBitmap (Nativo/Pixeles.cs), no de un Bitmap de GDI+
 using System.Runtime.InteropServices;
 
 namespace Rocola
@@ -48,18 +48,18 @@ namespace Rocola
     internal static class PortadasCompartidasGpu
     {
         private sealed class Entry
-        { public DispositivoTarjeta Owner; public Bitmap Bmp; public IntPtr Tex; public float U, V; public int Owners; }
+        { public DispositivoTarjeta Owner; public SKBitmap Bmp; public IntPtr Tex; public float U, V; public int Owners; }   // EN LINUX: la portada es un SKBitmap (la misma identidad: un mapa por portada)
         private static readonly object candado = new object();
         private static readonly Dictionary<IntPtr, Entry> referencias = new Dictionary<IntPtr, Entry>();
-        private static readonly Dictionary<DispositivoTarjeta, Dictionary<Bitmap, Entry>> dispositivos = new Dictionary<DispositivoTarjeta, Dictionary<Bitmap, Entry>>();
+        private static readonly Dictionary<DispositivoTarjeta, Dictionary<SKBitmap, Entry>> dispositivos = new Dictionary<DispositivoTarjeta, Dictionary<SKBitmap, Entry>>();   // EN LINUX: por SKBitmap (por identidad, como el Bitmap en XP)
         private static volatile int cantidad;
-        internal static IntPtr Toma(DispositivoTarjeta owner, Bitmap bmp, out float u, out float v)
+        internal static IntPtr Toma(DispositivoTarjeta owner, SKBitmap bmp, out float u, out float v)   // EN LINUX: la portada es un SKBitmap
         {
             u = v = 1;
             if (bmp == null) return IntPtr.Zero;
             lock (candado)
             {
-                Dictionary<Bitmap, Entry> mapa;
+                Dictionary<SKBitmap, Entry> mapa;   // EN LINUX: por SKBitmap
                 Entry e;
                 if (dispositivos.TryGetValue(owner, out mapa) && mapa.TryGetValue(bmp, out e))
                 {
@@ -71,7 +71,7 @@ namespace Rocola
                 IntPtr tex = owner.CreateTexturePow2(bmp, out u, out v);
                 if (tex == IntPtr.Zero || TexturasDivididasGpu.Busca(tex) != null) return tex;
                 e = new Entry { Owner = owner, Bmp = bmp, Tex = tex, U = u, V = v, Owners = 1 };
-                if (mapa == null) { mapa = new Dictionary<Bitmap, Entry>(); dispositivos.Add(owner, mapa); }
+                if (mapa == null) { mapa = new Dictionary<SKBitmap, Entry>(); dispositivos.Add(owner, mapa); }   // EN LINUX: por SKBitmap
                 mapa.Add(bmp, e); referencias.Add(tex, e); cantidad = referencias.Count;
                 return tex;
             }
@@ -85,7 +85,7 @@ namespace Rocola
                 if (!referencias.TryGetValue(tex, out e)) return false;   // EN LINUX
                 if (--e.Owners > 0) return true;   // EN LINUX
                 referencias.Remove(tex);
-                Dictionary<Bitmap, Entry> mapa = dispositivos[e.Owner]; mapa.Remove(e.Bmp);
+                Dictionary<SKBitmap, Entry> mapa = dispositivos[e.Owner]; mapa.Remove(e.Bmp);   // EN LINUX: por SKBitmap
                 if (mapa.Count == 0) dispositivos.Remove(e.Owner);
                 cantidad = referencias.Count;
             }
@@ -119,7 +119,7 @@ namespace Rocola
         }
         private static int PotenciaInferior(uint n)
         { int p = 1; while ((uint)p <= n / 2 && p < 0x40000000) p <<= 1; return n >= 4 ? p : 0; }
-        internal IntPtr CreaPortadaCompartida(Bitmap bmp, out float u, out float v)
+        internal IntPtr CreaPortadaCompartida(SKBitmap bmp, out float u, out float v)   // EN LINUX: la portada es un SKBitmap
         { if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return CintaTarjeta.CreaPortadaCompartida(this, bmp, out u, out v); return PortadasCompartidasGpu.Toma(this, bmp, out u, out v); }   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
 
         private static unsafe void RellenaBorde(IntPtr bits, int pitch, int w, int h, int tw, int th)   // EN LINUX: lo bloqueado (antes D3DLOCKED_RECT); unsafe (las copias)
@@ -140,10 +140,10 @@ namespace Rocola
             for (int y = h; y < th; y++)
                 Buffer.MemoryCopy((void*)ultima, (void*)(bits.ToInt64() + (long)y * pitch), tw * 4, tw * 4);   // EN LINUX: CopyMemory
         }
-        private static unsafe bool ActualizaRegionBitmap(IntPtr tex, Bitmap bmp, Rectangle origen, Point destino, int w, int h)   // EN LINUX: unsafe (las copias)
+        private static unsafe bool ActualizaRegionBitmap(IntPtr tex, SKBitmap bmp, Rectangle origen, Point destino, int w, int h)   // EN LINUX: unsafe (las copias); el mapa es un SKBitmap
         {
             IntPtr bits = IntPtr.Zero; int pitch = 0, lx = 0, ly = 0, lw = 0, lh = 0, tw0, th0; bool propia = false;   // EN LINUX: lo bloqueado (antes D3DLOCKED_RECT)
-            BitmapData bd = null; bool locked = false, ok = false;
+            bool locked = false, ok = false;   // EN LINUX: (sin BitmapData: los puntos del trozo se leen del SKBitmap directo a lo bloqueado, abajo)
             try
             {
                 int right = destino.X + origen.Width, bottom = destino.Y + origen.Height;
@@ -154,23 +154,23 @@ namespace Rocola
                 if (!TexturasGl.Medida((uint)tex, out tw0, out th0) || lx < 0 || ly < 0 || lw <= 0 || lh <= 0 || lx + lw > tw0 || ly + lh > th0) return false;
                 bits = TexturasGl.Memoria((long)lw * lh * 4, out propia); pitch = lw * 4;   // EN LINUX
                 locked = true;
-                bd = bmp.LockBits(origen, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                // EN LINUX: bd = bmp.LockBits(origen, ReadOnly, Format32bppArgb): la lectura va abajo, con la copia (Pixeles.CopiaSinPremultiplicar)
                 int bytes = checked(origen.Width * 4);
-                if (bits == IntPtr.Zero || pitch < (r - destino.X) * 4 || bd.Scan0 == IntPtr.Zero || Math.Abs((long)bd.Stride) < bytes) return false;   // EN LINUX: (lr.Bits, lr.Pitch)
-                for (int y = 0; y < origen.Height; y++)
-                    Buffer.MemoryCopy((void*)(bd.Scan0.ToInt64() + (long)y * bd.Stride), (void*)(bits.ToInt64() + (long)y * pitch), bytes, bytes);   // EN LINUX: CopyMemory
+                if (bits == IntPtr.Zero || pitch < (r - destino.X) * 4 || bmp.GetPixels() == IntPtr.Zero || Math.Abs((long)bmp.RowBytes) < bytes) return false;   // EN LINUX: (lr.Bits, lr.Pitch); bd.Scan0 y bd.Stride = los puntos del SKBitmap y su paso
+                Pixeles.CopiaSinPremultiplicar(bmp, origen, bits, pitch);   // EN LINUX: LockBits(origen, ReadOnly, Format32bppArgb) y la copia fila a fila a lo bloqueado, en una pasada: los puntos del trozo sin premultiplicar (la tabla truncada de la capa, Nativo/Pixeles.cs) directo a lo bloqueado, con su paso; los mismos bytes, sin la copia aparte de GDI+
+                // EN LINUX: (en XP: for (int y = 0; y < origen.Height; y++) D3D9.CopyMemory(lr.Bits + y * lr.Pitch, bd.Scan0 + y * bd.Stride, bytes))
                 RellenaBorde(bits, pitch, origen.Width, origen.Height, r - destino.X, b - destino.Y);   // EN LINUX: (lr)
                 ok = true;
             }
             catch { ok = false; }
             finally
             {
-                if (bd != null) try { bmp.UnlockBits(bd); } catch { ok = false; }
+                // EN LINUX: (sin UnlockBits: los puntos se leyeron directo del SKBitmap y no queda nada de GDI+ que soltar; en XP: if (bd != null) try { bmp.UnlockBits(bd); } catch { ok = false; })
                 if (locked) { try { if (!TexturasGl.Sube((uint)tex, lx, ly, lw, lh, bits)) ok = false; } catch { ok = false; } TexturasGl.SueltaMemoria(bits, propia); }   // EN LINUX: UnlockRect = subir la zona (glTexSubImage2D) y soltar la memoria
             }
             return ok;
         }
-        private IntPtr CreaTexturaDividida(Bitmap bmp, out float u, out float v)
+        private IntPtr CreaTexturaDividida(SKBitmap bmp, out float u, out float v)   // EN LINUX: el mapa es un SKBitmap
         {
             u = v = 1;
             int pasoX = LimiteTexturaW - 2, pasoY = LimiteTexturaH - 2;
@@ -197,7 +197,7 @@ namespace Rocola
             catch { return IntPtr.Zero; }
             finally { if (!ok) foreach (TexturasDivididasGpu.Tile t in s.Tiles) if (t != null && t.Tex != IntPtr.Zero) Tarjeta.Suelta(t.Tex); }
         }
-        private bool ActualizaDividida(TexturasDivididasGpu.Surface s, Bitmap bmp, Rectangle area)
+        private bool ActualizaDividida(TexturasDivididasGpu.Surface s, SKBitmap bmp, Rectangle area)   // EN LINUX: el mapa es un SKBitmap
         {
             if (s.Owner != this || bmp.Width != s.W || bmp.Height != s.H) return false;
             foreach (TexturasDivididasGpu.Tile t in s.Tiles)

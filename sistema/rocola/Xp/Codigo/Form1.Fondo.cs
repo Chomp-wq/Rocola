@@ -321,7 +321,7 @@ namespace Rocola
         // al vuelo -las texturas van en modo "pegado al borde", no en modo repetir- asi que hay que subirle
         // uno ya grande y estamparlo en unos pocos trozos. Se arma repitiendo el de 64 con UN relleno, no
         // pixel a pixel: un millon de pixeles de uno en uno tardaria segundos al arrancar.
-        internal static Bitmap BakeRuidoGrande(int lado)   // EN LINUX: lo sube D3D9Star.cs, aun sin traducir, que lo pide como Bitmap: se le entrega por el puente (Plataforma/Puente.cs)
+        internal static SKBitmap BakeRuidoGrande(int lado)   // EN LINUX: un SKBitmap: lo sube D3D9Star.cs (EnsureNieblas), que ya recibe SKBitmap
         {
             SKBitmap chico = BakeRuido();   // EN LINUX: un SKBitmap
             SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb) (Nativo/Mapas.cs)
@@ -332,7 +332,7 @@ namespace Rocola
                 Pixel.Rellena(g, new RectangleF(0, 0, lado, lado), tb, false, false, copia);   // EN LINUX: g.FillRectangle(tb, 0, 0, lado, lado), sin suavizar (Nativo/Pixel.cs)
             }
             chico.Dispose();
-            return PuenteDibujo.Entrega(b);   // EN LINUX: el mapa, como Bitmap Format32bppArgb que se hace su dueno, para D3D9Star.cs (Plataforma/Puente.cs)
+            return b;
         }
 
         // ===================== LA LUNA =====================
