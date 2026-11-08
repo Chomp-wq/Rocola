@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # compara_escena.py DIR_A DIR_B [--ruido RUIDO.json]
 # Compara lo que dejaron dos corridas de la misma escena (corre.sh): la traza (compara_trazas.py), los estados de XP (iguales salvo el
-# milisegundo en que se escribieron y la fecha del programa), que rocola_estado.txt este o falte en las dos, rocola_config.txt byte a
-# byte y las capturas (las de cada capa de Dibujo2D -las hojas- byte a byte en los pixeles; la pantalla entera y la de la tarjeta se
+# milisegundo en que se escribieron y la fecha del programa), que rocola_estado.txt este o falte en las dos, rocola_config.txt y
+# rocola_teclas.txt byte a byte y las capturas (las de cada capa de Dibujo2D -las hojas- byte a byte en los pixeles; la pantalla entera y la de la tarjeta se
 # mueven solas -el cielo-: se dice cuantos pixeles cambian).
 import sys, os, re, subprocess, json
 
@@ -34,9 +34,9 @@ def compara(a, b, ruido_ruta=None):
                 malo = True
                 import difflib
                 res.append(f + ": DIFERENTE\n   " + "\n   ".join(difflib.unified_diff(ea.split("\n"), eb.split("\n"), lineterm="", n=0)))
-        elif f == "rocola_config.txt":
-            if not os.path.exists(pb) or open(pa, "rb").read() != open(pb, "rb").read(): res.append("rocola_config.txt DIFERENTE"); malo = True
-            else: res.append("rocola_config.txt: igual")
+        elif f in ("rocola_config.txt", "rocola_teclas.txt"):
+            if not os.path.exists(pb) or open(pa, "rb").read() != open(pb, "rb").read(): res.append(f + " DIFERENTE"); malo = True
+            else: res.append(f + ": igual")
         elif f.endswith(".png"):
             if not os.path.exists(pb): res.append("falta " + f); malo = True; continue
             n = png_igual(pa, pb)

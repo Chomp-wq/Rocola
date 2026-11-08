@@ -453,22 +453,22 @@ namespace Rocola
             protected override void OnMouseMove(MouseEventArgs e)
             { if (arrastra && Enabled) Pon(DeX(e.X)); base.OnMouseMove(e); }
             protected override void OnMouseUp(MouseEventArgs e) { arrastra = false; base.OnMouseUp(e); }
-            protected override bool IsInputKey(Keys k)
+            protected override bool IsInputKey(Tecla k)   // EN LINUX: Keys -> Tecla, los mismos numeros
             {
-                if (k == Keys.Left || k == Keys.Right || k == Keys.Up || k == Keys.Down
-                 || k == Keys.PageUp || k == Keys.PageDown || k == Keys.Home || k == Keys.End) return true;
+                if (k == Tecla.Left || k == Tecla.Right || k == Tecla.Up || k == Tecla.Down   // EN LINUX: Keys -> Tecla, los mismos numeros
+                 || k == Tecla.PageUp || k == Tecla.PageDown || k == Tecla.Home || k == Tecla.End) return true;   // EN LINUX: Keys -> Tecla, los mismos numeros
                 return base.IsInputKey(k);
             }
             protected override void OnKeyDown(KeyEventArgs e)
             {
                 if (!Enabled) { base.OnKeyDown(e); return; }
                 int salto = ((Maximum - Minimum) >= 40) ? 10 : 2;
-                if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Down) { Pon(val - 1); e.Handled = true; }
-                else if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Up) { Pon(val + 1); e.Handled = true; }
-                else if (e.KeyCode == Keys.PageDown) { Pon(val - salto); e.Handled = true; }
-                else if (e.KeyCode == Keys.PageUp) { Pon(val + salto); e.Handled = true; }
-                else if (e.KeyCode == Keys.Home) { Pon(Minimum); e.Handled = true; }
-                else if (e.KeyCode == Keys.End) { Pon(Maximum); e.Handled = true; }
+                if (e.KeyCode == Tecla.Left || e.KeyCode == Tecla.Down) { Pon(val - 1); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+                else if (e.KeyCode == Tecla.Right || e.KeyCode == Tecla.Up) { Pon(val + 1); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+                else if (e.KeyCode == Tecla.PageDown) { Pon(val - salto); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+                else if (e.KeyCode == Tecla.PageUp) { Pon(val + salto); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+                else if (e.KeyCode == Tecla.Home) { Pon(Minimum); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
+                else if (e.KeyCode == Tecla.End) { Pon(Maximum); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
                 base.OnKeyDown(e);
             }
             protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
@@ -529,10 +529,10 @@ namespace Rocola
                 set { if (marcado != value) { marcado = value; Invalidate(); if (CheckedChanged != null) CheckedChanged(this, EventArgs.Empty); } }
             }
             protected override void OnMouseDown(MouseEventArgs e) { if (Enabled) { Focus(); Checked = !Checked; } base.OnMouseDown(e); }
-            protected override bool IsInputKey(Keys k) { return (k == Keys.Space) || base.IsInputKey(k); }
+            protected override bool IsInputKey(Tecla k) { return (k == Tecla.Space) || base.IsInputKey(k); }   // EN LINUX: Keys -> Tecla, los mismos numeros
             protected override void OnKeyDown(KeyEventArgs e)
             {
-                if (Enabled && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)) { Checked = !Checked; e.Handled = true; }
+                if (Enabled && (e.KeyCode == Tecla.Space || e.KeyCode == Tecla.Enter)) { Checked = !Checked; e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
                 base.OnKeyDown(e);
             }
             protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
@@ -588,11 +588,11 @@ namespace Rocola
             protected override void OnMouseEnter(EventArgs e) { encima = true; Invalidate(); base.OnMouseEnter(e); }
             protected override void OnMouseLeave(EventArgs e) { encima = false; Invalidate(); base.OnMouseLeave(e); }
             protected override void OnMouseDown(MouseEventArgs e) { Focus(); base.OnMouseDown(e); }
-            protected override bool IsInputKey(Keys k) { return (k == Keys.Space) || base.IsInputKey(k); }
+            protected override bool IsInputKey(Tecla k) { return (k == Tecla.Space) || base.IsInputKey(k); }   // EN LINUX: Keys -> Tecla, los mismos numeros
             protected override void OnKeyDown(KeyEventArgs e)
             {
                 if (!Enabled) { base.OnKeyDown(e); return; }
-                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)
+                if (e.KeyCode == Tecla.Space || e.KeyCode == Tecla.Enter)   // EN LINUX: Keys -> Tecla, los mismos numeros
                 { OnClick(EventArgs.Empty); e.Handled = true; e.SuppressKeyPress = true; }
                 base.OnKeyDown(e);
             }
@@ -665,7 +665,7 @@ namespace Rocola
             float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheP = nochePct;   // por si se Cancela
             try
             {
-                Cursor.Show();
+                PantallaRocola.EnsenaFlecha();   // EN LINUX: Cursor.Show(): ShowCursor(TRUE), la cuenta de la flecha (Cursor.cs:611-614)
                 FontFamily ff = FamiliaUi();
                 using (Font fTit = new Font(ff, 15f, FontStyle.Bold))
                 using (Font fSub = new Font(ff, 9.5f))
@@ -1684,7 +1684,7 @@ namespace Rocola
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
                     dlg.KeyPreview = true;
-                    dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Keys.Escape) dlg.Close(); };
+                    dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Tecla.Escape) dlg.Close(); };   // EN LINUX: Keys -> Tecla, los mismos numeros
                     MonedaTambienAqui(dlg);   // y una moneda con la ventana abierta tambien cuenta
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     Reloj tTrain = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
@@ -1708,7 +1708,7 @@ namespace Rocola
                 f3CambioGraf = false;
             }
             catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
-            finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+            finally { try { PantallaRocola.EscondeFlecha(); } catch { } maintMode = wasMaint; ForceFocus(); }   // EN LINUX: Cursor.Hide(): ShowCursor(FALSE) (Cursor.cs:483-486)
         }
 
         // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================
@@ -1721,7 +1721,7 @@ namespace Rocola
             {
                 string f = KeysFile();
                 if (!File.Exists(f)) return false;
-                Keys u = Keys.None, d = Keys.None, l = Keys.None, r = Keys.None, ok = Keys.None, bk = Keys.None, co = Keys.None, sk = Keys.None;
+                Tecla u = Tecla.None, d = Tecla.None, l = Tecla.None, r = Tecla.None, ok = Tecla.None, bk = Tecla.None, co = Tecla.None, sk = Tecla.None;   // EN LINUX: Keys -> Tecla, los mismos numeros
                 string[] lines = File.ReadAllLines(f);
                 for (int i = 0; i < lines.Length; i++)
                 {
@@ -1732,7 +1732,7 @@ namespace Rocola
                     int val;
                     if (!int.TryParse(s.Substring(eq + 1).Trim(), out val)) continue;
                     if (val <= 0 || val > 0xFF) continue;   // solo una tecla sola (sin Ctrl/Alt/Shift): la rocola mira kc = tecla base
-                    Keys k = (Keys)val;
+                    Tecla k = (Tecla)val;   // EN LINUX: Keys -> Tecla, los mismos numeros
                     if (name == "arriba") u = k;
                     else if (name == "abajo") d = k;
                     else if (name == "izquierda") l = k;
@@ -1742,12 +1742,12 @@ namespace Rocola
                     else if (name == "moneda") co = k;
                     else if (name == "saltar") sk = k;
                 }
-                if (u == Keys.None || d == Keys.None || l == Keys.None || r == Keys.None ||
-                    ok == Keys.None || bk == Keys.None || co == Keys.None || sk == Keys.None) return false;
+                if (u == Tecla.None || d == Tecla.None || l == Tecla.None || r == Tecla.None ||   // EN LINUX: Keys -> Tecla, los mismos numeros
+                    ok == Tecla.None || bk == Tecla.None || co == Tecla.None || sk == Tecla.None) return false;   // EN LINUX: Keys -> Tecla, los mismos numeros
                 // DOS FUNCIONES EN EL MISMO BOTON (el archivo editado a mano o a medias): la primera que se mira se queda
                 // con el boton y la otra no responde nunca; con la moneda y PONER en el mismo, no se podria pedir nada.
                 // El asistente no lo deja hacer ("cada boton debe ser distinto"): se vuelve a el.
-                Keys[] todas = { u, d, l, r, ok, bk, co, sk };
+                Tecla[] todas = { u, d, l, r, ok, bk, co, sk };   // EN LINUX: Keys -> Tecla, los mismos numeros
                 for (int i = 0; i < todas.Length; i++)
                     for (int j = i + 1; j < todas.Length; j++)
                         if (todas[i] == todas[j]) return false;
@@ -1781,7 +1781,7 @@ namespace Rocola
             if (searchOpen) CloseSearch();
             configMode = true;
             configStep = 0;
-            for (int i = 0; i < configCap.Length; i++) configCap[i] = Keys.None;
+            for (int i = 0; i < configCap.Length; i++) configCap[i] = Tecla.None;   // EN LINUX: Keys -> Tecla, los mismos numeros
             if (lblConfig != null) { lblConfig.Visible = true; lblConfig.BringToFront(); }
             UpdateConfigPrompt(null);
         }
@@ -1800,11 +1800,11 @@ namespace Rocola
         }
 
         // Captura el boton presionado durante la configuracion.
-        private void CaptureConfigKey(Keys keyData, Message msg)
+        private void CaptureConfigKey(Tecla keyData, PulsoTecla msg)   // EN LINUX: (Keys, Message) -> (Tecla, PulsoTecla)
         {
-            if ((msg.LParam.ToInt64() & 0x40000000) != 0) return;   // ignora auto-repeticion (boton mantenido)
-            Keys k = keyData & Keys.KeyCode;
-            if (k == Keys.None || k == Keys.Menu || k == Keys.ControlKey) return;   // ignora teclas vacias/control sueltas
+            if (msg.Repetida) return;   // ignora auto-repeticion (boton mantenido); EN LINUX: (msg.LParam & 0x40000000) != 0 -> msg.Repetida, el bit 30 de WM_KEYDOWN
+            Tecla k = keyData & Tecla.KeyCode;   // EN LINUX: Keys -> Tecla, los mismos numeros
+            if (k == Tecla.None || k == Tecla.Menu || k == Tecla.ControlKey) return;   // ignora teclas vacias/control sueltas; EN LINUX: Keys -> Tecla, los mismos numeros
             for (int j = 0; j < configStep; j++)
                 if (configCap[j] == k) { UpdateConfigPrompt("Ese boton ya esta usado. Presiona OTRO."); return; }
             configCap[configStep] = k;

@@ -41,7 +41,7 @@ namespace Rocola.Ventanas
         {
             Controls = CreateControlsInstance();
             Size d = DefaultSize; bounds = new Rectangle(0, 0, d.Width, d.Height);
-            if (Escritorio.HiloUi == null || Thread.CurrentThread == Escritorio.HiloUi) ContextoVentana.Pon();
+            if (Escritorio.HiloUi == null || Thread.CurrentThread == Escritorio.HiloUi) PantallaRocola.PonContexto();   // (port nativo, ventanas2 T: el contexto nativo de la pantalla)
         }
         public Control(string text) : this() { Text = text; }
         protected virtual ControlCollection CreateControlsInstance() { return new ControlCollection(this); }
@@ -306,7 +306,7 @@ namespace Rocola.Ventanas
             if (handle != IntPtr.Zero) return;
             lock (porHandle) { handle = new IntPtr(Interlocked.Increment(ref ultimoHandle)); porHandle[handle] = this; }
             if (Escritorio.HiloUi == null) Escritorio.HiloUi = Thread.CurrentThread;
-            if (Thread.CurrentThread == Escritorio.HiloUi) ContextoVentana.Pon();
+            if (Thread.CurrentThread == Escritorio.HiloUi) PantallaRocola.PonContexto();
             OnHandleCreated(EventArgs.Empty);
         }
         protected virtual void DestroyHandle()
@@ -600,13 +600,15 @@ namespace Rocola.Ventanas
         public object EndInvoke(IAsyncResult asyncResult) { Escritorio.Pendiente p = (Escritorio.Pendiente)asyncResult; p.AsyncWaitHandle.WaitOne(); if (p.Error != null) throw p.Error; return p.Resultado; }
 
         // ---------- teclas ----------
-        protected virtual bool ProcessCmdKey(ref Message msg, Keys keyData) { return parent != null && parent.ProcessCmdKey(ref msg, keyData); }
-        protected virtual bool ProcessDialogKey(Keys keyData) { return parent != null && parent.ProcessDialogKey(keyData); }
-        protected virtual bool IsInputKey(Keys keyData) { return false; }
-        protected virtual void WndProc(ref Message m) { }
-        internal bool LlamaProcessCmdKey(ref Message m, Keys k) { return ProcessCmdKey(ref m, k); }
-        internal bool LlamaProcessDialogKey(Keys k) { return ProcessDialogKey(k); }
-        internal bool LlamaIsInputKey(Keys k) { return IsInputKey(k); }
+        // (port nativo, ventanas2 T) ProcessCmdKey ya no es de la capa: en WinForms sube por la cadena de padres (sin menus contextuales,
+        // que la rocola no tiene) hasta la ventana de arriba, y la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454,
+        // ContainerControl.cs:1190-1208, Form.cs:4862-4895). La rocola (Form1) y la ventana de prueba F12 (GpuTestWindow) tienen el suyo,
+        // nativo, con PulsoTecla y Tecla: la capa se lo da en la ventana de arriba (Escritorio.TeclaDeMando).
+        internal bool LlamaProcessCmdKey(ref PulsoTecla m, Tecla k) { return Escritorio.TeclaDeMando(TopLevelControl, ref m, k); }
+        protected virtual bool ProcessDialogKey(Tecla keyData) { return parent != null && parent.ProcessDialogKey(keyData); }
+        protected virtual bool IsInputKey(Tecla keyData) { return false; }
+        internal bool LlamaProcessDialogKey(Tecla k) { return ProcessDialogKey(k); }
+        internal bool LlamaIsInputKey(Tecla k) { return IsInputKey(k); }
         internal void LlamaKeyDown(KeyEventArgs e) { OnKeyDown(e); }
         internal void LlamaKeyUp(KeyEventArgs e) { OnKeyUp(e); }
         internal void LlamaKeyPress(KeyPressEventArgs e) { OnKeyPress(e); }
@@ -631,9 +633,9 @@ namespace Rocola.Ventanas
             }
         }
         internal void LlamaPaint(PaintEventArgs e) { OnPaint(e); }
-        public static Keys ModifierKeys { get { return Escritorio.Modificadores; } }
+        public static Tecla ModifierKeys { get { return Escritorio.Modificadores; } }
         public static MouseButtons MouseButtons { get { return Escritorio.BotonesRaton; } }
-        public static Point MousePosition { get { return Cursor.Position; } }
+        public static Point MousePosition { get { return PantallaRocola.Flecha; } }
 
         // ---------- eventos ----------
         public event EventHandler Click, DoubleClick, Resize, SizeChanged, ClientSizeChanged, LocationChanged, Move, VisibleChanged, EnabledChanged,
@@ -792,13 +794,13 @@ namespace Rocola.Ventanas
         }
         public SizeF AutoScaleDimensions { get; set; }
         public AutoScaleMode AutoScaleMode { get; set; }
-        protected override bool ProcessDialogKey(Keys keyData)
+        protected override bool ProcessDialogKey(Tecla keyData)
         {
-            if ((keyData & (Keys.Alt | Keys.Control)) == Keys.None)
+            if ((keyData & (Tecla.Alt | Tecla.Control)) == Tecla.None)
             {
-                Keys k = keyData & Keys.KeyCode;
-                if (k == Keys.Tab) { if (ProcessTabKey((keyData & Keys.Shift) == Keys.None)) return true; }
-                else if (k == Keys.Left || k == Keys.Right || k == Keys.Up || k == Keys.Down) { if (ProcessArrowKey(k == Keys.Right || k == Keys.Down)) return true; }
+                Tecla k = keyData & Tecla.KeyCode;
+                if (k == Tecla.Tab) { if (ProcessTabKey((keyData & Tecla.Shift) == Tecla.None)) return true; }
+                else if (k == Tecla.Left || k == Tecla.Right || k == Tecla.Up || k == Tecla.Down) { if (ProcessArrowKey(k == Tecla.Right || k == Tecla.Down)) return true; }
             }
             return base.ProcessDialogKey(keyData);
         }
@@ -928,7 +930,7 @@ namespace Rocola.Ventanas
         }
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyData == Keys.Space) { if (!espacio) { espacio = true; Invalidate(); } e.Handled = true; }
+            if (e.KeyData == Tecla.Space) { if (!espacio) { espacio = true; Invalidate(); } e.Handled = true; }
             base.OnKeyDown(e);
         }
         protected override void OnKeyUp(KeyEventArgs e)
@@ -936,7 +938,7 @@ namespace Rocola.Ventanas
             if (espacio)
             {
                 espacio = false; Invalidate();
-                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) OnClick(EventArgs.Empty);
+                if (e.KeyCode == Tecla.Enter || e.KeyCode == Tecla.Space) OnClick(EventArgs.Empty);
                 e.Handled = true;
             }
             base.OnKeyUp(e);
@@ -1098,10 +1100,10 @@ namespace Rocola.Ventanas
         }
         private int Visibles { get { Rectangle u; bool v, h; Zonas(out u, out v, out h); return Math.Max(1, u.Height / Math.Max(1, ItemHeight)); } }
         private void AVista() { if (sel < 0) return; int n = Visibles; if (sel < top) top = sel; else if (sel >= top + n) top = sel - n + 1; }
-        protected override bool IsInputKey(Keys keyData)
+        protected override bool IsInputKey(Tecla keyData)
         {
-            Keys k = keyData & Keys.KeyCode;
-            if (k == Keys.Up || k == Keys.Down || k == Keys.Left || k == Keys.Right || k == Keys.PageUp || k == Keys.PageDown || k == Keys.Home || k == Keys.End) return true;
+            Tecla k = keyData & Tecla.KeyCode;
+            if (k == Tecla.Up || k == Tecla.Down || k == Tecla.Left || k == Tecla.Right || k == Tecla.PageUp || k == Tecla.PageDown || k == Tecla.Home || k == Tecla.End) return true;
             return base.IsInputKey(keyData);
         }
         protected override void OnKeyDown(KeyEventArgs e)
@@ -1111,14 +1113,14 @@ namespace Rocola.Ventanas
             int n = Visibles, i;
             switch (e.KeyCode)
             {
-                case Keys.Down: i = Math.Min(Items.Count - 1, sel + 1); break;
-                case Keys.Up: i = Math.Max(0, sel - 1); break;
-                case Keys.PageDown: i = Math.Min(Items.Count - 1, Math.Max(0, sel) + n - 1); break;
-                case Keys.PageUp: i = Math.Max(0, sel - n + 1); break;
-                case Keys.Home: i = 0; break;
-                case Keys.End: i = Items.Count - 1; break;
-                case Keys.Left: desplazaX = Math.Max(0, desplazaX - 8); Invalidate(); e.Handled = true; return;
-                case Keys.Right: desplazaX += 8; Invalidate(); e.Handled = true; return;
+                case Tecla.Down: i = Math.Min(Items.Count - 1, sel + 1); break;
+                case Tecla.Up: i = Math.Max(0, sel - 1); break;
+                case Tecla.PageDown: i = Math.Min(Items.Count - 1, Math.Max(0, sel) + n - 1); break;
+                case Tecla.PageUp: i = Math.Max(0, sel - n + 1); break;
+                case Tecla.Home: i = 0; break;
+                case Tecla.End: i = Items.Count - 1; break;
+                case Tecla.Left: desplazaX = Math.Max(0, desplazaX - 8); Invalidate(); e.Handled = true; return;
+                case Tecla.Right: desplazaX += 8; Invalidate(); e.Handled = true; return;
                 default: return;
             }
             SelectedIndex = i; e.Handled = true;

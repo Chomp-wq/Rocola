@@ -91,7 +91,7 @@ namespace Rocola
             { LogCrash("ThreadException", ex); };   // EN LINUX: la excepcion llega sola
             AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
             { LogCrash("UnhandledException", e.ExceptionObject as Exception); };   // hilos de fondo: al menos queda el rastro
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            PruebasLinux.DespuesDelInicio();   // EN LINUX: (XP) Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException): la pantalla nativa ya da a AlFallar lo que lanzan sus teclas, relojes, encargos y pintados (CatchException); aqui, las pruebas de Linux que necesitan hilos (no son de XP: ya acabo el inicializador del modulo)
             if (avisoCarpetaDatos != null)
             {
                 LogCrash("Carpeta de datos: se utiliza la carpeta del programa", new System.IO.IOException(avisoCarpetaDatos));
@@ -101,8 +101,8 @@ namespace Rocola
             // (El reloj fino de Windows -timeBeginPeriod(1)- ya lo pide Form1 al construirse, y lo devuelve
             // al cerrarse. Aqui no hace falta repetirlo.)
             PrioridadDeLaRocola();   // la musica y la pantalla, por delante de las tareas de Windows (ver abajo)
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            // EN LINUX: (XP) Application.EnableVisualStyles(); el tema de XP en los controles: lo pintan las piezas de la rocola, con los colores de Luna
+            // EN LINUX: (XP) Application.SetCompatibleTextRenderingDefault(false); el texto de Label y Button con GDI (TextRenderer): las piezas lo pintan con TextoGdi
             PantallaRocola.Corre(new Form1());   // EN LINUX: la pantalla nativa (en XP, Application.Run): la rocola, sus relojes, encargos y teclas en este hilo hasta que se cierra; el apagado del sistema la cierra como el de Windows
             Bitacora.Vacia(3000);   // lo que quedara por apuntar (la bitacora escribe detras: MedidasBitacora.cs)
             // Se suelta al salir por las buenas. (Ademas hay que TOCAR la variable en algun sitio: si solo

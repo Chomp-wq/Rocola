@@ -3594,22 +3594,22 @@ namespace Rocola
         }
 
         // ¿La tecla kc esta asignada a ALGUN boton de la rocola? (las teclas configuradas tienen prioridad)
-        private bool IsConfiguredKey(Keys kc)
+        private bool IsConfiguredKey(Tecla kc)   // EN LINUX: Keys -> Tecla, los mismos numeros
         {
             return kc == keyUp || kc == keyDown || kc == keyLeft || kc == keyRight
                 || kc == keyOK || kc == keyBack || kc == keyCoin || kc == keySkip;
         }
         // Cada accion responde a SU boton de rocola configurado Y a la tecla de PC por defecto.
         // La tecla de PC solo cuenta si NO esta tomada por otro boton configurado (evita choques).
-        private bool IsUp(Keys kc) { return kc == keyUp || (kc == Keys.Up && !IsConfiguredKey(Keys.Up)); }
-        private bool IsDown(Keys kc) { return kc == keyDown || (kc == Keys.Down && !IsConfiguredKey(Keys.Down)); }
-        private bool IsLeft(Keys kc) { return kc == keyLeft || (kc == Keys.Left && !IsConfiguredKey(Keys.Left)); }
-        private bool IsRight(Keys kc) { return kc == keyRight || (kc == Keys.Right && !IsConfiguredKey(Keys.Right)); }
-        private bool IsOK(Keys kc) { return kc == keyOK || (kc == Keys.Enter && !IsConfiguredKey(Keys.Enter)); }
-        private bool IsBack(Keys kc) { return kc == keyBack || (kc == Keys.Escape && !IsConfiguredKey(Keys.Escape)); }
-        private bool IsCoin(Keys kc) { return kc == keyCoin || (kc == Keys.Insert && !IsConfiguredKey(Keys.Insert)); }
-        private bool IsSkip(Keys kc) { return kc == keySkip || (kc == Keys.ShiftKey && !IsConfiguredKey(Keys.ShiftKey)); }
+        private bool IsUp(Tecla kc) { return kc == keyUp || (kc == Tecla.Up && !IsConfiguredKey(Tecla.Up)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsDown(Tecla kc) { return kc == keyDown || (kc == Tecla.Down && !IsConfiguredKey(Tecla.Down)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsLeft(Tecla kc) { return kc == keyLeft || (kc == Tecla.Left && !IsConfiguredKey(Tecla.Left)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsRight(Tecla kc) { return kc == keyRight || (kc == Tecla.Right && !IsConfiguredKey(Tecla.Right)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsOK(Tecla kc) { return kc == keyOK || (kc == Tecla.Enter && !IsConfiguredKey(Tecla.Enter)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsBack(Tecla kc) { return kc == keyBack || (kc == Tecla.Escape && !IsConfiguredKey(Tecla.Escape)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsCoin(Tecla kc) { return kc == keyCoin || (kc == Tecla.Insert && !IsConfiguredKey(Tecla.Insert)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
+        private bool IsSkip(Tecla kc) { return kc == keySkip || (kc == Tecla.ShiftKey && !IsConfiguredKey(Tecla.ShiftKey)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
         // ¿Esta presionado AHORA el boton REGRESAR (rocola) o Esc (teclado)?  (para los combos)
-        private bool BackHeld() { return KeyHeld(keyBack) || (KeyHeld(Keys.Escape) && !IsConfiguredKey(Keys.Escape)); }
+        private bool BackHeld() { return KeyHeld(keyBack) || (KeyHeld(Tecla.Escape) && !IsConfiguredKey(Tecla.Escape)); }   // EN LINUX: Keys -> Tecla, los mismos numeros
     }
 }

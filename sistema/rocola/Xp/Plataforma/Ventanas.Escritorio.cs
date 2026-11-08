@@ -31,7 +31,8 @@ namespace Rocola.Ventanas
     public static class Escritorio
     {
         public static IAnfitrion Anfitrion;
-        public static Size Pantalla = new Size(1024, 768);
+        // (port nativo, ventanas2 T: la medida de la pantalla es de la pantalla nativa, PantallaRocola.Ancho y Alto)
+        public static Size Pantalla { get { return new Size(PantallaRocola.Ancho, PantallaRocola.Alto); } set { PantallaRocola.Ancho = value.Width; PantallaRocola.Alto = value.Height; } }
         public static int RefrescoHz = 60;   // lo pone el anfitrion (KMS: el del modo de la pantalla)
         public static Thread HiloUi { get { return PantallaRocola.Hilo; } set { PantallaRocola.Hilo = value; } }
         public static double AhoraMs { get { return PantallaRocola.AhoraMs; } }
@@ -41,12 +42,18 @@ namespace Rocola.Ventanas
             PantallaRocola.PintaUno = PintaUno;
             PantallaRocola.HaySucio = HaySucio;
             PantallaRocola.ProximoPintado = ProximoPintado;
+            // (port nativo, ventanas2 T) la ventana de delante y el foco que la rocola pide a la pantalla (ForceFocus): mientras las ventanas
+            // sean de la capa, lo que hacia la referencia con GetForegroundWindow (la activa), SetForegroundWindow y Activate (Form.Activate:
+            // delante y activa, salvo debajo de una modal), BringToFront (solo delante) y SetFocus (Control.Focus)
+            PantallaRocola.LaDeDelante = delegate { Form a = Activa; return a != null && !a.IsDisposed ? a : null; };
+            PantallaRocola.PonDelante = delegate (object v) { Form f = v as Form; if (f != null && !f.IsDisposed) f.Activate(); };
+            PantallaRocola.PonEncima = delegate (object v) { AlFrente(v as Form); };
+            PantallaRocola.PonFoco = delegate (object v) { Control c = v as Control; if (c != null && !c.IsDisposed) c.Focus(); };
         }
         internal static Control Foco;
         internal static Form Activa;
-        public static Keys Modificadores;
+        public static Tecla Modificadores;
         public static MouseButtons BotonesRaton;
-        public static readonly bool[] TeclasAbajo = new bool[256];   // lo que en XP pregunta GetKeyState/GetAsyncKeyState
 
         // ---------- la cola (nativa: PantallaRocola) ----------
         // Lo que devuelve BeginInvoke: el encargo de la pantalla y lo que dio el metodo (Invoke y EndInvoke).
@@ -205,9 +212,9 @@ namespace Rocola.Ventanas
         // el que recibe el boton bajado se queda con el raton hasta soltarlo (la captura de Windows); al soltar dentro, Click y MouseClick
         // (o DoubleClick y MouseDoubleClick si es el segundo en 500 ms y a menos de 4 puntos, como XP), y despues MouseUp. La rueda va al
         // control con el foco (asi la manda XP), de 120 en 120. La flecha se ve si ShowCursor deja la cuenta en 0 o mas (Cursor.Show/Hide).
-        public static Point PosicionRaton = new Point(1023, 767);
-        internal static int VisibilidadCursor;
-        public static bool CursorVisible { get { return VisibilidadCursor >= 0; } }
+        // (port nativo, ventanas2 T: la flecha -donde esta y la cuenta de ShowCursor- es de la pantalla nativa, PantallaRocola.Flecha)
+        public static Point PosicionRaton { get { return PantallaRocola.Flecha; } set { PantallaRocola.Flecha = value; } }
+        public static bool CursorVisible { get { return PantallaRocola.FlechaVisible; } }
         private static Control bajoRaton, captura;
         private static double ultimoClicMs = -1e9; private static Point ultimoClicEn; private static MouseButtons ultimoClicBoton; private static Control ultimoClicControl;
         private static bool dobleEnCurso;
@@ -383,16 +390,18 @@ namespace Rocola.Ventanas
 
         // ---------- las teclas (el anfitrion las manda con Entrada(() => Escritorio.Tecla(...))) ----------
         // Como en WinForms: primero ProcessCmdKey del control con el foco (y de sus padres: la rocola de XP atiende sus botones en el de
-        // Form1), luego ProcessDialogKey, KeyDown (antes en el formulario si tiene KeyPreview) y KeyPress.
-        public static void Tecla(Keys tecla, bool abajo)
+        // Form1), luego ProcessDialogKey, KeyDown (antes en el formulario si tiene KeyPreview) y KeyPress. (Port nativo, ventanas2 T: la
+        // tecla es una Tecla y lo que llega a ProcessCmdKey un PulsoTecla, con su repeticion; las teclas ya atendidas las anota la pantalla
+        // nativa: PantallaRocola.AnotaTecla, lo que contesta GetKeyState.)
+        public static void Tecla(Rocola.Tecla tecla, bool abajo)
         {
-            Keys mod = tecla == Keys.ShiftKey || tecla == Keys.LShiftKey || tecla == Keys.RShiftKey ? Keys.Shift
-                     : tecla == Keys.ControlKey || tecla == Keys.LControlKey || tecla == Keys.RControlKey ? Keys.Control
-                     : tecla == Keys.Menu || tecla == Keys.LMenu || tecla == Keys.RMenu ? Keys.Alt : Keys.None;
-            if (mod != Keys.None) tecla = mod == Keys.Shift ? Keys.ShiftKey : mod == Keys.Control ? Keys.ControlKey : Keys.Menu;
+            Rocola.Tecla mod = tecla == Rocola.Tecla.ShiftKey || tecla == Rocola.Tecla.LShiftKey || tecla == Rocola.Tecla.RShiftKey ? Rocola.Tecla.Shift
+                     : tecla == Rocola.Tecla.ControlKey || tecla == Rocola.Tecla.LControlKey || tecla == Rocola.Tecla.RControlKey ? Rocola.Tecla.Control
+                     : tecla == Rocola.Tecla.Menu || tecla == Rocola.Tecla.LMenu || tecla == Rocola.Tecla.RMenu ? Rocola.Tecla.Alt : Rocola.Tecla.None;
+            if (mod != Rocola.Tecla.None) tecla = mod == Rocola.Tecla.Shift ? Rocola.Tecla.ShiftKey : mod == Rocola.Tecla.Control ? Rocola.Tecla.ControlKey : Rocola.Tecla.Menu;
             if (abajo) Modificadores |= mod;
-            int vk = (int)tecla & 0xFF; bool repetida = abajo && TeclasAbajo[vk]; TeclasAbajo[vk] = abajo;
-            Keys datos = tecla | Modificadores;
+            int vk = (int)tecla & 0xFF; bool antes = PantallaRocola.AnotaTecla(vk, abajo), repetida = abajo && antes;
+            Rocola.Tecla datos = tecla | Modificadores;
             // la tecla va al que tiene el foco (en Windows, tambien si se escondio: SelectNextIfFocused no siempre encuentra otro), o a la
             // ventana activa; KeyPreview es el del formulario de ese control
             Control destino = Foco != null && !Foco.IsDisposed ? Foco : Activa;
@@ -400,12 +409,11 @@ namespace Rocola.Ventanas
             Form f = destino as Form ?? destino.FindForm();
             if (abajo)
             {
-                // el lParam de WM_KEYDOWN como en Windows: una vez (bits 0-15) y, si la tecla ya estaba apretada (la repeticion al dejarla
-                // apretada), el bit 30. XP lo mira para no contar otra moneda, ni saltar otra vez, ni repetir sus atajos (Form1.cs,
-                // Form1.Ajustes.cs, AsistenteRocola.cs): sin el, la moneda mantenida 1,5 s daba 128 creditos en vez de 4.
-                // (con Alt, o F10, es WM_SYSKEYDOWN, con el bit 29 si Alt esta apretada)
-                bool alt = (Modificadores & Keys.Alt) != 0, sys = alt || tecla == Keys.F10;
-                Message m = Message.Create(destino.Handle, sys ? 0x104 : 0x100, (IntPtr)(int)tecla, (IntPtr)((repetida ? 0x40000001 : 1) | (alt ? 0x20000000 : 0)));
+                // el bit 30 de lParam de WM_KEYDOWN (la tecla ya estaba apretada: la repeticion al dejarla apretada) es Repetida. XP lo mira
+                // para no contar otra moneda, ni saltar otra vez, ni repetir sus atajos (Form1.cs, Form1.Ajustes.cs, AsistenteRocola.cs): sin
+                // el, la moneda mantenida 1,5 s daba 128 creditos en vez de 4. (Con Alt, o F10, es WM_SYSKEYDOWN: Alt+F4 abajo.)
+                bool alt = (Modificadores & Rocola.Tecla.Alt) != 0;
+                PulsoTecla m = new PulsoTecla(datos, repetida);
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tecla " + TrazaVentanas.Datos((int)datos) + (repetida ? " rep" : "") + " a " + TrazaVentanas.Pieza(destino));
                 bool pck = destino.LlamaProcessCmdKey(ref m, datos);
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("pck " + (pck ? "1" : "0"));
@@ -429,7 +437,7 @@ namespace Rocola.Ventanas
                 }
                 // DefWindowProc de WM_SYSKEYDOWN: Alt+F4 cierra la ventana de arriba de la del foco (SC_CLOSE, CloseReason.UserClosing),
                 // por la cola, como el WM_SYSCOMMAND que manda Windows
-                if (!atendida && alt && tecla == Keys.F4 && (Modificadores & Keys.Control) == 0)
+                if (!atendida && alt && tecla == Rocola.Tecla.F4 && (Modificadores & Rocola.Tecla.Control) == 0)
                 {
                     Form raiz = destino.TopLevelControl as Form;
                     if (raiz != null && !raiz.IsDisposed) Encola(new Action(delegate { if (!raiz.IsDisposed && raiz.IsHandleCreated) raiz.CierraPorSistema(); }), null, false, raiz, "Alt+F4");
@@ -457,45 +465,61 @@ namespace Rocola.Ventanas
                 if (f != null && f.KeyPreview && f != destino)
                 {
                     if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(f));
-                    f.LlamaKeyUp(e); if (e.Handled) return;
+                    TeclaArriba(f, e); if (e.Handled) return;
                 }
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + TrazaVentanas.Pieza(destino));
-                destino.LlamaKeyUp(e);
+                TeclaArriba(destino, e);
             }
+        }
+        // (transicion) LO DE LA ROCOLA EN EL CAMINO DE WINFORMS. Form1 y la ventana de prueba F12 ya no sobrescriben ProcessCmdKey ni OnKeyUp
+        // de la capa: tienen los suyos, nativos (con PulsoTecla y Tecla), y la capa los llama en su sitio: ProcessCmdKey cuando la tecla
+        // llega a la ventana de arriba (la de un Form sin menus ni aceleradores da false: Form.cs:4862-4895, ContainerControl.cs:1190-1208);
+        // OnKeyUp en el KeyUp de la rocola (el de XP llamaba despues a base.OnKeyUp, el aviso KeyUp, que nadie escucha en la rocola).
+        // Se va cuando la pantalla nativa le de las teclas a la rocola sin la capa (Form1 sin Form) y la ventana F12 sea una hoja.
+        internal static bool TeclaDeMando(Control arriba, ref PulsoTecla m, Rocola.Tecla datos)
+        {
+            Form1 rocola = arriba as Form1; if (rocola != null) return rocola.ProcessCmdKey(ref m, datos);
+            GpuTestWindow prueba = arriba as GpuTestWindow; if (prueba != null) return prueba.ProcessCmdKey(ref m, datos);
+            return false;
+        }
+        private static void TeclaArriba(Control c, KeyEventArgs e)
+        {
+            Form1 rocola = c as Form1;
+            if (rocola != null) rocola.OnKeyUp(e); else c.LlamaKeyUp(e);
         }
         // EL CARACTER DE LA TECLA (TranslateMessage y ToUnicode): con Control, los de control (Ctrl+A = 1 ... Ctrl+Z = 26, Ctrl+Intro =
         // salto de linea, Ctrl+Retroceso = 127; Ctrl+H es el retroceso: borra en el buscador de XP); con Alt, el mismo caracter
         // (WM_SYSCHAR); con Control y Alt (AltGr) ninguno.
-        private static char Caracter(Keys k, Keys mod)
+        private static char Caracter(Rocola.Tecla k, Rocola.Tecla mod)
         {
-            bool ctrl = (mod & Keys.Control) != 0;
-            if (ctrl && (mod & Keys.Alt) != 0) return '\0';
+            bool ctrl = (mod & Rocola.Tecla.Control) != 0;
+            if (ctrl && (mod & Rocola.Tecla.Alt) != 0) return '\0';
             if (ctrl)
             {
-                if (k >= Keys.A && k <= Keys.Z) return (char)(1 + (k - Keys.A));
-                if (k == Keys.Space) return ' ';
-                if (k == Keys.Enter) return '\n';
-                if (k == Keys.Back) return (char)127;
-                if (k == Keys.Escape) return (char)27;
+                if (k >= Rocola.Tecla.A && k <= Rocola.Tecla.Z) return (char)(1 + (k - Rocola.Tecla.A));
+                if (k == Rocola.Tecla.Space) return ' ';
+                if (k == Rocola.Tecla.Enter) return '\n';
+                if (k == Rocola.Tecla.Back) return (char)127;
+                if (k == Rocola.Tecla.Escape) return (char)27;
                 return '\0';
             }
-            if (k == Keys.Tab) return '\t';
-            if (k == Keys.Multiply) return '*';
-            if (k == Keys.Add) return '+';
-            if (k == Keys.Subtract) return '-';
-            if (k == Keys.Divide) return '/';
-            if (k == Keys.Decimal) return '.';
-            bool may = (mod & Keys.Shift) != 0;
-            if (k >= Keys.A && k <= Keys.Z) return (char)((may ? 'A' : 'a') + (k - Keys.A));
-            if (k >= Keys.D0 && k <= Keys.D9 && !may) return (char)('0' + (k - Keys.D0));
-            if (k >= Keys.NumPad0 && k <= Keys.NumPad9) return (char)('0' + (k - Keys.NumPad0));
-            if (k == Keys.Space) return ' ';
-            if (k == Keys.Enter) return '\r';
-            if (k == Keys.Back) return '\b';
-            if (k == Keys.Escape) return (char)27;
-            if (k == Keys.OemMinus) return may ? '_' : '-';
-            if (k == Keys.OemPeriod) return may ? ':' : '.';
-            if (k == Keys.Oemcomma) return may ? ';' : ',';
+            if (k == Rocola.Tecla.Tab) return '\t';
+            if (k == Rocola.Tecla.Multiply) return '*';
+            if (k == Rocola.Tecla.Add) return '+';
+            if (k == Rocola.Tecla.Subtract) return '-';
+            if (k == Rocola.Tecla.Divide) return '/';
+            if (k == Rocola.Tecla.Decimal) return '.';
+            bool may = (mod & Rocola.Tecla.Shift) != 0;
+            if (k >= Rocola.Tecla.A && k <= Rocola.Tecla.Z) return (char)((may ? 'A' : 'a') + (k - Rocola.Tecla.A));
+            if (k >= Rocola.Tecla.D0 && k <= Rocola.Tecla.D9 && !may) return (char)('0' + (k - Rocola.Tecla.D0));
+            if (k >= Rocola.Tecla.NumPad0 && k <= Rocola.Tecla.NumPad9) return (char)('0' + (k - Rocola.Tecla.NumPad0));
+            if (k == Rocola.Tecla.Space) return ' ';
+            if (k == Rocola.Tecla.Enter) return '\r';
+            if (k == Rocola.Tecla.Back) return '\b';
+            if (k == Rocola.Tecla.Escape) return (char)27;
+            if (k == Rocola.Tecla.OemMinus) return may ? '_' : '-';
+            if (k == Rocola.Tecla.OemPeriod) return may ? ':' : '.';
+            if (k == Rocola.Tecla.Oemcomma) return may ? ';' : ',';
             return '\0';
         }
 

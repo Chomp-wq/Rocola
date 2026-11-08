@@ -2,6 +2,7 @@
 // aprieta un boton de la rocola (las placas de botones USB son teclados) o una tecla. Se leen por evdev (/dev/input/event*, tambien los
 // que se conecten despues: se mira cada 2 s), se pasan al codigo de tecla de Windows (la tabla de Motor/Botones.cs: asi rocola_teclas.txt
 // del bar vale tal cual) y se entregan en el hilo de la pantalla al escritorio (Escritorio.Tecla), que hace lo que haria Windows.
+// EL ESTADO FISICO DE CADA TECLA (lo que en XP contesta GetAsyncKeyState, AsistenteRocola.cs): Fisica (port nativo, ventanas2 T).
 // LA REPETICION AL DEJARLO APRETADO es la de Windows XP de fabrica (no la del nucleo, que va mas rapido): la ultima tecla apretada se
 // repite a los 500 ms y despues unas 30 veces por segundo (KeyboardDelay 1, KeyboardSpeed 31), como WM_KEYDOWN repetidos.
 //   ROCOLA_PULSA=S:VK[,S:VK...]  (pruebas) aprieta y suelta la tecla VK (codigo de Windows) a los S segundos de arrancar; S:VK~MS la
@@ -23,6 +24,53 @@ namespace Rocola
         private static int repiteVk; private static double repiteEn;   // la tecla que se repite y cuando
         private static readonly AutoResetEvent senalRepite = new AutoResetEvent(false);
         private static bool arrancado;
+        private static readonly List<FileStream> aparatos = new List<FileStream>();   // los aparatos abiertos (para EVIOCGKEY)
+        private static readonly bool[] pruebaAbajo = new bool[256];   // las teclas de prueba apretadas ahora (ROCOLA_PULSA)
+
+        // EL ESTADO FISICO DE UNA TECLA AHORA, lo que en XP contesta GetAsyncKeyState («whether a key is up or down at the time the
+        // function is called», documentacion de Win32), no lo ya atendido (GetKeyState: PantallaRocola.SegunCola): el del nucleo, con
+        // EVIOCGKEY en cada aparato abierto (linux/input.h: «get global key state»: las teclas que estan abajo en ese momento, aunque su
+        // evento aun no se haya leido), y el de las teclas de prueba (las que el hilo de las pruebas tiene apretadas; se marcan antes de
+        // mandar su evento, como el estado fisico de Windows va antes que su WM_KEYDOWN). Un codigo de Windows puede venir de varias
+        // teclas de Linux (las dos Mayus...): cuenta cualquiera.
+        private const uint EVIOCGKEY = 0x80604518;   // _IOC(_IOC_READ, 'E', 0x18, 96): KEY_MAX (0x2ff) / 8 + 1 bytes
+        [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "ioctl", SetLastError = true)] private static extern int ioctlBits(IntPtr fd, uint pedido, byte[] bits);
+        private static List<int>[] deLinux;   // codigo de Windows -> las teclas de Linux que lo dan (Botones.cs al reves)
+        internal static bool Fisica(int vk)
+        {
+            vk &= 0xFF;
+            FileStream[] fs;
+            lock (candado) { if (pruebaAbajo[vk]) return true; fs = aparatos.ToArray(); }
+            if (fs.Length == 0) return false;
+            if (deLinux == null)
+            {
+                List<int>[] t = new List<int>[256];
+                for (int c = 0; c <= 0x2FF; c++) { int v = Botones.CodigoWindows(c); if (v > 0 && v < 256) (t[v] ?? (t[v] = new List<int>())).Add(c); }
+                deLinux = t;
+            }
+            List<int> codigos = deLinux[vk];
+            if (codigos == null) return false;
+            byte[] bits = new byte[96];
+            foreach (FileStream f in fs)
+            {
+                bool ref1 = false;
+                try
+                {
+                    f.SafeFileHandle.DangerousAddRef(ref ref1);
+                    if (ioctlBits(f.SafeFileHandle.DangerousGetHandle(), EVIOCGKEY, bits) < 0) continue;
+                }
+                catch { continue; }   // (se desconecto)
+                finally { if (ref1) f.SafeFileHandle.DangerousRelease(); }
+                foreach (int c in codigos) if ((bits[c >> 3] & (1 << (c & 7))) != 0) return true;
+            }
+            return false;
+        }
+        // una tecla de prueba: su estado fisico y despues su evento
+        private static void DePrueba(Tecla t, bool abajo)
+        {
+            lock (candado) pruebaAbajo[(int)t & 0xFF] = abajo;
+            Escritorio.Entrada(delegate { Escritorio.Tecla(t, abajo); });
+        }
 
         internal static void Arranca(string carpeta)
         {
@@ -85,10 +133,11 @@ namespace Rocola
                     {
                         // mantenida: llega como una tecla de verdad (WM_KEYDOWN, y repetida a los 500 ms como en XP, hasta soltarla)
                         int vk; if (!int.TryParse(q[1], out vk)) continue;
-                        bool abajo = q[0] == "baja"; Keys tk = (Keys)vk;
+                        bool abajo = q[0] == "baja"; Tecla tk = (Tecla)vk;
                         ArrancaRepeticion();
                         lock (candado)
                         {
+                            pruebaAbajo[vk & 0xFF] = abajo;   // (su estado fisico: Fisica)
                             Escritorio.Entrada(delegate { Escritorio.Tecla(tk, abajo); });   // (dentro del candado: ver Lee)
                             if (abajo) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
                             else if (vk == repiteVk) repiteVk = 0;
@@ -96,13 +145,13 @@ namespace Rocola
                         continue;
                     }
                     string[] teclas = p.Value.Split('+');
-                    Keys mod = teclas.Length == 2 ? (Keys)int.Parse(teclas[0]) : Keys.None;
-                    Keys t = (Keys)int.Parse(teclas[teclas.Length - 1]);
-                    if (mod != Keys.None) { Escritorio.Entrada(delegate { Escritorio.Tecla(mod, true); }); Thread.Sleep(30); }
-                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
+                    Tecla mod = teclas.Length == 2 ? (Tecla)int.Parse(teclas[0]) : Tecla.None;
+                    Tecla t = (Tecla)int.Parse(teclas[teclas.Length - 1]);
+                    if (mod != Tecla.None) { DePrueba(mod, true); Thread.Sleep(30); }
+                    DePrueba(t, true);
                     Thread.Sleep(60);
-                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, false); });
-                    if (mod != Keys.None) { Thread.Sleep(30); Escritorio.Entrada(delegate { Escritorio.Tecla(mod, false); }); }
+                    DePrueba(t, false);
+                    if (mod != Tecla.None) { Thread.Sleep(30); DePrueba(mod, false); }
                 }
             }) { IsBackground = true, Name = "teclas de prueba" }.Start();
         }
@@ -116,9 +165,9 @@ namespace Rocola
                 lock (candado) if (abiertos.Contains(d)) continue;
                 FileStream f;
                 try { f = new FileStream(d, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1, false); } catch { continue; }
-                lock (candado) abiertos.Add(d);
+                lock (candado) { abiertos.Add(d); aparatos.Add(f); }
                 string ruta = d;
-                new Thread(delegate () { try { Lee(f); } finally { lock (candado) abiertos.Remove(ruta); try { f.Dispose(); } catch { } } }) { IsBackground = true, Name = "teclas " + Path.GetFileName(d) }.Start();
+                new Thread(delegate () { try { Lee(f); } finally { lock (candado) { abiertos.Remove(ruta); aparatos.Remove(f); } try { f.Dispose(); } catch { } } }) { IsBackground = true, Name = "teclas " + Path.GetFileName(d) }.Start();
             }
         }
 
@@ -181,7 +230,7 @@ namespace Rocola
                 int vk = Botones.CodigoWindows(codigo);
                 if (vk == 0) continue;
                 bool abajo = valor == 1;
-                Keys t = (Keys)vk;
+                Tecla t = (Tecla)vk;
                 lock (candado)
                 {
                     // (port nativo: la tecla se entrega dentro del candado de la repeticion, asi una repeticion nunca llega despues de
@@ -209,7 +258,7 @@ namespace Rocola
                     repiteEn = en + RepeticionMs;
                     if (repiteEn < Escritorio.AhoraMs) repiteEn = Escritorio.AhoraMs + RepeticionMs;   // (sin rafagas si se atraso)
                     // (dentro del candado: si en este momento se suelta la tecla, el soltar va despues y la repeticion ya no sale)
-                    Keys t = (Keys)vk;
+                    Tecla t = (Tecla)vk;
                     Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
                 }
             }

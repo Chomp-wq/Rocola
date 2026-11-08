@@ -1,4 +1,4 @@
-// LAS REGLAS DE LA PANTALLA NATIVA (Nativo/PantallaRocola.cs y Reloj.cs), una por una, con los mismos archivos del programa (se
+// LAS REGLAS DE LA PANTALLA NATIVA (Nativo/PantallaRocola.cs, PantallaRocola.Teclado.cs y Reloj.cs), una por una, con los mismos archivos del programa (se
 // compilan aqui tal cual; TrazaVentanas y VolcadoEstado van de mentira, abajo). Cada prueba dice lo obtenido y, si falla, lo que
 // daria WinForms en XP (la regla y su sitio en la fuente: dotnet/winforms release/3.0, portada de .NET Framework 4.8).
 //   dotnet run        (o: dotnet bin/.../PruebasPantalla.dll)
@@ -255,6 +255,52 @@ namespace Rocola
                     return !cerrado && t.ElapsedMilliseconds < 3000;
                 });
                 Mira("SIGTERM: AlApagar en el hilo de la pantalla y Corre acaba", (cerrado ? "cerrado" : "no") + "," + (hilo == Thread.CurrentThread.ManagedThreadId ? "su-hilo" : "otro-hilo"), "cerrado,su-hilo", "WM_QUERYENDSESSION/WM_ENDSESSION en el hilo de la ventana");
+            }
+
+            // 10. EL TECLADO, LA FLECHA, LA VENTANA DE DELANTE Y EL CONTEXTO DEL HILO (PantallaRocola.Teclado.cs, ventanas2 T)
+            {
+                // las teclas ya atendidas (GetKeyState) y el bit 30 de WM_KEYDOWN (la tecla ya estaba abajo)
+                bool a1 = PantallaRocola.AnotaTecla(0x41, true), a2 = PantallaRocola.SegunCola(0x41), a3 = PantallaRocola.AnotaTecla(0x41, true);
+                bool a4 = PantallaRocola.AnotaTecla(0x141, false), a5 = PantallaRocola.SegunCola(0x41);
+                Mira("teclas ya atendidas: abajo, repetida, suelta", "antes:" + a1 + ",abajo:" + a2 + ",repetida:" + a3 + ",suelta:" + a4 + ",ahora:" + a5,
+                     "antes:False,abajo:True,repetida:True,suelta:True,ahora:False", "GetKeyState: «changes as a thread reads key messages»; WM_KEYDOWN bit 30: «the previous key state»");
+                // la cuenta de ShowCursor (Cursor.Hide/Show)
+                bool f0 = PantallaRocola.FlechaVisible; PantallaRocola.EscondeFlecha(); bool f1 = PantallaRocola.FlechaVisible;
+                PantallaRocola.EscondeFlecha(); PantallaRocola.EnsenaFlecha(); bool f2 = PantallaRocola.FlechaVisible; PantallaRocola.EnsenaFlecha(); bool f3 = PantallaRocola.FlechaVisible;
+                Mira("la flecha: la cuenta de ShowCursor", f0 + "," + f1 + "," + f2 + "," + f3, "True,False,False,True", "Cursor.cs:483-486 y 611-614: ShowCursor(FALSE/TRUE), se ve con la cuenta >= 0");
+                // la ventana de delante: sin quien la lleve, nadie; con, lo que diga
+                string pedido = "";
+                object d0 = PantallaRocola.Delante; PantallaRocola.AlFrente("x"); PantallaRocola.Encima("x"); PantallaRocola.Enfoca("x");
+                PantallaRocola.LaDeDelante = delegate { return "rocola"; };
+                PantallaRocola.PonDelante = delegate (object v) { pedido += "delante:" + v + ","; };
+                PantallaRocola.PonEncima = delegate (object v) { pedido += "encima:" + v + ","; };
+                PantallaRocola.PonFoco = delegate (object v) { pedido += "foco:" + v; };
+                PantallaRocola.AlFrente("r"); PantallaRocola.Encima("r"); PantallaRocola.Enfoca("r");
+                Mira("la ventana de delante y el foco: los pide a quien lleva las ventanas", (d0 == null ? "nadie" : "?") + "|" + PantallaRocola.Delante + "|" + pedido,
+                     "nadie|rocola|delante:r,encima:r,foco:r", "GetForegroundWindow, SetForegroundWindow, SetWindowPos(HWND_TOP), SetFocus");
+                PantallaRocola.LaDeDelante = null; PantallaRocola.PonDelante = PantallaRocola.PonEncima = PantallaRocola.PonFoco = null;
+                // el contexto del hilo: Post como un encargo (en orden con los demas), Send desde otro hilo espera, en su hilo en el momento
+                PantallaRocola.PonContexto();
+                System.Threading.SynchronizationContext ctx = System.Threading.SynchronizationContext.Current;
+                string tipo = ctx is PantallaRocola.Contexto ? "contexto" : (ctx == null ? "null" : ctx.GetType().Name);
+                int yo = Thread.CurrentThread.ManagedThreadId;
+                Desde(delegate
+                {
+                    PantallaRocola.EncolaDesde(null, delegate { Apunta("encargo"); }, "x", false);
+                    ctx.Post(delegate { Apunta("post" + (Thread.CurrentThread.ManagedThreadId == yo ? ":su-hilo" : ":otro")); }, null);
+                });
+                PantallaRocola.Bombea();
+                string orden = Log();
+                bool enviado = false, listo = false; string enSend = "";
+                Thread t = new Thread(delegate () { ctx.Send(delegate { enSend = Thread.CurrentThread.ManagedThreadId == yo ? "su-hilo" : "otro"; }, null); listo = true; });
+                t.Start();
+                CorreHasta(delegate { return listo; }, 2000);
+                t.Join(2000);
+                string enSuHilo = "";
+                ctx.Send(delegate { enSuHilo = "en-el-momento"; }, null);
+                enviado = listo;
+                Mira("el contexto del hilo de la pantalla: Post, Send desde otro hilo y desde el suyo", tipo + "|" + orden + "|" + (enviado ? "send:" + enSend : "send-no-volvio") + "|" + enSuHilo,
+                     "contexto|encargo,post:su-hilo|send:su-hilo|en-el-momento", "WindowsFormsSynchronizationContext: Post = BeginInvoke, Send = Invoke");
             }
 
             Console.WriteLine("pasan " + pasa + ", fallan " + falla);

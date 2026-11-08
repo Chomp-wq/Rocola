@@ -30,19 +30,19 @@ namespace Rocola
         private const int Rows = 3;
         private const int PageSize = Cols * Rows;
 
-        // EN LINUX (traduccion de XP; Plataforma/LlamadasWindows.cs): lo que aqui preguntaba a Windows lo contestan las ventanas de la rocola.
-        // No hay otros programas con ventana: la de delante es la activa del escritorio, y nadie le roba el foco.
-        private static short GetKeyState(int nVirtKey) { return LlamadasWindows.TeclaAbajo(nVirtKey); }
-        private static IntPtr GetForegroundWindow() { return LlamadasWindows.VentanaDelante(); }
-        private static bool SetForegroundWindow(IntPtr hWnd) { return LlamadasWindows.PonDelante(hWnd); }
-        private static uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr procId) { return 0; }   // (un solo hilo de pantalla)
-        private static uint GetCurrentThreadId() { return (uint)Environment.CurrentManagedThreadId; }
-        private static bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach) { return true; }
-        private static IntPtr SetFocus(IntPtr hWnd) { return LlamadasWindows.PonFoco(hWnd); }
-        private static void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo) { }   // (el clic para quitarle el foco a otro programa)
+        // EN LINUX (traduccion de XP): lo que aqui preguntaba a Windows lo contestan la pantalla nativa (Nativo/PantallaRocola.Teclado.cs: las teclas
+        // ya atendidas, la ventana de delante, el foco, la flecha). EN LINUX: no hay otros programas con ventana, solo la rocola y sus hojas.
+        private static short GetKeyState(int nVirtKey) { return PantallaRocola.SegunCola(nVirtKey) ? unchecked((short)0x8000) : (short)0; }   // EN LINUX: user32 GetKeyState: el bit alto si la tecla estaba abajo segun lo que la pantalla ya atendio (sus WM_KEYDOWN y WM_KEYUP)
+        // EN LINUX: (XP) user32 GetForegroundWindow: la ventana de delante la dice la pantalla (PantallaRocola.Delante: ForceFocus, FocusTimer_Tick, RocolaConTeclado)
+        // EN LINUX: (XP) user32 SetForegroundWindow: PantallaRocola.AlFrente (ForceFocus)
+        // EN LINUX: (XP) user32 GetWindowThreadProcessId, kernel32 GetCurrentThreadId y user32 AttachThreadInput: el truco de ForceFocus para quitarle
+        // EN LINUX: el foco a OTRO programa (pegarse a su hilo). En la pantalla de la rocola no hay otros programas: la de delante es de este hilo o
+        // EN LINUX: ninguna, y XP no se pegaba a nada (fgT == myT o 0)
+        // EN LINUX: (XP) user32 SetFocus: PantallaRocola.Enfoca (ForceFocus)
+        // EN LINUX: (XP) user32 mouse_event: el clic sintetico de ForceFocus para que Windows le de el foco a un programa de fondo: aqui no hace falta
         private const uint MOUSEEVENTF_LEFTDOWN = 0x02, MOUSEEVENTF_LEFTUP = 0x04;
         // ¿esta presionada AHORA esta tecla? (para los combos: REGRESAR + otra)
-        private static bool KeyHeld(Keys k) { return (GetKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
+        private static bool KeyHeld(Tecla k) { return (GetKeyState((int)(k & Tecla.KeyCode)) & 0x8000) != 0; }   // EN LINUX: Keys -> Tecla, los mismos numeros
 
         // Sube la resolucion del reloj del sistema a 1ms para que el temporizador de animacion
         // dispare parejo (en XP, sin esto, un intervalo de ~33ms se "redondea" y la animacion se entrecorta).
@@ -647,19 +647,19 @@ namespace Rocola
 
         // ---- BOTONES DE LA ROCOLA (configurables; se guardan en rocola_teclas.txt) ----
         // Valores por defecto (sirven para probar con teclado normal antes de configurar).
-        private Keys keyUp = Keys.Up;       // pagina anterior / subir
-        private Keys keyDown = Keys.Down;   // pagina siguiente / bajar
-        private Keys keyLeft = Keys.Left;   // disco anterior
-        private Keys keyRight = Keys.Right; // disco siguiente
-        private Keys keyOK = Keys.Enter;    // aceptar / poner
-        private Keys keyBack = Keys.Escape; // regresar
-        private Keys keyCoin = Keys.Insert; // moneda / credito
-        private Keys keySkip = Keys.ShiftKey; // saltar cancion
+        private Tecla keyUp = Tecla.Up;       // pagina anterior / subir; EN LINUX: Keys -> Tecla, los mismos numeros (rocola_teclas.txt)
+        private Tecla keyDown = Tecla.Down;   // pagina siguiente / bajar; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keyLeft = Tecla.Left;   // disco anterior; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keyRight = Tecla.Right; // disco siguiente; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keyOK = Tecla.Enter;    // aceptar / poner; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keyBack = Tecla.Escape; // regresar; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keyCoin = Tecla.Insert; // moneda / credito; EN LINUX: Keys -> Tecla, los mismos numeros
+        private Tecla keySkip = Tecla.ShiftKey; // saltar cancion; EN LINUX: Keys -> Tecla, los mismos numeros
         // Asistente de configuracion
         private bool configMode = false;
         private bool needConfig = false;
         private int configStep = 0;
-        private readonly Keys[] configCap = new Keys[8];
+        private readonly Tecla[] configCap = new Tecla[8];   // EN LINUX: Keys -> Tecla, los mismos numeros
         private Label lblConfig;            // pantalla del asistente de configuracion
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
@@ -766,8 +766,8 @@ namespace Rocola
             // (en el autoarranque XP lo deja dibujado a media pantalla aunque no haya mouse).
             try
             {
-                Cursor.Hide();
-                Cursor.Position = new Point(Screen.PrimaryScreen.Bounds.Right - 1, Screen.PrimaryScreen.Bounds.Bottom - 1);
+                PantallaRocola.EscondeFlecha();   // EN LINUX: Cursor.Hide(): ShowCursor(FALSE), la cuenta de la flecha (Cursor.cs:483-486)
+                PantallaRocola.FlechaEn(PantallaRocola.Ancho - 1, PantallaRocola.Alto - 1);   // EN LINUX: Cursor.Position = new Point(Screen.PrimaryScreen.Bounds.Right - 1, Bounds.Bottom - 1): SetCursorPos, la esquina de la pantalla
             }
             catch { }
 
@@ -802,7 +802,7 @@ namespace Rocola
 
         private bool arranqueEnEspera;   // la ventana ya se ve y las tablas del arranque aun no estan
         private bool arranqueSeguido;    // SigueArranque ya corrio (una sola vez)
-        private List<KeyValuePair<Message, Keys>> teclasEnEspera;
+        private List<KeyValuePair<PulsoTecla, Tecla>> teclasEnEspera;   // EN LINUX: (Message, Keys) -> (PulsoTecla, Tecla)
 
         private void EsperaLasTablas()
         {
@@ -854,9 +854,9 @@ namespace Rocola
         // Las teclas que llegaron mientras se leian las tablas, en el mismo orden: como las dejaba en cola la ventana parada.
         private void AtiendeTeclasEnEspera()
         {
-            List<KeyValuePair<Message, Keys>> t = teclasEnEspera; teclasEnEspera = null;
+            List<KeyValuePair<PulsoTecla, Tecla>> t = teclasEnEspera; teclasEnEspera = null;   // EN LINUX: (Message, Keys) -> (PulsoTecla, Tecla)
             if (t == null) return;
-            for (int i = 0; i < t.Count; i++) { Message m = t[i].Key; ProcessCmdKey(ref m, t[i].Value); }
+            for (int i = 0; i < t.Count; i++) { PulsoTecla m = t[i].Key; ProcessCmdKey(ref m, t[i].Value); }   // EN LINUX: Message -> PulsoTecla
         }
 
         // Trae la rocola al frente y le da el foco del teclado (robusto para el autoarranque).
@@ -884,31 +884,31 @@ namespace Rocola
             if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
             try
             {
-                if (GetForegroundWindow() == this.Handle) { this.Focus(); return; }
+                if (PantallaRocola.Delante == this) { this.Focus(); return; }   // EN LINUX: GetForegroundWindow() == this.Handle: la de delante es la rocola
 
-                IntPtr fg = GetForegroundWindow();
-                uint fgT = (fg != IntPtr.Zero) ? GetWindowThreadProcessId(fg, IntPtr.Zero) : 0;
-                uint myT = GetCurrentThreadId();
-                bool attached = false;
-                if (fgT != 0 && fgT != myT) { try { attached = AttachThreadInput(myT, fgT, true); } catch { } }
+                // EN LINUX: (XP) IntPtr fg = GetForegroundWindow(); y las cuatro de abajo: con la de delante de OTRO programa, pegarse a su hilo (AttachThreadInput) para poder quitarle el foco; aqui no hay otros programas (arriba, linea 38)
+                // EN LINUX: (XP) uint fgT = (fg != IntPtr.Zero) ? GetWindowThreadProcessId(fg, IntPtr.Zero) : 0;
+                // EN LINUX: (XP) uint myT = GetCurrentThreadId();
+                // EN LINUX: (XP) bool attached = false;
+                // EN LINUX: (XP) if (fgT != 0 && fgT != myT) { try { attached = AttachThreadInput(myT, fgT, true); } catch { } }
 
-                this.TopMost = true;
-                SetForegroundWindow(this.Handle);
-                this.Activate();
-                this.BringToFront();
-                this.TopMost = false;
-                SetFocus(this.Handle);
+                // EN LINUX: (XP) this.TopMost = true; encima de las ventanas de otros programas un momento: aqui no hay
+                PantallaRocola.AlFrente(this);   // EN LINUX: SetForegroundWindow(this.Handle): delante y activa
+                PantallaRocola.AlFrente(this);   // EN LINUX: this.Activate(): Form.Activate es SetForegroundWindow (Form.cs:2869-2882)
+                PantallaRocola.Encima(this);   // EN LINUX: this.BringToFront(): de una ventana de arriba, SetWindowPos(HWND_TOP) (Control.cs:4881-4894)
+                // EN LINUX: (XP) this.TopMost = false;
+                PantallaRocola.Enfoca(this);   // EN LINUX: SetFocus(this.Handle): el foco del teclado a la ventana de la rocola
                 this.Focus();
 
-                if (attached) { try { AttachThreadInput(myT, fgT, false); } catch { } }
+                // EN LINUX: (XP) if (attached) { try { AttachThreadInput(myT, fgT, false); } catch { } } (nada que despegar)
 
                 // ¿Windows se siguio negando? Clic sintetico (lo mismo que hace un mouse real).
-                if (GetForegroundWindow() != this.Handle)
+                if (PantallaRocola.Delante != this)   // EN LINUX: GetForegroundWindow() != this.Handle
                 {
-                    Rectangle sb = Screen.PrimaryScreen.Bounds;
-                    Cursor.Position = new Point(sb.Right - 2, sb.Bottom - 2);   // esquina: solo etiquetas, nada que activar
-                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
-                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+                    Rectangle sb = new Rectangle(0, 0, PantallaRocola.Ancho, PantallaRocola.Alto);   // EN LINUX: Screen.PrimaryScreen.Bounds: la pantalla
+                    PantallaRocola.FlechaEn(sb.Right - 2, sb.Bottom - 2);   // esquina: solo etiquetas, nada que activar; EN LINUX: Cursor.Position = new Point(...): SetCursorPos
+                    // EN LINUX: (XP) mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero); y la de abajo: aqui la rocola solo deja de estar delante bajo una hoja suya modal, y una ventana deshabilitada por una modal no recibe el clic
+                    // EN LINUX: (XP) mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
                 }
             }
             catch { }
@@ -918,7 +918,7 @@ namespace Rocola
         {
             if (focoCerrando || IsDisposed || Disposing || !IsHandleCreated) return;
             if (maintMode) return;                       // pausa de mantenimiento (F10), hasta que se vuelva a pulsar
-            if (GetForegroundWindow() != this.Handle) ForceFocus();
+            if (PantallaRocola.Delante != this) ForceFocus();   // EN LINUX: GetForegroundWindow() != this.Handle
 #if ROCOLA_GPU
             // DELANTE PERO SIN FOCO: el foco puede quedarse en nada o fuera de la rocola (en el video, o tras esconderse el
             // control que lo tenia) con la ventana todavia delante. Lo de arriba solo actua si OTRA ventana se pone
@@ -928,7 +928,7 @@ namespace Rocola
         }
 
         // Entrada de texto del buscador: cualquier caracter imprimible (incluye Ñ, acentos, comillas) y Borrar.
-        private void Form_KeyPress(object sender, KeyPressEventArgs e)
+        private void Form_KeyPress(object sender, PulsoCaracter e)   // EN LINUX: KeyPressEventArgs -> PulsoCaracter (KeyChar y Handled)
         {
 #if ROCOLA_GPU
             if (AsistenteCapturaEntrada) { e.Handled = true; return; }   // guiando se escribe como siempre
@@ -1921,7 +1921,7 @@ namespace Rocola
         internal UnDisparo disparoBuscador { get { return disparoBuscadorCampo ?? (disparoBuscadorCampo = new UnDisparo()); } }
         internal UnDisparo disparoAyuda { get { return disparoAyudaCampo ?? (disparoAyudaCampo = new UnDisparo()); } }
         // ROJO cuenta para las dos; ARRIBA para la del buscador y ABAJO para la de la ayuda.
-        private void ApuntaDisparos(Keys kc, bool apretada)
+        private void ApuntaDisparos(Tecla kc, bool apretada)   // EN LINUX: Keys -> Tecla, los mismos numeros
         {
             int t = Environment.TickCount;
             bool rojo = IsBack(kc);
@@ -1929,10 +1929,10 @@ namespace Rocola
             if (rojo || IsDown(kc)) { if (apretada) disparoAyuda.Aprieta(t); else disparoAyuda.Suelta(t); }
         }
         // Con KeyPreview, el formulario ve soltar los botones aunque el foco lo tenga otro control suyo.
-        protected override void OnKeyUp(KeyEventArgs e)
+        internal void OnKeyUp(PulsoTecla e)   // EN LINUX: (protected override, KeyEventArgs) no sobrescribe nada: la pantalla le da cada tecla soltada, con KeyPreview antes que al control del foco (Form.cs:4985-4993)
         {
             ApuntaDisparos(e.KeyCode, false);
-            base.OnKeyUp(e);
+            // EN LINUX: (XP) base.OnKeyUp(e); el aviso KeyUp de la ventana (Control.OnKeyUp): en la rocola nadie lo escucha
         }
         private bool TopeBuscadorDeja()
         {
@@ -1948,9 +1948,9 @@ namespace Rocola
             ShowToast("Espera un momento y vuelve a intentarlo", Color.FromArgb(200, 130, 35));
         }
 
-        private int PidenSalir(Keys keyData)
+        private int PidenSalir(Tecla keyData)   // EN LINUX: Keys -> Tecla, los mismos numeros
         {
-            if (keyData != (Keys.Control | Keys.Alt | Keys.Q)) return 0;
+            if (keyData != (Tecla.Control | Tecla.Alt | Tecla.Q)) return 0;   // EN LINUX: Keys -> Tecla, los mismos numeros
             DateTime ahora = DateTime.Now;
             if ((ahora - salirUltima).TotalSeconds > SalirSegundos) salirCuenta = 0;   // se tardo: vuelta a empezar
             salirUltima = ahora;
@@ -1959,7 +1959,7 @@ namespace Rocola
             return salirCuenta;
         }
 
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        internal bool ProcessCmdKey(ref PulsoTecla msg, Tecla keyData)   // EN LINUX: (protected override, Message y Keys) no sobrescribe nada: la pantalla le da cada tecla, la primera de todas (PreProcessMessage, Control.cs:9275-9300); msg.Repetida es el bit 30 de lParam
         {
             VigiaPantalla.Hace("una tecla (" + keyData + ")");
             // SALIR (Ctrl+Alt+Q x3). Va lo primero para que ninguna pantalla se quede con la tecla: tiene
@@ -1968,7 +1968,7 @@ namespace Rocola
             // A PROPOSITO borra el estado guardado y manana la rocola arranca limpia (solo un apagon -que
             // no corre nada- deja el archivo, y por eso al volver la luz reanuda creditos y cola).
             // Un sostenido no son tres pulsaciones. KEYDOWN bit 30 indica que ya estaba apretada.
-            if (keyData == (Keys.Control | Keys.Alt | Keys.Q) && (msg.LParam.ToInt64() & 0x40000000L) != 0) return true;
+            if (keyData == (Tecla.Control | Tecla.Alt | Tecla.Q) && msg.Repetida) return true;   // EN LINUX: Keys -> Tecla; (msg.LParam & 0x40000000) != 0 -> msg.Repetida
             int vanSalir = PidenSalir(keyData);
             if (vanSalir > 0)
             {
@@ -1982,8 +1982,8 @@ namespace Rocola
             // pisaria al publicarlos), y aun no hay biblioteca que elegir. Se atienden en orden al terminar.
             if (arranqueEnEspera)
             {
-                if (teclasEnEspera == null) teclasEnEspera = new List<KeyValuePair<Message, Keys>>();
-                if (teclasEnEspera.Count < 256) teclasEnEspera.Add(new KeyValuePair<Message, Keys>(msg, keyData));
+                if (teclasEnEspera == null) teclasEnEspera = new List<KeyValuePair<PulsoTecla, Tecla>>();   // EN LINUX: (Message, Keys) -> (PulsoTecla, Tecla)
+                if (teclasEnEspera.Count < 256) teclasEnEspera.Add(new KeyValuePair<PulsoTecla, Tecla>(msg, keyData));   // EN LINUX: (Message, Keys) -> (PulsoTecla, Tecla)
                 return true;
             }
 
@@ -1998,8 +1998,8 @@ namespace Rocola
                 // tragaba el pulso del monedero: el cliente metia su moneda durante la atraccion (el estado MAS
                 // comun al acercarse, entra sola a los 40s de reposo) y SU DINERO SE PERDIA sin dar creditos.
                 ExitAttract();
-                Keys akc = keyData & Keys.KeyCode;
-                if (IsCoin(akc) && (msg.LParam.ToInt64() & 0x40000000) == 0) AddCoin();   // mismo filtro de auto-repeticion que abajo
+                Tecla akc = keyData & Tecla.KeyCode;   // EN LINUX: Keys -> Tecla, los mismos numeros
+                if (IsCoin(akc) && !msg.Repetida) AddCoin();   // mismo filtro de auto-repeticion que abajo; EN LINUX: (msg.LParam & 0x40000000) == 0 -> !msg.Repetida, el bit 30 de WM_KEYDOWN
                 return true;
             }
 
@@ -2007,7 +2007,7 @@ namespace Rocola
             if (configMode) { CaptureConfigKey(keyData, msg); return true; }
 
             bool wasFull = videoFull;
-            Keys kc = keyData & Keys.KeyCode;   // tecla base (sin modificadores)
+            Tecla kc = keyData & Tecla.KeyCode;   // tecla base (sin modificadores); EN LINUX: Keys -> Tecla, los mismos numeros
             ApuntaDisparos(kc, true);   // antes de mirar ROJO + ARRIBA y ROJO + ABAJO (un disparo por pulsacion)
 
             // ===== ENTRADAS ESPECIALES: SIEMPRE funcionan (buscador, video en pantalla completa, donde sea) =====
@@ -2015,12 +2015,12 @@ namespace Rocola
             // creditos de mas; cada pulso real del monedero trae su propio pulsar/soltar y pasa siempre)
             if (IsCoin(kc)) {
 #if ROCOLA_GPU
-                InterrumpeComboAsistente((msg.LParam.ToInt64() & 0x40000000) == 0);
+                InterrumpeComboAsistente(!msg.Repetida);   // EN LINUX: (msg.LParam & 0x40000000) == 0 -> !msg.Repetida, el bit 30 de WM_KEYDOWN
 #endif
-                if ((msg.LParam.ToInt64() & 0x40000000) == 0) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }
+                if (!msg.Repetida) { if (wasFull) ExitVideoFull(); AddCoin(); } return true; }   // EN LINUX: (msg.LParam & 0x40000000) == 0 -> !msg.Repetida, el bit 30 de WM_KEYDOWN
 
             // SALTAR: salta la cancion/video actual SIEMPRE (filtra auto-repeticion)
-            if (IsSkip(kc) && (msg.LParam.ToInt64() & 0x40000000) == 0)
+            if (IsSkip(kc) && !msg.Repetida)   // EN LINUX: (msg.LParam & 0x40000000) == 0 -> !msg.Repetida, el bit 30 de WM_KEYDOWN
             {
 #if ROCOLA_GPU
                 InterrumpeComboAsistente(false);
@@ -2055,11 +2055,11 @@ namespace Rocola
             // F5 = recargar musica (mantenimiento; sin boton visible)
             // Como F8 y F10: si un boton de la rocola quedo en F5 (o F12), es ese boton y no la tecla de servicio. Si no,
             // cada vez que se apretara se volveria a leer toda la biblioteca desde cero.
-            if (keyData == Keys.F5 && !IsConfiguredKey(Keys.F5)) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo
+            if (keyData == Tecla.F5 && !IsConfiguredKey(Tecla.F5)) { try { File.Delete(LibCacheFile()); } catch { } LoadMusicFolder(); return true; }   // F5 ignora el cache: re-escaneo completo; EN LINUX: Keys -> Tecla, los mismos numeros
 #if ROCOLA_GPU
-            if (keyData == Keys.F12 && !IsConfiguredKey(Keys.F12)) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9)
-            if (keyData == (Keys.Control | Keys.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental)
-            if (keyData == (Keys.Control | Keys.F11))   // Ctrl+F11 = alterna el interior de disco entre GPU (por defecto) y CPU (valvula de escape)
+            if (keyData == Tecla.F12 && !IsConfiguredKey(Tecla.F12)) { GpuTestWindow.Toggle(); return true; }   // F12 = ventana de prueba del render por GPU (Direct3D 9); EN LINUX: Keys -> Tecla, los mismos numeros
+            if (keyData == (Tecla.Control | Tecla.F12)) { ToggleAlbumGpu(); return true; }   // Ctrl+F12 = fondo de discos por GPU (experimental); EN LINUX: Keys -> Tecla, los mismos numeros
+            if (keyData == (Tecla.Control | Tecla.F11))   // Ctrl+F11 = alterna el interior de disco entre GPU (por defecto) y CPU (valvula de escape); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 gpuDiscTry = !gpuDiscTry;
                 uiOverlaySig = SigNada;   // fuerza rehacer la textura de UI
@@ -2067,30 +2067,30 @@ namespace Rocola
                 SyncGpuFullScreen(); Invalidate(true);
                 return true;
             }
-            if (keyData == (Keys.Control | Keys.F1))   // Ctrl+F1 = muestra/oculta el contador de FPS (oculto por defecto)
+            if (keyData == (Tecla.Control | Tecla.F1))   // Ctrl+F1 = muestra/oculta el contador de FPS (oculto por defecto); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 gpuShowFps = !gpuShowFps;
                 if (gpuPanel != null) gpuPanel.ShowFps = gpuShowFps;
                 return true;
             }
 #endif
-            if (keyData == (Keys.Control | Keys.F2))   // Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos)
+            if (keyData == (Tecla.Control | Tecla.F2))   // Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 ShowMusicDirManager();
                 return true;
             }
-            if (keyData == (Keys.Control | Keys.F3))   // Ctrl+F3 = ajuste del nivelado de volumen (que todo suene parejo)
+            if (keyData == (Tecla.Control | Tecla.F3))   // Ctrl+F3 = ajuste del nivelado de volumen (que todo suene parejo); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 ShowVolumeManager();
                 return true;
             }
-            if (keyData == Keys.F8 && !IsConfiguredKey(Keys.F8))    // F8 = relanzar el asistente de botones
+            if (keyData == Tecla.F8 && !IsConfiguredKey(Tecla.F8))    // F8 = relanzar el asistente de botones; EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 if (searchOpen) CloseSearch();
                 StartConfig();
                 return true;
             }
-            if (keyData == Keys.F10 && !IsConfiguredKey(Keys.F10))   // F10 = mantenimiento: pausa/reactiva el vigia de foco
+            if (keyData == Tecla.F10 && !IsConfiguredKey(Tecla.F10))   // F10 = mantenimiento: pausa/reactiva el vigia de foco; EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 maintMode = !maintMode;
                 // El aviso dice como devolverlo, que ahora es la unica forma: ya no vuelve solo.
@@ -2145,13 +2145,13 @@ namespace Rocola
                 if (IsOK(kc))
                 {
                     // Una pulsacion, cuatro creditos: no repetir por mantener el boton.
-                    if (!SecretCreditGate.Matches(searchOverlay.Escrito) || (msg.LParam.ToInt64() & 0x40000000L) == 0)
+                    if (!SecretCreditGate.Matches(searchOverlay.Escrito) || !msg.Repetida)   // EN LINUX: (msg.LParam & 0x40000000) == 0 -> !msg.Repetida, el bit 30 de WM_KEYDOWN
                         searchOverlay.PressSelected();
                     return true;
                 }
                 if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA
                 // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
-                return base.ProcessCmdKey(ref msg, keyData);
+                return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
             }
 
             if (panelSongs.Visible)
@@ -2184,7 +2184,7 @@ namespace Rocola
                 if (IsOK(kc)) { List<Album> l = CurrentList(); if (selAlbumIndex >= 0 && selAlbumIndex < l.Count) EnterAlbum(l[selAlbumIndex]); return true; }
                 if (IsBack(kc)) { return true; }
             }
-            return base.ProcessCmdKey(ref msg, keyData);
+            return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
         }
 
         // LOS AVISOS DE ERROR DE LA LINEA DE ESTADO SE VAN SOLOS (barrido del 12-10-2026). "No se pudo reproducir ...

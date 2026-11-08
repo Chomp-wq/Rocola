@@ -74,7 +74,7 @@ namespace Rocola
         {
             if (ContainsFocus) return true;
             if (sinUser32 || !IsHandleCreated) return false;
-            try { return GetForegroundWindow() == Handle; }
+            try { return PantallaRocola.Delante == this; }   // EN LINUX: GetForegroundWindow() == Handle: la de delante es la rocola
             catch { sinUser32 = true; return false; }   // sin Windows (pruebas en Linux): solo cuenta el foco
         }
         // ---------------- EL ROJO Y EL ABAJO, MANTENIDOS ----------------
@@ -83,29 +83,29 @@ namespace Rocola
         // no depende de quien se quedo con el mensaje. Y el orden da igual: ABAJO con el rojo apretado, o ROJO con el
         // abajo apretado (al apretar los dos a la vez, cualquiera puede llegar primero; si llegaba primero el abajo, antes
         // no pasaba nada y la ayuda parecia muerta).
-        // EN LINUX: el estado fisico de los botones lo lleva el escritorio (evdev; Plataforma/LlamadasWindows.cs)
-        private static short GetAsyncKeyState(int vKey) { return LlamadasWindows.TeclaAbajo(vKey); }
+        // EN LINUX: el estado fisico de los botones lo da Linux en el momento (EVIOCGKEY de cada teclado: TeclasLinux.Fisica)
+        private static short GetAsyncKeyState(int vKey) { return TeclasLinux.Fisica(vKey) ? unchecked((short)0x8000) : (short)0; }   // EN LINUX: user32 GetAsyncKeyState: el bit alto si la tecla esta abajo ahora (el estado fisico, no lo ya atendido)
         private static bool sinAsync;
-        private static bool Fisica(Keys k)
+        private static bool Fisica(Tecla k)   // EN LINUX: Keys -> Tecla, los mismos numeros
         {
-            if (sinAsync || k == Keys.None) return false;
-            try { return (GetAsyncKeyState((int)(k & Keys.KeyCode)) & 0x8000) != 0; }
+            if (sinAsync || k == Tecla.None) return false;   // EN LINUX: Keys -> Tecla, los mismos numeros
+            try { return (GetAsyncKeyState((int)(k & Tecla.KeyCode)) & 0x8000) != 0; }   // EN LINUX: Keys -> Tecla, los mismos numeros
             catch { sinAsync = true; return false; }   // sin Windows (pruebas en Linux)
         }
-        private static bool SegunCola(Keys k)
+        private static bool SegunCola(Tecla k)   // EN LINUX: Keys -> Tecla, los mismos numeros
         {
-            if (sinUser32 || k == Keys.None) return false;
+            if (sinUser32 || k == Tecla.None) return false;   // EN LINUX: Keys -> Tecla, los mismos numeros
             try { return KeyHeld(k); } catch { sinUser32 = true; return false; }
         }
         private bool RojoMantenido()
         {
-            bool escLibre = !IsConfiguredKey(Keys.Escape);
-            return SegunCola(keyBack) || Fisica(keyBack) || (escLibre && (SegunCola(Keys.Escape) || Fisica(Keys.Escape)));
+            bool escLibre = !IsConfiguredKey(Tecla.Escape);   // EN LINUX: Keys -> Tecla, los mismos numeros
+            return SegunCola(keyBack) || Fisica(keyBack) || (escLibre && (SegunCola(Tecla.Escape) || Fisica(Tecla.Escape)));   // EN LINUX: Keys -> Tecla, los mismos numeros
         }
         private bool AbajoMantenido()
         {
-            bool flechaLibre = !IsConfiguredKey(Keys.Down);
-            return SegunCola(keyDown) || Fisica(keyDown) || (flechaLibre && (SegunCola(Keys.Down) || Fisica(Keys.Down)));
+            bool flechaLibre = !IsConfiguredKey(Tecla.Down);   // EN LINUX: Keys -> Tecla, los mismos numeros
+            return SegunCola(keyDown) || Fisica(keyDown) || (flechaLibre && (SegunCola(Tecla.Down) || Fisica(Tecla.Down)));   // EN LINUX: Keys -> Tecla, los mismos numeros
         }
         // Pura: ¿esta tecla, con lo que hay mantenido, es ROJO + ABAJO? Una vez por pulsacion (sin autorrepeticion).
         internal static bool EsAtajoAyuda(bool esAbajo, bool rojoMantenido, bool esRojo, bool abajoMantenido, bool repeticion)
@@ -176,14 +176,14 @@ namespace Rocola
             LogError("ROJO + ABAJO sin ayuda: " + motivo, null);
         }
 
-        private bool AsistenteEntrada(Keys keyData, ref Message msg)
+        private bool AsistenteEntrada(Tecla keyData, ref PulsoTecla msg)   // EN LINUX: (Keys, Message) -> (Tecla, PulsoTecla)
         {
-            Keys kc = keyData & Keys.KeyCode;
+            Tecla kc = keyData & Tecla.KeyCode;   // EN LINUX: Keys -> Tecla, los mismos numeros
             // Mantenimiento/salida siempre accesibles.
-            if ((keyData & (Keys.Control | Keys.Alt)) != 0 || kc == Keys.F5 || kc == Keys.F12
-                || ((kc == Keys.F8 || kc == Keys.F10) && !IsConfiguredKey(kc)))
+            if ((keyData & (Tecla.Control | Tecla.Alt)) != 0 || kc == Tecla.F5 || kc == Tecla.F12   // EN LINUX: Keys -> Tecla, los mismos numeros
+                || ((kc == Tecla.F8 || kc == Tecla.F10) && !IsConfiguredKey(kc)))   // EN LINUX: Keys -> Tecla, los mismos numeros
             { if (asistenteVisible) CierraAsistente(); return false; }
-            bool repeticion = (msg.LParam.ToInt64() & 0x40000000L) != 0;
+            bool repeticion = msg.Repetida;   // EN LINUX: (msg.LParam & 0x40000000) != 0 -> msg.Repetida, el bit 30 de WM_KEYDOWN
             bool esAbajo = IsDown(kc), esRojo = IsBack(kc);
             bool atajo = (esAbajo || esRojo) && EsAtajoAyuda(esAbajo, esAbajo && RojoMantenido(), esRojo, esRojo && AbajoMantenido(), repeticion);
             string motivo = MotivoSinAyuda();
