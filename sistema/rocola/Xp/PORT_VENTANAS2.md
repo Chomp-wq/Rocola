@@ -59,8 +59,9 @@ Cada linea en su sitio, sin anadir ni quitar lineas, con sus finales (CRLF o LF)
     rocola_teclas.txt guarda los botones como numeros (LoadKeys/SaveKeys no cambian de formato) y Botones.cs traduce evdev a ellos. Y
     los mismos NOMBRES que tenia Keys en la referencia, no menos: XP escribe cada tecla con su nombre en la marca de la pantalla
     (Form1.cs:1964, `VigiaPantalla.Hace("una tecla (" + keyData + ")")` -> «una tecla (F3, Control)», lo que la bitacora dice de un
-    tiron); con solo los que XP compara saldria un numero. A la referencia ya le faltaban 21 nombres de Keys.cs (las teclas de Asia, del
-    IME, del navegador y de lanzar programas: 0x15, 0x17-0x19, 0x1C-0x1F, 0xA7-0xAC, 0xB4-0xB7), que Botones.cs no da nunca.
+    tiron); con solo los que XP compara saldria otro texto (un numero u otra combinacion de [Flags]). A la referencia ya le faltaban 22
+    nombres de Keys.cs, de 18 codigos (las teclas de Asia, del IME, del navegador menos BrowserBack y de lanzar programas: 0x15,
+    0x17-0x19, 0x1C-0x1F, 0xA7-0xAC, 0xB4-0xB7), que Botones.cs no da nunca. (Revision: decia «21 nombres».)
   - `PulsoTecla` (una tecla apretada o soltada; solo lo que XP lee, segun el inventario): `KeyData`; `KeyCode` (la tecla sola, o None si
     Keys no define el codigo: KeyEventArgs.cs, «Keys can be discontiguous, keeping Enum.IsDefined», con la lista de Keys.cs);
     `Handled`; `SuppressKeyPress` (que tambien pone Handled, KeyEventArgs.cs); `Repetida` (el bit 30 de WM_KEYDOWN, «the previous key
@@ -198,4 +199,74 @@ Cada linea en su sitio, sin anadir ni quitar lineas, con sus finales (CRLF o LF)
   (DescompresorMp3.cs y otros de la pista windows necesitan NAudio y NLayer; PantallaRocola.Rocola.cs, Form1); en `$W/pantalla`
   quedan unos 336 MB de compilaciones de NativeAOT de corridas viejas de pruebas_pantalla.sh; LEEME.md nombra
   `Plataforma/LlamadasWindows.cs`, que ya no existe.
+- Nada de esto se ha probado en el A4.
+
+### Revision (revisor independiente, 8-11-2026)
+
+Se reviso el paso entero (65a26c5, el merge f5da162 y 3933e0c) contra `Rocola/` (XP), contra la fuente de WinForms
+(`/tmp/claude-0/agente-winforms/ref`) y contra la capa que sustituye (la de 9cb5ba0), y se repitieron las comprobaciones con etiquetas
+propias (RV para la referencia, V y VA para este programa).
+
+Lo comprobado en el codigo:
+
+- Cada llamada cambiada hace lo mismo que la capa de antes: en ForceFocus, `TopMost` de la referencia era una propiedad sin efecto,
+  `SetForegroundWindow` y `Activate` eran los dos `Form.Activate`, `BringToFront` de una ventana sin padre era `Escritorio.AlFrente`,
+  `SetFocus` era `Control.Focus` y `GetForegroundWindow() == Handle` comparaba con la activa sin desechar: son los cuatro ganchos de
+  ahora. ProcessCmdKey: en la capa solo lo sobrescribian Form1 y GpuTestWindow y la cadena de padres acababa con false en la ventana de
+  arriba, asi que `TeclaDeMando(TopLevelControl)` da lo mismo (con Ctrl+F3 abierto, false sin llamar a la rocola, como antes y como
+  WinForms con la hoja modal). El `base.OnKeyUp` que se quito solo lanzaba el aviso KeyUp de la rocola, y nadie lo escucha. `Contexto`:
+  Post como ContextoVentana (Send no lo usa nadie: SalidaPropia.cs y el BackgroundWorker usan Post). `AnotaTecla` va donde iba
+  `TeclasAbajo` (antes de mirar el destino de la tecla).
+- `Tecla` tiene los mismos miembros, valores y orden que la `Keys` de la referencia (las dos listas, comparadas: iguales), asi
+  `keyData.ToString()` de VigiaPantalla.Hace escribe lo mismo; `DefineKeys` es exactamente el conjunto de codigos de Keys.cs (comprobado
+  de 0 a 0xFFFF contra los valores del archivo: 0 diferencias). EVIOCGKEY = (_IOC_READ << 30) | (96 << 16) | ('E' << 8) | 0x18 = 0x80604518.
+- Lo que quedo sin convertir tiene su razon: `Cursor = Cursors.Hand` y los `KeyEventArgs`/`IsInputKey` de las piezas de Ctrl+F3
+  (paso C); el raton de Form1 (Form1.cs:1125-1126 y 1334, Form1.Video.cs:851-882) y de las vistas son avisos de controles que aun heredan
+  de la capa, y el diseno pone `Raton` con IVista y GpuPanel (apartados 5 y 6); KeyPreview y KeyPress de Form1 (713-714), con «Form1 sin
+  Form». La escena `captura` usa F8 porque el asistente de los botones (StartConfig) solo se abre con F8 o la primera vez, no desde Ctrl+F3.
+- Finales de linea: los 9 archivos de Codigo tienen las mismas lineas y los CRLF en las mismas lineas que antes del paso (comparado
+  linea por linea, no solo la cuenta).
+
+Lo encontrado y lo hecho:
+
+1. (menor, arreglado) Citas: Tecla.cs citaba «Control.cs:9600-9700» (lo de SuppressKeyPress es 9680-9685) y KeyEventArgs.cs,
+   KeyPressEventArgs.cs y WindowsFormsSynchronizationContext.cs sin linea; decia que a Tecla le faltan las teclas «del navegador»
+   (BrowserBack si esta) y que «con menos nombres saldria un numero» (con [Flags] tambien puede salir otra combinacion u otro alias: por
+   eso van los mismos nombres y en el mismo orden); y este documento decia «21 nombres» (son 22, de 18 codigos). Solo comentarios.
+2. (nota para el paso H, sin cambio) `Encima` (BringToFront): WinForms solo sube una ventana de arriba si esta habilitada (Control.cs:4887,
+   IsWindowEnabled); la capa, como la referencia, no lo mira. Hoy no cambia nada: ForceFocus no corre con una hoja modal abierta (Ctrl+F3 y
+   Ctrl+F2 ponen maintMode y lo llaman en su finally, ya cerradas) salvo si un encargo abre Ctrl+F2 con Ctrl+F3 abierto, y aun asi la
+   rocola queda debajo de sus hojas (SubeLasSuyas). Cuando las ventanas sean nativas, Encima tiene que mirarlo.
+3. (sin cambio) Program.cs:94 llama a la vista al gancho de las pruebas de Linux: es el mismo momento en que corria escondido en
+   SetUnhandledExceptionMode, sin `--prueba-*` no hace nada, y sacarlo de ahi lo esconderia otra vez en una pieza nativa o pediria otro
+   Main en Plataforma (StartupObject) que cambiaria el de XP. Queda en los riesgos.
+4. (sin cambio) `ioctlBits` declara la peticion como `uint` (en C es `unsigned long`), como el `ioctl` que ya habia en TeclasLinux.cs y
+   en Botones.cs: en x86-64 el valor llega con la mitad de arriba a cero y el nucleo la lee como `unsigned int`.
+5. Las cuentas de `captura` y `salirq` con el ruido de tres corridas salen fuera por poco (el vigia de la pantalla, 430 frente a 445; el
+   reloj de 42 ms, 260 frente a 265), pero la referencia contra si misma ya se separa mas: en seis corridas suyas (RT1-RT4, RT7, RV1) el
+   vigia va de 353 a 466 y el reloj de 42 ms de 240 a 261. Con ese ruido (`/root/rocola-trabajo/port/ventanas2/rv/ruido`, 6 corridas)
+   salen IGUALES. La secuencia, los estados, rocola_teclas.txt y las capas, iguales siempre.
+6. (fuera de este paso, para el coordinador) La carrera del repaso en `tab` (el encargo de Form1.Biblioteca.cs:1735 y «faltan N archivos»
+   en la hoja de Ctrl+F3): contando todas las corridas guardadas (`ventanas/salidas` y `ventanas2/salidas`), la referencia la da 1 vez en
+   23 (R7) y las traducciones 6 en 21 (N5 de V3, J1, M1 de la rama principal sin este paso, y T1, T4, T5); con este paso, en mis cuatro
+   pares (V1, V3, V4, V5) no salio. No viene de este paso (sale sin el: N5, J1, M1), pero la diferencia parece de la pantalla nativa o de
+   la tanda V2/V3 (la latencia de los encargos frente a las teclas con la maquina cargada): habria que medirla alli.
+
+Comprobaciones repetidas (8-11-2026, maquina compartida, carga de 3 a 7):
+
+- Compila: 0 errores y 15 avisos; la lista archivo:linea:codigo es la misma que la de la rama principal sin el paso (564788b, compilada
+  aparte de un `git archive`), antes y despues de los arreglos.
+- Las 41 pruebas: 41 de 41 con este programa y 41 de 41 con ref-trazas; la salida de las dos, igual linea por linea.
+- Las reglas de la pantalla: 32 de 32 en JIT y en NativeAOT (sin avisos de IL ni de AOT: solo dos CS0649 del propio banco).
+- Escenas alternadas con la referencia (RV1/V1, JIT): arranque, moneda, video, tab, buscador, cierreq, altf4, kill9 y asistente IGUALES;
+  captura y salirq IGUALES con el ruido de seis corridas (punto 5); sigterm y f3sigterm, solo lo aceptado en V2 (encargo Apagado, closing
+  y closed con WindowsShutDown y rocola_estado.txt borrado). Las capas de Dibujo2D, 0 puntos distintos en las 35 comparadas (las hojas de
+  Ctrl+F3 de moneda y tab incluidas); los estados de XP y de cada pieza, todos iguales; rocola_teclas.txt igual en las 13;
+  rocola_estado.txt falta tras cierreq, salirq, altf4 y SIGTERM y queda tras kill9. Tres pares mas de tab (RV3-RV5/V3-V5): IGUALES.
+  Con el programa final (los arreglos son comentarios), asistente, captura, salirq y cierreq otra vez (RV6/V6): IGUALES.
+- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true`): 0 avisos de IL ni de AOT (solo los 15 de compilacion).
+  Contra la referencia (RV2/VA1): arranque, cierreq, kill9 y captura IGUALES; sigterm, lo aceptado; asistente y salirq iguales salvo el
+  reloj de 42 ms en el primer segundo (11 frente a 22 y 9 frente a 21: NativeAOT arranca antes, como en V3); estados, rocola_teclas.txt y
+  capas iguales; rocola_estado.txt como debe.
+- `diff-xp.py -v` en los 9 archivos: lo mismo que dice el paso (sin marca solo las lineas de otras pistas y la linea en blanco de Form1.cs).
 - Nada de esto se ha probado en el A4.

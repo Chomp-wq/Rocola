@@ -58,10 +58,11 @@ namespace Rocola
 
         // ---------- el SynchronizationContext del hilo de la pantalla ----------
         // En XP, WinForms pone en el hilo de la pantalla su WindowsFormsSynchronizationContext al crear el primer control y al empezar el
-        // bucle (InstallIfNeeded, WindowsFormsSynchronizationContext.cs): Post es un BeginInvoke a una ventana de encargos que vive lo que
-        // vive el hilo (su MarshalingControl) y Send un Invoke. Lo usan SalidaPropia.cs (avisa por el la parada del sonido) y el
-        // BackgroundWorker del repaso (Form1.cs: RunWorkerCompleted). Aqui Post es un encargo de la pantalla sin dueno (no se pierde) y
-        // Send, desde otro hilo, espera a que se haga; en el hilo de la pantalla, en el momento.
+        // bucle (InstallIfNeeded, WindowsFormsSynchronizationContext.cs:127): Post es un BeginInvoke a una ventana de encargos que vive lo
+        // que vive el hilo (su MarshalingControl; :96-104) y Send un Invoke (:80-94). Lo usan SalidaPropia.cs (avisa por el la parada del
+        // sonido) y el BackgroundWorker del repaso (Form1.cs: RunWorkerCompleted). Aqui Post es un encargo de la pantalla sin dueno (no se
+        // pierde) y Send, desde otro hilo, espera a que se haga (lo que lance vuelve al que espera, no a AlFallar: Control.Invoke); en el
+        // hilo de la pantalla, en el momento.
         internal sealed class Contexto : SynchronizationContext
         {
             public override void Post(SendOrPostCallback d, object state) { EncolaDesde(null, delegate { d(state); }, "contexto", false); }

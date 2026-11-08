@@ -8,10 +8,12 @@
 //   Tecla           los MISMOS numeros que Keys: el codigo de tecla de Windows (VK_*) en los 16 bits de abajo y Mayus 0x10000, Ctrl
 //                   0x20000 y Alt 0x40000 (Keys.cs:23-28 y 977-987), porque rocola_teclas.txt guarda los botones como numeros
 //                   (LoadKeys y SaveKeys, Form1.Ajustes.cs, sin cambiar de formato) y Botones.cs traduce evdev a ellos. Y los mismos
-//                   NOMBRES que tenia Keys en la referencia (los de Keys.cs menos los de las teclas de Asia, del IME, del navegador y de
-//                   lanzar programas, que Botones.cs no da nunca): XP escribe cada tecla con su nombre en la marca de la pantalla
+//                   NOMBRES que tenia Keys en la referencia, en su mismo orden (los de Keys.cs menos 22 de 18 codigos: las teclas de
+//                   Asia y del IME, 0x15, 0x17-0x19 y 0x1C-0x1F, las del navegador menos BrowserBack, 0xA7-0xAC, y las de lanzar
+//                   programas, 0xB4-0xB7; Botones.cs no da ninguna): XP escribe cada tecla con su nombre en la marca de la pantalla
 //                   (ProcessCmdKey, Form1.cs: VigiaPantalla.Hace("una tecla (" + keyData + ")") -> «una tecla (F3, Control)», lo que
-//                   la bitacora dice de un tiron); con menos nombres saldria un numero.
+//                   la bitacora dice de un tiron); con otros nombres, u otro orden, saldria otro texto (un numero, otra combinacion de
+//                   [Flags] u otro de los alias).
 //   PulsoTecla      una tecla apretada o soltada: lo que XP leia del Message de ProcessCmdKey (Repetida) y de KeyEventArgs (KeyCode,
 //                   Handled, SuppressKeyPress). La pantalla hace uno por tecla.
 //   PulsoCaracter   el caracter de una tecla (WM_CHAR): lo que XP leia de KeyPressEventArgs.
@@ -43,11 +45,12 @@ namespace Rocola
 
     // UNA TECLA APRETADA O SOLTADA.
     //   - KeyData: la tecla con los bits de Mayus, Ctrl y Alt que estaban apretadas (en XP, keyData de ProcessCmdKey y KeyEventArgs.KeyData).
-    //   - KeyCode: la tecla sola, o None si Keys no tiene ese codigo (KeyEventArgs.cs, KeyCode: «since Keys can be discontiguous, keeping
+    //   - KeyCode: la tecla sola, o None si Keys no tiene ese codigo (KeyEventArgs.cs:45-58: «since Keys can be discontiguous, keeping
     //     Enum.IsDefined»: con los valores que define Keys.cs de WinForms, los de DefineKeys). Los codigos que Rocola OS da (Botones.cs)
     //     estan todos.
-    //   - Handled y SuppressKeyPress: SuppressKeyPress = true tambien pone Handled (KeyEventArgs.cs, SuppressKeyPress); con el, el caracter
-    //     de la tecla no llega a nadie (Control.ProcessKeyEventArgs: RemovePendingMessages(WM_CHAR), Control.cs:9600-9700).
+    //   - Handled y SuppressKeyPress: SuppressKeyPress = true tambien pone Handled (KeyEventArgs.cs:84-92); con el, el caracter de la
+    //     tecla no llega a nadie (Control.ProcessKeyEventArgs: RemovePendingMessages de WM_CHAR, WM_SYSCHAR y WM_IME_CHAR,
+    //     Control.cs:9680-9685).
     //   - Repetida: el bit 30 de lParam de WM_KEYDOWN («The previous key state. The value is 1 if the key is down before the message is
     //     sent», documentacion de WM_KEYDOWN): la repeticion de la tecla mantenida. XP lo mira para no contar otra moneda, ni saltar otra
     //     vez, ni repetir sus atajos (Form1.cs ProcessCmdKey, CaptureConfigKey, AsistenteEntrada).
@@ -75,8 +78,9 @@ namespace Rocola
         }
     }
 
-    // EL CARACTER DE UNA TECLA (WM_CHAR, o WM_SYSCHAR con Alt): KeyChar y Handled, como KeyPressEventArgs.cs. Si alguien lo atiende
-    // (Handled), ya no llega a nadie mas (con KeyPreview, el de la ventana va primero: Form.ProcessKeyPreview, Form.cs:4985-4993).
+    // EL CARACTER DE UNA TECLA (WM_CHAR, o WM_SYSCHAR con Alt): KeyChar y Handled, como KeyPressEventArgs.cs:27 y 33. Si alguien lo
+    // atiende (Handled), ya no llega a nadie mas: con KeyPreview, el de la ventana va primero (Control.ProcessKeyMessage, Control.cs:9708;
+    // Form.ProcessKeyPreview, Form.cs:4985-4993) y lo que devuelve es su Handled (Control.ProcessKeyEventArgs, Control.cs:9675).
     public class PulsoCaracter
     {
         public PulsoCaracter(char keyChar) { KeyChar = keyChar; }
