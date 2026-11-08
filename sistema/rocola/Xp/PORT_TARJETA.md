@@ -242,3 +242,20 @@ Comprobación:
   cinta grabada en NativeAOT en el asistente con la traza en un cuadro de su tramo (n3-aot-asistente, 31 cuadros: la traza tiene los 13
   estados de la referencia) da lo mismo en la referencia y en la traducción.
 - No probado en el A4: no lo puedo probar desde aquí.
+
+## Lo que queda
+
+- Probarlo en el A4 (Mesa r600 por KMS; `MemoriaTarjeta` con el ioctl de la radeon): `--prueba-gpu`, las pantallas con
+  `ROCOLA_ERRORES_GL=1` y una cinta grabada allí reproducida aquí. Desde aquí no se puede: todo lo de arriba es con llvmpipe.
+- La pista de las ventanas: la presentación, el refresco y el reloj pasan por `Nativo/PantallaTarjeta.cs` (hoy, el escritorio de
+  `Plataforma`); cuando cambie el escritorio, cambia solo ese archivo.
+- La pista del dibujo: `CreateTextureFromBitmap`, `SubeBitmapBorde` y `ActualizaRegionBitmap` leen el `Bitmap` (`LockBits`); cuando el
+  dibujo deje `Bitmap`, cambia la lectura y la copia a la textura sigue igual.
+- Al juntar las pistas: esta toca una línea de `Plataforma/Anfitrion.cs` (177), cuatro de `Plataforma/VideoMpv.cs`, `CapacidadPantalla`
+  de `Plataforma/LlamadasWindows.cs` y `PruebaGpu` de `Plataforma/PruebasLinux.cs`. Quedan comentarios que nombran la capa que ya no está
+  (`Plataforma/Anfitrion.cs:4`, la cabecera de `Plataforma/LlamadasWindows.cs` —GetDeviceCaps, GetDC, Direct3D 9 y
+  DwmGetCompositionTimingInfo—, `Plataforma/Ventanas.Control.cs:30`, `Plataforma/Ventanas.Escritorio.cs:763`) y lo que `Xp/LEEME.md`
+  cuenta de `D3D9.EnGl` y de su banco de 71 pruebas (que no está en el repositorio y no se volvió a correr: las cintas dan los mismos
+  bytes que la capa en lo que usa XP, no en todo el modelo de Direct3D); no se tocaron para no chocar con las otras pistas.
+- Las líneas de la grabadora (`CintaTarjeta`, una por método del dispositivo, apagadas sin `ROCOLA_CINTA`) se quedan para comparar
+  después; si se quitan, la referencia para las cintas tendría que ser otra.
