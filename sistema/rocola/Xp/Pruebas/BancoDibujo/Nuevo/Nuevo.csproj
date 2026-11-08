@@ -19,8 +19,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="**/*.cs" />
-    <Compile Include="../Casos.cs;../EjecutaGdi.cs;../EjecutaNativo.cs;../Programa.cs" />
+    <Compile Include="../Casos.cs;../EjecutaGdi.cs;../EjecutaNativo.cs;../PruebaPuente.cs;../Programa.cs" />
     <Compile Include="../../../Plataforma/Dibujo2D.cs" Link="Plataforma/Dibujo2D.cs" />
     <Compile Include="../../../Nativo/*.cs" LinkBase="Nativo" />
+    <Compile Include="../../../Plataforma/Puente.cs" Link="Plataforma/Puente.cs" />
   </ItemGroup>
 </Project>

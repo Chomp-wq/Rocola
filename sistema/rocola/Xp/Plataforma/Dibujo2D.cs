@@ -357,7 +357,7 @@ namespace Rocola.Dibujo2D
         public StringFormat() { F = new FormatoTexto(); }
         public StringFormat(StringFormatFlags f) { F = new FormatoTexto((BanderasTexto)f); }
         public StringFormat(StringFormat o) { F = new FormatoTexto(o.F); HotkeyPrefix = o.HotkeyPrefix; }
-        internal StringFormat(FormatoTexto f) { F = f; }   // (los genericos: el mismo FormatoTexto, no una copia)
+        internal StringFormat(FormatoTexto f) { F = f; }   // (PuenteDibujo: el mismo FormatoTexto, no una copia)
         // LOS DOS FORMATOS GENERICOS SON UN SOLO OBJETO CADA UNO, COMPARTIDO (revision del 8-11-2026; ver FormatoTexto): el StringFormat de
         // GenericTypographic envuelve a FormatoTexto.TipograficoCompartido, asi que lo que le cambie un archivo con GDI+ lo ve uno ya traducido
         // que use FormatoTexto.TipograficoCompartido, y al reves (mientras unos archivos esten traducidos y otros no).
@@ -447,7 +447,8 @@ namespace Rocola.Dibujo2D
         }
         public static Image FromStream(Stream s, bool usarColor, bool validar) { return FromStream(s); }
         public static Image FromFile(string ruta) { return Bitmap.Decodifica(File.ReadAllBytes(ruta)); }
-        public virtual void Dispose() { if (Sk != null) { Sk.Dispose(); Sk = null; } }
+        internal bool Ajeno;   // (PuenteDibujo) los puntos son de otro: al soltar la imagen no se sueltan
+        public virtual void Dispose() { if (Sk != null) { if (!Ajeno) Sk.Dispose(); Sk = null; } }
         public void Save(string ruta) { Save(ruta, ruta.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ? ImageFormat.Jpeg : ImageFormat.Png); }
         public void Save(string ruta, ImageFormat f) { using (FileStream fs = File.Create(ruta)) Save(fs, f); }
         public void Save(Stream s, ImageFormat f) { Guarda(s, f, 92); }
@@ -535,6 +536,8 @@ namespace Rocola.Dibujo2D
         // Graphics. En un mapa de bits, ninguna; en un control que pinta Ventanas.Escritorio, la de su sitio (SellaRecorte).
         private SKMatrix baseMatriz;
         internal Graphics(SKCanvas c, bool suyo) { C = c; propio = suyo; baseCuenta = c.SaveCount; baseMatriz = c.TotalMatrix; }
+        // (PuenteDibujo) un lienzo con la matriz del HDC dada: la del sitio donde pinta GDI, que puede no ser la que lleva ahora el lienzo
+        internal Graphics(SKCanvas c, SKMatrix hdc) { C = c; propio = false; baseCuenta = c.SaveCount; baseMatriz = hdc; }
         public static Graphics FromImage(Image i) { return new Graphics(new SKCanvas(i.Sk), true); }
         public void Dispose() { if (propio) { C.Flush(); C.Dispose(); } }
         public void Flush() { C.Flush(); }

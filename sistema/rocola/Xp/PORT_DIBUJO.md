@@ -219,3 +219,35 @@ Comprobado:
   referencia dio esta vez el de la copia y al revés);
 - compila sin errores ni avisos nuevos (los avisos del compilador que salen al compilar todo son los de siempre, de código de XP que esta
   pista no toca: `Thread.VolatileRead`, `FormatterServices`, `Control.bounds`, dos `Stream.Read` y un `stackalloc`).
+
+## D3. El puente (`Plataforma/Puente.cs`), solo para la transición
+
+Mientras unos archivos de XP estén traducidos y otros no, lo que uno le pasa al otro (un lienzo, un mapa, una letra, un formato) pasa por
+`PuenteDibujo`. No queda: se borra al final, con `Dibujo2D.cs`.
+
+- `Lienzo(Graphics)` y `Estado(Graphics)`: el `SKCanvas` y su estado (`EstadoLienzo`: suavizado, modo de letra, copia, filtro, medio píxel
+  y la matriz del HDC) para llamar a una función ya traducida desde un archivo que no lo está;
+- `Graphics(SKCanvas, matriz del HDC)` y `Graphics(SKCanvas, EstadoLienzo)`: al revés, un `Graphics` sobre el lienzo de un archivo
+  traducido, con la matriz del HDC DADA (GDI pinta con ella, no con la que lleve el lienzo; en un mapa de bits, la identidad) y, si se da,
+  el estado del que llama; no suelta el lienzo;
+- `Mapa(Image)` y `Bitmap(SKBitmap, formato)`: los mismos puntos en los dos sentidos, SIN hacerse dueño (`Image.Ajeno`: al soltar el
+  `Bitmap` prestado no se sueltan los puntos);
+- `Letra(Font)` y `Font(Letra)`: la misma letra (familia, tamaño, unidad y estilo);
+- `Formato(StringFormat)` y `StringFormat(FormatoTexto)`: el MISMO objeto, no una copia: `StringFormat.GenericTypographic` es
+  `FormatoTexto.TipograficoCompartido` (y `GenericDefault`, `NormalCompartido`), así que lo que `EstadoReposoGpu.cs` le cambia al
+  tipográfico (Center, Center y NoWrap) lo heredan los demás, estén traducidos o no;
+- `Pincel(Brush, medio)`: el color o el shader de un pincel de GDI+ (PulidoGpu devuelve pinceles).
+
+En `Dibujo2D.cs` solo se añadió lo que el puente necesita: `Image.Ajeno` y el constructor de `Graphics` con la matriz del HDC dada.
+
+Comprobado:
+
+- banco por función con `ejecutor puente`: los casos hechos con la API que imita a GDI+ pero pasando el lienzo (un `SKCanvas` propio con
+  `PuenteDibujo.Graphics(lienzo, identidad)`), las imágenes (`PuenteDibujo.Bitmap` sobre un `Mapas.Nuevo`), las letras (`Font` → `Letra`
+  → `Font`) y los formatos (`StringFormat` → `FormatoTexto` → `StringFormat`) por el puente: los 30 000 casos (10 semillas), **0 distintos**
+  de la capa congelada;
+- `puente-objetos` (`PruebaPuente.cs`): 397 comprobaciones, todas bien: el tipográfico de GDI+ y el nativo son el MISMO objeto en los dos
+  sentidos (lo que uno cambia, como `EstadoReposoGpu.cs`, el otro lo ve; `=` reemplaza las banderas y `|=` añade; una copia hecha después
+  sale con el cambio y es otro objeto), un formato prestado no se copia, el estado del lienzo va y vuelve (2 × 2 × 2 × 6 × 8 combinaciones
+  de suavizado, copia, medio píxel, modo de letra y filtro, con su matriz del HDC), un mapa prestado no se suelta al soltar el `Bitmap` y una
+  letra vuelve con los mismos datos (nombre, tamaño, unidad, estilo, alto).
