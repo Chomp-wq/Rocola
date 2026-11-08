@@ -9,8 +9,17 @@ using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global
 
 namespace Rocola.Ventanas
 {
-    public class Form : ContainerControl
+    public class Form : ContainerControl, ITeclasAntes
     {
+        // (port nativo, ventanas2 H) EL KEYDOWN Y EL KEYUP DE LA VENTANA CON KEYPREVIEW con su nombre nativo (ITeclasAntes, Nativo/Pieza.cs):
+        // MonedaTambienAqui (Form1.Ajustes.cs) los usa con Ctrl+F2, ya una hoja nativa, y con Ctrl+F3 y el historial de caratulas, que aun son
+        // de la capa. Suscribirse pone KeyPreview (lo que hacia la linea de XP); salen despues del aviso KeyDown/KeyUp de WinForms, en el
+        // orden en que XP se suscribia (primero el Escape de la hoja, despues la moneda). Se va con la capa.
+        private Action<PulsoTecla> teclaAntes, teclaArribaAntes;
+        public event Action<PulsoTecla> TeclaAntes { add { KeyPreview = true; teclaAntes += value; } remove { teclaAntes -= value; } }
+        public event Action<PulsoTecla> TeclaArribaAntes { add { KeyPreview = true; teclaArribaAntes += value; } remove { teclaArribaAntes -= value; } }
+        protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); Action<PulsoTecla> h = teclaAntes; if (h != null) h(e); }
+        protected override void OnKeyUp(KeyEventArgs e) { base.OnKeyUp(e); Action<PulsoTecla> h = teclaArribaAntes; if (h != null) h(e); }
         // EL MARCO DE LAS VENTANAS DE XP (tema Luna, 96 puntos por pulgada), como lo cuenta AdjustWindowRectEx con los estilos que pone
         // Form.CreateParams: la barra de titulo mide SM_CYCAPTION = 26 (con WS_CAPTION: si hay Text o ControlBox); el marco, 3 a cada
         // lado con barra o con WS_EX_DLGMODALFRAME (FixedDialog, o sin icono), 4 si cambia de tamano (WS_THICKFRAME: Sizable) y 1 si es
@@ -240,6 +249,7 @@ namespace Rocola.Ventanas
                     suyas[i].OnFormClosing(cfe);
                     if (cfe.Cancel) { e.Cancel = true; break; }
                 }
+                if (!e.Cancel && !Hoja.LaDuenaSeCierra(this, false)) e.Cancel = true;   // (port nativo, ventanas2 H: las hojas nativas suyas)
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
                 OnFormClosing(e);
                 return !e.Cancel;
@@ -251,6 +261,7 @@ namespace Rocola.Ventanas
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(s2[i]) + " " + CloseReason.FormOwnerClosing);
                 s2[i].OnFormClosed(new FormClosedEventArgs(CloseReason.FormOwnerClosing));
             }
+            Hoja.LaDuenaSeCierra(this, true);   // (port nativo, ventanas2 H: las hojas nativas suyas que quedaran)
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
             OnFormClosed(new FormClosedEventArgs(razonCierre));
             Dispose();

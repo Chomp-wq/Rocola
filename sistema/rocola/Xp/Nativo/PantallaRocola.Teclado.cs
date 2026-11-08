@@ -23,6 +23,44 @@ namespace Rocola
         // (en su hilo, al atender la tecla) la anota y dice como estaba antes
         internal static bool AnotaTecla(int vk, bool abajo) { int i = vk & 0xFF; bool antes = teclasAbajo[i]; teclasAbajo[i] = abajo; return antes; }
 
+        // ---------- el caracter de una tecla (TranslateMessage y ToUnicode: WM_CHAR, y con Alt WM_SYSCHAR) ----------
+        // La tabla de la referencia (la capa de la transicion, Escritorio.Caracter), con la distribucion de un teclado de EE. UU.: con Control,
+        // los de control (Ctrl+A = 1 ... Ctrl+Z = 26, Ctrl+Intro = salto de linea, Ctrl+Retroceso = 127; Ctrl+H es el retroceso: borra en el
+        // buscador de XP); con Alt, el mismo caracter (WM_SYSCHAR); con Control y Alt (AltGr) ninguno. (La del teclado del A4 -los acentos, la
+        // n- sigue siendo un riesgo del diseno.)
+        internal static char CaracterDe(Tecla k, Tecla mod)
+        {
+            bool ctrl = (mod & Tecla.Control) != 0;
+            if (ctrl && (mod & Tecla.Alt) != 0) return '\0';
+            if (ctrl)
+            {
+                if (k >= Tecla.A && k <= Tecla.Z) return (char)(1 + (k - Tecla.A));
+                if (k == Tecla.Space) return ' ';
+                if (k == Tecla.Enter) return '\n';
+                if (k == Tecla.Back) return (char)127;
+                if (k == Tecla.Escape) return (char)27;
+                return '\0';
+            }
+            if (k == Tecla.Tab) return '\t';
+            if (k == Tecla.Multiply) return '*';
+            if (k == Tecla.Add) return '+';
+            if (k == Tecla.Subtract) return '-';
+            if (k == Tecla.Divide) return '/';
+            if (k == Tecla.Decimal) return '.';
+            bool may = (mod & Tecla.Shift) != 0;
+            if (k >= Tecla.A && k <= Tecla.Z) return (char)((may ? 'A' : 'a') + (k - Tecla.A));
+            if (k >= Tecla.D0 && k <= Tecla.D9 && !may) return (char)('0' + (k - Tecla.D0));
+            if (k >= Tecla.NumPad0 && k <= Tecla.NumPad9) return (char)('0' + (k - Tecla.NumPad0));
+            if (k == Tecla.Space) return ' ';
+            if (k == Tecla.Enter) return '\r';
+            if (k == Tecla.Back) return '\b';
+            if (k == Tecla.Escape) return (char)27;
+            if (k == Tecla.OemMinus) return may ? '_' : '-';
+            if (k == Tecla.OemPeriod) return may ? ':' : '.';
+            if (k == Tecla.Oemcomma) return may ? ';' : ',';
+            return '\0';
+        }
+
         // ---------- la pantalla y la flecha (Screen y Cursor) ----------
         // La medida de la pantalla (Screen.PrimaryScreen.Bounds: en Rocola OS la del modo de KMS, o la de fuera de pantalla); la pone el
         // anfitrion al abrirla.

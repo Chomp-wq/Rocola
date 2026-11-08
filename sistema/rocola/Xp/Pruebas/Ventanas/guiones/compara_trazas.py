@@ -19,7 +19,24 @@ PROPIOS = {"Shown", "Alt+F4", "Apagado"}   # encargos que pone el hilo de la pan
 CORTA = {"tecla", "keyup", "raton", "tick", "encargo", "encargo-perdido", "estado"}   # lo que empieza otro suceso
 
 
+# LA TABLA DE EQUIVALENCIAS DE LAS VENTANAS (port nativo, ventanas2 H; la misma del diseno y del diff): cada pieza nativa se apunta con su
+# clase (Nativo/Hoja.cs, Rotulo.cs...) y la referencia con la de WinForms de la capa. Solo donde la traza nombra una pieza: tras «a », tras
+# el suceso (foco, ventana-ve, ventana-esconde, dialogo-fin, shown, closing, closed, raton EVENTO), y en los estados tras «foco=»,
+# «activa=», «hoja » y al principio de cada renglon de pieza.
+EQUIVALENCIAS = {"Hoja": "Form", "Rotulo": "Label", "Grupo": "Panel", "BotonXp": "Button", "ListaXp": "ListBox", "AvisoXp": "CajaAviso"}
+_PIEZA = r"(Hoja|Rotulo|Grupo|BotonXp|ListaXp|AvisoXp)(?=['\s]|$)"
+_SITIOS = [r"( a )", r"^((?:foco|ventana-ve|ventana-esconde|dialogo-fin|shown|closing|closed) )", r"^(raton \S+ )",
+           r"^((?:foco|activa)=)", r"^(hoja )", r"^(\s+)"]
+
+
+def equivalentes(que):
+    for sitio in _SITIOS:
+        que = re.sub(sitio + _PIEZA, lambda m: m.group(1) + EQUIVALENCIAS[m.group(2)], que, count=1, flags=re.M)
+    return que
+
+
 def normaliza(que):
+    que = equivalentes(que)
     # la fecha del programa en el titulo de Ctrl+F3 (con JIT es la de dotnet; con NativeAOT la del ejecutable)
     que = re.sub(r"Esta rocola es del \d\d/\d\d/\d{4} \d\d:\d\d", "Esta rocola es del FECHA", que)
     que = re.sub(r"^estado .*/", "estado ", que)

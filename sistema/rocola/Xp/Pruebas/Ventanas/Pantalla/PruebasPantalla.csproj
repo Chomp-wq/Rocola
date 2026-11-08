@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- las reglas de la pantalla nativa (Nativo/PantallaRocola.cs, PantallaRocola.Teclado.cs y Reloj.cs) una por una, con esos mismos archivos del programa -->
+  <!-- las reglas de la pantalla nativa (Nativo/PantallaRocola.cs, PantallaRocola.Teclado.cs, Reloj.cs y Tecla.cs) una por una, con esos mismos archivos del programa -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -13,5 +13,6 @@
     <Compile Include="../../../Nativo/PantallaRocola.cs" Link="Nativo/PantallaRocola.cs" />
     <Compile Include="../../../Nativo/PantallaRocola.Teclado.cs" Link="Nativo/PantallaRocola.Teclado.cs" />
     <Compile Include="../../../Nativo/Reloj.cs" Link="Nativo/Reloj.cs" />
+    <Compile Include="../../../Nativo/Tecla.cs" Link="Nativo/Tecla.cs" />
   </ItemGroup>
 </Project>

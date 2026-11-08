@@ -11,8 +11,12 @@ def png_igual(a, b):
     try: return int(float(r.stderr.split()[0]))
     except Exception: return -1
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from compara_trazas import equivalentes   # (la tabla de equivalencias de las ventanas: las piezas nativas con su nombre de WinForms)
+
 def norm_estado(t):
     t = re.sub(r"^t=\d+\n", "", t)
+    t = "\n".join(equivalentes(l) for l in t.split("\n"))
     return re.sub(r"Esta rocola es del \d\d/\d\d/\d{4} \d\d:\d\d", "Esta rocola es del FECHA", t)
 
 def compara(a, b, ruido_ruta=None):
@@ -24,8 +28,10 @@ def compara(a, b, ruido_ruta=None):
         r = subprocess.run(cmd, capture_output=True, text=True)
         res.append("traza: " + r.stdout.strip().replace("\n", "\n   "))
         malo |= r.returncode != 0
+    # la capa de una hoja nativa se guarda como «-hoja-»; la de la referencia, como la de Dibujo2D: se comparan igual (punto por punto)
+    nb = {f.replace("-hoja-", "-dibujo2d-"): f for f in os.listdir(b)}
     for f in sorted(os.listdir(a)):
-        pa, pb = os.path.join(a, f), os.path.join(b, f)
+        pa, pb = os.path.join(a, f), os.path.join(b, nb.get(f, f))
         if f.startswith("estado-"):
             if not os.path.exists(pb): res.append("falta " + f); malo = True; continue
             ea, eb = norm_estado(open(pa).read()), norm_estado(open(pb).read())
@@ -44,7 +50,7 @@ def compara(a, b, ruido_ruta=None):
             res.append("%s: %d pixeles distintos%s" % (f, n, "" if n == 0 else (" (DEBE SER 0)" if exacta else " (pantalla: el cielo se mueve)")))
             if exacta and n != 0: malo = True
     for f in sorted(os.listdir(b)):
-        if (f.startswith("estado-") or f.endswith(".png")) and not os.path.exists(os.path.join(a, f)): res.append("sobra " + f); malo = True
+        if (f.startswith("estado-") or f.endswith(".png")) and not os.path.exists(os.path.join(a, f.replace("-hoja-", "-dibujo2d-"))): res.append("sobra " + f); malo = True
     ea, eb = os.path.exists(os.path.join(a, "rocola_estado.txt")), os.path.exists(os.path.join(b, "rocola_estado.txt"))
     res.append("rocola_estado.txt: %s / %s" % ("esta" if ea else "falta", "esta" if eb else "falta"))
     if ea != eb: malo = True

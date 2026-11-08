@@ -51,10 +51,17 @@ namespace Rocola
         {
             if (o == null) return "nadie";
             string n = o.GetType().Name;
-            Control c = o as Control;
-            if (c == null) return n;
             string t = null;
-            try { t = c.Text; } catch { }
+            // (port nativo, ventanas2 H) las hojas y las piezas nativas (Nativo/Hoja.cs, Pieza.cs), con su texto como las de la capa
+            IPieza p = o as IPieza; Hoja h = o as Hoja;
+            if (p != null) t = p.Caja.Text;
+            else if (h != null) t = h.Text;
+            else
+            {
+                Control c = o as Control;
+                if (c == null) return n;
+                try { t = c.Text; } catch { }
+            }
             if (!string.IsNullOrEmpty(t)) n += "'" + Limpio(t) + "'";
             return n;
         }

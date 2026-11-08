@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Threading;
 using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1)
+using SkiaSharp;
 
 namespace Rocola.Ventanas
 {
@@ -21,6 +22,7 @@ namespace Rocola.Ventanas
     {
         public Rectangle Rect;      // en la pantalla
         public Bitmap Imagen;       // Dibujo2D (null en un hueco de la tarjeta)
+        public SKBitmap Mapa;       // la superficie de una hoja nativa (Nativo/Hoja.cs; port nativo, ventanas2 H)
         public int Version;         // cambia cuando la imagen se repinto
         public Control Nativa;      // el control que pinta la tarjeta
         public float Opacidad = 1f;
@@ -45,10 +47,21 @@ namespace Rocola.Ventanas
             // (port nativo, ventanas2 T) la ventana de delante y el foco que la rocola pide a la pantalla (ForceFocus): mientras las ventanas
             // sean de la capa, lo que hacia la referencia con GetForegroundWindow (la activa), SetForegroundWindow y Activate (Form.Activate:
             // delante y activa, salvo debajo de una modal), BringToFront (solo delante) y SetFocus (Control.Focus)
-            PantallaRocola.LaDeDelante = delegate { Form a = Activa; return a != null && !a.IsDisposed ? a : null; };
+            PantallaRocola.LaDeDelante = delegate { if (Hoja.Activa != null) return Hoja.Activa; Form a = Activa; return a != null && !a.IsDisposed ? a : null; };
             PantallaRocola.PonDelante = delegate (object v) { Form f = v as Form; if (f != null && !f.IsDisposed) f.Activate(); };
             PantallaRocola.PonEncima = delegate (object v) { AlFrente(v as Form); };
             PantallaRocola.PonFoco = delegate (object v) { Control c = v as Control; if (c != null && !c.IsDisposed) c.Focus(); };
+            // (port nativo, ventanas2 H) LAS HOJAS NATIVAS (Nativo/Hoja.cs: Ctrl+F2, los avisos) CONVIVEN CON LAS VENTANAS DE LA CAPA: van siempre
+            // encima de ellas; lo que una hoja necesita de las de la capa (cual esta activa, que ceda o recupere la activacion y el foco -sin
+            // apuntarlo: lo apunta quien lo toma-, el sitio de la duena, volver a componer) lo pone la capa aqui. Se va con la capa.
+            Hoja.ActivaDeLaCapa = delegate { Form a = Activa; return a != null && !a.IsDisposed ? a : null; };
+            Hoja.CedeLaCapa = delegate { Form antes = Activa; if (antes == null) return; Activa = null; if (!antes.IsDisposed) antes.LlamaDesactivada(); Ensucia(antes); };
+            Hoja.QuitaFocoALaCapa = delegate { Control antes = Foco; if (antes == null) return; Foco = null; if (!antes.IsDisposed) Protege(antes.LlamaLostFocus); };
+            Hoja.ActivaLaDeLaCapa = delegate (object v) { Form f = v as Form; if (f != null) ActivaForma(f, true); };
+            Hoja.VivaEnLaCapa = delegate (object v) { Form f = v as Form; return f != null && !f.IsDisposed && f.Visible; };
+            Hoja.SitioEnLaCapa = delegate (object v) { Form f = v as Form; return f != null ? f.Bounds : Rectangle.Empty; };
+            Hoja.HayQueComponer = Mueve;
+            Hoja.ActivaLaDeArribaDeLaCapa = delegate { Form otra = null; lock (formas) for (int i = formas.Count - 1; i >= 0 && otra == null; i--) if (!formas[i].IsDisposed && formas[i].Visible) otra = formas[i]; if (otra != null) ActivaForma(otra, true); };
         }
         internal static Control Foco;
         internal static Form Activa;
@@ -152,6 +165,7 @@ namespace Rocola.Ventanas
         internal static void ActivaForma(Form f, bool enfoca)
         {
             if (f == null || f.IsDisposed) return;
+            Hoja.DesactivaPorLaCapa();   // (port nativo, ventanas2 H: si la activa era una hoja nativa, deja de serlo)
             if (Activa != f)
             {
                 Form antes = Activa; Activa = f;
@@ -178,6 +192,7 @@ namespace Rocola.Ventanas
             if (porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
             Foco = c;
             if (TrazaVentanas.Activa && antes != c) TrazaVentanas.Apunta("foco " + TrazaVentanas.Pieza(c));
+            if (antes == null) Hoja.SueltaFoco();   // (port nativo, ventanas2 H: el foco lo tenia una pieza de una hoja nativa)
             if (antes != null && antes != c && !antes.IsDisposed) Protege(antes.LlamaLostFocus);
             if (!porTeclado) CambiaActivo(f, activoAntes, activoNuevo);
             if (antes != c) Protege(c.LlamaGotFocus);
@@ -202,6 +217,7 @@ namespace Rocola.Ventanas
         // Una ventana que queda debajo de la modal de arriba esta deshabilitada (ShowDialog de WinForms): no toma el foco ni se activa.
         internal static bool Deshabilitada(Form f)
         {
+            if (f != null && Hoja.HayModal) return true;   // (port nativo, ventanas2 H: las hojas nativas van encima de todas las de la capa)
             Form m = ModalArriba;
             if (m == null || f == null || f == m) return false;
             lock (formas) { int im = formas.IndexOf(m), i = formas.IndexOf(f); return im >= 0 && i >= 0 && i < im; }
@@ -280,6 +296,10 @@ namespace Rocola.Ventanas
             x = Math.Max(0, Math.Min(Pantalla.Width - 1, x)); y = Math.Max(0, Math.Min(Pantalla.Height - 1, y));
             if (x == PosicionRaton.X && y == PosicionRaton.Y) return;
             PosicionRaton = new Point(x, y);
+            // (port nativo, ventanas2 H) el raton de las hojas nativas: lo tienen capturado, hay una modal o esta encima de una
+            if ((ncForma == null || ncCaptura == 0) && (captura == null || captura.IsDisposed) && Hoja.TomaElRaton(PosicionRaton))
+            { MarcaEncima(null); Encima(null); Hoja.RatonEn(PosicionRaton, (BotonRaton)(int)BotonesRaton); return; }
+            Hoja.RatonFuera();
             if (ncForma != null && ncCaptura != 0)
             {   // arrastrando una hoja por su barra de titulo (con su contenido, como XP), o con la «X» apretada
                 if (ncCaptura == 1) ncForma.Location = new Point(ncOrigen.X + x - ncInicio.X, ncOrigen.Y + y - ncInicio.Y);
@@ -315,6 +335,7 @@ namespace Rocola.Ventanas
             if (abajo)
             {
                 BotonesRaton |= b;
+                if (Hoja.TomaElRaton(PosicionRaton)) { Encima(null); Hoja.RatonBoton((BotonRaton)(int)b, true, PosicionRaton); return; }   // (port nativo, ventanas2 H)
                 Control c = ControlEn(PosicionRaton);
                 Form f = c == null ? null : c as Form ?? c.FindForm();
                 if (f != null && f != Activa) { AlFrente(f); ActivaForma(f, true); }
@@ -342,6 +363,7 @@ namespace Rocola.Ventanas
             else
             {
                 BotonesRaton &= ~b;
+                if ((ncForma == null || ncCaptura == 0) && captura == null && Hoja.TomaElRaton(PosicionRaton)) { Hoja.RatonBoton((BotonRaton)(int)b, false, PosicionRaton); return; }   // (port nativo, ventanas2 H)
                 if (ncForma != null && ncCaptura != 0)
                 {
                     Form fm = ncForma; int que = ncCaptura;
@@ -370,6 +392,7 @@ namespace Rocola.Ventanas
         // la pasa a su padre, y asi hacia arriba
         public static void RatonRueda(int muescas)
         {
+            if (Hoja.Activa != null) { Hoja.RatonRueda(muescas); return; }   // (port nativo, ventanas2 H: va a la pieza con el foco de la hoja activa)
             for (Control c = Foco != null && !Foco.IsDisposed ? Foco : Activa; c != null && !c.IsDisposed; c = c.Parent)
             {
                 Point q = c.PointToClient(PosicionRaton);
@@ -402,6 +425,8 @@ namespace Rocola.Ventanas
             if (abajo) Modificadores |= mod;
             int vk = (int)tecla & 0xFF; bool antes = PantallaRocola.AnotaTecla(vk, abajo), repetida = abajo && antes;
             Rocola.Tecla datos = tecla | Modificadores;
+            // (port nativo, ventanas2 H) con una hoja nativa activa, la tecla es suya (Nativo/Hoja.Entrada.cs), con los modificadores de ahora
+            if (Hoja.Activa != null) { if (!abajo) Modificadores &= ~mod; Hoja.Tecla(tecla, abajo, Modificadores, repetida); return; }
             // la tecla va al que tiene el foco (en Windows, tambien si se escondio: SelectNextIfFocused no siempre encuentra otro), o a la
             // ventana activa; KeyPreview es el del formulario de ese control
             Control destino = Foco != null && !Foco.IsDisposed ? Foco : Activa;
@@ -490,38 +515,8 @@ namespace Rocola.Ventanas
         // EL CARACTER DE LA TECLA (TranslateMessage y ToUnicode): con Control, los de control (Ctrl+A = 1 ... Ctrl+Z = 26, Ctrl+Intro =
         // salto de linea, Ctrl+Retroceso = 127; Ctrl+H es el retroceso: borra en el buscador de XP); con Alt, el mismo caracter
         // (WM_SYSCHAR); con Control y Alt (AltGr) ninguno.
-        private static char Caracter(Rocola.Tecla k, Rocola.Tecla mod)
-        {
-            bool ctrl = (mod & Rocola.Tecla.Control) != 0;
-            if (ctrl && (mod & Rocola.Tecla.Alt) != 0) return '\0';
-            if (ctrl)
-            {
-                if (k >= Rocola.Tecla.A && k <= Rocola.Tecla.Z) return (char)(1 + (k - Rocola.Tecla.A));
-                if (k == Rocola.Tecla.Space) return ' ';
-                if (k == Rocola.Tecla.Enter) return '\n';
-                if (k == Rocola.Tecla.Back) return (char)127;
-                if (k == Rocola.Tecla.Escape) return (char)27;
-                return '\0';
-            }
-            if (k == Rocola.Tecla.Tab) return '\t';
-            if (k == Rocola.Tecla.Multiply) return '*';
-            if (k == Rocola.Tecla.Add) return '+';
-            if (k == Rocola.Tecla.Subtract) return '-';
-            if (k == Rocola.Tecla.Divide) return '/';
-            if (k == Rocola.Tecla.Decimal) return '.';
-            bool may = (mod & Rocola.Tecla.Shift) != 0;
-            if (k >= Rocola.Tecla.A && k <= Rocola.Tecla.Z) return (char)((may ? 'A' : 'a') + (k - Rocola.Tecla.A));
-            if (k >= Rocola.Tecla.D0 && k <= Rocola.Tecla.D9 && !may) return (char)('0' + (k - Rocola.Tecla.D0));
-            if (k >= Rocola.Tecla.NumPad0 && k <= Rocola.Tecla.NumPad9) return (char)('0' + (k - Rocola.Tecla.NumPad0));
-            if (k == Rocola.Tecla.Space) return ' ';
-            if (k == Rocola.Tecla.Enter) return '\r';
-            if (k == Rocola.Tecla.Back) return '\b';
-            if (k == Rocola.Tecla.Escape) return (char)27;
-            if (k == Rocola.Tecla.OemMinus) return may ? '_' : '-';
-            if (k == Rocola.Tecla.OemPeriod) return may ? ':' : '.';
-            if (k == Rocola.Tecla.Oemcomma) return may ? ';' : ',';
-            return '\0';
-        }
+        // (port nativo, ventanas2 H: la tabla es de la pantalla nativa, PantallaRocola.CaracterDe)
+        private static char Caracter(Rocola.Tecla k, Rocola.Tecla mod) { return PantallaRocola.CaracterDe(k, mod); }
 
         // ---------- la pintura ----------
         private static readonly Dictionary<Form, int> versiones = new Dictionary<Form, int>();
@@ -554,6 +549,7 @@ namespace Rocola.Ventanas
 
         private sealed class CapasDeForma { public List<Capa> Lista = new List<Capa>(); public int Version = -1; public Size Tam; }
         private static readonly Dictionary<Form, CapasDeForma> cache = new Dictionary<Form, CapasDeForma>();
+        private static readonly Dictionary<Hoja, Capa> capasHoja = new Dictionary<Hoja, Capa>();
         private static int versionCapa;
         // Las capas de la pantalla, de abajo arriba. Solo en el hilo de la pantalla.
         public static List<Capa> Capas()
@@ -569,6 +565,17 @@ namespace Rocola.Ventanas
                 r.AddRange(cf.Lista);
             }
             foreach (Form f in new List<Form>(cache.Keys)) if (f.IsDisposed) { foreach (Capa c in cache[f].Lista) if (c.Imagen != null) c.Imagen.Dispose(); cache.Remove(f); }
+            // (port nativo, ventanas2 H) LAS HOJAS NATIVAS, encima de todas (Nativo/Hoja.cs): cada una en su superficie, que se repinta entera solo si
+            // algo cambio (su Version), en el orden de las hojas
+            foreach (Hoja h in Hoja.Abiertas)
+            {
+                if (h.IsDisposed || !h.Visible) continue;
+                Capa c;
+                if (!capasHoja.TryGetValue(h, out c)) capasHoja[h] = c = new Capa();
+                c.Mapa = h.Superficie(); c.Version = h.Version; c.Rect = h.Bounds; c.Opacidad = 1f;
+                r.Add(c);
+            }
+            foreach (Hoja h in new List<Hoja>(capasHoja.Keys)) if (h.IsDisposed || !h.Visible) capasHoja.Remove(h);
             return r;
         }
         private static bool TapaTodo(Control h, Size cliente) { return h.Nativa && h.VisiblePropio && h.Left <= 0 && h.Top <= 0 && h.Right >= cliente.Width && h.Bottom >= cliente.Height; }
@@ -778,10 +785,18 @@ namespace Rocola.Ventanas
         // con la sesion acabandose en el mismo orden; si una lo impidio, las que ya contestaron reciben WM_ENDSESSION sin acabarse.
         internal static void FinDeSesion()
         {
-            Form[] fs = Formas;
+            // (port nativo, ventanas2 H) de arriba abajo: primero las hojas nativas (estan encima), despues las ventanas de la capa
+            List<object> vs = new List<object>();
+            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) vs.Add(hs[i]);
+            Form[] fs = Formas; for (int i = fs.Length - 1; i >= 0; i--) vs.Add(fs[i]);
             bool seAcaba = true; int hasta = -1;
-            for (int i = fs.Length - 1; i >= 0; i--) { hasta = i; if (!fs[i].FinDeSesion(true, true)) { seAcaba = false; break; } }
-            for (int i = fs.Length - 1; i >= hasta && i >= 0; i--) fs[i].FinDeSesion(false, seAcaba);
+            for (int i = 0; i < vs.Count; i++) { hasta = i; if (!FinDeSesionDe(vs[i], true, true)) { seAcaba = false; break; } }
+            for (int i = 0; i <= hasta && i < vs.Count; i++) FinDeSesionDe(vs[i], false, seAcaba);
+        }
+        private static bool FinDeSesionDe(object v, bool consulta, bool seAcaba)
+        {
+            Hoja h = v as Hoja; if (h != null) return h.FinDeSesion(consulta, seAcaba);
+            return ((Form)v).FinDeSesion(consulta, seAcaba);
         }
         // el bucle de una hoja modal (lo esconde ShowDialog al acabar)
         internal static void BucleModal(Form f)
