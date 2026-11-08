@@ -85,5 +85,66 @@ namespace Rocola
             EmpiezaRecuadro(PuenteDibujo.Lienzo(g), e.Suave, e.Medio, zona);
         }
     }
+
+    // ================================================================ EstadoReposoGpu.cs
+    public partial class Form1
+    {
+        // ---- LAS FIRMAS DE XP QUE LLAMA PrecargaPaginaGpu.cs (la precarga del panel de reposo y su reloj)
+        // Los mismos puntos (PuenteDibujo.Mapa). El mapa que devuelve: si es el que se dio, el MISMO Bitmap (como XP, que devuelve el mismo
+        // objeto); si la traducida hizo uno nuevo, un Bitmap que se hace su dueno (quien llama lo suelta con su using) con el formato con que XP
+        // lo hacia (new Bitmap(w, h, Format32bppPArgb)).
+        internal static Bitmap RenderIdlePanelEn(Bitmap bitmap, int w, int h, string title, string artist, string time,
+            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,
+            ReposoGrande extra, bool opaque, out int progressStart)
+        {
+            SKBitmap[] mapas = null;
+            if (covers != null) { mapas = new SKBitmap[covers.Length]; for (int i = 0; i < covers.Length; i++) mapas[i] = PuenteDibujo.Mapa(covers[i]); }
+            SKBitmap dado = PuenteDibujo.Mapa(bitmap);
+            SKBitmap hecho = RenderIdlePanelEn(dado, w, h, title, artist, time, qt, qa, mapas, count, accent, transparent, badgeKind, dozen, extra, opaque, out progressStart);
+            return bitmap != null && ReferenceEquals(hecho, dado) ? bitmap : PuenteDibujo.Entrega(hecho, PixelFormat.Format32bppPArgb);
+        }
+        internal static void CopiaRegionReposo(Bitmap source, Rectangle area, Bitmap target, Point position)
+        { CopiaRegionReposo(PuenteDibujo.Mapa(source), area, PuenteDibujo.Mapa(target), position); }
+        internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+        { return UpdateIdleClock(PuenteDibujo.Mapa(panel), PuenteDibujo.Mapa(underlay), time); }
+        internal static int UpdateIdleClockRegion(Bitmap panel, Bitmap underlay, string time, int previousRight, out Rectangle dirty)
+        { return UpdateIdleClockRegion(PuenteDibujo.Mapa(panel), PuenteDibujo.Mapa(underlay), time, previousRight, out dirty); }
+
+        // ---- FuenteTituloReposo, PARA SuenaVivoGpu.cs (el titulo que se desliza): la Font de la letra del titulo con los mismos datos (familia
+        // como la resuelve GDI+, tamano en pixeles y negrita). La traducida (LetraTituloReposo) la da como Letra; la de en medio se suelta.
+        internal static Font FuenteTituloReposo(int w, int h)
+        { using (Rocola.Nativo.Letra l = LetraTituloReposo(w, h)) return PuenteDibujo.Font(l); }
+
+        // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA: PintaTituloGrande y PintaMinutosCola (SuenaVivoGpu.cs), con un Graphics sobre
+        // el mismo lienzo (GraphicsReposo, arriba), las Font de las Letra (los mismos datos), un SolidBrush del color de cada pincel y el MISMO
+        // FormatoTexto. La firma es la que tienen ya traducidas (grupo «suena»): al juntar, la llamada pierde el «Reposo» y estas dos se borran.
+        private static void PintaTituloGrandeReposo(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, ReposoGrande x, string title, string artist,
+            Rocola.Nativo.Letra big, Rocola.Nativo.Letra normal, Rocola.Nativo.Letra small, SKPaint white, SKPaint color, FormatoTexto line, int tx, int tw)
+        {
+            using (Graphics gg = GraphicsReposo(g, suave, ajuste, copia, medio))
+            using (Font fb = PuenteDibujo.Font(big)) using (Font fn = PuenteDibujo.Font(normal)) using (Font fs = PuenteDibujo.Font(small))
+            using (Brush bw = PuenteDibujo.BrochaReposo(white)) using (Brush bc = PuenteDibujo.BrochaReposo(color))
+                PintaTituloGrande(gg, x, title, artist, fb, fn, fs, bw, bc, PuenteDibujo.StringFormat(line), tx, tw);
+        }
+        private static void PintaMinutosColaReposo(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, string minutos, string artista,
+            Rocola.Nativo.Letra f, SKPaint tenue, bool estrecha, float x, float y, float w, float h, FormatoTexto line)
+        {
+            using (Graphics gg = GraphicsReposo(g, suave, ajuste, copia, medio))
+            using (Font ff = PuenteDibujo.Font(f)) using (Brush bt = PuenteDibujo.BrochaReposo(tenue))
+                PintaMinutosCola(gg, minutos, artista, ff, bt, estrecha, x, y, w, h, PuenteDibujo.StringFormat(line));
+        }
+    }
+    internal static partial class PuenteDibujo
+    {
+        // un pincel de un color (SKPaint sin shader) de un archivo traducido para uno que no lo esta y lo pide como Brush: el SolidBrush de ese
+        // color (el mismo ARGB). XP solo pasa por aqui pinceles de un color (EstadoReposoGpu.cs: white, color y muted, todos SolidBrush); uno
+        // con shader no tiene vuelta, y se dice en vez de pintar otra cosa.
+        internal static Brush BrochaReposo(SKPaint p)
+        {
+            if (p == null) return null;
+            if (p.Shader != null) throw new NotSupportedException("PuenteDibujo.BrochaReposo: solo pinceles de un color");
+            return new SolidBrush(ColorSk.DeSk(p.Color));
+        }
+    }
 }
 #endif

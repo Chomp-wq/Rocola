@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el panel de reposo y su reloj dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 using System.Text;
 
 namespace Rocola
@@ -40,9 +40,9 @@ namespace Rocola
 
     public partial class Form1
     {
-        private Bitmap idlePanelBmp;
+        private SKBitmap idlePanelBmp;   // EN LINUX: SKBitmap (a la tarjeta, que aun lo pide como Bitmap, le llega prestado: BuildIdlePanel)
         private string idlePanelSig;
-        private Bitmap idleClockUnderlay;
+        private SKBitmap idleClockUnderlay;   // EN LINUX: SKBitmap
         private string idlePanelTime;
         private int idlePanelRevision;
         private int idlePanelProgressStart;
@@ -115,7 +115,7 @@ namespace Rocola
             }
             return false;
         }
-        private Bitmap BuildIdlePanel()
+        private Rocola.Dibujo2D.Bitmap BuildIdlePanel()   // EN LINUX: lo pide GetIdlePanel (D3D9Star.cs, aun con Bitmap): el mapa le llega prestado (PuenteDibujo.Bitmap, el MISMO Bitmap para el mismo mapa: la tarjeta compara por identidad para no volver a subirlo)
         {
             if (nowPlaying == null || videoOn) return null;
             if (gpuPanel != null && idlePanelBmp != null) gpuPanel.IdleProgressStart = idlePanelProgressStart;
@@ -127,14 +127,14 @@ namespace Rocola
                 // Nada de lo que el panel ensena ha cambiado. Lo unico que corre solo es el reloj, y ese
                 // se parchea aparte sin rehacer nada mas.
                 ParcheaElReloj(w, h);
-                return idlePanelBmp;
+                return PuenteDibujo.Bitmap(idlePanelBmp);   // EN LINUX: prestado (Plataforma/Puente.cs; no suelta los puntos)
             }
             idlePanelDatosDe = idlePanelDatos;
             Color acento = estadoColorDirecto ? bgAccentTarget : bgAccent;
             string title, artist; nowPlaying.TituloArtista(out title, out artist);
             title = TituloSinPista(title);
             string[] qt = new string[Math.Min(colaDoce ? 12 : 3, queue.Count)], qa = new string[qt.Length];
-            Image[] covers = new Image[qt.Length];
+            SKBitmap[] covers = new SKBitmap[qt.Length];   // EN LINUX: las portadas, SKBitmap
             StringBuilder sig = new StringBuilder();
             sig.Append(w).Append('|').Append(h).Append('|').Append(nowPlaying.PathKey()).Append('|')
                 .Append(title).Append('|').Append(artist).Append('|').Append(queue.Count).Append('|').Append(acento.ToArgb());
@@ -144,7 +144,7 @@ namespace Rocola
             {
                 queue[i].TituloArtista(out qt[i], out qa[i]);
                 qt[i] = TituloSinPista(qt[i]);
-                covers[i] = queue[i].Disc != null ? LoadCoverAsync(queue[i].Disc) : null;
+                covers[i] = queue[i].Disc != null ? PuenteDibujo.Mapa(LoadCoverAsync(queue[i].Disc)) : null;   // EN LINUX: LoadCoverAsync (Form1.Biblioteca.cs, aun sin traducir) da una Image: sus puntos, los mismos (PuenteDibujo.Mapa)
                 sig.Append('|').Append(queue[i].PathKey()).Append('|').Append(qt[i]).Append('|').Append(qa[i])
                     .Append('|').Append(covers[i] != null ? covers[i].GetHashCode() : 0);
             }
@@ -157,9 +157,9 @@ namespace Rocola
                 for (int i = 0; i < extra.Minutos.Length; i++) sig.Append('|').Append(extra.Minutos[i]);
             }
             string key = sig.ToString();
-            if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return idlePanelBmp; }
+            if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return PuenteDibujo.Bitmap(idlePanelBmp); }   // EN LINUX: prestado
             int progressStart;
-            Bitmap next;
+            SKBitmap next;   // EN LINUX: SKBitmap
             using (CapturaTexto(1))
                 next = RenderIdlePanelEn(idlePanelBmp, w, h, title, artist, "", qt, qa, covers, queue.Count, acento,
                     estadoTransparente && !EstadoOpacoActivo, iaBadgeKind, colaDoce, extra, EstadoOpacoActivo, out progressStart);
@@ -168,7 +168,7 @@ namespace Rocola
             if (idleClockUnderlay == null || idleClockUnderlay.Width != w)
             {
                 if (idleClockUnderlay != null) idleClockUnderlay.Dispose();
-                idleClockUnderlay = new Bitmap(w, 34, PixelFormat.Format32bppPArgb);
+                idleClockUnderlay = Mapas.Nuevo(w, 34);   // EN LINUX: new Bitmap(w, 34, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             }
             CopiaRegionReposo(next, new Rectangle(0, h - 34, w, 34), idleClockUnderlay, Point.Empty);
             progressStart = UpdateIdleClock(next, idleClockUnderlay, time);
@@ -176,25 +176,25 @@ namespace Rocola
             if (gpuPanel != null) { gpuPanel.IdlePanelVersion = idlePanelRevision; gpuPanel.IdlePanelDirty = Rectangle.Empty; }
             idlePanelProgressStart = progressStart;
             if (gpuPanel != null) gpuPanel.IdleProgressStart = progressStart;
-            Bitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;
+            SKBitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;   // EN LINUX: SKBitmap
             if (old != null && !ReferenceEquals(old, next)) old.Dispose();
-            return idlePanelBmp;
+            return PuenteDibujo.Bitmap(idlePanelBmp);   // EN LINUX: prestado
         }
 
-        internal static int DrawIdleClock(Graphics g, int w, int h, string time)
+        internal static int DrawIdleClock(SKCanvas g, AjusteLetra ajuste, int w, int h, string time)   // EN LINUX: el lienzo de Skia y su modo de letra (la copia y el medio pixel son los de fabrica: ninguno de los que la llaman los cambia)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
-            using (Font clock = new Font("Tahoma", 17 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
-            using (StringFormat format = new StringFormat())
-            {
-                format.Trimming = StringTrimming.EllipsisCharacter;
-                format.FormatFlags = StringFormatFlags.NoWrap;
-                format.Alignment = StringAlignment.Near; format.LineAlignment = StringAlignment.Center;
+            using (Rocola.Nativo.Letra clock = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Tahoma"), 17 * scale, true))   // EN LINUX: new Font("Tahoma", px, Bold, Pixel): la familia como la resuelve GDI+ (Nativo/Letras.cs)
+            using (SKPaint white = new SKPaint { Color = Color.FromArgb(240, 245, 255).Sk() })   // EN LINUX: SolidBrush
+            {   // EN LINUX: using (StringFormat format = new StringFormat()): el formato es un FormatoTexto, que no se suelta (va dentro)
+                FormatoTexto format = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                format.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: Trimming = EllipsisCharacter
+                format.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap
+                format.Horizontal = Alinea.Cerca; format.Vertical = Alinea.Centro;   // EN LINUX: Alignment = Near; LineAlignment = Center
                 int x = GpuPanel.IdleCoverRect(w, h).Right + 16;
-                int width = (int)Math.Ceiling(g.MeasureString(time ?? "", clock, int.MaxValue, format).Width) + 2;
+                int width = (int)Math.Ceiling(TextoGdiPlus.Mide(time ?? "", clock, ajuste, new SizeF(int.MaxValue, 999999f), format).Width) + 2;   // EN LINUX: g.MeasureString(texto, letra, ancho, formato): en una caja de ese ancho y 999999 de alto (Nativo/TextoGdiPlus.cs)
                 width = Math.Max(1, Math.Min(width, w - x - 112));
-                g.DrawString(time ?? "", clock, white, new RectangleF(x, h - 32, width, 28), format);
+                TextoGdiPlus.Escribe(g, time ?? "", clock, ajuste, white, new RectangleF(x, h - 32, width, 28), format, false, false);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                 return x + width + 8;
             }
         }
@@ -217,62 +217,62 @@ namespace Rocola
         }
 
         // Solo los digitos, con margen para el antialias y para borrar un texto anterior mas largo.
-        internal static int UpdateIdleClockRegion(Bitmap panel, Bitmap underlay, string time, int previousRight, out Rectangle dirty)
+        internal static int UpdateIdleClockRegion(SKBitmap panel, SKBitmap underlay, string time, int previousRight, out Rectangle dirty)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, panel.Height / 260f));
             int x = GpuPanel.IdleCoverRect(panel.Width, panel.Height).Right + 16;
-            using (Graphics g = Graphics.FromImage(panel))
-            using (Font font = new Font("Tahoma", 17 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (StringFormat sf = new StringFormat())
-            {
-                sf.FormatFlags = StringFormatFlags.NoWrap;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                int width = (int)Math.Ceiling(g.MeasureString(time ?? "", font, int.MaxValue, sf).Width) + 2;
+            // EN LINUX: using (Graphics g = Graphics.FromImage(panel)): ese Graphics solo mide, y medir no pide lienzo (TextoGdiPlus.Mide); su modo de letra va en una variable
+            using (Rocola.Nativo.Letra font = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Tahoma"), 17 * scale, true))   // EN LINUX: new Font("Tahoma", px, Bold, Pixel) (Nativo/Letras.cs)
+            {   // EN LINUX: using (StringFormat sf = new StringFormat()): el formato es un FormatoTexto, que no se suelta (va dentro)
+                FormatoTexto sf = new FormatoTexto();   // EN LINUX: new StringFormat()
+                sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
+                int width = (int)Math.Ceiling(TextoGdiPlus.Mide(time ?? "", font, ajuste, new SizeF(int.MaxValue, 999999f), sf).Width) + 2;   // EN LINUX: g.MeasureString(texto, letra, ancho, formato) (Nativo/TextoGdiPlus.cs)
                 width = Math.Max(1, Math.Min(width, panel.Width - x - 112));
                 int right = Math.Max(previousRight, x + width + 8) + 3;
                 dirty = Rectangle.Intersect(new Rectangle(0, 0, panel.Width, panel.Height),
                     new Rectangle(Math.Max(0, x - 3), panel.Height - 34, Math.Max(1, right - x + 3), 34));
             }
             CopiaRegionReposo(underlay, new Rectangle(dirty.X, dirty.Y - panel.Height + underlay.Height, dirty.Width, dirty.Height), panel, dirty.Location);
-            using (Graphics g = Graphics.FromImage(panel))
+            using (SKCanvas g = new SKCanvas(panel))   // EN LINUX: Graphics.FromImage
             {
-                g.SetClip(dirty);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                return DrawIdleClock(g, panel.Width, panel.Height, time);
+                g.Save(); g.ClipRect(new SKRect(dirty.Left, dirty.Top, dirty.Right, dirty.Bottom), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(dirty): un recorte de pixeles enteros, sin suavizar, en un Save del lienzo como lo pone la capa (el Graphics nuevo no traia recorte que reemplazar)
+                // EN LINUX: g.SmoothingMode = AntiAlias: el reloj solo escribe, y al texto no le toca el suavizado (TextoGdiPlus.Escribe no lo lleva)
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
+                return DrawIdleClock(g, ajuste, panel.Width, panel.Height, time);   // EN LINUX: con el lienzo y su modo de letra
             }
         }
 
         [ThreadStatic] private static byte[] filaReposo;
-        internal static void CopiaRegionReposo(Bitmap source, Rectangle area, Bitmap target, Point position)
+        internal static void CopiaRegionReposo(SKBitmap source, Rectangle area, SKBitmap target, Point position)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
         {
             int bytes = checked(area.Width * 4);
             if (filaReposo == null || filaReposo.Length < bytes) filaReposo = new byte[bytes];
-            BitmapData src = source.LockBits(area, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-            try
+            IntPtr srcScan0 = new IntPtr(source.GetPixels().ToInt64() + (long)area.Y * source.RowBytes + (long)area.X * 4); int srcStride = source.RowBytes;   // EN LINUX: source.LockBits(area, ReadOnly, Format32bppPArgb): un SKBitmap guarda los puntos asi (premultiplicados): los mismos, desde la esquina del trozo y con su paso
+            // EN LINUX: try: lo leido son los puntos mismos, no hay copia que soltar (abajo, sin finally)
             {
-                BitmapData dst = target.LockBits(new Rectangle(position, area.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                IntPtr dstScan0 = new IntPtr(target.GetPixels().ToInt64() + (long)position.Y * target.RowBytes + (long)position.X * 4); int dstStride = target.RowBytes;   // EN LINUX: target.LockBits(zona, WriteOnly, Format32bppPArgb): los puntos mismos del mapa
                 try
                 {
                     for (int y = 0; y < area.Height; y++)
                     {
-                        System.Runtime.InteropServices.Marshal.Copy(new IntPtr(src.Scan0.ToInt64() + (long)y * src.Stride), filaReposo, 0, bytes);
-                        System.Runtime.InteropServices.Marshal.Copy(filaReposo, 0, new IntPtr(dst.Scan0.ToInt64() + (long)y * dst.Stride), bytes);
+                        System.Runtime.InteropServices.Marshal.Copy(new IntPtr(srcScan0.ToInt64() + (long)y * srcStride), filaReposo, 0, bytes);   // EN LINUX: src.Scan0 y src.Stride
+                        System.Runtime.InteropServices.Marshal.Copy(filaReposo, 0, new IntPtr(dstScan0.ToInt64() + (long)y * dstStride), bytes);   // EN LINUX: dst.Scan0 y dst.Stride
                     }
                 }
-                finally { target.UnlockBits(dst); }
+                finally { target.NotifyPixelsChanged(); }   // EN LINUX: target.UnlockBits(dst): Skia se entera de que cambiaron los puntos
             }
-            finally { source.UnlockBits(src); }
+            // EN LINUX: finally { source.UnlockBits(src); }: lo leido eran los puntos mismos, nada que devolver
         }
 
-        internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+        internal static int UpdateIdleClock(SKBitmap panel, SKBitmap underlay, string time)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
         {
             CopiaRegionReposo(underlay, new Rectangle(0, 0, underlay.Width, underlay.Height), panel, new Point(0, panel.Height - underlay.Height));
-            using (Graphics g = Graphics.FromImage(panel))
+            using (SKCanvas g = new SKCanvas(panel))   // EN LINUX: Graphics.FromImage
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                return DrawIdleClock(g, panel.Width, panel.Height, time);
+                // EN LINUX: g.SmoothingMode = AntiAlias: el reloj solo escribe, y al texto no le toca el suavizado (TextoGdiPlus.Escribe no lo lleva)
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
+                return DrawIdleClock(g, ajuste, panel.Width, panel.Height, time);   // EN LINUX: con el lienzo y su modo de letra
             }
         }
 
@@ -320,122 +320,122 @@ namespace Rocola
             return new RectangleF(thumb.Left, thumb.Bottom - height, thumb.Width, height);
         }
 
-        internal static Bitmap RenderIdlePanelQueue(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen)
+        internal static SKBitmap RenderIdlePanelQueue(int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap
+            string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen)   // EN LINUX: las portadas, SKBitmap
         {
             int progressStart;
             return RenderIdlePanelLayout(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, out progressStart);
         }
 
-        internal static Bitmap RenderIdlePanelLayout(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, out int progressStart)
+        internal static SKBitmap RenderIdlePanelLayout(int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap
+            string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, out int progressStart)   // EN LINUX: las portadas, SKBitmap
         { return RenderIdlePanelGrande(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, null, out progressStart); }
 
         // La letra del titulo del panel (tambien la del titulo que se desliza, SuenaVivoGpu.cs).
-        internal static Font FuenteTituloReposo(int w, int h)
+        internal static Rocola.Nativo.Letra LetraTituloReposo(int w, int h)   // EN LINUX: FuenteTituloReposo, con una Letra (Nativo/Letras.cs); con el nombre de XP y una Font sigue en el puente (Plataforma/Puente.reposo.cs) para SuenaVivoGpu.cs, aun sin traducir
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
-            return new Font("Trebuchet MS", Math.Max(22, Math.Min(36 * scale, w / 30f)), FontStyle.Bold, GraphicsUnit.Pixel);
+            return Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(22, Math.Min(36 * scale, w / 30f)), true);   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
         }
 
         // 'extra' es lo de "Lo que suena, en grande" (SuenaVivoGpu.cs); con null, el panel de siempre.
-        internal static Bitmap RenderIdlePanelGrande(int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, ReposoGrande extra, out int progressStart)
+        internal static SKBitmap RenderIdlePanelGrande(int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap
+            string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, ReposoGrande extra, out int progressStart)   // EN LINUX: las portadas, SKBitmap
         { return RenderIdlePanelEn(null, w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, extra, false, out progressStart); }
 
-        internal static Bitmap RenderIdlePanelEn(Bitmap bitmap, int w, int h, string title, string artist, string time,
-            string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,
+        internal static SKBitmap RenderIdlePanelEn(SKBitmap bitmap, int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap; quien aun pasa Bitmap e Image llega por el puente (Plataforma/Puente.reposo.cs)
+            string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,   // EN LINUX: las portadas, SKBitmap
             ReposoGrande extra, bool opaque, out int progressStart)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
-            if (bitmap == null || bitmap.Width != w || bitmap.Height != h) bitmap = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(bitmap))
-            using (Brush bg = DegradadoV(new Rectangle(0, 0, w, h),
-                Color.FromArgb(opaque ? 255 : transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(opaque ? 255 : transparent ? 0 : 248, 7, 12, 29)))   // C4 (PulidoGpu.cs)
-            using (Pen top = new Pen(Color.FromArgb(155, Lighten(accent, .45)), 2))
-            using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font big = FuenteTituloReposo(w, h))
-            using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
-            using (SolidBrush muted = new SolidBrush(Color.FromArgb(157, 179, 209)))
-            using (SolidBrush color = new SolidBrush(Lighten(accent, .5)))
-            using (SolidBrush card = new SolidBrush(Color.FromArgb(transparent ? 65 : 160, 27, 40, 67)))
-            using (StringFormat line = new StringFormat())
-            using (StringFormat wrap = new StringFormat())
-            using (StringFormat numberFormat = StringFormat.GenericTypographic)
-            {
-                g.Clear(Color.Transparent); // el mapa se reutiliza: no acumular texto/alfa de la cancion anterior
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                line.Trimming = StringTrimming.EllipsisCharacter; line.FormatFlags = StringFormatFlags.NoWrap;
-                wrap.Trimming = StringTrimming.EllipsisWord; wrap.FormatFlags = StringFormatFlags.LineLimit;
-                g.FillRectangle(bg, 0, 0, w, h);
-                g.DrawLine(top, 0, GpuPanel.StatusEdgeOffset, w, GpuPanel.StatusEdgeOffset);
+            if (bitmap == null || bitmap.Width != w || bitmap.Height != h) bitmap = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            using (SKCanvas g = new SKCanvas(bitmap))   // EN LINUX: Graphics.FromImage
+            using (Rocola.Dibujo2D.Brush degradado = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: DegradadoV (PulidoGpu.cs, aun sin traducir) da un Brush de GDI+, que se suelta como en XP...
+                Color.FromArgb(opaque ? 255 : transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(opaque ? 255 : transparent ? 0 : 248, 7, 12, 29))) using (SKPaint bg = PuenteDibujo.Pincel(degradado, false)) using (bg.Shader)   // C4 (PulidoGpu.cs)   // EN LINUX: ...y se pinta con su color o su shader en un SKPaint (con el medio pixel de fabrica), que se suelta con el
+            using (SKPaint top = new SKPaint { Color = Color.FromArgb(155, Lighten(accent, .45)).Sk(), StrokeWidth = 2 })   // EN LINUX: Pen(color, 2)
+            using (Rocola.Nativo.Letra small = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), 15 * scale, true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel) (Nativo/Letras.cs)
+            using (Rocola.Nativo.Letra normal = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), 20 * scale, true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
+            using (Rocola.Nativo.Letra big = LetraTituloReposo(w, h))   // EN LINUX: FuenteTituloReposo, con una Letra
+            using (SKPaint white = new SKPaint { Color = Color.FromArgb(240, 245, 255).Sk() })   // EN LINUX: SolidBrush
+            using (SKPaint muted = new SKPaint { Color = Color.FromArgb(157, 179, 209).Sk() })   // EN LINUX: SolidBrush
+            using (SKPaint color = new SKPaint { Color = Lighten(accent, .5).Sk() })   // EN LINUX: SolidBrush
+            using (SKPaint card = new SKPaint { Color = Color.FromArgb(transparent ? 65 : 160, 27, 40, 67).Sk() })   // EN LINUX: SolidBrush
+            // EN LINUX: using (StringFormat line = new StringFormat()): un FormatoTexto, que no se suelta (va dentro)
+            // EN LINUX: using (StringFormat wrap = new StringFormat()): igual
+            // EN LINUX: using (StringFormat numberFormat = StringFormat.GenericTypographic): el tipografico COMPARTIDO (no se suelta: tampoco en GDI+)
+            {   FormatoTexto line = new FormatoTexto(), wrap = new FormatoTexto(), numberFormat = FormatoTexto.TipograficoCompartido;   // EN LINUX: los tres formatos; numberFormat es el MISMO objeto que StringFormat.GenericTypographic del codigo sin traducir (Nativo/TextoGdiPlus.cs)
+                g.Clear(Color.Transparent.Sk()); // el mapa se reutiliza: no acumular texto/alfa de la cancion anterior   // EN LINUX: Graphics.Clear
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (la copia y el medio pixel son los de fabrica: abajo van como false)
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
+                line.Corte = CorteTexto.PuntosPorLetra; line.Banderas = BanderasTexto.SinPartir;   // EN LINUX: Trimming = EllipsisCharacter; FormatFlags = NoWrap
+                wrap.Corte = CorteTexto.PuntosPorPalabra; wrap.Banderas = BanderasTexto.SoloEnteros;   // EN LINUX: Trimming = EllipsisWord; FormatFlags = LineLimit
+                Pixel.Rellena(g, new RectangleF(0, 0, w, h), bg, suave, false, false);   // EN LINUX: g.FillRectangle (Nativo/Pixel.cs)
+                Pixel.Linea(g, 0, GpuPanel.StatusEdgeOffset, w, GpuPanel.StatusEdgeOffset, top, suave, false, false);   // EN LINUX: g.DrawLine (Nativo/Pixel.cs)
                 int split = (int)(w * .52f);
                 Rectangle cover = GpuPanel.IdleCoverRect(w, h);
                 // Sin tarjeta bajo el cubo: se ve directamente el fondo del estado.
                 int tx = cover.Right + 20, tw = Math.Max(20, split - tx - 24);
-                g.DrawString("A H O R A   S U E N A", small, color, new RectangleF(24, 12, split - 40, 26 * scale), line);
+                TextoGdiPlus.Escribe(g, "A H O R A   S U E N A", small, ajuste, color, new RectangleF(24, 12, split - 40, 26 * scale), line, false, false);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                 float titleH = Math.Min(90, h * .28f), artistY = 56 + titleH + 6;
                 if (extra == null)
                 {
-                    g.DrawString(title ?? "", big, white, new RectangleF(tx, 56, tw, titleH), wrap);
-                    PintaTextoMovil(g, artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);
+                    TextoGdiPlus.Escribe(g, title ?? "", big, ajuste, white, new RectangleF(tx, 56, tw, titleH), wrap, false, false);   // EN LINUX: g.DrawString
+                    PintaTextoMovil(g, ajuste, false, false, artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);   // EN LINUX: con el lienzo y su estado
                 }
-                else PintaTituloGrande(g, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea
+                else PintaTituloGrandeReposo(g, suave, ajuste, false, false, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea   // EN LINUX: PintaTituloGrande (SuenaVivoGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
                 if (badgeKind != 0)
                 {
                     Rectangle badge = GpuPanel.IdleBadgeRect(w, h);
                     Color metal = badgeKind == 2 ? Color.FromArgb(255, 221, 132) : Color.FromArgb(218, 237, 255);
-                    using (SolidBrush tint = new SolidBrush(Color.FromArgb(42, metal)))
-                    using (SolidBrush ink = new SolidBrush(metal))
-                    using (Pen rim = new Pen(Color.FromArgb(145, metal)))
-                    using (GraphicsPath shape = RoundedPath(badge, 8))
+                    using (SKPaint tint = new SKPaint { Color = Color.FromArgb(42, metal).Sk() })   // EN LINUX: SolidBrush
+                    using (SKPaint ink = new SKPaint { Color = metal.Sk() })   // EN LINUX: SolidBrush
+                    using (SKPaint rim = new SKPaint { Color = Color.FromArgb(145, metal).Sk(), StrokeWidth = 1f })   // EN LINUX: Pen(color), de 1
+                    using (Rocola.Dibujo2D.GraphicsPath shape = RoundedPath(badge, 8))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
                     {
-                        g.FillPath(tint, shape); g.DrawPath(rim, shape);
-                        using (StringFormat centered = new StringFormat(line))
+                        Pixel.Rellena(g, PuenteDibujo.Ruta(shape), tint, suave, false, false); Pixel.Traza(g, PuenteDibujo.Ruta(shape), rim, suave, false, false);   // EN LINUX: g.FillPath y g.DrawPath (Nativo/Pixel.cs)
+                        FormatoTexto centered = new FormatoTexto(line);   // EN LINUX: using (StringFormat centered = new StringFormat(line)): una copia (un FormatoTexto, que no se suelta: lo de abajo queda como bloque)
                         {
-                            centered.Alignment = StringAlignment.Center; centered.LineAlignment = StringAlignment.Center;
-                            g.DrawString("MEJORADA", small, ink, badge, centered);
+                            centered.Horizontal = Alinea.Centro; centered.Vertical = Alinea.Centro;   // EN LINUX: Alignment = Center; LineAlignment = Center
+                            TextoGdiPlus.Escribe(g, "MEJORADA", small, ajuste, ink, badge, centered, false, false);   // EN LINUX: g.DrawString
                         }
                     }
                 }
-                progressStart = DrawIdleClock(g, w, h, time);
+                progressStart = DrawIdleClock(g, ajuste, w, h, time);   // EN LINUX: con el lienzo y su modo de letra
                 string heading = "A CONTINUACION  /  " + count + (count == 1 ? " CANCION" : " CANCIONES");
-                g.DrawString(heading, small, color, new RectangleF(split, 12, w - split - 24, 26 * scale), line);
+                TextoGdiPlus.Escribe(g, heading, small, ajuste, color, new RectangleF(split, 12, w - split - 24, 26 * scale), line, false, false);   // EN LINUX: g.DrawString
                 if (count == 0)
-                    g.DrawString("La siguiente cancion la eliges tu", normal, muted, new RectangleF(split + 14, 62, w - split - 45, 64));
+                    TextoGdiPlus.Escribe(g, "La siguiente cancion la eliges tu", normal, ajuste, muted, new RectangleF(split + 14, 62, w - split - 45, 64), null, false, false);   // EN LINUX: g.DrawString sin formato (null: el de fabrica)
                 Rectangle sample = IdleQueueCellCount(w, h, 0, qt.Length, dozen);
-                using (Font queueTitle = new Font("Trebuchet MS", dozen ? Math.Max(9, Math.Min(21 * scale, (sample.Height - 8) * .52f)) : normal.Size, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (Font queueArtist = new Font("Trebuchet MS", dozen ? Math.Max(8, Math.Min(16 * scale, (sample.Height - 8) * .40f)) : small.Size, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (Font queueIndex = new Font("Trebuchet MS", Math.Min(queueArtist.Size, IdleQueueThumb(sample).Width / 1.6f), FontStyle.Bold, GraphicsUnit.Pixel))
+                using (Rocola.Nativo.Letra queueTitle = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), dozen ? Math.Max(9, Math.Min(21 * scale, (sample.Height - 8) * .52f)) : normal.Tamano, true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel); normal.Size es su Tamano
+                using (Rocola.Nativo.Letra queueArtist = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), dozen ? Math.Max(8, Math.Min(16 * scale, (sample.Height - 8) * .40f)) : small.Tamano, true))   // EN LINUX: igual; small.Size es su Tamano
+                using (Rocola.Nativo.Letra queueIndex = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Min(queueArtist.Tamano, IdleQueueThumb(sample).Width / 1.6f), true))   // EN LINUX: igual; queueArtist.Size es su Tamano
                 {
-                float titleHeight = queueTitle.GetHeight(g), detailHeight = queueArtist.GetHeight(g) + 2;
-                int numberWidth = (int)Math.Ceiling(g.MeasureString("12", queueArtist).Width) + 4;
-                numberFormat.Alignment = StringAlignment.Center; numberFormat.LineAlignment = StringAlignment.Center;
-                numberFormat.FormatFlags |= StringFormatFlags.NoWrap;
+                float titleHeight = queueTitle.AltoRenglon, detailHeight = queueArtist.AltoRenglon + 2;   // EN LINUX: GetHeight(g): el alto del renglon (Nativo/Letras.cs, a 96 puntos por pulgada como el Graphics)
+                int numberWidth = (int)Math.Ceiling(TextoGdiPlus.Mide("12", queueArtist, ajuste, SizeF.Empty, null).Width) + 4;   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs)
+                numberFormat.Horizontal = Alinea.Centro; numberFormat.Vertical = Alinea.Centro;   // EN LINUX: Alignment = Center; LineAlignment = Center, en el tipografico COMPARTIDO: lo heredan los demas, esten traducidos o no, como en XP
+                numberFormat.Banderas |= BanderasTexto.SinPartir;   // EN LINUX: FormatFlags |= NoWrap (tambien en el compartido)
                 for (int i = 0; i < qt.Length && i < (dozen ? 12 : 3); i++)
                 {
                     Rectangle r = IdleQueueCellCount(w, h, i, qt.Length, dozen);
-                    using (GraphicsPath shape = RoundedPath(r, Math.Min(10, r.Height / 3))) g.FillPath(card, shape);
+                    using (Rocola.Dibujo2D.GraphicsPath shape = RoundedPath(r, Math.Min(10, r.Height / 3))) Pixel.Rellena(g, PuenteDibujo.Ruta(shape), card, suave, false, false);   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: su SKPath (PuenteDibujo.Ruta) y g.FillPath (Nativo/Pixel.cs)
                     Rectangle thumb = IdleQueueThumb(r);
-                    if (i < covers.Length && covers[i] != null) g.DrawImage(covers[i], thumb);
-                    else g.FillRectangle(color, thumb);
+                    if (i < covers.Length && covers[i] != null) Imagenes.Pinta(g, covers[i], new SKRect(0, 0, covers[i].Width, covers[i].Height), new SKRect(thumb.Left, thumb.Top, thumb.Right, thumb.Bottom), Filtro.Bilineal, false, false);   // EN LINUX: g.DrawImage(imagen, caja) (Nativo/Imagenes.cs) con el filtro de fabrica del Graphics (Bilinear)
+                    else Pixel.Rellena(g, thumb, color, suave, false, false);   // EN LINUX: g.FillRectangle
                     bool compact = r.Width < 180;
                     RectangleF text = IdleQueueTextBlock(r, titleHeight, detailHeight, numberWidth);
                     float textX = text.X, textW = text.Width, textY = text.Y;
-                    PintaTextoMovil(g, qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);
+                    PintaTextoMovil(g, ajuste, false, false, qt[i] ?? "", queueTitle, white, new RectangleF(textX, textY, textW, titleHeight), line);   // EN LINUX: con el lienzo y su estado
                     string enMin = (extra != null) ? TextoMinutosCola(extra, i) : "";   // "en ~6 min" (SuenaVivoGpu.cs)
                     if (enMin.Length == 0)
-                        PintaTextoMovil(g, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, detailHeight), line);
-                    else PintaMinutosCola(g, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, detailHeight, line);
+                        PintaTextoMovil(g, ajuste, false, false, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, detailHeight), line);   // EN LINUX: con el lienzo y su estado
+                    else PintaMinutosColaReposo(g, suave, ajuste, false, false, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, detailHeight, line);   // EN LINUX: PintaMinutosCola (SuenaVivoGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
                     if (compact)
                     {
-                        RectangleF label = IdleQueueNumberRect(r, queueIndex.GetHeight(g));
-                        using (SolidBrush shade = new SolidBrush(Color.FromArgb(210, 8, 12, 24))) g.FillRectangle(shade, label);
-                        g.DrawString((i + 1).ToString("00"), queueIndex, white, label, numberFormat);
+                        RectangleF label = IdleQueueNumberRect(r, queueIndex.AltoRenglon);   // EN LINUX: GetHeight(g)
+                        using (SKPaint shade = new SKPaint { Color = Color.FromArgb(210, 8, 12, 24).Sk() }) Pixel.Rellena(g, label, shade, suave, false, false);   // EN LINUX: SolidBrush y g.FillRectangle
+                        TextoGdiPlus.Escribe(g, (i + 1).ToString("00"), queueIndex, ajuste, white, label, numberFormat, false, false);   // EN LINUX: g.DrawString con el tipografico compartido
                     }
-                    else g.DrawString((i + 1).ToString("00"), queueArtist, color, new RectangleF(r.Right - numberWidth - 3, textY, numberWidth, r.Bottom - textY - 2), line);
+                    else TextoGdiPlus.Escribe(g, (i + 1).ToString("00"), queueArtist, ajuste, color, new RectangleF(r.Right - numberWidth - 3, textY, numberWidth, r.Bottom - textY - 2), line, false, false);   // EN LINUX: g.DrawString
                 }
                 }
             }
