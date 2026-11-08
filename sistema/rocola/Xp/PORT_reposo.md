@@ -183,3 +183,101 @@ Con datos y programas en `/root/rocola-trabajo/port/reposo` (fuera del repositor
   llama (en los recorridos, `AntiAliasGridFit` y `SystemDefault`; este, con lo que la referencia supone para el modo del sistema de Windows,
   como en (b2)).
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 8-11-2026)
+
+Se revisó el diff `b609319..port-reposo` contra los originales de XP (`Rocola/`) y contra la capa congelada que imita a GDI+ (`Dibujo2D.cs`, la
+referencia de las comparaciones), línea por línea y sin fiarse del informe, y se repitieron las comprobaciones. **No se encontró ningún fallo
+en la traducción ni en las costuras: no se cambió código.** Se apuntan dos riesgos que no estaban (uno de este grupo y otro de fuera).
+
+### Lo que se miró
+
+- **El GDI+ que queda** (grep de `Graphics`, `Bitmap`, `Image`, `Font`, `Brush`, `Pen`, `GraphicsPath`, `StringFormat`, `TextRenderer`,
+  `ImageAttributes`, `LockBits` y los modos del `Graphics`, fuera de los comentarios): solo las costuras de la tabla, escritas enteras
+  (`Rocola.Dibujo2D.Bitmap` de `BuildIdlePanel` y `SubeUiBot`, el `Brush` de `DegradadoV`, el `GraphicsPath` de `RoundedPath`,
+  `PuenteDibujo.Bitmap` para `Upload`) y la `Font` de `lblNow` (WinForms). Ningún `using Rocola.Dibujo2D`.
+- **Línea por línea contra XP**: mismos valores, mismo orden y mismas ramas. Lo que es fácil perder está bien: `numberFormat` es el MISMO
+  objeto que `StringFormat.GenericTypographic` del código sin traducir (`Dibujo2D.cs` lo envuelve sin copiarlo) y se cambia donde XP (líneas
+  415-416); `FormatFlags =` es `Banderas =` (deja solo esa) y `|=` añade; `new StringFormat(line)` y `format.Clone()` son
+  `new FormatoTexto(...)`, la misma copia que hace la capa; `MeasureString(s, f, int, sf)` mide en `(ancho, 999999)`; sin formato se pasa
+  `null`, que `TextoGdiPlus` toma como `SinFormato` (lo mismo que la capa); `GetHeight(g)` es `AltoRenglon` y `Size` es `Tamano` (la capa no
+  hace otra cosa); las plumas de XP (`Pen(color)` y `Pen(color, 2)`: esquina en punta, punta plana, sin guiones) son un `SKPaint` con su
+  color y su ancho, los mismos valores que pone `Pen.Pon` (el mínimo de un píxel y el límite de esquinas los pone `Pixel`); un `SolidBrush`
+  solo pone su color (`SolidBrush.Pon`) y el degradado de `DegradadoV` va por `PuenteDibujo.Pincel(b, false)`, el mismo `Pon(p, centros)` que
+  hace la capa al rellenar con el medio píxel de fábrica; `DrawImage(imagen, caja)` es `Imagenes.Pinta` con `Bilinear`, sin copia ni medio
+  píxel y la envoltura transparente de fábrica; el `LockBits` en `Format32bppPArgb` de la capa es el puntero a los puntos mismos (sin mirar
+  la caja, igual que la traducción) y su `UnlockBits` de escritura, `NotifyPixelsChanged`; la identidad de la cinta: ningún archivo de XP
+  usa otra unidad que `Pixel` y `Point` ni `FontStyle.Strikeout` (grep en `Rocola/`), así que separa las mismas letras que la de XP.
+- **El estado del `Graphics`** contra `estado_por_linea.tsv`: las 44 filas de los tres archivos (26 con estado, todas `b=I` y `d=mapa`). Las
+  que varían (`TextoMovilGpu.cs` 62: modo de letra y matriz; 152: modo de letra; 174 y `EstadoReposoGpu.cs` 195/197: el recorte) van como
+  parámetro o en el lienzo. Las líneas que la tabla no tiene (la insignia, 386-402, y las llamadas de 383, 385 y 427-431) salen del
+  `Graphics` de `RenderIdlePanelEn` (AntiAlias, AntiAliasGridFit, SourceOver, Bilinear, Default). Las cuatro funciones sin traducir que se
+  llaman con un `Graphics` nuevo sobre el mismo lienzo (`PintaRenglonLejos`, `DrawLabelOverlay`, `PintaTituloGrande` y `PintaMinutosCola`)
+  solo miden, escriben, rellenan y trazan (ni `SetClip`, ni `Save`/`Restore`, ni transformaciones, ni cambian un modo): ese `Graphics` nuevo
+  es equivalente al de XP. El suavizado `true` que pasa `PintaArtistaCompacto` es el que tienen sus dos llamadores (`EnsureUiBotOverlay` y
+  `FranjaLejos`), y el texto no lo usa. Todo esto corre en el hilo de la pantalla (también el precalentado de `PrecargaPaginaGpu.cs`).
+- **El recorte de `EmpiezaRecuadro`**: la traducida deja en el lienzo un `Save` más con el mismo rectángulo que el `SetClip` que el puente pone
+  antes por el `Graphics`. Se siguió lo que ese `Graphics` puede hacer después (`SetClip` que reemplaza, `ResetClip`, `Save`/`Restore`,
+  `TranslateTransform`, `ClipBounds`) con las cuentas de la capa (`baseCuenta`, `RestoreToCount`): los mismos píxeles con y sin ese `Save`
+  (y el arnés lo pinta: 48 líneas del recuadro).
+- **Costuras**: el `Bitmap` prestado del panel es el mismo objeto para el mismo `SKBitmap`, y `D3D9Star.cs` solo compara el de antes por
+  identidad (`SubeEstadoExtendido`: `ReferenceEquals` corta antes de leer `Width`; `DibujoLigeroGpu.cs` y `PerformanceGpu.cs`, `!= null`); los
+  prestados no sueltan los puntos y lo de `Entrega` sí (la precarga lo suelta con su `using`); las portadas son de la caché. `SKBitmap` no
+  cambia `Equals` ni `GetHashCode` (comprobado por reflexión: los de `System.Object`, y la huella no cambia al soltarlo), así que
+  `cintaByBitmap` y la firma del panel van por identidad como con el `Bitmap` de XP. `filaReposo` y la captura de cintas son `ThreadStatic`
+  y `PuenteDibujo.Bitmap` lleva su cerrojo. Las firmas traducidas de `PintaTituloGrande` y `PintaMinutosCola` de la rama `port-suena` son
+  las de `PintaTituloGrandeReposo` y `PintaMinutosColaReposo`.
+- **Finales de línea y número de líneas**: 446, 390 y 125 (las de la base), LF y sin BOM; `Puente.reposo.cs` y este documento, LF. Fuera de lo
+  permitido no se tocó nada (`git diff --stat b609319`: los tres archivos, `Plataforma/Puente.reposo.cs`, `Pruebas/VistasReposo` y este
+  documento); los commits, con el autor de siempre y sus dos líneas.
+
+### Riesgos que se añaden
+
+- **Un `SKBitmap` ya soltado tumba la rocola** (nuevo con la traducción). Usar un `Bitmap` soltado en XP lanza una excepción, que se puede
+  atrapar (`ArgumentException`; en la capa, `NullReferenceException`); con SkiaSharp 3.116.1, `Width` o `GetPixels()` de un `SKBitmap`
+  soltado es una violación de segmento (comprobado con un programa aparte: sale con 139). Aquí los leen `CintaTile.Source.Width`
+  (`CintaVisible`, `DibujaCintasTexto`), la subida de una tesela (`PuenteDibujo.Bitmap` y `Upload`), `idlePanelBmp`/`idleClockUnderlay`
+  (`Width` y `CopiaRegionReposo`) y las portadas (`Imagenes.Pinta`). En los flujos de XP no pasa: cada vez que se suelta una cinta cambia
+  `CintasTexto.Version` (`End`, la de antes en `Add`, `Dispose` con cintas) y en cada cuadro los horneados (`GetIdlePanel`, `GetUi`,
+  `GetUiBot` y `GetPieza`, `D3D9Star.cs` 2584-2666) van antes de `PreparaCintasTexto` (2673), que rehace la lista antes de dibujarla (2848,
+  2882 y `CintasConLaVentana`); el panel y la tira de debajo de su reloj (`idleClockUnderlay`) se sueltan solo al cambiarlos (en el mismo
+  paso en que se hace el nuevo) y al cerrar, y el prestado viejo solo se compara; las portadas las suelta `DrainCoverTrash` en el hilo de la
+  pantalla, fuera del repintado (`Form1.cs:2389`), nunca entre `LoadCoverAsync` y el dibujo. Quien cambie el orden del cuadro o traduzca
+  `D3D9Star.cs` tiene que conservarlo: un descuido así ya no sería una excepción, sino la rocola cerrada.
+- **Fuera de este grupo (no se arregla aquí): `HorneaDegradadoV`** (`PulidoGpu.cs:174-177`) suelta el mapa justo después de hacer el
+  `TextureBrush`, como XP. En GDI+ vale (el `TextureBrush` copia la imagen), pero el de la capa (`Dibujo2D.cs`) guarda la `Image` y hace su
+  shader al pintar: `SKShader.CreateBitmap(null)` lanza `ArgumentNullException` (comprobado). Solo con degradados de más de 2 048 píxeles de
+  alto, y desde este grupo no se llega (`IdlePanelHeight` da como mucho 340); le toca a quien traduzca `PulidoGpu.cs` (o a la capa).
+
+### Las comprobaciones, repetidas por el revisor
+
+Salidas en `/root/rocola-trabajo/port/reposo/revision` (fuera del repositorio), con la máquina compartida (carga de 3 a 7 en 4 núcleos).
+
+- **Compila** (`dotnet build -c Release --no-incremental`, en `1dfa3da`): 0 errores y 15 avisos, la lista ordenada idéntica a la de la base.
+- **Diff contra XP** (`diff-xp.py -v`): 115/113, 49/47 y 9/8, **0 sin marca**; `git diff --numstat b609319`: 113/113, 47/47 y 8/8.
+- **Arnés** (`arnes.sh`, el programa entero de esta copia y el de la referencia congelada): **1 791 líneas iguales** con las letras de XP
+  falsas y con DejaVu (640 llamadas directas a las traducidas).
+- **Banco** (`banco.sh`): semillas 7 y 11 (letras falsas) y 5 (DejaVu), 3 000 casos, ejecutores `gdi`, `nativo` y `puente`: **0 distintos en
+  los 9**; `puente-objetos`: 407 bien, 0 mal.
+- **Recorridos** (una copia de `1dfa3da` con el volcado de las texturas, `instrumenta-volcado.sh`; con el candado y la carpeta de siempre,
+  `VOLCADO=1 CAPAS=1 HUELLAS=1`, contra `cmp-ref` y `cmp-ref2`): `pared`, `pared2` y `video`, 12 de 12, 6 de 6 y 7 de 7 capturas, 0
+  excepciones en lo que escribió y en `rocola_error.txt`. **Capas de Dibujo2D quietas: 52 de 52 idénticas** (las 2 distintas de `video`,
+  `c21`, tampoco son iguales entre las dos de la referencia). Texturas quietas: 226 de 231 (160 de 165 distintas) en la primera ronda; una
+  segunda ronda de `pared` y `pared2` dio 168 de 181 (en `pared` faltaron cuatro de los últimos cuadros, a los 69-70 s —la captura de
+  los 70 s cierra la rocola— y dos franjas, a los 13 y 17,5 s, que sí salieron en la primera). Juntando las dos rondas, `pared` 58 de 58
+  y `pared2` 66 de 67 distintas; la que falta (`2f591363…`, la franja de `pared2` a los 62,4 s) sale idéntica en tres corridas del traductor
+  (`cmp2/pared`, `cmp2/pared2` y `cmp3/pared2`, el mismo código), y la de `video` (`faffed06…`, 512×256 a los 9,7 s) sale idéntica en mis
+  `pared` y `pared2` (a los 15,8 y 15,6 s) y en el `video` del traductor: todo lo quieto sale idéntico en alguna corrida de la traducción, y
+  lo que falta en una corrida es de la hora.
+- **Las zonas chicas** (con `ROCOLA_VOLCADO_MINIMO=1`, `pared` en la traducción y en una copia de la referencia hecha aquí con
+  `referencia-chicas.sh`, las dos con el candado): la referencia subió 52 (39 distintas), la traducción 53 (41 distintas), **35 distintas
+  idénticas**; las 4 que solo salen en la referencia y las 6 que solo salen en la traducción son el reloj en otros segundos (vistas: «0:10»,
+  «0:27», «0:33» y «0:04 / 2:30» en la referencia; «0:13», «0:14», «0:23», «0:24», «0:25» y «0:27 / 2:30» en la traducción, en el recuadro
+  de la franja, 134×28, o en el del panel, 118×45).
+- **Cada commit compila por separado** (`df74d26`, `0143d42` y `e05873d`, sacados con `git archive`, `--no-incremental`): 0 errores y
+  los 15 avisos de la base en los tres.
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64`, con `nice 19`): los 15 avisos del compilador de la base y **ningún aviso IL ni
+  de AOT**. El binario nativo por `pared`, `buscador` y `video` (`aot-corre.sh`, con el candado): 12 de 12, 11 de 11 y 7 de 7 capturas,
+  0 excepciones en lo que escribió y en `rocola_error.txt`; la captura del estado extendido (45 s) enseña el panel con «AHORA SUENA», el
+  título y el artista, la cola con su portadita, «02 Ángel de amor (versión ñand…» y «en ~2 min», y el reloj.
+- **Cintas de la tarjeta**: no hacen falta (no cambia nada de lo que se sube).
