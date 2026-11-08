@@ -53,8 +53,18 @@ dos dispositivos a la vez y un dibujo con una textura ya soltada.
 ### Las cintas
 
 Grabadas con el programa de este árbol (antes de traducir; la grabadora vale igual después), datos de prueba nuevos en cada corrida,
-fuera de pantalla con llvmpipe, en `/root/rocola-trabajo/port/tarjeta/cintas` (fuera del repositorio: 20 a 85 MB cada una). Los guiones
-`corre.sh`, `graba.sh` y `reproduce.sh` de esa carpeta corren la rocola con una copia nueva de los datos y graban o reproducen.
+fuera de pantalla con llvmpipe, en `/root/rocola-trabajo/port/tarjeta/cintas` (fuera del repositorio: 20 a 85 MB cada una).
+
+Los guiones (`Pruebas/Tarjeta/guiones`; la carpeta de trabajo es `$TARJETA`, de fábrica `/root/rocola-trabajo/port/tarjeta`, con el
+reproductor compilado en `reproductor/` y en `ref/` una copia de `bin/Release/net10.0` de la referencia congelada):
+- `corre.sh PROGRAMA SALIDA [s]`: la rocola (JIT o NativeAOT) con una copia nueva de los datos de prueba de la referencia, fuera de
+  pantalla y sin sonido; `CONFIG="clave=valor ..."` y las variables `ROCOLA_*` del entorno valen.
+- `graba.sh NOMBRE FIN PULSA TRAMOS [PROGRAMA]`: graba una cinta (teclas con `ROCOLA_PULSA`, cuadros de esos tramos).
+- `reproduce.sh CINTA PROGRAMA [opciones]`: la cinta en la referencia y en PROGRAMA, y si salen iguales.
+- `control.sh NOMBRE ARCHIVO VIEJO NUEVO CINTA...`: un control negativo (el programa con un fallo puesto, compilado aparte).
+- `pantallas.sh PROGRAMA NOMBRE [PANTALLA...]` y `estados.py REF1 REF2 OTRA...`: la traza de un cuadro de cada pantalla de la rocola
+  entera y los estados de dibujo de cada pantalla frente a dos corridas de la referencia.
+- `diff-xp.py ARCHIVO...`: el diff de `Rocola/ARCHIVO` contra `Codigo/ARCHIVO` sin los renombres de T1, con las líneas sin marca.
 
 | Cinta | Qué recorre | Cuadros |
 |---|---|---|
