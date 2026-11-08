@@ -401,8 +401,8 @@ nueva carpeta» del selector (XP pone ShowNewFolderButton = false), otros botone
 ### El banco, lo nuevo
 
 - Escenas (`escenas.sh`, no estan en «todas»; datos de `datos_h.sh` en `$DH`, por defecto `/root/rocola-trabajo/port/ventanas2/datos`):
-  `f2` (Ctrl+F2 con la musica de siempre: la lista con el foco, Abajo, Tab y Mayus+Tab, la moneda con la hoja abierta, clics en la lista, en
-  el boton apagado y en Listo, y otra vez abrir y cerrar con Escape, Alt+F4 y la «X»), `f2barras` (21 carpetas de mas: las dos barras, Fin,
+  `f2` (Ctrl+F2 con la musica de siempre, cada paso a un segundo o mas del anterior: la lista con el foco, Abajo, Tab y Mayus+Tab, la
+  moneda con la hoja abierta, clics en la lista, en el boton apagado y en Listo, y otra vez abrir y cerrar con Escape, Alt+F4 y la «X»), `f2barras` (21 carpetas de mas: las dos barras, Fin,
   derecha, Inicio, AvPag, la rueda, clics en las flechas y el canal, Quitar una carpeta, los dos avisos de Quitar con Intro y Escape, Listo:
   rocola_config.txt byte a byte), `f2sin` (sin la carpeta de la musica: la hoja se abre sola), `aviso` (la carpeta de datos no se puede
   usar: el aviso de Program.cs antes de la rocola, con su captura), `f2sigterm` y `f2agrega`. `corre.sh`: `CORRIDA` (la carpeta de la
@@ -445,6 +445,29 @@ nueva carpeta» del selector (XP pone ShowNewFolderButton = false), otros botone
 - `diff-xp.py -v` en Form1.Datos.cs, Form1.Ajustes.cs y Program.cs: todas las lineas de este paso con su «EN LINUX»; las que salen sin
   marca son de antes y de otras pistas (el fsync y las prioridades de la pista windows, los comentarios del registro, las TextRenderingHint
   del dibujo, el SetForegroundWindow de la otra rocola).
+
+### Despues de juntar la rama principal (f997e61: los grupos reposo y acabado-estilo del dibujo)
+
+El merge se hizo solo (ningun choque: esos grupos no tocan lo de este paso). Otra vez todo:
+
+- Compila: 0 errores y los mismos 15 avisos (la lista archivo:linea:codigo, igual). Las 41 pruebas de la capa: 41 de 41. Las de la hoja:
+  48 de 48 en JIT y en NativeAOT. Las reglas de la pantalla: 32 de 32 en JIT y en NativeAOT.
+- Alternando con la referencia en JIT (RH8/H8): arranque, moneda, video, buscador, cierreq, altf4, kill9, asistente, f2barras y f2sin
+  IGUALES; captura y salirq IGUALES con el ruido de seis corridas; sigterm y f3sigterm, lo aceptado; tab con la carrera del repaso, esta vez
+  en la referencia (RH8 lleva el encargo de Form1.Biblioteca.cs:1735 y H8 no). f2sigterm contra el programa del paso T (TT8): la misma
+  secuencia y `rocola_estado.txt` borrado en los dos. f2agrega: la carpeta elegida en el selector queda en rocola_config.txt.
+- NativeAOT publicado otra vez: 0 avisos de IL ni de AOT. RHA3/HA3: arranque, cierreq, kill9 y f2barras IGUALES; sigterm, lo aceptado.
+- Lo que salio distinto fue de la carga de la maquina (carga de 8 a 9 con otras pistas), no de la traduccion:
+  - `f2`: con las teclas a 0,3 s unas de otras, la referencia en JIT recibio un Tab 0,9 s tarde y su estado y sus capturas cayeron antes o
+    despues de otra tecla que en la traduccion (en una captura el foco en Listo y en la otra en Agregar; el estado antes o despues de la
+    moneda). La escena se separo (cada paso a un segundo o mas del anterior, 34 s), se volvio a medir su ruido (RF1-RF3) y, alternando otra
+    vez, IGUAL en JIT (RH13/H13) y en NativeAOT (RHA4/HA4).
+  - `aviso` y `f2sin`: la secuencia, los estados, las capas y los archivos iguales; solo las cuentas del reloj de 42 ms y del vigia, con un
+    ruido medido en un rato tranquilo. En el aviso, con la maquina tranquila los dos dan 136-140 vencimientos del reloj (RH1-RH3, RH7, H7) y
+    con carga la referencia en JIT baja a 95-103 (RH8, RH13) y la traduccion a 109-129; en NativeAOT el primer segundo de la rocola lleva
+    14-15 frente a 3-7 (arranca antes, como en V3 y el paso T). Con el ruido de todas las corridas de la referencia (aviso: seis, de 95 a 140;
+    f2sin: siete; en `/root/rocola-trabajo/port/ventanas2/ruido6`) salen IGUALES todas: aviso en RH7/H7, RH8/H8, RH13/H13, RHA2/HA2 y
+    RHA4/HA4; f2sin en RH4/H4, RH8/H8, RHA1/HA1 y RHA3/HA3.
 
 ### Lo que queda
 
