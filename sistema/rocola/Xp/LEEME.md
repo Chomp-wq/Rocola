@@ -241,6 +241,32 @@ e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` 
   tamaño). No se hace porque XP no lo usa: SHADEMODE FLAT, niebla, profundidad y stencil, mipmaps, más de dos etapas, D3DTA_CONSTANT,
   BUMPENVMAP y vértices sin transformar. No probado en el A4 (Radeon r600): allí la regla de relleno debería ser la misma, y el filtro
   y la mezcla los hace la misma tarjeta que en XP.
+- **WinForms función por función (8-11-2026, en `Ventanas.*.cs`):** cada miembro que usa `Codigo/` (unos 290, sacados con Roslyn) se
+  revisó contra la fuente de referencia de WinForms (dotnet/winforms release/3.0, portada de .NET Framework 4.8). Arreglado:
+  - el marco de Luna: barra de 26 y marco de 3, 4 o 1 según el borde (Ctrl+F3 mide 966×764);
+  - ClientSize se conserva al cambiar el borde, y cada control nace con su medida de fábrica;
+  - la ventana maximizada se aplica al crearse, y CenterScreen y CenterParent con sus topes;
+  - cerrar como WinForms:
+    - un diálogo pone Cancel antes de FormClosing;
+    - FormClosed llega desde su bucle y ShowDialog destruye su ventana;
+    - Alt+F4 cierra la rocola, como en XP;
+  - BeginInvoke va por la ventana del control, y lo pendiente de una ventana destruida no corre;
+  - la letra y los colores avisan a los hijos;
+  - el bucle de mensajes atiende un mensaje cada vez, en el orden de Windows, e Idle sale una vez cada vez que la cola se vacía;
+  - el temporizador mantiene su ritmo y lo atrasado sale una sola vez (mínimo de 10 ms);
+  - el teclado: KeyPress con Handled, Ctrl y Alt (con Alt, WM_SYSKEYDOWN), y la tecla mantenida con su bit 30;
+  - el ratón: el clic con WindowFromPoint y StandardDoubleClick, la rueda que sube al padre y Region también para el ratón;
+  - la X roja de .NET si falla un OnPaint;
+  - el pulgar de la lista de Ctrl+F2.
+
+  Probado con 41 pruebas pequeñas contra lo que da WinForms (la versión de antes pasaba 8) y con la rocola entera fuera de pantalla, con
+  JIT y con NativeAOT (sin avisos). Al juntarlo: la moneda mantenida, pedir canción, Ctrl+F3 con clic, Tab y Espacio, y el video,
+  sin excepciones. Queda por decidir al llevarlo al sistema:
+  - que el apagado de Linux (SIGTERM) llegue como `CloseReason.WindowsShutDown`, como el apagado de Windows en XP; con UserClosing, la
+    rocola borraría los créditos en cada reinicio por actualización;
+  - las excepciones en Idle y en ProcessCmdKey: aquí se apuntan y la rocola sigue; en WinForms probablemente la cerrarían.
+
+  No probado en el A4.
 - **Lo siguiente:**
   - sin capturas (decisión del dueño del 8-11-2026): «idéntico» se asegura por el código. `Codigo/` frente a `Rocola/` (diff sin lo
     mecánico, 8-11-2026): 494 líneas en 35 archivos, todas de traducción (el puente de NAudio 3, winmm a ALSA, el mezclador a amixer,
