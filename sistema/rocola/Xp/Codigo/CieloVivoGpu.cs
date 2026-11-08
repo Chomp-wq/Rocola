@@ -74,7 +74,7 @@ namespace Rocola
 
         // La luna horneada (lado x lado, ARGB). Lo iluminado en blanco calido; lo apagado en un azul gris tenue (la luz
         // cenicienta) y casi opaco, para que tape las estrellas de detras. Borde suavizado de un pixel.
-        internal static SKBitmap HorneaLuna(int lado, double fase)   // EN LINUX: un SKBitmap; EnsureLunaCielo lo pasa por el puente a Upload (D3D9Star.cs, aun sin traducir)
+        internal static SKBitmap HorneaLuna(int lado, double fase)   // EN LINUX: un SKBitmap; EnsureLunaCielo lo sube tal cual con Upload (D3D9Star.cs, que ya recibe SKBitmap)
         {
             if (lado < 8) lado = 8;
             SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
