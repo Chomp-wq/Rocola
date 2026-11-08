@@ -85,7 +85,8 @@ namespace BancoSuena
             foreach (CintaTexto t in c.Items)
             {
                 sb.Append(" [" + t.Key + " rect=" + R(t.Rect) + " ancho=" + t.Width);
-                if (t.Tiles != null) foreach (Bitmap b in t.Tiles) sb.Append(" " + Puntos(nombre + "-cinta" + (k++), b).Replace('\t', ' '));
+                // (object: las teselas son Bitmap en la referencia y en esta rama, y SKBitmap cuando TextoMovilGpu.cs este traducido; Puntos lee las dos)
+                if (t.Tiles != null) foreach (object b in t.Tiles) sb.Append(" " + Puntos(nombre + "-cinta" + (k++), b).Replace('\t', ' '));
                 sb.Append("]");
             }
             return sb.ToString();
