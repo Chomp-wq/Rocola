@@ -150,3 +150,81 @@ Con datos y programas en `/root/rocola-trabajo/port/suena` (fuera del repositori
   no podía tocar).
 - Las diferencias (a)-(e) de `PORT_DIBUJO.md` siguen como estaban (la traducción llama a las mismas funciones nativas que la capa).
 - Nada se probó en el A4.
+
+## Revisión (revisor independiente, 8-11-2026)
+
+Se revisó el diff `b609319..port-suena` contra el original de XP (`Rocola/SuenaVivoGpu.cs`) y contra la capa (`Plataforma/Dibujo2D.cs`: cada
+sobrecarga de GDI+ que usaba el archivo y la función nativa a la que la capa la manda), y se repitieron las comprobaciones (carpeta
+`/root/rocola-trabajo/port/suena/revision`, fuera del repositorio). **No se encontró ningún fallo en la traducción.** Se corrigieron una
+imprecisión de la documentación y un arreglo del arnés para cuando se junte con el grupo «reposo» (abajo).
+
+Lo que se miró, línea por línea:
+
+- Las líneas: 987 en la base y en la traducción, LF y sin BOM en las dos; 169 distintas por posición, todas con su `EN LINUX`;
+  `diff-xp.py -v`: 172 quitadas, 169 puestas, 0 sin marca. Fuera de las costuras no queda nada de GDI+ (`Rocola.Dibujo2D.GraphicsPath` de
+  `Redondo` en 5 sitios, el `Rocola.Dibujo2D.Bitmap` de la moneda y su `PixelFormat`), y no hay choques de nombres entre los tipos de
+  `Rocola.Nativo` y miembros de `Form1` o `GpuPanel` (la `Letra` va con su espacio entero).
+- Cada llamada contra lo que hacía la capa: los rellenos y trazos van a `Pixel.*` con `(suave, medio, copia)` en el mismo orden;
+  `DrawString` con caja a `TextoGdiPlus.Escribe(..., copia, medio)` y desde un punto con la caja `(x, y, 0, 0)` y sin formato (`null` =
+  `SinFormato`, como la capa); `MeasureString(s, f)` y `(s, f, PointF, sf)` a `Mide` con `(0, 0)`; `Font.Height`, `GetHeight()` y
+  `GetHeight(g)` a `AltoEntero` y `AltoRenglon`; `new Font(familia, pt, Bold)` y `(..., Pixel)` a `Letra.EnPuntos`/`EnPixeles` con la misma
+  familia (`Letra.Familia` es el `FontFamily.Name` de la `Font`); `GenericSansSerif` a `Letras.SinRemates` sin resolver (como
+  `new FontFamily(nombre, true)`); `new StringFormat()` a `new FormatoTexto()` y `new StringFormat(GenericDefault)` a una copia de
+  `NormalCompartido`; `FormatFlags =` reemplaza (`NoWrap` = `SinPartir` = 4096, `LineLimit` = `SoloEnteros` = 8192) y `Trimming` pasa a
+  `Corte` con el mismo valor; las puntas y uniones redondas de la pluma a `StrokeCap`/`StrokeJoin` (la capa pone una punta para las dos);
+  el `PathGradientBrush` de la moneda a `Degradado.DeTrazo` con la caja del trazo (`GetBounds`), el centro corrido y sin `Blend`, en un
+  `SKPaint` cuyo color no tiñe (`Pixel` pone el negro opaco bajo el shader, como `Pon`); el `GraphicsPath` a un `SKPath` par-impar con
+  `AddOval` de la misma caja; `new Bitmap(w, h, PArgb)` a `Mapas.Nuevo` (lo que ya hacía la capa) y la entrega de la moneda con
+  `Format32bppPArgb` y `TraeAlfa` como el `new Bitmap(n, n, PArgb)` de XP.
+- El estado del `Graphics` contra `estado_por_linea.tsv` (46 líneas de este archivo, ninguna varía) y, en las que no están en la tabla,
+  desde quien llama (`EstadoReposoGpu.cs`, `PrecargaPaginaGpu.cs`, `HorneaAviso`, `SueltaMoneda`): el mismo. Ni `PintaTituloGrande` ni
+  `PintaMinutosCola` (ni `PintaTextoMovil`) le dejan cambiado el estado al `Graphics` del que llama, así que las sobrecargas puente no
+  tienen nada que devolverle.
+- Las costuras: el `Bitmap` prestado es el mismo para el mismo mapa y `Upload` no lo guarda ni lo suelta; los puntos los suelta quien los
+  soltaba en XP (los mapas, `SuenaVivoGpu.cs`; la moneda entregada es dueña y la suelta quien la recibe); soltar la `Letra` del título
+  que se desliza es lo que hacía soltar la `Font`; las letras que hace el puente en cada llamada (`AnchoTextoSuena`,
+  `PintaTextoMovilSuena`) se sueltan al acabar y no son las del que llama; el `Graphics` de `PintaTextoMovilSuena` ve la misma matriz
+  (`Transform` = la del lienzo, que es lo que apunta la cinta), los mismos límites del recorte (`VisibleClipBounds` sale del lienzo) y el
+  mismo modo de letra; todo va en el hilo de la pantalla, como en XP.
+
+Lo corregido:
+
+- `d826464`: el comentario de `PuenteDibujo.BrochaSuena` y este documento decían que por ahí pasan `white`, `color` y `muted`; pasan solo
+  `color` y `muted` (`white` va al `DrawString` del título por `PuenteDibujo.Pincel`). Solo texto.
+- `a64e8ce`: el arnés recorría las teselas de la cinta con `foreach (Bitmap b ...)`; en la rama del grupo «reposo» (que traduce
+  `TextoMovilGpu.cs`) son `SKBitmap` y el arnés no compilaba al juntar las dos. Ahora las recorre como `object` (`Puntos` lee las dos).
+
+Las comprobaciones, repetidas:
+
+- **Compila**: 0 errores y los mismos 15 avisos de la base, también después de los arreglos; **NativeAOT**: 0 avisos IL/AOT y los mismos
+  15; el binario nativo por las pantallas del grupo (`aot-corre.sh`: la invitación «Te falta un crédito», dos monedas con su «+4
+  créditos», el aviso «Pusiste…» y el estado extendido con «Ángel de amor» deslizándose): salida 0, 8 capturas, sin excepciones en lo que
+  escribió ni en `rocola_error.txt`.
+- **Arnés**: IGUAL a la referencia, 487 líneas (72 llamadas directas), con las letras de XP falsas y con DejaVu, antes y después del
+  arreglo. Y en una copia de la rama principal (`564788b`, con el grupo «frontera» ya junto) con `port-suena` y `port-reposo` juntos:
+  se juntan sin conflictos, compila (0 errores, 15 avisos) y el arnés sale IGUAL a la referencia en las 487 líneas con las dos letras.
+- **Recorridos** (la copia instrumentada de esta rama, con el candado): pared, pared2, video y ayuda: capas de Dibujo2D quietas **78 de
+  78**; texturas quietas 282 de 297 (212 de 221 distintas) con la máquina cargada por otros. Repitiendo pared, pared2 y ayuda: capas 62
+  de 62, texturas 244 de 247 (179 de 181). Juntando las corridas de la traducción (y otra de pared2 con los PNG), **las 221 texturas
+  quietas distintas salen idénticas**. Lo que faltaba en cada corrida es del instante: con los PNG, el panel de reposo de los 41-42 s de
+  la referencia (`8fc23430…`) y el de la traducción (`2a697d30…`) solo se diferencian en el reloj («0:20» contra «0:19», 149 puntos en
+  x 230-250, y 221-232), y la referencia saca los dos según la corrida (igual `21d8fe91…` y `93f517ca…` a los 62 s). Las texturas de este
+  archivo (el título que se desliza `8d443691…`, los avisos `4e71f01b…`, `c0dbfa2d…`, `0bea6c99…`) salen idénticas.
+- **Recorrido de las monedas** (`moneda.sh`, todas las texturas): la traducción contra dos corridas de la base instrumentada: capas 14 de
+  14; texturas quietas 82 de 85 distintas; faltan dos parches del instante (el número que rueda en la cápsula y el reloj del panel) y una
+  subida de la franja de abajo a los 35 s, que en otra pareja de corridas (base y traducción una tras otra, con los PNG) sale idéntica
+  en las dos (`c550e0ad…`). En esa pareja todas las texturas de este archivo son las mismas: los avisos (512×128 y 512×64), la moneda
+  (128×128), el «+4 créditos» (128×32), el título que se desliza (2048×64) y el panel; lo distinto es de animaciones de otros archivos
+  (la franja mientras rueda el número, y una fila del disco de `DiscoVivoGpu.cs` con hasta 5 niveles de diferencia en todo su fondo).
+- **Banco** (aunque ningún archivo que compila —`Dibujo2D.cs`, `Puente.cs`, `Nativo/`, `Pruebas/BancoDibujo`— cambió en esta rama):
+  semillas 7 y 11 con las letras de XP falsas y 5 con DejaVu, 3 000 casos, ejecutores `gdi`, `nativo` y `puente`: 0 distintos en los 9;
+  `puente-objetos`: 407 bien, 0 mal.
+- **Cintas**: no aplica (ni el dispositivo ni los puntos que se suben cambian; `Upload` recibe el `Bitmap` prestado del mapa).
+
+Para quien junte: la rama principal ya tiene el grupo «frontera» (`Upload` recibe `SKBitmap` y la firma con `Bitmap` queda en
+`Puente.frontera.cs`): las cuatro `PuenteDibujo.Bitmap(x)` de `PreparaSuenaVivo` pasan a `x`, y `BakeMoneda` puede devolver el `SKBitmap`
+cuando `PrecargaPaginaGpu.cs` deje de pedir un `Bitmap`. También vuelve `VOLCADO=1` (`Nativo/VolcadoTexturas.cs`), así que
+`instrumenta-volcado.sh` ya no hace falta allí. La rama «reposo» tiene `PintaTituloGrandeReposo` y `PintaMinutosColaReposo`
+(`Puente.reposo.cs`) con los parámetros en el mismo orden que las traducidas de aquí: se cambian por la llamada directa;
+`PintaTextoMovilSuena` pasa a la `PintaTextoMovil(SKCanvas, ajuste, copia, medio, ...)` traducida de allí y `FuenteTituloReposo` a
+`LetraTituloReposo`.
