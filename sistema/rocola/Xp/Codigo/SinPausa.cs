@@ -114,7 +114,7 @@ namespace Rocola
                 if (ThreadPool.QueueUserWorkItem(delegate
                 {
                     double[] tabla = null;
-                    ThreadPriority prioridad = Thread.CurrentThread.Priority;
+                    ThreadPriority prioridad = PrioridadHilo.De(Thread.CurrentThread);   // EN LINUX: (Thread.CurrentThread.Priority) la que se le apunto (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     try { PrioridadHilo.Pon(Thread.CurrentThread, ThreadPriority.BelowNormal); tabla = CreaFiltro(hzIn, hzOut); }   // EN LINUX: (Thread.CurrentThread.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)
                     catch { } // si no se pudo preparar, no se encadena ni se corta la musica actual
                     finally

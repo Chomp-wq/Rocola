@@ -217,7 +217,7 @@ namespace Rocola
                 }
             });
             worker.IsBackground = true;
-            worker.Priority = System.Threading.ThreadPriority.BelowNormal;
+            PrioridadHilo.Pon(worker, System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (worker.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             worker.CurrentCulture = CultureInfo.CurrentCulture;   // los contadores antiguos usan la cultura del llamador
             worker.Start();
             return load;
@@ -2502,7 +2502,7 @@ namespace Rocola
             QueueDataWrite(delegate(object ignorado)
             {
                 System.Threading.Thread th = System.Threading.Thread.CurrentThread;
-                System.Threading.ThreadPriority anterior = th.Priority;
+                System.Threading.ThreadPriority anterior = PrioridadHilo.De(th);   // EN LINUX: (th.Priority) la que se le apunto (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 try
                 {
                     PrioridadHilo.Pon(th, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (th.Priority = ...) la prioridad y su nice (Nativo/PrioridadHilo.cs)

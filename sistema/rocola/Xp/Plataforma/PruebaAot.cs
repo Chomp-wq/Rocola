@@ -118,10 +118,19 @@ namespace Rocola
                 foreach (System.Threading.ThreadPriority p in new[] { System.Threading.ThreadPriority.Highest, System.Threading.ThreadPriority.AboveNormal, System.Threading.ThreadPriority.Normal, System.Threading.ThreadPriority.BelowNormal, System.Threading.ThreadPriority.Lowest })
                 {
                     PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, p);
-                    r += p + "=" + PrioridadHilo.NiceDelHilo(PrioridadHilo.Este()) + " ";
+                    r += p + "=" + PrioridadHilo.NiceDelHilo(PrioridadHilo.Este()) + (PrioridadHilo.De(System.Threading.Thread.CurrentThread) == p ? "" : "(De dice otra)") + " ";
                 }
                 PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Normal);
                 return r + "y de vuelta Normal=" + PrioridadHilo.NiceDelHilo(PrioridadHilo.Este());
+            });
+            // Lo que .NET devuelve de Thread.Priority de un hilo que ya corre (por eso XP lee la suya con PrioridadHilo.De): con JIT, la puesta;
+            // con NativeAOT, siempre Normal
+            Prueba("~ win.thread_priority_de_net (tras ponerle Lowest)", () =>
+            {
+                PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Lowest);
+                string r = ".NET dice " + System.Threading.Thread.CurrentThread.Priority + ", De dice " + PrioridadHilo.De(System.Threading.Thread.CurrentThread);
+                PrioridadHilo.Pon(System.Threading.Thread.CurrentThread, System.Threading.ThreadPriority.Normal);
+                return r;
             });
             Di("~ win.prioridad_hilos", nices);
             Prueba("~ win.sleep1_ms", () =>

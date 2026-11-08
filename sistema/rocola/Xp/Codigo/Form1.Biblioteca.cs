@@ -84,7 +84,7 @@ namespace Rocola
         {
             // El BackgroundWorker usa un hilo compartido: restaurar su prioridad al salir.
             System.Threading.Thread thread = System.Threading.Thread.CurrentThread;
-            System.Threading.ThreadPriority previous = thread.Priority;
+            System.Threading.ThreadPriority previous = PrioridadHilo.De(thread);   // EN LINUX: (thread.Priority) la que se le apunto (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             scanDirectoryMemo = new ScanDirectoryMemo();
             bitacoraBiblioteca = Environment.TickCount; bitacoraFirmaMs = -1;   // (bitacora: MedidasBitacora.cs)
             try
@@ -1128,7 +1128,7 @@ namespace Rocola
                 finally { lecturaPlan = null; FinalizaLecturaBiblioteca(lectura, false, myGen); }
             });
             durScanTh.IsBackground = true;
-            durScanTh.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(durScanTh, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (durScanTh.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             // El reproductor de Windows es un objeto COM y solo se deja usar desde un hilo STA. Sin esto, la
             // duracion de los videos no se podria medir aqui.
             // EN LINUX: (durScanTh.SetApartmentState(ApartmentState.STA)) sin COM no hay apartamentos: el medidor se usa desde cualquier hilo
@@ -1775,7 +1775,7 @@ namespace Rocola
             // quitaba el turno al dibujado, y el fondo estrellado se veia ir lento o a tirones. Por debajo de lo
             // normal sigue quedandose con TODO el tiempo que la interfaz no usa (que es casi todo), pero en
             // cuanto hay un cuadro que dibujar, manda el cuadro. En automatico, la minima de todas.
-                preScanTh[carril].Priority = turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest;
+                PrioridadHilo.Pon(preScanTh[carril], turbo ? System.Threading.ThreadPriority.BelowNormal : System.Threading.ThreadPriority.Lowest);   // EN LINUX: (preScanTh[carril].Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 System.Threading.Interlocked.Increment(ref vivos);
                 try { preScanTh[carril].Start(); }
                 catch { finDeCarril(); throw; }
@@ -1791,7 +1791,7 @@ namespace Rocola
                 finally { lecturaPlan = null; if (!compartida) FinalizaLecturaBiblioteca(lectura, true, myGen); }
             });
             preparaRepasoTh.IsBackground = true;
-            preparaRepasoTh.Priority = System.Threading.ThreadPriority.BelowNormal;
+            PrioridadHilo.Pon(preparaRepasoTh, System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (preparaRepasoTh.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             preparaRepasoTh.Start();
             }
             catch { FinalizaLecturaBiblioteca(lectura, true, myGen); throw; }
@@ -2332,7 +2332,7 @@ namespace Rocola
                 int yo = k - 1;
                 th[k - 1] = new System.Threading.Thread(delegate () { PrioridadHilo.AlArrancar(); try { TramoDeClaves(desde, hasta); } catch { fallo[yo] = true; } });   // EN LINUX: AlArrancar: la prioridad que XP le pone antes de Start (Nativo/PrioridadHilo.cs)
                 th[k - 1].IsBackground = true;
-                th[k - 1].Priority = System.Threading.ThreadPriority.BelowNormal;
+                PrioridadHilo.Pon(th[k - 1], System.Threading.ThreadPriority.BelowNormal);   // EN LINUX: (th[k - 1].Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 th[k - 1].Start();
             }
             TramoDeClaves(0, Math.Min(n, trozo));   // el hilo que reparte tambien lleva su tramo
@@ -2553,7 +2553,7 @@ namespace Rocola
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
-                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)
+                    PrioridadHilo.Pon(t, System.Threading.ThreadPriority.BelowNormal);   // decodificar caratulas NUNCA por delante de la interfaz/render (clave si el CPU es de un nucleo)   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     t.Start();
                 }
             }
@@ -2582,7 +2582,7 @@ namespace Rocola
                     coverPumpCount++;
                     System.Threading.Thread t = new System.Threading.Thread(PrioridadHilo.Con(CoverPump));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                     t.IsBackground = true;
-                    t.Priority = System.Threading.ThreadPriority.BelowNormal;   // idem: la caratula puede esperar; un cuadro perdido se NOTA
+                    PrioridadHilo.Pon(t, System.Threading.ThreadPriority.BelowNormal);   // idem: la caratula puede esperar; un cuadro perdido se NOTA   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                     t.Start();
                 }
             }

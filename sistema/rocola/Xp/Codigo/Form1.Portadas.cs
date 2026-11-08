@@ -231,7 +231,7 @@ namespace Rocola
                 catch { }
             });
             t.IsBackground = true;
-            t.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             t.Start();
         }
 
@@ -1150,7 +1150,7 @@ namespace Rocola
                 catch { } // un lujo de arranque: la primera llamada normal conserva su inicializacion
                 finally { precalAudioEnCurso = false; }
             });
-            t.IsBackground = true; t.Priority = System.Threading.ThreadPriority.Lowest; t.Start();
+            t.IsBackground = true; PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest); t.Start();   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
         }
 #endif
 

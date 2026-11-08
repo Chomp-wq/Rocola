@@ -1,10 +1,12 @@
 // LA PRIORIDAD DE LOS HILOS Y DEL PROGRAMA, EN LINUX (port nativo de XP, 8-11-2026).
 //
 // En XP la rocola sube el programa a «por encima de lo normal» (Program.PrioridadDeLaRocola: Process.PriorityClass) y le pone a sus hilos una
-// prioridad (Thread.Priority, 23 sitios en 9 archivos: la salida de sonido en la mas alta, la musica por encima de lo normal, las portadas y
-// el repaso por debajo o en la minima). En Windows eso es SetPriorityClass y SetThreadPriority. En .NET de Linux Thread.Priority se guarda pero
-// no hace nada (medido: el hilo sigue con nice 0), y Process.PriorityClass solo cambia el hilo principal. Aqui se hace con setpriority sobre el
-// hilo (su numero, gettid), que en Linux es por hilo:
+// prioridad (Thread.Priority: 20 sitios que la ponen y 3 que la leen, en 9 archivos: la salida de sonido en la mas alta, la musica por encima
+// de lo normal, las portadas y el repaso por debajo o en la minima). En Windows eso es SetPriorityClass y SetThreadPriority, y GetThreadPriority
+// la devuelve. En .NET de Linux Thread.Priority no hace nada (medido: el hilo sigue en el nice del programa), Process.PriorityClass solo cambia
+// el hilo principal y, con NativeAOT, Thread.Priority de un hilo que ya corre dice siempre Normal (medido: la salida de sonido quedaba en la
+// normal). Aqui el codigo de XP pone y lee la prioridad con Pon y De (apuntada en una tabla propia, igual con JIT y con NativeAOT), y se hace
+// con setpriority sobre el hilo (su numero, gettid), que en Linux es por hilo:
 //
 //   LA CORRESPONDENCIA (a la vista):
 //     clase del programa (Windows)        nice del programa     nivel del hilo (Windows)          nice del hilo
@@ -28,6 +30,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -58,15 +61,24 @@ namespace Rocola
         // El numero del hilo que llama (gettid)
         internal static uint Este() { return (uint)Llamada(Gettid); }
 
+        // Lo que XP le pidio a cada hilo (en Windows lo guarda el sistema: GetThreadPriority). Sin apuntar, la normal (la de un hilo nuevo).
+        private static readonly ConditionalWeakTable<Thread, object> pedidas = new ConditionalWeakTable<Thread, object>();
+        // La prioridad de un hilo (en XP, t.Priority)
+        internal static ThreadPriority De(Thread t)
+        {
+            object p;
+            return pedidas.TryGetValue(t, out p) ? (ThreadPriority)p : ThreadPriority.Normal;
+        }
         // Pone la prioridad a un hilo (en XP, t.Priority = p). Al que llama se le pone ya; a uno que aun no arranca, al arrancar (Con).
         internal static void Pon(Thread t, ThreadPriority p)
         {
-            t.Priority = p;   // (.NET la guarda: Con la lee al arrancar)
+            t.Priority = p;   // (lo de .NET, como en XP: si el hilo ya acabo, lanza lo mismo)
+            pedidas.AddOrUpdate(t, p);
             if (object.ReferenceEquals(t, Thread.CurrentThread)) { try { setpriority(PrioProceso, Este(), Nice(p)); } catch { } }
         }
-        // Al empezar un hilo: la prioridad que XP le puso antes de Start (Thread.Priority), que en Linux no toma solo.
-        internal static void AlArrancar() { try { setpriority(PrioProceso, Este(), Nice(Thread.CurrentThread.Priority)); } catch { } }
-        // El cuerpo de un hilo que empieza con la prioridad que XP le puso antes de Start (Thread.Priority): en Linux no la toma solo.
+        // Al empezar un hilo: la prioridad que XP le puso antes de Start, que en Linux no toma solo.
+        internal static void AlArrancar() { try { setpriority(PrioProceso, Este(), Nice(De(Thread.CurrentThread))); } catch { } }
+        // El cuerpo de un hilo que empieza con la prioridad que XP le puso antes de Start: en Linux no la toma solo.
         internal static ThreadStart Con(ThreadStart cuerpo)
         {
             return delegate { AlArrancar(); cuerpo(); };

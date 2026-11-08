@@ -114,7 +114,7 @@ namespace Rocola
             {
                 hilo = new Thread(PrioridadHilo.Con(Bucle));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
                 hilo.IsBackground = true; hilo.Name = "audio (salida)";
-                try { hilo.Priority = ThreadPriority.Highest; } catch { }
+                try { PrioridadHilo.Pon(hilo, ThreadPriority.Highest); } catch { }   // EN LINUX: (hilo.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
                 hilo.Start();
             }
             aviso.Set();

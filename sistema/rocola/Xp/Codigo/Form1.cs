@@ -1861,7 +1861,7 @@ namespace Rocola
                 finally { PublishThumbRemaining(myGen, 0); }
             });
             t.IsBackground = true;
-            t.Priority = System.Threading.ThreadPriority.Lowest;
+            PrioridadHilo.Pon(t, System.Threading.ThreadPriority.Lowest);   // EN LINUX: (t.Priority = ...) la prioridad, apuntada para ponerla al arrancar (con NativeAOT, .NET no la devuelve: Nativo/PrioridadHilo.cs)
             t.Start();
         }
 
