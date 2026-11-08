@@ -53,5 +53,44 @@ namespace Rocola
             return gp;
         }
     }
+
+    // ================================================================ DiscoVivoGpu.cs
+    public partial class Form1
+    {
+        // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA: AnchoTexto (Form1.Ajustes.cs)
+        // con un Graphics: solo mide (MeasureString con su modo de letra), asi que basta uno sobre el mismo lienzo con ese modo; la Font es la que
+        // da el que llama (la de la lista, un control de WinForms, o fCola de Form1.Vistas.cs), tal cual
+        private static int AnchoTextoPantallaViva(SKCanvas g, AjusteLetra ajuste, string t, Font f)
+        {
+            using (Graphics gg = PuenteDibujo.GraphicsPantallaViva(g, ajuste)) return AnchoTexto(gg, t, f);
+        }
+        // sin Graphics (TamanoBoleto): la Font de esa Letra (la misma familia, tamano, unidad y estilo), soltada al acabar
+        private static int AnchoTextoPantallaViva(string t, Rocola.Nativo.Letra l)
+        {
+            using (Font f = PuenteDibujo.Font(l)) return AnchoTexto(t, f);
+        }
+
+        private partial class SongListView
+        {
+            // ---- LAS FIRMAS DE XP PARA Form1.Vistas.cs (PintaPagina, la pagina horneada de la lista): el lienzo del Graphics y su estado
+            private int AnchoDuracion(Graphics g) { return AnchoDuracion(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra); }
+            private string PlanFilaGpu(Graphics g, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)
+            { return PlanFilaGpu(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, idx, pos, enCola, suena, r, durW, xTexto, hCola, ref gen); }
+            private void PlanPaginaGpu(Graphics g, int rpp, int n, int w, float xTexto, int hCola)
+            { PlanPaginaGpu(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, rpp, n, w, xTexto, hCola); }
+            private int PastillaSonandoEq(Graphics g, int idx, ref float xMarca, float cy, int hCola)
+            {
+                EstadoLienzo e = PuenteDibujo.Estado(g);
+                return PastillaSonandoEq(PuenteDibujo.Lienzo(g), e.Letra, e.Filtro, e.Copia, e.Medio, idx, ref xMarca, cy, hCola);
+            }
+        }
+    }
+    internal static partial class PuenteDibujo
+    {
+        // un Graphics sobre el lienzo de un archivo traducido, para que mida uno que no lo esta (AnchoTexto: MeasureString, que solo mira el modo de
+        // letra); lo demas, lo de fabrica de un Graphics de un mapa de bits. No suelta el lienzo ni le cambia nada.
+        internal static Graphics GraphicsPantallaViva(SKCanvas c, AjusteLetra ajuste)
+        { return Graphics(c, new EstadoLienzo(false, ajuste, false, Filtro.Bilineal, false, SKMatrix.Identity)); }
+    }
 }
 #endif
