@@ -55,6 +55,10 @@ namespace Rocola
         // El hilo de la pantalla: el que corre el bucle (o el primero que crea una ventana). EnSuHilo es lo contrario de InvokeRequired.
         internal static Thread Hilo;
         internal static bool EnSuHilo { get { Thread h = Hilo; return h == null || Thread.CurrentThread == h; } }
+        // InvokeRequired de un dueno: hay que encolar si tiene ventana y este no es el hilo de la pantalla. Sin ventana da falso, como en
+        // WinForms (busca una ventana en la cadena de padres y, si no hay, contesta false: Control.cs:2844-2872), y el que pregunta sigue
+        // en su hilo. (Los duenos de XP son ventanas de arriba: la rocola y la hoja de Ctrl+F3.)
+        internal static bool FueraDeSuHilo(IDuenoDeEncargos dueno) { return dueno.Vida != 0 && !EnSuHilo; }
         internal static object Principal;   // (pruebas: VolcadoEstado) la rocola que corre en Corre
 
         // ---------- los encargos (PostMessage) y la entrada ----------

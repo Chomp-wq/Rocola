@@ -1651,7 +1651,7 @@ namespace Rocola
                         System.Threading.ThreadPool.QueueUserWorkItem(delegate
                         {
                             CargaModelosPorGenero();
-                            try { if (!dlg.IsDisposed && dlg.IsHandleCreated) dlg.BeginInvoke((MethodInvoker)delegate { if (!dlg.IsDisposed) pintaIa(); }); }
+                            try { if (!dlg.IsDisposed && dlg.IsHandleCreated) PantallaRocola.Encola(dlg, delegate { if (!dlg.IsDisposed) pintaIa(); }); }   // EN LINUX: un encargo al hilo de la pantalla nativa, con la vida de la hoja (en XP, dlg.BeginInvoke)
                             catch (InvalidOperationException) { }   // la ventana se cerro mientras tanto
                         });
                     };

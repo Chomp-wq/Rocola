@@ -293,7 +293,7 @@ namespace Rocola
                 LogError("Video " + Path.GetFileName(path ?? ""), ex);   // el detalle, que antes solo se veia en la linea de estado
                 Diag("video: NO ABRIO - " + ex.Message);
                 // el video no arranco: pasar al siguiente sin trabar la cola (tras desenredar la pila de PlayNext)
-                try { if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { PlayNext(); }); } catch { }
+                try { if (this.IsHandleCreated) PantallaRocola.Encola(this, delegate { PlayNext(); }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             }
         }
 

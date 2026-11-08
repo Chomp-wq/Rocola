@@ -272,7 +272,7 @@ namespace Rocola
                     // La salida arranca cuando el hilo de la musica tiene su primer segundo: se le deja llegar (con los mensajes corriendo).
                     int t0 = Environment.TickCount;
                     while (unchecked(Environment.TickCount - t0) < 2000 && output != null && output.PlaybackState != NAudio.Wave.PlaybackState.Playing)
-                    { Application.DoEvents(); System.Threading.Thread.Sleep(10); }
+                    { PantallaRocola.Bombea(); System.Threading.Thread.Sleep(10); }   // EN LINUX: todo lo pendiente de la pantalla nativa, sin Libre (en XP, Application.DoEvents)
                     return true;
                 }
             }
@@ -331,7 +331,7 @@ namespace Rocola
             DiagAnfitrion h = new DiagAnfitrion();
             GpuPanel p = gpuPanel;
             h.Cuadro = delegate { return p.DiagCuadroPaceado(); };
-            h.Bombea = delegate { Application.DoEvents(); };
+            h.Bombea = delegate { PantallaRocola.Bombea(); };   // EN LINUX: todo lo pendiente de la pantalla nativa, sin Libre (en XP, Application.DoEvents)
             h.Interrumpido = delegate { return DiagInterrumpido(c); };
             h.Ahora = delegate { return GpuPanel.AhoraMs(); };
             h.PeriodoRefMs = delegate { return p.DiagPeriodoMs; };

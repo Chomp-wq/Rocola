@@ -199,6 +199,15 @@ namespace Rocola
                 Mira("encargo de una ventana viva: corre", Log() + (en.Hecho ? "+hecho" : ""), "corre+hecho", "InvokeMarshaledCallbacks");
             }
 
+            // 6b. FueraDeSuHilo (InvokeRequired): con ventana y en otro hilo; sin ventana, falso (Control.cs:2844-2872)
+            {
+                Dueno con = new Dueno(); con.Vida = 9; Dueno sin = new Dueno();
+                bool a = false, b = true, c = true;
+                Desde(delegate { a = PantallaRocola.FueraDeSuHilo(con); b = PantallaRocola.FueraDeSuHilo(sin); });
+                c = PantallaRocola.FueraDeSuHilo(con);
+                Mira("FueraDeSuHilo: otro hilo con ventana, otro sin ventana, su hilo", a + "," + b + "," + c, "True,False,False", "InvokeRequired, Control.cs:2844-2872");
+            }
+
             // 7. LO PENDIENTE (PeekMessage) Y LA ESPERA (MsgWaitForMultipleObjects)
             {
                 PantallaRocola.Bombea();

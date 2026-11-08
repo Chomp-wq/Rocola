@@ -169,7 +169,7 @@ namespace Rocola
                     try
                     {
                         if (IsHandleCreated)
-                            BeginInvoke((MethodInvoker)delegate { if (mio == warmSongGen && !preScanStop) PideLookahead(ruta); });
+                            PantallaRocola.Encola(this, delegate { if (mio == warmSongGen && !preScanStop) PideLookahead(ruta); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                     }
                     catch { }
 
@@ -216,7 +216,7 @@ namespace Rocola
                         {
                             if (IsHandleCreated)
                             {
-                                BeginInvoke((MethodInvoker)delegate {
+                                PantallaRocola.Encola(this, delegate {   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                     try { if (mio == warmSongGen && !preScanStop) { PublicaMedidaDeFuente(ruta, wrms, wdur, weq, wfuente); if (whay) PublicaIntegradaDeFuente(ruta, wentera, wfuente); } }
                                     finally { SueltaMedida(ruta); }
                                 });
@@ -650,7 +650,7 @@ namespace Rocola
                         {
                             if (this.IsHandleCreated && RegisterCoverArrival(key, j.Gen))
                             {
-                                try { this.BeginInvoke((MethodInvoker)FlushCoverArrivals); }
+                                try { PantallaRocola.Encola(this, FlushCoverArrivals); }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                                 catch
                                 {
                                     lock (coverLock) { coverArrivals.Clear(); coverArrivalsPosted = false; }

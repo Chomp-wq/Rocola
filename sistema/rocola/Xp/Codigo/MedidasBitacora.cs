@@ -116,7 +116,7 @@ namespace Rocola
         {
             HilosRocola.Nombra("vigia de la pantalla");
             ManualResetEvent atendido = new ManualResetEvent(false);
-            MethodInvoker toque = delegate { atendido.Set(); };
+            Action toque = delegate { atendido.Set(); };   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
             while (!parar)
             {
                 Thread.Sleep(paso);
@@ -126,7 +126,7 @@ namespace Rocola
                 try
                 {
                     if (pantalla.IsDisposed || !pantalla.IsHandleCreated) continue;
-                    pantalla.BeginInvoke(toque);
+                    PantallaRocola.Encola(pantalla, toque);   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                 }
                 catch { continue; }   // cerrandose: no hay a quien preguntar
                 string que = null; bool dichoQueSigue = false, cerrada = false;

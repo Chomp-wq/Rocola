@@ -474,13 +474,13 @@ namespace Rocola
         {
             IWavePlayer w = sender as IWavePlayer;
             if (w == null) return;
-            MethodInvoker suelta = delegate
+            Action suelta = delegate   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
             {
                 if (object.ReferenceEquals(pruebaSalida, w)) { pruebaSalida = null; pruebaSonando = null; bandaSonando = null; }
                 try { w.PlaybackStopped -= PruebaAcabo; } catch { }
                 try { w.Dispose(); } catch { }
             };
-            try { if (IsHandleCreated && !IsDisposed) { BeginInvoke(suelta); return; } } catch { }
+            try { if (IsHandleCreated && !IsDisposed) { PantallaRocola.Encola(this, suelta); return; } } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             suelta();
         }
 

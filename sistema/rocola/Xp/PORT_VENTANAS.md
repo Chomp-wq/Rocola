@@ -144,3 +144,43 @@ lineas, lo que tenian y lo que tienen; avisa si una no esta como se esperaba; ya
      cruce raro (una vez en unas 30 corridas con teclas mantenidas; 30 pulsaciones de 503 a 706 ms seguidas no lo dieron ni en la
      referencia ni aqui), arreglado por construccion. moneda, cierreq y tab otra vez alternando (R8/N6): IGUALES. La escena tab pide
      su ultimo estado a los 21,5 s.
+
+2. Los encargos, InvokeRequired y DoEvents:
+   - Los 27 BeginInvoke de XP pasan a `PantallaRocola.Encola(dueno, metodo)`, con el mismo dueno (la rocola; la hoja de Ctrl+F3 en
+     Form1.Ajustes.cs:1654; la pantalla que vigila MedidasBitacora.cs:129): AperturaAudio.cs (4), BombaSonido.cs, Form1.Ajustes.cs,
+     Form1.Biblioteca.cs (9), Form1.Datos.cs, Form1.Portadas.cs (3), Form1.Sonido.cs, Form1.Video.cs, Form1.cs (2),
+     MedidasBitacora.cs, PlanBiblioteca.cs, SalaLocal.cs y SubirTodo.cs. Los delegados que XP declaraba como MethodInvoker para
+     encolarlos pasan a Action (el mismo delegado sin argumentos de System), y el gancho de pruebas `vuelveALaPantalla` a
+     Action<Action> (BombaSonido.cs:293 y 297, SubirTodo.cs:129).
+   - Los 2 InvokeRequired (Form1.Sonido.cs:1577, PlanBiblioteca.cs:98) pasan a `PantallaRocola.FueraDeSuHilo(this)` y no a
+     `!EnSuHilo` a secas: InvokeRequired es falso si no hay ventana (Control.cs:2844-2872) y el que pregunta sigue en su hilo.
+   - Los 4 DoEvents de la rocola pasan a `PantallaRocola.Bombea()` (Rendimiento.cs:617 y 632, Form1.DiagnosticoCompleto.cs:275 y
+     334). El de Form1.Biblioteca.cs:1318 (el repaso mide la duracion de un video con el reproductor de XP) queda para la parte del
+     video; ya no toca la cola de la rocola (V2, diferencia 5).
+   - Cada texto cambiado esta en Rocola/ (XP): 60 de 60 (los relojes y el gancho, en XP con el nombre entero:
+     `System.Windows.Forms.Timer`, `System.Windows.Forms.MethodInvoker`). En el codigo de XP no queda ningun BeginInvoke,
+     InvokeRequired, Application.Run, Application.ThreadException ni Timer de WinForms (solo el DoEvents del video).
+   - Comprobado: compila (los 15 avisos de siempre); las reglas una por una 28 de 28 (con FueraDeSuHilo) en JIT y en NativeAOT;
+     41 de 41; las 10 escenas alternando con la referencia (R9/N7): arranque, moneda, buscador, cierreq, altf4 y kill9 IGUALES,
+     sigterm y f3sigterm el apagado como en V2; en video, el reloj de 42 ms dio 281 ticks frente a 321 (holgura 38), pero en las
+     demas corridas alternadas sale parejo (referencia 346, 344, 340, 333, 321, 346, 294; traduccion 352, 353, 349, 337, 281, 324,
+     309: la R11 y la N7 coincidieron con carga) y otra vez alternando (R10/N8, R11/N9) IGUAL; en tab el ultimo estado caia entre
+     las ultimas teclas (ahora a los 21,8 s; R10/N8 IGUAL).
+   - NativeAOT del programa final: 0 avisos de IL ni de AOT. arranque, moneda, cierreq, altf4, sigterm, f3sigterm y kill9 con el
+     ejecutable nativo: secuencias y estados como en JIT, `rocola_estado.txt` como debe (falta tras Ctrl+Alt+Q, Alt+F4 y SIGTERM;
+     queda tras SIGKILL); la hoja de Ctrl+F3 solo cambia en la fecha del titulo. El reloj de 42 ms da mas ticks en NativeAOT (23-24
+     por segundo, lo que da WM_TIMER con 42 ms) que la referencia en JIT con la maquina cargada (15-21): es lo que tarda cada vuelta,
+     no la regla.
+
+## Lo que queda
+
+- De esta tanda: SetUnhandledExceptionMode, EnableVisualStyles y SetCompatibleTextRenderingDefault de Program.cs (no hacen nada;
+  el primero es el gancho de `--prueba-video`, que habra que mover a otro sitio); el DoEvents del video (Form1.Biblioteca.cs:1318,
+  parte del video); el SynchronizationContext de la pantalla (hoy el de la capa, ContextoVentana: pasarlo a Nativo).
+- La siguiente tanda (diseno, pasos 3 a 9): las teclas (Keys, Message, ProcessCmdKey, el bit 30 como PulsoTecla.Repetida,
+  teclasEnEspera), GetKeyState y GetAsyncKeyState, el foco (ForceFocus), Cursor y Screen; las 16 vistas sin herencia; GpuPanel sin
+  Control (con la parte de la tarjeta); Form1 sin Form (Corre llamara directo a sus pasos: OnResize, OnShown, el cierre con su
+  razon); Hoja, Rotulo, Grupo y las piezas de Ctrl+F3; Ctrl+F2, los avisos y F12; y al final quitar la capa de ventanas.
+- Fuera del programa: que `S99rocola stop` (o el `::shutdown` de inittab) mande SIGTERM a la rocola y espere su salida antes del
+  SIGTERM/SIGKILL general de BusyBox (V2).
+- Nada de esto se ha probado en el A4: todo es fuera de pantalla (llvmpipe) en la maquina de pruebas.

@@ -815,7 +815,7 @@ namespace Rocola
                         esperar = true; arranqueEnEspera = true;
                         load.AlTerminar = delegate
                         {
-                            try { BeginInvoke((MethodInvoker)SigueArranque); } catch { }   // la ventana se cerro mientras tanto
+                            try { PantallaRocola.Encola(this, SigueArranque); } catch { }   // la ventana se cerro mientras tanto; EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                         };
                     }
             if (!esperar) SigueArranque();
@@ -1627,7 +1627,7 @@ namespace Rocola
             gestorOfrecido = true;
             // Despues de que la pantalla este pintada: si no, la ventana saldria encima de una rocola a
             // medio dibujar.
-            try { this.BeginInvoke(new MethodInvoker(AbrePorFaltaDeMusica)); } catch { }
+            try { PantallaRocola.Encola(this, AbrePorFaltaDeMusica); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
         }
         private string lastFreshRootSig;  // firma tomada alrededor del MISMO recorrido que produjo la instantanea
 

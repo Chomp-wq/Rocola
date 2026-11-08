@@ -210,7 +210,7 @@ namespace Rocola
                 long mio = audioStartVersion;
                 try
                 {
-                    BeginInvoke((MethodInvoker)delegate
+                    PantallaRocola.Encola(this, delegate   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                     {
                         if (!object.ReferenceEquals(audioReady, yaAbierto)) return;
                         audioReady = null;
@@ -227,7 +227,7 @@ namespace Rocola
                 delegate(Action action)
                 {
                     if (IsDisposed || Disposing || !IsHandleCreated) throw new ObjectDisposedException("Rocola");
-                    BeginInvoke((MethodInvoker)delegate { action(); });
+                    PantallaRocola.Encola(this, delegate { action(); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                 });
         }
         // QUE ARCHIVO SUENA DE VERDAD. En esta rocola, el mismo que pide la cola: aqui no hay IA en vivo
@@ -248,7 +248,7 @@ namespace Rocola
                 delegate(Action action)
                 {
                     if (IsDisposed || Disposing || !IsHandleCreated) throw new ObjectDisposedException("Rocola");
-                    BeginInvoke((MethodInvoker)delegate { action(); });
+                    PantallaRocola.Encola(this, delegate { action(); });   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                 }); }
             catch { SueltaLookahead(); } // precarga opcional: un fallo al crear el hilo no corta la UI
         }
@@ -325,7 +325,7 @@ namespace Rocola
             long failedVersion = audioStartVersion;
             try
             {
-                if (IsHandleCreated) BeginInvoke((MethodInvoker)delegate {
+                if (IsHandleCreated) PantallaRocola.Encola(this, delegate {   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
                     if (audioStartVersion == failedVersion && !IsDisposed && !Disposing) PlayNext();
                 });
             }

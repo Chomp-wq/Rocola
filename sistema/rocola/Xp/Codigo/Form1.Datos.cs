@@ -2516,7 +2516,7 @@ namespace Rocola
             catch (Exception ex)
             {
                 LogError("Respaldo incompleto en " + root + " (se conservan los anteriores)", ex);
-                try { BeginInvoke((MethodInvoker)delegate { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt", Color.FromArgb(200, 80, 70)); }); } catch { }
+                try { PantallaRocola.Encola(this, delegate { ShowToast("Respaldo incompleto; anteriores conservados. Ver rocola_error.txt", Color.FromArgb(200, 80, 70)); }); } catch { }   // EN LINUX: un encargo al hilo de la pantalla nativa (en XP, BeginInvoke: PostMessage a la ventana de la rocola)
             }
         }
 

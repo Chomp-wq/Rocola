@@ -95,7 +95,7 @@ namespace Rocola
             if (IsDisposed || Disposing || !IsHandleCreated) return;
             try
             {
-                if (InvokeRequired) BeginInvoke((MethodInvoker)delegate { SueltaPlanTerminado(lectura, repaso, generacion); });
+                if (PantallaRocola.FueraDeSuHilo(this)) PantallaRocola.Encola(this, delegate { SueltaPlanTerminado(lectura, repaso, generacion); });   // EN LINUX: FueraDeSuHilo es InvokeRequired (la rocola tiene ventana y este no es el hilo de la pantalla); y un encargo al hilo de la pantalla (BeginInvoke)
                 else SueltaPlanTerminado(lectura, repaso, generacion);
             }
             catch (InvalidOperationException) { }

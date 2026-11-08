@@ -1574,7 +1574,7 @@ namespace Rocola
         {
             // Algunos controladores WinMM notifican desde su hilo de callback. Toda la secuencia siguiente
             // toca controles y la cola, asi que siempre se termina en el hilo de la interfaz.
-            if (InvokeRequired) { try { BeginInvoke((MethodInvoker)delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }
+            if (PantallaRocola.FueraDeSuHilo(this)) { try { PantallaRocola.Encola(this, delegate { Output_PlaybackStopped(sender, e); }); } catch { } return; }   // EN LINUX: FueraDeSuHilo es InvokeRequired (la rocola tiene ventana y este no es el hilo de la pantalla); y un encargo al hilo de la pantalla (BeginInvoke)
             if (!object.ReferenceEquals(sender, output)) return;   // callback viejo de una salida ya reemplazada
             if (EsMudaDiag(nowPlaying)) { DisposePlaybackNow(); return; }   // la muda del diagnostico acabo o fallo: ni credito, ni danada, ni PlayNext
             Exception deLaSalida = e.Exception;   // lo que aviso la salida misma (no un fallo de lectura de la cancion)
