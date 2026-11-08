@@ -1,5 +1,11 @@
 # La rocola de XP traducida a Linux (en curso)
 
+> **Aclaración del dueño del 8-11-2026:** lo de abajo NO es lo pedido. El código de XP sigue llamando a WinForms, GDI+, Direct3D 9 y
+> al reproductor de Windows Media, y `Plataforma/` los imita (Ventanas, Dibujo2D, Direct3DaGL, ReproductorWmp). Lo pedido es traducir
+> el CÓDIGO de cada archivo para que llame directo a lo nativo de Linux (SkiaSharp, OpenGL ES, libmpv, ALSA, evdev, KMS/EGL), sin
+> capas que imiten a Windows. Esta versión queda solo como referencia para comparar punto por punto mientras se hace la traducción de
+> verdad, y no se mete en Rocola OS (regla en `AGENTS.md`).
+
 Decisión del dueño del 7 de noviembre de 2026: traducir **todo** el código de la rocola de XP para que funcione de forma nativa en Linux
 e idéntica. El plan está en `PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md` y la regla en `AGENTS.md`.
 
