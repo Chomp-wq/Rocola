@@ -123,7 +123,7 @@ namespace Rocola
                 sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: Alignment y LineAlignment = Center
                 TextoGdiPlus.Trazo(p, "?", fam, new RectangleF(r.X - r.Width * .3f, r.Y + r.Height * .04f, r.Width * 1.6f, r.Height), sf);   // EN LINUX: p.AddString (Nativo/TextoGdiPlus.cs)
                 using (SKShader degradado = Degradado.Lineal(new RectangleF(r.X, r.Y, r.Width, r.Height + 1),   // EN LINUX: LinearGradientBrush(caja, a, b, 90): su shader (Nativo/Degradado.cs) en un SKPaint
-                    Color.FromArgb(a, 255, 238, 150), Color.FromArgb(a, 214, 140, 24), 90f)) using (SKPaint oro = new SKPaint { Shader = degradado })
+                    Color.FromArgb(a, 255, 238, 150), Color.FromArgb(a, 214, 140, 24), 90f)) using (SKPaint oro = new SKPaint { Shader = degradado })   // EN LINUX: el pincel del degradado: un SKPaint con su shader (se sueltan con sus using)
                 using (SKPaint filo = new SKPaint { Color = Color.FromArgb(a * 3 / 4, 70, 40, 6).Sk(), StrokeWidth = Math.Max(1.2f, r.Height * .06f) })   // EN LINUX: Pen(color, ancho)
                 {
                     filo.StrokeJoin = SKStrokeJoin.Round;   // EN LINUX: LineJoin.Round

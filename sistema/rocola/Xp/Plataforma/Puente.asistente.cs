@@ -22,9 +22,10 @@ namespace Rocola
         // a un pincel de GDI+ (lo mismo que BrochaReposo y BrochaSuena con los pinceles con shader): aqui va el camino de XP (PulidoGpu.cs,
         // 142-177) con los pinceles de GDI+, sobre el MISMO guardado de cuatro mapas (degradados, degradadoTurno y su cerrojo) y con las MISMAS
         // cuentas (DegradadosGuardados, DegradadosReusados) que la traducida: los dos caminos se reparten los mapas como en XP. El TextureBrush
-        // pinta un mapa del guardado prestado (PuenteDibujo.Bitmap: el dueno es el guardado, como el Bitmap de XP), y el de los tamanos de mas de
-        // 2048, uno que se suelta al volver (como en XP y en la capa). Se borra cuando esos dos llamen a la traducida, DegradadoV(r, c0, c1,
-        // false), que da el shader con el medio pixel de fabrica de su lienzo.
+        // pinta un mapa del guardado prestado (PuenteDibujo.Bitmap: el dueno es el guardado, como el Bitmap de XP). El de los tamanos de mas de
+        // 2048 se suelta al volver, como en XP; en GDI+ el TextureBrush tiene su copia, en la capa no, y pintarlo lanza ArgumentNullException,
+        // como en la referencia y en la base (la traducida si lo pinta: Skia copia los puntos; PORT_asistente.md, «Riesgos»). Se borra cuando
+        // esos dos llamen a la traducida, DegradadoV(r, c0, c1, false), que da el shader con el medio pixel de fabrica de su lienzo.
         internal static Rocola.Dibujo2D.Brush DegradadoV(Rectangle r, Color c0, Color c1)
         {
             if (!InterfazTramada || r.Height < 2 || r.Width < 1) return new LinearGradientBrush(r, c0, c1, 90f);
