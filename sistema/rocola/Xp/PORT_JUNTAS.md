@@ -54,3 +54,31 @@ Riesgos apuntados por los revisores (para lo que falta traducir y para N7):
   `Imagenes.Lee`, `Mapas.Copia`): `Pixeles.CopiaSinPremultiplicar` lee ese formato (revisión de frontera).
 - `HorneaDegradadoV` (PulidoGpu.cs) suelta el mapa después de crear el `TextureBrush`: al traducirlo, hacer el shader antes de soltarlo
   (solo afecta a degradados de más de 2 048 px; revisión de reposo).
+
+## 8-11-2026 (21:00-22:20): los grupos reposo y acabado-estilo (la tanda 2a entera)
+
+- `f2f9dcb`: el grupo reposo (EstadoReposoGpu, FranjaLigeraGpu y TextoMovilGpu con SkiaSharp directo) con su revisión («bien»).
+- `f997e61`: el grupo acabado-estilo (AcabadoGpu, EstiloGpu, GuiaRojoGpu y BuscadorLigeroGpu) con su revisión (solo la tabla de su
+  documento).
+
+Sin choques; los 109 archivos de `Codigo/` con su número de líneas y de CRLF. Comprobado con todo junto (`scratchpad/merge/verifica-junta4.sh`
+y `verifica-junta5.sh`):
+
+- **Compila** desde cero (`--no-incremental`): 0 errores, los 15 avisos de siempre. **NativeAOT**: 0 avisos IL/AOT; escenas arranque,
+  cierreq y kill9 IGUALES.
+- **Arneses**: acabado-estilo 0 líneas distintas de 6 603 frente a la referencia y de 6 607 frente a la base, con las dos letras; reposo
+  (1 791 líneas) y suena (487) IGUALES con las dos letras, ya juntos.
+- **Recorridos** (los nueve): con reposo, capas quietas 217 de 217; con acabado-estilo, 212 de 217: las 5 son la hoja de Ctrl+F3 del
+  recorrido hojas (ver abajo). Recorrido del disco sin el vidrio en piezas (`VistasAcabadoEstilo/disco.sh`), alternado con la referencia:
+  capas 60 de 60, ninguna textura fuera de la referencia. ayuda y pared2 alternados con la referencia (dos veces): la rama queda en el ruido
+  de la referencia contra sí misma (146 y 152 de 157 texturas quietas frente a 146 de 149).
+- **Escenas alternadas** (RJ5/J5): todas IGUALES (también tab) salvo sigterm y f3sigterm, lo aceptado.
+
+La hoja de Ctrl+F3 del recorrido hojas (capa 4, captura a captura contra las de la referencia guardadas en `junta/pares`): con la máquina
+más cargada difieren las capturas de 8 a 12 s y de 16,5 a 21 s; todo lo que cambia es lo que depende de cuánto lleva medido el repaso de
+la biblioteca: «34%» frente a «0%», «(van 14)» frente a «aún no hay bastantes medidas», «12 aceptables 1 pobres» frente a «6 aceptables
+0 pobres», «ya está al día» frente a «faltan 9 archivos». Es la misma causa de arriba (las prioridades de hilo de XP puestas de verdad).
+
+Para quitar después (lo apuntaron los revisores): el renglón del artista de la franja pasa por tres puentes de reposo y acabado-estilo
+(FranjaLejos → PintaArtistaCompacto → PintaRenglonLejos → TextoConCinta: sale lo mismo, pero ya puede llamarse directo), y entre suena y
+reposo PintaTituloGrandeReposo, PintaMinutosColaReposo, PintaTextoMovilSuena y FuenteTituloReposo pasan a la llamada directa.
