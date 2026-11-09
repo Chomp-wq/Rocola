@@ -98,8 +98,8 @@ namespace Rocola
                 {
                     Size g = GpuPanel.AsistentePanelRect(w, h).Size;
                     if (g.Width < 8 || g.Height < 8) return;
-                    using (Bitmap panel = PintaPanelAsistente(g.Width, g.Height, 0, 0, 0)) { }
-                    using (Bitmap adios = PintaAdiosAsistente(g.Width, g.Height)) { }
+                    using (SkiaSharp.SKBitmap panel = PintaPanelAsistente(g.Width, g.Height, 0, 0, 0)) { }   // EN LINUX: PintaPanelAsistente (AsistenteRocola.cs, ya traducido) da un SKBitmap: se suelta igual
+                    using (SkiaSharp.SKBitmap adios = PintaAdiosAsistente(g.Width, g.Height)) { }   // EN LINUX: PintaAdiosAsistente (AsistenteRocola.cs, ya traducido) da un SKBitmap: se suelta igual
                     break;
                 }
                 case 6:   // el aviso, la invitacion a meter una moneda, la moneda y su "+4 creditos"

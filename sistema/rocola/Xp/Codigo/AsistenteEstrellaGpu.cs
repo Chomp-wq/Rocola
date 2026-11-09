@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using SkiaSharp;   // EN LINUX: el globo de la estrella llega como SKBitmap (lo hornean AsistenteRocola.cs y AsistenteGuiaRocola.cs con SkiaSharp directo) y la tarjeta lo sube tal cual (Upload ya recibe SKBitmap): nada de GDI+
 
 namespace Rocola
 {
@@ -9,7 +9,7 @@ namespace Rocola
     internal struct AsistenteEstadoGpu
     {
         public bool Visible, Animada;
-        public Bitmap Panel;
+        public SKBitmap Panel;   // EN LINUX: un SKBitmap
         public int Version;
         public AsistenteGestoGpu Gesto;
         public int Evento, Pagina, Leccion, Seleccion;
@@ -36,7 +36,7 @@ namespace Rocola
         private float asistenteFrente;
         private float asistenteEstira;   // estira y aplasta de este cuadro (AsistentePersonalidadGpu.cs); 0 = forma de siempre
         private IntPtr asistenteTex;
-        private Bitmap asistenteBmp; // referencia prestada; no se libera aqui
+        private SKBitmap asistenteBmp; // referencia prestada; no se libera aqui   // EN LINUX: un SKBitmap (solo se compara por identidad, como el Bitmap de XP)
         private int asistenteVer = -1, asistenteW, asistenteH;
         private int asistenteTextoClave = -1;
         private double asistenteTextoInicio;

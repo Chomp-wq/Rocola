@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los globos de la estrella (la pregunta y la despedida) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (RoundedPath, CtrlDot, CtrlTxt) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs)
 
 namespace Rocola
 {
@@ -39,7 +39,7 @@ namespace Rocola
         private int asistentePagina, asistenteLeccion, asistenteSeleccion;
         private int asistenteEvento;
         private AsistenteGestoGpu asistenteGesto;
-        private Bitmap asistentePanel;
+        private SKBitmap asistentePanel;   // EN LINUX: un SKBitmap (la tarjeta lo sube tal cual)
         private int asistentePanelVersion, asistentePanelPagina = -1, asistentePanelSeleccion = -1, asistentePanelLeccion = -1;
         private Size asistentePanelTam;
         private bool AsistenteVisible { get { return asistenteVisible || AsistenteRegresando; } }
@@ -323,10 +323,10 @@ namespace Rocola
             int leccion = guia ? ClaveGuia() : 0;
             if (asistentePanel != null && asistentePanelTam == tam && asistentePanelPagina == pagina
                 && asistentePanelSeleccion == asistenteSeleccion && asistentePanelLeccion == leccion) return;
-            Bitmap nuevo = adios ? PintaAdiosAsistente(tam.Width, tam.Height)
+            SKBitmap nuevo = adios ? PintaAdiosAsistente(tam.Width, tam.Height)   // EN LINUX: un SKBitmap
                 : guia ? PintaGuiaActual(tam.Width, tam.Height)
                 : PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion);
-            Bitmap anterior = asistentePanel; asistentePanel = nuevo; asistentePanelVersion++;
+            SKBitmap anterior = asistentePanel; asistentePanel = nuevo; asistentePanelVersion++;   // EN LINUX: un SKBitmap
             asistentePanelTam = tam; asistentePanelPagina = pagina; asistentePanelSeleccion = asistenteSeleccion; asistentePanelLeccion = leccion;
             asistentePagina = pagina; asistenteLeccion = leccion;
             if (anterior != null) anterior.Dispose();
@@ -364,91 +364,91 @@ namespace Rocola
 
         // Contorno unico: la cola del globo apunta a la estrella y no deja una
         // costura entre un rectangulo y un triangulo. Solo se compone al cambiar texto.
-        internal static GraphicsPath AsistenteGloboCamino(int w, int h)
+        internal static SKPath AsistenteGloboCamino(int w, int h)   // EN LINUX: un SKPath, hecho como lo hace un GraphicsPath de GDI+ (cada arco o linea se une con una linea al punto anterior de la figura)
         {
-            GraphicsPath p = new GraphicsPath();
-            if (w < 64 || h < 64) { p.AddRectangle(new RectangleF(0, 0, Math.Max(1, w), Math.Max(1, h))); return p; }
+            SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): su relleno de fabrica (Alternate) es par-impar
+            if (w < 64 || h < 64) { p.AddRect(new SKRect(0, 0, Math.Max(1, w), Math.Max(1, h))); return p; }   // EN LINUX: p.AddRectangle(RectangleF(0, 0, ancho, alto)): la caja de (0, 0) a (ancho, alto)
             float x = Math.Min(32, Math.Max(18, w / 18)), y = 2, derecha = w - 3, abajo = h - 3;
             float r = Math.Min(36, Math.Min((derecha - x) * .18f, h * .10f));
             float cola = h * .46f, baseCola = Math.Min(30, h * .055f);
-            p.AddArc(x, y, r * 2, r * 2, 180, 90);
-            p.AddArc(derecha - r * 2, y, r * 2, r * 2, 270, 90);
-            p.AddArc(derecha - r * 2, abajo - r * 2, r * 2, r * 2, 0, 90);
-            p.AddArc(x, abajo - r * 2, r * 2, r * 2, 90, 90);
-            p.AddLine(x, abajo - r, x, cola + baseCola);
-            p.AddBezier(x, cola + baseCola, x - 2, cola + baseCola * .3f, 4, cola + 4, 2, cola);
-            p.AddBezier(2, cola, 6, cola - 2, x - 3, cola - baseCola * .8f, x, cola - baseCola);
-            p.AddLine(x, cola - baseCola, x, y + r); p.CloseFigure(); return p;
+            p.ArcTo(new SKRect(x, y, x + r * 2, y + r * 2), 180, 90, true);   // EN LINUX: p.AddArc(x, y, r * 2, r * 2, 180, 90): en la caja (x, y, x + ancho, y + alto); el primero de la figura empieza en su punto (forceMoveTo)
+            p.ArcTo(new SKRect(derecha - r * 2, y, derecha - r * 2 + r * 2, y + r * 2), 270, 90, false);   // EN LINUX: p.AddArc: con la figura abierta, una linea desde el punto anterior hasta el arco (forceMoveTo falso), como GDI+
+            p.ArcTo(new SKRect(derecha - r * 2, abajo - r * 2, derecha - r * 2 + r * 2, abajo - r * 2 + r * 2), 0, 90, false);   // EN LINUX: p.AddArc
+            p.ArcTo(new SKRect(x, abajo - r * 2, x + r * 2, abajo - r * 2 + r * 2), 90, 90, false);   // EN LINUX: p.AddArc
+            p.LineTo(x, abajo - r); p.LineTo(x, cola + baseCola);   // EN LINUX: p.AddLine(x1, y1, x2, y2): con la figura abierta, una linea hasta el primer punto y otra hasta el segundo, como GDI+
+            p.LineTo(x, cola + baseCola); p.CubicTo(x - 2, cola + baseCola * .3f, 4, cola + 4, 2, cola);   // EN LINUX: p.AddBezier: una linea hasta su primer punto (aqui, el mismo) y la curva
+            p.LineTo(2, cola); p.CubicTo(6, cola - 2, x - 3, cola - baseCola * .8f, x, cola - baseCola);   // EN LINUX: p.AddBezier
+            p.LineTo(x, cola - baseCola); p.LineTo(x, y + r); p.Close(); return p;   // EN LINUX: p.AddLine y p.CloseFigure()
         }
 
         // El globo de la despedida: el mismo globo, con «¡Adios!» y como volver a llamarla.
         internal const int PaginaAdios = 99;
-        internal static Bitmap PintaAdiosAsistente(int w, int h)
+        internal static SKBitmap PintaAdiosAsistente(int w, int h)   // EN LINUX: un SKBitmap
         {
             w = Math.Max(1, w); h = Math.Max(1, h);
-            Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(bmp))
-            using (Font titulo = new Font("Trebuchet MS", Math.Max(22, Math.Min(56, h * .14f)), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font cuerpo = new Font("Trebuchet MS", Math.Max(13, Math.Min(24, h * .05f)), FontStyle.Regular, GraphicsUnit.Pixel))
-            using (SolidBrush blanco = new SolidBrush(Color.FromArgb(246, 248, 255)))
-            using (SolidBrush tenue = new SolidBrush(Color.FromArgb(185, 206, 234)))
-            using (StringFormat centro = new StringFormat())
-            {
-                g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                using (GraphicsPath borde = AsistenteGloboCamino(w, h))
-                using (Brush vidrio = DegradadoV(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37)))
-                using (Pen halo = new Pen(Color.FromArgb(35, 101, 206, 255), 5f))
-                using (Pen brillo = new Pen(Color.FromArgb(220, 142, 215, 255), 1.8f))
-                { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
+            SKBitmap bmp = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage(bmp): un lienzo nuevo (el estado del dibujo, abajo, en variables; el medio pixel y la copia, los de fabrica)
+            using (Rocola.Nativo.Letra titulo = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(22, Math.Min(56, h * .14f)), true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel): la familia como la resuelve GDI+, en pixeles y en negrita (Nativo/Letras.cs)
+            using (Rocola.Nativo.Letra cuerpo = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(13, Math.Min(24, h * .05f))))   // EN LINUX: new Font("Trebuchet MS", px, Regular, Pixel)
+            using (SKPaint blanco = new SKPaint { Color = Color.FromArgb(246, 248, 255).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+            using (SKPaint tenue = new SKPaint { Color = Color.FromArgb(185, 206, 234).Sk() })   // EN LINUX: SolidBrush
+            {   // EN LINUX: (el StringFormat es un FormatoTexto, que no se suelta: va dentro)
+                FormatoTexto centro = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                g.Clear(Color.Transparent.Sk()); bool suave = true;   // EN LINUX: Graphics.Clear; g.SmoothingMode = AntiAlias: el estado del dibujo en una variable
+                AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias
+                using (SKPath borde = AsistenteGloboCamino(w, h))   // EN LINUX: un SKPath
+                using (SKShader degradado = DegradadoV(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37), false)) using (SKPaint vidrio = new SKPaint { Shader = degradado })   // EN LINUX: DegradadoV (PulidoGpu.cs) da el shader del pincel, con el medio pixel de este lienzo (el de fabrica), en un SKPaint; se suelta con el
+                using (SKPaint halo = new SKPaint { Color = Color.FromArgb(35, 101, 206, 255).Sk(), StrokeWidth = 5f })   // EN LINUX: Pen(color, 5): la pluma en un SKPaint (Pixel le pone el minimo de un pixel y las esquinas de GDI+)
+                using (SKPaint brillo = new SKPaint { Color = Color.FromArgb(220, 142, 215, 255).Sk(), StrokeWidth = 1.8f })   // EN LINUX: Pen(color, 1,8)
+                { Pixel.Traza(g, borde, halo, suave); Pixel.Rellena(g, borde, vidrio, suave); Pixel.Traza(g, borde, brillo, suave); }   // EN LINUX: g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde) (Nativo/Pixel.cs)
                 int x = AsistenteGloboMargen(w), tw = Math.Max(1, w - x - Math.Max(12, w / 20));
-                centro.Alignment = StringAlignment.Near; centro.LineAlignment = StringAlignment.Center;
-                g.DrawString("¡Adiós!", titulo, blanco, new RectangleF(x, h * .18f, tw, h * .30f), centro);
-                g.DrawString("Aquí estaré cuando me necesites: ROJO + ABAJO, o la casilla AYUDA.",
-                    cuerpo, tenue, new RectangleF(x, h * .50f, tw, h * .34f));
+                centro.Horizontal = Alinea.Cerca; centro.Vertical = Alinea.Centro;   // EN LINUX: Alignment = Near; LineAlignment = Center
+                TextoGdiPlus.Escribe(g, "¡Adiós!", titulo, ajuste, blanco, new RectangleF(x, h * .18f, tw, h * .30f), centro);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
+                TextoGdiPlus.Escribe(g, "Aquí estaré cuando me necesites: ROJO + ABAJO, o la casilla AYUDA.",   // EN LINUX: g.DrawString sin formato
+                    cuerpo, ajuste, tenue, new RectangleF(x, h * .50f, tw, h * .34f), null);   // EN LINUX: (null: el formato de fabrica)
             }
             return bmp;
         }
 
-        internal static Bitmap PintaPanelAsistente(int w, int h, int pagina, int leccion, int seleccion)
+        internal static SKBitmap PintaPanelAsistente(int w, int h, int pagina, int leccion, int seleccion)   // EN LINUX: un SKBitmap
         {
             w = Math.Max(1, w); h = Math.Max(1, h);
-            Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(bmp))
-            using (Font pequeno = new Font("Trebuchet MS", Math.Max(10, Math.Min(18, h * .034f)), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font titulo = new Font("Trebuchet MS", Math.Max(20, Math.Min(42, h * .085f)), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font cuerpo = new Font("Trebuchet MS", Math.Max(12, Math.Min(21, h * .043f)), FontStyle.Regular, GraphicsUnit.Pixel))
-            using (Font opcion = new Font("Trebuchet MS", Math.Max(14, Math.Min(27, h * .052f)), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (SolidBrush blanco = new SolidBrush(Color.FromArgb(246, 248, 255)))
-            using (SolidBrush tenue = new SolidBrush(Color.FromArgb(185, 206, 234)))
-            using (SolidBrush azul = new SolidBrush(Color.FromArgb(150, 215, 255)))
-            using (StringFormat formato = new StringFormat())
-            {
-                g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                using (GraphicsPath borde = AsistenteGloboCamino(w, h))
-                using (Brush vidrio = DegradadoV(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37)))
-                using (Pen halo = new Pen(Color.FromArgb(35, 101, 206, 255), 5f))
-                using (Pen brillo = new Pen(Color.FromArgb(220, 142, 215, 255), 1.8f))
-                { g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde); }
+            SKBitmap bmp = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+            using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage(bmp): un lienzo nuevo (el estado del dibujo, abajo, en variables)
+            using (Rocola.Nativo.Letra pequeno = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(10, Math.Min(18, h * .034f)), true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel): la familia como la resuelve GDI+ (Nativo/Letras.cs)
+            using (Rocola.Nativo.Letra titulo = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(20, Math.Min(42, h * .085f)), true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
+            using (Rocola.Nativo.Letra cuerpo = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(12, Math.Min(21, h * .043f))))   // EN LINUX: new Font("Trebuchet MS", px, Regular, Pixel)
+            using (Rocola.Nativo.Letra opcion = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(14, Math.Min(27, h * .052f)), true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
+            using (SKPaint blanco = new SKPaint { Color = Color.FromArgb(246, 248, 255).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+            using (SKPaint tenue = new SKPaint { Color = Color.FromArgb(185, 206, 234).Sk() })   // EN LINUX: SolidBrush
+            using (SKPaint azul = new SKPaint { Color = Color.FromArgb(150, 215, 255).Sk() })   // EN LINUX: SolidBrush
+            {   // EN LINUX: (el StringFormat es un FormatoTexto, que no se suelta: va dentro)
+                FormatoTexto formato = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                g.Clear(Color.Transparent.Sk()); bool suave = true;   // EN LINUX: Graphics.Clear; g.SmoothingMode = AntiAlias: el estado del dibujo en variables
+                AjusteLetra ajuste = AjusteLetra.Suave; bool copia = false, medio = false;   // EN LINUX: g.TextRenderingHint = AntiAlias; la copia y el medio pixel, los de fabrica de un Graphics nuevo (XP no los toca)
+                using (SKPath borde = AsistenteGloboCamino(w, h))   // EN LINUX: un SKPath
+                using (SKShader degradado = DegradadoV(new Rectangle(0, 0, w, h), Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37), medio)) using (SKPaint vidrio = new SKPaint { Shader = degradado })   // EN LINUX: DegradadoV (PulidoGpu.cs) da el shader del pincel, con el medio pixel de este lienzo, en un SKPaint; se suelta con el
+                using (SKPaint halo = new SKPaint { Color = Color.FromArgb(35, 101, 206, 255).Sk(), StrokeWidth = 5f })   // EN LINUX: Pen(color, 5): la pluma en un SKPaint
+                using (SKPaint brillo = new SKPaint { Color = Color.FromArgb(220, 142, 215, 255).Sk(), StrokeWidth = 1.8f })   // EN LINUX: Pen(color, 1,8)
+                { Pixel.Traza(g, borde, halo, suave, medio, copia); Pixel.Rellena(g, borde, vidrio, suave, medio, copia); Pixel.Traza(g, borde, brillo, suave, medio, copia); }   // EN LINUX: g.DrawPath(halo, borde); g.FillPath(vidrio, borde); g.DrawPath(brillo, borde) (Nativo/Pixel.cs)
                 int x = AsistenteGloboMargen(w), tw = Math.Max(1, w - x - Math.Max(12, w / 20));
-                g.DrawString("¡HOLA! TE ACOMPAÑO PASO A PASO", pequeno, azul, new RectangleF(x, h * .045f, tw, h * .06f));
-                g.DrawString("¿Qué quieres hacer?", titulo, blanco, new RectangleF(x, h * .12f, tw, h * .17f));
-                g.DrawString("Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.",
-                    cuerpo, tenue, new RectangleF(x, h * .30f, tw, h * .19f));
-                formato.LineAlignment = StringAlignment.Center; formato.FormatFlags = StringFormatFlags.NoWrap;
+                TextoGdiPlus.Escribe(g, "¡HOLA! TE ACOMPAÑO PASO A PASO", pequeno, ajuste, azul, new RectangleF(x, h * .045f, tw, h * .06f), null, copia, medio);   // EN LINUX: g.DrawString sin formato (null: el de fabrica) (Nativo/TextoGdiPlus.cs)
+                TextoGdiPlus.Escribe(g, "¿Qué quieres hacer?", titulo, ajuste, blanco, new RectangleF(x, h * .12f, tw, h * .17f), null, copia, medio);   // EN LINUX: g.DrawString
+                TextoGdiPlus.Escribe(g, "Elige y yo te voy señalando qué botón tocar. Tú lo haces y la música sigue sonando.",   // EN LINUX: g.DrawString
+                    cuerpo, ajuste, tenue, new RectangleF(x, h * .30f, tw, h * .19f), null, copia, medio);   // EN LINUX: (la letra, el modo de letra, el pincel, la caja, sin formato)
+                formato.Vertical = Alinea.Centro; formato.Banderas = BanderasTexto.SinPartir;   // EN LINUX: LineAlignment = Center; FormatFlags = NoWrap (con =: deja solo esa)
                 string[] nombres = { "Poner una canción", "Buscar una canción por su nombre", "Aprender a moverme" };
                 Color rojo = Color.FromArgb(228, 72, 72), verdeC = Color.FromArgb(70, 200, 105), apagado = Color.FromArgb(104, 112, 134);
                 // Todas las opciones con la misma letra, la que deje caber el nombre mas largo junto a los controles.
                 Rectangle r0 = AsistenteOpcionRect(w, h, 0);
                 float libreTxt = Math.Max(1, r0.Width - 24 - AsistenteAnchoControles(r0));
-                Font fOpc = opcion, propia = null;
+                Rocola.Nativo.Letra fOpc = opcion, propia = null;   // EN LINUX: Letra
                 for (int paso = 0; paso < 8; paso++)
                 {
-                    float mas = 0; for (int i = 0; i < nombres.Length; i++) mas = Math.Max(mas, g.MeasureString(nombres[i], fOpc, PointF.Empty, formato).Width);
-                    if (mas <= libreTxt || fOpc.Size <= opcion.Size * .70f) break;
+                    float mas = 0; for (int i = 0; i < nombres.Length; i++) mas = Math.Max(mas, TextoGdiPlus.Mide(nombres[i], fOpc, ajuste, new SizeF(0, 0), formato).Width);   // EN LINUX: g.MeasureString(s, f, PointF.Empty, formato): sin caja (0, 0), con ese formato (Nativo/TextoGdiPlus.cs)
+                    if (mas <= libreTxt || fOpc.Tamano <= opcion.Tamano * .70f) break;   // EN LINUX: Font.Size es el Tamano de la Letra (en pixeles)
                     if (propia != null) propia.Dispose();
-                    propia = new Font(opcion.FontFamily, Math.Max(opcion.Size * .70f, fOpc.Size * Math.Max(.70f, libreTxt / mas * .98f)), opcion.Style, GraphicsUnit.Pixel);
+                    propia = Rocola.Nativo.Letra.EnPixeles(opcion.Familia, Math.Max(opcion.Tamano * .70f, fOpc.Tamano * Math.Max(.70f, libreTxt / mas * .98f)), opcion.Negrita, opcion.Cursiva, opcion.Subrayada);   // EN LINUX: new Font(opcion.FontFamily, px, opcion.Style, Pixel): la misma familia y el mismo estilo, en pixeles
                     fOpc = propia;
                 }
                 try
@@ -457,16 +457,16 @@ namespace Rocola
                     {
                         Rectangle r = AsistenteOpcionRect(w, h, i);
                         bool elegida = i == seleccion;
-                        using (GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))
-                        using (SolidBrush relleno = new SolidBrush(elegida ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)))
-                        using (Pen contorno = new Pen(elegida ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150), elegida ? 2f : 1f))
-                        { g.FillPath(relleno, camino); g.DrawPath(contorno, camino); }
-                        g.DrawString(nombres[i], fOpc, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24 - (elegida ? AsistenteAnchoControles(r) : 0)), r.Height), formato);
+                        using (Rocola.Dibujo2D.GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                        using (SKPaint relleno = new SKPaint { Color = (elegida ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)).Sk() })   // EN LINUX: SolidBrush
+                        using (SKPaint contorno = new SKPaint { Color = (elegida ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150)).Sk(), StrokeWidth = elegida ? 2f : 1f })   // EN LINUX: Pen(color, ancho)
+                        { Pixel.Rellena(g, PuenteDibujo.Ruta(camino), relleno, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(camino), contorno, suave, medio, copia); }   // EN LINUX: g.FillPath(relleno, camino); g.DrawPath(contorno, camino) (Nativo/Pixel.cs)
+                        TextoGdiPlus.Escribe(g, nombres[i], fOpc, ajuste, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24 - (elegida ? AsistenteAnchoControles(r) : 0)), r.Height), formato, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                         if (!elegida) continue;
                         Rectangle ka, kb, kv; AsistenteControlesOpcion(r, out ka, out kb, out kv);
-                        TeclaFlecha(g, ka.X, ka.Y + ka.Height / 2, ka.Width, i > 0 ? rojo : apagado, 0);
-                        TeclaFlecha(g, kb.X, kb.Y + kb.Height / 2, kb.Width, i < AsistenteOpciones - 1 ? rojo : apagado, 1);
-                        CtrlDot(g, kv.X, kv.Y + kv.Height / 2, kv.Width, verdeC);
+                        TeclaFlecha(g, suave, ajuste, copia, medio, ka.X, ka.Y + ka.Height / 2, ka.Width, i > 0 ? rojo : apagado, 0);   // EN LINUX: el lienzo y su estado
+                        TeclaFlecha(g, suave, ajuste, copia, medio, kb.X, kb.Y + kb.Height / 2, kb.Width, i < AsistenteOpciones - 1 ? rojo : apagado, 1);   // EN LINUX: el lienzo y su estado
+                        CtrlDotAsistente(g, suave, ajuste, copia, medio, kv.X, kv.Y + kv.Height / 2, kv.Width, verdeC);   // EN LINUX: CtrlDot (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
                     }
                 }
                 finally { if (propia != null) propia.Dispose(); }
@@ -474,13 +474,13 @@ namespace Rocola
                 int ld = Math.Max(12, Math.Min(26, (int)(h * .046f))), lcy = (int)(h * .955f);
                 float lx = x;
                 Color azulC = Color.FromArgb(150, 215, 255);
-                TeclaFlecha(g, lx, lcy, ld, rojo, 0); lx += ld + 3;
-                TeclaFlecha(g, lx, lcy, ld, rojo, 1); lx += ld + 6;
-                lx = CtrlTxt(g, pequeno, "mover", lx, lcy, azulC) + ld;
-                lx = CtrlDot(g, lx, lcy, ld, verdeC) + 6;
-                lx = CtrlTxt(g, pequeno, "elegir", lx, lcy, azulC) + ld;
-                lx = CtrlDot(g, lx, lcy, ld, rojo) + 6;
-                CtrlTxt(g, pequeno, "salir", lx, lcy, azulC);
+                TeclaFlecha(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo, 0); lx += ld + 3;   // EN LINUX: el lienzo y su estado
+                TeclaFlecha(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo, 1); lx += ld + 6;   // EN LINUX: el lienzo y su estado
+                lx = CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "mover", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente
+                lx = CtrlDotAsistente(g, suave, ajuste, copia, medio, lx, lcy, ld, verdeC) + 6;   // EN LINUX: CtrlDot, por el puente
+                lx = CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "elegir", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt, por el puente
+                lx = CtrlDotAsistente(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo) + 6;   // EN LINUX: CtrlDot, por el puente
+                CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "salir", lx, lcy, azulC);   // EN LINUX: CtrlTxt, por el puente
             }
             return bmp;
         }
