@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el signo de interrogacion y su horno ya van con SkiaSharp y las funciones nativas (Xp/Nativo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de AYUDA, su signo y su horno dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (RoundedPath, CtrlDot, CtrlTxt, CtrlTri) y quien todavia la pinta con un Graphics (OnPaint, DrawCtrlOverlay de Form1.Video.cs) pasan por el puente (Plataforma/Puente.cs y Puente.asistente.cs)
 
 namespace Rocola
 {
@@ -14,11 +14,11 @@ namespace Rocola
     {
         private AyudaView ayudaView;
 
-        private class AyudaView : Control
+        private partial class AyudaView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.asistente.cs)
         {
             public bool Compacta;           // sin la palabra AYUDA cuando la fila va justa (1024x768)
             public bool Abierta;            // con la ayuda en pantalla la casilla queda encendida fija
-            private Font fTxt; private float fAlto = -1f;
+            private Rocola.Nativo.Letra fTxt; private float fAlto = -1f;   // EN LINUX: la letra de la casilla, una Letra (Nativo/Letras.cs; Form1 tiene un metodo Letra)
 
             public AyudaView()
             {
@@ -42,12 +42,12 @@ namespace Rocola
                 int d = Sim(alto);
                 if (medidoAlto != alto)
                 {
-                    using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b))
-                    using (Font f = new Font(FontFamily.GenericSansSerif, Math.Max(8f, alto * 0.30f), FontStyle.Bold))
+                    // EN LINUX: using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b)): el mapa de 1x1 solo daba un Graphics con que medir, y medir no pide lienzo (TextoGdiPlus.Mide)
+                    using (Rocola.Nativo.Letra f = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, Math.Max(8f, alto * 0.30f), true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, pt, Bold): la generica sin remates de XP (Microsoft Sans Serif, Letras.SinRemates), en puntos y en negrita (Nativo/Letras.cs)
                     {
-                        g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                        medidoPalabra = (int)Math.Ceiling(g.MeasureString("AYUDA", f).Width);
-                        medidoMas = (int)Math.Ceiling(g.MeasureString("+", f).Width);
+                        AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias, en una variable
+                        medidoPalabra = (int)Math.Ceiling(TextoGdiPlus.Mide("AYUDA", f, ajuste, new SizeF(0, 0), null).Width);   // EN LINUX: g.MeasureString("AYUDA", f): sin caja (0, 0) y sin formato (null: el de fabrica) (Nativo/TextoGdiPlus.cs)
+                        medidoMas = (int)Math.Ceiling(TextoGdiPlus.Mide("+", f, ajuste, new SizeF(0, 0), null).Width);   // EN LINUX: g.MeasureString("+", f)
                     }
                     medidoAlto = alto;
                 }
@@ -65,48 +65,48 @@ namespace Rocola
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
 
             // forGpu: el signo NO va en la textura (lo pone la tarjeta, moviendose); sin tarjeta, fijo.
-            public void RenderContent(Graphics g, bool forGpu)
+            public void RenderContent(SKCanvas g, bool copia, bool medio, bool forGpu)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama que aqui no se pone (la copia y el medio pixel); quien aun pasa un Graphics (OnPaint, arriba, y DrawCtrlOverlay de Form1.Video.cs) llega por el puente (Plataforma/Puente.asistente.cs), que le deja al Graphics el suavizado y el modo de letra que le deja XP
             {
                 int w = Width, h = Height;
                 if (w < 30 || h < 12) return;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
+                AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias
                 if (fTxt == null || fAlto != h)
-                { if (fTxt != null) fTxt.Dispose(); fTxt = new Font(FontFamily.GenericSansSerif, Math.Max(8f, h * 0.30f), FontStyle.Bold); fAlto = h; }
+                { if (fTxt != null) fTxt.Dispose(); fTxt = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, Math.Max(8f, h * 0.30f), true); fAlto = h; }   // EN LINUX: new Font(FontFamily.GenericSansSerif, pt, Bold): Microsoft Sans Serif (Letras.SinRemates), en puntos y en negrita
                 Color oro = Color.FromArgb(255, 205, 90);
                 Rectangle r = new Rectangle(0, 0, w - 1, h - 1);
-                using (GraphicsPath gp = RoundedPath(r, Math.Min(14, h / 2)))
+                using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, Math.Min(14, h / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                 {
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(Abierta ? 92 : 64, oro))) g.FillPath(sb, gp);
-                    using (Pen pn = new Pen(Color.FromArgb(Abierta ? 255 : 220, oro), 2f)) g.DrawPath(pn, gp);
+                    using (SKPaint sb = new SKPaint { Color = Color.FromArgb(Abierta ? 92 : 64, oro).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave, medio, copia);   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; g.FillPath (Nativo/Pixel.cs)
+                    using (SKPaint pn = new SKPaint { Color = Color.FromArgb(Abierta ? 255 : 220, oro).Sk(), StrokeWidth = 2f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave, medio, copia);   // EN LINUX: Pen(color, 2): la pluma en un SKPaint (Pixel le pone el minimo de un pixel y las esquinas de GDI+); g.DrawPath
                 }
                 int cy = h / 2, d = Sim(h);
                 RectangleF ic = Icono();
-                if (!forGpu) { EstadoLienzo e = PuenteDibujo.Estado(g); PintaInterrogacion(PuenteDibujo.Lienzo(g), e.Suave, e.Medio, e.Copia, ic, 1f); }   // EN LINUX: el signo ya va con SkiaSharp y este dibujo por procesador aun no: el lienzo y su estado, por el puente (Plataforma/Puente.cs)
+                if (!forGpu) PintaInterrogacion(g, suave, medio, copia, ic, 1f);   // EN LINUX: el lienzo y su estado
                 float x = ic.Right;
                 Color tinta = Color.FromArgb(255, 255, 240, 205);
-                if (!Compacta) x = CtrlTxt(g, fTxt, "AYUDA", x + 8, cy, tinta);
+                if (!Compacta) x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, fTxt, "AYUDA", x + 8, cy, tinta);   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente (Plataforma/Puente.asistente.cs)
                 x += Compacta ? 6 : 12;
-                x = CtrlDot(g, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;
-                x = CtrlTxt(g, fTxt, "+", x, cy, tinta) + 6;
+                x = CtrlDotAsistente(g, suave, ajuste, copia, medio, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;   // EN LINUX: CtrlDot (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente
+                x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, fTxt, "+", x, cy, tinta) + 6;   // EN LINUX: CtrlTxt, por el puente
                 Tecla = new Rectangle((int)x, cy - (int)(d * 0.9f) / 2, (int)(d * 0.9f), (int)(d * 0.9f));   // la guia del rojo la resalta
-                FlechaAbajo(g, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));
+                FlechaAbajo(g, suave, ajuste, copia, medio, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));   // EN LINUX: el lienzo y su estado
             }
             // Donde quedo la tecla de la flecha la ultima vez que se dibujo (coordenadas del control; vacio si aun no).
             // Con el ROJO mantenido, la guia la resalta a ella en vez de pintar otra flecha fuera (GuiaRojoGpu.cs).
             public Rectangle Tecla;
 
             // La flecha de ABAJO, en una tecla redondeada (la gemela de la de BUSCAR, que apunta arriba).
-            internal static void FlechaAbajo(Graphics g, float x, int cy, int d, Color c)
+            internal static void FlechaAbajo(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama (suavizado, modo de letra, copia y medio pixel)
             {
                 Rectangle k = new Rectangle((int)x, cy - d / 2, d, d);
-                using (GraphicsPath gp = RoundedPath(k, Math.Max(3, d / 4)))
+                using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(k, Math.Max(3, d / 4)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir): su SKPath, por el puente (PuenteDibujo.Ruta)
                 {
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(70, c))) g.FillPath(sb, gp);
-                    using (Pen pn = new Pen(Color.FromArgb(215, c), 1.6f)) g.DrawPath(pn, gp);
+                    using (SKPaint sb = new SKPaint { Color = Color.FromArgb(70, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPaint pn = new SKPaint { Color = Color.FromArgb(215, c).Sk(), StrokeWidth = 1.6f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave, medio, copia);   // EN LINUX: Pen(color, 1,6) y g.DrawPath
                 }
                 float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
-                CtrlTri(g, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * 0.62f), new PointF(cx + an, cy - t * 0.62f));
+                CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * 0.62f), new PointF(cx + an, cy - t * 0.62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
             }
         }
 
@@ -271,11 +271,11 @@ namespace Rocola
             if (ayudaRect.Width < 4) return;
             int lado = Math.Max(16, Math.Min(256, (int)(ayudaRect.Height * 2f)));
             if (ayudaTex != IntPtr.Zero && lado == ayudaLado) return;
-            using (Bitmap b = PuenteDibujo.Entrega(BakeInterrogacion(lado)))   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mapa le llega por el puente (Plataforma/Puente.cs)
+            using (SKBitmap b = BakeInterrogacion(lado))   // EN LINUX: el SKBitmap del horno, tal cual a Upload (D3D9Star.cs ya recibe SKBitmap)
                 ayudaTex = Upload(ayudaTex, ref ayudaTW, ref ayudaTH, b, out ayudaU, out ayudaV);
             ayudaLado = ayudaTex != IntPtr.Zero ? lado : -1;
         }
-        internal static SKBitmap BakeInterrogacion(int lado)   // EN LINUX: un SKBitmap; PreparaAyudaIcono lo pasa por el puente a Upload (D3D9Star.cs, aun sin traducir)
+        internal static SKBitmap BakeInterrogacion(int lado)   // EN LINUX: un SKBitmap (PreparaAyudaIcono lo sube tal cual)
         {
             if (lado < 8 || lado > 1024) throw new ArgumentOutOfRangeException("lado");
             SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)

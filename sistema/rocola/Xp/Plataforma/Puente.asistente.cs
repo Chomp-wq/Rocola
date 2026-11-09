@@ -58,5 +58,47 @@ namespace Rocola
             catch { copia.Dispose(); throw; }
         }
     }
+
+    // ================================================================ AyudaCasillaGpu.cs (y los globos de AsistenteRocola.cs y AsistenteGuiaRocola.cs)
+    public partial class Form1
+    {
+        private partial class AyudaView
+        {
+            // ---- LA FIRMA DE XP DE RenderContent (con un Graphics), PARA OnPaint (AyudaCasillaGpu.cs, de WinForms) Y DrawCtrlOverlay
+            // (Form1.Video.cs: la imagen de la interfaz con tarjeta): el lienzo del Graphics (con su matriz y su recorte) y su copia y su medio
+            // pixel. Despues, lo que XP le deja puesto al Graphics: RenderContent pone al empezar el suavizado y el modo de letra (AntiAlias los
+            // dos), si la casilla tiene medida para pintarse (las mismas cuentas de su primera linea); si no, no lo toca.
+            public void RenderContent(Graphics g, bool forGpu)
+            {
+                EstadoLienzo e = PuenteDibujo.Estado(g);
+                RenderContent(PuenteDibujo.Lienzo(g), e.Copia, e.Medio, forGpu);
+                if (!(Width < 30 || Height < 12)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }
+            }
+        }
+
+        // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA: CtrlDot, CtrlTxt y CtrlTri (Form1.Pared.cs) pintan con un Graphics: uno sobre
+        // el MISMO lienzo con el estado del que llama (GraphicsAsistente, abajo), y CtrlTxt con la Font de esa Letra (los mismos datos: familia,
+        // tamano, unidad y estilo; se suelta al acabar, porque CtrlTxt no se la queda). Ninguna de las tres le cambia el estado al Graphics.
+        // Cuando Form1.Pared.cs se traduzca, la llamada pierde el «Asistente» (con el lienzo y el estado como aqui) y estas tres se borran.
+        private static float CtrlDotAsistente(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)
+        { return CtrlDot(PuenteDibujo.GraphicsAsistente(g, suave, ajuste, copia, medio), x, cy, d, c); }
+        private static float CtrlTxtAsistente(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)
+        {
+            using (Font ff = PuenteDibujo.Font(f))
+                return CtrlTxt(PuenteDibujo.GraphicsAsistente(g, suave, ajuste, copia, medio), ff, s, x, cy, c);
+        }
+        private static void CtrlTriAsistente(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Color c, PointF a, PointF b, PointF d)
+        { CtrlTri(PuenteDibujo.GraphicsAsistente(g, suave, ajuste, copia, medio), c, a, b, d); }
+    }
+
+    internal static partial class PuenteDibujo
+    {
+        // un Graphics sobre el lienzo de un archivo traducido del grupo, con su estado, para llamar a uno que no lo esta: el filtro, el de fabrica de
+        // un Graphics (Bilinear: lo que se llama con el no pinta imagenes); la matriz del HDC, la identidad (la de un mapa de bits: los globos de la
+        // estrella; en la casilla pintada por OnPaint seria la de su sitio en la pantalla, pero lo que se llama con el no usa TextRenderer, el
+        // unico que la mira). No suelta el lienzo.
+        internal static Graphics GraphicsAsistente(SKCanvas c, bool suave, AjusteLetra ajuste, bool copia, bool medio)
+        { return Graphics(c, new EstadoLienzo(suave, ajuste, copia, Filtro.Bilineal, medio, SKMatrix.Identity)); }
+    }
 }
 #endif
