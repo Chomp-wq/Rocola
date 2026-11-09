@@ -30,7 +30,7 @@ namespace Rocola
     // avisos. (FixedSingle con CenterScreen, la de prueba F12, va con el panel de la tarjeta.)
     public enum MarcoXp { Dialogo = 0 }
 
-    public partial class Hoja : IContenedor, ITeclasAntes, IDuenoDeEncargos, IDisposable
+    public partial class Hoja : IContenedor, IDuenoDeEncargos, IDisposable
     {
         // EL MARCO DE XP (tema Luna, 96 puntos por pulgada), como lo cuenta AdjustWindowRectEx con los estilos de Form.CreateParams
         // (Form.cs:886-985): la barra de titulo mide SM_CYCAPTION = 26 (WS_CAPTION: hay ControlBox) y FixedDialog lleva WS_EX_DLGMODALFRAME

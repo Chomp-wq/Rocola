@@ -23,25 +23,25 @@ namespace Rocola
         // ------------------------------- A1: LAS DEPENDENCIAS -------------------------------
         private sealed class Requisito
         {
-            public Control Mando;        // el que depende
+            public IPieza Mando;   // el que depende; EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
             public Func<bool> Cumple;    // si su requisito esta encendido (lee el ajuste, no el interruptor: vale entre paginas)
             public string Necesita;      // "Necesita: ... (pagina)"
-            public Label Aviso;          // si el mando no tiene sitio para decirlo, lo dice esta nota
+            public Rotulo Aviso;   // si el mando no tiene sitio para decirlo, lo dice esta nota; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             public string AvisoTexto;    // y lo que la nota dice cuando no falta nada
             public Color AvisoColor;
             public Func<string> Motivo;  // en vez de Cumple: lo que falta o lo que lo anula, al momento (null = vale)
         }
         // Se crean al primer uso (las paginas tambien se arman sueltas, en las pruebas, sin pasar por el constructor).
         private List<Requisito> f3Requisitos;
-        private List<Control> f3SoloTarjeta;
-        private List<Label> f3AvisoTarjeta;   // visibles solo sin tarjeta
-        private List<Label> f3ConTarjeta;     // y sus contrapartes, solo con ella
+        private List<IPieza> f3SoloTarjeta;   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+        private List<Rotulo> f3AvisoTarjeta;   // visibles solo sin tarjeta; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+        private List<Rotulo> f3ConTarjeta;   // y sus contrapartes, solo con ella; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         private void ListasDeRequisitos()
         {
             if (f3Requisitos == null) f3Requisitos = new List<Requisito>();
-            if (f3SoloTarjeta == null) f3SoloTarjeta = new List<Control>();
-            if (f3AvisoTarjeta == null) f3AvisoTarjeta = new List<Label>();
-            if (f3ConTarjeta == null) f3ConTarjeta = new List<Label>();
+            if (f3SoloTarjeta == null) f3SoloTarjeta = new List<IPieza>();   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+            if (f3AvisoTarjeta == null) f3AvisoTarjeta = new List<Rotulo>();   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+            if (f3ConTarjeta == null) f3ConTarjeta = new List<Rotulo>();   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         }
 
         // Ctrl+F3 se arma entera cada vez que se abre: lo apuntado de la vez anterior ya no existe.
@@ -53,7 +53,7 @@ namespace Rocola
 
         // 'mando' solo funciona si 'cumple'. Sin sitio debajo de su nombre (DosRenglones), lo dice detras del nombre o en
         // la nota 'aviso'.
-        private void Necesita(Control mando, Func<bool> cumple, string que, Label aviso)
+        private void Necesita(IPieza mando, Func<bool> cumple, string que, Rotulo aviso)   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs); Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
         {
             if (mando == null || cumple == null) return;
             ListasDeRequisitos();
@@ -86,7 +86,7 @@ namespace Rocola
 
         // Lo mismo, pero sin sitio debajo del nombre: el motivo (si lo hay) lo dice la nota 'aviso' del mando, como en Necesita(...,
         // aviso), y vuelve a su texto cuando ya nada falta (23-10-2026: "a la medida" de la IA, que necesita el modelo del EQ).
-        private void NecesitaMotivo(Interruptor mando, Func<string> motivo, Label aviso)
+        private void NecesitaMotivo(Interruptor mando, Func<string> motivo, Rotulo aviso)   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         {
             if (mando == null || motivo == null) return;
             ListasDeRequisitos();
@@ -97,14 +97,14 @@ namespace Rocola
         }
 
         // Lo que solo se ve con tarjeta grafica.
-        private void SoloConTarjeta(params Control[] mandos)
+        private void SoloConTarjeta(params IPieza[] mandos)   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
         {
             ListasDeRequisitos();
-            foreach (Control c in mandos) if (c != null && !f3SoloTarjeta.Contains(c)) f3SoloTarjeta.Add(c);
+            foreach (IPieza c in mandos) if (c != null && !f3SoloTarjeta.Contains(c)) f3SoloTarjeta.Add(c);   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
         }
 
         // Una nota por pagina: sin tarjeta se ve 'sin'; con ella, 'con' (si la hay).
-        private void AvisoSinTarjeta(Label sin, Label con)
+        private void AvisoSinTarjeta(Rotulo sin, Rotulo con)   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         {
             ListasDeRequisitos();
             if (sin != null) f3AvisoTarjeta.Add(sin);
@@ -129,7 +129,7 @@ namespace Rocola
         {
             ListasDeRequisitos();
             bool tarjeta = HayTarjeta();
-            foreach (Control c in f3SoloTarjeta) c.Enabled = tarjeta;
+            foreach (IPieza c in f3SoloTarjeta) c.Caja.Enabled = tarjeta;   // EN LINUX: Control -> IPieza; Enabled de la caja de la pieza (Nativo/Pieza.cs)
             foreach (Requisito r in f3Requisitos)
             {
                 bool ok = true;
@@ -142,7 +142,7 @@ namespace Rocola
                 }
                 else try { ok = r.Cumple(); } catch { }
                 bool vale = ok && (tarjeta || !f3SoloTarjeta.Contains(r.Mando));
-                r.Mando.Enabled = vale;
+                r.Mando.Caja.Enabled = vale;   // EN LINUX: Control.Enabled -> Enabled de la caja de la pieza
                 // Sin tarjeta lo dice la pagina, no cada mando: el requisito no es lo que falta.
                 string falta = (!ok && (tarjeta || !f3SoloTarjeta.Contains(r.Mando))) ? r.Necesita : null;
                 Interruptor sw = r.Mando as Interruptor;
@@ -155,20 +155,20 @@ namespace Rocola
                 }
                 else if (sw != null) sw.PonNecesita(falta);
             }
-            foreach (Label l in f3AvisoTarjeta) l.Visible = !tarjeta;
-            foreach (Label l in f3ConTarjeta) l.Visible = tarjeta;
+            foreach (Rotulo l in f3AvisoTarjeta) l.Visible = !tarjeta;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+            foreach (Rotulo l in f3ConTarjeta) l.Visible = tarjeta;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         }
 
         // Despues de CUALQUIER cambio en la ventana se repasan las dependencias. Se engancha al final, cuando cada mando ya
         // tiene el suyo: los manejadores van en orden, asi que el ajuste ya esta puesto cuando se repasa.
-        private void EnganchaRequisitos(Control raiz)
+        private void EnganchaRequisitos(IContenedor raiz)   // EN LINUX: Control -> IContenedor: la hoja o un grupo, lo que tiene piezas dentro (Nativo/Pieza.cs)
         {
-            foreach (Control c in raiz.Controls)
+            foreach (IPieza c in raiz.Controls)   // EN LINUX: Control -> IPieza
             {
                 Interruptor sw = c as Interruptor;
                 if (sw != null) sw.CheckedChanged += delegate { RefrescaRequisitos(); };
-                else if (c is BotonPlano) c.Click += delegate { RefrescaRequisitos(); };
-                if (c.Controls.Count > 0) EnganchaRequisitos(c);
+                else if (c is BotonPlano) ((BotonPlano)c).Click += delegate { RefrescaRequisitos(); };   // EN LINUX: Control.Click -> el aviso Click del boton plano (el unico de aqui que lo tiene)
+                if (c is IContenedor && ((IContenedor)c).Controls.Count > 0) EnganchaRequisitos((IContenedor)c);   // EN LINUX: c.Controls: solo los grupos (y la tarjeta) tienen piezas dentro; las demas, ninguna (como su Controls vacio en WinForms)
             }
         }
 
