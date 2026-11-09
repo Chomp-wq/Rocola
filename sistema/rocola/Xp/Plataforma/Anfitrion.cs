@@ -155,11 +155,12 @@ namespace Rocola
                     if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 0f);
                     continue;
                 }
-                if (c.Imagen == null) continue;
+                SKBitmap mapa = c.Imagen != null ? c.Imagen.Sk : c.Mapa;   // (port nativo, ventanas2 H: la superficie de una hoja nativa, Nativo/Hoja.cs)
+                if (mapa == null) continue;
                 CapaGl g;
                 if (!capas.TryGetValue(c, out g)) { g = new CapaGl(); capas[c] = g; }
                 g.Vista = true;
-                if (g.Version != c.Version || g.W != c.Imagen.Width || g.H != c.Imagen.Height) Sube(c.Imagen, g);
+                if (g.Version != c.Version || g.W != mapa.Width || g.H != mapa.Height) Sube(mapa, g);
                 g.Version = c.Version;
                 GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
                 GL.BindTexture(GL.TEXTURE_2D, g.Tex);
@@ -184,7 +185,7 @@ namespace Rocola
         private void Flecha()
         {
             if (!Escritorio.CursorVisible) return;
-            bool mano = Escritorio.CursorActual == Cursors.Hand;
+            bool mano = Escritorio.CursorActual == Cursors.Hand || Hoja.ManoBajoRaton;   // (port nativo, ventanas2 H: la mano de las piezas de una hoja nativa)
             if (texFlecha == 0) { texFlecha = HazCursor(false); texMano = HazCursor(true); }
             Point p = Escritorio.PosicionRaton;
             GL.UseProgram(programa);
@@ -224,9 +225,8 @@ namespace Rocola
                 return t;
             }
         }
-        private void Sube(Bitmap b, CapaGl g)
+        private void Sube(SKBitmap sk, CapaGl g)
         {
-            SKBitmap sk = b.Sk;
             if (g.Tex == 0)
             {
                 uint t; GL.GenTextures(1, &t); g.Tex = t;
@@ -282,6 +282,7 @@ namespace Rocola
                     i++;
                     if (c.Nativa != null && c.Nativa.TexturaGl != 0) GuardaTextura(c.Nativa.TexturaGl, c.Nativa.AnchoGl, c.Nativa.AltoGl, ruta + ".capa" + i + "-tarjeta.png");
                     else if (c.Imagen != null) { try { c.Imagen.Save(ruta + ".capa" + i + "-dibujo2d-" + c.Rect.X + "," + c.Rect.Y + "-" + c.Rect.Width + "x" + c.Rect.Height + ".png"); } catch { } }
+                    else if (c.Mapa != null) { try { Rocola.Nativo.Imagenes.GuardaPng(c.Mapa, ruta + ".capa" + i + "-hoja-" + c.Rect.X + "," + c.Rect.Y + "-" + c.Rect.Width + "x" + c.Rect.Height + ".png"); } catch { } }   // (una hoja nativa)
                 }
             }
             Console.WriteLine("Captura: " + ruta + " (" + (t / 1000).ToString("0.0", CultureInfo.InvariantCulture) + " s, " + Composiciones + " composiciones)");

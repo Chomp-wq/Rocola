@@ -2006,11 +2006,11 @@ namespace Rocola
         // llegaba a esa ventana y el dinero del cliente se perdia. Estas ventanas no tienen donde escribir, asi que la
         // tecla de la moneda no le quita nada al encargado. Un pulso es una moneda: la autorrepeticion de un pulso que se
         // queda apretado no suma (como en ProcessCmdKey).
-        private void MonedaTambienAqui(Form dlg)
+        private void MonedaTambienAqui(ITeclasAntes dlg)   // EN LINUX: Form -> ITeclasAntes, la ventana con KeyPreview (Nativo/Pieza.cs): la hoja nativa de Ctrl+F2, y Ctrl+F3 y el historial de caratulas aun de la capa
         {
             bool abajo = false;
-            dlg.KeyPreview = true;
-            dlg.KeyDown += delegate (object so, KeyEventArgs ke)
+            // EN LINUX: (XP) dlg.KeyPreview = true; suscribirse a TeclaAntes y TeclaArribaAntes (el KeyDown y el KeyUp de la ventana con KeyPreview) lo pone
+            dlg.TeclaAntes += delegate (PulsoTecla ke)   // EN LINUX: dlg.KeyDown con KeyPreview: la ventana ve la tecla antes que la pieza del foco
             {
                 if (!IsCoin(ke.KeyCode)) return;
                 ke.Handled = true; ke.SuppressKeyPress = true;
@@ -2018,7 +2018,7 @@ namespace Rocola
                 abajo = true;
                 AddCoin();
             };
-            dlg.KeyUp += delegate (object so, KeyEventArgs ke) { if (IsCoin(ke.KeyCode)) abajo = false; };
+            dlg.TeclaArribaAntes += delegate (PulsoTecla ke) { if (IsCoin(ke.KeyCode)) abajo = false; };   // EN LINUX: dlg.KeyUp con KeyPreview
         }
 
         // Suma creditos (la moneda) y actualiza el letrero

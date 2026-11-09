@@ -1868,18 +1868,18 @@ namespace Rocola
             try
             {
                 PantallaRocola.EnsenaFlecha();   // EN LINUX: Cursor.Show(): ShowCursor(TRUE), la cuenta de la flecha (Cursor.cs:611-614)
-                using (Font fUi = new Font(FontFamily.GenericSansSerif, 10f))
-                using (Form dlg = new Form())
+                using (Rocola.Nativo.Letra fUi = Rocola.Nativo.Letra.EnPuntos(Rocola.Nativo.Letras.SinRemates, 10f))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 10f): la generica sin remates de XP (Microsoft Sans Serif) de 10 puntos, como letra nativa (la de la hoja)
+                using (Hoja dlg = new Hoja(MarcoXp.Dialogo))   // EN LINUX: new Form(): una hoja de la pantalla de la rocola (Nativo/Hoja.cs); MarcoXp.Dialogo es el FixedDialog y el CenterParent de abajo
                 {
                     dlg.Text = "Rocola - Carpetas de musica";
-                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
-                    dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
-                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    // EN LINUX: (XP) dlg.FormBorderStyle = FormBorderStyle.FixedDialog; el marco de dialogo de XP (barra de 26 y borde de 3) lo da MarcoXp.Dialogo
+                    // EN LINUX: (XP) dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false; MarcoXp.Dialogo es asi (y en Rocola OS no hay barra de tareas)
+                    // EN LINUX: (XP) dlg.StartPosition = FormStartPosition.CenterParent; una hoja con MarcoXp.Dialogo se centra en su duena al ensenarse modal (CenterToParent)
                     dlg.ClientSize = new Size(640, 372);
                     dlg.BackColor = Color.FromArgb(14, 18, 42);
                     dlg.Font = fUi;
 
-                    Label info = new Label();
+                    Rotulo info = new Rotulo();   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs), el texto de GDI de una etiqueta de WinForms
                     info.SetBounds(14, 10, 612, 42);
                     info.BackColor = Color.Transparent;
                     info.ForeColor = Color.FromArgb(205, 214, 238);
@@ -1890,22 +1890,22 @@ namespace Rocola
                         ? "NO ENCONTRE MUSICA. Pulsa \"Agregar carpeta...\" y elige donde esta: puede ser una carpeta, o el disco entero. Si la musica esta en un disco aparte, conectalo antes."
                         : "La carpeta 'musica' (junto al programa) siempre se incluye. Aqui puedes agregar o quitar carpetas ADICIONALES, incluso de otros discos (SSD/HDD).";
 
-                    ListBox list = new ListBox();
+                    ListaXp list = new ListaXp();   // EN LINUX: ListBox -> ListaXp (Nativo/ListaXp.cs)
                     list.SetBounds(14, 58, 612, 230);
                     list.BackColor = Color.FromArgb(24, 30, 62);
                     list.ForeColor = Color.White;
-                    list.BorderStyle = BorderStyle.FixedSingle;
+                    list.BorderStyle = BordeXp.FixedSingle;   // EN LINUX: BorderStyle -> BordeXp, los mismos nombres (la linea negra de WS_BORDER)
                     list.IntegralHeight = false;
                     list.HorizontalScrollbar = true;   // las rutas son largas: que se puedan leer enteras
 
-                    Button bAdd = new Button(), bDel = new Button(), bOk = new Button();
+                    BotonXp bAdd = new BotonXp(), bDel = new BotonXp(), bOk = new BotonXp();   // EN LINUX: Button -> BotonXp (Nativo/BotonXp.cs)
                     bAdd.Text = "Agregar carpeta..."; bAdd.SetBounds(14, 300, 180, 36);
                     bDel.Text = "Quitar seleccionada"; bDel.SetBounds(202, 300, 180, 36);
                     bOk.Text = "Listo"; bOk.SetBounds(530, 300, 96, 36);
-                    Button[] bs = { bAdd, bDel, bOk };
+                    BotonXp[] bs = { bAdd, bDel, bOk };   // EN LINUX: Button -> BotonXp
                     for (int i = 0; i < bs.Length; i++)
                     {
-                        bs[i].FlatStyle = FlatStyle.Flat;
+                        bs[i].FlatStyle = EstiloBoton.Flat;   // EN LINUX: FlatStyle -> EstiloBoton, los mismos nombres (el boton plano de ButtonFlatAdapter)
                         bs[i].FlatAppearance.BorderColor = Color.FromArgb(90, 110, 170);
                         bs[i].BackColor = Color.FromArgb(34, 44, 86);
                         bs[i].ForeColor = Color.White;
@@ -1929,32 +1929,32 @@ namespace Rocola
 
                     bAdd.Click += delegate
                     {
-                        using (FolderBrowserDialog fb = new FolderBrowserDialog())
+                        using (SelectorCarpetas fb = new SelectorCarpetas())   // EN LINUX: FolderBrowserDialog (SHBrowseForFolder, «Buscar carpeta») -> el selector de carpetas nativo (Nativo/SelectorCarpetas.cs; decision del 8-11-2026)
                         {
                             fb.Description = "Elige una carpeta ADICIONAL con musica (puede estar en otro disco).";
                             fb.ShowNewFolderButton = false;
-                            if (fb.ShowDialog(dlg) != DialogResult.OK || string.IsNullOrEmpty(fb.SelectedPath)) return;
+                            if (fb.MuestraModal(dlg) != Resultado.OK || string.IsNullOrEmpty(fb.SelectedPath)) return;   // EN LINUX: ShowDialog(dlg) -> MuestraModal(dlg), DialogResult -> Resultado
                             string p = fb.SelectedPath;
                             string no = PorQueNoSePuedeAgregar(p);
-                            if (no != null) { MessageBox.Show(dlg, no, "Rocola"); return; }
+                            if (no != null) { AvisoXp.Muestra(dlg, no, "Rocola"); return; }   // EN LINUX: MessageBox.Show(dlg, ...) -> AvisoXp.Muestra (Nativo/AvisoXp.cs): el aviso de user32, con la hoja de duena
                             extraMusicDirs.Add(p); changed = true; refresh();
                         }
                     };
                     bDel.Click += delegate
                     {
                         int i = list.SelectedIndex;
-                        if (i < 0) { MessageBox.Show(dlg, "Selecciona una carpeta de la lista.", "Rocola"); return; }
-                        if (i == 0) { MessageBox.Show(dlg, "La carpeta principal 'musica' no se puede quitar.", "Rocola"); return; }
+                        if (i < 0) { AvisoXp.Muestra(dlg, "Selecciona una carpeta de la lista.", "Rocola"); return; }   // EN LINUX: MessageBox.Show -> AvisoXp.Muestra
+                        if (i == 0) { AvisoXp.Muestra(dlg, "La carpeta principal 'musica' no se puede quitar.", "Rocola"); return; }   // EN LINUX: MessageBox.Show -> AvisoXp.Muestra
                         extraMusicDirs.RemoveAt(i - 1); changed = true; refresh();
                     };
                     bOk.Click += delegate { dlg.Close(); };
-                    dlg.CancelButton = bOk;   // Esc tambien cierra (los cambios ya hechos se aplican igual)
+                    dlg.BotonCancelar = bOk;   // Esc tambien cierra (los cambios ya hechos se aplican igual); EN LINUX: CancelButton -> BotonCancelar (Escape lo pulsa: Form.ProcessDialogKey)
                     MonedaTambienAqui(dlg);   // una moneda con la ventana abierta tambien cuenta (Form1.Ajustes.cs)
 
                     dlg.Controls.Add(info); dlg.Controls.Add(list);
                     dlg.Controls.Add(bAdd); dlg.Controls.Add(bDel); dlg.Controls.Add(bOk);
                     refresh();
-                    dlg.ShowDialog(this);
+                    dlg.MuestraModal(this);   // EN LINUX: ShowDialog(this): modal, con la rocola de duena (sus relojes, encargos y la tarjeta siguen; ella no recibe teclas ni raton)
                 }
                 if (changed)
                 {

@@ -71,13 +71,33 @@ namespace Rocola
             sb.Append("atraccion=").Append(VolcadoEstado.B(attractOn)).Append('\n');
             sb.Append("mantenimiento=").Append(VolcadoEstado.B(maintMode)).Append('\n');
             sb.Append("f3pagina=").Append(VolcadoEstado.N(f3Pagina)).Append('\n');
-            sb.Append("foco=").Append(TrazaVentanas.Pieza(Escritorio.Foco)).Append('\n');
-            sb.Append("activa=").Append(TrazaVentanas.Pieza(Escritorio.Activa)).Append('\n');
+            // (port nativo, ventanas2 H) el foco y la activa pueden ser de una hoja nativa (Nativo/Hoja.cs)
+            sb.Append("foco=").Append(TrazaVentanas.Pieza(Hoja.Foco ?? (object)Escritorio.Foco)).Append('\n');
+            sb.Append("activa=").Append(TrazaVentanas.Pieza(Hoja.Activa ?? (object)Escritorio.Activa)).Append('\n');
             foreach (Form h in Escritorio.Formas)
             {
                 if (h == this || h.IsDisposed || !h.Visible) continue;
                 sb.Append("hoja ").Append(TrazaVentanas.Pieza(h)).Append(" @").Append(CajaPrueba(h.Bounds)).Append('\n');
                 PiezasPrueba(h, sb, "  ");
+            }
+            foreach (Hoja h in Hoja.Abiertas)   // (las hojas nativas van encima de las de la capa)
+            {
+                if (h.IsDisposed || !h.Visible) continue;
+                sb.Append("hoja ").Append(TrazaVentanas.Pieza(h)).Append(" @").Append(CajaPrueba(h.Bounds)).Append('\n');
+                PiezasPrueba(h.Controls, sb, "  ");
+            }
+        }
+        // las piezas de una hoja nativa, con lo mismo que las de la capa
+        private static void PiezasPrueba(Piezas ps, StringBuilder sb, string sangria)
+        {
+            foreach (IPieza p in ps)
+            {
+                CajaPieza c = p.Caja;
+                sb.Append(sangria).Append(TrazaVentanas.Pieza(p)).Append(" @").Append(CajaPrueba(c.Bounds))
+                  .Append(c.Visible ? " v" : " -").Append(c.Enabled ? "e" : "-").Append(" t").Append(VolcadoEstado.N(c.TabIndex));
+                if (Hoja.Foco == (object)p) sb.Append(" FOCO");
+                sb.Append('\n');
+                if (c.Hijas != null && c.Hijas.Count > 0) PiezasPrueba(c.Hijas, sb, sangria + "  ");
             }
         }
         private static string CajaPrueba(System.Drawing.Rectangle r) { return VolcadoEstado.N(r.X) + "," + VolcadoEstado.N(r.Y) + "," + VolcadoEstado.N(r.Width) + "x" + VolcadoEstado.N(r.Height); }

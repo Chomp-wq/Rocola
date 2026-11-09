@@ -95,7 +95,7 @@ namespace Rocola
             if (avisoCarpetaDatos != null)
             {
                 LogCrash("Carpeta de datos: se utiliza la carpeta del programa", new System.IO.IOException(avisoCarpetaDatos));
-                MessageBox.Show(avisoCarpetaDatos, "Rocola - Carpeta de datos", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                AvisoXp.Muestra(avisoCarpetaDatos, "Rocola - Carpeta de datos", BotonesAviso.OK, IconoAviso.Warning);   // EN LINUX: MessageBox.Show -> AvisoXp.Muestra (Nativo/AvisoXp.cs): el aviso de user32, modal, antes de abrir la rocola
             }
 
             // (El reloj fino de Windows -timeBeginPeriod(1)- ya lo pide Form1 al construirse, y lo devuelve
