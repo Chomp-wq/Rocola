@@ -188,3 +188,97 @@ Con datos y programas en `/root/rocola-trabajo/port/atraccion` (fuera del reposi
   le toca la (e1) a las portadas de la lista (`Tapa`: escaladas con `HighQualityBilinear` y el medio píxel de fábrica); no la (a) (sus mapas
   son `Format32bppPArgb`) ni la (b) (el modo de letra es `AntiAliasGridFit`).
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 9-11-2026)
+
+Se revisó el diff `f2f9dcb..port-atraccion` contra el original de XP (`Rocola/AtraccionGpu.cs`) y contra lo que hacía la capa
+(`Plataforma/Dibujo2D.cs`: cada sobrecarga de GDI+ que usaba el archivo y la función nativa a la que la capa la manda), línea por línea y
+sin fiarse del informe, y se repitieron las comprobaciones (salidas en `/root/rocola-trabajo/port/atraccion/rev`, fuera del repositorio).
+**No se encontró ningún fallo en la traducción, en las costuras ni en las pruebas: no se cambió código.** Solo se añade esta sección.
+
+### Lo que se miró
+
+- **El GDI+ que queda** (grep de `Graphics`, `Bitmap`, `Image`, `Font`, `Brush`, `Pen`, `GraphicsPath`, `Region`, `Matrix`, `StringFormat`,
+  `TextRenderer`, `ImageAttributes`, `LockBits` y los modos del `Graphics`, fuera de los comentarios): solo las tres costuras de la tabla,
+  escritas enteras (`Rocola.Dibujo2D.GraphicsPath` de `Redondo` en cuatro sitios, `Rocola.Dibujo2D.Image` en la firma de `ParCuboAtraccion`
+  y `PuenteDibujo.Mapa` de lo que da `LoadCoverByPath`). Ningún `using Rocola.Dibujo2D` ni tipo nuevo con la forma de uno de GDI+.
+- **Cada llamada contra la capa**:
+  - `new Font("Trebuchet MS", px, Bold, Pixel)` es `FontFamily.DeFont` (`Letras.Resuelve`) y `Letra.EnPixeles(nombre, px, negrita)`, lo
+    mismo que `Letra(px)`; `new Font(f.FontFamily, f.Size * esc, f.Style, f.Unit)` es `EnPixeles`/`EnPuntos` con la familia ya resuelta, el
+    tamaño en su unidad y sus tres estilos (aquí solo llegan letras en píxeles); `GetHeight()` es `AltoRenglon` y `Size` es `Tamano`;
+    `fNom != fTit` sigue siendo por identidad (`Letra` no redefine `==`).
+  - `DrawString` con caja y desde un punto (la caja `(x, y, 0, 0)`) es `TextoGdiPlus.Escribe` con `copia` y `medio` en falso, y
+    `MeasureString(s, f, PointF.Empty, sf)` y `(s, f, SizeF, sf, out, out)` son `Mide` con `(0, 0)` y con la caja. Los dos cortan el texto
+    vacío como la capa (`Escribe` no pinta; `Mide` da 0×0 y 0 letras y renglones), y aquí puede llegar (`Iniciales` de una fila sin artista
+    ni título da `""`).
+  - `SolidBrush` es un `SKPaint` con su color (`SolidBrush.Pon` no pone otra cosa); `Pen(color, 1,4)`, un `SKPaint` con su color y su ancho
+    (la esquina en punta y la punta plana son las de fábrica de `SKPaint`, las mismas que pone `Pen.Pon`; el mínimo de un píxel y el límite
+    de esquinas 10 los pone `Pixel.Traza`); el `LinearGradientBrush(caja, a, b, 45)` es `Degradado.Lineal(caja, a, b, 45)`: los mismos
+    extremos (`Extremos(caja, 45, false)`), los dos colores, la envoltura `Repeat` (el `Tile` de fábrica) y el negro opaco del `SKPaint`
+    nuevo (el alfa del pincel con shader no cambia).
+  - `FillPath`, `DrawPath` y `FillRegion` son `Pixel.Rellena`, `Traza` y `RellenaRegion` con `medio` y `copia` en falso; `new Region(luna)`
+    con `Exclude(corte)` es la copia del trazo y `SKPath.Op(Difference)` (si no se puede, la copia sin tocar, como la capa); los dos
+    `GraphicsPath` de la luna son `SKPath` par-impar con `AddOval` de la misma caja (las mismas sumas en `float`).
+  - `DrawImage(img, caja)` y `DrawImage(img, Rectangle, ox, oy, ow, oh, Pixel)` son `Imagenes.Pinta` con la imagen entera o el trozo
+    `(ox, oy, ox + ow, oy + oh)` (sumas de enteros), el filtro del `Graphics` (`BilinealAlta` en la lista; `Vecino` en `EspaciadoEntero`,
+    que XP pone y devuelve), sin medio píxel ni copia y con la envoltura transparente de fábrica. El `try/catch` de `Tapa` se conserva (la
+    capa y la traducción llegan a la misma `Pinta`).
+  - `Save` + `SetClip(p)` + `Restore` de `Tapa` es `Save` + `ClipPath(p, Intersect, sin suavizar)` + `RestoreToCount`: lo que hace la capa
+    (su `SetClip` que reemplaza solo quita un recorte suyo de antes, y `HorneaTop` no tiene ninguno; pone un `Save` más, que no cambia nada).
+  - `LockBits(ReadOnly, Format32bppArgb)` es `Pixeles.LeeSinPremultiplicar` (la misma `Lee(..., Argb32, ...)` y el mismo paso) a una memoria
+    aparte; `Tinta` solo mira el alfa.
+  - `new StringFormat()` es `new FormatoTexto()` (Near, Near, sin banderas, `PorLetra`); `Trimming` es `Corte` con el mismo valor
+    (`EllipsisCharacter` 3, `EllipsisWord` 4); `FormatFlags =` reemplaza (`NoWrap` = `SinPartir` = 4096, `LineLimit` = `SoloEnteros` = 8192)
+    y `|= MeasureTrailingSpaces` añade (`ContarEspacios` = 2048); `new StringFormat(GenericTypographic)` es
+    `new FormatoTexto(TipograficoCompartido)`, la copia, en ese momento, del MISMO objeto que cambia `EstadoReposoGpu.cs`, y `AnchoPastilla`
+    mide con el compartido mismo.
+- **El estado del `Graphics`** contra `estado_por_linea.tsv` (33 filas de este archivo; sus números de línea casan con la traducción): en las
+  dos que varían (827 y 906) lo que varía es el suavizado, y allí solo se mide o se escribe texto, que no lo mira; 743 (`DrawImage` con
+  `NearestNeighbor`), 777-778 (la copia del tipográfico con `Center`, `Center` y `NoWrap`) y las demás, con los valores fijos o los
+  parámetros que lleva la traducción. Lo que la tabla no tiene (la lista entera, la cita de los mensajes, la letra más chica del nombre) sale
+  de quien lo llama: `HorneaTop` (AntiAlias, AntiAliasGridFit, HighQualityBilinear, SourceOver, Default), `HorneaMensajes` y
+  `HorneaFichaVitrina`.
+- **Las costuras**: no hay llamadores de fuera con un `Graphics` (grep de las funciones de dibujo; el `Renglon` y el `Iniciales` del
+  buscador son de `SearchOverlay`) ni llamadas a `EstiloGpu.cs` (grep de sus 21 funciones: ninguna; la nota del encargo no era cierta),
+  así que no hace falta `Puente.atraccion.cs`. `Upload` recibe los mismos `SKBitmap` que antes le pasaba la sobrecarga puente de
+  `Puente.frontera.cs` (`PuenteDibujo.Mapa`: el mismo objeto), no compara por identidad y no guarda ni suelta el mapa. Los mapas horneados
+  los sueltan los mismos sitios que en XP (`AseguraFicha`, `HorneaLosMensajes`, `HorneaLaLista`, `SueltaHorneado`), que los ponen a `null`
+  en el mismo paso; `atrCuadro` solo se lee entre `PreparaAtraccion`, que lo rehace en cada cuadro, y `DibujaAtraccion`, en el hilo de la
+  pantalla, igual que `AtraccionTic` y `DrainCoverTrash` (`Form1.cs` 2387 y 2389). Las portadas de `LoadCoverByPath` salen de la caché
+  (`CoverEnCache`), que las saca antes de soltarlas.
+- **Archivos**: `AtraccionGpu.cs` sigue con 1 217 líneas, LF y sin BOM, como en la base; `git diff --stat f2f9dcb` solo tiene
+  `AtraccionGpu.cs`, este documento y `Pruebas/VistasAtraccion` (su `obj/` lo ignora Git; `RocolaXp.csproj` quita `Pruebas/**`); los
+  commits, con el autor de siempre y sus dos líneas.
+
+### Lo encontrado
+
+Nada que arreglar en el código ni en las pruebas. Una nota menor, de fuera del grupo y sin tocar: la cabecera de
+`Plataforma/Puente.frontera.cs` sigue poniendo a `AtraccionGpu.cs` entre los que llaman a la sobrecarga puente de `Upload`, y ya no la llama
+(este documento ya lo apuntaba en «Lo que queda»). Es solo un comentario de otro grupo: que lo quite quien junte.
+
+### Las comprobaciones, repetidas por el revisor
+
+Con la máquina compartida (carga de 4 a 7 en 4 núcleos) y llvmpipe. Nada en el A4.
+
+- **Compila** (`dotnet build -c Release`): 0 errores y 15 avisos; la lista ordenada, idéntica a la de la base (`base-avisos.txt`).
+- **Diff contra XP** (`diff-xp.py AtraccionGpu.cs -v`): 163 quitadas y 161 puestas; las 2 «sin marca» son las llaves `{` de 831 y 934, que
+  no cambian respecto a la base. Con `diff --minimal` y lo mecánico de la tarjeta: 161 y 159, **0 sin marca**; `git diff f2f9dcb`: 159 y
+  159, ninguna sin `EN LINUX`.
+- **Arnés** (`arnes.sh`, el programa entero de esta copia y el de la referencia congelada): **IGUALES las 19 120 líneas** con las letras de
+  XP falsas y con DejaVu (sha256 `c7a995d4…` y `fd79bc6f…`, los mismos de la pista); 3 610 mapas (1 458 y 1 428 distintos) y 68 432
+  llamadas directas a lo traducido.
+- **Recorrido `atraccion`** (con el candado y la carpeta de siempre, `VOLCADO=1 CAPAS=1 HUELLAS=1`, contra `cmp-ref` y `cmp-ref2`): salió con
+  0, 5 de 5 capturas, 0 excepciones en lo que escribió y en `rocola_error.txt`. Lo QUIETO: **texturas 32 de 32** (contando las veces) y
+  **capas de Dibujo2D 10 de 10**, ninguna textura que no esté en la referencia.
+- **La lista de la noche** (`top.sh` con la traducción, contra las dos corridas de la referencia que dejó la pista, la misma noche
+  2026-11-08): salió con 0, 8 de 8 capturas, 0 excepciones. Lo QUIETO: **texturas 30 de 30** y **capas 16 de 16**, ninguna nueva; la
+  lista (`83ddf07e…`, 1024×1024) y los mensajes con la favorita (`b97e4e77…`) idénticos.
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64`, a la carpeta de la revisión): los mismos 15 avisos del compilador y **0 avisos
+  IL/AOT**; el binario nativo (`aot-corre.sh atraccion top`): salió con 0 las dos veces, 5 de 5 y 8 de 8 capturas, 0 excepciones en lo
+  que escribió y en `rocola_error.txt`; las capturas enseñan el escaparate («EN ESTA ROCOLA», «Tu rocola», «Otra Banda», «Regional»,
+  «3 canciones», el mensaje) y la lista (la luna, «Lo más pedido esta noche», «12 canciones pedidas», las cinco filas con la portada
+  recortada, el título achicado de la tercera, el carril con su barra y «5 veces»… «1 vez»).
+- **Juntar** (`git merge-tree`, sin commit): con la rama principal de ahora (`99000e8`) y con `port-pantalla-viva`,
+  `port-buscador-portadas`, `port-ventanas2` y `port-asistente`, sin conflictos.
+- **Banco y cintas**: no hacen falta (no se tocó `Nativo/`, `Dibujo2D.cs`, ningún puente ni la tarjeta).
+- Los programas del arnés, el binario nativo y los PNG se borraron después de comparar (quedan las salidas y las huellas).
