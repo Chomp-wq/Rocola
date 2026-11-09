@@ -491,3 +491,104 @@ El merge se hizo solo (ningun choque: esos grupos no tocan lo de este paso). Otr
   lo que XP hace (cada hoja de XP que escucha teclas pone KeyPreview), pero una hoja con KeyPreview sin escuchar nada no se puede expresar.
 - El caracter de cada tecla sigue con la tabla de la referencia (un teclado de EE. UU.); la distribucion del A4 (acentos, la ñ) sigue
   siendo un riesgo del diseno.
+
+### Revision (revisor independiente, 9-11-2026)
+
+Se reviso el paso entero (1d88e8f, 6c11fdc, el merge 766551b y 14d312d) contra `Rocola/` (XP), contra la fuente de WinForms
+(`/tmp/claude-0/agente-winforms/ref`) y contra la capa que sustituye (la de d94eaed: `Ventanas.Form.cs`, `Ventanas.Control.cs`,
+`Ventanas.Escritorio.cs`), y se repitieron las comprobaciones con etiquetas propias (RHR para la referencia, HR y HRA para este programa en
+JIT y en NativeAOT, THR para el programa del paso T) en `/root/rocola-trabajo/port/ventanas2/revH2`.
+
+Lo comprobado en el codigo:
+
+- Las 23 lineas de XP: la misma logica, los mismos valores y el mismo orden que en `Rocola/Form1.Datos.cs` (ShowMusicDirManager),
+  `Form1.Ajustes.cs` (MonedaTambienAqui) y `Program.cs:98`; cada una con su «EN LINUX» (`diff-xp.py -v`: las que salen sin marca son de
+  otras pistas). Cada archivo con su numero de lineas y los CRLF en las mismas lineas que en d94eaed (comparado linea por linea). En la zona
+  de Ctrl+F2 no queda ninguna referencia a WinForms; en Program.cs y Form1.Datos.cs queda `Application.StartupPath` (la carpeta del
+  programa, no es de las ventanas).
+- Las reglas de las piezas, una por una contra la capa y la fuente: ShowDialog (duena dada o la activa, Form.cs:5669-5823), CheckCloseDialog
+  y WmClose, ProcessDialogKey (Form.cs:4908-4948 y ContainerControl.cs:1156-1188), GetNextControl y SelectNextControl (Control.cs), el
+  TabIndex de Add (Control.ControlCollection.cs), IsInputKey de la lista (ListControl.cs:552-569), KeyPreview (Form.ProcessKeyPreview), el
+  boton por defecto (Form.UpdateDefaultButton), el clic de Button (al soltar encima), la rueda que sube, el doble clic de 500 ms y 4 puntos,
+  WS_CLIPSIBLINGS y la transparencia, la «X» roja (PaintWithErrorHandling) y el apagado (WM_QUERYENDSESSION/WM_ENDSESSION con FormOwnerClosing
+  a las suyas). AvisoXp hace lo de CajaAviso de la capa (medidas de user32, Aceptar de cancelar y por defecto, la «X» y Alt+F4 dan OK, el
+  icono). Al cerrarse un aviso el foco vuelve a la pieza activa de su duena, que es lo que deja WinForms con el WM_SETFOCUS que manda a la
+  duena despues de MessageBox (MessageBox.cs:433-437).
+- Sin la API de WinForms: ni Handle, ni mensajes, ni Invoke, ni IWin32Window, ni Dock/Anchor/AutoScroll/maquetado; lo publico de cada pieza
+  es lo que XP usa de ella (Ctrl+F2, los avisos, y lo de Label y Panel que usara Ctrl+F3). Enter y Leave no estan: ninguna pieza de XP los
+  escucha y la capa no los apunta en la traza.
+- Los commits del paso solo tocan `sistema/rocola/Xp/` (ni AGENTS.md, ni LEEME.md, ni ETAPA2.md, ni Gl.cs, Kms.cs o Botones.cs).
+
+Lo encontrado y lo hecho (2077eac):
+
+1. (menor, arreglado) El raton despues de un clic que abre un modal. `Hoja.RatonBoton`, al soltar, buscaba la pieza de debajo en el punto
+   donde se solto, pero DESPUES del clic, que puede abrir un modal (los avisos de «Quitar seleccionada», el selector de «Agregar
+   carpeta...») mientras el raton se mueve: al volver, la pieza del punto viejo recibia MouseEnter (el boton plano se quedaba pintado como
+   «encima» con la flecha en otro sitio). La capa (`Escritorio.RatonBoton`: `Encima(ControlEn(PosicionRaton))`) y Windows (el WM_MOUSEMOVE
+   va a la ventana que queda debajo de la flecha) miran donde esta la flecha ahora; ahora tambien la hoja. Prueba nueva en
+   Pruebas/Ventanas/Hoja; el mismo caso corrido contra la capa de la referencia (un programa de prueba fuera del repositorio compilado
+   contra ref-trazas) da «MouseEnter,MouseDown(1),Click,MouseLeave,MouseUp(1)|MouseEnter», lo mismo que la hoja ahora; antes la hoja daba
+   «...,MouseUp(1),MouseEnter|». Ninguna escena lo tocaba (los avisos de f2barras se cierran con el teclado y sin mover el raton).
+2. (menor, arreglado) La «X» roja no se subia. La composicion (`Escritorio.Capas`) leia la version de la hoja despues de pintarla: si al
+   pintarse algo la vuelve a ensuciar (una pieza que lanza: PintaFondoYContenido la marca e invalida), la pintura siguiente, con la «X»,
+   llevaba la misma version y el anfitrion no la subia a la tarjeta hasta otro cambio. En la capa si se subia (su version de la capa cambia
+   en cada ArmaCapas). `Hoja.Superficie(out version)` da la version de antes de pintar; prueba nueva.
+3. (menor, arreglado) El selector de carpetas (pieza nueva, sin referencia): el cuadrito de abrir miraba otras carpetas que las que ensena al
+   abrirse (la raiz de un disco NTFS con solo la papelera o System Volume Information salia con «+» y se abria vacia) y lo miraba en el
+   disco en cada pintura; ahora con el mismo filtro y una vez por carpeta. El canal de su barra pasaba de pagina segun la mitad de la barra
+   y no segun el pulgar (con el pulgar arriba, tocar el canal debajo de el subia), y el pulgar no se podia arrastrar; ahora como la barra de
+   la lista. Dos pruebas nuevas (las dos fallan con el codigo de antes).
+4. (banco, arreglado) En las pruebas de la hoja, la tecla Escape «por si Alt+F4 no lo cierra» del primer aviso salia a los 1,5 s aunque el
+   aviso ya se hubiera cerrado y le llegaba a la prueba que estuviera corriendo (con las pruebas nuevas cancelaba el selector de la barra);
+   ahora solo si sigue abierto.
+5. (sin cambio, queda) Application.Idle con un aviso o el «Buscar carpeta» abiertos. En XP, MessageBox.Show llama al MessageBox de user32
+   entre BeginModalMessageLoop y EndModalMessageLoop (MessageBox.cs:421-429) y FolderBrowserDialog a SHBrowseForFolder: los dos corren su
+   propio bucle de dialogo. Idle solo lo dan FDoIdle, desde el bucle de WinForms con la cola vacia (ComponentManager.FPushMessageLoop,
+   Application.cs:1971-1983 y 3869-3873), y Application.RaiseIdle (Application.cs:1269-1273), que la rocola no llama; y Form y Control no
+   atienden WM_ENTERIDLE. Mientras el aviso o el selector estan abiertos, la tarjeta de la rocola (dibuja en Application.Idle: D3D9Star.cs,
+   OnIdle, 2415 y 2494) no dibuja y la pantalla de detras se queda quieta (los relojes, los encargos y el pintado de las ventanas si siguen:
+   el bucle de user32 los despacha). La referencia (CajaAviso, una Form en el bucle modal de la capa) y la hoja dan Libre, y la tarjeta
+   sigue animando detras. No se cambio aqui: sin Libre la composicion de la transicion solo se rehace cuando algo cambia, la flecha (que la
+   dibuja esa composicion) dejaria de moverse en la pantalla y las capturas del banco caerian tarde; hay que hacerlo con la composicion
+   nativa (con GpuPanel sin Control y la flecha en su plano), y entonces sera una diferencia aceptada con esta prueba.
+6. (nota, sin cambio) AvisoXp se centra en su duena (CenterParent), como CajaAviso de la referencia; el MessageBox de user32 se centra en el
+   area de trabajo (asi lo hace Wine, msgbox.c, «Message boxes are always desktop centered»; la fuente de user32 no esta). Solo cambiaria si
+   antes se arrastro la hoja de Ctrl+F2 (centrada en la pantalla, su centro es el de la pantalla); se deja como la referencia.
+7. (nota, para el paso C) La hoja se pinta entera cada vez que algo cambia (como la capa de la referencia: los puntos salen iguales). El
+   paso pedia pintar solo lo invalidado; para Ctrl+F2 (646x404) no importa, pero Ctrl+F3 mide 966x764 y se pintaria entera en el procesador
+   con cada cambio (al arrastrar un deslizador): medirlo y, si hace falta, pintar solo las piezas sucias.
+8. (nota, para el paso C) La hoja toma los modificadores (Mayus, Ctrl, Alt) en el momento de la tecla, como TranslateMessage, que hace el
+   WM_CHAR antes de despachar el WM_KEYDOWN; la capa los lee despues del KeyDown. Solo cambia si un KeyDown abre un modal y mientras se
+   aprieta o suelta Mayus; en Ctrl+F2 ningun KeyDown abre nada. Mirarlo con los KeyDown de las piezas de Ctrl+F3.
+
+Comprobaciones repetidas (9-11-2026, maquina compartida con otra pista, carga de 2 a 7, llvmpipe):
+
+- Compila (`dotnet build -c Release`, desde cero): 0 errores y 15 avisos, la misma lista archivo:linea:codigo que d94eaed, antes y
+  despues de los arreglos.
+- Las 41 pruebas: 41 de 41. Las de la hoja: 48 de 48 antes de los arreglos y 52 de 52 despues, en JIT y en NativeAOT (0 avisos de AOT).
+  De las cuatro nuevas, la del raton falla con la linea de antes (la pieza del punto viejo recibe MouseEnter) y las dos del selector con el
+  selector de antes («con con» y «canal 0, arrastre 0»); la de la «X» roja comprueba la version que da ahora la hoja a quien compone. Las
+  reglas de la pantalla: 32 de 32 en JIT y en NativeAOT (los dos CS0649 del banco).
+- Las escenas, alternando la referencia (RHR) y este programa (HR) en JIT, con el ruido que uso el paso (`ventanas2/ruido`, `ruido6` y
+  `rv/ruido`; el de V para las diez de siempre):
+  - RHR1/HR1: arranque, moneda, buscador, cierreq, altf4, kill9, asistente, captura, salirq, f2sin y aviso IGUALES; sigterm y f3sigterm,
+    lo aceptado en V2 (encargo Apagado, closing y closed con WindowsShutDown, `rocola_estado.txt` borrado). video, f2 y f2barras con la
+    secuencia, los estados y las capas iguales y solo cuentas fuera del ruido (video: el estado de los 13 s cayo del otro lado del KeyUp de
+    Intro y el reloj de 42 ms 273 frente a 330; f2 y f2barras: los encargos del vigia de la pantalla, 17 frente a 31 por segundo al
+    arrancar, con la maquina a carga 7); otra vez al reves (primero este programa y despues la referencia, RHR2/HR2): video, f2 y f2barras
+    IGUALES. tab, la carrera conocida del repaso en la hoja de Ctrl+F3 (aun de la capa): en HR1 del lado de este programa y en RHR2 del de la
+    referencia («faltan 1 archivos»), con la traza igual en las dos.
+  - Las capas de las hojas y de Dibujo2D a 0 puntos distintos en todas (f2 20 de 20, f2barras 28 de 28, f2sin 8 de 8, aviso 3 de 3, moneda
+    6 de 6, video 6 de 6...) salvo la hoja de Ctrl+F3 de tab por esa carrera. `rocola_estado.txt` falta tras cierreq, salirq, altf4 y
+    SIGTERM (en la referencia queda tras SIGTERM: lo aceptado) y queda tras kill9.
+  - f2sigterm y f2agrega contra el programa del paso T (d94eaed, compilado aparte de un `git archive`; THR1/HR1): f2sigterm con la misma
+    secuencia (33 sucesos) y `rocola_estado.txt` borrado en los dos; f2agrega igual hasta el KeyUp de Espacio en «Agregar carpeta...» y
+    despues el selector (lo aceptado): Derecha, Abajo, Derecha, Abajo e Intro eligen `.../arbol/Discos/Dos`, que queda como `dir=` en
+    rocola_config.txt.
+- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true -o /root/rocola-trabajo/port/ventanas2/aot`): 0 avisos de IL ni de
+  AOT (solo los 15 de compilacion). Contra la referencia (RHRA1/HRA1): arranque, cierreq, kill9, f2, f2barras, f2sin y aviso IGUALES;
+  sigterm, lo aceptado. f2sigterm y f2agrega en NativeAOT contra los de JIT: la misma secuencia, los mismos estados y las capas de Ctrl+F2 y
+  del selector a 0 puntos distintos.
+- `diff-xp.py -v` en Form1.Datos.cs, Form1.Ajustes.cs y Program.cs: las 23 lineas cambiadas en el paso llevan su «EN LINUX» (de las que salen
+  sin marca, ninguna es del paso: las 23 de `git diff d94eaed` la llevan todas). Mismas lineas y mismos finales.
+- Nada de esto se ha probado en el A4.
