@@ -81,6 +81,7 @@ namespace Rocola
         {
             internal string Ruta, Nombre; internal Nodo Padre; internal int Nivel; internal bool Abierto, Mirado;
             internal List<Nodo> Hijos = new List<Nodo>();
+            internal int ConHijos = -1;   // (si tiene carpetas que ensenar, mirado una vez: -1 aun no; como SFGAO_HASSUBFOLDER del arbol de Windows)
         }
         private readonly CajaPieza caja;
         CajaPieza IPieza.Caja { get { return caja; } }
@@ -98,6 +99,7 @@ namespace Rocola
         }
         internal void SetBounds(int x, int y, int w, int h) { caja.SetBounds(x, y, w, h); }
         internal string Elegida { get { return elegido != null ? elegido.Ruta : null; } }
+        internal int TopIndex { get { return top; } }   // (las pruebas: el primer renglon que se ve)
         public void Dispose() { caja.Desecha(null); }
 
         // las carpetas de una carpeta, una vez (sin las escondidas ni las de la papelera y el sistema de Windows), en orden
@@ -110,9 +112,7 @@ namespace Rocola
             {
                 foreach (string d in Directory.GetDirectories(n.Ruta))
                 {
-                    string nom = Path.GetFileName(d);
-                    if (nom.StartsWith(".") || nom.Equals("$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase) || nom.Equals("RECYCLER", StringComparison.OrdinalIgnoreCase)
-                        || nom.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (NoSeEnsena(Path.GetFileName(d))) continue;
                     l.Add(d);
                 }
             }
@@ -120,7 +120,24 @@ namespace Rocola
             l.Sort(StringComparer.OrdinalIgnoreCase);
             foreach (string d in l) n.Hijos.Add(new Nodo { Ruta = d, Nombre = Path.GetFileName(d), Padre = n, Nivel = n.Nivel + 1 });
         }
-        private static bool TieneHijos(Nodo n) { if (n.Mirado) return n.Hijos.Count > 0; try { foreach (string d in Directory.EnumerateDirectories(n.Ruta)) if (!Path.GetFileName(d).StartsWith(".")) return true; } catch { } return false; }
+        private static bool NoSeEnsena(string nom)
+        {
+            return nom.StartsWith(".") || nom.Equals("$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase) || nom.Equals("RECYCLER", StringComparison.OrdinalIgnoreCase)
+                || nom.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase);
+        }
+        // si lleva el cuadrito de abrir: con las MISMAS carpetas que ensena al abrirse (revision del paso H: antes solo quitaba las escondidas, y
+        // la raiz de un disco NTFS con solo la papelera o System Volume Information salia con su «+» y al abrirla no tenia nada), mirado una vez
+        // por carpeta y no en cada pintura
+        private static bool TieneHijos(Nodo n)
+        {
+            if (n.Mirado) return n.Hijos.Count > 0;
+            if (n.ConHijos < 0)
+            {
+                n.ConHijos = 0;
+                try { foreach (string d in Directory.EnumerateDirectories(n.Ruta)) if (!NoSeEnsena(Path.GetFileName(d))) { n.ConHijos = 1; break; } } catch { }
+            }
+            return n.ConHijos == 1;
+        }
         // los renglones que se ven (los abiertos, en orden)
         private List<Nodo> Renglones()
         {
@@ -191,9 +208,13 @@ namespace Rocola
             List<Nodo> l = Renglones(); Rectangle u = Util;
             bool barra = ConBarra(l.Count);
             if (barra && e.X >= u.Right - Barra)
-            {   // la barra: las flechas de uno en uno, el canal de pagina en pagina
-                int c = Caben;
-                if (e.Y < u.Top + Barra) top--; else if (e.Y >= u.Bottom - Barra) top++; else top += e.Y < u.Top + u.Height / 2 ? -c : c;
+            {   // la barra: las flechas de uno en uno, el canal de pagina en pagina hacia el lado del pulgar donde se toco, y el pulgar se arrastra
+                // (como la de la lista, ListaXp; revision del paso H: el canal miraba la mitad de la barra y no el pulgar, y el pulgar no se
+                // podia arrastrar)
+                int c = Caben; Rectangle pv = Pulgar(u, l.Count);
+                if (e.Y < u.Top + Barra) top--; else if (e.Y >= u.Bottom - Barra) top++;
+                else if (pv.Contains(e.X, e.Y)) { agarre = e.Y - pv.Top; return; }
+                else top += e.Y < pv.Top ? -c : c;
                 Ajusta(); caja.Invalidate(); return;
             }
             int i = top + (e.Y - u.Top) / Alto;
@@ -203,6 +224,28 @@ namespace Rocola
             if (e.X >= x0 && e.X < x0 + 16 && TieneHijos(n)) { Abre(n, !n.Abierto); return; }   // (el cuadrito)
             Elige(n);
             if (e.Clicks == 2) Abre(n, !n.Abierto);
+        }
+        // ARRASTRAR EL PULGAR: el arbol sigue al pulgar (la posicion por la proporcion del canal, como la barra de Windows y ListaXp) y al
+        // soltar queda donde se dejo
+        private int agarre = -1;
+        void IPieza.RatonMueve(Raton e)
+        {
+            if (agarre < 0) return;
+            List<Nodo> l = Renglones(); Rectangle u = Util;
+            if (!ConBarra(l.Count)) return;
+            Rectangle pv = Pulgar(u, l.Count); int canal = u.Height - 2 * Barra - pv.Height, sobra = Math.Max(0, l.Count - Caben);
+            if (canal <= 0) return;
+            int nuevo = (int)Math.Round((double)(e.Y - agarre - (u.Top + Barra)) * sobra / canal);
+            nuevo = Math.Max(0, Math.Min(sobra, nuevo));
+            if (nuevo != top) { top = nuevo; caja.Invalidate(); }
+        }
+        void IPieza.RatonArriba(Raton e) { agarre = -1; }
+        // el pulgar de la barra (el mismo que se pinta)
+        private Rectangle Pulgar(Rectangle u, int renglones)
+        {
+            int c = Caben, total = Math.Max(c, renglones), canal = u.Height - 2 * Barra;
+            int largo = Math.Max(8, canal * c / Math.Max(1, total)), py = u.Top + Barra + (total > c ? (canal - largo) * top / (total - c) : 0);
+            return new Rectangle(u.Right - Barra, py, Barra, largo);
         }
         void IPieza.Rueda(Raton e) { top -= e.Delta / 120 * 3; Ajusta(); caja.Invalidate(); e.Handled = true; }
         void IPieza.AlRecibirFoco() { caja.Invalidate(); }
@@ -236,12 +279,7 @@ namespace Rocola
                 PinturaXp.Texto(g, hdc, nd.Nombre, caja.Font, new Rectangle(rt.X + 2, rt.Y, rt.Width, rt.Height), es && conFoco ? Color.White : Color.Black, BanderasGdi.SinMargen | BanderasGdi.UnRenglon | BanderasGdi.SinPrefijo | BanderasGdi.EnMedio);
             }
             g.RestoreToCount(n);
-            if (barra)
-            {
-                int c = Caben, total = Math.Max(c, l.Count), canal = u.Height - 2 * Barra;
-                int largo = Math.Max(8, canal * c / Math.Max(1, total)), py = u.Top + Barra + (total > c ? (canal - largo) * top / (total - c) : 0);
-                PinturaXp.BarraDesplazamiento(g, new Rectangle(u.Right - Barra, u.Top, Barra, u.Height), true, new Rectangle(u.Right - Barra, py, Barra, largo));
-            }
+            if (barra) PinturaXp.BarraDesplazamiento(g, new Rectangle(u.Right - Barra, u.Top, Barra, u.Height), true, Pulgar(u, l.Count));
             PinturaXp.TrazaRect(g, new RectangleF(0, 0, caja.Bounds.Width - 1, caja.Bounds.Height - 1), Color.FromArgb(127, 157, 185), 1f, false);
         }
         // la carpeta amarilla de XP (16x16), abierta o cerrada

@@ -298,7 +298,10 @@ namespace Rocola
                 // no, otro Click. Despues MouseUp, de un clic.
                 bool clic = ClicNormal(c) && PiezaEn(p) == c;
                 Llama(c, !clic ? 7 : doble && DobleClicNormal(c) ? 5 : 1, Args(c, b, 1, 0));
-                Encima(PiezaEn(p));
+                // la de debajo de la flecha AHORA (la capa: Encima(ControlEn(PosicionRaton))): el clic puede haber abierto un modal -el aviso
+                // de «Quitar seleccionada», el selector de «Agregar carpeta...»- y el raton haberse movido mientras; Windows le manda el
+                // WM_MOUSEMOVE a la ventana que queda debajo, no a la del punto donde se solto (revision del paso H)
+                Encima(PiezaEn(PantallaRocola.Flecha));
             }
         }
         private static bool ClicNormal(object c) { IPieza p = c as IPieza; return p == null || p.Caja.ClicNormal; }

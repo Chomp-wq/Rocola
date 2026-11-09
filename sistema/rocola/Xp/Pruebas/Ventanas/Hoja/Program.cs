@@ -43,7 +43,7 @@ namespace Rocola
         internal static readonly List<string> Log = new List<string>();
         private readonly CajaPieza caja; private readonly string n;
         public CajaPieza Caja { get { return caja; } }
-        public bool ManejaTecla, SuprimeTecla, ManejaRueda, LanzaAlPintar, Foco; public int Pintado;
+        public bool ManejaTecla, SuprimeTecla, ManejaRueda, LanzaAlPintar, Foco, Entra; public int Pintado; public Action AlClic;
         public PiezaPrueba(string n) { this.n = n; caja = new CajaPieza(this, 0, 0); Controls = new Piezas(this); caja.Hijas = Controls; }
         public Piezas Controls { get; }
         void IPieza.PintaContenido(SKCanvas g) { Pintado++; if (LanzaAlPintar) throw new InvalidOperationException("pinta mal"); }
@@ -52,7 +52,9 @@ namespace Rocola
         void IPieza.Caracter(PulsoCaracter e) { Log.Add(n + ".KeyPress(" + (int)e.KeyChar + ")"); }
         void IPieza.RatonAbajo(Raton e) { Log.Add(n + ".MouseDown(" + e.Clicks + ")"); }
         void IPieza.RatonArriba(Raton e) { Log.Add(n + ".MouseUp(" + e.Clicks + ")"); }
-        void IPieza.Clic(Raton e) { Log.Add(n + ".Click"); }
+        void IPieza.Clic(Raton e) { Log.Add(n + ".Click"); if (AlClic != null) AlClic(); }
+        void IPieza.RatonEntra() { if (Entra) Log.Add(n + ".MouseEnter"); }
+        void IPieza.RatonSale() { if (Entra) Log.Add(n + ".MouseLeave"); }
         void IPieza.DobleClic(Raton e) { Log.Add(n + ".DoubleClick"); }
         void IPieza.Rueda(Raton e) { Log.Add(n + ".MouseWheel"); if (ManejaRueda) e.Handled = true; }
         void IPieza.AlRecibirFoco() { if (Foco) Log.Add(n + ".GotFocus"); }
@@ -199,9 +201,13 @@ namespace Rocola
 
             // ---- los avisos (MessageBox de XP: solo Aceptar) ----
             Luego(150, delegate { Hoja.Tecla(Tecla.Menu, true, Tecla.Alt, false); Teclea(Tecla.F4, Tecla.Alt); Hoja.Tecla(Tecla.Menu, false, Tecla.None, false); });
-            Luego(1500, delegate { Teclea(Tecla.Escape); });   // (por si Alt+F4 no lo cierra)
+            bool primeroCerrado = false;
+            // (por si Alt+F4 no lo cierra; si ya se cerro, nada: esa tecla le llegaria a la prueba que este corriendo a los 1,5 s -revision del
+            // paso H: con las pruebas nuevas le llegaba al selector de la barra y lo cancelaba-)
+            Luego(1500, delegate { if (!primeroCerrado) Teclea(Tecla.Escape); });
             Stopwatch mb = Stopwatch.StartNew();
             r = AvisoXp.Muestra("solo aceptar", "prueba");
+            primeroCerrado = true;
             Mira("MessageBox OK y Alt+F4", r + (mb.ElapsedMilliseconds < 1000 ? " con Alt+F4" : " con Escape"), "OK con Alt+F4");
             Luego(150, delegate { Teclea(Tecla.Escape); });
             Mira("Aviso: Escape es Aceptar (el boton de cancelar de un aviso de solo Aceptar)", AvisoXp.Muestra("escape", "prueba").ToString(), "OK");
@@ -223,6 +229,30 @@ namespace Rocola
             duena.MuestraModal(null);
             Mira("Aviso con duena: al cerrarlo, la duena vuelve a estar activa con su foco", focoDespues, "BotonXp activa=Hoja'duena'");
 
+            // ---- (revision del paso H) el raton despues de un modal abierto por un clic: al volver, MouseEnter a la pieza que queda debajo
+            // de la flecha AHORA, no a la del punto donde se solto (la capa: Encima(ControlEn(PosicionRaton)); Windows: WM_MOUSEMOVE a la de
+            // debajo). Como «Quitar seleccionada» con su aviso: el raton se mueve mientras el aviso esta abierto y se cierra con Intro.
+            Hoja hm = new Hoja(MarcoXp.Dialogo); hm.Text = "hm"; hm.ClientSize = new Size(800, 560);
+            PiezaPrueba q = new PiezaPrueba("q"), w = new PiezaPrueba("w");
+            q.Caja.SetBounds(10, 10, 50, 50); w.Caja.SetBounds(700, 480, 50, 50); q.Entra = w.Entra = true;
+            hm.Controls.Add(q); hm.Controls.Add(w);
+            q.AlClic = delegate
+            {
+                Luego(100, delegate { Point pw = Cliente(hm, 725, 505); Raton(pw.X, pw.Y); Teclea(Tecla.Enter); });
+                AvisoXp.Muestra(hm, "modal desde un clic", "prueba");
+            };
+            string trasModal = "";
+            Luego(100, delegate
+            {
+                PiezaPrueba.Log.Clear();
+                Point pq = Cliente(hm, 35, 35); Raton(pq.X, pq.Y); Clic(BotonRaton.Left);
+                trasModal = Log("q.") + "|" + Log("w.");
+                hm.Close();
+            });
+            hm.MuestraModal(null);
+            Mira("Un clic que abre un modal y el raton que se mueve mientras: al volver, MouseEnter a la de debajo de la flecha", trasModal,
+                 "MouseEnter,MouseDown(1),Click,MouseLeave,MouseUp(1)|MouseEnter");
+
             // ---- el selector de carpetas (la decision del 8-11-2026: nativo, como SHBrowseForFolder) ----
             string raiz = Path.Combine(Path.GetTempPath(), "pruebas-hoja-" + Environment.ProcessId);
             Directory.CreateDirectory(Path.Combine(raiz, "Discos", "Uno")); Directory.CreateDirectory(Path.Combine(raiz, "Discos", "Dos")); Directory.CreateDirectory(Path.Combine(raiz, "Otra"));
@@ -235,6 +265,49 @@ namespace Rocola
             Luego(150, delegate { Teclea(Tecla.Down); Teclea(Tecla.Escape); });
             Mira("Selector: Escape cancela y no cambia SelectedPath", sc2.MuestraModal(null) + " '" + sc2.SelectedPath + "'", "Cancel ''");
             Directory.Delete(raiz, true);
+
+            // (revision del paso H) el selector: el cuadrito de abrir solo con carpetas que se ensenan al abrirla (no la papelera ni System
+            // Volume Information: la raiz de un disco NTFS sin nada mas no lo lleva), y la barra del arbol: el canal pasa de pagina hacia el
+            // lado del pulgar donde se toca y el pulgar se arrastra (como la barra de la lista)
+            string raiz2 = Path.Combine(Path.GetTempPath(), "pruebas-hoja2-" + Environment.ProcessId);
+            Directory.CreateDirectory(Path.Combine(raiz2, "Disco", "System Volume Information")); Directory.CreateDirectory(Path.Combine(raiz2, "Disco", "$RECYCLE.BIN"));
+            Directory.CreateDirectory(Path.Combine(raiz2, "Otra", "Musica"));
+            for (int i = 0; i < 40; i++) Directory.CreateDirectory(Path.Combine(raiz2, "Muchas", "c" + i.ToString("00")));
+            Environment.SetEnvironmentVariable("ROCOLA_CARPETAS_RAIZ", Path.Combine(raiz2, "Disco") + ":" + Path.Combine(raiz2, "Otra"));
+            string cuadritos = "";
+            Luego(150, delegate
+            {
+                int v; SKBitmap sup = Hoja.Activa.Superficie(out v);   // (el arbol en 12,52 del cliente; renglones de 16; el cuadrito en 4,4 del renglon)
+                cuadritos = Cuadrito(sup, 15 + 4, 81 + 4) + " " + Cuadrito(sup, 15 + 4, 81 + 16 + 4);
+                Teclea(Tecla.Escape);
+            });
+            new SelectorCarpetas().MuestraModal(null);
+            Mira("Selector: el cuadrito de abrir solo con carpetas que se ensenan (Disco: la papelera y System Volume Information; Otra: Musica)", cuadritos, "sin con");
+            Environment.SetEnvironmentVariable("ROCOLA_CARPETAS_RAIZ", Path.Combine(raiz2, "Muchas"));
+            string barraArbol = "";
+            Luego(150, delegate
+            {
+                Hoja s = Hoja.Activa; ArbolCarpetas ar = (ArbolCarpetas)s.Controls[1];
+                Teclea(Tecla.Right);   // (abre «Muchas»: 41 renglones, caben 13; el pulgar arriba, de 18 a 77 en el arbol)
+                Point o = new Point(s.Location.X + Hoja.Marco + 12, s.Location.Y + Hoja.Marco + Hoja.AltoBarra + 52);
+                Raton(o.X + 280, o.Y + 90); Clic(BotonRaton.Left);   // el canal debajo del pulgar, en la mitad de arriba de la barra
+                int trasCanal = ar.TopIndex;
+                Hoja.RatonRueda(5);   // (otra vez arriba)
+                Raton(o.X + 280, o.Y + 40); Boton(BotonRaton.Left, true); Raton(o.X + 280, o.Y + 90); Boton(BotonRaton.Left, false);
+                barraArbol = "canal " + trasCanal + ", arrastre " + ar.TopIndex;
+                Teclea(Tecla.Escape);
+            });
+            new SelectorCarpetas().MuestraModal(null);
+            Mira("Selector: el canal debajo del pulgar baja una pagina; el pulgar arrastrado 50 puntos baja 11 renglones", barraArbol, "canal 13, arrastre 11");
+            Environment.SetEnvironmentVariable("ROCOLA_CARPETAS_RAIZ", null);
+            Directory.Delete(raiz2, true);
+        }
+        // el cuadrito de abrir de un renglon del arbol: su borde gris azulado (148, 166, 194) en el cuadro de 9x9 que empieza en x,y
+        static string Cuadrito(SKBitmap b, int x, int y)
+        {
+            int n = 0;
+            for (int j = y; j < y + 9; j++) for (int i = x; i < x + 9; i++) if (b.GetPixel(i, j) == new SKColor(148, 166, 194)) n++;
+            return n > 0 ? "con" : "sin";
         }
 
         static void DentroDeLaHoja(Hoja h, PiezaPrueba k)
@@ -350,6 +423,14 @@ namespace Rocola
             int ex0 = excepciones; h.Superficie(); x.Caja.Invalidate(); h.Superficie(); x.Caja.Invalidate(); h.Superficie();
             Mira("OnPaint que lanza: una vez, y despues la X roja", "OnPaint=" + x.Pintado + " excepciones=" + (excepciones - ex0), "OnPaint=1 excepciones=1");
             h.Controls.Remove(x);
+            // (revision del paso H) la version que quedo pintada (Hoja.Superficie(out version), la que la composicion compara para subir la
+            // superficie): la pintura de la «X» roja, que se hace porque la pieza ensucio la hoja al lanzar, lleva otra version (se sube);
+            // despues, sin cambios, la misma (no se sube)
+            PiezaPrueba x2 = new PiezaPrueba("x2"); x2.LanzaAlPintar = true; x2.Caja.SetBounds(600, 300, 50, 50); h.Controls.Add(x2);
+            int va, vb, vc; h.Superficie(out va); h.Superficie(out vb); h.Superficie(out vc);
+            Mira("La X roja se vuelve a subir: otra version tras la pintura que lanzo, y la misma despues", (vb != va) + " " + (vc == vb) + " OnPaint=" + x2.Pintado,
+                 "True True OnPaint=1");
+            h.Controls.Remove(x2);
         }
         // los renglones que caben en la lista (lo que AvPag baja menos uno)
         static int VisiblesDe(ListaXp l) { int alto = Math.Max(1, CajaPieza.LetraDeFabrica.AltoEntero); return Math.Max(1, (96 - 2) / alto); }

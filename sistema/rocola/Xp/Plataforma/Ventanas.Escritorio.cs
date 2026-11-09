@@ -572,7 +572,7 @@ namespace Rocola.Ventanas
                 if (h.IsDisposed || !h.Visible) continue;
                 Capa c;
                 if (!capasHoja.TryGetValue(h, out c)) capasHoja[h] = c = new Capa();
-                c.Mapa = h.Superficie(); c.Version = h.Version; c.Rect = h.Bounds; c.Opacidad = 1f;
+                int v; c.Mapa = h.Superficie(out v); c.Version = v; c.Rect = h.Bounds; c.Opacidad = 1f;   // (la version que se pinto: Hoja.Superficie)
                 r.Add(c);
             }
             foreach (Hoja h in new List<Hoja>(capasHoja.Keys)) if (h.IsDisposed || !h.Visible) capasHoja.Remove(h);

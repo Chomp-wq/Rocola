@@ -421,6 +421,10 @@ namespace Rocola
         private bool sucia = true;
         internal int Version { get; private set; }
         internal void Invalidate() { sucia = true; Version++; Compone(); }
+        // la superficie y la version que quedo pintada en ella (la de ANTES de pintar: si al pintarse algo la vuelve a ensuciar -la «X»
+        // roja de una pieza que lanza, PintaFondoYContenido-, la siguiente vez se pinta otra vez con otra version y quien compone la sube;
+        // leyendo la version despues de pintar, esa segunda pintura no se subia: revision del paso H)
+        internal SKBitmap Superficie(out int version) { version = Version; return Superficie(); }
         internal SKBitmap Superficie()
         {
             if (!sucia && superficie != null) return superficie;
