@@ -185,6 +185,15 @@ Con datos y programas en `/root/rocola-trabajo/port/asistente` (fuera del reposi
 - No se vio ningún fallo de XP en estas funciones.
 - Nada de esto se probó en el A4.
 
+## Para quien junte
+
+La rama se junta sin choques con la principal de ahora (`99000e8`, con el grupo acabado-estilo ya dentro): probado en una copia aparte
+(`git merge --no-commit`), compila con 0 errores y los 15 avisos de siempre, y el arnés de acabado-estilo
+(`Pruebas/VistasAcabadoEstilo/compara.sh`, que pasa por `BakeSongGlassTint` y la firma de XP de `DegradadoV` de este puente) sale con **0
+líneas distintas** de 6 603 frente a la referencia y de 6 607 frente a su base, con las dos letras. Después de juntar, las dos llamadas a
+`DegradadoV` con la firma de XP (`EstadoReposoGpu.cs:353` y `AcabadoGpu.cs:347`) pueden pasar a `DegradadoV(r, c0, c1, false)` (un
+`SKShader` en un `SKPaint`, en lugar de `PuenteDibujo.Pincel`), y entonces se borra esa parte de `Puente.asistente.cs`.
+
 ## Lo que queda
 
 - Las costuras de arriba, cada una cuando se traduzca el archivo del otro lado: `EstadoReposoGpu.cs` y `AcabadoGpu.cs` (llamar a
