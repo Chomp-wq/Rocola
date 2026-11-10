@@ -34,6 +34,13 @@ CONTROLES=(
   "Plataforma/Puente.buscador-portadas.cs|36|g.SmoothingMode = SmoothingMode.AntiAlias;|;|el puente de RenderNuevo no le deja el suavizado al Graphics"
   "Plataforma/Puente.buscador-portadas.cs|52|PuenteDibujo.Lienzo(g), e.Suave,|PuenteDibujo.Lienzo(g), true,|el puente de las tarjetas, siempre suavizado"
   "Plataforma/Puente.buscador-portadas.cs|58|new EstadoLienzo(suave, ajuste,|new EstadoLienzo(suave, AjusteLetra.DelSistema,|la barra de ayudas y el aviso con el modo de letra de fabrica"
+  # los de la revision (SOLO=revision los pasa solos)
+  "Codigo/BuscadorPortadasGpu.cs|1386|pincelS, suave, medio, copia)|pincelS, suave, !medio, copia)|revision: el brillo de las iniciales con el medio pixel al reves"
+  "Codigo/BuscadorPortadasGpu.cs|512|sfMide = new FormatoTexto(FormatoTexto.TipograficoCompartido);|sfMide = FormatoTexto.TipograficoCompartido;|revision: el formato de medir es el tipografico compartido mismo y no una copia"
+  "Codigo/BuscadorPortadasGpu.cs|1023|finally { g.RestoreToCount(state); }|finally { }|revision: el recorte de un trozo de las tarjetas no se quita"
+  "Plataforma/Puente.buscador-portadas.cs|86|medio, hdc))|medio, SKMatrix.CreateTranslation(7, 3)))|revision: el aviso con otra matriz del HDC"
+  "Plataforma/Puente.buscador-portadas.cs|44|g.SmoothingMode = SmoothingMode.AntiAlias;|;|revision: el puente de DibujaPiezaVivaNueva no le deja el suavizado al Graphics"
+  "Plataforma/Puente.buscador-portadas.cs|74|using (Font ff = PuenteDibujo.Font(f))|using (Font ff = new Font(FontFamily.GenericSansSerif, f.Tamano, FontStyle.Regular, GraphicsUnit.Pixel))|revision: las palabras de la barra de ayudas sin la negrita de su Letra"
 )
 for c in "${CONTROLES[@]}"; do
   IFS='|' read -r f l viejo nuevo que <<< "$c"
