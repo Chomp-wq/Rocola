@@ -56,6 +56,9 @@ namespace Rocola
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
             TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
+            // (banco, port nativo ventanas2 C) ROCOLA_MIDE_HOJA=1: cuanto tarda cada pintura entera de una hoja nativa (Nativo/Hoja.cs), en la salida de errores
+            if (Environment.GetEnvironmentVariable("ROCOLA_MIDE_HOJA") == "1")
+                Hoja.MidePintura = delegate (Hoja h, double ms) { Console.Error.WriteLine("hoja-pinta " + h.Width + "x" + h.Height + " " + ms.ToString("0.00", CultureInfo.InvariantCulture) + " ms"); };
         }
 
         private Anfitrion(ISuperficie s)

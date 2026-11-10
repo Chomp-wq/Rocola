@@ -346,13 +346,18 @@ namespace Rocola
             l.Clear(); a2.Caja.Focus();
             Teclea(Tecla.Down); l.Add(Foco()); Teclea(Tecla.Down); l.Add(Foco()); Teclea(Tecla.Up); l.Add(Foco());
             Mira("Flechas dentro de la misma tarjeta, sin salir a la otra (con vuelta)", string.Join(",", l), "PiezaPrueba'a1',PiezaPrueba'a2',PiezaPrueba'a1'");
-            // la pagina se esconde con el foco dentro (pintaPag de Ctrl+F3): SelectNextIfFocused se hace ANTES de esconderla (SetVisibleCore,
-            // Control.cs:11221-11228) y GetNextControl desde la pagina entra primero en sus hijas (Control.cs:6177...): el foco va a la primera
-            // de la pagina que se esconde, y se queda ahi (la pagina escondida con el foco dentro, como en XP)
+            // la pagina (puesta directo en la hoja) se esconde con el foco dentro (pintaPag de Ctrl+F3): SelectNextIfFocused (SetVisibleCore,
+            // Control.cs:11221-11228) busca en el contenedor del foco del padre de la pagina, y el de la hoja es su padre: ninguno
+            // (GetContainerControl, Control.cs:5825-5840). El foco se queda en la pieza de la pagina escondida, como en XP
             b2.Caja.Focus();
             pagina.Visible = false;
-            Mira("La pagina se esconde con el foco dentro: el foco pasa a su primera pieza (se mira antes de esconderla)", Foco(), "PiezaPrueba'a1'");
+            Mira("La pagina de la hoja se esconde con el foco dentro: el foco se queda (no hay contenedor del foco encima de la hoja)", Foco(), "PiezaPrueba'b2'");
             pagina.Visible = true;
+            // una tarjeta (dentro de la pagina) se esconde con el foco dentro: el contenedor del foco es la hoja, y la siguiente se mira antes de
+            // esconderla (GetNextControl entra primero en sus hijas, Control.cs:6177...): el foco va a la primera de la tarjeta que se esconde
+            b2.Caja.Focus(); t2.Visible = false;
+            Mira("Una tarjeta de la pagina se esconde con el foco dentro: el foco pasa a su primera pieza (se mira antes de esconderla)", Foco(), "PiezaPrueba'b1'");
+            t2.Visible = true;
             // lo transparente encima de una hermana ensena al padre (WS_CLIPSIBLINGS y PaintTransparentBackground), no a la hermana
             PiezaPrueba debajo = new PiezaPrueba("debajo"); debajo.Caja.BackColor = Color.FromArgb(0, 0, 255); debajo.Caja.SetBounds(200, 200, 100, 100);
             Rotulo encima = new Rotulo(); encima.BackColor = Color.Transparent; encima.SetBounds(250, 250, 100, 100);
@@ -439,7 +444,10 @@ namespace Rocola
             g2.Caja.Visible = false;
             Mira("Esconder la del foco: el foco pasa a la siguiente", Foco(), "PiezaPrueba'b'");
             bb.Caja.Enabled = false;
-            Mira("Apagar la del foco: el foco pasa a la siguiente (con vuelta)", Foco(), "PiezaPrueba'a'");
+            Mira("Apagar la del foco puesta directo en la hoja: el foco se queda (el contenedor del foco de la hoja es su padre: ninguno, Control.cs:5825-5840)", Foco(), "PiezaPrueba'b'");
+            bb.Caja.Enabled = true; g2.Caja.Visible = true; g1.Caja.Focus(); g1.Caja.Enabled = false;
+            Mira("Apagar la del foco dentro de un grupo: el foco pasa a la siguiente (con vuelta)", Foco(), "PiezaPrueba'g2'");
+            g1.Caja.Enabled = true;
             int vistos = 0; G.VisibleChanged += delegate { vistos++; };
             G.Visible = false; G.Visible = true;
             bool desechado = false; G.Disposed += delegate { desechado = true; };

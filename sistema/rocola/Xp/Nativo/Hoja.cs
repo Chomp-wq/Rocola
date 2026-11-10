@@ -425,6 +425,9 @@ namespace Rocola
         // roja de una pieza que lanza, PintaFondoYContenido-, la siguiente vez se pinta otra vez con otra version y quien compone la sube;
         // leyendo la version despues de pintar, esa segunda pintura no se subia: revision del paso H)
         internal SKBitmap Superficie(out int version) { version = Version; return Superficie(); }
+        // (banco, paso C) quien quiera medir cuanto tarda cada pintura entera de una hoja: la hoja y sus milisegundos (lo pone
+        // Plataforma/Anfitrion.cs con ROCOLA_MIDE_HOJA=1; sin el, nada)
+        internal static Action<Hoja, double> MidePintura;
         internal SKBitmap Superficie()
         {
             if (!sucia && superficie != null) return superficie;
@@ -434,12 +437,14 @@ namespace Rocola
                 if (superficie != null) superficie.Dispose();
                 superficie = Mapas.Nuevo(Width, Height);
             }
+            long t0 = MidePintura != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             using (SKCanvas c = new SKCanvas(superficie))
             {
                 c.Clear(Color.Transparent.Sk());
                 PintaTodo(c);
                 c.Flush();
             }
+            if (MidePintura != null) MidePintura(this, (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             return superficie;
         }
     }

@@ -203,10 +203,15 @@ namespace Rocola
             return SelectNextControl(grupo, a, forward, false, false, true);
         }
         // SI SE ESCONDE O SE APAGA LA DEL FOCO (o la que lo contiene), el foco pasa antes a la siguiente, con vuelta (Control.SelectNextIfFocused,
-        // Control.cs:10770-10784: se mira antes de esconderla, asi que hacia delante la siguiente puede ser su primera hija)
+        // Control.cs:10770-10784: se mira antes de esconderla, asi que hacia delante la siguiente puede ser su primera hija). Quien la elige es el
+        // contenedor del foco de su PADRE (ParentInternal.GetContainerControl(), Control.cs:5825-5840): un contenedor que lleva el foco (la hoja,
+        // un Form) empieza a buscar por SU padre, asi que con la pieza puesta directo en la hoja no hay ninguno (la hoja es de arriba) y el foco
+        // se queda donde esta, escondido o en gris (como la capa de la referencia, Control.ContenedorDelFoco); dentro de un grupo, la hoja.
+        // (Revision del paso C: la hoja del paso H elegia siempre en la hoja; lo encontro la escena f3vistas, al esconder la tarjeta del billar
+        // con el foco en su boton «Ajustes del sonido...».)
         internal void SiguienteSiTieneElFoco(IPieza p)
         {
-            if (!ContieneFoco(p) || p.Caja.Padre == null) return;
+            if (!ContieneFoco(p) || p.Caja.Padre == null || p.Caja.Padre is Hoja) return;
             SelectNextControl(this, p, true, true, true, true);
         }
         // QUITAR UNA PIEZA CON EL FOCO (ContainerControl.AfterControlRemoved, ContainerControl.cs:449-515): al primero que se pueda, o a nadie
