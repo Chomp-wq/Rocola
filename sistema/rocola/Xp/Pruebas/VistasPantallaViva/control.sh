@@ -18,6 +18,17 @@ CONTROLES=(
   "Codigo/DiscoVivoGpu.cs|409|filtro, medio, copia)|Filtro.Bilineal, medio, copia)|PastillaSonandoEq: la pastilla con el filtro de fabrica en vez del del lienzo"
   "Codigo/DiscoVivoGpu.cs|278|CorteTexto.PuntosPorLetra|CorteTexto.PorLetra|PintaBoleto: el titulo recortado por letra, sin puntos"
   "Plataforma/Puente.pantalla-viva.cs|0|GraphicsPantallaViva(g, ajuste)|GraphicsPantallaViva(g, AjusteLetra.DelSistema)|el puente de AnchoTexto: mide con el modo de letra de fabrica"
+  # los de la revision (10-11-2026): lo que los diez de arriba no tocaban (la portadita del boleto, el letrero, el medio pixel y la copia de
+  # la pastilla y el orden del estado en su firma puente, una pluma y un suavizado)
+  "Codigo/DiscoVivoGpu.cs|256|Filtro.BilinealAlta|Filtro.Bilineal|PintaBoleto: la portadita con el filtro de fabrica"
+  "Codigo/DiscoVivoGpu.cs|271|SKClipOperation.Intersect, false)|SKClipOperation.Intersect, true)|PintaBoleto: el recorte de la portadita suavizado"
+  "Codigo/PantallaVivaGpu.cs|387|AjusteLetra.SuaveAjustada|AjusteLetra.Suave|PintaFoco: el modo de letra AntiAlias en vez de AntiAliasGridFit"
+  "Codigo/PantallaVivaGpu.cs|592|Filtro.BilinealAlta|Filtro.Bilineal|PintaFicha: la portadita con el filtro de fabrica"
+  "Codigo/DiscoVivoGpu.cs|409|filtro, medio, copia)|filtro, !medio, copia)|PastillaSonandoEq: la pastilla con el medio pixel al reves"
+  "Codigo/DiscoVivoGpu.cs|409|filtro, medio, copia)|filtro, medio, !copia)|PastillaSonandoEq: la pastilla con la copia al reves"
+  "Plataforma/Puente.pantalla-viva.cs|0|e.Letra, e.Filtro, e.Copia, e.Medio, idx|e.Letra, e.Filtro, e.Medio, e.Copia, idx|el puente de PastillaSonandoEq: la copia y el medio pixel cambiados de sitio"
+  "Codigo/PantallaVivaGpu.cs|402|StrokeWidth = 1f|StrokeWidth = 2f|PintaFoco: el filo de la pastilla con una pluma de 2"
+  "Codigo/PantallaVivaGpu.cs|656|suave)|false)|PintaFicha: el circulito del numero sin suavizar"
 )
 for c in "${CONTROLES[@]}"; do
   IFS='|' read -r f l viejo nuevo que <<< "$c"
