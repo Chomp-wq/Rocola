@@ -191,3 +191,127 @@ Con datos y programas en `/root/rocola-trabajo/port/pantalla-viva` (fuera del re
   página de Ctrl+F3 y de la lista). Al final, `Puente.pantalla-viva.cs` entero se borra con `Dibujo2D.cs` y `Puente.cs`.
 - Al juntar con `port-atraccion`: compila tal cual (su `AtraccionGpu.cs` llama a `Redondo` del puente); después, el cambio de arriba.
 - Nada se probó en el A4.
+
+## Revisión (revisor independiente, 10-11-2026)
+
+Se revisó el diff `f2f9dcb..port-pantalla-viva` contra los originales de XP (`Rocola/PantallaVivaGpu.cs` y `Rocola/DiscoVivoGpu.cs`) y contra lo
+que hacía la capa (`Plataforma/Dibujo2D.cs`: cada sobrecarga de GDI+ que usaban los dos archivos y la función nativa a la que la capa la manda),
+línea por línea y sin fiarse del informe, y se repitieron las comprobaciones (salidas en `/root/rocola-trabajo/port/pantalla-viva/rev2`, fuera del
+repositorio). **No se encontró ningún fallo en la traducción ni en las costuras: no se cambió código del programa.** Se añadieron nueve
+controles negativos al arnés (lo único que faltaba) y esta sección.
+
+### Lo que se miró
+
+- **El GDI+ que queda** (grep de `Graphics`, `Bitmap`, `Image`, `Font`, `FontFamily`, `Brush`, `Pen`, `GraphicsPath`, `Region`, `Matrix`,
+  `StringFormat`, `TextRenderer`, `ImageAttributes`, `LockBits` y los modos del `Graphics`, fuera de los comentarios): solo las costuras de la
+  tabla, escritas enteras (`Rocola.Dibujo2D.Font` en `PaginaPantalla` y en las tres líneas de la letra de la lista, `Rocola.Dibujo2D.Image`
+  de `fichaPortada`/`portada`, `Rocola.Dibujo2D.Bitmap` de `enfoqueDe` y de `HorneaGenero`, `Rocola.Dibujo2D.Graphics` de
+  `RenderContentGpu`) y las asignaciones `.Font` de los controles de Ctrl+F3 (WinForms). Ningún `using Rocola.Dibujo2D` ni tipo nuevo con la
+  forma de uno de GDI+.
+- **Cada llamada contra la capa**:
+  - `new Font(fam, px, Bold, Pixel)` es `Letra.EnPixeles(FontFamily.Name, px, negrita)` (la familia nula, `GenericSansSerif`, que es
+    `Letras.SinRemates`: lo mismo que `FamiliaPantallaViva`); `MeasureString(s, f)` es `Mide` con `(0, 0)` y sin formato (`null` =
+    `SinFormato` en los dos lados; el texto vacío o nulo da 0 en los dos); `DrawString` con caja es `Escribe` con `copia` y `medio` en falso
+    en los mapas propios y con los del `Graphics` en la pastilla de SONANDO (`Escribe(..., copia, medio)`, en ese orden).
+  - `new StringFormat()` es `new FormatoTexto()` (Near, Near, sin banderas, `PorLetra`); `FormatFlags = NoWrap` es `Banderas = SinPartir`
+    (reemplaza: solo esa), `Trimming = EllipsisCharacter` es `Corte = PuntosPorLetra`; ninguno de los dos archivos usa el tipográfico
+    compartido, y `cenFmt` (de `Form1.Vistas.cs`, una copia suya) llega como el MISMO `FormatoTexto`.
+  - `SolidBrush` es un `SKPaint` con su color (`SolidBrush.Pon` no pone otra cosa; `br.Color = ...` de la ficha, el color del `SKPaint`);
+    `Pen(color, ancho)`, un `SKPaint` con su color y su ancho: la esquina en punta, la punta plana y sin guiones son los de fábrica de
+    `SKPaint`, los mismos que pone `Pen.Pon`; el mínimo de un píxel y el límite de esquinas 10 los pone `Pixel`. `colaB` (un `SolidBrush`
+    de `Form1.Vistas.cs`) pasa por `PuenteDibujo.Pincel(colaB, medio)`, el mismo `Pon(p, centros)` de la capa.
+  - `FillPath`, `DrawPath`, `DrawLine`, `DrawEllipse` y `FillEllipse(b, x, y, w, h)` son `Pixel.Rellena`, `Traza`, `Linea`, `TrazaOvalo` y
+    `RellenaOvalo` con la misma caja y `medio` y `copia` en falso.
+  - `Redondo` y `Pildora`: un `SKPath` par-impar (`Alternate`), el primer arco con `forceMoveTo` y los demás unidos al punto anterior, que es
+    lo que hace `GraphicsPath.AddArc` de la capa (`figuraNueva || PointCount == 0`; si el primer arco no deja puntos, Skia empieza figura él
+    solo con el trazo vacío: lo mismo), `SKRect.Create(x, y, d, d)` = `new SKRect(x, y, x + d, y + d)` (las mismas sumas en `float`) y
+    `Close`. El `GraphicsPath` que da el `Redondo` del puente lleva ese mismo `SKPath`, queda con la figura cerrada (como tras `CloseFigure`)
+    y es su dueño (lo suelta el `using` de quien lo pide; el `SKPath` vacío con que nace se suelta al cambiarlo).
+  - `Save` + `SetClip(trazo)` + `DrawImage` + `Restore` es `Save` + `ClipPath(trazo, Intersect, sin suavizar)` + `Imagenes.Pinta` +
+    `RestoreToCount`: el `SetClip` que reemplaza de la capa solo quita un recorte suyo de antes y aquí no hay ninguno (el `Graphics` es
+    nuevo; la tabla dice `r=no` en 608 y 270). `DrawImage(img, caja, origen, Pixel)` y `DrawImage(img, caja)` son `Pinta` con el trozo o la
+    imagen entera, el filtro del `Graphics` (`BilinealAlta`), sin medio píxel ni copia y la envoltura transparente de fábrica;
+    `DrawImageUnscaled(img, x, y)` es la imagen entera en `(x, y, x + ancho, y + alto)` (sumas de enteros) con `(filtro, medio, copia)` del
+    `Graphics`, en ese orden. Los `try/catch/finally` de la portadita de la ficha y el `lock (tapa)` del boleto se conservan.
+  - `Bitmap.GetPixel` de la capa es `SKBitmap.GetPixel` pasado a `Color`: `ColorSk.DeSk`, lo mismo.
+- **El estado del `Graphics`** contra `estado_por_linea.tsv`: las 57 filas de los dos archivos, todas con `varia` = «-» y, las que llevan estado, `m=I b=I d=mapa`
+  (letrero: AntiAlias, AntiAliasGridFit, Bilinear; ficha y boleto: además HighQualityBilinear; pastilla de SONANDO: AntiAlias,
+  SystemDefault, Bilinear, lo que lleva `PintaPagina`). Las que no están en la tabla (`AnchoDuracion`, `PlanFilaGpu`, `PlanPaginaGpu`,
+  `AnchoSonando`) solo miden con `AnchoTexto`, que del `Graphics` solo mira el modo de letra; ninguna traducida cambia el estado ni el
+  lienzo del `Graphics` de `PintaPagina` (ni `Save`, ni recorte, ni matriz), y el `Graphics` que hace `GraphicsPantallaViva` sobre el mismo
+  lienzo no lo toca (no es su dueño y solo mide).
+- **Costuras**: `fichaPortada`/`portada` y `enfoqueDe`/`cs.Sel.CoverA` se siguen comparando por identidad con su tipo de la capa; el letrero,
+  la ficha y el boleto llegan a `Upload` como `SKBitmap` y la tarjeta los resube por su versión (`Ver`), no por identidad; son de
+  `Mapas.Nuevo` (Bgra8888 premultiplicado, lo que pide la subida). Nada se suelta dos veces ni se queda sin soltar: los tres mapas, al
+  cambiar de medida (como en XP); las `Letra` del letrero y de la ficha, con su `using` (y `LetraQueQuepa` suelta las que no caben); la
+  `Font` que hace el puente para `AnchoTexto` es otra `Letra` con los mismos datos y se suelta sin tocar la del que llama; la `Letra` de
+  `songList.Font` y de `fCola` es la del control o la de `Form1.Vistas.cs` y no se suelta aquí. En `Rocola/` no hay otro `lock` sobre una
+  portada que el del boleto (se miraron todos los `lock` de XP por su objeto), ni en `Nativo/` ni `Plataforma/` ninguno sobre un
+  `SKBitmap`. Todo va en el hilo de la pantalla (también la precarga de `PrecargaPaginaGpu.cs`); `GetFoco`, `GetFicha` y `GetBoleto` se
+  piden en cada cuadro antes de dibujar, así que el panel nunca dibuja con un mapa soltado (el riesgo apuntado arriba).
+- **Archivos**: 963 y 621 líneas (las de la base), LF (ningún CR) y sin BOM; `git diff --numstat f2f9dcb`: 112/112 y 53/53. Fuera de lo
+  permitido no se tocó nada (los dos archivos, `Plataforma/Puente.pantalla-viva.cs`, `Pruebas/VistasPantallaViva` y este documento);
+  `Puente.cs`, `Dibujo2D.cs`, `Nativo/` y el banco, sin cambios. Los commits, con el autor de siempre y sus dos líneas.
+
+### Lo encontrado
+
+1. **(menor, arreglado: `2bd0fca`)** Los diez controles negativos no tocaban la portadita del boleto, el letrero, el medio píxel ni la copia
+   de la pastilla de SONANDO, ni el orden del estado en su firma puente. Se añadieron nueve a `control.sh` y el arnés los ve todos: la
+   portadita del boleto con el filtro de fábrica (36 líneas distintas) y con el recorte suavizado (48), el letrero con `AntiAlias` (286) y
+   con una pluma de 2 (294), la portadita de la ficha con el filtro de fábrica (56) y su circulito sin suavizar (72), la pastilla con el
+   medio píxel (41) y con la copia (81) al revés, y la firma puente de `PastillaSonandoEq` con la copia y el medio píxel cambiados de sitio
+   (13). Solo cambia el guion de las pruebas.
+
+No se encontró ninguna línea de la lógica de XP cambiada, ni GDI+ sin traducir fuera de las costuras, ni un estado del `Graphics` distinto del
+de la tabla.
+
+### Comprobaciones repetidas
+
+- **Compila** (`dotnet build -c Release --no-incremental`): 0 errores y 15 avisos, la misma lista (`archivo(línea,columna): código`) que la
+  base.
+- **Diff contra XP** (`diff-xp.py -v`): 115 quitadas y 112 puestas, y 56 y 53; **0 sin marca** en los dos.
+- **Arnés** (la traducción y la referencia compiladas otra vez): **767 líneas iguales** con las letras de XP falsas y con DejaVu, 243
+  llamadas directas. **Controles negativos**: los diez de la pista salen con sus números (226, 383, 96, 80, 8, 18, 36, 24, 23 y 28 líneas
+  distintas) y los nueve nuevos también (arriba). **Arnés de «suena»** (toma su `Redondo` de este puente): 487 líneas iguales con las dos
+  letras (72 directas).
+- **Banco por función** (no entra nada de este grupo; se corrió igual): semillas 7 y 11 con las letras falsas y 5 con DejaVu, 3 000 casos,
+  `gdi`, `nativo` y `puente`: **0 distintos** en 27 000; `puente-objetos`: 407 bien, 0 mal.
+- **Recorridos** (pared, pared2, video y buscador, con el candado, contra `cmp-ref` y `cmp-ref2`; la máquina compartida, carga de 3,5 a 5,6):
+  **capas de Dibujo2D quietas 74 de 74 idénticas**; texturas quietas 300 de 309 (pared 83 de 83, buscador 78 de 78, pared2 93 de 98, video
+  46 de 50); ninguna excepción en lo que escribió ni en `rocola_error.txt`. Lo que falta es del instante y no es de este grupo:
+  - video: cuatro (dos de 512×64 y dos franjas de 1024×128, de los 11,1 y los 26,0 s). En esa corrida el video empezó a los 14,6 s y no a
+    los 11,1 (la máquina cargada) y acabó después de la tecla de los 26 s; lo mismo le pasó a una corrida de otra rama sin este grupo
+    (`acabado-estilo/revision2`: empezó a los 14,1 s y le faltan las mismas). Al repetirlo salen todas (**50 de 50**; en esa segunda corrida
+    la captura de los 24 s traía una capa menos, que en la primera estaba e idéntica), como en cinco de las siete corridas de esta copia;
+  - pared2: cinco de 1024 de ancho (el panel del estado extendido de los 41,9 s, la tanda de SALTAR de los 62,3 s y una franja de los
+    69,2 s). El panel es el del reloj en el otro segundo: de 39 corridas de pared2 de todos los grupos que hay en la máquina, 29 dan
+    `8fc23430…` (esta copia en sus cinco, la rama principal sin este grupo, la base y una de la referencia) y 10 `2a697d30…` (las dos de
+    `cmp-ref`); las otras cuatro salen en otras corridas de esta copia (`906bfb35…`, `1f1712f1…`) o de ramas sin este grupo (`21d8fe91…` en
+    la junta de la rama principal; `2f591363…` en las de frontera, suena y reposo).
+  - Las texturas de 512×256 (entre ellas la ficha: se volcó la de los 7,9 s, `64b9010b…`, y es la de «Los Ejemplos» con su portadita, sus
+    tres filas y el pie) salen con las mismas huellas que la referencia en todos sus pasos (`6a5947cc…`, `64b9010b…`, `faffed06…`,
+    `bb8fe37d…`, `3c91986d…`, `edb06a76…`). En una corrida anterior de esta copia, con la máquina muy cargada (9-11), a los 7,9 s salió
+    `c6c25142…` en lugar de `64b9010b…` (que salió después, a los 65,8 s): esa misma huella la da una corrida de otra rama sin este grupo
+    (`acabado-estilo/revision2`, a los 7,7 s), así que es de ese instante (al parecer, la ficha horneada antes de que llegue algo de lo que
+    enseña) y sale igual con la traducción y sin ella.
+- **El boleto en vuelo** (lo que el volcado no ve, por medir menos de 64 de alto): una captura a los 22,85 s con esta copia y con la
+  referencia (las teclas de pared hasta pedir): el mismo boleto (la portadita recortada y «01 Cancion Larga c…») saliendo de su fila, y la
+  pastilla de SONANDO con el hueco de las barritas.
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64`): **0 avisos IL/AOT** y los mismos 15 del compilador; el binario nativo
+  (`aot-corre.sh`): pared 12 de 12 capturas, pared2 6 de 6, video 7 de 7 y buscador 11 de 11, salida 0 y **0 excepciones** en lo que
+  escribió y en `rocola_error.txt` (se miró la captura de los 9,5 s: el letrero «3 canciones» sobre la portada enfocada).
+- **Junto con la rama principal de ahora** (`7158ccb`, con atracción y el paso de la hoja de ventanas2; `git merge-tree`, sin tocar ramas):
+  sin conflictos, compila (0 errores, los mismos 15 avisos) y el arnés sale igual a la referencia (767 líneas, con las dos letras).
+- **Junto con `port-ventanas2`** (`4897bca`, lo confirmado hasta ahora del paso C): **un conflicto, la línea 62 de `PantallaVivaGpu.cs`** (la
+  firma de `PaginaPantalla`, que allí es `Grupo PaginaPantalla(Rocola.Nativo.Letra ...)`). Tomando la suya, como dice «Riesgos», compila (0
+  errores, los mismos 15 avisos) y el arnés sale igual (767 líneas, con las dos letras).
+
+### Para quien junte
+
+- Con `port-ventanas2`, en la línea 62 de `PantallaVivaGpu.cs` manda la suya; lo demás se junta solo.
+- La pista de ventanas está traduciendo `AnchoTexto` de `Form1.Ajustes.cs` a `(AjusteLetra, string, Letra)` y deja sus firmas de XP en su
+  puente: `AnchoTextoPantallaViva` seguirá compilando contra ellas; cuando esté junto, puede llamar directo a la traducida
+  (`AnchoTexto(ajuste, t, PuenteDibujo.Letra(f))` y `AnchoTexto(t, letra)`) y se van `GraphicsPantallaViva` y la `Font` de paso.
+- Las notas `EN LINUX` de `SuenaVivoGpu.cs` y `AtraccionGpu.cs` siguen diciendo que `Redondo` lo hace `PantallaVivaGpu.cs` «aún sin
+  traducir»: se corrigen al cambiarlos a `RutaRedonda` («Lo que queda»); no son archivos de este grupo.
+- Nada de esto se probó en el A4.
