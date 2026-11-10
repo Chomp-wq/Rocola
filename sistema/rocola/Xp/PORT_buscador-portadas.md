@@ -199,3 +199,102 @@ Los guiones, en `Pruebas/VistasBuscadorPortadas`.
 - Las diferencias (a)-(e) de la referencia frente a GDI+ de verdad siguen como estaban (`PORT_DIBUJO.md`); corregirlas, en su función
   nativa, lo decide el dueño.
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 10-11-2026)
+
+Se revisó el diff `f2f9dcb..port-buscador-portadas` contra el original de XP (`Rocola/BuscadorPortadasGpu.cs`) y contra la capa que imita a
+GDI+ (`Dibujo2D.cs`, la referencia de las comparaciones), línea por línea y sin fiarse del informe, y se repitieron las comprobaciones.
+**No se encontró ningún fallo en la traducción ni en las costuras: no se cambió código del programa.** Lo único que se tocó es
+`Pruebas/VistasBuscadorPortadas/control.sh` (seis controles negativos más, abajo). Salidas en
+`/root/rocola-trabajo/port/buscador-portadas/rev`. Nada en el A4.
+
+### Lo que se miró
+
+- **El GDI+ que queda** (grep de `Graphics`, `Bitmap`, `Image`, `Font`, `FontFamily`, los pinceles, `Pen`, `GraphicsPath`, `GraphicsState`,
+  `StringFormat`, `TextRenderer`, `ImageAttributes`, `LockBits`, `Region`, `Matrix`, `PixelFormat` y `Dibujo2D`, fuera de los comentarios):
+  solo las costuras de la tabla, escritas enteras (las 14 de `Rocola.Dibujo2D.GraphicsPath` de `RoundedPath` y el `Rocola.Dibujo2D.Bitmap`
+  de `SubePieza`). Ningún `using Rocola.Dibujo2D`.
+- **Línea por línea contra XP** (las 213 líneas del diff): mismos valores, mismo orden y mismas ramas. Lo que es fácil perder está bien:
+  - `sbS`/`pnS` → `pincelS`/`plumaS`: en las 6 líneas de `Form1.Buscador.cs` que usan los de XP (928-929, 1051-1052, 1155 y 1160) y en
+    todas las de aquí el color (y el grosor de la pluma) se pone justo antes de pintar, y nadie le cambia a `pnS` la unión, las puntas ni los
+    guiones; un `SKPaint` nuevo trae lo mismo que pone `Pen.Pon` (esquina en punta, punta plana, sin guiones) y `Pixel` le devuelve lo que
+    le cambia para pintar (suavizado, estilo, ancho mínimo, límite de esquinas, mezcla);
+  - los formatos: `new FormatoTexto(FormatoTexto.TipograficoCompartido)` es la misma copia que hace `new StringFormat(StringFormat.GenericTypographic)`
+    en la capa (también `SinMargen`); `|=` en las dos (`sfMide`, `sfCentro`), ninguna con `=`; `sfIzq` y `sfLinea` copian `sfMide` ya con
+    sus banderas, en el orden de XP;
+  - `MeasureString(t, f, ancho, sf)` mide en `(ancho, 999999)`; `GetHeight(g)` es `AltoRenglon` (la capa no mira el `Graphics`); el medidor
+    de XP solo aporta su modo de letra (`AntiAlias` = `AjusteLetra.Suave`, los mismos valores del enumerado);
+  - `DrawImage(q.B, caja, 0, 0, ancho, alto, Pixel)` es `Imagenes.Pinta` con el filtro, el medio píxel y la copia del lienzo y la envoltura
+    transparente de fábrica; el horneado toma del que llama el suavizado y el medio píxel y nada más (un `Graphics` nuevo: sin copia);
+  - `TextureBrush(mini, Clamp)` + `TranslateTransform` es `Degradado.Textura(mini, Envoltura.Transparente, traslación, medio)`: el cuarto
+    argumento que pasa la capa es `!centros`, es decir `medio`; `LinearGradientBrush(cov, c1, c2, 45f)` es `Degradado.Lineal` no escalable y
+    repetido (la sobrecarga de la capa); un `SKPaint` solo con `Shader` trae el color negro opaco que `Pixel` pone de todas formas;
+  - `Save`/`SetClip(…, Intersect)`/`Restore`: en la capa el `SetClip` dentro de un `Save` es un `ClipRect`/`ClipPath` sin suavizar en el
+    lienzo y `Restore` es `RestoreToCount`: lo mismo que queda escrito, también anidados (el del brillo de las iniciales dentro del de cada
+    trozo); el `SourceCopy` del borrado de cada trozo no llega a `HorneaCartas` (XP lo vuelve a `SourceOver` antes) y fuera de los trozos
+    vale la copia del que llama;
+  - la lupa: `StartCap = EndCap = Round` es `SKStrokeCap.Round` (lo que hace `Pen.Pon`); `DrawEllipse(pn, x, y, w, h)` y `DrawLine` con los
+    mismos números;
+  - `Miniatura`: `GetCoverYa` puede dar `null` (→ `null`, como XP) o una imagen ya soltada (XP: `Escala` lanza y el `catch` da `null`; aquí
+    `PuenteDibujo.Mapa` da `null` y se devuelve `null` antes): el mismo resultado. `FirmaCarta.Cover` se sigue comparando por identidad
+    con lo que da `Miniatura` (la misma caché, las mismas claves);
+  - quién suelta qué: los horneados, las miniaturas, los shaders y los `SKPaint` de un uso se sueltan donde XP soltaba sus `Bitmap` y sus
+    pinceles; el `Graphics` de cada puente no es dueño del lienzo (no lo suelta) y la `Font` de `CtrlTxtPortadas` suelta solo los `SKFont` de
+    su propia `Letra` (`Letra.Dispose` no toca la cara, que es compartida): `fnAyuda` sigue viva.
+- **El estado del `Graphics`** contra `estado_por_linea.tsv` (37 filas, 30 con estado, todas `m=I b=I r=no d=mapa`): solo 744, 745 y 748
+  varían (el modo de letra) y va como parámetro; el filtro, la copia y el medio píxel también van como parámetro aunque en la tabla no
+  cambien; 419 (el medidor, `t=AntiAlias`) y 1457 (`HighQualityBilinear`, `HighQuality`) fijos. Lo que la tabla no tiene sale del
+  `Graphics` de `EnsureUiPieza` (`Form1.Video.cs` 1485-1486: `AntiAlias`, `AntiAliasGridFit`) por el puente.
+- **Las costuras**: `CtrlPad`, `CtrlTxt`, `CtrlDot` (`Form1.Pared.cs` 253-279), `FlechaArriba` y `DrawToast` (`Form1.Buscador.cs` 396 y
+  1044) solo rellenan, trazan, miden y escriben: ninguna le cambia un modo, la matriz ni el recorte al `Graphics`, así que no hay estado que
+  devolver; `RenderNuevo` y `DibujaPiezaVivaNueva` sí le dejaban `SmoothingMode = AntiAlias` y el puente se lo deja; la matriz del HDC del
+  aviso es la del `Graphics` del que llama (`baseMatriz`, que un `Save`/`TranslateTransform` de quien llama no cambia). `SubePieza` no
+  cambia más que el nombre entero del tipo.
+- **Finales de línea y lo permitido**: 1 881 líneas como la base, LF, ASCII, sin BOM; `git diff f2f9dcb` solo toca
+  `BuscadorPortadasGpu.cs` (213 líneas, todas con `EN LINUX`), el puente nuevo, la carpeta de pruebas y este documento. Autor y pie de los
+  tres commits, como se pedía.
+
+### Comprobaciones repetidas (10-11-2026, la máquina con carga de 5 a 9 en 4 núcleos)
+
+- **Compila** (`dotnet build -c Release --no-incremental`): 0 errores y 15 avisos, la misma lista que `avisos-base.txt`.
+- **Diff contra XP** (`diff-xp.py BuscadorPortadasGpu.cs -v`): 215 quitadas, 213 puestas, 0 sin marca.
+- **Arnés** (`arnes.sh`, con la referencia congelada compilada otra vez): 3 128 líneas, **0 distintas con las letras de XP falsas y 0 con
+  DejaVu** (250 llamadas directas, las 5 excepciones de las miniaturas de la portada soltada en los dos lados; entre las dos letras cambian
+  2 028 líneas).
+- **Controles negativos propios** (añadidos a `control.sh`; `SOLO=revision` los pasa solos; con `RAPIDO=1`, 519 líneas, esta copia sin tocar
+  0 distintas): el brillo de las iniciales con el medio píxel al revés (56 líneas), `sfMide` como el tipográfico compartido mismo y no una
+  copia (3: lo ve el estado del tipográfico), el recorte de un trozo de las tarjetas sin quitar (8), el aviso con otra matriz del HDC (8),
+  el puente de `DibujaPiezaVivaNueva` sin dejarle el suavizado al `Graphics` (60) y las palabras de la barra de ayudas sin la negrita de su
+  `Letra` (70). **Los seis salen distintos.** Uno más NO lo ve el arnés: `sfCentro.Banderas = SinPartir` en vez de `|=` (se pierden
+  `FitBlackBox`, `LineLimit` y `NoClip` del tipográfico) da 0 líneas distintas de 3 128, y tampoco con tres pantallas diminutas añadidas a
+  mano (320×200, 200×150 y 120×90: 0 de 699). No es un hueco del arnés sino que aquí no se nota: lo que escribe con `sfCentro` (las teclas,
+  los atajos, las marcas y las iniciales) va siempre en cajas más altas que su renglón y el texto se recorta antes por el ancho, así que ni
+  `LineLimit` ni el recorte a la caja cambian un punto. Que es `|=` como en XP queda comprobado solo por lectura.
+- **Recorridos** (`buscador` y `ayuda`, tres veces, con el candado, `VOLCADO=1 CAPAS=1 HUELLAS=1`, contra `cmp-ref`/`cmp-ref2`): salen con 0,
+  0 líneas con `Exception`. **Capas de Dibujo2D quietas: 48 de 48 las tres veces.** Texturas quietas: 130, 141 y **144 de 144**; juntando
+  las tres, las 116 distintas (60 de `buscador` y 56 de `ayuda`) salen idénticas. Las tres veces la pantalla se paró varias veces de 520 a 790 ms
+  (lo apunta `rocola_error.txt`, por la carga) y en las dos primeras faltaron estados intermedios: en `buscador`, la casilla con la «l» y «6
+  resultados» (`e843916c…`, no llegó a subirse antes de la «a»; la de «la», `a0b3f4a7…`, idéntica las tres veces; la tercera vez sale
+  también la de la «l», idéntica); en `ayuda`, los globos del asistente y la guía del rojo (de otros archivos). Lo que sale aquí y no en
+  ninguna de las dos de la referencia: en `buscador`, los cuadros de la cabecera que se desliza de 25,7 a 26,7 s (la referencia saca 16 y
+  18 distintos entre sí) y la guía del rojo de los 34,4-35 s (`1f1e16c5…`, `4d4dd133…`, las mismas que la referencia sube en `ayuda` y
+  `pared`); en `ayuda`, `173044c2…`, `0042efca…`, `745690fa…`, `328dd8d9…` y `9302a6ea…`, que están en las corridas de otros grupos (y la primera
+  también en una de la referencia, `atraccion/ref-hoy`): variantes de un instante, ninguna de este archivo (en `ayuda` el buscador no se abre).
+  `hojas` una vez: texturas 24 de 24, capas 36 de 37; la que falta es la misma `c18` capa 4 (`c45e76a2…`, la que dan las corridas con carga
+  de `junta/pares`: «faltan N archivos» del repaso, `PORT_JUNTAS.md`). Con las huellas que guardó el traductor (`cmp/`, los nueve) el
+  guion da lo que dice arriba: 480 de 487 texturas y 216 de 217 capas.
+- **NativeAOT** (`dotnet publish -c Release -r linux-x64 -o …/rev/aot`): 0 avisos `IL2xxx`/`IL3xxx` y los mismos 15 del compilador; el
+  binario nativo (`aot-corre.sh`) por `buscador` y `ayuda`: sale con 0, 11 de 11 y 13 de 13 capturas, 0 excepciones; en la captura de los
+  14,5 s se ven el teclado, el atajo «Videos», la casilla con «la» y «4 resultados», las cuatro tarjetas con su portada y lo tecleado
+  resaltado, la elegida con su aro y la barra de ayudas.
+- **Con la rama principal de ahora** (`02374fc`, con atracción y la hoja de ventanas ya juntadas): `git merge-tree` sin conflictos; lo
+  juntado compila (0 errores, 15 avisos) y el arnés con `RAPIDO=1` da las 519 líneas iguales a la referencia.
+- **No se repitieron**: el banco por función (este grupo no toca `Nativo/`, `Dibujo2D.cs` ni `Puente.cs`, y el banco no compila
+  `Puente.buscador-portadas.cs` ni el archivo traducido: su lista de `Compile` es fija) ni las cintas (la subida no cambia); los otros siete
+  recorridos se miraron solo por las huellas guardadas.
+
+### Lo que queda (de la revisión)
+
+- Nada que arreglar. Siguen valiendo los riesgos de arriba (el `Restore` de la capa, el filtro fijo de `GraphicsPortadas`, la matriz del HDC
+  del aviso solo probada con la identidad en el programa; el control de la revisión la cambia y el arnés lo ve).
+- Nada de esto se probó en el A4.
