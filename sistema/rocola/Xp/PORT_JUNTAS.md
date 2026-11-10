@@ -82,3 +82,27 @@ la biblioteca: «34%» frente a «0%», «(van 14)» frente a «aún no hay bast
 Para quitar después (lo apuntaron los revisores): el renglón del artista de la franja pasa por tres puentes de reposo y acabado-estilo
 (FranjaLejos → PintaArtistaCompacto → PintaRenglonLejos → TextoConCinta: sale lo mismo, pero ya puede llamarse directo), y entre suena y
 reposo PintaTituloGrandeReposo, PintaMinutosColaReposo, PintaTextoMovilSuena y FuenteTituloReposo pasan a la llamada directa.
+
+## 9-11-2026 (06:20-07:00): el grupo atraccion y el paso de la hoja de ventanas2
+
+- `161f647`: el grupo atraccion (AtraccionGpu.cs con SkiaSharp directo, sus mapas a la tarjeta como SKBitmap sin puente) con su revisión («bien»).
+- `7158ccb`: el paso H de ventanas2 hasta su revisión (`28e453f`): la hoja propia y sus piezas (Nativo/Hoja*.cs, Pieza, Rotulo, Grupo,
+  BotonXp, ListaXp, AvisoXp, SelectorCarpetas, PinturaXp); Ctrl+F2, los avisos y «Agregar carpeta...» las llaman directo.
+
+Sin choques; los 109 archivos de `Codigo/` con su número de líneas y de CRLF. Comprobado con todo junto (`scratchpad/merge/verifica-junta6.sh`):
+
+- **Compila** desde cero: 0 errores, los 15 avisos de siempre. **NativeAOT**: 0 avisos IL/AOT.
+- **Arneses**: atraccion 19 120 líneas (3 610 mapas, 68 432 llamadas directas) IGUALES con las dos letras; reposo, suena y
+  acabado-estilo (0 distintas de 6 603) siguen iguales. La lista de la noche (`VistasAtraccion/top.sh`) contra las dos corridas de
+  referencia de la pista: texturas quietas 30 de 30, capas 16 de 16.
+- **Las 41 pruebas** 41 de 41; **la hoja** 52 de 52 y **las reglas de la pantalla** 32 de 32, en JIT y en NativeAOT.
+- **Escenas alternadas** (RJ6/J6, las 19, con el ruido de `ventanas2/ruido`): arranque, moneda, video, tab, buscador, cierreq, altf4,
+  kill9, asistente, captura, f2, f2barras, f2sin y aviso IGUALES (las capas de las hojas a 0 puntos); sigterm y f3sigterm lo aceptado;
+  salirq solo una cuenta (305 frente a 318 encargos, holgura 12; secuencia y estados iguales). f2sigterm y f2agrega no se comparan con
+  la referencia (allí Ctrl+F2 no se apaga con SIGTERM y «Agregar carpeta...» contesta Cancelar sin enseñar nada: diferencias aceptadas del
+  paso H, que las comparó con el programa del paso T). NativeAOT: arranque, cierreq y kill9 IGUALES; f2, f2barras y aviso con la misma
+  secuencia, estados y capas y menos encargos del repaso en el primer segundo (el nativo arranca antes).
+- **Recorridos** (los nueve): 9 de 9 salen con 0 y sin excepciones; texturas quietas 479 de 487; capas quietas 215 de 217. Las dos que
+  faltan: la hoja de Ctrl+F3 de hojas a los 18 s (el repaso, como arriba) y la de Ctrl+F2 de ctrlf3 a los 40 s, que solo cambió de
+  nombre: ahora es `capa4-hoja-189,182-646x404` en vez de `capa4-dibujo2d-...` y sus puntos son idénticos a los de la referencia
+  (0 distintos; corrido con los PNG de las dos).
