@@ -32,6 +32,8 @@ corre "el relleno de la capsula sin la copia" letras Codigo/Form1.Vistas.cs '694
 corre "el relleno de la capsula y la sombra de la letra grabada sin la copia" letras Codigo/Form1.Vistas.cs '694s/pulseBrush, suave, medio, copia)/pulseBrush, suave, medio, false)/;870s/pulseBrush, suave, medio, copia)/pulseBrush, suave, medio, false)/;484s/sfCen, copia, medio)/sfCen, false, medio)/'
 corre "los cuerpos medidos con un modo fijo" letras Codigo/Form1.Vistas.cs '337s/f, ajuste, new SizeF/f, AjusteLetra.SinSuavizar, new SizeF/'
 corre "la lupa agranda solo a lo ancho" letras Codigo/Form1.Vistas.cs '815s/g.Scale(s, s)/g.Scale(s, 1f)/'
+# (revision) el alto de la letra en la lupa (EscalaDe: los 96 puntos por pulgada de g.DpiY): solo pesa en una barra muy baja (los casos de 300x8 y 300x9)
+corre "la lupa mide el alto de la letra a 72 puntos por pulgada" letras Codigo/Form1.Vistas.cs '805s|96f / 72f|72f / 72f|'
 corre "el puente de letras no deja el suavizado" letras Plataforma/Puente.vistas-a.cs 's/Letters.Length == 0)) g.SmoothingMode = SmoothingMode.AntiAlias;/Letters.Length == 0)) { }/'
 corre "el fondo de las paginas siempre suavizado" paginas Codigo/Form1.Vistas.cs '128s/fondo, suave, medio, copia)/fondo, true, medio, copia)/'
 corre "el letrero de las paginas con el tipografico" paginas Codigo/Form1.Vistas.cs '156s/0, 0), null, copia, medio)/0, 0), FormatoTexto.TipograficoCompartido, copia, medio)/'

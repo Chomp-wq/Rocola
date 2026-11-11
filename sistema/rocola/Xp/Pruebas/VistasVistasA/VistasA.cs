@@ -374,6 +374,9 @@ namespace BancoVistasA
                 Caso(new CasoLetras { Lupa = lupa, Letters = pocas, Hay = pocas, Cuentas = 2 }, Cuatro);
                 Caso(new CasoLetras { Lupa = lupa, Letters = pocas, Hay = "L", Cuentas = 2, ForGpu = false, Fase = 2.9 }, Dos);
                 Caso(new CasoLetras { Lupa = lupa, Letters = sinTop, Hay = sinTop, Actual = 'Z' }, Dos);
+                // (revision) una barra tan baja que el tope de la lupa lo pone el ALTO de la letra (EscalaDe: los 96 puntos por pulgada de g.DpiY), no el ancho
+                Caso(new CasoLetras { Lupa = lupa, W = 300, H = 8, Letters = pocas, Hay = pocas, Cuentas = 0 }, Dos);
+                Caso(new CasoLetras { Lupa = lupa, W = 300, H = 9, Letters = pocas, Hay = pocas, Cuentas = 0, Actual = '►' }, Dos);
                 Caso(new CasoLetras { Lupa = lupa, Letters = "", Hay = "" }, Dos);
                 Caso(new CasoLetras { Lupa = lupa, Letters = null, Hay = "" }, Dos);
                 // otra letra en el control (la familia sale de la del control)

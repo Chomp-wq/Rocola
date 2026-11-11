@@ -125,3 +125,52 @@ grupo vistas-b). Las funciones de `EstiloGpu.cs` no se usan en estas líneas.
 - Las tres costuras de arriba, cuando se traduzcan `Form1.Video.cs` (`DrawCtrlOverlay`), `Form1.Pared.cs` (`CtrlDirLeft`, `CtrlDirRight`,
   `CtrlTxt`) y las ventanas (`OnPaint`, `this.Font`).
 - Quien llame directo a las traducidas tiene que poner después lo que dejan (arriba); el arnés lo comprueba solo por el puente.
+
+## Revisión
+
+Revisión independiente (11-11-2026) del diff `ae8b50b..port-vistas-a` contra `Rocola/Form1.Vistas.cs` (el original de XP), la tabla
+`estado_por_linea.tsv` y `Plataforma/Dibujo2D.cs` (lo que hacía cada llamada antes de traducirla). **No se encontró ningún fallo en la
+traducción**; lo único que se cambia es el arnés (dos casos y un control más).
+
+- **Lo revisado en el código** (líneas 53-997 y `Puente.vistas-a.cs`):
+  - No queda GDI+ fuera de las costuras: `BarraAvance` (24-52) se deja a propósito y está comprobado que `port-ventanas2` la trae
+    traducida en esas mismas líneas (como pieza de la hoja, sin `Control`); lo demás es WinForms (`OnPaint`, `this.Font`).
+  - Cada llamada frente a la de `Dibujo2D.cs`: `MeasureString(s, f)` = caja (0, 0) y sin formato; `DrawString(s, f, b, x, y)` = caja
+    (x, y, 0, 0) y sin formato; `MeasureString(s, f, PointF.Empty, GenericTypographic)` con EL tipográfico compartido;
+    `DrawImageUnscaled(img, 0, 0)` = la imagen entera en su medida con la envoltura transparente de fábrica; `FillPolygon` con
+    `Alternate`; `new Pen(color)` de ancho 1; las plumas llevan su unión redonda donde XP la pone y `Pixel.Traza` les pone el trazo, el
+    mínimo de un píxel y el límite de esquinas 10; los pinceles con degradado conservan el color opaco del `SKPaint`; `g.DpiY` es 96
+    (el valor fijo de la capa y el de la rocola en XP); `FormatFlags = NoWrap` reemplaza las banderas; `RoundRectF` une los arcos (solo
+    el primero empieza figura) y rellena par-impar; `Agrandado` guarda y devuelve la matriz en el mismo orden (trasladar, escalar,
+    trasladar).
+  - El estado, contra la tabla: las tiras (`RebuildStrip`, `RebuildLupa`) con el de un `Graphics` nuevo más el suavizado; las medidas de
+    `AjustaFuentes`, `AnchoDe` y `EscalaDe` con el modo de letra del que llama (en la tabla varía: `AntiAliasGridFit` desde
+    `DrawCtrlOverlay`, `SystemDefault` desde `OnPaint`); la lupa mide con el del que llama a `RenderLupa` y pinta su tira con el de
+    fábrica, como XP (`gMide` y `g`).
+  - Las costuras: el puente lee el estado ANTES de ponerle al `Graphics` lo que XP le deja (el fondo de las páginas se pinta con el
+    suavizado que traía); `CtrlTxtVistasA` hace una `Font` propia (con su `Letra` propia) y la suelta: no suelta la `pgFont` guardada;
+    `PuenteDibujo.Letra(this.Font)` no crea nada (lee el campo). Las tiras guardadas no salen de la clase (no hay `Bitmap` prestado ni
+    identidad que conservar) y se sueltan donde XP las soltaba. Nada se comparte entre hilos.
+  - Finales de línea y número de líneas: 2 749 líneas y 2 568 CRLF, igual que la base; fuera de lo permitido no se tocó nada (ocho
+    archivos, todos del grupo).
+- **Lo que faltaba en el arnés**: ningún caso llegaba a la rama de `EscalaDe` donde el tope de la lupa lo pone el ALTO de la letra (los
+  96 puntos por pulgada de `g.DpiY`): con las barras de los casos siempre mandaba el ancho. Añadidos dos casos (lupa en barras de 300×8 y
+  300×9) y su control negativo («la lupa mide el alto de la letra a 72 puntos por pulgada»: 8 líneas distintas de 660).
+- **Las comprobaciones, repetidas** (máquina con carga 4-8 en 4 núcleos):
+  - Compilación (`dotnet build -c Release --no-incremental`): 0 errores, 15 avisos, los mismos archivos, líneas y códigos que la base.
+  - El arnés (`arnes.sh`, con los casos nuevos): **1 266 líneas, IGUALES** a la referencia congelada con las letras de XP falsas y con
+    DejaVu; 722 llamadas directas; 0 casos sin conseguir el instante.
+  - Controles negativos (una muestra): el segundo arco empieza figura 628 de 660; el puente de letras no deja el suavizado 146; el
+    puente de páginas no deja el modo de letra 245 de 603; la tira con el filtro fijo 40; el nuevo, 8.
+  - Recorridos (`pared`, `pared2`, `buscador`, `botones`, `ayuda`, con el candado): los cinco salen con 0 y sin excepciones (los
+    `rocola_error.txt` solo traen los apuntes de siempre). Capas quietas: **93 de 93** iguales. Texturas quietas: 344 de 353 en esta
+    corrida; juntándola con las cuatro del autor, 483 de 487 (una más que él: `buscador` 78 de 78). Las 4 que quedan, comprobadas
+    huella por huella: `c9e4fc67` (`ayuda`, la tira en reposo) sale idéntica pero 1 vez de 2 en las cinco corridas, y también 1 vez
+    en la corrida de la junta de la base (no es de este cambio); `2f591363` y `1f1712f1` (`pared2`) salen idénticas en corridas de
+    `pared` (como en la referencia, que las tiene en los dos recorridos); `2a697d30` (1024×256, el panel del estado extendido con el
+    reloj) no es de estas barras y no salió en ninguna.
+  - `diff-xp.py Form1.Vistas.cs -v`: 204 quitadas, 201 puestas, 8 sin marca: dos `}` mal emparejadas y 6 de la línea 998 en adelante
+    (de vistas-b); `git diff` contra la base: 193 líneas, las 193 con «EN LINUX».
+  - No repetidos: NativeAOT (se leyó el registro del autor: 0 avisos IL/AOT, y el código no cambió desde entonces: los dos commits
+    posteriores son solo del arnés y de este documento); el banco y las cintas (no se tocó `Nativo/`, `Puente.cs`, `Dibujo2D.cs` ni la
+    subida a la tarjeta).
