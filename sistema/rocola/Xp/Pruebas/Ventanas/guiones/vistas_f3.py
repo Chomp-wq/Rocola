@@ -1,7 +1,7 @@
 import sys
 # (ventanas2, paso C) Los pasos de las escenas de Ctrl+F3 (escenas.sh): que se pulsa y cuando (ROCOLA_PULSA), que capturas (ROCOLA_CAPTURA)
 # y en que momentos se vuelca el estado de XP y de cada pieza (ROCOLA_ESTADO_EN).
-#   python3 vistas_f3.py vistas|grises|teclas|requisitos|guarda|diag|medir [SEGUNDOS_QUE_ESPERA_A_MEDIR]
+#   python3 vistas_f3.py vistas|grises|billar|teclas|requisitos|guarda|diag|medir [SEGUNDOS_QUE_ESPERA_A_MEDIR]
 #     -> cuatro lineas: PULSA, CAPTURAS, los segundos que dura y ESTADO
 # Las coordenadas son de la pantalla de 1024x768: la hoja de 966x764 va en (29,2) y su cliente empieza en (32,31); cada boton por su centro,
 # sacado de su SetBounds en Form1.Ajustes.cs, Rendimiento.cs, FluidezAnimaciones.cs, HojasFondo.cs y PantallaVivaGpu.cs.
@@ -18,6 +18,7 @@ IMAGEN_HOJAS = [(604, 151), (748, 151), (892, 151)]            # Efectos, Fluide
 PERF = [(575, 247), (659, 247), (743, 247), (827, 247), (911, 247)]   # Cielo, Grano, Aurora, Estrella, Estado
 FONDO = [(138, 147), (324, 147), (510, 147), (696, 147), (882, 147)]  # Cielo y aurora, Interfaz, Estrella, Cielo vivo, Pulido
 PANTALLA = [(198, 149), (510, 149), (822, 149)]
+REPASO = (214, 670)   # (Sonido, la tarjeta de la biblioteca) «Repasar la biblioteca a fondo»: bTrain.SetBounds(16, 114, 300, 34) en la tarjeta (16, 508)
 MEDIR = (168, 189); DIAGNOSTICO = (384, 189); HISTORIAL = (432, 736)   # (Imagen) «Medir este equipo», «Diagnostico completo», «Comparar perfiles»
 p = [(7.0, "17+114")]; c = []; e = []; t = [8.5]   # (Ctrl+F3)
 cada = [False]   # (vistas) el estado de XP y de cada pieza en CADA vista, con el nombre de su captura
@@ -52,6 +53,13 @@ elif modo == "grises":
     t[0] += 0.6; c.append((t[0], "g7interruptor")); e.append((t[0] + 0.2, "g7interruptor")); t[0] += 0.8
     p.append((t[0], "raton:%d:%d" % (906, 730))); c.append((t[0] + 1.0, "g8encima")); t[0] += 1.6   # (encima de «Listo»)
     fin()
+elif modo == "billar":
+    # el modo billar encendido en las hojas que f3grises no pisa: la voz, lo que suena ahora y la IA (lo que decide el modo, en gris con su
+    # «Necesita»); y de vuelta en la pagina de Sonido, «Repasar la biblioteca a fondo»: la barra de avance y su letrero, y otra vez para pararlo
+    cada[0] = True
+    clic(BILLAR); clic(AJUSTES); clic(VOZ, "b1voz"); clic(VOLVER); clic(AHORA, "b2ahora"); clic(VOLVER); clic(IA, "b3ia"); clic(VOLVER); clic(VOLVER)
+    clic(REPASO, "b4repaso", sep=2.2); clic(REPASO, "b5sinrepaso", sep=2.2)
+    fin()
 elif modo == "teclas":
     # Tab hasta el primer deslizador; Derecha, Derecha, Izquierda, RePag, Fin, Inicio; la moneda (C) con el foco en el deslizador; Mayus+Tab,
     # Espacio e Intro en el interruptor de antes; las flechas entre hermanas; Escape (KeyPreview)
@@ -81,7 +89,7 @@ elif modo == "medir":
     # «Medir este equipo» (Imagen): la hoja se cierra, se mide con la pantalla libre (lo que tarde: un minuto o mas, segun la maquina y lo
     # medido) y vuelve sola en Imagen. A los V segundos de pulsarlo (ya de vuelta): «Comparar perfiles» abre el historial de caratulas (otra
     # hoja, encima), la moneda con el abierto, Escape lo cierra y Escape cierra Ctrl+F3.
-    v = float(sys.argv[2]) if len(sys.argv) > 2 else 90.0
+    v = float(sys.argv[2]) if len(sys.argv) > 2 else 115.0   # (90 no bastaba siempre: con la maquina cargada y tres remedios que probar, medir tardo 90,6 s)
     clic(PEST["imagen"], sep=1.5); estado("imagen", 0.5); c.append((t[0] - 0.2, "m1")); clic(MEDIR)
     t[0] = 10.0 + v; e.append((t[0], "vuelta")); c.append((t[0] + 0.3, "m2")); t[0] += 1.0
     clic(HISTORIAL, "m3historial", sep=1.7); estado("historial"); tecla("67", sep=1.2); estado("moneda")
