@@ -112,7 +112,7 @@ namespace Rocola
                 {
                     bool copiaCopy = true;   // EN LINUX: copy.CompositingMode = SourceCopy
                     copy.Clear(Color.Transparent.Sk());   // EN LINUX: copy.Clear(Color.Transparent)
-                    Imagenes.Pinta(copy, PuenteDibujo.Mapa(hornoPag), new SKRect(0, y, w, y + RowH), new SKRect(0, 0, w, RowH), Filtro.Bilineal, false, copiaCopy);   // EN LINUX: copy.DrawImage(hornoPag, caja, 0, y, w, RowH, Pixel): ese trozo de la pagina horneada (hornoPag es de Form1.Vistas.cs, aun sin traducir: sus puntos, por el puente)
+                    Imagenes.Pinta(copy, hornoPag, new SKRect(0, y, w, y + RowH), new SKRect(0, 0, w, RowH), Filtro.Bilineal, false, copiaCopy);   // EN LINUX: copy.DrawImage(hornoPag, caja, 0, y, w, RowH, Pixel): ese trozo de la pagina horneada (hornoPag, de Form1.Vistas.cs, ya es un SKBitmap: directo)
                 }
                 Imagenes.Pinta(snapshot, selected, new SKRect(0, 0, selected.Width, selected.Height), new SKRect(0, y, selected.Width, y + selected.Height), filtro, medio, copia);   // EN LINUX: snapshot.DrawImageUnscaled(selected, 0, y)
                 gpuSnapshotSel = index;
@@ -135,18 +135,18 @@ namespace Rocola
                         {
                             Color? key = GpuColorKey();   // EN LINUX: la clave de color (un color)
                             if (capturandoCintas == null)
-                                Imagenes.Pinta(output, PuenteDibujo.Mapa(hornoPag), new SKRect(0, 0, w, h), new SKRect(0, 0, w, h), Filtro.Bilineal, false, false, Envoltura.Transparente, null, key, key);   // EN LINUX: output.DrawImage(hornoPag, caja, 0, 0, w, h, Pixel, key): con la clave de color y la envoltura de fabrica de ImageAttributes (Clamp: transparente); hornoPag (Form1.Vistas.cs, aun sin traducir), por el puente
+                                Imagenes.Pinta(output, hornoPag, new SKRect(0, 0, w, h), new SKRect(0, 0, w, h), Filtro.Bilineal, false, false, Envoltura.Transparente, null, key, key);   // EN LINUX: output.DrawImage(hornoPag, caja, 0, 0, w, h, Pixel, key): con la clave de color y la envoltura de fabrica de ImageAttributes (Clamp: transparente); hornoPag (Form1.Vistas.cs) ya es un SKBitmap: directo
                             else using (SKBitmap pageRaw = Mapas.Nuevo(w, h))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb)
                             {
-                                using (SKCanvas lienzo = new SKCanvas(pageRaw)) PintaPagina(PuenteDibujo.Graphics(lienzo, SKMatrix.Identity), PageStart);   // EN LINUX: Graphics.FromImage(pageRaw): PintaPagina (Form1.Vistas.cs, aun sin traducir) pinta con un Graphics: uno sobre el lienzo nuevo, con el estado de fabrica y la matriz del HDC de un mapa de bits (la identidad), por el puente
+                                using (SKCanvas lienzo = new SKCanvas(pageRaw)) { bool suavePag = false; PintaPagina(lienzo, ref suavePag, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, PageStart); }   // EN LINUX: Graphics.FromImage(pageRaw): un lienzo nuevo; PintaPagina (Form1.Vistas.cs, ya traducido) recibe el lienzo y el estado de fabrica de ese Graphics (sin suavizar -ella lo cambia-, DelSistema, sin copia, Bilinear, sin medio pixel): directo
                                 Imagenes.Pinta(output, pageRaw, new SKRect(0, 0, w, h), new SKRect(0, 0, w, h), Filtro.Bilineal, false, false, Envoltura.Transparente, null, key, key);   // EN LINUX: output.DrawImage(pageRaw, caja, 0, 0, w, h, Pixel, key)
                             }
                         }
                         gpuSnapshotSel = -1;
                         return result;
                     }
-                    SKBitmap raw = GpuRowBuffer(ref gpuSelectedRaw, w, h);   // EN LINUX: SKBitmap
-                    using (SKCanvas lienzo = new SKCanvas(raw)) using (Rocola.Dibujo2D.Graphics g = PuenteDibujo.Graphics(lienzo, SKMatrix.Identity))   // EN LINUX: Graphics.FromImage(raw): el lienzo nuevo y, para PintaPagina (Form1.Vistas.cs, aun sin traducir), un Graphics sobre el con el estado de fabrica y la matriz del HDC de un mapa de bits (la identidad), por el puente; es el MISMO en las dos PintaPagina de abajo (la segunda hereda el suavizado que deja la primera, como en XP)
+                    SKBitmap raw = GpuRowBuffer(ref gpuSelectedRaw, w, h); bool suaveFila = false;   // EN LINUX: SKBitmap; y el suavizado del Graphics de abajo (el de fabrica: ninguno), en una variable que comparten las dos PintaPagina de la fila elegida
+                    using (SKCanvas g = new SKCanvas(raw))   // EN LINUX: Graphics.FromImage(raw): el lienzo nuevo; PintaPagina (Form1.Vistas.cs, ya traducido) recibe ese lienzo y su estado de fabrica: directo; es el MISMO en las dos PintaPagina de abajo, con el suavizado en suaveFila (la segunda hereda el que deja la primera, como en XP)
                     using (SKCanvas output = new SKCanvas(result))   // EN LINUX: Graphics.FromImage(result): un lienzo nuevo (estado de fabrica)
                     {
                         // La fila elegida se pinta sola, como si fuera la primera: se le dice donde esta de verdad, para
@@ -155,12 +155,12 @@ namespace Rocola
                         // La instantanea anterior conserva el titulo completo estatico.
                         using (new CapturaCintas(null))
                         {
-                            PintaPagina(g, saved);
+                            PintaPagina(g, ref suaveFila, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, saved);   // EN LINUX: PintaPagina (Form1.Vistas.cs, ya traducido): el lienzo y el estado de fabrica de su Graphics, con el suavizado que comparten las dos llamadas
                             if (hornoPag != null)
-                            using (SKCanvas snapshot = new SKCanvas(PuenteDibujo.Mapa(hornoPag)))   // EN LINUX: Graphics.FromImage(hornoPag): un lienzo sobre los puntos de la pagina horneada (Form1.Vistas.cs, aun sin traducir), por el puente
+                            using (SKCanvas snapshot = new SKCanvas(hornoPag))   // EN LINUX: Graphics.FromImage(hornoPag): un lienzo sobre la pagina horneada (Form1.Vistas.cs: ya es un SKBitmap)
                                 UpdateGpuSnapshot(snapshot, false, Filtro.Bilineal, false, raw, saved, w);   // EN LINUX: con el estado de fabrica de ese Graphics nuevo (SourceOver, Bilinear, sin medio pixel)
                         }
-                        if (capturandoCintas != null) PintaPagina(g, saved);
+                        if (capturandoCintas != null) PintaPagina(g, ref suaveFila, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, saved);   // EN LINUX: PintaPagina: hereda el suavizado que dejo la primera (suaveFila), como en XP
                         Color? clave = GpuColorKey(); Imagenes.Pinta(output, raw, new SKRect(0, 0, w, h), new SKRect(0, 0, w, h), Filtro.Bilineal, false, false, Envoltura.Transparente, null, clave, clave);   // EN LINUX: output.DrawImage(raw, caja, 0, 0, w, h, Pixel, GpuColorKey()): con la clave de color
                     }
                     return result;
@@ -194,7 +194,7 @@ namespace Rocola
                     // EN LINUX: using (ImageAttributes key = new ImageAttributes()): la clave de color es un color (abajo), no un objeto que soltar
                     {
                         Color key = BackColor;   // EN LINUX: key.SetColorKey(BackColor, BackColor, ColorAdjustType.Bitmap): la clave baja y la alta, el mismo color
-                        Imagenes.Pinta(g, PuenteDibujo.Mapa(hornoAnt), new SKRect(0, 0, Width, Height), new SKRect(0, 0, Width, Height), Filtro.Bilineal, false, false, Envoltura.Transparente, null, key, key);   // EN LINUX: g.DrawImage(hornoAnt, caja, 0, 0, Width, Height, Pixel, key): con la clave y la envoltura de fabrica (Clamp: transparente); hornoAnt (Form1.Vistas.cs, aun sin traducir), por el puente
+                        Imagenes.Pinta(g, hornoAnt, new SKRect(0, 0, Width, Height), new SKRect(0, 0, Width, Height), Filtro.Bilineal, false, false, Envoltura.Transparente, null, key, key);   // EN LINUX: g.DrawImage(hornoAnt, caja, 0, 0, Width, Height, Pixel, key): con la clave y la envoltura de fabrica (Clamp: transparente); hornoAnt (Form1.Vistas.cs) ya es un SKBitmap: directo
                     }
                     return result;
                 }
@@ -244,8 +244,8 @@ namespace Rocola
                 // La clave se actualiza al cambiar el fondo, reutilizando su atributo nativo.
                 GpuColorKey();
                 if (dx != 0f && hornoAnt != null)
-                    { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)(dx-slideDesde), w, h) : new Rectangle((int)(dx-slideDesde), 0, w, h); Imagenes.Pinta(g, PuenteDibujo.Mapa(hornoAnt), new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoAnt, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoAnt (Form1.Vistas.cs, aun sin traducir), por el puente
-                { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)dx, w, h) : new Rectangle((int)dx, 0, w, h); Imagenes.Pinta(g, PuenteDibujo.Mapa(hornoPag), new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoPag, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoPag, por el puente
+                    { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)(dx-slideDesde), w, h) : new Rectangle((int)(dx-slideDesde), 0, w, h); Imagenes.Pinta(g, hornoAnt, new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoAnt, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoAnt (Form1.Vistas.cs) ya es un SKBitmap: directo
+                { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)dx, w, h) : new Rectangle((int)dx, 0, w, h); Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoPag, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoPag, directo
             }
             public void RenderOpaqueGpu(SKCanvas g, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del Graphics (copia, filtro y medio pixel); EnsureUiOverlay (Form1.Video.cs) la llama por el puente
             {
@@ -253,8 +253,8 @@ namespace Rocola
                 int w = Width, h = Height;
                 AseguraHorneada(w, h);
                 float d = DesplazaAhora();
-                if (d != 0 && hornoAnt != null) { SKBitmap a = PuenteDibujo.Mapa(hornoAnt); int x = GpuSlideVertical ? 0 : (int)(d-slideDesde), y = GpuSlideVertical ? (int)(d-slideDesde) : 0; Imagenes.Pinta(g, a, new SKRect(0, 0, a.Width, a.Height), new SKRect(x, y, x + a.Width, y + a.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoAnt, x, y): la pagina que se va, entera en ese punto (hornoAnt es de Form1.Vistas.cs, aun sin traducir: sus puntos, por el puente)
-                { SKBitmap p = PuenteDibujo.Mapa(hornoPag); int x = GpuSlideVertical ? 0 : (int)d, y = GpuSlideVertical ? (int)d : 0; Imagenes.Pinta(g, p, new SKRect(0, 0, p.Width, p.Height), new SKRect(x, y, x + p.Width, y + p.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoPag, x, y)
+                if (d != 0 && hornoAnt != null) { SKBitmap a = hornoAnt; int x = GpuSlideVertical ? 0 : (int)(d-slideDesde), y = GpuSlideVertical ? (int)(d-slideDesde) : 0; Imagenes.Pinta(g, a, new SKRect(0, 0, a.Width, a.Height), new SKRect(x, y, x + a.Width, y + a.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoAnt, x, y): la pagina que se va, entera en ese punto (hornoAnt, de Form1.Vistas.cs, ya es un SKBitmap)
+                { SKBitmap p = hornoPag; int x = GpuSlideVertical ? 0 : (int)d, y = GpuSlideVertical ? (int)d : 0; Imagenes.Pinta(g, p, new SKRect(0, 0, p.Width, p.Height), new SKRect(x, y, x + p.Width, y + p.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoPag, x, y)
             }
         }
         private void DrawSongPagerGpu(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics (suavizado, modo de letra, copia y medio pixel), como parametros; EnsureUiOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)

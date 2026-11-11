@@ -70,20 +70,8 @@ namespace Rocola
             using (Font f = PuenteDibujo.Font(l)) return AnchoTexto(t, f);
         }
 
-        private partial class SongListView
-        {
-            // ---- LAS FIRMAS DE XP PARA Form1.Vistas.cs (PintaPagina, la pagina horneada de la lista): el lienzo del Graphics y su estado
-            private int AnchoDuracion(Graphics g) { return AnchoDuracion(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra); }
-            private string PlanFilaGpu(Graphics g, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)
-            { return PlanFilaGpu(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, idx, pos, enCola, suena, r, durW, xTexto, hCola, ref gen); }
-            private void PlanPaginaGpu(Graphics g, int rpp, int n, int w, float xTexto, int hCola)
-            { PlanPaginaGpu(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, rpp, n, w, xTexto, hCola); }
-            private int PastillaSonandoEq(Graphics g, int idx, ref float xMarca, float cy, int hCola)
-            {
-                EstadoLienzo e = PuenteDibujo.Estado(g);
-                return PastillaSonandoEq(PuenteDibujo.Lienzo(g), e.Letra, e.Filtro, e.Copia, e.Medio, idx, ref xMarca, cy, hCola);
-            }
-        }
+        // (las firmas de XP de AnchoDuracion, PlanFilaGpu, PlanPaginaGpu y PastillaSonandoEq para PintaPagina se quitaron al traducirse
+        // Form1.Vistas.cs, grupo vistas-b: PintaPagina las llama directo con su lienzo y su estado)
     }
     internal static partial class PuenteDibujo
     {

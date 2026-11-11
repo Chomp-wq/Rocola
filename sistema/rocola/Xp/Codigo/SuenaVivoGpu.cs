@@ -667,8 +667,8 @@ namespace Rocola
                 AjusteLetra ajuste = AjusteLetra.DelSistema;   // EN LINUX: using (Graphics g = Graphics.FromImage(medidor)): se mide con el modo de letra de un Graphics nuevo (SystemDefault), en una variable
                 {
                     string et = Etiqueta ?? "", va = Valor ?? "";
-                    float we = TextoGdiPlus.Mide(et, PuenteDibujo.Letra(fEtq), ajuste, SizeF.Empty, null).Width;   // EN LINUX: g.MeasureString(et, fEtq): la letra de la capsula (Form1.Vistas.cs, aun sin traducir) por el puente; sin caja ni formato
-                    float wv = (va.Length > 0) ? TextoGdiPlus.Mide(va, PuenteDibujo.Letra(fVal), ajuste, SizeF.Empty, null).Width : 0f;   // EN LINUX: g.MeasureString(va, fVal)
+                    float we = TextoGdiPlus.Mide(et, fEtq, ajuste, SizeF.Empty, null).Width;   // EN LINUX: g.MeasureString(et, fEtq): la letra de la capsula (Form1.Vistas.cs, ya traducido: una Letra), directo; sin caja ni formato
+                    float wv = (va.Length > 0) ? TextoGdiPlus.Mide(va, fVal, ajuste, SizeF.Empty, null).Width : 0f;   // EN LINUX: g.MeasureString(va, fVal)
                     float hueco = (va.Length > 0) ? h * 0.18f : 0f;
                     float wPort = ConPortadas ? AnchoPortaditas(h) : 0f;
                     float x = (w - (we + wv + hueco + wPort)) / 2f;

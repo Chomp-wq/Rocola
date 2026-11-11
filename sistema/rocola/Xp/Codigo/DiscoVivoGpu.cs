@@ -307,7 +307,7 @@ namespace Rocola
             // El circulito del numero crece con la fila (con la de siempre se queda en 11 px de radio).
             internal static float RadioGrande(int fila) { return Math.Min(20f, fila * .29f); }
             // El hueco de la duracion con la letra grande: lo que mide "00:00" (con la de siempre bastan 58 px).
-            private int AnchoDuracion(SKCanvas g, AjusteLetra ajuste)   // EN LINUX: el lienzo y su modo de letra (con el que mide AnchoTexto); PintaPagina (Form1.Vistas.cs, aun sin traducir) llega con su Graphics por el puente (Plataforma/Puente.pantalla-viva.cs)
+            private int AnchoDuracion(SKCanvas g, AjusteLetra ajuste)   // EN LINUX: el lienzo y su modo de letra (con el que mide AnchoTexto); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo con su lienzo
             {
                 float c = Font.SizeInPoints;
                 if (Math.Abs(c - durCuerpo) > 0.01f) { durAncho = Math.Max(58, AnchoTextoPantallaViva(g, ajuste, "00:00", Font) + 4); durCuerpo = c; }   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics: uno sobre el mismo lienzo con su modo de letra, por el puente
@@ -321,7 +321,7 @@ namespace Rocola
             // Devuelve el texto de la pastilla de la cola (null si no esta pedida); 'gen' vuelve vacio si se calla.
             internal const float TituloMinimo = .30f;
             private bool generosFuera;   // lista grande: esta pagina va sin pastillas de genero
-            private string PlanFilaGpu(SKCanvas g, AjusteLetra ajuste, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina llega con su Graphics por el puente
+            private string PlanFilaGpu(SKCanvas g, AjusteLetra ajuste, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 bool grande = (Vivo & VivoGrande) != 0;
                 if (grande && generosFuera) gen = null;
@@ -343,7 +343,7 @@ namespace Rocola
             // en todas el titulo cabe entero con su genero al lado; una fila sin genero entre otras que lo llevan haria
             // pensar que esa cancion es de otra cosa. Mira la pagina de verdad (PageStart), tambien cuando se hornea
             // solo la fila elegida: si no, la elegida podria decidir distinto que las demas.
-            private void PlanPaginaGpu(SKCanvas g, AjusteLetra ajuste, int rpp, int n, int w, float xTexto, int hCola)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina llega con su Graphics por el puente
+            private void PlanPaginaGpu(SKCanvas g, AjusteLetra ajuste, int rpp, int n, int w, float xTexto, int hCola)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 generosFuera = false;
                 for (int row = 0; row < rpp; row++)
@@ -369,7 +369,7 @@ namespace Rocola
             private int AnchoGenero(string gen, int anchoFila, float xTexto)
             {
                 if (string.IsNullOrEmpty(gen)) return 0;
-                Rocola.Dibujo2D.Bitmap pg = HorneaGenero(gen);   // EN LINUX: la pastilla del genero la hornea Form1.Vistas.cs (aun sin traducir) como Bitmap de la capa: aqui solo se lee su ancho; su tipo, escrito entero
+                SKBitmap pg = HorneaGenero(gen);   // EN LINUX: la pastilla del genero la hornea Form1.Vistas.cs (ya traducido) como SKBitmap: aqui solo se lee su ancho
                 return (pg != null && pg.Width + 18 <= (anchoFila - (int)xTexto) / 2) ? pg.Width + 18 : 0;
             }
             // Lo que le queda al titulo con estas marcas a su derecha (la misma cuenta que PintaPagina).
@@ -397,7 +397,7 @@ namespace Rocola
             }
             // La pastilla de SONANDO con el hueco del ecualizador a la izquierda: las barritas las pone la tarjeta
             // encima, en su sitio (eqX/eqW/eqH, relativo a la fila). Devuelve lo que ocupa, como la de siempre.
-            private int PastillaSonandoEq(SKCanvas g, AjusteLetra ajuste, Filtro filtro, bool copia, bool medio, int idx, ref float xMarca, float cy, int hCola)   // EN LINUX: el lienzo y lo que pesa de su estado (el modo de letra, el filtro, la copia y el medio pixel; el suavizado no lo usan la pastilla ni el texto); PintaPagina llega con su Graphics por el puente
+            private int PastillaSonandoEq(SKCanvas g, AjusteLetra ajuste, Filtro filtro, bool copia, bool medio, int idx, ref float xMarca, float cy, int hCola)   // EN LINUX: el lienzo y lo que pesa de su estado (el modo de letra, el filtro, la copia y el medio pixel; el suavizado no lo usan la pastilla ni el texto); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 const string t = "SONANDO";
                 int barra, hueco, pad, sep; MedidasEq(hCola, out barra, out hueco, out pad, out sep);
@@ -406,10 +406,10 @@ namespace Rocola
                 int wp = pad + anchoEq + sep + wt + pad;
                 xMarca -= wp;
                 RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
-                { SKBitmap pas = PuenteDibujo.Mapa(Pastilla(true, wp, hCola)); if (pas != null) Imagenes.Pinta(g, pas, new SKRect(0, 0, pas.Width, pas.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + pas.Width, (int)cr.Y + pas.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano (Nativo/Imagenes.cs); la pastilla la hornea Form1.Vistas.cs (aun sin traducir) como Bitmap: sus puntos, por el puente
+                { SKBitmap pas = Pastilla(true, wp, hCola); if (pas != null) Imagenes.Pinta(g, pas, new SKRect(0, 0, pas.Width, pas.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + pas.Width, (int)cr.Y + pas.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano (Nativo/Imagenes.cs); la pastilla la hornea Form1.Vistas.cs (ya traducido) como SKBitmap: directo
                 float x0 = (int)cr.X + pad;
-                colaB.Color = SonAmbar;
-                using (SKPaint pc = PuenteDibujo.Pincel(colaB, medio)) TextoGdiPlus.Escribe(g, t, PuenteDibujo.Letra(fCola), ajuste, pc, new RectangleF(x0 + anchoEq + sep, cr.Y, wt, hCola), PuenteDibujo.Formato(cenFmt), copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del lienzo; la letra, el pincel y el formato son de Form1.Vistas.cs (aun sin traducir): la misma Letra, el color del SolidBrush y el MISMO FormatoTexto, por el puente
+                colaB.Color = SonAmbar.Sk();   // EN LINUX: el color del pincel (colaB, de Form1.Vistas.cs, ya es un SKPaint), en el de Skia
+                TextoGdiPlus.Escribe(g, t, fCola, ajuste, colaB, new RectangleF(x0 + anchoEq + sep, cr.Y, wt, hCola), cenFmt, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del lienzo; la letra, el pincel y el formato son de Form1.Vistas.cs (ya traducido: una Letra, un SKPaint y un FormatoTexto): directo
                 eqIdx = idx; eqX = x0; eqW = anchoEq; eqH = (float)Math.Round(hCola * .56f); eqBarra = barra; eqHueco = hueco;
                 return wp + 8;
             }
@@ -433,10 +433,10 @@ namespace Rocola
                 llegaTick = t + Math.Max(0, enMs); if (llegaTick == 0) llegaTick = 1;
             }
             // El dibujo para la textura de la tarjeta. El del procesador (OnPaint) NUNCA enseña la llegada.
-            public void RenderContentGpu(Rocola.Dibujo2D.Graphics g)   // EN LINUX: solo pasa el Graphics de DrawCtrlOverlay (Form1.Video.cs) a RenderContent de la capsula (Form1.Vistas.cs), los dos aun sin traducir: se queda con su tipo, escrito entero, hasta que se traduzcan
+            public void RenderContentGpu(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama (modo de letra, copia, filtro y medio pixel): RenderContent de la capsula (Form1.Vistas.cs) ya esta traducido; DrawCtrlOverlay (Form1.Video.cs), que aun pasa un Graphics, llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
                 dibujaGpu = true;
-                try { RenderContent(g); }
+                try { RenderContent(g, ajuste, copia, filtro, medio); }   // EN LINUX: con el lienzo y su estado
                 finally { dibujaGpu = false; }
             }
             private const int LlegaTotalMs = LlegaDestMs;   // lo que mas dura de las tres cosas
