@@ -31,6 +31,9 @@ corre "OnPaint no le deja el filtro al Graphics" Codigo/Form1.Pared.cs '1552s/ g
 corre "la atraccion con otro modo de letra" Codigo/Form1.Pared.cs '124s/AjusteLetra ajuste = AjusteLetra.ClearTypeAjustada;/AjusteLetra ajuste = AjusteLetra.Suave;/'
 corre "el cubo de la cancion sin inclinarse" Codigo/Form1.Pared.cs '1671s/g.RotateDegrees(tilt);/g.RotateDegrees(0);/'
 corre "la paleta lee todo como premultiplicado" Codigo/PaletaCaratulaGpu.cs '64s/bool prem = f == FormatoMapa.PArgb32;/bool prem = f == FormatoMapa.PArgb32 || f == FormatoMapa.Argb32;/'
-corre "las tiras del contorno sin suavizar" Codigo/CaratulasSeparadasGpu.cs '120s/edge, suave)/edge, false)/'
+# (las tiras «sin suavizar», '120s/edge, suave)/edge, false)/', dan 0 lineas distintas: un rectangulo de un punto en coordenadas enteras sale
+# igual con suavizado y sin el, asi que ese control no decia nada; el suavizado de PackEdge se razona por el codigo de XP, que pone AntiAlias)
+corre "las tiras del contorno un punto mas anchas" Codigo/CaratulasSeparadasGpu.cs '120s/right - left, height - 1), edge, suave)/right - left + 1, height - 1), edge, suave)/'
 corre "el puente de Cube.Draw sin el filtro del Graphics" Plataforma/Puente.pared.cs 's/Draw(PuenteDibujo.Lienzo(g), e.Suave, e.Copia, e.Filtro, e.Medio, bounds/Draw(PuenteDibujo.Lienzo(g), e.Suave, e.Copia, Filtro.Bilineal, e.Medio, bounds/'
 corre "el puente de la paleta sin el formato" Plataforma/Puente.pared.cs 's/PuenteDibujo.FormatoMapaPared(bitmap.PixelFormat))/FormatoMapa.PArgb32)/'
+corre "la mezcla de portadas con la mitad del fundido" Codigo/Form1.Pared.cs 's/float\[\]\[\] cm = MatrizColor.Identidad(); cm\[3\]\[3\] = f;/float[][] cm = MatrizColor.Identidad(); cm[3][3] = f * 0.5f;/'
