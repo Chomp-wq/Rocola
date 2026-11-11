@@ -56,24 +56,9 @@ namespace Rocola
             // un Graphics sobre el mismo lienzo con el estado del que llama (el filtro, el de fabrica de un Graphics; la matriz del HDC, la dada)
             private static Graphics GraphicsPortadas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, SKMatrix hdc)
             { return PuenteDibujo.Graphics(g, new EstadoLienzo(suave, ajuste, copia, Filtro.Bilineal, medio, hdc)); }
-            // CtrlPad, CtrlDot y CtrlTxt (Form1.Pared.cs, la barra de ayudas: la cruceta, los botones y sus palabras) y FlechaArriba
-            // (Form1.Buscador.cs): pintan con el pincel y la pluma de la capa; CtrlTxt mide y escribe con GDI+ (el modo de letra del lienzo)
-            private static float CtrlPadPortadas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz)
-            {
-                using (Graphics gg = GraphicsPortadas(g, suave, ajuste, copia, medio, SKMatrix.Identity))
-                    return CtrlPad(gg, x, cy, sz);
-            }
-            private static float CtrlDotPortadas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)
-            {
-                using (Graphics gg = GraphicsPortadas(g, suave, ajuste, copia, medio, SKMatrix.Identity))
-                    return CtrlDot(gg, x, cy, d, c);
-            }
-            private static float CtrlTxtPortadas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)
-            {
-                using (Graphics gg = GraphicsPortadas(g, suave, ajuste, copia, medio, SKMatrix.Identity))
-                using (Font ff = PuenteDibujo.Font(f))
-                    return CtrlTxt(gg, ff, s, x, cy, c);
-            }
+            // (CtrlPadPortadas, CtrlDotPortadas y CtrlTxtPortadas se quitaron al traducirse Form1.Pared.cs, grupo pared: DibujaAyudasNuevas
+            // llama directo a CtrlPad, CtrlDot y CtrlTxt con su lienzo y su estado)
+            // FlechaArriba (Form1.Buscador.cs): pinta con el pincel y la pluma de la capa
             private static float FlechaArribaPortadas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)
             {
                 using (Graphics gg = GraphicsPortadas(g, suave, ajuste, copia, medio, SKMatrix.Identity))

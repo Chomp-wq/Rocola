@@ -282,8 +282,8 @@ namespace Rocola
                 {
                     int cy = r.Top + r.Height / 2, arrow = (int)size;
                     Color yellow = Color.FromArgb(242, 206, 72);
-                    CtrlDirLeft(PuenteDibujo.GraphicsAcabado(g, suave, ajuste, copia, medio), r.Left + 8, cy, arrow, page > 0 ? yellow : Color.FromArgb(80, yellow));   // EN LINUX: CtrlDirLeft (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: uno sobre el mismo lienzo con el estado de este, por el puente (Plataforma/Puente.acabado-estilo.cs)
-                    CtrlDirRight(PuenteDibujo.GraphicsAcabado(g, suave, ajuste, copia, medio), r.Right - 8 - arrow, cy, arrow, page + 1 < pages ? yellow : Color.FromArgb(80, yellow));   // EN LINUX: CtrlDirRight (Form1.Pared.cs, aun sin traducir), igual
+                    CtrlDirLeft(g, suave, ajuste, copia, medio, r.Left + 8, cy, arrow, page > 0 ? yellow : Color.FromArgb(80, yellow));   // EN LINUX: CtrlDirLeft (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                    CtrlDirRight(g, suave, ajuste, copia, medio, r.Right - 8 - arrow, cy, arrow, page + 1 < pages ? yellow : Color.FromArgb(80, yellow));   // EN LINUX: CtrlDirRight (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
                     sf.Horizontal = Alinea.Cerca;   // EN LINUX: Alignment = Near
                     if (page > 0) TextoGdiPlus.Escribe(g, "ANTERIOR", font, ajuste, dim, new Rectangle(r.Left + 16 + arrow, r.Top, side - arrow - 8, r.Height), sf, copia, medio);   // EN LINUX: g.DrawString(...)
                     sf.Horizontal = Alinea.Lejos;   // EN LINUX: Alignment = Far

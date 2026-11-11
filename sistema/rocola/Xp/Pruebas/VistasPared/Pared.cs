@@ -453,7 +453,9 @@ namespace BancoPared
                 Pinta(s + "-llega", v, p[0], p[1], Estados[1], false, 1);
                 // sin nada elegido y con la pagina vacia
                 Pon(v, "Selected", -1); Llama(v, TVista, "CancelHandoff"); Pinta(s + "-sin-elegir", v, p[0], p[1], Estados[0], false, 1);
-                Pon(v, "Page", Discos(0)); Pinta(s + "-vacia", v, p[0], p[1], Estados[0], false, 2);
+                // (sin cubo que pintar, DrawWall no toca el filtro: al Graphics le queda el que traia)
+                Pinta(s + "-sin-elegir-bicubico", v, p[0], p[1], Estados[3], false, 1); Pinta(s + "-sin-elegir-vecino", v, p[0], p[1], Estados[5], true, 1);
+                Pon(v, "Page", Discos(0)); Pinta(s + "-vacia", v, p[0], p[1], Estados[0], false, 2); Pinta(s + "-vacia-baja", v, p[0], p[1], Estados[7], false, 1);
                 ((IDisposable)v).Dispose();
             }
         }

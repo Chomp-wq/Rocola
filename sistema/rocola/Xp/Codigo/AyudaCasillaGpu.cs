@@ -85,10 +85,10 @@ namespace Rocola
                 if (!forGpu) PintaInterrogacion(g, suave, medio, copia, ic, 1f);   // EN LINUX: el lienzo y su estado
                 float x = ic.Right;
                 Color tinta = Color.FromArgb(255, 255, 240, 205);
-                if (!Compacta) x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, fTxt, "AYUDA", x + 8, cy, tinta);   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente (Plataforma/Puente.asistente.cs)
+                if (!Compacta) x = CtrlTxt(g, suave, ajuste, copia, medio, fTxt, "AYUDA", x + 8, cy, tinta);   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                 x += Compacta ? 6 : 12;
-                x = CtrlDotAsistente(g, suave, ajuste, copia, medio, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;   // EN LINUX: CtrlDot (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente
-                x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, fTxt, "+", x, cy, tinta) + 6;   // EN LINUX: CtrlTxt, por el puente
+                x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, d, Color.FromArgb(228, 72, 72)) + 4;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                x = CtrlTxt(g, suave, ajuste, copia, medio, fTxt, "+", x, cy, tinta) + 6;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                 Tecla = new Rectangle((int)x, cy - (int)(d * 0.9f) / 2, (int)(d * 0.9f), (int)(d * 0.9f));   // la guia del rojo la resalta
                 FlechaAbajo(g, suave, ajuste, copia, medio, x, cy, (int)(d * 0.9f), Color.FromArgb(228, 72, 72));   // EN LINUX: el lienzo y su estado
             }
@@ -106,7 +106,7 @@ namespace Rocola
                     using (SKPaint pn = new SKPaint { Color = Color.FromArgb(215, c).Sk(), StrokeWidth = 1.6f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave, medio, copia);   // EN LINUX: Pen(color, 1,6) y g.DrawPath
                 }
                 float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
-                CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * 0.62f), new PointF(cx + an, cy - t * 0.62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
+                CtrlTri(g, suave, ajuste, copia, medio, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * 0.62f), new PointF(cx + an, cy - t * 0.62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
             }
         }
 

@@ -466,7 +466,7 @@ namespace Rocola
                         Rectangle ka, kb, kv; AsistenteControlesOpcion(r, out ka, out kb, out kv);
                         TeclaFlecha(g, suave, ajuste, copia, medio, ka.X, ka.Y + ka.Height / 2, ka.Width, i > 0 ? rojo : apagado, 0);   // EN LINUX: el lienzo y su estado
                         TeclaFlecha(g, suave, ajuste, copia, medio, kb.X, kb.Y + kb.Height / 2, kb.Width, i < AsistenteOpciones - 1 ? rojo : apagado, 1);   // EN LINUX: el lienzo y su estado
-                        CtrlDotAsistente(g, suave, ajuste, copia, medio, kv.X, kv.Y + kv.Height / 2, kv.Width, verdeC);   // EN LINUX: CtrlDot (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
+                        CtrlDot(g, suave, ajuste, copia, medio, kv.X, kv.Y + kv.Height / 2, kv.Width, verdeC);   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
                     }
                 }
                 finally { if (propia != null) propia.Dispose(); }
@@ -476,11 +476,11 @@ namespace Rocola
                 Color azulC = Color.FromArgb(150, 215, 255);
                 TeclaFlecha(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo, 0); lx += ld + 3;   // EN LINUX: el lienzo y su estado
                 TeclaFlecha(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo, 1); lx += ld + 6;   // EN LINUX: el lienzo y su estado
-                lx = CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "mover", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente
-                lx = CtrlDotAsistente(g, suave, ajuste, copia, medio, lx, lcy, ld, verdeC) + 6;   // EN LINUX: CtrlDot, por el puente
-                lx = CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "elegir", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt, por el puente
-                lx = CtrlDotAsistente(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo) + 6;   // EN LINUX: CtrlDot, por el puente
-                CtrlTxtAsistente(g, suave, ajuste, copia, medio, pequeno, "salir", lx, lcy, azulC);   // EN LINUX: CtrlTxt, por el puente
+                lx = CtrlTxt(g, suave, ajuste, copia, medio, pequeno, "mover", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
+                lx = CtrlDot(g, suave, ajuste, copia, medio, lx, lcy, ld, verdeC) + 6;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                lx = CtrlTxt(g, suave, ajuste, copia, medio, pequeno, "elegir", lx, lcy, azulC) + ld;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
+                lx = CtrlDot(g, suave, ajuste, copia, medio, lx, lcy, ld, rojo) + 6;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                CtrlTxt(g, suave, ajuste, copia, medio, pequeno, "salir", lx, lcy, azulC);   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
             }
             return bmp;
         }

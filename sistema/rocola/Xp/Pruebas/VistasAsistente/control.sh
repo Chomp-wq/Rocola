@@ -27,4 +27,5 @@ corre "la guia con el tipografico" Codigo/AsistenteGuiaRocola.cs '295s/new Forma
 corre "el guardado sin reusar" Codigo/PulidoGpu.cs '152s/continue;/continue; if (d != null) continue;/'
 # (revision) dos mas: el borde de la casilla y el modo de letra que el puente le pasa a CtrlTxt
 corre "(revision) la casilla sin suavizar el borde" Codigo/AyudaCasillaGpu.cs '81s/pn, suave, medio, copia)/pn, false, medio, copia)/'
-corre "(revision) CtrlTxt del puente sin el modo de letra del que llama" Plataforma/Puente.asistente.cs 's/return CtrlTxt(PuenteDibujo.GraphicsAsistente(g, suave, ajuste, copia, medio), ff, s, x, cy, c);/return CtrlTxt(PuenteDibujo.GraphicsAsistente(g, suave, Rocola.Nativo.AjusteLetra.DelSistema, copia, medio), ff, s, x, cy, c);/'
+# (al traducirse Form1.Pared.cs, grupo pared, CtrlTxt ya no pasa por el puente: el mismo fallo, en la traducida)
+corre "(revision) CtrlTxt sin el modo de letra del que llama" Codigo/Form1.Pared.cs '261,262s/s, f, ajuste,/s, f, AjusteLetra.DelSistema,/'
