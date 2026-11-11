@@ -106,3 +106,23 @@ Sin choques; los 109 archivos de `Codigo/` con su número de líneas y de CRLF. 
   faltan: la hoja de Ctrl+F3 de hojas a los 18 s (el repaso, como arriba) y la de Ctrl+F2 de ctrlf3 a los 40 s, que solo cambió de
   nombre: ahora es `capa4-hoja-189,182-646x404` en vez de `capa4-dibujo2d-...` y sus puntos son idénticos a los de la referencia
   (0 distintos; corrido con los PNG de las dos).
+
+## 11-11-2026 (04:10-05:20): pantalla-viva, buscador-portadas y asistente (la tanda 2 entera)
+
+- `57d72f5`: pantalla-viva (PantallaVivaGpu y DiscoVivoGpu) y buscador-portadas (BuscadorPortadasGpu), cada uno con su revisión («bien»;
+  los revisores solo añadieron controles negativos a los arneses).
+- `ae8b50b`: asistente (AsistenteRocola, AsistenteGuiaRocola, AsistenteEstrellaGpu, AyudaCasillaGpu y DegradadoV de PulidoGpu) con su
+  revisión («bien»; dos pruebas más en su arnés).
+
+Sin choques; los 109 archivos de `Codigo/` con su número de líneas y de CRLF. Comprobado con todo junto (`scratchpad/merge/verifica-junta7.sh`):
+compila desde cero (0 errores, 15 avisos) y NativeAOT sin avisos IL/AOT; los siete arneses (asistente, pantalla-viva, buscador-portadas,
+atraccion, reposo, suena y acabado-estilo) IGUALES a la referencia con las dos letras; el banco igual en los 27 000 casos; 41 de 41
+pruebas y 52 de 52 de la hoja; escenas alternadas (RJ7/J7) todas IGUALES salvo sigterm y f3sigterm (lo aceptado), y en NativeAOT
+arranque, cierreq, kill9 y buscador IGUALES; recorridos 9 de 9 con 0, capas quietas 215 de 217 (las dos de siempre: el repaso en la
+hoja de Ctrl+F3 y la hoja de Ctrl+F2 con otro nombre de capa y los mismos puntos) y texturas quietas 445 de 487 (el buscador, 45 de
+78, depende de la hora como se midió el 8-11).
+
+Para quitar después: `DegradadoV(r, c0, c1, false)` ya puede llamarse directo desde EstadoReposoGpu.cs:353 y AcabadoGpu.cs:347 (se borra
+su firma de XP de Puente.asistente.cs); las 4 llamadas a `Redondo` de AtraccionGpu.cs y las de SuenaVivoGpu.cs pasan a `RutaRedonda`
+(SKPath) y se borra `Redondo` de Puente.pantalla-viva.cs. Al juntar el paso de Ctrl+F3: choque en la línea 62 de PantallaVivaGpu.cs
+(PaginaPantalla), manda la de ventanas2.
