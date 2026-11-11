@@ -162,3 +162,22 @@ y salirq además por el momento en que se leyó estado-mantenida.txt; repetidas 
 con la misma secuencia y solo una cuenta (280 frente a 301 encargos, holgura 12), como en la junta del 9-11. NativeAOT: arranque,
 cierreq, kill9 y buscador IGUALES; f3vistas y f3teclas dieron 587 puntos en la hoja de Ctrl+F3 por la fecha de compilación del
 título: con `touch -r /usr/lib/dotnet/dotnet` en rocola-xp (como hizo la revisión de C) salen IGUALES.
+
+## 11-11-2026 (21:45-22:56): pared, fondo y portadas (tanda 3)
+
+- `013996c`: pared (Form1.Pared.cs, CaratulasSeparadasGpu, PrecargaPaginaGpu, PaletaCaratulaGpu y PreviewsIndexadosGpu con SkiaSharp
+  directo; Nativo/FormatoMapa.cs) con su revisión («bien»; faltaba en la tabla la costura de FamiliaUi).
+- `9ccdf37`: fondo (Form1.Fondo.cs: el cielo por procesador, la luna, RoundedPath y el color de las portadas) con su revisión
+  («bien»; PORT_reposo.md en la lista de la costura quitada de RoundedPath).
+- `87f19b6`: portadas (DibujoLigeroGpu, RespuestaGpu, Form1.Portadas.cs, Form1.Biblioteca.cs y CaratulasAdaptativas) con su revisión
+  («bien»; el arnés pasa ahora la rama no nativa de las teselas y de InteriorOpaco).
+
+Las tres ramas salían de `ae8b50b` (antes de vistas-a/b y ventanas2): sin choques, compila y los 109 archivos de `Codigo/` con su
+número de líneas y de CRLF. Comprobado con todo junto (`scratchpad/merge/verifica-junta10.sh`): compila desde cero (0 errores, los 15
+avisos) y NativeAOT sin avisos IL/AOT; los arneses vistas-a, asistente, pantalla-viva, buscador-portadas, atraccion, reposo, suena,
+pared y portadas IGUALES, acabado-estilo 0 de 6 603, vistas-b 0 de 2 865, Ctrl+F3 0 de 545; el del fondo, 2 763 líneas con solo la
+primera distinta (`inicio traducida=True/False`, la marca de qué programa corre, como dice PORT_fondo.md); el banco igual en los
+27 000 casos; 41 de 41, 62 de 62 de la hoja y 32 de 32 de la pantalla; recorridos 9 de 9 con 0, capas quietas 217 de 217 y texturas
+quietas 476 de 487 (las que faltan dependen de la hora: buscador, ayuda y video); las 21 escenas alternadas (RJ10/J10) IGUALES salvo
+sigterm y f3sigterm (lo aceptado); NativeAOT arranque, cierreq, kill9, buscador, f3vistas y f3teclas IGUALES (con la fecha de dotnet en
+rocola-xp).
