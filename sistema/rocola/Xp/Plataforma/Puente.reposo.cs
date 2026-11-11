@@ -21,15 +21,13 @@ namespace Rocola
     // ================================================================ TextoMovilGpu.cs
     public partial class Form1
     {
-        // ---- LAS FIRMAS DE XP: TextoConCinta (BuscadorPortadasGpu.cs, EstiloGpu.cs), CintaVistaPrevia (Form1.Buscador.cs), PintaTextoMovil
-        // (Form1.Vistas.cs, SuenaVivoGpu.cs, EstadoReposoGpu.cs) y PintaArtistaCompacto (Form1.Video.cs, EstiloGpu.cs). El lienzo del Graphics y
-        // su estado (el modo de letra; para pintar, tambien la copia y el medio pixel), la Letra de la Font, el pincel en un SKPaint (su color o
-        // su shader, con el medio pixel del Graphics; un pincel nulo no pinta, como en GDI+) y el MISMO FormatoTexto. Ninguna le cambia el
-        // estado al Graphics.
+        // ---- LAS FIRMAS DE XP: TextoConCinta (BuscadorPortadasGpu.cs, EstiloGpu.cs), PintaTextoMovil (Form1.Vistas.cs, SuenaVivoGpu.cs,
+        // EstadoReposoGpu.cs) y PintaArtistaCompacto (Form1.Video.cs, EstiloGpu.cs). El lienzo del Graphics y su estado (el modo de letra; para
+        // pintar, tambien la copia y el medio pixel), la Letra de la Font, el pincel en un SKPaint (su color o su shader, con el medio pixel del
+        // Graphics; un pincel nulo no pinta, como en GDI+) y el MISMO FormatoTexto. Ninguna le cambia el estado al Graphics. (La de
+        // CintaVistaPrevia se quito al traducirse Form1.Buscador.cs, grupo buscador: DrawPreviewInfo la llama directo.)
         internal static bool TextoConCinta(Graphics g, string text, Font f, Color color, RectangleF rect, StringFormat sf)
         { return TextoConCinta(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, text, PuenteDibujo.Letra(f), color, rect, PuenteDibujo.Formato(sf)); }
-        internal static bool CintaVistaPrevia(Graphics g, string text, Font font, Color color, Rectangle rect)
-        { return CintaVistaPrevia(PuenteDibujo.Lienzo(g), PuenteDibujo.Estado(g).Letra, text, PuenteDibujo.Letra(font), color, rect); }
         internal static void PintaTextoMovil(Graphics g, string text, Font f, Brush brush, RectangleF rect, StringFormat sf)
         {
             EstadoLienzo e = PuenteDibujo.Estado(g);

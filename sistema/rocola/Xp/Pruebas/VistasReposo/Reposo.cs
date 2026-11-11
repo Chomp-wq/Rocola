@@ -268,7 +268,11 @@ namespace BancoReposo
                     using (Graphics g = Prepara(b, e))
                     {
                         MethodInfo m = directo ? Nativa(vista ? "CintaVistaPrevia" : "TextoConCinta", typeof(SKCanvas)) : null;
-                        if (m == null) r = vista ? Form1.CintaVistaPrevia(g, texto, f, col, Rectangle.Round(caja)) : Form1.TextoConCinta(g, texto, f, col, caja, sf);
+                        // la firma de XP de CintaVistaPrevia (con un Graphics) se quito del puente al traducirse Form1.Buscador.cs (grupo buscador,
+                        // revision): donde ya no esta (la traduccion), la llamada de XP es la traducida con el estado del Graphics, como hacia el puente
+                        MethodInfo xpVista = vista && m == null ? typeof(Form1).GetMethod("CintaVistaPrevia", Todo, null, new[] { typeof(Graphics), typeof(string), typeof(Font), typeof(Color), typeof(Rectangle) }, null) : null;
+                        if (vista && m == null && xpVista == null) m = Nativa("CintaVistaPrevia", typeof(SKCanvas));
+                        if (m == null) r = vista ? (bool)xpVista.Invoke(null, new object[] { g, texto, f, col, Rectangle.Round(caja) }) : Form1.TextoConCinta(g, texto, f, col, caja, sf);
                         else
                         {
                             directas++;
