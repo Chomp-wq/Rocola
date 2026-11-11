@@ -1323,8 +1323,8 @@ namespace Rocola
                     string line1 = (attractView != null && attractView.SongCount > 0) ? (attractView.SongCount.ToString("#,0") + " canciones") : "Tu rocola";
                     using (Rocola.Nativo.Letra fBig = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 24f, true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 24f, Bold): la letra nativa (Nativo/Letras.cs), la generica sin remates de XP en puntos y negrita
                     using (Rocola.Nativo.Letra fSmall = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15f, Bold)
-                    using (SKPaint tb = new SKPaint { Color = Color.White.Sk() })   // EN LINUX: using (SolidBrush tb = new SolidBrush(Color.White)): el pincel en un SKPaint con su color (el using del formato, abajo, ya no hace falta: un FormatoTexto no se suelta)
                     // EN LINUX: using (StringFormat sfc = new StringFormat()): es el FormatoTexto sfc de la primera linea del bloque
+                    using (SKPaint tb = new SKPaint { Color = Color.White.Sk() })   // EN LINUX: using (SolidBrush tb = new SolidBrush(Color.White)): el pincel en un SKPaint con su color (el using del formato, abajo, ya no hace falta: un FormatoTexto no se suelta)
                     {
                         FormatoTexto sfc = new FormatoTexto(); sfc.Horizontal = Alinea.Centro; sfc.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs) con Alignment y LineAlignment en Center
                         TextoGdiPlus.Escribe(g, line1, fBig, ajuste, tb, new RectangleF(0, cubeBottom + 18, w, 36), sfc, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel
