@@ -388,7 +388,7 @@ namespace Rocola
                 }
                 return false;
             }
-            public void DrawExtraGpu(Rocola.Dibujo2D.Graphics g, int kind, int dx, int dy)   // EN LINUX: no dibuja: pasa el Graphics de DibujaPiezaViva (Form1.Buscador.cs) a DrawOneResultCard y DrawPreviewInfo (Form1.Buscador.cs), los tres aun sin traducir; el tipo, escrito entero (sin el using de GDI+) hasta que se traduzca ese archivo
+            public void DrawExtraGpu(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, SKMatrix hdc, int kind, int dx, int dy)   // EN LINUX: no dibuja: pasa el lienzo de Skia y el estado del Graphics de DibujaPiezaViva (Form1.Buscador.cs, ya traducido: la matriz del HDC es la del texto de GDI) a DrawOneResultCard y DrawPreviewInfo, directo
             {
                 if (!SeparateGpu || Results == null || Results.Count == 0) return;
                 if (kind == 2)
@@ -396,13 +396,13 @@ namespace Rocola
                     int selected = FocusResults ? SelResult : 0;
                     if (selected < 0 || selected >= resultRects.Count) return;
                     Rectangle r = Rectangle.Round(resultRects[selected].Key); r.Offset(dx, dy);
-                    DrawOneResultCard(g, selected, r, true, Normalize(Query ?? ""));
+                    DrawOneResultCard(g, suave, ajuste, copia, filtro, medio, hdc, selected, r, true, Normalize(Query ?? ""));   // EN LINUX: el lienzo y su estado (Form1.Buscador.cs, ya traducido)
                 }
                 else if (kind == 3 && FocusResults)
                 {
                     Rectangle region, area; ExtraPreviewGeometry(out region, out area);
                     region.Offset(dx, dy); area.Offset(dx, dy);
-                    DrawPreviewInfo(g, region, area);
+                    DrawPreviewInfo(g, suave, ajuste, copia, medio, hdc, region, area);   // EN LINUX: el lienzo y su estado (Form1.Buscador.cs, ya traducido)
                 }
             }
         }

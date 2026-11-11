@@ -704,7 +704,7 @@ namespace Rocola
                 for (int f = 0; f < rows.Count; f++)
                     for (int c = 0; c < rows[f].Count; c++) DibujaTeclaNueva(g, suave, ajuste, copia, filtro, medio, f, c, false, 0, 0);   // EN LINUX: con el estado del lienzo
                 DibujaAyudasNuevas(g, suave, ajuste, copia, medio, r);   // EN LINUX: con el estado del lienzo
-                if (ToastOn) DrawToastPortadas(g, suave, ajuste, copia, medio, hdc, Width, Height);   // EN LINUX: DrawToast (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs), con la matriz del HDC
+                if (ToastOn) DrawToast(g, suave, ajuste, copia, medio, hdc, Width, Height);   // EN LINUX: DrawToast (Form1.Buscador.cs, ya traducido), directo, con el lienzo y su estado (y la matriz del HDC, la del texto de GDI)
             }
             // Lo que cambia la imagen grande. Ni la consulta, ni los resultados, ni donde esta la seleccion.
             internal long FirmaFija()
@@ -777,7 +777,7 @@ namespace Rocola
                 StoreHintGlow(SCerrar, x, cy, dd + 3 + fl + Px(12, s));
                 x = CtrlDotPortadas(g, suave, ajuste, copia, medio, x, cy, dd, SRed) + 3;   // EN LINUX: CtrlDot, por el puente (Plataforma/Puente.buscador-portadas.cs)
                 x = CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "+", x, cy, AyudaTinta) + 3;   // EN LINUX: CtrlTxt, por el puente (Plataforma/Puente.buscador-portadas.cs)
-                x = FlechaArribaPortadas(g, suave, ajuste, copia, medio, x, cy, fl, SRed);   // EN LINUX: FlechaArriba (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs)
+                x = FlechaArriba(g, suave, ajuste, copia, medio, x, cy, fl, SRed);   // EN LINUX: FlechaArriba (Form1.Buscador.cs, ya traducido), directo, con el lienzo y su estado
                 CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "Cerrar", x + gap, cy, AyudaTinta);   // EN LINUX: CtrlTxt, por el puente (Plataforma/Puente.buscador-portadas.cs)
             }
 
