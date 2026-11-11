@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el grano (BakeRuido, BakeRuidoGrande) ya va con SkiaSharp y las funciones nativas (Xp/Nativo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el cielo del dibujo por procesador (Starfield, BgPanel), la luna, el grano, el contorno redondeado y el color de las portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que piden o reciben archivos sin traducir pasa por el puente (Plataforma/Puente.fondo.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -306,7 +306,7 @@ namespace Rocola
         // exacta y son dos copias de ocho megas mas el recorrido, contra UN relleno: no compensa por un nivel.
         internal const int RuidoLado = 64;
         internal const int RuidoAlfa = 2;    // de 255: sobre este cielo son dos niveles arriba o ninguno
-        internal static SKBitmap BakeRuido()   // EN LINUX: un SKBitmap; el dibujo por procesador (EnsureRuido, aun con GDI+) lo recibe por el puente
+        internal static SKBitmap BakeRuido()   // EN LINUX: un SKBitmap (lo usan BakeRuidoGrande y el grano del cielo por procesador, EnsureRuido)
         {
             SKBitmap b = Mapas.Nuevo(RuidoLado, RuidoLado);   // EN LINUX: new Bitmap(..., Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             Random r = new Random(20260903);   // fijo: el mismo grano siempre, no uno distinto por arranque
@@ -362,55 +362,55 @@ namespace Rocola
 
         // El dibujo de la luna al tamano que le toca en esta pantalla. Devuelve un cuadro con el halo, el
         // disco, sus manchas y la sombra de la fase ya recortada.
-        internal static Bitmap BakeLuna(int altoPantalla)
+        internal static SKBitmap BakeLuna(int altoPantalla)   // EN LINUX: un SKBitmap (lo pide PintaLuna, en este mismo archivo)
         {
             float rad = altoPantalla * LunaRadio; if (rad < 6f) rad = 6f;
             int lado = (int)(rad * LunaHalo * 2f) | 1;   // impar: asi tiene un pixel de centro exacto
-            Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
+            SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             float c = lado / 2f;
-            using (Graphics g = Graphics.FromImage(b))
+            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (el estado del dibujo va aparte; el filtro, el medio pixel y la copia, los de fabrica de Graphics.FromImage)
+                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                 // EL HALO. Una luna sin halo es un circulo pegado encima; con el, el aire de alrededor se ve
                 // encendido y parece que la luz sale de ella. Va en dos tramos para que caiga en curva y no
                 // en linea recta, que es lo que lo delata como un degradado.
                 float rh = lado / 2f;
-                using (GraphicsPath gp = new GraphicsPath())
+                using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (su relleno de fabrica, Alternate, es par-impar)
                 {
-                    gp.AddEllipse(c - rh, c - rh, rh * 2, rh * 2);
-                    using (PathGradientBrush pb = new PathGradientBrush(gp))
+                    { float ex = c - rh, ey = c - rh, ew = rh * 2, eh = rh * 2; gp.AddOval(new SKRect(ex, ey, ex + ew, ey + eh)); }   // EN LINUX: gp.AddEllipse(x, y, w, h): el ovalo de la caja (x, y, x + w, y + h), como GraphicsPath
+                    SKRect limites = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(limites.Left, limites.Top, limites.Right, limites.Bottom);   // EN LINUX: new PathGradientBrush(gp): el degradado va en la caja del trazo (GetBounds); su centro, sus colores y su Blend, abajo
                     {
-                        pb.CenterPoint = new PointF(c, c);
-                        pb.CenterColor = Color.FromArgb(96, 226, 232, 246);
-                        pb.SurroundColors = new Color[] { Color.FromArgb(0, 226, 232, 246) };
-                        Blend bl = new Blend(4);
-                        bl.Factors = new float[] { 0f, 0.06f, 0.30f, 1f };
-                        bl.Positions = new float[] { 0f, 0.42f, 0.72f, 1f };
-                        pb.Blend = bl;
-                        g.FillEllipse(pb, c - rh, c - rh, rh * 2, rh * 2);
+                        PointF centro = new PointF(c, c);   // EN LINUX: pb.CenterPoint
+                        Color colorCentro = Color.FromArgb(96, 226, 232, 246);   // EN LINUX: pb.CenterColor
+                        Color[] orilla = new Color[] { Color.FromArgb(0, 226, 232, 246) };   // EN LINUX: pb.SurroundColors
+                        float[] factores = new float[4], posiciones = new float[4];   // EN LINUX: Blend bl = new Blend(4): sus factores y sus posiciones
+                        factores = new float[] { 0f, 0.06f, 0.30f, 1f };   // EN LINUX: bl.Factors
+                        posiciones = new float[] { 0f, 0.42f, 0.72f, 1f };   // EN LINUX: bl.Positions
+                        // EN LINUX: pb.Blend = bl (el degradado de abajo lleva esos factores y posiciones)
+                        using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, orilla[0], factores, posiciones)) using (SKPaint pb = new SKPaint { Shader = degradado }) Pixel.RellenaOvalo(g, new RectangleF(c - rh, c - rh, rh * 2, rh * 2), pb, suave);   // EN LINUX: g.FillEllipse(pb, x, y, w, h) con el PathGradientBrush: su shader (Nativo/Degradado.cs; la orilla, del color del primero de SurroundColors) en un SKPaint (Nativo/Pixel.cs)
                     }
                 }
                 // EL DISCO, aparte, para poder recortarle la fase sin llevarse el halo por delante.
                 int ld = (int)(rad * 2f) + 4;
-                using (Bitmap disco = new Bitmap(ld, ld, PixelFormat.Format32bppArgb))
+                using (SKBitmap disco = Mapas.Nuevo(ld, ld))   // EN LINUX: new Bitmap(ld, ld, Format32bppArgb) (Nativo/Mapas.cs)
                 {
                     float cd = ld / 2f;
-                    using (Graphics dg = Graphics.FromImage(disco))
+                    using (SKCanvas dg = new SKCanvas(disco))   // EN LINUX: Graphics.FromImage
                     {
-                        dg.SmoothingMode = SmoothingMode.AntiAlias;
-                        dg.Clear(Color.Transparent);
+                        bool dsuave = true; bool dcopia = false;   // EN LINUX: dg.SmoothingMode = AntiAlias, en una variable; su copia (CompositingMode), la de fabrica: mezclar
+                        dg.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                         // Blanco con un dejo calido, y un poco mas apagada por el canto: una esfera iluminada
                         // de lado no es un circulo de color liso.
-                        using (GraphicsPath gp = new GraphicsPath())
+                        using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (par-impar, como Alternate)
                         {
-                            gp.AddEllipse(cd - rad, cd - rad, rad * 2, rad * 2);
-                            using (PathGradientBrush pb = new PathGradientBrush(gp))
+                            { float ex = cd - rad, ey = cd - rad, ew = rad * 2, eh = rad * 2; gp.AddOval(new SKRect(ex, ey, ex + ew, ey + eh)); }   // EN LINUX: gp.AddEllipse(x, y, w, h): el ovalo de la caja (x, y, x + w, y + h)
+                            SKRect limites = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(limites.Left, limites.Top, limites.Right, limites.Bottom);   // EN LINUX: new PathGradientBrush(gp): el degradado va en la caja del trazo (GetBounds); su centro y sus colores, abajo
                             {
-                                pb.CenterPoint = new PointF(cd - rad * 0.28f, cd - rad * 0.28f);
-                                pb.CenterColor = Color.FromArgb(255, 252, 250, 240);
-                                pb.SurroundColors = new Color[] { Color.FromArgb(255, 206, 206, 202) };
-                                dg.FillEllipse(pb, cd - rad, cd - rad, rad * 2, rad * 2);
+                                PointF centro = new PointF(cd - rad * 0.28f, cd - rad * 0.28f);   // EN LINUX: pb.CenterPoint
+                                Color colorCentro = Color.FromArgb(255, 252, 250, 240);   // EN LINUX: pb.CenterColor
+                                Color[] orilla = new Color[] { Color.FromArgb(255, 206, 206, 202) };   // EN LINUX: pb.SurroundColors
+                                using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, orilla[0])) using (SKPaint pb = new SKPaint { Shader = degradado }) Pixel.RellenaOvalo(dg, new RectangleF(cd - rad, cd - rad, rad * 2, rad * 2), pb, dsuave, false, dcopia);   // EN LINUX: dg.FillEllipse(pb, x, y, w, h) con el PathGradientBrush: su shader (Nativo/Degradado.cs) en un SKPaint (Nativo/Pixel.cs)
                             }
                         }
                         // LOS MARES. Son las manchas oscuras que se ven a simple vista, y son las que hacen
@@ -420,32 +420,32 @@ namespace Rocola
                         float[] mr = { 0.30f, 0.22f, 0.26f, 0.15f, 0.13f };
                         int[] ma = { 26, 20, 22, 15, 13 };
                         for (int i = 0; i < mx.Length; i++)
-                            using (GraphicsPath gp = new GraphicsPath())
+                            using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (par-impar, como Alternate)
                             {
                                 float r2 = rad * mr[i], px = cd + rad * mx[i], py = cd + rad * my[i];
-                                gp.AddEllipse(px - r2, py - r2, r2 * 2, r2 * 2);
-                                using (PathGradientBrush pb = new PathGradientBrush(gp))
+                                { float ex = px - r2, ey = py - r2, ew = r2 * 2, eh = r2 * 2; gp.AddOval(new SKRect(ex, ey, ex + ew, ey + eh)); }   // EN LINUX: gp.AddEllipse(x, y, w, h): el ovalo de la caja (x, y, x + w, y + h)
+                                SKRect limites = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(limites.Left, limites.Top, limites.Right, limites.Bottom); PointF centro = new PointF(caja.X + caja.Width / 2f, caja.Y + caja.Height / 2f);   // EN LINUX: new PathGradientBrush(gp): el degradado va en la caja del trazo (GetBounds) y su centro de fabrica es el de esa caja; sus colores, abajo
                                 {
-                                    pb.CenterColor = Color.FromArgb(ma[i], 120, 124, 140);
-                                    pb.SurroundColors = new Color[] { Color.FromArgb(0, 120, 124, 140) };
-                                    dg.FillEllipse(pb, px - r2, py - r2, r2 * 2, r2 * 2);
+                                    Color colorCentro = Color.FromArgb(ma[i], 120, 124, 140);   // EN LINUX: pb.CenterColor
+                                    Color[] orilla = new Color[] { Color.FromArgb(0, 120, 124, 140) };   // EN LINUX: pb.SurroundColors
+                                    using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, orilla[0])) using (SKPaint pb = new SKPaint { Shader = degradado }) Pixel.RellenaOvalo(dg, new RectangleF(px - r2, py - r2, r2 * 2, r2 * 2), pb, dsuave, false, dcopia);   // EN LINUX: dg.FillEllipse(pb, x, y, w, h) con el PathGradientBrush (Nativo/Degradado.cs, Nativo/Pixel.cs)
                                 }
                             }
                         // LA FASE: se BORRA un circulo corrido, no se pinta negro encima. Pintar negro dejaria
                         // una media luna negra sobre el cielo -que ahi no hay nada, hay cielo- y se veria.
                         if (LunaMengua > 0.01f)
                         {
-                            CompositingMode ocm = dg.CompositingMode;
-                            dg.CompositingMode = CompositingMode.SourceCopy;
-                            using (SolidBrush nada = new SolidBrush(Color.FromArgb(0, 0, 0, 0)))
+                            bool ocm = dcopia;   // EN LINUX: CompositingMode ocm = dg.CompositingMode (la copia va en una variable)
+                            dcopia = true;   // EN LINUX: dg.CompositingMode = SourceCopy
+                            using (SKPaint nada = new SKPaint { Color = Color.FromArgb(0, 0, 0, 0).Sk() })   // EN LINUX: SolidBrush: un SKPaint con su color
                             {
                                 float des = rad * (0.55f + 1.30f * LunaMengua);
-                                dg.FillEllipse(nada, cd - des - rad, cd - rad * 1.02f, rad * 2.04f, rad * 2.04f);
+                                Pixel.RellenaOvalo(dg, new RectangleF(cd - des - rad, cd - rad * 1.02f, rad * 2.04f, rad * 2.04f), nada, dsuave, false, dcopia);   // EN LINUX: dg.FillEllipse(nada, x, y, w, h), copiando (Nativo/Pixel.cs)
                             }
-                            dg.CompositingMode = ocm;
+                            dcopia = ocm;   // EN LINUX: dg.CompositingMode = ocm
                         }
                     }
-                    g.DrawImageUnscaled(disco, (int)(c - cd), (int)(c - cd));
+                    { int dx = (int)(c - cd), dy = (int)(c - cd); Imagenes.Pinta(g, disco, new SKRect(0, 0, disco.Width, disco.Height), new SKRect(dx, dy, dx + disco.Width, dy + disco.Height), Filtro.Bilineal, false, false); }   // EN LINUX: g.DrawImageUnscaled(disco, x, y): entera en ese punto, con el filtro, el medio pixel y la copia de fabrica de Graphics.FromImage (Nativo/Imagenes.cs)
                 }
             }
             return b;
@@ -768,18 +768,18 @@ namespace Rocola
             return de + ((d > 0) ? paso : -paso);
         }
 
-        private static GraphicsPath RoundedPath(Rectangle r, int radius)
+        private static SKPath RutaRedonda(Rectangle r, int radius)   // EN LINUX: RoundedPath, con un SKPath; la firma de XP (devuelve un GraphicsPath) queda en el puente (Puente.fondo.cs) para los archivos aun sin traducir (Form1.Buscador.cs, Form1.Ajustes.cs, Form1.Vistas.cs), y la hace con esta misma
         {
-            GraphicsPath p = new GraphicsPath();
+            SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): un SKPath (su relleno de fabrica, Alternate, es par-impar)
             int d = radius * 2;
             if (d > r.Height) d = r.Height;
             if (d > r.Width) d = r.Width;
             if (d < 2) d = 2;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
+            p.ArcTo(new SKRect(r.X, r.Y, (float)r.X + d, (float)r.Y + d), 180, 90, true);   // EN LINUX: p.AddArc(x, y, w, h, 180, 90): el arco de la caja (x, y, x + w, y + h); el primero empieza la figura (forceMoveTo), como GraphicsPath
+            p.ArcTo(new SKRect(r.Right - d, r.Y, (float)(r.Right - d) + d, (float)r.Y + d), 270, 90, false);   // EN LINUX: p.AddArc: con la figura abierta, GraphicsPath une el arco con una linea al punto anterior (sin forceMoveTo)
+            p.ArcTo(new SKRect(r.Right - d, r.Bottom - d, (float)(r.Right - d) + d, (float)(r.Bottom - d) + d), 0, 90, false);   // EN LINUX: p.AddArc, unido al anterior
+            p.ArcTo(new SKRect(r.X, r.Bottom - d, (float)r.X + d, (float)(r.Bottom - d) + d), 90, 90, false);   // EN LINUX: p.AddArc, unido al anterior
+            p.Close();   // EN LINUX: CloseFigure
             return p;
         }
 
@@ -994,7 +994,7 @@ namespace Rocola
         //
         // El promedio de tonos se hace con seno y coseno, no sumando grados: el rojo esta en 0 y en 360 a
         // la vez, asi que sumando, dos rojos darian verde.
-        private static Color ColorDePortada(Bitmap b)
+        private static Color ColorDePortada(SKBitmap b)   // EN LINUX: los puntos de la portada en un SKBitmap (no la llama nadie, tampoco en XP)
         {
             Color uno, dos;
             return ColoresDePortada(b, out uno, out dos);
@@ -1018,7 +1018,7 @@ namespace Rocola
         private const int TonoCasillas = 24;         // la rueda de color repartida en casillas de 15 grados
         private const float TonoSegundoLejos = 40f;  // dos tonos mas juntos que esto son el mismo color
         private const float TonoSegundoManda = 0.25f; // y el segundo tiene que pesar al menos esto del primero
-        private static Color ColoresDePortada(Bitmap b, out Color uno, out Color dos)
+        private static Color ColoresDePortada(SKBitmap b, out Color uno, out Color dos)   // EN LINUX: los puntos de la portada en un SKBitmap; la firma de XP (un Bitmap: Form1.Portadas.cs y ColorDePortadaDe, que la reciben de LoadCover, aun sin traducir) queda en el puente (Puente.fondo.cs)
         {
             uno = Color.FromArgb(0, 0, 0, 0); dos = Color.FromArgb(0, 0, 0, 0);
             if (b == null) return Color.FromArgb(0, 0, 0, 0);
@@ -1033,7 +1033,7 @@ namespace Rocola
                 for (int x = px / 2; x < w; x += px)
                 {
                     Color c;
-                    try { c = b.GetPixel(x, y); } catch { return Color.FromArgb(0, 0, 0, 0); }
+                    try { c = ColorSk.DeSk(b.GetPixel(x, y)); } catch { return Color.FromArgb(0, 0, 0, 0); }   // EN LINUX: Bitmap.GetPixel = SKBitmap.GetPixel: el color sin premultiplicar (Nativo/Mapas.cs)
                     float r = c.R / 255f, g = c.G / 255f, bl = c.B / 255f;
                     float mx = Math.Max(r, Math.Max(g, bl)), mn = Math.Min(r, Math.Min(g, bl));
                     if (mx < TonoMinBrillo) continue;              // negro: no dice de que color es el disco
@@ -1119,7 +1119,7 @@ namespace Rocola
             public Color Prom, Uno, Dos;
 #if ROCOLA_GPU
             public Color[] Paleta;
-            public Image Fuente;
+            public Rocola.Dibujo2D.Image Fuente;   // EN LINUX: la portada de la que salio la paleta: la apunta y la compara por identidad Form1.Portadas.cs (aun sin traducir) con el Image de la capa: el tipo, escrito entero
 #endif
         }
         private readonly Dictionary<string, ColoresDisco> colorPortada = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
@@ -1132,7 +1132,7 @@ namespace Rocola
             if (string.IsNullOrEmpty(k)) return SinColor;
             ColoresDisco c;
             if (colorPortada.TryGetValue(k, out c)) return c.Prom;
-            Bitmap b = LoadCover(a) as Bitmap;
+            Rocola.Dibujo2D.Bitmap b = LoadCover(a) as Rocola.Dibujo2D.Bitmap;   // EN LINUX: LoadCover (Form1.Biblioteca.cs, aun sin traducir) da un Image de la capa: el tipo, escrito entero; ColoresDePortada la recibe por el puente (Puente.fondo.cs) y ExtractCoverPalette (PaletaCaratulaGpu.cs) tal cual
             if (b == null) return SinColor;
 #if ROCOLA_GPU
             lock (coverLock)
@@ -1264,7 +1264,7 @@ namespace Rocola
         // se pueden volver a desparejar.
         private static Color GenreToColor(string genre) { return ColorDeEtiqueta(GenreLabel(genre)); }
 
-        private Font Bold(float size) { return new Font(this.Font.FontFamily, size, FontStyle.Bold); }
+        private Rocola.Dibujo2D.Font Bold(float size) { return new Rocola.Dibujo2D.Font(this.Font.FontFamily, size, Rocola.Dibujo2D.FontStyle.Bold); }   // EN LINUX: la letra de las etiquetas de WinForms (Label.Font y la Font del formulario: la pista de ventanas, sin traducir en esta tanda): el tipo de la capa, escrito entero
 
         private void TransLabel(Label l, float size)
         {
@@ -1276,7 +1276,7 @@ namespace Rocola
         // Campo de estrellas reutilizable: cielo + estrellas titilantes (mas brillantes) + estrellas
         // fugaces ocasionales. Lo usan el fondo de navegacion (teñido por genero) y el modo atraccion
         // (cielo negro y estrellas multicolor). El titileo es LENTO a proposito para verse suave aun a 8fps.
-        private class Starfield
+        private partial class Starfield   // EN LINUX: partial: la firma de XP de Draw, DrawCached y DrawReactive (con un Graphics, para los que aun no estan traducidos) va en el puente (Puente.fondo.cs)
         {
             public bool Varied = false;   // true = colores variados (atraccion); false = blanco->tinte (genero)
             public float Density = 1f;    // multiplicador de cantidad de estrellas (el fondo del form usa menos)
@@ -1319,12 +1319,12 @@ namespace Rocola
             private struct Shoot { public bool On; public float X, Y, VX, VY; public float Life, MaxLife, Wdt, Tail; }
             private Star[] stars;
             private int sw = -1, sh = -1;
-            private SolidBrush sb;
-            private Pen sp;
+            private SKPaint sb;   // EN LINUX: SolidBrush: un SKPaint con su color (Nativo/Pixel.cs le pone lo demas al pintar y se lo quita despues)
+            private SKPaint sp;   // EN LINUX: Pen: un SKPaint con su color y su ancho (Nativo/Pixel.cs le pone el minimo de un pixel y el limite de esquinas al trazar)
             // ESTETICA (glow): sprites de resplandor radial pre-horneados UNA sola vez y COMPARTIDOS por todas
             // las instancias. Se estampan detras del nucleo de cada estrella: fuerte en la grande, tenue en la
             // chica, nada en los puntos -> "brillan de verdad" sin contaminar visualmente.
-            private static Bitmap[] glowPal;   // ESTETICA/RENDIMIENTO: un sprite de glow PRE-HORNEADO por color (sin matriz por estrella)
+            private static SKBitmap[] glowPal;   // ESTETICA/RENDIMIENTO: un sprite de glow PRE-HORNEADO por color (sin matriz por estrella)   // EN LINUX: SKBitmap
             private static readonly Color[] glowCols = {
                 Color.White,                          // 0 blanco
                 Color.FromArgb(255, 120, 120),        // 1 rojo
@@ -1343,14 +1343,14 @@ namespace Rocola
             // Rotarlas (una copia por cuadro) reproduce el titileo SIN recalcular ~120 estrellas por cuadro:
             // recupera el efecto animado al costo de una copia (no de recalculo) -> fluido en el CPU lento.
             private const int TwK = 8;
-            private Bitmap[] layers;
+            private SKBitmap[] layers;   // EN LINUX: SKBitmap
             private int lw = -1, lh = -1;
             private readonly Random rnd = new Random();
             // Cache del cuadro: el starfield se dibuja a un bitmap y solo se reconstruye cada ~110ms
             // (para el titileo). Asi cada Draw es un blit barato aunque lo pidan muchas veces seguidas
             // los controles transparentes encima (etiquetas de estado, lblAlbum, cubeBox). Antes se
             // redibujaban ~89 rectangulos en cada repintado transparente -> tormenta -> traba/crash.
-            private Bitmap cache;
+            private SKBitmap cache;   // EN LINUX: SKBitmap
             private int cw = -1, ch = -1, cSky = 0, cTint = 0, lastBuild = 0;
             private int cSky2 = 0;                                        // color inferior del degradado del cache
             private int sBucket = int.MinValue, lBucket = int.MinValue;   // "minuto" del patron actual (cambia cada 60s)
@@ -1370,9 +1370,9 @@ namespace Rocola
             public Color NebUno = Color.Empty, NebDos = Color.Empty;
             public float HazFase = 0f;     // reloj lento del cielo (una vuelta cada ~3 min): pasea la luna
             public bool ConLuna = true;    // perilla de Ctrl+F3
-            private LinearGradientBrush skyBrush;                         // pincel de cielo en DEGRADADO (cacheado, ligado al genero)
+            private SKShader skyBrush;                                    // pincel de cielo en DEGRADADO (cacheado, ligado al genero)   // EN LINUX: LinearGradientBrush: su shader (Nativo/Degradado.cs)
             private int gbW = -1, gbOff = -99999, gbFull = -1, gbTop = 0, gbMid = 0, gbBot = 0;
-            private Bitmap skyCache;                                       // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez
+            private SKBitmap skyCache;                                     // RENDIMIENTO: cielo (degradado) HORNEADO a bitmap; se copia por cuadro en vez de rellenar el degradado cada vez   // EN LINUX: SKBitmap
             private int scW = -1, scH = -1;
             private int fscTop = 0, fscMid = 0, fscBot = 0;               // colores con los que se horneo el cielo de pantalla completa (se re-hornea solo al cambiar genero/tamano)
             // TIRA EL CIELO GUARDADO. Lo llama Ctrl+F3 al tocar una perilla del fondo: el corte del negro al
@@ -1415,11 +1415,11 @@ namespace Rocola
                 int t = top.ToArgb(), m = mid.ToArgb(), b = bottom.ToArgb();
                 if (skyBrush != null && gbW == w && gbOff == off && gbFull == full && gbTop == t && gbMid == m && gbBot == b) return;
                 if (skyBrush != null) { skyBrush.Dispose(); skyBrush = null; }
-                LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, -off, w, full + 1), top, bottom, LinearGradientMode.Vertical);
-                ColorBlend cb = new ColorBlend(3);
-                cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/azul abajo
-                cb.Positions = new float[] { 0f, CorteDelCielo, 1f };  // donde acaba el negro y empieza el azul (perilla "cuanto negro")
-                lgb.InterpolationColors = cb;
+                RectangleF cajaCielo = new Rectangle(0, -off, w, full + 1);   // EN LINUX: new LinearGradientBrush(caja, top, bottom, LinearGradientMode.Vertical): la caja; el degradado (el modo es un angulo escalable de 90 grados) se hace abajo, con sus colores
+                Color[] cbColors; float[] cbPositions;   // EN LINUX: ColorBlend cb = new ColorBlend(3): sus colores y sus posiciones
+                cbColors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/azul abajo   // EN LINUX: cb.Colors
+                cbPositions = new float[] { 0f, CorteDelCielo, 1f };  // donde acaba el negro y empieza el azul (perilla "cuanto negro")   // EN LINUX: cb.Positions
+                SKShader lgb = Degradado.Lineal(cajaCielo, cbColors, cbPositions, Degradado.Vertical, true);   // EN LINUX: lgb.InterpolationColors = cb: el degradado con esos colores, repetido fuera (WrapMode.Tile, el de fabrica) (Nativo/Degradado.cs)
                 skyBrush = lgb;
                 gbW = w; gbOff = off; gbFull = full; gbTop = t; gbMid = m; gbBot = b;
             }
@@ -1431,16 +1431,16 @@ namespace Rocola
                 lock (glowLock)
                 {
                     if (glowPal != null) return;
-                    Bitmap[] g2 = new Bitmap[glowCols.Length];
+                    SKBitmap[] g2 = new SKBitmap[glowCols.Length];   // EN LINUX: SKBitmap
                     for (int i = 0; i < glowCols.Length; i++) g2[i] = BakeGlow(48, 185, glowCols[i]);   // glow FUERTE por color
                     glowPal = g2;
                 }
             }
 
             // Glow del MISMO COLOR que la estrella: elige el sprite pre-horneado mas cercano (sin matriz por estrella).
-            private static Bitmap GlowFor(int r, int g, int b)
+            private static SKBitmap GlowFor(int r, int g, int b)   // EN LINUX: SKBitmap
             {
-                Bitmap[] gp = glowPal;
+                SKBitmap[] gp = glowPal;   // EN LINUX: SKBitmap
                 if (gp == null) return null;
                 int best = 0, bd = int.MaxValue;
                 for (int i = 0; i < glowCols.Length; i++)
@@ -1452,21 +1452,21 @@ namespace Rocola
                 return gp[best];
             }
 
-            private static Bitmap BakeGlow(int size, int peakAlpha, Color color)
+            private static SKBitmap BakeGlow(int size, int peakAlpha, Color color)   // EN LINUX: un SKBitmap
             {
-                Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(bmp))
-                using (GraphicsPath gp = new GraphicsPath())
+                SKBitmap bmp = Mapas.Nuevo(size, size);   // EN LINUX: new Bitmap(size, size, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
+                using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (par-impar, como Alternate)
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
-                    gp.AddEllipse(0, 0, size, size);
-                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (el medio pixel y la copia, los de fabrica)
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                    gp.AddOval(new SKRect(0, 0, 0 + size, 0 + size));   // EN LINUX: gp.AddEllipse(x, y, w, h): el ovalo de la caja (x, y, x + w, y + h)
+                    SKRect limites = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(limites.Left, limites.Top, limites.Right, limites.Bottom);   // EN LINUX: new PathGradientBrush(gp): el degradado va en la caja del trazo (GetBounds); su centro y sus colores, abajo
                     {
-                        pgb.CenterPoint = new PointF(size / 2f, size / 2f);
-                        pgb.CenterColor = Color.FromArgb(peakAlpha, color.R, color.G, color.B);   // nucleo del color de la estrella
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, color.R, color.G, color.B) };   // se desvanece a transparente
-                        g.FillEllipse(pgb, 0, 0, size, size);
+                        PointF centro = new PointF(size / 2f, size / 2f);   // EN LINUX: pgb.CenterPoint
+                        Color colorCentro = Color.FromArgb(peakAlpha, color.R, color.G, color.B);   // nucleo del color de la estrella   // EN LINUX: pgb.CenterColor
+                        Color[] orilla = new Color[] { Color.FromArgb(0, color.R, color.G, color.B) };   // se desvanece a transparente   // EN LINUX: pgb.SurroundColors
+                        using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, orilla[0])) using (SKPaint pgb = new SKPaint { Shader = degradado }) Pixel.RellenaOvalo(g, new RectangleF(0, 0, size, size), pgb, suave);   // EN LINUX: g.FillEllipse(pgb, 0, 0, size, size) con el PathGradientBrush: su shader (Nativo/Degradado.cs) en un SKPaint (Nativo/Pixel.cs)
                     }
                 }
                 return bmp;
@@ -1478,7 +1478,7 @@ namespace Rocola
             // Las lleva un punado y nada mas -las que marca Ensure-, porque repartidas por todas el cielo
             // parece purpurina. Tres rombos encajados de menos a mas cortos y mas opacos: sale una raya que
             // se afila hacia fuera sin tener que degradar nada.
-            private void DrawRayos(Graphics g, SolidBrush b, float px, float py, float R, Color col, float brillo, int kind)
+            private void DrawRayos(SKCanvas g, bool suave, SKPaint b, float px, float py, float R, Color col, float brillo, int kind)   // EN LINUX: el lienzo de Skia y su suavizado; el medio pixel y la copia, los de fabrica (las dos que la llaman, RenderInto y BakeStarFrame, pintan en sus mapas con ellos)
             {
                 // La MEDIANA lleva las rayitas mas cortas y bastante mas tenues que la grande. Esa diferencia
                 // es la que evita el efecto purpurina: si todas las llevaran igual de marcadas, sesenta
@@ -1490,23 +1490,23 @@ namespace Rocola
                 {
                     float L = largo * (1f - paso * 0.30f), A = ancho * (1f + paso * 1.1f);
                     int alfa = (int)((34 + paso * 26) * brillo); if (alfa > tope) alfa = tope; if (alfa < 1) continue;
-                    b.Color = Color.FromArgb(alfa, col);
+                    b.Color = Color.FromArgb(alfa, col).Sk();   // EN LINUX: el color del SKPaint
                     spk[0] = new PointF(px - L, py); spk[1] = new PointF(px, py - A); spk[2] = new PointF(px + L, py); spk[3] = new PointF(px, py + A);
-                    g.FillPolygon(b, spk);
+                    Pixel.RellenaPoligono(g, spk, b, suave);   // EN LINUX: g.FillPolygon(b, puntos): relleno Alternate, el de fabrica (Nativo/Pixel.cs)
                     spk[0] = new PointF(px, py - L); spk[1] = new PointF(px + A, py); spk[2] = new PointF(px, py + L); spk[3] = new PointF(px - A, py);
-                    g.FillPolygon(b, spk);
+                    Pixel.RellenaPoligono(g, spk, b, suave);   // EN LINUX: g.FillPolygon(b, puntos), Alternate
                 }
             }
             // El NUCLEO: chiquito y tirando a blanco. Es lo que hace que una estrella "queme" en vez de
             // parecer una pelusa: el color vive en el halo, y el centro casi siempre se ve blanco.
-            private void DrawNucleo(Graphics g, SolidBrush b, float px, float py, float R, int cr, int cg, int cb, int a)
+            private void DrawNucleo(SKCanvas g, bool suave, SKPaint b, float px, float py, float R, int cr, int cg, int cb, int a)   // EN LINUX: el lienzo de Skia y su suavizado (el medio pixel y la copia, los de fabrica, como DrawRayos)
             {
                 int nr = cr + 70; if (nr > 255) nr = 255;
                 int ng = cg + 70; if (ng > 255) ng = 255;
                 int nb = cb + 70; if (nb > 255) nb = 255;
-                b.Color = Color.FromArgb(a, nr, ng, nb);
+                b.Color = Color.FromArgb(a, nr, ng, nb).Sk();   // EN LINUX: el color del SKPaint
                 float d = R * 1.1f; if (d < 1.2f) d = 1.2f;
-                g.FillEllipse(b, px - d * 0.5f, py - d * 0.5f, d, d);
+                Pixel.RellenaOvalo(g, new RectangleF(px - d * 0.5f, py - d * 0.5f, d, d), b, suave);   // EN LINUX: g.FillEllipse(b, x, y, w, h) (Nativo/Pixel.cs)
             }
 
             // CUANTO HALO lleva cada estrella, y no es el mismo para todas. Las GRANDES son las
@@ -1647,8 +1647,8 @@ namespace Rocola
                     s.Spd = 0.6f + (float)r.NextDouble() * 1.6f;   // titileo LENTO
                     stars[i] = s;
                 }
-                if (sb == null) sb = new SolidBrush(Color.White);
-                if (sp == null) sp = new Pen(Color.White, 2.2f);
+                if (sb == null) sb = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(White): un SKPaint con su color
+                if (sp == null) sp = new SKPaint { Color = Color.White.Sk(), StrokeWidth = 2.2f };   // EN LINUX: new Pen(White, 2.2f): un SKPaint con su color y su ancho (esquinas en punta y puntas planas, las de fabrica de los dos)
             }
 
             // Un numero al azar con forma de campana (Box-Muller): sirve para que las estrellas caigan
@@ -1664,7 +1664,7 @@ namespace Rocola
             // extra por minuto, costoso en el CPU lento de la rocola. Se mantiene 1 (sin atenuar) siempre.
             private static float StarFade() { return 1f; }
 
-            public void Draw(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)
+            public void Draw(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (suavizado, filtro, medio pixel, copia); la firma de XP (Form1.Pared.cs, con un Graphics) va en el puente (Puente.fondo.cs)
             {
                 if (w < 4 || h < 4) return;
                 Ensure(w, h);
@@ -1675,7 +1675,7 @@ namespace Rocola
                 // el cuadro entero: basta copiar el cache. Asi el +framerate (~24fps) no desperdicia CPU
                 // redibujando ~120 estrellas para una franja minima; el fondo completo se refresca en los
                 // repintados completos (cuando el recorte cubre toda la vista: buscador y atraccion cada cuadro).
-                RectangleF clip = g.ClipBounds;
+                RectangleF clip = RecorteLienzo.Limites(g);   // EN LINUX: g.ClipBounds: los limites del recorte, exactos (Nativo/RecorteLienzo.cs)
                 bool partial = !needNew && (clip.Width < w - 1 || clip.Height < h - 1);
                 bool rebuild = needNew
                     || (!partial && (cSky != skyTop.ToArgb() || cSky2 != skyBottom.ToArgb() || cTint != tint.ToArgb() || dt >= RefrescoMs || dt < 0));
@@ -1684,19 +1684,19 @@ namespace Rocola
                     if (needNew)
                     {
                         if (cache != null) cache.Dispose();
-                        cache = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                        cache = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
                         cw = w; ch = h;
                     }
-                    using (Graphics cg = Graphics.FromImage(cache))
+                    using (SKCanvas cg = new SKCanvas(cache))   // EN LINUX: Graphics.FromImage (su estado empieza en el de fabrica: RenderInto lo lleva en variables)
                         RenderInto(cg, w, h, skyTop, skyBottom, tint, phase, pulse);
                     cSky = skyTop.ToArgb(); cSky2 = skyBottom.ToArgb(); cTint = tint.ToArgb(); lastBuild = now;
                 }
-                g.DrawImageUnscaled(cache, 0, 0);
+                Imagenes.Pinta(g, cache, new SKRect(0, 0, cache.Width, cache.Height), new SKRect(0, 0, 0 + cache.Width, 0 + cache.Height), filtro, medio, copia);   // EN LINUX: g.DrawImageUnscaled(cache, 0, 0): entera en ese punto, con el filtro, el medio pixel y la copia de quien llama (Nativo/Imagenes.cs)
                 // LAS FUGACES VAN AQUI, EN VIVO, no dentro de lo que se hornea. Una fugaz cruza la pantalla en
                 // un segundo: si viajara dentro del horneado avanzaria a saltos, uno por cada vez que se rehace
                 // el cielo. Fuera, va fluida aunque el cielo se rehaga de tarde en tarde, que es justo lo que
                 // permite rehacerlo de tarde en tarde. (Es la misma division que usa DrawReactive.)
-                if (shooting) DrawShoots(g, w, h);
+                if (shooting) DrawShoots(g, suave, medio, copia, w, h);   // EN LINUX: con el estado de quien llama
             }
 
             // CADA CUANTO SE REHACE EL CIELO cuando se dibuja en vivo (o sea, en la pantalla de atraccion:
@@ -1708,17 +1708,17 @@ namespace Rocola
             public int RefrescoMs = 40;
 
             // Dibuja un cuadro completo del starfield (cielo + estrellas + fugaces) sobre el bitmap cache.
-            private void RenderInto(Graphics g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, float pulse)
+            private void RenderInto(SKCanvas g, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, float pulse)   // EN LINUX: el lienzo de la copia del cuadro (Draw): recien hecho, su estado empieza en el de fabrica de Graphics.FromImage y aqui va en variables
             {
                 EnsureSkyBrush(w, h, skyTop, skyBottom);
-                g.FillRectangle(skyBrush, 0, 0, w, h);
+                using (SKPaint cielo = new SKPaint { Shader = skyBrush }) Pixel.Rellena(g, new RectangleF(0, 0, w, h), cielo, false, false, false);   // EN LINUX: g.FillRectangle(skyBrush, 0, 0, w, h), con el estado de fabrica de Graphics.FromImage: sin suavizar, sin medio pixel, mezclando (Nativo/Pixel.cs)
                 pulse *= Dim;                       // atenuado mientras se navega: el beat tambien baja
                 double boost = pulse * 0.62;        // el audio sube el brillo de las estrellas (medianas/grandes)
                 int armUp = (int)(pulse * 7.0);     // y agranda las puntas del destello con el beat
                 float fade = StarFade() * Dim;      // fundido out/in del patron (cada minuto) x atenuacion al navegar
                 EnsureGlow();                       // ESTETICA: sprites de resplandor (horneados una vez)
-                g.InterpolationMode = InterpolationMode.Bilinear;
-                g.SmoothingMode = SmoothingMode.AntiAlias;   // ESTETICA: el sparkle se ve liso (una sola pieza)
+                Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear, en una variable
+                bool suave = true;   // ESTETICA: el sparkle se ve liso (una sola pieza)   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
                 float gfade = fade < 0f ? 0f : (fade > 1f ? 1f : fade);   // el glow encoge a 0 en el parpadeo del patron (sync con los nucleos)
                 UpdateDrift(w, h, pulse);           // deriva con la musica (RenderInto solo corre en reconstruccion completa, ~24fps)
                 int dx = (int)driftX, dy = (int)driftY;
@@ -1739,33 +1739,33 @@ namespace Rocola
                     if (reactive)
                     {
                         int gd = (int)((s.Size * 3 + 6 + (int)(pulse * 10)) * gfade * HaloDe(s.Kind));   // el beat agranda el glow y el fundido lo encoge
-                        Bitmap gb = GlowFor(cr, cg, cb);
-                        if (gb != null && gd > 0) g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
-                        if (s.Rayos) DrawRayos(g, sb, px, py, s.Size + armUp, Color.FromArgb(cr, cg, cb), bri * (float)tw, s.Kind);
-                        DrawNucleo(g, sb, px, py, s.Size, cr, cg, cb, a);
+                        SKBitmap gb = GlowFor(cr, cg, cb);   // EN LINUX: SKBitmap
+                        if (gb != null && gd > 0) { Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd); Imagenes.Pinta(g, gb, new SKRect(0, 0, gb.Width, gb.Height), new SKRect(gr.Left, gr.Top, gr.Right, gr.Bottom), filtro, false, false); }   // EN LINUX: g.DrawImage(gb, caja): la imagen entera en la caja, con el filtro de arriba y el medio pixel y la copia de fabrica (Nativo/Imagenes.cs)
+                        if (s.Rayos) DrawRayos(g, suave, sb, px, py, s.Size + armUp, Color.FromArgb(cr, cg, cb), bri * (float)tw, s.Kind);   // EN LINUX: con su suavizado
+                        DrawNucleo(g, suave, sb, px, py, s.Size, cr, cg, cb, a);   // EN LINUX: con su suavizado
                     }
-                    else { sb.Color = Color.FromArgb(a, cr, cg, cb); float ds = s.Size < 1 ? 1 : s.Size; g.FillEllipse(sb, px - ds / 2f, py - ds / 2f, ds, ds); }
+                    else { sb.Color = Color.FromArgb(a, cr, cg, cb).Sk(); float ds = s.Size < 1 ? 1 : s.Size; Pixel.RellenaOvalo(g, new RectangleF(px - ds / 2f, py - ds / 2f, ds, ds), sb, suave); }   // EN LINUX: el color del SKPaint y g.FillEllipse(sb, x, y, w, h) (Nativo/Pixel.cs)
                 }
             }
 
             // Fondo del formulario (franjas): cielo cacheado + estrellas TITILANTES por cuadros horneados.
-            public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
+            public void DrawCached(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (lo que usa: filtro, medio pixel y copia); la firma de XP (Form1.cs y BgPanel.OnPaint, con un Graphics) va en el puente (Puente.fondo.cs)
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                BlitSkyAndStars(g, w, h);
+                BlitSkyAndStars(g, filtro, medio, copia, w, h);   // EN LINUX: con el estado de quien llama
             }
 
             // Una pasada de la nebulosa: se estira su dibujo pequeno y se le pone el color con una matriz.
-            private void PintaNebulosa(Graphics sg, int FW, int FH, Color c, float alfa)
+            private void PintaNebulosa(SKCanvas sg, Filtro filtro, int FW, int FH, Color c, float alfa)   // EN LINUX: el lienzo del cielo horneado (EnsureSkyCache) y su filtro; el medio pixel y la copia, los de fabrica de ese lienzo
             {
-                using (ImageAttributes ia = new ImageAttributes())
+                // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): su matriz de color (abajo); la envoltura, la de fabrica (Clamp: transparente)
                 {
-                    ColorMatrix cm = new ColorMatrix();
-                    cm.Matrix00 = c.R / 255f; cm.Matrix11 = c.G / 255f; cm.Matrix22 = c.B / 255f; cm.Matrix33 = alfa;
-                    ia.SetColorMatrix(cm);
-                    sg.DrawImage(nebMask, new Rectangle(0, 0, FW, FH), 0, 0, nebMask.Width, nebMask.Height, GraphicsUnit.Pixel, ia);
+                    float[][] cm = MatrizColor.Identidad();   // EN LINUX: new ColorMatrix(): la identidad (Nativo/Imagenes.cs)
+                    cm[0][0] = c.R / 255f; cm[1][1] = c.G / 255f; cm[2][2] = c.B / 255f; cm[3][3] = alfa;   // EN LINUX: Matrix00, Matrix11, Matrix22 y Matrix33
+                    // EN LINUX: ia.SetColorMatrix(cm): la matriz va en la llamada de abajo
+                    Imagenes.Pinta(sg, nebMask, new SKRect(0, 0, 0 + nebMask.Width, 0 + nebMask.Height), new SKRect(0, 0, FW, FH), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: sg.DrawImage(nebMask, caja, 0, 0, ancho, alto, Pixel, ia): ese trozo en la caja, con la matriz de color y la envoltura de fabrica de ImageAttributes (Nativo/Imagenes.cs)
                 }
             }
 
@@ -1775,36 +1775,36 @@ namespace Rocola
             // que se note: se hornean a un CUARTO de tamano (en 1024x768, 256x192 = 190 KB cada una) y se
             // estiran al copiarlas. Dibujarlas a tamano real serian trescientas manchas de gradiente radial
             // en cada cambio de cancion; asi son doscientas manchas UNA vez, al arrancar, y luego una copia.
-            private Bitmap hazeMask, nebMask;
-            private Bitmap hazeFull;
+            private SKBitmap hazeMask, nebMask;   // EN LINUX: SKBitmap
+            private SKBitmap hazeFull;   // EN LINUX: SKBitmap
 
             // La Via Lactea no cambia de color: escalarla solo al cambiar geometria.
             // SourceCopy conserva la transparencia; la composicion final sigue siendo SourceOver.
-            private void PintaViaLactea(Graphics g, int w, int h)
+            private void PintaViaLactea(SKCanvas g, Filtro filtro, int w, int h)   // EN LINUX: el lienzo del cielo horneado (EnsureSkyCache) y su filtro; el medio pixel y la copia, los de fabrica de ese lienzo
             {
                 if (hazeMask == null) return;
                 if (hazeFull == null || hazeFull.Width != w || hazeFull.Height != h)
                 {
-                    Bitmap next = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    SKBitmap next = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb) (Nativo/Mapas.cs)
                     try
                     {
-                        using (Graphics ng = Graphics.FromImage(next))
+                        using (SKCanvas ng = new SKCanvas(next))   // EN LINUX: Graphics.FromImage
                         {
-                            ng.CompositingMode = CompositingMode.SourceCopy;
-                            ng.InterpolationMode = InterpolationMode.Bilinear;
-                            ng.DrawImage(hazeMask, new Rectangle(0, 0, w, h), 0, 0, hazeMask.Width, hazeMask.Height, GraphicsUnit.Pixel);
+                            bool ncopia = true;   // EN LINUX: ng.CompositingMode = SourceCopy, en una variable
+                            Filtro nfiltro = Filtro.Bilineal;   // EN LINUX: ng.InterpolationMode = Bilinear, en una variable
+                            Imagenes.Pinta(ng, hazeMask, new SKRect(0, 0, 0 + hazeMask.Width, 0 + hazeMask.Height), new SKRect(0, 0, w, h), nfiltro, false, ncopia);   // EN LINUX: ng.DrawImage(hazeMask, caja, 0, 0, ancho, alto, Pixel): ese trozo en la caja, sin ImageAttributes (la envoltura de fabrica de DrawImage, Clamp) (Nativo/Imagenes.cs)
                         }
                     }
                     catch { next.Dispose(); throw; }
                     if (hazeFull != null) hazeFull.Dispose();
                     hazeFull = next;
                 }
-                g.DrawImage(hazeFull, new Rectangle(0, 0, w, h));
+                Imagenes.Pinta(g, hazeFull, new SKRect(0, 0, hazeFull.Width, hazeFull.Height), new SKRect(0, 0, w, h), filtro, false, false);   // EN LINUX: g.DrawImage(hazeFull, caja): entera en la caja, con el filtro de ese lienzo (Nativo/Imagenes.cs)
             }
             private int nblW = -1, nblH = -1;
             // El dibujito del grano: 64x64, uno para toda la rocola. Se hace una vez y se repite al estamparlo.
-            private static Bitmap ruidoTeja;
-            private static void EnsureRuido() { if (ruidoTeja == null) ruidoTeja = PuenteDibujo.Entrega(BakeRuido()); }   // EN LINUX: el grano nativo, como Bitmap para este dibujo por procesador (aun con GDI+), por el puente
+            private static SKBitmap ruidoTeja;   // EN LINUX: SKBitmap
+            private static void EnsureRuido() { if (ruidoTeja == null) ruidoTeja = BakeRuido(); }
 
             // LA LUNA. El dibujo se hornea una vez por tamano de pantalla (ver Form1.BakeLuna) y luego esto
             // es UN pegado de unos 180 pixeles de lado por cuadro, que es lo unico de esta tanda que cabe en
@@ -1820,9 +1820,9 @@ namespace Rocola
             // cuadro tras cuadro. Es la misma cuenta, hecha una vez en vez de veinticuatro veces por segundo.
             // La clave lleva la altura en escalones de cuatro pixeles: por menos que eso el tinte no cambia
             // ni un nivel de 255.
-            private Bitmap luna; private int lunaDe = -1;
-            private Bitmap lunaTenida; private int lunaTenidaKey = -1;
-            private void PintaLuna(Graphics g, int FW, int FH, int offX, int offY)
+            private SKBitmap luna; private int lunaDe = -1;   // EN LINUX: SKBitmap
+            private SKBitmap lunaTenida; private int lunaTenidaKey = -1;   // EN LINUX: SKBitmap
+            private void PintaLuna(SKCanvas g, Filtro filtro, bool medio, bool copia, int FW, int FH, int offX, int offY)   // EN LINUX: el lienzo de Skia y el estado de quien la llama (BlitSkyAndStars)
             {
                 if (!ConLuna || FH < 64) return;
                 if (luna == null || lunaDe != FH)
@@ -1841,24 +1841,24 @@ namespace Rocola
                 if (lunaTenida == null || lunaTenidaKey != key)
                 {
                     if (lunaTenida == null)
-                        lunaTenida = new Bitmap(luna.Width, luna.Height, PixelFormat.Format32bppPArgb);
+                        lunaTenida = Mapas.Nuevo(luna.Width, luna.Height);   // EN LINUX: new Bitmap(ancho, alto, Format32bppPArgb) (Nativo/Mapas.cs)
                     float fr, fg, fb;
                     TinteDelAire(cy, FH, out fr, out fg, out fb);
-                    ColorMatrix cm = new ColorMatrix();
-                    cm.Matrix00 = fr; cm.Matrix11 = fg; cm.Matrix22 = fb;
-                    using (ImageAttributes ia = new ImageAttributes())
+                    float[][] cm = MatrizColor.Identidad();   // EN LINUX: new ColorMatrix(): la identidad (Nativo/Imagenes.cs)
+                    cm[0][0] = fr; cm[1][1] = fg; cm[2][2] = fb;   // EN LINUX: Matrix00, Matrix11 y Matrix22
+                    // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): su matriz (cm); la envoltura, la de fabrica (Clamp: transparente)
                     {
-                        ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-                        using (Graphics lg = Graphics.FromImage(lunaTenida))
+                        // EN LINUX: ia.SetColorMatrix(cm, Default, Bitmap): la matriz va en la llamada de abajo
+                        using (SKCanvas lg = new SKCanvas(lunaTenida))   // EN LINUX: Graphics.FromImage
                         {
-                            lg.CompositingMode = CompositingMode.SourceCopy;   // copia exacta, sin mezclar con lo que hubiera
-                            lg.DrawImage(luna, new Rectangle(0, 0, luna.Width, luna.Height),
-                                         0, 0, luna.Width, luna.Height, GraphicsUnit.Pixel, ia);
+                            bool lcopia = true;   // copia exacta, sin mezclar con lo que hubiera   // EN LINUX: lg.CompositingMode = SourceCopy, en una variable
+                            Imagenes.Pinta(lg, luna, new SKRect(0, 0, 0 + luna.Width, 0 + luna.Height), new SKRect(0, 0, luna.Width, luna.Height), Filtro.Bilineal, false, lcopia, Envoltura.Transparente, cm);   // EN LINUX: lg.DrawImage(luna, caja, 0, 0, ancho, alto, Pixel, ia): con la matriz de color y la envoltura de fabrica de ImageAttributes; el filtro y el medio pixel, los de fabrica de Graphics.FromImage (Nativo/Imagenes.cs)
+                                         // EN LINUX: (aqui seguia la llamada de XP, ya entera en la linea de arriba)
                         }
                     }
                     lunaTenidaKey = key;
                 }
-                g.DrawImageUnscaled(lunaTenida, (int)(cx - luna.Width / 2f) - offX, (int)(cy - luna.Height / 2f) - offY);
+                { int lx = (int)(cx - luna.Width / 2f) - offX, ly = (int)(cy - luna.Height / 2f) - offY; Imagenes.Pinta(g, lunaTenida, new SKRect(0, 0, lunaTenida.Width, lunaTenida.Height), new SKRect(lx, ly, lx + lunaTenida.Width, ly + lunaTenida.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(lunaTenida, x, y): entera en ese punto, con el estado de quien llama (Nativo/Imagenes.cs)
             }
             private void EnsureNieblas(int FW, int FH)
             {
@@ -1871,11 +1871,11 @@ namespace Rocola
                 nblW = mw; nblH = mh;
                 Random r = new Random(20260620);   // fijo: la misma via lactea siempre, no una distinta por arranque
 
-                hazeMask = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
-                using (Graphics g = Graphics.FromImage(hazeMask))
+                hazeMask = Mapas.Nuevo(mw, mh);   // EN LINUX: new Bitmap(mw, mh, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(hazeMask))   // EN LINUX: Graphics.FromImage
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (el medio pixel y la copia, los de fabrica)
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                     // La banda cruza en diagonal, de abajo-izquierda a arriba-derecha, y se hace de muchas
                     // manchas tenues encimadas: asi tiene grumos y bordes irregulares en vez de ser una franja.
                     float x0 = -mw * 0.08f, y0 = mh * 0.86f, x1 = mw * 1.08f, y1 = mh * 0.06f;
@@ -1890,7 +1890,7 @@ namespace Rocola
                         // gris. Ademas es lo que pasa de verdad, que las luces del pueblo se la comen.
                         float fy = 1f - y / mh; if (fy < 0f) fy = 0f; if (fy > 1f) fy = 1f;
                         int al = (int)(6f * (0.10f + 0.90f * fy * fy)); if (al < 1) continue;
-                        Mancha(g, x, y, mh * (0.05f + (float)r.NextDouble() * 0.10f), Color.FromArgb(214, 226, 255), al);
+                        Mancha(g, suave, x, y, mh * (0.05f + (float)r.NextDouble() * 0.10f), Color.FromArgb(214, 226, 255), al);   // EN LINUX: con su suavizado
                     }
                     // Y las VETAS DE POLVO que la cruzan: en el cielo de verdad son nubes que tapan lo de
                     // detras, y son las que hacen que la via lactea se lea como algo con volumen.
@@ -1899,15 +1899,15 @@ namespace Rocola
                         float t = (float)r.NextDouble();
                         float x = x0 + (x1 - x0) * t + Gauss(r) * mh * 0.05f;
                         float y = y0 + (y1 - y0) * t + Gauss(r) * mh * 0.055f;
-                        Mancha(g, x, y, mh * (0.04f + (float)r.NextDouble() * 0.085f), Color.FromArgb(8, 10, 26), 34);
+                        Mancha(g, suave, x, y, mh * (0.04f + (float)r.NextDouble() * 0.085f), Color.FromArgb(8, 10, 26), 34);   // EN LINUX: con su suavizado
                     }
                 }
 
-                nebMask = new Bitmap(mw, mh, PixelFormat.Format32bppArgb);
-                using (Graphics g = Graphics.FromImage(nebMask))
+                nebMask = Mapas.Nuevo(mw, mh);   // EN LINUX: new Bitmap(mw, mh, Format32bppArgb) (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(nebMask))   // EN LINUX: Graphics.FromImage
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                     // Van en la MITAD DE ARRIBA del cielo a proposito: abajo el degradado ya lleva el
                     // resplandor del genero, y una nebulosa del mismo color encima de el no se lee como una
                     // nebulosa, se lee como suciedad.
@@ -1916,9 +1916,9 @@ namespace Rocola
                         float cx = mw * (0.14f + (float)r.NextDouble() * 0.72f);
                         float cy = mh * (0.10f + (float)r.NextDouble() * 0.42f);
                         for (int i = 0; i < 20; i++)
-                            Mancha(g, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,
+                            Mancha(g, suave, cx + Gauss(r) * mw * 0.075f, cy + Gauss(r) * mh * 0.08f,   // EN LINUX: con su suavizado
                                    mh * (0.07f + (float)r.NextDouble() * 0.14f), Color.White, AlfaNeb(4));
-                        Mancha(g, cx, cy, mh * 0.07f, Color.White, AlfaNeb(7));   // el corazon, un pelin mas encendido
+                        Mancha(g, suave, cx, cy, mh * 0.07f, Color.White, AlfaNeb(7));   // el corazon, un pelin mas encendido   // EN LINUX: con su suavizado
                     }
                 }
             }
@@ -1933,18 +1933,18 @@ namespace Rocola
 
             // Una mancha de luz redonda que se desvanece hacia fuera: la pieza con la que estan hechas la
             // neblina y las nebulosas.
-            private static void Mancha(Graphics g, float cx, float cy, float rad, Color c, int alfaCentro)
+            private static void Mancha(SKCanvas g, bool suave, float cx, float cy, float rad, Color c, int alfaCentro)   // EN LINUX: el lienzo de Skia y su suavizado (el medio pixel y la copia, los de fabrica: los dos mapas de EnsureNieblas)
             {
                 if (rad < 1f) rad = 1f;
-                using (GraphicsPath gp = new GraphicsPath())
+                using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (su relleno de fabrica, Alternate, es par-impar)
                 {
-                    gp.AddEllipse(cx - rad, cy - rad, rad * 2, rad * 2);
-                    using (PathGradientBrush pgb = new PathGradientBrush(gp))
+                    { float ex = cx - rad, ey = cy - rad, ew = rad * 2, eh = rad * 2; gp.AddOval(new SKRect(ex, ey, ex + ew, ey + eh)); }   // EN LINUX: gp.AddEllipse(x, y, w, h): el ovalo de la caja (x, y, x + w, y + h), como GraphicsPath
+                    SKRect limites = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(limites.Left, limites.Top, limites.Right, limites.Bottom);   // EN LINUX: new PathGradientBrush(gp): el degradado va en la caja del trazo (GetBounds); su centro y sus colores, abajo
                     {
-                        pgb.CenterPoint = new PointF(cx, cy);
-                        pgb.CenterColor = Color.FromArgb(alfaCentro, c);
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
-                        g.FillEllipse(pgb, cx - rad, cy - rad, rad * 2, rad * 2);
+                        PointF centro = new PointF(cx, cy);   // EN LINUX: pgb.CenterPoint
+                        Color colorCentro = Color.FromArgb(alfaCentro, c);   // EN LINUX: pgb.CenterColor
+                        Color[] orilla = new Color[] { Color.FromArgb(0, c) };   // EN LINUX: pgb.SurroundColors
+                        using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, orilla[0])) using (SKPaint pgb = new SKPaint { Shader = degradado }) Pixel.RellenaOvalo(g, new RectangleF(cx - rad, cy - rad, rad * 2, rad * 2), pgb, suave);   // EN LINUX: g.FillEllipse(pgb, x, y, w, h) con el PathGradientBrush: su shader (Nativo/Degradado.cs; sin Blend) en un SKPaint (Nativo/Pixel.cs)
                     }
                 }
             }
@@ -1988,21 +1988,21 @@ namespace Rocola
                 if (skyCache == null || scW != FW || scH != FH)
                 {
                     if (skyCache != null) skyCache.Dispose();
-                    skyCache = new Bitmap(FW, FH, PixelFormat.Format32bppPArgb);
+                    skyCache = Mapas.Nuevo(FW, FH);   // EN LINUX: new Bitmap(FW, FH, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
                     scW = FW; scH = FH;
                 }
                 EnsureNieblas(FW, FH);
-                using (Graphics sg = Graphics.FromImage(skyCache))
+                using (SKCanvas sg = new SKCanvas(skyCache))   // EN LINUX: Graphics.FromImage (su estado, el de fabrica: sin suavizar, sin medio pixel, mezclando; el filtro va abajo en una variable)
                 {
-                    using (LinearGradientBrush lgb = new LinearGradientBrush(new Rectangle(0, 0, FW, FH + 1), top, bottom, LinearGradientMode.Vertical))
+                    RectangleF cajaCielo = new Rectangle(0, 0, FW, FH + 1);   // EN LINUX: using (new LinearGradientBrush(caja, top, bottom, LinearGradientMode.Vertical)): la caja; el degradado (un angulo escalable de 90 grados) se hace abajo, con sus colores
                     {
-                        ColorBlend cb = new ColorBlend(3);
-                        cb.Colors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo
-                        cb.Positions = new float[] { 0f, CorteDelCielo, 1f };  // ver la perilla "cuanto negro"
-                        lgb.InterpolationColors = cb;
-                        sg.FillRectangle(lgb, 0, 0, FW, FH);
+                        Color[] cbColors; float[] cbPositions;   // EN LINUX: ColorBlend cb = new ColorBlend(3): sus colores y sus posiciones
+                        cbColors = new Color[] { top, mid, bottom };          // negro arriba -> azul noche en medio -> resplandor/genero abajo   // EN LINUX: cb.Colors
+                        cbPositions = new float[] { 0f, CorteDelCielo, 1f };  // ver la perilla "cuanto negro"   // EN LINUX: cb.Positions
+                        using (SKShader lgb = Degradado.Lineal(cajaCielo, cbColors, cbPositions, Degradado.Vertical, true)) using (SKPaint pincel = new SKPaint { Shader = lgb })   // EN LINUX: lgb.InterpolationColors = cb: el degradado con esos colores, repetido fuera (WrapMode.Tile, el de fabrica) (Nativo/Degradado.cs), en un SKPaint
+                        Pixel.Rellena(sg, new RectangleF(0, 0, FW, FH), pincel, false, false, false);   // EN LINUX: sg.FillRectangle(lgb, 0, 0, FW, FH), con el estado de fabrica de Graphics.FromImage (Nativo/Pixel.cs)
                     }
-                    sg.InterpolationMode = InterpolationMode.Bilinear;
+                    Filtro filtro = Filtro.Bilineal;   // EN LINUX: sg.InterpolationMode = Bilinear, en una variable
                     // LAS NEBULOSAS, del color de lo que suena. Su dibujo esta horneado en blanco a un cuarto
                     // de tamano y aqui solo se estira y se tine con una matriz de color: al cambiar de cancion
                     // esto es UNA copia, no volver a dibujar ochenta manchas.
@@ -2020,18 +2020,18 @@ namespace Rocola
                         // sitio, aqui no puede: el cielo va horneado.
                         if (NebUno.A != 0 && NebDos.A != 0)
                         {
-                            PintaNebulosa(sg, FW, FH, NebUno, 1f);
-                            PintaNebulosa(sg, FW, FH, NebDos, 1f);
+                            PintaNebulosa(sg, filtro, FW, FH, NebUno, 1f);   // EN LINUX: con el filtro de ese lienzo
+                            PintaNebulosa(sg, filtro, FW, FH, NebDos, 1f);   // EN LINUX: con el filtro de ese lienzo
                         }
                         else
                         {
                             Color a0 = (acento.A == 0) ? bottom : acento;
-                            PintaNebulosa(sg, FW, FH, ColorNebulosa(a0), 1f);
+                            PintaNebulosa(sg, filtro, FW, FH, ColorNebulosa(a0), 1f);   // EN LINUX: con el filtro de ese lienzo
                         }
                     }
                     // LA VIA LACTEA: la banda de neblina, tambien horneada a un cuarto y estirada. Va del
                     // mismo blanco azulado siempre, que es de lo que esta hecha de verdad.
-                    PintaViaLactea(sg, FW, FH);
+                    PintaViaLactea(sg, filtro, FW, FH);   // EN LINUX: con el filtro de ese lienzo
                     // EL POLVO YA NO VA AQUI: ver BakeStarFrame. Horneado en el cielo se quedaba clavado
                     // mientras el resto del campo se desliza, y eso -mas de la mitad de las estrellas quietas
                     // y el resto moviendose- se ve peor que si no se moviera nada.
@@ -2042,8 +2042,8 @@ namespace Rocola
                     // que se hace una vez con el cielo, no algo que haya que repetir en cada cuadro.
                     EnsureRuido();
                     if (ruidoTeja != null)
-                        using (TextureBrush tb = new TextureBrush(ruidoTeja, WrapMode.Tile))
-                            sg.FillRectangle(tb, 0, 0, FW, FH);
+                        using (SKShader grano = Degradado.Textura(ruidoTeja, Envoltura.Repite, SKMatrix.Identity, false)) using (SKPaint tb = new SKPaint { Shader = grano })   // EN LINUX: new TextureBrush(ruidoTeja, WrapMode.Tile): su shader, con el medio pixel de este lienzo (el de fabrica) (Nativo/Degradado.cs)
+                            Pixel.Rellena(sg, new RectangleF(0, 0, FW, FH), tb, false, false, false);   // EN LINUX: sg.FillRectangle(tb, 0, 0, FW, FH), con el estado de fabrica de Graphics.FromImage (Nativo/Pixel.cs)
                 }
                 fscTop = t; fscMid = m; fscBot = b;
             }
@@ -2056,20 +2056,20 @@ namespace Rocola
             // 'advance'=false (repintado PARCIAL: la casilla del cubo que gira) reusa la capa del ultimo repintado
             // completo: si avanzara por reloj, la casilla mostraria un cuadro de titileo distinto al del resto.
             private int shownLayer = -1;   // capa mostrada en el ultimo repintado completo
-            private void BlitSkyAndStars(Graphics g, int w, int h) { BlitSkyAndStars(g, w, h, true); }
-            private void BlitSkyAndStars(Graphics g, int w, int h, bool advance)
+            private void BlitSkyAndStars(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h) { BlitSkyAndStars(g, filtro, medio, copia, w, h, true); }   // EN LINUX: el lienzo y el estado de quien llama
+            private void BlitSkyAndStars(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, bool advance)   // EN LINUX: el lienzo de Skia y el estado de quien llama (filtro, medio pixel y copia: la copia la cambia aqui y la deja como estaba)
             {
                 int offX = SkyOffsetX, offY = SkyOffsetY;
-                CompositingMode ocm = g.CompositingMode;
-                g.CompositingMode = CompositingMode.SourceCopy;   // cielo opaco: copia directa (sin mezclar alfa)
-                g.DrawImageUnscaled(skyCache, -offX, -offY);      // la ventana [offX,offY] cae en (0,0); el recorte del pintor limita el area
-                g.CompositingMode = CompositingMode.SourceOver;   // estrellas con transparencia encima
+                bool ocm = copia;   // EN LINUX: CompositingMode ocm = g.CompositingMode (la copia va en una variable)
+                copia = true;   // cielo opaco: copia directa (sin mezclar alfa)   // EN LINUX: g.CompositingMode = SourceCopy
+                Imagenes.Pinta(g, skyCache, new SKRect(0, 0, skyCache.Width, skyCache.Height), new SKRect(-offX, -offY, -offX + skyCache.Width, -offY + skyCache.Height), filtro, medio, copia);      // la ventana [offX,offY] cae en (0,0); el recorte del pintor limita el area   // EN LINUX: g.DrawImageUnscaled(skyCache, x, y): entera en ese punto (Nativo/Imagenes.cs)
+                copia = false;   // estrellas con transparencia encima   // EN LINUX: g.CompositingMode = SourceOver
                 if (advance || shownLayer < 0 || layers == null || shownLayer >= layers.Length) shownLayer = CurrentStarLayerIndex();
-                Bitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;
-                if (sl != null) BlitEstrellas(g, sl, w, h, offX, offY);
+                SKBitmap sl = (layers != null && shownLayer >= 0 && shownLayer < layers.Length) ? layers[shownLayer] : null;   // EN LINUX: SKBitmap
+                if (sl != null) BlitEstrellas(g, filtro, medio, copia, sl, w, h, offX, offY);   // EN LINUX: con el estado de ahora
                 // LA LUNA VA DESPUES DE LAS ESTRELLAS porque esta muchisimo mas cerca que ellas: una
                 // estrella por delante de la luna se ve, y se ve mal.
-                PintaLuna(g, FullW(w), FullH(h), offX, offY);
+                PintaLuna(g, filtro, medio, copia, FullW(w), FullH(h), offX, offY);   // EN LINUX: con el estado de ahora
                 // AQUI IRIA EL VELO DEL HORIZONTE, Y NO ESTA. QUEDA ESCRITO POR QUE.
                 //
                 // Con tarjeta grafica cada estrella se apaga y se enrojece segun a que altura de la pantalla
@@ -2095,7 +2095,7 @@ namespace Rocola
                 // Y no hay forma barata: el velo tapa el 90% de la pantalla (mas arriba el alfa no llega ni a
                 // un nivel de 255), asi que son casi dos millones de pixeles mezclando alfa en cada cuadro.
                 // Recortarlo a la franja de abajo ahorra la mitad y deja un canto que se ve.
-                g.CompositingMode = ocm;
+                copia = ocm;   // EN LINUX: g.CompositingMode = ocm: la copia de quien llama, como estaba
             }
 
             // LAS ESTRELLAS, CORRIDAS POR LA DERIVA Y ENVOLVIENDO POR LOS BORDES.
@@ -2107,7 +2107,7 @@ namespace Rocola
             //
             // Se copian los MISMOS pixeles que antes -como mucho en cuatro trozos en vez de uno, y solo cuando
             // la ventana cae justo encima de la costura-, asi que no cuesta mas que antes.
-            private void BlitEstrellas(Graphics g, Bitmap sl, int w, int h, int offX, int offY)
+            private void BlitEstrellas(SKCanvas g, Filtro filtro, bool medio, bool copia, SKBitmap sl, int w, int h, int offX, int offY)   // EN LINUX: el lienzo de Skia, el estado de quien llama y la capa en un SKBitmap
             {
                 int FW = sl.Width, FH = sl.Height;
                 if (FW < 1 || FH < 1) return;
@@ -2116,15 +2116,15 @@ namespace Rocola
                 int w1 = FW - sx; if (w1 > w) w1 = w;
                 int h1 = FH - sy; if (h1 > h) h1 = h;
                 if (Dim < 0.985f) sl = CapaAtenuada(sl);   // atenuado mientras se navega con musica: ver abajo
-                Trozo(g, sl, 0, 0, w1, h1, sx, sy);
-                if (w1 < w) Trozo(g, sl, w1, 0, w - w1, h1, 0, sy);
-                if (h1 < h) Trozo(g, sl, 0, h1, w1, h - h1, sx, 0);
-                if (w1 < w && h1 < h) Trozo(g, sl, w1, h1, w - w1, h - h1, 0, 0);
+                Trozo(g, filtro, medio, copia, sl, 0, 0, w1, h1, sx, sy);   // EN LINUX: con el mismo estado
+                if (w1 < w) Trozo(g, filtro, medio, copia, sl, w1, 0, w - w1, h1, 0, sy);   // EN LINUX: con el mismo estado
+                if (h1 < h) Trozo(g, filtro, medio, copia, sl, 0, h1, w1, h - h1, sx, 0);   // EN LINUX: con el mismo estado
+                if (w1 < w && h1 < h) Trozo(g, filtro, medio, copia, sl, w1, h1, w - w1, h - h1, 0, 0);   // EN LINUX: con el mismo estado
             }
-            private void Trozo(Graphics g, Bitmap sl, int dx, int dy, int dw, int dh, int sx, int sy)
+            private void Trozo(SKCanvas g, Filtro filtro, bool medio, bool copia, SKBitmap sl, int dx, int dy, int dw, int dh, int sx, int sy)   // EN LINUX: el lienzo de Skia y el estado de quien llama
             {
                 if (dw < 1 || dh < 1) return;
-                g.DrawImage(sl, new Rectangle(dx, dy, dw, dh), sx, sy, dw, dh, GraphicsUnit.Pixel);
+                Imagenes.Pinta(g, sl, new SKRect(sx, sy, sx + dw, sy + dh), new SKRect(dx, dy, dx + dw, dy + dh), filtro, medio, copia);   // EN LINUX: g.DrawImage(sl, caja, sx, sy, dw, dh, Pixel): ese trozo en la caja, sin ImageAttributes (Nativo/Imagenes.cs)
             }
 
             // LA COPIA ATENUADA, HORNEADA APARTE.
@@ -2138,8 +2138,8 @@ namespace Rocola
             // La capa de titileo solo cambia cinco veces por segundo y la atenuacion se queda quieta en cuanto
             // termina de bajar, asi que la copia atenuada se hornea UNA vez y se reusa en los cuadros que vienen
             // detras. Se ve exactamente igual: es la misma cuenta, hecha una vez en vez de veinticuatro.
-            private Bitmap capaAtenuada; private Bitmap capaAtenuadaDe; private int capaAtenuadaKey = -1;
-            private Bitmap CapaAtenuada(Bitmap sl)
+            private SKBitmap capaAtenuada; private SKBitmap capaAtenuadaDe; private int capaAtenuadaKey = -1;   // EN LINUX: SKBitmap
+            private SKBitmap CapaAtenuada(SKBitmap sl)   // EN LINUX: SKBitmap
             {
                 int key = (int)(Dim * 50f);   // mismos escalones que la matriz: no se rehace por un pelo de nada
                 if (capaAtenuada != null && capaAtenuadaDe == sl && capaAtenuadaKey == key
@@ -2147,27 +2147,27 @@ namespace Rocola
                 if (capaAtenuada == null || capaAtenuada.Width != sl.Width || capaAtenuada.Height != sl.Height)
                 {
                     if (capaAtenuada != null) capaAtenuada.Dispose();
-                    capaAtenuada = new Bitmap(sl.Width, sl.Height, PixelFormat.Format32bppPArgb);
+                    capaAtenuada = Mapas.Nuevo(sl.Width, sl.Height);   // EN LINUX: new Bitmap(ancho, alto, Format32bppPArgb) (Nativo/Mapas.cs)
                 }
                 EnsureDimIA();
-                using (Graphics cg = Graphics.FromImage(capaAtenuada))
+                using (SKCanvas cg = new SKCanvas(capaAtenuada))   // EN LINUX: Graphics.FromImage
                 {
-                    cg.CompositingMode = CompositingMode.SourceCopy;   // copia exacta, sin mezclar con lo que hubiera
-                    cg.DrawImage(sl, new Rectangle(0, 0, sl.Width, sl.Height), 0, 0, sl.Width, sl.Height, GraphicsUnit.Pixel, dimIA);
+                    bool ccopia = true;   // copia exacta, sin mezclar con lo que hubiera   // EN LINUX: cg.CompositingMode = SourceCopy, en una variable
+                    Imagenes.Pinta(cg, sl, new SKRect(0, 0, 0 + sl.Width, 0 + sl.Height), new SKRect(0, 0, sl.Width, sl.Height), Filtro.Bilineal, false, ccopia, Envoltura.Transparente, dimIA);   // EN LINUX: cg.DrawImage(sl, caja, 0, 0, ancho, alto, Pixel, dimIA): con la matriz de la atenuacion y la envoltura de fabrica de ImageAttributes; el filtro y el medio pixel, los de fabrica (Nativo/Imagenes.cs)
                 }
                 capaAtenuadaDe = sl; capaAtenuadaKey = key;
                 return capaAtenuada;
             }
 
             // Atributos de imagen con el alfa de la atenuacion (cacheados; la matriz se rehace solo si Dim cambio de escalon)
-            private ImageAttributes dimIA; private int dimIAKey = -1;
+            private float[][] dimIA; private int dimIAKey = -1;   // EN LINUX: ImageAttributes: lo que de el se usa, su matriz de color (la envoltura, la de fabrica: Clamp, transparente)
             private void EnsureDimIA()
             {
                 int key = (int)(Dim * 50f);   // escalones de 0.02: sin rehacer la matriz cada cuadro durante la transicion
                 if (dimIA != null && dimIAKey == key) return;
-                if (dimIA == null) dimIA = new ImageAttributes();
-                ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = Dim;
-                dimIA.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                // EN LINUX: if (dimIA == null) dimIA = new ImageAttributes(): la matriz se pone dos lineas mas abajo
+                float[][] cm = MatrizColor.Identidad(); cm[3][3] = Dim;   // EN LINUX: new ColorMatrix() (la identidad) y Matrix33
+                dimIA = cm;   // EN LINUX: dimIA.SetColorMatrix(cm, Default, Bitmap)
                 dimIAKey = key;
             }
 
@@ -2187,22 +2187,22 @@ namespace Rocola
             // los bordes de las secciones sin costura. El latido y las fugaces solo en repintado COMPLETO (en el
             // parcial de la casilla del cubo se reusa la capa: no relatir ni relanzar fugaces por una franja).
             // pLo/pMid/pHi = pulso de graves/medios/agudos (0..1). Cada estrella late con SU banda (ver DrawBeatFlare).
-            public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)
+            public void DrawReactive(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama; la firma de XP (Form1.Pared.cs, Form1.Buscador.cs, con un Graphics) va en el puente (Puente.fondo.cs)
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
                 EnsureSkyCache(w, h, skyTop, skyBottom);
-                RectangleF clip = g.ClipBounds;
+                RectangleF clip = RecorteLienzo.Limites(g);   // EN LINUX: g.ClipBounds: los limites del recorte, exactos (Nativo/RecorteLienzo.cs)
                 bool full = (clip.Width >= w - 1 && clip.Height >= h - 1);   // repintado COMPLETO (no la casilla del cubo)
-                BlitSkyAndStars(g, w, h, full);
+                BlitSkyAndStars(g, filtro, medio, copia, w, h, full);   // EN LINUX: con el estado de quien llama
                 float pMax = Math.Max(pLo, Math.Max(pMid, pHi));
                 // EL LATIDO, TAMBIEN EN LOS REPINTADOS PARCIALES. Antes solo se dibujaba en los completos, y
                 // eso significaba que el trozo repintado -la casilla del cubo que gira, y ahora la casilla que
                 // se elige- se quedaba SIN los halos de las estrellas hasta el siguiente cuadro completo: los
                 // halos parpadeaban ahi dentro. Cuesta casi nada porque DrawBeatFlare descarta de un vistazo
                 // las estrellas que caen fuera del recorte, y en un repintado parcial son casi todas.
-                if (pMax * Dim > 0.04f) DrawBeatFlare(g, w, h, pLo * Dim, pMid * Dim, pHi * Dim);   // latido por banda (atenuado al navegar)
-                if (full) DrawShoots(g, w, h);
+                if (pMax * Dim > 0.04f) DrawBeatFlare(g, filtro, medio, copia, w, h, pLo * Dim, pMid * Dim, pHi * Dim);   // latido por banda (atenuado al navegar)   // EN LINUX: con el estado de quien llama
+                if (full) DrawShoots(g, suave, medio, copia, w, h);   // EN LINUX: con el estado de quien llama
             }
 
             // LATIDO con la musica: a las estrellas medianas/grandes (las que llevan glow) les estampa un glow
@@ -2212,13 +2212,13 @@ namespace Rocola
             // caen fuera se saltan (el resto las recorta el clip del pintor).
             // Cada estrella late con SU banda (grandes=graves, medianas=medios/agudos): recibe los 3 pulsos y usa el
             // de su Band. Las estrellas cuya banda NO esta sonando no reciben halo -> se VE la separacion de beats.
-            private void DrawBeatFlare(Graphics g, int w, int h, float pLo, float pMid, float pHi)
+            private void DrawBeatFlare(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, float pLo, float pMid, float pHi)   // EN LINUX: el lienzo de Skia y el estado de quien llama
             {
                 if (stars == null) return;
                 int FW = FullW(w), FH = FullH(h), offX = SkyOffsetX, offY = SkyOffsetY;
                 // Se mira contra el RECORTE, no contra la ventana entera: en un repintado parcial eso descarta
                 // casi las seiscientas estrellas con una resta, sin llegar a dibujar nada.
-                RectangleF rec = g.ClipBounds;
+                RectangleF rec = RecorteLienzo.Limites(g);   // EN LINUX: g.ClipBounds (Nativo/RecorteLienzo.cs)
                 for (int i = 0; i < stars.Length; i++)
                 {
                     Star s = stars[i];
@@ -2231,9 +2231,9 @@ namespace Rocola
                     if (px + gd < rec.Left || px - gd > rec.Right || py + gd < rec.Top || py - gd > rec.Bottom) continue;   // fuera del recorte: se salta
                     int cr, cg, cb;
                     if (s.Tint > 0f) { cr = 255; cg = 255; cb = 255; } else { cr = s.R; cg = s.G; cb = s.B; }
-                    Bitmap gb = GlowFor(cr, cg, cb);
+                    SKBitmap gb = GlowFor(cr, cg, cb);   // EN LINUX: SKBitmap
                     if (gb == null) continue;
-                    g.DrawImage(gb, new Rectangle(px - gd / 2, py - gd / 2, gd, gd));
+                    { Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd); Imagenes.Pinta(g, gb, new SKRect(0, 0, gb.Width, gb.Height), new SKRect(gr.Left, gr.Top, gr.Right, gr.Bottom), filtro, medio, copia); }   // EN LINUX: g.DrawImage(gb, caja): la imagen entera en la caja, con el estado de quien llama (Nativo/Imagenes.cs)
                 }
             }
 
@@ -2249,7 +2249,7 @@ namespace Rocola
                 if (layers != null) { for (int k = 0; k < layers.Length; k++) if (layers[k] != null) layers[k].Dispose(); }
                 if (capaAtenuada != null) { capaAtenuada.Dispose(); capaAtenuada = null; }   // apuntaba a una capa que ya no existe
                 capaAtenuadaDe = null; capaAtenuadaKey = -1;
-                layers = new Bitmap[TwK];
+                layers = new SKBitmap[TwK];   // EN LINUX: SKBitmap
                 lw = FW; lh = FH; lBucket = sBucket;
                 EnsureGlow();
                 for (int j = 0; j < TwK; j++) layers[j] = BakeStarFrame(FW, FH, j);
@@ -2257,17 +2257,17 @@ namespace Rocola
 
             // Un cuadro de titileo: el patron con el brillo de cada estrella en la fase j (armonicos enteros
             // -> el set cicla exacto). Solo se ejecuta al hornear, no por cuadro, asi que puede ser detallado.
-            private Bitmap BakeStarFrame(int w, int h, int j)
+            private SKBitmap BakeStarFrame(int w, int h, int j)   // EN LINUX: un SKBitmap
             {
-                Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                using (Graphics lg = Graphics.FromImage(bmp))
-                using (SolidBrush b = new SolidBrush(Color.White))
-                using (ImageAttributes ia = new ImageAttributes())
+                SKBitmap bmp = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas lg = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
+                using (SKPaint b = new SKPaint { Color = Color.White.Sk() })   // EN LINUX: new SolidBrush(White): un SKPaint con su color
+                // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): su matriz (cm, abajo); la envoltura, la de fabrica (Clamp: transparente)
                 {
-                    lg.Clear(Color.Transparent);
-                    lg.InterpolationMode = InterpolationMode.Bilinear;
-                    lg.SmoothingMode = SmoothingMode.AntiAlias;
-                    ColorMatrix cm = new ColorMatrix();
+                    lg.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                    Filtro filtro = Filtro.Bilineal;   // EN LINUX: lg.InterpolationMode = Bilinear, en una variable (el medio pixel y la copia, los de fabrica)
+                    bool suave = true;   // EN LINUX: lg.SmoothingMode = AntiAlias, en una variable
+                    float[][] cm = MatrizColor.Identidad();   // EN LINUX: new ColorMatrix(): la identidad (Nativo/Imagenes.cs)
                     bool polvo = false;
                     double ph = 2.0 * Math.PI * j / TwK;   // fase de este cuadro
                     for (int i = 0; i < stars.Length; i++)
@@ -2281,15 +2281,15 @@ namespace Rocola
                         // o al cambiar de tamano de pantalla, no por cuadro.
                         if (s.Kind == 0)
                         {
-                            if (!polvo) { lg.SmoothingMode = SmoothingMode.None; polvo = true; }
+                            if (!polvo) { suave = false; polvo = true; }   // EN LINUX: lg.SmoothingMode = None
                             int cr0, cg0, cb0;
                             if (s.Tint > 0f) { cr0 = 255; cg0 = 255; cb0 = 255; } else { cr0 = s.R; cg0 = s.G; cb0 = s.B; }
-                            b.Color = Color.FromArgb(s.Bri, cr0, cg0, cb0);
+                            b.Color = Color.FromArgb(s.Bri, cr0, cg0, cb0).Sk();   // EN LINUX: el color del SKPaint
                             int d0 = s.Size < 1 ? 1 : (s.Size > 2 ? 2 : s.Size);
-                            lg.FillRectangle(b, (int)(s.X * w) - d0 / 2, (int)(s.Y * h) - d0 / 2, d0, d0);
+                            Pixel.Rellena(lg, new RectangleF((int)(s.X * w) - d0 / 2, (int)(s.Y * h) - d0 / 2, d0, d0), b, suave);   // EN LINUX: lg.FillRectangle(b, x, y, w, h) (Nativo/Pixel.cs)
                             continue;
                         }
-                        if (polvo) { lg.SmoothingMode = SmoothingMode.AntiAlias; polvo = false; }
+                        if (polvo) { suave = true; polvo = false; }   // EN LINUX: lg.SmoothingMode = AntiAlias
                         int harm = 1 + (i % 2);   // armonico ENTERO (1 o 2: bien muestreado con TwK=8) -> el set cicla exacto
                         double tw = 0.62 + 0.38 * (0.5 + 0.5 * Math.Sin(ph * harm + s.Off));   // titileo 0.62..1.00
                         int a = (int)(tw * s.Bri); if (a > 255) a = 255; if (a < 0) a = 0;
@@ -2298,26 +2298,26 @@ namespace Rocola
                         if (s.Tint > 0f) { cr2 = 255; cg2 = 255; cb2 = 255; }   // tenidas -> blancas
                         else { cr2 = s.R; cg2 = s.G; cb2 = s.B; }
                         int gd = (int)((s.Size * 3 + 6) * HaloDe(s.Kind));
-                        Bitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)
+                        SKBitmap gb = GlowFor(cr2, cg2, cb2);   // glow del MISMO COLOR (sprite pre-horneado)   // EN LINUX: SKBitmap
                         if (gb != null)
                         {
                             Rectangle gr = new Rectangle(px - gd / 2, py - gd / 2, gd, gd);
-                            if (a >= 250) lg.DrawImage(gb, gr);
+                            if (a >= 250) Imagenes.Pinta(lg, gb, new SKRect(0, 0, gb.Width, gb.Height), new SKRect(gr.Left, gr.Top, gr.Right, gr.Bottom), filtro, false, false);   // EN LINUX: lg.DrawImage(gb, caja): entera en la caja, sin ImageAttributes (Nativo/Imagenes.cs)
                             else   // recursos locales reutilizados; misma matriz y mismo orden de dibujo
                             {
-                                cm.Matrix33 = (float)tw;
-                                ia.SetColorMatrix(cm);
-                                lg.DrawImage(gb, gr, 0, 0, gb.Width, gb.Height, GraphicsUnit.Pixel, ia);
+                                cm[3][3] = (float)tw;   // EN LINUX: cm.Matrix33
+                                // EN LINUX: ia.SetColorMatrix(cm): la matriz va en la llamada de abajo
+                                Imagenes.Pinta(lg, gb, new SKRect(0, 0, 0 + gb.Width, 0 + gb.Height), new SKRect(gr.Left, gr.Top, gr.Right, gr.Bottom), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: lg.DrawImage(gb, caja, 0, 0, ancho, alto, Pixel, ia): con la matriz de color y la envoltura de fabrica de ImageAttributes (Nativo/Imagenes.cs)
                             }
                         }
-                        if (s.Rayos) DrawRayos(lg, b, px, py, s.Size, Color.FromArgb(cr2, cg2, cb2), (s.Bri / 255f) * (float)tw, s.Kind);
-                        DrawNucleo(lg, b, px, py, s.Size, cr2, cg2, cb2, a);
+                        if (s.Rayos) DrawRayos(lg, suave, b, px, py, s.Size, Color.FromArgb(cr2, cg2, cb2), (s.Bri / 255f) * (float)tw, s.Kind);   // EN LINUX: con su suavizado
+                        DrawNucleo(lg, suave, b, px, py, s.Size, cr2, cg2, cb2, a);   // EN LINUX: con su suavizado
                     }
                 }
                 return bmp;
             }
 
-            private void DrawShoots(Graphics g, int w, int h)
+            private void DrawShoots(SKCanvas g, bool suave, bool medio, bool copia, int w, int h)   // EN LINUX: el lienzo de Skia y el estado de quien llama (Draw, DrawReactive)
             {
                 int now = Environment.TickCount;
                 float dt = (lastTick == 0) ? 0f : (now - lastTick) / 1000f;
@@ -2349,12 +2349,12 @@ namespace Rocola
                     float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
                     int la = (int)(230 * k * Dim);   // atenuada mientras se navega con musica
                     float tx = s.X - s.VX * s.Tail, ty = s.Y - s.VY * s.Tail;   // estela: las gordas la traen larga
-                    sp.Color = Color.FromArgb(la, 255, 255, 255);
-                    sp.Width = s.Wdt;
-                    g.DrawLine(sp, tx, ty, s.X, s.Y);
-                    sb.Color = Color.FromArgb(Math.Min(255, la + 25), 255, 255, 255);
+                    sp.Color = Color.FromArgb(la, 255, 255, 255).Sk();   // EN LINUX: el color del SKPaint
+                    sp.StrokeWidth = s.Wdt;   // EN LINUX: Pen.Width
+                    Pixel.Linea(g, tx, ty, s.X, s.Y, sp, suave, medio, copia);   // EN LINUX: g.DrawLine(sp, x1, y1, x2, y2) (Nativo/Pixel.cs)
+                    sb.Color = Color.FromArgb(Math.Min(255, la + 25), 255, 255, 255).Sk();   // EN LINUX: el color del SKPaint
                     int cab = 1 + (int)s.Wdt;
-                    g.FillRectangle(sb, (int)s.X - cab / 2, (int)s.Y - cab / 2, cab, cab);
+                    Pixel.Rellena(g, new RectangleF((int)s.X - cab / 2, (int)s.Y - cab / 2, cab, cab), sb, suave, medio, copia);   // EN LINUX: g.FillRectangle(sb, x, y, w, h) (Nativo/Pixel.cs)
                     s.X += s.VX * dt; s.Y += s.VY * dt; s.Life -= dt;
                     // POR LOS CUATRO LADOS, y no es un detalle: antes solo podian irse por la derecha o por
                     // abajo porque solo podian ir hacia alla. Con la direccion suelta, una que se vaya por la
@@ -2381,7 +2381,7 @@ namespace Rocola
             public Starfield Sky;   // COMPARTIDO con el fondo del form: este panel pinta su VENTANA del mismo campo (una sola pieza)
             protected override void OnPaint(PaintEventArgs e)
             {
-                Graphics g = e.Graphics;
+                Rocola.Dibujo2D.Graphics g = e.Graphics;   // EN LINUX: OnPaint (de WinForms, sin traducir en esta tanda) trae un Graphics de la capa: el tipo, escrito entero; DrawCached (abajo) le pasa su lienzo y su estado por el puente (Puente.fondo.cs)
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
 
