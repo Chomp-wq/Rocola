@@ -206,3 +206,59 @@ líneas distintas** de 6 603 frente a la referencia y de 6 607 frente a su base,
   `RenderContent`, `TeclaFlecha` o `PintaTeclas` trajera una traslación con decimales, escala o giro (en los recorridos, la casilla solo ve
   traslaciones enteras).
 - Nada de esto se probó en el A4.
+
+## Revisión
+
+Revisión independiente del 11-11-2026 sobre `f2f9dcb..3d44bc0` (el diff de los seis archivos de `Codigo/`, `Puente.asistente.cs` y el
+arnés, contra `Rocola/<archivo>` de XP y la tabla de estado por línea). **No se encontró ningún fallo en la traducción: no se cambió ni una
+línea de `Codigo/`, `Plataforma/` ni `Nativo/`.** Lo único añadido es al arnés (dos pruebas y dos controles).
+
+Lo que se miró en el código:
+
+- GDI+ que queda en los archivos del grupo: solo las costuras dichas arriba (`Rocola.Dibujo2D.GraphicsPath` de `RoundedPath` en
+  `AsistenteRocola.cs:460`, `AsistenteGuiaRocola.cs:332` y `AyudaCasillaGpu.cs:78` y `103`, y la línea de WinForms `OnPaint`). Ningún
+  `using Rocola.Dibujo2D` en los cinco archivos.
+- Línea por línea con XP: mismas cuentas, valores y orden. El contorno del globo respeta la unión de figuras de GDI+ (`ArcTo` con
+  `forceMoveTo` solo en el primero, la línea de unión de `AddLine` y `AddBezier`, par-impar); `FormatFlags = NoWrap` reemplaza
+  (`Banderas =`); ningún uso del tipográfico compartido; los `MeasureString` sin caja van con `SizeF(0, 0)` y su formato.
+- El estado: los globos son mapas nuevos (copia y medio píxel de fábrica, suavizado y letra `AntiAlias` puestos por XP al empezar);
+  `RenderContent` pone suavizado y letra y hereda copia, medio píxel, matriz y recorte del que llama; `PintaTeclas`, `TeclaFlecha` y
+  `FlechaAbajo` lo reciben todo como parámetro. `CtrlDot`, `CtrlTxt` y `CtrlTri` (`Form1.Pared.cs`) no cambian el estado del `Graphics`.
+- Costuras: el globo se compara por identidad con el mismo `SKBitmap` (sin `Bitmap` prestado en medio); lo sueltan los mismos sitios que
+  en XP (`EnsureAsistentePanel` y `SueltaAsistente`), una vez; el precalentado corre en el hilo de la pantalla (`PrecalientaUnPoco`), así
+  que el guardado de `DegradadoV` no se cruza con quien pinta con un pincel de la firma de XP; el cerrojo del guardado se conserva y el
+  shader se hace dentro de él. `SKShader.CreateBitmap` copia los puntos de un mapa que no es inmutable (ningún `SetImmutable` en
+  `Nativo/`, `Plataforma/` ni `Codigo/`), que es lo que hace el `TextureBrush` de GDI+.
+- Finales de línea y número de líneas: 495, 534, 485, 329, 499 y 231, como la base; 0 CR antes y después.
+
+Lo añadido al arnés (`Pruebas/VistasAsistente/Asistente.cs`), porque eran las dos cosas que el arnés del autor no pasaba:
+
+- **La casilla por `OnPaint`, como la pinta `Ventanas.Escritorio`** (160 líneas, `casilla-onpaint-*`): el `Graphics` con la traslación de
+  su sitio sellada en la matriz del HDC (`SellaRecorte`: «m=I b=T r=hdc» en la tabla) y con el recorte de su ventana; se comparan los
+  puntos, el estado que queda, la matriz antes y después, el recorte y la tecla.
+- **La vida del pincel** (8 líneas, `degradado-vida-*`): se pide el shader, se piden otros cinco altos (el guardado da la vuelta y suelta
+  su mapa), se fuerza una recolección y después se pinta con él; tiene que pintar lo mismo que el `TextureBrush` de la referencia pintado
+  al momento, con las mismas cuentas del guardado.
+- Dos controles más en `control.sh`: la casilla sin suavizar el borde (800 líneas distintas de 1 990) y `CtrlTxt` del puente sin el modo
+  de letra del que llama (1 010 de 1 990).
+
+Comprobaciones repetidas en la revisión (salidas en `/root/rocola-trabajo/port/asistente/revision`):
+
+- `dotnet build -c Release --no-incremental`: 0 errores y los mismos 15 avisos de la base (lista archivo(línea,col): código idéntica).
+- El arnés ampliado, este programa contra la referencia congelada: **1 990 líneas IGUALES** con las letras de XP falsas y con DejaVu (520
+  llamadas directas a las traducidas). El arnés de reposo (pasa por la firma de XP de `DegradadoV`): 1 791 líneas IGUALES con las dos letras.
+- El banco (semillas 7 y 11 con letras falsas y 5 con DejaVu; gdi, nativo y puente): 0 distintos en 27 000; puente-objetos 407 bien, 0 mal.
+- Recorridos con el candado, `VOLCADO=1 CAPAS=1 HUELLAS=1`, contra `cmp-ref` y `cmp-ref2`: `ayuda`, `buscador`, `pared` y `pared2` (una
+  corrida) y `ayuda` y `pared2` otra vez: todas salen con 0, sin excepciones; **capas de Dibujo2D quietas 84 de 84 y 38 de 38**. Texturas
+  quietas: 314 de 325 y 158 de 164. Las que faltan son de la hora: todas salen en otras corridas de esta misma traducción menos
+  `2f591363` (pared2, 1024×128 a los 62 s), que en la referencia tampoco sale siempre (3 de 7 corridas de la referencia, 13 de 38 de otros
+  grupos); donde falta sale `da4f642c` en su lugar, aquí y en dos corridas de la referencia (`reposo/ref-hoy`, `frontera/cmp-ref3`).
+  En `ayuda` la segunda corrida da 65 de 66 (la que falta, una tira animada de 1024×128 que la referencia sube dos veces y aquí una) y
+  todos los globos (512×256 y 1024×512). Las texturas que solo salen en una corrida (tiras animadas) aparecen al mismo ritmo en la
+  referencia (pared2: 18 a 43 por corrida) que aquí (22 a 36).
+- NativeAOT: `dotnet publish -c Release -r linux-x64`: 0 avisos IL/AOT y los 15 del compilador; el binario nativo por `ayuda`
+  (`aot-corre.sh`): 13 de 13 capturas, 0 excepciones en lo que escribió y en `rocola_error.txt`; vista la del globo de la guía.
+- `diff-xp.py`: 98/95, 50/47 (1 sin marca: la llave `{` de XP que el diff mete en el trozo), 3/3, 48/45, 22/20 y 4/3.
+- Las cintas no se repitieron: el grupo no toca la tarjeta ni `Nativo/`.
+
+Queda igual que antes de la revisión (ver «Lo que queda»); nada probado en el A4.

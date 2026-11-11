@@ -25,3 +25,6 @@ corre "la letra de las teclas en puntos" Codigo/AsistenteGuiaRocola.cs '305s/Let
 corre "la casilla sin la copia" Codigo/AyudaCasillaGpu.cs '80s/sb, suave, medio, copia)/sb, suave, medio, false)/'
 corre "la guia con el tipografico" Codigo/AsistenteGuiaRocola.cs '295s/new FormatoTexto { Horizontal = Alinea.Lejos }/FormatoTexto.TipograficoCompartido/'
 corre "el guardado sin reusar" Codigo/PulidoGpu.cs '152s/continue;/continue; if (d != null) continue;/'
+# (revision) dos mas: el borde de la casilla y el modo de letra que el puente le pasa a CtrlTxt
+corre "(revision) la casilla sin suavizar el borde" Codigo/AyudaCasillaGpu.cs '81s/pn, suave, medio, copia)/pn, false, medio, copia)/'
+corre "(revision) CtrlTxt del puente sin el modo de letra del que llama" Plataforma/Puente.asistente.cs 's/return CtrlTxt(PuenteDibujo.GraphicsAsistente(g, suave, ajuste, copia, medio), ff, s, x, cy, c);/return CtrlTxt(PuenteDibujo.GraphicsAsistente(g, suave, Rocola.Nativo.AjusteLetra.DelSistema, copia, medio), ff, s, x, cy, c);/'

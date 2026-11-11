@@ -54,6 +54,8 @@ namespace BancoAsistente
             return s.Width + "x" + s.Height + "\t" + Huella(px) + "\t" + Huella(sub);
         }
         private static void Suelta(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
+        // una matriz, por donde lleva el origen y el punto (1, 1)
+        private static string Mat(Matrix m) { PointF[] p = { new PointF(0, 0), new PointF(1, 1) }; m.TransformPoints(p); return R(p[0].X) + "," + R(p[0].Y) + ";" + R(p[1].X) + "," + R(p[1].Y); }
 
         // ---- el estado del Graphics del que llama (los ocho de Pruebas/VistasReposo)
         private sealed class Estado { public string Nombre; public SmoothingMode S; public TextRenderingHint T; public CompositingMode C; public PixelOffsetMode P; public int Trans; public bool Recorte; }
@@ -282,6 +284,42 @@ namespace BancoAsistente
                             }
                     }
 
+            // (revision) LA CASILLA POR OnPaint, COMO LA PINTA Ventanas.Escritorio (PintaSolo): el Graphics llega con la matriz de su sitio en la
+            // del HDC (SellaRecorte: Transform es la identidad y la traslacion queda en la base, «m=I b=T r=hdc» en la tabla de estado por
+            // linea) y con el recorte de su ventana sellado. Es la linea de WinForms OnPaint(PaintEventArgs e) { RenderContent(e.Graphics,
+            // false); }, que en la traduccion entra por la firma de XP del puente; lo que la traducida le pide a CtrlTxt, CtrlDot y CtrlTri
+            // va con otro Graphics sobre el mismo lienzo, con la identidad como matriz del HDC.
+            MethodInfo onPaint = t.GetMethod("OnPaint", Todo), sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
+            k = 0;
+            foreach (Estado e in Estados)
+                foreach (int[] m in medidas)
+                    for (int v = 0; v < 4; v++)
+                    {
+                        string nombre = "casilla-onpaint-" + e.Nombre + "-" + m[0] + "x" + m[1] + "-" + v + "-" + (k++);
+                        object c = Activator.CreateInstance(t, true);
+                        ((Control)c).SetBounds(9, 5, m[0], m[1]);
+                        compactaF.SetValue(c, v == 1 || v == 3); abiertaF.SetValue(c, v >= 2);
+                        using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
+                        {
+                            string ex = "", deja = "";
+                            using (Graphics g = Prepara(b, e))
+                            {
+                                g.TranslateTransform(9, 5);
+                                if (v % 2 == 0) g.SetClip(new Rectangle(0, 0, m[0] - 7, m[1]));   // la parte de su ventana que hay que pintar
+                                sella.Invoke(g, null);
+                                Matrix antes = g.Transform;
+                                try { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe }); }
+                                catch (Exception xx) { ex = " " + Exc(xx); }
+                                Matrix despues = g.Transform; RectangleF rc = g.ClipBounds;
+                                deja = " deja=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.PixelOffsetMode
+                                    + " m=" + Mat(antes) + ">" + Mat(despues) + " recorte=" + R(rc);
+                            }
+                            Rectangle tecla = (Rectangle)teclaF.GetValue(c);
+                            Linea(nombre, Puntos(nombre, b) + deja + " tecla=" + tecla.X + "," + tecla.Y + "," + tecla.Width + "," + tecla.Height + ex);
+                        }
+                        ((IDisposable)c).Dispose();
+                    }
+
             // la flecha de abajo, sola
             MethodInfo flecha = Metodo(t, "FlechaAbajo", null);
             bool trad = flecha.GetParameters()[0].ParameterType == typeof(SKCanvas);
@@ -392,6 +430,44 @@ namespace BancoAsistente
                 Linea(nombre, Puntos(nombre, b) + ex);
             }
         }
+        // (revision) LA VIDA DEL PINCEL: en XP el TextureBrush de GDI+ se queda con su copia del mapa («el llamador recibe su propio pincel»),
+        // asi que sigue pintando aunque el guardado de cuatro mapas de la vuelta y suelte el suyo. La traducida da el shader: se pide, se
+        // piden otros cinco altos (el guardado da la vuelta y suelta su mapa), se fuerza una recoleccion y DESPUES se pinta con el. En la
+        // referencia (la capa no copia el mapa en el pincel) se pinta al momento, que es lo que GDI+ pinta, y despues se piden los mismos
+        // cinco: las cuentas del guardado tienen que quedar iguales.
+        private static void Vida(string nombre, Estado e, Rectangle r, Color c0, Color c1)
+        {
+            MethodInfo nativa = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4);
+            Type px = typeof(Form1).Assembly.GetType("Rocola.Nativo.Pixel");
+            using (Bitmap b = new Bitmap(r.Width + 30, r.Height + 24, PixelFormat.Format32bppPArgb))
+            {
+                string ex = "";
+                using (Graphics g = Prepara(b, e))
+                {
+                    try
+                    {
+                        if (nativa != null)
+                        {
+                            directas++;
+                            object[] es = EstadoDe(g);
+                            SKShader s = (SKShader)nativa.Invoke(null, new object[] { r, c0, c1, es[4] });
+                            for (int i = 1; i <= 5; i++) ((SKShader)nativa.Invoke(null, new object[] { new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0, es[4] })).Dispose();
+                            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                            using (SKPaint p = new SKPaint { Shader = s })
+                                px.GetMethod("Rellena", new[] { typeof(SKCanvas), typeof(RectangleF), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool) }).Invoke(null, new[] { es[0], (RectangleF)r, p, es[1], es[4], es[3] });
+                            s.Dispose();
+                        }
+                        else
+                        {
+                            using (Brush br = Form1.DegradadoV(r, c0, c1)) g.FillRectangle(br, r);
+                            for (int i = 1; i <= 5; i++) Form1.DegradadoV(new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0).Dispose();
+                        }
+                    }
+                    catch (Exception xx) { ex = " " + Exc(xx); }
+                }
+                Linea(nombre, Puntos(nombre, b) + ex + " guardado=" + Form1.DegradadosGuardados + "/" + Form1.DegradadosReusados);
+            }
+        }
         private static void Degradados()
         {
             Linea("degradados-antes", Form1.DegradadosGuardados + "/" + Form1.DegradadosReusados);
@@ -428,6 +504,10 @@ namespace BancoAsistente
                 Degradado("degradado-grande-xp-" + e.Nombre, e, new Rectangle(0, 0, 50, 2049), Colores[1][0], Colores[1][1], false, false);
                 Grande("degradado-grande-" + e.Nombre, e, new Rectangle(3, 2, 50, 3000), Colores[1][0], Colores[1][1]);
             }
+            // (revision) el pincel despues de que el guardado suelte su mapa
+            Form1.InterfazTramada = true;
+            foreach (Estado e in Estados)
+                Vida("degradado-vida-" + e.Nombre, e, new Rectangle(5, 4, 90, 600 + 10 * Array.IndexOf(Estados, e)), Colores[Array.IndexOf(Estados, e) % Colores.Length][0], Colores[Array.IndexOf(Estados, e) % Colores.Length][1]);
             Linea("degradados-fin", Form1.DegradadosGuardados + "/" + Form1.DegradadosReusados);
         }
 
