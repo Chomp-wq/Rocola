@@ -41,3 +41,15 @@ mut pluma-del-riel $V 'trackP = new SKPaint { Color = Color.FromArgb(40, 255, 25
 mut hojeo-filtro $V 'new SKRect(xa, 0, xa + hornoAnt.Width, hornoAnt.Height), filtro, medio, copia); }' 'new SKRect(xa, 0, xa + hornoAnt.Width, hornoAnt.Height), Filtro.Vecino, medio, copia); }'
 mut hojeo-sitio $V '{ int xa = (int)(dx - slideDesde);' '{ int xa = (int)dx;'
 mut modo-de-letra-olvidado $V 'TextoGdiPlus.Escribe(g, t, fCola, ajuste, colaB, cr, cenFmt, copia, medio);' 'TextoGdiPlus.Escribe(g, t, fCola, AjusteLetra.Suave, colaB, cr, cenFmt, copia, medio);'
+# (revision) otros diez, en sitios que los de arriba no tocan: la duracion, el «+N», los puntos de las paginas, el neon, los puentes del genero y de
+# la barra, el circulito, el recorte de las portaditas, la pluma de la fila elegida y la copia de la lista
+mut duracion-a-la-izquierda $V 'durFmt.Horizontal = Alinea.Lejos;' 'durFmt.Horizontal = Alinea.Cerca;'
+mut mas-n-otro-fondo $V 'Color.FromArgb(205, 8, 11, 28).Sk()' 'Color.FromArgb(200, 8, 11, 28).Sk()'
+mut halo-del-punto $V 'new RectangleF(cx - rr * 2.1f, cy - rr * 2.1f, rr * 4.2f, rr * 4.2f), halo' 'new RectangleF(cx - rr * 2.0f, cy - rr * 2.0f, rr * 4.0f, rr * 4.0f), halo'
+mut nucleo-del-neon $V 'StrokeWidth = Math.Max(1f, h * 0.16f)' 'StrokeWidth = Math.Max(1f, h * 0.2f)'
+mut genero-puente-sin-suavizado $P 'if (!(Width < 6 || Height < 6 || texto.Length == 0)) g.SmoothingMode = SmoothingMode.AntiAlias;' ';'
+mut circulo-sin-suavizar $V 'Pixel.TrazaOvalo(g, r, p, suave);' 'Pixel.TrazaOvalo(g, r, p, false);'
+mut portadita-sin-recorte $V 'g.ClipPath(ph, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): en pixeles enteros' 'g.ClipPath(ph, SKClipOperation.Intersect, true);   // EN LINUX: g.SetClip(trazo, Intersect): en pixeles enteros'
+mut fila-elegida-pluma $V 'hlP = new SKPaint { Color = Color.Black.Sk(), StrokeWidth = 1.4f }' 'hlP = new SKPaint { Color = Color.Black.Sk(), StrokeWidth = 1.0f }'
+mut barra-puente-sin-suavizado $P 'g.SmoothingMode = SmoothingMode.AntiAlias;   // (lo pone antes de mirar su medida)' ';'
+mut lista-copia-olvidada $V '{ Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, hornoPag.Width, hornoPag.Height), new SKRect(0, 0, hornoPag.Width, hornoPag.Height), filtro, medio, copia); return; }' '{ Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, hornoPag.Width, hornoPag.Height), new SKRect(0, 0, hornoPag.Width, hornoPag.Height), filtro, medio, false); return; }'

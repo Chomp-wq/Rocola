@@ -207,3 +207,65 @@ de abajo se repitieron después, con el código de ese commit.
   `PrecargaPaginaGpu.cs`; `AnchoTextoVistasB` al juntar ventanas2; `SueltaMapasVistasB` con `Form1.Pared.cs`; `Ancho` con `FontFamily` con
   `Form1.cs` y `Form1.Datos.cs`.
 - `RoundedPath` (`Form1.Fondo.cs`) y las portadas (`Form1.Biblioteca.cs`), cuando se traduzcan sus archivos.
+
+## Revisión (11-11-2026, revisor independiente)
+
+Revisado el diff `ae8b50b..port-vistas-b` contra `Rocola/Form1.Vistas.cs` (XP), `Plataforma/Dibujo2D.cs` (lo que hacía la capa en cada
+llamada) y `Pruebas/TrazaDibujo/estado_por_linea.tsv`, y repetidas las comprobaciones. Sin fallos de dibujo ni de lógica.
+
+**Lo mirado, línea por línea**
+
+- Lo que queda de la capa de `HeaderView` al final son solo las costuras de la tabla (los `OnPaint(PaintEventArgs)`, `this.Font` y
+  `AnchoTexto(texto, this.Font)` de `GeneroView`, que son de WinForms; `RoundedPath`, `CreaSfDibuja`, `Portadas`, `pideFuente`).
+- Cada llamada frente a la de la capa: el pincel y la pluma (`new SKPaint()` con su color, ancho, unión y punta: lo mismo que ponen
+  `SolidBrush.Pon` y `Pen.Pon`; el mínimo de un píxel y el límite de esquinas los pone `Pixel`), `MeasureString(s, f)` = caja (0, 0) sin
+  formato, `MeasureString(s, f, 999, sf)` = caja de 999 × 999999, `DrawImageUnscaled` = entera en su tamaño (una nula no se pinta, como en
+  la capa), `SetClip(…, Intersect)` = `ClipRect`/`ClipPath` sin suavizar, `Save`/`Restore` (entre cada par solo cambian la matriz y el
+  recorte; el filtro de las portaditas se devuelve a mano, como en XP), `new Font(familia, pt, Bold)` = `Letra.EnPuntos(nombre, pt, true)`,
+  `Font.Height` = `AltoEntero`, `LinearGradientBrush(caja, a, b, Vertical)` = `Degradado.Lineal(…, Degradado.Vertical, true)`,
+  `FormatFlags = NoWrap` reemplaza, el tipográfico compartido es el mismo objeto, y los dos trazos redondos unen sus arcos como GDI+.
+- El estado de cada línea coincide con la tabla (1138-1164, 1384-1462, 1630-1642, 1746-1821, 2060, 2124-2247); `PintaPagina` solo
+  cambia el suavizado (por referencia) y sus tres llamadores le dan el estado de fábrica.
+- Los puentes devuelven al `Graphics` el suavizado con las mismas condiciones de XP (encabezado y cápsula: si miden 8 o más; género: 6 o
+  más y con texto; barra: siempre; lista: nada).
+- Los hornos se sueltan y se ponen a `null` (o se vacía su diccionario) en los mismos sitios que en XP; no hay uso después de soltar en el
+  orden de XP. Todo en el hilo de la pantalla.
+- Finales de línea y número de líneas: `Form1.Vistas.cs` 2 749 líneas y 2 568 CRLF, como en la base; `AcabadoGpu.cs` 411, `DiscoVivoGpu.cs`
+  621 y `SuenaVivoGpu.cs` 987, con LF. `git diff --numstat`: 287/287, 13/13, 6/6 (10/10 con lo de abajo) y 2/2.
+
+**Lo encontrado y lo hecho**
+
+- (menor) Cuatro notas `EN LINUX` de `DiscoVivoGpu.cs` (`AnchoDuracion`, `PlanFilaGpu`, `PlanPaginaGpu`, `PastillaSonandoEq`) seguían
+  diciendo que `PintaPagina` estaba sin traducir y llegaba con su `Graphics` por el puente, cuando esas firmas ya se quitaron: corregidas
+  (solo comentarios; commit `f2747bc`).
+- (menor) El arnés tenía 17 controles negativos; se añadieron otros 10 a `mutantes.sh` en sitios que no tocaban (la duración a la
+  izquierda, el fondo del «+N», el halo del punto de la página, el núcleo del neón, los puentes del género y de la barra sin devolver el
+  suavizado, el circulito sin suavizar, el recorte de las portaditas suavizado, la pluma de la fila elegida y la copia olvidada en la
+  lista): **los 10 se ven** (318, 41, 119, 42, 56, 411, 104, 262, 190 y 16 líneas distintas de 2 865).
+- (para la junta, sin cambio) El comentario de `Plataforma/Puente.reposo.cs` (línea 25) aún nombra a `Form1.Vistas.cs` entre los que
+  llaman a `PintaTextoMovil(Graphics…)`; ya no lo es (lo llama directo), pero esa firma sigue haciendo falta para `Puente.suena.cs`.
+- (para la junta, sin cambio) `AnchoTextoVistasB` hace una `Font` (con su `Letra`) nueva en cada medida y la suelta; antes se medía con
+  la letra guardada. Mide lo mismo (0 distintas en el arnés) y solo cuesta tiempo al rehacer el encabezado o la página; desaparece al
+  juntar ventanas2 (`AnchoTexto(AjusteLetra, string, Letra)`).
+
+**Comprobaciones repetidas** (en `/root/rocola-trabajo/port/vistas-b/rev`, carga de 3 a 5 en 4 núcleos)
+
+- `dotnet build -c Release`: 0 errores, 15 avisos (`SYSLIB0054` ×9, `CA2022` ×2, `CS1690` ×2, `SYSLIB0050`, `CA2014`), antes y después
+  del arreglo.
+- `diff-xp.py -v`: `Form1.Vistas.cs` 291/288 con 1 sin marca (la línea 131, de la primera mitad, ya en la base); `AcabadoGpu.cs` 99/97,
+  `DiscoVivoGpu.cs` 58/55 y `SuenaVivoGpu.cs` 172/169 con 0 sin marca.
+- `arnes.sh` (referencia, base y esta copia, compilados de nuevo): 2 864 casos, **0 líneas distintas** contra la referencia y contra la
+  base, con las letras falsas y con DejaVu (18 excepciones con DejaVu, las mismas en los tres); la salida es byte a byte la que guardó
+  el traductor.
+- Recorridos con el candado (pared, pared2, video y buscador; `VOLCADO`, `CAPAS`, `HUELLAS`) contra `cmp-ref` y `cmp-ref2`: los 4 salen
+  con 0 y sin excepciones; capas quietas pared 24 de 24, pared2 12 de 12, buscador 22 de 22 y video 15 de 16 la primera vez (a los 24 s la
+  captura cayó con tres capas en vez de cinco) y **16 de 16** al repetirlo; texturas quietas 82 de 83, 92 de 98, 75 de 78 y 50 de 50. Las
+  10 que faltan son todas de 1 024 de ancho: 5 las saca esta misma copia en las corridas del traductor (`1c9507bb`, `584659ad`,
+  `1f1712f1`, `e843916c`) y las otras 5 faltan también en corridas guardadas de la rama sin este grupo (`2a697d30` sale en 12 de 60,
+  `21d8fe91` en 26, `2f591363` en 16 y `906bfb35` en 47 de 60 de pared2; `8cd9108c` en 28 de 59 de buscador). `906bfb35` (1 024×64, a
+  los 62 s de pared2) no salió en ninguna de las tres corridas de esta copia: tampoco en las cuatro de pantalla-viva, las dos de la
+  revisión de asistente ni en las de hoy de otros dos grupos sin este código; queda apuntada. `8c560fb6` de pared, que le faltó al
+  traductor, aquí sí salió.
+- Cintas (`VistasFrontera/cintas.sh`): **29 de 29 IGUALES** (6 616 cuadros).
+- No se repitieron el banco por función (este grupo no toca `Nativo/` ni `Puente.cs`) ni la publicación NativeAOT (se miró su registro:
+  0 avisos IL/AOT).
