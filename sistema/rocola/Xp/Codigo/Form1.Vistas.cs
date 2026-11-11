@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de paginas y la barra de letras (SongPagerBar y LetterBar: hasta la linea 997) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), y ya no necesitan Rocola.Dibujo2D (lo que les llega de archivos sin traducir -el Graphics de OnPaint y de DrawCtrlOverlay, CtrlDirLeft, CtrlDirRight, CtrlTxt, la Font del control- pasa por el puente: Plataforma/Puente.cs y Puente.vistas-a.cs); el resto del archivo sigue con GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que se traduzca   // EN LINUX: y, de HeaderView al final (grupo vistas-b), SkiaSharp directo y las funciones nativas (Xp/Nativo): alli lo que queda de la capa va con su tipo escrito entero (Rocola.Dibujo2D.X)
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de paginas y la barra de letras (SongPagerBar y LetterBar: hasta la linea 997) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), y ya no necesitan Rocola.Dibujo2D (lo que les llega de archivos sin traducir -el Graphics de OnPaint y de DrawCtrlOverlay, CtrlDirLeft, CtrlDirRight, CtrlTxt, la Font del control- pasa por el puente: Plataforma/Puente.cs y Puente.vistas-a.cs); el resto del archivo sigue con GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que se traduzca   // EN LINUX: y, de HeaderView al final (grupo vistas-b), SkiaSharp directo y las funciones nativas (Xp/Nativo): alli lo que queda de la capa va con su tipo escrito entero (Rocola.Dibujo2D.X) // EN LINUX: y la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2): una pieza de la hoja con SkiaSharp directo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -21,29 +21,29 @@ namespace Rocola
     {
 
         // BARRA DE AVANCE plana (la de Windows en XP es verde con rayas y no pega con nada).
-        private sealed class BarraAvance : Control
+        private sealed partial class BarraAvance : IPieza   // EN LINUX: no hereda de Control: es una pieza de la hoja de Ctrl+F3 (la unica que la usa) con su caja (Nativo/Pieza.cs); lo que usaba de Control, en Nativo/PiezasAjustes.cs
         {
             public float Valor;   // 0..1
             public Color Acento = Color.FromArgb(255, 170, 90);
             public BarraAvance()
             {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+                caja = new CajaPieza(this, 0, 0); caja.RepintaConMedida = true; caja.Transparente = true;   // EN LINUX: un Control mide 0x0 de fabrica (DefaultSize) y es Selectable (lo deja la caja, como Control); SetStyle(... | ResizeRedraw | SupportsTransparentBackColor): la hoja pinta cada pieza sola y en un bufer, siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); ResizeRedraw = RepintaConMedida, Selectable = Seleccionable y SupportsTransparentBackColor = Transparente de su caja (Nativo/Pieza.cs)
                 BackColor = Color.Transparent; Height = 8;
             }
-            protected override void OnPaint(PaintEventArgs e)
+            void IPieza.PintaContenido(SKCanvas e)   // EN LINUX: OnPaint -> PintaContenido: el lienzo de la hoja con el origen en la pieza y recortado a ella
             {
-                Graphics g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
                 Rectangle r = new Rectangle(0, 0, Math.Max(1, Width), Math.Max(4, Height));
                 using (GraphicsPath pa = RoundedPath(r, Height / 2))
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(38, 46, 82)))
-                    g.FillPath(b, pa);
+                using (SKPaint b = PinturaXp.Pincel(Color.FromArgb(38, 46, 82)))   // EN LINUX: SolidBrush -> SKPaint (Nativo/PinturaXp.cs)
+                    Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs) con el SKPath de RoundedPath (Form1.Fondo.cs, aun sin traducir: PuenteDibujo.Ruta)
                 float f = Valor; if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
                 int w = (int)(r.Width * f);
                 if (w > 2)
                     using (GraphicsPath pa = RoundedPath(new Rectangle(0, 0, w, r.Height), Height / 2))
-                    using (SolidBrush b = new SolidBrush(Acento))
-                        g.FillPath(b, pa);
+                    using (SKPaint b = PinturaXp.Pincel(Acento))   // EN LINUX: SolidBrush -> SKPaint
+                        Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs)
             }
         }
 

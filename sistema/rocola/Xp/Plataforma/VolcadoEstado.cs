@@ -95,6 +95,9 @@ namespace Rocola
                 CajaPieza c = p.Caja;
                 sb.Append(sangria).Append(TrazaVentanas.Pieza(p)).Append(" @").Append(CajaPrueba(c.Bounds))
                   .Append(c.Visible ? " v" : " -").Append(c.Enabled ? "e" : "-").Append(" t").Append(VolcadoEstado.N(c.TabIndex));
+                // (port nativo, ventanas2 C) las piezas propias de Ctrl+F3, con lo mismo que cuando eran de la capa
+                Interruptor i = p as Interruptor; if (i != null) sb.Append(" checked=").Append(VolcadoEstado.B(i.Checked));
+                Deslizador d = p as Deslizador; if (d != null) sb.Append(" value=").Append(VolcadoEstado.N(d.Value));
                 if (Hoja.Foco == (object)p) sb.Append(" FOCO");
                 sb.Append('\n');
                 if (c.Hijas != null && c.Hijas.Count > 0) PiezasPrueba(c.Hijas, sb, sangria + "  ");
@@ -107,8 +110,6 @@ namespace Rocola
             {
                 sb.Append(sangria).Append(TrazaVentanas.Pieza(c)).Append(" @").Append(CajaPrueba(c.Bounds))
                   .Append(c.Visible ? " v" : " -").Append(c.Enabled ? "e" : "-").Append(" t").Append(VolcadoEstado.N(c.TabIndex));
-                Interruptor i = c as Interruptor; if (i != null) sb.Append(" checked=").Append(VolcadoEstado.B(i.Checked));
-                Deslizador d = c as Deslizador; if (d != null) sb.Append(" value=").Append(VolcadoEstado.N(d.Value));
                 if (Escritorio.Foco == c) sb.Append(" FOCO");
                 sb.Append('\n');
                 if (c.Controls.Count > 0) PiezasPrueba(c, sb, sangria + "  ");

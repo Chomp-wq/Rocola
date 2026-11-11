@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ARNES DE VENTANAS2, PASO C (port nativo): el programa entero de una carpeta Xp (Fuente: esta copia de trabajo o, con
+       -p:Fuente=/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp, la referencia congelada) con otra entrada (Vistas.cs) que llama al
+       dibujo con GDI+ de Form1.Ajustes.cs que este paso tradujo y que las escenas de Ctrl+F3 no pasan: las medidas de texto (AnchoTexto,
+       AnchoToast), el formato de CreaSfDibuja y el aviso de siempre (PintaToast, PintaToastHasta), con datos fijos y varios estados del
+       Graphics. Las salidas tienen que ser iguales (compara.sh). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>VistasAjustes</AssemblyName>
+    <RootNamespace>Rocola</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <LangVersion>latest</LangVersion>
+    <DefineConstants>$(DefineConstants);ROCOLA_GPU</DefineConstants>
+    <StartupObject>Banco.VistasAjustes</StartupObject>
+    <NoWarn>$(NoWarn);CS0168;CS0169;CS0219;CS0414;CS0649;CS0162;CS0618;SYSLIB0011;SYSLIB0014;SYSLIB0050;SYSLIB0054;CA1416;CA2014;CA2022;CS1690;CS7022</NoWarn>
+    <Fuente Condition="'$(Fuente)' == ''">$(MSBuildThisFileDirectory)../..</Fuente>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
+    <PackageReference Include="NAudio.Core" Version="3.3.0" />
+    <PackageReference Include="NLayer" Version="3.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Vistas.cs" />
+    <Compile Include="$(Fuente)/Codigo/**/*.cs;$(Fuente)/Plataforma/**/*.cs;$(Fuente)/Nativo/**/*.cs" Exclude="$(Fuente)/**/bin/**;$(Fuente)/**/obj/**" />
+    <Compile Include="$(Fuente)/../Consola/Pantalla/Gl.cs;$(Fuente)/../Consola/Pantalla/Kms.cs;$(Fuente)/../Motor/Botones.cs" />
+  </ItemGroup>
+</Project>

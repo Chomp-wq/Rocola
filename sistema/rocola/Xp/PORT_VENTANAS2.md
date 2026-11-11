@@ -592,3 +592,392 @@ Comprobaciones repetidas (9-11-2026, maquina compartida con otra pista, carga de
 - `diff-xp.py -v` en Form1.Datos.cs, Form1.Ajustes.cs y Program.cs: las 23 lineas cambiadas en el paso llevan su «EN LINUX» (de las que salen
   sin marca, ninguna es del paso: las 23 de `git diff d94eaed` la llevan todas). Mismas lineas y mismos finales.
 - Nada de esto se ha probado en el A4.
+
+## C. Ctrl+F3 entero
+
+La ventana grande de WinForms de XP (Ctrl+F3: «Rocola - Sonido» con sus seis paginas, sus hojas y hojitas) y el historial de caratulas
+(«Comparar perfiles») pasan a hojas nativas con las piezas del paso H, y las cuatro piezas propias de XP (la tarjeta, el deslizador, el
+interruptor y el boton plano) y la barra de avance dejan de heredar de `Control` y de `Panel`. Con esto ninguna ventana de dialogo de XP
+pasa ya por la capa: quedan en ella la pantalla de la rocola (Form1, el panel de la tarjeta y las 16 vistas) y la ventana F12. Base: la
+rama principal con el paso H juntado (7158ccb). Nada de esto se ha probado en el A4.
+
+### Lo que se convirtio en el codigo de XP
+
+Cada linea en su sitio, con su «EN LINUX», sin anadir ni quitar lineas y con sus finales (comprobado contra a6eba8b linea por linea con
+`finales.py`: los 44 archivos de `Codigo/` cambiados desde entonces, los de este paso y los de los otros grupos, tienen las mismas lineas y
+el CR en las mismas). Los guiones que cambiaron las lineas quedan como registro en `/root/rocola-trabajo/port/ventanas2/c` (`traduce_c.py`
+con su tabla `especiales_c.py`: primero las lineas especiales, despues lo mecanico solo en el codigo, no en cadenas ni comentarios) y
+`c2` (`cambia_lineas.py` con `tabla_ajustes.py`); los dos avisan si una linea no estaba como se esperaba.
+
+| Archivo | Lineas cambiadas | Lineas y finales | Que |
+|---|---|---|---|
+| `Form1.Ajustes.cs` | 198 + 38 | 2044, 2011 CRLF | la hoja de Ctrl+F3 y sus paginas de Sonido, las cuatro piezas, MonedaTambienAqui; y el dibujo que quedaba con GDI+ |
+| `Rendimiento.cs` | 80 + 1 | 2216, LF | las paginas Imagen (Efectos, Performance y sus hojitas), Detalles, Colores y Fondo, «Medir este equipo» |
+| `AjustesVivos.cs` | 21 | 237, LF | las dependencias vivas: `RefrescaRequisitos` y `EnganchaRequisitos` |
+| `CaratulasAdaptativas.cs` | 20 | 594, LF | el historial de caratulas (`BuildCoverHistory`, `ShowCoverHistory`) |
+| `HojasFondo.cs` | 17 + 1 | 94, LF | las cinco hojitas de Fondo |
+| `PantallaVivaGpu.cs` | 14 | 963, LF | solo `PaginaPantalla` y `MuestraHoja` (sus lineas de ventanas; su dibujo es del grupo pantalla-viva) |
+| `FluidezAnimaciones.cs` | 11 + 1 | 124, LF | la hoja Fluidez de Imagen |
+| `Form1.Vistas.cs` | 10 | 2749, 2568 CRLF | solo `BarraAvance` (la barra de «entrenando la IA», que solo usa Ctrl+F3) |
+
+`FluidezGpu.cs` y `Form1.DiagnosticoCompleto.cs` no tienen lineas de ventanas de dialogo: lo que les queda de WinForms es del panel de la
+tarjeta (`gpuPanel.Visible`, `Width`, `Height`) y de Form1 (`IsDisposed`, `Disposing`, `BackColor`), que van con «GpuPanel sin Control» y
+«Form1 sin Form»; sus `DoEvents` ya eran `PantallaRocola.Bombea` (V3). «Medir» y «Diagnostico completo» cierran la hoja con `dlg.Close()`
+y `ShowVolumeManager` la vuelve a abrir (o no) con las mismas lineas de XP.
+
+- **La hoja** (`VentanaAjustes`, Form1.Ajustes.cs:677-1711): `new Form()` -> `new Hoja(MarcoXp.Dialogo)` (las lineas de `FormBorderStyle`,
+  `MaximizeBox/MinimizeBox/ShowInTaskbar/ShowIcon` y `StartPosition` quedan en comentario: es lo que da `MarcoXp.Dialogo`); `dlg.KeyPreview
+  = true` en comentario y `dlg.KeyDown += ... Escape` -> `dlg.TeclaAntes += ...` (el KeyDown de la ventana con KeyPreview); el reloj de
+  medio segundo `tTrain` es un `Reloj`; `dlg.BeginInvoke(...)` desde el hilo que entrena -> `PantallaRocola.Encola(dlg, ...)` (con la vida
+  de la hoja: si se cerro, se pierde, como en XP); `dlg.ShowDialog(this)` -> `dlg.MuestraModal(this)`; `Cursor.Show()` y `Cursor.Hide()`
+  -> `PantallaRocola.EnsenaFlecha()` y `EscondeFlecha()` (la cuenta de ShowCursor). `MonedaTambienAqui(Form)` -> `(Hoja)`: ya solo recibe
+  hojas (Ctrl+F2, Ctrl+F3 y el historial) y la interfaz `ITeclasAntes` del paso H se quito, de la hoja y de la `Form` de la capa.
+- **El armado** (unas 1300 lineas en 7 archivos): solo cambia el tipo. `Label` -> `Rotulo`, `Panel` -> `Grupo`, `Font` -> `Letra`
+  (`new Font(ff, 10f, FontStyle.Bold)` -> `Letra.EnPuntos(ff, 10f, true)`; dentro de Form1 se escribe `Rocola.Nativo.Letra` porque Form1
+  tiene un metodo `Letra`), `ContentAlignment` -> `AlineaTexto` (los mismos numeros) y `Control` (el tipo, en listas, parametros y
+  recorridos) -> `IPieza`. `SetBounds`, `Text`, `Font`, `ForeColor`, `BackColor`, `TextAlign`, `Controls.Add`, `Visible`, `Enabled`,
+  `TabIndex`, `Name`, `BringToFront`, `Click` y `Dispose` no cambian: las piezas tienen esos miembros, y solo los que XP usa de cada una.
+  Donde XP lee o pone algo de una pieza cualquiera (`foreach (Control c ...)`), va por su caja: `c.Caja.Enabled`, `c.Caja.Visible`,
+  `c.Caja.SetBounds`, `c.Caja.TabIndex`.
+- **Los recorridos del arbol**: `EnganchaRequisitos(Control raiz)` -> `(IContenedor raiz)` (la hoja o un grupo: lo que tiene piezas
+  dentro) con `c.Controls.Count > 0` -> `c is IContenedor && ...Controls.Count > 0`; `pintaPag` (Form1.Ajustes.cs:1610) recorre
+  `dlg.Controls` como `IPieza`; `pg.Disposed` y `pg.VisibleChanged` de la pagina de Imagen (Rendimiento.cs) son los avisos del `Grupo`.
+- **Las piezas propias de XP** (Form1.Ajustes.cs:379-621 y Form1.Vistas.cs:24): `Tarjeta : Panel` -> `Tarjeta : Grupo` (hereda del grupo
+  nativo como heredaba del panel; su `OnPaint` es `Pinta` y su `Dispose(bool)` el del grupo); `Deslizador`, `Interruptor`, `BotonPlano` y
+  `BarraAvance : Control` -> `: IPieza` con su `CajaPieza` por composicion. `SetStyle(UserPaint | AllPaintingInWmPaint |
+  OptimizedDoubleBuffer | ResizeRedraw | Selectable | SupportsTransparentBackColor)` -> `RepintaConMedida`, `Seleccionable` y
+  `Transparente` de la caja (lo demas es como pinta siempre la hoja); `Cursor = Cursors.Hand` -> `caja.Mano`; `OnMouseDown/Move/Up`,
+  `OnMouseEnter/Leave`, `IsInputKey`, `OnKeyDown`, `OnGotFocus/LostFocus` y `OnPaint` -> `RatonAbajo/Mueve/Arriba`, `RatonEntra/Sale`,
+  `QuiereTecla`, `TeclaAbajo`, `AlRecibirFoco/AlPerderFoco` y `PintaContenido` de `IPieza`, con el mismo cuerpo; las llamadas a
+  `base.On...` (el aviso de Control, que nadie escucha) y `OnEnabledChanged` (la caja ya repinta al cambiar Enabled) quedan en comentario;
+  `base.IsInputKey(k)` es `false` (Control.IsInputKey de un control propio, Control.cs:6950-6980). `Keys` -> `Tecla`, `KeyEventArgs` ->
+  `PulsoTecla`, `MouseEventArgs` -> `Raton`.
+- **Su dibujo** (la receta de PORT_DIBUJO.md): `e.Graphics` es el `SKCanvas` de la hoja con el origen en la pieza y recortado a ella; el
+  estado del Graphics va en variables (`bool suave = true`, `AjusteLetra modoLetra = AjusteLetra.ClearTypeAjustada`); `SolidBrush` y `Pen`
+  -> `PinturaXp.Pincel` y `Pluma` (SKPaint); `FillPath/DrawPath/FillEllipse/DrawEllipse` -> `Pixel.Rellena/Traza/RellenaOvalo/TrazaOvalo`;
+  `DrawString(s, f, b, x, y)` y `MeasureString(s, f)` -> `TextoGdiPlus.Escribe` y `Mide` con la caja (x, y, 0, 0) y
+  `FormatoTexto.SinFormato`; `Font.Height` -> `AltoEntero`. El trazo redondo sigue viniendo de `RoundedPath` (Form1.Fondo.cs, del dibujo,
+  aun sin traducir): se pinta su SKPath por `PuenteDibujo.Ruta` (el mismo, sin copia).
+- **Lo de los lectores de pantalla**: las 23 lineas con `AccessibleName`, `AccessibleRole` o `AccessibleDescription` quedan en comentario
+  (MSAA de Windows; en Rocola OS no hay lector de pantalla y nada de XP los lee). `Name` se queda (XP se lo pone a algunas piezas y las
+  pruebas las buscan por el).
+- **El dibujo con GDI+ que quedaba en Form1.Ajustes.cs** (38 lineas, 10-11-2026; no es de la hoja: lo usa la pantalla de la rocola):
+  - el aviso de siempre (`HorneaToast`, `PintaToast`, `PintaToastHasta`, `AnchoToast`, 1834-1890): el mapa es un `SKBitmap`
+    (`Mapas.Nuevo`), se pinta con `SKCanvas`, `Pixel` y `TextoGdiPlus` (AntiAlias en gris: `AjusteLetra.Suave`; el formato de fabrica con
+    `Banderas = SinPartir` y `Corte = PuntosPorLetra`), su ancho es `TextoGdi.Mide` (TextRenderer.MeasureText, GDI) y `BuildToastState` se
+    lo da a la tarjeta por `PuenteDibujo.Bitmap` (GpuToast de D3D9Star.cs aun lo pide como Bitmap: los mismos puntos y el mismo objeto cada
+    vez). La letra es la de `lblToast` (un letrero de la pantalla, aun de la capa) por `PuenteDibujo.Letra`;
+  - las medidas de texto que usan casi todas las vistas: `AnchoTexto(Graphics, string, Font)` -> `AnchoTexto(AjusteLetra, string, Letra)`
+    (del Graphics, MeasureString solo mira su modo de letra: es de las 94 lineas de la tabla donde el estado cambia entre llamadas y va de
+    parametro), `AnchoTexto(string, Font)` -> `(string, Letra)` (el Graphics de 1x1 solo daba el modo de fabrica: `AjusteLetra.DelSistema`),
+    `SfMedir` y `CreaSfDibuja(StringAlignment)` -> `FormatoTexto` y `Alinea` (copias del tipografico COMPARTIDO tal como este en ese
+    momento, con `|=` y `&= ~` como en XP).
+  Los archivos que todavia las llaman con Graphics, Font o StringAlignment (Form1.Vistas.cs, DiscoVivoGpu.cs, Form1.cs y los puentes de los
+  grupos suena, pantalla-viva, buscador-portadas y asistente) encuentran la FIRMA DE XP de cada una en `Plataforma/Puente.ventanas2.cs`
+  (el puente va del lado de lo que no esta traducido): no hubo que tocar ninguno.
+- `HojasFondo.cs`, `FluidezAnimaciones.cs` y `Rendimiento.cs` ya no ven los tipos que imitan a GDI+: su linea vuelve a ser
+  `using System.Drawing;`, igual que en XP.
+- El inventario con el compilador (`Pruebas/Inventario`, 181 archivos, 0 errores): referencias a WinForms de 4058 (tras el paso H) a
+  **1724**. En los archivos del paso: Form1.Ajustes.cs de 1163 a 18, Rendimiento.cs de 712 a 15, PantallaVivaGpu.cs de 200 a 13,
+  CaratulasAdaptativas.cs de 118 a 5, FluidezAnimaciones.cs de 83 a 0, HojasFondo.cs de 48 a 0 y AjustesVivos.cs de 39 a 0; las que quedan
+  son de Form1 (`IsDisposed`, `Disposing`, `ClientSize`, `Focus`, `Invalidate`), de sus letreros de pantalla (`lblConfig`, `lblToast`) y
+  del panel de la tarjeta (`gpuPanel.Visible/Width/Height`). De GDI+ en Form1.Ajustes.cs, de 188 a 21: `FamiliaUi` (5, un FontFamily que
+  comparten PantallaVivaGpu.cs y PrecargaPaginaGpu.cs), los `GraphicsPath` que devuelve `RoundedPath` (7) y `RoundRect` (9, que piden
+  tambien Form1.Pared.cs y Form1.cs).
+
+### Las piezas nativas
+
+Las del paso H (`Hoja`, `IPieza`, `CajaPieza`, `Rotulo`, `Grupo`, `PinturaXp`...) ya tenian casi todo lo que Ctrl+F3 pide (se escribieron
+con el a la vista). En este paso:
+
+- `Nativo/PiezasAjustes.cs` (nuevo): la mitad nativa de `Deslizador`, `Interruptor`, `BotonPlano` y `BarraAvance` (son `partial`): su
+  `CajaPieza` y, de ella, SOLO los miembros de Control que su codigo de XP usa, con el nombre con que los usa (los pidio el compilador,
+  ni uno mas): `SetBounds`, `BackColor`, `ForeColor`, `Font`, `Text`, `TabStop`, `TabIndex`, `Width`, `Height` (ponerlo es SetBounds con
+  lo demas tal cual), `Enabled`, `Visible`, `Name`, `Focused`, `Focus`, `Invalidate`, `BringToFront`; y el aviso `Click` del boton plano
+  con su `OnClick` (el de raton lo decide la hoja: soltar encima del mismo, con cualquier boton, si no es el segundo de un doble clic,
+  Control.WmMouseUp; el de teclado lo lanza su KeyDown de XP).
+- `Nativo/Rotulo.cs`: `Grupo` ya no es sellado (la tarjeta hereda de el: `Pinta`, el OnPaint de Panel, y `Dispose(bool)`, el patron de
+  Control.Dispose) y gana lo que Ctrl+F3 le pone (`Name`, `Bounds`, `Location`, `Size`, `Width`, `Height`, `TabIndex`); `Rotulo`, `Name` y
+  `Bounds` con set (Control.Bounds: SetBounds con las cuatro medidas).
+- `Nativo/Pieza.cs`: `CajaPieza.Name`; `ITeclasAntes` se va.
+- `Nativo/Hoja.Foco.cs`, **una regla corregida** (la encontro la escena f3vistas): al esconder o apagar la pieza del foco, quien elige la
+  siguiente es el contenedor del foco del PADRE de esa pieza (`Control.SelectNextIfFocused`, Control.cs:10770-10784, con
+  `ParentInternal.GetContainerControl()`, Control.cs:5825-5840: un contenedor que lleva el foco empieza a buscar por SU padre). Con la
+  pieza puesta directo en la hoja no hay ninguno (la hoja es de arriba) y el foco se queda donde esta, escondido o en gris; dentro de un
+  grupo, la hoja. La hoja del paso H elegia siempre en la hoja; en Ctrl+F3, al esconderse la pagina de Sonido con el foco en su boton
+  «Ajustes del sonido...», el foco saltaba y en XP (y en la capa de la referencia) no. En Ctrl+F2 no se notaba: nada se esconde.
+- `Nativo/Hoja.cs`: `Hoja.MidePintura` (banco): con `ROCOLA_MIDE_HOJA=1` el anfitrion apunta cuanto tarda cada pintura entera de una hoja.
+
+Ninguna tiene la API de WinForms: ni clase base comun, ni Handle, ni mensajes, ni Invoke, ni IWin32Window, ni Dock/Anchor/AutoScroll, ni
+maquetado.
+
+### Lo que convive con la capa, y cuando se quita
+
+- Lo del paso H (las teclas y el raton que lee `Escritorio` y le pasa a la hoja activa, `Escritorio.Capas` con la superficie de cada hoja,
+  los ganchos entre la hoja y la capa): igual, hasta «Form1 sin Form» y «GpuPanel sin Control».
+- La duena de Ctrl+F3 sigue siendo Form1, una `Form` de la capa (`MuestraModal(this)`, `PantallaRocola.Encola(dlg, ...)`).
+- `Plataforma/Puente.ventanas2.cs`: las firmas de XP de `AnchoTexto` (dos), `CreaSfDibuja` y `AnchoToast` para lo que aun no esta
+  traducido. Se van cuando se traduzcan Form1.Vistas.cs, DiscoVivoGpu.cs y el aviso sin tarjeta de Form1.cs; el archivo, con Puente.cs.
+- En `Plataforma/Ventanas.*.cs` ya no usa nadie `Panel`, `Label` de dialogo, `Button`, `ListBox`, `MessageBox` (salvo el de la ventana
+  F12) ni `Form` como dialogo; siguen ahi para las 41 pruebas de la capa y se borran con ella.
+
+### Diferencias con la referencia
+
+Ninguna de comportamiento nueva. Siguen las aceptadas antes: el apagado por SIGTERM (V2; con Ctrl+F3 abierto: closing de la hoja con
+WindowsShutDown, FormOwnerClosing a la hoja, la rocola, y el modal acaba con Cancel) y, en las trazas y los estados, las clases nativas con
+la tabla de equivalencias del paso H (Hoja = Form, Rotulo = Label, Grupo = Panel; `Tarjeta`, `Deslizador`, `Interruptor`, `BotonPlano` y
+`BarraAvance` se llaman igual que en XP). La capa de la hoja (`-hoja-`) se compara punto por punto con la `-dibujo2d-` de la referencia.
+
+Lo que NO es una diferencia aunque salga distinto en dos corridas (tambien en dos de la referencia): lo que «Medir este equipo» mide
+(milisegundos, cuadros por segundo, cual es la peor pantalla, la hora, cuanto tarda en volver: en la maquina de pruebas la referencia
+tardo de 67 a 70 s y este programa de 58 a 60, con la tarjeta de llvmpipe; si la peor fue el buscador queda una «S» escrita en el) y el
+letrero «faltan N archivos» de la pagina de Sonido mientras dura el repaso de la biblioteca (hasta los 20 s; por eso las escenas abren
+Ctrl+F3 a los 26 s).
+
+### El banco, lo nuevo
+
+- Escenas de Ctrl+F3 (`escenas.sh`, no estan en «todas»; los pasos los arma `vistas_f3.py` con el centro de cada boton sacado de su
+  SetBounds, cada paso separado del anterior y Ctrl+F3 abierto a los 26 s: hasta los 20 la rocola repasa la biblioteca y el letrero
+  «faltan N archivos» de la pagina de Sonido, que el volcado da aunque la pagina este escondida, cambia solo):
+  - `f3vistas`: con el raton por las seis paginas, las siete hojas de Sonido (Ajustes del sonido, el local, tono y presencia, afinar, voz
+    golpe y retumbe, lo que suena ahora, la IA), las tres de Imagen con las cinco hojitas de Performance, las cinco de Fondo y las tres de
+    Pantalla: **26 vistas**, cada una con la captura de la capa de la hoja y el estado de XP y de CADA pieza (clase, texto, sitio, si se ve,
+    si esta encendida, orden del tabulador, marcado o valor, y quien tiene el foco);
+  - `f3grises`: el modo billar encendido (lo que decide va en gris con su motivo) en Ajustes del sonido, el local, el tono y afinar; y otra
+    vez abierta, el foco en un deslizador y en un interruptor con Tab y el raton encima de «Listo»: 9 capturas y 7 estados;
+  - `f3requisitos`: las dependencias vivas (AjustesVivos.cs): apagar «Estrella en 3D girando» deja en gris con su «Necesita: ...» las cinco
+    de la estrella de Pulido (otra hojita); apagar y encender «Barra de progreso neon», el neon intenso de su misma hojita (vuelve con lo
+    guardado); al salir, rocola_config.txt byte a byte;
+  - `f3teclas`: Tab hasta un deslizador; Derecha, Derecha, Izquierda, RePag, Fin, Inicio; la
+    moneda con el foco en el deslizador (MonedaTambienAqui: la cuenta la hoja y el deslizador no la ve); Mayus+Tab, Espacio e Intro en un
+    interruptor; flechas entre hermanas; Escape (KeyPreview);
+  - `f3guarda`: un interruptor, un deslizador y un boton tocados con el raton y la rocola muerta con SIGKILL con Ctrl+F3 abierto: lo
+    guardado al momento (A2) en rocola_config.txt, byte a byte;
+  - `f3medir`: «Medir este equipo»: la hoja se cierra, se mide con la pantalla libre y vuelve sola en Imagen; «Comparar perfiles» abre el
+    historial de caratulas (otra hoja nativa encima, con su duena), la moneda con el abierto, Escape lo cierra y Escape cierra Ctrl+F3. Se
+    compara con `compara_medir.py`: la secuencia, las mismas piezas con su sitio y su foco en cada estado, y cada capa punto por punto
+    FUERA de las cajas de las piezas cuyo texto es lo medido;
+  - `f3diag`: «Diagnostico completo»: la hoja se cierra, empieza el diagnostico y una tecla lo corta;
+  - `f3billar`: el modo billar encendido en las hojas que `f3grises` no pisa (la voz, lo que suena ahora y la IA: lo que decide el modo,
+    en gris con su «Necesita») y, de vuelta en la pagina de Sonido, «Repasar la biblioteca a fondo»: la barra de avance (`BarraAvance`) y
+    su letrero, y otra vez para pararlo: 5 capturas con su estado;
+  - `avisoviejo` (datos con `avisos_claros=0`, de `datos_h.sh`): dos monedas con el aviso de siempre; `compara_aviso.py` mira su pastilla
+    en la capa de la tarjeta, punto por punto.
+- `Pruebas/Ventanas/Hoja` (62 pruebas, 14 mas que al acabar el paso H): las que el diseno pedia para Ctrl+F3 y faltaban: Tab y Mayus+Tab
+  por tarjetas anidadas (pagina > tarjeta > pieza) y fuera de ellas con vuelta; flechas dentro de la misma tarjeta sin salir a la otra; la
+  pagina de la hoja que se esconde con el foco dentro (se queda) y la tarjeta de la pagina que se esconde con el foco dentro (pasa a su
+  primera pieza: se mira antes de esconderla); apagar la del foco puesta en la hoja (se queda) y dentro de un grupo (pasa a la siguiente);
+  lo transparente encima de una hermana (ensena al padre, no a la hermana); la moneda con el foco en un deslizador; Escape por KeyPreview
+  sin boton de cancelar; VisibleChanged al abrir la hoja y Disposed al desecharla, de la pagina; las medidas de Ctrl+F3 (966x764).
+- `Pruebas/VistasAjustes` (`compara.sh`): el arnes del dibujo de Form1.Ajustes.cs que las escenas no pasan (las medidas de texto con
+  cada modo de letra y con suavizado, traslacion, escala y recorte, que no deben cambiarlas; sin Graphics, sin letra y sin texto; el
+  formato de `CreaSfDibuja` antes y despues de que alguien cambie el tipografico compartido; el ancho y el mapa del aviso de siempre con 7
+  letras, 15 textos, 5 fondos y 6 anchos maximos), compilado con el programa entero de la referencia y con el de esta copia: 545 lineas.
+- `guiones/bateria_f3.py`: lo que mira la bateria de XP `ventanaf3.cs` (ver abajo), sobre los 26 volcados de `f3vistas`.
+- `ROCOLA_MIDE_HOJA=1`: cuanto tarda cada pintura entera de una hoja nativa.
+
+### Las baterias de XP (Rocola/pruebas)
+
+`ventanaf3.cs`, `pestanas.cs`, `ajustesvivos.cs`, `hojasfondo.cs` y `performance.cs` (y `vistaf3.cs`, `ajustes.cs`, `ajustesfluidez.cs`)
+NO se pueden correr contra el programa traducido cambiando solo sus busquedas por reflexion. Por que:
+
+- son programas de Mono (.NET Framework) que cargan `rocola.exe` y usan WinForms de verdad como herramienta, no solo por reflexion:
+  `Form`, `Control`, `c.Controls`, `Controls.Find`, `GetChildIndex`, `RectangleToScreen`, `Application.OpenForms`, `DoEvents`, `Timer`,
+  `dlg.CreateGraphics()` y `MeasureString` de libgdiplus. Las hojas y las piezas nativas no tienen esa API, a proposito (regla 3): cada
+  acceso habria que reescribirlo, no solo el tipo que se busca;
+- hacen un Form1 sin su constructor y le llaman al constructor de `System.Windows.Forms.Form` con IL emitido; Form1 hereda todavia de la
+  `Form` de la capa (hasta «Form1 sin Form») y despues no heredara de nada;
+- `performance.cs` y `ajustesvivos.cs` leen ademas el IL de `rocola.exe` (`leercodigo.cs`) y usan una tarjeta de Direct3D imitada: son de
+  la logica de XP, que aqui no cambio (es el mismo codigo, linea por linea: `diff-xp.py`).
+
+Lo que fijan esas baterias de la ventana se comprueba aqui asi: el arbol entero de piezas de cada una de las 26 vistas, igual al de la
+referencia (los estados de `f3vistas`); las tres comprobaciones de sitio de `ventanaf3.cs` con sus mismos criterios (nada visible fuera
+de la ventana, nada debajo de «Listo», ningun letrero que pise un mando), leidas del volcado en vez de por `Control`
+(`bateria_f3.py`); las dependencias vivas y el guardado al momento de `ajustesvivos.cs`, con `f3requisitos`, `f3grises` y `f3guarda`
+contra la referencia. Cuando Form1 no herede de Form habra que decidir si se reescriben contra las piezas.
+
+### Comprobaciones (10 y 11-11-2026, maquina compartida con otras pistas, carga de 4 a 13, llvmpipe)
+
+Todo con el programa de 1cc6ccb (la rama principal 48aedf3 juntada: los ocho grupos del dibujo de la tanda 2). Los resumenes, en
+`/root/rocola-trabajo/port/ventanas2/c2` y `c3` (`cmp-C15.txt`, `cmp-C15A.txt`, `cmp-C16.txt`, `cmp-C16A.txt`, `cmp-C17A.txt`,
+`cmp-C18A.txt`, `despues2.log`); la referencia es `ref-trazas` y cada escena se corrio con ella y en seguida con este programa (`ronda.sh`).
+
+- Compila (`dotnet build -c Release`): 0 errores y los mismos 15 avisos de la base, en los mismos archivos y lineas (la lista
+  archivo:linea:codigo, comparada con `diff`).
+- Las 41 pruebas de la capa: 41 de 41 (la capa sigue para las vistas, el panel de la tarjeta y Form1).
+- Las pruebas de la hoja: 62 de 62 en JIT y en NativeAOT (0 avisos al publicarlas).
+- Las reglas de la pantalla (`pruebas_pantalla.sh`, AOT=1): 32 de 32 en JIT y en NativeAOT (los dos CS0649 de siempre del banco, que
+  compila la pantalla suelta; no son de IL ni de AOT).
+- Las escenas de antes, JIT (RC15/C15, 19 escenas): arranque, moneda, tab, buscador, cierreq, altf4, kill9, asistente, f2, f2barras y
+  f2sin IGUALES; sigterm, f3sigterm y f2sigterm, lo aceptado (encargo Apagado, closing y closed con WindowsShutDown, el modal acaba con
+  Cancel, `rocola_estado.txt` borrado); f2agrega, lo aceptado en el paso H (el selector de carpetas nativo; en la referencia contesta
+  Cancelar sin ensenar nada); video, captura, salirq y aviso con la secuencia, los estados, las capas y los archivos iguales y UNA O DOS
+  cuentas por segundo fuera de la holgura (el reloj de 42 ms de Form1.cs:724 y el encargo de MedidasBitacora.cs:129; la maquina iba con
+  carga de 6 a 13 en esos minutos). En las 19: 102 capas de hojas a 0 puntos distintos y ninguna con puntos distintos fuera de las 3 de
+  f2agrega; `rocola_estado.txt` falta tras Ctrl+Alt+Q x3, Alt+F4 y SIGTERM y queda tras kill -9, como en XP.
+- Las escenas de Ctrl+F3, JIT (RC15/C15; f3billar y f3medir en RC16/C16):
+
+  | Escena | Capas de hojas a 0 puntos | Estados iguales | Secuencia | Archivos |
+  |---|---|---|---|---|
+  | f3vistas | 80 de 80 (las 26 vistas) | 27 de 27 | 269 sucesos, igual | teclas igual |
+  | f3grises | 29 de 29 | 8 de 8 | 166, igual | config y teclas iguales |
+  | f3billar | 17 de 17 | 6 de 6 | 111, igual | config y teclas iguales |
+  | f3teclas | 8 de 8 | 4 de 4 | 155, igual | config y teclas iguales |
+  | f3requisitos | 17 de 17 | 6 de 6 | 74, igual | config byte a byte |
+  | f3guarda | 3 de 3 | 2 de 2 | 36, igual | config byte a byte tras SIGKILL |
+  | f3diag | 5 de 5 | 2 de 2 | 40, igual | teclas igual |
+  | f3medir | 5 de 5 fuera de lo medido | 6 de 6 (piezas, sitios y foco) | 84, igual | teclas igual |
+
+  Con la holgura del ruido medida en seis corridas (`ventanas2/ruido`), las cuentas por segundo de f3vistas, f3grises, f3teclas,
+  f3requisitos, f3guarda y f3diag quedan dentro (IGUALES); f3billar no tiene ruido medido y con la holgura de fabrica (2) le sobran
+  cuentas por segundo del reloj de Form1.cs:724 y del encargo de MedidasBitacora.cs:129 (lo mismo que les pasaba a las otras antes de
+  medirles el ruido); su secuencia, sus estados y sus capas son iguales. f3medir necesito esperar 115 s en vez de 90 (con la maquina
+  cargada medir tardo 90,6 s y el estado se pedia justo al volver la hoja): con 115, IGUAL.
+- La bateria de sitio de `ventanaf3.cs` sobre los volcados (`bateria_f3.py`): 3017 comprobaciones en 26 vistas, las mismas y todas
+  bien en la referencia y en este programa (JIT y NativeAOT).
+- Cuanto de la ventana ven las escenas (`c3/cobertura.py` sobre los 59 estados de f3vistas, f3grises, f3billar, f3teclas, f3requisitos,
+  f3guarda y f3medir): 588 piezas distintas (por camino, sitio y texto), 575 vistas alguna vez (con ellas y todos sus padres a la vista),
+  36 en gris alguna vez y 34 con el foco alguna vez. Las 13 que no se ven: 12 son letreros de lo medido de las hojitas de Performance y
+  de la tarjeta de la medida (existen con otro texto en otra corrida, o son el aviso «SIN tarjeta grafica», que con tarjeta no sale) y
+  una, un letrero vacio de la tarjeta de la biblioteca. Capturas de la hoja comparadas punto por punto: las 26 vistas de f3vistas, las 9 de
+  f3grises (en gris por el billar, con el foco en un deslizador y en un interruptor y con el raton encima de «Listo»), las 5 de f3billar
+  (tres hojas mas en gris y el repaso con su barra de avance) y la del historial de caratulas (f3medir).
+- NativeAOT (`dotnet publish -c Release -r linux-x64 -p:PublishAot=true`): 0 avisos de IL ni de AOT (los 15 de compilacion de siempre).
+  Contra la referencia (RC15A/C15A, RC16A/C16A, RC17A/C17A, RC18A/C18A): arranque, cierreq, kill9 y f2 IGUALES; sigterm y f3sigterm, lo aceptado;
+  f3vistas (80 capas a 0 puntos, 27 estados), f3grises (29 y 8), f3teclas (8 y 4), f3requisitos (17 y 6), f3guarda (3 y 2), f3diag (5 y
+  2) IGUALES con el ruido medido; f3billar con 17 capas a 0 puntos, 6 estados y la secuencia iguales (y las cuentas sin ruido medido,
+  como en JIT); f3medir IGUAL (0 puntos distintos fuera de lo medido). Dos cosas del banco, no del programa:
+  - el titulo de Ctrl+F3 lleva la fecha del ejecutable (`DeCuandoEs`: Application.ExecutablePath); en JIT es la de `dotnet` para los dos
+    programas, y en NativeAOT la del propio `rocola-xp`: recien publicado, las 26 capas de la hoja salian con 435 puntos distintos, todos
+    en la fecha del titulo (ronda C15A). Para comparar, al `rocola-xp` de NativeAOT se le pone la fecha de `/usr/lib/dotnet/dotnet`
+    (`touch -r`); con eso, 0 puntos (C16A y C17A);
+  - en C17A (carga 8) a f3vistas de NativeAOT la corto el `timeout` del banco a los 80 s, antes de la ultima vista y de cerrar (salio
+    con 124: la traza acaba con el SIGTERM, lo aceptado): 75 capas a 0 puntos y 25 estados iguales hasta ahi. Repetida (RC18A/C18A): 80 capas a 0 puntos, 27 estados, IGUAL.
+- `diff-xp.py -v` en los 10 archivos del paso: todas las lineas de este paso llevan su «EN LINUX». Sin marca salen 9 de
+  Form1.Ajustes.cs (comentarios de varias lineas y llaves del registro, de la pista windows) y 7 de Form1.Vistas.cs (TextRenderingHint y
+  GraphicsState del dibujo que aun no se traduce): son de antes. `finales.py` contra a6eba8b: los archivos de `Codigo/` cambiados desde
+  entonces, con las mismas lineas y el CR en las mismas (0 distintos).
+- El dibujo (Form1.Ajustes.cs lo toca: las medidas de texto que usan casi todas las vistas y el aviso de siempre, que sube a la tarjeta):
+  - `Pruebas/VistasAjustes`: 545 lineas, 0 distintas de la referencia con las letras de XP falsas y con DejaVu, 0 con excepcion;
+  - los arneses de los grupos que llaman a esas medidas, con este programa: pantalla-viva 767 lineas IGUALES y suena 487 IGUALES, con las
+    dos letras;
+  - los nueve recorridos (`recorridos.sh` con el candado, VOLCADO, CAPAS y HUELLAS; `compara.py` contra `cmp-ref` y `cmp-ref2`): 9 de 9
+    salen con 0; capas quietas 216 de 217 (la que falta es la hoja de Ctrl+F3 del recorrido hojas a los 18 s: el repaso de la
+    biblioteca, la misma que la junta apunto en PORT_JUNTAS.md); texturas quietas 447 de 487 (la rama principal, al juntar la tanda 2:
+    445 de 487; el buscador depende de la hora);
+  - las cintas de la tarjeta (`VistasFrontera/cintas.sh`): 29 iguales (6616 cuadros), 0 distintas.
+
+### Lo que queda
+
+- De las ventanas (otra tanda, cuando el dibujo de esos archivos este juntado): las 16 vistas de la pantalla, `GpuPanel` sin `Control`
+  (con la ventana F12, la unica que aun usa `MessageBox` de la capa), `Form1` sin `Form` (hoy es la duena de Ctrl+F3, de Ctrl+F2 y de los
+  avisos) y borrar la capa (`Plataforma/Ventanas.*.cs`, `Escritorio`, `Anfitrion`, y con ella sus 41 pruebas).
+- De GDI+ en Form1.Ajustes.cs (21 referencias): `FamiliaUi` (un FontFamily que comparten PantallaVivaGpu.cs y PrecargaPaginaGpu.cs),
+  `RoundRect` (lo piden Form1.Pared.cs y Form1.cs) y los `GraphicsPath` de `RoundedPath` (Form1.Fondo.cs) que pintan las cuatro piezas por
+  `PuenteDibujo.Ruta`: se van cuando se traduzcan esos archivos.
+- `Plataforma/Puente.ventanas2.cs` (las firmas de XP de `AnchoTexto`, `CreaSfDibuja` y `AnchoToast`): hasta traducir Form1.Vistas.cs,
+  DiscoVivoGpu.cs y el aviso sin tarjeta de Form1.cs.
+- Las baterias de XP de esta ventana (arriba): decidir, cuando Form1 no herede de Form, si se reescriben contra las piezas.
+- ~~Medir el ruido de `f3billar`~~: hecho en la revision (abajo), con el de `f3raton`.
+
+### Riesgos
+
+- Nada de esto se ha visto ni medido en el A4: todo es con llvmpipe, fuera de pantalla, en la maquina de pruebas.
+- La regla del foco corregida en `Hoja.Foco.cs` (al esconder o apagar la pieza del foco decide el contenedor del PADRE) vale tambien para
+  Ctrl+F2 y los avisos: sus escenas (f2, f2barras, f2sin, aviso) siguen iguales, pero alli nada se esconde con el foco dentro.
+- Se conserva de XP, porque asi lo hace WinForms: al cambiar de pagina, el foco se queda en el boton de la pagina que se escondio (una
+  pieza que no se ve tiene el foco hasta el siguiente Tab o clic).
+- Las escenas de Ctrl+F3 dependen del reloj: se abren a los 26 s para que el repaso de la biblioteca haya acabado; con la maquina muy
+  cargada el repaso tarda mas (cambia «faltan N archivos», como en el recorrido hojas) o el `timeout` corta la escena (C17A). Hay que
+  mirar la carga antes de dar por distinta una corrida.
+- Lo que «Medir este equipo» mide no se compara (sale distinto en dos corridas de la referencia): de la hoja de vuelta se comparan las
+  piezas, sus sitios, el foco y los puntos de fuera de los textos medidos.
+- Las baterias de XP de esta ventana no se corren contra el programa traducido (arriba, por que); lo que fijan se mira por los volcados.
+- No hay medida en el A4 de cuanto tarda en pintarse la hoja de Ctrl+F3 (`ROCOLA_MIDE_HOJA=1` lo apunta).
+
+### Revision (revisor independiente, 11-11-2026)
+
+Se reviso el paso entero (659d38c, 4897bca, 7cab6e6, 343ce4b y los merges b48af75, d46b52f, 1cc6ccb y 5974462) contra `Rocola/` (XP),
+contra la fuente de WinForms (`/tmp/claude-0/agente-winforms/ref`) y contra la capa que sustituye, y se repitieron las comprobaciones con
+etiquetas propias (RV3/V3 y RV3A/V3A: la referencia y este programa en JIT y en NativeAOT; RV4, RV5 y RVR1-3 para lo de despues) en
+`/root/rocola-trabajo/port/ventanas2/rvC2`. Un primer intento de esta revision (RVC2/VC2, `rvC`) quedo cortado por un reinicio de la
+maquina; de el venian, sin commit, la escena `f3raton`, una `f3histsigterm` y dos ajustes de `compara_medir.py`, revisados aqui.
+
+Lo comprobado en el codigo:
+
+- Lo que queda de WinForms y GDI+ en los archivos del paso (grep de Keys, Message, KeyEventArgs, Form, Control, Label, Panel, Button,
+  ListBox, MessageBox, Cursor, Screen, Application, Invoke, IsHandleCreated, ShowDialog... fuera de los comentarios): en Form1.Ajustes.cs,
+  Rendimiento.cs, AjustesVivos.cs, HojasFondo.cs, FluidezAnimaciones.cs, PantallaVivaGpu.cs, FluidezGpu.cs y Form1.DiagnosticoCompleto.cs,
+  nada de las hojas (lo que queda es de Form1, de sus letreros y del panel de la tarjeta, como dice arriba; `dlg.IsHandleCreated` es el de
+  la hoja nativa: la vida de su ventana); en CaratulasAdaptativas.cs, el `Bitmap`/`Graphics` de `Small`, `ToBytes` y `FromBytes` (las
+  miniaturas de las caratulas: dibujo, no ventanas). `Controls.Add` en el armado es el de las piezas nativas (lo pide el diseno: esas
+  lineas solo cambian de tipo).
+- Linea por linea contra XP, quitando lo mecanico (Label/Panel/Font/Control/ContentAlignment/Keys por su nombre nativo): solo cambian las
+  llamadas a WinForms y GDI+ por su equivalente, cada una con su «EN LINUX»; los mismos valores y el mismo orden (el Escape de la hoja se
+  suscribe antes que la moneda, como en XP; `FindForm` -> la hoja de la caja; `Cursor.Hide` en su `try/catch`). Las lineas sin marca de
+  `diff-xp.py -v` son las de antes (9 de Form1.Ajustes.cs de la pista windows y 2 de Form1.Vistas.cs). Los 51 archivos de `Codigo/`
+  cambiados desde a6eba8b: las mismas lineas y el CR en las mismas, linea por linea.
+- Las reglas de las piezas contra la fuente: la del foco corregida en `Hoja.Foco.cs` es la de `SelectNextIfFocused` con
+  `ParentInternal.GetContainerControl()` (Control.cs:10770-10784 y 5825-5840; un Form es contenedor y empieza por su padre, que no tiene:
+  con la pieza directo en la hoja, el foco se queda); `IPieza.Clic` del boton plano, con cualquier boton y al soltar encima
+  (WmMouseUp con StandardClick); el raton abajo solo con la pieza encendida (WmMouseDown, Control.cs:12578-12583, y lo vuelve a mirar el
+  codigo de XP); la tarjeta suelta su letra y despues el grupo (Dispose(bool) virtual: `CajaPieza.Desecha` desecha a las hijas por su
+  IDisposable); la barra de avance sigue siendo Selectable como un Control (la caja lo es de fabrica). El apagado con DOS modales encima
+  (la escena nueva `f3histsigterm`, abajo): cada hoja su `closing` con WindowsShutDown, despues la rocola da FormOwnerClosing a las suyas de
+  la ultima a la primera (el historial tambien es suyo: XP lo abre con `ShowDialog(this)` desde Form1) y su propio closing, como
+  `Form.WmClose` (Form.cs:6638-6715: un modal solo se avisa a si mismo; el que no es modal, a sus OwnedForms al reves y luego a si mismo).
+- Sin la API de WinForms en lo nuevo (`PiezasAjustes.cs` da a cada pieza solo lo que su codigo de XP usa; `Grupo` gano Name, Bounds,
+  Location, Size, Width, Height y TabIndex porque Ctrl+F3 los pone). `AccessibleName/Role/Description` en comentario: el PROGRAMA de XP no
+  los lee nunca (grep en `Rocola/*.cs`); las baterias de XP si (`pruebas/ajustesfluidez.cs:20`, `hojasfondo.cs:24`, `performance.cs:1205`,
+  `efectoslayout.cs:41` buscan controles por el): si algun dia se reescriben contra las piezas, tendran que buscar por `Name` o por el texto.
+- Las baterias de XP (`ventanaf3.cs`, `pestanas.cs`, `ajustesvivos.cs`, `hojasfondo.cs`, `performance.cs`): confirmado que no se pueden
+  correr cambiando solo sus busquedas (crean Form1 con IL llamando al constructor de `System.Windows.Forms.Form`, pintan con
+  `Bitmap`/`CreateGraphics` y recorren `Control.Controls`).
+
+Lo encontrado y lo hecho (nada del programa: todo del banco):
+
+1. **`f3histsigterm` no abria el historial** (del primer intento de esta revision, sin commit): pulsaba «Comparar perfiles» recien abierto
+   Ctrl+F3, pero ese boton solo se enciende con algo medido (`bHistorial.Enabled = historialCaratulas.Count > 0`, Rendimiento.cs:1619): el
+   clic caia en la pagina y el SIGTERM llegaba con UNA sola hoja. Ahora (`vistas_f3.py histsigterm`) pasa antes por «Medir este equipo»
+   (como f3medir, 115 s), abre el historial encima de Ctrl+F3, mete una moneda con el abierto y manda el SIGTERM. Se compara con
+   `compara_medir.py` (el historial ensena lo medido).
+2. **`compara_medir.py` daba DIFERENTE por lo medido** (VC2: 7305 puntos «fuera de lo medido» y «Aplicar lo recomendado» encendido en uno
+   y apagado en otro): el color de cada celda de la tabla sale de lo que costo frente al objetivo (Rendimiento.cs:1857-1858) y el
+   encendido de «Aplicar lo recomendado», de si la propuesta cambia algo (`PropuestaCambiaAlgo`, 1917-1921); las dos cosas son de lo medido
+   aunque el numero coincida. Ahora las celdas de la tabla cuentan como cajas de lo medido y ese boton puede ir encendido o no. Con las
+   mismas capturas de VC2: 0 puntos fuera de lo medido; con las de V3 y V4: 0.
+3. **El ruido de `f3raton` y `f3billar`** (pendiente del paso): la referencia tres veces mas (RVR1-3) junto a las corridas que habia (7 y 6
+   corridas): `ruido/f3raton.json` (holgura 7 ticks y 14 encargos por segundo) y `ruido/f3billar.json` (10 y 12). Con el: f3raton (JIT y
+   NativeAOT) y f3billar (JIT) IGUALES.
+4. Dos diferencias de la primera ronda que eran de la maquina, repetidas: `tab` (VC2, carga 5,8: el repaso de la biblioteca iba por 10
+   de 12 en este programa y ya al dia en la referencia, «faltan 3 archivos») salio IGUAL en V3; `f3grises` (V3, carga 10: el estado «fin»
+   se pidio antes de que llegara el Escape) salio IGUAL en V5 y en NativeAOT (V3A).
+5. Los commits 4897bca, 7cab6e6 y 343ce4b llevan «Co-Authored-By: Claude Fable 5.2» y no la linea que pedia la tarea; no se reescribe la
+   historia de la rama (solo merges): queda dicho aqui.
+
+Las comprobaciones repetidas (11-11-2026, de 19:12 a 20:18, carga de 5 a 10, llvmpipe, despues de un reinicio de la maquina):
+
+- Compila (5974462, con d320c7a de la rama principal juntada; no avanzo despues): 0 errores y 15 avisos, la misma lista archivo:linea
+  que la base.
+- Las 41 pruebas de la capa: 41 de 41. Las de la hoja: 62 de 62 en JIT y en NativeAOT (0 avisos al publicarlas). Las de la pantalla
+  (AOT=1): 32 de 32 en JIT y en NativeAOT (los 2 CS0649 de siempre).
+- NativeAOT del programa: 0 avisos de IL ni de AOT (los 15 de compilacion de siempre); a su `rocola-xp` se le pone la fecha de `dotnet`
+  para comparar el titulo de Ctrl+F3.
+- Escenas alternadas con `ref-trazas`, JIT (RV3/V3, 23 escenas; f3grises otra vez en RV5/V5): arranque, moneda, tab, buscador, cierreq,
+  altf4, kill9, video, f2, aviso, avisoviejo (las dos pastillas a 0 puntos; sus cuentas, dentro con el ruido de `aviso`: sin
+  el, 5 ticks de mas en el total), f3vistas (80 capas a 0, 27 estados; `bateria_f3.py` 3017
+  comprobaciones bien en los dos), f3grises (29 y 8), f3teclas (8 y 4), f3requisitos (17 y 6, config igual), f3guarda (3 y 2, config
+  igual tras SIGKILL), f3diag (5 y 2) y f3medir (0 puntos fuera de lo medido en 5 capas, las mismas piezas, sitios y foco en 6 estados)
+  IGUALES; f3billar (17 y 6) y f3raton (11 y 8) IGUALES con su ruido; sigterm y f3sigterm, lo aceptado (`rocola_estado.txt` esta en la
+  referencia y falta aqui); kill9, el estado queda en los dos.
+- `f3histsigterm` (RV4/V4 JIT y RV4A/V4A NativeAOT): la misma secuencia hasta el SIGTERM (52 sucesos), el estado con el historial abierto
+  con las mismas piezas, sitios y foco (40 y 39 textos de lo medido), las dos capas (Ctrl+F3 y el historial) con 0 puntos fuera de lo
+  medido; despues, lo aceptado: encargo Apagado, closing del historial y de Ctrl+F3 con WindowsShutDown, FormOwnerClosing a los dos (el
+  historial primero), closing de la rocola, closed de cada uno, los dos modales acaban con Cancel y `rocola_estado.txt` (con la moneda
+  metida en el historial) borrado; en la referencia queda.
+- NativeAOT (RV3A/V3A): arranque, cierreq, kill9, f3vistas (80 y 27, bateria bien), f3teclas, f3grises IGUALES; f3raton IGUAL con su
+  ruido; sigterm y f3sigterm, lo aceptado.
+- `diff-xp.py -v` en los 10 archivos: lo de arriba. La carpeta de trabajo (`/root/rocola-trabajo/port/ventanas2`) queda por debajo
+  de 400 MB (los PNG, borrados despues de comparar).
+
+Lo que queda de la revision: nada del programa. Lo de arriba («Lo que queda» y «Riesgos») sigue igual, con el ruido de f3billar ya medido.

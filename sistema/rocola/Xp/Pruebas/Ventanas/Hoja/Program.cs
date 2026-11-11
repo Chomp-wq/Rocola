@@ -2,7 +2,9 @@
 // programa (se compilan aqui tal cual; TrazaVentanas y VolcadoEstado van de mentira, abajo). Son las pruebas de las 41 (Pruebas41) que
 // miran ventanas de dialogo y sus controles, escritas contra Hoja y las piezas con las MISMAS cadenas esperadas de WinForms, mas las de
 // Ctrl+F2 (la lista, los botones, Intro y Escape), los avisos, el selector de carpetas, el tabulador por grupos, las flechas, el foco que
-// se va con la pieza escondida o apagada y KeyPreview. Cada prueba dice lo obtenido y, si falla, lo que daria WinForms en XP.
+// se va con la pieza escondida o apagada y KeyPreview; y (paso C) lo que Ctrl+F3 le pide: tarjetas dentro de paginas, la pagina que se
+// esconde con el foco dentro, lo transparente encima de una hermana, la moneda con el foco en un deslizador, Escape por KeyPreview y la
+// vida de la pagina. Cada prueba dice lo obtenido y, si falla, lo que daria WinForms en XP.
 // De las cadenas de WinForms con la vida de una ventana se quitan los avisos que la hoja no tiene porque XP no los usa en sus hojas
 // (HandleCreated, Load, Activated, Deactivate, HandleDestroyed); lo que marcan se mira aparte (IsHandleCreated, Hoja.Activa).
 //   dotnet run        (o: dotnet bin/.../PruebasHoja.dll; guiones/pruebas_hoja.sh lo compila fuera del repositorio, con AOT=1 tambien NativeAOT)
@@ -43,10 +45,11 @@ namespace Rocola
         internal static readonly List<string> Log = new List<string>();
         private readonly CajaPieza caja; private readonly string n;
         public CajaPieza Caja { get { return caja; } }
-        public bool ManejaTecla, SuprimeTecla, ManejaRueda, LanzaAlPintar, Foco, Entra; public int Pintado; public Action AlClic;
+        public bool ManejaTecla, SuprimeTecla, ManejaRueda, LanzaAlPintar, Foco, Entra, QuiereFlechas; public int Pintado; public Action AlClic;
         public PiezaPrueba(string n) { this.n = n; caja = new CajaPieza(this, 0, 0); Controls = new Piezas(this); caja.Hijas = Controls; }
         public Piezas Controls { get; }
         void IPieza.PintaContenido(SKCanvas g) { Pintado++; if (LanzaAlPintar) throw new InvalidOperationException("pinta mal"); }
+        bool IPieza.QuiereTecla(Tecla k) { return QuiereFlechas && (k == Tecla.Left || k == Tecla.Right || k == Tecla.Up || k == Tecla.Down); }
         void IPieza.TeclaAbajo(PulsoTecla e) { Log.Add(n + ".KeyDown(" + e.KeyCode + ")"); e.Handled = ManejaTecla; if (SuprimeTecla) e.SuppressKeyPress = true; }
         void IPieza.TeclaArriba(PulsoTecla e) { Log.Add(n + ".KeyUp(" + e.KeyCode + ")"); }
         void IPieza.Caracter(PulsoCaracter e) { Log.Add(n + ".KeyPress(" + (int)e.KeyChar + ")"); }
@@ -301,6 +304,82 @@ namespace Rocola
             Mira("Selector: el canal debajo del pulgar baja una pagina; el pulgar arrastrado 50 puntos baja 11 renglones", barraArbol, "canal 13, arrastre 11");
             Environment.SetEnvironmentVariable("ROCOLA_CARPETAS_RAIZ", null);
             Directory.Delete(raiz2, true);
+
+            // ---- (paso C) lo que Ctrl+F3 pide a la hoja: tarjetas dentro de paginas, la pagina que se esconde con el foco dentro, lo
+            // transparente encima de una hermana, la moneda con el foco en un deslizador, Escape por KeyPreview, VisibleChanged y Disposed de la
+            // pagina (Rendimiento.cs) al abrir y al cerrar la hoja ----
+            Hoja hc = new Hoja(MarcoXp.Dialogo); hc.Text = "f3"; hc.ClientSize = new Size(960, 732);
+            Grupo pagina = new Grupo(); pagina.SetBounds(0, 96, 960, 636); pagina.BackColor = Color.FromArgb(11, 14, 32);
+            int paginaVista = 0; bool paginaFuera = false;
+            pagina.VisibleChanged += delegate { if (pagina.Visible) paginaVista++; };
+            pagina.Disposed += delegate { paginaFuera = true; };
+            hc.Controls.Add(pagina);
+            string resultadoF3 = "";
+            Luego(80, delegate { try { CtrlF3(hc, pagina); } catch (Exception ex) { Console.WriteLine("LA PRUEBA TRONO: " + ex); falla++; } });
+            Resultado rc = hc.MuestraModal(null);
+            resultadoF3 = rc + " " + hc.IsDisposed;
+            int vistaAntes = paginaVista;
+            hc.Dispose();
+            Mira("Pagina: VisibleChanged al abrir la hoja (y al ensenarla otra vez); Disposed al desechar la hoja", vistaAntes + " " + paginaFuera, "2 True");
+            Mira("Escape por KeyPreview (TeclaAntes cierra la hoja, sin boton de cancelar): Cancel", resultadoF3, "Cancel False");
+        }
+
+        // (paso C) dentro de la hoja de Ctrl+F3 de prueba: dos tarjetas (grupos) dentro de la pagina, con piezas en orden del tabulador
+        static void CtrlF3(Hoja h, Grupo pagina)
+        {
+            Grupo t1 = new Grupo(), t2 = new Grupo(); t1.SetBounds(16, 4, 456, 400); t2.SetBounds(488, 4, 456, 400);
+            PiezaPrueba a1 = new PiezaPrueba("a1"), a2 = new PiezaPrueba("a2"), b1 = new PiezaPrueba("b1"), b2 = new PiezaPrueba("b2"), fuera = new PiezaPrueba("fuera");
+            a1.Caja.Text = "a1"; a2.Caja.Text = "a2"; b1.Caja.Text = "b1"; b2.Caja.Text = "b2"; fuera.Caja.Text = "fuera";
+            a1.Caja.SetBounds(16, 40, 100, 22); a2.Caja.SetBounds(16, 80, 100, 22); b1.Caja.SetBounds(16, 40, 100, 22); b2.Caja.SetBounds(16, 80, 100, 22);
+            fuera.Caja.SetBounds(804, 680 - 96, 140, 38);
+            t1.Controls.Add(a1); t1.Controls.Add(a2); t2.Controls.Add(b1); t2.Controls.Add(b2);
+            pagina.Controls.Add(t1); pagina.Controls.Add(t2); h.Controls.Add(fuera);
+            a1.Caja.Focus();
+            List<string> l = new List<string>();
+            for (int i = 0; i < 5; i++) { Teclea(Tecla.Tab); l.Add(Foco()); }
+            Mira("Tab por tarjetas anidadas (pagina > tarjeta > pieza) y fuera de ellas, con vuelta", string.Join(",", l),
+                 "PiezaPrueba'a2',PiezaPrueba'b1',PiezaPrueba'b2',PiezaPrueba'fuera',PiezaPrueba'a1'");
+            l.Clear();
+            for (int i = 0; i < 5; i++) { Teclea(Tecla.Tab, Tecla.Shift); l.Add(Foco()); }
+            Mira("Mayus+Tab por tarjetas anidadas, al reves", string.Join(",", l),
+                 "PiezaPrueba'fuera',PiezaPrueba'b2',PiezaPrueba'b1',PiezaPrueba'a2',PiezaPrueba'a1'");
+            l.Clear(); a2.Caja.Focus();
+            Teclea(Tecla.Down); l.Add(Foco()); Teclea(Tecla.Down); l.Add(Foco()); Teclea(Tecla.Up); l.Add(Foco());
+            Mira("Flechas dentro de la misma tarjeta, sin salir a la otra (con vuelta)", string.Join(",", l), "PiezaPrueba'a1',PiezaPrueba'a2',PiezaPrueba'a1'");
+            // la pagina (puesta directo en la hoja) se esconde con el foco dentro (pintaPag de Ctrl+F3): SelectNextIfFocused (SetVisibleCore,
+            // Control.cs:11221-11228) busca en el contenedor del foco del padre de la pagina, y el de la hoja es su padre: ninguno
+            // (GetContainerControl, Control.cs:5825-5840). El foco se queda en la pieza de la pagina escondida, como en XP
+            b2.Caja.Focus();
+            pagina.Visible = false;
+            Mira("La pagina de la hoja se esconde con el foco dentro: el foco se queda (no hay contenedor del foco encima de la hoja)", Foco(), "PiezaPrueba'b2'");
+            pagina.Visible = true;
+            // una tarjeta (dentro de la pagina) se esconde con el foco dentro: el contenedor del foco es la hoja, y la siguiente se mira antes de
+            // esconderla (GetNextControl entra primero en sus hijas, Control.cs:6177...): el foco va a la primera de la tarjeta que se esconde
+            b2.Caja.Focus(); t2.Visible = false;
+            Mira("Una tarjeta de la pagina se esconde con el foco dentro: el foco pasa a su primera pieza (se mira antes de esconderla)", Foco(), "PiezaPrueba'b1'");
+            t2.Visible = true;
+            // lo transparente encima de una hermana ensena al padre (WS_CLIPSIBLINGS y PaintTransparentBackground), no a la hermana
+            PiezaPrueba debajo = new PiezaPrueba("debajo"); debajo.Caja.BackColor = Color.FromArgb(0, 0, 255); debajo.Caja.SetBounds(200, 200, 100, 100);
+            Rotulo encima = new Rotulo(); encima.BackColor = Color.Transparent; encima.SetBounds(250, 250, 100, 100);
+            Grupo fondo = new Grupo(); fondo.BackColor = Color.FromArgb(255, 0, 0); fondo.SetBounds(0, 0, 960, 400);
+            fondo.Controls.Add(encima); fondo.Controls.Add(debajo); pagina.Controls.Add(fondo); fondo.BringToFront();
+            SKBitmap sup = h.Superficie();
+            Point o = new Point(Hoja.Marco, Hoja.Marco + Hoja.AltoBarra + 96);
+            SKColor solapa = sup.GetPixel(o.X + 270, o.Y + 270), soloDebajo = sup.GetPixel(o.X + 210, o.Y + 210), soloEncima = sup.GetPixel(o.X + 330, o.Y + 330);
+            Mira("Lo transparente encima de una hermana: ensena al padre (rojo), no a la hermana (azul)", solapa + " " + soloDebajo + " " + soloEncima,
+                 "#ffff0000 #ff0000ff #ffff0000");
+            fondo.Dispose();
+            // la moneda con el foco en un deslizador (la pieza quiere las flechas; la hoja ve las teclas antes: MonedaTambienAqui)
+            PiezaPrueba des = new PiezaPrueba("des"); des.Caja.Text = "des"; des.Caja.SetBounds(16, 120, 424, 22); t1.Controls.Add(des);
+            des.QuiereFlechas = true; des.Caja.Focus();
+            int monedas = 0;
+            h.TeclaAntes += delegate (PulsoTecla e) { if (e.KeyCode == Tecla.D5) { monedas++; e.Handled = true; e.SuppressKeyPress = true; } };
+            PiezaPrueba.Log.Clear(); Teclea(Tecla.D5); Teclea(Tecla.Right);
+            Mira("La moneda con el foco en un deslizador: la cuenta la hoja y el deslizador no la ve (si la flecha)", monedas + " " + Log("des.") + " foco=" + Foco(),
+                 "1 KeyUp(D5),KeyDown(Right),KeyUp(Right) foco=PiezaPrueba'des'");
+            // Escape por KeyPreview: la hoja lo ve antes que la pieza del foco y se cierra (sin boton de cancelar, como Ctrl+F3)
+            h.TeclaAntes += delegate (PulsoTecla e) { if (e.KeyCode == Tecla.Escape) h.Close(); };
+            Teclea(Tecla.Escape);
         }
         // el cuadrito de abrir de un renglon del arbol: su borde gris azulado (148, 166, 194) en el cuadro de 9x9 que empieza en x,y
         static string Cuadrito(SKBitmap b, int x, int y)
@@ -365,7 +444,10 @@ namespace Rocola
             g2.Caja.Visible = false;
             Mira("Esconder la del foco: el foco pasa a la siguiente", Foco(), "PiezaPrueba'b'");
             bb.Caja.Enabled = false;
-            Mira("Apagar la del foco: el foco pasa a la siguiente (con vuelta)", Foco(), "PiezaPrueba'a'");
+            Mira("Apagar la del foco puesta directo en la hoja: el foco se queda (el contenedor del foco de la hoja es su padre: ninguno, Control.cs:5825-5840)", Foco(), "PiezaPrueba'b'");
+            bb.Caja.Enabled = true; g2.Caja.Visible = true; g1.Caja.Focus(); g1.Caja.Enabled = false;
+            Mira("Apagar la del foco dentro de un grupo: el foco pasa a la siguiente (con vuelta)", Foco(), "PiezaPrueba'g2'");
+            g1.Caja.Enabled = true;
             int vistos = 0; G.VisibleChanged += delegate { vistos++; };
             G.Visible = false; G.Visible = true;
             bool desechado = false; G.Disposed += delegate { desechado = true; };

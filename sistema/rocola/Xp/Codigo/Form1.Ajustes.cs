@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las piezas de Ctrl+F3 dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo); siguen con el GDI+ de la transicion (Plataforma/Dibujo2D.cs) AnchoTexto, FamiliaUi, RoundedPath y el aviso, que comparten las vistas y la tarjeta aun sin traducir
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -280,21 +280,21 @@ namespace Rocola
         // Aqui se mide SIEMPRE con el mismo formato con el que se dibuja, sin ancho maximo (para que no
         // parta ni recorte al medir), y se redondea HACIA ARRIBA: una caja un pixel de mas no se ve; uno de
         // menos, si.
-        private static readonly StringFormat SfMedir = CreaSfMedir();
-        private static StringFormat CreaSfMedir()
+        private static readonly FormatoTexto SfMedir = CreaSfMedir();   // EN LINUX: StringFormat -> FormatoTexto (Nativo/TextoGdiPlus.cs: como acomoda GDI+ un texto en su caja)
+        private static FormatoTexto CreaSfMedir()   // EN LINUX: StringFormat -> FormatoTexto
         {
-            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
-            sf.FormatFlags |= StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces;
+            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento (el mismo objeto que StringFormat.GenericTypographic de lo aun no traducido: Plataforma/Puente.cs)
+            sf.Banderas |= BanderasTexto.SinPartir | BanderasTexto.ContarEspacios;   // EN LINUX: FormatFlags |= NoWrap | MeasureTrailingSpaces (las anade; los mismos numeros)
             return sf;
         }
-        private static int AnchoTexto(Graphics g, string t, Font f)
+        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra. La firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
         {
-            if (g == null || f == null || string.IsNullOrEmpty(t)) return 0;
+            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar; el Graphics que falta lo mira la firma de XP del puente
             // El formato tipografico mide el texto DESNUDO; DrawString con un formato normal le pone un poco
             // de aire a los lados. Ese aire se suma aqui (es proporcional al cuerpo) para que la caja calculada
             // aguante lo que de verdad se pinta.
-            float w = g.MeasureString(t, f, int.MaxValue, SfMedir).Width;
-            return (int)Math.Ceiling(w + f.SizeInPoints * 0.34f);
+            float w = TextoGdiPlus.Mide(t, f, g, new SizeF(int.MaxValue, 999999f), SfMedir).Width;   // EN LINUX: g.MeasureString(t, f, int.MaxValue, SfMedir): con un ancho, MeasureString mide en una caja de ese ancho y 999999 de alto (Graphics.cs de .NET; Nativo/TextoGdiPlus.cs)
+            return (int)Math.Ceiling(w + f.Puntos * 0.34f);   // EN LINUX: Font.SizeInPoints -> Letra.Puntos
         }
         // ...Y EL FORMATO CON EL QUE SE DIBUJA, que es la otra mitad de la misma regla.
         //
@@ -306,23 +306,23 @@ namespace Rocola
         // Este formato no recorta NUNCA y deja que un glifo asome del rectangulo. Asi, si la medida se queda
         // corta por un pixel, el texto se sale un pixel -que no se ve- en vez de perder una letra -que si se
         // ve-. Y se le quita el limite de linea, que si no una caja mas baja que la letra no pinta NADA.
-        private static StringFormat CreaSfDibuja(StringAlignment horiz)
+        private static FormatoTexto CreaSfDibuja(Alinea horiz)   // EN LINUX: StringFormat CreaSfDibuja(StringAlignment) -> FormatoTexto y Alinea (Near, Center y Far con sus numeros); la firma de XP, para lo aun no traducido (Form1.Vistas.cs), en Plataforma/Puente.ventanas2.cs
         {
-            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
-            sf.Alignment = horiz; sf.LineAlignment = StringAlignment.Center;
-            sf.FormatFlags |= StringFormatFlags.NoWrap;
-            sf.FormatFlags &= ~StringFormatFlags.LineLimit;
-            sf.Trimming = StringTrimming.None;
+            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento
+            sf.Horizontal = horiz; sf.Vertical = Alinea.Centro;   // EN LINUX: Alignment y LineAlignment = Center
+            sf.Banderas |= BanderasTexto.SinPartir;   // EN LINUX: FormatFlags |= NoWrap (la anade)
+            sf.Banderas &= ~BanderasTexto.SoloEnteros;   // EN LINUX: FormatFlags &= ~LineLimit (la quita)
+            sf.Corte = CorteTexto.Nada;   // EN LINUX: Trimming = None
             return sf;
         }
 
         // La misma medida cuando aun no hay un Graphics a mano (acomodo de controles).
-        private static int AnchoTexto(string t, Font f)
+        private static int AnchoTexto(string t, Rocola.Nativo.Letra f)   // EN LINUX: Font -> Letra (Nativo/Letras.cs); la firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
         {
             if (string.IsNullOrEmpty(t) || f == null) return 0;
-            using (Bitmap b = new Bitmap(1, 1))
-            using (Graphics g = Graphics.FromImage(b))
-                return AnchoTexto(g, t, f);
+            // EN LINUX: (XP) using (Bitmap b = new Bitmap(1, 1)) -- el mapa de 1x1 solo servia para tener un Graphics con que medir
+            // EN LINUX: (XP) using (Graphics g = Graphics.FromImage(b)) -- un Graphics recien hecho lleva el modo de letra de fabrica (TextRenderingHint.SystemDefault), que es lo unico suyo que mira la medida: va en la linea de abajo
+                return AnchoTexto(AjusteLetra.DelSistema, t, f);   // EN LINUX: el modo de letra de ese Graphics nuevo
         }
 
         // NIVEL <-> PALABRA. En el archivo de configuracion los niveles se escriben "alto", "medio" y "bajo"
@@ -376,35 +376,35 @@ namespace Rocola
         private delegate void FilaAjuste(int k, Tarjeta card, int y, string titulo, Color ac, int min, int max, bool conAuto);
 
         // TARJETA: el recuadro redondeado que agrupa unos cuantos ajustes bajo un titulo.
-        private sealed class Tarjeta : Panel
+        private sealed class Tarjeta : Grupo   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs): la tarjeta hereda del grupo de la rocola como heredaba del panel de WinForms
         {
             public string Titulo = "";
             public Color Acento = Color.FromArgb(120, 200, 255);
-            private Font fTitulo;
+            private Rocola.Nativo.Letra fTitulo;   // EN LINUX: Font -> Letra (Nativo/Letras.cs)
             protected override void Dispose(bool d) { if (d && fTitulo != null) { fTitulo.Dispose(); fTitulo = null; } base.Dispose(d); }
             public Tarjeta()
             {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+                ((IPieza)this).Caja.RepintaConMedida = true;   // EN LINUX: SetStyle(UserPaint | AllPaintingInWmPaint | OptimizedDoubleBuffer | ResizeRedraw): la hoja pinta cada pieza sola y en un bufer, siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); ResizeRedraw = RepintaConMedida, Selectable = Seleccionable y SupportsTransparentBackColor = Transparente de su caja (Nativo/Pieza.cs)
                 BackColor = Color.Transparent;
             }
-            protected override void OnPaint(PaintEventArgs e)
+            protected override void Pinta(SKCanvas e)   // EN LINUX: OnPaint (de Panel) -> Pinta (de Grupo): el lienzo de la hoja con el origen en la tarjeta y recortado a ella (Nativo/Hoja.Pinta.cs)
             {
-                Graphics g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
+                AjusteLetra modoLetra = AjusteLetra.ClearTypeAjustada;   // EN LINUX: g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit
                 Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
                 using (GraphicsPath pa = RoundedPath(r, 12))
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(22, 28, 56)))
-                using (Pen pn = new Pen(Color.FromArgb(46, 58, 104)))
-                { g.FillPath(b, pa); g.DrawPath(pn, pa); }
+                using (SKPaint b = PinturaXp.Pincel(Color.FromArgb(22, 28, 56)))   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs, lo que GDI+ hace con un pincel)
+                using (SKPaint pn = PinturaXp.Pluma(Color.FromArgb(46, 58, 104), 1f))   // EN LINUX: new Pen(color): ancho 1, esquinas en inglete y puntas planas (Nativo/PinturaXp.cs)
+                { Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave); Pixel.Traza(g, PuenteDibujo.Ruta(pa), pn, suave); }   // EN LINUX: FillPath y DrawPath (Nativo/Pixel.cs) con el SKPath del GraphicsPath de RoundedPath (Form1.Fondo.cs, aun sin traducir: PuenteDibujo.Ruta, el mismo)
                 if (!string.IsNullOrEmpty(Titulo))
                 {
-                    using (SolidBrush ac = new SolidBrush(Acento))
+                    using (SKPaint ac = PinturaXp.Pincel(Acento))   // EN LINUX: SolidBrush -> SKPaint
                     using (GraphicsPath ba = RoundedPath(new Rectangle(16, 15, 4, 14), 2))
-                        g.FillPath(ac, ba);
-                    if (fTitulo == null) fTitulo = new Font(Font.FontFamily, 10.5f, FontStyle.Bold);   // una vez, no en cada repintado
-                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(226, 234, 255)))
-                        g.DrawString(Titulo, fTitulo, tb, 28, 12);
+                        Pixel.Rellena(g, PuenteDibujo.Ruta(ba), ac, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs)
+                    if (fTitulo == null) fTitulo = Rocola.Nativo.Letra.EnPuntos(Font.Familia, 10.5f, true);   // una vez, no en cada repintado; EN LINUX: new Font(Font.FontFamily, 10.5f, FontStyle.Bold) -> la Letra de la misma familia, 10,5 puntos, negrita
+                    using (SKPaint tb = PinturaXp.Pincel(Color.FromArgb(226, 234, 255)))   // EN LINUX: SolidBrush -> SKPaint
+                        TextoGdiPlus.Escribe(g, Titulo, fTitulo, modoLetra, tb, new RectangleF(28, 12, 0, 0), FormatoTexto.SinFormato);   // EN LINUX: DrawString(s, f, b, x, y): la caja (x, y, 0, 0) con el formato de fabrica (Nativo/TextoGdiPlus.cs)
                 }
             }
         }
@@ -412,7 +412,7 @@ namespace Rocola
         // DESLIZADOR: la barra de un ajuste. Riel redondeado, la parte ya recorrida en el color del ajuste y un
         // tirador redondo. Responde al raton (arrastrar o pulsar en cualquier punto) y al teclado (flechas de
         // una en una, AvPag/RePag de diez en diez, Inicio/Fin a los extremos).
-        private sealed class Deslizador : Control
+        private sealed partial class Deslizador : IPieza   // EN LINUX: no hereda de Control: es una pieza de la hoja con su caja (Nativo/Pieza.cs); lo que usaba de Control, en Nativo/PiezasAjustes.cs
         {
             public int Minimum = 0, Maximum = 100;
             public Color Acento = Color.FromArgb(120, 200, 255);
@@ -421,11 +421,11 @@ namespace Rocola
             private bool arrastra;
             public Deslizador()
             {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                caja = new CajaPieza(this, 0, 0); caja.RepintaConMedida = true; caja.Seleccionable = true; caja.Transparente = true;   // EN LINUX: un Control mide 0x0 de fabrica (DefaultSize); SetStyle(... | ResizeRedraw | Selectable | SupportsTransparentBackColor): la hoja pinta cada pieza sola y en un bufer, siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); ResizeRedraw = RepintaConMedida, Selectable = Seleccionable y SupportsTransparentBackColor = Transparente de su caja (Nativo/Pieza.cs)
                 BackColor = Color.Transparent;
                 TabStop = true;
                 Height = 22;
-                Cursor = Cursors.Hand;
+                caja.Mano = true;   // EN LINUX: Cursor = Cursors.Hand: la mano sobre la pieza (CajaPieza.Mano, la pone la hoja)
             }
             public int Value
             {
@@ -448,20 +448,20 @@ namespace Rocola
                 val = v; Invalidate();
                 if (Scroll != null) Scroll(this, EventArgs.Empty);
             }
-            protected override void OnMouseDown(MouseEventArgs e)
-            { if (Enabled) { Focus(); arrastra = true; Pon(DeX(e.X)); } base.OnMouseDown(e); }
-            protected override void OnMouseMove(MouseEventArgs e)
-            { if (arrastra && Enabled) Pon(DeX(e.X)); base.OnMouseMove(e); }
-            protected override void OnMouseUp(MouseEventArgs e) { arrastra = false; base.OnMouseUp(e); }
-            protected override bool IsInputKey(Tecla k)   // EN LINUX: Keys -> Tecla, los mismos numeros
+            void IPieza.RatonAbajo(Raton e)   // EN LINUX: OnMouseDown -> RatonAbajo de la pieza (la hoja se lo da al bajar un boton encima: WM_LBUTTONDOWN...)
+            { if (Enabled) { Focus(); arrastra = true; Pon(DeX(e.X)); } }   // EN LINUX: (XP) base.OnMouseDown(e): el aviso MouseDown de Control, que nadie escucha
+            void IPieza.RatonMueve(Raton e)   // EN LINUX: OnMouseMove -> RatonMueve (con el boton abajo, a la pieza que lo capturo: la hoja)
+            { if (arrastra && Enabled) Pon(DeX(e.X)); }   // EN LINUX: (XP) base.OnMouseMove(e): el aviso MouseMove, que nadie escucha
+            void IPieza.RatonArriba(Raton e) { arrastra = false; }   // EN LINUX: OnMouseUp -> RatonArriba; (XP) base.OnMouseUp(e): el aviso MouseUp, que nadie escucha
+            bool IPieza.QuiereTecla(Tecla k)   // EN LINUX: Keys -> Tecla, los mismos numeros; IsInputKey -> QuiereTecla: las que la pieza quiere antes de que la hoja las use para moverse (Control.PreProcessMessage)
             {
                 if (k == Tecla.Left || k == Tecla.Right || k == Tecla.Up || k == Tecla.Down   // EN LINUX: Keys -> Tecla, los mismos numeros
                  || k == Tecla.PageUp || k == Tecla.PageDown || k == Tecla.Home || k == Tecla.End) return true;   // EN LINUX: Keys -> Tecla, los mismos numeros
-                return base.IsInputKey(k);
+                return false;   // EN LINUX: base.IsInputKey de un control propio da false (Control.IsInputKey, Control.cs:6950-6980: WM_GETDLGCODE de DefWindowProc, 0)
             }
-            protected override void OnKeyDown(KeyEventArgs e)
+            void IPieza.TeclaAbajo(PulsoTecla e)   // EN LINUX: OnKeyDown -> TeclaAbajo de la pieza con el foco (la hoja, en el orden de WinForms); KeyEventArgs -> PulsoTecla
             {
-                if (!Enabled) { base.OnKeyDown(e); return; }
+                if (!Enabled) { return; }   // EN LINUX: (XP) base.OnKeyDown(e): el aviso KeyDown de Control, que nadie escucha
                 int salto = ((Maximum - Minimum) >= 40) ? 10 : 2;
                 if (e.KeyCode == Tecla.Left || e.KeyCode == Tecla.Down) { Pon(val - 1); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
                 else if (e.KeyCode == Tecla.Right || e.KeyCode == Tecla.Up) { Pon(val + 1); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
@@ -469,40 +469,40 @@ namespace Rocola
                 else if (e.KeyCode == Tecla.PageUp) { Pon(val + salto); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
                 else if (e.KeyCode == Tecla.Home) { Pon(Minimum); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
                 else if (e.KeyCode == Tecla.End) { Pon(Maximum); e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
-                base.OnKeyDown(e);
+                // EN LINUX: (XP) base.OnKeyDown(e); el aviso KeyDown de Control, que nadie escucha
             }
-            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
-            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
-            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
-            protected override void OnPaint(PaintEventArgs e)
+            void IPieza.AlRecibirFoco() { Invalidate(); }   // EN LINUX: OnGotFocus -> AlRecibirFoco (la hoja, WM_SETFOCUS); (XP) base.OnGotFocus(e): el aviso GotFocus, que nadie escucha
+            void IPieza.AlPerderFoco() { Invalidate(); }   // EN LINUX: OnLostFocus -> AlPerderFoco (WM_KILLFOCUS); (XP) base.OnLostFocus(e): el aviso LostFocus, que nadie escucha
+            // EN LINUX: (XP) protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }: la caja ya repinta al cambiar Enabled (CajaPieza.Enabled, como OnEnabledChanged de Control con UserPaint) y el aviso EnabledChanged no lo escucha nadie
+            void IPieza.PintaContenido(SKCanvas e)   // EN LINUX: OnPaint -> PintaContenido: el lienzo de la hoja con el origen en la pieza y recortado a ella (Nativo/Hoja.Pinta.cs)
             {
-                Graphics g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
                 int cy = Height / 2, alto = 6;
                 Rectangle riel = new Rectangle(Radio, cy - alto / 2, Math.Max(1, Width - Radio * 2), alto);
                 float f = (Maximum > Minimum) ? (val - Minimum) / (float)(Maximum - Minimum) : 0f;
                 int cx = riel.X + (int)(riel.Width * f);
                 Color ac = Enabled ? Acento : Color.FromArgb(92, 100, 124);
                 using (GraphicsPath pa = RoundedPath(riel, alto / 2))
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(38, 46, 82)))
-                    g.FillPath(b, pa);
+                using (SKPaint b = PinturaXp.Pincel(Color.FromArgb(38, 46, 82)))   // EN LINUX: SolidBrush -> SKPaint
+                    Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs) con el SKPath de RoundedPath (PuenteDibujo.Ruta)
                 if (cx > riel.X + 1)
                     using (GraphicsPath pa = RoundedPath(new Rectangle(riel.X, riel.Y, cx - riel.X, riel.Height), alto / 2))
-                    using (SolidBrush b = new SolidBrush(ac))
-                        g.FillPath(b, pa);
+                    using (SKPaint b = PinturaXp.Pincel(ac))   // EN LINUX: SolidBrush -> SKPaint
+                        Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs)
                 if (Focused)   // aro exterior: se ve cual esta enfocado al moverse con el teclado
-                    using (Pen pn = new Pen(Color.FromArgb(130, ac.R, ac.G, ac.B), 2f))
-                        g.DrawEllipse(pn, cx - Radio - 2, cy - Radio - 2, (Radio + 2) * 2, (Radio + 2) * 2);
-                using (SolidBrush b = new SolidBrush(Enabled ? Color.FromArgb(238, 244, 255) : Color.FromArgb(130, 138, 160)))
-                    g.FillEllipse(b, cx - Radio, cy - Radio, Radio * 2, Radio * 2);
-                using (Pen pn = new Pen(ac, 2.2f))
-                    g.DrawEllipse(pn, cx - Radio + 1, cy - Radio + 1, Radio * 2 - 2, Radio * 2 - 2);
+                    using (SKPaint pn = PinturaXp.Pluma(Color.FromArgb(130, ac.R, ac.G, ac.B), 2f))   // EN LINUX: Pen -> SKPaint de trazo (Nativo/PinturaXp.cs)
+                        Pixel.TrazaOvalo(g, new RectangleF(cx - Radio - 2, cy - Radio - 2, (Radio + 2) * 2, (Radio + 2) * 2), pn, suave);   // EN LINUX: DrawEllipse (Nativo/Pixel.cs)
+                using (SKPaint b = PinturaXp.Pincel(Enabled ? Color.FromArgb(238, 244, 255) : Color.FromArgb(130, 138, 160)))   // EN LINUX: SolidBrush -> SKPaint
+                    Pixel.RellenaOvalo(g, new RectangleF(cx - Radio, cy - Radio, Radio * 2, Radio * 2), b, suave);   // EN LINUX: FillEllipse (Nativo/Pixel.cs)
+                using (SKPaint pn = PinturaXp.Pluma(ac, 2.2f))   // EN LINUX: Pen -> SKPaint de trazo
+                    Pixel.TrazaOvalo(g, new RectangleF(cx - Radio + 1, cy - Radio + 1, Radio * 2 - 2, Radio * 2 - 2), pn, suave);   // EN LINUX: DrawEllipse (Nativo/Pixel.cs)
             }
         }
 
         // INTERRUPTOR: la casilla de encender/apagar, con forma de pastilla. El texto va a su derecha y pulsar
         // en cualquier parte (pastilla o texto) lo cambia.
-        private sealed class Interruptor : Control
+        private sealed partial class Interruptor : IPieza   // EN LINUX: no hereda de Control: es una pieza de la hoja con su caja (Nativo/Pieza.cs); lo que usaba de Control, en Nativo/PiezasAjustes.cs
         {
             public Color Acento = Color.FromArgb(110, 225, 160);
             public event EventHandler CheckedChanged;
@@ -517,104 +517,104 @@ namespace Rocola
             public void PonNecesita(string que) { if (que != Necesita) { Necesita = que; Invalidate(); } }
             public Interruptor()
             {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                caja = new CajaPieza(this, 0, 0); caja.RepintaConMedida = true; caja.Seleccionable = true; caja.Transparente = true;   // EN LINUX: un Control mide 0x0 de fabrica (DefaultSize); SetStyle(... | ResizeRedraw | Selectable | SupportsTransparentBackColor): la hoja pinta cada pieza sola y en un bufer, siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); ResizeRedraw = RepintaConMedida, Selectable = Seleccionable y SupportsTransparentBackColor = Transparente de su caja (Nativo/Pieza.cs)
                 BackColor = Color.Transparent;
                 TabStop = true;
                 Height = 26;
-                Cursor = Cursors.Hand;
+                caja.Mano = true;   // EN LINUX: Cursor = Cursors.Hand: la mano sobre la pieza (CajaPieza.Mano)
             }
             public bool Checked
             {
                 get { return marcado; }
                 set { if (marcado != value) { marcado = value; Invalidate(); if (CheckedChanged != null) CheckedChanged(this, EventArgs.Empty); } }
             }
-            protected override void OnMouseDown(MouseEventArgs e) { if (Enabled) { Focus(); Checked = !Checked; } base.OnMouseDown(e); }
-            protected override bool IsInputKey(Tecla k) { return (k == Tecla.Space) || base.IsInputKey(k); }   // EN LINUX: Keys -> Tecla, los mismos numeros
-            protected override void OnKeyDown(KeyEventArgs e)
+            void IPieza.RatonAbajo(Raton e) { if (Enabled) { Focus(); Checked = !Checked; } }   // EN LINUX: OnMouseDown -> RatonAbajo de la pieza; (XP) base.OnMouseDown(e): el aviso MouseDown, que nadie escucha
+            bool IPieza.QuiereTecla(Tecla k) { return (k == Tecla.Space) || false; }   // EN LINUX: Keys -> Tecla, los mismos numeros; IsInputKey -> QuiereTecla, y base.IsInputKey de un control propio da false (Control.cs:6950-6980)
+            void IPieza.TeclaAbajo(PulsoTecla e)   // EN LINUX: OnKeyDown -> TeclaAbajo de la pieza con el foco; KeyEventArgs -> PulsoTecla
             {
                 if (Enabled && (e.KeyCode == Tecla.Space || e.KeyCode == Tecla.Enter)) { Checked = !Checked; e.Handled = true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
-                base.OnKeyDown(e);
+                // EN LINUX: (XP) base.OnKeyDown(e); el aviso KeyDown de Control, que nadie escucha
             }
-            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
-            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
-            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
-            protected override void OnPaint(PaintEventArgs e)
+            void IPieza.AlRecibirFoco() { Invalidate(); }   // EN LINUX: OnGotFocus -> AlRecibirFoco; (XP) base.OnGotFocus(e): el aviso GotFocus, que nadie escucha
+            void IPieza.AlPerderFoco() { Invalidate(); }   // EN LINUX: OnLostFocus -> AlPerderFoco; (XP) base.OnLostFocus(e): el aviso LostFocus, que nadie escucha
+            // EN LINUX: (XP) protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }: la caja ya repinta al cambiar Enabled (CajaPieza.Enabled) y el aviso EnabledChanged no lo escucha nadie
+            void IPieza.PintaContenido(SKCanvas e)   // EN LINUX: OnPaint -> PintaContenido: el lienzo de la hoja con el origen en la pieza y recortado a ella
             {
-                Graphics g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
+                AjusteLetra modoLetra = AjusteLetra.ClearTypeAjustada;   // EN LINUX: g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit
                 int fila = DosRenglones ? 26 : Height;
                 int h = 20, w = 40, y = (fila - h) / 2;
                 Color ac = !Enabled ? Color.FromArgb(80, 88, 112) : (marcado ? Acento : Color.FromArgb(58, 68, 108));
                 using (GraphicsPath pa = RoundedPath(new Rectangle(0, y, w, h), h / 2))
-                using (SolidBrush b = new SolidBrush(ac))
-                    g.FillPath(b, pa);
+                using (SKPaint b = PinturaXp.Pincel(ac))   // EN LINUX: SolidBrush -> SKPaint
+                    Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs) con el SKPath de RoundedPath (PuenteDibujo.Ruta)
                 if (Focused)
-                    using (Pen pn = new Pen(Color.FromArgb(150, 190, 210, 255)))
+                    using (SKPaint pn = PinturaXp.Pluma(Color.FromArgb(150, 190, 210, 255), 1f))   // EN LINUX: new Pen(color): ancho 1 (Nativo/PinturaXp.cs)
                     using (GraphicsPath pa = RoundedPath(new Rectangle(0, y, w, h), h / 2))
-                        g.DrawPath(pn, pa);
+                        Pixel.Traza(g, PuenteDibujo.Ruta(pa), pn, suave);   // EN LINUX: DrawPath (Nativo/Pixel.cs)
                 int r = h - 6, kx = marcado ? (w - r - 3) : 3;
-                using (SolidBrush b = new SolidBrush(Enabled ? Color.FromArgb(244, 248, 255) : Color.FromArgb(150, 156, 176)))
-                    g.FillEllipse(b, kx, y + 3, r, r);
+                using (SKPaint b = PinturaXp.Pincel(Enabled ? Color.FromArgb(244, 248, 255) : Color.FromArgb(150, 156, 176)))   // EN LINUX: SolidBrush -> SKPaint
+                    Pixel.RellenaOvalo(g, new RectangleF(kx, y + 3, r, r), b, suave);   // EN LINUX: FillEllipse (Nativo/Pixel.cs)
                 if (!string.IsNullOrEmpty(Text))
-                    using (SolidBrush tb = new SolidBrush(Enabled ? ForeColor : Color.FromArgb(110, 118, 142)))
-                        g.DrawString(Text, Font, tb, w + 10, (fila - Font.Height) / 2f - 1f);
+                    using (SKPaint tb = PinturaXp.Pincel(Enabled ? ForeColor : Color.FromArgb(110, 118, 142)))   // EN LINUX: SolidBrush -> SKPaint
+                        TextoGdiPlus.Escribe(g, Text, Font, modoLetra, tb, new RectangleF(w + 10, (fila - Font.AltoEntero) / 2f - 1f, 0, 0), FormatoTexto.SinFormato);   // EN LINUX: DrawString(s, f, b, x, y) con la caja (x, y, 0, 0) y el formato de fabrica (Nativo/TextoGdiPlus.cs); Font.Height -> AltoEntero (el renglon de GDI+ redondeado hacia arriba)
                 if (!Enabled && !string.IsNullOrEmpty(Necesita) && Font != null)
-                    using (Font chica = new Font(Font.FontFamily, 8.5f))
-                    using (SolidBrush nb = new SolidBrush(ColorNecesita))
+                    using (Rocola.Nativo.Letra chica = Rocola.Nativo.Letra.EnPuntos(Font.Familia, 8.5f))   // EN LINUX: new Font(Font.FontFamily, 8.5f) -> la Letra de la misma familia, 8,5 puntos
+                    using (SKPaint nb = PinturaXp.Pincel(ColorNecesita))   // EN LINUX: SolidBrush -> SKPaint
                     {
-                        if (DosRenglones) g.DrawString(Necesita, chica, nb, w + 10, fila - 2f);
+                        if (DosRenglones) TextoGdiPlus.Escribe(g, Necesita, chica, modoLetra, nb, new RectangleF(w + 10, fila - 2f, 0, 0), FormatoTexto.SinFormato);   // EN LINUX: DrawString (Nativo/TextoGdiPlus.cs)
                         else
                         {
-                            float x = w + 10 + (string.IsNullOrEmpty(Text) ? 0f : g.MeasureString(Text, Font).Width + 4f);
-                            g.DrawString(Necesita, chica, nb, x, (Height - chica.Height) / 2f);
+                            float x = w + 10 + (string.IsNullOrEmpty(Text) ? 0f : TextoGdiPlus.Mide(Text, Font, modoLetra, new SizeF(0, 0), FormatoTexto.SinFormato).Width + 4f);   // EN LINUX: MeasureString(s, f): sin caja y con el formato de fabrica (Nativo/TextoGdiPlus.cs)
+                            TextoGdiPlus.Escribe(g, Necesita, chica, modoLetra, nb, new RectangleF(x, (Height - chica.AltoEntero) / 2f, 0, 0), FormatoTexto.SinFormato);   // EN LINUX: DrawString (Nativo/TextoGdiPlus.cs); Font.Height -> AltoEntero
                         }
                     }
             }
         }
 
         // BOTON plano y redondeado, con su color de relleno. Los de Windows en XP salen grises con degradado.
-        private sealed class BotonPlano : Control
+        private sealed partial class BotonPlano : IPieza   // EN LINUX: no hereda de Control: es una pieza de la hoja con su caja (Nativo/Pieza.cs); lo que usaba de Control, en Nativo/PiezasAjustes.cs
         {
             public Color Relleno = Color.FromArgb(40, 52, 98);
             public Color Borde = Color.FromArgb(72, 90, 150);
             private bool encima;
             public BotonPlano()
             {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
-                BackColor = Color.Transparent; TabStop = true; Height = 38; Cursor = Cursors.Hand;
+                caja = new CajaPieza(this, 0, 0); caja.RepintaConMedida = true; caja.Seleccionable = true; caja.Transparente = true;   // EN LINUX: un Control mide 0x0 de fabrica (DefaultSize); SetStyle(... | ResizeRedraw | Selectable | SupportsTransparentBackColor): la hoja pinta cada pieza sola y en un bufer, siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); ResizeRedraw = RepintaConMedida, Selectable = Seleccionable y SupportsTransparentBackColor = Transparente de su caja (Nativo/Pieza.cs)
+                BackColor = Color.Transparent; TabStop = true; Height = 38; caja.Mano = true;   // EN LINUX: Cursor = Cursors.Hand: la mano sobre la pieza (CajaPieza.Mano)
                 ForeColor = Color.White;
             }
-            protected override void OnMouseEnter(EventArgs e) { encima = true; Invalidate(); base.OnMouseEnter(e); }
-            protected override void OnMouseLeave(EventArgs e) { encima = false; Invalidate(); base.OnMouseLeave(e); }
-            protected override void OnMouseDown(MouseEventArgs e) { Focus(); base.OnMouseDown(e); }
-            protected override bool IsInputKey(Tecla k) { return (k == Tecla.Space) || base.IsInputKey(k); }   // EN LINUX: Keys -> Tecla, los mismos numeros
-            protected override void OnKeyDown(KeyEventArgs e)
+            void IPieza.RatonEntra() { encima = true; Invalidate(); }   // EN LINUX: OnMouseEnter -> RatonEntra (la hoja: la pieza de encima cambia); (XP) base.OnMouseEnter(e): el aviso MouseEnter, que nadie escucha
+            void IPieza.RatonSale() { encima = false; Invalidate(); }   // EN LINUX: OnMouseLeave -> RatonSale; (XP) base.OnMouseLeave(e): el aviso MouseLeave, que nadie escucha
+            void IPieza.RatonAbajo(Raton e) { Focus(); }   // EN LINUX: OnMouseDown -> RatonAbajo; (XP) base.OnMouseDown(e): el aviso MouseDown, que nadie escucha
+            bool IPieza.QuiereTecla(Tecla k) { return (k == Tecla.Space) || false; }   // EN LINUX: Keys -> Tecla, los mismos numeros; IsInputKey -> QuiereTecla, y base.IsInputKey de un control propio da false (Control.cs:6950-6980)
+            void IPieza.TeclaAbajo(PulsoTecla e)   // EN LINUX: OnKeyDown -> TeclaAbajo de la pieza con el foco; KeyEventArgs -> PulsoTecla
             {
-                if (!Enabled) { base.OnKeyDown(e); return; }
+                if (!Enabled) { return; }   // EN LINUX: (XP) base.OnKeyDown(e): el aviso KeyDown de Control, que nadie escucha
                 if (e.KeyCode == Tecla.Space || e.KeyCode == Tecla.Enter)   // EN LINUX: Keys -> Tecla, los mismos numeros
                 { OnClick(EventArgs.Empty); e.Handled = true; e.SuppressKeyPress = true; }
-                base.OnKeyDown(e);
+                // EN LINUX: (XP) base.OnKeyDown(e); el aviso KeyDown de Control, que nadie escucha
             }
-            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
-            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
-            protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
-            protected override void OnPaint(PaintEventArgs e)
+            void IPieza.AlRecibirFoco() { Invalidate(); }   // EN LINUX: OnGotFocus -> AlRecibirFoco; (XP) base.OnGotFocus(e): el aviso GotFocus, que nadie escucha
+            void IPieza.AlPerderFoco() { Invalidate(); }   // EN LINUX: OnLostFocus -> AlPerderFoco; (XP) base.OnLostFocus(e): el aviso LostFocus, que nadie escucha
+            // EN LINUX: (XP) protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }: la caja ya repinta al cambiar Enabled (CajaPieza.Enabled) y el aviso EnabledChanged no lo escucha nadie
+            void IPieza.PintaContenido(SKCanvas e)   // EN LINUX: OnPaint -> PintaContenido: el lienzo de la hoja con el origen en la pieza y recortado a ella
             {
-                Graphics g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
+                AjusteLetra modoLetra = AjusteLetra.ClearTypeAjustada;   // EN LINUX: g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit
                 Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
                 // En gris si no se puede usar (A1: depende de otro ajuste que esta apagado, o no hay tarjeta grafica).
                 Color rel = !Enabled ? Color.FromArgb(24, 28, 50) : encima ? Aclara(Relleno, 0.16f) : Relleno;
                 Color bor = !Enabled ? Color.FromArgb(52, 60, 96) : Focused ? Aclara(Borde, 0.35f) : Borde;
                 using (GraphicsPath pa = RoundedPath(r, 9))
-                using (SolidBrush b = new SolidBrush(rel))
-                using (Pen pn = new Pen(bor, Focused && Enabled ? 2f : 1f))
-                { g.FillPath(b, pa); g.DrawPath(pn, pa); }
-                SizeF sz = g.MeasureString(Text, Font);
-                using (SolidBrush tb = new SolidBrush(Enabled ? ForeColor : Color.FromArgb(96, 104, 128)))
-                    g.DrawString(Text, Font, tb, (Width - sz.Width) / 2f, (Height - sz.Height) / 2f);
+                using (SKPaint b = PinturaXp.Pincel(rel))   // EN LINUX: SolidBrush -> SKPaint
+                using (SKPaint pn = PinturaXp.Pluma(bor, Focused && Enabled ? 2f : 1f))   // EN LINUX: Pen -> SKPaint de trazo (Nativo/PinturaXp.cs)
+                { Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave); Pixel.Traza(g, PuenteDibujo.Ruta(pa), pn, suave); }   // EN LINUX: FillPath y DrawPath (Nativo/Pixel.cs) con el SKPath de RoundedPath (PuenteDibujo.Ruta)
+                SizeF sz = TextoGdiPlus.Mide(Text, Font, modoLetra, new SizeF(0, 0), FormatoTexto.SinFormato);   // EN LINUX: MeasureString(s, f): sin caja y con el formato de fabrica (Nativo/TextoGdiPlus.cs)
+                using (SKPaint tb = PinturaXp.Pincel(Enabled ? ForeColor : Color.FromArgb(96, 104, 128)))   // EN LINUX: SolidBrush -> SKPaint
+                    TextoGdiPlus.Escribe(g, Text, Font, modoLetra, tb, new RectangleF((Width - sz.Width) / 2f, (Height - sz.Height) / 2f, 0, 0), FormatoTexto.SinFormato);   // EN LINUX: DrawString(s, f, b, x, y) con la caja (x, y, 0, 0) y el formato de fabrica (Nativo/TextoGdiPlus.cs)
             }
             private static Color Aclara(Color c, float t)
             { return Color.FromArgb(c.A, (int)(c.R + (255 - c.R) * t), (int)(c.G + (255 - c.G) * t), (int)(c.B + (255 - c.B) * t)); }
@@ -666,21 +666,21 @@ namespace Rocola
             try
             {
                 PantallaRocola.EnsenaFlecha();   // EN LINUX: Cursor.Show(): ShowCursor(TRUE), la cuenta de la flecha (Cursor.cs:611-614)
-                FontFamily ff = FamiliaUi();
-                using (Font fTit = new Font(ff, 15f, FontStyle.Bold))
-                using (Font fSub = new Font(ff, 9.5f))
-                using (Font fNom = new Font(ff, 10f, FontStyle.Bold))
-                using (Font fVal = new Font(ff, 11f, FontStyle.Bold))
-                using (Font fDes = new Font(ff, 8.5f))
-                using (Font fBot = new Font(ff, 10f, FontStyle.Bold))
-                using (Font fInt = new Font(ff, 9.5f, FontStyle.Bold))
-                using (Form dlg = new Form())
+                string ff = FamiliaUi().Name;   // EN LINUX: la familia de la interfaz (FamiliaUi, compartida con lo aun no traducido, da un FontFamily de la transicion): su nombre, que es lo que pide una Letra
+                using (Rocola.Nativo.Letra fTit = Rocola.Nativo.Letra.EnPuntos(ff, 15f, true))   // EN LINUX: new Font(ff, 15f, FontStyle.Bold) -> la Letra de esa familia (Nativo/Letras.cs)
+                using (Rocola.Nativo.Letra fSub = Rocola.Nativo.Letra.EnPuntos(ff, 9.5f))   // EN LINUX: new Font(ff, 9.5f) -> Letra
+                using (Rocola.Nativo.Letra fNom = Rocola.Nativo.Letra.EnPuntos(ff, 10f, true))   // EN LINUX: new Font(ff, 10f, FontStyle.Bold) -> Letra
+                using (Rocola.Nativo.Letra fVal = Rocola.Nativo.Letra.EnPuntos(ff, 11f, true))   // EN LINUX: new Font(ff, 11f, FontStyle.Bold) -> Letra
+                using (Rocola.Nativo.Letra fDes = Rocola.Nativo.Letra.EnPuntos(ff, 8.5f))   // EN LINUX: new Font(ff, 8.5f) -> Letra
+                using (Rocola.Nativo.Letra fBot = Rocola.Nativo.Letra.EnPuntos(ff, 10f, true))   // EN LINUX: new Font(ff, 10f, FontStyle.Bold) -> Letra
+                using (Rocola.Nativo.Letra fInt = Rocola.Nativo.Letra.EnPuntos(ff, 9.5f, true))   // EN LINUX: new Font(ff, 9.5f, FontStyle.Bold) -> Letra
+                using (Hoja dlg = new Hoja(MarcoXp.Dialogo))   // EN LINUX: new Form(): una hoja de la pantalla de la rocola (Nativo/Hoja.cs); MarcoXp.Dialogo es el FixedDialog y el CenterParent de abajo
                 {
                     OlvidaRequisitos();   // la ventana se arma de nuevo: lo apuntado de la vez anterior ya no vale (A1)
                     dlg.Text = "Rocola - Sonido";
-                    dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
-                    dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false;
-                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    // EN LINUX: (XP) dlg.FormBorderStyle = FormBorderStyle.FixedDialog; el marco de dialogo de XP (barra de 26 y borde de 3: 966x764) lo da MarcoXp.Dialogo
+                    // EN LINUX: (XP) dlg.MaximizeBox = false; dlg.MinimizeBox = false; dlg.ShowInTaskbar = false; dlg.ShowIcon = false; MarcoXp.Dialogo es asi (y en Rocola OS no hay barra de tareas)
+                    // EN LINUX: (XP) dlg.StartPosition = FormStartPosition.CenterParent; una hoja con MarcoXp.Dialogo se centra en su duena al ensenarse modal (CenterToParent)
                     dlg.ClientSize = new Size(960, 732);   // con su barra de titulo cabe en 1024x768
                     dlg.BackColor = Color.FromArgb(11, 14, 32);
                     dlg.Font = fSub;
@@ -700,7 +700,7 @@ namespace Rocola
                     // El titulo encoge de 600 a 298 para dejarle sitio a las CUATRO pestañas. No mueve nada:
                     // los cuatro titulos miden 76, 217, 214 y 179 px, medidos con su letra, asi que el mas
                     // largo se queda a 81 px de tocar la primera pestaña (que empieza en 328).
-                    Label lTit = new Label(); lTit.SetBounds(22, 10, 284, 28);   // hasta el 306: la primera pestaña empieza en 312 lTit.BackColor = Color.Transparent;
+                    Rotulo lTit = new Rotulo(); lTit.SetBounds(22, 10, 284, 28);   // hasta el 306: la primera pestaña empieza en 312 lTit.BackColor = Color.Transparent;; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lTit.ForeColor = Color.FromArgb(232, 238, 255); lTit.Font = fTit; lTit.Text = "Sonido";
                     // LAS DOS PESTANAS VAN AQUI, EN EL RENGLON DEL TITULO, y no en una fila propia: esta ventana
                     // mide 960x732 a proposito -con su barra de titulo cabe justo en una pantalla de 1024x768- y
@@ -745,7 +745,7 @@ namespace Rocola
                     // gasta 545 px medidos) y la derecha es del interruptor de aqui abajo. Antes reclamaba los
                     // 916 aunque no los usara, y asi los dos decian ser dueños del mismo sitio.
                     // Y desde el 13-10-2026 comparte su mitad con el boton de «Lo que suena ahora...» (S4 y S5).
-                    Label lSub = new Label(); lSub.SetBounds(24, 42, 380, 18); lSub.BackColor = Color.Transparent;
+                    Rotulo lSub = new Rotulo(); lSub.SetBounds(24, 42, 380, 18); lSub.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lSub.ForeColor = cTenue; lSub.Font = fSub;
                     lSub.Text = "Todo se oye al instante en la cancion que suena.";
                     // Y DE CUANDO ES ESTA ROCOLA. Es lo primero que hay que mirar cuando algo "no funciona": si la
@@ -760,7 +760,7 @@ namespace Rocola
                     // encima. Se lee del registro de Windows y se dice aqui, en ambar si hay algo que arreglar.
                     bool avisoSal; string txtSal;
                     try { txtSal = TextoSalida(out avisoSal); } catch { txtSal = ""; avisoSal = false; }
-                    Label lSal = new Label(); lSal.SetBounds(24, 62, 916, 34); lSal.BackColor = Color.Transparent;
+                    Rotulo lSal = new Rotulo(); lSal.SetBounds(24, 62, 916, 34); lSal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lSal.ForeColor = avisoSal ? Color.FromArgb(255, 196, 96) : cTenue; lSal.Font = fDes;
                     lSal.Text = txtSal;
 
@@ -776,21 +776,21 @@ namespace Rocola
                     // modo, CadenaBillar.cs); con el apagado, se ajusta a mano como siempre.
                     Tarjeta tCal = new Tarjeta(); tCal.SetBounds(0, 0, 456, 398); tCal.Titulo = "CALIDAD DEL SONIDO"; tCal.Acento = cCal;
                     Tarjeta tBil = new Tarjeta(); tBil.SetBounds(488, 100, 456, 398); tBil.Titulo = "EL BILLAR"; tBil.Acento = cBri; tBil.Name = "SonidoBillar";
-                    Panel pAju = new Panel(); pAju.SetBounds(16, 100, 928, 398); pAju.BackColor = dlg.BackColor;
+                    Grupo pAju = new Grupo(); pAju.SetBounds(16, 100, 928, 398); pAju.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pAju.Name = "SonidoAjustes"; pAju.Visible = false;
                     Tarjeta tMas = new Tarjeta(); tMas.SetBounds(472, 0, 456, 398); tMas.Titulo = "MAS AJUSTES DEL SONIDO"; tMas.Acento = cGra;
                     pAju.Controls.Add(tCal); pAju.Controls.Add(tMas);
                     Tarjeta tBib = new Tarjeta(); tBib.SetBounds(16, 508, 928, 160); tBib.Titulo = "TU BIBLIOTECA"; tBib.Acento = cBib;
 
                     // --- Una FILA de ajuste: nombre arriba, valor a la derecha, explicacion debajo y la barra abajo ---
-                    Label[] nom = new Label[7], val = new Label[7], des = new Label[7];
+                    Rotulo[] nom = new Rotulo[7], val = new Rotulo[7], des = new Rotulo[7];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Deslizador[] bar = new Deslizador[7];
                     Interruptor[] au = new Interruptor[7];
                     const int anchoFila = 424;
                     FilaAjuste Fila = delegate (int k, Tarjeta card, int y, string titulo, Color ac, int min, int max, bool conAuto)
                     {
                         int wNom = conAuto ? (anchoFila - 210) : (anchoFila - 100);
-                        nom[k] = new Label(); nom[k].SetBounds(16, y, wNom, 18); nom[k].BackColor = Color.Transparent;
+                        nom[k] = new Rotulo(); nom[k].SetBounds(16, y, wNom, 18); nom[k].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                         nom[k].ForeColor = cTexto; nom[k].Font = fNom; nom[k].Text = titulo;
                         if (conAuto)
                         {
@@ -798,9 +798,9 @@ namespace Rocola
                             au[k].ForeColor = cTenue; au[k].Font = fInt; au[k].Text = "Auto"; au[k].Acento = ac;
                             card.Controls.Add(au[k]);
                         }
-                        val[k] = new Label(); val[k].SetBounds(16 + anchoFila - 94, y - 2, 94, 20); val[k].BackColor = Color.Transparent;
-                        val[k].ForeColor = ac; val[k].Font = fVal; val[k].TextAlign = ContentAlignment.TopRight;
-                        des[k] = new Label(); des[k].SetBounds(16, y + 21, anchoFila, 32); des[k].BackColor = Color.Transparent;
+                        val[k] = new Rotulo(); val[k].SetBounds(16 + anchoFila - 94, y - 2, 94, 20); val[k].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                        val[k].ForeColor = ac; val[k].Font = fVal; val[k].TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+                        des[k] = new Rotulo(); des[k].SetBounds(16, y + 21, anchoFila, 32); des[k].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                         des[k].ForeColor = cTenue; des[k].Font = fDes;
                         bar[k] = new Deslizador(); bar[k].SetBounds(16, y + 55, anchoFila, 22);
                         bar[k].Minimum = min; bar[k].Maximum = max; bar[k].Acento = ac;
@@ -829,12 +829,12 @@ namespace Rocola
                     Interruptor swNoche = new Interruptor();
                     swNoche.SetBounds(16, 318, 300, 26); swNoche.ForeColor = cTexto; swNoche.Font = fNom;
                     swNoche.Text = "Modo noche (de " + nocheDesde + " a " + nocheHasta + " h)"; swNoche.Acento = cVol; swNoche.Checked = nocheOn;
-                    Label vNoche = new Label(); vNoche.SetBounds(16 + anchoFila - 94, 318, 94, 20); vNoche.BackColor = Color.Transparent;
-                    vNoche.ForeColor = cVol; vNoche.Font = fVal; vNoche.TextAlign = ContentAlignment.TopRight;
+                    Rotulo vNoche = new Rotulo(); vNoche.SetBounds(16 + anchoFila - 94, 318, 94, 20); vNoche.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    vNoche.ForeColor = cVol; vNoche.Font = fVal; vNoche.TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                     Deslizador barNoche = new Deslizador(); barNoche.SetBounds(16, 354, 300, 22);
                     barNoche.Minimum = NochePctMin; barNoche.Maximum = NochePctMax; barNoche.Acento = cVol; barNoche.Value = nochePct;
                     BotonPlano bNoche = new BotonPlano(); bNoche.SetBounds(330, 348, 110, 32); bNoche.Font = fBot; bNoche.Text = "Probar";
-                    bNoche.Name = "SonidoNocheProbar"; bNoche.AccessibleName = "Probar el modo noche"; bNoche.AccessibleRole = AccessibleRole.PushButton;
+                    bNoche.Name = "SonidoNocheProbar";   // EN LINUX: (XP) bNoche.AccessibleName = "Probar el modo noche"; bNoche.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tVol.Controls.Add(swNoche); tVol.Controls.Add(vNoche); tVol.Controls.Add(barNoche); tVol.Controls.Add(bNoche);
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
@@ -849,7 +849,7 @@ namespace Rocola
                     swSbr.SetBounds(16, 292, 150, 26); swSbr.ForeColor = cTexto; swSbr.Font = fNom;
                     swSbr.Text = "DSEE"; swSbr.Acento = Color.FromArgb(150, 205, 255);
                     swSbr.Checked = sbrOn && sbrAllowed; swSbr.Enabled = sbrAllowed;
-                    Label lSbr = new Label(); lSbr.SetBounds(16, 320, 424, 48); lSbr.BackColor = Color.Transparent;
+                    Rotulo lSbr = new Rotulo(); lSbr.SetBounds(16, 320, 424, 48); lSbr.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lSbr.ForeColor = sbrAllowed ? cTenue : Color.FromArgb(224, 158, 120); lSbr.Font = fDes;
                     // El DSEE hace DOS cosas y conviene que se entienda cual es cual: una la hace SIEMPRE (medir
                     // donde el archivo se queda sin agudos, que es de donde salen el EQ y los graves automaticos)
@@ -883,9 +883,9 @@ namespace Rocola
                     // Desde el 27-10-2026 los botones de las hojas van en la tarjeta de al lado (MAS AJUSTES DEL SONIDO), uno debajo de otro.
                     BotonPlano bLocal = new BotonPlano(); bLocal.SetBounds(16, 40, 424, 30); bLocal.Font = fBot;
                     bLocal.Text = "El local y sus bocinas..."; bLocal.Name = "SonidoLocalAbrir";
-                    bLocal.AccessibleName = "El local y sus bocinas"; bLocal.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bLocal.AccessibleName = "El local y sus bocinas"; bLocal.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tMas.Controls.Add(bLocal);
-                    Panel pLoc = new Panel(); pLoc.SetBounds(16, 100, 928, 398); pLoc.BackColor = dlg.BackColor;
+                    Grupo pLoc = new Grupo(); pLoc.SetBounds(16, 100, 928, 398); pLoc.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pLoc.Name = "SonidoLocal"; pLoc.Visible = false;
                     Tarjeta tLoc = new Tarjeta(); tLoc.SetBounds(0, 0, 456, 398); tLoc.Titulo = "EL LOCAL Y SUS BOCINAS"; tLoc.Acento = cGra;
                     // La prueba de bocinas paso a la pagina de Sonido (27-10-2026); aqui queda la frecuencia de la tarjeta.
@@ -896,23 +896,23 @@ namespace Rocola
                         Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
                         sw.Text = texto; sw.Acento = ac; sw.Checked = on; tLoc.Controls.Add(sw); return sw;
                     };
-                    Func<Tarjeta, int, int, string, Label> notaLocal = delegate (Tarjeta card, int y, int alto, string texto)
+                    Func<Tarjeta, int, int, string, Rotulo> notaLocal = delegate (Tarjeta card, int y, int alto, string texto)   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     {
-                        Label l = new Label(); l.SetBounds(16, y, 424, alto); l.BackColor = Color.Transparent;
+                        Rotulo l = new Rotulo(); l.SetBounds(16, y, 424, alto); l.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                         l.ForeColor = cTenue; l.Font = fDes; l.Text = texto; card.Controls.Add(l); return l;
                     };
                     Interruptor swSub = interLocal(40, "Quitar el subgrave", cGra, cortaSubgrave);
-                    Label nSub = notaLocal(tLoc, 66, 18, "Ninguna bocina del billar da menos de 30 Hz: solo gasta amplificador.");
+                    Rotulo nSub = notaLocal(tLoc, 66, 18, "Ninguna bocina del billar da menos de 30 Hz: solo gasta amplificador.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swEst = interLocal(90, "Estereo al " + Math.Round(anchoEstereo * 100f) + " %", cCal, estereoEstrecho);
-                    Label nEst = notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");
+                    Rotulo nEst = notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swCla = interLocal(140, "Claridad para el local", cBri, claridadLocal);
-                    Label nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
+                    Rotulo nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swSua = interLocal(190, "Que las partes suaves se oigan", cVol, partesSuaves);
-                    Label nSua = notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
-                    Label nBal = new Label(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;
+                    Rotulo nSua = notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    Rotulo nBal = new Rotulo(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     nBal.ForeColor = cTexto; nBal.Font = fNom; nBal.Text = "Balance"; tLoc.Controls.Add(nBal);
-                    Label vBal = new Label(); vBal.SetBounds(16 + 424 - 170, 242, 170, 20); vBal.BackColor = Color.Transparent;
-                    vBal.ForeColor = cSub; vBal.Font = fVal; vBal.TextAlign = ContentAlignment.TopRight; tLoc.Controls.Add(vBal);
+                    Rotulo vBal = new Rotulo(); vBal.SetBounds(16 + 424 - 170, 242, 170, 20); vBal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    vBal.ForeColor = cSub; vBal.Font = fVal; vBal.TextAlign = AlineaTexto.TopRight; tLoc.Controls.Add(vBal);   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                     notaLocal(tLoc, 265, 32, "Si una zona suena mas fuerte, baja aqui ese canal (hasta 6 dB).\nMejor aun: igualar las perillas IN A e IN B del amplificador.");
                     Deslizador barBal = new Deslizador(); barBal.SetBounds(16, 299, 424, 22);
                     barBal.Minimum = 0; barBal.Maximum = 2 * SalaLocal.BalanceMax; barBal.Value = balanceDb + SalaLocal.BalanceMax; barBal.Acento = cSub;
@@ -922,26 +922,26 @@ namespace Rocola
                     // sitio, asi que van en una segunda hoja del mismo grupo, con su boton aqui abajo y su "Volver" que regresa a esta.
                     BotonPlano bTono = new BotonPlano(); bTono.SetBounds(16, 354, 424, 28); bTono.Font = fBot;
                     bTono.Text = "Tono y presencia del local..."; bTono.Name = "SonidoTonoAbrir";
-                    bTono.AccessibleName = "Tono y presencia del local"; bTono.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bTono.AccessibleName = "Tono y presencia del local"; bTono.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tLoc.Controls.Add(bTono);
-                    Panel pTono = new Panel(); pTono.SetBounds(16, 100, 928, 398); pTono.BackColor = dlg.BackColor;
+                    Grupo pTono = new Grupo(); pTono.SetBounds(16, 100, 928, 398); pTono.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pTono.Name = "SonidoTono"; pTono.Visible = false;
                     Tarjeta tTono = new Tarjeta(); tTono.SetBounds(0, 0, 456, 398); tTono.Titulo = "TONO DEL LOCAL"; tTono.Acento = cBri;
                     Tarjeta tPre = new Tarjeta(); tPre.SetBounds(472, 0, 456, 398); tPre.Titulo = "PRESENCIA EN SALA RUIDOSA"; tPre.Acento = cVol;
                     pTono.Controls.Add(tTono); pTono.Controls.Add(tPre);
-                    Label nGra = new Label(); nGra.SetBounds(16, 44, 250, 18); nGra.BackColor = Color.Transparent;
+                    Rotulo nGra = new Rotulo(); nGra.SetBounds(16, 44, 250, 18); nGra.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     nGra.ForeColor = cTexto; nGra.Font = fNom; nGra.Text = "Graves del local"; tTono.Controls.Add(nGra);
-                    Label vGra = new Label(); vGra.SetBounds(16 + 424 - 170, 42, 170, 20); vGra.BackColor = Color.Transparent;
-                    vGra.ForeColor = cGra; vGra.Font = fVal; vGra.TextAlign = ContentAlignment.TopRight; tTono.Controls.Add(vGra);
-                    Label nGraNota = notaLocal(tTono, 65, 32, "El cuerpo de la musica (120 Hz): mas para llenar el local,\nmenos si retumba. De -6 a +6 dB.");
+                    Rotulo vGra = new Rotulo(); vGra.SetBounds(16 + 424 - 170, 42, 170, 20); vGra.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    vGra.ForeColor = cGra; vGra.Font = fVal; vGra.TextAlign = AlineaTexto.TopRight; tTono.Controls.Add(vGra);   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+                    Rotulo nGraNota = notaLocal(tTono, 65, 32, "El cuerpo de la musica (120 Hz): mas para llenar el local,\nmenos si retumba. De -6 a +6 dB.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Deslizador barGra = new Deslizador(); barGra.SetBounds(16, 99, 424, 22); barGra.Name = "SonidoTonoGraves";
                     barGra.Minimum = 0; barGra.Maximum = 2 * SalaLocal.TonoMax; barGra.Value = gravesLocalDb + SalaLocal.TonoMax; barGra.Acento = cGra;
                     tTono.Controls.Add(barGra);
-                    Label nAgu = new Label(); nAgu.SetBounds(16, 144, 250, 18); nAgu.BackColor = Color.Transparent;
+                    Rotulo nAgu = new Rotulo(); nAgu.SetBounds(16, 144, 250, 18); nAgu.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     nAgu.ForeColor = cTexto; nAgu.Font = fNom; nAgu.Text = "Agudos del local"; tTono.Controls.Add(nAgu);
-                    Label vAgu = new Label(); vAgu.SetBounds(16 + 424 - 170, 142, 170, 20); vAgu.BackColor = Color.Transparent;
-                    vAgu.ForeColor = cBri; vAgu.Font = fVal; vAgu.TextAlign = ContentAlignment.TopRight; tTono.Controls.Add(vAgu);
-                    Label nAguNota = notaLocal(tTono, 165, 32, "El brillo (6 kHz): mas si el local se traga los agudos,\nmenos si silba o cansa. De -6 a +6 dB.");
+                    Rotulo vAgu = new Rotulo(); vAgu.SetBounds(16 + 424 - 170, 142, 170, 20); vAgu.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    vAgu.ForeColor = cBri; vAgu.Font = fVal; vAgu.TextAlign = AlineaTexto.TopRight; tTono.Controls.Add(vAgu);   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+                    Rotulo nAguNota = notaLocal(tTono, 165, 32, "El brillo (6 kHz): mas si el local se traga los agudos,\nmenos si silba o cansa. De -6 a +6 dB.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Deslizador barAgu = new Deslizador(); barAgu.SetBounds(16, 199, 424, 22); barAgu.Name = "SonidoTonoAgudos";
                     barAgu.Minimum = 0; barAgu.Maximum = 2 * SalaLocal.TonoMax; barAgu.Value = agudosLocalDb + SalaLocal.TonoMax; barAgu.Acento = cBri;
                     tTono.Controls.Add(barAgu);
@@ -949,11 +949,11 @@ namespace Rocola
                     Interruptor swEses = new Interruptor(); swEses.SetBounds(16, 240, 424, 26); swEses.ForeColor = cTexto; swEses.Font = fNom;
                     swEses.Text = "Suavizar las eses"; swEses.Acento = cBri; swEses.Checked = suavizaEses; swEses.Name = "SonidoEses";
                     tTono.Controls.Add(swEses);
-                    Label nEses = notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");
+                    Rotulo nEses = notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
                     swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
                     tPre.Controls.Add(swPre);
-                    Label nPreNota = notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
+                    Rotulo nPreNota = notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     notaLocal(tPre, 176, 64, "No toca el volumen de Windows ni el de la salida. Nunca\nsube la cancion mas alla del techo del limitador. Apagado\nde fabrica; se oye al instante en la cancion que suena.");
                     // EL MODO BILLAR (23-10-2026, LocalAuto.cs; desde el 27-10-2026 lleva la cadena entera, CadenaBillar.cs): ajusta por ti el
                     // sonido de cada cancion para las bocinas del billar. Va en la pagina de Sonido, con el boton de los ajustes al lado; con el
@@ -963,12 +963,12 @@ namespace Rocola
                     tBil.Controls.Add(swAutoL);
                     BotonPlano bAju = new BotonPlano(); bAju.SetBounds(256, 38, 184, 30); bAju.Font = fBot;
                     bAju.Text = "Ajustes del sonido..."; bAju.Name = "SonidoAjustesAbrir";
-                    bAju.AccessibleName = "Ajustes del sonido"; bAju.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bAju.AccessibleName = "Ajustes del sonido"; bAju.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tBil.Controls.Add(bAju);
-                    Label lBil = notaLocal(tBil, 72, 80, "");
+                    Rotulo lBil = notaLocal(tBil, 72, 80, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lBil.Name = "SonidoBillarTexto";
                     // Solo para este local (25-10-2026): se dice para que esta hecho.
-                    Label lHecho = notaLocal(tPre, 248, 92, "Con el modo billar encendido (pagina de Sonido) esto lo decide\nel modo, hecho para tu billar: presencia en el tercio de\ncanciones que mas varia de tu biblioteca. Un disco seguido\ndecide igual en todas.");
+                    Rotulo lHecho = notaLocal(tPre, 248, 92, "Con el modo billar encendido (pagina de Sonido) esto lo decide\nel modo, hecho para tu billar: presencia en el tercio de\ncanciones que mas varia de tu biblioteca. Un disco seguido\ndecide igual en todas.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lHecho.Name = "SonidoLocalHecho";
                     string motivoAuto = "el modo billar apagado (pagina de Sonido)";
                     Func<bool> sinAuto = delegate { return !localAuto; };
@@ -980,7 +980,7 @@ namespace Rocola
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
                     // LA PRUEBA DE BOCINAS, en la pagina de Sonido debajo del modo billar (27-10-2026).
-                    Label lPruT = new Label(); lPruT.SetBounds(16, 158, 424, 18); lPruT.BackColor = Color.Transparent;
+                    Rotulo lPruT = new Rotulo(); lPruT.SetBounds(16, 158, 424, 18); lPruT.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lPruT.ForeColor = cTexto; lPruT.Font = fNom; lPruT.Text = "Prueba de bocinas"; tBil.Controls.Add(lPruT);
                     notaLocal(tBil, 178, 32, "Un ruido suave por donde elijas: para igualar IN A e IN B del\namplificador y revisar cada bocina. Con la rocola callada.");
                     BotonPlano bPruI = new BotonPlano(); bPruI.SetBounds(16, 214, 204, 32); bPruI.Font = fBot; bPruI.Text = "Solo izquierda";
@@ -988,7 +988,7 @@ namespace Rocola
                     BotonPlano bPruA = new BotonPlano(); bPruA.SetBounds(16, 252, 204, 32); bPruA.Font = fBot; bPruA.Text = "Las dos";
                     BotonPlano bPruP = new BotonPlano(); bPruP.SetBounds(236, 252, 204, 32); bPruP.Font = fBot; bPruP.Text = "Polaridad";
                     tBil.Controls.Add(bPruI); tBil.Controls.Add(bPruD); tBil.Controls.Add(bPruA); tBil.Controls.Add(bPruP);
-                    Label lPru = new Label(); lPru.SetBounds(16, 290, 424, 40); lPru.BackColor = Color.Transparent;
+                    Rotulo lPru = new Rotulo(); lPru.SetBounds(16, 290, 424, 40); lPru.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lPru.ForeColor = Color.FromArgb(255, 214, 120); lPru.Font = fNom; tBil.Controls.Add(lPru);
                     notaLocal(tBil, 332, 48, "Polaridad: el grave suena igual por las dos y luego con una al\nreves, dos veces. Si AL REVES se oye con MAS grave, una\nbocina esta conectada al reves (rojo con negro).");
                     notaLocal(tPru, 40, 64, "A que frecuencia le llega el sonido a la tarjeta. De fabrica,\ncomo la cancion (sin convertir nada); con 44,1 o 48 kHz la\nrocola convierte aqui cada cancion, con su convertidor.");
@@ -996,12 +996,12 @@ namespace Rocola
                     // AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs): su propia hoja, en el sitio de la del local.
                     BotonPlano bAfi = new BotonPlano(); bAfi.SetBounds(16, 170, 424, 30); bAfi.Font = fBot;
                     bAfi.Text = "Afinar el local con el celular..."; bAfi.Name = "SonidoAfinarAbrir";
-                    bAfi.AccessibleName = "Afinar el local con el celular"; bAfi.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bAfi.AccessibleName = "Afinar el local con el celular"; bAfi.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tPru.Controls.Add(bAfi);
                     notaLocal(tPru, 204, 48, "Con una app de decibeles en el celular, mide como suena tu\nlocal por bandas; el modo billar ajusta el ecualizador a lo\nmedido en vez de a lo estimado.");
                     string pruAviso = "";
                     // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, Form1.Sonido.cs): en el renglon libre antes de "Volver".
-                    Label lFrec = new Label(); lFrec.SetBounds(16, 316, 92, 20); lFrec.BackColor = Color.Transparent;
+                    Rotulo lFrec = new Rotulo(); lFrec.SetBounds(16, 316, 92, 20); lFrec.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lFrec.ForeColor = cTexto; lFrec.Font = fNom; lFrec.Text = "Tarjeta a:"; tPru.Controls.Add(lFrec);
                     BotonPlano bFrec0 = new BotonPlano(); bFrec0.SetBounds(110, 310, 138, 30); bFrec0.Font = fBot; bFrec0.Text = "Como la cancion";
                     BotonPlano bFrec44 = new BotonPlano(); bFrec44.SetBounds(254, 310, 90, 30); bFrec44.Font = fBot; bFrec44.Text = "44,1 kHz";
@@ -1034,29 +1034,29 @@ namespace Rocola
                     // ---------------- AFINAR EL LOCAL CON EL CELULAR (27-10-2026, AfinarLocal.cs; simplificada en la sexta tanda) ----------------
                     // El dueno pidio hacerlo «lo mas simple posible»: un boton toca las ocho bandas de grave a agudo, cada banda tiene su barra
                     // y la app solo dice dBA o dBC. Un solo punto (sin puntos 2 y 3) y sin botones por banda.
-                    Panel pAfi = new Panel(); pAfi.SetBounds(16, 100, 928, 398); pAfi.BackColor = dlg.BackColor;
+                    Grupo pAfi = new Grupo(); pAfi.SetBounds(16, 100, 928, 398); pAfi.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pAfi.Name = "SonidoAfinar"; pAfi.Visible = false;
                     Tarjeta tAfi = new Tarjeta(); tAfi.SetBounds(0, 0, 456, 398); tAfi.Titulo = "AFINAR EL LOCAL CON EL CELULAR"; tAfi.Acento = cVol;
                     Tarjeta tAfiR = new Tarjeta(); tAfiR.SetBounds(472, 0, 456, 398); tAfiR.Titulo = "LA AFINACION"; tAfiR.Acento = cBri;
                     pAfi.Controls.Add(tAfi); pAfi.Controls.Add(tAfiR);
                     BotonPlano bTodas = new BotonPlano(); bTodas.SetBounds(16, 40, 424, 32); bTodas.Font = fBot;
                     bTodas.Text = "Tocar las 8 bandas (de grave a agudo)"; bTodas.Name = "SonidoAfinarTodas"; tAfi.Controls.Add(bTodas);
-                    Label lAfiGrande = new Label(); lAfiGrande.SetBounds(16, 78, 424, 30); lAfiGrande.BackColor = Color.Transparent;
+                    Rotulo lAfiGrande = new Rotulo(); lAfiGrande.SetBounds(16, 78, 424, 30); lAfiGrande.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lAfiGrande.ForeColor = Color.FromArgb(255, 214, 120); lAfiGrande.Font = fTit; lAfiGrande.Name = "SonidoAfinarGrande"; tAfi.Controls.Add(lAfiGrande);
-                    Label[] nBanda = new Label[8]; Deslizador[] barBanda = new Deslizador[8]; Label[] vBanda = new Label[8];
+                    Rotulo[] nBanda = new Rotulo[8]; Deslizador[] barBanda = new Deslizador[8]; Rotulo[] vBanda = new Rotulo[8];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     for (int k = 0; k < 8; k++)
                     {
                         int y = 114 + 34 * k;
-                        nBanda[k] = new Label(); nBanda[k].SetBounds(16, y + 4, 70, 20); nBanda[k].BackColor = Color.Transparent;
+                        nBanda[k] = new Rotulo(); nBanda[k].SetBounds(16, y + 4, 70, 20); nBanda[k].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                         nBanda[k].ForeColor = cTexto; nBanda[k].Font = fNom; nBanda[k].Text = NombreBanda(k); tAfi.Controls.Add(nBanda[k]);
                         barBanda[k] = new Deslizador(); barBanda[k].SetBounds(90, y + 3, 262, 22); barBanda[k].Name = "SonidoAfinarDb" + k;
                         barBanda[k].Minimum = AfinaSinMedir; barBanda[k].Maximum = AfinaMaxDb; barBanda[k].Acento = cVol;
                         barBanda[k].Value = float.IsNaN(afinadoDb[k]) ? AfinaSinMedir : (int)Math.Round(afinadoDb[k]);
                         tAfi.Controls.Add(barBanda[k]);
-                        vBanda[k] = new Label(); vBanda[k].SetBounds(358, y + 4, 82, 20); vBanda[k].BackColor = Color.Transparent;
-                        vBanda[k].ForeColor = cVol; vBanda[k].Font = fNom; vBanda[k].TextAlign = ContentAlignment.TopRight; tAfi.Controls.Add(vBanda[k]);
+                        vBanda[k] = new Rotulo(); vBanda[k].SetBounds(358, y + 4, 82, 20); vBanda[k].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                        vBanda[k].ForeColor = cVol; vBanda[k].Font = fNom; vBanda[k].TextAlign = AlineaTexto.TopRight; tAfi.Controls.Add(vBanda[k]);   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                     }
-                    Label lPond = new Label(); lPond.SetBounds(16, 44, 140, 20); lPond.BackColor = Color.Transparent;
+                    Rotulo lPond = new Rotulo(); lPond.SetBounds(16, 44, 140, 20); lPond.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lPond.ForeColor = cTexto; lPond.Font = fNom; lPond.Text = "Tu app dice:"; tAfiR.Controls.Add(lPond);
                     BotonPlano[] bPond = new BotonPlano[2];
                     for (int k = 0; k < 2; k++)
@@ -1064,12 +1064,12 @@ namespace Rocola
                         bPond[k] = new BotonPlano(); bPond[k].SetBounds(160 + 94 * k, 38, 86, 30); bPond[k].Font = fBot; bPond[k].Text = "dB" + AfinaPonderacionNombre[k];
                         bPond[k].Name = "SonidoAfinarPond" + AfinaPonderacionNombre[k]; tAfiR.Controls.Add(bPond[k]);
                     }
-                    Label lAfiRes = notaLocal(tAfiR, 78, 52, "");
+                    Rotulo lAfiRes = notaLocal(tAfiR, 78, 52, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lAfiRes.ForeColor = cTexto; lAfiRes.Name = "SonidoAfinarResultado";
                     Interruptor swAfi = new Interruptor(); swAfi.SetBounds(16, 136, 424, 26); swAfi.ForeColor = cTexto; swAfi.Font = fNom;
                     swAfi.Text = "Usar la afinacion en el modo billar"; swAfi.Acento = cBri; swAfi.Checked = afinadoUsar; swAfi.Name = "SonidoAfinarUsar";
                     tAfiR.Controls.Add(swAfi);
-                    Label lAfiNota = notaLocal(tAfiR, 164, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");
+                    Rotulo lAfiNota = notaLocal(tAfiR, 164, 32, "Sustituye la inclinacion de agudos que se estimo. Se oye al\ninstante en la cancion que suena.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     notaLocal(tAfiR, 206, 120, "Como medir: con la rocola callada, pon la app de decibeles\nen lento. Toca \"Tocar las 8 bandas\" y parate donde esta la\ngente: suenan de grave a agudo, 8 s cada una, con una pausa\nentre ellas. Anota el numero de cada una, vuelve y ponlo en\nsu barra. Corrige el 70 %: baja hasta 6 dB, sube hasta 3\n(63 Hz nunca).");
                     BotonPlano bVolverAfi = new BotonPlano(); bVolverAfi.SetBounds(16, 346, 424, 34); bVolverAfi.Font = fBot;
                     bVolverAfi.Text = "Volver al local y sus bocinas"; bVolverAfi.Name = "SonidoAfinarVolver"; tAfiR.Controls.Add(bVolverAfi);
@@ -1105,9 +1105,9 @@ namespace Rocola
                     // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
                     BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 214, 424, 30); bIa.Font = fBot;
                     bIa.Text = "Mejoras con IA..."; bIa.Name = "SonidoIaAbrir";
-                    bIa.AccessibleName = "Mejoras con IA"; bIa.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bIa.AccessibleName = "Mejoras con IA"; bIa.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tMas.Controls.Add(bIa);
-                    Panel pIa = new Panel(); pIa.SetBounds(16, 100, 928, 398); pIa.BackColor = dlg.BackColor;
+                    Grupo pIa = new Grupo(); pIa.SetBounds(16, 100, 928, 398); pIa.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pIa.Name = "SonidoIa"; pIa.Visible = false;
                     Tarjeta tIa = new Tarjeta(); tIa.SetBounds(0, 0, 456, 398); tIa.Titulo = "MEJORAS CON IA"; tIa.Acento = cBri;
                     Tarjeta tMod = new Tarjeta(); tMod.SetBounds(472, 0, 456, 398); tMod.Titulo = "LOS MODELOS"; tMod.Acento = cBib;
@@ -1119,21 +1119,21 @@ namespace Rocola
                     };
                     Interruptor swMed = interIa(40, "Bajo y brillo a la medida de cada cancion", cGra, aLaMedida);
                     swMed.Name = "SonidoIaMedida";
-                    Label nMed = notaLocal(tIa, 66, 32, "Compara cada cancion con lo que tendria una bien grabada\ncomo ella (la IA del EQ), no con el promedio de todas.");
+                    Rotulo nMed = notaLocal(tIa, 66, 32, "Compara cada cancion con lo que tendria una bien grabada\ncomo ella (la IA del EQ), no con el promedio de todas.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     // Sin el modelo del EQ, o sin 10 canciones con el tono medido, "a la medida" no cambia nada (MetaDeCancion da null): en gris y diciendolo.
                     NecesitaMotivo(swMed, delegate { return localAuto ? "Necesita: " + motivoAuto : (!EqNet.Loaded ? "Necesita: el modelo del EQ (IAS\\rocola_eq_ia.bin)" : (eqAvg == null ? "Necesita: 10 canciones con el tono medido (el repaso)" : null)); }, nMed);
                     Interruptor swSis = interIa(110, "Quitar el siseo de grabaciones viejas", cCal, quitaSiseo);
                     swSis.Name = "SonidoIaSiseo";
-                    Label nSis = notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");
+                    Rotulo nSis = notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Necesita(swSis, sinAuto, motivoAuto, nSis);
                     Interruptor swGen = interIa(180, "Modelos del DSEE por genero", cBri, dseePorGenero);
                     swGen.Name = "SonidoIaGenero";
-                    Label lGenNota = notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");
+                    Rotulo lGenNota = notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     // A1: sin el DSEE encendido no hace nada. Gris, y la nota de abajo dice que le falta.
                     NecesitaMotivo(swGen, delegate { return localAuto ? "Necesita: " + motivoAuto : (sbrOn && sbrAllowed ? null : "Necesita: el DSEE encendido (Ajustes del sonido)"); }, lGenNota);
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
-                    Label lEqIa = notaLocal(tMod, 40, 48, "");
-                    Label lDsIa = notaLocal(tMod, 104, 64, "");
+                    Rotulo lEqIa = notaLocal(tMod, 40, 48, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    Rotulo lDsIa = notaLocal(tMod, 104, 64, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat; los de genero, con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
                     BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
                     bVolverIa.Text = "Volver a los ajustes del sonido"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
@@ -1154,13 +1154,13 @@ namespace Rocola
                     // Su propia hoja, como las del local y la IA; el boton va en el renglon del subtitulo, que tenia sitio.
                     BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(16, 156, 424, 30); bAhora.Font = fBot; tMas.Controls.Add(bAhora);
                     bAhora.Text = "Lo que suena ahora..."; bAhora.Name = "SonidoAhoraAbrir";
-                    bAhora.AccessibleName = "Lo que suena ahora"; bAhora.AccessibleRole = AccessibleRole.PushButton;
-                    Panel pAhora = new Panel(); pAhora.SetBounds(16, 100, 928, 398); pAhora.BackColor = dlg.BackColor;
+                    // EN LINUX: (XP) bAhora.AccessibleName = "Lo que suena ahora"; bAhora.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                    Grupo pAhora = new Grupo(); pAhora.SetBounds(16, 100, 928, 398); pAhora.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pAhora.Name = "SonidoAhora"; pAhora.Visible = false;
                     Tarjeta tAhora = new Tarjeta(); tAhora.SetBounds(0, 0, 456, 398); tAhora.Titulo = "LO QUE SUENA AHORA"; tAhora.Acento = cVol;
                     Tarjeta tArr = new Tarjeta(); tArr.SetBounds(472, 0, 456, 398); tArr.Titulo = "ARREGLOS DE LA GRABACION"; tArr.Acento = cGra;
                     pAhora.Controls.Add(tAhora); pAhora.Controls.Add(tArr);
-                    Label lAhora = notaLocal(tAhora, 40, 100, "");
+                    Rotulo lAhora = notaLocal(tAhora, 40, 100, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lAhora.ForeColor = cTexto; lAhora.Name = "SonidoAhoraTexto";
                     BotonPlano bSinMej = new BotonPlano(); bSinMej.SetBounds(16, 150, 424, 34); bSinMej.Font = fBot;
                     bSinMej.Name = "SonidoSinMejoras"; tAhora.Controls.Add(bSinMej);
@@ -1173,12 +1173,12 @@ namespace Rocola
                     bCiegoAfi.Name = "SonidoCiegoAfinar"; tAhora.Controls.Add(bCiegoAfi);
                     BotonPlano bGusta = new BotonPlano(); bGusta.SetBounds(304, 262, 136, 30); bGusta.Font = fBot; bGusta.Text = "Me gusta esta";
                     bGusta.Name = "SonidoCiegoGusta"; tAhora.Controls.Add(bGusta);
-                    Label lCiego = notaLocal(tAhora, 296, 48, "");
+                    Rotulo lCiego = notaLocal(tAhora, 296, 48, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lCiego.Name = "SonidoCiegoTexto";
                     // P1 (30-10-2026): la presencia del billar sin el grave en el detector, contra la de antes (CompararCiegas.cs).
                     BotonPlano bCiegoPre = new BotonPlano(); bCiegoPre.SetBounds(16, 350, 208, 30); bCiegoPre.Font = fBot; bCiegoPre.Text = "Presencia nueva o antes";
                     bCiegoPre.Name = "SonidoCiegoPresencia"; tAhora.Controls.Add(bCiegoPre);
-                    Label nVer = notaLocal(tAhora, 350, 32, "Se mira cada medio segundo. Los\nvideos no pasan por la cadena.");
+                    Rotulo nVer = notaLocal(tAhora, 350, 32, "Se mira cada medio segundo. Los\nvideos no pasan por la cadena.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     nVer.SetBounds(232, 350, 208, 32);
                     Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
                     {
@@ -1187,14 +1187,14 @@ namespace Rocola
                     };
                     Interruptor swMudo = interArr(36, "Un canal mudo, por los dos", cGra, canalMudo);
                     swMudo.Name = "SonidoCanalMudo";
-                    Label nMudo = notaLocal(tArr, 60, 32, "Si una cancion trae un canal vacio, los dos dan el que suena,\na la misma potencia. Solo en las que lo traen.");
+                    Rotulo nMudo = notaLocal(tArr, 60, 32, "Si una cancion trae un canal vacio, los dos dan el que suena,\na la misma potencia. Solo en las que lo traen.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swDc = interArr(96, "Quitar la corriente continua", cCal, quitaContinua);
                     swDc.Name = "SonidoContinua";
-                    Label nDc = notaLocal(tArr, 120, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");
+                    Rotulo nDc = notaLocal(tArr, 120, 32, "Si la onda viene corrida, se centra: el limitador no la baja\nde mas y los conos no se empujan. Solo en las que la traen.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     // T6 (25-10-2026, Zumbido.cs): el zumbido de la corriente, solo en las canciones en que el repaso lo midio.
                     Interruptor swZum = interArr(156, "Quitar el zumbido de la corriente", cGra, quitaZumbido);
                     swZum.Name = "SonidoZumbido";
-                    Label nZum = notaLocal(tArr, 180, 32, "El \"mmm\" de 50 o 60 Hz de una grabacion vieja: se quita solo\nese tono. Solo en las que el repaso encontro con zumbido.");
+                    Rotulo nZum = notaLocal(tArr, 180, 32, "El \"mmm\" de 50 o 60 Hz de una grabacion vieja: se quita solo\nese tono. Solo en las que el repaso encontro con zumbido.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Necesita(swMudo, sinAuto, motivoAuto, nMudo); Necesita(swDc, sinAuto, motivoAuto, nDc); Necesita(swZum, sinAuto, motivoAuto, nZum);
                     // R2 (31-10-2026, PreEco.cs): el pre-eco de los MP3 de codificadores simples, solo en las canciones en que el repaso lo midio.
                     Interruptor swPreEco = interArr(216, "Quitar el pre-eco de los MP3 viejos", cCal, quitaPreEco);
@@ -1235,12 +1235,12 @@ namespace Rocola
                     notaLocal(tMas, 72, 18, "Subgrave, estereo, claridad, partes suaves, balance, tono.");
                     BotonPlano bVoz = new BotonPlano(); bVoz.SetBounds(16, 98, 424, 30); bVoz.Font = fBot;
                     bVoz.Text = "Voz, golpe y retumbe..."; bVoz.Name = "SonidoVozAbrir";
-                    bVoz.AccessibleName = "Voz, golpe y retumbe"; bVoz.AccessibleRole = AccessibleRole.PushButton;
+                    // EN LINUX: (XP) bVoz.AccessibleName = "Voz, golpe y retumbe"; bVoz.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tMas.Controls.Add(bVoz);
                     notaLocal(tMas, 130, 18, "Que el bombo no hunda la voz, el retumbe y el ataque.");
                     notaLocal(tMas, 188, 18, "Escuchar sin mejoras y los arreglos de la grabacion.");
                     notaLocal(tMas, 246, 18, "A la medida, quitar el siseo y el DSEE por genero.");
-                    Label lMasModo = notaLocal(tMas, 276, 64, "");
+                    Rotulo lMasModo = notaLocal(tMas, 276, 64, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lMasModo.Name = "SonidoAjustesModo";
                     BotonPlano bVolverAju = new BotonPlano(); bVolverAju.SetBounds(16, 346, 424, 34); bVolverAju.Font = fBot;
                     bVolverAju.Text = "Volver a las canciones"; bVolverAju.Name = "SonidoAjustesVolver"; tMas.Controls.Add(bVolverAju);
@@ -1248,7 +1248,7 @@ namespace Rocola
 
                     // ---------------- VOZ, GOLPE Y RETUMBE (27-10-2026, VozGolpeYRetumbe.cs) ----------------
                     // Las tres etapas nuevas de la cadena, por fin con su mando: su propia hoja, como las del local y la IA.
-                    Panel pVoz = new Panel(); pVoz.SetBounds(16, 100, 928, 398); pVoz.BackColor = dlg.BackColor;
+                    Grupo pVoz = new Grupo(); pVoz.SetBounds(16, 100, 928, 398); pVoz.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     pVoz.Name = "SonidoVoz"; pVoz.Visible = false;
                     Tarjeta tVoz = new Tarjeta(); tVoz.SetBounds(0, 0, 456, 398); tVoz.Titulo = "VOZ, GOLPE Y RETUMBE"; tVoz.Acento = cGra;
                     Tarjeta tVozB = new Tarjeta(); tVozB.SetBounds(472, 0, 456, 398); tVozB.Titulo = "EN EL MODO BILLAR"; tVozB.Acento = cBri;
@@ -1260,17 +1260,17 @@ namespace Rocola
                     };
                     Interruptor swRet = interVoz(40, "Retumbe dinamico", cGra, retumbeDinamico);
                     swRet.Name = "SonidoRetumbe";
-                    Label nRet = notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");
+                    Rotulo nRet = notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swAta = interVoz(110, "Ataque mas claro", cBri, ataqueClaro);
                     swAta.Name = "SonidoAtaque";
-                    Label nAta = notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");
+                    Rotulo nAta = notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swBom = interVoz(180, "Que el bombo no hunda la voz", cCal, bomboSinHundir);
                     swBom.Name = "SonidoBombo";
-                    Label nBom = notaLocal(tVoz, 206, 32, "Si el bombo pasaria del techo, baja solo el bajo y no toda la\ncancion: la voz no se hunde con cada golpe.");
+                    Rotulo nBom = notaLocal(tVoz, 206, 32, "Si el bombo pasaria del techo, baja solo el bajo y no toda la\ncancion: la voz no se hunde con cada golpe.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     // AGUDOS ASPEROS DINAMICOS (quinta tanda, AsperezaDinamica.cs): el cuarto de la hoja.
                     Interruptor swAsp = interVoz(250, "Agudos asperos dinamicos", cBri, asperezaDinamica);
                     swAsp.Name = "SonidoAspereza";
-                    Label nAsp = notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
+                    Rotulo nAsp = notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     notaLocal(tVoz, 332, 48, "Apagados de fabrica. Se oyen al instante en la cancion\nque suena.");
                     Necesita(swRet, sinAuto, motivoAuto, nRet); Necesita(swAta, sinAuto, motivoAuto, nAta); Necesita(swBom, sinAuto, motivoAuto, nBom); Necesita(swAsp, sinAuto, motivoAuto, nAsp);
                     notaLocal(tVozB, 40, 128, "Con el modo billar encendido, el retumbe, el ataque y los\nagudos asperos van siempre. El bombo no: con cada cancion\nsubida hasta su limite, el limitador casi no actua, y la\netapa le quitaba bajo a la cancion sin ayudar a la voz. Las\n\"s\" se suavizan siempre (Tono y presencia).");
@@ -1279,14 +1279,14 @@ namespace Rocola
                     bool verVoz = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
-                    Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
+                    Rotulo lCal = new Rotulo(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lCal.ForeColor = Color.FromArgb(198, 214, 244); lCal.Font = fNom;
-                    Label hint = new Label(); hint.SetBounds(16, 62, 896, 48); hint.BackColor = Color.Transparent;   // TRES renglones
+                    Rotulo hint = new Rotulo(); hint.SetBounds(16, 62, 896, 48); hint.BackColor = Color.Transparent;   // TRES renglones; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     hint.ForeColor = cTenue; hint.Font = fDes;
                     BotonPlano bTrain = new BotonPlano();
                     bTrain.SetBounds(16, 114, 300, 34); bTrain.Font = fBot;
-                    Label lPct = new Label(); lPct.SetBounds(630, 112, 282, 18); lPct.BackColor = Color.Transparent;
-                    lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = ContentAlignment.TopRight; lPct.Visible = false;
+                    Rotulo lPct = new Rotulo(); lPct.SetBounds(630, 112, 282, 18); lPct.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    lPct.ForeColor = cBib; lPct.Font = fDes; lPct.TextAlign = AlineaTexto.TopRight; lPct.Visible = false;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                     BarraAvance pbTrain = new BarraAvance();
                     pbTrain.SetBounds(630, 134, 282, 8); pbTrain.Acento = cBib; pbTrain.Visible = false;
                     // JUNTAR MATERIAL PARA LA IA: se puede apagar. Es lo unico de aqui que ESCRIBE UN ARCHIVO
@@ -1309,12 +1309,12 @@ namespace Rocola
                     // sola al arrancar y acierta. Esto esta aqui por si el operador quiere fijarlo -por ejemplo
                     // con la musica en un disco de red, donde medir no dice gran cosa-.
                     Color cDsk = Color.FromArgb(150, 205, 255);
-                    Label lDskT = new Label(); lDskT.SetBounds(252, 678, 150, 18); lDskT.BackColor = Color.Transparent;
+                    Rotulo lDskT = new Rotulo(); lDskT.SetBounds(252, 678, 150, 18); lDskT.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lDskT.ForeColor = cTexto; lDskT.Font = fNom; lDskT.Text = "Tipo de disco";
                     BotonPlano bDskA = new BotonPlano(); bDskA.SetBounds(408, 676, 122, 34); bDskA.Font = fBot; bDskA.Text = "Automatico";
                     BotonPlano bDskS = new BotonPlano(); bDskS.SetBounds(538, 676, 104, 34); bDskS.Font = fBot; bDskS.Text = "SSD";
                     BotonPlano bDskH = new BotonPlano(); bDskH.SetBounds(650, 676, 142, 34); bDskH.Font = fBot; bDskH.Text = "Disco duro";
-                    Label lDskS = new Label(); lDskS.SetBounds(252, 712, 540, 18); lDskS.BackColor = Color.Transparent;
+                    Rotulo lDskS = new Rotulo(); lDskS.SetBounds(252, 712, 540, 18); lDskS.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lDskS.ForeColor = cTenue; lDskS.Font = fDes;
                     Action pintaDsk = delegate
                     {
@@ -1593,11 +1593,11 @@ namespace Rocola
                     // LA PAGINA DE IMAGEN Y RENDIMIENTO: el medidor de este equipo y, al lado, los efectos con
                     // su coste medido. Vive entera dentro de un Panel, asi cambiar de pestana es una linea y la
                     // pagina de Sonido ni se entera.
-                    Panel pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
-                    Panel pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);
-                    Panel pCol = PaginaColores(fNom, fDes, fBot, cTexto, cTenue, cApagado);
-                    Panel pFon = PaginaFondo(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);
-                    Panel pPan = PaginaPantalla(fNom, fDes, fBot, cTexto, cTenue, cApagado);
+                    Grupo pImg = PaginaImagen(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+                    Grupo pDet = PaginaDetalles(fNom, fDes, fBot, cTexto, cTenue, cApagado);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+                    Grupo pCol = PaginaColores(fNom, fDes, fBot, cTexto, cTenue, cApagado);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+                    Grupo pFon = PaginaFondo(fNom, fVal, fDes, fBot, cTexto, cTenue, cApagado);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+                    Grupo pPan = PaginaPantalla(fNom, fDes, fBot, cTexto, cTenue, cApagado);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                     string[] nomPag = { "Sonido", "Imagen y rendimiento", "Detalles que dan vida", "Colores del fondo", "El fondo y sus adornos", "La pantalla" };
                     Action pintaPag = delegate
                     {
@@ -1607,9 +1607,9 @@ namespace Rocola
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
-                        foreach (Control cc in dlg.Controls)
+                        foreach (IPieza cc in dlg.Controls)   // EN LINUX: Control -> IPieza: las piezas de la hoja (Nativo/Pieza.cs)
                             if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pAfi)
-                                cc.Visible = (f3Pagina == 0);
+                                cc.Caja.Visible = (f3Pagina == 0);   // EN LINUX: Control.Visible -> Visible de la caja de la pieza
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono && !verAfi);
                         pAfi.Visible = (f3Pagina == 0 && verLocal && verAfi);
@@ -1683,8 +1683,8 @@ namespace Rocola
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
-                    dlg.KeyPreview = true;
-                    dlg.KeyDown += delegate (object so, KeyEventArgs ke) { if (ke.KeyCode == Tecla.Escape) dlg.Close(); };   // EN LINUX: Keys -> Tecla, los mismos numeros
+                    // EN LINUX: (XP) dlg.KeyPreview = true; suscribirse a TeclaAntes (el KeyDown de la ventana con KeyPreview) lo pone
+                    dlg.TeclaAntes += delegate (PulsoTecla ke) { if (ke.KeyCode == Tecla.Escape) dlg.Close(); };   // EN LINUX: Keys -> Tecla, los mismos numeros; dlg.KeyDown con KeyPreview -> TeclaAntes: la hoja ve la tecla antes que la pieza del foco (Form.ProcessKeyPreview)
                     MonedaTambienAqui(dlg);   // y una moneda con la ventana abierta tambien cuenta
                     // Refresco del avance mientras el dialogo esta abierto (el trabajo ocurre en otro hilo).
                     Reloj tTrain = new Reloj();   // EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
@@ -1697,7 +1697,7 @@ namespace Rocola
                     tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
-                    dlg.ShowDialog(this);
+                    dlg.MuestraModal(this);   // EN LINUX: ShowDialog(this): modal, con la rocola de duena (sus relojes, encargos y la tarjeta siguen; ella no recibe teclas ni raton)
                     tTrain.Stop(); tTrain.Dispose();
                     OlvidaRequisitos();
                     if (sinMejoras) PonSinMejoras(false);   // "Escuchar sin mejoras" no sobrevive a la ventana
@@ -1831,13 +1831,13 @@ namespace Rocola
         private const int ToastW = 620, ToastH = 48, ToastMinW = 260;
         // Ancho de la pastilla para ESE texto (acotado): lo usan las dos formas de dibujarla, por GPU y por CPU,
         // para que se vea igual en las dos.
-        internal static int AnchoToast(string text, Font font)
+        internal static int AnchoToast(string text, Rocola.Nativo.Letra font)   // EN LINUX: Font -> Letra; la firma de XP, para lo aun no traducido (Form1.cs, el aviso sin tarjeta), en Plataforma/Puente.ventanas2.cs
         {
-            int w = TextRenderer.MeasureText(text, font).Width + 44;
+            int w = TextoGdi.Mide(text, font).Width + 44;   // EN LINUX: TextRenderer.MeasureText(text, font): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms)
             return w < ToastMinW ? ToastMinW : (w > ToastW ? ToastW : w);
         }
 #if ROCOLA_GPU
-        private Bitmap toastBmp; private int toastVer, toastTick = -1, toastBorde;
+        private SKBitmap toastBmp; private int toastVer, toastTick = -1, toastBorde;   // EN LINUX: el mapa es un SKBitmap (Nativo/Mapas.cs)
 
         // LO QUE TAPA EL VIDEO (barrido del 12-10-2026). El cuadro de un video en ventana es una ventana de Windows ENCIMA
         // del panel de la tarjeta: lo que la tarjeta dibuje detras no se ve. Los avisos salian centrados (o a la derecha) y
@@ -1858,36 +1858,36 @@ namespace Rocola
         private void HorneaToast(string text, Color back)
         {
             if (AvisoClaro()) { HorneaAviso(text, back); return; }   // el aviso que se entiende (SuenaVivoGpu.cs)
-            if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
+            if (toastBmp == null) toastBmp = Mapas.Nuevo(ToastW, ToastH);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             toastBorde = BordeLibreAvisos();   // con video, el aviso se centra en lo que se ve y no pasa de ahi
-            PintaToastHasta(toastBmp, text, back, lblToast.Font, toastBorde - 24);
+            PintaToastHasta(toastBmp, text, back, PuenteDibujo.Letra(lblToast.Font), toastBorde - 24);   // EN LINUX: la letra de lblToast (un letrero de la pantalla, aun de la capa: va con las vistas), por el puente: la misma
             toastVer++; toastTick = TickVivo();
         }
 
         // El dibujo en si, aparte del estado: asi se puede ver y comprobar sin arrancar la rocola entera.
-        internal static void PintaToast(Bitmap bmp, string text, Color back, Font font)
+        internal static void PintaToast(SKBitmap bmp, string text, Color back, Rocola.Nativo.Letra font)   // EN LINUX: Bitmap -> SKBitmap y Font -> Letra
         { PintaToastHasta(bmp, text, back, font, ToastW); }
         // 'maxAncho': lo mas que puede medir la pastilla (con video, lo que queda a su izquierda); si no cabe, puntos.
-        internal static void PintaToastHasta(Bitmap bmp, string text, Color back, Font font, int maxAncho)
+        internal static void PintaToastHasta(SKBitmap bmp, string text, Color back, Rocola.Nativo.Letra font, int maxAncho)   // EN LINUX: Bitmap -> SKBitmap y Font -> Letra
         {
-            using (Graphics g = Graphics.FromImage(bmp))
+            using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
             {
-                g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
+                AjusteLetra modoLetra = AjusteLetra.Suave;   // gris: ClearType deja flecos sobre transparente; EN LINUX: g.TextRenderingHint = TextRenderingHint.AntiAlias
                 int tw = Math.Min(AnchoToast(text, font), Math.Max(ToastMinW, maxAncho));   // el texto MANDA el ancho de la pastilla
                 int x0 = (ToastW - tw) / 2;
-                using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))
+                using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))   // EN LINUX: RoundRect (abajo; la piden tambien Form1.Pared.cs y Form1.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
                 {
-                    using (SolidBrush b = new SolidBrush(back)) g.FillPath(b, gp);
-                    using (Pen pe = new Pen(Color.FromArgb(70, 255, 255, 255), 1.5f)) g.DrawPath(pe, gp);   // filo claro: lo despega del fondo
+                    using (SKPaint b = PinturaXp.Pincel(back)) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), b, suave);   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs) y FillPath (Nativo/Pixel.cs)
+                    using (SKPaint pe = PinturaXp.Pluma(Color.FromArgb(70, 255, 255, 255), 1.5f)) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pe, suave);   // filo claro: lo despega del fondo; EN LINUX: Pen -> SKPaint de trazo (inglete y puntas planas, Nativo/PinturaXp.cs) y DrawPath (Nativo/Pixel.cs)
                 }
-                using (SolidBrush b = new SolidBrush(Color.White))
-                using (StringFormat sf = new StringFormat())
+                using (SKPaint b = PinturaXp.Pincel(Color.White))   // EN LINUX: SolidBrush -> SKPaint
+                // EN LINUX: (XP) using (StringFormat sf = new StringFormat()) -- un FormatoTexto no hay que soltarlo: se crea en la primera linea del bloque
                 {
-                    sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                    sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
-                    g.DrawString(text, font, b, new RectangleF(x0 + 10, 0, tw - 20, ToastH), sf);
+                    FormatoTexto sf = new FormatoTexto(); sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() (el de fabrica, no el compartido); Alignment y LineAlignment = Center
+                    sf.Banderas = BanderasTexto.SinPartir; sf.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: FormatFlags = NoWrap (deja solo esa) y Trimming = EllipsisCharacter
+                    TextoGdiPlus.Escribe(g, text, font, modoLetra, b, new RectangleF(x0 + 10, 0, tw - 20, ToastH), sf);   // EN LINUX: DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra a la vista
                 }
             }
         }
@@ -1921,7 +1921,7 @@ namespace Rocola
             int dt = Environment.TickCount - toastTick;
             if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
             float a, dy; CurvaToast(dt, out a, out dy);
-            t.Has = true; t.Bmp = toastBmp; t.Ver = toastVer;
+            t.Has = true; t.Bmp = PuenteDibujo.Bitmap(toastBmp); t.Ver = toastVer;   // EN LINUX: GpuToast (D3D9Star.cs, aun sin traducir) lo pide como Bitmap: los mismos puntos por el puente, y el mismo Bitmap cada vez (la tarjeta mira la version, no el objeto)
             t.X = ((toastBorde > 0 ? toastBorde : ClientSize.Width) - ToastW) * 0.5f;   // centrado en lo que se ve
             t.Y = 80f + dy;
             t.Alpha = a;
@@ -2006,7 +2006,7 @@ namespace Rocola
         // llegaba a esa ventana y el dinero del cliente se perdia. Estas ventanas no tienen donde escribir, asi que la
         // tecla de la moneda no le quita nada al encargado. Un pulso es una moneda: la autorrepeticion de un pulso que se
         // queda apretado no suma (como en ProcessCmdKey).
-        private void MonedaTambienAqui(ITeclasAntes dlg)   // EN LINUX: Form -> ITeclasAntes, la ventana con KeyPreview (Nativo/Pieza.cs): la hoja nativa de Ctrl+F2, y Ctrl+F3 y el historial de caratulas aun de la capa
+        private void MonedaTambienAqui(Hoja dlg)   // EN LINUX: Form -> Hoja (Nativo/Hoja.cs): Ctrl+F2, Ctrl+F3 y el historial de caratulas, las tres hojas nativas, con su KeyPreview (TeclaAntes y TeclaArribaAntes)
         {
             bool abajo = false;
             // EN LINUX: (XP) dlg.KeyPreview = true; suscribirse a TeclaAntes y TeclaArribaAntes (el KeyDown y el KeyUp de la ventana con KeyPreview) lo pone

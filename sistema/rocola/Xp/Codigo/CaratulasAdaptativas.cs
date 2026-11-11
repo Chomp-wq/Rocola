@@ -44,16 +44,16 @@ namespace Rocola
                 + " · " + measure.Ancho + "×" + measure.Alto + " · " + measure.Hora.ToString("HH:mm:ss")
                 + "\nGPU previas: " + measure.PreviasGpu + "/" + measure.VistasGpu + "; sin limpiar cachés.";
         }
-        private Panel BuildCoverHistory(Font normal, Font small, Color text, Color muted)
+        private Grupo BuildCoverHistory(Rocola.Nativo.Letra normal, Rocola.Nativo.Letra small, Color text, Color muted)   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
         {
-            Panel page = new Panel(); page.Size = new Size(920, 508); page.BackColor = Color.FromArgb(11, 14, 32);
-            Label title = new Label(); title.SetBounds(16, 14, 888, 28); title.Font = normal;
+            Grupo page = new Grupo(); page.Size = new Size(920, 508); page.BackColor = Color.FromArgb(11, 14, 32);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+            Rotulo title = new Rotulo(); title.SetBounds(16, 14, 888, 28); title.Font = normal;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             title.ForeColor = text; title.Text = "COMPARACIÓN DE CARGA DE CARÁTULAS"; page.Controls.Add(title);
             string[] headings = { "Perfil", "Resolución", "Inicio", "P95 / P99 (ms)", "FPS", "Listas/pedidas", "GPU previas", "Hora / audio" };
             int[] widths = { 130, 110, 70, 135, 60, 100, 100, 160 };
             int x = 16;
             for (int c = 0; c < headings.Length; c++) {
-                Label header = new Label(); header.SetBounds(x, 54, widths[c], 22);
+                Rotulo header = new Rotulo(); header.SetBounds(x, 54, widths[c], 22);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 header.Font = small; header.ForeColor = muted; header.Text = headings[c]; page.Controls.Add(header);
                 x += widths[c];
             }
@@ -64,36 +64,36 @@ namespace Rocola
                     m.P95.ToString("0.0") + " / " + m.P99.ToString("0.0"), m.Fps.ToString(),
                     m.PaginasListas + "/" + m.PaginasSolicitadas, m.PreviasGpu + "/" + m.VistasGpu,
                     m.Hora.ToString("HH:mm:ss") + (m.MusicaReal ? " · música" : " · simulado") };
-                Panel row = new Panel(); row.SetBounds(16, 82 + i * 30, 865, 28);
+                Grupo row = new Grupo(); row.SetBounds(16, 82 + i * 30, 865, 28);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                 row.BackColor = i % 2 == 0 ? Color.FromArgb(22, 28, 56) : Color.FromArgb(17, 22, 47);
                 int left = 0;
                 for (int c = 0; c < values.Length; c++) {
-                    Label value = new Label(); value.SetBounds(left, 4, widths[c], 20);
+                    Rotulo value = new Rotulo(); value.SetBounds(left, 4, widths[c], 20);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     value.Font = small; value.ForeColor = text; value.Text = values[c]; value.BackColor = Color.Transparent;
                     row.Controls.Add(value); left += widths[c];
                 }
                 page.Controls.Add(row);
             }
-            Label note = new Label(); note.SetBounds(16, 456, 888, 48); note.Font = small; note.ForeColor = muted;
+            Rotulo note = new Rotulo(); note.SetBounds(16, 456, 888, 48); note.Font = small; note.ForeColor = muted;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             note.Text = "Últimas 12 pruebas de esta sesión, con efectos altos. GPU previas: carátulas listas al primer encuentro.\n"
                 + "Compara el mismo inicio, resolución y ajustes; la música y las cachés influyen. No se borran cachés.";
             page.Controls.Add(note); return page;
         }
         private void ShowCoverHistory()
         {
-            using (Form dialog = new Form())
-            using (Font normal = new Font("Segoe UI", 10f, FontStyle.Bold))
-            using (Font small = new Font("Segoe UI", 8.5f))
+            using (Hoja dialog = new Hoja(MarcoXp.Dialogo))   // EN LINUX: new Form(): una hoja de la pantalla de la rocola (Nativo/Hoja.cs); MarcoXp.Dialogo es el FixedDialog y el CenterParent de abajo
+            using (Rocola.Nativo.Letra normal = Rocola.Nativo.Letra.EnPuntos(Rocola.Nativo.Letras.Resuelve("Segoe UI"), 10f, true))   // EN LINUX: new Font("Segoe UI", ...): una que no esta (Windows XP no la trae) queda en la generica, como GDI+ (Letras.Resuelve)
+            using (Rocola.Nativo.Letra small = Rocola.Nativo.Letra.EnPuntos(Rocola.Nativo.Letras.Resuelve("Segoe UI"), 8.5f))   // EN LINUX: new Font("Segoe UI", 8.5f) -> Letra (Letras.Resuelve)
             {
                 dialog.Text = "Carga de carátulas · Comparación"; dialog.ClientSize = new Size(920, 548);
-                dialog.StartPosition = FormStartPosition.CenterParent; dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dialog.MaximizeBox = dialog.MinimizeBox = false; dialog.BackColor = Color.FromArgb(11, 14, 32);
+                // EN LINUX: (XP) dialog.StartPosition = FormStartPosition.CenterParent; dialog.FormBorderStyle = FormBorderStyle.FixedDialog; los da MarcoXp.Dialogo
+                dialog.BackColor = Color.FromArgb(11, 14, 32);   // EN LINUX: (XP) dialog.MaximizeBox = dialog.MinimizeBox = false; MarcoXp.Dialogo es asi
                 dialog.Controls.Add(BuildCoverHistory(normal, small, Color.FromArgb(232, 238, 255), Color.FromArgb(150, 165, 200)));
                 BotonPlano close = new BotonPlano(); close.SetBounds(736, 510, 168, 30); close.Font = normal; close.Text = "Cerrar";
                 close.Click += delegate { dialog.Close(); }; dialog.Controls.Add(close);
-                dialog.KeyPreview = true; dialog.KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Tecla.Escape) dialog.Close(); };   // EN LINUX: Keys -> Tecla, los mismos numeros
+                dialog.TeclaAntes += delegate(PulsoTecla e) { if (e.KeyCode == Tecla.Escape) dialog.Close(); };   // EN LINUX: Keys -> Tecla, los mismos numeros; (XP) dialog.KeyPreview = true y dialog.KeyDown: TeclaAntes, el KeyDown de la hoja con KeyPreview (suscribirse lo pone)
                 MonedaTambienAqui(dialog);   // una moneda con la ventana abierta tambien cuenta (Form1.Ajustes.cs)
-                dialog.ShowDialog(this);
+                dialog.MuestraModal(this);   // EN LINUX: ShowDialog(this): modal, con la rocola de duena
             }
         }
 
@@ -112,7 +112,7 @@ namespace Rocola
             if (CoverProfileChanged != null) CoverProfileChanged();
         }
 
-        private Tarjeta TarjetaCargaCaratulas(Font fNom, Font fDes, Color cTexto, Color cTenue)
+        private Tarjeta TarjetaCargaCaratulas(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fDes, Color cTexto, Color cTenue)   // EN LINUX: Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
         {
             Tarjeta card = new Tarjeta(); card.Size = new Size(456, 412);
             card.Titulo = "CARGA DE CARATULAS"; card.Acento = Color.FromArgb(150, 190, 255);
@@ -136,22 +136,22 @@ namespace Rocola
             for (int i = 0; i < buttons.Length; i++) {
                 int k = i, y = 44 + i * 66;
                 buttons[i] = new BotonPlano(); buttons[i].SetBounds(16, y, 424, 30);
-                buttons[i].Font = fNom; buttons[i].Text = names[i]; buttons[i].AccessibleName = "Carga de carátulas: " + names[i];
+                buttons[i].Font = fNom; buttons[i].Text = names[i];   // EN LINUX: (XP) buttons[i].AccessibleName = "Carga de carátulas: " + names[i]; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                 buttons[i].Click += delegate { caratulasCarga = k; paint(); AplicaPerfilCargaCaratulas(); f3CambioGraf = true; };
-                Label description = new Label(); description.SetBounds(16, y + 34, 424, 26);
+                Rotulo description = new Rotulo(); description.SetBounds(16, y + 34, 424, 26);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 description.Font = fDes; description.ForeColor = cTenue; description.BackColor = Color.Transparent;
                 description.Text = descriptions[i]; card.Controls.Add(buttons[i]); card.Controls.Add(description);
             }
             Interruptor jpeg = new Interruptor(); jpeg.SetBounds(16, 306, 424, 26);
             jpeg.Font = fNom; jpeg.ForeColor = cTexto; jpeg.Acento = card.Acento;
             jpeg.Text = "Carátulas en JPEG (más rápidas)"; jpeg.Checked = caratulasJpeg;
-            jpeg.AccessibleName = "Carátulas en JPEG";
+            // EN LINUX: (XP) jpeg.AccessibleName = "Carátulas en JPEG"; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
             jpeg.CheckedChanged += delegate { caratulasJpeg = jpeg.Checked; f3CambioGraf = true; };
-            Label jpegNota = new Label(); jpegNota.SetBounds(16, 334, 424, 32);
+            Rotulo jpegNota = new Rotulo(); jpegNota.SetBounds(16, 334, 424, 32);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             jpegNota.Font = fDes; jpegNota.ForeColor = cTenue; jpegNota.BackColor = Color.Transparent;
             jpegNota.Text = "6 veces menos disco: más páginas listas, también en disco duro.\nAlgo menos nitidez en letras y bordes. Las transparentes, sin pérdida.";
             card.Controls.Add(jpeg); card.Controls.Add(jpegNota);
-            Label note = new Label(); note.SetBounds(16, 370, 424, 34);
+            Rotulo note = new Rotulo(); note.SetBounds(16, 370, 424, 34);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             note.Font = fDes; note.ForeColor = cTenue; note.BackColor = Color.Transparent;
             note.Text = "Solo GPU. Los perfiles no cambian la calidad de las carátulas.\n"
                 + "HDD y dos hilos: un solo lector. Compara en Imagen > Medir.";

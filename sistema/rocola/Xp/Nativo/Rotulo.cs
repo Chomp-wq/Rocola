@@ -1,6 +1,7 @@
-// EL ROTULO Y EL GRUPO (port nativo de las ventanas de XP, ventanas2, paso H): lo que en XP eran Label y Panel de WinForms en sus hojas.
-// Solo lo que XP usa de ellos (el inventario) y sus reglas, portadas de la capa (Plataforma/Ventanas.Control.cs: Label y Panel), revisada
-// contra la fuente (Label.cs, Panel.cs, ControlPaint.cs).
+// EL ROTULO Y EL GRUPO (port nativo de las ventanas de XP, ventanas2, pasos H y C): lo que en XP eran Label y Panel de WinForms en sus
+// hojas (Ctrl+F2 y, desde el paso C, Ctrl+F3 y el historial de caratulas). Solo lo que XP usa de ellos (el inventario y el compilador: lo que
+// las lineas de XP leen o ponen) y sus reglas, portadas de la capa (Plataforma/Ventanas.Control.cs: Label y Panel), revisada contra la fuente
+// (Label.cs, Panel.cs, ControlPaint.cs, Control.cs).
 using System;
 using System.Drawing;
 using Rocola.Nativo;
@@ -24,7 +25,9 @@ namespace Rocola
         }
         // ---------- lo que XP usa ----------
         public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); }
-        public Rectangle Bounds { get { return caja.Bounds; } }
+        // (Control.Bounds: ponerlo es SetBounds con las cuatro medidas; Ctrl+F3 copia la caja de un rotulo a otro, Rendimiento.cs)
+        public Rectangle Bounds { get { return caja.Bounds; } set { caja.SetBounds(value.X, value.Y, value.Width, value.Height); } }
+        public string Name { get { return caja.Name; } set { caja.Name = value; } }
         public string Text { get { return caja.Text; } set { caja.Text = value; } }
         public Color BackColor { get { return caja.BackColor; } set { caja.BackColor = value; } }
         public Color ForeColor { get { return caja.ForeColor; } set { caja.ForeColor = value; } }
@@ -51,7 +54,9 @@ namespace Rocola
 
     // EL GRUPO (Panel): una caja con piezas dentro y su fondo; no toma el foco ni entra en el tabulador (sus piezas si: Panel.cs, Selectable
     // apagado y TabStop false); acepta el fondo transparente; con borde, la linea gris de XP. Mide 200x100 de fabrica (Panel.DefaultSize).
-    public sealed class Grupo : IPieza, IContenedor, IDisposable
+    // No es sellado porque en XP la tarjeta de Ctrl+F3 (Tarjeta, Form1.Ajustes.cs) hereda de Panel: hereda de el y pinta lo suyo (Pinta,
+    // el OnPaint de Panel) y suelta lo suyo (Dispose(bool), el patron de Control.Dispose). Nada mas lo hereda.
+    public class Grupo : IPieza, IContenedor, IDisposable
     {
         private readonly CajaPieza caja;
         CajaPieza IPieza.Caja { get { return caja; } }
@@ -66,7 +71,14 @@ namespace Rocola
         // ---------- lo que XP usa ----------
         public Piezas Controls { get; }
         public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); }
-        public Rectangle Bounds { get { return caja.Bounds; } }
+        // (Control.Bounds, Location, Size, Width y Height: ponerlos es SetBounds con lo que no cambia tal cual, Control.cs)
+        public Rectangle Bounds { get { return caja.Bounds; } set { caja.SetBounds(value.X, value.Y, value.Width, value.Height); } }
+        public Point Location { get { return caja.Bounds.Location; } set { Rectangle b = caja.Bounds; caja.SetBounds(value.X, value.Y, b.Width, b.Height); } }
+        public Size Size { get { return caja.Bounds.Size; } set { Rectangle b = caja.Bounds; caja.SetBounds(b.X, b.Y, value.Width, value.Height); } }
+        public int Width { get { return caja.Bounds.Width; } }
+        public int Height { get { return caja.Bounds.Height; } set { Rectangle b = caja.Bounds; caja.SetBounds(b.X, b.Y, b.Width, value); } }
+        public string Name { get { return caja.Name; } set { caja.Name = value; } }
+        public int TabIndex { get { return caja.TabIndex; } set { caja.TabIndex = value; } }
         public Color BackColor { get { return caja.BackColor; } set { caja.BackColor = value; } }
         public Color ForeColor { get { return caja.ForeColor; } set { caja.ForeColor = value; } }
         public Letra Font { get { return caja.Font; } set { caja.Font = value; } }
@@ -78,7 +90,9 @@ namespace Rocola
         public bool IsDisposed { get { return caja.IsDisposed; } }
         public event EventHandler VisibleChanged { add { caja.VisibleChanged += value; } remove { caja.VisibleChanged -= value; } }
         public event EventHandler Disposed { add { caja.Disposed += value; } remove { caja.Disposed -= value; } }
-        public void Dispose() { caja.Desecha(null); }
+        // DESECHARLO (Control.Dispose: Dispose(true); el de la tarjeta suelta su letra y llama a este)
+        public void Dispose() { Dispose(true); }
+        protected virtual void Dispose(bool disposing) { if (disposing) caja.Desecha(null); }
         // ---------- lo que es como contenedor de sus piezas ----------
         Hoja IContenedor.HojaDe { get { return caja.Hoja; } }
         IContenedor IContenedor.PadreDe { get { return caja.Padre; } }
@@ -88,8 +102,9 @@ namespace Rocola
         Color IContenedor.TintaDe { get { return caja.ForeColor; } }
         Letra IContenedor.LetraDe { get { return caja.Font; } }
         void IContenedor.Ensucia() { caja.Invalidate(); }
-        // ---------- lo que pinta (Panel.OnPaint de la capa: el borde, si lo tiene) ----------
-        void IPieza.PintaContenido(SKCanvas g)
+        // ---------- lo que pinta (Panel.OnPaint de la capa: el borde, si lo tiene; la tarjeta pinta lo suyo en su lugar) ----------
+        void IPieza.PintaContenido(SKCanvas g) { Pinta(g); }
+        protected virtual void Pinta(SKCanvas g)
         {
             if (borde != BordeXp.None) PinturaXp.TrazaRect(g, new RectangleF(0, 0, caja.Bounds.Width - 1, caja.Bounds.Height - 1), Color.FromArgb(172, 168, 153), 1f, false);
         }

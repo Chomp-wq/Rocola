@@ -1,6 +1,6 @@
 # Las huellas de lo que dejo un recorrido (recorridos.sh con VOLCADO=1 y CAPAS=1) y fuera los PNG (ocupan mucho): por cada textura subida a
 # la tarjeta (tex/NNNN_T.Ts_WxH_nID_enX,Y_BWxBH.png) su medida y sitio y la huella de sus puntos; por cada capa de Dibujo2D de cada captura
-# (cS.png.capaN-dibujo2d-X,Y-WxH.png) su nombre y su huella. Las capturas enteras y las capas de la tarjeta llevan el cielo animado: se
+# (cS.png.capaN-dibujo2d-X,Y-WxH.png; la de una hoja nativa, capaN-hoja-...) su nombre y su huella. Las capturas enteras y las capas de la tarjeta llevan el cielo animado: se
 # apunta su huella pero no se comparan.
 import hashlib, os, re, sys
 for d in sys.argv[1:]:
@@ -17,7 +17,9 @@ for d in sys.argv[1:]:
     for f in sorted(os.listdir(d)):
         if not f.endswith('.png'): continue
         h = hashlib.md5(open(os.path.join(d, f), 'rb').read()).hexdigest()[:16]
-        tipo = 'dibujo2d' if '-dibujo2d-' in f else 'tarjeta' if '-tarjeta' in f else 'pantalla'
-        filas.append('%s\t%s\t%s\t-' % (tipo, f, h))
+        # (ventanas2: la capa de una hoja nativa se guarda como «-hoja-»; es la misma capa que en la referencia sale como «-dibujo2d-» y se
+        # compara con ella, con su nombre)
+        tipo = 'dibujo2d' if '-dibujo2d-' in f or '-hoja-' in f else 'tarjeta' if '-tarjeta' in f else 'pantalla'
+        filas.append('%s\t%s\t%s\t-' % (tipo, f.replace('-hoja-', '-dibujo2d-'), h))
         os.remove(os.path.join(d, f))
     open(os.path.join(d, 'huellas.tsv'), 'w').write('\n'.join(filas) + '\n')

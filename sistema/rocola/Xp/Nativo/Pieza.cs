@@ -48,14 +48,6 @@ namespace Rocola
         public bool Handled { get; set; }
     }
 
-    // LA VENTANA VE LAS TECLAS ANTES QUE LA PIEZA DEL FOCO (Form.KeyPreview con KeyDown y KeyUp; Form.ProcessKeyPreview,
-    // Form.cs:4985-4993, y Control.ProcessKeyPreview, Control.cs:9734-9738): TeclaAntes es el KeyDown de la ventana y TeclaArribaAntes su KeyUp. Lo usa MonedaTambienAqui (Form1.Ajustes.cs).
-    public interface ITeclasAntes
-    {
-        event Action<PulsoTecla> TeclaAntes;
-        event Action<PulsoTecla> TeclaArribaAntes;
-    }
-
     // LO QUE LA HOJA LE PIDE A CADA PIEZA (sin clase base: lo de fabrica de cada aviso es no hacer nada, como los On* de Control)
     public interface IPieza
     {
@@ -151,6 +143,9 @@ namespace Rocola
         private Color backColor = Color.Empty, foreColor = Color.Empty;
         private Letra font;
         private string text = "";
+        // EL NOMBRE (Control.Name): XP se lo pone a algunas piezas de Ctrl+F3 y no lo lee nunca; lo usan las pruebas para encontrarlas.
+        // (AccessibleName, AccessibleRole y AccessibleDescription, los de los lectores de pantalla de Windows, no estan: ver PORT_VENTANAS2.md, paso C.)
+        public string Name { get; set; } = "";
         internal int TabIndexPuesto = -1;      // (tabIndex de WinForms: -1 sin poner, se lee 0)
         internal bool ExcepcionPintando;       // (la «X» roja)
         internal Piezas Hijas;                 // (las de un grupo; las demas, ninguna)

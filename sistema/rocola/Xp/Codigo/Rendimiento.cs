@@ -28,7 +28,7 @@
 // ================================================================================================
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing;
 
 namespace Rocola
 {
@@ -1004,13 +1004,13 @@ namespace Rocola
         //
         // Cada una lleva escrito QUE SE VE si se enciende, no como esta hecha por dentro. Quien abre esta
         // ventana quiere saber que va a cambiar en la pantalla del bar.
-        private Panel PaginaDetalles(Font fNom, Font fDes, Font fBot,
+        private Grupo PaginaDetalles(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot,   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
                                      Color cTexto, Color cTenue, Color cApagado)
         {
             Color cVida = Color.FromArgb(150, 220, 180);
             Color cFon = Color.FromArgb(140, 205, 255);
 
-            Panel pg = new Panel();
+            Grupo pg = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
@@ -1042,7 +1042,7 @@ namespace Rocola
                 sw[i] = new Interruptor();
                 sw[i].SetBounds(16, y, 424, 26); sw[i].ForeColor = cTexto; sw[i].Font = fNom;
                 sw[i].Text = nombre[i]; sw[i].Acento = (i < 3) ? cVida : cFon;
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explica[i];
                 t.Controls.Add(sw[i]); t.Controls.Add(le);
             }
@@ -1053,7 +1053,7 @@ namespace Rocola
             sw[4].Checked = relevoOn;
             sw[5].Checked = lunaOn;
 
-            Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
+            Rotulo lPie = new Rotulo(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Nada de esto le quita ni le pone rendimiento a la rocola: no son las perillas de la pestaña de Imagen,\n"
                       + "que ahi si se cambia trabajo por bonito. Estas son de gusto, y apagarlas no gana nada mas que quitarlas\n"
@@ -1118,11 +1118,11 @@ namespace Rocola
         // 636 y llevaba barra de desplazamiento. Tampoco cabian en Detalles (sus tarjetas llegan a 500 de
         // 636) ni en Colores (cuatro tarjetas apretadas que acaban en 576). Asi que pestaña propia, igual
         // que hicieron Detalles y Colores en su momento.
-        private Panel PaginaFondo(Font fNom, Font fVal, Font fDes, Font fBot,
+        private Grupo PaginaFondo(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fVal, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot,   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
                                   Color cTexto, Color cTenue, Color cApagado)
         {
             Color cAc = Color.FromArgb(150, 190, 255);
-            Panel pg = new Panel();
+            Grupo pg = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
@@ -1166,10 +1166,10 @@ namespace Rocola
             sw[10].CheckedChanged += delegate { progresoFluido = sw[10].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
             // Una nota para toda la pagina: con tarjeta, lo de siempre; sin ella, que lo de aqui no se ve (A1).
-            Label lAd = new Label(); lAd.SetBounds(340, 598, 440, 32); lAd.BackColor = Color.Transparent;
+            Rotulo lAd = new Rotulo(); lAd.SetBounds(340, 598, 440, 32); lAd.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lAd.ForeColor = cApagado; lAd.Font = fDes;
             lAd.Text = "Todo lo de esta pagina es de la tarjeta grafica: el coste depende\ndel equipo. Pruebalos con musica; se apagan por separado.";
-            Label lAdSin = new Label(); lAdSin.Bounds = lAd.Bounds; lAdSin.BackColor = Color.Transparent;
+            Rotulo lAdSin = new Rotulo(); lAdSin.Bounds = lAd.Bounds; lAdSin.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lAdSin.ForeColor = Interruptor.ColorNecesita; lAdSin.Font = fDes; lAdSin.Text = TextoSinTarjeta; lAdSin.Visible = false;
             Interruptor swFlujo=new Interruptor();swFlujo.SetBounds(16,392,424,26);
             swFlujo.Font=fNom;swFlujo.ForeColor=cTexto;swFlujo.Acento=cAc;
@@ -1178,11 +1178,11 @@ namespace Rocola
             tAd.Controls.Add(swFlujo);
 
             // ---------------- CUANTO DETALLE NATURAL ----------------
-            Label lNatN = new Label(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;
+            Rotulo lNatN = new Rotulo(); lNatN.SetBounds(16, 40, 320, 20); lNatN.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lNatN.ForeColor = cTexto; lNatN.Font = fNom; lNatN.Text = "Fuerza del detalle natural";
-            Label lNatV = new Label(); lNatV.SetBounds(340, 40, 100, 20); lNatV.BackColor = Color.Transparent;
-            lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = ContentAlignment.TopRight;
-            Label lNatD = new Label(); lNatD.SetBounds(16, 66, 424, 34); lNatD.BackColor = Color.Transparent;
+            Rotulo lNatV = new Rotulo(); lNatV.SetBounds(340, 40, 100, 20); lNatV.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+            lNatV.ForeColor = cAc; lNatV.Font = fVal; lNatV.TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+            Rotulo lNatD = new Rotulo(); lNatD.SetBounds(16, 66, 424, 34); lNatD.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lNatD.ForeColor = cTenue; lNatD.Font = fDes;
             lNatD.Text = "Menos bruma deja ver mas el relieve y el degradado.";
             Deslizador barNat = new Deslizador(); barNat.SetBounds(16, 106, 424, 22);
@@ -1198,7 +1198,7 @@ namespace Rocola
             swDoce.Text = "Cola ampliada de 12 canciones"; swDoce.Acento = cAc; swDoce.Checked = colaDoce;
             swDoce.CheckedChanged += delegate { colaDoce = swDoce.Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             tNat.Controls.Add(swCristal); tNat.Controls.Add(swDoce);
-            Label lExtras = new Label(); lExtras.SetBounds(16, 208, 424, 48); lExtras.Font = fDes;
+            Rotulo lExtras = new Rotulo(); lExtras.SetBounds(16, 208, 424, 48); lExtras.Font = fDes;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lExtras.ForeColor = cTenue; lExtras.BackColor = Color.Transparent;
             lExtras.Text = "Apagados, vuelven el velo plano dentro del disco\ny las tres canciones del estado ampliado.";
             tNat.Controls.Add(lExtras);
@@ -1233,7 +1233,7 @@ namespace Rocola
             }
             tactile[0].CheckedChanged += delegate { transicionesTacto = tactile[0].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
 
-            Label lMoon = new Label(); lMoon.SetBounds(16, 386, 424, 20);
+            Rotulo lMoon = new Rotulo(); lMoon.SetBounds(16, 386, 424, 20);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             Interruptor swPaleta = new Interruptor(); swPaleta.SetBounds(16, 354, 424, 26);
             swPaleta.Font = fNom; swPaleta.ForeColor = cTexto; swPaleta.Acento = cAc;
             swPaleta.Text = "Paleta completa de caratula"; swPaleta.Checked = paletaCompleta;
@@ -1286,9 +1286,9 @@ namespace Rocola
             vivo[3].CheckedChanged += delegate { profundidadPagina = vivo[3].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             vivo[4].CheckedChanged += delegate { cieloPorHora = vivo[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             vivo[5].CheckedChanged += delegate { reflejoAurora = vivo[5].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
-            Label lVivo1 = new Label(); lVivo1.BackColor = Color.Transparent; lVivo1.ForeColor = cTenue; lVivo1.Font = fDes;
+            Rotulo lVivo1 = new Rotulo(); lVivo1.BackColor = Color.Transparent; lVivo1.ForeColor = cTenue; lVivo1.Font = fDes;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lVivo1.Text = "La luna sigue su fase de verdad: cerca de la luna nueva\nno se ve. Las lluvias, en sus fechas (agosto: Perseidas;\ndiciembre: Geminidas).";
-            Label lVivo2 = new Label(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;
+            Rotulo lVivo2 = new Rotulo(); lVivo2.BackColor = Color.Transparent; lVivo2.ForeColor = cTenue; lVivo2.Font = fDes;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lVivo2.Text = "Con la hora cambia solo el cielo de abajo: mas\nhondo de madrugada y calido al anochecer.";
 
             // EL PULIDO (PulidoGpu.cs, 14-10-2026): diez opciones visuales de la tarjeta, cada una con su interruptor, en su hoja.
@@ -1304,9 +1304,9 @@ namespace Rocola
                 pul[i].Text = pulNames[i]; pul[i].Checked = LeePulido(i);
                 pul[i].CheckedChanged += delegate { if (LeePulido(k) == pul[k].Checked) return; PonPulido(k, pul[k].Checked); AplicaEfectosGpu(); f3CambioGraf = true; };
             }
-            Label lPul1 = new Label(); lPul1.BackColor = Color.Transparent; lPul1.ForeColor = cTenue; lPul1.Font = fDes;
+            Rotulo lPul1 = new Rotulo(); lPul1.BackColor = Color.Transparent; lPul1.ForeColor = cTenue; lPul1.Font = fDes;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPul1.Text = "Los colores se mezclan como luz y no como numeros:\nlos cruces salen limpios y vivos. Los degradados,\nsin quiebres ni escalones.";
-            Label lPul2 = new Label(); lPul2.BackColor = Color.Transparent; lPul2.ForeColor = cTenue; lPul2.Font = fDes;
+            Rotulo lPul2 = new Rotulo(); lPul2.BackColor = Color.Transparent; lPul2.ForeColor = cTenue; lPul2.Font = fDes;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPul2.Text = "La estrella como metal pulido: refleja el cielo y el\ncolor de la cancion. Sin cara, como siempre.";
 
             BotonPlano bResetF = new BotonPlano();
@@ -1356,17 +1356,17 @@ namespace Rocola
 
             pg.Controls.Add(tAd); pg.Controls.Add(tNat); pg.Controls.Add(bResetF);
             pg.Controls.Add(lAd); pg.Controls.Add(lAdSin);
-            Control[][] groups = {
-                new Control[] { sw[0], sw[1], sw[2], sw[3], sw[4], sw[5], swFlujo, swPaleta },
-                new Control[] { lNatN, lNatV, lNatD, barNat },
-                new Control[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce },
-                new Control[] { swCristal, extras[0], tactile[0], lExtras },
-                new Control[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },
-                new Control[] { extras[1], extras[2], lMoon },
-                new Control[] { vivo[0], vivo[1], vivo[2], lVivo1 },
-                new Control[] { vivo[3], vivo[4], vivo[5], lVivo2 },
-                new Control[] { pul[0], pul[1], pul[2], pul[3], lPul1 },
-                new Control[] { pul[4], pul[5], pul[6], pul[7], pul[8], pul[9], lPul2 }
+            IPieza[][] groups = {   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { sw[0], sw[1], sw[2], sw[3], sw[4], sw[5], swFlujo, swPaleta },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { lNatN, lNatV, lNatD, barNat },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { sw[6], sw[7], sw[8], sw[9], sw[10], swDoce },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { swCristal, extras[0], tactile[0], lExtras },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { moonSwitches[0], moonSwitches[1], moonSwitches[2], moonSwitches[3], sw3d, swEstela },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { extras[1], extras[2], lMoon },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { vivo[0], vivo[1], vivo[2], lVivo1 },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { vivo[3], vivo[4], vivo[5], lVivo2 },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { pul[0], pul[1], pul[2], pul[3], lPul1 },   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
+                new IPieza[] { pul[4], pul[5], pul[6], pul[7], pul[8], pul[9], lPul2 }   // EN LINUX: Control -> IPieza (Nativo/Pieza.cs: lo que la hoja le pide a cada pieza)
             };
             MontaHojasFondo(pg, tAd, tNat, groups, fNom, fDes, fBot, cTexto, cTenue);
 
@@ -1410,14 +1410,14 @@ namespace Rocola
         // el boton de fabrica. Es la misma razon por la que Detalles nacio de su propia pestaña cuando las
         // tarjetas de Imagen se llenaron. Y ademas no son lo mismo: aquellas son adornos que se encienden y
         // se dejan; estas cambian de que color es la rocola.
-        private Panel PaginaColores(Font fNom, Font fDes, Font fBot,
+        private Grupo PaginaColores(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot,   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
                                     Color cTexto, Color cTenue, Color cApagado)
         {
             Color cAc = Color.FromArgb(190, 165, 255);
             Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
             Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
 
-            Panel pg = new Panel();
+            Grupo pg = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
@@ -1431,7 +1431,7 @@ namespace Rocola
             Tarjeta t4 = new Tarjeta(); t4.SetBounds(16, 430, 928, 146); t4.Titulo = "CUANTO AIRE HAY EN EL CIELO"; t4.Acento = cAc;
 
             // ---------------- 1) quien manda en el tono: el genero o la caratula ----------------
-            Label l1 = new Label(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;
+            Rotulo l1 = new Rotulo(); l1.SetBounds(16, 36, 896, 62); l1.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             l1.ForeColor = cTenue; l1.Font = fDes;
             l1.Text = "Los botones dan al tono del DISCO un peso de 20%, 50% o 100% en el acento; el resto viene del GENERO.\n"
                     + "Paleta completa (en Fondo): hasta ocho colores del disco. BTS/Bangtan con genero conserva el morado fijo.\n"
@@ -1448,7 +1448,7 @@ namespace Rocola
             }
 
             // ---------------- 2) cuanto azul lleva el medio del cielo ----------------
-            Label l2 = new Label(); l2.SetBounds(16, 36, 896, 48); l2.BackColor = Color.Transparent;
+            Rotulo l2 = new Rotulo(); l2.SetBounds(16, 36, 896, 48); l2.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             l2.ForeColor = cTenue; l2.Font = fDes;
             l2.Text = "El medio del cielo es azul noche y casi no depende de la cancion, a proposito: es lo que hace que parezca cielo.\n"
                     + "Bajando el azul, el color de la cancion sube desde el horizonte y tine mucha mas pantalla.";
@@ -1463,7 +1463,7 @@ namespace Rocola
             }
 
             // ---------------- 3) cuanto negro hay arriba ----------------
-            Label l3 = new Label(); l3.SetBounds(16, 36, 896, 48); l3.BackColor = Color.Transparent;
+            Rotulo l3 = new Rotulo(); l3.SetBounds(16, 36, 896, 48); l3.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             l3.ForeColor = cTenue; l3.Font = fDes;
             l3.Text = "Arriba del todo el cielo es casi negro, y ahi es donde mejor se ven las estrellas. Este es el punto donde acaba\n"
                     + "ese negro y empieza el azul: mas negro deja una noche mas cerrada, menos negro deja una pantalla mas encendida.";
@@ -1491,7 +1491,7 @@ namespace Rocola
 #if ROCOLA_GPU
             conTarjeta = (gpuEnabled && gpuPanel != null);
 #endif
-            Label l4 = new Label(); l4.SetBounds(16, 36, 896, 62); l4.BackColor = Color.Transparent;
+            Rotulo l4 = new Rotulo(); l4.SetBounds(16, 36, 896, 62); l4.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             l4.ForeColor = cTenue; l4.Font = fDes;
             l4.Text = "En un cielo de verdad, mirando al horizonte se atraviesa muchisimo mas aire que mirando arriba: las estrellas\n"
                     + "de abajo salen mas apagadas, tiran a naranja y centellean mucho mas. Eso es lo que le da FONDO al cielo.\n"
@@ -1511,7 +1511,7 @@ namespace Rocola
 
             // Termina antes del boton Listo (x 804 de la ventana): antes llegaba al borde y, con una letra mas ancha,
             // el final de la frase caia debajo del boton.
-            Label lPie = new Label(); lPie.SetBounds(330, 580, 460, 46); lPie.BackColor = Color.Transparent;
+            Rotulo lPie = new Rotulo(); lPie.SetBounds(330, 580, 460, 46); lPie.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "La pared esta detras de esta ventana: toca una y mirala.\n"
                       + "Todo se guarda al momento. El coste depende del equipo:\n"
@@ -1553,7 +1553,7 @@ namespace Rocola
             pg.Controls.Add(t1); pg.Controls.Add(t2); pg.Controls.Add(t3); pg.Controls.Add(t4);
             pg.Controls.Add(lPie); pg.Controls.Add(bReset);
             // A1: el peso del disco solo cuenta si el fondo toma el color de la portada (Detalles). Lo dice al lado.
-            Label lNec1 = new Label(); lNec1.SetBounds(620, 108, 292, 34); lNec1.BackColor = Color.Transparent;
+            Rotulo lNec1 = new Rotulo(); lNec1.SetBounds(620, 108, 292, 34); lNec1.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lNec1.ForeColor = cTenue; lNec1.Font = fDes; lNec1.Text = "";
             t1.Controls.Add(lNec1);
             for (int k = 0; k < b1.Length; k++)
@@ -1580,7 +1580,7 @@ namespace Rocola
             }
         }
 
-        private Panel PaginaImagen(Font fNom, Font fVal, Font fDes, Font fBot,
+        private Grupo PaginaImagen(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fVal, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot,   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
                                    Color cTexto, Color cTenue, Color cApagado)
         {
             Color cMide = Color.FromArgb(140, 205, 255);
@@ -1591,7 +1591,7 @@ namespace Rocola
             Color cOn = Color.FromArgb(28, 62, 104), cOff = Color.FromArgb(28, 34, 62);
             Color cBordeOn = Color.FromArgb(150, 205, 255), cBordeOff = Color.FromArgb(60, 72, 118);
 
-            Panel pg = new Panel();
+            Grupo pg = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
 
@@ -1609,8 +1609,8 @@ namespace Rocola
             BotonPlano bDiag = new BotonPlano();
             bDiag.SetBounds(232, 40, 208, 36); bDiag.Font = fBot; bDiag.Text = "Diagnóstico completo";
             bDiag.Relleno = cOn; bDiag.Borde = cMide;
-            bDiag.AccessibleName = "Diagnóstico completo: varios minutos, escribe un informe";
-            Label lTarda = new Label(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;
+            // EN LINUX: (XP) bDiag.AccessibleName = "Diagnóstico completo: varios minutos, escribe un informe"; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+            Rotulo lTarda = new Rotulo(); lTarda.SetBounds(16, 82, 424, 32); lTarda.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lTarda.ForeColor = cTenue; lTarda.Font = fDes;
             const string textoTarda = "Medir: unos minutos. Diagnóstico: 3 a 6 min e informe.\nIncluyen el estado extendido. Música actual, o una muda.";
             lTarda.Text = textoTarda;
@@ -1623,46 +1623,46 @@ namespace Rocola
             // espacios no alinean.
             int[] colX = { 16, 176, 238, 300, 362 }, colW = { 160, 62, 62, 62, 78 };
             string[] cabeza = { "PANTALLA", "CUADRO", "PROCESO", "TARJETA", "CUADROS/S" };
-            Label[] lCab = new Label[colX.Length];
+            Rotulo[] lCab = new Rotulo[colX.Length];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             for (int c = 0; c < colX.Length; c++)
             {
-                lCab[c] = new Label(); lCab[c].SetBounds(colX[c], 120, colW[c], 16); lCab[c].BackColor = Color.Transparent;
+                lCab[c] = new Rotulo(); lCab[c].SetBounds(colX[c], 120, colW[c], 16); lCab[c].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 lCab[c].ForeColor = cApagado; lCab[c].Font = fDes; lCab[c].Text = cabeza[c];
-                lCab[c].TextAlign = c == 0 ? ContentAlignment.TopLeft : ContentAlignment.TopRight;
+                lCab[c].TextAlign = c == 0 ? AlineaTexto.TopLeft : AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                 tMide.Controls.Add(lCab[c]);
             }
-            Label[,] lCelda = new Label[NombreEscena.Length, colX.Length];
+            Rotulo[,] lCelda = new Rotulo[NombreEscena.Length, colX.Length];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             for (int i = 0; i < NombreEscena.Length; i++)
                 for (int c = 0; c < colX.Length; c++)
                 {
-                    Label l = new Label(); l.SetBounds(colX[c], 140 + i * 18, colW[c], 18);
+                    Rotulo l = new Rotulo(); l.SetBounds(colX[c], 140 + i * 18, colW[c], 18);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     l.BackColor = Color.Transparent; l.ForeColor = cTexto; l.Font = fDes;
-                    l.TextAlign = c == 0 ? ContentAlignment.TopLeft : ContentAlignment.TopRight;
+                    l.TextAlign = c == 0 ? AlineaTexto.TopLeft : AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                     lCelda[i, c] = l; tMide.Controls.Add(l);
                 }
-            Label lTecho = new Label(); lTecho.SetBounds(16, 252, 424, 34); lTecho.BackColor = Color.Transparent;
+            Rotulo lTecho = new Rotulo(); lTecho.SetBounds(16, 252, 424, 34); lTecho.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lTecho.ForeColor = cTenue; lTecho.Font = fDes;
-            Label lSinMus = new Label(); lSinMus.SetBounds(16, 288, 424, 32); lSinMus.BackColor = Color.Transparent;
+            Rotulo lSinMus = new Rotulo(); lSinMus.SetBounds(16, 288, 424, 32); lSinMus.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lSinMus.ForeColor = Color.FromArgb(255, 196, 96); lSinMus.Font = fDes;
-            Label lVer = new Label(); lVer.SetBounds(16, 322, 424, 68); lVer.BackColor = Color.Transparent;
+            Rotulo lVer = new Rotulo(); lVer.SetBounds(16, 322, 424, 68); lVer.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lVer.ForeColor = cTenue; lVer.Font = fDes;
             tMide.Controls.Add(bMedir); tMide.Controls.Add(bDiag); tMide.Controls.Add(lTarda);
             tMide.Controls.Add(lTecho); tMide.Controls.Add(lSinMus); tMide.Controls.Add(lVer);
 
             // ---------------- LA PROPUESTA ----------------
-            Label lProp = new Label(); lProp.SetBounds(16, 36, 424, 70); lProp.BackColor = Color.Transparent;
+            Rotulo lProp = new Rotulo(); lProp.SetBounds(16, 36, 424, 70); lProp.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lProp.ForeColor = cTenue; lProp.Font = fDes;
             BotonPlano bApli = new BotonPlano();
             bApli.SetBounds(16, 112, 208, 34); bApli.Font = fBot; bApli.Text = "Aplicar lo recomendado";
             // Solo lo que casi no se nota: los ahorros de Performance, sin tocar los efectos.
             BotonPlano bSoloPerf = new BotonPlano();
             bSoloPerf.SetBounds(232, 112, 208, 34); bSoloPerf.Font = fBot; bSoloPerf.Text = "Solo Performance";
-            bSoloPerf.AccessibleName = "Encender solo los ahorros de Performance";
+            // EN LINUX: (XP) bSoloPerf.AccessibleName = "Encender solo los ahorros de Performance"; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
             tProp.Controls.Add(lProp); tProp.Controls.Add(bApli); tProp.Controls.Add(bSoloPerf);
 
             // ---------------- EFECTOS: el mando general y las seis filas ----------------
             EfectoGrafico[] ef = Efectos();
-            Label lGen = new Label(); lGen.SetBounds(16, 38, 424, 18); lGen.BackColor = Color.Transparent;
+            Rotulo lGen = new Rotulo(); lGen.SetBounds(16, 38, 424, 18); lGen.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lGen.ForeColor = cApagado; lGen.Font = fDes;
             // CUATRO DE GOLPE: Bajo, Medio y Alto como siempre, y PERFORMANCE (13-10-2026): los efectos en Alto con los dos
             // ahorros que casi no se notan (hoja Performance). Alto es la pantalla de siempre, sin ahorros; Bajo y Medio
@@ -1676,19 +1676,19 @@ namespace Rocola
                 // Performance es la palabra larga: con la letra mas ancha (DejaVu Sans) mide 103 px.
                 bGen[k] = new BotonPlano(); bGen[k].SetBounds(16 + k * 100, 58, k < 3 ? 92 : 124, 28);
                 bGen[k].Font = fBot; bGen[k].Text = nomGen[k];
-                bGen[k].AccessibleName = "Todo de golpe: " + nomGen[k];
+                // EN LINUX: (XP) bGen[k].AccessibleName = "Todo de golpe: " + nomGen[k]; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                 tEfe.Controls.Add(bGen[k]);
             }
-            Label[] lNom = new Label[ef.Length], lCost = new Label[ef.Length];
+            Rotulo[] lNom = new Rotulo[ef.Length], lCost = new Rotulo[ef.Length];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             BotonPlano[][] bNiv = new BotonPlano[ef.Length][];
             for (int i = 0; i < ef.Length; i++)
             {
                 // 48 px de contenido y 4 de separacion; fuentes y botones intactos.
                 int y = 94 + i * 52;
-                lNom[i] = new Label(); lNom[i].SetBounds(16, y, 424, 22); lNom[i].BackColor = Color.Transparent;
+                lNom[i] = new Rotulo(); lNom[i].SetBounds(16, y, 424, 22); lNom[i].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 lNom[i].ForeColor = cTexto; lNom[i].Font = fNom; lNom[i].Text = ef[i].Nombre;
-                lCost[i] = new Label(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;
-                lCost[i].ForeColor = cApagado; lCost[i].Font = fDes; lCost[i].TextAlign = ContentAlignment.TopRight;
+                lCost[i] = new Rotulo(); lCost[i].SetBounds(322, y + 24, 118, 18); lCost[i].BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                lCost[i].ForeColor = cApagado; lCost[i].Font = fDes; lCost[i].TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
                 bNiv[i] = new BotonPlano[3];
                 for (int k = 0; k < 3; k++)
                 {
@@ -1734,7 +1734,7 @@ namespace Rocola
             sw[4].CheckedChanged += delegate { caratulasLod = sw[4].Checked; AplicaEfectosGpu(); f3CambioGraf = true; };
             // 280 de ancho y no 424: la tarjeta baja hasta el boton Listo, y lo que se pierde con un nivel ("Un tercio de las
             // estrellas: el cielo se ve bastante mas vacio") caia debajo de el. Asi parte la frase antes (barrido del 12-10-2026).
-            Label lPierde = new Label(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 280, 52); lPierde.BackColor = Color.Transparent;
+            Rotulo lPierde = new Rotulo(); lPierde.SetBounds(16, switchesY + sw.Length * 30 + 4, 280, 52); lPierde.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPierde.ForeColor = cTenue; lPierde.Font = fDes;
             tEfe.Controls.Add(lGen); tEfe.Controls.Add(swHojeo); tEfe.Controls.Add(lPierde);
 
@@ -1743,10 +1743,10 @@ namespace Rocola
 
             // PERFORMANCE: ahorros independientes y lista desplazable bajo una cabecera fija.
             Tarjeta tPerf = new Tarjeta(); tPerf.Size = tEfe.Size;
-            Interruptor[] swAhorro; Label[] lAhorro; Label lCuentaPerf;
+            Interruptor[] swAhorro; Rotulo[] lAhorro; Rotulo lCuentaPerf;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             LlenaHojaPerformance(tPerf, fNom, fDes, fBot, cTexto, cTenue, out swAhorro, out lAhorro, out lCuentaPerf);
             Action pintaFluidez;
-            Panel hojasGraficas = MontaFluidezGrafica(tEfe, tPerf, fNom, fDes, fBot, cTexto, cTenue, out pintaFluidez);
+            Grupo hojasGraficas = MontaFluidezGrafica(tEfe, tPerf, fNom, fDes, fBot, cTexto, cTenue, out pintaFluidez);   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             int ultimoTocado = 0;
             Action pinta = null;   // (se arma abajo; los interruptores de la hoja Performance la llaman)
             for (int i = 0; i < swAhorro.Length; i++)
@@ -1925,13 +1925,13 @@ namespace Rocola
             bMedir.Click += delegate
             {
                 f3Medir = true;
-                Form f = pg.FindForm();
+                Hoja f = ((IPieza)pg).Caja.Hoja;   // EN LINUX: Form f = pg.FindForm(): la hoja donde esta la pagina (Control.FindForm, la ventana de arriba)
                 if (f != null) f.Close();   // la ventana se cierra, se mide con la pantalla libre, y vuelve sola
             };
             bDiag.Click += delegate
             {
                 f3Diagnostico = true;
-                Form f = pg.FindForm();
+                Hoja f = ((IPieza)pg).Caja.Hoja;   // EN LINUX: Form f = pg.FindForm(): la hoja donde esta la pagina
                 if (f != null) f.Close();   // igual que medir: la ventana se cierra, se recorre todo con la pantalla libre, y vuelve sola
             };
             EventHandler alNivel = delegate (object so, EventArgs ea)
@@ -2028,13 +2028,13 @@ namespace Rocola
         // hoja cabe hasta cuatro, sin apretar los textos; lo de siempre-activo y lo medido queda abajo, fijo.
         private static readonly string[] GrupoAhorro = { "Cielo", "Grano", "Aurora", "Estrella", "Estado" };
         private static readonly int[] GrupoDeAhorro = { 0, 1, 0, 0, 4, 2, 2, 3, 3, 4, 1, 2, 2 };
-        private void LlenaHojaPerformance(Tarjeta hoja, Font fNom, Font fDes, Font fBot, Color cTexto, Color cTenue,
-                                          out Interruptor[] interruptores, out Label[] medidos, out Label cuenta)
+        private void LlenaHojaPerformance(Tarjeta hoja, Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot, Color cTexto, Color cTenue,   // EN LINUX: Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
+                                          out Interruptor[] interruptores, out Rotulo[] medidos, out Rotulo cuenta)   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
         {
             hoja.Name = "Performance"; hoja.Titulo = ""; hoja.Acento = Color.FromArgb(120, 230, 165);
-            Label tit = new Label(); tit.SetBounds(16, 42, 424, 22); tit.Font = fNom; tit.ForeColor = cTexto;
+            Rotulo tit = new Rotulo(); tit.SetBounds(16, 42, 424, 22); tit.Font = fNom; tit.ForeColor = cTexto;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             tit.BackColor = Color.Transparent; tit.Text = "Casi igual, más ligero";
-            Label des = new Label(); des.SetBounds(16, 64, 424, 34); des.Font = fDes; des.ForeColor = cTenue;
+            Rotulo des = new Rotulo(); des.SetBounds(16, 64, 424, 34); des.Font = fDes; des.ForeColor = cTenue;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             des.BackColor = Color.Transparent;
             des.Text = "Para equipos modestos: menos trabajo para la tarjeta con\n"
                      + "cambios que casi no se notan. Performance los enciende.";
@@ -2071,7 +2071,7 @@ namespace Rocola
             };
             // Las hojitas por tema: una pestana por grupo y un panel con sus filas.
             const int altoFila = 86, yGrupos = 134, altoGrupo = 344;
-            Panel[] paneles = new Panel[GrupoAhorro.Length];
+            Grupo[] paneles = new Grupo[GrupoAhorro.Length];   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             BotonPlano[] pestanas = new BotonPlano[GrupoAhorro.Length];
             int elegido = 0;
             Action pintaPestanas = delegate
@@ -2088,26 +2088,26 @@ namespace Rocola
             };
             for (int g = 0; g < GrupoAhorro.Length; g++)
             {
-                Panel pn = new Panel(); pn.SetBounds(0, yGrupos, 456, altoGrupo); pn.BackColor = Color.Transparent;
+                Grupo pn = new Grupo(); pn.SetBounds(0, yGrupos, 456, altoGrupo); pn.BackColor = Color.Transparent;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                 paneles[g] = pn; hoja.Controls.Add(pn);
                 BotonPlano t = new BotonPlano(); t.SetBounds(16 + g * 84, 102, 78, 28); t.Font = fBot; t.Text = GrupoAhorro[g];
-                t.AccessibleName = "Performance: " + GrupoAhorro[g];
+                // EN LINUX: (XP) t.AccessibleName = "Performance: " + GrupoAhorro[g]; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                 int k0 = g; t.Click += delegate { elegido = k0; pintaPestanas(); };
                 pestanas[g] = t; hoja.Controls.Add(t);
             }
             interruptores = new Interruptor[NombreAhorro.Length];
-            medidos = new Label[NombreAhorro.Length];
+            medidos = new Rotulo[NombreAhorro.Length];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             int[] filaDe = new int[GrupoAhorro.Length];
             for (int i = 0; i < NombreAhorro.Length; i++)
             {
-                Panel pn = paneles[GrupoDeAhorro[i]];
+                Grupo pn = paneles[GrupoDeAhorro[i]];   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
                 int y = filaDe[GrupoDeAhorro[i]]++ * altoFila;
                 Interruptor s = new Interruptor(); s.SetBounds(16, y, 424, 26); s.Font = fNom; s.ForeColor = cTexto;
                 s.Acento = hoja.Acento; s.Text = NombreAhorro[i]; s.Checked = LeeAhorro(i);
-                s.AccessibleName = "Performance: " + NombreAhorro[i];
-                Label d = new Label(); d.SetBounds(16, y + 38, 424, 34); d.Font = fDes; d.ForeColor = cTenue;
+                // EN LINUX: (XP) s.AccessibleName = "Performance: " + NombreAhorro[i]; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                Rotulo d = new Rotulo(); d.SetBounds(16, y + 38, 424, 34); d.Font = fDes; d.ForeColor = cTenue;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 d.BackColor = Color.Transparent; d.Text = explica[i];
-                Label m = new Label(); m.SetBounds(16, y + 70, 424, 16); m.Font = fDes; m.ForeColor = cTenue;
+                Rotulo m = new Rotulo(); m.SetBounds(16, y + 70, 424, 16); m.Font = fDes; m.ForeColor = cTenue;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 m.BackColor = Color.Transparent;
                 pn.Controls.Add(s); pn.Controls.Add(d); pn.Controls.Add(m);
                 interruptores[i] = s; medidos[i] = m;
@@ -2117,20 +2117,20 @@ namespace Rocola
             pintaPestanas();
             // Lo fijo de abajo.
             const int y0 = yGrupos + altoGrupo + 4;   // 482: y el boton Listo empieza en 580, a la derecha de la x 316
-            Label autoT = new Label(); autoT.SetBounds(16, y0, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;
+            Rotulo autoT = new Rotulo(); autoT.SetBounds(16, y0, 424, 22); autoT.Font = fNom; autoT.ForeColor = cTexto;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             autoT.BackColor = Color.Transparent; autoT.Text = "Automático: mapas y reloj por recuadros";
-            Label autoD = new Label(); autoD.SetBounds(16, y0 + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;
+            Rotulo autoD = new Rotulo(); autoD.SetBounds(16, y0 + 22, 424, 34); autoD.Font = fDes; autoD.ForeColor = cTenue;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             autoD.BackColor = Color.Transparent;
             autoD.Text = "Reutilizar mapas y texturas; no subir textos ocultos.\n"
                        + "Juntar órdenes y no repetir el cielo. Misma imagen.";
-            cuenta = new Label(); cuenta.SetBounds(16, y0 + 58, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;
+            cuenta = new Rotulo(); cuenta.SetBounds(16, y0 + 58, 424, 34); cuenta.Font = fDes; cuenta.ForeColor = cTenue;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             cuenta.BackColor = Color.Transparent;
-            Label nota = new Label(); nota.SetBounds(16, y0 + 94, 290, 32); nota.Font = fDes; nota.ForeColor = cTenue;   // 290: no llega al boton Listo
+            Rotulo nota = new Rotulo(); nota.SetBounds(16, y0 + 94, 290, 32); nota.Font = fDes; nota.ForeColor = cTenue;   // 290: no llega al boton Listo; EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             nota.BackColor = Color.Transparent;
             nota.Text = "De fábrica, apagados. Se guardan al momento.";
             hoja.Controls.Add(autoT); hoja.Controls.Add(autoD); hoja.Controls.Add(cuenta); hoja.Controls.Add(nota);
             // Sin tarjeta, en gris y dicho una vez (A1), en el sitio de la cuenta.
-            Label sin = new Label(); sin.SetBounds(16, y0 + 58, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;
+            Rotulo sin = new Rotulo(); sin.SetBounds(16, y0 + 58, 424, 34); sin.Font = fDes; sin.ForeColor = Interruptor.ColorNecesita;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             sin.BackColor = Color.Transparent; sin.Text = TextoSinTarjeta; sin.Visible = false; hoja.Controls.Add(sin);
             SoloConTarjeta(interruptores); AvisoSinTarjeta(sin, cuenta);
         }

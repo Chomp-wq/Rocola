@@ -1,7 +1,7 @@
 // CTRL+F3: cadencia visual independiente del dibujo general y del audio.
 // Los dos ajustes existen en ambos proyectos; solo se aplican al renderizador GPU.
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing;
 
 namespace Rocola
 {
@@ -22,14 +22,14 @@ namespace Rocola
         // No crecer la tarjeta ya llena de Imagen. Las dos hojas comparten su espacio,
         // con botones en el antiguo encabezado, sin tapar los mandos de los efectos.
         // TRES HOJAS (13-10-2026): Efectos, Fluidez y Performance (los ahorros que casi no se notan; Rendimiento.cs la llena).
-        private Panel MontaFluidezGrafica(Tarjeta effects, Tarjeta performance, Font normal, Font small, Font button,
+        private Grupo MontaFluidezGrafica(Tarjeta effects, Tarjeta performance, Rocola.Nativo.Letra normal, Rocola.Nativo.Letra small, Rocola.Nativo.Letra button,   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
                                          Color text, Color muted, out Action paintFluency)
         {
-            Panel sheets = new Panel(); sheets.Bounds = effects.Bounds;
+            Grupo sheets = new Grupo(); sheets.Bounds = effects.Bounds;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             sheets.BackColor = Color.FromArgb(11, 14, 32);
             effects.Location = Point.Empty; effects.Name = "Efectos"; effects.Titulo = "";
-            foreach (Control previous in effects.Controls) previous.TabIndex += 3;
-            foreach (Control previous in performance.Controls) previous.TabIndex += 3;
+            foreach (IPieza previous in effects.Controls) previous.Caja.TabIndex += 3;   // EN LINUX: Control -> IPieza; TabIndex de la caja (sin poner se lee 0, como Control.TabIndex)
+            foreach (IPieza previous in performance.Controls) previous.Caja.TabIndex += 3;   // EN LINUX: Control -> IPieza; TabIndex de la caja
             Tarjeta fluency = new Tarjeta(); fluency.Size = effects.Size;
             fluency.Name = "Fluidez"; fluency.Titulo = ""; fluency.Acento = Color.FromArgb(150, 190, 255);
             performance.Location = Point.Empty; performance.Size = effects.Size;
@@ -56,7 +56,7 @@ namespace Rocola
                     BotonPlano tab = new BotonPlano(); tab.SetBounds(16 + i * 144, 6, 136, 28);
                     tab.Font = button; tab.Text = tabNames[i];
                     tab.TabIndex = i;
-                    tab.AccessibleName = "Imagen: " + tab.Text;
+                    // EN LINUX: (XP) tab.AccessibleName = "Imagen: " + tab.Text; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tab.Click += delegate { selectedSheet = next; paintSheets(); };
                     tabs[page][i] = tab; cards[page].Controls.Add(tab);
                 }
@@ -78,16 +78,16 @@ namespace Rocola
                         choices[group][i].Relleno = active ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
                         choices[group][i].Borde = active ? fluency.Acento : Color.FromArgb(60, 72, 118);
                         choices[group][i].ForeColor = active ? text : muted;
-                        choices[group][i].AccessibleDescription = active ? "Seleccionado" : "Seleccionar esta cadencia visual";
+                        // EN LINUX: (XP) choices[group][i].AccessibleDescription = active ? "Seleccionado" : "Seleccionar esta cadencia visual"; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                         choices[group][i].Invalidate();
                     }
             };
             Action paintOptions = paintFluency;
             for (int group = 0; group < choices.Length; group++) {
                 int y = 54 + group * 158;
-                Label name = new Label(); name.SetBounds(16, y, 424, 24);
+                Rotulo name = new Rotulo(); name.SetBounds(16, y, 424, 24);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 name.Font = normal; name.ForeColor = text; name.BackColor = Color.Transparent; name.Text = names[group];
-                Label description = new Label(); description.SetBounds(16, y + 30, 424, 40);
+                Rotulo description = new Rotulo(); description.SetBounds(16, y + 30, 424, 40);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 description.Font = small; description.ForeColor = muted; description.BackColor = Color.Transparent;
                 description.Text = descriptions[group]; fluency.Controls.Add(name); fluency.Controls.Add(description);
                 choices[group] = new BotonPlano[values.Length];
@@ -96,7 +96,7 @@ namespace Rocola
                     BotonPlano option = new BotonPlano(); option.SetBounds(16 + i * 144, y + 78, 136, 36);
                     option.Font = button; option.Text = fps + " FPS";
                     option.TabIndex = 3 + group * 3 + i;
-                    option.AccessibleName = names[group] + ": " + option.Text;
+                    // EN LINUX: (XP) option.AccessibleName = names[group] + ": " + option.Text; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     option.Click += delegate {
                         if (setting == 0) animOndasFps = fps; else animCubosFps = fps;
                         paintOptions(); AplicaEfectosGpu(); f3CambioGraf = true;
@@ -105,7 +105,7 @@ namespace Rocola
                     SoloConTarjeta(option);   // solo se dibujan con la tarjeta grafica (A1)
                 }
             }
-            Label note = new Label(); note.SetBounds(16, 382, 424, 112);
+            Rotulo note = new Rotulo(); note.SetBounds(16, 382, 424, 112);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             note.Font = small; note.ForeColor = muted; note.BackColor = Color.Transparent;
             note.Text = "60 FPS: máximo detalle temporal. 50 FPS: intermedio.\n"
                 + "24 FPS: menos actualizaciones de estas animaciones.\n\n"
@@ -113,7 +113,7 @@ namespace Rocola
                 + "La cadencia real depende del equipo y de la pantalla.\n"
                 + "Se guardan al momento. De fábrica: 60 / 60.";
             fluency.Controls.Add(note);
-            Label sinTarjeta = new Label(); sinTarjeta.SetBounds(16, 500, 424, 34);
+            Rotulo sinTarjeta = new Rotulo(); sinTarjeta.SetBounds(16, 500, 424, 34);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             sinTarjeta.Font = small; sinTarjeta.ForeColor = Interruptor.ColorNecesita; sinTarjeta.BackColor = Color.Transparent;
             sinTarjeta.Text = TextoSinTarjeta; sinTarjeta.Visible = false;
             fluency.Controls.Add(sinTarjeta); AvisoSinTarjeta(sinTarjeta, null);

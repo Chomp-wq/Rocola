@@ -30,7 +30,7 @@ namespace Rocola
     // avisos. (FixedSingle con CenterScreen, la de prueba F12, va con el panel de la tarjeta.)
     public enum MarcoXp { Dialogo = 0 }
 
-    public partial class Hoja : IContenedor, ITeclasAntes, IDuenoDeEncargos, IDisposable
+    public partial class Hoja : IContenedor, IDuenoDeEncargos, IDisposable
     {
         // EL MARCO DE XP (tema Luna, 96 puntos por pulgada), como lo cuenta AdjustWindowRectEx con los estilos de Form.CreateParams
         // (Form.cs:886-985): la barra de titulo mide SM_CYCAPTION = 26 (WS_CAPTION: hay ControlBox) y FixedDialog lleva WS_EX_DLGMODALFRAME
@@ -425,6 +425,9 @@ namespace Rocola
         // roja de una pieza que lanza, PintaFondoYContenido-, la siguiente vez se pinta otra vez con otra version y quien compone la sube;
         // leyendo la version despues de pintar, esa segunda pintura no se subia: revision del paso H)
         internal SKBitmap Superficie(out int version) { version = Version; return Superficie(); }
+        // (banco, paso C) quien quiera medir cuanto tarda cada pintura entera de una hoja: la hoja y sus milisegundos (lo pone
+        // Plataforma/Anfitrion.cs con ROCOLA_MIDE_HOJA=1; sin el, nada)
+        internal static Action<Hoja, double> MidePintura;
         internal SKBitmap Superficie()
         {
             if (!sucia && superficie != null) return superficie;
@@ -434,12 +437,14 @@ namespace Rocola
                 if (superficie != null) superficie.Dispose();
                 superficie = Mapas.Nuevo(Width, Height);
             }
+            long t0 = MidePintura != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             using (SKCanvas c = new SKCanvas(superficie))
             {
                 c.Clear(Color.Transparent.Sk());
                 PintaTodo(c);
                 c.Flush();
             }
+            if (MidePintura != null) MidePintura(this, (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             return superficie;
         }
     }

@@ -59,14 +59,14 @@ namespace Rocola
         // ---------------- CTRL+F3 -> PANTALLA ----------------
         // Esta en los dos perfiles, como la pestaña del Fondo: la configuracion es la misma y el operador ve lo
         // que hay. Sin tarjeta grafica los interruptores se guardan y no cambian nada.
-        private Panel PaginaPantalla(Rocola.Dibujo2D.Font fNom, Rocola.Dibujo2D.Font fDes, Rocola.Dibujo2D.Font fBot, Color cTexto, Color cTenue, Color cApagado)   // EN LINUX: las letras de los controles de esta pagina de Ctrl+F3 (WinForms, aun sin traducir: la pista de ventanas) siguen siendo la Font de la capa, escrita entera
+        private Grupo PaginaPantalla(Rocola.Nativo.Letra fNom, Rocola.Nativo.Letra fDes, Rocola.Nativo.Letra fBot, Color cTexto, Color cTenue, Color cApagado)   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs); Font -> Letra (Nativo/Letras.cs: la misma familia, tamano y estilo)
         {
             Color cAc = Color.FromArgb(150, 190, 255);
-            Panel pg = new Panel();
+            Grupo pg = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             pg.SetBounds(0, 96, 960, 636);
             pg.BackColor = Color.FromArgb(11, 14, 32);
             // HOJAS: ya no caben todas las tarjetas a la vez. Arriba, un boton por hoja; debajo, la que toque.
-            Panel hPared = new Panel(), hSuena = new Panel(), hAtr = new Panel();
+            Grupo hPared = new Grupo(), hSuena = new Grupo(), hAtr = new Grupo();   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             hPared.SetBounds(0, 48, 960, 452); hSuena.SetBounds(0, 48, 960, 452); hAtr.SetBounds(0, 48, 960, 452);
             hPared.BackColor = pg.BackColor; hSuena.BackColor = pg.BackColor; hAtr.BackColor = pg.BackColor;
             Tarjeta tPared = new Tarjeta(); tPared.SetBounds(16, 0, 456, 412); tPared.Titulo = "LA PARED Y LAS LETRAS"; tPared.Acento = cAc;
@@ -92,7 +92,7 @@ namespace Rocola
                 sw[i] = new Interruptor(); sw[i].SetBounds(16, y, 424, 26);
                 sw[i].Font = fNom; sw[i].ForeColor = cTexto; sw[i].Acento = cAc;
                 sw[i].Text = nom[i]; sw[i].Checked = val[i];
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explica[i];
                 tPared.Controls.Add(sw[i]); tPared.Controls.Add(le);
             }
@@ -123,7 +123,7 @@ namespace Rocola
                 swD[i] = new Interruptor(); swD[i].SetBounds(16, y, 424, 26);
                 swD[i].Font = fNom; swD[i].ForeColor = cTexto; swD[i].Acento = cAc;
                 swD[i].Text = nomD[i]; swD[i].Checked = valD[i];
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaD[i];
                 tDisco.Controls.Add(swD[i]); tDisco.Controls.Add(le);
             }
@@ -153,7 +153,7 @@ namespace Rocola
                 swS[i] = new Interruptor(); swS[i].SetBounds(16, y, 424, 26);
                 swS[i].Font = fNom; swS[i].ForeColor = cTexto; swS[i].Acento = cAc;
                 swS[i].Text = nomS[i]; swS[i].Checked = valS[i];
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaS[i];
                 tSuena.Controls.Add(swS[i]); tSuena.Controls.Add(le);
             }
@@ -181,7 +181,7 @@ namespace Rocola
                 swA[i] = new Interruptor(); swA[i].SetBounds(16, y, 424, 26);
                 swA[i].Font = fNom; swA[i].ForeColor = cTexto; swA[i].Acento = cAc;
                 swA[i].Text = nomA[i]; swA[i].Checked = valA[i];
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaA[i];
                 tAtr.Controls.Add(swA[i]); tAtr.Controls.Add(le);
             }
@@ -207,7 +207,7 @@ namespace Rocola
                 swE[i] = new Interruptor(); swE[i].SetBounds(16, y, 424, 26);
                 swE[i].Font = fNom; swE[i].ForeColor = cTexto; swE[i].Acento = cAc;
                 swE[i].Text = nomE[i]; swE[i].Checked = valE[i];
-                Label le = new Label(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;
+                Rotulo le = new Rotulo(); le.SetBounds(16, y + 30, 424, 32); le.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                 le.ForeColor = cTenue; le.Font = fDes; le.Text = explicaE[i];
                 tEst.Controls.Add(swE[i]); tEst.Controls.Add(le);
             }
@@ -219,7 +219,7 @@ namespace Rocola
             Interruptor swB = new Interruptor(); swB.SetBounds(16, 40, 424, 26);
             swB.Font = fNom; swB.ForeColor = cTexto; swB.Acento = cAc;
             swB.Text = "Buscador con portadas"; swB.Checked = buscadorPortadas;
-            Label leB = new Label(); leB.SetBounds(16, 70, 424, 32); leB.BackColor = Color.Transparent;
+            Rotulo leB = new Rotulo(); leB.SetBounds(16, 70, 424, 32); leB.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             leB.ForeColor = cTenue; leB.Font = fDes;
             leB.Text = "Teclado compacto y resultados en tarjetas con su portada. Arriba,\n"
                      + "atajos: lo m\u00e1s pedido hoy, videos, karaoke y lo \u00faltimo buscado.";
@@ -228,12 +228,12 @@ namespace Rocola
             Interruptor swAyuda = new Interruptor(); swAyuda.SetBounds(16, 112, 424, 26);
             swAyuda.Font = fNom; swAyuda.ForeColor = cTexto; swAyuda.Acento = cAc;
             swAyuda.Text = "Animación del asistente"; swAyuda.Checked = asistenteAnimado;
-            Label leAyuda = new Label(); leAyuda.SetBounds(16, 142, 424, 32);
+            Rotulo leAyuda = new Rotulo(); leAyuda.SetBounds(16, 142, 424, 32);   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             leAyuda.BackColor = Color.Transparent; leAyuda.ForeColor = cTenue; leAyuda.Font = fDes;
             leAyuda.Text = "La ayuda se abre con ROJO + ABAJO o con su casilla. Sin rostro:\nanima postura, brazos y pasos. Apagado, la ayuda sigue igual.";
             tBus.Controls.Add(swAyuda); tBus.Controls.Add(leAyuda);
             swAyuda.CheckedChanged += delegate { asistenteAnimado = swAyuda.Checked; f3CambioGraf = true; };
-            Label lPie = new Label(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;
+            Rotulo lPie = new Rotulo(); lPie.SetBounds(16, 508, 928, 48); lPie.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lPie.ForeColor = cApagado; lPie.Font = fDes;
             lPie.Text = "Las ideas que se eligieron del lienzo de bocetos. Solo se ven con la tarjeta grafica: sin ella la pantalla\n"
                       + "sale exactamente como siempre. Ninguna le quita rendimiento que se note; son de gusto, y todo lo que se\n"
@@ -262,7 +262,7 @@ namespace Rocola
                 ShowToast("Pantalla como de fabrica", Color.FromArgb(40, 130, 90));
             };
             hPared.Controls.Add(tPared); hPared.Controls.Add(tDisco); hSuena.Controls.Add(tSuena); hAtr.Controls.Add(tAtr); hAtr.Controls.Add(tEst); hAtr.Controls.Add(tBus);
-            Panel[] hojas = { hPared, hSuena, hAtr };
+            Grupo[] hojas = { hPared, hSuena, hAtr };   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
             string[] nomHoja = { "La pared y el disco", "Reproducción y carátulas", "La atracción y el estilo" };
             BotonPlano[] bHoja = new BotonPlano[hojas.Length];
             for (int i = 0; i < hojas.Length; i++)
@@ -275,7 +275,7 @@ namespace Rocola
             MuestraHoja(hojas, bHoja, 0, cApagado);
             pg.Controls.Add(lPie); pg.Controls.Add(bReset);
             // Todo lo de esta pagina es de la tarjeta grafica: sin ella, en gris y dicho una vez (A1).
-            Label lSin = new Label(); lSin.SetBounds(330, 572, 460, 34); lSin.BackColor = Color.Transparent;
+            Rotulo lSin = new Rotulo(); lSin.SetBounds(330, 572, 460, 34); lSin.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
             lSin.ForeColor = Interruptor.ColorNecesita; lSin.Font = fDes; lSin.Text = TextoSinTarjeta; lSin.Visible = false;
             pg.Controls.Add(lSin); AvisoSinTarjeta(lSin, null);
             SoloConTarjeta(sw); SoloConTarjeta(swD); SoloConTarjeta(swS); SoloConTarjeta(swA); SoloConTarjeta(swE);
@@ -283,7 +283,7 @@ namespace Rocola
             return pg;
         }
         // Enseña una hoja y enciende su boton, con los mismos colores que las pestañas de arriba.
-        private static void MuestraHoja(Panel[] hojas, BotonPlano[] botones, int k, Color cApagado)
+        private static void MuestraHoja(Grupo[] hojas, BotonPlano[] botones, int k, Color cApagado)   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
         {
             for (int i = 0; i < hojas.Length; i++)
             {
