@@ -24,7 +24,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los mapas son SKBitmap y sus puntos se leen con GetPixels o, sin premultiplicar, con Pixeles (Xp/Nativo); de System.Drawing solo Rectangle
 using System.Runtime.InteropServices;
 
 namespace Rocola
@@ -79,8 +79,8 @@ namespace Rocola
         // Solo se bloquea ENTERO y se leen las filas por su desplazamiento: un bloqueo de un trozo en el mismo formato, en la libgdiplus de
         // Linux, escribe el trozo de vuelta arriba a la izquierda aunque sea de solo lectura (comprobado en tironescambio); en Windows no pasa,
         // pero el bloqueo entero vale en los dos y no cuesta nada (devuelve el puntero al propio mapa de bits).
-        internal static bool LecturaNativa(Bitmap b) { return b.PixelFormat == PixelFormat.Format32bppPArgb; }
-        internal static TeselasVisibles De(Bitmap b, int lado, bool bordeSiempre)
+        internal static bool LecturaNativa(SKBitmap b) { return b.ColorType == SKColorType.Bgra8888 && b.AlphaType == SKAlphaType.Premul; }   // EN LINUX: (XP) b.PixelFormat == Format32bppPArgb: un SKBitmap BGRA premultiplicado (Mapas.Nuevo, Imagenes.Lee) es ese formato, y sus puntos se leen tal cual
+        internal static TeselasVisibles De(SKBitmap b, int lado, bool bordeSiempre)   // EN LINUX: un SKBitmap (los hornos de D3D9Star.cs, sin puente, y la interfaz por el de Puente.portadas.cs)
         {
             if (b == null || lado < 1) return null;
             int w = b.Width, h = b.Height;
@@ -91,12 +91,12 @@ namespace Rocola
             // leerlo desde la de al lado): las de (x-1)/lado a (x+1)/lado, y lo mismo a lo alto. Se recorre fila a fila,
             // por tramos seguidos de texeles con algo; sin un arreglo del tamano de la imagen.
             int[] fila = new int[w];
-            BitmapData bd = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, LecturaNativa(b) ? PixelFormat.Format32bppPArgb : PixelFormat.Format32bppArgb);   // solo el alfa: el formato propio, sin copia
+            bool nativoDe = LecturaNativa(b); int pasoDe = nativoDe ? b.RowBytes : Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr scanDe = nativoDe ? b.GetPixels() : Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)pasoDe * h)); if (!nativoDe) Pixeles.LeeSinPremultiplicar(b, new Rectangle(0, 0, w, h), scanDe, pasoDe);   // solo el alfa: el formato propio, sin copia   // EN LINUX: b.LockBits(entero, ReadOnly, LecturaNativa ? Format32bppPArgb : Format32bppArgb): los puntos mismos y su paso (RowBytes), o una copia sin premultiplicar con el paso de GDI+ (Nativo/Pixeles.cs, como Dibujo2D.cs)
             try
             {
                 for (int y = 0; y < h; y++)
                 {
-                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), fila, 0, w);
+                    Marshal.Copy(new IntPtr(scanDe.ToInt64() + (long)y * pasoDe), fila, 0, w);   // EN LINUX: bd.Scan0 y bd.Stride
                     int ja = (y == 0) ? 0 : (y - 1) / lado, jb = Math.Min(ty - 1, (y + 1) / lado);
                     for (int x = 0; x < w; )
                     {
@@ -107,7 +107,7 @@ namespace Rocola
                     }
                 }
             }
-            finally { b.UnlockBits(bd); }
+            finally { if (!nativoDe) Marshal.FreeHGlobal(scanDe); }   // EN LINUX: b.UnlockBits(bd): de solo leer; la copia, si la hubo, se suelta
             if (bordeSiempre)
             {
                 for (int i = 0; i < tx; i++) { pinta[i] = true; pinta[(ty - 1) * tx + i] = true; }
@@ -147,7 +147,7 @@ namespace Rocola
     // Hasta terminar se pinta el quad completo; el recorte final es identico a De().
     internal sealed class TrabajoTeselas
     {
-        internal readonly Bitmap Fuente;
+        internal readonly SKBitmap Fuente;   // EN LINUX: un SKBitmap
         private readonly int w, h, lado, tx, ty;
         private readonly bool[] pinta;
         private readonly int[] fila;
@@ -157,7 +157,7 @@ namespace Rocola
         private long pintado;
         private TeselasVisibles resultado;
 
-        internal TrabajoTeselas(Bitmap fuente, int tamaño)
+        internal TrabajoTeselas(SKBitmap fuente, int tamaño)   // EN LINUX: un SKBitmap
         {
             Fuente = fuente; w = fuente.Width; h = fuente.Height; lado = tamaño;
             tx = (w + lado - 1) / lado; ty = (h + lado - 1) / lado;
@@ -173,14 +173,14 @@ namespace Rocola
                 {
                     int filas = Math.Min(8, h - y);
                     bool nativo = TeselasVisibles.LecturaNativa(Fuente);   // PArgb: el mapa entero, sin copia, y las filas por su desplazamiento
-                    BitmapData bd = nativo ? Fuente.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb)
-                                           : Fuente.LockBits(new Rectangle(0, y, w, filas), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                    long desde = nativo ? (long)y * bd.Stride : 0;
+                    int pasoTr = nativo ? Fuente.RowBytes : Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr scanTr = nativo ? Fuente.GetPixels() : Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)pasoTr * filas));   // EN LINUX: nativo ? Fuente.LockBits(entero, ReadOnly, Format32bppPArgb): los puntos mismos y su paso (RowBytes)
+                    if (!nativo) Pixeles.LeeSinPremultiplicar(Fuente, new Rectangle(0, y, w, filas), scanTr, pasoTr);   // EN LINUX: : Fuente.LockBits(esas filas, ReadOnly, Format32bppArgb): una copia sin premultiplicar (Nativo/Pixeles.cs)
+                    long desde = nativo ? (long)y * pasoTr : 0;   // EN LINUX: bd.Stride
                     try
                     {
                         for (int f = 0; f < filas; f++)
                         {
-                            Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + desde + (long)f * bd.Stride), fila, 0, w);
+                            Marshal.Copy(new IntPtr(scanTr.ToInt64() + desde + (long)f * pasoTr), fila, 0, w);   // EN LINUX: bd.Scan0 y bd.Stride
                             int yy = y + f;
                             int ja = yy == 0 ? 0 : (yy - 1) / lado, jb = Math.Min(ty - 1, (yy + 1) / lado);
                             for (int x = 0; x < w; )
@@ -194,7 +194,7 @@ namespace Rocola
                             }
                         }
                     }
-                    finally { Fuente.UnlockBits(bd); }
+                    finally { if (!nativo) Marshal.FreeHGlobal(scanTr); }   // EN LINUX: Fuente.UnlockBits(bd): de solo leer; la copia, si la hubo, se suelta
                     y += filas;
                 }
                 else if (banda < ty)
@@ -254,13 +254,13 @@ namespace Rocola
         private double uiSubidaMs, uiBotSubidaMs;
         internal const double TeselasQuieta = 300;           // ms sin cambios antes de sacar las teselas de la interfaz
         internal const int LadoTeselaUi = 16;                // la interfaz va texel a pixel: teselas de 16 x 16 pixeles
-        private static TeselasVisibles TeselasQuietas(Bitmap b, int w, int h, double subidaMs)
+        private static TeselasVisibles TeselasQuietas(SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (la interfaz de la capa entra por Puente.portadas.cs)
         {
             if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta) return null;
             return TeselasVisibles.De(b, LadoTeselaUi, false);
         }
 
-        private TeselasVisibles TeselasEnPasos(ref TrabajoTeselas trabajo, Bitmap b, int w, int h, double subidaMs)
+        private TeselasVisibles TeselasEnPasos(ref TrabajoTeselas trabajo, SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (GetUi y GetUiBot de D3D9Star.cs dan un Bitmap de la capa: entra por Puente.portadas.cs con sus mismos puntos)
         {
             if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta)
             { trabajo = null; return null; }
@@ -335,28 +335,28 @@ namespace Rocola
         internal long PixelesHueco;                // las pruebas: cuanto se dejo de pintar en el ultimo cuadro (sin contar capas)
 
         // Si la portada no tiene transparencia por dentro (sin sus BordePortada texeles de cada lado).
-        internal static bool InteriorOpaco(Bitmap b)
+        internal static bool InteriorOpaco(SKBitmap b, bool alfaOPaleta)   // EN LINUX: un SKBitmap, y si el formato con que XP tenia el mapa trae alfa o paleta (un SKBitmap no lo guarda: lo dice el puente, Puente.portadas.cs)
         {
             if (b == null) return false;
             int w = b.Width, h = b.Height, m = BordePortada;
             if (w <= 2 * m || h <= 2 * m) return false;
-            PixelFormat f = b.PixelFormat;
-            if (!Image.IsAlphaPixelFormat(f) && (f & PixelFormat.Indexed) == 0) return true;   // sin canal alfa: opaca
+            // EN LINUX: (XP) PixelFormat f = b.PixelFormat; -- llega en alfaOPaleta
+            if (!alfaOPaleta) return true;   // sin canal alfa: opaca   // EN LINUX: !Image.IsAlphaPixelFormat(f) && (f & PixelFormat.Indexed) == 0
             int[] fila = new int[w - 2 * m];
             bool nativo = TeselasVisibles.LecturaNativa(b);   // PArgb: el mapa entero, sin copia, y el interior por su desplazamiento
-            BitmapData bd = nativo ? b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb)
-                                   : b.LockBits(new Rectangle(m, m, w - 2 * m, h - 2 * m), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            long desde = nativo ? (long)m * bd.Stride + (long)m * 4 : 0;
+            int pasoIo = nativo ? b.RowBytes : Pixeles.Paso(FormatoPuntos.Argb32, w - 2 * m); IntPtr scanIo = nativo ? b.GetPixels() : Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)pasoIo * (h - 2 * m)));   // EN LINUX: nativo ? b.LockBits(entero, ReadOnly, Format32bppPArgb): los puntos mismos y su paso (RowBytes)
+            if (!nativo) Pixeles.LeeSinPremultiplicar(b, new Rectangle(m, m, w - 2 * m, h - 2 * m), scanIo, pasoIo);   // EN LINUX: : b.LockBits(el interior, ReadOnly, Format32bppArgb): una copia sin premultiplicar (Nativo/Pixeles.cs)
+            long desde = nativo ? (long)m * pasoIo + (long)m * 4 : 0;   // EN LINUX: bd.Stride
             try
             {
                 for (int y = 0; y < h - 2 * m; y++)
                 {
-                    Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + desde + (long)y * bd.Stride), fila, 0, fila.Length);
+                    Marshal.Copy(new IntPtr(scanIo.ToInt64() + desde + (long)y * pasoIo), fila, 0, fila.Length);   // EN LINUX: bd.Scan0 y bd.Stride
                     for (int x = 0; x < fila.Length; x++) if ((uint)fila[x] < 0xFF000000u) return false;
                 }
                 return true;
             }
-            finally { b.UnlockBits(bd); }
+            finally { if (!nativo) Marshal.FreeHGlobal(scanIo); }   // EN LINUX: b.UnlockBits(bd): de solo leer; la copia, si la hubo, se suelta
         }
 
         // Los huecos de ESTE cuadro: antes de abrir la escena (el cielo se pinta dentro de Begin), con lo mismo con que se

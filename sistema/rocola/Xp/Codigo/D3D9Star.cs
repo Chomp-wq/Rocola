@@ -3460,7 +3460,7 @@ namespace Rocola
                 using (SKBitmap hz = GpuStarfield.BakeViaLactea(mw, mh))   // EN LINUX: el horno da un SKBitmap
                 {
                     hazTex = Upload(hazTex, ref hazTW, ref hazTH, hz, out hazU, out hazV); nieblasVer++;   // (G1: el cielo guardado ya no vale)
-                    hazTeselas = TeselasVisibles.De(PuenteDibujo.Bitmap(hz, Rocola.Dibujo2D.PixelFormat.Format32bppArgb), TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)   // EN LINUX: TeselasVisibles (aun sin traducir) lee un Bitmap: el mismo mapa prestado por el puente, con el formato con que lo hacia XP
+                    hazTeselas = TeselasVisibles.De(hz, TeselasVisibles.LadoTesela, true);   // lo que tiene algo que pintar (DibujoLigeroGpu.cs)
                 }
             if (nuevoTamano || nebTex == IntPtr.Zero)
             {
@@ -3473,7 +3473,7 @@ namespace Rocola
                     nebTex = Upload(nebTex, ref nebTW, ref nebTH, nb, out nebU, out nebV); nieblasVer++;
                     // Sin el detalle natural, la mitad de la nebulosa es transparente del todo, y se pintaba dos veces
                     // por cuadro a pantalla completa. Con el detalle, casi toda tiene algo: va entera, como siempre.
-                    nebTeselas = SiAhorran(TeselasVisibles.De(PuenteDibujo.Bitmap(nb, Rocola.Dibujo2D.PixelFormat.Format32bppArgb), TeselasVisibles.LadoTesela, true));   // (DibujoLigeroGpu.cs)   // EN LINUX: el mismo mapa prestado por el puente, con el formato con que lo hacia XP
+                    nebTeselas = SiAhorran(TeselasVisibles.De(nb, TeselasVisibles.LadoTesela, true));   // (DibujoLigeroGpu.cs)
                 }
             }
             if (!SinGrano && ruidoTex == IntPtr.Zero)
@@ -3799,7 +3799,7 @@ namespace Rocola
             if (vinetaRetry != 0 && unchecked(now - vinetaRetry) < 1000) return;
             vinetaRetry = now;
             if (vinetaMapa == null) vinetaMapa = BakeVineta(128);
-            if (vinetaTeselas == null) vinetaTeselas = TeselasVisibles.De(PuenteDibujo.Bitmap(vinetaMapa, Rocola.Dibujo2D.PixelFormat.Format32bppArgb), TeselasVisibles.LadoTesela, true);   // su centro es transparente (DibujoLigeroGpu.cs)   // EN LINUX: TeselasVisibles (aun sin traducir) lee un Bitmap: el mismo mapa prestado por el puente, con el formato con que lo hacia XP
+            if (vinetaTeselas == null) vinetaTeselas = TeselasVisibles.De(vinetaMapa, TeselasVisibles.LadoTesela, true);   // su centro es transparente (DibujoLigeroGpu.cs)
             vinetaTex = stars.CreateOverlay(vinetaMapa, out vinetaU, out vinetaV);
         }
 
