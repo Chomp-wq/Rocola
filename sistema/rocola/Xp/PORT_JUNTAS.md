@@ -126,3 +126,17 @@ Para quitar después: `DegradadoV(r, c0, c1, false)` ya puede llamarse directo d
 su firma de XP de Puente.asistente.cs); las 4 llamadas a `Redondo` de AtraccionGpu.cs y las de SuenaVivoGpu.cs pasan a `RutaRedonda`
 (SKPath) y se borra `Redondo` de Puente.pantalla-viva.cs. Al juntar el paso de Ctrl+F3: choque en la línea 62 de PantallaVivaGpu.cs
 (PaginaPantalla), manda la de ventanas2.
+
+## 11-11-2026 (14:00-16:00): vistas-a y vistas-b (la primera parte de la tanda 3)
+
+- `c86a213`: vistas-a (la barra de páginas y la barra de letras de Form1.Vistas.cs con SkiaSharp directo) con su revisión.
+- `d320c7a`: vistas-b (de HeaderView al final de Form1.Vistas.cs) con su revisión («bien»; diez controles negativos más en su arnés).
+  Un choque en la línea 10 de Form1.Vistas.cs (los `using`): queda el código de las dos (`using System.Drawing; using Rocola.Dibujo2D;
+  using Rocola.Nativo; using SkiaSharp;`) con las dos notas juntas; el archivo sigue con 2 749 líneas y 2 568 CRLF.
+
+Comprobado con todo junto (`scratchpad/merge/verifica-junta8.sh`): compila desde cero (0 errores, los 15 avisos) y NativeAOT sin
+avisos IL/AOT; los arneses vistas-a, asistente, pantalla-viva, buscador-portadas, atraccion, reposo y suena IGUALES con las dos letras,
+acabado-estilo 0 distintas de 6 603 y vistas-b 0 distintas de 2 865; el banco igual en los 27 000 casos (gdi, nativo y puente); 41 de
+41 pruebas y 52 de 52 de la hoja; escenas alternadas (RJ8/J8) todas IGUALES salvo sigterm y f3sigterm (lo aceptado), y en NativeAOT
+arranque, cierreq, kill9 y buscador IGUALES; recorridos 9 de 9 con 0, capas quietas 216 de 217 (la de Ctrl+F2 con su nombre nuevo de
+capa y los mismos puntos) y texturas quietas 438 de 487 (el buscador, 45 de 78, depende de la hora).
