@@ -425,7 +425,13 @@ namespace BancoPantallaViva
                 using (Graphics g = Graphics.FromImage(b))
                 {
                     PonEstado(g, e, m[0] + 20, m[1] + 20);
-                    try { pinta.Invoke(l, new object[] { g, inicio }); } catch (Exception x) { res = Exc(x); }
+                    try
+                    {
+                        // (PintaPagina se tradujo con el grupo vistas-b: en la traduccion recibe el lienzo y el estado de su Graphics)
+                        if (pinta.GetParameters()[0].ParameterType == typeof(Graphics)) pinta.Invoke(l, new object[] { g, inicio });
+                        else { object est = EstadoDe(g); pinta.Invoke(l, new object[] { Lienzo(g), Campo(est, "Suave"), Campo(est, "Letra"), Campo(est, "Copia"), Campo(est, "Filtro"), Campo(est, "Medio"), inicio }); }
+                    }
+                    catch (Exception x) { res = Exc(x); }
                 }
                 string eq = Lee(l, "eqIdx") + "|" + R((float)Lee(l, "eqX")) + "|" + R((float)Lee(l, "eqW")) + "|" + R((float)Lee(l, "eqH")) + "|" + Lee(l, "eqBarra") + "|" + Lee(l, "eqHueco")
                           + "|" + Lee(l, "generosFuera") + "|" + Lee(l, "durAncho") + "|" + R((float)Lee(l, "durCuerpo"));
@@ -445,7 +451,7 @@ namespace BancoPantallaViva
                             try
                             {
                                 object[] a;
-                                if (via == 1 && pastillaSk != null)
+                                if ((via == 1 || pastillaXp == null) && pastillaSk != null)   // (sin la firma de XP, quitada del puente con el grupo vistas-b: las dos, directo)
                                 {
                                     directas++;
                                     object est = EstadoDe(g);
