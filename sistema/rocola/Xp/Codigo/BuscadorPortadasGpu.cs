@@ -561,9 +561,9 @@ namespace Rocola
                 {
                     int crece = (int)Math.Round(ancho * (float)i / pasos);
                     Rectangle rr = Rectangle.Inflate(r, crece, crece);
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(rr, radio + crece))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(rr, radio + crece))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = Color.FromArgb(a, c).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        pincelS.Color = Color.FromArgb(a, c).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
                     }
                 }
             }
@@ -637,30 +637,30 @@ namespace Rocola
                     // c1 = el fondo de la tecla elegida (el color de la seccion, o el rojo en BORRAR); c2 = su borde
                     int radio = Math.Max(3, Px(10, s));
                     Resplandor(g, suave, copia, medio, r, radio, c1, Px(20, s), .9f);   // EN LINUX: con el estado del lienzo
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(r, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = c1.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = c2.Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = c1.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = c2.Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                 }
                 else if (tipo == QuietoAtajo)
                 {
                     int radio = Math.Max(2, r.Height / 2);
                     Resplandor(g, suave, copia, medio, r, radio, c1, Px(16, s), .8f);   // EN LINUX: con el estado del lienzo
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(r, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = c1.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = Lighten(c1, .4).Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = c1.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = Lighten(c1, .4).Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                 }
                 else if (tipo == QuietoCaja)
                 {
                     int radio = Px(18, s);
                     Resplandor(g, suave, copia, medio, r, radio, c1, Px(14, s), .35f);   // EN LINUX: con el estado del lienzo
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(r, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = FondoCaja.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = Color.FromArgb(204, c1).Sk(); plumaS.StrokeWidth = Math.Max(1.5f, 2f * s); Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = FondoCaja.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = Color.FromArgb(204, c1).Sk(); plumaS.StrokeWidth = Math.Max(1.5f, 2f * s); Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                     int pad = Px(26, s), lupa = Px(30, s);
                     LupaNueva(g, suave, copia, medio, r.X + pad, r.Y + r.Height / 2, lupa, Lighten(c1, .62));   // EN LINUX: con el estado del lienzo
@@ -670,15 +670,15 @@ namespace Rocola
                     bool sel = tipo == QuietoCartaElegida;
                     int radio = Px(14, s);
                     if (sel) Resplandor(g, suave, copia, medio, r, radio, c1, Px(18, s), .6f);   // EN LINUX: con el estado del lienzo
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(r, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = (sel ? FondoCartaElegida : FondoCarta).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        if (!sel) { plumaS.Color = Color.FromArgb(115, c1).Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia); }   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = (sel ? FondoCartaElegida : FondoCarta).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        if (!sel) { plumaS.Color = Color.FromArgb(115, c1).Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia); }   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                     if (sel)
                     {
                         // El aro blanco va por FUERA de la tarjeta, como en el boceto.
-                        using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(Rectangle.Inflate(r, 1, 1), radio + 1)) { plumaS.Color = Color.White.Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia); }   // EN LINUX: RoundedPath (aun sin traducir) da un GraphicsPath: su SKPath; pnS y g.DrawPath (Nativo/Pixel.cs)
+                        using (SKPath gp = ContornoRedondo(Rectangle.Inflate(r, 1, 1), radio + 1)) { plumaS.Color = Color.White.Sk(); plumaS.StrokeWidth = 2f; Pixel.Traza(g, gp, plumaS, suave, medio, copia); }   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs); pnS y g.DrawPath (Nativo/Pixel.cs)
                     }
                     // La sombra de debajo de la portada, suave.
                     Rectangle cov = CajaPortadaCarta(r, s);
@@ -686,7 +686,7 @@ namespace Rocola
                     for (int k = 3; k >= 1; k--)
                     {
                         Rectangle sh = cov; sh.Offset(0, Px(2f * k, s)); sh.Inflate(k, k);
-                        using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(sh, rp + k)) { pincelS.Color = Color.FromArgb(34, 0, 0, 0).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath (aun sin traducir) da un GraphicsPath: su SKPath; sbS y g.FillPath (Nativo/Pixel.cs)
+                        using (SKPath gp = ContornoRedondo(sh, rp + k)) { pincelS.Color = Color.FromArgb(34, 0, 0, 0).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs); sbS y g.FillPath (Nativo/Pixel.cs)
                     }
                 }
             }
@@ -739,10 +739,10 @@ namespace Rocola
                 else { fondo = FondoTecla(v); borde = Color.FromArgb(115, v); tinta = Lighten(v, .8); }
                 if (sel) PegaQuieto(g, suave, copia, filtro, medio, QuietoTecla, kr, fondo, borde);   // su resplandor, su fondo y su borde, horneados (EN LINUX: con el estado del lienzo)
                 else
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(kr, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(kr, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = fondo.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = borde.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = fondo.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = borde.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                 pincelS.Color = tinta.Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, k.Label, (k.Kind == KKind.Char) ? fnTecla : fnTeclaPal, ajuste, pincelS, kr, sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, letra, sbS, kr, sfCentro) (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo
@@ -754,10 +754,10 @@ namespace Rocola
                 Color v = Vivo(Accent);
                 if (sel) PegaQuieto(g, suave, copia, filtro, medio, QuietoAtajo, cr, v, v);   // EN LINUX: con el estado del lienzo
                 else
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(cr, Math.Max(2, cr.Height / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(cr, Math.Max(2, cr.Height / 2)))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = FondoAtajo.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = BordeAtajo.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = FondoAtajo.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = BordeAtajo.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                 pincelS.Color = (sel ? Color.White : TextoAtajo).Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, atajos[i], fnAtajo, ajuste, pincelS, cr, sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, fnAtajo, sbS, cr, sfCentro) (Nativo/TextoGdiPlus.cs)
@@ -1139,8 +1139,8 @@ namespace Rocola
                     Rectangle pista = r.Barra; pista.Offset(dx, dy);
                     int alto = Math.Max(Px(24, s), pista.Height * r.Filas / filas);
                     int y = pista.Y + (pista.Height - alto) * resScroll / Math.Max(1, filas - r.Filas);
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(pista, Math.Max(1, pista.Width / 2))) { pincelS.Color = Color.FromArgb(40, 207, 224, 255).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath (aun sin traducir) da un GraphicsPath: su SKPath; sbS y g.FillPath (Nativo/Pixel.cs)
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle(pista.X, y, pista.Width, alto), Math.Max(1, pista.Width / 2))) { pincelS.Color = Color.FromArgb(170, Vivo(Accent)).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath (aun sin traducir) da un GraphicsPath: su SKPath; sbS y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPath gp = ContornoRedondo(pista, Math.Max(1, pista.Width / 2))) { pincelS.Color = Color.FromArgb(40, 207, 224, 255).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs); sbS y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPath gp = ContornoRedondo(new Rectangle(pista.X, y, pista.Width, alto), Math.Max(1, pista.Width / 2))) { pincelS.Color = Color.FromArgb(170, Vivo(Accent)).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs); sbS y g.FillPath (Nativo/Pixel.cs)
                     hornoBarra = Rectangle.Inflate(pista, 1, 1);
                 }
                 if (visibles == 0) DibujaSinCartas(g, ajuste, copia, medio, r, dx, dy);   // EN LINUX: con el estado del lienzo
@@ -1279,10 +1279,10 @@ namespace Rocola
                 float w = Mide(ajuste, texto, fnMarca) + 2 * Px(9, rep.S);   // EN LINUX: con el modo de letra del lienzo
                 if (x + w > lim) return x;
                 Rectangle r = new Rectangle((int)x, y, (int)Math.Ceiling(w), alto);
-                using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(r, Math.Max(2, alto / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                using (SKPath gp = ContornoRedondo(r, Math.Max(2, alto / 2)))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                 {
-                    pincelS.Color = Color.FromArgb(71, 0, 0, 0).Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                    plumaS.Color = c.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, PuenteDibujo.Ruta(gp), plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                    pincelS.Color = Color.FromArgb(71, 0, 0, 0).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                    plumaS.Color = c.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                 }
                 pincelS.Color = c.Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, texto, fnMarca, ajuste, pincelS, new RectangleF(r.X, r.Y - alto / 2f, r.Width, 2f * alto), sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, fnMarca, sbS, caja, sfCentro) (Nativo/TextoGdiPlus.cs)
@@ -1335,8 +1335,8 @@ namespace Rocola
                     if (wa + wc <= ancho)
                     {
                         float hTxt = f.AltoRenglon;   // EN LINUX: f.GetHeight(g) (Letra.AltoRenglon)
-                        using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle((int)(x + wa) - 1, (int)(cy - hTxt / 2f), (int)Math.Ceiling(wc) + 2, (int)Math.Ceiling(hTxt)), 3))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
-                        { pincelS.Color = Resalte.Sk(); Pixel.Rellena(g, PuenteDibujo.Ruta(gp), pincelS, suave, medio, copia); }   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        using (SKPath gp = ContornoRedondo(new Rectangle((int)(x + wa) - 1, (int)(cy - hTxt / 2f), (int)Math.Ceiling(wc) + 2, (int)Math.Ceiling(hTxt)), 3))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
+                        { pincelS.Color = Resalte.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); }   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
                         Renglon(g, ajuste, copia, medio, ante, f, c, x, cy, wa + 2);   // EN LINUX: con el estado del lienzo
                         Renglon(g, ajuste, copia, medio, coincide, f, TextoResalte, x + wa, cy, wc + 2);   // EN LINUX: con el estado del lienzo
                         if (resto.Length > 0) Renglon(g, ajuste, copia, medio, resto, f, c, x + wa + wc, cy, Math.Max(4f, ancho - wa - wc));   // EN LINUX: con el estado del lienzo
@@ -1364,23 +1364,23 @@ namespace Rocola
                     mini = Miniatura(a, cov.Width);
                     if (mini == null) { falta = a.CoverPath; if (!portadasFaltan.Contains(a)) portadasFaltan.Add(a); }
                 }
-                using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(cov, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                using (SKPath gp = ContornoRedondo(cov, radio))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                 {
                     if (mini != null)
                     {
                         using (SKShader tex = Degradado.Textura(mini, Envoltura.Transparente, SKMatrix.CreateTranslation(cov.X, cov.Y), medio)) using (SKPaint tb = new SKPaint { Shader = tex })   // EN LINUX: new TextureBrush(mini, WrapMode.Clamp) con su TranslateTransform (abajo): la textura, transparente fuera como Clamp de GDI+, movida a la portada y con el medio pixel del lienzo (Nativo/Degradado.cs)
                         {
                             // EN LINUX: tb.TranslateTransform(cov.X, cov.Y): va en la matriz de la textura (arriba)
-                            Pixel.Rellena(g, PuenteDibujo.Ruta(gp), tb, suave, medio, copia);   // EN LINUX: g.FillPath(tb, gp) (Nativo/Pixel.cs)
+                            Pixel.Rellena(g, gp, tb, suave, medio, copia);   // EN LINUX: g.FillPath(tb, gp) (Nativo/Pixel.cs)
                         }
                         return null;
                     }
                     Color c1 = Color.FromArgb(91, 53, 201), c2 = Color.FromArgb(79, 179, 154);
                     string gen = (GetGenero != null) ? GetGenero(it) : "";
                     if (!string.IsNullOrEmpty(gen)) { Color cg = ColorDeEtiqueta(gen); c1 = Shade(cg, .35); c2 = Lighten(cg, .12); }
-                    using (SKShader deg = Degradado.Lineal(cov, c1, c2, 45f)) using (SKPaint lb = new SKPaint { Shader = deg }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), lb, suave, medio, copia);   // EN LINUX: new LinearGradientBrush(cov, c1, c2, 45) (no escalable y repetido, como en GDI+: Nativo/Degradado.cs) y g.FillPath (Nativo/Pixel.cs)
+                    using (SKShader deg = Degradado.Lineal(cov, c1, c2, 45f)) using (SKPaint lb = new SKPaint { Shader = deg }) Pixel.Rellena(g, gp, lb, suave, medio, copia);   // EN LINUX: new LinearGradientBrush(cov, c1, c2, 45) (no escalable y repetido, como en GDI+: Nativo/Degradado.cs) y g.FillPath (Nativo/Pixel.cs)
                     int gs = g.Save();   // EN LINUX: GraphicsState gs = g.Save(): el lienzo (el recorte de abajo se va con el)
-                    g.ClipPath(PuenteDibujo.Ruta(gp), SKClipOperation.Intersect, false); // respetar el recuadro parcial: no volver a pintar vecinos fuera de el (EN LINUX: g.SetClip(gp, CombineMode.Intersect): sin suavizar, como las regiones de recorte de GDI+)
+                    g.ClipPath(gp, SKClipOperation.Intersect, false); // respetar el recuadro parcial: no volver a pintar vecinos fuera de el (EN LINUX: g.SetClip(gp, CombineMode.Intersect): sin suavizar, como las regiones de recorte de GDI+)
                     int d = (int)(cov.Width * .78f);
                     pincelS.Color = Color.FromArgb(36, 255, 255, 255).Sk();   // EN LINUX: sbS.Color
                     Pixel.RellenaOvalo(g, new RectangleF(cov.Right - d + (int)(cov.Width * .28f), cov.Y - (int)(cov.Width * .28f), d, d), pincelS, suave, medio, copia);   // EN LINUX: g.FillEllipse(sbS, x, y, ancho, alto) (Nativo/Pixel.cs)

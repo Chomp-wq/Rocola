@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las letras de las etiquetas, RoundedPath, TextoConCinta, PintaArtistaCompacto, DrawLabelOverlay, DrawCtrlOverlay) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las letras de las etiquetas, TextoConCinta, PintaArtistaCompacto, DrawLabelOverlay, DrawCtrlOverlay) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
@@ -165,13 +165,13 @@ namespace Rocola
         }
         internal static void PintaTarjetaSiguiente(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, string next, Rectangle box)   // EN LINUX: el lienzo de Skia y el estado del Graphics
         {
-            using (Rocola.Dibujo2D.GraphicsPath p = RoundedPath(box, Math.Min(12, box.Height / 3)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
+            using (SKPath p = ContornoRedondo(box, Math.Min(12, box.Height / 3)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
             using (SKPaint body = new SKPaint { Color = Color.FromArgb(66, 12, 20, 40).Sk() })   // EN LINUX: SolidBrush: un SKPaint de ese color
             using (SKPaint edge = new SKPaint { Color = Color.FromArgb(55, 180, 210, 255).Sk(), StrokeWidth = 1f })   // EN LINUX: Pen(color): la pluma de 1 de ancho (Pixel.Traza le pone lo de GDI+)
             using (Rocola.Nativo.Letra caption = Rocola.Nativo.Letra.EnPixeles(Letras.SinRemates, Math.Max(10f, Math.Min(13f, box.Height * .25f)), true))   // EN LINUX: new Font(GenericSansSerif, px, Bold, Pixel): la generica sin remates de XP (Microsoft Sans Serif), en pixeles y en negrita
             using (Rocola.Nativo.Letra title = Rocola.Nativo.Letra.EnPixeles(Letras.SinRemates, Math.Max(12f, Math.Min(20f, box.Height * .40f)), true))   // EN LINUX: new Font(GenericSansSerif, px, Bold, Pixel)
             {
-                Pixel.Rellena(g, PuenteDibujo.Ruta(p), body, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(p), edge, suave, medio, copia);   // EN LINUX: g.FillPath(body, p); g.DrawPath(edge, p) (Nativo/Pixel.cs)
+                Pixel.Rellena(g, p, body, suave, medio, copia); Pixel.Traza(g, p, edge, suave, medio, copia);   // EN LINUX: g.FillPath(body, p); g.DrawPath(edge, p) (Nativo/Pixel.cs)
                 int head = Math.Max(12, (int)(box.Height * .38f));
                 PintaRenglonLejos(g, suave, ajuste, copia, medio, "A CONTINUACIÓN", caption, Color.FromArgb(169, 191, 224),   // EN LINUX: con el lienzo y su estado
                     new Rectangle(box.X + 12, box.Y + 2, Math.Max(0, box.Width - 24), head), Alinea.Cerca);   // EN LINUX: StringAlignment.Near es Alinea.Cerca

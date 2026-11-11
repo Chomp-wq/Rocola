@@ -390,9 +390,9 @@ namespace Rocola
                     using (SKPaint tint = new SKPaint { Color = Color.FromArgb(42, metal).Sk() })   // EN LINUX: SolidBrush
                     using (SKPaint ink = new SKPaint { Color = metal.Sk() })   // EN LINUX: SolidBrush
                     using (SKPaint rim = new SKPaint { Color = Color.FromArgb(145, metal).Sk(), StrokeWidth = 1f })   // EN LINUX: Pen(color), de 1
-                    using (Rocola.Dibujo2D.GraphicsPath shape = RoundedPath(badge, 8))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+                    using (SKPath shape = ContornoRedondo(badge, 8))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        Pixel.Rellena(g, PuenteDibujo.Ruta(shape), tint, suave, false, false); Pixel.Traza(g, PuenteDibujo.Ruta(shape), rim, suave, false, false);   // EN LINUX: g.FillPath y g.DrawPath (Nativo/Pixel.cs)
+                        Pixel.Rellena(g, shape, tint, suave, false, false); Pixel.Traza(g, shape, rim, suave, false, false);   // EN LINUX: g.FillPath y g.DrawPath (Nativo/Pixel.cs)
                         FormatoTexto centered = new FormatoTexto(line);   // EN LINUX: using (StringFormat centered = new StringFormat(line)): una copia (un FormatoTexto, que no se suelta: lo de abajo queda como bloque)
                         {
                             centered.Horizontal = Alinea.Centro; centered.Vertical = Alinea.Centro;   // EN LINUX: Alignment = Center; LineAlignment = Center
@@ -417,7 +417,7 @@ namespace Rocola
                 for (int i = 0; i < qt.Length && i < (dozen ? 12 : 3); i++)
                 {
                     Rectangle r = IdleQueueCellCount(w, h, i, qt.Length, dozen);
-                    using (Rocola.Dibujo2D.GraphicsPath shape = RoundedPath(r, Math.Min(10, r.Height / 3))) Pixel.Rellena(g, PuenteDibujo.Ruta(shape), card, suave, false, false);   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) da un GraphicsPath: su SKPath (PuenteDibujo.Ruta) y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPath shape = ContornoRedondo(r, Math.Min(10, r.Height / 3))) Pixel.Rellena(g, shape, card, suave, false, false);   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y g.FillPath (Nativo/Pixel.cs)
                     Rectangle thumb = IdleQueueThumb(r);
                     if (i < covers.Length && covers[i] != null) Imagenes.Pinta(g, covers[i], new SKRect(0, 0, covers[i].Width, covers[i].Height), new SKRect(thumb.Left, thumb.Top, thumb.Right, thumb.Bottom), Filtro.Bilineal, false, false);   // EN LINUX: g.DrawImage(imagen, caja) (Nativo/Imagenes.cs) con el filtro de fabrica del Graphics (Bilinear)
                     else Pixel.Rellena(g, thumb, color, suave, false, false);   // EN LINUX: g.FillRectangle
