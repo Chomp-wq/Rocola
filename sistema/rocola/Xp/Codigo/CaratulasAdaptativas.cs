@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las previas se reducen y se copian con SkiaSharp directo y las funciones nativas (Xp/Nativo); la capa de GDI+ (Dibujo2D.cs) queda SOLO por las lineas de ventanas de este archivo (el historial de caratulas: Font), que traduce la pista de ventanas (PORT_portadas.md)
 using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -346,7 +346,7 @@ namespace Rocola
         {
             IndexedLoad();
         }
-        internal Bitmap Get(string identity)
+        internal Rocola.Dibujo2D.Bitmap Get(string identity)   // EN LINUX: la previa para gpuPreviewCache, un Bitmap de la capa, escrito entero (FromBytes)
         {
             lock (sync)
             {
@@ -356,27 +356,27 @@ namespace Rocola
             }
         }
         internal bool Contains(string identity) { lock (sync) { Load(); return ReadPixels(Key(identity), null) != null; } }
-        internal static Bitmap Small(Image source)
+        internal static SKBitmap Small(SKBitmap source)   // EN LINUX: SKBitmap (las portadas de la cache llegan con PuenteDibujo.Mapa: sus mismos puntos)
         {
-            Bitmap b = new Bitmap(Side, Side, PixelFormat.Format32bppPArgb);
-            try { using (Graphics g = Graphics.FromImage(b)) { g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.DrawImage(source, 0, 0, Side, Side); } return b; }
+            SKBitmap b = Mapas.Nuevo(Side, Side);   // EN LINUX: new Bitmap(Side, Side, Format32bppPArgb), transparente
+            try { using (SKCanvas g = new SKCanvas(b)) { Filtro filtro = Filtro.BilinealAlta; if (source != null) Imagenes.Pinta(g, source, new SKRect(0, 0, source.Width, source.Height), new SKRect(0, 0, Side, Side), filtro, false); } return b; }   // EN LINUX: Graphics.FromImage(b), g.InterpolationMode = HighQualityBilinear (en una variable) y g.DrawImage(source, 0, 0, Side, Side) con el medio pixel y la mezcla de fabrica (Nativo/Imagenes.cs); sin imagen no pinta nada (como Dibujo2D.cs)
             catch { b.Dispose(); throw; }
         }
-        internal static byte[] ToBytes(Bitmap b)
+        internal static byte[] ToBytes(SKBitmap b)   // EN LINUX: un SKBitmap
         {
             byte[] bytes = new byte[Bytes];
-            BitmapData bd = b.LockBits(new Rectangle(0, 0, Side, Side), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-            try { for (int y = 0; y < Side; y++) Marshal.Copy(new IntPtr(bd.Scan0.ToInt64() + y * (long)bd.Stride), bytes, y * Side * 4, Side * 4); }
-            finally { b.UnlockBits(bd); } return bytes;
+            IntPtr scan = b.GetPixels(); int paso = b.RowBytes;   // EN LINUX: b.LockBits(entero, ReadOnly, Format32bppPArgb): los puntos mismos (BGRA premultiplicado) y su paso
+            try { for (int y = 0; y < Side; y++) Marshal.Copy(new IntPtr(scan.ToInt64() + y * (long)paso), bytes, y * Side * 4, Side * 4); }   // EN LINUX: bd.Scan0 y bd.Stride
+            finally { } return bytes;   // EN LINUX: b.UnlockBits(bd): de solo leer, nada que devolver
         }
-        private static Bitmap FromBytes(byte[] bytes)
+        private static Rocola.Dibujo2D.Bitmap FromBytes(byte[] bytes)   // EN LINUX: la previa va a gpuPreviewCache, de Bitmap de la capa (la lee la pared: GpuGridCell.Preview), y la da GetBatch (PreviewsIndexadosGpu.cs, de otro grupo): se dibuja en un SKBitmap y se entrega abajo
         {
-            Bitmap b = new Bitmap(Side, Side, PixelFormat.Format32bppPArgb);
+            SKBitmap b = Mapas.Nuevo(Side, Side);   // EN LINUX: new Bitmap(Side, Side, Format32bppPArgb)
             try
             {
-                BitmapData bd = b.LockBits(new Rectangle(0, 0, Side, Side), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
-                try { for (int y = 0; y < Side; y++) Marshal.Copy(bytes, y * Side * 4, new IntPtr(bd.Scan0.ToInt64() + y * (long)bd.Stride), Side * 4); }
-                finally { b.UnlockBits(bd); } return b;
+                IntPtr scan = b.GetPixels(); int paso = b.RowBytes;   // EN LINUX: b.LockBits(entero, WriteOnly, Format32bppPArgb): los puntos mismos y su paso
+                try { for (int y = 0; y < Side; y++) Marshal.Copy(bytes, y * Side * 4, new IntPtr(scan.ToInt64() + y * (long)paso), Side * 4); }   // EN LINUX: bd.Scan0 y bd.Stride
+                finally { b.NotifyPixelsChanged(); } return PuenteDibujo.Entrega(b, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: b.UnlockBits(bd): lo escrito queda avisado; return b: entregada como la hacia XP, un Bitmap Format32bppPArgb dueno de sus puntos
             }
             catch { b.Dispose(); throw; }
         }
@@ -394,7 +394,7 @@ namespace Rocola
     {
         private readonly CoverGovernor coverGovernor = new CoverGovernor(CargaTrabajo.Procesadores);
         private GpuPreviewStore gpuPreviewStore;
-        private readonly Dictionary<string, Bitmap> gpuPreviewCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Rocola.Dibujo2D.Bitmap> gpuPreviewCache = new Dictionary<string, Rocola.Dibujo2D.Bitmap>(StringComparer.OrdinalIgnoreCase);   // EN LINUX: las previas, Bitmap de la capa, escrito entero: las lee la pared (PeekPreviewGpu -> GpuGridCell.Preview)
         private readonly Queue<string> gpuPreviewOrder = new Queue<string>();
         private int gpuPreviewPage, gpuPreviewLoaded = -1;
         private bool coverWorkersStop;
@@ -409,18 +409,18 @@ namespace Rocola
                 return gpuPreviewStore;
             }
         }
-        private void PutGpuPreview(string key, Bitmap b)
+        private void PutGpuPreview(string key, Rocola.Dibujo2D.Bitmap b)   // EN LINUX: la previa de la capa, escrita entera
         {
-            Bitmap old;
+            Rocola.Dibujo2D.Bitmap old;   // EN LINUX: de la capa, escrito entero
             if (gpuPreviewCache.TryGetValue(key, out old)) { if (b != old) coverTrash.Add(b); return; }
             gpuPreviewCache[key] = b; gpuPreviewOrder.Enqueue(key);
             while (gpuPreviewCache.Count > 256)
             { string k = gpuPreviewOrder.Dequeue(); coverTrash.Add(gpuPreviewCache[k]); gpuPreviewCache.Remove(k); }
         }
-        private Image PeekGpuPreview(Album a)
+        private Rocola.Dibujo2D.Image PeekGpuPreview(Album a)   // EN LINUX: la da a la pared (albumView.PeekPreviewGpu, Form1.cs): imagen de la capa, escrita entera
         {
             if (!caratulasLod || a == null || a.CoverPath == null) return null;
-            lock (coverLock) { Bitmap b; return gpuPreviewCache.TryGetValue(a.CoverPath, out b) ? b : null; }
+            lock (coverLock) { Rocola.Dibujo2D.Bitmap b; return gpuPreviewCache.TryGetValue(a.CoverPath, out b) ? b : null; }   // EN LINUX: de la capa, escrito entero
         }
         private void LoadGpuPreviewBatch(CoverJob current)
         {
@@ -440,10 +440,10 @@ namespace Rocola
                 lock (coverLock) { if (current.Gen != coverGen) return; if (gpuPreviewCache.ContainsKey(keys[i])) continue; }
                 try { identities[i] = ThumbCachePath(keys[i]); } catch { }
             }
-            Bitmap[] images = store.GetBatch(identities);
+            Rocola.Dibujo2D.Bitmap[] images = store.GetBatch(identities);   // EN LINUX: las previas de GetBatch (PreviewsIndexadosGpu.cs), Bitmap de la capa (FromBytes), escrito entero
             for (int i = 0; i < images.Length; i++)
             {
-                Bitmap b = images[i];
+                Rocola.Dibujo2D.Bitmap b = images[i];   // EN LINUX: de la capa, escrito entero
                 if (b == null) continue;
                 lock (coverLock) { if (current.Gen == coverGen) PutGpuPreview(keys[i], b); else b.Dispose(); }
             }
@@ -504,14 +504,14 @@ namespace Rocola
             if (!gpuEnabled || !caratulasLod) return false;
             try { return !PreviewStore().Contains(ThumbCachePath(a.CoverPath)); } catch { return false; }
         }
-        private void WarmGpuPreview(Album a, Image im, string identity)
+        private void WarmGpuPreview(Album a, Rocola.Dibujo2D.Image im, string identity)   // EN LINUX: la portada que da el calentador (Form1.cs, aun sin traducir), imagen de la capa, escrita entera
         {
             if (!gpuEnabled || !caratulasLod || im == null) return;
             if (identity != ThumbCachePath(a.CoverPath)) return; // fuente reemplazada durante la lectura
             // Save no sobrescribe un registro que ya existe (IndexedSave sale si ReadPixels lo encuentra): si el almacen ya tiene esta identidad,
             // reducir la imagen a 32x32 y pasarla a bytes solo servia para tirar el resultado (20-10-2026). La identidad lleva el tamano y la fecha del archivo.
             if (PreviewStore().Contains(identity)) return;
-            using (Bitmap small = GpuPreviewStore.Small(im))
+            using (SKBitmap small = GpuPreviewStore.Small(PuenteDibujo.Mapa(im)))   // EN LINUX: un SKBitmap, de los puntos de la portada de la capa (PuenteDibujo.Mapa: los mismos, sin copia)
                 PreviewStore().Save(identity, GpuPreviewStore.ToBytes(small));
         }
     }
@@ -519,7 +519,7 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         internal CoverGovernor CoverControl;
-        private sealed class LodTex { internal IntPtr Tex; internal Bitmap Bmp; internal float U, V; internal int Frame; internal double FullAt = -1; }
+        private sealed class LodTex { internal IntPtr Tex; internal Rocola.Dibujo2D.Bitmap Bmp; internal float U, V; internal int Frame; internal double FullAt = -1; }   // EN LINUX: la previa de la casilla (GpuGridCell.Preview de D3D9Star.cs), Bitmap de la capa, escrito entero: se compara por identidad
         private readonly Dictionary<string, LodTex> lodTextures = new Dictionary<string, LodTex>();
         private readonly IntPtr[] lodTex = new IntPtr[MaxCells];
         private readonly float[] lodU = new float[MaxCells], lodV = new float[MaxCells], lodAlpha = new float[MaxCells];
@@ -535,7 +535,7 @@ namespace Rocola
                 if (l == null && lodTextures.Count >= 144 && !DiscardOldLod()) return;
                 if (CoverControl != null && !CoverControl.CanStart(Stopwatch.Frequency / 10000, true, true)) return;
                 long start = Stopwatch.GetTimestamp(); float u, v;
-                IntPtr tex = stars.CreateOverlay(cell.Preview, out u, out v);
+                IntPtr tex = stars.CreateOverlay(PuenteDibujo.Mapa(cell.Preview), out u, out v);   // EN LINUX: los puntos de la previa (Bitmap de la capa), los mismos, sin copia: CreateOverlay ya recibe un SKBitmap
                 if (CoverControl != null) CoverControl.Spend(Stopwatch.GetTimestamp() - start);
                 if (tex == IntPtr.Zero) return;
                 if (l != null && l.Tex != IntPtr.Zero) Tarjeta.Suelta(l.Tex);

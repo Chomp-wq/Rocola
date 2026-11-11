@@ -15,6 +15,12 @@ using System;
 
 namespace Rocola
 {
+    public partial class Form1
+    {
+        // ---- SaveThumb, para Form1.cs (el calentador guarda la copia que le dio DecodeCoverParaCalentar): los mismos puntos
+        private static void SaveThumb(Rocola.Dibujo2D.Bitmap thumb, string cacheFile) { SaveThumb(PuenteDibujo.Mapa(thumb), cacheFile); }
+    }
+
 #if ROCOLA_GPU
     internal sealed partial class GpuPanel
     {
