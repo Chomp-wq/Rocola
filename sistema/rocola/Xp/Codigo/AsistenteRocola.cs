@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los globos de la estrella (la pregunta y la despedida) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (RoundedPath, CtrlDot, CtrlTxt) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los globos de la estrella (la pregunta y la despedida) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (CtrlDot, CtrlTxt) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
@@ -457,10 +457,10 @@ namespace Rocola
                     {
                         Rectangle r = AsistenteOpcionRect(w, h, i);
                         bool elegida = i == seleccion;
-                        using (Rocola.Dibujo2D.GraphicsPath camino = RoundedPath(r, Math.Min(14, r.Height / 3)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                        using (SKPath camino = ContornoRedondo(r, Math.Min(14, r.Height / 3)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                         using (SKPaint relleno = new SKPaint { Color = (elegida ? Color.FromArgb(235, 42, 87, 130) : Color.FromArgb(150, 28, 42, 68)).Sk() })   // EN LINUX: SolidBrush
                         using (SKPaint contorno = new SKPaint { Color = (elegida ? Color.FromArgb(150, 235, 188) : Color.FromArgb(90, 113, 150)).Sk(), StrokeWidth = elegida ? 2f : 1f })   // EN LINUX: Pen(color, ancho)
-                        { Pixel.Rellena(g, PuenteDibujo.Ruta(camino), relleno, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(camino), contorno, suave, medio, copia); }   // EN LINUX: g.FillPath(relleno, camino); g.DrawPath(contorno, camino) (Nativo/Pixel.cs)
+                        { Pixel.Rellena(g, camino, relleno, suave, medio, copia); Pixel.Traza(g, camino, contorno, suave, medio, copia); }   // EN LINUX: g.FillPath(relleno, camino); g.DrawPath(contorno, camino) (Nativo/Pixel.cs)
                         TextoGdiPlus.Escribe(g, nombres[i], fOpc, ajuste, blanco, new RectangleF(r.Left + 12, r.Top, Math.Max(1, r.Width - 24 - (elegida ? AsistenteAnchoControles(r) : 0)), r.Height), formato, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                         if (!elegida) continue;
                         Rectangle ka, kb, kv; AsistenteControlesOpcion(r, out ka, out kb, out kv);

@@ -768,7 +768,7 @@ namespace Rocola
             return de + ((d > 0) ? paso : -paso);
         }
 
-        private static SKPath RutaRedonda(Rectangle r, int radius)   // EN LINUX: RoundedPath, con un SKPath; la firma de XP (devuelve un GraphicsPath) queda en el puente (Puente.fondo.cs) para los archivos aun sin traducir (Form1.Buscador.cs, Form1.Ajustes.cs, Form1.Vistas.cs), y la hace con esta misma
+        private static SKPath ContornoRedondo(Rectangle r, int radius)   // EN LINUX: RoundedPath, con un SKPath; la firma de XP (devuelve un GraphicsPath) queda en el puente (Puente.fondo.cs) para los archivos aun sin traducir (Form1.Buscador.cs, Form1.Ajustes.cs, Form1.Vistas.cs), y la hace con esta misma
         {
             SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): un SKPath (su relleno de fabrica, Alternate, es par-impar)
             int d = radius * 2;

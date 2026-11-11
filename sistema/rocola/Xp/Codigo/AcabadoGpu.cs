@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (las paginas horneadas de la lista, PintaPagina, RoundedPath, DegradadoV, CtrlDirLeft y CtrlDirRight, las piezas de la tarjeta, el buscador) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (las paginas horneadas de la lista, PintaPagina, DegradadoV, CtrlDirLeft y CtrlDirRight, las piezas de la tarjeta, el buscador) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 namespace Rocola
 {
     public partial class Form1
@@ -274,8 +274,8 @@ namespace Rocola
                 sf.Banderas = BanderasTexto.SinPartir; sf.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: FormatFlags = NoWrap (deja solo esa) y Trimming = EllipsisCharacter
                 int cw = Math.Min(r.Width, Math.Max(170, (int)(size * 13)));
                 Rectangle center = new Rectangle(r.X + (r.Width - cw) / 2, r.Y + 2, cw, Math.Max(12, r.Height - 4));
-                using (Rocola.Dibujo2D.GraphicsPath p = RoundedPath(center, Math.Min(15, center.Height / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
-                { Pixel.Rellena(g, PuenteDibujo.Ruta(p), body, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(p), rim, suave, medio, copia); }   // EN LINUX: g.FillPath(body, p); g.DrawPath(rim, p) (Nativo/Pixel.cs)
+                using (SKPath p = ContornoRedondo(center, Math.Min(15, center.Height / 2)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
+                { Pixel.Rellena(g, p, body, suave, medio, copia); Pixel.Traza(g, p, rim, suave, medio, copia); }   // EN LINUX: g.FillPath(body, p); g.DrawPath(rim, p) (Nativo/Pixel.cs)
                 TextoGdiPlus.Escribe(g, "PÁGINA  " + (page + 1) + " / " + pages, font, ajuste, text, center, sf, copia, medio);   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
                 int side = Math.Max(0, (r.Width - cw) / 2 - 12);
                 if (side >= 90)
@@ -343,7 +343,7 @@ namespace Rocola
         {
             SKBitmap b = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo (estado de fabrica; el suavizado, abajo)
-            using (Rocola.Dibujo2D.GraphicsPath edge = RoundedPath(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
+            using (SKPath edge = ContornoRedondo(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
             using (Rocola.Dibujo2D.Brush cuerpo = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: DegradadoV (PulidoGpu.cs, aun sin traducir) devuelve un Brush de GDI+ (un degradado o, con la interfaz tramada, una textura): su SKPaint, abajo
                 neutral ? Color.FromArgb(205, 55, 55, 55) : Color.FromArgb(205, 26, 37, 59),
                 neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31))) using (SKPaint body = PuenteDibujo.Pincel(cuerpo, false)) using (body.Shader)   // C4 (PulidoGpu.cs)   // EN LINUX: el pincel de GDI+ en un SKPaint (su shader, con el medio pixel de este lienzo: el de fabrica), por el puente; el shader se suelta con el
@@ -352,7 +352,7 @@ namespace Rocola
             using (SKPaint rim = new SKPaint { Color = (neutral ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(96, 193, 222, 255)).Sk(), StrokeWidth = 1.3f })   // EN LINUX: Pen(color, 1,3)
             {
                 bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo va en una variable (el medio pixel y la copia, los de fabrica)
-                Pixel.Rellena(g, PuenteDibujo.Ruta(edge), body, suave); Pixel.Rellena(g, PuenteDibujo.Ruta(edge), sheen, suave); Pixel.Traza(g, PuenteDibujo.Ruta(edge), rim, suave);   // EN LINUX: g.FillPath(body, edge); g.FillPath(sheen, edge); g.DrawPath(rim, edge) (Nativo/Pixel.cs)
+                Pixel.Rellena(g, edge, body, suave); Pixel.Rellena(g, edge, sheen, suave); Pixel.Traza(g, edge, rim, suave);   // EN LINUX: g.FillPath(body, edge); g.FillPath(sheen, edge); g.DrawPath(rim, edge) (Nativo/Pixel.cs)
             }
             return b;
         }

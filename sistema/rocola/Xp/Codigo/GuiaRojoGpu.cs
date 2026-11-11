@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la guia del rojo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; RoundedPath (Form1.Fondo.cs, aun sin traducir) le llega por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la guia del rojo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
@@ -77,15 +77,15 @@ namespace Rocola
             if (ayuda.Width > 0 && ayuda.Height > 0)
             {
                 using (SKPaint borde = new SKPaint { Color = Color.FromArgb(230, 255, 214, 94).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2): la pluma es un SKPaint con su color y su ancho (Pixel.Traza le pone lo de GDI+)
-                using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
-                    Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno) (Nativo/Pixel.cs)
+                using (SKPath contorno = ContornoRedondo(new Rectangle(ayuda.X, ayuda.Y, ayuda.Width - 1, ayuda.Height - 1), Math.Min(14, ayuda.Height / 2)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
+                    Pixel.Traza(g, contorno, borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno) (Nativo/Pixel.cs)
                 ResaltaTecla(g, suave, copia, medio, teclaAyuda, false);   // EN LINUX: con el lienzo y su estado
             }
             using (SKPaint borde = new SKPaint { Color = Color.FromArgb(230, 255, 214, 94).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2)
             using (SKPaint oro = new SKPaint { Color = Color.FromArgb(255, 255, 222, 102).Sk() })   // EN LINUX: SolidBrush: un SKPaint de ese color
             {
-                using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(barra.X, barra.Y, Math.Max(1, barra.Width - 1), Math.Max(1, barra.Height - 1)), Math.Min(12, barra.Height / 2)))   // EN LINUX: RoundedPath, por el puente (arriba)
-                    Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
+                using (SKPath contorno = ContornoRedondo(new Rectangle(barra.X, barra.Y, Math.Max(1, barra.Width - 1), Math.Max(1, barra.Height - 1)), Math.Min(12, barra.Height / 2)))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs)
+                    Pixel.Traza(g, contorno, borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
                 for (int i = 0; i < 2; i++)
                 {
                     Rectangle r = GuiaRojoFlecha(barra, i != 0);
@@ -96,8 +96,8 @@ namespace Rocola
                 }
                 if (busca.Width > 0 && busca.Height > 0)
                 {
-                    using (Rocola.Dibujo2D.GraphicsPath contorno = RoundedPath(new Rectangle(busca.X, busca.Y, busca.Width - 1, busca.Height - 1), Math.Min(14, busca.Height / 2)))   // EN LINUX: RoundedPath, por el puente (arriba)
-                        Pixel.Traza(g, PuenteDibujo.Ruta(contorno), borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
+                    using (SKPath contorno = ContornoRedondo(new Rectangle(busca.X, busca.Y, busca.Width - 1, busca.Height - 1), Math.Min(14, busca.Height / 2)))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs)
+                        Pixel.Traza(g, contorno, borde, suave, medio, copia);   // EN LINUX: g.DrawPath(borde, contorno)
                     ResaltaTecla(g, suave, copia, medio, teclaBusca, true);   // EN LINUX: con el lienzo y su estado
                 }
             }
@@ -110,13 +110,13 @@ namespace Rocola
         {
             if (k.Width < 4 || k.Height < 4) return;
             int radio = Math.Max(3, k.Width / 4);
-            using (Rocola.Dibujo2D.GraphicsPath dentro = RoundedPath(k, radio))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta)
+            using (SKPath dentro = ContornoRedondo(k, radio))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
             using (SKPaint rojo = new SKPaint { Color = Color.FromArgb(250, 232, 70, 66).Sk() })   // EN LINUX: SolidBrush
-                Pixel.Rellena(g, PuenteDibujo.Ruta(dentro), rojo, suave, medio, copia);   // EN LINUX: g.FillPath(rojo, dentro) (Nativo/Pixel.cs)
+                Pixel.Rellena(g, dentro, rojo, suave, medio, copia);   // EN LINUX: g.FillPath(rojo, dentro) (Nativo/Pixel.cs)
             Rectangle f = Rectangle.Inflate(k, 2, 2);
-            using (Rocola.Dibujo2D.GraphicsPath filo = RoundedPath(f, radio + 2))   // EN LINUX: RoundedPath, por el puente (arriba)
+            using (SKPath filo = ContornoRedondo(f, radio + 2))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs)
             using (SKPaint pn = new SKPaint { Color = Color.FromArgb(240, 255, 214, 200).Sk(), StrokeWidth = 2f })   // EN LINUX: Pen(color, 2)
-                Pixel.Traza(g, PuenteDibujo.Ruta(filo), pn, suave, medio, copia);   // EN LINUX: g.DrawPath(pn, filo)
+                Pixel.Traza(g, filo, pn, suave, medio, copia);   // EN LINUX: g.DrawPath(pn, filo)
             // Las mismas cuentas que Flecha (BUSCAR) y FlechaAbajo (AYUDA).
             int d = k.Width, cy = k.Y + d / 2;
             float cx = k.X + d / 2f, t = d * 0.30f, an = d * 0.24f, s = arriba ? 1f : -1f;

@@ -14,14 +14,14 @@ namespace Rocola
     public partial class Form1
     {
         // ---- RoundedPath: la firma de XP (un GraphicsPath), para Form1.Buscador.cs, Form1.Ajustes.cs y Form1.Vistas.cs. El MISMO trazo que
-        // la traducida (RutaRedonda): su SKPath pasa a ser el del GraphicsPath (que se hace su dueno: al soltarlo se suelta), con lo que
+        // la traducida (ContornoRedondo): su SKPath pasa a ser el del GraphicsPath (que se hace su dueno: al soltarlo se suelta), con lo que
         // GraphicsPath lleva de fabrica (par-impar) y la figura cerrada (CloseFigure), como lo deja XP. Se quita cuando ninguno de esos tres
         // pida un GraphicsPath.
         private static GraphicsPath RoundedPath(Rectangle r, int radius)
         {
             GraphicsPath p = new GraphicsPath();
             p.P.Dispose();
-            p.P = RutaRedonda(r, radius);
+            p.P = ContornoRedondo(r, radius);
             return p;
         }
 

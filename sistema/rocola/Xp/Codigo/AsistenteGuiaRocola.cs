@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el globo de la guia y los botones dibujados van con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (RoundedPath, CtrlDot, CtrlTxt, CtrlTri) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el globo de la guia y los botones dibujados van con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (CtrlDot, CtrlTxt, CtrlTri) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
@@ -329,10 +329,10 @@ namespace Rocola
         internal static void TeclaFlecha(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c, int dir)   // EN LINUX: el lienzo de Skia y el estado del que llama (suavizado, modo de letra, copia y medio pixel)
         {
             Rectangle k = new Rectangle((int)x, cy - d / 2, d, d);
-            using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(k, Math.Max(3, d / 4)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+            using (SKPath gp = ContornoRedondo(k, Math.Max(3, d / 4)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
             {
-                using (SKPaint sb = new SKPaint { Color = Color.FromArgb(70, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
-                using (SKPaint pn = new SKPaint { Color = Color.FromArgb(215, c).Sk(), StrokeWidth = 1.6f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave, medio, copia);   // EN LINUX: Pen(color, 1,6) y g.DrawPath
+                using (SKPaint sb = new SKPaint { Color = Color.FromArgb(70, c).Sk() }) Pixel.Rellena(g, gp, sb, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                using (SKPaint pn = new SKPaint { Color = Color.FromArgb(215, c).Sk(), StrokeWidth = 1.6f }) Pixel.Traza(g, gp, pn, suave, medio, copia);   // EN LINUX: Pen(color, 1,6) y g.DrawPath
             }
             float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
             if (dir == 0) CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx, cy - t), new PointF(cx - an, cy + t * .62f), new PointF(cx + an, cy + t * .62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
