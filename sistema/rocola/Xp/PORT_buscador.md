@@ -156,3 +156,83 @@ Ningún otro archivo cambió. No se tocaron `Puente.cs`, `Dibujo2D.cs` ni ningú
   `Form1.Biblioteca.cs` y `PrecargaPaginaGpu.cs`.
 - La traducción línea por línea se aplicó con un guion que comprueba cada línea de XP antes de cambiarla (`/root/rocola-trabajo/port/buscador/guion/tradu.py`, fuera del repositorio).
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 11-11-2026)
+
+Se revisó el diff `ae8b50b..port-buscador` contra el original de XP (`Rocola/Form1.Buscador.cs`, y `Rocola/Form1.Pared.cs` y
+`Rocola/Form1.Fondo.cs` para lo que va por el puente) y contra la capa (`Dibujo2D.cs`), línea por línea y sin fiarse del informe, y se
+repitieron las comprobaciones. **La traducción de `Form1.Buscador.cs` y su puente están bien: no se cambió ninguna línea del programa que
+pinte.** Se encontró una costura de otro grupo que quedó colgada y un hueco del arnés. Salidas en `/root/rocola-trabajo/port/buscador/rev-*`.
+Nada en el A4.
+
+### Lo que se miró
+
+- **El GDI+ que queda** (grep de `Graphics`, `Bitmap`, `Image`, `Font`, pinceles, `Pen`, `GraphicsPath`, `StringFormat`, `TextRenderer`,
+  `ImageAttributes`, `LockBits` y `Dibujo2D` fuera de los comentarios): solo las costuras de la tabla, con el tipo escrito entero
+  (`RoundedPath`, las portadas de la caché, el `TextRenderingHint` del `OnPaint`); ningún `using Rocola.Dibujo2D`.
+- **Línea por línea** (las 235 cambiadas, emparejadas con las de la base por número de línea): mismos valores y mismo orden. Las 14 letras
+  (`GenericSansSerif` → `Letras.SinRemates`, negrita, cursiva y normal como en XP); los `TextRenderer` (16 `DrawText` y 7 `MeasureText`)
+  con las banderas equivalentes, la matriz del HDC del que llama y «sin suavizar» solo con `SingleBitPerPixel*` (como `TextRenderer` de la
+  capa); los mapas horneados (`HorneaTarjeta`, `HorneaMarcaRes`, `HorneaGeneroRes`, el teclado y los resultados guardados, `blendBmp`) con
+  el estado de un `Graphics` nuevo (sin medio píxel, sin copia, `SystemDefault` → `DelSistema`, `Bilinear`); el hueco transparente con
+  `SourceCopy` y vuelta a `SourceOver`; `DrawImageUnscaled` con el filtro, el medio píxel y la copia del que llama; la mezcla del cubo con
+  `Matrix33 = f` y la envoltura `Clamp` (= `Transparente`) que trae un `ImageAttributes` nuevo; `DrawPreviewInfo` cambia el suavizado y la
+  letra solo en sus variables y las devuelve (a quien llama no le cambia nada, como XP con `oldsm`/`oldth`); `DrawPreviewCube` devuelve el
+  `Bilinear` por `ref` y `RenderContent` lo pasa a lo que pinta después (teclas, resultados).
+- **El puente** (`Puente.buscador.cs`): las firmas de XP dejan al `Graphics` justo lo que XP deja (el `AntiAlias` cuando XP pasa la
+  primera salida —`30×12` en la casilla, `60×60` en el buscador, donde `RenderNuevo` también lo pone—, y el filtro del cubo);
+  `DibujaPiezaViva` mira antes de pintar los tres caminos en que XP pone el suavizado (con `PiezaTecla = 0` y `PiezaEscrito = 1`, la
+  condición `cual < 2` es la de XP). Lo que pinta `Form1.Pared.cs` (`CtrlTxt`, `CtrlDot`, `CtrlTri`, `CtrlPad`, `GlowAround`,
+  `CtrlDirLeft`, `Cube.Draw`) no le cambia el estado al `Graphics` (se leyó en XP); `Starfield.DrawReactive` pone la copia en
+  `BlitSkyAndStars` y la devuelve. La portada mezclada llega a `Cube.Draw` como el mismo `Bitmap` prestado cada vez (`blendBmp` no se
+  suelta nunca, ni en XP), y nadie la compara por identidad.
+- **Hilos**: todo lo de este archivo corre en el hilo de la pantalla (también los precalentados), como en XP; los `SKPaint` reusables
+  (`sbS`, `pnS`, `marcaB`) son de la vista. `BuscadorPortadasGpu.cs` sigue con sus `pincelS`/`plumaS` (su revisión ya explicó por qué es lo
+  mismo que los `sbS`/`pnS` de XP); ahora que estos son `SKPaint` se podrían compartir, pero no hace falta: nadie lee lo que dejan puesto.
+- **Finales de línea y número de líneas**: `Form1.Buscador.cs` 1 602 líneas, 1 541 CRLF, igual que la base; los demás archivos tocados,
+  LF como estaban, mismo número de líneas en los de `Codigo/`.
+
+### Lo que se arregló
+
+1. **La costura de `CintaVistaPrevia` (grupo reposo) quedó colgada.** `PORT_reposo.md` la lista con «se quita cuando se traduzca cada uno
+   de los que las llaman», y el único que la llamaba con un `Graphics` era `Form1.Buscador.cs`, que ya la llama directo. Se quitó la firma
+   de XP de `Plataforma/Puente.reposo.cs` (y su mención en la cabecera), se puso al día el comentario de `TextoMovilGpu.cs:141` y el arnés
+   `Pruebas/VistasReposo/Reposo.cs`, que la llamaba por su firma de XP: donde ya no está (la traducción) llama a la traducida con el estado
+   del `Graphics`, como hacía el puente; en la referencia, la de XP. También se pusieron al día los comentarios de `RenderNuevo`,
+   `DibujaAyudasNuevas` y `DibujaPiezaVivaNueva` en `BuscadorPortadasGpu.cs`, que aún decían que `Form1.Buscador.cs` estaba sin traducir y
+   que las llamaba un puente que ya no existe. Solo comentarios y un puente sin llamadas: el programa pinta igual.
+2. **El halo de los símbolos por procesador (`GlowAroundBuscador`) no lo pasaba el arnés** (su brillo depende de los milisegundos desde la
+   pulsación, y en `RenderContent` casi siempre sale apagado). Se añadió al arnés la parte 4: el halo con niveles fijos (0,01, que no pinta;
+   0,35 y 1), dos colores y los once estados del `Graphics`, sobre el fondo con la franja; en la traducción por el puente con el lienzo y el
+   estado del `Graphics`, en la referencia la `GlowAround` de XP. Sale igual (abajo).
+
+### Comprobaciones repetidas
+
+- **Compila** (`dotnet build -c Release --no-incremental`, con lo de arriba): 0 errores y los mismos 15 avisos (archivo, línea y código,
+  comparados con los de la base: `rev-avisos.txt`).
+- **diff contra XP** (`diff-xp.py -v`): `Form1.Buscador.cs` 238/235, `AcabadoGpu.cs` 99/97, `BuscadorPortadasGpu.cs` 215/213,
+  `TextoMovilGpu.cs` 49/47; **0 sin marca** en los cuatro.
+- **Arnés del buscador** (`arnes.sh`, con la parte del halo): **4 708 líneas (66 más), IGUALES a la referencia** con las letras de XP falsas
+  y con DejaVu, 0 excepciones, 437 llamadas directas. Las líneas del halo cambian con el nivel y el color (no es un dibujo vacío) y la de
+  0,01 no pinta, como en XP.
+- **Arnés de reposo** (`Pruebas/VistasReposo/arnes.sh`, por el puente quitado): 1 790 líneas, **IGUALES** con las dos letras, 768
+  llamadas directas.
+- **Arnés de buscador-portadas** (`Pruebas/VistasBuscadorPortadas/arnes.sh`, porque `RenderNuevo`, `DibujaPiezaVivaNueva`, `DrawToast` y
+  `FlechaArriba` ya no pasan por su puente): 3 127 líneas, **IGUALES** con las dos letras, 250 llamadas directas (las 5
+  excepciones de las miniaturas de la portada soltada, en los dos lados, como en su revisión).
+- **Recorridos** `buscador` y `ayuda` (con el cerrojo y la carpeta de siempre, `VOLCADO=1 CAPAS=1 HUELLAS=1`, `rev-cmp`): los dos salen con
+  0 y sin excepciones; **capas de Dibujo2D quietas 48 de 48**; texturas quietas `buscador` 76 de 78 y `ayuda` 53 de 66. Lo que falta es lo
+  de la máquina cargada, no de la traducción: en `buscador` faltan `8cd9108c…` (25,9 s) y `e843916c…` (8,6 s), que faltan igual en las
+  corridas de otros 13 grupos que no tocan este archivo (`asistente`, `atraccion`, `pared`, `portadas`, `video-form1`...); en `ayuda` faltan
+  las mismas 13 (de 24 a 31 s y `c9e4fc67…` a los 7,1 s) que en la primera corrida del autor, y que faltan igual en `asistente/cmp-b2`,
+  `atraccion/cmp` y `vistas-a/cmp2` (sin este archivo); la segunda corrida del autor (`cmp2`) da 65 de 66.
+- **Banco por función**: no se repitió (ni la traducción ni la revisión tocan `Nativo/` ni `Puente.cs`). **Cintas**: no hacen falta (nada
+  de lo que se sube a la tarjeta cambia). **NativeAOT** (`dotnet publish -c Release -r linux-x64`, a
+  `/root/rocola-trabajo/port/buscador/aot`): **0 avisos IL/AOT** (los 15 de C# de siempre); el binario nativo por `buscador` y `ayuda`
+  (`VistasBuscadorPortadas/aot-corre.sh`): salida 0, 11 de 11 y 13 de 13 capturas, 0 excepciones en lo que escribió y en `rocola_error.txt`.
+
+### Lo que queda
+
+- El riesgo de `BlendInto` con una portada ya soltada (arriba) sigue: la capa no pinta, GDI+ de verdad lanzaría `ArgumentException` y la
+  traducción lanza `NullReferenceException`; los dos últimos son una excepción en el mismo sitio, y `RetienePortada` lo evita.
+- El cielo por procesador sigue comprobado solo con un recorte parcial y la capa de estrellas fija.
