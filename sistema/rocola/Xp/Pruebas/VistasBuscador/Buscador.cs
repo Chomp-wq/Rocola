@@ -456,6 +456,33 @@ namespace BancoBuscador
                 }
             }
 
+            // 4) EL HALO DE LOS SIMBOLOS DE LA BARRA DE AYUDA (GlowAround, Form1.Pared.cs; revision): en RenderContent su brillo depende de los
+            // milisegundos desde la pulsacion (InstrFlash), asi que alli casi siempre sale apagado. Aqui se llama aparte con niveles fijos: en la
+            // traduccion por su puente (GlowAroundBuscador, con el lienzo y el estado del Graphics), en la referencia la de XP con el Graphics
+            MethodInfo halo = typeof(Form1).GetMethod("GlowAroundBuscador", Todo);
+            MethodInfo haloXp = Metodo(typeof(Form1), "GlowAround", typeof(Graphics), typeof(float), typeof(float), typeof(float), typeof(float), typeof(Color));
+            foreach (Estado e in estados)
+                foreach (float nivel in new[] { 0.01f, 0.35f, 1f })
+                    foreach (Color col in new[] { Color.FromArgb(228, 72, 72), Color.White })
+                    {
+                        string nom = "halo-" + e.Nombre + "-" + nivel.ToString(ci) + "-" + col.ToArgb().ToString("x8");
+                        using (Bitmap b = new Bitmap(90, 64, PixelFormat.Format32bppPArgb))
+                        {
+                            string ex = "", queda = "";
+                            try
+                            {
+                                using (Graphics g = Prepara(b, e, true))
+                                {
+                                    if (halo == null) haloXp.Invoke(null, new object[] { g, 20.5f, 31f, 22f, nivel, col });
+                                    else { directas++; object[] es = EstadoDe(g); halo.Invoke(null, new object[] { es[0], es[1], es[2], es[3], es[5], 20.5f, 31f, 22f, nivel, col }); }
+                                    queda = Queda(g);
+                                }
+                            }
+                            catch (Exception x) { ex = " EXC:" + Interna(x).GetType().Name; excepciones++; }
+                            Linea(nom, Puntos(nom, b) + ex + queda);
+                        }
+                    }
+
             Linea("fin", "lineas=" + n);
             Console.Error.WriteLine("lineas " + n + ", directas " + directas + ", excepciones " + excepciones);
             return 0;
