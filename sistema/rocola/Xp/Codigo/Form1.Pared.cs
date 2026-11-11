@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la pared (la atraccion, el cubo, las ayudas de los botones, las casillas, el contorno y el cubo de la cancion) dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las portadas, que son Image de la capa; el cielo, Starfield; RoundRect) y quien todavia la llama con un Graphics pasan por el puente (Plataforma/Puente.cs y Puente.pared.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -27,12 +27,12 @@ namespace Rocola
             public double Phase = 0;
             public double Angle = 0;
             public List<string> CycleCovers = new List<string>();
-            public Func<string, Image> GetCoverByPath;
+            public Func<string, Rocola.Dibujo2D.Image> GetCoverByPath;   // EN LINUX: las portadas las da Form1 (LoadCoverByPath, Form1.Biblioteca.cs, aun sin traducir) como Image de la capa (Dibujo2D.cs), escrito entero; al pintarlas, sus puntos (PuenteDibujo.Mapa)
             public int SongCount { get; set; }   // propiedad (no campo): un campo de una clase por-referencia (Control) dispara la advertencia CS1690 al usarlo
 
-            private SolidBrush sb;
-            private Bitmap blendBmp;
-            private Font fBig, fSmall; private StringFormat sfCen;
+            private SKPaint sb;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+            private SKBitmap blendBmp;   // EN LINUX: Bitmap: un SKBitmap (BGRA premultiplicado, como Format32bppPArgb)
+            private Rocola.Nativo.Letra fBig, fSmall; private FormatoTexto sfCen;   // EN LINUX: Font y StringFormat: Letra y FormatoTexto (Nativo/Letras.cs y TextoGdiPlus.cs; Form1 tiene un metodo Letra, por eso va con su espacio)
 
             private Starfield attractStars = new Starfield();
 
@@ -48,28 +48,28 @@ namespace Rocola
 
             private void EnsureRes()
             {
-                if (sb == null) sb = new SolidBrush(Color.White);
-                if (fBig == null) fBig = new Font(FontFamily.GenericSansSerif, 24f, FontStyle.Bold);
-                if (fSmall == null) fSmall = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold);
-                if (sfCen == null) { sfCen = new StringFormat(); sfCen.Alignment = StringAlignment.Center; sfCen.LineAlignment = StringAlignment.Center; }
+                if (sb == null) sb = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
+                if (fBig == null) fBig = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 24f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 24, Bold): la generica sin remates de XP (Microsoft Sans Serif, Letras.SinRemates), en puntos y en negrita
+                if (fSmall == null) fSmall = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15, Bold)
+                if (sfCen == null) { sfCen = new FormatoTexto(); sfCen.Horizontal = Alinea.Centro; sfCen.Vertical = Alinea.Centro; }   // EN LINUX: new StringFormat() con Alignment y LineAlignment = Center
             }
 
-            private Image BlendInto(Image a, Image b, float f)
+            private SKBitmap BlendInto(SKBitmap a, SKBitmap b, float f)   // EN LINUX: los puntos de las dos portadas y el mapa de la mezcla, SKBitmap
             {
-                if (blendBmp == null) blendBmp = new Bitmap(320, 320, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(blendBmp))
+                if (blendBmp == null) blendBmp = Mapas.Nuevo(320, 320);   // EN LINUX: new Bitmap(320, 320, Format32bppPArgb) (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(blendBmp))   // EN LINUX: Graphics.FromImage: el lienzo de Skia sobre el mapa (lo demas del estado, de fabrica: sin copia ni medio pixel)
                 {
-                    g.Clear(Color.Black);
-                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    g.Clear(Color.Black.Sk());   // EN LINUX: Graphics.Clear
+                    Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear, en una variable
                     Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
-                    if (a != null) g.DrawImage(a, dst);
+                    if (a != null) Imagenes.Pinta(g, a, new SKRect(0, 0, a.Width, a.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro);   // EN LINUX: g.DrawImage(a, dst): la imagen entera en esa caja (Nativo/Imagenes.cs)
                     if (b != null && f > 0f)
                     {
-                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = f;
-                        using (ImageAttributes ia = new ImageAttributes())
+                        float[][] cm = MatrizColor.Identidad(); cm[3][3] = f;   // EN LINUX: new ColorMatrix() con Matrix33 = f: la matriz de 5x5 (Nativo/Imagenes.cs)
+                        // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): la matriz de color va en la llamada (lo demas de ImageAttributes, de fabrica: la envoltura Clamp, que en GDI+ es transparente)
                         {
-                            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-                            g.DrawImage(b, dst, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
+                            // EN LINUX: ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap): va en la llamada de abajo
+                            Imagenes.Pinta(g, b, new SKRect(0, 0, 0 + b.Width, 0 + b.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: g.DrawImage(b, dst, 0, 0, b.Width, b.Height, Pixel, ia): el trozo (la imagen entera) en la caja, con la matriz de color
                         }
                     }
                 }
@@ -78,7 +78,7 @@ namespace Rocola
 
             // Par de portadas a fundir + factor (0..1) segun la fase. Lo usa el CPU (BlendInto) y tambien la
             // GPU (que hace el fundido como en los discos TOP, sin generar el bitmap mezclado).
-            public bool GetCoverPair(out Image a, out Image b, out float f)
+            public bool GetCoverPair(out Rocola.Dibujo2D.Image a, out Rocola.Dibujo2D.Image b, out float f)   // EN LINUX: las portadas son Image de la capa (las da Form1, aun sin traducir, y las pide AtraccionGpu.cs para la tarjeta), escrito entero; aqui no se pintan
             {
                 a = null; b = null; f = 0f;
                 if (CycleCovers == null || CycleCovers.Count == 0 || GetCoverByPath == null) return false;
@@ -95,43 +95,43 @@ namespace Rocola
                 return a != null || b != null;
             }
 
-            private Image CurrentCover()
+            private SKBitmap CurrentCover()   // EN LINUX: los puntos de la portada (o de la mezcla) para pintarla: un SKBitmap
             {
-                Image a, b; float f;
+                Rocola.Dibujo2D.Image a, b; float f;   // EN LINUX: Image de la capa, escrito entero (GetCoverPair)
                 if (!GetCoverPair(out a, out b, out f)) return null;
-                if (f <= 0.002f || b == null) return a;
-                if (a == null) return b;
-                return BlendInto(a, b, f);
+                if (f <= 0.002f || b == null) return PuenteDibujo.Mapa(a);   // EN LINUX: los puntos de esa Image (los mismos, sin copia)
+                if (a == null) return PuenteDibujo.Mapa(b);   // EN LINUX: los puntos de esa Image
+                return BlendInto(PuenteDibujo.Mapa(a), PuenteDibujo.Mapa(b), f);   // EN LINUX: los puntos de las dos
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                Graphics g = e.Graphics;
+                Rocola.Dibujo2D.Graphics gx = e.Graphics; SKCanvas g = PuenteDibujo.Lienzo(gx);   // EN LINUX: Graphics g = e.Graphics: OnPaint (de WinForms, sin tocar) trae un Graphics de la capa; se pinta en su lienzo de Skia (con su matriz y su recorte) y el Graphics queda para el cielo (Starfield, aun sin traducir) y para dejarle el estado que XP le dejaba
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) return;
                 EnsureRes();
                 attractStars.SkyOffsetY = 0; attractStars.SkyFullH = h;
-                attractStars.Draw(g, w, h, Color.FromArgb(255, 6, 8, 26), Color.FromArgb(255, 18, 20, 54), Color.White, Phase, true, 0f);   // cielo nocturno en degradado (atraccion: sin musica)
+                attractStars.Draw(gx, w, h, Color.FromArgb(255, 6, 8, 26), Color.FromArgb(255, 18, 20, 54), Color.White, Phase, true, 0f);   // cielo nocturno en degradado (atraccion: sin musica)   // EN LINUX: Starfield.Draw (Form1.Fondo.cs, aun sin traducir) pinta con el Graphics
 
                 // cubo gigante central rotando + ciclando portadas (con fundido)
                 int side = (int)(Math.Min(w, h) * 0.40);
                 if (side < 80) side = 80;
                 Rectangle area = new Rectangle(w / 2 - side / 2, (h - side) / 2 - 30, side, side);
-                g.InterpolationMode = InterpolationMode.Bilinear;
-                Cube.Draw(g, area, CurrentCover(), Angle);
+                Filtro filtro = Filtro.Bilineal; gx.InterpolationMode = Rocola.Dibujo2D.InterpolationMode.Bilinear; EstadoLienzo es = PuenteDibujo.Estado(gx);   // EN LINUX: g.InterpolationMode = Bilinear, en una variable (y en el Graphics, como lo dejaba XP); lo demas del estado es el que trae el Graphics despues del cielo (suavizado, copia y medio pixel), leido aqui
+                Cube.Draw(g, es.Suave, es.Copia, filtro, es.Medio, area, CurrentCover(), Angle);   // EN LINUX: el lienzo y su estado
 
                 // textos
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                AjusteLetra ajuste = AjusteLetra.ClearTypeAjustada; gx.TextRenderingHint = Rocola.Dibujo2D.TextRenderingHint.ClearTypeGridFit;   // EN LINUX: g.TextRenderingHint = ClearTypeGridFit, en una variable (y en el Graphics, como lo dejaba XP)
                 string line1 = (SongCount > 0) ? (SongCount.ToString("#,0") + " canciones") : "Tu rocola";
-                sb.Color = Color.White;
-                g.DrawString(line1, fBig, sb, new RectangleF(0, area.Bottom + 18, w, 36), sfCen);
+                sb.Color = Color.White.Sk();   // EN LINUX: el color del pincel, en el SKPaint
+                TextoGdiPlus.Escribe(g, line1, fBig, ajuste, sb, new RectangleF(0, area.Bottom + 18, w, 36), sfCen, es.Copia, es.Medio);   // EN LINUX: g.DrawString en esa caja con ese formato (Nativo/TextoGdiPlus.cs)
                 double pz = 0.5 + 0.5 * Math.Sin(Phase * 3.0);
-                sb.Color = Color.FromArgb((int)(150 + 105 * pz), 255, 220, 120);
-                g.DrawString("toca un boton para elegir", fSmall, sb, new RectangleF(0, area.Bottom + 58, w, 28), sfCen);
+                sb.Color = Color.FromArgb((int)(150 + 105 * pz), 255, 220, 120).Sk();   // EN LINUX: el color del pincel, en el SKPaint
+                TextoGdiPlus.Escribe(g, "toca un boton para elegir", fSmall, ajuste, sb, new RectangleF(0, area.Bottom + 58, w, 28), sfCen, es.Copia, es.Medio);   // EN LINUX: g.DrawString
             }
         }
 
-        private static class Cube
+        private static partial class Cube   // EN LINUX: partial: la firma de XP de Draw (con un Graphics y una Image), para quien aun no esta traducido, va en el puente (Plataforma/Puente.pared.cs)
         {
             // OPTIMIZACION (render): estos 3 arreglos se asignaban en CADA llamada a Draw, y Draw se
             // llama varias veces por cuadro (cubo seleccionado, relevo, cubeBox, miniCube, buscador,
@@ -139,10 +139,10 @@ namespace Rocola
             [ThreadStatic] private static double[] exBuf;
             [ThreadStatic] private static double[] depthBuf;
             [ThreadStatic] private static int[] orderBuf;
-            [ThreadStatic] private static SolidBrush faceBrush;   // pincel reusable (cara/oscurecido): antes asignaba 1-2 por cara y cuadro
-            [ThreadStatic] private static Pen edgePen;            // lapiz de contorno reusable (antes 1 por cuadro)
+            [ThreadStatic] private static SKPaint faceBrush;   // pincel reusable (cara/oscurecido): antes asignaba 1-2 por cara y cuadro   // EN LINUX: SolidBrush: un SKPaint de un color
+            [ThreadStatic] private static SKPaint edgePen;            // lapiz de contorno reusable (antes 1 por cuadro)   // EN LINUX: Pen: un SKPaint con su color y su ancho
 
-            public static void Draw(Graphics g, Rectangle bounds, Image cover, double angle)
+            public static void Draw(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, Rectangle bounds, SKBitmap cover, double angle)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama (suavizado, copia, filtro y medio pixel), y los puntos de la portada; quien aun pasa un Graphics y una Image llega por el puente (Plataforma/Puente.pared.cs)
             {
                 double cx = bounds.X + bounds.Width / 2.0;
                 int y0 = bounds.Y;
@@ -170,17 +170,17 @@ namespace Rocola
                     int w = right - left;
                     if (w < 1) continue;
                     Rectangle rect = new Rectangle(left, y0, w, H);
-                    SolidBrush fb = faceBrush ?? (faceBrush = new SolidBrush(Color.Black));
-                    if (cover != null) g.DrawImage(cover, rect);
-                    else { fb.Color = Color.FromArgb(60, 70, 110); g.FillRectangle(fb, rect); }
+                    SKPaint fb = faceBrush ?? (faceBrush = new SKPaint { Color = Color.Black.Sk() });   // EN LINUX: new SolidBrush(Color.Black)
+                    if (cover != null) Imagenes.Pinta(g, cover, new SKRect(0, 0, cover.Width, cover.Height), new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom), filtro, medio, copia);   // EN LINUX: g.DrawImage(cover, rect): la portada entera en la cara (Nativo/Imagenes.cs)
+                    else { fb.Color = Color.FromArgb(60, 70, 110).Sk(); Pixel.Rellena(g, (RectangleF)rect, fb, suave, medio, copia); }   // EN LINUX: g.FillRectangle (Nativo/Pixel.cs)
                     int darken = (int)((1.0 - depth[k]) * 130);
-                    if (darken > 0) { fb.Color = Color.FromArgb(darken, 0, 0, 0); g.FillRectangle(fb, rect); }
+                    if (darken > 0) { fb.Color = Color.FromArgb(darken, 0, 0, 0).Sk(); Pixel.Rellena(g, (RectangleF)rect, fb, suave, medio, copia); }   // EN LINUX: g.FillRectangle
                 }
 
                 double minx = ex[0], maxx = ex[0];
                 for (int k = 1; k < 4; k++) { if (ex[k] < minx) minx = ex[k]; if (ex[k] > maxx) maxx = ex[k]; }
-                Pen ep = edgePen ?? (edgePen = new Pen(Color.FromArgb(120, 0, 0, 0), 1));
-                g.DrawRectangle(ep, (int)Math.Round(minx), y0, (int)Math.Round(maxx - minx), H - 1);
+                SKPaint ep = edgePen ?? (edgePen = new SKPaint { Color = Color.FromArgb(120, 0, 0, 0).Sk(), StrokeWidth = 1 });   // EN LINUX: new Pen(color, 1): la pluma en un SKPaint (Pixel le pone el minimo de un pixel y las esquinas de GDI+)
+                Pixel.TrazaRect(g, new RectangleF((int)Math.Round(minx), y0, (int)Math.Round(maxx - minx), H - 1), ep, suave, medio, copia);   // EN LINUX: g.DrawRectangle(ep, x, y, w, h) con enteros
             }
         }
 
@@ -224,19 +224,19 @@ namespace Rocola
         }
 
         // Halo suave (radial) centrado en un simbolo de instrucciones; intensidad segun 'level' (0..1).
-        private static void GlowAround(Graphics g, float leftX, float cy, float symW, float level, Color c)
+        private static void GlowAround(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float leftX, float cy, float symW, float level, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama (suavizado, modo de letra, copia y medio pixel; las siete ayudas de los botones lo reciben igual); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
         {
             if (level <= 0.02f) return;
             float cx = leftX + symW / 2f, r = symW * 0.9f + 6f;
-            using (GraphicsPath gp = new GraphicsPath())
+            using (SKPath gp = new SKPath { FillType = SKPathFillType.EvenOdd })   // EN LINUX: GraphicsPath: un SKPath (su relleno de fabrica, Alternate, es par-impar)
             {
-                gp.AddEllipse(cx - r, cy - r, 2 * r, 2 * r);
-                using (PathGradientBrush pb = new PathGradientBrush(gp))
+                float ox = cx - r, oy = cy - r, od = 2 * r; gp.AddOval(new SKRect(ox, oy, ox + od, oy + od));   // EN LINUX: gp.AddEllipse(cx - r, cy - r, 2 * r, 2 * r): el ovalo de esa caja (x, y, ancho, alto)
+                using (SKPaint pb = new SKPaint { Color = SKColors.Black })   // EN LINUX: PathGradientBrush(gp): un SKPaint con el shader del degradado de trazo (abajo), con el color opaco que no lo tine
                 {
-                    pb.CenterPoint = new PointF(cx, cy);
-                    pb.CenterColor = Color.FromArgb((int)(level * 215), c);
-                    pb.SurroundColors = new Color[] { Color.FromArgb(0, c) };
-                    g.FillPath(pb, gp);
+                    SKRect o = gp.Bounds; RectangleF caja = RectangleF.FromLTRB(o.Left, o.Top, o.Right, o.Bottom); PointF centro = new PointF(cx, cy);   // EN LINUX: pb.CenterPoint; la caja del pincel es la del trazo (GraphicsPath.GetBounds)
+                    Color colorCentro = Color.FromArgb((int)(level * 215), c);   // EN LINUX: pb.CenterColor
+                    Color colorOrilla = Color.FromArgb(0, c);   // EN LINUX: pb.SurroundColors = { ese color }
+                    using (SKShader degradado = Degradado.DeTrazo(caja, centro, colorCentro, colorOrilla)) { pb.Shader = degradado; Pixel.Rellena(g, gp, pb, suave, medio, copia); pb.Shader = null; }   // EN LINUX: g.FillPath(pb, gp) con el degradado de trazo de GDI+ (Nativo/Degradado.cs y Pixel.cs)
                 }
             }
         }
@@ -244,54 +244,54 @@ namespace Rocola
         // Ayudantes para dibujar los controles fisicos como FORMAS (circulo rojo/verde, cruceta).
         // GDI reusables para las formas de instrucciones (se llaman muchas veces por cuadro): pincel al que se
         // le muta el color, contorno blanco fijo y un buffer de 3 puntos. Evita asignar objetos GDI por forma.
-        [ThreadStatic] private static SolidBrush ctrlB;
-        [ThreadStatic] private static Pen ctrlOutline;
+        [ThreadStatic] private static SKPaint ctrlB;   // EN LINUX: SolidBrush: un SKPaint de un color
+        [ThreadStatic] private static SKPaint ctrlOutline;   // EN LINUX: Pen: un SKPaint con su color y su ancho
         [ThreadStatic] private static PointF[] ctrlTri3;
-        private static SolidBrush CB(Color c) { if (ctrlB == null) ctrlB = new SolidBrush(c); else ctrlB.Color = c; return ctrlB; }
-        private static Pen COut() { return ctrlOutline ?? (ctrlOutline = new Pen(Color.FromArgb(130, 255, 255, 255), 1.4f)); }
+        private static SKPaint PincelCtrl(Color c) { if (ctrlB == null) ctrlB = new SKPaint { Color = c.Sk() }; else ctrlB.Color = c.Sk(); return ctrlB; }   // EN LINUX: CB(c), el pincel reusable, en un SKPaint; se llama PincelCtrl porque el CB de XP (que da un SolidBrush) lo sigue pidiendo Form1.Vistas.cs, aun sin traducir, y esta en el puente (Plataforma/Puente.pared.cs): cuando nadie lo pida vuelve a llamarse CB
+        private static SKPaint PlumaCtrl() { return ctrlOutline ?? (ctrlOutline = new SKPaint { Color = Color.FromArgb(130, 255, 255, 255).Sk(), StrokeWidth = 1.4f }); }   // EN LINUX: COut(), el contorno blanco fijo (Pen de 1,4), en un SKPaint (PlumaCtrl, como PincelCtrl)
 
-        private static float CtrlDot(Graphics g, float x, int cy, int d, Color c)
+        private static float CtrlDot(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
         {
-            g.FillEllipse(CB(c), x, cy - d / 2f, d, d);
-            g.DrawEllipse(COut(), x, cy - d / 2f, d, d);
+            Pixel.RellenaOvalo(g, new RectangleF(x, cy - d / 2f, d, d), PincelCtrl(c), suave, medio, copia);   // EN LINUX: g.FillEllipse(CB(c), x, y, d, d) (Nativo/Pixel.cs)
+            Pixel.TrazaOvalo(g, new RectangleF(x, cy - d / 2f, d, d), PlumaCtrl(), suave, medio, copia);   // EN LINUX: g.DrawEllipse(COut(), x, y, d, d)
             return x + d;
         }
-        private static float CtrlTxt(Graphics g, Font f, string s, float x, int cy, Color c)
+        private static float CtrlTxt(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama, y la letra es una Letra; quien aun pasa un Graphics y una Font llega por el puente (Plataforma/Puente.pared.cs)
         {
-            SizeF sz = g.MeasureString(s, f);
-            g.DrawString(s, f, CB(c), x, cy - sz.Height / 2f);
+            SizeF sz = TextoGdiPlus.Mide(s, f, ajuste, new SizeF(0, 0), null);   // EN LINUX: g.MeasureString(s, f): sin caja (0, 0) y sin formato (null: el de fabrica), con el modo de letra del que llama (Nativo/TextoGdiPlus.cs)
+            TextoGdiPlus.Escribe(g, s, f, ajuste, PincelCtrl(c), new RectangleF(x, cy - sz.Height / 2f, 0, 0), null, copia, medio);   // EN LINUX: g.DrawString(s, f, CB(c), x, y): desde ese punto (una caja sin ancho ni alto) y sin formato
             return x + sz.Width;
         }
-        private static void CtrlTri(Graphics g, Color c, PointF a, PointF b, PointF d)
+        private static void CtrlTri(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Color c, PointF a, PointF b, PointF d)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
         {
             PointF[] p = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             p[0] = a; p[1] = b; p[2] = d;
-            g.FillPolygon(CB(c), p);
+            Pixel.RellenaPoligono(g, p, PincelCtrl(c), suave, true, medio, copia);   // EN LINUX: g.FillPolygon(CB(c), p): el relleno de fabrica (Alternate) (Nativo/Pixel.cs)
         }
-        private static float CtrlPad(Graphics g, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo
+        private static float CtrlPad(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente
         {
             Color red = Color.FromArgb(228, 72, 72), yellow = Color.FromArgb(242, 206, 72);
             float cx = x + sz / 2f, t = sz * 0.34f, w = t / 1.4f;
-            CtrlTri(g, red, new PointF(cx, cy - sz / 2f), new PointF(cx - w, cy - sz / 2f + t), new PointF(cx + w, cy - sz / 2f + t));
-            CtrlTri(g, red, new PointF(cx, cy + sz / 2f), new PointF(cx - w, cy + sz / 2f - t), new PointF(cx + w, cy + sz / 2f - t));
-            CtrlTri(g, yellow, new PointF(x, cy), new PointF(x + t, cy - w), new PointF(x + t, cy + w));
-            CtrlTri(g, yellow, new PointF(x + sz, cy), new PointF(x + sz - t, cy - w), new PointF(x + sz - t, cy + w));
+            CtrlTri(g, suave, ajuste, copia, medio, red, new PointF(cx, cy - sz / 2f), new PointF(cx - w, cy - sz / 2f + t), new PointF(cx + w, cy - sz / 2f + t));   // EN LINUX: el lienzo y su estado
+            CtrlTri(g, suave, ajuste, copia, medio, red, new PointF(cx, cy + sz / 2f), new PointF(cx - w, cy + sz / 2f - t), new PointF(cx + w, cy + sz / 2f - t));   // EN LINUX: el lienzo y su estado
+            CtrlTri(g, suave, ajuste, copia, medio, yellow, new PointF(x, cy), new PointF(x + t, cy - w), new PointF(x + t, cy + w));   // EN LINUX: el lienzo y su estado
+            CtrlTri(g, suave, ajuste, copia, medio, yellow, new PointF(x + sz, cy), new PointF(x + sz - t, cy - w), new PointF(x + sz - t, cy + w));   // EN LINUX: el lienzo y su estado
             return x + sz;
         }
         // Icono del BOTON IZQUIERDA (flecha amarilla, mismo color que la cruceta horizontal)
-        private static float CtrlDirLeft(Graphics g, float x, int cy, int sz, Color c)
+        private static float CtrlDirLeft(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
         {
             PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             pts[0] = new PointF(x, cy); pts[1] = new PointF(x + sz, cy - sz * 0.5f); pts[2] = new PointF(x + sz, cy + sz * 0.5f);
-            g.FillPolygon(CB(c), pts); g.DrawPolygon(COut(), pts);
+            Pixel.RellenaPoligono(g, pts, PincelCtrl(c), suave, true, medio, copia); Pixel.TrazaPoligono(g, pts, PlumaCtrl(), suave, medio, copia);   // EN LINUX: g.FillPolygon(CB(c), pts) y g.DrawPolygon(COut(), pts) (Nativo/Pixel.cs)
             return x + sz;
         }
         // Icono del BOTON DERECHA (flecha amarilla, espejo de la izquierda)
-        private static float CtrlDirRight(Graphics g, float x, int cy, int sz, Color c)
+        private static float CtrlDirRight(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
         {
             PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             pts[0] = new PointF(x + sz, cy); pts[1] = new PointF(x, cy - sz * 0.5f); pts[2] = new PointF(x, cy + sz * 0.5f);
-            g.FillPolygon(CB(c), pts); g.DrawPolygon(COut(), pts);
+            Pixel.RellenaPoligono(g, pts, PincelCtrl(c), suave, true, medio, copia); Pixel.TrazaPoligono(g, pts, PlumaCtrl(), suave, medio, copia);   // EN LINUX: g.FillPolygon(CB(c), pts) y g.DrawPolygon(COut(), pts)
             return x + sz;
         }
 
@@ -301,9 +301,9 @@ namespace Rocola
             T old = resource; resource = null;
             if (old != null) old.Dispose();
         }
-        private static void SueltaBitmaps(ref Bitmap[] images)
+        private static void SueltaBitmaps(ref SKBitmap[] images)   // EN LINUX: los mapas son SKBitmap; quien aun tiene Bitmap[] de la capa (Form1.Vistas.cs) llega por el puente (Plataforma/Puente.pared.cs)
         {
-            Bitmap[] old = images; images = null;
+            SKBitmap[] old = images; images = null;   // EN LINUX: SKBitmap
             if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
         }
 
@@ -314,17 +314,17 @@ namespace Rocola
             public double SelAngle = 0;
             public double Phase = 0;
             public Color BgAccent = DefaultAccent;
-            public Func<Album, Image> GetCover;
-            public Func<string, Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)
+            public Func<Album, Rocola.Dibujo2D.Image> GetCover;   // EN LINUX: las portadas las da Form1 (LoadCoverAsync, Form1.Biblioteca.cs, aun sin traducir) como Image de la capa (Dibujo2D.cs), escrito entero; se comparan por identidad como en XP y, al pintarlas, sus puntos (PuenteDibujo.Mapa)
+            public Func<string, Rocola.Dibujo2D.Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)   // EN LINUX: Image de la capa (LoadCoverByPath, aun sin traducir)
             public Action<int> OnActivate;
 #if ROCOLA_GPU
             public bool GpuCovered;   // el panel GPU (pantalla completa, opaco) tapa esta vista: no malgastes su OnPaint (rejilla+estrellas) por CPU
 #endif
             public float BgDim = 1f;  // atenuacion del starfield mientras se navega con musica (el form la anima)
 
-            private Bitmap cubeCache;
+            private SKBitmap cubeCache;   // EN LINUX: Bitmap: un SKBitmap (BGRA premultiplicado)
             public float WallOpacity = 1f;
-            private Bitmap wallLayer;
+            private SKBitmap wallLayer;   // EN LINUX: Bitmap: un SKBitmap
             private int cacheW = -1, cacheH = -1;
             private string cacheSig = null;
             // CACHE DE CELDAS: cada disco (portada estatica + etiqueta) se HORNEA a un bitmap UNA vez y luego se
@@ -332,7 +332,7 @@ namespace Rocola
             // 18 etiquetas (ajuste de linea) -> carisimo al paginar rapido. Ahora paginar es casi solo copias.
             // Nace: cuando se horneo. Hace falta para saber si una casilla chica es de ESTE deslizamiento o
             // quedo de uno de hace rato (ver PeekOrBakeCell).
-            private sealed class CellSprite { public Bitmap Bmp; public bool HasCover; public int Uso; public int Nace; }
+            private sealed class CellSprite { public SKBitmap Bmp; public bool HasCover; public int Uso; public int Nace; }   // EN LINUX: el mapa de la casilla, un SKBitmap
             // CUANTO SE ENCOGE la casilla mientras la pagina se desliza. A la mitad de lado son la CUARTA
             // PARTE de pixeles, y por tanto la cuarta parte de bytes subidos a la tarjeta grafica: ahi es
             // donde de verdad se atasca el hojeo rapido. El DIBUJO no era el problema y se midio -las 18
@@ -369,7 +369,7 @@ namespace Rocola
 #if ROCOLA_GPU
             // Atlas GPU: conserva medidas y filtro pero no guarda las columnas transparentes
             // del disco ni una superficie grande para sus dos lineas de texto.
-            private sealed class CeldaGpu { internal Bitmap Bmp; internal GpuCellLayout Layout; internal Image Cover; internal long Uso; internal bool Queued, Lod; }
+            private sealed class CeldaGpu { internal SKBitmap Bmp; internal GpuCellLayout Layout; internal Rocola.Dibujo2D.Image Cover; internal long Uso; internal bool Queued, Lod; }   // EN LINUX: el mapa de la casilla, un SKBitmap (lo sube la tarjeta tal cual: D3D9Star.cs); la portada con que se hizo, la Image de la capa que da Form1 (solo se compara por identidad)
             private readonly Dictionary<string, CeldaGpu> gpuCellCache = new Dictionary<string, CeldaGpu>();
             private readonly Dictionary<Album, CeldaGpu> gpuAnonymousCache = new Dictionary<Album, CeldaGpu>();
             private long gpuCellUso;
@@ -430,39 +430,39 @@ namespace Rocola
             { long tw = 1, th = 1; while (tw < w) tw <<= 1; while (th < h) th <<= 1; return tw * th * 4; }
             // Referencia del atlas anterior para comparaciones de regresion. La ruta de produccion
             // usa BakeSeparatedCell y no vuelve a ampliar una portada al rasterizar su etiqueta.
-            private Bitmap BakeGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, out GpuCellLayout layout)
+            private SKBitmap BakeGpuCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover, out GpuCellLayout layout)   // EN LINUX: el mapa y los puntos de la portada, SKBitmap
             {
                 bool q = EnCola != null && EnCola(a);
                 layout = PlanAtlasGpu(cw, side, labelH, gap, q);
                 if (layout.Width == 0)
                 {
-                    Bitmap whole = BakeCell(a, cw, side, labelH, gap, cover);
+                    SKBitmap whole = BakeCell(a, cw, side, labelH, gap, cover);   // EN LINUX: SKBitmap
                     if (cover == null && PortadasLod)
-                        using (Graphics g = Graphics.FromImage(whole))
-                        { g.CompositingMode = CompositingMode.SourceCopy; g.FillRectangle(Brushes.Transparent, 0, 0, cw, side); }
+                        using (SKCanvas g = new SKCanvas(whole))   // EN LINUX: Graphics.FromImage
+                        { using (SKPaint transparente = new SKPaint { Color = Color.Transparent.Sk() }) Pixel.Rellena(g, new RectangleF(0, 0, cw, side), transparente, false, false, true); }   // EN LINUX: g.CompositingMode = SourceCopy y g.FillRectangle(Brushes.Transparent, 0, 0, cw, side): el relleno con copia (sin suavizado ni medio pixel, de fabrica) (Nativo/Pixel.cs)
                     return whole;
                 }
-                Bitmap bmp = new Bitmap(layout.Width, layout.Height, PixelFormat.Format32bppPArgb);
+                SKBitmap bmp = Mapas.Nuevo(layout.Width, layout.Height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb) (Nativo/Mapas.cs)
                 try
                 {
-                    using (Graphics g = Graphics.FromImage(bmp))
+                    using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
                     {
-                        g.Clear(Color.Transparent); g.InterpolationMode = InterpolationMode.Bilinear;
-                        g.SmoothingMode = SmoothingMode.AntiAlias;
-                        g.SetClip(layout.Face);
-                        g.TranslateTransform(layout.Face.X - layout.FaceAt.X, layout.Face.Y);
+                        g.Clear(Color.Transparent.Sk()); Filtro filtro = Filtro.Bilineal;   // EN LINUX: Graphics.Clear y g.InterpolationMode = Bilinear, en una variable
+                        bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
+                        g.Save(); g.ClipRect(new SKRect(layout.Face.Left, layout.Face.Top, layout.Face.Right, layout.Face.Bottom), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(layout.Face): el recorte de pixeles enteros, sin suavizar, en un Save del lienzo (no se quita: el lienzo se suelta al acabar)
+                        g.Translate(layout.Face.X - layout.FaceAt.X, layout.Face.Y);   // EN LINUX: g.TranslateTransform
                         Rectangle disco = new Rectangle((cw - side) / 2, 0, side, side);
-                        if (cover != null || !PortadasLod) Cube.Draw(g, disco, cover, 0.0);
-                        if (q) Palomito(g, disco);
+                        if (cover != null || !PortadasLod) Cube.Draw(g, suave, false, filtro, false, disco, cover, 0.0);   // EN LINUX: el lienzo y su estado (copia y medio pixel, de fabrica)
+                        if (q) Palomito(g, suave, disco);   // EN LINUX: el lienzo y su suavizado
                     }
                     // Texto una sola vez, con las mismas medidas/fuente. Copias PArgb sin recomponer alfa.
-                    using (Bitmap label = new Bitmap(cw, labelH + 2, PixelFormat.Format32bppPArgb))
+                    using (SKBitmap label = Mapas.Nuevo(cw, labelH + 2))   // EN LINUX: new Bitmap(cw, labelH + 2, Format32bppPArgb)
                     {
-                        using (Graphics g = Graphics.FromImage(label))
+                        using (SKCanvas g = new SKCanvas(label))   // EN LINUX: Graphics.FromImage
                         {
-                            g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
+                            g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear; g.SmoothingMode = AntiAlias no se lleva a ninguna variable: aqui solo se escribe, y DrawString no mira el suavizado (mira el modo de letra, el de fabrica)
                             EnsureLabelRes();
-                            g.DrawString(AlbumLabel(a), lblFont, lblBrush, new Rectangle(2, 1, cw - 4, labelH), lblSF);
+                            TextoGdiPlus.Escribe(g, AlbumLabel(a), lblFont, AjusteLetra.DelSistema, lblBrush, new Rectangle(2, 1, cw - 4, labelH), lblSF);   // EN LINUX: g.DrawString en esa caja con ese formato y el modo de letra de fabrica (SystemDefault) (Nativo/TextoGdiPlus.cs)
                         }
                         CopiaEtiquetaGpu(label, bmp, layout.Text1At, layout.Text1);
                         CopiaEtiquetaGpu(label, bmp, layout.Text2At, layout.Text2);
@@ -471,24 +471,24 @@ namespace Rocola
                 }
                 catch { bmp.Dispose(); throw; }
             }
-            private static void CopiaEtiquetaGpu(Bitmap source, Bitmap dest, Rectangle at, Rectangle to)
+            private static void CopiaEtiquetaGpu(SKBitmap source, SKBitmap dest, Rectangle at, Rectangle to)   // EN LINUX: los dos mapas, SKBitmap
             {
                 // Un pixel vecino a cada lado evita costuras con filtrado bilineal durante el deslizamiento.
                 int from = Math.Max(0, at.X - 1), end = Math.Min(source.Width, at.Right + 1);
                 Rectangle src = new Rectangle(from, 0, end - from, source.Height);
                 Rectangle dst = new Rectangle(to.X + from - at.X, to.Y - 1, src.Width, src.Height);
-                BitmapData s = null, d = null;
+                IntPtr s = IntPtr.Zero, d = IntPtr.Zero;   // EN LINUX: BitmapData s = null, d = null: los punteros a los puntos del trozo (los mapas ya estan en BGRA premultiplicado, que es lo que LockBits daba con Format32bppPArgb)
                 try
                 {
-                    s = source.LockBits(src, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-                    d = dest.LockBits(dst, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+                    s = (IntPtr)(source.GetPixels().ToInt64() + (long)src.Y * source.RowBytes + (long)src.X * 4);   // EN LINUX: source.LockBits(src, ReadOnly, Format32bppPArgb): los puntos mismos desde la esquina del trozo, con el paso del mapa
+                    d = (IntPtr)(dest.GetPixels().ToInt64() + (long)dst.Y * dest.RowBytes + (long)dst.X * 4);   // EN LINUX: dest.LockBits(dst, WriteOnly, Format32bppPArgb)
                     for (int y = 0; y < src.Height; y++) unsafe { Buffer.MemoryCopy(   // EN LINUX: RtlMoveMemory de kernel32 = Buffer.MemoryCopy (origen, destino; vale aunque se pisen)
-                        (void*)(s.Scan0.ToInt64() + (long)y * s.Stride),
-                        (void*)(d.Scan0.ToInt64() + (long)y * d.Stride), src.Width * 4, src.Width * 4); }
+                        (void*)(s.ToInt64() + (long)y * source.RowBytes),   // EN LINUX: s.Scan0 y s.Stride
+                        (void*)(d.ToInt64() + (long)y * dest.RowBytes), src.Width * 4, src.Width * 4); }   // EN LINUX: d.Scan0 y d.Stride
                 }
-                finally { try { if (d != null) dest.UnlockBits(d); } finally { if (s != null) source.UnlockBits(s); } }
+                finally { if (d != IntPtr.Zero) dest.NotifyPixelsChanged(); }   // EN LINUX: dest.UnlockBits(d) (lo escrito queda avisado) y source.UnlockBits(s) (de solo leer: nada)
             }
-            private Bitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Image cover, bool visible, ref int budget, out GpuCellLayout layout)
+            private SKBitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, bool visible, ref int budget, out GpuCellLayout layout)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1 (aqui solo se compara y se apunta)
             {
                 layout = new GpuCellLayout(); layout.Separate = true; layout.HideBlank = PortadasLod;
                 string key = ClaveCasilla(a); CeldaGpu c = null;
@@ -501,7 +501,7 @@ namespace Rocola
                 if (budget <= 0 || (CoverControl != null && (CoverControl.DeferBake || !CoverControl.CanStart(gpuBakeCost, visible, false))))
                 { if (c != null) { c.Uso = ++gpuCellUso; layout = c.Layout; return c.Bmp; } return null; }
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
-                budget--; Bitmap bmp = BakeSeparatedCell(a, cw, side, labelH, gap, out layout);
+                budget--; SKBitmap bmp = BakeSeparatedCell(a, cw, side, labelH, gap, out layout);   // EN LINUX: SKBitmap
                 long elapsed = System.Diagnostics.Stopwatch.GetTimestamp() - start;
                 gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, elapsed);
                 if (CoverControl != null) CoverControl.Spend(elapsed);
@@ -512,7 +512,7 @@ namespace Rocola
             }
             // La rejilla por GPU ya NO usa una textura a pantalla completa (cubeCache): el panel pide las celdas
             // con BuildGpuGrid y dibuja cada disco como su propio quad. cubeCache queda solo para el render por CPU.
-            public Bitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)
+            public SKBitmap ContourSpriteBmp { get { EnsureContourSprite(); return contourSprite; } }   // sprite del resalte (lo hornea si falta: el panel GPU lo lee aunque el OnPaint por CPU este suprimido)   // EN LINUX: un SKBitmap (la tarjeta lo sube tal cual: GetContour, D3D9Star.cs)
             public Rectangle ContourScreenRect()                     // donde va el contorno (celda seleccionada)
             {
                 if (contourSprite == null || Page == null || Selected < 0 || Selected >= Page.Count) return Rectangle.Empty;
@@ -546,16 +546,16 @@ namespace Rocola
                 if (Selected >= 0 && Selected < Page.Count)
                 {
                     Rectangle a, l; Geometry(w, h, Selected, out a, out l);
-                    Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);
+                    Rocola.Dibujo2D.Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image de la capa, escrito entero
                     st.Sel.Has = true; st.Sel.X = a.X; st.Sel.Y = a.Y; st.Sel.W = a.Width; st.Sel.H = a.Height;
-                    st.Sel.Angle = SelAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                    st.Sel.Angle = SelAngle; st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: las portadas del cubo que gira van a la tarjeta como Bitmap de la capa (GpuCubeInfo, D3D9Star.cs: tambien las llenan archivos aun sin traducir), escrito entero
                     st.Sel.Key = Page[Selected];
                 }
                 if (prevIdx >= 0 && prevIdx != Selected && prevIdx < Page.Count)   // RELEVO: el que dejamos, girando y decayendo
                 {
                     Rectangle a2, l2; Geometry(w, h, prevIdx, out a2, out l2);
                     st.Relay.Has = true; st.Relay.X = a2.X; st.Relay.Y = a2.Y; st.Relay.W = a2.Width; st.Relay.H = a2.Height;
-                    st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as Bitmap;
+                    st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as Rocola.Dibujo2D.Bitmap;   // EN LINUX: Bitmap de la capa, escrito entero
                     st.Relay.Key = Page[prevIdx];
                 }
                 return st;
@@ -713,14 +713,14 @@ namespace Rocola
                     float al; float falta = CurvaColumnaFina(dt, OrdenColumna(col, izq, true), true, out al);
                     float cdx = slideFrom * (falta - 1f);
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
-                    Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;
+                    Rocola.Dibujo2D.Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;   // EN LINUX: Image de la capa, escrito entero
                     buf[n] = new GpuGridCell();
                     buf[n].Key = ClaveCasilla(a);
                     buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, true, ref nada, out buf[n].Layout);
-                    buf[n].Direct = true; buf[n].FullCover = tapa as Bitmap;
+                    buf[n].Direct = true; buf[n].FullCover = tapa as Rocola.Dibujo2D.Bitmap;   // EN LINUX: la portada entera va a la tarjeta como Bitmap de la capa (GpuGridCell.FullCover, D3D9Star.cs), escrito entero
                     CeldaGpu cached;
                     buf[n].HasCover = buf[n].Key != null && gpuCellCache.TryGetValue(buf[n].Key, out cached) && cached.Cover != null;
-                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Bitmap : null;
+                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Rocola.Dibujo2D.Bitmap : null;   // EN LINUX: la miniatura es un Bitmap de la capa (la hace CaratulasAdaptativas.cs, aun sin traducir), escrito entero
                     buf[n].Placeholder = HojeoLigero;
                     buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = PageSize + i;
@@ -798,16 +798,16 @@ namespace Rocola
                     int beforeBudget = budget;
                     int useBudget = chica ? 0 : budget;
                     buf[n].Layout = new GpuCellLayout();
-                    Image cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);
+                    Rocola.Dibujo2D.Image cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);   // EN LINUX: Image de la capa, escrito entero
                     buf[n].Bmp = chica && !PortadasLod ? null : PeekGpuCell(a, cw, side, labelH, gap, cover, true, ref useBudget, out buf[n].Layout);
-                    buf[n].Direct = true; buf[n].FullCover = cover as Bitmap;
+                    buf[n].Direct = true; buf[n].FullCover = cover as Rocola.Dibujo2D.Bitmap;   // EN LINUX: Bitmap de la capa, escrito entero
                     if (!chica) budget = useBudget;
                     CeldaGpu cached = null;
                     if (buf[n].Key != null) gpuCellCache.TryGetValue(buf[n].Key, out cached);
                     else gpuAnonymousCache.TryGetValue(a, out cached);
                     buf[n].HasCover = cached != null && cached.Bmp == buf[n].Bmp && cached.Cover != null;
                     buf[n].NeedsCover = !string.IsNullOrEmpty(a.CoverPath);
-                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Bitmap : null;
+                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Rocola.Dibujo2D.Bitmap : null;   // EN LINUX: Bitmap de la capa, escrito entero
                     if (budget < beforeBudget)
                         gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
@@ -827,8 +827,8 @@ namespace Rocola
                 paginaVista = Page;
                 return n;
             }
-            public Func<Album, Image> PeekCoverGpu;
-            public Func<Album, Image> PeekPreviewGpu;
+            public Func<Album, Rocola.Dibujo2D.Image> PeekCoverGpu;   // EN LINUX: Image de la capa (lo pone Form1, aun sin traducir)
+            public Func<Album, Rocola.Dibujo2D.Image> PeekPreviewGpu;   // EN LINUX: Image de la capa (lo pone Form1, aun sin traducir)
             public bool PortadasLod = true;
             internal CoverGovernor CoverControl;
             // Solo referencias ya horneadas, en orden estable. Nunca lee disco ni compone imagenes.
@@ -844,7 +844,7 @@ namespace Rocola
                     cells[i].Key = key;
                     if (key != null && gpuCellCache.TryGetValue(key, out sprite) && sprite.Cover != null)
                     { cells[i].Bmp = sprite.Bmp; cells[i].Layout = sprite.Layout; cells[i].HasCover = true;
-                        cells[i].Direct = true; cells[i].FullCover = PeekCoverGpu != null ? PeekCoverGpu(Ahead[i]) as Bitmap : null; }
+                        cells[i].Direct = true; cells[i].FullCover = PeekCoverGpu != null ? PeekCoverGpu(Ahead[i]) as Rocola.Dibujo2D.Bitmap : null; }   // EN LINUX: Bitmap de la capa, escrito entero
                 }
                 return count;
             }
@@ -865,7 +865,7 @@ namespace Rocola
                     if (aheadPos >= Ahead.Count) aheadPos = 0;
                     Album a = Ahead[aheadPos]; visited++;
                     if (a == null) { aheadPos++; continue; }
-                    Image cover = PeekCoverGpu(a);
+                    Rocola.Dibujo2D.Image cover = PeekCoverGpu(a);   // EN LINUX: Image de la capa, escrito entero
                     if (cover == null) { aheadPos++; continue; } // no hornear un disco vacio
                     string key = ClaveCasilla(a); CeldaGpu prepared;
                     bool cached = key != null ? gpuCellCache.TryGetValue(key, out prepared) : gpuAnonymousCache.TryGetValue(a, out prepared);
@@ -929,30 +929,30 @@ namespace Rocola
                 }
                 if (cellCache.Count > capCeldas) PodaCeldas();
             }
-            private Pen cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)
-            private Bitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual
-            private Font lblFont; private SolidBrush lblBrush; private StringFormat lblSF;       // recursos de etiquetas (reusables)
-            private Bitmap blendBmp;   // para el fundido suave de portadas del cubo TOP
+            private SKPaint cPenGlow, cPenMid, cPenLine;   // contorno del disco seleccionado (cacheadas; antes se creaban por cuadro)   // EN LINUX: Pen: SKPaint con su color y su ancho
+            private SKBitmap contourSprite; private Size contourSpriteSize = Size.Empty;   // contorno HORNEADO (3 trazos AA -> 1 copia); todas las casillas miden igual   // EN LINUX: Bitmap: un SKBitmap
+            private Rocola.Nativo.Letra lblFont; private SKPaint lblBrush; private FormatoTexto lblSF;       // recursos de etiquetas (reusables)   // EN LINUX: Font, SolidBrush y StringFormat: Letra, SKPaint y FormatoTexto
+            private SKBitmap blendBmp;   // para el fundido suave de portadas del cubo TOP   // EN LINUX: Bitmap: un SKBitmap
             public Starfield Sky;   // COMPARTIDO con el fondo del form: esta vista pinta su VENTANA del mismo campo (una sola pieza)
             public float PulseLo = 0f, PulseMid = 0f, PulseHi = 0f;   // pulso 0..1 por banda (graves/medios/agudos): cada estrella late con SU frecuencia
 
-            private Image BlendInto(Image a, Image b, float f)
+            private SKBitmap BlendInto(SKBitmap a, SKBitmap b, float f)   // EN LINUX: los puntos de las dos portadas y el mapa de la mezcla, SKBitmap
             {
                 // 192 basta: el cubo se dibuja a ~154px; antes 320 gastaba el doble de relleno en cada fundido.
-                if (blendBmp == null) blendBmp = new Bitmap(192, 192, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(blendBmp))
+                if (blendBmp == null) blendBmp = Mapas.Nuevo(192, 192);   // EN LINUX: new Bitmap(192, 192, Format32bppPArgb) (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(blendBmp))   // EN LINUX: Graphics.FromImage (lo demas del estado, de fabrica: sin copia ni medio pixel)
                 {
-                    g.Clear(Color.Black);
-                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    g.Clear(Color.Black.Sk());   // EN LINUX: Graphics.Clear
+                    Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear, en una variable
                     Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
-                    if (a != null) g.DrawImage(a, dst);
+                    if (a != null) Imagenes.Pinta(g, a, new SKRect(0, 0, a.Width, a.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro);   // EN LINUX: g.DrawImage(a, dst): la imagen entera en esa caja (Nativo/Imagenes.cs)
                     if (b != null && f > 0f)
                     {
-                        ColorMatrix cm = new ColorMatrix(); cm.Matrix33 = f;
-                        using (ImageAttributes ia = new ImageAttributes())
+                        float[][] cm = MatrizColor.Identidad(); cm[3][3] = f;   // EN LINUX: new ColorMatrix() con Matrix33 = f
+                        // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): la matriz de color va en la llamada (lo demas, de fabrica: la envoltura Clamp, transparente)
                         {
-                            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-                            g.DrawImage(b, dst, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
+                            // EN LINUX: ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap): va en la llamada de abajo
+                            Imagenes.Pinta(g, b, new SKRect(0, 0, 0 + b.Width, 0 + b.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: g.DrawImage(b, dst, 0, 0, b.Width, b.Height, Pixel, ia)
                         }
                     }
                 }
@@ -962,7 +962,7 @@ namespace Rocola
             // Portadas a fundir del disco SELECCIONADO: para discos TOP cicla sus portadas (ca actual, cb
             // siguiente, f = mezcla 0..1); para discos normales devuelve la suya en ca (cb=null, f=0). La
             // usan OnPaint (CPU, que las funde a una imagen) y el modo GPU (que funde en dos pasadas).
-            private void SelectedCovers(out Image ca, out Image cb, out float f)
+            private void SelectedCovers(out Rocola.Dibujo2D.Image ca, out Rocola.Dibujo2D.Image cb, out float f)   // EN LINUX: Image de la capa, escrito entero (las da Form1 y van a la tarjeta como Bitmap de la capa)
             {
                 ca = null; cb = null; f = 0f;
                 if (Page == null || Selected < 0 || Selected >= Page.Count) return;
@@ -987,22 +987,22 @@ namespace Rocola
             }
 
             // Caratula del disco SELECCIONADO ya FUNDIDA a una sola imagen (la usa el render por CPU).
-            private Image SelectedCover()
+            private SKBitmap SelectedCover()   // EN LINUX: los puntos de la portada (o de la mezcla) para pintarla: un SKBitmap
             {
-                Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);
-                return (cb == null || f <= 0.002f) ? ca : BlendInto(ca, cb, f);
+                Rocola.Dibujo2D.Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image de la capa, escrito entero
+                return (cb == null || f <= 0.002f) ? PuenteDibujo.Mapa(ca) : BlendInto(PuenteDibujo.Mapa(ca), PuenteDibujo.Mapa(cb), f);   // EN LINUX: los puntos de esas Image (los mismos, sin copia)
             }
 
             private void EnsureLabelRes()
             {
-                if (lblFont == null) lblFont = new Font(this.Font.FontFamily, 10f, FontStyle.Bold);
-                if (lblBrush == null) lblBrush = new SolidBrush(Color.White);
+                if (lblFont == null) lblFont = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, 10f, true);   // EN LINUX: new Font(this.Font.FontFamily, 10, Bold): la familia de la letra del control (de WinForms, sin tocar), en puntos y en negrita (Nativo/Letras.cs)
+                if (lblBrush == null) lblBrush = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
                 if (lblSF == null)
                 {
-                    lblSF = new StringFormat();
-                    lblSF.Alignment = StringAlignment.Center; lblSF.LineAlignment = StringAlignment.Center;
-                    lblSF.Trimming = StringTrimming.EllipsisCharacter;
-                    lblSF.FormatFlags = StringFormatFlags.LineLimit;
+                    lblSF = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                    lblSF.Horizontal = Alinea.Centro; lblSF.Vertical = Alinea.Centro;   // EN LINUX: Alignment y LineAlignment = Center
+                    lblSF.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: Trimming = EllipsisCharacter
+                    lblSF.Banderas = BanderasTexto.SoloEnteros;   // EN LINUX: FormatFlags = LineLimit (con =: quedan solo esas banderas)
                 }
             }
 
@@ -1126,7 +1126,7 @@ namespace Rocola
                         if (cellCache != null) ClearCellCache();
                         SueltaDibujo(ref cubeCache); SueltaDibujo(ref contourSprite); SueltaDibujo(ref wallLayer);
                         SueltaDibujo(ref blendBmp); SueltaDibujo(ref lblFont);
-                        SueltaDibujo(ref lblBrush); SueltaDibujo(ref lblSF);
+                        SueltaDibujo(ref lblBrush); lblSF = null;   // EN LINUX: SueltaDibujo(ref lblSF): un FormatoTexto no tiene nada que soltar; queda en null
                         SueltaDibujo(ref cPenGlow); SueltaDibujo(ref cPenMid); SueltaDibujo(ref cPenLine);
                     }
                 }
@@ -1222,7 +1222,7 @@ namespace Rocola
             }
 
             // Hornea la celda de un disco (portada estatica en angulo 0 + etiqueta a 2 lineas) a un bitmap propio.
-            private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
+            private SKBitmap BakeCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover)   // EN LINUX: el mapa y los puntos de la portada, SKBitmap
             { return BakeCell(a, cw, side, labelH, gap, cover, 1f); }
 
             // 'esc' encoge la casilla, para el hojeo (ver CeldaChica).
@@ -1233,7 +1233,7 @@ namespace Rocola
             // Encogiendo el pincel sale la MISMA casilla, igual de proporcionada, solo que con menos pixeles.
             public Func<Album, bool> EnCola;   // ¿este disco tiene algo pedido? (lo contesta el form)
 
-            private Bitmap BakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, float esc)
+            private SKBitmap BakeCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover, float esc)   // EN LINUX: el mapa y los puntos de la portada, SKBitmap
             {
                 int bw = cw, bh = side + gap + labelH;
                 bool encoge = (esc > 0f && esc < 0.999f);
@@ -1242,18 +1242,18 @@ namespace Rocola
                     bw = (int)(cw * esc); if (bw < 1) bw = 1;
                     bh = (int)((side + gap + labelH) * esc); if (bh < 1) bh = 1;
                 }
-                Bitmap bmp = new Bitmap(bw, bh, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(bmp))
+                SKBitmap bmp = Mapas.Nuevo(bw, bh);   // EN LINUX: new Bitmap(bw, bh, Format32bppPArgb) (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage (copia y medio pixel, de fabrica)
                 {
-                    g.Clear(Color.Transparent);
-                    if (encoge) g.ScaleTransform(esc, esc);
-                    g.InterpolationMode = InterpolationMode.Bilinear;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                    if (encoge) g.Scale(esc, esc);   // EN LINUX: g.ScaleTransform
+                    Filtro filtro = Filtro.Bilineal;   // mas rapido que bicubico (CPU vieja); las portadas ya son de buena resolucion   // EN LINUX: g.InterpolationMode = Bilinear, en una variable
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
                     Rectangle rDisco = new Rectangle((cw - side) / 2, 0, side, side);
-                    Cube.Draw(g, rDisco, cover, 0.0);   // disco centrado (mismo x que Geometry)
-                    if (EnCola != null && EnCola(a)) Palomito(g, rDisco);
+                    Cube.Draw(g, suave, false, filtro, false, rDisco, cover, 0.0);   // disco centrado (mismo x que Geometry)   // EN LINUX: el lienzo y su estado (copia y medio pixel, de fabrica)
+                    if (EnCola != null && EnCola(a)) Palomito(g, suave, rDisco);   // EN LINUX: el lienzo y su suavizado
                     EnsureLabelRes();
-                    g.DrawString(AlbumLabel(a), lblFont, lblBrush, new Rectangle(2, side + gap, cw - 4, labelH), lblSF);   // etiqueta pegada al disco
+                    TextoGdiPlus.Escribe(g, AlbumLabel(a), lblFont, AjusteLetra.DelSistema, lblBrush, new Rectangle(2, side + gap, cw - 4, labelH), lblSF);   // etiqueta pegada al disco   // EN LINUX: g.DrawString en esa caja con ese formato y el modo de letra de fabrica (SystemDefault) (Nativo/TextoGdiPlus.cs)
                 }
                 return bmp;
             }
@@ -1261,27 +1261,27 @@ namespace Rocola
             // EL PALOMITO DE "YA LA PUSISTE". Va en la esquina de arriba a la derecha del disco, que es la
             // unica de las cuatro que no pisa ni la etiqueta ni el recuadro de seleccion. Verde, el mismo
             // de la cola, para que se lea sin explicarlo: verde = tuya, ya va.
-            private static void Palomito(Graphics g, Rectangle disco)
+            private static void Palomito(SKCanvas g, bool suave, Rectangle disco)   // EN LINUX: el lienzo de Skia y el suavizado del que llama (los tres que lo llaman, hornos de casillas, lo traen puesto; la copia y el medio pixel, de fabrica en los tres)
             {
                 float d = disco.Width * 0.26f; if (d < 13f) d = 13f;
                 float x = disco.Right - d * 0.92f, y = disco.Top - d * 0.08f;
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(236, 120, 230, 165)))
-                    g.FillEllipse(b, x, y, d, d);
-                using (Pen aro = new Pen(Color.FromArgb(150, 10, 40, 26), Math.Max(1f, d * 0.07f)))
-                    g.DrawEllipse(aro, x, y, d, d);
-                using (Pen p = new Pen(Color.FromArgb(255, 10, 44, 28), Math.Max(1.6f, d * 0.15f)))
+                using (SKPaint b = new SKPaint { Color = Color.FromArgb(236, 120, 230, 165).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                    Pixel.RellenaOvalo(g, new RectangleF(x, y, d, d), b, suave);   // EN LINUX: g.FillEllipse(b, x, y, d, d) (Nativo/Pixel.cs)
+                using (SKPaint aro = new SKPaint { Color = Color.FromArgb(150, 10, 40, 26).Sk(), StrokeWidth = Math.Max(1f, d * 0.07f) })   // EN LINUX: Pen(color, ancho): la pluma en un SKPaint
+                    Pixel.TrazaOvalo(g, new RectangleF(x, y, d, d), aro, suave);   // EN LINUX: g.DrawEllipse(aro, x, y, d, d)
+                using (SKPaint p = new SKPaint { Color = Color.FromArgb(255, 10, 44, 28).Sk(), StrokeWidth = Math.Max(1.6f, d * 0.15f) })   // EN LINUX: Pen(color, ancho)
                 {
-                    p.StartCap = LineCap.Round; p.EndCap = LineCap.Round; p.LineJoin = LineJoin.Round;
-                    g.DrawLines(p, new PointF[] {
+                    p.StrokeCap = SKStrokeCap.Round; p.StrokeJoin = SKStrokeJoin.Round;   // EN LINUX: StartCap y EndCap = Round (las dos puntas, iguales) y LineJoin = Round
+                    Pixel.Lineas(g, new PointF[] {   // EN LINUX: g.DrawLines(p, puntos) (Nativo/Pixel.cs)
                         new PointF(x + d * 0.27f, y + d * 0.52f),
                         new PointF(x + d * 0.44f, y + d * 0.70f),
-                        new PointF(x + d * 0.75f, y + d * 0.32f) });
+                        new PointF(x + d * 0.75f, y + d * 0.32f) }, p, suave);   // EN LINUX: la pluma y el suavizado van al final de la llamada
                 }
             }
 
             // Devuelve el bitmap horneado de la celda del album; lo re-hornea si falta o si cambio el estado de
             // portada (placeholder -> cargada). Clave = CellKey(a) (ver arriba). Sin clave no se cachea.
-            private Bitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover)
+            private SKBitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
             {
                 string key = ClaveCasilla(a);
                 // LA MARCA ENTRA EN LA LLAVE, y por eso no hace falta avisar a nadie de nada: al pedir una
@@ -1291,7 +1291,7 @@ namespace Rocola
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
                 { cs.Uso = ++cellUso; return cs.Bmp; }   // reutiliza (paginar = solo copiar)
-                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);
+                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, PuenteDibujo.Mapa(cover));   // EN LINUX: SKBitmap; los puntos de la portada (los mismos, sin copia)
                 if (key != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();   // reemplaza el placeholder por la version con portada
@@ -1312,12 +1312,12 @@ namespace Rocola
             private int TickHojeo { get { return -1; } }
 #endif
 
-            private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget)
+            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, ref int budget)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
             { return PeekOrBakeCell(a, cw, side, labelH, gap, cover, ref budget, false); }
 
             // 'chica' = la pagina se esta deslizando, asi que la casilla va a media resolucion. Se guarda con
             // su propia clave para que la entera siga ahi: al parar hay que volver a ella.
-            private Bitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Image cover, ref int budget, bool chica)
+            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, ref int budget, bool chica)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
             {
                 string key = ClaveCasilla(a);
                 bool hasCover = (cover != null);
@@ -1351,7 +1351,7 @@ namespace Rocola
                     return null;
                 }
                 budget--;
-                Bitmap bmp = BakeCell(a, cw, side, labelH, gap, cover, chica ? CeldaChica : 1f);
+                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, PuenteDibujo.Mapa(cover), chica ? CeldaChica : 1f);   // EN LINUX: SKBitmap; los puntos de la portada
                 if (k != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();
@@ -1403,15 +1403,15 @@ namespace Rocola
                 if (cubeCache == null || cubeCache.Width != w || cubeCache.Height != h)
                 {
                     if (cubeCache != null) cubeCache.Dispose();
-                    cubeCache = new Bitmap(w, h);
+                    cubeCache = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h) (Nativo/Mapas.cs)
                 }
                 if (cellCacheW != w || cellCacheH != h) { ClearCellCache(); cellCacheW = w; cellCacheH = h; RecalculaCajon(w, h); }   // tamano nuevo: las celdas horneadas ya no encajan (y el cajon cambia de tope)
                 else if (cellCache.Count > capCeldas) PodaCeldas();                                             // lleno: fuera las mas viejas (nunca la pagina que se ve)
                 int budget = CpuBakeBudget;   // HORNEADO REPARTIDO (como en GPU): a lo mas CpuBakeBudget celdas nuevas por repintado; el
                 cubesPending = false;         // resto queda para el proximo (OnPaint re-invalida). Evita el congelon de hornear 18 de golpe.
-                using (Graphics g = Graphics.FromImage(cubeCache))
+                using (SKCanvas g = new SKCanvas(cubeCache))   // EN LINUX: Graphics.FromImage (todo el estado, de fabrica)
                 {
-                    g.Clear(Color.Transparent);
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                     if (Page == null) return;
                     int cw = w / Cols, ch = h / Rows;
                     if (cw < 4 || ch < 4) return;
@@ -1422,8 +1422,8 @@ namespace Rocola
                         // girando ENCIMA en OnPaint; como girando nunca son mas angostos, lo tapan. Asi el cache
                         // NO depende de la seleccion -> moverse entre discos no lo reconstruye (fluido).
                         Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
-                        Bitmap cell = PeekOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null, ref budget);
-                        if (cell != null) g.DrawImageUnscaled(cell, (i % Cols) * cw, area.Y);   // copia 1:1 (sin re-escalar portada ni re-maquetar texto)
+                        SKBitmap cell = PeekOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null, ref budget);   // EN LINUX: SKBitmap
+                        if (cell != null) { int px = (i % Cols) * cw; Imagenes.Pinta(g, cell, new SKRect(0, 0, cell.Width, cell.Height), new SKRect(px, area.Y, px + cell.Width, area.Y + cell.Height), Filtro.Bilineal); }   // copia 1:1 (sin re-escalar portada ni re-maquetar texto)   // EN LINUX: g.DrawImageUnscaled(cell, x, y): la imagen entera a su tamano desde ese punto, con el filtro de fabrica (Nativo/Imagenes.cs)
                         else if (Page[i] != null && Page[i].Folder != null) cubesPending = true;   // solo celdas CACHEABLES se completan luego (convergen); las raras sin Folder no bloquean el bucle
                     }
                 }
@@ -1441,7 +1441,7 @@ namespace Rocola
                 int side, labelH, gap; CellMetrics(cw, ch, out side, out labelH, out gap);
                 bool any = false;
                 Rectangle dirtyR = Rectangle.Empty;
-                using (Graphics g = Graphics.FromImage(cubeCache))
+                using (SKCanvas g = new SKCanvas(cubeCache))   // EN LINUX: Graphics.FromImage (todo el estado, de fabrica)
                 {
                     for (int i = 0; i < Page.Count && i < PageSize; i++)
                     {
@@ -1451,11 +1451,11 @@ namespace Rocola
                         Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
                         // rehornea la celda CON la portada (GetOrBakeCell detecta que HasCover cambio) y actualiza
                         // el cache: revisitar la pagina sigue siendo instantaneo. Luego la copia en cubeCache.
-                        Bitmap cell2 = GetOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null);
-                        g.CompositingMode = CompositingMode.SourceCopy;   // deja la celda transparente antes de recomponer
-                        using (SolidBrush tb = new SolidBrush(Color.Transparent)) g.FillRectangle(tb, cell);
-                        g.CompositingMode = CompositingMode.SourceOver;
-                        g.DrawImageUnscaled(cell2, col * cw, area.Y);
+                        SKBitmap cell2 = GetOrBakeCell(Page[i], cw, side, labelH, gap, (GetCover != null) ? GetCover(Page[i]) : null);   // EN LINUX: SKBitmap
+                        bool copia = true;   // deja la celda transparente antes de recomponer   // EN LINUX: g.CompositingMode = SourceCopy, en una variable
+                        using (SKPaint tb = new SKPaint { Color = Color.Transparent.Sk() }) Pixel.Rellena(g, (RectangleF)cell, tb, false, false, copia);   // EN LINUX: SolidBrush y g.FillRectangle (sin suavizado ni medio pixel, de fabrica) (Nativo/Pixel.cs)
+                        copia = false;   // EN LINUX: g.CompositingMode = SourceOver
+                        Imagenes.Pinta(g, cell2, new SKRect(0, 0, cell2.Width, cell2.Height), new SKRect(col * cw, area.Y, col * cw + cell2.Width, area.Y + cell2.Height), Filtro.Bilineal, false, copia);   // EN LINUX: g.DrawImageUnscaled(cell2, x, y)
                         dirtyR = (dirtyR == Rectangle.Empty) ? cell : Rectangle.Union(dirtyR, cell);
                         any = true;
                     }
@@ -1482,28 +1482,28 @@ namespace Rocola
                 if (contourSprite != null && contourSpriteSize == need) return;
                 if (cPenGlow == null)
                 {
-                    cPenGlow = new Pen(Color.FromArgb(20, 255, 255, 255), 11f);   // resplandor ancho y tenue
-                    cPenMid = new Pen(Color.FromArgb(45, 255, 255, 255), 6f);     // resplandor medio
-                    cPenLine = new Pen(Color.FromArgb(235, 255, 255, 255), 2.4f); // linea nitida
+                    cPenGlow = new SKPaint { Color = Color.FromArgb(20, 255, 255, 255).Sk(), StrokeWidth = 11f };   // resplandor ancho y tenue   // EN LINUX: new Pen(color, 11): la pluma en un SKPaint (Pixel le pone las esquinas de GDI+)
+                    cPenMid = new SKPaint { Color = Color.FromArgb(45, 255, 255, 255).Sk(), StrokeWidth = 6f };     // resplandor medio   // EN LINUX: new Pen(color, 6)
+                    cPenLine = new SKPaint { Color = Color.FromArgb(235, 255, 255, 255).Sk(), StrokeWidth = 2.4f }; // linea nitida   // EN LINUX: new Pen(color, 2,4)
                 }
                 if (contourSprite != null) contourSprite.Dispose();
-                contourSprite = new Bitmap(need.Width, need.Height, PixelFormat.Format32bppPArgb);
-                using (Graphics cg = Graphics.FromImage(contourSprite))
-                using (GraphicsPath cp = RoundRect(new Rectangle(ContourMargin, ContourMargin, fr.Width, fr.Height), 10))
+                contourSprite = Mapas.Nuevo(need.Width, need.Height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb) (Nativo/Mapas.cs)
+                using (SKCanvas cg = new SKCanvas(contourSprite))   // EN LINUX: Graphics.FromImage (copia y medio pixel, de fabrica)
+                using (Rocola.Dibujo2D.GraphicsPath cp = RoundRect(new Rectangle(ContourMargin, ContourMargin, fr.Width, fr.Height), 10))   // EN LINUX: RoundRect (Form1.Ajustes.cs, aun sin traducir aqui) devuelve un GraphicsPath de la capa, escrito entero: se traza su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                 {
-                    cg.SmoothingMode = SmoothingMode.AntiAlias;
-                    cg.DrawPath(cPenGlow, cp);
-                    cg.DrawPath(cPenMid, cp);
-                    cg.DrawPath(cPenLine, cp);
+                    bool suave = true;   // EN LINUX: cg.SmoothingMode = AntiAlias, en una variable
+                    Pixel.Traza(cg, PuenteDibujo.Ruta(cp), cPenGlow, suave);   // EN LINUX: cg.DrawPath (Nativo/Pixel.cs)
+                    Pixel.Traza(cg, PuenteDibujo.Ruta(cp), cPenMid, suave);   // EN LINUX: cg.DrawPath
+                    Pixel.Traza(cg, PuenteDibujo.Ruta(cp), cPenLine, suave);   // EN LINUX: cg.DrawPath
                 }
                 contourSpriteSize = need;
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                Graphics g = e.Graphics;
+                Rocola.Dibujo2D.Graphics gx = e.Graphics; SKCanvas g = PuenteDibujo.Lienzo(gx);   // EN LINUX: Graphics g = e.Graphics: OnPaint (de WinForms, sin tocar) trae un Graphics de la capa; se pinta en su lienzo de Skia (con su matriz y su recorte) y el Graphics queda para el cielo (Starfield, aun sin traducir) y para dejarle el estado que XP le dejaba
                 int w = Width, h = Height;
-                if (w < 8 || h < 8) { g.Clear(Shade(BgAccent, 0.82)); return; }
+                if (w < 8 || h < 8) { g.Clear(Shade(BgAccent, 0.82).Sk()); return; }   // EN LINUX: Graphics.Clear
                 // Cuando el fondo GPU (pantalla completa, opaco) esta encima, TODO esto queda oculto. Reconstruir
                 // la rejilla + pintar estrellas + cubo por CPU en cada Invalidate (p.ej. al paginar, que llama
                 // Invalidate por cambio de pagina) era trabajo invisible que ademas SALTABA la franja de la GPU
@@ -1524,38 +1524,38 @@ namespace Rocola
                     Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
                     Sky.SkyMid = SkyColorMid(BgAccent); Sky.Acento = BgAccent;
                     Sky.Dim = BgDim;   // atenuado mientras se navega con musica (vuelve solo tras 10s sin botones)
-                    Sky.DrawReactive(g, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), PulseLo, PulseMid, PulseHi);   // fondo titilante + LATIDO por banda (grandes=graves, medianas=medios/agudos)
+                    Sky.DrawReactive(gx, w, h, SkyColor(BgAccent), SkyColor2(BgAccent), PulseLo, PulseMid, PulseHi);   // fondo titilante + LATIDO por banda (grandes=graves, medianas=medios/agudos)   // EN LINUX: Starfield.DrawReactive (Form1.Fondo.cs, aun sin traducir) pinta con el Graphics
                 }
-                if (WallOpacity < 0.999f)
+                EstadoLienzo es = PuenteDibujo.Estado(gx); if (WallOpacity < 0.999f)   // EN LINUX: el estado que trae el Graphics despues del cielo (suavizado, copia, filtro y medio pixel), leido aqui para pintar la pared con el
                 {
                     if (wallLayer == null || wallLayer.Width != w || wallLayer.Height != h)
                     {
                         SueltaDibujo(ref wallLayer);
-                        wallLayer = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                        wallLayer = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb) (Nativo/Mapas.cs)
                     }
-                    using (Graphics layer = Graphics.FromImage(wallLayer))
+                    using (SKCanvas layer = new SKCanvas(wallLayer))   // EN LINUX: Graphics.FromImage (todo el estado, de fabrica)
                     {
-                        layer.Clear(Color.Transparent);
-                        DrawWall(layer, w, h);
+                        layer.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                        Filtro deFabrica = Filtro.Bilineal; DrawWall(layer, false, false, ref deFabrica, false, w, h);   // EN LINUX: el lienzo de la capa y el estado de fabrica de un Graphics nuevo (sin suavizado, sin copia, Bilinear, sin medio pixel)
                     }
-                    using (ImageAttributes ia = new ImageAttributes())
+                    // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): la matriz de color va en la llamada (lo demas, de fabrica: la envoltura Clamp, transparente)
                     {
-                        ColorMatrix cm = new ColorMatrix();
-                        cm.Matrix33 = Math.Max(0f, Math.Min(1f, WallOpacity));
-                        ia.SetColorMatrix(cm);
-                        g.DrawImage(wallLayer, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, ia);
+                        float[][] cm = MatrizColor.Identidad();   // EN LINUX: new ColorMatrix() (Nativo/Imagenes.cs)
+                        cm[3][3] = Math.Max(0f, Math.Min(1f, WallOpacity));   // EN LINUX: cm.Matrix33
+                        // EN LINUX: ia.SetColorMatrix(cm): va en la llamada de abajo
+                        Imagenes.Pinta(g, wallLayer, new SKRect(0, 0, 0 + w, 0 + h), new SKRect(0, 0, w, h), es.Filtro, es.Medio, es.Copia, Envoltura.Transparente, cm);   // EN LINUX: g.DrawImage(wallLayer, caja, 0, 0, w, h, Pixel, ia): con el filtro, el medio pixel y la copia del Graphics
                     }
                 }
                 else
                 {
                     SueltaDibujo(ref wallLayer);
-                    DrawWall(g, w, h);
+                    Filtro filtro = es.Filtro; DrawWall(g, es.Suave, es.Copia, ref filtro, es.Medio, w, h); gx.InterpolationMode = (Rocola.Dibujo2D.InterpolationMode)(int)filtro;   // EN LINUX: el lienzo y su estado; el filtro que DrawWall deja puesto (Bilinear, si pinta el cubo) vuelve al Graphics, como lo dejaba XP
                 }
                 if (cubesPending) Invalidate();
             }
-            private void DrawWall(Graphics g, int w, int h)
+            private void DrawWall(SKCanvas g, bool suave, bool copia, ref Filtro filtro, bool medio, int w, int h)   // EN LINUX: el lienzo de Skia y el estado del que llama; el filtro va con ref porque aqui se cambia (g.InterpolationMode = Bilinear) y en XP quedaba cambiado en el Graphics del que llama
             {
-                g.DrawImageUnscaled(cubeCache, 0, 0);
+                Imagenes.Pinta(g, cubeCache, new SKRect(0, 0, cubeCache.Width, cubeCache.Height), new SKRect(0, 0, 0 + cubeCache.Width, 0 + cubeCache.Height), filtro, medio, copia);   // EN LINUX: g.DrawImageUnscaled(cubeCache, 0, 0): la imagen entera a su tamano (Nativo/Imagenes.cs)
 
                 if (Page != null && Selected >= 0 && Selected < Page.Count)
                 {
@@ -1564,12 +1564,12 @@ namespace Rocola
                     {
                         Rectangle area, lbl;
                         Geometry(w, h, Selected, out area, out lbl);
-                        g.InterpolationMode = InterpolationMode.Bilinear;
+                        filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear
                         // Contorno blanco con resplandor del disco SELECCIONADO (ademas del giro), para ubicarlo facil.
                         Rectangle fr = area; fr.Inflate(4, 4);
                         EnsureContourSprite();   // sprite horneado (3 trazos AA -> 1 copia); solo se re-hornea al cambiar tamano
-                        if (contourSprite != null) g.DrawImageUnscaled(contourSprite, fr.X - ContourMargin, fr.Y - ContourMargin);
-                        Cube.Draw(g, area, SelectedCover(), SelAngle);
+                        if (contourSprite != null) { int kx = fr.X - ContourMargin, ky = fr.Y - ContourMargin; Imagenes.Pinta(g, contourSprite, new SKRect(0, 0, contourSprite.Width, contourSprite.Height), new SKRect(kx, ky, kx + contourSprite.Width, ky + contourSprite.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(contourSprite, x, y)
+                        Cube.Draw(g, suave, copia, filtro, medio, area, SelectedCover(), SelAngle);   // EN LINUX: el lienzo y su estado
                     }
                 }
 
@@ -1582,8 +1582,8 @@ namespace Rocola
                     {
                         Rectangle area2, lbl2;
                         Geometry(w, h, prevIdx, out area2, out lbl2);
-                        g.InterpolationMode = InterpolationMode.Bilinear;
-                        Cube.Draw(g, area2, (GetCover != null) ? GetCover(Page[prevIdx]) : null, prevAngle);
+                        filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear
+                        Cube.Draw(g, suave, copia, filtro, medio, area2, PuenteDibujo.Mapa((GetCover != null) ? GetCover(Page[prevIdx]) : null), prevAngle);   // EN LINUX: el lienzo y su estado, y los puntos de la portada (la Image de la capa que da Form1)
                     }
                 }
                 if (cubesPending) Invalidate();   // quedan celdas por hornear: pide otro repintado para completarlas (repartido, sin congelar)
@@ -1593,7 +1593,7 @@ namespace Rocola
         // ==========  CUBO DE LA CANCION (gira + se inclina)  ==========
         private partial class CubeBox : Control
         {
-            public Image Cover;
+            public Rocola.Dibujo2D.Image Cover;   // EN LINUX: Image de la capa, escrito entero: la pone Form1.Biblioteca.cs y la lee Form1.Video.cs para la tarjeta (aun sin traducir); al pintarla, sus puntos (PuenteDibujo.Mapa)
             public double Angle;
             public double Phase;
 
@@ -1612,10 +1612,10 @@ namespace Rocola
             // no hay ni una linea de dibujo nueva.
             private const int RelMs = 420;
             private int relTick;          // 0 = no hay relevo en marcha
-            private Image relNueva;       // la portada que entra
+            private Rocola.Dibujo2D.Image relNueva;       // la portada que entra   // EN LINUX: Image de la capa, escrito entero
             private double relGirado;     // cuanto lleva puesto de la media vuelta
 
-            public void Relevo(Image nueva)
+            public void Relevo(Rocola.Dibujo2D.Image nueva)   // EN LINUX: Image de la capa, escrito entero
             {
                 if (relTick != 0 && object.ReferenceEquals(relNueva, nueva)) return;   // esa ya viene en camino
                 relNueva = nueva;
@@ -1623,7 +1623,7 @@ namespace Rocola
                 relTick = Environment.TickCount; if (relTick == 0) relTick = 1;
             }
             public bool Girando { get { return relTick != 0; } }
-            public bool UsaPortada(Image im)
+            public bool UsaPortada(Rocola.Dibujo2D.Image im)   // EN LINUX: Image de la capa, escrito entero
             {
                 return object.ReferenceEquals(Cover, im) || object.ReferenceEquals(relNueva, im);
             }
@@ -1654,24 +1654,24 @@ namespace Rocola
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                Graphics g = e.Graphics;
-                if (this.BackColor.A == 255) g.Clear(this.BackColor);
+                Rocola.Dibujo2D.Graphics gx = e.Graphics; SKCanvas g = PuenteDibujo.Lienzo(gx);   // EN LINUX: Graphics g = e.Graphics: OnPaint (de WinForms, sin tocar) trae un Graphics de la capa; se pinta en su lienzo de Skia (con su matriz y su recorte) y al Graphics se le deja el estado que XP le dejaba
+                if (this.BackColor.A == 255) g.Clear(this.BackColor.Sk());   // EN LINUX: Graphics.Clear
                 int w = Width, h = Height;
                 if (w < 12 || h < 12) return;
-                g.InterpolationMode = InterpolationMode.Bilinear;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Filtro filtro = Filtro.Bilineal; gx.InterpolationMode = Rocola.Dibujo2D.InterpolationMode.Bilinear;   // EN LINUX: g.InterpolationMode = Bilinear, en una variable (y en el Graphics, como lo dejaba XP)
+                bool suave = true; gx.SmoothingMode = Rocola.Dibujo2D.SmoothingMode.AntiAlias; EstadoLienzo es = PuenteDibujo.Estado(gx);   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable (y en el Graphics); la copia y el medio pixel, los que traiga el Graphics
 
                 int side = (int)(Math.Min(w, h) * 0.78);
                 Rectangle area = new Rectangle((w - side) / 2, (h - side) / 2, side, side);
 
                 float cx = w / 2f, cy = h / 2f;
                 float tilt = (float)(10.0 * Math.Sin(Phase * 0.9));
-                GraphicsState st = g.Save();
-                g.TranslateTransform(cx, cy);
-                g.RotateTransform(tilt);
-                g.TranslateTransform(-cx, -cy);
-                Cube.Draw(g, area, Cover, Angle);
-                g.Restore(st);
+                int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui dentro no cambia)
+                g.Translate(cx, cy);   // EN LINUX: g.TranslateTransform
+                g.RotateDegrees(tilt);   // EN LINUX: g.RotateTransform (en grados)
+                g.Translate(-cx, -cy);   // EN LINUX: g.TranslateTransform
+                Cube.Draw(g, suave, es.Copia, filtro, es.Medio, area, PuenteDibujo.Mapa(Cover), Angle);   // EN LINUX: el lienzo y su estado, y los puntos de la portada
+                g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
             }
         }
     }

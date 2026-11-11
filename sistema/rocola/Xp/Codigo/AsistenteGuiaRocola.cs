@@ -307,8 +307,8 @@ namespace Rocola
                 {
                     switch (c)
                     {
-                        case 'B': x = CtrlDotAsistente(g, suave, ajuste, copia, medio, x, cy, d, rojo) + 6; break;   // EN LINUX: CtrlDot (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
-                        case 'V': x = CtrlDotAsistente(g, suave, ajuste, copia, medio, x, cy, d, verde) + 6; break;   // EN LINUX: CtrlDot, por el puente
+                        case 'B': x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, d, rojo) + 6; break;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                        case 'V': x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, d, verde) + 6; break;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
                         case 'M':
                             using (SKPaint m = new SKPaint { Color = Color.FromArgb(255, 205, 90).Sk() }) Pixel.RellenaOvalo(g, new RectangleF(x, cy - d / 2f, d, d), m, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillEllipse(x, y, ancho, alto) (Nativo/Pixel.cs)
                             using (SKPaint p = new SKPaint { Color = Color.FromArgb(160, 110, 30).Sk(), StrokeWidth = Math.Max(1.5f, d * .08f) }) Pixel.TrazaOvalo(g, new RectangleF(x + d * .18f, cy - d * .32f, d * .64f, d * .64f), p, suave, medio, copia);   // EN LINUX: Pen(color, ancho) y g.DrawEllipse
@@ -317,8 +317,8 @@ namespace Rocola
                         case 'D': TeclaFlecha(g, suave, ajuste, copia, medio, x, cy, d, rojo, 1); x += d + 6; break;   // EN LINUX: el lienzo y su estado
                         case 'L': TeclaFlecha(g, suave, ajuste, copia, medio, x, cy, d, amarillo, 2); x += d + 6; break;   // EN LINUX: el lienzo y su estado
                         case 'R': TeclaFlecha(g, suave, ajuste, copia, medio, x, cy, d, amarillo, 3); x += d + 6; break;   // EN LINUX: el lienzo y su estado
-                        case '+': x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, chico, "+", x, cy, tinta) + 6; break;   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente
-                        case '/': x = CtrlTxtAsistente(g, suave, ajuste, copia, medio, chico, "o", x, cy, tinta) + 6; break;   // EN LINUX: CtrlTxt, por el puente
+                        case '+': x = CtrlTxt(g, suave, ajuste, copia, medio, chico, "+", x, cy, tinta) + 6; break;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
+                        case '/': x = CtrlTxt(g, suave, ajuste, copia, medio, chico, "o", x, cy, tinta) + 6; break;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                         case ' ': x += d * .9f; break;
                     }
                 }
@@ -335,10 +335,10 @@ namespace Rocola
                 using (SKPaint pn = new SKPaint { Color = Color.FromArgb(215, c).Sk(), StrokeWidth = 1.6f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave, medio, copia);   // EN LINUX: Pen(color, 1,6) y g.DrawPath
             }
             float cx = x + d / 2f, t = d * 0.30f, an = d * 0.24f;
-            if (dir == 0) CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx, cy - t), new PointF(cx - an, cy + t * .62f), new PointF(cx + an, cy + t * .62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.asistente.cs)
-            else if (dir == 1) CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * .62f), new PointF(cx + an, cy - t * .62f));   // EN LINUX: CtrlTri, por el puente
-            else if (dir == 2) CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx - t, cy), new PointF(cx + t * .62f, cy - an), new PointF(cx + t * .62f, cy + an));   // EN LINUX: CtrlTri, por el puente
-            else CtrlTriAsistente(g, suave, ajuste, copia, medio, c, new PointF(cx + t, cy), new PointF(cx - t * .62f, cy - an), new PointF(cx - t * .62f, cy + an));   // EN LINUX: CtrlTri, por el puente
+            if (dir == 0) CtrlTri(g, suave, ajuste, copia, medio, c, new PointF(cx, cy - t), new PointF(cx - an, cy + t * .62f), new PointF(cx + an, cy + t * .62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+            else if (dir == 1) CtrlTri(g, suave, ajuste, copia, medio, c, new PointF(cx, cy + t), new PointF(cx - an, cy - t * .62f), new PointF(cx + an, cy - t * .62f));   // EN LINUX: CtrlTri (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+            else if (dir == 2) CtrlTri(g, suave, ajuste, copia, medio, c, new PointF(cx - t, cy), new PointF(cx + t * .62f, cy - an), new PointF(cx + t * .62f, cy + an));   // EN LINUX: CtrlTri (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+            else CtrlTri(g, suave, ajuste, copia, medio, c, new PointF(cx + t, cy), new PointF(cx - t * .62f, cy - an), new PointF(cx - t * .62f, cy + an));   // EN LINUX: CtrlTri (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
         }
     }
 

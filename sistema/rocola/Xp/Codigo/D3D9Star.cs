@@ -1934,7 +1934,7 @@ namespace Rocola
     // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
     internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At, Top, TopAt, Bottom, BottomAt, Left, LeftAt, Right, RightAt; public int Width, Height; public bool Separate, HideBlank; }
-    internal struct GpuGridCell { public string Key; public Rocola.Dibujo2D.Bitmap Bmp, Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.   // EN LINUX: Bitmap de la capa (Dibujo2D.cs), escrito entero: lo llenan archivos aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
+    internal struct GpuGridCell { public string Key; public SKBitmap Bmp; public Rocola.Dibujo2D.Bitmap Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.   // EN LINUX: Bmp, el mapa de la casilla, es un SKBitmap (lo hornea la pared, Form1.Pared.cs y CaratulasSeparadasGpu.cs, ya traducidos, y se sube tal cual); Preview y FullCover, las portadas, siguen siendo Bitmap de la capa (Dibujo2D.cs), escrito entero: las llenan archivos aun sin traducir y se suben por el puente (PuenteDibujo.Mapa)
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1986,7 +1986,7 @@ namespace Rocola
         // se reparten por cuadro (presupuesto) para que un barrido de paginas nuevas no baje los fps.
         private const int MaxCells = 36;                  // dos paginas: pasando de pagina se ven la que sale y la que entra (PantallaVivaGpu.cs)
         private const int GridUploadBudget = 6;           // texturas de celda NUEVAS subidas por cuadro (barrer sin bajon)
-        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public Rocola.Dibujo2D.Bitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; public bool Opaca; }   // Opaca: portada sin transparencia por dentro (DibujoLigeroGpu.cs, HuecosDePortadas)   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs) que llego, escrito entero: XP compara por identidad para no volver a subir la misma
+        private sealed class CellTex { public IntPtr Tex; public int Bw, Bh; public float U = 1f, V = 1f; public SKBitmap Bmp; public int Frame; public GpuCellLayout Layout; public bool HasCover; public bool Opaca; }   // Opaca: portada sin transparencia por dentro (DibujoLigeroGpu.cs, HuecosDePortadas)   // EN LINUX: el SKBitmap de la casilla que llego (GpuGridCell.Bmp): XP compara por identidad
         private readonly Dictionary<string, CellTex> cellTexCache = new Dictionary<string, CellTex>();
         private readonly CellTex[] slotTex = new CellTex[MaxCells];   // celdas sin Folder (TOP): textura por slot, no se cachea entre paginas
         private readonly GpuGridCell[] gridBuf = new GpuGridCell[MaxCells];
@@ -2010,7 +2010,7 @@ namespace Rocola
         private double lastAheadMs, lastFrameWork;
         private long GridWorkLimit { get { return CoverControl != null ? CoverControl.RemainingTicks : CargaTrabajo.PresupuestoGpu(CargaTrabajo.Procesadores, TopeFpsReal, lastFrameWork); } }
         private readonly Tarjeta.Vtx[] cellQuad = new Tarjeta.Vtx[6];
-        private IntPtr contourTex; private Rocola.Dibujo2D.Bitmap lastContour; private float contU = 1f, contV = 1f;   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs) que llego, escrito entero: XP compara por identidad para no volver a subir la misma
+        private IntPtr contourTex; private SKBitmap lastContour; private float contU = 1f, contV = 1f;   // EN LINUX: el SKBitmap del contorno que llego (lo hornea la pared, ya traducida): XP compara por identidad para no volver a subirlo
         private readonly Tarjeta.Vtx[] contourQuad = new Tarjeta.Vtx[6];
         // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
         // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
@@ -2149,7 +2149,7 @@ namespace Rocola
         public Func<int, Rocola.Dibujo2D.Bitmap> GetPieza;                // la imagen chica de cada pieza viva   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs), escrito entero: lo da Form1, aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
         public Func<int, Rectangle> GetPiezaRect;         // donde va, en coords de pantalla
         public Func<int, int> GetPiezaVersion;            // sube cuando su imagen cambia (la prepara por dentro)
-        public Func<Rocola.Dibujo2D.Bitmap> GetContour;                   // sprite del contorno de seleccion   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs), escrito entero: lo da Form1, aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
+        public Func<SKBitmap> GetContour;                   // sprite del contorno de seleccion   // EN LINUX: un SKBitmap: lo hornea la pared (AlbumView.ContourSpriteBmp, Form1.Pared.cs, ya traducido) y se sube tal cual
         public Func<Rectangle> GetContourRect;            // donde va el contorno (celda seleccionada), en coords del panel
         public Func<GpuCubeState> GetCubeState;           // celdas/angulos/portadas de los cubos que giran (seleccionado + relevo)
         public int ThrottleMs;                            // >0 = a lo mas un cuadro cada tantos ms (con video sonando: ~30 fps)
@@ -2555,11 +2555,11 @@ namespace Rocola
             // Contorno de seleccion: sprite estatico (se sube cuando cambia el bitmap, p.ej. al cambiar tamano).
             if (GetContour != null)
             {
-                Rocola.Dibujo2D.Bitmap cb = GetContour();   // EN LINUX: el Bitmap de la capa, escrito entero (lo da Form1, aun sin traducir)
+                SKBitmap cb = GetContour();   // EN LINUX: el SKBitmap del contorno (lo hornea la pared, ya traducida)
                 if (cb != lastContour || (cb != null && contourTex == IntPtr.Zero))
                 {
                     if (contourTex != IntPtr.Zero) { Tarjeta.Suelta(contourTex); contourTex = IntPtr.Zero; }
-                    if (cb != null) contourTex = stars.CreateOverlay(PuenteDibujo.Mapa(cb), out contU, out contV);   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)
+                    if (cb != null) contourTex = stars.CreateOverlay(cb, out contU, out contV);   // EN LINUX: el SKBitmap tal cual (CreateOverlay ya lo recibe)
                     lastContour = cb;
                 }
             }
@@ -2982,7 +2982,7 @@ namespace Rocola
                     if (upBudget <= 0) { if (ct.Tex == IntPtr.Zero) return false; tex = ct.Tex; u = ct.U; v = ct.V; return true; }   // sin presupuesto: usa la vieja (p.ej. placeholder) hasta que toque
                     upBudget--;
                     cellBytesDirty = true;
-                    ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, PuenteDibujo.Mapa(c.Bmp), out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)   // EN LINUX: sus puntos, por el puente
+                    ct.Tex = Upload(ct.Tex, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // portada llego / re-horneada: re-sube (mismo tamano -> reutiliza)   // EN LINUX: el SKBitmap de la casilla, tal cual
                     ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.HasCover = c.HasCover;
                     if (ct.Tex == IntPtr.Zero) return false;
                     tex = ct.Tex; u = ct.U; v = ct.V; return true;
@@ -2992,7 +2992,7 @@ namespace Rocola
                 upBudget--;
                 ct = new CellTex();
                 cellBytesDirty = true;
-                ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, PuenteDibujo.Mapa(c.Bmp), out ct.U, out ct.V);   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)
+                ct.Tex = Upload(IntPtr.Zero, ref ct.Bw, ref ct.Bh, c.Bmp, out ct.U, out ct.V);   // EN LINUX: el SKBitmap de la casilla, tal cual
                 ct.Bmp = c.Bmp; ct.Layout = c.Layout; ct.Frame = cellFrame; ct.HasCover = c.HasCover;
                 cellTexCache[c.Key] = ct;
                 if (ct.Tex == IntPtr.Zero) return false;
@@ -3006,7 +3006,7 @@ namespace Rocola
                 if (upBudget <= 0) { if (st.Tex == IntPtr.Zero) return false; tex = st.Tex; u = st.U; v = st.V; return true; }
                 upBudget--;
                 cellBytesDirty = true;
-                st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, PuenteDibujo.Mapa(c.Bmp), out st.U, out st.V);   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)
+                st.Tex = Upload(st.Tex, ref st.Bw, ref st.Bh, c.Bmp, out st.U, out st.V);   // EN LINUX: el SKBitmap de la casilla, tal cual
                 st.Bmp = c.Bmp; st.Layout = c.Layout; st.HasCover = c.HasCover;
                 if (st.Tex == IntPtr.Zero) return false;
             }

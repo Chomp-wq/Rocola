@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la paleta se saca de los puntos de un SKBitmap con lo nativo (Xp/Nativo), no con GDI+; quien aun trae un Bitmap de la capa llega por el puente (Plataforma/Puente.pared.cs)
 
 namespace Rocola
 {
@@ -10,18 +10,18 @@ namespace Rocola
 #if ROCOLA_GPU
         // Solo al entrar una portada en la cache: 1024 muestras, 27 grupos, hasta 8 tonos.
         // Incluye blancos/grises/negros y colores minoritarios; no inventa saturacion.
-        internal static Color[] ExtractCoverPalette(Bitmap bitmap)
+        internal static Color[] ExtractCoverPalette(SKBitmap bitmap, FormatoMapa formato)   // EN LINUX: los puntos de la portada (un SKBitmap, siempre BGRA premultiplicado) y el formato que tenia el Bitmap en XP (bitmap.PixelFormat: de el depende como se leen; Nativo/FormatoMapa.cs); quien aun pasa un Bitmap llega por el puente (Plataforma/Puente.pared.cs)
         {
             if (bitmap == null) return new Color[0];
             int[] count = new int[27], red = new int[27], green = new int[27], blue = new int[27];
             int width = bitmap.Width, height = bitmap.Height;
             int nx = Math.Min(32, width), ny = Math.Min(32, height), total = 0;
-            int[] pixels = MuestrasPaleta(bitmap, nx, ny);
+            int[] pixels = MuestrasPaleta(bitmap, formato, nx, ny);   // EN LINUX: con el formato
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
                 {
                     Color c = pixels != null ? Color.FromArgb(pixels[y*nx+x])
-                        : bitmap.GetPixel((2*x+1)*width/(2*nx), (2*y+1)*height/(2*ny));
+                        : ColorSk.DeSk(bitmap.GetPixel((2*x+1)*width/(2*nx), (2*y+1)*height/(2*ny)));   // EN LINUX: bitmap.GetPixel: el color sin premultiplicar de ese punto (SKBitmap.GetPixel) como Color
                     if (c.A < 128) continue;
                     int max = Math.Max(c.R, Math.Max(c.G, c.B)), min = Math.Min(c.R, Math.Min(c.G, c.B));
                     int bin = max < 36 || max-min < 24 ? 24 + Math.Min(2, max/86) : Math.Min(23, (int)(c.GetHue()/15));
@@ -58,23 +58,23 @@ namespace Rocola
         }
         // Misma rejilla/mismos bytes; sin 1024 cruces GDI+. PArgb translucido conserva
         // GetPixel: su redondeo de des-premultiplicacion no se adivina ni cambia la paleta.
-        private static int[] MuestrasPaleta(Bitmap b, int nx, int ny)
+        private static int[] MuestrasPaleta(SKBitmap b, FormatoMapa f, int nx, int ny)   // EN LINUX: los puntos y el formato que tenia el Bitmap en XP
         {
-            PixelFormat f = b.PixelFormat;
-            bool prem = f == PixelFormat.Format32bppPArgb;
-            bool rgb = f == PixelFormat.Format32bppRgb || f == PixelFormat.Format24bppRgb;
-            if (!prem && !rgb && f != PixelFormat.Format32bppArgb) return null;
-            int bytes = f == PixelFormat.Format24bppRgb ? 3 : 4;
-            BitmapData d = null;
+            // EN LINUX: PixelFormat f = b.PixelFormat: llega como parametro (un SKBitmap no lo lleva)
+            bool prem = f == FormatoMapa.PArgb32;   // EN LINUX: PixelFormat.Format32bppPArgb
+            bool rgb = f == FormatoMapa.Rgb32 || f == FormatoMapa.Rgb24;   // EN LINUX: Format32bppRgb o Format24bppRgb
+            if (!prem && !rgb && f != FormatoMapa.Argb32) return null;   // EN LINUX: Format32bppArgb
+            int bytes = f == FormatoMapa.Rgb24 ? 3 : 4;   // EN LINUX: Format24bppRgb
+            IntPtr d = IntPtr.Zero; int paso = 0; bool propia = false;   // EN LINUX: BitmapData d = null: el puntero a los puntos (Scan0), su paso (Stride) y si es una copia que hay que soltar
             try
             {
                 int width = b.Width, height = b.Height;
-                d = b.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, f);
+                if (prem) { d = b.GetPixels(); paso = b.RowBytes; } else { FormatoPuntos fp = f == FormatoMapa.Rgb24 ? FormatoPuntos.Rgb24 : f == FormatoMapa.Rgb32 ? FormatoPuntos.Rgb32 : FormatoPuntos.Argb32; paso = Pixeles.Paso(fp, width); d = System.Runtime.InteropServices.Marshal.AllocHGlobal(new IntPtr(Math.Max(1L, (long)paso * height))); propia = true; Pixeles.Lee(b, new Rectangle(0, 0, width, height), fp, d, paso); }   // EN LINUX: b.LockBits(todo, ReadOnly, f): en Format32bppPArgb, los puntos mismos con el paso del mapa; en los demas, una copia convertida a ese formato (Nativo/Pixeles.cs: sin premultiplicar, o sin alfa de 32 o de 24 bits) con su paso
                 int[] r = new int[nx*ny];
                 for (int y = 0; y < ny; y++)
                 {
                     int py = (2*y+1)*height/(2*ny);
-                    long row = d.Scan0.ToInt64() + (long)py*d.Stride;
+                    long row = d.ToInt64() + (long)py*paso;   // EN LINUX: d.Scan0 y d.Stride
                     for (int x = 0; x < nx; x++)
                     {
                         int px = (2*x+1)*width/(2*nx);
@@ -95,7 +95,7 @@ namespace Rocola
                 return r;
             }
             catch { return null; }
-            finally { if (d != null) b.UnlockBits(d); }
+            finally { if (propia) System.Runtime.InteropServices.Marshal.FreeHGlobal(d); }   // EN LINUX: b.UnlockBits(d): era de solo leer; solo se suelta la copia
         }
 
         private void SyncGpuCoverPalette()

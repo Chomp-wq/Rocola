@@ -1,7 +1,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la precarga hace sus mapas de usar y tirar y sus letras con SkiaSharp y lo nativo (Xp/Nativo), y llama directo a los hornos ya traducidos; lo que aun es de la capa (el Graphics que da EnSeco, Form1.Video.cs, y la moneda que entrega BakeMoneda) va escrito entero
 namespace Rocola
 {
     public partial class Form1
@@ -35,7 +35,7 @@ namespace Rocola
         private bool PrecalientaBuscadorGpu()
         {
             if (searchOverlay == null) return false;
-            return EnSeco(searchOverlay, delegate (Graphics g)
+            return EnSeco(searchOverlay, delegate (Rocola.Dibujo2D.Graphics g)   // EN LINUX: EnSeco (Form1.Video.cs, aun sin traducir) da un Graphics de la capa (Dibujo2D.cs), escrito entero, y RenderContent del buscador lo recibe asi
             { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true); });
         }
 
@@ -46,7 +46,7 @@ namespace Rocola
             if (songList == null) return false;
             bool antes = songList.pintandoGpu;
             songList.pintandoGpu = true;
-            try { return EnSeco(songList, delegate (Graphics g) { songList.RenderContent(g); }); }
+            try { return EnSeco(songList, delegate (Rocola.Dibujo2D.Graphics g) { songList.RenderContent(g); }); }   // EN LINUX: el Graphics de la capa que da EnSeco, escrito entero
             finally { songList.pintandoGpu = antes; }
         }
 
@@ -61,7 +61,7 @@ namespace Rocola
         // Sin estado del formulario, para poder probarlo solo. Todo lo que dibuja va a mapas de bits propios que se sueltan aqui mismo.
         internal static void PrecalientaPiezaGpuEn(int paso, int w, int h, bool doce, bool transparente, bool opaco, int insignia)
         {
-            FontFamily fam = FamiliaUi();
+            string fam = FamiliaUi().Name;   // EN LINUX: FontFamily fam = FamiliaUi(): la familia de la interfaz (Form1.Ajustes.cs da un FontFamily de la capa) por su nombre, que es lo que piden la Letra y los hornos ya traducidos
             switch (paso)
             {
                 case 3:   // el panel del estado extendido y su reloj
@@ -72,9 +72,9 @@ namespace Rocola
                     string[] qt = new string[n], qa = new string[n];
                     for (int i = 0; i < n; i++) { qt[i] = "Cancion de relleno " + (i + 1); qa[i] = "Artista de relleno"; }
                     int comienzo, ultimo;
-                    using (Bitmap panel = RenderIdlePanelEn(null, w, ph, "Titulo de relleno", "Artista de relleno", "", qt, qa, new Image[n], n,
+                    using (SKBitmap panel = RenderIdlePanelEn(null, w, ph, "Titulo de relleno", "Artista de relleno", "", qt, qa, new SKBitmap[n], n,   // EN LINUX: el panel es un SKBitmap y las portadas (ninguna: new Image[n]) un arreglo de SKBitmap: RenderIdlePanelEn (EstadoReposoGpu.cs, ya traducido), directo
                         Color.FromArgb(120, 160, 255), transparente, insignia, doce, null, opaco, out comienzo))
-                    using (Bitmap debajo = new Bitmap(w, 34, PixelFormat.Format32bppPArgb))
+                    using (SKBitmap debajo = Mapas.Nuevo(w, 34))   // EN LINUX: new Bitmap(w, 34, Format32bppPArgb): un SKBitmap BGRA premultiplicado (Nativo/Mapas.cs)
                     {
                         CopiaRegionReposo(panel, new Rectangle(0, ph - 34, w, 34), debajo, Point.Empty);
                         ultimo = UpdateIdleClock(panel, debajo, "0:00 / 0:00");
@@ -86,10 +86,10 @@ namespace Rocola
                 case 4:   // la pastilla de "12 canciones" y la ficha rapida del disco
                 {
                     int lado = Math.Max(64, Math.Min(256, w / 8));
-                    using (Bitmap foco = new Bitmap(AnchoFoco(lado, lado + 24), AltoFoco(lado), PixelFormat.Format32bppPArgb))
+                    using (SKBitmap foco = Mapas.Nuevo(AnchoFoco(lado, lado + 24), AltoFoco(lado)))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); PintaFoco (PantallaVivaGpu.cs, ya traducido), directo
                         PintaFoco(foco, "12 canciones \u00B7 38 min", "12 \u00B7 38 min", fam);
                     Size tam = TamanoFicha(Math.Max(120, w / 6), Math.Max(100, (h - 200) / 3));
-                    using (Bitmap ficha = new Bitmap(tam.Width, tam.Height, PixelFormat.Format32bppPArgb))
+                    using (SKBitmap ficha = Mapas.Nuevo(tam.Width, tam.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); PintaFicha (PantallaVivaGpu.cs, ya traducido), directo
                         PintaFicha(ficha, null, "Artista de relleno", "Disco de relleno", "12 canciones \u00B7 38 min", "Pop", Color.FromArgb(120, 160, 255), 1,
                             true, new string[] { "Cancion uno", "Cancion dos", "Cancion tres" }, new string[] { "3:41", "4:02", "2:58" }, new int[] { 5, 3, 1 }, 12, fam);
                     break;
@@ -104,27 +104,27 @@ namespace Rocola
                 }
                 case 6:   // el aviso, la invitacion a meter una moneda, la moneda y su "+4 creditos"
                 {
-                    using (Font tit = new Font(fam, 14f, FontStyle.Bold))
-                    using (Font det = new Font(fam, 11f, FontStyle.Bold))
+                    using (Rocola.Nativo.Letra tit = Rocola.Nativo.Letra.EnPuntos(fam, 14f, true))   // EN LINUX: new Font(fam, 14, Bold): la Letra de esa familia, en puntos y en negrita (Nativo/Letras.cs; Form1 tiene un metodo Letra)
+                    using (Rocola.Nativo.Letra det = Rocola.Nativo.Letra.EnPuntos(fam, 11f, true))   // EN LINUX: new Font(fam, 11, Bold)
                     {
                         Size a = TamanoAviso(w, "Aviso de relleno", "con su renglon", tit, det);
-                        using (Bitmap aviso = new Bitmap(a.Width, a.Height, PixelFormat.Format32bppPArgb))
+                        using (SKBitmap aviso = Mapas.Nuevo(a.Width, a.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); TamanoAviso y PintaAviso (SuenaVivoGpu.cs, ya traducido), directo
                             PintaAviso(aviso, TipoAviso.Hecho, "Aviso de relleno", "con su renglon", tit, det);
                     }
-                    using (Font tit = new Font(fam, 17f, FontStyle.Bold))
-                    using (Font txt = new Font(fam, 12.5f, FontStyle.Bold))
-                    using (Font pie = new Font(fam, 10.5f, FontStyle.Bold))
+                    using (Rocola.Nativo.Letra tit = Rocola.Nativo.Letra.EnPuntos(fam, 17f, true))   // EN LINUX: new Font(fam, 17, Bold)
+                    using (Rocola.Nativo.Letra txt = Rocola.Nativo.Letra.EnPuntos(fam, 12.5f, true))   // EN LINUX: new Font(fam, 12,5, Bold)
+                    using (Rocola.Nativo.Letra pie = Rocola.Nativo.Letra.EnPuntos(fam, 10.5f, true))   // EN LINUX: new Font(fam, 10,5, Bold)
                     {
                         Size t = TamanoInvita(w);
                         PointF ranura; float radio;
-                        using (Bitmap invita = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb))
+                        using (SKBitmap invita = Mapas.Nuevo(t.Width, t.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); PintaInvita (SuenaVivoGpu.cs, ya traducido), directo
                             PintaInvita(invita, "Cancion de relleno", false, 4, tit, txt, pie, out ranura, out radio);
                     }
-                    using (Bitmap moneda = GpuPanel.BakeMoneda(96)) { }
-                    using (Font mas = new Font(fam, 14f, FontStyle.Bold, GraphicsUnit.Pixel))
+                    using (Rocola.Dibujo2D.Bitmap moneda = GpuPanel.BakeMoneda(96)) { }   // EN LINUX: BakeMoneda (SuenaVivoGpu.cs) todavia entrega un Bitmap de la capa (para Upload), escrito entero
+                    using (Rocola.Nativo.Letra mas = Rocola.Nativo.Letra.EnPixeles(fam, 14f, true))   // EN LINUX: new Font(fam, 14, Bold, GraphicsUnit.Pixel): en pixeles
                     {
                         Size m = TamanoMas("+4 cr\u00E9ditos", mas);
-                        using (Bitmap bm = new Bitmap(m.Width, m.Height, PixelFormat.Format32bppPArgb))
+                        using (SKBitmap bm = Mapas.Nuevo(m.Width, m.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); TamanoMas y PintaMas (SuenaVivoGpu.cs, ya traducido), directo
                             PintaMas(bm, "+4 cr\u00E9ditos", mas);
                     }
                     break;

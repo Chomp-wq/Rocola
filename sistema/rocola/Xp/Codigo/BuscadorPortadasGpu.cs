@@ -769,16 +769,16 @@ namespace Rocola
                 int d = Math.Max(14, Px(22, s)), dd = Math.Max(12, Px(18, s)), fl = Math.Max(12, Px(20, s));
                 float gap = Px(8, s), grp = Px(22, s), x = r.Ayudas.X;
                 StoreHintGlow(SMover, x, cy, d);
-                x = CtrlPadPortadas(g, suave, ajuste, copia, medio, x, cy, d);   // EN LINUX: CtrlPad (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs)
-                x = CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "Mover", x + gap, cy, AyudaTinta) + grp;   // EN LINUX: CtrlTxt (Form1.Pared.cs) pinta con un Graphics y una Font: por el puente (Plataforma/Puente.buscador-portadas.cs)
+                x = CtrlPad(g, suave, ajuste, copia, medio, x, cy, d);   // EN LINUX: CtrlPad (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                x = CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "Mover", x + gap, cy, AyudaTinta) + grp;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                 StoreHintGlow(SPoner, x, cy, dd);
-                x = CtrlDotPortadas(g, suave, ajuste, copia, medio, x, cy, dd, SGreen);   // EN LINUX: CtrlDot (Form1.Pared.cs), por el puente (Plataforma/Puente.buscador-portadas.cs)
-                x = CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "Poner / Elegir", x + gap, cy, AyudaTinta) + grp;   // EN LINUX: CtrlTxt, por el puente (Plataforma/Puente.buscador-portadas.cs)
+                x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, dd, SGreen);   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                x = CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "Poner / Elegir", x + gap, cy, AyudaTinta) + grp;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                 StoreHintGlow(SCerrar, x, cy, dd + 3 + fl + Px(12, s));
-                x = CtrlDotPortadas(g, suave, ajuste, copia, medio, x, cy, dd, SRed) + 3;   // EN LINUX: CtrlDot, por el puente (Plataforma/Puente.buscador-portadas.cs)
-                x = CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "+", x, cy, AyudaTinta) + 3;   // EN LINUX: CtrlTxt, por el puente (Plataforma/Puente.buscador-portadas.cs)
+                x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, dd, SRed) + 3;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
+                x = CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "+", x, cy, AyudaTinta) + 3;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
                 x = FlechaArribaPortadas(g, suave, ajuste, copia, medio, x, cy, fl, SRed);   // EN LINUX: FlechaArriba (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs)
-                CtrlTxtPortadas(g, suave, ajuste, copia, medio, fnAyuda, "Cerrar", x + gap, cy, AyudaTinta);   // EN LINUX: CtrlTxt, por el puente (Plataforma/Puente.buscador-portadas.cs)
+                CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "Cerrar", x + gap, cy, AyudaTinta);   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
             }
 
             // ======================================================================================================
