@@ -307,7 +307,7 @@ namespace Rocola
             // El circulito del numero crece con la fila (con la de siempre se queda en 11 px de radio).
             internal static float RadioGrande(int fila) { return Math.Min(20f, fila * .29f); }
             // El hueco de la duracion con la letra grande: lo que mide "00:00" (con la de siempre bastan 58 px).
-            private int AnchoDuracion(SKCanvas g, AjusteLetra ajuste)   // EN LINUX: el lienzo y su modo de letra (con el que mide AnchoTexto); PintaPagina (Form1.Vistas.cs, aun sin traducir) llega con su Graphics por el puente (Plataforma/Puente.pantalla-viva.cs)
+            private int AnchoDuracion(SKCanvas g, AjusteLetra ajuste)   // EN LINUX: el lienzo y su modo de letra (con el que mide AnchoTexto); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo con su lienzo
             {
                 float c = Font.SizeInPoints;
                 if (Math.Abs(c - durCuerpo) > 0.01f) { durAncho = Math.Max(58, AnchoTextoPantallaViva(g, ajuste, "00:00", Font) + 4); durCuerpo = c; }   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics: uno sobre el mismo lienzo con su modo de letra, por el puente
@@ -321,7 +321,7 @@ namespace Rocola
             // Devuelve el texto de la pastilla de la cola (null si no esta pedida); 'gen' vuelve vacio si se calla.
             internal const float TituloMinimo = .30f;
             private bool generosFuera;   // lista grande: esta pagina va sin pastillas de genero
-            private string PlanFilaGpu(SKCanvas g, AjusteLetra ajuste, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina llega con su Graphics por el puente
+            private string PlanFilaGpu(SKCanvas g, AjusteLetra ajuste, int idx, int pos, bool enCola, bool suena, Rectangle r, int durW, float xTexto, int hCola, ref string gen)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 bool grande = (Vivo & VivoGrande) != 0;
                 if (grande && generosFuera) gen = null;
@@ -343,7 +343,7 @@ namespace Rocola
             // en todas el titulo cabe entero con su genero al lado; una fila sin genero entre otras que lo llevan haria
             // pensar que esa cancion es de otra cosa. Mira la pagina de verdad (PageStart), tambien cuando se hornea
             // solo la fila elegida: si no, la elegida podria decidir distinto que las demas.
-            private void PlanPaginaGpu(SKCanvas g, AjusteLetra ajuste, int rpp, int n, int w, float xTexto, int hCola)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina llega con su Graphics por el puente
+            private void PlanPaginaGpu(SKCanvas g, AjusteLetra ajuste, int rpp, int n, int w, float xTexto, int hCola)   // EN LINUX: el lienzo y su modo de letra (solo mide); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 generosFuera = false;
                 for (int row = 0; row < rpp; row++)
@@ -397,7 +397,7 @@ namespace Rocola
             }
             // La pastilla de SONANDO con el hueco del ecualizador a la izquierda: las barritas las pone la tarjeta
             // encima, en su sitio (eqX/eqW/eqH, relativo a la fila). Devuelve lo que ocupa, como la de siempre.
-            private int PastillaSonandoEq(SKCanvas g, AjusteLetra ajuste, Filtro filtro, bool copia, bool medio, int idx, ref float xMarca, float cy, int hCola)   // EN LINUX: el lienzo y lo que pesa de su estado (el modo de letra, el filtro, la copia y el medio pixel; el suavizado no lo usan la pastilla ni el texto); PintaPagina llega con su Graphics por el puente
+            private int PastillaSonandoEq(SKCanvas g, AjusteLetra ajuste, Filtro filtro, bool copia, bool medio, int idx, ref float xMarca, float cy, int hCola)   // EN LINUX: el lienzo y lo que pesa de su estado (el modo de letra, el filtro, la copia y el medio pixel; el suavizado no lo usan la pastilla ni el texto); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo
             {
                 const string t = "SONANDO";
                 int barra, hueco, pad, sep; MedidasEq(hCola, out barra, out hueco, out pad, out sep);
