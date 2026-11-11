@@ -68,6 +68,10 @@ y `GraphicsAsistente` (`Puente.asistente.cs`) y `CtrlPadPortadas`, `CtrlDotPorta
   texturas quietas distintas salen idénticas**; las cinco que no (`2a697d30…` y `2f591363…` de `pared2`, `8cd9108c…` y `e843916c…` del
   buscador, `a9dc2d55…` de `ayuda`) son de la hora y tampoco salen en 26 a 43 de las más de 50 corridas guardadas de la referencia y de
   los grupos ya juntados (`/root/rocola-trabajo/port/pared/union.py`). `atraccion`: 32 de 32 y 10 de 10 capas.
+  Repaso con el código del último commit (`rev/cmp`: `pared`, `pared2`, `atraccion`, `botones`, carga 8 a 11): los cuatro salen con 0 y
+  sin excepciones; contenidos quietos distintos 173 de 179 (`atraccion` 27 de 27, `botones` 27 de 27, `pared` 56 de 58 —dos de 512×256
+  a los 7,9 y 15,7 s, con «Pantalla parada» de 1 s en `rocola_error.txt`—, `pared2` 63 de 67); juntando las tres corridas, `pared` 58 de
+  58 y el total sigue en 376 de 381.
 - **(d) Arnés** (`Pruebas/VistasPared/arnes.sh`): **1 715 líneas iguales a la referencia congelada con las dos letras** (1 714 casos, 673
   llamadas directas a la traducida): el cubo con nueve estados del `Graphics`, las ayudas, las casillas (por procesador, para la tarjeta,
   por separado, chicas), el atlas, el contorno, la paleta en cada formato, el precalentado y los tres `OnPaint` con el estado que le dejan
