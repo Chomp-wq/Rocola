@@ -878,7 +878,7 @@ Todo con el programa de 1cc6ccb (la rama principal 48aedf3 juntada: los ocho gru
 - `Plataforma/Puente.ventanas2.cs` (las firmas de XP de `AnchoTexto`, `CreaSfDibuja` y `AnchoToast`): hasta traducir Form1.Vistas.cs,
   DiscoVivoGpu.cs y el aviso sin tarjeta de Form1.cs.
 - Las baterias de XP de esta ventana (arriba): decidir, cuando Form1 no herede de Form, si se reescriben contra las piezas.
-- Medir el ruido de `f3billar` (seis corridas de la referencia) para que su veredicto no dependa de la holgura de fabrica.
+- ~~Medir el ruido de `f3billar`~~: hecho en la revision (abajo), con el de `f3raton`.
 
 ### Riesgos
 
@@ -895,3 +895,89 @@ Todo con el programa de 1cc6ccb (la rama principal 48aedf3 juntada: los ocho gru
 - Las baterias de XP de esta ventana no se corren contra el programa traducido (arriba, por que); lo que fijan se mira por los volcados.
 - No hay medida en el A4 de cuanto tarda en pintarse la hoja de Ctrl+F3 (`ROCOLA_MIDE_HOJA=1` lo apunta).
 
+### Revision (revisor independiente, 11-11-2026)
+
+Se reviso el paso entero (659d38c, 4897bca, 7cab6e6, 343ce4b y los merges b48af75, d46b52f, 1cc6ccb y 5974462) contra `Rocola/` (XP),
+contra la fuente de WinForms (`/tmp/claude-0/agente-winforms/ref`) y contra la capa que sustituye, y se repitieron las comprobaciones con
+etiquetas propias (RV3/V3 y RV3A/V3A: la referencia y este programa en JIT y en NativeAOT; RV4, RV5 y RVR1-3 para lo de despues) en
+`/root/rocola-trabajo/port/ventanas2/rvC2`. Un primer intento de esta revision (RVC2/VC2, `rvC`) quedo cortado por un reinicio de la
+maquina; de el venian, sin commit, la escena `f3raton`, una `f3histsigterm` y dos ajustes de `compara_medir.py`, revisados aqui.
+
+Lo comprobado en el codigo:
+
+- Lo que queda de WinForms y GDI+ en los archivos del paso (grep de Keys, Message, KeyEventArgs, Form, Control, Label, Panel, Button,
+  ListBox, MessageBox, Cursor, Screen, Application, Invoke, IsHandleCreated, ShowDialog... fuera de los comentarios): en Form1.Ajustes.cs,
+  Rendimiento.cs, AjustesVivos.cs, HojasFondo.cs, FluidezAnimaciones.cs, PantallaVivaGpu.cs, FluidezGpu.cs y Form1.DiagnosticoCompleto.cs,
+  nada de las hojas (lo que queda es de Form1, de sus letreros y del panel de la tarjeta, como dice arriba; `dlg.IsHandleCreated` es el de
+  la hoja nativa: la vida de su ventana); en CaratulasAdaptativas.cs, el `Bitmap`/`Graphics` de `Small`, `ToBytes` y `FromBytes` (las
+  miniaturas de las caratulas: dibujo, no ventanas). `Controls.Add` en el armado es el de las piezas nativas (lo pide el diseno: esas
+  lineas solo cambian de tipo).
+- Linea por linea contra XP, quitando lo mecanico (Label/Panel/Font/Control/ContentAlignment/Keys por su nombre nativo): solo cambian las
+  llamadas a WinForms y GDI+ por su equivalente, cada una con su «EN LINUX»; los mismos valores y el mismo orden (el Escape de la hoja se
+  suscribe antes que la moneda, como en XP; `FindForm` -> la hoja de la caja; `Cursor.Hide` en su `try/catch`). Las lineas sin marca de
+  `diff-xp.py -v` son las de antes (9 de Form1.Ajustes.cs de la pista windows y 2 de Form1.Vistas.cs). Los 51 archivos de `Codigo/`
+  cambiados desde a6eba8b: las mismas lineas y el CR en las mismas, linea por linea.
+- Las reglas de las piezas contra la fuente: la del foco corregida en `Hoja.Foco.cs` es la de `SelectNextIfFocused` con
+  `ParentInternal.GetContainerControl()` (Control.cs:10770-10784 y 5825-5840; un Form es contenedor y empieza por su padre, que no tiene:
+  con la pieza directo en la hoja, el foco se queda); `IPieza.Clic` del boton plano, con cualquier boton y al soltar encima
+  (WmMouseUp con StandardClick); el raton abajo solo con la pieza encendida (WmMouseDown, Control.cs:12578-12583, y lo vuelve a mirar el
+  codigo de XP); la tarjeta suelta su letra y despues el grupo (Dispose(bool) virtual: `CajaPieza.Desecha` desecha a las hijas por su
+  IDisposable); la barra de avance sigue siendo Selectable como un Control (la caja lo es de fabrica). El apagado con DOS modales encima
+  (la escena nueva `f3histsigterm`, abajo): cada hoja su `closing` con WindowsShutDown, despues la rocola da FormOwnerClosing a las suyas de
+  la ultima a la primera (el historial tambien es suyo: XP lo abre con `ShowDialog(this)` desde Form1) y su propio closing, como
+  `Form.WmClose` (Form.cs:6638-6715: un modal solo se avisa a si mismo; el que no es modal, a sus OwnedForms al reves y luego a si mismo).
+- Sin la API de WinForms en lo nuevo (`PiezasAjustes.cs` da a cada pieza solo lo que su codigo de XP usa; `Grupo` gano Name, Bounds,
+  Location, Size, Width, Height y TabIndex porque Ctrl+F3 los pone). `AccessibleName/Role/Description` en comentario: el PROGRAMA de XP no
+  los lee nunca (grep en `Rocola/*.cs`); las baterias de XP si (`pruebas/ajustesfluidez.cs:20`, `hojasfondo.cs:24`, `performance.cs:1205`,
+  `efectoslayout.cs:41` buscan controles por el): si algun dia se reescriben contra las piezas, tendran que buscar por `Name` o por el texto.
+- Las baterias de XP (`ventanaf3.cs`, `pestanas.cs`, `ajustesvivos.cs`, `hojasfondo.cs`, `performance.cs`): confirmado que no se pueden
+  correr cambiando solo sus busquedas (crean Form1 con IL llamando al constructor de `System.Windows.Forms.Form`, pintan con
+  `Bitmap`/`CreateGraphics` y recorren `Control.Controls`).
+
+Lo encontrado y lo hecho (nada del programa: todo del banco):
+
+1. **`f3histsigterm` no abria el historial** (del primer intento de esta revision, sin commit): pulsaba «Comparar perfiles» recien abierto
+   Ctrl+F3, pero ese boton solo se enciende con algo medido (`bHistorial.Enabled = historialCaratulas.Count > 0`, Rendimiento.cs:1619): el
+   clic caia en la pagina y el SIGTERM llegaba con UNA sola hoja. Ahora (`vistas_f3.py histsigterm`) pasa antes por «Medir este equipo»
+   (como f3medir, 115 s), abre el historial encima de Ctrl+F3, mete una moneda con el abierto y manda el SIGTERM. Se compara con
+   `compara_medir.py` (el historial ensena lo medido).
+2. **`compara_medir.py` daba DIFERENTE por lo medido** (VC2: 7305 puntos «fuera de lo medido» y «Aplicar lo recomendado» encendido en uno
+   y apagado en otro): el color de cada celda de la tabla sale de lo que costo frente al objetivo (Rendimiento.cs:1857-1858) y el
+   encendido de «Aplicar lo recomendado», de si la propuesta cambia algo (`PropuestaCambiaAlgo`, 1917-1921); las dos cosas son de lo medido
+   aunque el numero coincida. Ahora las celdas de la tabla cuentan como cajas de lo medido y ese boton puede ir encendido o no. Con las
+   mismas capturas de VC2: 0 puntos fuera de lo medido; con las de V3 y V4: 0.
+3. **El ruido de `f3raton` y `f3billar`** (pendiente del paso): la referencia tres veces mas (RVR1-3) junto a las corridas que habia (7 y 6
+   corridas): `ruido/f3raton.json` (holgura 7 ticks y 14 encargos por segundo) y `ruido/f3billar.json` (10 y 12). Con el: f3raton (JIT y
+   NativeAOT) y f3billar (JIT) IGUALES.
+4. Dos diferencias de la primera ronda que eran de la maquina, repetidas: `tab` (VC2, carga 5,8: el repaso de la biblioteca iba por 10
+   de 12 en este programa y ya al dia en la referencia, «faltan 3 archivos») salio IGUAL en V3; `f3grises` (V3, carga 10: el estado «fin»
+   se pidio antes de que llegara el Escape) salio IGUAL en V5 y en NativeAOT (V3A).
+5. Los commits 4897bca, 7cab6e6 y 343ce4b llevan «Co-Authored-By: Claude Fable 5.2» y no la linea que pedia la tarea; no se reescribe la
+   historia de la rama (solo merges): queda dicho aqui.
+
+Las comprobaciones repetidas (11-11-2026, de 19:12 a 20:18, carga de 5 a 10, llvmpipe, despues de un reinicio de la maquina):
+
+- Compila (5974462, con d320c7a de la rama principal juntada; no avanzo despues): 0 errores y 15 avisos, la misma lista archivo:linea
+  que la base.
+- Las 41 pruebas de la capa: 41 de 41. Las de la hoja: 62 de 62 en JIT y en NativeAOT (0 avisos al publicarlas). Las de la pantalla
+  (AOT=1): 32 de 32 en JIT y en NativeAOT (los 2 CS0649 de siempre).
+- NativeAOT del programa: 0 avisos de IL ni de AOT (los 15 de compilacion de siempre); a su `rocola-xp` se le pone la fecha de `dotnet`
+  para comparar el titulo de Ctrl+F3.
+- Escenas alternadas con `ref-trazas`, JIT (RV3/V3, 23 escenas; f3grises otra vez en RV5/V5): arranque, moneda, tab, buscador, cierreq,
+  altf4, kill9, video, f2, aviso, avisoviejo (las dos pastillas a 0 puntos; sus cuentas, dentro con el ruido de `aviso`: sin
+  el, 5 ticks de mas en el total), f3vistas (80 capas a 0, 27 estados; `bateria_f3.py` 3017
+  comprobaciones bien en los dos), f3grises (29 y 8), f3teclas (8 y 4), f3requisitos (17 y 6, config igual), f3guarda (3 y 2, config
+  igual tras SIGKILL), f3diag (5 y 2) y f3medir (0 puntos fuera de lo medido en 5 capas, las mismas piezas, sitios y foco en 6 estados)
+  IGUALES; f3billar (17 y 6) y f3raton (11 y 8) IGUALES con su ruido; sigterm y f3sigterm, lo aceptado (`rocola_estado.txt` esta en la
+  referencia y falta aqui); kill9, el estado queda en los dos.
+- `f3histsigterm` (RV4/V4 JIT y RV4A/V4A NativeAOT): la misma secuencia hasta el SIGTERM (52 sucesos), el estado con el historial abierto
+  con las mismas piezas, sitios y foco (40 y 39 textos de lo medido), las dos capas (Ctrl+F3 y el historial) con 0 puntos fuera de lo
+  medido; despues, lo aceptado: encargo Apagado, closing del historial y de Ctrl+F3 con WindowsShutDown, FormOwnerClosing a los dos (el
+  historial primero), closing de la rocola, closed de cada uno, los dos modales acaban con Cancel y `rocola_estado.txt` (con la moneda
+  metida en el historial) borrado; en la referencia queda.
+- NativeAOT (RV3A/V3A): arranque, cierreq, kill9, f3vistas (80 y 27, bateria bien), f3teclas, f3grises IGUALES; f3raton IGUAL con su
+  ruido; sigterm y f3sigterm, lo aceptado.
+- `diff-xp.py -v` en los 10 archivos: lo de arriba. La carpeta de trabajo (`/root/rocola-trabajo/port/ventanas2`) queda por debajo
+  de 400 MB (los PNG, borrados despues de comparar).
+
+Lo que queda de la revision: nada del programa. Lo de arriba («Lo que queda» y «Riesgos») sigue igual, con el ruido de f3billar ya medido.
