@@ -6,8 +6,9 @@
 #  - la SECUENCIA de la traza (teclas, raton, foco, hojas que se abren y se cierran, dialogos): igual;
 #  - cada ESTADO: las mismas hojas y las mismas piezas, cada una con su clase, su sitio, si se ve, si esta encendida, su orden y el foco;
 #    el texto puede cambiar solo en las piezas de lo medido (se listan cuantas), y «escrito=» (Medir deja o no una letra en el buscador
-#    segun cual fue la peor pantalla);
-#  - cada CAPA de una hoja: punto por punto igual FUERA de las cajas de las piezas cuyo texto cambio (lo medido).
+#    segun cual fue la peor pantalla); y si «Aplicar lo recomendado» esta encendido (lo enciende la propuesta, que sale de lo medido);
+#  - cada CAPA de una hoja: punto por punto igual FUERA de las cajas de las piezas cuyo texto cambio (lo medido) y de las celdas de la
+#    tabla de lo medido (su color sale de lo medido aunque el numero coincida).
 import sys, os, re, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compara_trazas import equivalentes
@@ -16,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 PIEZA = re.compile(r"^( +)(\S+?)(?:'(.*)')? @(-?\d+),(-?\d+),(\d+)x(\d+) (.*)$", re.S)
+CELDA = re.compile(r"^(\d+(\.\d+)? ms|\d+|-)$")
 HOJA = re.compile(r"^hoja (\S+?)'(.*)' @(-?\d+),(-?\d+),(\d+)x(\d+)$", re.S)
 
 def lineas(ruta):
@@ -35,8 +37,16 @@ def compara_estado(la, lb, cajas):
         pa, pb = PIEZA.match(a), PIEZA.match(b)
         if pa and pb:
             ga, gb = pa.groups(), pb.groups()
-            if ga[:2] + ga[3:] != gb[:2] + gb[3:]: mal.append(a.strip() + " | " + b.strip()); continue
+            # (revision del paso C) «Aplicar lo recomendado» se enciende solo si la propuesta cambia algo (PropuestaCambiaAlgo, Rendimiento.cs:
+            # 1917-1921), y eso sale de lo medido: su encendido (y su color) es de lo medido, como un texto
+            aplica = ga[1] == gb[1] == "BotonPlano" and ga[2] == gb[2] == "Aplicar lo recomendado" and ga[3:7] == gb[3:7] \
+                and ga[7].replace("e", "-", 1) == gb[7].replace("e", "-", 1)
+            if ga[:2] + ga[3:] != gb[:2] + gb[3:] and not aplica: mal.append(a.strip() + " | " + b.strip()); continue
             s = len(ga[0]); x, y, w, h = (int(v) for v in ga[3:7])
+            if aplica and ga[7] != gb[7]: ga = ga[:2] + (None,) + ga[3:]
+            # (revision del paso C) las celdas de la tabla de lo medido (milisegundos, cuadros por segundo o «-») van del color de lo que
+            # costo frente al objetivo (Rendimiento.cs:1857-1858: cBien, cProp o cMal): con el mismo numero el color puede ser otro
+            if ga[1] in ("Label", "Rotulo") and ga[2] is not None and CELDA.match(ga[2]) and hoja is not None: cajas[hoja].append((ox + x, oy + y, w, h))
             while pila and pila[-1][0] >= s: pila.pop()
             ox, oy = (pila[-1][1], pila[-1][2]) if pila else (3, 29)   # el cliente de la hoja dentro de su capa: borde de 3 y barra de 26
             pila.append((s, ox + x, oy + y))

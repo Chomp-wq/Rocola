@@ -52,6 +52,11 @@
 #             «Comparar perfiles» abre el historial de caratulas (otra hoja encima), la moneda con el abierto, Escape lo cierra y Escape
 #             cierra Ctrl+F3. Se compara con compara_medir.py (lo medido sale distinto en dos corridas del mismo programa)
 #   f3diag    «Diagnostico completo» (Imagen): la hoja se cierra, empieza el diagnostico y una tecla lo corta (la hoja no vuelve)
+#   f3raton   (revision del paso C) la rueda y las teclas con Ctrl, Alt y Mayus en un deslizador; el doble clic de XP en un interruptor, en
+#             un boton plano y en un boton que cambia de hoja; el raton que entra y sale; y con el modo billar, clics, Tab y el raton en lo gris
+#   f3histsigterm  (revision del paso C) SIGTERM con el historial de caratulas abierto encima de Ctrl+F3 (dos modales anidados; el boton
+#             solo se enciende tras medir, asi que antes «Medir este equipo», como f3medir) y una moneda con el abierto: el apagado cierra las
+#             dos hojas y la rocola (WindowsShutDown) y rocola_estado.txt debe faltar; en la referencia, la diferencia aceptada
 #   avisoviejo  (datos de datos_h.sh con avisos_claros=0) dos monedas: el aviso de siempre (HorneaToast y PintaToastHasta de Form1.Ajustes.cs,
 #             traducidos en el paso C) en la capa de la tarjeta, a medio segundo de cada moneda (compara_aviso.py mira su pastilla)
 G=$(dirname "$(readlink -f "$0")")
@@ -81,8 +86,8 @@ for e in $esc; do
     aviso)     CORRIDA=v2h-aviso SIN_DATOS=1 ESTADO="2.5:aviso,9:rocola" "$G/corre.sh" "$prog" "$et-$e" "3:32~300" "2.95:a1,9.5:fin" 14 ROCOLA_CAPTURA_CAPAS=1 ;;
     f2sigterm) CORRIDA=v2h-f2sigterm SALE=0 SENAL=TERM ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67,8:17+113" "" 10 ;;
     f2agrega)  CORRIDA=v2h-f2agrega ROCOLA_CARPETAS_RAIZ="$DH/arbol" ESTADO="8.3:selector,10.3:elegida,12:hoja" "$G/corre.sh" "$prog" "$et-$e" "7:17+113,7.6:9,8:32,8.6:39,8.9:40,9.2:39,9.5:40,10.6:13,12.5:clic:770:529" "8.5:g1,10.1:g2,11.5:g3,13.5:fin" 16 ROCOLA_CAPTURA_CAPAS=1 ROCOLA_CARPETAS_RAIZ="$DH/arbol" ;;
-    f3vistas|f3grises|f3billar|f3teclas|f3requisitos|f3diag|f3medir|f3guarda)
-               v=$(python3 "$G/vistas_f3.py" ${e#f3} ${MEDIR_ESPERA:-}); [ $e = f3guarda ] && export SALE=0 SENAL=KILL
+    f3vistas|f3grises|f3billar|f3teclas|f3requisitos|f3diag|f3medir|f3guarda|f3raton|f3histsigterm)
+               v=$(python3 "$G/vistas_f3.py" ${e#f3} ${MEDIR_ESPERA:-}); [ $e = f3guarda ] && export SALE=0 SENAL=KILL; [ $e = f3histsigterm ] && export SALE=0 SENAL=TERM
                ESTADO="$(echo "$v" | sed -n 4p)" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1
                unset SALE SENAL ;;
     avisoviejo) DATOS0="$DH/avisoviejo" ESTADO="8.2:a" "$G/corre.sh" "$prog" "$et-$e" "7:67,9:67" "7.55:a1,9.55:a2,11:fin" 14 ROCOLA_CAPTURA_CAPAS=1 ;;

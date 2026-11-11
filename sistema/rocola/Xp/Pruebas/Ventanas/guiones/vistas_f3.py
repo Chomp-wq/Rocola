@@ -1,7 +1,7 @@
 import sys
 # (ventanas2, paso C) Los pasos de las escenas de Ctrl+F3 (escenas.sh): que se pulsa y cuando (ROCOLA_PULSA), que capturas (ROCOLA_CAPTURA)
 # y en que momentos se vuelca el estado de XP y de cada pieza (ROCOLA_ESTADO_EN).
-#   python3 vistas_f3.py vistas|grises|billar|teclas|requisitos|guarda|diag|medir [SEGUNDOS_QUE_ESPERA_A_MEDIR]
+#   python3 vistas_f3.py vistas|grises|billar|teclas|requisitos|guarda|diag|medir|raton|histsigterm [SEGUNDOS_QUE_ESPERA_A_MEDIR]
 #     -> cuatro lineas: PULSA, CAPTURAS, los segundos que dura y ESTADO
 # Las coordenadas son de la pantalla de 1024x768: la hoja de 966x764 va en (29,2) y su cliente empieza en (32,31); cada boton por su centro,
 # sacado de su SetBounds en Form1.Ajustes.cs, Rendimiento.cs, FluidezAnimaciones.cs, HojasFondo.cs y PantallaVivaGpu.cs.
@@ -95,6 +95,41 @@ elif modo == "medir":
     clic(HISTORIAL, "m3historial", sep=1.7); estado("historial"); tecla("67", sep=1.2); estado("moneda")
     tecla("27", "m4sinhistorial", sep=1.7); estado("sinhistorial")
     fin()
+elif modo == "raton":
+    # (revision del paso C) lo del raton y de las teclas con modificador que las otras escenas no pisan, con las piezas de Ctrl+F3:
+    #  - la rueda con el foco en un deslizador (nadie la atiende: sube hasta la hoja); Ctrl+Izquierda y Alt+Izquierda (no son teclas de
+    #    dialogo: llegan al KeyDown del deslizador), Intro y Espacio (nada) y Mayus+Derecha (no es IsInputKey: la flecha mueve el foco);
+    #  - dos clics seguidos (el doble clic de XP) en un interruptor (cambia dos veces: cuenta el boton al bajar), en un boton plano
+    #    (un Click y un DoubleClick, que nadie escucha; el tercero es otro Click) y en un boton que cambia de hoja (el segundo cae en otra
+    #    pieza: dos clics normales);
+    #  - el raton encima de un boton, fuera de la hoja y encima de «Listo» (entra y sale);
+    #  - con el modo billar: clic en un interruptor en gris (no le llega: lo recibe su tarjeta), clic en un deslizador que si esta
+    #    encendido, Tab y Mayus+Tab saltando lo gris, y el raton encima de lo gris.
+    INT = (214, 462); DESL = (100, 496); SSD = (622, 724); AUTO = (501, 724); LISTO = (906, 730); FUERA = (5, 400)
+    clic(DESL, sep=0.8); paso("rueda:-1", None, 0.5); paso("rueda:1", None, 0.5); estado("rueda", 0.1); t[0] += 0.3
+    for vk in ["17+37", "18+37", "13", "32", "16+39"]: tecla(vk, sep=0.6)
+    estado("modificadores", 0.1); t[0] += 0.3
+    clic(INT, sep=0.2); clic(INT, sep=1.0); estado("dobleinterruptor", 0.3)
+    clic(SSD, sep=0.2); clic(SSD, sep=0.2); clic(SSD, sep=1.0); estado("dobleboton", 0.3)
+    clic(AUTO, sep=1.0)
+    paso("raton:%d:%d" % AUTO, None, 0.5); paso("raton:%d:%d" % FUERA, None, 0.5); paso("raton:%d:%d" % LISTO, "r1encima", 1.5)
+    clic(AJUSTES, sep=0.2); clic(AJUSTES, sep=1.2); estado("doblehoja", 0.3); c.append((t[0] - 0.2, "r2doblehoja")); t[0] += 0.3
+    tecla("27"); tecla("17+114", sep=1.5)
+    clic(BILLAR); clic(AJUSTES); clic(LOCAL, sep=1.0)
+    clic((164, 184), sep=0.8); clic((276, 441), sep=0.8); estado("gris", 0.2)
+    for k in range(6): tecla("9", sep=0.4)
+    for k in range(2): tecla("16+9", sep=0.4)
+    t[0] += 0.4; estado("tabgris", 0.1); t[0] += 0.3
+    paso("raton:%d:%d" % (164, 184), "r3gris", 1.6)
+    fin()
+elif modo == "histsigterm":
+    # (revision del paso C) SIGTERM con dos modales anidados: «Comparar perfiles» solo se enciende con algo medido (Rendimiento.cs:1619),
+    # asi que primero «Medir este equipo» como en f3medir; de vuelta, el historial de caratulas encima de Ctrl+F3, una moneda con el abierto
+    # (MonedaTambienAqui de la hoja de encima) y, unos 2 s despues del estado, el SIGTERM (escenas.sh: SALE=0 SENAL=TERM al acabar)
+    v = float(sys.argv[2]) if len(sys.argv) > 2 else 115.0
+    clic(PEST["imagen"], sep=1.5); clic(MEDIR)
+    t[0] = 10.0 + v + 1.0
+    clic(HISTORIAL, "h1historial", sep=1.7); tecla("67", sep=1.2); estado("historial", 0.3); t[0] -= 2.0
 def lista(l): return ",".join("%.1f:%s" % (x + ESPERA, n) for x, n in l)
 print(lista(p))
 print(lista(c))
