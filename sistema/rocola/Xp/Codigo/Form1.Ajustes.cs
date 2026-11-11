@@ -280,21 +280,21 @@ namespace Rocola
         // Aqui se mide SIEMPRE con el mismo formato con el que se dibuja, sin ancho maximo (para que no
         // parta ni recorte al medir), y se redondea HACIA ARRIBA: una caja un pixel de mas no se ve; uno de
         // menos, si.
-        private static readonly StringFormat SfMedir = CreaSfMedir();
-        private static StringFormat CreaSfMedir()
+        private static readonly FormatoTexto SfMedir = CreaSfMedir();   // EN LINUX: StringFormat -> FormatoTexto (Nativo/TextoGdiPlus.cs: como acomoda GDI+ un texto en su caja)
+        private static FormatoTexto CreaSfMedir()   // EN LINUX: StringFormat -> FormatoTexto
         {
-            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
-            sf.FormatFlags |= StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces;
+            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento (el mismo objeto que StringFormat.GenericTypographic de lo aun no traducido: Plataforma/Puente.cs)
+            sf.Banderas |= BanderasTexto.SinPartir | BanderasTexto.ContarEspacios;   // EN LINUX: FormatFlags |= NoWrap | MeasureTrailingSpaces (las anade; los mismos numeros)
             return sf;
         }
-        private static int AnchoTexto(Graphics g, string t, Font f)
+        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra. La firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
         {
-            if (g == null || f == null || string.IsNullOrEmpty(t)) return 0;
+            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar; el Graphics que falta lo mira la firma de XP del puente
             // El formato tipografico mide el texto DESNUDO; DrawString con un formato normal le pone un poco
             // de aire a los lados. Ese aire se suma aqui (es proporcional al cuerpo) para que la caja calculada
             // aguante lo que de verdad se pinta.
-            float w = g.MeasureString(t, f, int.MaxValue, SfMedir).Width;
-            return (int)Math.Ceiling(w + f.SizeInPoints * 0.34f);
+            float w = TextoGdiPlus.Mide(t, f, g, new SizeF(int.MaxValue, 999999f), SfMedir).Width;   // EN LINUX: g.MeasureString(t, f, int.MaxValue, SfMedir): con un ancho, MeasureString mide en una caja de ese ancho y 999999 de alto (Graphics.cs de .NET; Nativo/TextoGdiPlus.cs)
+            return (int)Math.Ceiling(w + f.Puntos * 0.34f);   // EN LINUX: Font.SizeInPoints -> Letra.Puntos
         }
         // ...Y EL FORMATO CON EL QUE SE DIBUJA, que es la otra mitad de la misma regla.
         //
@@ -306,23 +306,23 @@ namespace Rocola
         // Este formato no recorta NUNCA y deja que un glifo asome del rectangulo. Asi, si la medida se queda
         // corta por un pixel, el texto se sale un pixel -que no se ve- en vez de perder una letra -que si se
         // ve-. Y se le quita el limite de linea, que si no una caja mas baja que la letra no pinta NADA.
-        private static StringFormat CreaSfDibuja(StringAlignment horiz)
+        private static FormatoTexto CreaSfDibuja(Alinea horiz)   // EN LINUX: StringFormat CreaSfDibuja(StringAlignment) -> FormatoTexto y Alinea (Near, Center y Far con sus numeros); la firma de XP, para lo aun no traducido (Form1.Vistas.cs), en Plataforma/Puente.ventanas2.cs
         {
-            StringFormat sf = new StringFormat(StringFormat.GenericTypographic);
-            sf.Alignment = horiz; sf.LineAlignment = StringAlignment.Center;
-            sf.FormatFlags |= StringFormatFlags.NoWrap;
-            sf.FormatFlags &= ~StringFormatFlags.LineLimit;
-            sf.Trimming = StringTrimming.None;
+            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento
+            sf.Horizontal = horiz; sf.Vertical = Alinea.Centro;   // EN LINUX: Alignment y LineAlignment = Center
+            sf.Banderas |= BanderasTexto.SinPartir;   // EN LINUX: FormatFlags |= NoWrap (la anade)
+            sf.Banderas &= ~BanderasTexto.SoloEnteros;   // EN LINUX: FormatFlags &= ~LineLimit (la quita)
+            sf.Corte = CorteTexto.Nada;   // EN LINUX: Trimming = None
             return sf;
         }
 
         // La misma medida cuando aun no hay un Graphics a mano (acomodo de controles).
-        private static int AnchoTexto(string t, Font f)
+        private static int AnchoTexto(string t, Rocola.Nativo.Letra f)   // EN LINUX: Font -> Letra (Nativo/Letras.cs); la firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
         {
             if (string.IsNullOrEmpty(t) || f == null) return 0;
-            using (Bitmap b = new Bitmap(1, 1))
-            using (Graphics g = Graphics.FromImage(b))
-                return AnchoTexto(g, t, f);
+            // EN LINUX: (XP) using (Bitmap b = new Bitmap(1, 1)) -- el mapa de 1x1 solo servia para tener un Graphics con que medir
+            // EN LINUX: (XP) using (Graphics g = Graphics.FromImage(b)) -- un Graphics recien hecho lleva el modo de letra de fabrica (TextRenderingHint.SystemDefault), que es lo unico suyo que mira la medida: va en la linea de abajo
+                return AnchoTexto(AjusteLetra.DelSistema, t, f);   // EN LINUX: el modo de letra de ese Graphics nuevo
         }
 
         // NIVEL <-> PALABRA. En el archivo de configuracion los niveles se escriben "alto", "medio" y "bajo"
@@ -1831,13 +1831,13 @@ namespace Rocola
         private const int ToastW = 620, ToastH = 48, ToastMinW = 260;
         // Ancho de la pastilla para ESE texto (acotado): lo usan las dos formas de dibujarla, por GPU y por CPU,
         // para que se vea igual en las dos.
-        internal static int AnchoToast(string text, Font font)
+        internal static int AnchoToast(string text, Rocola.Nativo.Letra font)   // EN LINUX: Font -> Letra; la firma de XP, para lo aun no traducido (Form1.cs, el aviso sin tarjeta), en Plataforma/Puente.ventanas2.cs
         {
-            int w = TextRenderer.MeasureText(text, font).Width + 44;
+            int w = TextoGdi.Mide(text, font).Width + 44;   // EN LINUX: TextRenderer.MeasureText(text, font): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms)
             return w < ToastMinW ? ToastMinW : (w > ToastW ? ToastW : w);
         }
 #if ROCOLA_GPU
-        private Bitmap toastBmp; private int toastVer, toastTick = -1, toastBorde;
+        private SKBitmap toastBmp; private int toastVer, toastTick = -1, toastBorde;   // EN LINUX: el mapa es un SKBitmap (Nativo/Mapas.cs)
 
         // LO QUE TAPA EL VIDEO (barrido del 12-10-2026). El cuadro de un video en ventana es una ventana de Windows ENCIMA
         // del panel de la tarjeta: lo que la tarjeta dibuje detras no se ve. Los avisos salian centrados (o a la derecha) y
@@ -1858,36 +1858,36 @@ namespace Rocola
         private void HorneaToast(string text, Color back)
         {
             if (AvisoClaro()) { HorneaAviso(text, back); return; }   // el aviso que se entiende (SuenaVivoGpu.cs)
-            if (toastBmp == null) toastBmp = new Bitmap(ToastW, ToastH, PixelFormat.Format32bppPArgb);
+            if (toastBmp == null) toastBmp = Mapas.Nuevo(ToastW, ToastH);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             toastBorde = BordeLibreAvisos();   // con video, el aviso se centra en lo que se ve y no pasa de ahi
-            PintaToastHasta(toastBmp, text, back, lblToast.Font, toastBorde - 24);
+            PintaToastHasta(toastBmp, text, back, PuenteDibujo.Letra(lblToast.Font), toastBorde - 24);   // EN LINUX: la letra de lblToast (un letrero de la pantalla, aun de la capa: va con las vistas), por el puente: la misma
             toastVer++; toastTick = TickVivo();
         }
 
         // El dibujo en si, aparte del estado: asi se puede ver y comprobar sin arrancar la rocola entera.
-        internal static void PintaToast(Bitmap bmp, string text, Color back, Font font)
+        internal static void PintaToast(SKBitmap bmp, string text, Color back, Rocola.Nativo.Letra font)   // EN LINUX: Bitmap -> SKBitmap y Font -> Letra
         { PintaToastHasta(bmp, text, back, font, ToastW); }
         // 'maxAncho': lo mas que puede medir la pastilla (con video, lo que queda a su izquierda); si no cabe, puntos.
-        internal static void PintaToastHasta(Bitmap bmp, string text, Color back, Font font, int maxAncho)
+        internal static void PintaToastHasta(SKBitmap bmp, string text, Color back, Rocola.Nativo.Letra font, int maxAncho)   // EN LINUX: Bitmap -> SKBitmap y Font -> Letra
         {
-            using (Graphics g = Graphics.FromImage(bmp))
+            using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
             {
-                g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;   // gris: ClearType deja flecos sobre transparente
+                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
+                AjusteLetra modoLetra = AjusteLetra.Suave;   // gris: ClearType deja flecos sobre transparente; EN LINUX: g.TextRenderingHint = TextRenderingHint.AntiAlias
                 int tw = Math.Min(AnchoToast(text, font), Math.Max(ToastMinW, maxAncho));   // el texto MANDA el ancho de la pastilla
                 int x0 = (ToastW - tw) / 2;
-                using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))
+                using (GraphicsPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))   // EN LINUX: RoundRect (abajo; la piden tambien Form1.Pared.cs y Form1.cs, aun sin traducir) devuelve un GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia)
                 {
-                    using (SolidBrush b = new SolidBrush(back)) g.FillPath(b, gp);
-                    using (Pen pe = new Pen(Color.FromArgb(70, 255, 255, 255), 1.5f)) g.DrawPath(pe, gp);   // filo claro: lo despega del fondo
+                    using (SKPaint b = PinturaXp.Pincel(back)) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), b, suave);   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs) y FillPath (Nativo/Pixel.cs)
+                    using (SKPaint pe = PinturaXp.Pluma(Color.FromArgb(70, 255, 255, 255), 1.5f)) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pe, suave);   // filo claro: lo despega del fondo; EN LINUX: Pen -> SKPaint de trazo (inglete y puntas planas, Nativo/PinturaXp.cs) y DrawPath (Nativo/Pixel.cs)
                 }
-                using (SolidBrush b = new SolidBrush(Color.White))
-                using (StringFormat sf = new StringFormat())
+                using (SKPaint b = PinturaXp.Pincel(Color.White))   // EN LINUX: SolidBrush -> SKPaint
+                // EN LINUX: (XP) using (StringFormat sf = new StringFormat()) -- un FormatoTexto no hay que soltarlo: se crea en la primera linea del bloque
                 {
-                    sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                    sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
-                    g.DrawString(text, font, b, new RectangleF(x0 + 10, 0, tw - 20, ToastH), sf);
+                    FormatoTexto sf = new FormatoTexto(); sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() (el de fabrica, no el compartido); Alignment y LineAlignment = Center
+                    sf.Banderas = BanderasTexto.SinPartir; sf.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: FormatFlags = NoWrap (deja solo esa) y Trimming = EllipsisCharacter
+                    TextoGdiPlus.Escribe(g, text, font, modoLetra, b, new RectangleF(x0 + 10, 0, tw - 20, ToastH), sf);   // EN LINUX: DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra a la vista
                 }
             }
         }
@@ -1921,7 +1921,7 @@ namespace Rocola
             int dt = Environment.TickCount - toastTick;
             if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
             float a, dy; CurvaToast(dt, out a, out dy);
-            t.Has = true; t.Bmp = toastBmp; t.Ver = toastVer;
+            t.Has = true; t.Bmp = PuenteDibujo.Bitmap(toastBmp); t.Ver = toastVer;   // EN LINUX: GpuToast (D3D9Star.cs, aun sin traducir) lo pide como Bitmap: los mismos puntos por el puente, y el mismo Bitmap cada vez (la tarjeta mira la version, no el objeto)
             t.X = ((toastBorde > 0 ? toastBorde : ClientSize.Width) - ToastW) * 0.5f;   // centrado en lo que se ve
             t.Y = 80f + dy;
             t.Alpha = a;

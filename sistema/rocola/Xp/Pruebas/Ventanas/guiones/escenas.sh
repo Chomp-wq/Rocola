@@ -31,18 +31,27 @@
 #             compone la pantalla y sale la captura del aviso; al soltarlo se cierra) y la rocola arranca
 #   f2sigterm SIGTERM con Ctrl+F2 abierto (el apagado: en la referencia no; se compara con el programa del paso T, con la capa)
 #   f2agrega  «Agregar carpeta...»: el selector de carpetas nativo (la referencia contesta Cancelar sin ensenar nada)
-# Y las de Ctrl+F3 (ventanas2, paso C: la hoja nativa con sus piezas), que tampoco estan en «todas»:
-#   f3vistas  Ctrl+F3 con el raton por sus seis paginas, las hojas de Sonido (Ajustes del sonido, el local, el tono, afinar, la voz, lo que
-#             suena ahora, la IA), las tres hojas de Imagen y las cinco hojitas de Performance, las cinco de Fondo y las tres de Pantalla: una
-#             captura de cada una (vistas_f3.py)
+# Y las de Ctrl+F3 (ventanas2, paso C: la hoja nativa con sus piezas), que tampoco estan en «todas». Los pasos de cada una los arma
+# vistas_f3.py (cada paso separado del anterior, y Ctrl+F3 abierto a los 26 s, con el repaso de la biblioteca acabado):
+#   f3vistas  con el raton por sus seis paginas, las hojas de Sonido (Ajustes del sonido, el local, el tono, afinar, la voz, lo que suena
+#             ahora, la IA), las tres hojas de Imagen y las cinco hojitas de Performance, las cinco de Fondo y las tres de Pantalla: una
+#             captura y un estado (el de XP y el de cada pieza) de cada una de las 26 vistas
 #   f3grises  el modo billar encendido (lo que decide va en gris con su motivo) en Ajustes del sonido, el local, el tono y afinar; y otra vez
 #             abierta, el foco en un deslizador y en un interruptor (con Tab) y el raton encima de «Listo»
 #   f3teclas  Tab hasta un deslizador; Derecha, Izquierda, RePag, Fin, Inicio; la moneda con el foco en el deslizador (MonedaTambienAqui);
 #             Mayus+Tab, Espacio e Intro en un interruptor, las flechas entre hermanas; Escape cierra por KeyPreview
+#   f3requisitos  las dependencias vivas (AjustesVivos.cs): apagar «Estrella en 3D girando» deja en gris con su «Necesita» lo de la
+#             estrella de Pulido (otra hojita); apagar y encender «Barra de progreso neon», el neon intenso de su misma hojita; al salir,
+#             rocola_config.txt byte a byte
 #   f3guarda  un interruptor, un deslizador y un boton tocados con el raton y la rocola muerta (SIGKILL) con Ctrl+F3 abierto: lo guardado
 #             al momento (A2) en rocola_config.txt, byte a byte
-#   f3medir   «Medir este equipo» (Imagen): la hoja se cierra, se mide con la pantalla libre y vuelve sola en Imagen; Escape
+#   f3medir   «Medir este equipo» (Imagen): la hoja se cierra, se mide con la pantalla libre y vuelve sola en Imagen (lo que tarda depende
+#             de la maquina y de lo medido: MEDIR_ESPERA, 90 de fabrica, son los segundos que la escena espera desde que lo pulsa);
+#             «Comparar perfiles» abre el historial de caratulas (otra hoja encima), la moneda con el abierto, Escape lo cierra y Escape
+#             cierra Ctrl+F3. Se compara con compara_medir.py (lo medido sale distinto en dos corridas del mismo programa)
 #   f3diag    «Diagnostico completo» (Imagen): la hoja se cierra, empieza el diagnostico y una tecla lo corta (la hoja no vuelve)
+#   avisoviejo  (datos de datos_h.sh con avisos_claros=0) dos monedas: el aviso de siempre (HorneaToast y PintaToastHasta de Form1.Ajustes.cs,
+#             traducidos en el paso C) en la capa de la tarjeta, a medio segundo de cada moneda (compara_aviso.py mira su pastilla)
 G=$(dirname "$(readlink -f "$0")")
 DH=${DH:-/root/rocola-trabajo/port/ventanas2/datos}
 prog="$1"; et="$2"; shift 2
@@ -70,12 +79,11 @@ for e in $esc; do
     aviso)     CORRIDA=v2h-aviso SIN_DATOS=1 ESTADO="2.5:aviso,9:rocola" "$G/corre.sh" "$prog" "$et-$e" "3:32~300" "2.95:a1,9.5:fin" 14 ROCOLA_CAPTURA_CAPAS=1 ;;
     f2sigterm) CORRIDA=v2h-f2sigterm SALE=0 SENAL=TERM ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67,8:17+113" "" 10 ;;
     f2agrega)  CORRIDA=v2h-f2agrega ROCOLA_CARPETAS_RAIZ="$DH/arbol" ESTADO="8.3:selector,10.3:elegida,12:hoja" "$G/corre.sh" "$prog" "$et-$e" "7:17+113,7.6:9,8:32,8.6:39,8.9:40,9.2:39,9.5:40,10.6:13,12.5:clic:770:529" "8.5:g1,10.1:g2,11.5:g3,13.5:fin" 16 ROCOLA_CAPTURA_CAPAS=1 ROCOLA_CARPETAS_RAIZ="$DH/arbol" ;;
-    f3vistas)  v=$(python3 "$G/vistas_f3.py" vistas); ESTADO="8.2:abierta,25.1:sonido,33.5:imagen,46.7:fin" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1 ;;
-    f3grises)  v=$(python3 "$G/vistas_f3.py" grises); ESTADO="10.7:billar,21.8:deslizador,24.2:interruptor,27.4:fin" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1 ;;
-    f3teclas)  ESTADO="11:deslizador,16:moneda,20.5:flechas,24.5:cerrada" "$G/corre.sh" "$prog" "$et-$e" "7:17+114,8.4:9,8.8:9,9.2:9,9.6:9,10:9,10.4:9,10.8:9,11.5:39,12:39,12.5:37,13:33,13.5:35,14:36,15:67,16.5:16+9,17.5:32,18.5:13,19.5:39,21:40,22:38,23:27" "15.8:t1,20.8:t2,24:t3" 26 ROCOLA_CAPTURA_CAPAS=1 ;;
-    f3guarda)  SALE=0 SENAL=KILL ESTADO="8.2:abierta,13.5:tocada" "$G/corre.sh" "$prog" "$et-$e" "7:17+114,8.5:clic:214:462,9.7:clic:100:496,10.9:clic:622:724" "12.5:g1" 16 ROCOLA_CAPTURA_CAPAS=1 ;;
-    f3medir)   ESTADO="9.5:imagen,${MEDIR_VUELVE:-76}:vuelta" "$G/corre.sh" "$prog" "$et-$e" "7:17+114,8.5:clic:712:54,10:clic:168:189,$((${MEDIR_VUELVE:-76} + 1)):27" "9.8:m1,${MEDIR_VUELVE:-76}.5:m2,$((${MEDIR_VUELVE:-76} + 3)):fin" $((${MEDIR_VUELVE:-76} + 6)) ROCOLA_CAPTURA_CAPAS=1 ;;
-    f3diag)    ESTADO="9.5:imagen,16:cortado" "$G/corre.sh" "$prog" "$et-$e" "7:17+114,8.5:clic:712:54,10:clic:384:189,14:37" "9.8:d1,17:fin" 20 ROCOLA_CAPTURA_CAPAS=1 ;;
+    f3vistas|f3grises|f3teclas|f3requisitos|f3diag|f3medir|f3guarda)
+               v=$(python3 "$G/vistas_f3.py" ${e#f3} ${MEDIR_ESPERA:-}); [ $e = f3guarda ] && export SALE=0 SENAL=KILL
+               ESTADO="$(echo "$v" | sed -n 4p)" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1
+               unset SALE SENAL ;;
+    avisoviejo) DATOS0="$DH/avisoviejo" ESTADO="8.2:a" "$G/corre.sh" "$prog" "$et-$e" "7:67,9:67" "7.55:a1,9.55:a2,11:fin" 14 ROCOLA_CAPTURA_CAPAS=1 ;;
     *) echo "escena desconocida: $e" ;;
   esac
 done
