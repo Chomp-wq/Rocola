@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo   // EN LINUX: y, de HeaderView al final (grupo vistas-b), SkiaSharp directo y las funciones nativas (Xp/Nativo): alli lo que queda de la capa va con su tipo escrito entero (Rocola.Dibujo2D.X)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -995,14 +995,14 @@ namespace Rocola
         // seccion va en SU color -el mismo que la letra luce en la barra de arriba- y las paginas se ven de un
         // vistazo como puntitos: cuantas hay y en cual estas se sabe sin leer, que es lo que le sirve a alguien
         // que esta de pie delante de la maquina.
-        private class HeaderView : Control
+        private partial class HeaderView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             public string Section = "";
             public int Page = 0, Total = 1;
             public Color Accent = DefaultAccent;
 
-            private Font fSec, fPag; private float fontAlto = -1f;
-            private SolidBrush brocha; private StringFormat sfIzq;
+            private Rocola.Nativo.Letra fSec, fPag; private float fontAlto = -1f;   // EN LINUX: Font: las letras del encabezado son Letra (Nativo/Letras.cs; Form1 tiene un metodo Letra)
+            private SKPaint brocha; private FormatoTexto sfIzq;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; StringFormat: un FormatoTexto (Nativo/TextoGdiPlus.cs)
 
             protected override void OnFontChanged(EventArgs e)
             {
@@ -1013,7 +1013,7 @@ namespace Rocola
             protected override void Dispose(bool disposing)
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
-                try { if (disposing) { SueltaDibujo(ref fSec); SueltaDibujo(ref fPag); SueltaDibujo(ref brocha); SueltaDibujo(ref sfIzq); } }
+                try { if (disposing) { SueltaDibujo(ref fSec); SueltaDibujo(ref fPag); SueltaDibujo(ref brocha); sfIzq = null; } }   // EN LINUX: SueltaDibujo(ref sfIzq): un FormatoTexto no tiene nada que soltar; queda en null, como lo dejaba SueltaDibujo
                 finally { base.Dispose(disposing); }
             }
 
@@ -1026,14 +1026,14 @@ namespace Rocola
 
             private void EnsureRes(int h)
             {
-                if (brocha == null) brocha = new SolidBrush(Color.White);
-                if (sfIzq == null) sfIzq = CreaSfDibuja(StringAlignment.Near);
+                if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
+                if (sfIzq == null) sfIzq = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Near));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir) da un StringFormat: su FormatoTexto (el mismo objeto), por el puente
                 if (fSec != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fSec != null) fSec.Dispose();
                 if (fPag != null) fPag.Dispose();
                 // Los cuerpos salen del alto del propio encabezado: con 28 px dan los 12.5 puntos de siempre.
-                fSec = new Font(this.Font.FontFamily, h * 0.446f, FontStyle.Bold);
-                fPag = new Font(this.Font.FontFamily, h * 0.303f, FontStyle.Bold);
+                fSec = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.446f, true);   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
+                fPag = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.303f, true);   // EN LINUX: new Font(familia, pt, Bold)
                 fontAlto = h;
             }
 
@@ -1051,28 +1051,28 @@ namespace Rocola
             // ("LO MAS SONADO", que va sin paginas) o "LETRA W" con su numero de pagina corto ("12/12"), a su tamano,
             // sin encogerse ni callarse. Los puntitos y "pagina X de Y" entran si sobra. Se mide una vez por alto.
             private int pideAlto = -1, pide;
-            private Font pideFuente;
+            private Rocola.Dibujo2D.Font pideFuente;   // EN LINUX: la Font del control (WinForms, aun sin traducir), que aqui solo se compara por identidad: su tipo, escrito entero
             public int AnchoPedido(int h)
             {
                 if (h == pideAlto && ReferenceEquals(pideFuente, this.Font)) return pide;
-                using (Bitmap b = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(b))
-                using (Font fs = new Font(this.Font.FontFamily, h * 0.446f, FontStyle.Bold))
-                using (Font fp = new Font(this.Font.FontFamily, h * 0.303f, FontStyle.Bold))
+                using (SKBitmap b = Mapas.Nuevo(1, 1)) using (SKCanvas g = new SKCanvas(b))   // EN LINUX: new Bitmap(1, 1) y Graphics.FromImage(b): un lienzo de 1x1 con que medir (su modo de letra, el de fabrica de un Graphics nuevo: DelSistema)
+                using (Rocola.Nativo.Letra fs = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.446f, true))   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
+                using (Rocola.Nativo.Letra fp = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.303f, true))   // EN LINUX: new Font(familia, pt, Bold)
                 {
                     float nombre = Math.Max(3f, h * 0.13f) + h * 0.32f + 4f + 2f;   // pastilla, su hueco y el aire del final
-                    float top = nombre + AnchoTexto(g, "LO MAS SONADO", fs);
-                    float letra = nombre + AnchoTexto(g, "LETRA W", fs) + h * 0.5f + h * 0.45f + AnchoTexto(g, "12/12", fp) + 8f;
+                    float top = nombre + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "LO MAS SONADO", fs);   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra de un Graphics nuevo (SystemDefault)
+                    float letra = nombre + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "LETRA W", fs) + h * 0.5f + h * 0.45f + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "12/12", fp) + 8f;   // EN LINUX: AnchoTexto, por el puente, con el modo de letra de un Graphics nuevo
                     pide = (int)Math.Ceiling(Math.Max(top, letra));
                 }
                 pideAlto = h; pideFuente = this.Font;
                 return pide;
             }
 #endif
-            public void RenderContent(Graphics g)
+            public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama que aqui no se pone (el modo de letra, la copia y el medio pixel); quien aun pasa un Graphics (OnPaint, arriba, y DrawCtrlOverlay de Form1.Video.cs) llega por el puente (Plataforma/Puente.vistas-b.cs), que le deja al Graphics el suavizado que le deja XP
             {
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) return;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
                 EnsureRes(h);
                 Color ac = Claro(Accent);
 
@@ -1080,7 +1080,7 @@ namespace Rocola
                 // que el sitio que le toca cambia con la pantalla. Y lo que quepa se pega a la DERECHA, para
                 // que no quede colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
-                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(g, Section, fSec) + 4f;
+                float anchoNombre = pw0 + h * 0.32f + AnchoTextoVistasB(g, ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra del que llama
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
 
                 // LA RAYITA SEPARADORA se dibuja SIEMPRE que detras del nombre venga algo, lleve puntitos o no.
@@ -1106,7 +1106,7 @@ namespace Rocola
                                                  (pag0 + 1) + " de " + Total,
                                                  (pag0 + 1) + "/" + Total };
                 float[] anchoForma = new float[formas.Length];
-                for (int i = 0; i < formas.Length; i++) anchoForma[i] = h * 0.45f + AnchoTexto(g, formas[i], fPag) + 8f;
+                for (int i = 0; i < formas.Length; i++) anchoForma[i] = h * 0.45f + AnchoTextoVistasB(g, ajuste, formas[i], fPag) + 8f;   // EN LINUX: AnchoTexto, por el puente
 
                 // Se prueba con los puntitos puestos y, si aun asi no entra ninguna forma, se quitan: los
                 // puntitos dicen en que pagina estas de un vistazo, pero el numero es el UNICO que dice cuantas
@@ -1133,35 +1133,35 @@ namespace Rocola
                 // Una pastilla del color de la seccion delante del nombre: ata el encabezado con la letra que
                 // esta encendida arriba, para que se vea que hablan de lo mismo.
                 float pw = Math.Max(3f, h * 0.13f), ph = h * 0.58f;
-                using (SolidBrush pb = new SolidBrush(Color.FromArgb(230, ac)))
-                using (GraphicsPath pp = Redondo(new RectangleF(x, (h - ph) / 2f, pw, ph), pw / 2f))
-                    g.FillPath(pb, pp);
+                using (SKPaint pb = new SKPaint { Color = Color.FromArgb(230, ac).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                using (SKPath pp = Redondo(new RectangleF(x, (h - ph) / 2f, pw, ph), pw / 2f))   // EN LINUX: GraphicsPath: un SKPath (Redondo, abajo)
+                    Pixel.Rellena(g, pp, pb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
                 x += pw + h * 0.32f;
 
                 // EL NOMBRE MANDA, pero no puede comerse la fila entera: si no cabe con el cuerpo elegido, se
                 // encoge hasta caber. Y lo que venga detras solo se dibuja SI CABE ENTERO; nada se dibuja "a
                 // medias" ni se sale por la derecha.
                 string sec = Section ?? "";
-                Font fUsar = fSec; Font fApreta = null;
+                Rocola.Nativo.Letra fUsar = fSec; Rocola.Nativo.Letra fApreta = null;   // EN LINUX: Font: Letra
                 float tope = Math.Max(10f, w - x);
-                float anchoSec = AnchoTexto(g, sec, fUsar);
+                float anchoSec = AnchoTextoVistasB(g, ajuste, sec, fUsar);   // EN LINUX: AnchoTexto, por el puente
                 if (anchoSec > tope)
                 {
-                    float cuerpo = fSec.SizeInPoints;
+                    float cuerpo = fSec.Puntos;   // EN LINUX: Font.SizeInPoints
                     while (cuerpo > 6f)
                     {
                         cuerpo -= 0.5f;
                         if (fApreta != null) fApreta.Dispose();
-                        fApreta = new Font(this.Font.FontFamily, cuerpo, FontStyle.Bold);
-                        anchoSec = AnchoTexto(g, sec, fApreta);
+                        fApreta = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, cuerpo, true);   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
+                        anchoSec = AnchoTextoVistasB(g, ajuste, sec, fApreta);   // EN LINUX: AnchoTexto, por el puente
                         if (anchoSec <= tope) break;
                     }
                     if (fApreta != null) fUsar = fApreta;
                 }
-                brocha.Color = Color.FromArgb(160, 0, 0, 0);
-                g.DrawString(sec, fUsar, brocha, new RectangleF(x, 1.4f, tope, h), sfIzq);
-                brocha.Color = ac;
-                g.DrawString(sec, fUsar, brocha, new RectangleF(x, 0, tope, h), sfIzq);
+                brocha.Color = Color.FromArgb(160, 0, 0, 0).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                TextoGdiPlus.Escribe(g, sec, fUsar, ajuste, brocha, new RectangleF(x, 1.4f, tope, h), sfIzq, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo
+                brocha.Color = ac.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                TextoGdiPlus.Escribe(g, sec, fUsar, ajuste, brocha, new RectangleF(x, 0, tope, h), sfIzq, copia, medio);   // EN LINUX: g.DrawString
                 if (fApreta != null) fApreta.Dispose();
                 x += anchoSec;
 
@@ -1170,8 +1170,8 @@ namespace Rocola
                 float r = r0, paso = paso0;
                 bool conPuntos = conPuntos0;
 
-                using (Pen sep = new Pen(Color.FromArgb(70, 150, 175, 225)))
-                    g.DrawLine(sep, x, h * 0.26f, x, h * 0.74f);
+                using (SKPaint sep = new SKPaint { Color = Color.FromArgb(70, 150, 175, 225).Sk(), StrokeWidth = 1f })   // EN LINUX: Pen(color): la pluma de un pixel en un SKPaint
+                    Pixel.Linea(g, x, h * 0.26f, x, h * 0.74f, sep, suave, medio, copia);   // EN LINUX: g.DrawLine (Nativo/Pixel.cs) con el estado del lienzo
                 x += anchoSep;
 
                 // LOS PUNTITOS. Con muchas paginas no caben ni se contarian de un vistazo, asi que a partir de
@@ -1186,14 +1186,14 @@ namespace Rocola
                         float rr = esta ? r * 1.35f : r;
                         if (esta)
                         {
-                            using (SolidBrush halo = new SolidBrush(Color.FromArgb(60, ac)))
-                                g.FillEllipse(halo, cx - rr * 2.1f, cy - rr * 2.1f, rr * 4.2f, rr * 4.2f);
-                            using (SolidBrush b2 = new SolidBrush(ac))
-                                g.FillEllipse(b2, cx - rr, cy - rr, rr * 2f, rr * 2f);
+                            using (SKPaint halo = new SKPaint { Color = Color.FromArgb(60, ac).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                                Pixel.RellenaOvalo(g, new RectangleF(cx - rr * 2.1f, cy - rr * 2.1f, rr * 4.2f, rr * 4.2f), halo, suave, medio, copia);   // EN LINUX: g.FillEllipse(pincel, x, y, w, h) (Nativo/Pixel.cs)
+                            using (SKPaint b2 = new SKPaint { Color = ac.Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                                Pixel.RellenaOvalo(g, new RectangleF(cx - rr, cy - rr, rr * 2f, rr * 2f), b2, suave, medio, copia);   // EN LINUX: g.FillEllipse
                         }
                         else
-                            using (Pen p2 = new Pen(Color.FromArgb(120, 150, 168, 205), Math.Max(1f, r * 0.5f)))
-                                g.DrawEllipse(p2, cx - rr * 0.75f, cy - rr * 0.75f, rr * 1.5f, rr * 1.5f);
+                            using (SKPaint p2 = new SKPaint { Color = Color.FromArgb(120, 150, 168, 205).Sk(), StrokeWidth = Math.Max(1f, r * 0.5f) })   // EN LINUX: Pen(color, ancho): la pluma en un SKPaint (Nativo/Pixel.cs le pone el minimo de un pixel y las esquinas de GDI+)
+                                Pixel.TrazaOvalo(g, new RectangleF(cx - rr * 0.75f, cy - rr * 0.75f, rr * 1.5f, rr * 1.5f), p2, suave, medio, copia);   // EN LINUX: g.DrawEllipse(pluma, x, y, w, h) (Nativo/Pixel.cs)
                     }
                     x += halo0 + (Total - 1) * paso + halo0;
                 }
@@ -1204,24 +1204,24 @@ namespace Rocola
                 // sitio, y si el reparto se quedo corto por un pelo se acorta la frase antes que callarse). Solo
                 // se calla si no cabe ni "3/18": entonces si, mejor nada que un numero a medias -"pagina 3 de 1"
                 // con la ultima cifra comida ademas dice algo FALSO-.
-                while (AnchoTexto(g, txt0, fPag) > w - x && forma < formas.Length - 1) txt0 = formas[++forma];
-                if (AnchoTexto(g, txt0, fPag) > w - x) return;
-                brocha.Color = Color.FromArgb(150, 160, 190);
-                g.DrawString(txt0, fPag, brocha, new RectangleF(x, 0, Math.Max(10f, w - x), h), sfIzq);
+                while (AnchoTextoVistasB(g, ajuste, txt0, fPag) > w - x && forma < formas.Length - 1) txt0 = formas[++forma];   // EN LINUX: AnchoTexto, por el puente
+                if (AnchoTextoVistasB(g, ajuste, txt0, fPag) > w - x) return;   // EN LINUX: AnchoTexto, por el puente
+                brocha.Color = Color.FromArgb(150, 160, 190).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                TextoGdiPlus.Escribe(g, txt0, fPag, ajuste, brocha, new RectangleF(x, 0, Math.Max(10f, w - x), h), sfIzq, copia, medio);   // EN LINUX: g.DrawString
             }
 
-            private static GraphicsPath Redondo(RectangleF r, float radio)
+            private static SKPath Redondo(RectangleF r, float radio)   // EN LINUX: GraphicsPath: un SKPath
             {
-                GraphicsPath p = new GraphicsPath();
+                SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): su relleno de fabrica, Alternate, es par-impar
                 float d = radio * 2;
                 if (d > r.Height) d = r.Height;
                 if (d > r.Width) d = r.Width;
                 if (d < 2) d = 2;
-                p.AddArc(r.X, r.Y, d, d, 180, 90);
-                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-                p.CloseFigure();
+                p.ArcTo(SKRect.Create(r.X, r.Y, d, d), 180, 90, true);   // EN LINUX: AddArc: el primero empieza la figura
+                p.ArcTo(SKRect.Create(r.Right - d, r.Y, d, d), 270, 90, false);   // EN LINUX: AddArc: GDI+ une el arco con el punto anterior de la figura abierta
+                p.ArcTo(SKRect.Create(r.Right - d, r.Bottom - d, d, d), 0, 90, false);   // EN LINUX: AddArc, unido al anterior
+                p.ArcTo(SKRect.Create(r.X, r.Bottom - d, d, d), 90, 90, false);   // EN LINUX: AddArc, unido al anterior
+                p.Close();   // EN LINUX: CloseFigure
                 return p;
             }
         }
@@ -1236,12 +1236,12 @@ namespace Rocola
             // ademas CUALES son, que es lo que el cliente quiere saber para no volver a pedir la que
             // ya pidio. Se ven las tres primeras; si hay mas, la tercera lleva un "+2" en la esquina.
             public bool ConPortadas;      // esta capsula lleva hueco para portaditas (la de la cola si, la de la moneda no)
-            public Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)
+            public Rocola.Dibujo2D.Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)   // EN LINUX: las portadas las da y las compara por identidad Form1 (LoadCover, Form1.Biblioteca.cs: aun sin traducir): se quedan con su tipo, escrito entero, y se convierten al pintarlas
             public int Mas;               // cuantas quedan detras de las tres
             private const int Huecos = 3;
 
-            private Font fEtq, fVal, fMas; private float fontAlto = -1f;
-            private SolidBrush brocha; private StringFormat sfCen;
+            private Rocola.Nativo.Letra fEtq, fVal, fMas; private float fontAlto = -1f;   // EN LINUX: Font: Letra (Nativo/Letras.cs)
+            private SKPaint brocha; private FormatoTexto sfCen;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; StringFormat: un FormatoTexto
 
             // ---------- LA CEREMONIA DE LA MONEDA ----------
             // El numero de creditos cambiaba de 0 a 1 y se acabo. Es informacion correcta y, a dos metros,
@@ -1294,7 +1294,7 @@ namespace Rocola
             protected override void Dispose(bool disposing)
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
-                try { if (disposing) { SueltaDibujo(ref fEtq); SueltaDibujo(ref fVal); SueltaDibujo(ref fMas); SueltaDibujo(ref brocha); SueltaDibujo(ref sfCen); } }
+                try { if (disposing) { SueltaDibujo(ref fEtq); SueltaDibujo(ref fVal); SueltaDibujo(ref fMas); SueltaDibujo(ref brocha); sfCen = null; } }   // EN LINUX: SueltaDibujo(ref sfCen): un FormatoTexto no tiene nada que soltar; queda en null
                 finally { base.Dispose(disposing); }
             }
 
@@ -1313,17 +1313,17 @@ namespace Rocola
             // cancion (derPast, en el acomodo); si dependiera de la cola, el titulo se repartiria de otra
             // manera en dos lineas cada vez que alguien pide algo, y el nombre de la que suena bailaria
             // solo, sin que nadie lo hubiera tocado. Se mide siempre el hueco de las tres, llenas o vacias.
-            public static int Ancho(string etiq, string valor, int alto, FontFamily fam, bool conPortadas)
+            public static int Ancho(string etiq, string valor, int alto, string fam, bool conPortadas)   // EN LINUX: FontFamily: la familia por su nombre; quien aun la pasa como FontFamily (Form1.cs, Form1.Datos.cs) llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
                 // Se mide con GDI+, que es con lo que RenderContent la PINTA. Antes se media con TextRenderer,
                 // que es GDI: otro motor, otros anchos. En la pantalla del bar la diferencia eran dos pixeles y
                 // pasaba desapercibida; en una pantalla grande crecia con el cuerpo de la letra y se comia el
                 // final de "Inserta una moneda".
-                using (Font fe = new Font(fam, alto * 0.34f, FontStyle.Bold))
-                using (Font fv = new Font(fam, alto * 0.52f, FontStyle.Bold))
+                using (Rocola.Nativo.Letra fe = Rocola.Nativo.Letra.EnPuntos(fam, alto * 0.34f, true))   // EN LINUX: new Font(fam, pt, Bold): en puntos y en negrita (Nativo/Letras.cs)
+                using (Rocola.Nativo.Letra fv = Rocola.Nativo.Letra.EnPuntos(fam, alto * 0.52f, true))   // EN LINUX: new Font(fam, pt, Bold)
                 {
-                    int w = AnchoTexto(etiq, fe);
-                    if (!string.IsNullOrEmpty(valor)) w += AnchoTexto(valor, fv) + (int)(alto * 0.22f);
+                    int w = AnchoTextoVistasB(etiq, fe);   // EN LINUX: AnchoTexto sin Graphics (Form1.Ajustes.cs, aun sin traducir) mide con una Font: por el puente (Plataforma/Puente.vistas-b.cs)
+                    if (!string.IsNullOrEmpty(valor)) w += AnchoTextoVistasB(valor, fv) + (int)(alto * 0.22f);   // EN LINUX: AnchoTexto, por el puente
                     if (conPortadas) w += AnchoPortaditas(alto);
                     return w + (int)(alto * 0.9f);
                 }
@@ -1337,28 +1337,28 @@ namespace Rocola
 
             private void EnsureRes(int h)
             {
-                if (brocha == null) brocha = new SolidBrush(Color.White);
-                if (sfCen == null) sfCen = CreaSfDibuja(StringAlignment.Center);
+                if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
+                if (sfCen == null) sfCen = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
                 if (fEtq != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fEtq != null) fEtq.Dispose();
                 if (fVal != null) fVal.Dispose();
                 if (fMas != null) fMas.Dispose();
-                fEtq = new Font(this.Font.FontFamily, h * 0.34f, FontStyle.Bold);
-                fVal = new Font(this.Font.FontFamily, h * 0.52f, FontStyle.Bold);
-                fMas = new Font(this.Font.FontFamily, LadoPortadita(h) * 0.34f, FontStyle.Bold);
+                fEtq = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.34f, true);   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
+                fVal = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.52f, true);   // EN LINUX: new Font(familia, pt, Bold)
+                fMas = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, LadoPortadita(h) * 0.34f, true);   // EN LINUX: new Font(familia, pt, Bold)
                 fontAlto = h;
             }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
-            public void RenderContent(Graphics g)
+            public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama que aqui no se pone (modo de letra, copia, filtro y medio pixel); quien aun pasa un Graphics (OnPaint, arriba) llega por el puente (Plataforma/Puente.vistas-b.cs), que le deja al Graphics el suavizado que le deja XP
             {
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) return;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
                 EnsureRes(h);
                 int t = Environment.TickCount;
                 // LA SACUDIDA del aviso de sin creditos: dos idas y venidas que se apagan solas.
-                GraphicsState stSac = null;
+                int stSac = -1;   // EN LINUX: GraphicsState stSac = null: la cuenta de Save del lienzo (-1: no se guardo)
                 if (aviTick != 0)
                 {
                     int da = t - aviTick;
@@ -1366,23 +1366,23 @@ namespace Rocola
                     {
                         float ua = da / (float)AviMs;
                         float dx = (float)(Math.Sin(ua * 18.0) * h * 0.13 * (1.0 - ua));
-                        stSac = g.Save(); g.TranslateTransform(dx, 0f);
+                        stSac = g.Save(); g.Translate(dx, 0f);   // EN LINUX: g.Save() y TranslateTransform: el lienzo guarda su matriz y su recorte (lo demas del estado no cambia entre el Save y el Restore: el filtro se devuelve a mano, como en XP)
                     }
                     else if (da >= AviMs) aviTick = 0;
                 }
 #if ROCOLA_GPU
                 // EL SALTITO de la cancion que llega a la cola: solo en la imagen de la tarjeta (DiscoVivoGpu.cs).
                 float salto = SaltoLlegada(t) * SaltoMoneda(t);   // y el golpe de la moneda grande (SuenaVivoGpu.cs)
-                if (stSac == null && salto != 1f)
+                if (stSac == -1 && salto != 1f)   // EN LINUX: stSac == null
                 {
                     stSac = g.Save();
-                    g.TranslateTransform(w * 0.5f, h * 0.5f); g.ScaleTransform(salto, salto); g.TranslateTransform(-w * 0.5f, -h * 0.5f);
+                    g.Translate(w * 0.5f, h * 0.5f); g.Scale(salto, salto); g.Translate(-w * 0.5f, -h * 0.5f);   // EN LINUX: TranslateTransform, ScaleTransform y TranslateTransform, que se anteponen a la matriz como en GDI+
                 }
 #endif
-                using (GraphicsPath p = RoundRectF(new RectangleF(0.5f, 0.5f, w - 1, h - 1), h / 2f))
+                using (SKPath p = RoundRectF(new RectangleF(0.5f, 0.5f, w - 1, h - 1), h / 2f))   // EN LINUX: GraphicsPath: un SKPath (RoundRectF, abajo)
                 {
-                    using (SolidBrush b = new SolidBrush(Color.FromArgb(52, Acento))) g.FillPath(b, p);
-                    using (Pen pe = new Pen(Color.FromArgb(95, Acento), 1f)) g.DrawPath(pe, p);
+                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(52, Acento).Sk() }) Pixel.Rellena(g, p, b, suave, medio, copia);   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
+                    using (SKPaint pe = new SKPaint { Color = Color.FromArgb(95, Acento).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, p, pe, suave, medio, copia);   // EN LINUX: Pen(color, ancho): la pluma en un SKPaint (Nativo/Pixel.cs le pone el minimo de un pixel y las esquinas de GDI+); g.DrawPath (Nativo/Pixel.cs) con el estado del lienzo
                     // EL DESTELLO: el borde se enciende y se apaga cuando la moneda aterriza. Es lo que se
                     // ve desde lejos, cuando el numero ya es demasiado chico para leerse.
                     float br = 0f;
@@ -1393,21 +1393,21 @@ namespace Rocola
 #endif
                     if (br > 0.01f)
                     {
-                        using (SolidBrush b2 = new SolidBrush(Color.FromArgb((int)(70 * br), Acento))) g.FillPath(b2, p);
-                        using (Pen pe2 = new Pen(Color.FromArgb((int)(210 * br), Acento), 2f)) g.DrawPath(pe2, p);
+                        using (SKPaint b2 = new SKPaint { Color = Color.FromArgb((int)(70 * br), Acento).Sk() }) Pixel.Rellena(g, p, b2, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath
+                        using (SKPaint pe2 = new SKPaint { Color = Color.FromArgb((int)(210 * br), Acento).Sk(), StrokeWidth = 2f }) Pixel.Traza(g, p, pe2, suave, medio, copia);   // EN LINUX: Pen(color, 2) y g.DrawPath
                     }
                 }
                 // El contenido va CENTRADO: al acomodo se le puede dar un pelo mas de ancho del justo y sigue
                 // viendose bien, en vez de quedar pegado a un lado.
                 string et = Etiqueta ?? "", va = Valor ?? "";
-                float we = g.MeasureString(et, fEtq).Width;
-                float wv = (va.Length > 0) ? g.MeasureString(va, fVal).Width : 0f;
+                float we = TextoGdiPlus.Mide(et, fEtq, ajuste, new SizeF(0, 0), null).Width;   // EN LINUX: g.MeasureString(et, fEtq): sin caja (0, 0) y sin formato (null: el de fabrica), con el modo de letra del lienzo (Nativo/TextoGdiPlus.cs)
+                float wv = (va.Length > 0) ? TextoGdiPlus.Mide(va, fVal, ajuste, new SizeF(0, 0), null).Width : 0f;   // EN LINUX: g.MeasureString(va, fVal)
                 float hueco = (va.Length > 0) ? h * 0.18f : 0f;
                 float wPort = ConPortadas ? AnchoPortaditas(h) : 0f;
                 float x = (w - (we + wv + hueco + wPort)) / 2f;
                 if (x < h * 0.25f) x = h * 0.25f;
-                brocha.Color = Color.FromArgb(215, 205, 214, 238);
-                g.DrawString(et, fEtq, brocha, new RectangleF(x, 0, we + 6, h), sfCen);
+                brocha.Color = Color.FromArgb(215, 205, 214, 238).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                TextoGdiPlus.Escribe(g, et, fEtq, ajuste, brocha, new RectangleF(x, 0, we + 6, h), sfCen, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo
                 float xv = x + we + hueco;
                 // EL NUMERO RUEDA COMO UN ODOMETRO: el de antes sube y se va, el nuevo entra por abajo. Se
                 // recorta a su hueco para que ninguno de los dos asome fuera de la capsula.
@@ -1420,19 +1420,19 @@ namespace Rocola
                 if (rp >= 0f)
                 {
                     float sube = (float)(1.0 - Math.Pow(1.0 - rp, 3));   // frena al llegar, como un rodillo
-                    GraphicsState st = g.Save();
-                    g.SetClip(new RectangleF(xv - 3f, 1f, Math.Max(wv, 10f) + 12f, h - 2f), CombineMode.Intersect);
-                    brocha.Color = Acento;
+                    int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): la cuenta del lienzo
+                    { RectangleF rc = new RectangleF(xv - 3f, 1f, Math.Max(wv, 10f) + 12f, h - 2f); g.ClipRect(new SKRect(rc.Left, rc.Top, rc.Right, rc.Bottom), SKClipOperation.Intersect, false); }   // EN LINUX: g.SetClip(caja, Intersect): se suma al recorte que haya, en pixeles enteros (sin suavizar, como GDI+); lo quita el Restore de abajo
+                    brocha.Color = Acento.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                     if (de.Length > 0)
-                        g.DrawString(de, fVal, brocha, new RectangleF(xv, -h * sube, wv + 6, h), sfCen);
+                        TextoGdiPlus.Escribe(g, de, fVal, ajuste, brocha, new RectangleF(xv, -h * sube, wv + 6, h), sfCen, copia, medio);   // EN LINUX: g.DrawString
                     if (va.Length > 0)
-                        g.DrawString(va, fVal, brocha, new RectangleF(xv, h * (1f - sube), wv + 6, h), sfCen);
-                    g.Restore(st);
+                        TextoGdiPlus.Escribe(g, va, fVal, ajuste, brocha, new RectangleF(xv, h * (1f - sube), wv + 6, h), sfCen, copia, medio);   // EN LINUX: g.DrawString
+                    g.RestoreToCount(st);   // EN LINUX: g.Restore(st): el lienzo vuelve a su matriz y su recorte
                 }
                 else if (va.Length > 0)
                 {
-                    brocha.Color = Acento;
-                    g.DrawString(va, fVal, brocha, new RectangleF(xv, 0, wv + 6, h), sfCen);
+                    brocha.Color = Acento.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                    TextoGdiPlus.Escribe(g, va, fVal, ajuste, brocha, new RectangleF(xv, 0, wv + 6, h), sfCen, copia, medio);   // EN LINUX: g.DrawString
                 }
 
                 // LAS PORTADITAS DE LA COLA, detras del numero. Los huecos vacios se insinuan apenas: dicen
@@ -1443,41 +1443,41 @@ namespace Rocola
                     int sep = (int)(h * 0.09f);
                     float py = (h - lado) / 2f;
                     float px0 = xv + wv + h * 0.20f;
-                    InterpolationMode antes = g.InterpolationMode;
-                    g.InterpolationMode = InterpolationMode.HighQualityBilinear;   // achicar una portada a 20 px sin que salga a granos
+                    Filtro antes = filtro;   // EN LINUX: InterpolationMode antes = g.InterpolationMode: el filtro del lienzo, en su variable
+                    filtro = Filtro.BilinealAlta;   // achicar una portada a 20 px sin que salga a granos   // EN LINUX: g.InterpolationMode = HighQualityBilinear
                     for (int i = 0; i < Huecos; i++)
                     {
                         RectangleF rq = new RectangleF(px0 + i * (lado + sep), py, lado, lado);
-                        Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;
-                        using (GraphicsPath ph = RoundRectF(rq, lado * 0.22f))
+                        Rocola.Dibujo2D.Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;   // EN LINUX: la portada es una Image de la capa (la da Form1, aun sin traducir): su tipo, escrito entero
+                        using (SKPath ph = RoundRectF(rq, lado * 0.22f))   // EN LINUX: GraphicsPath: un SKPath
                         {
                             if (im != null)
                             {
-                                GraphicsState sp = g.Save();
-                                g.SetClip(ph, CombineMode.Intersect);
-                                g.DrawImage(im, rq);
-                                g.Restore(sp);
-                                using (Pen pe = new Pen(Color.FromArgb(120, 235, 240, 255), 1f)) g.DrawPath(pe, ph);
+                                int sp = g.Save();   // EN LINUX: GraphicsState sp = g.Save()
+                                g.ClipPath(ph, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): en pixeles enteros, sin suavizar, como GDI+
+                                Imagenes.Pinta(g, PuenteDibujo.Mapa(im), new SKRect(0, 0, im.Width, im.Height), new SKRect(rq.Left, rq.Top, rq.Right, rq.Bottom), filtro, medio, copia);   // EN LINUX: g.DrawImage(im, rq): la portada entera en esa caja, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); sus puntos, por el puente (los mismos, sin copia)
+                                g.RestoreToCount(sp);   // EN LINUX: g.Restore(sp)
+                                using (SKPaint pe = new SKPaint { Color = Color.FromArgb(120, 235, 240, 255).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, ph, pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                             }
-                            else using (Pen pe = new Pen(Color.FromArgb(52, Acento), 1f)) g.DrawPath(pe, ph);
+                            else using (SKPaint pe = new SKPaint { Color = Color.FromArgb(52, Acento).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, ph, pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                         }
                     }
-                    g.InterpolationMode = antes;
+                    filtro = antes;   // EN LINUX: g.InterpolationMode = antes
                     // Y SI HAY MAS DE TRES, cuantas quedan detras. Sin esto, una cola de nueve se veria
                     // igual que una de tres y el numero de al lado parecerian dos cosas que no cuadran.
                     if (Mas > 0)
                     {
                         RectangleF ru = new RectangleF(px0 + (Huecos - 1) * (lado + sep), py, lado, lado);
                         float hb = lado * 0.46f;
-                        using (GraphicsPath ph = RoundRectF(ru, lado * 0.22f))
+                        using (SKPath ph = RoundRectF(ru, lado * 0.22f))   // EN LINUX: GraphicsPath: un SKPath
                         {
-                            GraphicsState sp = g.Save();
-                            g.SetClip(ph, CombineMode.Intersect);
-                            using (SolidBrush b3 = new SolidBrush(Color.FromArgb(205, 8, 11, 28)))
-                                g.FillRectangle(b3, ru.X, ru.Bottom - hb, ru.Width, hb);
-                            brocha.Color = Color.FromArgb(238, 232, 240, 255);
-                            g.DrawString("+" + Mas, fMas, brocha, new RectangleF(ru.X, ru.Bottom - hb, ru.Width, hb), sfCen);
-                            g.Restore(sp);
+                            int sp = g.Save();   // EN LINUX: GraphicsState sp = g.Save()
+                            g.ClipPath(ph, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect)
+                            using (SKPaint b3 = new SKPaint { Color = Color.FromArgb(205, 8, 11, 28).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                                Pixel.Rellena(g, new RectangleF(ru.X, ru.Bottom - hb, ru.Width, hb), b3, suave, medio, copia);   // EN LINUX: g.FillRectangle(pincel, x, y, w, h) (Nativo/Pixel.cs)
+                            brocha.Color = Color.FromArgb(238, 232, 240, 255).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                            TextoGdiPlus.Escribe(g, "+" + Mas, fMas, ajuste, brocha, new RectangleF(ru.X, ru.Bottom - hb, ru.Width, hb), sfCen, copia, medio);   // EN LINUX: g.DrawString
+                            g.RestoreToCount(sp);   // EN LINUX: g.Restore(sp)
                         }
                     }
                 }
@@ -1499,28 +1499,28 @@ namespace Rocola
                         float cy = -d + (h * 0.5f + d) * (u * u);
                         if (u > 0.74f) cy -= (float)Math.Abs(Math.Sin((u - 0.74f) * 12.0)) * h * 0.16f * ((1f - u) / 0.26f);
                         float aw = Math.Max(d * 0.16f, d * (float)Math.Abs(Math.Cos(u * 11.5)));
-                        using (SolidBrush b = new SolidBrush(Color.FromArgb(240, 246, 206, 96)))
-                            g.FillEllipse(b, cx - aw * 0.5f, cy - d * 0.5f, aw, d);
-                        using (Pen pe = new Pen(Color.FromArgb(190, 255, 242, 196), 1.2f))
-                            g.DrawEllipse(pe, cx - aw * 0.5f, cy - d * 0.5f, aw, d);
+                        using (SKPaint b = new SKPaint { Color = Color.FromArgb(240, 246, 206, 96).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                            Pixel.RellenaOvalo(g, new RectangleF(cx - aw * 0.5f, cy - d * 0.5f, aw, d), b, suave, medio, copia);   // EN LINUX: g.FillEllipse
+                        using (SKPaint pe = new SKPaint { Color = Color.FromArgb(190, 255, 242, 196).Sk(), StrokeWidth = 1.2f })   // EN LINUX: Pen(color, 1,2)
+                            Pixel.TrazaOvalo(g, new RectangleF(cx - aw * 0.5f, cy - d * 0.5f, aw, d), pe, suave, medio, copia);   // EN LINUX: g.DrawEllipse
                     }
                     if (dt >= MonMs + DestMs) monTick = 0;
                 }
-                if (stSac != null) g.Restore(stSac);
+                if (stSac != -1) g.RestoreToCount(stSac);   // EN LINUX: if (stSac != null) g.Restore(stSac): el lienzo vuelve a su matriz y su recorte
             }
 
-            private static GraphicsPath RoundRectF(RectangleF r, float radio)
+            private static SKPath RoundRectF(RectangleF r, float radio)   // EN LINUX: GraphicsPath: un SKPath
             {
-                GraphicsPath p = new GraphicsPath();
+                SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): su relleno de fabrica, Alternate, es par-impar
                 float d = radio * 2;
                 if (d > r.Height) d = r.Height;
                 if (d > r.Width) d = r.Width;
                 if (d < 2) d = 2;
-                p.AddArc(r.X, r.Y, d, d, 180, 90);
-                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-                p.CloseFigure();
+                p.ArcTo(SKRect.Create(r.X, r.Y, d, d), 180, 90, true);   // EN LINUX: AddArc: el primero empieza la figura
+                p.ArcTo(SKRect.Create(r.Right - d, r.Y, d, d), 270, 90, false);   // EN LINUX: AddArc: GDI+ une el arco con el punto anterior de la figura abierta
+                p.ArcTo(SKRect.Create(r.Right - d, r.Bottom - d, d, d), 0, 90, false);   // EN LINUX: AddArc, unido al anterior
+                p.ArcTo(SKRect.Create(r.X, r.Bottom - d, d, d), 90, 90, false);   // EN LINUX: AddArc, unido al anterior
+                p.Close();   // EN LINUX: CloseFigure
                 return p;
             }
         }
@@ -1531,7 +1531,7 @@ namespace Rocola
         // ponerla en la franja de abajo: asi, al sonar una cancion, tambien se ve DE QUE ES.
         //
         // Se mide sola: le da su ancho y su alto al acomodo, que es quien la coloca detras del artista.
-        private class GeneroView : Control
+        private partial class GeneroView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             private string texto = "";
             public string Texto
@@ -1542,12 +1542,12 @@ namespace Rocola
             public Color Tinte = DefaultAccent;
 
             private bool medido; private int anchoPide, altoPide;
-            private SolidBrush brocha; private StringFormat sfCen;
+            private SKPaint brocha; private FormatoTexto sfCen;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; StringFormat: un FormatoTexto
 
             protected override void Dispose(bool disposing)
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
-                try { if (disposing) { SueltaDibujo(ref brocha); SueltaDibujo(ref sfCen); } }
+                try { if (disposing) { SueltaDibujo(ref brocha); sfCen = null; } }   // EN LINUX: SueltaDibujo(ref sfCen): un FormatoTexto no tiene nada que soltar; queda en null
                 finally { base.Dispose(disposing); }
             }
 
@@ -1570,25 +1570,25 @@ namespace Rocola
             public int AltoQuePide() { Mide(); return altoPide; }
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
-            public void RenderContent(Graphics g)
+            public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama que aqui no se pone (modo de letra, copia y medio pixel); quien aun pasa un Graphics (OnPaint, arriba, y DrawCtrlOverlay de Form1.Video.cs) llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
                 int w = Width, h = Height;
                 if (w < 6 || h < 6 || texto.Length == 0) return;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                if (brocha == null) brocha = new SolidBrush(Color.White);
-                if (sfCen == null) sfCen = CreaSfDibuja(StringAlignment.Center);
-                using (GraphicsPath p = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
+                if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
+                if (sfCen == null) sfCen = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
+                using (Rocola.Dibujo2D.GraphicsPath p = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                 {
-                    using (SolidBrush b = new SolidBrush(Color.FromArgb(60, Tinte))) g.FillPath(b, p);
-                    using (Pen pe = new Pen(Color.FromArgb(120, Tinte), 1f)) g.DrawPath(pe, p);
+                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(60, Tinte).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), b, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath
+                    using (SKPaint pe = new SKPaint { Color = Color.FromArgb(120, Tinte).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(p), pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                 }
-                brocha.Color = Lighten(Tinte, 0.45);
-                g.DrawString(texto, this.Font, brocha, new RectangleF(0, 0, w, h), sfCen);
+                brocha.Color = Lighten(Tinte, 0.45).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                TextoGdiPlus.Escribe(g, texto, PuenteDibujo.Letra(this.Font), ajuste, brocha, new RectangleF(0, 0, w, h), sfCen, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo; la letra es la del control (WinForms): la misma Letra, por el puente
             }
         }
 
         // ==========  BARRA DE PROGRESO  ==========
-        private class ProgressView : Control
+        private partial class ProgressView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             private bool _neon;
             public bool Neon { get { return _neon; } set { if (_neon != value) { _neon = value; Invalidate(); } } }
@@ -1597,7 +1597,7 @@ namespace Rocola
             private Color _accent = DefaultAccent;   // ESTETICA: la barra toma el color del genero que suena
             public Color Accent { get { return _accent; } set { if (value.ToArgb() != _accent.ToArgb()) { _accent = value; Invalidate(); } } }
 
-            private SolidBrush trackB; private Pen trackP;   // riel: colores fijos -> se cachean (se dibuja en cada reconstruccion de UI)
+            private SKPaint trackB; private SKPaint trackP;   // riel: colores fijos -> se cachean (se dibuja en cada reconstruccion de UI)   // EN LINUX: SolidBrush y Pen: SKPaint
 
             protected override void Dispose(bool disposing)
             {
@@ -1614,9 +1614,9 @@ namespace Rocola
 
             protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }
             // Dibuja la barra de progreso en cualquier Graphics (el control, o la textura de UI del modo GPU).
-            public void RenderContent(Graphics g)
+            public void RenderContent(SKCanvas g, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama que aqui no se pone (copia y medio pixel); quien aun pasa un Graphics (OnPaint, arriba, y DrawCtrlOverlay de Form1.Video.cs) llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
                 if (_neon)
@@ -1626,20 +1626,20 @@ namespace Rocola
                     float pad = Math.Min((w - 1) * 0.25f, Math.Min(4f, (h - 1) * 0.5f));
                     float y = (h - 1) * 0.5f;
                     float end = w - 1 - pad;
-                    using (Pen rail = new Pen(Color.FromArgb(135, 8, 15, 35), Math.Max(1f, h - 2)))
-                    { rail.StartCap = rail.EndCap = LineCap.Round; g.DrawLine(rail, pad, y, end, y); }
+                    using (SKPaint rail = new SKPaint { Color = Color.FromArgb(135, 8, 15, 35).Sk(), StrokeWidth = Math.Max(1f, h - 2) })   // EN LINUX: Pen(color, ancho): la pluma en un SKPaint (Nativo/Pixel.cs le pone el minimo de un pixel y las esquinas de GDI+)
+                    { rail.StrokeCap = SKStrokeCap.Round; Pixel.Linea(g, pad, y, end, y, rail, suave, medio, copia); }   // EN LINUX: StartCap = EndCap = Round; g.DrawLine (Nativo/Pixel.cs)
                     float length = (float)(_value * (end - pad));
                     if (length > 0)
                     {
                         Color tint = Lighten(_accent, 0.35);
-                        using (Pen halo = new Pen(Color.FromArgb(45, tint), Math.Max(1f, h - 1)))
-                        using (Pen tube = new Pen(Color.FromArgb(160, tint), Math.Max(1f, h * 0.48f)))
-                        using (Pen core = new Pen(Lighten(_accent, 0.88), Math.Max(1f, h * 0.16f)))
+                        using (SKPaint halo = new SKPaint { Color = Color.FromArgb(45, tint).Sk(), StrokeWidth = Math.Max(1f, h - 1) })   // EN LINUX: Pen(color, ancho)
+                        using (SKPaint tube = new SKPaint { Color = Color.FromArgb(160, tint).Sk(), StrokeWidth = Math.Max(1f, h * 0.48f) })   // EN LINUX: Pen(color, ancho)
+                        using (SKPaint core = new SKPaint { Color = Lighten(_accent, 0.88).Sk(), StrokeWidth = Math.Max(1f, h * 0.16f) })   // EN LINUX: Pen(color, ancho)
                         {
-                            halo.StartCap = halo.EndCap = tube.StartCap = tube.EndCap = core.StartCap = core.EndCap = LineCap.Round;
-                            g.DrawLine(halo, pad, y, pad + length, y);
-                            g.DrawLine(tube, pad, y, pad + length, y);
-                            g.DrawLine(core, pad, y, pad + length, y);
+                            halo.StrokeCap = tube.StrokeCap = core.StrokeCap = SKStrokeCap.Round;   // EN LINUX: las dos puntas de cada pluma, redondas (StartCap = EndCap = Round)
+                            Pixel.Linea(g, pad, y, pad + length, y, halo, suave, medio, copia);   // EN LINUX: g.DrawLine
+                            Pixel.Linea(g, pad, y, pad + length, y, tube, suave, medio, copia);   // EN LINUX: g.DrawLine
+                            Pixel.Linea(g, pad, y, pad + length, y, core, suave, medio, copia);   // EN LINUX: g.DrawLine
                         }
                     }
                     return;
@@ -1647,11 +1647,11 @@ namespace Rocola
 
                 // Riel HUNDIDO: oscuro translucido + borde interior tenue (parece rebajado, no plano).
                 Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
-                if (trackB == null) { trackB = new SolidBrush(Color.FromArgb(130, 6, 10, 26)); trackP = new Pen(Color.FromArgb(40, 255, 255, 255), 1f); }
-                using (GraphicsPath tp = RoundedPath(track, h / 2))
+                if (trackB == null) { trackB = new SKPaint { Color = Color.FromArgb(130, 6, 10, 26).Sk() }; trackP = new SKPaint { Color = Color.FromArgb(40, 255, 255, 255).Sk(), StrokeWidth = 1f }; }   // EN LINUX: new SolidBrush(color) y new Pen(color, 1)
+                using (Rocola.Dibujo2D.GraphicsPath tp = RoundedPath(track, h / 2))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                 {
-                    g.FillPath(trackB, tp);
-                    g.DrawPath(trackP, tp);
+                    Pixel.Rellena(g, PuenteDibujo.Ruta(tp), trackB, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
+                    Pixel.Traza(g, PuenteDibujo.Ruta(tp), trackP, suave, medio, copia);   // EN LINUX: g.DrawPath (Nativo/Pixel.cs) con el estado del lienzo
                 }
 
                 int fw = (int)(_value * (w - 2));
@@ -1659,20 +1659,20 @@ namespace Rocola
                 {
                     Rectangle fill = new Rectangle(1, 1, fw, h - 3);
                     int rad = Math.Max(1, (h - 3) / 2);
-                    using (GraphicsPath fp = RoundedPath(fill, rad))
+                    using (Rocola.Dibujo2D.GraphicsPath fp = RoundedPath(fill, rad))   // EN LINUX: RoundedPath: su SKPath, por el puente
                     {
                         // halo "neon" alrededor del relleno (acorde al cielo estrellado)
-                        using (Pen glow = new Pen(Color.FromArgb(70, Lighten(_accent, 0.5)), 3f)) { glow.LineJoin = LineJoin.Round; g.DrawPath(glow, fp); }
+                        using (SKPaint glow = new SKPaint { Color = Color.FromArgb(70, Lighten(_accent, 0.5)).Sk(), StrokeWidth = 3f }) { glow.StrokeJoin = SKStrokeJoin.Round; Pixel.Traza(g, PuenteDibujo.Ruta(fp), glow, suave, medio, copia); }   // EN LINUX: Pen(color, 3) con LineJoin.Round y g.DrawPath
                         // cuerpo: degradado vertical brillante arriba -> acento abajo
-                        using (LinearGradientBrush fb = new LinearGradientBrush(new Rectangle(fill.X, fill.Y, fill.Width, fill.Height + 1), Lighten(_accent, 0.6), Shade(_accent, 0.1), LinearGradientMode.Vertical))
-                            g.FillPath(fb, fp);
+                        using (SKShader fbS = Degradado.Lineal(new Rectangle(fill.X, fill.Y, fill.Width, fill.Height + 1), Lighten(_accent, 0.6), Shade(_accent, 0.1), Degradado.Vertical, true)) using (SKPaint fb = new SKPaint { Shader = fbS })   // EN LINUX: LinearGradientBrush(caja, a, b, Vertical): su shader (Nativo/Degradado.cs: el modo es un angulo escalable de 90) en un SKPaint; se sueltan los dos con sus using
+                            Pixel.Rellena(g, PuenteDibujo.Ruta(fp), fb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
                         // gloss: franja clara en la mitad superior (aspecto vidrioso)
                         Rectangle gloss = new Rectangle(fill.X + 1, fill.Y + 1, Math.Max(1, fill.Width - 2), Math.Max(1, (fill.Height - 1) / 2));
-                        using (GraphicsPath gpath = RoundedPath(gloss, Math.Max(1, gloss.Height / 2)))
-                        using (LinearGradientBrush gb = new LinearGradientBrush(new Rectangle(gloss.X, gloss.Y, gloss.Width, gloss.Height + 1), Color.FromArgb(150, 255, 255, 255), Color.FromArgb(15, 255, 255, 255), LinearGradientMode.Vertical))
-                            g.FillPath(gb, gpath);
+                        using (Rocola.Dibujo2D.GraphicsPath gpath = RoundedPath(gloss, Math.Max(1, gloss.Height / 2)))   // EN LINUX: RoundedPath: su SKPath, por el puente
+                        using (SKShader gbS = Degradado.Lineal(new Rectangle(gloss.X, gloss.Y, gloss.Width, gloss.Height + 1), Color.FromArgb(150, 255, 255, 255), Color.FromArgb(15, 255, 255, 255), Degradado.Vertical, true)) using (SKPaint gb = new SKPaint { Shader = gbS })   // EN LINUX: LinearGradientBrush(caja, a, b, Vertical): su shader en un SKPaint
+                            Pixel.Rellena(g, PuenteDibujo.Ruta(gpath), gb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
                         // borde nitido brillante
-                        using (Pen edge = new Pen(Color.FromArgb(180, Lighten(_accent, 0.65)), 1f)) g.DrawPath(edge, fp);
+                        using (SKPaint edge = new SKPaint { Color = Color.FromArgb(180, Lighten(_accent, 0.65)).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(fp), edge, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
                 }
             }
@@ -1700,32 +1700,32 @@ namespace Rocola
             public Action<int> OnActivate;      // doble-click sobre un item (encolar)
             public Action<int> OnPick;          // click simple: fija la seleccion
 
-            private SolidBrush hlB; private Pen hlP;
-            private SolidBrush txtB; private StringFormat txtFmt; private SolidBrush bgB;
-            private SolidBrush durB; private StringFormat durFmt;   // duracion: gris suave, pegada a la derecha
+            private SKPaint hlB; private SKPaint hlP;   // EN LINUX: SolidBrush y Pen: SKPaint
+            private SKPaint txtB; private FormatoTexto txtFmt; private SKPaint bgB;   // EN LINUX: SolidBrush: SKPaint; StringFormat: FormatoTexto (Nativo/TextoGdiPlus.cs)
+            private SKPaint durB; private FormatoTexto durFmt;   // duracion: gris suave, pegada a la derecha   // EN LINUX: SKPaint y FormatoTexto
             // El circulito del numero de pista y la marca de "ya pedida". Todo cacheado: la lista se redibuja
             // entera cada vez que cambia algo, y crear una brocha por fila seria basura por gusto.
-            private SolidBrush colaB;
+            private SKPaint colaB;   // EN LINUX: SolidBrush: SKPaint
             // Sin tarjeta grafica no hay lista transparente y esto no compila nada: es un metodo parcial
             // sin cuerpo, que el compilador borra junto con su llamada.
             partial void SueltaAcabadoGpu();
-            private Font fNum, fCola; private float fontFuente = -1f;
-            private StringFormat cenFmt;
+            private Rocola.Nativo.Letra fNum, fCola; private float fontFuente = -1f;   // EN LINUX: Font: Letra (Nativo/Letras.cs)
+            private FormatoTexto cenFmt;   // EN LINUX: StringFormat: FormatoTexto
             // EL CIRCULITO Y LA PASTILLA, HORNEADOS. Dibujar dos elipses suavizadas por fila costaba 80 us por
             // fila -mas que todo el resto de la fila junta- y la pastilla otros 55. Como son SIEMPRE la misma
             // figura, se pintan una vez a un mapa de bits y despues cada fila solo las copia. Lo unico que se
             // sigue dibujando por fila es el numero, que si cambia.
-            private Bitmap bmpCirc, bmpCircCola, bmpCircSon;
+            private SKBitmap bmpCirc, bmpCircCola, bmpCircSon;   // EN LINUX: Bitmap: un SKBitmap (Bgra8888 premultiplicado, lo que era Format32bppPArgb)
             // Las pastillas se hornean POR ANCHO: cada texto mide lo suyo ("SONANDO" no mide lo mismo que
             // "EN COLA 12"), y con un ancho fijo el texto se salia -de ahi que se leyera "SONAND"-.
-            private readonly Dictionary<int, Bitmap> hornoPastV = new Dictionary<int, Bitmap>();
-            private readonly Dictionary<int, Bitmap> hornoPastA = new Dictionary<int, Bitmap>();
+            private readonly Dictionary<int, SKBitmap> hornoPastV = new Dictionary<int, SKBitmap>();   // EN LINUX: SKBitmap
+            private readonly Dictionary<int, SKBitmap> hornoPastA = new Dictionary<int, SKBitmap>();   // EN LINUX: SKBitmap
             private int hornoPastAlto = -1;
-            private Bitmap Pastilla(bool ambar, int w, int h)
+            private SKBitmap Pastilla(bool ambar, int w, int h)   // EN LINUX: la pastilla horneada, un SKBitmap
             {
                 if (h != hornoPastAlto) { TiraPastillas(); hornoPastAlto = h; }
-                Dictionary<int, Bitmap> horno = ambar ? hornoPastA : hornoPastV;
-                Bitmap b;
+                Dictionary<int, SKBitmap> horno = ambar ? hornoPastA : hornoPastV;   // EN LINUX: SKBitmap
+                SKBitmap b;   // EN LINUX: SKBitmap
                 if (horno.TryGetValue(w, out b) && b != null) return b;
                 b = HorneaPastilla(w, h, ambar ? SonAmbar : ColaVerde);
                 horno[w] = b;
@@ -1733,72 +1733,72 @@ namespace Rocola
             }
             private void TiraPastillas()
             {
-                foreach (Bitmap b in hornoPastV.Values) if (b != null) b.Dispose();
-                foreach (Bitmap b in hornoPastA.Values) if (b != null) b.Dispose();
+                foreach (SKBitmap b in hornoPastV.Values) if (b != null) b.Dispose();   // EN LINUX: SKBitmap
+                foreach (SKBitmap b in hornoPastA.Values) if (b != null) b.Dispose();   // EN LINUX: SKBitmap
                 hornoPastV.Clear(); hornoPastA.Clear();
             }
-            private Bitmap[] bmpDig, bmpDigCola, bmpDigSon;   // las diez cifras, tambien horneadas
+            private SKBitmap[] bmpDig, bmpDigCola, bmpDigSon;   // las diez cifras, tambien horneadas   // EN LINUX: SKBitmap
             private int hornoLado = -1, digW, digH;
             private float hornoCuerpo = -1f;
-            private static Bitmap HorneaCirculo(int lado, Color c, bool fuerte)
+            private static SKBitmap HorneaCirculo(int lado, Color c, bool fuerte)   // EN LINUX: el circulito horneado, un SKBitmap
             {
                 if (lado < 3) lado = 3;
-                Bitmap b = new Bitmap(lado, lado, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(b))
+                SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo; su estado, el de fabrica, va en variables
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
                     RectangleF r = new RectangleF(0.6f, 0.6f, lado - 1.7f, lado - 1.7f);
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(fuerte ? 70 : 34, c))) g.FillEllipse(sb, r);
-                    using (Pen p = new Pen(Color.FromArgb(fuerte ? 150 : 60, c), 1f)) g.DrawEllipse(p, r);
+                    using (SKPaint sb = new SKPaint { Color = Color.FromArgb(fuerte ? 70 : 34, c).Sk() }) Pixel.RellenaOvalo(g, r, sb, suave);   // EN LINUX: SolidBrush y g.FillEllipse (Nativo/Pixel.cs)
+                    using (SKPaint p = new SKPaint { Color = Color.FromArgb(fuerte ? 150 : 60, c).Sk(), StrokeWidth = 1f }) Pixel.TrazaOvalo(g, r, p, suave);   // EN LINUX: Pen(color, 1) y g.DrawEllipse
                 }
                 return b;
             }
-            private static Bitmap HorneaPastilla(int w, int h, Color c)
+            private static SKBitmap HorneaPastilla(int w, int h, Color c)   // EN LINUX: la pastilla horneada, un SKBitmap
             {
                 if (w < 4) w = 4;
                 if (h < 4) h = 4;
-                Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(b))
+                SKBitmap b = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo; su estado, el de fabrica, va en variables
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
-                    using (GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), h / 2))
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
+                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), h / 2))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                     {
-                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(52, c))) g.FillPath(sb, gp);
-                        using (Pen p = new Pen(Color.FromArgb(110, c), 1f)) g.DrawPath(p, gp);
+                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(52, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave);   // EN LINUX: SolidBrush y g.FillPath
+                        using (SKPaint p = new SKPaint { Color = Color.FromArgb(110, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), p, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
                 }
                 return b;
             }
             // Las diez cifras, de un ancho comun para que los numeros queden alineados entre filas.
-            private void HorneaCifras(Font f, Color c, out Bitmap[] destino, out int w, out int h)
+            private void HorneaCifras(Rocola.Nativo.Letra f, Color c, out SKBitmap[] destino, out int w, out int h)   // EN LINUX: la Letra de las cifras y sus mapas, SKBitmap
             {
                 w = 6; h = 8;
-                using (Bitmap med = new Bitmap(4, 4))
-                using (Graphics g = Graphics.FromImage(med))
+                // EN LINUX: using (Bitmap med = new Bitmap(4, 4)): el mapa de 4x4 solo daba un Graphics con que medir, y medir no pide lienzo (TextoGdiPlus.Mide)
+                // EN LINUX: using (Graphics g = Graphics.FromImage(med)): su modo de letra, el de fabrica de un Graphics nuevo (DelSistema), va en la llamada
                     for (int d = 0; d < 10; d++)
                     {
-                        SizeF sz = g.MeasureString(((char)('0' + d)).ToString(), f, 999, StringFormat.GenericTypographic);
+                        SizeF sz = TextoGdiPlus.Mide(((char)('0' + d)).ToString(), f, AjusteLetra.DelSistema, new SizeF(999, 999999f), FormatoTexto.TipograficoCompartido);   // EN LINUX: g.MeasureString(s, f, 999, GenericTypographic): en una caja de 999 de ancho y 999999 de alto (la sobrecarga de .NET), con EL tipografico compartido y el modo de letra de un Graphics nuevo
                         if (sz.Width > w) w = (int)Math.Ceiling(sz.Width);
                         if (sz.Height > h) h = (int)Math.Ceiling(sz.Height);
                     }
                 w += 2; h += 2;
-                destino = new Bitmap[10];
-                using (StringFormat sf = new StringFormat())
+                destino = new SKBitmap[10];   // EN LINUX: SKBitmap
+                // EN LINUX: using (StringFormat sf = new StringFormat()): el formato es un FormatoTexto (abajo), que no se suelta; el bloque queda como estaba
                 {
-                    sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                    sf.FormatFlags = StringFormatFlags.NoWrap;
-                    using (SolidBrush sb = new SolidBrush(c))
+                    FormatoTexto sf = new FormatoTexto(); sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() con Alignment y LineAlignment = Center (Nativo/TextoGdiPlus.cs)
+                    sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap: reemplaza todas las banderas
+                    using (SKPaint sb = new SKPaint { Color = c.Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
                         for (int d = 0; d < 10; d++)
                         {
-                            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                            using (Graphics g = Graphics.FromImage(b))
+                            SKBitmap b = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo; su estado, el de fabrica, va en variables
                             {
-                                g.SmoothingMode = SmoothingMode.AntiAlias;
-                                g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                                g.Clear(Color.Transparent);
-                                g.DrawString(((char)('0' + d)).ToString(), f, sb, new RectangleF(0, 0, w, h), sf);
+                                // EN LINUX: g.SmoothingMode = AntiAlias: aqui solo se escribe texto, que no mira el suavizado (lo manda el modo de letra)
+                                AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias, en una variable
+                                g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
+                                TextoGdiPlus.Escribe(g, ((char)('0' + d)).ToString(), f, ajuste, sb, new RectangleF(0, 0, w, h), sf);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs): sin copia ni medio pixel (un Graphics nuevo)
                             }
                             destino[d] = b;
                         }
@@ -1806,9 +1806,9 @@ namespace Rocola
             }
             // Pinta un numero copiando sus cifras ya horneadas, centrado en 'cx'.
             // marca: 0 = normal, 1 = pedida (verde), 2 = sonando ahora (ambar)
-            private void PintaNumero(Graphics g, int v, float cx, float cy, int marca)
+            private void PintaNumero(SKCanvas g, bool copia, Filtro filtro, bool medio, int v, float cx, float cy, int marca)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del que llama (copia, filtro y medio pixel)
             {
-                Bitmap[] set = (marca == 2) ? bmpDigSon : (marca == 1) ? bmpDigCola : bmpDig;
+                SKBitmap[] set = (marca == 2) ? bmpDigSon : (marca == 1) ? bmpDigCola : bmpDig;   // EN LINUX: SKBitmap
                 if (set == null) return;
                 if (v < 0) v = 0;
                 int cifras = (v < 10) ? 1 : (v < 100) ? 2 : (v < 1000) ? 3 : 4;
@@ -1818,50 +1818,50 @@ namespace Rocola
                 for (int k = 0; k < cifras; k++)
                 {
                     int d = (v / div) % 10; div /= 10;
-                    if (d >= 0 && d <= 9) g.DrawImageUnscaled(set[d], x + k * digW, y);
+                    if (d >= 0 && d <= 9) { SKBitmap im = set[d]; if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect(x + k * digW, y, x + k * digW + im.Width, y + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+
                 }
             }
 
             // PASTILLA DE GENERO ya dibujada. Se hornea UNA por etiqueta (son una docena en toda la rocola)
             // y luego cada fila solo la copia. Dibujar por fila un rectangulo redondeado con borde mas su
             // texto era justo lo que encarecia la lista, y la lista se repinta entera al moverse por ella.
-            private readonly Dictionary<string, Bitmap> hornoGen = new Dictionary<string, Bitmap>();
+            private readonly Dictionary<string, SKBitmap> hornoGen = new Dictionary<string, SKBitmap>();   // EN LINUX: SKBitmap
             private float hornoGenCuerpo = -1f;
-            private Bitmap HorneaGenero(string etiqueta)
+            private SKBitmap HorneaGenero(string etiqueta)   // EN LINUX: la pastilla del genero horneada, un SKBitmap
             {
                 if (string.IsNullOrEmpty(etiqueta) || fCola == null) return null;
-                if (Math.Abs(hornoGenCuerpo - fCola.SizeInPoints) > 0.01f) { TiraHornoGen(); hornoGenCuerpo = fCola.SizeInPoints; }
-                Bitmap b;
+                if (Math.Abs(hornoGenCuerpo - fCola.Puntos) > 0.01f) { TiraHornoGen(); hornoGenCuerpo = fCola.Puntos; }   // EN LINUX: Font.SizeInPoints
+                SKBitmap b;   // EN LINUX: SKBitmap
                 if (hornoGen.TryGetValue(etiqueta, out b)) return b;
                 Color c = ColorDeEtiqueta(etiqueta);
                 int w, h;
-                using (Bitmap med = new Bitmap(4, 4))
-                using (Graphics mg = Graphics.FromImage(med))
+                // EN LINUX: using (Bitmap med = new Bitmap(4, 4)): el mapa de 4x4 solo daba un Graphics con que medir, y medir no pide lienzo (TextoGdiPlus.Mide)
+                // EN LINUX: using (Graphics mg = Graphics.FromImage(med)): su modo de letra, el de fabrica de un Graphics nuevo (DelSistema), va en la llamada
                 {
-                    SizeF sz = mg.MeasureString(etiqueta, fCola, 999, StringFormat.GenericTypographic);
+                    SizeF sz = TextoGdiPlus.Mide(etiqueta, fCola, AjusteLetra.DelSistema, new SizeF(999, 999999f), FormatoTexto.TipograficoCompartido);   // EN LINUX: mg.MeasureString(s, f, 999, GenericTypographic): caja de 999 x 999999, EL tipografico compartido y el modo de letra de un Graphics nuevo
                     w = (int)Math.Ceiling(sz.Width) + 16;
                     h = (int)Math.Ceiling(sz.Height) + 5;
                 }
                 if (w < 8) w = 8; if (h < 8) h = 8;
-                b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-                using (Graphics g = Graphics.FromImage(b))
+                b = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
+                using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo; su estado, el de fabrica, va en variables
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                    g.Clear(Color.Transparent);
+                    bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias
+                    AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
                     // El MISMO aspecto que la pastilla de genero de los resultados del buscador: relleno muy
                     // tenue del color del genero, borde fino y el texto en ese color aclarado.
-                    using (GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))
+                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
                     {
-                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(60, c))) g.FillPath(sb, gp);
-                        using (Pen pn = new Pen(Color.FromArgb(120, c), 1f)) g.DrawPath(pn, gp);
+                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(60, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave);   // EN LINUX: SolidBrush y g.FillPath
+                        using (SKPaint pn = new SKPaint { Color = Color.FromArgb(120, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
-                    using (StringFormat sf = new StringFormat())
+                    // EN LINUX: using (StringFormat sf = new StringFormat()): el formato es un FormatoTexto (abajo), que no se suelta; el bloque queda como estaba
                     {
-                        sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                        sf.FormatFlags = StringFormatFlags.NoWrap;
-                        using (SolidBrush sb = new SolidBrush(Lighten(c, 0.45)))
-                            g.DrawString(etiqueta, fCola, sb, new RectangleF(0, 0, w, h), sf);
+                        FormatoTexto sf = new FormatoTexto(); sf.Horizontal = Alinea.Centro; sf.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() con Alignment y LineAlignment = Center
+                        sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap: reemplaza todas las banderas
+                        using (SKPaint sb = new SKPaint { Color = Lighten(c, 0.45).Sk() })   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
+                            TextoGdiPlus.Escribe(g, etiqueta, fCola, ajuste, sb, new RectangleF(0, 0, w, h), sf);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                     }
                 }
                 hornoGen[etiqueta] = b;
@@ -1869,13 +1869,13 @@ namespace Rocola
             }
             private void TiraHornoGen()
             {
-                foreach (Bitmap b in hornoGen.Values) if (b != null) b.Dispose();
+                foreach (SKBitmap b in hornoGen.Values) if (b != null) b.Dispose();   // EN LINUX: SKBitmap
                 hornoGen.Clear();
             }
 
             private void EnsureHorno(int lado, int ph)
             {
-                if (bmpDig == null || Math.Abs(hornoCuerpo - fNum.SizeInPoints) > 0.01f)
+                if (bmpDig == null || Math.Abs(hornoCuerpo - fNum.Puntos) > 0.01f)   // EN LINUX: Font.SizeInPoints
                 {
                     if (bmpDig != null) for (int i = 0; i < bmpDig.Length; i++) if (bmpDig[i] != null) bmpDig[i].Dispose();
                     if (bmpDigCola != null) for (int i = 0; i < bmpDigCola.Length; i++) if (bmpDigCola[i] != null) bmpDigCola[i].Dispose();
@@ -1885,7 +1885,7 @@ namespace Rocola
                     HorneaCifras(fNum, ColaVerde, out bmpDigCola, out w2, out h2);
                     HorneaCifras(fNum, SonAmbar, out bmpDigSon, out w3, out h3);
                     digW = Math.Max(w1, Math.Max(w2, w3)); digH = Math.Max(h1, Math.Max(h2, h3));
-                    hornoCuerpo = fNum.SizeInPoints;
+                    hornoCuerpo = fNum.Puntos;   // EN LINUX: Font.SizeInPoints
                 }
                 if (bmpCirc == null || hornoLado != lado)
                 {
@@ -1910,7 +1910,7 @@ namespace Rocola
             private void ClearFontDrawing()
             {
                 SueltaDibujo(ref fNum); SueltaDibujo(ref fCola);
-                SueltaBitmaps(ref bmpDig); SueltaBitmaps(ref bmpDigCola); SueltaBitmaps(ref bmpDigSon);
+                SueltaMapasVistasB(ref bmpDig); SueltaMapasVistasB(ref bmpDigCola); SueltaMapasVistasB(ref bmpDigSon);   // EN LINUX: SueltaBitmaps (Form1.Pared.cs, aun sin traducir) pide Bitmap[] de la capa: la misma cuenta para SKBitmap[] (Plataforma/Puente.vistas-b.cs)
                 if (hornoGen != null) TiraHornoGen();
                 SueltaDibujo(ref hornoPag); SueltaDibujo(ref hornoAnt);
                 fontFuente = hornoCuerpo = hornoGenCuerpo = -1f;
@@ -1932,9 +1932,9 @@ namespace Rocola
                         ClearFontDrawing();
                         if (hornoPastV != null && hornoPastA != null) TiraPastillas();
                         SueltaDibujo(ref bmpCirc); SueltaDibujo(ref bmpCircCola); SueltaDibujo(ref bmpCircSon);
-                        SueltaDibujo(ref hlB); SueltaDibujo(ref hlP); SueltaDibujo(ref txtB); SueltaDibujo(ref txtFmt);
-                        SueltaDibujo(ref bgB); SueltaDibujo(ref durB); SueltaDibujo(ref durFmt);
-                        SueltaDibujo(ref colaB); SueltaDibujo(ref cenFmt);
+                        SueltaDibujo(ref hlB); SueltaDibujo(ref hlP); SueltaDibujo(ref txtB); txtFmt = null;   // EN LINUX: SueltaDibujo(ref txtFmt): un FormatoTexto no tiene nada que soltar; queda en null
+                        SueltaDibujo(ref bgB); SueltaDibujo(ref durB); durFmt = null;   // EN LINUX: SueltaDibujo(ref durFmt): queda en null
+                        SueltaDibujo(ref colaB); cenFmt = null;   // EN LINUX: SueltaDibujo(ref cenFmt): queda en null
                         SueltaAcabadoGpu();   // el velo y la clave de color de la lista transparente (solo con tarjeta)
                     }
                 }
@@ -1952,7 +1952,7 @@ namespace Rocola
             // XP serian bastantes mas y romperian el movimiento). Horneadas, cada cuadro son dos copias.
             public const int SlideMs = 230;
             private int slideTick = -1; private float slideDesde;
-            private Bitmap hornoPag, hornoAnt;          // la pagina de ahora y la que se esta yendo
+            private SKBitmap hornoPag, hornoAnt;          // la pagina de ahora y la que se esta yendo   // EN LINUX: Bitmap: un SKBitmap (Bgra8888 premultiplicado, lo que era Format32bppPArgb)
             private long hornoSig = long.MinValue;      // que hay horneado (pagina, seleccion, tamano, datos...)
             private int hornoAncho = -1, hornoAlto = -1;
 
@@ -1965,7 +1965,7 @@ namespace Rocola
                 // el otro se dibuja encima la que entra. Tirarlos obligaria a reservar dos megas en cada
                 // cambio de pagina, y hojeando deprisa eso son recogidas de basura -o sea, tirones- justo
                 // mientras la animacion esta corriendo.
-                Bitmap t = hornoAnt; hornoAnt = hornoPag; hornoPag = t;
+                SKBitmap t = hornoAnt; hornoAnt = hornoPag; hornoPag = t;   // EN LINUX: SKBitmap
                 hornoSig = long.MinValue;
                 slideDesde = dir * (float)w; slideTick = TickVivo();
             }
@@ -2039,28 +2039,28 @@ namespace Rocola
                 {
                     if (hornoPag != null) hornoPag.Dispose();
                     if (hornoAnt != null && (hornoAncho != w || hornoAlto != h)) { hornoAnt.Dispose(); hornoAnt = null; slideTick = -1; }
-                    hornoPag = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
+                    hornoPag = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
                     hornoAncho = w; hornoAlto = h;
                 }
 #if ROCOLA_GPU
                 eqIdx = -1;   // donde van las barritas del ecualizador: lo vuelve a apuntar este horneado (DiscoVivoGpu.cs)
                 gpuSnapshotSel = -1;   // el mapa nuevo ya no contiene la fila guardada del mapa anterior
 #endif
-                using (Graphics gb = Graphics.FromImage(hornoPag)) PintaPagina(gb, PageStart);
+                using (SKCanvas gb = new SKCanvas(hornoPag)) { bool suave = false; PintaPagina(gb, ref suave, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, PageStart); }   // EN LINUX: Graphics.FromImage(hornoPag): un lienzo nuevo, con el estado de fabrica de un Graphics (sin suavizar -PintaPagina lo cambia-, DelSistema, sin copia, Bilinear, sin medio pixel)
                 hornoSig = sig;
             }
 
             // Lo que ve el cliente: la pagina horneada, y mientras se hojea, las DOS deslizandose.
-            public void RenderContent(Graphics g)
+            public void RenderContent(SKCanvas g, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del que llama (copia, filtro y medio pixel); quien aun pasa un Graphics (OnPaint, abajo; DrawCtrlOverlay de Form1.Video.cs; EnSeco de Form1.Portadas.cs y PrecargaPaginaGpu.cs) llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 if (w < 4 || h < 4) return;
                 AseguraHorneada(w, h);
                 float dx = DesplazaAhora();
-                if (dx == 0f || hornoAnt == null) { g.DrawImageUnscaled(hornoPag, 0, 0); return; }
+                if (dx == 0f || hornoAnt == null) { Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, hornoPag.Width, hornoPag.Height), new SKRect(0, 0, hornoPag.Width, hornoPag.Height), filtro, medio, copia); return; }   // EN LINUX: g.DrawImageUnscaled(hornoPag, 0, 0): entera y en su tamano, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs)
                 // La que SE VA sale por el lado contrario al que entra la nueva.
-                g.DrawImageUnscaled(hornoAnt, (int)(dx - slideDesde), 0);
-                g.DrawImageUnscaled(hornoPag, (int)dx, 0);
+                { int xa = (int)(dx - slideDesde); Imagenes.Pinta(g, hornoAnt, new SKRect(0, 0, hornoAnt.Width, hornoAnt.Height), new SKRect(xa, 0, xa + hornoAnt.Width, hornoAnt.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoAnt, x, 0)
+                { int xp = (int)dx; Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, hornoPag.Width, hornoPag.Height), new SKRect(xp, 0, xp + hornoPag.Width, hornoPag.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoPag, x, 0)
             }
 
             public int RowsPerPage { get { int ih = Math.Max(1, RowH); return Math.Max(1, ClientSize.Height / ih); } }
@@ -2081,48 +2081,48 @@ namespace Rocola
 #if ROCOLA_GPU
             internal bool pintandoGpu; internal int gpuFilaY;
             // Recorta lo que se pinte a la forma del cristal, 2 px hacia dentro (la fila elegida sigue la curva de la esquina).
-            internal void RecortaAlCristal(Graphics g)
+            internal void RecortaAlCristal(SKCanvas g)   // EN LINUX: el lienzo de Skia
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 int R = Math.Min(28, Math.Min(w, h) / 4);
-                GraphicsPath p = RoundedPath(new Rectangle(3, 3 - gpuFilaY, w - 7, h - 7), Math.Max(1, R - 2));
-                g.SetClip(p, CombineMode.Intersect);
+                Rocola.Dibujo2D.GraphicsPath p = RoundedPath(new Rectangle(3, 3 - gpuFilaY, w - 7, h - 7), Math.Max(1, R - 2));   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                g.ClipPath(PuenteDibujo.Ruta(p), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): se suma al recorte que haya, en pixeles enteros (sin suavizar, como GDI+); lo quita el Restore de quien llama
                 p.Dispose();
             }
 #endif
-            private void PintaPagina(Graphics g, int arranque)
+            private void PintaPagina(SKCanvas g, ref bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int arranque)   // EN LINUX: el lienzo de Skia y el estado de su Graphics como parametros: el suavizado por referencia, porque PintaPagina lo deja puesto y la siguiente llamada sobre el mismo lienzo lo hereda (AcabadoGpu.cs: las dos de la fila elegida), como en XP
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 if (w < 4 || h < 4) return;
                 int n = (GetCount != null) ? GetCount() : 0;
                 int rpp = RowsPerPage;
-                if (hlB == null) { hlB = new SolidBrush(Color.Black); hlP = new Pen(Color.Black, 1.4f); }
+                if (hlB == null) { hlB = new SKPaint { Color = Color.Black.Sk() }; hlP = new SKPaint { Color = Color.Black.Sk(), StrokeWidth = 1.4f }; }   // EN LINUX: new SolidBrush(Color.Black) y new Pen(Color.Black, 1,4)
                 if (txtB == null)
                 {   // GDI+ (DrawString), NO TextRenderer: TextRenderer usa GDI e IGNORA la traslacion del Graphics,
-                    txtB = new SolidBrush(Color.White);   // asi que sobre la textura de UI (trasladada) el texto caia en 0,0
-                    txtFmt = new StringFormat();
-                    txtFmt.FormatFlags = StringFormatFlags.NoWrap;
-                    txtFmt.Trimming = StringTrimming.EllipsisCharacter;
-                    txtFmt.Alignment = StringAlignment.Near;
-                    txtFmt.LineAlignment = StringAlignment.Center;
+                    txtB = new SKPaint { Color = Color.White.Sk() };   // asi que sobre la textura de UI (trasladada) el texto caia en 0,0   // EN LINUX: new SolidBrush(Color.White)
+                    txtFmt = new FormatoTexto();   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs)
+                    txtFmt.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap: reemplaza todas las banderas
+                    txtFmt.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: Trimming = EllipsisCharacter
+                    txtFmt.Horizontal = Alinea.Cerca;   // EN LINUX: Alignment = Near
+                    txtFmt.Vertical = Alinea.Centro;   // EN LINUX: LineAlignment = Center
                 }
-                if (bgB == null) bgB = new SolidBrush(BackColor); else bgB.Color = BackColor;
+                if (bgB == null) bgB = new SKPaint { Color = BackColor.Sk() }; else bgB.Color = BackColor.Sk();   // EN LINUX: new SolidBrush(BackColor) y bgB.Color = BackColor
                 if (colaB == null)
                 {
-                    colaB = new SolidBrush(Color.Black);
-                    cenFmt = CreaSfDibuja(StringAlignment.Center);
+                    colaB = new SKPaint { Color = Color.Black.Sk() };   // EN LINUX: new SolidBrush(Color.Black)
+                    cenFmt = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
                 }
                 float cuerpo = Font.SizeInPoints;
                 if (fNum == null || Math.Abs(fontFuente - cuerpo) > 0.01f)
                 {
                     if (fNum != null) fNum.Dispose();
                     if (fCola != null) fCola.Dispose();
-                    fNum = new Font(Font.FontFamily, cuerpo * 0.78f, FontStyle.Bold);
-                    fCola = new Font(Font.FontFamily, cuerpo * 0.72f, FontStyle.Bold);
+                    fNum = Rocola.Nativo.Letra.EnPuntos(Font.FontFamily.Name, cuerpo * 0.78f, true);   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
+                    fCola = Rocola.Nativo.Letra.EnPuntos(Font.FontFamily.Name, cuerpo * 0.72f, true);   // EN LINUX: new Font(familia, pt, Bold)
                     fontFuente = cuerpo;
                 }
-                g.FillRectangle(bgB, 0, 0, w, h);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Pixel.Rellena(g, new RectangleF(0, 0, w, h), bgB, suave, medio, copia);   // EN LINUX: g.FillRectangle(bgB, 0, 0, w, h) (Nativo/Pixel.cs), con el suavizado con que llega el lienzo
+                suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: queda puesto para quien llama (ref)
                 float rad = Math.Min(11f, RowH * 0.34f);        // el circulito del numero
 #if ROCOLA_GPU
                 if ((Vivo & VivoGrande) != 0) rad = RadioGrande(RowH);   // lista grande (DiscoVivoGpu.cs): crece con la fila
@@ -2132,10 +2132,10 @@ namespace Rocola
                 // para que en una fila alta no quede un circulo gigante... y la letra si crece con la fila. En
                 // una pantalla grande eso dejaba el texto MAS ALTO que su propia pastilla, asomando por arriba
                 // y por abajo. Asi que la pastilla crece tambien si hace falta para envolver a su letra.
-                int hCola = Math.Max((int)(rad * 1.64f), fCola.Height + 4);
+                int hCola = Math.Max((int)(rad * 1.64f), fCola.AltoEntero + 4);   // EN LINUX: Font.Height: el alto del renglon redondeado hacia arriba
                 EnsureHorno((int)(rad * 2), hCola);
 #if ROCOLA_GPU
-                if ((Vivo & VivoGrande) != 0) PlanPaginaGpu(g, rpp, n, w, xTexto, hCola);   // el genero: en toda la pagina o en ninguna fila
+                if ((Vivo & VivoGrande) != 0) PlanPaginaGpu(g, ajuste, rpp, n, w, xTexto, hCola);   // el genero: en toda la pagina o en ninguna fila   // EN LINUX: PlanPaginaGpu (DiscoVivoGpu.cs, ya traducido): directo, con el lienzo y su modo de letra
 #endif
                 for (int row = 0; row < rpp; row++)
                 {
@@ -2146,13 +2146,13 @@ namespace Rocola
                     {
                         Rectangle hl = new Rectangle(r.X + 4, r.Y + 3, r.Width - 8, r.Height - 6);
 #if ROCOLA_GPU
-                        GraphicsState recorte = null; if (pintandoGpu) { recorte = g.Save(); RecortaAlCristal(g); }   // solo la tarjeta: el procesador no cambia
+                        int recorte = -1; if (pintandoGpu) { recorte = g.Save(); RecortaAlCristal(g); }   // solo la tarjeta: el procesador no cambia   // EN LINUX: GraphicsState recorte = null y g.Save(): la cuenta del lienzo (-1: no se guardo)
 #endif
-                        hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15));
-                        hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45));
-                        using (GraphicsPath gp = RoundedPath(hl, 9)) { g.FillPath(hlB, gp); g.DrawPath(hlP, gp); }
+                        hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15)).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                        hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45)).Sk();   // EN LINUX: el color de la pluma (Pen.Color)
+                        using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(hl, 9)) { Pixel.Rellena(g, PuenteDibujo.Ruta(gp), hlB, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(gp), hlP, suave, medio, copia); }   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP; g.FillPath y g.DrawPath (Nativo/Pixel.cs)
 #if ROCOLA_GPU
-                        if (recorte != null) g.Restore(recorte);
+                        if (recorte != -1) g.RestoreToCount(recorte);   // EN LINUX: if (recorte != null) g.Restore(recorte)
 #endif
                     }
                     // EL NUMERO DE PISTA en un circulito, y en VERDE si esa cancion ya esta pedida. Antes no
@@ -2163,8 +2163,8 @@ namespace Rocola
                     bool enCola = pos > 0;
                     int marca = suena ? 2 : (enCola ? 1 : 0);   // el circulito manda lo mas urgente: que SUENA
                     float cy = r.Y + RowH * 0.5f;
-                    g.DrawImageUnscaled((marca == 2) ? bmpCircSon : (marca == 1) ? bmpCircCola : bmpCirc, 16, (int)(cy - rad));
-                    PintaNumero(g, idx + 1, 16 + rad, cy, marca);
+                    { SKBitmap im = (marca == 2) ? bmpCircSon : (marca == 1) ? bmpCircCola : bmpCirc; if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect(16, (int)(cy - rad), 16 + im.Width, (int)(cy - rad) + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+
+                    PintaNumero(g, copia, filtro, medio, idx + 1, 16 + rad, cy, marca);   // EN LINUX: el lienzo y su estado
                     // DURACION a la derecha (m:ss). Se dibuja primero para saber cuanto ancho quitarle al
                     // titulo: asi un nombre largo se corta con "..." ANTES de encimarse con la duracion.
                     string dur = (GetRight != null) ? GetRight(idx) : "";
@@ -2173,18 +2173,18 @@ namespace Rocola
                     {
                         if (durB == null)
                         {
-                            durB = new SolidBrush(Color.White);
-                            durFmt = new StringFormat();
-                            durFmt.FormatFlags = StringFormatFlags.NoWrap;
-                            durFmt.Alignment = StringAlignment.Far;
-                            durFmt.LineAlignment = StringAlignment.Center;
+                            durB = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
+                            durFmt = new FormatoTexto();   // EN LINUX: new StringFormat()
+                            durFmt.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap: reemplaza todas las banderas
+                            durFmt.Horizontal = Alinea.Lejos;   // EN LINUX: Alignment = Far
+                            durFmt.Vertical = Alinea.Centro;   // EN LINUX: LineAlignment = Center
                         }
                         durW = 58;
 #if ROCOLA_GPU
-                        if ((Vivo & VivoGrande) != 0) durW = AnchoDuracion(g);   // con la letra grande no caben 58 px
+                        if ((Vivo & VivoGrande) != 0) durW = AnchoDuracion(g, ajuste);   // con la letra grande no caben 58 px   // EN LINUX: AnchoDuracion (DiscoVivoGpu.cs, ya traducido): directo, con el lienzo y su modo de letra
 #endif
-                        durB.Color = (idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215);
-                        g.DrawString(dur, Font, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt);
+                        durB.Color = ((idx == Sel) ? Color.FromArgb(235, 245, 255) : Color.FromArgb(175, 190, 215)).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                        TextoGdiPlus.Escribe(g, dur, PuenteDibujo.Letra(Font), ajuste, durB, new Rectangle(r.Right - durW - 14, r.Y, durW, r.Height), durFmt, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo; la letra es la del control (WinForms): la misma Letra, por el puente
                     }
                     // EL GENERO, en una pastillita, justo al lado de la duracion. Es el mismo genero y el
                     // mismo color que ya salen en los resultados del buscador: la rocola habla siempre igual.
@@ -2194,18 +2194,18 @@ namespace Rocola
                     // Con la tarjeta grafica (DiscoVivoGpu.cs) manda el titulo: una pedida dice sus minutos si caben, y
                     // con la lista grande el genero sale solo si el titulo cabe entero a su lado.
                     string tColaGpu = null;
-                    if ((Vivo & (VivoGrande | VivoMinutos)) != 0) tColaGpu = PlanFilaGpu(g, idx, pos, enCola, suena, r, durW, xTexto, hCola, ref gen);
+                    if ((Vivo & (VivoGrande | VivoMinutos)) != 0) tColaGpu = PlanFilaGpu(g, ajuste, idx, pos, enCola, suena, r, durW, xTexto, hCola, ref gen);   // EN LINUX: PlanFilaGpu (DiscoVivoGpu.cs, ya traducido): directo, con el lienzo y su modo de letra
 #endif
                     if (!string.IsNullOrEmpty(gen))
                     {
-                        Bitmap pg = HorneaGenero(gen);
+                        SKBitmap pg = HorneaGenero(gen);   // EN LINUX: SKBitmap
                         // Solo si sobra sitio: en una pantalla estrecha manda el nombre de la cancion.
                         if (pg != null && pg.Width + 18 <= (r.Width - (int)xTexto) / 2)
                         {
                             // Los 18 son los huecos de los dos lados: asi la pastilla nunca llega a rozar ni la
                             // duracion (a su derecha) ni la marca de "ya pedida" ni el nombre (a su izquierda).
                             quitaGen = pg.Width + 18;
-                            g.DrawImageUnscaled(pg, r.Right - 20 - durW - pg.Width, (int)(cy - pg.Height * 0.5f));
+                            { int gx = r.Right - 20 - durW - pg.Width, gy = (int)(cy - pg.Height * 0.5f); Imagenes.Pinta(g, pg, new SKRect(0, 0, pg.Width, pg.Height), new SKRect(gx, gy, gx + pg.Width, gy + pg.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(pg, x, y): entera y en su tamano en ese punto (Nativo/Imagenes.cs)
                         }
                     }
                     // LAS DOS MARCAS CONVIVEN. Una cancion puede estar sonando Y estar pedida otra vez, y el
@@ -2221,30 +2221,30 @@ namespace Rocola
 #if ROCOLA_GPU
                         if (tColaGpu != null) t = tColaGpu;   // "EN COLA 3 · en ~9 min"
 #endif
-                        int wp = AnchoTexto(g, t, fCola) + hCola;
+                        int wp = AnchoTextoVistasB(g, ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra del que llama
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
-                        g.DrawImageUnscaled(Pastilla(false, wp, hCola), (int)cr.X, (int)cr.Y);
-                        colaB.Color = ColaVerde;
-                        g.DrawString(t, fCola, colaB, cr, cenFmt);
+                        { SKBitmap im = Pastilla(false, wp, hCola); if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + im.Width, (int)cr.Y + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+
+                        colaB.Color = ColaVerde.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                        TextoGdiPlus.Escribe(g, t, fCola, ajuste, colaB, cr, cenFmt, copia, medio);   // EN LINUX: g.DrawString
                         xMarca -= 8; quitaCola += wp + 8;
                     }
 #if ROCOLA_GPU
                     // Con el ecualizador (DiscoVivoGpu.cs) la pastilla de SONANDO lleva el hueco de las barritas en vez
                     // del triangulito, y ya no hace falta la de siempre.
-                    if (suena && (Vivo & VivoEq) != 0) { quitaCola += PastillaSonandoEq(g, idx, ref xMarca, cy, hCola); suena = false; }
+                    if (suena && (Vivo & VivoEq) != 0) { quitaCola += PastillaSonandoEq(g, ajuste, filtro, copia, medio, idx, ref xMarca, cy, hCola); suena = false; }   // EN LINUX: PastillaSonandoEq (DiscoVivoGpu.cs, ya traducido): directo, con el lienzo y su estado
 #endif
                     if (suena)
                     {
                         // U+25BA y no U+25B6: son dos triangulitos casi identicos, pero el otro no esta en el
                         // juego de simbolos que trae Windows XP y alli saldria un rectangulo vacio.
                         const string t = "\u25BA SONANDO";
-                        int wp = AnchoTexto(g, t, fCola) + hCola;
+                        int wp = AnchoTextoVistasB(g, ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto, por el puente
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
-                        g.DrawImageUnscaled(Pastilla(true, wp, hCola), (int)cr.X, (int)cr.Y);
-                        colaB.Color = SonAmbar;
-                        g.DrawString(t, fCola, colaB, cr, cenFmt);
+                        { SKBitmap im = Pastilla(true, wp, hCola); if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + im.Width, (int)cr.Y + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+
+                        colaB.Color = SonAmbar.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
+                        TextoGdiPlus.Escribe(g, t, fCola, ajuste, colaB, cr, cenFmt, copia, medio);   // EN LINUX: g.DrawString
                         quitaCola += wp + 8;
                     }
                     if (quitaCola > 0) quitaCola += 4;   // un pelo de aire antes del nombre
@@ -2255,9 +2255,9 @@ namespace Rocola
                     Rectangle tr = new Rectangle(r.X + (int)xTexto, r.Y, Math.Max(10, derContenido - 6 - r.X - (int)xTexto), r.Height);
                     string text = (GetText != null) ? GetText(idx) : "";
 #if ROCOLA_GPU
-                    PintaTextoMovil(g, text, Font, txtB, tr, txtFmt);
+                    PintaTextoMovil(g, ajuste, copia, medio, text, PuenteDibujo.Letra(Font), txtB, tr, txtFmt);   // EN LINUX: PintaTextoMovil (TextoMovilGpu.cs, ya traducido): directo, con el lienzo y su estado; la letra es la del control (WinForms): la misma Letra, por el puente
 #else
-                    g.DrawString(text, Font, txtB, tr, txtFmt);
+                    TextoGdiPlus.Escribe(g, text, PuenteDibujo.Letra(Font), ajuste, txtB, tr, txtFmt, copia, medio);   // EN LINUX: g.DrawString
 #endif   // GDI+: respeta la traslacion del Graphics (en el control es identidad; en la textura de UI lleva la lista a su sitio)
                 }
             }

@@ -369,7 +369,7 @@ namespace Rocola
             private int AnchoGenero(string gen, int anchoFila, float xTexto)
             {
                 if (string.IsNullOrEmpty(gen)) return 0;
-                Rocola.Dibujo2D.Bitmap pg = HorneaGenero(gen);   // EN LINUX: la pastilla del genero la hornea Form1.Vistas.cs (aun sin traducir) como Bitmap de la capa: aqui solo se lee su ancho; su tipo, escrito entero
+                SKBitmap pg = HorneaGenero(gen);   // EN LINUX: la pastilla del genero la hornea Form1.Vistas.cs (ya traducido) como SKBitmap: aqui solo se lee su ancho
                 return (pg != null && pg.Width + 18 <= (anchoFila - (int)xTexto) / 2) ? pg.Width + 18 : 0;
             }
             // Lo que le queda al titulo con estas marcas a su derecha (la misma cuenta que PintaPagina).
@@ -406,10 +406,10 @@ namespace Rocola
                 int wp = pad + anchoEq + sep + wt + pad;
                 xMarca -= wp;
                 RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
-                { SKBitmap pas = PuenteDibujo.Mapa(Pastilla(true, wp, hCola)); if (pas != null) Imagenes.Pinta(g, pas, new SKRect(0, 0, pas.Width, pas.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + pas.Width, (int)cr.Y + pas.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano (Nativo/Imagenes.cs); la pastilla la hornea Form1.Vistas.cs (aun sin traducir) como Bitmap: sus puntos, por el puente
+                { SKBitmap pas = Pastilla(true, wp, hCola); if (pas != null) Imagenes.Pinta(g, pas, new SKRect(0, 0, pas.Width, pas.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + pas.Width, (int)cr.Y + pas.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano (Nativo/Imagenes.cs); la pastilla la hornea Form1.Vistas.cs (ya traducido) como SKBitmap: directo
                 float x0 = (int)cr.X + pad;
-                colaB.Color = SonAmbar;
-                using (SKPaint pc = PuenteDibujo.Pincel(colaB, medio)) TextoGdiPlus.Escribe(g, t, PuenteDibujo.Letra(fCola), ajuste, pc, new RectangleF(x0 + anchoEq + sep, cr.Y, wt, hCola), PuenteDibujo.Formato(cenFmt), copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del lienzo; la letra, el pincel y el formato son de Form1.Vistas.cs (aun sin traducir): la misma Letra, el color del SolidBrush y el MISMO FormatoTexto, por el puente
+                colaB.Color = SonAmbar.Sk();   // EN LINUX: el color del pincel (colaB, de Form1.Vistas.cs, ya es un SKPaint), en el de Skia
+                TextoGdiPlus.Escribe(g, t, fCola, ajuste, colaB, new RectangleF(x0 + anchoEq + sep, cr.Y, wt, hCola), cenFmt, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del lienzo; la letra, el pincel y el formato son de Form1.Vistas.cs (ya traducido: una Letra, un SKPaint y un FormatoTexto): directo
                 eqIdx = idx; eqX = x0; eqW = anchoEq; eqH = (float)Math.Round(hCola * .56f); eqBarra = barra; eqHueco = hueco;
                 return wp + 8;
             }
@@ -433,10 +433,10 @@ namespace Rocola
                 llegaTick = t + Math.Max(0, enMs); if (llegaTick == 0) llegaTick = 1;
             }
             // El dibujo para la textura de la tarjeta. El del procesador (OnPaint) NUNCA enseña la llegada.
-            public void RenderContentGpu(Rocola.Dibujo2D.Graphics g)   // EN LINUX: solo pasa el Graphics de DrawCtrlOverlay (Form1.Video.cs) a RenderContent de la capsula (Form1.Vistas.cs), los dos aun sin traducir: se queda con su tipo, escrito entero, hasta que se traduzcan
+            public void RenderContentGpu(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama (modo de letra, copia, filtro y medio pixel): RenderContent de la capsula (Form1.Vistas.cs) ya esta traducido; DrawCtrlOverlay (Form1.Video.cs), que aun pasa un Graphics, llega por el puente (Plataforma/Puente.vistas-b.cs)
             {
                 dibujaGpu = true;
-                try { RenderContent(g); }
+                try { RenderContent(g, ajuste, copia, filtro, medio); }   // EN LINUX: con el lienzo y su estado
                 finally { dibujaGpu = false; }
             }
             private const int LlegaTotalMs = LlegaDestMs;   // lo que mas dura de las tres cosas
