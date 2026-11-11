@@ -138,7 +138,7 @@ namespace Rocola
             if (!textosDeslizantes || !gpuEnabled) { cintasTexto[group].Dispose(); return new CapturaCintas(null); }
             return new CapturaCintas(cintasTexto[group]);
         }
-        internal static bool CintaVistaPrevia(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra font, Color color, Rectangle rect)   // EN LINUX: el lienzo de Skia y su modo de letra, y una Letra; quien aun pasa un Graphics y una Font llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static bool CintaVistaPrevia(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra font, Color color, Rectangle rect)   // EN LINUX: el lienzo de Skia y su modo de letra, y una Letra; la llama directo DrawPreviewInfo (Form1.Buscador.cs, ya traducido)
         {
             FormatoTexto sf = new FormatoTexto();   // EN LINUX: using (StringFormat sf = new StringFormat()): un FormatoTexto, que no se suelta (lo de abajo queda como bloque)
             {

@@ -694,7 +694,7 @@ namespace Rocola
             // ======================================================================================================
             //  LA IMAGEN GRANDE: los atajos, el teclado y las ayudas (lo quieto)
             // ======================================================================================================
-            private void RenderNuevo(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, SKMatrix hdc)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (modo de letra, copia, filtro, medio pixel y la matriz del HDC, la del texto de GDI de DrawToast); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.buscador-portadas.cs), que le pone el suavizado como XP
+            private void RenderNuevo(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, SKMatrix hdc)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (modo de letra, copia, filtro, medio pixel y la matriz del HDC, la del texto de GDI de DrawToast); la llama directo SearchOverlay.RenderContent (Form1.Buscador.cs, ya traducido), y a quien aun pasa un Graphics el puente de este (Plataforma/Puente.buscador.cs) le deja el suavizado como XP
             {
                 EnsurePaintRes();
                 RepartoBusca r = AseguraReparto();
@@ -704,7 +704,7 @@ namespace Rocola
                 for (int f = 0; f < rows.Count; f++)
                     for (int c = 0; c < rows[f].Count; c++) DibujaTeclaNueva(g, suave, ajuste, copia, filtro, medio, f, c, false, 0, 0);   // EN LINUX: con el estado del lienzo
                 DibujaAyudasNuevas(g, suave, ajuste, copia, medio, r);   // EN LINUX: con el estado del lienzo
-                if (ToastOn) DrawToastPortadas(g, suave, ajuste, copia, medio, hdc, Width, Height);   // EN LINUX: DrawToast (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs), con la matriz del HDC
+                if (ToastOn) DrawToast(g, suave, ajuste, copia, medio, hdc, Width, Height);   // EN LINUX: DrawToast (Form1.Buscador.cs, ya traducido), directo, con el lienzo y su estado (y la matriz del HDC, la del texto de GDI)
             }
             // Lo que cambia la imagen grande. Ni la consulta, ni los resultados, ni donde esta la seleccion.
             internal long FirmaFija()
@@ -762,7 +762,7 @@ namespace Rocola
                 pincelS.Color = (sel ? Color.White : TextoAtajo).Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, atajos[i], fnAtajo, ajuste, pincelS, cr, sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, fnAtajo, sbS, cr, sfCentro) (Nativo/TextoGdiPlus.cs)
             }
-            private void DibujaAyudasNuevas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, RepartoBusca r)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa lo que pinta aqui (Form1.Pared.cs y Form1.Buscador.cs, aun sin traducir: por el puente)
+            private void DibujaAyudasNuevas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, RepartoBusca r)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa lo que pinta aqui (Form1.Pared.cs, aun sin traducir: por el puente; FlechaArriba de Form1.Buscador.cs, ya traducido: directo)
             {
                 float s = r.S;
                 int cy = r.Ayudas.Y + r.Ayudas.Height / 2;
@@ -777,7 +777,7 @@ namespace Rocola
                 StoreHintGlow(SCerrar, x, cy, dd + 3 + fl + Px(12, s));
                 x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, dd, SRed) + 3;   // EN LINUX: CtrlDot (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado
                 x = CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "+", x, cy, AyudaTinta) + 3;   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
-                x = FlechaArribaPortadas(g, suave, ajuste, copia, medio, x, cy, fl, SRed);   // EN LINUX: FlechaArriba (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.buscador-portadas.cs)
+                x = FlechaArriba(g, suave, ajuste, copia, medio, x, cy, fl, SRed);   // EN LINUX: FlechaArriba (Form1.Buscador.cs, ya traducido), directo, con el lienzo y su estado
                 CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda, "Cerrar", x + gap, cy, AyudaTinta);   // EN LINUX: CtrlTxt (Form1.Pared.cs, ya traducido), directo: el lienzo y su estado y la Letra
             }
 
@@ -824,7 +824,7 @@ namespace Rocola
                 }
                 return false;
             }
-            private void DibujaPiezaVivaNueva(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int cual, int dx, int dy)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.buscador-portadas.cs), que le pone el suavizado como XP
+            private void DibujaPiezaVivaNueva(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int cual, int dx, int dy)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; la llama directo SearchOverlay.DibujaPiezaViva (Form1.Buscador.cs, ya traducido), que devuelve el suavizado que XP deja puesto (ref), y a quien aun pasa un Graphics el puente de este (Plataforma/Puente.buscador.cs) se lo deja como XP
             {
                 EnsurePaintRes();
                 RepartoBusca r = AseguraReparto();
