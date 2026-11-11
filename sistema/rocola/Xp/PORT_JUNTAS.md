@@ -140,3 +140,25 @@ acabado-estilo 0 distintas de 6 603 y vistas-b 0 distintas de 2 865; el banco ig
 41 pruebas y 52 de 52 de la hoja; escenas alternadas (RJ8/J8) todas IGUALES salvo sigterm y f3sigterm (lo aceptado), y en NativeAOT
 arranque, cierreq, kill9 y buscador IGUALES; recorridos 9 de 9 con 0, capas quietas 216 de 217 (la de Ctrl+F2 con su nombre nuevo de
 capa y los mismos puntos) y texturas quietas 438 de 487 (el buscador, 45 de 78, depende de la hora).
+
+## 11-11-2026 (20:15-21:35): ventanas2 entera (las teclas, la hoja propia y Ctrl+F3)
+
+- `67e9a12`: la rama port-ventanas2 con sus tres pasos y sus revisiones: T (las teclas sin Keys ni Message, la flecha, el foco y el
+  contexto del hilo), H (la hoja propia con Ctrl+F2, los avisos y el selector de carpetas) y C (Ctrl+F3 entero con las piezas nativas).
+  La revisión de C no encontró fallos en el programa (solo en el banco de pruebas: la escena f3histsigterm, compara_medir.py y el
+  ruido de f3raton y f3billar). La rama ya traía juntada la rama principal hasta `d320c7a`: sin choques. Tres commits del paso C
+  (4897bca, 7cab6e6, 343ce4b) llevan otra línea Co-Authored-By; no se reescribe la historia.
+
+Comprobado con todo junto (`scratchpad/merge/verifica-junta9.sh` y `verifica-junta9b.sh`): compila desde cero (0 errores, los 15
+avisos) y NativeAOT sin avisos IL/AOT; los nueve arneses de antes IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de 2 865) y el de
+Ctrl+F3 (VistasAjustes) 0 distintas de 545 con las dos letras; el banco igual en los 27 000 casos; 41 de 41 pruebas, 62 de 62 de la
+hoja y 32 de 32 de la pantalla; recorridos 9 de 9 con 0, capas quietas 216 de 217 (la hoja de Ctrl+F3 de hojas a los 18 s, el
+repaso; la de Ctrl+F2 de ctrlf3 ya sale igual) y texturas quietas 480 de 487.
+
+Escenas alternadas con la referencia (RJ9/J9, 21 escenas): arranque, moneda, video, tab, buscador, cierreq, altf4, kill9, asistente,
+f2, f2barras, f3vistas, f3grises, f3teclas, f3raton y f3billar IGUALES; sigterm y f3sigterm lo aceptado. captura, salirq, f2sin y
+aviso salieron DIFERENTE solo por cuentas del reloj Form1.cs:724 y del encargo MedidasBitacora.cs:129 (carga de 5 a 6 con tres agentes)
+y salirq además por el momento en que se leyó estado-mantenida.txt; repetidas (RJ9b/J9b): captura, f2sin y aviso IGUALES, y salirq
+con la misma secuencia y solo una cuenta (280 frente a 301 encargos, holgura 12), como en la junta del 9-11. NativeAOT: arranque,
+cierreq, kill9 y buscador IGUALES; f3vistas y f3teclas dieron 587 puntos en la hoja de Ctrl+F3 por la fecha de compilación del
+título: con `touch -r /usr/lib/dotnet/dotnet` en rocola-xp (como hizo la revisión de C) salen IGUALES.
