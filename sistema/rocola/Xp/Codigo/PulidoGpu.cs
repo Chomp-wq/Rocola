@@ -20,7 +20,7 @@
 // ====================================================================================================
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo; el mapa tramado (HorneaMapaDegradado) ya va con SkiaSharp y las funciones nativas (Xp/Nativo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el degradado tramado (DegradadoV y su mapa) va con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; quien todavia pide el Brush de GDI+ lo recibe por el puente (Plataforma/Puente.asistente.cs)
 
 namespace Rocola
 {
@@ -133,16 +133,16 @@ namespace Rocola
         private sealed class DegradadoGuardado
         {
             internal int Alto, Inicio, Fin;
-            internal Bitmap Mapa;
+            internal SKBitmap Mapa;   // EN LINUX: un SKBitmap (el mapa de 4 puntos de ancho de HorneaMapaDegradado)
         }
         private static readonly object degradadoCerrojo = new object();
         private static readonly DegradadoGuardado[] degradados = new DegradadoGuardado[4];
         private static int degradadoTurno;
         internal static int DegradadosGuardados, DegradadosReusados;
-        internal static Brush DegradadoV(Rectangle r, Color c0, Color c1)
+        internal static SKShader DegradadoV(Rectangle r, Color c0, Color c1, bool medio)   // EN LINUX: el pincel es su shader (Nativo/Degradado.cs; quien lo pide lo pone en un SKPaint y lo suelta, como el Brush); 'medio' es el medio pixel del dibujo donde se pinta (PixelOffsetMode Half o HighQuality; sin el, la textura va medio punto atras, como la pinta GDI+). Quien aun pide un Brush de GDI+ llega por el puente (Plataforma/Puente.asistente.cs)
         {
-            if (!InterfazTramada || r.Height < 2 || r.Width < 1) return new LinearGradientBrush(r, c0, c1, 90f);
-            if (r.Height > 2048) return HorneaDegradadoV(r, c0, c1); // los tamanos extraordinarios no quedan retenidos
+            if (!InterfazTramada || r.Height < 2 || r.Width < 1) return Degradado.Lineal(r, c0, c1, 90f);   // EN LINUX: new LinearGradientBrush(r, c0, c1, 90): su shader (Nativo/Degradado.cs)
+            if (r.Height > 2048) return HorneaDegradadoV(r, c0, c1, medio); // los tamanos extraordinarios no quedan retenidos   // EN LINUX: con el medio pixel del que lo pide
             lock (degradadoCerrojo)
             {
                 int a = c0.ToArgb(), b = c1.ToArgb();
@@ -150,12 +150,12 @@ namespace Rocola
                 {
                     DegradadoGuardado d = degradados[i];
                     if (d == null || d.Alto != r.Height || d.Inicio != a || d.Fin != b) continue;
-                    TextureBrush copia = CopiaDegradado(d.Mapa, r.Location);
+                    SKShader copia = CopiaDegradado(d.Mapa, r.Location, medio);   // EN LINUX: el TextureBrush es su shader, con el medio pixel del que lo pide
                     DegradadosReusados++; return copia;
                 }
-                Bitmap fuente = PuenteDibujo.Entrega(HorneaMapaDegradado(r.Height, c0, c1));   // EN LINUX: el mapa nativo, como Bitmap para el TextureBrush de GDI+ de aqui (aun sin traducir), por el puente (Plataforma/Puente.cs)
-                TextureBrush nuevo;
-                try { nuevo = CopiaDegradado(fuente, r.Location); }
+                SKBitmap fuente = HorneaMapaDegradado(r.Height, c0, c1);   // EN LINUX: un SKBitmap (el mapa nativo, sin puente)
+                SKShader nuevo;   // EN LINUX: el TextureBrush es su shader
+                try { nuevo = CopiaDegradado(fuente, r.Location, medio); }   // EN LINUX: con el medio pixel del que lo pide
                 catch { fuente.Dispose(); throw; }
                 DegradadoGuardado anterior = degradados[degradadoTurno];
                 degradados[degradadoTurno] = new DegradadoGuardado { Alto = r.Height, Inicio = a, Fin = b, Mapa = fuente };
@@ -164,18 +164,18 @@ namespace Rocola
                 DegradadosGuardados++; return nuevo;
             }
         }
-        private static TextureBrush CopiaDegradado(Bitmap fuente, Point origen)
+        private static SKShader CopiaDegradado(SKBitmap fuente, Point origen, bool medio)   // EN LINUX: el TextureBrush es su shader (Nativo/Degradado.cs); 'medio', el medio pixel del dibujo donde se pinta
         {
             // Crear desde ARGB original evita otro redondeo de alfa al clonar un TextureBrush.
-            TextureBrush copia = new TextureBrush(fuente, WrapMode.Tile);
-            try { copia.TranslateTransform(origen.X, origen.Y); return copia; }
-            catch { copia.Dispose(); throw; }
+            return Degradado.Textura(fuente, Envoltura.Repite, SKMatrix.CreateTranslation(origen.X, origen.Y), medio);   // EN LINUX: new TextureBrush(fuente, WrapMode.Tile) y su TranslateTransform(origen.X, origen.Y) (sobre la matriz de fabrica, la identidad): el shader de la textura con esa traslacion (Nativo/Degradado.cs). Skia copia los puntos del mapa al hacerlo, como el TextureBrush de GDI+
+            // EN LINUX: (try { copia.TranslateTransform(...); return copia; }: la traslacion va en el shader al hacerlo, arriba)
+            // EN LINUX: (catch { copia.Dispose(); throw; }: si el shader no se hace, no hay pincel que soltar)
         }
-        private static Brush HorneaDegradadoV(Rectangle r, Color c0, Color c1)
+        private static SKShader HorneaDegradadoV(Rectangle r, Color c0, Color c1, bool medio)   // EN LINUX: el shader de la textura; 'medio', el del dibujo donde se pinta
         {
-            using (Bitmap b = PuenteDibujo.Entrega(HorneaMapaDegradado(r.Height, c0, c1))) return CopiaDegradado(b, r.Location);   // EN LINUX: el mapa nativo, como Bitmap, por el puente
+            using (SKBitmap b = HorneaMapaDegradado(r.Height, c0, c1)) return CopiaDegradado(b, r.Location, medio);   // EN LINUX: el mapa nativo (un SKBitmap); el shader se queda con su copia de los puntos, asi que soltar el mapa despues no lo deja sin imagen (como en GDI+)
         }
-        private static SKBitmap HorneaMapaDegradado(int alto, Color c0, Color c1)   // EN LINUX: un SKBitmap; DegradadoV y HorneaDegradadoV (aun con GDI+) lo reciben por el puente
+        private static SKBitmap HorneaMapaDegradado(int alto, Color c0, Color c1)   // EN LINUX: un SKBitmap (DegradadoV lo guarda; HorneaDegradadoV lo suelta al hacer el shader)
         {
             SKBitmap b = Mapas.Nuevo(4, alto);   // EN LINUX: new Bitmap(4, alto, Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             try
