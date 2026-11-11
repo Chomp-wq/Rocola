@@ -22,7 +22,7 @@ namespace Rocola
     public partial class Form1
     {
         // ---- LAS FIRMAS DE XP: TextoConCinta (BuscadorPortadasGpu.cs, EstiloGpu.cs), CintaVistaPrevia (Form1.Buscador.cs), PintaTextoMovil
-        // (Form1.Vistas.cs, SuenaVivoGpu.cs, EstadoReposoGpu.cs) y PintaArtistaCompacto (Form1.Video.cs, EstiloGpu.cs). El lienzo del Graphics y
+        // (Form1.Vistas.cs, SuenaVivoGpu.cs, EstadoReposoGpu.cs) y PintaArtistaCompacto (EstiloGpu.cs; Form1.Video.cs ya la llama directo). El lienzo del Graphics y
         // su estado (el modo de letra; para pintar, tambien la copia y el medio pixel), la Letra de la Font, el pincel en un SKPaint (su color o
         // su shader, con el medio pixel del Graphics; un pincel nulo no pinta, como en GDI+) y el MISMO FormatoTexto. Ninguna le cambia el
         // estado al Graphics.
@@ -46,17 +46,13 @@ namespace Rocola
         // franja). (Tambien lo usa la parte de EstadoReposoGpu.cs, abajo.)
         private static Graphics GraphicsReposo(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)
         { return PuenteDibujo.Graphics(g, new EstadoLienzo(suave, ajuste, copia, Filtro.Bilineal, medio, SKMatrix.Identity)); }
-        // PintaRenglonLejos (EstiloGpu.cs) y DrawLabelOverlay (Form1.Video.cs), para PintaArtistaCompacto: la letra de la etiqueta (una Font de
-        // WinForms) pasa tal cual. Solo escriben: el suavizado no lo usan (el que tiene quien llama en XP, AntiAlias).
+        // PintaRenglonLejos (EstiloGpu.cs), para PintaArtistaCompacto: la letra de la etiqueta (una Font de WinForms) pasa tal cual. Solo escribe:
+        // el suavizado no lo usa (el que tiene quien llama en XP, AntiAlias). (DrawLabelOverlay, de Form1.Video.cs, ya esta traducida: se la
+        // llama directo; su puente se quito con el grupo video-form1.)
         private static void PintaRenglonLejosReposo(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, string texto, Font f, Color c, RectangleF r, Alinea al)
         {
             using (Graphics gg = GraphicsReposo(g, true, ajuste, copia, medio))
                 PintaRenglonLejos(gg, texto, f, c, r, (StringAlignment)(int)al);
-        }
-        private static void DrawLabelOverlayReposo(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l, Color color, RectangleF caja)
-        {
-            using (Graphics gg = GraphicsReposo(g, true, ajuste, copia, medio))
-                DrawLabelOverlay(gg, l, color, caja);
         }
     }
     internal static partial class PuenteDibujo
@@ -72,19 +68,8 @@ namespace Rocola
     }
 
     // ================================================================ FranjaLigeraGpu.cs
-    public partial class Form1
-    {
-        // ---- LA FIRMA DE XP DE EmpiezaRecuadro, PARA Form1.Video.cs (EnsureUiBotOverlay)
-        // La traducida deja el recorte del recuadro en el lienzo (en un Save, como SetClip). Para que el Graphics de quien llama lleve su cuenta
-        // como en XP (un SetClip que reemplaza, ResetClip y Restore lo quitan), el mismo recorte se le pone ANTES por el Graphics: el de la
-        // traducida cae dentro (el mismo rectangulo otra vez: no cambia que pixeles se pintan) y se va con el.
-        private static void EmpiezaRecuadro(Graphics g, Rectangle zona)
-        {
-            g.SetClip(zona);
-            EstadoLienzo e = PuenteDibujo.Estado(g);
-            EmpiezaRecuadro(PuenteDibujo.Lienzo(g), e.Suave, e.Medio, zona);
-        }
-    }
+    // (La firma de XP de EmpiezaRecuadro, para EnsureUiBotOverlay de Form1.Video.cs, se quito con el grupo video-form1: Form1.Video.cs ya
+    // llama directo a la traducida.)
 
     // ================================================================ EstadoReposoGpu.cs
     public partial class Form1

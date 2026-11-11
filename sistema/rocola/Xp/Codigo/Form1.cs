@@ -13,7 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (las letras de las etiquetas de WinForms, las portadas, los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -224,7 +224,7 @@ namespace Rocola
         private void LlenaPortaditas()
         {
             if (pastCola == null || !pastCola.ConPortadas) return;
-            if (pastCola.Portadas == null) pastCola.Portadas = new Image[3];
+            if (pastCola.Portadas == null) pastCola.Portadas = new Rocola.Dibujo2D.Image[3];   // EN LINUX: las Image de la capa, escritas enteras: las portaditas de la capsula de la cola (Form1.Vistas.cs, aun sin traducir)
             for (int i = 0; i < pastCola.Portadas.Length; i++)
                 pastCola.Portadas[i] = (i < queue.Count && queue[i] != null) ? LoadCover(queue[i].Disc) : null;
             pastCola.Mas = (queue.Count > pastCola.Portadas.Length) ? queue.Count - pastCola.Portadas.Length : 0;
@@ -1029,7 +1029,7 @@ namespace Rocola
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            Graphics g = e.Graphics;
+            Rocola.Dibujo2D.Graphics g = e.Graphics;   // EN LINUX: el Graphics de la capa, escrito entero: OnPaintBackground (WinForms, el dibujo por procesador) solo se lo pasa al cielo (Starfield.DrawCached de Form1.Fondo.cs), los dos aun sin traducir; traducirlo aqui seria ir y volver por el puente sin pintar nada
             int w = ClientSize.Width, h = ClientSize.Height;
             if (w < 2 || h < 2) { base.OnPaintBackground(e); return; }
 #if ROCOLA_GPU
@@ -1133,7 +1133,7 @@ namespace Rocola
             lblAttract.TextAlign = ContentAlignment.MiddleCenter;
             lblAttract.BackColor = Color.FromArgb(10, 12, 30);
             lblAttract.ForeColor = Color.FromArgb(250, 230, 50);
-            lblAttract.Font = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold);
+            lblAttract.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true));   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15f, Bold): la generica sin remates de XP en puntos y negrita; la etiqueta es de WinForms (aun sin traducir) y la recibe como Font por el puente
             lblAttract.Text = "¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !";
             lblAttract.Visible = false;
 
@@ -1156,7 +1156,7 @@ namespace Rocola
             albumView.PeekCoverGpu = delegate (Album a)
             {
                 if (a == null || a.CoverPath == null) return null;
-                lock (coverLock) { Image c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }
+                lock (coverLock) { Rocola.Dibujo2D.Image c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }   // EN LINUX: la Image de la capa, escrita entera: la cache de portadas (Form1.Portadas.cs, aun sin traducir); aqui solo pasa
             };
             albumView.PeekPreviewGpu = PeekGpuPreview;
             albumView.PortadasLod = caratulasLod;
@@ -1263,7 +1263,7 @@ namespace Rocola
             pastCola.Acento = Color.FromArgb(140, 205, 255);
             pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
             pastCred.Acento = Color.FromArgb(255, 205, 90);
-            pastGenero = new GeneroView(); pastGenero.Font = new Font(this.Font.FontFamily, 10f, FontStyle.Bold); pastGenero.Visible = false;
+            pastGenero = new GeneroView(); pastGenero.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(this.Font).Familia, 10f, true)); pastGenero.Visible = false;   // EN LINUX: new Font(this.Font.FontFamily, 10f, Bold): la familia de la letra de la ventana (WinForms, por el puente) en puntos y negrita; la vista la recibe como Font
             lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
             lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada)
 
@@ -1351,7 +1351,7 @@ namespace Rocola
             lblConfig.TextAlign = ContentAlignment.MiddleCenter;
             lblConfig.BackColor = Color.FromArgb(8, 10, 26);
             lblConfig.ForeColor = Color.FromArgb(245, 248, 255);
-            lblConfig.Font = new Font(FontFamily.GenericSansSerif, 20f, FontStyle.Bold);
+            lblConfig.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 20f, true));   // EN LINUX: new Font(FontFamily.GenericSansSerif, 20f, Bold), como Font para la etiqueta de WinForms por el puente
             lblConfig.Text = "";
             lblConfig.Visible = false;
             Controls.Add(lblConfig);
@@ -1469,9 +1469,9 @@ namespace Rocola
             // Los cuatro renglones de la tarjeta, medidos con la letra que toque y sin un pixel de sobra:
             // titulo, artista, lo que sigue, y la barra de duracion. La portada mide lo mismo que los cuatro
             // juntos, asi que la tarjeta es un bloque cuadrado a la izquierda y texto a la derecha.
-            int hTit = Math.Max(24, (lblNowTop != null ? lblNowTop.Font.Height : 24) + 1);
-            int hArt = Math.Max(18, (lblNow != null ? lblNow.Font.Height : 18) + 1);
-            int hSig = Math.Max(17, (lblNext != null ? lblNext.Font.Height : 17) + 1);
+            int hTit = Math.Max(24, (lblNowTop != null ? PuenteDibujo.Letra(lblNowTop.Font).AltoEntero : 24) + 1);   // EN LINUX: Font.Height: el alto del renglon redondeado hacia arriba (Nativo/Letras.cs), de la Letra de la etiqueta por el puente
+            int hArt = Math.Max(18, (lblNow != null ? PuenteDibujo.Letra(lblNow.Font).AltoEntero : 18) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs)
+            int hSig = Math.Max(17, (lblNext != null ? PuenteDibujo.Letra(lblNext.Font).AltoEntero : 17) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs)
             int progH = 12;
             int tarjetaH = hTit + hArt + hSig + 4 + progH + 2;
             int tarjetaY = H - pad - tarjetaH;
@@ -1731,7 +1731,7 @@ namespace Rocola
             return false;
         }
 
-        private bool PublicaMiniaturaCalentada(int generacion, MiniaturaPendiente pendiente, Image im, Bitmap porGuardar)
+        private bool PublicaMiniaturaCalentada(int generacion, MiniaturaPendiente pendiente, Rocola.Dibujo2D.Image im, Rocola.Dibujo2D.Bitmap porGuardar)   // EN LINUX: la Image y el Bitmap de la capa, escritos enteros: las miniaturas de la cache de portadas (Form1.Portadas.cs, aun sin traducir); aqui solo pasan
         {
             if (im == null || !CalentadorVigente(generacion) || pendiente.Disco.CoverPath != pendiente.Ruta
                 || pendiente.Identidad != ThumbCachePath(pendiente.Ruta)) return false;
@@ -1846,11 +1846,11 @@ namespace Rocola
                                 pendiente.Identidad = identidad;
                                 if (a.CoverPath != pendiente.Ruta || !FaltaMiniatura(identidad))
                                 { if (!PublishThumbRemaining(myGen, -1)) return; continue; }
-                                Bitmap porGuardar = null;
+                                Rocola.Dibujo2D.Bitmap porGuardar = null;   // EN LINUX: el Bitmap de la capa, escrito entero (Form1.Portadas.cs)
 #if ROCOLA_GPU
-                                Image im = DecodeCoverParaCalentar(pendiente.Ruta, identidad, out porGuardar);
+                                Rocola.Dibujo2D.Image im = DecodeCoverParaCalentar(pendiente.Ruta, identidad, out porGuardar);   // EN LINUX: la Image de la capa, escrita entera (Form1.Portadas.cs)
 #else
-                                Image im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);
+                                Rocola.Dibujo2D.Image im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);   // EN LINUX: la Image de la capa, escrita entera (Form1.Portadas.cs)
 #endif
                                 try
                                 {
@@ -2267,7 +2267,7 @@ namespace Rocola
             lblToast.BackColor = back;
             tw = AnchoToast(text, lblToast.Font);   // misma pastilla que por GPU: se ajusta al texto
             lblToast.SetBounds((ClientSize.Width - tw) / 2, 80, tw, th);
-            try { using (GraphicsPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = new Region(gp); } catch { }  // esquinas redondeadas SIEMPRE
+            try { using (Rocola.Dibujo2D.GraphicsPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = new Rocola.Dibujo2D.Region(gp); } catch { }  // esquinas redondeadas SIEMPRE   // EN LINUX: la forma de la etiqueta del aviso sin tarjeta (Control.Region de WinForms) con el GraphicsPath de RoundRect (Form1.Ajustes.cs), los dos aun sin traducir: los tipos de la capa, escritos enteros
             lblToast.Visible = true;
             lblToast.BringToFront();
             toastTimer.Stop(); toastTimer.Start();
@@ -2651,7 +2651,7 @@ namespace Rocola
         }
 
         // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
-        private class HelpBar : Control
+        private partial class HelpBar : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics), para su OnPaint de WinForms, va en el puente (Plataforma/Puente.video-form1.cs)
         {
             // BUSCAR ya no esta aqui: tiene su propia casilla grande y parpadeante en medio de la fila, con
             // los dos botones dibujados. Aqui se quedan los tres que se usan a cada rato.
@@ -2676,9 +2676,9 @@ namespace Rocola
             public void Flash(int which) { flash.Fire(which, which == FEntrar ? GreenC : which == FVolver ? RedC : Color.White); }
             public void FlashMove(bool vertical) { flash.Fire(FMover, vertical ? RedC : YellowC); }   // arriba/abajo ROJO, izq/der AMARILLO
             public int FlashSig() { return flash.Sig(); }
-            private Font hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro
+            private Rocola.Nativo.Letra hbFont;   // fuente cacheada: la barra se redibuja ~13fps (glow) -> no crear una por cuadro   // EN LINUX: la letra nativa (Nativo/Letras.cs; Form1 tiene un metodo Letra)
 
-            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics, false); }
+            protected override void OnPaint(PaintEventArgs e) { e.Graphics.TextRenderingHint = Rocola.Dibujo2D.TextRenderingHint.ClearTypeGridFit; RenderContent(e.Graphics, false); }   // EN LINUX: el OnPaint de WinForms (el dibujo por procesador, aun sin traducir) con su Graphics: el modo de letra de la capa, escrito entero, y RenderContent por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
             // Centro/radio de los 4 halos (Buscar/Mover/Entrar/Volver), guardados al maquetar. En GPU el destello
             // NO se hornea en la textura: lo dibuja la GPU como quad (GetFlashGlow) -> pulsar un boton (p.ej. al
             // PAGINAR rapido) ya no re-hornea ni re-sube la textura de UI ~10 veces por tecla.
@@ -2712,47 +2712,47 @@ namespace Rocola
                 if (justa && justaAlto == alto) return justaCache;
                 int d = Math.Min(20, alto - 8); if (d < 12) d = 12;
                 float gap = Hueco(justa), grp = Grupo(justa), x = 2;
-                using (Font f = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
-                using (Bitmap b = new Bitmap(1, 1))
-                using (Graphics g = Graphics.FromImage(b))
+                using (Rocola.Nativo.Letra f = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 9.5f, true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 9.5f, Bold): la letra nativa
+                // EN LINUX: using (Bitmap b = new Bitmap(1, 1)): el mapa solo daba el Graphics con que medir; sin el, se mide directo (Nativo/TextoGdiPlus.cs)
+                // EN LINUX: using (Graphics g = Graphics.FromImage(b)): de su estado, a MeasureString solo le pesa el modo de letra, el de fabrica (SystemDefault)
                 {
                     x += d + 4;                                                       // la cruceta
-                    x += gap + g.MeasureString("Mover", f).Width + grp;
-                    x += d + gap + g.MeasureString("Entrar / Poner", f).Width + grp;
-                    x += d + gap + g.MeasureString("Volver", f).Width;
+                    x += gap + TextoGdiPlus.Mide("Mover", f, AjusteLetra.DelSistema, SizeF.Empty, FormatoTexto.SinFormato).Width + grp;   // EN LINUX: g.MeasureString(texto, letra): sin caja ni formato, con el modo de letra de fabrica de un Graphics (Nativo/TextoGdiPlus.cs)
+                    x += d + gap + TextoGdiPlus.Mide("Entrar / Poner", f, AjusteLetra.DelSistema, SizeF.Empty, FormatoTexto.SinFormato).Width + grp;   // EN LINUX: g.MeasureString
+                    x += d + gap + TextoGdiPlus.Mide("Volver", f, AjusteLetra.DelSistema, SizeF.Empty, FormatoTexto.SinFormato).Width;   // EN LINUX: g.MeasureString
                 }
                 if (justa) { justaAlto = alto; justaCache = (int)x + 8; return justaCache; }
                 anchoAlto = alto; anchoCache = (int)x + 8;   // un pelin de aire al final
                 return anchoCache;
             }
 
-            public void RenderContent(Graphics g) { RenderContent(g, false); }
+            public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio) { RenderContent(g, ajuste, copia, medio, false); }   // EN LINUX: el lienzo de Skia y el estado del que llama (modo de letra, copia y medio pixel), como parametros
             // Dibuja la leyenda en un Graphics cualquiera (el control, o la textura de UI del modo GPU). El
             // llamador fija el TextRenderingHint: ClearType para pantalla; AntiAlias (gris) para la textura
             // transparente del modo GPU (ClearType deja flecos de color sobre fondo transparente).
             // forGpu=true: NO hornea el halo del boton pulsado (lo pone la GPU via GetFlashGlow); solo guarda posiciones.
-            public void RenderContent(Graphics g, bool forGpu)
+            public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, bool forGpu)   // EN LINUX: el lienzo de Skia y el estado del que llama que pesa aqui (modo de letra, copia y medio pixel); el suavizado lo pone ella (y la firma de XP del puente se lo deja puesto al Graphics, como XP); DrawCtrlOverlay la llama directo y OnPaint por el puente (Plataforma/Puente.video-form1.cs)
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
                 int cy = Height / 2;
                 Color txt = Color.FromArgb(228, 234, 250);
                 int d = Math.Min(20, Height - 8); if (d < 12) d = 12;
                 float gap = Hueco(Justa), grp = Grupo(Justa);
-                if (hbFont == null) hbFont = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold);
-                Font f = hbFont;
+                if (hbFont == null) hbFont = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 9.5f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 9.5f, Bold): la letra nativa
+                Rocola.Nativo.Letra f = hbFont;   // EN LINUX: la letra nativa
                 float x = 2;
                 StoreGlow(FMover, x, cy, d + 4);
-                if (!forGpu) GlowAround(g, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)
-                x = CtrlPad(g, x, cy, d + 4);
-                x = CtrlTxt(g, f, "Mover", x + gap, cy, txt) + grp;
+                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)   // EN LINUX: GlowAround, CtrlPad, CtrlTxt y CtrlDot (Form1.Pared.cs, aun sin traducir) pintan con un Graphics: por el puente, con el lienzo y su estado (Plataforma/Puente.video-form1.cs)
+                x = CtrlPadVideoForm1(g, suave, ajuste, copia, medio, x, cy, d + 4);   // EN LINUX: CtrlPad por el puente
+                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Mover", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt por el puente (con la Font de la Letra)
                 StoreGlow(FEntrar, x, cy, d);
-                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FEntrar), flash.Col(FEntrar));           // ENTRAR/PONER = punto verde
-                x = CtrlDot(g, x, cy, d, GreenC);
-                x = CtrlTxt(g, f, "Entrar / Poner", x + gap, cy, txt) + grp;
+                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FEntrar), flash.Col(FEntrar));           // ENTRAR/PONER = punto verde   // EN LINUX: GlowAround por el puente
+                x = CtrlDotVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, GreenC);   // EN LINUX: CtrlDot por el puente
+                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Entrar / Poner", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt por el puente
                 StoreGlow(FVolver, x, cy, d);
-                if (!forGpu) GlowAround(g, x, cy, d, flash.Level(FVolver), flash.Col(FVolver));           // VOLVER = punto rojo
-                x = CtrlDot(g, x, cy, d, RedC);
-                x = CtrlTxt(g, f, "Volver", x + gap, cy, txt);
+                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FVolver), flash.Col(FVolver));           // VOLVER = punto rojo   // EN LINUX: GlowAround por el puente
+                x = CtrlDotVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, RedC);   // EN LINUX: CtrlDot por el puente
+                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Volver", x + gap, cy, txt);   // EN LINUX: CtrlTxt por el puente
             }
         }
     }

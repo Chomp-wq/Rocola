@@ -5,7 +5,7 @@
 // cada parte se borra en cuanto se traduzca el archivo que la necesita, y todo al final, con Dibujo2D.cs y Puente.cs
 // (PORT_buscador-portadas.md dice cual es cual).
 //   - Las firmas de XP de lo que llaman los archivos sin traducir: RenderNuevo y DibujaPiezaVivaNueva (Form1.Buscador.cs: RenderContent y
-//     DibujaPiezaViva) y PintaCartasConCambios (Form1.Video.cs: EnsureUiPieza). Le pasan a la traducida el lienzo del Graphics y su estado
+//     DibujaPiezaViva); la de PintaCartasConCambios (Form1.Video.cs: EnsureUiPieza) se quito al traducirse Form1.Video.cs. Le pasan a la traducida el lienzo del Graphics y su estado
 //     (PuenteDibujo.Lienzo y Estado: suavizado, modo de letra, copia, filtro, medio pixel y la matriz del HDC) y le dejan al Graphics lo que
 //     XP le dejaba cambiado: RenderNuevo y DibujaPiezaVivaNueva le ponian SmoothingMode = AntiAlias al empezar (y no lo devolvian), asi
 //     que el puente se lo pone antes de llamar; PintaCartasConCambios no le cambia nada (su Save/Restore es del lienzo).
@@ -45,12 +45,7 @@ namespace Rocola
                 EstadoLienzo e = PuenteDibujo.Estado(g);
                 DibujaPiezaVivaNueva(PuenteDibujo.Lienzo(g), e.Letra, e.Copia, e.Filtro, e.Medio, cual, dx, dy);
             }
-            // EnsureUiPieza (Form1.Video.cs): la pieza de las tarjetas, entera o solo lo que cambio
-            internal Rectangle[] PintaCartasConCambios(Graphics g, int dx, int dy, bool entera)
-            {
-                EstadoLienzo e = PuenteDibujo.Estado(g);
-                return PintaCartasConCambios(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Filtro, e.Medio, dx, dy, entera);
-            }
+            // (La firma de XP de PintaCartasConCambios, para EnsureUiPieza de Form1.Video.cs, se quito con el grupo video-form1: ya la llama directo.)
 
             // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA
             // un Graphics sobre el mismo lienzo con el estado del que llama (el filtro, el de fabrica de un Graphics; la matriz del HDC, la dada)

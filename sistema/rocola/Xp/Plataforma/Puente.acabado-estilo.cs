@@ -4,13 +4,12 @@
 // codigo que todavia dibuja con la capa que imita a GDI+ (Dibujo2D.cs), pasa por aqui. La regla: el puente va del lado de lo que no esta
 // traducido, y los que llaman no cambian. Nada de esto queda: cada parte se borra en cuanto se traduzca el archivo que la necesita, y todo al
 // final, con Dibujo2D.cs y Puente.cs (PORT_acabado-estilo.md dice cual es cual).
-//   - Las firmas de XP de lo que llaman con un Graphics Form1.Video.cs (EnsureUiOverlay: DrawGuiaRojo, DrawSongPagerGpu, y RenderTransparentGpuTint
-//     y RenderOpaqueGpu de la lista; EnsureUiBotOverlay: FranjaLejos, PintaTituloCompacto y PintaSiguienteCompacto) y TextoMovilGpu.cs
-//     (PintaArtistaCompacto: PintaRenglonLejos, con su Font). Son delgadas: pasan a la traducida el lienzo del Graphics (con su matriz y su
+//   - La firma de XP de lo que llama con un Graphics TextoMovilGpu.cs (PintaArtistaCompacto: PintaRenglonLejos, con su Font); las que llamaba
+//     Form1.Video.cs se quitaron al traducirse (grupo video-form1). Son delgadas: pasan a la traducida el lienzo del Graphics (con su matriz y su
 //     recorte) y su estado (PuenteDibujo.Estado), la misma Letra de la Font y la misma alineacion. Ninguna traducida le cambia el estado al
 //     Graphics (lo que guarda, lo devuelve), asi que no hay nada que devolverle.
-//   - Lo que la traducida le pide a lo que no lo esta y pinta con un Graphics (TextoConCinta, PintaArtistaCompacto, DrawLabelOverlay,
-//     DrawCtrlOverlay, CtrlDirLeft, CtrlDirRight): un Graphics sobre el MISMO lienzo con el estado del que llama (GraphicsAcabado).
+//   - Lo que la traducida le pide a lo que no lo esta y pinta con un Graphics (TextoConCinta, PintaArtistaCompacto, CtrlDirLeft, CtrlDirRight;
+//     DrawLabelOverlay y DrawCtrlOverlay de Form1.Video.cs ya estan traducidas y se llaman directo): un Graphics sobre el MISMO lienzo con el estado del que llama (GraphicsAcabado).
 #if ROCOLA_GPU
 using System;
 using System.Drawing;
@@ -22,31 +21,12 @@ namespace Rocola
 {
     public partial class Form1
     {
-        // ---- LA FIRMA DE XP PARA Form1.Video.cs (EnsureUiOverlay: la imagen de la interfaz), de GuiaRojoGpu.cs
-        private void DrawGuiaRojo(Graphics g)
-        { EstadoLienzo e = PuenteDibujo.Estado(g); DrawGuiaRojo(PuenteDibujo.Lienzo(g), e.Suave, e.Copia, e.Medio); }
-
-        // ---- LAS FIRMAS DE XP PARA Form1.Video.cs (EnsureUiBotOverlay: la franja de abajo) Y TextoMovilGpu.cs (PintaArtistaCompacto), de EstiloGpu.cs
-        private bool FranjaLejos(Graphics g)
-        { EstadoLienzo e = PuenteDibujo.Estado(g); return FranjaLejos(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio); }
-        private void PintaTituloCompacto(Graphics g, bool grande)
-        { EstadoLienzo e = PuenteDibujo.Estado(g); PintaTituloCompacto(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio, grande); }
-        private void PintaSiguienteCompacto(Graphics g)
-        { EstadoLienzo e = PuenteDibujo.Estado(g); PintaSiguienteCompacto(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio); }
+        // (Las firmas de XP de DrawGuiaRojo, FranjaLejos, PintaTituloCompacto, PintaSiguienteCompacto, DrawSongPagerGpu, RenderTransparentGpuTint y
+        // RenderOpaqueGpu, para Form1.Video.cs, se quitaron con el grupo video-form1: Form1.Video.cs ya llama directo a las traducidas.)
+        // ---- LA FIRMA DE XP PARA TextoMovilGpu.cs (PintaArtistaCompacto), de EstiloGpu.cs
         // (la letra: la misma Letra de la Font, sin copia; StringAlignment y Alinea tienen los mismos valores)
         private static void PintaRenglonLejos(Graphics g, string texto, Font f, Color c, RectangleF r, StringAlignment al)
         { EstadoLienzo e = PuenteDibujo.Estado(g); PintaRenglonLejos(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio, texto, PuenteDibujo.Letra(f), c, r, (Alinea)(int)al); }
-
-        // ---- LAS FIRMAS DE XP PARA Form1.Video.cs (EnsureUiOverlay, dentro de un disco sin el vidrio en piezas), de AcabadoGpu.cs
-        private void DrawSongPagerGpu(Graphics g)
-        { EstadoLienzo e = PuenteDibujo.Estado(g); DrawSongPagerGpu(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio); }
-        private partial class SongListView
-        {
-            public void RenderTransparentGpuTint(Graphics g, bool glass, bool tinted, Color tint)
-            { EstadoLienzo e = PuenteDibujo.Estado(g); RenderTransparentGpuTint(PuenteDibujo.Lienzo(g), e.Suave, e.Copia, e.Filtro, e.Medio, glass, tinted, tint); }
-            public void RenderOpaqueGpu(Graphics g)
-            { EstadoLienzo e = PuenteDibujo.Estado(g); RenderOpaqueGpu(PuenteDibujo.Lienzo(g), e.Copia, e.Filtro, e.Medio); }
-        }
 
         // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA
         // TextoConCinta (TextoMovilGpu.cs: el texto que no cabe se lleva a una cinta que la tarjeta desliza) pide un Graphics (mira su recorte, su

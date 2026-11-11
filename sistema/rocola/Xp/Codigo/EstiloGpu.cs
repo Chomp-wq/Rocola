@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las letras de las etiquetas, RoundedPath, TextoConCinta, PintaArtistaCompacto, DrawLabelOverlay, DrawCtrlOverlay) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las letras de las etiquetas, RoundedPath, TextoConCinta, PintaArtistaCompacto) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs)
 
 namespace Rocola
 {
@@ -98,8 +98,8 @@ namespace Rocola
             int st = g.Save(); Rocola.Dibujo2D.Graphics gg = PuenteDibujo.GraphicsAcabado(g, suave, ajuste, copia, medio);   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui no cambia); gg: el Graphics de XP para lo de abajo que aun no esta traducido, sobre el mismo lienzo y con el estado de la franja (Plataforma/Puente.acabado-estilo.cs)
             g.Translate(0, baja);   // el renglon del artista baja, con su pastilla y su letrero   // EN LINUX: g.TranslateTransform(0, baja) (gg pinta en este mismo lienzo: lo ve)
             PintaArtistaCompacto(gg);   // EN LINUX: PintaArtistaCompacto (TextoMovilGpu.cs, aun sin traducir) pinta con un Graphics: gg
-            if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(gg, lblMejorada);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, aun sin traducir), con gg
-            if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(gg, pastGenero);   // EN LINUX: DrawCtrlOverlay (Form1.Video.cs, aun sin traducir), con gg
+            if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, ajuste, copia, medio, lblMejorada);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado (el que llevaba gg)
+            if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, Filtro.Bilineal, medio, pastGenero);   // EN LINUX: DrawCtrlOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado (el que llevaba gg: el filtro de fabrica, Bilinear)
             g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
             PintaSiguienteCompacto(g, suave, ajuste, copia, medio);   // EN LINUX: con el lienzo y su estado
             return true;

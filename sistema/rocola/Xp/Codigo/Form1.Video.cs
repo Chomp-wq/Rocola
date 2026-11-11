@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (los Bitmap que sube D3D9Star.cs, las vistas que aun pintan con un Graphics, las letras de las etiquetas) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -660,7 +660,7 @@ namespace Rocola
             {
                 if (nowPlaying != null)
                 {
-                    Image nueva = LoadCover(nowPlaying.Disc);
+                    Rocola.Dibujo2D.Image nueva = LoadCover(nowPlaying.Disc);   // EN LINUX: la Image de la capa, escrita entera: la da la cache de portadas (Form1.Portadas.cs) y la recibe el mini-cubo (Form1.Vistas.cs), los dos aun sin traducir; aqui solo pasa
                     // EL RELEVO: si ya habia un cubo puesto con otra portada, no se cambia de golpe; el
                     // cubo da media vuelta y la nueva aparece en el camino. La primera cancion de la
                     // noche, y la portada que llega tarde a la que YA suena, entran sin giro: ahi no hay
@@ -698,7 +698,7 @@ namespace Rocola
             if (lblNowTop.Width != mejRowW) lblNowTop.Width = mejRowW;
 
             bool on = MejActivo();
-            int bw = on ? TextRenderer.MeasureText(lblMejorada.Text, lblMejorada.Font).Width + 4 : 0;
+            int bw = on ? TextoGdi.Mide(lblMejorada.Text, PuenteDibujo.Letra(lblMejorada.Font)).Width + 4 : 0;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms); la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
             // LA PASTILLA DEL GENERO va en este mismo renglon, entre el artista y el letrero MEJORADA: es de
             // la cancion, igual que el artista, y en el renglon de arriba -el titulo- no cabria sin comerle
             // sitio a lo unico que de verdad hay que leer entero.
@@ -707,7 +707,7 @@ namespace Rocola
             if (anchoArt < 60) anchoArt = 60;
             if (lblNow.Width != anchoArt) lblNow.Width = anchoArt;
 
-            int tw = TextRenderer.MeasureText(lblNow.Text, lblNow.Font).Width;
+            int tw = TextoGdi.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font)).Width;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs), con la Letra de la etiqueta por el puente
             if (tw > anchoArt) tw = anchoArt;
             int x = lblNow.Left + tw + 12;
             if (gw > 0)
@@ -748,23 +748,23 @@ namespace Rocola
         // letrero, asi que va mas estrecha). Si entra entero en la de abajo, la de arriba se queda vacia y se ve
         // exactamente igual que siempre. Se corta por ESPACIO; si una sola palabra no cabe, se corta por letra
         // antes que dejar el titulo mochado. Lo que aun sobre lo elipsa la propia etiqueta.
-        private static void PartirNow(string texto, Font f, int anchoArriba, int anchoAbajo, out string arriba, out string abajo)
+        private static void PartirNow(string texto, Rocola.Nativo.Letra f, int anchoArriba, int anchoAbajo, out string arriba, out string abajo)   // EN LINUX: la letra nativa (Nativo/Letras.cs; Form1 tiene un metodo Letra) en vez de la Font (nadie la llama, tampoco en XP)
         {
             arriba = ""; abajo = texto ?? "";
             if (abajo.Length == 0 || anchoAbajo < 20) return;
-            if (TextRenderer.MeasureText(abajo, f).Width <= anchoAbajo) return;   // cabe de una: nada que partir
+            if (TextoGdi.Mide(abajo, f).Width <= anchoAbajo) return;   // cabe de una: nada que partir   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs)
             int tope = anchoArriba - 6;   // margen: la textura de la GPU dibuja con GDI+ y mide un pelo mas ancho
             int corte = -1;
             for (int i = 0; i < abajo.Length; i++)
             {
                 if (abajo[i] != ' ') continue;
-                if (TextRenderer.MeasureText(abajo.Substring(0, i), f).Width > tope) break;
+                if (TextoGdi.Mide(abajo.Substring(0, i), f).Width > tope) break;   // EN LINUX: TextRenderer.MeasureText (Nativo/TextoGdi.cs)
                 corte = i;   // el ultimo espacio que todavia cabe arriba
             }
             if (corte > 0) { arriba = abajo.Substring(0, corte); abajo = abajo.Substring(corte + 1); return; }
             // ni un espacio util (un titulo de una sola palabra larguisima): se corta por letra
             int n = 0;
-            while (n + 1 < abajo.Length && TextRenderer.MeasureText(abajo.Substring(0, n + 1), f).Width <= tope) n++;
+            while (n + 1 < abajo.Length && TextoGdi.Mide(abajo.Substring(0, n + 1), f).Width <= tope) n++;   // EN LINUX: TextRenderer.MeasureText (Nativo/TextoGdi.cs)
             if (n > 0 && n < abajo.Length) { arriba = abajo.Substring(0, n); abajo = abajo.Substring(n); }
         }
 
@@ -818,11 +818,11 @@ namespace Rocola
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
         private bool uiOverlayVacio;   // la imagen de la UI no existe a proposito (atraccion con el escaparate): ver EnsureUiOverlay
-        private Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)
+        private Rocola.Dibujo2D.Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)   // EN LINUX: el Bitmap de la capa, escrito entero: lo sube D3D9Star.cs (GetUi y SubeUi de BuscadorLigeroGpu.cs) y lo copia Form1.Biblioteca.cs (winSnap), aun sin traducir; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
         // La de la otra medida (navegar: una franja arriba; dentro de un disco o en el buscador: casi toda la pantalla). Al cambiar de
         // modo se toma esa en vez de reservar y soltar otra imagen de 2,8 MB cada vez (24-10-2026: el diagnostico del A4 ponia el 92 %
         // de los tirones de mas de 50 ms al entrar y salir de un disco, en la fase de la interfaz). Se repinta entera igual.
-        private Bitmap uiOverlayOtro;
+        private Rocola.Dibujo2D.Bitmap uiOverlayOtro;   // EN LINUX: el Bitmap de la capa, escrito entero (es la otra uiOverlay)
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
         private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
@@ -840,7 +840,7 @@ namespace Rocola
                 lblGpu.AutoSize = false; lblGpu.Size = new Size(380, 26);
                 lblGpu.Location = new Point(ClientSize.Width - 390, 46);
                 lblGpu.BackColor = Color.FromArgb(200, 0, 0, 0); lblGpu.ForeColor = Color.Yellow;
-                lblGpu.Font = new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold);
+                lblGpu.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.AnchoFijo, 10f, true));   // EN LINUX: new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold): la de ancho fijo de XP (Courier New) en puntos y negrita; la etiqueta es de WinForms (aun sin traducir) y la recibe como Font por el puente
                 lblGpu.TextAlign = ContentAlignment.MiddleCenter; lblGpu.Visible = false;
                 Controls.Add(lblGpu);
             }
@@ -1037,19 +1037,19 @@ namespace Rocola
             if (attractOn && attractView != null)   // MODO ATRACCION: cubo gigante centrado que cicla portadas (con fundido)
             {
                 st = new GpuCubeState();
-                Image ca, cb; float f;
+                Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras: las portadas del cubo van de la atraccion (Form1.Vistas.cs) a la tarjeta (D3D9Star.cs), aun sin traducir; aqui solo pasan
                 ParCuboAtraccion(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
                 RectangleF cubo = CuboAtraccionAhora();   // el de siempre, o el del escaparate (AtraccionGpu.cs): lo mismo que la animacion de entrada/salida
                 st.Sel.Has = true;
                 st.Sel.Key = attractView;
                 st.Sel.X = cubo.X; st.Sel.Y = cubo.Y; st.Sel.W = cubo.Width; st.Sel.H = cubo.Height;
-                st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: el Bitmap de la capa, escrito entero (GpuCubeInfo de D3D9Star.cs)
                 return st;   // en atraccion no hay mini-cubo (no suena nada)
             }
             if (searchOpen && searchOverlay != null)
             {
                 st = new GpuCubeState();
-                Rectangle area; Image ca, cb; float f;
+                Rectangle area; Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras (del buscador, Form1.Buscador.cs, a la tarjeta); aqui solo pasan
                 bool cubOk = searchOverlay.GetPreviewCube(out area, out ca, out cb, out f);
 #if ROCOLA_GPU
                 if (winMode == 1) cubOk = false;   // abriendo: la ventana se anima entera, un cubo suelto encima la delataria
@@ -1059,7 +1059,7 @@ namespace Rocola
                     area.Offset(searchOverlay.Left, searchOverlay.Top);   // coords del buscador -> pantalla
                     st.Sel.Has = true; st.Sel.X = area.X; st.Sel.Y = area.Y; st.Sel.W = area.Width; st.Sel.H = area.Height;
                     st.Sel.Key = searchOverlay;
-                    st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Bitmap; st.Sel.CoverB = cb as Bitmap; st.Sel.Fade = f;
+                    st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: el Bitmap de la capa, escrito entero
                 }
             }
             else if (panelSongs != null && panelSongs.Visible && cubeBox != null)
@@ -1098,7 +1098,7 @@ namespace Rocola
             info.Y = screenY + (cb.Height - side) / 2;
             info.W = side; info.H = side;
             info.Angle = cb.Angle;
-            info.CoverA = cb.Cover as Bitmap;
+            info.CoverA = cb.Cover as Rocola.Dibujo2D.Bitmap;   // EN LINUX: el Bitmap de la capa, escrito entero (la portada del CubeBox, Form1.Vistas.cs, a la tarjeta)
             info.Key = cb;
             info.Tilt = (float)(10.0 * Math.Sin(cb.Phase * 0.9) * Math.PI / 180.0);   // mismo bamboleo que CubeBox.OnPaint
         }
@@ -1272,48 +1272,48 @@ namespace Rocola
             if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
                 if (uiOverlayOtro != null && uiOverlayOtro.Width == w && uiOverlayOtro.Height == mainH)
-                { Bitmap t = uiOverlayOtro; uiOverlayOtro = uiOverlay; uiOverlay = t; }   // la de este modo, guardada: se repinta entera abajo
+                { Rocola.Dibujo2D.Bitmap t = uiOverlayOtro; uiOverlayOtro = uiOverlay; uiOverlay = t; }   // la de este modo, guardada: se repinta entera abajo   // EN LINUX: el Bitmap de la capa, escrito entero
                 else
                 {
                     if (uiOverlayOtro != null) uiOverlayOtro.Dispose();
                     uiOverlayOtro = uiOverlay;
-                    uiOverlay = new Bitmap(w, mainH, PixelFormat.Format32bppPArgb);
+                    uiOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, mainH), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, mainH, Format32bppPArgb): los puntos nativos (Mapas.Nuevo: Bgra8888 premultiplicado, transparentes) en un Bitmap de la capa DUENO de ellos y con ese formato, porque lo suben y lo copian archivos aun sin traducir (como las piezas de AcabadoGpu.cs)
                 }
             }
-            using (Graphics g = Graphics.FromImage(uiOverlay))
+            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiOverlay)))   // EN LINUX: Graphics.FromImage(uiOverlay): un lienzo de Skia sobre sus puntos (los mismos, sin copia)
             {
-                g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;   // gris (ClearType deja flecos sobre transparente), ajustado a los pixeles: la letra chica sale mas nitida en pantallas bajas (T1, 12-10-2026; tambien la franja, las piezas y las cintas)
+                g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear: lo mismo, el color de .NET en el de Skia
+                bool suave = true, copia = false, medio = false; Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable; la copia, el medio pixel y el filtro, los de fabrica de un Graphics (SourceOver, Default, Bilinear): esta imagen no los cambia
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // gris (ClearType deja flecos sobre transparente), ajustado a los pixeles: la letra chica sale mas nitida en pantallas bajas (T1, 12-10-2026; tambien la franja, las piezas y las cintas)   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
                 if (searchOpen && searchOverlay != null)
                 {
-                    GraphicsState gs = g.Save();   // BUSCADOR (su UI sin starfield ni cubo)
-                    g.TranslateTransform(searchOverlay.Left, searchOverlay.Top);
-                    searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true);
-                    g.Restore(gs);
+                    int gs = g.Save();   // BUSCADOR (su UI sin starfield ni cubo)   // EN LINUX: GraphicsState gs = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui no cambia)
+                    g.Translate(searchOverlay.Left, searchOverlay.Top);   // EN LINUX: g.TranslateTransform
+                    searchOverlay.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true);   // EN LINUX: RenderContent del buscador (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: uno sobre este lienzo con este estado (Plataforma/Puente.video-form1.cs); lo que le cambie al estado se va con el Restore de abajo
+                    g.RestoreToCount(gs);   // EN LINUX: g.Restore(gs)
                 }
                 else if (panelSongs != null && panelSongs.Visible)
                 {
-                    DrawCtrlOverlay(g, helpBar);   // instrucciones ARRIBA tambien dentro del disco (guian al usuario, como en software)
-                    GraphicsState gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)
-                    g.TranslateTransform(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs
-                    DrawLabelOverlay(g, lblAlbum);
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, helpBar);   // instrucciones ARRIBA tambien dentro del disco (guian al usuario, como en software)   // EN LINUX: con el lienzo y su estado
+                    int gs = g.Save();   // INTERIOR DE DISCO: etiqueta + lista + barra de paginas (el cubo grande lo pone la GPU)   // EN LINUX: GraphicsState gs = g.Save(): la cuenta del lienzo
+                    g.Translate(panelSongs.Left, panelSongs.Top);   // los controles del disco son hijos de panelSongs   // EN LINUX: g.TranslateTransform
+                    DrawLabelOverlay(g, ajuste, copia, medio, lblAlbum);   // EN LINUX: con el lienzo y lo que pesa del estado en el texto
                     if (FastSongGlass) { /* vidrio, pagina y fila: texturas independientes */ }
                     else if (cancionesTransparentes && songList != null)
                     {
-                        GraphicsState listState = g.Save(); g.TranslateTransform(songList.Left, songList.Top);
-                        g.SetClip(new Rectangle(0, 0, songList.Width, songList.Height));
-                        songList.RenderTransparentGpuTint(g, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.Restore(listState);
+                        int listState = g.Save(); g.Translate(songList.Left, songList.Top);   // EN LINUX: GraphicsState listState = g.Save() (la cuenta del lienzo) y g.TranslateTransform
+                        g.Save(); g.ClipRect(new SKRect(0, 0, songList.Width, songList.Height), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(rect): no hay otro recorte en esta imagen (reemplazarlo es recortar), en un Save del lienzo como lo pone la capa (se va con el Restore de listState); de pixeles enteros, sin suavizar, como GDI+
+                        songList.RenderTransparentGpuTint(g, suave, copia, filtro, medio, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.RestoreToCount(listState);   // EN LINUX: la traducida (AcabadoGpu.cs) con el lienzo y su estado; g.Restore(listState)
                     }
                     else
                     {
-                        GraphicsState listState = g.Save();
-                        g.TranslateTransform(songList.Left, songList.Top);
-                        g.SetClip(new Rectangle(0, 0, songList.Width, songList.Height));
-                        songList.RenderOpaqueGpu(g); g.Restore(listState);
+                        int listState = g.Save();   // EN LINUX: GraphicsState listState = g.Save(): la cuenta del lienzo
+                        g.Translate(songList.Left, songList.Top);   // EN LINUX: g.TranslateTransform
+                        g.Save(); g.ClipRect(new SKRect(0, 0, songList.Width, songList.Height), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(rect): no hay otro recorte en esta imagen (reemplazarlo es recortar), en un Save del lienzo que se va con el Restore de listState; de pixeles enteros, sin suavizar
+                        songList.RenderOpaqueGpu(g, copia, filtro, medio); g.RestoreToCount(listState);   // EN LINUX: la traducida (AcabadoGpu.cs) con el lienzo y lo que pesa del estado; g.Restore(listState)
                     }
-                    if (songPager != null && songPager.Visible) DrawSongPagerGpu(g);
-                    g.Restore(gs);
+                    if (songPager != null && songPager.Visible) DrawSongPagerGpu(g, suave, ajuste, copia, medio);   // EN LINUX: la traducida (AcabadoGpu.cs) con el lienzo y su estado
+                    g.RestoreToCount(gs);   // EN LINUX: g.Restore(gs)
                 }
                 else if (attractOn && EscaparateActivo()) { }   // con el escaparate, los textos los pone el (AtraccionGpu.cs)
                 else if (attractOn)   // MODO ATRACCION: solo los dos textos (el cubo gigante y las estrellas los pone la GPU)
@@ -1321,26 +1321,26 @@ namespace Rocola
                     RectangleF cuboA = AttractCubeRect();   // mismo rectangulo que el cubo y que la animacion
                     int cubeBottom = (int)(cuboA.Y + cuboA.Height);
                     string line1 = (attractView != null && attractView.SongCount > 0) ? (attractView.SongCount.ToString("#,0") + " canciones") : "Tu rocola";
-                    using (Font fBig = new Font(FontFamily.GenericSansSerif, 24f, FontStyle.Bold))
-                    using (Font fSmall = new Font(FontFamily.GenericSansSerif, 15f, FontStyle.Bold))
-                    using (StringFormat sfc = new StringFormat())
-                    using (SolidBrush tb = new SolidBrush(Color.White))
+                    using (Rocola.Nativo.Letra fBig = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 24f, true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 24f, Bold): la letra nativa (Nativo/Letras.cs), la generica sin remates de XP en puntos y negrita
+                    using (Rocola.Nativo.Letra fSmall = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true))   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15f, Bold)
+                    using (SKPaint tb = new SKPaint { Color = Color.White.Sk() })   // EN LINUX: using (SolidBrush tb = new SolidBrush(Color.White)): el pincel en un SKPaint con su color (el using del formato, abajo, ya no hace falta: un FormatoTexto no se suelta)
+                    // EN LINUX: using (StringFormat sfc = new StringFormat()): es el FormatoTexto sfc de la primera linea del bloque
                     {
-                        sfc.Alignment = StringAlignment.Center; sfc.LineAlignment = StringAlignment.Center;
-                        g.DrawString(line1, fBig, tb, new RectangleF(0, cubeBottom + 18, w, 36), sfc);
-                        tb.Color = Color.FromArgb(235, 255, 220, 120);   // FIJO: el "respiro" lo pone un halo por GPU (FillUiGlows) -> esta textura no se rehace nunca en atraccion
-                        g.DrawString("toca un boton para elegir", fSmall, tb, new RectangleF(0, cubeBottom + 58, w, 28), sfc);
+                        FormatoTexto sfc = new FormatoTexto(); sfc.Horizontal = Alinea.Centro; sfc.Vertical = Alinea.Centro;   // EN LINUX: new StringFormat() (Nativo/TextoGdiPlus.cs) con Alignment y LineAlignment en Center
+                        TextoGdiPlus.Escribe(g, line1, fBig, ajuste, tb, new RectangleF(0, cubeBottom + 18, w, 36), sfc, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel
+                        tb.Color = Color.FromArgb(235, 255, 220, 120).Sk();   // FIJO: el "respiro" lo pone un halo por GPU (FillUiGlows) -> esta textura no se rehace nunca en atraccion   // EN LINUX: el color del pincel, en el de Skia
+                        TextoGdiPlus.Escribe(g, "toca un boton para elegir", fSmall, ajuste, tb, new RectangleF(0, cubeBottom + 58, w, 28), sfc, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                     }
                 }
                 else
                 {
-                    DrawCtrlOverlay(g, helpBar);
-                    if (buscaView != null && buscaView.Visible) DrawCtrlOverlay(g, buscaView);   // escondida, no se pinta (con video, antes asomaba una tira)
-                    if (ayudaView != null && ayudaView.Visible) DrawCtrlOverlay(g, ayudaView);   // AYUDA (su interrogacion la anima la tarjeta)
-                    DrawCtrlOverlay(g, letterBar);
-                    DrawCtrlOverlay(g, headerView);
-                    DrawLabelOverlay(g, lblStatus);
-                    DrawGuiaRojo(g);
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, helpBar);   // EN LINUX: con el lienzo y su estado
+                    if (buscaView != null && buscaView.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, buscaView);   // escondida, no se pinta (con video, antes asomaba una tira)   // EN LINUX: con el lienzo y su estado
+                    if (ayudaView != null && ayudaView.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, ayudaView);   // AYUDA (su interrogacion la anima la tarjeta)   // EN LINUX: con el lienzo y su estado
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, letterBar);   // EN LINUX: con el lienzo y su estado
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, headerView);   // EN LINUX: con el lienzo y su estado
+                    DrawLabelOverlay(g, ajuste, copia, medio, lblStatus);   // EN LINUX: con el lienzo y lo que pesa del estado en el texto
+                    DrawGuiaRojo(g, suave, copia, medio);   // EN LINUX: la traducida (GuiaRojoGpu.cs) con el lienzo y su estado
                 }
                 // Las etiquetas de estado de abajo YA NO van aqui: tienen su propia textura chica
                 // (EnsureUiBotOverlay), asi el reloj de la cancion no rehace esta textura 2 veces/seg.
@@ -1355,7 +1355,7 @@ namespace Rocola
         // Reconstruye la textura de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/
         // progreso) SOLO si cambio algo. Es una tira chica (~90px de alto): el tic del reloj y la barra de
         // progreso (~2 cambios/seg con musica) cuestan ~10x menos que rehacer la pantalla completa de antes.
-        private Bitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;
+        private Rocola.Dibujo2D.Bitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;   // EN LINUX: el Bitmap de la capa, escrito entero: lo suben GetUiBot y SubeUiBot (D3D9Star.cs, FranjaLigeraGpu.cs), aun con el Bitmap; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
         private int EnsureUiBotOverlay()
         {
             Size cs = tamanoFranjaPrueba.IsEmpty ? ClientSize : tamanoFranjaPrueba;   // (el de prueba solo lo ponen las baterias)
@@ -1371,30 +1371,30 @@ namespace Rocola
             if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
             {
                 if (uiBotOverlay != null) uiBotOverlay.Dispose();
-                uiBotOverlay = new Bitmap(w, bh, PixelFormat.Format32bppPArgb);
+                uiBotOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, bh), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, bh, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (lo suben GetUiBot y SubeUiBot, aun sin traducir)
             }
             using (zona.IsEmpty ? CapturaTexto(0) : CapturaRecuadro())   // (por recuadro, las cintas de verdad no se tocan)
-            using (Graphics g = Graphics.FromImage(uiBotOverlay))
+            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiBotOverlay)))   // EN LINUX: Graphics.FromImage(uiBotOverlay): un lienzo de Skia sobre sus puntos (los mismos)
             {
-                if (zona.IsEmpty) g.Clear(Color.Transparent);
-                else EmpiezaRecuadro(g, zona);   // solo el recuadro: lo de fuera ya esta como tiene que estar
+                if (zona.IsEmpty) g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                else EmpiezaRecuadro(g, false, false, zona);   // solo el recuadro: lo de fuera ya esta como tiene que estar   // EN LINUX: la traducida (FranjaLigeraGpu.cs) con el estado de un Graphics recien hecho (sin suavizar, medio pixel de fabrica); deja el recorte del recuadro en el lienzo, en un Save, como el SetClip de XP (nada de lo de abajo lo reemplaza)
                 if (!attractOn)   // en atraccion la pantalla es limpia: la franja queda transparente
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;   // gris: ClearType deja flecos sobre transparente
-                    g.TranslateTransform(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'
-                    if (!FranjaLejos(g))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha
+                    bool suave = true, copia = false, medio = false; Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable; la copia, el medio pixel y el filtro, los de fabrica de un Graphics (la franja no los cambia)
+                    AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // gris: ClearType deja flecos sobre transparente   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
+                    g.Translate(0, -top);   // las etiquetas estan en coords del form; la tira empieza en 'top'   // EN LINUX: g.TranslateTransform
+                    if (!FranjaLejos(g, suave, ajuste, copia, medio))   // la letra para leer de lejos (EstiloGpu.cs): el titulo grande y lo que sigue a la derecha   // EN LINUX: la traducida con el lienzo y su estado
                     {
-                        PintaTituloCompacto(g, false);
-                        PintaArtistaCompacto(g);
-                        if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)
-                        if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, pastGenero);
-                        PintaSiguienteCompacto(g);
+                        PintaTituloCompacto(g, suave, ajuste, copia, medio, false);   // EN LINUX: la traducida (EstiloGpu.cs) con el lienzo y su estado
+                        PintaArtistaCompacto(g, ajuste, copia, medio);   // EN LINUX: la traducida (TextoMovilGpu.cs) con el lienzo y lo que pesa del estado en el texto
+                        if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, ajuste, copia, medio, lblMejorada);   // letrero MEJORADA (su brillo es un halo por quad, no rehace esta textura)   // EN LINUX: con el lienzo y su estado
+                        if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, pastGenero);   // EN LINUX: con el lienzo y su estado
+                        PintaSiguienteCompacto(g, suave, ajuste, copia, medio);   // EN LINUX: la traducida (EstiloGpu.cs) con el lienzo y su estado
                     }
-                    DrawLabelOverlay(g, lblTime);
-                    DrawCtrlOverlay(g, pastCred);
-                    DrawCtrlOverlay(g, pastCola);
-                    if (!progresoFluido && !(neonIntenso && progresoNeon)) DrawCtrlOverlay(g, progress);
+                    DrawLabelOverlay(g, ajuste, copia, medio, lblTime);   // EN LINUX: con el lienzo y su estado
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, pastCred);   // EN LINUX: con el lienzo y su estado
+                    DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, pastCola);   // EN LINUX: con el lienzo y su estado
+                    if (!progresoFluido && !(neonIntenso && progresoNeon)) DrawCtrlOverlay(g, suave, ajuste, copia, filtro, medio, progress);   // EN LINUX: con el lienzo y su estado
                 }
             }
             uiBotLastSig = sig; uiBotVer++;
@@ -1414,7 +1414,7 @@ namespace Rocola
         // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
         // La pieza 4 son las tarjetas del buscador con portadas (BuscadorPortadasGpu.cs): con el buscador de siempre no hay.
         internal const int NumPiezas = 5;
-        private readonly Bitmap[] uiPieza = new Bitmap[NumPiezas];
+        private readonly Rocola.Dibujo2D.Bitmap[] uiPieza = new Rocola.Dibujo2D.Bitmap[NumPiezas];   // EN LINUX: los Bitmap de la capa, escritos enteros: los suben GetPieza y SubePieza (D3D9Star.cs, BuscadorPortadasGpu.cs) y los pone tambien EnsureSongPiece (AcabadoGpu.cs, con PuenteDibujo.Entrega); aqui se pinta en sus puntos
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
         private readonly int[] uiPiezaVer = new int[NumPiezas];
@@ -1477,13 +1477,13 @@ namespace Rocola
             if (uiPieza[cual] == null || uiPieza[cual].Width != donde.Width || uiPieza[cual].Height != donde.Height)
             {
                 if (uiPieza[cual] != null) uiPieza[cual].Dispose();
-                uiPieza[cual] = new Bitmap(donde.Width, donde.Height, PixelFormat.Format32bppPArgb);
+                uiPieza[cual] = PuenteDibujo.Entrega(Mapas.Nuevo(donde.Width, donde.Height), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (como EnsureSongPiece)
             }
             using (cual == PiezaVistaPreviaBuscador() ? CapturaTexto(4) : new CapturaCintas(null))   // en el buscador con portadas, la tarjeta elegida (BuscadorPortadasGpu.cs)
-            using (Graphics g = Graphics.FromImage(uiPieza[cual]))
+            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiPieza[cual])))   // EN LINUX: Graphics.FromImage(pieza): un lienzo de Skia sobre sus puntos (los mismos)
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;   // igual que la imagen grande
+                bool suave = true, copia = false, medio = false; Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable; la copia, el medio pixel y el filtro, los de fabrica de un Graphics
+                AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // igual que la imagen grande   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
                 // SE LE PASA EL DESPLAZAMIENTO; NO SE MUEVE EL LIENZO. La primera version movia el lienzo
                 // (TranslateTransform) y en Mono se veia perfecto... pero en Windows el texto de la tecla lo
                 // dibuja el SISTEMA (TextRenderer), y ese trabaja en pixeles de verdad: no hace caso a las
@@ -1491,11 +1491,11 @@ namespace Rocola
                 // salia como un rectangulo rosa VACIO. Con el desplazamiento por delante cae donde debe en
                 // los dos sitios.
                 if (searchOverlay.Nuevo && cual == SearchOverlay.PiezaCartas)
-                    uiCartasCambios = searchOverlay.PintaCartasConCambios(g, -donde.X, -donde.Y, uiPiezaSig[cual] == SigNada);
+                    uiCartasCambios = searchOverlay.PintaCartasConCambios(g, suave, ajuste, copia, filtro, medio, -donde.X, -donde.Y, uiPiezaSig[cual] == SigNada);   // EN LINUX: la traducida (BuscadorPortadasGpu.cs) con el lienzo y su estado
                 else
                 {
-                    g.Clear(Color.Transparent);
-                    searchOverlay.DibujaPiezaViva(g, cual, -donde.X, -donde.Y);
+                    g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
+                    searchOverlay.DibujaPiezaViva(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), cual, -donde.X, -donde.Y);   // EN LINUX: DibujaPiezaViva (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: uno sobre este lienzo con este estado y la matriz del HDC de un mapa de bits (la identidad: su texto de GDI no ve traslaciones, como en XP)
                 }
             }
             uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
@@ -1776,49 +1776,49 @@ namespace Rocola
         }
 
         // Dibuja un control (HelpBar/LetterBar/ProgressView) en la textura de UI, en su posicion del form.
-        private static void DrawCtrlOverlay(Graphics g, Control c)
+        private static void DrawCtrlOverlay(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, Control c)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (suavizado, modo de letra, copia, filtro y medio pixel), como parametros; la matriz del HDC es la de un mapa de bits (la identidad): los que llaman pintan en uiOverlay, uiBotOverlay o la franja de lejos
         {
             if (c == null || c.Width < 1 || c.Height < 1) return;
-            GraphicsState st = g.Save();
-            g.TranslateTransform(c.Left, c.Top);
+            int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo; el estado del dibujo va en variables y lo llamado no las cambia (al volver, el Restore de XP lo dejaba como estaba)
+            g.Translate(c.Left, c.Top);   // EN LINUX: g.TranslateTransform
             HelpBar hb = c as HelpBar;
-            if (hb != null) hb.RenderContent(g, true);   // forGpu: sus pulsos van como halos por quad, no en la textura
-            else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(g);
-            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, true);
-            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(g);   // con la cancion que llega a la cola (DiscoVivoGpu.cs)
-            else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g);
-            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g);
-            else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(g); }
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g);
-            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, true);
-            else { AyudaView av = c as AyudaView; if (av != null) av.RenderContent(g, true); } } } } } } } } }
-            g.Restore(st);
+            if (hb != null) hb.RenderContent(g, ajuste, copia, medio, true);   // forGpu: sus pulsos van como halos por quad, no en la textura   // EN LINUX: la traducida (Form1.cs) con el lienzo y su estado (el suavizado lo pone ella)
+            else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: las vistas de Form1.Vistas.cs, DiscoVivoGpu.cs y Form1.Buscador.cs aun pintan con un Graphics: uno sobre este lienzo (ya trasladado) con este estado (Plataforma/Puente.video-form1.cs); lo que le cambien se queda en el y se va con el Restore de abajo, como en XP
+            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), true);   // EN LINUX: por el puente (Form1.Vistas.cs, aun sin traducir)
+            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // con la cancion que llega a la cola (DiscoVivoGpu.cs)   // EN LINUX: por el puente (pasa el Graphics a Form1.Vistas.cs, aun sin traducir)
+            else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
+            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
+            else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio)); }   // EN LINUX: por el puente
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
+            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), true);   // EN LINUX: por el puente (Form1.Buscador.cs, aun sin traducir)
+            else { AyudaView av = c as AyudaView; if (av != null) av.RenderContent(g, copia, medio, true); } } } } } } } } }   // EN LINUX: la traducida (AyudaCasillaGpu.cs) con el lienzo y lo que pesa del estado (el suavizado y el modo de letra los pone ella; lo que deja puesto se iba con el Restore)
+            g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
         }
 
         // Dibuja el texto de una etiqueta en la textura de UI, respetando su fuente, color, alineacion y caja.
         // GDI reusables (StringFormat + pincel al que se muta el color): esto se llama ~6-7 veces por cada
         // reconstruccion de la textura de UI (que ocurre ~13fps en navegacion por el brillo de la letra).
-        [ThreadStatic] private static StringFormat lblSf;
-        [ThreadStatic] private static SolidBrush lblBr;
-        private static void DrawLabelOverlay(Graphics g, Label l) { DrawLabelOverlay(g, l, (l != null) ? l.ForeColor : Color.White); }
-        private static void DrawLabelOverlay(Graphics g, Label l, Color color)
-        { if (l != null) DrawLabelOverlay(g, l, color, (RectangleF)l.Bounds); }
+        [ThreadStatic] private static FormatoTexto lblSf;   // EN LINUX: el StringFormat, el formato nativo (Nativo/TextoGdiPlus.cs)
+        [ThreadStatic] private static SKPaint lblBr;   // EN LINUX: el SolidBrush, un SKPaint al que se le cambia el color (TextoGdiPlus.Escribe pinta con una copia: no le cambia nada)
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l) { DrawLabelOverlay(g, ajuste, copia, medio, l, (l != null) ? l.ForeColor : Color.White); }   // EN LINUX: el lienzo de Skia y lo que pesa del estado del Graphics en el texto (modo de letra, copia y medio pixel), como parametros
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l, Color color)   // EN LINUX: el lienzo y el estado
+        { if (l != null) DrawLabelOverlay(g, ajuste, copia, medio, l, color, (RectangleF)l.Bounds); }   // EN LINUX: con el lienzo y el estado
         // En una caja propia (mas angosta que la etiqueta): los puntos suspensivos van donde de verdad se acaba el sitio.
         // Recortar la etiqueta entera con un SetClip dejaba la ultima palabra cortada a la mitad (barrido del 12-10-2026).
-        private static void DrawLabelOverlay(Graphics g, Label l, Color color, RectangleF caja)
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l, Color color, RectangleF caja)   // EN LINUX: el lienzo y el estado (lo llaman tambien PintaArtistaCompacto de TextoMovilGpu.cs y FranjaLejos de EstiloGpu.cs, ya traducidas)
         {
             if (l == null || string.IsNullOrEmpty(l.Text) || !(caja.Width > 0f)) return;
-            StringFormat sf = lblSf ?? (lblSf = new StringFormat());
-            SolidBrush b = lblBr ?? (lblBr = new SolidBrush(Color.White)); b.Color = color;
-            sf.FormatFlags = StringFormatFlags.NoWrap; sf.Trimming = StringTrimming.EllipsisCharacter;
+            FormatoTexto sf = lblSf ?? (lblSf = new FormatoTexto());   // EN LINUX: new StringFormat() es new FormatoTexto()
+            SKPaint b = lblBr ?? (lblBr = new SKPaint { Color = Color.White.Sk() }); b.Color = color.Sk();   // EN LINUX: el SolidBrush en un SKPaint con su color
+            sf.Banderas = BanderasTexto.SinPartir; sf.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: FormatFlags = NoWrap (reemplaza todas las banderas) y Trimming = EllipsisCharacter
             ContentAlignment a = l.TextAlign;
-            if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Alignment = StringAlignment.Near;
-            else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Alignment = StringAlignment.Far;
-            else sf.Alignment = StringAlignment.Center;
-            if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.LineAlignment = StringAlignment.Near;
-            else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.LineAlignment = StringAlignment.Far;
-            else sf.LineAlignment = StringAlignment.Center;
-            g.DrawString(l.Text, l.Font, b, caja, sf);
+            if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Horizontal = Alinea.Cerca;   // EN LINUX: sf.Alignment = StringAlignment.Near
+            else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Horizontal = Alinea.Lejos;   // EN LINUX: sf.Alignment = StringAlignment.Far
+            else sf.Horizontal = Alinea.Centro;   // EN LINUX: sf.Alignment = StringAlignment.Center
+            if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.Vertical = Alinea.Cerca;   // EN LINUX: sf.LineAlignment = StringAlignment.Near
+            else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.Vertical = Alinea.Lejos;   // EN LINUX: sf.LineAlignment = StringAlignment.Far
+            else sf.Vertical = Alinea.Centro;   // EN LINUX: sf.LineAlignment = StringAlignment.Center
+            TextoGdiPlus.Escribe(g, l.Text, PuenteDibujo.Letra(l.Font), ajuste, b, caja, sf, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel; la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
         }
 
 #endif
@@ -1851,15 +1851,15 @@ namespace Rocola
 
         // Dibuja un control una vez en un mapa de bits de usar y tirar. Nada de esto se ve: lo unico que hace
         // es que lo que ese dibujo hornea quede hecho. false = todavia no tiene tamano, se reintenta luego.
-        private bool EnSeco(Control c, Action<Graphics> dibuja)
+        private bool EnSeco(Control c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); los que aun dibujan con un Graphics (PrecargaPaginaGpu.cs, Form1.Portadas.cs) llegan por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
         {
             if (c == null || c.Width < 8 || c.Height < 8) return false;
-            using (Bitmap b = new Bitmap(c.Width, c.Height, PixelFormat.Format32bppPArgb))
-            using (Graphics g = Graphics.FromImage(b))
+            using (SKBitmap b = Mapas.Nuevo(c.Width, c.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos (Bgra8888 premultiplicado, transparentes)
+            using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b)
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                dibuja(g);
+                bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
+                AjusteLetra ajuste = AjusteLetra.Suave;   // EN LINUX: g.TextRenderingHint = AntiAlias, en una variable
+                dibuja(g, suave, ajuste);   // EN LINUX: con el lienzo y su estado
             }
             return true;
         }
