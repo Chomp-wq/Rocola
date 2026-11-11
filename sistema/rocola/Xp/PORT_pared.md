@@ -47,6 +47,7 @@ Todas en `Plataforma/Puente.pared.cs` salvo donde se dice. Ninguna de las traduc
 | `e.Graphics` en los tres `OnPaint` (`PuenteDibujo.Lienzo` y `Estado`) y `Starfield.Draw`/`DrawReactive` con el `Graphics` | WinForms (no es de esta tanda) y `Form1.Fondo.cs` | la pista de ventanas dé el lienzo y se traduzca `Form1.Fondo.cs` |
 | `RoundRect` devuelve un `GraphicsPath` de la capa (`PuenteDibujo.Ruta`, 3 usos en el contorno) | `Form1.Ajustes.cs` (rama de ventanas) | `RoundRect` dé un `SKPath` |
 | `EnSeco(…, delegate (Rocola.Dibujo2D.Graphics g))` y `BakeMoneda` (un `Bitmap` de la capa) en `PrecargaPaginaGpu.cs` | `Form1.Video.cs`, `SuenaVivoGpu.cs` | se traduzcan |
+| `FamiliaUi().Name` en `PrecargaPaginaGpu.cs` (la familia de la interfaz llega como `FontFamily` de la capa y se pasa por su nombre a `Letra.EnPuntos`/`EnPixeles`) | `Form1.Ajustes.cs` (rama de ventanas) | `FamiliaUi` dé el nombre (añadida en la revisión: faltaba en esta tabla) |
 
 ## Costuras de otros grupos que se quitaron
 
@@ -107,3 +108,52 @@ que metía el fallo en el puente borrado lo mete ahora en la traducida); `Prueba
 - El suavizado de `PackEdge` no se puede comprobar con puntos (arriba): está razonado por el código de XP.
 - Las líneas que los recorridos no pasan (el dibujo por procesador de los `OnPaint`, la casilla chica, el fundido del cubo TOP) están
   comprobadas solo por el arnés, con datos fijos.
+
+## Revisión (revisor independiente, 11-11-2026)
+
+Leído el diff entero de `ae8b50b..port-pared` contra `Rocola/<archivo>` (el original de XP) y contra la base, línea por línea:
+
+- **GDI+ que quede**: en los cinco archivos solo quedan tipos de la capa escritos enteros en las costuras de la tabla de arriba (las
+  portadas como `Image`/`Bitmap` de la capa, el `e.Graphics` de los tres `OnPaint` y lo que va al cielo, `RoundRect`, `EnSeco`,
+  `BakeMoneda`, las miniaturas de `GetBatch`); ningún `using Rocola.Dibujo2D`. Faltaba en la tabla `FamiliaUi().Name` de la precarga (se
+  añadió; no cambia nada del código).
+- **Equivalencia con XP**: mismas cuentas, valores y orden. Comprobado a mano lo fácil de perder: el halo (`PathGradientBrush` = el mismo
+  `Degradado.DeTrazo` que usa la capa, con la caja de `gp.Bounds` = `GetBounds` y el color negro del pincel que no tiñe), `MeasureString(s, f)`
+  y `DrawString(s, f, b, x, y)` como caja (0, 0) sin formato, `FormatFlags = LineLimit` con `=` (solo `SoloEnteros`), `Trimming =
+  EllipsisCharacter`, el palomito con las puntas y uniones redondas, `Save`/`Restore` del cubo de la canción (`Save()` de Skia devuelve la
+  cuenta de antes y `RestoreToCount` vuelve a ella; las rotaciones y traslaciones se anteponen como `MatrixOrder.Prepend`), `SetClip` del
+  atlas (recorte entero sin suavizar), `SourceCopy` de los rellenos transparentes y de los sellos, `DrawImageUnscaled` = la imagen a su
+  tamaño con el filtro de fábrica, la matriz de color (`Matrix33`) con la envoltura transparente, `LockBits` en PArgb = los puntos mismos
+  (la capa tampoco comprobaba los límites; `PegaBordes` los comprueba antes como en XP), y la paleta con su formato de XP.
+- **Estado del `Graphics`**: frente a `estado_por_linea.tsv` (las líneas 174, 175, 177, 183 del cubo, 255-269 de las ayudas y 120 de las
+  tiras, las que varían), todo lo que varía va como parámetro y lo fijo es lo de un `Graphics` nuevo; los `OnPaint` leen el estado
+  después del cielo y le devuelven al `Graphics` el filtro, el suavizado y el modo de letra que XP le dejaba (`DrawWall` con el filtro por `ref`).
+- **Costuras**: los `Bitmap` prestados siguen comparándose por identidad (`CellTex.Bmp`, `lastContour`, `nativeCovers`); los `SKBitmap` se
+  sueltan donde XP soltaba sus `Bitmap` y en el mismo orden; los cerrojos de XP (`bordesCerrojo`) siguen; las sobrecargas de
+  `Puente.pared.cs` no le cambian el estado al `Graphics` (las traducidas no lo cambian).
+- **Finales y líneas**: los once archivos de `Codigo/` tocados conservan su número de líneas y sus finales (`Form1.Pared.cs`, 1 678 y 1 470
+  con CRLF); todas las líneas cambiadas de `Codigo/` llevan su `EN LINUX`.
+
+No se encontró ningún fallo en el código; no se cambió nada salvo esta sección y la fila de `FamiliaUi`.
+
+Comprobaciones repetidas por el revisor (con el código de `3240f21`, el último commit con código):
+
+- **(a)** `dotnet build -c Release`: 0 errores, 15 avisos (los de la base; ninguno en los archivos del grupo).
+- **(b)** `banco.sh`: semillas 7, 11 (letras falsas) y 5 (DejaVu), gdi, nativo y puente: 0 distintos en las nueve; puente-objetos 407 bien, 0 mal.
+- **(c)** Recorridos `pared`, `pared2` y `atraccion` con el candado (`/root/rocola-trabajo/port/pared/revision`, carga 5 a 6): los tres
+  salen con 0 y sin excepciones (solo «Pantalla parada» de 750 a 920 ms en `rocola_error.txt`). Capas de Dibujo2D quietas **46 de 46**.
+  Texturas quietas distintas: `atraccion` 27 de 27, `pared` 56 de 58, `pared2` 63 de 67. Las que faltan (`584659ad…` y `1c9507bb…` de
+  `pared`; `8c560fb6…`, `21d8fe91…`, `2a697d30…` y `2f591363…` de `pared2`) salen todas en las corridas anteriores del mismo código
+  (`cmp`, `cmp2`, `rev/cmp`, salvo las dos de la hora) y también faltan en 6 a 53 de las 48-63 corridas guardadas de otros grupos y de la
+  referencia (`union.py`): son de tiempo, no de dibujo. Juntando las cuatro corridas, 376 de 381, las mismas cinco de la hora que ya apuntaba el informe.
+- **(d)** `arnes.sh`: 1 715 líneas iguales a la referencia congelada con las letras falsas y con DejaVu (673 llamadas directas).
+  Controles 9 («OnPaint no le deja el filtro al Graphics») y 14 («el puente de Cube.Draw sin el filtro del Graphics»), repetidos: 26 y
+  98 líneas distintas (se ven). `otros.sh`: asistente 1 990, buscador-portadas 3 128 y acabado-estilo 6 607 líneas, 0 distintas.
+- **(e)** `cintas.sh`: 29 de 29 iguales (6 616 cuadros).
+- **(f)** `dotnet publish -c Release -r linux-x64`: 0 avisos IL/AOT; el binario nativo por `pared` (`aot-corre.sh pared`): sale con 0,
+  12 de 12 capturas, 0 excepciones en lo que escribe y en `rocola_error.txt`. `atraccion` en NativeAOT no se repitió.
+- **(g)** `diff-xp.py`: `Form1.Pared.cs` 231/228 (1 sin marca: la llave `{` del bloque que dejaba el `using (ImageAttributes ...)` comentado),
+  `CaratulasSeparadasGpu.cs` 37/35, `PrecargaPaginaGpu.cs` 21/20, `PaletaCaratulaGpu.cs` 14/14, `PreviewsIndexadosGpu.cs` 3/3, 0 sin marca.
+
+Lo que queda, igual que antes: las costuras de la tabla y los riesgos de arriba (sobre todo el formato de la paleta cuando la caché de
+portadas dé `SKBitmap`). Nada probado en el A4.
