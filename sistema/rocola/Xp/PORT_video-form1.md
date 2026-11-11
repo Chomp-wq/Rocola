@@ -113,3 +113,60 @@ Costuras de otros grupos que dependían de este y se QUITARON (se llama directo)
 - La franja de lejos (`EstiloGpu.cs`) todavía hace un `Graphics` (`gg`) para `PintaArtistaCompacto(gg)`, ya traducida: costura entre reposo y
   acabado-estilo que puede llamar directo (no es de este grupo).
 - Nada de esto se probó en el A4.
+
+## Revisión (revisor independiente, 11-11-2026)
+
+Se revisó el diff `ae8b50b..port-video-form1` línea por línea contra XP (`Rocola/Form1.Video.cs`, `Form1.cs`, `Form1.Sonido.cs`) y se
+repitieron las comprobaciones con la máquina compartida (carga de 4 a 5 en 4 núcleos).
+
+**Lo que se miró y está bien:**
+
+- No queda GDI+ sin razón en los tres archivos: lo que nombra un tipo de la capa va escrito entero y es costura (los `Bitmap` que suben
+  `D3D9Star.cs` y los `Sube*`, las portadas que solo pasan, el `Graphics` de `OnPaintBackground`, la región del aviso, el `OnPaint` de la barra).
+  `new Bitmap(w, h, PArgb)` → `PuenteDibujo.Entrega(Mapas.Nuevo(w, h), PArgb)` da el mismo objeto que el constructor de la capa (mismos
+  puntos Bgra8888 premultiplicados y transparentes, `PixelFormat` y `TraeAlfa`), así que la identidad que compara `D3D9Star.cs` y quién
+  suelta los puntos no cambian.
+- El estado de cada línea contra `estado_por_linea.tsv`: las imágenes de la interfaz empiezan con AntiAlias + AntiAliasGridFit, Bilinear,
+  sin copia ni medio píxel (las filas de 1285-1497), `EmpiezaRecuadro` recibe el estado de un `Graphics` recién hecho (None, Default), y
+  `DrawCtrlOverlay` (1782-1795) y `DrawLabelOverlay` (1821) solo varían en la matriz y el recorte, que van en el lienzo; lo que las vistas le
+  cambian al estado (la fila 1795 ve cambiar el modo de letra) lo deshacía el `Restore` de XP y aquí no sale del `Graphics` del puente.
+- `SetClip` de la lista del disco → `Save` + `ClipRect` (intersecar): no hay otro recorte en esa imagen, y `RestoreToCount(listState)` quita
+  los dos `Save` como el `Restore` de XP. El recorte de `EmpiezaRecuadro` queda en el lienzo hasta el final como en XP; nada de lo que pinta la
+  franja (Form1.Vistas.cs, DiscoVivoGpu.cs, EstiloGpu.cs, TextoMovilGpu.cs, Form1.Pared.cs) hace un `SetClip` que reemplace ni `ResetClip`
+  (solo `Intersect`, o en su propio mapa), y `VisibleClipBounds` del `Graphics` del puente lo lee del lienzo, como antes.
+- `FormatFlags = NoWrap` → `Banderas = SinPartir` (reemplaza), `EllipsisCharacter` → `PuntosPorLetra`; `TextoGdiPlus.Escribe` pinta con
+  su propio `SKPaint` y no cambia el reusable (`lblBr`); `MeasureText` → `TextoGdi.Mide` con `Bottom`; `MeasureString(s, f)` de un
+  `Graphics` de mapa → `TextoGdiPlus.Mide(..., DelSistema, SizeF.Empty, SinFormato)`; las letras (`GenericSansSerif`/`GenericMonospace`
+  en puntos y negrita) y `Font.Height` = `AltoEntero`, con las mismas cuentas que la capa.
+- Las sobrecargas puente: `HelpBar.RenderContent(Graphics, bool)` le deja AntiAlias al `Graphics` (lo que XP no devolvía); `EnSeco` da
+  a lo que llama el estado de un `Graphics.FromImage` (AntiAlias, AntiAlias, lo demás de fábrica, HDC identidad); las cuatro formas de
+  `Form1.Pared.cs` no le cambian el estado al `Graphics` ni guardan la `Font` (su `Dispose` solo suelta la `Letra` nueva, no `hbFont`).
+- Finales de línea y número de líneas: iguales a la base en los cinco archivos de `Codigo/` tocados (Form1.Video.cs 1 975 LF; Form1.cs
+  2 785 / 2 741 CRLF; Form1.Sonido.cs 3 443 / 3 423 CRLF; EstiloGpu.cs 259 y TextoMovilGpu.cs 390 LF) y en los puentes (LF);
+  `git diff --stat` con y sin `--ignore-cr-at-eol`, el mismo (161 + 161 en `Codigo/`).
+
+**Lo que se encontró y se arregló:**
+
+- (menor) `EnsureUiOverlay`, rama de la atracción sin escaparate: la línea del pincel (`SKPaint tb`, el `SolidBrush` de XP 1327) y la del
+  formato (el comentario del `StringFormat sfc`, XP 1326) estaban cambiadas de sitio. Vuelven cada una a su línea de XP (commit
+  «revision: ... en el orden de XP»); el código compilado no cambia.
+
+**Comprobaciones repetidas** (con el arreglo):
+
+- (a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos, los mismos de la base (VolatileRead, FormatterServices,
+  `Control.bounds` x2, dos `Read`, el `stackalloc`).
+- (c) Los nueve recorridos con el candado (`VOLCADO=1 CAPAS=1 HUELLAS=1`, salida en `/root/rocola-trabajo/port/video-form1/revision`): 9
+  de 9 salen con 0; en `rocola_error.txt` solo «(sin excepcion)» (43). Contra `cmp-ref`/`cmp-ref2`: capas quietas 215 de 217 (`ctrlf3` c40
+  capa 4: la hoja de Ctrl+F2 renombrada, misma huella 31c56564160785fd; `hojas` c18 capa 4: c45e76a2be1093d1, la misma que sacan 4 corridas
+  de otros grupos que no tocan esa hoja, frente a 9 con la de la referencia: varía de corrida a corrida). Texturas quietas 445 de 487 en la
+  primera: `buscador` 45 de 78 con la máquina a carga 5 (las 15 huellas únicas que faltaban, de los 13,6 a los 32,1 s, salen todas en la
+  corrida del autor con el mismo programa compilado); repetidos `buscador`, `pared2` y `ayuda`: `buscador` 76 de 78, `ayuda` 65 de 66,
+  `pared2` 93 de 98. Juntando las dos corridas: `buscador` 60 de 60 huellas únicas quietas, `ayuda` 56 de 56, `pared2` 62 de 67, y las 5
+  que faltan de `pared2` (la franja y la imagen de arriba con el reloj) salen en corridas de otros grupos ya juntados.
+- (d) El arnés (`arnes.sh`, programa entero de esta copia y de la referencia congelada): 723 líneas, **IGUALES** con las letras de XP
+  falsas y con DejaVu (128 llamadas directas). Controles negativos (`control.sh`): corte por palabra 73 distintas, barra sin suavizar 240,
+  HDC del lienzo en el puente 32: el arnés ve los tres.
+- (g) `diff-xp.py -v` de los cinco archivos: las únicas líneas sin marca son de antes de este grupo; las 161 líneas cambiadas en `Codigo/`
+  contra la base llevan todas `EN LINUX`.
+- No se repitieron: el banco (este grupo no toca `Nativo/`, `Puente.cs` ni `Dibujo2D.cs`, lo único que compila el banco), las cintas (no
+  se toca la subida) ni NativeAOT (el arreglo no cambia el código compilado; quedan los números del autor).
