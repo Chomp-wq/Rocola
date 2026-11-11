@@ -29,7 +29,14 @@ namespace BancoPortadas
     {
         private static readonly CultureInfo ci = CultureInfo.InvariantCulture;
         private const BindingFlags Todo = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance;
-        private static int n, excepciones;
+        private static int n, excepciones, noNativos;
+        // (revision) el mismo mapa en BGRA sin premultiplicar: LecturaNativa da falso y la traducida lee por la copia de Pixeles
+        private static SKBitmap SinPremultiplicar(SKBitmap b)
+        {
+            SKBitmap u = new SKBitmap(new SKImageInfo(b.Width, b.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul));
+            using (SKPixmap p = b.PeekPixels()) p.ReadPixels(u.Info, u.GetPixels(), u.RowBytes, 0, 0);
+            return u;
+        }
         private static string Huella(byte[] b) { byte[] h = System.Security.Cryptography.SHA256.HashData(b); StringBuilder sb = new StringBuilder(); for (int i = 0; i < 8; i++) sb.Append(h[i].ToString("x2")); return sb.ToString(); }
         private static void Linea(string nombre, string que) { n++; Console.WriteLine(nombre + "\t" + que); }
 
@@ -279,6 +286,20 @@ namespace BancoPortadas
                     Linea(nom + " en-pasos", Teselas(res));
                     object res2 = avanza.Invoke(ctor.Invoke(new[] { Arg(ctor.GetParameters()[0].ParameterType, kv.Value, f), 16 }), new object[] { long.MaxValue });
                     Linea(nom + " de-una", Teselas(res2));
+                    // (revision) en la traduccion, la rama que no es BGRA premultiplicado (LecturaNativa falso: la copia sin premultiplicar de
+                    // Pixeles.LeeSinPremultiplicar) no la pasa ningun mapa de la rocola: se pasa aqui con el mismo mapa sin premultiplicar y
+                    // tiene que dar lo mismo que el premultiplicado (solo cuenta el alfa). Solo a la salida de errores: no cambia la comparacion.
+                    if (de.GetParameters()[0].ParameterType == typeof(SKBitmap) && f == PixelFormat.Format32bppArgb)
+                    {
+                        SKBitmap u = SinPremultiplicar(kv.Value);
+                        foreach (int lado in new[] { 2, 16 })
+                            if (Teselas(Llama(de, new object[] { u, lado, lado == 2 })) != Teselas(Llama(de, new object[] { kv.Value, lado, lado == 2 })))
+                                Console.Error.WriteLine("NO NATIVO DISTINTO de " + kv.Key + " " + lado);
+                        object ru = null; int pu = 0; object tu = ctor.Invoke(new object[] { u, 16 });
+                        while (ru == null && pu < 1000000) { ru = avanza.Invoke(tu, new object[] { 1L }); pu++; }
+                        if (Teselas(ru) != Teselas(res)) Console.Error.WriteLine("NO NATIVO DISTINTO en-pasos " + kv.Key);
+                        noNativos++;
+                    }
                 }
 
             // 5) InteriorOpaco: con un Bitmap de la capa en sus formatos (en la traduccion, por el puente) y, en la traduccion, directo
@@ -297,9 +318,13 @@ namespace BancoPortadas
                             bool alfa = Rocola.Dibujo2D.Image.IsAlphaPixelFormat(f) || (f & PixelFormat.Indexed) != 0;
                             string d = Convert.ToString(Llama(ioSk, new object[] { m, alfa }), ci);
                             if (d != r) Console.Error.WriteLine("DIRECTO DISTINTO interior " + i + " " + lado + " " + f + ": " + d + " / " + r);
+                            string du = Convert.ToString(Llama(ioSk, new object[] { SinPremultiplicar(m), alfa }), ci);   // (revision) la rama no nativa
+                            if (du != r) Console.Error.WriteLine("NO NATIVO DISTINTO interior " + i + " " + lado + " " + f + ": " + du + " / " + r);
+                            noNativos++;
                         }
                     }
             Linea("interior null", Convert.ToString(Llama(ioCapa, new object[] { null }), ci));
+            if (noNativos > 0) Console.Error.WriteLine("no nativos comparados: " + noNativos);
             Console.Error.WriteLine(n + " lineas, " + excepciones + " excepciones");
             return 0;
         }

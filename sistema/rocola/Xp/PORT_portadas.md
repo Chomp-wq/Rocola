@@ -163,3 +163,57 @@ Salidas en `/root/rocola-trabajo/port/portadas` (fuera del repositorio; los PNG 
 - Las diferencias (a)-(e) de `PORT_DIBUJO.md` que tocan a este grupo: (e1) la miniatura se reduce con `HighQualityBilinear` y el medio píxel
   `Half` (con `Half` no aplica la duda del medio píxel), y las previas de 32×32 con el medio píxel de fábrica (sí aplica). La traducción copia la
   referencia; corregirlas lo decide el dueño.
+
+## Revisión (revisor independiente, 11-11-2026)
+
+Se revisó el diff `ae8b50b..port-portadas` línea por línea contra `Rocola/` (el original de XP) y se repitieron las comprobaciones.
+**No se encontró ningún fallo de la traducción**; solo se añadió cobertura al arnés.
+
+**Lo revisado y por qué está bien:**
+- Ningún uso de GDI+ sin traducir en `Form1.Portadas.cs`, `DibujoLigeroGpu.cs`, `RespuestaGpu.cs` ni `Form1.Biblioteca.cs` (ni dibujo ni
+  `Clone`/`Save`/`LockBits` sobre la capa): solo quedan `Rocola.Dibujo2D.Image`/`Bitmap`/`PixelFormat`/`Graphics` escritos enteros en las
+  costuras 1-7. En `CaratulasAdaptativas.cs`, solo las líneas de ventanas (`Font` del historial de carátulas).
+- Equivalencias: `fuenteOpaca` (`!= Argb32 && != Paleta8 && != Argb32`) es exactamente lo de XP con la lectura de `Dibujo2D.cs`
+  (`Flags` solo marca `HasAlpha` en Argb32, `Indexed` solo en Paleta8); `InteriorOpaco` recibe `IsAlphaPixelFormat || Indexed` del puente y
+  `!alfaOPaleta` es la condición de XP; `Entrega(…, Format32bppPArgb)` deja el mismo formato y `Flags` que el `Clone`/`new Bitmap` de la
+  referencia (TraeAlfa verdadero); `Mapas.Copia` con el trozo entero es la copia punto por punto; `HazOpaca`, `CopiaMiniaturaGpu`, `ToBytes` y
+  `FromBytes` leen y escriben los enteros BGRA premultiplicados como el `LockBits` PArgb directo de la capa. `De`, `Avanza`, `InteriorOpaco`
+  y `MiniaturaOpaca` solo miran el byte de alfa, que es el mismo premultiplicado o no. El estado (filtro `BilinealAlta`, medio píxel en la
+  miniatura y no en la previa) es el de `estado_por_linea.tsv` (líneas 998, 362).
+- Identidad y dueños: `PuenteDibujo.Mapa` da siempre el mismo `SKBitmap` para la misma imagen de la capa (`Sk` solo se pone al crearla), así
+  que `ReferenceEquals(trabajo.Fuente, b)` de `TeselasEnPasos` se comporta como en XP; lo publicado (`Entrega`) es dueño de sus puntos y lo
+  suelta `DrainCoverTrash`; la previa se entrega o se suelta en el `finally` del trabajador, la copia por guardar también; ningún `SKBitmap`
+  se comparte entre hilos sin el candado de XP (la miniatura es privada hasta `CachePut`).
+- Las tres líneas de `D3D9Star.cs` (`EnsureNieblas`, `EnsureVineta`) son ahora idénticas a las de XP.
+- Finales de línea y número de líneas: los seis archivos de código, iguales a la base línea por línea (patrón de CR comparado).
+
+**Añadido (commit «revision»): la rama «no nativa».** Ningún mapa de la rocola llega hoy a `De`, `TrabajoTeselas` o `InteriorOpaco` sin
+ser BGRA premultiplicado, así que su rama de copia sin premultiplicar (`Pixeles.LeeSinPremultiplicar`, la del `LockBits` Format32bppArgb de
+XP) no la pasaba ninguna prueba. El arnés la pasa ahora con el mismo mapa en BGRA sin premultiplicar y la compara con la premultiplicada
+(solo a la salida de errores, `NO NATIVO DISTINTO`: la comparación con la referencia no cambia): **104 comparaciones, 0 distintas** (los 8
+mapas de teselas con `De` de lado 2 y 16 y `TrabajoTeselas` paso a paso; las 96 de `InteriorOpaco`).
+
+**Comprobaciones repetidas (números):**
+- `dotnet build -c Release`: 0 errores, 15 avisos, la misma lista archivo:línea:aviso que la base (ninguno en los archivos del grupo).
+- `diff-xp.py -v`: `Form1.Portadas.cs` 74/71 (0 sin marca), `DibujoLigeroGpu.cs` 24/23 (0), `RespuestaGpu.cs` 5/5 (0),
+  `CaratulasAdaptativas.cs` 31/28 (0), `Form1.Biblioteca.cs` 92/89 (2, las del medidor de videos de la pista windows), `D3D9Star.cs` 402/266
+  (12, las de antes).
+- Arnés: 466 líneas IGUALES con la referencia congelada, 0 excepciones, 0 «DIRECTO DISTINTO», 0 «NO NATIVO DISTINTO» de 104.
+- Recorridos `pared`, `pared2`, `buscador`, `video` (`VOLCADO=1 CAPAS=1 HUELLAS=1`, candado y carpeta de siempre; salida
+  `/root/rocola-trabajo/port/portadas/rev`): los cuatro salen con 0, sin excepciones (en `rocola_error.txt` solo el aviso del mezclador y la
+  «Pantalla parada» del arranque con la máquina cargada). Contra `cmp-ref`/`cmp-ref2`: **capas de Dibujo2D quietas 74 de 74**; texturas
+  quietas 304 de 309. Las 5 que faltan no son de este grupo ni de su tamaño (ninguna portada de 256×256 ni tesela de horno): `pared2`
+  1024×256 a los 41,9 s y `buscador` `e843916c` a los 8,6 s (las de la hora que explica `PORT_frontera.md`), y en `pared2` la tanda de los
+  62 s (la tecla SALTAR: 1024×64 `906bfb35` y 1024×128 `2f591363`) y la franja de los 69,2 s (`1f1712f1`); `906bfb35` y `1f1712f1` sí salen
+  en las corridas anteriores de esta rama (`cmp`, `cmp2`): ruido de la hora.
+- Banco: no se repitió porque no compila ningún archivo que cambie esta rama (`Nuevo.csproj` toma `Dibujo2D.cs`, `Puente.cs` y una lista
+  de `Nativo/`, todos iguales a la base; `Puente.portadas.cs` no entra): su resultado es el de la base por construcción.
+- Cintas: no aplica (no se tocó el dispositivo ni la grabadora). NativeAOT: no se repitió (los cambios son de tipos, sin reflexión nueva);
+  queda la lista de avisos de la publicación del autor (`w-aot.txt`), idéntica a la base.
+
+**Riesgos que se añaden** (de XP o de la capa, sin cambiar nada):
+- `GpuPreviewStore.Small` con una imagen `null` (solo una portada ya soltada: inalcanzable, la miniatura es privada hasta publicarse)
+  devuelve una previa transparente, como `Dibujo2D.cs`; GDI+ de verdad lanzaría `ArgumentNullException` en `DrawImage`. Se conserva como la
+  referencia.
+- `Imagenes.Lee(Stream)` copia el flujo a un arreglo nuevo (como `Dibujo2D.cs`): la lectura de la miniatura vuelve a reservar un arreglo del
+  tamaño del archivo, que XP evitaba reusando `lecturaCaratula`. No cambia nada de lo que se ve; es rendimiento, de `Nativo/Imagenes.cs`.
