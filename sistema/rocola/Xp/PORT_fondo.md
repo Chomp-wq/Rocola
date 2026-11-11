@@ -60,7 +60,7 @@ Ninguna funcion del archivo deja el estado cambiado a quien la llama (XP devuelv
 `EstiloGpu.cs` (1) y `GuiaRojoGpu.cs` (5): antes `using (Rocola.Dibujo2D.GraphicsPath p = RoundedPath(...))` y se pintaba
 `PuenteDibujo.Ruta(p)` (el mismo `SKPath`, sin copia); ahora `using (SKPath p = ContornoRedondo(...))` y se pinta `p`. Se cambiaron solo
 esas lineas, sus comentarios y la nota de la cabecera de seis de ellos (que nombraba `RoundedPath` entre lo que llegaba por el puente).
-`PORT_acabado-estilo.md`, `PORT_asistente.md` y `PORT_buscador-portadas.md` siguen nombrando esa costura: queda para quien junte.
+`PORT_acabado-estilo.md`, `PORT_asistente.md`, `PORT_buscador-portadas.md` y `PORT_reposo.md` siguen nombrando esa costura: queda para quien junte.
 
 ## Comprobaciones
 
@@ -144,3 +144,63 @@ esas lineas, sus comentarios y la nota de la cabecera de seis de ellos (que nomb
 - Traducir a quienes piden las firmas de XP del puente (`Form1.Buscador.cs`, `Form1.Ajustes.cs`, `Form1.Vistas.cs`, `Form1.Pared.cs`,
   `Form1.cs`, `Form1.Portadas.cs`, `Form1.Biblioteca.cs`) y los `OnPaint` y las etiquetas (WinForms); entonces `Puente.fondo.cs` se borra
   entero (y con el, los tipos escritos enteros de `Bold`, `ColoresDisco.Fuente`, `ColorDePortadaDe` y `BgPanel.OnPaint`).
+
+## Revision (revisor independiente, 11-11-2026)
+
+Revisado el diff `ae8b50b..port-fondo` contra `Rocola/Form1.Fondo.cs` (el de XP), las funciones nativas que llama (`Pixel`, `Imagenes`,
+`Degradado`, `RecorteLienzo`, `MatrizColor`, `ColorSk`) y lo que hace con las mismas llamadas la capa congelada (`Dibujo2D.cs`), y repetidas
+las comprobaciones. **No se encontro ningun fallo en el codigo**; solo una omision en este documento (arreglada).
+
+Lo mirado, linea por linea:
+- **GDI+ que queda**: solo los tipos de la capa escritos enteros de las cuatro costuras de WinForms y de las portadas (`Bold`,
+  `ColoresDisco.Fuente`, `ColorDePortadaDe`, `BgPanel.OnPaint`); sin `using Rocola.Dibujo2D`.
+- **Equivalencia con XP y con lo que hacia la capa**: `PathGradientBrush` = `Degradado.DeTrazo` en la caja del trazo (`GetBounds` =
+  `SKPath.Bounds`), centro de fabrica = centro de la caja, la orilla del primero de `SurroundColors` y el `Blend` donde XP lo pone (lo mismo
+  que `PathGradientBrush.Pon`); el pincel con shader en un `SKPaint` de color negro opaco (el de fabrica de Skia, el mismo que pone la capa);
+  `LinearGradientBrush(caja, a, b, Vertical)` + `InterpolationColors` = `Degradado.Lineal(caja, colores, posiciones, 90, escalable)`
+  repetido (como `LinearGradientBrush.Pon` con `WrapMode.Tile`); `TextureBrush(teja, Tile)` = `Degradado.Textura(..., Repite, identidad,
+  medio=false)` (la capa pasa `!Centros`, que con el medio pixel de fabrica es `false`); `DrawImage`/`DrawImageUnscaled` = `Imagenes.Pinta`
+  con el `InterpolationMode` del lienzo como `Filtro` (bilineal de fabrica en `Graphics.FromImage`), su medio pixel y su copia, y la envoltura
+  `Transparente` con o sin `ImageAttributes` (la de fabrica de los dos en la capa: `WrapMode.Clamp`); `FillPolygon` par-impar;
+  `ClipBounds` = `RecorteLienzo.Limites` (lo mismo que devuelve la capa); `AddArc`/`AddEllipse` con la misma caja en `float` que
+  `GraphicsPath.AddArc`/`AddEllipse` de la capa (el primer arco con `forceMoveTo`, los demas unidos) y `CloseFigure` = `Close`.
+- **Estado del `Graphics`**: los hornos con el de fabrica de `Graphics.FromImage` mas lo que XP les pone (suavizado, bilineal, copia) en
+  variables; `Draw`, `DrawReactive` y `DrawShoots` con el del que llama; `BlitSkyAndStars` cambia la copia solo en su variable (las
+  estrellas y la luna mezclando, como XP antes de devolver `ocm`), y `DrawBeatFlare`/`DrawShoots` reciben la copia del que llama, la que XP
+  les deja. El puente lee el estado con `PuenteDibujo.Estado` y el lienzo con `Lienzo` (el recorte de `SetClip` ya esta en el lienzo: la capa
+  lo aplica al momento) y no tiene que devolver nada.
+- **Costuras**: `RoundedPath` del puente le da al `GraphicsPath` el `SKPath` de `ContornoRedondo` (par-impar; `figuraNueva` queda en
+  `true`, como despues del `CloseFigure` de XP); las 27 llamadas en `Form1.Ajustes.cs` (7), `Form1.Buscador.cs` (10) y `Form1.Vistas.cs` (10) siguen por
+  el. `ColoresDePortada(Bitmap)` lee el ancho antes (una soltada lanza ahi como en la referencia) y lee los mismos puntos
+  (`Bitmap.GetPixel` de la capa = `SKBitmap.GetPixel`, sin premultiplicar). Lo que se suelta: las caches del cielo solo las suelta el
+  `Starfield`, en el orden de XP; los resplandores (`glowPal`) son compartidos y nunca se sueltan, como en XP.
+- **Archivos**: los nueve de `Codigo/` con el mismo numero de lineas y la misma secuencia de finales de linea (CRLF/LF linea por linea)
+  que en la base; nada tocado fuera de lo permitido (`Nativo/`, `Plataforma/Puente.cs`, `Dibujo2D.cs` y el banco, sin cambios).
+
+Lo que se encontro y se hizo:
+- (menor, documento) La lista de documentos que siguen nombrando la costura de `RoundedPath` olvidaba `PORT_reposo.md` (`EstadoReposoGpu.cs`,
+  la insignia y las tarjetas de la cola, 2 sitios, tambien quitados): anadido arriba.
+
+Comprobaciones repetidas (salidas en `/root/rocola-trabajo/port/fondo/revision`, `rev-cmp` y `rev-cmp3`):
+- **Compilacion** (`dotnet build -c Release --no-incremental`): 0 errores, 15 avisos, la misma lista que `avisos-base.txt`.
+- **diff contra XP** (`diff-xp.py -v`): `Form1.Fondo.cs` 252 quitadas y 249 puestas, 2 sin marca (las dos `{` sueltas de los
+  `PathGradientBrush`); los ocho de la costura, 0 sin marca salvo la `{` de `AsistenteGuiaRocola.cs`.
+- **El arnes** (`Pruebas/VistasFondo/arnes.sh`, otra vez las dos compilaciones): 2 763 lineas en las dos, solo la primera distinta
+  (`traducida=True/False`); 1 354 llamadas directas; 1 728 mapas del cielo con 494 huellas distintas (no es un cielo repetido).
+- **Recorridos** (con el candado, `VOLCADO=1 CAPAS=1 HUELLAS=1`, contra `cmp-ref`/`cmp-ref2`; carga de la maquina 6-7): `botones` 28/28
+  texturas quietas y 9/9 capas; `video` 50/50 y 16/16 (las dos capas de 1024x768 de `c21` que difieren no son quietas: tampoco son iguales
+  entre las dos de la referencia); `atraccion` 31/32 y 10/10; `pared` 82/83 y 24/24; `buscador` 77/78 y 22/22; `ayuda` 63/66 y 26/26
+  (otra corrida). Lo que falta es de tiempos, no de la traduccion: en `atraccion` falta la ultima vuelta de la pagina de 512x256
+  (`1da8fd19...`, a los 58-67 s en la referencia: con la carga la vuelta tardo mas y no llego; las mismas cuatro huellas y en el mismo
+  orden); en `pared` un cuadro de una franja que se anima (`8c560fb6...`, a los 16 s) que falta tambien en otras 6 de las 55 corridas, una de
+  ellas de la referencia (`traza-ref`); en `buscador` `e843916c...` (la de la hora, ya apuntada); en `ayuda` `584659ad...` y `577a5e4c...`, que
+  faltan en 20 y 28 de las 71 corridas (esta incluida). La primera corrida de `ayuda` tomo otro camino a los 21-30 s (texturas de 1024x64 que salen tambien en
+  corridas de ramas sin este grupo: `atraccion/cmp`, `vistas-a/cmp2`, `buscador/cmp`, `asistente/cmp-b2`): de tiempos de las teclas. La
+  luna del cielo vivo (128x128 a los 0,5 s) sale con otra huella que en la corrida de las 19:30 (`085b52bd...` a las 21:19): su iluminacion
+  cambia con la hora (`CieloVivoGpu.cs`, no es de este grupo). 0 excepciones en lo que escribio la rocola y en `rocola_error.txt` en todas.
+- **NativeAOT**: no se volvio a publicar (el disco tiene 1,3 GB libres y el codigo no cambio desde el binario de las 19:38, posterior al
+  ultimo cambio de codigo de las 19:15; su `aot.log`: 0 avisos IL/AOT). Ese binario otra vez por `video` y `botones`
+  (`aot-corre.sh`): 7 de 7 capturas en cada uno, 0 excepciones en lo que escribio y en `rocola_error.txt`.
+- **El banco**: no se corrio. Compila una lista escrita de archivos (`Dibujo2D.cs`, `Puente.cs` y los de `Nativo/`), ninguno cambiado en
+  esta rama (`git diff --stat` vacio), y no compila `Puente.fondo.cs`: sale identico por construccion.
+- **Cintas**: no hacen falta (no se toca la tarjeta ni `Nativo/`).
