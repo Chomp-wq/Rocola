@@ -34,7 +34,7 @@
 // por debajo de la interfaz (Form1.Portadas.cs). Ya escaladas, se guardan las ultimas 64.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el teclado, los atajos, la casilla y las tarjetas del buscador con portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs y Puente.buscador-portadas.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el teclado, los atajos, la casilla y las tarjetas del buscador con portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs; Puente.buscador-portadas.cs se quito: quienes lo llaman y a quienes llama ya estan traducidos)
 using System.Globalization;
 
 namespace Rocola
@@ -964,7 +964,7 @@ namespace Rocola
             // Una portada o una marca de cola no cambian toda la pagina. Se compara lo que cada
             // tarjeta realmente muestra, y se repinta en el mismo lienzo solo donde cambio.
             // null = reconstruccion completa; arreglo vacio = nada visible cambio.
-            internal Rectangle[] PintaCartasConCambios(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int dx, int dy, bool entera)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.buscador-portadas.cs)
+            internal Rectangle[] PintaCartasConCambios(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int dx, int dy, bool entera)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; EnsureUiPieza (Form1.Video.cs, ya traducido) la llama directo
             {
                 RepartoBusca r = AseguraReparto(); AseguraFuentes(r.S); EnsurePaintRes();
                 int first = resScroll * 2, n = Math.Max(0, Math.Min(CartasTotales() - first, r.Filas * 2));

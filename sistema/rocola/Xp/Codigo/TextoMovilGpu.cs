@@ -173,7 +173,7 @@ namespace Rocola
                 // etiqueta entera con un SetClip y la ultima palabra quedaba partida a la mitad (barrido del 12-10-2026).
                 if (TextoGdiPlus.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font), ajuste, SizeF.Empty, null).Width > r.Width)   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs)
                     PintaRenglonLejosReposo(g, ajuste, copia, medio, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
-                else DrawLabelOverlayReposo(g, ajuste, copia, medio, lblNow, lblNow.ForeColor, r);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
+                else DrawLabelOverlay(g, ajuste, copia, medio, lblNow, lblNow.ForeColor, r);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y lo que pesa del estado en el texto
             }
         }
         internal static bool TextoConCinta(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra f, Color color, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y su modo de letra, una Letra y un FormatoTexto; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
