@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing;   // EN LINUX: aqui no se dibuja: el indice del archivo de miniaturas solo las entrega; son Bitmap de la capa (Dibujo2D.cs) porque las hace FromBytes (CaratulasAdaptativas.cs, aun sin traducir), y el tipo va escrito entero donde aparece
 namespace Rocola
 {
     internal sealed partial class GpuPreviewStore
@@ -132,9 +132,9 @@ namespace Rocola
             catch { return null; }
             finally { if (own != null) own.Dispose(); }
         }
-        internal Bitmap[] GetBatch(string[] identities)
+        internal Rocola.Dibujo2D.Bitmap[] GetBatch(string[] identities)   // EN LINUX: las miniaturas, Bitmap de la capa (las hace FromBytes, CaratulasAdaptativas.cs, aun sin traducir), escrito entero
         {
-            Bitmap[] result = new Bitmap[identities.Length];
+            Rocola.Dibujo2D.Bitmap[] result = new Rocola.Dibujo2D.Bitmap[identities.Length];   // EN LINUX: Bitmap de la capa, escrito entero
             lock (sync) {
                 Load();
                 List<int> sorted = new List<int>();
