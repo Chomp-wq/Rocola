@@ -181,3 +181,26 @@ primera distinta (`inicio traducida=True/False`, la marca de qué programa corre
 quietas 476 de 487 (las que faltan dependen de la hora: buscador, ayuda y video); las 21 escenas alternadas (RJ10/J10) IGUALES salvo
 sigterm y f3sigterm (lo aceptado); NativeAOT arranque, cierreq, kill9, buscador, f3vistas y f3teclas IGUALES (con la fecha de dotnet en
 rocola-xp).
+
+## 11/12-11-2026 (22:58-01:30): buscador y video-form1 (la tanda 3 entera)
+
+- `317b22f`: buscador (Form1.Buscador.cs: BuscaView y SearchOverlay con SkiaSharp directo) con su revisión («arreglado»: la costura
+  colgada de CintaVistaPrevia y el halo de los símbolos en el arnés). Dos choques con pared: en BuscadorPortadasGpu.cs quedan directas
+  CtrlDot y CtrlTxt (pared) y FlechaArriba (buscador); en Puente.buscador-portadas.cs se van los puentes de las dos ramas.
+- `f5a33ca`: video-form1 (la interfaz que se sube a la tarjeta, la barra de ayuda y el precalentado de Form1.Video.cs, Form1.cs y
+  Form1.Sonido.cs) con su revisión («arreglado»: dos líneas de EnsureUiOverlay en el orden de XP). Tres choques, solo notas y puentes:
+  EstiloGpu.cs (la nota de los using), Puente.reposo.cs (la nota) y Puente.buscador-portadas.cs, que se borra entero (ya no le quedaba
+  nada).
+- Arneses: al quitarse esas costuras, cuatro arneses que las llamaban por reflexión fallaban (el programa no: recorridos, escenas y
+  NativeAOT iguales). Arreglados aparte (rama del agente, `c25b53e`): acabado-estilo, buscador-portadas y reposo llaman a la traducida
+  con el mismo lienzo y estado que daba la costura; video-form1 buscaba GlowAround por nombre y ahora hay dos (la de XP por su firma).
+
+Comprobado con todo junto (`scratchpad/merge/verifica-junta11.sh`, y los cuatro arneses otra vez tras el arreglo): compila desde cero
+(0 errores, los 15 avisos), NativeAOT sin avisos IL/AOT; todos los arneses IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de 2 865,
+Ctrl+F3 0 de 545, buscador-portadas 3 127 líneas, reposo 1 790, video-form1 723; el fondo con solo su primera línea, la marca); el
+banco igual; 41 de 41, 62 de 62 y 32 de 32; recorridos 9 de 9 con 0, capas quietas 217 de 217, texturas quietas 477 de 487 (las de la
+hora); las 21 escenas IGUALES salvo sigterm y f3sigterm (lo aceptado); NativeAOT arranque, cierreq, kill9, buscador, f3vistas y
+f3teclas IGUALES. Ojo: arnes.sh de reposo y video-form1 dice «DISTINTAS: 0 lineas» si la salida del nuevo queda cortada (solo cuenta
+las líneas «>»).
+
+El reparto de lo que queda hasta N7: PLAN_TANDA4_A_N7.md.
