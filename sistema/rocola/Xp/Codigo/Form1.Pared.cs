@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la pared (la atraccion, el cubo, las ayudas de los botones, las casillas, el contorno y el cubo de la cancion) dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas son los SKBitmap de la cache de portadas; las vistas (AttractView, AlbumView y CubeBox) ya no heredan de Control (vistas-pared) y se pintan con Pinta en el lienzo de Skia, con el estado del Graphics de XP en argumentos; quien todavia la llama con un Graphics pasa por el puente (Plataforma/Puente.pared.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la pared (la atraccion, el cubo, las ayudas de los botones, las casillas, el contorno y el cubo de la cancion) dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas son los SKBitmap de la cache de portadas; las vistas (AttractView, AlbumView y CubeBox) ya no heredan de Control (vistas-pared) y se pintan con Pinta en el lienzo de Skia, con el estado del Graphics de XP en argumentos; del puente (Plataforma/Puente.pared.cs) solo queda ExtractCoverPalette con un Bitmap, para quien aun la llama asi
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -131,7 +131,7 @@ namespace Rocola
             }
         }
 
-        private static partial class Cube   // EN LINUX: partial: la firma de XP de Draw (con un Graphics y una Image) ya no la pide nadie (Form1.Buscador.cs ya llama a esta); su parte en el puente (Plataforma/Puente.pared.cs) la quita la limpieza, y entonces esta linea vuelve a ser la de XP
+        private static class Cube
         {
             // OPTIMIZACION (render): estos 3 arreglos se asignaban en CADA llamada a Draw, y Draw se
             // llama varias veces por cuadro (cubo seleccionado, relevo, cubeBox, miniCube, buscador,
@@ -224,7 +224,7 @@ namespace Rocola
         }
 
         // Halo suave (radial) centrado en un simbolo de instrucciones; intensidad segun 'level' (0..1).
-        private static void GlowAround(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float leftX, float cy, float symW, float level, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama (suavizado, modo de letra, copia y medio pixel; las siete ayudas de los botones lo reciben igual); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
+        private static void GlowAround(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float leftX, float cy, float symW, float level, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama (suavizado, modo de letra, copia y medio pixel; las siete ayudas de los botones lo reciben igual); las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             if (level <= 0.02f) return;
             float cx = leftX + symW / 2f, r = symW * 0.9f + 6f;
@@ -250,25 +250,25 @@ namespace Rocola
         private static SKPaint CB(Color c) { if (ctrlB == null) ctrlB = new SKPaint { Color = c.Sk() }; else ctrlB.Color = c.Sk(); return ctrlB; }   // EN LINUX: CB(c), el pincel reusable de XP (un SolidBrush al que se le muta el color), en un SKPaint; con su nombre de XP: el CB de la capa (para Form1.Vistas.cs) ya no existe
         private static SKPaint COut() { return ctrlOutline ?? (ctrlOutline = new SKPaint { Color = Color.FromArgb(130, 255, 255, 255).Sk(), StrokeWidth = 1.4f }); }   // EN LINUX: COut(), el contorno blanco fijo (Pen de 1,4), en un SKPaint; con su nombre de XP, como CB
 
-        private static float CtrlDot(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
+        private static float CtrlDot(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int d, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             Pixel.RellenaOvalo(g, new RectangleF(x, cy - d / 2f, d, d), CB(c), suave, medio, copia);   // EN LINUX: g.FillEllipse(CB(c), x, y, d, d) (Nativo/Pixel.cs)
             Pixel.TrazaOvalo(g, new RectangleF(x, cy - d / 2f, d, d), COut(), suave, medio, copia);   // EN LINUX: g.DrawEllipse(COut(), x, y, d, d)
             return x + d;
         }
-        private static float CtrlTxt(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama, y la letra es una Letra; quien aun pasa un Graphics y una Font llega por el puente (Plataforma/Puente.pared.cs)
+        private static float CtrlTxt(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama, y la letra es una Letra; las firmas de XP con un Graphics y una Font se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo y la Letra
         {
             SizeF sz = TextoGdiPlus.Mide(s, f, ajuste, new SizeF(0, 0), null);   // EN LINUX: g.MeasureString(s, f): sin caja (0, 0) y sin formato (null: el de fabrica), con el modo de letra del que llama (Nativo/TextoGdiPlus.cs)
             TextoGdiPlus.Escribe(g, s, f, ajuste, CB(c), new RectangleF(x, cy - sz.Height / 2f, 0, 0), null, copia, medio);   // EN LINUX: g.DrawString(s, f, CB(c), x, y): desde ese punto (una caja sin ancho ni alto) y sin formato
             return x + sz.Width;
         }
-        private static void CtrlTri(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Color c, PointF a, PointF b, PointF d)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
+        private static void CtrlTri(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Color c, PointF a, PointF b, PointF d)   // EN LINUX: el lienzo de Skia y el estado del que llama; las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             PointF[] p = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             p[0] = a; p[1] = b; p[2] = d;
             Pixel.RellenaPoligono(g, p, CB(c), suave, true, medio, copia);   // EN LINUX: g.FillPolygon(CB(c), p): el relleno de fabrica (Alternate) (Nativo/Pixel.cs)
         }
-        private static float CtrlPad(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente
+        private static float CtrlPad(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz)   // cruceta: arriba/abajo rojo, izq/der amarillo   // EN LINUX: el lienzo de Skia y el estado del que llama; las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             Color red = Color.FromArgb(228, 72, 72), yellow = Color.FromArgb(242, 206, 72);
             float cx = x + sz / 2f, t = sz * 0.34f, w = t / 1.4f;
@@ -279,7 +279,7 @@ namespace Rocola
             return x + sz;
         }
         // Icono del BOTON IZQUIERDA (flecha amarilla, mismo color que la cruceta horizontal)
-        private static float CtrlDirLeft(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
+        private static float CtrlDirLeft(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             pts[0] = new PointF(x, cy); pts[1] = new PointF(x + sz, cy - sz * 0.5f); pts[2] = new PointF(x + sz, cy + sz * 0.5f);
@@ -287,7 +287,7 @@ namespace Rocola
             return x + sz;
         }
         // Icono del BOTON DERECHA (flecha amarilla, espejo de la izquierda)
-        private static float CtrlDirRight(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.pared.cs)
+        private static float CtrlDirRight(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)   // EN LINUX: el lienzo de Skia y el estado del que llama; las firmas de XP con un Graphics se borraron del puente (limpieza-puentes): todos los que la llaman pasan el lienzo
         {
             PointF[] pts = ctrlTri3 ?? (ctrlTri3 = new PointF[3]);
             pts[0] = new PointF(x + sz, cy); pts[1] = new PointF(x, cy - sz * 0.5f); pts[2] = new PointF(x, cy + sz * 0.5f);
