@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); la interfaz, la franja y las piezas son SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP) que D3D9Star.cs sube tal cual; lo que aun es de la capa (las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); la interfaz, la franja y las piezas son SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP) que D3D9Star.cs sube tal cual; los rotulos (Nativo/RotuloVista.cs) dan su Letra directo; lo que aun es de la capa (el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.video-form1.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -99,7 +99,7 @@ namespace Rocola
             videoFull = true;
             LayoutControls();
             video.AlFrente();   // EN LINUX: BringToFront: la capa del video, encima en la pantalla
-            if (lblAttract != null) { lblAttract.Visible = true; lblAttract.BringToFront(); }
+            if (lblAttract != null) { lblAttract.Visible = true; PantallaRocola.VistaAlFrente(lblAttract); }   // EN LINUX: lblAttract.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
         }
         private void ExitVideoFull()
         {
@@ -698,7 +698,7 @@ namespace Rocola
             if (lblNowTop.Width != mejRowW) lblNowTop.Width = mejRowW;
 
             bool on = MejActivo();
-            int bw = on ? TextoGdi.Mide(lblMejorada.Text, PuenteDibujo.Letra(lblMejorada.Font)).Width + 4 : 0;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms); la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
+            int bw = on ? TextoGdi.Mide(lblMejorada.Text, lblMejorada.Font).Width + 4 : 0;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms); la Letra del rotulo (Nativo/RotuloVista.cs), directo
             // LA PASTILLA DEL GENERO va en este mismo renglon, entre el artista y el letrero MEJORADA: es de
             // la cancion, igual que el artista, y en el renglon de arriba -el titulo- no cabria sin comerle
             // sitio a lo unico que de verdad hay que leer entero.
@@ -707,7 +707,7 @@ namespace Rocola
             if (anchoArt < 60) anchoArt = 60;
             if (lblNow.Width != anchoArt) lblNow.Width = anchoArt;
 
-            int tw = TextoGdi.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font)).Width;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs), con la Letra de la etiqueta por el puente
+            int tw = TextoGdi.Mide(lblNow.Text, lblNow.Font).Width;   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs), con la Letra del rotulo, directo
             if (tw > anchoArt) tw = anchoArt;
             int x = lblNow.Left + tw + 12;
             if (gw > 0)
@@ -836,13 +836,13 @@ namespace Rocola
             bool gpuAntes = gpuEnabled;
             if (lblGpu == null)
             {
-                lblGpu = new Label();
-                lblGpu.AutoSize = false; lblGpu.Size = new Size(380, 26);
+                lblGpu = new RotuloVista();   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
+                lblGpu.AutoSize = false; lblGpu.Size = new Size(380, 26);   // EN LINUX: AutoSize = false (el de fabrica: no hace nada) y Size, los del rotulo (Nativo/RotuloVista.cs)
                 lblGpu.Location = new Point(ClientSize.Width - 390, 46);
                 lblGpu.BackColor = Color.FromArgb(200, 0, 0, 0); lblGpu.ForeColor = Color.Yellow;
-                lblGpu.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.AnchoFijo, 10f, true));   // EN LINUX: new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold): la de ancho fijo de XP (Courier New) en puntos y negrita; la etiqueta es de WinForms (aun sin traducir) y la recibe como Font por el puente
-                lblGpu.TextAlign = ContentAlignment.MiddleCenter; lblGpu.Visible = false;
-                Controls.Add(lblGpu);
+                lblGpu.Font = Rocola.Nativo.Letra.EnPuntos(Letras.AnchoFijo, 10f, true);   // EN LINUX: new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold): la de ancho fijo de XP (Courier New) en puntos y negrita; el rotulo (Nativo/RotuloVista.cs) la recibe como Letra, directo
+                lblGpu.TextAlign = AlineaTexto.MiddleCenter; lblGpu.Visible = false;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
+                PantallaRocola.AgregaVista(this, lblGpu);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
             }
             if (gpuPanel == null)
             {
@@ -993,7 +993,7 @@ namespace Rocola
                     gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop();
                     gpuPanel.PrecalientaAnimaciones(ThumbPx, ToastW, ToastH);   // texturas de las animaciones creadas YA, no en la primera que se vea
                 }
-                else { gpuPanel.Visible = false; Diag("render: FALLO el dispositivo D3D9 (sigue CPU)"); if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; lblGpu.BringToFront(); } }
+                else { gpuPanel.Visible = false; Diag("render: FALLO el dispositivo D3D9 (sigue CPU)"); if (announceFail) { lblGpu.Text = "GPU: fallo el dispositivo (sigue CPU)"; lblGpu.Visible = true; PantallaRocola.VistaAlFrente(lblGpu); } }   // EN LINUX: lblGpu.BringToFront(): por la pantalla (SetChildIndex(this, 0))
             }
             else if (!on && gpuEnabled)
             {
@@ -1800,25 +1800,25 @@ namespace Rocola
         // reconstruccion de la textura de UI (que ocurre ~13fps en navegacion por el brillo de la letra).
         [ThreadStatic] private static FormatoTexto lblSf;   // EN LINUX: el StringFormat, el formato nativo (Nativo/TextoGdiPlus.cs)
         [ThreadStatic] private static SKPaint lblBr;   // EN LINUX: el SolidBrush, un SKPaint al que se le cambia el color (TextoGdiPlus.Escribe pinta con una copia: no le cambia nada)
-        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l) { DrawLabelOverlay(g, ajuste, copia, medio, l, (l != null) ? l.ForeColor : Color.White); }   // EN LINUX: el lienzo de Skia y lo que pesa del estado del Graphics en el texto (modo de letra, copia y medio pixel), como parametros
-        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l, Color color)   // EN LINUX: el lienzo y el estado
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, RotuloVista l) { DrawLabelOverlay(g, ajuste, copia, medio, l, (l != null) ? l.ForeColor : Color.White); }   // EN LINUX: el lienzo de Skia y lo que pesa del estado del Graphics en el texto (modo de letra, copia y medio pixel), como parametros; Label -> RotuloVista (Nativo/RotuloVista.cs)
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, RotuloVista l, Color color)   // EN LINUX: el lienzo y el estado; Label -> RotuloVista
         { if (l != null) DrawLabelOverlay(g, ajuste, copia, medio, l, color, (RectangleF)l.Bounds); }   // EN LINUX: con el lienzo y el estado
         // En una caja propia (mas angosta que la etiqueta): los puntos suspensivos van donde de verdad se acaba el sitio.
         // Recortar la etiqueta entera con un SetClip dejaba la ultima palabra cortada a la mitad (barrido del 12-10-2026).
-        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, Label l, Color color, RectangleF caja)   // EN LINUX: el lienzo y el estado (lo llaman tambien PintaArtistaCompacto de TextoMovilGpu.cs y FranjaLejos de EstiloGpu.cs, ya traducidas)
+        private static void DrawLabelOverlay(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, RotuloVista l, Color color, RectangleF caja)   // EN LINUX: el lienzo y el estado (lo llaman tambien PintaArtistaCompacto de TextoMovilGpu.cs y FranjaLejos de EstiloGpu.cs, ya traducidas); Label -> RotuloVista
         {
             if (l == null || string.IsNullOrEmpty(l.Text) || !(caja.Width > 0f)) return;
             FormatoTexto sf = lblSf ?? (lblSf = new FormatoTexto());   // EN LINUX: new StringFormat() es new FormatoTexto()
             SKPaint b = lblBr ?? (lblBr = new SKPaint { Color = Color.White.Sk() }); b.Color = color.Sk();   // EN LINUX: el SolidBrush en un SKPaint con su color
             sf.Banderas = BanderasTexto.SinPartir; sf.Corte = CorteTexto.PuntosPorLetra;   // EN LINUX: FormatFlags = NoWrap (reemplaza todas las banderas) y Trimming = EllipsisCharacter
-            ContentAlignment a = l.TextAlign;
-            if ((a & (ContentAlignment.TopLeft | ContentAlignment.MiddleLeft | ContentAlignment.BottomLeft)) != 0) sf.Horizontal = Alinea.Cerca;   // EN LINUX: sf.Alignment = StringAlignment.Near
-            else if ((a & (ContentAlignment.TopRight | ContentAlignment.MiddleRight | ContentAlignment.BottomRight)) != 0) sf.Horizontal = Alinea.Lejos;   // EN LINUX: sf.Alignment = StringAlignment.Far
+            AlineaTexto a = l.TextAlign;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
+            if ((a & (AlineaTexto.TopLeft | AlineaTexto.MiddleLeft | AlineaTexto.BottomLeft)) != 0) sf.Horizontal = Alinea.Cerca;   // EN LINUX: sf.Alignment = StringAlignment.Near; ContentAlignment -> AlineaTexto
+            else if ((a & (AlineaTexto.TopRight | AlineaTexto.MiddleRight | AlineaTexto.BottomRight)) != 0) sf.Horizontal = Alinea.Lejos;   // EN LINUX: sf.Alignment = StringAlignment.Far; ContentAlignment -> AlineaTexto
             else sf.Horizontal = Alinea.Centro;   // EN LINUX: sf.Alignment = StringAlignment.Center
-            if ((a & (ContentAlignment.TopLeft | ContentAlignment.TopCenter | ContentAlignment.TopRight)) != 0) sf.Vertical = Alinea.Cerca;   // EN LINUX: sf.LineAlignment = StringAlignment.Near
-            else if ((a & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0) sf.Vertical = Alinea.Lejos;   // EN LINUX: sf.LineAlignment = StringAlignment.Far
+            if ((a & (AlineaTexto.TopLeft | AlineaTexto.TopCenter | AlineaTexto.TopRight)) != 0) sf.Vertical = Alinea.Cerca;   // EN LINUX: sf.LineAlignment = StringAlignment.Near; ContentAlignment -> AlineaTexto
+            else if ((a & (AlineaTexto.BottomLeft | AlineaTexto.BottomCenter | AlineaTexto.BottomRight)) != 0) sf.Vertical = Alinea.Lejos;   // EN LINUX: sf.LineAlignment = StringAlignment.Far; ContentAlignment -> AlineaTexto
             else sf.Vertical = Alinea.Centro;   // EN LINUX: sf.LineAlignment = StringAlignment.Center
-            TextoGdiPlus.Escribe(g, l.Text, PuenteDibujo.Letra(l.Font), ajuste, b, caja, sf, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel; la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
+            TextoGdiPlus.Escribe(g, l.Text, l.Font, ajuste, b, caja, sf, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel; la Letra del rotulo (Nativo/RotuloVista.cs), directo
         }
 
 #endif

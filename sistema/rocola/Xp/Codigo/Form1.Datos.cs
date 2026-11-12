@@ -3334,7 +3334,7 @@ namespace Rocola
             // pantalla en cada moneda seria trabajo tirado veinte veces en una noche movida.
             if (pastCred.Height >= 8)
             {
-                int quiere = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastCred.Height, this.Font.FontFamily, pastCred.ConPortadas);
+                int quiere = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastCred.Height, this.Font.FontFamily.Name, pastCred.ConPortadas);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
                 if (quiere != pastCredAncho) { pastCredAncho = quiere; LayoutControls(); }
             }
             pastCred.Invalidate();

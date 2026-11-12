@@ -3,8 +3,9 @@
 // WMP, con Controls.Add al fondo de la lista): aqui su capa es una capa de textura de la lista de la ventana (PantallaRocola.Vistas.cs),
 // que se mueve con ella: Pon (sitio y si se ve), AlFrente (BringToFront) y Quita (Controls.Remove); su orden frente al panel de la tarjeta
 // y los rotulos de encima lo deciden los BringToFront de XP, como alli.
-// TRANSICION: mientras la ventana de la rocola sea una ventana de la capa, su video va en el hueco de la capa (Plataforma/VideoEnVentanas.cs,
-// por PantallaRocola.LaCapa), entre los controles que quedan, que es como se ve hoy.
+// Es la misma capa de la lista de la ventana siempre (rotulos-y-letras: VideoEnVentanas.cs, el hueco del video de la capa, se borro). TRANSICION:
+// mientras la ventana de la rocola sea una ventana de la capa, la pantalla pone esa capa en un hueco de textura de la capa (PantallaRocola.
+// AgregaCapa con su ventana; el hueco, Plataforma/Anfitrion.cs), entre los controles que quedan, que es como se ve hoy.
 using System.Drawing;
 
 namespace Rocola
@@ -13,10 +14,8 @@ namespace Rocola
     {
         public ILugarDelVideo Lugar(object ventana)
         {
-            PantallaRocola.ILaCapa c = PantallaRocola.LaCapa;
-            if (c != null && c.EsSuya(ventana)) return c.LugarDelVideo(ventana);
             LugarNativo l = new LugarNativo();
-            PantallaRocola.AgregaCapa(l.Capa);   // al fondo de la lista, como Controls.Add del control del WMP en XP
+            PantallaRocola.AgregaCapa(ventana, l.Capa);   // al fondo de la lista de esa ventana, como Controls.Add del control del WMP en XP
             return l;
         }
         public void Despierta() { PantallaRocola.Despierta(); }
@@ -29,10 +28,10 @@ namespace Rocola
             {
                 if (Capa.Sitio == sitio && Capa.Visible == visible) return;
                 Capa.Sitio = sitio; Capa.Visible = visible;
-                PantallaRocola.CambioVentana();
+                PantallaRocola.CambioCapa(Capa, true);
             }
             public void AlFrente() { PantallaRocola.VistaAlFrente(Capa); }
-            public void Textura(uint textura, int ancho, int alto) { Capa.Textura = textura; Capa.AnchoGl = ancho; Capa.AltoGl = alto; Capa.Rgba = true; }
+            public void Textura(uint textura, int ancho, int alto) { Capa.Textura = textura; Capa.AnchoGl = ancho; Capa.AltoGl = alto; Capa.Rgba = true; PantallaRocola.CambioCapa(Capa, false); }   // (en la lista nativa la toma el compositor en cada cuadro; en un hueco, el hueco)
             public void Quita() { PantallaRocola.QuitaVista(Capa); Capa.Textura = 0; }
         }
     }

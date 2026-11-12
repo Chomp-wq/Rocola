@@ -4,8 +4,10 @@
 // pintado con Dibujo2D, y lo que pinta la tarjeta o el video en sus controles «Nativa»), la lista nativa de la ventana
 // (Nativo/PantallaRocola.Vistas.cs) y las hojas nativas (Nativo/Hoja.cs). (Las capturas, ROCOLA_CAPTURA..., las hace el compositor.)
 // TRANSICION (port nativo, tanda 4, grupo pantalla-nativa: W2): aqui queda solo lo que une la pantalla nativa con las ventanas de la capa
-// (Plataforma/Ventanas.*.cs): VentanasDeLaCapa (lo que la pantalla le pide a la capa: PantallaRocola.ILaCapa) y el hueco de una vista que
-// ya no hereda de Control dentro de una ventana de la capa (HuecoDeVista). Se pasa a Nativo, sin la capa, al final (N7).
+// (Plataforma/Ventanas.*.cs): VentanasDeLaCapa (lo que la pantalla le pide a la capa: PantallaRocola.ILaCapa), el hueco de una vista que
+// ya no hereda de Control dentro de una ventana de la capa (HuecoDeVista; el de una vista de la tarjeta, el GpuPanel, es «Nativa»:
+// gpupanel-sin-control) y el de una capa de textura, el video (HuecoDelVideo: rotulos-y-letras, lo que era Plataforma/VideoEnVentanas.cs).
+// Se pasa a Nativo, sin la capa, al final (N7).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -46,7 +48,7 @@ namespace Rocola
             Escritorio.Anfitrion = Actual;
             PantallaRocola.LaCapa = new VentanasDeLaCapa();   // (transicion) la pantalla nativa le pide a la capa lo de sus ventanas
             PantallaRocola.Componer = Actual.Compone;
-            ReproductorVideo.Pantalla = new VideoEnPantalla();   // la capa del video (Nativo/ReproductorVideo.cs): en una ventana de la capa, su hueco (VideoEnVentanas.cs)
+            ReproductorVideo.Pantalla = new VideoEnPantalla();   // la capa del video (Nativo/ReproductorVideo.cs): en una ventana de la capa, su hueco de textura (HuecoDelVideo, abajo)
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
             TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
@@ -144,12 +146,6 @@ namespace Rocola
                 }
                 if (dueno != null) dueno.Controls.Add(c);
             }
-            // (panel-del-disco) Controls.Add de un rotulo (Label) a una vista que ya esta en una ventana de la capa: al hueco de la vista
-            public void AgregaRotulo(IVista dueno, object rotulo)
-            {
-                Control d = ControlDe(dueno), r = rotulo as Control;
-                if (d != null && r != null) d.Controls.Add(r);
-            }
             // Parent.ClientSize de una vista que es control de la capa o esta en un hueco: el cliente de su padre; false si no esta en ninguno
             public bool ClienteDelDueno(IVista v, out Size cliente)
             {
@@ -172,13 +168,24 @@ namespace Rocola
                 Sigue(v, h);
                 if (repintar) h.Invalidate();
             }
-            // el hueco toma el sitio y el visible propio de su vista (SetBounds y Visible del control: lo mismo que haria la vista si heredara)
+            // el hueco toma el sitio y el visible propio de su vista (SetBounds y Visible del control: lo mismo que haria la vista si heredara), y
+            // su forma (rotulos-y-letras: IVista.Forma es la Region del control; la Region de la capa con una copia del mismo trazo, como new
+            // Region(GraphicsPath): los mismos puntos y el mismo relleno)
             private void Sigue(IVista v, HuecoDeVista h)
             {
                 Rectangle r = v.Bounds;
                 if (h.Bounds != r) h.SetBounds(r.X, r.Y, r.Width, r.Height);
                 soloLaSuya = true; bool ve; try { ve = v.Visible; } finally { soloLaSuya = false; }
                 if (h.VisiblePropio != ve) h.Visible = ve;
+                SKPath f = v.Forma;
+                if (!ReferenceEquals(f, h.FormaDeLaVista))
+                {
+                    h.FormaDeLaVista = f;
+                    Region rg = null;
+                    if (f != null) { rg = new Region(System.Drawing.RectangleF.Empty); rg.P.Dispose(); rg.P = new SKPath(f); }
+                    Region antes = h.Region; h.Region = rg; if (antes != null) antes.Dispose();
+                    h.Invalidate();
+                }
             }
             public bool DuenoVisible(IVista v)
             {
@@ -204,7 +211,31 @@ namespace Rocola
                 if (que == AvisoRaton.Abajo) c.MouseDown += h; else if (que == AvisoRaton.Mueve) c.MouseMove += h; else if (que == AvisoRaton.Rueda) c.MouseWheel += h; else c.MouseClick += h;   // (gpupanel-sin-control: tambien MouseMove y MouseWheel)
                 return true;
             }
-            public ILugarDelVideo LugarDelVideo(object ventana) { return new VideoEnVentanas().Lugar(ventana); }
+            // (rotulos-y-letras) LAS CAPAS DE TEXTURA EN UNA VENTANA DE LA CAPA (el video): cada una en un hueco de textura (un control
+            // «Nativa» como el hueco del GpuPanel: el anfitrion pinta ahi su textura) en la lista de controles de la ventana, para que su orden
+            // frente al panel de la tarjeta y los rotulos sea el de los BringToFront de XP; es lo que hacia Plataforma/VideoEnVentanas.cs
+            // (HuecoDelVideo), ya borrado. Su TabIndex lo pone el Controls.Add de la capa (el mayor de la coleccion + 1, como WinForms).
+            private readonly Dictionary<CapaDeTextura, HuecoDelVideo> huecosDeTextura = new Dictionary<CapaDeTextura, HuecoDelVideo>();
+            public bool EsSuyaLaCapa(CapaDeTextura t) { return t != null && huecosDeTextura.ContainsKey(t); }
+            public void AgregaCapa(object ventana, CapaDeTextura t)
+            {
+                HuecoDelVideo h;
+                if (!huecosDeTextura.TryGetValue(t, out h)) { h = new HuecoDelVideo(t); huecosDeTextura[t] = h; }
+                h.Sigue();
+                Control dueno = ventana as Control;
+                if (dueno != null) dueno.Controls.Add(h);   // al fondo de la lista, como Controls.Add del control del WMP en XP
+            }
+            public void CapaAlFrente(CapaDeTextura t) { HuecoDelVideo h; if (huecosDeTextura.TryGetValue(t, out h)) h.BringToFront(); }
+            public void QuitaCapa(CapaDeTextura t)
+            {
+                HuecoDelVideo h; if (!huecosDeTextura.TryGetValue(t, out h)) return;
+                huecosDeTextura.Remove(t);
+                Control p = h.Parent;
+                if (p != null) p.Controls.Remove(h);
+                h.TexturaGl = 0;
+                h.Dispose();
+            }
+            public void CambioCapa(CapaDeTextura t) { HuecoDelVideo h; if (huecosDeTextura.TryGetValue(t, out h)) h.Sigue(); }
             // Present de la tarjeta en una hoja (la ventana de prueba F12): su cliente guarda el fondo y el escritorio compone con el. (gpupanel-
             // sin-control) Ya no hay ningun control de la capa con un dispositivo: el GpuPanel es una vista (PresentaEnVista); sin hoja, glFlush.
             public bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera)
@@ -241,7 +272,7 @@ namespace Rocola
         }
 
         // EL HUECO DE UNA VISTA QUE YA NO HEREDA DE CONTROL, en la lista de controles de una ventana de la capa (como HuecoDelVideo,
-        // VideoEnVentanas.cs): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
+        // abajo): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
         // hueco se lo pasa a la vista. El fondo lo pinta la vista (su Pinta es OnPaintBackground y OnPaint). El codigo de XP no lo ve.
         // (armado-vistas) Los que escuchan el raton de la vista desde fuera (PantallaRocola.OyeRaton: los eventos MouseDown y MouseClick de XP)
         // van despues de su Raton, donde WinForms lanza el evento (el On* de fabrica). Al desecharse con su ventana (Control.Dispose desecha a
@@ -252,6 +283,7 @@ namespace Rocola
         {
             private readonly IVista vista;
             internal bool Quitado;
+            internal SKPath FormaDeLaVista;   // (rotulos-y-letras) la forma de la vista que su Region copia
             internal IVista Vista { get { return vista; } }
             // (panel-del-disco) el hueco de una vista que no toma el foco del teclado es un Panel: ni Selectable ni TabStop; (vista-ayuda,
             // revision) si no, el TabStop que XP le pone a la vista, como si heredara
@@ -282,6 +314,24 @@ namespace Rocola
                 PantallaRocola.AvisaOyentes(vista, AvisoRaton.Rueda, r);   // (gpupanel-sin-control: los que oyen su MouseWheel, antes de mirar Handled como WmMouseWheel)
                 HandledMouseEventArgs h = e as HandledMouseEventArgs; if (h != null && r.Handled) h.Handled = true;
                 base.OnMouseWheel(e);
+            }
+        }
+
+        // (rotulos-y-letras) EL HUECO DE UNA CAPA DE TEXTURA (el video: Nativo/VideoEnPantalla.cs) en la lista de controles de una ventana de la
+        // capa: un control «Nativa» como el hueco del GpuPanel (el anfitrion pinta ahi la textura) que toma el sitio, si se ve y la textura de su capa
+        // (Sigue: SetBounds y Visible solo si cambian, como hacia el HuecoDelVideo de VideoEnVentanas.cs; se llama igual porque solo lo usa el video y
+        // las trazas de las capas lo nombran asi: Pruebas/Windows/video.sh). No toma el foco (TabStop = false: el control del WMP de
+        // XP se ponia asi). El codigo de XP no lo ve. Lo que era Plataforma/VideoEnVentanas.cs; se va con la capa (N7).
+        private sealed class HuecoDelVideo : Control
+        {
+            private readonly CapaDeTextura capa;
+            internal HuecoDelVideo(CapaDeTextura c) { capa = c; Nativa = true; TexturaGlRgba = true; TabStop = false; }
+            internal void Sigue()
+            {
+                Rectangle s = capa.Sitio;
+                if (Bounds != s) SetBounds(s.X, s.Y, s.Width, s.Height);
+                if (VisiblePropio != capa.Visible) Visible = capa.Visible;
+                TexturaGl = capa.Textura; AnchoGl = capa.AnchoGl; AltoGl = capa.AltoGl; TexturaGlRgba = capa.Rgba;
             }
         }
     }

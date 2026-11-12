@@ -62,6 +62,17 @@ namespace Banco
         private static readonly TextRenderingHint[] Ajustes = { TextRenderingHint.SystemDefault, TextRenderingHint.SingleBitPerPixelGridFit, TextRenderingHint.SingleBitPerPixel,
             TextRenderingHint.AntiAliasGridFit, TextRenderingHint.AntiAlias, TextRenderingHint.ClearTypeGridFit };
         private static MethodInfo Metodo(string nombre, params Type[] tipos) { return typeof(Form1).GetMethod(nombre, T, null, tipos, null); }
+        // (rotulos-y-letras) las firmas de XP con la Font de AnchoTexto(string, Font) y AnchoToast(string, Font) estaban en
+        // Plataforma/Puente.ventanas2.cs (borrado: sus llamadores ya pasan su Letra): en la traduccion, la traducida con la Letra de esa Font
+        // (Font.L, la misma que da PuenteDibujo.Letra; la nula, nula); en la referencia, la de XP
+        private static Func<string, Font, object> ConFont(string nombre)
+        {
+            MethodInfo m = Metodo(nombre, typeof(string), typeof(Font));
+            if (m != null) return (t, f) => m.Invoke(null, new object[] { t, f });
+            MethodInfo l = null;
+            foreach (MethodInfo mi in typeof(Form1).GetMethods(T)) { ParameterInfo[] p = mi.GetParameters(); if (mi.Name == nombre && p.Length == 2 && p[0].ParameterType == typeof(string) && p[1].ParameterType.Name == "Letra") l = mi; }
+            return (t, f) => l.Invoke(null, new object[] { t, f == null ? null : typeof(Font).GetField("L", T).GetValue(f) });
+        }
 
         // AnchoTexto(Graphics, string, Font) de XP: en la referencia, la de XP por reflexion; en la traduccion ya no existe (la quito el grupo
         // limpieza-puentes el 12-11-2026: nadie la llamaba) y se hace lo que hacia el puente: sin Graphics, sin letra o sin texto, 0; del Graphics,
@@ -85,7 +96,7 @@ namespace Banco
         // sin Graphics, sin letra y sin texto (0); AnchoTexto(string, Font)
         private static void Anchos()
         {
-            Font[] fs = Fuentes(); MethodInfo con = Metodo("AnchoTexto", typeof(Graphics), typeof(string), typeof(Font)), sin = Metodo("AnchoTexto", typeof(string), typeof(Font));
+            Font[] fs = Fuentes(); MethodInfo con = Metodo("AnchoTexto", typeof(Graphics), typeof(string), typeof(Font)); Func<string, Font, object> sin = ConFont("AnchoTexto");
             using (Bitmap b = new Bitmap(64, 32, PixelFormat.Format32bppPArgb))
                 for (int fi = 0; fi < fs.Length; fi++) for (int ti = 0; ti < Textos.Length; ti++)
                 {
@@ -97,12 +108,12 @@ namespace Banco
                             if (k >= Ajustes.Length) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TranslateTransform(3.5f, 2f); g.ScaleTransform(1.3f, 0.8f); g.SetClip(new Rectangle(1, 1, 10, 10)); g.PixelOffsetMode = PixelOffsetMode.Half; }
                             try { sb.Append(AnchoConGraphics(con, g, Textos[ti], fs[fi])).Append(' '); } catch (Exception e) { sb.Append(Exc(e)).Append(' '); }
                         }
-                    string s2; try { s2 = sin.Invoke(null, new object[] { Textos[ti], fs[fi] }).ToString(); } catch (Exception e) { s2 = Exc(e); }
+                    string s2; try { s2 = sin(Textos[ti], fs[fi]).ToString(); } catch (Exception e) { s2 = Exc(e); }
                     Linea("ancho-" + fi + "-" + ti, sb.ToString().TrimEnd() + "\tsin=" + s2);
                 }
             using (Bitmap b = new Bitmap(4, 4)) using (Graphics g = Graphics.FromImage(b))
                 Linea("ancho-nulos", AnchoConGraphics(con, null, "hola", fs[0]) + " " + AnchoConGraphics(con, g, "hola", null) + " " + AnchoConGraphics(con, g, "", fs[0])
-                    + " " + sin.Invoke(null, new object[] { "hola", null }) + " " + sin.Invoke(null, new object[] { null, fs[0] }));
+                    + " " + sin("hola", null) + " " + sin(null, fs[0]));
         }
 
         // CreaSfDibuja(StringAlignment): lo que trae y un texto pintado con el (centrado en vertical, sin partir, sin recortar, y con una caja
@@ -145,14 +156,14 @@ namespace Banco
         // el aviso de siempre: AnchoToast y PintaToast / PintaToastHasta sobre un mapa de 620x48 que ya traia algo (el mapa se reusa)
         private static void Avisos()
         {
-            Font[] fs = Fuentes(); MethodInfo ancho = Metodo("AnchoToast", typeof(string), typeof(Font));
+            Font[] fs = Fuentes(); Func<string, Font, object> ancho = ConFont("AnchoToast");
             MethodInfo pinta = null, hasta = null;
             foreach (MethodInfo m in typeof(Form1).GetMethods(T)) { if (m.Name == "PintaToast") pinta = m; else if (m.Name == "PintaToastHasta") hasta = m; }
             bool deXp = pinta.GetParameters()[0].ParameterType == typeof(Bitmap);
             int[] maximos = { 620, 596, 400, 260, 100, -24 };
             for (int fi = 0; fi < fs.Length; fi++) for (int ti = 0; ti < Textos.Length; ti++)
             {
-                string a; try { a = ancho.Invoke(null, new object[] { Textos[ti], fs[fi] }).ToString(); } catch (Exception e) { a = Exc(e); }
+                string a; try { a = ancho(Textos[ti], fs[fi]).ToString(); } catch (Exception e) { a = Exc(e); }
                 Linea("aviso-ancho-" + fi + "-" + ti, a);
                 if (fi > 2 && ti % 3 != 0) continue;
                 for (int k = 0; k <= maximos.Length; k++)

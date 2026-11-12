@@ -104,13 +104,25 @@ namespace BancoVideoForm1
         }
         private static object[] Junta(object[] a, params object[] b) { object[] r = new object[a.Length + b.Length]; a.CopyTo(r, 0); b.CopyTo(r, a.Length); return r; }
         private static Type Anidado(string nombre) { return typeof(Form1).GetNestedType(nombre, Todo); }
+        // (rotulos-y-letras) la traduccion pide una Letra donde la referencia pide la Font (las vistas y los rotulos: la de esa Font, Font.L, la
+        // misma que da PuenteDibujo.Letra) y AlineaTexto donde pide ContentAlignment (el mismo numero); el rotulo de la traduccion es RotuloVista
+        private static object Adapta(Type destino, object v)
+        {
+            if (v == null || destino.IsInstanceOfType(v)) return v;
+            if (v is Font && destino.Name == "Letra") return typeof(Font).GetField("L", Todo).GetValue(v);
+            if (v is ContentAlignment && destino.IsEnum) return Enum.ToObject(destino, (int)(ContentAlignment)v);
+            return v;
+        }
+        private static readonly Type tRotulo = typeof(Form1).Assembly.GetType("Rocola.RotuloVista");
+        private static object NuevoRotulo() { return tRotulo != null ? Activator.CreateInstance(tRotulo) : (object)new Label(); }
+        private static object LeeP(object o, string p) { return o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
         private static void Pon(object o, string campo, object v)
         {
             Type t = o.GetType();
             while (t != null)
             {
                 FieldInfo f = t.GetField(campo, Todo | BindingFlags.DeclaredOnly); if (f != null) { f.SetValue(o, v); return; }
-                PropertyInfo p = t.GetProperty(campo, Todo | BindingFlags.DeclaredOnly); if (p != null && p.CanWrite) { p.SetValue(o, v); return; }
+                PropertyInfo p = t.GetProperty(campo, Todo | BindingFlags.DeclaredOnly); if (p != null && p.CanWrite) { p.SetValue(o, Adapta(p.PropertyType, v)); return; }
                 t = t.BaseType;
             }
             throw new Exception("no hay " + campo);
@@ -132,11 +144,12 @@ namespace BancoVideoForm1
                     for (int t = 0; t < textos.Length; t++)
                     {
                         if ((a + t) % 2 == 1 && t != 1) continue;   // (no todas las combinaciones: unas 30 por estado)
-                        Label l = new Label(); l.Text = textos[t]; l.Font = letras[(a + t) % letras.Length]; l.ForeColor = Color.FromArgb(255, 255, 220, 120); l.TextAlign = alin[a];
-                        l.Bounds = new Rectangle(6 + a, 4 + t, 150 + 9 * t, 22 + a);
+                        object l = NuevoRotulo(); Pon(l, "Text", textos[t]); Pon(l, "Font", letras[(a + t) % letras.Length]); Pon(l, "ForeColor", Color.FromArgb(255, 255, 220, 120)); Pon(l, "TextAlign", alin[a]);   // (rotulos-y-letras: Label o RotuloVista)
+                        Pon(l, "Bounds", new Rectangle(6 + a, 4 + t, 150 + 9 * t, 22 + a));
                         int caso = k++ % 4;   // 0: la etiqueta (2 argumentos); 1: con color; 2: caja angosta; 3: caja sin ancho
-                        Color color = caso == 0 ? l.ForeColor : Color.FromArgb(200, 120, 230, 255);
-                        RectangleF caja = caso == 2 ? new RectangleF(l.Left + 0.5f, l.Top, 61.25f, l.Height) : caso == 3 ? new RectangleF(l.Left, l.Top, 0f, l.Height) : (RectangleF)l.Bounds;
+                        Rectangle lb = (Rectangle)LeeP(l, "Bounds");
+                        Color color = caso == 0 ? (Color)LeeP(l, "ForeColor") : Color.FromArgb(200, 120, 230, 255);
+                        RectangleF caja = caso == 2 ? new RectangleF(lb.Left + 0.5f, lb.Top, 61.25f, lb.Height) : caso == 3 ? new RectangleF(lb.Left, lb.Top, 0f, lb.Height) : (RectangleF)lb;
                         string nombre = "etiqueta-" + e.Nombre + "-" + a + "-" + t + "-" + caso;
                         using (Bitmap b = new Bitmap(240, 64, PixelFormat.Format32bppPArgb))
                         {
@@ -184,7 +197,7 @@ namespace BancoVideoForm1
             // pone por reflexion a la que tiene la suya (LetterBar, PastillaView, GeneroView: en la referencia, todas son Control y la reciben).
             // Sin esto GeneroView se media y pintaba con la ambiental (Control.DefaultFont) y no con esta: las 24 lineas vista-*-4-* distintas
             if (cc != null) cc.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
-            else { PropertyInfo pf = c.GetType().GetProperty("Font", BindingFlags.Public | BindingFlags.Instance); if (pf != null && pf.CanWrite) pf.SetValue(c, new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold)); }
+            else if (c.GetType().GetProperty("Font", BindingFlags.Public | BindingFlags.Instance) != null) Pon(c, "Font", new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold));   // (rotulos-y-letras: la vista sin herencia con Font, la misma letra que en la referencia)
             Pon(c, "Bounds", new Rectangle(7 + cual, 3 + cual % 3, w, h));
             return c;
         }

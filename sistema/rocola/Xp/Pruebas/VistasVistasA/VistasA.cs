@@ -111,7 +111,14 @@ namespace BancoVistasA
         // puesto al Graphics (cosa del que llama, como en las directas)
         private static int pintas;
         private static void PonSitio(object o, int x, int y, int w, int h) { o.GetType().GetMethod("SetBounds", Todo, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null).Invoke(o, new object[] { x, y, w, h }); }
-        private static void PonProp(object o, string p, object v) { o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).SetValue(o, v); }
+        private static void PonProp(object o, string p, object v) { PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance); pi.SetValue(o, LetraSiHace(pi.PropertyType, v)); }
+        // (rotulos-y-letras) la traduccion pide una Letra donde la referencia pide la Font (la Font de las vistas): la de esa Font (Font.L, la
+        // misma que da PuenteDibujo.Letra: misma Font, misma Letra)
+        private static object LetraSiHace(Type destino, object v)
+        {
+            if (v is Font && destino.Name == "Letra") return typeof(Font).GetField("L", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance).GetValue(v);
+            return v;
+        }
         private static int Medida(object o, string p) { return (int)o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
         private static void PorOnPaint(object o, Graphics g, Rectangle r, Action queda)
         {

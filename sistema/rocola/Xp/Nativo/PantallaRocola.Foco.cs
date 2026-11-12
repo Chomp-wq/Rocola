@@ -35,20 +35,23 @@ namespace Rocola
     {
         // la ventana como contenedor del tabulador (las vistas de la lista nativa son sus hijas)
         private static readonly object LaVentana = new object();
-        private static readonly Dictionary<object, int> tabIndex = new Dictionary<object, int>();
+        // (junta-rotulos, revision) el TabIndex de cada una, guardado con ella como el campo _tabIndex de Control: una tabla debil (lo que se
+        // quita y nadie guarda -cada video crea su capa: VideoEnPantalla.Lugar- no se queda para siempre aqui; mientras vive, lo conserva)
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> tabIndex = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
         // Controls.Add en 'coleccion' (la lista de la ventana o las hijas de una vista, ya con 'v' dentro): si aun no tiene TabIndex, el mayor
         // de los demas de la coleccion mas uno (Control.ControlCollection.Add, arriba)
         internal static void AnotaTab(object v, List<object> coleccion)
         {
-            if (v == null || tabIndex.ContainsKey(v)) return;
+            object ya; if (v == null || tabIndex.TryGetValue(v, out ya)) return;
             int siguiente = 0;
             foreach (object o in coleccion) { if (o == v) continue; int t = TabDe(o); if (siguiente <= t) siguiente = t + 1; }
-            tabIndex[v] = siguiente;
+            tabIndex.Add(v, siguiente);
         }
         // (Control.TabIndex: 0 si nunca se puso)
-        private static int TabDe(object v) { int t; return v != null && tabIndex.TryGetValue(v, out t) ? t : 0; }
+        private static int TabDe(object v) { object t; return v != null && tabIndex.TryGetValue(v, out t) ? (int)t : 0; }
 
-        // las hijas de un contenedor que son vistas (las capas de textura y los rotulos no se eligen ni tienen hijas: saltarlas da lo mismo)
+        // las hijas de un contenedor que son vistas (las capas de textura no se eligen ni tienen hijas: saltarlas da lo mismo; los rotulos -RotuloVista,
+        // rotulos-y-letras- son vistas que no se eligen ni se paran en el tabulador: Seleccionable y ParaElTabulador false, como Label)
         private static List<IVista> HijasTab(object n)
         {
             List<IVista> r = new List<IVista>();

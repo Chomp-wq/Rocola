@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las letras de las etiquetas (WinForms, aun sin traducir) le llegan por el puente (Plataforma/Puente.cs); ContornoRedondo (Form1.Fondo.cs; era RoundedPath), TextoConCinta y PintaArtistaCompacto (TextoMovilGpu.cs), ya traducidos, se llaman directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las letras de los rotulos (Nativo/RotuloVista.cs) son Letra y llegan directo; ContornoRedondo (Form1.Fondo.cs; era RoundedPath), TextoConCinta y PintaArtistaCompacto (TextoMovilGpu.cs), ya traducidos, se llaman directo
 
 namespace Rocola
 {
@@ -63,7 +63,7 @@ namespace Rocola
         // Hasta donde llega lo que lleva el renglon del artista: el artista, su pastilla del genero y el letrero.
         private int FinRenglonArtista()
         {
-            int fin = lblNow.Left + Math.Min(lblNow.Width, TextoGdi.Mide(lblNow.Text ?? "", PuenteDibujo.Letra(lblNow.Font)).Width);   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms); la letra de la etiqueta (WinForms, aun sin traducir), por el puente
+            int fin = lblNow.Left + Math.Min(lblNow.Width, TextoGdi.Mide(lblNow.Text ?? "", lblNow.Font).Width);   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms); la Letra del rotulo (Nativo/RotuloVista.cs), directo
             if (pastGenero != null && pastGenero.Visible) fin = Math.Max(fin, pastGenero.Right);
             if (lblMejorada != null && lblMejorada.Visible) fin = Math.Max(fin, lblMejorada.Right);
             return fin;
@@ -104,9 +104,9 @@ namespace Rocola
             PintaSiguienteCompacto(g, suave, ajuste, copia, medio);   // EN LINUX: con el lienzo y su estado
             return true;
         }
-        private static void PintaTituloEnCaja(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Label titulo, RectangleF r)   // EN LINUX: el lienzo de Skia y el estado del Graphics
+        private static void PintaTituloEnCaja(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, RotuloVista titulo, RectangleF r)   // EN LINUX: el lienzo de Skia y el estado del Graphics; Label -> RotuloVista (Nativo/RotuloVista.cs)
         {
-            Rocola.Nativo.Letra lt = PuenteDibujo.Letra(titulo.Font); float e = EscalaTituloLejos(ajuste, titulo.Text, lt, r.Width, r.Height);   // EN LINUX: con el modo de letra; lt: la letra de la etiqueta (WinForms, aun sin traducir), por el puente (la misma, no una copia)
+            Rocola.Nativo.Letra lt = titulo.Font; float e = EscalaTituloLejos(ajuste, titulo.Text, lt, r.Width, r.Height);   // EN LINUX: con el modo de letra; lt: la Letra del rotulo (Nativo/RotuloVista.cs), directo (la misma, no una copia)
             using (Rocola.Nativo.Letra f = lt.UnidadPixel ? Rocola.Nativo.Letra.EnPixeles(lt.Familia, lt.Tamano * e, lt.Negrita, lt.Cursiva, lt.Subrayada) : Rocola.Nativo.Letra.EnPuntos(lt.Familia, lt.Tamano * e, lt.Negrita, lt.Cursiva, lt.Subrayada))   // EN LINUX: new Font(familia, tamano * e, estilo, unidad) de la letra de la etiqueta: la misma familia y estilo a ese tamano, en su unidad (pixeles o puntos)
                 PintaRenglonLejos(g, suave, ajuste, copia, medio, titulo.Text, f, titulo.ForeColor, r, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; StringAlignment.Near es Alinea.Cerca
         }
@@ -149,7 +149,7 @@ namespace Rocola
             Rectangle r = lblNowTop.Bounds;
             if (!box.IsEmpty) r.Width = Math.Min(r.Width, Math.Max(0, box.Left - r.Left - 20));
             if (grande) { r.Height += BajaArtistaLejos(); PintaTituloEnCaja(g, suave, ajuste, copia, medio, lblNowTop, r); }   // EN LINUX: con el lienzo y su estado
-            else PintaRenglonLejos(g, suave, ajuste, copia, medio, lblNowTop.Text, PuenteDibujo.Letra(lblNowTop.Font), lblNowTop.ForeColor, r, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; la letra de la etiqueta, por el puente; Near es Alinea.Cerca
+            else PintaRenglonLejos(g, suave, ajuste, copia, medio, lblNowTop.Text, lblNowTop.Font, lblNowTop.ForeColor, r, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; la Letra del rotulo, directo; Near es Alinea.Cerca
         }
         private void PintaSiguienteCompacto(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja; EnsureUiBotOverlay (Form1.Video.cs) la llama por el puente
         {
@@ -158,7 +158,7 @@ namespace Rocola
             Rectangle box = CajaSiguienteCompacto();
             if (box.IsEmpty)
             {
-                PintaRenglonLejos(g, suave, ajuste, copia, medio, "SIGUE  ·  " + next, PuenteDibujo.Letra(lblNext.Font), LejosSigue, lblNext.Bounds, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; la letra de la etiqueta, por el puente; Near es Alinea.Cerca
+                PintaRenglonLejos(g, suave, ajuste, copia, medio, "SIGUE  ·  " + next, lblNext.Font, LejosSigue, lblNext.Bounds, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; la Letra del rotulo, directo; Near es Alinea.Cerca
                 return;
             }
             PintaTarjetaSiguiente(g, suave, ajuste, copia, medio, next, box);   // EN LINUX: con el lienzo y su estado

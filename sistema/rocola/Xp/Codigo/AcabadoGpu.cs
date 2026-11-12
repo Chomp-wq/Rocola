@@ -176,7 +176,7 @@ namespace Rocola
                 try
                 {
                     Sel = -1;
-                    return Mix(Mix(FirmaPagina(Width, Height), Font.Name), (int)Font.Style);
+                    return Mix(Mix(FirmaPagina(Width, Height), Font.Familia), (Font.Negrita ? 1 : 0) | (Font.Cursiva ? 2 : 0) | (Font.Subrayada ? 4 : 0));   // EN LINUX: Font.Name y (int)Font.Style de la Letra de la vista (Nativo/Letras.cs): su familia y el numero de FontStyle (Bold 1, Italic 2, Underline 4; Strikeout 8 no esta en Letra: XP no la usa)
                 }
                 finally { Sel = saved; }
             }
