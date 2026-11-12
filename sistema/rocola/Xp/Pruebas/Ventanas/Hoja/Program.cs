@@ -79,6 +79,28 @@ namespace Rocola
         internal override bool AlCerrarse(RazonCierre razon) { return veces++ == 0; }
     }
 
+    // UNA HOJA COMO LA VENTANA DE PRUEBA F12 (Codigo/D3D9Star.cs, GpuTestWindow): FixedSingle sin duena, no modal, con su Escape y su F12 por
+    // ProcessCmdKey, su Shown y su FormClosed; sin tarjeta (en el programa, el GpuStarfield de OnShown). 'Falla': el dispositivo no se crea (aviso y Close).
+    internal sealed class HojaComoF12 : Hoja
+    {
+        internal int Mostradas, Cerradas; internal RazonCierre Razon = RazonCierre.None; internal bool Falla; internal Hoja DuenaDelAviso; internal bool ActivaTrasElAviso;
+        internal HojaComoF12() : base(MarcoXp.Sencillo) { Text = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar"; ClientSize = new Size(1024, 700); BackColor = Color.Black; }
+        internal override void AlEnsenarse()
+        {
+            Mostradas++;
+            if (!Falla) return;
+            AvisoXp.Muestra("No se pudo crear el dispositivo D3D9 para la ventana.", "GPU");
+            ActivaTrasElAviso = Hoja.Activa == this;
+            Close();
+        }
+        internal override bool TeclaDeMando(ref PulsoTecla msg, Rocola.Tecla keyData)
+        {
+            if (keyData == Rocola.Tecla.Escape || keyData == Rocola.Tecla.F12) { Close(); return true; }
+            return base.TeclaDeMando(ref msg, keyData);
+        }
+        internal override void AlCerrada(RazonCierre r) { Cerradas++; Razon = r; base.AlCerrada(r); }
+    }
+
     internal static class P
     {
         static int pasa, falla, excepciones;
@@ -106,7 +128,7 @@ namespace Rocola
         {
             Hoja h = observada; if (h == null) return;
             string n = TrazaVentanas.Pieza(h);
-            if (q == "ventana-ve " + n + " modal") vida.Add("Visible(True)");
+            if (q == "ventana-ve " + n + " modal" || q == "ventana-ve " + n) vida.Add("Visible(True)");
             else if (q == "shown " + n) vida.Add("Shown");
             else if (q.StartsWith("closing " + n + " ")) vida.Add("FormClosing(" + q.Substring(("closing " + n + " ").Length) + "," + h.resultado + ")");
             else if (q.StartsWith("closed " + n + " ")) vida.Add("FormClosed(" + q.Substring(("closed " + n + " ").Length) + ")");
@@ -322,6 +344,7 @@ namespace Rocola
             hc.Dispose();
             Mira("Pagina: VisibleChanged al abrir la hoja (y al ensenarla otra vez); Disposed al desechar la hoja", vistaAntes + " " + paginaFuera, "2 True");
             Mira("Escape por KeyPreview (TeclaAntes cierra la hoja, sin boton de cancelar): Cancel", resultadoF3, "Cancel False");
+            PruebasF12();
         }
 
         // (paso C) dentro de la hoja de Ctrl+F3 de prueba: dos tarjetas (grupos) dentro de la pagina, con piezas en orden del tabulador
@@ -514,6 +537,92 @@ namespace Rocola
                  "True True OnPaint=1");
             h.Controls.Remove(x2);
         }
+
+        // ---- LA VENTANA DE PRUEBA F12 COMO HOJA NO MODAL (f12-como-hoja): Form.Show, CenterScreen, ProcessCmdKey, Shown, FormClosed ----
+        static void PruebasF12()
+        {
+            // abrir: Show vuelve al momento; con su ventana, a la vista y activa; el marco de FixedSingle (barra de 26 y borde de 3) centrado en la pantalla
+            HojaComoF12 w = new HojaComoF12(); observada = w; vida.Clear();
+            Mira("F12: antes de ensenarla no hay ventana ni sitio en la lista", w.IsHandleCreated + " " + w.Visible + " " + (Hoja.DeLaVentana(w.IdVentana) == null) + " " + w.IdVentana, "False False True 0");
+            Mira("F12: FixedSingle con ClientSize 1024x700: Size y ClientSize", new Size(w.Width, w.Height) + " " + w.ClientSize, "{Width=1030, Height=732} {Width=1024, Height=700}");
+            w.Muestra();
+            Mira("F12: Show no es modal: vuelve en seguida, a la vista, con ventana y activa", w.Visible + " " + w.IsHandleCreated + " " + (Hoja.Activa == w) + " modal=" + Hoja.HayModal, "True True True modal=False");
+            Mira("F12: CenterScreen (1030 de ancho en 1024: no se sale por la izquierda)", w.Location.X + "," + w.Location.Y, "0,18");
+            Mira("F12: Shown espera en la cola (OnLoad lo deja con BeginInvoke)", "antes=" + w.Mostradas, "antes=0");
+            PantallaRocola.Bombea();
+            Mira("F12: Shown una vez, despues de Visible", string.Join(",", vida) + " mostradas=" + w.Mostradas, "Visible(True),Shown mostradas=1");
+            IntPtr id = w.IdVentana;
+            Mira("F12: su identificador (el Handle del dispositivo) la encuentra, y el cliente en pantalla es donde Direct3D pone el fondo",
+                 (id != IntPtr.Zero) + " " + (Hoja.DeLaVentana(id) == w) + " " + w.ClienteEnPantalla, "True True {X=3,Y=47,Width=1024,Height=700}");
+            w.PresentaTarjeta(77, 1024, 700);
+            Mira("F12: Present deja el fondo del dispositivo en la hoja; soltarlo lo quita", w.TexturaGl + " " + w.AnchoGl + "x" + w.AltoGl + " -> " + Suelta(w), "77 1024x700 -> 0");
+            w.Muestra();
+            Mira("F12: Show de la que ya se ve no hace nada (un solo Visible)", string.Join(",", vida), "Visible(True),Shown");
+            // Escape y F12 la cierran (ProcessCmdKey); otra tecla, o F12 con Mayus, no
+            Teclea(Tecla.A); Teclea(Tecla.F12, Tecla.Shift); Teclea(Tecla.Space);
+            Mira("F12: otra tecla no la cierra (ni Mayus+F12: keyData lleva los modificadores)", w.Cerradas + " " + w.IsDisposed, "0 False");
+            Teclea(Tecla.Escape);
+            Mira("F12: Escape la cierra: FormClosing y FormClosed con UserClosing, y se desecha", string.Join(",", vida) + " cerradas=" + w.Cerradas + "/" + w.Razon + " desechada=" + w.IsDisposed,
+                 "Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing) cerradas=1/UserClosing desechada=True");
+            Mira("F12: cerrada, ya no esta en la lista ni es la activa ni tiene ventana", (Hoja.DeLaVentana(id) == null) + " " + (Hoja.Activa == null) + " " + w.IsHandleCreated + " " + w.TexturaGl + " " + Array.IndexOf(Hoja.Abiertas, w), "True True False 0 -1");
+            w.Close();
+            Mira("F12: Close de la ya cerrada no hace nada", w.Cerradas.ToString(), "1");
+            string err; try { w.Muestra(); err = "no lanzo"; } catch (ObjectDisposedException) { err = "ObjectDisposedException"; }
+            Mira("F12: Show de una desechada", err, "ObjectDisposedException");
+            // F12 (la tecla del Toggle) tambien la cierra, y Close (el Toggle con la ventana ya abierta) tambien
+            w = new HojaComoF12(); observada = w; vida.Clear(); w.Muestra(); PantallaRocola.Bombea(); Teclea(Tecla.F12);
+            Mira("F12: la tecla F12 la cierra", string.Join(",", vida), "Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing)");
+            w = new HojaComoF12(); observada = w; vida.Clear(); w.Muestra(); PantallaRocola.Bombea(); w.Close();
+            Mira("F12: Close (el Toggle con la ventana abierta)", string.Join(",", vida) + " " + w.Cerradas, "Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing) 1");
+            // Alt+F4 sin atender (la cola) y la «X» de la barra
+            w = new HojaComoF12(); observada = w; vida.Clear(); w.Muestra(); PantallaRocola.Bombea();
+            Hoja.Tecla(Tecla.Menu, true, Tecla.Alt, false); Teclea(Tecla.F4, Tecla.Alt); Hoja.Tecla(Tecla.Menu, false, Tecla.None, false); PantallaRocola.Bombea();
+            Mira("F12: Alt+F4 la cierra (UserClosing)", string.Join(",", vida), "Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing)");
+            w = new HojaComoF12(); observada = w; vida.Clear(); w.Muestra(); PantallaRocola.Bombea();
+            Rectangle x = w.CajaCerrar; Raton(w.Location.X + x.X + 10, w.Location.Y + x.Y + 10); Clic(BotonRaton.Left); PantallaRocola.Bombea();
+            Mira("F12: la «X» de la barra la cierra (UserClosing)", string.Join(",", vida), "Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing)");
+            // el apagado del sistema (WM_QUERYENDSESSION y WM_ENDSESSION)
+            w = new HojaComoF12(); observada = w; vida.Clear(); w.Muestra(); PantallaRocola.Bombea();
+            bool deja = w.FinDeSesion(true, true); string trasLaConsulta = string.Join(",", vida);
+            w.FinDeSesion(false, true);
+            Mira("F12: el apagado: la consulta (FormClosing con WindowsShutDown) la deja y el fin la cierra (FormClosed) y la desecha",
+                 deja + " " + trasLaConsulta + " | " + string.Join(",", vida) + " " + w.Razon + " " + w.IsDisposed,
+                 "True Visible(True),Shown,FormClosing(WindowsShutDown,None) | Visible(True),Shown,FormClosing(WindowsShutDown,None),FormClosed(WindowsShutDown) WindowsShutDown True");
+            w = new HojaComoF12(); w.Muestra(); PantallaRocola.Bombea();
+            w.FinDeSesion(true, true); w.FinDeSesion(false, false);
+            Mira("F12: si otra ventana impide el apagado, la consulta no la cierra", w.Cerradas + " " + w.IsDisposed + " " + w.Visible, "0 False True");
+            w.Close(); PantallaRocola.Bombea();
+            // la rocola (una ventana de la capa) se activa: Windows sube la activada, y la ventana F12 (sin duena) queda detras
+            w = new HojaComoF12(); w.Muestra(); PantallaRocola.Bombea();
+            Point centro = new Point(w.Location.X + w.Width / 2, w.Location.Y + w.Height / 2);
+            bool antes0 = w.DetrasDeLaCapa, raton0 = Hoja.TomaElRaton(centro); object pieza0 = Hoja.PiezaEn(centro);
+            Hoja.DesactivaPorLaCapa();
+            Mira("F12: al activarse una ventana de la capa queda detras: no es la activa, no recibe el raton y se ve que esta detras",
+                 antes0 + " " + raton0 + " " + (pieza0 == w) + " -> " + w.DetrasDeLaCapa + " " + (Hoja.Activa == null) + " " + Hoja.TomaElRaton(centro) + " " + (Hoja.PiezaEn(centro) == null) + " visible=" + w.Visible,
+                 "False True True -> True True False True visible=True");
+            w.Activate();
+            Mira("F12: Activate (otra vez al frente) la sube y la activa", w.DetrasDeLaCapa + " " + (Hoja.Activa == w) + " " + Hoja.TomaElRaton(centro), "False True True");
+            Hoja.DesactivaPorLaCapa(); w.Close(); PantallaRocola.Bombea();
+            Hoja md = new Hoja(MarcoXp.Dialogo); md.Text = "m."; bool detrasM = true;
+            Luego(100, delegate { Hoja.DesactivaPorLaCapa(); detrasM = md.DetrasDeLaCapa; md.Close(); });
+            md.MuestraModal(null);
+            Mira("Una hoja modal no queda detras de la capa (ni las que tienen duena)", detrasM.ToString(), "False");
+            // el dispositivo no se crea: el aviso (MessageBox) sale encima de la hoja, que es su duena, y despues Close
+            w = new HojaComoF12(); w.Falla = true; observada = w; vida.Clear(); w.Muestra();
+            string durante = null;
+            Luego(150, delegate
+            {
+                Hoja[] a = Hoja.Abiertas; Hoja av = a.Length > 0 ? a[a.Length - 1] : null;
+                durante = (av is AvisoXp) + " " + (av != null && av.Duena == w) + " " + (Hoja.Activa == av) + " " + Hoja.HayModal + " " + w.IsDisposed;
+                Teclea(Tecla.Escape);   // en el aviso (la hoja de debajo esta deshabilitada: la tecla no la alcanza)
+            });
+            PantallaRocola.Bombea();
+            Mira("F12 sin dispositivo: el aviso modal sobre la hoja, la hoja sigue; al aceptar vuelve a ser la activa y se cierra",
+                 durante + " | " + string.Join(",", vida) + " activa=" + w.ActivaTrasElAviso + " " + w.IsDisposed + " modal=" + Hoja.HayModal,
+                 "True True True True False | Visible(True),Shown,FormClosing(UserClosing,None),FormClosed(UserClosing) activa=True True modal=False");
+            observada = null;
+        }
+        static string Suelta(Hoja h) { h.OlvidaTarjeta(); return h.TexturaGl.ToString(); }
         // los renglones que caben en la lista (lo que AvPag baja menos uno)
         static int VisiblesDe(ListaXp l) { int alto = Math.Max(1, CajaPieza.LetraDeFabrica.AltoEntero); return Math.Max(1, (96 - 2) / alto); }
     }

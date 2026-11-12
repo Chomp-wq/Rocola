@@ -1853,14 +1853,14 @@ namespace Rocola
     }
 
     // -------- Ventana de prueba (F12): muestra el campo estrellado por GPU con FPS --------
-    internal sealed class GpuTestWindow : Form
+    internal sealed class GpuTestWindow : Hoja   // EN LINUX: Form: la hoja de la pantalla de la rocola (Nativo/Hoja.cs), no modal (XP la abre con Show)
     {
         private static GpuTestWindow instance;
         public static void Toggle()
         {
             if (instance != null) { instance.Close(); return; }
             instance = new GpuTestWindow();
-            instance.Show();
+            instance.Muestra();   // EN LINUX: Form.Show(): Hoja.Muestra, sin duena y sin bucle propio (Hoja.cs)
         }
 
         private GpuStarfield stars;
@@ -1868,21 +1868,21 @@ namespace Rocola
         private int frames, fpsTick, fps;
         private const string BaseTitle = "Rocola - Prueba de render por GPU (Direct3D 9) - F12 o Esc para cerrar";
 
-        public GpuTestWindow()
+        public GpuTestWindow() : base(MarcoXp.Sencillo)   // EN LINUX: Form(): el marco FixedSingle + CenterScreen de XP lo da MarcoXp.Sencillo (Hoja.cs)
         {
             Text = BaseTitle;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
+            // EN LINUX: (XP) FormBorderStyle = FormBorderStyle.FixedSingle; el marco lo da MarcoXp.Sencillo (barra de 26 y borde de 3, como WS_CAPTION)
+            // EN LINUX: (XP) MaximizeBox = false; la hoja solo lleva la «X» (como la capa de la referencia, que pinta el mismo marco)
+            // EN LINUX: (XP) StartPosition = FormStartPosition.CenterScreen; MarcoXp.Sencillo se centra en la pantalla al ensenarse (CenterToScreen)
             ClientSize = new Size(1024, 700);
             BackColor = Color.Black;
         }
 
-        protected override void OnShown(EventArgs e)
+        internal override void AlEnsenarse()   // EN LINUX: protected override void OnShown(EventArgs e): Hoja.AlEnsenarse, el Shown que queda en la cola al ensenarse
         {
-            base.OnShown(e);
-            stars = new GpuStarfield(this.Handle, ClientSize.Width, ClientSize.Height, 1234);
-            if (!stars.Ok) { MessageBox.Show("No se pudo crear el dispositivo D3D9 para la ventana.", "GPU"); Close(); return; }
+            // EN LINUX: (XP) base.OnShown(e); Form.OnShown solo lanza el aviso Shown, que nadie escucha
+            stars = new GpuStarfield(IdVentana, ClientSize.Width, ClientSize.Height, 1234);   // EN LINUX: this.Handle: el identificador de la ventana con que la tarjeta presenta su fondo en el cliente (Hoja.IdVentana)
+            if (!stars.Ok) { AvisoXp.Muestra("No se pudo crear el dispositivo D3D9 para la ventana.", "GPU"); Close(); return; }   // EN LINUX: MessageBox.Show(texto, titulo): el aviso nativo (Nativo/AvisoXp.cs), modal sobre esta hoja, que es la activa
             timer.Interval = 15;
             timer.Tick += delegate { Frame(); };
             timer.Start();
@@ -1900,18 +1900,18 @@ namespace Rocola
             }
         }
 
-        internal bool ProcessCmdKey(ref PulsoTecla msg, Tecla keyData)   // EN LINUX: (protected override, Message y Keys) no sobrescribe nada: le llegan las teclas de su ventana (Escritorio.TeclaDeMando)
+        internal override bool TeclaDeMando(ref PulsoTecla msg, Tecla keyData)   // EN LINUX: protected override bool ProcessCmdKey(ref Message msg, Keys keyData): Hoja.TeclaDeMando, que la hoja llama primero con cada tecla (Hoja.Tecla)
         {
-            if (keyData == Tecla.Escape || keyData == Tecla.F12) { Close(); return true; }   // EN LINUX: Keys -> Tecla, los mismos numeros
-            return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895)
+            if (keyData == Rocola.Tecla.Escape || keyData == Rocola.Tecla.F12) { Close(); return true; }   // EN LINUX: Keys -> Tecla, los mismos numeros (con el espacio de nombres: dentro de una Hoja, Tecla es tambien su metodo Hoja.Tecla)
+            return base.TeclaDeMando(ref msg, keyData);   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Hoja.TeclaDeMando, Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895)
         }
 
-        protected override void OnFormClosed(FormClosedEventArgs e)
+        internal override void AlCerrada(RazonCierre e)   // EN LINUX: protected override void OnFormClosed(FormClosedEventArgs e): Hoja.AlCerrada, que la hoja llama al cerrarse (Close, el apagado)
         {
             timer.Stop();
             if (stars != null) { stars.Dispose(); stars = null; }
             instance = null;
-            base.OnFormClosed(e);
+            base.AlCerrada(e);   // EN LINUX: base.OnFormClosed(e): solo lanza el aviso FormClosed, que nadie escucha
         }
     }
 

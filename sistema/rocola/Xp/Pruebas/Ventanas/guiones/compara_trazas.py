@@ -40,6 +40,10 @@ def normaliza(que):
     # la fecha del programa en el titulo de Ctrl+F3 (con JIT es la de dotnet; con NativeAOT la del ejecutable)
     que = re.sub(r"Esta rocola es del \d\d/\d\d/\d{4} \d\d:\d\d", "Esta rocola es del FECHA", que)
     que = re.sub(r"^estado .*/", "estado ", que)
+    # los cuadros por segundo que la ventana de prueba F12 pone en su titulo (GpuTestWindow.Frame): los de la maquina de ese momento
+    que = re.sub(r" *\[\d+ FPS, \d+ estrellas\]", "", que)   # (el titulo ya lo tiene, o aun no, segun cuando toque: depende de la maquina)
+    # el reloj de la ventana F12 (GpuTestWindow.timer) se nombra por donde se crea: la linea de la referencia (1997) y la de la traduccion (1867)
+    que = re.sub(r"D3D9Star\.cs:(1997|1867)(?!\d)", "D3D9Star.cs:reloj-F12", que)
     return que
 
 

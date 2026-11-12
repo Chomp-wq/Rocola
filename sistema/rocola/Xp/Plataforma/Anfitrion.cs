@@ -80,7 +80,7 @@ namespace Rocola
         private List<CapaPantalla> Capas()
         {
             List<CapaPantalla> r = new List<CapaPantalla>();
-            List<CapaPantalla> hojas = null;
+            List<CapaPantalla> hojas = null, bajo = null;
             foreach (Capa c in Escritorio.Capas())
             {
                 CapaPantalla p = new CapaPantalla();
@@ -91,9 +91,18 @@ namespace Rocola
                     p.DeTextura = true; p.Textura = n.TexturaGl; p.AnchoGl = n.AnchoGl; p.AltoGl = n.AltoGl; p.Rgba = n.TexturaGlRgba; p.Nombre = n.GetType().Name; p.Tipo = "tarjeta";
                 }
                 else if (c.Imagen != null) { p.Mapa = c.Imagen.Sk; p.Version = c.Version; p.Tipo = "dibujo2d"; }
+                else if (c.TarjetaDeHoja != null)   // (port nativo, f12-como-hoja) la tarjeta en el cliente de una hoja: va con las hojas, justo despues de la suya
+                {
+                    Hoja th = c.TarjetaDeHoja;
+                    p.DeTextura = true; p.Textura = th.TexturaGl; p.AnchoGl = th.AnchoGl; p.AltoGl = th.AltoGl; p.Nombre = th.GetType().Name; p.Tipo = "tarjeta";
+                    if (c.Detras) { (bajo ?? (bajo = new List<CapaPantalla>())).Add(p); continue; }
+                    if (hojas == null) hojas = new List<CapaPantalla>();
+                    hojas.Add(p); continue;
+                }
                 else if (c.Mapa != null)   // una hoja nativa (Nativo/Hoja.cs): va encima de la lista nativa
                 {
                     p.Mapa = c.Mapa; p.Version = c.Version; p.Tipo = "hoja";
+                    if (c.Detras) { (bajo ?? (bajo = new List<CapaPantalla>())).Add(p); continue; }   // (port nativo, f12-como-hoja) detras de las ventanas de la capa
                     if (hojas == null) hojas = new List<CapaPantalla>();
                     hojas.Add(p); continue;
                 }
@@ -102,6 +111,7 @@ namespace Rocola
             }
             PantallaRocola.CapasDeLaVentana(r);
             if (hojas != null) r.AddRange(hojas);
+            if (bajo != null) r.InsertRange(0, bajo);
             return r;
         }
 
@@ -182,6 +192,8 @@ namespace Rocola
             // escritorio compone con el)
             public bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera)
             {
+                Hoja hoja = Hoja.DeLaVentana(ventana);   // (port nativo, f12-como-hoja) la ventana de prueba F12 es una hoja: su cliente
+                if (hoja != null) { hoja.PresentaTarjeta(textura, ancho, alto); Escritorio.SinEspera = sinEspera; Escritorio.PresentaNativa(null); return true; }
                 Control control = Control.FromHandle(ventana);
                 if (control == null) { GlMas.Flush(); return false; }
                 control.TexturaGl = textura; control.AnchoGl = ancho; control.AltoGl = alto;
@@ -189,7 +201,7 @@ namespace Rocola
                 Escritorio.PresentaNativa(control);
                 return true;
             }
-            public void OlvidaTarjeta(IntPtr ventana) { Control control = Control.FromHandle(ventana); if (control != null) control.TexturaGl = 0; }
+            public void OlvidaTarjeta(IntPtr ventana) { Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) { hoja.OlvidaTarjeta(); return; } Control control = Control.FromHandle(ventana); if (control != null) control.TexturaGl = 0; }
             public void HayQueComponer() { Escritorio.Mueve(); }
             public void Tecla(Tecla tecla, bool abajo) { Escritorio.Tecla(tecla, abajo); }
             public void RatonEn(int x, int y) { Escritorio.RatonEn(x, y); }

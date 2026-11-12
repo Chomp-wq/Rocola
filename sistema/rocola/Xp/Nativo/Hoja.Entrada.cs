@@ -85,8 +85,8 @@ namespace Rocola
                 TeclaArribaDe(destino, e);
             }
         }
-        // ProcessCmdKey de la hoja: una hoja de XP no tiene menus ni aceleradores (Form.cs:4862-4900); la de prueba F12 tendra el suyo
-        private bool TeclaDeMando(ref PulsoTecla m, Tecla datos) { return false; }
+        // ProcessCmdKey de la hoja: una hoja de XP no tiene menus ni aceleradores (Form.cs:4862-4900); la de prueba F12 sobrescribe la suya
+        internal virtual bool TeclaDeMando(ref PulsoTecla m, Tecla datos) { return false; }
         private static bool QuiereTecla(object destino, Tecla k) { IPieza p = destino as IPieza; return p != null && p.QuiereTecla(k); }
         // el KeyDown y el KeyUp de la pieza; el de la hoja misma (si el foco lo tiene ella) es su TeclaAntes y su TeclaArribaAntes
         private static void TeclaAbajoDe(object destino, PulsoTecla e)
@@ -134,7 +134,7 @@ namespace Rocola
             if (captura != null && !Desechada(captura)) return true;
             if (ncHoja != null && ncCaptura != 0) return true;
             if (HayModal) return true;
-            for (int i = abiertas.Count - 1; i >= 0; i--) { Hoja f = abiertas[i]; if (!f.disposed && f.visible && f.bounds.Contains(p)) return true; }
+            for (int i = abiertas.Count - 1; i >= 0; i--) { Hoja f = abiertas[i]; if (!f.disposed && f.visible && !f.DetrasDeLaCapa && f.bounds.Contains(p)) return true; }
             return false;
         }
         // (transicion) el raton se fue a una ventana de la capa
@@ -147,7 +147,7 @@ namespace Rocola
             for (int i = abiertas.Count - 1; i >= 0; i--)
             {
                 Hoja f = abiertas[i];
-                if (f.disposed || !f.visible || !f.bounds.Contains(p)) { if (f == modal) return null; continue; }
+                if (f.disposed || !f.visible || f.DetrasDeLaCapa || !f.bounds.Contains(p)) { if (f == modal) return null; continue; }
                 return HijaEn(f, p);
             }
             return null;
