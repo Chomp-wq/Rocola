@@ -69,3 +69,18 @@ ventanas y del dibujo: la carpeta del programa (Application.StartupPath) y el de
   daria la raiz con su barra (`C:\`). En Rocola OS el programa nunca esta en la raiz.
 - Con JIT, la carpeta es la de rocola-xp.dll (no la de `dotnet`), igual que con la capa; con NativeAOT, la del ejecutable (por un enlace
   simbolico, la del ejecutable de verdad, como el ExecutablePath de Windows).
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff bae626e..port-lo-suelto entero contra Rocola/ (XP). No se encontro nada que arreglar:
+- Las cinco lineas de Codigo/ cambian solo la llamada (Application.StartupPath -> CarpetaPrograma.Ruta; MethodInvoker -> Action), cada una con su
+  «EN LINUX»; numero de lineas y de CRLF iguales a bae626e (Program.cs 148/0, Form1.Datos.cs 3436/3426, BombaSonido.cs 329/0,
+  Form1.Biblioteca.cs 3615/3463). diff-xp.py -v: las lineas sin marca son solo las de antes (Program.cs 3, Form1.Datos.cs 2, Form1.Biblioteca.cs 2;
+  la de BombaSonido.cs es la de NAudio 3, marcada «Puente.cs»).
+- CarpetaPrograma.Ruta es exactamente la cuenta de la capa (Ventanas.Form.cs:396: AppContext.BaseDirectory.TrimEnd('/', '\\')), y sigue la regla de
+  WinForms (StartupPath = Path.GetDirectoryName del ejecutable, sin la barra final). Nombre propio, sin forma de clase de Windows.
+- MethodInvoker -> Action: los dos delegados solo se invocan directo (arranca() y finDeCarril()); ninguno pasa por Llama de la capa
+  (Ventanas.Escritorio.cs:98), que de todos modos atiende Action antes que MethodInvoker. En Codigo/ ya no queda MethodInvoker ni StartupPath
+  fuera de las notas; el delegado de la capa (Ventanas.Tipos.cs:63) se resuelve en su propio espacio de nombres sin el alias quitado.
+- Repetido: dotnet build -c Release --no-incremental 0 errores y los mismos 15 avisos; NativeAOT del programa 0 avisos IL/AOT;
+  pruebas_carpeta.sh 39 de 39 (JIT 15, NativeAOT 24; su NativeAOT 0 avisos); pruebas41 41 de 41.
