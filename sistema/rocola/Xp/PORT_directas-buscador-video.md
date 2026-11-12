@@ -142,3 +142,29 @@ borraron después de usarlos).
   referencia).
 - Durante las pruebas se hizo un `git stash` de ida y vuelta en la copia mientras el arnés de buscador-portadas compilaba; ese arnés se
   repitió entero después (IGUALES) y el commit de los arneses es posterior.
+
+## Revisión
+
+Revisión independiente del mismo día (`git diff 178722c..` leído entero; las comprobaciones repetidas en esta copia).
+
+- **Equivalencia, línea por línea.** Cada llamada directa recibe el mismo estado que antes le llegaba por los dos puentes (el `Graphics`
+  de usar y tirar y la firma de XP del otro lado): las `Ctrl*`/`GlowAround` de `Form1.Pared.cs` (suavizado, modo de letra, copia y medio
+  píxel; el filtro de fábrica y la matriz del HDC identidad no los miran); `Sky.DrawReactive` (suavizado, filtro, medio píxel y copia, los
+  que sacaba `Puente.fondo.cs`); `Cube.Draw` (`Mapa(Bitmap(blendBmp))` es `blendBmp`; `Mapa(ca)` es lo que hacía `Puente.pared.cs`);
+  `ContornoRedondo` (el mismo `SKPath` que `RoundedPath` metía en su `GraphicsPath`); las ocho vistas de `DrawCtrlOverlay` (cada una con
+  los campos que su firma de XP en `Puente.vistas-a.cs`, `Puente.vistas-b.cs` y `Puente.buscador.cs` sacaba del `Graphics`, mismo orden
+  que XP `Form1.Video.cs:1786-1795`); `EnsureUiOverlay` (filtro a una copia: en XP se iba con el `Restore` de la línea siguiente, que
+  guarda también `InterpolationMode` y `SmoothingMode`); `EnsureUiPieza` (`ref suave`: en XP el `Graphics` se tira ahí, nada lo lee
+  después); los precalentados (lo de `Graphics.FromImage`: sin copia, `Bilinear`, sin medio píxel, HDC identidad). En XP ni
+  `Starfield.DrawReactive` (solo toca el estado de su `lg`), ni `Cube.Draw`, ni las ayudas de los botones cambian el estado del `Graphics`
+  del que llama, así que no había nada que devolver. Ninguna lógica de XP cambia.
+- **Encontrado y arreglado**: la nota `EN LINUX` de `EnSeco` (`Form1.Video.cs:1854`) seguía diciendo que `PrecargaPaginaGpu.cs` y
+  `Form1.Portadas.cs` llegan por la firma de XP del puente; ahora dice que el buscador y la lista de los precalentados la llaman directo
+  y que solo la atracción (`Form1.Portadas.cs:1199`) pasa por el puente. Solo el comentario (líneas y finales iguales).
+- **Sin arreglar (fuera del rango del grupo)**: la nota de la línea 4 de `PrecargaPaginaGpu.cs` (ya apuntada arriba).
+- **Repetido**: compila (`--no-incremental`) con 0 errores y los mismos 15 avisos de la base (comparados uno a uno); los 109 archivos de
+  `Codigo/` con el mismo número de líneas y de CRLF que `178722c`; `diff-xp.py -v` de los cinco archivos igual que en el informe (6 sin
+  marca, las de la base, de otros grupos); arneses `VistasBuscador` 4 709 líneas IGUALES con las dos letras (437 directas, 0
+  excepciones), `VistasVideoForm1` 723 IGUALES con las dos letras (128 directas), `VistasBuscadorPortadas` 3 128 IGUALES con las dos
+  letras (250 directas, 5 excepciones, las mismas de la referencia); las 29 cintas: 29 iguales (6 616 cuadros). No se repitieron
+  NativeAOT, `VistasVistasA`/`VistasVistasB`, recorridos ni escenas (nada de la revisión los pone en duda; la junta los corre).
