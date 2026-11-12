@@ -768,7 +768,7 @@ namespace Rocola
             return de + ((d > 0) ? paso : -paso);
         }
 
-        private static SKPath ContornoRedondo(Rectangle r, int radius)   // EN LINUX: RoundedPath, con un SKPath; la firma de XP (devuelve un GraphicsPath) queda en el puente (Puente.fondo.cs) para los archivos aun sin traducir (Form1.Buscador.cs, Form1.Ajustes.cs, Form1.Vistas.cs), y la hace con esta misma
+        private static SKPath ContornoRedondo(Rectangle r, int radius)   // EN LINUX: RoundedPath, con un SKPath (la firma de XP, con un GraphicsPath, ya no la pide nadie: Form1.Buscador.cs, Form1.Ajustes.cs y Form1.Vistas.cs llaman a esta)
         {
             SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): un SKPath (su relleno de fabrica, Alternate, es par-impar)
             int d = radius * 2;
@@ -1018,11 +1018,11 @@ namespace Rocola
         private const int TonoCasillas = 24;         // la rueda de color repartida en casillas de 15 grados
         private const float TonoSegundoLejos = 40f;  // dos tonos mas juntos que esto son el mismo color
         private const float TonoSegundoManda = 0.25f; // y el segundo tiene que pesar al menos esto del primero
-        private static Color ColoresDePortada(SKBitmap b, out Color uno, out Color dos)   // EN LINUX: los puntos de la portada en un SKBitmap; la firma de XP (un Bitmap: Form1.Portadas.cs y ColorDePortadaDe, que la reciben de LoadCover, aun sin traducir) queda en el puente (Puente.fondo.cs)
+        private static Color ColoresDePortada(SKBitmap b, out Color uno, out Color dos)   // EN LINUX: los puntos de la portada en un SKBitmap (Form1.Portadas.cs y ColorDePortadaDe la reciben de la cache de portadas: el SKBitmap mismo)
         {
             uno = Color.FromArgb(0, 0, 0, 0); dos = Color.FromArgb(0, 0, 0, 0);
             if (b == null) return Color.FromArgb(0, 0, 0, 0);
-            int w = b.Width, h = b.Height;
+            int w = MapaVivo.Ancho(b), h = MapaVivo.Alto(b);   // EN LINUX: b.Width y b.Height: de una portada ya soltada GDI+ lanza ArgumentException antes de mirar ningun punto (el trabajador de portadas la atrapa); MapaVivo lanza lo mismo antes de leerla (un SKBitmap soltado cerraria la rocola)
             if (w < 1 || h < 1) return Color.FromArgb(0, 0, 0, 0);
             int px = (w + MuestraLado - 1) / MuestraLado; if (px < 1) px = 1;
             int py = (h + MuestraLado - 1) / MuestraLado; if (py < 1) py = 1;
@@ -1119,7 +1119,7 @@ namespace Rocola
             public Color Prom, Uno, Dos;
 #if ROCOLA_GPU
             public Color[] Paleta;
-            public Rocola.Dibujo2D.Image Fuente;   // EN LINUX: la portada de la que salio la paleta: la apunta y la compara por identidad Form1.Portadas.cs (aun sin traducir) con el Image de la capa: el tipo, escrito entero
+            public SKBitmap Fuente;   // EN LINUX: Image: la portada de la que salio la paleta, un SKBitmap de la cache: la apunta Form1.Portadas.cs y se compara por identidad
 #endif
         }
         private readonly Dictionary<string, ColoresDisco> colorPortada = new Dictionary<string, ColoresDisco>(StringComparer.OrdinalIgnoreCase);
@@ -1132,7 +1132,7 @@ namespace Rocola
             if (string.IsNullOrEmpty(k)) return SinColor;
             ColoresDisco c;
             if (colorPortada.TryGetValue(k, out c)) return c.Prom;
-            Rocola.Dibujo2D.Bitmap b = LoadCover(a) as Rocola.Dibujo2D.Bitmap;   // EN LINUX: LoadCover (Form1.Biblioteca.cs, aun sin traducir) da un Image de la capa: el tipo, escrito entero; ColoresDePortada la recibe por el puente (Puente.fondo.cs) y ExtractCoverPalette (PaletaCaratulaGpu.cs) tal cual
+            SKBitmap b = LoadCover(a) as SKBitmap;   // EN LINUX: Bitmap: la portada de la cache (LoadCover), un SKBitmap
             if (b == null) return SinColor;
 #if ROCOLA_GPU
             lock (coverLock)
@@ -1144,7 +1144,7 @@ namespace Rocola
 #endif
             c.Prom = ColoresDePortada(b, out c.Uno, out c.Dos);
 #if ROCOLA_GPU
-            c.Paleta = ExtractCoverPalette(b);
+            c.Paleta = ExtractCoverPalette(b, FormatoPortada);   // EN LINUX: ExtractCoverPalette(b): la traducida (PaletaCaratulaGpu.cs) con los puntos y el formato que la portada tenia en XP (Format32bppPArgb: FormatoPortada)
 #endif
             colorPortada[k] = c;
             return c.Prom;

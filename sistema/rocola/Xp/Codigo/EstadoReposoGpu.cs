@@ -144,7 +144,7 @@ namespace Rocola
             {
                 queue[i].TituloArtista(out qt[i], out qa[i]);
                 qt[i] = TituloSinPista(qt[i]);
-                covers[i] = queue[i].Disc != null ? PuenteDibujo.Mapa(LoadCoverAsync(queue[i].Disc)) : null;   // EN LINUX: LoadCoverAsync (Form1.Biblioteca.cs, aun sin traducir) da una Image: sus puntos, los mismos (PuenteDibujo.Mapa)
+                covers[i] = queue[i].Disc != null ? LoadCoverAsync(queue[i].Disc) : null;
                 sig.Append('|').Append(queue[i].PathKey()).Append('|').Append(qt[i]).Append('|').Append(qa[i])
                     .Append('|').Append(covers[i] != null ? covers[i].GetHashCode() : 0);
             }

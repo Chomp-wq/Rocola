@@ -209,7 +209,7 @@ namespace Rocola
                 if (boletoBmp != null) boletoBmp.Dispose();
                 boletoBmp = Mapas.Nuevo(tam.Width, tam.Height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             }
-            SKBitmap tapa = PuenteDibujo.Mapa((cubeBox != null) ? cubeBox.Cover : null);   // la del disco abierto, ya en memoria (EN LINUX: la Image del cubo, un control aun sin traducir: sus puntos, por el puente, los mismos)
+            SKBitmap tapa = (cubeBox != null) ? cubeBox.Cover : null;   // la del disco abierto, ya en memoria (EN LINUX: la Image del cubo (CubeBox.Cover, Form1.Pared.cs): el SKBitmap mismo de la cache)
             PintaBoleto(boletoBmp, tapa, titulo, PuenteDibujo.Letra(songList.Font));   // EN LINUX: la letra de la lista: su Letra, la misma, por el puente
             boleto.Has = true; boleto.Bmp = boletoBmp; boleto.Ver = ++boletoVer;
             // Sale CALCADO encima de su fila: su titulo, con la misma letra, justo encima del de la fila. Asi parece

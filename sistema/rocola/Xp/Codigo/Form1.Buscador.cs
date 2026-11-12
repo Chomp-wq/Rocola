@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de BUSCAR y el buscador de siempre dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo ya traducido de otros archivos se llama directo con el lienzo y su estado (ContornoRedondo y el cielo de Form1.Fondo.cs; el cubo, CtrlTxt, CtrlDot, CtrlPad, CtrlTri, CtrlDirLeft y GlowAround de Form1.Pared.cs), y tambien llaman directo a estas DrawCtrlOverlay, EnsureUiOverlay, EnsureUiPieza (Form1.Video.cs) y el precalentado; solo lo que aun es de la capa (las portadas de la cache, Image, y el Graphics de WinForms de OnPaint) pasa por el puente (Plataforma/Puente.cs y Puente.buscador.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de BUSCAR y el buscador de siempre dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo ya traducido de otros archivos se llama directo con el lienzo y su estado (ContornoRedondo y el cielo de Form1.Fondo.cs; el cubo, CtrlTxt, CtrlDot, CtrlPad, CtrlTri, CtrlDirLeft y GlowAround de Form1.Pared.cs), y tambien llaman directo a estas DrawCtrlOverlay, EnsureUiOverlay, EnsureUiPieza (Form1.Video.cs) y el precalentado; las portadas de la cache son SKBitmap y se pintan tal cual; solo lo que aun es de la capa (el Graphics de WinForms de OnPaint) pasa por el puente (Plataforma/Puente.cs y Puente.buscador.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -345,7 +345,7 @@ namespace Rocola
             public double CubeAngle = 0;
             public double Phase = 0;
             public Color Accent = DefaultAccent;
-            public Func<Album, Rocola.Dibujo2D.Image> GetCover;   // EN LINUX: las portadas son de la cache de Form1.Portadas.cs, que aun las publica como Image de la capa (Dibujo2D.cs): escrito entero; para pintarlas, sus puntos por el puente (PuenteDibujo.Mapa)
+            public Func<Album, SKBitmap> GetCover;   // EN LINUX: Image: las portadas de la cache de Form1.Portadas.cs, SKBitmap: se pintan tal cual
             public Action<string> OnQueryChanged;
             public Action<SearchItem> OnChoose;
             public Action OnClose;
@@ -356,7 +356,7 @@ namespace Rocola
             public double PreviewAngle { get { return CubeAngle; } }   // angulo del cubo de vista previa (lo dibuja la GPU)
             // Calcula EN VIVO el cubo de vista previa (celda + par de portadas a fundir) para que la GPU lo
             // dibuje como geometria. Devuelve false si no hay cubo de vista previa visible ahora.
-            public bool GetPreviewCube(out Rectangle area, out Rocola.Dibujo2D.Image ca, out Rocola.Dibujo2D.Image cb, out float f)   // EN LINUX: las portadas del cubo (Image de la cache, de la capa) para la tarjeta (Form1.Video.cs y Form1.Sonido.cs las pasan a D3D9Star.cs, que aun las sube como Bitmap de la capa): escrito entero
+            public bool GetPreviewCube(out Rectangle area, out SKBitmap ca, out SKBitmap cb, out float f)   // EN LINUX: Image: las portadas del cubo (SKBitmap de la cache) para la tarjeta (Form1.Video.cs y Form1.Sonido.cs las pasan a D3D9Star.cs, que las sube tal cual)
             {
                 area = Rectangle.Empty; ca = null; cb = null; f = 0f;
 #if ROCOLA_GPU
@@ -370,7 +370,7 @@ namespace Rocola
                 int kbW = (int)((W - 2 * M) * 0.52);
                 return ComputePreview(new Rectangle(M, contentY, kbW, contentH), out ca, out cb, out f, out area);
             }
-            private readonly List<Rocola.Dibujo2D.Image> artistCovers = new List<Rocola.Dibujo2D.Image>();   // EN LINUX: las portadas de la cache (Image de la capa), las mismas (RetienePortada de Form1.Biblioteca.cs las compara por identidad): escrito entero
+            private readonly List<SKBitmap> artistCovers = new List<SKBitmap>();   // EN LINUX: Image: las portadas de la cache, los mismos SKBitmap (RetienePortada de Form1.Biblioteca.cs las compara por identidad)
             private SKBitmap blendBmp;   // EN LINUX: un SKBitmap (Nativo/Mapas.cs)
             // COMPARTIDO con el fondo del form, igual que la rejilla de discos y el interior del disco: este
             // control pinta su VENTANA del mismo campo. Antes el buscador era el UNICO que se armaba su propio
@@ -1014,7 +1014,7 @@ namespace Rocola
                 {
                     if (forGpu)
                     {
-                        Rocola.Dibujo2D.Image ca, cb; float f; Rectangle area;   // EN LINUX: las portadas de la cache (Image, escrito entero)
+                        SKBitmap ca, cb; float f; Rectangle area;   // EN LINUX: Image: las portadas de la cache, SKBitmap
                         if (!SeparateGpu && ComputePreview(kbRegion, out ca, out cb, out f, out area)) DrawPreviewInfo(g, suave, ajuste, copia, medio, hdc, kbRegion, area);   // EN LINUX: el lienzo y su estado
                     }
                     else if (kbRegion.IntersectsWith(clip)) DrawPreviewCube(g, suave, ajuste, copia, ref filtro, medio, hdc, kbRegion);   // EN LINUX: el lienzo y su estado (el filtro que deja puesto, por ref)
@@ -1417,20 +1417,20 @@ namespace Rocola
             // Cachea las caratulas (ya redimensionadas) de todos los discos del artista
             // Reconstruye SIEMPRE: pide las portadas vigentes a la cache (nunca guarda una
             // referencia que pudiera liberarse despues -> evita dibujar imagenes muertas).
-            private List<Rocola.Dibujo2D.Image> EnsureArtistCovers(SearchItem it)   // EN LINUX: las portadas de la cache (Image, escrito entero)
+            private List<SKBitmap> EnsureArtistCovers(SearchItem it)   // EN LINUX: Image: las portadas de la cache, SKBitmap
             {
                 artistCovers.Clear();
                 if (it.Albums != null)
                     for (int i = 0; i < it.Albums.Count; i++)
                     {
-                        Rocola.Dibujo2D.Image im = Portada(it.Albums[i]);   // EN LINUX: Image de la cache
+                        SKBitmap im = Portada(it.Albums[i]);   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
                         if (im != null) artistCovers.Add(im);
                     }
                 return artistCovers;
             }
 
             // Mezcla a->b con factor f (0..1) en un bitmap reutilizable
-            private SKBitmap BlendInto(Rocola.Dibujo2D.Image a, Rocola.Dibujo2D.Image b, float f)   // EN LINUX: dos portadas de la cache (Image de la capa: sus puntos por el puente) mezcladas en un SKBitmap
+            private SKBitmap BlendInto(SKBitmap a, SKBitmap b, float f)   // EN LINUX: Image: dos portadas de la cache (SKBitmap) mezcladas en un SKBitmap
             {
                 if (blendBmp == null) blendBmp = Mapas.Nuevo(320, 320);   // EN LINUX: new Bitmap(320, 320, Format32bppPArgb) (Nativo/Mapas.cs)
                 using (SKCanvas g = new SKCanvas(blendBmp))   // EN LINUX: Graphics.FromImage (un lienzo nuevo: sin copia ni medio pixel)
@@ -1438,7 +1438,7 @@ namespace Rocola
                     g.Clear(Color.Black.Sk());   // EN LINUX: g.Clear(Color.Black)
                     Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear, en una variable
                     Rectangle dst = new Rectangle(0, 0, blendBmp.Width, blendBmp.Height);
-                    if (a != null) { SKBitmap ma = PuenteDibujo.Mapa(a); Imagenes.Pinta(g, ma, new SKRect(0, 0, ma.Width, ma.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false); }   // EN LINUX: g.DrawImage(a, dst): la imagen entera en la caja (Nativo/Imagenes.cs), sin medio pixel ni copia; sus puntos, los mismos, por el puente
+                    if (a != null) { Imagenes.Pinta(g, a, new SKRect(0, 0, a.Width, a.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false); }   // EN LINUX: g.DrawImage(a, dst): la imagen entera en la caja (Nativo/Imagenes.cs), sin medio pixel ni copia; la portada es el SKBitmap mismo
                     if (b != null && f > 0f)
                     {
                         float[][] cm = MatrizColor.Identidad();   // EN LINUX: new ColorMatrix(): la identidad (Nativo/Imagenes.cs)
@@ -1446,7 +1446,7 @@ namespace Rocola
                         // EN LINUX: using (ImageAttributes ia = new ImageAttributes()): lo que lleva (la matriz de color y la envoltura de fabrica) va directo a Imagenes.Pinta
                         {
                             // EN LINUX: ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap): la matriz, abajo
-                            SKBitmap mb = PuenteDibujo.Mapa(b); Imagenes.Pinta(g, mb, new SKRect(0, 0, mb.Width, mb.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: g.DrawImage(b, dst, 0, 0, b.Width, b.Height, Pixel, ia): con la matriz de color y la envoltura de fabrica de ImageAttributes (Clamp: transparente fuera) (Nativo/Imagenes.cs)
+                            Imagenes.Pinta(g, b, new SKRect(0, 0, b.Width, b.Height), new SKRect(dst.Left, dst.Top, dst.Right, dst.Bottom), filtro, false, false, Envoltura.Transparente, cm);   // EN LINUX: g.DrawImage(b, dst, 0, 0, b.Width, b.Height, Pixel, ia): con la matriz de color y la envoltura de fabrica de ImageAttributes (Clamp: transparente fuera) (Nativo/Imagenes.cs)
                         }
                     }
                 }
@@ -1464,8 +1464,8 @@ namespace Rocola
             private int selMomento = Environment.TickCount;
             private int selAnterior = -1;
             private const int EsperaPortadaMs = 200;
-            public Func<Album, Rocola.Dibujo2D.Image> GetCoverYa;   // SOLO lo que ya esta en memoria; no encarga nada al disco   // EN LINUX: Image de la cache (de la capa), escrito entero
-            private Rocola.Dibujo2D.Image Portada(Album a)   // EN LINUX: Image de la cache
+            public Func<Album, SKBitmap> GetCoverYa;   // SOLO lo que ya esta en memoria; no encarga nada al disco   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap (lo que ya esta en memoria)
+            private SKBitmap Portada(Album a)   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
             {
                 if (a == null) return null;
                 bool parado = (Environment.TickCount - selMomento) >= EsperaPortadaMs;
@@ -1473,7 +1473,7 @@ namespace Rocola
                 return GetCoverYa(a);
             }
 
-            private bool ComputePreview(Rectangle region, out Rocola.Dibujo2D.Image ca, out Rocola.Dibujo2D.Image cb, out float f, out Rectangle area)   // EN LINUX: las portadas de la cache (Image, escrito entero)
+            private bool ComputePreview(Rectangle region, out SKBitmap ca, out SKBitmap cb, out float f, out Rectangle area)   // EN LINUX: Image: las portadas de la cache, SKBitmap
             {
                 ca = null; cb = null; f = 0f; area = Rectangle.Empty;
                 int n = (Results != null) ? Results.Count : 0;
@@ -1485,7 +1485,7 @@ namespace Rocola
 #endif
                 if (it.Kind == 0)
                 {
-                    List<Rocola.Dibujo2D.Image> cov = EnsureArtistCovers(it);   // EN LINUX: Image de la cache
+                    List<SKBitmap> cov = EnsureArtistCovers(it);   // EN LINUX: Image: las portadas de la cache, SKBitmap
                     if (cov.Count == 0) ca = Portada(it.AlbumRef);
                     else if (cov.Count == 1) ca = cov[0];
                     else
@@ -1512,9 +1512,9 @@ namespace Rocola
             // CPU: dibuja el cubo de vista previa (girando) + su texto.
             private void DrawPreviewCube(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, ref Filtro filtro, bool medio, SKMatrix hdc, Rectangle region)   // EN LINUX: el lienzo de Skia y el estado del que llama; el filtro que pone se le queda al que llama (ref)
             {
-                Rocola.Dibujo2D.Image ca, cb; float f; Rectangle area;   // EN LINUX: las portadas de la cache (Image, escrito entero)
+                SKBitmap ca, cb; float f; Rectangle area;   // EN LINUX: Image: las portadas de la cache, SKBitmap
                 if (!ComputePreview(region, out ca, out cb, out f, out area)) return;
-                SKBitmap cover = (cb == null || f <= 0.002f) ? PuenteDibujo.Mapa(ca) : BlendInto(ca, cb, f);   // EN LINUX: Image cover: el cubo (Cube.Draw, Form1.Pared.cs, ya traducido) pinta los puntos: los de la portada de la cache (Image de la capa: los mismos, sin copia, por el puente) o la mezcla (blendBmp, el mismo SKBitmap cada vez, como en XP)
+                SKBitmap cover = (cb == null || f <= 0.002f) ? ca : BlendInto(ca, cb, f);   // EN LINUX: Image cover: el cubo (Cube.Draw, Form1.Pared.cs) pinta la portada de la cache (el SKBitmap mismo) o la mezcla (blendBmp, el mismo SKBitmap cada vez, como en XP)
                 filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear (se le queda al que llama: ref)
                 Cube.Draw(g, suave, copia, filtro, medio, area, cover, CubeAngle);   // EN LINUX: Cube.Draw(g, area, cover, CubeAngle): la traducida (Form1.Pared.cs), directo, con el lienzo y lo que pesa del estado (suavizado, copia, filtro y medio pixel); no le cambia nada al estado, como en XP
                 DrawPreviewInfo(g, suave, ajuste, copia, medio, hdc, region, area);   // EN LINUX: el lienzo y su estado

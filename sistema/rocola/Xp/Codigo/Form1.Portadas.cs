@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las miniaturas se leen, se reducen, se copian y se miran con SkiaSharp directo y las funciones nativas (Xp/Nativo); lo que se publica en la cache de portadas sigue siendo una imagen de la capa (Dibujo2D.cs), escrita entera (PORT_portadas.md)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las miniaturas se leen, se reducen, se copian y se miran con SkiaSharp directo y las funciones nativas (Xp/Nativo); lo que se publica en la cache de portadas (y en la de previas) es un SKBitmap, el MISMO objeto para todos (como la Image de XP)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -20,12 +20,12 @@ namespace Rocola
     public partial class Form1 : Form
     {
         private CubeBox miniCube;
-        private readonly Dictionary<string, Rocola.Dibujo2D.Image> coverCache = new Dictionary<string, Rocola.Dibujo2D.Image>();   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private readonly Dictionary<string, SKBitmap> coverCache = new Dictionary<string, SKBitmap>(); internal const FormatoMapa FormatoPortada = FormatoMapa.PArgb32;   // EN LINUX: la portada de la cache es un SKBitmap (en XP, Image): el mismo objeto para todos los que la piden y la comparan por identidad. Su formato de XP no viaja con ella: todas salen de DecodeCoverCore como Format32bppPArgb (new Bitmap(256, 256, PArgb), Clone(..., PArgb) o CopiaMiniaturaGpu), y FormatoPortada lo dice a quien lo necesita (la paleta y InteriorOpaco)
         private readonly LinkedList<string> coverOrder = new LinkedList<string>();   // menos usada al principio
         private readonly Dictionary<string, LinkedListNode<string>> coverNodes = new Dictionary<string, LinkedListNode<string>>();
         private readonly Dictionary<string, CoverJob> coverLoading = new Dictionary<string, CoverJob>();
         private readonly Dictionary<string, int> coverRetryUntil = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        private readonly List<Rocola.Dibujo2D.Image> coverTrash = new List<Rocola.Dibujo2D.Image>();   // expulsadas, a liberar de forma segura (en el timer)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private readonly List<SKBitmap> coverTrash = new List<SKBitmap>();   // expulsadas, a liberar de forma segura (en el timer)   // EN LINUX: List<Image>: las portadas y las previas expulsadas, SKBitmap
         private volatile int coverGen = 0;     // solo invalida contenido (F5), no lecturas utiles al cambiar pagina
         private Reloj coverSettleTimer;   // espera 120 ms antes de precargar vecinas; EN LINUX: Reloj de la pantalla nativa (Nativo/Reloj.cs; en XP, Timer de WinForms: SetTimer y WM_TIMER en el hilo de la ventana)
         // CARRILES: tope global segun CPU (uno en 2C/2T); cada unidad HDD admite un lector,
@@ -472,13 +472,13 @@ namespace Rocola
                 coverGen++;
 #if ROCOLA_GPU
                 coloresPreparados.Clear();
-                foreach (Rocola.Dibujo2D.Bitmap b in gpuPreviewCache.Values) coverTrash.Add(b);   // EN LINUX: las previas de la cache, Bitmap de la capa, escrito entero (CaratulasAdaptativas.cs)
+                foreach (SKBitmap b in gpuPreviewCache.Values) coverTrash.Add(b);   // EN LINUX: las previas de la cache, SKBitmap (en XP, Bitmap)
                 gpuPreviewCache.Clear(); gpuPreviewOrder.Clear(); gpuPreviewPage++; gpuPreviewLoaded = -1;
 #endif
                 coverArrivals.Clear();   // el mensaje pendiente puede atender llegadas de la nueva generacion
                 coverQHi.Clear(); coverQLo.Clear(); coverLoading.Clear(); coverRetryUntil.Clear();
                 System.Threading.Monitor.PulseAll(coverLock);
-                foreach (KeyValuePair<string, Rocola.Dibujo2D.Image> kv in coverCache) if (kv.Value != null) coverTrash.Add(kv.Value);   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                foreach (KeyValuePair<string, SKBitmap> kv in coverCache) if (kv.Value != null) coverTrash.Add(kv.Value);   // EN LINUX: la portada de la cache, SKBitmap (en XP, Image)
                 coverCache.Clear(); coverOrder.Clear(); coverNodes.Clear();
             }
         }
@@ -587,7 +587,7 @@ namespace Rocola
                     if (j.Gen != coverGen) continue;
                     coverSem.WaitOne(); entered = true; // compartido con el generador de miniaturas
                     if (j.Gen != coverGen) continue;
-                    Rocola.Dibujo2D.Image thumb = null;   // EN LINUX: la que se publica en la cache de portadas: una imagen de la capa (Dibujo2D.cs), escrita entera; la hacen las DecodeCover* con PuenteDibujo.Entrega (PORT_portadas.md, costuras)
+                    SKBitmap thumb = null;   // EN LINUX: Image thumb: la que se publica en la cache de portadas, un SKBitmap (lo dan las DecodeCover*)
 #if ROCOLA_GPU
                     try { LoadGpuPreviewBatch(j); } catch { } // preview no puede impedir la caratula final
 #endif
@@ -616,14 +616,14 @@ namespace Rocola
                     catch { if (thumb != null) { try { thumb.Dispose(); } catch { } thumb = null; } }
 #if ROCOLA_GPU
                     if (gpuEnabled && caratulasLod && thumb != null)
-                        try { preview = GpuPreviewStore.Small(PuenteDibujo.Mapa(thumb)); previewBytes = GpuPreviewStore.ToBytes(preview); } catch { }   // EN LINUX: los puntos de la portada de la capa (PuenteDibujo.Mapa: los mismos, sin copia)
+                        try { preview = GpuPreviewStore.Small(thumb); previewBytes = GpuPreviewStore.ToBytes(preview); } catch { }
                     ColoresDisco tonos = new ColoresDisco();
-                    if (gpuEnabled && thumb is Rocola.Dibujo2D.Bitmap)   // EN LINUX: Bitmap de la capa, escrito entero
+                    if (gpuEnabled && thumb is SKBitmap)   // EN LINUX: thumb is Bitmap: un SKBitmap (en XP una Image podia no ser Bitmap; aqui, si no es nulo, siempre lo es)
                     {
                         try
                         {
-                            tonos.Prom = ColoresDePortada((Rocola.Dibujo2D.Bitmap)thumb, out tonos.Uno, out tonos.Dos);   // EN LINUX: ColoresDePortada (Form1.Fondo.cs, aun sin traducir) recibe el Bitmap de la capa, escrito entero
-                            tonos.Paleta = ExtractCoverPalette((Rocola.Dibujo2D.Bitmap)thumb); tonos.Fuente = thumb;   // EN LINUX: ExtractCoverPalette (PaletaCaratulaGpu.cs, de otro grupo) recibe el Bitmap de la capa, escrito entero; Fuente es la MISMA imagen de la cache (Form1.Fondo.cs la compara por identidad)
+                            tonos.Prom = ColoresDePortada(thumb, out tonos.Uno, out tonos.Dos);   // EN LINUX: ColoresDePortada((Bitmap)thumb, ...): la traducida (Form1.Fondo.cs) con el SKBitmap; si estuviera soltado lanza como GDI+ al leer su ancho (Nativo/MapaVivo.cs) y lo atrapa el catch de abajo, como en XP
+                            tonos.Paleta = ExtractCoverPalette(thumb, FormatoPortada); tonos.Fuente = thumb;   // EN LINUX: ExtractCoverPalette((Bitmap)thumb): la traducida (PaletaCaratulaGpu.cs) con los puntos y el formato que la miniatura tenia en XP (Format32bppPArgb); Fuente es la MISMA portada de la cache (Form1.Fondo.cs la compara por identidad)
                         }
                         catch { tonos.Fuente = null; } // un fallo de GDI no mata el trabajador ni pierde la portada
                     }
@@ -641,7 +641,7 @@ namespace Rocola
                         else coverRetryUntil[key] = unchecked(Environment.TickCount + 30000);
 #if ROCOLA_GPU
                         if (tonos.Fuente != null) coloresPreparados[key] = tonos;
-                        if (preview != null) { PutGpuPreview(key, PuenteDibujo.Entrega(preview, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb)); preview = null; }   // EN LINUX: la previa va a gpuPreviewCache, de Bitmap de la capa (la lee la pared): un Bitmap Format32bppPArgb dueno de sus puntos, como el que XP hacia
+                        if (preview != null) { PutGpuPreview(key, preview); preview = null; }
 #endif
                         coverLoading.Remove(key);
                     }
@@ -871,25 +871,25 @@ namespace Rocola
             return thumbWriteLocks[StringComparer.OrdinalIgnoreCase.GetHashCode(path) & (thumbWriteLocks.Length - 1)];
         }
 
-        private static Rocola.Dibujo2D.Image DecodeCover(string path)   // EN LINUX: para la cache de portadas: una imagen de la capa, escrita entera
+        private static SKBitmap DecodeCover(string path)   // EN LINUX: Image: la miniatura para la cache de portadas, un SKBitmap
         {
             string cacheFile = null;
             try { cacheFile = ThumbCachePath(path); } catch { }
             return DecodeCoverWithIdentity(path, cacheFile);
         }
 
-        private static Rocola.Dibujo2D.Image DecodeCoverWithIdentity(string path, string cacheFile)   // EN LINUX: para la cache de portadas (tambien la llama Form1.cs, aun sin traducir): una imagen de la capa, escrita entera
+        private static SKBitmap DecodeCoverWithIdentity(string path, string cacheFile)   // EN LINUX: Image: la miniatura para la cache de portadas (tambien la pide Form1.cs), un SKBitmap
         {
             SKBitmap pendiente;   // EN LINUX: un SKBitmap
-            return PuenteDibujo.Entrega(DecodeCoverCore(path, cacheFile, false, false, out pendiente), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: la miniatura (SKBitmap) se entrega a la cache como la daba XP: un Bitmap Format32bppPArgb dueno de sus puntos
+            return DecodeCoverCore(path, cacheFile, false, false, out pendiente);
         }
 #if ROCOLA_GPU
-        private static Rocola.Dibujo2D.Image DecodeCoverForPublication(string path, string cacheFile, out SKBitmap pendiente)   // EN LINUX: la imagen para la cache, de la capa; la copia por guardar, un SKBitmap (la guarda SaveThumb, ya traducida)
-        { return PuenteDibujo.Entrega(DecodeCoverCore(path, cacheFile, true, false, out pendiente), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb); }   // EN LINUX: entregada a la cache como la daba XP (Format32bppPArgb, duena de sus puntos)
+        private static SKBitmap DecodeCoverForPublication(string path, string cacheFile, out SKBitmap pendiente)   // EN LINUX: Image y out Bitmap: la miniatura para la cache y la copia por guardar, SKBitmap las dos
+        { return DecodeCoverCore(path, cacheFile, true, false, out pendiente); }
         // El calentador, con "Caratulas en JPEG" encendido: una miniatura que solo esta en PNG se rehace desde la
         // portada original (si es opaca saldra en JPEG). La pantalla, en cambio, sigue leyendo el PNG: es rapido.
-        private static Rocola.Dibujo2D.Image DecodeCoverParaCalentar(string path, string cacheFile, out Rocola.Dibujo2D.Bitmap pendiente)   // EN LINUX: la llama Form1.cs (aun sin traducir): la imagen y la copia por guardar, de la capa, escritas enteras
-        { SKBitmap p; SKBitmap r = DecodeCoverCore(path, cacheFile, true, JpegActivo, out p); pendiente = PuenteDibujo.Entrega(p, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb); return PuenteDibujo.Entrega(r, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb); }   // EN LINUX: lo mismo, entregado como lo daba XP (las dos Format32bppPArgb, duenas de sus puntos)
+        private static SKBitmap DecodeCoverParaCalentar(string path, string cacheFile, out SKBitmap pendiente)   // EN LINUX: Image y out Bitmap: la miniatura y la copia por guardar (las pide Form1.cs), SKBitmap las dos
+        { return DecodeCoverCore(path, cacheFile, true, JpegActivo, out pendiente); }
 #endif
         // LEER UNA CARATULA SIN DEJAR BASURA GRANDE (13-10-2026). Antes cada lectura era File.ReadAllBytes: un arreglo nuevo del
         // tamano del archivo. Una miniatura en PNG de 256x256 pesa casi siempre mas de 85 KB, y en .NET un arreglo asi va al
@@ -1096,7 +1096,7 @@ namespace Rocola
             coverOrder.AddLast(node);   // reutilizar el nodo, sin asignaciones por repintado
         }
 
-        private bool CoverEnCache(string key, bool visible, out Rocola.Dibujo2D.Image img)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private bool CoverEnCache(string key, bool visible, out SKBitmap img)   // EN LINUX: out Image: la portada de la cache, el SKBitmap mismo
         {
             if (!coverCache.TryGetValue(key, out img)) return false;
             if (visible) CoverToca(key);

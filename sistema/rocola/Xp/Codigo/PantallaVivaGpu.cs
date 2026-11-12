@@ -27,7 +27,7 @@
 // hoja, al lado del modo atraccion.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el letrero de la portada elegida, la ficha rapida y la portada enfocada dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs y Puente.pantalla-viva.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el letrero de la portada elegida, la ficha rapida y la portada enfocada dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas son los SKBitmap de la cache de portadas
 
 namespace Rocola
 {
@@ -439,7 +439,7 @@ namespace Rocola
         // ni con la subida a la tarjeta. Se va en cuanto el cursor se mueve.
         internal const int FichaEsperaMs = 1100, FichaEntraMs = 220, FichaDuraMs = 9000, FichaSaleMs = 400, FichaAntesMs = 250;
         private Album fichaAlbum; private int fichaDesde, fichaColaVer, fichaDurVer, fichaGenVer, fichaMedida;
-        private Rocola.Dibujo2D.Image fichaPortada;   // EN LINUX: la portada que dio PeekCoverGpu (Form1.Pared.cs, aun sin traducir): se compara por identidad, como en XP; se queda con su tipo, escrito entero
+        private SKBitmap fichaPortada;   // EN LINUX: Image: la portada que dio PeekCoverGpu (Form1.Pared.cs), un SKBitmap de la cache: se compara por identidad, como en XP
         private string fichaDuracionTexto;
         private bool fichaHecha, fichaAcabada;
         private SKBitmap fichaBmp; private int fichaVer;   // EN LINUX: el mapa es un SKBitmap (Nativo/Mapas.cs)
@@ -460,7 +460,7 @@ namespace Rocola
             celda.Offset(albumView.Left, albumView.Top);
             // Se rehace si cambio la cola mientras se ve (alguien pidio una de este disco): el numero tiene que cuadrar.
             int medida = albumView.Width * 4096 + albumView.Height;
-            Rocola.Dibujo2D.Image portada = albumView.PeekCoverGpu != null ? albumView.PeekCoverGpu(a) : null;   // EN LINUX: la Image de PeekCoverGpu (aun sin traducir), escrita entera: solo se compara por identidad
+            SKBitmap portada = albumView.PeekCoverGpu != null ? albumView.PeekCoverGpu(a) : null;   // EN LINUX: Image: la portada de PeekCoverGpu, un SKBitmap de la cache: solo se compara por identidad
             string duracion = !fichaHecha || fichaDurVer != duracionesVer ? DuracionesFicha(a) : fichaDuracionTexto;
             if (!fichaHecha || fichaColaVer != colaVer || duracion != fichaDuracionTexto || fichaGenVer != generoVer
                 || fichaMedida != medida || !object.ReferenceEquals(fichaPortada, portada))
@@ -554,7 +554,7 @@ namespace Rocola
             for (int i = 0; i < queue.Count; i++) if (queue[i] != null && ReferenceEquals(queue[i].Disc, a)) enCola++;
             int can, vid; double seg; CuentaDisco(a, out can, out vid, out seg);
             // La portadita, SOLO si ya esta en memoria: la ficha no encarga nada al disco.
-            SKBitmap tapa = PuenteDibujo.Mapa((albumView.PeekCoverGpu != null) ? albumView.PeekCoverGpu(a) : null);   // EN LINUX: PeekCoverGpu (Form1.Pared.cs, aun sin traducir) da una Image: sus puntos, por el puente (los mismos, sin copia)
+            SKBitmap tapa = (albumView.PeekCoverGpu != null) ? albumView.PeekCoverGpu(a) : null;   // EN LINUX: PeekCoverGpu (Form1.Pared.cs) da la portada de la cache, el SKBitmap mismo
             string[] filas = new string[top.Count], durs = new string[top.Count]; int[] veces = new int[top.Count];
             for (int k = 0; k < top.Count; k++)
             {
@@ -571,7 +571,7 @@ namespace Rocola
         }
         // El dibujo de la ficha, aparte del estado: asi se puede mirar y comprobar sin arrancar la rocola. Va de arriba
         // abajo con un cursor: si las filas no caben entre la cabecera y el pie, van las que caben (nunca se montan).
-        internal static void PintaFicha(SKBitmap bmp, SKBitmap tapa, string artista, string disco, string resumen, string genero, Color colGenero,   // EN LINUX: el mapa y la portada son SKBitmap; quien aun pasa Bitmap, Image y FontFamily llega por el puente (Plataforma/Puente.pantalla-viva.cs)
+        internal static void PintaFicha(SKBitmap bmp, SKBitmap tapa, string artista, string disco, string resumen, string genero, Color colGenero,   // EN LINUX: el mapa y la portada son SKBitmap (la portada, la de la cache de portadas)
             int enCola, bool pedidas, string[] filas, string[] durs, int[] veces, int total, string fam)   // EN LINUX: la familia, por su nombre (FontFamily.Name)
         {
             int w = bmp.Width, h = bmp.Height;
@@ -734,7 +734,7 @@ namespace Rocola
         private double enfoqueDesde, enfoqueUltMs;
         private float enfoque;                            // 0..1: cuanto crecio la elegida (0 si no toca)
         private float selX0, selY0, selW0, selH0;         // donde estaba la elegida ANTES de crecer
-        private Rocola.Dibujo2D.Bitmap enfoqueDe;         // la portada de la que se saco el color (EN LINUX: cs.Sel.CoverA es un Bitmap de la capa, que da Form1 aun sin traducir: se compara por identidad, como en XP; su tipo, escrito entero)
+        private SKBitmap enfoqueDe;         // la portada de la que se saco el color (EN LINUX: Bitmap: cs.Sel.CoverA, un SKBitmap de la cache: se compara por identidad, como en XP)
         private uint enfoqueColor = 0xFF8FB4FFu;          // el color de esa portada
         private float haloR = -1f, haloG, haloB;          // el color que se VE en el halo: va hacia enfoqueColor sin saltos
         private float relevoDesde;                        // cuanto habia crecido la que se deja (el relevo encoge desde ahi)
@@ -769,7 +769,7 @@ namespace Rocola
         // fondo negro o gris no deberia mandar), llevada a un tono vivo. Una portada sin color (gris, negra) se
         // queda con 'siNo'. Se calcula UNA vez por portada, no en cada cuadro. Devuelve false solo si no se pudo
         // leer (la portada estaba ocupada): entonces se vuelve a intentar en el cuadro siguiente.
-        internal static bool ColorDePortada(SKBitmap b, uint siNo, out uint color)   // EN LINUX: los puntos de la portada en un SKBitmap (quien llama pasa los del Bitmap de la capa por el puente)
+        internal static bool ColorDePortada(SKBitmap b, uint siNo, out uint color)   // EN LINUX: los puntos de la portada en un SKBitmap (cs.Sel.CoverA, de la cache de portadas: el mismo)
         {
             color = siNo;
             if (b == null || b.Width < 2 || b.Height < 2) return true;
@@ -839,7 +839,7 @@ namespace Rocola
             if (!ReferenceEquals(cs.Sel.CoverA, enfoqueDe))
             {
                 uint c;
-                if (ColorDePortada(PuenteDibujo.Mapa(cs.Sel.CoverA), NebColor | 0xFF000000u, out c)) { enfoqueDe = cs.Sel.CoverA; enfoqueColor = c; }   // EN LINUX: los puntos de la portada (un Bitmap de la capa), por el puente: los mismos, sin copia
+                if (ColorDePortada(cs.Sel.CoverA, NebColor | 0xFF000000u, out c)) { enfoqueDe = cs.Sel.CoverA; enfoqueColor = c; }
             }
             // El color del halo va hacia el de la portada en medio segundo: "lo mas sonado" cambia de portada cada
             // pocos segundos y el halo no puede saltar de un color a otro.

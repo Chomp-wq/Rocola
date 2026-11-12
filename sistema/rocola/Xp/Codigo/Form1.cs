@@ -13,7 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (las letras de las etiquetas de WinForms, las portadas, los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (las letras de las etiquetas de WinForms, los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -224,7 +224,7 @@ namespace Rocola
         private void LlenaPortaditas()
         {
             if (pastCola == null || !pastCola.ConPortadas) return;
-            if (pastCola.Portadas == null) pastCola.Portadas = new Rocola.Dibujo2D.Image[3];   // EN LINUX: las Image de la capa, escritas enteras: las portaditas de la capsula de la cola (Form1.Vistas.cs, aun sin traducir)
+            if (pastCola.Portadas == null) pastCola.Portadas = new SKBitmap[3];   // EN LINUX: Image[]: las portaditas de la capsula de la cola, SKBitmap de la cache de portadas
             for (int i = 0; i < pastCola.Portadas.Length; i++)
                 pastCola.Portadas[i] = (i < queue.Count && queue[i] != null) ? LoadCover(queue[i].Disc) : null;
             pastCola.Mas = (queue.Count > pastCola.Portadas.Length) ? queue.Count - pastCola.Portadas.Length : 0;
@@ -1156,7 +1156,7 @@ namespace Rocola
             albumView.PeekCoverGpu = delegate (Album a)
             {
                 if (a == null || a.CoverPath == null) return null;
-                lock (coverLock) { Rocola.Dibujo2D.Image c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }   // EN LINUX: la Image de la capa, escrita entera: la cache de portadas (Form1.Portadas.cs, aun sin traducir); aqui solo pasa
+                lock (coverLock) { SKBitmap c; return CoverEnCache(a.CoverPath, false, out c) ? c : null; }   // EN LINUX: Image: la portada de la cache de portadas, el SKBitmap mismo
             };
             albumView.PeekPreviewGpu = PeekGpuPreview;
             albumView.PortadasLod = caratulasLod;
@@ -1731,7 +1731,7 @@ namespace Rocola
             return false;
         }
 
-        private bool PublicaMiniaturaCalentada(int generacion, MiniaturaPendiente pendiente, Rocola.Dibujo2D.Image im, Rocola.Dibujo2D.Bitmap porGuardar)   // EN LINUX: la Image y el Bitmap de la capa, escritos enteros: las miniaturas de la cache de portadas (Form1.Portadas.cs, aun sin traducir); aqui solo pasan
+        private bool PublicaMiniaturaCalentada(int generacion, MiniaturaPendiente pendiente, SKBitmap im, SKBitmap porGuardar)   // EN LINUX: Image y Bitmap: la miniatura y su copia por guardar, SKBitmap (Form1.Portadas.cs); SaveThumb las guarda ya traducida
         {
             if (im == null || !CalentadorVigente(generacion) || pendiente.Disco.CoverPath != pendiente.Ruta
                 || pendiente.Identidad != ThumbCachePath(pendiente.Ruta)) return false;
@@ -1846,11 +1846,11 @@ namespace Rocola
                                 pendiente.Identidad = identidad;
                                 if (a.CoverPath != pendiente.Ruta || !FaltaMiniatura(identidad))
                                 { if (!PublishThumbRemaining(myGen, -1)) return; continue; }
-                                Rocola.Dibujo2D.Bitmap porGuardar = null;   // EN LINUX: el Bitmap de la capa, escrito entero (Form1.Portadas.cs)
+                                SKBitmap porGuardar = null;   // EN LINUX: Bitmap: un SKBitmap (Form1.Portadas.cs)
 #if ROCOLA_GPU
-                                Rocola.Dibujo2D.Image im = DecodeCoverParaCalentar(pendiente.Ruta, identidad, out porGuardar);   // EN LINUX: la Image de la capa, escrita entera (Form1.Portadas.cs)
+                                SKBitmap im = DecodeCoverParaCalentar(pendiente.Ruta, identidad, out porGuardar);   // EN LINUX: Image: un SKBitmap (Form1.Portadas.cs)
 #else
-                                Rocola.Dibujo2D.Image im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);   // EN LINUX: la Image de la capa, escrita entera (Form1.Portadas.cs)
+                                SKBitmap im = DecodeCoverWithIdentity(pendiente.Ruta, identidad);   // EN LINUX: Image: un SKBitmap (Form1.Portadas.cs)
 #endif
                                 try
                                 {

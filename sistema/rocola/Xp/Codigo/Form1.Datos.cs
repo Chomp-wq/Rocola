@@ -500,7 +500,7 @@ namespace Rocola
         private RectangleF transTo;       // celda del cubo de DESTINO
         private double transAng0;         // giro del cubo de origen (para arrancar calcado sobre el)
         private double transSpin;         // cuanto gira en total (camino corto al destino + media vuelta de gracia)
-        private Image transImg;           // portada que se anima
+        private SkiaSharp.SKBitmap transImg;           // portada que se anima   // EN LINUX: Image: la portada que vuela, un SKBitmap de la cache de portadas (el mismo objeto: DrainCoverTrash la compara por identidad)
         private RectangleF transNextFrom; // origen del PROXIMO EnterAlbum (se fija antes de cerrar el buscador)
         private double transNextAngle;    // y su giro
         private int winMode = 0;          // 0 = nada, 1 = abriendo el buscador, 2 = cerrandolo

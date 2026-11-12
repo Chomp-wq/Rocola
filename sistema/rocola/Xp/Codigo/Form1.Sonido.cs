@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing;   // EN LINUX: sin GDI+ (Plataforma/Dibujo2D.cs): este archivo no dibuja; las portadas que pasan por aqui llevan su tipo de la capa escrito entero
+using System.Drawing;   // EN LINUX: sin GDI+ (Plataforma/Dibujo2D.cs): este archivo no dibuja; las portadas que pasan por aqui son SKBitmap de la cache de portadas (SkiaSharp.SKBitmap, escrito entero)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -945,7 +945,7 @@ namespace Rocola
             ang = 0;
             if (searchOverlay == null || !searchOpen) return RectangleF.Empty;   // en GPU el overlay no se pinta: mirar el estado, no Visible
             if (searchOverlay.Nuevo) return PortadaElegidaBuscador();   // el buscador con portadas: sale de la portada de su tarjeta
-            Rectangle r; Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras: el cubo del buscador (Form1.Buscador.cs, aun sin traducir) las da; aqui solo se miran sus medidas
+            Rectangle r; SkiaSharp.SKBitmap ca, cb; float f;   // EN LINUX: Image: las portadas del cubo del buscador (Form1.Buscador.cs), SKBitmap de la cache: aqui solo se miran sus medidas
             if (!searchOverlay.GetPreviewCube(out r, out ca, out cb, out f)) return RectangleF.Empty;
             if (r.Width < 8 || r.Height < 8) return RectangleF.Empty;
             ang = searchOverlay.PreviewAngle;
@@ -1152,7 +1152,7 @@ namespace Rocola
             if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
             float e = t * t * t * (t * (t * 6f - 15f) + 10f);      // suavizado quintico
             RectangleF a = transFrom, b = transTo;
-            g.Has = true; g.Bmp = transImg as Rocola.Dibujo2D.Bitmap;   // EN LINUX: el Bitmap de la capa, escrito entero: la portada que vuela al entrar en un disco va a la tarjeta (GpuTrans de D3D9Star.cs, aun sin traducir)
+            g.Has = true; g.Bmp = transImg as SkiaSharp.SKBitmap;   // EN LINUX: as Bitmap: la portada que vuela al entrar en un disco, un SKBitmap de la cache, va a la tarjeta (GpuTrans de D3D9Star.cs)
             g.Key = transTick;
             if (g.Bmp == null) { g.Has = false; return g; }
             g.X = a.X + (b.X - a.X) * e; g.Y = a.Y + (b.Y - a.Y) * e;

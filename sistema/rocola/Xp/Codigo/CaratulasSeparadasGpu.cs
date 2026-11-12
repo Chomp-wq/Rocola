@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla por separado (las tiras del contorno, la marca y el texto) se hornea con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas enteras siguen llegando como Bitmap de la capa (las da Form1, aun sin traducir), escrito entero
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla por separado (las tiras del contorno, la marca y el texto) se hornea con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas enteras son los SKBitmap de la cache de portadas (las da Form1) y se suben tal cual
 using System.Collections.Generic;
 using System.Diagnostics;
 namespace Rocola
@@ -126,8 +126,8 @@ namespace Rocola
     }
     internal sealed partial class GpuPanel
     {
-        private readonly Dictionary<Rocola.Dibujo2D.Bitmap, CellTex> nativeCovers = new Dictionary<Rocola.Dibujo2D.Bitmap, CellTex>();   // EN LINUX: las portadas enteras (GpuGridCell.FullCover) son Bitmap de la capa (Dibujo2D.cs), escrito entero: las da Form1, aun sin traducir, y aqui son la clave (por identidad, como en XP)
-        private readonly HashSet<Rocola.Dibujo2D.Bitmap> protectedNativeAhead = new HashSet<Rocola.Dibujo2D.Bitmap>();   // EN LINUX: Bitmap de la capa, escrito entero
+        private readonly Dictionary<SKBitmap, CellTex> nativeCovers = new Dictionary<SKBitmap, CellTex>();   // EN LINUX: Bitmap: las portadas enteras (GpuGridCell.FullCover), SKBitmap de la cache de portadas: la clave por identidad, como en XP
+        private readonly HashSet<SKBitmap> protectedNativeAhead = new HashSet<SKBitmap>();   // EN LINUX: Bitmap: un SKBitmap
         private readonly IntPtr[] nativeGridTex = new IntPtr[MaxCells];
         private readonly float[] nativeGridU = new float[MaxCells], nativeGridV = new float[MaxCells];
         private sealed class CubiertaGuardada
@@ -174,10 +174,10 @@ namespace Rocola
             if (nativeCovers.Count >= cellTextureCapacity + MaxCells) return IntPtr.Zero;
             if (budget <= 0 || (CoverControl != null && !CoverControl.CanStart(nativeUploadCost, visible, false))) return IntPtr.Zero;
             long start = Stopwatch.GetTimestamp(); budget--;
-            texture.Tex = stars.CreateCoverShared(PuenteDibujo.Mapa(cell.FullCover), out texture.U, out texture.V);   // EN LINUX: los puntos de la portada (un Bitmap de la capa), por el puente: los mismos, sin copia (CreateCoverShared ya recibe un SKBitmap)
+            texture.Tex = stars.CreateCoverShared(cell.FullCover, out texture.U, out texture.V);
             if (texture.Tex == IntPtr.Zero) sondeoMemoriaPedido = true;   // quiza falta memoria: volver a preguntar cuanta hay (PrecargaPaginaGpu.cs)
             texture.Bw = cell.FullCover.Width; texture.Bh = cell.FullCover.Height;
-            texture.Opaca = texture.Tex != IntPtr.Zero && InteriorOpaco(cell.FullCover);   // el cielo no se pinta debajo (DibujoLigeroGpu.cs); dentro del coste medido
+            texture.Opaca = texture.Tex != IntPtr.Zero && InteriorOpaco(cell.FullCover, Form1.FormatoPortada == FormatoMapa.PArgb32 || Form1.FormatoPortada == FormatoMapa.Argb32);   // el cielo no se pinta debajo (DibujoLigeroGpu.cs); dentro del coste medido   // EN LINUX: InteriorOpaco(Bitmap) miraba el formato (Image.IsAlphaPixelFormat o de paleta): un SKBitmap no lo guarda y se lo dice el de XP de la portada (Form1.FormatoPortada: Format32bppPArgb, con alfa: se mira punto a punto)
             long spent = Stopwatch.GetTimestamp() - start; nativeUploadCost = CargaTrabajo.AprendeCoste(nativeUploadCost, spent);
             if (CoverControl != null) CoverControl.Spend(spent);
             if (texture.Tex != IntPtr.Zero) { nativeCovers[cell.FullCover] = texture; cellBytesDirty = true; }
@@ -254,12 +254,12 @@ namespace Rocola
         }
         private bool DiscardUnusedNative(bool allowAdjacent)
         {
-            Rocola.Dibujo2D.Bitmap victim = null; int oldest = 0;   // EN LINUX: Bitmap de la capa, escrito entero
-            foreach (KeyValuePair<Rocola.Dibujo2D.Bitmap, CellTex> row in nativeCovers) {   // EN LINUX: Bitmap de la capa, escrito entero
+            SKBitmap victim = null; int oldest = 0;   // EN LINUX: Bitmap: un SKBitmap
+            foreach (KeyValuePair<SKBitmap, CellTex> row in nativeCovers) {   // EN LINUX: Bitmap: un SKBitmap
                 int age = unchecked(cellFrame - row.Value.Frame);
                 if (age > oldest && !protectedNativeAhead.Contains(row.Key)) { oldest = age; victim = row.Key; }
             }
-            if (victim == null && allowAdjacent) foreach (KeyValuePair<Rocola.Dibujo2D.Bitmap, CellTex> row in nativeCovers) {   // EN LINUX: Bitmap de la capa, escrito entero
+            if (victim == null && allowAdjacent) foreach (KeyValuePair<SKBitmap, CellTex> row in nativeCovers) {   // EN LINUX: Bitmap: un SKBitmap
                 int age = unchecked(cellFrame - row.Value.Frame); if (age > oldest) { oldest = age; victim = row.Key; }
             }
             if (victim == null) return false;

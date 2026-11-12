@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Drawing;   // EN LINUX: aqui no se dibuja: el indice del archivo de miniaturas solo las entrega; son Bitmap de la capa (Dibujo2D.cs) porque las hace FromBytes (CaratulasAdaptativas.cs, aun sin traducir), y el tipo va escrito entero donde aparece
+using System.Drawing; using SkiaSharp;   // EN LINUX: aqui no se dibuja: el indice del archivo de miniaturas solo las entrega, como SKBitmap (las hace FromBytes, CaratulasAdaptativas.cs)
 namespace Rocola
 {
     internal sealed partial class GpuPreviewStore
@@ -132,9 +132,9 @@ namespace Rocola
             catch { return null; }
             finally { if (own != null) own.Dispose(); }
         }
-        internal Rocola.Dibujo2D.Bitmap[] GetBatch(string[] identities)   // EN LINUX: las miniaturas, Bitmap de la capa (las hace FromBytes, CaratulasAdaptativas.cs, aun sin traducir), escrito entero
+        internal SKBitmap[] GetBatch(string[] identities)   // EN LINUX: Bitmap[]: las miniaturas, SKBitmap (FromBytes)
         {
-            Rocola.Dibujo2D.Bitmap[] result = new Rocola.Dibujo2D.Bitmap[identities.Length];   // EN LINUX: Bitmap de la capa, escrito entero
+            SKBitmap[] result = new SKBitmap[identities.Length];   // EN LINUX: Bitmap[]: SKBitmap
             lock (sync) {
                 Load();
                 List<int> sorted = new List<int>();
