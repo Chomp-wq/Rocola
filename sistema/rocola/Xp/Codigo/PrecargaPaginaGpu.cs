@@ -61,7 +61,7 @@ namespace Rocola
         // Sin estado del formulario, para poder probarlo solo. Todo lo que dibuja va a mapas de bits propios que se sueltan aqui mismo.
         internal static void PrecalientaPiezaGpuEn(int paso, int w, int h, bool doce, bool transparente, bool opaco, int insignia)
         {
-            string fam = FamiliaUi().Name;   // EN LINUX: FontFamily fam = FamiliaUi(): la familia de la interfaz (Form1.Ajustes.cs da un FontFamily de la capa) por su nombre, que es lo que piden la Letra y los hornos ya traducidos
+            string fam = FamiliaUi();   // EN LINUX: FontFamily fam = FamiliaUi() -> su nombre: FamiliaUi (Form1.Ajustes.cs) da el nombre de la familia de la interfaz (Nativo/Letras.cs), que es lo que piden la Letra y los hornos
             switch (paso)
             {
                 case 3:   // el panel del estado extendido y su reloj
