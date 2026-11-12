@@ -96,7 +96,7 @@ namespace Banco
         // sin Graphics, sin letra y sin texto (0); AnchoTexto(string, Font)
         private static void Anchos()
         {
-            Font[] fs = Fuentes(); MethodInfo con = Metodo("AnchoTexto", typeof(Graphics), typeof(string), typeof(Font)), sin = ConFont("AnchoTexto");
+            Font[] fs = Fuentes(); MethodInfo con = Metodo("AnchoTexto", typeof(Graphics), typeof(string), typeof(Font)); Func<string, Font, object> sin = ConFont("AnchoTexto");
             using (Bitmap b = new Bitmap(64, 32, PixelFormat.Format32bppPArgb))
                 for (int fi = 0; fi < fs.Length; fi++) for (int ti = 0; ti < Textos.Length; ti++)
                 {
