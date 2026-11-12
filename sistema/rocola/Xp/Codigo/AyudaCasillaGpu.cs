@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de AYUDA, su signo y su horno dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (CtrlDot, CtrlTxt, CtrlTri) y quien todavia la pinta con un Graphics (OnPaint, DrawCtrlOverlay de Form1.Video.cs) pasan por el puente (Plataforma/Puente.cs y Puente.asistente.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de AYUDA, su signo y su horno dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; CtrlDot, CtrlTxt y CtrlTri (Form1.Pared.cs) y DrawCtrlOverlay (Form1.Video.cs) ya estan traducidos y la llaman directo, y su Pinta (lo que era su OnPaint) tambien, sin puente (Plataforma/Puente.asistente.cs ya no tiene nada de esta casilla); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
@@ -14,22 +14,22 @@ namespace Rocola
     {
         private AyudaView ayudaView;
 
-        private partial class AyudaView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.asistente.cs)
+        private class AyudaView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vista-ayuda: W3d): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control; ya no es partial: sin la firma de XP de RenderContent con un Graphics (su OnPaint) en el puente, que ya no hace falta
         {
             public bool Compacta;           // sin la palabra AYUDA cuando la fila va justa (1024x768)
             public bool Abierta;            // con la ayuda en pantalla la casilla queda encendida fija
             private Rocola.Nativo.Letra fTxt; private float fAlto = -1f;   // EN LINUX: la letra de la casilla, una Letra (Nativo/Letras.cs; Form1 tiene un metodo Letra)
-
+            private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public bool ParaElTabulador { get { return false; } }   // EN LINUX: lo que heredaba de Control y usa la rocola (lo de IVista), de su CajaVista (Nativo/IVista.cs): misma semantica (SetBounds y Visible con el mismo valor no avisan; Visible es la suya y la de su dueno, GetVisibleCore); ParaElTabulador, el TabStop = false del constructor (abajo)
             public AyudaView()
             {
-                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
-                BackColor = Color.Transparent;
-                TabStop = false;
+                caja = new CajaVista(this);   // EN LINUX: SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera (la pantalla compone con transparencia); no toca Selectable ni StandardClick (los de fabrica de Control, que el hueco conserva)
+                // EN LINUX: BackColor = Color.Transparent: el OnPaintBackground de fabrica con un color transparente no pinta nada (en XP pintaba lo del padre debajo; aqui la pantalla compone con transparencia): Pinta no pinta fondo
+                // EN LINUX: TabStop = false: su ParaElTabulador (IVista, arriba) es false: en la ventana de la capa su hueco no es parada del tabulador, como el control de XP; en la pantalla nativa las teclas van a la ventana (Form1.ProcessCmdKey) y el tabulador aun no recorre vistas (Nativo/PantallaRocola.Vistas.cs)
             }
-            protected override void Dispose(bool disposing)
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 try { if (disposing && fTxt != null) { fTxt.Dispose(); fTxt = null; } }
-                finally { base.Dispose(disposing); }
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
             }
             private static int Sim(int alto) { int d = (int)(alto * 0.52f); if (d < 12) d = 12; if (d > 30) d = 30; return d; }
 
@@ -62,10 +62,10 @@ namespace Rocola
                 return new RectangleF(11, (Height - lado) / 2f, lado, lado);
             }
 
-            protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }
+            public void Pinta(SKCanvas g) { RenderContent(g, false, false, false); }   // EN LINUX: protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }: la pinta la pantalla (IVista.Pinta) en su lienzo, con el estado del Graphics de un WM_PAINT de la capa (Graphics.FromImage: sin copia ni medio pixel, Escritorio.PintaSolo); el suavizado y el modo de letra que la firma de XP le dejaba al Graphics se iban con el
 
             // forGpu: el signo NO va en la textura (lo pone la tarjeta, moviendose); sin tarjeta, fijo.
-            public void RenderContent(SKCanvas g, bool copia, bool medio, bool forGpu)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama que aqui no se pone (la copia y el medio pixel); quien aun pasa un Graphics (OnPaint, arriba, y DrawCtrlOverlay de Form1.Video.cs) llega por el puente (Plataforma/Puente.asistente.cs), que le deja al Graphics el suavizado y el modo de letra que le deja XP
+            public void RenderContent(SKCanvas g, bool copia, bool medio, bool forGpu)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama que aqui no se pone (la copia y el medio pixel); la llaman directo su Pinta (arriba) y DrawCtrlOverlay (Form1.Video.cs)
             {
                 int w = Width, h = Height;
                 if (w < 30 || h < 12) return;

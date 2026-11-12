@@ -240,8 +240,9 @@ namespace Rocola
             private readonly IVista vista;
             internal bool Quitado;
             internal IVista Vista { get { return vista; } }
-            // (panel-del-disco) el hueco de una vista que no toma el foco del teclado es un Panel: ni Selectable ni TabStop
-            internal HuecoDeVista(IVista v) { vista = v; if (!v.Seleccionable) { SetStyle(ControlStyles.Selectable, false); TabStop = false; } }
+            // (panel-del-disco) el hueco de una vista que no toma el foco del teclado es un Panel: ni Selectable ni TabStop; (vista-ayuda,
+            // revision) si no, el TabStop que XP le pone a la vista, como si heredara
+            internal HuecoDeVista(IVista v) { vista = v; if (!v.Seleccionable) SetStyle(ControlStyles.Selectable, false); TabStop = v.Seleccionable && v.ParaElTabulador; }
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
             internal static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }

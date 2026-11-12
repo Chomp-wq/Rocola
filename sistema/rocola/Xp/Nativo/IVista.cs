@@ -57,6 +57,10 @@ namespace Rocola
         // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Solo lo
         // mira el hueco de la capa de la transicion (Plataforma/Anfitrion.cs); la pantalla nativa no da el foco del teclado a las vistas.
         bool Seleccionable { get { return true; } }
+        // SI EL TABULADOR SE PARA EN ELLA (Control.TabStop: true de fabrica, Control.cs, TabStop; SelectNextControl con tabStopOnly solo elige
+        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
+        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; la lista nativa aun no recorre vistas con el tabulador (oleada 6c).
+        bool ParaElTabulador { get { return true; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que
