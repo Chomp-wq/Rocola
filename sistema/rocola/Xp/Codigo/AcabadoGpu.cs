@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (las paginas horneadas de la lista, PintaPagina, DegradadoV, CtrlDirLeft y CtrlDirRight, las piezas de la tarjeta, el buscador) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (las piezas de la tarjeta, que aun van como Bitmap) pasa por el puente (Plataforma/Puente.cs); RoundedPath (Form1.Fondo.cs), DegradadoV (PulidoGpu.cs) y lo demas, ya traducidos, se llaman directo (ContornoRedondo da el SKPath de RoundedPath)
 namespace Rocola
 {
     public partial class Form1
@@ -209,7 +209,7 @@ namespace Rocola
             }
             public void RenderTransparentGpuMode(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, bool glass)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del Graphics (suavizado, copia, filtro y medio pixel)
             { RenderTransparentGpuTint(g, suave, copia, filtro, medio, glass, false, Color.White); }   // EN LINUX: con el lienzo y su estado
-            public void RenderTransparentGpuTint(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, bool glass, bool tinted, Color tint)   // EN LINUX: el lienzo de Skia y el estado del Graphics, como parametros; EnsureUiOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
+            public void RenderTransparentGpuTint(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, bool glass, bool tinted, Color tint)   // EN LINUX: el lienzo de Skia y el estado del Graphics, como parametros; EnsureUiOverlay (Form1.Video.cs, ya traducido) la llama directo
             {
                 pintandoGpu = true;   // la fila elegida, dentro del cristal (Form1.Vistas.cs, DentroDelCristal)
                 int w = ClientSize.Width, h = ClientSize.Height;
@@ -257,7 +257,7 @@ namespace Rocola
                 { SKBitmap p = hornoPag; int x = GpuSlideVertical ? 0 : (int)d, y = GpuSlideVertical ? (int)d : 0; Imagenes.Pinta(g, p, new SKRect(0, 0, p.Width, p.Height), new SKRect(x, y, x + p.Width, y + p.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(hornoPag, x, y)
             }
         }
-        private void DrawSongPagerGpu(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics (suavizado, modo de letra, copia y medio pixel), como parametros; EnsureUiOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
+        private void DrawSongPagerGpu(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics (suavizado, modo de letra, copia y medio pixel), como parametros; EnsureUiOverlay (Form1.Video.cs, ya traducido) la llama directo
         {
             Rectangle r = songPager.Bounds;
             int pages = songPager.Pages, page = songPager.Page;
@@ -344,9 +344,9 @@ namespace Rocola
             SKBitmap b = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage(b): un lienzo nuevo (estado de fabrica; el suavizado, abajo)
             using (SKPath edge = ContornoRedondo(new Rectangle(1, 1, w - 3, h - 3), Math.Min(28, Math.Min(w, h) / 4)))   // EN LINUX: RoundedPath devuelve un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo)
-            using (Rocola.Dibujo2D.Brush cuerpo = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: DegradadoV (PulidoGpu.cs, aun sin traducir) devuelve un Brush de GDI+ (un degradado o, con la interfaz tramada, una textura): su SKPaint, abajo
+            using (SKShader cuerpo = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: using (Brush body = DegradadoV(...)): DegradadoV (PulidoGpu.cs, ya traducido) da el shader del pincel (un degradado o, con la interfaz tramada, una textura), con el medio pixel de este lienzo (el de fabrica: false); el pincel, abajo
                 neutral ? Color.FromArgb(205, 55, 55, 55) : Color.FromArgb(205, 26, 37, 59),
-                neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31))) using (SKPaint body = PuenteDibujo.Pincel(cuerpo, false)) using (body.Shader)   // C4 (PulidoGpu.cs)   // EN LINUX: el pincel de GDI+ en un SKPaint (su shader, con el medio pixel de este lienzo: el de fabrica), por el puente; el shader se suelta con el
+                neutral ? Color.FromArgb(218, 24, 24, 24) : Color.FromArgb(218, 9, 16, 31), false)) using (SKPaint body = new SKPaint { Shader = cuerpo })   // C4 (PulidoGpu.cs)   // EN LINUX: el shader en un SKPaint (el color de fabrica, negro opaco, como el que le ponia el pincel de GDI+: el shader manda); el shader se suelta con su using, como el Brush
             using (SKShader brillo = Degradado.Lineal(new Rectangle(0, 0, w, h),   // EN LINUX: new LinearGradientBrush(caja, a, b, 115): su shader (Nativo/Degradado.cs) en un SKPaint (abajo)
                 neutral ? Color.FromArgb(36, 255, 255, 255) : Color.FromArgb(36, 210, 230, 255), Color.FromArgb(0, 210, 230, 255), 115f)) using (SKPaint sheen = new SKPaint { Shader = brillo })   // EN LINUX: el pincel del degradado
             using (SKPaint rim = new SKPaint { Color = (neutral ? Color.FromArgb(120, 255, 255, 255) : Color.FromArgb(96, 193, 222, 255)).Sk(), StrokeWidth = 1.3f })   // EN LINUX: Pen(color, 1,3)

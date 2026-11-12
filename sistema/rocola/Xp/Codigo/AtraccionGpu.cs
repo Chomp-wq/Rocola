@@ -23,7 +23,7 @@
 // pantalla, una cosa por vuelta y solo cuando cambia; en cada cuadro solo se calculan posiciones y transparencias.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la ficha del escaparate, los mensajes y la lista de la noche se hornean con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido (el trazo redondo de PantallaVivaGpu.cs y las portadas de Form1.Biblioteca.cs y de la vista de la atraccion) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la ficha del escaparate, los mensajes y la lista de la noche se hornean con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; el trazo redondo (RutaRedonda, PantallaVivaGpu.cs, ya traducido) se llama directo; lo que aun no esta traducido (las portadas de Form1.Biblioteca.cs y de la vista de la atraccion) pasa por el puente (Plataforma/Puente.cs)
 using System.Globalization;
 using System.Text;
 
@@ -786,10 +786,10 @@ namespace Rocola
             float w = AnchoPastilla(ajuste, txt, f, alto);   // EN LINUX: medir solo pide el modo de letra
             if (x + w > maxX) return -1f;
             RectangleF r = new RectangleF(x, y, w, alto);
-            using (Rocola.Dibujo2D.GraphicsPath p = Redondo(r, alto * .5f))   // EN LINUX: el trazo redondo lo hace PantallaVivaGpu.cs (aun sin traducir) como GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+            using (SKPath p = RutaRedonda(r, alto * .5f))   // EN LINUX: GraphicsPath p = Redondo(...): RutaRedonda (PantallaVivaGpu.cs, ya traducido) da el mismo trazo que Redondo como SKPath (el mismo relleno par-impar y la figura cerrada), que se suelta como en XP
             {
-                using (SKPaint b = new SKPaint { Color = Color.FromArgb(72, 0, 0, 0).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
-                using (SKPaint pe = new SKPaint { Color = Color.FromArgb(220, c).Sk(), StrokeWidth = 1.4f }) Pixel.Traza(g, PuenteDibujo.Ruta(p), pe, suave);   // EN LINUX: Pen(color, 1.4) y g.DrawPath
+                using (SKPaint b = new SKPaint { Color = Color.FromArgb(72, 0, 0, 0).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                using (SKPaint pe = new SKPaint { Color = Color.FromArgb(220, c).Sk(), StrokeWidth = 1.4f }) Pixel.Traza(g, p, pe, suave);   // EN LINUX: Pen(color, 1.4) y g.DrawPath
             }
             TextoCentrado(g, ajuste, txt, f, c, r);   // EN LINUX: el lienzo y su modo de letra
             return x + w + alto * .45f;
@@ -800,10 +800,10 @@ namespace Rocola
             float w = AnchoPastilla(ajuste, txt, f, alto);   // EN LINUX: medir solo pide el modo de letra
             if (x + w > maxX) return x;
             RectangleF r = new RectangleF(x, y, w, alto);
-            using (Rocola.Dibujo2D.GraphicsPath p = Redondo(r, alto * .5f))   // EN LINUX: el trazo redondo de PantallaVivaGpu.cs (aun sin traducir), como arriba
+            using (SKPath p = RutaRedonda(r, alto * .5f))   // EN LINUX: GraphicsPath p = Redondo(...): RutaRedonda, como arriba
             {
-                using (SKPaint b = new SKPaint { Color = Color.FromArgb(70, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
-                using (SKPaint pe = new SKPaint { Color = Color.FromArgb(190, c).Sk(), StrokeWidth = 1.4f }) Pixel.Traza(g, PuenteDibujo.Ruta(p), pe, suave);   // EN LINUX: Pen(color, 1.4) y g.DrawPath
+                using (SKPaint b = new SKPaint { Color = Color.FromArgb(70, c).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                using (SKPaint pe = new SKPaint { Color = Color.FromArgb(190, c).Sk(), StrokeWidth = 1.4f }) Pixel.Traza(g, p, pe, suave);   // EN LINUX: Pen(color, 1.4) y g.DrawPath
             }
             TextoCentrado(g, ajuste, txt, f, Lighten(c, .45), r);   // EN LINUX: el lienzo y su modo de letra
             return x + w + alto * .45f;
@@ -1008,8 +1008,8 @@ namespace Rocola
                     using (SKPaint b = new SKPaint { Color = AtrTitulo.Sk() }) Renglon(g, ajuste, f.Titulo, fTit, b, new RectangleF(tx, y0 + rh * .10f, tw, rh * .46f), una, .62f);   // EN LINUX: SolidBrush; el lienzo y su modo de letra
                     using (SKPaint b = new SKPaint { Color = AtrTenue.Sk() }) Renglon(g, ajuste, f.Artista, fArt, b, new RectangleF(tx, y0 + rh * .54f, tw, rh * .34f), una);   // EN LINUX: SolidBrush; el lienzo y su modo de letra
                     // El carril de la barra (la barra la pone la tarjeta, creciendo).
-                    using (Rocola.Dibujo2D.GraphicsPath p = Redondo(new RectangleF(barraX, y0 + barraDy, barraW, barraH), barraH * .5f))   // EN LINUX: el trazo redondo lo hace PantallaVivaGpu.cs (aun sin traducir) como GraphicsPath: se pinta su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
-                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(22, 255, 255, 255).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPath p = RutaRedonda(new RectangleF(barraX, y0 + barraDy, barraW, barraH), barraH * .5f))   // EN LINUX: GraphicsPath p = Redondo(...): RutaRedonda (PantallaVivaGpu.cs, ya traducido) da el mismo trazo que Redondo como SKPath (el mismo relleno par-impar y la figura cerrada), que se suelta como en XP
+                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(22, 255, 255, 255).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
                     using (SKPaint b = new SKPaint { Color = AtrAmbar.Sk() }) TextoGdiPlus.Escribe(g, TextoVeces(f.Veces), fVeces, ajuste, b, new RectangleF(ancho - vecesW, y0, vecesW, rh), der);   // EN LINUX: SolidBrush y g.DrawString
                 }
             }
@@ -1036,18 +1036,18 @@ namespace Rocola
         private static void Tapa(SKCanvas g, bool suave, AjusteLetra ajuste, Filtro filtro, RectangleF r, SKBitmap portada, FilaNoche f)   // EN LINUX: el lienzo de Skia y su estado (suavizado, modo de letra y filtro; el medio pixel y la copia, los de fabrica de quien llama); la portada, sus puntos
         {
             float rad = Math.Max(4f, r.Width * .10f);
-            using (Rocola.Dibujo2D.GraphicsPath p = Redondo(r, rad))   // EN LINUX: el trazo redondo de PantallaVivaGpu.cs (aun sin traducir), como GraphicsPath: se usa su SKPath (PuenteDibujo.Ruta, el mismo) y se suelta como en XP
+            using (SKPath p = RutaRedonda(r, rad))   // EN LINUX: GraphicsPath p = Redondo(...): RutaRedonda (PantallaVivaGpu.cs, ya traducido) da el mismo trazo que Redondo como SKPath (el mismo relleno par-impar y la figura cerrada), que se suelta como en XP
             {
                 if (portada != null)
                 {
                     int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): el lienzo (el estado del dibujo va en variables y aqui no cambia)
-                    g.ClipPath(PuenteDibujo.Ruta(p), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(p): el recorte del trazo dentro del Save (no habia otro que reemplazar), de pixeles enteros, sin suavizar, como las regiones de recorte de GDI+
+                    g.ClipPath(p, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(p): el recorte del trazo dentro del Save (no habia otro que reemplazar), de pixeles enteros, sin suavizar, como las regiones de recorte de GDI+
                     try { Imagenes.Pinta(g, portada, new SKRect(0, 0, portada.Width, portada.Height), new SKRect(r.Left, r.Top, r.Right, r.Bottom), filtro); } catch { }   // EN LINUX: g.DrawImage(portada, r): la imagen entera en la caja (Nativo/Imagenes.cs), con el filtro de quien llama
                     g.RestoreToCount(st);   // EN LINUX: g.Restore(st): se va el recorte
                     return;
                 }
                 Color c = f.Color;
-                using (SKShader degradado = Degradado.Lineal(r, Lighten(c, .15), Color.FromArgb(255, c.R / 2, c.G / 2, c.B / 2), 45f)) using (SKPaint lg = new SKPaint { Shader = degradado }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), lg, suave);   // EN LINUX: LinearGradientBrush(caja, a, b, 45): su shader (Nativo/Degradado.cs) en un SKPaint, y g.FillPath (Nativo/Pixel.cs)
+                using (SKShader degradado = Degradado.Lineal(r, Lighten(c, .15), Color.FromArgb(255, c.R / 2, c.G / 2, c.B / 2), 45f)) using (SKPaint lg = new SKPaint { Shader = degradado }) Pixel.Rellena(g, p, lg, suave);   // EN LINUX: LinearGradientBrush(caja, a, b, 45): su shader (Nativo/Degradado.cs) en un SKPaint, y g.FillPath (Nativo/Pixel.cs)
                 string ini = Iniciales(f.Artista.Length > 0 ? f.Artista : f.Titulo);
                 using (Rocola.Nativo.Letra fi = Letra(Math.Max(10f, r.Height * .34f))) TextoCentrado(g, ajuste, ini, fi, Color.FromArgb(235, 255, 255, 255), r);   // EN LINUX: Font: una Letra; el lienzo y su modo de letra
             }

@@ -217,7 +217,7 @@ namespace Rocola
         }
 
         // Solo los digitos, con margen para el antialias y para borrar un texto anterior mas largo.
-        internal static int UpdateIdleClockRegion(SKBitmap panel, SKBitmap underlay, string time, int previousRight, out Rectangle dirty)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static int UpdateIdleClockRegion(SKBitmap panel, SKBitmap underlay, string time, int previousRight, out Rectangle dirty)   // EN LINUX: SKBitmap; PrecargaPaginaGpu.cs, ya traducido, la llama directo
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, panel.Height / 260f));
             int x = GpuPanel.IdleCoverRect(panel.Width, panel.Height).Right + 16;
@@ -244,7 +244,7 @@ namespace Rocola
         }
 
         [ThreadStatic] private static byte[] filaReposo;
-        internal static void CopiaRegionReposo(SKBitmap source, Rectangle area, SKBitmap target, Point position)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static void CopiaRegionReposo(SKBitmap source, Rectangle area, SKBitmap target, Point position)   // EN LINUX: SKBitmap; PrecargaPaginaGpu.cs, ya traducido, la llama directo
         {
             int bytes = checked(area.Width * 4);
             if (filaReposo == null || filaReposo.Length < bytes) filaReposo = new byte[bytes];
@@ -265,7 +265,7 @@ namespace Rocola
             // EN LINUX: finally { source.UnlockBits(src); }: lo leido eran los puntos mismos, nada que devolver
         }
 
-        internal static int UpdateIdleClock(SKBitmap panel, SKBitmap underlay, string time)   // EN LINUX: SKBitmap; quien aun pasa Bitmap llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static int UpdateIdleClock(SKBitmap panel, SKBitmap underlay, string time)   // EN LINUX: SKBitmap; PrecargaPaginaGpu.cs, ya traducido, la llama directo
         {
             CopiaRegionReposo(underlay, new Rectangle(0, 0, underlay.Width, underlay.Height), panel, new Point(0, panel.Height - underlay.Height));
             using (SKCanvas g = new SKCanvas(panel))   // EN LINUX: Graphics.FromImage
@@ -332,7 +332,7 @@ namespace Rocola
         { return RenderIdlePanelGrande(w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, null, out progressStart); }
 
         // La letra del titulo del panel (tambien la del titulo que se desliza, SuenaVivoGpu.cs).
-        internal static Rocola.Nativo.Letra LetraTituloReposo(int w, int h)   // EN LINUX: FuenteTituloReposo, con una Letra (Nativo/Letras.cs); con el nombre de XP y una Font sigue en el puente (Plataforma/Puente.reposo.cs) para SuenaVivoGpu.cs, aun sin traducir
+        internal static Rocola.Nativo.Letra LetraTituloReposo(int w, int h)   // EN LINUX: FuenteTituloReposo, con una Letra (Nativo/Letras.cs) en lugar de la Font; la llaman directo este archivo y SuenaVivoGpu.cs (ya traducido), que se hace dueno de la que pide
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
             return Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), Math.Max(22, Math.Min(36 * scale, w / 30f)), true);   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
@@ -343,15 +343,15 @@ namespace Rocola
             string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen, ReposoGrande extra, out int progressStart)   // EN LINUX: las portadas, SKBitmap
         { return RenderIdlePanelEn(null, w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, extra, false, out progressStart); }
 
-        internal static SKBitmap RenderIdlePanelEn(SKBitmap bitmap, int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap; quien aun pasa Bitmap e Image llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static SKBitmap RenderIdlePanelEn(SKBitmap bitmap, int w, int h, string title, string artist, string time,   // EN LINUX: un SKBitmap; PrecargaPaginaGpu.cs, ya traducido, la llama directo
             string[] qt, string[] qa, SKBitmap[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,   // EN LINUX: las portadas, SKBitmap
             ReposoGrande extra, bool opaque, out int progressStart)
         {
             float scale = Math.Max(.8f, Math.Min(1.3f, h / 260f));
             if (bitmap == null || bitmap.Width != w || bitmap.Height != h) bitmap = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             using (SKCanvas g = new SKCanvas(bitmap))   // EN LINUX: Graphics.FromImage
-            using (Rocola.Dibujo2D.Brush degradado = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: DegradadoV (PulidoGpu.cs, aun sin traducir) da un Brush de GDI+, que se suelta como en XP...
-                Color.FromArgb(opaque ? 255 : transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(opaque ? 255 : transparent ? 0 : 248, 7, 12, 29))) using (SKPaint bg = PuenteDibujo.Pincel(degradado, false)) using (bg.Shader)   // C4 (PulidoGpu.cs)   // EN LINUX: ...y se pinta con su color o su shader en un SKPaint (con el medio pixel de fabrica), que se suelta con el
+            using (SKShader degradado = DegradadoV(new Rectangle(0, 0, w, h),   // EN LINUX: using (Brush bg = DegradadoV(...)): DegradadoV (PulidoGpu.cs, ya traducido) da el shader del pincel, con el medio pixel de este lienzo (el de fabrica: false), y se suelta como el Brush en XP...
+                Color.FromArgb(opaque ? 255 : transparent ? 0 : 232, 12, 19, 42), Color.FromArgb(opaque ? 255 : transparent ? 0 : 248, 7, 12, 29), false)) using (SKPaint bg = new SKPaint { Shader = degradado })   // C4 (PulidoGpu.cs)   // EN LINUX: ...en un SKPaint (el color de fabrica, negro opaco, como el que le ponia el pincel de GDI+: el shader manda)
             using (SKPaint top = new SKPaint { Color = Color.FromArgb(155, Lighten(accent, .45)).Sk(), StrokeWidth = 2 })   // EN LINUX: Pen(color, 2)
             using (Rocola.Nativo.Letra small = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), 15 * scale, true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel) (Nativo/Letras.cs)
             using (Rocola.Nativo.Letra normal = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), 20 * scale, true))   // EN LINUX: new Font("Trebuchet MS", px, Bold, Pixel)
@@ -382,7 +382,7 @@ namespace Rocola
                     TextoGdiPlus.Escribe(g, title ?? "", big, ajuste, white, new RectangleF(tx, 56, tw, titleH), wrap, false, false);   // EN LINUX: g.DrawString
                     PintaTextoMovil(g, ajuste, false, false, artist ?? "", normal, color, new RectangleF(tx, artistY, tw, Math.Max(22, h - 82 - artistY)), line);   // EN LINUX: con el lienzo y su estado
                 }
-                else PintaTituloGrandeReposo(g, suave, ajuste, false, false, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea   // EN LINUX: PintaTituloGrande (SuenaVivoGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
+                else PintaTituloGrande(g, suave, ajuste, false, false, extra, title, artist, big, normal, small, white, color, line, tx, tw);   // en una linea   // EN LINUX: PintaTituloGrande (SuenaVivoGpu.cs, ya traducido), directo, con el lienzo y su estado, las mismas Letra y los mismos pinceles (de un color: SolidBrush) y formato
                 if (badgeKind != 0)
                 {
                     Rectangle badge = GpuPanel.IdleBadgeRect(w, h);
@@ -428,7 +428,7 @@ namespace Rocola
                     string enMin = (extra != null) ? TextoMinutosCola(extra, i) : "";   // "en ~6 min" (SuenaVivoGpu.cs)
                     if (enMin.Length == 0)
                         PintaTextoMovil(g, ajuste, false, false, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, new RectangleF(textX, textY + titleHeight, textW, detailHeight), line);   // EN LINUX: con el lienzo y su estado
-                    else PintaMinutosColaReposo(g, suave, ajuste, false, false, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, detailHeight, line);   // EN LINUX: PintaMinutosCola (SuenaVivoGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
+                    else PintaMinutosCola(g, suave, ajuste, false, false, enMin, i < qa.Length ? qa[i] ?? "" : "", queueArtist, muted, compact, textX, textY + titleHeight, textW, detailHeight, line);   // EN LINUX: PintaMinutosCola (SuenaVivoGpu.cs, ya traducido), directo, con el lienzo y su estado, la misma Letra, el mismo pincel y el mismo formato
                     if (compact)
                     {
                         RectangleF label = IdleQueueNumberRect(r, queueIndex.AltoRenglon);   // EN LINUX: GetHeight(g)

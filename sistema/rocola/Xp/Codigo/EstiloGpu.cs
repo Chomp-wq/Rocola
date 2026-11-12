@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las letras de las etiquetas, TextoConCinta, PintaArtistaCompacto) pasa por el puente (Plataforma/Puente.cs y Puente.acabado-estilo.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las letras de las etiquetas (WinForms, aun sin traducir) le llegan por el puente (Plataforma/Puente.cs); RoundedPath (Form1.Fondo.cs), TextoConCinta y PintaArtistaCompacto (TextoMovilGpu.cs), ya traducidos, se llaman directo
 
 namespace Rocola
 {
@@ -90,16 +90,16 @@ namespace Rocola
 
         // La tarjeta de lo que suena, de lejos, en la imagen de la franja (EnsureUiBotOverlay; 'g' ya va trasladado a
         // coordenadas del form). Devuelve false si la idea esta apagada: entonces se pinta la de siempre.
-        private bool FranjaLejos(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja (suavizado, modo de letra, copia y medio pixel), como parametros; EnsureUiBotOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
+        private bool FranjaLejos(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja (suavizado, modo de letra, copia y medio pixel), como parametros; EnsureUiBotOverlay (Form1.Video.cs, ya traducido) la llama directo
         {
             if (!LetraLejosActiva()) return false;
             int baja = BajaArtistaLejos();
             PintaTituloCompacto(g, suave, ajuste, copia, medio, true);   // EN LINUX: con el lienzo y su estado
-            int st = g.Save(); Rocola.Dibujo2D.Graphics gg = PuenteDibujo.GraphicsAcabado(g, suave, ajuste, copia, medio);   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui no cambia); gg: el Graphics de XP para lo de abajo que aun no esta traducido, sobre el mismo lienzo y con el estado de la franja (Plataforma/Puente.acabado-estilo.cs)
-            g.Translate(0, baja);   // el renglon del artista baja, con su pastilla y su letrero   // EN LINUX: g.TranslateTransform(0, baja) (gg pinta en este mismo lienzo: lo ve)
-            PintaArtistaCompacto(gg);   // EN LINUX: PintaArtistaCompacto (TextoMovilGpu.cs, aun sin traducir) pinta con un Graphics: gg
-            if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, ajuste, copia, medio, lblMejorada);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado (el que llevaba gg)
-            if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, Filtro.Bilineal, medio, pastGenero);   // EN LINUX: DrawCtrlOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado (el que llevaba gg: el filtro de fabrica, Bilinear)
+            int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui no cambia)
+            g.Translate(0, baja);   // el renglon del artista baja, con su pastilla y su letrero   // EN LINUX: g.TranslateTransform(0, baja)
+            PintaArtistaCompacto(g, ajuste, copia, medio);   // EN LINUX: PintaArtistaCompacto(g): la de TextoMovilGpu.cs, ya traducida, directo, con el lienzo y lo que pesa de su estado en el texto (el modo de letra, la copia y el medio pixel)
+            if (lblMejorada != null && lblMejorada.Visible) DrawLabelOverlay(g, ajuste, copia, medio, lblMejorada);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado
+            if (pastGenero != null && pastGenero.Visible) DrawCtrlOverlay(g, suave, ajuste, copia, Filtro.Bilineal, medio, pastGenero);   // EN LINUX: DrawCtrlOverlay (Form1.Video.cs, ya traducida) con el lienzo y su estado (el filtro, el de fabrica del Graphics: Bilinear)
             g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
             PintaSiguienteCompacto(g, suave, ajuste, copia, medio);   // EN LINUX: con el lienzo y su estado
             return true;
@@ -182,7 +182,7 @@ namespace Rocola
         // Un renglon de la franja de lejos. Si no cabe, se recorta aqui y termina en puntos suspensivos (U+2026): asi sale
         // igual con cualquier GDI+. Alineado a la derecha, el recorte propio de GDI+ no se porta igual en todas partes
         // (en alguno se come el principio en vez del final).
-        private static void PintaRenglonLejos(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, string texto, Rocola.Nativo.Letra f, Color c, RectangleF r, Alinea al)   // EN LINUX: el lienzo de Skia y el estado del Graphics, la letra nativa y la alineacion nativa (StringAlignment); TextoMovilGpu.cs (aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
+        private static void PintaRenglonLejos(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, string texto, Rocola.Nativo.Letra f, Color c, RectangleF r, Alinea al)   // EN LINUX: el lienzo de Skia y el estado del Graphics, la letra nativa y la alineacion nativa (StringAlignment); la llaman directo este archivo y TextoMovilGpu.cs (ya traducido)
         {
             // EN LINUX: using (StringFormat sf = GenericTypographic.Clone()): la copia es un FormatoTexto, que no se suelta (abajo, dentro)
             using (SKPaint b = new SKPaint { Color = c.Sk() })   // EN LINUX: SolidBrush(c)
@@ -192,7 +192,7 @@ namespace Rocola
                 // Le pasaba al titulo sin tarjeta al lado: su letra crece justo hasta llenar el renglon.
                 sf.Banderas &= ~BanderasTexto.SoloEnteros;   // EN LINUX: FormatFlags &= ~LineLimit
                 sf.Horizontal = al; sf.Vertical = Alinea.Centro;   // EN LINUX: Alignment = al; LineAlignment = Center
-                if (!TextoConCintaAcabado(g, suave, ajuste, copia, medio, texto, f, c, r, sf))   // EN LINUX: TextoConCinta (TextoMovilGpu.cs, aun sin traducir) pide un Graphics, una Font y un StringFormat: por el puente (Plataforma/Puente.acabado-estilo.cs)
+                if (!TextoConCinta(g, ajuste, texto, f, c, r, sf))   // EN LINUX: TextoConCinta (TextoMovilGpu.cs, ya traducido), directo, con el lienzo y su modo de letra (lo unico del estado que mira), la Letra y el MISMO formato
                     TextoGdiPlus.Escribe(g, RecortaLejos(ajuste, texto, f, r.Width - 1f), f, ajuste, b, r, sf, copia, medio);   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
             }
         }
