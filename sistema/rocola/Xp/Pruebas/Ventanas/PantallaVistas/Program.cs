@@ -707,12 +707,17 @@ static class P
             PantallaRocola.RatonRueda(-1); Bombea(30);
             Mira("sin la capa, la de la tarjeta: rueda", Log(), "G.Rueda(0),oye-rueda(-120)", FTar);
             PantallaRocola.FocoDeLaVentana = null;
+            // (revision) quitarla y volverla a poner: la ventana vuelve a ensenarse y recibe su WM_PAINT (y vuelve a su sitio del orden)
+            PantallaRocola.QuitaVista(g); Bombea(150); log.Clear();
+            PantallaRocola.AgregaVista(null, g); PantallaRocola.VistaAlFondo(a); Bombea(150);
+            Mira("sin la capa, la de la tarjeta: quitar y volver a poner", Log(), "G.Pinta", "Controls.Remove y Controls.Add otra vez: SetParent y ShowWindow de la ventana, WM_PAINT");
             Mira("sin la capa, la de la tarjeta: minimizada", PantallaRocola.VentanaMinimizada(g) + "", "False", "la ventana de la rocola es la pantalla: no se minimiza");
             PantallaRocola.OlvidaTarjeta(sup);
             l.Clear(); PantallaRocola.CapasDeLaVentana(l);
             Mira("sin la capa, la de la tarjeta: olvida", l.Count == 3 ? l[1].Textura + "" : "(" + l.Count + ")", "0", "Release del dispositivo: la ventana ya no tiene fondo");
             PantallaRocola.SueltaSuperficie(g);
             Mira("sin la capa, la de la tarjeta: soltada", PantallaRocola.PresentaTarjeta(sup, tex, 120, 90, false) + "", "False", "una ventana destruida ya no recibe Present");
+            Mira("sin la capa, la de la tarjeta: soltada sale de la ventana", PantallaRocola.IndiceDe(g) + "", "-1", "(revision) Control.Dispose con disposing: «_parent.Controls.Remove(this)» (Control.cs:5348-5350)");
             TexturasGl.Borra(tex);
         }
         finally

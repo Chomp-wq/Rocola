@@ -182,6 +182,7 @@ namespace Rocola
         internal static void QuitaVista(object v)
         {
             IVista iv = v as IVista; ILaCapa c = LaCapa;
+            if (iv != null) { tarjetasQueSeVen.Remove(iv); tarjetasPorPintar.Remove(iv); }   // (gpupanel-sin-control, revision: una de la tarjeta que vuelve a entrar se ensena otra vez y recibe su WM_PAINT)
             IVista dueno = PadreDe(iv);
             if (dueno != null)   // (dentro de una vista: fuera de las suyas, con lo que tenga dentro)
             {
@@ -623,7 +624,17 @@ namespace Rocola
             if (!superficies.TryGetValue(v, out s)) { s = new Superficie(v, new IntPtr(++ultimaSuperficie)); superficies[v] = s; }
             return s.Id;
         }
-        internal static void SueltaSuperficie(IVista v) { superficies.Remove(v); }
+        // (gpupanel-sin-control, revision) y sale de su dueno: Control.Dispose con disposing (el unico que llama el Dispose de XP: la vista no
+        // tiene finalizador) hace «_parent.Controls.Remove(this)» despues de DestroyHandle (Control.cs:5345-5350); en un hueco de la capa lo
+        // hace el hueco al desecharse (Plataforma/Anfitrion.cs), aqui en la lista nativa
+        internal static void SueltaSuperficie(IVista v)
+        {
+            superficies.Remove(v);
+            ILaCapa c = LaCapa;
+            if (c != null && c.EsSuyaLaVista(v)) return;
+            if (lista.Contains(v) || padre.ContainsKey(v)) QuitaVista(v);
+            tarjetasQueSeVen.Remove(v); tarjetasPorPintar.Remove(v);
+        }
         private static Superficie SuperficieConId(IntPtr id)
         {
             if (id == IntPtr.Zero) return null;

@@ -4532,7 +4532,7 @@ namespace Rocola
                 StopGpu();
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
             }
-            PantallaRocola.SueltaSuperficie(this);   // EN LINUX: base.Dispose(disposing): la ventana del control se destruye (Control.FromHandle ya no la da) y sale de su padre; aqui se suelta su superficie, y sacarla de la ventana lo hace su hueco despues (Plataforma/Anfitrion.cs)
+            PantallaRocola.SueltaSuperficie(this);   // EN LINUX: base.Dispose(disposing): la ventana del control se destruye (Control.FromHandle ya no la da) y sale de su padre; aqui se suelta su superficie y sale de su dueno: en la lista nativa, SueltaSuperficie (Control.Dispose: Controls.Remove); en la ventana de la capa, su hueco despues (Plataforma/Anfitrion.cs)
         }
     }
 }

@@ -191,3 +191,30 @@ y Rueda) es de la pantalla nativa y se queda.
   capa (desde 0x1000), ahora el de la superficie (desde 0x60000001). El reproductor no lo usa (crea el dispositivo con IntPtr.Zero) y las 29
   cintas salen iguales; una cinta nueva comparada byte a byte con una vieja diferiria en ese numero.
 - Una vista de la tarjeta dentro de otra vista (un panel) no se compone en la lista nativa: XP no tiene ninguna.
+
+## Revision (12-11-2026, revisor independiente)
+
+Leido el diff entero (8460045..34d8342) contra Rocola/D3D9Star.cs, Form1.Video.cs y Form1.Biblioteca.cs de XP y la fuente de WinForms
+(/tmp/claude-0/agente-winforms/ref). Comprobado: la herencia, SetStyle y Nativa se van y lo que XP pone queda (UserPaint, AllPaintingInWmPaint
+y Opaque: su hueco no pinta fondo y su WM_PAINT es Escritorio.PintaYa como antes; sin ResizeRedraw; Selectable y TabStop de fabrica, en el
+ciclo del tabulador); Application.Idle, PeekMessage y MsgWaitForMultipleObjectsEx van a PantallaRocola.Libre, HayPendientes y
+EsperaPendientes, lo mismo que hacia la capa (Escritorio.HayMensajes y EsperaMensajes eran esas dos); los cuatro eventos del raton en el
+mismo orden de alta y con los mismos datos; FindForm().WindowState y this.Handle; el TabIndex por coleccion y el Add otra vez y de otro dueno
+como Control.ControlCollection.cs:67-95; ninguna identidad de XP compara el panel; ninguna clase nueva imita a Windows. Lineas y CRLF de los
+tres archivos de Codigo/ iguales a 8460045.
+
+Encontrado y arreglado (commit aparte):
+- SueltaSuperficie (el base.Dispose de XP) solo soltaba la superficie: en la lista nativa la vista se quedaba en la ventana y, como corte de
+  tramos sin textura, tapaba lo de debajo. Control.Dispose con disposing hace «_parent.Controls.Remove(this)» (Control.cs:5348-5350); ahora,
+  fuera de la capa, SueltaSuperficie la quita de su dueno (QuitaVista) y la olvida de las listas del WM_PAINT. En la capa no cambia nada (lo
+  hace el hueco al desecharse). La vista no tiene finalizador, asi que Dispose(false) no llega nunca y quitarla siempre es lo mismo. Nota de
+  D3D9Star.cs:4535 corregida (misma linea).
+- QuitaVista no olvidaba que una vista de la tarjeta «se veia»: al volver a ponerla (Controls.Add otra vez) no recibia su WM_PAINT, y en
+  WinForms la ventana se vuelve a ensenar (SetParent y ShowWindow). Ahora QuitaVista la saca de tarjetasQueSeVen y tarjetasPorPintar.
+- Dos pruebas nuevas en PantallaVistas (sin la capa): quitar y volver a poner da G.Pinta; soltada sale de la ventana (IndiceDe -1).
+
+Comprobaciones repetidas tras el arreglo: build Release --no-incremental 0 errores y los mismos 15 avisos (misma lista archivo:linea que la
+base); diff-xp.py -v igual que el informe (D3D9Star 427/291 con 11 sin marca de otros grupos, Form1.Video 194/193 con 4, Form1.Biblioteca
+98/95 con 2); PantallaVistas 168 de 168; pruebas41 41 de 41; las 29 cintas iguales (6616 cuadros); NativeAOT 0 avisos IL/AOT. No repetidos
+(el arreglo no toca su camino: la ruta de la capa sale antes en SueltaSuperficie y QuitaVista solo anade olvidar dos listas de la ruta
+nativa): pruebas_hoja y pruebas_pantalla (no compilan PantallaRocola.Vistas.cs), recorridos y escenas.
