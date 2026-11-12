@@ -186,6 +186,20 @@ namespace Banco
             throw new MissingFieldException(o.GetType().Name, campo);
         }
         private static object Anidada(string nombre) { return Activator.CreateInstance(typeof(Form1).GetNestedType(nombre, BindingFlags.NonPublic | BindingFlags.Public), true); }
+        // (rotulos-y-letras) LAS PROPIEDADES DE UNA VISTA O UN ROTULO por su nombre: en la referencia son Control o Label de la capa; en la
+        // traduccion, vistas sin herencia (oleadas 5 y 6) y RotuloVista (Nativo/RotuloVista.cs). Donde la traduccion pide una Letra y el arnes
+        // da la Font de la capa, la de esa Font (Font.L: la misma que da PuenteDibujo.Letra); donde pide AlineaTexto y el arnes da
+        // ContentAlignment, el mismo numero.
+        private static void PonP(object o, string p, object v) { PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance); pi.SetValue(o, Adapta(pi.PropertyType, v)); }
+        private static object LeeP(object o, string p) { return o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
+        private static object Adapta(Type destino, object v)
+        {
+            if (v == null || destino.IsInstanceOfType(v)) return v;
+            if (v is Font && destino.Name == "Letra") return typeof(Font).GetField("L", T).GetValue(v);
+            if (v is ContentAlignment && destino.IsEnum) return Enum.ToObject(destino, (int)(ContentAlignment)v);
+            return v;
+        }
+        private static readonly Type tRotulo = typeof(Form1).Assembly.GetType("Rocola.RotuloVista");   // (solo en la traduccion)
         // las cintas de texto (TextoMovilGpu.cs): con 'grupo' puesto, el texto que no cabe se va a una cinta
         private static readonly FieldInfo fCintas = typeof(Form1).GetField("capturandoCintas", T);
         private static string Cintas(CintasTexto grupo, string nombre)
@@ -379,7 +393,7 @@ namespace Banco
                 object pager = Anidada("SongPagerBar");
                 Rectangle caja = cajas[r.Next(cajas.Length)];
                 int paginas = new[] { 1, 2, 5, 12 }[r.Next(4)], pagina = r.Next(paginas);
-                ((Control)pager).Bounds = caja;
+                PonP(pager, "Bounds", caja);   // (vistas-disco: ya no es un Control en la traduccion)
                 Pon(pager, "Pages", paginas); pager.GetType().GetProperty("Page", T).SetValue(pager, pagina);
                 Color acento = acentos[r.Next(acentos.Length)];
                 Pon(f, "songPager", pager); Pon(f, "bgAccentTarget", acento);
@@ -393,15 +407,15 @@ namespace Banco
                     catch (Exception e) { res = Exc(e); }
                 }
                 if (Toca(nombre)) Apunta(nombre, estado + "|" + caja + "|" + paginas + "|" + pagina + "|" + acento.ToArgb().ToString("x8") + "|" + fondo + "|" + res, b);
-                b.Dispose(); ((Control)pager).Dispose();
+                b.Dispose(); Suelta(pager);
             }
         }
         // LA LISTA DEL DISCO (SongListView): su pagina horneada la pinta PintaPagina (Form1.Vistas.cs, igual en las tres); aqui, las capas de
         // la tarjeta, el vidrio, el dibujo en la imagen de la interfaz y el hojeo (con el reloj quieto: ver ConReloj)
         private static object NuevaLista(int w, int h, int filas, int rowH, Font letra, int sel, int inicio, Color acento)
         {
-            object l = Anidada("SongListView"); Control c = (Control)l;
-            c.Bounds = new Rectangle(0, 0, w, h); c.Font = letra;
+            object l = Anidada("SongListView");
+            PonP(l, "Bounds", new Rectangle(0, 0, w, h)); PonP(l, "Font", letra);
             Pon(l, "RowH", rowH); Pon(l, "Sel", sel); Pon(l, "PageStart", inicio); Pon(l, "Accent", acento);
             Pon(l, "GetCount", (Func<int>)(() => filas));
             Pon(l, "GetText", (Func<int, string>)(i => (i + 1).ToString("00") + " " + (i % 3 == 0 ? "Ángel de amor (versión en vivo) — Los Ñandúes & Cía, una larga" : i % 3 == 1 ? "Cancion " + i : "Otra & mas")));
@@ -451,7 +465,7 @@ namespace Banco
                 int sel = r.Next(Math.Min(filas, rpp)), inicio = 0;
                 Color acento = Color.FromArgb(r.Next(256), r.Next(256), r.Next(256));
                 object l = NuevaLista(m[0], m[1], filas, m[2], letra, sel, inicio, acento);
-                ((Control)l).BackColor = caso % 2 == 0 ? Color.FromArgb(31, 34, 52) : Color.FromArgb(12, 20, 40);
+                PonP(l, "BackColor", caso % 2 == 0 ? Color.FromArgb(31, 34, 52) : Color.FromArgb(12, 20, 40));
                 bool cintas = caso % 4 == 1;
                 string pre = "lista-" + caso;
                 // 1) la capa de la pagina sin seleccion y la de la fila elegida (dos veces: la segunda restaura la anterior en la instantanea)
@@ -519,16 +533,17 @@ namespace Banco
                         catch (Exception e) { Linea(nombre, Exc(e)); }
                     }
                 }
-                ((Control)l).Dispose(); letra.Dispose();
+                Suelta(l); letra.Dispose();
             }
         }
         private static object Invoca(MethodInfo m, object o, params object[] a) { return m.Invoke(o, a); }
         private static void Suelta(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
 
         // ---------------------------------------------------------------- la franja de lejos entera (FranjaLejos y los de siempre)
-        private static Label Etiqueta(Rectangle caja, string texto, float puntos, Color color, ContentAlignment al)
+        private static object Etiqueta(Rectangle caja, string texto, float puntos, Color color, ContentAlignment al)
         {
-            Label l = new Label(); l.Bounds = caja; l.Text = texto; l.Font = new Font("Microsoft Sans Serif", puntos, FontStyle.Bold); l.ForeColor = color; l.TextAlign = al;
+            object l = tRotulo != null ? Activator.CreateInstance(tRotulo) : new Label();   // (rotulos-y-letras: el rotulo de la traduccion)
+            PonP(l, "Bounds", caja); PonP(l, "Text", texto); PonP(l, "Font", new Font("Microsoft Sans Serif", puntos, FontStyle.Bold)); PonP(l, "ForeColor", color); PonP(l, "TextAlign", al);
             return l;
         }
         private static void Franjas(Random r)
@@ -545,16 +560,16 @@ namespace Banco
                 int w = caso % 3 == 2 ? 800 : 1024, top = 668;
                 object f = Form1Vacio(w, 768);
                 Pon(f, "letraLejos", caso % 5 != 4); Pon(f, "gpuEnabled", true); Pon(f, "gpuPanel", RuntimeHelpers.GetUninitializedObject(typeof(GpuPanel)));
-                Label nowTop = Etiqueta(new Rectangle(108, 674, 503, 22 + r.Next(3) * 4), titulos[r.Next(titulos.Length)], 15f, Color.FromArgb(125, 235, 165), ContentAlignment.BottomLeft);
-                Label now = Etiqueta(new Rectangle(108, 700, 400 + r.Next(3) * 60, 20), artistas[r.Next(artistas.Length)], 11.5f, Color.FromArgb(125, 235, 165), ContentAlignment.MiddleLeft);
-                Label next = Etiqueta(new Rectangle(108, 722, 500, 18), siguientes[r.Next(siguientes.Length)], 10.5f, Color.FromArgb(150, 200, 255), ContentAlignment.MiddleLeft);
-                Label time = Etiqueta(new Rectangle(w - 260, 742 - r.Next(3) * 8, 120, 22), "1:23 / 4:56", 13f, Color.White, ContentAlignment.MiddleLeft);
-                Label mej = Etiqueta(new Rectangle(560, 700, 90, 22), "MEJORADA", 12f, Color.FromArgb(240, 200, 90), ContentAlignment.MiddleLeft); mej.Visible = r.Next(3) == 0;
-                object genero = Anidada("GeneroView"); Control gc = (Control)genero; gc.Font = new Font("Microsoft Sans Serif", 10f, FontStyle.Bold);
-                genero.GetType().GetProperty("Texto", T).SetValue(genero, r.Next(2) == 0 ? "Rock en español" : ""); gc.Bounds = new Rectangle(520, 702, 110, 18); gc.Visible = r.Next(2) == 0;
+                object nowTop = Etiqueta(new Rectangle(108, 674, 503, 22 + r.Next(3) * 4), titulos[r.Next(titulos.Length)], 15f, Color.FromArgb(125, 235, 165), ContentAlignment.BottomLeft);
+                object now = Etiqueta(new Rectangle(108, 700, 400 + r.Next(3) * 60, 20), artistas[r.Next(artistas.Length)], 11.5f, Color.FromArgb(125, 235, 165), ContentAlignment.MiddleLeft);
+                object next = Etiqueta(new Rectangle(108, 722, 500, 18), siguientes[r.Next(siguientes.Length)], 10.5f, Color.FromArgb(150, 200, 255), ContentAlignment.MiddleLeft);
+                object time = Etiqueta(new Rectangle(w - 260, 742 - r.Next(3) * 8, 120, 22), "1:23 / 4:56", 13f, Color.White, ContentAlignment.MiddleLeft);
+                object mej = Etiqueta(new Rectangle(560, 700, 90, 22), "MEJORADA", 12f, Color.FromArgb(240, 200, 90), ContentAlignment.MiddleLeft); PonP(mej, "Visible", r.Next(3) == 0);
+                object genero = Anidada("GeneroView"); object gc = genero; PonP(gc, "Font", new Font("Microsoft Sans Serif", 10f, FontStyle.Bold));
+                genero.GetType().GetProperty("Texto", T).SetValue(genero, r.Next(2) == 0 ? "Rock en español" : ""); PonP(gc, "Bounds", new Rectangle(520, 702, 110, 18)); PonP(gc, "Visible", r.Next(2) == 0);
                 object cred = Anidada("PastillaView"), cola = Anidada("PastillaView"), prog = Anidada("ProgressView");
-                ((Control)cred).Bounds = new Rectangle(w - 380, 676, 170, 34); ((Control)cola).Bounds = new Rectangle(w - (r.Next(2) == 0 ? 200 : 330), 676, 150, 34);
-                ((Control)prog).Bounds = new Rectangle(108, 750, w - 400, 8);
+                PonP(cred, "Bounds", new Rectangle(w - 380, 676, 170, 34)); PonP(cola, "Bounds", new Rectangle(w - (r.Next(2) == 0 ? 200 : 330), 676, 150, 34));
+                PonP(prog, "Bounds", new Rectangle(108, 750, w - 400, 8));
                 Pon(f, "lblNowTop", nowTop); Pon(f, "lblNow", now); Pon(f, "lblNext", next); Pon(f, "lblTime", time); Pon(f, "lblMejorada", mej);
                 Pon(f, "pastGenero", genero); Pon(f, "pastCred", cred); Pon(f, "pastCola", cola); Pon(f, "progress", prog);
                 Rectangle zona = r.Next(3) == 0 ? new Rectangle(r.Next(300), r.Next(40), 300 + r.Next(400), 30 + r.Next(60)) : Rectangle.Empty;
@@ -577,8 +592,8 @@ namespace Banco
                         if (!(bool)Llama(typeof(Form1), "FranjaLejos", f, g))
                         {
                             Llama(typeof(Form1), "PintaTituloCompacto", f, g, false); Llama(typeof(Form1), "PintaArtistaCompacto", f, g);
-                            if (mej.Visible) Llama(typeof(Form1), "DrawLabelOverlay", null, g, mej);
-                            if (gc.Visible) Llama(typeof(Form1), "DrawCtrlOverlay", null, g, gc);
+                            if ((bool)LeeP(mej, "Visible")) Llama(typeof(Form1), "DrawLabelOverlay", null, g, mej);
+                            if ((bool)LeeP(gc, "Visible")) Llama(typeof(Form1), "DrawCtrlOverlay", null, g, gc);
                             Llama(typeof(Form1), "PintaSiguienteCompacto", f, g);
                         }
                         Llama(typeof(Form1), "DrawLabelOverlay", null, g, time);
@@ -589,7 +604,7 @@ namespace Banco
                     catch (Exception e) { res = Exc(e); }
                     finally { fCintas.SetValue(null, null); }
                 }
-                if (Toca(nombre)) Apunta(nombre, w + "|" + zona + "|" + Huella(nowTop.Text + "|" + now.Text + "|" + next.Text) + "|" + nowTop.Height + "|" + mej.Visible + gc.Visible + "|" + res, b);
+                if (Toca(nombre)) Apunta(nombre, w + "|" + zona + "|" + Huella(LeeP(nowTop, "Text") + "|" + LeeP(now, "Text") + "|" + LeeP(next, "Text")) + "|" + LeeP(nowTop, "Height") + "|" + LeeP(mej, "Visible") + LeeP(gc, "Visible") + "|" + res, b);
                 if (grupo != null && Toca(nombre)) Linea(nombre + "-cintas", Cintas(grupo, nombre));
                 if (grupo != null) grupo.Dispose();
                 b.Dispose();

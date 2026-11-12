@@ -196,7 +196,16 @@ namespace Banco
             if (deja) g.SmoothingMode = SmoothingMode.AntiAlias;
         }
         // (vistas-disco) lo que XP usa de la vista y le daba Control (la referencia) o su CajaVista y sus propiedades (la traduccion), por reflexion
-        private static void PonProp(object o, string p, object v) { o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).SetValue(o, v); }
+        private static void PonProp(object o, string p, object v) { PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance); pi.SetValue(o, LetraSiHace(pi.PropertyType, v)); }
+        // (rotulos-y-letras) la traduccion pide una Letra donde la referencia pide la Font (la Font de las vistas): la de esa Font (Font.L, la
+        // misma que da PuenteDibujo.Letra: misma Font, misma Letra); su familia y su tamano se leen de cualquiera de las dos
+        private static object LetraSiHace(Type destino, object v)
+        {
+            if (v is Font && destino.Name == "Letra") return typeof(Font).GetField("L", T).GetValue(v);
+            return v;
+        }
+        private static string FamiliaDe(object f) { Font fo = f as Font; return fo != null ? fo.Name : (string)f.GetType().GetField("Familia").GetValue(f); }
+        private static float TamanoDe(object f) { Font fo = f as Font; return fo != null ? fo.Size : (float)f.GetType().GetField("Tamano").GetValue(f); }
         private static object LeeProp(object o, string p) { return o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
         private static int Medida(object o, string p) { return (int)LeeProp(o, p); }
         // EL DIBUJO DE UN WM_PAINT (vistas-disco): en la referencia, su OnPaint con el Graphics como lo da el escritorio (nuevo, en su sitio de la
@@ -270,7 +279,7 @@ namespace Banco
                     PonProp(v, "Font", new Font(Familias[caso % Familias.Length], caso % 3 == 0 ? 12.5f : caso % 3 == 1 ? 10f : 16f, caso % 5 == 4 ? FontStyle.Regular : FontStyle.Bold));
                     PonProp(v, "Bounds", new Rectangle(0, 0, m[0], m[1]));
                     Pon(v, "Section", sec); Pon(v, "Page", pg[0]); Pon(v, "Total", pg[1]); Pon(v, "Accent", Acentos[caso % Acentos.Length]);
-                    string det = m[0] + "x" + m[1] + "|" + (sec ?? "null") + "|" + pg[0] + "/" + pg[1] + "|" + ((Font)LeeProp(v, "Font")).Name + " " + R(((Font)LeeProp(v, "Font")).Size);
+                    string det = m[0] + "x" + m[1] + "|" + (sec ?? "null") + "|" + pg[0] + "/" + pg[1] + "|" + FamiliaDe(LeeProp(v, "Font")) + " " + R(TamanoDe(LeeProp(v, "Font")));
                     for (int k = 0; k < 5; k++) Pinta("encabezado-" + caso + "-" + k, det, v, "RenderContent", m[0], m[1], (caso + k) % 3, Math.Min(k, 2), r);
                     PintaComoOnPaint("encabezado-" + caso + "-onpaint", det, v, m[0], m[1], caso % 3);
                     if (Toca("encabezado-" + caso + "-pide"))
@@ -321,8 +330,17 @@ namespace Banco
                     try
                     {
                         MethodInfo ancho = tp.GetMethod("Ancho", T, null, new[] { typeof(string), typeof(string), typeof(int), typeof(FontFamily), typeof(bool) }, null);
-                        res = ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1], ((Font)LeeProp(v, "Font")).FontFamily, Lee(v, "ConPortadas") }) + "|"
-                            + ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1] + 9, caso % 2 == 0 ? null : new FontFamily("Times New Roman"), true });
+                        if (ancho != null)
+                            res = ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1], ((Font)LeeProp(v, "Font")).FontFamily, Lee(v, "ConPortadas") }) + "|"
+                                + ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1] + 9, caso % 2 == 0 ? null : new FontFamily("Times New Roman"), true });
+                        else
+                        {
+                            // (rotulos-y-letras) la traduccion ya no tiene la firma con la FontFamily (Puente.vistas-b.cs, borrado): sus llamadores le dan la
+                            // familia por su nombre; la nula, la generica sin remates (como la tomaba ese puente: new Font(null, ...) de la capa)
+                            ancho = tp.GetMethod("Ancho", T, null, new[] { typeof(string), typeof(string), typeof(int), typeof(string), typeof(bool) }, null);
+                            res = ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1], FamiliaDe(LeeProp(v, "Font")), Lee(v, "ConPortadas") }) + "|"
+                                + ancho.Invoke(null, new object[] { Lee(v, "Etiqueta"), Lee(v, "Valor"), m[1] + 9, caso % 2 == 0 ? "Microsoft Sans Serif" : new FontFamily("Times New Roman").Name, true });
+                        }
                         MethodInfo xn = tp.GetMethod("XNumero", T);
                         if (xn != null) res += "|" + R((float)xn.Invoke(v, null));
                     }

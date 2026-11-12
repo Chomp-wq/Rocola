@@ -414,14 +414,26 @@ namespace BancoReposo
             }
         }
 
+        // (rotulos-y-letras) EL ROTULO: en la referencia, el Label de la capa; en la traduccion, RotuloVista (Nativo/RotuloVista.cs), con sus
+        // propiedades por su nombre (la Letra de la Font que da el arnes: Font.L, la misma que PuenteDibujo.Letra; AlineaTexto con el numero de
+        // ContentAlignment)
+        private static readonly Type tRotulo = typeof(Form1).Assembly.GetType("Rocola.RotuloVista");
+        private static object NuevoRotulo() { return tRotulo != null ? Activator.CreateInstance(tRotulo) : (object)new Label(); }
+        private static void PonP(object o, string p, object v)
+        {
+            PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance);
+            if (v is Font && pi.PropertyType.Name == "Letra") v = typeof(Font).GetField("L", Todo).GetValue(v);
+            else if (v is ContentAlignment && pi.PropertyType.IsEnum) v = Enum.ToObject(pi.PropertyType, (int)(ContentAlignment)v);
+            pi.SetValue(o, v);
+        }
         // ---- EL ARTISTA DE LA FRANJA (PintaArtistaCompacto, privada de Form1: en una Form1 sin construir, con la etiqueta lblNow)
         private static void Artista(string nombre, Estado e, string texto, ContentAlignment al, int ancho, bool mejorada, bool cinta, bool directo)
         {
             object form = RuntimeHelpers.GetUninitializedObject(typeof(Form1));
-            Label l = new Label(); l.Text = texto; l.Font = new Font("Microsoft Sans Serif", 11.5f, FontStyle.Bold); l.ForeColor = Color.FromArgb(225, 236, 255); l.TextAlign = al;
-            l.Bounds = new Rectangle(14, 40, ancho, 26);
+            object l = NuevoRotulo(); PonP(l, "Text", texto); PonP(l, "Font", new Font("Microsoft Sans Serif", 11.5f, FontStyle.Bold)); PonP(l, "ForeColor", Color.FromArgb(225, 236, 255)); PonP(l, "TextAlign", al);
+            PonP(l, "Bounds", new Rectangle(14, 40, ancho, 26));
             typeof(Form1).GetField("lblNow", Todo).SetValue(form, l);
-            if (mejorada) { Label m = new Label(); m.Visible = true; m.Bounds = new Rectangle(14 + ancho / 2, 40, 60, 20); typeof(Form1).GetField("lblMejorada", Todo).SetValue(form, m); }
+            if (mejorada) { object m = NuevoRotulo(); PonP(m, "Visible", true); PonP(m, "Bounds", new Rectangle(14 + ancho / 2, 40, 60, 20)); typeof(Form1).GetField("lblMejorada", Todo).SetValue(form, m); }
             using (Bitmap b = new Bitmap(700, 120, PixelFormat.Format32bppPArgb))
             {
                 CintasTexto c = cinta ? Captura0() : null;
