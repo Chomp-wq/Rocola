@@ -1,0 +1,270 @@
+// LA PANTALLA NATIVA CON UNA VISTA FALSA (port nativo, tanda 4, grupo pantalla-nativa: W2). Una IVista que no hereda de nada (VistaFalsa,
+// con su CajaVista) junto a controles de la capa de la transicion, y la misma escena con un control de la capa en su lugar (el gemelo, que
+// la capa mueve con las reglas de WinForms que fijan las 41 pruebas): el orden de composicion, el recorte por los de encima y el reparto
+// del raton tienen que salir IGUALES en las dos y como dice WinForms. Despues, sin la capa (como quedara la pantalla al final), las mismas
+// reglas con la lista nativa de la ventana, y las teclas a la ventana. Cada prueba dice lo obtenido y, si falla, lo que daria WinForms y su
+// sitio en la fuente (dotnet/winforms release/3.0, portada de .NET Framework 4.8).
+//   pruebas_vistas.sh PROGRAMA ETIQUETA   (fuera de pantalla: ROCOLA_PANTALLA=fuera:320x240)
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Threading;
+using Rocola;
+using Rocola.Ventanas;
+using SkiaSharp;
+
+static class P
+{
+    static int pasa, falla;
+    static readonly List<string> log = new List<string>();
+    static void Mira(string nombre, string obtenido, string esperado, string regla)
+    {
+        bool ok = obtenido == esperado;
+        if (ok) pasa++; else falla++;
+        Console.WriteLine((ok ? "PASA  " : "FALLA ") + nombre + ": " + obtenido + (ok ? "" : "\n          WinForms: " + esperado + " (" + regla + ")"));
+    }
+    static string Log() { string s = string.Join(",", log); log.Clear(); return s; }
+    static void Bombea(int ms) { Stopwatch t = Stopwatch.StartNew(); do { Application.DoEvents(); Thread.Sleep(1); } while (t.ElapsedMilliseconds < ms); }
+    static readonly SKColor Rojo = new SKColor(255, 0, 0), Azul = new SKColor(0, 0, 255), Verde = new SKColor(0, 255, 0);
+
+    // LA VISTA FALSA: una IVista sin herencia, con su caja; se pinta de su color (fondo y contenido) y apunta su raton
+    sealed class VistaFalsa : IVista
+    {
+        readonly CajaVista caja; readonly string n; readonly SKColor? color; public bool ManejaRueda;
+        public VistaFalsa(string n, SKColor? color) { this.n = n; this.color = color; caja = new CajaVista(this); }
+        public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } }
+        public int Left { get { return caja.Left; } set { caja.Left = value; } }
+        public int Top { get { return caja.Top; } set { caja.Top = value; } }
+        public int Width { get { return caja.Width; } set { caja.Width = value; } }
+        public int Height { get { return caja.Height; } set { caja.Height = value; } }
+        public void SetBounds(int x, int y, int w, int h) { caja.SetBounds(x, y, w, h); }
+        public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } }
+        public void Invalidate() { caja.Invalidate(); }
+        public void Pinta(SKCanvas g) { if (color != null) using (SKPaint p = new SKPaint { Color = color.Value }) g.DrawRect(0, 0, Width, Height, p); }
+        public void Raton(AvisoRaton que, Raton e)
+        {
+            log.Add(n + "." + que + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : "(" + e.Clicks + ")"));
+            if (que == AvisoRaton.Rueda && ManejaRueda) e.Handled = true;
+        }
+    }
+    // EL GEMELO: un control de la capa que apunta lo mismo (con los nombres de los avisos de la vista), con su color de fondo
+    class Gemelo : Control, IVista
+    {
+        readonly string n;
+        public Gemelo(string n) { this.n = n; }
+        void A(string q, MouseEventArgs e) { log.Add(n + "." + q + (e == null ? "" : "(" + e.Clicks + ")")); }
+        protected override void OnMouseDown(MouseEventArgs e) { A("Abajo", e); base.OnMouseDown(e); }
+        protected override void OnMouseClick(MouseEventArgs e) { A("Clic", e); base.OnMouseClick(e); }
+        protected override void OnMouseDoubleClick(MouseEventArgs e) { A("DobleClic", e); base.OnMouseDoubleClick(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { A("Arriba", e); base.OnMouseUp(e); }
+        protected override void OnMouseMove(MouseEventArgs e) { A("Mueve", e); base.OnMouseMove(e); }
+        protected override void OnMouseEnter(EventArgs e) { A("Entra", null); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { A("Sale", null); base.OnMouseLeave(e); }
+    }
+    class Transparente : Control
+    {
+        public Transparente() { SetStyle(ControlStyles.SupportsTransparentBackColor, true); BackColor = Color.Transparent; }
+    }
+
+    static Form m;
+    static string Px(int x, int y) { Bombea(160); return Anfitrion.Actual.PuntoEn(x, y).ToString("X8"); }
+    static void Va(int x, int y) { PantallaRocola.RatonEn(x, y); }
+    static void Clic(bool abajo) { PantallaRocola.RatonBoton(BotonRaton.Left, abajo); }
+
+    [STAThread]
+    static int Main()
+    {
+        Anfitrion.Arranca();   // la pantalla fuera de pantalla y el compositor nativo (como el programa: Plataforma/PruebasLinux.cs)
+        PantallaRocola.EscondeFlecha();   // (Cursor.Hide, como la rocola: si no, la flecha tapa los puntos que se leen)
+        m = new Form(); m.Text = "principal"; m.FormBorderStyle = FormBorderStyle.None; m.WindowState = FormWindowState.Maximized; m.BackColor = Color.FromArgb(0, 255, 0);
+        m.Shown += delegate { try { Pruebas(); } catch (Exception ex) { Console.WriteLine("LA PRUEBA TRONO: " + ex); falla++; } m.Close(); };
+        Application.Run(m);
+        Console.WriteLine("pasan " + pasa + ", fallan " + falla);
+        return falla == 0 ? 0 : 1;
+    }
+
+    // UNA ESCENA: el control A (rojo, de la capa) y la vista V (azul: la falsa o su gemelo) agregada DESPUES, que se cruzan en 60..119
+    static string[] Escena(bool gemelo)
+    {
+        List<string> r = new List<string>();
+        Bombea(150);
+        Gemelo a = new Gemelo("A"); a.BackColor = Color.FromArgb(255, 0, 0); a.SetBounds(20, 20, 100, 100); m.Controls.Add(a);
+        IVista v;
+        if (gemelo) { Gemelo g = new Gemelo("V"); g.BackColor = Color.FromArgb(0, 0, 255); g.SetBounds(60, 60, 100, 100); v = g; }
+        else { VistaFalsa f = new VistaFalsa("V", Azul); f.SetBounds(60, 60, 100, 100); v = f; }
+        PantallaRocola.AgregaVista(m, v);   // (Controls.Add de la ventana: al fondo del orden)
+        // 1. EL ORDEN: Controls.Add pone al final de la coleccion, que es el fondo (ControlCollection.Add; el [0] arriba)
+        r.Add("orden " + Px(80, 80) + " " + Px(140, 140));
+        Va(80, 80); Va(140, 140);
+        r.Add("raton-mueve " + Log());
+        Clic(true); Clic(false); Bombea(650);
+        r.Add("raton-clic " + Log());
+        Clic(true); Va(80, 80); Clic(false); Bombea(650);
+        r.Add("raton-captura " + Log());
+        Va(150, 150); log.Clear();
+        Clic(true); Clic(false); Clic(true); Clic(false); Bombea(650);
+        r.Add("raton-doble " + Log());
+        // 2. BringToFront: al [0]
+        PantallaRocola.VistaAlFrente(v);
+        r.Add("alfrente " + Px(80, 80));
+        Va(100, 100); Va(80, 80);
+        r.Add("raton-alfrente " + Log());
+        // 3. EL RECORTE POR EL DE ENCIMA (WS_CLIPSIBLINGS): un control transparente encima de V ensena el fondo de la ventana, no a V
+        Transparente t = new Transparente(); t.SetBounds(130, 130, 60, 60); m.Controls.Add(t); t.BringToFront();
+        r.Add("transparente " + Px(145, 145) + " " + Px(170, 170));
+        m.Controls.Remove(t); t.Dispose();
+        // 4. ESCONDERLA: lo de debajo se ve y el raton es del de debajo
+        v.Visible = false;
+        r.Add("escondida " + Px(140, 140) + " " + Px(80, 80));
+        Va(90, 90); Va(140, 140); Clic(true); Clic(false); Bombea(650);
+        r.Add("raton-escondida " + Log());
+        v.Visible = true;
+        // 5. SetBounds: se mueve con su sitio
+        v.SetBounds(150, 150, 50, 50);
+        r.Add("setbounds " + Px(140, 140) + " " + Px(160, 160));
+        PantallaRocola.QuitaVista(v);
+        r.Add("quitada " + Px(160, 160));
+        m.Controls.Remove(a); a.Dispose();
+        if (v is Gemelo) ((Gemelo)v).Dispose();
+        Va(5, 5); Bombea(650); log.Clear();
+        return r.ToArray();
+    }
+
+    static void Pruebas()
+    {
+        const string F = "orden de composicion: Control.ControlCollection.Add (al final = el fondo del orden z) y BringToFront (SetChildIndex(this, 0)); " +
+                         "raton: WindowFromPoint de la de encima, SetCapture en WmMouseDown (Control.cs:12567-12571), clic solo si se suelta encima (WmMouseUp, Control.cs:12700-12722), doble clic de 500 ms y 4 puntos";
+        string[] gem = Escena(true);
+        string[] fal = Escena(false);
+        string[] esperado =
+        {
+            "orden FFFF0000 FF0000FF",
+            "raton-mueve A.Entra,A.Mueve(0),A.Sale,V.Entra,V.Mueve(0)",
+            "raton-clic V.Abajo(1),V.Clic(1),V.Arriba(1)",
+            "raton-captura V.Abajo(1),V.Mueve(0),V.Arriba(1),V.Sale,A.Entra",
+            "raton-doble V.Abajo(1),V.Clic(1),V.Arriba(1),V.Abajo(2),V.DobleClic(2),V.Arriba(1)",
+            "alfrente FF0000FF",
+            "raton-alfrente V.Mueve(0),V.Mueve(0)",
+            "transparente FF00FF00 FF00FF00",
+            "escondida FF00FF00 FFFF0000",
+            "raton-escondida V.Sale,A.Entra,A.Mueve(0),A.Sale",
+            "setbounds FF00FF00 FF0000FF",
+            "quitada FF00FF00",
+        };
+        for (int i = 0; i < esperado.Length; i++)
+        {
+            string nombre = esperado[i].Substring(0, esperado[i].IndexOf(' '));
+            Mira("capa, gemelo (control de la capa): " + nombre, i < gem.Length ? gem[i] : "(nada)", esperado[i], F);
+            Mira("capa, vista falsa en su hueco: " + nombre, i < fal.Length ? fal[i] : "(nada)", i < gem.Length ? gem[i] : esperado[i], "lo mismo que el gemelo");
+        }
+        SinLaCapa();
+    }
+
+    // SIN LA CAPA: la lista nativa de la ventana (PantallaRocola.Vistas.cs) con dos vistas falsas, como quedara al final
+    static void SinLaCapa()
+    {
+        PantallaRocola.ILaCapa capa = PantallaRocola.LaCapa;
+        PantallaRocola.LaCapa = null;
+        try
+        {
+            PantallaRocola.FondoDeLaVentana = delegate (SKCanvas g) { g.Clear(Verde); };
+            VistaFalsa a = new VistaFalsa("A", Rojo); a.SetBounds(20, 20, 100, 100);
+            VistaFalsa v = new VistaFalsa("V", Azul); v.SetBounds(60, 60, 100, 100);
+            PantallaRocola.AgregaVista(null, a); PantallaRocola.AgregaVista(null, v);
+            Mira("sin la capa: el orden de la lista", PantallaRocola.IndiceDe(a) + " " + PantallaRocola.IndiceDe(v), "0 1", "ControlCollection.Add: al final");
+            Mira("sin la capa: composicion", Pinta(80, 80) + " " + Pinta(140, 140) + " " + Pinta(5, 5), "FFFF0000 FF0000FF FF00FF00", "el [0] arriba; el fondo de la ventana debajo de todo");
+            // EL RATON, el mismo guion que con la capa
+            Va(5, 5); log.Clear();
+            Va(80, 80); Va(140, 140);
+            Mira("sin la capa: raton-mueve", Log(), "A.Entra,A.Mueve(0),A.Sale,V.Entra,V.Mueve(0)", "WindowFromPoint; WM_MOUSELEAVE y WM_MOUSEMOVE");
+            Clic(true); Clic(false); Bombea(650);
+            Mira("sin la capa: raton-clic", Log(), "V.Abajo(1),V.Clic(1),V.Arriba(1)", "WmMouseUp: Click/MouseClick y despues MouseUp");
+            Clic(true); Va(80, 80); Clic(false); Bombea(650);
+            Mira("sin la capa: raton-captura", Log(), "V.Abajo(1),V.Mueve(0),V.Arriba(1),V.Sale,A.Entra", "SetCapture en WmMouseDown; sin clic si se suelta fuera (WindowFromPoint(pt) != Handle)");
+            Va(150, 150); log.Clear();
+            Clic(true); Clic(false); Clic(true); Clic(false); Bombea(650);
+            Mira("sin la capa: raton-doble", Log(), "V.Abajo(1),V.Clic(1),V.Arriba(1),V.Abajo(2),V.DobleClic(2),V.Arriba(1)", "WM_LBUTTONDBLCLK (500 ms, 4 puntos) y STATE_DOUBLECLICKFIRED en WmMouseUp");
+            PantallaRocola.VistaAlFrente(v);
+            Mira("sin la capa: BringToFront", PantallaRocola.IndiceDe(v) + " " + Pinta(80, 80), "0 FF0000FF", "SetChildIndex(this, 0)");
+            Va(100, 100); Va(80, 80);
+            Mira("sin la capa: raton-alfrente", Log(), "V.Mueve(0),V.Mueve(0)", "la de encima recibe el raton");
+            // el recorte por el de encima: una vista transparente (no pinta nada) encima de V ensena el fondo de la ventana, no a V
+            VistaFalsa t = new VistaFalsa("T", null); t.SetBounds(130, 130, 60, 60); PantallaRocola.AgregaVista(null, t); PantallaRocola.VistaAlFrente(t);
+            Mira("sin la capa: transparente encima (WS_CLIPSIBLINGS)", Pinta(145, 145) + " " + Pinta(170, 170), "FF00FF00 FF00FF00", "Control.CreateParams, Control.cs:1691: WS_CLIPSIBLINGS");
+            PantallaRocola.QuitaVista(t);
+            // una capa de textura (la tarjeta, el video) parte los tramos: lo de encima va en otro
+            CapaDeTextura tx = new CapaDeTextura { Sitio = new Rectangle(0, 0, 50, 50), Textura = 7, AnchoGl = 50, AltoGl = 50 };
+            PantallaRocola.AgregaCapa(tx);   // (al fondo)
+            PantallaRocola.VistaAlFrente(tx); PantallaRocola.VistaAlFondo(v);   // orden: tx, a, v
+            List<CapaPantalla> l = new List<CapaPantalla>(); PantallaRocola.CapasDeLaVentana(l);
+            Mira("sin la capa: tramos con una textura en medio", l.Count + " " + (l.Count == 3 ? l[0].Tipo + "," + l[1].Tipo + "," + l[2].Tipo : ""), "3 vista,tarjeta,vista", "cada ventana hija en su sitio del orden z");
+            Mira("sin la capa: la textura recorta lo de debajo", Pinta(30, 30, 0), "FF00FF00", "WS_CLIPSIBLINGS: debajo de la tarjeta no se pinta el control de debajo");
+            Va(10, 10); log.Clear(); Clic(true); Clic(false); Bombea(650);
+            Mira("sin la capa: el raton sobre la textura", Log(), "", "el GpuPanel se queda con el raton (WindowFromPoint) aunque no lo use");
+            PantallaRocola.QuitaVista(tx);
+            v.Visible = false;
+            Mira("sin la capa: escondida", Pinta(140, 140), "FF00FF00", "Visible = false: ni se pinta ni recibe el raton");
+            Va(90, 90); Va(140, 140); log.Clear(); Clic(true); Clic(false); Bombea(650);
+            Mira("sin la capa: raton sobre la escondida", Log(), "", "WindowFromPoint salta las que no se ven");
+            // LA RUEDA: a la del foco; si no la atiende, a la ventana
+            v.Visible = true; PantallaRocola.FocoDeLaVentana = v; string vent = "";
+            PantallaRocola.RuedaDeLaVentana = delegate (Raton e) { vent += "ventana(" + e.Delta + ")"; };
+            PantallaRocola.RatonRueda(-1);
+            Mira("sin la capa: rueda sin atender", Log() + " " + vent, "V.Rueda(0) ventana(-120)", "WmMouseWheel, Control.cs:12748-12764: sin Handled, DefWindowProc la pasa al padre");
+            v.ManejaRueda = true; vent = ""; PantallaRocola.RatonRueda(2);
+            Mira("sin la capa: rueda atendida", Log() + " " + vent, "V.Rueda(0) ", "con Handled no sigue");
+            PantallaRocola.FocoDeLaVentana = null; PantallaRocola.RuedaDeLaVentana = null;
+            PantallaRocola.QuitaVista(a); PantallaRocola.QuitaVista(v);
+            Teclas();
+        }
+        finally { PantallaRocola.LaCapa = capa; PantallaRocola.FondoDeLaVentana = null; }
+    }
+    // un punto de lo que compone la lista nativa (el tramo de mas arriba que no es transparente ahi), como 0xAARRGGBB
+    static string Pinta(int x, int y, int tramo = -1)
+    {
+        List<CapaPantalla> l = new List<CapaPantalla>(); PantallaRocola.CapasDeLaVentana(l);
+        for (int i = tramo >= 0 ? tramo : l.Count - 1; i >= 0; i--)
+        {
+            if (l[i].Mapa == null) continue;
+            SKColor c = l[i].Mapa.GetPixel(x, y);
+            if (c.Alpha != 0 || tramo >= 0) return ((uint)c).ToString("X8");
+        }
+        return "00000000";
+    }
+
+    // LAS TECLAS A LA VENTANA, sin la capa: ProcessCmdKey primero (PreProcessMessage, Control.cs:9275-9300), ProcessDialogKey, KeyDown,
+    // el caracter (WM_CHAR de TranslateMessage) a KeyPress salvo SuppressKeyPress, y al soltar KeyUp; Alt+F4 sin atender cierra por la cola
+    // (DefWindowProc de WM_SYSKEYDOWN: SC_CLOSE); la repeticion (bit 30 de WM_KEYDOWN) llega en el pulso
+    static void Teclas()
+    {
+        PantallaRocola.Teclas = new PantallaRocola.TeclasDeLaVentana
+        {
+            ProcesaMando = delegate (ref PulsoTecla m, Tecla d) { log.Add("mando(" + d + (m.Repetida ? ",rep" : "") + ")"); return (d & Tecla.KeyCode) == Tecla.F3; },
+            TeclaDeDialogo = delegate (Tecla d) { log.Add("dialogo(" + d + ")"); return false; },
+            TeclaAbajo = delegate (PulsoTecla e) { log.Add("abajo(" + e.KeyData + ")"); if (e.KeyCode == Tecla.B) e.SuppressKeyPress = true; },
+            Caracter = delegate (PulsoCaracter e) { log.Add("caracter(" + (int)e.KeyChar + ")"); },
+            TeclaArriba = delegate (PulsoTecla e) { log.Add("arriba(" + e.KeyData + ")"); },
+            CierraPorSistema = delegate { log.Add("cierra"); },
+        };
+        try
+        {
+            log.Clear();
+            T(Tecla.A, true); T(Tecla.A, false);
+            Mira("teclas: una letra", Log(), "mando(A),dialogo(A),abajo(A),caracter(97),arriba(A)", "ProcessCmdKey, ProcessDialogKey, KeyDown, KeyPress y KeyUp");
+            T(Tecla.F3, true); T(Tecla.F3, false);
+            Mira("teclas: ProcessCmdKey la atiende", Log(), "mando(F3),arriba(F3)", "PreProcessMessage: con true no sigue");
+            T(Tecla.B, true); T(Tecla.B, false);
+            Mira("teclas: SuppressKeyPress", Log(), "mando(B),dialogo(B),abajo(B),arriba(B)", "KeyEventArgs.SuppressKeyPress: sin WM_CHAR");
+            T(Tecla.LShiftKey, true); T(Tecla.A, true); T(Tecla.A, false); T(Tecla.LShiftKey, false);
+            Mira("teclas: Mayus y A", Log(), "mando(ShiftKey, Shift),dialogo(ShiftKey, Shift),abajo(ShiftKey, Shift),mando(A, Shift),dialogo(A, Shift),abajo(A, Shift),caracter(65),arriba(A, Shift),arriba(ShiftKey)",
+                 "VK_SHIFT con su modificador; KeyUp de Mayus ya sin Shift");
+            T(Tecla.C, true); T(Tecla.C, true); T(Tecla.C, false);
+            Mira("teclas: la repeticion", Log(), "mando(C),dialogo(C),abajo(C),caracter(99),mando(C,rep),dialogo(C),abajo(C),caracter(99),arriba(C)", "bit 30 de lParam de WM_KEYDOWN");
+            T(Tecla.Menu, true); T(Tecla.F4, true); Bombea(30); T(Tecla.F4, false); T(Tecla.Menu, false);
+            Mira("teclas: Alt+F4", Log(), "mando(Menu, Alt),dialogo(Menu, Alt),abajo(Menu, Alt),mando(F4, Alt),dialogo(F4, Alt),abajo(F4, Alt),cierra,arriba(F4, Alt),arriba(Menu)", "DefWindowProc de WM_SYSKEYDOWN: SC_CLOSE por la cola");
+        }
+        finally { PantallaRocola.Teclas = null; }
+    }
+    static void T(Tecla t, bool abajo) { PantallaRocola.LlegaTecla(t, abajo); }
+}
