@@ -83,10 +83,51 @@ Quitadas: la herencia de Control de BuscaView y SearchOverlay; `BuscaView.Render
 Anadidas: ninguna de la transicion (PantallaRocola.Foco.cs es de la pantalla nativa y se queda).
 Quedan (de otros): el archivo Puente.buscador.cs solo con comentarios (limpieza o N7); el hueco de la capa (Anfitrion.cs, N7).
 
-## Comprobaciones
+## Comprobaciones (12-11-2026, maquina compartida a carga 2-6, llvmpipe)
 
-(abajo, con numeros)
+- a) `dotnet build -c Release --no-incremental`: 0 errores y los 15 avisos de la base (mismos archivos y lineas: comparados con d05b06d).
+- b) diff-xp.py Form1.Buscador.cs -v: 261 lineas quitadas, 258 puestas, **0 sin marca**. 1602 lineas y 1541 CRLF, como en d05b06d (BOM
+  conservado).
+- c) NativeAOT (`dotnet publish RocolaXp.csproj -c Release -r linux-x64 -p:PublishAot=true`): sale con 0, **0 avisos IL/AOT**.
+- e) Arnes VistasBuscador: **IGUALES** a la referencia congelada con las letras falsas y con DejaVu, 4739 lineas (467 llamadas directas en
+  la traduccion; 0 excepciones), con los 30 casos nuevos «pinta-» (OnPaint de XP con su fondo contra Pinta). Arnes VistasBuscadorPortadas:
+  **IGUALES** con las dos letras, 3128 lineas (250 directas; 5 excepciones en las dos, las mismas: casos del arnes).
+- PantallaVistas (pruebas_vistas.sh): **117 de 117** (93 de antes + 24 del tabulador: 8 pasos con el control de la capa, 8 con la vista
+  falsa en su hueco -iguales al control- y 8 sin la capa, con lo que dice WinForms).
+- f) pruebas41: **41 de 41**; pruebas_hoja: **86 de 86**; `AOT=1 pruebas_pantalla`: **32 de 32** en JIT y en NativeAOT (sus 2 lineas de
+  avisos de siempre).
+- El tabulador de la ventana principal (escena propia con corre.sh, 16 Tab desde los 7 s, traza del foco), alternada con la referencia:
+  - buscador cerrado: referencia y traduccion `HelpBar LetterBar AlbumView ProgressView GpuPanel` x3 + `HelpBar LetterBar`, iguales (y la
+    escena entera IGUAL con compara_escena.py);
+  - buscador abierto, sin tarjeta (rocola_config.txt con gpu=0: el buscador por procesador, visible y con el foco): las dos
+    `HelpBar SearchOverlay HelpBar LetterBar AlbumView ProgressView SearchOverlay ...` (17 cambios de foco iguales; la casilla de BUSCAR,
+    con TabStop = false, no esta en el ciclo); la escena entera IGUAL.
+- Escenas alternadas con la referencia congelada (JIT, W y SAL propios, datos0 de siempre, ruido de ventanas/ruido): **arranque IGUAL,
+  buscador IGUAL, tab IGUAL**. NativeAOT (con la fecha de dotnet en rocola-xp) contra la referencia JIT: **buscador IGUAL**.
+- El buscador sin tarjeta (gpu=0; los pasos de la escena buscador): la traza IGUAL (foco `HelpBar SearchOverlay Form` en las dos, el mismo
+  estado); las capturas difieren en 17-59 mil puntos del cielo por procesador, que se mueve con el reloj: la referencia contra si misma
+  (otra corrida) da lo mismo (17 451, 17 375 y 58 345 frente a 17 353, 17 149 y 58 992). En NativeAOT, igual (21 513, 17 348, 58 676).
+- d) Recorridos (con el candado y la carpeta de siempre; solo «buscador»): capas quietas **22 de 22**; texturas quietas: 45 de 78 en la
+  primera pasada; la base d05b06d corrida en seguida dio 44 de 78 y la traduccion repetida **76 de 78** (faltan dos 1024x128, de las que
+  dependen de la hora y de los pasos). Ninguna diferencia nueva.
+- No corridos: el banco y las 29 cintas: no se toco ninguna funcion de dibujo de Nativo/ ni Puente.cs, ni lo que se sube a la tarjeta
+  (EnsureUiOverlay y DrawCtrlOverlay llaman a las mismas traducidas; los recorridos lo confirman con las capas y las texturas).
 
 ## Riesgos
 
-(abajo)
+- **La capa no sigue a WinForms al esconder la vista del foco** (lo vio la prueba del tabulador): Ventanas.Control.SelectNextIfFocused pide
+  el contenedor con ContenedorDelFoco, que salta la ventana porque es ContainerControl; WinForms (GetContainerControl, Control.cs:5825-5840)
+  solo salta las que dan IsContainerControl, que es false en la Form (Control.cs:2900): en WinForms el foco pasa a la siguiente, en la capa
+  se queda en la escondida. Con la rocola: al cerrar el buscador sin tarjeta, el foco se queda en el buscador escondido (la referencia
+  igual, por eso las escenas salen iguales). No se nota (las teclas van a Form1 por ProcessCmdKey y KeyPreview, y el Tab sigue desde la
+  escondida). La lista nativa (sin la capa) hace lo de WinForms. Se va con la capa (N7); no se toco la capa.
+- Invalidate(Rectangle) repinta el buscador entero (como la capa); en XP solo el rectangulo, pero su Pinta pinta todo y lo que se ve es lo
+  mismo. Pinta recibe siempre el cliente entero como recorte de RenderContent (lo que da la capa).
+- `ClientRectangle` del buscador es un miembro con el nombre de Control (lo lee Form1.Video.cs:879): solo eso; cuando 6a toque esa linea
+  puede pasar a `new Rectangle(0, 0, Width, Height)` y quitarlo.
+- RepintaConMedida = false en las dos (sin ResizeRedraw como en XP): con la capa es lo que hacia el control (Control.SetBoundsCore);
+  en la lista nativa al cambiar de medida no se pinta entera, como en Windows.
+- En la lista nativa las flechas sin atender mueven el foco entre las vistas (ContainerControl.ProcessArrowKey), como en WinForms; en la
+  rocola ProcessCmdKey de Form1 atiende las flechas antes, asi que no llega.
+- Quitar (QuitaVista) la vista del foco en la lista nativa suelta el foco sin elegir otra (como antes); WinForms (ContainerControl al
+  quitar el activo) elige otro. La rocola no quita vistas.
