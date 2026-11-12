@@ -287,9 +287,9 @@ namespace Rocola
             sf.Banderas |= BanderasTexto.SinPartir | BanderasTexto.ContarEspacios;   // EN LINUX: FormatFlags |= NoWrap | MeasureTrailingSpaces (las anade; los mismos numeros)
             return sf;
         }
-        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra. La firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
+        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra. La firma de XP con un Graphics (Plataforma/Puente.ventanas2.cs) se quito el 12-11-2026: ya nadie la llamaba
         {
-            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar; el Graphics que falta lo mira la firma de XP del puente
+            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar; el Graphics que faltaba lo miraba la firma de XP del puente (quitada el 12-11-2026)
             // El formato tipografico mide el texto DESNUDO; DrawString con un formato normal le pone un poco
             // de aire a los lados. Ese aire se suma aqui (es proporcional al cuerpo) para que la caja calculada
             // aguante lo que de verdad se pinta.

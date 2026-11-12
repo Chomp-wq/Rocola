@@ -240,7 +240,7 @@ namespace BancoSuena
         }
         // PintaTituloGrande y PintaMinutosCola con un Graphics: la de XP (la referencia) o la traducida con el lienzo del Graphics y su estado
         // (suavizado, modo de letra, copia y medio pixel), la Letra de cada Font, cada pincel en un SKPaint con el medio pixel del Graphics
-        // (PuenteDibujo.Pincel; uno nulo, null) y el MISMO FormatoTexto, como hacia el puente que se quito; los SKPaint se sueltan al volver
+        // (antes PuenteDibujo.Pincel, ahora Brush.Pon por reflexion; uno nulo, null) y el MISMO FormatoTexto, como hacia el puente que se quito; los SKPaint se sueltan al volver
         private static void XpConGraphics(string nombre, Graphics g, params object[] args)
         {
             MethodInfo xp = PorTipo(nombre, 0, typeof(Graphics));
@@ -257,7 +257,9 @@ namespace BancoSuena
                 else if (o is StringFormat) o = Por("Formato", typeof(StringFormat), o);
                 else if (o is Brush)
                 {
-                    SKPaint p = (SKPaint)Puente.GetMethod("Pincel", Todo, null, new[] { typeof(Brush), typeof(bool) }, null).Invoke(null, new object[] { o, es[4] });
+                    // lo que hacia PuenteDibujo.Pincel (quitado el 12-11-2026): un SKPaint nuevo y Brush.Pon con los centros al reves del medio pixel
+                    SKPaint p = new SKPaint();
+                    typeof(Brush).GetMethod("Pon", Todo, null, new[] { typeof(SKPaint), typeof(bool) }, null).Invoke(o, new object[] { p, !(bool)es[4] });
                     hechos.Add(p); o = p;
                 }
                 t[i + 5] = o;

@@ -14,14 +14,8 @@ namespace Rocola
 {
     public partial class Form1
     {
-        // AnchoTexto(Graphics, string, Font) de XP (Form1.Ajustes.cs:290): sin Graphics, sin letra o sin texto, 0, como alli; del Graphics,
-        // su modo de letra (TextRenderingHint), que es lo unico que MeasureString mira de el
-        private static int AnchoTexto(Graphics g, string t, Font f)
-        {
-            if (g == null || f == null || string.IsNullOrEmpty(t)) return 0;
-            return AnchoTexto(PuenteDibujo.Estado(g).Letra, t, PuenteDibujo.Letra(f));
-        }
-        // AnchoTexto(string, Font) de XP (Form1.Ajustes.cs:320): la misma medida sin un Graphics a mano
+        // AnchoTexto(string, Font) de XP (Form1.Ajustes.cs:320): la misma medida sin un Graphics a mano (la pide Form1.Vistas.cs:1565 con la
+        // Font de la lista); sin letra o sin texto, 0, como alli. Se va cuando Form1.Vistas.cs mida con una Letra.
         private static int AnchoTexto(string t, Font f)
         {
             if (string.IsNullOrEmpty(t) || f == null) return 0;

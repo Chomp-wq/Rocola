@@ -2,7 +2,8 @@
 // dibujo por procesador -Starfield-, la luna, el grano, el contorno redondeado y el color de las portadas) dibuja con SkiaSharp directo y las
 // funciones nativas (Xp/Nativo). Aqui van las firmas de XP de lo que todavia piden archivos que dibujan con la capa que imita a GDI+
 // (Dibujo2D.cs). La regla: el puente va del lado de lo que no esta traducido, y los que llaman no cambian. Nada de esto queda: cada parte se
-// borra en cuanto se traduzcan los que la llaman, y todo al final, con Dibujo2D.cs y Puente.cs (PORT_fondo.md dice cual es cual). Ninguna le
+// borra en cuanto se traduzcan los que la llaman, y todo al final, con Dibujo2D.cs y Puente.cs (PORT_fondo.md dice cual es cual). La firma
+// de XP de RoundedPath (un GraphicsPath) se borro el 12-11-2026 (limpieza-puentes): ya nadie la pide. Ninguna le
 // cambia el estado al Graphics de quien llama (en XP, las tres del cielo lo dejan como estaba: BlitSkyAndStars devuelve la copia).
 using System.Drawing;
 using Rocola.Dibujo2D;
@@ -13,18 +14,6 @@ namespace Rocola
 {
     public partial class Form1
     {
-        // ---- RoundedPath: la firma de XP (un GraphicsPath), para Form1.Buscador.cs, Form1.Ajustes.cs y Form1.Vistas.cs. El MISMO trazo que
-        // la traducida (ContornoRedondo): su SKPath pasa a ser el del GraphicsPath (que se hace su dueno: al soltarlo se suelta), con lo que
-        // GraphicsPath lleva de fabrica (par-impar) y la figura cerrada (CloseFigure), como lo deja XP. Se quita cuando ninguno de esos tres
-        // pida un GraphicsPath.
-        private static GraphicsPath RoundedPath(Rectangle r, int radius)
-        {
-            GraphicsPath p = new GraphicsPath();
-            p.P.Dispose();
-            p.P = ContornoRedondo(r, radius);
-            return p;
-        }
-
         // ---- ColoresDePortada: la firma de XP (un Bitmap), para Form1.Portadas.cs y ColorDePortadaDe (los dos la reciben de LoadCover y de
         // la cache de portadas, aun sin traducir). Los MISMOS puntos (PuenteDibujo.Mapa). Una portada ya soltada lanza aqui al leer su ancho,
         // como en XP (que lo lee antes de mirar ningun punto); la traducida, con un SKBitmap soltado, cerraria la rocola. Se quita cuando

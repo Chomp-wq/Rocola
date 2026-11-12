@@ -120,7 +120,10 @@ namespace BancoReposo
         private static SKPaint Pincel(Brush b, bool medio)
         {
             if (b == null) return null;
-            return (SKPaint)Puente.GetMethod("Pincel", Todo, null, new[] { typeof(Brush), typeof(bool) }, null).Invoke(null, new object[] { b, medio });
+            // lo que hacia PuenteDibujo.Pincel (quitado el 12-11-2026, limpieza-puentes): un SKPaint nuevo y Brush.Pon con los centros al reves del medio pixel
+            SKPaint p = new SKPaint();
+            typeof(Brush).GetMethod("Pon", Todo, null, new[] { typeof(SKPaint), typeof(bool) }, null).Invoke(b, new object[] { p, !medio });
+            return p;
         }
         private static void Suelta(SKPaint p) { if (p == null) return; SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); p.Dispose(); }
 

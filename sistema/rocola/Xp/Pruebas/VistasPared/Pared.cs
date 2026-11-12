@@ -185,7 +185,7 @@ namespace BancoPared
                                 string ex = "";
                                 try
                                 {
-                                    if (vez == 0 || nuevo == null) xp.Invoke(null, new object[] { g, caja, tapas[t], angulos[a] });
+                                    if (xp != null && (vez == 0 || nuevo == null)) xp.Invoke(null, new object[] { g, caja, tapas[t], angulos[a] });
                                     else
                                     {
                                         object es = Por("Estado", typeof(Graphics), g);
@@ -209,7 +209,10 @@ namespace BancoPared
         {
             Type f1 = typeof(Form1);
             MethodInfo nuevo = Metodo(f1, nombre, typeof(SKCanvas));
-            if (!directo || nuevo == null) return Metodo(f1, nombre, typeof(Graphics)).Invoke(null, Junta(new object[] { g }, args));
+            // la firma de XP (con un Graphics) solo esta en la referencia: en la traduccion se quito el 12-11-2026 (limpieza-puentes, nadie la
+            // llamaba) y las dos vueltas van a la traducida con el lienzo y el estado del Graphics, que es lo que hacia el puente
+            MethodInfo xpm = Metodo(f1, nombre, typeof(Graphics));
+            if (xpm != null && (!directo || nuevo == null)) return xpm.Invoke(null, Junta(new object[] { g }, args));
             for (int i = 0; i < args.Length; i++) if (args[i] is Font) args[i] = Por("Letra", typeof(Font), args[i]);
             directas++;
             return nuevo.Invoke(null, Junta(EstadoAyudas(g), args));

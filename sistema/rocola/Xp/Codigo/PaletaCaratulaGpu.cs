@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la paleta se saca de los puntos de un SKBitmap con lo nativo (Xp/Nativo), no con GDI+; quien aun trae un Bitmap de la capa llega por el puente (Plataforma/Puente.pared.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la paleta se saca de los puntos de un SKBitmap con lo nativo (Xp/Nativo), no con GDI+; quien aun trae un Bitmap de la capa (Form1.Fondo.cs y Form1.Portadas.cs) llega por el puente (Plataforma/Puente.pared.cs: ExtractCoverPalette)
 
 namespace Rocola
 {

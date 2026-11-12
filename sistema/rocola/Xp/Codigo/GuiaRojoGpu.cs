@@ -137,7 +137,7 @@ namespace Rocola
         private Rectangle TeclaAyuda()
         { return ayudaView != null && ayudaView.Visible ? GuiaRojoTecla(ayudaView.Bounds, ayudaView.Tecla) : Rectangle.Empty; }
 
-        private void DrawGuiaRojo(SKCanvas g, bool suave, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la imagen de la interfaz; EnsureUiOverlay (Form1.Video.cs, aun sin traducir) la llama con su Graphics por el puente (Plataforma/Puente.acabado-estilo.cs)
+        private void DrawGuiaRojo(SKCanvas g, bool suave, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la imagen de la interfaz; EnsureUiOverlay (Form1.Video.cs, ya traducido) la llama directo con su lienzo y su estado
         {
             if (!GuiaRojoVisible()) return;
             PintaGuiaRojoAyuda(g, suave, copia, medio, letterBar.Bounds,   // EN LINUX: con el lienzo y su estado

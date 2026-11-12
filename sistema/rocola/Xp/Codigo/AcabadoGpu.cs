@@ -119,7 +119,7 @@ namespace Rocola
             }
             // Capas inmutables: pagina sin seleccion y una sola fila elegida.
             // Se conserva el horneado anterior para el hojeo ya existente.
-            public SKBitmap BakeGpuListLayer(bool selected)   // EN LINUX: un SKBitmap; EnsureSongPiece se lo entrega como Bitmap a las piezas de la tarjeta (uiPieza, de Form1.Video.cs, aun sin traducir)
+            public SKBitmap BakeGpuListLayer(bool selected)   // EN LINUX: un SKBitmap; EnsureSongPiece se lo entrega como Bitmap de la capa a las piezas de la tarjeta (uiPieza, de Form1.Video.cs, que las guarda asi: PuenteDibujo.Entrega)
             {
                 int w = ClientSize.Width, h = selected ? RowH : ClientSize.Height;
                 pintandoGpu = true;   // con la tarjeta, la fila elegida queda dentro del cristal (DentroDelCristal)

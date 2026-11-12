@@ -91,14 +91,11 @@ namespace Rocola
             return new StringFormat(f);
         }
 
-        // ---- los pinceles (para un archivo traducido que recibe un Brush de uno que no lo esta: PulidoGpu devuelve Brush): su color o su
-        // shader, como lo pinta GDI+ con ese medio pixel
-        internal static SKPaint Pincel(Brush b, bool medio) { SKPaint p = new SKPaint(); b.Pon(p, !medio); return p; }
-        // y una pluma (Pen) de uno que no lo esta: su color o su pincel, su ancho, sus uniones, sus puntas y sus guiones, como los pone GDI+
+        // ---- las plumas: una pluma (Pen) de uno que no lo esta: su color o su pincel, su ancho, sus uniones, sus puntas y sus guiones, como los pone GDI+
         // (Nativo/Pixel.cs, Traza y los demas, le ponen el minimo de un pixel, el limite de esquinas 10 y el suavizado)
         internal static SKPaint Pluma(Pen pen, bool medio) { SKPaint p = new SKPaint(); pen.Pon(p, !medio); return p; }
 
-        // ---- los trazos, las regiones y las matrices de uno que no esta traducido (RoundedPath de Form1.Fondo.cs devuelve un GraphicsPath):
+        // ---- los trazos, las regiones y las matrices de uno que no esta traducido (los que aun piden o dan un GraphicsPath o una Region):
         // el MISMO SKPath (no una copia, sin hacerse dueno: lo suelta quien hizo el GraphicsPath) y la misma matriz
         internal static SKPath Ruta(GraphicsPath gp) { return gp != null ? gp.P : null; }
         internal static SKPath Ruta(Region r) { return r != null ? r.P : null; }

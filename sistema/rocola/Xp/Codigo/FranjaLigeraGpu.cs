@@ -95,7 +95,7 @@ namespace Rocola
         }
 
         // Vacia el recuadro (transparente, copia directa) y deja recortado ahi todo lo que se pinte despues.
-        private static void EmpiezaRecuadro(SKCanvas g, bool suave, bool medio, Rectangle zona)   // EN LINUX: el lienzo de Skia y el estado del que llama que pesa en el relleno (suavizado y medio pixel); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
+        private static void EmpiezaRecuadro(SKCanvas g, bool suave, bool medio, Rectangle zona)   // EN LINUX: el lienzo de Skia y el estado del que llama que pesa en el relleno (suavizado y medio pixel); Form1.Video.cs (ya traducido) la llama directo con su lienzo
         {
             g.Save(); g.ClipRect(new SKRect(zona.Left, zona.Top, zona.Right, zona.Bottom), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(zona): un recorte de pixeles enteros, sin suavizar, en un Save del lienzo como lo pone la capa (quien lo llama no traia recorte que reemplazar)
             // EN LINUX: CompositingMode antes = g.CompositingMode: la copia va solo en el relleno de abajo (Pixel.Rellena), no en el lienzo: no hay nada que guardar
