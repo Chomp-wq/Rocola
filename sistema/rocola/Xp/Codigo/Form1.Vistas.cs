@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de paginas y la barra de letras (SongPagerBar y LetterBar: hasta la linea 997) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), y ya no necesitan Rocola.Dibujo2D (lo que les llega de archivos sin traducir -el Graphics de OnPaint y de DrawCtrlOverlay, CtrlDirLeft, CtrlDirRight, CtrlTxt, la Font del control- pasa por el puente: Plataforma/Puente.cs y Puente.vistas-a.cs); el resto del archivo sigue con GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que se traduzca   // EN LINUX: y, de HeaderView al final (grupo vistas-b), SkiaSharp directo y las funciones nativas (Xp/Nativo): alli lo que queda de la capa va con su tipo escrito entero (Rocola.Dibujo2D.X) // EN LINUX: y la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2): una pieza de la hoja con SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y los demas de GDI+: el archivo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin Rocola.Dibujo2D; lo que todavia le llega de la capa (el Graphics de OnPaint y de DrawCtrlOverlay, la Font del control, las portadas de Form1) va con su tipo escrito entero (Rocola.Dibujo2D.X) y pasa por el puente (Plataforma/Puente.cs, Puente.vistas-a.cs y Puente.vistas-b.cs); la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2) es una pieza de la hoja con SkiaSharp directo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -35,15 +35,15 @@ namespace Rocola
                 SKCanvas g = e;   // EN LINUX: e.Graphics -> el lienzo (SkiaSharp)
                 bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del Graphics en una variable (PORT_DIBUJO.md)
                 Rectangle r = new Rectangle(0, 0, Math.Max(1, Width), Math.Max(4, Height));
-                using (GraphicsPath pa = RoundedPath(r, Height / 2))
+                using (SKPath pa = ContornoRedondo(r, Height / 2))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), soltado como en XP
                 using (SKPaint b = PinturaXp.Pincel(Color.FromArgb(38, 46, 82)))   // EN LINUX: SolidBrush -> SKPaint (Nativo/PinturaXp.cs)
-                    Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs) con el SKPath de RoundedPath (Form1.Fondo.cs, aun sin traducir: PuenteDibujo.Ruta)
+                    Pixel.Rellena(g, pa, b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs) con el SKPath del contorno
                 float f = Valor; if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
                 int w = (int)(r.Width * f);
                 if (w > 2)
-                    using (GraphicsPath pa = RoundedPath(new Rectangle(0, 0, w, r.Height), Height / 2))
+                    using (SKPath pa = ContornoRedondo(new Rectangle(0, 0, w, r.Height), Height / 2))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), soltado como en XP
                     using (SKPaint b = PinturaXp.Pincel(Acento))   // EN LINUX: SolidBrush -> SKPaint
-                        Pixel.Rellena(g, PuenteDibujo.Ruta(pa), b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs)
+                        Pixel.Rellena(g, pa, b, suave);   // EN LINUX: FillPath (Nativo/Pixel.cs)
             }
         }
 
@@ -159,8 +159,8 @@ namespace Rocola
                     if (Page > 0)
                     {
                         float x = 4;
-                        x = CtrlDirLeftVistasA(g, suave, ajuste, copia, medio, x, cy, 11, yellow) + 5;   // EN LINUX: CtrlDirLeft (Form1.Pared.cs, aun sin traducir) pinta con un Graphics: uno sobre el mismo lienzo con el estado de este, por el puente (Plataforma/Puente.vistas-a.cs)
-                        CtrlTxtVistasA(g, suave, ajuste, copia, medio, f, "pagina " + Page, x, cy, dim);   // EN LINUX: CtrlTxt (Form1.Pared.cs, aun sin traducir) pinta con un Graphics y una Font: por el puente
+                        x = CtrlDirLeft(g, suave, ajuste, copia, medio, x, cy, 11, yellow) + 5;   // EN LINUX: CtrlDirLeft(g, ...) (Form1.Pared.cs, ya traducida), directo con el lienzo y el estado de este (el suavizado, el modo de letra, la copia y el medio pixel)
+                        CtrlTxt(g, suave, ajuste, copia, medio, f, "pagina " + Page, x, cy, dim);   // EN LINUX: CtrlTxt(g, f, ...) (Form1.Pared.cs, ya traducida), directo con el lienzo y el estado de este (el suavizado, el modo de letra, la copia y el medio pixel) y la Letra
                     }
                     // Derecha: pagina siguiente [>] (solo si existe)
                     if (Page < Pages - 1)
@@ -168,14 +168,14 @@ namespace Rocola
                         string r = "pagina " + (Page + 2);
                         SizeF rs = TextoGdiPlus.Mide(r, f, ajuste, new SizeF(0, 0), null);   // EN LINUX: g.MeasureString(r, f)
                         float xr = w - 4 - 11 - 5 - rs.Width;
-                        xr = CtrlTxtVistasA(g, suave, ajuste, copia, medio, f, r, xr, cy, dim) + 5;   // EN LINUX: CtrlTxt, por el puente
-                        CtrlDirRightVistasA(g, suave, ajuste, copia, medio, xr, cy, 11, yellow);   // EN LINUX: CtrlDirRight (Form1.Pared.cs, aun sin traducir), por el puente
+                        xr = CtrlTxt(g, suave, ajuste, copia, medio, f, r, xr, cy, dim) + 5;   // EN LINUX: CtrlTxt, directo
+                        CtrlDirRight(g, suave, ajuste, copia, medio, xr, cy, 11, yellow);   // EN LINUX: CtrlDirRight(g, ...) (Form1.Pared.cs, ya traducida), directo
                     }
                 }
             }
         }
 
-        private partial class LetterBar : Control   // EN LINUX: partial: las firmas de XP de RenderContent (con un Graphics), para quien todavia la llama asi (OnPaint, abajo, y DrawCtrlOverlay de Form1.Video.cs), estan en Plataforma/Puente.vistas-a.cs
+        private partial class LetterBar : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics y forGpu), para quien todavia la llama asi (OnPaint, abajo, y DrawCtrlOverlay de Form1.Video.cs), esta en Plataforma/Puente.vistas-a.cs
         {
             private SKPaint pulseBrush; private SKPaint pulsePen;                       // resaltado de letra (reusables)   // EN LINUX: SolidBrush y Pen: el pincel (su color) y la pluma (su color, su ancho y su union) en un SKPaint cada uno
             private SKPath pulsePath; private RectangleF pulseBox = RectangleF.Empty;  // trayectoria cacheada   // EN LINUX: GraphicsPath -> SKPath
@@ -1027,7 +1027,7 @@ namespace Rocola
             private void EnsureRes(int h)
             {
                 if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
-                if (sfIzq == null) sfIzq = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Near));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir) da un StringFormat: su FormatoTexto (el mismo objeto), por el puente
+                if (sfIzq == null) sfIzq = CreaSfDibuja(Alinea.Cerca);   // EN LINUX: CreaSfDibuja(StringAlignment.Near) (Form1.Ajustes.cs, ya traducida): su FormatoTexto, directo, con Alinea (los mismos numeros)
                 if (fSec != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fSec != null) fSec.Dispose();
                 if (fPag != null) fPag.Dispose();
@@ -1060,8 +1060,8 @@ namespace Rocola
                 using (Rocola.Nativo.Letra fp = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, h * 0.303f, true))   // EN LINUX: new Font(familia, pt, Bold)
                 {
                     float nombre = Math.Max(3f, h * 0.13f) + h * 0.32f + 4f + 2f;   // pastilla, su hueco y el aire del final
-                    float top = nombre + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "LO MAS SONADO", fs);   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra de un Graphics nuevo (SystemDefault)
-                    float letra = nombre + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "LETRA W", fs) + h * 0.5f + h * 0.45f + AnchoTextoVistasB(g, AjusteLetra.DelSistema, "12/12", fp) + 8f;   // EN LINUX: AnchoTexto, por el puente, con el modo de letra de un Graphics nuevo
+                    float top = nombre + AnchoTexto(AjusteLetra.DelSistema, "LO MAS SONADO", fs);   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el de fabrica de uno nuevo (SystemDefault: AjusteLetra.DelSistema); la Letra en vez de la Font
+                    float letra = nombre + AnchoTexto(AjusteLetra.DelSistema, "LETRA W", fs) + h * 0.5f + h * 0.45f + AnchoTexto(AjusteLetra.DelSistema, "12/12", fp) + 8f;   // EN LINUX: AnchoTexto, directo, con el modo de letra de un Graphics nuevo
                     pide = (int)Math.Ceiling(Math.Max(top, letra));
                 }
                 pideAlto = h; pideFuente = this.Font;
@@ -1080,7 +1080,7 @@ namespace Rocola
                 // que el sitio que le toca cambia con la pantalla. Y lo que quepa se pega a la DERECHA, para
                 // que no quede colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
-                float anchoNombre = pw0 + h * 0.32f + AnchoTextoVistasB(g, ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra del que llama
+                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del que llama; la Letra en vez de la Font
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
 
                 // LA RAYITA SEPARADORA se dibuja SIEMPRE que detras del nombre venga algo, lleve puntitos o no.
@@ -1106,7 +1106,7 @@ namespace Rocola
                                                  (pag0 + 1) + " de " + Total,
                                                  (pag0 + 1) + "/" + Total };
                 float[] anchoForma = new float[formas.Length];
-                for (int i = 0; i < formas.Length; i++) anchoForma[i] = h * 0.45f + AnchoTextoVistasB(g, ajuste, formas[i], fPag) + 8f;   // EN LINUX: AnchoTexto, por el puente
+                for (int i = 0; i < formas.Length; i++) anchoForma[i] = h * 0.45f + AnchoTexto(ajuste, formas[i], fPag) + 8f;   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
 
                 // Se prueba con los puntitos puestos y, si aun asi no entra ninguna forma, se quitan: los
                 // puntitos dicen en que pagina estas de un vistazo, pero el numero es el UNICO que dice cuantas
@@ -1144,7 +1144,7 @@ namespace Rocola
                 string sec = Section ?? "";
                 Rocola.Nativo.Letra fUsar = fSec; Rocola.Nativo.Letra fApreta = null;   // EN LINUX: Font: Letra
                 float tope = Math.Max(10f, w - x);
-                float anchoSec = AnchoTextoVistasB(g, ajuste, sec, fUsar);   // EN LINUX: AnchoTexto, por el puente
+                float anchoSec = AnchoTexto(ajuste, sec, fUsar);   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
                 if (anchoSec > tope)
                 {
                     float cuerpo = fSec.Puntos;   // EN LINUX: Font.SizeInPoints
@@ -1153,7 +1153,7 @@ namespace Rocola
                         cuerpo -= 0.5f;
                         if (fApreta != null) fApreta.Dispose();
                         fApreta = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, cuerpo, true);   // EN LINUX: new Font(familia, pt, Bold): la familia de la letra del control (WinForms, aun sin traducir) por su nombre, en puntos y en negrita (Nativo/Letras.cs)
-                        anchoSec = AnchoTextoVistasB(g, ajuste, sec, fApreta);   // EN LINUX: AnchoTexto, por el puente
+                        anchoSec = AnchoTexto(ajuste, sec, fApreta);   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
                         if (anchoSec <= tope) break;
                     }
                     if (fApreta != null) fUsar = fApreta;
@@ -1204,8 +1204,8 @@ namespace Rocola
                 // sitio, y si el reparto se quedo corto por un pelo se acorta la frase antes que callarse). Solo
                 // se calla si no cabe ni "3/18": entonces si, mejor nada que un numero a medias -"pagina 3 de 1"
                 // con la ultima cifra comida ademas dice algo FALSO-.
-                while (AnchoTextoVistasB(g, ajuste, txt0, fPag) > w - x && forma < formas.Length - 1) txt0 = formas[++forma];   // EN LINUX: AnchoTexto, por el puente
-                if (AnchoTextoVistasB(g, ajuste, txt0, fPag) > w - x) return;   // EN LINUX: AnchoTexto, por el puente
+                while (AnchoTexto(ajuste, txt0, fPag) > w - x && forma < formas.Length - 1) txt0 = formas[++forma];   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
+                if (AnchoTexto(ajuste, txt0, fPag) > w - x) return;   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
                 brocha.Color = Color.FromArgb(150, 160, 190).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                 TextoGdiPlus.Escribe(g, txt0, fPag, ajuste, brocha, new RectangleF(x, 0, Math.Max(10f, w - x), h), sfIzq, copia, medio);   // EN LINUX: g.DrawString
             }
@@ -1236,7 +1236,7 @@ namespace Rocola
             // ademas CUALES son, que es lo que el cliente quiere saber para no volver a pedir la que
             // ya pidio. Se ven las tres primeras; si hay mas, la tercera lleva un "+2" en la esquina.
             public bool ConPortadas;      // esta capsula lleva hueco para portaditas (la de la cola si, la de la moneda no)
-            public Rocola.Dibujo2D.Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)   // EN LINUX: las portadas las da y las compara por identidad Form1 (LoadCover, Form1.Biblioteca.cs: aun sin traducir): se quedan con su tipo, escrito entero, y se convierten al pintarlas
+            public Rocola.Dibujo2D.Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)   // EN LINUX: las portadas las da y las compara por identidad Form1 (LoadCover, Form1.Biblioteca.cs: su cache de portadas aun guarda Image de la capa, hasta la oleada cache-portadas): se quedan con su tipo, escrito entero, y se convierten al pintarlas
             public int Mas;               // cuantas quedan detras de las tres
             private const int Huecos = 3;
 
@@ -1322,8 +1322,8 @@ namespace Rocola
                 using (Rocola.Nativo.Letra fe = Rocola.Nativo.Letra.EnPuntos(fam, alto * 0.34f, true))   // EN LINUX: new Font(fam, pt, Bold): en puntos y en negrita (Nativo/Letras.cs)
                 using (Rocola.Nativo.Letra fv = Rocola.Nativo.Letra.EnPuntos(fam, alto * 0.52f, true))   // EN LINUX: new Font(fam, pt, Bold)
                 {
-                    int w = AnchoTextoVistasB(etiq, fe);   // EN LINUX: AnchoTexto sin Graphics (Form1.Ajustes.cs, aun sin traducir) mide con una Font: por el puente (Plataforma/Puente.vistas-b.cs)
-                    if (!string.IsNullOrEmpty(valor)) w += AnchoTextoVistasB(valor, fv) + (int)(alto * 0.22f);   // EN LINUX: AnchoTexto, por el puente
+                    int w = AnchoTexto(etiq, fe);   // EN LINUX: AnchoTexto(t, f) sin Graphics (Form1.Ajustes.cs, ya traducida), directo, con la Letra en vez de la Font
+                    if (!string.IsNullOrEmpty(valor)) w += AnchoTexto(valor, fv) + (int)(alto * 0.22f);   // EN LINUX: AnchoTexto, directo
                     if (conPortadas) w += AnchoPortaditas(alto);
                     return w + (int)(alto * 0.9f);
                 }
@@ -1338,7 +1338,7 @@ namespace Rocola
             private void EnsureRes(int h)
             {
                 if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
-                if (sfCen == null) sfCen = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
+                if (sfCen == null) sfCen = CreaSfDibuja(Alinea.Centro);   // EN LINUX: CreaSfDibuja(StringAlignment.Center) (Form1.Ajustes.cs, ya traducida): su FormatoTexto, directo, con Alinea (los mismos numeros)
                 if (fEtq != null && Math.Abs(fontAlto - h) < 0.5f) return;
                 if (fEtq != null) fEtq.Dispose();
                 if (fVal != null) fVal.Dispose();
@@ -1448,7 +1448,7 @@ namespace Rocola
                     for (int i = 0; i < Huecos; i++)
                     {
                         RectangleF rq = new RectangleF(px0 + i * (lado + sep), py, lado, lado);
-                        Rocola.Dibujo2D.Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;   // EN LINUX: la portada es una Image de la capa (la da Form1, aun sin traducir): su tipo, escrito entero
+                        Rocola.Dibujo2D.Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;   // EN LINUX: la portada es una Image de la capa (la da la cache de portadas de Form1, que aun la guarda asi): su tipo, escrito entero
                         using (SKPath ph = RoundRectF(rq, lado * 0.22f))   // EN LINUX: GraphicsPath: un SKPath
                         {
                             if (im != null)
@@ -1576,11 +1576,11 @@ namespace Rocola
                 if (w < 6 || h < 6 || texto.Length == 0) return;
                 bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias: el estado del dibujo en variables
                 if (brocha == null) brocha = new SKPaint { Color = Color.White.Sk() };   // EN LINUX: new SolidBrush(Color.White)
-                if (sfCen == null) sfCen = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
-                using (Rocola.Dibujo2D.GraphicsPath p = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                if (sfCen == null) sfCen = CreaSfDibuja(Alinea.Centro);   // EN LINUX: CreaSfDibuja(StringAlignment.Center) (Form1.Ajustes.cs, ya traducida): su FormatoTexto, directo, con Alinea (los mismos numeros)
+                using (SKPath p = ContornoRedondo(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo, y se suelta como en XP
                 {
-                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(60, Tinte).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(p), b, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath
-                    using (SKPaint pe = new SKPaint { Color = Color.FromArgb(120, Tinte).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(p), pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
+                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(60, Tinte).Sk() }) Pixel.Rellena(g, p, b, suave, medio, copia);   // EN LINUX: SolidBrush y g.FillPath
+                    using (SKPaint pe = new SKPaint { Color = Color.FromArgb(120, Tinte).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, p, pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                 }
                 brocha.Color = Lighten(Tinte, 0.45).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                 TextoGdiPlus.Escribe(g, texto, PuenteDibujo.Letra(this.Font), ajuste, brocha, new RectangleF(0, 0, w, h), sfCen, copia, medio);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs) con el modo de letra, la copia y el medio pixel del lienzo; la letra es la del control (WinForms): la misma Letra, por el puente
@@ -1648,10 +1648,10 @@ namespace Rocola
                 // Riel HUNDIDO: oscuro translucido + borde interior tenue (parece rebajado, no plano).
                 Rectangle track = new Rectangle(0, 0, w - 1, h - 1);
                 if (trackB == null) { trackB = new SKPaint { Color = Color.FromArgb(130, 6, 10, 26).Sk() }; trackP = new SKPaint { Color = Color.FromArgb(40, 255, 255, 255).Sk(), StrokeWidth = 1f }; }   // EN LINUX: new SolidBrush(color) y new Pen(color, 1)
-                using (Rocola.Dibujo2D.GraphicsPath tp = RoundedPath(track, h / 2))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                using (SKPath tp = ContornoRedondo(track, h / 2))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo, y se suelta como en XP
                 {
-                    Pixel.Rellena(g, PuenteDibujo.Ruta(tp), trackB, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
-                    Pixel.Traza(g, PuenteDibujo.Ruta(tp), trackP, suave, medio, copia);   // EN LINUX: g.DrawPath (Nativo/Pixel.cs) con el estado del lienzo
+                    Pixel.Rellena(g, tp, trackB, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
+                    Pixel.Traza(g, tp, trackP, suave, medio, copia);   // EN LINUX: g.DrawPath (Nativo/Pixel.cs) con el estado del lienzo
                 }
 
                 int fw = (int)(_value * (w - 2));
@@ -1659,20 +1659,20 @@ namespace Rocola
                 {
                     Rectangle fill = new Rectangle(1, 1, fw, h - 3);
                     int rad = Math.Max(1, (h - 3) / 2);
-                    using (Rocola.Dibujo2D.GraphicsPath fp = RoundedPath(fill, rad))   // EN LINUX: RoundedPath: su SKPath, por el puente
+                    using (SKPath fp = ContornoRedondo(fill, rad))   // EN LINUX: RoundedPath: el SKPath de ContornoRedondo, directo
                     {
                         // halo "neon" alrededor del relleno (acorde al cielo estrellado)
-                        using (SKPaint glow = new SKPaint { Color = Color.FromArgb(70, Lighten(_accent, 0.5)).Sk(), StrokeWidth = 3f }) { glow.StrokeJoin = SKStrokeJoin.Round; Pixel.Traza(g, PuenteDibujo.Ruta(fp), glow, suave, medio, copia); }   // EN LINUX: Pen(color, 3) con LineJoin.Round y g.DrawPath
+                        using (SKPaint glow = new SKPaint { Color = Color.FromArgb(70, Lighten(_accent, 0.5)).Sk(), StrokeWidth = 3f }) { glow.StrokeJoin = SKStrokeJoin.Round; Pixel.Traza(g, fp, glow, suave, medio, copia); }   // EN LINUX: Pen(color, 3) con LineJoin.Round y g.DrawPath
                         // cuerpo: degradado vertical brillante arriba -> acento abajo
                         using (SKShader fbS = Degradado.Lineal(new Rectangle(fill.X, fill.Y, fill.Width, fill.Height + 1), Lighten(_accent, 0.6), Shade(_accent, 0.1), Degradado.Vertical, true)) using (SKPaint fb = new SKPaint { Shader = fbS })   // EN LINUX: LinearGradientBrush(caja, a, b, Vertical): su shader (Nativo/Degradado.cs: el modo es un angulo escalable de 90) en un SKPaint; se sueltan los dos con sus using
-                            Pixel.Rellena(g, PuenteDibujo.Ruta(fp), fb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
+                            Pixel.Rellena(g, fp, fb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
                         // gloss: franja clara en la mitad superior (aspecto vidrioso)
                         Rectangle gloss = new Rectangle(fill.X + 1, fill.Y + 1, Math.Max(1, fill.Width - 2), Math.Max(1, (fill.Height - 1) / 2));
-                        using (Rocola.Dibujo2D.GraphicsPath gpath = RoundedPath(gloss, Math.Max(1, gloss.Height / 2)))   // EN LINUX: RoundedPath: su SKPath, por el puente
+                        using (SKPath gpath = ContornoRedondo(gloss, Math.Max(1, gloss.Height / 2)))   // EN LINUX: RoundedPath: el SKPath de ContornoRedondo, directo
                         using (SKShader gbS = Degradado.Lineal(new Rectangle(gloss.X, gloss.Y, gloss.Width, gloss.Height + 1), Color.FromArgb(150, 255, 255, 255), Color.FromArgb(15, 255, 255, 255), Degradado.Vertical, true)) using (SKPaint gb = new SKPaint { Shader = gbS })   // EN LINUX: LinearGradientBrush(caja, a, b, Vertical): su shader en un SKPaint
-                            Pixel.Rellena(g, PuenteDibujo.Ruta(gpath), gb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
+                            Pixel.Rellena(g, gpath, gb, suave, medio, copia);   // EN LINUX: g.FillPath (Nativo/Pixel.cs) con el estado del lienzo
                         // borde nitido brillante
-                        using (SKPaint edge = new SKPaint { Color = Color.FromArgb(180, Lighten(_accent, 0.65)).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(fp), edge, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
+                        using (SKPaint edge = new SKPaint { Color = Color.FromArgb(180, Lighten(_accent, 0.65)).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, fp, edge, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
                 }
             }
@@ -1763,10 +1763,10 @@ namespace Rocola
                 {
                     bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias
                     g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), h / 2))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(new Rectangle(0, 0, w - 1, h - 1), h / 2))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo, y se suelta como en XP
                     {
-                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(52, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave);   // EN LINUX: SolidBrush y g.FillPath
-                        using (SKPaint p = new SKPaint { Color = Color.FromArgb(110, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), p, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
+                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(52, c).Sk() }) Pixel.Rellena(g, gp, sb, suave);   // EN LINUX: SolidBrush y g.FillPath
+                        using (SKPaint p = new SKPaint { Color = Color.FromArgb(110, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, gp, p, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
                 }
                 return b;
@@ -1851,10 +1851,10 @@ namespace Rocola
                     g.Clear(Color.Transparent.Sk());   // EN LINUX: g.Clear(Color.Transparent)
                     // El MISMO aspecto que la pastilla de genero de los resultados del buscador: relleno muy
                     // tenue del color del genero, borde fino y el texto en ese color aclarado.
-                    using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
+                    using (SKPath gp = ContornoRedondo(new Rectangle(0, 0, w - 1, h - 1), Math.Min(7, (h - 1) / 2)))   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo, y se suelta como en XP
                     {
-                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(60, c).Sk() }) Pixel.Rellena(g, PuenteDibujo.Ruta(gp), sb, suave);   // EN LINUX: SolidBrush y g.FillPath
-                        using (SKPaint pn = new SKPaint { Color = Color.FromArgb(120, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, PuenteDibujo.Ruta(gp), pn, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
+                        using (SKPaint sb = new SKPaint { Color = Color.FromArgb(60, c).Sk() }) Pixel.Rellena(g, gp, sb, suave);   // EN LINUX: SolidBrush y g.FillPath
+                        using (SKPaint pn = new SKPaint { Color = Color.FromArgb(120, c).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, gp, pn, suave);   // EN LINUX: Pen(color, 1) y g.DrawPath
                     }
                     // EN LINUX: using (StringFormat sf = new StringFormat()): el formato es un FormatoTexto (abajo), que no se suelta; el bloque queda como estaba
                     {
@@ -1910,7 +1910,7 @@ namespace Rocola
             private void ClearFontDrawing()
             {
                 SueltaDibujo(ref fNum); SueltaDibujo(ref fCola);
-                SueltaMapasVistasB(ref bmpDig); SueltaMapasVistasB(ref bmpDigCola); SueltaMapasVistasB(ref bmpDigSon);   // EN LINUX: SueltaBitmaps (Form1.Pared.cs, aun sin traducir) pide Bitmap[] de la capa: la misma cuenta para SKBitmap[] (Plataforma/Puente.vistas-b.cs)
+                SueltaBitmaps(ref bmpDig); SueltaBitmaps(ref bmpDigCola); SueltaBitmaps(ref bmpDigSon);   // EN LINUX: SueltaBitmaps (Form1.Pared.cs, ya traducida), directo: los mapas son SKBitmap[]
                 if (hornoGen != null) TiraHornoGen();
                 SueltaDibujo(ref hornoPag); SueltaDibujo(ref hornoAnt);
                 fontFuente = hornoCuerpo = hornoGenCuerpo = -1f;
@@ -2085,8 +2085,8 @@ namespace Rocola
             {
                 int w = ClientSize.Width, h = ClientSize.Height;
                 int R = Math.Min(28, Math.Min(w, h) / 4);
-                Rocola.Dibujo2D.GraphicsPath p = RoundedPath(new Rectangle(3, 3 - gpuFilaY, w - 7, h - 7), Math.Max(1, R - 2));   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP
-                g.ClipPath(PuenteDibujo.Ruta(p), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): se suma al recorte que haya, en pixeles enteros (sin suavizar, como GDI+); lo quita el Restore de quien llama
+                SKPath p = ContornoRedondo(new Rectangle(3, 3 - gpuFilaY, w - 7, h - 7), Math.Max(1, R - 2));   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo; se suelta como en XP (p.Dispose, abajo)
+                g.ClipPath(p, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): se suma al recorte que haya, en pixeles enteros (sin suavizar, como GDI+); lo quita el Restore de quien llama
                 p.Dispose();
             }
 #endif
@@ -2110,7 +2110,7 @@ namespace Rocola
                 if (colaB == null)
                 {
                     colaB = new SKPaint { Color = Color.Black.Sk() };   // EN LINUX: new SolidBrush(Color.Black)
-                    cenFmt = PuenteDibujo.Formato(CreaSfDibuja(Rocola.Dibujo2D.StringAlignment.Center));   // EN LINUX: CreaSfDibuja (Form1.Ajustes.cs, aun sin traducir): su FormatoTexto, por el puente
+                    cenFmt = CreaSfDibuja(Alinea.Centro);   // EN LINUX: CreaSfDibuja(StringAlignment.Center) (Form1.Ajustes.cs, ya traducida): su FormatoTexto, directo, con Alinea (los mismos numeros)
                 }
                 float cuerpo = Font.SizeInPoints;
                 if (fNum == null || Math.Abs(fontFuente - cuerpo) > 0.01f)
@@ -2150,7 +2150,7 @@ namespace Rocola
 #endif
                         hlB.Color = Color.FromArgb(150, Lighten(Accent, 0.15)).Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                         hlP.Color = Color.FromArgb(180, Lighten(Accent, 0.45)).Sk();   // EN LINUX: el color de la pluma (Pen.Color)
-                        using (Rocola.Dibujo2D.GraphicsPath gp = RoundedPath(hl, 9)) { Pixel.Rellena(g, PuenteDibujo.Ruta(gp), hlB, suave, medio, copia); Pixel.Traza(g, PuenteDibujo.Ruta(gp), hlP, suave, medio, copia); }   // EN LINUX: RoundedPath (Form1.Fondo.cs, aun sin traducir) devuelve un GraphicsPath: su tipo escrito entero; se pinta su SKPath (PuenteDibujo.Ruta: el mismo, sin copia) y se suelta como en XP; g.FillPath y g.DrawPath (Nativo/Pixel.cs)
+                        using (SKPath gp = ContornoRedondo(hl, 9)) { Pixel.Rellena(g, gp, hlB, suave, medio, copia); Pixel.Traza(g, gp, hlP, suave, medio, copia); }   // EN LINUX: GraphicsPath y RoundedPath (Form1.Fondo.cs) -> el SKPath de ContornoRedondo (Form1.Fondo.cs, ya traducida: el mismo trazo, par-impar y cerrado), directo, y se suelta como en XP; g.FillPath y g.DrawPath (Nativo/Pixel.cs)
 #if ROCOLA_GPU
                         if (recorte != -1) g.RestoreToCount(recorte);   // EN LINUX: if (recorte != null) g.Restore(recorte)
 #endif
@@ -2221,7 +2221,7 @@ namespace Rocola
 #if ROCOLA_GPU
                         if (tColaGpu != null) t = tColaGpu;   // "EN COLA 3 · en ~9 min"
 #endif
-                        int wp = AnchoTextoVistasB(g, ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto (Form1.Ajustes.cs, aun sin traducir) mide con un Graphics y una Font: por el puente (Plataforma/Puente.vistas-b.cs), con el modo de letra del que llama
+                        int wp = AnchoTexto(ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del que llama; la Letra en vez de la Font
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
                         { SKBitmap im = Pastilla(false, wp, hCola); if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + im.Width, (int)cr.Y + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+
@@ -2239,7 +2239,7 @@ namespace Rocola
                         // U+25BA y no U+25B6: son dos triangulitos casi identicos, pero el otro no esta en el
                         // juego de simbolos que trae Windows XP y alli saldria un rectangulo vacio.
                         const string t = "\u25BA SONANDO";
-                        int wp = AnchoTextoVistasB(g, ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto, por el puente
+                        int wp = AnchoTexto(ajuste, t, fCola) + hCola;   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
                         xMarca -= wp;
                         RectangleF cr = new RectangleF(xMarca, cy - hCola * 0.5f, wp, hCola);
                         { SKBitmap im = Pastilla(true, wp, hCola); if (im != null) Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect((int)cr.X, (int)cr.Y, (int)cr.X + im.Width, (int)cr.Y + im.Height), filtro, medio, copia); }   // EN LINUX: g.DrawImageUnscaled(imagen, x, y): entera y en su tamano en ese punto, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); una nula no se pinta, como en GDI+

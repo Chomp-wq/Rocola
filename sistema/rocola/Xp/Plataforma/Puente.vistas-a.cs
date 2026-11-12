@@ -10,8 +10,9 @@
 //     suavizado y el modo de letra (AntiAlias y ClearTypeGridFit); la de letras, el suavizado (AntiAlias); cada una solo si pasa de su primera
 //     salida (las mismas cuentas de XP). Se le ponen ANTES de llamar a la traducida: asi el Graphics queda igual que en XP tambien si el
 //     dibujo lanza una excepcion a medias.
-//   - Lo que la traducida le pide a lo que no lo esta y pinta con un Graphics (CtrlDirLeft, CtrlDirRight y CtrlTxt de Form1.Pared.cs): un
-//     Graphics sobre el MISMO lienzo con el estado del que llama (GraphicsVistasA).
+//   (Lo que la traducida le pedia a Form1.Pared.cs -CtrlDirLeft, CtrlDirRight y CtrlTxt- ya va directo: Form1.Pared.cs esta traducido; se
+//   quitaron CtrlDirLeftVistasA, CtrlDirRightVistasA, CtrlTxtVistasA y GraphicsVistasA, y la firma de XP de un solo argumento de
+//   LetterBar.RenderContent, que nadie llamaba: port nativo, grupo directas-vistas, PORT_directas-vistas.md.)
 using System;
 using System.Drawing;
 using Rocola.Dibujo2D;
@@ -38,8 +39,7 @@ namespace Rocola
         // ================================================================ LetterBar (la barra de letras)
         private partial class LetterBar
         {
-            // ---- LAS FIRMAS DE XP DE RenderContent, PARA OnPaint (Form1.Vistas.cs, de WinForms) Y DrawCtrlOverlay (Form1.Video.cs)
-            public void RenderContent(Graphics g) { RenderContent(g, false); }
+            // ---- LA FIRMA DE XP DE RenderContent, PARA OnPaint (Form1.Vistas.cs, de WinForms) Y DrawCtrlOverlay (Form1.Video.cs)
             public void RenderContent(Graphics g, bool forGpu)
             {
                 EstadoLienzo e = PuenteDibujo.Estado(g);
@@ -48,28 +48,5 @@ namespace Rocola
                 RenderContent(PuenteDibujo.Lienzo(g), e.Letra, e.Copia, e.Filtro, e.Medio, forGpu);
             }
         }
-
-        // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA: CtrlDirLeft, CtrlDirRight y CtrlTxt (Form1.Pared.cs) pintan con un Graphics:
-        // uno sobre el MISMO lienzo con el estado del que llama (GraphicsVistasA, abajo), y CtrlTxt con la Font de esa Letra (los mismos datos:
-        // familia, tamano, unidad y estilo; se suelta al acabar, porque CtrlTxt no se la queda). Ninguna de las tres le cambia el estado al
-        // Graphics. Cuando Form1.Pared.cs se traduzca, la llamada pierde el «VistasA» (con el lienzo y el estado como aqui) y estas tres se borran.
-        private static float CtrlDirLeftVistasA(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)
-        { return CtrlDirLeft(PuenteDibujo.GraphicsVistasA(g, suave, ajuste, copia, medio), x, cy, sz, c); }
-        private static float CtrlDirRightVistasA(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, float x, int cy, int sz, Color c)
-        { return CtrlDirRight(PuenteDibujo.GraphicsVistasA(g, suave, ajuste, copia, medio), x, cy, sz, c); }
-        private static float CtrlTxtVistasA(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, Rocola.Nativo.Letra f, string s, float x, int cy, Color c)
-        {
-            using (Font ff = PuenteDibujo.Font(f))
-                return CtrlTxt(PuenteDibujo.GraphicsVistasA(g, suave, ajuste, copia, medio), ff, s, x, cy, c);
-        }
-    }
-
-    internal static partial class PuenteDibujo
-    {
-        // un Graphics sobre el lienzo de un archivo traducido del grupo, con su estado, para llamar a uno que no lo esta: el filtro, el de fabrica de
-        // un Graphics (Bilinear: lo que se llama con el no pinta imagenes); la matriz del HDC, la identidad (lo que se llama con el no usa
-        // TextRenderer, el unico que la mira). No suelta el lienzo.
-        internal static Graphics GraphicsVistasA(SKCanvas c, bool suave, AjusteLetra ajuste, bool copia, bool medio)
-        { return Graphics(c, new EstadoLienzo(suave, ajuste, copia, Filtro.Bilineal, medio, SKMatrix.Identity)); }
     }
 }

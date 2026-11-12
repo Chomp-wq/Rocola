@@ -48,20 +48,6 @@ namespace Rocola
         private static float CtrlDirRight(Graphics g, float x, int cy, int sz, Color c)
         { EstadoLienzo e = PuenteDibujo.Estado(g); return CtrlDirRight(PuenteDibujo.Lienzo(g), e.Suave, e.Letra, e.Copia, e.Medio, x, cy, sz, c); }
 
-        // ---- CB, EL PINCEL REUSABLE DE XP COMO SolidBrush, para Form1.Vistas.cs (SongPagerBar lo usa para su fondo y sus letras con su
-        // Graphics). El de la pared ya es un SKPaint (PincelCtrl, Form1.Pared.cs); este es otro objeto, con la misma regla de XP: uno por
-        // hilo, al que se le cambia el color. Se quita cuando SongPagerBar este traducida (grupo vistas-a), y PincelCtrl puede volver a
-        // llamarse CB.
-        [ThreadStatic] private static SolidBrush ctrlBCapa;
-        private static SolidBrush CB(Color c) { if (ctrlBCapa == null) ctrlBCapa = new SolidBrush(c); else ctrlBCapa.Color = c; return ctrlBCapa; }
-
-        // ---- SueltaBitmaps CON Bitmap[] DE LA CAPA, para Form1.Vistas.cs (las cifras horneadas de la lista): la misma cuenta
-        private static void SueltaBitmaps(ref Bitmap[] images)
-        {
-            Bitmap[] old = images; images = null;
-            if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
-        }
-
 #if ROCOLA_GPU
         // ---- ExtractCoverPalette CON UN Bitmap DE LA CAPA, para Form1.Fondo.cs y Form1.Portadas.cs (los colores de una portada al entrar
         // en la cache): los mismos puntos y el formato que tiene ese Bitmap (de el depende como se leen: PaletaCaratulaGpu.cs)

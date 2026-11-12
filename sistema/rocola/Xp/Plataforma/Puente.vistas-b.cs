@@ -9,8 +9,8 @@
 //     EnSeco (Form1.Portadas.cs, PrecargaPaginaGpu.cs) y, la de la capsula, RenderContentGpu (DiscoVivoGpu.cs): el lienzo del Graphics (con
 //     su matriz y su recorte) y su estado; despues, lo que XP le deja puesto al Graphics (el suavizado AntiAlias, con las mismas condiciones).
 //   - PastillaView.Ancho con una FontFamily (Form1.cs, Form1.Datos.cs): la familia por su nombre.
-//   - Lo que la traducida le pide a lo que no lo esta: AnchoTexto (Form1.Ajustes.cs) mide con un Graphics, o sin el, y una Font.
-//   - SueltaMapasVistasB: SueltaBitmaps (Form1.Pared.cs) para un arreglo de SKBitmap.
+//   (AnchoTexto de Form1.Ajustes.cs y SueltaBitmaps de Form1.Pared.cs, ya traducidas, se llaman directo: se quitaron AnchoTextoVistasB,
+//   AnchoTextoPantallaViva -la de la Letra- y SueltaMapasVistasB; port nativo, grupo directas-vistas, PORT_directas-vistas.md.)
 using System;
 using System.Drawing;
 using Rocola.Dibujo2D;
@@ -21,34 +21,6 @@ namespace Rocola
 {
     public partial class Form1
     {
-        // ---- LO QUE LA TRADUCIDA LE PIDE A LO QUE AUN NO LO ESTA: AnchoTexto (Form1.Ajustes.cs)
-        // con un Graphics: solo mide (MeasureString con su modo de letra y un formato suyo), asi que basta uno sobre el mismo lienzo con ese modo
-        // (lo demas, lo de fabrica de un Graphics de un mapa de bits; no suelta el lienzo ni le cambia nada) y la Font de esa Letra (los mismos
-        // datos: familia, tamano, unidad y estilo), soltada al acabar. Se quita cuando AnchoTexto reciba (AjusteLetra, string, Letra).
-        private static int AnchoTextoVistasB(SKCanvas g, AjusteLetra ajuste, string t, Rocola.Nativo.Letra f)
-        {
-            using (Graphics gg = PuenteDibujo.Graphics(g, new EstadoLienzo(false, ajuste, false, Filtro.Bilineal, false, SKMatrix.Identity)))
-            using (Font ff = PuenteDibujo.Font(f))
-                return AnchoTexto(gg, t, ff);
-        }
-        // sin Graphics (PastillaView.Ancho, el acomodo): la Font de esa Letra, soltada al acabar
-        private static int AnchoTextoVistasB(string t, Rocola.Nativo.Letra f)
-        {
-            using (Font ff = PuenteDibujo.Font(f)) return AnchoTexto(t, ff);
-        }
-#if ROCOLA_GPU
-        // DiscoVivoGpu.cs (grupo pantalla-viva, ya juntado) mide con AnchoTextoPantallaViva(lienzo, modo de letra, texto, Font) y le pasaba fCola,
-        // la letra de las marcas de la lista, que era una Font de Form1.Vistas.cs: ahora es una Letra, y sus cinco llamadas no cambian.
-        private static int AnchoTextoPantallaViva(SKCanvas g, AjusteLetra ajuste, string t, Rocola.Nativo.Letra f) { return AnchoTextoVistasB(g, ajuste, t, f); }
-#endif
-        // ---- SueltaBitmaps (Form1.Pared.cs, aun sin traducir: pide Bitmap[] de la capa) para las cifras horneadas de la lista, que ya son
-        // SKBitmap: la misma cuenta. Se quita cuando SueltaBitmaps reciba SKBitmap[].
-        private static void SueltaMapasVistasB(ref SKBitmap[] images)
-        {
-            SKBitmap[] old = images; images = null;
-            if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
-        }
-
         // ---- LAS FIRMAS DE XP DE RenderContent (con un Graphics). Cada una pasa a la traducida el lienzo del Graphics y lo que pesa de su
         // estado, y despues le pone al Graphics lo que XP le deja puesto: SmoothingMode = AntiAlias, si la vista llego a ponerlo (las mismas
         // cuentas de sus primeras lineas). Lo demas que las vistas cambian (el filtro de las portaditas, los Save/Restore) lo devuelven ellas.

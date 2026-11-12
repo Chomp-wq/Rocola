@@ -26,12 +26,6 @@ namespace Rocola
             if (string.IsNullOrEmpty(t) || f == null) return 0;
             return AnchoTexto(t, PuenteDibujo.Letra(f));
         }
-        // CreaSfDibuja(StringAlignment) de XP (Form1.Ajustes.cs:309): el formato que hace la traducida, con los nombres de GDI+ (el mismo
-        // objeto por dentro: lo que el que llama le cambie despues es lo que se usa)
-        private static StringFormat CreaSfDibuja(StringAlignment horiz)
-        {
-            return PuenteDibujo.StringFormat(CreaSfDibuja((Alinea)(int)horiz));
-        }
         // AnchoToast(string, Font) de XP (Form1.Ajustes.cs:1834): la pide el aviso sin tarjeta de Form1.cs con la letra de lblToast
         internal static int AnchoToast(string text, Font font)
         {
