@@ -8,7 +8,9 @@
 //     con el teclado, los resultados, el cubo de la portada y el aviso; EnsureUiOverlay: sin la casilla ni la tecla elegida) y
 //     PiezaViva/DibujaPiezaViva (las imagenes chicas: la tecla elegida, la casilla, y con la tarjeta aparte la tarjeta elegida y el texto de
 //     la vista previa, DrawExtraGpu de AcabadoGpu.cs). En la referencia van a GDI+ (la capa congelada) y en la traduccion al puente
-//     (Plataforma/Puente.buscador.cs) y de ahi a SkiaSharp directo.
+//     (Plataforma/Puente.buscador.cs) y de ahi a SkiaSharp directo. Desde la tanda 4 (grupo directas-buscador-video) la traduccion ya no
+//     tiene las firmas de XP de BuscaView.RenderContent(g, forGpu) ni de DibujaPiezaViva(g, ...) (DrawCtrlOverlay y EnsureUiPieza llaman
+//     directo a las traducidas): aqui se llama la traducida y se le deja al Graphics lo que le dejaba XP (CasillaSinPuente, PiezaSinPuente).
 //   - Contenidos: vacio, lo escrito con resultados (lo tecleado resaltado, EN COLA, SONANDO, generos, discos), mas resultados de los que caben,
 //     el foco en los resultados (cancion, disco, artista con varias portadas y la mezcla de dos, sin portada), la tecla elegida en varias
 //     filas (BORRAR, ESPACIO), la casilla con texto que no cabe, el aviso, la tarjeta aparte (SeparateGpu, con la de servicio), la cola que
@@ -269,7 +271,9 @@ namespace BancoBuscador
                         using (Graphics g = Prepara(b, e, false))
                         {
                             MethodInfo m = directo ? Nativa(SO, "DibujaPiezaViva") : null;
-                            if (m == null) { Metodo(SO, "DibujaPiezaViva", typeof(Graphics), typeof(int), typeof(int), typeof(int)).Invoke(so, new object[] { g, cual, -donde.X, -donde.Y }); queda = directo ? " suave=" + (g.SmoothingMode == SmoothingMode.AntiAlias || g.SmoothingMode == SmoothingMode.HighQuality) : Queda(g); }
+                            MethodInfo xp = m == null ? Metodo(SO, "DibujaPiezaViva", typeof(Graphics), typeof(int), typeof(int), typeof(int)) : null;
+                            if (m == null && xp == null) { PiezaSinPuente(so, g, cual, -donde.X, -donde.Y); queda = directo ? " suave=" + (g.SmoothingMode == SmoothingMode.AntiAlias || g.SmoothingMode == SmoothingMode.HighQuality) : Queda(g); }
+                            else if (m == null) { xp.Invoke(so, new object[] { g, cual, -donde.X, -donde.Y }); queda = directo ? " suave=" + (g.SmoothingMode == SmoothingMode.AntiAlias || g.SmoothingMode == SmoothingMode.HighQuality) : Queda(g); }
                             else
                             {
                                 directas++; object[] es = EstadoDe(g);
@@ -283,6 +287,37 @@ namespace BancoBuscador
                     Linea(nom, donde + "\t" + Puntos(nom, b) + ex + queda);
                 }
             }
+        }
+
+        // ---- LA FIRMA DE XP DE DibujaPiezaViva(Graphics, cual, dx, dy): desde la tanda 4 (grupo directas-buscador-video) ya no esta en la
+        // traduccion (EnsureUiPieza de Form1.Video.cs llama directo a la traducida). Para seguir comparando lo que le queda al Graphics con la
+        // referencia, aqui se hace lo que hacia su puente: la traducida con el lienzo y el estado del Graphics y, si XP llega a una de sus lineas
+        // SmoothingMode = AntiAlias (mirado ANTES de dibujar, como el puente: dibujar no lo cambia), se le pone al Graphics.
+        private static void PiezaSinPuente(object so, Graphics g, int cual, int dx, int dy)
+        {
+            Type t = so.GetType();
+            int escrito = (int)t.GetField("PiezaEscrito", Todo).GetValue(null), tecla = (int)t.GetField("PiezaTecla", Todo).GetValue(null);
+            int fila = (int)Lee(so, "SelRow"), col = (int)Lee(so, "SelCol");
+            IList filas = (IList)Lee(so, "rows");
+            bool pone = (bool)Lee(so, "Nuevo") || (cual < 2 && (cual == escrito || (cual == tecla && !(bool)Lee(so, "FocusResults") && fila >= 0 && fila < filas.Count && col >= 0 && col < ((IList)filas[fila]).Count)));
+            MethodInfo m = null;
+            foreach (MethodInfo x in t.GetMethods(Todo)) if (x.Name == "DibujaPiezaViva" && x.GetParameters().Length > 0 && x.GetParameters()[0].ParameterType == typeof(SKCanvas)) m = x;
+            object[] es = EstadoDe(g);
+            m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], es[6], cual, dx, dy });
+            if (pone) g.SmoothingMode = SmoothingMode.AntiAlias;
+        }
+
+        // ---- LA FIRMA DE XP DE BuscaView.RenderContent(Graphics, forGpu): tampoco esta ya en la traduccion (DrawCtrlOverlay llama directo a la
+        // traducida). forGpu = false es la de un parametro (RenderContent(g) { RenderContent(g, false); } en XP, que sigue en el puente para
+        // OnPaint); forGpu = true, la traducida con el lienzo y el estado del Graphics y despues lo que le dejaba XP (el suavizado, si pasa de su
+        // primer return).
+        private static void CasillaSinPuente(object bv, Graphics g, bool forGpu)
+        {
+            if (!forGpu) { Metodo(BV, "RenderContent", typeof(Graphics)).Invoke(bv, new object[] { g }); return; }
+            object[] es = EstadoDe(g);
+            Nativa(BV, "RenderContent").Invoke(bv, new object[] { es[0], es[2], es[3], es[5], true });
+            Size t = (Size)Lee(bv, "Size");
+            if (t.Width >= 30 && t.Height >= 12) g.SmoothingMode = SmoothingMode.AntiAlias;
         }
 
         // ---- LA CASILLA DE BUSCAR (BuscaView)
@@ -300,7 +335,8 @@ namespace BancoBuscador
                         if (m == null)
                         {
                             if (forma == 0) Metodo(BV, "RenderContent", typeof(Graphics)).Invoke(bv, new object[] { g });
-                            else Metodo(BV, "RenderContent", typeof(Graphics), typeof(bool)).Invoke(bv, new object[] { g, forma == 1 });
+                            else if (Metodo(BV, "RenderContent", typeof(Graphics), typeof(bool)) != null) Metodo(BV, "RenderContent", typeof(Graphics), typeof(bool)).Invoke(bv, new object[] { g, forma == 1 });
+                            else CasillaSinPuente(bv, g, forma == 1);
                             if (!directo) queda = Queda(g);
                         }
                         else { directas++; object[] es = EstadoDe(g); m.Invoke(bv, new object[] { es[0], es[2], es[3], es[5], forma == 1 }); }
@@ -458,8 +494,9 @@ namespace BancoBuscador
 
             // 4) EL HALO DE LOS SIMBOLOS DE LA BARRA DE AYUDA (GlowAround, Form1.Pared.cs; revision): en RenderContent su brillo depende de los
             // milisegundos desde la pulsacion (InstrFlash), asi que alli casi siempre sale apagado. Aqui se llama aparte con niveles fijos: en la
-            // traduccion por su puente (GlowAroundBuscador, con el lienzo y el estado del Graphics), en la referencia la de XP con el Graphics
-            MethodInfo halo = typeof(Form1).GetMethod("GlowAroundBuscador", Todo);
+            // traduccion la traducida de Form1.Pared.cs, directo (como la llama Form1.Buscador.cs desde la tanda 4; antes por su puente,
+            // GlowAroundBuscador), con el lienzo y el estado del Graphics; en la referencia la de XP con el Graphics
+            MethodInfo halo = Nativa(typeof(Form1), "GlowAround");
             MethodInfo haloXp = Metodo(typeof(Form1), "GlowAround", typeof(Graphics), typeof(float), typeof(float), typeof(float), typeof(float), typeof(Color));
             foreach (Estado e in estados)
                 foreach (float nivel in new[] { 0.01f, 0.35f, 1f })

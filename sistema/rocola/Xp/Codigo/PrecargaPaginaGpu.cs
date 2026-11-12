@@ -35,8 +35,8 @@ namespace Rocola
         private bool PrecalientaBuscadorGpu()
         {
             if (searchOverlay == null) return false;
-            return EnSeco(searchOverlay, delegate (Rocola.Dibujo2D.Graphics g)   // EN LINUX: EnSeco (Form1.Video.cs, aun sin traducir) da un Graphics de la capa (Dibujo2D.cs), escrito entero, y RenderContent del buscador lo recibe asi
-            { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true); });
+            return EnSeco(searchOverlay, delegate (SKCanvas g, bool suave, AjusteLetra ajuste)   // EN LINUX: delegate (Graphics g): EnSeco (Form1.Video.cs) da el lienzo de Skia de su mapa y el estado que le pone (suavizado y modo de letra; la copia, el filtro y el medio pixel, los de fabrica de un Graphics nuevo)
+            { Filtro filtro = Filtro.Bilineal; searchOverlay.RenderContent(g, ajuste, false, ref filtro, false, SKMatrix.Identity, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true); });   // EN LINUX: la traducida (Form1.Buscador.cs), directo, con el lienzo y el estado de un Graphics.FromImage (la copia y el medio pixel apagados, el filtro Bilinear y la matriz del HDC de un mapa de bits, la identidad); lo que le deje se tira con el mapa, como en XP
         }
 
         // La lista de un disco, con la marca de la tarjeta (la fila elegida dentro del cristal): otro horneado, y otro camino de codigo.
@@ -46,7 +46,7 @@ namespace Rocola
             if (songList == null) return false;
             bool antes = songList.pintandoGpu;
             songList.pintandoGpu = true;
-            try { return EnSeco(songList, delegate (Rocola.Dibujo2D.Graphics g) { songList.RenderContent(g); }); }   // EN LINUX: el Graphics de la capa que da EnSeco, escrito entero
+            try { return EnSeco(songList, delegate (SKCanvas g, bool suave, AjusteLetra ajuste) { songList.RenderContent(g, false, Filtro.Bilineal, false); }); }   // EN LINUX: delegate (Graphics g) { songList.RenderContent(g); }: el lienzo de EnSeco y la traducida (Form1.Vistas.cs), directo, con lo que pesa del estado de un Graphics.FromImage (sin copia, filtro Bilinear, sin medio pixel)
             finally { songList.pintandoGpu = antes; }
         }
 

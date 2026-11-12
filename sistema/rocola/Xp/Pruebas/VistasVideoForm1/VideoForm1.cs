@@ -251,8 +251,10 @@ namespace BancoVideoForm1
                                 Linea(nombre + "-directo", Puntos(nombre + "-directo", b) + ex + " " + st);
                             }
                         }
-            // el halo del boton pulsado (GlowAround por el puente de la barra traducida) con niveles fijos: el de la barra depende del reloj
-            MethodInfo glowXp = Metodo(typeof(Form1), "GlowAround", typeof(Graphics)), glowTr = Metodo(typeof(Form1), "GlowAroundVideoForm1", typeof(SKCanvas)) ?? Metodo(typeof(Form1), "GlowAround", typeof(SKCanvas));   // (la de XP por su firma: con Form1.Pared.cs traducido hay dos GlowAround)
+            // el halo del boton pulsado con niveles fijos (el de la barra depende del reloj): en la traduccion la traducida de Form1.Pared.cs, directo,
+            // como la llama la barra desde la tanda 4 (antes por su puente, GlowAroundVideoForm1); en la referencia la de XP con el Graphics (por su
+            // primer parametro: en la traduccion la firma de XP tambien sigue, en Puente.pared.cs, y GetMethod por el nombre solo es ambiguo)
+            MethodInfo glowXp = Metodo(typeof(Form1), "GlowAround", typeof(Graphics)), glowTr = Metodo(typeof(Form1), "GlowAround", typeof(SKCanvas));
             float[] niveles = { 0f, 0.02f, 0.03f, 0.5f, 1f };
             foreach (Estado e in Estados)
                 foreach (float lv in niveles)

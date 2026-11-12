@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (los Bitmap que sube D3D9Star.cs, las vistas que aun pintan con un Graphics, las letras de las etiquetas) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+, y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); lo que aun es de la capa (los Bitmap e Image que piden D3D9Star.cs y la cache de portadas, las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -660,7 +660,7 @@ namespace Rocola
             {
                 if (nowPlaying != null)
                 {
-                    Rocola.Dibujo2D.Image nueva = LoadCover(nowPlaying.Disc);   // EN LINUX: la Image de la capa, escrita entera: la da la cache de portadas (Form1.Portadas.cs) y la recibe el mini-cubo (Form1.Vistas.cs), los dos aun sin traducir; aqui solo pasa
+                    Rocola.Dibujo2D.Image nueva = LoadCover(nowPlaying.Disc);   // EN LINUX: la Image de la capa, escrita entera: la da la cache de portadas (Form1.Portadas.cs, que aun la publica como Image de la capa) y la recibe el mini-cubo (Form1.Vistas.cs, que la pasa a la tarjeta); aqui solo pasa
                     // EL RELEVO: si ya habia un cubo puesto con otra portada, no se cambia de golpe; el
                     // cubo da media vuelta y la nueva aparece en el camino. La primera cancion de la
                     // noche, y la portada que llega tarde a la que YA suena, entran sin giro: ahi no hay
@@ -818,7 +818,7 @@ namespace Rocola
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
         private bool uiOverlayVacio;   // la imagen de la UI no existe a proposito (atraccion con el escaparate): ver EnsureUiOverlay
-        private Rocola.Dibujo2D.Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)   // EN LINUX: el Bitmap de la capa, escrito entero: lo sube D3D9Star.cs (GetUi y SubeUi de BuscadorLigeroGpu.cs) y lo copia Form1.Biblioteca.cs (winSnap), aun sin traducir; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
+        private Rocola.Dibujo2D.Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)   // EN LINUX: el Bitmap de la capa, escrito entero: lo sube D3D9Star.cs (GetUi y SubeUi de BuscadorLigeroGpu.cs) y lo copia Form1.Biblioteca.cs (winSnap), que aun lo piden como Bitmap de la capa; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
         // La de la otra medida (navegar: una franja arriba; dentro de un disco o en el buscador: casi toda la pantalla). Al cambiar de
         // modo se toma esa en vez de reservar y soltar otra imagen de 2,8 MB cada vez (24-10-2026: el diagnostico del A4 ponia el 92 %
         // de los tirones de mas de 50 ms al entrar y salir de un disco, en la fase de la interfaz). Se repinta entera igual.
@@ -1037,7 +1037,7 @@ namespace Rocola
             if (attractOn && attractView != null)   // MODO ATRACCION: cubo gigante centrado que cicla portadas (con fundido)
             {
                 st = new GpuCubeState();
-                Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras: las portadas del cubo van de la atraccion (Form1.Vistas.cs) a la tarjeta (D3D9Star.cs), aun sin traducir; aqui solo pasan
+                Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras: las portadas del cubo van de la atraccion (Form1.Vistas.cs) a la tarjeta (D3D9Star.cs, que aun las sube como Bitmap de la capa); aqui solo pasan
                 ParCuboAtraccion(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
                 RectangleF cubo = CuboAtraccionAhora();   // el de siempre, o el del escaparate (AtraccionGpu.cs): lo mismo que la animacion de entrada/salida
                 st.Sel.Has = true;
@@ -1277,7 +1277,7 @@ namespace Rocola
                 {
                     if (uiOverlayOtro != null) uiOverlayOtro.Dispose();
                     uiOverlayOtro = uiOverlay;
-                    uiOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, mainH), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, mainH, Format32bppPArgb): los puntos nativos (Mapas.Nuevo: Bgra8888 premultiplicado, transparentes) en un Bitmap de la capa DUENO de ellos y con ese formato, porque lo suben y lo copian archivos aun sin traducir (como las piezas de AcabadoGpu.cs)
+                    uiOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, mainH), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, mainH, Format32bppPArgb): los puntos nativos (Mapas.Nuevo: Bgra8888 premultiplicado, transparentes) en un Bitmap de la capa DUENO de ellos y con ese formato, porque lo suben (D3D9Star.cs) y lo copian (Form1.Biblioteca.cs) como Bitmap de la capa (como las piezas de AcabadoGpu.cs)
                 }
             }
             using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiOverlay)))   // EN LINUX: Graphics.FromImage(uiOverlay): un lienzo de Skia sobre sus puntos (los mismos, sin copia)
@@ -1289,7 +1289,7 @@ namespace Rocola
                 {
                     int gs = g.Save();   // BUSCADOR (su UI sin starfield ni cubo)   // EN LINUX: GraphicsState gs = g.Save(): la matriz y el recorte los guarda el lienzo (el estado del dibujo va en variables y aqui no cambia)
                     g.Translate(searchOverlay.Left, searchOverlay.Top);   // EN LINUX: g.TranslateTransform
-                    searchOverlay.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true);   // EN LINUX: RenderContent del buscador (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: uno sobre este lienzo con este estado (Plataforma/Puente.video-form1.cs); lo que le cambie al estado se va con el Restore de abajo
+                    { Filtro filtroGuardado = filtro; searchOverlay.RenderContent(g, ajuste, copia, ref filtroGuardado, medio, SKMatrix.Identity, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), true); }   // EN LINUX: searchOverlay.RenderContent(g, caja, true): la traducida (Form1.Buscador.cs), directo, con el lienzo (ya trasladado), su estado y la matriz del HDC de un mapa de bits (la identidad); el filtro que le deje (el del cubo) va a una copia, porque en XP se iba con el Restore de abajo (el suavizado lo pone ella y tampoco vuelve)
                     g.RestoreToCount(gs);   // EN LINUX: g.Restore(gs)
                 }
                 else if (panelSongs != null && panelSongs.Visible)
@@ -1371,7 +1371,7 @@ namespace Rocola
             if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
             {
                 if (uiBotOverlay != null) uiBotOverlay.Dispose();
-                uiBotOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, bh), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, bh, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (lo suben GetUiBot y SubeUiBot, aun sin traducir)
+                uiBotOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, bh), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, bh, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (GetUiBot y SubeUiBot aun lo suben como Bitmap de la capa)
             }
             using (zona.IsEmpty ? CapturaTexto(0) : CapturaRecuadro())   // (por recuadro, las cintas de verdad no se tocan)
             using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiBotOverlay)))   // EN LINUX: Graphics.FromImage(uiBotOverlay): un lienzo de Skia sobre sus puntos (los mismos)
@@ -1495,7 +1495,7 @@ namespace Rocola
                 else
                 {
                     g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
-                    searchOverlay.DibujaPiezaViva(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), cual, -donde.X, -donde.Y);   // EN LINUX: DibujaPiezaViva (Form1.Buscador.cs, aun sin traducir) pinta con un Graphics: uno sobre este lienzo con este estado y la matriz del HDC de un mapa de bits (la identidad: su texto de GDI no ve traslaciones, como en XP)
+                    searchOverlay.DibujaPiezaViva(g, ref suave, ajuste, copia, filtro, medio, SKMatrix.Identity, cual, -donde.X, -donde.Y);   // EN LINUX: searchOverlay.DibujaPiezaViva(g, cual, dx, dy): la traducida (Form1.Buscador.cs), directo, con el lienzo y su estado y la matriz del HDC de un mapa de bits (la identidad: su texto de GDI no ve traslaciones, como en XP); el suavizado que le deja vuelve a la variable, como al Graphics de XP, que se tira aqui
                 }
             }
             uiPiezaSig[cual] = sig; uiPiezaVer[cual]++;
@@ -1783,14 +1783,14 @@ namespace Rocola
             g.Translate(c.Left, c.Top);   // EN LINUX: g.TranslateTransform
             HelpBar hb = c as HelpBar;
             if (hb != null) hb.RenderContent(g, ajuste, copia, medio, true);   // forGpu: sus pulsos van como halos por quad, no en la textura   // EN LINUX: la traducida (Form1.cs) con el lienzo y su estado (el suavizado lo pone ella)
-            else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: las vistas de Form1.Vistas.cs, DiscoVivoGpu.cs y Form1.Buscador.cs aun pintan con un Graphics: uno sobre este lienzo (ya trasladado) con este estado (Plataforma/Puente.video-form1.cs); lo que le cambien se queda en el y se va con el Restore de abajo, como en XP
-            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), true);   // EN LINUX: por el puente (Form1.Vistas.cs, aun sin traducir)
-            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // con la cancion que llega a la cola (DiscoVivoGpu.cs)   // EN LINUX: por el puente (pasa el Graphics a Form1.Vistas.cs, aun sin traducir)
-            else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
-            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
-            else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio)); }   // EN LINUX: por el puente
-            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio));   // EN LINUX: por el puente
-            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(PuenteDibujo.GraphicsVideoForm1(g, suave, ajuste, copia, filtro, medio), true);   // EN LINUX: por el puente (Form1.Buscador.cs, aun sin traducir)
+            else { HeaderView hv = c as HeaderView; if (hv != null) hv.RenderContent(g, ajuste, copia, medio);   // EN LINUX: las vistas ya traducidas (Form1.Vistas.cs, DiscoVivoGpu.cs, Form1.Buscador.cs), directo, con este lienzo (ya trasladado) y lo que pesa de su estado: el encabezado, el modo de letra, la copia y el medio pixel (el suavizado lo pone ella); lo que XP le dejaba cambiado al Graphics se iba con el Restore de abajo
+            else { LetterBar lb = c as LetterBar; if (lb != null) lb.RenderContent(g, ajuste, copia, filtro, medio, true);   // EN LINUX: la barra de letras (Form1.Vistas.cs), directo: el modo de letra, la copia, el filtro y el medio pixel
+            else { PastillaView pa = c as PastillaView; if (pa != null) pa.RenderContentGpu(g, ajuste, copia, filtro, medio);   // con la cancion que llega a la cola (DiscoVivoGpu.cs)   // EN LINUX: la capsula (DiscoVivoGpu.cs y Form1.Vistas.cs), directo: el modo de letra, la copia, el filtro y el medio pixel
+            else { ProgressView pv = c as ProgressView; if (pv != null) pv.RenderContent(g, copia, medio);   // EN LINUX: la barra de avance (Form1.Vistas.cs), directo: la copia y el medio pixel
+            else { GeneroView gv = c as GeneroView; if (gv != null) gv.RenderContent(g, ajuste, copia, medio);   // EN LINUX: la pastilla del genero (Form1.Vistas.cs), directo: el modo de letra, la copia y el medio pixel
+            else { SongListView sl = c as SongListView; if (sl != null) { sl.pintandoGpu = true; sl.RenderContent(g, copia, filtro, medio); }   // EN LINUX: la lista de canciones (Form1.Vistas.cs), directo: la copia, el filtro y el medio pixel
+            else { SongPagerBar sp = c as SongPagerBar; if (sp != null) sp.RenderContent(g, suave, copia, medio);   // EN LINUX: la barra de paginas (Form1.Vistas.cs), directo: el suavizado (el fondo se pinta con el que trae), la copia y el medio pixel
+            else { BuscaView bv = c as BuscaView; if (bv != null) bv.RenderContent(g, ajuste, copia, medio, true);   // EN LINUX: la casilla de BUSCAR (Form1.Buscador.cs), directo: el modo de letra, la copia y el medio pixel
             else { AyudaView av = c as AyudaView; if (av != null) av.RenderContent(g, copia, medio, true); } } } } } } } } }   // EN LINUX: la traducida (AyudaCasillaGpu.cs) con el lienzo y lo que pesa del estado (el suavizado y el modo de letra los pone ella; lo que deja puesto se iba con el Restore)
             g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
         }
@@ -1851,7 +1851,7 @@ namespace Rocola
 
         // Dibuja un control una vez en un mapa de bits de usar y tirar. Nada de esto se ve: lo unico que hace
         // es que lo que ese dibujo hornea quede hecho. false = todavia no tiene tamano, se reintenta luego.
-        private bool EnSeco(Control c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); los que aun dibujan con un Graphics (PrecargaPaginaGpu.cs, Form1.Portadas.cs) llegan por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
+        private bool EnSeco(Control c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); el buscador y la lista de los precalentados (PrecargaPaginaGpu.cs, Form1.Portadas.cs) la llaman directo con ese lienzo y ese estado; solo la atraccion (Form1.Portadas.cs), que aun pinta con el Graphics de su OnPaint, llega por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
         {
             if (c == null || c.Width < 8 || c.Height < 8) return false;
             using (SKBitmap b = Mapas.Nuevo(c.Width, c.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos (Bgra8888 premultiplicado, transparentes)

@@ -1184,14 +1184,14 @@ namespace Rocola
                         // Con tarjeta el buscador se pinta con forGpu=true (EnsureUiOverlay): ese es el camino que hay que calentar (PrecargaPaginaGpu.cs).
                         if (gpuEnabled) { hecho = PrecalientaBuscadorGpu(); break; }
 #endif
-                        hecho = EnSeco(searchOverlay, delegate (Rocola.Dibujo2D.Graphics g)   // EN LINUX: EnSeco (Form1.Video.cs) y RenderContent (Form1.Buscador.cs), aun sin traducir, pasan un Graphics de la capa: aqui no se dibuja, solo se pasa (escrito entero)
-                        { searchOverlay.RenderContent(g, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), false); });
+                        hecho = EnSeco(searchOverlay, delegate (SKCanvas g, bool suave, AjusteLetra ajuste)   // EN LINUX: delegate (Graphics g): EnSeco (Form1.Video.cs) da el lienzo de Skia de su mapa y el estado que le pone (suavizado y modo de letra; la copia, el filtro y el medio pixel, los de fabrica de un Graphics nuevo)
+                        { Filtro filtro = Filtro.Bilineal; searchOverlay.RenderContent(g, ajuste, false, ref filtro, false, SKMatrix.Identity, new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height), false); });   // EN LINUX: la traducida (Form1.Buscador.cs), directo, con el lienzo y el estado de un Graphics.FromImage (la copia y el medio pixel apagados, el filtro Bilinear y la matriz del HDC de un mapa de bits, la identidad); lo que le deje se tira con el mapa, como en XP
                         break;
                     case 1:
 #if ROCOLA_GPU
                         if (gpuEnabled) { hecho = PrecalientaListaGpu(); break; }   // con la marca de la tarjeta (la fila elegida dentro del cristal)
 #endif
-                        hecho = EnSeco(songList, delegate (Rocola.Dibujo2D.Graphics g) { songList.RenderContent(g); });   // EN LINUX: el Graphics de la capa de EnSeco (Form1.Video.cs), solo se pasa (escrito entero)
+                        hecho = EnSeco(songList, delegate (SKCanvas g, bool suave, AjusteLetra ajuste) { songList.RenderContent(g, false, Filtro.Bilineal, false); });   // EN LINUX: delegate (Graphics g) { songList.RenderContent(g); }: el lienzo de EnSeco (Form1.Video.cs) y la traducida (Form1.Vistas.cs), directo, con lo que pesa del estado de un Graphics.FromImage (sin copia, filtro Bilinear, sin medio pixel)
                         break;
                     case 2:
                         // La pantalla de reposo no tiene RenderContent aparte: se le pide su propio dibujado,

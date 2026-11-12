@@ -146,6 +146,24 @@ namespace BancoBuscadorPortadas
                            te.GetField("Filtro").GetValue(e), te.GetField("Medio").GetValue(e), te.GetField("Hdc").GetValue(e) };
         }
 
+        // ---- LA FIRMA DE XP DE DibujaPiezaViva(Graphics, cual, dx, dy): desde la tanda 4 (grupo directas-buscador-video) ya no esta en la
+        // traduccion (EnsureUiPieza de Form1.Video.cs llama directo a la traducida). Para seguir comparando lo que le queda al Graphics con la
+        // referencia, aqui se hace lo que hacia su puente: la traducida con el lienzo y el estado del Graphics y, si XP llega a una de sus lineas
+        // SmoothingMode = AntiAlias (mirado ANTES de dibujar, como el puente: dibujar no lo cambia), se le pone al Graphics.
+        private static void PiezaSinPuente(object so, Graphics g, int cual, int dx, int dy)
+        {
+            Type t = so.GetType();
+            int escrito = (int)t.GetField("PiezaEscrito", Todo).GetValue(null), tecla = (int)t.GetField("PiezaTecla", Todo).GetValue(null);
+            int fila = (int)Lee(so, "SelRow"), col = (int)Lee(so, "SelCol");
+            IList filas = (IList)Lee(so, "rows");
+            bool pone = (bool)Lee(so, "Nuevo") || (cual < 2 && (cual == escrito || (cual == tecla && !(bool)Lee(so, "FocusResults") && fila >= 0 && fila < filas.Count && col >= 0 && col < ((IList)filas[fila]).Count)));
+            MethodInfo m = null;
+            foreach (MethodInfo x in t.GetMethods(Todo)) if (x.Name == "DibujaPiezaViva" && x.GetParameters().Length > 0 && x.GetParameters()[0].ParameterType == typeof(SKCanvas)) m = x;
+            object[] es = EstadoDe(g);
+            m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], es[6], cual, dx, dy });
+            if (pone) g.SmoothingMode = SmoothingMode.AntiAlias;
+        }
+
         // ---- las cintas del texto que se desliza (TextoMovilGpu.cs): lo que se llevo la captura (la tarjeta elegida, con el interruptor)
         private static FieldInfo Captura { get { return typeof(Form1).GetField("capturandoCintas", Todo); } }
         private static CintasTexto Captura0() { CintasTexto c = new CintasTexto(); c.Begin(); Captura.SetValue(null, c); return c; }
@@ -321,7 +339,8 @@ namespace BancoBuscadorPortadas
                             else
                             {
                                 MethodInfo m = directo ? Nativa("DibujaPiezaVivaNueva") : null;
-                                if (m == null) Metodo("DibujaPiezaViva", typeof(Graphics), typeof(int), typeof(int), typeof(int)).Invoke(so, new object[] { g, cual, -donde.X, -donde.Y });
+                                if (m == null && Metodo("DibujaPiezaViva", typeof(Graphics), typeof(int), typeof(int), typeof(int)) == null) PiezaSinPuente(so, g, cual, -donde.X, -donde.Y);   // (tanda 4: la traduccion ya no tiene la firma de XP)
+                                else if (m == null) Metodo("DibujaPiezaViva", typeof(Graphics), typeof(int), typeof(int), typeof(int)).Invoke(so, new object[] { g, cual, -donde.X, -donde.Y });
                                 else { directas++; object[] es = EstadoDe(g); m.Invoke(so, new object[] { es[0], es[2], es[3], es[4], es[5], cual, -donde.X, -donde.Y }); }
                             }
                             if (!directo) queda = Queda(g);
@@ -341,12 +360,11 @@ namespace BancoBuscadorPortadas
             // ya no esta (la traduccion), la llamada de XP es la traducida con el lienzo y el estado del Graphics, como hacia el puente
             MethodInfo xp = m == null ? Metodo("PintaCartasConCambios", typeof(Graphics), typeof(int), typeof(int), typeof(bool)) : null;
             object r;
-            if (m == null && xp != null) r = xp.Invoke(so, new object[] { g, dx, dy, entera });
-            else
-            {
-                if (m != null) directas++; else m = Nativa("PintaCartasConCambios");
-                object[] es = EstadoDe(g); r = m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], dx, dy, entera });
-            }
+            // (la traduccion ya no tiene la firma de XP desde la junta de video-form1: EnsureUiPieza la llama directo; la traducida con el estado
+            // del Graphics, que XP no le cambia -su Save/Restore es del lienzo-)
+            if (m == null && xp == null) { object[] es = EstadoDe(g); r = Nativa("PintaCartasConCambios").Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], dx, dy, entera }); }
+            else if (m == null) r = xp.Invoke(so, new object[] { g, dx, dy, entera });
+            else { directas++; object[] es = EstadoDe(g); r = m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], dx, dy, entera }); }
             if (r == null) return "null";
             StringBuilder sb = new StringBuilder();
             foreach (Rectangle x in (Rectangle[])r) sb.Append(x.X + "," + x.Y + "," + x.Width + "," + x.Height + ";");
