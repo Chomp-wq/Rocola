@@ -1,5 +1,5 @@
 // LA HOJA (port nativo de las ventanas de XP, ventanas2, paso H): lo que en XP eran las ventanas que la rocola abre encima de la suya
-// (Ctrl+F2, los avisos y, en el paso C, Ctrl+F3 y el historial de caratulas; la de prueba F12 va con el panel de la tarjeta). No imita a
+// (Ctrl+F2, los avisos y, en el paso C, Ctrl+F3 y el historial de caratulas; y la de prueba F12, que no es modal: Muestra). No imita a
 // Form: es una hoja de la pantalla de la rocola, pintada con SkiaSharp en su superficie, con SOLO lo que XP usa de una ventana de WinForms
 // (el inventario: Text, ClientSize, BackColor, Font, Controls.Add, Close, CancelButton, KeyPreview con KeyDown y KeyUp, ShowDialog con su
 // duena; y lo que XP espera de ella sin escribirlo: el marco de XP Luna, el sitio, el modal, la activacion, el foco y el tabulador, Intro
@@ -12,7 +12,7 @@
 // Partes: Hoja.cs (la vida: crearla, ensenarla modal, cerrarla, el apagado; las hojas abiertas, su orden y la activa; la superficie),
 // Hoja.Foco.cs (el foco y el tabulador), Hoja.Entrada.cs (las teclas y el raton) y Hoja.Pinta.cs (el pintado).
 //
-// MIENTRAS DURA LA TRANSICION la rocola (Form1), Ctrl+F3 y la ventana F12 aun son ventanas de la capa (Plataforma/Ventanas.*.cs): las hojas
+// MIENTRAS DURA LA TRANSICION la rocola (Form1) y el panel de la tarjeta aun son ventanas de la capa (Plataforma/Ventanas.*.cs): las hojas
 // van siempre encima de ellas (en XP la hoja nueva es la de arriba, y mientras una hoja modal esta abierta las de la capa no reciben teclas
 // ni raton, asi que ninguna se pone delante), y lo que una hoja necesita de la capa (cual de sus ventanas esta activa, que ceda o recupere
 // la activacion y el foco, el sitio de la duena, volver a componer la pantalla) lo pone la capa en los ganchos «(transicion)» de abajo.
@@ -27,8 +27,10 @@ namespace Rocola
 {
     // EL MARCO DE UNA HOJA (el FormBorderStyle y el StartPosition con que XP abre cada ventana): Dialogo = FixedDialog sin maximizar ni
     // minimizar, sin barra de tareas ni icono, centrada en su duena (CenterParent): Ctrl+F2, Ctrl+F3, el historial de caratulas y los
-    // avisos. (FixedSingle con CenterScreen, la de prueba F12, va con el panel de la tarjeta.)
-    public enum MarcoXp { Dialogo = 0 }
+    // avisos. Sencillo = FixedSingle sin maximizar, centrada en la pantalla (CenterScreen), sin duena: la ventana de prueba F12. Mide igual
+    // que el dialogo (la barra de 26 y el borde de 3: WS_CAPTION lleva WS_DLGFRAME y Form.Marco de la capa da 3 para FixedSingle con icono,
+    // Form.CreateParams, Form.cs:886-985); se diferencia en donde se abre (CenterToScreen, Form.cs:4113-4141).
+    public enum MarcoXp { Dialogo = 0, Sencillo = 1 }
 
     public partial class Hoja : IContenedor, IDuenoDeEncargos, IDisposable
     {
@@ -164,9 +166,9 @@ namespace Rocola
             if (!cargada)
             {
                 cargada = true;
-                if (modal) CentraEnDuena();
+                if (modal) CentraEnDuena(); else if (clase == MarcoXp.Sencillo) CentraEnPantalla();   // (OnLoad: CenterParent al ShowDialog, CenterScreen al Show)
                 Hoja yo = this;
-                PantallaRocola.EncolaDesde(this, delegate { if (TrazaVentanas.Activa) TrazaVentanas.Apunta("shown " + TrazaVentanas.Pieza(yo)); }, "Shown", false);
+                PantallaRocola.EncolaDesde(this, delegate { if (TrazaVentanas.Activa) TrazaVentanas.Apunta("shown " + TrazaVentanas.Pieza(yo)); yo.AlEnsenarse(); }, "Shown", false);
             }
             visible = true;
             foreach (IPieza p in Controls.Lista.ToArray()) if (p.Caja.Visible) p.Caja.AvisaVisible();
@@ -241,6 +243,7 @@ namespace Rocola
         {
             if (h == null || !abiertas.Remove(h)) return;
             abiertas.Add(h);
+            h.DetrasDeLaCapa = false;
             SubeLasSuyas(h, 0);
             Compone();
         }
@@ -265,8 +268,19 @@ namespace Rocola
             }
             else if (enfoca && (foco == null || !h.ContieneFoco(null))) h.EnfocaAlActivar();
         }
-        // (transicion) una ventana de la capa se activa: la hoja activa deja de serlo
-        internal static void DesactivaPorLaCapa() { Hoja a = Activa; if (a == null) return; Activa = null; if (!a.disposed) a.Invalidate(); }
+        // (transicion) una ventana de la capa se activa: la hoja activa deja de serlo. Y, como en Windows, activar una ventana es subirla: se pone
+        // delante de las ventanas que no son de nadie (las hojas sin duena y sin modal, la de prueba F12), que quedan detras de ella
+        // (DetrasDeLaCapa); las que tienen duena o son modales siguen encima (una ventana con duena va siempre encima de su duena). La hoja vuelve
+        // delante cuando se pone otra vez al frente (AlFrente, Activate).
+        internal static void DesactivaPorLaCapa()
+        {
+            bool cambio = false;
+            foreach (Hoja o in abiertas) if (!o.modal && o.duena == null && !o.DetrasDeLaCapa) { o.DetrasDeLaCapa = true; cambio = true; }
+            if (cambio) Compone();
+            Hoja a = Activa; if (a == null) return; Activa = null; if (!a.disposed) a.Invalidate();
+        }
+        // detras de las ventanas de la capa (la rocola): no se ve, ni recibe el raton (la rocola ocupa la pantalla entera)
+        internal bool DetrasDeLaCapa;
         // activar otra vez una ventana (la que estaba activa al abrir un dialogo, al cerrarlo), de las dos procedencias
         private static void ActivaVentana(object v)
         {
@@ -274,6 +288,22 @@ namespace Rocola
             if (h != null) { ActivaHoja(h, true); return; }
             Action<object> a = ActivaLaDeLaCapa; if (a != null) a(v);
         }
+
+        // ---------- ensenarla sin modal (Form.Show) ----------
+        // SHOW (Control.Visible = true: Form.SetVisibleCore, Form.cs:2507-2631): sin duena y sin bucle propio; vuelve en cuanto se ve y se
+        // activa (la ventana que estaba activa deja de serlo). Shown queda en la cola (AlEnsenarse). Una hoja desechada no se ensena
+        // (Control.SetVisibleCore: ObjectDisposedException); una que ya se ve, no hace nada.
+        public void Muestra()
+        {
+            if (disposed) throw new ObjectDisposedException(GetType().Name);
+            if (visible) return;
+            razonCierre = RazonCierre.None; resultado = Resultado.None; llamadoClosing = false;
+            Ensena();
+        }
+        // LO QUE LA HOJA AVISA A QUIEN LA HEREDA (los OnShown y OnFormClosed de Form; de fabrica nada): Shown, ya ensenada y en la cola (BeginInvoke
+        // de OnLoad), y FormClosed, al cerrarse por Close o por el apagado (despues del aviso de «closed», antes de desecharse)
+        internal virtual void AlEnsenarse() { }
+        internal virtual void AlCerrada(RazonCierre razon) { }
 
         // ---------- modal (ShowDialog) ----------
         // MODAL (Form.ShowDialog, Form.cs:5669-5823): la duena es la que se da (la ventana de la rocola, u otra hoja) o, sin ella, la activa;
@@ -336,6 +366,7 @@ namespace Rocola
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + TrazaVentanas.Pieza(this) + " " + razonCierre);
             if (AlCerrarse(razonCierre)) return;
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+            AlCerrada(razonCierre);
             Dispose();
         }
         // Form.CheckCloseDialog (Form.cs:3268-3318): si el dialogo ya tiene resultado (o se escondio), el aviso de que se cierra (una vez; si
@@ -355,6 +386,7 @@ namespace Rocola
                 {
                     if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
                     llamadoClosing = false;
+                    AlCerrada(razonCierre);
                 }
             }
             catch (Exception ex) { resultado = Resultado.None; PantallaRocola.Falla(ex); }
@@ -382,6 +414,7 @@ namespace Rocola
             }
             if (!seAcaba) return true;
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + TrazaVentanas.Pieza(this) + " " + razonCierre);
+            AlCerrada(razonCierre);
             Dispose();
             return true;
         }
@@ -412,8 +445,31 @@ namespace Rocola
             IPieza[] l = Controls.Lista.ToArray(); Controls.Lista.Clear();
             foreach (IPieza x in l) { x.Caja.PonPadre(null); IDisposable d = x as IDisposable; if (d != null) d.Dispose(); else x.Caja.Desecha(null); }
             disposed = true;
+            TexturaGl = 0;
             if (superficie != null) { superficie.Dispose(); superficie = null; }
         }
+
+        // ---------- LA TARJETA EN EL CLIENTE DE LA HOJA (la ventana de prueba F12) ----------
+        // En XP, un dispositivo de Direct3D 9 creado sobre la ventana (CreateDevice con su Handle) presenta su fondo en el cliente. Aqui el
+        // dispositivo recibe el identificador de la ventana (IdVentana: la vida de la hoja, que no choca con ningun otro: los de la capa empiezan
+        // en 0x1000) y, al presentar, la pantalla se lo pasa a la hoja (DeLaVentana y PresentaTarjeta): la composicion pone su textura sobre el
+        // cliente, encima de la superficie de la hoja y debajo de la hoja que venga despues. (transicion) Hoy la pantalla lo hace desde la capa
+        // (Plataforma/Anfitrion.cs); se va con ella.
+        internal uint TexturaGl; internal int AnchoGl, AltoGl;
+        internal IntPtr IdVentana { get { return new IntPtr(vida); } }   // 0: sin ventana
+        internal static Hoja DeLaVentana(IntPtr id)
+        {
+            long v = id.ToInt64();
+            if (v == 0) return null;
+            for (int i = abiertas.Count - 1; i >= 0; i--) { Hoja h = abiertas[i]; if (!h.disposed && h.vida == v) return h; }
+            return null;
+        }
+        // Present: el fondo del dispositivo pasa a ser lo de dentro de la hoja (la pantalla compone despues)
+        internal void PresentaTarjeta(uint textura, int ancho, int alto) { TexturaGl = textura; AnchoGl = ancho; AltoGl = alto; }
+        // el dispositivo se suelta: la ventana ya no tiene fondo que componer
+        internal void OlvidaTarjeta() { if (TexturaGl == 0) return; TexturaGl = 0; Compone(); }
+        // el cliente en la pantalla (donde Direct3D pone el fondo)
+        internal Rectangle ClienteEnPantalla { get { return new Rectangle(bounds.X + Marco, bounds.Y + Marco + AltoBarra, ClientSize.Width, ClientSize.Height); } }
 
         // ---------- la superficie de la hoja: se pinta entera cuando algo cambio (como la capa de la referencia) y la composicion la sube a
         // la tarjeta solo si cambio (Version) ----------

@@ -25,6 +25,8 @@ namespace Rocola.Ventanas
         public SKBitmap Mapa;       // la superficie de una hoja nativa (Nativo/Hoja.cs; port nativo, ventanas2 H)
         public int Version;         // cambia cuando la imagen se repinto
         public Control Nativa;      // el control que pinta la tarjeta
+        public Hoja TarjetaDeHoja;  // la hoja cuyo cliente pinta la tarjeta (la ventana de prueba F12; port nativo, f12-como-hoja)
+        public bool Detras;         // de una hoja que quedo detras de las ventanas de la capa (Hoja.DetrasDeLaCapa): va antes que todas
         public float Opacidad = 1f;
     }
 
@@ -496,15 +498,15 @@ namespace Rocola.Ventanas
                 TeclaArriba(destino, e);
             }
         }
-        // (transicion) LO DE LA ROCOLA EN EL CAMINO DE WINFORMS. Form1 y la ventana de prueba F12 ya no sobrescriben ProcessCmdKey ni OnKeyUp
-        // de la capa: tienen los suyos, nativos (con PulsoTecla y Tecla), y la capa los llama en su sitio: ProcessCmdKey cuando la tecla
+        // (transicion) LO DE LA ROCOLA EN EL CAMINO DE WINFORMS. Form1 ya no sobrescribe ProcessCmdKey ni OnKeyUp
+        // de la capa: tiene los suyos, nativos (con PulsoTecla y Tecla), y la capa los llama en su sitio: ProcessCmdKey cuando la tecla
         // llega a la ventana de arriba (la de un Form sin menus ni aceleradores da false: Form.cs:4862-4895, ContainerControl.cs:1190-1208);
         // OnKeyUp en el KeyUp de la rocola (el de XP llamaba despues a base.OnKeyUp, el aviso KeyUp, que nadie escucha en la rocola).
-        // Se va cuando la pantalla nativa le de las teclas a la rocola sin la capa (Form1 sin Form) y la ventana F12 sea una hoja.
+        // Se va cuando la pantalla nativa le de las teclas a la rocola sin la capa (Form1 sin Form). (La ventana de prueba F12 ya es una hoja:
+        // su ProcessCmdKey es Hoja.TeclaDeMando.)
         internal static bool TeclaDeMando(Control arriba, ref PulsoTecla m, Rocola.Tecla datos)
         {
             Form1 rocola = arriba as Form1; if (rocola != null) return rocola.ProcessCmdKey(ref m, datos);
-            GpuTestWindow prueba = arriba as GpuTestWindow; if (prueba != null) return prueba.ProcessCmdKey(ref m, datos);
             return false;
         }
         private static void TeclaArriba(Control c, KeyEventArgs e)
@@ -550,6 +552,7 @@ namespace Rocola.Ventanas
         private sealed class CapasDeForma { public List<Capa> Lista = new List<Capa>(); public int Version = -1; public Size Tam; }
         private static readonly Dictionary<Form, CapasDeForma> cache = new Dictionary<Form, CapasDeForma>();
         private static readonly Dictionary<Hoja, Capa> capasHoja = new Dictionary<Hoja, Capa>();
+        private static readonly Dictionary<Hoja, Capa> capasTarjetaHoja = new Dictionary<Hoja, Capa>();
         private static int versionCapa;
         // Las capas de la pantalla, de abajo arriba. Solo en el hilo de la pantalla.
         public static List<Capa> Capas()
@@ -567,15 +570,30 @@ namespace Rocola.Ventanas
             foreach (Form f in new List<Form>(cache.Keys)) if (f.IsDisposed) { foreach (Capa c in cache[f].Lista) if (c.Imagen != null) c.Imagen.Dispose(); cache.Remove(f); }
             // (port nativo, ventanas2 H) LAS HOJAS NATIVAS, encima de todas (Nativo/Hoja.cs): cada una en su superficie, que se repinta entera solo si
             // algo cambio (su Version), en el orden de las hojas
+            List<Capa> bajo = null;   // (port nativo, f12-como-hoja) las que quedaron detras de la capa: antes que todas
             foreach (Hoja h in Hoja.Abiertas)
             {
                 if (h.IsDisposed || !h.Visible) continue;
                 Capa c;
                 if (!capasHoja.TryGetValue(h, out c)) capasHoja[h] = c = new Capa();
                 int v; c.Mapa = h.Superficie(out v); c.Version = v; c.Rect = h.Bounds; c.Opacidad = 1f;   // (la version que se pinto: Hoja.Superficie)
-                r.Add(c);
+                c.Detras = h.DetrasDeLaCapa;
+                List<Capa> destino = r;
+                if (h.DetrasDeLaCapa) destino = bajo ?? (bajo = new List<Capa>());
+                destino.Add(c);
+                // (port nativo, f12-como-hoja) LA TARJETA PINTANDO EN EL CLIENTE DE LA HOJA (en XP, un dispositivo de Direct3D 9 creado sobre la
+                // ventana: la de prueba F12): su dibujo ocupa el cliente, encima de la superficie de la hoja y debajo de la hoja que venga despues
+                if (h.TexturaGl != 0)
+                {
+                    Capa t;
+                    if (!capasTarjetaHoja.TryGetValue(h, out t)) capasTarjetaHoja[h] = t = new Capa();
+                    t.TarjetaDeHoja = h; t.Rect = h.ClienteEnPantalla; t.Opacidad = 1f; t.Detras = h.DetrasDeLaCapa;
+                    destino.Add(t);
+                }
             }
+            if (bajo != null) r.InsertRange(0, bajo);
             foreach (Hoja h in new List<Hoja>(capasHoja.Keys)) if (h.IsDisposed || !h.Visible) capasHoja.Remove(h);
+            foreach (Hoja h in new List<Hoja>(capasTarjetaHoja.Keys)) if (h.IsDisposed || !h.Visible) capasTarjetaHoja.Remove(h);
             return r;
         }
         private static bool TapaTodo(Control h, Size cliente) { return h.Nativa && h.VisiblePropio && h.Left <= 0 && h.Top <= 0 && h.Right >= cliente.Width && h.Bottom >= cliente.Height; }
@@ -787,8 +805,11 @@ namespace Rocola.Ventanas
         {
             // (port nativo, ventanas2 H) de arriba abajo: primero las hojas nativas (estan encima), despues las ventanas de la capa
             List<object> vs = new List<object>();
-            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) vs.Add(hs[i]);
+            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
             Form[] fs = Formas; for (int i = fs.Length - 1; i >= 0; i--) vs.Add(fs[i]);
+            // (port nativo, f12-como-hoja, revision) las que quedaron detras de la capa (la ventana de prueba F12 tras activarse la rocola) van
+            // despues de las ventanas de la capa, en su orden: estan debajo de ellas (Hoja.DetrasDeLaCapa)
+            for (int i = hs.Length - 1; i >= 0; i--) if (hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
             bool seAcaba = true; int hasta = -1;
             for (int i = 0; i < vs.Count; i++) { hasta = i; if (!FinDeSesionDe(vs[i], true, true)) { seAcaba = false; break; } }
             for (int i = 0; i <= hasta && i < vs.Count; i++) FinDeSesionDe(vs[i], false, seAcaba);

@@ -59,8 +59,19 @@
 #             dos hojas y la rocola (WindowsShutDown) y rocola_estado.txt debe faltar; en la referencia, la diferencia aceptada
 #   avisoviejo  (datos de datos_h.sh con avisos_claros=0) dos monedas: el aviso de siempre (HorneaToast y PintaToastHasta de Form1.Ajustes.cs,
 #             traducidos en el paso C) en la capa de la tarjeta, a medio segundo de cada moneda (compara_aviso.py mira su pastilla)
+# Y las de la ventana de prueba F12 (f12-como-hoja: GpuTestWindow, la hoja no modal con la tarjeta en su cliente), que tampoco estan en «todas»:
+#   f12       (con F10 antes: la rocola deja de recuperar el foco, y la ventana, la activa, se queda con las teclas) F12 abre la ventana
+#             (tarjeta: el campo estrellado en su cliente) y Escape, F12, Alt+F4 y la «X» la cierran, cada vez abierta otra; con ella abierta la
+#             moneda y Ctrl+F2 no llegan a la rocola (la tecla es de la ventana activa); estado y captura de cada paso
+#   f12vigia  lo mismo sin F10: el vigia del foco de la rocola (Form1.ForceFocus, cada 1,5 s) le quita el primer plano a la ventana, y su
+#             Escape, su Alt+F4 y el clic en la «X» (esa si, porque el clic la activa) dependen de cuando toque el vigia; F12 la cierra siempre
+#   f12sigterm  SIGTERM con la ventana F12 abierta (el apagado: FormClosing y FormClosed con WindowsShutDown, rocola_estado.txt borrado)
+#   f12fallo  el dispositivo de la ventana no se crea (los sombreadores no compilan: una libGLESv2 de prueba, gl_falla.sh, mientras exista
+#             su archivo): el aviso «No se pudo crear el dispositivo D3D9 para la ventana.» sale encima de la ventana, Intro lo acepta y la
+#             ventana se cierra; otra vez, con Escape en el aviso
 G=$(dirname "$(readlink -f "$0")")
 DH=${DH:-/root/rocola-trabajo/port/ventanas2/datos}
+W=${W:-/root/rocola-trabajo/port/ventanas}
 prog="$1"; et="$2"; shift 2
 todas="arranque moneda video tab buscador cierreq altf4 sigterm f3sigterm kill9"
 esc="${*:-$todas}"
@@ -86,6 +97,12 @@ for e in $esc; do
     aviso)     CORRIDA=v2h-aviso SIN_DATOS=1 ESTADO="2.5:aviso,9:rocola" "$G/corre.sh" "$prog" "$et-$e" "3:32~300" "2.95:a1,9.5:fin" 14 ROCOLA_CAPTURA_CAPAS=1 ;;
     f2sigterm) CORRIDA=v2h-f2sigterm SALE=0 SENAL=TERM ESTADO="9:antes" "$G/corre.sh" "$prog" "$et-$e" "7:67,8:17+113" "" 10 ;;
     f2agrega)  CORRIDA=v2h-f2agrega ROCOLA_CARPETAS_RAIZ="$DH/arbol" ESTADO="8.3:selector,10.3:elegida,12:hoja" "$G/corre.sh" "$prog" "$et-$e" "7:17+113,7.6:9,8:32,8.6:39,8.9:40,9.2:39,9.5:40,10.6:13,12.5:clic:770:529" "8.5:g1,10.1:g2,11.5:g3,13.5:fin" 16 ROCOLA_CAPTURA_CAPAS=1 ROCOLA_CARPETAS_RAIZ="$DH/arbol" ;;
+    f12)       ESTADO="9.6:abierta,12:esc,16:f12,20:altf4,24.5:x,27.3:moneda,28.8:ctrlf2,31.5:fin" "$G/corre.sh" "$prog" "$et-$e" "7:121,8:123,11:27,13:123,15:123,17:123,19:18+115,21:123,23.3:clic:1014:33,25:123,26.5:67,28:17+113,30:123" "9.7:f12a,12.3:f12b,27.6:f12c,31.6:f12d" 33 ROCOLA_CAPTURA_CAPAS=1 ;;
+    f12vigia)  ESTADO="9.6:abierta,12:esc,16:f12,20:altf4,24.5:x,31.5:fin" "$G/corre.sh" "$prog" "$et-$e" "8:123,11:27,13:123,15:123,17:123,19:18+115,21:123,23.3:clic:1014:33,25:123,30:123" "9.7:f12a,12.3:f12b,31.6:f12d" 33 ROCOLA_CAPTURA_CAPAS=1 ;;
+    f12sigterm) SALE=0 SENAL=TERM ESTADO="9.6:abierta" "$G/corre.sh" "$prog" "$et-$e" "7:67,8:123" "" 11 ;;
+    f12fallo)  [ -f "$W/gl-falla/libGLESv2.so.2" ] || "$G/gl_falla.sh" > /dev/null; fl="$W/gl-falla/falla.flag"; rm -f "$fl"; ( sleep 8.2; touch "$fl" ) &
+               ESTADO="9.8:aviso,12.2:cerrada,15.8:aviso2,17.6:cerrada2" "$G/corre.sh" "$prog" "$et-$e" "8.7:123,11:13,14:123,16.2:27" "10:fa,12.5:fb,16:fc,18:fd" 20 ROCOLA_CAPTURA_CAPAS=1 LD_LIBRARY_PATH="$W/gl-falla" F12_FALLA_FLAG="$fl"
+               wait; rm -f "$fl" ;;
     f3vistas|f3grises|f3billar|f3teclas|f3requisitos|f3diag|f3medir|f3guarda|f3raton|f3histsigterm)
                v=$(python3 "$G/vistas_f3.py" ${e#f3} ${MEDIR_ESPERA:-}); [ $e = f3guarda ] && export SALE=0 SENAL=KILL; [ $e = f3histsigterm ] && export SALE=0 SENAL=TERM
                ESTADO="$(echo "$v" | sed -n 4p)" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1
