@@ -11,6 +11,10 @@
 //                (oleadas 5 y 6) los implementa con su CajaVista y sobrescribe Pinta y Raton.
 //   AvisoRaton   que le paso al raton (WM_LBUTTONDOWN, WM_MOUSEMOVE...): los mismos nombres y numeros que escriben las trazas de la capa
 //                (TrazaVentanas.EventoRaton: baja, clic, mueve, entra, sale, doble, rueda, arriba).
+//   (panel-del-disco) Una vista puede CONTENER a otras (el panel del disco: BgPanel con la lista, el cubo y la barra de paginas): lo que
+//                XP hacia con Panel.Controls.Add es PantallaRocola.AgregaVista(panel, hija), con las reglas de un Panel de WinForms: la hija
+//                esta en las coordenadas de su dueno, se recorta a el, se pinta despues de el y las hijas entre si de abajo arriba
+//                (la primera que se agrega, la de mas arriba del orden z), y el raton va a la hija de mas arriba bajo la flecha.
 //   CajaVista    lo comun de una vista que ya no hereda (no es una clase base: cada vista tiene la suya, como CajaPieza en las hojas): su
 //                sitio y si se ve; avisa a la pantalla de cada cambio (PantallaRocola.VistaCambio).
 //
@@ -50,6 +54,9 @@ namespace Rocola
         // MouseDoubleClick, y despues MouseUp: Control.cs:12673-12743-, WmMouseMove, WmMouseEnter/Leave y WmMouseWheel). e en las
         // coordenadas de la vista; en la rueda, e.Handled = true para que no siga al dueno. De fabrica, nada (Control.OnMouse*: solo el aviso).
         void Raton(AvisoRaton que, Raton e) { }
+        // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Solo lo
+        // mira el hueco de la capa de la transicion (Plataforma/Anfitrion.cs); la pantalla nativa no da el foco del teclado a las vistas.
+        bool Seleccionable { get { return true; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que
@@ -60,6 +67,9 @@ namespace Rocola
         private readonly IVista duena;
         private Rectangle bounds;
         private bool visible = true;
+        // Control.ResizeRedraw (SetBoundsCore: «if (GetStyle(ControlStyles.ResizeRedraw)) Invalidate()»): una vista cuya clase de XP no lo pone
+        // (el panel del disco: BgPanel) no se pinta entera al cambiar de medida, y una que lo pone si (las demas, de fabrica aqui)
+        public bool RepintaConMedida = true;
         public CajaVista(IVista duena) { this.duena = duena; }
         public Rectangle Bounds { get { return bounds; } set { SetBounds(value.X, value.Y, value.Width, value.Height); } }
         public int Left { get { return bounds.X; } set { SetBounds(value, bounds.Y, bounds.Width, bounds.Height); } }
@@ -72,7 +82,7 @@ namespace Rocola
             if (r == bounds) return;
             bool otraMedida = r.Size != bounds.Size;
             bounds = r;
-            PantallaRocola.VistaCambio(duena, otraMedida);
+            PantallaRocola.VistaCambio(duena, otraMedida && RepintaConMedida);
         }
         // la suya y la de su dueno (GetVisibleCore)
         public bool Visible { get { return visible && PantallaRocola.DuenoVisible(duena); } set { if (visible == value) return; visible = value; PantallaRocola.VistaCambio(duena, false); } }

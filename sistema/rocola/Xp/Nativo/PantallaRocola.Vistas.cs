@@ -43,6 +43,8 @@ namespace Rocola
             void AlFondo(IVista v);                                  // SendToBack
             void Quita(IVista v);                                    // Controls.Remove
             void Cambio(IVista v, bool repintar);                    // una vista en un hueco cambio de sitio o de visible, o hay que repintarla
+            void AgregaRotulo(IVista dueno, object rotulo);          // Controls.Add de una vista que ya esta en una ventana de la capa: un rotulo (Label) de la capa
+            bool ClienteDelDueno(IVista v, out Size cliente);        // Parent.ClientSize de una vista que es control de la capa o esta en un hueco (false: sin dueno)
             bool DuenoVisible(IVista v);                             // si se ve la ventana (o el control) en que esta
             void Pinta(IVista v, SKCanvas g);                        // pintar una vista que aun es control de la capa (OnPaintBackground y OnPaint)
             bool Enfoca(IVista v);                                   // Focus de una vista que es control de la capa o esta en un hueco (Control.Focus)
@@ -72,15 +74,88 @@ namespace Rocola
         internal static void AgregaVista(object ventana, IVista v)
         {
             ILaCapa c = LaCapa;
-            if (c != null && (c.EsSuya(ventana) || c.EsSuyaLaVista(v))) { c.Agrega(ventana, v); return; }
+            IVista dueno = ventana as IVista;
+            if (dueno != null && (c == null || !c.EsSuya(ventana)))
+            {
+                // EL DUENO ES UNA VISTA (el panel del disco: Panel.Controls.Add): si ya esta en una ventana de la capa, su hueco la contiene; si no
+                // (en la pantalla nativa, o aun sin poner en ninguna ventana: XP agrega el cubo, la lista y la barra de paginas al panel ANTES de
+                // agregar el panel a la ventana), la pantalla lleva la cuenta de sus hijas
+                if (c != null && c.EsSuyaLaVista(dueno)) { c.Agrega(ventana, v); TraspasaHijas(v); return; }
+                AgregaHija(dueno, v); return;
+            }
+            if (c != null && (c.EsSuya(ventana) || c.EsSuyaLaVista(v))) { c.Agrega(ventana, v); TraspasaHijas(v); return; }
             if (lista.Contains(v)) return;   // (Add de uno que ya esta: no hace nada mas que dejarlo donde estaba, ControlCollection.Add)
             lista.Add(v); CambioVentana();
+        }
+        // LAS VISTAS DENTRO DE UNA VISTA (panel-del-disco). Control.ControlCollection.Add («base.InnerList.Add(value)» al final: el fondo del orden
+        // z, [0] arriba) en el Controls de un Panel; Add de una que ya tenia otro dueno la saca antes del viejo (ControlCollection.Add:
+        // «value.parent.Controls.Remove(value)»). Los hijos de cada dueno, [0] el de mas arriba: IVista o un rotulo de la capa (Label: oleada 7)
+        private static readonly Dictionary<IVista, List<object>> hijas = new Dictionary<IVista, List<object>>();
+        private static readonly Dictionary<IVista, IVista> padre = new Dictionary<IVista, IVista>();
+        private static IVista PadreDe(IVista v) { IVista p; return v != null && padre.TryGetValue(v, out p) ? p : null; }
+        private static void AgregaHija(IVista dueno, IVista v)
+        {
+            if (v == null || v == dueno) return;
+            IVista antes = PadreDe(v);
+            if (antes == dueno) return;   // (Add de una que ya esta: nada)
+            if (antes != null) { hijas[antes].Remove(v); padre.Remove(v); }
+            lista.Remove(v);
+            List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
+            l.Add(v); padre[v] = dueno; if (EnLaLista(dueno)) CambioVentana();
+        }
+        // el rotulo de la capa (Label) que XP agrega a una vista (lblAlbum al panel del disco): con la vista en una ventana de la capa, su Controls.Add;
+        // si no, queda anotado en su sitio del orden y se agrega cuando la vista entre (TraspasaHijas)
+        internal static void AgregaRotulo(IVista dueno, object rotulo)
+        {
+            ILaCapa c = LaCapa;
+            if (c != null && c.EsSuyaLaVista(dueno)) { c.AgregaRotulo(dueno, rotulo); return; }
+            List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
+            if (!l.Contains(rotulo)) l.Add(rotulo);
+        }
+        // una vista con hijas anotadas entra en una ventana de la capa: sus hijas pasan a su hueco, en el mismo orden (Controls.Add una por una)
+        private static void TraspasaHijas(IVista v)
+        {
+            ILaCapa c = LaCapa; List<object> l;
+            if (c == null || v == null || !hijas.TryGetValue(v, out l) || !c.EsSuyaLaVista(v)) return;
+            hijas.Remove(v);
+            foreach (object o in l)
+            {
+                IVista h = o as IVista;
+                if (h != null) { padre.Remove(h); AgregaVista(v, h); }
+                else c.AgregaRotulo(v, o);
+            }
+        }
+        // si la vista, o la de mas arriba de su cadena de duenos, esta en la lista nativa de la ventana
+        private static bool EnLaLista(IVista v) { for (IVista a = v; a != null; a = PadreDe(a)) if (lista.Contains(a)) return true; return false; }
+        // si 'o' es 'raiz' o esta dentro de ella
+        private static bool EnLaRama(object o, object raiz) { for (IVista a = o as IVista; a != null; a = PadreDe(a)) if (a == raiz) return true; return o == raiz; }
+        // donde esta la vista en la ventana (su esquina) sumando las de sus duenos
+        internal static Point OrigenDe(IVista v)
+        {
+            int x = 0, y = 0;
+            for (IVista a = v; a != null; a = PadreDe(a)) { Rectangle r = a.Bounds; x += r.X; y += r.Y; }
+            return new Point(x, y);
+        }
+        // el orden de una dentro de su dueno (0 arriba), o -1 si no es hija de ninguno de la pantalla nativa
+        internal static int IndiceEnElDueno(IVista v) { IVista p = PadreDe(v); return p == null ? -1 : hijas[p].IndexOf(v); }
+        // Parent.ClientSize (el tamano del cliente de su dueno, que en el panel y la ventana de XP es su medida: sin borde ni barras): el
+        // de la vista dueno, el de la ventana (la pantalla) si esta en la lista nativa, o el que da la capa; false si no tiene dueno
+        internal static bool ClienteDelDueno(IVista v, out Size cliente)
+        {
+            IVista p = PadreDe(v);
+            if (p != null) { Rectangle r = p.Bounds; cliente = r.Size; return true; }
+            if (lista.Contains(v)) { cliente = new Size(Ancho, Alto); return true; }
+            ILaCapa c = LaCapa;
+            if (c != null) return c.ClienteDelDueno(v, out cliente);
+            cliente = Size.Empty; return false;
         }
         internal static void AgregaCapa(CapaDeTextura t) { if (!lista.Contains(t)) { lista.Add(t); CambioVentana(); } }
         // BringToFront: el [0] (Control.BringToFront: «ParentInternal.Controls.SetChildIndex(this, 0)», Control.cs)
         internal static void VistaAlFrente(object v)
         {
             IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista dueno = PadreDe(iv);
+            if (dueno != null) { List<object> h = hijas[dueno]; if (h.Remove(iv)) { h.Insert(0, iv); if (EnLaLista(dueno)) CambioVentana(); } return; }   // (dentro de una vista: el [0] de las suyas)
             if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.AlFrente(iv); return; }
             if (lista.Remove(v)) { lista.Insert(0, v); CambioVentana(); }
         }
@@ -88,6 +163,8 @@ namespace Rocola
         internal static void VistaAlFondo(object v)
         {
             IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista dueno = PadreDe(iv);
+            if (dueno != null) { List<object> h = hijas[dueno]; if (h.Remove(iv)) { h.Add(iv); if (EnLaLista(dueno)) CambioVentana(); } return; }   // (dentro de una vista: el ultimo de las suyas)
             if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.AlFondo(iv); return; }
             if (lista.Remove(v)) { lista.Add(v); CambioVentana(); }
         }
@@ -96,12 +173,26 @@ namespace Rocola
         internal static void QuitaVista(object v)
         {
             IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista dueno = PadreDe(iv);
+            if (dueno != null)   // (dentro de una vista: fuera de las suyas, con lo que tenga dentro)
+            {
+                bool vista = EnLaLista(dueno);
+                SueltaDeLaRama(iv);
+                hijas[dueno].Remove(iv); padre.Remove(iv);
+                if (vista) CambioVentana();
+                return;
+            }
             if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.Quita(iv); return; }
             if (!lista.Remove(v)) return;
-            if (bajoRaton == v) bajoRaton = null;
-            if (captura == v) captura = null;
-            if (foco == v) foco = null;
+            SueltaDeLaRama(v);
             CambioVentana();
+        }
+        // si tenia el raton, la captura o el foco (ella o algo de lo que lleva dentro), ya no
+        private static void SueltaDeLaRama(object v)
+        {
+            if (EnLaRama(bajoRaton, v)) bajoRaton = null;
+            if (EnLaRama(captura, v)) captura = null;
+            if (EnLaRama(foco, v)) foco = null;
         }
         // el orden de una (0 arriba), o -1 si no esta en la lista nativa
         internal static int IndiceDe(object v) { return lista.IndexOf(v); }
@@ -109,13 +200,16 @@ namespace Rocola
         // lo que avisa una vista que ya no hereda (CajaVista): en la lista nativa, volver a componer; en un hueco de la capa, la capa
         internal static void VistaCambio(IVista v, bool repintar)
         {
-            if (lista.Contains(v)) { CambioVentana(); return; }
+            if (lista.Contains(v) || (padre.ContainsKey(v) && EnLaLista(v))) { CambioVentana(); return; }
+            if (padre.ContainsKey(v)) return;   // (hija de una vista que aun no esta en ninguna ventana: nada que componer)
             ILaCapa c = LaCapa; if (c != null) c.Cambio(v, repintar);
         }
         internal static void CambioVentana() { cambiosVentana++; HayQueComponer(); }
         // si se ve el dueno de una vista (GetVisibleCore del padre): la ventana de la pantalla siempre se ve; en la capa, lo dice la capa
         internal static bool DuenoVisible(IVista v)
         {
+            IVista dueno = PadreDe(v);
+            if (dueno != null) return dueno.Visible;   // (GetVisibleCore: la suya y la de su dueno)
             if (lista.Contains(v)) return true;
             ILaCapa c = LaCapa; return c == null || c.DuenoVisible(v);
         }
@@ -144,7 +238,7 @@ namespace Rocola
         {
             ILaCapa c = LaCapa;
             if (c != null && c.EsSuyaLaVista(v)) return c.Enfoca(v);
-            if (v != null && lista.Contains(v) && Ve(v) && foco != v)
+            if (v != null && EnLaLista(v) && Ve(v) && foco != v)
             {
                 foco = v;
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco " + v.GetType().Name);
@@ -247,9 +341,41 @@ namespace Rocola
                 }
                 g.Translate(r.Left, r.Top);
                 v.Pinta(g);
+                PintaHijas(v, g);
             }
             catch (Exception ex) { Falla(ex); }   // (lo que lanza un OnPaint va a ThreadException: NativeWindow.Callback)
             finally { g.RestoreToCount(s); }
+        }
+        // LAS HIJAS DE UNA VISTA, despues de ella y de abajo arriba (Ventanas.Escritorio.PintaArbol: el control y despues sus hijos), cada una
+        // recortada a su dueno (un hijo es una ventana hija: WS_CHILD, no se sale del cliente de su padre) y por las hermanas que tiene encima
+        // (WS_CLIPSIBLINGS, como las de la ventana); 'g' esta en la esquina del dueno
+        private static void PintaHijas(IVista dueno, SKCanvas g)
+        {
+            List<object> l; if (!hijas.TryGetValue(dueno, out l)) return;
+            object[] h = l.ToArray();
+            for (int i = h.Length - 1; i >= 0; i--)
+            {
+                IVista v = h[i] as IVista; if (v == null) continue;
+                Rectangle r = v.Bounds;
+                if (!Ve(v) || r.Width <= 0 || r.Height <= 0) continue;
+                int s = g.Save();
+                try
+                {
+                    g.ClipRect(new SKRect(r.Left, r.Top, r.Right, r.Bottom));
+                    for (int j = i - 1; j >= 0; j--)
+                    {
+                        IVista o = h[j] as IVista; if (o == null) continue;
+                        Rectangle rs = o.Bounds;
+                        if (!Ve(o) || rs.Width <= 0 || rs.Height <= 0 || !rs.IntersectsWith(r)) continue;
+                        g.ClipRect(new SKRect(rs.Left, rs.Top, rs.Right, rs.Bottom), SKClipOperation.Difference);
+                    }
+                    g.Translate(r.Left, r.Top);
+                    v.Pinta(g);
+                    PintaHijas(v, g);
+                }
+                catch (Exception ex) { Falla(ex); }
+                finally { g.RestoreToCount(s); }
+            }
         }
         // si se ve la vista misma (su Visible incluye al dueno, que en la lista nativa es la pantalla)
         private static bool Ve(IVista v) { return v.Visible; }
@@ -263,11 +389,23 @@ namespace Rocola
             foreach (object o in lista)
             {
                 IVista v = o as IVista;
-                if (v != null) { if (Ve(v) && v.Bounds.Contains(p)) return v; continue; }
+                if (v != null) { if (Ve(v) && v.Bounds.Contains(p)) return Dentro(v, new Point(p.X - v.Bounds.X, p.Y - v.Bounds.Y)); continue; }
                 CapaDeTextura t = (CapaDeTextura)o;
                 if (t.Visible && t.Sitio.Contains(p)) return t;
             }
             return null;
+        }
+        // la ventana hija de mas adentro bajo el punto (en las coordenadas de la vista): ChildWindowFromPointEx baja por las hijas de mas arriba
+        // que se ven y contienen el punto
+        private static IVista Dentro(IVista v, Point q)
+        {
+            List<object> l; if (!hijas.TryGetValue(v, out l)) return v;
+            foreach (object o in l)
+            {
+                IVista h = o as IVista;
+                if (h != null && Ve(h) && h.Bounds.Contains(q)) return Dentro(h, new Point(q.X - h.Bounds.X, q.Y - h.Bounds.Y));
+            }
+            return v;
         }
         private static object bajoRaton, captura, ultimoClicEn;
         private static double ultimoClicMs = -1e9; private static Point ultimoClicPunto; private static BotonRaton ultimoClicBoton;
@@ -279,7 +417,7 @@ namespace Rocola
         {
             IVista v = a as IVista;
             if (v == null) return;   // (una capa de textura: se queda con el raton y no hace nada)
-            Rectangle r = v.Bounds;
+            Point r = OrigenDe(v);
             if (e == null) e = new Raton(b, clics, Flecha.X - r.X, Flecha.Y - r.Y, delta);
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[(int)que] + " " + v.GetType().Name + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
             try { v.Raton(que, e); AvisaOyentes(v, que, e); } catch (Exception ex) { Falla(ex); }   // (los de fuera despues: el evento lo lanza el On* de fabrica)
@@ -352,10 +490,10 @@ namespace Rocola
         {
             ILaCapa c = LaCapa; if (c != null) { c.RatonRueda(muescas); return; }
             if (Hoja.Activa != null) { Hoja.RatonRueda(muescas); return; }
-            IVista v = foco as IVista;
-            if (v != null)
+            // (sin atender, DefWindowProc la pasa al padre: la vista que la contiene, y despues la ventana)
+            for (IVista v = foco as IVista; v != null; v = PadreDe(v))
             {
-                Rectangle r = v.Bounds;
+                Point r = OrigenDe(v);
                 Raton e = new Raton(BotonRaton.None, 0, Flecha.X - r.X, Flecha.Y - r.Y, muescas * 120);
                 Avisa(v, AvisoRaton.Rueda, BotonRaton.None, 0, muescas * 120, e);
                 if (e.Handled) return;

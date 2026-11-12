@@ -2369,19 +2369,19 @@ namespace Rocola
 
         // ==========  VISTA DE DISCOS (fondo animado estilo PS2 + cubos)  ==========
         // Panel con fondo estrellado (reactivo al genero), para el modo "dentro del disco"
-        private class BgPanel : Panel, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
+        private class BgPanel : IVista   // EN LINUX: Panel (WinForms) -> sin herencia (port nativo, panel-del-disco): una vista de la pantalla nativa (Nativo/IVista.cs) que ya no es un Control; el sitio, si se ve y Invalidate los da su CajaVista, Pinta es su OnPaint y Raton es el de fabrica (un Panel no hace nada con el raton). Sus hijas (cubeBox, songList y songPager) las lleva la pantalla (PantallaRocola.AgregaVista(panelSongs, ...)): en las coordenadas del panel, recortadas a el, de abajo arriba y con el raton de la de encima
         {
             public Color Accent = DefaultAccent;
             public float BgDim = 1f;   // atenuacion del starfield mientras se navega con musica (el form la anima; igual que la rejilla)
             public BgPanel()
             {
-                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                caja = new CajaVista(this); caja.SetBounds(0, 0, 200, 100); caja.RepintaConMedida = false;   // EN LINUX: SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer): lo pinta la pantalla en un bufer entero y con su OnPaint siempre (UserPaint, AllPaintingInWmPaint, OptimizedDoubleBuffer); un Panel mide 200x100 de fabrica (DefaultSize) y SIN ResizeRedraw (no lo pone): al cambiar de medida no se repinta entero (RepintaConMedida = false)
             }
-            protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ }
+            private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } bool IVista.Seleccionable { get { return false; } }   // EN LINUX: OnPaintBackground (vacio, «todo en OnPaint») ya no existe: Pinta es fondo y contenido. En su lugar, lo que XP usa de este Panel por fuera y le daba Control: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate (con su CajaVista), y que no toma el foco del teclado (un Panel no es Selectable)
             public Starfield Sky;   // COMPARTIDO con el fondo del form: este panel pinta su VENTANA del mismo campo (una sola pieza)
-            protected override void OnPaint(PaintEventArgs e)
+            public void Pinta(SKCanvas g)   // EN LINUX: OnPaint(PaintEventArgs e): la pantalla le da el lienzo con el origen en su esquina y recortado a lo que se ve de el
             {
-                Rocola.Dibujo2D.Graphics g = e.Graphics;   // EN LINUX: OnPaint (de WinForms, sin traducir en esta tanda) trae un Graphics de la capa: el tipo, escrito entero; DrawCached (abajo) le pasa su lienzo y su estado por el puente (Puente.fondo.cs)
+                Filtro filtro = Filtro.Bilineal; bool medio = false, copia = false;   // EN LINUX: Graphics g = e.Graphics: el estado de un Graphics de un WM_PAINT (Graphics.FromImage: InterpolationMode.Bilinear -el filtro Bilineal-, PixelOffsetMode.Default -sin medio pixel- y CompositingMode.SourceOver -sin copia-), que es lo que DrawCached usa de el
                 int w = Width, h = Height;
                 if (w < 4 || h < 4) return;
 
@@ -2390,13 +2390,13 @@ namespace Rocola
                 // y las estrellas cruzan el borde con las franjas de arriba/abajo sin cortarse.
                 if (Sky == null) return;
                 Sky.SkyOffsetX = this.Left; Sky.SkyOffsetY = this.Top;
-                Sky.SkyFullW = (this.Parent != null) ? this.Parent.ClientSize.Width : w;
-                Sky.SkyFullH = (this.Parent != null) ? this.Parent.ClientSize.Height : h;
+                Size cliente; bool conDueno = PantallaRocola.ClienteDelDueno(this, out cliente); Sky.SkyFullW = conDueno ? cliente.Width : w;   // EN LINUX: (this.Parent != null) ? this.Parent.ClientSize.Width : w: el cliente de su dueno (la ventana) lo da la pantalla; sin dueno, false
+                Sky.SkyFullH = conDueno ? cliente.Height : h;   // EN LINUX: (this.Parent != null) ? this.Parent.ClientSize.Height : h
                 Sky.SkyMid = SkyColorMid(Accent); Sky.Acento = Accent;
                 Sky.Dim = BgDim;   // en sincronia con la rejilla y las franjas (una sola pieza)
-                Sky.DrawCached(g, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima
+                Sky.DrawCached(g, filtro, medio, copia, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de este archivo); ya no pasa por la firma de XP del puente
             }
-
+            private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } }   // EN LINUX: Control.BackColor (el del Panel; Control.OnBackColorChanged lo repinta): el color propio, que Form1 siempre pone al crearlo; sin poner, el gris de los controles de XP (COLOR_BTNFACE de Luna)
         }
     }
 }

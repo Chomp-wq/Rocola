@@ -13,6 +13,7 @@ using Rocola.Pantalla;
 using SkiaSharp;
 using Point = System.Drawing.Point;
 using Rectangle = System.Drawing.Rectangle;
+using Size = System.Drawing.Size;
 using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1)
 
 namespace Rocola
@@ -121,6 +122,9 @@ namespace Rocola
             public void Agrega(object ventana, IVista v)
             {
                 Control dueno = ventana as Control;
+                // (panel-del-disco) el dueno puede ser una vista que ya no hereda de Control (BgPanel): su hueco es el Panel de WinForms que
+                // contiene a las hijas (Controls.Add del hueco: su orden, su recorte al cliente y su raton, los de la capa)
+                if (dueno == null) { IVista dv = ventana as IVista; if (dv != null) dueno = ControlDe(dv); }
                 Control c = v as Control;
                 if (c == null)
                 {
@@ -129,6 +133,19 @@ namespace Rocola
                     c = h;
                 }
                 if (dueno != null) dueno.Controls.Add(c);
+            }
+            // (panel-del-disco) Controls.Add de un rotulo (Label) a una vista que ya esta en una ventana de la capa: al hueco de la vista
+            public void AgregaRotulo(IVista dueno, object rotulo)
+            {
+                Control d = ControlDe(dueno), r = rotulo as Control;
+                if (d != null && r != null) d.Controls.Add(r);
+            }
+            // Parent.ClientSize de una vista que es control de la capa o esta en un hueco: el cliente de su padre; false si no esta en ninguno
+            public bool ClienteDelDueno(IVista v, out Size cliente)
+            {
+                Control c = ControlDe(v); Control p = c != null ? c.Parent : null;
+                if (p == null) { cliente = Size.Empty; return false; }
+                cliente = p.ClientSize; return true;
             }
             public void AlFrente(IVista v) { Control c = ControlDe(v); if (c != null) c.BringToFront(); }
             public void AlFondo(IVista v) { Control c = ControlDe(v); if (c != null) c.SendToBack(); }
@@ -211,7 +228,8 @@ namespace Rocola
             private readonly IVista vista;
             internal bool Quitado;
             internal IVista Vista { get { return vista; } }
-            internal HuecoDeVista(IVista v) { vista = v; }
+            // (panel-del-disco) el hueco de una vista que no toma el foco del teclado es un Panel: ni Selectable ni TabStop
+            internal HuecoDeVista(IVista v) { vista = v; if (!v.Seleccionable) { SetStyle(ControlStyles.Selectable, false); TabStop = false; } }
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
             internal static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }

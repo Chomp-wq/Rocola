@@ -403,11 +403,15 @@ namespace BancoFondo
                     }
         }
 
-        // ================================================================ EL PANEL DEL DISCO (BgPanel.OnPaint, por el puente)
+        // ================================================================ EL PANEL DEL DISCO (BgPanel.OnPaint de XP; Pinta en la traduccion)
+        // (panel-del-disco) BgPanel ya no es un Control: el sitio se lo da SetBounds (de su CajaVista) y se pinta con Pinta(SKCanvas), el
+        // lienzo del mismo Graphics; la referencia sigue siendo el Panel de WinForms con su OnPaint. Las dos pintan en el mismo Graphics.
         private static void Panel_()
         {
             Type t = typeof(Form1).GetNestedType("BgPanel", BindingFlags.NonPublic);
             MethodInfo onPaint = t.GetMethod("OnPaint", Todo);
+            MethodInfo pinta = t.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null);   // la traducida (sin OnPaint)
+            MethodInfo setBounds = t.GetMethod("SetBounds", Todo, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null);
             int k = 0;
             foreach (int[] m in new[] { new[] { 200, 150, 0, 0 }, new[] { 300, 220, 40, 60 }, new[] { 640, 400, 12, 90 } })
                 foreach (float dim in new[] { 1f, 0.45f })
@@ -417,7 +421,7 @@ namespace BancoFondo
                             string nombre = "panel-" + m[0] + "x" + m[1] + "-" + R(dim) + "-" + (k++);
                             object sf = Nuevo(77);
                             object c = Activator.CreateInstance(t, true);
-                            ((Control)c).SetBounds(m[2], m[3], m[0], m[1]);
+                            setBounds.Invoke(c, new object[] { m[2], m[3], m[0], m[1] });
                             t.GetField("Sky", Todo).SetValue(c, sf); t.GetField("Accent", Todo).SetValue(c, acento); t.GetField("BgDim", Todo).SetValue(c, dim);
                             using (Bitmap b = new Bitmap(m[0] + 20, m[1] + 14, PixelFormat.Format32bppPArgb))
                             {
@@ -432,14 +436,18 @@ namespace BancoFondo
                                         sella.Invoke(g, null);
                                         Reloj(sf, true, false, false, false);
                                         if (pasada == 1) FijaCapa(sf, k);
-                                        try { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe }); }
+                                        try
+                                        {
+                                            if (pinta != null) pinta.Invoke(c, new object[] { Por("Lienzo", typeof(Graphics), g) });
+                                            else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe });
+                                        }
                                         catch (Exception xx) { ex = " " + Exc(xx); }
                                         SueltaCapa(sf);
                                         deja = Deja(g);
                                     }
                                 Linea(nombre, Puntos(nombre, b) + deja + ex);
                             }
-                            ((IDisposable)c).Dispose();
+                            Suelta(c);
                         }
         }
 
