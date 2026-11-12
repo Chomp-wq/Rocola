@@ -5,7 +5,8 @@
 // -p:Fuente=...): la referencia congelada (GDI+ de la capa) y esta copia; la salida (una linea por caso: lo que devuelve la funcion y los
 // puntos del mapa, tal cual y como los sube la tarjeta) tiene que salir igual linea por linea (compara.sh).
 // Cada funcion se llama como la llama el codigo de XP que todavia no esta traducido: con Graphics, Font, StringAlignment y Bitmap (en la
-// referencia, la funcion de XP; en la traduccion, la firma de XP que deja Plataforma/Puente.ventanas2.cs). El aviso, que en la traduccion ya
+// referencia, la funcion de XP; en la traduccion, la firma de XP que deja Plataforma/Puente.ventanas2.cs; CreaSfDibuja ya no la tiene, y se
+// hace lo que hacia su puente: la traducida con Alinea y su FormatoTexto como StringFormat, por reflexion). El aviso, que en la traduccion ya
 // no tiene esa firma, con el SKBitmap del mismo mapa y la Letra de la misma Font (PuenteDibujo, por reflexion: la referencia no lo tiene).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet VistasAjustes.dll [vuelca CARPETA]
 using System;
@@ -91,12 +92,21 @@ namespace Banco
         private static void Formatos()
         {
             Font[] fs = Fuentes(); MethodInfo m = Metodo("CreaSfDibuja", typeof(StringAlignment));
+            // en la traduccion ya no queda la firma de XP (Form1.Vistas.cs, el ultimo que la pedia, llama a la de Alinea: grupo directas-vistas):
+            // se hace lo que hacia su puente, CreaSfDibuja((Alinea)(int)al) y su FormatoTexto como StringFormat (PuenteDibujo.StringFormat)
+            MethodInfo mTr = null, aSf = null;
+            if (m == null)
+            {
+                foreach (MethodInfo x in typeof(Form1).GetMethods(T)) if (x.Name == "CreaSfDibuja" && x.GetParameters().Length == 1) mTr = x;
+                aSf = tPuente.GetMethod("StringFormat", T, null, new[] { mTr.ReturnType }, null);
+            }
             for (int vuelta = 0; vuelta < 2; vuelta++)
             {
                 if (vuelta == 1) { StringFormat t = StringFormat.GenericTypographic; t.Alignment = StringAlignment.Center; t.LineAlignment = StringAlignment.Center; t.FormatFlags |= StringFormatFlags.NoWrap; }
                 foreach (StringAlignment al in new[] { StringAlignment.Near, StringAlignment.Center, StringAlignment.Far })
                 {
-                    StringFormat sf = (StringFormat)m.Invoke(null, new object[] { al });
+                    StringFormat sf = m != null ? (StringFormat)m.Invoke(null, new object[] { al })
+                        : (StringFormat)aSf.Invoke(null, new object[] { mTr.Invoke(null, new object[] { Enum.ToObject(mTr.GetParameters()[0].ParameterType, (int)al) }) });
                     Linea("formato-" + vuelta + "-" + al, sf.Alignment + "," + sf.LineAlignment + "," + (int)sf.FormatFlags + "," + sf.Trimming + ",otro=" + !ReferenceEquals(sf, StringFormat.GenericTypographic));
                     for (int fi = 0; fi < fs.Length; fi += 2) for (int caja = 0; caja < 3; caja++)
                         using (Bitmap b = new Bitmap(220, 40, PixelFormat.Format32bppPArgb))
