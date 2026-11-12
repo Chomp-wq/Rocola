@@ -54,12 +54,12 @@ namespace Rocola
         // MouseDoubleClick, y despues MouseUp: Control.cs:12673-12743-, WmMouseMove, WmMouseEnter/Leave y WmMouseWheel). e en las
         // coordenadas de la vista; en la rueda, e.Handled = true para que no siga al dueno. De fabrica, nada (Control.OnMouse*: solo el aviso).
         void Raton(AvisoRaton que, Raton e) { }
-        // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Solo lo
-        // mira el hueco de la capa de la transicion (Plataforma/Anfitrion.cs); la pantalla nativa no da el foco del teclado a las vistas.
+        // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Lo mira
+        // el hueco de la capa de la transicion (Plataforma/Anfitrion.cs) y, en la lista nativa, el tabulador (PantallaRocola.Foco.cs: CanSelect).
         bool Seleccionable { get { return true; } }
         // SI EL TABULADOR SE PARA EN ELLA (Control.TabStop: true de fabrica, Control.cs, TabStop; SelectNextControl con tabStopOnly solo elige
         // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
-        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; la lista nativa aun no recorre vistas con el tabulador (oleada 6c).
+        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; y, en la lista nativa, la pantalla (PantallaRocola.Foco.cs).
         bool ParaElTabulador { get { return true; } }
     }
 
@@ -89,7 +89,7 @@ namespace Rocola
             PantallaRocola.VistaCambio(duena, otraMedida && RepintaConMedida);
         }
         // la suya y la de su dueno (GetVisibleCore)
-        public bool Visible { get { return visible && PantallaRocola.DuenoVisible(duena); } set { if (visible == value) return; visible = value; PantallaRocola.VistaCambio(duena, false); } }
+        public bool Visible { get { return visible && PantallaRocola.DuenoVisible(duena); } set { if (visible == value) return; if (!value && Visible) PantallaRocola.SeEsconde(duena); visible = value; PantallaRocola.VistaCambio(duena, false); } }
         internal bool VisiblePropio { get { return visible; } }
         public void Invalidate() { PantallaRocola.VistaCambio(duena, true); }
     }
