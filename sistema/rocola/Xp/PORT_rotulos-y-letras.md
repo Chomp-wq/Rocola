@@ -140,3 +140,36 @@ Anadidas (de la transicion, se van con la capa en N7): `ILaCapa.EsSuyaLaCapa/Agr
 - La Region de la capa (`Control.Region`, una propiedad sin mas) no repinta al cambiar; la del hueco y la Forma si (SetWindowRgn repinta):
   XP la pone justo antes de `Visible = true`, asi que no se ve la diferencia.
 - Form1.Video.cs:996 lo tocan este grupo (lblGpu.BringToFront) y 6a (gpuPanel.Visible): choque de una linea al juntar.
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff 8460045..fe82218 entero contra Rocola/ (XP) y contra la capa que sustituye (Ventanas.Control.cs: Label, Control.Font,
+IgualLetra; VideoEnVentanas.cs; Puente.ventanas2.cs y Puente.vistas-b.cs de 8460045).
+
+- **Equivalencia**: los once Label (TransLabel y las lineas de cada uno) reciben lo mismo que en XP (letra, color, fondo, alineacion,
+  AutoEllipsis, UseMnemonic, AutoSize false) y entran en el mismo orden (`AgregaVista` donde estaba `Controls.Add`, `VistaAlFrente` donde
+  estaba `BringToFront`); el inventario de lo que XP usa de ellos (Text, Visible, Font, ForeColor, SetBounds, Bounds, TextAlign,
+  BringToFront, Top, BackColor, Width, Left, Height, UseMnemonic, AutoSize, AutoEllipsis, Bottom, Size, Right, Region, Location,
+  Invalidate) esta todo en RotuloVista. La pintura de RotuloVista hace lo mismo que el Label de la capa (fondo solo con alfa, banderas de
+  ControlPaint.CreateTextFormatFlags, el «&» quitado como alli); el setter de Font es el de Control.Font (la guardada no cambia por una
+  igual: Letras.Iguales es IgualLetra con Letra) y las identidades de XP (Form1.Vistas.cs:1057/1067, DiscoVivoGpu.cs:77-81) siguen por
+  referencia, con CajaPieza.LetraDeFabrica como un solo objeto igual que Control.DefaultFont. `Letra.Familia` es el `FontFamily.Name` con que
+  la capa hacia su Letra (Dibujo2D.Font), asi que `this.Font.FontFamily.Name` y la vieja `PuenteDibujo.Letra(this.Font).Familia` dan lo mismo.
+  El hueco de textura nuevo hace lo que hacia el de VideoEnVentanas.cs (mismo sitio, visible y textura; la capa de textura tiene de fabrica
+  Visible true y sitio vacio, como el control nuevo).
+- **Encontrado y arreglado** (commit aparte, solo comentarios): Form1.Vistas.cs:1229 y :1316 seguian diciendo que `PastillaView.Ancho` con
+  una FontFamily estaba en Plataforma/Puente.vistas-b.cs, que este grupo borro; Anfitrion.cs mandaba a VideoEnVentanas.cs (borrado) para el
+  HuecoDelVideo. Lineas y CRLF de Form1.Vistas.cs iguales a 8460045 (2 749 y 2 568).
+- **No es fallo, se apunta**: un `git merge` de prueba con port-gpupanel-sin-control (6a, 052f8b9) choca en Nativo/IVista.cs,
+  Nativo/PantallaRocola.Vistas.cs, Plataforma/Anfitrion.cs y Pruebas/Ventanas/PantallaVistas/Program.cs (Form1.Video.cs:996 se junta
+  sola); lo resuelve el coordinador al juntar la oleada.
+- **Comprobaciones repetidas por el revisor**: `dotnet build -c Release --no-incremental` 0 errores y 15 avisos; diff-xp.py -v de los 14
+  archivos: las 37 lineas «sin marca» son las mismas que da 8460045 (comparado linea por linea); lineas, CRLF y la posicion de cada CRLF de
+  los 11 archivos cambiados iguales a 8460045; NativeAOT 0 avisos IL/AOT; arneses contra la referencia: acabado-estilo 0 de 6 603 con DejaVu
+  y 1 de 6 603 con las falsas (`lista-0-hojea100`: la TimeoutException de la referencia por el reloj, ya apuntada; la salida nueva es byte a
+  byte la del informe), Ctrl+F3 (VistasAjustes) 0 de 545 con las dos letras, vistas-b 0 de 3 108 con las dos letras.
+  Las 29 cintas: 29 iguales (6 616 cuadros), 0 distintas. PantallaVistas: 143 de 143. Recorridos y escenas no se repitieron (la revision no
+  dejo dudas sobre ellos; los corre el coordinador al juntar).
+- **Descuido del revisor**: un primer `pruebas_vistas.sh` sin argumentos uso la carpeta de fabrica del guion
+  (/root/rocola-trabajo/port/pantalla-nativa/vistas/actual) y la vacio; solo era la salida desechable de la ultima corrida sin etiqueta
+  (junta12-14, t1 y t2 no se tocaron).
