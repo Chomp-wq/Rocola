@@ -45,6 +45,8 @@ namespace Rocola
             void Cambio(IVista v, bool repintar);                    // una vista en un hueco cambio de sitio o de visible, o hay que repintarla
             bool DuenoVisible(IVista v);                             // si se ve la ventana (o el control) en que esta
             void Pinta(IVista v, SKCanvas g);                        // pintar una vista que aun es control de la capa (OnPaintBackground y OnPaint)
+            bool Enfoca(IVista v);                                   // Focus de una vista que es control de la capa o esta en un hueco (Control.Focus)
+            bool OyeComoControl(IVista v, AvisoRaton que, Action<Raton> a);   // una vista que aun es control: su evento (MouseDown, MouseClick); false si no lo es
             ILugarDelVideo LugarDelVideo(object ventana);            // la capa del video en una ventana de la capa (VideoEnVentanas.cs)
             bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera);   // Present de la tarjeta en un control de la capa (false: no es de nadie, glFlush)
             void OlvidaTarjeta(IntPtr ventana);
@@ -129,6 +131,48 @@ namespace Rocola
             ILaCapa c = LaCapa;
             if (c != null) { c.HayQueComponer(); return; }
             cambios++; Despierta();
+        }
+
+        // ---------- el foco de una vista y quien escucha su raton desde fuera (armado-vistas, oleada 3: W3-0) ----------
+        // FOCUS (Control.Focus: «return FocusInternal()»; FocusInternal: «if (CanFocus) SetFocus(new HandleRef(this, Handle)); ... return
+        // Focused», con CanFocus = IsHandleCreated && IsWindowVisible && IsWindowEnabled: Control.cs, Focus, FocusInternal y CanFocus). La
+        // rocola de XP le da el foco al buscador de siempre al abrirlo sin tarjeta (searchOverlay.Focus(): Form1.Biblioteca.cs y
+        // Form1.Video.cs). En una vista que aun es control de la capa (o en su hueco), la capa (Control.Focus: el foco de WinForms, con su traza
+        // y LostFocus); en la lista nativa, la vista que se ve pasa a ser la del foco (la rueda va a ella: RatonRueda; las teclas siguen yendo
+        // a la ventana, que tiene KeyPreview -el foco del teclado de una vista es de la oleada 6c-). Una vista no tiene Enabled: siempre lo esta.
+        internal static bool EnfocaVista(IVista v)
+        {
+            ILaCapa c = LaCapa;
+            if (c != null && c.EsSuyaLaVista(v)) return c.Enfoca(v);
+            if (v != null && lista.Contains(v) && Ve(v) && foco != v)
+            {
+                foco = v;
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco " + v.GetType().Name);
+            }
+            return v != null && foco == v;
+        }
+        // LOS QUE ESCUCHAN EL RATON DE UNA VISTA DESDE FUERA (en XP, los eventos de Control: «ayudaView.MouseClick += ...» y
+        // «attractView.MouseDown += ...», Form1.cs). En WinForms el evento lo lanza el On* de fabrica (Control.OnMouseDown: «MouseEventHandler
+        // handler = (MouseEventHandler)Events[EventMouseDown]; if (handler != null) handler(this, e)»; igual OnMouseClick), asi que llega despues
+        // de lo que la vista hace en su On* antes de llamar a base: aqui, despues de su Raton. Solo los dos que usa la rocola (Abajo = MouseDown,
+        // Clic = MouseClick). En una vista que aun es control de la capa, su evento (la capa lo lanza en el mismo sitio); si no, esta lista,
+        // que avisan la pantalla (Avisa) y el hueco de la capa (Plataforma/Anfitrion.cs) despues de Raton.
+        private static readonly Dictionary<IVista, List<KeyValuePair<AvisoRaton, Action<Raton>>>> oyentes = new Dictionary<IVista, List<KeyValuePair<AvisoRaton, Action<Raton>>>>();
+        internal static void OyeRaton(IVista v, AvisoRaton que, Action<Raton> a)
+        {
+            if (que != AvisoRaton.Abajo && que != AvisoRaton.Clic) throw new ArgumentException("solo MouseDown (Abajo) y MouseClick (Clic): lo que usa la rocola", "que");
+            if (v == null || a == null) return;   // (Control.MouseDown += null: no hace nada)
+            ILaCapa c = LaCapa;
+            if (c != null && c.OyeComoControl(v, que, a)) return;
+            List<KeyValuePair<AvisoRaton, Action<Raton>>> l;
+            if (!oyentes.TryGetValue(v, out l)) { l = new List<KeyValuePair<AvisoRaton, Action<Raton>>>(); oyentes[v] = l; }
+            l.Add(new KeyValuePair<AvisoRaton, Action<Raton>>(que, a));   // (en el orden en que se suscribieron, como un evento multicast)
+        }
+        internal static void AvisaOyentes(IVista v, AvisoRaton que, Raton e)
+        {
+            List<KeyValuePair<AvisoRaton, Action<Raton>>> l;
+            if (v == null || !oyentes.TryGetValue(v, out l)) return;
+            foreach (KeyValuePair<AvisoRaton, Action<Raton>> o in l.ToArray()) if (o.Key == que) o.Value(e);
         }
 
         // ---------- componer la lista de la ventana ----------
@@ -238,7 +282,7 @@ namespace Rocola
             Rectangle r = v.Bounds;
             if (e == null) e = new Raton(b, clics, Flecha.X - r.X, Flecha.Y - r.Y, delta);
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[(int)que] + " " + v.GetType().Name + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
-            try { v.Raton(que, e); } catch (Exception ex) { Falla(ex); }
+            try { v.Raton(que, e); AvisaOyentes(v, que, e); } catch (Exception ex) { Falla(ex); }   // (los de fuera despues: el evento lo lanza el On* de fabrica)
         }
         private static void BajoLaFlecha(object v)
         {

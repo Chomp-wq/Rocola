@@ -2369,7 +2369,7 @@ namespace Rocola
 
         // ==========  VISTA DE DISCOS (fondo animado estilo PS2 + cubos)  ==========
         // Panel con fondo estrellado (reactivo al genero), para el modo "dentro del disco"
-        private class BgPanel : Panel
+        private class BgPanel : Panel, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public Color Accent = DefaultAccent;
             public float BgDim = 1f;   // atenuacion del starfield mientras se navega con musica (el form la anima; igual que la rejilla)

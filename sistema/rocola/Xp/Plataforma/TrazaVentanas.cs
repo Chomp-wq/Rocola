@@ -50,6 +50,7 @@ namespace Rocola
         internal static string Pieza(object o)
         {
             if (o == null) return "nadie";
+            object vh = Anfitrion.VistaDeHueco(o); if (vh != null) o = vh;   // (armado-vistas) el hueco de una vista sin herencia en la capa, por su vista
             string n = o.GetType().Name;
             string t = null;
             // (port nativo, ventanas2 H) las hojas y las piezas nativas (Nativo/Hoja.cs, Pieza.cs), con su texto como las de la capa

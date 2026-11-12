@@ -172,7 +172,7 @@ namespace Rocola
         // para que se vea desde lejos, y AL LADO estan dibujados los dos botones que hay que apretar: el
         // rojo, un mas, y la flecha de arriba. No hay nada que leer ni que adivinar: se ve que son dos y
         // se ve cuales son.
-        private partial class BuscaView : Control   // EN LINUX: partial: la firma de XP de RenderContent con un Graphics (la de OnPaint) va en el puente (Plataforma/Puente.buscador.cs)
+        private partial class BuscaView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent con un Graphics (la de OnPaint) va en el puente (Plataforma/Puente.buscador.cs)
         {
             public bool Abierto = false;      // con el buscador abierto la casilla se queda encendida fija
             public double Phase = 0;          // para el parpadeo
@@ -317,7 +317,7 @@ namespace Rocola
             public RectangleF R;
         }
 
-        private partial class SearchOverlay : Control
+        private partial class SearchOverlay : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public bool SeparateGpu = false;
             public string Query = "";

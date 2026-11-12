@@ -108,6 +108,8 @@ namespace Rocola
         // ---------- (transicion) LO QUE LA PANTALLA NATIVA LE PIDE A LAS VENTANAS DE LA CAPA ----------
         // Cada cosa es la llamada de la capa que hacia lo mismo antes de la pantalla nativa (Escritorio y Control), asi la rocola se ve, se
         // mueve y recibe la entrada igual. Se va con la capa (N7).
+        // (trazas) la vista de un hueco, o null si no es un hueco: TrazaVentanas.Pieza lo nombra por ella
+        internal static object VistaDeHueco(object o) { HuecoDeVista h = o as HuecoDeVista; return h != null ? h.Vista : null; }
         private sealed class VentanasDeLaCapa : PantallaRocola.ILaCapa
         {
             private readonly Dictionary<IVista, HuecoDeVista> huecos = new Dictionary<IVista, HuecoDeVista>();
@@ -135,7 +137,7 @@ namespace Rocola
                 Control c = ControlDe(v); if (c == null) return;
                 Control p = c.Parent; if (p != null) p.Controls.Remove(c);
                 HuecoDeVista h = c as HuecoDeVista;
-                if (h != null) { huecos.Remove(v); h.Dispose(); }
+                if (h != null) { huecos.Remove(v); h.Quitado = true; h.Dispose(); }   // (Controls.Remove no desecha la vista: solo se va su hueco)
             }
             public void Cambio(IVista v, bool repintar)
             {
@@ -164,6 +166,17 @@ namespace Rocola
                 Control c = v as Control; if (c == null) return;
                 using (Graphics gr = PuenteDibujo.Graphics(g, g.TotalMatrix)) c.PintaFondoYContenido(gr, c.ClientRectangle);
             }
+            // Focus de la vista (armado-vistas): el de la capa, en el control mismo o en su hueco
+            public bool Enfoca(IVista v) { Control c = ControlDe(v); return c != null && c.Focus(); }
+            // quien escucha el raton de una vista que aun es control: su evento de la capa (MouseDown, MouseClick), que la capa lanza en el
+            // On* de fabrica como WinForms; el MouseEventArgs pasa como Raton con los mismos numeros (como el hueco: R)
+            public bool OyeComoControl(IVista v, AvisoRaton que, Action<Raton> a)
+            {
+                Control c = v as Control; if (c == null) return false;
+                MouseEventHandler h = delegate (object s, MouseEventArgs e) { a(HuecoDeVista.R(e)); };
+                if (que == AvisoRaton.Abajo) c.MouseDown += h; else c.MouseClick += h;
+                return true;
+            }
             public ILugarDelVideo LugarDelVideo(object ventana) { return new VideoEnVentanas().Lugar(ventana); }
             // Present de la tarjeta: lo que hacia PantallaTarjeta antes de la pantalla nativa (el control de la ventana guarda el fondo y el
             // escritorio compone con el)
@@ -188,15 +201,29 @@ namespace Rocola
         // EL HUECO DE UNA VISTA QUE YA NO HEREDA DE CONTROL, en la lista de controles de una ventana de la capa (como HuecoDelVideo,
         // VideoEnVentanas.cs): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
         // hueco se lo pasa a la vista. El fondo lo pinta la vista (su Pinta es OnPaintBackground y OnPaint). El codigo de XP no lo ve.
+        // (armado-vistas) Los que escuchan el raton de la vista desde fuera (PantallaRocola.OyeRaton: los eventos MouseDown y MouseClick de XP)
+        // van despues de su Raton, donde WinForms lanza el evento (el On* de fabrica). Al desecharse con su ventana (Control.Dispose desecha a
+        // los hijos), desecha a su vista si lo es (IDisposable: el Dispose(bool) de XP de esa vista) antes de lo suyo, en el orden de la
+        // vista que heredaba (lo suyo y despues base.Dispose); quitado de la lista (Controls.Remove) no, que WinForms no desecha al quitar.
+        // Las trazas lo nombran por su vista (Vista: TrazaVentanas.Pieza), como cuando la vista era el control.
         private sealed class HuecoDeVista : Control
         {
             private readonly IVista vista;
+            internal bool Quitado;
+            internal IVista Vista { get { return vista; } }
             internal HuecoDeVista(IVista v) { vista = v; }
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
-            private static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }
-            protected override void OnMouseDown(MouseEventArgs e) { vista.Raton(AvisoRaton.Abajo, R(e)); base.OnMouseDown(e); }
-            protected override void OnMouseClick(MouseEventArgs e) { vista.Raton(AvisoRaton.Clic, R(e)); base.OnMouseClick(e); }
+            internal static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }
+            protected override void OnMouseDown(MouseEventArgs e) { Raton r = R(e); vista.Raton(AvisoRaton.Abajo, r); PantallaRocola.AvisaOyentes(vista, AvisoRaton.Abajo, r); base.OnMouseDown(e); }
+            protected override void OnMouseClick(MouseEventArgs e) { Raton r = R(e); vista.Raton(AvisoRaton.Clic, r); PantallaRocola.AvisaOyentes(vista, AvisoRaton.Clic, r); base.OnMouseClick(e); }
+            protected override void Dispose(bool disposing)
+            {
+                if (!disposing || Quitado || IsDisposed || Disposing) { base.Dispose(disposing); return; }
+                IDisposable d = vista as IDisposable;
+                try { if (d != null) d.Dispose(); }
+                finally { base.Dispose(disposing); }
+            }
             protected override void OnMouseDoubleClick(MouseEventArgs e) { vista.Raton(AvisoRaton.DobleClic, R(e)); base.OnMouseDoubleClick(e); }
             protected override void OnMouseUp(MouseEventArgs e) { vista.Raton(AvisoRaton.Arriba, R(e)); base.OnMouseUp(e); }
             protected override void OnMouseMove(MouseEventArgs e) { vista.Raton(AvisoRaton.Mueve, R(e)); base.OnMouseMove(e); }

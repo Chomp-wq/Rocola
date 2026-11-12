@@ -22,7 +22,7 @@ namespace Rocola
 
         // Modo atraccion: pantalla negra con estrellas titilantes y un cubo gigante girando que cicla
         // portadas de la coleccion (con fundido). Aparece en reposo para llamar al cliente.
-        private class AttractView : Control
+        private class AttractView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public double Phase = 0;
             public double Angle = 0;
@@ -307,7 +307,7 @@ namespace Rocola
             if (old != null) for (int i = 0; i < old.Length; i++) if (old[i] != null) old[i].Dispose();
         }
 
-        private partial class AlbumView : Control
+        private partial class AlbumView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public List<Album> Page = new List<Album>();
             public int Selected = 0;
@@ -1591,7 +1591,7 @@ namespace Rocola
         }
 
         // ==========  CUBO DE LA CANCION (gira + se inclina)  ==========
-        private partial class CubeBox : Control
+        private partial class CubeBox : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public Rocola.Dibujo2D.Image Cover;   // EN LINUX: Image de la capa, escrito entero: la pone Form1.Biblioteca.cs y la lee Form1.Video.cs para la tarjeta (aun sin traducir); al pintarla, sus puntos (PuenteDibujo.Mapa)
             public double Angle;

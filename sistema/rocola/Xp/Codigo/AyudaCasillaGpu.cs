@@ -14,7 +14,7 @@ namespace Rocola
     {
         private AyudaView ayudaView;
 
-        private partial class AyudaView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.asistente.cs)
+        private partial class AyudaView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.asistente.cs)
         {
             public bool Compacta;           // sin la palabra AYUDA cuando la fila va justa (1024x768)
             public bool Abierta;            // con la ayuda en pantalla la casilla queda encendida fija
