@@ -1196,10 +1196,10 @@ namespace Rocola
                     case 2:
                         // La pantalla de reposo no tiene RenderContent aparte: se le pide su propio dibujado,
                         // que es lo mismo que hace la pantalla cuando le toca pintarse.
-                        hecho = EnSeco(attractView, delegate (Rocola.Dibujo2D.Graphics g)   // EN LINUX: el Graphics de la capa de EnSeco (Form1.Video.cs), solo se pasa al pintado de la vista (escrito entero)
+                        hecho = EnSeco(attractView, delegate (SKCanvas g, bool suave, AjusteLetra ajuste)   // EN LINUX: delegate (Graphics g): EnSeco (Form1.Video.cs) da el lienzo de Skia de su mapa y el estado que le pone (suavizado y modo de letra; la copia, el filtro y el medio pixel, los de fabrica de un Graphics nuevo)
                         {
-                            using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, attractView.Width, attractView.Height)))
-                                InvokePaint(attractView, pe);
+                            // EN LINUX: using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, attractView.Width, attractView.Height))): el recorte es el mapa entero (de la medida de la vista), y el lienzo ya lo es
+                                attractView.Pinta(g, suave, false, Filtro.Bilineal, false);   // EN LINUX: InvokePaint(attractView, pe): Control.InvokePaint llama al OnPaint de la vista con ese Graphics: la Pinta de la atraccion con el estado del Graphics de EnSeco (Form1.Pared.cs: el suavizado; sin copia, filtro Bilinear, sin medio pixel, los de fabrica de Graphics.FromImage; el modo de letra no lo lee: pone el suyo)
                         });
                         break;
 #if ROCOLA_GPU
