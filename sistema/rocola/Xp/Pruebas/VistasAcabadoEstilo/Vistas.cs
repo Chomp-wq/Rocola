@@ -131,7 +131,9 @@ namespace Banco
             return v;
         }
         // 'nombre' de 't': si tiene la firma de XP (Graphics y 'resto'), con 'g'; si no, la traducida con el lienzo de 'g' y su estado (los
-        // parametros del estado van por su nombre: suave, ajuste, copia, filtro, medio)
+        // parametros del estado van por su nombre: suave, ajuste, copia, filtro, medio; si hay varias traducidas con ese nombre, como
+        // DrawLabelOverlay, la que despues del estado lleva tantos como 'resto')
+        private static bool DeEstado(string nn) { return nn == "suave" || nn == "ajuste" || nn == "copia" || nn == "filtro" || nn == "medio"; }
         private static object Llama(Type t, string nombre, object inst, Graphics g, params object[] resto)
         {
             MethodInfo con = null, sin = null;
@@ -140,7 +142,11 @@ namespace Banco
                 if (m.Name != nombre) continue;
                 ParameterInfo[] p = m.GetParameters();
                 if (p.Length == resto.Length + 1 && p[0].ParameterType == typeof(Graphics)) con = m;
-                else if (p.Length > 0 && p[0].ParameterType == typeof(SKCanvas)) sin = m;
+                else if (p.Length > 0 && p[0].ParameterType == typeof(SKCanvas))
+                {
+                    int j = 1; while (j < p.Length && DeEstado(p[j].Name)) j++;
+                    if (p.Length - j == resto.Length) sin = m;
+                }
             }
             if (con != null) { object[] a = new object[resto.Length + 1]; a[0] = g; Array.Copy(resto, 0, a, 1, resto.Length); return con.Invoke(inst, a); }
             ParameterInfo[] ps = sin.GetParameters(); object e = Estado(g); Type te = e.GetType();
@@ -363,7 +369,6 @@ namespace Banco
         private static void Paginas(Random r)
         {
             object f = Form1Vacio(1024, 768);
-            MethodInfo pinta = Metodo(typeof(Form1), "DrawSongPagerGpu", typeof(Graphics));
             Rectangle[] cajas = { new Rectangle(10, 6, 556, 34), new Rectangle(0, 0, 800, 46), new Rectangle(20, 8, 300, 30), new Rectangle(5, 4, 120, 20),
                 new Rectangle(4, 2, 50, 30), new Rectangle(12, 10, 556, 20), new Rectangle(30, 0, 640, 52), new Rectangle(2, 3, 450, 24) };
             Color[] acentos = { Color.FromArgb(110, 120, 160), Color.FromArgb(255, 60, 40), Color.FromArgb(20, 200, 120), Color.FromArgb(0, 0, 0) };
@@ -382,7 +387,7 @@ namespace Banco
                 using (Graphics g = Graphics.FromImage(b))
                 {
                     estado = PonEstado(g, r, 900, 70, true);
-                    try { pinta.Invoke(f, new object[] { g }); res = "ok"; }
+                    try { Llama(typeof(Form1), "DrawSongPagerGpu", f, g); res = "ok"; }   // (la firma de XP se quito con el grupo video-form1: en la traduccion, la traducida con el estado de g)
                     catch (Exception e) { res = Exc(e); }
                 }
                 if (Toca(nombre)) Apunta(nombre, estado + "|" + caja + "|" + paginas + "|" + pagina + "|" + acento.ToArgb().ToString("x8") + "|" + fondo + "|" + res, b);
@@ -433,7 +438,7 @@ namespace Banco
         {
             Type tl = typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic);
             MethodInfo capa = tl.GetMethod("BakeGpuListLayer", T), previa = tl.GetMethod("BakeGpuPrevious", T);
-            MethodInfo trans = Metodo(tl, "RenderTransparentGpuTint", typeof(Graphics), typeof(bool), typeof(bool), typeof(Color)), opaca = Metodo(tl, "RenderOpaqueGpu", typeof(Graphics));
+            // RenderTransparentGpuTint y RenderOpaqueGpu: la firma de XP se quito con el grupo video-form1; en la traduccion, la traducida con el estado de g (Llama)
             MethodInfo hojea = tl.GetMethod("StartGpuSlide", T);
             int[][] medidas = { new[] { 556, 464, 34 }, new[] { 250, 464, 30 }, new[] { 556, 468, 36 }, new[] { 120, 90, 30 } };
             for (int caso = 0; caso < 24; caso++)
@@ -472,8 +477,8 @@ namespace Banco
                         estado = PonEstado(g, r, m[0] + 40, m[1] + 30, false);
                         try
                         {
-                            if (k < 4) trans.Invoke(l, new object[] { g, k >= 2, k % 2 == 1, Color.FromArgb(r.Next(256), r.Next(256), r.Next(256)) });
-                            else opaca.Invoke(l, new object[] { g });
+                            if (k < 4) Llama(tl, "RenderTransparentGpuTint", l, g, k >= 2, k % 2 == 1, Color.FromArgb(r.Next(256), r.Next(256), r.Next(256)));
+                            else Llama(tl, "RenderOpaqueGpu", l, g);
                             res = "ok";
                         }
                         catch (Exception e) { res = Exc(e); }
@@ -502,8 +507,8 @@ namespace Banco
                                 using (Graphics g = Graphics.FromImage(bb))
                                 {
                                     est = PonEstado(g, new Random(dtt), m[0] + 40, m[1] + 30, false);
-                                    if (dtt == 100) opaca.Invoke(l, new object[] { g });
-                                    else trans.Invoke(l, new object[] { g, dtt == 200, dtt == 200, Color.FromArgb(200, 180, 90) });
+                                    if (dtt == 100) Llama(tl, "RenderOpaqueGpu", l, g);
+                                    else Llama(tl, "RenderTransparentGpuTint", l, g, dtt == 200, dtt == 200, Color.FromArgb(200, 180, 90));
                                 }
                                 return bb;
                             });
@@ -526,9 +531,9 @@ namespace Banco
         }
         private static void Franjas(Random r)
         {
-            MethodInfo lejos = Metodo(typeof(Form1), "FranjaLejos", typeof(Graphics)), titulo = Metodo(typeof(Form1), "PintaTituloCompacto", typeof(Graphics), typeof(bool));
-            MethodInfo artista = Metodo(typeof(Form1), "PintaArtistaCompacto", typeof(Graphics)), sigue = Metodo(typeof(Form1), "PintaSiguienteCompacto", typeof(Graphics));
-            MethodInfo etiqueta = Metodo(typeof(Form1), "DrawLabelOverlay", typeof(Graphics), typeof(Label)), control = Metodo(typeof(Form1), "DrawCtrlOverlay", typeof(Graphics), typeof(Control));
+            // las firmas de XP de FranjaLejos, PintaTituloCompacto, PintaSiguienteCompacto, DrawLabelOverlay, DrawCtrlOverlay y EmpiezaRecuadro se
+            // quitaron con el grupo video-form1 (Form1.Video.cs las llama directo): en la traduccion, la traducida con el lienzo y el estado de g
+            // (Llama), como hacia el puente; EmpiezaRecuadro, ademas, con el SetClip que el puente le ponia antes al Graphics
             MethodInfo recuadro = Metodo(typeof(Form1), "EmpiezaRecuadro", typeof(Graphics), typeof(Rectangle));
             string[] titulos = { "Nada reproduciendose", "Ángel de amor (versión en vivo extendida para el baile)", "Corta", "Un titulo larguisimo que no cabe ni con la letra mas chica de todas las que hay" };
             string[] artistas = { "", "Los Ñandúes & Cía", "Artista con un nombre muy largo que se come el renglon entero y mas" };
@@ -561,16 +566,20 @@ namespace Banco
                     try
                     {
                         // como EnsureUiBotOverlay (Form1.Video.cs)
-                        if (!zona.IsEmpty) recuadro.Invoke(null, new object[] { g, zona });
-                        g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; g.TranslateTransform(0, -top);
-                        if (!(bool)lejos.Invoke(f, new object[] { g }))
+                        if (!zona.IsEmpty)
                         {
-                            titulo.Invoke(f, new object[] { g, false }); artista.Invoke(f, new object[] { g });
-                            if (mej.Visible) etiqueta.Invoke(null, new object[] { g, mej });
-                            if (gc.Visible) control.Invoke(null, new object[] { g, gc });
-                            sigue.Invoke(f, new object[] { g });
+                            if (recuadro != null) recuadro.Invoke(null, new object[] { g, zona });
+                            else { g.SetClip(zona); Llama(typeof(Form1), "EmpiezaRecuadro", null, g, zona); }
                         }
-                        etiqueta.Invoke(null, new object[] { g, time });
+                        g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; g.TranslateTransform(0, -top);
+                        if (!(bool)Llama(typeof(Form1), "FranjaLejos", f, g))
+                        {
+                            Llama(typeof(Form1), "PintaTituloCompacto", f, g, false); Llama(typeof(Form1), "PintaArtistaCompacto", f, g);
+                            if (mej.Visible) Llama(typeof(Form1), "DrawLabelOverlay", null, g, mej);
+                            if (gc.Visible) Llama(typeof(Form1), "DrawCtrlOverlay", null, g, gc);
+                            Llama(typeof(Form1), "PintaSiguienteCompacto", f, g);
+                        }
+                        Llama(typeof(Form1), "DrawLabelOverlay", null, g, time);
                         // lo que sigue con lo que deja la franja en el Graphics
                         using (SolidBrush sb = new SolidBrush(Color.FromArgb(90, 255, 255, 255))) g.FillRectangle(sb, 2, top + 2, 30, 6);
                         res = "ok";

@@ -337,9 +337,16 @@ namespace BancoBuscadorPortadas
         private static string Cartas(object so, Graphics g, int dx, int dy, bool entera, bool directo)
         {
             MethodInfo m = directo ? Nativa("PintaCartasConCambios") : null;
+            // la firma de XP de PintaCartasConCambios (con un Graphics) se quito del puente al traducirse Form1.Video.cs (grupo video-form1): donde
+            // ya no esta (la traduccion), la llamada de XP es la traducida con el lienzo y el estado del Graphics, como hacia el puente
+            MethodInfo xp = m == null ? Metodo("PintaCartasConCambios", typeof(Graphics), typeof(int), typeof(int), typeof(bool)) : null;
             object r;
-            if (m == null) r = Metodo("PintaCartasConCambios", typeof(Graphics), typeof(int), typeof(int), typeof(bool)).Invoke(so, new object[] { g, dx, dy, entera });
-            else { directas++; object[] es = EstadoDe(g); r = m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], dx, dy, entera }); }
+            if (m == null && xp != null) r = xp.Invoke(so, new object[] { g, dx, dy, entera });
+            else
+            {
+                if (m != null) directas++; else m = Nativa("PintaCartasConCambios");
+                object[] es = EstadoDe(g); r = m.Invoke(so, new object[] { es[0], es[1], es[2], es[3], es[4], es[5], dx, dy, entera });
+            }
             if (r == null) return "null";
             StringBuilder sb = new StringBuilder();
             foreach (Rectangle x in (Rectangle[])r) sb.Append(x.X + "," + x.Y + "," + x.Width + "," + x.Height + ";");

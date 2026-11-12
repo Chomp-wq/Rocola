@@ -31,16 +31,19 @@ CONTROLES=(
   "Codigo/BuscadorPortadasGpu.cs|624|filtro, medio, copia);|filtro, medio, false);|lo quieto se pega sin la copia del lienzo"
   "Codigo/BuscadorPortadasGpu.cs|930|SKStrokeCap.Round;|SKStrokeCap.Butt;|la lupa sin las puntas redondas"
   "Codigo/BuscadorPortadasGpu.cs|1296|float h = f.AltoRenglon;|float h = f.AltoEntero;|la caja de la cinta con el alto del renglon redondeado"
-  "Plataforma/Puente.buscador-portadas.cs|36|g.SmoothingMode = SmoothingMode.AntiAlias;|;|el puente de RenderNuevo no le deja el suavizado al Graphics"
-  "Plataforma/Puente.buscador-portadas.cs|52|PuenteDibujo.Lienzo(g), e.Suave,|PuenteDibujo.Lienzo(g), true,|el puente de las tarjetas, siempre suavizado"
-  "Plataforma/Puente.buscador-portadas.cs|58|new EstadoLienzo(suave, ajuste,|new EstadoLienzo(suave, AjusteLetra.DelSistema,|la barra de ayudas y el aviso con el modo de letra de fabrica"
+  # (Puente.buscador-portadas.cs se quito al juntar los grupos buscador y video-form1: los tres que iban en el, donde estan ahora; linea 0 =
+  # la unica linea que lo lleva)
+  "Plataforma/Puente.buscador.cs|0|if (Width >= 60 && Height >= 60) g.SmoothingMode = SmoothingMode.AntiAlias;|;|el puente de RenderContent no le deja el suavizado al Graphics"
+  "Codigo/BuscadorPortadasGpu.cs|1028|HorneaCartas(g, suave, ajuste, copia, filtro,|HorneaCartas(g, true, ajuste, copia, filtro,|las tarjetas enteras, siempre suavizadas"
+  "Codigo/BuscadorPortadasGpu.cs|776|CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda|CtrlTxt(g, suave, AjusteLetra.DelSistema, copia, medio, fnAyuda|la barra de ayudas con el modo de letra de fabrica"
+  "Codigo/BuscadorPortadasGpu.cs|707|DrawToast(g, suave, ajuste,|DrawToast(g, suave, AjusteLetra.DelSistema,|el aviso con el modo de letra de fabrica"
   # los de la revision (SOLO=revision los pasa solos)
   "Codigo/BuscadorPortadasGpu.cs|1386|pincelS, suave, medio, copia)|pincelS, suave, !medio, copia)|revision: el brillo de las iniciales con el medio pixel al reves"
   "Codigo/BuscadorPortadasGpu.cs|512|sfMide = new FormatoTexto(FormatoTexto.TipograficoCompartido);|sfMide = FormatoTexto.TipograficoCompartido;|revision: el formato de medir es el tipografico compartido mismo y no una copia"
   "Codigo/BuscadorPortadasGpu.cs|1023|finally { g.RestoreToCount(state); }|finally { }|revision: el recorte de un trozo de las tarjetas no se quita"
-  "Plataforma/Puente.buscador-portadas.cs|86|medio, hdc))|medio, SKMatrix.CreateTranslation(7, 3)))|revision: el aviso con otra matriz del HDC"
-  "Plataforma/Puente.buscador-portadas.cs|44|g.SmoothingMode = SmoothingMode.AntiAlias;|;|revision: el puente de DibujaPiezaVivaNueva no le deja el suavizado al Graphics"
-  "Plataforma/Puente.buscador-portadas.cs|74|using (Font ff = PuenteDibujo.Font(f))|using (Font ff = new Font(FontFamily.GenericSansSerif, f.Tamano, FontStyle.Regular, GraphicsUnit.Pixel))|revision: las palabras de la barra de ayudas sin la negrita de su Letra"
+  "Codigo/BuscadorPortadasGpu.cs|707|medio, hdc, Width|medio, SKMatrix.CreateTranslation(7, 3), Width|revision: el aviso con otra matriz del HDC"
+  "Plataforma/Puente.buscador.cs|0|if (pone) g.SmoothingMode = SmoothingMode.AntiAlias;|;|revision: el puente de DibujaPiezaViva no le deja el suavizado al Graphics"
+  "Codigo/BuscadorPortadasGpu.cs|538|Letra(15f * s, 11f, true, false);|Letra(15f * s, 11f, false, false);|revision: las palabras de la barra de ayudas sin la negrita de su Letra"
 )
 for c in "${CONTROLES[@]}"; do
   IFS='|' read -r f l viejo nuevo que <<< "$c"
