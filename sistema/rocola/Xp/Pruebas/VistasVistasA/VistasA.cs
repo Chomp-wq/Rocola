@@ -3,8 +3,8 @@
 // de letras: su dibujo por procesador, OnPaint, que los recorridos casi no pasan; su tira guardada; la capsula de neon; la estrella dorada; y la
 // lupa), con datos fijos, la huella de cada mapa y el estado que le queda al Graphics. Se compila con el programa de una carpeta Xp
 // (VistasVistasA.csproj): la salida de la referencia congelada y la de la copia de trabajo tienen que ser iguales linea por linea.
-//   - Las llamadas son las de XP (RenderContent con un Graphics, OnPaint): en la referencia van a GDI+ (la capa congelada); en la traduccion van
-//     por el puente (Plataforma/Puente.vistas-a.cs) a SkiaSharp directo. El estado del Graphics del que llama va de once maneras (suavizado, los
+//   - Las llamadas son las de XP (RenderContent con un Graphics, OnPaint): en la referencia van a GDI+ (la capa congelada); en la traduccion
+//     (desde vistas-disco, sin la firma de XP en el puente ni OnPaint) van a la traducida con el estado del Graphics, y el OnPaint a Pinta. El estado del Graphics del que llama va de once maneras (suavizado, los
 //     modos de letra, copia, medio pixel, filtro, traslacion entera y con decimales, escala, giro y recorte).
 //   - Las dos barras son clases privadas de Form1: van por reflexion.
 //   - En la traduccion, cada caso se hace ADEMAS llamando DIRECTO a la traducida (el lienzo y su estado como parametros), como la llamaran
@@ -105,6 +105,22 @@ namespace BancoVistasA
         }
         // los valores del estado de un Graphics como los lleva un archivo traducido, por el puente
         private static object Campo(object e, string c) { return e.GetType().GetField(c).GetValue(e); }
+        // (vistas-disco, 12-11-2026) las dos barras ya no heredan de Control en la traduccion (son vistas de la pantalla nativa: IVista con su
+        // CajaVista): su sitio, su fondo, su letra y su medida van por reflexion (de Control en la referencia, suyos en la traduccion), y su OnPaint
+        // de XP, que en la traduccion ya no existe, es su Pinta con el lienzo del Graphics (lo que la pantalla le da), y despues lo que XP le dejaba
+        // puesto al Graphics (cosa del que llama, como en las directas)
+        private static int pintas;
+        private static void PonSitio(object o, int x, int y, int w, int h) { o.GetType().GetMethod("SetBounds", Todo, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null).Invoke(o, new object[] { x, y, w, h }); }
+        private static void PonProp(object o, string p, object v) { o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).SetValue(o, v); }
+        private static int Medida(object o, string p) { return (int)o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
+        private static void PorOnPaint(object o, Graphics g, Rectangle r, Action queda)
+        {
+            MethodInfo op = o.GetType().GetMethod("OnPaint", Todo);
+            if (op != null) { using (PaintEventArgs pe = new PaintEventArgs(g, r)) op.Invoke(o, new object[] { pe }); return; }
+            pintas++;
+            try { o.GetType().GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null).Invoke(o, new[] { Por("Lienzo", g) }); }
+            finally { queda(); }
+        }
 
         // ================================================================ SongPagerBar: la barra de paginas
         private static Type Paginas { get { return typeof(Form1).GetNestedType("SongPagerBar", BindingFlags.NonPublic); } }
@@ -113,7 +129,7 @@ namespace BancoVistasA
         {
             Type t = Paginas;
             object o = Activator.CreateInstance(t, true);
-            ((Control)o).SetBounds(7, 5, c.W, c.H); ((Control)o).BackColor = c.Fondo;
+            PonSitio(o, 7, 5, c.W, c.H); PonProp(o, "BackColor", c.Fondo);
             t.GetField("Pages", Todo).SetValue(o, c.Pages);
             t.GetMethod("PonSinAnimar", Todo).Invoke(o, new object[] { c.Page });
             return o;
@@ -123,9 +139,9 @@ namespace BancoVistasA
         private static void PintaPaginas(object o, Graphics g, bool directa)
         {
             Type t = Paginas; MethodInfo tr = directa ? Traducida(t, "RenderContent", 4) : null;
-            if (tr == null) { DeXp(t, "RenderContent", 1).Invoke(o, new object[] { g }); return; }
+            if (tr == null) { MethodInfo xp = DeXp(t, "RenderContent", 1); if (xp != null) { xp.Invoke(o, new object[] { g }); return; } tr = Traducida(t, "RenderContent", 4); }   // (vistas-disco: en la traduccion ya no hay firma de XP: la traducida con el estado del Graphics y lo que XP le dejaba)
             object e = Por("Estado", g); directas++;
-            Control c = (Control)o; bool sale = (int)t.GetField("Pages", Todo).GetValue(o) <= 1 || c.Width < 60 || c.Height < 10;
+            bool sale = (int)t.GetField("Pages", Todo).GetValue(o) <= 1 || Medida(o, "Width") < 60 || Medida(o, "Height") < 10;
             try { tr.Invoke(o, new[] { Por("Lienzo", g), Campo(e, "Suave"), Campo(e, "Copia"), Campo(e, "Medio") }); }
             finally { if (!sale) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; } }
         }
@@ -213,7 +229,7 @@ namespace BancoVistasA
                     string ex = "";
                     g.Clear(Color.FromArgb(255, 12, 18, 40));
                     g.TranslateTransform(13, 9); g.SetClip(new Rectangle(0, 0, 760, 24)); g.SellaRecorte();
-                    try { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, 760, 24))) Paginas.GetMethod("OnPaint", Todo).Invoke(o, new object[] { pe }); }
+                    try { PorOnPaint(o, g, new Rectangle(0, 0, 760, 24), delegate { if (!(p[0] <= 1)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; } }); }
                     catch (Exception x) { ex = " " + Exc(x); }
                     Linea("paginas-onpaint/" + (p[1] + 1) + "de" + p[0], Puntos("paginas-onpaint-" + (p[1] + 1) + "de" + p[0], b) + "\t" + Queda(g) + ex);
                 }
@@ -262,9 +278,8 @@ namespace BancoVistasA
         {
             Type t = Letras_;
             object o = Activator.CreateInstance(t, true);
-            Control ctl = (Control)o;
-            ctl.SetBounds(9, 4, c.W, c.H);
-            if (c.Familia != null) ctl.Font = new Font(c.Familia, 9f);
+            PonSitio(o, 9, 4, c.W, c.H);
+            if (c.Familia != null) PonProp(o, "Font", new Font(c.Familia, 9f));
             t.GetField("Letters", Todo).SetValue(o, c.Letters);
             chivato = new Chivato();
             HashSet<char> hay = null;
@@ -281,10 +296,10 @@ namespace BancoVistasA
         private static void PintaLetras(object o, Graphics g, bool forGpu, bool directa)
         {
             Type t = Letras_; MethodInfo tr = directa ? Traducida(t, "RenderContent", 6) : null;
-            if (tr == null) { DeXp(t, "RenderContent", 2).Invoke(o, new object[] { g, forGpu }); return; }
+            if (tr == null) { MethodInfo xp = DeXp(t, "RenderContent", 2); if (xp != null) { xp.Invoke(o, new object[] { g, forGpu }); return; } tr = Traducida(t, "RenderContent", 6); }   // (vistas-disco: en la traduccion ya no hay firma de XP: la traducida con el estado del Graphics y lo que XP le dejaba)
             object e = Por("Estado", g); directas++;
-            Control c = (Control)o; string letras = (string)t.GetField("Letters", Todo).GetValue(o);
-            bool sale = c.Width < 4 || c.Height < 4 || letras == null || letras.Length == 0;
+            string letras = (string)t.GetField("Letters", Todo).GetValue(o);
+            bool sale = Medida(o, "Width") < 4 || Medida(o, "Height") < 4 || letras == null || letras.Length == 0;
             try { tr.Invoke(o, new[] { Por("Lienzo", g), Campo(e, "Letra"), Campo(e, "Copia"), Campo(e, "Filtro"), Campo(e, "Medio"), forGpu }); }
             finally { if (!sale) g.SmoothingMode = SmoothingMode.AntiAlias; }
         }
@@ -410,8 +425,7 @@ namespace BancoVistasA
                         Action<Estado, bool, Action> pinta = delegate (Estado e, bool forGpu, Action antes)
                         {
                             if (antes != null) antes();
-                            Control ctl = (Control)o;
-                            using (Bitmap b = new Bitmap(ctl.Width + 40, ctl.Height + 30, PixelFormat.Format32bppPArgb))
+                            using (Bitmap b = new Bitmap(Medida(o, "Width") + 40, Medida(o, "Height") + 30, PixelFormat.Format32bppPArgb))
                             using (Graphics g = Prepara(b, e))
                             {
                                 string ex = "";
@@ -428,12 +442,12 @@ namespace BancoVistasA
                         pinta(tarjeta, true, delegate { t.GetField("Counts", Todo).SetValue(o, HazCuentas(2, Todas)); });
                         pinta(copia, true, delegate { t.GetField("Tints", Todo).SetValue(o, null); });
                         pinta(tarjeta, true, delegate { ((HashSet<char>)t.GetField("Available", Todo).GetValue(o)).Remove('R'); });
-                        pinta(tarjeta, true, delegate { ((Control)o).SetBounds(9, 4, 700, 46); });
+                        pinta(tarjeta, true, delegate { PonSitio(o, 9, 4, 700, 46); });
                         pinta(procesador, false, delegate { t.GetProperty("CuentaCorta", Todo).SetValue(o, false); });
                         pinta(tarjeta, true, delegate { t.GetField("cur", Todo).SetValue(o, '★'); });
                         pinta(tarjeta, true, delegate { FieldInfo f = t.GetField("LupaGpu", Todo); if (f != null) f.SetValue(o, !lupa); });
                         pinta(tarjeta, true, delegate { t.GetField("Letters", Todo).SetValue(o, "★AR►"); t.GetField("cur", Todo).SetValue(o, 'A'); });
-                        pinta(unbit, true, delegate { ((Control)o).Font = new Font("Courier New", 12f, FontStyle.Italic); ((Control)o).SetBounds(9, 4, 701, 46); });
+                        pinta(unbit, true, delegate { PonProp(o, "Font", new Font("Courier New", 12f, FontStyle.Italic)); PonSitio(o, 9, 4, 701, 46); });
                     }
             // el dibujo por procesador: OnPaint, con el Graphics como lo da el escritorio (su sitio en la matriz del HDC y su recorte sellados)
             foreach (char actual in new[] { 'L', '★', '►', 'B' })
@@ -447,7 +461,7 @@ namespace BancoVistasA
                         string ex = "";
                         g.Clear(Color.FromArgb(255, 12, 18, 40));
                         g.TranslateTransform(14, 11); g.SetClip(new Rectangle(0, 0, 996, 40)); g.SellaRecorte();
-                        try { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, 996, 40))) Letras_.GetMethod("OnPaint", Todo).Invoke(o, new object[] { pe }); }
+                        try { PorOnPaint(o, g, new Rectangle(0, 0, 996, 40), delegate { g.SmoothingMode = SmoothingMode.AntiAlias; }); }   // (la barra de 996x40 con letras: XP le deja el suavizado)
                         catch (Exception x) { ex = " " + Exc(x); }
                         string s = "letras-onpaint/" + (actual == '★' ? "TOP" : actual == '►' ? "VIDEO" : actual.ToString()) + "/fase" + fase.ToString("R", ci);
                         Linea(s, Puntos(s, b) + "\t" + Queda(g) + ex);
@@ -463,7 +477,7 @@ namespace BancoVistasA
             if (solo == null || solo == "paginas") BarraPaginas();
             if (solo == null || solo == "letras") BarraLetras();
             Linea("fin", "tip=" + StringFormat.GenericTypographic.Alignment + "/" + (int)StringFormat.GenericTypographic.FormatFlags);
-            Console.Error.WriteLine(n + " lineas; " + directas + " llamadas directas a la traduccion; " + reintentos + " reintentos por el reloj; " + sinTiempo + " sin conseguir el instante");
+            Console.Error.WriteLine(n + " lineas; " + directas + " llamadas directas a la traduccion; " + pintas + " por Pinta (el OnPaint de XP); " + reintentos + " reintentos por el reloj; " + sinTiempo + " sin conseguir el instante");
             return sinTiempo == 0 ? 0 : 3;
         }
     }
