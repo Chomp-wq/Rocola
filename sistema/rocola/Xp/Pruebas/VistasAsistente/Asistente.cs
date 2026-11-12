@@ -4,7 +4,9 @@
 // que devuelve cada llamada. Se compila con el programa de una carpeta Xp (VistasAsistente.csproj): la salida de la referencia congelada y la de
 // la copia de trabajo tienen que ser iguales linea por linea.
 //   - Las llamadas son las de XP (Graphics, Bitmap, Font, Brush): en la referencia van a GDI+ (la capa congelada); en la traduccion, las que
-//     siguen teniendo la firma de XP (RenderContent de la casilla, DegradadoV con tres argumentos) van por el puente
+//     siguen teniendo la firma de XP (RenderContent de la casilla; DegradadoV con tres argumentos hasta el grupo directas-tanda2, 12-11-2026:
+//     desde entonces sus llamadores van a la traducida y la firma de XP se llama por reflexion si la hay, la referencia, o si no la traducida
+//     con el medio pixel del Graphics, como la linea directa) van por el puente
 //     (Plataforma/Puente.asistente.cs) a SkiaSharp directo, y las que ya no la tienen (los globos dan SKBitmap, el contorno un SKPath, las
 //     teclas y la flecha piden el lienzo y su estado) se llaman como las llama la traduccion. El estado del Graphics del que llama va de ocho
 //     maneras (suavizado, los modos de letra, copia, medio pixel, traslacion entera y con decimales, escala, giro y recorte).
@@ -361,6 +363,9 @@ namespace BancoAsistente
         {
             Type px = typeof(Form1).Assembly.GetType("Rocola.Nativo.Pixel");
             MethodInfo nativa = directo ? Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4) : null;
+            // la firma de XP (un Brush): en la referencia; en la traduccion ya no esta (directas-tanda2) y va la traducida, como la directa
+            MethodInfo xp = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 3);
+            if (!directo && xp == null) nativa = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4);
             int alto = Math.Min(Math.Max(1, r.Height), 300);
             using (Bitmap b = new Bitmap(Math.Max(1, r.Width) + 30, alto + 24, PixelFormat.Format32bppPArgb))
             {
@@ -384,7 +389,7 @@ namespace BancoAsistente
                             s.Dispose();
                         }
                         else
-                            using (Brush br = Form1.DegradadoV(r, c0, c1))
+                            using (Brush br = (Brush)xp.Invoke(null, new object[] { r, c0, c1 }))
                             {
                                 if (ruta) g.FillPath(br, gp); else g.FillRectangle(br, r);
                             }
@@ -459,8 +464,9 @@ namespace BancoAsistente
                         }
                         else
                         {
-                            using (Brush br = Form1.DegradadoV(r, c0, c1)) g.FillRectangle(br, r);
-                            for (int i = 1; i <= 5; i++) Form1.DegradadoV(new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0).Dispose();
+                            MethodInfo xp = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 3);   // (la firma de XP: solo la referencia llega aqui)
+                            using (Brush br = (Brush)xp.Invoke(null, new object[] { r, c0, c1 })) g.FillRectangle(br, r);
+                            for (int i = 1; i <= 5; i++) ((Brush)xp.Invoke(null, new object[] { new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0 })).Dispose();
                         }
                     }
                     catch (Exception xx) { ex = " " + Exc(xx); }
@@ -498,10 +504,11 @@ namespace BancoAsistente
                     Degradado("degradado-estado-" + (directo ? "directo-" : "") + e.Nombre, e, new Rectangle(2, 1, 120, 50), Colores[0][0], Colores[0][1], directo, false);
                     Degradado("degradado-estado-ruta-" + (directo ? "directo-" : "") + e.Nombre, e, new Rectangle(2, 1, 120, 50), Colores[4][0], Colores[4][1], directo, true);
                 }
-            // los de mas de 2 048: por la firma de XP (lanza al pintar en la referencia y por el puente) y la traducida contra GDI+ con el mapa vivo
+            // los de mas de 2 048: la traducida contra GDI+ con el mapa vivo. (Hasta directas-tanda2 tambien por la firma de XP del puente, que lanzaba
+            // ArgumentNullException al pintar como la capa de la referencia; esa firma ya no esta: sus dos llamadores, EstadoReposoGpu.cs y
+            // AcabadoGpu.cs, llaman a la traducida, que los pinta como GDI+. Las lineas degradado-grande-xp-* se quitaron de las dos salidas.)
             foreach (Estado e in new[] { Estados[0], Estados[2], Estados[3] })
             {
-                Degradado("degradado-grande-xp-" + e.Nombre, e, new Rectangle(0, 0, 50, 2049), Colores[1][0], Colores[1][1], false, false);
                 Grande("degradado-grande-" + e.Nombre, e, new Rectangle(3, 2, 50, 3000), Colores[1][0], Colores[1][1]);
             }
             // (revision) el pincel despues de que el guardado suelte su mapa
