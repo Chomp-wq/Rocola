@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- la pantalla nativa con una vista falsa (IVista, Nativo/IVista.cs y PantallaRocola.Vistas.cs) junto a controles de la capa: el orden
+       de composicion y el reparto del raton y de las teclas que da WinForms. Rocola=carpeta del rocola-xp.dll a probar (la compilacion JIT).
+       El nombre del ensamblado es el que deja ver lo de dentro de la pantalla (InternalsVisibleTo de Nativo/IVista.cs). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>PruebasVistas</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NoWarn>$(NoWarn);CS0618;CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="rocola-xp"><HintPath>$(Rocola)/rocola-xp.dll</HintPath></Reference>
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
+    <PackageReference Include="NAudio.Core" Version="3.3.0" />
+    <PackageReference Include="NLayer" Version="3.0.0" />
+  </ItemGroup>
+</Project>
