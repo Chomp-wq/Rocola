@@ -75,7 +75,7 @@ Quedan (no son de este grupo): la nota de Form1.cs:16 (el using) aun nombra «lo
 
 - a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos, los de la base (SYSLIB0054, SYSLIB0050, CA2022, CA2014, CS1690;
   mismos archivos y lineas, ninguno en lo tocado).
-- b) diff-xp.py -v de los 9 archivos de Codigo/ tocados: las lineas «sin marca» son las mismas que antes del cambio (2, 4, 2, 0, 2, 1, 0,
+- b) diff-xp.py -v de los 8 archivos de Codigo/ tocados (y Form1.Portadas.cs, sin tocar): las lineas «sin marca» son las mismas que antes del cambio (2, 4, 2, 0, 2, 1, 0,
   0, 2: comentarios de XP de varias lineas); todas las lineas nuevas llevan «EN LINUX». Lineas y CRLF de cada archivo iguales a bae626e.
 - c) NativeAOT (`dotnet publish ... -p:PublishAot=true`): 0 avisos IL/AOT.
 - e) Arnes VistasVideoForm1 (VIDEOFORM1=.../armado-vistas/videoform1): 734 lineas, IGUALES con las letras falsas y con DejaVu (140
@@ -110,3 +110,48 @@ Quedan (no son de este grupo): la nota de Form1.cs:16 (el using) aun nombra «lo
 - Con la lista nativa (sin la capa) las vistas no tienen Enabled ni el foco del teclado (las teclas van a la ventana, que tiene KeyPreview);
   el foco de una vista escondida no pasa al siguiente (SelectNextIfFocused): de 6c (el buscador) y de la oleada 8.
 - OyeRaton acepta solo Abajo y Clic (lanza con otros): si un grupo necesita otro evento, se anade.
+
+## Revision (revisor independiente, 12-11-2026)
+
+Se leyo el diff entero (bae626e..0efdd78) contra Rocola/ (XP) y la capa. No se encontro ningun fallo de logica ni de equivalencia; no
+hizo falta tocar el codigo.
+
+Lo comprobado en el codigo:
+- Las 15 vistas: 14 con «, IVista» en su cabecera sin quitar la herencia, y HelpBar sin herencia. Fuera de comentarios no queda ningun
+  Controls.Add, BringToFront, Focus, MouseDown ni MouseClick de una vista en las lineas del grupo; lo que queda es de otros (gpuPanel, W4;
+  las etiquetas y lblConfig, W6; this.Focus de la ventana; Form1.Portadas.cs:1199-1202, 6b).
+- HelpBar: lo que XP usa de ella desde fuera (Visible, Left, Top, Bottom, SetBounds, Invalidate, Justa, Flash, FlashMove, FlashSig,
+  GetFlashGlow; Form1.cs y Form1.Video.cs) lo da su CajaVista con la semantica de Control (Visible con la del dueno -GetVisibleCore-; antes
+  de ponerla en la ventana, la suya). Nadie le lee BackColor ni llama a su Dispose: solo la ventana al desecharse, por su hueco, con
+  disposing = true, primero lo suyo y despues lo del control, como el «finally { base.Dispose }» de XP. Su Pinta recibe el estado de un
+  WM_PAINT de la capa: Escritorio.PintaSolo/PintaArbol pintan cada control con Save/Restore sobre un Graphics.FromImage al que nadie le
+  cambia el PixelOffsetMode ni el CompositingMode (grep en Ventanas.*.cs: solo SmoothingMode, siempre devuelto), asi que copia y medio
+  pixel son false como lee el puente borrado; el ClearTypeGridFit era el que ponia su OnPaint. El fondo transparente no pinta nada en la
+  capa, ni antes (Control.OnPaintBackground: «if (c.A == 0) return») ni ahora (el hueco no pinta fondo).
+- El hueco nace con los estilos de fabrica de Control, los mismos que HelpBar (su SetStyle solo tocaba los de la pintura): mismo
+  TabStop, Selectable y TabIndex (lo da Controls.Add en el mismo sitio). Las trazas lo nombran «HelpBar» (TrazaVentanas.Pieza) y el
+  volcado tambien (VolcadoEstado usa Pieza).
+- Los oyentes del raton van despues de Raton de la vista y antes del base.On* del hueco, donde WinForms lanza el evento; con la vista
+  todavia control de la capa (ayudaView, attractView) se usa su propio evento, asi el orden entre suscriptores es el de XP.
+- Lineas y CRLF de los 8 archivos de Codigo/ tocados iguales a bae626e; diff-xp.py: las mismas lineas «sin marca» de antes (comentarios
+  de XP de varias lineas y lineas bajo su nota). El documento decia «9 archivos»: son 8 (el noveno numero es Form1.Portadas.cs, sin
+  tocar); corregido arriba.
+
+Repetido por el revisor (maquina a carga 5-9):
+- dotnet build -c Release --no-incremental: 0 errores, 15 avisos, los de la base (mismos archivos y lineas).
+- PantallaVistas: 59 de 59. pruebas41: 41 de 41.
+- Arnes VistasVideoForm1: IGUALES con las letras falsas y con DejaVu (734 lineas, 140 llamadas directas).
+- Arnes VistasAcabadoEstilo (llama a DrawCtrlOverlay por reflexion con una GeneroView, cuyo parametro paso a IVista): 0 distintas de
+  6603 contra la referencia y 0 de 6607 contra la base, con las dos letras.
+- Escenas alternadas con la referencia (JIT): arranque IGUAL; tab, la traza IGUAL (508 sucesos) y solo distintos los rotulos de lo que el
+  repaso de fondo lleva medido en la hoja de Sonido («11 aceptables / faltan 2» en la referencia frente a «9 / faltan 4»), lo mismo que
+  vio el grupo, ahora con la referencia mas adelantada: depende de la carga.
+- No se repitieron NativeAOT, recorridos, banco ni cintas: el revisor no cambio nada y lo que se sube a la tarjeta no cambio.
+
+Observaciones para despues (no son fallos de este grupo; no cambian nada hoy):
+- CajaVista (oleada 1) avisa «repintar» cuando cambia la medida; un Control sin ResizeRedraw (HelpBar no lo pone) no se invalida entero
+  al cambiar de medida. Con la capa no se nota (el escritorio compone la ventana entera); en la pantalla nativa (oleada 8) conviene
+  mirarlo si algun recuento de pinturas lo apunta.
+- PantallaRocola.AgregaVista ignora el dueno cuando no es de la capa: cuando BgPanel (panelSongs) deje de ser Control (5c), los
+  AgregaVista(panelSongs, cubeBox/songList/songPager) de Form1.cs:1245-1247 irian a la lista de la ventana y no dentro del panel. El
+  grupo 5c tiene que dar a la pantalla vistas con dueno (IVista con padre, como dice el plan) antes de quitar la herencia.
