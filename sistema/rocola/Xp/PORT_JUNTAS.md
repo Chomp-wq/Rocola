@@ -249,3 +249,30 @@ PORT_f12-como-hoja.md). Escenas (RJ13/J13): IGUALES salvo sigterm y f3sigterm (l
 PORT_armado-vistas.md); video, altf4, salirq y f3raton, por las cuentas del reloj y del encargo con la máquina cargada, repetidas
 (RJ13b/J13b) IGUALES; f12 y f12vigia, IGUALES con el ruido de F12 que midió 7a (copiado a ventanas2/ruido). NativeAOT: arranque,
 cierreq, buscador, f3vistas y f3teclas IGUALES; kill9 solo por la cuenta del reloj, repetida IGUAL.
+
+## 12-11-2026: oleadas 5 y 6 (5a, 5b, 6b y 6c) y el arreglo de la junta 14
+
+- `8460045`: 5a interfaz-a-skbitmap (la interfaz, sus piezas, el panel de reposo, el aviso, la instantánea del buscador y la moneda van a
+  la tarjeta como SKBitmap; fuera Puente.frontera.cs, Puente.portadas.cs y PuenteDibujo.Bitmap), 5b vistas-disco (las 7 vistas de
+  Form1.Vistas.cs sin Control), 6b vistas-pared (AttractView, AlbumView y CubeBox sin Control) y 6c vistas-buscador (BuscaView y
+  SearchOverlay sin Control; el foco del teclado entre vistas en la pantalla). Revisiones «arreglado», «arreglado», «bien» y
+  «arreglado» (solo notas). Sin choques.
+- Comprobado con todo junto (`scratchpad/merge/verifica-junta14.sh`, con 6a y 7b trabajando a la vez): compila desde cero (0 errores,
+  los 15 avisos), NativeAOT sin avisos IL/AOT; el banco igual en los 27 000 casos; 41 de 41, 86 de 86, 32 de 32 y PantallaVistas 117
+  de 117; acabado-estilo 0 de 6 603, vistas-b 0 de 3 108, Ctrl+F3 0 de 545 y los demás arneses IGUALES salvo tres; recorridos 9 de 9
+  con 0 y capas quietas 213 de 217 (las de siempre). Lo que no salió:
+  - VistasSuena y VistasPantallaViva abortaban (el arnés trataba como Control a PastillaView y SongListView, que 5b dejó sin Control)
+    y su arnes.sh decía «DISTINTAS: 0 líneas» con la salida cortada;
+  - VistasVideoForm1, 24 líneas: la vista 4 es GeneroView, y el arnés solo le ponía la letra a las que eran Control (el programa sí
+    se la pone: Form1.cs:1266, como XP);
+  - el recorrido buscador, texturas quietas 44 de 78: la captura de los 9,5 s con CAPAS=1 para la rocola 0,8-1 s y las dos DERECHAS
+    de los 10 y 10,4 s llegan a menos de 40 ms, y el freno de flechas de XP (Form1.cs:2134, MsEntreFlechas) tira la segunda; la
+    referencia congelada da lo mismo (44 y 45 de 78 en 2 de 3).
+  Arreglado en las pruebas (`fdccb20`, port-arreglo-junta14, revisión «bien»; el programa no cambia): los tres arneses IGUALES con
+  las dos letras, el recuento de arnes.sh y la primera DERECHA del recorrido buscador a los 13,8 s (76 de 78 en 3 de 3, igual que la
+  referencia). Escenas: IGUALES salvo sigterm y f3sigterm (lo aceptado), tab (los rótulos del repaso) y asistente, captura, salirq y
+  f2barras solo por las cuentas del reloj y del encargo (la máquina con dos grupos a la vez; 6a las repitió en su rama: IGUALES).
+- `ed5040c`: 6a gpupanel-sin-control (el GpuPanel deja de heredar de Control: IVista DeLaTarjeta con su superficie, Idle por
+  PantallaRocola.Libre, el ratón en la pantalla; el TabIndex por colección como WinForms y el GpuPanel en su sitio del ciclo del
+  tabulador), revisión «arreglado». Juntado sin la verificación completa: va con la junta de 7b (rotulos-y-letras), que choca con él
+  en la pantalla nativa y la junta un grupo aparte.
