@@ -16,6 +16,8 @@ Sale del inventario de solo lectura sobre f5a33ca (la tanda 3 entera juntada): d
   - Pruebas/Inventario: las cuentas de gdi y winforms solo bajan;
   - recorridos, las 29 cintas y las escenas, contra /root/rocola-trabajo/referencia-xp.
 
+- **Modelo de cada grupo (decision del dueno del 12-11-2026):** los grupos chicos y mecanicos los hace Sonnet (3b, 4b, 5c, 7a y 8b); los grandes o delicados (4a, 6a, 7b, 8a y N7) y TODAS las revisiones, el modelo de la sesion. Los medianos, el de la sesion.
+
 ## 3. Oleadas
 
 ### OLEADA 1 (tanda 4)
