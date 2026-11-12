@@ -41,8 +41,8 @@ Archivos cambiados:
 
 - **Plataforma/Anfitrion.cs**: ya no compone. Abre la pantalla, pone la capa (`PantallaRocola.LaCapa = new VentanasDeLaCapa()`), el
   compositor y el video nativo, y en cada cuadro le da al compositor las capas de abajo arriba: las de las ventanas de la capa
-  (Escritorio.Capas, sin las hojas), la lista nativa de la ventana y las hojas nativas (que ya no toma de Escritorio: las pide a
-  Hoja.Abiertas; Escritorio.Capas las sigue pintando antes, asi que la superficie y su version son las mismas). Guarda
+  (Escritorio.Capas, sin las hojas), la lista nativa de la ventana y las hojas nativas (las que dio Escritorio.Capas, apartadas y puestas
+  despues de la lista nativa; ver «Revision»). Guarda
   `VentanasDeLaCapa` (cada metodo es la llamada de la capa que se hacia antes) y `HuecoDeVista` (un control de la capa que ocupa el lugar
   de una vista sin herencia en la lista de una ventana de la capa: la capa lo pinta y le da el raton, y el se lo pasa a la vista).
 - **Plataforma/TeclasLinux.cs**: entrega a la pantalla (`PantallaRocola.Entrada`, `LlegaTecla`, `RatonEn`, `RatonMueve`, `RatonBoton`
@@ -89,8 +89,8 @@ adapta en N7 (9a: «Hoja.cs:137-145 con Hoja.Foco.cs:50»). PantallaRocola.Pinta
 Con la capa puesta (siempre, en el programa): la entrada llega a `PantallaRocola.LlegaTecla/Raton*` y va tal cual a Escritorio.Tecla,
 RatonEn, RatonBoton (`(MouseButtons)(int)BotonRaton`: los mismos numeros) y RatonRueda; RatonMueve suma a la misma flecha
 (Escritorio.PosicionRaton es PantallaRocola.Flecha) y el absoluto usa la misma medida (Escritorio.Pantalla es PantallaRocola.Ancho/Alto).
-El compositor recibe las mismas capas en el mismo orden (Escritorio.Capas pone las hojas al final; Anfitrion las salta y las pone al final
-desde Hoja.Abiertas), con la misma clave de textura para las de la capa (su objeto Capa) y las mismas texturas; la lista nativa esta
+El compositor recibe las mismas capas en el mismo orden (Escritorio.Capas pone las hojas al final; Anfitrion las aparta y las pone al final,
+las mismas capas con la misma superficie y version), con la misma clave de textura para las de la capa (su objeto Capa) y las mismas texturas; la lista nativa esta
 vacia y no anade nada. Present de la tarjeta hace lo mismo que antes, ahora desde Anfitrion.cs. El video va al mismo hueco.
 
 ## Comprobaciones (12-11-2026, maquina compartida con otros grupos, llvmpipe)
@@ -142,11 +142,50 @@ vacia y no anade nada. Present de la tarjeta hace lo mismo que antes, ahora desd
 
 ## Riesgos
 
-- Una hoja nativa que lanza al pintarse (la «X» roja) se ensucia otra vez dentro de su pintura: Escritorio.Capas la pinta y Anfitrion,
-  al pedirla otra vez, la pinta de nuevo en el mismo cuadro y sube esa (antes se subia la primera y se repintaba en el cuadro siguiente).
-  Converge en el mismo dibujo un cuadro antes; solo pasa con una pieza que lanza.
 - `VentanasDeLaCapa.Pinta` (la pintura de una vista que aun es control, para quien la pida por IVista.Pinta: la oleada 3) usa la matriz
   del lienzo como la del HDC (`PuenteDibujo.Graphics(g, g.TotalMatrix)`); hoy nadie la llama. Si la oleada 3 la usa, comparar con el
   arnes de su vista.
 - El hueco de una vista sin herencia nace con lo de fabrica de Control (Selectable, TabStop): el foco y el tabulador de la vista que XP
   configuraba en su constructor (SetStyle) los tendra que decidir cada grupo que quite la herencia (oleadas 5 y 6).
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff entero (178722c..cc0c267) contra la base y la fuente de WinForms (/tmp/claude-0/agente-winforms/ref/Control.cs: las citas
+de WS_CLIPSIBLINGS 1691, CaptureInternal 12567-12571, WmMouseUp 12700-12722 y WmMouseWheel 12748-12764, y StandardClick/StandardDoubleClick
+de fabrica 449-454 estan bien puestas). Codigo/ no cambia (git diff vacio) y no se toco nada fuera de los archivos del grupo.
+
+Lo encontrado:
+
+- **Las hojas nativas se pedian dos veces por cuadro (arreglado).** Anfitrion.Capas saltaba las capas de hoja de Escritorio.Capas (que ya
+  habia llamado a Hoja.Superficie) y volvia a llamar a Hoja.Superficie desde Hoja.Abiertas. Con una pieza que lanza al pintarse (la «X»
+  roja de PintaFondoYContenido, que vuelve a ensuciar la hoja dentro de su pintura) la hoja se pintaba otra vez en el mismo cuadro y se
+  subia esa segunda pintura con otra version: el cuadro compuesto ya no era el de la referencia, contra la regla de que la composicion no
+  cambia (el informe lo llevaba como riesgo aceptado). Ahora Anfitrion toma las capas de hoja tal cual las dio Escritorio.Capas (su
+  superficie, su version y su objeto Capa como clave de textura, como antes de este grupo) y solo las aparta para ponerlas despues de la
+  lista nativa (hoy vacia): mismas capas, mismo orden, mismas claves, una sola pintura por cuadro. Sin la capa (N7), la pantalla las
+  pedira a Hoja.Abiertas una vez por cuadro. El riesgo correspondiente se quito de «Riesgos».
+
+Lo comprobado y aceptado sin cambio:
+
+- El compositor (CompositorPantalla.cs) es el de Anfitrion movido: mismo programa, mezcla, texturas, flecha (la mano por ConMano =
+  Escritorio.CursorActual == Cursors.Hand, como antes), capturas y trazas; Application.Avisa era PantallaRocola.Falla.
+- TeclasLinux: Escritorio.Entrada, AhoraMs, PosicionRaton y Pantalla eran ya PantallaRocola.Entrada, AhoraMs, Flecha y Ancho/Alto;
+  Escritorio.RatonMueve era RatonEn(PosicionRaton + d), lo mismo que PantallaRocola.RatonMueve con la capa. MouseButtons y BotonRaton
+  tienen los mismos numeros.
+- PantallaTarjeta: con la capa, Presenta y Olvida hacen lo mismo (Control.FromHandle, PresentaNativa, Tocada solo si hubo control).
+  Escritorio.SinEspera y PantallaRocola.SinEspera no los lee nadie (ya pasaba antes): se apunta para la oleada 6.
+- VideoEnPantalla: Form1 (un Control) siempre es la ventana del video, asi que va al hueco de VideoEnVentanas como antes.
+- Lo nativo sin la capa (lista, tramos, raton, teclas) hoy no corre en el programa; solo lo prueba PantallaVistas.
+- El InternalsVisibleTo("PruebasVistas") se deja (lo dice Riesgos); las otras pruebas usan reflexion.
+
+Comprobaciones del revisor (despues del arreglo):
+
+- a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos (SYSLIB0054, SYSLIB0050, CA2022, CA2014, CS1690: los de la base;
+  ninguno en los archivos del grupo).
+- b) Codigo/ sin cambios: diff-xp no tiene nada que revisar.
+- c) NativeAOT publish: 0 avisos IL/AOT.
+- PantallaVistas: 46 de 46. pruebas41: 41 de 41. pruebas_hoja: 62 de 62. AOT=1 pruebas_pantalla: 32 de 32 en JIT y en NativeAOT.
+- Escenas alternadas con la referencia (JIT, RPNRV/PNRV), las que tocan las hojas o la composicion: arranque, f2, aviso, f3vistas,
+  f3teclas y f3raton, las seis IGUALES. NativeAOT (PNRVA contra RPNRV): f2 y f3teclas IGUALES.
+- Las 29 cintas: 29 iguales (6 616 cuadros), 0 distintas.
+- No se repitieron los recorridos ni las demas escenas (el arreglo solo toca las capas de hoja; la verificacion completa es de la junta).

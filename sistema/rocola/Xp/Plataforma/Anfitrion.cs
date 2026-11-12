@@ -70,17 +70,19 @@ namespace Rocola
         public void Compone() { compositor.Compone(Capas); }
         internal void GuardaPng(string ruta) { compositor.GuardaPng(ruta); }
         internal uint PuntoEn(int x, int y) { return compositor.PuntoEn(x, y); }   // (pruebas)
-        private readonly Dictionary<Hoja, object> clavesHoja = new Dictionary<Hoja, object>();
         // LAS CAPAS: las de las ventanas de la capa (Escritorio.Capas: cada ventana en tramos de Dibujo2D partidos por sus controles de la
-        // tarjeta y del video, en el orden de las ventanas; sin las hojas nativas, que van aparte), la lista nativa de la ventana (lo que no
-        // es de ninguna ventana de la capa: hoy nada) y las hojas nativas, encima de todo, en su orden. Es el mismo orden que daba
-        // Escritorio.Capas (las hojas al final) y las mismas capas: se compone lo mismo.
+        // tarjeta y del video, en el orden de las ventanas), la lista nativa de la ventana (lo que no es de ninguna ventana de la capa: hoy
+        // nada) y las hojas nativas, encima de todo, en su orden. Es el mismo orden que daba Escritorio.Capas (las hojas al final) y las
+        // mismas capas: se compone lo mismo. (Revision: las hojas se toman tal cual las dio Escritorio.Capas -su superficie y la version que
+        // se pinto, Hoja.Superficie- y no se le pide otra vez la superficie a cada hoja: con una pieza que lanza al pintarse -la «X» roja- la
+        // segunda peticion la volvia a pintar en el mismo cuadro y se subia otra pintura que la de la capa. Cuando la capa se vaya (N7), la
+        // pantalla las pedira a Hoja.Abiertas una sola vez por cuadro.)
         private List<CapaPantalla> Capas()
         {
             List<CapaPantalla> r = new List<CapaPantalla>();
+            List<CapaPantalla> hojas = null;
             foreach (Capa c in Escritorio.Capas())
             {
-                if (c.Nativa == null && c.Imagen == null) continue;   // (una hoja nativa: va abajo, de la pantalla)
                 CapaPantalla p = new CapaPantalla();
                 p.Clave = c; p.Rect = c.Rect; p.Opacidad = c.Opacidad;
                 if (c.Nativa != null)
@@ -88,21 +90,18 @@ namespace Rocola
                     Control n = c.Nativa;
                     p.DeTextura = true; p.Textura = n.TexturaGl; p.AnchoGl = n.AnchoGl; p.AltoGl = n.AltoGl; p.Rgba = n.TexturaGlRgba; p.Nombre = n.GetType().Name; p.Tipo = "tarjeta";
                 }
-                else { p.Mapa = c.Imagen.Sk; p.Version = c.Version; p.Tipo = "dibujo2d"; }
+                else if (c.Imagen != null) { p.Mapa = c.Imagen.Sk; p.Version = c.Version; p.Tipo = "dibujo2d"; }
+                else if (c.Mapa != null)   // una hoja nativa (Nativo/Hoja.cs): va encima de la lista nativa
+                {
+                    p.Mapa = c.Mapa; p.Version = c.Version; p.Tipo = "hoja";
+                    if (hojas == null) hojas = new List<CapaPantalla>();
+                    hojas.Add(p); continue;
+                }
+                else continue;
                 r.Add(p);
             }
             PantallaRocola.CapasDeLaVentana(r);
-            // LAS HOJAS NATIVAS, encima de todas (Nativo/Hoja.cs): cada una en su superficie, que se repinta entera solo si algo cambio (su
-            // Version: la que se pinto, Hoja.Superficie), en el orden de las hojas
-            foreach (Hoja h in Hoja.Abiertas)
-            {
-                if (h.IsDisposed || !h.Visible) continue;
-                object k; if (!clavesHoja.TryGetValue(h, out k)) clavesHoja[h] = k = new object();
-                CapaPantalla p = new CapaPantalla();
-                int v; p.Mapa = h.Superficie(out v); p.Version = v; p.Rect = h.Bounds; p.Clave = k; p.Tipo = "hoja";
-                r.Add(p);
-            }
-            foreach (Hoja h in new List<Hoja>(clavesHoja.Keys)) if (h.IsDisposed || !h.Visible) clavesHoja.Remove(h);
+            if (hojas != null) r.AddRange(hojas);
             return r;
         }
 
