@@ -27,7 +27,7 @@
 // hoja, al lado del modo atraccion.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el letrero de la portada elegida, la ficha rapida y la portada enfocada dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs y Puente.pantalla-viva.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el letrero de la portada elegida, la ficha rapida y la portada enfocada dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs)
 
 namespace Rocola
 {
@@ -378,7 +378,7 @@ namespace Rocola
         }
         // La pastilla, centrada en su imagen: fondo oscuro translucido, filo claro y el texto blanco. Devuelve el
         // texto que de verdad escribio (el largo, o el corto si el largo no cabia).
-        internal static string PintaFoco(SKBitmap bmp, string txt, string corto, string fam)   // EN LINUX: el mapa es un SKBitmap y la familia su nombre (FontFamily.Name); quien aun pasa Bitmap y FontFamily llega por el puente (Plataforma/Puente.pantalla-viva.cs)
+        internal static string PintaFoco(SKBitmap bmp, string txt, string corto, string fam)   // EN LINUX: el mapa es un SKBitmap y la familia su nombre (FontFamily.Name); quien la llama (PrecargaPaginaGpu.cs) ya pasa el SKBitmap y el nombre
         {
             using (SKCanvas g = new SKCanvas(bmp))   // EN LINUX: Graphics.FromImage
             {
@@ -571,7 +571,7 @@ namespace Rocola
         }
         // El dibujo de la ficha, aparte del estado: asi se puede mirar y comprobar sin arrancar la rocola. Va de arriba
         // abajo con un cursor: si las filas no caben entre la cabecera y el pie, van las que caben (nunca se montan).
-        internal static void PintaFicha(SKBitmap bmp, SKBitmap tapa, string artista, string disco, string resumen, string genero, Color colGenero,   // EN LINUX: el mapa y la portada son SKBitmap; quien aun pasa Bitmap, Image y FontFamily llega por el puente (Plataforma/Puente.pantalla-viva.cs)
+        internal static void PintaFicha(SKBitmap bmp, SKBitmap tapa, string artista, string disco, string resumen, string genero, Color colGenero,   // EN LINUX: el mapa y la portada son SKBitmap; quien la llama (PrecargaPaginaGpu.cs) ya pasa los SKBitmap y el nombre de la familia
             int enCola, bool pedidas, string[] filas, string[] durs, int[] veces, int total, string fam)   // EN LINUX: la familia, por su nombre (FontFamily.Name)
         {
             int w = bmp.Width, h = bmp.Height;
@@ -707,7 +707,7 @@ namespace Rocola
         {
             return Color.FromArgb(255, (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
         }
-        private static SKPath RutaRedonda(RectangleF r, float radio)   // EN LINUX: Redondo de XP, con un SKPath (GraphicsPath); con su nombre y su GraphicsPath sigue en el puente (Plataforma/Puente.pantalla-viva.cs) para los que aun lo piden asi
+        private static SKPath RutaRedonda(RectangleF r, float radio)   // EN LINUX: Redondo de XP, con un SKPath (GraphicsPath); nadie pide ya el GraphicsPath: la firma de XP del puente se quito el 12-11-2026
         {
             SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): su relleno de fabrica, Alternate, es par-impar
             float d = Math.Min(radio * 2f, Math.Min(r.Width, r.Height));

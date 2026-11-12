@@ -22,7 +22,7 @@
 //        seccion), en vez del azul de siempre.
 //    Respira con su propio reloj (5 s), no con la musica: nada da saltos.
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las letras de las etiquetas (WinForms, aun sin traducir) le llegan por el puente (Plataforma/Puente.cs); RoundedPath (Form1.Fondo.cs), TextoConCinta y PintaArtistaCompacto (TextoMovilGpu.cs), ya traducidos, se llaman directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la franja de lejos dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las letras de las etiquetas (WinForms, aun sin traducir) le llegan por el puente (Plataforma/Puente.cs); ContornoRedondo (Form1.Fondo.cs; era RoundedPath), TextoConCinta y PintaArtistaCompacto (TextoMovilGpu.cs), ya traducidos, se llaman directo
 
 namespace Rocola
 {

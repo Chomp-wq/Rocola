@@ -133,6 +133,9 @@ namespace BancoFondo
         }
 
         // ================================================================ EL CONTORNO REDONDEADO (RoundedPath)
+        // la firma de XP de RoundedPath (un GraphicsPath) solo esta en la referencia: la traduccion la quito el 12-11-2026 (limpieza-puentes, nadie
+        // la llamaba) y aqui se hace lo que hacia el puente: un GraphicsPath de la capa que se hace dueno del SKPath de ContornoRedondo
+        private static GraphicsPath ComoRoundedPath(SKPath p) { GraphicsPath gp = new GraphicsPath(); gp.P.Dispose(); gp.P = p; return gp; }
         private static void Contornos()
         {
             MethodInfo rp = Metodo(typeof(Form1), "RoundedPath", typeof(Rectangle), typeof(int));
@@ -172,7 +175,7 @@ namespace BancoFondo
                                             }
                                         }
                                         else
-                                            using (GraphicsPath p = (GraphicsPath)rp.Invoke(null, new object[] { r, rad }))
+                                            using (GraphicsPath p = rp != null ? (GraphicsPath)rp.Invoke(null, new object[] { r, rad }) : ComoRoundedPath((SKPath)cr.Invoke(null, new object[] { r, rad })))
                                             {
                                                 g.FillPath(sb, p); g.DrawPath(pn, p);
                                                 RectangleF caja = p.GetBounds();

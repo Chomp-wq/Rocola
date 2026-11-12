@@ -63,6 +63,24 @@ namespace Banco
             TextRenderingHint.AntiAliasGridFit, TextRenderingHint.AntiAlias, TextRenderingHint.ClearTypeGridFit };
         private static MethodInfo Metodo(string nombre, params Type[] tipos) { return typeof(Form1).GetMethod(nombre, T, null, tipos, null); }
 
+        // AnchoTexto(Graphics, string, Font) de XP: en la referencia, la de XP por reflexion; en la traduccion ya no existe (la quito el grupo
+        // limpieza-puentes el 12-11-2026: nadie la llamaba) y se hace lo que hacia el puente: sin Graphics, sin letra o sin texto, 0; del Graphics,
+        // su modo de letra (TextRenderingHint), y la Letra de la Font, a la traducida AnchoTexto(AjusteLetra, string, Letra)
+        private static object AnchoConGraphics(MethodInfo con, Graphics g, string t, Font f)
+        {
+            if (con != null) return con.Invoke(null, new object[] { g, t, f });
+            if (g == null || f == null || string.IsNullOrEmpty(t)) return 0;
+            Type puente = typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo");
+            foreach (MethodInfo m in typeof(Form1).GetMethods(T))
+            {
+                ParameterInfo[] p = m.GetParameters();
+                if (m.Name != "AnchoTexto" || p.Length != 3 || p[0].ParameterType.Name != "AjusteLetra") continue;
+                object letra = puente.GetMethod("Letra", T, null, new[] { typeof(Font) }, null).Invoke(null, new object[] { f });
+                return m.Invoke(null, new object[] { Enum.ToObject(p[0].ParameterType, (int)g.TextRenderingHint), t, letra });
+            }
+            throw new InvalidOperationException("falta AnchoTexto(AjusteLetra, string, Letra)");
+        }
+
         // AnchoTexto(Graphics, string, Font): con cada modo de letra, con suavizado, traslacion, escala y recorte (no deben cambiar la medida), y
         // sin Graphics, sin letra y sin texto (0); AnchoTexto(string, Font)
         private static void Anchos()
@@ -77,13 +95,13 @@ namespace Banco
                         {
                             g.TextRenderingHint = Ajustes[k % Ajustes.Length];
                             if (k >= Ajustes.Length) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TranslateTransform(3.5f, 2f); g.ScaleTransform(1.3f, 0.8f); g.SetClip(new Rectangle(1, 1, 10, 10)); g.PixelOffsetMode = PixelOffsetMode.Half; }
-                            try { sb.Append(con.Invoke(null, new object[] { g, Textos[ti], fs[fi] })).Append(' '); } catch (Exception e) { sb.Append(Exc(e)).Append(' '); }
+                            try { sb.Append(AnchoConGraphics(con, g, Textos[ti], fs[fi])).Append(' '); } catch (Exception e) { sb.Append(Exc(e)).Append(' '); }
                         }
                     string s2; try { s2 = sin.Invoke(null, new object[] { Textos[ti], fs[fi] }).ToString(); } catch (Exception e) { s2 = Exc(e); }
                     Linea("ancho-" + fi + "-" + ti, sb.ToString().TrimEnd() + "\tsin=" + s2);
                 }
             using (Bitmap b = new Bitmap(4, 4)) using (Graphics g = Graphics.FromImage(b))
-                Linea("ancho-nulos", con.Invoke(null, new object[] { null, "hola", fs[0] }) + " " + con.Invoke(null, new object[] { g, "hola", null }) + " " + con.Invoke(null, new object[] { g, "", fs[0] })
+                Linea("ancho-nulos", AnchoConGraphics(con, null, "hola", fs[0]) + " " + AnchoConGraphics(con, g, "hola", null) + " " + AnchoConGraphics(con, g, "", fs[0])
                     + " " + sin.Invoke(null, new object[] { "hola", null }) + " " + sin.Invoke(null, new object[] { null, fs[0] }));
         }
 

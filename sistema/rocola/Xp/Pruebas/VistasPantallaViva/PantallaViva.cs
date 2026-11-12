@@ -3,15 +3,15 @@
 // carpeta Xp (VistasPantallaViva.csproj): la salida de la referencia congelada y la de la copia de trabajo tienen que ser iguales linea por
 // linea (arnes.sh).
 //   - Las funciones se llaman como las llama el codigo de XP que todavia no esta traducido: con la firma de XP (Bitmap, Image, Font,
-//     FontFamily, Graphics): en la referencia, la funcion de XP; en la traduccion, la firma de XP que deja el puente
-//     (Plataforma/Puente.pantalla-viva.cs). Las que ya no tienen esa firma ni la necesitan (PintaBoleto, TamanoBoleto, ColorDePortada,
+//     FontFamily, Graphics): en la referencia, la funcion de XP; en la traduccion, ya sin esa firma (el puente
+//     Plataforma/Puente.pantalla-viva.cs se quito el 12-11-2026): por reflexion, a la traducida con los mismos puntos y el nombre de la familia. Las que ya no tienen esa firma ni la necesitan (PintaBoleto, TamanoBoleto, ColorDePortada,
 //     Pildora: solo las llama su propio archivo) van por reflexion con los tipos que tenga cada lado (los mismos puntos y la misma letra).
 //   - En la traduccion, PintaFoco, PintaFicha y PastillaSonandoEq se llaman tambien DIRECTO (el SKBitmap, el nombre de la familia; el
 //     lienzo y su estado), como las llamara su archivo; en la referencia esa linea es la de XP otra vez.
 //   - La lista del disco (SongListView): PintaPagina (Form1.Vistas.cs, igual en los dos) con la lista grande, el ecualizador y los minutos,
 //     con ocho estados del Graphics: pasa por AnchoDuracion, PlanPaginaGpu, PlanFilaGpu, AnchoSonando y PastillaSonandoEq (por el puente en
 //     la traduccion) y AnchoTexto (Form1.Ajustes.cs).
-//   - Redondo (con su GraphicsPath: en la traduccion, el puente sobre RutaRedonda) y Pildora: los puntos del trazo, uno por uno, y pintados.
+//   - Redondo (con su GraphicsPath: en la traduccion ya no existe; se pide RutaRedonda y el arnes le da el GraphicsPath) y Pildora: los puntos del trazo, uno por uno, y pintados.
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet VistasPantallaViva.dll [vuelca CARPETA] [solo PREFIJO]
 using System;
 using System.Collections.Generic;
@@ -143,6 +143,22 @@ namespace BancoPantallaViva
             foreach (MethodInfo m in t.GetMethods(T)) if (m.Name == nombre && m.GetParameters().Length > 0 && m.GetParameters()[0].ParameterType == primero) return m;
             return null;
         }
+        // la firma de XP (un Bitmap y una FontFamily) de PintaFoco o PintaFicha: en la referencia, la de XP, por reflexion; en la traduccion ya no
+        // existe (la quito el grupo limpieza-puentes, 12-11-2026: nadie la llamaba), asi que va a la traducida con lo que le pasaba aquel puente
+        // (el SKBitmap del Bitmap y de la Image, y el nombre de la familia; la nula, la generica sin remates, como la tomaba new Font(null, ...))
+        private static object FirmaXp(Type t, string nombre, Type primero, MethodInfo directa, object[] a)
+        {
+            MethodInfo xp = Con(t, nombre, primero);
+            if (xp != null) return xp.Invoke(null, a);
+            object[] c = (object[])a.Clone();
+            for (int i = 0; i < c.Length; i++)
+            {
+                if (c[i] is Image) c[i] = ((Image)c[i]).Sk;
+                else if (c[i] == null && i == c.Length - 1) c[i] = FamiliaGenerica();
+                else if (c[i] is FontFamily) c[i] = ((FontFamily)c[i]).Name;
+            }
+            return directa.Invoke(null, c);
+        }
         private static object Llama(MethodInfo m, object inst, object[] a) { return m.Invoke(inst, a); }
         // el valor de 'v' en el tipo de un parametro de la traducida: un Bitmap o una Image pasan sus puntos (el SKBitmap); una Font, su Letra
         private static object Convierte(object v, Type t)
@@ -195,7 +211,7 @@ namespace BancoPantallaViva
                         if (!Toca(nombre)) continue;
                         string fn = fam == null ? "null" : fam.Name;
                         Bitmap b = Mapa(w, h, t % 3); string res;
-                        try { res = Form1.PintaFoco(b, textos[t][0], textos[t][1], fam); } catch (Exception e) { res = Exc(e); }
+                        try { res = (string)FirmaXp(typeof(Form1), "PintaFoco", typeof(Bitmap), directa, new object[] { b, textos[t][0], textos[t][1], fam }); } catch (Exception e) { res = Exc(e); }
                         Linea(nombre, fn + "\t" + res + "\t" + Puntos(b, nombre));
                         b.Dispose();
                         // la traducida, directo (en la referencia, la de XP otra vez)
@@ -203,7 +219,7 @@ namespace BancoPantallaViva
                         try
                         {
                             if (directa != null) { directas++; res = (string)directa.Invoke(null, new object[] { b2.Sk, textos[t][0], textos[t][1], fam == null ? FamiliaGenerica() : fam.Name }); }
-                            else res = Form1.PintaFoco(b2, textos[t][0], textos[t][1], fam ?? FontFamily.GenericSansSerif);
+                            else res = (string)FirmaXp(typeof(Form1), "PintaFoco", typeof(Bitmap), null, new object[] { b2, textos[t][0], textos[t][1], fam ?? FontFamily.GenericSansSerif });
                         }
                         catch (Exception e) { res = Exc(e); }
                         Linea(nombre + "-directo", fn + "\t" + res + "\t" + Puntos(b2, nombre + "-directo"));
@@ -245,14 +261,14 @@ namespace BancoPantallaViva
                 if (!Toca(nombre)) continue;
                 string desc = tam.Width + "x" + tam.Height + "|" + (tapa == null ? "sin" : tapa.Width + "x" + tapa.Height) + "|" + (fam == null ? "null" : fam.Name) + "|" + enCola + "|" + pedidas + "|" + fl.Length + "|" + total;
                 Bitmap b = Mapa(tam.Width, tam.Height, i % 3); string res = "ok";
-                try { Form1.PintaFicha(b, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam); } catch (Exception e) { res = Exc(e); }
+                try { FirmaXp(typeof(Form1), "PintaFicha", typeof(Bitmap), directa, new object[] { b, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam }); } catch (Exception e) { res = Exc(e); }
                 Linea(nombre, desc + "\t" + res + "\t" + Puntos(b, nombre));
                 b.Dispose();
                 Bitmap b2 = Mapa(tam.Width, tam.Height, (i + 1) % 3); res = "ok";
                 try
                 {
                     if (directa != null) { directas++; directa.Invoke(null, new object[] { b2.Sk, tapa != null ? tapa.Sk : null, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam == null ? FamiliaGenerica() : fam.Name }); }
-                    else Form1.PintaFicha(b2, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam ?? FontFamily.GenericSansSerif);
+                    else FirmaXp(typeof(Form1), "PintaFicha", typeof(Bitmap), null, new object[] { b2, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam ?? FontFamily.GenericSansSerif });
                 }
                 catch (Exception e) { res = Exc(e); }
                 Linea(nombre + "-directo", desc + "\t" + res + "\t" + Puntos(b2, nombre + "-directo"));
@@ -336,6 +352,9 @@ namespace BancoPantallaViva
         private static void Rutas()
         {
             MethodInfo redondo = typeof(Form1).GetMethod("Redondo", T, null, new[] { typeof(RectangleF), typeof(float) }, null);
+            // en la traduccion Redondo (con su GraphicsPath) ya no existe (se quito el 12-11-2026, limpieza-puentes): se pide RutaRedonda (el SKPath)
+            // y se le da el GraphicsPath como lo hacia el puente que se quito: new GraphicsPath() con ESE SKPath (que se suelta con el)
+            MethodInfo rutaRedonda = redondo == null ? typeof(Form1).GetMethod("RutaRedonda", T, null, new[] { typeof(RectangleF), typeof(float) }, null) : null;
             MethodInfo pildora = typeof(Form1).GetMethod("Pildora", T);
             RectangleF[] cajas = { new RectangleF(1, 1, 309, 248), new RectangleF(2f, 2f, 339.5f, 41.5f), new RectangleF(17.461f, 17.461f, 69.843f, 69.843f), new RectangleF(0.5f, 0.5f, 140.25f, 24.5f),
                                    new RectangleF(10.3f, 7.7f, 0.4f, 30f), new RectangleF(5, 5, 0, 0), new RectangleF(-3.25f, 4.125f, 51.5f, 13.75f), new RectangleF(100.4f, 58.93f, 98.663f, 20.735f),
@@ -346,7 +365,7 @@ namespace BancoPantallaViva
                 {
                     string nombre = "redondo-" + i + "-" + j;
                     if (!Toca(nombre)) continue;
-                    using (GraphicsPath gp = (GraphicsPath)redondo.Invoke(null, new object[] { cajas[i], radios[j] }))
+                    using (GraphicsPath gp = redondo != null ? (GraphicsPath)redondo.Invoke(null, new object[] { cajas[i], radios[j] }) : ConRuta((SKPath)rutaRedonda.Invoke(null, new object[] { cajas[i], radios[j] })))
                     {
                         string t = Trazo(gp.P);
                         Bitmap b = Mapa(360, 280, j % 3);
@@ -374,6 +393,9 @@ namespace BancoPantallaViva
                 ((IDisposable)o).Dispose();
             }
         }
+
+        // un GraphicsPath de la capa con ESE SKPath (no una copia): la figura queda cerrada y al soltarlo se suelta el SKPath
+        private static GraphicsPath ConRuta(SKPath p) { GraphicsPath gp = new GraphicsPath(); gp.P.Dispose(); gp.P = p; return gp; }
 
         // ================================================================ la lista del disco (SongListView: PintaPagina con lo vivo)
         private static void Pon(object o, string campo, object v)
