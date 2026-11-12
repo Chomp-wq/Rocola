@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (las piezas de la tarjeta, que aun van como Bitmap) pasa por el puente (Plataforma/Puente.cs); RoundedPath (Form1.Fondo.cs), DegradadoV (PulidoGpu.cs) y lo demas, ya traducidos, se llaman directo (ContornoRedondo da el SKPath de RoundedPath)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el acabado de la lista del disco, su vidrio y su barra de paginas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las piezas de la tarjeta (uiPieza) son SKBitmap; RoundedPath (Form1.Fondo.cs), DegradadoV (PulidoGpu.cs) y lo demas, ya traducidos, se llaman directo (ContornoRedondo da el SKPath de RoundedPath)
 namespace Rocola
 {
     public partial class Form1
@@ -119,7 +119,7 @@ namespace Rocola
             }
             // Capas inmutables: pagina sin seleccion y una sola fila elegida.
             // Se conserva el horneado anterior para el hojeo ya existente.
-            public SKBitmap BakeGpuListLayer(bool selected)   // EN LINUX: un SKBitmap; EnsureSongPiece se lo entrega como Bitmap de la capa a las piezas de la tarjeta (uiPieza, de Form1.Video.cs, que las guarda asi: PuenteDibujo.Entrega)
+            public SKBitmap BakeGpuListLayer(bool selected)   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP); EnsureSongPiece lo guarda tal cual en las piezas de la tarjeta (uiPieza, Form1.Video.cs)
             {
                 int w = ClientSize.Width, h = selected ? RowH : ClientSize.Height;
                 pintandoGpu = true;   // con la tarjeta, la fila elegida queda dentro del cristal (DentroDelCristal)
@@ -334,7 +334,7 @@ namespace Rocola
             else if (index == 3) next = songList.BakeGpuPrevious();
             else using (CapturaTexto(index == 1 ? 2 : 3)) next = songList.BakeGpuListLayer(index == 2);
             if (uiPieza[index] != null) uiPieza[index].Dispose();
-            uiPieza[index] = PuenteDibujo.Entrega(next, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb); uiPiezaSig[index] = sig;   // EN LINUX: las piezas (uiPieza, de Form1.Video.cs) se las da como Bitmap a la tarjeta codigo aun sin traducir: el mapa se le entrega por el puente, con el formato con que XP lo hacia (Format32bppPArgb); el Bitmap se hace su dueno (al soltar la pieza se sueltan sus puntos)
+            uiPieza[index] = next; uiPiezaSig[index] = sig;
             return ++uiPiezaVer[index];
         }
         internal static SKBitmap BakeSongGlass(int w, int h)   // EN LINUX: un SKBitmap

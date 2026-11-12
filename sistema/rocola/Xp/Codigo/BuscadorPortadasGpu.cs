@@ -1688,7 +1688,7 @@ namespace Rocola
     internal sealed partial class GpuPanel
     {
         public Func<int, int, Rectangle[]> GetPiezaCambios;
-        private void SubePieza(int i, Rocola.Dibujo2D.Bitmap bitmap)   // EN LINUX: la pieza llega como Bitmap de GDI+ (la hace Form1.Video.cs, EnsureUiPieza, y la da D3D9Star.cs con GetPieza, aun sin traducir) y va tal cual a UpdateOverlayRegion (su puente, Plataforma/Puente.frontera.cs) y a SubeReponiendo (RespuestaGpu.cs), que tambien la piden asi: escrito entero, sin el using de GDI+
+        private void SubePieza(int i, SKBitmap bitmap)   // EN LINUX: Bitmap -> SKBitmap: la pieza (uiPieza, Form1.Video.cs), el mismo objeto que da GetPieza; va tal cual a UpdateOverlayRegion y SubeReponiendo (RespuestaGpu.cs), como en XP
         {
             if (piezaTex[i] != IntPtr.Zero && piezaW[i] == bitmap.Width && piezaH[i] == bitmap.Height && GetPiezaCambios != null)
             {

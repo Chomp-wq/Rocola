@@ -110,7 +110,7 @@ namespace Rocola
         public Func<int, Rectangle> GetUiBotCambio;   // que trozo de la franja cambio desde una version (vacio: entera)
 
         // Sube la franja: si la tarjeta tiene la version de justo antes y el formulario sabe que trozo cambio, solo ese.
-        private void SubeUiBot(Rocola.Dibujo2D.Bitmap bb)   // EN LINUX: la franja la hace Form1.Video.cs (GetUiBot) y la suben Upload y UpdateOverlayRegion (D3D9Star.cs), aun con el Bitmap de la capa: pasa tal cual
+        private void SubeUiBot(SKBitmap bb)   // EN LINUX: Bitmap -> SKBitmap: la franja (uiBotOverlay, Form1.Video.cs), el mismo objeto que da GetUiBot; va tal cual a UpdateOverlayRegion y Upload, como en XP
         {
             if (uiBotTex != IntPtr.Zero && GetUiBotCambio != null && bb.Width == uiBotW && bb.Height == uiBotH)
             {

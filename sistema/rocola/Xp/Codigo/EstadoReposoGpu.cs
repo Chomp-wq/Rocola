@@ -40,7 +40,7 @@ namespace Rocola
 
     public partial class Form1
     {
-        private SKBitmap idlePanelBmp;   // EN LINUX: SKBitmap (a la tarjeta, que aun lo pide como Bitmap, le llega prestado: BuildIdlePanel)
+        private SKBitmap idlePanelBmp;   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP); la tarjeta lo recibe tal cual (BuildIdlePanel)
         private string idlePanelSig;
         private SKBitmap idleClockUnderlay;   // EN LINUX: SKBitmap
         private string idlePanelTime;
@@ -115,7 +115,7 @@ namespace Rocola
             }
             return false;
         }
-        private Rocola.Dibujo2D.Bitmap BuildIdlePanel()   // EN LINUX: lo pide GetIdlePanel (D3D9Star.cs, aun con Bitmap): el mapa le llega prestado (PuenteDibujo.Bitmap, el MISMO Bitmap para el mismo mapa: la tarjeta compara por identidad para no volver a subirlo)
+        private SKBitmap BuildIdlePanel()   // EN LINUX: Bitmap -> SKBitmap: lo pide GetIdlePanel (D3D9Star.cs) y le llega el MISMO mapa mientras no cambie (la tarjeta compara por identidad para no volver a subirlo), como en XP
         {
             if (nowPlaying == null || videoOn) return null;
             if (gpuPanel != null && idlePanelBmp != null) gpuPanel.IdleProgressStart = idlePanelProgressStart;
@@ -127,7 +127,7 @@ namespace Rocola
                 // Nada de lo que el panel ensena ha cambiado. Lo unico que corre solo es el reloj, y ese
                 // se parchea aparte sin rehacer nada mas.
                 ParcheaElReloj(w, h);
-                return PuenteDibujo.Bitmap(idlePanelBmp);   // EN LINUX: prestado (Plataforma/Puente.cs; no suelta los puntos)
+                return idlePanelBmp;
             }
             idlePanelDatosDe = idlePanelDatos;
             Color acento = estadoColorDirecto ? bgAccentTarget : bgAccent;
@@ -157,7 +157,7 @@ namespace Rocola
                 for (int i = 0; i < extra.Minutos.Length; i++) sig.Append('|').Append(extra.Minutos[i]);
             }
             string key = sig.ToString();
-            if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return PuenteDibujo.Bitmap(idlePanelBmp); }   // EN LINUX: prestado
+            if (idlePanelBmp != null && key == idlePanelSig) { ParcheaElReloj(w, h); return idlePanelBmp; }
             int progressStart;
             SKBitmap next;   // EN LINUX: SKBitmap
             using (CapturaTexto(1))
@@ -178,7 +178,7 @@ namespace Rocola
             if (gpuPanel != null) gpuPanel.IdleProgressStart = progressStart;
             SKBitmap old = idlePanelBmp; idlePanelBmp = next; idlePanelSig = key;   // EN LINUX: SKBitmap
             if (old != null && !ReferenceEquals(old, next)) old.Dispose();
-            return PuenteDibujo.Bitmap(idlePanelBmp);   // EN LINUX: prestado
+            return idlePanelBmp;
         }
 
         internal static int DrawIdleClock(SKCanvas g, AjusteLetra ajuste, int w, int h, string time)   // EN LINUX: el lienzo de Skia y su modo de letra (la copia y el medio pixel son los de fabrica: ninguno de los que la llaman los cambia)

@@ -1921,7 +1921,7 @@ namespace Rocola
             int dt = Environment.TickCount - toastTick;
             if (dt < 0 || dt >= ToastMs) { toastTick = -1; return t; }
             float a, dy; CurvaToast(dt, out a, out dy);
-            t.Has = true; t.Bmp = PuenteDibujo.Bitmap(toastBmp); t.Ver = toastVer;   // EN LINUX: GpuToast (D3D9Star.cs, aun sin traducir) lo pide como Bitmap: los mismos puntos por el puente, y el mismo Bitmap cada vez (la tarjeta mira la version, no el objeto)
+            t.Has = true; t.Bmp = toastBmp; t.Ver = toastVer;
             t.X = ((toastBorde > 0 ? toastBorde : ClientSize.Width) - ToastW) * 0.5f;   // centrado en lo que se ve
             t.Y = 80f + dy;
             t.Alpha = a;

@@ -334,9 +334,17 @@ namespace BancoSuena
                     }
 
             // LA MONEDA (el Bitmap que se lleva Upload: sus puntos, su formato y sus marcas)
+            // (interfaz-a-skbitmap, 12-11-2026: en la traduccion BakeMoneda da un SKBitmap -va por reflexion-; su formato se escribe como el de
+            // GDI+ que le toca: Bgra8888 premultiplicado es Format32bppPArgb, con alfa -ImageFlags.HasAlpha-; otro formato se escribe tal cual y sale distinto)
             foreach (int lado in new[] { 96, 48, 128, 17, 200 })
-                using (Bitmap b = GpuPanel.BakeMoneda(lado))
-                    Linea("moneda-" + lado, Puntos("moneda-" + lado, b) + "\t" + b.PixelFormat + " flags=" + b.Flags);
+            {
+                object mo = typeof(GpuPanel).GetMethod("BakeMoneda", Todo).Invoke(null, new object[] { lado });
+                Bitmap bm = mo as Bitmap; SKBitmap sm = mo as SKBitmap;
+                string formato = bm != null ? bm.PixelFormat + " flags=" + bm.Flags
+                    : (sm.ColorType == SKColorType.Bgra8888 && sm.AlphaType == SKAlphaType.Premul ? PixelFormat.Format32bppPArgb + " flags=" + (int)ImageFlags.HasAlpha : sm.ColorType + "/" + sm.AlphaType);
+                Linea("moneda-" + lado, Puntos("moneda-" + lado, mo) + "\t" + formato);
+                ((IDisposable)mo).Dispose();
+            }
 
             // EL TITULO QUE SE DESLIZA, en su imagen: tres tamanos de letra, titulos con acentos, vacio y repetido (no se rehace)
             k = 0;

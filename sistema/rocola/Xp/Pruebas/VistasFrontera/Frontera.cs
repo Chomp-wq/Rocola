@@ -10,8 +10,8 @@
 //      CreateOverlay, UpdateOverlay, UpdateOverlayRegion, CreateCoverShared y CreateTextureFromBitmap, lo que devuelven, y con
 //      ROCOLA_VOLCADO_TEXTURAS cada zona subida de 64x64 o mas (compara.sh las junta por orden, medida y huella);
 //   3) el contador de cuadros (EnsureFpsTex, Ctrl+F1) en un GpuPanel sin construir, con numeros fijos y dos anchos de pantalla.
-// La referencia recibe Bitmap de la capa; la traduccion, SKBitmap (o, con "puente", el Bitmap de la capa por las sobrecargas de
-// Plataforma/Puente.frontera.cs). Las salidas tienen que ser iguales linea por linea, y los volcados.
+// La referencia recibe Bitmap de la capa; la traduccion, SKBitmap (con "puente", el Bitmap de la capa por las sobrecargas de
+// Plataforma/Puente.frontera.cs mientras existian; se quitaron con interfaz-a-skbitmap, 12-11-2026, y desde entonces "puente" va por la SKBitmap). Las salidas tienen que ser iguales linea por linea, y los volcados.
 //   ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_VOLCADO_TEXTURAS=DIR dotnet bin/Release/net10.0/VistasFrontera.dll [puente] [vuelca CARPETA]
 using System;
 using System.Collections.Generic;

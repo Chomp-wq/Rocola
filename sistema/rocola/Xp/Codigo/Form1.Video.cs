@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); lo que aun es de la capa (los Bitmap de la interfaz que pide D3D9Star.cs, las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); la interfaz, la franja y las piezas son SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP) que D3D9Star.cs sube tal cual; lo que aun es de la capa (las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -818,11 +818,11 @@ namespace Rocola
         private int gpuMode = -1;                          // modo GPU actual (nav/buscador/disco/atraccion); al cambiar se rehace la UI atomica
         private int layoutStamp = -1;                      // huella del ultimo reacomodo: solo un cambio REAL rehace la textura de UI
         private bool uiOverlayVacio;   // la imagen de la UI no existe a proposito (atraccion con el escaparate): ver EnsureUiOverlay
-        private Rocola.Dibujo2D.Bitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)   // EN LINUX: el Bitmap de la capa, escrito entero: lo sube D3D9Star.cs (GetUi y SubeUi de BuscadorLigeroGpu.cs) y lo copia Form1.Biblioteca.cs (winSnap), que aun lo piden como Bitmap de la capa; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
+        private SKBitmap uiOverlay; private int uiOverlayVer; private long uiOverlaySig = SigNada;   // textura de las barras (UI)   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb con que XP la hace): lo suben D3D9Star.cs (GetUi) y BuscadorLigeroGpu.cs (SubeUi) y lo copia Form1.Biblioteca.cs (winSnap), el mismo objeto como en XP
         // La de la otra medida (navegar: una franja arriba; dentro de un disco o en el buscador: casi toda la pantalla). Al cambiar de
         // modo se toma esa en vez de reservar y soltar otra imagen de 2,8 MB cada vez (24-10-2026: el diagnostico del A4 ponia el 92 %
         // de los tirones de mas de 50 ms al entrar y salir de un disco, en la fase de la interfaz). Se repinta entera igual.
-        private Rocola.Dibujo2D.Bitmap uiOverlayOtro;   // EN LINUX: el Bitmap de la capa, escrito entero (es la otra uiOverlay)
+        private SKBitmap uiOverlayOtro;   // EN LINUX: Bitmap -> SKBitmap (es la otra uiOverlay)
 
         // Ctrl+F12: alterna el render entre GPU (Direct3D 9, por defecto) y CPU, y GUARDA la preferencia.
         private void ToggleAlbumGpu() { ApplyAlbumGpu(!gpuEnabled, true, true); }
@@ -1272,15 +1272,15 @@ namespace Rocola
             if (uiOverlay == null || uiOverlay.Width != w || uiOverlay.Height != mainH)
             {
                 if (uiOverlayOtro != null && uiOverlayOtro.Width == w && uiOverlayOtro.Height == mainH)
-                { Rocola.Dibujo2D.Bitmap t = uiOverlayOtro; uiOverlayOtro = uiOverlay; uiOverlay = t; }   // la de este modo, guardada: se repinta entera abajo   // EN LINUX: el Bitmap de la capa, escrito entero
+                { SKBitmap t = uiOverlayOtro; uiOverlayOtro = uiOverlay; uiOverlay = t; }   // la de este modo, guardada: se repinta entera abajo   // EN LINUX: Bitmap -> SKBitmap
                 else
                 {
                     if (uiOverlayOtro != null) uiOverlayOtro.Dispose();
                     uiOverlayOtro = uiOverlay;
-                    uiOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, mainH), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, mainH, Format32bppPArgb): los puntos nativos (Mapas.Nuevo: Bgra8888 premultiplicado, transparentes) en un Bitmap de la capa DUENO de ellos y con ese formato, porque lo suben (D3D9Star.cs) y lo copian (Form1.Biblioteca.cs) como Bitmap de la capa (como las piezas de AcabadoGpu.cs)
+                    uiOverlay = Mapas.Nuevo(w, mainH);   // EN LINUX: new Bitmap(w, mainH, Format32bppPArgb): un SKBitmap Bgra8888 premultiplicado y transparente (Nativo/Mapas.cs)
                 }
             }
-            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiOverlay)))   // EN LINUX: Graphics.FromImage(uiOverlay): un lienzo de Skia sobre sus puntos (los mismos, sin copia)
+            using (SKCanvas g = new SKCanvas(uiOverlay))   // EN LINUX: Graphics.FromImage(uiOverlay): un lienzo de Skia sobre sus puntos
             {
                 g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear: lo mismo, el color de .NET en el de Skia
                 bool suave = true, copia = false, medio = false; Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable; la copia, el medio pixel y el filtro, los de fabrica de un Graphics (SourceOver, Default, Bilinear): esta imagen no los cambia
@@ -1355,7 +1355,7 @@ namespace Rocola
         // Reconstruye la textura de la FRANJA DE ESTADO de abajo (sonando/siguiente/tiempo/creditos/cola/
         // progreso) SOLO si cambio algo. Es una tira chica (~90px de alto): el tic del reloj y la barra de
         // progreso (~2 cambios/seg con musica) cuestan ~10x menos que rehacer la pantalla completa de antes.
-        private Rocola.Dibujo2D.Bitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;   // EN LINUX: el Bitmap de la capa, escrito entero: lo suben GetUiBot y SubeUiBot (D3D9Star.cs, FranjaLigeraGpu.cs), aun con el Bitmap; aqui se pinta en sus puntos (PuenteDibujo.Mapa)
+        private SKBitmap uiBotOverlay; private int uiBotVer; private long uiBotLastSig = SigNada;   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP): lo suben GetUiBot (D3D9Star.cs) y SubeUiBot (FranjaLigeraGpu.cs), el mismo objeto como en XP
         private int EnsureUiBotOverlay()
         {
             Size cs = tamanoFranjaPrueba.IsEmpty ? ClientSize : tamanoFranjaPrueba;   // (el de prueba solo lo ponen las baterias)
@@ -1371,10 +1371,10 @@ namespace Rocola
             if (uiBotOverlay == null || uiBotOverlay.Width != w || uiBotOverlay.Height != bh)
             {
                 if (uiBotOverlay != null) uiBotOverlay.Dispose();
-                uiBotOverlay = PuenteDibujo.Entrega(Mapas.Nuevo(w, bh), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, bh, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (GetUiBot y SubeUiBot aun lo suben como Bitmap de la capa)
+                uiBotOverlay = Mapas.Nuevo(w, bh);   // EN LINUX: new Bitmap(w, bh, Format32bppPArgb): un SKBitmap Bgra8888 premultiplicado y transparente (Nativo/Mapas.cs)
             }
             using (zona.IsEmpty ? CapturaTexto(0) : CapturaRecuadro())   // (por recuadro, las cintas de verdad no se tocan)
-            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiBotOverlay)))   // EN LINUX: Graphics.FromImage(uiBotOverlay): un lienzo de Skia sobre sus puntos (los mismos)
+            using (SKCanvas g = new SKCanvas(uiBotOverlay))   // EN LINUX: Graphics.FromImage(uiBotOverlay): un lienzo de Skia sobre sus puntos
             {
                 if (zona.IsEmpty) g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                 else EmpiezaRecuadro(g, false, false, zona);   // solo el recuadro: lo de fuera ya esta como tiene que estar   // EN LINUX: la traducida (FranjaLigeraGpu.cs) con el estado de un Graphics recien hecho (sin suavizar, medio pixel de fabrica); deja el recorte del recuadro en el lienzo, en un Save, como el SetClip de XP (nada de lo de abajo lo reemplaza)
@@ -1414,7 +1414,7 @@ namespace Rocola
         // la imagen grande. Sacarlo de la firma dejaba el cubo y el texto viejos, y el teclado sin volver.
         // La pieza 4 son las tarjetas del buscador con portadas (BuscadorPortadasGpu.cs): con el buscador de siempre no hay.
         internal const int NumPiezas = 5;
-        private readonly Rocola.Dibujo2D.Bitmap[] uiPieza = new Rocola.Dibujo2D.Bitmap[NumPiezas];   // EN LINUX: los Bitmap de la capa, escritos enteros: los suben GetPieza y SubePieza (D3D9Star.cs, BuscadorPortadasGpu.cs) y los pone tambien EnsureSongPiece (AcabadoGpu.cs, con PuenteDibujo.Entrega); aqui se pinta en sus puntos
+        private readonly SKBitmap[] uiPieza = new SKBitmap[NumPiezas];   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP): los suben GetPieza (D3D9Star.cs) y SubePieza (BuscadorPortadasGpu.cs) y los pone tambien EnsureSongPiece (AcabadoGpu.cs), el mismo objeto como en XP
         private readonly Rectangle[] uiPiezaRect = new Rectangle[NumPiezas];
         private readonly long[] uiPiezaSig = new long[NumPiezas];
         private readonly int[] uiPiezaVer = new int[NumPiezas];
@@ -1477,10 +1477,10 @@ namespace Rocola
             if (uiPieza[cual] == null || uiPieza[cual].Width != donde.Width || uiPieza[cual].Height != donde.Height)
             {
                 if (uiPieza[cual] != null) uiPieza[cual].Dispose();
-                uiPieza[cual] = PuenteDibujo.Entrega(Mapas.Nuevo(donde.Width, donde.Height), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos en un Bitmap de la capa dueno de ellos y con ese formato (como EnsureSongPiece)
+                uiPieza[cual] = Mapas.Nuevo(donde.Width, donde.Height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap Bgra8888 premultiplicado y transparente (Nativo/Mapas.cs)
             }
             using (cual == PiezaVistaPreviaBuscador() ? CapturaTexto(4) : new CapturaCintas(null))   // en el buscador con portadas, la tarjeta elegida (BuscadorPortadasGpu.cs)
-            using (SKCanvas g = new SKCanvas(PuenteDibujo.Mapa(uiPieza[cual])))   // EN LINUX: Graphics.FromImage(pieza): un lienzo de Skia sobre sus puntos (los mismos)
+            using (SKCanvas g = new SKCanvas(uiPieza[cual]))   // EN LINUX: Graphics.FromImage(pieza): un lienzo de Skia sobre sus puntos
             {
                 bool suave = true, copia = false, medio = false; Filtro filtro = Filtro.Bilineal;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable; la copia, el medio pixel y el filtro, los de fabrica de un Graphics
                 AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // igual que la imagen grande   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable

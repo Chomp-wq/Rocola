@@ -1,7 +1,7 @@
 #if ROCOLA_GPU
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la precarga hace sus mapas de usar y tirar y sus letras con SkiaSharp y lo nativo (Xp/Nativo), y llama directo a los hornos ya traducidos; lo que aun es de la capa (el Graphics que da EnSeco, Form1.Video.cs, y la moneda que entrega BakeMoneda) va escrito entero
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la precarga hace sus mapas de usar y tirar y sus letras con SkiaSharp y lo nativo (Xp/Nativo), y llama directo a los hornos ya traducidos; EnSeco (Form1.Video.cs) da el lienzo de Skia y BakeMoneda (SuenaVivoGpu.cs) un SKBitmap
 namespace Rocola
 {
     public partial class Form1
@@ -120,7 +120,7 @@ namespace Rocola
                         using (SKBitmap invita = Mapas.Nuevo(t.Width, t.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb); PintaInvita (SuenaVivoGpu.cs, ya traducido), directo
                             PintaInvita(invita, "Cancion de relleno", false, 4, tit, txt, pie, out ranura, out radio);
                     }
-                    using (Rocola.Dibujo2D.Bitmap moneda = GpuPanel.BakeMoneda(96)) { }   // EN LINUX: BakeMoneda (SuenaVivoGpu.cs) todavia entrega un Bitmap de la capa (para Upload), escrito entero
+                    using (SKBitmap moneda = GpuPanel.BakeMoneda(96)) { }   // EN LINUX: Bitmap -> SKBitmap (lo que da BakeMoneda, SuenaVivoGpu.cs); se suelta igual
                     using (Rocola.Nativo.Letra mas = Rocola.Nativo.Letra.EnPixeles(fam, 14f, true))   // EN LINUX: new Font(fam, 14, Bold, GraphicsUnit.Pixel): en pixeles
                     {
                         Size m = TamanoMas("+4 cr\u00E9ditos", mas);
