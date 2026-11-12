@@ -12,6 +12,12 @@
 //     y con decimales, escala, giro y recorte), y los OnPaint tambien como los pinta Ventanas.Escritorio (la matriz de su sitio y el recorte
 //     sellado). Despues de cada OnPaint se apunta el estado que le queda al Graphics (XP se lo deja cambiado).
 //   - Lo privado (las vistas, el cubo, las casillas) va por reflexion.
+//   - (vistas-pared, 12-11-2026) AttractView, AlbumView y CubeBox ya no heredan de Control en la traduccion: no tienen OnPaint. Donde la
+//     referencia llama a su OnPaint con un Graphics, la traduccion llama a Pinta(SKCanvas) (la de la pantalla) cuando el Graphics trae el
+//     estado de un WM_PAINT (el de fabrica), y si no a la Pinta con el estado en argumentos (la del OnPaint de XP, la que pide el precalentado),
+//     con el lienzo y el estado de ese Graphics; despues se le pone al Graphics lo que XP le dejaba (lo que hacia el puente). El sitio y el
+//     BackColor, por reflexion (de Control en la referencia, de su CajaVista en la traduccion). Caso nuevo: el precalentado de la atraccion
+//     (Form1.PrecalientaUnPoco, paso 2: EnSeco con InvokePaint en la referencia, con Pinta en la traduccion).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet bin/Release/net10.0/VistasPared.dll [vuelca CARPETA]
 using System;
 using System.Collections;
@@ -83,6 +89,35 @@ namespace BancoPared
             return g;
         }
         private static string Queda(Graphics g) { return "queda=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.InterpolationMode + "/" + g.PixelOffsetMode; }
+        // (vistas-pared) el sitio y el fondo de una vista: Control.SetBounds/BackColor en la referencia, los de su CajaVista en la traduccion
+        private static void PonSitio(object v, int w, int h) { v.GetType().GetMethod("SetBounds", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null).Invoke(v, new object[] { 0, 0, w, h }); }
+        private static void PonFondo(object v, Color c) { v.GetType().GetProperty("BackColor", BindingFlags.Public | BindingFlags.Instance).SetValue(v, c); }
+        private static int pintas;   // (vistas-pared) las veces que se llamo a Pinta(SKCanvas), la de la pantalla
+        // (vistas-pared) lo que hacia el OnPaint de XP en una vista sin herencia: Pinta con el lienzo y el estado del Graphics (la de la pantalla
+        // si es el de un WM_PAINT), y despues, en el Graphics, lo que XP le dejaba (que en la traduccion se va con el)
+        private static void PintaSinOnPaint(object vista, Graphics g)
+        {
+            Type t = vista.GetType(); string tipo = t.Name;
+            object e = Puente.GetMethod("Estado", Todo, null, new[] { typeof(Graphics) }, null).Invoke(null, new object[] { g });
+            object lienzo = Por("Lienzo", typeof(Graphics), g);
+            bool suave = (bool)Campo(e, "Suave"), copia = (bool)Campo(e, "Copia"), medio = (bool)Campo(e, "Medio"); object filtro = Campo(e, "Filtro");
+            object bilineal = Enum.Parse(filtro.GetType(), "Bilineal");
+            bool wmPaint = !suave && !copia && !medio && filtro.Equals(bilineal);
+            int w = (int)t.GetProperty("Width").GetValue(vista), h = (int)t.GetProperty("Height").GetValue(vista);
+            object queda = filtro;
+            if (wmPaint) { pintas++; t.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null).Invoke(vista, new[] { lienzo }); queda = bilineal; }
+            else
+            {
+                directas++;
+                object[] a = tipo == "CubeBox" ? new[] { lienzo, copia, medio } : new[] { lienzo, suave, copia, filtro, medio };
+                MethodInfo m = null; foreach (MethodInfo x in t.GetMethods(Todo)) if (x.Name == "Pinta" && x.GetParameters().Length == a.Length) m = x;
+                m.Invoke(vista, a);
+                if (tipo == "AlbumView") queda = a[3];   // (el filtro que DrawWall deja puesto, por ref)
+            }
+            if (tipo == "AttractView" && !(w < 8 || h < 8)) { g.InterpolationMode = InterpolationMode.Bilinear; g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; }
+            else if (tipo == "AlbumView") g.InterpolationMode = (InterpolationMode)(int)queda;
+            else if (tipo == "CubeBox" && !(w < 12 || h < 12)) { g.InterpolationMode = InterpolationMode.Bilinear; g.SmoothingMode = SmoothingMode.AntiAlias; }
+        }
 
         // ---- la traduccion, por reflexion (en la referencia no esta)
         private static MethodInfo Metodo(Type t, string nombre, Type primero, int parametros = -1)
@@ -362,7 +397,7 @@ namespace BancoPared
         private static object Vista(int w, int h, IList discos)
         {
             object v = Activator.CreateInstance(TVista, true);
-            ((Control)v).SetBounds(0, 0, w, h);
+            PonSitio(v, w, h);
             Pon(v, "Page", discos);
             Pon(v, "GetCover", ConAlbum("TapaDe", typeof(Image))); Pon(v, "PeekCoverGpu", ConAlbum("TapaDe", typeof(Image)));
             Pon(v, "EnCola", ConAlbum("EnColaDe", typeof(bool)));
@@ -441,7 +476,7 @@ namespace BancoPared
             {
                 string ex = "";
                 if (sitio) { g.TranslateTransform(37, 21); g.SetClip(new Rectangle(0, 0, w, h)); sella.Invoke(g, null); }
-                try { for (int i = 0; i < veces; i++) using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, w, h))) onPaint.Invoke(vista, new object[] { pe }); }
+                try { for (int i = 0; i < veces; i++) if (onPaint == null) PintaSinOnPaint(vista, g); else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, w, h))) onPaint.Invoke(vista, new object[] { pe }); }
                 catch (Exception x) { ex = " " + Exc(x); }
                 Linea(nombre, Puntos(nombre, b) + ex + " " + Queda(g));
             }
@@ -495,7 +530,7 @@ namespace BancoPared
             foreach (int[] p in pantallas)
             {
                 object v = Activator.CreateInstance(t, true);
-                ((Control)v).SetBounds(0, 0, p[0], p[1]);
+                PonSitio(v, p[0], p[1]);
                 Pon(v, "GetCoverByPath", (Func<string, Image>)TapaPorRuta);
                 // el cielo de la atraccion (Starfield, Form1.Fondo.cs: no es de este grupo) depende del reloj y del azar: se rehace cada
                 // RefrescoMs y tira fugaces con un Random sin semilla. Para que las dos salidas se puedan comparar, aqui se rehace en cada
@@ -521,9 +556,25 @@ namespace BancoPared
                     Pinta(s + "-" + e.Nombre, v, p[0], p[1], e, false, 1);
                     Pinta(s + "-" + e.Nombre + "-sitio", v, p[0], p[1], e, true, 1);
                 }
-                ((IDisposable)v).Dispose();
+                PrecalientaAtraccion(s, v);
+                (v as IDisposable)?.Dispose();   // (vistas-pared: en la traduccion no es IDisposable, como en XP no le sobrescribe Dispose)
             }
         }
+        // (vistas-pared) el precalentado de la atraccion: Form1.PrecalientaUnPoco en su paso 2 (EnSeco de la vista: en XP, InvokePaint con el
+        // Graphics de un mapa con suavizado; en la traduccion, la Pinta con ese estado). El mapa se tira: se ve lo que hornea (la mezcla de las
+        // portadas del cubo, blendBmp) y si dio el paso por hecho (3) o lo reintenta (2: la vista aun no mide 8x8)
+        private static void PrecalientaAtraccion(string s, object v)
+        {
+            Type t = v.GetType();
+            Pon(v, "CycleCovers", new List<string> { "a", "b", "c" }); Pon(v, "Phase", 3.6); Pon(v, "Angle", 0.7); Pon(v, "SongCount", 77);
+            t.GetField("blendBmp", Todo).SetValue(v, null);
+            object f = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Form1));
+            Pon(f, "attractView", v); Pon(f, "precalPaso", 2); Pon(f, "precalReintentos", 0); Pon(f, "lastInputTick", unchecked(Environment.TickCount - 100000));
+            string ex = "";
+            try { Llama(f, typeof(Form1), "PrecalientaUnPoco"); } catch (Exception x) { ex = " " + Exc(x); }
+            Linea(s + "-precalienta", "paso=" + Campo2(f, "precalPaso") + " reintentos=" + Campo2(f, "precalReintentos") + " " + Puntos(s + "-precalienta", t.GetField("blendBmp", Todo).GetValue(v)) + ex);
+        }
+        private static object Campo2(object o, string c) { for (Type t = o.GetType(); t != null; t = t.BaseType) { FieldInfo fi = t.GetField(c, Todo | BindingFlags.DeclaredOnly); if (fi != null) return fi.GetValue(o); } return null; }
         private static void CubosDeCancion()
         {
             Type t = typeof(Form1).GetNestedType("CubeBox", BindingFlags.NonPublic);
@@ -532,13 +583,13 @@ namespace BancoPared
             foreach (int[] p in pantallas)
             {
                 object v = Activator.CreateInstance(t, true);
-                ((Control)v).SetBounds(0, 0, p[0], p[1]);
+                PonSitio(v, p[0], p[1]);
                 int k = 0;
                 foreach (Estado e in Estados)
                     foreach (bool opaco in new[] { true, false })
                     {
                         Pon(v, "Cover", tapas[k % tapas.Length]); Pon(v, "Angle", 0.37 * k); Pon(v, "Phase", 0.8 * k);
-                        ((Control)v).BackColor = opaco ? Color.FromArgb(10, 15, 44) : Color.Transparent; k++;
+                        PonFondo(v, opaco ? Color.FromArgb(10, 15, 44) : Color.Transparent); k++;
                         string s = "cubito-" + p[0] + "x" + p[1] + "-" + e.Nombre + "-" + (opaco ? "opaco" : "transparente");
                         Pinta(s, v, p[0], p[1], e, false, 1);
                         Pinta(s + "-sitio", v, p[0], p[1], e, true, 1);
@@ -546,7 +597,7 @@ namespace BancoPared
                 // el relevo: media vuelta y la portada nueva
                 Pon(v, "Cover", opaca); Llama(v, t, "Relevo", (object)jpg); Llama(v, t, "Avanza", 0.06);
                 Linea("cubito-relevo-" + p[0], "girando=" + t.GetProperty("Girando", Todo).GetValue(v, null) + " usa=" + Llama(v, t, "UsaPortada", (object)jpg) + "/" + Llama(v, t, "UsaPortada", (object)conAlfa));
-                ((IDisposable)v).Dispose();
+                (v as IDisposable)?.Dispose();
             }
         }
 
@@ -578,7 +629,7 @@ namespace BancoPared
             if (solo.Count == 0 || solo.Contains("atracciones")) Atracciones();
             if (solo.Count == 0 || solo.Contains("cubitos")) CubosDeCancion();
             if (solo.Count == 0 || solo.Contains("precalentados")) Precalentados();
-            Console.Error.WriteLine("pared: " + n + " lineas, " + directas + " llamadas directas a la traducida");
+            Console.Error.WriteLine("pared: " + n + " lineas, " + directas + " llamadas directas a la traducida, " + pintas + " a Pinta");
             return 0;
         }
     }

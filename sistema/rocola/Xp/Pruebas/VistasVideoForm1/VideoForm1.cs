@@ -11,6 +11,9 @@
 //     decimales, escala, giro y recorte); despues de cada llamada se apunta el estado que le queda al Graphics (en la traduccion no se toca:
 //     tiene que ser el mismo que deja el Restore de XP).
 //   - El texto de GDI (TextRenderer) de las vistas sin traducir por el Graphics del puente (GraphicsVideoForm1): la matriz del HDC.
+//   - (vistas-pared, 12-11-2026) La firma de XP de EnSeco con un Action<Graphics> y GraphicsVideoForm1 se borraron del puente (el precalentado de
+//     la atraccion ya pinta con Pinta): en la traduccion, el EnSeco traducido con lo que hacia el puente aqui (un Graphics sobre su lienzo con su
+//     estado, PuenteDibujo.Graphics) y el texto de GDI por ese mismo Graphics.
 //   - Lo privado va por reflexion (la referencia no tiene PuenteDibujo ni Rocola.Nativo: tampoco se nombran aqui).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet bin/Release/net10.0/VistasVideoForm1.dll [vuelca CARPETA]
 using System;
@@ -348,7 +351,10 @@ namespace BancoVideoForm1
             MethodInfo m = null;
             foreach (MethodInfo mi in typeof(Form1).GetMethods(Todo))
                 if (mi.Name == "EnSeco" && mi.GetParameters().Length == 2 && mi.GetParameters()[1].ParameterType == typeof(Action<Graphics>)) m = mi;
-            bool conControl = m.GetParameters()[0].ParameterType == typeof(Control);
+            // (vistas-pared) sin la firma de XP en el puente: la traducida (Action<SKCanvas, bool, AjusteLetra>) con lo que hacia el puente
+            MethodInfo tr = null;
+            if (m == null) foreach (MethodInfo mi in typeof(Form1).GetMethods(Todo)) if (mi.Name == "EnSeco" && mi.GetParameters().Length == 2) tr = mi;
+            bool conControl = (m ?? tr).GetParameters()[0].ParameterType == typeof(Control);
             int[][] medidas = { new[] { 7, 40 }, new[] { 40, 7 }, new[] { 8, 8 }, new[] { 333, 121 }, new[] { 1024, 600 } };
             foreach (int[] md in medidas)
             {
@@ -363,9 +369,25 @@ namespace BancoVideoForm1
                         using (SolidBrush b = new SolidBrush(Color.Red)) { g.FillEllipse(b, 1, 1, 5, 5); g.DrawString("x", f, b, 0, 0); }
                     }
                 };
-                object r = m.Invoke(form, new object[] { c, dibuja });
+                object r = m != null ? m.Invoke(form, new object[] { c, dibuja }) : tr.Invoke(form, new object[] { c, ComoElPuente(tr.GetParameters()[1].ParameterType, dibuja) });
                 Linea("enseco-" + md[0] + "x" + md[1], r + " " + visto);
             }
+        }
+
+        // (vistas-pared) lo que hacia la firma de XP de EnSeco que se borro del puente: a 'dibuja' le da un Graphics sobre el lienzo de la traducida
+        // con su estado (suavizado y modo de letra; sin copia, filtro Bilinear, sin medio pixel) y la matriz del HDC de un mapa (la identidad)
+        private static Delegate ComoElPuente(Type accion, Action<Graphics> dibuja)
+        {
+            Type[] ts = accion.GetGenericArguments();   // (SKCanvas, bool, AjusteLetra)
+            System.Linq.Expressions.ParameterExpression c = System.Linq.Expressions.Expression.Parameter(ts[0], "g"), sv = System.Linq.Expressions.Expression.Parameter(ts[1], "suave"), aj = System.Linq.Expressions.Expression.Parameter(ts[2], "ajuste");
+            Action<SKCanvas, bool, object> hace = delegate (SKCanvas g, bool suave, object ajuste) { dibuja(GraphicsComoElPuente(g, suave, ajuste)); };
+            return System.Linq.Expressions.Expression.Lambda(accion, System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(hace), c, sv, System.Linq.Expressions.Expression.Convert(aj, typeof(object))), c, sv, aj).Compile();
+        }
+        private static Graphics GraphicsComoElPuente(SKCanvas g, bool suave, object ajuste)
+        {
+            Type te = typeof(Form1).Assembly.GetType("Rocola.EstadoLienzo"), tf = typeof(Form1).Assembly.GetType("Rocola.Nativo.Filtro");
+            object e = Activator.CreateInstance(te, suave, ajuste, false, Enum.Parse(tf, "Bilineal"), false, SKMatrix.Identity);
+            return (Graphics)Puente.GetMethod("Graphics", Todo, null, new[] { typeof(SKCanvas), te }, null).Invoke(null, new[] { g, e });
         }
 
         // ================================================================ EL TEXTO DE GDI POR EL PUENTE (GraphicsVideoForm1): la matriz del HDC
@@ -376,6 +398,9 @@ namespace BancoVideoForm1
         private static void TextoGdi()
         {
             MethodInfo gvf = Puente != null ? Puente.GetMethod("GraphicsVideoForm1", Todo) : null;
+            // (vistas-pared) GraphicsVideoForm1 se borro: lo que hacia (PuenteDibujo.Graphics con el estado y la matriz identidad), aqui
+            Type te = Puente != null ? typeof(Form1).Assembly.GetType("Rocola.EstadoLienzo") : null;
+            MethodInfo gEst = te != null ? Puente.GetMethod("Graphics", Todo, null, new[] { typeof(SKCanvas), te }, null) : null;
             Font[] letras = { new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold), new Font("Microsoft Sans Serif", 16f, FontStyle.Regular, GraphicsUnit.Pixel) };
             TextFormatFlags[] banderas = { TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis };
             int k = 0;
@@ -394,6 +419,7 @@ namespace BancoVideoForm1
                                     g.TranslateTransform(13f, 5f);   // (como DrawCtrlOverlay y EnsureUiOverlay antes de llamar a la vista)
                                     Graphics gg = g;
                                     if (gvf != null) { object[] s = EstadoDe(g); gg = (Graphics)gvf.Invoke(null, new[] { s[0], s[1], s[2], s[3], s[4], s[5] }); directas++; }
+                                    else if (gEst != null) { object[] s = EstadoDe(g); gg = (Graphics)gEst.Invoke(null, new[] { s[0], Activator.CreateInstance(te, s[1], s[2], s[3], s[4], s[5], SKMatrix.Identity) }); directas++; }
                                     TextRenderer.DrawText(gg, "Tecla Ñ & más texto", f, new Rectangle(4, 6, 150, 30), Color.FromArgb(255, 250, 240, 90), fl);
                                 }
                                 catch (Exception x) { ex = " " + Exc(x); }
