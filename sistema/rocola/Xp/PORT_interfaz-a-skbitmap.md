@@ -64,7 +64,7 @@ Nada nuevo en `Nativo/` ni en `Plataforma/`.
   a 402).
 - `Pruebas/VistasFrontera/Frontera.cs`: solo la nota; con `puente` busca la sobrecarga con `Bitmap` por reflexión y, si no hay, la de
   `SKBitmap`, así que ahora las dos puertas van por la misma.
-- `VistasAcabadoEstilo` compara la huella del IL de `SubeUi` y `VentanaEnUso` contra la base: cambia (el tipo del parámetro y de las
+- `VistasAcabadoEstilo` compara la huella del IL de `SubeUi`, `RobaUiParaVentana` y `VentanaEnUso` contra la base: cambia (el tipo del parámetro y de las
   sobrecargas a las que llama); con los nombres de tipo `SkiaSharp.SKBitmap` y `Rocola.Dibujo2D.Bitmap` cambiados por uno solo, el IL de
   la base y el nuevo son **idénticos** (diff vacío en los dos).
 
@@ -86,7 +86,7 @@ Salidas en `/root/rocola-trabajo/port/interfaz-a-skbitmap` (fuera del repositori
     (153 en la referencia), 0 distintas.
   - suena: 488 líneas IGUALES (falsas y DejaVu; 72 llamadas directas); las 5 monedas `Format32bppPArgb flags=2` con la misma huella.
   - reposo: 1 791 IGUALES (las dos; 768 directas).
-  - acabado-estilo: 0 distintas de 6 603 contra la referencia (las dos); contra la base solo `il-SubeUi` e `il-VentanaEnUso` (arriba).
+  - acabado-estilo: 0 distintas de 6 603 contra la referencia (las dos); contra la base solo `il-SubeUi`, `il-RobaUiParaVentana` e `il-VentanaEnUso` (arriba; corregido en la revisión).
   - buscador-portadas: 3 128 IGUALES (las dos; 250 directas, 5 excepciones las de siempre).
   - portadas: 478 IGUALES, 0 excepciones, 0 «directo distinto», 104 no nativos comparados.
   - **Banco** (semillas 7 y 11 con las letras falsas, 5 con SIN_LETRAS; ejecutores gdi, nativo y puente; 3 000 casos): **0 distintos en
@@ -128,3 +128,29 @@ Salidas en `/root/rocola-trabajo/port/interfaz-a-skbitmap` (fuera del repositori
 - Notas viejas en archivos que no son de este grupo y que nombran `Puente.portadas.cs` o el prestado: `DibujoLigeroGpu.cs:257` y `:263`,
   `RespuestaGpu.cs:111`, `TextoMovilGpu.cs:12` (comentarios; las arregla el dueño de cada archivo en su oleada o 9b).
 - `Pruebas/VistasFrontera/compara.sh` sigue corriendo la puerta `puente`, que ya es la misma que `sk` (se puede quitar en 8b).
+
+## Revisión
+
+Revisor independiente, 12-11-2026, sobre `b73f4bc` y `ac1be29`. Se leyó el `git diff d05b06d..HEAD` entero contra `Rocola/` y se
+repitieron las comprobaciones (salidas en `/root/rocola-trabajo/port/interfaz-a-skbitmap/rev`, sin binarios):
+
+- Las 10 líneas que pierden su «EN LINUX» (`AcabadoGpu.cs` 337, `D3D9Star.cs` 2603, 2606, 3251 y 3252, `EstadoReposoGpu.cs` 130, 160 y
+  181, `Form1.Ajustes.cs` 1924, `SuenaVivoGpu.cs` 755) son idénticas a las de XP (con la sustitución mecánica de `diff-xp.py`): no
+  aparecen en su diff. El resto de las cambiadas son solo el tipo (`Bitmap` → `SKBitmap`), `new Bitmap(…, PArgb)` → `Mapas.Nuevo`,
+  `Graphics.FromImage` → `new SKCanvas` y el `Clone` → `Mapas.Copia`, todas con su marca; el formato de XP de cada imagen es
+  `Format32bppPArgb` (comprobado en `Rocola/`). Los `Dispose` y las comparaciones por identidad están en las mismas líneas que XP; con
+  `Entrega` el `Bitmap` ya era dueño de sus puntos, así que soltar suelta lo mismo que antes. En `Codigo/` (fuera de comentarios) no
+  queda `PuenteDibujo.Mapa`, `Entrega` ni `Bitmap`; `PuenteDibujo.Mapa` solo en `Puente.fondo.cs:24` y `Puente.pared.cs:27`, como dice
+  el documento. Nada nuevo imita a Windows.
+- (a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos, los mismos archivo:línea que la base. (b) `diff-xp.py -v` de los
+  13 archivos: ninguna línea sin marca nueva. 109 archivos de `Codigo/` con las líneas y los CRLF de `d05b06d`. (c) NativeAOT: 0 avisos
+  IL/AOT (los 15 del compilador).
+- (e) Cintas 29 de 29 iguales (6 616 cuadros); frontera (`compara.sh`, sk y puente, falsas y DejaVu): 106 líneas y 153 texturas, 0
+  distintas; suena 488 IGUALES (las dos; las monedas `Format32bppPArgb flags=2`); reposo 1 791 IGUALES (las dos); buscador-portadas
+  3 128 IGUALES (las dos); portadas 478 IGUALES; acabado-estilo 0 distintas de 6 603 contra la referencia (las dos). Banco: semillas 7 y
+  11 (letras falsas) y 5 (`SIN_LETRAS`) × gdi, nativo y puente contra el congelado: 0 distintos en los 9; `puente-objetos` 402 bien, 0
+  mal.
+- Encontrado: el documento decía que contra la base de acabado-estilo cambiaban solo `il-SubeUi` e `il-VentanaEnUso`; cambian tres, también
+  `il-RobaUiParaVentana` (`winLastBmp = null`: el campo era `Bitmap` en la base de ese arnés, `b609319`). Volcado el IL de los tres y
+  cambiados `Rocola.Dibujo2D.Bitmap`/`Image` y `SkiaSharp.SKBitmap` por un solo nombre, los tres son idénticos. Corregido arriba.
+- No se repitieron recorridos ni escenas: el cambio es de tipos y lo cubren las cintas y los arneses, que salen iguales.
