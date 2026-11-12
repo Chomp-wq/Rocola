@@ -1749,7 +1749,7 @@ namespace Rocola
             }
 
             // Fondo del formulario (franjas): cielo cacheado + estrellas TITILANTES por cuadros horneados.
-            public void DrawCached(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (lo que usa: filtro, medio pixel y copia); la firma de XP (Form1.cs y BgPanel.OnPaint, con un Graphics) va en el puente (Puente.fondo.cs)
+            public void DrawCached(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (lo que usa: filtro, medio pixel y copia); la firma de XP (con un Graphics, para Form1.cs) va en el puente (Puente.fondo.cs); BgPanel (su Pinta) ya la llama directo
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
@@ -2396,7 +2396,7 @@ namespace Rocola
                 Sky.Dim = BgDim;   // en sincronia con la rejilla y las franjas (una sola pieza)
                 Sky.DrawCached(g, filtro, medio, copia, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de este archivo); ya no pasa por la firma de XP del puente
             }
-            private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } }   // EN LINUX: Control.BackColor (el del Panel; Control.OnBackColorChanged lo repinta): el color propio, que Form1 siempre pone al crearlo; sin poner, el gris de los controles de XP (COLOR_BTNFACE de Luna)
+            private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } }   // EN LINUX: Control.BackColor (el del Panel; Control.OnBackColorChanged lo repinta): el color propio, que Form1 siempre pone al crearlo (Form1.cs:1182); sin poner, Control da el de su dueno (propiedad ambiental) o, sin dueno, SystemColors.Control (COLOR_BTNFACE de Luna): aqui siempre este ultimo, que no se ve porque nunca queda sin poner
         }
     }
 }

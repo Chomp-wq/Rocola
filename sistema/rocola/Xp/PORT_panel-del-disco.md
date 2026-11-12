@@ -119,3 +119,42 @@ Anadidas (de la transicion): `ILaCapa.AgregaRotulo` (se va con el Label, oleada 
 - Sin la capa, desechar el panel no desecha a sus hijas (no hay quien las desee: el desecho de Form1 es de la oleada 8).
 - La rueda sin atender sube del hijo al dueno y a la ventana (en XP, DefWindowProc la pasa al padre); la rocola no da el foco a una hija
   del panel, asi que hoy no se usa.
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff entero (01fcf68..3ea42d2) contra Rocola/Form1.Fondo.cs y Rocola/Form1.cs y la fuente de referencia de WinForms
+(/tmp/claude-0/agente-winforms/ref: Control.cs, CreateParams con WS_CLIPCHILDREN siempre; Invalidate() = Invalidate(false); el BackColor
+ambiental). Lo comprobado:
+
+- BgPanel: la logica de OnPaint igual linea por linea (Width/Height, el corte de 4, Sky nulo, SkyOffset por Left/Top, SkyFull por el cliente
+  del dueno, SkyMid, Acento, Dim y DrawCached); el estado que recibe DrawCached es el de un Graphics de WM_PAINT (Bilinear, sin medio pixel,
+  SourceOver), el mismo que daba la capa por el puente (Dibujo2D: InterpolationMode.Bilinear de fabrica; PintaSolo guarda y devuelve el
+  estado). SetStyle sin ResizeRedraw: RepintaConMedida = false, y el hueco de la capa tampoco lo lleva (Ventanas.Control.cs: estilos de
+  fabrica). Panel de la capa (Ventanas.Control.cs:820) apaga Selectable y TabStop: el hueco tambien.
+- Las hijas: XP las agrega al panel antes de poner el panel en la ventana (Form1.cs:1244-1247 y 1339); entre esas lineas nadie mira su
+  Parent ni su Visible, asi que anotarlas y pasarlas al hueco al entrar el panel da el mismo arbol y el mismo orden (lblAlbum arriba).
+  Sus BackColor los pone todos Form1 (1186-1193 y 1244; Form1.Video.cs:460-464): el ambiental del hueco no se ve.
+- Las firmas Draw y DrawReactive del puente (las «:43 y :53» del plan) las siguen pidiendo Form1.Pared.cs:114 y 1527 y Form1.Buscador.cs
+  (por su puente): se quedan; DrawCached(Graphics) se queda por Form1.cs:1062.
+- Lineas y CRLF de Codigo/ iguales a 01fcf68 (Form1.Fondo.cs 2402/2343, Form1.cs 2785/2741); diff-xp -v: solo las 2 lineas sin marca de la
+  base en cada archivo.
+
+Lo encontrado y arreglado (solo comentarios; ningun cambio de logica):
+
+- Nota vieja en Form1.Fondo.cs:1752 (Starfield.DrawCached traducida): decia que la firma del puente era para «Form1.cs y BgPanel.OnPaint»;
+  BgPanel ya la llama directo. Corregida (una linea fuera del rango 2372-2397, lejos de lo que toca 4a: ~771, ~1021, ~1147).
+- La nota de BgPanel.BackColor decia que sin poner es el gris de XP; en WinForms es el del dueno (ambiental) o, sin dueno,
+  SystemColors.Control. Precisada (no cambia nada: Form1 siempre lo pone).
+
+Repetido por el revisor: a) build Release --no-incremental 0 errores y los 15 avisos de la base; b) diff-xp igual que la base; c) NativeAOT
+0 avisos IL/AOT; arnes VistasFondo: 2763 lineas, solo distinta la marca (24 casos del panel por Pinta); PantallaVistas 93 de 93; pruebas41
+41 de 41; pruebas_hoja 62 de 62; AOT=1 pruebas_pantalla 32 de 32 (JIT y NativeAOT). Recorridos y escenas no repetidos (la revision no los
+pone en duda: el cambio del revisor es solo de comentarios).
+
+Riesgos que anade la revision:
+
+- Sin la capa (lista nativa), PintaHijas pinta el panel entero y despues las hijas encima; en XP el panel tiene WS_CLIPCHILDREN y no pinta
+  debajo de sus hijos (y una hija transparente pide al padre su fondo, PaintTransparentBackground). El resultado es el mismo mientras el
+  Pinta del panel no dependa del recorte (BgPanel no depende: usa Width/Height). Tampoco mira la Region de las hermanas de encima (la capa
+  si: Ventanas.Escritorio.PintaHijo); ninguna hija del panel tiene Region.
+- Las tablas hijas/padre son estaticas: lo que se agrega a un panel queda referido hasta QuitaVista (la rocola no lo quita nunca).
