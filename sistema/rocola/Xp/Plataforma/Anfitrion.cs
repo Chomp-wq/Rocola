@@ -211,7 +211,7 @@ namespace Rocola
             private readonly IVista vista;
             internal bool Quitado;
             internal IVista Vista { get { return vista; } }
-            internal HuecoDeVista(IVista v) { vista = v; }
+            internal HuecoDeVista(IVista v) { vista = v; TabStop = v.ParaElTabulador; }   // (vista-ayuda, revision: el TabStop que XP le pone a la vista, como si heredara)
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
             internal static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }

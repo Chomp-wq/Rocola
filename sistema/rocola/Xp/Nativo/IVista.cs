@@ -50,6 +50,10 @@ namespace Rocola
         // MouseDoubleClick, y despues MouseUp: Control.cs:12673-12743-, WmMouseMove, WmMouseEnter/Leave y WmMouseWheel). e en las
         // coordenadas de la vista; en la rueda, e.Handled = true para que no siga al dueno. De fabrica, nada (Control.OnMouse*: solo el aviso).
         void Raton(AvisoRaton que, Raton e) { }
+        // SI EL TABULADOR SE PARA EN ELLA (Control.TabStop: true de fabrica, Control.cs, TabStop; SelectNextControl con tabStopOnly solo elige
+        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
+        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; la lista nativa aun no recorre vistas con el tabulador (oleada 6c).
+        bool ParaElTabulador { get { return true; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que
