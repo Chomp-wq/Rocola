@@ -26,7 +26,7 @@ namespace Rocola
         internal static void AvisaCarpetaDatos(string carpeta, Exception ex)
         {
             avisoCarpetaDatos = "No se pudo usar la carpeta de datos:\r\n" + carpeta
-                + "\r\n\r\nSe usara la carpeta del programa:\r\n" + Application.StartupPath
+                + "\r\n\r\nSe usara la carpeta del programa:\r\n" + CarpetaPrograma.Ruta   // EN LINUX: Application.StartupPath -> CarpetaPrograma.Ruta (Nativo/CarpetaPrograma.cs): la carpeta del programa sin la barra del final, como la de WinForms
                 + "\r\n\r\nLos datos de la otra carpeta no se han borrado.\r\n" + ex.Message;
         }
 
