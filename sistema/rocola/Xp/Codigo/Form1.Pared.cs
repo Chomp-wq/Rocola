@@ -43,7 +43,7 @@ namespace Rocola
                 // mismo ritmo que en el resto del programa. Rehacer el cielo entero 24 veces por segundo era
                 // el grueso del gasto de esta pantalla, y es la que mas horas pasa encendida.
                 attractStars.RefrescoMs = 200;
-                caja = new CajaVista(this);   // EN LINUX: SetStyle(AllPaintingInWmPaint | OptimizedDoubleBuffer | UserPaint | ResizeRedraw, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera; ResizeRedraw = RepintaConMedida, que la CajaVista trae de fabrica (al cambiar de medida se pinta entera); Selectable, TabStop, StandardClick y StandardDoubleClick no los toca: los de fabrica de Control, que el hueco de la capa conserva; un Control mide 0x0 de fabrica (DefaultSize), como la caja
+                caja = new CajaVista(this);   // EN LINUX: SetStyle(AllPaintingInWmPaint | OptimizedDoubleBuffer | UserPaint | ResizeRedraw, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera, menos el OnPaintBackground de fabrica (que en WM_PAINT rellenaba con su BackColor sin poner, el de la ventana: el hueco no pinta fondo), que no se ve: el cielo (Starfield.Draw: el mapa opaco entero) lo tapa todo y con menos de 8x8 no hay nada que ver; ResizeRedraw = RepintaConMedida, que la CajaVista trae de fabrica (al cambiar de medida se pinta entera); Selectable, TabStop, StandardClick y StandardDoubleClick no los toca: los de fabrica de Control, que el hueco de la capa conserva; un Control mide 0x0 de fabrica (DefaultSize), como la caja
             }
 
             private void EnsureRes()
@@ -1107,7 +1107,7 @@ namespace Rocola
 
             public AlbumView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera (Control.SetBoundsCore); Selectable, TabStop (esta en el ciclo del tabulador de XP: HelpBar, LetterBar, AlbumView, ProgressView, GpuPanel), StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva; un Control mide 0x0 de fabrica, como la caja
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera, menos el OnPaintBackground de fabrica (que en WM_PAINT rellenaba con su BackColor sin poner, el de la ventana: el hueco no pinta fondo), que no se ve: lo tapan el Clear de menos de 8x8 o el cielo (DrawReactive: el mapa opaco entero), y con GpuCovered la tarjeta, opaca y encima; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera (Control.SetBoundsCore); Selectable, TabStop (esta en el ciclo del tabulador de XP: HelpBar, LetterBar, AlbumView, ProgressView, GpuPanel), StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva; un Control mide 0x0 de fabrica, como la caja
             }
 
             private void OnFontChanged(EventArgs e)   // EN LINUX: protected override void OnFontChanged: lo llama el Font de esta vista (junto a Pinta) cuando cambia la que se ve, como Control.Font

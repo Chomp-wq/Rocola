@@ -142,3 +142,40 @@ Quedan muertas en archivos que no son de este grupo (compilan igual; las borra l
   ProgressView, GpuPanel) hoy lo da el hueco; la lista nativa tendra que leer `ParaElTabulador` y `Seleccionable` (oleada 6c / 8).
 - La Pinta de cinco argumentos de la atraccion es la que pide el precalentado: si algun dia EnSeco le pusiera otro estado (la copia o el
   medio pixel), Form1.Portadas.cs tendria que pasarselo (hoy son los de fabrica de Graphics.FromImage, como en XP).
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff d05b06d..e4a7d5a entero contra Rocola/Form1.Pared.cs, Form1.Portadas.cs, Form1.Fondo.cs (Starfield) y Form1.Video.cs (EnSeco),
+y contra la capa (Ventanas.Control.cs: BackColor, OnPaintBackground, Invalidate(Rectangle), PintaFondoYContenido) y el hueco
+(Anfitrion.cs: HuecoDeVista).
+
+Comprobado y bien:
+- El estado que recibe cada llamada directa es el que daba el puente: el cielo de XP (Starfield.Draw, DrawShoots, DrawReactive,
+  DrawBeatFlare, BlitSkyAndStars) no cambia el SmoothingMode, el InterpolationMode ni el PixelOffsetMode del Graphics y devuelve el
+  CompositingMode (Rocola/Form1.Fondo.cs:2066-2101), asi que leer el estado antes o despues del cielo da lo mismo; las firmas traducidas
+  Draw/DrawReactive(g, suave, filtro, medio, copia, ...) reciben los mismos argumentos que les pasaba Puente.fondo.cs. El recorte que
+  leen (ClipBounds, repintado parcial) es el lienzo entero en los dos caminos (la capa repinta entera: Invalidate(Rectangle) =
+  Invalidate(false) en Ventanas.Control.cs:503; el mapa de EnSeco mide lo que la vista).
+- El precalentado: la EnSeco de XP (Rocola/Form1.Video.cs:1855-1866) pone AntiAlias y TextRenderingHint.AntiAlias; InvokePaint solo llama
+  al OnPaint (sin el fondo); la atraccion no lee el modo de letra (pone ClearTypeGridFit antes de escribir). Igual en la traduccion.
+- SetStyle/TabStop: ninguna de las tres toca Selectable ni TabStop en XP; el hueco los deja de fabrica (TabStop = Seleccionable &&
+  ParaElTabulador = true). Identidades: st.Sel.Key = attractView (Form1.Video.cs:1044) sigue siendo la misma vista. Dispose: solo
+  AlbumView lo sobrescribe en XP; su hueco lo llama con disposing = true y despues su base, como el finally de XP.
+- Ninguna clase nueva con forma de Windows; CubeBox.BackColor y AlbumView.Font siguen la semantica de Control (setter que compara y
+  repinta; la Font de la capa hasta la oleada 7, como vistas-disco).
+
+Encontrado (menor, solo una nota que decia de mas; el codigo no cambia):
+- AttractView y AlbumView no ponen BackColor en XP: su OnPaintBackground de fabrica, que WinForms llama dentro del WM_PAINT (con
+  AllPaintingInWmPaint no hay WM_ERASEBKGND, pero el fondo si se pinta), rellenaba con el BackColor ambiental, el de la ventana
+  (Rocola/Form1.cs:1117, 10,14,40); la capa lo hacia igual (Ventanas.Control.cs:509-515). El hueco no pinta fondo, y su nota decia «la
+  pinta su Pinta entera». No se ve: en la atraccion el cielo (el mapa opaco de w x h, DrawImageUnscaled en 0,0) lo tapa todo; en la pared,
+  el Clear de menos de 8x8 o el cielo (BlitSkyAndStars: copia del cielo opaco de pantalla completa), y con GpuCovered la tarjeta opaca de
+  pantalla completa esta encima. Se corrigio la nota de los dos constructores (Form1.Pared.cs:46 y :1110, mismo numero de lineas y CRLF).
+  Queda para N7: cuando la pantalla pinte las vistas sin hueco, el fondo de fabrica de una vista con BackColor ambiental no transparente es
+  el de su dueno (para estas dos no se ve, por lo dicho).
+
+Repetido por el revisor (12-11-2026): a) build Release --no-incremental 0 errores y los MISMOS 15 avisos que d05b06d (comparados archivo,
+linea y codigo); b) diff-xp.py Form1.Pared.cs 244/241 con 1 sin marca (la «{» de la base), Form1.Portadas.cs 72/69 con 0; lineas y CRLF
+1678/1470 y 1229/1043 como d05b06d; c) NativeAOT 0 avisos IL/AOT; e) VistasPared IGUALES (falsas y DejaVu, 1719 lineas, 1612 directas y
+51 a Pinta), VistasAtraccion IGUALES (19120 lineas), VistasVideoForm1 IGUALES (735 lineas, 140 directas), PantallaVistas 93 de 93.
+No repetidos (nada de la revision los pone en duda): recorridos, escenas, pruebas41, pruebas_pantalla, banco y cintas.
