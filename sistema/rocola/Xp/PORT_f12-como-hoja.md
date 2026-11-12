@@ -121,3 +121,28 @@ marcan. Probado en la escena y en las pruebas de la hoja.
 - Los botones de minimizar y maximizar (apagado) de un FixedSingle no se pintan: la capa de la referencia tampoco, y la hoja de Ctrl+F2 tampoco.
 - No se pudo comparar «el dispositivo no se crea» con la referencia, por lo de arriba.
 - No probado en el A4.
+
+## Revision
+
+Revisado contra Rocola/D3D9Star.cs (GpuTestWindow), la fuente de WinForms y el diff entero (01fcf68..288ee65).
+
+- Equivalencia: las 15 lineas cambiadas de Codigo/D3D9Star.cs son de traduccion y llevan su marca; las cuentas, el titulo, el reloj de 15 ms,
+  el orden de OnShown (dispositivo, aviso y Close) y de OnFormClosed (reloj, dispositivo, instance) son los de XP. `return base.ProcessCmdKey`
+  vuelve a ser la llamada a la base (antes era `return false`). 4539 lineas, LF, como en 01fcf68. MessageBox.Show de WinForms tambien
+  deshabilita TODAS las ventanas del hilo (MessageBox.ShowCore -> Application.BeginModalMessageLoop -> DisableWindowsForModalLoop(false),
+  Application.cs:2573-2603), asi que el aviso «sin dispositivo» deja la rocola deshabilitada como el modal de la hoja (Hoja.HayModal): bien.
+  IdVentana empieza en 0x40000001 y los Handle de la capa en 0x1000: no chocan.
+- ARREGLADO (Plataforma/Ventanas.Escritorio.cs, FinDeSesion): el apagado consultaba siempre primero las hojas y despues las ventanas de la
+  capa, tambien la ventana F12 que ya habia quedado DETRAS de la rocola (DetrasDeLaCapa, tras el vigia del foco). El apagado de Windows va
+  de arriba abajo (el orden de EnumWindows, como dice el comentario de la funcion): con F12 detras, primero la rocola y despues F12. Ahora
+  las hojas que quedaron detras van despues de las ventanas de la capa. Escena f12sigterm (JIT): antes «closing F12, closing Form1, closed
+  F12, closed Form1»; ahora «closing Form1 (10935 ms), closing F12, closed Form1, closed F12», todas con WindowsShutDown, y
+  rocola_estado.txt borrado (como manda XP al apagar). Con F12 delante (con F10) el orden no cambia.
+- Repetido: dotnet build Release 0 errores y 15 avisos (los de la base); diff-xp.py D3D9Star.cs 414/278, 12 sin marca (los de la base, de
+  otros bloques); NativeAOT del programa 0 avisos IL/AOT; pruebas_hoja 86 de 86; pruebas41 41 de 41 (antes y despues del arreglo); AOT=1
+  pruebas_pantalla 32 de 32 en JIT y NativeAOT. No se repitieron los recorridos ni las demas escenas: el arreglo solo cambia el orden del
+  apagado cuando hay una hoja detras de la capa (solo la ventana F12 puede estarlo).
+- Queda (fuera de los archivos del grupo): el comentario de Plataforma/Ventanas.Control.cs:605 aun dice que GpuTestWindow tiene su
+  ProcessCmdKey en la capa (lo borra N7 con la capa), y la nota de Codigo/Form1.cs (ForceFocus, el clic sintetico) dice que la rocola
+  «solo deja de estar delante bajo una hoja suya modal»: ahora tambien bajo la ventana F12, que no es modal (alli AlFrente si la sube, asi que
+  el clic no hace falta; la nota la corrige quien toque Form1.cs).

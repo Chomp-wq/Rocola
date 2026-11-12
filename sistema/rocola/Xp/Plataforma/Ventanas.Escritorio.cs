@@ -805,8 +805,11 @@ namespace Rocola.Ventanas
         {
             // (port nativo, ventanas2 H) de arriba abajo: primero las hojas nativas (estan encima), despues las ventanas de la capa
             List<object> vs = new List<object>();
-            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) vs.Add(hs[i]);
+            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
             Form[] fs = Formas; for (int i = fs.Length - 1; i >= 0; i--) vs.Add(fs[i]);
+            // (port nativo, f12-como-hoja, revision) las que quedaron detras de la capa (la ventana de prueba F12 tras activarse la rocola) van
+            // despues de las ventanas de la capa, en su orden: estan debajo de ellas (Hoja.DetrasDeLaCapa)
+            for (int i = hs.Length - 1; i >= 0; i--) if (hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
             bool seAcaba = true; int hasta = -1;
             for (int i = 0; i < vs.Count; i++) { hasta = i; if (!FinDeSesionDe(vs[i], true, true)) { seAcaba = false; break; } }
             for (int i = 0; i <= hasta && i < vs.Count; i++) FinDeSesionDe(vs[i], false, seAcaba);
