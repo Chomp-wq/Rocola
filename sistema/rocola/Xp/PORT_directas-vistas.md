@@ -174,3 +174,26 @@ Revisión independiente del mismo día, sobre `cb95334` (sin cambios de código:
 - Queda lo mismo que ya está apuntado (notas viejas en `Form1.Pared.cs:250` y `:304`, `Form1.Fondo.cs:771`, las cabeceras de
   `Puente.pared.cs:7-12` y `Puente.fondo.cs:16`, y las costuras muertas de `Puente.pantalla-viva.cs:60-82` y `Puente.ventanas2.cs:18`): no
   son archivos ni rangos de este grupo.
+
+## Revisión (segunda)
+
+Segunda revisión independiente, sobre `168674f` (sin cambios de código: no se encontró nada mal en el diff de `178722c..168674f`).
+
+- **El diff, línea por línea**: las 4 llamadas de `SongPagerBar` (`Form1.Vistas.cs:165-175` de XP) van a `CtrlDirLeft`, `CtrlTxt` y
+  `CtrlDirRight` de `Form1.Pared.cs:259-290` con los parámetros en el mismo orden de su firma (lienzo, suavizado, modo de letra, copia, medio
+  píxel); `GraphicsVistasA` solo ponía en el `Graphics` la matriz del HDC (`PuenteDibujo.Graphics`, `Puente.cs:40-47`: no toca la matriz del
+  lienzo) y el filtro, que esas tres no miran. `PuenteDibujo.Letra(Font)` es `f.L` (`Puente.cs:76`: la misma `Letra`, sin crear nada ni
+  soltar nada), así que los `AnchoTexto(ajuste, ..., PuenteDibujo.Letra(Font))` de `DiscoVivoGpu.cs:313, 337 y 363` dan lo que daba
+  `AnchoTexto(Graphics, string, Font)` del puente (los mismos nulos: `Font` nula -> `Letra` nula -> 0). Los `SKPath` de `ContornoRedondo` se
+  sueltan donde XP soltaba sus `GraphicsPath` (los `using` y el `p.Dispose()` de `RecortaAlCristal`, `Rocola/Form1.Vistas.cs:2093`). La firma
+  de un argumento de `LetterBar.RenderContent` que se quitó del puente no la llama nadie: la traducida (`Form1.Vistas.cs:624`) sigue, y
+  `Pruebas/VistasVistasA/VistasA.cs:284` busca la de dos.
+- **Repetido**: `dotnet build -c Release`: 0 errores y los mismos 15 avisos que `avisos-base.txt` (comparados fichero, línea, columna y código);
+  diff-xp.py -v: `Form1.Vistas.cs` 495/492 (2 sin marca, las dos `}` de la base), `DiscoVivoGpu.cs` 58/55 (0); líneas y CRLF 2 749/2 568 y
+  621/0 como en `178722c`; NativeAOT 0 avisos IL/AOT y 0 errores (publicación borrada); arneses: vistas-a IGUALES (1 266 líneas, las dos
+  letras; 725 y 722 llamadas directas), vistas-b 0 distintas de 2 865 contra la referencia y contra la base (las dos letras), VistasAjustes 0 de
+  545 (las dos; 0 excepciones, 78 líneas de formato), pantalla-viva IGUALES (768, 291 directas), pared IGUALES (1 715, 673 directas). Cintas,
+  banco, recorridos y escenas no se repitieron: no se tocó `Nativo/`, `Puente.cs` ni la subida, y nada del diff los pone en duda.
+- **Una nota vieja más fuera de mis archivos** (la corrige su dueño, 2b): `Codigo/Form1.Ajustes.cs:309` dice que la firma de XP de
+  `CreaSfDibuja(StringAlignment)` queda «para lo aún no traducido (Form1.Vistas.cs), en Plataforma/Puente.ventanas2.cs»: ya no existe (este
+  grupo la borró; ya nadie la pide).
