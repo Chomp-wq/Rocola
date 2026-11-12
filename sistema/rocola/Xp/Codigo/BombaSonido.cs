@@ -291,7 +291,7 @@ namespace Rocola
         // entonces en el hilo de la pantalla. Si mientras tanto se salto o se paro la cancion (otra salida u otra bomba),
         // no se hace nada. Sin ventana a la que volver (y sin prueba que lo pida) devuelve false: se arranca como antes.
         internal Action<Action> vuelveALaPantalla = null;   // solo las pruebas (null = BeginInvoke); EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
-        private bool ArrancaCuandoEsteLista(MethodInvoker arranca)
+        private bool ArrancaCuandoEsteLista(Action arranca)   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
         {
             BombaSonido b = bomba; IWavePlayer o = output;
             Action<Action> vuelve = vuelveALaPantalla;   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)

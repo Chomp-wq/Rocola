@@ -1589,7 +1589,7 @@ namespace Rocola
             // La reserva del lanzador evita que un carril muy corto cierre la lectura
             // mientras aun se crean los otros. Tambien cubre un Thread.Start fallido.
             int vivos = 1;
-            MethodInvoker finDeCarril = delegate
+            Action finDeCarril = delegate   // EN LINUX: Action (en XP, MethodInvoker de WinForms: el mismo delegado sin argumentos)
             {
                 if (System.Threading.Interlocked.Decrement(ref vivos) != 0) return;
                 FinalizaLecturaBiblioteca(lectura, true, myGen);

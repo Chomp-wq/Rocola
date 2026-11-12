@@ -339,7 +339,7 @@ namespace Rocola
                             Program.AvisaCarpetaDatos(d, ex);
                         }
                     }
-                    carpetaDatos = Application.StartupPath;
+                    carpetaDatos = CarpetaPrograma.Ruta;   // EN LINUX: Application.StartupPath -> CarpetaPrograma.Ruta (Nativo/CarpetaPrograma.cs): la carpeta del programa sin la barra del final, como la de WinForms
                     return carpetaDatos;
                 }
             }
@@ -359,7 +359,7 @@ namespace Rocola
         // solo lectura, no se pueden mover. Sin repetir carpeta (sin ROCOLA_DATOS, datos y programa son la misma).
         private static string[] CarpetasIas()
         {
-            string prog = Application.StartupPath;
+            string prog = CarpetaPrograma.Ruta;   // EN LINUX: Application.StartupPath -> CarpetaPrograma.Ruta (Nativo/CarpetaPrograma.cs): la carpeta del programa sin la barra del final, como la de WinForms
             string[] todas = { CarpetaIas, CarpetaDatos, Path.Combine(prog, NombreCarpetaIas), prog };
             List<string> r = new List<string>(4);
             foreach (string c in todas)
