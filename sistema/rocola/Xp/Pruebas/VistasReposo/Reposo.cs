@@ -3,7 +3,9 @@
 // con datos fijos, la huella de cada mapa y lo que devuelve cada llamada. Se compila con el programa de una carpeta Xp (VistasReposo.csproj):
 // la salida de la referencia congelada y la de la copia de trabajo tienen que ser iguales linea por linea.
 //   - Las llamadas son las de XP (Graphics, Bitmap, Image, Font, Brush, StringFormat): en la referencia van a GDI+ (la capa congelada) y en
-//     la traduccion a las firmas del puente (Plataforma/Puente.reposo.cs) y de ahi a SkiaSharp directo. El estado del Graphics del que llama
+//     la traduccion a SkiaSharp directo: desde el grupo directas-tanda2 (12-11-2026) la traduccion ya no tiene esas firmas (se fueron con
+//     Plataforma/Puente.reposo.cs: sus llamadores ya estaban traducidos) y van por reflexion (la clase Xp, abajo): a la de XP si la hay (la
+//     referencia) o a la traducida con lo mismo que le pasaba aquel puente. El estado del Graphics del que llama
 //     va de ocho maneras (suavizado, los modos de letra, copia, medio pixel, traslacion entera y con decimales, escala, giro y recorte), con y
 //     sin la captura de las cintas puesta.
 //   - Lo privado (EmpiezaRecuadro, PintaArtistaCompacto) va por reflexion, con la firma de XP.
@@ -122,6 +124,94 @@ namespace BancoReposo
         }
         private static void Suelta(SKPaint p) { if (p == null) return; SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); p.Dispose(); }
 
+        // ---- LAS FIRMAS DE XP, POR REFLEXION (desde directas-tanda2 la traduccion ya no las tiene: se fueron con Plataforma/Puente.reposo.cs).
+        // Cada una llama a la de XP si el programa la tiene (la referencia congelada) y, si no, a la traducida con lo que le pasaba el puente que
+        // se quito: el lienzo del Graphics y su estado, la Letra de la Font, el pincel en un SKPaint con el medio pixel del Graphics (soltado al
+        // volver), el MISMO FormatoTexto, los puntos de cada Bitmap (los mismos) y, del panel, el MISMO Bitmap si la traducida devolvio el mapa
+        // que se le dio o, si hizo otro, un Bitmap que se hace su dueno con el formato de XP (PuenteDibujo.Entrega, Format32bppPArgb). Una
+        // excepcion de dentro sale tal cual (no envuelta por la reflexion), como de la llamada directa de antes.
+        private static class Xp
+        {
+            private static object Llama(MethodInfo m, object o, object[] a)
+            {
+                try { return m.Invoke(o, a); }
+                catch (TargetInvocationException x) when (x.InnerException != null) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(x.InnerException).Throw(); throw; }
+            }
+            private static MethodInfo DeXp(string nombre, params Type[] tipos) { return typeof(Form1).GetMethod(nombre, Todo, null, tipos, null); }
+            private static SKBitmap Mapa(Image i) { return (SKBitmap)Por("Mapa", typeof(Image), i); }
+            private static object LetraDe(Font f) { return Por("Letra", typeof(Font), f); }
+            private static object FormatoDe(StringFormat sf) { return Por("Formato", typeof(StringFormat), sf); }
+
+            internal static void PintaTextoMovil(Graphics g, string text, Font f, Brush brush, RectangleF rect, StringFormat sf)
+            {
+                MethodInfo xp = DeXp("PintaTextoMovil", typeof(Graphics), typeof(string), typeof(Font), typeof(Brush), typeof(RectangleF), typeof(StringFormat));
+                if (xp != null) { Llama(xp, null, new object[] { g, text, f, brush, rect, sf }); return; }
+                object[] es = EstadoDe(g);
+                SKPaint p = Pincel(brush, (bool)es[4]);
+                try { Llama(Nativa("PintaTextoMovil", typeof(SKCanvas)), null, new object[] { es[0], es[2], es[3], es[4], text, LetraDe(f), p, rect, FormatoDe(sf) }); }
+                finally { Suelta(p); }
+            }
+            internal static bool TextoConCinta(Graphics g, string text, Font f, Color color, RectangleF rect, StringFormat sf)
+            {
+                MethodInfo xp = DeXp("TextoConCinta", typeof(Graphics), typeof(string), typeof(Font), typeof(Color), typeof(RectangleF), typeof(StringFormat));
+                if (xp != null) return (bool)Llama(xp, null, new object[] { g, text, f, color, rect, sf });
+                object[] es = EstadoDe(g);
+                return (bool)Llama(Nativa("TextoConCinta", typeof(SKCanvas)), null, new object[] { es[0], es[2], text, LetraDe(f), color, rect, FormatoDe(sf) });
+            }
+            internal static void PintaArtistaCompacto(object form, Graphics g)
+            {
+                MethodInfo xp = DeXp("PintaArtistaCompacto", typeof(Graphics));
+                if (xp != null) { Llama(xp, form, new object[] { g }); return; }
+                object[] es = EstadoDe(g);
+                Llama(Nativa("PintaArtistaCompacto", typeof(SKCanvas)), form, new object[] { es[0], es[2], es[3], es[4] });
+            }
+            // la Font de LetraTituloReposo con los mismos datos (PuenteDibujo.Font), soltada la Letra
+            internal static Font FuenteTituloReposo(int w, int h)
+            {
+                MethodInfo xp = typeof(Form1).GetMethod("FuenteTituloReposo", Todo);
+                if (xp != null) return (Font)Llama(xp, null, new object[] { w, h });
+                Type letra = typeof(Form1).Assembly.GetType("Rocola.Nativo.Letra");
+                using (IDisposable l = (IDisposable)Llama(typeof(Form1).GetMethod("LetraTituloReposo", Todo), null, new object[] { w, h }))
+                    return (Font)Puente.GetMethod("Font", Todo, null, new[] { letra }, null).Invoke(null, new object[] { l });
+            }
+            internal static Bitmap RenderIdlePanelEn(Bitmap bitmap, int w, int h, string title, string artist, string time,
+                string[] qt, string[] qa, Image[] covers, int count, Color accent, bool transparent, int badgeKind, bool dozen,
+                ReposoGrande extra, bool opaque, out int progressStart)
+            {
+                object[] a = { bitmap, w, h, title, artist, time, qt, qa, covers, count, accent, transparent, badgeKind, dozen, extra, opaque, 0 };
+                MethodInfo xp = Nativa("RenderIdlePanelEn", typeof(Bitmap));
+                if (xp != null) { Bitmap r = (Bitmap)Llama(xp, null, a); progressStart = (int)a[16]; return r; }
+                SKBitmap[] mapas = null;
+                if (covers != null) { mapas = new SKBitmap[covers.Length]; for (int i = 0; i < covers.Length; i++) mapas[i] = Mapa(covers[i]); }
+                SKBitmap dado = Mapa(bitmap);
+                a[0] = dado; a[8] = mapas;
+                SKBitmap hecho = (SKBitmap)Llama(Nativa("RenderIdlePanelEn", typeof(SKBitmap)), null, a);
+                progressStart = (int)a[16];
+                if (bitmap != null && ReferenceEquals(hecho, dado)) return bitmap;
+                return (Bitmap)Puente.GetMethod("Entrega", Todo, null, new[] { typeof(SKBitmap), typeof(PixelFormat) }, null).Invoke(null, new object[] { hecho, PixelFormat.Format32bppPArgb });
+            }
+            internal static void CopiaRegionReposo(Bitmap source, Rectangle area, Bitmap target, Point position)
+            {
+                MethodInfo xp = Nativa("CopiaRegionReposo", typeof(Bitmap));
+                if (xp != null) { Llama(xp, null, new object[] { source, area, target, position }); return; }
+                Llama(Nativa("CopiaRegionReposo", typeof(SKBitmap)), null, new object[] { Mapa(source), area, Mapa(target), position });
+            }
+            internal static int UpdateIdleClock(Bitmap panel, Bitmap underlay, string time)
+            {
+                MethodInfo xp = Nativa("UpdateIdleClock", typeof(Bitmap));
+                if (xp != null) return (int)Llama(xp, null, new object[] { panel, underlay, time });
+                return (int)Llama(Nativa("UpdateIdleClock", typeof(SKBitmap)), null, new object[] { Mapa(panel), Mapa(underlay), time });
+            }
+            internal static int UpdateIdleClockRegion(Bitmap panel, Bitmap underlay, string time, int previousRight, out Rectangle dirty)
+            {
+                MethodInfo m = Nativa("UpdateIdleClockRegion", typeof(Bitmap));
+                object[] a = { panel, underlay, time, previousRight, Rectangle.Empty };
+                if (m == null) { m = Nativa("UpdateIdleClockRegion", typeof(SKBitmap)); a[0] = Mapa(panel); a[1] = Mapa(underlay); }
+                int r = (int)Llama(m, null, a);
+                dirty = (Rectangle)a[4]; return r;
+            }
+        }
+
         // ---- una portada de prueba: puntos al azar con semilla fija (opaca o con alfa), escritos con LockBits como XP
         private static unsafe Bitmap Portada(int w, int h, int semilla, bool alfa)
         {
@@ -172,7 +262,7 @@ namespace BancoReposo
             try
             {
                 MethodInfo m = directo ? Nativa("RenderIdlePanelEn", typeof(SKBitmap)) : null;
-                if (m == null) r = Form1.RenderIdlePanelEn(reusa, w, h, p.Titulo, p.Artista, p.Hora, qt, qa, covers, p.N, p.Acento, p.Transparente, p.Insignia, p.Doce, p.Extra, p.Opaco, out comienzo);
+                if (m == null) r = Xp.RenderIdlePanelEn(reusa, w, h, p.Titulo, p.Artista, p.Hora, qt, qa, covers, p.N, p.Acento, p.Transparente, p.Insignia, p.Doce, p.Extra, p.Opaco, out comienzo);
                 else
                 {
                     directas++;
@@ -237,7 +327,7 @@ namespace BancoReposo
                     using (Graphics g = Prepara(b, e))
                     {
                         MethodInfo m = directo ? Nativa("PintaTextoMovil", typeof(SKCanvas)) : null;
-                        if (m == null) Form1.PintaTextoMovil(g, texto, f, br, caja, sf);
+                        if (m == null) Xp.PintaTextoMovil(g, texto, f, br, caja, sf);
                         else
                         {
                             directas++;
@@ -272,7 +362,7 @@ namespace BancoReposo
                         // revision): donde ya no esta (la traduccion), la llamada de XP es la traducida con el estado del Graphics, como hacia el puente
                         MethodInfo xpVista = vista && m == null ? typeof(Form1).GetMethod("CintaVistaPrevia", Todo, null, new[] { typeof(Graphics), typeof(string), typeof(Font), typeof(Color), typeof(Rectangle) }, null) : null;
                         if (vista && m == null && xpVista == null) m = Nativa("CintaVistaPrevia", typeof(SKCanvas));
-                        if (m == null) r = vista ? (bool)xpVista.Invoke(null, new object[] { g, texto, f, col, Rectangle.Round(caja) }) : Form1.TextoConCinta(g, texto, f, col, caja, sf);
+                        if (m == null) r = vista ? (bool)xpVista.Invoke(null, new object[] { g, texto, f, col, Rectangle.Round(caja) }) : Xp.TextoConCinta(g, texto, f, col, caja, sf);
                         else
                         {
                             directas++;
@@ -307,12 +397,12 @@ namespace BancoReposo
                 {
                     c.Begin(); Captura.SetValue(null, c);
                     sb.Append(" v" + vuelta + ":");
-                    sb.Append(Form1.TextoConCinta(g, largo + " A", f, Color.White, new RectangleF(10, 10, 200, 40), sf) ? "1" : "0");
-                    if (vuelta == 1) sb.Append(Form1.TextoConCinta(g, largo + " B", f, Color.White, new RectangleF(10, 60, 200, 40), sf) ? "1" : "0");
-                    sb.Append(Form1.TextoConCinta(g, largo + " A", f, Color.White, new RectangleF(10, 10, 200, 40), sf) ? "1" : "0");
-                    sb.Append(Form1.TextoConCinta(g, largo + largo + largo + largo, fg, Color.FromArgb(200, 255, 230, 120), new RectangleF(5, 100, 400, 100), sf) ? "1" : "0");
-                    sb.Append(Form1.TextoConCinta(g, largo, f, Color.White, new RectangleF(5, 0, 300, 257), sf) ? "1" : "0");
-                    if (vuelta == 2) for (int i = 0; i < 50; i++) sb.Append(Form1.TextoConCinta(g, largo + " " + i, f, Color.White, new RectangleF(10, 10, 100, 40), sf) ? "1" : "0");
+                    sb.Append(Xp.TextoConCinta(g, largo + " A", f, Color.White, new RectangleF(10, 10, 200, 40), sf) ? "1" : "0");
+                    if (vuelta == 1) sb.Append(Xp.TextoConCinta(g, largo + " B", f, Color.White, new RectangleF(10, 60, 200, 40), sf) ? "1" : "0");
+                    sb.Append(Xp.TextoConCinta(g, largo + " A", f, Color.White, new RectangleF(10, 10, 200, 40), sf) ? "1" : "0");
+                    sb.Append(Xp.TextoConCinta(g, largo + largo + largo + largo, fg, Color.FromArgb(200, 255, 230, 120), new RectangleF(5, 100, 400, 100), sf) ? "1" : "0");
+                    sb.Append(Xp.TextoConCinta(g, largo, f, Color.White, new RectangleF(5, 0, 300, 257), sf) ? "1" : "0");
+                    if (vuelta == 2) for (int i = 0; i < 50; i++) sb.Append(Xp.TextoConCinta(g, largo + " " + i, f, Color.White, new RectangleF(10, 10, 100, 40), sf) ? "1" : "0");
                     Captura.SetValue(null, null); c.End();
                     sb.Append(" n=" + c.Items.Count + " ver=" + c.Version);
                 }
@@ -338,7 +428,7 @@ namespace BancoReposo
                     using (Graphics g = Prepara(b, e))
                     {
                         MethodInfo m = directo ? Nativa("PintaArtistaCompacto", typeof(SKCanvas)) : null;
-                        if (m == null) typeof(Form1).GetMethod("PintaArtistaCompacto", Todo, null, new[] { typeof(Graphics) }, null).Invoke(form, new object[] { g });
+                        if (m == null) Xp.PintaArtistaCompacto(form, g);
                         else { directas++; object[] es = EstadoDe(g); m.Invoke(form, new object[] { es[0], es[2], es[3], es[4] }); }
                     }
                 }
@@ -452,7 +542,7 @@ namespace BancoReposo
 
             // LA LETRA DEL TITULO (FuenteTituloReposo, la que pide SuenaVivoGpu.cs para el titulo que se desliza): sus datos en cada pantalla
             foreach (int[] pa in pantallas)
-                using (Font f = Form1.FuenteTituloReposo(pa[0], GpuPanel.IdlePanelHeight(pa[1])))
+                using (Font f = Xp.FuenteTituloReposo(pa[0], GpuPanel.IdlePanelHeight(pa[1])))
                     Linea("letra-titulo-" + pa[0] + "x" + pa[1], f.Name + "\t" + R(f.Size) + "\t" + f.Style + "\t" + f.Unit + "\t" + f.Height + "\t" + R(f.GetHeight()) + "\t" + R(f.SizeInPoints));
 
             // EL RELOJ: la franja de abajo copiada a su mapa, el reloj entero y por trozos (otra hora, mas larga, vacia, con el borde de antes
@@ -462,18 +552,18 @@ namespace BancoReposo
             {
                 int w = pa[0], ph = GpuPanel.IdlePanelHeight(pa[1]);
                 int comienzo;
-                using (Bitmap panel = Form1.RenderIdlePanelEn(null, w, ph, "Titulo de relleno", "Artista de relleno", "", new string[3], new string[3], new Image[3], 3,
+                using (Bitmap panel = Xp.RenderIdlePanelEn(null, w, ph, "Titulo de relleno", "Artista de relleno", "", new string[3], new string[3], new Image[3], 3,
                     Color.FromArgb(120, 160, 255), false, 0, false, null, false, out comienzo))
                 using (Bitmap debajo = new Bitmap(w, 34, PixelFormat.Format32bppPArgb))
                 {
-                    Form1.CopiaRegionReposo(panel, new Rectangle(0, ph - 34, w, 34), debajo, Point.Empty);
+                    Xp.CopiaRegionReposo(panel, new Rectangle(0, ph - 34, w, 34), debajo, Point.Empty);
                     Linea("reloj-debajo-" + w, Puntos("reloj-debajo-" + w, debajo));
-                    int ultimo = Form1.UpdateIdleClock(panel, debajo, "0:00 / 0:00");
+                    int ultimo = Xp.UpdateIdleClock(panel, debajo, "0:00 / 0:00");
                     Linea("reloj-entero-" + w, Puntos("reloj-entero-" + w, panel) + "\tderecha=" + ultimo);
                     foreach (string t in new[] { "0:01 / 3:00", "10:59 / 3:00:00", "", "9:59 / 9:59", null, "1:00 / 2:00" })
                     {
                         Rectangle zona;
-                        int r = Form1.UpdateIdleClockRegion(panel, debajo, t, ultimo, out zona);
+                        int r = Xp.UpdateIdleClockRegion(panel, debajo, t, ultimo, out zona);
                         string nom = "reloj-trozo-" + w + "-" + (k++);
                         Linea(nom, Puntos(nom, panel) + "\tderecha=" + r + " zona=" + zona);
                         ultimo = r;
@@ -481,14 +571,14 @@ namespace BancoReposo
                     foreach (int antes in new[] { 0, w })
                     {
                         Rectangle zona;
-                        int r = Form1.UpdateIdleClockRegion(panel, debajo, "3:33 / 4:44", antes, out zona);
+                        int r = Xp.UpdateIdleClockRegion(panel, debajo, "3:33 / 4:44", antes, out zona);
                         string nom = "reloj-borde-" + w + "-" + (k++);
                         Linea(nom, Puntos(nom, panel) + "\tderecha=" + r + " zona=" + zona);
                     }
                     using (Bitmap otro = Portada(97, 53, 5, true))
                     {
-                        Form1.CopiaRegionReposo(panel, new Rectangle(5, 3, 17, 9), otro, new Point(2, 4));
-                        Form1.CopiaRegionReposo(debajo, new Rectangle(w - 40, 0, 40, 34), otro, new Point(57, 19));
+                        Xp.CopiaRegionReposo(panel, new Rectangle(5, 3, 17, 9), otro, new Point(2, 4));
+                        Xp.CopiaRegionReposo(debajo, new Rectangle(w - 40, 0, 40, 34), otro, new Point(57, 19));
                         Linea("copia-" + w, Puntos("copia-" + w, otro));
                     }
                 }
@@ -518,7 +608,7 @@ namespace BancoReposo
             using (SolidBrush br = new SolidBrush(Color.White))
             {
                 CintasTexto c = Captura0(); string ex = "";
-                try { Form1.PintaTextoMovil(g, Textos[1], f, br, Cajas[0], null); } catch (Exception x) { ex = " EXC:" + x.GetType().Name; } finally { Captura1(c); }
+                try { Xp.PintaTextoMovil(g, Textos[1], f, br, Cajas[0], null); } catch (Exception x) { ex = " EXC:" + x.GetType().Name; } finally { Captura1(c); }
                 Linea("movil-nulo", Puntos("movil-nulo", b) + ex + Cintas("movil-nulo", c)); c.Dispose();
             }
 

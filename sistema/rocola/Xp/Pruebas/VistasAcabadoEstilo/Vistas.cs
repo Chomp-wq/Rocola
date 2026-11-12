@@ -221,7 +221,9 @@ namespace Banco
                 {
                     estado = PonEstado(g, r, 320, 120, true);
                     if (grupo != null) { grupo.Begin(); fCintas.SetValue(null, grupo); }
-                    try { Metodo(typeof(Form1), "PintaRenglonLejos", typeof(Graphics), typeof(string), typeof(Font), typeof(Color), typeof(RectangleF), typeof(StringAlignment)).Invoke(null, new object[] { g, texto, f, c, caja, al }); res = "ok"; }
+                    // (la firma de XP, con un Graphics, se quito con su puente en el grupo directas-tanda2: en la traduccion, la traducida con el lienzo y
+                    // el estado de g, como hacia el puente; Llama pasa la Font a su Letra y StringAlignment a Alinea, que tienen los mismos valores)
+                    try { Llama(typeof(Form1), "PintaRenglonLejos", null, g, texto, f, c, caja, al); res = "ok"; }
                     catch (Exception e) { res = Exc(e); }
                     finally { fCintas.SetValue(null, null); }
                 }

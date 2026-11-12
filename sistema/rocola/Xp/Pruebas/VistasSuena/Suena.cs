@@ -2,10 +2,13 @@
 // mapa y lo que devuelve cada llamada. Se compila con el programa de una carpeta Xp (VistasSuena.csproj): la salida de la referencia congelada
 // y la de la copia de trabajo tienen que ser iguales linea por linea.
 //   - Las llamadas son las de XP (Graphics, Bitmap, Font, Brush, StringFormat): en la referencia van a GDI+ (la capa congelada) y en la
-//     traduccion a las firmas del puente (Plataforma/Puente.suena.cs) y de ahi a SkiaSharp directo: el aviso de los cuatro tipos (con y sin
+//     traduccion a SkiaSharp directo. Desde el grupo directas-tanda2 (12-11-2026) la traduccion ya no tiene esas firmas (se fueron con
+//     Plataforma/Puente.suena.cs y Puente.reposo.cs: sus llamadores ya estaban traducidos): van por reflexion (Xp*, abajo), a la de XP si la
+//     hay (la referencia) o a la traducida con lo mismo que le pasaba aquel puente (PuenteDibujo.Mapa, Letra, Pincel, Formato y el lienzo con su
+//     estado). Lo que se dibuja: el aviso de los cuatro tipos (con y sin
 //     renglon, textos que no caben), la invitacion, el "+4 creditos", la moneda, y el titulo grande y los minutos de la cola del panel de
 //     reposo con ocho estados del Graphics (suavizado, modo de letra, copia, medio pixel, traslacion, escala, giro y recorte), con y sin la
-//     cinta del texto que se desliza (TextoMovilGpu.cs: la que pinta PintaTextoMovil, por el puente).
+//     cinta del texto que se desliza (TextoMovilGpu.cs: la que pinta PintaTextoMovil, que la traducida llama directo).
 //   - Lo que XP llama sin esas firmas va por reflexion: HorneaTituloReposo (el titulo que se desliza) y XNumero (donde aterriza la moneda).
 //   - En la traduccion, PintaTituloGrande y PintaMinutosCola se llaman tambien DIRECTO (el lienzo y su estado, la Letra, un SKPaint de cada
 //     color y el FormatoTexto), como los llamara EstadoReposoGpu.cs cuando se traduzca; en la referencia esa linea es la de XP otra vez.
@@ -115,7 +118,7 @@ namespace BancoSuena
             using (Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
             using (Font small = new Font("Trebuchet MS", 15 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font normal = new Font("Trebuchet MS", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font big = Form1.FuenteTituloReposo(w, h))
+            using (Font big = XpFuenteTituloReposo(w, h))
             using (SolidBrush white = new SolidBrush(Color.FromArgb(240, 245, 255)))
             using (SolidBrush color = new SolidBrush(Color.FromArgb(150, 210, 255)))
             using (StringFormat line = new StringFormat())
@@ -129,7 +132,7 @@ namespace BancoSuena
                     using (Graphics g = Prepara(b, e))
                     {
                         MethodInfo m = directo ? Nativa("PintaTituloGrande") : null;
-                        if (m == null) Form1.PintaTituloGrande(g, x, title, artist, big, normal, small, white, color, line, tx, tw);
+                        if (m == null) XpConGraphics("PintaTituloGrande", g, x, title, artist, big, normal, small, white, color, line, tx, tw);
                         else
                             using (SKPaint pw = Color2(white.Color)) using (SKPaint pc = Color2(color.Color))
                             {
@@ -162,7 +165,7 @@ namespace BancoSuena
                     using (Graphics g = Prepara(b, e))
                     {
                         MethodInfo m = directo ? Nativa("PintaMinutosCola") : null;
-                        if (m == null) Form1.PintaMinutosCola(g, minutos, artista, f, tenue, estrecha, x, y, w, h, line);
+                        if (m == null) XpConGraphics("PintaMinutosCola", g, minutos, artista, f, tenue, estrecha, x, y, w, h, line);
                         else
                             using (SKPaint pt = Color2(tenue.Color))
                             {
@@ -199,6 +202,70 @@ namespace BancoSuena
             Linea(nombre, R((float)pv.GetMethod("XNumero", Todo).Invoke(v, null)));
         }
 
+        // ---- LAS FIRMAS DE XP POR REFLEXION (desde directas-tanda2: la traduccion ya no las tiene). 'cual' es la posicion del argumento que
+        // dice cual es cual (un Bitmap o una Font en la de XP). Si el metodo de ese nombre la tiene con el tipo de XP (la referencia), se llama
+        // esa; si no, la traducida con lo que le pasaba el puente que se quito: un Bitmap por sus puntos (PuenteDibujo.Mapa: los mismos, sin
+        // copia) y una Font por su Letra (la misma). Los out vuelven en 'args'.
+        private static MethodInfo PorTipo(string nombre, int cual, Type tipo)
+        {
+            foreach (MethodInfo m in typeof(Form1).GetMethods(Todo))
+                if (m.Name == nombre && m.GetParameters().Length > cual && m.GetParameters()[cual].ParameterType == tipo) return m;
+            return null;
+        }
+        // (el tipo de la Letra por su nombre: la referencia congelada no tiene Xp/Nativo y este archivo compila con las dos)
+        private static Type Letra { get { return typeof(Form1).Assembly.GetType("Rocola.Nativo.Letra"); } }
+        private static object Xp(string nombre, int cual, params object[] args)
+        {
+            MethodInfo xp = PorTipo(nombre, cual, args[cual] is Bitmap ? typeof(Bitmap) : typeof(Font));
+            if (xp != null) return xp.Invoke(null, args);
+            MethodInfo tr = PorTipo(nombre, cual, args[cual] is Bitmap ? typeof(SKBitmap) : Letra);
+            object[] t = (object[])args.Clone();
+            for (int i = 0; i < t.Length; i++)
+            {
+                if (t[i] is Bitmap) t[i] = Por("Mapa", typeof(Image), t[i]);
+                else if (t[i] is Font) t[i] = Por("Letra", typeof(Font), t[i]);
+            }
+            object r = tr.Invoke(null, t);
+            for (int i = 0; i < t.Length; i++) if (args[i] == null) args[i] = t[i];   // los out
+            return r;
+        }
+        // FuenteTituloReposo: la de XP (la referencia) o la Font de LetraTituloReposo con los mismos datos (PuenteDibujo.Font), soltada la Letra,
+        // como hacia el puente que se quito
+        private static Font XpFuenteTituloReposo(int w, int h)
+        {
+            MethodInfo xp = typeof(Form1).GetMethod("FuenteTituloReposo", Todo);
+            if (xp != null) return (Font)xp.Invoke(null, new object[] { w, h });
+            using (IDisposable l = (IDisposable)typeof(Form1).GetMethod("LetraTituloReposo", Todo).Invoke(null, new object[] { w, h }))
+                return (Font)Puente.GetMethod("Font", Todo, null, new[] { Letra }, null).Invoke(null, new object[] { l });
+        }
+        // PintaTituloGrande y PintaMinutosCola con un Graphics: la de XP (la referencia) o la traducida con el lienzo del Graphics y su estado
+        // (suavizado, modo de letra, copia y medio pixel), la Letra de cada Font, cada pincel en un SKPaint con el medio pixel del Graphics
+        // (PuenteDibujo.Pincel; uno nulo, null) y el MISMO FormatoTexto, como hacia el puente que se quito; los SKPaint se sueltan al volver
+        private static void XpConGraphics(string nombre, Graphics g, params object[] args)
+        {
+            MethodInfo xp = PorTipo(nombre, 0, typeof(Graphics));
+            object[] todos = new object[args.Length + 1]; todos[0] = g; Array.Copy(args, 0, todos, 1, args.Length);
+            if (xp != null) { xp.Invoke(null, todos); return; }
+            object[] es = EstadoDe(g);
+            List<SKPaint> hechos = new List<SKPaint>();
+            object[] t = new object[args.Length + 5];
+            Array.Copy(es, t, 5);
+            for (int i = 0; i < args.Length; i++)
+            {
+                object o = args[i];
+                if (o is Font) o = Por("Letra", typeof(Font), o);
+                else if (o is StringFormat) o = Por("Formato", typeof(StringFormat), o);
+                else if (o is Brush)
+                {
+                    SKPaint p = (SKPaint)Puente.GetMethod("Pincel", Todo, null, new[] { typeof(Brush), typeof(bool) }, null).Invoke(null, new object[] { o, es[4] });
+                    hechos.Add(p); o = p;
+                }
+                t[i + 5] = o;
+            }
+            try { Nativa(nombre).Invoke(null, t); }
+            finally { foreach (SKPaint p in hechos) { SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); p.Dispose(); } }
+        }
+
         public static int Main(string[] a)
         {
             for (int i = 0; i + 1 < a.Length; i += 2) if (a[i] == "vuelca") { carpeta = a[i + 1]; System.IO.Directory.CreateDirectory(carpeta); }
@@ -219,10 +286,10 @@ namespace BancoSuena
                         foreach (string[] av in avisos)
                             foreach (Form1.TipoAviso tipo in new[] { Form1.TipoAviso.Hecho, Form1.TipoAviso.Cuidado, Form1.TipoAviso.Error, Form1.TipoAviso.Novedad })
                             {
-                                Size tam = Form1.TamanoAviso(ancho, av[0], av[1], tit, det);
+                                Size tam = (Size)Xp("TamanoAviso", 3, ancho, av[0], av[1], tit, det);
                                 using (Bitmap b = new Bitmap(tam.Width, tam.Height, PixelFormat.Format32bppPArgb))
                                 {
-                                    Form1.PintaAviso(b, tipo, av[0], av[1], tit, det);
+                                    Xp("PintaAviso", 0, b, tipo, av[0], av[1], tit, det);
                                     string nom = "aviso-" + (k++);
                                     Linea(nom, tam.Width + "x" + tam.Height + "\t" + Puntos(nom, b));
                                 }
@@ -241,8 +308,9 @@ namespace BancoSuena
                                 Size t = Form1.TamanoInvita(ancho);
                                 using (Bitmap b = new Bitmap(t.Width, t.Height, PixelFormat.Format32bppPArgb))
                                 {
-                                    PointF ranura; float radio;
-                                    Form1.PintaInvita(b, cancion, video, cpm, tit, txt, pie, out ranura, out radio);
+                                    object[] args = { b, cancion, video, cpm, tit, txt, pie, null, null };
+                                    Xp("PintaInvita", 0, args);
+                                    PointF ranura = (PointF)args[7]; float radio = (float)args[8];
                                     string nom = "invita-" + (k++);
                                     Linea(nom, t.Width + "x" + t.Height + "\t" + Puntos(nom, b) + "\tranura=" + R(ranura.X) + "," + R(ranura.Y) + " radio=" + R(radio));
                                 }
@@ -254,10 +322,10 @@ namespace BancoSuena
                 using (Font mas = new Font("Microsoft Sans Serif", px, FontStyle.Bold, GraphicsUnit.Pixel))
                     foreach (string txt in new[] { "+4 créditos", "+1 crédito", "+12 créditos" })
                     {
-                        Size m = Form1.TamanoMas(txt, mas);
+                        Size m = (Size)Xp("TamanoMas", 1, txt, mas);
                         using (Bitmap b = new Bitmap(m.Width, m.Height, PixelFormat.Format32bppPArgb))
                         {
-                            Form1.PintaMas(b, txt, mas);
+                            Xp("PintaMas", 0, b, txt, mas);
                             string nom = "mas-" + (k++);
                             Linea(nom, m.Width + "x" + m.Height + "\t" + Puntos(nom, b));
                         }
@@ -271,7 +339,7 @@ namespace BancoSuena
             // EL TITULO QUE SE DESLIZA, en su imagen: tres tamanos de letra, titulos con acentos, vacio y repetido (no se rehace)
             k = 0;
             foreach (int[] wh in new[] { new[] { 1024, 260 }, new[] { 1920, 400 }, new[] { 640, 200 } })
-                using (Font f = Form1.FuenteTituloReposo(wh[0], wh[1]))
+                using (Font f = XpFuenteTituloReposo(wh[0], wh[1]))
                 {
                     object form = RuntimeHelpers.GetUninitializedObject(typeof(Form1));
                     foreach (string titulo in new[] { "01 Cancion Larga con un titulo bastante largo para que no quepa en su caja", "02 Ángel de amor (versión ñandú) & más", "", "Corto", "Corto" })

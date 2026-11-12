@@ -146,12 +146,12 @@ namespace Rocola
                 return TextoConCinta(g, ajuste, text, font, color, rect, sf);   // EN LINUX: con el lienzo y su modo de letra
             }
         }
-        internal static void PintaTextoMovil(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, string text, Rocola.Nativo.Letra f, SKPaint brush, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel), una Letra, el pincel en un SKPaint y un FormatoTexto; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static void PintaTextoMovil(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, string text, Rocola.Nativo.Letra f, SKPaint brush, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel), una Letra, el pincel en un SKPaint y un FormatoTexto; los que la llaman (EstadoReposoGpu.cs, SuenaVivoGpu.cs, Form1.Vistas.cs) ya estan traducidos y la llaman directo
         {
             SKPaint solid = brush != null && brush.Shader == null ? brush : null;   // EN LINUX: brush as SolidBrush: un pincel de un color es un SKPaint sin Shader (los degradados y las texturas lo llevan)
             if (solid == null || !TextoConCinta(g, ajuste, text, f, ColorSk.DeSk(solid.Color), rect, sf)) TextoGdiPlus.Escribe(g, text, f, ajuste, brush, rect, sf, copia, medio);   // EN LINUX: solid.Color, el de .NET; g.DrawString (Nativo/TextoGdiPlus.cs) con el estado del que llama
         }
-        private void PintaArtistaCompacto(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel); quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
+        private void PintaArtistaCompacto(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del texto del que llama (modo de letra, copia y medio pixel); los que la llaman (EstiloGpu.cs, Form1.Video.cs) ya estan traducidos y la llaman directo
         {
             if (lblNow == null) return;
             Rectangle r = lblNow.Bounds;
@@ -172,11 +172,11 @@ namespace Rocola
                 // Si no cabe, con sus puntos suspensivos donde se acaba SU sitio (r), como el titulo. Antes se recortaba la
                 // etiqueta entera con un SetClip y la ultima palabra quedaba partida a la mitad (barrido del 12-10-2026).
                 if (TextoGdiPlus.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font), ajuste, SizeF.Empty, null).Width > r.Width)   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs)
-                    PintaRenglonLejosReposo(g, ajuste, copia, medio, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, aun sin traducir) pinta con un Graphics: por el puente (Plataforma/Puente.reposo.cs)
+                    PintaRenglonLejos(g, true, ajuste, copia, medio, lblNow.Text, PuenteDibujo.Letra(lblNow.Font), lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, ya traducido), directo, con el lienzo y su estado (el suavizado no lo usa: va el de quien llama en XP, AntiAlias); la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente (la misma); Near es Alinea.Cerca
                 else DrawLabelOverlay(g, ajuste, copia, medio, lblNow, lblNow.ForeColor, r);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y lo que pesa del estado en el texto
             }
         }
-        internal static bool TextoConCinta(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra f, Color color, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y su modo de letra, una Letra y un FormatoTexto; quien aun pasa un Graphics llega por el puente (Plataforma/Puente.reposo.cs)
+        internal static bool TextoConCinta(SKCanvas g, AjusteLetra ajuste, string text, Rocola.Nativo.Letra f, Color color, RectangleF rect, FormatoTexto sf)   // EN LINUX: el lienzo de Skia y su modo de letra, una Letra y un FormatoTexto; los que la llaman (EstiloGpu.cs, BuscadorPortadasGpu.cs y este archivo) ya estan traducidos y la llaman directo
         { return capturandoCintas != null && capturandoCintas.Add(g, ajuste, text, f, color, rect, sf); }   // EN LINUX: con el modo de letra del lienzo
         private void SueltaCintasTexto()
         {
@@ -298,7 +298,7 @@ namespace Rocola
             return CintaDeLista(group);
         }
         private void SubeCinta(CintaTile tile)
-        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, PuenteDibujo.Bitmap(tile.Source), out tile.U, out tile.V); }   // EN LINUX: Upload (D3D9Star.cs, aun sin traducir) pide un Bitmap: el mismo prestado para el mismo mapa (Plataforma/Puente.cs; no suelta los puntos)
+        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }   // EN LINUX: Upload (D3D9Star.cs, ya traducido) sube el SKBitmap de la cinta directo (el que llegaba por el puente era el mismo mapa)
 
         private bool CintaVisible(CintaTile tile, int now)
         {
