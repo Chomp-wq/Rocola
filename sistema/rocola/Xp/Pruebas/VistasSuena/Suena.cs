@@ -198,7 +198,11 @@ namespace BancoSuena
             Type pv = typeof(Form1).GetNestedType("PastillaView", BindingFlags.NonPublic);
             object v = Activator.CreateInstance(pv, true);
             pv.GetField("Etiqueta").SetValue(v, et); pv.GetField("Valor").SetValue(v, va); pv.GetField("ConPortadas").SetValue(v, conPortadas);
-            pv.GetProperty("Size").SetValue(v, new Size(w, h));
+            // (arreglo-junta14, 12-11-2026) en la referencia PastillaView es un Control (Size); en la traduccion (vistas-disco) es una vista sin
+            // herencia con SetBounds de su CajaVista: SetBounds(0, 0, w, h) es lo que hace el Size de Control con la vista en (0,0)
+            PropertyInfo tam = pv.GetProperty("Size", BindingFlags.Public | BindingFlags.Instance);
+            if (tam != null) tam.SetValue(v, new Size(w, h));
+            else pv.GetMethod("SetBounds", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null).Invoke(v, new object[] { 0, 0, w, h });
             Linea(nombre, R((float)pv.GetMethod("XNumero", Todo).Invoke(v, null)));
         }
 
