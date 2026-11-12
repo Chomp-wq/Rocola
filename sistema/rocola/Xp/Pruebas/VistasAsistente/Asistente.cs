@@ -17,6 +17,9 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -231,6 +234,8 @@ namespace BancoAsistente
         }
 
         // ================================================================ LA CASILLA DE AYUDA (AyudaView)
+        // el sitio de la casilla: SetBounds(x, y, ancho, alto) de la casilla, por reflexion (en XP la da Control; en la traduccion, su CajaVista)
+        private static void PonSitio(object c, int x, int y, int w, int h) { c.GetType().GetMethod("SetBounds", new[] { typeof(int), typeof(int), typeof(int), typeof(int) }).Invoke(c, new object[] { x, y, w, h }); }
         private static Type Casilla { get { return typeof(Form1).GetNestedType("AyudaView", BindingFlags.NonPublic); } }
         private static void Casillas()
         {
@@ -255,7 +260,7 @@ namespace BancoAsistente
                             {
                                 string nombre = "casilla-" + (directo ? "directo-" : "") + e.Nombre + "-" + m[0] + "x" + m[1] + "-" + v + (forGpu ? "-gpu" : "-cpu") + "-" + (k++);
                                 object c = Activator.CreateInstance(t, true);
-                                ((Control)c).SetBounds(4, 3, m[0], m[1]);
+                                PonSitio(c, 4, 3, m[0], m[1]);
                                 compactaF.SetValue(c, compacta); abiertaF.SetValue(c, abierta);
                                 using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
                                 {
@@ -273,7 +278,13 @@ namespace BancoAsistente
                                             }
                                             else
                                             {
-                                                xp.Invoke(c, new object[] { g, forGpu });
+                                                if (xp != null) xp.Invoke(c, new object[] { g, forGpu });
+                                                else
+                                                {   // la traduccion ya no tiene la firma de XP con un Graphics (se quito con vista-ayuda): la traducida con el estado del Graphics, y lo que la de XP le dejaba al Graphics (el suavizado y el modo de letra, si la casilla tiene medida para pintarse)
+                                                    object[] es = EstadoDe(g);
+                                                    nativa.Invoke(c, new object[] { es[0], es[3], es[4], forGpu });
+                                                    if (!(m[0] < 30 || m[1] < 12)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }
+                                                }
                                                 if (!directo) deja = " deja=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.PixelOffsetMode;
                                             }
                                         }
@@ -291,7 +302,7 @@ namespace BancoAsistente
             // linea) y con el recorte de su ventana sellado. Es la linea de WinForms OnPaint(PaintEventArgs e) { RenderContent(e.Graphics,
             // false); }, que en la traduccion entra por la firma de XP del puente; lo que la traducida le pide a CtrlTxt, CtrlDot y CtrlTri
             // va con otro Graphics sobre el mismo lienzo, con la identidad como matriz del HDC.
-            MethodInfo onPaint = t.GetMethod("OnPaint", Todo), sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
+            MethodInfo onPaint = t.GetMethod("OnPaint", Todo), pinta = t.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null), sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
             k = 0;
             foreach (Estado e in Estados)
                 foreach (int[] m in medidas)
@@ -299,7 +310,7 @@ namespace BancoAsistente
                     {
                         string nombre = "casilla-onpaint-" + e.Nombre + "-" + m[0] + "x" + m[1] + "-" + v + "-" + (k++);
                         object c = Activator.CreateInstance(t, true);
-                        ((Control)c).SetBounds(9, 5, m[0], m[1]);
+                        PonSitio(c, 9, 5, m[0], m[1]);
                         compactaF.SetValue(c, v == 1 || v == 3); abiertaF.SetValue(c, v >= 2);
                         using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
                         {
@@ -310,7 +321,17 @@ namespace BancoAsistente
                                 if (v % 2 == 0) g.SetClip(new Rectangle(0, 0, m[0] - 7, m[1]));   // la parte de su ventana que hay que pintar
                                 sella.Invoke(g, null);
                                 Matrix antes = g.Transform;
-                                try { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe }); }
+                                try
+                                {
+                                    if (onPaint != null) { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe }); }
+                                    else
+                                    {   // la traduccion: Pinta(SKCanvas) (IVista) pinta en el estado de fabrica de un WM_PAINT (sin copia ni medio pixel); con un Graphics de otro estado, la traducida con su estado, como la llamaba el puente; y lo que dejaba OnPaint (el suavizado y el modo de letra)
+                                        object[] es = EstadoDe(g);
+                                        if (!(bool)es[3] && !(bool)es[4]) { pinta.Invoke(c, new object[] { es[0] }); directas++; }
+                                        else nativa.Invoke(c, new object[] { es[0], es[3], es[4], false });
+                                        if (!(m[0] < 30 || m[1] < 12)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }
+                                    }
+                                }
                                 catch (Exception xx) { ex = " " + Exc(xx); }
                                 Matrix despues = g.Transform; RectangleF rc = g.ClipBounds;
                                 deja = " deja=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.PixelOffsetMode
@@ -318,6 +339,38 @@ namespace BancoAsistente
                             }
                             Rectangle tecla = (Rectangle)teclaF.GetValue(c);
                             Linea(nombre, Puntos(nombre, b) + deja + " tecla=" + tecla.X + "," + tecla.Y + "," + tecla.Width + "," + tecla.Height + ex);
+                        }
+                        ((IDisposable)c).Dispose();
+                    }
+
+            // (vista-ayuda) SU PINTURA POR PROCESADOR, COMO LA DE LA AYUDA DE VistasVideoForm1 (ayuda-pinta): en XP OnPaint(PaintEventArgs) con el Graphics
+            // de un WM_PAINT (el de fabrica: Graphics.FromImage, trasladado a su sitio y recortado a el); en la traduccion, Pinta(SKCanvas) (IVista), que
+            // pinta su hueco o la pantalla, en el lienzo de ese mismo Graphics
+            k = 0;
+            foreach (int[] m in medidas)
+                for (int v = 0; v < 4; v++)
+                    foreach (int sitio in new[] { 0, 1 })
+                    {
+                        string nombre = "casilla-pinta-" + m[0] + "x" + m[1] + "-" + v + "-" + sitio;
+                        object c = Activator.CreateInstance(t, true);
+                        PonSitio(c, 0, 0, m[0], m[1]);
+                        compactaF.SetValue(c, v == 1 || v == 3); abiertaF.SetValue(c, v >= 2);
+                        using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
+                        {
+                            string ex = "";
+                            using (Graphics g = Graphics.FromImage(b))
+                            {
+                                g.Clear(Color.FromArgb(120, 30, 60, 90));
+                                if (sitio == 1) { g.TranslateTransform(9, 4); g.IntersectClip(new Rectangle(0, 0, m[0], m[1])); }   // (como Escritorio.PintaArbol)
+                                try
+                                {
+                                    if (pinta != null) { pinta.Invoke(c, new[] { Por("Lienzo", typeof(Graphics), g) }); directas++; }
+                                    else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe });
+                                }
+                                catch (Exception xx) { ex = " " + Exc(xx); }
+                            }
+                            Rectangle tecla = (Rectangle)teclaF.GetValue(c);
+                            Linea(nombre, Puntos(nombre, b) + " tecla=" + tecla.X + "," + tecla.Y + "," + tecla.Width + "," + tecla.Height + ex);
                         }
                         ((IDisposable)c).Dispose();
                     }
