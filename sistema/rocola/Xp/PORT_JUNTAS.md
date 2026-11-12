@@ -204,3 +204,22 @@ f3teclas IGUALES. Ojo: arnes.sh de reposo y video-form1 dice «DISTINTAS: 0 line
 las líneas «>»).
 
 El reparto de lo que queda hasta N7: PLAN_TANDA4_A_N7.md.
+
+## 12-11-2026: oleada 1 de la tanda 4 (directas-buscador-video, directas-vistas y pantalla-nativa)
+
+- `d47b54b`: directas-buscador-video (el buscador, la interfaz de la tarjeta y la barra de ayuda llaman directo a lo ya traducido;
+  fuera los puentes *Buscador, *VideoForm1 y GraphicsVideoForm1) con su revisión («arreglado»: la nota EN LINUX de EnSeco). Dos choques
+  en los arneses (buscador-portadas y video-form1, con `c25b53e`): se tomó el lado de la rama, que ya llama a la traducida.
+- `c43040e`: directas-vistas (Form1.Vistas.cs y DiscoVivoGpu.cs directos: Ctrl*, AnchoTexto, CreaSfDibuja, SueltaBitmaps y
+  ContornoRedondo) con dos revisiones («bien»).
+- `bae626e`: pantalla-nativa (IVista, el compositor nativo que acepta capas de la capa y vistas nativas, la entrada por la pantalla y la
+  prueba PantallaVistas de la vista falsa) con su revisión («arreglado»: las hojas nativas, una sola pintura por cuadro).
+
+Comprobado con todo junto (`scratchpad/merge/verifica-junta12.sh`, con la máquina cargada por la oleada 2 y 3a a la vez): compila desde
+cero (0 errores, los 15 avisos), NativeAOT sin avisos IL/AOT; todos los arneses IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de
+2 865, Ctrl+F3 0 de 545; el fondo con solo su primera línea, la marca); el banco igual en los 27 000 casos; 41 de 41, 62 de 62, 32 de 32
+y PantallaVistas 46 de 46; recorridos 9 de 9 con 0, capas quietas 216 de 217 (la de siempre: la capa 4 de la hoja de Ctrl+F3 de
+«hojas» a los 18 s, que depende del repaso) y texturas quietas 477 de 487 (las de la hora). Escenas (RJ12/J12): IGUALES salvo sigterm y
+f3sigterm (lo aceptado) y altf4, captura y f2sin solo por las cuentas del reloj Form1.cs:724 y del encargo MedidasBitacora.cs:129;
+repetidas (RJ12b/J12b): altf4 IGUAL, captura y f2sin con esas cuentas cambiando de signo (ruido de carga). NativeAOT: arranque, cierreq,
+kill9, f3vistas y f3teclas IGUALES; buscador solo por la cuenta del reloj, repetida IGUAL.
