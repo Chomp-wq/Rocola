@@ -91,3 +91,29 @@ Notas viejas corregidas: 10 (ya no llega `RoundRect` por el puente), 250 y 304 (
   ajustarlo.
 - `FamiliaUi` deja de devolver un objeto: si algún archivo aún sin traducir pidiera `FamiliaUi().Name` o una `FontFamily`, no compilaría
   (no hay ninguno: compila).
+
+## Revisión (revisor independiente, 12-11-2026)
+
+Leído el diff entero (`git diff bae626e..bcbd8bc`) contra `Rocola/` y contra la capa (`Plataforma/Dibujo2D.cs`). No se encontró ningún
+fallo que arreglar en el código:
+
+- `RoundRect`: mismas cotas de `d` y en el mismo orden que XP (`Rocola/Form1.Ajustes.cs:1935-1948`); los cuatro `ArcTo` son lo que hacía
+  `GraphicsPath.AddArc(int...)` de la capa (`Dibujo2D.cs:280-288`: caja `(x, y, x + w, y + h)` en `float`, el primero con `forceMoveTo`
+  porque la figura es nueva, los demás unidos) y `Close` es `CloseFigure`; relleno par-impar como `new GraphicsPath()`.
+- Los 7 `RoundedPath` → `ContornoRedondo`: el puente (`Puente.fondo.cs:20`) solo envolvía `ContornoRedondo` y `PuenteDibujo.Ruta` daba
+  ese mismo `SKPath`: el trazo que llega a `Pixel.Rellena`/`Traza` es el mismo objeto de antes; se suelta igual (`using`).
+- `FamiliaUi`: `new FontFamily(n).Name` de la capa es `Letras.Familia(n)` (lanza igual) y `GenericSansSerif.Name` es `Letras.SinRemates`
+  (`Dibujo2D.cs:62` y `67`): el mismo nombre, la misma caché, el mismo `catch { }`.
+- `RegionDeRuta`: lo mismo que `new Region(GraphicsPath)` de la capa (`Dibujo2D.cs:336`, copia con `new SKPath(gp.P)`).
+- `CB`/`COut`: el mismo `SKPaint` reusable con su nombre de XP; nada más cambia.
+
+Repetido por el revisor: a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos (15 distintos, los de la base). b)
+`diff-xp.py -v` de los 5 archivos: Ajustes 403/400 (9 sin marca), Pared 231/228 (1), Form1.cs 157/156 (2), PantallaVivaGpu 128/125 (0),
+PrecargaPaginaGpu 22/21 (0); las líneas sin marca son las mismas que da `bae626e` (ninguna del grupo). Líneas y CRLF de los 5 archivos
+iguales a `bae626e` (2044/2011, 1678/1470, 2785/2741, 963/0, 231/0). c) NativeAOT: 0 avisos IL/AOT. e) `VistasAjustes/compara.sh`: 0
+distintas de 545 (falsas y DejaVu, 0 excepciones); `VistasPared/arnes.sh`: IGUALES con falsas y DejaVu (1715 líneas). No se repitieron
+escenas ni recorridos: los trazos de Ctrl+F3 son el mismo `SKPath` de antes (ver arriba), sin duda que lo pida.
+
+Menor, fuera de los archivos del grupo (no se toca; para la limpieza 3b o N7): las notas de `Codigo/Form1.Fondo.cs:771` y
+`Plataforma/Puente.fondo.cs:16-19` aún nombran a `Form1.Ajustes.cs` entre los que piden `RoundedPath`, y la de
+`Plataforma/Puente.pantalla-viva.cs:44` dice que `FamiliaUi` da una `FontFamily`.
