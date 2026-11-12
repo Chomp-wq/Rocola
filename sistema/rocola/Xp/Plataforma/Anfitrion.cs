@@ -89,7 +89,7 @@ namespace Rocola
                 if (c.Nativa != null)
                 {
                     Control n = c.Nativa;
-                    p.DeTextura = true; p.Textura = n.TexturaGl; p.AnchoGl = n.AnchoGl; p.AltoGl = n.AltoGl; p.Rgba = n.TexturaGlRgba; p.Nombre = n.GetType().Name; p.Tipo = "tarjeta";
+                    p.DeTextura = true; p.Textura = n.TexturaGl; p.AnchoGl = n.AnchoGl; p.AltoGl = n.AltoGl; p.Rgba = n.TexturaGlRgba; p.Nombre = (VistaDeHueco(n) ?? n).GetType().Name; p.Tipo = "tarjeta";   // (gpupanel-sin-control: el hueco de la vista de la tarjeta se nombra por ella, «GpuPanel», como cuando era el control)
                 }
                 else if (c.Imagen != null) { p.Mapa = c.Imagen.Sk; p.Version = c.Version; p.Tipo = "dibujo2d"; }
                 else if (c.TarjetaDeHoja != null)   // (port nativo, f12-como-hoja) la tarjeta en el cliente de una hoja: va con las hojas, justo despues de la suya
@@ -201,24 +201,37 @@ namespace Rocola
             {
                 Control c = v as Control; if (c == null) return false;
                 MouseEventHandler h = delegate (object s, MouseEventArgs e) { a(HuecoDeVista.R(e)); };
-                if (que == AvisoRaton.Abajo) c.MouseDown += h; else c.MouseClick += h;
+                if (que == AvisoRaton.Abajo) c.MouseDown += h; else if (que == AvisoRaton.Mueve) c.MouseMove += h; else if (que == AvisoRaton.Rueda) c.MouseWheel += h; else c.MouseClick += h;   // (gpupanel-sin-control: tambien MouseMove y MouseWheel)
                 return true;
             }
             public ILugarDelVideo LugarDelVideo(object ventana) { return new VideoEnVentanas().Lugar(ventana); }
-            // Present de la tarjeta: lo que hacia PantallaTarjeta antes de la pantalla nativa (el control de la ventana guarda el fondo y el
-            // escritorio compone con el)
+            // Present de la tarjeta en una hoja (la ventana de prueba F12): su cliente guarda el fondo y el escritorio compone con el. (gpupanel-
+            // sin-control) Ya no hay ningun control de la capa con un dispositivo: el GpuPanel es una vista (PresentaEnVista); sin hoja, glFlush.
             public bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera)
             {
                 Hoja hoja = Hoja.DeLaVentana(ventana);   // (port nativo, f12-como-hoja) la ventana de prueba F12 es una hoja: su cliente
                 if (hoja != null) { hoja.PresentaTarjeta(textura, ancho, alto); Escritorio.SinEspera = sinEspera; Escritorio.PresentaNativa(null); return true; }
-                Control control = Control.FromHandle(ventana);
+                GlMas.Flush(); return false;
+            }
+            public void OlvidaTarjeta(IntPtr ventana) { Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) hoja.OlvidaTarjeta(); }
+            // (gpupanel-sin-control) Present en la superficie de una vista de la tarjeta que esta en un hueco: lo que hacia antes con el control
+            // (Control.FromHandle del Handle del GpuPanel): el hueco («Nativa») guarda el fondo y el escritorio compone con el
+            public bool PresentaEnVista(IVista v, uint textura, int ancho, int alto, bool sinEspera)
+            {
+                Control control = ControlDe(v);
                 if (control == null) { GlMas.Flush(); return false; }
                 control.TexturaGl = textura; control.AnchoGl = ancho; control.AltoGl = alto;
                 Escritorio.SinEspera = sinEspera;
                 Escritorio.PresentaNativa(control);
                 return true;
             }
-            public void OlvidaTarjeta(IntPtr ventana) { Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) { hoja.OlvidaTarjeta(); return; } Control control = Control.FromHandle(ventana); if (control != null) control.TexturaGl = 0; }
+            public void OlvidaEnVista(IVista v) { Control control = ControlDe(v); if (control != null) control.TexturaGl = 0; }
+            // (gpupanel-sin-control) Control.FindForm del hueco (la Form de arriba de la cadena de padres) y si esta minimizada
+            public bool VentanaMinimizada(IVista v)
+            {
+                Control control = ControlDe(v); Form ventana = control != null ? control.FindForm() : null;
+                return ventana != null && ventana.WindowState == FormWindowState.Minimized;
+            }
             public void HayQueComponer() { Escritorio.Mueve(); }
             public void Tecla(Tecla tecla, bool abajo) { Escritorio.Tecla(tecla, abajo); }
             public void RatonEn(int x, int y) { Escritorio.RatonEn(x, y); }
@@ -242,7 +255,9 @@ namespace Rocola
             internal IVista Vista { get { return vista; } }
             // (panel-del-disco) el hueco de una vista que no toma el foco del teclado es un Panel: ni Selectable ni TabStop; (vista-ayuda,
             // revision) si no, el TabStop que XP le pone a la vista, como si heredara
-            internal HuecoDeVista(IVista v) { vista = v; if (!v.Seleccionable) SetStyle(ControlStyles.Selectable, false); TabStop = v.Seleccionable && v.ParaElTabulador; }
+            // (gpupanel-sin-control) el de una vista de la tarjeta es «Nativa» como lo era el GpuPanel: el escritorio deja su hueco y compone ahi
+            // lo que la tarjeta presento (TexturaGl, PresentaEnVista), y su WM_PAINT llama a OnPaint (Escritorio.PintaYa): Pinta de la vista
+            internal HuecoDeVista(IVista v) { vista = v; if (!v.Seleccionable) SetStyle(ControlStyles.Selectable, false); TabStop = v.Seleccionable && v.ParaElTabulador; Nativa = v.DeLaTarjeta; }
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
             internal static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }
@@ -257,13 +272,14 @@ namespace Rocola
             }
             protected override void OnMouseDoubleClick(MouseEventArgs e) { vista.Raton(AvisoRaton.DobleClic, R(e)); base.OnMouseDoubleClick(e); }
             protected override void OnMouseUp(MouseEventArgs e) { vista.Raton(AvisoRaton.Arriba, R(e)); base.OnMouseUp(e); }
-            protected override void OnMouseMove(MouseEventArgs e) { vista.Raton(AvisoRaton.Mueve, R(e)); base.OnMouseMove(e); }
+            protected override void OnMouseMove(MouseEventArgs e) { Raton r = R(e); vista.Raton(AvisoRaton.Mueve, r); PantallaRocola.AvisaOyentes(vista, AvisoRaton.Mueve, r); base.OnMouseMove(e); }   // (gpupanel-sin-control: los que oyen su MouseMove)
             protected override void OnMouseEnter(EventArgs e) { vista.Raton(AvisoRaton.Entra, new Raton(BotonRaton.None, 0, 0, 0, 0)); base.OnMouseEnter(e); }
             protected override void OnMouseLeave(EventArgs e) { vista.Raton(AvisoRaton.Sale, new Raton(BotonRaton.None, 0, 0, 0, 0)); base.OnMouseLeave(e); }
             protected override void OnMouseWheel(MouseEventArgs e)
             {
                 Raton r = R(e);
                 vista.Raton(AvisoRaton.Rueda, r);
+                PantallaRocola.AvisaOyentes(vista, AvisoRaton.Rueda, r);   // (gpupanel-sin-control: los que oyen su MouseWheel, antes de mirar Handled como WmMouseWheel)
                 HandledMouseEventArgs h = e as HandledMouseEventArgs; if (h != null && r.Handled) h.Handled = true;
                 base.OnMouseWheel(e);
             }

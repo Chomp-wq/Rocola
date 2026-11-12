@@ -1973,7 +1973,7 @@ namespace Rocola
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
     //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
-    internal sealed partial class GpuPanel : Control
+    internal sealed partial class GpuPanel : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, gpupanel-sin-control: W4): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista que pinta la tarjeta (DeLaTarjeta): su dispositivo presenta en la superficie de la vista (PantallaRocola.SuperficieDe) y la pantalla compone esa textura en su sitio; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), un control «Nativa» que le da el WM_PAINT (Pinta) y el raton como WinForms al control
     {
         private GpuStarfield stars;
         private bool idleHooked;
@@ -2216,15 +2216,15 @@ namespace Rocola
         // Bucle de render por Application.Idle (patron estandar para D3D en WinForms): dibuja tan rapido como
         // permita el vsync (60 FPS) mientras no haya mensajes pendientes; al llegar un mensaje (tecla, timer)
         // sale, lo procesa y vuelve. El Timer de WinForms era impreciso (se quedaba en ~40 fps).
-        [StructLayout(LayoutKind.Sequential)]
-        private struct NativeMessage { public IntPtr Hwnd; public uint Msg; public IntPtr W; public IntPtr L; public uint Time; public Point Pt; }
-        private static int PeekMessage(out NativeMessage msg, IntPtr hWnd, uint min, uint max, uint remove) { msg = new NativeMessage(); return Escritorio.HayMensajes() ? 1 : 0; }   // Linux: la cola del escritorio
-        private static bool AppIdle() { NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0; }   // 0 = PM_NOREMOVE
+        // EN LINUX: [StructLayout(LayoutKind.Sequential)] struct NativeMessage (el MSG de Win32: Hwnd, Msg, W, L, Time, Pt): solo lo pedia PeekMessage, que en la pantalla nativa no hace falta (AppIdle, abajo)
+        // EN LINUX: (el MSG que PeekMessage llenaba y AppIdle tiraba) la pantalla nativa no tiene mensajes que leer: tiene encargos, entrada, pintado y relojes (Nativo/PantallaRocola.cs)
+        // EN LINUX: [DllImport("user32.dll")] PeekMessage(out msg, hWnd, min, max, remove): lo que AppIdle le preguntaba (con PM_NOREMOVE, si hay algo en la cola del hilo) es PantallaRocola.HayPendientes
+        private static bool AppIdle() { return !PantallaRocola.HayPendientes; }   // 0 = PM_NOREMOVE   // EN LINUX: NativeMessage m; return PeekMessage(out m, IntPtr.Zero, 0, 0, 0) == 0: nada pendiente en la cola de la pantalla (los encargos, la entrada, lo sucio y los relojes vencidos: PantallaRocola.HayPendientes, Nativo/PantallaRocola.cs), lo mismo que miraba PeekMessage
 
         private bool PuedeDibujar()
         {
-            Form ventana = FindForm();
-            if (ventana != null && ventana.WindowState == FormWindowState.Minimized)
+            bool minimizada = PantallaRocola.VentanaMinimizada(this);   // EN LINUX: Form ventana = FindForm(): la ventana de arriba de la vista (Control.FindForm) y, abajo, si esta minimizada; en la ventana de la capa, la Form de su hueco; en la pantalla nativa la ventana es la pantalla y no se minimiza (Nativo/PantallaRocola.Vistas.cs)
+            if (minimizada)   // EN LINUX: ventana != null && ventana.WindowState == FormWindowState.Minimized (PantallaRocola.VentanaMinimizada, arriba)
             { renderSuspendido = true; return false; }
             if (renderSuspendido)
             {
@@ -2239,9 +2239,9 @@ namespace Rocola
 
         public GpuPanel()
         {
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
-            SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI
-            Nativa = true;   // EN LINUX: lo pinta la tarjeta (Nativo/DispositivoTarjetaGl.cs); el escritorio deja su hueco
+            caja = new CajaVista(this) { RepintaConMedida = false };   // EN LINUX: SetStyle(UserPaint | AllPaintingInWmPaint | Opaque, true): la pinta entera su Pinta (el WM_PAINT: RenderFrame), sin borrar el fondo antes (su hueco no pinta fondo; la pantalla nativa no la pinta por procesador: compone la textura de la tarjeta); sin ResizeRedraw (XP no lo pone ni Control lo trae: al cambiar de medida no se repinta entera, CajaVista.RepintaConMedida). XP no toca Selectable ni TabStop: los de fabrica de Control (true y true), IVista.Seleccionable y ParaElTabulador de fabrica: esta en el ciclo del tabulador en su sitio
+            // EN LINUX: SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI (la vista no tiene bufer por procesador: la tarjeta presenta en su superficie)
+            // EN LINUX: (la capa le ponia Nativa = true) es DeLaTarjeta (abajo, con su CajaVista): la pinta la tarjeta (Nativo/DispositivoTarjetaGl.cs); su hueco en la capa es «Nativa» y en la pantalla nativa es una capa de textura de la lista de la ventana
             trasCielo = delegate
             {
                 aurDibujada = false;
@@ -2260,15 +2260,15 @@ namespace Rocola
             return Math.Max(1, (int)(restante - 0.6));
         }
         // La espera no consume mensajes ni bombea eventos de forma reentrante.
-        // Linux: espera en la cola del escritorio (0 = llego algo; 0x102 = paso el tiempo)
-        private static uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags) { return Escritorio.EsperaMensajes((int)ms) ? 0u : 0x102u; }
+        // EN LINUX: [DllImport("user32.dll")] (la espera de Win32, abajo en EsperaMensajes: PantallaRocola.EsperaPendientes, Nativo/PantallaRocola.cs)
+        // EN LINUX: private static extern uint MsgWaitForMultipleObjectsEx(uint count, IntPtr handles, uint ms, uint mask, uint flags): vuelve con 0 si llego algo y con 0x102 (WAIT_TIMEOUT) si paso el tiempo
         internal static bool EsperaMensajes(int ms)
         {
             ms = Math.Max(1, Math.Min(8, ms));
             try
             {
                 // QS_ALLINPUT / MWMO_INPUTAVAILABLE: despierta incluso si PeekMessage ya vio la entrada.
-                uint r = MsgWaitForMultipleObjectsEx(0, IntPtr.Zero, (uint)ms, 0x04FF, 0x0004);
+                uint r = PantallaRocola.EsperaPendientes(ms) ? 0u : 0x102u;   // EN LINUX: MsgWaitForMultipleObjectsEx(0, IntPtr.Zero, (uint)ms, 0x04FF, 0x0004): hasta ms o hasta que haya algo pendiente en la cola de la pantalla, aunque ya estuviera (QS_ALLINPUT con MWMO_INPUTAVAILABLE); 0 = llego algo, 0x102 = WAIT_TIMEOUT
                 if (r != 0xFFFFFFFF) return r == 0;
             }
             catch { }
@@ -2351,11 +2351,11 @@ namespace Rocola
             if (stars == null || !stars.Ok)
             {
                 if (stars != null) stars.Dispose();
-                stars = new GpuStarfield(this.Handle, Width, Height, 4321);
+                stars = new GpuStarfield(PantallaRocola.SuperficieDe(this), Width, Height, 4321);   // EN LINUX: this.Handle: la ventana en que Direct3D 9 presenta; aqui la superficie de la vista en la pantalla (su identificador: Present la pone en el hueco de la capa o en su sitio de la lista nativa, Nativo/PantallaRocola.Vistas.cs)
                 if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
                 cellTextureBudget = AdaptiveCellBudget(stars.EstimatedTextureMemory, Form1.CacheCeldasMb(), IntPtr.Size);
             }
-            if (!idleHooked) { Application.Idle += OnIdle; idleHooked = true; }
+            if (!idleHooked) { PantallaRocola.Libre += OnIdle; idleHooked = true; }   // EN LINUX: Application.Idle += OnIdle: Libre de la pantalla (con la cola vacia, una vez; lo que lance sale del bucle, como FDoIdle: Nativo/PantallaRocola.cs)
             return true;
         }
 
@@ -2367,7 +2367,7 @@ namespace Rocola
             SueltaCintasGpu();
             ClearPaletteFade(); paletteKey = 0;
             TrimRecentCovers(true);
-            if (idleHooked) { Application.Idle -= OnIdle; idleHooked = false; }
+            if (idleHooked) { PantallaRocola.Libre -= OnIdle; idleHooked = false; }   // EN LINUX: Application.Idle -= OnIdle (PantallaRocola.Libre)
             ReleaseCellTex();   // libera todas las texturas de celda (cache por Folder + slots TOP)
             if (contourTex != IntPtr.Zero) { Tarjeta.Suelta(contourTex); contourTex = IntPtr.Zero; }
             if (selTexA != IntPtr.Zero) { Tarjeta.Suelta(selTexA); selTexA = IntPtr.Zero; }
@@ -4516,23 +4516,23 @@ namespace Rocola
         // WM_PAINT -> dibuja por D3D9. Con su try (24-10-2026), como el bucle de arriba: en .NET 2.0 una excepcion que se escapa de
         // OnPaint marca el control y desde entonces solo se pinta la X roja, sin volver a llamar a OnPaint hasta reiniciar la rocola.
         // WM_PAINT llega al destaparse la ventana (al volver del inicio de sesion de Windows, al cerrar Ctrl+F3).
-        protected override void OnPaint(PaintEventArgs e) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }
+        public void Pinta(SKCanvas g) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e): el WM_PAINT de la vista (se lo da su hueco de la capa, o la pantalla nativa: PantallaRocola.PintadoSinLaCapa); dibuja la tarjeta, el lienzo no se usa (como e.Graphics en XP)
 
         // UN CUADRO, PEDIDO A MANO. Lo usa el medidor de Ctrl+F3: medir ocurre dentro de una pulsacion, o sea
         // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje
         // seria esperar sentado. Es el MISMO cuadro que dibuja la rocola encendida, por el mismo camino: si
         // aqui se midiera otra cosa, la medida no valdria para nada.
         public bool DibujaUnCuadro() { return RenderFrame(); }
-        protected override void OnPaintBackground(PaintEventArgs e) { }        // no borra (D3D9 es dueño de los pixeles)
+        private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public bool DeLaTarjeta { get { return true; } }   // EN LINUX: protected override void OnPaintBackground(PaintEventArgs e) { } // no borra (D3D9 es dueño de los pixeles): sin fondo que pintar (Pinta no lo pinta); aqui, lo que XP le usa de Control (Bounds, Left, Top, Width, Height, SetBounds, Visible con la de su dueno -GetVisibleCore- e Invalidate) de su CajaVista (Nativo/IVista.cs), y que la pinta la tarjeta (IVista.DeLaTarjeta)
 
-        protected override void Dispose(bool disposing)
+        void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing): la desecha su hueco al desecharse con su ventana (Control.Dispose desecha a los hijos), con disposing = true, antes de lo suyo (Plataforma/Anfitrion.cs)
         {
             if (disposing)
             {
                 StopGpu();
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
             }
-            base.Dispose(disposing);
+            PantallaRocola.SueltaSuperficie(this);   // EN LINUX: base.Dispose(disposing): la ventana del control se destruye (Control.FromHandle ya no la da) y sale de su padre; aqui se suelta su superficie, y sacarla de la ventana lo hace su hueco despues (Plataforma/Anfitrion.cs)
         }
     }
 }

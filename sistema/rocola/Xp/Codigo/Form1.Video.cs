@@ -848,12 +848,12 @@ namespace Rocola
             {
                 gpuPanel = new GpuPanel();
                 Point ultimoMouseGpu = new Point(-10000, -10000);
-                gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse) {
+                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Mueve, delegate(Raton mouse) {   // EN LINUX: gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse): el evento MouseMove del panel, por la pantalla (Nativo/PantallaRocola.Vistas.cs: lo avisan su hueco de la capa o la pantalla nativa despues de su Raton, donde WinForms lanza el evento: Control.OnMouseMove)
                     if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
-                    ultimoMouseGpu = mouse.Location; lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;
-                    AsistenteMueveRaton(mouse.Location);
-                };
-                gpuPanel.MouseDown += delegate {
+                    ultimoMouseGpu = new Point(mouse.X, mouse.Y); lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;   // EN LINUX: mouse.Location (MouseEventArgs.Location: new Point(X, Y))
+                    AsistenteMueveRaton(new Point(mouse.X, mouse.Y));   // EN LINUX: mouse.Location
+                });   // EN LINUX: }; (el cierre de PantallaRocola.OyeRaton)
+                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Abajo, delegate {   // EN LINUX: gpuPanel.MouseDown += delegate {...}: el evento MouseDown del panel, por la pantalla (Control.OnMouseDown)
                     lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi();
                     // TOCAR LA PANTALLA DESPIERTA LA ATRACCION, como cualquier boton (novena tanda, 12-10-2026). Antes el toque
                     // solo reiniciaba la cuenta del reposo y la atraccion seguia: en una pantalla tactil no habia forma de
@@ -861,18 +861,18 @@ namespace Rocola
                     toqueDespierta = attractOn;
                     if (attractOn) ExitAttract();
                     if (asistenteVisible) asistenteActividadTick = Environment.TickCount;   // tocar la pantalla tambien es usarla: la guia no se cierra por inactividad
-                };
-                gpuPanel.MouseWheel += delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); };
-                gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e)
+                });   // EN LINUX: }; (el cierre de PantallaRocola.OyeRaton)
+                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Rueda, delegate { lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; gpuPanel.TouchUi(); });   // EN LINUX: gpuPanel.MouseWheel += delegate {...}: el evento MouseWheel del panel, por la pantalla (Control.OnMouseWheel: llega al que tiene el foco)
+                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Clic, delegate(Raton e)   // EN LINUX: gpuPanel.MouseClick += delegate(object sender, MouseEventArgs e): el evento MouseClick del panel, por la pantalla (Control.OnMouseClick)
                 {
                     if (toqueDespierta) { toqueDespierta = false; return; }   // el toque que desperto la atraccion no hace nada mas
                     // La casilla AYUDA va primero: abre la ayuda y, con la ayuda abierta, la vuelve a guardar.
-                    if (e.Button == MouseButtons.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;
+                    if (e.Button == BotonRaton.Left && AyudaTocada(new Point(e.X + gpuPanel.Left, e.Y + gpuPanel.Top))) return;   // EN LINUX: MouseButtons.Left -> BotonRaton.Left (el mismo numero)
                     if (AsistenteCapturaEntrada)
-                    { if (e.Button == MouseButtons.Left) AsistenteClick(e.Location); return; }
+                    { if (e.Button == BotonRaton.Left) AsistenteClick(new Point(e.X, e.Y)); return; }   // EN LINUX: MouseButtons.Left y e.Location
                     // El control del buscador esta oculto al componer por GPU: reenviar
                     // el clic real usando sus coordenadas, sin duplicar la seleccion.
-                    if (e.Button != MouseButtons.Left || !searchOpen || gpuMode != 2 ||
+                    if (e.Button != BotonRaton.Left || !searchOpen || gpuMode != 2 ||   // EN LINUX: MouseButtons.Left
                         winMode != 0 || searchOverlay == null) return;
                     Point p = new Point(e.X + gpuPanel.Left - searchOverlay.Left,
                                         e.Y + gpuPanel.Top - searchOverlay.Top);
@@ -880,7 +880,7 @@ namespace Rocola
                     MarkSearchActivity();
                     searchOverlay.ClickAt(p);
                     gpuPanel.TouchUi();
-                };
+                });   // EN LINUX: }; (el cierre de PantallaRocola.OyeRaton)
                 gpuPanel.ShowFps = gpuShowFps;
                 gpuPanel.ReportFluidez = delegate(string informe) { Diag(informe); };
                 gpuPanel.ReportError = delegate(string que, Exception ex) { LogError(que, ex); };
@@ -978,7 +978,7 @@ namespace Rocola
                     key = Mix(key, searchOverlay.ToastOn); key = Mix(key, searchOverlay.ToastMsg);
                     return searchOverlay.Nuevo ? Mix(key, searchOverlay.FirmaContenido()) : key;
                 };
-                Controls.Add(gpuPanel);
+                PantallaRocola.AgregaVista(this, gpuPanel);   // EN LINUX: Controls.Add(gpuPanel): al fondo de la lista de la ventana (Nativo/PantallaRocola.Vistas.cs; en la ventana de la capa, su hueco)
             }
             if (on && !gpuEnabled)
             {
@@ -987,7 +987,7 @@ namespace Rocola
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);   // PANTALLA COMPLETA
                 gpuPanel.SkyTop = ToD3D(SkyColor(bgAccent)); gpuPanel.SkyMid = ToD3D(SkyColorMid(bgAccent)); gpuPanel.SkyBot = ToD3D(SkyColor2(bgAccent)); gpuPanel.NebColor = ToD3D(ColorNebulosa(bgAccent));
-                gpuPanel.Visible = true; gpuPanel.BringToFront();
+                gpuPanel.Visible = true; PantallaRocola.VistaAlFrente(gpuPanel);   // EN LINUX: gpuPanel.BringToFront()
                 if (gpuPanel.StartGpu())
                 {
                     gpuEnabled = true; lblGpu.Visible = false; KeepVideoOnTop();
@@ -1164,7 +1164,7 @@ namespace Rocola
                     gpuPanel.Bounds = new Rectangle(0, 0, ClientSize.Width, ClientSize.Height);
                 gpuPanel.AlbumRect = albumView.Bounds;
                 gpuPanel.ShowAlbum = nav;   // solo en navegacion se dibuja la rejilla de cubos (buscador/disco/atraccion la cubren)
-                if (!gpuPanel.Visible) { gpuPanel.Visible = true; gpuPanel.BringToFront(); KeepVideoOnTop(); }
+                if (!gpuPanel.Visible) { gpuPanel.Visible = true; PantallaRocola.VistaAlFrente(gpuPanel); KeepVideoOnTop(); }   // EN LINUX: gpuPanel.BringToFront()
             }
             else if (gpuPanel.Visible) { gpuPanel.Visible = false; Invalidate(true); }   // disco(CPU)/video/etc: deja ver los controles normales
         }

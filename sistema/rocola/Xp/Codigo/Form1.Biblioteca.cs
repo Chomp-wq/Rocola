@@ -3200,7 +3200,7 @@ namespace Rocola
                 // La atraccion se compone por GPU: el control CPU no se pinta (queda oculto detras del panel).
                 attractView.Visible = false;
                 uiOverlaySig = SigNada;   // fuerza rehacer la textura de UI (textos de atraccion)
-                gpuPanel.Visible = true; gpuPanel.BringToFront();
+                gpuPanel.Visible = true; PantallaRocola.VistaAlFrente(gpuPanel);   // EN LINUX: gpuPanel.BringToFront()
                 SyncGpuFullScreen();   // aplica el modo atraccion YA (transicion atomica, como los demas modos)
                 // La portada del disco que estaba elegido VUELA hasta el cubo gigante de la atraccion y se funde
                 // con el: la misma animacion que al entrar a un disco, pero con el cubo gigante como destino.
@@ -3308,7 +3308,7 @@ namespace Rocola
                 // El buscador se compone por GPU: el control CPU NO se pinta (queda oculto detras del panel).
                 // La entrada sigue funcionando por el formulario (ProcessCmdKey + Form_KeyPress con KeyPreview).
                 searchOverlay.Visible = false;
-                gpuPanel.Visible = true; gpuPanel.BringToFront();
+                gpuPanel.Visible = true; PantallaRocola.VistaAlFrente(gpuPanel);   // EN LINUX: gpuPanel.BringToFront()
                 SyncGpuFullScreen();   // aplica el modo buscador YA (ShowAlbum=false + UI urgente): transicion atomica, sin ver la rejilla un instante
                 StartWinTrans(true);   // la ventana del buscador se abre creciendo (tipo macOS)
             }
