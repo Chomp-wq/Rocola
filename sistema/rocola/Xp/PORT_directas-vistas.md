@@ -144,3 +144,33 @@ Todo en esta máquina (4 núcleos compartidos con otros grupos, carga media de 5
 - Antes, un lienzo nulo habría lanzado dentro del puente al hacer el `Graphics`; ahora `AnchoTexto` no mira el lienzo. En XP un `Graphics`
   nulo daba 0 en `AnchoTexto`; en el código traducido el lienzo nunca es nulo en estas llamadas (es el de `RenderContent` o el de 1×1 de
   `AnchoPedido`), así que no cambia nada que se pueda ver.
+
+## Revisión
+
+Revisión independiente del mismo día, sobre `cb95334` (sin cambios de código: no se encontró nada mal ni nada que falte del plan 1b).
+
+- **Lo que debía desaparecer**: fuera de comentarios no queda en `Codigo/`, `Plataforma/` ni `Pruebas/` ninguna llamada a
+  `CtrlDirLeftVistasA`, `CtrlDirRightVistasA`, `CtrlTxtVistasA`, `GraphicsVistasA`, `AnchoTextoVistasB`, `SueltaMapasVistasB`, `CB`/`ctrlBCapa`,
+  `SueltaBitmaps(ref Bitmap[])` ni `CreaSfDibuja(StringAlignment)`; en los dos archivos no queda `RoundedPath`, `PuenteDibujo.Ruta`,
+  `PuenteDibujo.Formato` ni `AnchoTextoPantallaViva`. Las «aún sin traducir» que quedan hablan de la `Font` de un control de WinForms o de las
+  portadas `Image` de la caché (ciertas). Ninguna prueba busca por reflexión lo borrado salvo `VistasAjustes/Vistas.cs` (adaptada).
+- **Equivalencia**: cada cambio se siguió hasta su destino: `AnchoTexto(Graphics, string, Font)` del puente solo sacaba del `Graphics` su modo
+  de letra y la `Letra` de la `Font` (`f.L`), con los mismos nulos que la traducida (`Form1.Ajustes.cs:290` y `:320` frente a `Rocola/`
+  `:293` y `:323`); `CtrlTxt`, `CtrlDirLeft` y `CtrlDirRight` de `Form1.Pared.cs:259-296` solo usan el suavizado, el modo de letra, la copia y
+  el medio píxel que ahora reciben directo (ni el filtro ni la matriz que ponía `GraphicsVistasA`); `RoundedPath` (`Puente.fondo.cs:20`) era
+  un `GraphicsPath` cuyo `SKPath` es el de `ContornoRedondo` (par-impar, cerrado), soltado igual (`using` o el `p.Dispose()` de 2090, como
+  `Rocola/Form1.Vistas.cs:2091-2093`); `CreaSfDibuja(Alinea)` devuelve el mismo `FormatoTexto` nuevo que el puente envolvía. Quitar
+  `using Rocola.Dibujo2D` no cambia a qué tipo va ningún nombre (compila sin ambigüedades y lo que queda de la capa va escrito entero).
+- **Líneas y finales de línea**: `Form1.Vistas.cs` 2 749 / 2 568 CRLF y `DiscoVivoGpu.cs` 621 / 0, como en `178722c`; ninguna línea cambia
+  de final (comparado línea a línea); 50 y 10 líneas cambiadas.
+- **Repetido**: compilar desde cero, 0 errores y los mismos 15 avisos; diff-xp.py igual que arriba (495/492 con las dos `}` de la base, 58/55
+  con 0); NativeAOT 0 avisos IL/AOT; arneses vistas-a IGUALES (1 266, las dos letras), vistas-b 0 de 2 865 (las dos), Ctrl+F3 0 de 545 (las
+  dos; 78 líneas de formato por el camino nuevo), pantalla-viva IGUALES (768), pared IGUALES (1 715); las 29 cintas iguales (6 616 cuadros);
+  recorridos 9 de 9 con 0, capas quietas 215 de 217 y texturas quietas 481 de 487. Las dos capas son `c18` y `c19.5` (`capa4`) de «hojas»,
+  la hoja de Ctrl+F3 con el repaso: con el MISMO programa sus huellas cambian de corrida a corrida (`c18`: `c45e76a2…` en las dos corridas
+  del grupo, `35270006…` en esta; `c19.5`: igual que la referencia en las del grupo, `6dc9ebba…` en esta), así que es el ritmo del repaso,
+  no el cambio. Escenas alternadas con la referencia (`Rdirectas-vistasrev`/`directas-vistasrev`, carga 3 a 4): arranque, moneda, video,
+  **tab** y f3vistas IGUALES: la diferencia de «tab» del grupo era la carga de la máquina, como decía.
+- Queda lo mismo que ya está apuntado (notas viejas en `Form1.Pared.cs:250` y `:304`, `Form1.Fondo.cs:771`, las cabeceras de
+  `Puente.pared.cs:7-12` y `Puente.fondo.cs:16`, y las costuras muertas de `Puente.pantalla-viva.cs:60-82` y `Puente.ventanas2.cs:18`): no
+  son archivos ni rangos de este grupo.
