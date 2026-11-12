@@ -108,3 +108,23 @@ anadido su TabIndex) se van con 7b.
 - `AgregaCapa(t)` de una capa que ya esta en la lista nativa no hace nada; un Controls.Add otra vez en WinForms la manda al fondo (lo que 6a
   hizo para las vistas). XP agrega el control del video una sola vez (VideoEnPantalla.Lugar crea una capa nueva cada vez), asi que no se
   ve; se apunta para N7.
+
+## Revision
+
+Revisor independiente: se leyo el merge entero (`git show --cc 6495c74` y `git diff ed5040c..HEAD` de Nativo/, Plataforma/, Codigo/ y
+PantallaVistas) contra los dos padres y contra Rocola/.
+
+- Los choques estan bien resueltos: IVista lleva DeLaTarjeta y Forma; ILaCapa lleva lo de 6a y lo de 7b sin LugarDelVideo ni
+  AgregaRotulo (ni una llamada viva a VideoEnVentanas, AgregaRotulo o LugarDelVideo fuera de comentarios); AgregaCapa(t) con su TabIndex
+  por coleccion; la composicion (corte de tramos de la vista de la tarjeta y la forma al pintar, recortar y en el raton) encaja.
+  Form1.Video.cs:981-996 sigue el orden de XP (Controls.Add del panel, BringToFront del panel, BringToFront de lblGpu si falla).
+- Encontrado y arreglado (menor): la tabla del TabIndex de la lista nativa (PantallaRocola.Foco.cs) era un Dictionary que guardaba para
+  siempre cada vista o capa anotada. Con la junta, cada video crea su capa (VideoEnPantalla.Lugar) y AgregaCapa le pone TabIndex: sin la
+  capa (lo que queda tras N7), una capa por video se quedaba viva en la tabla. Ahora es una ConditionalWeakTable (por identidad, como el
+  campo _tabIndex de Control: la vista lo conserva mientras vive, al quitarla y volverla a poner tambien). Ninguna cuenta cambia.
+- Repetido: build Release 0 errores y 15 avisos (los de la base); NativeAOT 0 avisos IL/AOT (antes y despues del arreglo); los 109 archivos
+  de Codigo/ con las lineas y los CRLF de ed5040c; diff-xp.py -v de los 11 archivos de Codigo/ cambiados: las mismas lineas sin marca que
+  ya tenian (comentarios y llaves de XP); PantallaVistas 194 de 194 (antes y despues del arreglo); pruebas41 41 de 41; pruebas_hoja 86 de
+  86. No repetidos (lo del informe, sin dudas de la revision): recorridos, escenas, cintas y arneses de vistas (la junta no cambia ninguna
+  linea de Codigo/ a mano ni lo que se sube a la tarjeta; el arreglo solo toca la lista nativa, que esos no usan).
+- Sigue el riesgo de AgregaCapa repetida (no va al fondo); XP no lo hace.
