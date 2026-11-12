@@ -128,3 +128,33 @@ capa (HuecoDeVista) y ILaCapa (N7).
   no la heredarian (ni recibirian OnFontChanged por el padre). Se va con la oleada 7.
 - BackColor sin poner da el gris de las ventanas de XP (CajaPieza.ColorDeFondo) y no el del dueno; Form1 siempre lo pone antes de leerlo.
 - Como las demas vistas sin herencia: sin la capa no tienen Enabled ni foco de teclado propio en la lista nativa (oleada 8).
+
+## Revision (12-11-2026, revisor independiente)
+
+Leido el diff d05b06d..e09b407 entero contra Rocola/Form1.Vistas.cs, vista por vista:
+- SetStyle y TabStop de XP: SongPagerBar con ResizeRedraw (RepintaConMedida de fabrica, true), las otras seis sin el (false); TabStop = false solo en
+  HeaderView, PastillaView y GeneroView (ParaElTabulador false); ninguna pone Selectable, StandardClick, StandardDoubleClick, Opaque ni UserMouse:
+  el hueco (HuecoDeVista, Anfitrion.cs) nace con los de fabrica y TabStop = Seleccionable && ParaElTabulador. Correcto.
+- Pinta: el estado que recibe es el de Graphics.FromImage (el de la capa en Escritorio y el de fabrica de Dibujo2D: SmoothingMode None,
+  SystemDefault, SourceOver, Bilinear, PixelOffsetMode Default), el mismo que el puente leia con PuenteDibujo.Estado. El OnPaintBackground de
+  fabrica de la capa (rellenar el BackColor si no es transparente) solo actuaba en SongPagerBar, cuyo RenderContent rellena la vista entera con el
+  mismo color opaco y sin suavizado: los mismos puntos; la «X» roja si Pinta lanza la sigue dando la capa (PintaFondoYContenido del hueco).
+- Raton: LetterBar (solo Clic) y SongListView (Clic y DobleClic), con los oyentes despues (AvisaOyentes), como el On* de XP y su base; nadie escucha
+  el raton de estas siete vistas desde fuera. Font (setter con resolved.Equals, getter ambiental = Control.DefaultFont porque Form1 no pone su Font),
+  OnFontChanged (base = repintar, en el mismo orden), BackColor y Dispose (IDisposable solo donde XP sobrescribe Dispose; el hueco la desecha antes de
+  lo suyo y no al quitarla) siguen a WinForms. Ningun «as Control» ni «is Control» en Codigo/ que pudiera dejar de ver estas vistas.
+- Un fallo menor encontrado y arreglado: la nota de DiscoVivoGpu.cs:436 (RenderContentGpu) seguia diciendo que DrawCtrlOverlay «aun pasa un Graphics
+  [y] llega por el puente (Plataforma/Puente.vistas-b.cs)»; esa firma se quito en este grupo (y DrawCtrlOverlay ya la llamaba directo, Form1.Video.cs:1788).
+  Solo cambia el texto tras «EN LINUX» (621 lineas, 0 CRLF, como en d05b06d; diff-xp de DiscoVivoGpu.cs igual: 58/55, 0 sin marca). Es una linea de un
+  archivo fuera del grupo (DiscoVivoGpu.cs no lo toca ningun grupo de las oleadas 5 y 6).
+
+Repetido por el revisor (carga 3):
+- a) build Release --no-incremental: 0 errores, 15 avisos (los de siempre: CS1690 x2, SYSLIB0054 x9, SYSLIB0050, CA2014, CA2022 x2; ninguno en
+  Form1.Vistas.cs ni en los puentes).
+- b) diff-xp Form1.Vistas.cs: 545 quitadas, 542 puestas, 2 sin marca (las mismas 2 llaves que en d05b06d, donde da 497/494 con esas 2); lineas y CRLF
+  2749/2568 iguales a d05b06d.
+- c) NativeAOT desde cero (obj de linux-x64 borrado): 15 avisos, 0 IL ni AOT.
+- e) VistasVistasA: IGUALES con letras falsas y con DejaVu (1265 lineas; 16 por Pinta). VistasVistasB (ref y nuevo): 0 distintas de 3108 con las dos
+  letras (DejaVu: 18 con excepcion, las mismas en la referencia).
+- PantallaVistas 93 de 93; pruebas41 41 de 41; pruebas_hoja 86 de 86.
+- No repetidos (nada de la revision los pone en duda): recorridos, escenas alternadas, pruebas_pantalla, banco y cintas.
