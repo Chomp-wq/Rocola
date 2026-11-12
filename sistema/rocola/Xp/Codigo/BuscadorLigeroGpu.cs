@@ -15,7 +15,7 @@
 //     mismo: si ya no se esta dibujando, se reutiliza.
 #if ROCOLA_GPU
 using System;
-using System.Drawing;   // EN LINUX: este archivo no dibuja: solo le pasa a la tarjeta el Bitmap de la imagen de la interfaz, que todavia hace con GDI+ codigo sin traducir (abajo, escrito entero)
+using System.Drawing; using SkiaSharp;   // EN LINUX: este archivo no dibuja: solo le pasa a la tarjeta la imagen de la interfaz (un SKBitmap, Bgra8888 premultiplicado como el Format32bppPArgb de XP; la hace Form1.Video.cs)
 
 namespace Rocola
 {
@@ -27,7 +27,7 @@ namespace Rocola
 
         // Sube la imagen de la UI a su textura: solo el trozo que cambio si se sabe; si no, entera, reutilizando la textura
         // de la ultima ventana si mide lo que hace falta.
-        private void SubeUi(Rocola.Dibujo2D.Bitmap ub, GpuWin gw)   // EN LINUX: la imagen de la interfaz llega como Bitmap de GDI+ (la hace Form1.Video.cs, EnsureUiOverlay, y la da D3D9Star.cs con GetUi, aun sin traducir) y va tal cual a UpdateOverlayRegion y SubeReponiendo, que tambien la piden asi: escrito entero, sin el using de GDI+
+        private void SubeUi(SKBitmap ub, GpuWin gw)   // EN LINUX: Bitmap -> SKBitmap: la imagen de la interfaz (uiOverlay, Form1.Video.cs), el mismo objeto que da GetUi; va tal cual a UpdateOverlayRegion y SubeReponiendo, como en XP
         {
             if (ub == null) return;
             if (uiTex != IntPtr.Zero && GetUiCambio != null && ub.Width == uiBmpW && ub.Height == uiBmpH)

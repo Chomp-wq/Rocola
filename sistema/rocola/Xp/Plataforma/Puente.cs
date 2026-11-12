@@ -3,7 +3,7 @@
 // otro un lienzo, un mapa, una letra o un formato, pasa por aqui. Nada de esto queda: se borra al final, con Dibujo2D.cs.
 //   - Graphics -> SKCanvas y su estado (suavizado, modo de letra, copia, filtro, medio pixel y la matriz del HDC);
 //   - SKCanvas -> Graphics con la matriz del HDC dada (GDI pinta con ella, no con la que lleve el lienzo) y el estado que tenia el que llama;
-//   - Bitmap <-> SKBitmap sin hacerse dueno (los puntos son los mismos; solo los suelta quien los creo), y Entrega: el mapa de un horno
+//   - Bitmap -> SKBitmap sin hacerse dueno (los puntos son los mismos; solo los suelta quien los creo), y Entrega: el mapa de un horno
 //     traducido para quien lo pide como Bitmap, que se hace su dueno;
 //   - Font -> Letra (y una Letra -> Font con los mismos datos);
 //   - StringFormat <-> FormatoTexto: el MISMO objeto, no una copia (lo que uno cambia, el otro lo ve). StringFormat.GenericTypographic es
@@ -48,22 +48,6 @@ namespace Rocola
 
         // ---- los mapas: los mismos puntos, sin hacerse dueno
         internal static SKBitmap Mapa(Image i) { return i != null ? i.Sk : null; }
-        // El MISMO Bitmap para el mismo SKBitmap mientras no se suelte: el codigo de XP que no esta traducido compara las imagenes por
-        // identidad (D3D9Star.cs: winLastBmp, transLastBmp, selImgA... para no volver a subir la misma) y un Bitmap nuevo en cada llamada
-        // le haria creer que cambio. Si XP suelta el prestado (Dispose: Sk = null) o lo pide con otro formato, se hace otro.
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SKBitmap, Bitmap> prestados = new System.Runtime.CompilerServices.ConditionalWeakTable<SKBitmap, Bitmap>();
-        internal static Bitmap Bitmap(SKBitmap b, PixelFormat formato = PixelFormat.Format32bppPArgb)
-        {
-            if (b == null) return null;
-            lock (prestados)
-            {
-                Bitmap w;
-                if (prestados.TryGetValue(b, out w) && w.Sk != null && w.PixelFormat == formato) return w;
-                w = new Bitmap(b, formato) { Ajeno = true };
-                prestados.AddOrUpdate(b, w);
-                return w;
-            }
-        }
         // un mapa que hizo un archivo ya traducido (los hornos, D4) para uno que no lo esta y lo pide como Bitmap (Upload y
         // CreateTextureFromBitmap de D3D9Star.cs, un TextureBrush de GDI+): el Bitmap se hace su DUENO (al soltarlo se sueltan los puntos) y
         // lleva el formato con que XP lo creaba (los hornos: Format32bppArgb), como new Bitmap(w, h, formato)

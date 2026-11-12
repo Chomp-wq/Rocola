@@ -3005,7 +3005,7 @@ namespace Rocola
                 winRobada = gpuPanel.RobaUiParaVentana(uiOverlayVer);
                 if (!winRobada)
                 {
-                    try { winSnap = PuenteDibujo.Entrega(Mapas.Copia(PuenteDibujo.Mapa(uiOverlay), new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height)), Rocola.Dibujo2D.PixelFormat.Format32bppPArgb); }   // EN LINUX: uiOverlay.Clone(entera, Format32bppPArgb): la copia punto por punto (Mapas.Copia) de los puntos de uiOverlay (un Bitmap de la capa de Form1.Video.cs, aun sin traducir); winSnap (Form1.Datos.cs) sigue siendo un Bitmap de la capa: se le entrega duena de sus puntos, como el Clone
+                    try { winSnap = Mapas.Copia(uiOverlay, new Rectangle(0, 0, uiOverlay.Width, uiOverlay.Height)); }   // EN LINUX: uiOverlay.Clone(entera, Format32bppPArgb): la copia punto por punto (Nativo/Mapas.cs), un SKBitmap Bgra8888 premultiplicado nuevo, de winSnap (Form1.Datos.cs), como el Clone
                     catch { winSnap = null; return; }
                 }
                 gpuPanel.RobaPiezasParaVentana();   // y sus piezas, con los dos buscadores (BuscadorPortadasGpu.cs)

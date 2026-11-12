@@ -50,18 +50,7 @@ namespace Banco
                                         Mira(r.Suave == s && r.Copia == cp && r.Medio == m && r.Letra == e.Letra && r.Filtro == e.Filtro && r.Hdc.Equals(hdc) && ReferenceEquals(PuenteDibujo.Lienzo(g), c), "el estado va y vuelve");
                                     }
                                 }
-            // un mapa prestado no se suelta al soltar el Bitmap
-            SKBitmap pres = Mapas.Nuevo(4, 4); pres.SetPixel(1, 1, new SKColor(10, 20, 30, 255));
-            using (Bitmap bm = PuenteDibujo.Bitmap(pres)) Mira(ReferenceEquals(PuenteDibujo.Mapa(bm), pres) && bm.GetPixel(1, 1).R == 10, "el Bitmap prestado tiene los mismos puntos");
-            Mira(pres.Handle != IntPtr.Zero && pres.GetPixel(1, 1).Green == 20, "al soltar el Bitmap prestado los puntos siguen");
-            // el mismo SKBitmap da el mismo Bitmap (XP compara por identidad para no volver a subir); soltado u otro formato, otro
-            Bitmap p1 = PuenteDibujo.Bitmap(pres), p2 = PuenteDibujo.Bitmap(pres);
-            Mira(ReferenceEquals(p1, p2), "el mismo SKBitmap da el mismo Bitmap prestado");
-            Bitmap p3 = PuenteDibujo.Bitmap(pres, PixelFormat.Format32bppArgb);
-            Mira(!ReferenceEquals(p1, p3) && p3.PixelFormat == PixelFormat.Format32bppArgb && ReferenceEquals(PuenteDibujo.Mapa(p3), pres), "pedido con otro formato, otro Bitmap con los mismos puntos");
-            p3.Dispose(); Bitmap p4 = PuenteDibujo.Bitmap(pres, PixelFormat.Format32bppArgb);
-            Mira(!ReferenceEquals(p3, p4) && ReferenceEquals(PuenteDibujo.Mapa(p4), pres) && pres.GetPixel(1, 1).Red == 10, "soltado el prestado, el siguiente es otro (y los puntos siguen)");
-            pres.Dispose();
+            // (interfaz-a-skbitmap, 12-11-2026: PuenteDibujo.Bitmap, el Bitmap prestado, se quito con la interfaz en SKBitmap: sus 5 comprobaciones tambien)
             // el trazo, la region y la matriz de uno sin traducir: el mismo objeto; la pluma, como la pone GDI+
             using (GraphicsPath gp = new GraphicsPath()) { gp.AddEllipse(1, 2, 3, 4); Mira(ReferenceEquals(PuenteDibujo.Ruta(gp), gp.P) && PuenteDibujo.Ruta(gp).PointCount == gp.PointCount, "el trazo prestado es el mismo SKPath"); }
             using (Matrix mx = new Matrix(1, 2, 3, 4, 5, 6)) Mira(PuenteDibujo.Matriz(mx).Equals(mx.M), "la matriz prestada es la misma");

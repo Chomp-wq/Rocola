@@ -14,7 +14,7 @@
 //    cuidado, error, novedad), en dos renglones, y con una linea que va enseñando cuanto les queda.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: lo que suena en grande, la moneda, la invitacion y los avisos dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido (la letra de la etiqueta de los avisos, de WinForms, y la moneda, que todavia se entrega como Bitmap) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: lo que suena en grande, la moneda, la invitacion y los avisos dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido (la letra de la etiqueta de los avisos, de WinForms) pasa por el puente (Plataforma/Puente.cs)
 
 namespace Rocola
 {
@@ -692,7 +692,7 @@ namespace Rocola
         private IntPtr masTex; private int masVer = -1, masBw, masBh; private float masU = 1f, masV = 1f;
         private IntPtr tituloRepTex; private int tituloRepVer = -1, tituloRepBw, tituloRepBh; private float tituloRepU = 1f, tituloRepV = 1f;
         private GpuAviso avisoCuadro; private GpuInvita invitaCuadro; private GpuMoneda monedaCuadro; private GpuReposo reposoCuadro;
-        private Rocola.Dibujo2D.Bitmap monedaBmp;   // EN LINUX: el Bitmap que entrega BakeMoneda para Upload (D3D9Star.cs, aun sin traducir): costura con lo no traducido
+        private SKBitmap monedaBmp;   // EN LINUX: Bitmap -> SKBitmap (el que hace BakeMoneda; Upload, D3D9Star.cs, lo sube tal cual)
         private double tituloRepDesde = -1; private int tituloRepDe = -1;
         private readonly Tarjeta.Vtx[] svQuad = new Tarjeta.Vtx[6], svTira = new Tarjeta.Vtx[18];
 
@@ -721,7 +721,7 @@ namespace Rocola
         // ---------------- LA MONEDA ----------------
         // Una moneda dorada: degradado, canto, un "$" en relieve y aire transparente alrededor (se dibuja aplastada al
         // girar, con filtro).
-        internal static Rocola.Dibujo2D.Bitmap BakeMoneda(int n)   // EN LINUX: lo suben Upload (D3D9Star.cs) y lo pide PrecargaPaginaGpu.cs, aun sin traducir, como Bitmap: se les entrega por el puente (Plataforma/Puente.cs)
+        internal static SKBitmap BakeMoneda(int n)   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb con que XP la hace); lo suben Upload (D3D9Star.cs) y lo pide PrecargaPaginaGpu.cs
         {
             SKBitmap b = Mapas.Nuevo(n, n);   // EN LINUX: new Bitmap(n, n, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             using (SKCanvas g = new SKCanvas(b))   // EN LINUX: Graphics.FromImage
@@ -752,7 +752,7 @@ namespace Rocola
                     TextoGdiPlus.Escribe(g, "$", f, ajuste, t, new RectangleF(a, a + d * .02f, d, d), sf);   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs)
                 }
             }
-            return PuenteDibujo.Entrega(b, Rocola.Dibujo2D.PixelFormat.Format32bppPArgb);   // EN LINUX: el mapa, como el Bitmap Format32bppPArgb que hacia XP y que se hace su dueno (Plataforma/Puente.cs)
+            return b;
         }
         // Donde va la moneda en su caida: 'u' de 0 (arriba) a 1 (aterriza). Cae acelerando, como algo que pesa, y gira
         // (se ve aplastada a lo ancho); al final da un botecito sobre el numero.

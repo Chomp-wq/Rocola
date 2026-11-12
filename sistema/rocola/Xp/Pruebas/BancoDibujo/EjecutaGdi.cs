@@ -34,7 +34,7 @@ namespace Banco
         {
             PixelFormat f = d.Formato == 0 ? PixelFormat.Format32bppPArgb : d.Formato == 1 ? PixelFormat.Format32bppArgb : PixelFormat.Format24bppRgb;
 #if NATIVO
-            Bitmap b = PorPuente ? Rocola.PuenteDibujo.Bitmap(Rocola.Nativo.Mapas.Nuevo(d.W, d.H), f) : new Bitmap(d.W, d.H, f);
+            Bitmap b = PorPuente ? new Bitmap(Rocola.Nativo.Mapas.Nuevo(d.W, d.H), f) { Ajeno = true } : new Bitmap(d.W, d.H, f);   // (interfaz-a-skbitmap, 12-11-2026: lo que daba PuenteDibujo.Bitmap, que se quito: un Bitmap de la capa sobre los puntos nativos, sin hacerse dueno)
 #else
             Bitmap b = new Bitmap(d.W, d.H, f);
 #endif

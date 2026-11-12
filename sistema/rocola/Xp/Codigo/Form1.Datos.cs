@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using SkiaSharp;   // EN LINUX: sin GDI+ (Plataforma/Dibujo2D.cs): este archivo no dibuja; la instantanea del buscador (winSnap) es un SKBitmap
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -505,7 +505,7 @@ namespace Rocola
         private double transNextAngle;    // y su giro
         private int winMode = 0;          // 0 = nada, 1 = abriendo el buscador, 2 = cerrandolo
         private int winTick = 0;
-        private Bitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)
+        private SKBitmap winSnap;           // instantanea del buscador para animarlo AL CERRAR (al abrir se anima la textura de UI)   // EN LINUX: Bitmap -> SKBitmap (la copia de uiOverlay que hace Form1.Biblioteca.cs, Bgra8888 premultiplicado como el Format32bppPArgb de XP)
         private bool winRobada;           // ...o, sin copia, la textura que ya tenia la UI (BuscadorLigeroGpu.cs)
 #endif
         // El zoom al entrar/salir de un disco: hay o no hay. Ya no es un campo aparte que haya que
