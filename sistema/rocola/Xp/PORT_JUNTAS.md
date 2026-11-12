@@ -223,3 +223,29 @@ y PantallaVistas 46 de 46; recorridos 9 de 9 con 0, capas quietas 216 de 217 (la
 f3sigterm (lo aceptado) y altf4, captura y f2sin solo por las cuentas del reloj Form1.cs:724 y del encargo MedidasBitacora.cs:129;
 repetidas (RJ12b/J12b): altf4 IGUAL, captura y f2sin con esas cuentas cambiando de signo (ruido de carga). NativeAOT: arranque, cierreq,
 kill9, f3vistas y f3teclas IGUALES; buscador solo por la cuenta del reloj, repetida IGUAL.
+
+## 12-11-2026: oleadas 2, 3 y 4 de la tanda 4, y 5c y 7a adelantados
+
+- `5a60f61`, `9e39620`, `e13d40c`: oleada 2 (directas-tanda2, ajustes-roundrect-familiaui y lo-suelto), las tres con revisión («bien»).
+  Sin choques.
+- `809389d`: 3a armado-vistas (las vistas cumplen IVista y se arman por la pantalla; HelpBar sin herencia), revisión «bien».
+- `01fcf68`: 3b limpieza-puentes (hecho por Sonnet), revisión «arreglado» (tres notas viejas).
+- `0130457`: 5c panel-del-disco (BgPanel sin Panel; sus vistas dentro como hijas de un Panel de WinForms) y 7a f12-como-hoja (la
+  ventana F12 como hoja no modal), los dos hechos por Sonnet, revisión «arreglado» (notas; el orden del apagado con F12 detrás).
+- `e5fbde4`: 4a cache-portadas (las cachés de portadas, previas y celdas en SKBitmap; Nativo/MapaVivo.cs), revisión «bien». Un
+  choque de notas en PantallaVivaGpu.cs (las dos notas juntas, mismo número de líneas).
+- `d05b06d`: 4b vista-ayuda (hecho por Sonnet), revisión «arreglado» con un fallo GRAVE arreglado: el hueco de la casilla perdía el
+  `TabStop = false` de XP y el Tab de la ventana se paraba en ella (ciclo de 6 en vez de 5). Choque con 5c en IVista y Anfitrion.cs:
+  quedan los dos (`Seleccionable` de 5c y `ParaElTabulador` de 4b); el hueco de una vista no seleccionable es un Panel (ni Selectable
+  ni TabStop) y si no lleva el TabStop de XP.
+
+Comprobado con todo junto (`scratchpad/merge/verifica-junta13.sh`, con cuatro grupos trabajando a la vez): compila desde cero (0
+errores, los 15 avisos), NativeAOT sin avisos IL/AOT; todos los arneses IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de 2 865,
+Ctrl+F3 0 de 545; el fondo solo su línea de marca); el banco igual en los 27 000 casos; 41 de 41, 86 de 86 de la hoja, 32 de 32 y
+PantallaVistas 93 de 93; los 109 archivos de `Codigo/` con su número de líneas y de CRLF; recorridos 9 de 9 con 0, texturas quietas
+478 de 487 (las de la hora) y capas quietas 213 de 217: la de «hojas» a los 18 s (el repaso) y las tres de `ctrlf3` a los 46 s con
+F12 abierta (compara.py empareja por número de capa y la referencia pone un tramo transparente por ventana: explicado en
+PORT_f12-como-hoja.md). Escenas (RJ13/J13): IGUALES salvo sigterm y f3sigterm (lo aceptado); tab, por los rótulos del repaso (como en
+PORT_armado-vistas.md); video, altf4, salirq y f3raton, por las cuentas del reloj y del encargo con la máquina cargada, repetidas
+(RJ13b/J13b) IGUALES; f12 y f12vigia, IGUALES con el ruido de F12 que midió 7a (copiado a ventanas2/ruido). NativeAOT: arranque,
+cierreq, buscador, f3vistas y f3teclas IGUALES; kill9 solo por la cuenta del reloj, repetida IGUAL.
