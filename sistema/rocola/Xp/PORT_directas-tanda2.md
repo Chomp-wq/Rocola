@@ -172,3 +172,53 @@ Pruebas/Inventario (la herramienta de Roslyn, sobre la base y sobre esta rama): 
   reposo (mide como mucho 340). Ninguna prueba lo ve fuera del arnés del asistente (`degradado-grande-*`).
 - **La lógica de DegradadoV ya no está duplicada** (el otro riesgo de PORT_asistente.md): queda solo la traducida.
 - Ninguno nuevo de la lógica de XP: nada de XP se reordenó ni se cambió.
+
+## Revisión (revisor independiente, 12-11-2026)
+
+Se leyó el diff entero `bae626e..port-directas-tanda2` contra Rocola/ (XP) y contra los puentes borrados, y se repitieron las
+comprobaciones.
+
+Lo comprobado en el código:
+
+- **Lo que debía desaparecer, desapareció.** En los seis archivos ya no hay `Redondo`, `PuenteDibujo.Ruta`, `PuenteDibujo.Pincel`,
+  `PuenteDibujo.Bitmap` ni las llamadas a los puentes borrados; lo que queda de `PuenteDibujo` y `Rocola.Dibujo2D` es lo que el plan deja
+  (la moneda, 5a; las letras de las etiquetas, W6; `GetIdlePanel`, `uiPieza` y las portadas como Image, 4a). Ninguna nota «aún sin
+  traducir» de estos archivos habla ya de algo traducido.
+- **DegradadoV.** La firma de XP del puente daba `LinearGradientBrush(r, c0, c1, 90)` o un `TextureBrush` (Repite, trasladado a
+  `r.Location`), y `Pincel(b, false)` llamaba a `Pon(p, centros: true)`: `Degradado.LinealCon(p0, p1, {c0, c1}, null, Repeat)` (los
+  mismos extremos que `Degradado.Lineal(r, c0, c1, 90)`) o `Degradado.Textura(mapa, Repite, traslación, !centros = false)`, con el color
+  negro opaco. La traducida con `medio = false` da exactamente esos shaders, y `new SKPaint { Shader }` lleva el negro opaco de fábrica.
+  En XP el Graphics de los dos (`Graphics.FromImage`, Rocola/EstadoReposoGpu.cs:354 y Rocola/AcabadoGpu.cs:347) nunca cambia el
+  PixelOffsetMode: `medio = false` es lo de XP. El shader se suelta con su `using`, después del SKPaint, una sola vez.
+- **Pinceles de color.** `white`, `color` y `muted` (EstadoReposoGpu.cs:359-361) son `new SKPaint { Color }` sin nada más, lo mismo que
+  hacía el viaje SKPaint → SolidBrush → `Pincel` (`SolidBrush.Pon`: `Shader = null; Color`); `TextoGdiPlus.Escribe` y `PintaTextoMovil`
+  no le cambian nada al pincel que reciben. Mismos puntos con y sin medio píxel (sin shader no se usa).
+- **AnchoTexto.** El viaje `Letra → Font → AnchoTexto(string, Font) → AnchoTexto(string, Letra)` tenía la misma guarda (texto vacío o
+  letra nula: 0) que la de Form1.Ajustes.cs:320 a la que ahora se llama directo.
+- **La Letra del título (SuenaVivoGpu.cs:551).** Su dueño es el campo `fTituloReposo`, que la suelta en la 550 al cambiar de medida, como
+  XP la Font; nadie más se la queda (`HorneaTituloReposo` y `CintasTexto.Add` solo leen sus datos). Ni doble suelta ni uso después.
+- **Upload.** `Upload(Bitmap)` del puente (Puente.frontera.cs:30) era `Upload(PuenteDibujo.Mapa(bmp))`, y el Bitmap prestado llevaba el
+  mismo SKBitmap: directo es el mismo mapa.
+- **EstiloGpu.cs:97-104** sigue el orden de Rocola/EstiloGpu.cs:99-105 (Save, Translate, PintaArtistaCompacto, DrawLabelOverlay,
+  DrawCtrlOverlay, Restore); el `gg` que se quitó nunca se soltaba ni cambiaba el lienzo.
+- Nada nuevo imita a Windows: no se añadió ninguna clase; los arneses usan la capa solo por reflexión, como antes.
+
+Lo repetido aquí (con la máquina compartida):
+
+- a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos; los mismos sitios que `bae626e` (comparados por archivo y línea).
+- b) `diff-xp.py -v` de los seis: SuenaVivoGpu 169 puestas, EstadoReposoGpu 113, EstiloGpu 52, TextoMovilGpu 47, AtraccionGpu 161 (las 2
+  `{` sin marca de siempre), AcabadoGpu 99; las demás con su marca. Líneas (987, 446, 259, 390, 1217, 411) y CRLF (0) iguales a `bae626e`;
+  `git diff --stat` de Codigo/: 71 líneas cambiadas, 71 quitadas.
+- c) NativeAOT: publica sin errores, 0 avisos IL/AOT.
+- e) Arneses contra la referencia congelada, con las letras de XP falsas y con DejaVu: suena IGUALES (487 líneas), reposo IGUALES (1 790),
+  asistente IGUALES (1 986), atraccion IGUALES (19 119), pantalla-viva IGUALES (767); acabado-estilo 0 distintas de 6 603 contra la
+  referencia y 0 de 6 607 contra `bae626e`, con las dos letras. Las 29 cintas: 29 iguales (6 616 cuadros), 0 distintas. El banco no se
+  corrió (no se tocó Nativo/ ni Puente.cs). Los recorridos no se repitieron: nada de la revisión los pone en duda (lo cambiado lo cubren los
+  arneses y las cintas).
+
+Lo encontrado (menor, sin arreglar aquí porque son archivos de otros grupos):
+
+- Notas «EN LINUX» de archivos fuera del grupo que nombran los puentes que aquí se borran y que el documento no apuntaba:
+  FranjaLigeraGpu.cs:98 (dice que quien pasa un Graphics llega por Puente.reposo.cs) y PulidoGpu.cs:23 y 142 (dicen que quien pide el Brush
+  de GDI+ de DegradadoV lo recibe por Puente.asistente.cs; esa firma ya no está). Junto con GuiaRojoGpu.cs:140, que ya estaba apuntada, son
+  para 3b (limpieza-puentes) o para quien toque esos archivos. Solo son notas: no cambian nada del programa.
