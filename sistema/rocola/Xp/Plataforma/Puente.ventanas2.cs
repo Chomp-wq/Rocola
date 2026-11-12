@@ -8,6 +8,7 @@
 using System.Drawing;
 using Rocola.Dibujo2D;
 using Rocola.Nativo;
+using SkiaSharp;
 
 namespace Rocola
 {
@@ -30,6 +31,17 @@ namespace Rocola
         internal static int AnchoToast(string text, Font font)
         {
             return AnchoToast(text, PuenteDibujo.Letra(font));
+        }
+        // new Region(GraphicsPath) de XP con el SKPath que da ya RoundRect (Form1.Ajustes.cs): Form1.cs:2270 le da a lblToast (una etiqueta de
+        // la capa, aun sin traducir) su forma por Control.Region, que es de la capa. La misma copia del trazo que hace la Region de la capa con
+        // un GraphicsPath (los mismos puntos y el mismo relleno par-impar); quien llama suelta su SKPath como soltaba el GraphicsPath. Se va en
+        // W6, cuando el aviso sin tarjeta deje de ser un Control de la capa.
+        private static Region RegionDeRuta(SKPath p)
+        {
+            Region r = new Region(RectangleF.Empty);
+            r.P.Dispose();
+            r.P = new SKPath(p);
+            return r;
         }
     }
 }

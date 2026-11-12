@@ -2267,7 +2267,7 @@ namespace Rocola
             lblToast.BackColor = back;
             tw = AnchoToast(text, lblToast.Font);   // misma pastilla que por GPU: se ajusta al texto
             lblToast.SetBounds((ClientSize.Width - tw) / 2, 80, tw, th);
-            try { using (Rocola.Dibujo2D.GraphicsPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = new Rocola.Dibujo2D.Region(gp); } catch { }  // esquinas redondeadas SIEMPRE   // EN LINUX: la forma de la etiqueta del aviso sin tarjeta (Control.Region de WinForms) con el GraphicsPath de RoundRect (Form1.Ajustes.cs), los dos aun sin traducir: los tipos de la capa, escritos enteros
+            try { using (SKPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = RegionDeRuta(gp); } catch { }  // esquinas redondeadas SIEMPRE   // EN LINUX: RoundRect (Form1.Ajustes.cs) ya da el SKPath; la forma de la etiqueta del aviso sin tarjeta (Control.Region de WinForms, aun de la capa) se hace con el mismo trazo copiado, como new Region(gp), por el puente (Plataforma/Puente.ventanas2.cs, hasta W6)
             lblToast.Visible = true;
             lblToast.BringToFront();
             toastTimer.Stop(); toastTimer.Start();

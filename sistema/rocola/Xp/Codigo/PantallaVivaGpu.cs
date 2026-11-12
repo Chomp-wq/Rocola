@@ -373,7 +373,7 @@ namespace Rocola
                 focoBmp = Mapas.Nuevo(w, h);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             }
             focoTexto = TextoFoco(can, vid, seg);
-            PintaFoco(focoBmp, focoTexto, TextoFoco(can, vid, -1), FamiliaUi().Name);   // EN LINUX: la familia de la interfaz (FamiliaUi, Form1.Ajustes.cs, aun sin traducir, da un FontFamily): su nombre, que es lo que pide la Letra
+            PintaFoco(focoBmp, focoTexto, TextoFoco(can, vid, -1), FamiliaUi());   // EN LINUX: FamiliaUi() (Form1.Ajustes.cs) da ya el nombre de la familia de la interfaz (Nativo/Letras.cs), que es lo que pide la Letra
             focoVer++;
         }
         // La pastilla, centrada en su imagen: fondo oscuro translucido, filo claro y el texto blanco. Devuelve el
@@ -566,7 +566,7 @@ namespace Rocola
             string artista = string.IsNullOrEmpty(a.Artist) ? a.Name : a.Artist;
             string disco = string.IsNullOrEmpty(a.Artist) ? "" : a.Name;
             PintaFicha(fichaBmp, tapa, artista, disco, TextoFoco(can, vid, seg), EtiquetaDisco(a), ColorDisco(a), enCola,
-                       pedidas, filas, durs, veces, can, FamiliaUi().Name);   // EN LINUX: el nombre de la familia de la interfaz (FamiliaUi, aun sin traducir, da un FontFamily)
+                       pedidas, filas, durs, veces, can, FamiliaUi());   // EN LINUX: FamiliaUi() (Form1.Ajustes.cs) da ya el nombre de la familia de la interfaz, lo que pide la Letra
             fichaVer++;
         }
         // El dibujo de la ficha, aparte del estado: asi se puede mirar y comprobar sin arrancar la rocola. Va de arriba
