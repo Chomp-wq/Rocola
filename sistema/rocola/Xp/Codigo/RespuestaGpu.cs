@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using SkiaSharp;   // EN LINUX: lo que se sube es un SKBitmap; las portadas que llegan de D3D9Star.cs siguen siendo Bitmap de la capa (Dibujo2D.cs) y van escritas enteras (PORT_portadas.md, costuras)
+using System.Drawing; using SkiaSharp;   // EN LINUX: lo que se sube es un SKBitmap, y las portadas que llegan de D3D9Star.cs tambien (la cache de portadas)
 namespace Rocola
 {
     internal sealed partial class GpuPanel
@@ -270,7 +270,7 @@ namespace Rocola
         // posee una referencia: puede compartir el COM, nunca modificar su contenido.
         private sealed class CoverSlot
         {
-            public IntPtr Tex; public Rocola.Dibujo2D.Bitmap Bmp;   // EN LINUX: la portada de la capa, escrita entera: la da GpuCubeInfo (D3D9Star.cs) y se compara por identidad
+            public IntPtr Tex; public SKBitmap Bmp;   // EN LINUX: Bitmap: la portada, un SKBitmap: la da GpuCubeInfo (D3D9Star.cs) y se compara por identidad
             public int W, H; public float U, V;
             public long Stamp;
         }
@@ -300,7 +300,7 @@ namespace Rocola
                 recentCovers[old] = null; // no somos duenos del Bitmap
             }
         }
-        private void EnsureRecentCover(ref IntPtr tex, ref Rocola.Dibujo2D.Bitmap last, ref int w, ref int h, ref float u, ref float v, Rocola.Dibujo2D.Bitmap cur)   // EN LINUX: las portadas de la capa, escritas enteras (selImgA, relImg y CoverA son de D3D9Star.cs; EnsureImmutableCover las sube por el puente)
+        private void EnsureRecentCover(ref IntPtr tex, ref SKBitmap last, ref int w, ref int h, ref float u, ref float v, SKBitmap cur)   // EN LINUX: Bitmap: las portadas, SKBitmap (selImgA, relImg y CoverA, de D3D9Star.cs)
         {
             if (!CachePortadas) { TrimRecentCovers(true); EnsureImmutableCover(ref tex, ref last, ref w, ref h, ref u, ref v, cur); return; }
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
@@ -319,7 +319,7 @@ namespace Rocola
                     if (recentCovers[i].Stamp < recentCovers[slot].Stamp) slot = i;
             }
             CoverSlot s = recentCovers[slot] ?? new CoverSlot();
-            IntPtr nextTex = s.Tex; Rocola.Dibujo2D.Bitmap nextBmp = s.Bmp;   // EN LINUX: la portada de la capa, escrita entera
+            IntPtr nextTex = s.Tex; SKBitmap nextBmp = s.Bmp;   // EN LINUX: Bitmap: la portada, un SKBitmap
             int nextW = s.W, nextH = s.H; float nextU = s.U, nextV = s.V;
             s.Tex = tex; s.Bmp = last; s.W = w; s.H = h; s.U = u; s.V = v; s.Stamp = ++coverStamp;
             recentCovers[slot] = s;

@@ -115,10 +115,33 @@ namespace BancoBuscador
 
         // ---- reflexion (las vistas, SearchItem, Album y Track son privados de Form1)
         private static object Nuevo(Type t) { return Activator.CreateInstance(t, true); }
+        // (cache-portadas, 12-11-2026) la cache de portadas de la traduccion guarda SKBitmap: lo que el arnes da como Image de la capa (una
+        // portada, un arreglo de portadas o un delegado que devuelve una) se le da a la traduccion como sus puntos (Image.Sk: el mismo SKBitmap
+        // para la misma Image, asi que la identidad que XP compara se conserva); a la referencia, tal cual
+        public static SKBitmap SkDe(Rocola.Dibujo2D.Image i) { return i != null ? i.Sk : null; }
+        private static object Adapta(Type destino, object valor)
+        {
+            if (valor == null || destino.IsInstanceOfType(valor)) return valor;
+            if (destino == typeof(SKBitmap) && valor is Rocola.Dibujo2D.Image) return ((Rocola.Dibujo2D.Image)valor).Sk;
+            if (destino == typeof(SKBitmap[]) && valor is Rocola.Dibujo2D.Image[]) { Rocola.Dibujo2D.Image[] a = (Rocola.Dibujo2D.Image[])valor; SKBitmap[] r = new SKBitmap[a.Length]; for (int i = 0; i < a.Length; i++) r[i] = SkDe(a[i]); return r; }
+            if (typeof(Delegate).IsAssignableFrom(destino) && valor is Delegate)
+            {
+                MethodInfo inv = destino.GetMethod("Invoke"), de = valor.GetType().GetMethod("Invoke");
+                ParameterInfo[] ips = inv.GetParameters(), dps = de.GetParameters();
+                System.Linq.Expressions.ParameterExpression[] ps = new System.Linq.Expressions.ParameterExpression[ips.Length];
+                System.Linq.Expressions.Expression[] args = new System.Linq.Expressions.Expression[ips.Length];
+                for (int i = 0; i < ips.Length; i++) { ps[i] = System.Linq.Expressions.Expression.Parameter(ips[i].ParameterType, "p" + i); args[i] = System.Linq.Expressions.Expression.Convert(ps[i], dps[i].ParameterType); }
+                System.Linq.Expressions.Expression cuerpo = System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(valor), args);
+                if (inv.ReturnType == typeof(SKBitmap) && typeof(Rocola.Dibujo2D.Image).IsAssignableFrom(de.ReturnType)) cuerpo = System.Linq.Expressions.Expression.Call(typeof(Buscador).GetMethod("SkDe"), cuerpo);
+                else if (inv.ReturnType != de.ReturnType) cuerpo = System.Linq.Expressions.Expression.Convert(cuerpo, inv.ReturnType);
+                return System.Linq.Expressions.Expression.Lambda(destino, cuerpo, ps).Compile();
+            }
+            return valor;
+        }
         private static void Pon(object o, string nombre, object v)
         {
             FieldInfo f = o.GetType().GetField(nombre, Todo);
-            if (f != null) { f.SetValue(o, v); return; }
+            if (f != null) { f.SetValue(o, Adapta(f.FieldType, v)); return; }
             o.GetType().GetProperty(nombre, Todo).SetValue(o, v);
         }
         private static object Lee(object o, string nombre)
@@ -194,6 +217,7 @@ namespace BancoBuscador
             Type[] a = t.GetGenericArguments();
             System.Linq.Expressions.ParameterExpression p = System.Linq.Expressions.Expression.Parameter(a[0], "x");
             System.Linq.Expressions.Expression cuerpo = System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(f), System.Linq.Expressions.Expression.Convert(p, typeof(object)));
+            if (a[1] == typeof(SKBitmap) && typeof(Rocola.Dibujo2D.Image).IsAssignableFrom(f.GetType().GetMethod("Invoke").ReturnType)) cuerpo = System.Linq.Expressions.Expression.Call(typeof(Buscador).GetMethod("SkDe"), cuerpo);   // (cache-portadas) la portada de la cache, SKBitmap en la traduccion
             return System.Linq.Expressions.Expression.Lambda(t, cuerpo, p).Compile();
         }
 

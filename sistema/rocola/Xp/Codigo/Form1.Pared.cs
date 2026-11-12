@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la pared (la atraccion, el cubo, las ayudas de los botones, las casillas, el contorno y el cubo de la cancion) dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que le llega de archivos sin traducir (las portadas, que son Image de la capa; el cielo, Starfield) y quien todavia la llama con un Graphics pasan por el puente (Plataforma/Puente.cs y Puente.pared.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la pared (la atraccion, el cubo, las ayudas de los botones, las casillas, el contorno y el cubo de la cancion) dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; las portadas son los SKBitmap de la cache de portadas; el Graphics de OnPaint (WinForms) y quien todavia la llama con un Graphics pasan por el puente (Plataforma/Puente.cs y Puente.pared.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -27,7 +27,7 @@ namespace Rocola
             public double Phase = 0;
             public double Angle = 0;
             public List<string> CycleCovers = new List<string>();
-            public Func<string, Rocola.Dibujo2D.Image> GetCoverByPath;   // EN LINUX: las portadas las da Form1 (LoadCoverByPath, Form1.Biblioteca.cs, aun sin traducir) como Image de la capa (Dibujo2D.cs), escrito entero; al pintarlas, sus puntos (PuenteDibujo.Mapa)
+            public Func<string, SKBitmap> GetCoverByPath;   // EN LINUX: Image: las portadas las da Form1 (LoadCoverByPath, Form1.Biblioteca.cs): SKBitmap de la cache de portadas
             public int SongCount { get; set; }   // propiedad (no campo): un campo de una clase por-referencia (Control) dispara la advertencia CS1690 al usarlo
 
             private SKPaint sb;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint
@@ -78,7 +78,7 @@ namespace Rocola
 
             // Par de portadas a fundir + factor (0..1) segun la fase. Lo usa el CPU (BlendInto) y tambien la
             // GPU (que hace el fundido como en los discos TOP, sin generar el bitmap mezclado).
-            public bool GetCoverPair(out Rocola.Dibujo2D.Image a, out Rocola.Dibujo2D.Image b, out float f)   // EN LINUX: las portadas son Image de la capa (las da Form1, aun sin traducir, y las pide AtraccionGpu.cs para la tarjeta), escrito entero; aqui no se pintan
+            public bool GetCoverPair(out SKBitmap a, out SKBitmap b, out float f)   // EN LINUX: Image: las portadas, SKBitmap de la cache (las da Form1 y las pide AtraccionGpu.cs para la tarjeta); aqui no se pintan
             {
                 a = null; b = null; f = 0f;
                 if (CycleCovers == null || CycleCovers.Count == 0 || GetCoverByPath == null) return false;
@@ -97,11 +97,11 @@ namespace Rocola
 
             private SKBitmap CurrentCover()   // EN LINUX: los puntos de la portada (o de la mezcla) para pintarla: un SKBitmap
             {
-                Rocola.Dibujo2D.Image a, b; float f;   // EN LINUX: Image de la capa, escrito entero (GetCoverPair)
+                SKBitmap a, b; float f;   // EN LINUX: Image: SKBitmap de la cache (GetCoverPair)
                 if (!GetCoverPair(out a, out b, out f)) return null;
-                if (f <= 0.002f || b == null) return PuenteDibujo.Mapa(a);   // EN LINUX: los puntos de esa Image (los mismos, sin copia)
-                if (a == null) return PuenteDibujo.Mapa(b);   // EN LINUX: los puntos de esa Image
-                return BlendInto(PuenteDibujo.Mapa(a), PuenteDibujo.Mapa(b), f);   // EN LINUX: los puntos de las dos
+                if (f <= 0.002f || b == null) return a;
+                if (a == null) return b;
+                return BlendInto(a, b, f);
             }
 
             protected override void OnPaint(PaintEventArgs e)
@@ -131,7 +131,7 @@ namespace Rocola
             }
         }
 
-        private static partial class Cube   // EN LINUX: partial: la firma de XP de Draw (con un Graphics y una Image), para quien aun no esta traducido, va en el puente (Plataforma/Puente.pared.cs)
+        private static partial class Cube   // EN LINUX: partial: la firma de XP de Draw (con un Graphics y una Image) ya no la pide nadie (Form1.Buscador.cs ya llama a esta); su parte en el puente (Plataforma/Puente.pared.cs) la quita la limpieza, y entonces esta linea vuelve a ser la de XP
         {
             // OPTIMIZACION (render): estos 3 arreglos se asignaban en CADA llamada a Draw, y Draw se
             // llama varias veces por cuadro (cubo seleccionado, relevo, cubeBox, miniCube, buscador,
@@ -142,7 +142,7 @@ namespace Rocola
             [ThreadStatic] private static SKPaint faceBrush;   // pincel reusable (cara/oscurecido): antes asignaba 1-2 por cara y cuadro   // EN LINUX: SolidBrush: un SKPaint de un color
             [ThreadStatic] private static SKPaint edgePen;            // lapiz de contorno reusable (antes 1 por cuadro)   // EN LINUX: Pen: un SKPaint con su color y su ancho
 
-            public static void Draw(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, Rectangle bounds, SKBitmap cover, double angle)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama (suavizado, copia, filtro y medio pixel), y los puntos de la portada; quien aun pasa un Graphics y una Image llega por el puente (Plataforma/Puente.pared.cs)
+            public static void Draw(SKCanvas g, bool suave, bool copia, Filtro filtro, bool medio, Rectangle bounds, SKBitmap cover, double angle)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del que llama (suavizado, copia, filtro y medio pixel), y la portada (el SKBitmap de la cache); la firma de XP con un Graphics y una Image ya no la llama nadie (su parte del puente la quita la limpieza)
             {
                 double cx = bounds.X + bounds.Width / 2.0;
                 int y0 = bounds.Y;
@@ -314,8 +314,8 @@ namespace Rocola
             public double SelAngle = 0;
             public double Phase = 0;
             public Color BgAccent = DefaultAccent;
-            public Func<Album, Rocola.Dibujo2D.Image> GetCover;   // EN LINUX: las portadas las da Form1 (LoadCoverAsync, Form1.Biblioteca.cs, aun sin traducir) como Image de la capa (Dibujo2D.cs), escrito entero; se comparan por identidad como en XP y, al pintarlas, sus puntos (PuenteDibujo.Mapa)
-            public Func<string, Rocola.Dibujo2D.Image> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)   // EN LINUX: Image de la capa (LoadCoverByPath, aun sin traducir)
+            public Func<Album, SKBitmap> GetCover;   // EN LINUX: Image: las portadas las da Form1 (LoadCoverAsync, Form1.Biblioteca.cs): SKBitmap de la cache de portadas; se comparan por identidad como en XP
+            public Func<string, SKBitmap> GetCoverByPath;   // discos TOP: caratula por ruta (ciclado)   // EN LINUX: Image: SKBitmap de la cache (LoadCoverByPath)
             public Action<int> OnActivate;
 #if ROCOLA_GPU
             public bool GpuCovered;   // el panel GPU (pantalla completa, opaco) tapa esta vista: no malgastes su OnPaint (rejilla+estrellas) por CPU
@@ -369,7 +369,7 @@ namespace Rocola
 #if ROCOLA_GPU
             // Atlas GPU: conserva medidas y filtro pero no guarda las columnas transparentes
             // del disco ni una superficie grande para sus dos lineas de texto.
-            private sealed class CeldaGpu { internal SKBitmap Bmp; internal GpuCellLayout Layout; internal Rocola.Dibujo2D.Image Cover; internal long Uso; internal bool Queued, Lod; }   // EN LINUX: el mapa de la casilla, un SKBitmap (lo sube la tarjeta tal cual: D3D9Star.cs); la portada con que se hizo, la Image de la capa que da Form1 (solo se compara por identidad)
+            private sealed class CeldaGpu { internal SKBitmap Bmp; internal GpuCellLayout Layout; internal SKBitmap Cover; internal long Uso; internal bool Queued, Lod; }   // EN LINUX: el mapa de la casilla, un SKBitmap (lo sube la tarjeta tal cual: D3D9Star.cs); la portada con que se hizo, el SKBitmap de la cache (solo se compara por identidad)
             private readonly Dictionary<string, CeldaGpu> gpuCellCache = new Dictionary<string, CeldaGpu>();
             private readonly Dictionary<Album, CeldaGpu> gpuAnonymousCache = new Dictionary<Album, CeldaGpu>();
             private long gpuCellUso;
@@ -488,7 +488,7 @@ namespace Rocola
                 }
                 finally { if (d != IntPtr.Zero) dest.NotifyPixelsChanged(); }   // EN LINUX: dest.UnlockBits(d) (lo escrito queda avisado) y source.UnlockBits(s) (de solo leer: nada)
             }
-            private SKBitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, bool visible, ref int budget, out GpuCellLayout layout)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1 (aqui solo se compara y se apunta)
+            private SKBitmap PeekGpuCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover, bool visible, ref int budget, out GpuCellLayout layout)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, el SKBitmap de la cache (aqui solo se compara y se apunta)
             {
                 layout = new GpuCellLayout(); layout.Separate = true; layout.HideBlank = PortadasLod;
                 string key = ClaveCasilla(a); CeldaGpu c = null;
@@ -546,16 +546,16 @@ namespace Rocola
                 if (Selected >= 0 && Selected < Page.Count)
                 {
                     Rectangle a, l; Geometry(w, h, Selected, out a, out l);
-                    Rocola.Dibujo2D.Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image de la capa, escrito entero
+                    SKBitmap ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
                     st.Sel.Has = true; st.Sel.X = a.X; st.Sel.Y = a.Y; st.Sel.W = a.Width; st.Sel.H = a.Height;
-                    st.Sel.Angle = SelAngle; st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: las portadas del cubo que gira van a la tarjeta como Bitmap de la capa (GpuCubeInfo, D3D9Star.cs: tambien las llenan archivos aun sin traducir), escrito entero
+                    st.Sel.Angle = SelAngle; st.Sel.CoverA = ca as SKBitmap; st.Sel.CoverB = cb as SKBitmap; st.Sel.Fade = f;   // EN LINUX: as Bitmap: las portadas del cubo que gira van a la tarjeta (GpuCubeInfo, D3D9Star.cs) como SKBitmap de la cache
                     st.Sel.Key = Page[Selected];
                 }
                 if (prevIdx >= 0 && prevIdx != Selected && prevIdx < Page.Count)   // RELEVO: el que dejamos, girando y decayendo
                 {
                     Rectangle a2, l2; Geometry(w, h, prevIdx, out a2, out l2);
                     st.Relay.Has = true; st.Relay.X = a2.X; st.Relay.Y = a2.Y; st.Relay.W = a2.Width; st.Relay.H = a2.Height;
-                    st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as Rocola.Dibujo2D.Bitmap;   // EN LINUX: Bitmap de la capa, escrito entero
+                    st.Relay.Angle = prevAngle; st.Relay.CoverA = ((GetCover != null) ? GetCover(Page[prevIdx]) : null) as SKBitmap;   // EN LINUX: as Bitmap: la portada de la cache de portadas, un SKBitmap
                     st.Relay.Key = Page[prevIdx];
                 }
                 return st;
@@ -713,14 +713,14 @@ namespace Rocola
                     float al; float falta = CurvaColumnaFina(dt, OrdenColumna(col, izq, true), true, out al);
                     float cdx = slideFrom * (falta - 1f);
                     Rectangle area, lbl; Geometry(w, h, i, out area, out lbl);
-                    Rocola.Dibujo2D.Image tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;   // EN LINUX: Image de la capa, escrito entero
+                    SKBitmap tapa = (PeekCoverGpu != null) ? PeekCoverGpu(a) : null;   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
                     buf[n] = new GpuGridCell();
                     buf[n].Key = ClaveCasilla(a);
                     buf[n].Bmp = PeekGpuCell(a, cw, side, labelH, gap, tapa, true, ref nada, out buf[n].Layout);
-                    buf[n].Direct = true; buf[n].FullCover = tapa as Rocola.Dibujo2D.Bitmap;   // EN LINUX: la portada entera va a la tarjeta como Bitmap de la capa (GpuGridCell.FullCover, D3D9Star.cs), escrito entero
+                    buf[n].Direct = true; buf[n].FullCover = tapa as SKBitmap;   // EN LINUX: as Bitmap: la portada entera va a la tarjeta (GpuGridCell.FullCover, D3D9Star.cs) como SKBitmap de la cache
                     CeldaGpu cached;
                     buf[n].HasCover = buf[n].Key != null && gpuCellCache.TryGetValue(buf[n].Key, out cached) && cached.Cover != null;
-                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Rocola.Dibujo2D.Bitmap : null;   // EN LINUX: la miniatura es un Bitmap de la capa (la hace CaratulasAdaptativas.cs, aun sin traducir), escrito entero
+                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as SKBitmap : null;   // EN LINUX: as Bitmap: la previa es un SKBitmap (gpuPreviewCache, CaratulasAdaptativas.cs)
                     buf[n].Placeholder = HojeoLigero;
                     buf[n].CoverRect = new RectangleF(ox + area.X + cdx, oy + area.Y, area.Width, area.Height);
                     buf[n].Slot = PageSize + i;
@@ -798,16 +798,16 @@ namespace Rocola
                     int beforeBudget = budget;
                     int useBudget = chica ? 0 : budget;
                     buf[n].Layout = new GpuCellLayout();
-                    Rocola.Dibujo2D.Image cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);   // EN LINUX: Image de la capa, escrito entero
+                    SKBitmap cover = chica ? (PeekCoverGpu != null ? PeekCoverGpu(a) : null) : (GetCover != null ? GetCover(a) : null);   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
                     buf[n].Bmp = chica && !PortadasLod ? null : PeekGpuCell(a, cw, side, labelH, gap, cover, true, ref useBudget, out buf[n].Layout);
-                    buf[n].Direct = true; buf[n].FullCover = cover as Rocola.Dibujo2D.Bitmap;   // EN LINUX: Bitmap de la capa, escrito entero
+                    buf[n].Direct = true; buf[n].FullCover = cover as SKBitmap;   // EN LINUX: as Bitmap: la portada de la cache de portadas, un SKBitmap
                     if (!chica) budget = useBudget;
                     CeldaGpu cached = null;
                     if (buf[n].Key != null) gpuCellCache.TryGetValue(buf[n].Key, out cached);
                     else gpuAnonymousCache.TryGetValue(a, out cached);
                     buf[n].HasCover = cached != null && cached.Bmp == buf[n].Bmp && cached.Cover != null;
                     buf[n].NeedsCover = !string.IsNullOrEmpty(a.CoverPath);
-                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as Rocola.Dibujo2D.Bitmap : null;   // EN LINUX: Bitmap de la capa, escrito entero
+                    buf[n].Preview = PortadasLod && PeekPreviewGpu != null ? PeekPreviewGpu(a) as SKBitmap : null;   // EN LINUX: as Bitmap: la previa, un SKBitmap (gpuPreviewCache)
                     if (budget < beforeBudget)
                         gpuBakeCost = CargaTrabajo.AprendeCoste(gpuBakeCost, System.Diagnostics.Stopwatch.GetTimestamp() - cellStart);
                     buf[n].Placeholder = HojeoLigero;
@@ -827,8 +827,8 @@ namespace Rocola
                 paginaVista = Page;
                 return n;
             }
-            public Func<Album, Rocola.Dibujo2D.Image> PeekCoverGpu;   // EN LINUX: Image de la capa (lo pone Form1, aun sin traducir)
-            public Func<Album, Rocola.Dibujo2D.Image> PeekPreviewGpu;   // EN LINUX: Image de la capa (lo pone Form1, aun sin traducir)
+            public Func<Album, SKBitmap> PeekCoverGpu;   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap (lo pone Form1)
+            public Func<Album, SKBitmap> PeekPreviewGpu;   // EN LINUX: Image: la previa, un SKBitmap (lo pone Form1)
             public bool PortadasLod = true;
             internal CoverGovernor CoverControl;
             // Solo referencias ya horneadas, en orden estable. Nunca lee disco ni compone imagenes.
@@ -844,7 +844,7 @@ namespace Rocola
                     cells[i].Key = key;
                     if (key != null && gpuCellCache.TryGetValue(key, out sprite) && sprite.Cover != null)
                     { cells[i].Bmp = sprite.Bmp; cells[i].Layout = sprite.Layout; cells[i].HasCover = true;
-                        cells[i].Direct = true; cells[i].FullCover = PeekCoverGpu != null ? PeekCoverGpu(Ahead[i]) as Rocola.Dibujo2D.Bitmap : null; }   // EN LINUX: Bitmap de la capa, escrito entero
+                        cells[i].Direct = true; cells[i].FullCover = PeekCoverGpu != null ? PeekCoverGpu(Ahead[i]) as SKBitmap : null; }   // EN LINUX: as Bitmap: la portada de la cache de portadas, un SKBitmap
                 }
                 return count;
             }
@@ -865,7 +865,7 @@ namespace Rocola
                     if (aheadPos >= Ahead.Count) aheadPos = 0;
                     Album a = Ahead[aheadPos]; visited++;
                     if (a == null) { aheadPos++; continue; }
-                    Rocola.Dibujo2D.Image cover = PeekCoverGpu(a);   // EN LINUX: Image de la capa, escrito entero
+                    SKBitmap cover = PeekCoverGpu(a);   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
                     if (cover == null) { aheadPos++; continue; } // no hornear un disco vacio
                     string key = ClaveCasilla(a); CeldaGpu prepared;
                     bool cached = key != null ? gpuCellCache.TryGetValue(key, out prepared) : gpuAnonymousCache.TryGetValue(a, out prepared);
@@ -962,7 +962,7 @@ namespace Rocola
             // Portadas a fundir del disco SELECCIONADO: para discos TOP cicla sus portadas (ca actual, cb
             // siguiente, f = mezcla 0..1); para discos normales devuelve la suya en ca (cb=null, f=0). La
             // usan OnPaint (CPU, que las funde a una imagen) y el modo GPU (que funde en dos pasadas).
-            private void SelectedCovers(out Rocola.Dibujo2D.Image ca, out Rocola.Dibujo2D.Image cb, out float f)   // EN LINUX: Image de la capa, escrito entero (las da Form1 y van a la tarjeta como Bitmap de la capa)
+            private void SelectedCovers(out SKBitmap ca, out SKBitmap cb, out float f)   // EN LINUX: Image: las portadas, SKBitmap de la cache (las da Form1 y van a la tarjeta tal cual)
             {
                 ca = null; cb = null; f = 0f;
                 if (Page == null || Selected < 0 || Selected >= Page.Count) return;
@@ -989,8 +989,8 @@ namespace Rocola
             // Caratula del disco SELECCIONADO ya FUNDIDA a una sola imagen (la usa el render por CPU).
             private SKBitmap SelectedCover()   // EN LINUX: los puntos de la portada (o de la mezcla) para pintarla: un SKBitmap
             {
-                Rocola.Dibujo2D.Image ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image de la capa, escrito entero
-                return (cb == null || f <= 0.002f) ? PuenteDibujo.Mapa(ca) : BlendInto(PuenteDibujo.Mapa(ca), PuenteDibujo.Mapa(cb), f);   // EN LINUX: los puntos de esas Image (los mismos, sin copia)
+                SKBitmap ca, cb; float f; SelectedCovers(out ca, out cb, out f);   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
+                return (cb == null || f <= 0.002f) ? ca : BlendInto(ca, cb, f);
             }
 
             private void EnsureLabelRes()
@@ -1281,7 +1281,7 @@ namespace Rocola
 
             // Devuelve el bitmap horneado de la celda del album; lo re-hornea si falta o si cambio el estado de
             // portada (placeholder -> cargada). Clave = CellKey(a) (ver arriba). Sin clave no se cachea.
-            private SKBitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
+            private SKBitmap GetOrBakeCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, el SKBitmap de la cache que da Form1
             {
                 string key = ClaveCasilla(a);
                 // LA MARCA ENTRA EN LA LLAVE, y por eso no hace falta avisar a nadie de nada: al pedir una
@@ -1291,7 +1291,7 @@ namespace Rocola
                 CellSprite cs = null;
                 if (key != null && cellCache.TryGetValue(key, out cs) && cs.Bmp != null && cs.HasCover == hasCover)
                 { cs.Uso = ++cellUso; return cs.Bmp; }   // reutiliza (paginar = solo copiar)
-                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, PuenteDibujo.Mapa(cover));   // EN LINUX: SKBitmap; los puntos de la portada (los mismos, sin copia)
+                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, cover);   // EN LINUX: SKBitmap; la portada es el SKBitmap mismo
                 if (key != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();   // reemplaza el placeholder por la version con portada
@@ -1312,12 +1312,12 @@ namespace Rocola
             private int TickHojeo { get { return -1; } }
 #endif
 
-            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, ref int budget)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
+            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover, ref int budget)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, el SKBitmap de la cache que da Form1
             { return PeekOrBakeCell(a, cw, side, labelH, gap, cover, ref budget, false); }
 
             // 'chica' = la pagina se esta deslizando, asi que la casilla va a media resolucion. Se guarda con
             // su propia clave para que la entera siga ahi: al parar hay que volver a ella.
-            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, Rocola.Dibujo2D.Image cover, ref int budget, bool chica)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, la Image de la capa que da Form1
+            private SKBitmap PeekOrBakeCell(Album a, int cw, int side, int labelH, int gap, SKBitmap cover, ref int budget, bool chica)   // EN LINUX: el mapa de la casilla, un SKBitmap; la portada, el SKBitmap de la cache que da Form1
             {
                 string key = ClaveCasilla(a);
                 bool hasCover = (cover != null);
@@ -1351,7 +1351,7 @@ namespace Rocola
                     return null;
                 }
                 budget--;
-                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, PuenteDibujo.Mapa(cover), chica ? CeldaChica : 1f);   // EN LINUX: SKBitmap; los puntos de la portada
+                SKBitmap bmp = BakeCell(a, cw, side, labelH, gap, cover, chica ? CeldaChica : 1f);   // EN LINUX: SKBitmap; la portada es el SKBitmap mismo
                 if (k != null)
                 {
                     if (cs != null && cs.Bmp != null && cs.Bmp != bmp) cs.Bmp.Dispose();
@@ -1583,7 +1583,7 @@ namespace Rocola
                         Rectangle area2, lbl2;
                         Geometry(w, h, prevIdx, out area2, out lbl2);
                         filtro = Filtro.Bilineal;   // EN LINUX: g.InterpolationMode = Bilinear
-                        Cube.Draw(g, suave, copia, filtro, medio, area2, PuenteDibujo.Mapa((GetCover != null) ? GetCover(Page[prevIdx]) : null), prevAngle);   // EN LINUX: el lienzo y su estado, y los puntos de la portada (la Image de la capa que da Form1)
+                        Cube.Draw(g, suave, copia, filtro, medio, area2, (GetCover != null) ? GetCover(Page[prevIdx]) : null, prevAngle);   // EN LINUX: el lienzo y su estado, y la portada (el SKBitmap de la cache que da Form1)
                     }
                 }
                 if (cubesPending) Invalidate();   // quedan celdas por hornear: pide otro repintado para completarlas (repartido, sin congelar)
@@ -1593,7 +1593,7 @@ namespace Rocola
         // ==========  CUBO DE LA CANCION (gira + se inclina)  ==========
         private partial class CubeBox : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
-            public Rocola.Dibujo2D.Image Cover;   // EN LINUX: Image de la capa, escrito entero: la pone Form1.Biblioteca.cs y la lee Form1.Video.cs para la tarjeta (aun sin traducir); al pintarla, sus puntos (PuenteDibujo.Mapa)
+            public SKBitmap Cover;   // EN LINUX: Image: la portada del cubo, un SKBitmap de la cache: la pone Form1.Biblioteca.cs y la lee Form1.Video.cs para la tarjeta
             public double Angle;
             public double Phase;
 
@@ -1612,10 +1612,10 @@ namespace Rocola
             // no hay ni una linea de dibujo nueva.
             private const int RelMs = 420;
             private int relTick;          // 0 = no hay relevo en marcha
-            private Rocola.Dibujo2D.Image relNueva;       // la portada que entra   // EN LINUX: Image de la capa, escrito entero
+            private SKBitmap relNueva;       // la portada que entra   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
             private double relGirado;     // cuanto lleva puesto de la media vuelta
 
-            public void Relevo(Rocola.Dibujo2D.Image nueva)   // EN LINUX: Image de la capa, escrito entero
+            public void Relevo(SKBitmap nueva)   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
             {
                 if (relTick != 0 && object.ReferenceEquals(relNueva, nueva)) return;   // esa ya viene en camino
                 relNueva = nueva;
@@ -1623,7 +1623,7 @@ namespace Rocola
                 relTick = Environment.TickCount; if (relTick == 0) relTick = 1;
             }
             public bool Girando { get { return relTick != 0; } }
-            public bool UsaPortada(Rocola.Dibujo2D.Image im)   // EN LINUX: Image de la capa, escrito entero
+            public bool UsaPortada(SKBitmap im)   // EN LINUX: Image: la portada de la cache de portadas, un SKBitmap
             {
                 return object.ReferenceEquals(Cover, im) || object.ReferenceEquals(relNueva, im);
             }
@@ -1670,7 +1670,7 @@ namespace Rocola
                 g.Translate(cx, cy);   // EN LINUX: g.TranslateTransform
                 g.RotateDegrees(tilt);   // EN LINUX: g.RotateTransform (en grados)
                 g.Translate(-cx, -cy);   // EN LINUX: g.TranslateTransform
-                Cube.Draw(g, suave, es.Copia, filtro, es.Medio, area, PuenteDibujo.Mapa(Cover), Angle);   // EN LINUX: el lienzo y su estado, y los puntos de la portada
+                Cube.Draw(g, suave, es.Copia, filtro, es.Medio, area, Cover, Angle);   // EN LINUX: el lienzo y su estado, y la portada (el SKBitmap mismo)
                 g.RestoreToCount(st);   // EN LINUX: g.Restore(st)
             }
         }

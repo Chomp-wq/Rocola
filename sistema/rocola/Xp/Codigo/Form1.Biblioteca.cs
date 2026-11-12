@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las miniaturas se guardan con SkiaSharp directo (Imagenes.GuardaJpeg y GuardaPng, Xp/Nativo); las portadas de la cache siguen siendo imagenes de la capa (Dibujo2D.cs), escritas enteras (PORT_portadas.md)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las miniaturas se guardan con SkiaSharp directo (Imagenes.GuardaJpeg y GuardaPng, Xp/Nativo); las portadas de la cache son SKBitmap (PORT_cache-portadas.md)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -2455,17 +2455,17 @@ namespace Rocola
         // y al pintar el buscador (100-500ms por caratula). Ese era el grueso de los tirones.
         // Devuelve la caratula SOLO si ya esta en memoria. No encarga nada al disco. La usa el buscador
         // mientras el cliente barre resultados con la flecha (ver Portada en SearchOverlay).
-        private Rocola.Dibujo2D.Image PortadaEnMemoria(Album a)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap PortadaEnMemoria(Album a)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
             if (a == null || a.CoverPath == null) return null;
-            lock (coverLock) { Rocola.Dibujo2D.Image c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            lock (coverLock) { SKBitmap c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             return null;
         }
 
-        private Rocola.Dibujo2D.Image LoadCover(Album a)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap LoadCover(Album a)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
             if (a == null || a.CoverPath == null) return null;
-            lock (coverLock) { Rocola.Dibujo2D.Image c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            lock (coverLock) { SKBitmap c; if (CoverEnCache(a.CoverPath, true, out c)) return c; }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             RequestCover(a, false);   // encargar SIN el freno de hojeo (esto no es la rejilla)
             return null;
         }
@@ -2516,16 +2516,16 @@ namespace Rocola
             catch { }
         }
 
-        private Rocola.Dibujo2D.Image LoadCoverAsync(Album a) { return RequestCover(a, true, true); }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap LoadCoverAsync(Album a) { return RequestCover(a, true, true); }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
 
-        private Rocola.Dibujo2D.Image RequestCover(Album a, bool respectHold) { return RequestCover(a, respectHold, true); }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap RequestCover(Album a, bool respectHold) { return RequestCover(a, respectHold, true); }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
 
         // Carga una caratula por RUTA directa (cache o encargo). Usado por los discos TOP (ciclado de
         // portadas y cambio de portada al navegar canciones).
-        private Rocola.Dibujo2D.Image LoadCoverByPath(string key)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap LoadCoverByPath(string key)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
             if (string.IsNullOrEmpty(key)) return null;
-            lock (coverLock) { Rocola.Dibujo2D.Image c; if (CoverEnCache(key, true, out c)) return c; }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            lock (coverLock) { SKBitmap c; if (CoverEnCache(key, true, out c)) return c; }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             RequestCoverByPath(key, true);   // la pide el cubo visible, no el precalentador
             return null;
         }
@@ -2535,7 +2535,7 @@ namespace Rocola
             if (string.IsNullOrEmpty(key)) return;
             lock (coverLock)
             {
-                Rocola.Dibujo2D.Image c;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                SKBitmap c;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 if (CoverEnCache(key, highPriority, out c)) return;
                 if (CoverYaSolicitada(key, highPriority)) return;
                 if (CoverRetryPendiente(key)) return;
@@ -2557,13 +2557,13 @@ namespace Rocola
             }
         }
 
-        private Rocola.Dibujo2D.Image RequestCover(Album a, bool respectHold, bool highPriority)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private SKBitmap RequestCover(Album a, bool respectHold, bool highPriority)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
             if (a == null || a.CoverPath == null) return null;
             string key = a.CoverPath;
             lock (coverLock)
             {
-                Rocola.Dibujo2D.Image c;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                SKBitmap c;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 if (CoverEnCache(key, highPriority, out c)) return c;
                 if (respectHold && coversOnHold) return null;   // hojeando rapido: todavia no pedir
                 if (CoverYaSolicitada(key, highPriority)) return null;
@@ -2642,7 +2642,7 @@ namespace Rocola
             return hash;
         }
 
-        private static void SaveThumb(SKBitmap thumb, string cacheFile)   // EN LINUX: un SKBitmap (Form1.cs, aun sin traducir, pasa un Bitmap de la capa: entra por Puente.portadas.cs)
+        private static void SaveThumb(SKBitmap thumb, string cacheFile)   // EN LINUX: un SKBitmap (lo que guardan el trabajador de portadas y el calentador de Form1.cs)
         {
             // Interruptor "Caratulas en JPEG" encendido y portada opaca: JPEG de calidad alta al lado de la identidad.
             // Si no: PNG sin perdida en la identidad (ver MiniaturaGuardada en Form1.Portadas.cs).
@@ -2692,12 +2692,12 @@ namespace Rocola
             finally { if (tmp != null) try { File.Delete(tmp); } catch { } }
         }
 
-        private void CachePut(string key, Rocola.Dibujo2D.Image img)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private void CachePut(string key, SKBitmap img)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
 #if ROCOLA_GPU
             coloresPreparados.Remove(key);
 #endif
-            Rocola.Dibujo2D.Image previous;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            SKBitmap previous;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             if (coverCache.TryGetValue(key, out previous))
             {
                 coverCache[key] = img;
@@ -2713,7 +2713,7 @@ namespace Rocola
                 coloresPreparados.Remove(old);
 #endif
                 coverOrder.RemoveFirst(); coverNodes.Remove(old);
-                Rocola.Dibujo2D.Image oldImg;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                SKBitmap oldImg;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 if (coverCache.TryGetValue(old, out oldImg)) { coverCache.Remove(old); if (oldImg != null) coverTrash.Add(oldImg); }
             }
         }
@@ -2729,21 +2729,21 @@ namespace Rocola
             // toda la papelera en un cuadro: conservar la lista y sacar por su extremo en O(1).
             DrainCoverTrashAcotado(32, Math.Max(1L, System.Diagnostics.Stopwatch.Frequency / 1000L));
 #else
-            List<Rocola.Dibujo2D.Image> dump = null;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            List<SKBitmap> dump = null;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             lock (coverLock)
             {
                 if (coverTrash.Count == 0) return;
-                dump = new List<Rocola.Dibujo2D.Image>(coverTrash);   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                dump = new List<SKBitmap>(coverTrash);   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 coverTrash.Clear();
             }
 #if ROCOLA_GPU
-            Rocola.Dibujo2D.Image pin3 = transImg;   // la animacion de disco la esta dibujando AHORA: liberarla revienta el render   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            SKBitmap pin3 = transImg;   // la animacion de disco la esta dibujando AHORA: liberarla revienta el render   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
 #else
-            Rocola.Dibujo2D.Image pin3 = null;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            SKBitmap pin3 = null;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
 #endif
             for (int i = 0; i < dump.Count; i++)
             {
-                Rocola.Dibujo2D.Image im = dump[i];   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                SKBitmap im = dump[i];   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 if (im == null) continue;
                 if (im == pin3 || (miniCube != null && miniCube.UsaPortada(im))
                     || (cubeBox != null && cubeBox.UsaPortada(im))) continue;
@@ -2762,11 +2762,11 @@ namespace Rocola
         {
             if (tope <= 0) return 0;
             long inicio = System.Diagnostics.Stopwatch.GetTimestamp();
-            Rocola.Dibujo2D.Image pin3 = transImg;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            SKBitmap pin3 = transImg;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             int retiradas = 0;
             while (retiradas < tope)
             {
-                Rocola.Dibujo2D.Image im;   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+                SKBitmap im;   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
                 lock (coverLock)
                 {
                     int ultimo = coverTrash.Count - 1;
@@ -2794,7 +2794,7 @@ namespace Rocola
 
         private partial class SearchOverlay
         {
-            public bool RetienePortada(Rocola.Dibujo2D.Image im)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            public bool RetienePortada(SKBitmap im)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             {
                 if (artistCovers == null) return false;
                 for (int i = 0; i < artistCovers.Count; i++)
@@ -2963,7 +2963,7 @@ namespace Rocola
         // cubo grande del disco), salir (al reves), entrar al modo atraccion (celda -> cubo gigante) y salir de
         // el. Si falta cualquier cosa (sin GPU, sin portada, cubo invisible) simplemente no se anima: la
         // animacion NUNCA es requisito para que la pantalla cambie.
-        private void StartDiscTrans(RectangleF from, RectangleF to, double ang0, double ang1, Rocola.Dibujo2D.Image cover)   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+        private void StartDiscTrans(RectangleF from, RectangleF to, double ang0, double ang1, SKBitmap cover)   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
         {
             transMode = 0; transImg = null;
             if (!transAnimOn) return;
@@ -3224,11 +3224,11 @@ namespace Rocola
             // pre-analisis vuelve a su unico carril antes de que se note nada en la pantalla.
             RevisaCarriles();
 #if ROCOLA_GPU
-            Rocola.Dibujo2D.Image portadaAtraccion = null;   // la que muestra el cubo gigante AHORA: hay que leerla ANTES de apagar la atraccion   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            SKBitmap portadaAtraccion = null;   // la que muestra el cubo gigante AHORA: hay que leerla ANTES de apagar la atraccion   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
             double angAtraccion = 0;
             RectangleF cuboAtraccion = AttractCubeRect();   // y DONDE esta: con el escaparate, a la izquierda o en la esquina
             if (attractView != null && gpuPanel != null && gpuEnabled)
-            { Rocola.Dibujo2D.Image c2; float f2; ParCuboAtraccion(out portadaAtraccion, out c2, out f2); angAtraccion = AnguloAtraccion(); cuboAtraccion = CuboAtraccionAhora(); }   // EN LINUX: la portada de la cache es una imagen de la capa (Dibujo2D.cs), escrita entera: la leen archivos aun sin traducir (PORT_portadas.md, costuras)
+            { SKBitmap c2; float f2; ParCuboAtraccion(out portadaAtraccion, out c2, out f2); angAtraccion = AnguloAtraccion(); cuboAtraccion = CuboAtraccionAhora(); }   // EN LINUX: Image: la portada de la cache, un SKBitmap: el mismo objeto para todos los que la piden y la comparan por identidad
 #endif
             attractOn = false;
             EscaparateSale();   // lo horneado para el escaparate se suelta (AtraccionGpu.cs; sin tarjeta, nada)

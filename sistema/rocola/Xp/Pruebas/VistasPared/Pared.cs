@@ -120,10 +120,33 @@ namespace BancoPared
             }
             throw new MissingMethodException(t.Name + "." + nombre + "/" + args.Length);
         }
+        // (cache-portadas, 12-11-2026) la cache de portadas de la traduccion guarda SKBitmap: lo que el arnes da como Image de la capa (una
+        // portada, un arreglo de portadas o un delegado que devuelve una) se le da a la traduccion como sus puntos (Image.Sk: el mismo SKBitmap
+        // para la misma Image, asi que la identidad que XP compara se conserva); a la referencia, tal cual
+        public static SKBitmap SkDe(Rocola.Dibujo2D.Image i) { return i != null ? i.Sk : null; }
+        private static object Adapta(Type destino, object valor)
+        {
+            if (valor == null || destino.IsInstanceOfType(valor)) return valor;
+            if (destino == typeof(SKBitmap) && valor is Rocola.Dibujo2D.Image) return ((Rocola.Dibujo2D.Image)valor).Sk;
+            if (destino == typeof(SKBitmap[]) && valor is Rocola.Dibujo2D.Image[]) { Rocola.Dibujo2D.Image[] a = (Rocola.Dibujo2D.Image[])valor; SKBitmap[] r = new SKBitmap[a.Length]; for (int i = 0; i < a.Length; i++) r[i] = SkDe(a[i]); return r; }
+            if (typeof(Delegate).IsAssignableFrom(destino) && valor is Delegate)
+            {
+                MethodInfo inv = destino.GetMethod("Invoke"), de = valor.GetType().GetMethod("Invoke");
+                ParameterInfo[] ips = inv.GetParameters(), dps = de.GetParameters();
+                System.Linq.Expressions.ParameterExpression[] ps = new System.Linq.Expressions.ParameterExpression[ips.Length];
+                System.Linq.Expressions.Expression[] args = new System.Linq.Expressions.Expression[ips.Length];
+                for (int i = 0; i < ips.Length; i++) { ps[i] = System.Linq.Expressions.Expression.Parameter(ips[i].ParameterType, "p" + i); args[i] = System.Linq.Expressions.Expression.Convert(ps[i], dps[i].ParameterType); }
+                System.Linq.Expressions.Expression cuerpo = System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(valor), args);
+                if (inv.ReturnType == typeof(SKBitmap) && typeof(Rocola.Dibujo2D.Image).IsAssignableFrom(de.ReturnType)) cuerpo = System.Linq.Expressions.Expression.Call(typeof(Pared).GetMethod("SkDe"), cuerpo);
+                else if (inv.ReturnType != de.ReturnType) cuerpo = System.Linq.Expressions.Expression.Convert(cuerpo, inv.ReturnType);
+                return System.Linq.Expressions.Expression.Lambda(destino, cuerpo, ps).Compile();
+            }
+            return valor;
+        }
         private static void Pon(object o, string campo, object valor)
         {
             Type t = o.GetType();
-            FieldInfo f = t.GetField(campo, Todo); if (f != null) { f.SetValue(o, valor); return; }
+            FieldInfo f = t.GetField(campo, Todo); if (f != null) { f.SetValue(o, Adapta(f.FieldType, valor)); return; }
             t.GetProperty(campo, Todo).SetValue(o, valor, null);
         }
         private static string Campos(object o)

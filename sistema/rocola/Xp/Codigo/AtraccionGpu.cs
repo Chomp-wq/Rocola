@@ -23,7 +23,7 @@
 // pantalla, una cosa por vuelta y solo cuando cambia; en cada cuadro solo se calculan posiciones y transparencias.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la ficha del escaparate, los mensajes y la lista de la noche se hornean con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; el trazo redondo (RutaRedonda, PantallaVivaGpu.cs, ya traducido) se llama directo; lo que aun no esta traducido (las portadas de Form1.Biblioteca.cs y de la vista de la atraccion) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la ficha del escaparate, los mensajes y la lista de la noche se hornean con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; el trazo redondo (RutaRedonda, PantallaVivaGpu.cs, ya traducido) se llama directo; las portadas de Form1.Biblioteca.cs y de la vista de la atraccion son los SKBitmap de la cache de portadas
 using System.Globalization;
 using System.Text;
 
@@ -544,7 +544,7 @@ namespace Rocola
             return MeceCubo(GpuPanel.AhoraMs() - atrDesde);
         }
         // Sus portadas: las de siempre, o las del escaparate, que se quedan mas (hay que leer su nombre).
-        private void ParCuboAtraccion(out Rocola.Dibujo2D.Image a, out Rocola.Dibujo2D.Image b, out float f)   // EN LINUX: las portadas del cubo son las Image de la vista de la atraccion (Form1.Vistas.cs) y las piden Form1.Biblioteca.cs y Form1.Video.cs, aun sin traducir: aqui solo pasan, sin dibujarse (el tipo, escrito entero)
+        private void ParCuboAtraccion(out SKBitmap a, out SKBitmap b, out float f)   // EN LINUX: Image: las portadas del cubo, SKBitmap de la cache (de la vista de la atraccion, Form1.Pared.cs); las piden Form1.Biblioteca.cs y Form1.Video.cs: aqui solo pasan, sin dibujarse
         {
             if (!EscaparateActivo()) { attractView.GetCoverPair(out a, out b, out f); return; }
             a = null; b = null; f = 0f;
@@ -952,7 +952,7 @@ namespace Rocola
             int faltan = 0;
             for (int i = 0; i < topFilas.Count; i++)
             {
-                portadas[i] = string.IsNullOrEmpty(topFilas[i].Portada) ? null : PuenteDibujo.Mapa(LoadCoverByPath(topFilas[i].Portada));   // EN LINUX: LoadCoverByPath (Form1.Biblioteca.cs, aun sin traducir) da una Image: sus puntos, los mismos, por el puente (PuenteDibujo.Mapa; la que no llego, null como en XP)
+                portadas[i] = string.IsNullOrEmpty(topFilas[i].Portada) ? null : LoadCoverByPath(topFilas[i].Portada);
                 if (portadas[i] == null && !string.IsNullOrEmpty(topFilas[i].Portada)) faltan++;
             }
             float bx, bw, bh, bdy;

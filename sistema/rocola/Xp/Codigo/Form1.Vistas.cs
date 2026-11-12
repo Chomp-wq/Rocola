@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y los demas de GDI+: el archivo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin Rocola.Dibujo2D; lo que todavia le llega de la capa (el Graphics de OnPaint y de DrawCtrlOverlay, la Font del control, las portadas de Form1) va con su tipo escrito entero (Rocola.Dibujo2D.X) y pasa por el puente (Plataforma/Puente.cs, Puente.vistas-a.cs y Puente.vistas-b.cs); la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2) es una pieza de la hoja con SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y los demas de GDI+: el archivo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin Rocola.Dibujo2D; lo que todavia le llega de la capa (el Graphics de OnPaint y de DrawCtrlOverlay, la Font del control) va con su tipo escrito entero (Rocola.Dibujo2D.X) y pasa por el puente (Plataforma/Puente.cs, Puente.vistas-a.cs y Puente.vistas-b.cs); la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2) es una pieza de la hoja con SkiaSharp directo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -1236,7 +1236,7 @@ namespace Rocola
             // ademas CUALES son, que es lo que el cliente quiere saber para no volver a pedir la que
             // ya pidio. Se ven las tres primeras; si hay mas, la tercera lleva un "+2" en la esquina.
             public bool ConPortadas;      // esta capsula lleva hueco para portaditas (la de la cola si, la de la moneda no)
-            public Rocola.Dibujo2D.Image[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)   // EN LINUX: las portadas las da y las compara por identidad Form1 (LoadCover, Form1.Biblioteca.cs: su cache de portadas aun guarda Image de la capa, hasta la oleada cache-portadas): se quedan con su tipo, escrito entero, y se convierten al pintarlas
+            public SKBitmap[] Portadas;      // las tres primeras de la cola (huecos vacios donde no haya)   // EN LINUX: Image[]: las portadas las da y las compara por identidad Form1 (LoadCover, Form1.Biblioteca.cs): SKBitmap de la cache de portadas
             public int Mas;               // cuantas quedan detras de las tres
             private const int Huecos = 3;
 
@@ -1448,14 +1448,14 @@ namespace Rocola
                     for (int i = 0; i < Huecos; i++)
                     {
                         RectangleF rq = new RectangleF(px0 + i * (lado + sep), py, lado, lado);
-                        Rocola.Dibujo2D.Image im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;   // EN LINUX: la portada es una Image de la capa (la da la cache de portadas de Form1, que aun la guarda asi): su tipo, escrito entero
+                        SKBitmap im = (Portadas != null && i < Portadas.Length) ? Portadas[i] : null;   // EN LINUX: Image: la portada, un SKBitmap de la cache de portadas
                         using (SKPath ph = RoundRectF(rq, lado * 0.22f))   // EN LINUX: GraphicsPath: un SKPath
                         {
                             if (im != null)
                             {
                                 int sp = g.Save();   // EN LINUX: GraphicsState sp = g.Save()
                                 g.ClipPath(ph, SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(trazo, Intersect): en pixeles enteros, sin suavizar, como GDI+
-                                Imagenes.Pinta(g, PuenteDibujo.Mapa(im), new SKRect(0, 0, im.Width, im.Height), new SKRect(rq.Left, rq.Top, rq.Right, rq.Bottom), filtro, medio, copia);   // EN LINUX: g.DrawImage(im, rq): la portada entera en esa caja, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); sus puntos, por el puente (los mismos, sin copia)
+                                Imagenes.Pinta(g, im, new SKRect(0, 0, im.Width, im.Height), new SKRect(rq.Left, rq.Top, rq.Right, rq.Bottom), filtro, medio, copia);   // EN LINUX: g.DrawImage(im, rq): la portada entera en esa caja, con el filtro, el medio pixel y la copia del lienzo (Nativo/Imagenes.cs); la portada es el SKBitmap mismo
                                 g.RestoreToCount(sp);   // EN LINUX: g.Restore(sp)
                                 using (SKPaint pe = new SKPaint { Color = Color.FromArgb(120, 235, 240, 255).Sk(), StrokeWidth = 1f }) Pixel.Traza(g, ph, pe, suave, medio, copia);   // EN LINUX: Pen(color, 1) y g.DrawPath
                             }

@@ -492,7 +492,7 @@ namespace Rocola
             private Rocola.Nativo.Letra fnCaja, fnCuenta, fnAtajo, fnTecla, fnTeclaPal, fnTipo, fnTitulo, fnSub, fnMarca, fnAyuda, fnVacio, fnIniciales;   // EN LINUX: las letras son Letra (Nativo/Letras.cs; con su espacio entero: aqui Letra es tambien un metodo)
             private float fnS = -1f;
             private FormatoTexto sfMide, sfIzq, sfLinea, sfCentro;   // EN LINUX: los formatos son FormatoTexto (Nativo/TextoGdiPlus.cs)
-            private AjusteLetra? medidor; private readonly SKPaint pincelS = new SKPaint(), plumaS = new SKPaint();   // EN LINUX: el medidor (en XP un Graphics de 1x1, medidorBmp, solo para medir) es su modo de letra: de un Graphics, MeasureString solo toma eso (TextoGdiPlus.Mide no necesita lienzo). Y el pincel y la pluma reusables de lo que se pinta en este archivo, que en XP eran sbS y pnS de Form1.Buscador.cs (aun sin traducir): alli y aqui se les pone el color, y a la pluma el grosor, antes de cada uso, asi que lo que dejan puesto no lo lee nadie
+            private AjusteLetra? medidor; private readonly SKPaint pincelS = new SKPaint(), plumaS = new SKPaint();   // EN LINUX: el medidor (en XP un Graphics de 1x1, medidorBmp, solo para medir) es su modo de letra: de un Graphics, MeasureString solo toma eso (TextoGdiPlus.Mide no necesita lienzo). Y el pincel y la pluma reusables de lo que se pinta en este archivo, que en XP eran sbS y pnS de Form1.Buscador.cs (alli tambien dos SKPaint): alli y aqui se les pone el color, y a la pluma el grosor, antes de cada uso, asi que lo que dejan puesto no lo lee nadie
             private AjusteLetra Medidor()   // EN LINUX: el modo de letra del medidor (Graphics)
             {
                 if (medidor == null)
@@ -762,7 +762,7 @@ namespace Rocola
                 pincelS.Color = (sel ? Color.White : TextoAtajo).Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, atajos[i], fnAtajo, ajuste, pincelS, cr, sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, fnAtajo, sbS, cr, sfCentro) (Nativo/TextoGdiPlus.cs)
             }
-            private void DibujaAyudasNuevas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, RepartoBusca r)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa lo que pinta aqui (Form1.Pared.cs, aun sin traducir: por el puente; FlechaArriba de Form1.Buscador.cs, ya traducido: directo)
+            private void DibujaAyudasNuevas(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, RepartoBusca r)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa lo que pinta aqui (CtrlPad, CtrlTxt y CtrlDot de Form1.Pared.cs y FlechaArriba de Form1.Buscador.cs, ya traducidos: directo)
             {
                 float s = r.S;
                 int cy = r.Ayudas.Y + r.Ayudas.Height / 2;
@@ -1430,7 +1430,7 @@ namespace Rocola
                 }
                 SKBitmap m;   // EN LINUX: SKBitmap
                 if (miniaturas.TryGetValue(a.CoverPath, out m)) return m;
-                SKBitmap img = (GetCoverYa != null) ? PuenteDibujo.Mapa(GetCoverYa(a)) : null;   // EN LINUX: la portada en memoria la da Form1.Portadas.cs (aun sin traducir) como Image: sus puntos (PuenteDibujo.Mapa: los mismos, sin copia; una ya soltada no tiene, y da null como el fallo de Escala que la descartaba)
+                SKBitmap img = (GetCoverYa != null) ? GetCoverYa(a) : null;   // EN LINUX: Image img: la portada en memoria (PortadaEnMemoria, Form1.Biblioteca.cs), el SKBitmap mismo de la cache
                 if (img == null) return null;
                 try { m = Escala(img, lado); }
                 catch { return null; }   // la portada se solto mientras tanto: se vuelve a intentar al llegar
@@ -1445,7 +1445,7 @@ namespace Rocola
             }
             internal static SKBitmap Escala(SKBitmap img, int lado)   // EN LINUX: de un SKBitmap a otro (Image y Bitmap)
             {
-                int w = img.Width, h = img.Height, m = Math.Min(w, h);
+                int w = MapaVivo.Ancho(img), h = MapaVivo.Alto(img), m = Math.Min(w, h);   // EN LINUX: img.Width e img.Height: de una portada ya soltada GDI+ lanza ArgumentException y el catch de quien llama la descarta (se vuelve a intentar al llegar); MapaVivo lanza lo mismo antes de leerla (un SKBitmap soltado cerraria la rocola)
                 if (m < 1) throw new ArgumentException("portada vacia");
                 SKBitmap b = Mapas.Nuevo(lado, lado);   // EN LINUX: new Bitmap(lado, lado, Format32bppPArgb): premultiplicado y transparente (Nativo/Mapas.cs)
                 try

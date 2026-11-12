@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Dibujo2D;   // EN LINUX: GDI+ de la transicion (Plataforma/Dibujo2D.cs) hasta que este archivo se traduzca a SkiaSharp directo
+using System.Drawing; using SkiaSharp;   // EN LINUX: sin la capa de GDI+ (Dibujo2D.cs): aqui no se dibuja; la portada que vuela (GpuTrans.Bmp) es un SKBitmap de la cache de portadas
 namespace Rocola
 {
     // Reloj por familia: no limita el render, la entrada, el progreso ni el audio.
@@ -52,7 +52,7 @@ namespace Rocola
         {
             if (cubeStep || !transitWasPresent || !flight.Has || flight.Key != sampledTransit.Key || !ReferenceEquals(flight.Bmp, sampledTransit.Bmp)) sampledTransit = flight;
             else {
-                bool has = flight.Has; Bitmap cover = flight.Bmp;
+                bool has = flight.Has; SKBitmap cover = flight.Bmp;   // EN LINUX: Bitmap: la portada que vuela, un SKBitmap (se compara por identidad arriba)
                 flight = sampledTransit; flight.Has = has; flight.Bmp = cover;
             }
             transitWasPresent = flight.Has;

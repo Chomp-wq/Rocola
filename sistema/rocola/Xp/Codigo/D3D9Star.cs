@@ -741,7 +741,7 @@ namespace Rocola
             IntPtr tex = IntPtr.Zero;
             try
             {
-                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                int w = MapaVivo.Ancho(bmp), h = MapaVivo.Alto(bmp), tw = Pow2(w), th = Pow2(h);   // EN LINUX: bmp.Width y bmp.Height: la medida; de una portada ya soltada GDI+ lanza ArgumentException y el catch de abajo la atrapa: MapaVivo lanza lo mismo antes de leerla (un SKBitmap soltado cerraria la rocola)
                 if (tw == 0 || th == 0) return IntPtr.Zero;
                 if (tw > LimiteTexturaW || th > LimiteTexturaH) return CreaTexturaDividida(bmp, out uMax, out vMax);
                 if (CreaTexturaManejada((uint)tw, (uint)th, out tex) < 0 || tex == IntPtr.Zero)
@@ -787,7 +787,7 @@ namespace Rocola
             if (dev == IntPtr.Zero || lost || resetPending || reiniciando || tex == IntPtr.Zero || bmp == null) return false;
             try
             {
-                int w = bmp.Width, h = bmp.Height, tw = Pow2(w), th = Pow2(h);
+                int w = MapaVivo.Ancho(bmp), h = MapaVivo.Alto(bmp), tw = Pow2(w), th = Pow2(h);   // EN LINUX: bmp.Width y bmp.Height: la medida; de una portada ya soltada GDI+ lanza ArgumentException y el catch de abajo la atrapa: MapaVivo lanza lo mismo antes de leerla (un SKBitmap soltado cerraria la rocola)
                 TexturasDivididasGpu.Surface dividida = TexturasDivididasGpu.Busca(tex);
                 if (dividida != null)
                 { uMax = vMax = 1f; return ActualizaDividida(dividida, bmp, new Rectangle(0, 0, w, h)); }
@@ -1923,8 +1923,8 @@ namespace Rocola
         public bool Has;
         public float X, Y, W, H;       // celda donde va el cubo (coords del panel)
         public double Angle;           // giro actual (radianes)
-        public Rocola.Dibujo2D.Bitmap CoverA;          // portada principal (null si aun no cargo -> relleno azulado)   // EN LINUX: Bitmap de la capa (Dibujo2D.cs), escrito entero: lo llenan archivos aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
-        public Rocola.Dibujo2D.Bitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)   // EN LINUX: Bitmap de la capa (Dibujo2D.cs), escrito entero: lo llenan archivos aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
+        public SKBitmap CoverA;          // portada principal (null si aun no cargo -> relleno azulado)   // EN LINUX: Bitmap: la portada de la cache, un SKBitmap (el mismo objeto: se compara por identidad)
+        public SKBitmap CoverB;          // portada siguiente para el fundido TOP (null si no aplica)   // EN LINUX: Bitmap: la portada de la cache, un SKBitmap
         public float Fade;             // 0..1 mezcla A->B
         public float Tilt;             // bamboleo del cubo entero (radianes); los CubeBox grande/mini lo usan
     }
@@ -1934,7 +1934,7 @@ namespace Rocola
     // textura a pantalla completa por pagina). Bmp = atlas o celda entera (null si aun no listo).
     // Key = Folder (estable) para cachear su textura entre paginas; null = no cachear (discos TOP / sin carpeta).
     internal struct GpuCellLayout { public Rectangle Face, FaceAt, Text1, Text1At, Text2, Text2At, Top, TopAt, Bottom, BottomAt, Left, LeftAt, Right, RightAt; public int Width, Height; public bool Separate, HideBlank; }
-    internal struct GpuGridCell { public string Key; public SKBitmap Bmp; public Rocola.Dibujo2D.Bitmap Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.   // EN LINUX: Bmp, el mapa de la casilla, es un SKBitmap (lo hornea la pared, Form1.Pared.cs y CaratulasSeparadasGpu.cs, ya traducidos, y se sube tal cual); Preview y FullCover, las portadas, siguen siendo Bitmap de la capa (Dibujo2D.cs), escrito entero: las llenan archivos aun sin traducir y se suben por el puente (PuenteDibujo.Mapa)
+    internal struct GpuGridCell { public string Key; public SKBitmap Bmp; public SKBitmap Preview, FullCover; public bool Direct, CoverReady; public GpuCellLayout Layout; public int Slot; public float X, Y, W, H; public float A; public bool Placeholder, HasCover, NeedsCover; public RectangleF CoverRect; public bool Sel; }   // Preview nunca sustituye la imagen final ni su paleta.   // EN LINUX: Bmp, Preview y FullCover son SKBitmap (en XP, Bitmap): el mapa de la casilla que hornea la pared, la previa de 32x32 (gpuPreviewCache) y la portada entera (la cache de portadas, Format32bppPArgb en XP: Form1.FormatoPortada); se suben tal cual y se comparan por identidad
     internal struct GpuProgress { public bool Has, Neon; public Rectangle Rect; public double Value; public uint Color; public object Key; }
     // TRANSICION entre dos CUBOS de la rocola (celda de la rejilla, cubo grande del disco, cubo gigante de la
     // atraccion, cubo del buscador): la portada viaja de uno al otro dibujada ENCIMA de todo, girando, con
@@ -1943,7 +1943,7 @@ namespace Rocola
     internal struct GpuTrans
     {
         public int Key;
-        public bool Has; public Rocola.Dibujo2D.Bitmap Bmp;   // EN LINUX: Bitmap de la capa (Dibujo2D.cs), escrito entero: lo llenan archivos aun sin traducir; se sube por el puente (PuenteDibujo.Mapa)
+        public bool Has; public SKBitmap Bmp;   // EN LINUX: Bitmap: la portada que vuela (transImg), un SKBitmap de la cache
         public float X, Y, W, H;   // celda donde va el cubo (coords de pantalla)
         public float Alpha;        // 1 = opaca; baja al final para fundirse con el cubo de destino
         public double Angle;       // giro (radianes)
@@ -1994,11 +1994,11 @@ namespace Rocola
         private readonly GpuCellLayout[] gridLayouts = new GpuCellLayout[MaxCells];
         private readonly Tarjeta.Vtx[] atlasQuad = new Tarjeta.Vtx[42];
         public Func<GpuTrans> GetTrans;                   // portada de la transicion entrar/salir de disco (null = sin animacion)
-        private IntPtr transTex; private Rocola.Dibujo2D.Bitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs) que llego, escrito entero: XP compara por identidad para no volver a subir la misma
+        private IntPtr transTex; private SKBitmap transLastBmp; private int transBw, transBh; private float transU = 1f, transV = 1f;   // EN LINUX: Bitmap: la portada que llego, un SKBitmap; XP compara por identidad para no volver a subir la misma
         public Func<GpuAurora> GetAurora;                 // aurora del horizonte (espectro); null o Has=false = nada
         public Func<GpuToast> GetToast;                  // aviso flotante (moneda, cancion agregada...)
         public Func<GpuWin> GetWin;                       // ventana del buscador abriendo/cerrando (null = sin animacion)
-        private IntPtr winTex; private Rocola.Dibujo2D.Bitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs) que llego, escrito entero: XP compara por identidad para no volver a subir la misma
+        private IntPtr winTex; private SKBitmap winLastBmp; private int winBw, winBh; private float winU = 1f, winV = 1f;   // EN LINUX: Bitmap: los puntos de la instantanea que llego (EnsureCover recibe SKBitmap); la instantanea (GpuWin.Bmp) sigue siendo un Bitmap de la capa y llega por PuenteDibujo.Mapa, que da el mismo SKBitmap para el mismo Bitmap: la identidad que XP compara es la misma
         private IntPtr toastTex; private int toastVer = -1, toastBw, toastBh; private float toastU = 1f, toastV = 1f;
         private readonly Tarjeta.Vtx[] toastQuad = new Tarjeta.Vtx[6];
         private readonly Tarjeta.Vtx[] winQuad = new Tarjeta.Vtx[6];
@@ -2015,7 +2015,7 @@ namespace Rocola
         // Cubos que GIRAN (seleccionado + relevo): se dibujan como GEOMETRIA en GPU desde la textura de la
         // portada. La portada se sube UNA vez (al cambiar), no en cada cuadro -> casi cero CPU por cubo.
         private IntPtr selTexA, selTexB, relTex, miniTex;          // texturas de portada: seleccionada A, fundido B (TOP), relevo, mini-cubo
-        private Rocola.Dibujo2D.Bitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)   // EN LINUX: el Bitmap de la capa (Dibujo2D.cs) que llego, escrito entero: XP compara por identidad para no volver a subir la misma
+        private SKBitmap selImgA, selImgB, relImg, miniImg;          // ultima portada subida en cada ranura (para re-subir solo al cambiar)   // EN LINUX: Bitmap: la portada que llego, un SKBitmap; XP compara por identidad para no volver a subir la misma
         private float selUA = 1f, selVA = 1f, selUB = 1f, selVB = 1f, relU = 1f, relV = 1f, miniU = 1f, miniV = 1f;
         private int selBwA, selBhA, selBwB, selBhB, relBw, relBh, miniBw, miniBh;   // tamano ya subido en cada ranura (para reusar la textura)
         // Textura PRINCIPAL de la UI: su alto depende del modo (en navegacion es solo la franja superior,
@@ -2432,7 +2432,7 @@ namespace Rocola
         // Ahora, si la portada nueva mide lo mismo que la anterior -que es SIEMPRE, todas se hornean del mismo
         // tamano- se reaprovecha la textura y solo se re-copian los pixeles. La rejilla de discos ya lo hacia asi;
         // las animaciones se habian quedado atras.
-        private void EnsureCover(ref IntPtr tex, ref Rocola.Dibujo2D.Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Rocola.Dibujo2D.Bitmap cur)   // EN LINUX: la portada llega como Bitmap de la capa (Dibujo2D.cs), escrito entero, de archivos aun sin traducir; se compara por identidad, como en XP
+        private void EnsureCover(ref IntPtr tex, ref SKBitmap last, ref int bw, ref int bh, ref float u, ref float v, SKBitmap cur)   // EN LINUX: Bitmap: la portada (o la instantanea del buscador), un SKBitmap; se compara por identidad, como en XP
         {
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             if (cur == null)
@@ -2440,11 +2440,11 @@ namespace Rocola
                 if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
                 bw = bh = 0; last = null; return;
             }
-            tex = Upload(tex, ref bw, ref bh, PuenteDibujo.Mapa(cur), out u, out v);   // mismo tamano: reusa. Distinto: recrea (raro).   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)
+            tex = Upload(tex, ref bw, ref bh, cur, out u, out v);   // mismo tamano: reusa. Distinto: recrea (raro).
             last = cur;
         }
 
-        private void EnsureImmutableCover(ref IntPtr tex, ref Rocola.Dibujo2D.Bitmap last, ref int bw, ref int bh, ref float u, ref float v, Rocola.Dibujo2D.Bitmap cur)   // EN LINUX: la portada llega como Bitmap de la capa (Dibujo2D.cs), escrito entero (tambien de RespuestaGpu.cs); se compara por identidad, como en XP
+        private void EnsureImmutableCover(ref IntPtr tex, ref SKBitmap last, ref int bw, ref int bh, ref float u, ref float v, SKBitmap cur)   // EN LINUX: Bitmap: la portada, un SKBitmap (tambien de RespuestaGpu.cs); se compara por identidad, como en XP
         {
             if (ReferenceEquals(cur, last) && (cur == null || tex != IntPtr.Zero)) return;
             // Nunca actualizar una portada compartida: otro cubo puede estar usando
@@ -2452,7 +2452,7 @@ namespace Rocola
             if (tex != IntPtr.Zero) { Tarjeta.Suelta(tex); tex = IntPtr.Zero; }
             bw = bh = 0; last = null; u = v = 1;
             if (cur == null) return;
-            tex = stars.CreateCoverShared(PuenteDibujo.Mapa(cur), out u, out v);   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)
+            tex = stars.CreateCoverShared(cur, out u, out v);
             if (tex != IntPtr.Zero) { bw = cur.Width; bh = cur.Height; last = cur; }
         }
 
@@ -2600,7 +2600,7 @@ namespace Rocola
             SampleCubeFlight(ref tr);
             if (tr.Has && tr.Bmp != null) EnsureCover(ref transTex, ref transLastBmp, ref transBw, ref transBh, ref transU, ref transV, tr.Bmp);
             GpuWin gw = (GetWin != null) ? GetWin() : new GpuWin();
-            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, gw.Bmp);
+            if (gw.Has && gw.Bmp != null) EnsureCover(ref winTex, ref winLastBmp, ref winBw, ref winBh, ref winU, ref winV, PuenteDibujo.Mapa(gw.Bmp));   // EN LINUX: la instantanea del buscador (winSnap, Form1.Biblioteca.cs) sigue siendo un Bitmap de la capa: sus puntos por el puente, el mismo SKBitmap cada vez (la identidad de XP); se quita cuando sea un SKBitmap
             GpuToast tt = (GetToast != null) ? GetToast() : new GpuToast();
             if (tt.Has && tt.Bmp != null && (tt.Ver != toastVer || toastTex == IntPtr.Zero))   // el bitmap se REUSA (mismo objeto), por eso manda la version
             { toastTex = Upload(toastTex, ref toastBw, ref toastBh, PuenteDibujo.Mapa(tt.Bmp), out toastU, out toastV); toastVer = tt.Ver; }   // EN LINUX: sus puntos, por el puente (los mismos, sin copia)

@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+, y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); lo que aun es de la capa (los Bitmap e Image que piden D3D9Star.cs y la cache de portadas, las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); lo que aun es de la capa (los Bitmap de la interfaz que pide D3D9Star.cs, las letras de las etiquetas de WinForms, el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -660,7 +660,7 @@ namespace Rocola
             {
                 if (nowPlaying != null)
                 {
-                    Rocola.Dibujo2D.Image nueva = LoadCover(nowPlaying.Disc);   // EN LINUX: la Image de la capa, escrita entera: la da la cache de portadas (Form1.Portadas.cs, que aun la publica como Image de la capa) y la recibe el mini-cubo (Form1.Vistas.cs, que la pasa a la tarjeta); aqui solo pasa
+                    SKBitmap nueva = LoadCover(nowPlaying.Disc);   // EN LINUX: Image: la portada de la cache de portadas (LoadCover), un SKBitmap; la recibe el mini-cubo (Form1.Pared.cs, CubeBox.Relevo)
                     // EL RELEVO: si ya habia un cubo puesto con otra portada, no se cambia de golpe; el
                     // cubo da media vuelta y la nueva aparece en el camino. La primera cancion de la
                     // noche, y la portada que llega tarde a la que YA suena, entran sin giro: ahi no hay
@@ -1037,19 +1037,19 @@ namespace Rocola
             if (attractOn && attractView != null)   // MODO ATRACCION: cubo gigante centrado que cicla portadas (con fundido)
             {
                 st = new GpuCubeState();
-                Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras: las portadas del cubo van de la atraccion (Form1.Vistas.cs) a la tarjeta (D3D9Star.cs, que aun las sube como Bitmap de la capa); aqui solo pasan
+                SKBitmap ca, cb; float f;   // EN LINUX: Image: las portadas del cubo, SKBitmap de la cache: van de la atraccion (Form1.Pared.cs, GetCoverPair) a la tarjeta (D3D9Star.cs); aqui solo pasan
                 ParCuboAtraccion(out ca, out cb, out f);   // puede dar null (portadas aun cargando): el cubo muestra relleno azulado
                 RectangleF cubo = CuboAtraccionAhora();   // el de siempre, o el del escaparate (AtraccionGpu.cs): lo mismo que la animacion de entrada/salida
                 st.Sel.Has = true;
                 st.Sel.Key = attractView;
                 st.Sel.X = cubo.X; st.Sel.Y = cubo.Y; st.Sel.W = cubo.Width; st.Sel.H = cubo.Height;
-                st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: el Bitmap de la capa, escrito entero (GpuCubeInfo de D3D9Star.cs)
+                st.Sel.Angle = AnguloAtraccion(); st.Sel.CoverA = ca as SKBitmap; st.Sel.CoverB = cb as SKBitmap; st.Sel.Fade = f;   // EN LINUX: as Bitmap: SKBitmap (GpuCubeInfo de D3D9Star.cs)
                 return st;   // en atraccion no hay mini-cubo (no suena nada)
             }
             if (searchOpen && searchOverlay != null)
             {
                 st = new GpuCubeState();
-                Rectangle area; Rocola.Dibujo2D.Image ca, cb; float f;   // EN LINUX: las Image de la capa, escritas enteras (del buscador, Form1.Buscador.cs, a la tarjeta); aqui solo pasan
+                Rectangle area; SKBitmap ca, cb; float f;   // EN LINUX: Image: SKBitmap de la cache (del buscador, Form1.Buscador.cs, a la tarjeta); aqui solo pasan
                 bool cubOk = searchOverlay.GetPreviewCube(out area, out ca, out cb, out f);
 #if ROCOLA_GPU
                 if (winMode == 1) cubOk = false;   // abriendo: la ventana se anima entera, un cubo suelto encima la delataria
@@ -1059,7 +1059,7 @@ namespace Rocola
                     area.Offset(searchOverlay.Left, searchOverlay.Top);   // coords del buscador -> pantalla
                     st.Sel.Has = true; st.Sel.X = area.X; st.Sel.Y = area.Y; st.Sel.W = area.Width; st.Sel.H = area.Height;
                     st.Sel.Key = searchOverlay;
-                    st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as Rocola.Dibujo2D.Bitmap; st.Sel.CoverB = cb as Rocola.Dibujo2D.Bitmap; st.Sel.Fade = f;   // EN LINUX: el Bitmap de la capa, escrito entero
+                    st.Sel.Angle = searchOverlay.PreviewAngle; st.Sel.CoverA = ca as SKBitmap; st.Sel.CoverB = cb as SKBitmap; st.Sel.Fade = f;   // EN LINUX: as Bitmap: SKBitmap (GpuCubeInfo)
                 }
             }
             else if (panelSongs != null && panelSongs.Visible && cubeBox != null)
@@ -1098,7 +1098,7 @@ namespace Rocola
             info.Y = screenY + (cb.Height - side) / 2;
             info.W = side; info.H = side;
             info.Angle = cb.Angle;
-            info.CoverA = cb.Cover as Rocola.Dibujo2D.Bitmap;   // EN LINUX: el Bitmap de la capa, escrito entero (la portada del CubeBox, Form1.Vistas.cs, a la tarjeta)
+            info.CoverA = cb.Cover as SKBitmap;   // EN LINUX: as Bitmap: la portada del CubeBox (Form1.Pared.cs), un SKBitmap de la cache, a la tarjeta
             info.Key = cb;
             info.Tilt = (float)(10.0 * Math.Sin(cb.Phase * 0.9) * Math.PI / 180.0);   // mismo bamboleo que CubeBox.OnPaint
         }
