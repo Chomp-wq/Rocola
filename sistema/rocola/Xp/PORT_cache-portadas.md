@@ -142,3 +142,38 @@ Salidas en `/root/rocola-trabajo/port/cache-portadas` (fuera del repositorio; si
 - La interfaz y las piezas (`uiOverlay`, `uiBotOverlay`, `uiPieza`, `winSnap`, la moneda, el panel de reposo) como `SKBitmap` (5a): con
   ellas se van la costura nueva de `D3D9Star.cs:2603`, `TeselasEnPasos`/`SubeReponiendo` con `Bitmap` y `Puente.portadas.cs` entero.
 - Las costuras muertas de `Puente.fondo.cs:32` y `Puente.pared.cs:54/65` (N7 o la limpieza), con los arneses que las llaman.
+
+## Revisión (revisor independiente, 12-11-2026)
+
+Se leyó el diff `809389d..port-cache-portadas` entero contra `Rocola/` (XP) y se repitieron las comprobaciones. **Sin fallos en el código**:
+nada que arreglar.
+
+- **Lo que debía irse**: en los 21 archivos del grupo no queda ningún `PuenteDibujo.Mapa`/`Entrega` ni `Rocola.Dibujo2D.Image/Bitmap` de
+  portadas o previas; los que quedan son de la interfaz, las piezas, `winSnap`, el aviso y el panel de reposo (5a). Ninguna nota «aun sin
+  traducir» de las asignadas queda (`Form1.Biblioteca.cs`, `Form1.Portadas.cs`, `Form1.Pared.cs:134`, `Form1.Fondo.cs:771/1021`,
+  `CaratulasAdaptativas.cs:507`, `BuscadorPortadasGpu.cs:495/765`).
+- **Equivalencia con XP**: mismas cuentas, valores y orden; el estado del lienzo que reciben `Cube.Draw`, `Imagenes.Pinta` y `BlendInto`
+  es el mismo que por el puente (el puente solo daba `i.Sk`). Comprobado en XP que **toda** portada de la caché es `Format32bppPArgb`
+  (`DecodeCoverCore`: `new Bitmap(256,256,PArgb)`, `Clone(..., PArgb)` y `CopiaMiniaturaGpu`; `CachePut` solo la llama el trabajador) y
+  toda previa también (`PutGpuPreview` solo con `FromBytes` y la del trabajador): `FormatoPortada` y la condición de `InteriorOpaco`
+  (`IsAlphaPixelFormat(PArgb)` = verdadero) son las de XP. `diff-xp.py` de los 21 archivos: las mismas líneas sin marca que en la base
+  (corrida también sobre la base `809389d`), y las cuentas bajan como dice el documento.
+- **Identidad y vidas**: `SKBitmap` no redefine `GetHashCode` ni `Equals` (comprobado por reflexión con SkiaSharp 3.116.1: los dos son de
+  `System.Object`, y el hash es el mismo después de `Dispose`), así que `nativeCovers`, `protectedNativeAhead`, las comparaciones
+  `ReferenceEquals` y la firma de `EstadoReposoGpu` (`covers[i].GetHashCode()`) se portan como la `Image` de XP, también con claves ya
+  soltadas. `D3D9Star.cs:2603` (`PuenteDibujo.Mapa(gw.Bmp)`) da `i.Sk`, el mismo objeto mientras `winSnap` viva; `winSnap` solo se suelta
+  cuando ya no se dibuja (`Form1.Biblioteca.cs:3020`). Las sueltas siguen en el hilo de la pantalla con la retención de XP (transImg,
+  mini-cubo, cubo, cápsula de la cola, buscador). `MapaVivo` sigue la semántica de `Image.Width` de .NET Framework (con `nativeImage` en
+  cero tras `Dispose`, `GdipGetImageWidth` contesta `InvalidParameter` y `StatusException` lanza `ArgumentException`); un mapa nulo da
+  `NullReferenceException` como `b.Width`.
+- **Nada que imite a Windows**: `MapaVivo` es un ayudante estático con nombre propio; `FormatoPortada` es una constante.
+- **Bytes**: los 21 archivos de `Codigo/` tocados con el mismo número de líneas y de CRLF que en `809389d`; nada tocado fuera de lo
+  permitido (Codigo del grupo, `Nativo/MapaVivo.cs`, `Plataforma/Puente.portadas.cs`, `Pruebas/` y este documento).
+- **Repetido por el revisor**: (a) `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos (los de la base). (b) `diff-xp.py`
+  arriba. (e) VistasPortadas **478 líneas IGUALES** (0 excepciones, directo distinto 0, 104 no nativos comparados); VistasPared
+  **IGUALES** con las letras falsas y con DejaVu (1715 líneas); VistasBuscadorPortadas **IGUALES** a la referencia y a la base (3128
+  líneas); las **29 cintas IGUALES** (6616 cuadros; se tocó `CreateTexturePow2`/`UpdateTexturePow2`). No se repitieron recorridos,
+  escenas ni NativeAOT (nada de la revisión los puso en duda; los corre el coordinador al juntar).
+- **Queda (fuera del grupo)**: la nota de `DibujoLigeroGpu.cs:338` («lo dice el puente, Puente.portadas.cs») ya no es cierta: el
+  `InteriorOpaco(Bitmap)` del puente se quitó y ahora lo dice `Form1.FormatoPortada` desde `CaratulasSeparadasGpu.cs`. El archivo no es
+  de este grupo (y 3b arregla notas viejas a la vez): se deja para la limpieza o N7.
