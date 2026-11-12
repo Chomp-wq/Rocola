@@ -24,8 +24,8 @@ namespace Rocola
             return ColoresDePortada(PuenteDibujo.Mapa(b), out uno, out dos);
         }
 
-        // ---- El cielo del dibujo por procesador: las firmas de XP de Draw (Form1.Pared.cs, la atraccion), DrawCached (Form1.cs y BgPanel, el
-        // panel de la lista del disco) y DrawReactive (Form1.Pared.cs y Form1.Buscador.cs). El lienzo del Graphics (con su matriz y su recorte)
+        // ---- El cielo del dibujo por procesador: las firmas de XP de Draw (Form1.Pared.cs, la atraccion), DrawCached (Form1.cs: las franjas; el panel
+        // de la lista del disco, BgPanel, ya la llama directo) y DrawReactive (Form1.Pared.cs y Form1.Buscador.cs). El lienzo del Graphics (con su matriz y su recorte)
         // y su estado: el suavizado, el filtro, el medio pixel y la copia. Se quitan cuando esos archivos (y los OnPaint) se traduzcan.
         private partial class Starfield
         {

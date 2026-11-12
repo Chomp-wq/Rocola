@@ -1241,7 +1241,7 @@ namespace Rocola
             songPager = new SongPagerBar();
             songPager.Visible = false;
             songPager.BackColor = Shade(DefaultAccent, 0.70);
-            panelSongs.Controls.Add(lblAlbum);
+            PantallaRocola.AgregaRotulo(panelSongs, lblAlbum);   // EN LINUX: panelSongs.Controls.Add(lblAlbum): el panel del disco ya no es un Panel de WinForms (Form1.Fondo.cs: BgPanel, una vista de la pantalla); el rotulo (un Label de la capa, hasta la oleada 7) va a sus hijas, el primero del orden (el de mas arriba), y entra con el panel a la ventana
             PantallaRocola.AgregaVista(panelSongs, cubeBox);   // EN LINUX: panelSongs.Controls.Add(cubeBox): en el panel del disco, por la pantalla (al fondo de la lista del panel, como ControlCollection.Add)
             PantallaRocola.AgregaVista(panelSongs, songList);   // EN LINUX: panelSongs.Controls.Add(songList), por la pantalla
             PantallaRocola.AgregaVista(panelSongs, songPager);   // EN LINUX: panelSongs.Controls.Add(songPager), por la pantalla
@@ -1546,7 +1546,7 @@ namespace Rocola
 
         private void LayoutSongsPanel()
         {
-            int w = panelSongs.ClientSize.Width, h = panelSongs.ClientSize.Height;
+            int w = panelSongs.Width, h = panelSongs.Height;   // EN LINUX: panelSongs.ClientSize.Width/Height: el cliente de un Panel sin borde ni barras es su medida
             lblAlbum.SetBounds(8, 8, Math.Max(50, w - 16), 32);
             int cube = Math.Min(h - 80, (int)(w * 0.40));
             if (cube < 80) cube = 80;

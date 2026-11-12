@@ -26,7 +26,8 @@ static class P
     }
     static string Log() { string s = string.Join(",", log); log.Clear(); return s; }
     static void Bombea(int ms) { Stopwatch t = Stopwatch.StartNew(); do { Application.DoEvents(); Thread.Sleep(1); } while (t.ElapsedMilliseconds < ms); }
-    static readonly SKColor Rojo = new SKColor(255, 0, 0), Azul = new SKColor(0, 0, 255), Verde = new SKColor(0, 255, 0);
+    static readonly SKColor Rojo = new SKColor(255, 0, 0), Azul = new SKColor(0, 0, 255), Verde = new SKColor(0, 255, 0), Amarillo = new SKColor(255, 255, 0);
+    static bool Xy;   // (panel-del-disco) el clic apunta tambien donde cayo, en las coordenadas de la vista
 
     // LA VISTA FALSA: una IVista sin herencia, con su caja; se pinta de su color (fondo y contenido) y apunta su raton
     sealed class VistaFalsa : IVista, IDisposable
@@ -45,7 +46,7 @@ static class P
         public void Pinta(SKCanvas g) { if (color != null) using (SKPaint p = new SKPaint { Color = color.Value }) g.DrawRect(0, 0, Width, Height, p); }
         public void Raton(AvisoRaton que, Raton e)
         {
-            log.Add(n + "." + que + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : "(" + e.Clicks + ")"));
+            log.Add(n + "." + que + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : "(" + e.Clicks + ")") + (Xy && que == AvisoRaton.Clic ? "@" + e.X + "," + e.Y : ""));
             if (que == AvisoRaton.Rueda && ManejaRueda) e.Handled = true;
         }
     }
@@ -54,7 +55,7 @@ static class P
     {
         readonly string n;
         public Gemelo(string n) { this.n = n; }
-        void A(string q, MouseEventArgs e) { log.Add(n + "." + q + (e == null ? "" : "(" + e.Clicks + ")")); }
+        void A(string q, MouseEventArgs e) { log.Add(n + "." + q + (e == null ? "" : "(" + e.Clicks + ")") + (Xy && q == "Clic" ? "@" + e.X + "," + e.Y : "")); }
         protected override void OnMouseDown(MouseEventArgs e) { A("Abajo", e); base.OnMouseDown(e); }
         protected override void OnMouseClick(MouseEventArgs e) { A("Clic", e); base.OnMouseClick(e); }
         protected override void OnMouseDoubleClick(MouseEventArgs e) { A("DobleClic", e); base.OnMouseDoubleClick(e); }
@@ -179,7 +180,92 @@ static class P
             Mira("capa, gemelo (control de la capa): " + nombre, i < gemO.Length ? gemO[i] : "(nada)", esperadoGem, FO);
             Mira("capa, vista falsa en su hueco: " + nombre, i < falO.Length ? falO[i] : "(nada)", esperadoO[i], "lo mismo que el gemelo, y la traza la nombra por la vista");
         }
+        // (panel-del-disco) UNA VISTA DENTRO DE OTRA, en la capa (con un Control de la capa como panel, que es lo que fija WinForms, y con la
+        // vista falsa en su hueco) y, mas abajo, sin la capa (la lista nativa)
+        string[] panGem = EscenaPanel(0), panFal = EscenaPanel(1);
+        for (int i = 0; i < esperadoP.Length; i++)
+        {
+            string nombre = esperadoP[i].Substring(0, esperadoP[i].IndexOf(' '));
+            Mira("capa, panel con hijas, gemelo (Controls.Add del control): " + nombre, i < panGem.Length ? panGem[i] : "(nada)", esperadoP[i], FP);
+            Mira("capa, panel con hijas, vista falsa en su hueco: " + nombre, i < panFal.Length ? panFal[i] : "(nada)", esperadoP[i], "lo mismo que el gemelo");
+        }
         SinLaCapa();
+    }
+
+    // (panel-del-disco) LO QUE XP HACE CON EL PANEL DEL DISCO: panelSongs.Controls.Add(...) de dos hijas ANTES de agregar el panel a la ventana
+    // (Form1.cs:1244-1247 y 1339), y despues lo de un Panel de WinForms con sus hijos: su posicion es relativa al panel (Control.Bounds en el
+    // cliente del padre), se recortan al cliente del panel (son ventanas hijas, WS_CHILD), la primera que se agrega queda arriba
+    // (ControlCollection.Add al final; el [0] arriba), BringToFront (SetChildIndex(this, 0)) la sube, el raton va a la ventana hija de mas
+    // arriba bajo la flecha (WindowFromPoint / ChildWindowFromPointEx) y con las coordenadas de ELLA, el panel escondido esconde a las hijas
+    // (GetVisibleCore) y moverlo las mueve.
+    const string FP = "posicion: Control.Bounds (en el cliente del padre); recorte: WS_CHILD; orden: ControlCollection.Add y BringToFront (SetChildIndex(this, 0)); " +
+                      "raton: WindowFromPoint / ChildWindowFromPointEx baja a la hija de mas arriba (Control.cs:5806), coordenadas de la hija; GetVisibleCore: la suya y la del padre";
+    static readonly string[] esperadoP =
+    {
+        "posicion FFFFFF00 FFFF0000 FF0000FF",
+        "recorte FF00FF00 FF00FF00",
+        "orden FFFF0000",
+        "raton-mueve P.Entra,P.Mueve(0),P.Sale,C1.Entra,C1.Mueve(0),C1.Sale,C2.Entra,C2.Mueve(0),C2.Sale",
+        "raton-clic C2.Abajo(1),C2.Clic(1)@50,50,C2.Arriba(1)",
+        "raton-captura C2.Abajo(1),C2.Mueve(0),C2.Arriba(1),C2.Sale,P.Entra",
+        "alfrente FF0000FF",
+        "mueve-dueno FFFF0000 FF0000FF FF00FF00",
+        "escondido FF00FF00 FF00FF00",
+        "raton-escondido ",
+        "hija-quitada FFFFFF00",
+    };
+    // modo 0: un Control de la capa de panel y de hijas (el gemelo); 1: vistas falsas en la capa; 2: vistas falsas en la lista nativa (sin la capa)
+    static string[] EscenaPanel(int modo)
+    {
+        List<string> r = new List<string>();
+        Func<int, int, string> px = modo == 2 ? (Func<int, int, string>)delegate (int x, int y) { return Pinta(x, y); } : Px;
+        Xy = true;
+        if (modo != 2) Bombea(150);
+        IVista panel, c1, c2;
+        if (modo == 0)
+        {
+            Gemelo p = new Gemelo("P"); p.BackColor = Color.FromArgb(255, 255, 0); p.SetBounds(30, 30, 120, 100);
+            Gemelo a = new Gemelo("C1"); a.BackColor = Color.FromArgb(255, 0, 0); a.SetBounds(10, 10, 60, 60);
+            Gemelo b = new Gemelo("C2"); b.BackColor = Color.FromArgb(0, 0, 255); b.SetBounds(40, 30, 100, 80);
+            panel = p; c1 = a; c2 = b;
+        }
+        else
+        {
+            VistaFalsa p = new VistaFalsa("P", Amarillo); p.SetBounds(30, 30, 120, 100);
+            VistaFalsa a = new VistaFalsa("C1", Rojo); a.SetBounds(10, 10, 60, 60);
+            VistaFalsa b = new VistaFalsa("C2", Azul); b.SetBounds(40, 30, 100, 80);
+            panel = p; c1 = a; c2 = b;
+        }
+        // Form1: las hijas al panel ANTES de ponerlo en la ventana (Controls.Add: la primera, arriba)
+        PantallaRocola.AgregaVista(panel, c1); PantallaRocola.AgregaVista(panel, c2);
+        PantallaRocola.AgregaVista(modo == 2 ? null : (object)m, panel);
+        if (modo == 2) { PantallaRocola.FondoDeLaVentana = delegate (SKCanvas g) { g.Clear(Verde); }; Va(5, 5); }
+        r.Add("posicion " + px(35, 35) + " " + px(45, 45) + " " + px(120, 110));
+        r.Add("recorte " + px(160, 100) + " " + px(140, 135));
+        r.Add("orden " + px(80, 80));
+        Va(5, 5); log.Clear();
+        Va(35, 35); Va(45, 45); Va(120, 110); Va(160, 100);
+        r.Add("raton-mueve " + Log());
+        Va(120, 110); log.Clear(); Clic(true); Clic(false); Bombea(650);
+        r.Add("raton-clic " + Log());
+        Va(120, 110); log.Clear(); Clic(true); Va(35, 35); Clic(false); Bombea(650);
+        r.Add("raton-captura " + Log());
+        PantallaRocola.VistaAlFrente(c2);
+        r.Add("alfrente " + px(80, 80));
+        panel.SetBounds(60, 60, 120, 100);
+        r.Add("mueve-dueno " + px(75, 75) + " " + px(150, 100) + " " + px(190, 100));
+        panel.Visible = false;
+        r.Add("escondido " + px(75, 75) + " " + px(150, 100));
+        Va(5, 5); log.Clear(); Va(75, 75); Va(150, 100); Clic(true); Clic(false); Bombea(650);
+        r.Add("raton-escondido " + Log());
+        panel.Visible = true;
+        PantallaRocola.QuitaVista(c1);
+        r.Add("hija-quitada " + px(75, 75));
+        PantallaRocola.QuitaVista(panel);
+        if (modo == 0) { PantallaRocola.QuitaVista(c2); ((Gemelo)panel).Dispose(); ((Gemelo)c1).Dispose(); ((Gemelo)c2).Dispose(); }
+        Xy = false;
+        Va(5, 5); Bombea(650); log.Clear();
+        return r.ToArray();
     }
 
     // (armado-vistas, oleada 3) QUIEN ESCUCHA EL RATON DESDE FUERA (PantallaRocola.OyeRaton: el «ayudaView.MouseClick +=» y el
@@ -277,6 +363,12 @@ static class P
             Mira("sin la capa: Focus de una escondida", PantallaRocola.EnfocaVista(v) + " " + (PantallaRocola.FocoDeLaVentana == null), "False True", "CanFocus: IsWindowVisible");
             v.Visible = true;
             PantallaRocola.QuitaVista(a); PantallaRocola.QuitaVista(v);
+            // (panel-del-disco) una vista dentro de otra en la lista nativa: lo mismo que en la capa
+            string[] panNat = EscenaPanel(2);
+            for (int i = 0; i < esperadoP.Length; i++)
+                Mira("sin la capa, panel con hijas: " + esperadoP[i].Substring(0, esperadoP[i].IndexOf(' ')), i < panNat.Length ? panNat[i] : "(nada)", esperadoP[i], FP);
+            Mira("sin la capa, panel con hijas: nada queda en la lista", PantallaRocola.ListaDeLaVentana.Length + "", "0", "Controls.Remove");
+            PantallaRocola.FondoDeLaVentana = delegate (SKCanvas g) { g.Clear(Verde); };
             Teclas();
         }
         finally { PantallaRocola.LaCapa = capa; PantallaRocola.FondoDeLaVentana = null; }
