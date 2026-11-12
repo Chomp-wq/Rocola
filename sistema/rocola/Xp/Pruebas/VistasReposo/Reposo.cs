@@ -361,12 +361,16 @@ namespace BancoReposo
             {
                 StringBuilder sb = new StringBuilder();
                 MethodInfo m = directo ? Nativa("EmpiezaRecuadro", typeof(SKCanvas)) : null;
-                if (m == null) typeof(Form1).GetMethod("EmpiezaRecuadro", Todo, null, new[] { typeof(Graphics), typeof(Rectangle) }, null).Invoke(null, new object[] { g, zona });
+                // la firma de XP de EmpiezaRecuadro (con un Graphics) se quito del puente al traducirse Form1.Video.cs (grupo video-form1): donde ya
+                // no esta (la traduccion), la llamada de XP es la traducida con lo que hacia el puente (el SetClip del Graphics y su estado)
+                MethodInfo xp = m == null ? typeof(Form1).GetMethod("EmpiezaRecuadro", Todo, null, new[] { typeof(Graphics), typeof(Rectangle) }, null) : null;
+                if (m == null && xp != null) xp.Invoke(null, new object[] { g, zona });
                 else
                 {
                     // directo: como lo hara Form1.Video.cs traducido, el lienzo nuevo sin recorte; el resto sigue por el Graphics, que se entera del
                     // recorte con su SetClip (lo que hace el puente)
-                    directas++; g.SetClip(zona); object[] es = EstadoDe(g); m.Invoke(null, new object[] { es[0], es[1], es[4], zona });
+                    if (m != null) directas++; else m = Nativa("EmpiezaRecuadro", typeof(SKCanvas));
+                    g.SetClip(zona); object[] es = EstadoDe(g); m.Invoke(null, new object[] { es[0], es[1], es[4], zona });
                 }
                 sb.Append(" recuadro=" + Puntos(nombre + "-0", b).Replace('\t', ' ') + " recorte=" + R(g.ClipBounds));
                 g.FillRectangle(rojo, 0, 0, 400, 100);
