@@ -66,7 +66,7 @@ namespace Rocola
         // Barra de paginas de la lista de canciones: "Pagina X de Y" al centro, y a los lados las
         // instrucciones VARIABLES con flechas DIBUJADAS (la fuente de XP no trae flechas unicode):
         //   [<] pagina 1        Pagina 2 de 3        pagina 3 [>]
-        private partial class SongPagerBar : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics), para quien todavia la llama asi (OnPaint, abajo, y DrawCtrlOverlay de Form1.Video.cs), esta en Plataforma/Puente.vistas-a.cs
+        private partial class SongPagerBar : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics), para quien todavia la llama asi (OnPaint, abajo), esta en Plataforma/Puente.vistas-a.cs
         {
             private int pagina = 0; // pagina actual (desde 0)
             public int Pages = 1;   // total de paginas
@@ -175,7 +175,7 @@ namespace Rocola
             }
         }
 
-        private partial class LetterBar : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics y forGpu), para quien todavia la llama asi (OnPaint, abajo, y DrawCtrlOverlay de Form1.Video.cs), esta en Plataforma/Puente.vistas-a.cs
+        private partial class LetterBar : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics y forGpu), para quien todavia la llama asi (OnPaint, abajo), esta en Plataforma/Puente.vistas-a.cs
         {
             private SKPaint pulseBrush; private SKPaint pulsePen;                       // resaltado de letra (reusables)   // EN LINUX: SolidBrush y Pen: el pincel (su color) y la pluma (su color, su ancho y su union) en un SKPaint cada uno
             private SKPath pulsePath; private RectangleF pulseBox = RectangleF.Empty;  // trayectoria cacheada   // EN LINUX: GraphicsPath -> SKPath
@@ -995,7 +995,7 @@ namespace Rocola
         // seccion va en SU color -el mismo que la letra luce en la barra de arriba- y las paginas se ven de un
         // vistazo como puntitos: cuantas hay y en cual estas se sabe sin leer, que es lo que le sirve a alguien
         // que esta de pie delante de la maquina.
-        private partial class HeaderView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
+        private partial class HeaderView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             public string Section = "";
             public int Page = 0, Total = 1;
@@ -1226,7 +1226,7 @@ namespace Rocola
             }
         }
 
-        private partial class PastillaView : Control
+        private partial class PastillaView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public string Etiqueta = "", Valor = "";
             public Color Acento = DefaultAccent;
@@ -1531,7 +1531,7 @@ namespace Rocola
         // ponerla en la franja de abajo: asi, al sonar una cancion, tambien se ve DE QUE ES.
         //
         // Se mide sola: le da su ancho y su alto al acomodo, que es quien la coloca detras del artista.
-        private partial class GeneroView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
+        private partial class GeneroView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             private string texto = "";
             public string Texto
@@ -1588,7 +1588,7 @@ namespace Rocola
         }
 
         // ==========  BARRA DE PROGRESO  ==========
-        private partial class ProgressView : Control   // EN LINUX: partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
+        private partial class ProgressView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa); partial: la firma de XP de RenderContent (con un Graphics) va en el puente (Plataforma/Puente.vistas-b.cs)
         {
             private bool _neon;
             public bool Neon { get { return _neon; } set { if (_neon != value) { _neon = value; Invalidate(); } } }
@@ -1681,7 +1681,7 @@ namespace Rocola
         // ==========  LISTA DE CANCIONES (dibujada a mano, no ListBox nativo) ==========
         // Reemplaza al ListBox: asi el interior del disco se puede componer por GPU (un control nativo no se
         // puede poner sobre D3D). Es una VISTA de UNA pagina: la seleccion global la maneja el form (songSel).
-        private partial class SongListView : Control
+        private partial class SongListView : Control, IVista   // EN LINUX: , IVista (armado-vistas) la vista de la pantalla nativa (Nativo/IVista.cs) mientras aun hereda: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate los da Control con la misma firma; Pinta y Raton, los de fabrica (la pinta y le da el raton la capa)
         {
             public Func<int> GetCount;          // total de items (songItems.Count)
             public Func<int, string> GetText;   // texto del item i

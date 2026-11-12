@@ -161,21 +161,24 @@ namespace BancoVideoForm1
         }
 
         // ================================================================ LAS VISTAS EN LA IMAGEN DE LA INTERFAZ (DrawCtrlOverlay)
-        private static Control Vista(int cual, int w, int h)
+        // (tanda 6, armado-vistas: la barra de ayuda ya no hereda de Control en la traduccion -una IVista-: las vistas van como object, con su
+        // sitio por reflexion; la letra solo a las que son Control, y la barra no la lee: en la referencia se la pone igual que antes)
+        private static object Vista(int cual, int w, int h)
         {
-            Control c;
+            object c;
             switch (cual)
             {
-                case 0: c = (Control)Activator.CreateInstance(Anidado("HelpBar"), true); break;
-                case 1: c = (Control)Activator.CreateInstance(Anidado("HelpBar"), true); Pon(c, "Justa", true); break;
-                case 2: c = (Control)Activator.CreateInstance(Anidado("ProgressView"), true); Pon(c, "Value", 0.37); Pon(c, "Accent", Color.FromArgb(240, 120, 40)); break;
-                case 3: c = (Control)Activator.CreateInstance(Anidado("ProgressView"), true); Pon(c, "Value", 0.81); Pon(c, "Neon", true); break;
-                case 4: c = (Control)Activator.CreateInstance(Anidado("GeneroView"), true); Pon(c, "Texto", "Cumbia"); Pon(c, "Tinte", Color.FromArgb(60, 200, 120)); break;
-                case 5: c = (Control)Activator.CreateInstance(Anidado("LetterBar"), true); break;
-                default: c = (Control)Activator.CreateInstance(Anidado("PastillaView"), true); Pon(c, "Etiqueta", "CRÉDITOS"); Pon(c, "Valor", "12"); break;
+                case 0: c = Activator.CreateInstance(Anidado("HelpBar"), true); break;
+                case 1: c = Activator.CreateInstance(Anidado("HelpBar"), true); Pon(c, "Justa", true); break;
+                case 2: c = Activator.CreateInstance(Anidado("ProgressView"), true); Pon(c, "Value", 0.37); Pon(c, "Accent", Color.FromArgb(240, 120, 40)); break;
+                case 3: c = Activator.CreateInstance(Anidado("ProgressView"), true); Pon(c, "Value", 0.81); Pon(c, "Neon", true); break;
+                case 4: c = Activator.CreateInstance(Anidado("GeneroView"), true); Pon(c, "Texto", "Cumbia"); Pon(c, "Tinte", Color.FromArgb(60, 200, 120)); break;
+                case 5: c = Activator.CreateInstance(Anidado("LetterBar"), true); break;
+                default: c = Activator.CreateInstance(Anidado("PastillaView"), true); Pon(c, "Etiqueta", "CRÉDITOS"); Pon(c, "Valor", "12"); break;
             }
-            c.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
-            c.Bounds = new Rectangle(7 + cual, 3 + cual % 3, w, h);
+            Control cc = c as Control;
+            if (cc != null) cc.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
+            Pon(c, "Bounds", new Rectangle(7 + cual, 3 + cual % 3, w, h));
             return c;
         }
         private static void Vistas()
@@ -187,7 +190,7 @@ namespace BancoVideoForm1
                     foreach (int[] m in medidas)
                     {
                         string nombre = "vista-" + e.Nombre + "-" + cual + "-" + m[0] + "x" + m[1];
-                        Control c = null; string ex = "", st = "";
+                        object c = null; string ex = "", st = "";
                         using (Bitmap b = new Bitmap(440, 64, PixelFormat.Format32bppPArgb))
                         {
                             try
@@ -216,12 +219,15 @@ namespace BancoVideoForm1
             Type hb = Anidado("HelpBar");
             MethodInfo xp = hb.GetMethod("RenderContent", Todo, null, new[] { typeof(Graphics), typeof(bool) }, null);
             MethodInfo trad = Metodo(hb, "RenderContent", typeof(SKCanvas), 5);
+            // (tanda 6, armado-vistas) la firma de XP con un Graphics ya no esta en la traduccion (era el puente de su OnPaint): ahi se llama a la
+            // traducida como lo hacia ese puente -el lienzo y el estado del Graphics, y despues le deja el suavizado en AntiAlias, como XP-
+            bool sinPuente = xp == null;
             foreach (Estado e in Estados)
                 foreach (bool justa in new[] { false, true })
                     foreach (bool forGpu in new[] { false, true })
                         foreach (int alto in new[] { 18, 28, 37 })
                         {
-                            Control c = (Control)Activator.CreateInstance(hb, true); Pon(c, "Justa", justa); c.Bounds = new Rectangle(0, 0, 330, alto);
+                            object c = Activator.CreateInstance(hb, true); Pon(c, "Justa", justa); Pon(c, "Bounds", new Rectangle(0, 0, 330, alto));
                             string nombre = "ayuda-" + e.Nombre + "-" + justa + "-" + forGpu + "-" + alto;
                             // la firma de XP (la que llama su OnPaint): en la traduccion, por el puente
                             using (Bitmap b = new Bitmap(360, 48, PixelFormat.Format32bppPArgb))
@@ -229,7 +235,12 @@ namespace BancoVideoForm1
                                 string ex = "", st;
                                 using (Graphics g = Prepara(b, e))
                                 {
-                                    try { xp.Invoke(c, new object[] { g, forGpu }); } catch (Exception x) { ex = " " + Exc(x); }
+                                    try
+                                    {
+                                        if (!sinPuente) xp.Invoke(c, new object[] { g, forGpu });
+                                        else { object[] s = EstadoDe(g); trad.Invoke(c, new[] { s[0], s[2], s[3], s[5], (object)forGpu }); g.SmoothingMode = SmoothingMode.AntiAlias; }
+                                    }
+                                    catch (Exception x) { ex = " " + Exc(x); }
                                     st = EstadoG(g);
                                 }
                                 Linea(nombre, Puntos(nombre, b) + ex + " " + st);
@@ -251,6 +262,33 @@ namespace BancoVideoForm1
                                 Linea(nombre + "-directo", Puntos(nombre + "-directo", b) + ex + " " + st);
                             }
                         }
+            // (tanda 6, armado-vistas) SU PINTURA POR PROCESADOR: en XP OnPaint(PaintEventArgs) con el Graphics de un WM_PAINT (el estado de
+            // fabrica: Graphics.FromImage; la capa lo da asi, trasladado a su sitio y recortado a el); en la traduccion, Pinta(SKCanvas) (IVista),
+            // que pinta su hueco o la pantalla, en el lienzo de ese mismo Graphics
+            MethodInfo onPaint = hb.GetMethod("OnPaint", Todo, null, new[] { typeof(PaintEventArgs) }, null), pinta = hb.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null);
+            foreach (bool justa in new[] { false, true })
+                foreach (int alto in new[] { 18, 28, 37 })
+                    foreach (int sitio in new[] { 0, 1 })
+                    {
+                        object c = Activator.CreateInstance(hb, true); Pon(c, "Justa", justa); Pon(c, "Bounds", new Rectangle(0, 0, 330, alto));
+                        string nombre = "ayuda-pinta-" + justa + "-" + alto + "-" + sitio;
+                        using (Bitmap b = new Bitmap(360, 48, PixelFormat.Format32bppPArgb))
+                        {
+                            string ex = "";
+                            using (Graphics g = Graphics.FromImage(b))
+                            {
+                                g.Clear(Color.FromArgb(120, 30, 60, 90));
+                                if (sitio == 1) { g.TranslateTransform(9, 4); g.IntersectClip(new Rectangle(0, 0, 330, alto)); }   // (como Escritorio.PintaArbol)
+                                try
+                                {
+                                    if (pinta != null) { pinta.Invoke(c, new[] { Por("Lienzo", typeof(Graphics), g) }); directas++; }
+                                    else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, 330, alto))) onPaint.Invoke(c, new object[] { pe });
+                                }
+                                catch (Exception x) { ex = " " + Exc(x); }
+                            }
+                            Linea(nombre, Puntos(nombre, b) + ex);
+                        }
+                    }
             // el halo del boton pulsado con niveles fijos (el de la barra depende del reloj): en la traduccion la traducida de Form1.Pared.cs, directo,
             // como la llama la barra desde la tanda 4 (antes por su puente, GlowAroundVideoForm1); en la referencia la de XP con el Graphics (por su
             // primer parametro: en la traduccion la firma de XP tambien sigue, en Puente.pared.cs, y GetMethod por el nombre solo es ambiguo)
@@ -305,11 +343,16 @@ namespace BancoVideoForm1
         private static void Seco()
         {
             object form = RuntimeHelpers.GetUninitializedObject(typeof(Form1));
-            MethodInfo m = typeof(Form1).GetMethod("EnSeco", Todo, null, new[] { typeof(Control), typeof(Action<Graphics>) }, null);
+            // (tanda 6, armado-vistas) en la traduccion la vista va como IVista (la barra de ayuda, que ya no es Control: EnSeco solo lee la
+            // medida); en la referencia, un Label como antes
+            MethodInfo m = null;
+            foreach (MethodInfo mi in typeof(Form1).GetMethods(Todo))
+                if (mi.Name == "EnSeco" && mi.GetParameters().Length == 2 && mi.GetParameters()[1].ParameterType == typeof(Action<Graphics>)) m = mi;
+            bool conControl = m.GetParameters()[0].ParameterType == typeof(Control);
             int[][] medidas = { new[] { 7, 40 }, new[] { 40, 7 }, new[] { 8, 8 }, new[] { 333, 121 }, new[] { 1024, 600 } };
             foreach (int[] md in medidas)
             {
-                Control c = new Label(); c.Bounds = new Rectangle(3, 4, md[0], md[1]);
+                object c = conControl ? (object)new Label() : Activator.CreateInstance(Anidado("HelpBar"), true); Pon(c, "Bounds", new Rectangle(3, 4, md[0], md[1]));
                 string visto = "nada";
                 Action<Graphics> dibuja = delegate (Graphics g)
                 {

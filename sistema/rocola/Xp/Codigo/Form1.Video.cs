@@ -1018,12 +1018,12 @@ namespace Rocola
             if (searchOverlay != null && searchOpen)
             {
                 searchOverlay.Visible = !gpuEnabled;
-                if (!gpuEnabled) { searchOverlay.BringToFront(); searchOverlay.Focus(); }
+                if (!gpuEnabled) { PantallaRocola.VistaAlFrente(searchOverlay); PantallaRocola.EnfocaVista(searchOverlay); }   // EN LINUX: searchOverlay.BringToFront() y searchOverlay.Focus(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0) y el Focus de WinForms; mientras la vista sea control de la capa, los suyos)
             }
             if (attractView != null && attractOn)
             {
                 attractView.Visible = !gpuEnabled;
-                if (!gpuEnabled) attractView.BringToFront();
+                if (!gpuEnabled) PantallaRocola.VistaAlFrente(attractView);   // EN LINUX: attractView.BringToFront(): por la pantalla (SetChildIndex(this, 0))
             }
             if (persist) { gpuPrefOn = gpuEnabled; SaveConfigPrefs(); }   // recuerda la eleccion para el proximo arranque
         }
@@ -1776,7 +1776,7 @@ namespace Rocola
         }
 
         // Dibuja un control (HelpBar/LetterBar/ProgressView) en la textura de UI, en su posicion del form.
-        private static void DrawCtrlOverlay(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, Control c)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (suavizado, modo de letra, copia, filtro y medio pixel), como parametros; la matriz del HDC es la de un mapa de bits (la identidad): los que llaman pintan en uiOverlay, uiBotOverlay o la franja de lejos
+        private static void DrawCtrlOverlay(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, IVista c)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (suavizado, modo de letra, copia, filtro y medio pixel), como parametros; la matriz del HDC es la de un mapa de bits (la identidad): los que llaman pintan en uiOverlay, uiBotOverlay o la franja de lejos; Control c -> IVista c (armado-vistas): de la vista solo se leen su sitio y su clase (Nativo/IVista.cs)
         {
             if (c == null || c.Width < 1 || c.Height < 1) return;
             int st = g.Save();   // EN LINUX: GraphicsState st = g.Save(): la matriz y el recorte los guarda el lienzo; el estado del dibujo va en variables y lo llamado no las cambia (al volver, el Restore de XP lo dejaba como estaba)
@@ -1851,7 +1851,7 @@ namespace Rocola
 
         // Dibuja un control una vez en un mapa de bits de usar y tirar. Nada de esto se ve: lo unico que hace
         // es que lo que ese dibujo hornea quede hecho. false = todavia no tiene tamano, se reintenta luego.
-        private bool EnSeco(Control c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); el buscador y la lista de los precalentados (PrecargaPaginaGpu.cs, Form1.Portadas.cs) la llaman directo con ese lienzo y ese estado; solo la atraccion (Form1.Portadas.cs), que aun pinta con el Graphics de su OnPaint, llega por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
+        private bool EnSeco(IVista c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: Control c -> IVista c (armado-vistas): de la vista solo se lee su medida (Nativo/IVista.cs); dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); el buscador y la lista de los precalentados (PrecargaPaginaGpu.cs, Form1.Portadas.cs) la llaman directo con ese lienzo y ese estado; solo la atraccion (Form1.Portadas.cs), que aun pinta con el Graphics de su OnPaint, llega por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
         {
             if (c == null || c.Width < 8 || c.Height < 8) return false;
             using (SKBitmap b = Mapas.Nuevo(c.Width, c.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos (Bgra8888 premultiplicado, transparentes)

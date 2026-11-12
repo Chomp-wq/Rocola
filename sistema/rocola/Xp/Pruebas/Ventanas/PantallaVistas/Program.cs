@@ -29,8 +29,9 @@ static class P
     static readonly SKColor Rojo = new SKColor(255, 0, 0), Azul = new SKColor(0, 0, 255), Verde = new SKColor(0, 255, 0);
 
     // LA VISTA FALSA: una IVista sin herencia, con su caja; se pinta de su color (fondo y contenido) y apunta su raton
-    sealed class VistaFalsa : IVista
+    sealed class VistaFalsa : IVista, IDisposable
     {
+        public void Dispose() { log.Add(n + ".Dispose"); }   // (armado-vistas: la desecha su hueco al desecharse con su ventana, como WinForms a los hijos)
         readonly CajaVista caja; readonly string n; readonly SKColor? color; public bool ManejaRueda;
         public VistaFalsa(string n, SKColor? color) { this.n = n; this.color = color; caja = new CajaVista(this); }
         public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } }
@@ -61,6 +62,7 @@ static class P
         protected override void OnMouseMove(MouseEventArgs e) { A("Mueve", e); base.OnMouseMove(e); }
         protected override void OnMouseEnter(EventArgs e) { A("Entra", null); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { A("Sale", null); base.OnMouseLeave(e); }
+        protected override void Dispose(bool disposing) { if (disposing && !IsDisposed) log.Add(n + ".Dispose"); base.Dispose(disposing); }
     }
     class Transparente : Control
     {
@@ -158,7 +160,56 @@ static class P
             Mira("capa, gemelo (control de la capa): " + nombre, i < gem.Length ? gem[i] : "(nada)", esperado[i], F);
             Mira("capa, vista falsa en su hueco: " + nombre, i < fal.Length ? fal[i] : "(nada)", i < gem.Length ? gem[i] : esperado[i], "lo mismo que el gemelo");
         }
+        string[] gemO = Oyentes(true), falO = Oyentes(false);
+        string[] esperadoO =
+        {
+            "oyentes V.Abajo(1),oye-abajo(20,20,Left,1),V.Clic(1),oye-clic(20,20,Left,1),V.Arriba(1)",
+            "foco True VistaFalsa",
+            "foco-escondida False",
+            "quitada ",
+            "desecha-dueno V.Dispose",
+        };
+        const string FO = "los eventos MouseDown y MouseClick los lanza el On* de fabrica (Control.OnMouseDown/OnMouseClick: Events[EventMouseDown]...), despues de lo que hace la vista; " +
+                          "Focus: FocusInternal (CanFocus = visible y habilitada; devuelve Focused); Controls.Remove no desecha, Control.Dispose desecha a los hijos";
+        for (int i = 0; i < esperadoO.Length; i++)
+        {
+            string nombre = esperadoO[i].Substring(0, esperadoO[i].IndexOf(' '));
+            // (el gemelo se llama Gemelo en la traza del foco: lo que se compara es el mismo guion con su nombre)
+            string esperadoGem = esperadoO[i].Replace("VistaFalsa", "Gemelo");
+            Mira("capa, gemelo (control de la capa): " + nombre, i < gemO.Length ? gemO[i] : "(nada)", esperadoGem, FO);
+            Mira("capa, vista falsa en su hueco: " + nombre, i < falO.Length ? falO[i] : "(nada)", esperadoO[i], "lo mismo que el gemelo, y la traza la nombra por la vista");
+        }
         SinLaCapa();
+    }
+
+    // (armado-vistas, oleada 3) QUIEN ESCUCHA EL RATON DESDE FUERA (PantallaRocola.OyeRaton: el «ayudaView.MouseClick +=» y el
+    // «attractView.MouseDown +=» de Form1.cs), EL FOCO DE UNA VISTA (EnfocaVista: searchOverlay.Focus()) Y QUIEN LA DESECHA
+    static string[] Oyentes(bool gemelo)
+    {
+        List<string> r = new List<string>();
+        Bombea(150);
+        Panel dueno = new Panel(); dueno.SetBounds(0, 0, 300, 220); m.Controls.Add(dueno);
+        IVista v;
+        if (gemelo) { Gemelo g = new Gemelo("V"); g.BackColor = Color.FromArgb(0, 0, 255); g.SetBounds(60, 60, 100, 100); v = g; }
+        else { VistaFalsa f = new VistaFalsa("V", Azul); f.SetBounds(60, 60, 100, 100); v = f; }
+        PantallaRocola.OyeRaton(v, AvisoRaton.Abajo, delegate (Raton e) { log.Add("oye-abajo(" + e.X + "," + e.Y + "," + e.Button + "," + e.Clicks + ")"); });
+        PantallaRocola.OyeRaton(v, AvisoRaton.Clic, delegate (Raton e) { log.Add("oye-clic(" + e.X + "," + e.Y + "," + e.Button + "," + e.Clicks + ")"); });
+        PantallaRocola.AgregaVista(dueno, v);
+        Va(5, 5); Va(80, 80); Bombea(30); log.Clear();
+        Clic(true); Clic(false); Bombea(650);
+        r.Add("oyentes " + Log());
+        bool f1 = PantallaRocola.EnfocaVista(v);
+        r.Add("foco " + f1 + " " + TrazaVentanas.Pieza(Escritorio.Foco));
+        v.Visible = false; Bombea(30);
+        r.Add("foco-escondida " + PantallaRocola.EnfocaVista(v));
+        v.Visible = true;
+        Va(5, 5); Bombea(30); log.Clear();
+        PantallaRocola.QuitaVista(v); Bombea(30);
+        r.Add("quitada " + Log());
+        PantallaRocola.AgregaVista(dueno, v);
+        m.Controls.Remove(dueno); dueno.Dispose(); Bombea(30);
+        r.Add("desecha-dueno " + Log());
+        return r.ToArray();
     }
 
     // SIN LA CAPA: la lista nativa de la ventana (PantallaRocola.Vistas.cs) con dos vistas falsas, como quedara al final
@@ -215,6 +266,16 @@ static class P
             v.ManejaRueda = true; vent = ""; PantallaRocola.RatonRueda(2);
             Mira("sin la capa: rueda atendida", Log() + " " + vent, "V.Rueda(0) ", "con Handled no sigue");
             PantallaRocola.FocoDeLaVentana = null; PantallaRocola.RuedaDeLaVentana = null;
+            // (armado-vistas) quien escucha el raton desde fuera, despues de la vista (el evento del On* de fabrica), y el foco de la vista
+            PantallaRocola.OyeRaton(v, AvisoRaton.Abajo, delegate (Raton e) { log.Add("oye-abajo(" + e.X + "," + e.Y + "," + e.Button + "," + e.Clicks + ")"); });
+            PantallaRocola.OyeRaton(v, AvisoRaton.Clic, delegate (Raton e) { log.Add("oye-clic(" + e.X + "," + e.Y + "," + e.Button + "," + e.Clicks + ")"); });
+            PantallaRocola.VistaAlFrente(v); Va(5, 5); Va(80, 80); log.Clear(); Clic(true); Clic(false); Bombea(650);
+            Mira("sin la capa: quien escucha el raton", Log(), "V.Abajo(1),oye-abajo(20,20,Left,1),V.Clic(1),oye-clic(20,20,Left,1),V.Arriba(1)", "Control.OnMouseDown/OnMouseClick lanzan el evento despues de lo de la vista");
+            bool fo = PantallaRocola.EnfocaVista(v);
+            Mira("sin la capa: Focus", fo + " " + (PantallaRocola.FocoDeLaVentana == (object)v), "True True", "FocusInternal: SetFocus y devuelve Focused");
+            v.Visible = false; PantallaRocola.FocoDeLaVentana = null;
+            Mira("sin la capa: Focus de una escondida", PantallaRocola.EnfocaVista(v) + " " + (PantallaRocola.FocoDeLaVentana == null), "False True", "CanFocus: IsWindowVisible");
+            v.Visible = true;
             PantallaRocola.QuitaVista(a); PantallaRocola.QuitaVista(v);
             Teclas();
         }
