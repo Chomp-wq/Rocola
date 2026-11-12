@@ -75,3 +75,34 @@ Quitadas: las listadas arriba. Anadidas: ninguna. Quedan (vivas, con su razon ar
   la de XP.
 - Los arneses VistasBuscador, VistasVideoForm1 y VistasAsistente no se corrieron (no usan nada de lo borrado por nombre: o llaman a la
   traducida si existe, o usan firmas que siguen vivas).
+
+## Revision (12-11-2026, revisor independiente)
+
+Leido el diff entero (e13d40c..4428337) contra el plan, Rocola/ y los arneses. Lo borrado de Plataforma/ esta bien: cada firma quitada era
+solo de paso (sin logica de XP) y ya no la llama nadie (compila sin ella; grep por nombre en Codigo, Plataforma, Nativo y Pruebas, incluida la
+reflexion). Los arneses adaptados hacen exactamente lo que hacia el puente borrado (PintaFoco/PintaFicha: los mismos puntos -Image.Sk, que es
+PuenteDibujo.Mapa- y la familia por su nombre, la nula como FontFamily.GenericSansSerif de la capa, que es Letras.SinRemates como en
+FamiliaPantallaViva; Pincel: un SKPaint nuevo y Brush.Pon(p, !medio); Redondo y RoundedPath: un GraphicsPath dueno de ESE SKPath). Lo que
+faltaba y se arreglo (commit aparte, «revision»):
+
+- **Notas EN LINUX viejas** que el grupo no vio: AsistenteRocola.cs:2 y AsistenteGuiaRocola.cs:3 decian que CtrlDot, CtrlTxt y CtrlTri
+  «pasan por el puente (Plataforma/Puente.cs y Puente.asistente.cs)»; esas firmas (CtrlDotAsistente... y las de XP con un Graphics de
+  Puente.pared.cs) ya no existen y los dos archivos las llaman directo (no usan nada de PuenteDibujo). Corregidas (solo el comentario; mismo
+  numero de lineas, sin CRLF, como en e13d40c). La misma nota vieja esta en AyudaCasillaGpu.cs:3, que es de 3a (armado-vistas): no se toco.
+- **Controles negativos que apuntaban a lo borrado**: Pruebas/VistasPared/control.sh («el puente de Cube.Draw sin el filtro del Graphics»,
+  sobre Plataforma/Puente.pared.cs: el sed ya no cambiaba nada) y Pruebas/VistasPantallaViva/control.sh (los dos sobre
+  Plataforma/Puente.pantalla-viva.cs, que ya no existe: el de AnchoTexto y el de PastillaSonandoEq, este ya muerto desde vistas-b). Retirados
+  con una nota que dice por que (bash -n correcto en los dos).
+
+Comprobado de nuevo por el revisor: `dotnet build -c Release --no-incremental` 0 errores y 15 avisos; diff-xp.py -v de los 10 archivos de
+Codigo/ tocados: 0 sin marca en todos salvo 1 en AsistenteGuiaRocola.cs (una llave, ya estaba en e13d40c) y los 9 de Form1.Ajustes.cs (ya
+estaban); lineas y CRLF de los 10 archivos iguales a e13d40c. Arneses contra la referencia congelada (letras falsas y DejaVu):
+VistasPantallaViva 768 lineas IGUALES (291 directas), VistasReposo 1 791 IGUALES, VistasSuena 488 IGUALES, VistasPared 1 715 IGUALES.
+VistasFondo 2 763 lineas, 1 distinta (la primera, `inicio traducida=False/True`, la esperada). VistasAjustes 0 distintas de 545 (falsas y
+DejaVu). Banco (semillas 7 y 11 con letras falsas, 5 con SIN_LETRAS; ejecutores gdi, nativo y puente): 9 de 9 IGUALES (3 000 casos cada uno).
+No repetidos por el revisor: NativeAOT (la revision solo cambia comentarios y guiones de prueba), las cintas (nada de lo que se sube a la
+tarjeta cambio: Pincel no lo usa la subida) y recorridos/escenas (nada de ventanas, pantalla ni teclas).
+
+Queda para despues (archivos de 3a o de 4a): AyudaCasillaGpu.cs:3 (la misma nota vieja de CtrlDot/CtrlTxt/CtrlTri por el puente) y
+Form1.Fondo.cs:771 (RoundedPath «queda en el puente»); el plan del inventario decia que AnchoTexto(string, Font) moria con
+Puente.pantalla-viva.cs, pero la sigue llamando Form1.Vistas.cs:1565 (confirmado): se queda hasta 5b o N7.

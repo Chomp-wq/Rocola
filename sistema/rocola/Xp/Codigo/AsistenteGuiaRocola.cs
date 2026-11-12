@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el globo de la guia y los botones dibujados van con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que les llega de archivos sin traducir (CtrlDot, CtrlTxt, CtrlTri) pasa por el puente (Plataforma/Puente.cs y Puente.asistente.cs); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el globo de la guia y los botones dibujados van con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; CtrlDot, CtrlTxt y CtrlTri (Form1.Pared.cs, ya traducido) se llaman directo con el lienzo y su estado (sus firmas de XP con un Graphics se quitaron del puente); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
