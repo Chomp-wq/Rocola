@@ -150,6 +150,19 @@ namespace BancoBuscador
             return f != null ? f.GetValue(o) : o.GetType().GetProperty(nombre, Todo).GetValue(o);
         }
         private static MethodInfo Metodo(Type t, string nombre, params Type[] tipos) { return t.GetMethod(nombre, Todo, null, tipos, null); }
+        // (vistas-buscador) la medida de una vista: en la referencia (Control) su Size; en la traduccion (sin herencia) SetBounds en (0, 0) y
+        // Width/Height de su CajaVista, que es lo mismo que Control.Size con la esquina en (0, 0)
+        private static void PonMedida(object o, int w, int h)
+        {
+            PropertyInfo s = o.GetType().GetProperty("Size", Todo);
+            if (s != null) { s.SetValue(o, new Size(w, h)); return; }
+            o.GetType().GetMethod("SetBounds", new[] { typeof(int), typeof(int), typeof(int), typeof(int) }).Invoke(o, new object[] { 0, 0, w, h });
+        }
+        private static Size Medida(object o)
+        {
+            PropertyInfo s = o.GetType().GetProperty("Size", Todo);
+            return s != null ? (Size)s.GetValue(o) : new Size((int)Lee(o, "Width"), (int)Lee(o, "Height"));
+        }
         private static Exception Interna(Exception x) { return x is TargetInvocationException && x.InnerException != null ? x.InnerException : x; }
         // la traducida, llamada directo; null en la referencia (no la hay)
         private static MethodInfo Nativa(Type t, string nombre)
@@ -230,7 +243,7 @@ namespace BancoBuscador
         private static object NuevoBuscador(int w, int h, Color acento)
         {
             object so = Nuevo(SO);
-            Pon(so, "Size", new Size(w, h));
+            PonMedida(so, w, h);
             Pon(so, "Accent", acento);
             Metodo(SO, "PonNuevo", typeof(bool)).Invoke(so, new object[] { false });
             Pon(so, "GetCover", Delegado("GetCover", (Func<object, Image>)(a => { string p = (string)Lee(a, "CoverPath"); Image i; return p != null && portadas.TryGetValue(p, out i) ? i : null; })));
@@ -252,7 +265,7 @@ namespace BancoBuscador
         // ---- LA IMAGEN GRANDE: RenderContent(g, caja, forGpu) (o directo, la traducida)
         private static void Grande(string nombre, object so, Estado e, bool fondo, bool forGpu, Rectangle caja, bool directo, object cielo)
         {
-            int w = ((Size)Lee(so, "Size")).Width, h = ((Size)Lee(so, "Size")).Height;
+            int w = Medida(so).Width, h = Medida(so).Height;
             using (Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
             {
                 string ex = "", queda = "";
@@ -262,7 +275,7 @@ namespace BancoBuscador
                     using (Graphics g = Prepara(b, e, fondo))
                     {
                         if (cielo != null) { g.SetClip(new Rectangle(20, 20, w / 2, h / 3)); TSky.GetField("shownLayer", Todo).SetValue(cielo, 0); }
-                        if (m == null) { Metodo(SO, "RenderContent", typeof(Graphics), typeof(Rectangle), typeof(bool)).Invoke(so, new object[] { g, caja, forGpu }); queda = directo ? " filtro=" + (int)g.InterpolationMode : Queda(g); }
+                        if (m == null) { GrandeSinPuente(so, g, caja, forGpu); queda = directo ? " filtro=" + (int)g.InterpolationMode : Queda(g); }
                         else
                         {
                             directas++; object[] es = EstadoDe(g);
@@ -276,6 +289,50 @@ namespace BancoBuscador
                 Linea(nombre, Puntos(nombre, b) + ex + queda + " resultados=" + ((IList)Lee(so, "resultRects")).Count);
             }
         }
+        // (vistas-buscador) LA FIRMA DE XP DE SearchOverlay.RenderContent(Graphics, Rectangle, bool) (la de su OnPaint): desde la oleada 6c ya no
+        // esta en la traduccion (Pinta llama a la traducida). Aqui se hace lo que hacia su puente: la traducida con el lienzo y el estado del
+        // Graphics y despues lo que XP le dejaba al Graphics: el suavizado (si pasa de su primer return, 60x60) y el filtro que le devuelve
+        private static void GrandeSinPuente(object so, Graphics g, Rectangle caja, bool forGpu)
+        {
+            MethodInfo xp = Metodo(SO, "RenderContent", typeof(Graphics), typeof(Rectangle), typeof(bool));
+            if (xp != null) { xp.Invoke(so, new object[] { g, caja, forGpu }); return; }
+            object[] es = EstadoDe(g);
+            object[] args = { es[0], es[2], es[3], es[4], es[5], es[6], caja, forGpu };
+            Nativa(SO, "RenderContent").Invoke(so, args);
+            Size t = Medida(so);
+            if (t.Width >= 60 && t.Height >= 60) g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.InterpolationMode = (InterpolationMode)(int)args[3];
+        }
+
+        // (vistas-buscador) SU PINTURA DE UN WM_PAINT, COMO LA DA LA CAPA: Escritorio.PintaArbol/PintaSolo trasladan el Graphics a su sitio, lo
+        // recortan a ella, guardan el estado y sellan el recorte (la matriz del HDC); despues PintaFondoYContenido (OnPaintBackground de fabrica
+        // y OnPaint). En la referencia eso mismo (el control de la capa); en la traduccion, lo que hace su hueco: Pinta en el lienzo de ese mismo
+        // Graphics (el fondo de fabrica de su hueco no pinta nada)
+        private static void PintaComoLaCapa(string nombre, object vista, int x, int y, int w, int h, Size lienzo)
+        {
+            using (Bitmap b = new Bitmap(lienzo.Width, lienzo.Height, PixelFormat.Format32bppPArgb))
+            {
+                string ex = "";
+                MethodInfo pinta = vista.GetType().GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null);
+                MethodInfo pfc = pinta == null ? vista.GetType().GetMethod("PintaFondoYContenido", Todo) : null;
+                try
+                {
+                    using (Graphics g = Graphics.FromImage(b))
+                    {
+                        g.Clear(Color.FromArgb(120, 30, 60, 90));
+                        g.TranslateTransform(x, y); g.IntersectClip(new Rectangle(0, 0, w, h));
+                        GraphicsState st = g.Save();
+                        typeof(Graphics).GetMethod("SellaRecorte", Todo).Invoke(g, null);
+                        if (pinta != null) { directas++; pinta.Invoke(vista, new[] { Por("Lienzo", typeof(Graphics), g) }); }
+                        else pfc.Invoke(vista, new object[] { g, new Rectangle(0, 0, w, h) });
+                        g.Restore(st);
+                    }
+                }
+                catch (Exception xx) { ex = " EXC:" + Interna(xx).GetType().Name; excepciones++; }
+                Linea(nombre, Puntos(nombre, b) + ex);
+            }
+        }
+
         // las imagenes chicas (0 la tecla elegida, 1 la casilla, 2 la tarjeta elegida y 3 el texto de la vista previa, con la tarjeta aparte),
         // como EnsureUiPieza: el sitio (PiezaViva) y la imagen de esa medida
         private static void Piezas(string nombre, object so, Estado e, bool directo)
@@ -337,17 +394,18 @@ namespace BancoBuscador
         // primer return).
         private static void CasillaSinPuente(object bv, Graphics g, bool forGpu)
         {
-            if (!forGpu) { Metodo(BV, "RenderContent", typeof(Graphics)).Invoke(bv, new object[] { g }); return; }
+            MethodInfo xp1 = Metodo(BV, "RenderContent", typeof(Graphics));
+            if (!forGpu && xp1 != null) { xp1.Invoke(bv, new object[] { g }); return; }
             object[] es = EstadoDe(g);
-            Nativa(BV, "RenderContent").Invoke(bv, new object[] { es[0], es[2], es[3], es[5], true });
-            Size t = (Size)Lee(bv, "Size");
+            Nativa(BV, "RenderContent").Invoke(bv, new object[] { es[0], es[2], es[3], es[5], forGpu });
+            Size t = Medida(bv);
             if (t.Width >= 30 && t.Height >= 12) g.SmoothingMode = SmoothingMode.AntiAlias;
         }
 
         // ---- LA CASILLA DE BUSCAR (BuscaView)
         private static void Casilla(string nombre, object bv, Estado e, int forma, bool directo)
         {
-            Size t = (Size)Lee(bv, "Size");
+            Size t = Medida(bv);
             using (Bitmap b = new Bitmap(Math.Max(1, t.Width), Math.Max(1, t.Height), PixelFormat.Format32bppPArgb))
             {
                 string ex = "", queda = "";
@@ -358,7 +416,7 @@ namespace BancoBuscador
                     {
                         if (m == null)
                         {
-                            if (forma == 0) Metodo(BV, "RenderContent", typeof(Graphics)).Invoke(bv, new object[] { g });
+                            if (forma == 0) CasillaSinPuente(bv, g, false);
                             else if (Metodo(BV, "RenderContent", typeof(Graphics), typeof(bool)) != null) Metodo(BV, "RenderContent", typeof(Graphics), typeof(bool)).Invoke(bv, new object[] { g, forma == 1 });
                             else CasillaSinPuente(bv, g, forma == 1);
                             if (!directo) queda = Queda(g);
@@ -389,7 +447,7 @@ namespace BancoBuscador
                     foreach (double fase in new[] { 0.0, 1.3 })
                     {
                         object bv = Nuevo(BV);
-                        Pon(bv, "Size", new Size(alto == 11 ? 25 : ancho, alto)); Pon(bv, "Abierto", abierto); Pon(bv, "Phase", fase);
+                        PonMedida(bv, alto == 11 ? 25 : ancho, alto); Pon(bv, "Abierto", abierto); Pon(bv, "Phase", fase);
                         foreach (Estado e in estados)
                             for (int forma = 0; forma < 3; forma++)
                                 Casilla("casilla-" + alto + "-" + (abierto ? "abierta" : "cerrada") + "-f" + fase.ToString(ci) + "-" + e.Nombre + "-m" + forma, bv, e, forma, false);
@@ -543,6 +601,30 @@ namespace BancoBuscador
                             Linea(nom, Puntos(nom, b) + ex + queda);
                         }
                     }
+
+            // 5) (vistas-buscador) LA PINTURA DE UN WM_PAINT (OnPaint de XP contra Pinta): la casilla (tres altos, cerrada y abierta) y el
+            // buscador (tres contenidos y dos medidas), en su sitio (0, 0) y corrida y recortada como en la ventana
+            foreach (int alto in new[] { 11, 26, 52 })
+                foreach (bool abierto in new[] { false, true })
+                    foreach (int sitio in new[] { 0, 1 })
+                    {
+                        int ancho = (int)Metodo(BV, "Ancho", typeof(int)).Invoke(null, new object[] { alto });
+                        object bv = Nuevo(BV);
+                        int w = alto == 11 ? 25 : ancho;
+                        PonMedida(bv, w, alto); Pon(bv, "Abierto", abierto); Pon(bv, "Phase", 0.4);
+                        PintaComoLaCapa("pinta-casilla-" + alto + "-" + (abierto ? "abierta" : "cerrada") + "-" + sitio, bv, sitio == 0 ? 0 : 7, sitio == 0 ? 0 : 3, w, alto, new Size(w + 20, alto + 10));
+                        ((IDisposable)bv).Dispose();
+                    }
+            foreach (Size t in new[] { new Size(1024, 768), new Size(640, 480), new Size(59, 400) })
+            {
+                object so = NuevoBuscador(t.Width, t.Height, acentos[0]);
+                foreach (Contenido c in new[] { contenidos[0], contenidos[3], contenidos[12] })
+                    foreach (int sitio in new[] { 0, 1 })
+                    {
+                        PonContenido(so, c);
+                        PintaComoLaCapa("pinta-buscador-" + t.Width + "x" + t.Height + "-" + c.Nombre + "-" + sitio, so, sitio == 0 ? 0 : 5, sitio == 0 ? 0 : 9, t.Width, t.Height, new Size(t.Width + 12, t.Height + 14));
+                    }
+            }
 
             Linea("fin", "lineas=" + n);
             Console.Error.WriteLine("lineas " + n + ", directas " + directas + ", excepciones " + excepciones);

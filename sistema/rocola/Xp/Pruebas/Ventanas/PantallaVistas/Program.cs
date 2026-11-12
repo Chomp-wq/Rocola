@@ -35,6 +35,10 @@ static class P
         public void Dispose() { log.Add(n + ".Dispose"); }   // (armado-vistas: la desecha su hueco al desecharse con su ventana, como WinForms a los hijos)
         readonly CajaVista caja; readonly string n; readonly SKColor? color; public bool ManejaRueda;
         public VistaFalsa(string n, SKColor? color) { this.n = n; this.color = color; caja = new CajaVista(this); }
+        public bool Sel = true, Tab = true;   // (vistas-buscador) ControlStyles.Selectable y TabStop
+        public bool Seleccionable { get { return Sel; } }
+        public bool ParaElTabulador { get { return Tab; } }
+        public override string ToString() { return n; }
         public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } }
         public int Left { get { return caja.Left; } set { caja.Left = value; } }
         public int Top { get { return caja.Top; } set { caja.Top = value; } }
@@ -55,6 +59,8 @@ static class P
     {
         readonly string n;
         public Gemelo(string n) { this.n = n; }
+        public Gemelo(string n, bool sel, bool tab) { this.n = n; if (!sel) SetStyle(ControlStyles.Selectable, false); TabStop = tab; }   // (vistas-buscador)
+        public override string ToString() { return n; }
         void A(string q, MouseEventArgs e) { log.Add(n + "." + q + (e == null ? "" : "(" + e.Clicks + ")") + (Xy && q == "Clic" ? "@" + e.X + "," + e.Y : "")); }
         protected override void OnMouseDown(MouseEventArgs e) { A("Abajo", e); base.OnMouseDown(e); }
         protected override void OnMouseClick(MouseEventArgs e) { A("Clic", e); base.OnMouseClick(e); }
@@ -189,7 +195,88 @@ static class P
             Mira("capa, panel con hijas, gemelo (Controls.Add del control): " + nombre, i < panGem.Length ? panGem[i] : "(nada)", esperadoP[i], FP);
             Mira("capa, panel con hijas, vista falsa en su hueco: " + nombre, i < panFal.Length ? panFal[i] : "(nada)", esperadoP[i], "lo mismo que el gemelo");
         }
+        // (vistas-buscador) EL FOCO DEL TECLADO ENTRE LAS VISTAS: la casilla de BUSCAR (TabStop = false), el buscador (Selectable y TabStop) y
+        // un panel (sin Selectable); con un Control de la capa (lo que fija WinForms) y con la vista falsa en su hueco
+        string[] tabGem = EscenaTab(0), tabFal = EscenaTab(1);
+        for (int i = 0; i < esperadoT.Length; i++)
+        {
+            string nombre = esperadoT[i].Substring(0, esperadoT[i].IndexOf(' '));
+            // (la capa no sigue a WinForms al esconder la del foco: su ContenedorDelFoco salta la ventana porque es ContainerControl, y en
+            // WinForms GetContainerControl solo salta las que dan IsContainerControl, que es false en la Form -Control.cs:2900 y 5825-5840-:
+            // en la capa el foco se queda en la escondida. Lo que se compara aqui es que el hueco haga lo mismo que el control de la capa)
+            string esperadoCapa = nombre == "esconde-la-del-foco" ? "esconde-la-del-foco X" : esperadoT[i];
+            Mira("capa, tabulador, gemelo: " + nombre, i < tabGem.Length ? tabGem[i] : "(nada)", esperadoCapa, nombre == "esconde-la-del-foco" ? "lo que hace la capa (Ventanas.Control.SelectNextIfFocused con ContenedorDelFoco): ver el comentario" : FT);
+            Mira("capa, tabulador, vista falsa en su hueco: " + nombre, i < tabFal.Length ? tabFal[i] : "(nada)", i < tabGem.Length ? tabGem[i] : esperadoCapa, "lo mismo que el gemelo");
+        }
         SinLaCapa();
+    }
+
+    // (vistas-buscador) EL TABULADOR. Cuatro en este orden de alta (su TabIndex): B (Selectable, TabStop = false: la casilla de BUSCAR), S y X
+    // (Selectable y TabStop: el buscador de siempre) y N (sin Selectable: un panel). Tab solo se para en S y X; Mayus+Tab al reves; Focus da
+    // el foco aunque no tenga TabStop; las flechas recorren sin mirar TabStop; esconder la del foco lo pasa a la siguiente.
+    const string FT = "Form.ProcessTabKey (Form.cs:4995-5015) y ContainerControl.ProcessArrowKey (ContainerControl.cs:1119-1128): SelectNextControl/GetNextControl " +
+                      "(Control.cs:10709-10721 y 6177-6351) por TabIndex (ControlCollection.Add), CanSelect (Selectable y visible) y TabStop; Control.Focus no mira TabStop; " +
+                      "SetVisibleCore -> SelectNextIfFocused (Control.cs:11221-11228 y 10770-10784)";
+    static readonly string[] esperadoT =
+    {
+        "enfoca S",
+        "tab X,S,X,S",
+        "mayustab X,S",
+        "enfoca-sin-tabstop B",
+        "tab-desde-B S",
+        "flechas X,B,X",
+        "esconde-la-del-foco S",
+        "tab-con-una-escondida S",
+    };
+    static string Foco(int modo)
+    {
+        if (modo == 2) { object f = PantallaRocola.FocoDeLaVentana; return f == null ? "(nadie)" : f.ToString(); }
+        foreach (Control c in m.Controls) if (c.Focused) { object v = Anfitrion.VistaDeHueco(c); return (v ?? c).ToString(); }
+        return "(nadie)";
+    }
+    static string Pulsa(int modo, Tecla t, int veces, bool mayus)
+    {
+        List<string> r = new List<string>();
+        for (int i = 0; i < veces; i++)
+        {
+            if (mayus) T(Tecla.LShiftKey, true);
+            T(t, true); T(t, false);
+            if (mayus) T(Tecla.LShiftKey, false);
+            Bombea(20); r.Add(Foco(modo));
+        }
+        return string.Join(",", r);
+    }
+    static string[] EscenaTab(int modo)
+    {
+        List<string> r = new List<string>();
+        Bombea(100);
+        string[] n = { "B", "S", "X", "N" };
+        bool[] sel = { true, true, true, false }, tab = { false, true, true, true };
+        IVista[] v = new IVista[4];
+        for (int i = 0; i < 4; i++)
+        {
+            if (modo == 0) { Gemelo g = new Gemelo(n[i], sel[i], tab[i]); v[i] = g; }
+            else { VistaFalsa f = new VistaFalsa(n[i], null); f.Sel = sel[i]; f.Tab = tab[i]; v[i] = f; }
+            v[i].SetBounds(10 + i * 40, 10, 30, 30);
+            PantallaRocola.AgregaVista(modo == 2 ? null : (object)m, v[i]);
+        }
+        Bombea(50);
+        PantallaRocola.EnfocaVista(v[1]); Bombea(20);
+        r.Add("enfoca " + Foco(modo));
+        r.Add("tab " + Pulsa(modo, Tecla.Tab, 4, false));
+        r.Add("mayustab " + Pulsa(modo, Tecla.Tab, 2, true));
+        PantallaRocola.EnfocaVista(v[0]); Bombea(20);
+        r.Add("enfoca-sin-tabstop " + Foco(modo));
+        r.Add("tab-desde-B " + Pulsa(modo, Tecla.Tab, 1, false));
+        r.Add("flechas " + Pulsa(modo, Tecla.Right, 1, false) + "," + Pulsa(modo, Tecla.Right, 1, false) + "," + Pulsa(modo, Tecla.Left, 1, false));
+        v[2].Visible = false; Bombea(20);
+        r.Add("esconde-la-del-foco " + Foco(modo));
+        r.Add("tab-con-una-escondida " + Pulsa(modo, Tecla.Tab, 1, false));
+        v[2].Visible = true;
+        for (int i = 0; i < 4; i++) { PantallaRocola.QuitaVista(v[i]); if (v[i] is Gemelo) ((Gemelo)v[i]).Dispose(); }
+        if (modo == 2) PantallaRocola.FocoDeLaVentana = null;
+        Bombea(50); log.Clear();
+        return r.ToArray();
     }
 
     // (panel-del-disco) LO QUE XP HACE CON EL PANEL DEL DISCO: panelSongs.Controls.Add(...) de dos hijas ANTES de agregar el panel a la ventana
@@ -370,6 +457,15 @@ static class P
             Mira("sin la capa, panel con hijas: nada queda en la lista", PantallaRocola.ListaDeLaVentana.Length + "", "0", "Controls.Remove");
             PantallaRocola.FondoDeLaVentana = delegate (SKCanvas g) { g.Clear(Verde); };
             Teclas();
+            // (vistas-buscador) el tabulador en la lista nativa: lo mismo que la capa
+            PantallaRocola.Teclas = new PantallaRocola.TeclasDeLaVentana { ProcesaMando = delegate (ref PulsoTecla mm, Tecla d) { return false; } };
+            try
+            {
+                string[] tabNat = EscenaTab(2);
+                for (int i = 0; i < esperadoT.Length; i++)
+                    Mira("sin la capa, tabulador: " + esperadoT[i].Substring(0, esperadoT[i].IndexOf(' ')), i < tabNat.Length ? tabNat[i] : "(nada)", esperadoT[i], FT);
+            }
+            finally { PantallaRocola.Teclas = null; }
         }
         finally { PantallaRocola.LaCapa = capa; PantallaRocola.FondoDeLaVentana = null; }
     }

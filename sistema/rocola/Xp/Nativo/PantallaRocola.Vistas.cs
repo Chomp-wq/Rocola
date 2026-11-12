@@ -85,7 +85,7 @@ namespace Rocola
             }
             if (c != null && (c.EsSuya(ventana) || c.EsSuyaLaVista(v))) { c.Agrega(ventana, v); TraspasaHijas(v); return; }
             if (lista.Contains(v)) return;   // (Add de uno que ya esta: no hace nada mas que dejarlo donde estaba, ControlCollection.Add)
-            lista.Add(v); CambioVentana();
+            lista.Add(v); AnotaTab(v); CambioVentana();   // (vistas-buscador) su TabIndex, como Controls.Add (PantallaRocola.Foco.cs)
         }
         // LAS VISTAS DENTRO DE UNA VISTA (panel-del-disco). Control.ControlCollection.Add («base.InnerList.Add(value)» al final: el fondo del orden
         // z, [0] arriba) en el Controls de un Panel; Add de una que ya tenia otro dueno la saca antes del viejo (ControlCollection.Add:
@@ -101,7 +101,7 @@ namespace Rocola
             if (antes != null) { hijas[antes].Remove(v); padre.Remove(v); }
             lista.Remove(v);
             List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
-            l.Add(v); padre[v] = dueno; if (EnLaLista(dueno)) CambioVentana();
+            l.Add(v); padre[v] = dueno; AnotaTab(v); if (EnLaLista(dueno)) CambioVentana();
         }
         // el rotulo de la capa (Label) que XP agrega a una vista (lblAlbum al panel del disco): con la vista en una ventana de la capa, su Controls.Add;
         // si no, queda anotado en su sitio del orden y se agrega cuando la vista entre (TraspasaHijas)
@@ -233,7 +233,7 @@ namespace Rocola
         // rocola de XP le da el foco al buscador de siempre al abrirlo sin tarjeta (searchOverlay.Focus(): Form1.Biblioteca.cs y
         // Form1.Video.cs). En una vista que aun es control de la capa (o en su hueco), la capa (Control.Focus: el foco de WinForms, con su traza
         // y LostFocus); en la lista nativa, la vista que se ve pasa a ser la del foco (la rueda va a ella: RatonRueda; las teclas siguen yendo
-        // a la ventana, que tiene KeyPreview -el foco del teclado de una vista es de la oleada 6c-). Una vista no tiene Enabled: siempre lo esta.
+        // a la ventana, que tiene KeyPreview -Tab y las flechas las mueve la pantalla entre las vistas: PantallaRocola.Foco.cs-). Una vista no tiene Enabled: siempre lo esta.
         internal static bool EnfocaVista(IVista v)
         {
             ILaCapa c = LaCapa;
@@ -509,7 +509,7 @@ namespace Rocola
         internal sealed class TeclasDeLaVentana
         {
             internal Mando ProcesaMando;                 // ProcessCmdKey (la primera: PreProcessMessage, Control.cs:9275-9300)
-            internal Func<Tecla, bool> TeclaDeDialogo;   // ProcessDialogKey (de una ventana sin AcceptButton ni CancelButton: false)
+            internal Func<Tecla, bool> TeclaDeDialogo;   // ProcessDialogKey (de una ventana sin AcceptButton ni CancelButton: false); el Tab y las flechas de ContainerControl los pone la pantalla despues (PantallaRocola.Foco.cs)
             internal Action<PulsoTecla> TeclaAbajo;      // KeyDown
             internal Action<PulsoCaracter> Caracter;     // KeyPress
             internal Action<PulsoTecla> TeclaArriba;     // KeyUp (OnKeyUp)
@@ -521,8 +521,8 @@ namespace Rocola
         // modificadores se juntan (Shift, Control y Alt de cualquier lado: WM_KEYDOWN da VK_SHIFT, VK_CONTROL y VK_MENU), se anota como
         // atendida (GetKeyState) y va a la hoja activa o a la ventana: ProcessCmdKey, ProcessDialogKey, KeyDown, el caracter (WM_CHAR,
         // o WM_SYSCHAR con Alt) a KeyPress salvo SuppressKeyPress, y Alt+F4 sin atender por la cola (DefWindowProc de WM_SYSKEYDOWN); al
-        // soltar, KeyUp. (Las vistas de la ventana no toman el foco del teclado: en la rocola la ventana tiene KeyPreview y ve cada tecla
-        // antes que nadie; el foco de una vista -el buscador- llega en la oleada 6.)
+        // soltar, KeyUp. (vistas-buscador) Tab y las flechas, sin atender por ProcessCmdKey ni por la ventana, mueven el foco entre las vistas
+        // (PantallaRocola.Foco.cs); las teclas siguen yendo a la ventana, que en la rocola tiene KeyPreview y ve cada tecla antes que nadie.
         internal static void LlegaTecla(Tecla tecla, bool abajo)
         {
             ILaCapa c = LaCapa; if (c != null) { c.Tecla(tecla, abajo); return; }
@@ -545,6 +545,7 @@ namespace Rocola
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("pck " + (pck ? "1" : "0"));
                 if (pck) return;
                 if (v.TeclaDeDialogo != null && v.TeclaDeDialogo(datos)) return;
+                if (TeclaDeDialogoDeLaVentana(datos)) return;   // (vistas-buscador) Tab y flechas entre las vistas: ContainerControl.ProcessDialogKey (PantallaRocola.Foco.cs)
                 PulsoTecla e = new PulsoTecla(datos);
                 if (v.TeclaAbajo != null) v.TeclaAbajo(e);
                 bool atendida = e.Handled, suprime = e.SuppressKeyPress;

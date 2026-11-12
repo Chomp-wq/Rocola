@@ -152,6 +152,35 @@ namespace BancoBuscadorPortadas
             return f != null ? f.GetValue(o) : o.GetType().GetProperty(nombre, Todo).GetValue(o);
         }
         private static MethodInfo Metodo(string nombre, params Type[] tipos) { return SO.GetMethod(nombre, Todo, null, tipos, null); }
+        // (vistas-buscador) la medida del buscador: en la referencia (Control) su Size; en la traduccion (sin herencia) SetBounds en (0, 0) y
+        // Width/Height de su CajaVista, que es lo mismo que Control.Size con la esquina en (0, 0)
+        private static void PonMedida(object o, int w, int h)
+        {
+            PropertyInfo s = o.GetType().GetProperty("Size", Todo);
+            if (s != null) { s.SetValue(o, new Size(w, h)); return; }
+            o.GetType().GetMethod("SetBounds", new[] { typeof(int), typeof(int), typeof(int), typeof(int) }).Invoke(o, new object[] { 0, 0, w, h });
+        }
+        private static Size Medida(object o)
+        {
+            PropertyInfo s = o.GetType().GetProperty("Size", Todo);
+            return s != null ? (Size)s.GetValue(o) : new Size((int)Lee(o, "Width"), (int)Lee(o, "Height"));
+        }
+        // (vistas-buscador) LA FIRMA DE XP DE SearchOverlay.RenderContent(Graphics, Rectangle, bool): desde la oleada 6c ya no esta en la
+        // traduccion (su OnPaint es Pinta, que llama a la traducida). Aqui lo que hacia su puente: la traducida con el lienzo y el estado del
+        // Graphics y despues lo que XP le dejaba al Graphics: el suavizado (si pasa de su primer return, 60x60) y el filtro que le devuelve
+        private static void GrandeSinPuente(object so, Graphics g, Rectangle caja, bool forGpu)
+        {
+            MethodInfo xp = Metodo("RenderContent", typeof(Graphics), typeof(Rectangle), typeof(bool));
+            if (xp != null) { xp.Invoke(so, new object[] { g, caja, forGpu }); return; }
+            MethodInfo m = null;
+            foreach (MethodInfo x in SO.GetMethods(Todo)) if (x.Name == "RenderContent" && x.GetParameters().Length > 0 && x.GetParameters()[0].ParameterType == typeof(SKCanvas)) m = x;
+            object[] es = EstadoDe(g);
+            object[] args = { es[0], es[2], es[3], es[4], es[5], es[6], caja, forGpu };
+            m.Invoke(so, args);
+            Size t = Medida(so);
+            if (t.Width >= 60 && t.Height >= 60) g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.InterpolationMode = (InterpolationMode)(int)args[3];
+        }
         private static Exception Interna(Exception x) { return x is TargetInvocationException && x.InnerException != null ? x.InnerException : x; }
         // la traducida, llamada directo; null en la referencia (no la hay)
         private static MethodInfo Nativa(string nombre)
@@ -276,7 +305,7 @@ namespace BancoBuscadorPortadas
         private static object Buscador(int w, int h, Color acento, string[] atajos)
         {
             object so = Nuevo(SO);
-            Pon(so, "Size", new Size(w, h));
+            PonMedida(so, w, h);
             Pon(so, "Accent", acento);
             Metodo("PonNuevo", typeof(bool)).Invoke(so, new object[] { true });
             Pon(so, "GetCoverYa", Delegado("GetCoverYa", (Func<object, Image>)(a => { string p = (string)Lee(a, "CoverPath"); Image i; return p != null && portadas.TryGetValue(p, out i) ? i : null; })));
@@ -310,7 +339,7 @@ namespace BancoBuscadorPortadas
         // ---- LA IMAGEN GRANDE: RenderContent(g, caja, true) como EnsureUiOverlay (o directo, la traducida)
         private static void Grande(string nombre, object so, Estado e, bool fondo, bool directo)
         {
-            int w = ((Size)Lee(so, "Size")).Width, h = ((Size)Lee(so, "Size")).Height;
+            int w = Medida(so).Width, h = Medida(so).Height;
             using (Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
             {
                 string ex = "", queda = "";
@@ -319,7 +348,7 @@ namespace BancoBuscadorPortadas
                 {
                     using (Graphics g = Prepara(b, e, fondo))
                     {
-                        if (m == null) { Metodo("RenderContent", typeof(Graphics), typeof(Rectangle), typeof(bool)).Invoke(so, new object[] { g, new Rectangle(0, 0, w, h), true }); if (!directo) queda = Queda(g); }
+                        if (m == null) { GrandeSinPuente(so, g, new Rectangle(0, 0, w, h), true); if (!directo) queda = Queda(g); }
                         else { directas++; object[] es = EstadoDe(g); m.Invoke(so, new object[] { es[0], es[2], es[3], es[4], es[5], es[6] }); }
                     }
                 }
