@@ -61,6 +61,10 @@ namespace Rocola
         // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
         // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; y, en la lista nativa, la pantalla (PantallaRocola.Foco.cs).
         bool ParaElTabulador { get { return true; } }
+        // SU FORMA (Control.Region: la ventana es solo esa forma -SetWindowRgn-), en sus coordenadas; null, el rectangulo entero (de fabrica).
+        // XP solo se la pone al aviso sin tarjeta (lblToast: Nativo/RotuloVista.cs). La pantalla la usa al pintar, al recortar a las de debajo
+        // y con el raton (PantallaRocola.Vistas.cs); el hueco de la capa la pasa a su Region (Plataforma/Anfitrion.cs).
+        SKPath Forma { get { return null; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que

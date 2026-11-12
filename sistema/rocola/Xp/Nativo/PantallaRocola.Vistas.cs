@@ -6,13 +6,17 @@
 //
 // LA LISTA DE LA VENTANA: lo que la rocola pone en su ventana, el de mas arriba primero (Controls[0], como WinForms): vistas (IVista,
 // pintadas por procesador) y capas de textura (CapaDeTextura: el fondo de la tarjeta, el video; en XP, el GpuPanel de Direct3D y el control
-// del WMP). Ahi van tambien los rotulos de encima del panel (lblAttract, lblConfig, lblGpu: oleada 7) cuando dejen de ser Label.
+// del WMP). Es tambien LA LISTA DE LO QUE VA ENCIMA DEL PANEL de la tarjeta: el video y los rotulos (lblAttract, lblConfig, lblGpu, el aviso
+// lblToast... Nativo/RotuloVista.cs, rotulos-y-letras) son de la lista como cualquier vista, y su orden frente al panel lo deciden los
+// BringToFront de XP (VistaAlFrente), como alli. Una vista puede tener FORMA (IVista.Forma: la Region de WinForms, SetWindowRgn; el aviso sin
+// tarjeta): se pinta solo dentro de ella, recorta a las de debajo solo con ella y el raton fuera de ella es del de debajo.
 //
 // TRANSICION (mientras queden las ventanas de la capa: Plataforma/Ventanas.*.cs). La rocola aun es una ventana de la capa y sus vistas
 // aun son controles de la capa: la capa decide su orden, su pintura y su raton (lo que fijan las 41 pruebas), y la pantalla se lo pide por
 // LaCapa (lo pone Plataforma/Anfitrion.cs). Una vista que ya no hereda de Control pero cuyo dueno es una ventana de la capa entra en la
-// lista de controles de esa ventana con un hueco (como el video hoy: HuecoDelVideo, VideoEnVentanas.cs), asi su orden, su recorte y su raton
-// son los de WinForms entre los controles que quedan; la capa la pinta llamando a su Pinta y le da el raton por su Raton. Lo que no es de
+// lista de controles de esa ventana con un hueco, asi su orden, su recorte y su raton son los de WinForms entre los controles que quedan; la
+// capa la pinta llamando a su Pinta y le da el raton por su Raton. Lo mismo una capa de textura (el video: rotulos-y-letras; antes iba en
+// HuecoDelVideo de Plataforma/VideoEnVentanas.cs, ya borrado): en una ventana de la capa, su hueco de textura. Lo que no es de
 // ninguna ventana de la capa va a la lista nativa de la pantalla. Las teclas y el raton de evdev (TeclasLinux.cs) llegan aqui y, con la
 // capa, se los da a ella (que ya da a las hojas nativas lo suyo); sin la capa, la pantalla los reparte con las reglas de abajo.
 using System;
@@ -43,13 +47,16 @@ namespace Rocola
             void AlFondo(IVista v);                                  // SendToBack
             void Quita(IVista v);                                    // Controls.Remove
             void Cambio(IVista v, bool repintar);                    // una vista en un hueco cambio de sitio o de visible, o hay que repintarla
-            void AgregaRotulo(IVista dueno, object rotulo);          // Controls.Add de una vista que ya esta en una ventana de la capa: un rotulo (Label) de la capa
             bool ClienteDelDueno(IVista v, out Size cliente);        // Parent.ClientSize de una vista que es control de la capa o esta en un hueco (false: sin dueno)
             bool DuenoVisible(IVista v);                             // si se ve la ventana (o el control) en que esta
             void Pinta(IVista v, SKCanvas g);                        // pintar una vista que aun es control de la capa (OnPaintBackground y OnPaint)
             bool Enfoca(IVista v);                                   // Focus de una vista que es control de la capa o esta en un hueco (Control.Focus)
             bool OyeComoControl(IVista v, AvisoRaton que, Action<Raton> a);   // una vista que aun es control: su evento (MouseDown, MouseClick); false si no lo es
-            ILugarDelVideo LugarDelVideo(object ventana);            // la capa del video en una ventana de la capa (VideoEnVentanas.cs)
+            bool EsSuyaLaCapa(CapaDeTextura t);                      // (rotulos-y-letras) la capa de textura esta en un hueco de textura de una ventana de la capa
+            void AgregaCapa(object ventana, CapaDeTextura t);        // Controls.Add de una capa de textura (el video) a una ventana de la capa: su hueco de textura, al fondo
+            void CapaAlFrente(CapaDeTextura t);                      // BringToFront de su hueco
+            void QuitaCapa(CapaDeTextura t);                         // Controls.Remove de su hueco
+            void CambioCapa(CapaDeTextura t);                        // su sitio, si se ve o su textura cambiaron: su hueco los toma
             bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera);   // Present de la tarjeta en un control de la capa (false: no es de nadie, glFlush)
             void OlvidaTarjeta(IntPtr ventana);
             void HayQueComponer();                                   // algo cambio: volver a componer
@@ -89,7 +96,7 @@ namespace Rocola
         }
         // LAS VISTAS DENTRO DE UNA VISTA (panel-del-disco). Control.ControlCollection.Add («base.InnerList.Add(value)» al final: el fondo del orden
         // z, [0] arriba) en el Controls de un Panel; Add de una que ya tenia otro dueno la saca antes del viejo (ControlCollection.Add:
-        // «value.parent.Controls.Remove(value)»). Los hijos de cada dueno, [0] el de mas arriba: IVista o un rotulo de la capa (Label: oleada 7)
+        // «value.parent.Controls.Remove(value)»). Los hijos de cada dueno, [0] el de mas arriba (IVista: el rotulo del disco, lblAlbum, tambien)
         private static readonly Dictionary<IVista, List<object>> hijas = new Dictionary<IVista, List<object>>();
         private static readonly Dictionary<IVista, IVista> padre = new Dictionary<IVista, IVista>();
         private static IVista PadreDe(IVista v) { IVista p; return v != null && padre.TryGetValue(v, out p) ? p : null; }
@@ -103,15 +110,6 @@ namespace Rocola
             List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
             l.Add(v); padre[v] = dueno; AnotaTab(v); if (EnLaLista(dueno)) CambioVentana();
         }
-        // el rotulo de la capa (Label) que XP agrega a una vista (lblAlbum al panel del disco): con la vista en una ventana de la capa, su Controls.Add;
-        // si no, queda anotado en su sitio del orden y se agrega cuando la vista entre (TraspasaHijas)
-        internal static void AgregaRotulo(IVista dueno, object rotulo)
-        {
-            ILaCapa c = LaCapa;
-            if (c != null && c.EsSuyaLaVista(dueno)) { c.AgregaRotulo(dueno, rotulo); return; }
-            List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
-            if (!l.Contains(rotulo)) l.Add(rotulo);
-        }
         // una vista con hijas anotadas entra en una ventana de la capa: sus hijas pasan a su hueco, en el mismo orden (Controls.Add una por una)
         private static void TraspasaHijas(IVista v)
         {
@@ -122,7 +120,6 @@ namespace Rocola
             {
                 IVista h = o as IVista;
                 if (h != null) { padre.Remove(h); AgregaVista(v, h); }
-                else c.AgregaRotulo(v, o);
             }
         }
         // si la vista, o la de mas arriba de su cadena de duenos, esta en la lista nativa de la ventana
@@ -150,6 +147,21 @@ namespace Rocola
             cliente = Size.Empty; return false;
         }
         internal static void AgregaCapa(CapaDeTextura t) { if (!lista.Contains(t)) { lista.Add(t); CambioVentana(); } }
+        // (rotulos-y-letras) Controls.Add de una capa de textura (el video) a una ventana: en una ventana de la capa, su hueco de textura; si no,
+        // la lista nativa. Lo que cambia de ella (sitio, si se ve, la textura) lo avisa quien la mueve (CambioCapa): en la lista nativa, volver a
+        // componer si cambio el sitio o si se ve (la textura la toma el compositor en cada cuadro); en un hueco, que la capa lo tome.
+        internal static void AgregaCapa(object ventana, CapaDeTextura t)
+        {
+            ILaCapa c = LaCapa;
+            if (c != null && c.EsSuya(ventana)) { c.AgregaCapa(ventana, t); return; }
+            AgregaCapa(t);
+        }
+        internal static void CambioCapa(CapaDeTextura t, bool recompone)
+        {
+            ILaCapa c = LaCapa;
+            if (c != null && c.EsSuyaLaCapa(t)) { c.CambioCapa(t); return; }
+            if (recompone && lista.Contains(t)) CambioVentana();
+        }
         // BringToFront: el [0] (Control.BringToFront: «ParentInternal.Controls.SetChildIndex(this, 0)», Control.cs)
         internal static void VistaAlFrente(object v)
         {
@@ -157,6 +169,7 @@ namespace Rocola
             IVista dueno = PadreDe(iv);
             if (dueno != null) { List<object> h = hijas[dueno]; if (h.Remove(iv)) { h.Insert(0, iv); if (EnLaLista(dueno)) CambioVentana(); } return; }   // (dentro de una vista: el [0] de las suyas)
             if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.AlFrente(iv); return; }
+            CapaDeTextura ct = v as CapaDeTextura; if (ct != null && c != null && c.EsSuyaLaCapa(ct)) { c.CapaAlFrente(ct); return; }   // (rotulos-y-letras) la del video, en su hueco
             if (lista.Remove(v)) { lista.Insert(0, v); CambioVentana(); }
         }
         // SendToBack: el ultimo (Control.SendToBack: «ParentInternal.Controls.SetChildIndex(this, -1)»)
@@ -183,6 +196,7 @@ namespace Rocola
                 return;
             }
             if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.Quita(iv); return; }
+            CapaDeTextura ct = v as CapaDeTextura; if (ct != null && c != null && c.EsSuyaLaCapa(ct)) { c.QuitaCapa(ct); return; }   // (rotulos-y-letras) la del video, en su hueco
             if (!lista.Remove(v)) return;
             SueltaDeLaRama(v);
             CambioVentana();
@@ -331,13 +345,15 @@ namespace Rocola
             try
             {
                 g.ClipRect(new SKRect(r.Left, r.Top, r.Right, r.Bottom));
+                RecortaForma(g, v, r, SKClipOperation.Intersect);   // (rotulos-y-letras) su forma, si la tiene (la Region: solo se ve dentro)
                 for (int j = i - 1; j >= 0; j--)
                 {
                     Rectangle rs; bool ve;
                     IVista o = l[j] as IVista; CapaDeTextura t = l[j] as CapaDeTextura;
                     if (o != null) { rs = o.Bounds; ve = Ve(o); } else { rs = t.Sitio; ve = t.Visible; }
                     if (!ve || rs.Width <= 0 || rs.Height <= 0 || !rs.IntersectsWith(r)) continue;
-                    g.ClipRect(new SKRect(rs.Left, rs.Top, rs.Right, rs.Bottom), SKClipOperation.Difference);
+                    if (o != null && o.Forma != null) RecortaForma(g, o, rs, SKClipOperation.Difference);   // (la de encima con forma tapa solo con ella)
+                    else g.ClipRect(new SKRect(rs.Left, rs.Top, rs.Right, rs.Bottom), SKClipOperation.Difference);
                 }
                 g.Translate(r.Left, r.Top);
                 v.Pinta(g);
@@ -362,12 +378,14 @@ namespace Rocola
                 try
                 {
                     g.ClipRect(new SKRect(r.Left, r.Top, r.Right, r.Bottom));
+                    RecortaForma(g, v, r, SKClipOperation.Intersect);
                     for (int j = i - 1; j >= 0; j--)
                     {
                         IVista o = h[j] as IVista; if (o == null) continue;
                         Rectangle rs = o.Bounds;
                         if (!Ve(o) || rs.Width <= 0 || rs.Height <= 0 || !rs.IntersectsWith(r)) continue;
-                        g.ClipRect(new SKRect(rs.Left, rs.Top, rs.Right, rs.Bottom), SKClipOperation.Difference);
+                        if (o.Forma != null) RecortaForma(g, o, rs, SKClipOperation.Difference);
+                        else g.ClipRect(new SKRect(rs.Left, rs.Top, rs.Right, rs.Bottom), SKClipOperation.Difference);
                     }
                     g.Translate(r.Left, r.Top);
                     v.Pinta(g);
@@ -379,6 +397,17 @@ namespace Rocola
         }
         // si se ve la vista misma (su Visible incluye al dueno, que en la lista nativa es la pantalla)
         private static bool Ve(IVista v) { return v.Visible; }
+        // (rotulos-y-letras) LA FORMA DE UNA VISTA (Control.Region: SetWindowRgn), en sus coordenadas: recorta lo que se pinta (Intersect: la vista
+        // solo dentro de ella) o a las de debajo (Difference: la de encima tapa solo con ella), sin suavizar, como el recorte por region de la
+        // capa (Ventanas.Escritorio.PintaArbol y PintaHijo: SetClip(Region) en el sitio del control)
+        private static void RecortaForma(SKCanvas g, IVista v, Rectangle sitio, SKClipOperation op)
+        {
+            SKPath f = v.Forma; if (f == null) return;
+            using (SKPath t = new SKPath(f)) { t.Transform(SKMatrix.CreateTranslation(sitio.Left, sitio.Top)); g.ClipPath(t, op, false); }
+        }
+        // si el punto (en las coordenadas de la vista) esta dentro de su forma; sin forma, si (con Region, la ventana es solo su forma: fuera de
+        // ella el raton es del de debajo; el centro del pixel, como la capa: Ventanas.Escritorio, HijoEn)
+        private static bool EnLaForma(IVista v, Point q) { SKPath f = v.Forma; return f == null || f.Contains(q.X + 0.5f, q.Y + 0.5f); }
 
         // ---------- el raton ----------
         // LA DE ENCIMA BAJO LA FLECHA (WindowFromPoint y ChildWindowFromPointEx: la ventana hija de mas arriba que contiene el punto y se
@@ -389,7 +418,7 @@ namespace Rocola
             foreach (object o in lista)
             {
                 IVista v = o as IVista;
-                if (v != null) { if (Ve(v) && v.Bounds.Contains(p)) return Dentro(v, new Point(p.X - v.Bounds.X, p.Y - v.Bounds.Y)); continue; }
+                if (v != null) { if (Ve(v) && v.Bounds.Contains(p) && EnLaForma(v, new Point(p.X - v.Bounds.X, p.Y - v.Bounds.Y))) return Dentro(v, new Point(p.X - v.Bounds.X, p.Y - v.Bounds.Y)); continue; }
                 CapaDeTextura t = (CapaDeTextura)o;
                 if (t.Visible && t.Sitio.Contains(p)) return t;
             }
@@ -403,7 +432,7 @@ namespace Rocola
             foreach (object o in l)
             {
                 IVista h = o as IVista;
-                if (h != null && Ve(h) && h.Bounds.Contains(q)) return Dentro(h, new Point(q.X - h.Bounds.X, q.Y - h.Bounds.Y));
+                if (h != null && Ve(h) && h.Bounds.Contains(q) && EnLaForma(h, new Point(q.X - h.Bounds.X, q.Y - h.Bounds.Y))) return Dentro(h, new Point(q.X - h.Bounds.X, q.Y - h.Bounds.Y));
             }
             return v;
         }

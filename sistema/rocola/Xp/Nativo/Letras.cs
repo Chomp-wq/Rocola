@@ -86,6 +86,16 @@ namespace Rocola.Nativo
     {
         // las genericas de GDI+ en Windows XP: sin remates Microsoft Sans Serif, de ancho fijo Courier New, con remates Times New Roman
         public const string SinRemates = "Microsoft Sans Serif", AnchoFijo = "Courier New", ConRemates = "Times New Roman";
+        // Font.Equals de GDI+ con dos letras (port nativo, rotulos-y-letras: lo que Control.Font de WinForms usa para no cambiar la guardada por
+        // una igual): la misma familia (GDI+ guarda una por nombre, sin mayusculas), el mismo tamano en la misma unidad y el mismo estilo; la
+        // misma comparacion que hacia la capa (Ventanas.Control.cs, IgualLetra). (El tachado no esta en Letra: XP no lo usa.)
+        public static bool Iguales(Letra a, Letra b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            return string.Equals(a.Familia, b.Familia, StringComparison.OrdinalIgnoreCase) && a.Tamano == b.Tamano && a.UnidadPixel == b.UnidadPixel
+                && a.Negrita == b.Negrita && a.Cursiva == b.Cursiva && a.Subrayada == b.Subrayada;
+        }
         private static readonly Dictionary<string, Cara> hechas = new Dictionary<string, Cara>(StringComparer.OrdinalIgnoreCase);
         // familia -> archivos (normal, negrita, cursiva, negrita cursiva) en la carpeta de Windows
         private static readonly Dictionary<string, string[]> archivos = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)

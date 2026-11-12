@@ -13,7 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que va y viene de archivos sin traducir (las letras de las etiquetas de WinForms, los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; los rotulos de la ventana son vistas nativas con su Letra (Nativo/RotuloVista.cs); lo que va y viene de archivos sin traducir (los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -53,7 +53,7 @@ namespace Rocola
 
         private static readonly Color DefaultAccent = Color.FromArgb(45, 95, 205);
         private AlbumView albumView;
-        private Label lblStatus, lblNow, lblNext, lblTime, lblAlbum, lblToast;
+        private RotuloVista lblStatus, lblNow, lblNext, lblTime, lblAlbum, lblToast;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
         private PastillaView pastCred, pastCola;   // creditos y cola, en capsula
         private GeneroView pastGenero;             // de que genero es lo que suena, detras del artista
         private HeaderView headerView;   // nombre de la seccion + en que pagina estas
@@ -61,7 +61,7 @@ namespace Rocola
         // linea, la primera mitad se pinta aqui y el resto en lblNow (que sigue siendo la ULTIMA linea, la
         // que lleva el letrero MEJORADA detras). El hueco esta reservado SIEMPRE, asi que el acomodo de la
         // pantalla no se mueve nunca al cambiar de cancion: nada de rehornear la rejilla por un titulo largo.
-        private Label lblNowTop;
+        private RotuloVista lblNowTop;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
         private string nowFullText = "Nada reproduciendose";   // el TITULO de lo que suena
         private string nowArtista = "";                        // y de quien es
         private HelpBar helpBar;
@@ -137,7 +137,7 @@ namespace Rocola
         // lo decide el propio panel: lo que refresque la pantalla y un poco mas (ver GpuPanel.TopeMs). Se deja
         // a mano por si alguna pantalla contesta un refresco raro y hay que fijarlo.
         private int fpsTope = 0;
-        private Label lblMejorada;           // letrero "MEJORADA" dorado junto a "Reproduciendo": brilla cuando la cancion suena con DSEE
+        private RotuloVista lblMejorada;           // letrero "MEJORADA" dorado junto a "Reproduciendo": brilla cuando la cancion suena con DSEE; EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
         private int mejRowW = 120;           // ancho total de la fila "Reproduciendo" (lo fija el layout; el letrero se acomoda dentro)
         // EN QUE ESTA EL LETRERO MEJORADA, GUARDADO. Antes se preguntaba (MejActivo) alli donde hiciera
         // falta, y el panel de reposo lo preguntaba dos veces y media por segundo. Ahora se apunta cuando
@@ -628,7 +628,7 @@ namespace Rocola
         }
 #if ROCOLA_GPU
         private GpuPanel gpuPanel;   // fondo de discos por GPU (experimental, Ctrl+F12)
-        private Label lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina)
+        private RotuloVista lblGpu;        // etiqueta de estado/FPS del modo GPU (esquina); EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
 #endif
         private bool searchOpen = false;
         private DateTime searchLastActivity = DateTime.Now;   // para auto-cerrar el buscador tras 1 min
@@ -660,7 +660,7 @@ namespace Rocola
         private bool needConfig = false;
         private int configStep = 0;
         private readonly Tecla[] configCap = new Tecla[8];   // EN LINUX: Keys -> Tecla, los mismos numeros
-        private Label lblConfig;            // pantalla del asistente de configuracion
+        private RotuloVista lblConfig;            // pantalla del asistente de configuracion; EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
         private AttractView attractView;    // modo atraccion (reposo): fondo estrellado + cubo gigante
         private bool attractOn = false;
 #if ROCOLA_GPU
@@ -697,7 +697,7 @@ namespace Rocola
         // ---- Reproductor de video (Windows Media Player ActiveX, hosteado por codigo) ----
         private ReproductorVideo video;   // EN LINUX: el reproductor de libmpv y su capa (Nativo/ReproductorVideo.cs), no el control ActiveX del WMP
         private DateTime lastInput = DateTime.Now; // ultima tecla (para detectar inactividad)
-        private Label lblAttract;                  // aviso amarillo pulsante "toca una tecla"
+        private RotuloVista lblAttract;                  // aviso amarillo pulsante "toca una tecla"; EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
         private StartupLoad startupLoad;
         private bool startupReadPending;   // evita guardar tablas vacias si se cierra antes de publicarlas
         private bool startupClosing;
@@ -1117,7 +1117,7 @@ namespace Rocola
             this.FormBorderStyle = FormBorderStyle.None;     // PANTALLA COMPLETA al iniciar (sin barra de titulo)
             this.WindowState = FormWindowState.Maximized;    // borde nulo + maximizado = cubre toda la pantalla
 
-            lblStatus = new Label(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";
+            lblStatus = new RotuloVista(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
             PantallaRocola.AgregaVista(this, buscaView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
 #if ROCOLA_GPU
@@ -1128,12 +1128,12 @@ namespace Rocola
 #endif
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
 
-            lblAttract = new Label();
+            lblAttract = new RotuloVista();   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblAttract.AutoSize = false;
-            lblAttract.TextAlign = ContentAlignment.MiddleCenter;
+            lblAttract.TextAlign = AlineaTexto.MiddleCenter;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
             lblAttract.BackColor = Color.FromArgb(10, 12, 30);
             lblAttract.ForeColor = Color.FromArgb(250, 230, 50);
-            lblAttract.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true));   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15f, Bold): la generica sin remates de XP en puntos y negrita; la etiqueta es de WinForms (aun sin traducir) y la recibe como Font por el puente
+            lblAttract.Font = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 15f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 15f, Bold): la generica sin remates de XP en puntos y negrita; el rotulo (Nativo/RotuloVista.cs) la recibe como Letra, directo
             lblAttract.Text = "¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !";
             lblAttract.Visible = false;
 
@@ -1182,7 +1182,7 @@ namespace Rocola
             panelSongs.BackColor = Shade(DefaultAccent, 0.70);
             panelSongs.Visible = false;
 
-            lblAlbum = new Label(); lblAlbum.BackColor = Color.Transparent; lblAlbum.ForeColor = Color.White; lblAlbum.Font = Bold(16f);
+            lblAlbum = new RotuloVista(); lblAlbum.BackColor = Color.Transparent; lblAlbum.ForeColor = Color.White; lblAlbum.Font = Bold(16f);   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control); Bold da la Letra (Form1.Fondo.cs)
 
             cubeBox = new CubeBox();
             cubeBox.BackColor = Color.Transparent;
@@ -1241,21 +1241,21 @@ namespace Rocola
             songPager = new SongPagerBar();
             songPager.Visible = false;
             songPager.BackColor = Shade(DefaultAccent, 0.70);
-            PantallaRocola.AgregaRotulo(panelSongs, lblAlbum);   // EN LINUX: panelSongs.Controls.Add(lblAlbum): el panel del disco ya no es un Panel de WinForms (Form1.Fondo.cs: BgPanel, una vista de la pantalla); el rotulo (un Label de la capa, hasta la oleada 7) va a sus hijas, el primero del orden (el de mas arriba), y entra con el panel a la ventana
+            PantallaRocola.AgregaVista(panelSongs, lblAlbum);   // EN LINUX: panelSongs.Controls.Add(lblAlbum): el panel del disco ya no es un Panel de WinForms (Form1.Fondo.cs: BgPanel, una vista de la pantalla); el rotulo (Nativo/RotuloVista.cs) va a sus hijas por la pantalla, el primero del orden (el de mas arriba), y entra con el panel a la ventana
             PantallaRocola.AgregaVista(panelSongs, cubeBox);   // EN LINUX: panelSongs.Controls.Add(cubeBox): en el panel del disco, por la pantalla (al fondo de la lista del panel, como ControlCollection.Add)
             PantallaRocola.AgregaVista(panelSongs, songList);   // EN LINUX: panelSongs.Controls.Add(songList), por la pantalla
             PantallaRocola.AgregaVista(panelSongs, songPager);   // EN LINUX: panelSongs.Controls.Add(songPager), por la pantalla
 
             // TARJETA DE LO QUE SUENA: lblNowTop lleva el TITULO (grande, blanco) y lblNow el ARTISTA (mas
             // chico, verde). Antes las dos eran la misma frase partida por ancho; ahora cada una dice una cosa.
-            lblNow = new Label(); TransLabel(lblNow, 11.5f); lblNow.Text = ""; lblNow.AutoEllipsis = true;
+            lblNow = new RotuloVista(); TransLabel(lblNow, 11.5f); lblNow.Text = ""; lblNow.AutoEllipsis = true;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblNow.ForeColor = Color.FromArgb(120, 230, 165);
             lblNow.ForeColor = Color.FromArgb(125, 235, 165);   // ESTETICA: verde "sonando" (se distingue de "siguiente")
-            lblNowTop = new Label(); TransLabel(lblNowTop, 15f); lblNowTop.Text = "Nada reproduciendose"; lblNowTop.AutoEllipsis = true;
+            lblNowTop = new RotuloVista(); TransLabel(lblNowTop, 15f); lblNowTop.Text = "Nada reproduciendose"; lblNowTop.AutoEllipsis = true;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblNowTop.ForeColor = lblNow.ForeColor;             // misma linea, mismo verde: se leen como un solo texto
-            lblNowTop.TextAlign = ContentAlignment.BottomLeft;  // pegada a la linea de abajo, no flotando
+            lblNowTop.TextAlign = AlineaTexto.BottomLeft;  // pegada a la linea de abajo, no flotando; EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
             lblNow.UseMnemonic = false; lblNowTop.UseMnemonic = false;   // un "&" del titulo es un "&", no un subrayado
-            lblNext = new Label(); TransLabel(lblNext, 10.5f); lblNext.Text = "Sigue:  -"; lblNext.AutoEllipsis = true;
+            lblNext = new RotuloVista(); TransLabel(lblNext, 10.5f); lblNext.Text = "Sigue:  -"; lblNext.AutoEllipsis = true;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblNext.ForeColor = Color.FromArgb(150, 165, 200);
             lblNext.ForeColor = Color.FromArgb(150, 200, 255);  // ESTETICA: azul claro "siguiente"
             lblNext.UseMnemonic = false;                        // igual que arriba: un "&" del titulo es un "&"
@@ -1263,9 +1263,9 @@ namespace Rocola
             pastCola.Acento = Color.FromArgb(140, 205, 255);
             pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
             pastCred.Acento = Color.FromArgb(255, 205, 90);
-            pastGenero = new GeneroView(); pastGenero.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(this.Font).Familia, 10f, true)); pastGenero.Visible = false;   // EN LINUX: new Font(this.Font.FontFamily, 10f, Bold): la familia de la letra de la ventana (WinForms, por el puente) en puntos y negrita; la vista la recibe como Font
-            lblMejorada = new Label(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;
-            lblMejorada.TextAlign = ContentAlignment.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada)
+            pastGenero = new GeneroView(); pastGenero.Font = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, 10f, true); pastGenero.Visible = false;   // EN LINUX: new Font(this.Font.FontFamily, 10f, Bold): la familia de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre, en puntos y negrita; la vista la recibe como Letra (Nativo/Letras.cs)
+            lblMejorada = new RotuloVista(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
+            lblMejorada.TextAlign = AlineaTexto.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada); EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
 
             miniCube = new CubeBox();
             miniCube.BackColor = Color.Transparent;
@@ -1273,10 +1273,10 @@ namespace Rocola
 
             progress = new ProgressView();
             progress.Neon = progresoNeon;
-            lblTime = new Label(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";
+            lblTime = new RotuloVista(); TransLabel(lblTime, 13f); lblTime.Text = "0:00 / 0:00";   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
 
-            lblToast = new Label();
-            lblToast.TextAlign = ContentAlignment.MiddleCenter;
+            lblToast = new RotuloVista();   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
+            lblToast.TextAlign = AlineaTexto.MiddleCenter;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
             lblToast.BackColor = Color.FromArgb(40, 165, 90);
             lblToast.ForeColor = Color.White;
             lblToast.Font = Bold(14f);
@@ -1334,28 +1334,28 @@ namespace Rocola
             PantallaRocola.OyeRaton(attractView, AvisoRaton.Abajo, delegate { lastInput = DateTime.Now; if (attractOn) ExitAttract(); });   // sin tarjeta: tocarla tambien despierta   // EN LINUX: attractView.MouseDown += delegate {...}: el evento MouseDown de la vista, por la pantalla (Nativo/PantallaRocola.Vistas.cs)
             attractView.GetCoverByPath = LoadCoverByPath;
 
-            Controls.Add(lblStatus); PantallaRocola.AgregaVista(this, helpBar); PantallaRocola.AgregaVista(this, pastCred); PantallaRocola.AgregaVista(this, pastGenero);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; las etiquetas siguen con Controls.Add (son Label de WinForms hasta la oleada 7)
+            PantallaRocola.AgregaVista(this, lblStatus); PantallaRocola.AgregaVista(this, helpBar); PantallaRocola.AgregaVista(this, pastCred); PantallaRocola.AgregaVista(this, pastGenero);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
             PantallaRocola.AgregaVista(this, letterBar); PantallaRocola.AgregaVista(this, headerView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
             PantallaRocola.AgregaVista(this, albumView); PantallaRocola.AgregaVista(this, panelSongs);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            Controls.Add(lblNowTop); Controls.Add(lblNow); Controls.Add(lblMejorada); Controls.Add(lblNext); PantallaRocola.AgregaVista(this, pastCola); PantallaRocola.AgregaVista(this, progress); Controls.Add(lblTime);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; las etiquetas siguen con Controls.Add (son Label de WinForms hasta la oleada 7)
+            PantallaRocola.AgregaVista(this, lblNowTop); PantallaRocola.AgregaVista(this, lblNow); PantallaRocola.AgregaVista(this, lblMejorada); PantallaRocola.AgregaVista(this, lblNext); PantallaRocola.AgregaVista(this, pastCola); PantallaRocola.AgregaVista(this, progress); PantallaRocola.AgregaVista(this, lblTime);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
             PantallaRocola.AgregaVista(this, miniCube);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            Controls.Add(lblAttract);
-            Controls.Add(lblToast);
+            PantallaRocola.AgregaVista(this, lblAttract);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
+            PantallaRocola.AgregaVista(this, lblToast);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
             PantallaRocola.AgregaVista(this, searchOverlay);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
             PantallaRocola.AgregaVista(this, attractView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
 
             // ----- DIAGNOSTICO TEMPORAL: letrero que muestra que tecla recibe la app -----
             // ----- Pantalla del ASISTENTE DE CONFIGURACION de botones -----
-            lblConfig = new Label();
+            lblConfig = new RotuloVista();   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblConfig.AutoSize = false;
-            lblConfig.TextAlign = ContentAlignment.MiddleCenter;
+            lblConfig.TextAlign = AlineaTexto.MiddleCenter;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
             lblConfig.BackColor = Color.FromArgb(8, 10, 26);
             lblConfig.ForeColor = Color.FromArgb(245, 248, 255);
-            lblConfig.Font = PuenteDibujo.Font(Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 20f, true));   // EN LINUX: new Font(FontFamily.GenericSansSerif, 20f, Bold), como Font para la etiqueta de WinForms por el puente
+            lblConfig.Font = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 20f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 20f, Bold), la generica sin remates de XP en puntos y negrita; el rotulo (Nativo/RotuloVista.cs) la recibe como Letra, directo
             lblConfig.Text = "";
             lblConfig.Visible = false;
-            Controls.Add(lblConfig);
-            lblConfig.BringToFront();
+            PantallaRocola.AgregaVista(this, lblConfig);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
+            PantallaRocola.VistaAlFrente(lblConfig);   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
         }
 
         private void LayoutControls()
@@ -1373,7 +1373,7 @@ namespace Rocola
                 lblAttract.SetBounds(0, 0, W, strip);
                 video.PonSitio(0, strip, W, H - strip);   // EN LINUX: SetBounds: el sitio de la capa del video
                 video.AlFrente();   // EN LINUX: BringToFront
-                lblAttract.BringToFront();
+                PantallaRocola.VistaAlFrente(lblAttract);   // EN LINUX: lblAttract.BringToFront(): por la pantalla (SetChildIndex(this, 0))
                 if (helpBar != null) helpBar.Visible = false;
                 if (buscaView != null) buscaView.Visible = false;
 #if ROCOLA_GPU
@@ -1469,9 +1469,9 @@ namespace Rocola
             // Los cuatro renglones de la tarjeta, medidos con la letra que toque y sin un pixel de sobra:
             // titulo, artista, lo que sigue, y la barra de duracion. La portada mide lo mismo que los cuatro
             // juntos, asi que la tarjeta es un bloque cuadrado a la izquierda y texto a la derecha.
-            int hTit = Math.Max(24, (lblNowTop != null ? PuenteDibujo.Letra(lblNowTop.Font).AltoEntero : 24) + 1);   // EN LINUX: Font.Height: el alto del renglon redondeado hacia arriba (Nativo/Letras.cs), de la Letra de la etiqueta por el puente
-            int hArt = Math.Max(18, (lblNow != null ? PuenteDibujo.Letra(lblNow.Font).AltoEntero : 18) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs)
-            int hSig = Math.Max(17, (lblNext != null ? PuenteDibujo.Letra(lblNext.Font).AltoEntero : 17) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs)
+            int hTit = Math.Max(24, (lblNowTop != null ? lblNowTop.Font.AltoEntero : 24) + 1);   // EN LINUX: Font.Height: el alto del renglon redondeado hacia arriba (Nativo/Letras.cs), de la Letra del rotulo (Nativo/RotuloVista.cs), directo
+            int hArt = Math.Max(18, (lblNow != null ? lblNow.Font.AltoEntero : 18) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs), de la Letra del rotulo, directo
+            int hSig = Math.Max(17, (lblNext != null ? lblNext.Font.AltoEntero : 17) + 1);   // EN LINUX: Font.Height (Nativo/Letras.cs), de la Letra del rotulo, directo
             int progH = 12;
             int tarjetaH = hTit + hArt + hSig + 4 + progH + 2;
             int tarjetaY = H - pad - tarjetaH;
@@ -1482,8 +1482,8 @@ namespace Rocola
             // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
             // ancha que "Creditos 3", y una capsula a medias se veria mal.
             int pastH = AltoPastilla(tarjetaH);
-            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily, false);
-            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily, pastCola.ConPortadas);
+            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily.Name, false);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
+            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily.Name, pastCola.ConPortadas);   // EN LINUX: la familia por su nombre (ver la linea de arriba)
             int pastY = tarjetaY;
             pastCred.SetBounds(W - pad - wCred, pastY, wCred, pastH);
             pastCola.SetBounds(W - pad - wCred - 10 - wCola, pastY, wCola, pastH);
@@ -2267,9 +2267,9 @@ namespace Rocola
             lblToast.BackColor = back;
             tw = AnchoToast(text, lblToast.Font);   // misma pastilla que por GPU: se ajusta al texto
             lblToast.SetBounds((ClientSize.Width - tw) / 2, 80, tw, th);
-            try { using (SKPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Region = RegionDeRuta(gp); } catch { }  // esquinas redondeadas SIEMPRE   // EN LINUX: RoundRect (Form1.Ajustes.cs) ya da el SKPath; la forma de la etiqueta del aviso sin tarjeta (Control.Region de WinForms, aun de la capa) se hace con el mismo trazo copiado, como new Region(gp), por el puente (Plataforma/Puente.ventanas2.cs, hasta W6)
+            try { using (SKPath gp = RoundRect(new Rectangle(0, 0, tw, th), 16)) lblToast.Forma = new SKPath(gp); } catch { }  // esquinas redondeadas SIEMPRE   // EN LINUX: RoundRect (Form1.Ajustes.cs) ya da el SKPath; new Region(gp) es una copia del trazo (new SKPath(gp)) y Control.Region del rotulo del aviso sin tarjeta es su Forma (Nativo/RotuloVista.cs: suelta la de antes, como Control.Region; la pantalla recorta con ella la pintura y el raton)
             lblToast.Visible = true;
-            lblToast.BringToFront();
+            PantallaRocola.VistaAlFrente(lblToast);   // EN LINUX: lblToast.BringToFront(): por la pantalla (SetChildIndex(this, 0))
             toastTimer.Stop(); toastTimer.Start();
         }
 

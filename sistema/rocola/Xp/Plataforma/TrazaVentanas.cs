@@ -57,6 +57,7 @@ namespace Rocola
             IPieza p = o as IPieza; Hoja h = o as Hoja;
             if (p != null) t = p.Caja.Text;
             else if (h != null) t = h.Text;
+            else if (o is RotuloVista) t = ((RotuloVista)o).Text;   // (rotulos-y-letras) el rotulo de la pantalla, con su texto como el Label de la capa
             else
             {
                 Control c = o as Control;

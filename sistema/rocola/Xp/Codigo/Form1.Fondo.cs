@@ -1264,9 +1264,9 @@ namespace Rocola
         // se pueden volver a desparejar.
         private static Color GenreToColor(string genre) { return ColorDeEtiqueta(GenreLabel(genre)); }
 
-        private Rocola.Dibujo2D.Font Bold(float size) { return new Rocola.Dibujo2D.Font(this.Font.FontFamily, size, Rocola.Dibujo2D.FontStyle.Bold); }   // EN LINUX: la letra de las etiquetas de WinForms (Label.Font y la Font del formulario: la pista de ventanas, sin traducir en esta tanda): el tipo de la capa, escrito entero
+        private Rocola.Nativo.Letra Bold(float size) { return Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, size, true); }   // EN LINUX: Font -> Letra (Nativo/Letras.cs): new Font(familia, size, Bold) es la letra nativa en puntos y negrita, para los rotulos (Nativo/RotuloVista.cs) y la lista del disco; la familia es la de la Font del formulario (de la capa hasta la oleada 8), por su nombre
 
-        private void TransLabel(Label l, float size)
+        private void TransLabel(RotuloVista l, float size)   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs)
         {
             l.BackColor = Color.Transparent;
             l.ForeColor = Color.White;
