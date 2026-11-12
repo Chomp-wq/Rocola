@@ -131,3 +131,47 @@ Quedan (de otros): el archivo Puente.buscador.cs solo con comentarios (limpieza 
   rocola ProcessCmdKey de Form1 atiende las flechas antes, asi que no llega.
 - Quitar (QuitaVista) la vista del foco en la lista nativa suelta el foco sin elegir otra (como antes); WinForms (ContainerControl al
   quitar el activo) elige otro. La rocola no quita vistas.
+
+## Revision (revisor independiente, 12-11-2026)
+
+Leido el diff d05b06d..port-vistas-buscador entero contra Rocola/Form1.Buscador.cs y la fuente de WinForms (/tmp/claude-0/agente-winforms/ref).
+
+Lo comprobado sin fallos:
+- BuscaView y SearchOverlay sin Control; el constructor conserva lo de XP: BuscaView no Selectable ni TabStop en el ciclo (TabStop = false ->
+  ParaElTabulador false; el hueco hace TabStop = Seleccionable && ParaElTabulador), SearchOverlay Selectable y TabStop = true, BackColor
+  (8, 12, 36) en el mismo sitio del constructor, BuildKeys despues; ninguno con ResizeRedraw (RepintaConMedida = false).
+- El estado que reciben las traducidas desde Pinta es el que daba el puente con el Graphics del WM_PAINT de la capa: Escritorio.PintaSolo
+  guarda el estado del Graphics recien hecho (Graphics.FromImage: SystemDefault, SourceOver, Bilinear, sin medio pixel) y SellaRecorte pone
+  la matriz del HDC = la matriz del lienzo, que es la g.TotalMatrix que pasa Pinta; ClearTypeGridFit en la casilla como en su OnPaint.
+- El fondo del buscador: antes lo pintaba el OnPaintBackground de la capa (FillRectangle sin suavizar del BackColor en el cliente); ahora el
+  hueco no pinta fondo y Pinta lo rellena igual (PinturaXp.Rellena sin suavizar). La casilla, transparente, no pinta fondo (antes tampoco).
+- OnMouseClick: cuerpo de XP; el aviso MouseClick (base.OnMouseClick) despues, por el hueco o la lista nativa (AvisaOyentes) y en ClickAt.
+- Vidas: fTxt se suelta en Dispose(true) por el hueco (IDisposable, como el Control.Dispose de los hijos); igual que AyudaCasillaGpu.cs y
+  Form1.cs (el modelo). Ningun tipo de la capa queda en Form1.Buscador.cs; Puente.buscador.cs sin codigo.
+- PantallaRocola.Foco.cs contra la fuente: GetNextControl (adelante y atras, con los empates por «hitCtl»), GetNextSelectableControl
+  (wrap y alreadyWrapped), ContainerControl.ProcessDialogKey (Tab y flechas sin Alt ni Control, despues del ProcessDialogKey de Form1, que
+  XP no sobreescribe), ProcessArrowKey (el grupo es el padre del activo) y SelectNextIfFocused antes de cambiar Visible (SetVisibleCore),
+  con GetContainerControl = la ventana (IsContainerControl es false en la Form: Control.cs:2900 y 5825-5840). Bien.
+
+Lo encontrado y arreglado:
+- (menor) Codigo/Form1.Buscador.cs:10, la nota del using decia aun que «el Graphics de WinForms de OnPaint pasa por el puente
+  (Plataforma/Puente.cs y Puente.buscador.cs)»: corregida (ya nada pasa por el puente; sus OnPaint son Pinta). Mismas lineas y CRLF.
+
+Lo que queda (no es de este grupo o no se cambia):
+- Codigo/BuscadorPortadasGpu.cs:697 y :827 dicen que «a quien aun pasa un Graphics el puente de este (Plataforma/Puente.buscador.cs) le deja
+  el suavizado»: ese puente ya no existe. El archivo no es de este grupo: lo corrige quien lo toque (o 9b).
+- En la lista nativa el tabulador solo recorre IVista: lo que en XP es un control seleccionable y no es vista (el GpuPanel, que esta en el
+  ciclo de XP: «... ProgressView GpuPanel ...») queda fuera. Con la capa no pasa (el GpuPanel es un control de la capa); cuando el GpuPanel
+  deje de serlo (oleada 8), hay que darle su sitio en el orden del tabulador o el ciclo de la lista nativa no sera el de XP.
+- El TabIndex de la lista nativa es un contador comun por orden de alta; WinForms da el mayor de los hermanos mas uno (Control.
+  ControlCollection.cs:82-95). Da el mismo orden mientras ninguna vista cambie de dueno (la rocola no mueve vistas entre duenos); el
+  diccionario tabIndex no suelta las vistas (la rocola no las tira).
+
+Comprobaciones repetidas por el revisor:
+- `dotnet build -c Release --no-incremental`: 0 errores, 15 avisos (ninguno en archivos de este grupo; los mismos archivos y lineas).
+- diff-xp.py Form1.Buscador.cs -v: 261 quitadas, 258 puestas, 0 sin marca; 1602 lineas y 1541 CRLF, como en d05b06d.
+- Arnes VistasBuscador: IGUALES a la referencia con letras falsas y con DejaVu (4739 lineas, 467 directas, 0 excepciones; 30 «pinta-»).
+- Arnes VistasBuscadorPortadas: IGUALES con las dos letras (3128 lineas, 250 directas, 5 excepciones en los dos lados).
+- PantallaVistas (pruebas_vistas.sh): pasan 117, fallan 0.
+- NativeAOT publish: sale con 0, 0 avisos IL/AOT.
+- No repetidos (lo del codigo de este arreglo es un comentario): recorridos, escenas, pruebas41, hoja y pantalla.

@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de BUSCAR y el buscador de siempre dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo ya traducido de otros archivos se llama directo con el lienzo y su estado (ContornoRedondo y el cielo de Form1.Fondo.cs; el cubo, CtrlTxt, CtrlDot, CtrlPad, CtrlTri, CtrlDirLeft y GlowAround de Form1.Pared.cs), y tambien llaman directo a estas DrawCtrlOverlay, EnsureUiOverlay, EnsureUiPieza (Form1.Video.cs) y el precalentado; las portadas de la cache son SKBitmap y se pintan tal cual; solo lo que aun es de la capa (el Graphics de WinForms de OnPaint) pasa por el puente (Plataforma/Puente.cs y Puente.buscador.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la casilla de BUSCAR y el buscador de siempre dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo ya traducido de otros archivos se llama directo con el lienzo y su estado (ContornoRedondo y el cielo de Form1.Fondo.cs; el cubo, CtrlTxt, CtrlDot, CtrlPad, CtrlTri, CtrlDirLeft y GlowAround de Form1.Pared.cs), y tambien llaman directo a estas DrawCtrlOverlay, EnsureUiOverlay, EnsureUiPieza (Form1.Video.cs) y el precalentado; las portadas de la cache son SKBitmap y se pintan tal cual; ya nada pasa por el puente: sus OnPaint son Pinta (la pantalla les da el lienzo; vistas-buscador, oleada 6c) y Puente.buscador.cs quedo sin codigo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
