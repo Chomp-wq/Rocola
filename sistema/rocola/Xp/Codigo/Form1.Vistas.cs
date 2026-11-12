@@ -1226,7 +1226,7 @@ namespace Rocola
             }
         }
 
-        private partial class PastillaView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (DiscoVivoGpu.cs, SuenaVivoGpu.cs; y Ancho con una FontFamily en Plataforma/Puente.vistas-b.cs, que piden Form1.cs y Form1.Datos.cs)
+        private partial class PastillaView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (DiscoVivoGpu.cs, SuenaVivoGpu.cs; Ancho, que Form1.cs y Form1.Datos.cs llaman con el nombre de la familia de la letra de la ventana: la firma con una FontFamily, Plataforma/Puente.vistas-b.cs, se borro con rotulos-y-letras)
         {
             public string Etiqueta = "", Valor = "";
             public Color Acento = DefaultAccent;
@@ -1313,7 +1313,7 @@ namespace Rocola
             // cancion (derPast, en el acomodo); si dependiera de la cola, el titulo se repartiria de otra
             // manera en dos lineas cada vez que alguien pide algo, y el nombre de la que suena bailaria
             // solo, sin que nadie lo hubiera tocado. Se mide siempre el hueco de las tres, llenas o vacias.
-            public static int Ancho(string etiq, string valor, int alto, string fam, bool conPortadas)   // EN LINUX: FontFamily: la familia por su nombre; quien aun la pasa como FontFamily (Form1.cs, Form1.Datos.cs) llega por el puente (Plataforma/Puente.vistas-b.cs)
+            public static int Ancho(string etiq, string valor, int alto, string fam, bool conPortadas)   // EN LINUX: FontFamily: la familia por su nombre; Form1.cs y Form1.Datos.cs le pasan el de la letra de la ventana (this.Font.FontFamily.Name), directo
             {
                 // Se mide con GDI+, que es con lo que RenderContent la PINTA. Antes se media con TextRenderer,
                 // que es GDI: otro motor, otros anchos. En la pantalla del bar la diferencia eran dos pixeles y

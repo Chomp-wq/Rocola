@@ -257,7 +257,7 @@ namespace Rocola
         }
 
         // EL HUECO DE UNA VISTA QUE YA NO HEREDA DE CONTROL, en la lista de controles de una ventana de la capa (como HuecoDelVideo,
-        // VideoEnVentanas.cs): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
+        // abajo): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
         // hueco se lo pasa a la vista. El fondo lo pinta la vista (su Pinta es OnPaintBackground y OnPaint). El codigo de XP no lo ve.
         // (armado-vistas) Los que escuchan el raton de la vista desde fuera (PantallaRocola.OyeRaton: los eventos MouseDown y MouseClick de XP)
         // van despues de su Raton, donde WinForms lanza el evento (el On* de fabrica). Al desecharse con su ventana (Control.Dispose desecha a
