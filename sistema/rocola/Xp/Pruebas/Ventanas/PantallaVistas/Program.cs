@@ -235,6 +235,23 @@ static class P
             Mira("capa, tabulador con la de la tarjeta, gemelo: " + nombre, Busca(ttGem, nombre), esperadoTT[i], FTT);
             Mira("capa, tabulador con la de la tarjeta en su hueco: " + nombre, Busca(ttFal, nombre), Busca(ttGem, nombre), "lo mismo que el gemelo");
         }
+        // (rotulos-y-letras) EL ROTULO CON FORMA (Control.Region: el aviso sin tarjeta, lblToast) Y EL VIDEO (la capa de textura en una ventana
+        // de la capa): con un Label de la capa (lo que fija WinForms), con el rotulo nativo en su hueco y sin la capa
+        string[] rotGem = EscenaRotulo(0), rotHue = EscenaRotulo(1), rotNat = EscenaRotulo(2);
+        for (int i = 0; i < esperadoR.Length; i++)
+        {
+            string nombre = esperadoR[i].Substring(0, esperadoR[i].IndexOf(' '));
+            Mira("capa, rotulo con forma, Label de la capa: " + nombre, i < rotGem.Length ? rotGem[i] : "(nada)", esperadoR[i], FR);
+            Mira("capa, rotulo con forma, RotuloVista en su hueco: " + nombre, i < rotHue.Length ? rotHue[i] : "(nada)", esperadoR[i], "lo mismo que el Label");
+            Mira("sin la capa, rotulo con forma: " + nombre, i < rotNat.Length ? rotNat[i] : "(nada)", esperadoR[i], "lo mismo que el Label");
+        }
+        string[] vidCapa = EscenaVideo(true), vidNat = EscenaVideo(false);
+        for (int i = 0; i < esperadoV.Length; i++)
+        {
+            string nombre = esperadoV[i].Substring(0, esperadoV[i].IndexOf(' '));
+            Mira("capa, el video (hueco de textura): " + nombre, i < vidCapa.Length ? vidCapa[i] : "(nada)", esperadoV[i], FV);
+            Mira("sin la capa, el video (capa de la lista): " + nombre, i < vidNat.Length ? vidNat[i] : "(nada)", esperadoV[i], FV);
+        }
         SinLaCapa();
     }
     static string Busca(string[] r, string nombre) { foreach (string x in r) if (x == nombre || x.StartsWith(nombre + " ")) return x; return "(nada)"; }
@@ -385,6 +402,112 @@ static class P
         foreach (IVista q in new[] { a, p, x }) { PantallaRocola.QuitaVista(q); if (q is Gemelo) ((Gemelo)q).Dispose(); }
         if (modo == 2) PantallaRocola.FocoDeLaVentana = null;
         Bombea(50); log.Clear();
+        return r.ToArray();
+    }
+
+    // (rotulos-y-letras) A (rojo, 20..119) y encima un rotulo azul en 60..159 con la forma de su mitad izquierda (0..49 de 100): dentro de la
+    // forma se ve el rotulo; fuera, lo de debajo (A, o el fondo verde); el raton fuera de la forma es del de debajo
+    const string FR = "Control.Region (SetWindowRgn): la ventana es solo su forma: se pinta dentro, recorta a las de debajo solo con ella y fuera de ella el raton es del de debajo (Control.cs, Region)";
+    static readonly string[] esperadoR =
+    {
+        "dentro FF0000FF",
+        "fuera-sobre-A FFFF0000",
+        "fuera FF00FF00",
+        "raton A.Entra,A.Mueve(0),A.Sale",
+        "sin-forma FF0000FF FF0000FF",
+        "quitado FFFF0000",
+    };
+    static string[] EscenaRotulo(int modo)
+    {
+        List<string> r = new List<string>();
+        PantallaRocola.ILaCapa capa = PantallaRocola.LaCapa;
+        if (modo == 2) { PantallaRocola.LaCapa = null; PantallaRocola.FondoDeLaVentana = delegate (SKCanvas g) { g.Clear(Verde); }; }
+        try
+        {
+            Func<int, int, string> px = modo == 2 ? (Func<int, int, string>)((x, y) => Pinta(x, y)) : Px;
+            Bombea(150);
+            object a; IVista av = null; Gemelo ag = null;
+            if (modo == 2) { VistaFalsa f = new VistaFalsa("A", Rojo); f.SetBounds(20, 20, 100, 100); PantallaRocola.AgregaVista(null, f); a = f; av = f; }
+            else { ag = new Gemelo("A"); ag.BackColor = Color.FromArgb(255, 0, 0); ag.SetBounds(20, 20, 100, 100); m.Controls.Add(ag); a = ag; }
+            Label l = null; RotuloVista rv = null;
+            if (modo == 0)
+            {
+                l = new Label(); l.BackColor = Color.FromArgb(0, 0, 255); l.SetBounds(60, 60, 100, 100);
+                l.Region = new Rocola.Dibujo2D.Region(new RectangleF(0, 0, 50, 100)); m.Controls.Add(l); l.BringToFront();
+            }
+            else
+            {
+                rv = new RotuloVista(); rv.BackColor = Color.FromArgb(0, 0, 255); rv.SetBounds(60, 60, 100, 100);
+                SKPath f = new SKPath(); f.AddRect(new SKRect(0, 0, 50, 100)); rv.Forma = f;
+                PantallaRocola.AgregaVista(modo == 2 ? null : m, rv); PantallaRocola.VistaAlFrente(rv);
+            }
+            r.Add("dentro " + px(80, 80));
+            r.Add("fuera-sobre-A " + px(115, 80));
+            r.Add("fuera " + px(140, 140));
+            Va(5, 5); log.Clear();
+            Va(115, 80); Va(80, 80); Va(140, 140);
+            r.Add("raton " + Log());
+            if (modo == 0) { l.Region = null; l.Invalidate(); } else rv.Forma = null;   // (la Region de la capa es una propiedad sin mas: no repinta como SetWindowRgn; el rotulo y su hueco si)
+            r.Add("sin-forma " + px(115, 80) + " " + px(140, 140));
+            if (modo == 0) { m.Controls.Remove(l); l.Dispose(); } else { PantallaRocola.QuitaVista(rv); rv.Dispose(); }
+            r.Add("quitado " + px(115, 80));
+            if (modo == 2) PantallaRocola.QuitaVista(av); else { m.Controls.Remove(ag); ag.Dispose(); }
+            Va(5, 5); Bombea(100); log.Clear();
+        }
+        finally { if (modo == 2) { PantallaRocola.LaCapa = capa; PantallaRocola.FondoDeLaVentana = null; } }
+        return r.ToArray();
+    }
+
+    // (rotulos-y-letras) EL VIDEO: el lugar que da la pantalla (VideoEnPantalla.Lugar, Controls.Add del control del WMP en XP) va al fondo del
+    // orden de la ventana; AlFrente lo pone arriba; Pon cambia su sitio y si se ve; Quita lo saca. En una ventana de la capa, un hueco de
+    // textura (HuecoDelVideo, Plataforma/Anfitrion.cs) en la lista de controles; sin la capa, la capa de textura en la lista nativa.
+    const string FV = "el control del WMP de XP: Controls.Add (al final = el fondo), BringToFront (SetChildIndex(this, 0)), SetBounds/Visible y Controls.Remove";
+    static readonly string[] esperadoV =
+    {
+        "agregado fondo 0,0,0x0 visible",
+        "alfrente arriba 10,20,30x40 visible tex=7 50x60",
+        "escondido 10,20,30x40 oculto",
+        "quitado nada",
+    };
+    static string[] EscenaVideo(bool conCapa)
+    {
+        List<string> r = new List<string>();
+        PantallaRocola.ILaCapa capa = PantallaRocola.LaCapa;
+        if (!conCapa) PantallaRocola.LaCapa = null;
+        try
+        {
+            Gemelo g = null; VistaFalsa vf = null;
+            if (conCapa) { g = new Gemelo("B"); g.SetBounds(0, 0, 10, 10); m.Controls.Add(g); }
+            else { vf = new VistaFalsa("B", null); vf.SetBounds(0, 0, 10, 10); PantallaRocola.AgregaVista(null, vf); }
+            ILugarDelVideo lugar = new VideoEnPantalla().Lugar(conCapa ? (object)m : null);
+            // donde esta (el ultimo de la lista = el fondo) y como esta: en la capa, el ultimo control de la ventana; sin ella, la lista nativa
+            Func<string> como = delegate
+            {
+                if (conCapa)
+                {
+                    Control h = null; int idx = -1;
+                    for (int i = 0; i < m.Controls.Count; i++) if (m.Controls[i].GetType().Name == "HuecoDelVideo") { h = m.Controls[i]; idx = i; }
+                    if (h == null) return "nada";
+                    return (idx == m.Controls.Count - 1 ? "fondo" : idx == 0 ? "arriba" : "medio") + " " + h.Left + "," + h.Top + "," + h.Width + "x" + h.Height + " " + (h.VisiblePropio ? "visible" : "oculto")
+                        + (h.TexturaGl != 0 ? " tex=" + h.TexturaGl + " " + h.AnchoGl + "x" + h.AltoGl : "");
+                }
+                object[] l = PantallaRocola.ListaDeLaVentana; CapaDeTextura t = null; int k = -1;
+                for (int i = 0; i < l.Length; i++) if (l[i] is CapaDeTextura) { t = (CapaDeTextura)l[i]; k = i; }
+                if (t == null) return "nada";
+                return (k == l.Length - 1 ? "fondo" : k == 0 ? "arriba" : "medio") + " " + t.Sitio.Left + "," + t.Sitio.Top + "," + t.Sitio.Width + "x" + t.Sitio.Height + " " + (t.Visible ? "visible" : "oculto")
+                    + (t.Textura != 0 ? " tex=" + t.Textura + " " + t.AnchoGl + "x" + t.AltoGl : "");
+            };
+            r.Add("agregado " + como());
+            lugar.Pon(new Rectangle(10, 20, 30, 40), true); lugar.Textura(7, 50, 60); lugar.AlFrente();
+            r.Add("alfrente " + como());
+            lugar.Pon(new Rectangle(10, 20, 30, 40), false);
+            r.Add("escondido " + como().Replace(" tex=7 50x60", "").Replace("arriba ", ""));
+            lugar.Quita();
+            r.Add("quitado " + como());
+            if (conCapa) { m.Controls.Remove(g); g.Dispose(); } else PantallaRocola.QuitaVista(vf);
+            Bombea(50); log.Clear();
+        }
+        finally { PantallaRocola.LaCapa = capa; }
         return r.ToArray();
     }
 

@@ -198,7 +198,8 @@ namespace BancoSuena
             Type pv = typeof(Form1).GetNestedType("PastillaView", BindingFlags.NonPublic);
             object v = Activator.CreateInstance(pv, true);
             pv.GetField("Etiqueta").SetValue(v, et); pv.GetField("Valor").SetValue(v, va); pv.GetField("ConPortadas").SetValue(v, conPortadas);
-            pv.GetProperty("Size").SetValue(v, new Size(w, h));
+            PropertyInfo ps = pv.GetProperty("Size");   // (desde vistas-disco la traduccion no tiene Size: el mismo sitio por Bounds, en 0,0 como el de fabrica)
+            if (ps != null) ps.SetValue(v, new Size(w, h)); else pv.GetProperty("Bounds").SetValue(v, new Rectangle(0, 0, w, h));
             Linea(nombre, R((float)pv.GetMethod("XNumero", Todo).Invoke(v, null)));
         }
 

@@ -23,8 +23,9 @@ CORTA = {"tecla", "keyup", "raton", "tick", "encargo", "encargo-perdido", "estad
 # clase (Nativo/Hoja.cs, Rotulo.cs...) y la referencia con la de WinForms de la capa. Solo donde la traza nombra una pieza: tras «a », tras
 # el suceso (foco, ventana-ve, ventana-esconde, dialogo-fin, shown, closing, closed, raton EVENTO), y en los estados tras «foco=»,
 # «activa=», «hoja » y al principio de cada renglon de pieza.
-EQUIVALENCIAS = {"Hoja": "Form", "Rotulo": "Label", "Grupo": "Panel", "BotonXp": "Button", "ListaXp": "ListBox", "AvisoXp": "CajaAviso"}
-_PIEZA = r"(Hoja|Rotulo|Grupo|BotonXp|ListaXp|AvisoXp)(?=['\s]|$)"
+# (rotulos-y-letras) RotuloVista: el rotulo de la ventana de la rocola (Nativo/RotuloVista.cs), el Label de la capa en la referencia
+EQUIVALENCIAS = {"Hoja": "Form", "Rotulo": "Label", "RotuloVista": "Label", "Grupo": "Panel", "BotonXp": "Button", "ListaXp": "ListBox", "AvisoXp": "CajaAviso"}
+_PIEZA = r"(Hoja|RotuloVista|Rotulo|Grupo|BotonXp|ListaXp|AvisoXp)(?=['\s]|$)"
 _SITIOS = [r"( a )", r"^((?:foco|ventana-ve|ventana-esconde|dialogo-fin|shown|closing|closed) )", r"^(raton \S+ )",
            r"^((?:foco|activa)=)", r"^(hoja )", r"^(\s+)"]
 

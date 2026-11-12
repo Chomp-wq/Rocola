@@ -48,7 +48,8 @@ namespace Rocola
         // (Control.TabIndex: 0 si nunca se puso)
         private static int TabDe(object v) { int t; return v != null && tabIndex.TryGetValue(v, out t) ? t : 0; }
 
-        // las hijas de un contenedor que son vistas (las capas de textura y los rotulos no se eligen ni tienen hijas: saltarlas da lo mismo)
+        // las hijas de un contenedor que son vistas (las capas de textura no se eligen ni tienen hijas: saltarlas da lo mismo; los rotulos -RotuloVista,
+        // rotulos-y-letras- son vistas que no se eligen ni se paran en el tabulador: Seleccionable y ParaElTabulador false, como Label)
         private static List<IVista> HijasTab(object n)
         {
             List<IVista> r = new List<IVista>();

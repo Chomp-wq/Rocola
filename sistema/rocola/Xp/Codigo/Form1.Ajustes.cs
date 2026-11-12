@@ -317,7 +317,7 @@ namespace Rocola
         }
 
         // La misma medida cuando aun no hay un Graphics a mano (acomodo de controles).
-        private static int AnchoTexto(string t, Rocola.Nativo.Letra f)   // EN LINUX: Font -> Letra (Nativo/Letras.cs); la firma de XP, para lo aun no traducido, en Plataforma/Puente.ventanas2.cs
+        private static int AnchoTexto(string t, Rocola.Nativo.Letra f)   // EN LINUX: Font -> Letra (Nativo/Letras.cs); quien la llamaba con la Font de una vista o de un rotulo ya la llama con su Letra (Form1.Vistas.cs, la de GeneroView)
         {
             if (string.IsNullOrEmpty(t) || f == null) return 0;
             // EN LINUX: (XP) using (Bitmap b = new Bitmap(1, 1)) -- el mapa de 1x1 solo servia para tener un Graphics con que medir
@@ -1782,7 +1782,7 @@ namespace Rocola
             configMode = true;
             configStep = 0;
             for (int i = 0; i < configCap.Length; i++) configCap[i] = Tecla.None;   // EN LINUX: Keys -> Tecla, los mismos numeros
-            if (lblConfig != null) { lblConfig.Visible = true; lblConfig.BringToFront(); }
+            if (lblConfig != null) { lblConfig.Visible = true; PantallaRocola.VistaAlFrente(lblConfig); }   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
             UpdateConfigPrompt(null);
         }
 
@@ -1796,7 +1796,7 @@ namespace Rocola
             if (warn != null) t += "\r\n\r\n" + warn;
             t += "\r\n\r\n\r\n(cada boton debe ser distinto)";
             lblConfig.Text = t;
-            lblConfig.BringToFront();
+            PantallaRocola.VistaAlFrente(lblConfig);   // EN LINUX: lblConfig.BringToFront(): por la pantalla (SetChildIndex(this, 0))
         }
 
         // Captura el boton presionado durante la configuracion.
@@ -1831,7 +1831,7 @@ namespace Rocola
         private const int ToastW = 620, ToastH = 48, ToastMinW = 260;
         // Ancho de la pastilla para ESE texto (acotado): lo usan las dos formas de dibujarla, por GPU y por CPU,
         // para que se vea igual en las dos.
-        internal static int AnchoToast(string text, Rocola.Nativo.Letra font)   // EN LINUX: Font -> Letra; la firma de XP, para lo aun no traducido (Form1.cs, el aviso sin tarjeta), en Plataforma/Puente.ventanas2.cs
+        internal static int AnchoToast(string text, Rocola.Nativo.Letra font)   // EN LINUX: Font -> Letra; el aviso sin tarjeta de Form1.cs la llama con la Letra del rotulo (Nativo/RotuloVista.cs), directo
         {
             int w = TextoGdi.Mide(text, font).Width + 44;   // EN LINUX: TextRenderer.MeasureText(text, font): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms)
             return w < ToastMinW ? ToastMinW : (w > ToastW ? ToastW : w);
@@ -1860,7 +1860,7 @@ namespace Rocola
             if (AvisoClaro()) { HorneaAviso(text, back); return; }   // el aviso que se entiende (SuenaVivoGpu.cs)
             if (toastBmp == null) toastBmp = Mapas.Nuevo(ToastW, ToastH);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             toastBorde = BordeLibreAvisos();   // con video, el aviso se centra en lo que se ve y no pasa de ahi
-            PintaToastHasta(toastBmp, text, back, PuenteDibujo.Letra(lblToast.Font), toastBorde - 24);   // EN LINUX: la letra de lblToast (un letrero de la pantalla, aun de la capa: va con las vistas), por el puente: la misma
+            PintaToastHasta(toastBmp, text, back, lblToast.Font, toastBorde - 24);   // EN LINUX: la Letra de lblToast (el rotulo de la pantalla: Nativo/RotuloVista.cs), directo: la misma
             toastVer++; toastTick = TickVivo();
         }
 

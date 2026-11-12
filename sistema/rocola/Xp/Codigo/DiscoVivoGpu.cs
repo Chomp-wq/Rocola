@@ -14,7 +14,7 @@
 //    sube rodando.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el boleto, la pastilla de SONANDO con el ecualizador y las medidas de la lista dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun llega de la capa (la Font del control de la lista, la Image del cubo) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el boleto, la pastilla de SONANDO con el ecualizador y las medidas de la lista dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; la letra de la lista (SongListView.Font) es una Letra (Nativo/Letras.cs) y llega directo; lo que aun llega de la capa (la Image del cubo) pasa por el puente (Plataforma/Puente.cs)
 
 namespace Rocola
 {
@@ -39,7 +39,7 @@ namespace Rocola
         // cada sincronizacion del panel (SyncGpuFullScreen), y se deshace en cuanto el disco lo vuelve a pintar el
         // procesador. Por eso el dibujo por procesador sale siempre el de siempre (lo comprueba pruebas/discovivo.cs).
         internal const int FilaNormal = 30;
-        private Rocola.Dibujo2D.Font fuenteListaNormal, fuenteListaGrande;   // EN LINUX: la letra de la lista es la de un control de WinForms (SongListView.Font, aun sin traducir): sigue siendo la Font de la capa, escrita entera
+        private Rocola.Nativo.Letra fuenteListaNormal, fuenteListaGrande;   // EN LINUX: Font -> Letra (Nativo/Letras.cs): la letra de la lista (SongListView.Font, Form1.Vistas.cs) ya es la nativa; las mismas, comparadas por identidad como XP
         // Si el disco, abierto, lo compondria ahora la tarjeta: la misma cuenta que hace SyncGpuFullScreen para el
         // modo disco, sin mirar el buscador (con el buscador encima la lista no se ve, y asi no cambia de ida y vuelta).
         private bool ListaPorGpu()
@@ -61,15 +61,15 @@ namespace Rocola
                 if (colaMinutos) vivo |= SongListView.VivoMinutos;
             }
             int fila = FilaNormal;
-            Rocola.Dibujo2D.Font f = fuenteListaNormal, vieja = null;   // EN LINUX: la Font del control (WinForms), escrita entera
+            Rocola.Nativo.Letra f = fuenteListaNormal, vieja = null;   // EN LINUX: Font -> Letra (Nativo/Letras.cs), la de la vista
             if ((vivo & SongListView.VivoGrande) != 0)
             {
                 fila = FilaGrande(songList.Height);
                 float cuerpo = CuerpoGrande(fila);
-                if (fuenteListaGrande == null || Math.Abs(fuenteListaGrande.SizeInPoints - cuerpo) > 0.01f)
+                if (fuenteListaGrande == null || Math.Abs(fuenteListaGrande.Puntos - cuerpo) > 0.01f)   // EN LINUX: Font.SizeInPoints -> Letra.Puntos (Nativo/Letras.cs)
                 {
                     vieja = fuenteListaGrande;
-                    fuenteListaGrande = new Rocola.Dibujo2D.Font(fuenteListaNormal.FontFamily, cuerpo, Rocola.Dibujo2D.FontStyle.Bold);   // EN LINUX: la letra grande del control (WinForms): la Font de la capa, escrita entera
+                    fuenteListaGrande = Rocola.Nativo.Letra.EnPuntos(fuenteListaNormal.Familia, cuerpo, true);   // EN LINUX: new Font(fuenteListaNormal.FontFamily, cuerpo, FontStyle.Bold): la letra nativa de la misma familia, en puntos y negrita (Nativo/Letras.cs)
                 }
                 f = fuenteListaGrande;
             }
@@ -203,14 +203,14 @@ namespace Rocola
             }
             int x0 = panelSongs.Left + songList.Left, y0 = panelSongs.Top + songList.Top + fila * songList.RowH;
             string titulo = TituloSinPista(songItems[songSel].ToString());
-            Size tam = TamanoBoleto(songList.RowH, titulo, PuenteDibujo.Letra(songList.Font), songList.Width);   // EN LINUX: la letra de la lista (la Font de un control de WinForms, aun sin traducir): su Letra, la misma, por el puente
+            Size tam = TamanoBoleto(songList.RowH, titulo, songList.Font, songList.Width);   // EN LINUX: la letra de la lista: su Letra (la de la vista, Form1.Vistas.cs), la misma, directo
             if (boletoBmp == null || boletoBmp.Width != tam.Width || boletoBmp.Height != tam.Height)
             {
                 if (boletoBmp != null) boletoBmp.Dispose();
                 boletoBmp = Mapas.Nuevo(tam.Width, tam.Height);   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             }
             SKBitmap tapa = (cubeBox != null) ? cubeBox.Cover : null;   // la del disco abierto, ya en memoria (EN LINUX: la Image del cubo (CubeBox.Cover, Form1.Pared.cs): el SKBitmap mismo de la cache)
-            PintaBoleto(boletoBmp, tapa, titulo, PuenteDibujo.Letra(songList.Font));   // EN LINUX: la letra de la lista: su Letra, la misma, por el puente
+            PintaBoleto(boletoBmp, tapa, titulo, songList.Font);   // EN LINUX: la letra de la lista: su Letra, la misma, directo
             boleto.Has = true; boleto.Bmp = boletoBmp; boleto.Ver = ++boletoVer;
             // Sale CALCADO encima de su fila: su titulo, con la misma letra, justo encima del de la fila. Asi parece
             // que la fila se despega y se va volando.
@@ -309,8 +309,8 @@ namespace Rocola
             // El hueco de la duracion con la letra grande: lo que mide "00:00" (con la de siempre bastan 58 px).
             private int AnchoDuracion(SKCanvas g, AjusteLetra ajuste)   // EN LINUX: el lienzo y su modo de letra (con el que mide AnchoTexto); PintaPagina (Form1.Vistas.cs, ya traducido) lo llama directo con su lienzo
             {
-                float c = Font.SizeInPoints;
-                if (Math.Abs(c - durCuerpo) > 0.01f) { durAncho = Math.Max(58, AnchoTexto(ajuste, "00:00", PuenteDibujo.Letra(Font)) + 4); durCuerpo = c; }   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del lienzo; la letra es la del control (WinForms): la misma Letra, por el puente
+                float c = Font.Puntos;   // EN LINUX: Font.SizeInPoints -> Letra.Puntos (Nativo/Letras.cs): la letra de la vista ya es la nativa
+                if (Math.Abs(c - durCuerpo) > 0.01f) { durAncho = Math.Max(58, AnchoTexto(ajuste, "00:00", Font) + 4); durCuerpo = c; }   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del lienzo; la letra es la de la vista: su Letra, directo
                 return durAncho;
             }
             // EL REPARTO DE UNA FILA, cuando la dibuja la tarjeta. Manda el TITULO: es lo que se lee de lejos.
@@ -334,7 +334,7 @@ namespace Rocola
                 float quitaSon = suena ? AnchoSonando(g, ajuste, hCola) + 8f : 0f;   // EN LINUX: el lienzo y su modo de letra
                 int quitaGen = AnchoGenero(gen, r.Width, xTexto);
                 float queda = TituloCabe(r, durW, xTexto, AnchoTexto(ajuste, largo, fCola) + hCola + 8f + quitaSon);   // EN LINUX: AnchoTexto, directo, con el modo de letra del lienzo
-                float titulo = AnchoTexto(ajuste, (GetText != null) ? GetText(idx) : "", PuenteDibujo.Letra(Font));   // EN LINUX: AnchoTexto, directo, con el modo de letra del lienzo; la letra del control (WinForms): la misma Letra, por el puente
+                float titulo = AnchoTexto(ajuste, (GetText != null) ? GetText(idx) : "", Font);   // EN LINUX: AnchoTexto, directo, con el modo de letra del lienzo; la Letra de la vista, directo
                 if (titulo <= queda - quitaGen || queda - quitaGen >= sitio * TituloMinimo) return largo;
                 if (!grande && quitaGen > 0 && (titulo <= queda || queda >= sitio * TituloMinimo)) { gen = null; return largo; }
                 return t;
@@ -360,7 +360,7 @@ namespace Rocola
                     Rectangle r = new Rectangle(0, row * RowH, w, RowH);
                     string t = PlanFilaGpu(g, ajuste, idx, pos, pos > 0, suena, r, durW, xTexto, hCola, ref gen);   // EN LINUX: el lienzo y su modo de letra
                     float marcas = (suena ? AnchoSonando(g, ajuste, hCola) + 8f : 0f) + ((t != null) ? AnchoTexto(ajuste, t, fCola) + hCola + 8f : 0f);   // EN LINUX: el lienzo y su modo de letra; AnchoTexto, directo
-                    float titulo = AnchoTexto(ajuste, (GetText != null) ? GetText(idx) : "", PuenteDibujo.Letra(Font));   // EN LINUX: AnchoTexto, directo, con el modo de letra del lienzo; la letra del control (WinForms): la misma Letra, por el puente
+                    float titulo = AnchoTexto(ajuste, (GetText != null) ? GetText(idx) : "", Font);   // EN LINUX: AnchoTexto, directo, con el modo de letra del lienzo; la Letra de la vista, directo
                     if (titulo > TituloCabe(r, durW, xTexto, marcas) - quitaGen) { generosFuera = true; return; }
                 }
             }

@@ -14,7 +14,7 @@
 //    cuidado, error, novedad), en dos renglones, y con una linea que va enseñando cuanto les queda.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: lo que suena en grande, la moneda, la invitacion y los avisos dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido (la letra de la etiqueta de los avisos, de WinForms) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: lo que suena en grande, la moneda, la invitacion y los avisos dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; la letra del rotulo de los avisos (lblToast: Nativo/RotuloVista.cs) es Letra y llega directo
 
 namespace Rocola
 {
@@ -179,8 +179,8 @@ namespace Rocola
             TipoAviso tipo; string tit, det;
             if (avisoPropio) { tipo = avisoPropioTipo; tit = avisoTitulo; det = avisoDetalle; avisoPropio = false; }
             else { tipo = TipoDeColor(fondo, texto); PartirAviso(texto, out tit, out det); }
-            if (fAvisoTit == null) fAvisoTit = Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(lblToast.Font).Familia, 14f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 14f, FontStyle.Bold): la familia de la etiqueta (aun sin traducir) por el puente; en puntos y negrita
-            if (fAvisoDet == null) fAvisoDet = Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(lblToast.Font).Familia, 11f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 11f, FontStyle.Bold)
+            if (fAvisoTit == null) fAvisoTit = Rocola.Nativo.Letra.EnPuntos(lblToast.Font.Familia, 14f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 14f, FontStyle.Bold): la familia de la Letra del rotulo (Nativo/RotuloVista.cs), directo; en puntos y negrita
+            if (fAvisoDet == null) fAvisoDet = Rocola.Nativo.Letra.EnPuntos(lblToast.Font.Familia, 11f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 11f, FontStyle.Bold): la familia de la Letra del rotulo, directo
             int borde = BordeLibreAvisos();   // con video en ventana, a la izquierda de el (si no, quedaba detras)
             Size tam = TamanoAviso(Math.Min(ClientSize.Width, borde), tit, det, fAvisoTit, fAvisoDet);
             if (avisoBmp == null || avisoBmp.Width != tam.Width || avisoBmp.Height != tam.Height)
@@ -297,9 +297,9 @@ namespace Rocola
             if (w < 400 || h < 300) return false;
             string que = "";
             if (it != null) { string tit, art; it.TituloArtista(out tit, out art); que = TituloSinPista(tit) ?? ""; }
-            if (fInvTit == null) fInvTit = Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(lblToast.Font).Familia, 17f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 17f, FontStyle.Bold): la familia de la etiqueta (aun sin traducir) por el puente
-            if (fInvTxt == null) fInvTxt = Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(lblToast.Font).Familia, 12.5f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 12.5f, FontStyle.Bold)
-            if (fInvPie == null) fInvPie = Rocola.Nativo.Letra.EnPuntos(PuenteDibujo.Letra(lblToast.Font).Familia, 10.5f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 10.5f, FontStyle.Bold)
+            if (fInvTit == null) fInvTit = Rocola.Nativo.Letra.EnPuntos(lblToast.Font.Familia, 17f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 17f, FontStyle.Bold): la familia de la Letra del rotulo (Nativo/RotuloVista.cs), directo
+            if (fInvTxt == null) fInvTxt = Rocola.Nativo.Letra.EnPuntos(lblToast.Font.Familia, 12.5f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 12.5f, FontStyle.Bold): la familia de la Letra del rotulo, directo
+            if (fInvPie == null) fInvPie = Rocola.Nativo.Letra.EnPuntos(lblToast.Font.Familia, 10.5f, true);   // EN LINUX: new Font(lblToast.Font.FontFamily, 10.5f, FontStyle.Bold): la familia de la Letra del rotulo, directo
             int libre = BordeLibreAvisos();   // con video en ventana, centrada en lo que se ve (si no, la tapaba a medias)
             Size tam = TamanoInvita(libre);
             if (invitaBmp == null || invitaBmp.Width != tam.Width || invitaBmp.Height != tam.Height)
@@ -432,7 +432,7 @@ namespace Rocola
             int.TryParse(pastCred.ValorAntes ?? "", out de);
             int.TryParse(pastCred.Valor ?? "", out a);
             int mas = a - de; if (mas <= 0) mas = CreditsPerCoin;
-            if (fMonedaMas == null) fMonedaMas = Rocola.Nativo.Letra.EnPixeles(PuenteDibujo.Letra(lblToast.Font).Familia, Math.Max(11f, h * .40f), true);   // EN LINUX: new Font(lblToast.Font.FontFamily, px, FontStyle.Bold, GraphicsUnit.Pixel): la familia de la etiqueta (aun sin traducir) por el puente; en pixeles y negrita
+            if (fMonedaMas == null) fMonedaMas = Rocola.Nativo.Letra.EnPixeles(lblToast.Font.Familia, Math.Max(11f, h * .40f), true);   // EN LINUX: new Font(lblToast.Font.FontFamily, px, FontStyle.Bold, GraphicsUnit.Pixel): la familia de la Letra del rotulo (Nativo/RotuloVista.cs), directo; en pixeles y negrita
             string txt = "+" + mas + (mas == 1 ? " crédito" : " créditos");
             Size tm = TamanoMas(txt, fMonedaMas);
             if (monedaMas == null || monedaMas.Width != tm.Width || monedaMas.Height != tm.Height)

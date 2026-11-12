@@ -164,15 +164,15 @@ namespace Rocola
             FormatoTexto sf = new FormatoTexto();   // EN LINUX: using (StringFormat sf = new StringFormat()): un FormatoTexto, que no se suelta (lo de abajo queda como bloque)
             {
                 sf.Banderas = BanderasTexto.SinPartir;   // EN LINUX: FormatFlags = NoWrap
-                ContentAlignment align = lblNow.TextAlign;
-                sf.Vertical = (align & (ContentAlignment.MiddleLeft | ContentAlignment.MiddleCenter | ContentAlignment.MiddleRight)) != 0   // EN LINUX: sf.LineAlignment
-                    ? Alinea.Centro : (align & (ContentAlignment.BottomLeft | ContentAlignment.BottomCenter | ContentAlignment.BottomRight)) != 0   // EN LINUX: StringAlignment.Center
+                AlineaTexto align = lblNow.TextAlign;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
+                sf.Vertical = (align & (AlineaTexto.MiddleLeft | AlineaTexto.MiddleCenter | AlineaTexto.MiddleRight)) != 0   // EN LINUX: sf.LineAlignment; ContentAlignment -> AlineaTexto
+                    ? Alinea.Centro : (align & (AlineaTexto.BottomLeft | AlineaTexto.BottomCenter | AlineaTexto.BottomRight)) != 0   // EN LINUX: StringAlignment.Center; ContentAlignment -> AlineaTexto
                     ? Alinea.Lejos : Alinea.Cerca;   // EN LINUX: StringAlignment.Far y Near
-                if (TextoConCinta(g, ajuste, lblNow.Text, PuenteDibujo.Letra(lblNow.Font), lblNow.ForeColor, r, sf)) return;   // EN LINUX: con el modo de letra del lienzo; la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente
+                if (TextoConCinta(g, ajuste, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, sf)) return;   // EN LINUX: con el modo de letra del lienzo; la Letra del rotulo (Nativo/RotuloVista.cs), directo
                 // Si no cabe, con sus puntos suspensivos donde se acaba SU sitio (r), como el titulo. Antes se recortaba la
                 // etiqueta entera con un SetClip y la ultima palabra quedaba partida a la mitad (barrido del 12-10-2026).
-                if (TextoGdiPlus.Mide(lblNow.Text, PuenteDibujo.Letra(lblNow.Font), ajuste, SizeF.Empty, null).Width > r.Width)   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs)
-                    PintaRenglonLejos(g, true, ajuste, copia, medio, lblNow.Text, PuenteDibujo.Letra(lblNow.Font), lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, ya traducido), directo, con el lienzo y su estado (el suavizado no lo usa: va el de quien llama en XP, AntiAlias); la letra de la etiqueta (WinForms, aun sin traducir), su Letra por el puente (la misma); Near es Alinea.Cerca
+                if (TextoGdiPlus.Mide(lblNow.Text, lblNow.Font, ajuste, SizeF.Empty, null).Width > r.Width)   // EN LINUX: g.MeasureString sin caja ni formato (Nativo/TextoGdiPlus.cs); la Letra del rotulo, directo
+                    PintaRenglonLejos(g, true, ajuste, copia, medio, lblNow.Text, lblNow.Font, lblNow.ForeColor, r, Alinea.Cerca);   // EN LINUX: PintaRenglonLejos (EstiloGpu.cs, ya traducido), directo, con el lienzo y su estado (el suavizado no lo usa: va el de quien llama en XP, AntiAlias); la Letra del rotulo, directo (la misma); Near es Alinea.Cerca
                 else DrawLabelOverlay(g, ajuste, copia, medio, lblNow, lblNow.ForeColor, r);   // EN LINUX: DrawLabelOverlay (Form1.Video.cs, ya traducida) con el lienzo y lo que pesa del estado en el texto
             }
         }

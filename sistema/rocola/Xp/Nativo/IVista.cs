@@ -18,6 +18,9 @@
 //   (gpupanel-sin-control) Una vista puede ser DE LA TARJETA (el GpuPanel de XP: Direct3D 9 presentaba en su ventana): su dispositivo
 //                presenta en la superficie de la vista (PantallaRocola.SuperficieDe: el identificador que en XP era el Handle) y la pantalla
 //                compone esa textura en su sitio (IVista.DeLaTarjeta).
+//   (rotulos-y-letras) Una vista puede tener FORMA (Control.Region de XP, solo en el aviso sin tarjeta: lblToast): la pantalla la pinta,
+//                recorta a las de debajo y reparte el raton solo dentro de ella (IVista.Forma). Los rotulos de la ventana (los Label de XP) son
+//                vistas (Nativo/RotuloVista.cs), no seleccionables ni en el tabulador, con su TabIndex en la coleccion como cualquier control.
 //   CajaVista    lo comun de una vista que ya no hereda (no es una clase base: cada vista tiene la suya, como CajaPieza en las hojas): su
 //                sitio y si se ve; avisa a la pantalla de cada cambio (PantallaRocola.VistaCambio).
 //
@@ -69,6 +72,10 @@ namespace Rocola
         // orden, la textura que la tarjeta presenta en su superficie (PantallaRocola.SuperficieDe y PresentaTarjeta); su WM_PAINT (Pinta) se
         // lo da la pantalla cuando hay que pintarla (Invalidate, o al ensenarse), como el de cualquier ventana. De fabrica, no.
         bool DeLaTarjeta { get { return false; } }
+        // SU FORMA (Control.Region: la ventana es solo esa forma -SetWindowRgn-), en sus coordenadas; null, el rectangulo entero (de fabrica).
+        // XP solo se la pone al aviso sin tarjeta (lblToast: Nativo/RotuloVista.cs). La pantalla la usa al pintar, al recortar a las de debajo
+        // y con el raton (PantallaRocola.Vistas.cs); el hueco de la capa la pasa a su Region (Plataforma/Anfitrion.cs).
+        SKPath Forma { get { return null; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que
