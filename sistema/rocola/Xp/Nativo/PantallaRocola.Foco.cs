@@ -7,7 +7,12 @@
 //
 // Las reglas, de la fuente de WinForms (dotnet/winforms release/3.0, portada de .NET Framework 4.8; /tmp/claude-0/agente-winforms/ref):
 //   - TabIndex: Control.ControlCollection.Add le pone al que no lo tiene el mayor de sus hermanos mas uno (Control.ControlCollection.cs:
-//     82-95); no cambia al traerlo al frente ni al quitarlo y volverlo a poner. El orden entre hermanos es el del alta: aqui un contador.
+//     82-95: «if (value._tabIndex == -1) { int nextTabIndex = 0; for (int c = 0; c < (Count - 1); c++) { int t = this[c].TabIndex; if
+//     (nextTabIndex <= t) nextTabIndex = t + 1; } value._tabIndex = nextTabIndex; }», con TabIndex = 0 en el que no lo tiene: Control.cs:3614-3616); no cambia al
+//     traerlo al frente, al quitarlo y volverlo a poner ni al pasarlo a otro dueno. (gpupanel-sin-control) Antes era un contador comun: da
+//     el mismo orden entre las hermanas de una misma coleccion mientras nadie cambie de dueno, pero no el de WinForms cuando una que ya
+//     tenia TabIndex entra en otra coleccion (en WinForms empata con las de alli y decide su lugar en la lista); ahora es por coleccion,
+//     contando tambien lo que no se elige (capas de textura y rotulos: en XP, controles con su TabIndex).
 //   - Control.Focus (CanFocus: visible y habilitada; no mira Selectable ni TabStop): PantallaRocola.EnfocaVista (PantallaRocola.Vistas.cs).
 //   - CanSelect (Control.CanSelectCore: ControlStyles.Selectable, y habilitada y visible ella y sus duenos): Seleccionable y Visible (una
 //     vista no tiene Enabled: siempre lo esta). TabStop: ParaElTabulador.
@@ -30,11 +35,18 @@ namespace Rocola
     {
         // la ventana como contenedor del tabulador (las vistas de la lista nativa son sus hijas)
         private static readonly object LaVentana = new object();
-        private static readonly Dictionary<IVista, int> tabIndex = new Dictionary<IVista, int>();
-        private static int ultimoTab = -1;
-        // Controls.Add: si aun no tiene TabIndex, el siguiente (el de sus hermanos crece con el alta; uno comun da el mismo orden)
-        internal static void AnotaTab(IVista v) { if (v != null && !tabIndex.ContainsKey(v)) tabIndex[v] = ++ultimoTab; }
-        private static int TabDe(object v) { IVista iv = v as IVista; int t; return iv != null && tabIndex.TryGetValue(iv, out t) ? t : 0; }
+        private static readonly Dictionary<object, int> tabIndex = new Dictionary<object, int>();
+        // Controls.Add en 'coleccion' (la lista de la ventana o las hijas de una vista, ya con 'v' dentro): si aun no tiene TabIndex, el mayor
+        // de los demas de la coleccion mas uno (Control.ControlCollection.Add, arriba)
+        internal static void AnotaTab(object v, List<object> coleccion)
+        {
+            if (v == null || tabIndex.ContainsKey(v)) return;
+            int siguiente = 0;
+            foreach (object o in coleccion) { if (o == v) continue; int t = TabDe(o); if (siguiente <= t) siguiente = t + 1; }
+            tabIndex[v] = siguiente;
+        }
+        // (Control.TabIndex: 0 si nunca se puso)
+        private static int TabDe(object v) { int t; return v != null && tabIndex.TryGetValue(v, out t) ? t : 0; }
 
         // las hijas de un contenedor que son vistas (las capas de textura y los rotulos no se eligen ni tienen hijas: saltarlas da lo mismo)
         private static List<IVista> HijasTab(object n)

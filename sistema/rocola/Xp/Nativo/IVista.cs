@@ -15,6 +15,9 @@
 //                XP hacia con Panel.Controls.Add es PantallaRocola.AgregaVista(panel, hija), con las reglas de un Panel de WinForms: la hija
 //                esta en las coordenadas de su dueno, se recorta a el, se pinta despues de el y las hijas entre si de abajo arriba
 //                (la primera que se agrega, la de mas arriba del orden z), y el raton va a la hija de mas arriba bajo la flecha.
+//   (gpupanel-sin-control) Una vista puede ser DE LA TARJETA (el GpuPanel de XP: Direct3D 9 presentaba en su ventana): su dispositivo
+//                presenta en la superficie de la vista (PantallaRocola.SuperficieDe: el identificador que en XP era el Handle) y la pantalla
+//                compone esa textura en su sitio (IVista.DeLaTarjeta).
 //   CajaVista    lo comun de una vista que ya no hereda (no es una clase base: cada vista tiene la suya, como CajaPieza en las hojas): su
 //                sitio y si se ve; avisa a la pantalla de cada cambio (PantallaRocola.VistaCambio).
 //
@@ -61,6 +64,11 @@ namespace Rocola
         // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
         // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; y, en la lista nativa, la pantalla (PantallaRocola.Foco.cs).
         bool ParaElTabulador { get { return true; } }
+        // (gpupanel-sin-control) SI LA PINTA LA TARJETA: en XP, un control con un dispositivo de Direct3D 9 que presenta en su ventana (el
+        // GpuPanel: CreateDevice con su Handle, Present en el). La pantalla no la pinta por procesador: compone, en su sitio y en su lugar del
+        // orden, la textura que la tarjeta presenta en su superficie (PantallaRocola.SuperficieDe y PresentaTarjeta); su WM_PAINT (Pinta) se
+        // lo da la pantalla cuando hay que pintarla (Invalidate, o al ensenarse), como el de cualquier ventana. De fabrica, no.
+        bool DeLaTarjeta { get { return false; } }
     }
 
     // LO COMUN DE UNA VISTA QUE YA NO HEREDA DE CONTROL: su sitio, si se ve y si hay que pintarla. Cada cambio avisa a la pantalla, que

@@ -1,9 +1,10 @@
 // LO QUE LA TARJETA LE PIDE A LA PANTALLA (port nativo de XP): la unica costura entre el dispositivo de la tarjeta y la pantalla. Desde la
 // tanda 4 (grupo pantalla-nativa, W2) no conoce las ventanas de la capa: se lo pide todo a la pantalla nativa (PantallaRocola.Vistas.cs),
-// que mientras dure la transicion se lo pasa a la capa (el panel de la tarjeta aun es un control de la capa).
+// que mientras dure la transicion le pasa a la capa lo que esta en ella. (gpupanel-sin-control, W4) El panel de la tarjeta ya no es un
+// control: la «ventana» del dispositivo es la superficie de su vista (PantallaRocola.SuperficieDe; en XP, el Handle del GpuPanel).
 //   - Presenta: lo que en XP hacia Present (Direct3D 9 ponia el fondo en la ventana): el fondo del dispositivo (su textura) se le da a la
-//     capa de la tarjeta de esa ventana y la pantalla compone con el y la pone (KMS: el cambio de pagina). Sin ventana (las pruebas),
-//     glFlush.
+//     superficie de esa vista (o a la hoja de la ventana de prueba F12) y la pantalla compone con el y la pone (KMS: el cambio de pagina).
+//     Sin ventana (las pruebas), glFlush.
 //   - Generacion y Tocada: OpenGL es uno para todos (el compositor, el video de libmpv, la flecha, cada dispositivo); quien lo toca sube
 //     la generacion y el dispositivo, al empezar su cuadro, vuelve a poner su estado si cambio (InitStates).
 //   - RefrescoHz: las veces por segundo que refresca la pantalla (lo que XP preguntaba con GetDeviceCaps(VREFRESH)): el del modo de KMS

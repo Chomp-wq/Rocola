@@ -222,11 +222,16 @@ namespace Banco
             tp.GetField("topeMs", Todo).SetValue(panel, 15);
             tp.GetField("fpsShown", Todo).SetValue(panel, int.MinValue); tp.GetField("fpsFluidezMostrada", Todo).SetValue(panel, -1);
             FieldInfo bounds = null;
+            object duenoBounds = panel;
+            // (gpupanel-sin-control) en la traduccion el GpuPanel ya no hereda de Control: su sitio esta en su CajaVista (el campo «caja», que
+            // un objeto sin construir no tiene: se le pone una nueva); en la referencia, el campo «bounds» de Control
+            FieldInfo caja = tp.GetField("caja", Todo);
+            if (caja != null) { duenoBounds = Activator.CreateInstance(caja.FieldType, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] { panel }, null); caja.SetValue(panel, duenoBounds); bounds = caja.FieldType.GetField("bounds", Todo); }
             for (Type t = tp; t != null && bounds == null; t = t.BaseType) bounds = t.GetField("bounds", Todo | BindingFlags.DeclaredOnly);
             MethodInfo fps = tp.GetMethod("EnsureFpsTex", Todo);
             foreach (object[] caso in new[] { new object[] { 0, 57 }, new object[] { 0, 60 }, new object[] { 1024, 1 }, new object[] { 1024, 1234 }, new object[] { 300, 0 } })
             {
-                bounds.SetValue(panel, new Rectangle(0, 0, (int)caso[0], 768));
+                bounds.SetValue(duenoBounds, new Rectangle(0, 0, (int)caso[0], 768));
                 tp.GetField("Fps", Todo).SetValue(panel, (int)caso[1]);
                 fps.Invoke(panel, null);
                 // (sin nombre: al rehacerla, Direct3D da otro puntero y OpenGL vuelve a dar el mismo numero; lo subido lo dice el volcado)
