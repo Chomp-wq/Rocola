@@ -2742,17 +2742,17 @@ namespace Rocola
                 Rocola.Nativo.Letra f = hbFont;   // EN LINUX: la letra nativa
                 float x = 2;
                 StoreGlow(FMover, x, cy, d + 4);
-                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)   // EN LINUX: GlowAround, CtrlPad, CtrlTxt y CtrlDot (Form1.Pared.cs, aun sin traducir) pintan con un Graphics: por el puente, con el lienzo y su estado (Plataforma/Puente.video-form1.cs)
-                x = CtrlPadVideoForm1(g, suave, ajuste, copia, medio, x, cy, d + 4);   // EN LINUX: CtrlPad por el puente
-                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Mover", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt por el puente (con la Font de la Letra)
+                if (!forGpu) GlowAround(g, suave, ajuste, copia, medio, x, cy, d + 4, flash.Level(FMover), flash.Col(FMover));        // MOVER = cruceta (color segun direccion)   // EN LINUX: GlowAround (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlPad(g, suave, ajuste, copia, medio, x, cy, d + 4);   // EN LINUX: CtrlPad (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlTxt(g, suave, ajuste, copia, medio, f, "Mover", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel) y la Letra (la misma); no le cambia nada al estado, como en XP
                 StoreGlow(FEntrar, x, cy, d);
-                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FEntrar), flash.Col(FEntrar));           // ENTRAR/PONER = punto verde   // EN LINUX: GlowAround por el puente
-                x = CtrlDotVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, GreenC);   // EN LINUX: CtrlDot por el puente
-                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Entrar / Poner", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt por el puente
+                if (!forGpu) GlowAround(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FEntrar), flash.Col(FEntrar));           // ENTRAR/PONER = punto verde   // EN LINUX: GlowAround (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, d, GreenC);   // EN LINUX: CtrlDot (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlTxt(g, suave, ajuste, copia, medio, f, "Entrar / Poner", x + gap, cy, txt) + grp;   // EN LINUX: CtrlTxt (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel) y la Letra (la misma); no le cambia nada al estado, como en XP
                 StoreGlow(FVolver, x, cy, d);
-                if (!forGpu) GlowAroundVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FVolver), flash.Col(FVolver));           // VOLVER = punto rojo   // EN LINUX: GlowAround por el puente
-                x = CtrlDotVideoForm1(g, suave, ajuste, copia, medio, x, cy, d, RedC);   // EN LINUX: CtrlDot por el puente
-                x = CtrlTxtVideoForm1(g, suave, ajuste, copia, medio, f, "Volver", x + gap, cy, txt);   // EN LINUX: CtrlTxt por el puente
+                if (!forGpu) GlowAround(g, suave, ajuste, copia, medio, x, cy, d, flash.Level(FVolver), flash.Col(FVolver));           // VOLVER = punto rojo   // EN LINUX: GlowAround (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlDot(g, suave, ajuste, copia, medio, x, cy, d, RedC);   // EN LINUX: CtrlDot (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel); no le cambia nada al estado, como en XP
+                x = CtrlTxt(g, suave, ajuste, copia, medio, f, "Volver", x + gap, cy, txt);   // EN LINUX: CtrlTxt (Form1.Pared.cs): la traducida, directo, con el lienzo y el estado del que llama (suavizado, modo de letra, copia y medio pixel) y la Letra (la misma); no le cambia nada al estado, como en XP
             }
         }
     }
