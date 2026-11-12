@@ -180,7 +180,11 @@ namespace BancoVideoForm1
                 default: c = Activator.CreateInstance(Anidado("PastillaView"), true); Pon(c, "Etiqueta", "CRÉDITOS"); Pon(c, "Valor", "12"); break;
             }
             Control cc = c as Control;
+            // (arreglo-junta14, 12-11-2026) desde vistas-disco las siete vistas del disco tampoco heredan de Control en la traduccion: la letra se le
+            // pone por reflexion a la que tiene la suya (LetterBar, PastillaView, GeneroView: en la referencia, todas son Control y la reciben).
+            // Sin esto GeneroView se media y pintaba con la ambiental (Control.DefaultFont) y no con esta: las 24 lineas vista-*-4-* distintas
             if (cc != null) cc.Font = new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold);
+            else { PropertyInfo pf = c.GetType().GetProperty("Font", BindingFlags.Public | BindingFlags.Instance); if (pf != null && pf.CanWrite) pf.SetValue(c, new Font(FontFamily.GenericSansSerif, 10f, FontStyle.Bold)); }
             Pon(c, "Bounds", new Rectangle(7 + cual, 3 + cual % 3, w, h));
             return c;
         }

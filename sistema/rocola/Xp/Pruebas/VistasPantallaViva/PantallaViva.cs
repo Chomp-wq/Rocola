@@ -403,6 +403,7 @@ namespace BancoPantallaViva
             for (Type t = o.GetType(); t != null; t = t.BaseType) { FieldInfo fi = t.GetField(campo, T | BindingFlags.DeclaredOnly); if (fi != null) { fi.SetValue(o, v); return; } }
             throw new MissingFieldException(o.GetType().Name, campo);
         }
+        private static void PonProp(object o, string prop, object v) { o.GetType().GetProperty(prop, BindingFlags.Public | BindingFlags.Instance).SetValue(o, v); }
         private static object Lee(object o, string campo)
         {
             for (Type t = o.GetType(); t != null; t = t.BaseType) { FieldInfo fi = t.GetField(campo, T | BindingFlags.DeclaredOnly); if (fi != null) return fi.GetValue(o); }
@@ -410,8 +411,10 @@ namespace BancoPantallaViva
         }
         private static object NuevaLista(int w, int h, int filas, int rowH, Font letra, int sel, int inicio, Color acento, int vivo, int caso)
         {
-            object l = Activator.CreateInstance(typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic), true); Control c = (Control)l;
-            c.Bounds = new Rectangle(0, 0, w, h); c.Font = letra;
+            // (arreglo-junta14, 12-11-2026) SongListView es un Control en la referencia y una vista sin herencia (IVista con su CajaVista) en la
+            // traduccion (vistas-disco): Bounds y Font por reflexion, los de Control en la referencia y los suyos en la traduccion, en el mismo orden
+            object l = Activator.CreateInstance(typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic), true);
+            PonProp(l, "Bounds", new Rectangle(0, 0, w, h)); PonProp(l, "Font", letra);
             Pon(l, "RowH", rowH); Pon(l, "Sel", sel); Pon(l, "PageStart", inicio); Pon(l, "Accent", acento); Pon(l, "Vivo", vivo);
             Pon(l, "GetCount", (Func<int>)(() => filas));
             Pon(l, "GetText", (Func<int, string>)(i => (i + 1).ToString("00") + " " + (i % 3 == 0 ? "Ángel de amor (versión en vivo) — Los Ñandúes & Cía, una larga" : i % 3 == 1 ? "Cancion " + i : "Otra & mas")));
@@ -439,10 +442,10 @@ namespace BancoPantallaViva
                 int sel = inicio + (caso % Math.Max(1, Math.Min(filas - inicio, rpp)));
                 Color acento = Color.FromArgb((caso * 53) & 255, (caso * 97) & 255, (caso * 31) & 255);
                 object l = NuevaLista(m[0], m[1], filas, m[2], letra, sel, inicio, acento, vivo, caso);
-                ((Control)l).BackColor = caso % 2 == 0 ? Color.FromArgb(31, 34, 52) : Color.FromArgb(12, 20, 40);
+                PonProp(l, "BackColor", caso % 2 == 0 ? Color.FromArgb(31, 34, 52) : Color.FromArgb(12, 20, 40));
                 Estado e = Estados[caso % Estados.Length];
                 string nombre = "lista-" + caso;
-                if (!Toca(nombre)) { ((Control)l).Dispose(); continue; }
+                if (!Toca(nombre)) { ((IDisposable)l).Dispose(); continue; }
                 Bitmap b = Mapa(m[0] + 20, m[1] + 20, caso % 3); string res = "ok";
                 using (Graphics g = Graphics.FromImage(b))
                 {
@@ -489,7 +492,7 @@ namespace BancoPantallaViva
                         c.Dispose();
                     }
                 }
-                ((Control)l).Dispose();
+                ((IDisposable)l).Dispose();
                 if ((vivo & 1) != 0) letra.Dispose();
             }
             foreach (Font f in letras) f.Dispose();

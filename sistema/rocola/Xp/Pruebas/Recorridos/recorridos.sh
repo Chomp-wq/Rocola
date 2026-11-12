@@ -16,7 +16,12 @@ declare -A K; K[pared2]="estrella_3d=0;luna_realista=1;luna_del_cielo=1;luna_act
 P[video]="7:27+39,8.5:27+39,10:13,11:13,22:39,26:83"
 C[video]="9,12,15,18,21,24,28"; T[video]=32
 # 3) el buscador: teclas, resultados, aviso, vista previa y atajos
-P[buscador]="7:27+38,8:76,8.6:65,10:39,10.4:39,10.8:39,11.2:39,11.6:39,12:39,12.4:39,12.8:39,13.2:39,13.6:39,14:40,15:40,16:38,17.5:13,20:27,21.5:37,22:37,22.5:37,23:37,23.5:37,24:27,24.6:27,25.5:38,26:38,26.5:38,27.5:13,29:39,29.5:39,30:39,30.5:39,31:40,32:13,34:27,35:27+38"
+# (arreglo-junta14, 12-11-2026) la primera DERECHA iba a los 10 s, dentro de la parada de la captura de los 9,5 s (con CAPAS=1 la rocola
+# no atiende nada de 0,8 a 1 s: guarda cada capa); si la parada acababa despues de la de los 10,4 s, las dos llegaban juntas (a menos de
+# 40 ms) y el freno de las flechas de XP (Form1.cs:2134, Rocola/Form1.cs:2135: MsEntreFlechas) tiraba la segunda: la seleccion quedaba
+# una tecla atras y salian 44-45 de 78 texturas quietas, tambien con la referencia. Ahora esa DERECHA va despues, a los 13,8 s: las
+# mismas diez y en el mismo orden, sin dos dentro de una parada (aguanta paradas de hasta 1,3 s)
+P[buscador]="7:27+38,8:76,8.6:65,10.4:39,10.8:39,11.2:39,11.6:39,12:39,12.4:39,12.8:39,13.2:39,13.6:39,13.8:39,14:40,15:40,16:38,17.5:13,20:27,21.5:37,22:37,22.5:37,23:37,23.5:37,24:27,24.6:27,25.5:38,26:38,26.5:38,27.5:13,29:39,29.5:39,30:39,30.5:39,31:40,32:13,34:27,35:27+38"
 C[buscador]="7.8,9.5,14.5,16.5,19,21,25,28,30,33,36"; T[buscador]=40
 # 4) la atraccion (40 s sin tocar nada y sin musica)
 P[atraccion]="70:39"
