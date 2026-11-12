@@ -1,36 +1,27 @@
 // EL ANFITRION DE ROCOLA OS (traduccion de XP, fase 1): lo que en XP hace Windows con la pantalla. Abre la pantalla de verdad (KMS, con
 // OpenGL ES 2 en el hilo de la rocola) o una fuera de pantalla (pruebas y capturas: ROCOLA_PANTALLA=fuera:1024x768, o si no hay tarjeta),
-// y compone en cada cuadro las capas del escritorio, de abajo arriba: lo pintado con Dibujo2D (en texturas que solo se vuelven a subir
-// cuando la capa cambia) y lo que pinta la tarjeta (el fondo del dispositivo de Direct3DaGL de cada control «Nativa»: el GpuPanel de XP).
-// Despues lo presenta (KMS: cambio de pagina con el barrido).
-//   ROCOLA_CAPTURA=S:ruta.png[,S2:ruta2.png...]  guarda la pantalla a los S segundos de arrancar; ROCOLA_CAPTURA_SALE=1 cierra despues
-//   de la ultima (pruebas).
+// y en cada cuadro le da al compositor nativo (Nativo/CompositorPantalla.cs) las capas, de abajo arriba: las de las ventanas de la capa (lo
+// pintado con Dibujo2D, y lo que pinta la tarjeta o el video en sus controles «Nativa»), la lista nativa de la ventana
+// (Nativo/PantallaRocola.Vistas.cs) y las hojas nativas (Nativo/Hoja.cs). (Las capturas, ROCOLA_CAPTURA..., las hace el compositor.)
+// TRANSICION (port nativo, tanda 4, grupo pantalla-nativa: W2): aqui queda solo lo que une la pantalla nativa con las ventanas de la capa
+// (Plataforma/Ventanas.*.cs): VentanasDeLaCapa (lo que la pantalla le pide a la capa: PantallaRocola.ILaCapa) y el hueco de una vista que
+// ya no hereda de Control dentro de una ventana de la capa (HuecoDeVista). Se pasa a Nativo, sin la capa, al final (N7).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Runtime.InteropServices;
-using System.Text;
 using Rocola.Pantalla;
 using SkiaSharp;
 using Point = System.Drawing.Point;
+using Rectangle = System.Drawing.Rectangle;
 using Rocola.Dibujo2D;   // GDI+ de la transicion (Dibujo2D.cs); ya no es global (port nativo, D1)
 
 namespace Rocola
 {
-    internal sealed unsafe class Anfitrion : IAnfitrion
+    internal sealed class Anfitrion : IAnfitrion
     {
         internal static Anfitrion Actual;
-        private readonly ISuperficie sup;
-        private readonly uint fboPantalla;
-        private readonly int ancho, alto;
-        private uint programa; private int lugarM, lugarA, lugarS, lugarRgba;
-        private sealed class CapaGl { internal uint Tex; internal int Version = -1, W, H; internal bool Vista; }
-        private readonly Dictionary<Capa, CapaGl> capas = new Dictionary<Capa, CapaGl>();
-        private readonly List<KeyValuePair<double, string>> capturas = new List<KeyValuePair<double, string>>();
-        private readonly bool saleTrasCapturas;
-        internal int Composiciones;
-        private static readonly bool trazaCapas = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_CAPAS") == "1";
-        private double ultimaTraza;
+        private readonly CompositorPantalla compositor;
+        internal int Composiciones { get { return compositor.Composiciones; } }
 
         // Al empezar (antes del Main de XP, en el mismo hilo): la pantalla y el contexto de OpenGL.
         internal static void Arranca()
@@ -52,7 +43,9 @@ namespace Rocola
             }
             Actual = new Anfitrion(s);
             Escritorio.Anfitrion = Actual;
-            ReproductorVideo.Pantalla = new VideoEnVentanas();   // la capa del video (Nativo/ReproductorVideo.cs) entre las ventanas de XP
+            PantallaRocola.LaCapa = new VentanasDeLaCapa();   // (transicion) la pantalla nativa le pide a la capa lo de sus ventanas
+            PantallaRocola.Componer = Actual.Compone;
+            ReproductorVideo.Pantalla = new VideoEnPantalla();   // la capa del video (Nativo/ReproductorVideo.cs): en una ventana de la capa, su hueco (VideoEnVentanas.cs)
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
             TeclasLinux.Programadas(Environment.GetEnvironmentVariable("ROCOLA_PULSA"));
@@ -63,263 +56,159 @@ namespace Rocola
 
         private Anfitrion(ISuperficie s)
         {
-            sup = s; ancho = s.Ancho; alto = s.Alto;
-            int f = 0; GL.GetIntegerv(GL.FRAMEBUFFER_BINDING, &f);   // KMS: 0 (la ventana); fuera de pantalla: su framebuffer
-            fboPantalla = (uint)f;
-            Escritorio.Pantalla = new System.Drawing.Size(ancho, alto);
+            compositor = new CompositorPantalla(s);
+            compositor.ConMano = delegate { return Escritorio.CursorActual == Cursors.Hand; };   // (la mano de lo que esta bajo el raton en la capa)
+            PantallaRocola.Ancho = s.Ancho; PantallaRocola.Alto = s.Alto;   // (Escritorio.Pantalla: es la misma)
             int hz = 60;
             int a = s.Descripcion.IndexOf(" a "), b = s.Descripcion.IndexOf(" Hz");
             if (a > 0 && b > a) int.TryParse(s.Descripcion.Substring(a + 3, b - a - 3), out hz);
-            Escritorio.RefrescoHz = hz >= 24 && hz <= 400 ? hz : 60;
+            PantallaRocola.RefrescoHz = Escritorio.RefrescoHz = hz >= 24 && hz <= 400 ? hz : 60;
             Console.WriteLine("Pantalla: " + s.Descripcion);
-            string c = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA");
-            if (!string.IsNullOrEmpty(c))
-                foreach (string e in c.Split(','))
-                {
-                    int k = e.IndexOf(':'); double seg;
-                    if (k > 0 && double.TryParse(e.Substring(0, k), NumberStyles.Float, CultureInfo.InvariantCulture, out seg)) capturas.Add(new KeyValuePair<double, string>(seg * 1000.0, e.Substring(k + 1)));
-                }
-            capturas.Sort((x, y) => x.Key.CompareTo(y.Key));
-            saleTrasCapturas = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_SALE") == "1";
         }
 
-        // ---- componer ----
-        private const string FuenteV =
-            "attribute vec2 p; attribute vec2 t; uniform vec2 m; varying vec2 vt;\n" +
-            "void main() { gl_Position = vec4(p.x * m.x - 1.0, 1.0 - p.y * m.y, 0.0, 1.0); vt = t; }\n";
-        // las texturas guardan B, G, R, A (Dibujo2D y Direct3D): se leen en el orden de OpenGL; las de Dibujo2D ya van premultiplicadas
-        private const string FuenteF =
-            "precision mediump float; varying vec2 vt; uniform sampler2D s; uniform float a; uniform float rgba;\n" +
-            "void main() { vec4 c = texture2D(s, vt); gl_FragColor = (rgba > 0.5 ? c : c.bgra) * a; }\n";
-        private void Programa()
+        // ---- un cuadro: el compositor nativo con las capas de abajo arriba ----
+        public void Compone() { compositor.Compone(Capas); }
+        internal void GuardaPng(string ruta) { compositor.GuardaPng(ruta); }
+        internal uint PuntoEn(int x, int y) { return compositor.PuntoEn(x, y); }   // (pruebas)
+        private readonly Dictionary<Hoja, object> clavesHoja = new Dictionary<Hoja, object>();
+        // LAS CAPAS: las de las ventanas de la capa (Escritorio.Capas: cada ventana en tramos de Dibujo2D partidos por sus controles de la
+        // tarjeta y del video, en el orden de las ventanas; sin las hojas nativas, que van aparte), la lista nativa de la ventana (lo que no
+        // es de ninguna ventana de la capa: hoy nada) y las hojas nativas, encima de todo, en su orden. Es el mismo orden que daba
+        // Escritorio.Capas (las hojas al final) y las mismas capas: se compone lo mismo.
+        private List<CapaPantalla> Capas()
         {
-            if (programa != 0) return;
-            uint v = Sombreador(GL.VERTEX_SHADER, FuenteV), f = Sombreador(GL.FRAGMENT_SHADER, FuenteF);
-            uint p = GL.CreateProgram();
-            GL.AttachShader(p, v); GL.AttachShader(p, f);
-            GL.BindAttribLocation(p, 0, "p"); GL.BindAttribLocation(p, 1, "t");
-            GL.LinkProgram(p);
-            int ok; GL.GetProgramiv(p, GL.LINK_STATUS, &ok);
-            if (ok == 0) throw new InvalidOperationException("Anfitrion: el programa de componer no enlaza");
-            programa = p;
-            lugarM = GL.GetUniformLocation(p, "m"); lugarA = GL.GetUniformLocation(p, "a"); lugarS = GL.GetUniformLocation(p, "s"); lugarRgba = GL.GetUniformLocation(p, "rgba");
-        }
-        private static uint Sombreador(uint tipo, string fuente)
-        {
-            uint s = GL.CreateShader(tipo);
-            byte[] b = Encoding.ASCII.GetBytes(fuente);
-            fixed (byte* pb = b) { byte* q = pb; int n = b.Length; GL.ShaderSource(s, 1, &q, &n); }
-            GL.CompileShader(s);
-            int ok; GL.GetShaderiv(s, GL.COMPILE_STATUS, &ok);
-            if (ok == 0) throw new InvalidOperationException("Anfitrion: un sombreador no compila");
-            return s;
-        }
-
-        public void Compone()
-        {
-            Programa();
-            // los videos (Nativo/ReproductorVideo.cs): libmpv pinta su cuadro nuevo en su textura antes de componer
-            ReproductorVideo[] rs = ReproductorVideo.Vivos();
-            foreach (ReproductorVideo r in rs) { try { r.Pinta(); } catch (Exception ex) { Application.Avisa(ex); } }
-            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
-            GL.Viewport(0, 0, ancho, alto);
-            GlMas.ColorMask(1, 1, 1, 1);
-            GL.Disable(GL.SCISSOR_TEST);
-            GL.ClearColor(0, 0, 0, 1); GL.Clear(GL.COLOR_BUFFER_BIT);
-            GL.UseProgram(programa);
-            GL.Uniform2f(lugarM, 2f / ancho, 2f / alto);
-            GL.Uniform1i(lugarS, 0); GL.Uniform1f(lugarRgba, 0f);
-            GL.ActiveTexture(GL.TEXTURE0);
-            GL.BindBuffer(GL.ARRAY_BUFFER, 0);
-            foreach (CapaGl c in capas.Values) c.Vista = false;
-            List<Capa> lista = Escritorio.Capas();
-            if (trazaCapas && Escritorio.AhoraMs - ultimaTraza > 1000)   // (pruebas) ROCOLA_TRAZA_CAPAS=1: las capas, una vez por segundo
+            List<CapaPantalla> r = new List<CapaPantalla>();
+            foreach (Capa c in Escritorio.Capas())
             {
-                ultimaTraza = Escritorio.AhoraMs;
-                System.Text.StringBuilder sb = new System.Text.StringBuilder("capas " + (Escritorio.AhoraMs / 1000).ToString("0.0", CultureInfo.InvariantCulture) + " s:");
-                foreach (Capa c in lista) sb.Append(' ').Append(c.Nativa != null ? (c.Nativa.GetType().Name + "#" + c.Nativa.TexturaGl + (c.Nativa.TexturaGlRgba ? "rgba" : "")) : "dibujo").Append('@').Append(c.Rect.X).Append(',').Append(c.Rect.Y).Append(',').Append(c.Rect.Width).Append('x').Append(c.Rect.Height);
-                Console.WriteLine(sb.ToString());
-            }
-            foreach (Capa c in lista)
-            {
+                if (c.Nativa == null && c.Imagen == null) continue;   // (una hoja nativa: va abajo, de la pantalla)
+                CapaPantalla p = new CapaPantalla();
+                p.Clave = c; p.Rect = c.Rect; p.Opacidad = c.Opacidad;
                 if (c.Nativa != null)
                 {
                     Control n = c.Nativa;
-                    if (n.TexturaGl == 0 || n.AnchoGl <= 0) continue;
-                    GL.Disable(GL.BLEND);
-                    GL.BindTexture(GL.TEXTURE_2D, n.TexturaGl);
-                    GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
-                    GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-                    // el fondo de la tarjeta (Direct3D 9): Present sin rectangulos lo estira entero al control (si aun no tiene su medida
-                    // -el cuadro de un cambio de tamano, antes del Reset de XP-, estirado, como en XP); el video, la esquina de su textura
-                    if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 1f);
-                    if (n.TexturaGlRgba) Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, Math.Min(1f, (float)c.Rect.Width / n.AnchoGl), Math.Min(1f, (float)c.Rect.Height / n.AltoGl), 1f);
-                    else Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, 1f);
-                    if (n.TexturaGlRgba) GL.Uniform1f(lugarRgba, 0f);
-                    continue;
+                    p.DeTextura = true; p.Textura = n.TexturaGl; p.AnchoGl = n.AnchoGl; p.AltoGl = n.AltoGl; p.Rgba = n.TexturaGlRgba; p.Nombre = n.GetType().Name; p.Tipo = "tarjeta";
                 }
-                SKBitmap mapa = c.Imagen != null ? c.Imagen.Sk : c.Mapa;   // (port nativo, ventanas2 H: la superficie de una hoja nativa, Nativo/Hoja.cs)
-                if (mapa == null) continue;
-                CapaGl g;
-                if (!capas.TryGetValue(c, out g)) { g = new CapaGl(); capas[c] = g; }
-                g.Vista = true;
-                if (g.Version != c.Version || g.W != mapa.Width || g.H != mapa.Height) Sube(mapa, g);
-                g.Version = c.Version;
-                GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
-                GL.BindTexture(GL.TEXTURE_2D, g.Tex);
-                Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, c.Opacidad);
+                else { p.Mapa = c.Imagen.Sk; p.Version = c.Version; p.Tipo = "dibujo2d"; }
+                r.Add(p);
             }
-            // las capas que ya no estan, fuera
-            List<Capa> fuera = null;
-            foreach (KeyValuePair<Capa, CapaGl> k in capas) if (!k.Value.Vista) { if (fuera == null) fuera = new List<Capa>(); fuera.Add(k.Key); }
-            if (fuera != null) foreach (Capa c in fuera) { uint t = capas[c].Tex; if (t != 0) GL.DeleteTextures(1, &t); capas.Remove(c); }
-            GL.Disable(GL.BLEND);
-            Composiciones++;
-            if (conFlecha) { Flecha(); Capturas(); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
-            else { Capturas(); Flecha(); }   // como las capturas de Windows: sin la flecha
-            sup.Presenta();
-            foreach (ReproductorVideo r in rs) r.TrasPresentar();
-            PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
-        }
-        // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la
-        // mano (Cursors.Hand), dibujadas una vez como las de Windows XP (blanca con borde negro; la mano, con el dedo arriba).
-        private uint texFlecha, texMano;
-        private static readonly bool conFlecha = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_FLECHA") == "1";
-        private void Flecha()
-        {
-            if (!Escritorio.CursorVisible) return;
-            bool mano = Escritorio.CursorActual == Cursors.Hand || Hoja.ManoBajoRaton;   // (port nativo, ventanas2 H: la mano de las piezas de una hoja nativa)
-            if (texFlecha == 0) { texFlecha = HazCursor(false); texMano = HazCursor(true); }
-            Point p = Escritorio.PosicionRaton;
-            GL.UseProgram(programa);
-            GL.Uniform2f(lugarM, 2f / ancho, 2f / alto); GL.Uniform1i(lugarS, 0);
-            GL.ActiveTexture(GL.TEXTURE0);
-            GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
-            GL.BindTexture(GL.TEXTURE_2D, mano ? texMano : texFlecha);
-            if (mano) Cuadro(p.X - 6, p.Y, 32, 32, 1f, 1f, 1f); else Cuadro(p.X, p.Y, 32, 32, 1f, 1f, 1f);
-            GL.Disable(GL.BLEND);
-        }
-        private uint HazCursor(bool mano)
-        {
-            using (SKBitmap b = new SKBitmap(new SKImageInfo(32, 32, SKColorType.Bgra8888, SKAlphaType.Premul)))
-            using (SKCanvas c = new SKCanvas(b))
-            using (SKPath r = new SKPath())
-            using (SKPaint relleno = new SKPaint { Color = SKColors.White, IsAntialias = false, Style = SKPaintStyle.Fill })
-            using (SKPaint borde = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Stroke, StrokeWidth = 1 })
+            PantallaRocola.CapasDeLaVentana(r);
+            // LAS HOJAS NATIVAS, encima de todas (Nativo/Hoja.cs): cada una en su superficie, que se repinta entera solo si algo cambio (su
+            // Version: la que se pinto, Hoja.Superficie), en el orden de las hojas
+            foreach (Hoja h in Hoja.Abiertas)
             {
-                c.Clear(SKColors.Transparent);
-                if (!mano)
-                {
-                    r.MoveTo(0.5f, 0.5f); r.LineTo(0.5f, 16.5f); r.LineTo(4.5f, 12.5f); r.LineTo(7.5f, 18.5f); r.LineTo(9.5f, 17.5f); r.LineTo(6.5f, 11.5f); r.LineTo(11.5f, 11.5f); r.Close();
-                }
-                else
-                {
-                    r.MoveTo(5.5f, 0.5f); r.LineTo(8.5f, 0.5f); r.LineTo(8.5f, 7.5f); r.LineTo(16.5f, 8.5f); r.LineTo(17.5f, 10.5f); r.LineTo(16.5f, 16.5f);
-                    r.LineTo(13.5f, 21.5f); r.LineTo(6.5f, 21.5f); r.LineTo(1.5f, 14.5f); r.LineTo(1.5f, 11.5f); r.LineTo(3.5f, 11.5f); r.LineTo(5.5f, 13.5f); r.Close();
-                }
-                c.DrawPath(r, relleno); c.DrawPath(r, borde);
-                c.Flush();
-                uint t; GL.GenTextures(1, &t);
-                GL.BindTexture(GL.TEXTURE_2D, t);
-                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
-                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-                GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4);
-                GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, 32, 32, 0, GL.RGBA, GL.UNSIGNED_BYTE, (void*)b.GetPixels());
-                return t;
+                if (h.IsDisposed || !h.Visible) continue;
+                object k; if (!clavesHoja.TryGetValue(h, out k)) clavesHoja[h] = k = new object();
+                CapaPantalla p = new CapaPantalla();
+                int v; p.Mapa = h.Superficie(out v); p.Version = v; p.Rect = h.Bounds; p.Clave = k; p.Tipo = "hoja";
+                r.Add(p);
             }
-        }
-        private void Sube(SKBitmap sk, CapaGl g)
-        {
-            if (g.Tex == 0)
-            {
-                uint t; GL.GenTextures(1, &t); g.Tex = t;
-                GL.BindTexture(GL.TEXTURE_2D, t);
-                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
-                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
-            }
-            else GL.BindTexture(GL.TEXTURE_2D, g.Tex);
-            GL.PixelStorei(GL.UNPACK_ALIGNMENT, 4);
-            if (sk.RowBytes == sk.Width * 4)
-                GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, sk.Width, sk.Height, 0, GL.RGBA, GL.UNSIGNED_BYTE, (void*)sk.GetPixels());
-            else
-            {
-                GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, sk.Width, sk.Height, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
-                byte* p = (byte*)sk.GetPixels();
-                for (int y = 0; y < sk.Height; y++) GL.TexSubImage2D(GL.TEXTURE_2D, 0, 0, y, sk.Width, 1, GL.RGBA, GL.UNSIGNED_BYTE, p + (long)y * sk.RowBytes);
-            }
-            g.W = sk.Width; g.H = sk.Height;
-        }
-        private void Cuadro(float x, float y, float w, float h, float u1, float v1, float a)
-        {
-            float* v = stackalloc float[] { x, y, 0, 0, x + w, y, u1, 0, x, y + h, 0, v1, x + w, y + h, u1, v1 };
-            GL.Uniform1f(lugarA, a);
-            GL.VertexAttribPointer(0, 2, GL.FLOAT, 0, 16, (IntPtr)v);
-            GL.VertexAttribPointer(1, 2, GL.FLOAT, 0, 16, (IntPtr)(v + 2));
-            GL.EnableVertexAttribArray(0); GL.EnableVertexAttribArray(1);
-            GlMas.DisableVertexAttribArray(2); GlMas.DisableVertexAttribArray(3);
-            GL.DrawArrays(GlMas.TRIANGLE_STRIP, 0, 4);
+            foreach (Hoja h in new List<Hoja>(clavesHoja.Keys)) if (h.IsDisposed || !h.Visible) clavesHoja.Remove(h);
+            return r;
         }
 
-        // ---- capturas (pruebas) ----
-        private void Capturas()
+        // ---------- (transicion) LO QUE LA PANTALLA NATIVA LE PIDE A LAS VENTANAS DE LA CAPA ----------
+        // Cada cosa es la llamada de la capa que hacia lo mismo antes de la pantalla nativa (Escritorio y Control), asi la rocola se ve, se
+        // mueve y recibe la entrada igual. Se va con la capa (N7).
+        private sealed class VentanasDeLaCapa : PantallaRocola.ILaCapa
         {
-            if (capturas.Count == 0) return;
-            double t = Escritorio.AhoraMs;
-            if (t < capturas[0].Key) return;
-            string ruta = capturas[0].Value;
-            capturas.RemoveAt(0);
-            GuardaPng(ruta);
-            string tx = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_TEXTURAS");   // (pruebas) "nombre:AxB,..." texturas de OpenGL tal cual estan en la tarjeta
-            if (!string.IsNullOrEmpty(tx))
-                foreach (string e in tx.Split(','))
+            private readonly Dictionary<IVista, HuecoDeVista> huecos = new Dictionary<IVista, HuecoDeVista>();
+            private bool soloLaSuya;   // (Cambio: el Visible propio de la vista, sin el de su dueno)
+            public bool EsSuya(object ventana) { return ventana is Control; }
+            public bool EsSuyaLaVista(IVista v) { return v is Control || huecos.ContainsKey(v); }
+            private Control ControlDe(IVista v) { Control c = v as Control; if (c != null) return c; HuecoDeVista h; return huecos.TryGetValue(v, out h) ? h : null; }
+            // Controls.Add de la ventana: la vista misma si aun es un control; si no, su hueco (al fondo de la lista, como Controls.Add)
+            public void Agrega(object ventana, IVista v)
+            {
+                Control dueno = ventana as Control;
+                Control c = v as Control;
+                if (c == null)
                 {
-                    string[] p = e.Split(':'); if (p.Length != 2) continue; string[] m = p[1].Split('x');
-                    GuardaTextura(uint.Parse(p[0]), int.Parse(m[0]), int.Parse(m[1]), ruta + ".tex" + p[0] + ".png");
+                    HuecoDeVista h;
+                    if (!huecos.TryGetValue(v, out h)) { h = new HuecoDeVista(v); huecos[v] = h; Sigue(v, h); }
+                    c = h;
                 }
-            if (Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_CAPAS") == "1")
-            {
-                // (pruebas) cada capa por separado: las de la tarjeta (su textura) y las de Dibujo2D
-                int i = 0;
-                foreach (Capa c in Escritorio.Capas())
-                {
-                    i++;
-                    if (c.Nativa != null && c.Nativa.TexturaGl != 0) GuardaTextura(c.Nativa.TexturaGl, c.Nativa.AnchoGl, c.Nativa.AltoGl, ruta + ".capa" + i + "-tarjeta.png");
-                    else if (c.Imagen != null) { try { c.Imagen.Save(ruta + ".capa" + i + "-dibujo2d-" + c.Rect.X + "," + c.Rect.Y + "-" + c.Rect.Width + "x" + c.Rect.Height + ".png"); } catch { } }
-                    else if (c.Mapa != null) { try { Rocola.Nativo.Imagenes.GuardaPng(c.Mapa, ruta + ".capa" + i + "-hoja-" + c.Rect.X + "," + c.Rect.Y + "-" + c.Rect.Width + "x" + c.Rect.Height + ".png"); } catch { } }   // (una hoja nativa)
-                }
+                if (dueno != null) dueno.Controls.Add(c);
             }
-            Console.WriteLine("Captura: " + ruta + " (" + (t / 1000).ToString("0.0", CultureInfo.InvariantCulture) + " s, " + Composiciones + " composiciones)");
-            if (capturas.Count == 0 && saleTrasCapturas) Environment.Exit(0);
-        }
-        private void GuardaTextura(uint tex, int w, int h, string ruta)
-        {
-            uint f; GL.GenFramebuffers(1, &f);
-            GL.BindFramebuffer(GL.FRAMEBUFFER, f);
-            GL.FramebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, tex, 0);
-            byte[] px = new byte[w * h * 4];
-            GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
-            fixed (byte* p = px) GL.ReadPixels(0, 0, w, h, GL.RGBA, GL.UNSIGNED_BYTE, p);
-            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
-            GlMas.DeleteFramebuffers(1, &f);
-            using (SKBitmap b = new SKBitmap(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Unpremul)))   // la tarjeta guarda B, G, R, A, fila 0 arriba
+            public void AlFrente(IVista v) { Control c = ControlDe(v); if (c != null) c.BringToFront(); }
+            public void AlFondo(IVista v) { Control c = ControlDe(v); if (c != null) c.SendToBack(); }
+            public void Quita(IVista v)
             {
-                Marshal.Copy(px, 0, b.GetPixels(), px.Length);
-                using (SKData data = b.Encode(SKEncodedImageFormat.Png, 100)) using (System.IO.FileStream fs = System.IO.File.Create(ruta)) data.SaveTo(fs);
+                Control c = ControlDe(v); if (c == null) return;
+                Control p = c.Parent; if (p != null) p.Controls.Remove(c);
+                HuecoDeVista h = c as HuecoDeVista;
+                if (h != null) { huecos.Remove(v); h.Dispose(); }
             }
-        }
-        internal void GuardaPng(string ruta)
-        {
-            byte[] px = new byte[ancho * alto * 4];
-            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
-            GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
-            fixed (byte* p = px) GL.ReadPixels(0, 0, ancho, alto, GL.RGBA, GL.UNSIGNED_BYTE, p);
-            using (SKBitmap b = new SKBitmap(new SKImageInfo(ancho, alto, SKColorType.Rgba8888, SKAlphaType.Opaque)))
+            public void Cambio(IVista v, bool repintar)
             {
-                byte* d = (byte*)b.GetPixels();
-                for (int y = 0; y < alto; y++)   // OpenGL lee de abajo arriba
-                    Marshal.Copy(px, (alto - 1 - y) * ancho * 4, (IntPtr)(d + (long)y * b.RowBytes), ancho * 4);
-                using (SKData data = b.Encode(SKEncodedImageFormat.Png, 100))
-                using (System.IO.FileStream f = System.IO.File.Create(ruta)) data.SaveTo(f);
+                HuecoDeVista h; if (!huecos.TryGetValue(v, out h)) return;
+                Sigue(v, h);
+                if (repintar) h.Invalidate();
+            }
+            // el hueco toma el sitio y el visible propio de su vista (SetBounds y Visible del control: lo mismo que haria la vista si heredara)
+            private void Sigue(IVista v, HuecoDeVista h)
+            {
+                Rectangle r = v.Bounds;
+                if (h.Bounds != r) h.SetBounds(r.X, r.Y, r.Width, r.Height);
+                soloLaSuya = true; bool ve; try { ve = v.Visible; } finally { soloLaSuya = false; }
+                if (h.VisiblePropio != ve) h.Visible = ve;
+            }
+            public bool DuenoVisible(IVista v)
+            {
+                if (soloLaSuya) return true;
+                Control c = ControlDe(v); Control p = c != null ? c.Parent : null;
+                return p == null || p.Visible;
+            }
+            // la pintura de un control (WM_PAINT: PintaFondoYContenido, con su «X» roja si lanza) en el lienzo de quien la pide, con la
+            // matriz que ese lienzo ya lleva como la del HDC
+            public void Pinta(IVista v, SKCanvas g)
+            {
+                Control c = v as Control; if (c == null) return;
+                using (Graphics gr = PuenteDibujo.Graphics(g, g.TotalMatrix)) c.PintaFondoYContenido(gr, c.ClientRectangle);
+            }
+            public ILugarDelVideo LugarDelVideo(object ventana) { return new VideoEnVentanas().Lugar(ventana); }
+            // Present de la tarjeta: lo que hacia PantallaTarjeta antes de la pantalla nativa (el control de la ventana guarda el fondo y el
+            // escritorio compone con el)
+            public bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera)
+            {
+                Control control = Control.FromHandle(ventana);
+                if (control == null) { GlMas.Flush(); return false; }
+                control.TexturaGl = textura; control.AnchoGl = ancho; control.AltoGl = alto;
+                Escritorio.SinEspera = sinEspera;
+                Escritorio.PresentaNativa(control);
+                return true;
+            }
+            public void OlvidaTarjeta(IntPtr ventana) { Control control = Control.FromHandle(ventana); if (control != null) control.TexturaGl = 0; }
+            public void HayQueComponer() { Escritorio.Mueve(); }
+            public void Tecla(Tecla tecla, bool abajo) { Escritorio.Tecla(tecla, abajo); }
+            public void RatonEn(int x, int y) { Escritorio.RatonEn(x, y); }
+            public void RatonBoton(BotonRaton b, bool abajo) { Escritorio.RatonBoton((MouseButtons)(int)b, abajo); }
+            public void RatonRueda(int muescas) { Escritorio.RatonRueda(muescas); }
+            public void FinDeSesion() { Escritorio.FinDeSesion(); }
+        }
+
+        // EL HUECO DE UNA VISTA QUE YA NO HEREDA DE CONTROL, en la lista de controles de una ventana de la capa (como HuecoDelVideo,
+        // VideoEnVentanas.cs): ocupa su lugar en el orden, la capa lo pinta y le da el raton con las reglas de WinForms que ya cumple, y el
+        // hueco se lo pasa a la vista. El fondo lo pinta la vista (su Pinta es OnPaintBackground y OnPaint). El codigo de XP no lo ve.
+        private sealed class HuecoDeVista : Control
+        {
+            private readonly IVista vista;
+            internal HuecoDeVista(IVista v) { vista = v; }
+            protected override void OnPaintBackground(PaintEventArgs e) { }
+            protected override void OnPaint(PaintEventArgs e) { vista.Pinta(PuenteDibujo.Lienzo(e.Graphics)); base.OnPaint(e); }
+            private static Raton R(MouseEventArgs e) { return new Raton((BotonRaton)(int)e.Button, e.Clicks, e.X, e.Y, e.Delta); }
+            protected override void OnMouseDown(MouseEventArgs e) { vista.Raton(AvisoRaton.Abajo, R(e)); base.OnMouseDown(e); }
+            protected override void OnMouseClick(MouseEventArgs e) { vista.Raton(AvisoRaton.Clic, R(e)); base.OnMouseClick(e); }
+            protected override void OnMouseDoubleClick(MouseEventArgs e) { vista.Raton(AvisoRaton.DobleClic, R(e)); base.OnMouseDoubleClick(e); }
+            protected override void OnMouseUp(MouseEventArgs e) { vista.Raton(AvisoRaton.Arriba, R(e)); base.OnMouseUp(e); }
+            protected override void OnMouseMove(MouseEventArgs e) { vista.Raton(AvisoRaton.Mueve, R(e)); base.OnMouseMove(e); }
+            protected override void OnMouseEnter(EventArgs e) { vista.Raton(AvisoRaton.Entra, new Raton(BotonRaton.None, 0, 0, 0, 0)); base.OnMouseEnter(e); }
+            protected override void OnMouseLeave(EventArgs e) { vista.Raton(AvisoRaton.Sale, new Raton(BotonRaton.None, 0, 0, 0, 0)); base.OnMouseLeave(e); }
+            protected override void OnMouseWheel(MouseEventArgs e)
+            {
+                Raton r = R(e);
+                vista.Raton(AvisoRaton.Rueda, r);
+                HandledMouseEventArgs h = e as HandledMouseEventArgs; if (h != null && r.Handled) h.Handled = true;
+                base.OnMouseWheel(e);
             }
         }
     }

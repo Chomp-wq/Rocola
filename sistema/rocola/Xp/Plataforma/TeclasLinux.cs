@@ -1,7 +1,8 @@
 // LAS TECLAS EN ROCOLA OS (traduccion de XP, fase 1): lo que en XP le llega a la ventana desde Windows (WM_KEYDOWN / WM_KEYUP) cuando se
 // aprieta un boton de la rocola (las placas de botones USB son teclados) o una tecla. Se leen por evdev (/dev/input/event*, tambien los
 // que se conecten despues: se mira cada 2 s), se pasan al codigo de tecla de Windows (la tabla de Motor/Botones.cs: asi rocola_teclas.txt
-// del bar vale tal cual) y se entregan en el hilo de la pantalla al escritorio (Escritorio.Tecla), que hace lo que haria Windows.
+// del bar vale tal cual) y se entregan en el hilo de la pantalla a la pantalla nativa (PantallaRocola.LlegaTecla y PantallaRocola.Raton*,
+// Nativo/PantallaRocola.Vistas.cs: mientras queden las ventanas de la capa, ella las reparte como haria Windows; port nativo, tanda 4, W2).
 // EL ESTADO FISICO DE CADA TECLA (lo que en XP contesta GetAsyncKeyState, AsistenteRocola.cs): Fisica (port nativo, ventanas2 T).
 // LA REPETICION AL DEJARLO APRETADO es la de Windows XP de fabrica (no la del nucleo, que va mas rapido): la ultima tecla apretada se
 // repite a los 500 ms y despues unas 30 veces por segundo (KeyboardDelay 1, KeyboardSpeed 31), como WM_KEYDOWN repetidos.
@@ -69,7 +70,7 @@ namespace Rocola
         private static void DePrueba(Tecla t, bool abajo)
         {
             lock (candado) pruebaAbajo[(int)t & 0xFF] = abajo;
-            Escritorio.Entrada(delegate { Escritorio.Tecla(t, abajo); });
+            PantallaRocola.Entrada(delegate { PantallaRocola.LlegaTecla(t, abajo); });
         }
 
         internal static void Arranca(string carpeta)
@@ -114,21 +115,21 @@ namespace Rocola
             {
                 foreach (KeyValuePair<double, string> p in l)
                 {
-                    double espera = p.Key - Escritorio.AhoraMs;
+                    double espera = p.Key - PantallaRocola.AhoraMs;
                     if (espera > 0) Thread.Sleep((int)espera);
                     string[] q = p.Value.Split(':');
                     if ((q[0] == "raton" || q[0] == "clic") && q.Length == 3)
                     {
                         int x = int.Parse(q[1]), y = int.Parse(q[2]);
-                        Escritorio.Entrada(delegate { Escritorio.RatonEn(x, y); });
+                        PantallaRocola.Entrada(delegate { PantallaRocola.RatonEn(x, y); });
                         if (q[0] == "clic")
                         {
-                            Thread.Sleep(30); Escritorio.Entrada(delegate { Escritorio.RatonBoton(MouseButtons.Left, true); });
-                            Thread.Sleep(60); Escritorio.Entrada(delegate { Escritorio.RatonBoton(MouseButtons.Left, false); });
+                            Thread.Sleep(30); PantallaRocola.Entrada(delegate { PantallaRocola.RatonBoton(BotonRaton.Left, true); });
+                            Thread.Sleep(60); PantallaRocola.Entrada(delegate { PantallaRocola.RatonBoton(BotonRaton.Left, false); });
                         }
                         continue;
                     }
-                    if (q[0] == "rueda" && q.Length == 2) { int m = int.Parse(q[1]); Escritorio.Entrada(delegate { Escritorio.RatonRueda(m); }); continue; }
+                    if (q[0] == "rueda" && q.Length == 2) { int m = int.Parse(q[1]); PantallaRocola.Entrada(delegate { PantallaRocola.RatonRueda(m); }); continue; }
                     if ((q[0] == "baja" || q[0] == "suelta") && q.Length == 2)
                     {
                         // mantenida: llega como una tecla de verdad (WM_KEYDOWN, y repetida a los 500 ms como en XP, hasta soltarla)
@@ -138,8 +139,8 @@ namespace Rocola
                         lock (candado)
                         {
                             pruebaAbajo[vk & 0xFF] = abajo;   // (su estado fisico: Fisica)
-                            Escritorio.Entrada(delegate { Escritorio.Tecla(tk, abajo); });   // (dentro del candado: ver Lee)
-                            if (abajo) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
+                            PantallaRocola.Entrada(delegate { PantallaRocola.LlegaTecla(tk, abajo); });   // (dentro del candado: ver Lee)
+                            if (abajo) { repiteVk = vk; repiteEn = PantallaRocola.AhoraMs + RetrasoMs; senalRepite.Set(); }
                             else if (vk == repiteVk) repiteVk = 0;
                         }
                         continue;
@@ -171,7 +172,7 @@ namespace Rocola
             }
         }
 
-        // EL RATON (y las pantallas tactiles): movimiento, rueda y botones, juntados por cada SYN_REPORT, al escritorio (Escritorio.Raton*).
+        // EL RATON (y las pantallas tactiles): movimiento, rueda y botones, juntados por cada SYN_REPORT, a la pantalla (PantallaRocola.Raton*).
         private const int EV_SYN = 0, EV_REL = 2, EV_ABS = 3, BTN_LEFT = 0x110, BTN_RIGHT = 0x111, BTN_MIDDLE = 0x112, BTN_TOUCH = 0x14A;
         [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)] private static extern int ioctl(IntPtr fd, uint pedido, int[] info);
         private static bool Limites(FileStream f, int eje, out int min, out int max)
@@ -195,7 +196,7 @@ namespace Rocola
                 if (tipo == EV_REL)
                 {
                     if (codigo == 0) dx += valor; else if (codigo == 1) dy += valor;
-                    else if (codigo == 8 && valor != 0) { int m = valor; Escritorio.Entrada(delegate { Escritorio.RatonRueda(m); }); }   // REL_WHEEL
+                    else if (codigo == 8 && valor != 0) { int m = valor; PantallaRocola.Entrada(delegate { PantallaRocola.RatonRueda(m); }); }   // REL_WHEEL
                     continue;
                 }
                 if (tipo == EV_ABS && (codigo == 0 || codigo == 1))
@@ -206,14 +207,14 @@ namespace Rocola
                 }
                 if (tipo == EV_SYN && codigo == 0)
                 {
-                    if (dx != 0 || dy != 0) { int mx = dx, my = dy; dx = dy = 0; Escritorio.Entrada(delegate { Escritorio.RatonMueve(mx, my); }); }
+                    if (dx != 0 || dy != 0) { int mx = dx, my = dy; dx = dy = 0; PantallaRocola.Entrada(delegate { PantallaRocola.RatonMueve(mx, my); }); }
                     if (conAbs && (ax >= 0 || ay >= 0))
                     {
                         int px = ax, py = ay, x0 = xmin, x1 = xmax, y0 = ymin, y1 = ymax; ax = ay = -1;
-                        Escritorio.Entrada(delegate
+                        PantallaRocola.Entrada(delegate
                         {
-                            System.Drawing.Size p = Escritorio.Pantalla;
-                            Escritorio.RatonEn(px < 0 ? Escritorio.PosicionRaton.X : (int)((px - x0) * (long)(p.Width - 1) / (x1 - x0)), py < 0 ? Escritorio.PosicionRaton.Y : (int)((py - y0) * (long)(p.Height - 1) / (y1 - y0)));
+                            int pw = PantallaRocola.Ancho, ph = PantallaRocola.Alto;
+                            PantallaRocola.RatonEn(px < 0 ? PantallaRocola.Flecha.X : (int)((px - x0) * (long)(pw - 1) / (x1 - x0)), py < 0 ? PantallaRocola.Flecha.Y : (int)((py - y0) * (long)(ph - 1) / (y1 - y0)));
                         });
                     }
                     continue;
@@ -221,9 +222,9 @@ namespace Rocola
                 if (tipo != EV_KEY || valor == 2) continue;   // (la repeticion del nucleo no: la hace Repite, como XP)
                 if (codigo == BTN_LEFT || codigo == BTN_RIGHT || codigo == BTN_MIDDLE || codigo == BTN_TOUCH)
                 {
-                    MouseButtons b = codigo == BTN_RIGHT ? MouseButtons.Right : codigo == BTN_MIDDLE ? MouseButtons.Middle : MouseButtons.Left;
+                    BotonRaton b = codigo == BTN_RIGHT ? BotonRaton.Right : codigo == BTN_MIDDLE ? BotonRaton.Middle : BotonRaton.Left;
                     bool baja = valor == 1;
-                    Escritorio.Entrada(delegate { Escritorio.RatonBoton(b, baja); });
+                    PantallaRocola.Entrada(delegate { PantallaRocola.RatonBoton(b, baja); });
                     continue;
                 }
                 if (codigo >= 0x110 && codigo < 0x160) continue;   // otros botones de raton y de mando (no son teclas)
@@ -235,9 +236,9 @@ namespace Rocola
                 {
                     // (port nativo: la tecla se entrega dentro del candado de la repeticion, asi una repeticion nunca llega despues de
                     // soltarla, como en Windows; antes podia colarse detras del soltar y contar como otra pulsacion)
-                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, abajo); });
+                    PantallaRocola.Entrada(delegate { PantallaRocola.LlegaTecla(t, abajo); });
                     bool modificador = vk == 0x10 || vk == 0x11 || vk == 0x12 || vk == 0x14;
-                    if (abajo && !modificador) { repiteVk = vk; repiteEn = Escritorio.AhoraMs + RetrasoMs; senalRepite.Set(); }
+                    if (abajo && !modificador) { repiteVk = vk; repiteEn = PantallaRocola.AhoraMs + RetrasoMs; senalRepite.Set(); }
                     else if (!abajo && vk == repiteVk) repiteVk = 0;
                 }
             }
@@ -250,16 +251,16 @@ namespace Rocola
                 int vk; double en;
                 lock (candado) { vk = repiteVk; en = repiteEn; }
                 if (vk == 0) { senalRepite.WaitOne(); continue; }
-                double falta = en - Escritorio.AhoraMs;
+                double falta = en - PantallaRocola.AhoraMs;
                 if (falta > 0) { senalRepite.WaitOne((int)Math.Ceiling(falta)); continue; }
                 lock (candado)
                 {
                     if (repiteVk != vk || repiteEn != en) continue;
                     repiteEn = en + RepeticionMs;
-                    if (repiteEn < Escritorio.AhoraMs) repiteEn = Escritorio.AhoraMs + RepeticionMs;   // (sin rafagas si se atraso)
+                    if (repiteEn < PantallaRocola.AhoraMs) repiteEn = PantallaRocola.AhoraMs + RepeticionMs;   // (sin rafagas si se atraso)
                     // (dentro del candado: si en este momento se suelta la tecla, el soltar va despues y la repeticion ya no sale)
                     Tecla t = (Tecla)vk;
-                    Escritorio.Entrada(delegate { Escritorio.Tecla(t, true); });
+                    PantallaRocola.Entrada(delegate { PantallaRocola.LlegaTecla(t, true); });
                 }
             }
         }
