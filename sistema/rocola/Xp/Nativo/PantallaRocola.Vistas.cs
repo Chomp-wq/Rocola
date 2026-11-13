@@ -13,15 +13,9 @@
 // SetWindowRgn; el aviso sin tarjeta): se pinta solo dentro de ella, recorta a las de debajo solo con ella y el raton fuera de ella es del de
 // debajo.
 //
-// TRANSICION (mientras queden las ventanas de la capa: Plataforma/Ventanas.*.cs). Desde form1-sin-form (oleada 8) la ventana de la rocola es
-// la pantalla misma (PantallaRocola.Ventana.cs) y sus vistas van a la lista nativa; lo que sigue vale solo para las ventanas de la capa que
-// quedan (las de las 41 pruebas), a las que la pantalla les pide lo suyo por LaCapa (lo pone Plataforma/Anfitrion.cs; con la rocola abierta
-// es null). Una vista que ya no hereda de Control pero cuyo dueno es una ventana de la capa entra en la
-// lista de controles de esa ventana con un hueco, asi su orden, su recorte y su raton son los de WinForms entre los controles que quedan; la
-// capa la pinta llamando a su Pinta y le da el raton por su Raton. Lo mismo una capa de textura (el video: rotulos-y-letras; antes iba en
-// HuecoDelVideo de Plataforma/VideoEnVentanas.cs, ya borrado): en una ventana de la capa, su hueco de textura. Lo que no es de
-// ninguna ventana de la capa va a la lista nativa de la pantalla. Las teclas y el raton de evdev (TeclasLinux.cs) llegan aqui y, con la
-// capa, se los da a ella (que ya da a las hojas nativas lo suyo); sin la capa, la pantalla los reparte con las reglas de abajo.
+// SIN LA CAPA (N7, borrar-capas): la ventana de la rocola es la pantalla misma (PantallaRocola.Ventana.cs) y sus vistas van a esta lista;
+// ya no hay ventanas de la capa de la transicion (Plataforma/Ventanas.*.cs, borrada) ni huecos. Las teclas y el raton de evdev
+// (TeclasLinux.cs) llegan aqui y la pantalla los reparte con las reglas de abajo (a las hojas nativas, lo suyo).
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -41,40 +35,6 @@ namespace Rocola
 
     internal static partial class PantallaRocola
     {
-        // ---------- (transicion) lo que la pantalla le pide a las ventanas de la capa ----------
-        internal interface ILaCapa
-        {
-            bool EsSuya(object ventana);                             // una ventana (o control) de la capa
-            bool EsSuyaLaVista(IVista v);                            // la vista aun es un control de la capa, o esta en un hueco de una
-            void Agrega(object ventana, IVista v);                   // Controls.Add: al fondo de la lista de esa ventana (un hueco si ya no hereda)
-            void AlFrente(IVista v);                                 // BringToFront
-            void AlFondo(IVista v);                                  // SendToBack
-            void Quita(IVista v);                                    // Controls.Remove
-            void Cambio(IVista v, bool repintar);                    // una vista en un hueco cambio de sitio o de visible, o hay que repintarla
-            bool ClienteDelDueno(IVista v, out Size cliente);        // Parent.ClientSize de una vista que es control de la capa o esta en un hueco (false: sin dueno)
-            bool DuenoVisible(IVista v);                             // si se ve la ventana (o el control) en que esta
-            void Pinta(IVista v, SKCanvas g);                        // pintar una vista que aun es control de la capa (OnPaintBackground y OnPaint)
-            bool Enfoca(IVista v);                                   // Focus de una vista que es control de la capa o esta en un hueco (Control.Focus)
-            bool OyeComoControl(IVista v, AvisoRaton que, Action<Raton> a);   // una vista que aun es control: su evento (MouseDown, MouseClick); false si no lo es
-            bool EsSuyaLaCapa(CapaDeTextura t);                      // (rotulos-y-letras) la capa de textura esta en un hueco de textura de una ventana de la capa
-            void AgregaCapa(object ventana, CapaDeTextura t);        // Controls.Add de una capa de textura (el video) a una ventana de la capa: su hueco de textura, al fondo
-            void CapaAlFrente(CapaDeTextura t);                      // BringToFront de su hueco
-            void QuitaCapa(CapaDeTextura t);                         // Controls.Remove de su hueco
-            void CambioCapa(CapaDeTextura t);                        // su sitio, si se ve o su textura cambiaron: su hueco los toma
-            bool Presenta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera);   // Present de la tarjeta en una hoja (la ventana de prueba F12; false: no es de nadie, glFlush)
-            void OlvidaTarjeta(IntPtr ventana);
-            bool PresentaEnVista(IVista v, uint textura, int ancho, int alto, bool sinEspera);   // (gpupanel-sin-control) Present en la superficie de una vista de la tarjeta que esta en un hueco de la capa
-            void OlvidaEnVista(IVista v);                            // (gpupanel-sin-control) su dispositivo se suelta: su hueco ya no tiene fondo que componer
-            bool VentanaMinimizada(IVista v);                        // (gpupanel-sin-control) FindForm() de la vista (su hueco) y su WindowState == Minimized
-            void HayQueComponer();                                   // algo cambio: volver a componer
-            void Tecla(Tecla tecla, bool abajo);                     // una tecla (Escritorio.Tecla: el foco y el orden de WinForms)
-            void RatonEn(int x, int y);
-            void RatonBoton(BotonRaton b, bool abajo);
-            void RatonRueda(int muescas);
-            void FinDeSesion();                                      // el apagado (WM_QUERYENDSESSION y WM_ENDSESSION a sus ventanas)
-        }
-        internal static ILaCapa LaCapa;
-
         // ---------- la pantalla ----------
         // Las veces por segundo que refresca (GetDeviceCaps(VREFRESH) en XP): la del modo de KMS, o 60 fuera de pantalla. La pone quien
         // abre la pantalla.
@@ -84,22 +44,15 @@ namespace Rocola
         private static readonly List<object> lista = new List<object>();   // IVista o CapaDeTextura; [0] el de mas arriba
         private static int cambiosVentana, pintadoVentana = -1;
         // Controls.Add: al FINAL de la coleccion, que es el FONDO del orden (Control.ControlCollection.Add: «base.InnerList.Add(value)» y el
-        // orden z es el de la coleccion, el [0] arriba: ControlCollection.SetChildIndex, UpdateZOrder). En una ventana de la capa, la capa.
+        // orden z es el de la coleccion, el [0] arriba: ControlCollection.SetChildIndex, UpdateZOrder).
         internal static void AgregaVista(object ventana, IVista v)
         {
-            ILaCapa c = LaCapa;
             IVista dueno = ventana as IVista;
-            if (dueno != null && (c == null || !c.EsSuya(ventana)))
-            {
-                // EL DUENO ES UNA VISTA (el panel del disco: Panel.Controls.Add): si ya esta en una ventana de la capa, su hueco la contiene; si no
-                // (en la pantalla nativa, o aun sin poner en ninguna ventana: XP agrega el cubo, la lista y la barra de paginas al panel ANTES de
-                // agregar el panel a la ventana), la pantalla lleva la cuenta de sus hijas
-                if (c != null && c.EsSuyaLaVista(dueno)) { c.Agrega(ventana, v); TraspasaHijas(v); return; }
-                AgregaHija(dueno, v); return;
-            }
-            if (c != null && (c.EsSuya(ventana) || c.EsSuyaLaVista(v))) { c.Agrega(ventana, v); TraspasaHijas(v); return; }
+            // EL DUENO ES UNA VISTA (el panel del disco: Panel.Controls.Add; en la ventana o aun sin poner en ella: XP agrega el cubo, la lista
+            // y la barra de paginas al panel ANTES de agregar el panel a la ventana): la pantalla lleva la cuenta de sus hijas
+            if (dueno != null) { AgregaHija(dueno, v); return; }
             // (gpupanel-sin-control) Add de una que ya esta en la ventana: la manda al fondo (ControlCollection.Add: «if (value._parent == Owner) {
-            // value.SendToBack(); return; }», Control.ControlCollection.cs:67-71; la capa hace igual, Ventanas.Control.cs)
+            // value.SendToBack(); return; }», Control.ControlCollection.cs:67-71)
             if (lista.Contains(v)) { VistaAlFondo(v); return; }
             IVista antes = PadreDe(v);   // (gpupanel-sin-control) la que estaba dentro de otra vista sale de alli antes (ControlCollection.Add: «if (value._parent != null) value._parent.Controls.Remove(value)», Control.ControlCollection.cs:73-77)
             if (antes != null) { bool sev = EnLaLista(antes); SueltaDeLaRama(v); hijas[antes].Remove(v); padre.Remove(v); if (sev) CambioVentana(); }
@@ -122,18 +75,6 @@ namespace Rocola
             List<object> l; if (!hijas.TryGetValue(dueno, out l)) { l = new List<object>(); hijas[dueno] = l; }
             l.Add(v); padre[v] = dueno; AnotaTab(v, l); if (EnLaLista(dueno)) CambioVentana();
         }
-        // una vista con hijas anotadas entra en una ventana de la capa: sus hijas pasan a su hueco, en el mismo orden (Controls.Add una por una)
-        private static void TraspasaHijas(IVista v)
-        {
-            ILaCapa c = LaCapa; List<object> l;
-            if (c == null || v == null || !hijas.TryGetValue(v, out l) || !c.EsSuyaLaVista(v)) return;
-            hijas.Remove(v);
-            foreach (object o in l)
-            {
-                IVista h = o as IVista;
-                if (h != null) { padre.Remove(h); AgregaVista(v, h); }
-            }
-        }
         // si la vista, o la de mas arriba de su cadena de duenos, esta en la lista nativa de la ventana
         private static bool EnLaLista(IVista v) { for (IVista a = v; a != null; a = PadreDe(a)) if (lista.Contains(a)) return true; return false; }
         // si 'o' es 'raiz' o esta dentro de ella
@@ -148,56 +89,41 @@ namespace Rocola
         // el orden de una dentro de su dueno (0 arriba), o -1 si no es hija de ninguno de la pantalla nativa
         internal static int IndiceEnElDueno(IVista v) { IVista p = PadreDe(v); return p == null ? -1 : hijas[p].IndexOf(v); }
         // Parent.ClientSize (el tamano del cliente de su dueno, que en el panel y la ventana de XP es su medida: sin borde ni barras): el
-        // de la vista dueno, el de la ventana (la pantalla) si esta en la lista nativa, o el que da la capa; false si no tiene dueno
+        // de la vista dueno o el de la ventana (la pantalla) si esta en la lista; false si no tiene dueno
         internal static bool ClienteDelDueno(IVista v, out Size cliente)
         {
             IVista p = PadreDe(v);
             if (p != null) { Rectangle r = p.Bounds; cliente = r.Size; return true; }
             if (lista.Contains(v)) { cliente = ventana != null ? ventana.Cliente : new Size(Ancho, Alto); return true; }   // (form1-sin-form: el cliente de la ventana de la rocola; maximizada y sin borde, la pantalla)
-            ILaCapa c = LaCapa;
-            if (c != null) return c.ClienteDelDueno(v, out cliente);
             cliente = Size.Empty; return false;
         }
         internal static void AgregaCapa(CapaDeTextura t) { if (!lista.Contains(t)) { lista.Add(t); AnotaTab(t, lista); CambioVentana(); } }   // (gpupanel-sin-control: con su TabIndex, como el control del WMP)
-        // (rotulos-y-letras) Controls.Add de una capa de textura (el video) a una ventana: en una ventana de la capa, su hueco de textura; si no,
-        // la lista nativa. Lo que cambia de ella (sitio, si se ve, la textura) lo avisa quien la mueve (CambioCapa): en la lista nativa, volver a
-        // componer si cambio el sitio o si se ve (la textura la toma el compositor en cada cuadro); en un hueco, que la capa lo tome.
-        internal static void AgregaCapa(object ventana, CapaDeTextura t)
-        {
-            ILaCapa c = LaCapa;
-            if (c != null && c.EsSuya(ventana)) { c.AgregaCapa(ventana, t); return; }
-            AgregaCapa(t);
-        }
-        internal static void CambioCapa(CapaDeTextura t, bool recompone)
-        {
-            ILaCapa c = LaCapa;
-            if (c != null && c.EsSuyaLaCapa(t)) { c.CambioCapa(t); return; }
-            if (recompone && lista.Contains(t)) CambioVentana();
-        }
+        // (rotulos-y-letras) Controls.Add de una capa de textura (el video) a la ventana: a la lista. Lo que cambia de ella (sitio, si se ve,
+        // la textura) lo avisa quien la mueve (CambioCapa): volver a componer si cambio el sitio o si se ve (la textura la toma el compositor
+        // en cada cuadro).
+        internal static void AgregaCapa(object ventana, CapaDeTextura t) { AgregaCapa(t); }
+        internal static void CambioCapa(CapaDeTextura t, bool recompone) { if (recompone && lista.Contains(t)) CambioVentana(); }
         // BringToFront: el [0] (Control.BringToFront: «ParentInternal.Controls.SetChildIndex(this, 0)», Control.cs)
         internal static void VistaAlFrente(object v)
         {
-            IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista iv = v as IVista;
             IVista dueno = PadreDe(iv);
             if (dueno != null) { List<object> h = hijas[dueno]; if (h.Remove(iv)) { h.Insert(0, iv); if (EnLaLista(dueno)) CambioVentana(); } return; }   // (dentro de una vista: el [0] de las suyas)
-            if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.AlFrente(iv); return; }
-            CapaDeTextura ct = v as CapaDeTextura; if (ct != null && c != null && c.EsSuyaLaCapa(ct)) { c.CapaAlFrente(ct); return; }   // (rotulos-y-letras) la del video, en su hueco
             if (lista.Remove(v)) { lista.Insert(0, v); CambioVentana(); }
         }
         // SendToBack: el ultimo (Control.SendToBack: «ParentInternal.Controls.SetChildIndex(this, -1)»)
         internal static void VistaAlFondo(object v)
         {
-            IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista iv = v as IVista;
             IVista dueno = PadreDe(iv);
             if (dueno != null) { List<object> h = hijas[dueno]; if (h.Remove(iv)) { h.Add(iv); if (EnLaLista(dueno)) CambioVentana(); } return; }   // (dentro de una vista: el ultimo de las suyas)
-            if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.AlFondo(iv); return; }
             if (lista.Remove(v)) { lista.Add(v); CambioVentana(); }
         }
         // Controls.Remove (Control.ControlCollection.Remove): fuera; si tenia el raton o la captura, ya no (el que esta debajo lo recibe al
         // moverse la flecha)
         internal static void QuitaVista(object v)
         {
-            IVista iv = v as IVista; ILaCapa c = LaCapa;
+            IVista iv = v as IVista;
             if (iv != null) { tarjetasQueSeVen.Remove(iv); tarjetasPorPintar.Remove(iv); }   // (gpupanel-sin-control, revision: una de la tarjeta que vuelve a entrar se ensena otra vez y recibe su WM_PAINT)
             IVista dueno = PadreDe(iv);
             if (dueno != null)   // (dentro de una vista: fuera de las suyas, con lo que tenga dentro)
@@ -208,8 +134,6 @@ namespace Rocola
                 if (vista) CambioVentana();
                 return;
             }
-            if (iv != null && c != null && c.EsSuyaLaVista(iv)) { c.Quita(iv); return; }
-            CapaDeTextura ct = v as CapaDeTextura; if (ct != null && c != null && c.EsSuyaLaCapa(ct)) { c.QuitaCapa(ct); return; }   // (rotulos-y-letras) la del video, en su hueco
             if (!lista.Remove(v)) return;
             SueltaDeLaRama(v);
             CambioVentana();
@@ -225,12 +149,11 @@ namespace Rocola
         // el orden de una (0 arriba), o -1 si no esta en la lista nativa
         internal static int IndiceDe(object v) { return lista.IndexOf(v); }
         internal static object[] ListaDeLaVentana { get { return lista.ToArray(); } }
-        // lo que avisa una vista que ya no hereda (CajaVista): en la lista nativa, volver a componer; en un hueco de la capa, la capa
+        // lo que avisa una vista (CajaVista): si esta en la ventana, volver a componer
         internal static void VistaCambio(IVista v, bool repintar)
         {
             if (lista.Contains(v) || (padre.ContainsKey(v) && EnLaLista(v))) { CambioVentana(); if (v.DeLaTarjeta) TarjetaCambio(v, repintar); return; }
-            if (padre.ContainsKey(v)) return;   // (hija de una vista que aun no esta en ninguna ventana: nada que componer)
-            ILaCapa c = LaCapa; if (c != null) c.Cambio(v, repintar);
+            // (hija de una vista que aun no esta en la ventana, o una vista suelta: nada que componer)
         }
         internal static void CambioVentana() { cambiosVentana++; HayQueComponer(); }
         // (form1-sin-form) la ventana de la rocola se acaba de ensenar: sus vistas pasan a verse (GetVisibleCore), y las que pinta la tarjeta
@@ -241,8 +164,8 @@ namespace Rocola
             CambioVentana();
         }
         // (gpupanel-sin-control) una vista de la tarjeta de la lista nativa cambio: si hay que pintarla (Invalidate) o se acaba de ensenar
-        // (ShowWindow da WM_PAINT a la ventana que aparece; la capa invalida al control al cambiar Visible: Ventanas.Control.SetVisibleCore),
-        // su WM_PAINT queda pendiente (PintadoSinLaCapa)
+        // (ShowWindow da WM_PAINT a la ventana que aparece),
+        // su WM_PAINT queda pendiente (PonElPintado)
         private static readonly HashSet<IVista> tarjetasQueSeVen = new HashSet<IVista>();
         private static void TarjetaCambio(IVista v, bool repintar)
         {
@@ -250,39 +173,29 @@ namespace Rocola
             if (ve) tarjetasQueSeVen.Add(v); else tarjetasQueSeVen.Remove(v);
             if (ve && (repintar || !antes)) PorPintar(v);
         }
-        // si se ve el dueno de una vista (GetVisibleCore del padre): la ventana de la pantalla siempre se ve; en la capa, lo dice la capa
+        // si se ve el dueno de una vista (GetVisibleCore del padre): otra vista o la ventana; una vista suelta (sin dueno), si
         internal static bool DuenoVisible(IVista v)
         {
             IVista dueno = PadreDe(v);
             if (dueno != null) return dueno.Visible;   // (GetVisibleCore: la suya y la de su dueno)
             if (lista.Contains(v)) return ventana == null || ventana.Visible;   // (form1-sin-form: la ventana de la rocola no se ve hasta que se ensena, ni despues de desecharse; sin ella -las pruebas-, siempre)
-            ILaCapa c = LaCapa; return c == null || c.DuenoVisible(v);
+            return true;
         }
-        // Pinta de fabrica de una vista (la que aun es control de la capa)
-        internal static void PintaVistaDeLaCapa(IVista v, SKCanvas g) { ILaCapa c = LaCapa; if (c != null) c.Pinta(v, g); }
         // EL FONDO DE LA VENTANA (OnPaintBackground y OnPaint de la rocola, por procesador): lo pone la ventana de la rocola al abrirse
         // (PantallaRocola.Ventana.cs, AbreNativa); sin el, transparente (lo de debajo es negro: la pantalla se borra a negro en cada cuadro)
         internal static Action<SKCanvas> FondoDeLaVentana;
-        // hay que volver a componer: con la capa, ella lleva la cuenta de los cambios (Escritorio.Mueve); sin ella, la pantalla
+        // hay que volver a componer: la pantalla lleva la cuenta de los cambios
         private static int cambios, compuesto = -1;
-        internal static void HayQueComponer()
-        {
-            ILaCapa c = LaCapa;
-            if (c != null) { c.HayQueComponer(); return; }
-            cambios++; Despierta();
-        }
+        internal static void HayQueComponer() { cambios++; Despierta(); }
 
         // ---------- el foco de una vista y quien escucha su raton desde fuera (armado-vistas, oleada 3: W3-0) ----------
         // FOCUS (Control.Focus: «return FocusInternal()»; FocusInternal: «if (CanFocus) SetFocus(new HandleRef(this, Handle)); ... return
         // Focused», con CanFocus = IsHandleCreated && IsWindowVisible && IsWindowEnabled: Control.cs, Focus, FocusInternal y CanFocus). La
         // rocola de XP le da el foco al buscador de siempre al abrirlo sin tarjeta (searchOverlay.Focus(): Form1.Biblioteca.cs y
-        // Form1.Video.cs). En una vista que aun es control de la capa (o en su hueco), la capa (Control.Focus: el foco de WinForms, con su traza
-        // y LostFocus); en la lista nativa, la vista que se ve pasa a ser la del foco (la rueda va a ella: RatonRueda; las teclas siguen yendo
+        // Form1.Video.cs). La vista que se ve pasa a ser la del foco (la rueda va a ella: RatonRueda; las teclas siguen yendo
         // a la ventana, que tiene KeyPreview -Tab y las flechas las mueve la pantalla entre las vistas: PantallaRocola.Foco.cs-). Una vista no tiene Enabled: siempre lo esta.
         internal static bool EnfocaVista(IVista v)
         {
-            ILaCapa c = LaCapa;
-            if (c != null && c.EsSuyaLaVista(v)) return c.Enfoca(v);
             // (form1-sin-form) como Control.Focus: sin CanFocus (no se ve, o su ventana esta debajo de una hoja modal) no lo toma y da false;
             // si lo toma, por el camino del foco de la ventana (PonFocoVentana: la ventana pasa a ser la activa, la vista es su vista activa)
             if (v == null || !EnLaLista(v) || !Ve(v) || (ventana != null && VentanaDeshabilitada)) return false;
@@ -294,15 +207,12 @@ namespace Rocola
         // handler = (MouseEventHandler)Events[EventMouseDown]; if (handler != null) handler(this, e)»; igual OnMouseClick), asi que llega despues
         // de lo que la vista hace en su On* antes de llamar a base: aqui, despues de su Raton. Solo los que usa la rocola (Abajo = MouseDown,
         // Clic = MouseClick; y, del panel de la tarjeta -gpupanel-sin-control, Form1.Video.cs-, Mueve = MouseMove y Rueda = MouseWheel:
-        // Control.OnMouseMove y OnMouseWheel los lanzan igual). En una vista que aun es control de la capa, su evento (la capa lo lanza en el
-        // mismo sitio); si no, esta lista, que avisan la pantalla (Avisa) y el hueco de la capa (Plataforma/Anfitrion.cs) despues de Raton.
+        // Control.OnMouseMove y OnMouseWheel los lanzan igual). Es esta lista, que avisa la pantalla (Avisa) despues de Raton.
         private static readonly Dictionary<IVista, List<KeyValuePair<AvisoRaton, Action<Raton>>>> oyentes = new Dictionary<IVista, List<KeyValuePair<AvisoRaton, Action<Raton>>>>();
         internal static void OyeRaton(IVista v, AvisoRaton que, Action<Raton> a)
         {
             if (que != AvisoRaton.Abajo && que != AvisoRaton.Clic && que != AvisoRaton.Mueve && que != AvisoRaton.Rueda) throw new ArgumentException("solo MouseDown (Abajo), MouseClick (Clic), MouseMove (Mueve) y MouseWheel (Rueda): lo que usa la rocola", "que");
             if (v == null || a == null) return;   // (Control.MouseDown += null: no hace nada)
-            ILaCapa c = LaCapa;
-            if (c != null && c.OyeComoControl(v, que, a)) return;
             List<KeyValuePair<AvisoRaton, Action<Raton>>> l;
             if (!oyentes.TryGetValue(v, out l)) { l = new List<KeyValuePair<AvisoRaton, Action<Raton>>>(); oyentes[v] = l; }
             l.Add(new KeyValuePair<AvisoRaton, Action<Raton>>(que, a));   // (en el orden en que se suscribieron, como un evento multicast)
@@ -526,7 +436,6 @@ namespace Rocola
         internal static void RatonMueve(int dx, int dy) { RatonEn(Flecha.X + dx, Flecha.Y + dy); }
         internal static void RatonEn(int x, int y)
         {
-            ILaCapa c = LaCapa; if (c != null) { c.RatonEn(x, y); return; }
             x = Math.Max(0, Math.Min(Ancho - 1, x)); y = Math.Max(0, Math.Min(Alto - 1, y));
             if (x == Flecha.X && y == Flecha.Y) return;
             Flecha = new Point(x, y);
@@ -540,7 +449,6 @@ namespace Rocola
         }
         internal static void RatonBoton(BotonRaton b, bool abajo)
         {
-            ILaCapa cp = LaCapa; if (cp != null) { cp.RatonBoton(b, abajo); return; }
             if (abajo)
             {
                 BotonesRaton |= b;
@@ -583,7 +491,6 @@ namespace Rocola
         internal static object FocoDeLaVentana { get { return foco; } set { foco = value; activo = value == LaVentana ? null : value; } }
         internal static void RatonRueda(int muescas)
         {
-            ILaCapa c = LaCapa; if (c != null) { c.RatonRueda(muescas); return; }
             if (Hoja.Activa != null) { Hoja.RatonRueda(muescas); return; }
             // (sin atender, DefWindowProc la pasa al padre: la vista que la contiene, y despues la ventana)
             for (IVista v = foco as IVista; v != null; v = PadreDe(v))
@@ -602,7 +509,7 @@ namespace Rocola
 
         // ---------- las teclas ----------
         // LO QUE LA VENTANA DE LA ROCOLA HACE CON LAS TECLAS (Form1: ProcessCmdKey, KeyPress con Form_KeyPress y OnKeyUp; Alt+F4 la cierra).
-        // Lo pone la ventana de la rocola al abrirse (PantallaRocola.Ventana.cs, AbreNativa); con una ventana de la capa (las 41 pruebas), las reparte la capa.
+        // Lo pone la ventana de la rocola al abrirse (PantallaRocola.Ventana.cs, AbreNativa).
         internal delegate bool Mando(ref PulsoTecla m, Tecla datos);
         internal sealed class TeclasDeLaVentana
         {
@@ -615,7 +522,7 @@ namespace Rocola
         }
         internal static TeclasDeLaVentana Teclas;
         internal static Tecla Modificadores;
-        // UNA TECLA (lo que manda evdev o las pruebas, en el hilo de la pantalla). Con la capa, la reparte ella. Sin ella: los
+        // UNA TECLA (lo que manda evdev o las pruebas, en el hilo de la pantalla): los
         // modificadores se juntan (Shift, Control y Alt de cualquier lado: WM_KEYDOWN da VK_SHIFT, VK_CONTROL y VK_MENU), se anota como
         // atendida (GetKeyState) y va a la hoja activa o a la ventana: ProcessCmdKey, ProcessDialogKey, KeyDown, el caracter (WM_CHAR,
         // o WM_SYSCHAR con Alt) a KeyPress salvo SuppressKeyPress, y Alt+F4 sin atender por la cola (DefWindowProc de WM_SYSKEYDOWN); al
@@ -623,7 +530,6 @@ namespace Rocola
         // (PantallaRocola.Foco.cs); las teclas siguen yendo a la ventana, que en la rocola tiene KeyPreview y ve cada tecla antes que nadie.
         internal static void LlegaTecla(Tecla tecla, bool abajo)
         {
-            ILaCapa c = LaCapa; if (c != null) { c.Tecla(tecla, abajo); return; }
             Tecla mod = tecla == Rocola.Tecla.ShiftKey || tecla == Rocola.Tecla.LShiftKey || tecla == Rocola.Tecla.RShiftKey ? Rocola.Tecla.Shift
                      : tecla == Rocola.Tecla.ControlKey || tecla == Rocola.Tecla.LControlKey || tecla == Rocola.Tecla.RControlKey ? Rocola.Tecla.Control
                      : tecla == Rocola.Tecla.Menu || tecla == Rocola.Tecla.LMenu || tecla == Rocola.Tecla.RMenu ? Rocola.Tecla.Alt : Rocola.Tecla.None;
@@ -698,10 +604,9 @@ namespace Rocola
         // ---------- la tarjeta ----------
         // LA SUPERFICIE DE UNA VISTA DE LA TARJETA (gpupanel-sin-control: W4). En XP el GpuPanel era una ventana con un dispositivo de Direct3D 9
         // creado sobre ella (CreateDevice con su Handle) que presentaba en ella (Present). Aqui la vista no tiene ventana: el dispositivo recibe
-        // el identificador de su superficie (SuperficieDe: lo que en XP era el Handle; no choca con los de la capa, que empiezan en 0x1000, ni
-        // con los de las hojas, en 0x40000000) y Present le da a la superficie su textura: con la vista en un hueco de la capa, el hueco (la
-        // capa la compone como componia el control «Nativa»); en la lista nativa, la pantalla la compone en el sitio y el lugar del orden de la
-        // vista (CapasDeLaVentana). Soltarla (SueltaSuperficie, el base.Dispose de XP) es como destruir la ventana: Present ya no la encuentra.
+        // el identificador de su superficie (SuperficieDe: lo que en XP era el Handle; no choca con los de las hojas, en 0x40000000, ni con
+        // el de la ventana, en 0x20000000) y Present le da a la superficie su textura: la pantalla la compone en el sitio y el lugar del orden
+        // de la vista (CapasDeLaVentana). Soltarla (SueltaSuperficie, el base.Dispose de XP) es como destruir la ventana: Present ya no la encuentra.
         internal sealed class Superficie
         {
             internal readonly IVista Vista; internal readonly IntPtr Id;
@@ -718,13 +623,10 @@ namespace Rocola
             return s.Id;
         }
         // (gpupanel-sin-control, revision) y sale de su dueno: Control.Dispose con disposing (el unico que llama el Dispose de XP: la vista no
-        // tiene finalizador) hace «_parent.Controls.Remove(this)» despues de DestroyHandle (Control.cs:5345-5350); en un hueco de la capa lo
-        // hace el hueco al desecharse (Plataforma/Anfitrion.cs), aqui en la lista nativa
+        // tiene finalizador) hace «_parent.Controls.Remove(this)» despues de DestroyHandle (Control.cs:5345-5350)
         internal static void SueltaSuperficie(IVista v)
         {
             superficies.Remove(v);
-            ILaCapa c = LaCapa;
-            if (c != null && c.EsSuyaLaVista(v)) return;
             if (lista.Contains(v) || padre.ContainsKey(v)) QuitaVista(v);
             tarjetasQueSeVen.Remove(v); tarjetasPorPintar.Remove(v);
         }
@@ -735,29 +637,22 @@ namespace Rocola
             return null;
         }
         private static Superficie SuperficieDeLaVista(IVista v) { Superficie s; return v != null && superficies.TryGetValue(v, out s) ? s : null; }
-        // FindForm() de la vista y su WindowState == Minimized (GpuPanel.PuedeDibujar): con la vista en un hueco de la capa, la ventana de su
-        // hueco; en la pantalla nativa la ventana es la pantalla, que no se minimiza
-        internal static bool VentanaMinimizada(IVista v)
-        {
-            ILaCapa c = LaCapa;
-            return c != null && c.EsSuyaLaVista(v) && c.VentanaMinimizada(v);
-        }
+        // FindForm() de la vista y su WindowState == Minimized (GpuPanel.PuedeDibujar): la ventana es la de la rocola, que es la pantalla y no
+        // se minimiza (IVentanaDeLaRocola.Minimizada); una vista que no esta en ella no tiene ventana (FindForm() null: false)
+        internal static bool VentanaMinimizada(IVista v) { VentanaNativa w = ventana; return w != null && EnLaLista(v) && w.Minimizada; }
 
-        // Present de Direct3D 9 en la ventana 'ventana' (PantallaTarjeta.cs): en la superficie de una vista de la tarjeta (en un hueco de la
-        // capa, la capa; en la lista nativa, su capa de textura y se compone); en una hoja (la ventana de prueba F12), la capa; sin ninguna, glFlush.
+        // Present de Direct3D 9 en la ventana 'ventana' (PantallaTarjeta.cs): en la superficie de una vista de la tarjeta de la lista (su capa
+        // de textura, y se compone); en una hoja (la ventana de prueba F12), su cliente; sin ninguna, glFlush.
         internal static bool SinEspera;   // el medidor de Ctrl+F3 pide presentar sin esperar al barrido
         internal static double UltimaPresentacionTarjeta = -1e9;
         internal static Action Componer;  // compone y presenta (lo pone quien abre la pantalla)
         // (true si se compuso la pantalla: OpenGL ya no es lo del dispositivo)
         internal static bool PresentaTarjeta(IntPtr ventana, uint textura, int ancho, int alto, bool sinEspera)
         {
-            ILaCapa c = LaCapa;
             Superficie t = SuperficieConId(ventana);
-            if (t != null && c != null && c.EsSuyaLaVista(t.Vista)) return c.PresentaEnVista(t.Vista, textura, ancho, alto, sinEspera);
             if (t == null || !EnLaLista(t.Vista))
             {
-                if (t == null && c != null) return c.Presenta(ventana, textura, ancho, alto, sinEspera);
-                // (form1-sin-form) sin la capa, Present en una hoja (la ventana de prueba F12): su cliente guarda el fondo y la pantalla compone
+                // (form1-sin-form) Present en una hoja (la ventana de prueba F12): su cliente guarda el fondo y la pantalla compone
                 Hoja hoja = t == null ? Hoja.DeLaVentana(ventana) : null;
                 if (hoja != null)
                 {
@@ -778,18 +673,16 @@ namespace Rocola
         internal static void OlvidaTarjeta(IntPtr ventana)
         {
             Superficie t = SuperficieConId(ventana);
-            ILaCapa c = LaCapa;
-            if (t != null) { if (c != null && c.EsSuyaLaVista(t.Vista)) c.OlvidaEnVista(t.Vista); t.Textura = 0; return; }
-            if (c != null) c.OlvidaTarjeta(ventana);
-            else { Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) hoja.OlvidaTarjeta(); }   // (form1-sin-form) sin la capa, la hoja directa
+            if (t != null) { t.Textura = 0; return; }
+            Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) hoja.OlvidaTarjeta();   // (form1-sin-form) la hoja directa
         }
-        // EL WM_PAINT DE UNA VISTA DE LA TARJETA en la lista nativa (lo que la capa hace con un control «Nativa»: Escritorio.Ensucia y PintaYa):
-        // hay que pintarla cuando se invalida o se ensena (ShowWindow da WM_PAINT); lo da PintadoSinLaCapa antes de componer, uno por vuelta
+        // EL WM_PAINT DE UNA VISTA DE LA TARJETA en la lista de la ventana: hay que pintarla cuando se invalida o se ensena (ShowWindow da
+        // WM_PAINT); lo da PonElPintado antes de componer, uno por vuelta
         private static readonly List<IVista> tarjetasPorPintar = new List<IVista>();
         private static void PorPintar(IVista v) { if (!tarjetasPorPintar.Contains(v)) tarjetasPorPintar.Add(v); Despierta(); }
         private static SKBitmap mapaSuelto; private static SKCanvas lienzoSuelto;   // (el lienzo que recibe su Pinta: la tarjeta no lo usa)
         // (form1-sin-form) Invalidate(true) de la ventana: el WM_PAINT de cada hija que pinta la tarjeta; el de una capa de textura (el video: en
-        // XP, el control del WMP) no hace nada, pero es un mensaje mas de la cola (la capa lo contaba igual: Escritorio.PintaUno)
+        // XP, el control del WMP) no hace nada, pero es un mensaje mas de la cola
         private static int pintadosVacios;
         internal static void PorPintarDeLaVentana(object o) { IVista v = o as IVista; if (v != null) PorPintar(v); else { pintadosVacios++; Despierta(); } }
         private static bool PintaUnaTarjeta()
@@ -805,14 +698,14 @@ namespace Rocola
             return true;
         }
 
-        // ---------- el pintado sin la capa (WM_PAINT de la ventana de la pantalla) ----------
-        // Lo que hoy da la capa (Escritorio.PintaUno, HaySucio y ProximoPintado): el WM_PAINT de una vista de la tarjeta que hay que pintar
-        // (gpupanel-sin-control) y, si no, componer si algo cambio y la tarjeta no esta presentando (o hace mas de 100 ms que no: si presenta,
-        // compone ella en cada cuadro). Lo pone quien abre la pantalla cuando no hay capa.
-        internal static void PintadoSinLaCapa()
+        // ---------- el pintado (WM_PAINT de la ventana de la pantalla) ----------
+        // Lo que el bucle de la pantalla pide (PantallaRocola.cs: PintaUno, HaySucio y ProximoPintado): el WM_PAINT de una vista de la tarjeta
+        // que hay que pintar (gpupanel-sin-control) y, si no, componer si algo cambio y la tarjeta no esta presentando (o hace mas de 100 ms
+        // que no: si presenta, compone ella en cada cuadro). Lo pone quien abre la pantalla (Nativo/Anfitrion.cs) y la ventana de la rocola.
+        internal static void PonElPintado()
         {
             PintaUno = delegate { if (PintaUnaTarjeta()) return true; if (!ComposicionPendiente()) return false; compuesto = cambios; try { Action a = Componer; if (a != null) a(); } catch (Exception ex) { Falla(ex); } return true; };
-            HaySucio = delegate { return tarjetasPorPintar.Count > 0 || pintadosVacios > 0 || ComposicionPendiente(); };   // (gpupanel-sin-control: el WM_PAINT de las vistas de la tarjeta primero, como Escritorio.PintaUno)
+            HaySucio = delegate { return tarjetasPorPintar.Count > 0 || pintadosVacios > 0 || ComposicionPendiente(); };   // (gpupanel-sin-control: el WM_PAINT de las vistas de la tarjeta primero)
             ProximoPintado = delegate { return Componer != null && cambios != compuesto ? UltimaPresentacionTarjeta + 100.5 : double.MaxValue; };
         }
         private static bool ComposicionPendiente() { return Componer != null && cambios != compuesto && AhoraMs - UltimaPresentacionTarjeta > 100; }

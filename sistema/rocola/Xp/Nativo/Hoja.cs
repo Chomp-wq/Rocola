@@ -12,11 +12,11 @@
 // Partes: Hoja.cs (la vida: crearla, ensenarla modal, cerrarla, el apagado; las hojas abiertas, su orden y la activa; la superficie),
 // Hoja.Foco.cs (el foco y el tabulador), Hoja.Entrada.cs (las teclas y el raton) y Hoja.Pinta.cs (el pintado).
 //
-// MIENTRAS DURA LA TRANSICION la rocola (Form1) y el panel de la tarjeta aun son ventanas de la capa (Plataforma/Ventanas.*.cs): las hojas
-// van siempre encima de ellas (en XP la hoja nueva es la de arriba, y mientras una hoja modal esta abierta las de la capa no reciben teclas
-// ni raton, asi que ninguna se pone delante), y lo que una hoja necesita de la capa (cual de sus ventanas esta activa, que ceda o recupere
-// la activacion y el foco, el sitio de la duena, volver a componer la pantalla) lo pone la capa en los ganchos «(transicion)» de abajo.
-// Se van con la capa.
+// LA VENTANA DE DEBAJO es la de la rocola, que es la pantalla (Nativo/PantallaRocola.Ventana.cs): las hojas van siempre encima de ella (en
+// XP la hoja nueva es la de arriba, y mientras una hoja modal esta abierta la rocola no recibe teclas ni raton, asi que no se pone delante),
+// y lo que una hoja necesita de ella (si esta activa, que ceda o recupere la activacion y el foco, su sitio como duena, volver a componer
+// la pantalla) lo pone esa ventana al abrirse en los ganchos «la ventana de debajo» de abajo (son ganchos y no llamadas porque las
+// pruebas de la hoja compilan estos archivos sin la ventana de la rocola: Pruebas/Ventanas/Hoja).
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -120,7 +120,7 @@ namespace Rocola
         // ---------- las hojas abiertas, su orden y la activa (lo que en XP lleva Windows) ----------
         private static readonly List<Hoja> abiertas = new List<Hoja>();   // la ultima, la de mas arriba
         private static readonly List<Hoja> modales = new List<Hoja>();
-        // LA HOJA ACTIVA (WM_ACTIVATE); null: la activa es una ventana de la capa, o ninguna
+        // LA HOJA ACTIVA (WM_ACTIVATE); null: la activa es la ventana de la rocola, o ninguna
         internal static Hoja Activa { get; private set; }
         internal static Hoja[] Abiertas { get { return abiertas.ToArray(); } }
         private static Hoja ModalArriba { get { for (int i = modales.Count - 1; i >= 0; i--) if (!modales[i].disposed && modales[i].visible) return modales[i]; return null; } }
@@ -135,23 +135,23 @@ namespace Rocola
             return im >= 0 && i >= 0 && i < im;
         }
 
-        // ---------- (transicion) las ventanas de la capa: lo pone Plataforma/Ventanas.Escritorio.cs ----------
-        internal static Func<object> ActivaDeLaCapa;             // la ventana activa de la capa (o null)
-        internal static Action CedeLaCapa;                       // la activa de la capa deja de serlo (la hoja se activa)
-        internal static Action QuitaFocoALaCapa;                 // la pieza de la capa con el foco lo pierde (LostFocus), sin apuntarlo
-        internal static Action<object> ActivaLaDeLaCapa;         // activa una ventana de la capa, con su foco (al acabar un modal)
-        internal static Func<object, bool> VivaEnLaCapa;         // una ventana de la capa que sigue y se ve
-        internal static Func<object, Rectangle> SitioEnLaCapa;   // donde esta una ventana de la capa (la duena de un dialogo)
-        internal static Action HayQueComponer;                   // algo de una hoja cambio: hay que volver a componer la pantalla
-        internal static Action ActivaLaDeArribaDeLaCapa;         // se fue la hoja activa y no queda otra: se activa la de arriba de la capa
+        // ---------- la ventana de debajo (la de la rocola): lo pone PantallaRocola.Ventana.cs (AbreNativa) ----------
+        internal static Func<object> VentanaActiva;                 // la ventana de debajo, si es la activa (o null)
+        internal static Action CedeLaVentana;                       // la de debajo deja de ser la activa (la hoja se activa)
+        internal static Action QuitaFocoALaVentana;                 // la vista de la ventana de debajo con el foco lo pierde, sin apuntarlo
+        internal static Action<object> ActivaLaVentana;             // activa la ventana de debajo, con su foco (al acabar un modal)
+        internal static Func<object, bool> VentanaViva;             // la ventana de debajo sigue y se ve
+        internal static Func<object, Rectangle> SitioDeLaVentana;   // donde esta la ventana de debajo (la duena de un dialogo)
+        internal static Action HayQueComponer;                      // algo de una hoja cambio: hay que volver a componer la pantalla
+        internal static Action ActivaLaVentanaDeDebajo;             // se fue la hoja activa y no queda otra: se activa la de debajo
         private static void Compone() { Action a = HayQueComponer; if (a != null) a(); }
         // la ventana activa, de las dos procedencias
-        internal static object LaActiva { get { if (Activa != null) return Activa; Func<object> f = ActivaDeLaCapa; return f != null ? f() : null; } }
+        internal static object LaActiva { get { if (Activa != null) return Activa; Func<object> f = VentanaActiva; return f != null ? f() : null; } }
         private static bool VivaYVisible(object v)
         {
             Hoja h = v as Hoja;
             if (h != null) return !h.disposed && h.visible;
-            Func<object, bool> f = VivaEnLaCapa; return v != null && f != null && f(v);
+            Func<object, bool> f = VentanaViva; return v != null && f != null && f(v);
         }
 
         // ---------- crear, ensenar y esconder ----------
@@ -202,13 +202,13 @@ namespace Rocola
             Hoja h = duena as Hoja;
             if (h != null) { if (h.disposed) return false; r = h.bounds; return true; }
             if (duena == null) return false;
-            Func<object, Rectangle> sitio = SitioEnLaCapa;
+            Func<object, Rectangle> sitio = SitioDeLaVentana;
             if (sitio == null) return false;
             r = sitio(duena);
             return true;
         }
         // ESCONDERSE (lo que hace Windows al esconder una ventana: la capa, Escritorio.Oculta): sale de las abiertas; si tenia el foco, nadie
-        // lo tiene (WM_KILLFOCUS); si era la activa, se activa la de arriba (o la de la capa). 'apunta': se escondio ella (Visible = false, al
+        // lo tiene (WM_KILLFOCUS); si era la activa, se activa la de arriba (o la ventana de la rocola). 'apunta': se escondio ella (Visible = false, al
         // acabar el modal), no al desecharla (como la capa: SetVisibleCore lo apunta, Dispose no)
         private void Esconde(bool apunta)
         {
@@ -223,7 +223,7 @@ namespace Rocola
                 for (int i = abiertas.Count - 1; i >= 0 && otra == null; i--) if (!abiertas[i].disposed && abiertas[i].visible) otra = abiertas[i];
                 Activa = null;
                 if (otra != null) ActivaHoja(otra, true);
-                else { Action a = ActivaLaDeArribaDeLaCapa; if (a != null) a(); }
+                else { Action a = ActivaLaVentanaDeDebajo; if (a != null) a(); }
             }
             OlvidaRaton();
             Compone();
@@ -243,7 +243,7 @@ namespace Rocola
         {
             if (h == null || !abiertas.Remove(h)) return;
             abiertas.Add(h);
-            h.DetrasDeLaCapa = false;
+            h.DetrasDeLaVentana = false;
             SubeLasSuyas(h, 0);
             Compone();
         }
@@ -252,7 +252,7 @@ namespace Rocola
             if (nivel > 8) return;
             foreach (Hoja o in abiertas.ToArray()) if (o != h && o.duena == h && abiertas.Remove(o)) { abiertas.Add(o); SubeLasSuyas(o, nivel + 1); }
         }
-        // LA HOJA ACTIVA (WM_ACTIVATE; Escritorio.ActivaForma de la capa): la de antes (una hoja, o la ventana de la capa) se desactiva y la
+        // LA HOJA ACTIVA (WM_ACTIVATE; Escritorio.ActivaForma de la capa): la de antes (una hoja, o la ventana de la rocola) se desactiva y la
         // nueva, si 'enfoca', pone el foco donde lo tenia (su pieza activa, si se ve), o en la primera del tabulador si no tenia, o en ella
         // misma (Form.Active, Form.cs:289-341)
         internal static void ActivaHoja(Hoja h, bool enfoca)
@@ -262,31 +262,31 @@ namespace Rocola
             {
                 Hoja antes = Activa; Activa = h;
                 if (antes != null) antes.Invalidate();
-                else { Action c = CedeLaCapa; if (c != null) c(); }
+                else { Action c = CedeLaVentana; if (c != null) c(); }
                 h.Invalidate();   // (la barra de titulo cambia de color)
                 if (enfoca) h.EnfocaAlActivar();
             }
             else if (enfoca && (foco == null || !h.ContieneFoco(null))) h.EnfocaAlActivar();
         }
-        // (transicion) una ventana de la capa se activa: la hoja activa deja de serlo. Y, como en Windows, activar una ventana es subirla: se pone
+        // la ventana de la rocola se activa: la hoja activa deja de serlo. Y, como en Windows, activar una ventana es subirla: se pone
         // delante de las ventanas que no son de nadie (las hojas sin duena y sin modal, la de prueba F12), que quedan detras de ella
-        // (DetrasDeLaCapa); las que tienen duena o son modales siguen encima (una ventana con duena va siempre encima de su duena). La hoja vuelve
+        // (DetrasDeLaVentana); las que tienen duena o son modales siguen encima (una ventana con duena va siempre encima de su duena). La hoja vuelve
         // delante cuando se pone otra vez al frente (AlFrente, Activate).
-        internal static void DesactivaPorLaCapa()
+        internal static void DesactivaPorLaVentana()
         {
             bool cambio = false;
-            foreach (Hoja o in abiertas) if (!o.modal && o.duena == null && !o.DetrasDeLaCapa) { o.DetrasDeLaCapa = true; cambio = true; }
+            foreach (Hoja o in abiertas) if (!o.modal && o.duena == null && !o.DetrasDeLaVentana) { o.DetrasDeLaVentana = true; cambio = true; }
             if (cambio) Compone();
             Hoja a = Activa; if (a == null) return; Activa = null; if (!a.disposed) a.Invalidate();
         }
-        // detras de las ventanas de la capa (la rocola): no se ve, ni recibe el raton (la rocola ocupa la pantalla entera)
-        internal bool DetrasDeLaCapa;
+        // detras de la ventana de la rocola: no se ve, ni recibe el raton (la rocola ocupa la pantalla entera)
+        internal bool DetrasDeLaVentana;
         // activar otra vez una ventana (la que estaba activa al abrir un dialogo, al cerrarlo), de las dos procedencias
         private static void ActivaVentana(object v)
         {
             Hoja h = v as Hoja;
             if (h != null) { ActivaHoja(h, true); return; }
-            Action<object> a = ActivaLaDeLaCapa; if (a != null) a(v);
+            Action<object> a = ActivaLaVentana; if (a != null) a(v);
         }
 
         // ---------- ensenarla sin modal (Form.Show) ----------
@@ -396,7 +396,7 @@ namespace Rocola
         // ---------- el apagado del sistema (SIGTERM: lo que en XP es el apagado de Windows) ----------
         // WM_QUERYENDSESSION y WM_ENDSESSION (Form.WndProc, Form.cs:7208-7210, y WmClose, 6638-6783), como Form.FinDeSesion de la capa: con la consulta, un
         // dialogo pone Cancel si no tenia resultado y avisa que se cierra por CheckCloseDialog; con el fin, que se cerro y se desecha. Quien
-        // pregunta a todas las ventanas de arriba abajo es la capa (Escritorio.FinDeSesion), las hojas primero (estan encima).
+        // pregunta a todas las ventanas de arriba abajo es la pantalla (PantallaRocola.FinDeSesion), las hojas primero (estan encima).
         internal bool FinDeSesion(bool consulta, bool seAcaba)
         {
             if (disposed || vida == 0) return true;
@@ -418,7 +418,7 @@ namespace Rocola
             Dispose();
             return true;
         }
-        // (transicion) se cierra una ventana de la capa que es la duena de hojas: las suyas, de la ultima a la primera, reciben el aviso con
+        // se cierra la ventana de la rocola, que es la duena de hojas: las suyas, de la ultima a la primera, reciben el aviso con
         // FormOwnerClosing (Form.WmClose, Form.cs:6696-6708 y 6763-6774: OwnedForms); con 'cerrada', el de que se cerraron
         internal static bool LaDuenaSeCierra(object d, bool cerrada)
         {
@@ -451,10 +451,10 @@ namespace Rocola
 
         // ---------- LA TARJETA EN EL CLIENTE DE LA HOJA (la ventana de prueba F12) ----------
         // En XP, un dispositivo de Direct3D 9 creado sobre la ventana (CreateDevice con su Handle) presenta su fondo en el cliente. Aqui el
-        // dispositivo recibe el identificador de la ventana (IdVentana: la vida de la hoja, que no choca con ningun otro: los de la capa empiezan
-        // en 0x1000) y, al presentar, la pantalla se lo pasa a la hoja (DeLaVentana y PresentaTarjeta): la composicion pone su textura sobre el
-        // cliente, encima de la superficie de la hoja y debajo de la hoja que venga despues. (transicion) Hoy la pantalla lo hace desde la capa
-        // (Plataforma/Anfitrion.cs); se va con ella.
+        // dispositivo recibe el identificador de la ventana (IdVentana: la vida de la hoja, que no choca con ningun otro: los de las hojas empiezan
+        // en 0x40000000) y, al presentar, la pantalla se lo pasa a la hoja (DeLaVentana y PresentaTarjeta): la composicion pone su textura sobre el
+        // cliente, encima de la superficie de la hoja y debajo de la hoja que venga despues. Las capas las da el anfitrion (Nativo/Anfitrion.cs,
+        // Capas).
         internal uint TexturaGl; internal int AnchoGl, AltoGl;
         internal IntPtr IdVentana { get { return new IntPtr(vida); } }   // 0: sin ventana
         internal static Hoja DeLaVentana(IntPtr id)

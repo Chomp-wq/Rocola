@@ -8,8 +8,7 @@
 // LA VENTANA ES LA PANTALLA (Nativo/PantallaRocola.Ventana.cs): sus vistas son la lista nativa de PantallaRocola.Vistas.cs, sus teclas
 // PantallaRocola.Teclas y su fondo el primer tramo de la composicion; se ensena, se activa, toma el foco, se cierra con su razon y se
 // desecha con las reglas de WinForms que la capa de la transicion fijo con las 41 pruebas, y las trazas la nombran igual («Form1'Rocola'»).
-// TRANSICION (hasta N7): al abrirla, el anfitrion suelta la capa de ventanas (SueltaLaCapa: Plataforma/Anfitrion.cs), de la que solo
-// queda lo que compone las hojas y lo que usan las 41 pruebas de WinForms; la rocola ya no tiene ninguna ventana de la capa.
+// (N7, borrar-capas: la capa de ventanas de la transicion ya no existe; la ventana de la rocola y sus hojas son lo unico que hay.)
 using System;
 using System.Drawing;
 using System.Threading;
@@ -59,20 +58,14 @@ namespace Rocola
 
     internal static partial class PantallaRocola
     {
-        // (transicion, hasta N7) lo que el anfitrion hace para que la capa de ventanas deje de repartir la pantalla (Plataforma/Anfitrion.cs)
-        internal static Action SueltaLaCapa;
-        internal static IVentanaDeLaRocola AbreVentana(AvisosDeLaVentana avisos)
-        {
-            Action s = SueltaLaCapa; if (s != null) s();
-            return AbreNativa(avisos);
-        }
+        internal static IVentanaDeLaRocola AbreVentana(AvisosDeLaVentana avisos) { return AbreNativa(avisos); }
 
         internal static void Corre(Form1 rocola)
         {
             Hilo = Thread.CurrentThread;
             PonContexto();   // SynchronizationContext.Current de este hilo: lo que otros hilos le mandan con Post llega como encargo (PantallaRocola.Teclado.cs)
             Principal = rocola;
-            AlApagar = delegate { ILaCapa c = LaCapa; if (c != null) c.FinDeSesion(); else FinDeSesion(); };   // WM_QUERYENDSESSION y WM_ENDSESSION a las ventanas: la rocola y sus hojas (PantallaRocola.Ventana.cs); (transicion) con la capa, Escritorio.FinDeSesion
+            AlApagar = FinDeSesion;   // WM_QUERYENDSESSION y WM_ENDSESSION a las ventanas: la rocola y sus hojas (PantallaRocola.Ventana.cs)
             bool cerrada = false;
             rocola.FormClosed += delegate { cerrada = true; };   // el aviso de la rocola al cerrarse (el FormClosed de XP)
             rocola.Ventana.Ensena();   // (Application.Run: Visible = true) la ventana se ensena con los pasos de WinForms

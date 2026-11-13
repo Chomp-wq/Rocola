@@ -3,9 +3,10 @@
 // WmMouseUp, WmMouseWheel; Form.ProcessDialogKey; ContainerControl.ProcessDialogKey), portado de la capa (Plataforma/Ventanas.Escritorio.cs:
 // Tecla, RatonEn, RatonBoton, RatonRueda), revisada contra ella. Cada paso deja su linea en la traza de las ventanas (TrazaVentanas, las
 // mismas que la capa), para compararla con la referencia.
-//   (transicion) Las teclas y el raton los lee la capa (Escritorio, desde TeclasLinux) y, si la ventana activa es una hoja, o el raton esta
-//   sobre una hoja, o la hoja lo tiene capturado, se los pasa aqui: la capa lleva aun los modificadores (Mayus, Ctrl, Alt) y lo ya atendido
-//   (PantallaRocola.AnotaTecla, GetKeyState). Se van con la capa: entonces la pantalla se las dara directo.
+//   Las teclas y el raton los lee la pantalla (PantallaRocola.Vistas.cs, desde TeclasLinux) y, si la ventana activa es una hoja, o el raton
+//   esta sobre una hoja, o la hoja lo tiene capturado, se los pasa aqui: la pantalla lleva los modificadores (Mayus, Ctrl, Alt) y lo ya
+//   atendido (PantallaRocola.AnotaTecla, GetKeyState). («La capa» en estos comentarios es la capa de ventanas de la transicion, la de la
+//   referencia congelada: de ella se porto cada regla; en el programa ya no existe.)
 using System;
 using System.Drawing;
 
@@ -128,16 +129,16 @@ namespace Rocola
         private static Hoja ncHoja; private static int ncCaptura; private static Point ncInicio, ncOrigen;
         private static Hoja cerrarEncima;
 
-        // (transicion) el raton es de las hojas: una lo tiene capturado, hay una modal (las de la capa, debajo, no lo reciben) o esta encima
+        // el raton es de las hojas: una lo tiene capturado, hay una modal (la rocola, debajo, no lo recibe) o esta encima
         internal static bool TomaElRaton(Point p)
         {
             if (captura != null && !Desechada(captura)) return true;
             if (ncHoja != null && ncCaptura != 0) return true;
             if (HayModal) return true;
-            for (int i = abiertas.Count - 1; i >= 0; i--) { Hoja f = abiertas[i]; if (!f.disposed && f.visible && !f.DetrasDeLaCapa && f.bounds.Contains(p)) return true; }
+            for (int i = abiertas.Count - 1; i >= 0; i--) { Hoja f = abiertas[i]; if (!f.disposed && f.visible && !f.DetrasDeLaVentana && f.bounds.Contains(p)) return true; }
             return false;
         }
-        // (transicion) el raton se fue a una ventana de la capa
+        // el raton se fue a la ventana de la rocola
         internal static void RatonFuera() { MarcaEncima(null); Encima(null); }
         // LA PIEZA DE ENCIMA DE TODO EN UN PUNTO DE LA PANTALLA (WindowFromPoint; ChildWindowFromPoint dentro): las hojas de arriba abajo; dentro,
         // las piezas de la primera a la ultima. Con una hoja modal abierta, las de debajo estan deshabilitadas: ahi no hay nadie.
@@ -147,7 +148,7 @@ namespace Rocola
             for (int i = abiertas.Count - 1; i >= 0; i--)
             {
                 Hoja f = abiertas[i];
-                if (f.disposed || !f.visible || f.DetrasDeLaCapa || !f.bounds.Contains(p)) { if (f == modal) return null; continue; }
+                if (f.disposed || !f.visible || f.DetrasDeLaVentana || !f.bounds.Contains(p)) { if (f == modal) return null; continue; }
                 return HijaEn(f, p);
             }
             return null;
@@ -229,7 +230,7 @@ namespace Rocola
             cerrarEncima = f;
             if (f != null) f.PonEstadoCerrar(1);
         }
-        // el raton se movio a 'p' (la capa ya lo puso en PantallaRocola.Flecha); 'botones' son los que estan abajo
+        // el raton se movio a 'p' (la pantalla ya lo puso en PantallaRocola.Flecha); 'botones' son los que estan abajo
         internal static void RatonEn(Point p, BotonRaton botones)
         {
             if (ncHoja != null && ncCaptura != 0)

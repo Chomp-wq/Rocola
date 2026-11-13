@@ -6,7 +6,7 @@
 //                                           botones, la atraccion, el mantenimiento (F10), la pestana de Ctrl+F3, quien tiene el foco y,
 //                                           de cada hoja abierta (Ctrl+F3, Ctrl+F2, un aviso), cada pieza: clase, texto, sitio, si se
 //                                           ve, si esta activa, su orden del tabulador, Checked o Value, y la del foco.
-// De la capa de ventanas de la transicion este archivo solo nombra una cosa, en una funcion: Form1.DeLaCapa, al final (N7).
+// (N7, borrar-capas: ya no nombra nada de la capa de ventanas de la transicion; el foco y la activa los dan las hojas y la pantalla.)
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -73,13 +73,10 @@ namespace Rocola
             sb.Append("mantenimiento=").Append(VolcadoEstado.B(maintMode)).Append('\n');
             sb.Append("f3pagina=").Append(VolcadoEstado.N(f3Pagina)).Append('\n');
             // (port nativo, ventanas2 H) el foco y la activa son de una hoja nativa (Nativo/Hoja.cs) o, si no, de la ventana de la rocola
-            // (form1-sin-form) que es la pantalla nativa (PantallaRocola.Ventana.cs); la capa solo queda para las ventanas de las 41 pruebas
-            object focoVentana, activaVentana; DeLaCapa(out focoVentana, out activaVentana);   // COSTURA DE LA CAPA (se quita en N7, con la funcion de abajo)
-            bool nativa = PantallaRocola.HayVentanaNativa;
-            sb.Append("foco=").Append(Hoja.Foco != null || !nativa ? TrazaVentanas.Pieza(Hoja.Foco ?? focoVentana) : PantallaRocola.NombreDelFoco).Append('\n');
-            sb.Append("activa=").Append(Hoja.Activa != null || !nativa ? TrazaVentanas.Pieza(Hoja.Activa ?? activaVentana) : PantallaRocola.NombreDeLaActiva).Append('\n');
-            // (n7-adelanto) Aqui iban las OTRAS ventanas de la capa (Escritorio.Formas menos la rocola) con sus controles. Ya no hay ninguna:
-            // Ctrl+F3, Ctrl+F2, los avisos, el historial de caratulas y F12 son hojas nativas: ese trozo no escribia nada y se quito.
+            // (form1-sin-form), que es la pantalla nativa y da los nombres ya hechos (PantallaRocola.Ventana.cs: «Form1'Rocola'», la vista, «nadie»)
+            sb.Append("foco=").Append(Hoja.Foco != null ? TrazaVentanas.Pieza(Hoja.Foco) : PantallaRocola.NombreDelFoco).Append('\n');
+            sb.Append("activa=").Append(Hoja.Activa != null ? TrazaVentanas.Pieza(Hoja.Activa) : PantallaRocola.NombreDeLaActiva).Append('\n');
+            // las demas ventanas: Ctrl+F3, Ctrl+F2, los avisos, el historial de caratulas y F12 son hojas nativas
             foreach (Hoja h in Hoja.Abiertas)
             {
                 if (h.IsDisposed || !h.Visible) continue;
@@ -87,7 +84,7 @@ namespace Rocola
                 PiezasPrueba(h.Controls, sb, "  ");
             }
         }
-        // las piezas de una hoja nativa, con lo mismo que las de la capa
+        // las piezas de una hoja nativa, con lo mismo que las de la referencia
         private static void PiezasPrueba(Piezas ps, StringBuilder sb, string sangria)
         {
             foreach (IPieza p in ps)
@@ -95,7 +92,7 @@ namespace Rocola
                 CajaPieza c = p.Caja;
                 sb.Append(sangria).Append(TrazaVentanas.Pieza(p)).Append(" @").Append(CajaPrueba(c.Bounds))
                   .Append(c.Visible ? " v" : " -").Append(c.Enabled ? "e" : "-").Append(" t").Append(VolcadoEstado.N(c.TabIndex));
-                // (port nativo, ventanas2 C) las piezas propias de Ctrl+F3, con lo mismo que cuando eran de la capa
+                // (port nativo, ventanas2 C) las piezas propias de Ctrl+F3, con lo mismo que en la referencia
                 Interruptor i = p as Interruptor; if (i != null) sb.Append(" checked=").Append(VolcadoEstado.B(i.Checked));
                 Deslizador d = p as Deslizador; if (d != null) sb.Append(" value=").Append(VolcadoEstado.N(d.Value));
                 if (Hoja.Foco == (object)p) sb.Append(" FOCO");
@@ -104,11 +101,5 @@ namespace Rocola
             }
         }
         private static string CajaPrueba(System.Drawing.Rectangle r) { return VolcadoEstado.N(r.X) + "," + VolcadoEstado.N(r.Y) + "," + VolcadoEstado.N(r.Width) + "x" + VolcadoEstado.N(r.Height); }
-        // COSTURA DE LA CAPA (n7-adelanto; SE QUITA EN N7, con Plataforma/Ventanas.*.cs): lo unico de este archivo que nombra a la capa de
-        // ventanas de la transicion. Mientras la ventana de la rocola sea una de la capa, quien tiene el foco en ella (la ventana, o el hueco
-        // de una vista: TrazaVentanas.Pieza lo nombra por su vista) y si es la activa lo sabe la capa. Sin la capa lo lleva la pantalla, que da
-        // los nombres ya hechos (PORT_n7-adelanto.md, «La firma que hace falta»): foco= es Hoja.Foco, o PantallaRocola.NombreDelFoco; activa=
-        // es Hoja.Activa, o PantallaRocola.NombreDeLaActiva; y esta funcion y su llamada se borran.
-        private static void DeLaCapa(out object foco, out object activa) { foco = Escritorio.Foco; activa = Escritorio.Activa; }
     }
 }

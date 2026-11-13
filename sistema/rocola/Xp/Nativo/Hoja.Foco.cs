@@ -47,7 +47,7 @@ namespace Rocola
             if (porTeclado) f.activo = activoNuevo;
             foco = c;
             if (TrazaVentanas.Activa && antes != c) TrazaVentanas.Apunta("foco " + TrazaVentanas.Pieza(c));
-            if (antes == null) { Action q = QuitaFocoALaCapa; if (q != null) q(); }   // (transicion) el foco lo tenia una pieza de la capa
+            if (antes == null) { Action q = QuitaFocoALaVentana; if (q != null) q(); }   // el foco lo tenia una vista de la ventana de la rocola
             else if (antes != c && !Desechada(antes)) { IPieza pa = antes as IPieza; if (pa != null) PantallaRocola.Protege(pa.AlPerderFoco); }
             if (!porTeclado) f.activo = activoNuevo;
             if (antes != c) { IPieza pc = c as IPieza; if (pc != null) PantallaRocola.Protege(pc.AlRecibirFoco); }
@@ -60,7 +60,7 @@ namespace Rocola
             if (TrazaVentanas.Activa && antes != null) TrazaVentanas.Apunta("foco nadie");
             IPieza pa = antes as IPieza; if (pa != null && !pa.Caja.IsDisposed) PantallaRocola.Protege(pa.AlPerderFoco);
         }
-        // (transicion) el foco se lo lleva una pieza de la capa (la capa ya apunta a quien): la de la hoja lo pierde
+        // el foco se lo lleva la ventana de la rocola o una vista suya (ella apunta a quien): la de la hoja lo pierde
         internal static void SueltaFoco()
         {
             object antes = foco; if (antes == null) return; foco = null;

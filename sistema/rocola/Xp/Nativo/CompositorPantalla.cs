@@ -52,8 +52,6 @@ namespace Rocola
         internal int Composiciones;
         private static readonly bool trazaCapas = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_CAPAS") == "1";
         private double ultimaTraza;
-        // la mano en lugar de la flecha (Cursors.Hand de lo que esta bajo el raton): lo dice quien da las capas
-        internal Func<bool> ConMano;
 
         internal CompositorPantalla(ISuperficie s)
         {
@@ -176,8 +174,7 @@ namespace Rocola
         private void Flecha()
         {
             if (!PantallaRocola.FlechaVisible) return;
-            Func<bool> m = ConMano;
-            bool mano = (m != null && m()) || Hoja.ManoBajoRaton;   // (la mano de las piezas de una hoja nativa)
+            bool mano = Hoja.ManoBajoRaton;   // (la mano de las piezas de una hoja nativa: Cursors.Hand de lo que esta bajo el raton; las vistas de la rocola no la usan)
             if (texFlecha == 0) { texFlecha = HazCursor(false); texMano = HazCursor(true); }
             Point p = PantallaRocola.Flecha;
             GL.UseProgram(programa);
