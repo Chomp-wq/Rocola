@@ -276,3 +276,17 @@ cierreq, buscador, f3vistas y f3teclas IGUALES; kill9 solo por la cuenta del rel
   PantallaRocola.Libre, el ratón en la pantalla; el TabIndex por colección como WinForms y el GpuPanel en su sitio del ciclo del
   tabulador), revisión «arreglado». Juntado sin la verificación completa: va con la junta de 7b (rotulos-y-letras), que choca con él
   en la pantalla nativa y la junta un grupo aparte.
+
+## 12/13-11-2026: 7b rotulos-y-letras sobre 6a (la junta de los rótulos)
+
+- `a375686`: port-junta-rotulos (un grupo aparte juntó 7b sobre 6a, porque los dos rediseñaron a la vez la pantalla nativa: IVista con
+  DeLaTarjeta y Forma, ILaCapa con lo de los dos, el TabIndex por colección también para rótulos y capas de textura; detalle en
+  PORT_junta-rotulos.md), revisión «arreglado» (la tabla del TabIndex, débil: cada video dejaba una capa viva). Al traerla, los tres
+  arneses del arreglo de la junta 14 chocaron con los de 7b: queda el lado de 7b (pone la Letra de las vistas), los tres IGUALES.
+- Comprobado con todo junto (`scratchpad/merge/verifica-junta15.sh`): compila desde cero (0 errores, los 15 avisos), NativeAOT sin
+  avisos IL/AOT; TODOS los arneses IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de 3 108, Ctrl+F3 0 de 545; el fondo solo su línea
+  de marca); el banco igual en los 27 000 casos; 41 de 41, 86 de 86, 32 de 32 y PantallaVistas 194 de 194; los 109 archivos de
+  `Codigo/` con sus líneas y CRLF; recorridos 9 de 9 con 0, capas quietas 213 de 217 (ctrlf3 c46 con F12 y hojas c18, las de siempre);
+  texturas quietas 457 de 487 por el recorrido buscador (56 de 78), que repetido solo con la máquina libre da 73 y 76 de 78 (su
+  ritmo de flechas tras las capturas: el riesgo que dejó apuntado PORT_arreglo-junta14.md). Las 24 escenas (RJ15/J15) IGUALES salvo
+  sigterm y f3sigterm (lo aceptado); NativeAOT arranque, cierreq, kill9, buscador, f3vistas, f3teclas y f12 IGUALES.
