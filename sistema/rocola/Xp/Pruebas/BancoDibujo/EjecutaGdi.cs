@@ -13,11 +13,6 @@ namespace Banco
 {
     internal static class EjecutaGdi
     {
-#if NATIVO
-        // ejecutor "puente" (paso D3): lo mismo, pero el lienzo, las imagenes, las letras y los formatos pasan por PuenteDibujo (Plataforma/
-        // Puente.cs), como cuando un archivo ya traducido y uno sin traducir se pasan esas cosas: tiene que dar lo mismo que "gdi"
-        internal static bool PorPuente;
-#endif
         private static readonly CultureInfo ci = CultureInfo.InvariantCulture;
         private static string R(float v) { return v.ToString("R", ci); }
         private static string R(RectangleF v) { return "(" + R(v.X) + "," + R(v.Y) + "," + R(v.Width) + "," + R(v.Height) + ")"; }
@@ -33,11 +28,7 @@ namespace Banco
         internal static unsafe Bitmap Mapa(ImagenD d)
         {
             PixelFormat f = d.Formato == 0 ? PixelFormat.Format32bppPArgb : d.Formato == 1 ? PixelFormat.Format32bppArgb : PixelFormat.Format24bppRgb;
-#if NATIVO
-            Bitmap b = PorPuente ? new Bitmap(Rocola.Nativo.Mapas.Nuevo(d.W, d.H), f) { Ajeno = true } : new Bitmap(d.W, d.H, f);   // (interfaz-a-skbitmap, 12-11-2026: lo que daba PuenteDibujo.Bitmap, que se quito: un Bitmap de la capa sobre los puntos nativos, sin hacerse dueno)
-#else
             Bitmap b = new Bitmap(d.W, d.H, f);
-#endif
             BitmapData bd = b.LockBits(new Rectangle(0, 0, d.W, d.H), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
             for (int y = 0; y < d.H; y++) { uint* fila = (uint*)((byte*)bd.Scan0 + y * bd.Stride); for (int x = 0; x < d.W; x++) fila[x] = d.Px[y * d.W + x]; }
             b.UnlockBits(bd);
@@ -106,14 +97,6 @@ namespace Banco
         }
         internal static Font Letra(LetraD l)
         {
-#if NATIVO
-            // (la Letra solo sabe de puntos y pixeles, las unidades de XP: con las demas la letra va tal cual)
-            if (PorPuente) { Font f0 = LetraGdi(l); return f0.Unit == GraphicsUnit.Point || f0.Unit == GraphicsUnit.Pixel ? Rocola.PuenteDibujo.Font(Rocola.PuenteDibujo.Letra(f0)) : f0; }
-            return LetraGdi(l);
-        }
-        private static Font LetraGdi(LetraD l)
-        {
-#endif
             FontStyle st = (FontStyle)l.Estilo; GraphicsUnit u = (GraphicsUnit)l.Unidad;
             if (l.Generica >= 0)
             {
@@ -133,13 +116,6 @@ namespace Banco
         }
         internal static StringFormat Formato(FormatoD f)
         {
-#if NATIVO
-            StringFormat r = FormatoGdi(f);
-            return PorPuente ? Rocola.PuenteDibujo.StringFormat(Rocola.PuenteDibujo.Formato(r)) : r;
-        }
-        private static StringFormat FormatoGdi(FormatoD f)
-        {
-#endif
             StringFormat sf;
             switch (f.Tipo)
             {
@@ -186,12 +162,7 @@ namespace Banco
             GenericosDeFabrica();
             using (Bitmap b = new Bitmap(c.W, c.H, c.FormatoLienzo == 0 ? PixelFormat.Format32bppPArgb : PixelFormat.Format32bppArgb))
             {
-#if NATIVO
-                SkiaSharp.SKCanvas lienzo = PorPuente ? new SkiaSharp.SKCanvas(Rocola.PuenteDibujo.Mapa(b)) : null;
-                using (Graphics g = PorPuente ? Rocola.PuenteDibujo.Graphics(lienzo, SkiaSharp.SKMatrix.Identity) : Graphics.FromImage(b))
-#else
                 using (Graphics g = Graphics.FromImage(b))
-#endif
                 {
                     if (c.Fondo.HasValue) g.Clear(c.Fondo.Value);
                     PonEstado(g, c.Estado);
@@ -201,9 +172,6 @@ namespace Banco
                         catch (Exception ex) { v.Append(" EXC:" + ex.GetType().Name); }
                     }
                 }
-#if NATIVO
-                if (lienzo != null) { lienzo.Flush(); lienzo.Dispose(); }
-#endif
                 return Bytes(b);
             }
         }

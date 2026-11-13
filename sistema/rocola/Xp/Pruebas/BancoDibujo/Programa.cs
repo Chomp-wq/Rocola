@@ -49,9 +49,6 @@ namespace Banco
                     case "vuelca": foreach (string s in a[i + 1].Split(',')) vuelca.Add(int.Parse(s)); break;
                 }
             }
-#if NATIVO
-            if (Array.IndexOf(a, "puente-objetos") >= 0) return PruebaPuente.Hace();
-#endif
             List<Caso> l = Casos.Genera(casos, semilla, clase);
             StringBuilder todo = new StringBuilder();
             System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
@@ -63,7 +60,7 @@ namespace Banco
                 try
                 {
 #if NATIVO
-                    EjecutaGdi.PorPuente = ejecutor == "puente";
+                    if (ejecutor != "gdi" && ejecutor != "nativo") throw new InvalidOperationException("este banco no lleva el ejecutor " + ejecutor);   // (n7-adelanto: el ejecutor «puente» se quito; antes, lo que no era «nativo» ni «puente» corria como «gdi»)
                     px = ejecutor == "nativo" ? EjecutaNativo.Hace(c, v) : EjecutaGdi.Hace(c, v);
 #else
                     if (ejecutor != "gdi") throw new InvalidOperationException("este banco no lleva el ejecutor " + ejecutor);
