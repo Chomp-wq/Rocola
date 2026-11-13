@@ -3,9 +3,10 @@
 // Se compila con el programa entero de una carpeta Xp (VistasAcabadoEstilo.csproj, -p:Fuente=...): la referencia congelada (GDI+ de la
 // capa), la base de la tanda y esta copia; la salida (una linea por caso: los puntos tal cual y como los sube la tarjeta, lo que devuelve,
 // las cintas que deja) tiene que salir igual linea por linea (compara.sh).
-// Las funciones se llaman como las llama el codigo de XP que todavia no esta traducido: con un Graphics (en la referencia, la funcion de XP;
-// en la traduccion, la firma de XP que deja el puente) o, si la traducida ya no tiene esa firma, con el lienzo y el estado de ese Graphics
-// (PuenteDibujo, por reflexion: la referencia no lo tiene), como se lo pasaria quien la llama.
+// Las funciones se llaman como las llama quien las usa: en la referencia, la funcion de XP con un Graphics; en la traduccion, la traducida
+// con el lienzo y su estado (suavizado, modo de letra, copia, filtro, medio pixel).
+// (Oleada 8b, 13-11-2026) El arnes ya no nombra la capa de GDI+ ni la de WinForms: los mapas, el lienzo, las letras y los rotulos van por
+// Pruebas/Comun (Pru, Lz, Fte: la capa en la referencia congelada y lo nativo en el programa nuevo).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet VistasAcabadoEstilo.dll [vuelca CARPETA] [solo PREFIJO]
 using System;
 using System.Collections.Generic;
@@ -15,9 +16,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
-using Label = Rocola.Ventanas.Label;
 
 namespace Banco
 {
@@ -26,7 +25,6 @@ namespace Banco
         private const BindingFlags T = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance;
         private static string carpeta, solo;
         private static int n;
-        private static readonly Type tPuente = typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo");   // (solo en la traduccion)
 
         // ---------------------------------------------------------------- lo que sale
         private static bool Toca(string nombre) { return solo == null || nombre.StartsWith(solo, StringComparison.Ordinal); }
@@ -36,15 +34,11 @@ namespace Banco
         private static unsafe string Puntos(object o, string nombre)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap;
-            if (b == null) b = new Bitmap((SKBitmap)o, PixelFormat.Format32bppArgb);   // (solo para leerlo: no se suelta, los puntos son del SKBitmap)
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppArgb");   // (solo para leerlo: no se suelta, los puntos son del SKBitmap)
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre.Replace('/', '_') + ".png"), png.ToArray());
             string r = s.Width + "x" + s.Height + "\t" + s.ColorType + "/" + s.AlphaType + "\t" + Huella(px) + "\t" + Huella(sub);
             return r;
@@ -56,17 +50,17 @@ namespace Banco
         private static string Exc(Exception e) { while (e is TargetInvocationException && e.InnerException != null) e = e.InnerException; return "EXC:" + e.GetType().Name; }
 
         // ---------------------------------------------------------------- los datos
-        private static Font[] Fuentes()
+        private static Fte[] Fuentes()   // (el estilo: 1 negrita, 2 cursiva, 4 subrayada)
         {
             return new[] {
-                new Font("Microsoft Sans Serif", 21.75f, FontStyle.Bold),                          // el titulo de lejos (15 * 1,45)
-                new Font("Microsoft Sans Serif", 11.5f, FontStyle.Bold),                           // el artista
-                new Font("Microsoft Sans Serif", 10.5f, FontStyle.Bold),                           // lo que sigue
-                new Font(FontFamily.GenericSansSerif, 13f, FontStyle.Bold, GraphicsUnit.Pixel),    // la tarjeta: A CONTINUACION
-                new Font(FontFamily.GenericSansSerif, 20f, FontStyle.Bold, GraphicsUnit.Pixel),    // y lo que sigue en ella
-                new Font("Tahoma", 9.5f),                                                          // (si no esta, Microsoft Sans Serif)
-                new Font("Times New Roman", 15f, FontStyle.Italic | FontStyle.Underline),
-                new Font("Trebuchet MS", 17.25f, FontStyle.Bold),
+                new Fte("Microsoft Sans Serif", 21.75f, 1),                          // el titulo de lejos (15 * 1,45)
+                new Fte("Microsoft Sans Serif", 11.5f, 1),                           // el artista
+                new Fte("Microsoft Sans Serif", 10.5f, 1),                           // lo que sigue
+                Fte.Generica(13f, 1, "Pixel"),    // la tarjeta: A CONTINUACION
+                Fte.Generica(20f, 1, "Pixel"),    // y lo que sigue en ella
+                new Fte("Tahoma", 9.5f),                                                          // (si no esta, Microsoft Sans Serif)
+                new Fte("Times New Roman", 15f, 2 | 4),
+                new Fte("Trebuchet MS", 17.25f, 1),
             };
         }
         private static readonly string[] Textos = {
@@ -74,19 +68,19 @@ namespace Banco
             "SIGUE  ·  Artista con nombre largo - Titulo muy largo que no cabe en la caja para nada", "", "Ñ",
             "😀 emoji 🎵 y mas 😀😀😀😀😀😀😀😀😀😀😀😀", "  espacios al final   ", "Tab\tdentro y\nsalto", null };
         private static readonly Color[] Colores = { Color.FromArgb(125, 235, 165), Color.FromArgb(214, 224, 246), Color.FromArgb(128, 255, 255, 255), Color.FromArgb(169, 191, 224), Color.FromArgb(0, 255, 255, 255) };
-        private static readonly TextRenderingHint[] Ajustes = { TextRenderingHint.AntiAliasGridFit, TextRenderingHint.SystemDefault, TextRenderingHint.AntiAlias, TextRenderingHint.SingleBitPerPixelGridFit, TextRenderingHint.ClearTypeGridFit, TextRenderingHint.SingleBitPerPixel };
+        private static readonly ModoLetra[] Ajustes = { ModoLetra.AntiAliasGridFit, ModoLetra.SystemDefault, ModoLetra.AntiAlias, ModoLetra.SingleBitPerPixelGridFit, ModoLetra.ClearTypeGridFit, ModoLetra.SingleBitPerPixel };
 
         // un mapa como el de la imagen de la interfaz (Format32bppPArgb) con un fondo: transparente, a medias o con una franja
-        private static Bitmap Mapa(int w, int h, int fondo)
+        private static object Mapa(int w, int h, int fondo)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(b))
+            object b = Pru.NuevoMapa(w, h, "Format32bppPArgb");
+            using (Lz g = Pru.Lienzo(b))
             {
-                if (fondo == 0) g.Clear(Color.Transparent);
+                if (fondo == 0) g.Limpia(Color.Transparent);
                 else
                 {
-                    g.Clear(fondo == 1 ? Color.FromArgb(120, 30, 60, 90) : Color.FromArgb(255, 12, 16, 30));
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, h / 3, w, Math.Max(1, h / 7));
+                    g.Limpia(fondo == 1 ? Color.FromArgb(120, 30, 60, 90) : Color.FromArgb(255, 12, 16, 30));
+                    g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, h / 3, w, Math.Max(1, h / 7));
                 }
             }
             return b;
@@ -94,83 +88,82 @@ namespace Banco
         // EL ESTADO DEL GRAPHICS: la mitad de las veces el de los recorridos (AntiAlias, AntiAliasGridFit, SourceOver, Bilinear, Default,
         // trasladado a coordenadas del form); si no, al azar: suavizado, modo de letra, copia, medio pixel, traslacion entera o con decimales,
         // escala, giro y recortes (SetClip que reemplaza, que se suma, o de un trazo)
-        private static string PonEstado(Graphics g, Random r, int w, int h, bool texto)
+        private static string PonEstado(Lz g, Random r, int w, int h, bool texto)
         {
             bool tipico = r.Next(2) == 0;
-            SmoothingMode s = tipico ? SmoothingMode.AntiAlias : new[] { SmoothingMode.AntiAlias, SmoothingMode.None, SmoothingMode.HighQuality, SmoothingMode.Default }[r.Next(4)];
-            TextRenderingHint t = tipico ? TextRenderingHint.AntiAliasGridFit : Ajustes[r.Next(Ajustes.Length)];
-            CompositingMode c = tipico || r.Next(3) > 0 ? CompositingMode.SourceOver : CompositingMode.SourceCopy;
-            PixelOffsetMode p = tipico || r.Next(3) > 0 ? PixelOffsetMode.Default : new[] { PixelOffsetMode.Half, PixelOffsetMode.HighQuality, PixelOffsetMode.None }[r.Next(3)];
-            InterpolationMode im = tipico || r.Next(2) > 0 ? InterpolationMode.Bilinear : new[] { InterpolationMode.NearestNeighbor, InterpolationMode.HighQualityBicubic, InterpolationMode.HighQualityBilinear }[r.Next(3)];
-            g.SmoothingMode = s; g.TextRenderingHint = t; g.CompositingMode = c; g.PixelOffsetMode = p; g.InterpolationMode = im;
+            ModoSuave s = tipico ? ModoSuave.AntiAlias : new[] { ModoSuave.AntiAlias, ModoSuave.None, ModoSuave.HighQuality, ModoSuave.Default }[r.Next(4)];
+            ModoLetra t = tipico ? ModoLetra.AntiAliasGridFit : Ajustes[r.Next(Ajustes.Length)];
+            ModoCopia c = tipico || r.Next(3) > 0 ? ModoCopia.SourceOver : ModoCopia.SourceCopy;
+            ModoPixel p = tipico || r.Next(3) > 0 ? ModoPixel.Default : new[] { ModoPixel.Half, ModoPixel.HighQuality, ModoPixel.None }[r.Next(3)];
+            ModoFiltro im = tipico || r.Next(2) > 0 ? ModoFiltro.Bilinear : new[] { ModoFiltro.NearestNeighbor, ModoFiltro.HighQualityBicubic, ModoFiltro.HighQualityBilinear }[r.Next(3)];
+            g.Suavizado = s; g.Letra = t; g.Copia = c; g.Pixel = p; g.Filtro = im;
             int tr = tipico ? 1 : r.Next(5), cl = r.Next(4);
             float dx = 0, dy = 0;
             switch (tr)
             {
-                case 1: dx = r.Next(-3, 4); dy = r.Next(-3, 4); g.TranslateTransform(dx, dy); break;
-                case 2: dx = r.Next(-30, 30) / 8f; dy = r.Next(-30, 30) / 4f; g.TranslateTransform(dx, dy); break;
-                case 3: g.ScaleTransform(1.3f, 0.9f); break;
-                case 4: g.RotateTransform(r.Next(-12, 12)); break;
+                case 1: dx = r.Next(-3, 4); dy = r.Next(-3, 4); g.Traslada(dx, dy); break;
+                case 2: dx = r.Next(-30, 30) / 8f; dy = r.Next(-30, 30) / 4f; g.Traslada(dx, dy); break;
+                case 3: g.Escala(1.3f, 0.9f); break;
+                case 4: g.Gira(r.Next(-12, 12)); break;
             }
             string recorte = "-";
-            if (cl == 1) { Rectangle k = new Rectangle(r.Next(w / 3), r.Next(h / 3), w / 2 + r.Next(w / 2), h / 2 + r.Next(h / 2)); g.SetClip(k); recorte = "R" + k; }
-            else if (cl == 2) { g.SetClip(new Rectangle(2, 2, w - 4, h - 4)); Rectangle k = new Rectangle(r.Next(w / 2), 0, w, h - r.Next(h / 2)); g.SetClip(k, CombineMode.Intersect); recorte = "I" + k; }
-            else if (cl == 3) { using (GraphicsPath gp = new GraphicsPath()) { gp.AddEllipse(-w / 4f, -h / 4f, w * 1.2f, h * 1.3f); g.SetClip(gp); } recorte = "P"; }
+            if (cl == 1) { Rectangle k = new Rectangle(r.Next(w / 3), r.Next(h / 3), w / 2 + r.Next(w / 2), h / 2 + r.Next(h / 2)); g.Recorta(k); recorte = "R" + k; }
+            else if (cl == 2) { g.Recorta(new Rectangle(2, 2, w - 4, h - 4)); Rectangle k = new Rectangle(r.Next(w / 2), 0, w, h - r.Next(h / 2)); g.Intersecta(k); recorte = "I" + k; }
+            else if (cl == 3) { g.RecortaElipse(-w / 4f, -h / 4f, w * 1.2f, h * 1.3f); recorte = "P"; }
             return s + "," + t + "," + c + "," + p + "," + im + ",tr" + tr + "(" + dx + "," + dy + ")," + recorte + (texto ? "" : "");
         }
 
-        // ---------------------------------------------------------------- llamar como lo llama el codigo sin traducir
-        private static object Estado(Graphics g) { return tPuente.GetMethod("Estado", T).Invoke(null, new object[] { g }); }
-        private static object Lienzo(Graphics g) { return tPuente.GetMethod("Lienzo", T).Invoke(null, new object[] { g }); }
-        private static object LetraDe(Font f) { return tPuente.GetMethod("Letra", T, null, new[] { typeof(Font) }, null).Invoke(null, new object[] { f }); }
+        // ---------------------------------------------------------------- llamar como lo llama quien lo usa
+        // (una letra del arnes pasa por la suya: la Font de la referencia o la Letra del programa nuevo; un modo, por el del mismo numero)
         private static object Convierte(object v, Type t)
         {
             if (v == null || t.IsInstanceOfType(v)) return v;
             if (t.IsEnum) return Enum.ToObject(t, Convert.ToInt32(v));
-            if (v is Font) return LetraDe((Font)v);
+            if (v is Fte) return ((Fte)v).Obj;
             return v;
         }
-        // 'nombre' de 't': si tiene la firma de XP (Graphics y 'resto'), con 'g'; si no, la traducida con el lienzo de 'g' y su estado (los
-        // parametros del estado van por su nombre: suave, ajuste, copia, filtro, medio; si hay varias traducidas con ese nombre, como
-        // DrawLabelOverlay, la que despues del estado lleva tantos como 'resto')
+        // 'nombre' de 't': en la referencia, la de XP (Graphics y 'resto'), con el Graphics de 'g'; en el programa nuevo, la traducida con el
+        // lienzo de 'g' y su estado (los parametros del estado van por su nombre: suave, ajuste, copia, filtro, medio; si hay varias traducidas
+        // con ese nombre, como DrawLabelOverlay, la que despues del estado lleva tantos como 'resto')
         private static bool DeEstado(string nn) { return nn == "suave" || nn == "ajuste" || nn == "copia" || nn == "filtro" || nn == "medio"; }
-        private static object Llama(Type t, string nombre, object inst, Graphics g, params object[] resto)
+        private static object Llama(Type t, string nombre, object inst, Lz g, params object[] resto)
         {
             MethodInfo con = null, sin = null;
             foreach (MethodInfo m in t.GetMethods(T))
             {
                 if (m.Name != nombre) continue;
                 ParameterInfo[] p = m.GetParameters();
-                if (p.Length == resto.Length + 1 && p[0].ParameterType == typeof(Graphics)) con = m;
-                else if (p.Length > 0 && p[0].ParameterType == typeof(SKCanvas))
+                if (Pru.Capa && p.Length == resto.Length + 1 && p[0].ParameterType == Pru.TLienzo) con = m;
+                else if (!Pru.Capa && p.Length > 0 && p[0].ParameterType == typeof(SKCanvas))
                 {
                     int j = 1; while (j < p.Length && DeEstado(p[j].Name)) j++;
                     if (p.Length - j == resto.Length) sin = m;
                 }
             }
-            if (con != null) { object[] a = new object[resto.Length + 1]; a[0] = g; Array.Copy(resto, 0, a, 1, resto.Length); return con.Invoke(inst, a); }
-            ParameterInfo[] ps = sin.GetParameters(); object e = Estado(g); Type te = e.GetType();
-            object[] b = new object[ps.Length]; b[0] = Lienzo(g); int k = 1, i = 0;
+            if (con != null) { ParameterInfo[] pc = con.GetParameters(); object[] a = new object[resto.Length + 1]; a[0] = g.Objeto; for (int j = 0; j < resto.Length; j++) a[j + 1] = Convierte(resto[j], pc[j + 1].ParameterType); return con.Invoke(inst, a); }
+            ParameterInfo[] ps = sin.GetParameters(); object[] e = g.Estado();   // (el lienzo, suave, letra, copia, filtro, medio y la matriz del HDC)
+            object[] b = new object[ps.Length]; b[0] = e[0]; int k = 1, i = 0;
             for (; k < ps.Length; k++)
             {
                 string nn = ps[k].Name;
-                if (nn == "suave") b[k] = te.GetField("Suave").GetValue(e);
-                else if (nn == "ajuste") b[k] = te.GetField("Letra").GetValue(e);
-                else if (nn == "copia") b[k] = te.GetField("Copia").GetValue(e);
-                else if (nn == "filtro") b[k] = te.GetField("Filtro").GetValue(e);
-                else if (nn == "medio") b[k] = te.GetField("Medio").GetValue(e);
+                if (nn == "suave") b[k] = e[1];
+                else if (nn == "ajuste") b[k] = e[2];
+                else if (nn == "copia") b[k] = e[3];
+                else if (nn == "filtro") b[k] = e[4];
+                else if (nn == "medio") b[k] = e[5];
                 else break;
             }
             for (; k < ps.Length; k++) b[k] = Convierte(resto[i++], ps[k].ParameterType);
             return sin.Invoke(inst, b);
         }
         // las que solo miden (RecortaLejos, EscalaTituloLejos): de XP (Graphics, texto, Font, ...) o traducidas (AjusteLetra, texto, Letra, ...)
-        private static object Mide(string nombre, Graphics g, string texto, Font f, params object[] resto)
+        private static object Mide(string nombre, Lz g, string texto, Fte f, params object[] resto)
         {
             MethodInfo m = typeof(Form1).GetMethod(nombre, T);
             ParameterInfo[] p = m.GetParameters(); object[] a = new object[p.Length];
-            if (p[0].ParameterType == typeof(Graphics)) { a[0] = g; a[2] = f; }
-            else { a[0] = Enum.ToObject(p[0].ParameterType, (int)g.TextRenderingHint); a[2] = f != null ? LetraDe(f) : null; }
+            if (Pru.Capa) a[0] = g.Objeto;
+            else a[0] = Enum.ToObject(p[0].ParameterType, (int)g.Letra);
+            a[2] = f != null ? f.Obj : null;
             a[1] = texto; for (int i = 0; i < resto.Length; i++) a[3 + i] = resto[i];
             return m.Invoke(null, a);
         }
@@ -187,16 +180,15 @@ namespace Banco
         }
         private static object Anidada(string nombre) { return Activator.CreateInstance(typeof(Form1).GetNestedType(nombre, BindingFlags.NonPublic | BindingFlags.Public), true); }
         // (rotulos-y-letras) LAS PROPIEDADES DE UNA VISTA O UN ROTULO por su nombre: en la referencia son Control o Label de la capa; en la
-        // traduccion, vistas sin herencia (oleadas 5 y 6) y RotuloVista (Nativo/RotuloVista.cs). Donde la traduccion pide una Letra y el arnes
-        // da la Font de la capa, la de esa Font (Font.L: la misma que da PuenteDibujo.Letra); donde pide AlineaTexto y el arnes da
-        // ContentAlignment, el mismo numero.
+        // traduccion, vistas sin herencia (oleadas 5 y 6) y RotuloVista (Nativo/RotuloVista.cs). Una letra del arnes (Fte) va por la suya (la
+        // Font de la referencia o la Letra de la traduccion); la alineacion va por su numero (el de ContentAlignment, que es el de AlineaTexto).
         private static void PonP(object o, string p, object v) { PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance); pi.SetValue(o, Adapta(pi.PropertyType, v)); }
         private static object LeeP(object o, string p) { return o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance).GetValue(o); }
         private static object Adapta(Type destino, object v)
         {
             if (v == null || destino.IsInstanceOfType(v)) return v;
-            if (v is Font && destino.Name == "Letra") return typeof(Font).GetField("L", T).GetValue(v);
-            if (v is ContentAlignment && destino.IsEnum) return Enum.ToObject(destino, (int)(ContentAlignment)v);
+            if (v is Fte) return ((Fte)v).Obj;
+            if (v is int && destino.IsEnum) return Enum.ToObject(destino, (int)v);
             return v;
         }
         private static readonly Type tRotulo = typeof(Form1).Assembly.GetType("Rocola.RotuloVista");   // (solo en la traduccion)
@@ -219,43 +211,43 @@ namespace Banco
         // ---------------------------------------------------------------- EstiloGpu.cs
         private static void Renglones(Random r)
         {
-            Font[] fs = Fuentes();
+            Fte[] fs = Fuentes();
             for (int caso = 0; caso < 700; caso++)
             {
-                Font f = fs[r.Next(fs.Length)]; string texto = Textos[r.Next(Textos.Length)];
+                Fte f = fs[r.Next(fs.Length)]; string texto = Textos[r.Next(Textos.Length)];
                 RectangleF[] cajas = { new RectangleF(5, 6, 180, 30), new RectangleF(10.5f, 4.25f, 90, 22), new RectangleF(0, 0, 40, 12), new RectangleF(3, 20, 300, 60),
                     new RectangleF(2, 2, 0, 20), new RectangleF(5, 5, -10, 20), new RectangleF(1, 1, 318, 118), new RectangleF(20, 30, 230.6f, 40.4f), new RectangleF(7, 40, 120, 8) };
                 RectangleF caja = cajas[r.Next(cajas.Length)];
-                StringAlignment al = (StringAlignment)r.Next(3); Color c = Colores[r.Next(Colores.Length)]; int fondo = r.Next(3);
+                ModoAlinea al = (ModoAlinea)r.Next(3); Color c = Colores[r.Next(Colores.Length)]; int fondo = r.Next(3);
                 bool cinta = r.Next(4) == 0;
                 string nombre = "renglon-" + caso;
-                Bitmap b = Mapa(320, 120, fondo); string res, estado;
+                object b = Mapa(320, 120, fondo); string res, estado;
                 CintasTexto grupo = cinta ? new CintasTexto() : null;
-                using (Graphics g = Graphics.FromImage(b))
+                using (Lz g = Pru.Lienzo(b))
                 {
                     estado = PonEstado(g, r, 320, 120, true);
                     if (grupo != null) { grupo.Begin(); fCintas.SetValue(null, grupo); }
-                    // (la firma de XP, con un Graphics, se quito con su puente en el grupo directas-tanda2: en la traduccion, la traducida con el lienzo y
-                    // el estado de g, como hacia el puente; Llama pasa la Font a su Letra y StringAlignment a Alinea, que tienen los mismos valores)
+                    // (en la traduccion, la traducida con el lienzo y el estado de g; Llama pasa la letra por la suya y la alineacion por su numero,
+                    // que es el mismo en StringAlignment y en Alinea)
                     try { Llama(typeof(Form1), "PintaRenglonLejos", null, g, texto, f, c, caja, al); res = "ok"; }
                     catch (Exception e) { res = Exc(e); }
                     finally { fCintas.SetValue(null, null); }
                 }
-                if (Toca(nombre)) Apunta(nombre, estado + "|" + f.Name + "," + f.Size + "," + f.Style + "," + f.Unit + "|" + Huella(texto) + "|" + caja + "|" + al + "|" + c.ToArgb().ToString("x8") + "|" + fondo + "|" + res, b);
+                if (Toca(nombre)) Apunta(nombre, estado + "|" + f.Nombre + "," + f.Tamano + "," + f.Estilo + "," + f.Unidad + "|" + Huella(texto) + "|" + caja + "|" + al + "|" + c.ToArgb().ToString("x8") + "|" + fondo + "|" + res, b);
                 if (grupo != null && Toca(nombre)) Linea(nombre + "-cintas", Cintas(grupo, nombre));
                 if (grupo != null) grupo.Dispose();
-                b.Dispose();
+                Pru.Suelta(b);
             }
-            foreach (Font f in fs) f.Dispose();
+            foreach (Fte f in fs) f.Dispose();
         }
         private static void Recortes(Random r)
         {
-            Font[] fs = Fuentes(); float[] anchos = { 0f, 5f, 37.5f, 80f, 150f, 400f };
-            using (Bitmap b = new Bitmap(8, 8, PixelFormat.Format32bppPArgb))
-            using (Graphics g = Graphics.FromImage(b))
-                foreach (TextRenderingHint t in Ajustes)
+            Fte[] fs = Fuentes(); float[] anchos = { 0f, 5f, 37.5f, 80f, 150f, 400f };
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(8, 8, "Format32bppPArgb"))
+            using (Lz g = Pru.Lienzo(b))
+                foreach (ModoLetra t in Ajustes)
                 {
-                    g.TextRenderingHint = t;
+                    g.Letra = t;
                     for (int i = 0; i < fs.Length; i++)
                         for (int j = 0; j < Textos.Length; j++)
                             foreach (float ancho in anchos)
@@ -268,16 +260,16 @@ namespace Banco
                                 Linea(nombre, res);
                             }
                 }
-            foreach (Font f in fs) f.Dispose();
+            foreach (Fte f in fs) f.Dispose();
         }
         private static void Escalas(Random r)
         {
-            Font[] fs = Fuentes(); float[] anchos = { 50f, 200f, 450f }, altos = { 10f, 25f, 40f, 60f };
-            using (Bitmap b = new Bitmap(8, 8, PixelFormat.Format32bppPArgb))
-            using (Graphics g = Graphics.FromImage(b))
+            Fte[] fs = Fuentes(); float[] anchos = { 50f, 200f, 450f }, altos = { 10f, 25f, 40f, 60f };
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(8, 8, "Format32bppPArgb"))
+            using (Lz g = Pru.Lienzo(b))
                 for (int caso = 0; caso < 1500; caso++)
                 {
-                    TextRenderingHint t = Ajustes[r.Next(Ajustes.Length)]; g.TextRenderingHint = t;
+                    ModoLetra t = Ajustes[r.Next(Ajustes.Length)]; g.Letra = t;
                     int i = r.Next(fs.Length), j = r.Next(Textos.Length); float ancho = anchos[r.Next(anchos.Length)], alto = altos[r.Next(altos.Length)];
                     bool sinLetra = r.Next(40) == 0;
                     string nombre = "escala-" + caso;
@@ -287,7 +279,7 @@ namespace Banco
                     catch (Exception e) { res = Exc(e); }
                     Linea(nombre, t + "|" + i + "|" + j + "|" + ancho + "|" + alto + "|" + sinLetra + "|" + res);
                 }
-            foreach (Font f in fs) f.Dispose();
+            foreach (Fte f in fs) f.Dispose();
         }
         private static void Tarjetas(Random r)
         {
@@ -298,9 +290,9 @@ namespace Banco
                 Rectangle caja = cajas[r.Next(cajas.Length)]; string texto = Textos[r.Next(Textos.Length)] ?? "x"; int fondo = r.Next(3);
                 bool cinta = r.Next(4) == 0;
                 string nombre = "tarjeta-" + caso;
-                Bitmap b = Mapa(420, 140, fondo); string res, estado;
+                object b = Mapa(420, 140, fondo); string res, estado;
                 CintasTexto grupo = cinta ? new CintasTexto() : null;
-                using (Graphics g = Graphics.FromImage(b))
+                using (Lz g = Pru.Lienzo(b))
                 {
                     estado = PonEstado(g, r, 420, 140, true);
                     if (grupo != null) { grupo.Begin(); fCintas.SetValue(null, grupo); }
@@ -311,7 +303,7 @@ namespace Banco
                 if (Toca(nombre)) Apunta(nombre, estado + "|" + Huella(texto) + "|" + caja + "|" + fondo + "|" + res, b);
                 if (grupo != null && Toca(nombre)) Linea(nombre + "-cintas", Cintas(grupo, nombre));
                 if (grupo != null) grupo.Dispose();
-                b.Dispose();
+                Pru.Suelta(b);
             }
         }
 
@@ -327,8 +319,8 @@ namespace Banco
                 Rectangle barra = barras[r.Next(barras.Length)], busca = casillas[r.Next(casillas.Length)], ayuda = casillas[r.Next(casillas.Length)];
                 Rectangle tb = teclas[r.Next(teclas.Length)], ta = teclas[r.Next(teclas.Length)]; bool arriba = r.Next(2) == 0; int fondo = r.Next(3);
                 string nombre = "guia-" + caso;
-                Bitmap b = Mapa(320, 160, fondo); string res, estado;
-                using (Graphics g = Graphics.FromImage(b))
+                object b = Mapa(320, 160, fondo); string res, estado;
+                using (Lz g = Pru.Lienzo(b))
                 {
                     estado = PonEstado(g, r, 320, 160, false);
                     try
@@ -341,7 +333,7 @@ namespace Banco
                     catch (Exception e) { res = Exc(e); }
                 }
                 if (Toca(nombre)) Apunta(nombre, estado + "|" + cual + "|" + barra + busca + ayuda + tb + ta + "|" + arriba + "|" + fondo + "|" + res, b);
-                b.Dispose();
+                Pru.Suelta(b);
             }
         }
 
@@ -379,7 +371,7 @@ namespace Banco
         private static object Form1Vacio(int w, int h)
         {
             object f = RuntimeHelpers.GetUninitializedObject(typeof(Form1));
-            Pon(f, "bounds", new Rectangle(0, 0, w, h));   // ClientSize (sin borde: FormBorderStyle.None)
+            Pru.MedidaDeForm1(f, w, h);   // ClientSize (sin borde: FormBorderStyle.None): el campo 'bounds' de Control mientras Form1 herede de Form; sin herencia, su ventana
             return f;
         }
         private static void Paginas(Random r)
@@ -399,20 +391,20 @@ namespace Banco
                 Pon(f, "songPager", pager); Pon(f, "bgAccentTarget", acento);
                 int fondo = r.Next(3);
                 string nombre = "paginas-" + caso;
-                Bitmap b = Mapa(900, 70, fondo); string res, estado;
-                using (Graphics g = Graphics.FromImage(b))
+                object b = Mapa(900, 70, fondo); string res, estado;
+                using (Lz g = Pru.Lienzo(b))
                 {
                     estado = PonEstado(g, r, 900, 70, true);
-                    try { Llama(typeof(Form1), "DrawSongPagerGpu", f, g); res = "ok"; }   // (la firma de XP se quito con el grupo video-form1: en la traduccion, la traducida con el estado de g)
+                    try { Llama(typeof(Form1), "DrawSongPagerGpu", f, g); res = "ok"; }   // (en la traduccion, la traducida con el estado de g)
                     catch (Exception e) { res = Exc(e); }
                 }
                 if (Toca(nombre)) Apunta(nombre, estado + "|" + caja + "|" + paginas + "|" + pagina + "|" + acento.ToArgb().ToString("x8") + "|" + fondo + "|" + res, b);
-                b.Dispose(); Suelta(pager);
+                Pru.Suelta(b); Suelta(pager);
             }
         }
         // LA LISTA DEL DISCO (SongListView): su pagina horneada la pinta PintaPagina (Form1.Vistas.cs, igual en las tres); aqui, las capas de
         // la tarjeta, el vidrio, el dibujo en la imagen de la interfaz y el hojeo (con el reloj quieto: ver ConReloj)
-        private static object NuevaLista(int w, int h, int filas, int rowH, Font letra, int sel, int inicio, Color acento)
+        private static object NuevaLista(int w, int h, int filas, int rowH, Fte letra, int sel, int inicio, Color acento)
         {
             object l = Anidada("SongListView");
             PonP(l, "Bounds", new Rectangle(0, 0, w, h)); PonP(l, "Font", letra);
@@ -428,25 +420,25 @@ namespace Banco
         // DesplazaAhora (Form1.Vistas.cs) lee Environment.TickCount al empezar a pintar: el hojeo se pinta a 'dt' ms de su comienzo. Primero una
         // vez para calentar (lo que se hornea la primera vez -la pagina que entra, el vidrio- no cae en el instante medido); despues tres veces,
         // cada una al empezar un milisegundo (lo que va antes de DesplazaAhora tarda microsegundos), y vale la imagen que salga al menos dos.
-        private static Bitmap ConReloj(object lista, int dt, Func<Bitmap> hacer)
+        private static object ConReloj(object lista, int dt, Func<object> hacer)
         {
             FieldInfo st = lista.GetType().GetField("slideTick", T);
-            st.SetValue(lista, Environment.TickCount - dt); hacer().Dispose();
-            List<Bitmap> hechos = new List<Bitmap>(); List<string> huellas = new List<string>();
+            st.SetValue(lista, Environment.TickCount - dt); Pru.Suelta(hacer());
+            List<object> hechos = new List<object>(); List<string> huellas = new List<string>();
             for (int k = 0; k < 3; k++)
             {
                 int t0 = Environment.TickCount; while (Environment.TickCount == t0) { }
                 st.SetValue(lista, Environment.TickCount - dt);
-                Bitmap b = hacer(); hechos.Add(b); huellas.Add(HuellaRapida(b));
+                object b = hacer(); hechos.Add(b); huellas.Add(HuellaRapida(b));
             }
             int elegido = huellas[0] == huellas[1] || huellas[0] == huellas[2] ? 0 : huellas[1] == huellas[2] ? 1 : -1;
-            for (int k = 0; k < 3; k++) if (k != elegido) hechos[k].Dispose();
+            for (int k = 0; k < 3; k++) if (k != elegido) Pru.Suelta(hechos[k]);
             if (elegido < 0) throw new TimeoutException("sin dos iguales");
             return hechos[elegido];
         }
-        private static unsafe string HuellaRapida(Bitmap b)
+        private static unsafe string HuellaRapida(object b)
         {
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4]; byte* p = (byte*)s.GetPixels();
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4]; byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
             return Huella(px);
         }
@@ -454,13 +446,13 @@ namespace Banco
         {
             Type tl = typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic);
             MethodInfo capa = tl.GetMethod("BakeGpuListLayer", T), previa = tl.GetMethod("BakeGpuPrevious", T);
-            // RenderTransparentGpuTint y RenderOpaqueGpu: la firma de XP se quito con el grupo video-form1; en la traduccion, la traducida con el estado de g (Llama)
+            // RenderTransparentGpuTint y RenderOpaqueGpu: en la traduccion, la traducida con el estado de g (Llama)
             MethodInfo hojea = tl.GetMethod("StartGpuSlide", T);
             int[][] medidas = { new[] { 556, 464, 34 }, new[] { 250, 464, 30 }, new[] { 556, 468, 36 }, new[] { 120, 90, 30 } };
             for (int caso = 0; caso < 24; caso++)
             {
                 int[] m = medidas[caso % medidas.Length];
-                Font letra = new Font("Microsoft Sans Serif", caso % 3 == 0 ? 14.25f : caso % 3 == 1 ? 12f : 17f, FontStyle.Bold);
+                Fte letra = new Fte("Microsoft Sans Serif", caso % 3 == 0 ? 14.25f : caso % 3 == 1 ? 12f : 17f, 1);
                 int filas = new[] { 20, 5, 40 }[caso % 3], rpp = Math.Max(1, m[1] / m[2]);
                 int sel = r.Next(Math.Min(filas, rpp)), inicio = 0;
                 Color acento = Color.FromArgb(r.Next(256), r.Next(256), r.Next(256));
@@ -487,8 +479,8 @@ namespace Banco
                 foreach (int k in new[] { 0, 1, 2, 3, 4 })
                 {
                     string nombre = pre + "-dibujo" + k;
-                    Bitmap b = Mapa(m[0] + 40, m[1] + 30, k % 3); string res, estado;
-                    using (Graphics g = Graphics.FromImage(b))
+                    object b = Mapa(m[0] + 40, m[1] + 30, k % 3); string res, estado;
+                    using (Lz g = Pru.Lienzo(b))
                     {
                         estado = PonEstado(g, r, m[0] + 40, m[1] + 30, false);
                         try
@@ -500,7 +492,7 @@ namespace Banco
                         catch (Exception e) { res = Exc(e); }
                     }
                     if (Toca(nombre)) Apunta(nombre, estado + "|" + res, b);
-                    b.Dispose();
+                    Pru.Suelta(b);
                 }
                 // 3) hojeando: la pagina que se va y la que entra (de lado o de arriba abajo), la capa de la que se va, y su dibujo
                 if (filas > rpp)
@@ -517,10 +509,10 @@ namespace Banco
                             l.GetType().GetField("slideTick", T).SetValue(l, Environment.TickCount - dt);
                             object p = Invoca(previa, l); Apunta(nombre + "-previa", "vertical " + vertical, p); Suelta(p);
                             string est = ""; int dtt = dt;
-                            Bitmap b = ConReloj(l, dt, () =>
+                            object b = ConReloj(l, dt, () =>
                             {
-                                Bitmap bb = Mapa(m[0] + 40, m[1] + 30, 2);
-                                using (Graphics g = Graphics.FromImage(bb))
+                                object bb = Mapa(m[0] + 40, m[1] + 30, 2);
+                                using (Lz g = Pru.Lienzo(bb))
                                 {
                                     est = PonEstado(g, new Random(dtt), m[0] + 40, m[1] + 30, false);
                                     if (dtt == 100) Llama(tl, "RenderOpaqueGpu", l, g);
@@ -528,7 +520,7 @@ namespace Banco
                                 }
                                 return bb;
                             });
-                            Apunta(nombre, est, b); b.Dispose();
+                            Apunta(nombre, est, b); Pru.Suelta(b);
                         }
                         catch (Exception e) { Linea(nombre, Exc(e)); }
                     }
@@ -540,18 +532,19 @@ namespace Banco
         private static void Suelta(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
 
         // ---------------------------------------------------------------- la franja de lejos entera (FranjaLejos y los de siempre)
-        private static object Etiqueta(Rectangle caja, string texto, float puntos, Color color, ContentAlignment al)
+        // (la alineacion, por su numero: los de ContentAlignment de WinForms, que son los de AlineaTexto)
+        private const int AbajoIzquierda = 256, MedioIzquierda = 16;
+        private static object Etiqueta(Rectangle caja, string texto, float puntos, Color color, int al)
         {
-            object l = tRotulo != null ? Activator.CreateInstance(tRotulo) : new Label();   // (rotulos-y-letras: el rotulo de la traduccion)
-            PonP(l, "Bounds", caja); PonP(l, "Text", texto); PonP(l, "Font", new Font("Microsoft Sans Serif", puntos, FontStyle.Bold)); PonP(l, "ForeColor", color); PonP(l, "TextAlign", al);
+            object l = tRotulo != null ? Activator.CreateInstance(tRotulo) : Pru.Rotulo();   // (rotulos-y-letras: el rotulo de la traduccion; en la referencia, un Label)
+            PonP(l, "Bounds", caja); PonP(l, "Text", texto); PonP(l, "Font", new Fte("Microsoft Sans Serif", puntos, 1)); PonP(l, "ForeColor", color); PonP(l, "TextAlign", al);
             return l;
         }
         private static void Franjas(Random r)
         {
-            // las firmas de XP de FranjaLejos, PintaTituloCompacto, PintaSiguienteCompacto, DrawLabelOverlay, DrawCtrlOverlay y EmpiezaRecuadro se
-            // quitaron con el grupo video-form1 (Form1.Video.cs las llama directo): en la traduccion, la traducida con el lienzo y el estado de g
-            // (Llama), como hacia el puente; EmpiezaRecuadro, ademas, con el SetClip que el puente le ponia antes al Graphics
-            MethodInfo recuadro = Metodo(typeof(Form1), "EmpiezaRecuadro", typeof(Graphics), typeof(Rectangle));
+            // FranjaLejos, PintaTituloCompacto, PintaSiguienteCompacto, DrawLabelOverlay, DrawCtrlOverlay y EmpiezaRecuadro: en la traduccion, la
+            // traducida con el lienzo y el estado de g (Llama); EmpiezaRecuadro, ademas, con el recorte (SetClip) que su puente le ponia antes al lienzo
+            MethodInfo recuadro = Pru.Capa ? Metodo(typeof(Form1), "EmpiezaRecuadro", Pru.TLienzo, typeof(Rectangle)) : null;
             string[] titulos = { "Nada reproduciendose", "Ángel de amor (versión en vivo extendida para el baile)", "Corta", "Un titulo larguisimo que no cabe ni con la letra mas chica de todas las que hay" };
             string[] artistas = { "", "Los Ñandúes & Cía", "Artista con un nombre muy largo que se come el renglon entero y mas" };
             string[] siguientes = { "Sigue:  -", "Sigue:  Grupo - Otra cancion", "Sigue:  Un artista largo - Un titulo larguisimo que no cabe en la tarjeta lateral", "" };
@@ -560,12 +553,12 @@ namespace Banco
                 int w = caso % 3 == 2 ? 800 : 1024, top = 668;
                 object f = Form1Vacio(w, 768);
                 Pon(f, "letraLejos", caso % 5 != 4); Pon(f, "gpuEnabled", true); Pon(f, "gpuPanel", RuntimeHelpers.GetUninitializedObject(typeof(GpuPanel)));
-                object nowTop = Etiqueta(new Rectangle(108, 674, 503, 22 + r.Next(3) * 4), titulos[r.Next(titulos.Length)], 15f, Color.FromArgb(125, 235, 165), ContentAlignment.BottomLeft);
-                object now = Etiqueta(new Rectangle(108, 700, 400 + r.Next(3) * 60, 20), artistas[r.Next(artistas.Length)], 11.5f, Color.FromArgb(125, 235, 165), ContentAlignment.MiddleLeft);
-                object next = Etiqueta(new Rectangle(108, 722, 500, 18), siguientes[r.Next(siguientes.Length)], 10.5f, Color.FromArgb(150, 200, 255), ContentAlignment.MiddleLeft);
-                object time = Etiqueta(new Rectangle(w - 260, 742 - r.Next(3) * 8, 120, 22), "1:23 / 4:56", 13f, Color.White, ContentAlignment.MiddleLeft);
-                object mej = Etiqueta(new Rectangle(560, 700, 90, 22), "MEJORADA", 12f, Color.FromArgb(240, 200, 90), ContentAlignment.MiddleLeft); PonP(mej, "Visible", r.Next(3) == 0);
-                object genero = Anidada("GeneroView"); object gc = genero; PonP(gc, "Font", new Font("Microsoft Sans Serif", 10f, FontStyle.Bold));
+                object nowTop = Etiqueta(new Rectangle(108, 674, 503, 22 + r.Next(3) * 4), titulos[r.Next(titulos.Length)], 15f, Color.FromArgb(125, 235, 165), AbajoIzquierda);
+                object now = Etiqueta(new Rectangle(108, 700, 400 + r.Next(3) * 60, 20), artistas[r.Next(artistas.Length)], 11.5f, Color.FromArgb(125, 235, 165), MedioIzquierda);
+                object next = Etiqueta(new Rectangle(108, 722, 500, 18), siguientes[r.Next(siguientes.Length)], 10.5f, Color.FromArgb(150, 200, 255), MedioIzquierda);
+                object time = Etiqueta(new Rectangle(w - 260, 742 - r.Next(3) * 8, 120, 22), "1:23 / 4:56", 13f, Color.White, MedioIzquierda);
+                object mej = Etiqueta(new Rectangle(560, 700, 90, 22), "MEJORADA", 12f, Color.FromArgb(240, 200, 90), MedioIzquierda); PonP(mej, "Visible", r.Next(3) == 0);
+                object genero = Anidada("GeneroView"); object gc = genero; PonP(gc, "Font", new Fte("Microsoft Sans Serif", 10f, 1));
                 genero.GetType().GetProperty("Texto", T).SetValue(genero, r.Next(2) == 0 ? "Rock en español" : ""); PonP(gc, "Bounds", new Rectangle(520, 702, 110, 18)); PonP(gc, "Visible", r.Next(2) == 0);
                 object cred = Anidada("PastillaView"), cola = Anidada("PastillaView"), prog = Anidada("ProgressView");
                 PonP(cred, "Bounds", new Rectangle(w - 380, 676, 170, 34)); PonP(cola, "Bounds", new Rectangle(w - (r.Next(2) == 0 ? 200 : 330), 676, 150, 34));
@@ -575,9 +568,9 @@ namespace Banco
                 Rectangle zona = r.Next(3) == 0 ? new Rectangle(r.Next(300), r.Next(40), 300 + r.Next(400), 30 + r.Next(60)) : Rectangle.Empty;
                 bool cinta = r.Next(3) == 0;
                 string nombre = "franja-" + caso;
-                Bitmap b = Mapa(w, 100, 0); string res;
+                object b = Mapa(w, 100, 0); string res;
                 CintasTexto grupo = cinta ? new CintasTexto() : null;
-                using (Graphics g = Graphics.FromImage(b))
+                using (Lz g = Pru.Lienzo(b))
                 {
                     if (grupo != null) { grupo.Begin(); fCintas.SetValue(null, grupo); }
                     try
@@ -585,10 +578,10 @@ namespace Banco
                         // como EnsureUiBotOverlay (Form1.Video.cs)
                         if (!zona.IsEmpty)
                         {
-                            if (recuadro != null) recuadro.Invoke(null, new object[] { g, zona });
-                            else { g.SetClip(zona); Llama(typeof(Form1), "EmpiezaRecuadro", null, g, zona); }
+                            if (recuadro != null) recuadro.Invoke(null, new object[] { g.Objeto, zona });
+                            else { g.Recorta(zona); Llama(typeof(Form1), "EmpiezaRecuadro", null, g, zona); }
                         }
-                        g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; g.TranslateTransform(0, -top);
+                        g.Suavizado = ModoSuave.AntiAlias; g.Letra = ModoLetra.AntiAliasGridFit; g.Traslada(0, -top);
                         if (!(bool)Llama(typeof(Form1), "FranjaLejos", f, g))
                         {
                             Llama(typeof(Form1), "PintaTituloCompacto", f, g, false); Llama(typeof(Form1), "PintaArtistaCompacto", f, g);
@@ -597,8 +590,8 @@ namespace Banco
                             Llama(typeof(Form1), "PintaSiguienteCompacto", f, g);
                         }
                         Llama(typeof(Form1), "DrawLabelOverlay", null, g, time);
-                        // lo que sigue con lo que deja la franja en el Graphics
-                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(90, 255, 255, 255))) g.FillRectangle(sb, 2, top + 2, 30, 6);
+                        // lo que sigue con lo que deja la franja en el lienzo
+                        g.Rellena(Color.FromArgb(90, 255, 255, 255), 2, top + 2, 30, 6);
                         res = "ok";
                     }
                     catch (Exception e) { res = Exc(e); }
@@ -607,7 +600,7 @@ namespace Banco
                 if (Toca(nombre)) Apunta(nombre, w + "|" + zona + "|" + Huella(LeeP(nowTop, "Text") + "|" + LeeP(now, "Text") + "|" + LeeP(next, "Text")) + "|" + LeeP(nowTop, "Height") + "|" + LeeP(mej, "Visible") + LeeP(gc, "Visible") + "|" + res, b);
                 if (grupo != null && Toca(nombre)) Linea(nombre + "-cintas", Cintas(grupo, nombre));
                 if (grupo != null) grupo.Dispose();
-                b.Dispose();
+                Pru.Suelta(b);
             }
         }
 

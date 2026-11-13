@@ -19,8 +19,8 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
 
 namespace BancoPortadas
@@ -47,10 +47,10 @@ namespace BancoPortadas
         // publica no las lee nadie en XP (solo las de la portada original, en DecodeCoverCore) y ya no se escriben.
         private static string Formato(object o)
         {
-            if (o is Rocola.Dibujo2D.Image)
+            if (Pru.EsCapa(o))
             {
-                Rocola.Dibujo2D.PixelFormat f = ((Rocola.Dibujo2D.Image)o).PixelFormat;
-                return f == PixelFormat.Format32bppPArgb ? "PArgb32" : f == PixelFormat.Format32bppArgb ? "Argb32" : f == PixelFormat.Format32bppRgb ? "Rgb32" : f == PixelFormat.Format24bppRgb ? "Rgb24" : "Otro(" + f + ")";
+                string f = Pru.Formato(o);
+                return f == "Format32bppPArgb" ? "PArgb32" : f == "Format32bppArgb" ? "Argb32" : f == "Format32bppRgb" ? "Rgb32" : f == "Format24bppRgb" ? "Rgb24" : "Otro(" + f + ")";
             }
             FieldInfo d = typeof(Form1).GetField("FormatoPortada", Todo);
             return d != null ? Convert.ToString(d.GetValue(null), ci) : "sk";
@@ -59,7 +59,7 @@ namespace BancoPortadas
         {
             if (o == null) return "null";
             if (o is string) return (string)o;
-            SKBitmap s = o is SKBitmap ? (SKBitmap)o : ((Rocola.Dibujo2D.Image)o).Sk;
+            SKBitmap s = o is SKBitmap ? (SKBitmap)o : Pru.Sk(o);
             string fmt = o is SKBitmap ? "sk" : Formato(o);
             if (s == null || s.Handle == IntPtr.Zero) return "soltado " + fmt;
             byte[] px = new byte[s.Width * s.Height * 4];
@@ -73,11 +73,11 @@ namespace BancoPortadas
         private static string PuntosSolo(object o) { string s = Puntos(o); if (o is SKBitmap || o == null || o is string) return s; int i = s.LastIndexOf(' '); return i < 0 || s.StartsWith("soltado") ? s : s.Substring(0, i); }
 
         // un argumento del tipo que pida la funcion: el SKBitmap tal cual, o un Bitmap de la capa con ese formato (sin hacerse dueno)
-        private static object Arg(Type t, SKBitmap sk, PixelFormat f)
+        private static object Arg(Type t, SKBitmap sk, string f)
         {
             if (sk == null) return null;
             if (t.IsAssignableFrom(typeof(SKBitmap))) return sk;
-            Bitmap b = new Bitmap(sk, f); return b;
+            return Pru.DeSk(sk, f);
         }
         private static MethodInfo Metodo(Type t, string nombre, Func<ParameterInfo[], bool> vale)
         {
@@ -191,7 +191,7 @@ namespace BancoPortadas
                     Linea(nom + " guarda", PuntosCache(r) + "\t" + Archivos(c));
                     r = Llama(conIdentidad, new object[] { ruta, id });
                     Linea(nom + " lee-guardada", PuntosCache(r) + "\t" + Archivos(c));
-                    if (r is Rocola.Dibujo2D.Image || r is SKBitmap) hechas.Add(r);
+                    if (Pru.EsCapa(r) || r is SKBitmap) hechas.Add(r);
                     // para publicar: la copia por guardar, guardada despues con SaveThumb (la de la version: SKBitmap o Bitmap)
                     Limpia(c);
                     object[] a = { ruta, id, null };
@@ -248,16 +248,16 @@ namespace BancoPortadas
                 foreach (int lado in new[] { 256, 33 })
                 {
                     SKBitmap m = Mapa(lado, lado, alfas[i]);
-                    Linea("opaca " + i + " " + lado, Convert.ToString(Llama(opaca, new[] { Arg(opaca.GetParameters()[0].ParameterType, m, PixelFormat.Format32bppPArgb) }), ci));
-                    Linea("copia " + i + " " + lado, PuntosSolo(Llama(copiaGpu, new[] { Arg(copiaGpu.GetParameters()[0].ParameterType, m, PixelFormat.Format32bppPArgb) })));
-                    Llama(hazOpaca, new[] { Arg(hazOpaca.GetParameters()[0].ParameterType, m, PixelFormat.Format32bppPArgb) });
+                    Linea("opaca " + i + " " + lado, Convert.ToString(Llama(opaca, new[] { Arg(opaca.GetParameters()[0].ParameterType, m, "Format32bppPArgb") }), ci));
+                    Linea("copia " + i + " " + lado, PuntosSolo(Llama(copiaGpu, new[] { Arg(copiaGpu.GetParameters()[0].ParameterType, m, "Format32bppPArgb") })));
+                    Llama(hazOpaca, new[] { Arg(hazOpaca.GetParameters()[0].ParameterType, m, "Format32bppPArgb") });
                     Linea("hazopaca " + i + " " + lado, Puntos(m));
                     // con un mapa Format32bppArgb XP no lo toca (solo PArgb); en la traduccion todos los SKBitmap son BGRA premultiplicado (el
                     // PArgb de XP) y el unico que llama le pasa la miniatura recien hecha: ese caso no existe alli. Solo en la referencia, aparte.
-                    if (hazOpaca.GetParameters()[0].ParameterType == typeof(Bitmap))
+                    if (hazOpaca.GetParameters()[0].ParameterType == Pru.TMapa && Pru.Capa)
                     {
                         SKBitmap m2 = Mapa(lado, lado, alfas[i]); string antes = Puntos(m2);
-                        Llama(hazOpaca, new[] { Arg(hazOpaca.GetParameters()[0].ParameterType, m2, PixelFormat.Format32bppArgb) });
+                        Llama(hazOpaca, new[] { Arg(hazOpaca.GetParameters()[0].ParameterType, m2, "Format32bppArgb") });
                         Console.Error.WriteLine("solo referencia: hazopaca-argb " + i + " " + lado + (Puntos(m2) == antes ? " no lo toca" : " LO TOCA"));
                     }
                 }
@@ -265,7 +265,7 @@ namespace BancoPortadas
             // 3) las previas: Small de las miniaturas hechas, ToBytes y FromBytes
             for (int i = 0; i < hechas.Count; i++)
             {
-                object arg = small.GetParameters()[0].ParameterType.IsAssignableFrom(typeof(SKBitmap)) && hechas[i] is Rocola.Dibujo2D.Image ? (object)((Rocola.Dibujo2D.Image)hechas[i]).Sk : hechas[i];
+                object arg = small.GetParameters()[0].ParameterType.IsAssignableFrom(typeof(SKBitmap)) && Pru.EsCapa(hechas[i]) ? (object)Pru.Sk(hechas[i]) : hechas[i];
                 object s = Llama(small, new[] { arg });
                 byte[] bytes = s is string ? null : (byte[])Llama(toBytes, new[] { s });
                 Linea("previa " + i, PuntosSolo(s) + "\t" + (bytes != null ? Huella(bytes) : "-") + "\t" + (bytes != null ? PuntosCache(Llama(fromBytes, new object[] { bytes })) : "-"));
@@ -285,9 +285,9 @@ namespace BancoPortadas
             mapas.Add(new KeyValuePair<string, SKBitmap>("franja-1024x104", Mapa(1024, 104, (x, y) => (y > 60 && (x / 40) % 3 != 1) ? 200 : (x == 500 && y == 3 ? 1 : 0))));
             mapas.Add(new KeyValuePair<string, SKBitmap>("ui-1024x664", Mapa(1024, 664, (x, y) => (x > 100 && x < 300 && y > 200 && y < 420) || (x > 700 && y < 50) ? 255 : 0)));
             foreach (KeyValuePair<string, SKBitmap> kv in mapas)
-                foreach (PixelFormat f in new[] { PixelFormat.Format32bppArgb, PixelFormat.Format32bppPArgb })
+                foreach (string f in new[] { "Format32bppArgb", "Format32bppPArgb" })
                 {
-                    string nom = "teselas " + kv.Key + " " + (f == PixelFormat.Format32bppArgb ? "argb" : "pargb");
+                    string nom = "teselas " + kv.Key + " " + (f == "Format32bppArgb" ? "argb" : "pargb");
                     foreach (int lado in new[] { 2, 16 })
                     {
                         object t = Llama(de, new[] { Arg(de.GetParameters()[0].ParameterType, kv.Value, f), lado, lado == 2 });
@@ -305,7 +305,7 @@ namespace BancoPortadas
                     // (revision) en la traduccion, la rama que no es BGRA premultiplicado (LecturaNativa falso: la copia sin premultiplicar de
                     // Pixeles.LeeSinPremultiplicar) no la pasa ningun mapa de la rocola: se pasa aqui con el mismo mapa sin premultiplicar y
                     // tiene que dar lo mismo que el premultiplicado (solo cuenta el alfa). Solo a la salida de errores: no cambia la comparacion.
-                    if (de.GetParameters()[0].ParameterType == typeof(SKBitmap) && f == PixelFormat.Format32bppArgb)
+                    if (de.GetParameters()[0].ParameterType == typeof(SKBitmap) && f == "Format32bppArgb")
                     {
                         SKBitmap u = SinPremultiplicar(kv.Value);
                         foreach (int lado in new[] { 2, 16 })
@@ -327,11 +327,11 @@ namespace BancoPortadas
             MethodInfo ioSk = null; foreach (MethodInfo m in panel.GetMethods(Todo)) if (m.Name == "InteriorOpaco" && m.GetParameters().Length == 2) ioSk = m;
             for (int i = 0; i < alfas.Length; i++)
                 foreach (int lado in new[] { 256, 5, 4 })
-                    foreach (PixelFormat f in new[] { PixelFormat.Format32bppPArgb, PixelFormat.Format32bppArgb, PixelFormat.Format24bppRgb, PixelFormat.Format8bppIndexed })
+                    foreach (string f in new[] { "Format32bppPArgb", "Format32bppArgb", "Format24bppRgb", "Format8bppIndexed" })
                     {
                         SKBitmap m = Mapa(lado, lado, alfas[i]);
-                        bool alfa = Rocola.Dibujo2D.Image.IsAlphaPixelFormat(f) || (f & PixelFormat.Indexed) != 0;
-                        string r = ioCapa != null ? Convert.ToString(Llama(ioCapa, new object[] { new Bitmap(m, f) }), ci) : Convert.ToString(Llama(ioSk, new object[] { m, alfa }), ci);
+                        bool alfa = Pru.TieneAlfa(f);
+                        string r = ioCapa != null ? Convert.ToString(Llama(ioCapa, new object[] { Pru.DeSk(m, f) }), ci) : Convert.ToString(Llama(ioSk, new object[] { m, alfa }), ci);
                         Linea("interior " + i + " " + lado + " " + f, r);
                         if (ioSk != null)
                         {
@@ -357,7 +357,7 @@ namespace BancoPortadas
         //     buscador), la portada soltada LANZA y se atrapa como en XP, sin violacion de segmento (si la hubiera, el programa se cerraria aqui
         //     y faltarian las lineas de abajo). En XP lanza ArgumentException (GDI+); la referencia, NullReferenceException (la capa); la
         //     traduccion, ArgumentException (Nativo/MapaVivo.cs): la salida dice solo «lanza» y el tipo va a la salida de errores.
-        private static bool Soltada(object o) { return o is SKBitmap ? ((SKBitmap)o).Handle == IntPtr.Zero : ((Rocola.Dibujo2D.Image)o).Sk == null; }
+        private static bool Soltada(object o) { return o is SKBitmap ? ((SKBitmap)o).Handle == IntPtr.Zero : Pru.Sk(o) == null; }
         private static object Llama2(object blanco, string nombre, params object[] a)
         {
             foreach (MethodInfo m in blanco.GetType().GetMethods(Todo))

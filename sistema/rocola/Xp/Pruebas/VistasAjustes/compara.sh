@@ -5,6 +5,8 @@
 # salidas. La referencia no se toca (solo se lee).
 set -eu
 AQUI=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$AQUI/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$XP/Pruebas/Comun
 W=${1:-/root/rocola-trabajo/port/ventanas2/vistas}
 REF=${REF:-/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp}
 LETRAS=${LETRAS_FALSAS:-/root/rocola-trabajo/port/dibujo/letras-xp-falsas}

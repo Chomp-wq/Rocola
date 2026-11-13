@@ -7,6 +7,8 @@
 set -u
 A=$(readlink -f "$1"); O=$(readlink -m "$2"); CFG=${3:-}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 rm -rf "$O"; mkdir -p "$O/tarjeta" "$O/refdatos/sistema/rocola/Xp/bin/Release"
 # los datos de prueba de los recorridos, donde corre.sh de la tarjeta busca los de la referencia
 ln -sfn "${ROCOLA_TRABAJO:-/root/rocola-trabajo/port/dibujo}/datos-base" "$O/refdatos/sistema/rocola/Xp/bin/Release/net10.0"

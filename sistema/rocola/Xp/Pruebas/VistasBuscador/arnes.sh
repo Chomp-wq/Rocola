@@ -6,6 +6,8 @@
 set -u
 S=${BUSCADOR:-/root/rocola-trabajo/port/buscador}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 mkdir -p $S/vistas-ref
 cp $X/Pruebas/VistasBuscador/VistasBuscador.csproj $X/Pruebas/VistasBuscador/Buscador.cs $S/vistas-ref/
 (cd $X/Pruebas/VistasBuscador && dotnet build -c Release -nologo -v q -o $S/vistas-nuevo-bin 2>&1 | grep -E " error |rror\(s\)|arning\(s\)")

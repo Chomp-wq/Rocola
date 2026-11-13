@@ -8,6 +8,8 @@
 set -u
 AOT=$(readlink -f "$1"); SAL=$2; shift 2
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 W=${AOT_TRABAJO:-/root/rocola-trabajo/port/atraccion/aot-trabajo}
 C=$W/corrida
 FIFO=$W/ritmo.fifo; mkdir -p $W; [ -p $FIFO ] || mkfifo $FIFO

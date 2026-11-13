@@ -5,6 +5,8 @@
 set -u
 S=${PARED:-/root/rocola-trabajo/port/pared}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 SOLO=" $* "; N=0
 corre() {   # nombre archivo sed
   N=$((N + 1)); [ "$SOLO" != "  " ] && [[ "$SOLO" != *" $N "* ]] && return

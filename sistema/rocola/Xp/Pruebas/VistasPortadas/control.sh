@@ -5,6 +5,8 @@
 set -u
 S=${PORTADAS:-/root/rocola-trabajo/port/portadas}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 [ -f $S/vistas-ref.tsv ] || { echo "falta $S/vistas-ref.tsv (corre arnes.sh)"; exit 1; }
 prueba() {  # nombre archivo patron sustitucion
   rm -rf $S/mutante && mkdir -p $S/mutante/src $S/mutante/proy

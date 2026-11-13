@@ -12,7 +12,6 @@ using System.Drawing;
 using System.Reflection;
 using System.Text;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
 
 namespace Banco
@@ -26,18 +25,15 @@ namespace Banco
             n++;
             if (o == null) { Console.WriteLine(nombre + "\tnull"); return; }
             // un SKBitmap de un horno traducido: lo que sube la tarjeta es lo mismo que con un Bitmap Format32bppArgb de esos puntos
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppArgb);
+            object b = Pru.Aprecia(o, "Format32bppArgb");
             // los puntos tal cual (premultiplicados) y como los sube la tarjeta (LockBits Format32bppArgb: sin premultiplicar)
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
-            Console.WriteLine(nombre + "\t" + s.Width + "x" + s.Height + "\t" + b.PixelFormat + "\t" + s.ColorType + "/" + s.AlphaType + "\t" + Huella(px) + "\t" + Huella(sub));
+            byte[] sub = Pru.SinPremultiplicar(b);
+            Console.WriteLine(nombre + "\t" + s.Width + "x" + s.Height + "\t" + Pru.Formato(b) + "\t" + s.ColorType + "/" + s.AlphaType + "\t" + Huella(px) + "\t" + Huella(sub));
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre + ".png"), png.ToArray());
-            b.Dispose();
+            Pru.Suelta(b);
         }
         private static string Huella(byte[] b) { byte[] h = System.Security.Cryptography.SHA256.HashData(b); StringBuilder sb = new StringBuilder(); for (int i = 0; i < 8; i++) sb.Append(h[i].ToString("x2")); return sb.ToString(); }
         private static object Privado(Type t, string metodo, params object[] a)
@@ -46,26 +42,23 @@ namespace Banco
             return m.Invoke(null, a);
         }
         // el signo de la ayuda sobre un fondo, con ese estado del Graphics (como el dibujo por procesador de la casilla, RenderContent)
-        private static void Interrogacion(string nombre, SmoothingMode s, PixelOffsetMode po, CompositingMode cm, int trans, RectangleF r, float alfa)
+        private static void Interrogacion(string nombre, ModoSuave s, ModoPixel po, ModoCopia cm, int trans, RectangleF r, float alfa)
         {
-            Bitmap b = new Bitmap(64, 64, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(b))
+            object b = Pru.NuevoMapa(64, 64, "Format32bppPArgb");
+            using (Lz g = Pru.Lienzo(b))
             {
-                g.Clear(Color.FromArgb(120, 30, 60, 90));
-                using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, 20, 64, 9);
-                g.SmoothingMode = s; g.PixelOffsetMode = po; g.CompositingMode = cm;
-                if (trans == 1) g.TranslateTransform(3.5f, 2.25f); else if (trans == 2) g.ScaleTransform(1.3f, 1.3f); else if (trans == 3) g.RotateTransform(7f);
+                g.Limpia(Color.FromArgb(120, 30, 60, 90));
+                g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, 20, 64, 9);
+                g.Suavizado = s; g.Pixel = po; g.Copia = cm;
+                if (trans == 1) g.Traslada(3.5f, 2.25f); else if (trans == 2) g.Escala(1.3f, 1.3f); else if (trans == 3) g.Gira(7f);
                 BindingFlags bf = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
                 MethodInfo m = typeof(Form1).GetMethod("PintaInterrogacion", bf);
-                if (m.GetParameters()[0].ParameterType == typeof(Graphics)) m.Invoke(null, new object[] { g, r, alfa });
+                if (Pru.Capa) m.Invoke(null, new object[] { g.Objeto, r, alfa });
                 else
                 {
-                    // como lo llama RenderContent (AyudaCasillaGpu.cs) traducido: el lienzo y su estado, por el puente
-                    Type pu = typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo");
-                    object lienzo = pu.GetMethod("Lienzo", bf).Invoke(null, new object[] { g });
-                    object e = pu.GetMethod("Estado", bf).Invoke(null, new object[] { g });
-                    Type te = e.GetType();
-                    m.Invoke(null, new object[] { lienzo, te.GetField("Suave").GetValue(e), te.GetField("Medio").GetValue(e), te.GetField("Copia").GetValue(e), r, alfa });
+                    // como lo llama RenderContent (AyudaCasillaGpu.cs) traducido: el lienzo y su estado
+                    object[] e = g.Estado();
+                    m.Invoke(null, new object[] { e[0], e[1], e[5], e[3], r, alfa });
                 }
             }
             Apunta(nombre, b);
@@ -97,15 +90,15 @@ namespace Banco
             // el signo de la ayuda con el estado del que lo llama
             int k2 = 0;
             foreach (object[] e in new[] {
-                new object[] { SmoothingMode.AntiAlias, PixelOffsetMode.Default, CompositingMode.SourceOver, 0 },
-                new object[] { SmoothingMode.None, PixelOffsetMode.Default, CompositingMode.SourceOver, 0 },
-                new object[] { SmoothingMode.AntiAlias, PixelOffsetMode.Half, CompositingMode.SourceOver, 1 },
-                new object[] { SmoothingMode.HighQuality, PixelOffsetMode.HighQuality, CompositingMode.SourceCopy, 2 },
-                new object[] { SmoothingMode.AntiAlias, PixelOffsetMode.Default, CompositingMode.SourceCopy, 3 },
-                new object[] { SmoothingMode.None, PixelOffsetMode.Half, CompositingMode.SourceOver, 1 } })
+                new object[] { ModoSuave.AntiAlias, ModoPixel.Default, ModoCopia.SourceOver, 0 },
+                new object[] { ModoSuave.None, ModoPixel.Default, ModoCopia.SourceOver, 0 },
+                new object[] { ModoSuave.AntiAlias, ModoPixel.Half, ModoCopia.SourceOver, 1 },
+                new object[] { ModoSuave.HighQuality, ModoPixel.HighQuality, ModoCopia.SourceCopy, 2 },
+                new object[] { ModoSuave.AntiAlias, ModoPixel.Default, ModoCopia.SourceCopy, 3 },
+                new object[] { ModoSuave.None, ModoPixel.Half, ModoCopia.SourceOver, 1 } })
                 foreach (RectangleF r2 in new[] { new RectangleF(11, 5, 30, 30), new RectangleF(2.5f, 3.25f, 17.3f, 17.3f), new RectangleF(0, 0, 3, 3), new RectangleF(20.7f, 30.1f, 40.2f, 25f) })
                     foreach (float alfa in new[] { 1f, 0.5f, 0f })
-                        Interrogacion("PintaInterrogacion-" + (k2++), (SmoothingMode)e[0], (PixelOffsetMode)e[1], (CompositingMode)e[2], (int)e[3], r2, alfa);
+                        Interrogacion("PintaInterrogacion-" + (k2++), (ModoSuave)e[0], (ModoPixel)e[1], (ModoCopia)e[2], (int)e[3], r2, alfa);
             Console.Error.WriteLine("hornos: " + n + " mapas");
             return 0;
         }

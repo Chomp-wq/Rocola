@@ -6,6 +6,8 @@
 set -u
 S=${PARED:-/root/rocola-trabajo/port/pared}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 uno() {   # carpeta del arnes, dll, salida de la referencia (con %L = falsas o dejavu; «fresca»: se compila y se corre aqui), filtro de lineas
   [ -n "${SOLO:-}" ] && [ "$SOLO" != "$1" ] && return
   rm -rf $S/otro-bin

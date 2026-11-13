@@ -6,11 +6,13 @@
 //     su mapa, tal cual y como lo sube la tarjeta (LockBits Format32bppArgb: sin premultiplicar), y lo que devuelven.
 //   - Sus piezas (Letra, Renglon, EscalaQueCabe, AcortaPorPalabras, AcortaCita, DisponPastillas, AnchoPastilla, Pastilla, PastillaGenero,
 //     TextoCentrado, Espaciado, EspaciadoEntero, Tinta, Luna y Tapa) se llaman por reflexion: en la referencia con el Graphics, la Font, el
-//     Brush y el StringFormat de la capa que imita a GDI+ (la congelada); en la traduccion con el lienzo de ese mismo Graphics y su estado
-//     (suavizado, modo de letra, filtro), la Letra, un SKPaint del color, el MISMO FormatoTexto y los mismos puntos (el puente,
-//     Plataforma/Puente.cs), como las llaman los hornos traducidos. Con varios estados del Graphics (los tres de XP y otros: los seis modos de
-//     letra, suavizado, filtros, traslacion entera y con decimales, escala, giro y recorte), letras en pixeles, en puntos y con estilos, y el
-//     tipografico compartido de fabrica y cambiado como lo deja EstadoReposoGpu.cs (Center, Center y NoWrap).
+//     Brush y el StringFormat de la capa que imita a GDI+ (la congelada); en la traduccion con el lienzo y su estado (suavizado, modo de
+//     letra, filtro), la Letra, un SKPaint del color, el MISMO FormatoTexto y los mismos puntos, como las llaman los hornos traducidos. Con
+//     varios estados del lienzo (los tres de XP y otros: los seis modos de letra, suavizado, filtros, traslacion entera y con decimales,
+//     escala, giro y recorte), letras en pixeles, en puntos y con estilos, y el tipografico compartido de fabrica y cambiado como lo deja
+//     EstadoReposoGpu.cs (Center, Center y NoWrap).
+//   - (Oleada 8b, 13-11-2026) El arnes ya no nombra la capa de GDI+: los mapas, el lienzo, las letras, los formatos y los pinceles van por
+//     Pruebas/Comun (Pru, Lz, Fte, Fmt: la capa en la referencia congelada y lo nativo en el programa nuevo).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet bin/Release/net10.0/VistasAtraccion.dll [vuelca CARPETA]
 using System;
 using System.Collections.Generic;
@@ -18,8 +20,8 @@ using System.Drawing;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
 
 namespace BancoAtraccion
@@ -41,51 +43,48 @@ namespace BancoAtraccion
         private static unsafe string Puntos(string nombre, object o)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppPArgb);
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppPArgb");
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre + ".png"), png.ToArray());
             string h = Huella(px); mapas++; distintos.Add(h);
             return s.Width + "x" + s.Height + "\t" + h + "\t" + Huella(sub);
         }
 
         // ---- el estado del Graphics del que llama: los tres de XP (la ficha, los mensajes y la lista) y otros
-        private sealed class Estado { public string Nombre; public SmoothingMode S; public TextRenderingHint T; public InterpolationMode I; public int Trans; public bool Recorte; }
+        private sealed class Estado { public string Nombre; public ModoSuave S; public ModoLetra T; public ModoFiltro I; public int Trans; public bool Recorte; }
         private static readonly Estado[] Estados = {
-            new Estado { Nombre = "ficha", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAliasGridFit, I = InterpolationMode.Bilinear },
-            new Estado { Nombre = "mensajes", S = SmoothingMode.None, T = TextRenderingHint.AntiAliasGridFit, I = InterpolationMode.Bilinear },
-            new Estado { Nombre = "lista", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAliasGridFit, I = InterpolationMode.HighQualityBilinear },
-            new Estado { Nombre = "sistema-traslada", S = SmoothingMode.None, T = TextRenderingHint.SystemDefault, I = InterpolationMode.Bilinear, Trans = 1 },
-            new Estado { Nombre = "unbitajustada-escala", S = SmoothingMode.HighQuality, T = TextRenderingHint.SingleBitPerPixelGridFit, I = InterpolationMode.NearestNeighbor, Trans = 2 },
-            new Estado { Nombre = "unbit-gira", S = SmoothingMode.AntiAlias, T = TextRenderingHint.SingleBitPerPixel, I = InterpolationMode.HighQualityBicubic, Trans = 3 },
-            new Estado { Nombre = "suave-decimales-recorte", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAlias, I = InterpolationMode.Bicubic, Trans = 4, Recorte = true },
-            new Estado { Nombre = "cleartype-recorte", S = SmoothingMode.None, T = TextRenderingHint.ClearTypeGridFit, I = InterpolationMode.Bilinear, Recorte = true },
+            new Estado { Nombre = "ficha", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAliasGridFit, I = ModoFiltro.Bilinear },
+            new Estado { Nombre = "mensajes", S = ModoSuave.None, T = ModoLetra.AntiAliasGridFit, I = ModoFiltro.Bilinear },
+            new Estado { Nombre = "lista", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAliasGridFit, I = ModoFiltro.HighQualityBilinear },
+            new Estado { Nombre = "sistema-traslada", S = ModoSuave.None, T = ModoLetra.SystemDefault, I = ModoFiltro.Bilinear, Trans = 1 },
+            new Estado { Nombre = "unbitajustada-escala", S = ModoSuave.HighQuality, T = ModoLetra.SingleBitPerPixelGridFit, I = ModoFiltro.NearestNeighbor, Trans = 2 },
+            new Estado { Nombre = "unbit-gira", S = ModoSuave.AntiAlias, T = ModoLetra.SingleBitPerPixel, I = ModoFiltro.HighQualityBicubic, Trans = 3 },
+            new Estado { Nombre = "suave-decimales-recorte", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAlias, I = ModoFiltro.Bicubic, Trans = 4, Recorte = true },
+            new Estado { Nombre = "cleartype-recorte", S = ModoSuave.None, T = ModoLetra.ClearTypeGridFit, I = ModoFiltro.Bilinear, Recorte = true },
         };
         // un mapa con fondo (para ver el alfa) y el Graphics con ese estado (la copia y el medio pixel, los de fabrica, como en los hornos)
-        private static Graphics Prepara(Bitmap b, Estado e, bool recorte)
+        private static Lz Prepara(object b, Estado e, bool recorte)
         {
-            Graphics g = Graphics.FromImage(b);
-            g.Clear(Color.FromArgb(120, 30, 60, 90));
-            using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, 20, b.Width, 9);
-            g.SmoothingMode = e.S; g.TextRenderingHint = e.T; g.InterpolationMode = e.I;
-            if (e.Trans == 1) g.TranslateTransform(3, 2); else if (e.Trans == 2) g.ScaleTransform(1.3f, 1.3f); else if (e.Trans == 3) g.RotateTransform(7f); else if (e.Trans == 4) g.TranslateTransform(3.5f, 2.25f);
-            if (e.Recorte && recorte) g.SetClip(new RectangleF(10.5f, 4, b.Width - 30, b.Height - 12));
+            Lz g = Pru.Lienzo(b); int bw = Pru.Sk(b).Width, bh = Pru.Sk(b).Height;
+            g.Limpia(Color.FromArgb(120, 30, 60, 90));
+            g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, 20, bw, 9);
+            g.Suavizado = e.S; g.Letra = e.T; g.Filtro = e.I;
+            if (e.Trans == 1) g.Traslada(3, 2); else if (e.Trans == 2) g.Escala(1.3f, 1.3f); else if (e.Trans == 3) g.Gira(7f); else if (e.Trans == 4) g.Traslada(3.5f, 2.25f);
+            if (e.Recorte && recorte) g.Recorta(new RectangleF(10.5f, 4, bw - 30, bh - 12));
             return g;
         }
 
         // ---- la llamada: la firma de XP (con su Graphics) o la traducida (su lienzo y su estado), por reflexion
-        private static Type Puente { get { return typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo"); } }
-        private static object Por(string metodo, Type tipo, object o) { return Puente.GetMethod(metodo, Todo, null, new[] { tipo }, null).Invoke(null, new[] { o }); }
+        // (un pincel liso de ese color: cada llamada recibe el suyo, un SolidBrush en la referencia y un SKPaint en el programa nuevo)
+        private sealed class Liso { public readonly Color C; public Liso(Color c) { C = c; } }
         // un parametro del estado del Graphics en la traducida: el lienzo, el suavizado, el modo de letra, el filtro, la copia o el medio pixel
         private static bool DeEstado(ParameterInfo p)
         {
             Type t = p.ParameterType;
-            return t == typeof(Graphics) || t == typeof(SKCanvas) || t.Name == "AjusteLetra" || t.Name == "Filtro" || (t == typeof(bool) && (p.Name == "suave" || p.Name == "copia" || p.Name == "medio"));
+            return t == Pru.TLienzo || t == typeof(SKCanvas) || t.Name == "AjusteLetra" || t.Name == "Filtro" || (t == typeof(bool) && (p.Name == "suave" || p.Name == "copia" || p.Name == "medio"));
         }
         // el metodo de Form1 con ese nombre y tantos parametros, sin contar los del estado, como la firma de XP sin su Graphics
         private static MethodInfo Metodo(string nombre, int sinEstado)
@@ -101,42 +100,40 @@ namespace BancoAtraccion
         private static object Convierte(object v, Type t, List<IDisposable> suelta)
         {
             if (v == null || t.IsInstanceOfType(v)) return v;
-            if (v is Font && t.Name == "Letra") return Por("Letra", typeof(Font), v);
-            if (v is SolidBrush && t == typeof(SKPaint)) { Color c = ((SolidBrush)v).Color; SKPaint p = new SKPaint { Color = new SKColor(c.R, c.G, c.B, c.A) }; suelta.Add(p); return p; }
-            if (v is StringFormat && t.Name == "FormatoTexto") return Por("Formato", typeof(StringFormat), v);
-            if (v is Image && t == typeof(SKBitmap)) return Por("Mapa", typeof(Image), v);
-            if (v is Image[] && t == typeof(SKBitmap[]))
+            if (v is Fte) return ((Fte)v).Obj;   // (la Font de la referencia o la Letra del programa nuevo)
+            if (v is Liso) { object p = Pru.Brocha(((Liso)v).C); suelta.Add((IDisposable)p); return p; }
+            if (v is Fmt) return ((Fmt)v).Obj;   // (el StringFormat o el MISMO FormatoTexto)
+            if (v is object[] && t.IsArray)   // (las portadas: un arreglo del tipo que pida cada lado, Image[] o SKBitmap[])
             {
-                Image[] a = (Image[])v; SKBitmap[] r = new SKBitmap[a.Length];
-                for (int i = 0; i < a.Length; i++) r[i] = a[i] == null ? null : (SKBitmap)Por("Mapa", typeof(Image), a[i]);
+                object[] a = (object[])v; Array r = Array.CreateInstance(t.GetElementType(), a.Length);
+                for (int i = 0; i < a.Length; i++) r.SetValue(a[i], i);
                 return r;
             }
             throw new Exception("no se pasar " + v.GetType().Name + " a " + t.Name);
         }
-        // xp: los argumentos de la firma de XP (un Graphics donde XP lo pasa; null en los out). Devuelve lo que devuelve y deja en 'args' los out.
+        // xp: los argumentos de la firma de XP (el lienzo de prueba donde XP pasa su Graphics; null en los out). Devuelve lo que devuelve y deja en 'args' los out.
         private static object Llama(string nombre, object[] xp, out object[] args)
         {
-            int sinEstado = 0; foreach (object o in xp) if (!(o is Graphics)) sinEstado++;
+            int sinEstado = 0; foreach (object o in xp) if (!(o is Lz)) sinEstado++;
             MethodInfo m = Metodo(nombre, sinEstado);
             ParameterInfo[] ps = m.GetParameters();
             args = new object[ps.Length];
             List<IDisposable> suelta = new List<IDisposable>();
-            int k = 0; Graphics g = null; object est = null; bool directa = false;
+            int k = 0; Lz g = null; object[] est = null; bool directa = false;
             for (int i = 0; i < ps.Length; i++)
             {
                 Type t = ps[i].ParameterType; if (t.IsByRef) t = t.GetElementType();
-                if (t == typeof(Graphics)) { args[i] = xp[k++]; continue; }
+                if (Pru.Capa && t == Pru.TLienzo) { args[i] = ((Lz)xp[k++]).Objeto; continue; }
                 if (DeEstado(ps[i]))
                 {
                     directa = true;
-                    if (g == null) { g = (Graphics)xp[k++]; est = Por("Estado", typeof(Graphics), g); }
-                    Type te = est.GetType();
-                    if (t == typeof(SKCanvas)) args[i] = Por("Lienzo", typeof(Graphics), g);
-                    else if (t.Name == "AjusteLetra") args[i] = te.GetField("Letra").GetValue(est);
-                    else if (t.Name == "Filtro") args[i] = te.GetField("Filtro").GetValue(est);
-                    else if (ps[i].Name == "suave") args[i] = te.GetField("Suave").GetValue(est);
-                    else if (ps[i].Name == "copia") args[i] = te.GetField("Copia").GetValue(est);
-                    else args[i] = te.GetField("Medio").GetValue(est);
+                    if (g == null) { g = (Lz)xp[k++]; est = g.Estado(); }   // (el lienzo, suave, letra, copia, filtro, medio)
+                    if (t == typeof(SKCanvas)) args[i] = est[0];
+                    else if (t.Name == "AjusteLetra") args[i] = est[2];
+                    else if (t.Name == "Filtro") args[i] = est[4];
+                    else if (ps[i].Name == "suave") args[i] = est[1];
+                    else if (ps[i].Name == "copia") args[i] = est[3];
+                    else args[i] = est[5];
                     continue;
                 }
                 args[i] = Convierte(xp[k++], t, suelta);
@@ -156,45 +153,47 @@ namespace BancoAtraccion
         }
 
         // ---- datos fijos
-        private static Font Fuente(float px) { return new Font("Trebuchet MS", px, FontStyle.Bold, GraphicsUnit.Pixel); }   // la de Form1.Letra de XP
-        private static Font[] Letras()
+        private static Fte Fuente(float px) { return new Fte("Trebuchet MS", px, 1, "Pixel"); }   // la de Form1.Letra de XP (1: negrita)
+        private static Fte[] Letras()   // (el estilo: 1 negrita, 2 cursiva, 4 subrayada)
         {
-            return new[] { Fuente(14.592f), Fuente(25.344f), Fuente(47.616f), Fuente(21.345f), Fuente(11f), new Font("Trebuchet MS", 12f, FontStyle.Bold),
-                new Font("Trebuchet MS", 20f, FontStyle.Italic | FontStyle.Underline, GraphicsUnit.Pixel), new Font("Una Que No Esta", 18f, FontStyle.Regular, GraphicsUnit.Pixel) };
+            return new[] { Fuente(14.592f), Fuente(25.344f), Fuente(47.616f), Fuente(21.345f), Fuente(11f), new Fte("Trebuchet MS", 12f, 1),
+                new Fte("Trebuchet MS", 20f, 2 | 4, "Pixel"), new Fte("Una Que No Esta", 18f, 0, "Pixel") };
         }
         private static readonly string[] Textos = {
             "Otra Banda", "Los Tigres del Norte - Jefe de Jefes (En Vivo Desde el Auditorio Nacional)", "Supercalifragilisticoespialidosoextraordinario",
             "Canción & Niño — Ñandú", "", "¡Elige tu canción! Hay 12,345 esperándote", "La favorita de esta noche: «Amor Eterno (En Vivo Desde Bellas Artes)»",
             "La favorita de esta noche: «Corta»", "Uno «sin cierre y largo, largo, largo, largo, largo", "«»", " espacios  al final  ", "Una moneda = 4 canciones. ¡Tú pones la música!" };
-        private static StringFormat[] Formatos()
+        // (las banderas, por su numero: FitBlackBox 4, NoWrap 4096, LineLimit 8192, NoClip 16384)
+        private static Fmt[] Formatos()
         {
-            StringFormat una = new StringFormat(); una.Trimming = StringTrimming.EllipsisCharacter; una.FormatFlags = StringFormatFlags.NoWrap;   // la de la ficha
-            StringFormat unaC = new StringFormat(); unaC.Trimming = StringTrimming.EllipsisCharacter; unaC.FormatFlags = StringFormatFlags.NoWrap; unaC.LineAlignment = StringAlignment.Center;   // mensajes y lista
+            Fmt una = new Fmt(); una.Corte = ModoCorte.EllipsisCharacter; una.Banderas = 4096;   // la de la ficha
+            Fmt unaC = new Fmt(); unaC.Corte = ModoCorte.EllipsisCharacter; unaC.Banderas = 4096; unaC.Vertical = ModoAlinea.Center;   // mensajes y lista
             return new[] { una, unaC };
         }
-        // el tipografico compartido de fabrica, o como lo deja EstadoReposoGpu.cs (por la API de GDI+: en la traduccion es el mismo objeto)
+        // el tipografico compartido de fabrica, o como lo deja EstadoReposoGpu.cs (en la traduccion es el mismo objeto que usa el programa)
         private static void Tipografico(bool cambiado)
         {
-            StringFormat t = StringFormat.GenericTypographic;
-            if (cambiado) { t.Alignment = StringAlignment.Center; t.LineAlignment = StringAlignment.Center; t.FormatFlags |= StringFormatFlags.NoWrap; }
-            else { t.Alignment = StringAlignment.Near; t.LineAlignment = StringAlignment.Near; t.FormatFlags = StringFormatFlags.FitBlackBox | StringFormatFlags.LineLimit | StringFormatFlags.NoClip; t.Trimming = StringTrimming.None; }
+            Fmt t = Fmt.Tipografico;
+            if (cambiado) { t.Horizontal = ModoAlinea.Center; t.Vertical = ModoAlinea.Center; t.Banderas |= 4096; }
+            else { t.Horizontal = ModoAlinea.Near; t.Vertical = ModoAlinea.Near; t.Banderas = 4 | 8192 | 16384; t.Corte = ModoCorte.None; }
         }
-        private static string DeTipografico() { StringFormat t = StringFormat.GenericTypographic; return t.Alignment + "/" + t.LineAlignment + "/" + (int)t.FormatFlags + "/" + t.Trimming; }
+        private static string DeTipografico() { Fmt t = Fmt.Tipografico; return t.Horizontal + "/" + t.Vertical + "/" + t.Banderas + "/" + t.Corte; }
 
-        // portadas: opaca, con alfa, grande y chica (hechas punto a punto: las mismas en las dos)
-        private static unsafe Bitmap Portada(int w, int h, int tipo)
+        // portadas: opaca, con alfa, grande y chica (hechas punto a punto, ya premultiplicadas, como con LockBits de Format32bppPArgb: las
+        // mismas en las dos)
+        private static object Portada(int w, int h, int tipo)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+            object b = Pru.NuevoMapa(w, h, "Format32bppPArgb");
+            uint[] d = new uint[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
                 {
                     int r = (x * 255 / Math.Max(1, w - 1)), g = (y * 255 / Math.Max(1, h - 1)), bl = ((x / 7 + y / 5) % 2) * 200 + 30;
                     int a = tipo == 1 ? Math.Min(255, (x + y) * 255 / Math.Max(1, w + h - 2) + ((x / 9) % 2) * 40) : 255;
                     uint px = ((uint)a << 24) | ((uint)(r * a / 255) << 16) | ((uint)(g * a / 255) << 8) | (uint)(bl * a / 255);
-                    ((uint*)((byte*)d.Scan0 + (long)y * d.Stride))[x] = px;
+                    d[y * w + x] = px;
                 }
-            b.UnlockBits(d);
+            Pru.EscribeCrudos(b, d);
             return b;
         }
 
@@ -205,13 +204,9 @@ namespace BancoAtraccion
             foreach (float px in new[] { 11f, 14.592f, 25.344f, 47.616f, 0.5f, 120f })
             {
                 object l = m.Invoke(null, new object[] { px });
-                string s;
-                if (l is Font) { Font f = (Font)l; s = f.Name + "|" + R(f.Size) + "|" + f.Bold + "|" + (f.Unit == GraphicsUnit.Pixel) + "|" + R(f.GetHeight()); }
-                else
-                {
-                    Type t = l.GetType();
-                    s = t.GetField("Familia").GetValue(l) + "|" + R((float)t.GetField("Tamano").GetValue(l)) + "|" + t.GetField("Negrita").GetValue(l) + "|" + t.GetField("UnidadPixel").GetValue(l) + "|" + R((float)t.GetProperty("AltoRenglon").GetValue(l));
-                }
+                // (la Font de la referencia o la Letra del programa nuevo, mirada como Fte)
+                Fte f = Fte.De(l);
+                string s = f.Nombre + "|" + R(f.Tamano) + "|" + f.Negrita + "|" + (f.Unidad == "Pixel") + "|" + R(f.AltoRenglon);
                 Linea("letra-" + R(px), s);
                 ((IDisposable)l).Dispose();
             }
@@ -270,12 +265,12 @@ namespace BancoAtraccion
                 Fila("Un titulo larguisimo que no cabe ni con la letra al sesenta y dos por ciento de su tamano, ni de chiste", "", 2, Color.FromArgb(200, 60, 60)),
                 Fila("Nada", "Los Ejemplos", 1, Color.FromArgb(150, 120, 255)) };
             List<FilaNoche> tres = new List<FilaNoche> { Fila("Uno", "A", 1, Color.FromArgb(255, 210, 60)), Fila("Dos", "B-c d", 1, Color.FromArgb(10, 20, 30)), Fila("Tres", ".-_ ", 1, Color.FromArgb(255, 255, 255)) };
-            Bitmap opaca = Portada(64, 64, 0), alfa = Portada(80, 60, 1), grande = Portada(1600, 1000, 0), chica = Portada(7, 9, 1);
-            Image[][] portadas = { new Image[5], new Image[] { opaca, alfa, null, grande, chica }, new Image[] { chica, grande } };
+            object opaca = Portada(64, 64, 0), alfa = Portada(80, 60, 1), grande = Portada(1600, 1000, 0), chica = Portada(7, 9, 1);
+            object[][] portadas = { new object[5], new object[] { opaca, alfa, null, grande, chica }, new object[] { chica, grande } };
             int[][] pantallas = { new[] { 1024, 768 }, new[] { 800, 600 }, new[] { 1280, 1024 }, new[] { 1920, 1080 }, new[] { 640, 480 } };
             int k = 0;
             foreach (List<FilaNoche> filas in new[] { cinco, tres })
-                foreach (Image[] por in portadas)
+                foreach (object[] por in portadas)
                     foreach (int[] p in pantallas)
                     {
                         RectangleF pag; float cabW, cabH, filasY, filaH;
@@ -286,7 +281,7 @@ namespace BancoAtraccion
                         Linea(nom, Puntos(nom, b) + "\tbarra=" + Valor(args[9]) + "," + Valor(args[10]) + "," + Valor(args[11]) + "," + Valor(args[12]));
                         ((IDisposable)b).Dispose();
                     }
-            foreach (Bitmap b in new[] { opaca, alfa, grande, chica }) b.Dispose();
+            foreach (object b in new[] { opaca, alfa, grande, chica }) Pru.Suelta(b);
         }
 
         // ---- 5. donde hay tinta (Tinta)
@@ -296,14 +291,14 @@ namespace BancoAtraccion
             foreach (int[] md in new[] { new[] { 1, 1 }, new[] { 504, 76 }, new[] { 33, 17 } })
                 for (int caso = 0; caso < 4; caso++)
                 {
-                    using (Bitmap b = new Bitmap(md[0], md[1], PixelFormat.Format32bppPArgb))
+                    using (IDisposable b = (IDisposable)Pru.NuevoMapa(md[0], md[1], "Format32bppPArgb"))
                     {
-                        using (Graphics g = Graphics.FromImage(b))
+                        using (Lz g = Pru.Lienzo(b))
                         {
-                            g.Clear(Color.Transparent);
-                            if (caso == 1) { g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; using (Font f = Fuente(14.592f)) using (SolidBrush sb = new SolidBrush(Color.FromArgb(207, 224, 255))) g.DrawString("EN ESTA ROCOLA", f, sb, 17, 15); }
-                            else if (caso == 2) { using (SolidBrush sb = new SolidBrush(Color.FromArgb(1, 255, 255, 255))) g.FillRectangle(sb, md[0] - 1, md[1] - 1, 1, 1); }
-                            else if (caso == 3) { g.SmoothingMode = SmoothingMode.AntiAlias; using (SolidBrush sb = new SolidBrush(Color.FromArgb(40, 255, 0, 0))) g.FillEllipse(sb, 2.3f, 1.7f, md[0] * .4f, md[1] * .6f); }
+                            g.Limpia(Color.Transparent);
+                            if (caso == 1) { g.Letra = ModoLetra.AntiAliasGridFit; using (Fte f = Fuente(14.592f)) g.EscribeEn("EN ESTA ROCOLA", f, Color.FromArgb(207, 224, 255), 17, 15); }
+                            else if (caso == 2) { g.Rellena(Color.FromArgb(1, 255, 255, 255), md[0] - 1, md[1] - 1, 1, 1); }
+                            else if (caso == 3) { g.Suavizado = ModoSuave.AntiAlias; g.RellenaOvalo(Color.FromArgb(40, 255, 0, 0), 2.3f, 1.7f, md[0] * .4f, md[1] * .6f); }
                         }
                         object[] args;
                         object r = Llama("Tinta", new object[] { b, null, null, null, null }, out args);
@@ -315,16 +310,16 @@ namespace BancoAtraccion
         // ---- 6. las piezas, con cada estado del Graphics
         private static void Piezas(string tipo)
         {
-            Font[] fs = Letras(); StringFormat[] sfs = Formatos();
+            Fte[] fs = Letras(); Fmt[] sfs = Formatos();
             int k = 0;
             foreach (Estado e in Estados)
             {
                 // las que miden: el modo de letra del Graphics
-                using (Bitmap b = new Bitmap(8, 8, PixelFormat.Format32bppPArgb))
-                using (Graphics g = Prepara(b, e, false))
+                using (IDisposable b = (IDisposable)Pru.NuevoMapa(8, 8, "Format32bppPArgb"))
+                using (Lz g = Prepara(b, e, false))
                 {
-                    foreach (Font f in fs)
-                        foreach (StringFormat sf in sfs)
+                    foreach (Fte f in fs)
+                        foreach (Fmt sf in sfs)
                             foreach (string t in Textos)
                                 foreach (float ancho in new[] { 462f, 200f, 90f, 30f, 0f })
                                 {
@@ -333,7 +328,7 @@ namespace BancoAtraccion
                                         + "|" + Valor(Llama("AcortaPorPalabras", new object[] { g, t, f, ancho, sf }, out a)) + "|" + Valor(Llama("AcortaCita", new object[] { g, t, f, ancho, sf }, out a));
                                     Linea("mide-" + tipo + "-" + e.Nombre + "-" + (k++), q);
                                 }
-                    foreach (Font f in fs)
+                    foreach (Fte f in fs)
                     {
                         object[] a;
                         string q = Valor(Llama("AnchoPastilla", new object[] { g, "Regional", f, 26.774f }, out a)) + "|" + Valor(Llama("AnchoPastilla", new object[] { g, "pedido 3 veces", f, 30f }, out a));
@@ -348,15 +343,15 @@ namespace BancoAtraccion
                 }
                 // las que pintan
                 int j = 0;
-                foreach (Font f in new[] { fs[0], fs[1], fs[5], fs[6] })
+                foreach (Fte f in new[] { fs[0], fs[1], fs[5], fs[6] })
                 {
-                    foreach (StringFormat sf in sfs)
+                    foreach (Fmt sf in sfs)
                         foreach (string t in new[] { Textos[0], Textos[1], Textos[2], Textos[3], Textos[10] })
                             foreach (RectangleF r in new[] { new RectangleF(0, 10, 462, 31.5f), new RectangleF(4.5f, 3.25f, 120, 26), new RectangleF(0, 0, 30, 40) })
                                 Pinta("renglon-" + tipo + "-" + e.Nombre + "-" + (j++), e, 480, 64, g =>
                                 {
                                     object[] a;
-                                    using (SolidBrush br = new SolidBrush(Color.FromArgb(255, 226, 176)))
+                                    Liso br = new Liso(Color.FromArgb(255, 226, 176));
                                         return Valor(Llama("Renglon", new object[] { g, t, f, br, r, sf }, out a)) + "|" + Valor(Llama("Renglon", new object[] { g, t, f, br, new RectangleF(r.X, r.Y + 20, r.Width, r.Height), sf, .62f }, out a));
                                 });
                     foreach (string t in new[] { "Regional", "pedido 1 vez", "Música Ranchera Tradicional de Siempre" })
@@ -379,14 +374,14 @@ namespace BancoAtraccion
                         Pinta("espaciado-" + tipo + "-" + e.Nombre + "-" + (j++), e, 480, 80, g =>
                         {
                             object[] a;
-                            using (SolidBrush br = new SolidBrush(Color.FromArgb(207, 224, 255))) Llama("Espaciado", new object[] { g, t, f, br, 21f, 21f, f.Size * .22f }, out a);
+                            Liso br = new Liso(Color.FromArgb(207, 224, 255)); Llama("Espaciado", new object[] { g, t, f, br, 21f, 21f, f.Tamano * .22f }, out a);
                             return "-";
                         });
                         foreach (int ancho in new[] { 462, 60 })
                             Pinta("espaciadoentero-" + tipo + "-" + e.Nombre + "-" + (j++), e, 480, 80, g =>
                             {
                                 object[] a;
-                                using (SolidBrush br = new SolidBrush(Color.FromArgb(207, 224, 255))) Llama("EspaciadoEntero", new object[] { g, t, f, br, ancho, f.GetHeight(), f.Size * .22f }, out a);
+                                Liso br = new Liso(Color.FromArgb(207, 224, 255)); Llama("EspaciadoEntero", new object[] { g, t, f, br, ancho, f.AltoRenglon, f.Tamano * .22f }, out a);
                                 return "-";
                             });
                     }
@@ -396,12 +391,12 @@ namespace BancoAtraccion
             }
         }
         // un mapa con el fondo de Prepara, la pieza encima y su huella
-        private static void Pinta(string nombre, Estado e, int w, int h, Func<Graphics, string> pieza)
+        private static void Pinta(string nombre, Estado e, int w, int h, Func<Lz, string> pieza)
         {
-            using (Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb))
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(w, h, "Format32bppPArgb"))
             {
                 string r;
-                using (Graphics g = Prepara(b, e, true)) r = pieza(g);
+                using (Lz g = Prepara(b, e, true)) r = pieza(g);
                 Linea(nombre, Puntos(nombre, b) + "\t" + r);
             }
         }
@@ -409,10 +404,10 @@ namespace BancoAtraccion
         // ---- 7. la tapa de cada fila (Tapa): sin recorte en el Graphics (HorneaTop no pone ninguno, y la tapa pone el suyo)
         private static void Tapas()
         {
-            Bitmap opaca = Portada(64, 64, 0), alfa = Portada(80, 60, 1), grande = Portada(1600, 1000, 0), chica = Portada(7, 9, 1);
+            object opaca = Portada(64, 64, 0), alfa = Portada(80, 60, 1), grande = Portada(1600, 1000, 0), chica = Portada(7, 9, 1);
             int j = 0;
             foreach (Estado e in Estados)
-                foreach (Bitmap por in new[] { null, opaca, alfa, grande, chica })
+                foreach (object por in new[] { null, opaca, alfa, grande, chica })
                     foreach (FilaNoche f in new[] { Fila("Amor Eterno", "Rocío Dúrcal", 7, Color.FromArgb(233, 180, 128)), Fila("Sin artista aqui", "", 1, Color.FromArgb(10, 20, 30)) })
                         foreach (RectangleF r in new[] { new RectangleF(48.6f, 6.3f, 61.44f, 61.44f), new RectangleF(10, 10, 30, 30) })
                             Pinta("tapa-" + e.Nombre + "-" + (j++), new Estado { Nombre = e.Nombre, S = e.S, T = e.T, I = e.I, Trans = e.Trans }, 160, 80, g =>
@@ -421,7 +416,7 @@ namespace BancoAtraccion
                                 object x = Llama("Tapa", new object[] { g, r, por, f }, out a);
                                 return Valor(x);
                             });
-            foreach (Bitmap b in new[] { opaca, alfa, grande, chica }) b.Dispose();
+            foreach (object b in new[] { opaca, alfa, grande, chica }) Pru.Suelta(b);
         }
 
         public static void Main(string[] args)

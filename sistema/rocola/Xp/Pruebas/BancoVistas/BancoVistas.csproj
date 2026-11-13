@@ -16,6 +16,11 @@
     <StartupObject>Banco.Hornos</StartupObject>
     <NoWarn>$(NoWarn);CS0168;CS0169;CS0219;CS0414;CS0649;CS0162;CS0618;SYSLIB0011;SYSLIB0014;CA1416;CA2022;CS7022</NoWarn>
     <Fuente Condition="'$(Fuente)' == ''">$(MSBuildThisFileDirectory)../..</Fuente>
+    <!-- lo que los arneses usan del dibujo (Pruebas/Comun): la clase Pru de la capa si la carpeta Fuente es la referencia congelada (sin
+         Nativo/), y la nativa si es el programa nuevo. ROCOLA_COMUN la pone el guion si el proyecto se copio a otra carpeta -->
+    <ComunDir Condition="'$(ComunDir)' == '' And '$(ROCOLA_COMUN)' != ''">$(ROCOLA_COMUN)</ComunDir>
+    <ComunDir Condition="'$(ComunDir)' == ''">$(MSBuildThisFileDirectory)../Comun</ComunDir>
+    <EsReferencia Condition="!Exists('$(Fuente)/Nativo/Mapas.cs')">true</EsReferencia>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
@@ -26,6 +31,9 @@
   <ItemGroup>
     <Compile Remove="**/*.cs" />
     <Compile Include="Hornos.cs" />
+    <Compile Include="$(ComunDir)/Modos.cs" />
+    <Compile Include="$(ComunDir)/PruCapa.cs" Condition="'$(EsReferencia)' == 'true'" />
+    <Compile Include="$(ComunDir)/PruNativo.cs" Condition="'$(EsReferencia)' != 'true'" />
     <Compile Include="$(Fuente)/Codigo/**/*.cs;$(Fuente)/Plataforma/**/*.cs;$(Fuente)/Nativo/**/*.cs" Exclude="$(Fuente)/**/bin/**;$(Fuente)/**/obj/**" />
     <Compile Include="$(Fuente)/../Consola/Pantalla/Gl.cs;$(Fuente)/../Consola/Pantalla/Kms.cs;$(Fuente)/../Motor/Botones.cs" />
   </ItemGroup>

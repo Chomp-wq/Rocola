@@ -5,6 +5,8 @@
 set -u
 S=${VISTASA:-/root/rocola-trabajo/port/vistas-a}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 corre() {   # nombre barra archivo sed
   [ -n "${SOLO:-}" ] && [[ "$1" != *"$SOLO"* ]] && return
   local C=$S/control/Xp; rm -rf $S/control; mkdir -p $C

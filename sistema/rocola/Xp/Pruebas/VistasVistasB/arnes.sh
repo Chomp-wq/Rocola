@@ -1,16 +1,20 @@
 #!/bin/bash
-# arnes.sh [CARPETA]: el arnes del grupo «vistas-b» (VistasB.cs) compilado con la referencia congelada, con la base de la tanda (ae8b50b) y
-# con esta copia, corrido con las letras de XP falsas y con DejaVu (sin ROCOLA_LETRAS_XP), y las salidas comparadas linea por linea.
-# CARPETA (de fabrica /root/rocola-trabajo/port/vistas-b/arnes) queda fuera del repositorio: los proyectos copiados, lo compilado y las
-# salidas. La referencia no se toca (solo se lee). CUALES="nuevo" repite solo esta copia.
+# arnes.sh [CARPETA]: el arnes del grupo «vistas-b» (VistasB.cs) compilado con la referencia congelada y con esta copia, corrido con las
+# letras de XP falsas y con DejaVu (sin ROCOLA_LETRAS_XP), y las salidas comparadas linea por linea. CARPETA (de fabrica
+# /root/rocola-trabajo/port/vistas-b/arnes) queda fuera del repositorio: los proyectos copiados, lo compilado y las salidas. La referencia
+# no se toca (solo se lee). CUALES="nuevo" repite solo esta copia.
+# (Oleada 8b) La base de la tanda (ae8b50b) ya no se compila de fabrica: el arnes y Pruebas/Comun llaman a lo nativo de ahora, que esa base
+# no tiene (no compila). CUALES="ref base nuevo" BASE=<commit> la pide, para una base que lo tenga.
 set -eu
 AQUI=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$AQUI/../.." && pwd); RAIZ=$(cd "$XP/../../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$XP/Pruebas/Comun
 W=${1:-/root/rocola-trabajo/port/vistas-b/arnes}
 REF=${REF:-/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp}
 BASE=${BASE:-ae8b50b771a63fcf19c57e5fd73f5535fce089e7}
 LETRAS=${LETRAS_FALSAS:-/root/rocola-trabajo/port/dibujo/letras-xp-falsas}
 mkdir -p "$W"
-for cual in ${CUALES:-ref base nuevo}; do
+for cual in ${CUALES:-ref nuevo}; do
   case $cual in
     ref) F=$REF;;
     base) rm -rf "$W/base"; mkdir -p "$W/base"
