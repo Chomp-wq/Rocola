@@ -16,7 +16,8 @@ CONTROLES=(
   "Codigo/PantallaVivaGpu.cs|611|SKClipOperation.Intersect, false)|SKClipOperation.Intersect, true)|PintaFicha: el recorte de la portadita suavizado"
   "Codigo/PantallaVivaGpu.cs|782|(int)((j + .5) * b.Height / 6)));|(int)((j + .5) * b.Height / 6)).WithAlpha(255));|ColorDePortada: el alfa de los puntos no cuenta"
   "Codigo/PantallaVivaGpu.cs|782|(int)((i + .5) * b.Width / 6)|(int)((i + .4) * b.Width / 6)|ColorDePortada: los puntos, un poco a la izquierda"
-  "Codigo/DiscoVivoGpu.cs|412|PuenteDibujo.Letra(fCola), ajuste, pc,|PuenteDibujo.Letra(fCola), AjusteLetra.DelSistema, pc,|PastillaSonandoEq: el texto con el modo de letra de fabrica"
+# (N7, borrar-capas) 1 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
   "Codigo/DiscoVivoGpu.cs|409|filtro, medio, copia)|Filtro.Bilineal, medio, copia)|PastillaSonandoEq: la pastilla con el filtro de fabrica en vez del del lienzo"
   "Codigo/DiscoVivoGpu.cs|278|CorteTexto.PuntosPorLetra|CorteTexto.PorLetra|PintaBoleto: el titulo recortado por letra, sin puntos"
   # (los dos controles de Plataforma/Puente.pantalla-viva.cs -el puente de AnchoTexto y el de PastillaSonandoEq- se retiraron el

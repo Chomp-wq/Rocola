@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- BANCO DEL DIBUJO con el Dibujo2D.cs de esta copia de trabajo y las funciones nativas (Xp/Nativo); con "ejecutor nativo" hace los
-       mismos casos llamando directo a las funciones nativas, como el codigo de XP traducido. Ver Programa.cs. -->
+  <!-- BANCO DEL DIBUJO con las funciones nativas (Xp/Nativo) de esta copia de trabajo: hace los mismos casos que el banco congelado (la
+       capa de GDI+ de la referencia, ../Congelado) llamando directo a las funciones nativas, como el codigo de XP traducido. (N7, borrar-capas:
+       ya no compila Plataforma/Dibujo2D.cs, borrado, ni su ejecutor «gdi».) Ver Programa.cs. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,8 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="**/*.cs" />
-    <Compile Include="../Casos.cs;../EjecutaGdi.cs;../EjecutaNativo.cs;../Programa.cs" />
-    <Compile Include="../../../Plataforma/Dibujo2D.cs" Link="Plataforma/Dibujo2D.cs" />
+    <Compile Include="../Casos.cs;../EjecutaNativo.cs;../Programa.cs" />
     <!-- De Nativo/ solo el dibujo y la tarjeta (lo que el banco compilaba hasta b609319): lo demas que entro despues -el sonido por ALSA,
          el lector de audio y de MP3, el video, la pantalla y las teclas de la rocola- pide el programa entero (NAudio, NLayer, Form1). -->
     <Compile Include="../../../Nativo/CintaTarjeta.cs;../../../Nativo/Degradado.cs;../../../Nativo/FormatoMapa.cs;../../../Nativo/DispositivoTarjetaGl.cs;../../../Nativo/GlMas.cs;../../../Nativo/Imagenes.cs;../../../Nativo/Letras.cs;../../../Nativo/Mapas.cs;../../../Nativo/MemoriaTarjeta.cs;../../../Nativo/PantallaTarjeta.cs;../../../Nativo/Pixel.cs;../../../Nativo/Pixeles.cs;../../../Nativo/RecorteLienzo.cs;../../../Nativo/SombreadoresTarjeta.cs;../../../Nativo/TextoGdi.cs;../../../Nativo/TextoGdiPlus.cs;../../../Nativo/TexturasGl.cs;../../../Nativo/TrazaTarjeta.cs;../../../Nativo/VolcadoTexturas.cs" LinkBase="Nativo" />

@@ -36,8 +36,8 @@ corre "los cuerpos medidos con un modo fijo" letras Codigo/Form1.Vistas.cs '337s
 corre "la lupa agranda solo a lo ancho" letras Codigo/Form1.Vistas.cs '815s/g.Scale(s, s)/g.Scale(s, 1f)/'
 # (revision) el alto de la letra en la lupa (EscalaDe: los 96 puntos por pulgada de g.DpiY): solo pesa en una barra muy baja (los casos de 300x8 y 300x9)
 corre "la lupa mide el alto de la letra a 72 puntos por pulgada" letras Codigo/Form1.Vistas.cs '805s|96f / 72f|72f / 72f|'
-corre "el puente de letras no deja el suavizado" letras Plataforma/Puente.vistas-a.cs 's/Letters.Length == 0)) g.SmoothingMode = SmoothingMode.AntiAlias;/Letters.Length == 0)) { }/'
+# (N7, borrar-capas) 2 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
 corre "el fondo de las paginas siempre suavizado" paginas Codigo/Form1.Vistas.cs '128s/fondo, suave, medio, copia)/fondo, true, medio, copia)/'
 corre "el letrero de las paginas con el tipografico" paginas Codigo/Form1.Vistas.cs '156s/0, 0), null, copia, medio)/0, 0), FormatoTexto.TipograficoCompartido, copia, medio)/'
 corre "las paginas con otro modo de letra" paginas Codigo/Form1.Vistas.cs '131s/AjusteLetra.ClearTypeAjustada/AjusteLetra.Suave/'
-corre "el puente de paginas no deja el modo de letra" paginas Plataforma/Puente.vistas-a.cs 's/ g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; }/ }/'

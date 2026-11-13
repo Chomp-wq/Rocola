@@ -35,7 +35,8 @@ CONTROLES=(
   "Codigo/BuscadorPortadasGpu.cs|1296|float h = f.AltoRenglon;|float h = f.AltoEntero;|la caja de la cinta con el alto del renglon redondeado"
   # (Puente.buscador-portadas.cs se quito al juntar los grupos buscador y video-form1: los tres que iban en el, donde estan ahora; linea 0 =
   # la unica linea que lo lleva)
-  "Plataforma/Puente.buscador.cs|0|if (Width >= 60 && Height >= 60) g.SmoothingMode = SmoothingMode.AntiAlias;|;|el puente de RenderContent no le deja el suavizado al Graphics"
+# (N7, borrar-capas) 2 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
   "Codigo/BuscadorPortadasGpu.cs|1028|HorneaCartas(g, suave, ajuste, copia, filtro,|HorneaCartas(g, true, ajuste, copia, filtro,|las tarjetas enteras, siempre suavizadas"
   "Codigo/BuscadorPortadasGpu.cs|776|CtrlTxt(g, suave, ajuste, copia, medio, fnAyuda|CtrlTxt(g, suave, AjusteLetra.DelSistema, copia, medio, fnAyuda|la barra de ayudas con el modo de letra de fabrica"
   "Codigo/BuscadorPortadasGpu.cs|707|DrawToast(g, suave, ajuste,|DrawToast(g, suave, AjusteLetra.DelSistema,|el aviso con el modo de letra de fabrica"
@@ -44,7 +45,6 @@ CONTROLES=(
   "Codigo/BuscadorPortadasGpu.cs|512|sfMide = new FormatoTexto(FormatoTexto.TipograficoCompartido);|sfMide = FormatoTexto.TipograficoCompartido;|revision: el formato de medir es el tipografico compartido mismo y no una copia"
   "Codigo/BuscadorPortadasGpu.cs|1023|finally { g.RestoreToCount(state); }|finally { }|revision: el recorte de un trozo de las tarjetas no se quita"
   "Codigo/BuscadorPortadasGpu.cs|707|medio, hdc, Width|medio, SKMatrix.CreateTranslation(7, 3), Width|revision: el aviso con otra matriz del HDC"
-  "Plataforma/Puente.buscador.cs|0|if (pone) g.SmoothingMode = SmoothingMode.AntiAlias;|;|revision: el puente de DibujaPiezaViva no le deja el suavizado al Graphics"
   "Codigo/BuscadorPortadasGpu.cs|538|Letra(15f * s, 11f, true, false);|Letra(15f * s, 11f, false, false);|revision: las palabras de la barra de ayudas sin la negrita de su Letra"
 )
 for c in "${CONTROLES[@]}"; do

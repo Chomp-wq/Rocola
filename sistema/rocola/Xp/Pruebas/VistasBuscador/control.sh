@@ -33,9 +33,8 @@ CONTROLES=(
   "Codigo/Form1.Buscador.cs|1266|BanderasGdi.Izquierda, false);|BanderasGdi.Centrado, false);|la cabecera Resultados centrada"
   "Codigo/Form1.Buscador.cs|1127|AjusteLetra.DelSistema, false, false, SKMatrix.Identity|AjusteLetra.DelSistema, false, false, SKMatrix.CreateTranslation(2, 1)|las teclas guardadas con otra matriz del HDC"
   "Codigo/Form1.Buscador.cs|1552|AjusteLetra.ClearTypeAjustada;|AjusteLetra.Suave;|las ayudas de la vista previa sin ClearTypeGridFit"
-  "Plataforma/Puente.buscador.cs|52|g.InterpolationMode = (InterpolationMode)(int)filtro;|;|el puente de RenderContent no le deja al Graphics el filtro del cubo"
-  "Plataforma/Puente.buscador.cs|65|if (pone) g.SmoothingMode|if (false) g.SmoothingMode|el puente de DibujaPiezaViva no le deja el suavizado"
-  "Plataforma/Puente.buscador.cs|37|if (Width >= 30 && Height >= 12) g.SmoothingMode|if (true) g.SmoothingMode|el puente de la casilla le deja el suavizado aunque XP salga antes"
+# (N7, borrar-capas) 3 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
 )
 for c in "${CONTROLES[@]}"; do
   IFS='|' read -r f l viejo nuevo que <<< "$c"

@@ -34,7 +34,12 @@ namespace Banco
         }
         internal static int Main(string[] a)
         {
-            int casos = 2000, semilla = 1; string salida = null, clase = null, ejecutor = "gdi", carpeta = ".";
+#if NATIVO
+            string ejecutor = "nativo";   // (N7, borrar-capas) el banco de esta copia ya no lleva Dibujo2D.cs: solo las funciones nativas
+#else
+            string ejecutor = "gdi";      // el banco congelado: la capa de GDI+ de la referencia
+#endif
+            int casos = 2000, semilla = 1; string salida = null, clase = null, carpeta = ".";
             HashSet<int> vuelca = new HashSet<int>();
             for (int i = 0; i + 1 < a.Length; i += 2)
             {
@@ -61,8 +66,8 @@ namespace Banco
                 try
                 {
 #if NATIVO
-                    if (ejecutor != "gdi" && ejecutor != "nativo") throw new InvalidOperationException("este banco no lleva el ejecutor " + ejecutor);   // (n7-adelanto: el ejecutor «puente» se quito; antes, lo que no era «nativo» ni «puente» corria como «gdi»)
-                    px = ejecutor == "nativo" ? EjecutaNativo.Hace(c, v) : EjecutaGdi.Hace(c, v);
+                    if (ejecutor != "nativo") throw new InvalidOperationException("este banco no lleva el ejecutor " + ejecutor);   // (N7: «gdi» queda solo en el banco congelado, contra la referencia; «puente» se quito en n7-adelanto)
+                    px = EjecutaNativo.Hace(c, v);
 #else
                     if (ejecutor != "gdi") throw new InvalidOperationException("este banco no lleva el ejecutor " + ejecutor);
                     px = EjecutaGdi.Hace(c, v);

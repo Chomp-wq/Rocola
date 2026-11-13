@@ -29,7 +29,8 @@ corre "la etiqueta con otras banderas (|= en vez de =)" Codigo/Form1.Pared.cs '1
 corre "la casilla chica sin encoger" Codigo/Form1.Pared.cs '1249s/if (encoge) g.Scale(esc, esc);/if (encoge) g.Scale(1f, 1f);/'
 corre "el palomito con las puntas rectas" Codigo/Form1.Pared.cs '1274s/p.StrokeCap = SKStrokeCap.Round; //'
 corre "la etiqueta de la tarjeta copiada un punto corrida" Codigo/Form1.Pared.cs '483s/(long)src.X \* 4)/(long)(src.X + 1) * 4)/'
-corre "OnPaint no le deja el filtro al Graphics" Codigo/Form1.Pared.cs '1552s/ gx.InterpolationMode = (Rocola.Dibujo2D.InterpolationMode)(int)filtro;//'
+# (N7, borrar-capas) 2 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
 corre "la atraccion con otro modo de letra" Codigo/Form1.Pared.cs '124s/AjusteLetra ajuste = AjusteLetra.ClearTypeAjustada;/AjusteLetra ajuste = AjusteLetra.Suave;/'
 corre "el cubo de la cancion sin inclinarse" Codigo/Form1.Pared.cs '1671s/g.RotateDegrees(tilt);/g.RotateDegrees(0);/'
 corre "la paleta lee todo como premultiplicado" Codigo/PaletaCaratulaGpu.cs '64s/bool prem = f == FormatoMapa.PArgb32;/bool prem = f == FormatoMapa.PArgb32 || f == FormatoMapa.Argb32;/'
@@ -38,5 +39,4 @@ corre "la paleta lee todo como premultiplicado" Codigo/PaletaCaratulaGpu.cs '64s
 corre "las tiras del contorno un punto mas anchas" Codigo/CaratulasSeparadasGpu.cs '120s/right - left, height - 1), edge, suave)/right - left + 1, height - 1), edge, suave)/'
 # (el control «el puente de Cube.Draw sin el filtro del Graphics» se retiro el 12-11-2026: la firma de XP de Cube.Draw con un
 # Graphics se quito de Plataforma/Puente.pared.cs (limpieza-puentes) y el arnes llama directo a la traducida)
-corre "el puente de la paleta sin el formato" Plataforma/Puente.pared.cs 's/PuenteDibujo.FormatoMapaPared(bitmap.PixelFormat))/FormatoMapa.PArgb32)/'
 corre "la mezcla de portadas con la mitad del fundido" Codigo/Form1.Pared.cs 's/float\[\]\[\] cm = MatrizColor.Identidad(); cm\[3\]\[3\] = f;/float[][] cm = MatrizColor.Identidad(); cm[3][3] = f * 0.5f;/'
