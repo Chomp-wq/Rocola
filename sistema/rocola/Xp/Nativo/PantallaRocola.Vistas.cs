@@ -13,9 +13,10 @@
 // SetWindowRgn; el aviso sin tarjeta): se pinta solo dentro de ella, recorta a las de debajo solo con ella y el raton fuera de ella es del de
 // debajo.
 //
-// TRANSICION (mientras queden las ventanas de la capa: Plataforma/Ventanas.*.cs). La rocola aun es una ventana de la capa y sus vistas
-// aun son controles de la capa: la capa decide su orden, su pintura y su raton (lo que fijan las 41 pruebas), y la pantalla se lo pide por
-// LaCapa (lo pone Plataforma/Anfitrion.cs). Una vista que ya no hereda de Control pero cuyo dueno es una ventana de la capa entra en la
+// TRANSICION (mientras queden las ventanas de la capa: Plataforma/Ventanas.*.cs). Desde form1-sin-form (oleada 8) la ventana de la rocola es
+// la pantalla misma (PantallaRocola.Ventana.cs) y sus vistas van a la lista nativa; lo que sigue vale solo para las ventanas de la capa que
+// quedan (las de las 41 pruebas), a las que la pantalla les pide lo suyo por LaCapa (lo pone Plataforma/Anfitrion.cs; con la rocola abierta
+// es null). Una vista que ya no hereda de Control pero cuyo dueno es una ventana de la capa entra en la
 // lista de controles de esa ventana con un hueco, asi su orden, su recorte y su raton son los de WinForms entre los controles que quedan; la
 // capa la pinta llamando a su Pinta y le da el raton por su Raton. Lo mismo una capa de textura (el video: rotulos-y-letras; antes iba en
 // HuecoDelVideo de Plataforma/VideoEnVentanas.cs, ya borrado): en una ventana de la capa, su hueco de textura. Lo que no es de
@@ -259,8 +260,8 @@ namespace Rocola
         }
         // Pinta de fabrica de una vista (la que aun es control de la capa)
         internal static void PintaVistaDeLaCapa(IVista v, SKCanvas g) { ILaCapa c = LaCapa; if (c != null) c.Pinta(v, g); }
-        // EL FONDO DE LA VENTANA (OnPaintBackground y OnPaint de la rocola, por procesador): lo pone la rocola cuando su ventana sea la
-        // pantalla (oleada 8); sin el, transparente (lo de debajo es negro: la pantalla se borra a negro en cada cuadro)
+        // EL FONDO DE LA VENTANA (OnPaintBackground y OnPaint de la rocola, por procesador): lo pone la ventana de la rocola al abrirse
+        // (PantallaRocola.Ventana.cs, AbreNativa); sin el, transparente (lo de debajo es negro: la pantalla se borra a negro en cada cuadro)
         internal static Action<SKCanvas> FondoDeLaVentana;
         // hay que volver a componer: con la capa, ella lleva la cuenta de los cambios (Escritorio.Mueve); sin ella, la pantalla
         private static int cambios, compuesto = -1;
@@ -601,7 +602,7 @@ namespace Rocola
 
         // ---------- las teclas ----------
         // LO QUE LA VENTANA DE LA ROCOLA HACE CON LAS TECLAS (Form1: ProcessCmdKey, KeyPress con Form_KeyPress y OnKeyUp; Alt+F4 la cierra).
-        // Lo pone la rocola cuando su ventana sea la pantalla (oleada 8); hoy las teclas las reparte la capa.
+        // Lo pone la ventana de la rocola al abrirse (PantallaRocola.Ventana.cs, AbreNativa); con una ventana de la capa (las 41 pruebas), las reparte la capa.
         internal delegate bool Mando(ref PulsoTecla m, Tecla datos);
         internal sealed class TeclasDeLaVentana
         {

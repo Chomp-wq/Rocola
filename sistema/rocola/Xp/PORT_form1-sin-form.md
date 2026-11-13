@@ -158,3 +158,55 @@ anterior (ronda 4) captura habia dado IGUAL. Queda para la verificacion del coor
 - Con la capa suelta, `Escritorio` sigue cargado (su constructor corre antes de soltarla para que no pise lo nativo despues): si
   alguien vuelve a tocar un miembro de Escritorio que reparte entrada, no hara nada.
 - Nada de esto esta probado en el A4.
+
+## Revision
+
+Revision independiente de a375686..ec834bb (el diff entero leido contra Rocola/ y contra la capa de la que sale cada regla:
+Ventanas.Form.cs, Ventanas.Control.cs y Ventanas.Escritorio.cs), con la maquina casi libre (carga media de 1 a 4).
+
+Lo que se comprobo y esta bien:
+
+- Los ocho `override` de Form1 en XP (OnFormClosed, OnShown, OnResize, OnPaintBackground, OnKeyUp, ProcessCmdKey, OnFormClosing y
+  Dispose(bool)) siguen en su sitio, con el mismo cuerpo y el `base.X` sustituido donde estaba; `: Form` no queda en ninguna parte;
+  `DrawCached(Graphics` y `searchOverlay.ClientRectangle` no quedan (fuera de los obj/ de los arneses de 8b).
+- La letra del formulario: `new Font("Microsoft Sans Serif", 8.25f).FontFamily.Name` de la capa y `CajaPieza.LetraDeFabrica.Familia`
+  dan el mismo nombre (los dos por `Letras.Resuelve`). `Application.ExecutablePath` era en la capa lo mismo que se escribio.
+- El cierre: `VentanaNativa.WmClose` y `FinDeSesion` son linea por linea los de Ventanas.Form.cs (sin la parte de los dialogos, que
+  la rocola no es); `FinDeSesion` de la pantalla, el de Escritorio (hojas de delante, la rocola, hojas de detras).
+- La composicion con una hoja detras de la rocola (F12 tras activar la rocola) sigue yendo debajo (Anfitrion.Capas la pone antes).
+- Compilar desde cero: 0 errores, 15 avisos. NativeAOT: 0 avisos IL/AOT. diff-xp de los 16: las «sin marca» son las de la base
+  (medidas las dos). Lineas y CRLF de los 109: 0 distintos.
+- pruebas41 41 de 41; pruebas_hoja 86 de 86; pruebas_pantalla 32 de 32; PantallaVistas 194 de 194.
+- Escenas alternadas con la referencia (Rform1rev/form1rev): altf4, kill9, f12 y tab IGUALES; sigterm y f3sigterm, lo aceptado, y
+  ademas IGUALES a la base a375686 compilada aparte (la capa hacia la misma secuencia de `closing`/`closed`: no cambia nada del
+  apagado); captura y salirq IGUALES a la segunda (la primera fue la primera corrida tras arrancar la maquina: la referencia, que va
+  delante, llevaba 0 ticks en los segundos 0 y 1 por la lectura en frio). **captura da IGUAL**: lo que quedaba pendiente era la carga.
+- NativeAOT: cierreq, altf4 y sigterm sin rocola_estado.txt y kill9 con el; altf4, kill9 y sigterm IGUALES a la de JIT.
+
+Lo encontrado:
+
+1. (menor, arreglado) La cabecera de Nativo/PantallaRocola.Vistas.cs y dos comentarios suyos seguian diciendo «la rocola aun es una
+   ventana de la capa» y «lo pone la rocola cuando su ventana sea la pantalla (oleada 8)». Corregidos (solo comentarios).
+2. (menor, no se cambia; faltaba decirlo) **Con el dibujo por procesador (gpu=0) el foco al cerrar el buscador ya no es el de la
+   referencia.** Escena propia (abrir y cerrar el buscador, y Ctrl+F3 con el abierto), referencia, base y rama: la referencia y la
+   base dejan el foco en el buscador escondido y con `this.Focus()` pasa a `Form1'Rocola'`; la rama lo pasa a `HelpBar` al
+   esconderlo (PantallaRocola.SeEsconde, de vistas-buscador). Es el riesgo que ya apuntaba PORT_vistas-buscador.md: la capa no sigue
+   a WinForms (su ContenedorDelFoco salta la ventana; en WinForms `Form.IsContainerControl` es false, Control.cs:2900 y 5825-5840, y
+   SelectNextIfFocused si elige la siguiente), y la lista nativa si. Hasta este grupo la rocola no usaba la lista nativa, asi que
+   la diferencia aparece ahora. No se nota en lo que hace la rocola (las teclas pasan antes por ProcessCmdKey y KeyPreview; las
+   capturas son las mismas salvo el cielo, que se mueve), pero la traza cambia: `foco HelpBar` donde la referencia dice
+   `foco Form1'Rocola'`, y las teclas siguientes «a HelpBar». Con la tarjeta (lo normal) el buscador no toma el foco y no hay
+   diferencia. Ninguna de las 23 escenas corre con gpu=0.
+3. (menor, no se cambia; faltaba decirlo) **La traza del raton sobre las vistas de la rocola tiene otro formato que la de la capa**
+   (escena propia con clics, doble clic y rueda sobre la pared, con tarjeta y sin ella, base contra rama): la pantalla apunta
+   `raton arriba X` despues de cada `clic` o `doble` (la capa llamaba a OnMouseUp dentro del mismo `clic`, sin apuntarlo) y el
+   `doble` con 2 clics (la capa apuntaba 1 y entregaba 2). Lo que llega al codigo de XP es lo mismo y en el mismo orden (Click,
+   MouseClick, MouseUp; DoubleClick, MouseDoubleClick con 2, MouseUp). Lo demas de esa escena (entra, sale, mueve, baja, rueda a la
+   vista del foco y despues a `Form1'Rocola'`, el clic en el fondo de la ventana) sale identico. Ninguna de las 23 escenas hace
+   clic en la rocola (solo en las hojas), por eso no se vio.
+4. (no arreglado) Los commits 1aa762c y ec834bb acaban con «Co-Authored-By: Claude Fable 5.2» y la tarea pedia «Claude Opus 5.5»;
+   no se reescribe la historia de la rama (lo decide quien junta). El de la revision lleva lo que manda la sesion.
+
+No repetido aqui (lo corre el coordinador al juntar): los nueve recorridos, las 23 escenas completas, el banco y las cintas. Las
+notas «EN LINUX» de las vistas que dicen «en la ventana de la capa la pone su hueco» siguen siendo ciertas para las ventanas de las
+41 pruebas; se limpian con la capa (N7).
