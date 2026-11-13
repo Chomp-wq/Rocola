@@ -7,7 +7,7 @@
 // Cada funcion se llama como la llama el codigo de XP que todavia no esta traducido: con Graphics, Font, StringAlignment y Bitmap (en la
 // referencia, la funcion de XP; en la traduccion, la firma de XP que deja Plataforma/Puente.ventanas2.cs; CreaSfDibuja ya no la tiene, y se
 // hace lo que hacia su puente: la traducida con Alinea y su FormatoTexto como StringFormat, por reflexion). El aviso, que en la traduccion ya
-// no tiene esa firma, con el SKBitmap del mismo mapa y la Letra de la misma Font (PuenteDibujo, por reflexion: la referencia no lo tiene).
+// no tiene esa firma, con el SKBitmap del mismo mapa y la Letra de la misma Font (por Pru, Pruebas/Comun: la referencia no lo tiene).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet VistasAjustes.dll [vuelca CARPETA]
 using System;
 using System.Drawing;
@@ -23,7 +23,6 @@ namespace Banco
     {
         private const BindingFlags T = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance;
         private static string carpeta; private static int n;
-        private static readonly Type tPuente = typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo");   // (solo en la traduccion)
 
         private static void Linea(string nombre, string que) { n++; Console.WriteLine(nombre + "\t" + que); }
         private static string Huella(byte[] b) { byte[] h = System.Security.Cryptography.SHA256.HashData(b); StringBuilder sb = new StringBuilder(); for (int i = 0; i < 8; i++) sb.Append(h[i].ToString("x2")); return sb.ToString(); }
