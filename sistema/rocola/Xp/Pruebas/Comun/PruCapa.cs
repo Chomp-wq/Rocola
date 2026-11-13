@@ -48,6 +48,22 @@ namespace Banco
         public RectangleF LimitesRecorte { get { return G.ClipBounds; } }
         public PointF[] Transformados() { PointF[] p = { new PointF(0, 0), new PointF(1, 1) }; G.Transform.TransformPoints(p); return p; }
         public object[] Estado() { throw new InvalidOperationException("la referencia no tiene lienzo con estado"); }
+        // ---- (segunda parte de la oleada 8b) lo que piden los nueve arneses que faltaban
+        public void RecortaElipse(float x, float y, float w, float h) { using (GraphicsPath gp = new GraphicsPath()) { gp.AddEllipse(x, y, w, h); G.SetClip(gp); } }
+        internal Lz(Graphics g) { Mapa = null; G = g; }   // (un Graphics que da el programa: no se suelta)
+        public SizeF Mide(string s, Fte f) { return G.MeasureString(s, f != null ? f.F : null); }
+        public RectangleF LimitesVisibles { get { return G.VisibleClipBounds; } }
+        public void RellenaOvalo(Color c, float x, float y, float w, float h) { using (SolidBrush sb = new SolidBrush(c)) G.FillEllipse(sb, x, y, w, h); }
+        public void EscribeEn(string s, Fte f, Color c, float x, float y) { using (SolidBrush br = new SolidBrush(c)) G.DrawString(s, f.F, br, x, y); }
+        public void EscribeGdi(string s, Fte f, Rectangle r, Color c, int banderas) { TextRenderer.DrawText(G, s, f != null ? f.F : null, r, c, (TextFormatFlags)banderas); }
+        public SKMatrix MatrizCruda { get { return G.C.TotalMatrix; } }
+        public int Cuenta { get { return G.C.SaveCount; } }
+        public void RellenaDegradado(Rectangle caja, Color c1, Color c2, float angulo, float x, float y, float w, float h) { using (LinearGradientBrush lg = new LinearGradientBrush(caja, c1, c2, angulo)) G.FillRectangle(lg, x, y, w, h); }
+        public void Linea(Color c, float ancho, float x1, float y1, float x2, float y2) { using (Pen p = new Pen(c, ancho)) G.DrawLine(p, x1, y1, x2, y2); }
+        public void SinRecorte() { G.ResetClip(); }
+        public void RellenaCon(object pincel, object ruta) { G.FillPath((Brush)pincel, (GraphicsPath)ruta); }
+        public void RellenaCon(object pincel, Rectangle r) { G.FillRectangle((Brush)pincel, r); }
+        public void RellenaTextura(object mapa, float dx, float dy, Rectangle r) { using (TextureBrush t = new TextureBrush((Image)mapa, WrapMode.Tile)) { t.TranslateTransform(dx, dy); G.FillRectangle(t, r); } }
     }
 
     internal sealed class Fte : IDisposable
@@ -66,6 +82,8 @@ namespace Banco
         public int Alto { get { return F.Height; } }
         public float Puntos { get { return F.SizeInPoints; } }
         public void Dispose() { F.Dispose(); }
+        // ---- (segunda parte de la oleada 8b)
+        public static Fte Generica(float tam, int estilo = 0, string unidad = "Point") { return new Fte(new Font(FontFamily.GenericSansSerif, tam, (FontStyle)estilo, unidad == "Pixel" ? GraphicsUnit.Pixel : GraphicsUnit.Point)); }
     }
 
     internal sealed class Fmt
@@ -125,5 +143,29 @@ namespace Banco
             b.UnlockBits(d);
         }
         public static Lz Lienzo(object mapa) { return new Lz((Bitmap)mapa); }
+        // ---- (segunda parte de la oleada 8b)
+        public static object Rotulo() { return new Rocola.Ventanas.Label(); }
+        public static Lz LienzoSobre(SKCanvas c, bool suave, int ajuste) { throw new InvalidOperationException("la referencia no da un lienzo de Skia"); }
+        public static Delegate AccionLienzo(Action<Lz> a) { return (Action<Graphics>)(g => a(new Lz(g))); }
+        public static object FamiliaDeFuente(object fuente) { return ((Font)fuente).FontFamily; }
+        public static object Familia(string nombre) { return new FontFamily(nombre); }
+        public static object FamiliaGenerica() { return FontFamily.GenericSansSerif; }
+        public static string NombreDeFamilia(object familia) { return ((FontFamily)familia).Name; }
+        public static void AnadeLinea(object ruta, float x1, float y1, float x2, float y2) { ((GraphicsPath)ruta).AddLine(x1, y1, x2, y2); }
+        public static string NombreFamilia(string nombre) { return new FontFamily(nombre).Name; }
+        public static object Lee(byte[] datos) { using (System.IO.MemoryStream ms = new System.IO.MemoryStream(datos)) return Image.FromStream(ms); }
+        public static object FormatoNativo(object mapa) { throw new InvalidOperationException("la referencia no tiene FormatoMapa"); }
+        public static SKPath Ruta(object o) { return o as SKPath ?? ((GraphicsPath)o).P; }
+        public static object BrochaDegradado(RectangleF caja, Color c1, Color c2, float angulo) { return new LinearGradientBrush(caja, c1, c2, angulo); }
+        public static object BrochaTextura(object mapa, bool medio) { return new TextureBrush((Image)mapa, WrapMode.Tile); }
+        public static void SueltaBrocha(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
+        public static unsafe void EscribeCrudos(object mapa, uint[] pargb)
+        {
+            Bitmap b = (Bitmap)mapa; int w = b.Width, h = b.Height;
+            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) ((uint*)((byte*)d.Scan0 + (long)y * d.Stride))[x] = pargb[y * w + x];
+            b.UnlockBits(d);
+        }
+        public static object RutaElipse(RectangleF r) { GraphicsPath gp = new GraphicsPath(); gp.AddEllipse(r); return gp; }
     }
 }

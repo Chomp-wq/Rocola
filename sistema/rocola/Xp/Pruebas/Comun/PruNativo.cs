@@ -93,6 +93,76 @@ namespace Banco
         public PointF[] Transformados() { SKMatrix m = Transformacion; SKPoint a = m.MapPoint(0, 0), b = m.MapPoint(1, 1); return new[] { new PointF(a.X, a.Y), new PointF(b.X, b.Y) }; }
         // (lo que el programa recibe) el lienzo y su estado, en el orden de EstadoLienzo: suave, letra, copia, filtro, medio, matriz del HDC
         public object[] Estado() { return new object[] { C, Suave, (AjusteLetra)(int)Letra, EsCopia, (Filtro)(int)Filtro, Medio, Hdc }; }
+        // ---- (segunda parte de la oleada 8b) lo que piden los nueve arneses que faltaban
+        // el recorte de antes se cambia por una elipse (SetClip de un trazo con una elipse): de pixeles enteros, sin suavizar, como las
+        // regiones de GDI+
+        public void RecortaElipse(float x, float y, float w, float h)
+        {
+            QuitaRecorte(); baseCuenta = C.Save(); conRecorte = true;
+            using (SKPath p = new SKPath()) { p.FillType = SKPathFillType.EvenOdd; p.AddOval(new SKRect(x, y, x + w, y + h)); C.ClipPath(p, SKClipOperation.Intersect, false); }
+        }
+        // un lienzo de prueba sobre un lienzo que ya tiene el programa (el que le da EnSeco a lo que llama), con la matriz del HDC dada: no es
+        // su dueno, asi que NO se suelta (Dispose soltaria el lienzo del programa)
+        internal Lz(SKCanvas c, SKMatrix hdc) { Mapa = null; C = c; baseCuenta = c.SaveCount; baseMatriz = hdc; }
+        // MeasureString sin caja y sin formato (el de fabrica de GDI+)
+        public SizeF Mide(string s, Fte f)
+        {
+            if (string.IsNullOrEmpty(s)) return new SizeF(0, 0);
+            if (f == null) throw new ArgumentNullException("font");
+            int letras, lineas;
+            return TextoGdiPlus.Mide(s, f.L, (AjusteLetra)(int)Letra, new SizeF(0, 0), FormatoTexto.SinFormato, out letras, out lineas);
+        }
+        public RectangleF LimitesVisibles { get { return RecorteLienzo.Limites(C); } }   // (VisibleClipBounds)
+        // FillEllipse con un pincel liso
+        public void RellenaOvalo(Color c, float x, float y, float w, float h)
+        {
+            using (SKPaint p = new SKPaint { Color = c.Sk() }) Rocola.Nativo.Pixel.RellenaOvalo(C, new RectangleF(x, y, w, h), p, Suave, Medio, EsCopia);
+        }
+        // DrawString en un punto: la caja es (x, y, 0, 0) y el formato el de fabrica
+        public void EscribeEn(string s, Fte f, Color c, float x, float y) { Escribe(s, f, c, new RectangleF(x, y, 0, 0), null); }
+        // el texto de GDI (TextRenderer.DrawText con caja, color y banderas -los numeros de TextFormatFlags-): Nativo/TextoGdi.cs, con la matriz
+        // del HDC y no la del lienzo; ni texto vacio ni color Transparent pintan nada
+        public void EscribeGdi(string s, Fte f, Rectangle r, Color c, int banderas)
+        {
+            if (string.IsNullOrEmpty(s) || c == Color.Transparent || f == null) return;
+            bool alias = Letra == ModoLetra.SingleBitPerPixel || Letra == ModoLetra.SingleBitPerPixelGridFit;
+            TextoGdi.Escribe(C, Hdc, s, f.L, r, c, (BanderasGdi)banderas, alias);
+        }
+        // la matriz entera del lienzo (con la del HDC) y su cuenta de estados guardados, como quedan despues de una llamada
+        public SKMatrix MatrizCruda { get { return C.TotalMatrix; } }
+        public int Cuenta { get { return C.SaveCount; } }
+        // FillRectangle con un degradado lineal de dos colores en una caja y con un angulo (LinearGradientBrush(caja, c1, c2, angulo): el
+        // angulo no escalable y el degradado repetido, como lo pone GDI+ de fabrica): Nativo/Degradado.cs
+        public void RellenaDegradado(Rectangle caja, Color c1, Color c2, float angulo, float x, float y, float w, float h)
+        {
+            PointF p0, p1; Degradado.Extremos((RectangleF)caja, angulo, false, out p0, out p1);
+            using (SKPaint p = new SKPaint())
+            {
+                p.Shader = Degradado.LinealCon(p0, p1, new[] { c1.Sk(), c2.Sk() }, null, SKShaderTileMode.Repeat); p.Color = SKColors.Black;
+                try { Rocola.Nativo.Pixel.Rellena(C, new RectangleF(x, y, w, h), p, Suave, Medio, EsCopia); }
+                finally { SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); }
+            }
+        }
+        // DrawLine con una pluma lisa de ese ancho (uniones en inglete y puntas planas, las de fabrica)
+        public void Linea(Color c, float ancho, float x1, float y1, float x2, float y2)
+        {
+            using (SKPaint p = new SKPaint { Color = c.Sk(), StrokeWidth = ancho, StrokeJoin = SKStrokeJoin.Miter, StrokeCap = SKStrokeCap.Butt })
+                Rocola.Nativo.Pixel.Linea(C, x1, y1, x2, y2, p, Suave, Medio, EsCopia);
+        }
+        // FillPath y FillRectangle con un pincel que da el programa (aqui, un SKPaint con su color o su shader) y un trazo de Pru.RutaElipse
+        public void RellenaCon(object pincel, object ruta) { Rocola.Nativo.Pixel.Rellena(C, (SKPath)ruta, (SKPaint)pincel, Suave, Medio, EsCopia); }
+        public void RellenaCon(object pincel, Rectangle r) { Rocola.Nativo.Pixel.Rellena(C, (RectangleF)r, (SKPaint)pincel, Suave, Medio, EsCopia); }
+        public void SinRecorte() { QuitaRecorte(); }   // (ResetClip)
+        // FillRectangle con un mapa repetido como textura (TextureBrush(mapa, WrapMode.Tile) trasladado): Nativo/Degradado.cs, Textura
+        public void RellenaTextura(object mapa, float dx, float dy, Rectangle r)
+        {
+            using (SKPaint p = new SKPaint())
+            {
+                p.Shader = Degradado.Textura((SKBitmap)mapa, Envoltura.Repite, SKMatrix.Identity.PreConcat(SKMatrix.CreateTranslation(dx, dy)), Medio); p.Color = SKColors.Black;
+                try { Rocola.Nativo.Pixel.Rellena(C, (RectangleF)r, p, Suave, Medio, EsCopia); }
+                finally { SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); }
+            }
+        }
     }
 
     // LA LETRA PARA LOS ARNESES: la familia como la resuelve GDI+ (una que no esta cae en la generica sin remates), el tamano, el estilo (los
@@ -119,6 +189,13 @@ namespace Banco
         public int Alto { get { return L.AltoEntero; } }
         public float Puntos { get { return L.Puntos; } }
         public void Dispose() { L.Dispose(); }
+        // ---- (segunda parte de la oleada 8b)
+        // la familia generica sin remates (FontFamily.GenericSansSerif: en XP, Microsoft Sans Serif), sin pasar por la busqueda de familias
+        public static Fte Generica(float tam, int estilo = 0, string unidad = "Point")
+        {
+            bool b = (estilo & 1) != 0, i = (estilo & 2) != 0, u = (estilo & 4) != 0;
+            return new Fte(unidad == "Pixel" ? Letra.EnPixeles(Letras.SinRemates, tam, b, i, u) : Letra.EnPuntos(Letras.SinRemates, tam, b, i, u));
+        }
     }
 
     // EL FORMATO DE TEXTO PARA LOS ARNESES: un FormatoTexto (Nativo/TextoGdiPlus.cs); los numeros son los de GDI+ (alineacion 0 a 2, banderas,
@@ -186,5 +263,63 @@ namespace Banco
             fixed (uint* p = argb) Pixeles.Escribe(s, new Rectangle(0, 0, s.Width, s.Height), FormatoPuntos.Argb32, (IntPtr)p, s.Width * 4);
         }
         public static Lz Lienzo(object mapa) { return new Lz((SKBitmap)mapa); }
+        // ---- (segunda parte de la oleada 8b)
+        // un rotulo de la capa de WinForms (un Label): solo la referencia los tiene; el programa nuevo tiene los suyos (RotuloVista)
+        public static object Rotulo() { throw new InvalidOperationException("el programa nuevo no tiene Label"); }
+        // un lienzo de prueba sobre el lienzo que da el programa, con el estado con que lo da (suavizado y modo de letra; sin copia, filtro
+        // Bilinear, sin medio pixel) y la matriz del HDC de un mapa (la identidad)
+        public static Lz LienzoSobre(SKCanvas c, bool suave, int ajuste) { Lz g = new Lz(c, SKMatrix.Identity); g.Suavizado = suave ? ModoSuave.AntiAlias : ModoSuave.None; g.Letra = (ModoLetra)ajuste; return g; }
+        // lo que pide EnSeco en la referencia (un Action<Graphics>): solo ella lo tiene
+        public static Delegate AccionLienzo(Action<Lz> a) { throw new InvalidOperationException("el programa nuevo no pide un Action<Graphics>"); }
+        // las familias de letra: en la referencia son un objeto (FontFamily); el programa nuevo las lleva por su nombre, y aqui una familia
+        // es ese nombre. Pedida por su nombre, lanza ArgumentException si no esta instalada (como new FontFamily(nombre)); la generica sin
+        // remates (FontFamily.GenericSansSerif: en XP, Microsoft Sans Serif) no se busca
+        public static object FamiliaDeFuente(object fuente) { return ((Letra)fuente).Familia; }
+        public static object Familia(string nombre) { return Letras.Familia(nombre); }
+        public static object FamiliaGenerica() { return Letras.SinRemates; }
+        public static string NombreDeFamilia(object familia) { return (string)familia; }
+        // AddLine a un trazo que da el programa y que llega con su figura cerrada: la linea empieza figura aparte
+        public static void AnadeLinea(object ruta, float x1, float y1, float x2, float y2) { SKPath p = (SKPath)ruta; p.MoveTo(x1, y1); p.LineTo(x2, y2); }
+        // el nombre de una familia pedida por su nombre (new FontFamily(nombre).Name: lanza ArgumentException si no esta instalada)
+        public static string NombreFamilia(string nombre) { return Letras.Familia(nombre); }
+        // una imagen leida de un archivo (Image.FromStream): sus puntos y, apuntado, el formato que GDI+ le da (lo dice el archivo: de paleta,
+        // de 24 bits sin alfa o de 32 con alfa)
+        public static object Lee(byte[] datos)
+        {
+            FormatoImagen fa; SKBitmap b = Imagenes.Lee(datos, out fa);
+            return DeSk(b, fa == FormatoImagen.Paleta8 ? "Format8bppIndexed" : fa == FormatoImagen.Rgb24 ? "Format24bppRgb" : "Format32bppArgb");
+        }
+        // el formato de un mapa como el dato nativo (Nativo/FormatoMapa.cs): lo que el programa nuevo recibe junto a los puntos
+        // un trazo que da el programa, como el SKPath que es (en la referencia, el de su GraphicsPath), y uno con una elipse (GraphicsPath
+        // con AddEllipse: relleno alterno, el de fabrica de GDI+)
+        public static SKPath Ruta(object o) { return (SKPath)o; }
+        public static object RutaElipse(RectangleF r) { SKPath p = new SKPath(); p.FillType = SKPathFillType.EvenOdd; p.AddOval(new SKRect(r.X, r.Y, r.X + r.Width, r.Y + r.Height)); return p; }
+        // LOS PINCELES QUE EL ARNES LE DA A LO TRADUCIDO (ademas del liso, Brocha): en el programa nuevo, un SKPaint con su shader, como
+        // lo arma quien llama a una traducida. El degradado lineal de dos colores en una caja con un angulo (no escalable, repetido) y la
+        // textura de un mapa repetido, que depende del medio pixel del lienzo en que se va a pintar. Se sueltan con SueltaBrocha (el shader
+        // y el SKPaint)
+        public static object BrochaDegradado(RectangleF caja, Color c1, Color c2, float angulo)
+        {
+            PointF p0, p1; Degradado.Extremos(caja, angulo, false, out p0, out p1);
+            SKPaint p = new SKPaint(); p.Shader = Degradado.LinealCon(p0, p1, new[] { c1.Sk(), c2.Sk() }, null, SKShaderTileMode.Repeat); p.Color = SKColors.Black; return p;
+        }
+        public static object BrochaTextura(object mapa, bool medio)
+        {
+            SKPaint p = new SKPaint(); p.Shader = Degradado.Textura((SKBitmap)mapa, Envoltura.Repite, SKMatrix.Identity, medio); p.Color = SKColors.Black; return p;
+        }
+        public static void SueltaBrocha(object o) { SKPaint p = o as SKPaint; if (p == null) return; SKShader s = p.Shader; p.Shader = null; if (s != null) s.Dispose(); p.Dispose(); }
+        // LockBits(WriteOnly, Format32bppPArgb) de un mapa entero: los puntos ya premultiplicados (un uint ARGB cada uno, fila por fila) van
+        // tal cual a los del mapa, que se guardan asi
+        public static unsafe void EscribeCrudos(object mapa, uint[] pargb)
+        {
+            SKBitmap s = (SKBitmap)mapa; int w = s.Width, h = s.Height, paso = s.RowBytes; byte* o = (byte*)s.GetPixels();
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) ((uint*)(o + (long)y * paso))[x] = pargb[y * w + x];
+            s.NotifyPixelsChanged();
+        }
+        public static object FormatoNativo(object mapa)
+        {
+            string f = Formato(mapa);
+            return f == "Format32bppPArgb" ? FormatoMapa.PArgb32 : f == "Format32bppArgb" ? FormatoMapa.Argb32 : f == "Format32bppRgb" ? FormatoMapa.Rgb32 : f == "Format24bppRgb" ? FormatoMapa.Rgb24 : FormatoMapa.Otro;
+        }
     }
 }
