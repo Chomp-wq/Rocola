@@ -13,7 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; los rotulos de la ventana son vistas nativas con su Letra (Nativo/RotuloVista.cs); lo que va y viene de archivos sin traducir (los Graphics de OnPaint y OnPaintBackground, las formas de Form1.Pared.cs) pasa por el puente (Plataforma/Puente.cs y Puente.video-form1.cs) o va con su tipo escrito entero
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la barra de ayuda (HelpBar) dibuja y mide con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; los rotulos de la ventana son vistas nativas con su Letra (Nativo/RotuloVista.cs); el fondo de la ventana (OnPaintBackground) recibe el lienzo de Skia de su ventana y llama directo al cielo traducido (Form1.Fondo.cs)
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -23,7 +23,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         private const float FixedVolume = 1.0f;
         private const int Cols = 6;
@@ -704,14 +704,14 @@ namespace Rocola
 
         public Form1()
         {
-            this.DoubleBuffered = true;
+            AbreVentana();   // EN LINUX: (XP) this.DoubleBuffered = true; el fondo de la ventana se pinta siempre en una imagen aparte que compone la pantalla. Y aqui, donde en XP ya habia corrido el constructor de Form (va antes que este cuerpo), la rocola abre su ventana (Nativo/Form1.Ventana.cs), todavia sin crear ni ensenar
             DecodificacionFlotante.LaNecesita = LlegaAlMaximo;   // que MP3 se descomprimen en coma flotante (FlotanteNLayer.cs)
             formStars.Density = 1f;      // MISMA densidad que albumView: el borde entre secciones deja de notarse
             formStars.QuietBands = true;   // y ademas evitar acumularlas en el abecedario (arriba) y la barra de estado (abajo)
             // reloj a 1ms -> animacion pareja   // EN LINUX: (timeBeginPeriod(1) de winmm) los relojes de Linux ya van al milisegundo (Sleep(1) = 1,1 a 1,2 ms): nada que pedir
             try { int wt, ct; System.Threading.ThreadPool.GetMinThreads(out wt, out ct); System.Threading.ThreadPool.SetMinThreads(Math.Max(wt, 3), ct); } catch { }  // arranque de cargas mas agil
-            this.KeyPreview = true;                 // el formulario ve KeyPress aunque otro control tenga el foco
-            this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)
+            // EN LINUX: (XP) this.KeyPreview = true;   // el formulario ve KeyPress aunque otro control tenga el foco. Aqui la ventana de la rocola recibe cada tecla y cada caracter antes que nadie (Nativo/PantallaRocola.Rocola.cs)
+            this.KeyPress += Form_KeyPress;         // admite TODO caracter en el buscador (ñ, acentos, comillas...)   // EN LINUX: el aviso KeyPress es de la rocola (Nativo/Form1.Ventana.cs): su ventana le da cada caracter
             BeginStartupDataLoad();
             try { BuildUi(); } catch { CancelStartupDataLoad(); throw; }
             needConfig = !LoadKeys();   // si no hay botones guardados, lanzamos el asistente al mostrarse
@@ -727,7 +727,7 @@ namespace Rocola
             statsTimer = new Reloj(); statsTimer.Interval = 60000; statsTimer.Tick += StatsTimer_Tick; statsTimer.Start();   // guarda estadisticas cada minuto si hubo cambios; EN LINUX: Reloj de la pantalla nativa (WM_TIMER)
         }
 
-        protected override void OnFormClosed(FormClosedEventArgs e)
+        private void OnFormClosed(RazonCierre e)   // EN LINUX: protected override void OnFormClosed(FormClosedEventArgs e): no sobrescribe nada; su ventana la llama al cerrarse, con la razon (CloseReason -> RazonCierre, los mismos numeros y nombres)
         {
             DetieneEstadoReintentos();
 #if ROCOLA_GPU
@@ -737,15 +737,15 @@ namespace Rocola
             try { GuardaNoche(false); } catch { }   // y lo mas pedido esta noche (AtraccionGpu.cs)
             WaitDataWrites(5000);   // ultima barrera por si Windows cerro la ventana por otra ruta
             // EN LINUX: (timeEndPeriod(1)) no se pidio nada: nada que devolver
-            base.OnFormClosed(e);
+            AvisaFormClosed();   // EN LINUX: base.OnFormClosed(e): Form.OnFormClosed lanza el aviso FormClosed (lo escuchan Form1.Video.cs y la pantalla, que asi sale de su bucle); el aviso es de la rocola (Nativo/Form1.Ventana.cs)
         }
 
         // Al mostrarse: acomoda la UI, carga la musica, OCULTA EL CURSOR, fuerza el FOCO DEL TECLADO
         // (con un vigia durante el arranque) y, si hace falta, configura botones.
-        protected override void OnShown(EventArgs e)
+        private void OnShown()   // EN LINUX: protected override void OnShown(EventArgs e): no sobrescribe nada; su ventana la llama al ensenarse (el Shown que Load deja en la cola)
         {
             VigiaPantalla.Hace("el arranque: mostrarse");
-            base.OnShown(e);
+            // EN LINUX: (XP) base.OnShown(e); Form.OnShown solo lanza el aviso Shown, que nadie escucha
             if (startupClosing || IsDisposed) return;
             ArrancaVigia();   // cuanto tarda la pantalla en atender, siempre (MedidasBitacora.cs)
             ProbeAudioTier();    // requisitos de maquina para el NIVEL 2 de audio (antes de leer dsee= de config)
@@ -953,7 +953,7 @@ namespace Rocola
         {
             try
             {
-                string exe = Application.ExecutablePath;
+                string exe = Environment.ProcessPath ?? Path.Combine(CarpetaPrograma.Ruta, "rocola-xp");   // EN LINUX: Application.ExecutablePath: el archivo del programa que corre (el ejecutable de NativeAOT; con JIT, el de dotnet), como lo daba la capa
                 if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return "";
                 return File.GetLastWriteTime(exe).ToString("dd/MM/yyyy HH:mm");
             }
@@ -1025,13 +1025,13 @@ namespace Rocola
             return Clampf(bas, 0f, 1f);
         }
 
-        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutControls(); Invalidate(); VuelveAPrecalentar(); }
+        private void OnResize() { LayoutControls(); Invalidate(); VuelveAPrecalentar(); }   // EN LINUX: protected override void OnResize(EventArgs e) { base.OnResize(e); ...: no sobrescribe nada; su ventana la llama al cambiar de medida, despues de lo de fabrica (base.OnResize: el aviso Resize, que nadie escucha)
 
-        protected override void OnPaintBackground(PaintEventArgs e)
+        private void OnPaintBackground(SKCanvas g)   // EN LINUX: protected override void OnPaintBackground(PaintEventArgs e): no sobrescribe nada; su ventana le da el lienzo de su fondo (el cliente, con el origen en su esquina) cuando hay que pintarlo
         {
-            Rocola.Dibujo2D.Graphics g = e.Graphics;   // EN LINUX: el Graphics de la capa, escrito entero: OnPaintBackground (WinForms, el dibujo por procesador) solo se lo pasa al cielo (Starfield.DrawCached de Form1.Fondo.cs), los dos aun sin traducir; traducirlo aqui seria ir y volver por el puente sin pintar nada
+            Filtro filtro = Filtro.Bilineal; bool medio = false, copia = false;   // EN LINUX: Graphics g = e.Graphics: el estado de un Graphics de un WM_PAINT (Graphics.FromImage: InterpolationMode.Bilinear -el filtro Bilineal-, PixelOffsetMode.Default -sin medio pixel- y CompositingMode.SourceOver -sin copia-), que es lo que DrawCached usa de el (como BgPanel, Form1.Fondo.cs)
             int w = ClientSize.Width, h = ClientSize.Height;
-            if (w < 2 || h < 2) { base.OnPaintBackground(e); return; }
+            if (w < 2 || h < 2) { ventana.PintaFondoDeFabrica(g); return; }   // EN LINUX: base.OnPaintBackground(e): Control.OnPaintBackground rellena el cliente con BackColor; lo hace su ventana
 #if ROCOLA_GPU
             if (gpuPanel != null && gpuPanel.Visible) return;   // el panel GPU (pantalla completa) ya cubre todo; no gastes CPU pintando el cielo detras
 #endif
@@ -1059,7 +1059,7 @@ namespace Rocola
             formStars.HazFase = hazFase;   // el paseo lento de la luna: el mismo reloj que la via lactea
             formStars.ConLuna = lunaOn;
             formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
-            formStars.DrawCached(g, w, h, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima
+            formStars.DrawCached(g, filtro, medio, copia, w, h, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de Form1.Fondo.cs); ya no pasa por la firma de XP del puente (Plataforma/Puente.fondo.cs, borrada)
         }
 
         private static Color Shade(Color c, double towardBlack)
@@ -1109,13 +1109,13 @@ namespace Rocola
         private void BuildUi()
         {
             this.Text = "Rocola";
-            try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }   // estrella metalica (barra de tareas / Alt-Tab); el exe ya la lleva embebida
-            this.StartPosition = FormStartPosition.CenterScreen;
+            // EN LINUX: (XP) try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }   // estrella metalica (barra de tareas / Alt-Tab); el exe ya la lleva embebida. En Rocola OS no hay barra de tareas ni Alt-Tab: la ventana no tiene icono
+            // EN LINUX: (XP) this.StartPosition = FormStartPosition.CenterScreen; con la ventana maximizada no cuenta (CreateWindowEx con WS_MAXIMIZE no la coloca: Form.cs, CreateParams y FillInCreateParamsStartPosition)
             this.Size = new Size(1100, 780);
             this.MinimumSize = new Size(820, 600);
             this.BackColor = Color.FromArgb(10, 14, 40);
-            this.FormBorderStyle = FormBorderStyle.None;     // PANTALLA COMPLETA al iniciar (sin barra de titulo)
-            this.WindowState = FormWindowState.Maximized;    // borde nulo + maximizado = cubre toda la pantalla
+            ventana.SinBorde();     // PANTALLA COMPLETA al iniciar (sin barra de titulo)   // EN LINUX: this.FormBorderStyle = FormBorderStyle.None: se lo pide a su ventana
+            ventana.Maximiza();    // borde nulo + maximizado = cubre toda la pantalla   // EN LINUX: this.WindowState = FormWindowState.Maximized: se lo pide a su ventana (se aplica al crearla, como WS_MAXIMIZE)
 
             lblStatus = new RotuloVista(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
@@ -1263,7 +1263,7 @@ namespace Rocola
             pastCola.Acento = Color.FromArgb(140, 205, 255);
             pastCred = new PastillaView(); pastCred.Etiqueta = "Inserta una moneda"; pastCred.Valor = "";
             pastCred.Acento = Color.FromArgb(255, 205, 90);
-            pastGenero = new GeneroView(); pastGenero.Font = Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, 10f, true); pastGenero.Visible = false;   // EN LINUX: new Font(this.Font.FontFamily, 10f, Bold): la familia de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre, en puntos y negrita; la vista la recibe como Letra (Nativo/Letras.cs)
+            pastGenero = new GeneroView(); pastGenero.Font = Rocola.Nativo.Letra.EnPuntos(this.Font.Familia, 10f, true); pastGenero.Visible = false;   // EN LINUX: new Font(this.Font.FontFamily, 10f, Bold): la familia de la letra de la ventana (la Font del formulario: una Letra, Nativo/Form1.Ventana.cs; FontFamily.Name -> Familia) por su nombre, en puntos y negrita; la vista la recibe como Letra (Nativo/Letras.cs)
             lblMejorada = new RotuloVista(); TransLabel(lblMejorada, 12f); lblMejorada.Text = "MEJORADA"; lblMejorada.ForeColor = MejGoldBase;   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             lblMejorada.TextAlign = AlineaTexto.MiddleLeft; lblMejorada.Visible = false;   // aparece solo si la cancion suena con DSEE (PositionMejorada); EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
 
@@ -1482,8 +1482,8 @@ namespace Rocola
             // Las capsulas, arriba a la derecha. Se miden por su contenido: "Inserta una moneda" es mucho mas
             // ancha que "Creditos 3", y una capsula a medias se veria mal.
             int pastH = AltoPastilla(tarjetaH);
-            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.FontFamily.Name, false);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
-            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.FontFamily.Name, pastCola.ConPortadas);   // EN LINUX: la familia por su nombre (ver la linea de arriba)
+            int wCred = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastH, this.Font.Familia, false);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario: una Letra, Nativo/Form1.Ventana.cs; FontFamily.Name -> Familia) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
+            int wCola = PastillaView.Ancho(pastCola.Etiqueta, pastCola.Valor, pastH, this.Font.Familia, pastCola.ConPortadas);   // EN LINUX: la familia por su nombre (ver la linea de arriba)
             int pastY = tarjetaY;
             pastCred.SetBounds(W - pad - wCred, pastY, wCred, pastH);
             pastCola.SetBounds(W - pad - wCred - 10 - wCola, pastY, wCola, pastH);

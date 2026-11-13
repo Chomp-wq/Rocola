@@ -71,7 +71,8 @@ namespace Rocola
         private static bool PuedeElegirVista(object o) { IVista v = o as IVista; return v != null && v.Seleccionable && v.Visible; }
 
         // la vista activa de la ventana (ContainerControl.ActiveControl): la del foco, si esta en la ventana
-        private static IVista ActivaDeLaVentana { get { IVista v = foco as IVista; return v != null && EnLaLista(v) ? v : null; } }
+        // (form1-sin-form: es la ultima que tuvo el foco, aunque ahora lo tenga una hoja: PantallaRocola.Ventana.cs)
+        private static IVista ActivaDeLaVentana { get { IVista v = activo as IVista; return v != null && EnLaLista(v) ? v : null; } }
 
         // SelectNextControl: la siguiente que se pueda elegir y el foco a ella (Select: con la traza «foco», como EnfocaVista)
         private static bool SiguienteVista(object n, object ctl, bool forward, bool tabStopOnly, bool nested, bool wrap)
@@ -92,11 +93,7 @@ namespace Rocola
             }
             while (ctl != inicio);
             if (hallada == null) return false;
-            if (foco != hallada)
-            {
-                foco = hallada;
-                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco " + hallada.GetType().Name);
-            }
+            PonFocoVentana(hallada, true);   // (form1-sin-form) Select: el foco de la ventana, con su traza (PantallaRocola.Ventana.cs)
             return true;
         }
         // GetNextControl: hacia delante se entra en las hijas y despues la hermana con el TabIndex siguiente (a igualdad, la que va despues

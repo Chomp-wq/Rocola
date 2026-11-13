@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         private float rmsLo, rmsMid, rmsHi;            // rms retrasado por banda (lo que se oye AHORA)
         private Dictionary<string, float> loudCache = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);   // ruta -> ESTIMACION de sonoridad (tramos u oida); la integrada BS.1770 va en integCache

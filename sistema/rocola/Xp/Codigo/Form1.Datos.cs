@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         private string backupDir = null;                                                     // 2o destino del respaldo (idealmente OTRO disco); "respaldo_dir=" en config
         // DURACION de cada cancion (segundos). La calcula el PRE-ANALISIS junto con la sonoridad y se guarda en
@@ -3334,7 +3334,7 @@ namespace Rocola
             // pantalla en cada moneda seria trabajo tirado veinte veces en una noche movida.
             if (pastCred.Height >= 8)
             {
-                int quiere = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastCred.Height, this.Font.FontFamily.Name, pastCred.ConPortadas);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario, de la capa hasta la oleada 8) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
+                int quiere = PastillaView.Ancho(pastCred.Etiqueta, pastCred.Valor, pastCred.Height, this.Font.Familia, pastCred.ConPortadas);   // EN LINUX: la FontFamily de la letra de la ventana (la Font del formulario: una Letra, Nativo/Form1.Ventana.cs; FontFamily.Name -> Familia) por su nombre: PastillaView.Ancho ya traducida (Form1.Vistas.cs) la pide asi
                 if (quiere != pastCredAncho) { pastCredAncho = quiere; LayoutControls(); }
             }
             pastCred.Invalidate();

@@ -506,13 +506,13 @@ namespace Rocola.Ventanas
         // su ProcessCmdKey es Hoja.TeclaDeMando.)
         internal static bool TeclaDeMando(Control arriba, ref PulsoTecla m, Rocola.Tecla datos)
         {
-            Form1 rocola = arriba as Form1; if (rocola != null) return rocola.ProcessCmdKey(ref m, datos);
+            // (form1-sin-form) la rocola ya no es una ventana de la capa: sus teclas se las da la pantalla (PantallaRocola.Vistas.cs, Tecla)
             return false;
         }
         private static void TeclaArriba(Control c, KeyEventArgs e)
         {
-            Form1 rocola = c as Form1;
-            if (rocola != null) rocola.OnKeyUp(e); else c.LlamaKeyUp(e);
+            // (form1-sin-form) la rocola ya no es una ventana de la capa (su OnKeyUp lo llama la pantalla)
+            c.LlamaKeyUp(e);
         }
         // EL CARACTER DE LA TECLA (TranslateMessage y ToUnicode): con Control, los de control (Ctrl+A = 1 ... Ctrl+Z = 26, Ctrl+Intro =
         // salto de linea, Ctrl+Retroceso = 127; Ctrl+H es el retroceso: borra en el buscador de XP); con Alt, el mismo caracter

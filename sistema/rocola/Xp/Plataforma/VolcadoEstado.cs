@@ -73,12 +73,13 @@ namespace Rocola
             sb.Append("mantenimiento=").Append(VolcadoEstado.B(maintMode)).Append('\n');
             sb.Append("f3pagina=").Append(VolcadoEstado.N(f3Pagina)).Append('\n');
             // (port nativo, ventanas2 H) el foco y la activa son de una hoja nativa (Nativo/Hoja.cs) o, si no, de la ventana de la rocola
+            // (form1-sin-form) que es la pantalla nativa (PantallaRocola.Ventana.cs); la capa solo queda para las ventanas de las 41 pruebas
             object focoVentana, activaVentana; DeLaCapa(out focoVentana, out activaVentana);   // COSTURA DE LA CAPA (se quita en N7, con la funcion de abajo)
-            sb.Append("foco=").Append(TrazaVentanas.Pieza(Hoja.Foco ?? focoVentana)).Append('\n');
-            sb.Append("activa=").Append(TrazaVentanas.Pieza(Hoja.Activa ?? activaVentana)).Append('\n');
+            bool nativa = PantallaRocola.HayVentanaNativa;
+            sb.Append("foco=").Append(Hoja.Foco != null || !nativa ? TrazaVentanas.Pieza(Hoja.Foco ?? focoVentana) : PantallaRocola.NombreDelFoco).Append('\n');
+            sb.Append("activa=").Append(Hoja.Activa != null || !nativa ? TrazaVentanas.Pieza(Hoja.Activa ?? activaVentana) : PantallaRocola.NombreDeLaActiva).Append('\n');
             // (n7-adelanto) Aqui iban las OTRAS ventanas de la capa (Escritorio.Formas menos la rocola) con sus controles. Ya no hay ninguna:
-            // Ctrl+F3, Ctrl+F2, los avisos, el historial de caratulas y F12 son hojas nativas, y la unica ventana de la capa que el programa
-            // crea es la de la rocola (el MessageBox de la capa, CajaAviso, no lo llama nadie): ese trozo no escribia nada y se quito.
+            // Ctrl+F3, Ctrl+F2, los avisos, el historial de caratulas y F12 son hojas nativas: ese trozo no escribia nada y se quito.
             foreach (Hoja h in Hoja.Abiertas)
             {
                 if (h.IsDisposed || !h.Visible) continue;

@@ -93,14 +93,14 @@ namespace Rocola
         }
 
         internal const int SigueParadaMs = 10000;   // sin atender tanto: se dice ya, sin esperar a que vuelva
-        private readonly Control pantalla;
+        private readonly Form1 pantalla;   // EN LINUX: Control: la rocola, la duena de la ventana (IsDisposed, IsHandleCreated y los encargos a su ventana: Nativo/Form1.Ventana.cs)
         private readonly int umbral, paso;
         private readonly Action<int, string> avisa;
         private volatile bool parar;
         private Thread hilo;
 
         // 'avisa' corre en el hilo del vigia: tiene que ser barato y no tocar la pantalla.
-        internal VigiaPantalla(Control pantalla, int umbralMs, int pasoMs, Action<int, string> avisa)
+        internal VigiaPantalla(Form1 pantalla, int umbralMs, int pasoMs, Action<int, string> avisa)   // EN LINUX: Control -> Form1 (ver arriba)
         { this.pantalla = pantalla; umbral = umbralMs; paso = pasoMs; this.avisa = avisa; }
 
         internal void Arranca()

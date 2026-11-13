@@ -24,8 +24,8 @@ namespace Rocola
             return ColoresDePortada(PuenteDibujo.Mapa(b), out uno, out dos);
         }
 
-        // ---- El cielo del dibujo por procesador: las firmas de XP de Draw (Form1.Pared.cs, la atraccion), DrawCached (Form1.cs: las franjas; el panel
-        // de la lista del disco, BgPanel, ya la llama directo) y DrawReactive (Form1.Pared.cs y Form1.Buscador.cs). El lienzo del Graphics (con su matriz y su recorte)
+        // ---- El cielo del dibujo por procesador: las firmas de XP de Draw (Form1.Pared.cs, la atraccion), (DrawCached se quito con form1-sin-form: el fondo de la ventana, Form1.cs, y el panel
+        // de la lista del disco, BgPanel, la llaman directo) y DrawReactive (Form1.Pared.cs y Form1.Buscador.cs). El lienzo del Graphics (con su matriz y su recorte)
         // y su estado: el suavizado, el filtro, el medio pixel y la copia. Se quitan cuando esos archivos (y los OnPaint) se traduzcan.
         private partial class Starfield
         {
@@ -33,11 +33,6 @@ namespace Rocola
             {
                 EstadoLienzo e = PuenteDibujo.Estado(g);
                 Draw(PuenteDibujo.Lienzo(g), e.Suave, e.Filtro, e.Medio, e.Copia, w, h, skyTop, skyBottom, tint, phase, shooting, pulse);
-            }
-            public void DrawCached(Graphics g, int w, int h, Color skyTop, Color skyBottom)
-            {
-                EstadoLienzo e = PuenteDibujo.Estado(g);
-                DrawCached(PuenteDibujo.Lienzo(g), e.Filtro, e.Medio, e.Copia, w, h, skyTop, skyBottom);
             }
             public void DrawReactive(Graphics g, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)
             {

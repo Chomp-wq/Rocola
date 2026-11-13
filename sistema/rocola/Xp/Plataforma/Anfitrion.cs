@@ -48,6 +48,16 @@ namespace Rocola
             Escritorio.Anfitrion = Actual;
             PantallaRocola.LaCapa = new VentanasDeLaCapa();   // (transicion) la pantalla nativa le pide a la capa lo de sus ventanas
             PantallaRocola.Componer = Actual.Compone;
+            // (form1-sin-form) LA VENTANA DE LA ROCOLA SIN LA CAPA (PantallaRocola.Ventana.cs): al abrirla, la capa de ventanas deja de repartir
+            // la pantalla (LaCapa = null: las vistas van a la lista nativa y la entrada la reparte la pantalla); el constructor de Escritorio
+            // corre antes, para que lo que pone (el pintado, la de delante, lo de las hojas) no pise despues lo nativo. De la capa solo queda
+            // lo que compone las hojas (Escritorio.Capas, sin ninguna ventana suya) hasta N7.
+            PantallaRocola.SueltaLaCapa = delegate
+            {
+                System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Escritorio).TypeHandle);
+                PantallaRocola.LaCapa = null;
+                Actual.compositor.ConMano = delegate { return false; };   // (la mano era de un control de la capa: ya no hay)
+            };
             ReproductorVideo.Pantalla = new VideoEnPantalla();   // la capa del video (Nativo/ReproductorVideo.cs): en una ventana de la capa, su hueco de textura (HuecoDelVideo, abajo)
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
