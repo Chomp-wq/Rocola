@@ -41,6 +41,13 @@ namespace Banco
         {
             using (SKPaint p = new SKPaint { Color = c.Sk() }) Rocola.Nativo.Pixel.Rellena(C, new RectangleF(x, y, w, h), p, Suave, Medio, EsCopia);
         }
+        // DrawString con un pincel liso (el texto de GDI+, Nativo/TextoGdiPlus.cs, con el estado del lienzo)
+        public void Escribe(string s, Fte f, Color c, RectangleF r, Fmt sf)
+        {
+            if (string.IsNullOrEmpty(s) || f == null) return;
+            using (SKPaint p = new SKPaint { Color = c.Sk() })
+                TextoGdiPlus.Escribe(C, s, f.L, (AjusteLetra)(int)Letra, p, r, sf != null ? sf.F : FormatoTexto.SinFormato, EsCopia, Medio);
+        }
         public void Traslada(float dx, float dy) { C.Translate(dx, dy); }
         public void Escala(float sx, float sy) { C.Scale(sx, sy); }
         public void Gira(float grados) { C.RotateDegrees(grados); }
@@ -70,6 +77,50 @@ namespace Banco
         public object[] Estado() { return new object[] { C, Suave, (AjusteLetra)(int)Letra, EsCopia, (Filtro)(int)Filtro, Medio, Hdc }; }
     }
 
+    // LA LETRA PARA LOS ARNESES: la familia como la resuelve GDI+ (una que no esta cae en la generica sin remates), el tamano, el estilo (los
+    // bits de FontStyle: 1 negrita, 2 cursiva, 4 subrayada) y la unidad (Point o Pixel); es una Letra de Nativo/Letras.cs
+    internal sealed class Fte : IDisposable
+    {
+        public readonly Letra L;
+        public Fte(string familia, float tam, int estilo = 0, string unidad = "Point")
+        {
+            string fam = Letras.Resuelve(familia); bool b = (estilo & 1) != 0, i = (estilo & 2) != 0, u = (estilo & 4) != 0;
+            L = unidad == "Pixel" ? Letra.EnPixeles(fam, tam, b, i, u) : Letra.EnPuntos(fam, tam, b, i, u);
+        }
+        public object Obj { get { return L; } }
+        public string Nombre { get { return L.Familia; } }
+        public float Tamano { get { return L.Tamano; } }
+        public string Unidad { get { return L.UnidadPixel ? "Pixel" : "Point"; } }
+        public bool Negrita { get { return L.Negrita; } }
+        // el estilo como lo escribe FontStyle.ToString()
+        public string Estilo { get { return Pru.NombreEstilo((L.Negrita ? 1 : 0) | (L.Cursiva ? 2 : 0) | (L.Subrayada ? 4 : 0)); } }
+        public float AltoRenglon { get { return L.AltoRenglon; } }
+        public int Alto { get { return L.AltoEntero; } }
+        public float Puntos { get { return L.Puntos; } }
+        public void Dispose() { L.Dispose(); }
+    }
+
+    // EL FORMATO DE TEXTO PARA LOS ARNESES: un FormatoTexto (Nativo/TextoGdiPlus.cs); los numeros son los de GDI+ (alineacion 0 a 2, banderas,
+    // corte 0 a 5). Tipografico y Generico son los dos compartidos, un solo objeto cada uno.
+    internal sealed class Fmt
+    {
+        public readonly FormatoTexto F;
+        private Fmt(FormatoTexto f) { F = f; }
+        public Fmt() { F = new FormatoTexto(); }
+        public Fmt(int banderas) { F = new FormatoTexto((BanderasTexto)banderas); }
+        private static readonly Fmt tip = new Fmt(FormatoTexto.TipograficoCompartido), gen = new Fmt(FormatoTexto.NormalCompartido);
+        public static Fmt Tipografico { get { return tip; } }
+        public static Fmt Generico { get { return gen; } }
+        public object Obj { get { return F; } }
+        public ModoAlinea Horizontal { get { return (ModoAlinea)(int)F.Horizontal; } set { F.Horizontal = (Alinea)(int)value; } }
+        public ModoAlinea Vertical { get { return (ModoAlinea)(int)F.Vertical; } set { F.Vertical = (Alinea)(int)value; } }
+        public int Banderas { get { return (int)F.Banderas; } set { F.Banderas = (BanderasTexto)value; } }
+        public ModoCorte Corte { get { return (ModoCorte)(int)F.Corte; } set { F.Corte = (CorteTexto)(int)value; } }
+        // un formato que ya hizo el programa (un FormatoTexto) mirado como este; el mismo objeto
+        public static Fmt De(object o) { if (o == null) return null; FormatoTexto f = (FormatoTexto)o; return ReferenceEquals(f, FormatoTexto.TipograficoCompartido) ? tip : ReferenceEquals(f, FormatoTexto.NormalCompartido) ? gen : new Fmt(f); }
+        public bool EsTipografico { get { return ReferenceEquals(F, FormatoTexto.TipograficoCompartido); } }
+    }
+
     internal static class Pru
     {
         public const bool Capa = false;   // (esta es la del programa nuevo)
@@ -96,6 +147,9 @@ namespace Banco
             fixed (byte* p = r) Pixeles.Lee(s, new Rectangle(0, 0, s.Width, s.Height), FormatoPuntos.Argb32, (IntPtr)p, paso);
             return r;
         }
+        // FontStyle.ToString() de los bits que XP usa
+        public static string NombreEstilo(int e) { if (e == 0) return "Regular"; string r = ""; if ((e & 1) != 0) r += "Bold"; if ((e & 2) != 0) r += (r.Length > 0 ? ", " : "") + "Italic"; if ((e & 4) != 0) r += (r.Length > 0 ? ", " : "") + "Underline"; if ((e & 8) != 0) r += (r.Length > 0 ? ", " : "") + "Strikeout"; return r; }
+        public static SKPaint PincelLiso(Color c) { return new SKPaint { Color = c.Sk() }; }
         public static Lz Lienzo(object mapa) { return new Lz((SKBitmap)mapa); }
     }
 }

@@ -24,6 +24,10 @@ namespace Banco
         public ModoPixel Pixel { get { return (ModoPixel)(int)G.PixelOffsetMode; } set { G.PixelOffsetMode = (PixelOffsetMode)(int)value; } }
         public void Limpia(Color c) { G.Clear(c); }
         public void Rellena(Color c, float x, float y, float w, float h) { using (SolidBrush sb = new SolidBrush(c)) G.FillRectangle(sb, x, y, w, h); }
+        public void Escribe(string s, Fte f, Color c, RectangleF r, Fmt sf)
+        {
+            using (SolidBrush br = new SolidBrush(c)) G.DrawString(s, f.F, br, r, sf != null ? sf.S : null);
+        }
         public void Traslada(float dx, float dy) { G.TranslateTransform(dx, dy); }
         public void Escala(float sx, float sy) { G.ScaleTransform(sx, sy); }
         public void Gira(float grados) { G.RotateTransform(grados); }
@@ -34,6 +38,40 @@ namespace Banco
         public RectangleF LimitesRecorte { get { return G.ClipBounds; } }
         public PointF[] Transformados() { PointF[] p = { new PointF(0, 0), new PointF(1, 1) }; G.Transform.TransformPoints(p); return p; }
         public object[] Estado() { throw new InvalidOperationException("la referencia no tiene lienzo con estado"); }
+    }
+
+    internal sealed class Fte : IDisposable
+    {
+        public readonly Font F;
+        public Fte(string familia, float tam, int estilo = 0, string unidad = "Point") { F = new Font(familia, tam, (FontStyle)estilo, unidad == "Pixel" ? GraphicsUnit.Pixel : GraphicsUnit.Point); }
+        public object Obj { get { return F; } }
+        public string Nombre { get { return F.Name; } }
+        public float Tamano { get { return F.Size; } }
+        public string Unidad { get { return F.Unit.ToString(); } }
+        public bool Negrita { get { return F.Bold; } }
+        public string Estilo { get { return F.Style.ToString(); } }
+        public float AltoRenglon { get { return F.GetHeight(); } }
+        public int Alto { get { return F.Height; } }
+        public float Puntos { get { return F.SizeInPoints; } }
+        public void Dispose() { F.Dispose(); }
+    }
+
+    internal sealed class Fmt
+    {
+        public readonly StringFormat S;
+        private Fmt(StringFormat s) { S = s; }
+        public Fmt() { S = new StringFormat(); }
+        public Fmt(int banderas) { S = new StringFormat((StringFormatFlags)banderas); }
+        private static readonly Fmt tip = new Fmt(StringFormat.GenericTypographic), gen = new Fmt(StringFormat.GenericDefault);
+        public static Fmt Tipografico { get { return tip; } }
+        public static Fmt Generico { get { return gen; } }
+        public object Obj { get { return S; } }
+        public ModoAlinea Horizontal { get { return (ModoAlinea)(int)S.Alignment; } set { S.Alignment = (StringAlignment)(int)value; } }
+        public ModoAlinea Vertical { get { return (ModoAlinea)(int)S.LineAlignment; } set { S.LineAlignment = (StringAlignment)(int)value; } }
+        public int Banderas { get { return (int)S.FormatFlags; } set { S.FormatFlags = (StringFormatFlags)value; } }
+        public ModoCorte Corte { get { return (ModoCorte)(int)S.Trimming; } set { S.Trimming = (StringTrimming)(int)value; } }
+        public static Fmt De(object o) { if (o == null) return null; StringFormat s = (StringFormat)o; return ReferenceEquals(s, StringFormat.GenericTypographic) ? tip : ReferenceEquals(s, StringFormat.GenericDefault) ? gen : new Fmt(s); }
+        public bool EsTipografico { get { return ReferenceEquals(S, StringFormat.GenericTypographic); } }
     }
 
     internal static class Pru
@@ -60,6 +98,8 @@ namespace Banco
             b.UnlockBits(d);
             return sub;
         }
+        public static string NombreEstilo(int e) { return ((FontStyle)e).ToString(); }
+        public static SKPaint PincelLiso(Color c) { return new SKPaint { Color = new SKColor(c.R, c.G, c.B, c.A) }; }
         public static Lz Lienzo(object mapa) { return new Lz((Bitmap)mapa); }
     }
 }
