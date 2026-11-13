@@ -192,7 +192,7 @@ la base. Ojo: sin `touch -r /usr/lib/dotnet/dotnet` en rocola-xp, tambien en JIT
   saldrian en el volcado.
 - Los tres `banco.sh` (VistasPared, VistasBuscadorPortadas, VistasReposo) ya no piden «puente» ni puente-objetos; los informes viejos
   (PORT_*.md) hablan de «los 9» y «402/407 comprobaciones»: desde ahora son 6 y no hay puente-objetos.
-- `BancoNuevo.dll puente-objetos` (un solo argumento) ya no es una orden: corre el banco por defecto (2 000 casos, gdi) a la salida.
+- `BancoNuevo.dll puente-objetos` ya no es una orden: lo dice y sale con 2 (revision; antes corria callado el banco por defecto).
 
 ## LA LISTA DEL BORRADO FINAL (N7, despues de juntar 8a y 8b)
 
@@ -287,3 +287,24 @@ ya no hace falta.
 
 **8. Comprobar (el plan):** compila sin el `global using` y con 0 avisos nuevos en JIT y NativeAOT; Inventario 0/0; banco (nativo, 3
 semillas), todos los arneses, las 29 cintas, los 9 recorridos, las 21 escenas, hoja (86 hoy) y pantalla (32), PantallaVistas (194).
+
+## Revision (13-11-2026, revisor independiente)
+
+Leido el diff 7113804..b7c65ee entero, contra el codigo de antes:
+
+- **TrazaVentanas.Pieza**: mismo resultado para cada clase de objeto y en el mismo orden (nulo; el hueco por su vista; pieza, hoja y
+  rotulo nativos con su texto; control de la capa con su Text, con el mismo try; lo demas, su clase). Sin fallos.
+- **VolcadoEstado**: `foco=` y `activa=` salen de lo mismo. El bucle quitado sobre `Escritorio.Formas` no escribia nada: en Codigo/,
+  Nativo/ y Plataforma/ no queda ningun `new Form(`, ninguna clase que herede de Form salvo Form1 (la que el bucle saltaba) y `CajaAviso`,
+  que solo crea `MessageBox.Show` de la capa, sin ningun llamador (grep fuera de comentarios: 0). Sin fallos.
+- **PruebasLinux.cs** y **Form1.Biblioteca.cs 2731-2757**: comprobado que no habia nada que hacer (0 nombres de la capa; el `#else` ya
+  esta en SKBitmap con sus notas). `git diff 7113804 -- Codigo`: vacio.
+- **Banco**: sin restos de `PorPuente` ni `PruebaPuente` (grep; el `PorPuente` de VistasPantallaViva es otra cosa, de 8b). Un fallo
+  menor, arreglado: `BancoNuevo.dll puente-objetos` corria callado el banco por defecto y salia con 0 (un guion viejo lo daria por
+  bueno); ahora lo dice y sale con 2 (Programa.cs, una linea).
+- Nada nuevo que imite a Windows; nada tocado fuera de lo permitido salvo los tres `banco.sh` ya dichos.
+
+Repetido por el revisor (carga 6-7): `dotnet build -c Release`: 0 errores, 15 avisos. Banco, semillas 7 y 11 (letras falsas) y 5
+(SIN_LETRAS), 3 000 casos, gdi y nativo contra el congelado: 6 de 6 con 0 distintos (antes y despues del arreglo de puente-objetos, que
+no toca los casos). No repetido (la lectura no lo pone en duda; lo corre la junta): NativeAOT, las escenas, pruebas41/hoja/pantalla y
+el recorrido «hojas» (su variacion de 34 a 36 capas quietas, igual en la base, queda para la junta con la maquina libre).

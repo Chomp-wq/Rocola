@@ -49,6 +49,7 @@ namespace Banco
                     case "vuelca": foreach (string s in a[i + 1].Split(',')) vuelca.Add(int.Parse(s)); break;
                 }
             }
+            if (Array.IndexOf(a, "puente-objetos") >= 0) { Console.Error.WriteLine("este banco ya no lleva puente-objetos (n7-adelanto: se quito con el ejecutor «puente»)"); return 2; }   // (revision: antes corria callado el banco por defecto)
             List<Caso> l = Casos.Genera(casos, semilla, clase);
             StringBuilder todo = new StringBuilder();
             System.Diagnostics.Stopwatch reloj = System.Diagnostics.Stopwatch.StartNew();
