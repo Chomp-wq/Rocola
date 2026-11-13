@@ -3,13 +3,14 @@
 // CaratulasSeparadasGpu.cs (la casilla por separado), PaletaCaratulaGpu.cs (la paleta de una portada) y PrecargaPaginaGpu.cs (el
 // precalentado), con datos fijos, la huella de cada mapa y lo que devuelve cada llamada. Se compila con el programa de una carpeta Xp
 // (VistasPared.csproj): la salida de la referencia congelada y la de la copia de trabajo tienen que ser iguales linea por linea.
-//   - Las llamadas son las de XP (Graphics, Bitmap, Image, Font): en la referencia van a GDI+ (la capa congelada); en la traduccion, las que
-//     conservan la firma de XP (Cube.Draw, GlowAround, CtrlDot, CtrlTxt, CtrlTri, CtrlPad, CtrlDirLeft, CtrlDirRight, ExtractCoverPalette) van
-//     por el puente (Plataforma/Puente.pared.cs) a SkiaSharp directo, y ademas se llaman DIRECTO (el lienzo y su estado, la Letra, los puntos),
-//     como las llaman los archivos ya traducidos (en la referencia esa linea es la de XP otra vez). Lo que ya no tiene la firma de XP (los
-//     hornos de casillas dan SKBitmap y piden los puntos de la portada) se llama por reflexion con lo que pida cada lado.
+//   - En la referencia las llamadas son las de XP (Graphics, Bitmap, Image, Font) y van a GDI+ (la capa congelada); en la traduccion se llama
+//     DIRECTO a lo traducido (el lienzo y su estado, la Letra, los puntos), como lo llaman los archivos traducidos. Cada caso sale dos veces
+//     (la segunda, «-directo»): en los dos lados son la misma llamada. Lo demas, por reflexion con lo que pida cada lado.
+//   - (Oleada 8b, 13-11-2026) El arnes ya no nombra la capa de GDI+ ni la de WinForms: los mapas, las portadas leidas, el lienzo, las letras,
+//     el formato tipografico y el OnPaint de la referencia van por Pruebas/Comun (Pru, Lz, Fte, Fmt: la capa en la referencia congelada y lo
+//     nativo en el programa nuevo).
 //   - El estado del Graphics del que llama va de nueve maneras (suavizado, los modos de letra, copia, filtro, medio pixel, traslacion entera
-//     y con decimales, escala, giro y recorte), y los OnPaint tambien como los pinta Ventanas.Escritorio (la matriz de su sitio y el recorte
+//     y con decimales, escala, giro y recorte), y los OnPaint tambien como los pinta el escritorio de WinForms (la matriz de su sitio y el recorte
 //     sellado). Despues de cada OnPaint se apunta el estado que le queda al Graphics (XP se lo deja cambiado).
 //   - Lo privado (las vistas, el cubo, las casillas) va por reflexion.
 //   - (vistas-pared, 12-11-2026) AttractView, AlbumView y CubeBox ya no heredan de Control en la traduccion: no tienen OnPaint. Donde la
@@ -27,9 +28,8 @@ using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
-using Rocola.Ventanas;
 using SkiaSharp;
 
 namespace BancoPared
@@ -50,56 +50,53 @@ namespace BancoPared
         private static unsafe string Puntos(string nombre, object o)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppPArgb);
-            SKBitmap s = b.Sk; if (s == null) return "soltado";
+            object b = Pru.Aprecia(o, "Format32bppPArgb");
+            SKBitmap s = Pru.Sk(b); if (s == null) return "soltado";
             byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre.Replace('/', '_') + ".png"), png.ToArray());
             return s.Width + "x" + s.Height + "\t" + Huella(px) + "\t" + Huella(sub);
         }
 
         // ---- el estado del Graphics del que llama
-        private sealed class Estado { public string Nombre; public SmoothingMode S; public TextRenderingHint T; public CompositingMode C; public PixelOffsetMode P; public InterpolationMode I = InterpolationMode.Bilinear; public int Trans; public bool Recorte; }
+        private sealed class Estado { public string Nombre; public ModoSuave S; public ModoLetra T; public ModoCopia C; public ModoPixel P; public ModoFiltro I = ModoFiltro.Bilinear; public int Trans; public bool Recorte; }
         private static readonly Estado[] Estados = {
-            new Estado { Nombre = "xp", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default },
-            new Estado { Nombre = "de-fabrica", S = SmoothingMode.None, T = TextRenderingHint.SystemDefault, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default },
-            new Estado { Nombre = "copia-medio-traslada", S = SmoothingMode.HighQuality, T = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Half, Trans = 1, I = InterpolationMode.HighQualityBilinear },
-            new Estado { Nombre = "cleartype-escala", S = SmoothingMode.AntiAlias, T = TextRenderingHint.ClearTypeGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.HighQuality, Trans = 2, I = InterpolationMode.HighQualityBicubic },
-            new Estado { Nombre = "unbit-gira", S = SmoothingMode.AntiAlias, T = TextRenderingHint.SingleBitPerPixelGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, Trans = 3 },
-            new Estado { Nombre = "unbit-copia-recorte", S = SmoothingMode.None, T = TextRenderingHint.SingleBitPerPixel, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Default, Recorte = true, I = InterpolationMode.NearestNeighbor },
-            new Estado { Nombre = "traslada-recorte", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, Trans = 4, Recorte = true, I = InterpolationMode.Bicubic },
-            new Estado { Nombre = "suave-sin-ajuste", S = SmoothingMode.HighQuality, T = TextRenderingHint.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.None, Trans = 5, I = InterpolationMode.Low },
-            new Estado { Nombre = "sin-suavizar-decimales", S = SmoothingMode.None, T = TextRenderingHint.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, Trans = 6, I = InterpolationMode.High },
+            new Estado { Nombre = "xp", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.Default },
+            new Estado { Nombre = "de-fabrica", S = ModoSuave.None, T = ModoLetra.SystemDefault, C = ModoCopia.SourceOver, P = ModoPixel.Default },
+            new Estado { Nombre = "copia-medio-traslada", S = ModoSuave.HighQuality, T = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceCopy, P = ModoPixel.Half, Trans = 1, I = ModoFiltro.HighQualityBilinear },
+            new Estado { Nombre = "cleartype-escala", S = ModoSuave.AntiAlias, T = ModoLetra.ClearTypeGridFit, C = ModoCopia.SourceOver, P = ModoPixel.HighQuality, Trans = 2, I = ModoFiltro.HighQualityBicubic },
+            new Estado { Nombre = "unbit-gira", S = ModoSuave.AntiAlias, T = ModoLetra.SingleBitPerPixelGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, Trans = 3 },
+            new Estado { Nombre = "unbit-copia-recorte", S = ModoSuave.None, T = ModoLetra.SingleBitPerPixel, C = ModoCopia.SourceCopy, P = ModoPixel.Default, Recorte = true, I = ModoFiltro.NearestNeighbor },
+            new Estado { Nombre = "traslada-recorte", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, Trans = 4, Recorte = true, I = ModoFiltro.Bicubic },
+            new Estado { Nombre = "suave-sin-ajuste", S = ModoSuave.HighQuality, T = ModoLetra.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.None, Trans = 5, I = ModoFiltro.Low },
+            new Estado { Nombre = "sin-suavizar-decimales", S = ModoSuave.None, T = ModoLetra.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.Default, Trans = 6, I = ModoFiltro.High },
         };
         // un mapa con fondo (para ver la copia y el alfa) y el Graphics con ese estado
-        private static Graphics Prepara(Bitmap b, Estado e)
+        private static Lz Prepara(object b, Estado e)
         {
-            Graphics g = Graphics.FromImage(b);
-            g.Clear(Color.FromArgb(120, 30, 60, 90));
-            using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, 25, b.Width, 9);
-            g.SmoothingMode = e.S; g.TextRenderingHint = e.T; g.CompositingMode = e.C; g.PixelOffsetMode = e.P; g.InterpolationMode = e.I;
-            if (e.Trans == 1) g.TranslateTransform(3.5f, 2.25f); else if (e.Trans == 2) g.ScaleTransform(1.3f, 1.3f); else if (e.Trans == 3) g.RotateTransform(7f);
-            else if (e.Trans == 4) g.TranslateTransform(0, -12); else if (e.Trans == 5) g.TranslateTransform(0.5f, 0f); else if (e.Trans == 6) g.TranslateTransform(0.3f, 0.7f);
-            if (e.Recorte) g.SetClip(new RectangleF(10.5f, 6, 120, 80));
+            Lz g = Pru.Lienzo(b);
+            g.Limpia(Color.FromArgb(120, 30, 60, 90));
+            g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, 25, Pru.Sk(b).Width, 9);
+            g.Suavizado = e.S; g.Letra = e.T; g.Copia = e.C; g.Pixel = e.P; g.Filtro = e.I;
+            if (e.Trans == 1) g.Traslada(3.5f, 2.25f); else if (e.Trans == 2) g.Escala(1.3f, 1.3f); else if (e.Trans == 3) g.Gira(7f);
+            else if (e.Trans == 4) g.Traslada(0, -12); else if (e.Trans == 5) g.Traslada(0.5f, 0f); else if (e.Trans == 6) g.Traslada(0.3f, 0.7f);
+            if (e.Recorte) g.Recorta(new RectangleF(10.5f, 6, 120, 80));
             return g;
         }
-        private static string Queda(Graphics g) { return "queda=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.InterpolationMode + "/" + g.PixelOffsetMode; }
+        private static string Queda(Lz g) { return "queda=" + g.Suavizado + "/" + g.Letra + "/" + g.Copia + "/" + g.Filtro + "/" + g.Pixel; }
         // (vistas-pared) el sitio y el fondo de una vista: Control.SetBounds/BackColor en la referencia, los de su CajaVista en la traduccion
         private static void PonSitio(object v, int w, int h) { v.GetType().GetMethod("SetBounds", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(int), typeof(int), typeof(int), typeof(int) }, null).Invoke(v, new object[] { 0, 0, w, h }); }
         private static void PonFondo(object v, Color c) { v.GetType().GetProperty("BackColor", BindingFlags.Public | BindingFlags.Instance).SetValue(v, c); }
         private static int pintas;   // (vistas-pared) las veces que se llamo a Pinta(SKCanvas), la de la pantalla
-        // (vistas-pared) lo que hacia el OnPaint de XP en una vista sin herencia: Pinta con el lienzo y el estado del Graphics (la de la pantalla
-        // si es el de un WM_PAINT), y despues, en el Graphics, lo que XP le dejaba (que en la traduccion se va con el)
-        private static void PintaSinOnPaint(object vista, Graphics g)
+        // (vistas-pared) lo que hacia el OnPaint de XP en una vista sin herencia: Pinta con el lienzo y su estado (la de la pantalla si es el de
+        // un WM_PAINT), y despues, en el lienzo de prueba, lo que XP le dejaba al Graphics (que en la traduccion se va con el)
+        private static void PintaSinOnPaint(object vista, Lz g)
         {
             Type t = vista.GetType(); string tipo = t.Name;
-            object e = Puente.GetMethod("Estado", Todo, null, new[] { typeof(Graphics) }, null).Invoke(null, new object[] { g });
-            object lienzo = Por("Lienzo", typeof(Graphics), g);
+            object[] e = g.Estado();   // (el lienzo, suave, letra, copia, filtro, medio)
+            object lienzo = e[0];
             bool suave = (bool)Campo(e, "Suave"), copia = (bool)Campo(e, "Copia"), medio = (bool)Campo(e, "Medio"); object filtro = Campo(e, "Filtro");
             object bilineal = Enum.Parse(filtro.GetType(), "Bilineal");
             bool wmPaint = !suave && !copia && !medio && filtro.Equals(bilineal);
@@ -114,9 +111,9 @@ namespace BancoPared
                 m.Invoke(vista, a);
                 if (tipo == "AlbumView") queda = a[3];   // (el filtro que DrawWall deja puesto, por ref)
             }
-            if (tipo == "AttractView" && !(w < 8 || h < 8)) { g.InterpolationMode = InterpolationMode.Bilinear; g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; }
-            else if (tipo == "AlbumView") g.InterpolationMode = (InterpolationMode)(int)queda;
-            else if (tipo == "CubeBox" && !(w < 12 || h < 12)) { g.InterpolationMode = InterpolationMode.Bilinear; g.SmoothingMode = SmoothingMode.AntiAlias; }
+            if (tipo == "AttractView" && !(w < 8 || h < 8)) { g.Filtro = ModoFiltro.Bilinear; g.Letra = ModoLetra.ClearTypeGridFit; }
+            else if (tipo == "AlbumView") g.Filtro = (ModoFiltro)(int)queda;
+            else if (tipo == "CubeBox" && !(w < 12 || h < 12)) { g.Filtro = ModoFiltro.Bilinear; g.Suavizado = ModoSuave.AntiAlias; }
         }
 
         // ---- la traduccion, por reflexion (en la referencia no esta)
@@ -126,13 +123,11 @@ namespace BancoPared
                 if (m.Name == nombre && m.GetParameters().Length > 0 && (primero == null || m.GetParameters()[0].ParameterType == primero) && (parametros < 0 || m.GetParameters().Length == parametros)) return m;
             return null;
         }
-        private static Type Puente { get { return typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo"); } }
-        private static object Por(string metodo, Type tipo, object o) { return Puente.GetMethod(metodo, Todo, null, new[] { tipo }, null).Invoke(null, new[] { o }); }
-        // el lienzo y el estado de un Graphics, por el puente de la traduccion: lo que un archivo traducido lleva en sus variables
-        private static object Campo(object e, string c) { return e.GetType().GetField(c).GetValue(e); }
+        // el estado del lienzo (Lz.Estado: el lienzo, suave, letra, copia, filtro, medio): lo que un archivo traducido lleva en sus variables
+        private static object Campo(object[] e, string c) { return e[c == "Suave" ? 1 : c == "Letra" ? 2 : c == "Copia" ? 3 : c == "Filtro" ? 4 : 5]; }
         private static object[] Junta(object[] a, params object[] b) { object[] r = new object[a.Length + b.Length]; a.CopyTo(r, 0); b.CopyTo(r, a.Length); return r; }
-        // llama a un metodo por su nombre y su numero de argumentos, dandole a cada parametro lo que pida: donde la traduccion pide los puntos
-        // (SKBitmap) y se trae una Image de la capa, sus puntos; los out vuelven en 'args'
+        // llama a un metodo por su nombre y su numero de argumentos, dandole a cada parametro lo que pida (los mapas del arnes son ya los de
+        // cada lado: la Image de la referencia o los puntos, SKBitmap, de la traduccion); los out vuelven en 'args'
         private static object Llama(object blanco, Type t, string nombre, params object[] args)
         {
             foreach (MethodInfo m in t.GetMethods(Todo))
@@ -145,7 +140,7 @@ namespace BancoPared
                     Type pt = ps[i].ParameterType; if (pt.IsByRef) pt = pt.GetElementType();
                     object x = args[i];
                     if (x == null || pt.IsInstanceOfType(x)) a[i] = x;
-                    else if (pt == typeof(SKBitmap) && x is Image) a[i] = ((Image)x).Sk;
+                    else if (pt == typeof(SKBitmap) && Pru.EsCapa(x)) a[i] = Pru.Sk(x);
                     else vale = false;
                 }
                 if (!vale) continue;
@@ -155,15 +150,12 @@ namespace BancoPared
             }
             throw new MissingMethodException(t.Name + "." + nombre + "/" + args.Length);
         }
-        // (cache-portadas, 12-11-2026) la cache de portadas de la traduccion guarda SKBitmap: lo que el arnes da como Image de la capa (una
-        // portada, un arreglo de portadas o un delegado que devuelve una) se le da a la traduccion como sus puntos (Image.Sk: el mismo SKBitmap
-        // para la misma Image, asi que la identidad que XP compara se conserva); a la referencia, tal cual
-        public static SKBitmap SkDe(Rocola.Dibujo2D.Image i) { return i != null ? i.Sk : null; }
+        // (cache-portadas, 12-11-2026) la cache de portadas de la traduccion guarda SKBitmap y la de la referencia Image: las portadas del
+        // arnes son ya lo que pide cada una (el mismo objeto para la misma portada, asi que la identidad que XP compara se conserva); un
+        // delegado del arnes que devuelve una portada (como object) pasa al delegado que pide el campo (que la devuelve con su tipo)
         private static object Adapta(Type destino, object valor)
         {
             if (valor == null || destino.IsInstanceOfType(valor)) return valor;
-            if (destino == typeof(SKBitmap) && valor is Rocola.Dibujo2D.Image) return ((Rocola.Dibujo2D.Image)valor).Sk;
-            if (destino == typeof(SKBitmap[]) && valor is Rocola.Dibujo2D.Image[]) { Rocola.Dibujo2D.Image[] a = (Rocola.Dibujo2D.Image[])valor; SKBitmap[] r = new SKBitmap[a.Length]; for (int i = 0; i < a.Length; i++) r[i] = SkDe(a[i]); return r; }
             if (typeof(Delegate).IsAssignableFrom(destino) && valor is Delegate)
             {
                 MethodInfo inv = destino.GetMethod("Invoke"), de = valor.GetType().GetMethod("Invoke");
@@ -172,8 +164,7 @@ namespace BancoPared
                 System.Linq.Expressions.Expression[] args = new System.Linq.Expressions.Expression[ips.Length];
                 for (int i = 0; i < ips.Length; i++) { ps[i] = System.Linq.Expressions.Expression.Parameter(ips[i].ParameterType, "p" + i); args[i] = System.Linq.Expressions.Expression.Convert(ps[i], dps[i].ParameterType); }
                 System.Linq.Expressions.Expression cuerpo = System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(valor), args);
-                if (inv.ReturnType == typeof(SKBitmap) && typeof(Rocola.Dibujo2D.Image).IsAssignableFrom(de.ReturnType)) cuerpo = System.Linq.Expressions.Expression.Call(typeof(Pared).GetMethod("SkDe"), cuerpo);
-                else if (inv.ReturnType != de.ReturnType) cuerpo = System.Linq.Expressions.Expression.Convert(cuerpo, inv.ReturnType);
+                if (inv.ReturnType != de.ReturnType) cuerpo = System.Linq.Expressions.Expression.Convert(cuerpo, inv.ReturnType);
                 return System.Linq.Expressions.Expression.Lambda(destino, cuerpo, ps).Compile();
             }
             return valor;
@@ -192,41 +183,41 @@ namespace BancoPared
             return sb.ToString();
         }
 
-        // ---- las portadas de prueba (hechas con la capa, que es la misma en los dos lados)
-        private static Bitmap Portada(int w, int h, int semilla, bool alfa, PixelFormat f)
+        // ---- las portadas de prueba (con el formato de GDI+ que se diga, por su nombre: el mismo dibujo en los dos lados)
+        private static object Portada(int w, int h, int semilla, bool alfa, string f)
         {
-            Bitmap b = new Bitmap(w, h, f);
-            using (Graphics g = Graphics.FromImage(b))
+            object b = Pru.NuevoMapa(w, h, f);
+            using (Lz g = Pru.Lienzo(b))
             {
-                g.Clear(alfa ? Color.FromArgb(0, 0, 0, 0) : Color.FromArgb(255, 40 + semilla * 30 % 200, 90, 160));
-                using (LinearGradientBrush lg = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(alfa ? 180 : 255, 250, 80 + semilla * 17 % 150, 30), Color.FromArgb(255, 20, 60, 200), 35f))
-                    g.FillRectangle(lg, w / 8, h / 8, w * 3 / 4, h * 3 / 4);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                using (SolidBrush sb = new SolidBrush(Color.FromArgb(alfa ? 120 : 255, 30, 220, 90))) g.FillEllipse(sb, w / 4, h / 3, w / 2, h / 2);
-                using (Pen p = new Pen(Color.FromArgb(255, 250, 250, 250), 3f)) g.DrawLine(p, 0, 0, w, h);
+                g.Limpia(alfa ? Color.FromArgb(0, 0, 0, 0) : Color.FromArgb(255, 40 + semilla * 30 % 200, 90, 160));
+                g.RellenaDegradado(new Rectangle(0, 0, w, h), Color.FromArgb(alfa ? 180 : 255, 250, 80 + semilla * 17 % 150, 30), Color.FromArgb(255, 20, 60, 200), 35f,
+                    w / 8, h / 8, w * 3 / 4, h * 3 / 4);
+                g.Suavizado = ModoSuave.AntiAlias;
+                g.RellenaOvalo(Color.FromArgb(alfa ? 120 : 255, 30, 220, 90), w / 4, h / 3, w / 2, h / 2);
+                g.Linea(Color.FromArgb(255, 250, 250, 250), 3f, 0, 0, w, h);
             }
             return b;
         }
-        private static Image Leida(Bitmap origen, bool jpeg)
+        private static object Leida(object origen, bool jpeg)
         {
-            using (SKData d = origen.Sk.Encode(jpeg ? SKEncodedImageFormat.Jpeg : SKEncodedImageFormat.Png, 90))
-            using (System.IO.MemoryStream ms = new System.IO.MemoryStream(d.ToArray())) return Image.FromStream(ms);
+            using (SKData d = Pru.Sk(origen).Encode(jpeg ? SKEncodedImageFormat.Jpeg : SKEncodedImageFormat.Png, 90))
+                return Pru.Lee(d.ToArray());
         }
-        private static Bitmap opaca, conAlfa, chica; private static Image jpg, png;
+        private static object opaca, conAlfa, chica; private static object jpg, png;
         private static void HazPortadas()
         {
-            opaca = Portada(300, 300, 1, false, PixelFormat.Format32bppPArgb); conAlfa = Portada(200, 150, 2, true, PixelFormat.Format32bppPArgb);
-            chica = Portada(48, 48, 3, false, PixelFormat.Format32bppArgb);
-            using (Bitmap o = Portada(600, 600, 4, false, PixelFormat.Format32bppPArgb)) jpg = Leida(o, true);
-            using (Bitmap o = Portada(160, 160, 5, true, PixelFormat.Format32bppPArgb)) png = Leida(o, false);
+            opaca = Portada(300, 300, 1, false, "Format32bppPArgb"); conAlfa = Portada(200, 150, 2, true, "Format32bppPArgb");
+            chica = Portada(48, 48, 3, false, "Format32bppArgb");
+            using (IDisposable o = (IDisposable)Portada(600, 600, 4, false, "Format32bppPArgb")) jpg = Leida(o, true);
+            using (IDisposable o = (IDisposable)Portada(160, 160, 5, true, "Format32bppPArgb")) png = Leida(o, false);
         }
 
         // ================================================================ EL CUBO (Cube.Draw)
         private static Type Cube { get { return typeof(Form1).GetNestedType("Cube", BindingFlags.NonPublic); } }
         private static void Cubos()
         {
-            MethodInfo xp = Metodo(Cube, "Draw", typeof(Graphics)), nuevo = Metodo(Cube, "Draw", typeof(SKCanvas));
-            Image[] tapas = { null, opaca, conAlfa, jpg, chica };
+            MethodInfo xp = Pru.Capa ? Metodo(Cube, "Draw", Pru.TLienzo) : null, nuevo = Metodo(Cube, "Draw", typeof(SKCanvas));
+            object[] tapas = { null, opaca, conAlfa, jpg, chica };
             string[] nt = { "sin", "opaca", "alfa", "jpg", "chica" };
             double[] angulos = { 0.0, 0.35, 1.1, 2.9, -0.7, Math.PI / 4 };
             Rectangle[] cajas = { new Rectangle(20, 10, 120, 120), new Rectangle(7, 5, 64, 90), new Rectangle(30, 30, 9, 40) };
@@ -237,17 +228,17 @@ namespace BancoPared
                         Rectangle caja = cajas[(a + t) % cajas.Length];
                         string nombre = "cubo-" + e.Nombre + "-" + nt[t] + "-" + a;
                         for (int vez = 0; vez < 2; vez++)
-                            using (Bitmap b = new Bitmap(180, 150, PixelFormat.Format32bppPArgb))
-                            using (Graphics g = Prepara(b, e))
+                            using (IDisposable b = (IDisposable)Pru.NuevoMapa(180, 150, "Format32bppPArgb"))
+                            using (Lz g = Prepara(b, e))
                             {
                                 string ex = "";
                                 try
                                 {
-                                    if (xp != null && (vez == 0 || nuevo == null)) xp.Invoke(null, new object[] { g, caja, tapas[t], angulos[a] });
+                                    if (xp != null && (vez == 0 || nuevo == null)) xp.Invoke(null, new object[] { g.Objeto, caja, tapas[t], angulos[a] });
                                     else
                                     {
-                                        object es = Por("Estado", typeof(Graphics), g);
-                                        nuevo.Invoke(null, new object[] { Por("Lienzo", typeof(Graphics), g), Campo(es, "Suave"), Campo(es, "Copia"), Campo(es, "Filtro"), Campo(es, "Medio"), caja, tapas[t] != null ? tapas[t].Sk : null, angulos[a] });
+                                        object[] es = g.Estado();
+                                        nuevo.Invoke(null, new object[] { es[0], Campo(es, "Suave"), Campo(es, "Copia"), Campo(es, "Filtro"), Campo(es, "Medio"), caja, Pru.Sk(tapas[t]), angulos[a] });
                                         directas++;
                                     }
                                 }
@@ -258,36 +249,36 @@ namespace BancoPared
         }
 
         // ================================================================ LAS AYUDAS DE LOS BOTONES
-        private static object[] EstadoAyudas(Graphics g)
+        private static object[] EstadoAyudas(Lz g)
         {
-            object es = Por("Estado", typeof(Graphics), g);
-            return new[] { Por("Lienzo", typeof(Graphics), g), Campo(es, "Suave"), Campo(es, "Letra"), Campo(es, "Copia"), Campo(es, "Medio") };
+            object[] es = g.Estado();
+            return new[] { es[0], Campo(es, "Suave"), Campo(es, "Letra"), Campo(es, "Copia"), Campo(es, "Medio") };
         }
-        private static object Ayuda(bool directo, Graphics g, string nombre, params object[] args)
+        private static object Ayuda(bool directo, Lz g, string nombre, params object[] args)
         {
             Type f1 = typeof(Form1);
             MethodInfo nuevo = Metodo(f1, nombre, typeof(SKCanvas));
-            // la firma de XP (con un Graphics) solo esta en la referencia: en la traduccion se quito el 12-11-2026 (limpieza-puentes, nadie la
-            // llamaba) y las dos vueltas van a la traducida con el lienzo y el estado del Graphics, que es lo que hacia el puente
-            MethodInfo xpm = Metodo(f1, nombre, typeof(Graphics));
-            if (xpm != null && (!directo || nuevo == null)) return xpm.Invoke(null, Junta(new object[] { g }, args));
-            for (int i = 0; i < args.Length; i++) if (args[i] is Font) args[i] = Por("Letra", typeof(Font), args[i]);
+            // la firma de XP (con un Graphics) solo esta en la referencia: en la traduccion las dos vueltas van a la traducida con el lienzo y
+            // su estado. Una letra del arnes (Fte) va por la suya: la Font de la referencia o la Letra de la traduccion
+            MethodInfo xpm = Pru.Capa ? Metodo(f1, nombre, Pru.TLienzo) : null;
+            for (int i = 0; i < args.Length; i++) if (args[i] is Fte) args[i] = ((Fte)args[i]).Obj;
+            if (xpm != null && (!directo || nuevo == null)) return xpm.Invoke(null, Junta(new object[] { g.Objeto }, args));
             directas++;
             return nuevo.Invoke(null, Junta(EstadoAyudas(g), args));
         }
         private static void Ayudas()
         {
             Color rojo = Color.FromArgb(228, 72, 72), verde = Color.FromArgb(96, 200, 120), amarillo = Color.FromArgb(242, 206, 72), tinta = Color.FromArgb(235, 240, 255);
-            using (Font f1 = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold))
-            using (Font f2 = new Font("Tahoma", 11f))
-            using (Font f3 = new Font("Arial", 13f, FontStyle.Italic, GraphicsUnit.Pixel))
+            using (Fte f1 = Fte.Generica(9.5f, 1))   // (1: negrita; 2: cursiva)
+            using (Fte f2 = new Fte("Tahoma", 11f))
+            using (Fte f3 = new Fte("Arial", 13f, 2, "Pixel"))
             {
-                Font[] letras = { f1, f2, f3 };
+                Fte[] letras = { f1, f2, f3 };
                 foreach (Estado e in Estados)
                     for (int k = 0; k < letras.Length; k++)
                         for (int vez = 0; vez < 2; vez++)
-                            using (Bitmap b = new Bitmap(330, 96, PixelFormat.Format32bppPArgb))
-                            using (Graphics g = Prepara(b, e))
+                            using (IDisposable b = (IDisposable)Pru.NuevoMapa(330, 96, "Format32bppPArgb"))
+                            using (Lz g = Prepara(b, e))
                             {
                                 bool d = vez == 1; StringBuilder sb = new StringBuilder(); string ex = "";
                                 try
@@ -327,30 +318,38 @@ namespace BancoPared
         private static void Paletas()
         {
             MethodInfo nuevo = Metodo(typeof(Form1), "ExtractCoverPalette", typeof(SKBitmap));
-            List<KeyValuePair<string, Bitmap>> casos = new List<KeyValuePair<string, Bitmap>>();
-            casos.Add(new KeyValuePair<string, Bitmap>("nulo", null));
-            casos.Add(new KeyValuePair<string, Bitmap>("opaca-pargb", opaca));
-            casos.Add(new KeyValuePair<string, Bitmap>("alfa-pargb", conAlfa));
-            casos.Add(new KeyValuePair<string, Bitmap>("chica-argb", chica));
-            casos.Add(new KeyValuePair<string, Bitmap>("jpg-24", (Bitmap)jpg));
-            casos.Add(new KeyValuePair<string, Bitmap>("png-alfa", (Bitmap)png));
-            casos.Add(new KeyValuePair<string, Bitmap>("alfa-argb", Portada(120, 90, 6, true, PixelFormat.Format32bppArgb)));
-            casos.Add(new KeyValuePair<string, Bitmap>("alfa-rgb32", Portada(120, 90, 7, true, PixelFormat.Format32bppRgb)));
-            casos.Add(new KeyValuePair<string, Bitmap>("opaca-rgb24", Portada(97, 131, 8, false, PixelFormat.Format24bppRgb)));
-            casos.Add(new KeyValuePair<string, Bitmap>("alfa-rgb24", Portada(33, 21, 9, true, PixelFormat.Format24bppRgb)));
-            casos.Add(new KeyValuePair<string, Bitmap>("opaca-paleta8", Portada(64, 64, 10, false, PixelFormat.Format8bppIndexed)));
-            casos.Add(new KeyValuePair<string, Bitmap>("alfa-paleta8", Portada(64, 64, 11, true, PixelFormat.Format8bppIndexed)));
-            casos.Add(new KeyValuePair<string, Bitmap>("uno", Portada(1, 1, 12, false, PixelFormat.Format32bppPArgb)));
-            casos.Add(new KeyValuePair<string, Bitmap>("tira", Portada(5, 700, 13, true, PixelFormat.Format32bppArgb)));
-            for (int s = 20; s < 32; s++) casos.Add(new KeyValuePair<string, Bitmap>("varia-" + s, Portada(40 + s * 7, 30 + s * 5, s, s % 3 == 0, s % 4 == 0 ? PixelFormat.Format32bppArgb : s % 4 == 1 ? PixelFormat.Format24bppRgb : s % 4 == 2 ? PixelFormat.Format32bppRgb : PixelFormat.Format32bppPArgb)));
-            foreach (KeyValuePair<string, Bitmap> c in casos)
+            List<KeyValuePair<string, object>> casos = new List<KeyValuePair<string, object>>();
+            casos.Add(new KeyValuePair<string, object>("nulo", null));
+            casos.Add(new KeyValuePair<string, object>("opaca-pargb", opaca));
+            casos.Add(new KeyValuePair<string, object>("alfa-pargb", conAlfa));
+            casos.Add(new KeyValuePair<string, object>("chica-argb", chica));
+            casos.Add(new KeyValuePair<string, object>("jpg-24", jpg));
+            casos.Add(new KeyValuePair<string, object>("png-alfa", png));
+            casos.Add(new KeyValuePair<string, object>("alfa-argb", Portada(120, 90, 6, true, "Format32bppArgb")));
+            casos.Add(new KeyValuePair<string, object>("alfa-rgb32", Portada(120, 90, 7, true, "Format32bppRgb")));
+            casos.Add(new KeyValuePair<string, object>("opaca-rgb24", Portada(97, 131, 8, false, "Format24bppRgb")));
+            casos.Add(new KeyValuePair<string, object>("alfa-rgb24", Portada(33, 21, 9, true, "Format24bppRgb")));
+            casos.Add(new KeyValuePair<string, object>("opaca-paleta8", Portada(64, 64, 10, false, "Format8bppIndexed")));
+            casos.Add(new KeyValuePair<string, object>("alfa-paleta8", Portada(64, 64, 11, true, "Format8bppIndexed")));
+            casos.Add(new KeyValuePair<string, object>("uno", Portada(1, 1, 12, false, "Format32bppPArgb")));
+            casos.Add(new KeyValuePair<string, object>("tira", Portada(5, 700, 13, true, "Format32bppArgb")));
+            for (int s = 20; s < 32; s++) casos.Add(new KeyValuePair<string, object>("varia-" + s, Portada(40 + s * 7, 30 + s * 5, s, s % 3 == 0, s % 4 == 0 ? "Format32bppArgb" : s % 4 == 1 ? "Format24bppRgb" : s % 4 == 2 ? "Format32bppRgb" : "Format32bppPArgb")));
+            // la de XP (con un Bitmap) en la referencia; en la traduccion, la traducida con los puntos y el formato que el Bitmap tenia en XP
+            // (el dato nativo: Pru.FormatoNativo), y sin portada ningun color, como en XP
+            MethodInfo xp = Pru.Capa ? Metodo(typeof(Form1), "ExtractCoverPalette", Pru.TMapa) : null;
+            Func<object, Color[]> deXp = delegate (object v)
             {
-                string r; try { r = Colores(Form1.ExtractCoverPalette(c.Value)); } catch (Exception x) { r = Exc(x); }
+                if (xp != null) return (Color[])xp.Invoke(null, new[] { v });
+                return v == null ? new Color[0] : (Color[])nuevo.Invoke(null, new object[] { Pru.Sk(v), Pru.FormatoNativo(v) });
+            };
+            foreach (KeyValuePair<string, object> c in casos)
+            {
+                string r; try { r = Colores(deXp(c.Value)); } catch (Exception x) { r = Exc(x); }
                 Linea("paleta-" + c.Key, r);
                 try
                 {
-                    if (nuevo == null || c.Value == null) r = Colores(Form1.ExtractCoverPalette(c.Value));
-                    else { r = Colores((Color[])nuevo.Invoke(null, new object[] { c.Value.Sk, Por("FormatoMapaPared", typeof(PixelFormat), c.Value.PixelFormat) })); directas++; }
+                    r = Colores(deXp(c.Value));
+                    if (nuevo != null && c.Value != null) directas++;
                 }
                 catch (Exception x) { r = Exc(x); }
                 Linea("paleta-" + c.Key + "-directo", r);
@@ -360,17 +359,17 @@ namespace BancoPared
         // ================================================================ LA PARED (AlbumView)
         private static Type TAlbum { get { return typeof(Form1).GetNestedType("Album", BindingFlags.NonPublic); } }
         private static Type TVista { get { return typeof(Form1).GetNestedType("AlbumView", BindingFlags.NonPublic); } }
-        private static readonly Dictionary<object, Image> tapaDe = new Dictionary<object, Image>();
-        private static readonly Dictionary<string, Image> tapaPorRuta = new Dictionary<string, Image>();
+        private static readonly Dictionary<object, object> tapaDe = new Dictionary<object, object>();
+        private static readonly Dictionary<string, object> tapaPorRuta = new Dictionary<string, object>();
         private static readonly HashSet<object> enCola = new HashSet<object>();
-        public static Image TapaDe(object album) { Image i; return album != null && tapaDe.TryGetValue(album, out i) ? i : null; }
+        public static object TapaDe(object album) { object i; return album != null && tapaDe.TryGetValue(album, out i) ? i : null; }
         public static bool EnColaDe(object album) { return album != null && enCola.Contains(album); }
-        private static Image TapaPorRuta(string ruta) { Image i; return ruta != null && tapaPorRuta.TryGetValue(ruta, out i) ? i : null; }
+        private static object TapaPorRuta(string ruta) { object i; return ruta != null && tapaPorRuta.TryGetValue(ruta, out i) ? i : null; }
         // un delegado Func<Album, T> (Album es privado) que llama a un metodo de aqui con el disco como object
         private static Delegate ConAlbum(string metodo, Type devuelve)
         {
             ParameterExpression p = Expression.Parameter(TAlbum, "a");
-            return Expression.Lambda(typeof(Func<,>).MakeGenericType(TAlbum, devuelve), Expression.Call(typeof(Pared).GetMethod(metodo), Expression.Convert(p, typeof(object))), p).Compile();
+            return Expression.Lambda(typeof(Func<,>).MakeGenericType(TAlbum, devuelve), Expression.Convert(Expression.Call(typeof(Pared).GetMethod(metodo), Expression.Convert(p, typeof(object))), devuelve), p).Compile();
         }
         private static object Album(int i, string artista, string nombre, string portada, bool top)
         {
@@ -383,7 +382,7 @@ namespace BancoPared
             IList l = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(TAlbum));
             string[] artistas = { "Los Ángeles Azules", "Café Tacvba", "Juan Gabriel", "La Sonora Dinamita con un nombre larguísimo que no cabe en dos renglones", "AC/DC", "Ñengo", "Rock & Pop", "X" };
             string[] nombres = { "Cómo te voy a olvidar", "Re", "", "Éxitos de siempre y de nunca, volumen 12", "Back in Black", null, "Lo mejor", "Y" };
-            Image[] tapas = { opaca, null, jpg, conAlfa, chica, png, null, opaca };
+            object[] tapas = { opaca, null, jpg, conAlfa, chica, png, null, opaca };
             for (int i = 0; i < cuantos; i++)
             {
                 object a = Album(i, artistas[i % artistas.Length], nombres[(i * 3) % nombres.Length], tapas[i % tapas.Length] != null ? "/musica/Disco " + i + "/portada.jpg" : (i % 5 == 1 ? "/musica/Disco " + i + "/llega.jpg" : null), i == 4);
@@ -399,9 +398,11 @@ namespace BancoPared
             object v = Activator.CreateInstance(TVista, true);
             PonSitio(v, w, h);
             Pon(v, "Page", discos);
-            Pon(v, "GetCover", ConAlbum("TapaDe", typeof(Image))); Pon(v, "PeekCoverGpu", ConAlbum("TapaDe", typeof(Image)));
+            // (lo que devuelven GetCover y PeekCoverGpu: la Image de la referencia o los puntos, SKBitmap, de la traduccion; lo dice el campo)
+            Type tTapa = TVista.GetField("GetCover", Todo).FieldType.GetMethod("Invoke").ReturnType;
+            Pon(v, "GetCover", ConAlbum("TapaDe", tTapa)); Pon(v, "PeekCoverGpu", ConAlbum("TapaDe", tTapa));
             Pon(v, "EnCola", ConAlbum("EnColaDe", typeof(bool)));
-            Pon(v, "GetCoverByPath", (Func<string, Image>)TapaPorRuta);
+            Pon(v, "GetCoverByPath", (Func<string, object>)TapaPorRuta);
             return v;
         }
         private static void Medidas(int w, int h, out int cw, out int side, out int labelH, out int gap)
@@ -420,7 +421,7 @@ namespace BancoPared
                 string s = p[0] + "x" + p[1];
                 for (int i = 0; i < 9; i++)
                 {
-                    object a = discos[i]; Image tapa = TapaDe(a);
+                    object a = discos[i]; object tapa = TapaDe(a);
                     foreach (float esc in new[] { 1f, 0.5f, 0.999f, 0.01f })
                     {
                         object r = null; string ex = "";
@@ -467,16 +468,16 @@ namespace BancoPared
             }
         }
 
-        // un OnPaint sobre un mapa con el estado 'e'; con 'sitio', como lo pinta Ventanas.Escritorio (la matriz de su sitio y el recorte sellado)
+        // un OnPaint sobre un mapa con el estado 'e'; con 'sitio', como lo pinta el escritorio de WinForms (la matriz de su sitio y el recorte sellado)
         private static void Pinta(string nombre, object vista, int w, int h, Estado e, bool sitio, int veces)
         {
-            MethodInfo onPaint = vista.GetType().GetMethod("OnPaint", Todo), sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
-            using (Bitmap b = new Bitmap(w + (sitio ? 60 : 0), h + (sitio ? 40 : 0), PixelFormat.Format32bppPArgb))
-            using (Graphics g = Prepara(b, e))
+            MethodInfo onPaint = Pru.Capa ? vista.GetType().GetMethod("OnPaint", Todo) : null;   // (OnPaint(PaintEventArgs): solo la referencia)
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(w + (sitio ? 60 : 0), h + (sitio ? 40 : 0), "Format32bppPArgb"))
+            using (Lz g = Prepara(b, e))
             {
                 string ex = "";
-                if (sitio) { g.TranslateTransform(37, 21); g.SetClip(new Rectangle(0, 0, w, h)); sella.Invoke(g, null); }
-                try { for (int i = 0; i < veces; i++) if (onPaint == null) PintaSinOnPaint(vista, g); else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, w, h))) onPaint.Invoke(vista, new object[] { pe }); }
+                if (sitio) { g.Traslada(37, 21); g.Recorta(new Rectangle(0, 0, w, h)); g.Sella(); }
+                try { for (int i = 0; i < veces; i++) if (onPaint == null) PintaSinOnPaint(vista, g); else Pru.OnPaint(onPaint, vista, g, new Rectangle(0, 0, w, h)); }
                 catch (Exception x) { ex = " " + Exc(x); }
                 Linea(nombre, Puntos(nombre, b) + ex + " " + Queda(g));
             }
@@ -531,7 +532,7 @@ namespace BancoPared
             {
                 object v = Activator.CreateInstance(t, true);
                 PonSitio(v, p[0], p[1]);
-                Pon(v, "GetCoverByPath", (Func<string, Image>)TapaPorRuta);
+                Pon(v, "GetCoverByPath", (Func<string, object>)TapaPorRuta);
                 // el cielo de la atraccion (Starfield, Form1.Fondo.cs: no es de este grupo) depende del reloj y del azar: se rehace cada
                 // RefrescoMs y tira fugaces con un Random sin semilla. Para que las dos salidas se puedan comparar, aqui se rehace en cada
                 // pintada (RefrescoMs = 0) y no tira fugaces (la siguiente, dentro de un dia)
@@ -579,7 +580,7 @@ namespace BancoPared
         {
             Type t = typeof(Form1).GetNestedType("CubeBox", BindingFlags.NonPublic);
             int[][] pantallas = { new[] { 120, 120 }, new[] { 96, 140 }, new[] { 11, 50 }, new[] { 260, 200 } };
-            Image[] tapas = { null, opaca, conAlfa, jpg };
+            object[] tapas = { null, opaca, conAlfa, jpg };
             foreach (int[] p in pantallas)
             {
                 object v = Activator.CreateInstance(t, true);
@@ -611,7 +612,7 @@ namespace BancoPared
                     {
                         string r = "bien";
                         try { Form1.PrecalientaPiezaGpuEn(paso, p[0], p[1], doce, paso % 2 == 0, doce && paso == 3, paso - 3); } catch (Exception x) { r = Exc(x); }
-                        Linea("precalienta-" + p[0] + "x" + p[1] + "-" + paso + "-" + doce, r + " tipografico=" + StringFormat.GenericTypographic.Alignment + "/" + (int)StringFormat.GenericTypographic.FormatFlags);
+                        Linea("precalienta-" + p[0] + "x" + p[1] + "-" + paso + "-" + doce, r + " tipografico=" + Fmt.Tipografico.Horizontal + "/" + Fmt.Tipografico.Banderas);
                     }
         }
 
@@ -620,7 +621,7 @@ namespace BancoPared
             for (int i = 0; i + 1 < a.Length; i += 2) if (a[i] == "vuelca") { carpeta = a[i + 1]; System.IO.Directory.CreateDirectory(carpeta); }
             HashSet<string> solo = new HashSet<string>(); for (int i = 0; i + 1 < a.Length; i += 2) if (a[i] == "solo") foreach (string x in a[i + 1].Split(',')) solo.Add(x);
             HazPortadas();
-            Linea("inicio", "tipografico=" + StringFormat.GenericTypographic.Alignment + "/" + (int)StringFormat.GenericTypographic.FormatFlags);
+            Linea("inicio", "tipografico=" + Fmt.Tipografico.Horizontal + "/" + Fmt.Tipografico.Banderas);
             if (solo.Count == 0 || solo.Contains("cubos")) Cubos();
             if (solo.Count == 0 || solo.Contains("ayudas")) Ayudas();
             if (solo.Count == 0 || solo.Contains("paletas")) Paletas();
