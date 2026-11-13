@@ -51,8 +51,8 @@ arnes, los simbolos de `Rocola.Dibujo2D` y `Rocola.Ventanas`) y con `grep`: 0 us
 | `VistasAjustes/Vistas.cs` | 44 | 0 | 0 de 545 distintas de la referencia y de lo de antes, las dos letras |
 | `VistasFondo/Fondo.cs` | 63 | 0 | 2 763 lineas; ver «Diferencias» |
 | `VistasSuena/Suena.cs` | 72 | 0 | 488 lineas IGUALES a la referencia y byte a byte a las de antes, las dos letras (72 llamadas directas, como antes) |
-| `VistasBuscador/Buscador.cs` | 79 | 0 | (ver el final de este documento) |
-| `VistasBuscadorPortadas/BuscadorPortadas.cs` | 71 | 0 | (ver el final de este documento) |
+| `VistasBuscador/Buscador.cs` | 79 | 0 | 4 739 lineas IGUALES a la referencia y byte a byte a las de antes, las dos letras (467 directas, 0 excepciones, como antes) |
+| `VistasBuscadorPortadas/BuscadorPortadas.cs` | 71 | 0 | 3 128 lineas IGUALES a la referencia y byte a byte a las de antes, las dos letras (250 directas y 5 excepciones, como antes) |
 | `Tarjeta/Reproductor.cs` | 0 (por nombre) | 0 | `tMapa`/`cMapa` quedan nulos en el programa nuevo (solo la referencia tiene el Bitmap de la capa) |
 
 ## Diferencias que quedan (todas a proposito)
@@ -63,6 +63,20 @@ arnes, los simbolos de `Rocola.Dibujo2D` y `Rocola.Ventanas`) y con `grep`: 0 us
   el tipo va a la salida de errores. Cambia la linea en las dos salidas; lo demas, igual.
 - `VistasFondo`, linea `inicio` (`traducida=False/True`): la marca de siempre.
 - `VistasBuscadorPortadas`: la portada soltada llega nula al programa nuevo (como antes por `Image.Sk` de una `Image` soltada).
+
+## Comprobaciones del grupo
+
+- `dotnet build -c Release` en `Xp`: 0 errores y los mismos 15 avisos de la base (no se toco nada del programa: `git diff a375686` fuera de
+  `Pruebas/` y de este documento esta vacio).
+- NativeAOT (`dotnet publish -r linux-x64 -p:PublishAot=true`): 0 avisos IL/AOT (los 15 avisos son los CS/CA de siempre).
+- `diff-xp.py`: sin archivos de `Codigo/` en este grupo (no cambia ninguno).
+- Las 29 cintas de la tarjeta (`VistasFrontera/cintas.sh`, con el `Reproductor` reconstruido): 29 iguales, 6 616 cuadros, 0 distintas.
+- Cada arnes de la tabla, antes y despues: el lado nuevo compilado del `a375686` («antes», copia de solo lectura) y de esta copia («despues»),
+  las dos letras (ROCOLA_LETRAS_XP falsas y DejaVu); la referencia, la congelada (`aef2211`). El «antes» y el «despues» del lado nuevo son
+  iguales byte a byte salvo lo dicho en «Diferencias».
+- No corridos (no se toco lo que los pide): el banco por funcion (`BancoDibujo`; no se toco `Nativo/` ni `Puente.cs`), los recorridos, las
+  pruebas de ventanas y las escenas (este grupo no toca ventanas, pantalla, teclas, raton ni cierre; la verificacion completa la corre el
+  coordinador al juntar).
 
 ## Lo que NO se hizo (queda para otra pasada; el mismo metodo)
 
@@ -80,5 +94,5 @@ capa por naturaleza y se va con ella.
   alguien cambia las de la capa, la referencia (congelada) y esta copia dejarian de coincidir; cada corrida de un arnes lo muestra.
 - Los guiones que copian el proyecto de un arnes a otra carpeta necesitan `ROCOLA_COMUN` (lo exportan todos los que existian); un guion
   nuevo que compile un arnes tiene que hacer lo mismo.
-- `compara.sh` de `VistasAcabadoEstilo` y `arnes.sh` de `VistasVistasB` compilan tambien «la base» de una tanda vieja (`git archive`): esa
-  base no tiene `Pruebas/Comun` ni `Nativo/Mapas.cs` con el mismo contenido; con ellos, usar `CUALES="ref nuevo"`.
+- `compara.sh` de `VistasAcabadoEstilo` y `arnes.sh` de `VistasVistasB` (aun sin convertir) compilan tambien «la base» de una tanda vieja
+  (`git archive`); cuando se conviertan, esa base puede no tener las funciones nativas que llama `PruNativo.cs`: usar `CUALES="ref nuevo"`.
