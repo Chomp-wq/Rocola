@@ -22,7 +22,7 @@
 //   ROCOLA_VIDEO_REGISTRO=ruta       lo que dice mpv (su registro, con msg-level=all=v)
 //   ROCOLA_VIDEO_OPCIONES="k=v;..."  mas opciones de mpv, despues de las de la rocola (para probar otras: escaladores, gpu-dumb-mode...)
 // Y con la rocola entera (variables de entorno):
-//   ROCOLA_PANTALLA=fuera:1024x768   sin KMS (Anfitrion.cs)
+//   ROCOLA_PANTALLA=fuera:1024x768   sin KMS (Nativo/Anfitrion.cs)
 //   ROCOLA_CAPTURA=S:ruta.png,...    la pantalla a los S segundos; ROCOLA_CAPTURA_SALE=1 cierra despues de la ultima;
 //                                    ROCOLA_CAPTURA_CAPAS=1 tambien cada capa; ROCOLA_CAPTURA_TEXTURAS=nombre:AxB,... texturas de OpenGL
 //   ROCOLA_PULSA=S:VK,...            teclas de Windows a su hora (TeclasLinux.cs)

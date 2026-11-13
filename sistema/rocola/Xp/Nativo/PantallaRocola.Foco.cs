@@ -1,9 +1,9 @@
 // EL FOCO DEL TECLADO ENTRE LAS VISTAS DE LA VENTANA (port nativo, oleada 6c, grupo vistas-buscador: W3c). Lo que en XP hacia WinForms con el
-// foco de los controles de la ventana de la rocola cuando no hay capa (la lista nativa de PantallaRocola.Vistas.cs): el orden del tabulador
+// foco de los controles de la ventana de la rocola (la lista de la ventana, PantallaRocola.Vistas.cs): el orden del tabulador
 // (TabIndex, que pone Controls.Add), Tab y Mayus+Tab y las flechas (la parte de ContainerControl.ProcessDialogKey), y que el foco salga de una
-// vista que se esconde (SelectNextIfFocused). Con la capa de la transicion no se usa: el hueco de cada vista (Plataforma/Anfitrion.cs) es un
-// Control con el Selectable y el TabStop de la vista (IVista.Seleccionable y ParaElTabulador) y la capa hace todo eso con sus reglas, que
-// fijan las 41 pruebas. Es lo mismo que Nativo/Hoja.Foco.cs hace con las piezas de una hoja, aqui con las vistas.
+// vista que se esconde (SelectNextIfFocused), con el Selectable y el TabStop de cada vista (IVista.Seleccionable y ParaElTabulador). (La capa
+// de la transicion, ya borrada, hacia esto con sus Control; al esconder la del foco NO seguia a WinForms -se quedaba en la escondida- y
+// esto si: Form.IsContainerControl es false, Control.cs:2900 y 5825-5840.) Es lo mismo que Nativo/Hoja.Foco.cs hace con las piezas de una hoja, aqui con las vistas.
 //
 // Las reglas, de la fuente de WinForms (dotnet/winforms release/3.0, portada de .NET Framework 4.8; /tmp/claude-0/agente-winforms/ref):
 //   - TabIndex: Control.ControlCollection.Add le pone al que no lo tiene el mayor de sus hermanos mas uno (Control.ControlCollection.cs:
@@ -183,7 +183,7 @@ namespace Rocola
         }
 
         // UNA VISTA QUE SE VA A ESCONDER (CajaVista.Visible, antes de cambiar; solo si se veia): si el foco es ella o algo de dentro y esta en
-        // la lista nativa, la ventana elige la siguiente (SelectNextIfFocused); en un hueco de la capa lo hace la capa
+        // la lista de la ventana, la ventana elige la siguiente (SelectNextIfFocused)
         internal static void SeEsconde(IVista v)
         {
             if (v == null || !EnLaLista(v) || !EnLaRama(foco, v)) return;

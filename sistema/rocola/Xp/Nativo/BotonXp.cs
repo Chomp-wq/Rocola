@@ -1,6 +1,6 @@
 // EL BOTON (port nativo de las ventanas de XP, ventanas2, paso H): lo que en XP era el Button de WinForms en sus hojas (Ctrl+F2, los avisos).
 // Solo lo que XP usa de el (el inventario: SetBounds, Text, FlatStyle, FlatAppearance.BorderColor, BackColor, ForeColor, Enabled, Click) y
-// sus reglas, portadas de la capa (Plataforma/Ventanas.Control.cs: Button), revisada contra la fuente (Button.cs, ButtonBase.cs,
+// sus reglas, portadas de la capa (en la referencia, Plataforma/Ventanas.Control.cs: Button), revisada contra la fuente (Button.cs, ButtonBase.cs,
 // ButtonFlatAdapter, ControlPaint.cs): se aprieta con el raton (y toma el foco), con Espacio (al soltarlo) y con Intro si es el boton por
 // defecto (el que tiene el foco: Form.ProcessDialogKey de la hoja); se pinta plano (FlatStyle.Flat, con los colores que calcula ControlPaint)
 // o con el tema Luna de XP (el de los avisos).

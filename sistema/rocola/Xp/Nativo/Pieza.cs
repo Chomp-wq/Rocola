@@ -5,7 +5,7 @@
 // pieza (el inventario: Pruebas/Inventario, /root/rocola-trabajo/port/ventanas/inv/salida). La hoja (Hoja.cs) las mueve con las reglas de
 // WinForms que XP supone; cada regla cita su linea de la fuente con que se reviso la capa de la transicion (dotnet/winforms release/3.0,
 // portada de .NET Framework 4.8: /tmp/claude-0/agente-winforms/ref; Control.cs y Control.ControlCollection.cs). Las reglas se PORTARON de
-// esa capa (Plataforma/Ventanas.Control.cs, revisada contra la fuente), sin su API: sin Handle, sin mensajes de Windows, sin Invoke ni
+// esa capa (en la referencia, Plataforma/Ventanas.Control.cs, revisada contra la fuente), sin su API: sin Handle, sin mensajes de Windows, sin Invoke ni
 // ISynchronizeInvoke, sin IWin32Window, sin Dock, Anchor, AutoScroll ni maquetado.
 //
 //   IPieza       lo que la hoja le pide a cada pieza: su caja y lo que la pieza hace al pintarse, con las teclas, con el raton y con el

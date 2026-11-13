@@ -3,7 +3,7 @@
 // limite de esquinas y el color del pincel en cada pixel. Sin estado de dibujo: lo que en XP era estado del Graphics llega como parametro
 // ('suave' = SmoothingMode AntiAlias o HighQuality; 'medio' = PixelOffsetMode Half o HighQuality; 'copia' = CompositingMode.SourceCopy); la
 // matriz y el recorte son los del SKCanvas. El pincel (SKPaint con su Color, o su Shader de Degradado) queda como estaba.
-// Los algoritmos son los de Plataforma/Dibujo2D.cs (revision del 8-11-2026), movidos aqui.
+// Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revision del 8-11-2026), movidos aqui.
 using System;
 using System.Drawing;
 using SkiaSharp;

@@ -2,7 +2,7 @@
 // pieza tiene el foco del teclado (o la hoja misma, si no tiene ninguna que lo tome); la hoja recuerda su pieza activa
 // (ContainerControl.ActiveControl) y se la devuelve al activarse; Tab y Mayus+Tab recorren las piezas en el orden del tabulador entrando en
 // los grupos; las flechas pasan a la siguiente dentro del mismo padre, con vuelta; si la del foco se esconde o se apaga, el foco pasa a la
-// siguiente. Se porto de la capa (Plataforma/Ventanas.Control.cs y Ventanas.Escritorio.cs: PonFoco, GetNextControl, SelectNextControl),
+// siguiente. Se porto de la capa (en la referencia, Plataforma/Ventanas.Control.cs y Ventanas.Escritorio.cs: PonFoco, GetNextControl, SelectNextControl),
 // revisada contra la fuente (Control.cs, ContainerControl.cs, Form.cs).
 using System;
 using System.Collections.Generic;

@@ -391,6 +391,9 @@ static class P
             Mira("sin la capa: la textura recorta lo de debajo", Pinta(30, 30, 0), "FF00FF00", "WS_CLIPSIBLINGS: debajo de la tarjeta no se pinta el control de debajo");
             Va(10, 10); log.Clear(); Clic(true); Clic(false); Bombea(650);
             Mira("sin la capa: el raton sobre la textura", Log(), "", "el GpuPanel se queda con el raton (WindowFromPoint) aunque no lo use");
+            // (N7) Controls.Add de una capa de textura que ya esta en la ventana: al fondo (estaba arriba: tx, a, v)
+            PantallaRocola.AgregaCapa(tx);
+            Mira("sin la capa: Add otra vez de la textura", PantallaRocola.IndiceDe(tx) + " de " + PantallaRocola.ListaDeLaVentana.Length, "2 de 3", "ControlCollection.Add de una que ya es hija: SendToBack (Control.ControlCollection.cs:67-71)");
             PantallaRocola.QuitaVista(tx);
             v.Visible = false;
             Mira("sin la capa: escondida", Pinta(140, 140), "FF00FF00", "Visible = false: ni se pinta ni recibe el raton");

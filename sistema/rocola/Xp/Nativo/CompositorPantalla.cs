@@ -1,6 +1,6 @@
 // EL COMPOSITOR DE LA PANTALLA (port nativo, tanda 4, grupo pantalla-nativa: W2). Lo que en XP hacia Windows con las ventanas de la rocola
 // al ponerlas en la pantalla: en cada cuadro junta las capas, de abajo arriba, y presenta (KMS: el cambio de pagina con el barrido). Viene
-// del anfitrion de la transicion (Plataforma/Anfitrion.cs, que ya no compone: le da las capas) sin cambiar nada de lo que hace: el mismo
+// del anfitrion de la transicion (hoy Nativo/Anfitrion.cs, que ya no compone: le da las capas) sin cambiar nada de lo que hace: el mismo
 // programa de OpenGL, la misma mezcla, las mismas texturas que solo se suben cuando la capa cambio, la misma flecha y las mismas capturas.
 //
 // LAS CAPAS (CapaPantalla), en el orden en que se ven, de abajo arriba:

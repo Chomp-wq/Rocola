@@ -14,7 +14,7 @@
 // debajo.
 //
 // SIN LA CAPA (N7, borrar-capas): la ventana de la rocola es la pantalla misma (PantallaRocola.Ventana.cs) y sus vistas van a esta lista;
-// ya no hay ventanas de la capa de la transicion (Plataforma/Ventanas.*.cs, borrada) ni huecos. Las teclas y el raton de evdev
+// ya no hay ventanas de la capa de la transicion (en la referencia, Plataforma/Ventanas.*.cs, borrada) ni huecos. Las teclas y el raton de evdev
 // (TeclasLinux.cs) llegan aqui y la pantalla los reparte con las reglas de abajo (a las hojas nativas, lo suyo).
 using System;
 using System.Collections.Generic;
@@ -97,7 +97,10 @@ namespace Rocola
             if (lista.Contains(v)) { cliente = ventana != null ? ventana.Cliente : new Size(Ancho, Alto); return true; }   // (form1-sin-form: el cliente de la ventana de la rocola; maximizada y sin borde, la pantalla)
             cliente = Size.Empty; return false;
         }
-        internal static void AgregaCapa(CapaDeTextura t) { if (!lista.Contains(t)) { lista.Add(t); AnotaTab(t, lista); CambioVentana(); } }   // (gpupanel-sin-control: con su TabIndex, como el control del WMP)
+        // (N7, borrar-capas) Add de una que ya esta en la ventana: al fondo, como las vistas (ControlCollection.Add: «if (value._parent == Owner)
+        // { value.SendToBack(); return; }», Control.ControlCollection.cs:67-71; el hueco del video de la capa de la referencia hacia igual). La
+        // rocola no llega aqui: cada video crea su capa (VideoEnPantalla.Lugar).
+        internal static void AgregaCapa(CapaDeTextura t) { if (lista.Contains(t)) { VistaAlFondo(t); return; } lista.Add(t); AnotaTab(t, lista); CambioVentana(); }   // (gpupanel-sin-control: con su TabIndex, como el control del WMP)
         // (rotulos-y-letras) Controls.Add de una capa de textura (el video) a la ventana: a la lista. Lo que cambia de ella (sitio, si se ve,
         // la textura) lo avisa quien la mueve (CambioCapa): volver a componer si cambio el sitio o si se ve (la textura la toma el compositor
         // en cada cuadro).

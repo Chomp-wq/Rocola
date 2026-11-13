@@ -5,7 +5,7 @@
 // duena; y lo que XP espera de ella sin escribirlo: el marco de XP Luna, el sitio, el modal, la activacion, el foco y el tabulador, Intro
 // y Escape, el raton, el pintado y la «X» roja). Cada regla cita su linea de la fuente con que se reviso la capa de la transicion
 // (dotnet/winforms release/3.0, portada de .NET Framework 4.8: /tmp/claude-0/agente-winforms/ref; Form.cs, ContainerControl.cs, Control.cs)
-// o la documentacion de Win32. Se PORTARON de la capa (Plataforma/Ventanas.Form.cs y Ventanas.Escritorio.cs, revisadas contra esa fuente),
+// o la documentacion de Win32. Se PORTARON de la capa (en la referencia, Plataforma/Ventanas.Form.cs y Ventanas.Escritorio.cs, revisadas contra esa fuente),
 // sin su API: sin Handle, sin mensajes de Windows, sin Invoke, sin IWin32Window, sin Load, Shown, Activated ni FormClosing (XP no los
 // usa en sus hojas).
 //
@@ -482,7 +482,7 @@ namespace Rocola
         // leyendo la version despues de pintar, esa segunda pintura no se subia: revision del paso H)
         internal SKBitmap Superficie(out int version) { version = Version; return Superficie(); }
         // (banco, paso C) quien quiera medir cuanto tarda cada pintura entera de una hoja: la hoja y sus milisegundos (lo pone
-        // Plataforma/Anfitrion.cs con ROCOLA_MIDE_HOJA=1; sin el, nada)
+        // Nativo/Anfitrion.cs con ROCOLA_MIDE_HOJA=1; sin el, nada)
         internal static Action<Hoja, double> MidePintura;
         internal SKBitmap Superficie()
         {

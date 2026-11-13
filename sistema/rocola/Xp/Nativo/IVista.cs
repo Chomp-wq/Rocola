@@ -57,11 +57,11 @@ namespace Rocola
         // coordenadas de la vista; en la rueda, e.Handled = true para que no siga al dueno. De fabrica, nada (Control.OnMouse*: solo el aviso).
         void Raton(AvisoRaton que, Raton e) { }
         // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Lo mira
-        // el hueco de la capa de la transicion (Plataforma/Anfitrion.cs) y, en la lista nativa, el tabulador (PantallaRocola.Foco.cs: CanSelect).
+        // la pantalla: el clic (PantallaRocola.Vistas.cs) y el tabulador (PantallaRocola.Foco.cs: CanSelect).
         bool Seleccionable { get { return true; } }
         // SI EL TABULADOR SE PARA EN ELLA (Control.TabStop: true de fabrica, Control.cs, TabStop; SelectNextControl con tabStopOnly solo elige
-        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
-        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; y, en la lista nativa, la pantalla (PantallaRocola.Foco.cs).
+        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee la pantalla para el
+        // tabulador de la ventana (PantallaRocola.Foco.cs).
         bool ParaElTabulador { get { return true; } }
         // (gpupanel-sin-control) SI LA PINTA LA TARJETA: en XP, un control con un dispositivo de Direct3D 9 que presenta en su ventana (el
         // GpuPanel: CreateDevice con su Handle, Present en el). La pantalla no la pinta por procesador: compone, en su sitio y en su lugar del
@@ -70,7 +70,7 @@ namespace Rocola
         bool DeLaTarjeta { get { return false; } }
         // SU FORMA (Control.Region: la ventana es solo esa forma -SetWindowRgn-), en sus coordenadas; null, el rectangulo entero (de fabrica).
         // XP solo se la pone al aviso sin tarjeta (lblToast: Nativo/RotuloVista.cs). La pantalla la usa al pintar, al recortar a las de debajo
-        // y con el raton (PantallaRocola.Vistas.cs); el hueco de la capa la pasa a su Region (Plataforma/Anfitrion.cs).
+        // y con el raton (PantallaRocola.Vistas.cs).
         SKPath Forma { get { return null; } }
     }
 

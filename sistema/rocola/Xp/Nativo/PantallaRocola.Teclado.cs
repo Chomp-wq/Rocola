@@ -85,8 +85,8 @@ namespace Rocola
         //   Encima     solo arriba de las demas, sin activarla (BringToFront de una ventana de arriba: SetWindowPos(HWND_TOP),
         //              Control.cs:4881-4894).
         //   Enfoca     el foco del teclado a esa ventana (SetFocus; la ventana se lo da a su control activo: ContainerControl.WmSetFocus).
-        // TRANSICION: mientras las ventanas sean las de la capa (Plataforma/Ventanas.*.cs), las lleva ella y contesta aqui (lo pone
-        // Escritorio al empezar).
+        // Lo pone la ventana de la rocola al abrirse (PantallaRocola.Ventana.cs, AbreNativa); sin ella -una hoja sola, en las pruebas-, el
+        // anfitrion pone la de delante (Nativo/Anfitrion.cs).
         internal static Func<object> LaDeDelante;
         internal static Action<object> PonDelante, PonEncima, PonFoco;
         internal static object Delante { get { Func<object> f = LaDeDelante; return f != null ? f() : null; } }

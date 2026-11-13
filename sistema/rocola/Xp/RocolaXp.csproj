@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- LA ROCOLA DE XP TRADUCIDA A LINUX (decision del dueno del 7-11-2026: «que absolutamente todo el codigo lo traduzcas [...] para que
        funcione nativamente en linux, pero que quede identico»; plan en PLAN_TRADUCCION_XP_A_LINUX_MODEST_2026-11-07.md).
-       Codigo/ = los archivos de la rocola de XP (Rocola/*.cs) traducidos uno por uno; Plataforma/ = lo nativo de Linux con que se
-       traduce lo de Windows: el dibujo de GDI+ en SkiaSharp, Direct3D 9 en OpenGL ES 2, las teclas por evdev, el sonido por ALSA. -->
+       Codigo/ = los archivos de la rocola de XP (Rocola/*.cs) traducidos uno por uno para que llamen directo a lo nativo de Linux;
+       Nativo/ = eso nativo (SkiaSharp con las cuentas de GDI+ y GDI, OpenGL ES 2, la pantalla y sus hojas, evdev, ALSA, libmpv);
+       Plataforma/ = lo demas de Linux que no es de XP (las teclas de evdev, el MP3 y NAudio 3, NativeAOT y los ganchos de prueba).
+       Sin capas que imiten a Windows: Dibujo2D.cs, Ventanas.*.cs, los puentes y el global using se borraron en N7 (13-11-2026). -->
   <PropertyGroup>
-    <!-- como el proyecto de XP (Rocola.csproj): la tarjeta grafica (Direct3D 9 en XP; aqui OpenGL ES 2, Direct3DaGL.cs) -->
+    <!-- como el proyecto de XP (Rocola.csproj): la tarjeta grafica (Direct3D 9 en XP; aqui OpenGL ES 2 directo, Nativo/DispositivoTarjetaGl.cs) -->
     <DefineConstants>$(DefineConstants);ROCOLA_GPU</DefineConstants>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

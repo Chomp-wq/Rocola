@@ -3,7 +3,7 @@
 // el lineal se repite (WrapMode.Tile de fabrica; en Skia hay que pedirlo), el Blend al reves en el de trazo y la textura que con Clamp es
 // transparente y va medio punto atras. El shader va en el Shader de un SKPaint; Pixel y TextoGdiPlus le ponen el color opaco y lo
 // compensan para que el color de cada pixel sea el de su centro, como GDI+.
-// Los algoritmos son los de Plataforma/Dibujo2D.cs (revision del 8-11-2026), movidos aqui.
+// Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revision del 8-11-2026), movidos aqui.
 using System;
 using System.Drawing;
 using SkiaSharp;

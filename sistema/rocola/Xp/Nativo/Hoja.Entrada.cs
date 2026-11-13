@@ -1,6 +1,6 @@
 // LA HOJA: LAS TECLAS Y EL RATON (port nativo de las ventanas de XP, ventanas2, paso H; ver Hoja.cs). Lo que WinForms hace con cada tecla y
 // cada aviso del raton en una ventana de la rocola, en el orden de la fuente (Control.PreProcessMessage, ProcessKeyMessage, WmMouseDown,
-// WmMouseUp, WmMouseWheel; Form.ProcessDialogKey; ContainerControl.ProcessDialogKey), portado de la capa (Plataforma/Ventanas.Escritorio.cs:
+// WmMouseUp, WmMouseWheel; Form.ProcessDialogKey; ContainerControl.ProcessDialogKey), portado de la capa (en la referencia, Plataforma/Ventanas.Escritorio.cs:
 // Tecla, RatonEn, RatonBoton, RatonRueda), revisada contra ella. Cada paso deja su linea en la traza de las ventanas (TrazaVentanas, las
 // mismas que la capa), para compararla con la referencia.
 //   Las teclas y el raton los lee la pantalla (PantallaRocola.Vistas.cs, desde TeclasLinux) y, si la ventana activa es una hoja, o el raton

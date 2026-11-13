@@ -1,6 +1,6 @@
 // EL TEXTO DE GDI (TextRenderer de WinForms en XP), NATIVO (port nativo, el dibujo; 8-11-2026): la letra de GDI (LetraGdi), el DrawTextEx de
-// user32 (DrawTextGdi) y el pintado en los pixeles del HDC. Los algoritmos son los de Plataforma/Dibujo2D.cs (revision del 8-11-2026),
-// movidos aqui tal cual; Dibujo2D los llama mientras dure la traduccion.
+// user32 (DrawTextGdi) y el pintado en los pixeles del HDC. Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revision del 8-11-2026),
+// movidos aqui tal cual.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
