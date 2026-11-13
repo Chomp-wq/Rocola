@@ -2,16 +2,16 @@
 // fijos, la huella de cada mapa (tal cual y como lo sube la tarjeta) y lo que devuelve cada llamada. Se compila con el programa entero de una
 // carpeta Xp (VistasPantallaViva.csproj): la salida de la referencia congelada y la de la copia de trabajo tienen que ser iguales linea por
 // linea (arnes.sh).
-//   - Las funciones se llaman como las llama el codigo de XP que todavia no esta traducido: con la firma de XP (Bitmap, Image, Font,
-//     FontFamily, Graphics): en la referencia, la funcion de XP; en la traduccion, ya sin esa firma (el puente
-//     Plataforma/Puente.pantalla-viva.cs se quito el 12-11-2026): por reflexion, a la traducida con los mismos puntos y el nombre de la familia. Las que ya no tienen esa firma ni la necesitan (PintaBoleto, TamanoBoleto, ColorDePortada,
-//     Pildora: solo las llama su propio archivo) van por reflexion con los tipos que tenga cada lado (los mismos puntos y la misma letra).
-//   - En la traduccion, PintaFoco, PintaFicha y PastillaSonandoEq se llaman tambien DIRECTO (el SKBitmap, el nombre de la familia; el
-//     lienzo y su estado), como las llamara su archivo; en la referencia esa linea es la de XP otra vez.
+//   - En la referencia las funciones se llaman con la firma de XP (Bitmap, Image, Font, FontFamily, Graphics); en la traduccion, por
+//     reflexion, a la traducida con los mismos puntos, la misma letra y el nombre de la familia (la nula, la generica sin remates).
+//   - PintaFoco, PintaFicha y PastillaSonandoEq salen dos veces (la segunda, «directo»): en la traduccion las dos van a la traducida; en la
+//     referencia, a la de XP.
+//   - (Oleada 8b, 13-11-2026) El arnes ya no nombra la capa de GDI+: los mapas, el lienzo, las letras, las familias y los trazos van por
+//     Pruebas/Comun (Pru, Lz, Fte: la capa en la referencia congelada y lo nativo en el programa nuevo).
 //   - La lista del disco (SongListView): PintaPagina (Form1.Vistas.cs, igual en los dos) con la lista grande, el ecualizador y los minutos,
-//     con ocho estados del Graphics: pasa por AnchoDuracion, PlanPaginaGpu, PlanFilaGpu, AnchoSonando y PastillaSonandoEq (por el puente en
-//     la traduccion) y AnchoTexto (Form1.Ajustes.cs).
-//   - Redondo (con su GraphicsPath: en la traduccion ya no existe; se pide RutaRedonda y el arnes le da el GraphicsPath) y Pildora: los puntos del trazo, uno por uno, y pintados.
+//     con ocho estados del lienzo: pasa por AnchoDuracion, PlanPaginaGpu, PlanFilaGpu, AnchoSonando y PastillaSonandoEq y AnchoTexto
+//     (Form1.Ajustes.cs).
+//   - Redondo (con su GraphicsPath, en la referencia; en la traduccion, RutaRedonda, el SKPath) y Pildora: los puntos del trazo, uno por uno, y pintados.
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet VistasPantallaViva.dll [vuelca CARPETA] [solo PREFIJO]
 using System;
 using System.Collections.Generic;
@@ -19,8 +19,8 @@ using System.Drawing;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
 
 namespace BancoPantallaViva
@@ -31,7 +31,6 @@ namespace BancoPantallaViva
         private static readonly CultureInfo ci = CultureInfo.InvariantCulture;
         private static string carpeta, solo;
         private static int n, directas;   // directas: las llamadas a la traducida sin el puente (en la referencia, ninguna)
-        private static readonly Type tPuente = typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo");   // (solo en la traduccion)
 
         // ---------------------------------------------------------------- lo que sale
         private static bool Toca(string nombre) { return solo == null || nombre.StartsWith(solo, StringComparison.Ordinal); }
@@ -44,15 +43,11 @@ namespace BancoPantallaViva
         private static unsafe string Puntos(object o, string nombre)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap;
-            if (b == null) b = new Bitmap((SKBitmap)o, PixelFormat.Format32bppArgb);   // (solo para leerlo: no se suelta, los puntos son del SKBitmap)
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppArgb");   // (solo para leerlo: no se suelta, los puntos son del SKBitmap)
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre.Replace('/', '_') + ".png"), png.ToArray());
             return s.Width + "x" + s.Height + "\t" + s.ColorType + "/" + s.AlphaType + "\t" + Huella(px) + "\t" + Huella(sub);
         }
@@ -76,98 +71,98 @@ namespace BancoPantallaViva
         }
 
         // ---------------------------------------------------------------- el estado del Graphics del que llama
-        private sealed class Estado { public string Nombre; public SmoothingMode S; public TextRenderingHint Tr; public CompositingMode C; public PixelOffsetMode P; public InterpolationMode I; public int Trans; public int Recorte; }
+        private sealed class Estado { public string Nombre; public ModoSuave S; public ModoLetra Tr; public ModoCopia C; public ModoPixel P; public ModoFiltro I; public int Trans; public int Recorte; }
         private static readonly Estado[] Estados = {
-            new Estado { Nombre = "xp", S = SmoothingMode.AntiAlias, Tr = TextRenderingHint.SystemDefault, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear },
-            new Estado { Nombre = "gridfit-traslada", S = SmoothingMode.AntiAlias, Tr = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear, Trans = 1 },
-            new Estado { Nombre = "sin-suavizar", S = SmoothingMode.None, Tr = TextRenderingHint.SystemDefault, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.NearestNeighbor },
-            new Estado { Nombre = "copia-medio-decimales", S = SmoothingMode.HighQuality, Tr = TextRenderingHint.AntiAlias, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Half, I = InterpolationMode.HighQualityBicubic, Trans = 2 },
-            new Estado { Nombre = "cleartype-escala", S = SmoothingMode.AntiAlias, Tr = TextRenderingHint.ClearTypeGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.HighQuality, I = InterpolationMode.HighQualityBilinear, Trans = 3 },
-            new Estado { Nombre = "unbit-gira", S = SmoothingMode.AntiAlias, Tr = TextRenderingHint.SingleBitPerPixelGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear, Trans = 4 },
-            new Estado { Nombre = "unbit-copia-recorte", S = SmoothingMode.None, Tr = TextRenderingHint.SingleBitPerPixel, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear, Recorte = 1 },
-            new Estado { Nombre = "suave-recorte-trazo", S = SmoothingMode.HighQuality, Tr = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.None, I = InterpolationMode.HighQualityBilinear, Trans = 1, Recorte = 2 },
+            new Estado { Nombre = "xp", S = ModoSuave.AntiAlias, Tr = ModoLetra.SystemDefault, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear },
+            new Estado { Nombre = "gridfit-traslada", S = ModoSuave.AntiAlias, Tr = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear, Trans = 1 },
+            new Estado { Nombre = "sin-suavizar", S = ModoSuave.None, Tr = ModoLetra.SystemDefault, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.NearestNeighbor },
+            new Estado { Nombre = "copia-medio-decimales", S = ModoSuave.HighQuality, Tr = ModoLetra.AntiAlias, C = ModoCopia.SourceCopy, P = ModoPixel.Half, I = ModoFiltro.HighQualityBicubic, Trans = 2 },
+            new Estado { Nombre = "cleartype-escala", S = ModoSuave.AntiAlias, Tr = ModoLetra.ClearTypeGridFit, C = ModoCopia.SourceOver, P = ModoPixel.HighQuality, I = ModoFiltro.HighQualityBilinear, Trans = 3 },
+            new Estado { Nombre = "unbit-gira", S = ModoSuave.AntiAlias, Tr = ModoLetra.SingleBitPerPixelGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear, Trans = 4 },
+            new Estado { Nombre = "unbit-copia-recorte", S = ModoSuave.None, Tr = ModoLetra.SingleBitPerPixel, C = ModoCopia.SourceCopy, P = ModoPixel.Default, I = ModoFiltro.Bilinear, Recorte = 1 },
+            new Estado { Nombre = "suave-recorte-trazo", S = ModoSuave.HighQuality, Tr = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceOver, P = ModoPixel.None, I = ModoFiltro.HighQualityBilinear, Trans = 1, Recorte = 2 },
         };
-        private static void PonEstado(Graphics g, Estado e, int w, int h)
+        private static void PonEstado(Lz g, Estado e, int w, int h)
         {
-            g.SmoothingMode = e.S; g.TextRenderingHint = e.Tr; g.CompositingMode = e.C; g.PixelOffsetMode = e.P; g.InterpolationMode = e.I;
-            if (e.Trans == 1) g.TranslateTransform(2f, 3f); else if (e.Trans == 2) g.TranslateTransform(3.5f, 2.25f); else if (e.Trans == 3) g.ScaleTransform(1.3f, 0.9f); else if (e.Trans == 4) g.RotateTransform(5f);
-            if (e.Recorte == 1) g.SetClip(new RectangleF(30.5f, 10, w * 0.7f, h * 0.8f));
-            else if (e.Recorte == 2) using (GraphicsPath gp = new GraphicsPath()) { gp.AddEllipse(-w / 4f, -h / 4f, w * 1.2f, h * 1.3f); g.SetClip(gp); }
+            g.Suavizado = e.S; g.Letra = e.Tr; g.Copia = e.C; g.Pixel = e.P; g.Filtro = e.I;
+            if (e.Trans == 1) g.Traslada(2f, 3f); else if (e.Trans == 2) g.Traslada(3.5f, 2.25f); else if (e.Trans == 3) g.Escala(1.3f, 0.9f); else if (e.Trans == 4) g.Gira(5f);
+            if (e.Recorte == 1) g.Recorta(new RectangleF(30.5f, 10, w * 0.7f, h * 0.8f));
+            else if (e.Recorte == 2) g.RecortaElipse(-w / 4f, -h / 4f, w * 1.2f, h * 1.3f);
         }
         // un mapa (Format32bppPArgb) con fondo: transparente, a medias o con una franja
-        private static Bitmap Mapa(int w, int h, int fondo)
+        private static object Mapa(int w, int h, int fondo)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
-            using (Graphics g = Graphics.FromImage(b))
+            object b = Pru.NuevoMapa(w, h, "Format32bppPArgb");
+            using (Lz g = Pru.Lienzo(b))
             {
-                if (fondo == 0) g.Clear(Color.Transparent);
+                if (fondo == 0) g.Limpia(Color.Transparent);
                 else
                 {
-                    g.Clear(fondo == 1 ? Color.FromArgb(120, 30, 60, 90) : Color.FromArgb(255, 12, 16, 30));
-                    using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, h / 3, w, Math.Max(1, h / 7));
+                    g.Limpia(fondo == 1 ? Color.FromArgb(120, 30, 60, 90) : Color.FromArgb(255, 12, 16, 30));
+                    g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, h / 3, w, Math.Max(1, h / 7));
                 }
             }
             return b;
         }
-        // una portada de prueba: degradados, rayas y, si 'alfa', una orilla transparente
-        private static unsafe Bitmap Portada(int w, int h, int semilla, bool alfa)
+        // una portada de prueba: degradados, rayas y, si 'alfa', una orilla transparente (los puntos sin premultiplicar, como LockBits de
+        // Format32bppArgb para escribir)
+        private static object Portada(int w, int h, int semilla, bool alfa)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+            object b = Pru.NuevoMapa(w, h, "Format32bppArgb");
             Random r = new Random(semilla);
             int c0 = r.Next(256), c1 = r.Next(256), c2 = r.Next(256);
-            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            uint[] d = new uint[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
                 {
                     int a = alfa ? Math.Min(255, (x * 255) / Math.Max(1, w - 1) + ((y * 7) % 40)) : 255;
                     int rr = (c0 + x * 3 + ((y / 8) % 2) * 60) & 255, gg = (c1 + y * 2 + ((x / 11) % 2) * 90) & 255, bb = (c2 + (x ^ y)) & 255;
-                    ((uint*)((byte*)d.Scan0 + y * d.Stride))[x] = ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
+                    d[y * w + x] = ((uint)a << 24) | ((uint)rr << 16) | ((uint)gg << 8) | (uint)bb;
                 }
-            b.UnlockBits(d);
+            Pru.EscribePuntos(b, d);
             return b;
         }
-        private static Bitmap Gris(int w, int h, int luz, int alfa)
+        private static object Gris(int w, int h, int luz, int alfa)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
-            using (Graphics g = Graphics.FromImage(b)) g.Clear(Color.FromArgb(alfa, luz, luz, luz + (luz > 200 ? 0 : 3)));
+            object b = Pru.NuevoMapa(w, h, "Format32bppArgb");
+            using (Lz g = Pru.Lienzo(b)) g.Limpia(Color.FromArgb(alfa, luz, luz, luz + (luz > 200 ? 0 : 3)));
             return b;
         }
+        private static int Ancho(object mapa) { return Pru.Sk(mapa).Width; }
+        private static int Alto(object mapa) { return Pru.Sk(mapa).Height; }
 
         // ---------------------------------------------------------------- llamar por reflexion (lo que cambia de firma)
-        private static object PorPuente(string metodo, Type tipo, object o) { return tPuente.GetMethod(metodo, T, null, new[] { tipo }, null).Invoke(null, new[] { o }); }
-        private static object Lienzo(Graphics g) { return PorPuente("Lienzo", typeof(Graphics), g); }
-        private static object EstadoDe(Graphics g) { return PorPuente("Estado", typeof(Graphics), g); }
-        private static object Campo(object e, string c) { return e.GetType().GetField(c).GetValue(e); }
+        // (Lz.Estado: el lienzo, suave, letra, copia, filtro, medio)
+        private static object Lienzo(Lz g) { return g.Estado()[0]; }
+        private static object[] EstadoDe(Lz g) { return g.Estado(); }
+        private static object Campo(object[] e, string c) { return e[c == "Suave" ? 1 : c == "Letra" ? 2 : c == "Copia" ? 3 : c == "Filtro" ? 4 : 5]; }
         private static MethodInfo Con(Type t, string nombre, Type primero)
         {
             foreach (MethodInfo m in t.GetMethods(T)) if (m.Name == nombre && m.GetParameters().Length > 0 && m.GetParameters()[0].ParameterType == primero) return m;
             return null;
         }
-        // la firma de XP (un Bitmap y una FontFamily) de PintaFoco o PintaFicha: en la referencia, la de XP, por reflexion; en la traduccion ya no
-        // existe (la quito el grupo limpieza-puentes, 12-11-2026: nadie la llamaba), asi que va a la traducida con lo que le pasaba aquel puente
-        // (el SKBitmap del Bitmap y de la Image, y el nombre de la familia; la nula, la generica sin remates, como la tomaba new Font(null, ...))
-        private static object FirmaXp(Type t, string nombre, Type primero, MethodInfo directa, object[] a)
+        // la firma de XP (un Bitmap y una FontFamily) de PintaFoco o PintaFicha: en la referencia, la de XP, por reflexion; en la traduccion no
+        // existe, asi que va a la traducida con los mismos puntos y el nombre de la familia (la nula, que va la ultima, es la generica sin
+        // remates, como la tomaba new Font(null, ...))
+        private static object FirmaXp(Type t, string nombre, MethodInfo directa, object[] a)
         {
-            MethodInfo xp = Con(t, nombre, primero);
+            MethodInfo xp = Pru.Capa ? Con(t, nombre, Pru.TMapa) : null;
             if (xp != null) return xp.Invoke(null, a);
             object[] c = (object[])a.Clone();
             for (int i = 0; i < c.Length; i++)
             {
-                if (c[i] is Image) c[i] = ((Image)c[i]).Sk;
-                else if (c[i] == null && i == c.Length - 1) c[i] = FamiliaGenerica();
-                else if (c[i] is FontFamily) c[i] = ((FontFamily)c[i]).Name;
+                if (c[i] == null && i == c.Length - 1) c[i] = FamiliaGenerica();
+                else if (i == c.Length - 1) c[i] = Pru.NombreDeFamilia(c[i]);
             }
             return directa.Invoke(null, c);
         }
         private static object Llama(MethodInfo m, object inst, object[] a) { return m.Invoke(inst, a); }
-        // el valor de 'v' en el tipo de un parametro de la traducida: un Bitmap o una Image pasan sus puntos (el SKBitmap); una Font, su Letra
+        // el valor de 'v' en el tipo de un parametro: los mapas del arnes son ya los de cada lado; una letra del arnes (Fte) va por la suya
         private static object Convierte(object v, Type t)
         {
             if (v == null) return null;
             if (t.IsInstanceOfType(v)) return v;
-            if (v is Image && t == typeof(SKBitmap)) return ((Image)v).Sk;
-            if (v is Font) return PorPuente("Letra", typeof(Font), v);
-            if (v is FontFamily && t == typeof(string)) return ((FontFamily)v).Name;
+            if (v is Fte) return ((Fte)v).Obj;
             return v;
         }
         private static object[] Convierte(MethodInfo m, object[] a)
@@ -178,16 +173,17 @@ namespace BancoPantallaViva
         }
 
         // ================================================================ el letrero de la portada elegida (PintaFoco)
-        private static FontFamily[] Familias()
+        // (las familias: Pru.Familia, la FontFamily de la referencia o su nombre en el programa nuevo; la que no esta instalada lanza y no entra)
+        private static object[] Familias()
         {
-            List<FontFamily> l = new List<FontFamily> { FontFamily.GenericSansSerif, null };
+            List<object> l = new List<object> { Pru.FamiliaGenerica(), null };
             foreach (string s in new[] { "Segoe UI", "Tahoma", "Verdana", "Trebuchet MS" })
-                try { l.Add(new FontFamily(s)); } catch (ArgumentException) { }
+                try { l.Add(Pru.Familia(s)); } catch (ArgumentException) { }
             return l.ToArray();
         }
         private static void Focos()
         {
-            FontFamily[] fams = Familias();
+            object[] fams = Familias();
             int[] lados = { 64, 96, 128, 150, 192, 256, 30 };
             string[][] textos = {
                 new[] { Form1.TextoFoco(12, 0, 38 * 60), Form1.TextoFoco(12, 0, -1) },
@@ -206,35 +202,35 @@ namespace BancoPantallaViva
                     int w = Form1.AnchoFoco(lado, cw), h = Form1.AltoFoco(lado);
                     for (int t = 0; t < textos.Length; t++)
                     {
-                        FontFamily fam = fams[(k++) % fams.Length];
+                        object fam = fams[(k++) % fams.Length];
                         string nombre = "foco-" + lado + "-" + cw + "-" + t;
                         if (!Toca(nombre)) continue;
-                        string fn = fam == null ? "null" : fam.Name;
-                        Bitmap b = Mapa(w, h, t % 3); string res;
-                        try { res = (string)FirmaXp(typeof(Form1), "PintaFoco", typeof(Bitmap), directa, new object[] { b, textos[t][0], textos[t][1], fam }); } catch (Exception e) { res = Exc(e); }
+                        string fn = fam == null ? "null" : Pru.NombreDeFamilia(fam);
+                        object b = Mapa(w, h, t % 3); string res;
+                        try { res = (string)FirmaXp(typeof(Form1), "PintaFoco", directa, new object[] { b, textos[t][0], textos[t][1], fam }); } catch (Exception e) { res = Exc(e); }
                         Linea(nombre, fn + "\t" + res + "\t" + Puntos(b, nombre));
-                        b.Dispose();
+                        Pru.Suelta(b);
                         // la traducida, directo (en la referencia, la de XP otra vez)
-                        Bitmap b2 = Mapa(w, h, (t + 1) % 3);
+                        object b2 = Mapa(w, h, (t + 1) % 3);
                         try
                         {
-                            if (directa != null) { directas++; res = (string)directa.Invoke(null, new object[] { b2.Sk, textos[t][0], textos[t][1], fam == null ? FamiliaGenerica() : fam.Name }); }
-                            else res = (string)FirmaXp(typeof(Form1), "PintaFoco", typeof(Bitmap), null, new object[] { b2, textos[t][0], textos[t][1], fam ?? FontFamily.GenericSansSerif });
+                            if (directa != null) { directas++; res = (string)directa.Invoke(null, new object[] { Pru.Sk(b2), textos[t][0], textos[t][1], fam == null ? FamiliaGenerica() : Pru.NombreDeFamilia(fam) }); }
+                            else res = (string)FirmaXp(typeof(Form1), "PintaFoco", null, new object[] { b2, textos[t][0], textos[t][1], fam ?? Pru.FamiliaGenerica() });
                         }
                         catch (Exception e) { res = Exc(e); }
                         Linea(nombre + "-directo", fn + "\t" + res + "\t" + Puntos(b2, nombre + "-directo"));
-                        b2.Dispose();
+                        Pru.Suelta(b2);
                     }
                 }
         }
-        private static string FamiliaGenerica() { return FontFamily.GenericSansSerif.Name; }
+        private static string FamiliaGenerica() { return Pru.NombreDeFamilia(Pru.FamiliaGenerica()); }
 
         // ================================================================ la ficha rapida (PintaFicha)
         private static void Fichas()
         {
-            FontFamily[] fams = Familias();
+            object[] fams = Familias();
             Size[] tams = { Form1.TamanoFicha(128, 170), Form1.TamanoFicha(170, 188), Form1.TamanoFicha(240, 300), Form1.TamanoFicha(100, 100), Form1.TamanoFicha(320, 240), new Size(260, 120) };
-            Bitmap[] tapas = { null, Portada(256, 256, 3, false), Portada(300, 300, 5, true), Portada(1600, 1000, 7, false), Portada(1, 1, 9, false), Gris(64, 64, 128, 255) };
+            object[] tapas = { null, Portada(256, 256, 3, false), Portada(300, 300, 5, true), Portada(1600, 1000, 7, false), Portada(1, 1, 9, false), Gris(64, 64, 128, 255) };
             string[] artistas = { "Los Ejemplos", null, "Artista de nombre larguisimo con acentos: Ñandú, Ángel & Cía (en vivo)", "" };
             string[] discos = { "Larga Duracion", "", "Disco de relleno con un nombre que no cabe en la tarjeta" };
             string[] generos = { "Pop", "", "Rock en español", null };
@@ -248,8 +244,8 @@ namespace BancoPantallaViva
             for (int i = 0; i < 48; i++)
             {
                 Size tam = tams[i % tams.Length];
-                Bitmap tapa = tapas[(i / 2) % tapas.Length];
-                FontFamily fam = fams[(k++) % fams.Length];
+                object tapa = tapas[(i / 2) % tapas.Length];
+                object fam = fams[(k++) % fams.Length];
                 string art = artistas[i % artistas.Length], dis = discos[(i / 3) % discos.Length], gen = generos[(i / 4) % generos.Length];
                 Color col = colores[(i / 5) % colores.Length];
                 int enCola = new[] { 0, 1, 7 }[(i / 2) % 3];
@@ -259,83 +255,83 @@ namespace BancoPantallaViva
                 string resumen = new[] { Form1.TextoFoco(12, 0, 38 * 60), Form1.TextoFoco(2, 0, 300), "", null }[(i / 7) % 4];
                 string nombre = "ficha-" + i;
                 if (!Toca(nombre)) continue;
-                string desc = tam.Width + "x" + tam.Height + "|" + (tapa == null ? "sin" : tapa.Width + "x" + tapa.Height) + "|" + (fam == null ? "null" : fam.Name) + "|" + enCola + "|" + pedidas + "|" + fl.Length + "|" + total;
-                Bitmap b = Mapa(tam.Width, tam.Height, i % 3); string res = "ok";
-                try { FirmaXp(typeof(Form1), "PintaFicha", typeof(Bitmap), directa, new object[] { b, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam }); } catch (Exception e) { res = Exc(e); }
+                string desc = tam.Width + "x" + tam.Height + "|" + (tapa == null ? "sin" : Ancho(tapa) + "x" + Alto(tapa)) + "|" + (fam == null ? "null" : Pru.NombreDeFamilia(fam)) + "|" + enCola + "|" + pedidas + "|" + fl.Length + "|" + total;
+                object b = Mapa(tam.Width, tam.Height, i % 3); string res = "ok";
+                try { FirmaXp(typeof(Form1), "PintaFicha", directa, new object[] { b, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam }); } catch (Exception e) { res = Exc(e); }
                 Linea(nombre, desc + "\t" + res + "\t" + Puntos(b, nombre));
-                b.Dispose();
-                Bitmap b2 = Mapa(tam.Width, tam.Height, (i + 1) % 3); res = "ok";
+                Pru.Suelta(b);
+                object b2 = Mapa(tam.Width, tam.Height, (i + 1) % 3); res = "ok";
                 try
                 {
-                    if (directa != null) { directas++; directa.Invoke(null, new object[] { b2.Sk, tapa != null ? tapa.Sk : null, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam == null ? FamiliaGenerica() : fam.Name }); }
-                    else FirmaXp(typeof(Form1), "PintaFicha", typeof(Bitmap), null, new object[] { b2, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam ?? FontFamily.GenericSansSerif });
+                    if (directa != null) { directas++; directa.Invoke(null, new object[] { Pru.Sk(b2), Pru.Sk(tapa), art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam == null ? FamiliaGenerica() : Pru.NombreDeFamilia(fam) }); }
+                    else FirmaXp(typeof(Form1), "PintaFicha", null, new object[] { b2, tapa, art, dis, resumen, gen, col, enCola, pedidas, fl, du, ve, total, fam ?? Pru.FamiliaGenerica() });
                 }
                 catch (Exception e) { res = Exc(e); }
                 Linea(nombre + "-directo", desc + "\t" + res + "\t" + Puntos(b2, nombre + "-directo"));
-                b2.Dispose();
+                Pru.Suelta(b2);
             }
-            foreach (Bitmap t in tapas) if (t != null) t.Dispose();
+            foreach (object t in tapas) Pru.Suelta(t);
         }
 
         // ================================================================ el boleto (PintaBoleto, TamanoBoleto)
-        private static Font[] LetrasLista()
+        private static Fte[] LetrasLista()   // (el estilo: 1 negrita, 2 cursiva)
         {
             return new[] {
-                new Font("Microsoft Sans Serif", 13f, FontStyle.Bold),          // la de siempre (CuerpoGrande de la de 30: la de fabrica)
-                new Font("Microsoft Sans Serif", 17f, FontStyle.Bold),          // la grande de 1024x768 (51 / 3)
-                new Font(FontFamily.GenericSansSerif, 26.666666f, FontStyle.Bold), // la grande de 80 px de fila
-                new Font("Tahoma", 14.25f),
-                new Font("Trebuchet MS", 9.75f, FontStyle.Bold | FontStyle.Italic),
+                new Fte("Microsoft Sans Serif", 13f, 1),          // la de siempre (CuerpoGrande de la de 30: la de fabrica)
+                new Fte("Microsoft Sans Serif", 17f, 1),          // la grande de 1024x768 (51 / 3)
+                Fte.Generica(26.666666f, 1), // la grande de 80 px de fila
+                new Fte("Tahoma", 14.25f),
+                new Fte("Trebuchet MS", 9.75f, 1 | 2),
             };
         }
         private static void Boletos()
         {
-            Font[] letras = LetrasLista();
+            Fte[] letras = LetrasLista();
             MethodInfo pinta = typeof(Form1).GetMethod("PintaBoleto", T), mide = typeof(Form1).GetMethod("TamanoBoleto", T);
-            Bitmap[] tapas = { null, Portada(256, 256, 11, false), Portada(300, 300, 13, true), Portada(1600, 1000, 17, false), Portada(2, 3, 19, true) };
+            object[] tapas = { null, Portada(256, 256, 11, false), Portada(300, 300, 13, true), Portada(1600, 1000, 17, false), Portada(2, 3, 19, true) };
             string[] titulos = { "02 Ángel de amor (versión ñandú) & más", "01 Cancion Larga con un titulo bastante largo que no cabe en el boleto para nada", "", null, "Video de prueba", "Ñ" };
             int[] filas = { 30, 44, 46, 60, 80, 10 };
             int[] anchos = { 556, 250, 900, 60 };
             for (int i = 0; i < 60; i++)
             {
-                Font f = letras[i % letras.Length]; string tit = titulos[(i / 2) % titulos.Length]; int fila = filas[(i / 3) % filas.Length]; int ancho = anchos[(i / 5) % anchos.Length];
-                Bitmap tapa = tapas[(i / 4) % tapas.Length];
+                Fte f = letras[i % letras.Length]; string tit = titulos[(i / 2) % titulos.Length]; int fila = filas[(i / 3) % filas.Length]; int ancho = anchos[(i / 5) % anchos.Length];
+                object tapa = tapas[(i / 4) % tapas.Length];
                 string nombre = "boleto-" + i;
                 if (!Toca(nombre)) continue;
                 object tam;
                 try { tam = Llama(mide, null, Convierte(mide, new object[] { fila, tit, f, ancho })); } catch (Exception e) { tam = Exc(e); }
-                Linea(nombre + "-tam", fila + "|" + ancho + "|" + f.Name + "|" + f.Size + "\t" + tam);
+                Linea(nombre + "-tam", fila + "|" + ancho + "|" + f.Nombre + "|" + f.Tamano + "\t" + tam);
                 if (!(tam is Size)) continue;
                 Size s = (Size)tam;
-                Bitmap b = Mapa(s.Width, s.Height, i % 3); string res = "ok";
+                object b = Mapa(s.Width, s.Height, i % 3); string res = "ok";
                 try { Llama(pinta, null, Convierte(pinta, new object[] { b, tapa, tit, f })); } catch (Exception e) { res = Exc(e); }
-                Linea(nombre, (tapa == null ? "sin" : tapa.Width + "x" + tapa.Height) + "\t" + res + "\t" + Puntos(b, nombre));
-                b.Dispose();
+                Linea(nombre, (tapa == null ? "sin" : Ancho(tapa) + "x" + Alto(tapa)) + "\t" + res + "\t" + Puntos(b, nombre));
+                Pru.Suelta(b);
             }
-            foreach (Bitmap t in tapas) if (t != null) t.Dispose();
-            foreach (Font f in letras) f.Dispose();
+            foreach (object t in tapas) Pru.Suelta(t);
+            foreach (Fte f in letras) f.Dispose();
         }
 
         // ================================================================ el color de una portada (ColorDePortada)
         private static void Colores()
         {
             MethodInfo m = typeof(GpuPanel).GetMethod("ColorDePortada", T);
-            List<KeyValuePair<string, Bitmap>> l = new List<KeyValuePair<string, Bitmap>>
+            List<KeyValuePair<string, object>> l = new List<KeyValuePair<string, object>>
             {
-                new KeyValuePair<string, Bitmap>("null", null),
-                new KeyValuePair<string, Bitmap>("1x1", Portada(1, 1, 1, false)),
-                new KeyValuePair<string, Bitmap>("2x2", Portada(2, 2, 2, false)),
-                new KeyValuePair<string, Bitmap>("1x40", Portada(1, 40, 2, false)),
-                new KeyValuePair<string, Bitmap>("gris", Gris(64, 64, 128, 255)),
-                new KeyValuePair<string, Bitmap>("negro", Gris(64, 64, 10, 255)),
-                new KeyValuePair<string, Bitmap>("blanco", Gris(64, 64, 255, 255)),
-                new KeyValuePair<string, Bitmap>("transparente", Gris(64, 64, 200, 0)),
-                new KeyValuePair<string, Bitmap>("medio-alfa", Gris(64, 64, 200, 90)),
+                new KeyValuePair<string, object>("null", null),
+                new KeyValuePair<string, object>("1x1", Portada(1, 1, 1, false)),
+                new KeyValuePair<string, object>("2x2", Portada(2, 2, 2, false)),
+                new KeyValuePair<string, object>("1x40", Portada(1, 40, 2, false)),
+                new KeyValuePair<string, object>("gris", Gris(64, 64, 128, 255)),
+                new KeyValuePair<string, object>("negro", Gris(64, 64, 10, 255)),
+                new KeyValuePair<string, object>("blanco", Gris(64, 64, 255, 255)),
+                new KeyValuePair<string, object>("transparente", Gris(64, 64, 200, 0)),
+                new KeyValuePair<string, object>("medio-alfa", Gris(64, 64, 200, 90)),
             };
-            for (int s = 0; s < 24; s++) l.Add(new KeyValuePair<string, Bitmap>("portada" + s, Portada(new[] { 6, 64, 256, 600, 37 }[s % 5], new[] { 6, 64, 256, 600, 91 }[(s / 2) % 5], 100 + s, s % 3 == 1)));
+            for (int s = 0; s < 24; s++) l.Add(new KeyValuePair<string, object>("portada" + s, Portada(new[] { 6, 64, 256, 600, 37 }[s % 5], new[] { 6, 64, 256, 600, 91 }[(s / 2) % 5], 100 + s, s % 3 == 1)));
             uint[] siNo = { 0xFF8FB4FFu, 0xFF000000u, 0x00FFFFFFu };
             int k = 0;
-            foreach (KeyValuePair<string, Bitmap> p in l)
+            foreach (KeyValuePair<string, object> p in l)
             {
                 string nombre = "color-" + p.Key;
                 if (!Toca(nombre)) { k++; continue; }
@@ -344,16 +340,15 @@ namespace BancoPantallaViva
                 string res;
                 try { bool ok = (bool)m.Invoke(null, a); res = ok + " " + ((uint)a[2]).ToString("x8"); } catch (Exception e) { res = Exc(e); }
                 Linea(nombre, sn.ToString("x8") + "\t" + res);
-                if (p.Value != null) p.Value.Dispose();
+                Pru.Suelta(p.Value);
             }
         }
 
         // ================================================================ los trazos (Redondo, Pildora)
         private static void Rutas()
         {
-            MethodInfo redondo = typeof(Form1).GetMethod("Redondo", T, null, new[] { typeof(RectangleF), typeof(float) }, null);
-            // en la traduccion Redondo (con su GraphicsPath) ya no existe (se quito el 12-11-2026, limpieza-puentes): se pide RutaRedonda (el SKPath)
-            // y se le da el GraphicsPath como lo hacia el puente que se quito: new GraphicsPath() con ESE SKPath (que se suelta con el)
+            MethodInfo redondo = Pru.Capa ? typeof(Form1).GetMethod("Redondo", T, null, new[] { typeof(RectangleF), typeof(float) }, null) : null;
+            // en la traduccion no hay Redondo (con su GraphicsPath): se pide RutaRedonda (el SKPath, que se suelta al acabar)
             MethodInfo rutaRedonda = redondo == null ? typeof(Form1).GetMethod("RutaRedonda", T, null, new[] { typeof(RectangleF), typeof(float) }, null) : null;
             MethodInfo pildora = typeof(Form1).GetMethod("Pildora", T);
             RectangleF[] cajas = { new RectangleF(1, 1, 309, 248), new RectangleF(2f, 2f, 339.5f, 41.5f), new RectangleF(17.461f, 17.461f, 69.843f, 69.843f), new RectangleF(0.5f, 0.5f, 140.25f, 24.5f),
@@ -365,20 +360,20 @@ namespace BancoPantallaViva
                 {
                     string nombre = "redondo-" + i + "-" + j;
                     if (!Toca(nombre)) continue;
-                    using (GraphicsPath gp = redondo != null ? (GraphicsPath)redondo.Invoke(null, new object[] { cajas[i], radios[j] }) : ConRuta((SKPath)rutaRedonda.Invoke(null, new object[] { cajas[i], radios[j] })))
+                    using (IDisposable gp = (IDisposable)(redondo != null ? redondo.Invoke(null, new object[] { cajas[i], radios[j] }) : rutaRedonda.Invoke(null, new object[] { cajas[i], radios[j] })))
                     {
-                        string t = Trazo(gp.P);
-                        Bitmap b = Mapa(360, 280, j % 3);
-                        using (Graphics g = Graphics.FromImage(b))
+                        string t = Trazo(Pru.Ruta(gp));
+                        object b = Mapa(360, 280, j % 3);
+                        using (Lz g = Pru.Lienzo(b))
                         {
                             PonEstado(g, Estados[(i + j) % Estados.Length], 360, 280);
-                            using (SolidBrush sb = new SolidBrush(Color.FromArgb(214, 8, 12, 30))) g.FillPath(sb, gp);
-                            using (Pen pe = new Pen(Color.FromArgb(150, 139, 167, 227), 1.5f)) g.DrawPath(pe, gp);
-                            gp.AddLine(0, 0, 30, 20);   // lo que se le anade despues empieza figura aparte (la cerrada queda como estaba)
-                            using (Pen pe = new Pen(Color.FromArgb(255, 255, 255, 0), 1f)) g.DrawPath(pe, gp);
+                            g.RellenaRuta(gp, Color.FromArgb(214, 8, 12, 30));
+                            g.TrazaRuta(gp, Color.FromArgb(150, 139, 167, 227), 1.5f);
+                            Pru.AnadeLinea(gp, 0, 0, 30, 20);   // lo que se le anade despues empieza figura aparte (la cerrada queda como estaba)
+                            g.TrazaRuta(gp, Color.FromArgb(255, 255, 255, 0), 1f);
                         }
-                        Linea(nombre, t + "\t" + Trazo(gp.P) + "\t" + Puntos(b, nombre));
-                        b.Dispose();
+                        Linea(nombre, t + "\t" + Trazo(Pru.Ruta(gp)) + "\t" + Puntos(b, nombre));
+                        Pru.Suelta(b);
                     }
                 }
             for (int i = 0; i < cajas.Length; i++)
@@ -388,14 +383,11 @@ namespace BancoPantallaViva
                 // (en la referencia da un GraphicsPath; en la traduccion, el SKPath: se comparan sus puntos, bit a bit; pintado, lo pasan los focos y
                 // las fichas, por Etiqueta y PintaFoco)
                 object o = pildora.Invoke(null, new object[] { cajas[i] });
-                SKPath p = o is GraphicsPath ? ((GraphicsPath)o).P : (SKPath)o;
+                SKPath p = Pru.Ruta(o);
                 Linea(nombre, Trazo(p));
                 ((IDisposable)o).Dispose();
             }
         }
-
-        // un GraphicsPath de la capa con ESE SKPath (no una copia): la figura queda cerrada y al soltarlo se suelta el SKPath
-        private static GraphicsPath ConRuta(SKPath p) { GraphicsPath gp = new GraphicsPath(); gp.P.Dispose(); gp.P = p; return gp; }
 
         // ================================================================ la lista del disco (SongListView: PintaPagina con lo vivo)
         private static void Pon(object o, string campo, object v)
@@ -410,15 +402,15 @@ namespace BancoPantallaViva
             throw new MissingFieldException(o.GetType().Name, campo);
         }
         // (rotulos-y-letras) las propiedades de la lista por su nombre: en la referencia es un Control de la capa; en la traduccion, una vista sin
-        // herencia (vistas-disco) con su Letra (la de la Font que da el arnes: Font.L, la misma que da PuenteDibujo.Letra)
+        // herencia (vistas-disco) con su Letra (una letra del arnes, Fte, va por la suya: la Font o la Letra)
         private static void PonP(object o, string p, object v)
         {
             PropertyInfo pi = o.GetType().GetProperty(p, BindingFlags.Public | BindingFlags.Instance);
-            if (v is Font && pi.PropertyType.Name == "Letra") v = typeof(Font).GetField("L", T).GetValue(v);
+            if (v is Fte) v = ((Fte)v).Obj;
             pi.SetValue(o, v);
         }
         private static void SueltaLista(object l) { IDisposable d = l as IDisposable; if (d != null) d.Dispose(); }
-        private static object NuevaLista(int w, int h, int filas, int rowH, Font letra, int sel, int inicio, Color acento, int vivo, int caso)
+        private static object NuevaLista(int w, int h, int filas, int rowH, Fte letra, int sel, int inicio, Color acento, int vivo, int caso)
         {
             object l = Activator.CreateInstance(typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic), true);
             PonP(l, "Bounds", new Rectangle(0, 0, w, h)); PonP(l, "Font", letra);
@@ -436,14 +428,14 @@ namespace BancoPantallaViva
         {
             Type tl = typeof(Form1).GetNestedType("SongListView", BindingFlags.NonPublic);
             MethodInfo pinta = tl.GetMethod("PintaPagina", T);
-            MethodInfo pastillaXp = Con(tl, "PastillaSonandoEq", typeof(Graphics)), pastillaSk = Con(tl, "PastillaSonandoEq", typeof(SKCanvas));
+            MethodInfo pastillaXp = Pru.Capa ? Con(tl, "PastillaSonandoEq", Pru.TLienzo) : null, pastillaSk = Con(tl, "PastillaSonandoEq", typeof(SKCanvas));
             int[][] medidas = { new[] { 556, 464, 30 }, new[] { 556, 464, 51 }, new[] { 250, 464, 44 }, new[] { 900, 640, 71 }, new[] { 556, 468, 80 }, new[] { 120, 90, 30 } };
-            Font[] letras = LetrasLista();
+            Fte[] letras = LetrasLista();
             for (int caso = 0; caso < 48; caso++)
             {
                 int[] m = medidas[caso % medidas.Length];
                 int vivo = new[] { 7, 1, 2, 4, 3, 5, 6, 7 }[(caso / 2) % 8];
-                Font letra = (vivo & 1) != 0 ? new Font("Microsoft Sans Serif", Form1.CuerpoGrande(m[2]), FontStyle.Bold) : letras[caso % letras.Length];
+                Fte letra = (vivo & 1) != 0 ? new Fte("Microsoft Sans Serif", Form1.CuerpoGrande(m[2]), 1) : letras[caso % letras.Length];
                 int filas = new[] { 20, 5, 40, 9 }[caso % 4], rpp = Math.Max(1, m[1] / m[2]);
                 int inicio = caso % 5 == 4 && filas > rpp ? rpp : 0;
                 int sel = inicio + (caso % Math.Max(1, Math.Min(filas - inicio, rpp)));
@@ -453,22 +445,22 @@ namespace BancoPantallaViva
                 Estado e = Estados[caso % Estados.Length];
                 string nombre = "lista-" + caso;
                 if (!Toca(nombre)) { SueltaLista(l); continue; }
-                Bitmap b = Mapa(m[0] + 20, m[1] + 20, caso % 3); string res = "ok";
-                using (Graphics g = Graphics.FromImage(b))
+                object b = Mapa(m[0] + 20, m[1] + 20, caso % 3); string res = "ok";
+                using (Lz g = Pru.Lienzo(b))
                 {
                     PonEstado(g, e, m[0] + 20, m[1] + 20);
                     try
                     {
-                        // (PintaPagina se tradujo con el grupo vistas-b: en la traduccion recibe el lienzo y el estado de su Graphics)
-                        if (pinta.GetParameters()[0].ParameterType == typeof(Graphics)) pinta.Invoke(l, new object[] { g, inicio });
-                        else { object est = EstadoDe(g); pinta.Invoke(l, new object[] { Lienzo(g), Campo(est, "Suave"), Campo(est, "Letra"), Campo(est, "Copia"), Campo(est, "Filtro"), Campo(est, "Medio"), inicio }); }
+                        // (PintaPagina se tradujo con el grupo vistas-b: en la traduccion recibe el lienzo y su estado)
+                        if (Pru.Capa) pinta.Invoke(l, new object[] { g.Objeto, inicio });
+                        else { object[] est = EstadoDe(g); pinta.Invoke(l, new object[] { Lienzo(g), Campo(est, "Suave"), Campo(est, "Letra"), Campo(est, "Copia"), Campo(est, "Filtro"), Campo(est, "Medio"), inicio }); }
                     }
                     catch (Exception x) { res = Exc(x); }
                 }
                 string eq = Lee(l, "eqIdx") + "|" + R((float)Lee(l, "eqX")) + "|" + R((float)Lee(l, "eqW")) + "|" + R((float)Lee(l, "eqH")) + "|" + Lee(l, "eqBarra") + "|" + Lee(l, "eqHueco")
                           + "|" + Lee(l, "generosFuera") + "|" + Lee(l, "durAncho") + "|" + R((float)Lee(l, "durCuerpo"));
-                Linea(nombre, e.Nombre + "|" + m[0] + "x" + m[1] + "/" + m[2] + "|vivo" + vivo + "|" + letra.Size + "|" + inicio + "|" + sel + "\t" + res + "\t" + eq + "\t" + Puntos(b, nombre));
-                b.Dispose();
+                Linea(nombre, e.Nombre + "|" + m[0] + "x" + m[1] + "/" + m[2] + "|vivo" + vivo + "|" + letra.Tamano + "|" + inicio + "|" + sel + "\t" + res + "\t" + eq + "\t" + Puntos(b, nombre));
+                Pru.Suelta(b);
                 // la pastilla de SONANDO con el hueco del ecualizador, sola (con fCola, colaB y cenFmt ya hechos por PintaPagina): por la firma de
                 // XP y, en la traduccion, directo con el lienzo y el estado
                 if (res == "ok" && Lee(l, "fCola") != null)
@@ -476,8 +468,8 @@ namespace BancoPantallaViva
                     int hCola = new[] { 24, 18, 36, 13 }[caso % 4];
                     for (int via = 0; via < 2; via++)
                     {
-                        Bitmap c = Mapa(m[0], Math.Max(40, hCola * 2), (caso + via) % 3); string rr; float xMarca = m[0] - 14 - caso;
-                        using (Graphics g = Graphics.FromImage(c))
+                        object c = Mapa(m[0], Math.Max(40, hCola * 2), (caso + via) % 3); string rr; float xMarca = m[0] - 14 - caso;
+                        using (Lz g = Pru.Lienzo(c))
                         {
                             PonEstado(g, Estados[(caso + 3) % Estados.Length], m[0], Math.Max(40, hCola * 2));
                             try
@@ -486,23 +478,23 @@ namespace BancoPantallaViva
                                 if ((via == 1 || pastillaXp == null) && pastillaSk != null)   // (sin la firma de XP, quitada del puente con el grupo vistas-b: las dos, directo)
                                 {
                                     directas++;
-                                    object est = EstadoDe(g);
+                                    object[] est = EstadoDe(g);
                                     a = new object[] { Lienzo(g), Campo(est, "Letra"), Campo(est, "Filtro"), Campo(est, "Copia"), Campo(est, "Medio"), 5, xMarca, hCola * 0.5f + 3.25f, hCola };
                                     rr = pastillaSk.Invoke(l, a) + "|" + R((float)a[6]);
                                 }
-                                else { a = new object[] { g, 5, xMarca, hCola * 0.5f + 3.25f, hCola }; rr = pastillaXp.Invoke(l, a) + "|" + R((float)a[2]); }
+                                else { a = new object[] { g.Objeto, 5, xMarca, hCola * 0.5f + 3.25f, hCola }; rr = pastillaXp.Invoke(l, a) + "|" + R((float)a[2]); }
                             }
                             catch (Exception x) { rr = Exc(x); }
                         }
                         string eq2 = Lee(l, "eqIdx") + "|" + R((float)Lee(l, "eqX")) + "|" + R((float)Lee(l, "eqW")) + "|" + R((float)Lee(l, "eqH"));
                         Linea(nombre + "-pastilla" + via, hCola + "\t" + rr + "\t" + eq2 + "\t" + Puntos(c, nombre + "-pastilla" + via));
-                        c.Dispose();
+                        Pru.Suelta(c);
                     }
                 }
                 SueltaLista(l);
                 if ((vivo & 1) != 0) letra.Dispose();
             }
-            foreach (Font f in letras) f.Dispose();
+            foreach (Fte f in letras) f.Dispose();
         }
 
         // ================================================================
