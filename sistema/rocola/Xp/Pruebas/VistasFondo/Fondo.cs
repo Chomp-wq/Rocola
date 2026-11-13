@@ -19,9 +19,8 @@ using System.Drawing;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
-using Rocola.Ventanas;
 using SkiaSharp;
 
 namespace BancoFondo
@@ -43,57 +42,51 @@ namespace BancoFondo
         private static unsafe string Puntos(string nombre, object o)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppPArgb);
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppPArgb");
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre + ".png"), png.ToArray());
             return s.Width + "x" + s.Height + "\t" + Huella(px) + "\t" + Huella(sub);
         }
         private static void Suelta(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
-        private static string Mat(Matrix m) { PointF[] p = { new PointF(0, 0), new PointF(1, 1) }; m.TransformPoints(p); return R(p[0].X) + "," + R(p[0].Y) + ";" + R(p[1].X) + "," + R(p[1].Y); }
+        private static string Mat(PointF[] p) { return R(p[0].X) + "," + R(p[0].Y) + ";" + R(p[1].X) + "," + R(p[1].Y); }
 
         // ---- el estado del Graphics del que llama
-        private sealed class Estado { public string Nombre; public SmoothingMode S; public CompositingMode C; public PixelOffsetMode P; public InterpolationMode I; public int Trans; public int Recorte; }
+        private sealed class Estado { public string Nombre; public ModoSuave S; public ModoCopia C; public ModoPixel P; public ModoFiltro I; public int Trans; public int Recorte; }
         private static readonly Estado[] Estados = {
-            new Estado { Nombre = "fabrica", S = SmoothingMode.None, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear },
-            new Estado { Nombre = "suave", S = SmoothingMode.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear },
-            new Estado { Nombre = "hdc", S = SmoothingMode.None, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear, Trans = 6, Recorte = 2 },
-            new Estado { Nombre = "copia-medio-vecino", S = SmoothingMode.HighQuality, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Half, I = InterpolationMode.NearestNeighbor },
-            new Estado { Nombre = "parcial", S = SmoothingMode.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, I = InterpolationMode.Bilinear, Recorte = 1 },
-            new Estado { Nombre = "escala-bicubico", S = SmoothingMode.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.HighQuality, I = InterpolationMode.HighQualityBicubic, Trans = 2 },
-            new Estado { Nombre = "gira", S = SmoothingMode.None, C = CompositingMode.SourceOver, P = PixelOffsetMode.None, I = InterpolationMode.Bilinear, Trans = 3 },
-            new Estado { Nombre = "decimales-copia", S = SmoothingMode.AntiAlias, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Default, I = InterpolationMode.HighQualityBilinear, Trans = 5 },
+            new Estado { Nombre = "fabrica", S = ModoSuave.None, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear },
+            new Estado { Nombre = "suave", S = ModoSuave.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear },
+            new Estado { Nombre = "hdc", S = ModoSuave.None, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear, Trans = 6, Recorte = 2 },
+            new Estado { Nombre = "copia-medio-vecino", S = ModoSuave.HighQuality, C = ModoCopia.SourceCopy, P = ModoPixel.Half, I = ModoFiltro.NearestNeighbor },
+            new Estado { Nombre = "parcial", S = ModoSuave.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.Default, I = ModoFiltro.Bilinear, Recorte = 1 },
+            new Estado { Nombre = "escala-bicubico", S = ModoSuave.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.HighQuality, I = ModoFiltro.HighQualityBicubic, Trans = 2 },
+            new Estado { Nombre = "gira", S = ModoSuave.None, C = ModoCopia.SourceOver, P = ModoPixel.None, I = ModoFiltro.Bilinear, Trans = 3 },
+            new Estado { Nombre = "decimales-copia", S = ModoSuave.AntiAlias, C = ModoCopia.SourceCopy, P = ModoPixel.Default, I = ModoFiltro.HighQualityBilinear, Trans = 5 },
         };
-        private static MethodInfo sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
-        private static Graphics Prepara(Bitmap b, Estado e, int w, int h)
+        private static Lz Prepara(object b, Estado e, int w, int h)
         {
-            Graphics g = Graphics.FromImage(b);
-            g.Clear(Color.FromArgb(120, 30, 60, 90));
-            using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, b.Height / 3, b.Width, 9);
-            g.SmoothingMode = e.S; g.CompositingMode = e.C; g.PixelOffsetMode = e.P; g.InterpolationMode = e.I;
-            if (e.Trans == 2) g.ScaleTransform(1.3f, 1.3f); else if (e.Trans == 3) g.RotateTransform(7f);
-            else if (e.Trans == 5) g.TranslateTransform(0.5f, 0.25f); else if (e.Trans == 6) g.TranslateTransform(7, 5);
-            if (e.Recorte == 1) g.SetClip(new Rectangle(w / 4, h / 3, w / 3, h / 4));   // repintado parcial (la casilla del cubo)
-            else if (e.Recorte == 2) { g.SetClip(new Rectangle(0, 0, w, h)); sella.Invoke(g, null); }   // como lo da Ventanas.Escritorio a un OnPaint
+            Lz g = Pru.Lienzo(b);
+            g.Limpia(Color.FromArgb(120, 30, 60, 90));
+            g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, Pru.Sk(b).Height / 3, Pru.Sk(b).Width, 9);
+            g.Suavizado = e.S; g.Copia = e.C; g.Pixel = e.P; g.Filtro = e.I;
+            if (e.Trans == 2) g.Escala(1.3f, 1.3f); else if (e.Trans == 3) g.Gira(7f);
+            else if (e.Trans == 5) g.Traslada(0.5f, 0.25f); else if (e.Trans == 6) g.Traslada(7, 5);
+            if (e.Recorte == 1) g.Recorta(new Rectangle(w / 4, h / 3, w / 3, h / 4));   // repintado parcial (la casilla del cubo)
+            else if (e.Recorte == 2) { g.Recorta(new Rectangle(0, 0, w, h)); g.Sella(); }   // como lo da Ventanas.Escritorio a un OnPaint
             return g;
         }
-        private static string Deja(Graphics g) { return " deja=" + g.SmoothingMode + "/" + g.CompositingMode + "/" + g.PixelOffsetMode + "/" + g.InterpolationMode + " m=" + Mat(g.Transform) + " recorte=" + R(g.ClipBounds); }
+        private static string Deja(Lz g) { return " deja=" + g.Suavizado + "/" + g.Copia + "/" + g.Pixel + "/" + g.Filtro + " m=" + Mat(g.Transformados()) + " recorte=" + R(g.LimitesRecorte); }
 
         // ---- la traduccion, por reflexion
-        private static Type Puente { get { return typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo"); } }
-        private static bool Traducida { get { return Puente != null && Puente.GetMethod("Estado", Todo, null, new[] { typeof(Graphics) }, null) != null && Sf.GetMethod("Draw", Todo, null, new[] { typeof(SKCanvas), typeof(bool), FiltroT, typeof(bool), typeof(bool), typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(Color), typeof(double), typeof(bool), typeof(float) }, null) != null; } }
+        private static bool Traducida { get { return !Pru.Capa && Sf.GetMethod("Draw", Todo, null, new[] { typeof(SKCanvas), typeof(bool), FiltroT, typeof(bool), typeof(bool), typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(Color), typeof(double), typeof(bool), typeof(float) }, null) != null; } }
         private static Type FiltroT { get { return typeof(Form1).Assembly.GetType("Rocola.Nativo.Filtro"); } }
-        private static object Por(string metodo, Type tipo, object o) { return Puente.GetMethod(metodo, Todo, null, new[] { tipo }, null).Invoke(null, new[] { o }); }
-        // el lienzo y su estado (lienzo, suave, filtro, medio, copia) de un Graphics: lo que un archivo traducido lleva en sus variables
-        private static object[] EstadoDe(Graphics g)
+        // el lienzo y su estado (lienzo, suave, filtro, medio, copia) de un lienzo de prueba: lo que un archivo traducido lleva en sus variables
+        private static object[] EstadoDe(Lz g)
         {
-            object e = Por("Estado", typeof(Graphics), g); Type te = e.GetType();
-            return new[] { Por("Lienzo", typeof(Graphics), g), te.GetField("Suave").GetValue(e), te.GetField("Filtro").GetValue(e), te.GetField("Medio").GetValue(e), te.GetField("Copia").GetValue(e) };
+            object[] e = g.Estado();
+            return new[] { e[0], e[1], e[4], e[5], e[3] };
         }
         private static MethodInfo Metodo(Type t, string nombre, params Type[] tipos) { return t.GetMethod(nombre, Todo, null, tipos, null); }
 
@@ -134,8 +127,7 @@ namespace BancoFondo
 
         // ================================================================ EL CONTORNO REDONDEADO (RoundedPath)
         // la firma de XP de RoundedPath (un GraphicsPath) solo esta en la referencia: la traduccion la quito el 12-11-2026 (limpieza-puentes, nadie
-        // la llamaba) y aqui se hace lo que hacia el puente: un GraphicsPath de la capa que se hace dueno del SKPath de ContornoRedondo
-        private static GraphicsPath ComoRoundedPath(SKPath p) { GraphicsPath gp = new GraphicsPath(); gp.P.Dispose(); gp.P = p; return gp; }
+        // la llamaba) y alli se llama a ContornoRedondo (un SKPath); el relleno y la linea de cada una (Pru.Lienzo) son los mismos
         private static void Contornos()
         {
             MethodInfo rp = Metodo(typeof(Form1), "RoundedPath", typeof(Rectangle), typeof(int));
@@ -149,39 +141,22 @@ namespace BancoFondo
                         foreach (int rad in radios)
                         {
                             string nombre = "contorno-" + (directa ? "directa-" : "") + e.Nombre + "-" + (k++);
-                            using (Bitmap b = new Bitmap(80, 72, PixelFormat.Format32bppPArgb))
+                            using (IDisposable b = (IDisposable)Pru.NuevoMapa(80, 72, "Format32bppPArgb"))
                             {
                                 string ex = "", deja = "", info = "";
-                                using (Graphics g = Prepara(b, e, 80, 72))
-                                using (SolidBrush sb = new SolidBrush(Color.FromArgb(170, 240, 200, 40)))
-                                using (Pen pn = new Pen(Color.FromArgb(230, 20, 230, 250), 1.6f))
+                                using (Lz g = Prepara(b, e, 80, 72))
                                 {
                                     try
                                     {
-                                        if (directa && cr != null)
+                                        // la traducida (ContornoRedondo, un SKPath) o, sin ella, la de XP (RoundedPath, un GraphicsPath)
+                                        bool conCr = (directa && cr != null) || rp == null;
+                                        if (directa && cr != null) directas++;
+                                        using (IDisposable p = (IDisposable)(conCr ? cr.Invoke(null, new object[] { r, rad }) : rp.Invoke(null, new object[] { r, rad })))
                                         {
-                                            directas++;
-                                            using (SKPath p = (SKPath)cr.Invoke(null, new object[] { r, rad }))
-                                            {
-                                                object[] st = EstadoDe(g);
-                                                Type px = typeof(Form1).Assembly.GetType("Rocola.Nativo.Pixel");
-                                                using (SKPaint relleno = new SKPaint { Color = new SKColor(240, 200, 40, 170) })
-                                                using (SKPaint pluma = new SKPaint { Color = new SKColor(20, 230, 250, 230), StrokeWidth = 1.6f })
-                                                {
-                                                    Metodo(px, "Rellena", typeof(SKCanvas), typeof(SKPath), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool)).Invoke(null, new object[] { st[0], p, relleno, st[1], st[3], st[4] });
-                                                    Metodo(px, "Traza", typeof(SKCanvas), typeof(SKPath), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool)).Invoke(null, new object[] { st[0], p, pluma, st[1], st[3], st[4] });
-                                                }
-                                                info = " puntos=" + p.PointCount + " tipo=" + p.FillType + " caja=" + R(new RectangleF(p.Bounds.Left, p.Bounds.Top, p.Bounds.Width, p.Bounds.Height));
-                                            }
+                                            g.RellenaRuta(p, Color.FromArgb(170, 240, 200, 40));
+                                            g.TrazaRuta(p, Color.FromArgb(230, 20, 230, 250), 1.6f);
+                                            info = Pru.InfoRuta(p, R);
                                         }
-                                        else
-                                            using (GraphicsPath p = rp != null ? (GraphicsPath)rp.Invoke(null, new object[] { r, rad }) : ComoRoundedPath((SKPath)cr.Invoke(null, new object[] { r, rad })))
-                                            {
-                                                g.FillPath(sb, p); g.DrawPath(pn, p);
-                                                RectangleF caja = p.GetBounds();
-                                                info = " puntos=" + p.PointCount + " tipo=" + p.FillMode + " caja=" + R(caja);
-                                                info = info.Replace("Alternate", "EvenOdd");   // el mismo relleno con el nombre de cada lado
-                                            }
                                     }
                                     catch (Exception x) { ex = " " + Exc(x); }
                                     deja = Deja(g);
@@ -192,9 +167,9 @@ namespace BancoFondo
         }
 
         // ================================================================ EL COLOR DE LAS PORTADAS (ColoresDePortada, ColorDePortada)
-        private static Bitmap Portada(int w, int h, int clase)
+        private static object Portada(int w, int h, int clase)
         {
-            Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+            object b = Pru.NuevoMapa(w, h, "Format32bppArgb");
             Random r = new Random(1000 + clase * 37 + w * 3 + h);
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
@@ -206,19 +181,19 @@ namespace BancoFondo
                     else if (clase == 3) { int v = r.Next(40); c = Color.FromArgb(255, 100 + v, 100 + v, 100 + v); }                         // gris
                     else if (clase == 4) c = Color.FromArgb(255, r.Next(30), r.Next(30), r.Next(30));                                         // negro
                     else c = Color.FromArgb(r.Next(2) == 0 ? 0 : 255, 40 + r.Next(60), 60 + r.Next(80), 200 + r.Next(55));                   // azul con huecos
-                    b.SetPixel(x, y, c);
+                    Pru.Pon(b, x, y, c);
                 }
             return b;
         }
         private static void Portadas()
         {
-            MethodInfo xp = Metodo(typeof(Form1), "ColoresDePortada", typeof(Bitmap), typeof(Color).MakeByRefType(), typeof(Color).MakeByRefType());
+            MethodInfo xp = Metodo(typeof(Form1), "ColoresDePortada", Pru.TMapa, typeof(Color).MakeByRefType(), typeof(Color).MakeByRefType());
             MethodInfo sk = Metodo(typeof(Form1), "ColoresDePortada", typeof(SKBitmap), typeof(Color).MakeByRefType(), typeof(Color).MakeByRefType());
-            MethodInfo uno = Metodo(typeof(Form1), "ColorDePortada", typeof(Bitmap)) ?? Metodo(typeof(Form1), "ColorDePortada", typeof(SKBitmap));
+            MethodInfo uno = Metodo(typeof(Form1), "ColorDePortada", Pru.TMapa) ?? Metodo(typeof(Form1), "ColorDePortada", typeof(SKBitmap));
             int[][] medidas = { new[] { 1, 1 }, new[] { 7, 5 }, new[] { 32, 32 }, new[] { 33, 31 }, new[] { 100, 100 }, new[] { 300, 297 }, new[] { 640, 64 } };
             for (int clase = 0; clase < 6; clase++)
                 foreach (int[] m in medidas)
-                    using (Bitmap b = Portada(m[0], m[1], clase))
+                    using (IDisposable b = (IDisposable)Portada(m[0], m[1], clase))
                     {
                         string nombre = "portada-" + clase + "-" + m[0] + "x" + m[1];
                         object[] a = { b, null, null };
@@ -227,19 +202,22 @@ namespace BancoFondo
                         if (sk != null)
                         {
                             directas++;
-                            object[] a2 = { Por("Mapa", typeof(Image), b), null, null };
+                            object[] a2 = { Pru.Sk(b), null, null };
                             r2 = C((Color)sk.Invoke(null, a2)) + " " + C((Color)a2[1]) + " " + C((Color)a2[2]);
                         }
-                        object arg = uno.GetParameters()[0].ParameterType == typeof(Bitmap) ? (object)b : Por("Mapa", typeof(Image), b);
+                        object arg = uno.GetParameters()[0].ParameterType == Pru.TMapa ? (object)b : Pru.Sk(b);
                         string r3 = C((Color)uno.Invoke(null, new[] { arg }));
                         Linea(nombre, r1 + " | " + r2 + " | " + r3);
                     }
             // sin portada y una ya soltada
             object[] nada = { null, null, null };
             Linea("portada-null", C((Color)xp.Invoke(null, nada)) + " " + C((Color)nada[1]) + " " + C((Color)nada[2]));
-            Bitmap suelta = Portada(20, 20, 1); suelta.Dispose();
+            object suelta = Portada(20, 20, 1); Pru.Suelta(suelta);
             string exs = "";
-            try { object[] s = { suelta, null, null }; xp.Invoke(null, s); exs = "sin excepcion"; } catch (Exception x) { exs = Exc(x); }
+            // (oleada 8b) la salida dice solo si lanza: una portada soltada lanza NullReferenceException en la capa de la referencia y
+            // ArgumentException en el programa nuevo (Nativo/MapaVivo.cs, como GDI+ en XP); el tipo va a la salida de errores, como en el
+            // arnes de portadas
+            try { object[] s = { suelta, null, null }; xp.Invoke(null, s); exs = "sin excepcion"; } catch (Exception x) { exs = "lanza"; Console.Error.WriteLine("portada-soltada: " + Exc(x)); }
             Linea("portada-soltada", exs);
         }
 
@@ -323,11 +301,11 @@ namespace BancoFondo
 
         private enum Que { Draw, Cached, Reactive }
         // una llamada del cielo con el Graphics de un estado; directa: en la traduccion, al SKCanvas con el estado en variables
-        private static void Llama(object sf, Que que, Graphics g, bool directa, int w, int h, Color top, Color bot, Color tint, double fase, bool fugaces, float pulso, float lo, float mid, float hi)
+        private static void Llama(object sf, Que que, Lz g, bool directa, int w, int h, Color top, Color bot, Color tint, double fase, bool fugaces, float pulso, float lo, float mid, float hi)
         {
-            if (directa && Traducida)
+            if ((directa || !Pru.Capa) && Traducida)
             {
-                directas++;
+                if (directa) directas++;   // (sin la capa, la traducida es la unica: «directa» o no, se la llama igual)
                 object[] st = EstadoDe(g);
                 if (que == Que.Draw)
                     Metodo(Sf, "Draw", typeof(SKCanvas), typeof(bool), FiltroT, typeof(bool), typeof(bool), typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(Color), typeof(double), typeof(bool), typeof(float))
@@ -341,13 +319,13 @@ namespace BancoFondo
                 return;
             }
             if (que == Que.Draw)
-                Metodo(Sf, "Draw", typeof(Graphics), typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(Color), typeof(double), typeof(bool), typeof(float))
-                    .Invoke(sf, new object[] { g, w, h, top, bot, tint, fase, fugaces, pulso });
+                Metodo(Sf, "Draw", Pru.TLienzo, typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(Color), typeof(double), typeof(bool), typeof(float))
+                    .Invoke(sf, new object[] { g.Objeto, w, h, top, bot, tint, fase, fugaces, pulso });
             else if (que == Que.Cached)
-                Metodo(Sf, "DrawCached", typeof(Graphics), typeof(int), typeof(int), typeof(Color), typeof(Color)).Invoke(sf, new object[] { g, w, h, top, bot });
+                Metodo(Sf, "DrawCached", Pru.TLienzo, typeof(int), typeof(int), typeof(Color), typeof(Color)).Invoke(sf, new object[] { g.Objeto, w, h, top, bot });
             else
-                Metodo(Sf, "DrawReactive", typeof(Graphics), typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(float), typeof(float), typeof(float))
-                    .Invoke(sf, new object[] { g, w, h, top, bot, lo, mid, hi });
+                Metodo(Sf, "DrawReactive", Pru.TLienzo, typeof(int), typeof(int), typeof(Color), typeof(Color), typeof(float), typeof(float), typeof(float))
+                    .Invoke(sf, new object[] { g.Objeto, w, h, top, bot, lo, mid, hi });
         }
 
         private static readonly Color[][] Colores = {
@@ -365,8 +343,8 @@ namespace BancoFondo
                         Configura(sf, c);
                         int bw = c.W + 16, bh = c.H + 12;
                         // calentar: arma el patron, las capas y el cielo horneado a esta medida (lo que sale no se mira)
-                        using (Bitmap b = new Bitmap(bw, bh, PixelFormat.Format32bppPArgb))
-                        using (Graphics g = Graphics.FromImage(b))
+                        using (IDisposable b = (IDisposable)Pru.NuevoMapa(bw, bh, "Format32bppPArgb"))
+                        using (Lz g = Pru.Lienzo(b))
                         {
                             Reloj(sf, true, false, false, false);
                             Llama(sf, que, g, false, c.W, c.H, Colores[0][0], Colores[0][1], Colores[0][2], 0.0, false, 0f, 0f, 0f, 0f);
@@ -382,10 +360,10 @@ namespace BancoFondo
                                 float pulso = (v == 1 || v == 4) ? 0.6f : (v == 5 ? 0.03f : 0f);
                                 float lo = (v == 1) ? 0.9f : (v == 4 ? 0.3f : 0f), mid = (v == 4) ? 0.5f : (v == 5 ? 0.05f : 0f), hi = (v >= 4) ? 0.7f : 0f;
                                 if (v == 4) { Pon(sf, "driftX", 37.5f); Pon(sf, "driftY", 211.25f); Pon(sf, "driftEnv", 0.8f); }
-                                using (Bitmap b = new Bitmap(bw, bh, PixelFormat.Format32bppPArgb))
+                                using (IDisposable b = (IDisposable)Pru.NuevoMapa(bw, bh, "Format32bppPArgb"))
                                 {
                                     string ex = "", deja = "";
-                                    using (Graphics g = Prepara(b, e, c.W, c.H))
+                                    using (Lz g = Prepara(b, e, c.W, c.H))
                                     {
                                         Reloj(sf, rehace, pasoFugaz, nueva, pasoDeriva);
                                         FijaCapa(sf, v * 3 + k);
@@ -423,23 +401,23 @@ namespace BancoFondo
                             object c = Activator.CreateInstance(t, true);
                             setBounds.Invoke(c, new object[] { m[2], m[3], m[0], m[1] });
                             t.GetField("Sky", Todo).SetValue(c, sf); t.GetField("Accent", Todo).SetValue(c, acento); t.GetField("BgDim", Todo).SetValue(c, dim);
-                            using (Bitmap b = new Bitmap(m[0] + 20, m[1] + 14, PixelFormat.Format32bppPArgb))
+                            using (IDisposable b = (IDisposable)Pru.NuevoMapa(m[0] + 20, m[1] + 14, "Format32bppPArgb"))
                             {
                                 string ex = "", deja = "";
                                 // calentar (las capas, a la medida) y despues la pintura que se mira, con la capa fija
                                 for (int pasada = 0; pasada < 2; pasada++)
-                                    using (Graphics g = Graphics.FromImage(b))
+                                    using (Lz g = Pru.Lienzo(b))
                                     {
-                                        g.Clear(Color.FromArgb(120, 30, 60, 90));
-                                        g.TranslateTransform(9, 5);
-                                        if (recorte) g.SetClip(new Rectangle(0, 0, m[0] - 30, m[1] - 20)); else g.SetClip(new Rectangle(0, 0, m[0], m[1]));
-                                        sella.Invoke(g, null);
+                                        g.Limpia(Color.FromArgb(120, 30, 60, 90));
+                                        g.Traslada(9, 5);
+                                        if (recorte) g.Recorta(new Rectangle(0, 0, m[0] - 30, m[1] - 20)); else g.Recorta(new Rectangle(0, 0, m[0], m[1]));
+                                        g.Sella();
                                         Reloj(sf, true, false, false, false);
                                         if (pasada == 1) FijaCapa(sf, k);
                                         try
                                         {
-                                            if (pinta != null) pinta.Invoke(c, new object[] { Por("Lienzo", typeof(Graphics), g) });
-                                            else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe });
+                                            if (pinta != null) pinta.Invoke(c, new object[] { g.Estado()[0] });
+                                            else Pru.OnPaint(onPaint, c, g, new Rectangle(0, 0, m[0], m[1]));
                                         }
                                         catch (Exception xx) { ex = " " + Exc(xx); }
                                         SueltaCapa(sf);

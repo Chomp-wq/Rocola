@@ -4,6 +4,8 @@
 # de esta copia sin tocar (CARPETA/../arnes/nuevo-falsas.tsv, de arnes.sh). Ninguno debe dar 0. La copia de trabajo no se toca.
 set -eu
 AQUI=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$AQUI/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$XP/Pruebas/Comun
 W=${1:-/root/rocola-trabajo/port/vistas-b/mut}
 BUENO=${BUENO:-$W/../arnes/nuevo-falsas.tsv}
 LETRAS=${LETRAS_FALSAS:-/root/rocola-trabajo/port/dibujo/letras-xp-falsas}

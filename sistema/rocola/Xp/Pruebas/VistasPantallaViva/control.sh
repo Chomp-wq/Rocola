@@ -5,6 +5,8 @@
 set -u
 S=${PANTALLAVIVA:-/root/rocola-trabajo/port/pantalla-viva}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 M=$S/mutante; P=$M/sistema/rocola
 # archivo|linea|lo que se cambia|por que|lo que se rompe
 CONTROLES=(

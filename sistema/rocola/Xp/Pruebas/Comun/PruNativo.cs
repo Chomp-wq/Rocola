@@ -48,6 +48,9 @@ namespace Banco
             using (SKPaint p = new SKPaint { Color = c.Sk() })
                 TextoGdiPlus.Escribe(C, s, f.L, (AjusteLetra)(int)Letra, p, r, sf != null ? sf.F : FormatoTexto.SinFormato, EsCopia, Medio);
         }
+        // un trazo (el SKPath que da ContornoRedondo) relleno y con su linea, con este estado (Nativo/Pixel.cs)
+        public void RellenaRuta(object ruta, Color c) { using (SKPaint p = new SKPaint { Color = c.Sk() }) Rocola.Nativo.Pixel.Rellena(C, (SKPath)ruta, p, Suave, Medio, EsCopia); }
+        public void TrazaRuta(object ruta, Color c, float ancho) { using (SKPaint p = new SKPaint { Color = c.Sk(), StrokeWidth = ancho }) Rocola.Nativo.Pixel.Traza(C, (SKPath)ruta, p, Suave, Medio, EsCopia); }
         public void Traslada(float dx, float dy) { C.Translate(dx, dy); }
         public void Escala(float sx, float sy) { C.Scale(sx, sy); }
         public void Gira(float grados) { C.RotateDegrees(grados); }
@@ -71,6 +74,21 @@ namespace Banco
         public RectangleF LimitesRecorte { get { return RecorteLienzo.Limites(C); } }
         // la transformacion del codigo sobre la del HDC (Graphics.Transform), vista en dos puntos
         public SKMatrix Transformacion { get { SKMatrix inv; return baseMatriz.TryInvert(out inv) ? inv.PreConcat(C.TotalMatrix) : C.TotalMatrix; } }
+        // Graphics.Save y Restore: el estado (los modos, el recorte, la matriz del HDC y la cuenta de Skia) para volver a el
+        private sealed class Guardado { public int Cuenta, BaseCuenta; public bool ConRecorte; public SKMatrix Base; public ModoSuave S; public ModoLetra T; public ModoCopia K; public ModoFiltro I; public ModoPixel P; }
+        public object Guarda()
+        {
+            return new Guardado { Cuenta = C.Save(), S = Suavizado, T = Letra, K = Copia, I = Filtro, P = Pixel, Base = baseMatriz };
+        }
+        public void Restaura(object o)
+        {
+            Guardado s = (Guardado)o; if (s == null) return;
+            C.RestoreToCount(s.Cuenta);
+            Suavizado = s.S; Letra = s.T; Copia = s.K; Filtro = s.I; Pixel = s.P; baseMatriz = s.Base;
+            conRecorte = false; baseCuenta = C.SaveCount;
+        }
+        // (0,0), (1,0) y (0,1) pasados por la transformacion: la matriz en seis numeros (los de dos ejes y la traslacion)
+        public float[] Matriz6() { SKMatrix m = Transformacion; SKPoint p0 = m.MapPoint(0, 0), p1 = m.MapPoint(1, 0), p2 = m.MapPoint(0, 1); return new[] { p1.X - p0.X, p1.Y - p0.Y, p2.X - p0.X, p2.Y - p0.Y, p0.X, p0.Y }; }
         // (0,0) y (1,1) pasados por la transformacion del codigo: asi miran los arneses la matriz
         public PointF[] Transformados() { SKMatrix m = Transformacion; SKPoint a = m.MapPoint(0, 0), b = m.MapPoint(1, 1); return new[] { new PointF(a.X, a.Y), new PointF(b.X, b.Y) }; }
         // (lo que el programa recibe) el lienzo y su estado, en el orden de EstadoLienzo: suave, letra, copia, filtro, medio, matriz del HDC
@@ -87,6 +105,9 @@ namespace Banco
             string fam = Letras.Resuelve(familia); bool b = (estilo & 1) != 0, i = (estilo & 2) != 0, u = (estilo & 4) != 0;
             L = unidad == "Pixel" ? Letra.EnPixeles(fam, tam, b, i, u) : Letra.EnPuntos(fam, tam, b, i, u);
         }
+        private Fte(Letra l) { L = l; }
+        // una letra que ya hizo el programa (una Letra), mirada como esta: la misma, y soltarla suelta la letra
+        public static Fte De(object o) { return o == null ? null : new Fte((Letra)o); }
         public object Obj { get { return L; } }
         public string Nombre { get { return L.Familia; } }
         public float Tamano { get { return L.Tamano; } }
@@ -125,6 +146,7 @@ namespace Banco
     {
         public const bool Capa = false;   // (esta es la del programa nuevo)
         public static readonly Type TMapa = typeof(SKBitmap);
+        public static readonly Type TLienzo = typeof(SKCanvas);   // (lo que reciben las traducidas; la referencia recibe un Graphics)
         // el formato que XP le dio al mapa al crearlo (Image.PixelFormat): los puntos son siempre BGRA premultiplicado; el nombre solo se
         // apunta, como lo da la capa de la referencia
         private static readonly ConditionalWeakTable<SKBitmap, string> formatos = new ConditionalWeakTable<SKBitmap, string>();
@@ -149,7 +171,20 @@ namespace Banco
         }
         // FontStyle.ToString() de los bits que XP usa
         public static string NombreEstilo(int e) { if (e == 0) return "Regular"; string r = ""; if ((e & 1) != 0) r += "Bold"; if ((e & 2) != 0) r += (r.Length > 0 ? ", " : "") + "Italic"; if ((e & 4) != 0) r += (r.Length > 0 ? ", " : "") + "Underline"; if ((e & 8) != 0) r += (r.Length > 0 ? ", " : "") + "Strikeout"; return r; }
+        // el pincel liso que los arneses le dan a lo traducido: en el programa nuevo un SKPaint de ese color (soltarlo con Suelta)
+        public static object Brocha(Color c) { return new SKPaint { Color = c.Sk() }; }
+        public static int Marcas(object o) { return TieneAlfa(Formato(o)) ? 2 : 0; }   // (Image.Flags de la capa: HasAlpha, 2, si el formato trae alfa)
         public static SKPaint PincelLiso(Color c) { return new SKPaint { Color = c.Sk() }; }
+        // los puntos, el relleno y la caja de un trazo (lo que el arnes de fondo escribe de el)
+        public static string InfoRuta(object ruta, Func<RectangleF, string> r) { SKPath p = (SKPath)ruta; return " puntos=" + p.PointCount + " tipo=" + p.FillType + " caja=" + r(new RectangleF(p.Bounds.Left, p.Bounds.Top, p.Bounds.Width, p.Bounds.Height)); }
+        // lo que hace un control de la referencia con OnPaint (solo ella tiene controles): aqui no hay
+        public static void OnPaint(System.Reflection.MethodInfo onPaint, object control, Lz g, Rectangle r) { throw new InvalidOperationException("el programa nuevo no tiene OnPaint"); }
+        // LockBits(WriteOnly, Format32bppArgb) de un mapa entero: los puntos sin premultiplicar (un uint ARGB cada uno, fila por fila) pasan al mapa
+        public static unsafe void EscribePuntos(object mapa, uint[] argb)
+        {
+            SKBitmap s = (SKBitmap)mapa;
+            fixed (uint* p = argb) Pixeles.Escribe(s, new Rectangle(0, 0, s.Width, s.Height), FormatoPuntos.Argb32, (IntPtr)p, s.Width * 4);
+        }
         public static Lz Lienzo(object mapa) { return new Lz((SKBitmap)mapa); }
     }
 }

@@ -4,6 +4,8 @@
 set -u
 S=${VIDEOFORM1:-/root/rocola-trabajo/port/video-form1/arnes}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 mkdir -p $S/vistas-ref
 cp $X/Pruebas/VistasVideoForm1/VistasVideoForm1.csproj $X/Pruebas/VistasVideoForm1/VideoForm1.cs $S/vistas-ref/
 (cd $X/Pruebas/VistasVideoForm1 && dotnet build -c Release -nologo -v q -o $S/vistas-nuevo-bin 2>&1 | grep -E " error |rror\(s\)|arning\(s\)")

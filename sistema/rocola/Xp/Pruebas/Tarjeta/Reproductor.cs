@@ -91,13 +91,16 @@ namespace PruebasTarjeta
             Type tTarjeta = asm.GetType("Rocola.Tarjeta");
             mSuelta = tTarjeta != null ? tTarjeta.GetMethod("Suelta", Todo) : null;
             if (mSuelta == null) mSuelta = asm.GetType("Rocola.D3D9").GetMethod("Release", Todo);
+            // (oleada 8b, 13-11-2026) el Bitmap de la capa de GDI+ solo lo tiene la referencia congelada: se busca por su nombre y, en el
+            // programa nuevo (que ya no lo nombra y que, cuando se borre la capa, ya no lo tiene), tMapa y cMapa quedan nulos: la subida es la del SKBitmap
             tMapa = asm.GetType("Rocola.Dibujo2D.Bitmap");
             tFormato = asm.GetType("Rocola.Dibujo2D.PixelFormat");
-            foreach (ConstructorInfo c in tMapa.GetConstructors(Todo))
-            {
-                ParameterInfo[] p = c.GetParameters();
-                if (p.Length == 2 && p[0].ParameterType == typeof(SKBitmap)) cMapa = c;
-            }
+            if (tMapa != null)
+                foreach (ConstructorInfo c in tMapa.GetConstructors(Todo))
+                {
+                    ParameterInfo[] p = c.GetParameters();
+                    if (p.Length == 2 && p[0].ParameterType == typeof(SKBitmap)) cMapa = c;
+                }
             cDisp = tDisp.GetConstructor(Todo, null, new[] { typeof(IntPtr), typeof(int), typeof(int) }, null);
             subeSk = tDisp.GetMethod("CreateTextureFromBitmap", Todo, null, new[] { typeof(SKBitmap) }, null) != null;
             mLeeFondoNat = tDisp.GetMethod("LeeFondo", Todo);

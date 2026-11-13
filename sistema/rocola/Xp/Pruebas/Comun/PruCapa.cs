@@ -28,6 +28,16 @@ namespace Banco
         {
             using (SolidBrush br = new SolidBrush(c)) G.DrawString(s, f.F, br, r, sf != null ? sf.S : null);
         }
+        public void RellenaRuta(object ruta, Color c) { using (SolidBrush sb = new SolidBrush(c)) G.FillPath(sb, (GraphicsPath)ruta); }
+        public void TrazaRuta(object ruta, Color c, float ancho) { using (Pen pn = new Pen(c, ancho)) G.DrawPath(pn, (GraphicsPath)ruta); }
+        public object Guarda() { return G.Save(); }
+        public void Restaura(object o) { G.Restore((GraphicsState)o); }
+        public float[] Matriz6()
+        {
+            PointF[] p = { new PointF(0, 0), new PointF(1, 0), new PointF(0, 1) };
+            using (Matrix t = G.Transform) t.TransformPoints(p);
+            return new[] { p[1].X - p[0].X, p[1].Y - p[0].Y, p[2].X - p[0].X, p[2].Y - p[0].Y, p[0].X, p[0].Y };
+        }
         public void Traslada(float dx, float dy) { G.TranslateTransform(dx, dy); }
         public void Escala(float sx, float sy) { G.ScaleTransform(sx, sy); }
         public void Gira(float grados) { G.RotateTransform(grados); }
@@ -44,6 +54,8 @@ namespace Banco
     {
         public readonly Font F;
         public Fte(string familia, float tam, int estilo = 0, string unidad = "Point") { F = new Font(familia, tam, (FontStyle)estilo, unidad == "Pixel" ? GraphicsUnit.Pixel : GraphicsUnit.Point); }
+        private Fte(Font f) { F = f; }
+        public static Fte De(object o) { return o == null ? null : new Fte((Font)o); }
         public object Obj { get { return F; } }
         public string Nombre { get { return F.Name; } }
         public float Tamano { get { return F.Size; } }
@@ -78,6 +90,7 @@ namespace Banco
     {
         public const bool Capa = true;   // (esta es la de la referencia)
         public static readonly Type TMapa = typeof(Bitmap);
+        public static readonly Type TLienzo = typeof(Graphics);
         public static object NuevoMapa(int w, int h, string formato) { return new Bitmap(w, h, Formato(formato)); }
         public static object DeSk(SKBitmap b, string formato) { return b == null ? null : new Bitmap(b, Formato(formato)); }
         public static object Aprecia(object o, string formato) { return o as Bitmap ?? new Bitmap((SKBitmap)o, Formato(formato)); }
@@ -99,7 +112,18 @@ namespace Banco
             return sub;
         }
         public static string NombreEstilo(int e) { return ((FontStyle)e).ToString(); }
+        public static object Brocha(Color c) { return new SolidBrush(c); }
+        public static int Marcas(object o) { return ((Bitmap)o).Flags; }
         public static SKPaint PincelLiso(Color c) { return new SKPaint { Color = new SKColor(c.R, c.G, c.B, c.A) }; }
+        public static string InfoRuta(object ruta, Func<RectangleF, string> r) { GraphicsPath p = (GraphicsPath)ruta; return (" puntos=" + p.PointCount + " tipo=" + p.FillMode + " caja=" + r(p.GetBounds())).Replace("Alternate", "EvenOdd"); }
+        public static void OnPaint(System.Reflection.MethodInfo onPaint, object control, Lz g, Rectangle r) { using (PaintEventArgs pe = new PaintEventArgs(g.G, r)) onPaint.Invoke(control, new object[] { pe }); }
+        public static unsafe void EscribePuntos(object mapa, uint[] argb)
+        {
+            Bitmap b = (Bitmap)mapa; int w = b.Width, h = b.Height;
+            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) ((uint*)((byte*)d.Scan0 + y * d.Stride))[x] = argb[y * w + x];
+            b.UnlockBits(d);
+        }
         public static Lz Lienzo(object mapa) { return new Lz((Bitmap)mapa); }
     }
 }

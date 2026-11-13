@@ -5,6 +5,8 @@
 set -u
 S=${VIDEOFORM1:-/root/rocola-trabajo/port/video-form1/arnes}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 corre() {   # nombre archivo sed
   local C=$S/control/Xp; rm -rf $S/control; mkdir -p $C
   cp -r $X/Codigo $X/Plataforma $X/Nativo $C/

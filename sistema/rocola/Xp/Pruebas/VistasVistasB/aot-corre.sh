@@ -9,6 +9,8 @@
 set -u
 S=${VISTASB:-/root/rocola-trabajo/port/vistas-b}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 W=${ROCOLA_TRABAJO:-/root/rocola-trabajo/port/dibujo}
 D=$S/refdatos/sistema/rocola/Xp/bin/Release/net10.0
 rm -rf $S/refdatos; mkdir -p $D $S/tarjeta

@@ -7,6 +7,8 @@
 set -u
 S=${BUSCADOR:-/root/rocola-trabajo/port/buscador}
 X=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$X/Pruebas/Comun
 M=$S/mutante; P=$M/sistema/rocola
 L="ROCOLA_LETRAS_XP=/root/rocola-trabajo/port/dibujo/letras-xp-falsas"
 corre() { (cd $S && env ROCOLA_PANTALLA=fuera:64x64 RAPIDO=1 $L dotnet $1/VistasBuscador.dll > $2 2> $2.err); }

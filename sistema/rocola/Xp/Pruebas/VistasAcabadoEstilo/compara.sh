@@ -6,6 +6,8 @@
 # se comparan solo con la base: frente a la referencia cambian por la tanda 1 (la tarjeta: D3D9.Release es Tarjeta.Suelta).
 set -eu
 AQUI=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$AQUI/../.." && pwd); RAIZ=$(cd "$XP/../../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$XP/Pruebas/Comun
 W=${1:-/root/rocola-trabajo/port/acabado-estilo/vistas}
 REF=${REF:-/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp}
 BASE=${BASE:-b609319}

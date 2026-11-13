@@ -5,6 +5,8 @@
 # salidas. La referencia no se toca (solo se lee). CUALES="nuevo" repite solo esta copia.
 set -eu
 AQUI=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$AQUI/../.." && pwd); RAIZ=$(cd "$XP/../../.." && pwd)
+# (la clase Pru de los arneses: Pruebas/Comun, la de la capa para la referencia y la nativa para el programa nuevo; ver los .csproj)
+export ROCOLA_COMUN=$XP/Pruebas/Comun
 W=${1:-/root/rocola-trabajo/port/vistas-b/arnes}
 REF=${REF:-/root/rocola-trabajo/referencia-xp/sistema/rocola/Xp}
 BASE=${BASE:-ae8b50b771a63fcf19c57e5fd73f5535fce089e7}
