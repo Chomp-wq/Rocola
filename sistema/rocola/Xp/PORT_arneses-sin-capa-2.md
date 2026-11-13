@@ -158,3 +158,44 @@ Encima de `468c19f` esta en esta rama `dc01a8e` («arneses-sin-capa, revision»:
 de este grupo (lo trajo la revision de la primera parte; 1 linea mas y 2 menos en un arnes de la primera parte). No toca los 9 arneses ni
 `Pruebas/Comun`; las comprobaciones de arriba se midieron en `468c19f` y no se repitieron encima. El grep final (0 lineas con `Dibujo2D`,
 `Ventanas` o `PuenteDibujo` en los 9 `.cs`) y `git diff --numstat d069fda -- Pruebas/Comun` (48+0 y 162+0) si se repitieron con ella puesta.
+
+## Revision (revisor independiente, 13-11-2026, sobre `69d2071`)
+
+Leido `git diff d069fda..69d2071` (los 9 arneses, sus `.csproj`, los dos guiones y los anadidos a `Pruebas/Comun`) y repetido lo que sigue.
+No se encontro ningun fallo en la conversion; no se cambio codigo en esta revision (solo esta seccion).
+
+Lo repetido, en `69d2071` (con `dc01a8e` puesta), carpeta `/root/rocola-trabajo/port/arneses-sin-capa-2/rev`:
+
+- Los 9 arneses, compilados con la referencia congelada y con esta copia (0 errores), con las letras falsas y con DejaVu: los 36 archivos de
+  salida son iguales byte a byte a los de «antes» (la base `d069fda`). Contra la referencia: VistasAcabadoEstilo 3 lineas distintas de
+  6 607, las tres `il-*` (`il-SubeUi`, `il-RobaUiP`, `il-Ventana`: las de siempre, por la tanda 1), es decir 0 de 6 603; VistasVistasB
+  IGUALES (3 108); VideoForm1 (735), VistasA (1 266), Pared (1 719), Asistente (2 043), PantallaViva (768), Reposo (1 791) y Atraccion
+  (19 120) IGUALES, las dos letras. Los contadores de llamadas a lo traducido (la salida de errores) son los de antes (VistasB 1 904 y 243
+  por Pinta; Pared 1 612 y 51; Reposo 768; Asistente 777; Atraccion 68 432; VideoForm1 140; PantallaViva 291): el lado nuevo sigue
+  llamando al programa, no a una copia del arnes.
+- `dotnet build -c Release` en `Xp`: 0 errores y los 15 avisos de la base (CA2014 1, CA2022 2, CS1690 2, SYSLIB0050 1, SYSLIB0054 9).
+  El programa no cambia (`git diff --name-only d069fda` fuera de `Pruebas/` da solo este documento): diff-xp.py, NativeAOT, banco, cintas,
+  recorridos y escenas no aplican y no se corrieron.
+- grep de `Dibujo2D`, `Ventanas`, `Puente`, `Graphics`, `Bitmap`, `Font`, `StringFormat`, `GraphicsPath`, `Brush`, `Label`, `Control` en
+  los 9 `.cs`: solo en comentarios y en nombres de propiedades o de tipos mirados por reflexion (`"Font"`, `.Name == "Control"`), ninguno
+  como tipo. El analizador (`esc-final.txt`, de `468c19f`; los 9 arneses y `Comun` no cambian despues) da 0 lineas en los 9, `Modos.cs` y
+  `PruNativo.cs`.
+- `Pruebas/Comun`: solo anadidos (48+0 y 162+0). Lo que `PruNativo.cs` copia de la capa se miro contra `Plataforma/Dibujo2D.cs`
+  (`TextRenderer.DrawText`: ni texto vacio, ni `Color.Transparent`, ni letra nula; sin suavizar con `SingleBitPerPixel` y
+  `SingleBitPerPixelGridFit`; la matriz del HDC): igual. `Pru.MedidaDeForm1` casa con la rama de 8a como esta hoy (`ec834bb`:
+  `private IVentanaDeLaRocola ventana` en `Nativo/Form1.Ventana.cs`, `ClientSize` = `ventana.Cliente`, de tipo `Size`).
+
+LO QUE QUEDA PARA EL QUE JUNTA (no se puede arreglar desde esta rama):
+
+- CHOQUE CON LA PRIMERA PARTE. La revision de la primera parte (rama `port-arneses-sin-capa`, hoy en `008c094`) convirtio POR SU CUENTA
+  cuatro de los arneses de este grupo (VistasAtraccion `3cae1ba`, VistasAsistente `6d2c113`, VistasPantallaViva `4061f7e` y VistasVistasA
+  `d4389d9`) y anadio a `Pruebas/Comun` cosas con los mismos nombres que las de aqui. `git merge-tree` de las dos ramas: conflicto de
+  contenido en `Asistente.cs`, `Atraccion.cs`, `PantallaViva.cs` y `VistasA.cs`; y `PruCapa.cs` y `PruNativo.cs` se juntan SIN conflicto
+  pero NO compilan (miembros dos veces, CS0111): `Lz.RellenaOvalo`, `Lz.RellenaCon` (las dos), `Pru.Ruta`, `Pru.AnadeLinea`, `Pru.Familia`
+  y `Pru.FamiliaGenerica`. Receta: de esos cuatro arneses y de `Pruebas/Comun`, quedarse con una sola de las dos ramas entera. Con la de
+  aqui (la que tiene los 9 y las 36 salidas comprobadas arriba) sobran de la otra rama sus anadidos a `Comun` (`RecortaRuta`,
+  `Fte.DeFamilia`, `EscribePremultiplicados`, `RutaOvalo`, `RellenaMosaico`, `NombreFamilia(object)` y los repetidos): solo los usan sus
+  versiones de esos cuatro arneses. `VistasAjustes/Vistas.cs` es identico en las dos ramas (`dc01a8e` aqui es `32cbcc7` alli): no choca.
+  Tras juntar, repetir los cuatro arneses.
+- Lo demas de «Lo que queda» y de «Riesgos» sigue igual (los guiones de control negativo sin rehacer, repetir contra 8a al juntar,
+  `aot-corre.sh` de los arneses sin correr).
