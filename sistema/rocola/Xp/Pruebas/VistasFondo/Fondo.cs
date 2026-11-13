@@ -74,7 +74,7 @@ namespace BancoFondo
             if (e.Trans == 2) g.Escala(1.3f, 1.3f); else if (e.Trans == 3) g.Gira(7f);
             else if (e.Trans == 5) g.Traslada(0.5f, 0.25f); else if (e.Trans == 6) g.Traslada(7, 5);
             if (e.Recorte == 1) g.Recorta(new Rectangle(w / 4, h / 3, w / 3, h / 4));   // repintado parcial (la casilla del cubo)
-            else if (e.Recorte == 2) { g.Recorta(new Rectangle(0, 0, w, h)); g.Sella(); }   // como lo da Ventanas.Escritorio a un OnPaint
+            else if (e.Recorte == 2) { g.Recorta(new Rectangle(0, 0, w, h)); g.Sella(); }   // como lo da el escritorio de la referencia a un OnPaint
             return g;
         }
         private static string Deja(Lz g) { return " deja=" + g.Suavizado + "/" + g.Copia + "/" + g.Pixel + "/" + g.Filtro + " m=" + Mat(g.Transformados()) + " recorte=" + R(g.LimitesRecorte); }
