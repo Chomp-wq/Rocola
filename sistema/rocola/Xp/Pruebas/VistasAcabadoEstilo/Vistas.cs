@@ -371,7 +371,7 @@ namespace Banco
         private static object Form1Vacio(int w, int h)
         {
             object f = RuntimeHelpers.GetUninitializedObject(typeof(Form1));
-            Pon(f, "bounds", new Rectangle(0, 0, w, h));   // ClientSize (sin borde: FormBorderStyle.None)
+            Pru.MedidaDeForm1(f, w, h);   // ClientSize (sin borde: FormBorderStyle.None): el campo 'bounds' de Control mientras Form1 herede de Form; sin herencia, su ventana
             return f;
         }
         private static void Paginas(Random r)

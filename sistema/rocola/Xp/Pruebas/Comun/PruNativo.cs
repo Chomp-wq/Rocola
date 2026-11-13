@@ -321,5 +321,32 @@ namespace Banco
             string f = Formato(mapa);
             return f == "Format32bppPArgb" ? FormatoMapa.PArgb32 : f == "Format32bppArgb" ? FormatoMapa.Argb32 : f == "Format32bppRgb" ? FormatoMapa.Rgb32 : f == "Format24bppRgb" ? FormatoMapa.Rgb24 : FormatoMapa.Otro;
         }
+        // LA MEDIDA DE UNA Form1 SIN CONSTRUIR (la que hacen los arneses con GetUninitializedObject para llamar a lo que solo lee sus campos).
+        // Mientras Form1 herede de Form (la capa de la transicion), su medida es el campo 'bounds' de Control, como en la referencia. Cuando
+        // ya no hereda de nada (oleada 8a, form1-sin-form), la pide a su ventana (el campo 'ventana', una interfaz de la pantalla nativa):
+        // se le pone una de prueba que dice esa medida y contesta a todo lo demas con el valor de fabrica de su tipo (falso, cero, nada),
+        // que es lo que da un Control sin construir. Todo por reflexion: sirve con y sin la herencia.
+        public static void MedidaDeForm1(object form, int w, int h)
+        {
+            const System.Reflection.BindingFlags todo = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly;
+            for (Type t = form.GetType(); t != null; t = t.BaseType) { System.Reflection.FieldInfo fi = t.GetField("bounds", todo); if (fi != null) { fi.SetValue(form, new Rectangle(0, 0, w, h)); return; } }
+            System.Reflection.FieldInfo fv = form.GetType().GetField("ventana", todo);
+            if (fv == null) throw new MissingFieldException(form.GetType().Name, "bounds/ventana");
+            object v = System.Reflection.DispatchProxy.Create(fv.FieldType, typeof(VentanaDePrueba));
+            ((VentanaDePrueba)v).Medida = new Size(w, h);
+            fv.SetValue(form, v);
+        }
+    }
+
+    // la ventana de prueba de Pru.MedidaDeForm1: lo que devuelve una medida da la suya; lo demas, el valor de fabrica de su tipo
+    public class VentanaDePrueba : System.Reflection.DispatchProxy
+    {
+        public Size Medida;
+        protected override object Invoke(System.Reflection.MethodInfo m, object[] a)
+        {
+            Type r = m.ReturnType;
+            if (r == typeof(Size)) return Medida;
+            return r == typeof(void) || !r.IsValueType ? null : Activator.CreateInstance(r);
+        }
     }
 }

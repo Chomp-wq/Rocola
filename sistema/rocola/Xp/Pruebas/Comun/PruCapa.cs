@@ -155,6 +155,12 @@ namespace Banco
         public static string NombreFamilia(string nombre) { return new FontFamily(nombre).Name; }
         public static object Lee(byte[] datos) { using (System.IO.MemoryStream ms = new System.IO.MemoryStream(datos)) return Image.FromStream(ms); }
         public static object FormatoNativo(object mapa) { throw new InvalidOperationException("la referencia no tiene FormatoMapa"); }
+        // la medida de una Form1 sin construir: en la referencia Form1 hereda de Form y es el campo 'bounds' de Control
+        public static void MedidaDeForm1(object form, int w, int h)
+        {
+            for (Type t = form.GetType(); t != null; t = t.BaseType) { FieldInfo fi = t.GetField("bounds", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly); if (fi != null) { fi.SetValue(form, new Rectangle(0, 0, w, h)); return; } }
+            throw new MissingFieldException(form.GetType().Name, "bounds");
+        }
         public static SKPath Ruta(object o) { return o as SKPath ?? ((GraphicsPath)o).P; }
         public static object BrochaDegradado(RectangleF caja, Color c1, Color c2, float angulo) { return new LinearGradientBrush(caja, c1, c2, angulo); }
         public static object BrochaTextura(object mapa, bool medio) { return new TextureBrush((Image)mapa, WrapMode.Tile); }
