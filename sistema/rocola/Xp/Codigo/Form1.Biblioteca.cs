@@ -3214,7 +3214,7 @@ namespace Rocola
 #endif
             {
                 attractView.Visible = true;
-                PantallaRocola.VistaAlFrente(attractView);   // EN LINUX: attractView.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); mientras la vista sea control de la capa, el suyo)
+                PantallaRocola.VistaAlFrente(attractView);   // EN LINUX: attractView.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0))
             }
         }
 
@@ -3317,7 +3317,7 @@ namespace Rocola
             {
                 searchOverlay.Visible = true;
                 PantallaRocola.VistaAlFrente(searchOverlay);   // EN LINUX: searchOverlay.BringToFront(): por la pantalla (SetChildIndex(this, 0))
-                PantallaRocola.EnfocaVista(searchOverlay);   // EN LINUX: searchOverlay.Focus(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: el Focus de WinForms; mientras la vista sea control de la capa, el suyo)
+                PantallaRocola.EnfocaVista(searchOverlay);   // EN LINUX: searchOverlay.Focus(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: el Focus de WinForms)
             }
             searchOverlay.Invalidate();
         }

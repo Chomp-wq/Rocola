@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el cielo del dibujo por procesador (Starfield, BgPanel), la luna, el grano, el contorno redondeado y el color de las portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que piden o reciben archivos sin traducir pasa por el puente (Plataforma/Puente.fondo.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el cielo del dibujo por procesador (Starfield, BgPanel), la luna, el grano, el contorno redondeado y el color de las portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -1276,7 +1276,7 @@ namespace Rocola
         // Campo de estrellas reutilizable: cielo + estrellas titilantes (mas brillantes) + estrellas
         // fugaces ocasionales. Lo usan el fondo de navegacion (teñido por genero) y el modo atraccion
         // (cielo negro y estrellas multicolor). El titileo es LENTO a proposito para verse suave aun a 8fps.
-        private partial class Starfield   // EN LINUX: partial: la firma de XP de Draw, DrawCached y DrawReactive (con un Graphics, para los que aun no estan traducidos) va en el puente (Puente.fondo.cs)
+        private partial class Starfield   // EN LINUX: partial (ya sin otra parte: las firmas de XP de Draw, DrawCached y DrawReactive con un Graphics se borraron con las capas)
         {
             public bool Varied = false;   // true = colores variados (atraccion); false = blanco->tinte (genero)
             public float Density = 1f;    // multiplicador de cantidad de estrellas (el fondo del form usa menos)
@@ -1664,7 +1664,7 @@ namespace Rocola
             // extra por minuto, costoso en el CPU lento de la rocola. Se mantiene 1 (sin atenuar) siempre.
             private static float StarFade() { return 1f; }
 
-            public void Draw(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (suavizado, filtro, medio pixel, copia); la firma de XP (Form1.Pared.cs, con un Graphics) va en el puente (Puente.fondo.cs)
+            public void Draw(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, Color tint, double phase, bool shooting, float pulse)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (suavizado, filtro, medio pixel, copia)
             {
                 if (w < 4 || h < 4) return;
                 Ensure(w, h);
@@ -1749,7 +1749,7 @@ namespace Rocola
             }
 
             // Fondo del formulario (franjas): cielo cacheado + estrellas TITILANTES por cuadros horneados.
-            public void DrawCached(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (lo que usa: filtro, medio pixel y copia); la firma de XP (con un Graphics, para Form1.cs) va en el puente (Puente.fondo.cs); BgPanel (su Pinta) ya la llama directo
+            public void DrawCached(SKCanvas g, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama (lo que usa: filtro, medio pixel y copia); BgPanel (su Pinta) y Form1.cs (el fondo de la ventana) la llaman directo
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
@@ -2187,7 +2187,7 @@ namespace Rocola
             // los bordes de las secciones sin costura. El latido y las fugaces solo en repintado COMPLETO (en el
             // parcial de la casilla del cubo se reusa la capa: no relatir ni relanzar fugaces por una franja).
             // pLo/pMid/pHi = pulso de graves/medios/agudos (0..1). Cada estrella late con SU banda (ver DrawBeatFlare).
-            public void DrawReactive(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama; la firma de XP (Form1.Pared.cs, Form1.Buscador.cs, con un Graphics) va en el puente (Puente.fondo.cs)
+            public void DrawReactive(SKCanvas g, bool suave, Filtro filtro, bool medio, bool copia, int w, int h, Color skyTop, Color skyBottom, float pLo, float pMid, float pHi)   // EN LINUX: el lienzo de Skia y el estado del Graphics de quien la llama
             {
                 if (w < 4 || h < 4) return;
                 EnsureLayers(w, h);          // arma el patron de estrellas: el cielo necesita el polvo ya repartido
@@ -2394,7 +2394,7 @@ namespace Rocola
                 Sky.SkyFullH = conDueno ? cliente.Height : h;   // EN LINUX: (this.Parent != null) ? this.Parent.ClientSize.Height : h
                 Sky.SkyMid = SkyColorMid(Accent); Sky.Acento = Accent;
                 Sky.Dim = BgDim;   // en sincronia con la rejilla y las franjas (una sola pieza)
-                Sky.DrawCached(g, filtro, medio, copia, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de este archivo); ya no pasa por la firma de XP del puente
+                Sky.DrawCached(g, filtro, medio, copia, w, h, SkyColor(Accent), SkyColor2(Accent));   // cielo en degradado CONTINUO; un cubo transparente girando encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de este archivo)
             }
             private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } }   // EN LINUX: Control.BackColor (el del Panel; Control.OnBackColorChanged lo repinta): el color propio, que Form1 siempre pone al crearlo (Form1.cs:1182); sin poner, Control da el de su dueno (propiedad ambiental) o, sin dueno, SystemColors.Control (COLOR_BTNFACE de Luna): aqui siempre este ultimo, que no se ve porque nunca queda sin poner
         }

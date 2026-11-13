@@ -701,7 +701,7 @@ namespace Rocola
         {
             avisoCuadro = (GetAviso != null) ? GetAviso() : new GpuAviso();
             if (avisoCuadro.Has && avisoCuadro.Bmp != null && (avisoCuadro.Ver != avisoVer || avisoTex == IntPtr.Zero))
-            { avisoTex = Upload(avisoTex, ref avisoBw, ref avisoBh, avisoCuadro.Bmp, out avisoU, out avisoV); avisoVer = avisoCuadro.Ver; }   // EN LINUX: Upload (D3D9Star.cs, ya traducido) sube el SKBitmap directo (el que llegaba por el puente era el mismo mapa)
+            { avisoTex = Upload(avisoTex, ref avisoBw, ref avisoBh, avisoCuadro.Bmp, out avisoU, out avisoV); avisoVer = avisoCuadro.Ver; }   // EN LINUX: Upload (D3D9Star.cs, ya traducido) sube el SKBitmap directo
             invitaCuadro = (GetInvita != null) ? GetInvita() : new GpuInvita();
             if (invitaCuadro.Has && invitaCuadro.Bmp != null && (invitaCuadro.Ver != invitaVer || invitaTex == IntPtr.Zero))
             { invitaTex = Upload(invitaTex, ref invitaBw, ref invitaBh, invitaCuadro.Bmp, out invitaU, out invitaV); invitaVer = invitaCuadro.Ver; }   // EN LINUX: el SKBitmap, directo a Upload

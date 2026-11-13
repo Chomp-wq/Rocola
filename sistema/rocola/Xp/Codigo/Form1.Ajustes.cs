@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las piezas de Ctrl+F3, el aviso de siempre, FamiliaUi y RoundRect dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin el GDI+ de la transicion (ya sin using Rocola.Dibujo2D); de System.Drawing quedan los tipos de valor (Color, Rectangle, Point, Size), y System.Drawing.Drawing2D e Imaging de XP ya no hacen falta
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: las piezas de Ctrl+F3, el aviso de siempre, FamiliaUi y RoundRect dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin GDI+; de System.Drawing quedan los tipos de valor (Color, Rectangle, Point, Size), y System.Drawing.Drawing2D e Imaging de XP ya no hacen falta
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -283,13 +283,13 @@ namespace Rocola
         private static readonly FormatoTexto SfMedir = CreaSfMedir();   // EN LINUX: StringFormat -> FormatoTexto (Nativo/TextoGdiPlus.cs: como acomoda GDI+ un texto en su caja)
         private static FormatoTexto CreaSfMedir()   // EN LINUX: StringFormat -> FormatoTexto
         {
-            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento (el mismo objeto que StringFormat.GenericTypographic de lo aun no traducido: Plataforma/Puente.cs)
+            FormatoTexto sf = new FormatoTexto(FormatoTexto.TipograficoCompartido);   // EN LINUX: new StringFormat(StringFormat.GenericTypographic): una copia del tipografico COMPARTIDO tal como este en ese momento
             sf.Banderas |= BanderasTexto.SinPartir | BanderasTexto.ContarEspacios;   // EN LINUX: FormatFlags |= NoWrap | MeasureTrailingSpaces (las anade; los mismos numeros)
             return sf;
         }
-        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra. La firma de XP con un Graphics (Plataforma/Puente.ventanas2.cs) se quito el 12-11-2026: ya nadie la llamaba
+        private static int AnchoTexto(AjusteLetra g, string t, Rocola.Nativo.Letra f)   // EN LINUX: (Graphics g, string t, Font f): del Graphics, MeasureString solo mira su modo de letra (TextRenderingHint), que llega a la vista (PORT_DIBUJO.md: el estado que cambia entre llamadas va de parametro); Font -> Letra
         {
-            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar; el Graphics que faltaba lo miraba la firma de XP del puente (quitada el 12-11-2026)
+            if (f == null || string.IsNullOrEmpty(t)) return 0;   // EN LINUX: (XP) g == null ||: el modo de letra es un valor y no puede faltar
             // El formato tipografico mide el texto DESNUDO; DrawString con un formato normal le pone un poco
             // de aire a los lados. Ese aire se suma aqui (es proporcional al cuerpo) para que la caja calculada
             // aguante lo que de verdad se pinta.
@@ -1782,7 +1782,7 @@ namespace Rocola
             configMode = true;
             configStep = 0;
             for (int i = 0; i < configCap.Length; i++) configCap[i] = Tecla.None;   // EN LINUX: Keys -> Tecla, los mismos numeros
-            if (lblConfig != null) { lblConfig.Visible = true; PantallaRocola.VistaAlFrente(lblConfig); }   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
+            if (lblConfig != null) { lblConfig.Visible = true; PantallaRocola.VistaAlFrente(lblConfig); }   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0))
             UpdateConfigPrompt(null);
         }
 

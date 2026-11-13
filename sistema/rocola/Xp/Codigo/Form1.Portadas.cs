@@ -788,7 +788,7 @@ namespace Rocola
         {
             if (b == null) return false;
             int w = b.Width, h = b.Height;
-            int paso = Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr d = System.Runtime.InteropServices.Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)paso * h)); Pixeles.LeeSinPremultiplicar(b, new Rectangle(0, 0, w, h), d, paso);   // EN LINUX: b.LockBits(entero, ReadOnly, Format32bppArgb): una copia sin premultiplicar con el paso de GDI+ (Nativo/Pixeles.cs, como Dibujo2D.cs)
+            int paso = Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr d = System.Runtime.InteropServices.Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)paso * h)); Pixeles.LeeSinPremultiplicar(b, new Rectangle(0, 0, w, h), d, paso);   // EN LINUX: b.LockBits(entero, ReadOnly, Format32bppArgb): una copia sin premultiplicar con el paso de GDI+ (Nativo/Pixeles.cs, como el Dibujo2D.cs de la referencia)
             try
             {
                 int[] fila = new int[w];
@@ -834,7 +834,7 @@ namespace Rocola
         {
             if (!codecJpegBuscado)
             {
-                try { codecJpegMiniatura = SKEncodedImageFormat.Jpeg; }   // EN LINUX: (XP) el de MimeType "image/jpeg" de ImageCodecInfo.GetImageEncoders(); SkiaSharp lo trae siempre (Imagenes.GuardaJpeg), como la lista de Dibujo2D.cs
+                try { codecJpegMiniatura = SKEncodedImageFormat.Jpeg; }   // EN LINUX: (XP) el de MimeType "image/jpeg" de ImageCodecInfo.GetImageEncoders(); SkiaSharp lo trae siempre (Imagenes.GuardaJpeg), como la lista del Dibujo2D.cs de la referencia
                 catch { }
                 codecJpegBuscado = true;
             }
@@ -984,7 +984,7 @@ namespace Rocola
                             // propio borde y queda opaca de verdad, que es lo que permite guardarla en JPEG (SaveThumb). Las de
                             // paleta (GIF) pueden traer un color transparente sin canal alfa: esas no cuentan como opacas.
                             bool fuenteOpaca = JpegActivo && formatoSrc != FormatoImagen.Argb32   // EN LINUX: !Image.IsAlphaPixelFormat(src.PixelFormat): de los tres formatos que da la lectura, solo Argb32 (Format32bppArgb) trae alfa
-                                               && formatoSrc != FormatoImagen.Paleta8 && formatoSrc != FormatoImagen.Argb32;   // EN LINUX: (PixelFormat & Indexed) == 0: Paleta8 es Format8bppIndexed; (Flags & HasAlpha) == 0: la lectura solo marca HasAlpha en Argb32 (como Dibujo2D.cs)
+                                               && formatoSrc != FormatoImagen.Paleta8 && formatoSrc != FormatoImagen.Argb32;   // EN LINUX: (PixelFormat & Indexed) == 0: Paleta8 es Format8bppIndexed; (Flags & HasAlpha) == 0: la lectura solo marca HasAlpha en Argb32 (como el Dibujo2D.cs de la referencia)
                             using (SKCanvas g = new SKCanvas(thumb))   // EN LINUX: Graphics.FromImage(thumb): un lienzo sobre la miniatura
                             {
                                 Filtro filtro = Filtro.BilinealAlta;   // filtro original de la miniatura (1 vez por disco)   // EN LINUX: g.InterpolationMode = HighQualityBilinear, en una variable

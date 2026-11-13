@@ -707,7 +707,7 @@ namespace Rocola
         {
             return Color.FromArgb(255, (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
         }
-        private static SKPath RutaRedonda(RectangleF r, float radio)   // EN LINUX: Redondo de XP, con un SKPath (GraphicsPath); nadie pide ya el GraphicsPath: la firma de XP del puente se quito el 12-11-2026
+        private static SKPath RutaRedonda(RectangleF r, float radio)   // EN LINUX: Redondo de XP, con un SKPath (GraphicsPath)
         {
             SKPath p = new SKPath { FillType = SKPathFillType.EvenOdd };   // EN LINUX: new GraphicsPath(): su relleno de fabrica, Alternate, es par-impar
             float d = Math.Min(radio * 2f, Math.Min(r.Width, r.Height));

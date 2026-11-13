@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); la interfaz, la franja y las piezas son SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP) que D3D9Star.cs sube tal cual; los rotulos (Nativo/RotuloVista.cs) dan su Letra directo; lo que aun es de la capa (el precalentado de la atraccion) pasa por el puente (Plataforma/Puente.video-form1.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la interfaz que se sube a la tarjeta (EnsureUiOverlay, EnsureUiBotOverlay, EnsureUiPieza, DrawCtrlOverlay, DrawLabelOverlay) y el precalentado (EnSeco) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (las portadas de la cache son SKBitmap y van a la tarjeta tal cual), y llaman directo, con el lienzo y su estado, a las vistas ya traducidas (el buscador, la casilla de BUSCAR, la barra de ayuda y las de Form1.Vistas.cs, DiscoVivoGpu.cs y AyudaCasillaGpu.cs); la interfaz, la franja y las piezas son SKBitmap (Bgra8888 premultiplicado, el Format32bppPArgb de XP) que D3D9Star.cs sube tal cual; los rotulos (Nativo/RotuloVista.cs) dan su Letra directo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -99,7 +99,7 @@ namespace Rocola
             videoFull = true;
             LayoutControls();
             video.AlFrente();   // EN LINUX: BringToFront: la capa del video, encima en la pantalla
-            if (lblAttract != null) { lblAttract.Visible = true; PantallaRocola.VistaAlFrente(lblAttract); }   // EN LINUX: lblAttract.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
+            if (lblAttract != null) { lblAttract.Visible = true; PantallaRocola.VistaAlFrente(lblAttract); }   // EN LINUX: lblAttract.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0))
         }
         private void ExitVideoFull()
         {
@@ -842,13 +842,13 @@ namespace Rocola
                 lblGpu.BackColor = Color.FromArgb(200, 0, 0, 0); lblGpu.ForeColor = Color.Yellow;
                 lblGpu.Font = Rocola.Nativo.Letra.EnPuntos(Letras.AnchoFijo, 10f, true);   // EN LINUX: new Font(FontFamily.GenericMonospace, 10f, FontStyle.Bold): la de ancho fijo de XP (Courier New) en puntos y negrita; el rotulo (Nativo/RotuloVista.cs) la recibe como Letra, directo
                 lblGpu.TextAlign = AlineaTexto.MiddleCenter; lblGpu.Visible = false;   // EN LINUX: ContentAlignment -> AlineaTexto (Nativo/Pieza.cs), los mismos numeros
-                PantallaRocola.AgregaVista(this, lblGpu);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
+                PantallaRocola.AgregaVista(this, lblGpu);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add)
             }
             if (gpuPanel == null)
             {
                 gpuPanel = new GpuPanel();
                 Point ultimoMouseGpu = new Point(-10000, -10000);
-                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Mueve, delegate(Raton mouse) {   // EN LINUX: gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse): el evento MouseMove del panel, por la pantalla (Nativo/PantallaRocola.Vistas.cs: lo avisan su hueco de la capa o la pantalla nativa despues de su Raton, donde WinForms lanza el evento: Control.OnMouseMove)
+                PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Mueve, delegate(Raton mouse) {   // EN LINUX: gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse): el evento MouseMove del panel, por la pantalla (Nativo/PantallaRocola.Vistas.cs: lo avisa la pantalla despues de su Raton, donde WinForms lanza el evento: Control.OnMouseMove)
                     if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
                     ultimoMouseGpu = new Point(mouse.X, mouse.Y); lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;   // EN LINUX: mouse.Location (MouseEventArgs.Location: new Point(X, Y))
                     AsistenteMueveRaton(new Point(mouse.X, mouse.Y));   // EN LINUX: mouse.Location
@@ -978,7 +978,7 @@ namespace Rocola
                     key = Mix(key, searchOverlay.ToastOn); key = Mix(key, searchOverlay.ToastMsg);
                     return searchOverlay.Nuevo ? Mix(key, searchOverlay.FirmaContenido()) : key;
                 };
-                PantallaRocola.AgregaVista(this, gpuPanel);   // EN LINUX: Controls.Add(gpuPanel): al fondo de la lista de la ventana (Nativo/PantallaRocola.Vistas.cs; en la ventana de la capa, su hueco)
+                PantallaRocola.AgregaVista(this, gpuPanel);   // EN LINUX: Controls.Add(gpuPanel): al fondo de la lista de la ventana (Nativo/PantallaRocola.Vistas.cs)
             }
             if (on && !gpuEnabled)
             {
@@ -1018,7 +1018,7 @@ namespace Rocola
             if (searchOverlay != null && searchOpen)
             {
                 searchOverlay.Visible = !gpuEnabled;
-                if (!gpuEnabled) { PantallaRocola.VistaAlFrente(searchOverlay); PantallaRocola.EnfocaVista(searchOverlay); }   // EN LINUX: searchOverlay.BringToFront() y searchOverlay.Focus(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0) y el Focus de WinForms; mientras la vista sea control de la capa, los suyos)
+                if (!gpuEnabled) { PantallaRocola.VistaAlFrente(searchOverlay); PantallaRocola.EnfocaVista(searchOverlay); }   // EN LINUX: searchOverlay.BringToFront() y searchOverlay.Focus(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0) y el Focus de WinForms)
             }
             if (attractView != null && attractOn)
             {
@@ -1302,7 +1302,7 @@ namespace Rocola
                     else if (cancionesTransparentes && songList != null)
                     {
                         int listState = g.Save(); g.Translate(songList.Left, songList.Top);   // EN LINUX: GraphicsState listState = g.Save() (la cuenta del lienzo) y g.TranslateTransform
-                        g.Save(); g.ClipRect(new SKRect(0, 0, songList.Width, songList.Height), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(rect): no hay otro recorte en esta imagen (reemplazarlo es recortar), en un Save del lienzo como lo pone la capa (se va con el Restore de listState); de pixeles enteros, sin suavizar, como GDI+
+                        g.Save(); g.ClipRect(new SKRect(0, 0, songList.Width, songList.Height), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(rect): no hay otro recorte en esta imagen (reemplazarlo es recortar), en un Save del lienzo como lo ponia la capa de la referencia (se va con el Restore de listState); de pixeles enteros, sin suavizar, como GDI+
                         songList.RenderTransparentGpuTint(g, suave, copia, filtro, medio, cancionesCristal, glassCapas, Lighten(bgAccent, .55)); g.RestoreToCount(listState);   // EN LINUX: la traducida (AcabadoGpu.cs) con el lienzo y su estado; g.Restore(listState)
                     }
                     else
@@ -1851,7 +1851,7 @@ namespace Rocola
 
         // Dibuja un control una vez en un mapa de bits de usar y tirar. Nada de esto se ve: lo unico que hace
         // es que lo que ese dibujo hornea quede hecho. false = todavia no tiene tamano, se reintenta luego.
-        private bool EnSeco(IVista c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: Control c -> IVista c (armado-vistas): de la vista solo se lee su medida (Nativo/IVista.cs); dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); el buscador y la lista de los precalentados (PrecargaPaginaGpu.cs, Form1.Portadas.cs) la llaman directo con ese lienzo y ese estado; solo la atraccion (Form1.Portadas.cs), que aun pinta con el Graphics de su OnPaint, llega por la firma de XP del puente (Plataforma/Puente.video-form1.cs)
+        private bool EnSeco(IVista c, Action<SKCanvas, bool, AjusteLetra> dibuja)   // EN LINUX: Control c -> IVista c (armado-vistas): de la vista solo se lee su medida (Nativo/IVista.cs); dibuja recibe el lienzo de Skia y el estado que aqui se pone (suavizado y modo de letra; la copia, el medio pixel y el filtro, los de fabrica); el buscador y la lista de los precalentados (PrecargaPaginaGpu.cs, Form1.Portadas.cs) la llaman directo con ese lienzo y ese estado; la atraccion (Form1.Portadas.cs) tambien
         {
             if (c == null || c.Width < 8 || c.Height < 8) return false;
             using (SKBitmap b = Mapas.Nuevo(c.Width, c.Height))   // EN LINUX: new Bitmap(w, h, Format32bppPArgb): los puntos nativos (Bgra8888 premultiplicado, transparentes)

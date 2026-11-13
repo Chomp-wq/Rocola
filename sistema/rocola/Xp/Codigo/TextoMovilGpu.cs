@@ -298,7 +298,7 @@ namespace Rocola
             return CintaDeLista(group);
         }
         private void SubeCinta(CintaTile tile)
-        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }   // EN LINUX: Upload (D3D9Star.cs, ya traducido) sube el SKBitmap de la cinta directo (el que llegaba por el puente era el mismo mapa)
+        { tile.Tex = Upload(tile.Tex, ref tile.W, ref tile.H, tile.Source, out tile.U, out tile.V); }   // EN LINUX: Upload (D3D9Star.cs, ya traducido) sube el SKBitmap de la cinta directo
 
         private bool CintaVisible(CintaTile tile, int now)
         {

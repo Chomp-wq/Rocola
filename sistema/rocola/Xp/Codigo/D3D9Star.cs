@@ -101,7 +101,7 @@ namespace Rocola
             if (CintaTarjeta.Graba) CintaTarjeta.Nuevo(this, hwnd, w, h);   // (pruebas: ROCOLA_CINTA, Nativo/CintaTarjeta.cs)
             try
             {
-                // EN LINUX: Direct3DCreate9: la tarjeta es el contexto de OpenGL ES 2 de este hilo (el de la pantalla, Plataforma/Anfitrion.cs)
+                // EN LINUX: Direct3DCreate9: la tarjeta es el contexto de OpenGL ES 2 de este hilo (el de la pantalla, Nativo/Anfitrion.cs)
                 MakePP(hwnd, w, h);   // EN LINUX: lo de D3DPRESENT_PARAMETERS, en el dispositivo
                 // EN LINUX: CreateDevice (HARDWARE_VP y, si falla, SOFTWARE_VP) = el fondo (una textura con su framebuffer) y los tres programas de
                 // las etapas (CreaFondo, Nativo/DispositivoTarjetaGl.cs). Los vertices de XP ya vienen transformados: en OpenGL no hay procesado
@@ -393,7 +393,7 @@ namespace Rocola
                 // Agrupa filas contiguas sin padding en bloques de hasta 64 KiB. Una copia gigante
                 // resulto mas lenta en la medicion; los bloques reducen interop sin ese retroceso.
                 // Stride negativo o pitch distinto conservan la copia exacta por filas.
-                Pixeles.CopiaSinPremultiplicar(bmp, new Rectangle(0, 0, w, h), bits, pitch);   // EN LINUX: LockBits(ReadOnly, Format32bppArgb) y la copia a lo bloqueado, en una pasada: los puntos sin premultiplicar (la tabla truncada de la capa, Nativo/Pixeles.cs) directo a lo bloqueado, fila a fila con su paso; los mismos bytes que las dos copias de XP, sin la copia aparte de GDI+. En XP:
+                Pixeles.CopiaSinPremultiplicar(bmp, new Rectangle(0, 0, w, h), bits, pitch);   // EN LINUX: LockBits(ReadOnly, Format32bppArgb) y la copia a lo bloqueado, en una pasada: los puntos sin premultiplicar (la tabla truncada de la capa de la referencia, Nativo/Pixeles.cs) directo a lo bloqueado, fila a fila con su paso; los mismos bytes que las dos copias de XP, sin la copia aparte de GDI+. En XP:
                 // EN LINUX: if (lr.Pitch == rowBytes && bd.Stride == rowBytes)
                 // EN LINUX: {
                 // EN LINUX:     long total = (long)rowBytes * h;
@@ -1040,10 +1040,10 @@ namespace Rocola
         internal bool PreparaDispositivo() { return Ok && gpu.PreparaDispositivo(); }
 
         public void SetSky(uint top, uint mid, uint bot) { skyTop = top; skyMid = mid; skyBot = bot; }
-        public IntPtr CreateOverlay(SKBitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap: el puente con Bitmap, Plataforma/Puente.frontera.cs, se quito)
-        public IntPtr CreateCoverShared(SKBitmap bmp, out float uMax, out float vMax) { return gpu.CreaPortadaCompartida(bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap: el puente con Bitmap, Plataforma/Puente.frontera.cs, se quito)
-        public bool UpdateOverlay(IntPtr tex, SKBitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap: el puente con Bitmap, Plataforma/Puente.frontera.cs, se quito)
-        public bool UpdateOverlayRegion(IntPtr tex, SKBitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap: el puente con Bitmap, Plataforma/Puente.frontera.cs, se quito)
+        public IntPtr CreateOverlay(SKBitmap bmp, out float uMax, out float vMax) { return gpu.CreateTexturePow2(bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap)
+        public IntPtr CreateCoverShared(SKBitmap bmp, out float uMax, out float vMax) { return gpu.CreaPortadaCompartida(bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap)
+        public bool UpdateOverlay(IntPtr tex, SKBitmap bmp, out float uMax, out float vMax) { return gpu.UpdateTexturePow2(tex, bmp, out uMax, out vMax); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap)
+        public bool UpdateOverlayRegion(IntPtr tex, SKBitmap bmp, Rectangle area) { return gpu.UpdateTextureRegion(tex, bmp, area); }   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap)
         public bool PreloadTexture(IntPtr tex) { return gpu != null && gpu.PreloadTexture(tex); }
         public void DrawCube(IntPtr tex, float uMax, float vMax, float x, float y, float w, float h, double angle, float alpha, double tilt)
         { if (Ok) gpu.DrawCube(tex, uMax, vMax, x, y, w, h, angle, alpha, tilt); }
@@ -1973,7 +1973,7 @@ namespace Rocola
     // -------- Control D3D9 para usar el campo estrellado como FONDO de la vista de discos --------
     //  Es un control aparte (su propia ventana) con estilos aptos para D3D9 (sin doble-buffer GDI).
     //  Se muestra ENCIMA de la vista de discos al activar el modo GPU; el render lo maneja D3D9.
-    internal sealed partial class GpuPanel : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, gpupanel-sin-control: W4): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista que pinta la tarjeta (DeLaTarjeta): su dispositivo presenta en la superficie de la vista (PantallaRocola.SuperficieDe) y la pantalla compone esa textura en su sitio; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), un control «Nativa» que le da el WM_PAINT (Pinta) y el raton como WinForms al control
+    internal sealed partial class GpuPanel : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, gpupanel-sin-control: W4): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista que pinta la tarjeta (DeLaTarjeta): su dispositivo presenta en la superficie de la vista (PantallaRocola.SuperficieDe) y la pantalla compone esa textura en su sitio; la pantalla le da el WM_PAINT (Pinta) y el raton como WinForms al control
     {
         private GpuStarfield stars;
         private bool idleHooked;
@@ -2223,7 +2223,7 @@ namespace Rocola
 
         private bool PuedeDibujar()
         {
-            bool minimizada = PantallaRocola.VentanaMinimizada(this);   // EN LINUX: Form ventana = FindForm(): la ventana de arriba de la vista (Control.FindForm) y, abajo, si esta minimizada; en la ventana de la capa, la Form de su hueco; en la pantalla nativa la ventana es la pantalla y no se minimiza (Nativo/PantallaRocola.Vistas.cs)
+            bool minimizada = PantallaRocola.VentanaMinimizada(this);   // EN LINUX: Form ventana = FindForm(): la ventana de arriba de la vista (Control.FindForm) y, abajo, si esta minimizada; la ventana es la de la rocola, que es la pantalla y no se minimiza (Nativo/PantallaRocola.Vistas.cs)
             if (minimizada)   // EN LINUX: ventana != null && ventana.WindowState == FormWindowState.Minimized (PantallaRocola.VentanaMinimizada, arriba)
             { renderSuspendido = true; return false; }
             if (renderSuspendido)
@@ -2239,9 +2239,9 @@ namespace Rocola
 
         public GpuPanel()
         {
-            caja = new CajaVista(this) { RepintaConMedida = false };   // EN LINUX: SetStyle(UserPaint | AllPaintingInWmPaint | Opaque, true): la pinta entera su Pinta (el WM_PAINT: RenderFrame), sin borrar el fondo antes (su hueco no pinta fondo; la pantalla nativa no la pinta por procesador: compone la textura de la tarjeta); sin ResizeRedraw (XP no lo pone ni Control lo trae: al cambiar de medida no se repinta entera, CajaVista.RepintaConMedida). XP no toca Selectable ni TabStop: los de fabrica de Control (true y true), IVista.Seleccionable y ParaElTabulador de fabrica: esta en el ciclo del tabulador en su sitio
+            caja = new CajaVista(this) { RepintaConMedida = false };   // EN LINUX: SetStyle(UserPaint | AllPaintingInWmPaint | Opaque, true): la pinta entera su Pinta (el WM_PAINT: RenderFrame), sin borrar el fondo antes (la pantalla no la pinta por procesador: compone la textura de la tarjeta); sin ResizeRedraw (XP no lo pone ni Control lo trae: al cambiar de medida no se repinta entera, CajaVista.RepintaConMedida). XP no toca Selectable ni TabStop: los de fabrica de Control (true y true), IVista.Seleccionable y ParaElTabulador de fabrica: esta en el ciclo del tabulador en su sitio
             // EN LINUX: SetStyle(ControlStyles.OptimizedDoubleBuffer, false);   // D3D9 maneja sus pixeles: nada de doble-buffer GDI (la vista no tiene bufer por procesador: la tarjeta presenta en su superficie)
-            // EN LINUX: (la capa le ponia Nativa = true) es DeLaTarjeta (abajo, con su CajaVista): la pinta la tarjeta (Nativo/DispositivoTarjetaGl.cs); su hueco en la capa es «Nativa» y en la pantalla nativa es una capa de textura de la lista de la ventana
+            // EN LINUX: (en XP, la ventana con el dispositivo de Direct3D 9) es DeLaTarjeta (abajo, con su CajaVista): la pinta la tarjeta (Nativo/DispositivoTarjetaGl.cs); en la pantalla es una capa de textura de la lista de la ventana
             trasCielo = delegate
             {
                 aurDibujada = false;
@@ -2351,7 +2351,7 @@ namespace Rocola
             if (stars == null || !stars.Ok)
             {
                 if (stars != null) stars.Dispose();
-                stars = new GpuStarfield(PantallaRocola.SuperficieDe(this), Width, Height, 4321);   // EN LINUX: this.Handle: la ventana en que Direct3D 9 presenta; aqui la superficie de la vista en la pantalla (su identificador: Present la pone en el hueco de la capa o en su sitio de la lista nativa, Nativo/PantallaRocola.Vistas.cs)
+                stars = new GpuStarfield(PantallaRocola.SuperficieDe(this), Width, Height, 4321);   // EN LINUX: this.Handle: la ventana en que Direct3D 9 presenta; aqui la superficie de la vista en la pantalla (su identificador: Present la pone en su sitio de la lista de la ventana, Nativo/PantallaRocola.Vistas.cs)
                 if (!stars.Ok) { stars.Dispose(); stars = null; return false; }
                 cellTextureBudget = AdaptiveCellBudget(stars.EstimatedTextureMemory, Form1.CacheCeldasMb(), IntPtr.Size);
             }
@@ -3257,7 +3257,7 @@ namespace Rocola
         // Sube 'bmp' a 'tex' REUTILIZANDO la textura si el bitmap tiene el mismo tamano (barato: solo re-copia
         // el contenido); si cambio de tamano o no habia, la recrea. Evita crear/destruir una textura a pantalla
         // completa en cada reconstruccion (lo caro), p.ej. la UI ~13fps por el brillo de la letra en navegacion.
-        private IntPtr Upload(IntPtr tex, ref int bw, ref int bh, SKBitmap bmp, out float u, out float v)   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap: el puente con Bitmap, Plataforma/Puente.frontera.cs, se quito)
+        private IntPtr Upload(IntPtr tex, ref int bw, ref int bh, SKBitmap bmp, out float u, out float v)   // EN LINUX: Bitmap -> SKBitmap (Bgra8888 premultiplicado; todos los que la llaman ya pasan un SKBitmap)
         {
             if (libroOn) libro.Subidas++;
             if (tex != IntPtr.Zero && bw == bmp.Width && bh == bmp.Height && stars.UpdateOverlay(tex, bmp, out u, out v))
@@ -3710,7 +3710,7 @@ namespace Rocola
                 for (int x = 0; x < n; x++)
                     pixels[y * n + x] = unchecked((int)((uint)(VinetaAlfa(x, y, n) + 0.5) << 24));   // negro; solo cambia el alfa
             // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
-            Pixeles.EscribeSinPremultiplicar(b, pixels, n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de transicion; aqui son negros con alfa, sin perdida)
+            Pixeles.EscribeSinPremultiplicar(b, pixels, n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de la transicion de la referencia; aqui son negros con alfa, sin perdida)
             // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
             return b;
         }
@@ -4516,7 +4516,7 @@ namespace Rocola
         // WM_PAINT -> dibuja por D3D9. Con su try (24-10-2026), como el bucle de arriba: en .NET 2.0 una excepcion que se escapa de
         // OnPaint marca el control y desde entonces solo se pinta la X roja, sin volver a llamar a OnPaint hasta reiniciar la rocola.
         // WM_PAINT llega al destaparse la ventana (al volver del inicio de sesion de Windows, al cerrar Ctrl+F3).
-        public void Pinta(SKCanvas g) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e): el WM_PAINT de la vista (se lo da su hueco de la capa, o la pantalla nativa: PantallaRocola.PintadoSinLaCapa); dibuja la tarjeta, el lienzo no se usa (como e.Graphics en XP)
+        public void Pinta(SKCanvas g) { try { RenderFrame(); } catch (Exception ex) { ApuntaCuadroFallido(ex); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e): el WM_PAINT de la vista (se lo da la pantalla: PantallaRocola.PonElPintado); dibuja la tarjeta, el lienzo no se usa (como e.Graphics en XP)
 
         // UN CUADRO, PEDIDO A MANO. Lo usa el medidor de Ctrl+F3: medir ocurre dentro de una pulsacion, o sea
         // con el bucle de mensajes parado, asi que esperar a que el bucle de siempre (Application.Idle) dibuje
@@ -4525,14 +4525,14 @@ namespace Rocola
         public bool DibujaUnCuadro() { return RenderFrame(); }
         private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public bool DeLaTarjeta { get { return true; } }   // EN LINUX: protected override void OnPaintBackground(PaintEventArgs e) { } // no borra (D3D9 es dueño de los pixeles): sin fondo que pintar (Pinta no lo pinta); aqui, lo que XP le usa de Control (Bounds, Left, Top, Width, Height, SetBounds, Visible con la de su dueno -GetVisibleCore- e Invalidate) de su CajaVista (Nativo/IVista.cs), y que la pinta la tarjeta (IVista.DeLaTarjeta)
 
-        void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing): la desecha su hueco al desecharse con su ventana (Control.Dispose desecha a los hijos), con disposing = true, antes de lo suyo (Plataforma/Anfitrion.cs)
+        void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing): la desecha la pantalla al desecharse su ventana (Control.Dispose desecha a los hijos), con disposing = true, antes de lo suyo (PantallaRocola.Ventana.cs, DesechaVista)
         {
             if (disposing)
             {
                 StopGpu();
                 if (vinetaMapa != null) { vinetaMapa.Dispose(); vinetaMapa = null; }   // el mapa guardado de la vineta
             }
-            PantallaRocola.SueltaSuperficie(this);   // EN LINUX: base.Dispose(disposing): la ventana del control se destruye (Control.FromHandle ya no la da) y sale de su padre; aqui se suelta su superficie y sale de su dueno: en la lista nativa, SueltaSuperficie (Control.Dispose: Controls.Remove); en la ventana de la capa, su hueco despues (Plataforma/Anfitrion.cs)
+            PantallaRocola.SueltaSuperficie(this);   // EN LINUX: base.Dispose(disposing): la ventana del control se destruye (Control.FromHandle ya no la da) y sale de su padre; aqui se suelta su superficie y sale de su dueno: SueltaSuperficie (Control.Dispose: Controls.Remove)
         }
     }
 }

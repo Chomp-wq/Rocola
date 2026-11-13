@@ -34,7 +34,7 @@
 // por debajo de la interfaz (Form1.Portadas.cs). Ya escaladas, se guardan las ultimas 64.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el teclado, los atajos, la casilla y las tarjetas del buscador con portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; lo que aun no esta traducido pasa por el puente (Plataforma/Puente.cs; Puente.buscador-portadas.cs se quito: quienes lo llaman y a quienes llama ya estan traducidos)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el teclado, los atajos, la casilla y las tarjetas del buscador con portadas dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+ (quienes lo llaman y a quienes llama ya estan traducidos)
 using System.Globalization;
 
 namespace Rocola
@@ -549,7 +549,7 @@ namespace Rocola
                 if (string.IsNullOrEmpty(t)) return 0f;
                 return TextoGdiPlus.Mide(t, f, ajuste, new SizeF(99999, 999999f), sfMide).Width;   // EN LINUX: g.MeasureString(t, f, 99999, sfMide): en una caja de 99999 de ancho y 999999 de alto (Nativo/TextoGdiPlus.cs)
             }
-            private static int Alto(Rocola.Nativo.Letra f) { return (int)Math.Ceiling(f.AltoRenglon); }   // EN LINUX: f.GetHeight(g): el alto del renglon (Letra.AltoRenglon, a 96 puntos por pulgada como la rocola; la capa no miraba el Graphics)
+            private static int Alto(Rocola.Nativo.Letra f) { return (int)Math.Ceiling(f.AltoRenglon); }   // EN LINUX: f.GetHeight(g): el alto del renglon (Letra.AltoRenglon, a 96 puntos por pulgada como la rocola; la referencia no miraba el Graphics)
 
             // Un resplandor alrededor de una forma redondeada: capas cada vez mas anchas y mas tenues.
             private void Resplandor(SKCanvas g, bool suave, bool copia, bool medio, Rectangle r, int radio, Color c, int ancho, float fuerza)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa (suavizado, copia y medio pixel)
@@ -613,7 +613,7 @@ namespace Rocola
                     {
                         gb.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.Clear
                         bool suaveQ = suave, medioQ = medio;   // EN LINUX: gb.SmoothingMode = g.SmoothingMode; gb.PixelOffsetMode = g.PixelOffsetMode: los del que llama, en variables
-                        // EN LINUX: gb.CompositingQuality = g.CompositingQuality: la calidad de la mezcla no entra en lo que se pinta (la capa de la transicion, la referencia, tampoco la usaba)
+                        // EN LINUX: gb.CompositingQuality = g.CompositingQuality: la calidad de la mezcla no entra en lo que se pinta (la referencia tampoco la usaba)
                         DibujaQuieto(gb, suaveQ, false, medioQ, tipo, new Rectangle(m, m, w, h), c1, c2, s);   // EN LINUX: con el estado del horneado (sin copia: SourceOver, la de un Graphics nuevo)
                     }
                     horneados.Add(q);
@@ -694,7 +694,7 @@ namespace Rocola
             // ======================================================================================================
             //  LA IMAGEN GRANDE: los atajos, el teclado y las ayudas (lo quieto)
             // ======================================================================================================
-            private void RenderNuevo(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, SKMatrix hdc)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (modo de letra, copia, filtro, medio pixel y la matriz del HDC, la del texto de GDI de DrawToast); la llama directo SearchOverlay.RenderContent (Form1.Buscador.cs, ya traducido), y a quien aun pasa un Graphics el puente de este (Plataforma/Puente.buscador.cs) le deja el suavizado como XP
+            private void RenderNuevo(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, SKMatrix hdc)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama (modo de letra, copia, filtro, medio pixel y la matriz del HDC, la del texto de GDI de DrawToast); la llama directo SearchOverlay.RenderContent (Form1.Buscador.cs, ya traducido)
             {
                 EnsurePaintRes();
                 RepartoBusca r = AseguraReparto();
@@ -824,7 +824,7 @@ namespace Rocola
                 }
                 return false;
             }
-            private void DibujaPiezaVivaNueva(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int cual, int dx, int dy)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; la llama directo SearchOverlay.DibujaPiezaViva (Form1.Buscador.cs, ya traducido), que devuelve el suavizado que XP deja puesto (ref), y a quien aun pasa un Graphics el puente de este (Plataforma/Puente.buscador.cs) se lo deja como XP
+            private void DibujaPiezaVivaNueva(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, int cual, int dx, int dy)   // EN LINUX: el lienzo de Skia y el estado del Graphics del que llama; la llama directo SearchOverlay.DibujaPiezaViva (Form1.Buscador.cs, ya traducido), que devuelve el suavizado que XP deja puesto (ref)
             {
                 EnsurePaintRes();
                 RepartoBusca r = AseguraReparto();

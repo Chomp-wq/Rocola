@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los globos de la estrella (la pregunta y la despedida) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; CtrlDot y CtrlTxt (Form1.Pared.cs, ya traducido) se llaman directo con el lienzo y su estado (sus firmas de XP con un Graphics se quitaron del puente); RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: los globos de la estrella (la pregunta y la despedida) dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; CtrlDot y CtrlTxt (Form1.Pared.cs, ya traducido) se llaman directo con el lienzo y su estado; RoundedPath (Form1.Fondo.cs, ya traducido) da su SKPath directo (ContornoRedondo)
 
 namespace Rocola
 {
