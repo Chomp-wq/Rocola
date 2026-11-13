@@ -79,12 +79,24 @@ Así lo espera `rocola-xp` (mirado en `Nativo/PantallaRocola.cs` y `Codigo/Form1
 | Alt+F4 | `UserClosing` | se borra; el lanzador la abre otra vez |
 | Apagón | nada | sobrevive: al prender reanuda |
 | Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** (20 s; después SIGKILL). Nunca SIGTERM | sobrevive |
+| «Reiniciar el equipo ya» del buzón | el buzón cierra antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y entonces reinicia | sobrevive |
+| «Apagar ya» del buzón | el buzón cierra antes el lanzador y manda SIGTERM, lo espera 15 s (como el botón de encendido) y apaga | se borra |
 
 `rocola-xp` **aún no tiene** el «cierre por otra causa» que conserva el estado, ni mira `/run/rocola-reinicia-programa(-ya)`. Por
 eso el lanzador lo cierra él con SIGUSR1: hoy eso lo corta en seco, igual que un apagón (el estado sobrevive y al abrir reanuda;
 probado: SIGUSR1, SIGKILL y SIGHUP lo dejan, SIGTERM lo borra; después de matarlo vuelve a abrir bien), pero lo aprendido desde el
 último guardado se pierde. Cuando `rocola-xp` atienda SIGUSR1 con un cierre ordenado que no borre el estado (pendiente 2), queda
 como pide la regla sin tocar el lanzador.
+
+Añadido en la revisión (13-11-2026), probado con programas falsos (`prueba.sh buzon` y `xp`):
+
+- Un `reboot` o `poweroff` directo le llega a `rocola-xp` como SIGTERM y el sistema solo espera 1 s antes de cortar. Por eso las
+  órdenes «ya» del buzón cierran antes `rocola-xp` como dice la tabla (sin `rocola-xp` abierta el buzón hace lo de siempre).
+  **Queda sin cubrir**: el reinicio de `S99rocola` cuando un sistema nuevo en prueba no llega a confirmarse, y un `reboot` escrito a
+  mano: ahí `rocola-xp`, si está abierta, recibe SIGTERM y borra el estado (si le da tiempo).
+- Si `rocola-xp` llega a abrirse justo al cambiar a la consola de mantenimiento, el vigilante la cierra igual (antes se quedaba
+  pintando encima de la consola).
+- El cierre de «reiniciar el programa ya» no cuenta como caída (no suma para las 3 seguidas) y queda apuntado en la bitácora.
 
 ## 3. La compilación rápida y los flujos
 
@@ -151,6 +163,8 @@ Los pasos 1 a 3 solo meten el programa en el sistema; no cambia nada en la rocol
   sí está), el cielo por hora y el clima, color vivo, movimiento, vidrio y letra, las mejoras visuales V.
 - Devolver el crédito de un archivo dañado, convertir los «MP3» que no lo son, entrenar la IA en reposo, el volumen de Spotify.
 - Lo aprendido por el programa actual en `/rocola/datos` no lo usa `rocola-xp` (ni al revés).
+- Con la carpeta propia, una carpeta de `/run/rocola-musica` que el dueño quite con Ctrl+F2 vuelve a apuntarse en el siguiente
+  arranque del programa (el lanzador la apunta siempre que falte).
 
 Sí están, porque son de XP: la cadena de sonido entera, el modo billar, el modo noche, los videos, Ctrl+F3 y Ctrl+F2 de XP.
 
@@ -174,6 +188,12 @@ Sí están, porque son de XP: la cadena de sonido entera, el modo billar, el mod
 
 Probado aquí (máquina de pruebas, no el A4):
 
+- (Revisión independiente, 13-11-2026) Repetido: la compilación NativeAOT con el perfil del A4 (ningún aviso IL), `readelf -d` y
+  `readelf -V` de `rocola-xp` (libm, libc; glibc 2.38) y de `libSkiaSharp.so` (libpthread, libdl, libm, libc; glibc 2.29), los nombres
+  de las bibliotecas que abre por `DllImport` (los siete de arriba) y que están en `salida-qemu/target`; con el `rocola-xp` de verdad
+  fuera de pantalla, SIGTERM sale con 0 y borra `rocola_estado.txt` y SIGUSR1 lo deja (sale con 138); `prueba.sh` entera con el
+  BusyBox del sistema (sin interruptor: IGUAL al lanzador de 7113804 en lo que recibe el programa, el registro y la bitácora).
+
 - `rocola-xp` compila en NativeAOT con el perfil del A4 (15 avisos del compilador -CA, CS, SYSLIB-, ninguno de NativeAOT -IL-; 1 min 28 s). Sus bibliotecas, con
   `readelf`/`ldd`, contra lo que trae el sistema compilado (`salida-qemu/target`).
 - El `rocola-xp` de verdad **corre con las bibliotecas del sistema** (dentro de la raíz del sistema de QEMU: glibc 2.42, Mesa
@@ -195,4 +215,6 @@ No probado:
 - El video (`libmpv.so.2` del sistema: solo se vio que está y que trae la API de dibujo) y `libmpg123` con `rocola-xp` dentro del
   sistema.
 - Las letras de XP leídas de un disco de Windows de verdad; `rocola_teclas.txt` y `rocola_config.txt` reales de XP.
-- El cambio del botón de encendido y del buzón, fuera de `sh -n`.
+- El cambio del botón de encendido y el del estado del buzón, fuera de `sh -n`; lo del buzón con las órdenes «ya» solo como trozo
+  suelto con programas falsos (`prueba.sh buzon`), no con el buzón entero ni con un reinicio de verdad.
+- Cuánto tarda `rocola-xp` en cerrarse con SIGTERM mientras suena música o un video (parada, sin música: unos 40 ms aquí).

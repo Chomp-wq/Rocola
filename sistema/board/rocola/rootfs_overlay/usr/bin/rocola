@@ -149,7 +149,10 @@ ACTIVA=${ROCOLA_VT_ACTIVA:-/sys/class/tty/tty0/active}
 EN_CONSOLA=${ROCOLA_RUN:-/run}/rocola-en-consola
 ( while sleep 1; do
 	a=$(cat "$ACTIVA" 2>/dev/null)
-	[ -n "$a" ] && [ "$a" != tty1 ] && [ ! -f "$EN_CONSOLA" ] || continue
+	[ -n "$a" ] && [ "$a" != tty1 ] || continue
+	# (ya en la consola: si rocola-xp llego a abrirse justo al cambiar -el lanzador ya habia pasado su espera-, se cierra tambien; no mira
+	# ningun aviso y se quedaria pintando encima de la consola. Sin rocola-xp abierto no hace nada)
+	if [ -f "$EN_CONSOLA" ]; then pidof rocola-xp >/dev/null && cierra_xp; continue; fi
 	touch "$EN_CONSOLA"
 	if pidof rocola-xp >/dev/null; then cierra_xp; continue; fi   # (rocola-xp no mira el aviso: se cierra conservando el estado; nunca SIGTERM)
 	touch ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya
@@ -162,7 +165,7 @@ EN_CONSOLA=${ROCOLA_RUN:-/run}/rocola-en-consola
 # esta libre.) Sin rocola-xp abierto no hace nada.
 ( while sleep 5; do
 	pidof rocola-xp >/dev/null && [ -f ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya ] && [ ! -f "$EN_CONSOLA" ] || continue
-	rm -f ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya; cierra_xp
+	rm -f ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya; touch ${ROCOLA_RUN:-/run}/rocola-xp-reinicio; cierra_xp
   done ) &
 while :; do
 	# en la consola de mantenimiento: la rocola espera a que se vuelva a la 1
@@ -187,6 +190,8 @@ while :; do
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
 	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; continue; fi   # (no es una caida)
+	# (rocola-xp cerrado por el lanzador para «reiniciar el programa ya»: sale por la senal, no es una caida ni cuenta para las 3 seguidas)
+	if [ "$BIN" = "$XPBIN" ] && [ -f ${ROCOLA_RUN:-/run}/rocola-xp-reinicio ]; then rm -f ${ROCOLA_RUN:-/run}/rocola-xp-reinicio; apunta "rocola-xp se cerro para reiniciarse (pedido desde casa)"; continue; fi
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
 	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)
 	if [ "$r" = 44 ]; then apunta "Apagado pedido (desde casa o Ctrl+F3)"; sync; poweroff; sleep 60; fi   # salio para apagarse (rocola-buzon: «apagar», o Ctrl+F3)

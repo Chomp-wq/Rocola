@@ -35,6 +35,13 @@ datosxp)
 	printf 'programa=xp\ndatos=xp\n' > /rocola/datos/rocola_programa.txt
 	lanza; sleep 3; log; ls -a /rocola/disco/Rocola/Release | tr '\n' ' '; echo
 	limpia; echo /rocola/no-existe > /run/rocola-datos-xp; printf 'programa=xp\ndatos=xp\n' > /rocola/datos/rocola_programa.txt; lanza; sleep 3; log; reg ;;
+buzon)   # «reiniciar el equipo ya» y «apagar ya» de rocola-buzon con rocola-xp abierta: el trozo del script (sin el reboot ni el poweroff)
+	sed -n '/^\t\tif pidof rocola-xp >\/dev\/null; then$/,/^\t\tfi$/p' /usr/bin/rocola-buzon > /tmp/trozo.sh; echo "  (trozo de rocola-buzon: $(wc -l < /tmp/trozo.sh) lineas)"
+	for que in reinicia apaga; do
+		limpia; echo "programa=xp" > /rocola/datos/rocola_programa.txt; lanza; sleep 3
+		que=$que sh /tmp/trozo.sh; sleep 3; echo "  -- $que: abiertos=[$(pidof rocola rocola-xp)] (nadie: ni el lanzador la vuelve a abrir)"; log | tail -1
+	done
+	limpia; lanza; sleep 3; que=reinicia sh /tmp/trozo.sh; echo "  -- sin rocola-xp: sigue rocola-consola=[$(pidof rocola-consola)] y el lanzador=[$(pidof rocola)]" ;;
 sinprograma)   # el interruptor encendido en un sistema que no trae rocola-xp
 	mv /usr/lib/rocola-xp/rocola-xp /usr/lib/rocola-xp/x; echo "programa=xp" > /rocola/datos/rocola_programa.txt; lanza; sleep 3; log; mv /usr/lib/rocola-xp/x /usr/lib/rocola-xp/rocola-xp ;;
 esac
