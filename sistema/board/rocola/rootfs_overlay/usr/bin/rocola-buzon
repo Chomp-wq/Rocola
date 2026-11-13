@@ -110,7 +110,7 @@ estado_json() {
 	gw=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
 	wol=$(ethtool eth0 2>/dev/null | sed -n 's/^[ \t]*Wake-on: *//p' | tail -1)
 	temp=; for t in /sys/class/hwmon/hwmon*/temp1_input /sys/class/thermal/thermal_zone*/temp; do [ -f "$t" ] && { temp=$(( $(cat "$t") / 1000 )); break; }; done
-	pid=$(pidof rocola-consola | awk '{print $1}')
+	pid=$(pidof rocola-consola rocola-xp | awk '{print $1}')   # (rocola-xp: la traducida de XP, si es la que corre)
 	desde=; [ -n "$pid" ] && desde=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print int($22/100)}' /proc/$pid/stat 2>/dev/null || echo 0) ))
 	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg" 2>/dev/null)
 	jq -n \
@@ -256,6 +256,16 @@ atiende_ordenes() {
 	if [ -f "$TMP/reiniciar" ]; then
 		que=$(cat "$TMP/reiniciar"); rm -f "$TMP/reiniciar"; manda_estado forzado
 		printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$([ "$que" = apaga ] && echo Apagado || echo Reinicio) pedido desde casa (ya)" >> "$DATOS/rocola_actualizaciones.txt"
+		# CON rocola-xp (la traducida de XP) ABIERTA: el apagado del sistema le llega como SIGTERM y solo le da 1 s. Apagar = el boton de
+		# encendido (SIGTERM: borra el estado del dia; se le espera 15 s); reiniciar = un reinicio propio de Rocola OS, que conserva los
+		# creditos y la cola (SIGUSR1, nunca SIGTERM; regla del 8-11-2026). Primero el lanzador, para que no la vuelva a abrir. Sin
+		# rocola-xp abierta no hace nada: todo como siempre.
+		if pidof rocola-xp >/dev/null; then
+			killall rocola 2>/dev/null
+			if [ "$que" = apaga ]; then killall -TERM rocola-xp 2>/dev/null; else killall -USR1 rocola-xp 2>/dev/null; fi
+			i=0; while pidof rocola-xp >/dev/null && [ $i -lt 15 ]; do sleep 1; i=$((i + 1)); done
+			[ "$que" = apaga ] || killall -KILL rocola-xp 2>/dev/null
+		fi
 		sync; if [ "$que" = apaga ]; then poweroff; else reboot; fi
 	fi
 }

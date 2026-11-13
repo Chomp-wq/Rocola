@@ -1,0 +1,15 @@
+config BR2_PACKAGE_ROCOLA_XP
+	bool "rocola-xp"
+	depends on BR2_x86_64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_PACKAGE_MESA3D_OPENGL_ES && BR2_PACKAGE_MESA3D_OPENGL_EGL && BR2_PACKAGE_MESA3D_GBM
+	depends on BR2_PACKAGE_MPV   # el video: libmpv.so.2 (Buildroot compila mpv con -Dlibmpv=true)
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_MPG123   # el descompresor de MP3 (libmpg123.so.0)
+	help
+	  La rocola de XP traducida a Linux (sistema/rocola/Xp, «rocola-xp»): PREPARADA Y APAGADA (sistema/INTEGRACION_ROCOLA_XP.md).
+	  Este archivo aun no esta en sistema/Config.in ni la opcion en configs/rocola_a4_defconfig: hasta entonces no entra en el sistema.
+	  Programa nativo de .NET 10 (NativeAOT) con SkiaSharp (libSkiaSharp.so va a su lado, sin mas dependencias que glibc); se compila
+	  en el equipo que arma el sistema (hace falta el SDK de .NET 10 ahi), como rocola-consola. /usr/bin/rocola solo lo abre con
+	  «programa=xp» en /rocola/datos/rocola_programa.txt.
