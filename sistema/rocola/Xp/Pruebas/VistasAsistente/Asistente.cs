@@ -3,16 +3,15 @@
 // procesador y con tarjeta, la flecha de abajo) y PulidoGpu.cs (el degradado tramado, DegradadoV), con datos fijos, la huella de cada mapa y lo
 // que devuelve cada llamada. Se compila con el programa de una carpeta Xp (VistasAsistente.csproj): la salida de la referencia congelada y la de
 // la copia de trabajo tienen que ser iguales linea por linea.
-//   - Las llamadas son las de XP (Graphics, Bitmap, Font, Brush): en la referencia van a GDI+ (la capa congelada); en la traduccion, las que
-//     siguen teniendo la firma de XP (RenderContent de la casilla; DegradadoV con tres argumentos hasta el grupo directas-tanda2, 12-11-2026:
-//     desde entonces sus llamadores van a la traducida y la firma de XP se llama por reflexion si la hay, la referencia, o si no la traducida
-//     con el medio pixel del Graphics, como la linea directa) van por el puente
-//     (Plataforma/Puente.asistente.cs) a SkiaSharp directo, y las que ya no la tienen (los globos dan SKBitmap, el contorno un SKPath, las
-//     teclas y la flecha piden el lienzo y su estado) se llaman como las llama la traduccion. El estado del Graphics del que llama va de ocho
-//     maneras (suavizado, los modos de letra, copia, medio pixel, traslacion entera y con decimales, escala, giro y recorte).
+//   - En la referencia las llamadas son las de XP (Graphics, Bitmap, Font, Brush) y van a GDI+ (la capa congelada); en la traduccion se
+//     llaman como las llama la traduccion (los globos dan SKBitmap, el contorno un SKPath, las teclas, la flecha y la casilla piden el lienzo
+//     y su estado, DegradadoV da un shader). El estado del lienzo del que llama va de ocho maneras (suavizado, los modos de letra, copia, medio
+//     pixel, traslacion entera y con decimales, escala, giro y recorte).
 //   - Lo privado (la casilla, el horno del degradado) va por reflexion.
-//   - En la traduccion, las traducidas que tambien tienen la firma de XP en el puente se llaman tambien DIRECTO (el lienzo y su estado, un
-//     SKPaint con el shader), como las llamaran los archivos que las usan cuando se traduzcan; en la referencia esa linea es la de XP otra vez.
+//   - Varios casos salen dos veces (la segunda, «directo»): en la traduccion las dos van a la traducida; en la referencia, a la de XP.
+//   - (Oleada 8b, 13-11-2026) El arnes ya no nombra la capa de GDI+ ni la de WinForms: los mapas, el lienzo, las letras, los trazos, los
+//     pinceles de la referencia, el formato tipografico y el OnPaint van por Pruebas/Comun (Pru, Lz, Fte, Fmt: la capa en la referencia
+//     congelada y lo nativo en el programa nuevo).
 //   ROCOLA_PANTALLA=fuera:64x64 dotnet bin/Release/net10.0/VistasAsistente.dll [vuelca CARPETA]
 using System;
 using System.Collections.Generic;
@@ -23,9 +22,8 @@ using System.Drawing.Text;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using Banco;
 using Rocola;
-using Rocola.Dibujo2D;
-using Rocola.Ventanas;
 using SkiaSharp;
 
 namespace BancoAsistente
@@ -47,43 +45,40 @@ namespace BancoAsistente
         private static unsafe string Puntos(string nombre, object o)
         {
             if (o == null) return "null";
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppPArgb);
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppPArgb");
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre + ".png"), png.ToArray());
             return s.Width + "x" + s.Height + "\t" + Huella(px) + "\t" + Huella(sub);
         }
         private static void Suelta(object o) { IDisposable d = o as IDisposable; if (d != null) d.Dispose(); }
         // una matriz, por donde lleva el origen y el punto (1, 1)
-        private static string Mat(Matrix m) { PointF[] p = { new PointF(0, 0), new PointF(1, 1) }; m.TransformPoints(p); return R(p[0].X) + "," + R(p[0].Y) + ";" + R(p[1].X) + "," + R(p[1].Y); }
+        private static string Mat(PointF[] p) { return R(p[0].X) + "," + R(p[0].Y) + ";" + R(p[1].X) + "," + R(p[1].Y); }
 
         // ---- el estado del Graphics del que llama (los ocho de Pruebas/VistasReposo)
-        private sealed class Estado { public string Nombre; public SmoothingMode S; public TextRenderingHint T; public CompositingMode C; public PixelOffsetMode P; public int Trans; public bool Recorte; }
+        private sealed class Estado { public string Nombre; public ModoSuave S; public ModoLetra T; public ModoCopia C; public ModoPixel P; public int Trans; public bool Recorte; }
         private static readonly Estado[] Estados = {
-            new Estado { Nombre = "xp", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default },
-            new Estado { Nombre = "sin-suavizar", S = SmoothingMode.None, T = TextRenderingHint.SystemDefault, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default },
-            new Estado { Nombre = "copia-medio-traslada", S = SmoothingMode.HighQuality, T = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Half, Trans = 1 },
-            new Estado { Nombre = "cleartype-escala", S = SmoothingMode.AntiAlias, T = TextRenderingHint.ClearTypeGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.HighQuality, Trans = 2 },
-            new Estado { Nombre = "unbit-gira", S = SmoothingMode.AntiAlias, T = TextRenderingHint.SingleBitPerPixelGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, Trans = 3 },
-            new Estado { Nombre = "unbit-copia-recorte", S = SmoothingMode.None, T = TextRenderingHint.SingleBitPerPixel, C = CompositingMode.SourceCopy, P = PixelOffsetMode.Default, Recorte = true },
-            new Estado { Nombre = "traslada-recorte", S = SmoothingMode.AntiAlias, T = TextRenderingHint.AntiAliasGridFit, C = CompositingMode.SourceOver, P = PixelOffsetMode.Default, Trans = 4, Recorte = true },
-            new Estado { Nombre = "suave-sin-ajuste", S = SmoothingMode.HighQuality, T = TextRenderingHint.AntiAlias, C = CompositingMode.SourceOver, P = PixelOffsetMode.None, Trans = 5 },
+            new Estado { Nombre = "xp", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.Default },
+            new Estado { Nombre = "sin-suavizar", S = ModoSuave.None, T = ModoLetra.SystemDefault, C = ModoCopia.SourceOver, P = ModoPixel.Default },
+            new Estado { Nombre = "copia-medio-traslada", S = ModoSuave.HighQuality, T = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceCopy, P = ModoPixel.Half, Trans = 1 },
+            new Estado { Nombre = "cleartype-escala", S = ModoSuave.AntiAlias, T = ModoLetra.ClearTypeGridFit, C = ModoCopia.SourceOver, P = ModoPixel.HighQuality, Trans = 2 },
+            new Estado { Nombre = "unbit-gira", S = ModoSuave.AntiAlias, T = ModoLetra.SingleBitPerPixelGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, Trans = 3 },
+            new Estado { Nombre = "unbit-copia-recorte", S = ModoSuave.None, T = ModoLetra.SingleBitPerPixel, C = ModoCopia.SourceCopy, P = ModoPixel.Default, Recorte = true },
+            new Estado { Nombre = "traslada-recorte", S = ModoSuave.AntiAlias, T = ModoLetra.AntiAliasGridFit, C = ModoCopia.SourceOver, P = ModoPixel.Default, Trans = 4, Recorte = true },
+            new Estado { Nombre = "suave-sin-ajuste", S = ModoSuave.HighQuality, T = ModoLetra.AntiAlias, C = ModoCopia.SourceOver, P = ModoPixel.None, Trans = 5 },
         };
         // un mapa con fondo (para ver la copia y el alfa) y el Graphics con ese estado
-        private static Graphics Prepara(Bitmap b, Estado e)
+        private static Lz Prepara(object b, Estado e)
         {
-            Graphics g = Graphics.FromImage(b);
-            g.Clear(Color.FromArgb(120, 30, 60, 90));
-            using (SolidBrush sb = new SolidBrush(Color.FromArgb(200, 250, 20, 60))) g.FillRectangle(sb, 0, 25, b.Width, 9);
-            g.SmoothingMode = e.S; g.TextRenderingHint = e.T; g.CompositingMode = e.C; g.PixelOffsetMode = e.P;
-            if (e.Trans == 1) g.TranslateTransform(3.5f, 2.25f); else if (e.Trans == 2) g.ScaleTransform(1.3f, 1.3f); else if (e.Trans == 3) g.RotateTransform(7f);
-            else if (e.Trans == 4) g.TranslateTransform(0, -12); else if (e.Trans == 5) g.TranslateTransform(0.5f, 0f);
-            if (e.Recorte) g.SetClip(new RectangleF(10.5f, 6, 120, 40));
+            Lz g = Pru.Lienzo(b);
+            g.Limpia(Color.FromArgb(120, 30, 60, 90));
+            g.Rellena(Color.FromArgb(200, 250, 20, 60), 0, 25, Pru.Sk(b).Width, 9);
+            g.Suavizado = e.S; g.Letra = e.T; g.Copia = e.C; g.Pixel = e.P;
+            if (e.Trans == 1) g.Traslada(3.5f, 2.25f); else if (e.Trans == 2) g.Escala(1.3f, 1.3f); else if (e.Trans == 3) g.Gira(7f);
+            else if (e.Trans == 4) g.Traslada(0, -12); else if (e.Trans == 5) g.Traslada(0.5f, 0f);
+            if (e.Recorte) g.Recorta(new RectangleF(10.5f, 6, 120, 40));
             return g;
         }
 
@@ -94,14 +89,12 @@ namespace BancoAsistente
                 if (m.Name == nombre && m.GetParameters().Length > 0 && (primero == null || m.GetParameters()[0].ParameterType == primero) && (parametros < 0 || m.GetParameters().Length == parametros)) return m;
             return null;
         }
-        private static Type Puente { get { return typeof(Form1).Assembly.GetType("Rocola.PuenteDibujo"); } }
-        private static object Por(string metodo, Type tipo, object o) { return Puente.GetMethod(metodo, Todo, null, new[] { tipo }, null).Invoke(null, new[] { o }); }
-        // el lienzo y su estado (lienzo, suave, letra, copia, medio) de un Graphics, por el puente de la traduccion: lo que un archivo traducido
-        // lleva en sus variables cuando llama con el mismo dibujo
-        private static object[] EstadoDe(Graphics g)
+        // el lienzo y su estado (lienzo, suave, letra, copia, medio): lo que un archivo traducido lleva en sus variables cuando llama con el
+        // mismo dibujo
+        private static object[] EstadoDe(Lz g)
         {
-            object e = Por("Estado", typeof(Graphics), g); Type te = e.GetType();
-            return new[] { Por("Lienzo", typeof(Graphics), g), te.GetField("Suave").GetValue(e), te.GetField("Letra").GetValue(e), te.GetField("Copia").GetValue(e), te.GetField("Medio").GetValue(e) };
+            object[] e = g.Estado();   // (el lienzo, suave, letra, copia, filtro, medio)
+            return new[] { e[0], e[1], e[2], e[3], e[5] };
         }
         private static object[] Junta(object[] a, params object[] b) { object[] r = new object[a.Length + b.Length]; a.CopyTo(r, 0); b.CopyTo(r, a.Length); return r; }
 
@@ -110,7 +103,7 @@ namespace BancoAsistente
         {
             object o = null; string ex = "";
             try { o = haz(); } catch (Exception x) { ex = " " + Exc(x); }
-            Linea(nombre, Puntos(nombre, o) + ex + " tipografico=" + StringFormat.GenericTypographic.Alignment + "/" + (int)StringFormat.GenericTypographic.FormatFlags);
+            Linea(nombre, Puntos(nombre, o) + ex + " tipografico=" + Fmt.Tipografico.Horizontal + "/" + Fmt.Tipografico.Banderas);
             Suelta(o);
         }
         private static void Globos()
@@ -157,7 +150,7 @@ namespace BancoAsistente
             foreach (int[] m in medidas)
             {
                 object o = Form1.AsistenteGloboCamino(m[0], m[1]);
-                SKPath p = o as SKPath ?? ((GraphicsPath)o).P;
+                SKPath p = Pru.Ruta(o);
                 StringBuilder sb = new StringBuilder();
                 using (SKPath.RawIterator it = p.CreateRawIterator())
                 {
@@ -192,16 +185,16 @@ namespace BancoAsistente
                     for (int dir = 0; dir < 4; dir++)
                     {
                         string nombre = "flecha-" + e.Nombre + "-" + (k++);
-                        using (Bitmap b = new Bitmap(160, 70, PixelFormat.Format32bppPArgb))
+                        using (IDisposable b = (IDisposable)Pru.NuevoMapa(160, 70, "Format32bppPArgb"))
                         {
                             string ex = "";
-                            using (Graphics g = Prepara(b, e))
+                            using (Lz g = Prepara(b, e))
                             {
                                 float x = dir % 2 == 0 ? 10.5f : 23f; int cy = 30 + dir;
                                 try
                                 {
                                     if (trad) flecha.Invoke(null, Junta(EstadoDe(g), x, cy, d, colores[(d + dir) % 4], dir));
-                                    else flecha.Invoke(null, new object[] { g, x, cy, d, colores[(d + dir) % 4], dir });
+                                    else flecha.Invoke(null, new object[] { g.Objeto, x, cy, d, colores[(d + dir) % 4], dir });
                                 }
                                 catch (Exception xx) { ex = " " + Exc(xx); }
                             }
@@ -212,17 +205,17 @@ namespace BancoAsistente
                     foreach (float tam in new[] { 18.5f, 34f })
                     {
                         string nombre = "teclas-" + e.Nombre + "-" + (k++);
-                        using (Bitmap b = new Bitmap(420, 70, PixelFormat.Format32bppPArgb))
-                        using (Font f = new Font("Trebuchet MS", tam, FontStyle.Bold, GraphicsUnit.Pixel))
+                        using (IDisposable b = (IDisposable)Pru.NuevoMapa(420, 70, "Format32bppPArgb"))
+                        using (Fte f = new Fte("Trebuchet MS", tam, 1, "Pixel"))
                         {
                             string ex = "", fin = "";
-                            using (Graphics g = Prepara(b, e))
+                            using (Lz g = Prepara(b, e))
                             {
                                 int d = Math.Max(14, (int)(tam * 1.1f));
                                 try
                                 {
-                                    object r = trad ? teclas.Invoke(null, Junta(EstadoDe(g), ts, 6.25f, 36, d, Por("Letra", typeof(Font), f)))
-                                                    : teclas.Invoke(null, new object[] { g, ts, 6.25f, 36, d, f });
+                                    object r = trad ? teclas.Invoke(null, Junta(EstadoDe(g), ts, 6.25f, 36, d, f.Obj))
+                                                    : teclas.Invoke(null, new object[] { g.Objeto, ts, 6.25f, 36, d, f.Obj });
                                     fin = " fin=" + R((float)r);
                                 }
                                 catch (Exception xx) { ex = " " + Exc(xx); }
@@ -246,7 +239,7 @@ namespace BancoAsistente
                 foreach (bool compacta in new[] { false, true })
                     Linea("casilla-ancho-" + alto + "-" + compacta, "" + (int)ancho.Invoke(null, new object[] { alto, compacta }));
 
-            MethodInfo xp = Metodo(t, "RenderContent", typeof(Graphics)), nativa = Metodo(t, "RenderContent", typeof(SKCanvas));
+            MethodInfo xp = Pru.Capa ? Metodo(t, "RenderContent", Pru.TLienzo) : null, nativa = Metodo(t, "RenderContent", typeof(SKCanvas));
             FieldInfo compactaF = t.GetField("Compacta"), abiertaF = t.GetField("Abierta"), teclaF = t.GetField("Tecla");
             int[][] medidas = { new[] { 160, 36 }, new[] { 120, 28 }, new[] { 205, 33 }, new[] { 29, 36 }, new[] { 200, 11 }, new[] { 30, 12 }, new[] { 96, 46 } };
             int k = 0;
@@ -262,12 +255,12 @@ namespace BancoAsistente
                                 object c = Activator.CreateInstance(t, true);
                                 PonSitio(c, 4, 3, m[0], m[1]);
                                 compactaF.SetValue(c, compacta); abiertaF.SetValue(c, abierta);
-                                using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
+                                using (IDisposable b = (IDisposable)Pru.NuevoMapa(m[0] + 30, Math.Max(m[1] + 24, 70), "Format32bppPArgb"))
                                 {
                                     string ex = "", deja = "";
-                                    using (Graphics g = Prepara(b, e))
+                                    using (Lz g = Prepara(b, e))
                                     {
-                                        g.TranslateTransform(4, 3);   // en su sitio, como DrawCtrlOverlay (Form1.Video.cs)
+                                        g.Traslada(4, 3);   // en su sitio, como DrawCtrlOverlay (Form1.Video.cs)
                                         try
                                         {
                                             if (directo && nativa != null)
@@ -278,14 +271,14 @@ namespace BancoAsistente
                                             }
                                             else
                                             {
-                                                if (xp != null) xp.Invoke(c, new object[] { g, forGpu });
+                                                if (xp != null) xp.Invoke(c, new object[] { g.Objeto, forGpu });
                                                 else
                                                 {   // la traduccion ya no tiene la firma de XP con un Graphics (se quito con vista-ayuda): la traducida con el estado del Graphics, y lo que la de XP le dejaba al Graphics (el suavizado y el modo de letra, si la casilla tiene medida para pintarse)
                                                     object[] es = EstadoDe(g);
                                                     nativa.Invoke(c, new object[] { es[0], es[3], es[4], forGpu });
-                                                    if (!(m[0] < 30 || m[1] < 12)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }
+                                                    if (!(m[0] < 30 || m[1] < 12)) { g.Suavizado = ModoSuave.AntiAlias; g.Letra = ModoLetra.AntiAlias; }
                                                 }
-                                                if (!directo) deja = " deja=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.PixelOffsetMode;
+                                                if (!directo) deja = " deja=" + g.Suavizado + "/" + g.Letra + "/" + g.Copia + "/" + g.Pixel;
                                             }
                                         }
                                         catch (Exception xx) { ex = " " + Exc(xx); }
@@ -297,12 +290,12 @@ namespace BancoAsistente
                             }
                     }
 
-            // (revision) LA CASILLA POR OnPaint, COMO LA PINTA Ventanas.Escritorio (PintaSolo): el Graphics llega con la matriz de su sitio en la
+            // (revision) LA CASILLA POR OnPaint, COMO LA PINTA EL ESCRITORIO DE WINFORMS (PintaSolo): el Graphics llega con la matriz de su sitio en la
             // del HDC (SellaRecorte: Transform es la identidad y la traslacion queda en la base, «m=I b=T r=hdc» en la tabla de estado por
             // linea) y con el recorte de su ventana sellado. Es la linea de WinForms OnPaint(PaintEventArgs e) { RenderContent(e.Graphics,
             // false); }, que en la traduccion entra por la firma de XP del puente; lo que la traducida le pide a CtrlTxt, CtrlDot y CtrlTri
             // va con otro Graphics sobre el mismo lienzo, con la identidad como matriz del HDC.
-            MethodInfo onPaint = t.GetMethod("OnPaint", Todo), pinta = t.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null), sella = typeof(Graphics).GetMethod("SellaRecorte", Todo);
+            MethodInfo onPaint = Pru.Capa ? t.GetMethod("OnPaint", Todo) : null, pinta = t.GetMethod("Pinta", Todo, null, new[] { typeof(SKCanvas) }, null);   // (OnPaint(PaintEventArgs): solo la referencia)
             k = 0;
             foreach (Estado e in Estados)
                 foreach (int[] m in medidas)
@@ -312,29 +305,29 @@ namespace BancoAsistente
                         object c = Activator.CreateInstance(t, true);
                         PonSitio(c, 9, 5, m[0], m[1]);
                         compactaF.SetValue(c, v == 1 || v == 3); abiertaF.SetValue(c, v >= 2);
-                        using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
+                        using (IDisposable b = (IDisposable)Pru.NuevoMapa(m[0] + 30, Math.Max(m[1] + 24, 70), "Format32bppPArgb"))
                         {
                             string ex = "", deja = "";
-                            using (Graphics g = Prepara(b, e))
+                            using (Lz g = Prepara(b, e))
                             {
-                                g.TranslateTransform(9, 5);
-                                if (v % 2 == 0) g.SetClip(new Rectangle(0, 0, m[0] - 7, m[1]));   // la parte de su ventana que hay que pintar
-                                sella.Invoke(g, null);
-                                Matrix antes = g.Transform;
+                                g.Traslada(9, 5);
+                                if (v % 2 == 0) g.Recorta(new Rectangle(0, 0, m[0] - 7, m[1]));   // la parte de su ventana que hay que pintar
+                                g.Sella();
+                                PointF[] antes = g.Transformados();
                                 try
                                 {
-                                    if (onPaint != null) { using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe }); }
+                                    if (onPaint != null) { Pru.OnPaint(onPaint, c, g, new Rectangle(0, 0, m[0], m[1])); }
                                     else
                                     {   // la traduccion: Pinta(SKCanvas) (IVista) pinta en el estado de fabrica de un WM_PAINT (sin copia ni medio pixel); con un Graphics de otro estado, la traducida con su estado, como la llamaba el puente; y lo que dejaba OnPaint (el suavizado y el modo de letra)
                                         object[] es = EstadoDe(g);
                                         if (!(bool)es[3] && !(bool)es[4]) { pinta.Invoke(c, new object[] { es[0] }); directas++; }
                                         else nativa.Invoke(c, new object[] { es[0], es[3], es[4], false });
-                                        if (!(m[0] < 30 || m[1] < 12)) { g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }
+                                        if (!(m[0] < 30 || m[1] < 12)) { g.Suavizado = ModoSuave.AntiAlias; g.Letra = ModoLetra.AntiAlias; }
                                     }
                                 }
                                 catch (Exception xx) { ex = " " + Exc(xx); }
-                                Matrix despues = g.Transform; RectangleF rc = g.ClipBounds;
-                                deja = " deja=" + g.SmoothingMode + "/" + g.TextRenderingHint + "/" + g.CompositingMode + "/" + g.PixelOffsetMode
+                                PointF[] despues = g.Transformados(); RectangleF rc = g.LimitesRecorte;
+                                deja = " deja=" + g.Suavizado + "/" + g.Letra + "/" + g.Copia + "/" + g.Pixel
                                     + " m=" + Mat(antes) + ">" + Mat(despues) + " recorte=" + R(rc);
                             }
                             Rectangle tecla = (Rectangle)teclaF.GetValue(c);
@@ -355,17 +348,17 @@ namespace BancoAsistente
                         object c = Activator.CreateInstance(t, true);
                         PonSitio(c, 0, 0, m[0], m[1]);
                         compactaF.SetValue(c, v == 1 || v == 3); abiertaF.SetValue(c, v >= 2);
-                        using (Bitmap b = new Bitmap(m[0] + 30, Math.Max(m[1] + 24, 70), PixelFormat.Format32bppPArgb))
+                        using (IDisposable b = (IDisposable)Pru.NuevoMapa(m[0] + 30, Math.Max(m[1] + 24, 70), "Format32bppPArgb"))
                         {
                             string ex = "";
-                            using (Graphics g = Graphics.FromImage(b))
+                            using (Lz g = Pru.Lienzo(b))
                             {
-                                g.Clear(Color.FromArgb(120, 30, 60, 90));
-                                if (sitio == 1) { g.TranslateTransform(9, 4); g.IntersectClip(new Rectangle(0, 0, m[0], m[1])); }   // (como Escritorio.PintaArbol)
+                                g.Limpia(Color.FromArgb(120, 30, 60, 90));
+                                if (sitio == 1) { g.Traslada(9, 4); g.Intersecta(new Rectangle(0, 0, m[0], m[1])); }   // (como Escritorio.PintaArbol)
                                 try
                                 {
-                                    if (pinta != null) { pinta.Invoke(c, new[] { Por("Lienzo", typeof(Graphics), g) }); directas++; }
-                                    else using (PaintEventArgs pe = new PaintEventArgs(g, new Rectangle(0, 0, m[0], m[1]))) onPaint.Invoke(c, new object[] { pe });
+                                    if (pinta != null) { pinta.Invoke(c, new[] { g.Estado()[0] }); directas++; }
+                                    else Pru.OnPaint(onPaint, c, g, new Rectangle(0, 0, m[0], m[1]));
                                 }
                                 catch (Exception xx) { ex = " " + Exc(xx); }
                             }
@@ -383,15 +376,15 @@ namespace BancoAsistente
                 foreach (int d in new[] { 10, 18, 27 })
                 {
                     string nombre = "casilla-flecha-" + e.Nombre + "-" + (k++);
-                    using (Bitmap b = new Bitmap(90, 60, PixelFormat.Format32bppPArgb))
+                    using (IDisposable b = (IDisposable)Pru.NuevoMapa(90, 60, "Format32bppPArgb"))
                     {
                         string ex = "";
-                        using (Graphics g = Prepara(b, e))
+                        using (Lz g = Prepara(b, e))
                         {
                             try
                             {
                                 if (trad) flecha.Invoke(null, Junta(EstadoDe(g), 11.75f, 30, d, Color.FromArgb(228, 72, 72)));
-                                else flecha.Invoke(null, new object[] { g, 11.75f, 30, d, Color.FromArgb(228, 72, 72) });
+                                else flecha.Invoke(null, new object[] { g.Objeto, 11.75f, 30, d, Color.FromArgb(228, 72, 72) });
                             }
                             catch (Exception xx) { ex = " " + Exc(xx); }
                         }
@@ -401,9 +394,9 @@ namespace BancoAsistente
         }
 
         // ================================================================ EL DEGRADADO TRAMADO (DegradadoV)
-        // Con la firma de XP (un Brush; en la traduccion por el puente) y, en la traduccion, tambien directo (el shader con el medio pixel del
-        // Graphics en un SKPaint, pintado con Nativo/Pixel.cs como lo pinta la traduccion); en la referencia esa linea es la de XP otra vez. Las
-        // dos comparten el guardado de cuatro mapas: las cuentas del final tienen que salir iguales.
+        // En la referencia, con la firma de XP (un Brush); en la traduccion, la traducida (el shader con el medio pixel del lienzo en un
+        // SKPaint, pintado con Nativo/Pixel.cs como lo pinta la traduccion). Cada caso sale dos veces (la segunda, «directo»). Las dos comparten
+        // el guardado de cuatro mapas: las cuentas del final tienen que salir iguales.
         private static readonly Color[][] Colores = {
             new[] { Color.FromArgb(252, 24, 42, 74), Color.FromArgb(248, 10, 18, 37) },   // los globos de la pregunta y la despedida
             new[] { Color.FromArgb(250, 26, 44, 78), Color.FromArgb(246, 10, 18, 37) },   // el de la guia
@@ -420,13 +413,12 @@ namespace BancoAsistente
             MethodInfo xp = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 3);
             if (!directo && xp == null) nativa = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4);
             int alto = Math.Min(Math.Max(1, r.Height), 300);
-            using (Bitmap b = new Bitmap(Math.Max(1, r.Width) + 30, alto + 24, PixelFormat.Format32bppPArgb))
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(Math.Max(1, r.Width) + 30, alto + 24, "Format32bppPArgb"))
             {
                 string ex = "";
-                using (Graphics g = Prepara(b, e))
-                using (GraphicsPath gp = new GraphicsPath())
+                using (Lz g = Prepara(b, e))
+                using (IDisposable gp = (IDisposable)Pru.RutaElipse(new RectangleF(r.X + 1.5f, r.Y + 2.25f, r.Width * .8f, Math.Min(r.Height, alto) * .9f)))
                 {
-                    gp.AddEllipse(new RectangleF(r.X + 1.5f, r.Y + 2.25f, r.Width * .8f, Math.Min(r.Height, alto) * .9f));
                     try
                     {
                         if (nativa != null)
@@ -436,15 +428,15 @@ namespace BancoAsistente
                             SKShader s = (SKShader)nativa.Invoke(null, new object[] { r, c0, c1, es[4] });
                             using (SKPaint p = new SKPaint { Shader = s })
                             {
-                                if (ruta) px.GetMethod("Rellena", new[] { typeof(SKCanvas), typeof(SKPath), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool) }).Invoke(null, new[] { es[0], gp.P, p, es[1], es[4], es[3] });
+                                if (ruta) px.GetMethod("Rellena", new[] { typeof(SKCanvas), typeof(SKPath), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool) }).Invoke(null, new[] { es[0], Pru.Ruta(gp), p, es[1], es[4], es[3] });
                                 else px.GetMethod("Rellena", new[] { typeof(SKCanvas), typeof(RectangleF), typeof(SKPaint), typeof(bool), typeof(bool), typeof(bool) }).Invoke(null, new[] { es[0], (RectangleF)r, p, es[1], es[4], es[3] });
                             }
                             s.Dispose();
                         }
                         else
-                            using (Brush br = (Brush)xp.Invoke(null, new object[] { r, c0, c1 }))
+                            using (IDisposable br = (IDisposable)xp.Invoke(null, new object[] { r, c0, c1 }))   // (el Brush de XP: solo la referencia llega aqui)
                             {
-                                if (ruta) g.FillPath(br, gp); else g.FillRectangle(br, r);
+                                if (ruta) g.RellenaCon(br, gp); else g.RellenaCon(br, r);
                             }
                     }
                     catch (Exception xx) { ex = " " + Exc(xx); }
@@ -460,10 +452,10 @@ namespace BancoAsistente
             MethodInfo nativa = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4);
             MethodInfo horno = typeof(Form1).GetMethod("HorneaMapaDegradado", Todo);
             Type px = typeof(Form1).Assembly.GetType("Rocola.Nativo.Pixel");
-            using (Bitmap b = new Bitmap(r.Width + 30, 300, PixelFormat.Format32bppPArgb))
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(r.Width + 30, 300, "Format32bppPArgb"))
             {
                 string ex = "";
-                using (Graphics g = Prepara(b, e))
+                using (Lz g = Prepara(b, e))
                 {
                     try
                     {
@@ -478,9 +470,9 @@ namespace BancoAsistente
                         }
                         else
                         {
-                            Bitmap mapa = (Bitmap)horno.Invoke(null, new object[] { r.Height, c0, c1 });
-                            using (TextureBrush t = new TextureBrush(mapa, WrapMode.Tile)) { t.TranslateTransform(r.X, r.Y); g.FillRectangle(t, r); }
-                            mapa.Dispose();
+                            object mapa = horno.Invoke(null, new object[] { r.Height, c0, c1 });
+                            g.RellenaTextura(mapa, r.X, r.Y, r);   // (un TextureBrush con el mapa repetido, trasladado a la esquina de la caja)
+                            Pru.Suelta(mapa);
                         }
                     }
                     catch (Exception xx) { ex = " " + Exc(xx); }
@@ -497,10 +489,10 @@ namespace BancoAsistente
         {
             MethodInfo nativa = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 4);
             Type px = typeof(Form1).Assembly.GetType("Rocola.Nativo.Pixel");
-            using (Bitmap b = new Bitmap(r.Width + 30, r.Height + 24, PixelFormat.Format32bppPArgb))
+            using (IDisposable b = (IDisposable)Pru.NuevoMapa(r.Width + 30, r.Height + 24, "Format32bppPArgb"))
             {
                 string ex = "";
-                using (Graphics g = Prepara(b, e))
+                using (Lz g = Prepara(b, e))
                 {
                     try
                     {
@@ -518,8 +510,8 @@ namespace BancoAsistente
                         else
                         {
                             MethodInfo xp = Metodo(typeof(Form1), "DegradadoV", typeof(Rectangle), 3);   // (la firma de XP: solo la referencia llega aqui)
-                            using (Brush br = (Brush)xp.Invoke(null, new object[] { r, c0, c1 })) g.FillRectangle(br, r);
-                            for (int i = 1; i <= 5; i++) ((Brush)xp.Invoke(null, new object[] { new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0 })).Dispose();
+                            using (IDisposable br = (IDisposable)xp.Invoke(null, new object[] { r, c0, c1 })) g.RellenaCon(br, r);
+                            for (int i = 1; i <= 5; i++) ((IDisposable)xp.Invoke(null, new object[] { new Rectangle(r.X, r.Y, r.Width, r.Height + i), c1, c0 })).Dispose();
                         }
                     }
                     catch (Exception xx) { ex = " " + Exc(xx); }
@@ -574,7 +566,7 @@ namespace BancoAsistente
         public static int Main(string[] a)
         {
             for (int i = 0; i + 1 < a.Length; i += 2) if (a[i] == "vuelca") { carpeta = a[i + 1]; System.IO.Directory.CreateDirectory(carpeta); }
-            Linea("inicio", "tipografico=" + StringFormat.GenericTypographic.Alignment + "/" + (int)StringFormat.GenericTypographic.FormatFlags);
+            Linea("inicio", "tipografico=" + Fmt.Tipografico.Horizontal + "/" + Fmt.Tipografico.Banderas);
             Globos();
             Contornos();
             Teclas();
