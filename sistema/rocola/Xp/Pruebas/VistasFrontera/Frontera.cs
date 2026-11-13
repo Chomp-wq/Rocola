@@ -10,9 +10,10 @@
 //      CreateOverlay, UpdateOverlay, UpdateOverlayRegion, CreateCoverShared y CreateTextureFromBitmap, lo que devuelven, y con
 //      ROCOLA_VOLCADO_TEXTURAS cada zona subida de 64x64 o mas (compara.sh las junta por orden, medida y huella);
 //   3) el contador de cuadros (EnsureFpsTex, Ctrl+F1) en un GpuPanel sin construir, con numeros fijos y dos anchos de pantalla.
-// La referencia recibe Bitmap de la capa; la traduccion, SKBitmap (con "puente", el Bitmap de la capa por las sobrecargas de
-// Plataforma/Puente.frontera.cs mientras existian; se quitaron con interfaz-a-skbitmap, 12-11-2026, y desde entonces "puente" va por la SKBitmap). Las salidas tienen que ser iguales linea por linea, y los volcados.
-//   ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_VOLCADO_TEXTURAS=DIR dotnet bin/Release/net10.0/VistasFrontera.dll [puente] [vuelca CARPETA]
+// La referencia recibe Bitmap de la capa; la traduccion, SKBitmap (Pru.TMapa: Comun/PruCapa.cs y PruNativo.cs). La puerta «puente» (el Bitmap
+// de la capa por las sobrecargas de Plataforma/Puente.frontera.cs) se quito en la oleada 8b (13-11-2026): desde interfaz-a-skbitmap
+// (12-11-2026) iba por la misma SKBitmap que «sk». Las salidas tienen que ser iguales linea por linea, y los volcados.
+//   ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_VOLCADO_TEXTURAS=DIR dotnet bin/Release/net10.0/VistasFrontera.dll [vuelca CARPETA]
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -20,7 +21,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rocola;
-using Rocola.Dibujo2D;
 using SkiaSharp;
 
 namespace Banco
@@ -30,24 +30,20 @@ namespace Banco
         const BindingFlags Todo = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static string carpeta;
         private static int n;
-        private static bool puente;
 
         // ---- 1) los mapas: los puntos tal cual (premultiplicados) y como los sube la tarjeta (LockBits Format32bppArgb de la capa)
         private static unsafe void Apunta(string nombre, object o)
         {
             n++;
             if (o == null) { Console.WriteLine(nombre + "\tnull"); return; }
-            Bitmap b = o as Bitmap ?? new Bitmap((SKBitmap)o, PixelFormat.Format32bppArgb);
-            SKBitmap s = b.Sk; byte[] px = new byte[s.Width * s.Height * 4];
+            object b = Pru.Aprecia(o, "Format32bppArgb");
+            SKBitmap s = Pru.Sk(b); byte[] px = new byte[s.Width * s.Height * 4];
             byte* p = (byte*)s.GetPixels();
             for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) px[y * s.Width * 4 + x] = p[y * s.RowBytes + x];
-            BitmapData d = b.LockBits(new Rectangle(0, 0, s.Width, s.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            byte[] sub = new byte[s.Width * s.Height * 4];
-            for (int y = 0; y < s.Height; y++) for (int x = 0; x < s.Width * 4; x++) sub[y * s.Width * 4 + x] = ((byte*)d.Scan0)[y * d.Stride + x];
-            b.UnlockBits(d);
+            byte[] sub = Pru.SinPremultiplicar(b);
             Console.WriteLine(nombre + "\t" + s.Width + "x" + s.Height + "\t" + s.ColorType + "/" + s.AlphaType + "\t" + Huella(px) + "\t" + Huella(sub));
             if (carpeta != null) using (SKData png = s.Encode(SKEncodedImageFormat.Png, 100)) System.IO.File.WriteAllBytes(System.IO.Path.Combine(carpeta, nombre + ".png"), png.ToArray());
-            b.Dispose();
+            Pru.Suelta(b);
         }
         private static string Huella(byte[] b) { byte[] h = System.Security.Cryptography.SHA256.HashData(b); StringBuilder sb = new StringBuilder(); for (int i = 0; i < 8; i++) sb.Append(h[i].ToString("x2")); return sb.ToString(); }
         private static object Llama(Type t, string metodo, params object[] a)
@@ -62,30 +58,28 @@ namespace Banco
         private static object stars, gpu;
         private static readonly Dictionary<IntPtr, int> nombres = new Dictionary<IntPtr, int>();
         private static string Nombre(IntPtr t) { if (t == IntPtr.Zero) return "0"; int k; if (!nombres.TryGetValue(t, out k)) { k = nombres.Count + 1; nombres[t] = k; } return "t" + k; }
-        private static readonly Dictionary<SKBitmap, Bitmap> envueltos = new Dictionary<SKBitmap, Bitmap>();
+        private static readonly Dictionary<SKBitmap, object> envueltos = new Dictionary<SKBitmap, object>();
         private static MethodInfo Metodo(object en, string nombre, int parametros)
         {
-            MethodInfo conSk = null, conBitmap = null;
+            MethodInfo hallado = null;
             foreach (MethodInfo m in en.GetType().GetMethods(Todo))
             {
                 if (m.Name != nombre || m.GetParameters().Length != parametros) continue;
                 foreach (ParameterInfo p in m.GetParameters())
                 {
-                    if (p.ParameterType == typeof(SKBitmap)) conSk = m;
-                    if (p.ParameterType == typeof(Bitmap)) conBitmap = m;
+                    if (p.ParameterType == typeof(SKBitmap) || p.ParameterType == Pru.TMapa) hallado = m;
                 }
             }
-            if (conSk != null && (!puente || conBitmap == null)) return conSk;   // (el dispositivo no tiene puente: nadie sin traducir lo llama)
-            if (conBitmap != null) return conBitmap;
+            if (hallado != null) return hallado;
             throw new MissingMethodException(en.GetType().Name + "." + nombre);
         }
         private static object Dale(MethodInfo m, SKBitmap sk)
         {
             foreach (ParameterInfo p in m.GetParameters())
-                if (p.ParameterType == typeof(Bitmap))
+                if (p.ParameterType == Pru.TMapa)
                 {
-                    Bitmap b;
-                    if (!envueltos.TryGetValue(sk, out b)) { b = new Bitmap(sk, PixelFormat.Format32bppArgb); envueltos[sk] = b; }
+                    object b;
+                    if (!envueltos.TryGetValue(sk, out b)) { b = Pru.DeSk(sk, "Format32bppArgb"); envueltos[sk] = b; }
                     return b;
                 }
             return sk;
@@ -141,7 +135,6 @@ namespace Banco
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "vuelca" && i + 1 < args.Length) { carpeta = args[++i]; System.IO.Directory.CreateDirectory(carpeta); }
-                else if (args[i] == "puente") puente = true;
             }
             // ---- 1) los hornos de D3D9Star.cs, con la cuarta parte de cada pantalla (EnsureNieblas: Math.Max(8, Width / 4)) y otras medidas
             int[][] cuartos = { new[] { 256, 192 }, new[] { 320, 256 }, new[] { 200, 150 }, new[] { 341, 192 }, new[] { 400, 225 }, new[] { 160, 120 },
@@ -167,7 +160,7 @@ namespace Banco
             // ---- 2) la subida a la tarjeta
             stars = new GpuStarfield(IntPtr.Zero, 1024, 768, 7);   // (el constructor hornea el atlas y el halo y los sube: CreateTextureFromBitmap)
             gpu = stars.GetType().GetField("gpu", Todo).GetValue(stars);
-            Console.WriteLine("GpuStarfield Ok=" + stars.GetType().GetProperty("Ok", Todo).GetValue(stars) + " puente=" + puente);
+            Console.WriteLine("GpuStarfield Ok=" + stars.GetType().GetProperty("Ok", Todo).GetValue(stars) + " puente=False");
             SKBitmap opaco = Prueba(300, 200, 0, 1), opaco2 = Prueba(300, 200, 0, 2), alfa = Prueba(257, 129, 1, 3), alfa2 = Prueba(257, 129, 1, 4),
                 orillas = Prueba(64, 64, 2, 5), orillas2 = Prueba(64, 64, 2, 6), uno = Prueba(1, 1, 1, 7), fino = Prueba(1000, 3, 1, 8),
                 franjas = Prueba(128, 96, 3, 9), grande = Prueba(1500, 900, 1, 10), grande2 = Prueba(1500, 900, 2, 11), portada = Prueba(256, 256, 0, 12);
