@@ -80,6 +80,9 @@ namespace Banco
         public static object NuevoMapa(int w, int h, string formato) { SKBitmap b = Mapas.Nuevo(w, h); formatos.AddOrUpdate(b, formato); return b; }
         public static object DeSk(SKBitmap b, string formato) { if (b != null) formatos.AddOrUpdate(b, formato); return b; }
         public static SKBitmap Sk(object o) { return o as SKBitmap; }
+        // un mapa de la capa de GDI+ (solo la referencia los tiene: aqui no hay ninguno) y lo que XP miraba de su formato
+        public static bool EsCapa(object o) { return false; }
+        public static bool TieneAlfa(string formato) { return formato == "Format32bppPArgb" || formato == "Format32bppArgb" || formato == "Format8bppIndexed"; }
         // un mapa del programa (lo que devuelve un horno) como lo mira el arnes: tal cual, y si no tenia formato apuntado, el que se diga
         public static object Aprecia(object o, string formato) { SKBitmap b = (SKBitmap)o; string f; if (!formatos.TryGetValue(b, out f)) formatos.AddOrUpdate(b, formato); return b; }
         public static string Formato(object o) { string f; return formatos.TryGetValue((SKBitmap)o, out f) ? f : "Format32bppPArgb"; }

@@ -43,6 +43,9 @@ namespace Banco
         public static object NuevoMapa(int w, int h, string formato) { return new Bitmap(w, h, Formato(formato)); }
         public static object DeSk(SKBitmap b, string formato) { return b == null ? null : new Bitmap(b, Formato(formato)); }
         public static object Aprecia(object o, string formato) { return o as Bitmap ?? new Bitmap((SKBitmap)o, Formato(formato)); }
+        public static bool EsCapa(object o) { return o is Image; }
+        // Image.IsAlphaPixelFormat(f) || (f & PixelFormat.Indexed) != 0
+        public static bool TieneAlfa(string formato) { PixelFormat f = Formato(formato); return Image.IsAlphaPixelFormat(f) || (f & PixelFormat.Indexed) != 0; }
         public static SKBitmap Sk(object o) { return o is Bitmap ? ((Bitmap)o).Sk : o as SKBitmap; }
         public static string Formato(object o) { return ((Bitmap)o).PixelFormat.ToString(); }
         private static PixelFormat Formato(string n) { return (PixelFormat)Enum.Parse(typeof(PixelFormat), n); }
