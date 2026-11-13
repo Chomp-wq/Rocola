@@ -72,11 +72,13 @@ namespace Rocola
             sb.Append("mantenimiento=").Append(VolcadoEstado.B(maintMode)).Append('\n');
             sb.Append("f3pagina=").Append(VolcadoEstado.N(f3Pagina)).Append('\n');
             // (port nativo, ventanas2 H) el foco y la activa pueden ser de una hoja nativa (Nativo/Hoja.cs)
-            sb.Append("foco=").Append(TrazaVentanas.Pieza(Hoja.Foco ?? (object)Escritorio.Foco)).Append('\n');
-            sb.Append("activa=").Append(TrazaVentanas.Pieza(Hoja.Activa ?? (object)Escritorio.Activa)).Append('\n');
+            // (form1-sin-form) sin la capa, el foco y la activa de la ventana de la rocola los lleva la pantalla (PantallaRocola.Ventana.cs)
+            bool nativa = PantallaRocola.HayVentanaNativa;
+            sb.Append("foco=").Append(Hoja.Foco != null || !nativa ? TrazaVentanas.Pieza(Hoja.Foco ?? (object)Escritorio.Foco) : PantallaRocola.NombreDelFoco).Append('\n');
+            sb.Append("activa=").Append(Hoja.Activa != null || !nativa ? TrazaVentanas.Pieza(Hoja.Activa ?? (object)Escritorio.Activa) : PantallaRocola.NombreDeLaActiva).Append('\n');
             foreach (Form h in Escritorio.Formas)
             {
-                if (Anfitrion.RocolaDe(h) == this || h.IsDisposed || !h.Visible) continue;   // (form1-sin-form) la ventana de la rocola en la capa
+                if (h.IsDisposed || !h.Visible) continue;   // (form1-sin-form) la rocola ya no es una ventana de la capa: aqui solo quedan las de las pruebas
                 sb.Append("hoja ").Append(TrazaVentanas.Pieza(h)).Append(" @").Append(CajaPrueba(h.Bounds)).Append('\n');
                 PiezasPrueba(h, sb, "  ");
             }

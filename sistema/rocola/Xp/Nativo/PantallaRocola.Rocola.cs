@@ -5,11 +5,11 @@
 // pantalla le abre (IVentanaDeLaRocola), y la ventana le avisa de lo que en XP eran los On* de Form (AvisosDeLaVentana: OnShown,
 // OnResize, OnPaintBackground, OnFormClosing, OnFormClosed, ProcessCmdKey, KeyPress, OnKeyUp y Dispose). Ninguna de las dos imita a Form:
 // solo lo que la rocola de XP usa, con nombres propios.
-// TRANSICION: la ventana que se abre es todavia una de la capa de Plataforma (Anfitrion.cs, VentanaDeLaRocola: una Form de la capa que
-// la ensena con los pasos de WinForms -HandleCreated, Resize, Load, Visible, Activated y Shown en la cola: lo que fijan las 41 pruebas-,
-// reparte las teclas y el raton, pinta sus vistas en sus huecos y la cierra con su razon, tambien cuando el sistema se apaga:
-// Escritorio.FinDeSesion, por PantallaRocola.LaCapa). Lo pone el anfitrion en AbreEnLaCapa. Sin ella, la ventana es la pantalla misma (la
-// lista nativa de PantallaRocola.Vistas.cs, con PantallaRocola.Teclas): lo que queda de la oleada 8 (PORT_form1-sin-form.md).
+// LA VENTANA ES LA PANTALLA (Nativo/PantallaRocola.Ventana.cs): sus vistas son la lista nativa de PantallaRocola.Vistas.cs, sus teclas
+// PantallaRocola.Teclas y su fondo el primer tramo de la composicion; se ensena, se activa, toma el foco, se cierra con su razon y se
+// desecha con las reglas de WinForms que la capa de la transicion fijo con las 41 pruebas, y las trazas la nombran igual («Form1'Rocola'»).
+// TRANSICION (hasta N7): al abrirla, el anfitrion suelta la capa de ventanas (SueltaLaCapa: Plataforma/Anfitrion.cs), de la que solo
+// queda lo que compone las hojas y lo que usan las 41 pruebas de WinForms; la rocola ya no tiene ninguna ventana de la capa.
 using System;
 using System.Drawing;
 using System.Threading;
@@ -59,13 +59,12 @@ namespace Rocola
 
     internal static partial class PantallaRocola
     {
-        // (transicion) quien abre la ventana de la rocola mientras sea una de la capa (Plataforma/Anfitrion.cs)
-        internal static Func<AvisosDeLaVentana, IVentanaDeLaRocola> AbreEnLaCapa;
+        // (transicion, hasta N7) lo que el anfitrion hace para que la capa de ventanas deje de repartir la pantalla (Plataforma/Anfitrion.cs)
+        internal static Action SueltaLaCapa;
         internal static IVentanaDeLaRocola AbreVentana(AvisosDeLaVentana avisos)
         {
-            Func<AvisosDeLaVentana, IVentanaDeLaRocola> f = AbreEnLaCapa;
-            if (f != null) return f(avisos);
-            throw new NotSupportedException("La ventana de la rocola sin la capa aun no esta (PORT_form1-sin-form.md).");
+            Action s = SueltaLaCapa; if (s != null) s();
+            return AbreNativa(avisos);
         }
 
         internal static void Corre(Form1 rocola)
@@ -73,7 +72,7 @@ namespace Rocola
             Hilo = Thread.CurrentThread;
             PonContexto();   // SynchronizationContext.Current de este hilo: lo que otros hilos le mandan con Post llega como encargo (PantallaRocola.Teclado.cs)
             Principal = rocola;
-            AlApagar = delegate { ILaCapa c = LaCapa; if (c != null) c.FinDeSesion(); };   // (transicion) WM_QUERYENDSESSION y WM_ENDSESSION a las ventanas de la capa (Escritorio.FinDeSesion, por PantallaRocola.Vistas.cs)
+            AlApagar = delegate { ILaCapa c = LaCapa; if (c != null) c.FinDeSesion(); else FinDeSesion(); };   // WM_QUERYENDSESSION y WM_ENDSESSION a las ventanas: la rocola y sus hojas (PantallaRocola.Ventana.cs); (transicion) con la capa, Escritorio.FinDeSesion
             bool cerrada = false;
             rocola.FormClosed += delegate { cerrada = true; };   // el aviso de la rocola al cerrarse (el FormClosed de XP)
             rocola.Ventana.Ensena();   // (Application.Run: Visible = true) la ventana se ensena con los pasos de WinForms

@@ -89,17 +89,10 @@ namespace Rocola
         // Escritorio al empezar).
         internal static Func<object> LaDeDelante;
         internal static Action<object> PonDelante, PonEncima, PonFoco;
-        internal static object Delante { get { Func<object> f = LaDeDelante; return f != null ? RocolaDe(f()) : null; } }
-        internal static void AlFrente(object ventana) { Action<object> a = PonDelante; if (a != null) a(VentanaDe(ventana)); }
-        internal static void Encima(object ventana) { Action<object> a = PonEncima; if (a != null) a(VentanaDe(ventana)); }
-        internal static void Enfoca(object ventana) { Action<object> a = PonFoco; if (a != null) a(VentanaDe(ventana)); }
-        // (transicion, form1-sin-form) LA ROCOLA YA NO ES UNA VENTANA DE LA CAPA: Form1 no hereda de nada y su ventana la lleva la pantalla
-        // (PantallaRocola.Rocola.cs). Mientras esa ventana sea una de la capa (Plataforma/Anfitrion.cs, VentanaDeLaRocola), lo que el codigo
-        // de XP nombra como «this» (la duena de una hoja, la ventana de sus vistas, la de delante) es para la capa esa ventana: aqui se pasa de
-        // una a otra. Sin la capa no hay nada que pasar (las dos dan lo mismo). Se va con la capa (N7).
-        internal static Func<object, object> DeRocolaAVentana, DeVentanaARocola;
-        internal static object VentanaDe(object rocola) { Func<object, object> f = DeRocolaAVentana; return f != null ? f(rocola) : rocola; }
-        internal static object RocolaDe(object ventana) { Func<object, object> f = DeVentanaARocola; return f != null ? f(ventana) : ventana; }
+        internal static object Delante { get { Func<object> f = LaDeDelante; return f != null ? f() : null; } }
+        internal static void AlFrente(object ventana) { Action<object> a = PonDelante; if (a != null) a(ventana); }
+        internal static void Encima(object ventana) { Action<object> a = PonEncima; if (a != null) a(ventana); }
+        internal static void Enfoca(object ventana) { Action<object> a = PonFoco; if (a != null) a(ventana); }
 
         // ---------- el SynchronizationContext del hilo de la pantalla ----------
         // En XP, WinForms pone en el hilo de la pantalla su WindowsFormsSynchronizationContext al crear el primer control y al empezar el

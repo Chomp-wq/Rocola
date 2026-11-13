@@ -51,7 +51,7 @@ namespace Rocola
         {
             if (o == null) return "nadie";
             object vh = Anfitrion.VistaDeHueco(o); if (vh != null) o = vh;   // (armado-vistas) el hueco de una vista sin herencia en la capa, por su vista
-            string n = Anfitrion.NombreDeVentana(o) ?? o.GetType().Name;   // (form1-sin-form) la ventana de la rocola en la capa, por la rocola («Form1»)
+            string n = o.GetType().Name;
             string t = null;
             // (port nativo, ventanas2 H) las hojas y las piezas nativas (Nativo/Hoja.cs, Pieza.cs), con su texto como las de la capa
             IPieza p = o as IPieza; Hoja h = o as Hoja;

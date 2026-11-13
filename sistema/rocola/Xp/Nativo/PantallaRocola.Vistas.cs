@@ -86,7 +86,6 @@ namespace Rocola
         // orden z es el de la coleccion, el [0] arriba: ControlCollection.SetChildIndex, UpdateZOrder). En una ventana de la capa, la capa.
         internal static void AgregaVista(object ventana, IVista v)
         {
-            ventana = VentanaDe(ventana);   // (form1-sin-form) la rocola: su ventana (de la capa mientras dure; PantallaRocola.Teclado.cs)
             ILaCapa c = LaCapa;
             IVista dueno = ventana as IVista;
             if (dueno != null && (c == null || !c.EsSuya(ventana)))
@@ -153,7 +152,7 @@ namespace Rocola
         {
             IVista p = PadreDe(v);
             if (p != null) { Rectangle r = p.Bounds; cliente = r.Size; return true; }
-            if (lista.Contains(v)) { cliente = new Size(Ancho, Alto); return true; }
+            if (lista.Contains(v)) { cliente = ventana != null ? ventana.Cliente : new Size(Ancho, Alto); return true; }   // (form1-sin-form: el cliente de la ventana de la rocola; maximizada y sin borde, la pantalla)
             ILaCapa c = LaCapa;
             if (c != null) return c.ClienteDelDueno(v, out cliente);
             cliente = Size.Empty; return false;
@@ -164,7 +163,6 @@ namespace Rocola
         // componer si cambio el sitio o si se ve (la textura la toma el compositor en cada cuadro); en un hueco, que la capa lo tome.
         internal static void AgregaCapa(object ventana, CapaDeTextura t)
         {
-            ventana = VentanaDe(ventana);   // (form1-sin-form) la rocola: su ventana
             ILaCapa c = LaCapa;
             if (c != null && c.EsSuya(ventana)) { c.AgregaCapa(ventana, t); return; }
             AgregaCapa(t);
@@ -221,6 +219,7 @@ namespace Rocola
             if (EnLaRama(bajoRaton, v)) bajoRaton = null;
             if (EnLaRama(captura, v)) captura = null;
             if (EnLaRama(foco, v)) foco = null;
+            if (EnLaRama(activo, v)) activo = null;   // (form1-sin-form: tampoco es ya la vista activa de la ventana)
         }
         // el orden de una (0 arriba), o -1 si no esta en la lista nativa
         internal static int IndiceDe(object v) { return lista.IndexOf(v); }
@@ -233,6 +232,13 @@ namespace Rocola
             ILaCapa c = LaCapa; if (c != null) c.Cambio(v, repintar);
         }
         internal static void CambioVentana() { cambiosVentana++; HayQueComponer(); }
+        // (form1-sin-form) la ventana de la rocola se acaba de ensenar: sus vistas pasan a verse (GetVisibleCore), y las que pinta la tarjeta
+        // reciben su WM_PAINT (ShowWindow)
+        private static void VentanaSeVe()
+        {
+            foreach (object o in lista.ToArray()) { IVista v = o as IVista; if (v != null && v.DeLaTarjeta) TarjetaCambio(v, false); }
+            CambioVentana();
+        }
         // (gpupanel-sin-control) una vista de la tarjeta de la lista nativa cambio: si hay que pintarla (Invalidate) o se acaba de ensenar
         // (ShowWindow da WM_PAINT a la ventana que aparece; la capa invalida al control al cambiar Visible: Ventanas.Control.SetVisibleCore),
         // su WM_PAINT queda pendiente (PintadoSinLaCapa)
@@ -248,7 +254,7 @@ namespace Rocola
         {
             IVista dueno = PadreDe(v);
             if (dueno != null) return dueno.Visible;   // (GetVisibleCore: la suya y la de su dueno)
-            if (lista.Contains(v)) return true;
+            if (lista.Contains(v)) return ventana == null || ventana.Visible;   // (form1-sin-form: la ventana de la rocola no se ve hasta que se ensena, ni despues de desecharse; sin ella -las pruebas-, siempre)
             ILaCapa c = LaCapa; return c == null || c.DuenoVisible(v);
         }
         // Pinta de fabrica de una vista (la que aun es control de la capa)
@@ -276,12 +282,11 @@ namespace Rocola
         {
             ILaCapa c = LaCapa;
             if (c != null && c.EsSuyaLaVista(v)) return c.Enfoca(v);
-            if (v != null && EnLaLista(v) && Ve(v) && foco != v)
-            {
-                foco = v;
-                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("foco " + v.GetType().Name);
-            }
-            return v != null && foco == v;
+            // (form1-sin-form) como Control.Focus: sin CanFocus (no se ve, o su ventana esta debajo de una hoja modal) no lo toma y da false;
+            // si lo toma, por el camino del foco de la ventana (PonFocoVentana: la ventana pasa a ser la activa, la vista es su vista activa)
+            if (v == null || !EnLaLista(v) || !Ve(v) || (ventana != null && VentanaDeshabilitada)) return false;
+            PonFocoVentana(v, false);
+            return EnLaRama(foco, v);
         }
         // LOS QUE ESCUCHAN EL RATON DE UNA VISTA DESDE FUERA (en XP, los eventos de Control: «ayudaView.MouseClick += ...» y
         // «attractView.MouseDown += ...», Form1.cs). En WinForms el evento lo lanza el On* de fabrica (Control.OnMouseDown: «MouseEventHandler
@@ -321,15 +326,28 @@ namespace Rocola
         internal static void CapasDeLaVentana(List<CapaPantalla> salida)
         {
             if (lista.Count == 0 && FondoDeLaVentana == null) { SueltaTramos(0); return; }
+            if (ventana != null && !ventana.Visible) { SueltaTramos(0); return; }   // (form1-sin-form) la ventana de la rocola aun sin ensenar, o ya desechada
             object[] l = lista.ToArray();
+            // (form1-sin-form) LO QUE QUEDA DEBAJO DE UNA TEXTURA QUE TAPA LA VENTANA ENTERA NO SE PINTA (Escritorio.TapaTodo y ArmaCapas de la
+            // capa: el panel de la tarjeta a pantalla completa): ni el fondo de la ventana ni las vistas de debajo; el primer tramo queda vacio
+            int fondoDesde = l.Length - 1; bool tapaTodo = false;
+            if (ventana != null)
+                for (int i = 0; i < l.Length; i++)
+                {
+                    CapaDeTextura t = l[i] as CapaDeTextura; IVista vt = l[i] as IVista;
+                    Rectangle r; bool ve;
+                    if (t != null) { r = t.Sitio; ve = t.Visible; } else if (vt != null && vt.DeLaTarjeta) { r = vt.Bounds; ve = Ve(vt); } else continue;
+                    if (ve && r.Left <= 0 && r.Top <= 0 && r.Right >= Ancho && r.Bottom >= Alto) { fondoDesde = i; tapaTodo = true; break; }
+                }
+            string tipo = ventana != null ? "dibujo2d" : "vista";   // (las capturas por capa la nombran como la capa nombraba lo pintado por procesador de la ventana)
             bool repinta = pintadoVentana != cambiosVentana;   // (cada cambio de una vista -sitio, visible, Invalidate- sube cambiosVentana)
             // los cortes: las capas de textura que se ven y las vistas de la tarjeta que se ven (gpupanel-sin-control), de abajo arriba
             List<int> cortes = new List<int>();
-            for (int i = l.Length - 1; i >= 0; i--) { CapaDeTextura t = l[i] as CapaDeTextura; IVista vt = l[i] as IVista; if ((t != null && t.Visible) || (vt != null && vt.DeLaTarjeta && Ve(vt))) cortes.Add(i); }
+            for (int i = fondoDesde; i >= 0; i--) { CapaDeTextura t = l[i] as CapaDeTextura; IVista vt = l[i] as IVista; if ((t != null && t.Visible) || (vt != null && vt.DeLaTarjeta && Ve(vt))) cortes.Add(i); }
             int n = cortes.Count + 1;
             while (tramos.Count < n) tramos.Add(new Tramo());
             SueltaTramos(n);
-            int hasta = l.Length - 1;   // el tramo t va de 'hasta' (abajo) al corte siguiente (exclusivo)
+            int hasta = fondoDesde;   // el tramo t va de 'hasta' (abajo) al corte siguiente (exclusivo)
             for (int t = 0; t < n; t++)
             {
                 int corte = t < cortes.Count ? cortes[t] : -1;
@@ -341,14 +359,14 @@ namespace Rocola
                     {
                         g.Clear(SKColors.Transparent);
                         Action<SKCanvas> fondo = FondoDeLaVentana;
-                        if (t == 0 && fondo != null) { int s = g.Save(); try { fondo(g); } catch (Exception ex) { Falla(ex); } g.RestoreToCount(s); }
+                        if (t == 0 && fondo != null && !tapaTodo) { int s = g.Save(); try { fondo(g); } catch (Exception ex) { Falla(ex); } g.RestoreToCount(s); }
                         for (int i = hasta; i > corte; i--) { IVista v = l[i] as IVista; if (v != null && !v.DeLaTarjeta) PintaRecortada(l, i, v, g); }   // (una de la tarjeta que no se ve no es corte: no se pinta)
                         g.Flush();
                     }
                     tr.Version = ++versionTramo;
                 }
                 CapaPantalla c = new CapaPantalla();
-                c.Clave = tr; c.Mapa = tr.Mapa; c.Version = tr.Version; c.Rect = new Rectangle(0, 0, Ancho, Alto); c.Tipo = "vista";
+                c.Clave = tr; c.Mapa = tr.Mapa; c.Version = tr.Version; c.Rect = new Rectangle(0, 0, Ancho, Alto); c.Tipo = tipo;
                 salida.Add(c);
                 if (corte >= 0)
                 {
@@ -456,7 +474,8 @@ namespace Rocola
                 CapaDeTextura t = (CapaDeTextura)o;
                 if (t.Visible && t.Sitio.Contains(p)) return t;
             }
-            return null;
+            // (form1-sin-form) donde no hay ninguna vista, la ventana de la rocola (Escritorio.ControlEn: la Form misma), si se ve
+            return ventana != null && ventana.Visible ? LaVentana : null;
         }
         // la ventana hija de mas adentro bajo el punto (en las coordenadas de la vista): ChildWindowFromPointEx baja por las hijas de mas arriba
         // que se ven y contienen el punto
@@ -479,7 +498,17 @@ namespace Rocola
         private static void Avisa(object a, AvisoRaton que, BotonRaton b, int clics, int delta, Raton e = null)
         {
             IVista v = a as IVista;
-            if (v == null) return;   // (una capa de textura: se queda con el raton y no hace nada)
+            if (v == null)
+            {
+                // (form1-sin-form) la ventana de la rocola: el aviso se apunta como en la capa (Escritorio.Llama con la Form) y nadie lo escucha
+                // (Form1 no sobrescribe los On* del raton ni escucha sus avisos); una capa de textura se queda con el raton y no hace nada
+                if (a == LaVentana && TrazaVentanas.Activa)
+                {
+                    if (e == null) e = new Raton(b, clics, Flecha.X, Flecha.Y, delta);
+                    TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[(int)que] + " " + NombreVentana + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
+                }
+                return;
+            }
             Point r = OrigenDe(v);
             if (e == null) e = new Raton(b, clics, Flecha.X - r.X, Flecha.Y - r.Y, delta);
             if (TrazaVentanas.Activa) TrazaVentanas.Apunta("raton " + TrazaVentanas.EventoRaton[(int)que] + " " + v.GetType().Name + (que == AvisoRaton.Entra || que == AvisoRaton.Sale ? "" : " " + e.X + "," + e.Y + " " + TrazaVentanas.Datos((int)e.Button) + " " + e.Clicks + " " + e.Delta));
@@ -516,6 +545,8 @@ namespace Rocola
                 BotonesRaton |= b;
                 if (Hoja.TomaElRaton(Flecha)) { BajoLaFlecha(null); Hoja.RatonBoton(b, true, Flecha); return; }
                 object v = VistaEn(Flecha);
+                // (form1-sin-form) el clic en la ventana de la rocola (o en una vista suya) la activa si no lo era (WM_MOUSEACTIVATE; Escritorio.RatonBoton)
+                if (v != null && ventana != null && !ventana.Activa) { HayQueComponer(); ActivaVentana(true); }
                 BajoLaFlecha(v);
                 if (v == null) return;
                 captura = v;   // (WmMouseDown: CaptureInternal = true)
@@ -548,7 +579,7 @@ namespace Rocola
         // Control.cs:12748-12764): la ventana (RuedaDeLaVentana). Con una hoja nativa activa, a la pieza con el foco de la hoja.
         internal static Action<Raton> RuedaDeLaVentana;
         private static object foco;
-        internal static object FocoDeLaVentana { get { return foco; } set { foco = value; } }
+        internal static object FocoDeLaVentana { get { return foco; } set { foco = value; activo = value == LaVentana ? null : value; } }
         internal static void RatonRueda(int muescas)
         {
             ILaCapa c = LaCapa; if (c != null) { c.RatonRueda(muescas); return; }
@@ -561,6 +592,9 @@ namespace Rocola
                 Avisa(v, AvisoRaton.Rueda, BotonRaton.None, 0, muescas * 120, e);
                 if (e.Handled) return;
             }
+            // (form1-sin-form) y la ventana de la rocola, si tiene el foco ella o una vista suya, o es la activa (Escritorio.RatonRueda: del foco
+            // hacia arriba, o la activa): se apunta como en la capa
+            if (ventana != null && (foco != null || ventana.Activa)) Avisa(LaVentana, AvisoRaton.Rueda, BotonRaton.None, 0, muescas * 120);
             Action<Raton> w = RuedaDeLaVentana;
             if (w != null) { Raton e = new Raton(BotonRaton.None, 0, Flecha.X, Flecha.Y, muescas * 120); Protege(delegate { w(e); }); }
         }
@@ -598,42 +632,67 @@ namespace Rocola
             Tecla datos = tecla | Modificadores;
             if (Hoja.Activa != null) { if (!abajo) Modificadores &= ~mod; Hoja.Tecla(tecla, abajo, Modificadores, repetida); return; }
             TeclasDeLaVentana v = Teclas;
-            if (v == null) { if (!abajo) Modificadores &= ~mod; return; }
+            // (form1-sin-form) EL DESTINO, como en WinForms (Escritorio.Tecla de la capa): la vista que tiene el foco (tambien si se escondio)
+            // o, sin foco, la ventana activa. La ventana tiene KeyPreview: ve KeyDown, KeyPress y KeyUp antes que la vista del foco (y los
+            // de la vista no los escucha nadie: una vista no recibe teclas). Sin la ventana de la rocola (las pruebas), siempre la ventana.
+            object destino = ventana == null ? LaVentana : foco ?? (ventana.Activa ? LaVentana : null);
+            if (v == null || destino == null) { if (!abajo) Modificadores &= ~mod; return; }
+            bool aVista = destino != LaVentana;
+            string nv = NombreVentana, nd = aVista ? TrazaVentanas.Pieza(destino) : nv;
             if (abajo)
             {
                 bool alt = (Modificadores & Rocola.Tecla.Alt) != 0;
                 PulsoTecla m = new PulsoTecla(datos, repetida);
-                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tecla " + TrazaVentanas.Datos((int)datos) + (repetida ? " rep" : "") + " a ventana");
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("tecla " + TrazaVentanas.Datos((int)datos) + (repetida ? " rep" : "") + " a " + nd);
                 bool pck = v.ProcesaMando != null && v.ProcesaMando(ref m, datos);
                 if (TrazaVentanas.Activa) TrazaVentanas.Apunta("pck " + (pck ? "1" : "0"));
                 if (pck) return;
                 if (v.TeclaDeDialogo != null && v.TeclaDeDialogo(datos)) return;
                 if (TeclaDeDialogoDeLaVentana(datos)) return;   // (vistas-buscador) Tab y flechas entre las vistas: ContainerControl.ProcessDialogKey (PantallaRocola.Foco.cs)
-                PulsoTecla e = new PulsoTecla(datos);
-                if (v.TeclaAbajo != null) v.TeclaAbajo(e);
-                bool atendida = e.Handled, suprime = e.SuppressKeyPress;
+                // ProcessKeyMessage: KeyDown primero en la ventana (KeyPreview) y, si no la atendio, en la vista del foco
+                bool atendida = false, suprime = false;
+                if (aVista)
+                {
+                    PulsoTecla ef = new PulsoTecla(datos);
+                    if (v.TeclaAbajo != null) v.TeclaAbajo(ef);
+                    atendida = ef.Handled; suprime = ef.SuppressKeyPress;
+                    if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + nv + (atendida ? " h" : "") + (suprime ? " s" : ""));
+                }
+                if (!atendida)
+                {
+                    PulsoTecla e = new PulsoTecla(datos);
+                    if (!aVista && v.TeclaAbajo != null) v.TeclaAbajo(e);
+                    atendida = e.Handled; suprime |= e.SuppressKeyPress;
+                    if (TrazaVentanas.Activa && (ventana != null || aVista)) TrazaVentanas.Apunta("keydown " + TrazaVentanas.Datos((int)datos) + " a " + nd + (e.Handled ? " h" : "") + (e.SuppressKeyPress ? " s" : ""));
+                }
                 if (!atendida && alt && tecla == Rocola.Tecla.F4 && (Modificadores & Rocola.Tecla.Control) == 0 && v.CierraPorSistema != null)
                 {
                     Action cierra = v.CierraPorSistema;
-                    EncolaDesde(null, cierra, "Alt+F4", false);
+                    EncolaDesde(DuenoDeLasTeclas, cierra, "Alt+F4", false);
                 }
                 if (!suprime)
                 {
                     char ch = CaracterDe(tecla, Modificadores);
-                    if (ch != '\0' && v.Caracter != null)
+                    if (ch != '\0')
                     {
-                        if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a ventana");
-                        v.Caracter(new PulsoCaracter(ch));
+                        PulsoCaracter kp = new PulsoCaracter(ch);
+                        if (TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + nv);
+                        if (v.Caracter != null) v.Caracter(kp);
+                        if (aVista && !kp.Handled && TrazaVentanas.Activa) TrazaVentanas.Apunta("caracter " + ((int)ch).ToString(System.Globalization.CultureInfo.InvariantCulture) + " a " + nd);
                     }
                 }
             }
             else
             {
                 Modificadores &= ~mod;
-                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a ventana");
-                if (v.TeclaArriba != null) v.TeclaArriba(new PulsoTecla(tecla | Modificadores));
+                PulsoTecla e = new PulsoTecla(tecla | Modificadores);
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + nv);
+                if (v.TeclaArriba != null) v.TeclaArriba(e);
+                if (aVista && !e.Handled && TrazaVentanas.Activa) TrazaVentanas.Apunta("keyup " + TrazaVentanas.Datos((int)(tecla | Modificadores)) + " a " + nd);
             }
         }
+        // (form1-sin-form) la ventana a la que se encarga el cierre de Alt+F4 (el WM_SYSCOMMAND viaja por su cola: si se destruye antes, se pierde)
+        internal static IDuenoDeEncargos DuenoDeLasTeclas;
 
         // ---------- la tarjeta ----------
         // LA SUPERFICIE DE UNA VISTA DE LA TARJETA (gpupanel-sin-control: W4). En XP el GpuPanel era una ventana con un dispositivo de Direct3D 9
@@ -697,6 +756,15 @@ namespace Rocola
             if (t == null || !EnLaLista(t.Vista))
             {
                 if (t == null && c != null) return c.Presenta(ventana, textura, ancho, alto, sinEspera);
+                // (form1-sin-form) sin la capa, Present en una hoja (la ventana de prueba F12): su cliente guarda el fondo y la pantalla compone
+                Hoja hoja = t == null ? Hoja.DeLaVentana(ventana) : null;
+                if (hoja != null)
+                {
+                    hoja.PresentaTarjeta(textura, ancho, alto);
+                    SinEspera = sinEspera; UltimaPresentacionTarjeta = AhoraMs; compuesto = cambios;
+                    Action ah = Componer; if (ah != null) ah();
+                    return true;
+                }
                 GlMas.Flush(); return false;   // (una vista que no esta en ninguna ventana: Present sin ventana)
             }
             t.Textura = textura; t.AnchoGl = ancho; t.AltoGl = alto;
@@ -712,14 +780,20 @@ namespace Rocola
             ILaCapa c = LaCapa;
             if (t != null) { if (c != null && c.EsSuyaLaVista(t.Vista)) c.OlvidaEnVista(t.Vista); t.Textura = 0; return; }
             if (c != null) c.OlvidaTarjeta(ventana);
+            else { Hoja hoja = Hoja.DeLaVentana(ventana); if (hoja != null) hoja.OlvidaTarjeta(); }   // (form1-sin-form) sin la capa, la hoja directa
         }
         // EL WM_PAINT DE UNA VISTA DE LA TARJETA en la lista nativa (lo que la capa hace con un control «Nativa»: Escritorio.Ensucia y PintaYa):
         // hay que pintarla cuando se invalida o se ensena (ShowWindow da WM_PAINT); lo da PintadoSinLaCapa antes de componer, uno por vuelta
         private static readonly List<IVista> tarjetasPorPintar = new List<IVista>();
         private static void PorPintar(IVista v) { if (!tarjetasPorPintar.Contains(v)) tarjetasPorPintar.Add(v); Despierta(); }
         private static SKBitmap mapaSuelto; private static SKCanvas lienzoSuelto;   // (el lienzo que recibe su Pinta: la tarjeta no lo usa)
+        // (form1-sin-form) Invalidate(true) de la ventana: el WM_PAINT de cada hija que pinta la tarjeta; el de una capa de textura (el video: en
+        // XP, el control del WMP) no hace nada, pero es un mensaje mas de la cola (la capa lo contaba igual: Escritorio.PintaUno)
+        private static int pintadosVacios;
+        internal static void PorPintarDeLaVentana(object o) { IVista v = o as IVista; if (v != null) PorPintar(v); else { pintadosVacios++; Despierta(); } }
         private static bool PintaUnaTarjeta()
         {
+            if (tarjetasPorPintar.Count == 0 && pintadosVacios > 0) { pintadosVacios--; return true; }
             if (tarjetasPorPintar.Count == 0) return false;
             IVista v = tarjetasPorPintar[0]; tarjetasPorPintar.RemoveAt(0);
             if (!EnLaLista(v) || !Ve(v)) return true;
@@ -737,7 +811,7 @@ namespace Rocola
         internal static void PintadoSinLaCapa()
         {
             PintaUno = delegate { if (PintaUnaTarjeta()) return true; if (!ComposicionPendiente()) return false; compuesto = cambios; try { Action a = Componer; if (a != null) a(); } catch (Exception ex) { Falla(ex); } return true; };
-            HaySucio = delegate { return tarjetasPorPintar.Count > 0 || ComposicionPendiente(); };   // (gpupanel-sin-control: el WM_PAINT de las vistas de la tarjeta primero, como Escritorio.PintaUno)
+            HaySucio = delegate { return tarjetasPorPintar.Count > 0 || pintadosVacios > 0 || ComposicionPendiente(); };   // (gpupanel-sin-control: el WM_PAINT de las vistas de la tarjeta primero, como Escritorio.PintaUno)
             ProximoPintado = delegate { return Componer != null && cambios != compuesto ? UltimaPresentacionTarjeta + 100.5 : double.MaxValue; };
         }
         private static bool ComposicionPendiente() { return Componer != null && cambios != compuesto && AhoraMs - UltimaPresentacionTarjeta > 100; }
