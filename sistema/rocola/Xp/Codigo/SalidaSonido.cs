@@ -151,7 +151,7 @@ namespace Rocola
         }
     }
 
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         private System.Collections.Generic.Dictionary<string, PerfilLatenciaAudio> perfilesLatencia;
         private PerfilLatenciaAudio perfilLatencia;

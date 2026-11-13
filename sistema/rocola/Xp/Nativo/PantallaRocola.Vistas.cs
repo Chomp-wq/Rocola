@@ -86,6 +86,7 @@ namespace Rocola
         // orden z es el de la coleccion, el [0] arriba: ControlCollection.SetChildIndex, UpdateZOrder). En una ventana de la capa, la capa.
         internal static void AgregaVista(object ventana, IVista v)
         {
+            ventana = VentanaDe(ventana);   // (form1-sin-form) la rocola: su ventana (de la capa mientras dure; PantallaRocola.Teclado.cs)
             ILaCapa c = LaCapa;
             IVista dueno = ventana as IVista;
             if (dueno != null && (c == null || !c.EsSuya(ventana)))
@@ -163,6 +164,7 @@ namespace Rocola
         // componer si cambio el sitio o si se ve (la textura la toma el compositor en cada cuadro); en un hueco, que la capa lo tome.
         internal static void AgregaCapa(object ventana, CapaDeTextura t)
         {
+            ventana = VentanaDe(ventana);   // (form1-sin-form) la rocola: su ventana
             ILaCapa c = LaCapa;
             if (c != null && c.EsSuya(ventana)) { c.AgregaCapa(ventana, t); return; }
             AgregaCapa(t);

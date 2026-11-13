@@ -48,6 +48,11 @@ namespace Rocola
             Escritorio.Anfitrion = Actual;
             PantallaRocola.LaCapa = new VentanasDeLaCapa();   // (transicion) la pantalla nativa le pide a la capa lo de sus ventanas
             PantallaRocola.Componer = Actual.Compone;
+            // (transicion, form1-sin-form) la ventana de la rocola es todavia una de la capa (VentanaDeLaRocola, abajo): la abre aqui la pantalla
+            // y, donde el codigo de XP nombra a la rocola como ventana, la capa recibe esa (PantallaRocola.VentanaDe y RocolaDe)
+            PantallaRocola.AbreEnLaCapa = delegate (AvisosDeLaVentana a) { return new VentanaDeLaRocola(a); };
+            PantallaRocola.DeRocolaAVentana = delegate (object o) { VentanaDeLaRocola v = VentanaDeLaRocola.Abierta; return v != null && o != null && o == v.Rocola ? v : o; };
+            PantallaRocola.DeVentanaARocola = RocolaDe;
             ReproductorVideo.Pantalla = new VideoEnPantalla();   // la capa del video (Nativo/ReproductorVideo.cs): en una ventana de la capa, su hueco de textura (HuecoDelVideo, abajo)
             // las teclas: con la pantalla de verdad, los teclados y botones de /dev/input (TeclasLinux.cs); y las de prueba
             if (s is Kms || Environment.GetEnvironmentVariable("ROCOLA_TECLAS") == "1") TeclasLinux.Arranca("/dev/input");
@@ -116,6 +121,61 @@ namespace Rocola
             if (hojas != null) r.AddRange(hojas);
             if (bajo != null) r.InsertRange(0, bajo);
             return r;
+        }
+
+        // ---------- (transicion, form1-sin-form) LA VENTANA DE LA ROCOLA MIENTRAS SEA UNA DE LA CAPA ----------
+        // Form1 ya no hereda de Form: es la duena de su ventana (Nativo/Form1.Ventana.cs) y esta es la ventana que la pantalla le abre mientras
+        // quede la capa: una Form de la capa que hace lo de siempre (ensenarse con los pasos de WinForms, repartir teclas y raton, pintar las
+        // vistas en sus huecos, cerrarse con su razon) y le avisa a la rocola donde antes corrian sus On* sobrescritos, en el mismo orden. Las
+        // trazas la nombran «Form1», como cuando la rocola era la Form (NombreDeVentana). El codigo de XP no la ve. Se va con la capa (N7).
+        internal static object RocolaDe(object o) { VentanaDeLaRocola v = o as VentanaDeLaRocola; return v != null ? v.Rocola : o; }
+        internal static string NombreDeVentana(object o) { VentanaDeLaRocola v = o as VentanaDeLaRocola; return v != null ? v.Rocola.GetType().Name : null; }
+        internal sealed class VentanaDeLaRocola : Form, IVentanaDeLaRocola
+        {
+            internal static VentanaDeLaRocola Abierta;
+            private readonly AvisosDeLaVentana avisos;
+            private bool enLoSuyo;
+            internal object Rocola { get { return avisos.Rocola; } }
+            internal VentanaDeLaRocola(AvisosDeLaVentana a)
+            {
+                avisos = a; Abierta = this;
+                DoubleBuffered = true;   // (lo primero del constructor de Form1 en XP)
+                KeyPreview = true;       // (Form1.cs: «this.KeyPreview = true»)
+                StartPosition = FormStartPosition.CenterScreen;   // (Form1.cs, BuildUi; maximizada no cuenta)
+                KeyPress += delegate (object s, KeyPressEventArgs e) { avisos.Caracter(e); };   // (Form1.cs: «this.KeyPress += Form_KeyPress»)
+            }
+            // lo que la rocola le pide
+            public string Titulo { get { return Text; } set { Text = value; } }
+            public Size Medida { get { return Size; } set { Size = value; } }
+            public Size MedidaMinima { set { MinimumSize = value; } }
+            public Size Cliente { get { return ClientSize; } set { ClientSize = value; } }
+            public System.Drawing.Color Fondo { get { return BackColor; } set { BackColor = value; } }
+            public void SinBorde() { FormBorderStyle = FormBorderStyle.None; }
+            public void Maximiza() { WindowState = FormWindowState.Maximized; }
+            public bool Minimizada { get { return WindowState == FormWindowState.Minimized; } }
+            public bool Creada { get { return IsHandleCreated; } }
+            public bool Desechada { get { return IsDisposed; } }
+            public bool Desechandose { get { return Disposing; } }
+            long IVentanaDeLaRocola.Vida { get { return ((IDuenoDeEncargos)this).Vida; } }
+            public bool Habilitada { get { return Enabled; } }
+            public bool ContieneElFoco { get { return ContainsFocus; } }
+            public bool Enfoca() { return Focus(); }
+            public void Invalida(bool conHijas) { Invalidate(conHijas); }
+            public void PintaFondoDeFabrica(SKCanvas g) { using (Graphics gr = PuenteDibujo.Graphics(g, g.TotalMatrix)) using (PaintEventArgs e = new PaintEventArgs(gr, ClientRectangle)) base.OnPaintBackground(e); }
+            public void Ensena() { Visible = true; }
+            public void Cierra() { Close(); }
+            public void Desecha() { Dispose(); }
+            public void DesechaLoSuyo(bool disposing) { enLoSuyo = true; try { base.Dispose(disposing); } finally { enLoSuyo = false; } }
+            // lo que le avisa (donde corrian los On* de Form1)
+            protected override void OnShown(EventArgs e) { avisos.Ensenada(); }
+            protected override void OnResize(EventArgs e) { base.OnResize(e); avisos.CambioDeMedida(); }
+            protected override void OnPaintBackground(PaintEventArgs e) { avisos.PintaFondo(PuenteDibujo.Lienzo(e.Graphics)); }
+            protected override void OnFormClosing(FormClosingEventArgs e) { avisos.Cerrandose((RazonCierre)(int)e.CloseReason); base.OnFormClosing(e); }
+            protected override void OnFormClosed(FormClosedEventArgs e) { avisos.Cerrada((RazonCierre)(int)e.CloseReason); base.OnFormClosed(e); }
+            protected override void Dispose(bool disposing) { if (enLoSuyo) base.Dispose(disposing); else avisos.Desecha(disposing); }
+            // las teclas que la capa le da a la rocola en el camino de WinForms (Escritorio.TeclaDeMando y TeclaArriba)
+            internal bool Mando(ref PulsoTecla m, Tecla datos) { return avisos.ProcesaMando(ref m, datos); }
+            internal void Arriba(PulsoTecla e) { avisos.TeclaArriba(e); }
         }
 
         // ---------- (transicion) LO QUE LA PANTALLA NATIVA LE PIDE A LAS VENTANAS DE LA CAPA ----------

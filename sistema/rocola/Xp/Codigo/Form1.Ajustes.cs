@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
 
         // Bitacora de DIAGNOSTICO (diagnostico=1 en config): apunta los eventos clave (video, animaciones,

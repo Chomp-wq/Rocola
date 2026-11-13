@@ -316,6 +316,7 @@ namespace Rocola
             if (visible) throw new InvalidOperationException("Form that is already visible cannot be displayed as a modal dialog box.");
             if (modal) throw new InvalidOperationException("Form that is already displayed modally cannot be displayed as a modal dialog box.");
             cargada = false; razonCierre = RazonCierre.None;
+            duenaDada = PantallaRocola.VentanaDe(duenaDada);   // (form1-sin-form) la rocola de duena: su ventana (mientras sea de la capa, esa; si no, ella misma)
             object activa = LaActiva;
             duena = duenaDada ?? activa;
             try

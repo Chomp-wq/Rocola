@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         // ================ LOS EFECTOS QUE SE PUEDEN BAJAR (Ctrl+F3 -> Imagen y rendimiento) ================
         // Cuatro cosas del cielo que cuestan y se pueden quitar cuando un equipo no da para todo. De fabrica
@@ -1264,7 +1264,7 @@ namespace Rocola
         // se pueden volver a desparejar.
         private static Color GenreToColor(string genre) { return ColorDeEtiqueta(GenreLabel(genre)); }
 
-        private Rocola.Nativo.Letra Bold(float size) { return Rocola.Nativo.Letra.EnPuntos(this.Font.FontFamily.Name, size, true); }   // EN LINUX: Font -> Letra (Nativo/Letras.cs): new Font(familia, size, Bold) es la letra nativa en puntos y negrita, para los rotulos (Nativo/RotuloVista.cs) y la lista del disco; la familia es la de la Font del formulario (de la capa hasta la oleada 8), por su nombre
+        private Rocola.Nativo.Letra Bold(float size) { return Rocola.Nativo.Letra.EnPuntos(this.Font.Familia, size, true); }   // EN LINUX: Font -> Letra (Nativo/Letras.cs): new Font(familia, size, Bold) es la letra nativa en puntos y negrita, para los rotulos (Nativo/RotuloVista.cs) y la lista del disco; la familia es la de la Font del formulario (una Letra, Nativo/Form1.Ventana.cs; FontFamily.Name -> Familia), por su nombre
 
         private void TransLabel(RotuloVista l, float size)   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs)
         {

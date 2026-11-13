@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
 #if ROCOLA_GPU
         private string paginaGpuClave, paginaGpuFirma;
@@ -876,7 +876,7 @@ namespace Rocola
                         winMode != 0 || searchOverlay == null) return;
                     Point p = new Point(e.X + gpuPanel.Left - searchOverlay.Left,
                                         e.Y + gpuPanel.Top - searchOverlay.Top);
-                    if (!searchOverlay.ClientRectangle.Contains(p)) return;
+                    if (!new Rectangle(0, 0, searchOverlay.Width, searchOverlay.Height).Contains(p)) return;   // EN LINUX: searchOverlay.ClientRectangle: el cliente de un control sin borde es su medida, en el origen
                     MarkSearchActivity();
                     searchOverlay.ClickAt(p);
                     gpuPanel.TouchUi();
@@ -1874,7 +1874,7 @@ namespace Rocola
 
         private static string Fmt(TimeSpan t) { return ((int)t.TotalMinutes) + ":" + t.Seconds.ToString("00"); }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
+        private void OnFormClosing(RazonCierre e)   // EN LINUX: protected override void OnFormClosing(FormClosingEventArgs e): no sobrescribe nada; su ventana la llama al ir a cerrarse, con la razon (CloseReason -> RazonCierre, los mismos numeros y nombres: UserClosing con Close y Alt+F4, WindowsShutDown con el apagado del sistema); la rocola nunca lo impide (no toca e.Cancel)
         {
             if (vigiaPantalla != null) vigiaPantalla.Para();   // cerrar tarda lo que tenga que tardar: no es una parada
             DetieneVigiaFoco();
@@ -1894,14 +1894,14 @@ namespace Rocola
             // la corriente de golpe y no corre NADA de esto: el archivo SOBREVIVE y, al volver la luz, la rocola
             // REANUDA (creditos + cola). Es decir, la sola presencia del archivo al arrancar delata que fue apagon.
             // Si ni siquiera publicamos los datos iniciales, conservar tambien el estado anterior.
-            if (!startupReadPending && (e.CloseReason == CloseReason.WindowsShutDown || e.CloseReason == CloseReason.UserClosing))
+            if (!startupReadPending && (e == RazonCierre.WindowsShutDown || e == RazonCierre.UserClosing))   // EN LINUX: e.CloseReason == CloseReason.X -> e == RazonCierre.X (la razon llega tal cual)
                 BorraEstado();
             else WaitDataWrites(15000);   // cierre por otra causa: que el ultimo estado encargado llegue al disco
 #if ROCOLA_GPU
             if (gpuPanel != null) gpuPanel.VuelcaLibro();   // lo que quedaba del minuto en el libro de los peores cuadros (solo con diagnostico=1)
 #endif
             Bitacora.Vacia(3000);   // y que la bitacora no se quede con apuntes en la cola
-            base.OnFormClosing(e);
+            // EN LINUX: (XP) base.OnFormClosing(e); Form.OnFormClosing solo lanza el aviso FormClosing, que nadie escucha
         }
 
         // ==========  VIDEO: host del control ActiveX de Windows Media Player  ==========

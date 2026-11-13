@@ -17,7 +17,7 @@ using NAudio.Wave.SampleProviders;
 
 namespace Rocola
 {
-    public partial class Form1 : Form
+    public partial class Form1   // EN LINUX: (XP) «: Form». La rocola no hereda de nada: es la duena de su ventana, que le abre la pantalla nativa; lo que XP usaba de Form, con sus nombres, esta en Nativo/Form1.Ventana.cs
     {
         private CubeBox miniCube;
         private readonly Dictionary<string, SKBitmap> coverCache = new Dictionary<string, SKBitmap>(); internal const FormatoMapa FormatoPortada = FormatoMapa.PArgb32;   // EN LINUX: la portada de la cache es un SKBitmap (en XP, Image): el mismo objeto para todos los que la piden y la comparan por identidad. Su formato de XP no viaja con ella: todas salen de DecodeCoverCore como Format32bppPArgb (new Bitmap(256, 256, PArgb), Clone(..., PArgb) o CopiaMiniaturaGpu), y FormatoPortada lo dice a quien lo necesita (la paleta y InteriorOpaco)
@@ -1117,7 +1117,7 @@ namespace Rocola
         private void PrecalientaAudioDespuesDelCuadro()
         {
             precalAudioConMargen = gpuEnabled && gpuPanel != null && gpuPanel.CuadrosMedidos > 0
-                && WindowState != FormWindowState.Minimized && gpuPanel.MsTrabajo < 20.0;
+                && !ventana.Minimizada && gpuPanel.MsTrabajo < 20.0;   // EN LINUX: WindowState != FormWindowState.Minimized: se lo pregunta a su ventana
             if (precalAudioLanzado || !precalAudioConMargen || startupClosing
                 || Environment.TickCount - lastInputTick < PrecalQuieta) return;
             precalAudioLanzado = true;
@@ -1158,7 +1158,7 @@ namespace Rocola
             PrecalientaAudioDespuesDelCuadro();
             if (gpuEnabled)
             {
-                if (gpuPanel == null || gpuPanel.CuadrosMedidos == 0 || WindowState == FormWindowState.Minimized
+                if (gpuPanel == null || gpuPanel.CuadrosMedidos == 0 || ventana.Minimizada   // EN LINUX: WindowState == FormWindowState.Minimized: se lo pregunta a su ventana
                     || precalAudioEnCurso || gpuPanel.MsTrabajo + precalUltimoCoste > 28.0) return;
                 // No competir con una pagina nueva. La caché visual llega antes que pantallas ocultas.
                 lock (coverLock) if (coverLoading.Count != 0 || coverQHi.Count != 0) return;

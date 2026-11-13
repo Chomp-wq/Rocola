@@ -76,7 +76,7 @@ namespace Rocola
             sb.Append("activa=").Append(TrazaVentanas.Pieza(Hoja.Activa ?? (object)Escritorio.Activa)).Append('\n');
             foreach (Form h in Escritorio.Formas)
             {
-                if (h == this || h.IsDisposed || !h.Visible) continue;
+                if (Anfitrion.RocolaDe(h) == this || h.IsDisposed || !h.Visible) continue;   // (form1-sin-form) la ventana de la rocola en la capa
                 sb.Append("hoja ").Append(TrazaVentanas.Pieza(h)).Append(" @").Append(CajaPrueba(h.Bounds)).Append('\n');
                 PiezasPrueba(h, sb, "  ");
             }
