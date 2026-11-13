@@ -27,6 +27,70 @@ export ROCOLA_ALSA=${ROCOLA_ALSA:-$(rocola-tarjeta)}
 [ -z "$ROCOLA_CONVERTIDAS" ] && [ -d /rocola/disco/rocola-os ] && export ROCOLA_CONVERTIDAS=/rocola/disco/rocola-os/convertidas
 # LA COPIA DE LOS BOTONES (4-11-2026; Arranque.cs: CopiaBotones): fuera de datos.img, para que se puedan usar aunque se pierda lo aprendido
 [ -z "$ROCOLA_COPIAS" ] && [ -d /rocola/disco/rocola-os ] && export ROCOLA_COPIAS=/rocola/disco/rocola-os/copias
+# EL PROGRAMA TRADUCIDO DE XP (rocola-xp; sistema/INTEGRACION_ROCOLA_XP.md), PREPARADO Y APAGADO. Con el archivo
+# /rocola/datos/rocola_programa.txt y dentro «programa=xp» (no hay opcion en Ctrl+F3), y solo si el sistema trae
+# /usr/lib/rocola-xp/rocola-xp, se abre la rocola traducida de XP en lugar de rocola-consola. Sin el archivo, o sin el programa, TODO SIGUE
+# COMO SIEMPRE. Se mira en cada arranque del programa (no hace falta reiniciar el equipo). Si rocola-xp se cae 3 veces seguidas al
+# arrancar, se vuelve al programa de siempre hasta el siguiente encendido (/run/rocola-xp-caida).
+CUAL=${ROCOLA_CUAL:-/rocola/datos/rocola_programa.txt}
+XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
+usa_xp() { [ ! -f "${ROCOLA_RUN:-/run}/rocola-xp-caida" ] && [ -x "$XPBIN" ] && grep -q '^programa=xp' "$CUAL" 2>/dev/null; }
+# alguna de las dos rocolas esta abierta (sin rocola-xp en el sistema, lo mismo que «pidof rocola-consola»)
+abierta() { pidof rocola-consola rocola-xp >/dev/null; }
+# CERRAR rocola-xp CONSERVANDO LOS CREDITOS Y LA COLA (los reinicios propios de Rocola OS: la consola de mantenimiento, «reiniciar el
+# programa ya»). En XP, y en rocola-xp, el cierre a proposito (SIGTERM = el apagado de Windows) BORRA rocola_estado.txt (regla del
+# 8-11-2026); lo unico que lo conserva es el «cierre por otra causa». rocola-xp aun no tiene esa via: se le manda SIGUSR1, que hoy lo
+# corta en seco como un apagon (el estado sobrevive y al abrir reanuda; lo aprendido desde el ultimo guardado se pierde) y, cuando
+# rocola-xp la atienda (pendiente: INTEGRACION_ROCOLA_XP.md), sera un cierre ordenado. NUNCA SIGTERM aqui.
+cierra_xp() {
+	killall -USR1 rocola-xp 2>/dev/null
+	i=0; while pidof rocola-xp >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+	pidof rocola-xp >/dev/null && killall -KILL rocola-xp 2>/dev/null
+}
+# LO QUE rocola-xp NECESITA (solo con el interruptor encendido). Deja XPDATOS y XPLETRAS.
+#  - LOS DATOS: de fabrica, una carpeta propia en lo aprendido (/rocola/datos/xp): no se mezclan con los de rocola-consola (su
+#    rocola_config.txt tiene otras claves) ni se escribe en la carpeta de la rocola de XP (sus tablas llevan rutas de Windows: la rocola
+#    de XP, que sigue siendo la del bar, se las encontraria cambiadas). La primera vez se copian de la carpeta de XP (solo se lee) los
+#    botones y los ajustes: rocola_teclas.txt y rocola_config.txt (sin los botones, rocola-xp abre la configuracion de botones).
+#    Con «datos=xp» en rocola_programa.txt (DECISION DEL DUENO, no de fabrica): la carpeta de la rocola de XP que eligio rocola-discos
+#    (/run/rocola-datos-xp), si se puede escribir en ella; si no, la propia. Con «datos=/una/carpeta»: esa, como propia.
+#  - LA MUSICA: XP busca «musica» junto a sus datos o hasta 3 carpetas mas arriba (aqui /rocola/musica) y las de Ctrl+F2 (las lineas
+#    «dir=» de rocola_config.txt): las carpetas que encontro rocola-discos (/run/rocola-musica) se apuntan asi, una vez cada una. En la
+#    carpeta de XP no se apunta nada: alli XP encuentra su «musica» como siempre.
+#  - LAS LETRAS DE XP: se leen del disco de Windows (\WINDOWS\Fonts) tal cual (ROCOLA_LETRAS_XP); no van en el sistema ni en el repositorio.
+prepara_xp() {
+	XPDATOS=${ROCOLA_XP_DATOS:-/rocola/datos/xp}; propia=1
+	dexp=$(cat "${ROCOLA_RUN:-/run}/rocola-datos-xp" 2>/dev/null)
+	quiere=$(sed -n 's/^datos=//p' "$CUAL" 2>/dev/null | tr -d '\r' | head -1)
+	case "$quiere" in
+		xp)
+			if [ -n "$dexp" ] && [ -d "$dexp" ] && : 2>/dev/null > "$dexp/rocola_os_escribe.tmp"; then
+				rm -f "$dexp/rocola_os_escribe.tmp"; XPDATOS=$dexp; propia=
+			else echo "--- rocola-xp: no se puede escribir en la carpeta de XP (${dexp:-no hay}): datos en $XPDATOS" >> $REGISTRO; fi ;;
+		/*)   # otra carpeta propia (por ejemplo en el disco de la rocola, /rocola/disco/rocola-os/xp: lo aprendido, datos.img, mide 512 MB)
+			if mkdir -p "$quiere" 2>/dev/null && : 2>/dev/null > "$quiere/rocola_os_escribe.tmp"; then rm -f "$quiere/rocola_os_escribe.tmp"; XPDATOS=$quiere
+			else echo "--- rocola-xp: no se puede escribir en $quiere: datos en $XPDATOS" >> $REGISTRO; fi ;;
+	esac
+	mkdir -p "$XPDATOS"
+	if [ -n "$propia" ]; then
+		if [ -n "$dexp" ] && [ ! -f "$XPDATOS/rocola_de_xp.txt" ]; then
+			for n in rocola_teclas.txt rocola_config.txt; do
+				[ -e "$XPDATOS/$n" ] && continue
+				f=$(find "$dexp" -maxdepth 1 -type f -iname "$n" 2>/dev/null | head -1)
+				[ -n "$f" ] && cp "$f" "$XPDATOS/$n" 2>/dev/null && echo "$n de $dexp" >> "$XPDATOS/rocola_de_xp.txt"
+			done
+			echo "mirado $dexp" >> "$XPDATOS/rocola_de_xp.txt"
+		fi
+		c=$XPDATOS/rocola_config.txt
+		while IFS= read -r m; do
+			[ -n "$m" ] && [ -d "$m" ] || continue
+			tr -d '\r' < "$c" 2>/dev/null | grep -qxF "dir=$m" && continue
+			[ -s "$c" ] && [ -n "$(tail -c 1 "$c")" ] && printf '\r\n' >> "$c"   # (que no se pegue a la ultima linea)
+			printf 'dir=%s\r\n' "$m" >> "$c"
+		done < "${ROCOLA_RUN:-/run}/rocola-musica"
+	fi 2>/dev/null
+	XPLETRAS=$(find /rocola/disco /rocola/discos/* -maxdepth 2 -type d -iname fonts 2>/dev/null | grep -i '/windows/fonts$' | head -1)
+}
 volumen() {
 	T=$(rocola-tarjeta -c)
 	for c in Master PCM Speaker Headphone Front "Line Out" Surround Center LFE Side; do amixer ${T:+-c $T} -q sset "$c" 100% unmute 2>/dev/null; done
@@ -76,7 +140,7 @@ el_mas_nuevo() {
 pon_nueva
 el_mas_nuevo
 # El sistema se da por bueno cuando la rocola lleva 3 minutos en pie (una actualizacion del sistema en prueba: S99rocola y el initramfs).
-( sleep 180; while ! pidof rocola-consola >/dev/null; do sleep 10; done; touch ${ROCOLA_RUN:-/run}/rocola-confirmado ) &
+( sleep 180; while ! abierta; do sleep 10; done; touch ${ROCOLA_RUN:-/run}/rocola-confirmado ) &
 # LA CONSOLA DE MANTENIMIENTO (7-11-2026: en el A4, «No puedo abrir la consola de mantenimiento con Ctrl+Alt+F2»). Ctrl+Alt+F2 si cambia a
 # la consola 2 (alli espera «login»), pero la rocola seguia pintando la pantalla encima (es la duena de la tarjeta grafica) y leyendo las
 # teclas. Ahora, si la consola de delante deja de ser la 1, la rocola se cierra como en una actualizacion (guarda su estado: los creditos
@@ -86,10 +150,19 @@ EN_CONSOLA=${ROCOLA_RUN:-/run}/rocola-en-consola
 ( while sleep 1; do
 	a=$(cat "$ACTIVA" 2>/dev/null)
 	[ -n "$a" ] && [ "$a" != tty1 ] && [ ! -f "$EN_CONSOLA" ] || continue
-	touch "$EN_CONSOLA"; touch ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya
+	touch "$EN_CONSOLA"
+	if pidof rocola-xp >/dev/null; then cierra_xp; continue; fi   # (rocola-xp no mira el aviso: se cierra conservando el estado; nunca SIGTERM)
+	touch ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya
 	i=0; while pidof rocola-consola >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 	pidof rocola-consola >/dev/null && killall -TERM rocola-consola 2>/dev/null
 	killall mpv 2>/dev/null
+  done ) &
+# «REINICIAR EL PROGRAMA YA» (rocola-buzon) CON rocola-xp: no mira /run/rocola-reinicia-programa-ya; lo atiende el lanzador, conservando el
+# estado. (Lo de «cuando este libre» -reiniciar, apagar, el sistema nuevo, el diagnostico- espera a la fase 11: el lanzador no sabe si
+# esta libre.) Sin rocola-xp abierto no hace nada.
+( while sleep 5; do
+	pidof rocola-xp >/dev/null && [ -f ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya ] && [ ! -f "$EN_CONSOLA" ] || continue
+	rm -f ${ROCOLA_RUN:-/run}/rocola-reinicia-programa-ya; cierra_xp
   done ) &
 while :; do
 	# en la consola de mantenimiento: la rocola espera a que se vuelva a la 1
@@ -103,7 +176,14 @@ while :; do
 	BIN=/usr/bin/rocola-consola
 	[ -x "$PROG/rocola-consola" ] && BIN=$PROG/rocola-consola
 	t0=$(date +%s)
-	ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> $REGISTRO 2>&1
+	if usa_xp; then
+		# la rocola traducida de XP: la pantalla por KMS (sin ROCOLA_PANTALLA), el sonido por ROCOLA_ALSA (arriba), sus datos y las letras de XP
+		BIN=$XPBIN; prepara_xp
+		echo "--- rocola-xp ($(cat "${XPBIN%/*}/version" 2>/dev/null)): datos en $XPDATOS, letras de XP en ${XPLETRAS:-(no hay: las del sistema)}" >> $REGISTRO
+		ROCOLA_DATOS=$XPDATOS ROCOLA_LETRAS_XP=$XPLETRAS "$BIN" >> $REGISTRO 2>&1
+	else
+		ROCOLA_DATOS=/rocola/datos "$BIN" --rocola >> $REGISTRO 2>&1
+	fi
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
 	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; continue; fi   # (no es una caida)
@@ -115,7 +195,7 @@ while :; do
 		if echo SI | rocola-desinstalar >> $REGISTRO 2>&1; then apunta "Vuelta a Windows XP pedida en Ctrl+F3"; sync; reboot; sleep 60
 		else apunta "No se pudo volver a Windows XP (¿Rocola OS desde la memoria USB?)"; fi
 	fi
-	if [ "$probando" = 1 ]; then
+	if [ "$probando" = 1 ] && [ "$BIN" != "$XPBIN" ]; then   # (la version bajada en prueba es de rocola-consola: las caidas de rocola-xp no la culpan)
 		if [ "$duro" -lt 120 ] && [ "$r" != 0 ]; then
 			fallos=$((fallos + 1)); [ "$fallos" -ge 2 ] && vuelve_atras
 		elif [ "$duro" -ge 120 ]; then probando=0; fi
@@ -123,7 +203,11 @@ while :; do
 	# SE CAE AL ARRANCAR UNA Y OTRA VEZ (aunque ya estuviera confirmada; 6-11-2026): a la tercera seguida en menos de 30 s, se aparta la
 	# version bajada (como mala: no se vuelve a bajar) y se usa la que trae el sistema. Si tambien se cae, se espera mas entre intentos.
 	if [ "$r" != 0 ] && [ "$duro" -lt 30 ]; then rapidas=$((rapidas + 1)); else rapidas=0; fi
-	if [ "$rapidas" -ge 3 ] && [ "$BIN" != /usr/bin/rocola-consola ] && [ "$probando" = 0 ]; then
+	if [ "$rapidas" -ge 3 ] && [ "$BIN" = "$XPBIN" ]; then
+		touch ${ROCOLA_RUN:-/run}/rocola-xp-caida
+		apunta "rocola-xp se cayo 3 veces seguidas al arrancar: se usa el programa de siempre hasta el siguiente encendido"
+		rapidas=0
+	elif [ "$rapidas" -ge 3 ] && [ "$BIN" != /usr/bin/rocola-consola ] && [ "$probando" = 0 ]; then
 		mala=$(cat "$PROG/version" 2>/dev/null)
 		[ -n "$mala" ] && echo "$mala" >> "$PROG/malas"
 		mv -f "$PROG/rocola-consola" "$PROG/rocola-consola.caida"; rm -f "$PROG/version"; sync

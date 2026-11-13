@@ -110,7 +110,7 @@ estado_json() {
 	gw=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
 	wol=$(ethtool eth0 2>/dev/null | sed -n 's/^[ \t]*Wake-on: *//p' | tail -1)
 	temp=; for t in /sys/class/hwmon/hwmon*/temp1_input /sys/class/thermal/thermal_zone*/temp; do [ -f "$t" ] && { temp=$(( $(cat "$t") / 1000 )); break; }; done
-	pid=$(pidof rocola-consola | awk '{print $1}')
+	pid=$(pidof rocola-consola rocola-xp | awk '{print $1}')   # (rocola-xp: la traducida de XP, si es la que corre)
 	desde=; [ -n "$pid" ] && desde=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print int($22/100)}' /proc/$pid/stat 2>/dev/null || echo 0) ))
 	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg" 2>/dev/null)
 	jq -n \
