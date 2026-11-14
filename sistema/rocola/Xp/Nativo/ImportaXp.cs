@@ -234,7 +234,7 @@ namespace Rocola
             }
             // Si habia canciones y no se encontro NINGUNA, los discos no estan (o no son estos): no se importa nada, y se vuelve a intentar.
             if (totRutas > 0 && totTraducidas == 0)
-                return Falla(4, "ninguna de las " + totRutas + " canciones de las tablas de XP esta en los discos (" + (discos.Count == 0 ? "no hay discos" : string.Join(" ", discos)) + "): no se importa; se intentara otra vez");
+                return Falla(4, "no esta en los discos ninguna cancion de las " + totRutas + " lineas con ruta de las tablas de XP (" + (discos.Count == 0 ? "no hay discos" : string.Join(" ", discos)) + "): no se importa; se intentara otra vez");
 
             // 3. Los botones, tal cual.
             string fteclas = DeXp(enXp, "rocola_teclas.txt");

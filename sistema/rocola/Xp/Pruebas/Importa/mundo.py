@@ -16,6 +16,7 @@ def win(linea):
         if i >= 0:
             r = w + linea[i + len(p):].replace("/", "\\")
             r = r.replace("Los Inventados\\Disco Uno\\01 Tono La.mp3", "LOS INVENTADOS\\disco uno\\01 tono la.mp3")   # otras mayusculas
+            r = r.replace("03 Canción Ñandú.mp3", "03 CANCIÓN ÑANDÚ.mp3")   # y con acentos (Windows tampoco las distingue)
             return linea[:i] + r
     return linea
 

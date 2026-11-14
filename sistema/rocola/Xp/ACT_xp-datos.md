@@ -56,7 +56,7 @@ sonido, y en la carpeta de datos solo escribe lo suyo.
   (`/run/rocola-datos-xp`, de `rocola-discos`). **Discos**: los que se den; sin ellos, `/rocola/discos/*` (ordenados) y `/rocola/disco`,
   los mismos que el programa anterior (`Motor/Arranque.cs`, `rocola-discos`).
 - **Rutas**: cada ruta de Windows («C:\\Rocola\\musica\\...») se busca tramo por tramo, tal cual y si no sin distinguir mayúsculas (lo que
-  hay en cada carpeta se lee una vez: 20 000 canciones en 2,2 s en JIT con la caché del disco caliente). **Cada letra de unidad va al
+  hay en cada carpeta se lee una vez: 20 000 canciones en 1,1 s en NativeAOT y 2,2 s en JIT, con la caché del disco caliente). **Cada letra de unidad va al
   disco donde están más de sus canciones** (una muestra de hasta 40 por letra probada en cada disco; a igualdad, el disco de la carpeta
   de XP y después el orden): con una copia de la música en otro disco que vaya antes en la lista, la letra no se confunde (el programa
   anterior se quedaba con el primer disco donde encontraba la primera canción). Una canción que no está en el disco de su letra se busca
@@ -169,25 +169,28 @@ rehacen cada vez, 16 ms frente a 1,5 ms por portada), y en el A4 serían 280 MB 
 - **`Codigo/`**: tres archivos, siete líneas, todas con «EN LINUX». Los 109 archivos con el **mismo número de líneas y de CRLF** que en
   f62d6cb (contados uno por uno). `diff-xp.py`: `Form1.Ia.cs` 9/6 → 14/11, `Form1.Portadas.cs` 75/72 → 76/73, `Form1.Datos.cs` 46/43 →
   47/44 (líneas quitadas/puestas); sin marca: 0, 0 y las 2 de antes en `Form1.Datos.cs`.
-- **`Pruebas/Importa/prueba.sh`** (datos inventados; ver su LEEME): **135 de 135 en JIT y 135 de 135 en NativeAOT**. Entre ellas: cada tabla
-  sin rutas de Windows, la canción que ya no está fuera, la línea a medias fuera, la de otras mayúsculas con su nombre del disco, D: al
-  disco con su música aunque una copia parcial vaya antes, los cinco sellos con la creada de Linux, la configuración, los botones y los
+- **`Pruebas/Importa/prueba.sh`** (datos inventados; ver su LEEME): **136 de 136 en JIT y 136 de 136 en NativeAOT**. Entre ellas: cada tabla
+  sin rutas de Windows, la canción que ya no está fuera, la línea a medias fuera, la de otras mayúsculas y la de acentos en mayúsculas
+  («03 CANCIÓN ÑANDÚ.mp3») con su nombre del disco, D: al disco con su música aunque una copia parcial vaya antes, los seis sellos con la
+  creada de Linux, la configuración, los botones y los
   modelos byte a byte, lo que no se trae, la marca; la segunda llamada sin tocar nada (ni las fechas); la copia del lanzador de antes; otra
   carpeta (`.antes-xp`, la configuración juntada sin repetir claves ni carpetas, lo que la nueva no trae intacto); el disco que cambia de
   nombre; los fallos 2, 3 y 4 sin dejar nada (también con el destino inmutable); la carpeta de XP como destino; **la carpeta de XP y su
   música sin tocar** (contenido y fechas; y los discos falsos montados en solo lectura mientras se importa). Con `rocola-xp` abierto
-  (parte `usa`): lee las cinco medidas importadas, el repaso solo tiene la canción nueva («repaso: 1 archivos»), las importadas no se
+  (parte `usa`): lee las seis medidas importadas, el repaso solo tiene la canción nueva («repaso: 1 archivos»), las importadas no se
   vuelven a medir, la moneda de los botones importados (la 77) da créditos sin abrir el asistente de los botones, nada de «Otro archivo»
   ni «Guardado cortado»; suena una importada y su sello vale tal cual, y en la de control (con la creada de Windows) `rocola-xp` la adopta
   y le cambia el sello. Lo grande (parte `material`, tres WAV de ruido blanco): sin `ROCOLA_IA_DATOS` todo en la carpeta de datos; con ella
   el material, las miniaturas y el respaldo allí (y `rocola_ia_hechas.txt` en la de datos); con 200 MB libres allí (un tmpfs) la cosecha
   no junta nada y lo demás sí; con ella en solo lectura, a la carpeta de datos y lo dice. Ninguna rocola de la prueba queda abierta.
-- **Tiempo**: 20 000 canciones en 2 000 discos (tablas sintéticas de 22 MB): 2,2 s en JIT con la caché caliente; la segunda llamada,
-  enseguida. No medido en el A4 (con el disco frío tardará más; es una vez).
-- **`Pruebas/Ventanas/guiones/cierre_rocola_os.sh`**: **43 de 43 en JIT y 43 de 43 en NativeAOT** (TODO BIEN; son las 36 de cuando se
-  hizo más las de `selsigusr1` de su revisión).
-- **Las escenas contra la referencia congelada**, alternadas (`alterna.sh`, `compara.sh` con el ruido de `ventanas2`): `arranque`,
-  `cierreq`, `altf4`, `kill9` y `video` **IGUAL**; `sigterm` DIFERENTE solo en lo aceptado (la referencia no atiende el apagado: aquí
+- **Tiempo**: 20 000 canciones en 2 000 discos (tablas sintéticas de 22 MB, 30 MB importados): 1,0 a 1,1 s en NativeAOT y 2,2 s en JIT,
+  con la caché caliente; la segunda llamada (ya importado), 8 ms en NativeAOT. No medido en el A4 (con el disco frío tardará más; es una
+  vez).
+- **`Pruebas/Ventanas/guiones/cierre_rocola_os.sh`**: **43 de 43 en JIT y 43 de 43 en NativeAOT** (TODO BIEN; el guion tiene hoy 43
+  comprobaciones, con las de `selsigusr1` que le añadió su revisión), con el programa del primer paso y otra vez con el del respaldo (el
+  último cambio, el texto de un error del importador, no pasa por ahí).
+- **Las escenas contra la referencia congelada**, alternadas (`alterna.sh`, `compara.sh` con el ruido de `ventanas2`), dos veces (con el
+  programa del primer paso y con el del respaldo): `arranque`, `cierreq`, `altf4`, `kill9` y `video` **IGUAL**; `sigterm` DIFERENTE solo en lo aceptado (la referencia no atiende el apagado: aquí
   `closing`/`closed` con `WindowsShutDown` y `rocola_estado.txt` borrado).
 - **No corridos**: los recorridos, los arneses de vistas, el banco y las cintas (nada de lo tocado pinta ni sube nada a la tarjeta; sin
   `ROCOLA_IA_DATOS` todo va donde iba). La prueba del lanzador (es del otro grupo).
@@ -205,8 +208,8 @@ rehacen cada vez, 16 ms frente a 1,5 ms por portada), y en el A4 serían 280 MB 
 - **Sin `ROCOLA_IA_DATOS`** (Rocola OS desde la memoria USB, sin el disco de la rocola), todo va a la carpeta de datos, como en XP: con
   2 000 discos, unos 280 MB de miniaturas más el respaldo. Si esa carpeta es `datos.img` de 512 MB, se llenaría (la cosecha sí se para).
 - **La fecha de creación**: el arreglo del sello cuenta con que .NET en Linux no lee la de nacimiento (comprobado con .NET 10.0.114). Si
-  una versión futura la leyera (`statx`), en NTFS daría la de Windows: las importadas valdrían igual (el sello de XP), pero las medidas
-  que `rocola-xp` haya apuntado con la otra fecha se adoptarían y se volverían a medir una vez (nada se pierde).
+  una versión futura la leyera (`statx`), los sellos apuntados (los importados y los que haya puesto `rocola-xp`) dejarían de cuadrar:
+  cada canción se adoptaría y se volvería a medir una vez al sonar (nada se pierde).
 - **Discos FAT32 o exFAT** (memorias USB): guardan la hora local, y Windows y Linux pueden verla distinta; entonces los sellos no cuadran y
   esas canciones se vuelven a medir al sonar (lo de XP con un archivo cambiado: nada se pierde). En NTFS (el disco de XP) cuadran.
 - **El sello y ntfs3**: que la escrita llegue igual (100 ns, UTC) es por cómo ntfs3 lee la fecha de NTFS; no visto con un NTFS de verdad

@@ -64,6 +64,7 @@ echo "=== el mundo (discos falsos y la carpeta de una rocola de XP falsa)"
 M=$D/sda1/Rocola/musica
 gen "$M/Los Inventados/Disco Uno/01 Tono La.mp3" "sine=frequency=440" 6 "Tono La"
 gen "$M/Los Inventados/Disco Uno/02 Tono Mi.mp3" "sine=frequency=330" 6 "Tono Mi"
+gen "$M/Los Inventados/Disco Uno/03 Canción Ñandú.mp3" "sine=frequency=660" 6 "Cancion Nandu"   # con acentos (en XP, en mayusculas)
 gen "$M/Banda Ficticia/Primer Disco/01 Pulso.mp3" "sine=frequency=220" 6 "Pulso"
 gen "$D/sdb1/Musica Extra/Grupo Prueba/Disco Dos/01 Silencio.mp3" "anullsrc=r=44100:cl=stereo" 6 "Silencio"
 gen "$D/sdb1/Musica Extra/Grupo Prueba/Disco Dos/02 Tono Alto.mp3" "sine=frequency=1000" 6 "Tono Alto"
@@ -74,8 +75,8 @@ mkdir -p "$D/sdc1/Musica Extra/Grupo Prueba/Disco Dos"; cp -p "$D/sdb1/Musica Ex
 # lo que mide rocola-xp de esa musica (lo mismo que habria medido XP): el repaso de las cinco
 mkdir -p "$W/prep"; printf 'diagnostico=1\r\ndir=%s\r\ndir=%s\r\n' "$M" "$D/sdb1/Musica Extra" > "$W/prep/rocola_config.txt"
 printf 'arriba=38\r\nabajo=40\r\nizquierda=37\r\nderecha=39\r\nponer=13\r\nregresar=27\r\nmoneda=77\r\nsaltar=83\r\n' > "$W/prep/rocola_teclas.txt"
-corre "$W/prep" 90 '[ "$(grep -c "|/" "$W/prep/rocola_sonoridad.txt" 2> /dev/null)" = 5 ] && [ "$(grep -c "|/" "$W/prep/rocola_fuentes.txt" 2> /dev/null)" = 5 ]'
-si "rocola-xp midio las cinco canciones inventadas (lo que mediria XP)" lineas "$W/prep/rocola_volumen.txt" 5
+corre "$W/prep" 90 '[ "$(grep -c "|/" "$W/prep/rocola_sonoridad.txt" 2> /dev/null)" = 6 ] && [ "$(grep -c "|/" "$W/prep/rocola_fuentes.txt" 2> /dev/null)" = 6 ]'
+si "rocola-xp midio las seis canciones inventadas (lo que mediria XP)" lineas "$W/prep/rocola_volumen.txt" 6
 python3 "$G/mundo.py" "$D" "$W/prep" "$XPC" "$REPO" > /dev/null
 # la cancion nueva: llega despues (XP no la midio)
 gen "$M/Banda Ficticia/Primer Disco/02 Nueva.mp3" "sine=frequency=550" 6 "Nueva"
@@ -95,13 +96,14 @@ if [[ " $partes " == *" importa "* ]]; then
 		si "$t traido, sin ninguna ruta de Windows" sinwindows "$T/$t"
 		si "$t: la cancion que ya no esta, fuera" nocontiene "$T/$t" "No Esta"
 	done
-	si "rocola_sonoridad.txt: la cabecera y las cinco" lineas "$T/rocola_sonoridad.txt" 6
-	si "rocola_volumen.txt: las cinco (sin la ultima linea a medias)" lineas "$T/rocola_volumen.txt" 5
+	si "rocola_sonoridad.txt: la cabecera y las seis" lineas "$T/rocola_sonoridad.txt" 7
+	si "rocola_volumen.txt: las seis (sin la ultima linea a medias)" lineas "$T/rocola_volumen.txt" 6
 	si "rocola_volumen.txt: la linea a medias no esta" nocontiene "$T/rocola_volumen.txt" "0.0123"
-	si "rocola_eq.txt: las cinco" lineas "$T/rocola_eq.txt" 5
-	si "rocola_fuentes.txt: la cabecera y las cinco" lineas "$T/rocola_fuentes.txt" 6
-	si "rocola_duracion.txt: las cinco" lineas "$T/rocola_duracion.txt" 5
+	si "rocola_eq.txt: las seis" lineas "$T/rocola_eq.txt" 6
+	si "rocola_fuentes.txt: la cabecera y las seis" lineas "$T/rocola_fuentes.txt" 7
+	si "rocola_duracion.txt: las seis" lineas "$T/rocola_duracion.txt" 6
 	si "la de otras mayusculas («LOS INVENTADOS\\disco uno\\01 tono la.mp3») con su nombre del disco" contiene "$T/rocola_volumen.txt" "|$LA"
+	si "con acentos y otras mayusculas («03 CANCIÓN ÑANDÚ.mp3») tambien" contiene "$T/rocola_volumen.txt" "|$M/Los Inventados/Disco Uno/03 Canción Ñandú.mp3"
 	si "D: va al disco con su musica (sdb1), no a la copia parcial de sdc1, que va primero" contiene "$T/rocola_volumen.txt" "|$SIL"
 	si "y nada de sdc1" nocontiene "$T/rocola_volumen.txt" "$D/sdc1/"
 	si "la marca dice C: -> sda1" contiene "$T/rocola_importado_xp.txt" "unidad C: -> $D/sda1 ("
@@ -113,7 +115,7 @@ if [[ " $partes " == *" importa "* ]]; then
 		set -- $(ticks "$r"); [ "$c" = "$2" ] && [ "$e" = "$1" ] && [ "$n" = "$(stat -c %s "$r")" ] || { ok=0; echo "      sello: $n|$c|$e de $r (Linux: $1 $2)"; }
 	done < <(tail -n +2 "$T/rocola_fuentes.txt")
 	si "rocola_fuentes.txt: el largo y la escrita de XP, la creada que vera rocola-xp en Linux" [ $ok = 1 ]
-	si "y lo dice la marca" contiene "$T/rocola_importado_xp.txt" "5 con la fecha de creacion de Linux"
+	si "y lo dice la marca" contiene "$T/rocola_importado_xp.txt" "6 con la fecha de creacion de Linux"
 	si "rocola_afondo.txt: dos y la que no esta fuera" lineas "$T/rocola_afondo.txt" 2
 	si "rocola_ia_hechas.txt: los niveles conservados" contiene "$T/rocola_ia_hechas.txt" "2|$LA"
 	si "rocola_stats.txt: los totales" contiene "$T/rocola_stats.txt" "monedas=12"
@@ -226,7 +228,7 @@ if [[ " $partes " == *" usa "* ]]; then
 	printf 'dir=%s\r\n' "$M" >> "$T/rocola_config.txt"   # lo que apunta el lanzador (la musica que encontro rocola-discos)
 	cp "$T/rocola_sonoridad.txt" "$W/usa-sonoridad.txt"; cp "$T/rocola_fuentes.txt" "$W/usa-fuentes.txt"; cp "$T/rocola_volumen.txt" "$W/usa-volumen.txt"
 	corre "$T" 40 'grep -q "^.*repaso:" "$T/rocola_diagnostico.txt" 2> /dev/null && [ -s "$W/usa-estado.txt" ] && grep -q "02 Nueva" "$T/rocola_sonoridad.txt" 2> /dev/null' ROCOLA_PULSA="7:77~300" ROCOLA_ESTADO_EN="9:$W/usa-estado.txt"
-	si "lee lo importado (las cinco canciones con volumen)" contiene "$T/rocola_diagnostico.txt" "(5 canciones con volumen)"
+	si "lee lo importado (las seis canciones con volumen)" contiene "$T/rocola_diagnostico.txt" "(6 canciones con volumen)"
 	si "el repaso solo tiene la cancion nueva" contiene "$T/rocola_diagnostico.txt" "repaso: 1 archivos"
 	si "la mide (la nueva entra en las tablas)" contiene "$T/rocola_sonoridad.txt" "02 Nueva.mp3"
 	si "las importadas no se vuelven a medir (sus lineas, igual)" bash -c '[ "$(grep -v "02 Nueva" "$1" | grep -c .)" = "$(grep -c . "$2")" ] && [ "$(grep -v "02 Nueva" "$3" | grep -c .)" = "$(grep -c . "$4")" ]' sh "$T/rocola_sonoridad.txt" "$W/usa-sonoridad.txt" "$T/rocola_volumen.txt" "$W/usa-volumen.txt"

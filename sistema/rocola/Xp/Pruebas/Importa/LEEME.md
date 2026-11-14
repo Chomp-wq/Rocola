@@ -13,17 +13,20 @@ modelos de IA son los del repositorio (`ia/rocola_ia.bin`, `pruebas/datos/rocola
 
 Partes (sin nombrarlas, las tres; unos 3 a 4 minutos con la máquina libre):
 
-- **importa**: tabla por tabla (rutas traducidas sin distinguir mayúsculas, la canción que ya no está fuera, la última línea a medias
-  fuera, la letra de unidad al disco con su música aunque otro con una copia parcial vaya antes, el sello de `rocola_fuentes.txt` con la
-  fecha de creación que verá Linux), la configuración (`dir=` traducidas o quitadas, `respaldo_dir=` quitada), los botones y los modelos
-  tal cual, lo que no se trae, la marca; la segunda llamada no toca nada; la copia del lanzador de antes (`rocola_de_xp.txt`); otra
-  carpeta de XP (`.antes-xp` y la configuración juntada); el disco que cambia de nombre (no se re-importa); los fallos (2, 3, 4, sin
-  dejar nada); la carpeta de XP como destino; y la carpeta de XP sin tocar (contenido y fechas).
-- **usa**: `rocola-xp` fuera de pantalla con lo importado (como el lanzador: más el `dir=` de la música): lee las cinco medidas, el repaso
-  solo mide la canción nueva, los botones importados dan créditos sin abrir el asistente de los botones, y al sonar una importada su sello
-  vale tal cual; con el sello de Windows (la prueba de control) `rocola-xp` la adopta y le pone el de hoy, que es lo que evita el importador.
-- **material**: el material de la IA y las miniaturas sin `ROCOLA_IA_DATOS` (en la carpeta de datos, como XP), con ella (allí; de qué
-  canciones se sacó, `rocola_ia_hechas.txt`, sigue en la de datos), con menos de 256 MB libres allí (la cosecha no junta nada; lo demás
-  sí) y con ella en solo lectura (a la carpeta de datos, y lo dice por la salida de errores).
+- **importa**: tabla por tabla (rutas traducidas sin distinguir mayúsculas, también con acentos, la canción que ya no está fuera, la
+  última línea a medias fuera, la letra de unidad al disco con su música aunque otro con una copia parcial vaya antes, el sello de
+  `rocola_fuentes.txt` con la fecha de creación que verá Linux), la configuración (`dir=` traducidas o quitadas, `respaldo_dir=`
+  quitada), los botones y los modelos tal cual, lo que no se trae, la marca; la segunda llamada no toca nada; la copia del lanzador de
+  antes (`rocola_de_xp.txt`); otra carpeta de XP (`.antes-xp` y la configuración juntada); el disco que cambia de nombre (no se
+  re-importa); los fallos (2, 3, 4, sin dejar nada); la carpeta de XP como destino; y la carpeta de XP sin tocar (contenido y fechas).
+- **usa**: `rocola-xp` fuera de pantalla con lo importado (como el lanzador: más el `dir=` de la música): lee las seis medidas, el
+  repaso solo mide la canción nueva, los botones importados dan créditos sin abrir el asistente de los botones, y al sonar una importada
+  su sello vale tal cual; con el sello de Windows (la prueba de control) `rocola-xp` la adopta y le pone el de hoy, que es lo que evita
+  el importador.
+- **material**: el material de la IA, las miniaturas y el respaldo sin `ROCOLA_IA_DATOS` (en la carpeta de datos, como XP), con ella
+  (allí; de qué canciones se sacó, `rocola_ia_hechas.txt`, sigue en la de datos), con menos de 256 MB libres allí (la cosecha no junta
+  nada; lo demás sí) y con ella en solo lectura (a la carpeta de datos, y lo dice por la salida de errores).
 
-Cada comprobación sale en una línea `BIEN` o `MAL`; al final `TODO BIEN (N comprobaciones)` o cuántas `MAL` (y sale con 1).
+Cada comprobación sale en una línea `BIEN` o `MAL`; al final `TODO BIEN (N comprobaciones)` o cuántas `MAL` (y sale con 1). Ninguna
+rocola de la prueba queda abierta (se comprueba, y un `trap` las cierra si la prueba se corta). El 14-11-2026: 136 de 136 en JIT y en
+NativeAOT.
