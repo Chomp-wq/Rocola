@@ -25,6 +25,10 @@ esta en `../../PORT_VENTANAS.md`.
   - `compara.sh A B`: cada escena de B contra la de A: la secuencia igual, las cuentas (relojes, encargos de otros hilos, repeticion
     de una tecla mantenida) dentro del ruido, los estados iguales, las capas de las hojas igual pixel a pixel y `rocola_estado.txt`
     presente o no en las dos (`compara_trazas.py`, `compara_escena.py`).
+  - `reloj_saturado.py mide TRAZA...` / `simula` (arreglo-f12vigia): el reloj de la ventana de prueba F12 (15 ms, un cuadro de la tarjeta por
+    Tick) no llega a su plazo fuera de pantalla, y cuantos Tick da es de la maquina de ese momento y no monotono (la regla de WM_TIMER);
+    `compara_trazas.py` compara su total con holgura relativa (30 %) cuando va saturado en las dos trazas (`RELOJES_DE_CUADRO`) y lo dice
+    en una linea «NOTA». Ver `PORT_arreglo-f12vigia.md`.
 - `../Inventario/`: la herramienta de Roslyn del inventario (lo que el codigo de XP usa de Windows, por linea), base del diff contra
   `Rocola/` (`dotnet run -- RAIZ_XP SALIDA`; usa el SDK y los paquetes de esta maquina: rutas al principio de `Program.cs`).
 

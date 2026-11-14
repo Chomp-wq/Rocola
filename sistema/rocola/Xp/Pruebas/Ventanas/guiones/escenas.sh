@@ -65,6 +65,8 @@
 #             moneda y Ctrl+F2 no llegan a la rocola (la tecla es de la ventana activa); estado y captura de cada paso
 #   f12vigia  lo mismo sin F10: el vigia del foco de la rocola (Form1.ForceFocus, cada 1,5 s) le quita el primer plano a la ventana, y su
 #             Escape, su Alt+F4 y el clic en la «X» (esa si, porque el clic la activa) dependen de cuando toque el vigia; F12 la cierra siempre
+#             (arreglo-f12vigia) el total del reloj de la ventana (15 ms, un cuadro de la tarjeta por Tick) es de la maquina de ese momento y no
+#             monotono: compara_trazas.py lo compara con holgura relativa si va saturado en las dos (RELOJES_DE_CUADRO; reloj_saturado.py)
 #   f12sigterm  SIGTERM con la ventana F12 abierta (el apagado: FormClosing y FormClosed con WindowsShutDown, rocola_estado.txt borrado)
 #   f12fallo  el dispositivo de la ventana no se crea (los sombreadores no compilan: una libGLESv2 de prueba, gl_falla.sh, mientras exista
 #             su archivo): el aviso «No se pudo crear el dispositivo D3D9 para la ventana.» sale encima de la ventana, Intro lo acepta y la
