@@ -148,7 +148,7 @@ CONFIRMA=${ROCOLA_CONFIRMA:-120}
 ( while sleep 5; do
 	ahora=$(cut -d. -f1 /proc/uptime)
 	for p in $(xp_abierta); do
-		desde=$(awk '{print int($22 / 100)}' "/proc/$p/stat" 2>/dev/null)   # (cuando arranco, en centesimas desde que prendio)
+		desde=$(awk '{print int($22 / 100)}' "/proc/$p/stat" 2>/dev/null)   # (cuando arranco, en s desde que prendio: el campo 22 va en centesimas)
 		[ -n "$desde" ] && [ $((ahora - desde)) -ge "$CONFIRMA" ] && { touch "$RUN/rocola-confirmado"; exit 0; }
 	done
   done ) &

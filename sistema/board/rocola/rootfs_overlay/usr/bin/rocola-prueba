@@ -74,10 +74,10 @@ if [ -x "$XPBIN" ] && [ -e /dev/dri/card0 ]; then
 	t0=$(date +%s)
 	# Al llegar los 20 s, timeout le manda SIGUSR1: rocola-xp se cierra ordenadamente conservando su estado (nunca SIGTERM, que es el
 	# apagado y lo borraria: regla del 8-11-2026) y sale con 0; lo bueno es que aguantara hasta ahi. Si sale con 138, la senal le llego
-	# antes de abrir la pantalla (no alcanzo a abrirse en 20 s).
+	# antes de abrir la pantalla (no alcanzo a abrirse en 20 s); con 137, se dibujo pero no se cerro en 10 s (timeout lo corto).
 	ROCOLA_DATOS=$P ROCOLA_ALSA=$D ROCOLA_LETRAS_XP=$L timeout -s USR1 -k 10 20 "$XPBIN" >> "$LOG" 2>&1; r=$?
 	dura=$(( $(date +%s) - t0 ))
-	case $r in 0) if [ "$dura" -ge 19 ]; then PANTALLA="se dibujo 20 s (y se cerro bien)"; else PANTALLA="FALLO: se cerro a los $dura s (ver arriba)"; fi ;; 138) PANTALLA="FALLO: no alcanzo a abrir la pantalla en 20 s (ver arriba)" ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
+	case $r in 0) if [ "$dura" -ge 19 ]; then PANTALLA="se dibujo 20 s (y se cerro bien)"; else PANTALLA="FALLO: se cerro a los $dura s (ver arriba)"; fi ;; 138) PANTALLA="FALLO: no alcanzo a abrir la pantalla en 20 s (ver arriba)" ;; 137) PANTALLA="se dibujo 20 s (pero no se cerro en 10 s: se corto)" ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
 	rm -rf "$P"
 fi
 linea "Pantalla de la rocola: $PANTALLA"
