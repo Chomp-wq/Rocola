@@ -20,7 +20,7 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
 | `usr/bin/rocola-prueba` | la canción de prueba con `mpg123 -o alsa -a TARJETA`; la pantalla con `rocola-xp` 20 s (`timeout -s USR1`, datos de prueba en `/tmp` que se borran); lo que comprueba y lo que apunta, igual. |
 | `etc/acpi/PWRF/00000080` | solo `rocola-xp` (SIGTERM, 15 s). |
 | `etc/init.d/S99rocola` | la confirmación nueva en los comentarios; el reinicio de un sistema que no se confirma para antes el lanzador y cierra `rocola-xp` con SIGUSR1 (antes el `reboot` le mandaba SIGTERM y borraba el estado). |
-| `sistema/rocola/Pruebas/Lanzador/` | `prueba.sh`, `dentro.sh`, `falso.c` (también importador), `gh_falso.py` (GitHub de mentira): 15 casos (el último, `contrato`, con el importador de verdad si se da `ROCOLA_XP_REAL`). |
+| `sistema/rocola/Pruebas/Lanzador/` | `prueba.sh`, `dentro.sh`, `falso.c` (también importador), `gh_falso.py` (GitHub de mentira): 15 casos (el último, `contrato`, con el importador de verdad si se da `ROCOLA_XP_REAL`); la revisión añadió `colgar` y `terminal.c` (16). |
 | `sistema/INTEGRACION_ROCOLA_XP.md` | reescrito para el estado activado. |
 
 ## Comprobaciones (máquina de pruebas)
@@ -100,9 +100,9 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   importador con una carpeta de XP de mentira, la consola, el botón, un apagón.
 - Rocola en casa (`sistema/casa/Resumen.cs`) compara la versión del programa con la última `programa-N` (de `rocola-consola`): con
   `rocola-xp` dirá que hay una más nueva. Puede usar `versiones.programa_cual` («rocola-xp») para no compararla. No era de este grupo.
-- `rocola-instalar` (no era de este grupo) solo traduce `/rocola/discos/<partición>/` a `/rocola/disco/` en los `rocola_*.txt` de la raíz
-  de lo aprendido, no en `/rocola/datos/xp`: si se prueba con la memoria USB en la rocola y después se instala, las tablas de
-  `rocola-xp` llevarían rutas de la memoria. Hoy el importador vuelve a buscar las canciones por disco; sin probar.
+- ~~`rocola-instalar` solo traduce `/rocola/discos/<partición>/` a `/rocola/disco/` en los `rocola_*.txt` de la raíz de lo aprendido,
+  no en `/rocola/datos/xp`~~: arreglado en la revisión (abajo). (Y no era cierto que el importador lo resolviera solo: daba la carpeta
+  por «la misma en otro disco» y no volvía a traducir.)
 - `LEEME.md` y `ETAPA2.md` siguen hablando de `rocola-consola` como el programa (son historia; no eran de este grupo).
 - Todo lo del A4.
 
@@ -124,3 +124,82 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   por `--importa-xp` en su línea de órdenes; el botón, `S99rocola` y las «ya» del buzón lo cortan con lo demás (se vuelve a llamar).
 - La rápida sobre sistema-36 deja `/usr/bin/rocola-consola` en la imagen sin usarse (unos 6 MB) hasta la siguiente completa.
 - El número de SIGUSR1 (10) es el de x86-64.
+
+## Revisión (revisor independiente, 14-11-2026)
+
+Sobre 740f872: el diff entero contra la tarea y las reglas, las comprobaciones principales repetidas aquí y lo que estaba mal, arreglado
+en commits aparte («Rocola OS (sistema-activa, revision): ...»). Sin push y sin nada lanzado en GitHub.
+
+### Lo encontrado y arreglado
+
+1. **Grave: con el botón de encendido el estado del día sobrevivía, y en los reinicios `rocola-xp` no se cerraba en orden.** `S99rocola`
+   abre el lanzador con `setsid sh -c 'exec /usr/bin/rocola </dev/tty1 >/dev/tty1 2>&1'`: una sesión nueva que toma tty1 como terminal de
+   control, y `rocola-xp` va en el grupo de procesos del lanzador (el de primer plano de tty1). `00000080`, `S99rocola` (sin confirmar) y
+   las «ya» del buzón matan PRIMERO al lanzador; al morir el que controla la terminal, el núcleo cuelga tty1 y manda SIGHUP a ese grupo, y
+   `rocola-xp` (que solo atiende SIGTERM y SIGUSR1: `Nativo/PantallaRocola.cs`) se moría en seco antes de que le llegara su señal.
+   Comprobado con el `rocola-xp` de verdad (el NativeAOT de xp-datos, fuera de pantalla, una moneda: 4 créditos): SIGHUP sola, sale con
+   129 sin `closing` y `rocola_estado.txt` queda; con un lanzador mínimo y una pseudoterminal de control, en el orden de `00000080`
+   (SIGTERM al lanzador y luego a `rocola-xp`): sale por la SIGHUP y el estado QUEDA con los 4 créditos (contra la regla del 8-11-2026); con
+   SIGHUP ignorada: `closing`/`closed` con `WindowsShutDown` y el estado BORRADO; con SIGUSR1 en vez de SIGTERM: `TaskManagerClosing` y el
+   estado conservado. Venía de la integración apagada (el mismo orden en f62d6cb); las pruebas no lo veían porque abrían el lanzador sin
+   terminal (`</dev/null`). **Arreglo**: `trap '' HUP` en el lanzador; `rocola-xp` y el importador la heredan ignorada (exec la conserva) y
+   atienden solo las señales que les mandan a ellos. **Prueba nueva** `colgar` (`terminal.c`, «con-terminal»: el lanzador en una sesión con
+   una pseudoterminal de control, como en tty1): el botón, `S99rocola` sin confirmar y «apagar ya»; sin el arreglo **0 de 4**, con él
+   **4 de 4**.
+2. **`rocola-instalar`** (instalar después de probar desde la memoria USB) traducía `/rocola/discos/<partición>/` → `/rocola/disco/`
+   solo en los `rocola_*.txt` de `/rocola/datos`, no en `/rocola/datos/xp`. No es verdad que el importador lo arreglara solo (lo decía
+   «Lo que queda»): con su marca diciendo la carpeta de la memoria, ya instalada la daba por «la misma carpeta en otro disco»
+   (`Nativo/ImportaXp.cs`) y salía con 0 sin volver a traducir: `rocola-xp` se quedaba con rutas que ya no existen. Ahora el mismo `sed`
+   pasa también por `xp/rocola_*.txt` (tablas, configuración y la marca: la siguiente vez dice «ya importado»). El trozo, probado con el
+   BusyBox del sistema en una raíz aparte: rutas de la partición traducidas, las de otro disco intactas, CRLF y acentos («Ángel - Ñandú»,
+   «Canción») intactos, archivos sin rutas sin tocar.
+3. **El lanzador medía con la hora** (`date +%s`) lo que tarda el importador (el tope de 10 min) y lo que aguantó la rocola (caídas
+   seguidas, cerrarse sola). `rocola-actualiza` pone la hora por NTP al minuto de prender, justo durante la primera importación: un salto
+   (horas, si el reloj de la placa estaba mal) daba por «no acabó en 600 s» una importación buena. Ahora con `/proc/uptime` (`segundos`).
+4. **Comentarios y documentos**: `initramfs/init` decía «la rocola lo borra cuando lleva 3 minutos funcionando» (ahora, 2 minutos
+   seguidos de `rocola-xp`); `INTEGRACION_ROCOLA_XP.md`: lo grande de `rocola-xp` incluye el respaldo diario (`DatosGrandes.cs` de
+   xp-datos, c9c8aa7), el instalador, la SIGHUP y `/proc/uptime`.
+
+### Lo comprobado (repetido aquí, máquina de pruebas)
+
+- **La decisión del dueño, entera**: el lanzador abre siempre `rocola-xp` (sin interruptor ni respaldo; `rocola_programa.txt` se ignora y
+  no se borra); `rocola-consola` ni se compila ni se baja; Spotify se queda en el defconfig. La `.config` de Buildroot 2026.02.3 de
+  f62d6cb y la de ahora solo difieren en `BR2_PACKAGE_ROCOLA_CONSOLA=y` → `BR2_PACKAGE_ROCOLA_XP=y` (nada más se pierde: DejaVu, jpeg,
+  ALSA y libdrm siguen). `git diff f62d6cb` vacío en `sistema/rocola/Xp`, `Consola`, `Motor`, `AGENTS.md`, `PORT_JUNTAS.md`, `.github` y
+  `sistema/casa`; los 9 commits del grupo con el autor de f62d6cb y las dos líneas finales.
+- **La regla del apagado**: SIGTERM solo en `00000080` y «apagar ya»; SIGUSR1 en la consola, «reiniciar ya», `rocola-sonido`,
+  `rocola-prueba` (`timeout -s USR1`), `S99rocola` sin confirmar y «reiniciar_equipo ya» (y, con el arreglo 1, de verdad les llega).
+- **El contrato** es el de la tarea, palabra por palabra (`ROCOLA_DATOS=/rocola/datos/xp /usr/lib/rocola-xp/rocola-xp --importa-xp
+  /run/rocola-datos-xp`, antes de cada apertura, y después los `dir=`); el importador de verdad acepta el archivo (`CarpetaXpDe`).
+- **BusyBox del sistema** (v1.37.0, `salida-qemu/target`): no trae `stat` (lista de applets) y su `timeout` acepta `-k`. `sh -n` bien de
+  `rocola`, `rocola-buzon`, `rocola-actualiza`, `rocola-sonido`, `rocola-prueba`, `00000080`, `S99rocola`, `rocola-instalar`,
+  `rocola-discos`, `rocola-tarjeta`, `initramfs/init` y `dentro.sh`; `bash -n` bien de `rapida.sh` y `prueba.sh`; ningún `stat` en los
+  guiones; todos con LF y su modo; `terminal.c` sin avisos con `-Wall`.
+- **`rapida.sh decide 6a452567dd25`** (sistema-36): en f62d6cb «rapida»; ahora «completa» por `sistema/Config.in`, el defconfig y los dos
+  archivos del paquete. Con «rapida_ya» el paso de `rocola-xp` corre (la base no lo trae): leído en `rapida.sh` y en el flujo.
+- **`grep rocola-consola` en `rootfs_overlay`**: 11 líneas, todas comentarios (la historia del cambio): nada lo abre.
+- `mpg123` del sistema trae su salida ALSA (`output_alsa.so`); `prueba.mp3` dura unos 3 s.
+- **`prueba.sh`** con el importador de verdad (el NativeAOT de xp-datos de las 06:36): en 740f872, **95 BIEN, 0 MAL**; con los arreglos
+  2 a 4 (1b56733), **95 BIEN, 0 MAL**; con todo (16 casos, `colgar` incluido): **99 BIEN, 0 MAL** (arranque 11, ia 5, importa 10,
+  caidas 7, confirma 4, consola 5, reinicia 8, boton 1, colgar 4, sinprograma 3, sonido 10, prueba 6, s99 3, buzon 11, actualiza 6,
+  contrato 5; carga 3 a 4).
+
+### Lo que se deja como está (anotado)
+
+- `rocola-xp --version` (`rocola-actualiza` cada hora, el estado del buzón cada 2 min o más) también se llama `rocola-xp` y lleva
+  argumentos: `xp_abierta` solo aparta `--importa-xp`, así que durante sus ~13 ms cuenta como «abierta». Lo peor: la consola o
+  «reiniciar ya» le mandan SIGUSR1 y ese guion se queda una vez sin la versión; la confirmación no se engaña (pide 120 s del mismo
+  proceso). No se cambió.
+- El código 42 vuelve a abrir sin espera (como antes con `rocola-consola`); `rocola-xp` no sale con él.
+- Un importador que falla (código distinto de 0) se vuelve a correr en cada apertura de ese encendido (la tarea dice «CADA vez»); el otro
+  grupo midió 1 s con 20 000 canciones: no pesa.
+- Si el primer arranque no encontrara la carpeta de XP, `rocola-xp` haría sus propias tablas y una importación posterior no las pisaría
+  («ya había de rocola-xp, no se tocan»: decisión del importador). En el A4 la carpeta de XP está en el disco instalado: siempre se ve.
+- Probar mucho tiempo desde la memoria USB: sin `ROCOLA_IA_DATOS`, `xp/` crece (miniaturas, respaldo, material) y al instalar podría no
+  caber en `datos.img` (512 MB; `cp -a` lo dejaría a medias). Pasaba igual con el material de `rocola-consola`; lo apuntó también xp-datos.
+- Apagar con la rocola ya cerrada para la consola no borra el estado (ya estaba en «Riesgos»).
+- Rocola en casa (`Resumen.cs`) compara con `programa-N` y dice «se confirma a los 3 min»; `LEEME.md` y `ETAPA2.md`, historia: fuera de
+  este grupo.
+- **Incidente de la revisión**: en un experimento en la máquina (no en la raíz de prueba) se mandó SIGUSR1 por nombre a todos los
+  `rocola-xp`, y dos eran de otra prueba (la revisión de xp-datos, `/root/rocola-trabajo/act/xp-datos/revision/aot1`, hacia las 07:07 a
+  07:09 UTC): si alguna escena suya salió mal a esa hora, es por esto y hay que repetirla.
