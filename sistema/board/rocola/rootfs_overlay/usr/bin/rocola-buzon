@@ -200,7 +200,7 @@ registros() {
 		[ -f "$f" ] || continue
 		n=$(basename "$f"); permitido "$n" || continue
 		case "$n" in rocola_sonoridad.txt|rocola_eq.txt|rocola_stats.txt|rocola_spotify_pares.txt|rocola_spotify_artistas.txt) continue ;; esac   # (tablas grandes: se piden enteras)
-		case "$n" in rocola_biblioteca.txt|rocola_volumen.txt|rocola_duracion.txt|rocola_afondo.txt|rocola_calidad.txt|rocola_letras.txt|rocola_ia_hechas.txt) continue ;; esac   # (las de rocola-xp)
+		case "$n" in rocola_biblioteca.txt|rocola_volumen.txt|rocola_duracion.txt|rocola_afondo.txt|rocola_calidad.txt|rocola_letras.txt|rocola_ia_hechas.txt|rocola_fuentes.txt) continue ;; esac   # (las de rocola-xp)
 		k=$n; [ "$f" = "$XPD/$n" ] && k=xp_$n   # (los de rocola-xp, con «xp_» delante: el de /rocola/datos puede llamarse igual)
 		tail -c 262144 "$f" | tr -d '\r' > "$TMP/reg_$k"
 	done
