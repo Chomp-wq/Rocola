@@ -91,6 +91,9 @@ namespace Rocola
             for (int i = 0; i < vs.Count; i++) { hasta = i; if (!FinDeSesionDe(vs[i], true, true)) { seAcaba = false; break; } }
             for (int i = 0; i <= hasta && i < vs.Count; i++) FinDeSesionDe(vs[i], false, seAcaba);
         }
+        // EL CIERRE QUE PIDE ROCOLA OS (SIGUSR1; PantallaRocola.cs): un WM_CLOSE de fuera a la ventana de la rocola, este o no debajo de una
+        // hoja modal (un mensaje puesto en la cola le llega tambien a una ventana deshabilitada). Sin ventana no hay a quien mandarselo.
+        internal static void CierreDeFuera() { VentanaNativa w = ventana; if (w != null) w.CierraDeFuera(); }
         private static bool FinDeSesionDe(object v, bool consulta, bool seAcaba)
         {
             Hoja h = v as Hoja; if (h != null) return h.FinDeSesion(consulta, seAcaba);
@@ -235,6 +238,25 @@ namespace Rocola
                 avisos.Cerrada(razon);
                 Desecha();
             }
+            // EL WM_CLOSE QUE LLEGA DE FUERA (Form.WndProc, Form.cs:7200-7206: sin razon puesta, CloseReason.TaskManagerClosing; y WmClose de
+            // una ventana que no es modal, 6638-6783): primero el aviso de que se cierra a las hojas de las que es duena, de la ultima a la
+            // primera, con FormOwnerClosing (una puede impedirlo; las de XP no lo hacen), y a ella SIEMPRE (OnFormClosing se llama aunque
+            // una hoja lo impida; la rocola no mira e.Cancel); si nadie lo impidio, el de que se cerraron a sus hojas y a ella, y Dispose
+            // (que desecha tambien sus hojas: DesechaLoSuyo). Con una razon que no es WindowsShutDown ni UserClosing la rocola guarda todo
+            // y conserva el estado vivo (Form1.Video.cs, OnFormClosing).
+            internal void CierraDeFuera()
+            {
+                if (desechada || !creada) return;
+                if (razon == RazonCierre.None) razon = RazonCierre.TaskManagerClosing;
+                bool impide = !Hoja.LaDuenaSeCierra(avisos.Rocola, false);
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closing " + Nombre + " " + razon);
+                avisos.Cerrandose(razon);
+                if (impide) return;
+                Hoja.LaDuenaSeCierra(avisos.Rocola, true);
+                if (TrazaVentanas.Activa) TrazaVentanas.Apunta("closed " + Nombre + " " + razon);
+                avisos.Cerrada(razon);
+                Desecha();
+            }
             // EL APAGADO (Form.FinDeSesion de la capa: Form.cs:7208-7211 y WmClose): con la consulta, antes sus hojas (FormOwnerClosing) y
             // despues ella; con el fin, sus hojas, ella y Dispose
             internal bool FinDeSesion(bool consulta, bool seAcaba)
@@ -260,6 +282,14 @@ namespace Rocola
             public void DesechaLoSuyo(bool disposing)
             {
                 if (!disposing) return;
+                // (Form.Dispose, Form.cs:3632-3642: antes de lo de Control, las ventanas de las que es duena se desechan, de la ultima a la
+                // primera. Solo las hay abiertas si la rocola se cierra debajo de un dialogo: el cierre de fuera, CierraDeFuera; con Alt+F4 el
+                // dialogo se cierra el, y en el apagado cada hoja ya se desecho con su WM_ENDSESSION)
+                if (!desechada && !desechandose)
+                {
+                    Hoja[] hs = Hoja.Abiertas;
+                    for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].IsDisposed && hs[i].Duena == avisos.Rocola) hs[i].Dispose();
+                }
                 if (!desechada)
                 {
                     // (Form.Dispose: Escritorio.Quita) ya no tiene el foco ni es la activa

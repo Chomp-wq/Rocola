@@ -25,8 +25,9 @@ namespace Rocola
     // EL RESULTADO DE UNA HOJA (DialogResult): los mismos numeros y nombres (lo escriben las trazas), solo los que salen en las hojas de XP:
     // OK (Aceptar de un aviso y del selector de carpetas), Cancel (la «X», Escape, Alt+F4, Close) y None (aun sin resultado).
     public enum Resultado { None = 0, OK = 1, Cancel = 2 }
-    // POR QUE SE CIERRA UNA HOJA (CloseReason): los mismos numeros y nombres (lo escriben las trazas)
-    public enum RazonCierre { None = 0, WindowsShutDown = 1, UserClosing = 3, FormOwnerClosing = 5 }
+    // POR QUE SE CIERRA UNA HOJA (CloseReason): los mismos numeros y nombres (lo escriben las trazas). TaskManagerClosing: un WM_CLOSE que
+    // llega de fuera a la ventana de la rocola (en Rocola OS, SIGUSR1: PantallaRocola.cs, «el cierre que pide Rocola OS»)
+    public enum RazonCierre { None = 0, WindowsShutDown = 1, TaskManagerClosing = 2, UserClosing = 3, FormOwnerClosing = 5 }
     // LA ALINEACION DEL TEXTO DE UN ROTULO (ContentAlignment): los mismos numeros y nombres
     public enum AlineaTexto { TopLeft = 1, TopCenter = 2, TopRight = 4, MiddleLeft = 16, MiddleCenter = 32, MiddleRight = 64, BottomLeft = 256, BottomCenter = 512, BottomRight = 1024 }
     // EL BORDE DE UNA PIEZA (BorderStyle): los mismos numeros y nombres

@@ -20,7 +20,16 @@
     <LangVersion>latest</LangVersion>
     <!-- el codigo de XP trae avisos de .NET 3.5 que aqui no dicen nada (lo obsoleto de .NET 10, variables sin usar de XP) -->
     <NoWarn>$(NoWarn);CS0168;CS0169;CS0219;CS0414;CS0649;CS0162;CS0618;SYSLIB0011;SYSLIB0014;CA1416</NoWarn>
+    <!-- LA VERSION EN ROCOLA OS (lo que contesta rocola-xp si se le pregunta la version: Nativo/VersionRocolaOs.cs), como Consola.csproj: la pone quien compila
+         (-p:RocolaVersion=N -p:RocolaCommit=abc1234); en casa y en el sistema, la 0 («local») -->
+    <RocolaVersion Condition="'$(RocolaVersion)' == ''">0</RocolaVersion>
+    <RocolaCommit Condition="'$(RocolaCommit)' == ''">local</RocolaCommit>
+    <InformationalVersion>$(RocolaVersion)+$(RocolaCommit)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- cuando se compilo (segundos desde 1970, UTC): lo que /usr/bin/rocola y rocola-actualiza leen de «compilado SEGUNDOS» -->
+    <RocolaFecha Condition="'$(RocolaFecha)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</RocolaFecha>
   </PropertyGroup>
+  <ItemGroup><AssemblyMetadata Include="RocolaFecha" Value="$(RocolaFecha)" /></ItemGroup>
   <PropertyGroup Condition="'$(RocolaPerfil)' != 'qemu'">
     <IlcInstructionSet>x86-64-v2,avx</IlcInstructionSet>
   </PropertyGroup>
