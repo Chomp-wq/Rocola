@@ -49,8 +49,8 @@ emulado (`sendkey` del monitor) y llegan a `rocola-xp` por evdev, como las del A
 
 - `mundo.sh`: cinco canciones que son tonos de frecuencias distintas (196, 330, 440, 660 y 1000 Hz; 45 s) y un WAV de ruido rosa, en
   carpetas «Artista - Disco» como las de la rocola de XP (`Los Inventados - Disco Uno`, `Banda Ficticia - Primer Disco`, `Grupo Prueba -
-  Disco Dos`; una con acentos: «02 Canción Ñandú.mp3»), sus portadas (`folder.jpg` de colores), un video de 20 s (barras de prueba de
-  ffmpeg con un tono de 880 Hz) y una canción **nueva** que XP no midió (`03 Ruido Nuevo.wav`). Lo que mide `rocola-xp` de esa música
+  Disco Dos`; una con acentos: «02 Canción Ñandú.mp3»), sus portadas (`folder.jpg` de colores), un video de 90 s (barras de prueba de
+  ffmpeg con un tono de 880 Hz; de 90 s para que la tarjeta, tan lenta en QEMU, llegue a pintarlo: apartado 5) y una canción **nueva** que XP no midió (`03 Ruido Nuevo.wav`). Lo que mide `rocola-xp` de esa música
   (fuera de pantalla, en esta máquina) pasa a `D:\musica\...` (`mundo_xp.py`) y forma la carpeta de la rocola de XP falsa
   (`D:\Rocola\Release`): las seis tablas con rutas de Windows y la fecha de creación de una copia de Windows en `rocola_fuentes.txt`,
   `rocola_teclas.txt` (la moneda es la M), `rocola_config.txt` (`dir=D:\musica`, el modo noche), lo más sonado, **un estado del día con
