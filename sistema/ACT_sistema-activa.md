@@ -110,7 +110,9 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   primero que lleve `rocola-xp` viene de sistema-36: si ese falla, el anterior es sistema-36 (con `rocola-consola`), y se vuelve a él
   solo o con ESC.
 - **La primera importación** puede tardar en el A4 (miles de archivos en NTFS). El tope es 10 min; si se pasa, la rocola abre sin lo de
-  XP ese día y lo intenta al siguiente encendido. Mientras tanto, la pantalla dice que está trayendo lo aprendido.
+  XP ese día y lo intenta al siguiente encendido. Mientras tanto, la pantalla dice que está trayendo lo aprendido y la rocola no se puede
+  usar. Si en el A4 siempre tardara más de 10 min, cada encendido esperaría esos 10 min y nunca acabaría: se vería en la bitácora («no
+  acabo en 600 s») y habría que subir el tope (`IMPORTA_MAX` en el lanzador) o hacerlo más rápido.
 - **La confirmación** necesita 2 min seguidos de `rocola-xp` dentro de los 15 min: si el dueño entra a la consola de mantenimiento
   justo al estrenar un sistema y se queda más de 13 min, `S99rocola` reinicia (como antes).
 - **Apagar con la rocola cerrada** (en la consola) no borra el estado del día: al prender reanuda (antes igual).
