@@ -1,0 +1,18 @@
+config BR2_PACKAGE_ROCOLA_PULSO
+	bool "rocola-pulso (el sonido de Spotify Soloist para la rocola)"
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  NUESTRO libpulse.so.0 (sistema/rocola/pulso, en C), en
+	  /usr/lib/rocola-pulso. Spotify Soloist (el cliente oficial
+	  de Spotify para Linux sin pantalla; la rocola lo baja sola,
+	  nunca va en el sistema) busca PipeWire o PulseAudio para
+	  sonar, y Rocola OS no tiene ninguno: rocola-soloist lo
+	  arranca con LD_LIBRARY_PATH=/usr/lib/rocola-pulso, y esta
+	  biblioteca deja su sonido en un anillo de memoria compartida
+	  que lee la rocola (rocola-xp) y lo pasa por su cadena de
+	  sonido. Solo la carga Soloist: el resto del sistema no la ve.
+	  Detalle en sistema/SPOTIFY_SOLOIST.md.
+
+comment "rocola-pulso necesita una cadena con glibc y con hilos"
+	depends on !BR2_TOOLCHAIN_USES_GLIBC || !BR2_TOOLCHAIN_HAS_THREADS

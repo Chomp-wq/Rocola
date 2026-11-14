@@ -5,3 +5,6 @@ source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-xp/Config.in"
 # paquete siga existiendo como referencia (su codigo, sistema/rocola/Consola y Motor, sirve a la fase 11 y rocola-xp toma tres archivos).
 source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-consola/Config.in"
 source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-spotify/Config.in"
+# rocola-pulso: nuestro libpulse.so.0 para Spotify Soloist (14-11-2026; sistema/SPOTIFY_SOLOIST.md). Soloist NO va en el sistema (la rocola
+# lo baja de Spotify): solo el puente de sonido.
+source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-pulso/Config.in"

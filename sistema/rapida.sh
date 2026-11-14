@@ -19,6 +19,12 @@
 #                                  (NativeAOT, perfil del A4) y va en /usr/lib/rocola-xp, si cambio (o lo que toma de rocola/Consola y
 #                                  rocola/Motor: Gl.cs, Kms.cs y Botones.cs) o si la base no lo trae. rocola-consola ya NO se compila: el de
 #                                  una base que lo traiga (sistema-36 y anteriores) se queda en /usr/bin sin usarse hasta la siguiente completa.
+#   rocola/pulso                   EL PUENTE DE SONIDO DE SPOTIFY SOLOIST (rocola-pulso, nuestro libpulse.so.0; sistema/SPOTIFY_SOLOIST.md):
+#                                  si esta en la configuracion (BR2_PACKAGE_ROCOLA_PULSO=y), se compila con el gcc del servidor (make -C
+#                                  sistema/rocola/pulso todo) y va en /usr/lib/rocola-pulso, si cambio o si la base no lo trae; antes se
+#                                  comprueba que da las funciones que busca Soloist (package/rocola-pulso/funciones.txt) y que no pide
+#                                  una glibc mas nueva que la del sistema. (El paquete en si -package/rocola-pulso, Config.in, el
+#                                  defconfig- pide la completa, como todo paquete; con «rapida_ya» se pone igual, por aqui.)
 # y lo que no va dentro del sistema: los .md, casa/ (Rocola en casa), el resto de rocola/ (rocola-consola, retirado) y todo lo de fuera de
 # sistema/.
 set -e
@@ -26,6 +32,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 B=sistema/board/rocola
 # rocola-xp (la traduccion de XP) va en el sistema si la configuracion lo pide (desde el 14-11-2026, si)
 con_xp() { grep -q '^BR2_PACKAGE_ROCOLA_XP=y' "$REPO/sistema/configs/rocola_a4_defconfig"; }
+con_pulso() { grep -q '^BR2_PACKAGE_ROCOLA_PULSO=y' "$REPO/sistema/configs/rocola_a4_defconfig"; }
 
 # los archivos de sistema/ que cambiaron desde la base y que la rapida NO sabe poner
 no_rapidos() {
@@ -100,6 +107,30 @@ if con_xp && { [ ! -x "$M/usr/lib/rocola-xp/rocola-xp" ] || cambio sistema/rocol
 	sudo install -D -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/rocola/musica/Rocola OS - Prueba/prueba.mp3"
 	sudo mkdir -p "$M/rocola/datos"
 	echo "rocola-xp: $linea"
+fi
+
+# 5b. EL PUENTE DE SONIDO DE SPOTIFY SOLOIST: rocola-pulso (nuestro libpulse.so.0), si esta en la configuracion: si cambio o la base no lo
+# trae (sistema-37 y anteriores). Lo mismo que el paquete de Buildroot (package/rocola-pulso/rocola-pulso.mk), con el gcc del servidor
+# (Ubuntu 24.04: glibc 2.39; el sistema trae la 2.42) y para cualquier x86-64 (el A4 y QEMU). Se comprueba antes de ponerlo: que da TODAS
+# las funciones que busca Soloist y que no pide ninguna version de glibc que no este en el sistema (si no, Soloist no lo podria cargar y
+# no sonaria nada de Spotify). (Soloist no va en el sistema: lo baja la rocola.)
+if con_pulso && { [ ! -f "$M/usr/lib/rocola-pulso/libpulse.so.0" ] || cambio sistema/rocola/pulso; }; then
+	echo "rocola-pulso (el sonido de Spotify Soloist): se compila"
+	P=$T/pulso; cp -a "$REPO/sistema/rocola/pulso" "$P"
+	make -C "$P" CC=gcc CFLAGS="-O2 -g0 -pipe -fPIC -march=x86-64 -mtune=generic" todo > "$T/pulso.txt" 2>&1 \
+		|| { tail -n 40 "$T/pulso.txt" >&2; echo "rapida.sh: rocola-pulso no compilo" >&2; exit 1; }
+	L=$P/libpulse.so.0
+	[ -f "$L" ] || { echo "rapida.sh: rocola-pulso no dejo libpulse.so.0" >&2; exit 1; }
+	da=$(nm -D --defined-only "$L" | awk '$2 ~ /^[TtWiI]$/ {sub(/@.*/, "", $3); print $3}')
+	n=0; for f in $(grep -v '^#' "$REPO/sistema/package/rocola-pulso/funciones.txt"); do
+		echo "$da" | grep -qx "$f" || { echo "rapida.sh: rocola-pulso no da $f (Soloist la busca)" >&2; exit 1; }; n=$((n + 1))
+	done
+	hay=$(for b in "$M"/lib/libc.so.6 "$M"/lib/libm.so.6; do objdump -T "$b" 2>/dev/null; done | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u)
+	pide=$(objdump -T "$L" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u)
+	for v in $pide; do echo "$hay" | grep -qx "$v" || { echo "rapida.sh: rocola-pulso pide $v y el sistema no la tiene" >&2; exit 1; }; done
+	strip --strip-unneeded "$L"
+	sudo install -D -m 755 "$L" "$M/usr/lib/rocola-pulso/libpulse.so.0"
+	echo "rocola-pulso: libpulse.so.0 con las $n funciones que busca Soloist; glibc hasta $(echo "$pide" | sort -V | tail -1) (el sistema trae hasta $(echo "$hay" | sort -V | tail -1))"
 fi
 
 # 6. LA VERSION

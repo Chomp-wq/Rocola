@@ -64,6 +64,10 @@ BR2_PACKAGE_KMSCUBE=y
 # como referencia para la fase 11). rocola-spotify se queda: lo usara la fase 11 (hoy rocola-xp no lo abre).
 BR2_PACKAGE_ROCOLA_XP=y
 BR2_PACKAGE_ROCOLA_SPOTIFY=y
+# SPOTIFY CON SOLOIST (14-11-2026; sistema/SPOTIFY_SOLOIST.md): el cliente oficial de Spotify NO va en el sistema ("Do not redistribute": la
+# rocola lo baja sola, rocola-soloist); va el puente de sonido, nuestro libpulse.so.0 en /usr/lib/rocola-pulso (el perfil de QEMU sale de
+# este mismo archivo: compila.sh)
+BR2_PACKAGE_ROCOLA_PULSO=y
 
 # La imagen: ext4 y GRUB de BIOS y de UEFI, un solo archivo disk.img para grabar en una memoria USB
 BR2_TARGET_ROOTFS_EXT2=y

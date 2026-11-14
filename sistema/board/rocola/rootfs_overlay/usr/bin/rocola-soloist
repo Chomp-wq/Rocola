@@ -1,0 +1,617 @@
+#!/bin/sh
+# EL VIGILANTE DE SPOTIFY SOLOIST (decision del dueno del 14-11-2026: «Lo de Spotify sera todo en la rocola, nada en el celular»; detalle
+# para el dueno y el diseno en sistema/SPOTIFY_SOLOIST.md).
+#
+# Spotify Soloist es el cliente OFICIAL de Spotify para Linux sin pantalla: una bocina de Spotify Connect («Rocola») con una API local por
+# WebSocket. La rocola (rocola-xp) le pide las canciones por ese WebSocket y su sonido le llega por NUESTRO libpulse.so.0 (rocola-pulso,
+# /usr/lib/rocola-pulso: Soloist lo carga en lugar de PulseAudio y deja el sonido en un anillo de memoria compartida que lee rocola-xp).
+# Este guion es lo de alrededor: lo baja de Spotify, lo pone al dia (cada version CADUCA a los 90 dias de compilada y sale con 10), le da
+# la llave, lo arranca, lo vuelve a arrancar si se cae, y lo apunta todo. Soloist NUNCA va en el sistema ni en el repositorio («Do not
+# redistribute»): la rocola lo baja sola de soloist-builds.spotifycdn.com.
+#
+#   rocola-soloist corre       lo que abre rocola-xp (con el modo spotify=1): vigila a Soloist hasta SIGTERM o hasta que muere su padre
+#   rocola-soloist baja        bajar o poner al dia el programa de Soloist, y nada mas
+#   rocola-soloist estado      como esta, en espanol claro (para la consola de mantenimiento)
+#   rocola-soloist emparejar   «soloist -p»: vuelve a pedir la cuenta desde la app de Spotify (celular o laptop, en la red del bar)
+#   rocola-soloist olvidar     borra la sesion guardada (la cuenta emparejada) y la identidad de la bocina
+#   rocola-soloist llave       trae ahora las llaves de una memoria USB (rocola_spotify.txt y rocola_spotify_api.txt en su raiz)
+#   rocola-soloist pon-llave   la llave de Soloist por la entrada (la orden «spotify llave» la pide escrita sin que se vea)
+#   rocola-soloist pon-api     la de la API web por la entrada (lineas client_id=, client_secret= y, si hay, refresh_token=)
+#
+# LA LLAVE DE SOLOIST (la saca el dueno, con Premium, en el panel de desarrolladores de Spotify) es SECRETA: vive solo en
+# /rocola/datos/xp/rocola_spotify_llave.txt (0600). Nunca se escribe en otro lado: ni en la bitacora (se quita toda linea que la lleve),
+# ni en el estado, ni en lo que se dice; la orden de arranque no se apunta. Soloist la recibe en cada arranque con -k (la unica forma que
+# tiene: queda en /proc/PID/cmdline, que en la rocola solo ve root). La de la API web (rocola_spotify_api.txt) la usa rocola-xp para el
+# catalogo; aqui solo se trae de la USB.
+#
+# Hilos y cierres (contrato I4 de la fase 11): un solo vigilante a la vez (candado en /run/rocola-soloist; otro que llegue espera a que el
+# primero acabe); sale si muere su padre (lo mira cada 2 s) o con SIGTERM: pasa SIGTERM a Soloist (a todo su grupo), le espera hasta 8 s y
+# despues SIGKILL. Si Soloist sale: con 10 (caducado) baja la ultima y lo vuelve a intentar; con otro codigo espera 2 s, 10 s, 30 s y
+# 2 min (vuelve a 2 s tras 10 min seguidos en pie). Lo que pasa, en /run/rocola-soloist/estado (sin secretos) y en
+# /rocola/datos/xp/rocola_soloist.txt (con lo que dice Soloist; se rota a .1 al pasar de 1 MB).
+#
+# Para probarlo fuera de la rocola (sistema/rocola/Pruebas/Soloist): ROCOLA_RUN, ROCOLA_XP_DATOS, ROCOLA_DISCO, ROCOLA_DISCOS,
+# ROCOLA_SYS_BLOCK, ROCOLA_SOLOIST_DATOS, ROCOLA_PULSO_DIR, SOLOIST_URL (de donde se baja), SOLOIST_BIN (un soloist ya puesto: no se baja
+# nada) y los relojes ROCOLA_SOLOIST_ESPERAS, _SEGUIDA, _ARRANQUE, _TERM, _USB, _REVISA, _REINTENTO, _CADUCADO; y los minimos de sitio
+# ROCOLA_SOLOIST_MIN_DISCO_KB y _MIN_DATOS_KB. BusyBox del sistema: sin stat (fechas con date -r), tar sin -z (gzip -dc | tar).
+RUN=${ROCOLA_RUN:-/run}
+XPD=${ROCOLA_XP_DATOS:-/rocola/datos/xp}
+DISCO=${ROCOLA_DISCO:-/rocola/disco}
+DISCOS=${ROCOLA_DISCOS:-/rocola/discos}
+SYSB=${ROCOLA_SYS_BLOCK:-/sys/class/block}
+AQUI=$RUN/rocola-soloist
+ESTADO=$AQUI/estado
+BITACORA=$XPD/rocola_soloist.txt
+LLAVE=$XPD/rocola_spotify_llave.txt
+APIF=$XPD/rocola_spotify_api.txt
+SDATOS=${ROCOLA_SOLOIST_DATOS:-$XPD/soloist}
+CACHE=$AQUI/cache
+PULSO=${ROCOLA_PULSO_DIR:-/usr/lib/rocola-pulso}
+URL=${SOLOIST_URL:-https://soloist-builds.spotifycdn.com/soloist_release_x86_64.tar.gz}
+esperas() { E1=$1; E2=${2:-$1}; E3=${3:-$2}; E4=${4:-$3}; }
+esperas ${ROCOLA_SOLOIST_ESPERAS:-2 10 30 120}   # tras una caida: la 1a, la 2a, la 3a y de la 4a en adelante (segundos)
+SEGUIDA=${ROCOLA_SOLOIST_SEGUIDA:-600}         # tantos segundos en pie y la siguiente caida vuelve a esperar 2 s
+ARRANQUE=${ROCOLA_SOLOIST_ARRANQUE:-90}        # sin su WebSocket (ws.port) en tantos segundos, se vuelve a arrancar
+TERMINA=${ROCOLA_SOLOIST_TERM:-8}              # lo que se le espera tras SIGTERM antes de SIGKILL
+CADA_USB=${ROCOLA_SOLOIST_USB:-30}             # sin llave, cada cuanto se mira la memoria USB
+REVISA=${ROCOLA_SOLOIST_REVISA:-3600}          # con Soloist en marcha, cada cuanto se mira si caduca pronto (y la USB si falta algo: 900)
+REINTENTO=${ROCOLA_SOLOIST_REINTENTO:-3600}    # bajar uno nuevo porque caduca pronto: como mucho una vez cada tanto
+CADUCADO_ESPERA=${ROCOLA_SOLOIST_CADUCADO:-600}  # caducado y sin uno nuevo que bajar: se vuelve a intentar a los tantos segundos
+MIN_DISCO=${ROCOLA_SOLOIST_MIN_DISCO_KB:-65536}  # sitio libre para bajarlo al disco de la rocola (14 MB, su anterior y el de paso)
+MIN_DATOS=${ROCOLA_SOLOIST_MIN_DATOS_KB:-40960}  # y en los datos (datos.img mide 512 MB)
+NICE=${ROCOLA_SOLOIST_NICE:-0}                 # Soloist decodifica el sonido: prioridad normal, no la del hilo que abrio al vigilante
+
+ahora() { date +%s; }
+PADRE=$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null); PARAR=
+# corta ORDEN...: la orden en segundo plano, esperada; SIGTERM (PARAR) la corta al momento (el vigilante sale en menos de 10 s)
+corta() {
+	"$@" &
+	CP=$!; wait $CP; cr=$?
+	if [ -n "$PARAR" ]; then kill "$CP" 2>/dev/null; wait "$CP" 2>/dev/null; return 143; fi
+	return $cr
+}
+segundos() { cut -d. -f1 /proc/uptime; }   # (para medir lo que dura algo: la hora puede saltar con NTP)
+apunta() {
+	[ -f "$BITACORA" ] && [ "$(wc -c < "$BITACORA")" -gt 1048576 ] && mv -f "$BITACORA" "$BITACORA.1"
+	printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$BITACORA" 2>/dev/null
+}
+# el estado, de un tiron (clave=valor; NUNCA la llave). Lo leen rocola-xp, la orden «spotify estado» y el buzon.
+FASE=parado; VERSION=; CADUCA=; DIAS=; SPID=; REINICIOS=0; ERROR=; PROGRAMA=
+estado() {
+	[ -n "$1" ] && FASE=$1
+	mkdir -p "$AQUI" 2>/dev/null
+	{ echo "fase=$FASE"; echo "version=$VERSION"; echo "caduca=$CADUCA"; echo "dias=$DIAS"; echo "pid=$SPID"; echo "reinicios=$REINICIOS"
+	  echo "error=$ERROR"; echo "programa=$PROGRAMA"; echo "vigilante=$$"; echo "cambio=$(date '+%Y-%m-%d %H:%M:%S')"; } > "$ESTADO.n" 2>/dev/null \
+		&& mv -f "$ESTADO.n" "$ESTADO"
+}
+falla() { ERROR=$*; apunta "$*"; if [ -n "$HABLA" ]; then echo "$*"; fi; }   # (HABLA: las ordenes de la consola lo dicen tambien en pantalla)
+
+# ---------------- las llaves ----------------
+# K: la llave de Soloist (solo en esta variable, sin exportar). Una linea, sin espacios.
+lee_llave() {
+	K=
+	[ -s "$LLAVE" ] || return 1
+	K=$(head -n 1 "$LLAVE" 2>/dev/null | tr -d ' \t\r\n')
+	case "$K" in ""|*[!A-Za-z0-9._~+/=:-]*) K=; return 1 ;; esac
+	return 0
+}
+huella_llave() { md5sum "$LLAVE" 2>/dev/null | cut -c1-32; }
+# normaliza_llave ARCHIVO: la primera linea con algo, sin espacios ni marca de UTF-8; vacio si no parece una llave (nunca se ensena)
+normaliza_llave() {
+	v=$(tr -d '\r' < "$1" 2>/dev/null | sed '1s/^\xef\xbb\xbf//' | tr -d ' \t' | grep -v '^$' | head -n 1)
+	case "$v" in *[!A-Za-z0-9._~+/=:-]*) v= ;; esac
+	[ ${#v} -ge 8 ] && [ ${#v} -le 1024 ] || v=
+	printf '%s' "$v"
+}
+# normaliza_api ARCHIVO: solo client_id=, client_secret= y refresh_token= (la primera de cada una), sin espacios; vacio si falta
+# client_id o client_secret
+normaliza_api() {
+	tr -d '\r' < "$1" 2>/dev/null | sed '1s/^\xef\xbb\xbf//' \
+		| sed -n -E 's/^[[:space:]]*(client_id|client_secret|refresh_token)[[:space:]]*=[[:space:]]*([A-Za-z0-9._~+\/=:-]+)[[:space:]]*$/\1=\2/p' \
+		| awk -F= '!visto[$1]++' > "$AQUI/.api.n" 2>/dev/null
+	if grep -q '^client_id=' "$AQUI/.api.n" && grep -q '^client_secret=' "$AQUI/.api.n"; then
+		grep '^client_id=' "$AQUI/.api.n"; grep '^client_secret=' "$AQUI/.api.n"; grep '^refresh_token=' "$AQUI/.api.n"
+	fi
+	rm -f "$AQUI/.api.n"
+}
+# guarda_secreto DESTINO (lo de la entrada): 0600, de un tiron; el de paso, oculto (los patrones del buzon no lo ven)
+guarda_secreto() {
+	d=$(dirname "$1"); n=$d/.$(basename "$1").n
+	mkdir -p "$d" && ( umask 077; cat > "$n" ) && chmod 600 "$n" && mv -f "$n" "$1" && sync
+}
+# busca_archivo NOMBRE: como busca_llave de rocola-buzon. En los otros discos (rocola-discos), en la carpeta de la rocola de XP y en las
+# memorias USB (solo lectura; se copia a /run y se desmonta). Devuelve la ruta; si vino de una USB, es una copia en $AQUI que hay que borrar.
+busca_archivo() {
+	nom=$1
+	for f in "$DISCOS"/*/$nom "$DISCOS"/*/*/$nom; do [ -f "$f" ] && { echo "$f"; return 0; }; done
+	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname "$nom" 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return 0; }
+	for p in "$SYSB"/*; do
+		[ -e "$p/partition" ] || continue
+		dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
+		[ "$(cat "$SYSB/$disco/removable" 2>/dev/null)" = 1 ] || continue
+		grep -q "^/dev/$dev " /proc/mounts && continue
+		m=$AQUI/usb; mkdir -p "$m"
+		mount -o ro "/dev/$dev" "$m" 2>/dev/null || continue
+		f=$(find "$m" -maxdepth 2 -iname "$nom" 2>/dev/null | head -1)
+		[ -n "$f" ] && ( umask 077; cp "$f" "$AQUI/.usb.$nom" )
+		umount "$m"
+		[ -f "$AQUI/.usb.$nom" ] && { echo "$AQUI/.usb.$nom"; return 0; }
+	done
+	return 1
+}
+# importa_llaves [cambia]: la de Soloist (rocola_spotify.txt) y la de la API web (rocola_spotify_api.txt). Sin «cambia», solo las que
+# faltan; con «cambia», tambien si la de la USB es otra. Dice que hizo (sin ensenarlas). 0 si puso alguna; 1 si encontro pero no puso
+# nada (la misma, o no valia); 2 si no encontro ninguna.
+importa_llaves() {
+	puso=2
+	if [ "$1" = cambia ] || ! lee_llave; then
+		f=$(busca_archivo rocola_spotify.txt)
+		if [ -n "$f" ]; then
+			[ $puso = 2 ] && puso=1
+			v=$(normaliza_llave "$f")
+			if [ -z "$v" ]; then falla "rocola_spotify.txt (de la memoria USB) no parece una llave de Soloist: no se puso"
+			elif [ "$v" != "$(head -n 1 "$LLAVE" 2>/dev/null | tr -d ' \t\r\n')" ]; then
+				printf '%s\n' "$v" | guarda_secreto "$LLAVE" && { apunta "Llave de Spotify puesta (de USB)"; echo "Llave de Soloist puesta (de la memoria USB)."; puso=0; }
+			else echo "La llave de Soloist de la memoria USB es la misma que ya estaba."; fi
+			case "$f" in "$AQUI"/.usb.*) rm -f "$f" ;; esac
+		fi
+		v=
+	fi
+	if [ "$1" = cambia ] || [ ! -s "$APIF" ]; then
+		f=$(busca_archivo rocola_spotify_api.txt)
+		if [ -n "$f" ]; then
+			[ $puso = 2 ] && puso=1
+			normaliza_api "$f" > "$AQUI/.api.v"
+			if [ ! -s "$AQUI/.api.v" ]; then falla "rocola_spotify_api.txt (de la memoria USB) no trae client_id= y client_secret=: no se puso"
+			elif ! cmp -s "$AQUI/.api.v" "$APIF"; then
+				guarda_secreto "$APIF" < "$AQUI/.api.v" && { apunta "Llave de la API web de Spotify puesta (de USB)"; echo "Llave de la API web puesta (de la memoria USB)."; puso=0; }
+			else echo "La llave de la API web de la memoria USB es la misma que ya estaba."; fi
+			rm -f "$AQUI/.api.v"
+			case "$f" in "$AQUI"/.usb.*) rm -f "$f" ;; esac
+		fi
+		rm -f "$AQUI/.api.v"
+	fi
+	return $puso
+}
+
+# ---------------- el programa de Soloist ----------------
+# el disco de la rocola, con escritura (y no marcado «sin revisar» por un apagon: ahi no se escribe nada nuevo, como rocola-actualiza)
+disco_escribible() {
+	[ -d "$DISCO/rocola-os" ] && [ ! -f "$RUN/rocola-disco-revisar" ] || return 1
+	awk -v m="$DISCO" '$2 == m {print $4}' /proc/mounts 2>/dev/null | grep -q '^rw'
+}
+libre_kb() { df -Pk "$1" 2>/dev/null | awk 'NR == 2 {print $4}'; }
+# donde se guarda lo que se baja: el disco de la rocola si hay sitio; si no, los datos
+dir_para_bajar() {
+	if disco_escribible && mkdir -p "$DISCO/rocola-os/soloist" 2>/dev/null && [ "$(libre_kb "$DISCO/rocola-os/soloist")" -ge "$MIN_DISCO" ] 2>/dev/null; then
+		echo "$DISCO/rocola-os/soloist"; return 0
+	fi
+	if mkdir -p "$XPD/soloist-programa" 2>/dev/null && [ "$(libre_kb "$XPD/soloist-programa")" -ge "$MIN_DATOS" ] 2>/dev/null; then
+		echo "$XPD/soloist-programa"; return 0
+	fi
+	return 1
+}
+# el .tar.gz que hay (el mas nuevo de los dos sitios)
+tar_actual() {
+	mejor=; mf=0
+	for d in "$DISCO/rocola-os/soloist" "$XPD/soloist-programa"; do
+		[ -s "$d/soloist.tar.gz" ] || continue
+		t=$(date -r "$d/soloist.tar.gz" +%s 2>/dev/null || echo 0)
+		[ -z "$mejor" ] || [ "$t" -gt "$mf" ] && { mejor=$d/soloist.tar.gz; mf=$t; }
+	done
+	[ -n "$mejor" ] && echo "$mejor"
+}
+trae_soloist() { gzip -dc "$1" 2>/dev/null | tar -tf - 2>/dev/null | grep -qx -e soloist -e ./soloist; }
+# baja [forzada]: el ultimo de Spotify. Sin «forzada», solo si es mas nuevo que el que hay (If-Modified-Since con su fecha: curl -R le pone
+# la del servidor). Lo bajado va a un .t; se comprueba que el tar trae «soloist»; el que habia pasa a soloist.anterior.tar.gz. Si algo
+# falla, se sigue con el que habia. 0 si hay uno usable al acabar.
+baja() {
+	# (uno a la vez: la orden «baja» de la consola y el vigilante no escriben el mismo .t)
+	exec 8>> "$AQUI/candado.baja"
+	while ! flock -n 8; do duerme 1 || { exec 8>&-; return 1; }; done
+	baja_ya "$1"; br=$?
+	exec 8>&-
+	return $br
+}
+baja_ya() {
+	d=$(dir_para_bajar) || { falla "no hay sitio para bajar el programa de Spotify (ni en el disco de la rocola ni en los datos)"; [ -n "$(tar_actual)" ]; return; }
+	tg=$d/soloist.tar.gz; t=$tg.t; zarg=
+	[ "$1" != forzada ] && [ -s "$tg" ] && zarg="-z $tg"
+	echo "$(ahora)" > "$AQUI/ultimo_intento" 2>/dev/null
+	f0=$FASE; estado bajando; FASE=$f0
+	rm -f "$t"
+	corta curl --fail --location -sS -R --connect-timeout 20 --max-time 900 --retry 2 --retry-delay 5 -o "$t" -w '%{http_code}' $zarg "$URL" \
+		> "$AQUI/curl.codigo" 2> "$AQUI/curl.err"
+	r=$?; c=$(cat "$AQUI/curl.codigo" 2>/dev/null)
+	[ -n "$PARAR" ] && { rm -f "$t"; return 1; }
+	if [ $r != 0 ]; then
+		rm -f "$t"; falla "no se pudo bajar el programa de Spotify (curl $r, HTTP ${c:-000}: $(head -c 200 "$AQUI/curl.err" | tr '\n' ' '))"
+		[ -n "$(tar_actual)" ]; return
+	fi
+	if [ "$c" = 304 ] || [ ! -s "$t" ]; then rm -f "$t"; apunta "El programa de Spotify ya es el ultimo"; [ -n "$(tar_actual)" ]; return; fi
+	if ! trae_soloist "$t"; then
+		rm -f "$t"; falla "lo bajado de Spotify no es el programa (el tar no trae «soloist»): se sigue con el que habia"
+		[ -n "$(tar_actual)" ]; return
+	fi
+	if [ -s "$tg" ] && cmp -s "$t" "$tg"; then rm -f "$t"; apunta "El programa de Spotify ya es el ultimo"; return 0; fi
+	[ -s "$tg" ] && mv -f "$tg" "$d/soloist.anterior.tar.gz"
+	mv -f "$t" "$tg" && sync
+	ERROR=; apunta "Programa de Spotify bajado ($(wc -c < "$tg") bytes, del $(date -r "$tg" '+%Y-%m-%d'), en $d)"
+	return 0
+}
+# info_de TAR: lo que se sabe de el, guardado al lado (soloist.info: version, compilado, caduca, fuente)
+info_de() { echo "${1%.tar.gz}.info"; }
+lee_info() {
+	VERSION=$(sed -n 's/^version=//p' "$1" 2>/dev/null); CADUCA=$(sed -n 's/^caduca=//p' "$1" 2>/dev/null)
+	c=$(date -d "$CADUCA 00:00" +%s 2>/dev/null)
+	if [ -n "$c" ]; then DIAS=$(( (c - $(ahora)) / 86400 )); [ $(( c - $(ahora) )) -lt 0 ] && DIAS=-1; else DIAS=; fi
+}
+# prepara: saca el programa a /run (en memoria: nunca se ejecuta desde el disco NTFS) y averigua su version y cuando caduca:
+# «soloist --version» (la fecha de compilacion, si la dice); si no, la fecha del .tar.gz bajado (la del servidor) mas 90 dias.
+# BIN: lo que se arranca. Con SOLOIST_BIN, ese tal cual (no se baja ni se saca nada).
+de_de() { echo "$1 $(date -r "$1" +%s 2>/dev/null) $(wc -c < "$1" 2>/dev/null)"; }   # (de que .tar.gz salio lo que hay en /run)
+# saca TAR: el programa (y su CHANGELOG.md) a $AQUI/bin
+saca() {
+	rm -rf "$AQUI/bin.n"; mkdir -p "$AQUI/bin.n" "$AQUI/bin"
+	if ! gzip -dc "$1" 2>/dev/null | tar -xf - -C "$AQUI/bin.n" 2>/dev/null || [ ! -f "$AQUI/bin.n/soloist" ]; then rm -rf "$AQUI/bin.n"; return 1; fi
+	chmod 755 "$AQUI/bin.n/soloist"
+	rm -f "$AQUI/bin/de" "$AQUI/bin/CHANGELOG.md"
+	mv -f "$AQUI/bin.n/soloist" "$AQUI/bin/soloist"; mv -f "$AQUI/bin.n/CHANGELOG.md" "$AQUI/bin/CHANGELOG.md" 2>/dev/null
+	rm -rf "$AQUI/bin.n"; de_de "$1" > "$AQUI/bin/de"
+}
+# contesta: «--version» salio bien (o con 10, caducado) o dijo algo
+contesta() { [ "$VR" = 0 ] || [ "$VR" = 10 ] || [ -n "$VERSION_DICE" ]; }
+# usa_anterior TAR: el anterior pasa a ser el actual (el actual queda como soloist.malo.tar.gz)
+usa_anterior() { d=${1%/*}; mv -f "$1" "$d/soloist.malo.tar.gz" && mv -f "$d/soloist.anterior.tar.gz" "$1" && rm -f "$(info_de "$1")"; }
+prepara() {
+	if [ -n "$SOLOIST_BIN" ]; then BIN=$SOLOIST_BIN; PROGRAMA=$SOLOIST_BIN; [ -x "$BIN" ] || { falla "SOLOIST_BIN no es un programa: $BIN"; return 1; }
+		version_de "$BIN" ""; return 0; fi
+	tg=$(tar_actual); [ -n "$tg" ] || return 1
+	BIN=$AQUI/bin/soloist; PROGRAMA=$tg; a=${tg%/*}/soloist.anterior.tar.gz
+	if [ -x "$BIN" ] && [ "$(cat "$AQUI/bin/de" 2>/dev/null)" = "$(de_de "$tg")" ]; then lee_info "$(info_de "$tg")"; return 0; fi
+	if ! saca "$tg"; then
+		falla "no se pudo sacar el programa de $tg"
+		[ -s "$a" ] && saca "$a" || return 1
+		apunta "se usa el anterior (soloist.anterior.tar.gz)"; usa_anterior "$tg"; de_de "$tg" > "$AQUI/bin/de"
+	fi
+	version_de "$BIN" "$tg"
+	# el nuevo no contesta a --version y el anterior si: el anterior (si tampoco, se sigue con el nuevo: lo dira al arrancar)
+	if ! contesta && [ -s "$a" ]; then
+		apunta "el programa de Spotify no contesta a --version (codigo $VR): se prueba el anterior"
+		v0=$VR
+		if saca "$a" && version_de "$BIN" "" && contesta; then
+			apunta "el anterior si contesta: se usa el anterior"; usa_anterior "$tg"; de_de "$tg" > "$AQUI/bin/de"; version_de "$BIN" "$tg"
+		else
+			apunta "el anterior tampoco: se sigue con el nuevo"; saca "$tg"; version_de "$BIN" "$tg"; VR=$v0
+		fi
+	fi
+	return 0
+}
+# version_de BIN TAR: VERSION, CADUCA y DIAS (y soloist.info al lado del tar). VR: el codigo de «--version»; VERSION_DICE: lo que dijo.
+version_de() {
+	corta timeout 10 "$1" --version </dev/null > "$AQUI/version.txt" 2>/dev/null; VR=$?
+	out=$(head -c 4000 "$AQUI/version.txt" 2>/dev/null); rm -f "$AQUI/version.txt"
+	VERSION_DICE=$out
+	VERSION=$(echo "$out" | grep -i -E 'soloist|version' | grep -o -E '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+	[ -z "$VERSION" ] && VERSION=$(sed -n 's/^## *Release v*\([0-9][0-9.]*\).*/\1/p' "$AQUI/bin/CHANGELOG.md" 2>/dev/null | head -1)
+	comp=; fuente=
+	f=$(echo "$out" | grep -o -E '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' | head -1)
+	[ -n "$f" ] && comp=$(date -d "$f 00:00" +%s 2>/dev/null) && fuente=version
+	if [ -z "$comp" ]; then f=$(echo "$out" | grep -o -E '\b1[6-9][0-9]{8}\b' | head -1); [ -n "$f" ] && comp=$f && fuente=version; fi
+	if [ -z "$comp" ] && [ -n "$2" ]; then comp=$(date -r "$2" +%s 2>/dev/null) && fuente=bajada; fi
+	if [ -n "$comp" ]; then
+		c=$(( comp + 90 * 86400 )); CADUCA=$(date -d "@$c" +%Y-%m-%d); DIAS=$(( (c - $(ahora)) / 86400 )); [ $(( c - $(ahora) )) -lt 0 ] && DIAS=-1
+	else CADUCA=; DIAS=; fi
+	[ "$VR" = 10 ] && DIAS=-1
+	[ -n "$2" ] && { echo "version=$VERSION"; echo "compilado=$( [ -n "$comp" ] && date -d "@$comp" +%Y-%m-%d)"; echo "caduca=$CADUCA"; echo "fuente=$fuente"; } > "$(info_de "$2")" 2>/dev/null
+	return 0
+}
+# lo que dice Soloist al arrancar («client expires in N days»): manda sobre la cuenta de arriba
+mira_expira() {
+	[ -s "$AQUI/expira.n" ] || return 0
+	n=$(cat "$AQUI/expira.n"); rm -f "$AQUI/expira.n"
+	case "$n" in ""|*[!0-9]*) return 0 ;; esac
+	DIAS=$n; CADUCA=$(date -d "@$(( $(ahora) + n * 86400 ))" +%Y-%m-%d)
+	[ -n "$PROGRAMA" ] && [ -z "$SOLOIST_BIN" ] && { sed '/^caduca=/d; /^fuente=/d' "$(info_de "$PROGRAMA")" 2>/dev/null; echo "caduca=$CADUCA"; echo "fuente=soloist"; } > "$AQUI/info.n" \
+		&& mv -f "$AQUI/info.n" "$(info_de "$PROGRAMA")"
+	estado
+}
+# caduca pronto (menos de 7 dias) o ya caduco
+caduca_pronto() { [ -n "$DIAS" ] && [ "$DIAS" -lt 7 ]; }
+puede_reintentar() { u=$(cat "$AQUI/ultimo_intento" 2>/dev/null); [ $(( $(ahora) - ${u:-0} )) -ge "$REINTENTO" ]; }
+
+# ---------------- Soloist en marcha ----------------
+# lo que dice Soloist (la salida y los errores) a la bitacora, con la hora y SIN NINGUNA linea que lleve la llave; «client expires in N
+# days» se apunta aparte para el estado. (La llave le llega a awk por el entorno, no en su linea de ordenes.)
+registra() {
+	K="$K" B="$BITACORA" D="$AQUI/expira.n" P="$1" awk '
+	BEGIN { k = ENVIRON["K"]; b = ENVIRON["B"]; d = ENVIRON["D"]; p = ENVIRON["P"] }
+	{
+		sub(/\r$/, "")
+		if (length(k) >= 4 && index($0, k)) next
+		if (match($0, /client expires in [0-9]+ [a-z]+/)) {
+			s = substr($0, RSTART, RLENGTH); split(s, w, " "); n = w[4] + 0; if (w[5] !~ /^day/) n = 0
+			print n > d; close(d)
+		}
+		print strftime("%Y-%m-%d %H:%M:%S") "  " p $0 >> b; close(b)
+		if (p != "soloist: ") { print $0; fflush() }
+	}'
+}
+# el soloist que use nuestra carpeta de datos y no sea de este vigilante (uno que quedo huerfano: el vigilante de antes murio con SIGKILL)
+huerfanos() {
+	for c in /proc/[0-9]*/cmdline; do
+		p=${c#/proc/}; p=${p%/cmdline}
+		[ "$p" = "$$" ] && continue
+		l=$(tr '\0' '\n' < "$c" 2>/dev/null) || continue
+		echo "$l" | grep -qx -- "$SDATOS" || continue
+		echo "$l" | grep -qx -e -n -e --device-name || continue
+		echo "$p"
+	done
+}
+quita_huerfanos() {
+	h=$(huerfanos); [ -n "$h" ] || return 0
+	apunta "Habia un Soloist de antes en marcha (pid $(echo $h)): se cierra"
+	for p in $h; do kill -TERM "-$p" 2>/dev/null || kill -TERM "$p" 2>/dev/null; done
+	i=0; while [ -n "$(huerfanos)" ] && [ $i -lt $((TERMINA * 5)) ]; do sleep 0.2; i=$((i + 1)); done
+	for p in $(huerfanos); do kill -KILL "-$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null; done
+	rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$SDATOS/soloist.pid"
+}
+# arranca: Soloist en su propio grupo (setsid: asi se cierra con todos sus hijos), con nuestro libpulse.so.0 (rocola-pulso), su carpeta
+# de datos (la sesion de la cuenta), su cache en memoria y el WebSocket solo en 127.0.0.1 (el puerto lo elige el sistema: ws.port).
+arranca() {
+	rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$AQUI/soloist.salida" "$AQUI/soloist.pid" "$AQUI/expira.n"
+	mkdir -p "$SDATOS" "$CACHE" "$AQUI/casa" && chmod 700 "$SDATOS"
+	NOMBRE=${SPOTIFY_NOMBRE:-$(sed -n 's/^[ \t]*spotify_nombre[ \t]*=[ \t]*//p' "$XPD/rocola_os.txt" 2>/dev/null | tr -d '\r' | tail -1)}
+	NOMBRE=$(printf '%s' "${NOMBRE:-Rocola}" | tr -d '\000-\037' | cut -c1-64); [ -n "$NOMBRE" ] || NOMBRE=Rocola
+	apunta "Arranca Soloist ${VERSION:+$VERSION }como «$NOMBRE»"
+	# (su entorno: el de la rocola -ROCOLA_SPOTIFY_ANILLO, y ROCOLA_PULSO_TRAZA si esta puesta, para depurar rocola-pulso en el A4- con su
+	# casa y lo demas en /run, y LD_LIBRARY_PATH para que cargue NUESTRO libpulse.so.0; sin STATE_DIRECTORY ni CACHE_DIRECTORY)
+	{
+		env -u STATE_DIRECTORY -u CACHE_DIRECTORY HOME="$AQUI/casa" XDG_CONFIG_HOME="$AQUI/casa" XDG_DATA_HOME="$AQUI/casa" \
+			XDG_CACHE_HOME="$CACHE" LD_LIBRARY_PATH="$PULSO" \
+			setsid "$BIN" -n "$NOMBRE" -k "$K" -D "$SDATOS" -C "$CACHE" -z 100 -w 127.0.0.1:0 -i 100 </dev/null 2>&1 &
+		echo $! > "$AQUI/soloist.pid"
+		wait $!; echo $? > "$AQUI/soloist.salida"
+	} 9>&- | registra "soloist: " 9>&- &
+	TUBO=$!
+	i=0; while [ ! -s "$AQUI/soloist.pid" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+	SPID=$(cat "$AQUI/soloist.pid" 2>/dev/null)
+	T0=$(segundos); LISTO=; HUELLA=$(huella_llave)
+	estado arrancando
+}
+vivo() { [ -n "$SPID" ] && [ -d "/proc/$SPID" ] && [ "$(awk '{print $3}' "/proc/$SPID/stat" 2>/dev/null)" != Z ] && [ ! -s "$AQUI/soloist.salida" ]; }
+# para: SIGTERM a todo su grupo, hasta TERMINA s, y SIGKILL. R: con que salio.
+para() {
+	[ -n "$SPID" ] || return 0
+	if vivo; then
+		kill -TERM "-$SPID" 2>/dev/null || kill -TERM "$SPID" 2>/dev/null
+		i=0; while vivo && [ $i -lt $((TERMINA * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+		if vivo; then apunta "Soloist no se cerro en $TERMINA s: SIGKILL"; kill -KILL "-$SPID" 2>/dev/null || kill -KILL "$SPID" 2>/dev/null; fi
+	fi
+	recoge
+}
+# recoge: espera su salida (la escribe su envoltorio) y la tuberia de la bitacora
+recoge() {
+	i=0; while [ ! -s "$AQUI/soloist.salida" ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+	R=$(cat "$AQUI/soloist.salida" 2>/dev/null); [ -n "$R" ] || R=137
+	kill -KILL "-$SPID" 2>/dev/null   # (lo que quede de su grupo)
+	[ -n "$TUBO" ] && { wait "$TUBO" 2>/dev/null; TUBO=; }
+	rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$AQUI/soloist.pid"
+	SPID=
+}
+# duerme N: espera N segundos, despertando cada 2 para mirar al padre; vuelve antes si llega SIGTERM o muere el padre (1)
+duerme() {
+	n=$1
+	while [ "$n" -gt 0 ]; do
+		[ -n "$PARAR" ] && return 1
+		padre_vivo || { PARAR=padre; return 1; }
+		s=2; [ "$n" -lt 2 ] && s=$n
+		sleep "$s" & ds=$!; wait $ds 2>/dev/null; kill $ds 2>/dev/null
+		n=$((n - s))
+	done
+	[ -z "$PARAR" ]
+}
+padre_vivo() { [ "$PADRE" = 1 ] || [ "$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null)" = "$PADRE" ]; }
+rota() { [ -f "$BITACORA" ] && [ "$(wc -c < "$BITACORA")" -gt 1048576 ] && mv -f "$BITACORA" "$BITACORA.1"; }
+
+corre() {
+	mkdir -p "$AQUI" && chmod 755 "$AQUI"
+	PARAR=
+	trap 'PARAR=senal' TERM INT HUP
+	renice "$NICE" -p $$ >/dev/null 2>&1
+	exec 9>> "$AQUI/candado"
+	if ! flock -n 9; then
+		apunta "Ya hay otro vigilante de Soloist (pid $(sed -n 's/^vigilante=//p' "$ESTADO" 2>/dev/null)): este espera a que acabe"
+		while ! flock -n 9; do duerme 1 || { apunta "Vigilante: se cierra sin haber arrancado (${PARAR})"; exit 0; }; done
+	fi
+	apunta "Vigilante en marcha (pid $$)"
+	echo "$$" > "$AQUI/vigilante.pid"
+	quita_huerfanos
+	nivel=0; ULTIMA_USB=0; ULTIMA_REVISION=$(segundos)
+	while [ -z "$PARAR" ]; do
+		padre_vivo || { PARAR=padre; break; }
+		# 1. la llave
+		if ! lee_llave; then
+			if [ "$FASE" != sin_llave ]; then
+				if [ -s "$LLAVE" ]; then ERROR="la llave de Soloist ($LLAVE) no parece una llave: vuelve a ponerla («spotify llave»)"
+				else ERROR="falta la llave de Soloist ($LLAVE; o rocola_spotify.txt en una memoria USB)"; fi
+				apunta "$ERROR"
+			fi
+			estado sin_llave
+			if [ $(( $(segundos) - ULTIMA_USB )) -ge "$CADA_USB" ] || [ "$ULTIMA_USB" = 0 ]; then ULTIMA_USB=$(segundos); importa_llaves >/dev/null; fi
+			lee_llave && continue
+			duerme 2 || break; continue
+		fi
+		# (la de la API web la usa rocola-xp, no Soloist: si falta, se mira la USB al empezar y despues cada 15 min)
+		if [ ! -s "$APIF" ] && { [ "$ULTIMA_USB" = 0 ] || [ $(( $(segundos) - ULTIMA_USB )) -ge 900 ]; }; then ULTIMA_USB=$(segundos); importa_llaves >/dev/null; fi
+		# 2. el programa: si no hay, se baja; si caduca pronto, se intenta bajar uno nuevo (como mucho una vez por hora)
+		if [ -z "$SOLOIST_BIN" ] && [ -z "$(tar_actual)" ]; then baja forzada; fi
+		if ! prepara; then
+			[ -n "$ERROR" ] || ERROR="no hay programa de Spotify (no se pudo bajar)"
+			estado sin_programa; duerme 60 || break; continue
+		fi
+		if [ -z "$SOLOIST_BIN" ] && caduca_pronto && puede_reintentar; then
+			apunta "El programa de Spotify caduca ${CADUCA:+el $CADUCA }(quedan ${DIAS} dias): se busca uno nuevo"
+			baja && prepara
+		fi
+		[ -n "$PARAR" ] && break
+		# 3. arrancarlo y vigilarlo
+		arranca
+		ULTIMA_REVISION=$(segundos)
+		while vivo; do
+			duerme 2 || break
+			mira_expira
+			if [ -z "$LISTO" ] && [ -s "$SDATOS/ws.port" ]; then
+				LISTO=1; ERROR=; estado corriendo
+				apunta "Soloist en marcha (pid $SPID), WebSocket en $(cat "$SDATOS/ws.addr" 2>/dev/null):$(cat "$SDATOS/ws.port")"
+			fi
+			if [ -z "$LISTO" ] && [ $(( $(segundos) - T0 )) -ge "$ARRANQUE" ]; then
+				falla "Soloist no abrio su WebSocket en $ARRANQUE s: se vuelve a arrancar"; para; R=sinws; break
+			fi
+			rota
+			# la llave cambio (otra de la USB o escrita): con la nueva
+			if [ "$(huella_llave)" != "$HUELLA" ]; then apunta "La llave de Soloist cambio: se vuelve a arrancar"; para; R=llave; break; fi
+			if [ $(( $(segundos) - ULTIMA_REVISION )) -ge "$REVISA" ]; then
+				ULTIMA_REVISION=$(segundos)
+				{ [ ! -s "$APIF" ] || ! lee_llave; } && importa_llaves >/dev/null
+				# caduca pronto: se baja el nuevo y, si la rocola no esta tocando nada de Spotify, se cambia ya
+				if [ -z "$SOLOIST_BIN" ] && caduca_pronto && puede_reintentar && baja && [ "$(cat "$AQUI/bin/de" 2>/dev/null)" != "$(de_de "$(tar_actual)")" ]; then
+					x=${ROCOLA_SPOTIFY_ESTADO:-$RUN/rocola-xp/spotify/estado}
+					if [ "$(sed -n 's/^sonando=//p' "$x" 2>/dev/null)" != 1 ] && [ "$(sed -n 's/^en_cola=//p' "$x" 2>/dev/null)" = 0 -o ! -f "$x" ]; then
+						apunta "Programa de Spotify nuevo y la rocola sin nada de Spotify: se cambia ahora"; para; R=nuevo; break
+					fi
+				fi
+			fi
+		done
+		if [ -n "$PARAR" ] || vivo; then break; fi
+		[ -n "$SPID" ] && recoge
+		duro=$(( $(segundos) - T0 ))
+		case "$R" in
+		llave|nuevo) nivel=0; continue ;;
+		10)
+			FASE=caducado; DIAS=-1; falla "El programa de Spotify caduco (salio con 10): se baja el ultimo"
+			estado caducado
+			antes=$(t=$(tar_actual); [ -n "$t" ] && md5sum < "$t")
+			if baja forzada && [ "$(t=$(tar_actual); [ -n "$t" ] && md5sum < "$t")" != "$antes" ]; then continue; fi
+			ERROR="el programa de Spotify caduco y no hay uno nuevo que bajar: se vuelve a intentar en $CADUCADO_ESPERA s"; apunta "$ERROR"
+			estado caducado; duerme "$CADUCADO_ESPERA" || break; continue ;;
+		esac
+		[ "$duro" -ge "$SEGUIDA" ] && nivel=0
+		nivel=$((nivel + 1)); REINICIOS=$((REINICIOS + 1))
+		case $nivel in 1) e=$E1 ;; 2) e=$E2 ;; 3) e=$E3 ;; *) e=$E4 ;; esac
+		[ "$R" = sinws ] || falla "Soloist salio con $R a los $duro s: se vuelve a arrancar en $e s"
+		estado esperando
+		duerme "$e" || break
+	done
+	t=$(segundos)
+	para
+	FASE=parado; estado
+	apunta "Vigilante: se cierra ($([ "$PARAR" = padre ] && echo 'murio su padre, la rocola' || echo "${PARAR:-sin causa}"); Soloist cerrado en $(( $(segundos) - t )) s)"
+	rm -f "$AQUI/vigilante.pid"
+	exit 0
+}
+
+# ---------------- lo de la consola ----------------
+lee_estado() { sed -n "s/^$1=//p" "$ESTADO" 2>/dev/null | head -1; }
+cuenta_estado() {
+	f=$(lee_estado fase); v=$(lee_estado vigilante)
+	[ -n "$v" ] && [ -d "/proc/$v" ] || { [ -n "$f" ] && [ "$f" != parado ] && f="parado (el vigilante ya no corre)"; }
+	case "$f" in
+		corriendo) echo "Spotify (Soloist): en marcha (pid $(lee_estado pid))." ;;
+		arrancando) echo "Spotify (Soloist): arrancando." ;;
+		sin_llave) echo "Spotify (Soloist): esperando la llave (rocola_spotify.txt en una memoria USB, o «spotify llave»)." ;;
+		sin_programa) echo "Spotify (Soloist): no hay programa (no se pudo bajar de Spotify)." ;;
+		bajando) echo "Spotify (Soloist): bajando el programa de Spotify." ;;
+		caducado) echo "Spotify (Soloist): el programa CADUCO y no hay uno nuevo (se reintenta solo)." ;;
+		esperando) echo "Spotify (Soloist): se cayo; esperando para volver a arrancarlo." ;;
+		""|parado*) echo "Spotify (Soloist): parado${f#parado} (corre solo con el modo encendido y la rocola abierta)." ;;
+		*) echo "Spotify (Soloist): $f." ;;
+	esac
+	r=$(lee_estado reinicios); [ -n "$r" ] && [ "$r" != 0 ] && echo "  Se volvio a arrancar $r veces en esta sesion."
+	e=$(lee_estado error); [ -n "$e" ] && echo "  Ultimo problema: $e"
+	tg=$(tar_actual)
+	if [ -n "$tg" ]; then
+		lee_info "$(info_de "$tg")"
+		echo "Programa de Spotify: $tg (bajado el $(date -r "$tg" '+%Y-%m-%d'))${VERSION:+, version $VERSION}."
+		if [ -n "$CADUCA" ]; then
+			if [ "$DIAS" -lt 0 ] 2>/dev/null; then echo "  CADUCO el $CADUCA: hace falta uno nuevo («spotify bajar», con internet)."
+			else echo "  Caduca el $CADUCA: quedan $DIAS dias (se pone al dia solo cuando quedan menos de 7)."; fi
+		else echo "  No se sabe cuando caduca (se sabra al arrancarlo)."; fi
+	else echo "Programa de Spotify: no esta bajado todavia (se baja solo al encender el modo; o «spotify bajar»)."; fi
+	if [ -s "$LLAVE" ]; then echo "Llave de Soloist: puesta."; else echo "Llave de Soloist: FALTA."; fi
+	if [ -s "$APIF" ]; then echo "Llave de la API web: puesta$(grep -q '^refresh_token=' "$APIF" && echo ', con tu cuenta (refresh_token)')."; else echo "Llave de la API web: falta (sin ella no se puede buscar en Spotify desde la rocola)."; fi
+	if ls "$SDATOS" 2>/dev/null | grep -q .; then echo "Sesion guardada de Soloist: hay datos en $SDATOS."; else echo "Sesion guardada de Soloist: ninguna (falta emparejar una vez)."; fi
+}
+# toma el candado (para emparejar u olvidar con Soloist parado): espera hasta 30 s a que el vigilante acabe
+toma_candado() {
+	mkdir -p "$AQUI"; exec 9>> "$AQUI/candado"
+	i=0; while ! flock -n 9; do
+		[ $i = 0 ] && echo "Soloist esta en marcha (la rocola lo tiene abierto): esperando hasta 30 s a que se cierre..."
+		i=$((i + 1)); [ $i -ge 30 ] && return 1; sleep 1
+	done
+	quita_huerfanos
+}
+emparejar() {
+	lee_llave || { echo "Falta la llave de Soloist: «spotify llave» primero."; exit 1; }
+	if ! toma_candado; then
+		echo "La rocola tiene Soloist abierto. No hace falta emparejar desde aqui: con la rocola en marcha y el modo encendido,"
+		echo "abre Spotify en el celular (en la red del bar), toca el icono de dispositivos y elige la bocina de la rocola."
+		exit 1
+	fi
+	[ -z "$SOLOIST_BIN" ] && [ -z "$(tar_actual)" ] && { echo "Bajando el programa de Spotify..."; baja forzada; }
+	prepara || { echo "No hay programa de Spotify: $ERROR"; exit 1; }
+	mkdir -p "$SDATOS" "$CACHE" "$AQUI/casa" && chmod 700 "$SDATOS"
+	NOMBRE=${SPOTIFY_NOMBRE:-$(sed -n 's/^[ \t]*spotify_nombre[ \t]*=[ \t]*//p' "$XPD/rocola_os.txt" 2>/dev/null | tr -d '\r' | tail -1)}; NOMBRE=${NOMBRE:-Rocola}
+	apunta "Emparejar: se pide la cuenta desde la app de Spotify (bocina «$NOMBRE»)"
+	echo "Abre Spotify en el celular o en la laptop, CONECTADO A LA RED DEL BAR."
+	echo "Toca el icono de dispositivos (la bocina con la pantallita) y elige «$NOMBRE»; pon cualquier cancion."
+	echo "Cuando quede guardada, esto se cierra solo. (Ctrl+C para cancelar.)"
+	rm -f "$AQUI/.emparejar"
+	{
+		env -u STATE_DIRECTORY -u CACHE_DIRECTORY HOME="$AQUI/casa" XDG_CONFIG_HOME="$AQUI/casa" XDG_DATA_HOME="$AQUI/casa" \
+			XDG_CACHE_HOME="$CACHE" LD_LIBRARY_PATH="$PULSO" "$BIN" -p -n "$NOMBRE" -k "$K" -D "$SDATOS" -C "$CACHE" </dev/null 2>&1
+		echo $? > "$AQUI/.emparejar"
+	} 9>&- | registra "soloist -p: " 9>&-
+	r=$(cat "$AQUI/.emparejar" 2>/dev/null); rm -f "$AQUI/.emparejar"
+	case "$r" in
+		0) echo "Listo: la cuenta quedo guardada en la rocola. Vuelve a la rocola con Ctrl+Alt+F1."; apunta "Emparejar: acabo bien" ;;
+		10) echo "El programa de Spotify CADUCO: «spotify bajar» (con internet) y vuelve a intentarlo."; apunta "Emparejar: el programa caduco (10)"; exit 1 ;;
+		*) echo "No se pudo (Soloist salio con ${r:-?}). Mira «spotify estado» y vuelve a intentarlo."; apunta "Emparejar: Soloist salio con ${r:-?}"; exit 1 ;;
+	esac
+}
+
+[ "$1" != corre ] && HABLA=1
+case "$1" in
+corre) HABLA=; corre ;;
+baja)
+	mkdir -p "$AQUI"; trap 'PARAR=senal' TERM INT
+	ERROR=; if baja; then prepara >/dev/null 2>&1; echo "Programa de Spotify al dia: $(tar_actual)${VERSION:+ (version $VERSION${CADUCA:+, caduca el $CADUCA})}"
+		exit 0
+	else echo "No se pudo poner el programa de Spotify."; exit 1; fi ;;
+estado) cuenta_estado ;;
+emparejar) emparejar ;;
+olvidar)
+	toma_candado || { echo "Soloist sigue en marcha: cierra la rocola (o apaga el modo) y vuelve a intentarlo."; exit 1; }
+	rm -rf "$SDATOS"; mkdir -p "$SDATOS" && chmod 700 "$SDATOS"
+	apunta "Sesion de Soloist borrada (olvidar): hay que emparejar otra vez"
+	echo "Listo: la rocola olvido la cuenta de Spotify. Para volver a usarla, «spotify emparejar»." ;;
+llave) mkdir -p "$AQUI"; importa_llaves cambia; r=$?
+	[ $r = 2 ] && echo "No se encontro rocola_spotify.txt ni rocola_spotify_api.txt en una memoria USB."
+	exit $r ;;
+version)   # (para «spotify prueba»: saca el programa y dice si contesta a --version)
+	mkdir -p "$AQUI"; prepara || { echo "no hay programa de Spotify bajado"; exit 1; }
+	echo "codigo=$VR"; echo "version=$VERSION"; echo "caduca=$CADUCA"; echo "dias=$DIAS"; echo "programa=$PROGRAMA"
+	contesta ;;
+pon-llave)
+	mkdir -p "$AQUI"; ( umask 077; cat > "$AQUI/.llave.e" )
+	v=$(normaliza_llave "$AQUI/.llave.e"); rm -f "$AQUI/.llave.e"
+	[ -n "$v" ] || { echo "Eso no parece una llave de Soloist (letras, numeros y . _ ~ + / = : -; al menos 8). No se cambio nada."; exit 1; }
+	printf '%s\n' "$v" | guarda_secreto "$LLAVE" && apunta "Llave de Spotify puesta (escrita en la consola)" && echo "Llave de Soloist puesta." ;;
+pon-api)
+	mkdir -p "$AQUI"; ( umask 077; cat > "$AQUI/.api.e" )
+	normaliza_api "$AQUI/.api.e" > "$AQUI/.api.v"; rm -f "$AQUI/.api.e"
+	[ -s "$AQUI/.api.v" ] || { rm -f "$AQUI/.api.v"; echo "Faltan client_id o client_secret (o traen caracteres raros). No se cambio nada."; exit 1; }
+	guarda_secreto "$APIF" < "$AQUI/.api.v" && apunta "Llave de la API web de Spotify puesta (escrita en la consola)" && echo "Llave de la API web puesta."
+	rm -f "$AQUI/.api.v" ;;
+*) echo "uso: rocola-soloist corre | baja | estado | emparejar | olvidar | llave | pon-llave | pon-api | version" >&2; exit 2 ;;
+esac

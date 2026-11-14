@@ -71,6 +71,37 @@ mira_llave() {
 		if [ -n "$g" ]; then tr -d ' \r\n\t' < "$g" > "$DATOS/rocola_genius.txt"; chmod 600 "$DATOS/rocola_genius.txt"; rm -f "$TMP/llave.txt"; sync
 			printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Genius puesta (de $g)" >> "$DATOS/rocola_actualizaciones.txt"; fi
 	fi
+	# LAS DE SPOTIFY (14-11-2026; sistema/SPOTIFY_SOLOIST.md): la de Soloist (rocola_spotify.txt en la memoria USB -> rocola_spotify_llave.txt)
+	# y la de la API web (rocola_spotify_api.txt -> rocola_spotify_api.txt), en /rocola/datos/xp (0600). En la misma vuelta de cada 15
+	# minutos; a diferencia de la de Genius, si la de la USB es OTRA se cambia (el dueno renueva su llave). Nunca se ensenan, ni se apuntan
+	# (solo que se pusieron), ni se suben (permitido, abajo). El vigilante (rocola-soloist) y «spotify llave» las traen igual.
+	if [ -n "$ahoraB" ] && [ "$(leer "$TMP/busco_llave")" = "$ahoraB" ]; then
+		s=$(busca_llave rocola_spotify.txt)
+		if [ -n "$s" ]; then
+			v=$(tr -d '\r' < "$s" | sed '1s/^\xef\xbb\xbf//' | tr -d ' \t' | grep -v '^$' | head -n 1); rm -f "$TMP/llave.txt"
+			case "$v" in *[!A-Za-z0-9._~+/=:-]*) v= ;; esac; [ ${#v} -ge 8 ] && [ ${#v} -le 1024 ] || v=
+			if [ -n "$v" ] && [ "$v" != "$(head -n 1 "$XPD/rocola_spotify_llave.txt" 2>/dev/null | tr -d ' \t\r\n')" ]; then
+				mkdir -p "$XPD" && ( umask 077; printf '%s\n' "$v" > "$XPD/.rocola_spotify_llave.txt.n" ) && mv -f "$XPD/.rocola_spotify_llave.txt.n" "$XPD/rocola_spotify_llave.txt" && sync \
+					&& printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+			fi
+			v=
+		fi
+		s=$(busca_llave rocola_spotify_api.txt)
+		if [ -n "$s" ]; then
+			( umask 077; tr -d '\r' < "$s" | sed '1s/^\xef\xbb\xbf//' \
+				| sed -n -E 's/^[[:space:]]*(client_id|client_secret|refresh_token)[[:space:]]*=[[:space:]]*([A-Za-z0-9._~+\/=:-]+)[[:space:]]*$/\1=\2/p' \
+				| awk -F= '!visto[$1]++' > "$TMP/.api.v" )
+			rm -f "$TMP/llave.txt"
+			if grep -q '^client_id=' "$TMP/.api.v" && grep -q '^client_secret=' "$TMP/.api.v"; then
+				{ grep '^client_id=' "$TMP/.api.v"; grep '^client_secret=' "$TMP/.api.v"; grep '^refresh_token=' "$TMP/.api.v"; } > "$TMP/.api.o"
+				if ! cmp -s "$TMP/.api.o" "$XPD/rocola_spotify_api.txt"; then
+					mkdir -p "$XPD" && chmod 600 "$TMP/.api.o" && mv -f "$TMP/.api.o" "$XPD/rocola_spotify_api.txt" && sync \
+						&& printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de la API web de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+				fi
+			fi
+			rm -f "$TMP/.api.v" "$TMP/.api.o"
+		fi
+	fi
 	LLAVE=$(sed -n 1p "$DATOS/rocola_buzon.txt" 2>/dev/null)
 	# (7-11-2026: el dueno, «me pide muchisimas llaves») sin la suya, la de GitHub: una sola llave para todo, si tiene permiso tambien
 	# para el repositorio del buzon
@@ -147,7 +178,11 @@ estado_json() {
 		--arg actualizaciones "$(cola 30 "$DATOS/rocola_actualizaciones.txt")" \
 		--arg sistema_txt "$(cola 20 "$OS/sistema.txt")" \
 		--arg registro "$(cola 60 "$DATOS/rocola.txt")" \
-		--arg spotify "$(cola 15 "$DATOS/rocola_spotify.txt")" \
+		--arg spotify "$(if [ -f "$XPD/rocola_spotify.txt" ]; then cola 15 "$XPD/rocola_spotify.txt"; else cola 15 "$DATOS/rocola_spotify.txt"; fi)" \
+		--arg soloist "$(cola 15 "$XPD/rocola_soloist.txt")" \
+		--arg sp_modo "$(tr -d '\r' < "$XPD/rocola_os.txt" 2>/dev/null | sed -n 's/^[ \t]*spotify[ \t]*=[ \t]*//p' | tail -1)" \
+		--arg sp_llave "$([ -s "$XPD/rocola_spotify_llave.txt" ] && echo si)" --arg sp_api "$([ -s "$XPD/rocola_spotify_api.txt" ] && echo si)" \
+		--arg sp_vigilante "$(grep -v '^cambio=' "$RUN/rocola-soloist/estado" 2>/dev/null)" --arg sp_rocola "$(leer "$RUN/rocola-xp/spotify/estado")" \
 		--arg nucleo "$(dmesg 2>/dev/null | grep -iE 'error|fail|warn|oops|bug|i/o' | tail -n 25)" \
 		--arg discos "$(leer "$RUN/rocola-discos.txt" | tail -n 15)" \
 		--arg tarjeta "$(cat /proc/asound/cards 2>/dev/null)" \
@@ -159,7 +194,8 @@ estado_json() {
 		  equipo:{carga:$carga, temperatura_c:$temp, memoria:$mem, disco_datos:$disco_datos, disco_rocola:$disco_rocola, tarjeta:$tarjeta},
 		  rocola:{corriendo:$rocola_corre, segundos_abierta:$rocola_desde, vivo:$vivo},
 		  errores:{total_lineas:($n_errores|tonumber? // 0), ultimos:$errores}, bitacoras:{actualizaciones:$actualizaciones, sistema:$sistema_txt,
-		  rocola:$registro, spotify:$spotify, nucleo:$nucleo, discos:$discos}, buzon:$buzon}'
+		  rocola:$registro, spotify:$spotify, soloist:$soloist, nucleo:$nucleo, discos:$discos},
+		  spotify:{modo:$sp_modo, llave:$sp_llave, llave_api:$sp_api, vigilante:$sp_vigilante, rocola:$sp_rocola}, buzon:$buzon}'
 }
 # Lo que cambia de verdad (sin la hora ni lo que dura encendida): para no subir lo mismo una y otra vez.
 huella() { jq -c 'del(.fecha, .arriba_s, .rocola.segundos_abierta, .equipo.carga, .equipo.temperatura_c, .equipo.memoria, .buzon, .rocola.vivo)' "$1" | md5sum | cut -c1-32; }
@@ -181,6 +217,9 @@ permitido() {
 	case "$1" in
 		*/*|*..*|rocola_github.txt|rocola_buzon.txt|"") return 1 ;;
 		rocola_genius.txt) return 1 ;;
+		# (las de Spotify, 14-11-2026: la llave de Soloist, la de la API web y su sesion -la carpeta soloist/, que ya no pasa por */*-; sus
+		# bitacoras, rocola_soloist.txt y rocola_spotify.txt, si: no tienen secretos)
+		*llave*|*_api.txt*|*spotify_api*|soloist*|.*) return 1 ;;
 		rocola*.txt|rocola*.txt.1|rocola*.txt.bak|sistema.txt|rocola-arranque.txt|rocola-discos.txt|rocola-mpv.txt|dmesg.txt) return 0 ;;
 	esac
 	return 1
