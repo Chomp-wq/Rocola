@@ -16,6 +16,7 @@ from PIL import Image
 Q = os.environ.get("Q", "/root/rocola-trabajo/act/qemu")
 MAQ, CAPS, SON = os.path.join(Q, "maq"), os.path.join(Q, "capturas"), os.path.join(Q, "sonido")
 USB, XPIMG, XP = os.path.join(Q, "usb.img"), os.path.join(Q, "discoxp.img"), os.path.join(Q, "xp.qcow2")
+if not os.path.exists(USB) and os.path.exists(os.path.join(Q, "usb.qcow2")): USB = os.path.join(Q, "usb.qcow2")   # (la memoria en qcow2)
 MUNDO = os.path.join(Q, "mundo")
 for d in (MAQ, CAPS, SON): os.makedirs(d, exist_ok=True)
 RESUMEN = open(os.path.join(Q, "prueba.txt"), "a")
@@ -139,7 +140,9 @@ def instala():
 
 def arranque():
     di("=== arranque: el disco de XP solo (instalado); la primera vez la prueba de sonido y grafica, luego el lanzador: importador y rocola-xp")
-    arranca(os.path.join(SON, "arranque.wav"))
+    global c
+    if pid(MAQ): c = Control(MAQ)   # (ya arrancada: se sigue con ella)
+    else: arranca(os.path.join(SON, "arranque.wav"))
     cmd = orden("cat /proc/cmdline")
     si("arranca el sistema instalado (GRUB del disco de XP, copia a)", "rocola.slot=a" in cmd and "rocola.disco=2b3c4d5e6f708192" in cmd, cmd.strip()[:120])
     si("rocola-discos encuentra la carpeta de XP y la musica", "datos de la rocola de XP en /rocola/disco/Rocola/Release" in orden("cat /run/rocola-discos.txt")
@@ -157,7 +160,7 @@ def arranque():
     marca = orden("cat /rocola/datos/xp/rocola_importado_xp.txt")
     si("la marca: de que carpeta y la unidad D: al disco de la rocola", "carpeta=/rocola/disco/Rocola/Release" in marca and "unidad D: -> /rocola/disco" in marca)
     si("las tablas traducidas, sin rutas de Windows", ok("! grep -l 'D:\\\\' /rocola/datos/xp/rocola_sonoridad.txt /rocola/datos/xp/rocola_volumen.txt /rocola/datos/xp/rocola_eq.txt /rocola/datos/xp/rocola_fuentes.txt /rocola/datos/xp/rocola_duracion.txt /rocola/datos/xp/rocola_stats.txt /rocola/datos/xp/rocola_config.txt")
-       and ok("[ $(grep -c '|/rocola/disco/musica/' /rocola/datos/xp/rocola_volumen.txt) = 6 ]"))
+       and ok("[ $(grep -c '|/rocola/disco/musica/' /rocola/datos/xp/rocola_volumen.txt) -ge 6 ]"))
     si("la cancion con acentos, con su nombre del disco", ok("grep -q '|/rocola/disco/musica/Banda Ficticia - Primer Disco/02 Canción Ñandú.mp3' /rocola/datos/xp/rocola_volumen.txt"))
     si("el estado del dia de XP (5 creditos) NO se trae", "creditos=5" not in estado())
     si("los botones de XP tal cual", orden("md5sum < /rocola/datos/xp/rocola_teclas.txt").split()[0:1] == orden("md5sum < /rocola/disco/Rocola/Release/rocola_teclas.txt").split()[0:1])

@@ -64,65 +64,67 @@ emulado (`sendkey` del monitor) y llegan a `rocola-xp` por evdev, como las del A
 ## 4. La prueba y lo que salió
 
 `prueba.py` corre las fases en orden sobre el mismo disco (lo que una deja lo usa la siguiente). Cada comprobación dice BIEN o MAL;
-INFO es lo que se apunta sin juzgar. Capturas en `/root/rocola-trabajo/act/qemu/capturas`, lo grabado en `.../sonido`, los resúmenes en
-`.../prueba.txt` y `.../prueba-salida-1.txt` a `-4.txt`.
+INFO es lo que se apunta sin juzgar. **La corrida final** (10:20-11:03, desde cero: el disco de XP recién hecho, instalar, y todas las
+fases con los guiones de ahora): **58 BIEN y 1 MAL**, y ese MAL era de la prueba (contaba 6 canciones en una tabla y ya había 7: la
+rocola había medido la canción nueva; comprobado después a mano: ninguna ruta de Windows; corregido en `prueba.py`). Antes hubo cuatro
+corridas que sirvieron para corregir la prueba (apartado 5). Lo que queda, en `/root/rocola-trabajo/act/qemu`: `prueba-salida-final.txt`
+(y `-final-a.txt`, la instalación: la corrida se paró al empezar el primer arranque por un fallo de la prueba -apartado 5- y siguió con la
+misma máquina ya arrancada), `capturas/`, `sonido/` y, de las corridas anteriores, `corridas-1-4/`.
 
 | Corrida | Fases | Resultado |
 |---|---|---|
-| 1 (08:41-09:36) | instala, arranque, teclas, consola, caida, apagon, ia, boton | 46 BIEN, 6 MAL: los 6 de la prueba, no del sistema (apartado 5) |
-| 2 (09:37-09:59) | video, caida, apagon, boton, a4 (con la prueba corregida) | 18 BIEN, 2 MAL: los dos del video, otra vez de la prueba (apartado 5) |
-| 3 (10:00-10:03) | video (navegando con `gpu=0`, viéndolo con la tarjeta) | 2 BIEN, 1 MAL: sonó, pero no llegó a pintarse en sus 20 s |
-| 4 (10:05-10:10) | video (el mismo, alargado a 90 s) | 3 BIEN, 0 MAL |
-
-Al final, todas las comprobaciones de P1, P2 y P3 salieron BIEN en alguna corrida con la prueba ya corregida; lo único arreglado en el
-sistema es la consola (apartado 5).
+| 1 (08:41-09:36) | instala, arranque, teclas, consola, caida, apagon, ia, boton | 46 BIEN, 6 MAL: los 6 de la prueba (apartado 5) |
+| 2 (09:37-09:59) | video, caida, apagon, boton, a4 (la prueba corregida) | 18 BIEN, 2 MAL: los dos del video, otra vez de la prueba |
+| 3 y 4 (10:00-10:10) | video (navegando con `gpu=0`, viéndolo con la tarjeta) | 3 BIEN, 1 MAL con el video de 20 s (no llegó a pintarse); 3 BIEN, 0 MAL con el de 90 s |
+| **final** (10:20-11:03) | instala, arranque, teclas, video, consola, caida, apagon, ia, boton, a4 | **58 BIEN, 1 MAL** (de la prueba) |
 
 ### P1: arranca, trae lo de XP, la pantalla, las teclas y el sonido
 
-| Comprobación | Cómo | Resultado |
+| Comprobación | Cómo | Resultado (corrida final) |
 |---|---|---|
-| El instalador, desde la memoria USB (por USB), encuentra el disco | arranque de la memoria y el disco de XP; `/tmp/rocola-instalar.txt` por el puerto serie | BIEN: elige `sda2` (la música), ve XP en `sda1` y los datos de XP en `/Rocola/Release`; el arranque mide 31 284 bytes para un hueco de 31 744 (`01-instalador.png`) |
-| Instala (ENTER: `sendkey ret`) | hasta «instalado en la copia a» | BIEN, en 2 min 10 s: guarda los 63 sectores de antes, copia y comprueba el sistema, GRUB sin errores (`02-instalado.png`) |
-| Arranca el sistema instalado | solo el disco de XP: GRUB del hueco, el núcleo y el initramfs desde el NTFS | BIEN: `rocola.slot=a rocola.disco=2b3c4d5e6f708192`; NTFS en `/rocola/disco`, el sistema y `datos.img` por loop |
+| El instalador, desde la memoria USB (por USB), encuentra el disco | arranque de la memoria y el disco de XP; `/tmp/rocola-instalar.txt` por el puerto serie | BIEN: elige `sda2` (la música), ve XP en `sda1` y los datos de XP en `/Rocola/Release`; el arranque mide 31 284 bytes para un hueco de 31 744 (`capturas/01-instalador.png`) |
+| Instala (ENTER: `sendkey ret`) | hasta «instalado en la copia a» | BIEN, en 2 min 13 s: guarda los 63 sectores de antes, copia y comprueba el sistema, GRUB sin errores (`02-instalado.png`) |
+| Arranca el sistema instalado | solo el disco de XP: GRUB del hueco, el núcleo y el initramfs desde el NTFS | BIEN: `rocola.slot=a rocola.disco=2b3c4d5e6f708192`; el NTFS en `/rocola/disco`, el sistema y `datos.img` por loop |
 | `rocola-discos` | `/run/rocola-discos.txt`, `/run/rocola-musica` | BIEN: la carpeta de XP en `/rocola/disco/Rocola/Release`, la música en `/rocola/disco/musica` |
-| La prueba de sonido y gráfica (primer arranque) | `/root/rocola-prueba.txt` | BIEN: el tono, la canción de prueba (mpg123), el cubo (900 cuadros a 6 por segundo). INFO: «Pantalla de la rocola: se dibujo 20 s (pero no se cerro en 10 s: se corto)»: en QEMU `rocola-xp` no alcanza a cerrarse en orden en los 10 s (apartado 6) |
-| El lanzador corre el importador y abre `rocola-xp` | `/rocola/datos/rocola.txt` | BIEN: «importado de /rocola/disco/Rocola/Release a /rocola/datos/xp...», y `rocola-xp` abierta con `ROCOLA_DATOS=/rocola/datos/xp`, `ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp`, `ROCOLA_ALSA=plughw:0,0` (su `/proc/PID/environ`) |
-| Lo traído | `/rocola/datos/xp` | BIEN: la marca dice la carpeta y «unidad D: -> /rocola/disco»; las seis tablas sin rutas de Windows, con las canciones en `/rocola/disco/musica/...` (también «02 Canción Ñandú.mp3», con su nombre del disco); el estado del día de XP (5 créditos) **no**; los botones tal cual; la configuración de XP con `dir=/rocola/disco/musica` una sola vez (la del importador; el lanzador no la repite) |
-| La carpeta de XP sin tocar | la suma MD5 de cada archivo dentro y en la máquina de pruebas | BIEN: 13 y 13 iguales |
-| La pantalla por KMS | captura del monitor de QEMU | BIEN: la rocola, no la consola (17 503 colores): la atracción con la portada del disco y la estrella (`03-rocola.png`) |
-| Las teclas: la moneda | la M (`moneda=77` de los botones traídos de XP), por el teclado emulado y evdev | BIEN: 4 créditos (el estado del día y la pantalla) |
-| Pedir una canción | ENTER abre el disco de la letra B, ENTER pide su primera | BIEN: «01 Pulso Grave» suena y quedan 3 créditos |
-| **Suena** | lo grabado de la tarjeta HDA (`sonido/arranque.wav`), por segundos | BIEN: 45 s de 196 Hz a -4,2 dBFS (antes, el tono de 440 Hz y la canción de prueba de la prueba de arranque) |
-| Lo más sonado y el sello | `rocola_stats.txt`, `rocola_fuentes.txt` | BIEN: la cuenta sube de 2 (de XP) a 3; el sello traído vale tal cual con el NTFS leído por ntfs3 (la canción no se volvió a medir: el riesgo que apuntó xp-datos) |
+| La prueba de sonido y gráfica (primer arranque) | `/root/rocola-prueba.txt` | BIEN: el tono, la canción de prueba (mpg123), el cubo (900 cuadros a 6 por segundo) y «Pantalla de la rocola: se dibujo 20 s (y se cerro bien)». (En la corrida 1, «pero no se cerro en 10 s: se corto»: apartado 6.) |
+| El lanzador corre el importador y abre `rocola-xp` | `/rocola/datos/rocola.txt`, `/proc/PID/environ` | BIEN: «importado de /rocola/disco/Rocola/Release a /rocola/datos/xp: 6 tablas, 35 lineas con la ruta traducida, 0 fuera», y `rocola-xp` abierta con `ROCOLA_DATOS=/rocola/datos/xp`, `ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp` y `ROCOLA_ALSA=plughw:0,0`. Las veces siguientes, «ya importado ...: nada que hacer» |
+| Lo traído | `/rocola/datos/xp` | BIEN: la marca dice la carpeta y «unidad D: -> /rocola/disco (8 de 8 de la muestra)»; las tablas sin ninguna ruta de Windows y con las canciones en `/rocola/disco/musica/...` (también «02 Canción Ñandú.mp3», con su nombre del disco); el estado del día de XP (5 créditos) **no**; los botones tal cual; la configuración de XP con `dir=/rocola/disco/musica` una sola vez (la del importador; el lanzador no la repite) |
+| La carpeta de XP sin tocar | la suma MD5 de cada archivo, dentro y en la máquina de pruebas | BIEN: 13 y 13 iguales |
+| La pantalla por KMS | captura del monitor de QEMU | BIEN: la rocola y no la consola (17 726 colores): la atracción de XP con la portada del disco y la estrella (`03-rocola.png`) |
+| Las teclas: la moneda | la M (`moneda=77`, de los botones traídos de XP), por el teclado emulado y evdev | BIEN: 4 créditos |
+| Pedir una canción | ENTER abre el disco de la letra B, ENTER pide su primera | BIEN: «01 Pulso Grave» suena y quedan 3 créditos (`04-sonando.png`) |
+| **Suena** | lo grabado de la tarjeta HDA (`sonido/arranque.wav`), por segundos | BIEN: 44 s de 196 Hz a -4,2 dBFS (antes, el tono de 440 Hz y la canción de prueba de la prueba de arranque) |
+| Lo más sonado y el sello | `rocola_stats.txt`, `rocola_fuentes.txt` | BIEN: la cuenta sube de 2 (de XP) a 3; el sello traído vale tal cual con el NTFS leído por ntfs3: la canción no se volvió a medir (el riesgo que apuntó xp-datos) |
 
 ### P2: la consola, el botón, el apagón y lo grande
 
-| Comprobación | Cómo | Resultado |
+| Comprobación | Cómo | Resultado (corrida final) |
 |---|---|---|
-| Ctrl+Alt+F2 cierra la rocola | `sendkey ctrl-alt-f2` con 6 créditos | BIEN: cerrada en 8 s con SIGUSR1, apuntado «La rocola se cerro para la consola de mantenimiento», los 6 créditos se conservan, no se abre en la consola |
-| La consola se ve | captura sin tocar ninguna tecla | **MAL al principio** (negro hasta tocar una tecla, `explora/caps/a15.png`); **arreglado** (apartado 5) y BIEN: «rocola login:» al momento (`08-consola.png`) |
-| Ctrl+Alt+F1 la vuelve a abrir | | BIEN: abierta otra vez, con los 6 créditos |
-| El botón de encendido | `system_powerdown` (ACPI): `acpid` y `/etc/acpi/PWRF/00000080` | Con el dibujo por procesador (`gpu=0`, apartado 6): BIEN, el estado del día se borró a los 5 s (cierre con `WindowsShutDown`), la máquina se apagó sola a los 11 s y al prender no había créditos. Con la tarjeta, en QEMU no (apartado 6) |
-| Apagón con créditos, una sonando y otra en la cola | `echo 0 > probando` (un sistema nuevo en prueba), y QEMU se cierra en seco (`quit`) | BIEN (corrida 2): el estado sobrevive (5 créditos, la que sonaba y la cola); al prender **reanuda**: en lo grabado, 45 s de 196 Hz (la que sonaba, desde el principio, como XP) y 44 s de 660 Hz (la de la cola) (`sonido/apagon.wav`; el aviso «Reanudando la musica» en la pantalla, al explorar: `explora/caps/d03.png`) |
-| Lo grande, fuera de lo aprendido | `ROCOLA_IA_DATOS` | BIEN: el material de la IA de la canción nueva (un WAV con sus agudos) en `/rocola/disco/rocola-os/ia-xp/rocola_ia_datos.bin` y de qué canción se sacó en lo aprendido (`rocola_ia_hechas.txt`); el respaldo y las miniaturas de las portadas (5) también en `ia-xp`; nada de eso en `/rocola/datos/xp` (`datos.img`, 372 KB usados de 487 MB) |
+| Ctrl+Alt+F2 cierra la rocola | `sendkey ctrl-alt-f2`, con 10 créditos | BIEN: cerrada en 7 s con SIGUSR1, apuntado «La rocola se cerro para la consola de mantenimiento», los 10 créditos se conservan y no se abre en la consola |
+| La consola se ve | captura sin tocar ninguna tecla | BIEN con el arreglo (apartado 5): «rocola login:» al momento (`08-consola.png`). Sin él, negro hasta tocar una tecla (`explora/caps/a15.png`) |
+| Ctrl+Alt+F1 la vuelve a abrir | | BIEN: abierta otra vez, con los 10 créditos |
+| El botón de encendido | `system_powerdown` (ACPI): `acpid` y `/etc/acpi/PWRF/00000080` | Con el dibujo por procesador (`gpu=0`, apartado 6): BIEN, el estado del día se borró a los 2 s (cierre con `WindowsShutDown`), la máquina se apagó sola a los 8 s y al prender no había créditos. Con la tarjeta, en QEMU no llega (apartado 6) |
+| Apagón con créditos, una sonando y otra en la cola | `echo 0 > probando` (un sistema nuevo en prueba) y QEMU se cierra en seco (`quit`) | BIEN: el estado sobrevive (12 créditos, la que sonaba y la cola); al prender **reanuda**: 45 s de 196 Hz (la que sonaba, desde el principio, como XP) y 44 s de 660 Hz (la de la cola) (`sonido/apagon.wav`; el aviso «Reanudando la musica», al explorar: `explora/caps/d03.png`) |
+| Lo grande, fuera de lo aprendido | `ROCOLA_IA_DATOS` | BIEN: el material de la IA de la canción nueva (un WAV con sus agudos) en `/rocola/disco/rocola-os/ia-xp/rocola_ia_datos.bin` y de qué canción salió en lo aprendido (`rocola_ia_hechas.txt`); el respaldo y las miniaturas de las portadas (5) también en `ia-xp`; nada de eso en `/rocola/datos/xp` (`datos.img`: 360 KB usados de 487 MB) |
 | El NTFS queda limpio | `/proc/fs/ntfs3/sda2/volinfo` | BIEN: «clean» (el `sync` de `S99rocola`) |
 
 ### P3: el video, una caída y la confirmación
 
-| Comprobación | Cómo | Resultado |
+| Comprobación | Cómo | Resultado (corrida final) |
 |---|---|---|
-| Un video se ve y suena | la letra de los videos (cuatro veces ARRIBA desde la B, un cuadro entre una y otra), ENTER y ENTER: pedido con el dibujo por procesador (rápido en QEMU), y vuelta a la tarjeta por la consola de mantenimiento: la rocola lo reanuda con la tarjeta (`gpu=1`) | BIEN (corrida 4): pedido (un crédito); con la tarjeta, **se ve** a pantalla completa, con sus colores, con el aviso «¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !» de XP (`12-video-tarjeta-12.png`: el cuadro 920, a los 36,8 s) y **suena** (93 s de 880 Hz en `sonido/sigue-095945.wav`). Con el video de 20 s (corrida 3) sonó, pero el único cuadro de la pantalla mientras duró aún tenía su sitio en negro (`12-video-tarjeta-6.png`): con 20 a 30 s por cuadro no llegó a pintarlo; para la corrida 4 el video se alargó a 90 s, dentro de la máquina, con su ffmpeg. Con `gpu=0`, al explorar, también (`explora/caps/c05-2.png`) |
-| Una caída | `kill -SEGV` a `rocola-xp` desde el puerto serie | BIEN (corrida 2): apuntado «rocola-xp se cayo (codigo 139) a los 572 s: se vuelve a abrir en 2 s» y abierta otra vez. El primer SIGSEGV mandado con `kill` lo recoge .NET (apartado 6): hizo falta un segundo |
-| Un sistema nuevo solo se confirma tras 120 s en pie | `probando` puesto antes del apagón; el initramfs lo cuenta y `S99rocola` espera `/run/rocola-confirmado` | BIEN (corridas 1 y 2): `probando` pasa a 1 al arrancar, se borra cuando `rocola-xp` lleva 123 y 125 s en pie, y `sistema.txt` dice «el sistema 0 quedo bien» |
+| Un video se ve y suena | la letra de los videos (cuatro veces ARRIBA desde la B, un cuadro entre una y otra), ENTER y ENTER, con el dibujo por procesador (rápido en QEMU); después, vuelta a la tarjeta por la consola de mantenimiento y la rocola lo reanuda con la tarjeta (`gpu=1`) | BIEN: pedido (un crédito); con la tarjeta **se ve** a pantalla completa y con sus colores, con el aviso «¡ PRESIONA UN BOTON PARA USAR LA ROCOLA !» de XP (`12-video-tarjeta-8.png`: el cuadro 322, a los 12,9 s; 590 751 puntos de los colores de las barras) y **suena** (105 s de 880 Hz en `sonido/arranque.wav`: los 90 del video con la tarjeta y lo que sonó antes con `gpu=0`). Con un video de 20 s (corrida 3) sonó pero no llegó a pintarse (20 a 30 s por cuadro): por eso el video de la prueba dura 90 s |
+| Una caída | `kill -SEGV` a `rocola-xp` desde el puerto serie | BIEN: apuntado «rocola-xp se cayo (codigo 139) a los 154 s: se vuelve a abrir en 2 s» y abierta otra vez (otro proceso). El primer SIGSEGV mandado con `kill` lo recoge .NET (apartado 5): hizo falta un segundo |
+| Un sistema nuevo solo se confirma tras 120 s en pie | `probando` puesto antes del apagón; el initramfs lo cuenta y `S99rocola` espera `/run/rocola-confirmado` | BIEN: `probando` pasa a 1 al arrancar, se borra cuando `rocola-xp` lleva 122 s en pie y `sistema.txt` dice «el sistema 0 quedo bien» (corridas 1 y 2: 123 y 125 s) |
 
 ### Además: el `rocola-xp` del perfil del A4
 
 `rocola-xp` compilado como lo compila `rapida.sh` para el A4 (`IlcInstructionSet x86-64-v2,avx`), en un disco aparte (`a4.img`), copiado
 encima del instalado y reiniciado como «reiniciar ya» (SIGUSR1 con su marca). Con `qemu-x86_64` de usuario, en procesadores sin AVX
 (`qemu64`, `Nehalem`) no arranca y lo dice («The required instruction sets are not supported by the current CPU»); en `SandyBridge` (AVX
-sin AVX2) sí. En la máquina (corrida 2): el procesador emulado tiene AVX y no AVX2; contesta `--version`, se abre, pinta la pared por KMS
-(`13-a4.png`) y una canción pedida suena (44 s de 196 Hz en `sonido/a4.wav`). Eso dice que no lleva instrucciones de más para un
-procesador como el del A4 (AVX sin AVX2), no que funcione en el A4.
+sin AVX2) sí. En la máquina (corrida final y corrida 2): el procesador emulado tiene AVX y no AVX2; contesta `--version` («rocola-xp
+programa 0 (ab6a26e) compilado 1794645805»), se abre, pinta la pared por KMS (`13-a4.png`) y una canción pedida suena (44 s de 196 Hz en
+`sonido/a4.wav`). (Las corridas 3 y 4 del video ya fueron con este.) Eso dice que no lleva instrucciones de más para un procesador como el
+del A4 (AVX sin AVX2), no que funcione en el A4.
 
 ## 5. Lo que se arregló
 
@@ -132,21 +134,27 @@ procesador como el del A4 (AVX sin AVX2), no que funcione en el A4.
    como si Ctrl+Alt+F2 no hubiera hecho nada (la queja del 7-11-2026 en el A4 era justo esa tecla). Ahora el vigilante de la consola, después
    de cerrar la rocola, pasa la consola de delante a video inverso y vuelve (`ESC [?5h ESC [?5l`), lo que obliga a repintarla entera; solo
    si había una rocola abierta. Comprobado: a mano en QEMU (`a19.png`), `sh -n` con el BusyBox del sistema, `prueba.sh` del lanzador
-   (consola, reinicia, colgar: 17 BIEN, 0 MAL) y la corrida 1 («rocola login:» sin tocar nada, `08-consola.png`). En QEMU la pantalla es la
+   (consola, reinicia, colgar: 17 BIEN, 0 MAL; entero, sus 16 casos: 94 BIEN, 0 MAL, y el caso «contrato» con el importador de verdad de esta
+   rama: 5 BIEN, 0 MAL) y las corridas 1 y final («rocola login:» sin tocar nada, `08-consola.png`). En QEMU la pantalla es la
    de bochs, con su copia en memoria; con la Radeon del A4 puede que no pasara, pero repintar no estorba.
 
-Lo demás que salió MAL en la corrida 1 era de la prueba, no del sistema, y se corrigió en los guiones:
+Lo demás que salió MAL era de la prueba, no del sistema, y se corrigió en los guiones (corrida 1, salvo donde se dice):
 
-- **El video** (dos MAL): con la tarjeta cada cuadro tarda 20 a 30 s; cuando la prueba fue a pedir el video, la canción ya había acabado y
-  la rocola estaba en la atracción (la primera tecla solo despierta). Y las cuatro ARRIBA seguidas para llegar a la letra de los videos
-  solo cambian una letra: la rocola cambia de letra una vez por cuadro y las pulsaciones que llegan juntas mientras pasa la página se
-  pierden (lo mismo en XP). Ahora se navega con el dibujo por procesador y se ve con la tarjeta (apartado 4, P3).
+- **El video** (dos MAL en la corrida 1, dos en la 2 y uno en la 3): con la tarjeta cada cuadro tarda 20 a 30 s; cuando la prueba fue a
+  pedir el video, la canción ya había acabado y la rocola estaba en la atracción (la primera tecla solo despierta). Y las cuatro ARRIBA
+  seguidas para llegar a la letra de los videos solo cambian una letra: la rocola cambia de letra una vez por cuadro y las pulsaciones que
+  llegan juntas mientras pasa la página se pierden (lo mismo en XP). Ahora se navega con el dibujo por procesador y se ve con la tarjeta
+  (apartado 4, P3), con un video de 90 s: el de 20 s sonaba entero antes de que la pantalla llegara a pintarlo.
 - **La caída** (dos MAL): un `kill -SEGV` no la tiró: .NET atrapa SIGSEGV (para sus excepciones), y si la señal no viene de un fallo de
   memoria de verdad vuelve a poner el manejador de fábrica y sigue. El segundo SIGSEGV ya la tira (código 139), como la tiraría un fallo de
   verdad. No es un fallo de la rocola; para probar una caída en el A4: dos veces `kill -SEGV`, o `kill -ABRT`.
 - **«Y reanuda»** (un MAL): la prueba miraba la tarjeta cuando ya habían sonado las dos canciones (cinco minutos de cuadros lentos); ahora
   se mira lo grabado.
 - **«La máquina se apagó sola»** (un MAL): sí se apagó; QEMU quedó como proceso zombi de la prueba y la prueba lo contaba como vivo.
+- En la corrida final, dos más de la prueba: la línea de órdenes del puerto serie se quedó esperando el final de una comilla (lo que la
+  prueba tecleó mientras la máquina aún arrancaba llegó a medias) y ya no contestaba: ahora cada orden va precedida de Ctrl+C. Y «las
+  tablas traducidas» contaba exactamente 6 canciones en `rocola_volumen.txt`, pero si la rocola lleva un rato abierta ya midió la
+  canción nueva (7): ahora pide al menos las 6 de XP.
 - Antes de la corrida 1, al explorar: las portadas no salían porque la música inventada iba en `Artista/Disco/` (XP toma la primera carpeta
   bajo «musica» por el disco); ahora va en `Artista - Disco/`, como la de la rocola. Y la canción de 220 Hz se confundía con la canción de
   prueba del sistema (también 220 Hz): ahora es de 196 Hz.
@@ -156,21 +164,26 @@ Lo demás que salió MAL en la corrida 1 era de la prueba, no del sistema, y se 
 - **La lentitud de QEMU sin KVM.** Con la tarjeta (`gpu=1`, lo de fábrica), Mesa softpipe emulado tarda **20 a 30 s por cuadro** de la
   rocola (`rocola_error.txt` se llena de «Pantalla parada 26 000 ms»), y `rocola-xp` atiende las teclas y las señales de cierre entre
   cuadro y cuadro. Por eso en QEMU, y no por un fallo de la rocola:
-  - la prueba de arranque le da 20 s y otros 10 para cerrarse: dice «se dibujo 20 s (pero no se cerro en 10 s: se corto)»;
+  - la prueba de arranque le da 20 s y otros 10 para cerrarse: en la corrida 1 dijo «se dibujo 20 s (pero no se cerro en 10 s: se
+    corto)» y en la final «se dibujo 20 s (y se cerro bien)»: depende de en qué parte del cuadro le llega la señal;
   - la consola de mantenimiento la corta si no se cerró en 20 s: al explorar pasó una vez («rocola-xp no se cerro en 20 s: se corto (el
     estado queda como tras un apagon)»: el estado sobrevive igual);
   - **el botón de encendido**: `00000080` le da 15 s y apaga; al explorar, con la tarjeta, la rocola no llegó a cerrarse y **el estado del
-    día sobrevivió** (7 créditos al prender, contra la regla del 8-11-2026). Con `gpu=0` (unos 5 s por cuadro) se borró a los 5 s y la
-    máquina se apagó a los 11.
+    día sobrevivió** (7 créditos al prender, contra la regla del 8-11-2026). Con `gpu=0` (unos 5 s por cuadro) se borró a los 2 a 5 s y la
+    máquina se apagó a los 8 a 11.
   En el A4 cada cuadro debería tardar milisegundos, pero **no está medido allí**. Si el A4 tardara en atender el cierre (al arrancar, con
   una biblioteca grande, o con una hoja abierta), lo primero que lo diría es el botón: conviene probar en el A4 apagar con el botón con
   créditos puestos y ver que al prender no están; si sobreviven, subir la espera de `00000080` (Windows XP le daba 20 s a cada programa).
 - **El cierre del primer SIGSEGV** (apartado 5): .NET lo atrapa. Una caída de verdad no se ve afectada.
+- **«Cortes de sonido» en `rocola_error.txt`** (corrida final): «"Pulso Grave": 1 aviso tardio de la salida (el peor, 280 ms); latencia
+  abierta 1000 ms» y otro de 538 ms: la caja negra del sonido de XP apunta que la salida avisó tarde (con la pantalla comiéndose la máquina
+  emulada); en lo grabado no se ve ningún hueco. En el A4 conviene mirar ese archivo después de una noche de música.
 - **Lo que suena** pasa por la tarjeta HDA de QEMU (`hda-duplex`, códec genérico), no por la Realtek del A4; `rocola-tarjeta` eligió
   `plughw:0,0`. Que el sonido salga por la salida verde del A4 no se puede ver aquí.
 - **La gráfica** es `bochs-drm` con softpipe, no la Radeon con r600: no dice nada de r600, ni de la velocidad, ni de cómo se ve con la
   Radeon. El video se vio con `gpu=0` al explorar (`explora/caps/c05-2.png`: las barras a pantalla completa con el aviso «¡ PRESIONA UN
-  BOTON PARA USAR LA ROCOLA !» y su tono de 880 Hz) y con la tarjeta en la corrida 3.
+  BOTON PARA USAR LA ROCOLA !» y su tono de 880 Hz) y con la tarjeta en las corridas 4 y final (`capturas/12-video-tarjeta-8.png`), sin el
+  negro ni el magenta de los arreglos del 7-11-2026.
 - Tras un apagón la canción que sonaba vuelve a empezar desde el principio (como en XP).
 - El instalador deja montada en solo lectura la partición de XP que miró (`/tmp/rocola-mira/sda1`) hasta reiniciar; no estorba.
 
@@ -192,7 +205,9 @@ Lo demás que salió MAL en la corrida 1 era de la prueba, no del sistema, y se 
 
 `sistema/rocola/Pruebas/Qemu/LEEME.md`. En resumen, con root, QEMU, mkntfs/ntfs-3g, ffmpeg, python3 (numpy, PIL), el SDK de .NET 10 y
 `salida-qemu/images`: compilar `rocola-xp` (perfil de QEMU), `mundo.sh`, `discoxp.sh`, `arma.sh` y `prueba.py` (una hora y media; las
-fases se pueden correr sueltas: `prueba.py video caida`). En `/root/rocola-trabajo/act/qemu` quedan las capturas (`capturas/`, y las de
-la exploración en `explora/caps/`), lo grabado (`sonido/`), los resúmenes (`prueba.txt`, `prueba-salida-1.txt` a `-4.txt`) y el disco de XP
-con lo que dejó Rocola OS (`xp.qcow2`, sobre `discoxp.img`). Ojo: ese disco quedó con el `rocola-xp` del perfil del A4 (la fase `a4`) y
-con el video de 90 s (la corrida 4): para repetir desde cero, `discoxp.sh` y `prueba.py` (la fase `instala` rehace `xp.qcow2`).
+fases se pueden correr sueltas: `prueba.py video caida`; si la máquina ya está encendida, `arranque` sigue con ella). En
+`/root/rocola-trabajo/act/qemu` quedan las capturas (`capturas/`; las de la exploración en `explora/caps/`), lo grabado (`sonido/`), los
+resúmenes (`prueba.txt`, `prueba-salida-final*.txt`), lo de las corridas 1 a 4 (`corridas-1-4/`), el mundo inventado (`mundo/`), el disco de
+XP falso (`discoxp.img`) y, encima, lo que dejó Rocola OS en él (`xp.qcow2`, comprimido; queda con el `rocola-xp` del perfil del A4, de la
+fase `a4`). La memoria USB, `a4.img` y el `rocola-xp` del A4 se borraron para no pasar de 500 MB: se rehacen con `arma.sh` y como dice
+`LEEME.md`. Para repetir desde cero: `discoxp.sh` y `prueba.py` (la fase `instala` rehace `xp.qcow2`).

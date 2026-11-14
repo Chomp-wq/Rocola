@@ -33,7 +33,8 @@ def lanza(d, xp_qcow2, wav, usb=None, cpu="SandyBridge", memoria=3072, extra=Non
     if extra:
         cmd += ["-drive", "file=%s,format=raw,if=none,id=extra,snapshot=on" % extra, "-device", "ide-hd,drive=extra,bus=ide.0,unit=1"]
     if usb:
-        cmd += ["-device", "qemu-xhci,id=xhci", "-drive", "file=%s,format=raw,if=none,id=usb,snapshot=on" % usb,
+        fmt = "qcow2" if usb.endswith(".qcow2") else "raw"   # (arma.sh la deja en bruto, con huecos; en qcow2 comprimido ocupa menos)
+        cmd += ["-device", "qemu-xhci,id=xhci", "-drive", "file=%s,format=%s,if=none,id=usb,snapshot=on" % (usb, fmt),
                 "-device", "usb-storage,bus=xhci.0,drive=usb,bootindex=0"]
     with open(os.path.join(d, "qemu.txt"), "ab") as reg:
         reg.write(("\n=== %s %s\n" % (time.strftime("%H:%M:%S"), " ".join(cmd))).encode())
@@ -153,6 +154,9 @@ class Control:
         linea = "printf '\\n__I''NI_%d__\\n'; %s; printf '\\n__F''IN_%d__ %%d\\n' $?\n" % (n, cmd, n)
         try:
             self._lee_ser(None, 0.3)   # lo que hubiera quedado
+            # (Ctrl+C antes de cada orden: si algo llego a medias -lo tecleado mientras la maquina aun arrancaba, una orden que no acabo-,
+            # la linea de ordenes se queda esperando el resto de una comilla y ya no contesta nunca; Ctrl+C la deja limpia)
+            self.ser.sendall(b"\x03"); self._lee_ser(None, 0.3)
             self.ser.sendall(linea.encode())
             r = self._lee_ser(fin, maximo).replace("\r", "")
         except OSError:

@@ -20,6 +20,7 @@ cd ../Pruebas/Qemu
 bash mundo.sh $Q/aot-qemu/rocola-xp      # la musica inventada y la carpeta de XP falsa (rocola-xp mide la musica aqui, fuera de pantalla)
 bash discoxp.sh                          # el disco de XP falso: MBR, la 1 en el sector 63 (XP), la 2 con la musica y la carpeta de XP
 bash arma.sh $Q/aot-qemu                 # la memoria USB: lo de sistema/rapida.sh sobre la imagen completa de salida-qemu
+qemu-img convert -c -O qcow2 $Q/usb.img $Q/usb.qcow2 && rm $Q/usb.img   # (opcional: ocupa 100 MB en vez de 225)
 python3 prueba.py                        # todas las fases (una hora larga); o algunas: python3 prueba.py consola caida
 ```
 
@@ -40,15 +41,18 @@ python3 prueba.py                        # todas las fases (una hora larga); o a
   órdenes por el puerto serie. También a mano: `python3 maquina.py orden $Q/maq 'cat /rocola/datos/rocola.txt'`, `... tecla $Q/maq m`,
   `... captura $Q/maq foto.png`.
 - `sonido.py WAV`: qué sonó en lo grabado (por segundos: el nivel y la frecuencia que domina; cada canción de la prueba es un tono).
-- `prueba.py`: las fases `instala arranque teclas consola caida apagon ia boton` (y `a4`, aparte: el `rocola-xp` del perfil del A4 en un
-  disco más, `a4.img`, ver `sistema/ACT_qemu.md`). Cada comprobación dice BIEN o MAL; INFO es lo que se apunta sin juzgar. Deja
+- `prueba.py`: las fases `instala arranque teclas video consola caida apagon ia boton`, en ese orden (cada una usa lo que deja la
+  anterior), y `a4`, aparte: el `rocola-xp` del perfil del A4 (`dotnet publish ... -p:RocolaPerfil=a4`) en un disco más, `$Q/a4.img`: un MBR
+  con una partición ext2 con ese `rocola-xp` (`mke2fs -d`), que `rocola-discos` monta en solo lectura (`sistema/ACT_qemu.md`). Cada comprobación dice BIEN o MAL; INFO es lo que se apunta sin juzgar. Deja
   `$Q/prueba.txt`, `$Q/capturas/` y `$Q/sonido/`.
 
 ## Lo que hay que saber de QEMU
 
 - **La pantalla de la tarjeta va muy lenta**: con Mesa softpipe emulado, cada cuadro de la rocola tarda 20 a 30 s (el cubo de la prueba de
   arranque, 6 por segundo). `rocola-xp` atiende las teclas y los cierres entre cuadro y cuadro: las teclas se mandan seguidas (en ráfaga) y
-  se mira el resultado en `rocola_estado.txt` y en las capturas; la rocola entra en la atracción a los 40 s sin teclas. Lo que en QEMU no
+  se mira el resultado en `rocola_estado.txt` y en las capturas; la rocola entra en la atracción a los 40 s sin teclas, y cambia de letra
+  una vez por cuadro (las pulsaciones que llegan juntas mientras pasa la página se pierden, como en XP): para llegar a la letra de los
+  videos, la fase `video` navega con el dibujo por procesador y después vuelve a la tarjeta. Lo que en QEMU no
   llega a tiempo por eso (no por un fallo): la prueba de arranque le da 20 s a `rocola-xp` y lo corta a los 10 s de pedirle que se cierre;
   la consola de mantenimiento la corta si no se cerró en 20 s; el botón de encendido apaga a los 15 s. Por eso la fase `boton` pone
   antes el dibujo por procesador (`gpu=0`, unos 5 s por cuadro en QEMU).
