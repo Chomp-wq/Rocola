@@ -7,7 +7,8 @@
 # visible en /rocola/disco.
 #
 # LA VUELTA ATRAS DEL SISTEMA: una actualizacion (rocola-actualiza) se escribe en la otra copia, la pone en /rocola-os/arranque.cfg y
-# deja /rocola-os/probando. Cada arranque de la nueva lo cuenta; la rocola lo borra cuando lleva 3 minutos funcionando. Si la nueva no
+# deja /rocola-os/probando. Cada arranque de la nueva lo cuenta; S99rocola lo borra cuando la rocola (rocola-xp) lleva 2 minutos
+# seguidos en pie (/run/rocola-confirmado, del lanzador; 14-11-2026, antes «3 minutos funcionando»). Si la nueva no
 # llega ahi en dos arranques (no prende la pantalla, se cuelga...), aqui se vuelve a la anterior y se apunta como mala.
 # Si el dueno elige en el menu (ESC al prender) «la version anterior del sistema», esa queda como la de siempre y la otra como mala.
 /bin/busybox --install -s /bin 2>/dev/null

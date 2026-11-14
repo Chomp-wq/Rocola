@@ -1,26 +1,31 @@
 #!/bin/sh
 # LA ROCOLA SE ACTUALIZA SOLA DESDE GITHUB (peticion del dueno del 1-11-2026). Lo llama S99rocola al minuto de prender, cada hora y al
-# momento con «Buscar actualizacion ahora» (Ctrl+F3 -> Internet; entonces ROCOLA_PEDIDA=1 y busca aunque «Actualizarse sola» este apagado).
+# momento si se pide desde casa (la orden buscar_actualizacion del buzon: /run/rocola-buscar-ya; entonces ROCOLA_PEDIDA=1 y busca aunque
+# «Actualizarse sola» este apagado). (El boton «Buscar actualizacion ahora» de Ctrl+F3 era de rocola-consola: vuelve en la fase 11.)
 #
 #  1. LA LLAVE: rocola_github.txt (una llave de solo lectura del repositorio) en una memoria USB conectada, o en la carpeta de la rocola
-#     de XP, se copia a /rocola/datos/rocola_github.txt. Sin llave no hace nada mas (Ctrl+F3 lo dice).
+#     de XP, se copia a /rocola/datos/rocola_github.txt. Sin llave se pregunta sin ella (el repositorio es publico).
 #  2. LA HORA por NTP (las conexiones seguras la necesitan; el A4 puede traerla mal), antes que nada: tambien sin llave.
-#  3. EL PROGRAMA: la ultima version «programa-N» que no este apuntada como mala (/rocola/datos/programa/malas). Se baja, se comprueba su
-#     suma (sha256.txt) y que arranca en este equipo (--version), y queda como rocola-consola.nueva + nueva.version, con el aviso
-#     /run/rocola-hay-nueva: la rocola la pone sola cuando esta libre (Actualizacion.cs y /usr/bin/rocola, que vuelve a la anterior si
-#     la nueva se cae al arrancar). En el A4 (con AVX) la version «a4»; en otro equipo, la «generico».
+#  3. EL PROGRAMA: APAGADO (decision del dueno del 14-11-2026). El canal del programa (las versiones «programa-N» de GitHub, que bajaba a
+#     /rocola/datos/programa como rocola-consola.nueva) era de rocola-consola, que se retiro: el unico programa de Rocola OS es rocola-xp
+#     (/usr/lib/rocola-xp), que llega CON EL SISTEMA (su numero es el del sistema que lo trajo: «rocola-xp --version»). De ese canal no se
+#     baja ni se pone nada; lo que ya hubiera en /rocola/datos/programa se queda como esta (no se borra). Vuelve cuando el programa
+#     traducido se publique por ese canal (rocola-programa.yml lo compile y /usr/bin/rocola sepa ponerlo).
 #  4. EL SISTEMA (solo instalado en el disco: \rocola-os\arranque.cfg): el ultimo «sistema-N» mas nuevo que el que corre y no malo
 #     (\rocola-os\sistema-malas). Se baja a la otra copia (\rocola-os\a o \b), se comprueban las sumas, se descomprime entero (sin
-#     huecos: escribir en el no cambia el NTFS) y se pone en arranque.cfg con \rocola-os\probando; el aviso /run/rocola-reinicio-sistema
-#     hace que la rocola reinicie cuando este libre. El initramfs vuelve a la anterior si la nueva no se confirma (S99rocola, 3 minutos).
-# Lo que dice: /run/rocola-actualiza.txt (Ctrl+F3) y la bitacora /rocola/datos/rocola_actualizaciones.txt.
+#     huecos: escribir en el no cambia el NTFS) y se pone en arranque.cfg con \rocola-os\probando; queda el aviso
+#     /run/rocola-reinicio-sistema, pero rocola-xp aun no reinicia sola «cuando esta libre» (fase 11): el sistema nuevo entra al siguiente
+#     encendido (o con «reiniciar el equipo ya» desde casa). El initramfs vuelve a la anterior si la nueva no se confirma (S99rocola: que
+#     rocola-xp aguante 2 minutos seguidos en pie).
+# Lo que dice: /run/rocola-actualiza.txt (el estado del buzon lo sube; Ctrl+F3 lo enseñaba con rocola-consola: fase 11) y la bitacora
+# /rocola/datos/rocola_actualizaciones.txt.
 # Para probarlo fuera de la rocola: ROCOLA_API, ROCOLA_DATOS, ROCOLA_DISCO, ROCOLA_RUN, ROCOLA_SIN_HORA=1.
 REPO=${ROCOLA_REPO:-Chomp-wq/Rocola}
 API=${ROCOLA_API:-https://api.github.com}
 DATOS=${ROCOLA_DATOS:-/rocola/datos}
 RUN=${ROCOLA_RUN:-/run}
 OS=${ROCOLA_DISCO:-/rocola/disco}/rocola-os
-PROG=$DATOS/programa
+XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
 BITACORA=$DATOS/rocola_actualizaciones.txt
 ESTADO=$RUN/rocola-actualiza.txt
 TMP=$RUN/rocola-actualiza.d
@@ -31,7 +36,7 @@ apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; }
 [ -d "$RUN/rocola-actualiza.cerrojo" ] && [ -n "$(find "$RUN/rocola-actualiza.cerrojo" -maxdepth 0 -mmin +120 2>/dev/null)" ] && rm -rf "$RUN/rocola-actualiza.cerrojo"
 mkdir "$RUN/rocola-actualiza.cerrojo" 2>/dev/null || exit 0
 trap 'rm -rf "$RUN/rocola-actualiza.cerrojo" "$TMP"' EXIT
-rm -rf "$TMP"; mkdir -p "$TMP" "$PROG"
+rm -rf "$TMP"; mkdir -p "$TMP"
 
 # LA HORA, lo primero (aunque falte la llave): por NTP hasta que salga bien una vez en este arranque; y al reloj de la placa en hora
 # LOCAL, como lo deja Windows XP (S02hora la lee asi al prender): XP la sigue viendo bien.
@@ -69,9 +74,10 @@ LLAVE=$(cat "$DATOS/rocola_github.txt" 2>/dev/null)
 # SIN LLAVE (7-11-2026: el dueno hizo publico el repositorio): se pregunta sin ella; con un repositorio privado GitHub contesta 404 y
 # se dice que falta. Con llave, como siempre.
 AUT=; [ -n "$LLAVE" ] && AUT="Authorization: Bearer $LLAVE"
-# «Actualizarse sola» apagado (actualizar_solo=0) y no pedida a mano: nada
+# «Actualizarse sola» apagado (actualizar_solo=0) y no pedida a mano: nada. (Era un interruptor de Ctrl+F3 de rocola-consola, y sigue en
+# su rocola_config.txt de /rocola/datos: lo que el dueno decidio vale; rocola-xp aun no lo tiene en su Ctrl+F3 -fase 11-.)
 if grep -q '^actualizar_solo=0' "$DATOS/rocola_config.txt" 2>/dev/null && [ -z "$ROCOLA_PEDIDA" ]; then
-	estado "apagada («Actualizarse sola»): se busca solo con «Buscar actualizacion ahora»"; exit 0
+	estado "apagada («Actualizarse sola»): se busca solo si se pide desde casa (buscar_actualizacion)"; exit 0
 fi
 
 
@@ -94,7 +100,7 @@ if ! pide "/repos/$REPO/releases?per_page=50" "$TMP/versiones.json"; then
 	esac
 	exit 0
 fi
-# la version N mas alta de un tipo («programa» o «sistema») que no este en la lista de malas
+# la version N mas alta de un tipo (hoy solo «sistema») que no este en la lista de malas
 ultima() { jq -r --arg t "$1-" '.[] | select(.draft | not) | .tag_name | select(startswith($t)) | ltrimstr($t)' "$TMP/versiones.json" 2>/dev/null \
 	| grep -E '^[0-9]+$' | while read -r n; do grep -qx "$n" "$2" 2>/dev/null || echo "$n"; done | sort -n | tail -1; }
 archivo() { jq -r --arg t "$1" --arg n "$2" '.[] | select(.tag_name == $t) | .assets[] | select(.name == $n) | .id' "$TMP/versiones.json" | head -1; }
@@ -102,40 +108,9 @@ archivo() { jq -r --arg t "$1" --arg n "$2" '.[] | select(.tag_name == $t) | .as
 comprueba() { d=$1; shift; for a in "$@"; do grep -q " $a\$" "$d/sha256.txt" || return 1; done; (cd "$d" && for a in "$@"; do grep " $a\$" sha256.txt; done | sha256sum -c -s); }
 dice=
 
-# 3. EL PROGRAMA
-ahora=$(cat "$PROG/version" 2>/dev/null); [ -n "$ahora" ] || ahora=$(/usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p')
-ahora=${ahora:-0}
-n=$(ultima programa "$PROG/malas")
-# (7-11-2026) una version publicada ANTES de que se compilara el programa del sistema es mas vieja que el: no se baja (/usr/bin/rocola
-# la apartaria y se volveria a bajar cada hora)
-sisfecha=$(timeout 20 /usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.* compilado \([0-9]*\).*/\1/p')
-if [ -n "$n" ] && [ -n "$sisfecha" ] && [ "$sisfecha" != 0 ] && [ ! -f "$PROG/version" ]; then
-	pub=$(jq -r --arg t "programa-$n" '.[] | select(.tag_name == $t) | .published_at | fromdateiso8601' "$TMP/versiones.json" 2>/dev/null | head -1)
-	[ -n "$pub" ] && [ "$pub" -le "$sisfecha" ] 2>/dev/null && n=
-fi
-if [ -n "$n" ] && [ "$n" -gt "$ahora" ] && [ "$n" != "$(cat "$PROG/nueva.version" 2>/dev/null)" ]; then
-	tipo=generico; grep -qw avx /proc/cpuinfo && tipo=a4
-	a=rocola-consola-$tipo.gz
-	estado "bajando el programa $n..."
-	ia=$(archivo "programa-$n" $a); is=$(archivo "programa-$n" sha256.txt)
-	if [ -n "$ia" ] && [ -n "$is" ] && baja "$ia" "$TMP/$a" && baja "$is" "$TMP/sha256.txt" && comprueba "$TMP" $a; then
-		zcat "$TMP/$a" > "$PROG/rocola-consola.descarga" && chmod 755 "$PROG/rocola-consola.descarga"
-		if timeout 30 "$PROG/rocola-consola.descarga" --version 2>/dev/null | grep -qE "programa $n( |$)"; then
-			mv -f "$PROG/rocola-consola.descarga" "$PROG/rocola-consola.nueva"
-			echo "$n" > "$PROG/nueva.version"; sync
-			touch "$RUN/rocola-hay-nueva"
-			apunta "Bajada la version $n del programa ($tipo): se pone cuando la rocola este libre"
-			dice="programa $n listo (se pone cuando la rocola este libre)"
-		else
-			rm -f "$PROG/rocola-consola.descarga"; echo "$n" >> "$PROG/malas"
-			apunta "La version $n del programa no arranca en este equipo: no se pone"
-			dice="el programa $n no arranca en este equipo: no se pone"
-		fi
-	else
-		dice="no se pudo bajar el programa $n (se reintenta en una hora)"
-	fi
-elif [ -f "$PROG/nueva.version" ]; then dice="programa $(cat "$PROG/nueva.version") listo (se pone cuando la rocola este libre)"
-else dice="programa al dia ($ahora)"; fi
+# 3. EL PROGRAMA: rocola-xp llega con el sistema (el canal «programa-N» esta apagado: arriba). Solo se dice cual corre.
+ahora=$(timeout 20 "$XPBIN" --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p')
+dice="programa rocola-xp ${ahora:-?} (llega con el sistema)"
 
 # 4. EL SISTEMA (instalado en el disco)
 if [ -f "$OS/arranque.cfg" ]; then
@@ -169,9 +144,9 @@ if [ -f "$OS/arranque.cfg" ]; then
 					printf 'set rocola_slot=%s\nset rocola_otro=%s\n' "$otro" "$slot" > "$OS/arranque.cfg.nuevo" && mv -f "$OS/arranque.cfg.nuevo" "$OS/arranque.cfg"
 					sync
 					touch "$RUN/rocola-reinicio-sistema"
-					printf '%s  bajado el sistema %s a la copia %s: se reinicia cuando la rocola este libre\n' "$(date '+%Y-%m-%d %H:%M')" "$n" "$otro" >> "$OS/sistema.txt"
-					apunta "Bajado el sistema $n: se reinicia cuando la rocola este libre"
-					dice="$dice; sistema $n listo (se reinicia cuando la rocola este libre)"
+					printf '%s  bajado el sistema %s a la copia %s: entra al siguiente encendido\n' "$(date '+%Y-%m-%d %H:%M')" "$n" "$otro" >> "$OS/sistema.txt"
+					apunta "Bajado el sistema $n: entra al siguiente encendido (o con «reiniciar el equipo ya» desde casa)"
+					dice="$dice; sistema $n listo (entra al siguiente encendido)"
 				else
 					rm -f "$OS/$otro/sistema.img.nuevo"; rm -rf "$B"
 					dice="$dice; no se pudo preparar el sistema $n (¿sitio en el disco?)"
