@@ -1,7 +1,7 @@
 // PRUEBAS DEL PORT NATIVO, LAS VENTANAS (no son de XP): lo que le llega al codigo de XP desde las ventanas, en orden, para compararlo con
 // la copia congelada de la referencia (la misma traza va en una copia de trabajo de ella, solo en su Plataforma). Se apunta en el sitio
-// por donde pasa cada cosa (la pantalla y las hojas nativas; la ventana de la rocola, la capa de ventanas mientras dure), asi la traza
-// sobrevive a la traduccion. De la capa de la transicion este archivo solo nombra una cosa, en una funcion: TrazaVentanas.DeLaCapa (N7).
+// por donde pasa cada cosa (la pantalla, la ventana de la rocola y las hojas nativas). (N7, borrar-capas: ya no nombra nada de la capa de
+// ventanas de la transicion, que no existe; en la referencia el mismo texto sale de su capa.)
 //   ROCOLA_TRAZA_VENTANAS=ruta   una linea por suceso: «MS<tab>QUE», MS = milisegundos desde el arranque (el mismo reloj que
 //                                ROCOLA_PULSA y ROCOLA_CAPTURA). QUE es uno de:
 //     tecla DATOS [rep] a PIEZA       una tecla abajo: keyData (en hexadecimal, con los bits de Mayus/Ctrl/Alt), «rep» si es la
@@ -51,36 +51,16 @@ namespace Rocola
         internal static string Pieza(object o)
         {
             if (o == null) return "nadie";
-            string deLaCapa; if (DeLaCapa(ref o, out deLaCapa)) return deLaCapa;   // COSTURA DE LA CAPA (se quita en N7, con la funcion de abajo)
             string n = o.GetType().Name;
             string t;
-            // (port nativo, ventanas2 H) las hojas y las piezas nativas (Nativo/Hoja.cs, Pieza.cs), con su texto como las de la capa
+            // (port nativo, ventanas2 H) las hojas y las piezas nativas (Nativo/Hoja.cs, Pieza.cs), con su texto como las de la referencia
             IPieza p = o as IPieza; Hoja h = o as Hoja;
             if (p != null) t = p.Caja.Text;
             else if (h != null) t = h.Text;
-            else if (o is RotuloVista) t = ((RotuloVista)o).Text;   // (rotulos-y-letras) el rotulo de la pantalla, con su texto como el Label de la capa
+            else if (o is RotuloVista) t = ((RotuloVista)o).Text;   // (rotulos-y-letras) el rotulo de la pantalla, con su texto como el Label de la referencia
             else return n;   // una vista de la pantalla (o cualquier otra cosa): su clase
             if (!string.IsNullOrEmpty(t)) n += "'" + Limpio(t) + "'";
             return n;
-        }
-        // COSTURA DE LA CAPA (n7-adelanto; SE QUITA EN N7, con Plataforma/Ventanas.*.cs): lo unico de este archivo que nombra a la capa de
-        // ventanas de la transicion. Mientras la ventana de la rocola sea una de la capa, lo que llega aqui puede ser (1) el hueco de una vista
-        // sin herencia (Anfitrion.HuecoDeVista): se cambia por su vista, que se nombra arriba como lo que es; o (2) un control de la capa (la
-        // ventana de la rocola, o los de las 41 pruebas): se nombra aqui, con su clase y su Text, como siempre. Devuelve false si 'o' (ya
-        // cambiado) es nativo. El orden es el de antes: una pieza, una hoja o un rotulo nativos se nombran arriba aunque fueran de la capa
-        // (ninguno lo es). Sin la capa, Pieza se queda con lo de arriba y esta funcion y su llamada se borran.
-        private static bool DeLaCapa(ref object o, out string pieza)
-        {
-            pieza = null;
-            object vh = Anfitrion.VistaDeHueco(o); if (vh != null) o = vh;   // (armado-vistas) el hueco de una vista sin herencia en la capa, por su vista
-            if (o is IPieza || o is Hoja || o is RotuloVista) return false;
-            Control c = o as Control;
-            if (c == null) return false;
-            string n = o.GetType().Name, t = null;
-            try { t = c.Text; } catch { }
-            if (!string.IsNullOrEmpty(t)) n += "'" + Limpio(t) + "'";
-            pieza = n;
-            return true;
         }
         internal static string Limpio(string t)
         {

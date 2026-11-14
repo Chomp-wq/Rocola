@@ -1,6 +1,6 @@
 // PRUEBA DE NATIVEAOT Y DE LAS LLAMADAS A WINDOWS TRADUCIDAS (no es de XP): rocola-xp --prueba-aot [CARPETA_MUSICA [VIDEO]]
 // Recorre una por una las partes de XP por las que el compilador de NativeAOT avisa (reflexion y estructuras de Windows: los IL2xxx/IL3xxx
-// de Aot.cs) y las llamadas a Windows traducidas (LlamadasWindows.cs), y escribe lo que contesta cada una en lineas «clave = valor». Se corre
+// de Aot.cs) y las llamadas a Windows traducidas (hoy en Nativo/: Equipo.cs, CarpetaPrograma.cs, PrioridadHilo.cs...), y escribe lo que contesta cada una en lineas «clave = valor». Se corre
 // con el programa de JIT (dotnet rocola-xp.dll --prueba-aot) y con el de NativeAOT (./rocola-xp --prueba-aot) y las dos salidas tienen que
 // ser iguales, salvo las lineas que empiezan con «~» (cambian de una corrida a otra: memoria libre, tiempos, cuantos hilos).
 // rocola-xp --prueba-mp3 ARCHIVO...: el lector de MP3 (Mp3Xp.cs) con un descompresor falso; su salida tiene que ser igual, linea por linea,

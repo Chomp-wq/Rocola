@@ -953,7 +953,7 @@ namespace Rocola
         {
             try
             {
-                string exe = Environment.ProcessPath ?? Path.Combine(CarpetaPrograma.Ruta, "rocola-xp");   // EN LINUX: Application.ExecutablePath: el archivo del programa que corre (el ejecutable de NativeAOT; con JIT, el de dotnet), como lo daba la capa
+                string exe = Environment.ProcessPath ?? Path.Combine(CarpetaPrograma.Ruta, "rocola-xp");   // EN LINUX: Application.ExecutablePath: el archivo del programa que corre (el ejecutable de NativeAOT; con JIT, el de dotnet), como en la referencia
                 if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return "";
                 return File.GetLastWriteTime(exe).ToString("dd/MM/yyyy HH:mm");
             }
@@ -1059,7 +1059,7 @@ namespace Rocola
             formStars.HazFase = hazFase;   // el paseo lento de la luna: el mismo reloj que la via lactea
             formStars.ConLuna = lunaOn;
             formStars.Dim = bgDimResp;   // atenua TAMBIEN las franjas de arriba/abajo en sincronia con la rejilla (una sola pieza), respiracion incluida
-            formStars.DrawCached(g, filtro, medio, copia, w, h, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de Form1.Fondo.cs); ya no pasa por la firma de XP del puente (Plataforma/Puente.fondo.cs, borrada)
+            formStars.DrawCached(g, filtro, medio, copia, w, h, EscalaBrillo(SkyColor(bgAccent), bgRespiro), EscalaBrillo(SkyColor2(bgAccent), bgRespiro));   // cielo en degradado CONTINUO; etiquetas y mini-cubo transparentes encima   // EN LINUX: DrawCached con el lienzo y el estado del Graphics, directo (la traducida de Form1.Fondo.cs)
         }
 
         private static Color Shade(Color c, double towardBlack)
@@ -1119,12 +1119,12 @@ namespace Rocola
 
             lblStatus = new RotuloVista(); TransLabel(lblStatus, 9.5f); lblStatus.Text = "Cargando musica...";   // EN LINUX: Label -> RotuloVista (Nativo/RotuloVista.cs: el rotulo de la ventana de la rocola, una vista de la pantalla nativa sin Control)
             buscaView = new BuscaView();   // la casilla de BUSCAR, en medio de la fila de arriba
-            PantallaRocola.AgregaVista(this, buscaView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
+            PantallaRocola.AgregaVista(this, buscaView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
 #if ROCOLA_GPU
             ayudaView = new AyudaView();   // y a su lado la de AYUDA, con su interrogacion dorada (AyudaCasillaGpu.cs)
-            PantallaRocola.OyeRaton(ayudaView, AvisoRaton.Clic, delegate(Raton eAyuda)   // EN LINUX: ayudaView.MouseClick += delegate(object sAyuda, MouseEventArgs eAyuda): el evento MouseClick de la vista, por la pantalla (Nativo/PantallaRocola.Vistas.cs: mientras la vista sea control de la capa, su evento; despues, la pantalla lo avisa tras su Raton, donde WinForms lanza el evento en OnMouseClick)
+            PantallaRocola.OyeRaton(ayudaView, AvisoRaton.Clic, delegate(Raton eAyuda)   // EN LINUX: ayudaView.MouseClick += delegate(object sAyuda, MouseEventArgs eAyuda): el evento MouseClick de la vista, por la pantalla (Nativo/PantallaRocola.Vistas.cs: la pantalla lo avisa tras su Raton, donde WinForms lanza el evento en OnMouseClick)
             { if (eAyuda.Button == BotonRaton.Left) AyudaTocada(new Point(ayudaView.Left + eAyuda.X, ayudaView.Top + eAyuda.Y)); });   // EN LINUX: MouseButtons.Left -> BotonRaton.Left (el mismo numero); X e Y, los de MouseEventArgs (en la vista)
-            PantallaRocola.AgregaVista(this, ayudaView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
+            PantallaRocola.AgregaVista(this, ayudaView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
 #endif
             helpBar = new HelpBar();   // instrucciones con formas/colores (sin nombres de teclas)
 
@@ -1334,15 +1334,15 @@ namespace Rocola
             PantallaRocola.OyeRaton(attractView, AvisoRaton.Abajo, delegate { lastInput = DateTime.Now; if (attractOn) ExitAttract(); });   // sin tarjeta: tocarla tambien despierta   // EN LINUX: attractView.MouseDown += delegate {...}: el evento MouseDown de la vista, por la pantalla (Nativo/PantallaRocola.Vistas.cs)
             attractView.GetCoverByPath = LoadCoverByPath;
 
-            PantallaRocola.AgregaVista(this, lblStatus); PantallaRocola.AgregaVista(this, helpBar); PantallaRocola.AgregaVista(this, pastCred); PantallaRocola.AgregaVista(this, pastGenero);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
-            PantallaRocola.AgregaVista(this, letterBar); PantallaRocola.AgregaVista(this, headerView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            PantallaRocola.AgregaVista(this, albumView); PantallaRocola.AgregaVista(this, panelSongs);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            PantallaRocola.AgregaVista(this, lblNowTop); PantallaRocola.AgregaVista(this, lblNow); PantallaRocola.AgregaVista(this, lblMejorada); PantallaRocola.AgregaVista(this, lblNext); PantallaRocola.AgregaVista(this, pastCola); PantallaRocola.AgregaVista(this, progress); PantallaRocola.AgregaVista(this, lblTime);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
-            PantallaRocola.AgregaVista(this, miniCube);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            PantallaRocola.AgregaVista(this, lblAttract);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
-            PantallaRocola.AgregaVista(this, lblToast);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
-            PantallaRocola.AgregaVista(this, searchOverlay);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
-            PantallaRocola.AgregaVista(this, attractView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, su Controls.Add o el de su hueco), en el mismo orden
+            PantallaRocola.AgregaVista(this, lblStatus); PantallaRocola.AgregaVista(this, helpBar); PantallaRocola.AgregaVista(this, pastCred); PantallaRocola.AgregaVista(this, pastGenero);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
+            PantallaRocola.AgregaVista(this, letterBar); PantallaRocola.AgregaVista(this, headerView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
+            PantallaRocola.AgregaVista(this, albumView); PantallaRocola.AgregaVista(this, panelSongs);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
+            PantallaRocola.AgregaVista(this, lblNowTop); PantallaRocola.AgregaVista(this, lblNow); PantallaRocola.AgregaVista(this, lblMejorada); PantallaRocola.AgregaVista(this, lblNext); PantallaRocola.AgregaVista(this, pastCola); PantallaRocola.AgregaVista(this, progress); PantallaRocola.AgregaVista(this, lblTime);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden; los rotulos tambien (Nativo/RotuloVista.cs)
+            PantallaRocola.AgregaVista(this, miniCube);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
+            PantallaRocola.AgregaVista(this, lblAttract);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add)
+            PantallaRocola.AgregaVista(this, lblToast);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add)
+            PantallaRocola.AgregaVista(this, searchOverlay);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
+            PantallaRocola.AgregaVista(this, attractView);   // EN LINUX: Controls.Add(vista): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add), en el mismo orden
 
             // ----- DIAGNOSTICO TEMPORAL: letrero que muestra que tecla recibe la app -----
             // ----- Pantalla del ASISTENTE DE CONFIGURACION de botones -----
@@ -1354,8 +1354,8 @@ namespace Rocola
             lblConfig.Font = Rocola.Nativo.Letra.EnPuntos(Letras.SinRemates, 20f, true);   // EN LINUX: new Font(FontFamily.GenericSansSerif, 20f, Bold), la generica sin remates de XP en puntos y negrita; el rotulo (Nativo/RotuloVista.cs) la recibe como Letra, directo
             lblConfig.Text = "";
             lblConfig.Visible = false;
-            PantallaRocola.AgregaVista(this, lblConfig);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add; en una ventana de la capa, el hueco de la vista)
-            PantallaRocola.VistaAlFrente(lblConfig);   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0); en una ventana de la capa, su hueco)
+            PantallaRocola.AgregaVista(this, lblConfig);   // EN LINUX: Controls.Add(rotulo): PantallaRocola.AgregaVista (Nativo/PantallaRocola.Vistas.cs: al fondo del orden de la ventana, como ControlCollection.Add)
+            PantallaRocola.VistaAlFrente(lblConfig);   // EN LINUX: lblConfig.BringToFront(): por la pantalla (Nativo/PantallaRocola.Vistas.cs: SetChildIndex(this, 0))
         }
 
         private void LayoutControls()
@@ -2651,7 +2651,7 @@ namespace Rocola
         }
 
         // Barra de ayuda: instrucciones con FORMAS y COLORES de los botones fisicos. Sin nombres de teclas.
-        private class HelpBar : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, armado-vistas: W3e): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control; sin la firma de XP de RenderContent con un Graphics (su OnPaint) en el puente, que ya no hace falta
+        private class HelpBar : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, armado-vistas: W3e): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control
         {
             // BUSCAR ya no esta aqui: tiene su propia casilla grande y parpadeante en medio de la fila, con
             // los dos botones dibujados. Aqui se quedan los tres que se usan a cada rato.
@@ -2659,11 +2659,11 @@ namespace Rocola
             private static readonly Color RedC = Color.FromArgb(228, 72, 72), GreenC = Color.FromArgb(72, 212, 112), YellowC = Color.FromArgb(242, 206, 72);
             private readonly InstrFlash flash = new InstrFlash();
 
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref hbFont); } }
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
             private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public int Bottom { get { return caja.Bounds.Bottom; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); }   // EN LINUX: lo que heredaba de Control y usa la rocola (lo de IVista, y Bottom en Form1.Video.cs), de su CajaVista (Nativo/IVista.cs): misma semantica (Bottom = Top + Height; SetBounds y Visible con el mismo valor no avisan; Visible es la suya y la de su dueno, GetVisibleCore)
             public HelpBar()

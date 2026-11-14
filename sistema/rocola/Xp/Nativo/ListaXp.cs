@@ -1,6 +1,6 @@
 // LA LISTA (port nativo de las ventanas de XP, ventanas2, paso H): lo que en XP era el ListBox de WinForms de Ctrl+F2 (las carpetas de la
 // musica). Solo lo que XP usa de el (el inventario: SetBounds, BackColor, ForeColor, BorderStyle, IntegralHeight, HorizontalScrollbar,
-// Items.Clear, Items.Add, SelectedIndex) y sus reglas, portadas de la capa (Plataforma/Ventanas.Control.cs: ListBox), revisada contra la
+// Items.Clear, Items.Add, SelectedIndex) y sus reglas, portadas de la capa (en la referencia, Plataforma/Ventanas.Control.cs: ListBox), revisada contra la
 // fuente (ListBox.cs): renglones del alto de la letra, el elegido en el azul de seleccion de XP; se elige con el raton o con las flechas,
 // Inicio, Fin y AvPag/RePag (las quiere: no mueven el foco, IsInputKey); barras de desplazamiento de 17 puntos cuando hace falta (la
 // horizontal solo con HorizontalScrollbar, para las rutas largas), con el pulgar que se arrastra; la rueda la mueve de 3 en 3 y no sube al

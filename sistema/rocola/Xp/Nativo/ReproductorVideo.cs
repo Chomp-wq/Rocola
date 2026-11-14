@@ -18,8 +18,8 @@
 // tabla -lanczos, spline36, hermite, mitchell...- sin arreglar antes lo de la tabla de mpv.
 //
 // LA PANTALLA. Ni el reproductor ni su capa saben de ventanas: lo que necesitan de la pantalla (ponerse entre sus capas, despertarla cuando
-// hay cuadro nuevo y avisar de que tocaron OpenGL) se lo da quien compone la pantalla por IPantallaDelVideo (hoy el anfitrion de
-// Plataforma/Anfitrion.cs, mientras siguen las ventanas de XP; cuando se vayan, la pantalla nativa).
+// hay cuadro nuevo y avisar de que tocaron OpenGL) se lo da quien compone la pantalla por IPantallaDelVideo (Nativo/VideoEnPantalla.cs,
+// que pone el anfitrion: Nativo/Anfitrion.cs).
 using System;
 using System.Collections.Generic;
 using System.Drawing;

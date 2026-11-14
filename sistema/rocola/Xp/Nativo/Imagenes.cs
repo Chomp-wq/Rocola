@@ -2,7 +2,7 @@
 // ImageAttributes: matriz de color, envoltura y clave de color), Image.FromStream y Save de XP. Sin estado: el filtro (InterpolationMode), el
 // medio pixel (PixelOffsetMode Half o HighQuality) y la copia (CompositingMode.SourceCopy) llegan como parametros; la matriz y el recorte son
 // los del SKCanvas. Los mapas son SKBitmap Bgra8888 premultiplicados (como Format32bppPArgb).
-// Los algoritmos son los de Plataforma/Dibujo2D.cs (revision del 8-11-2026), movidos aqui.
+// Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revision del 8-11-2026), movidos aqui.
 using System;
 using System.Drawing;
 using System.IO;

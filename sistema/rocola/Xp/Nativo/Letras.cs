@@ -2,7 +2,7 @@
 // estilo (en XP, System.Drawing.Font); aqui una Letra son solo esos datos mas la cara que les toca (Cara: el archivo de letra, la negrita o la
 // cursiva que haya que inventar y las medidas del renglon), y da la letra de Skia (SKFont) con el ajuste que pide el modo de letra. Lo que
 // XP lee de una letra para colocar cosas (el alto del renglon, el tamano en puntos) sale de aqui con las mismas cuentas que GDI+.
-// Los algoritmos son los de Plataforma/Dibujo2D.cs (revision del 8-11-2026), movidos aqui: Dibujo2D los llama mientras dure la traduccion.
+// Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revision del 8-11-2026), movidos aqui.
 using System;
 using System.Collections.Generic;
 using System.IO;

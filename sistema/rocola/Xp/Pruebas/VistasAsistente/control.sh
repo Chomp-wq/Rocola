@@ -21,7 +21,8 @@ corre() {   # nombre archivo sed
 }
 corre "el arco del globo empieza figura" Codigo/AsistenteRocola.cs 's/derecha - r \* 2 + r \* 2, y + r \* 2), 270, 90, false)/derecha - r * 2 + r * 2, y + r * 2), 270, 90, true)/'
 corre "el degradado con medio pixel" Codigo/AsistenteRocola.cs '430s/Color.FromArgb(248, 10, 18, 37), medio)/Color.FromArgb(248, 10, 18, 37), true)/'
-corre "el puente no deja el estado" Plataforma/Puente.asistente.cs 's/{ g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAlias; }/{ }/'
+# (N7, borrar-capas) 1 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.
 corre "la flecha sin suavizar" Codigo/AsistenteGuiaRocola.cs '334s/sb, suave, medio, copia)/sb, false, medio, copia)/'
 corre "la letra de las teclas en puntos" Codigo/AsistenteGuiaRocola.cs '305s/Letra.EnPixeles(f.Familia/Letra.EnPuntos(f.Familia/'
 corre "la casilla sin la copia" Codigo/AyudaCasillaGpu.cs '80s/sb, suave, medio, copia)/sb, suave, medio, false)/'

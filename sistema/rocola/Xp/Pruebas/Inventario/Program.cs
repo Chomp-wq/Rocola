@@ -1,8 +1,10 @@
 // INVENTARIO de lo que el codigo de XP (sistema/rocola/Xp/Codigo) usa de Windows, con el compilador (Roslyn).
 // Uso: dotnet run -- RAIZ_XP CARPETA_SALIDA
-// Compila Codigo + Plataforma + los enlazados como RocolaXp.csproj (ROCOLA_GPU) y clasifica cada nombre de Codigo que apunta a:
+// Compila Codigo + Plataforma + Nativo + los enlazados como RocolaXp.csproj (ROCOLA_GPU) y clasifica cada nombre de Codigo que apunta a:
 //   winforms: Rocola.Ventanas (imitacion de System.Windows.Forms), menos AxHost y Escritorio
 //   gdi:      Rocola.Dibujo2D (imitacion de System.Drawing / Drawing2D / Imaging / Text y TextRenderer)
+//             (N7, borrar-capas: esos dos espacios de nombres ya no existen en la traduccion: las dos cuentas dan 0; sirven aun para
+//             pasarle la herramienta a la referencia congelada, que sigue con sus capas)
 //   gdiprim:  System.Drawing de .NET 10 (Color, Point, Size, Rectangle...: System.Drawing.Primitives, no imitan nada) -> aparte
 //   d3d9:     la clase D3D9 (sus tipos, constantes y delegados de XP en D3D9Star.cs, y D3D9.EnGl de Direct3DaGL.cs) y lo de D3D9Device
 //             que esta en Plataforma
@@ -23,6 +25,7 @@ Directory.CreateDirectory(salida);
 var codigo = Directory.GetFiles(Path.Combine(raiz, "Codigo"), "*.cs").OrderBy(x => x, StringComparer.Ordinal).ToList();
 var archivos = new List<string>(codigo);
 archivos.AddRange(Directory.GetFiles(Path.Combine(raiz, "Plataforma"), "*.cs").OrderBy(x => x, StringComparer.Ordinal));
+if (Directory.Exists(Path.Combine(raiz, "Nativo"))) archivos.AddRange(Directory.GetFiles(Path.Combine(raiz, "Nativo"), "*.cs").OrderBy(x => x, StringComparer.Ordinal));   // (N7: lo nativo de Linux, sin lo cual el programa ya no compila; antes de N1 no existia)
 archivos.Add(Path.GetFullPath(Path.Combine(raiz, "../Consola/Pantalla/Gl.cs")));
 archivos.Add(Path.GetFullPath(Path.Combine(raiz, "../Consola/Pantalla/Kms.cs")));
 archivos.Add(Path.GetFullPath(Path.Combine(raiz, "../Motor/Botones.cs")));

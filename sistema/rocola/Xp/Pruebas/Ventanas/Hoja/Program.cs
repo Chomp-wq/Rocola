@@ -595,16 +595,16 @@ namespace Rocola
             // la rocola (una ventana de la capa) se activa: Windows sube la activada, y la ventana F12 (sin duena) queda detras
             w = new HojaComoF12(); w.Muestra(); PantallaRocola.Bombea();
             Point centro = new Point(w.Location.X + w.Width / 2, w.Location.Y + w.Height / 2);
-            bool antes0 = w.DetrasDeLaCapa, raton0 = Hoja.TomaElRaton(centro); object pieza0 = Hoja.PiezaEn(centro);
-            Hoja.DesactivaPorLaCapa();
+            bool antes0 = w.DetrasDeLaVentana, raton0 = Hoja.TomaElRaton(centro); object pieza0 = Hoja.PiezaEn(centro);
+            Hoja.DesactivaPorLaVentana();
             Mira("F12: al activarse una ventana de la capa queda detras: no es la activa, no recibe el raton y se ve que esta detras",
-                 antes0 + " " + raton0 + " " + (pieza0 == w) + " -> " + w.DetrasDeLaCapa + " " + (Hoja.Activa == null) + " " + Hoja.TomaElRaton(centro) + " " + (Hoja.PiezaEn(centro) == null) + " visible=" + w.Visible,
+                 antes0 + " " + raton0 + " " + (pieza0 == w) + " -> " + w.DetrasDeLaVentana + " " + (Hoja.Activa == null) + " " + Hoja.TomaElRaton(centro) + " " + (Hoja.PiezaEn(centro) == null) + " visible=" + w.Visible,
                  "False True True -> True True False True visible=True");
             w.Activate();
-            Mira("F12: Activate (otra vez al frente) la sube y la activa", w.DetrasDeLaCapa + " " + (Hoja.Activa == w) + " " + Hoja.TomaElRaton(centro), "False True True");
-            Hoja.DesactivaPorLaCapa(); w.Close(); PantallaRocola.Bombea();
+            Mira("F12: Activate (otra vez al frente) la sube y la activa", w.DetrasDeLaVentana + " " + (Hoja.Activa == w) + " " + Hoja.TomaElRaton(centro), "False True True");
+            Hoja.DesactivaPorLaVentana(); w.Close(); PantallaRocola.Bombea();
             Hoja md = new Hoja(MarcoXp.Dialogo); md.Text = "m."; bool detrasM = true;
-            Luego(100, delegate { Hoja.DesactivaPorLaCapa(); detrasM = md.DetrasDeLaCapa; md.Close(); });
+            Luego(100, delegate { Hoja.DesactivaPorLaVentana(); detrasM = md.DetrasDeLaVentana; md.Close(); });
             md.MuestraModal(null);
             Mira("Una hoja modal no queda detras de la capa (ni las que tienen duena)", detrasM.ToString(), "False");
             // el dispositivo no se crea: el aviso (MessageBox) sale encima de la hoja, que es su duena, y despues Close

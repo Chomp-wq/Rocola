@@ -20,7 +20,7 @@
 // ====================================================================================================
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el degradado tramado (DegradadoV y su mapa) va con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; nadie pide ya un Brush de GDI+ (la firma de XP del puente se quito el 12-11-2026)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el degradado tramado (DegradadoV y su mapa) va con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+
 
 namespace Rocola
 {
@@ -139,7 +139,7 @@ namespace Rocola
         private static readonly DegradadoGuardado[] degradados = new DegradadoGuardado[4];
         private static int degradadoTurno;
         internal static int DegradadosGuardados, DegradadosReusados;
-        internal static SKShader DegradadoV(Rectangle r, Color c0, Color c1, bool medio)   // EN LINUX: el pincel es su shader (Nativo/Degradado.cs; quien lo pide lo pone en un SKPaint y lo suelta, como el Brush); 'medio' es el medio pixel del dibujo donde se pinta (PixelOffsetMode Half o HighQuality; sin el, la textura va medio punto atras, como la pinta GDI+). Nadie pide ya un Brush de GDI+ (la firma de XP del puente se quito el 12-11-2026)
+        internal static SKShader DegradadoV(Rectangle r, Color c0, Color c1, bool medio)   // EN LINUX: el pincel es su shader (Nativo/Degradado.cs; quien lo pide lo pone en un SKPaint y lo suelta, como el Brush); 'medio' es el medio pixel del dibujo donde se pinta (PixelOffsetMode Half o HighQuality; sin el, la textura va medio punto atras, como la pinta GDI+)
         {
             if (!InterfazTramada || r.Height < 2 || r.Width < 1) return Degradado.Lineal(r, c0, c1, 90f);   // EN LINUX: new LinearGradientBrush(r, c0, c1, 90): su shader (Nativo/Degradado.cs)
             if (r.Height > 2048) return HorneaDegradadoV(r, c0, c1, medio); // los tamanos extraordinarios no quedan retenidos   // EN LINUX: con el medio pixel del que lo pide
@@ -153,7 +153,7 @@ namespace Rocola
                     SKShader copia = CopiaDegradado(d.Mapa, r.Location, medio);   // EN LINUX: el TextureBrush es su shader, con el medio pixel del que lo pide
                     DegradadosReusados++; return copia;
                 }
-                SKBitmap fuente = HorneaMapaDegradado(r.Height, c0, c1);   // EN LINUX: un SKBitmap (el mapa nativo, sin puente)
+                SKBitmap fuente = HorneaMapaDegradado(r.Height, c0, c1);   // EN LINUX: un SKBitmap (el mapa nativo)
                 SKShader nuevo;   // EN LINUX: el TextureBrush es su shader
                 try { nuevo = CopiaDegradado(fuente, r.Location, medio); }   // EN LINUX: con el medio pixel del que lo pide
                 catch { fuente.Dispose(); throw; }

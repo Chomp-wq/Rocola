@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y System.Drawing.Imaging: las previas se reducen, se copian y se guardan en sus caches como SKBitmap con SkiaSharp directo y las funciones nativas (Xp/Nativo); sin la capa de GDI+
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y System.Drawing.Imaging: las previas se reducen, se copian y se guardan en sus caches como SKBitmap con SkiaSharp directo y las funciones nativas (Xp/Nativo); sin GDI+
 using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -359,7 +359,7 @@ namespace Rocola
         internal static SKBitmap Small(SKBitmap source)   // EN LINUX: Image source y Bitmap: SKBitmap (la portada de la cache, el mismo objeto, y la previa nueva)
         {
             SKBitmap b = Mapas.Nuevo(Side, Side);   // EN LINUX: new Bitmap(Side, Side, Format32bppPArgb), transparente
-            try { using (SKCanvas g = new SKCanvas(b)) { Filtro filtro = Filtro.BilinealAlta; if (source != null) Imagenes.Pinta(g, source, new SKRect(0, 0, source.Width, source.Height), new SKRect(0, 0, Side, Side), filtro, false); } return b; }   // EN LINUX: Graphics.FromImage(b), g.InterpolationMode = HighQualityBilinear (en una variable) y g.DrawImage(source, 0, 0, Side, Side) con el medio pixel y la mezcla de fabrica (Nativo/Imagenes.cs); sin imagen no pinta nada (como Dibujo2D.cs)
+            try { using (SKCanvas g = new SKCanvas(b)) { Filtro filtro = Filtro.BilinealAlta; if (source != null) Imagenes.Pinta(g, source, new SKRect(0, 0, source.Width, source.Height), new SKRect(0, 0, Side, Side), filtro, false); } return b; }   // EN LINUX: Graphics.FromImage(b), g.InterpolationMode = HighQualityBilinear (en una variable) y g.DrawImage(source, 0, 0, Side, Side) con el medio pixel y la mezcla de fabrica (Nativo/Imagenes.cs); sin imagen no pinta nada (como el Dibujo2D.cs de la referencia)
             catch { b.Dispose(); throw; }
         }
         internal static byte[] ToBytes(SKBitmap b)   // EN LINUX: un SKBitmap

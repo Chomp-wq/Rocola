@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing;   // EN LINUX: sin GDI+ (Plataforma/Dibujo2D.cs): este archivo no dibuja; las portadas que pasan por aqui son SKBitmap de la cache de portadas (SkiaSharp.SKBitmap, escrito entero)
+using System.Drawing;   // EN LINUX: sin GDI+: este archivo no dibuja; las portadas que pasan por aqui son SKBitmap de la cache de portadas (SkiaSharp.SKBitmap, escrito entero)
 using System.Globalization;
 using System.IO;
 using System.Reflection;

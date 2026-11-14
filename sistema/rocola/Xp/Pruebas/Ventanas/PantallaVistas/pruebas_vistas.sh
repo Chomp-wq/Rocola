@@ -1,5 +1,5 @@
 #!/bin/bash
-# pruebas_vistas.sh PROGRAMA ETIQUETA: la prueba de la vista falsa (Program.cs de esta carpeta) contra el rocola-xp.dll de PROGRAMA (la
+# pruebas_vistas.sh PROGRAMA ETIQUETA: la prueba de las vistas falsas en la lista de la ventana (Program.cs de esta carpeta) contra el rocola-xp.dll de PROGRAMA (la
 # carpeta de la compilacion JIT), compilada fuera del repositorio ($W/vistas/ETIQUETA) y corrida fuera de pantalla (llvmpipe). Deja la
 # salida en $W/vistas/ETIQUETA/salida.txt y dice «pasan N, fallan M». La compilacion se borra al acabar salvo con GUARDA=1.
 G=$(dirname "$(readlink -f "$0")")

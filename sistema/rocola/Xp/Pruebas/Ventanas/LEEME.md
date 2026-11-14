@@ -5,8 +5,9 @@ encargos, hojas, cierres) es lo mismo en la traduccion que en la referencia cong
 Nada de esto entra en el programa: `Pruebas/**` esta fuera de `RocolaXp.csproj`. El detalle de que se comprobo y con que numeros
 esta en `../../PORT_VENTANAS.md`.
 
-- `Pruebas41/`: las 41 pruebas de la capa de ventanas contra lo que hace WinForms (cada una dice lo que daria WinForms si falla).
-  `guiones/pruebas41.sh PROGRAMA ETIQUETA` las compila contra el `rocola-xp.dll` de PROGRAMA y las corre fuera de pantalla.
+- (Las 41 pruebas de la capa de ventanas contra WinForms, `Pruebas41/` y `guiones/pruebas41.sh`, se borraron con la capa en N7,
+  borrar-capas: probaban `Form` y `Control` de la capa, que ya no existen. Sus reglas quedaron en lo nativo y las comprueban
+  `Hoja/` (las hojas), `PantallaVistas/` (la lista de la ventana) y las escenas contra la referencia, que sigue con su capa.)
 - `Pantalla/`: las reglas de la pantalla nativa una por una (orden de una vuelta, Libre, DoEvents, relojes, excepciones, encargos,
   espera, modal, SIGTERM), compiladas con los mismos `Nativo/PantallaRocola.cs` y `Reloj.cs` del programa.
   `guiones/pruebas_pantalla.sh [ETIQUETA]` (con `AOT=1`, tambien en NativeAOT).
@@ -28,5 +29,5 @@ esta en `../../PORT_VENTANAS.md`.
   `Rocola/` (`dotnet run -- RAIZ_XP SALIDA`; usa el SDK y los paquetes de esta maquina: rutas al principio de `Program.cs`).
 
 Orden de uso: `datos.sh`, `referencia.sh`, `ruido.sh $W/ref-trazas/sistema/rocola/Xp/bin/Release/net10.0 3`, compilar la traduccion,
-`escenas.sh CARPETA N1` y `compara.sh R1 N1`; y `pruebas41.sh` con las dos. La maquina de pruebas esta compartida: con carga las
+`escenas.sh CARPETA N1` y `compara.sh R1 N1`. La maquina de pruebas esta compartida: con carga las
 teclas de prueba llegan tarde y las cuentas por segundo se mueven (de ahi la holgura medida); la secuencia no.

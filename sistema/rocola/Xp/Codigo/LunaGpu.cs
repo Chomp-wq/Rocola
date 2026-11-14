@@ -72,7 +72,7 @@ namespace Rocola
                 }
             SKBitmap bitmap = Mapas.Nuevo(n,n);   // EN LINUX: new Bitmap(n,n,Format32bppArgb): un SKBitmap premultiplicado y transparente (Nativo/Mapas.cs)
             // EN LINUX: LockBits(WriteOnly, Format32bppArgb), Marshal.Copy fila a fila y UnlockBits: los puntos sin premultiplicar, al mapa
-            Pixeles.EscribeSinPremultiplicar(bitmap,pixels,n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de transicion; diferencia (a) de PORT_DIBUJO.md)
+            Pixeles.EscribeSinPremultiplicar(bitmap,pixels,n);   // EN LINUX: (Nativo/Pixeles.cs: premultiplica como la capa de la transicion de la referencia; diferencia (a) de PORT_DIBUJO.md)
             // EN LINUX: (sin UnlockBits: no hay copia aparte que soltar)
             return bitmap;
         }

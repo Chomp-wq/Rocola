@@ -1,6 +1,6 @@
 // EL ROTULO Y EL GRUPO (port nativo de las ventanas de XP, ventanas2, pasos H y C): lo que en XP eran Label y Panel de WinForms en sus
 // hojas (Ctrl+F2 y, desde el paso C, Ctrl+F3 y el historial de caratulas). Solo lo que XP usa de ellos (el inventario y el compilador: lo que
-// las lineas de XP leen o ponen) y sus reglas, portadas de la capa (Plataforma/Ventanas.Control.cs: Label y Panel), revisada contra la fuente
+// las lineas de XP leen o ponen) y sus reglas, portadas de la capa (en la referencia, Plataforma/Ventanas.Control.cs: Label y Panel), revisada contra la fuente
 // (Label.cs, Panel.cs, ControlPaint.cs, Control.cs).
 using System;
 using System.Drawing;

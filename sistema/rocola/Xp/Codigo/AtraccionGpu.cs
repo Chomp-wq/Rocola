@@ -1026,7 +1026,7 @@ namespace Rocola
                 using (SKPath region = new SKPath(luna))   // EN LINUX: new Region(luna): una copia del trazo
                 using (SKPaint b = new SKPaint { Color = AtrAmarillo.Sk() })   // EN LINUX: SolidBrush: un SKPaint de ese color
                 {
-                    using (SKPath reg = region.Op(corte, SKPathOp.Difference) ?? new SKPath(region))   // EN LINUX: reg.Exclude(corte): la region menos el corte (SKPath.Op; si Skia no pudiera hacerla, la region se queda como estaba, como en la capa)
+                    using (SKPath reg = region.Op(corte, SKPathOp.Difference) ?? new SKPath(region))   // EN LINUX: reg.Exclude(corte): la region menos el corte (SKPath.Op; si Skia no pudiera hacerla, la region se queda como estaba, como en la capa de la referencia)
                     Pixel.RellenaRegion(g, reg, b);   // EN LINUX: g.FillRegion (Nativo/Pixel.cs): una region de pixeles enteros, sin suavizar
                 }
             }

@@ -2,7 +2,7 @@
 // 8-11-2026). Los mapas de la rocola son SKBitmap Bgra8888 premultiplicados (como Format32bppPArgb: ahi XP lee y escribe los puntos tal cual,
 // con GetPixels y RowBytes, y NotifyPixelsChanged si escribio); cuando XP los pide sin premultiplicar (para subirlos a la tarjeta, para
 // analizarlos o para escribirlos punto a punto) se convierten con estas tablas: sin premultiplicar = min(255, c*255/a), premultiplicar =
-// c*a/255, los dos truncando (revision del 8-11-2026). Los algoritmos son los de Plataforma/Dibujo2D.cs (LockBits y UnlockBits), movidos
+// c*a/255, los dos truncando (revision del 8-11-2026). Los algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (LockBits y UnlockBits), movidos
 // aqui. OJO: un mapa que XP crea Format32bppArgb guarda en GDI+ el color tal cual y aqui premultiplicado (diferencia (a) de PORT_DIBUJO.md).
 using System;
 using System.Drawing;

@@ -236,7 +236,7 @@ namespace Rocola
             CopiaRegionReposo(underlay, new Rectangle(dirty.X, dirty.Y - panel.Height + underlay.Height, dirty.Width, dirty.Height), panel, dirty.Location);
             using (SKCanvas g = new SKCanvas(panel))   // EN LINUX: Graphics.FromImage
             {
-                g.Save(); g.ClipRect(new SKRect(dirty.Left, dirty.Top, dirty.Right, dirty.Bottom), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(dirty): un recorte de pixeles enteros, sin suavizar, en un Save del lienzo como lo pone la capa (el Graphics nuevo no traia recorte que reemplazar)
+                g.Save(); g.ClipRect(new SKRect(dirty.Left, dirty.Top, dirty.Right, dirty.Bottom), SKClipOperation.Intersect, false);   // EN LINUX: g.SetClip(dirty): un recorte de pixeles enteros, sin suavizar, en un Save del lienzo como lo ponia la capa de la referencia (el Graphics nuevo no traia recorte que reemplazar)
                 // EN LINUX: g.SmoothingMode = AntiAlias: el reloj solo escribe, y al texto no le toca el suavizado (TextoGdiPlus.Escribe no lo lleva)
                 AjusteLetra ajuste = AjusteLetra.SuaveAjustada;   // EN LINUX: g.TextRenderingHint = AntiAliasGridFit, en una variable
                 return DrawIdleClock(g, ajuste, panel.Width, panel.Height, time);   // EN LINUX: con el lienzo y su modo de letra

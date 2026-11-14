@@ -108,7 +108,7 @@ namespace Rocola
             for (int i = 0; i < RepuestoMax; i++) if (repuestoTex[i] != IntPtr.Zero) { Tarjeta.Suelta(repuestoTex[i]); repuestoTex[i] = IntPtr.Zero; }
         }
         // Como Upload, pero una textura de otra medida se guarda en vez de destruirse, y se usa una guardada que valga.
-        private IntPtr SubeReponiendo(IntPtr tex, ref int bw, ref int bh, SKBitmap bmp, out float u, out float v)   // EN LINUX: un SKBitmap (UpdateOverlay y Upload ya lo reciben); los que pasan un Bitmap de la capa entran por Puente.portadas.cs
+        private IntPtr SubeReponiendo(IntPtr tex, ref int bw, ref int bh, SKBitmap bmp, out float u, out float v)   // EN LINUX: un SKBitmap (UpdateOverlay y Upload ya lo reciben)
         {
             if (bmp != null && (tex == IntPtr.Zero || bw != bmp.Width || bh != bmp.Height))
             {

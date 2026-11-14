@@ -3,7 +3,7 @@
 // otra (Form1.Datos.cs, CarpetaDatos), donde se buscan las IA de fabrica (Form1.Datos.cs, CarpetasIas) y el aviso de la carpeta de datos
 // (Program.cs, AvisaCarpetaDatos). Aqui la da .NET: AppContext.BaseDirectory es la carpeta del programa (la del ejecutable de NativeAOT, o la de
 // rocola-xp.dll con JIT) y lleva siempre la barra del final, que se quita como en XP. No sirve Assembly.Location: con NativeAOT sale vacio.
-// Es lo mismo que daba la capa de la transicion (Plataforma/Ventanas.Form.cs, Application.StartupPath), con la misma cuenta; lo comprueba
+// Es lo mismo que daba la capa de la transicion (en la referencia, Plataforma/Ventanas.Form.cs, Application.StartupPath), con la misma cuenta; lo comprueba
 // Pruebas/Ventanas/Carpeta (guiones/pruebas_carpeta.sh), en JIT y en NativeAOT.
 using System;
 

@@ -247,7 +247,7 @@ namespace Rocola
                     { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)(dx-slideDesde), w, h) : new Rectangle((int)(dx-slideDesde), 0, w, h); Imagenes.Pinta(g, hornoAnt, new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoAnt, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoAnt (Form1.Vistas.cs) ya es un SKBitmap: directo
                 { Rectangle d = GpuSlideVertical ? new Rectangle(0, (int)dx, w, h) : new Rectangle((int)dx, 0, w, h); Imagenes.Pinta(g, hornoPag, new SKRect(0, 0, w, h), new SKRect(d.Left, d.Top, d.Right, d.Bottom), filtro, medio, copia, Envoltura.Transparente, null, claveGpu, claveGpu); }   // EN LINUX: g.DrawImage(hornoPag, caja, 0, 0, w, h, Pixel, claveGpu): con la clave de color; hornoPag, directo
             }
-            public void RenderOpaqueGpu(SKCanvas g, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del Graphics (copia, filtro y medio pixel); EnsureUiOverlay (Form1.Video.cs) la llama por el puente
+            public void RenderOpaqueGpu(SKCanvas g, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y lo que pesa aqui del estado del Graphics (copia, filtro y medio pixel); EnsureUiOverlay (Form1.Video.cs) la llama directo
             {
                 pintandoGpu = true;
                 int w = Width, h = Height;

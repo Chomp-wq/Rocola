@@ -21,4 +21,5 @@ corre() {   # nombre archivo sed
 }
 corre "las etiquetas cortan por palabra" Codigo/Form1.Video.cs 's/sf.Corte = CorteTexto.PuntosPorLetra;/sf.Corte = CorteTexto.PuntosPorPalabra;/'
 corre "la barra de ayuda sin suavizar" Codigo/Form1.cs 's/                bool suave = true;   \/\/ EN LINUX: g.SmoothingMode = AntiAlias, en una variable/                bool suave = false;/'
-corre "el puente con la matriz del lienzo como HDC" Plataforma/Puente.video-form1.cs 's/medio, SKMatrix.Identity)); }/medio, c.TotalMatrix)); }/'
+# (N7, borrar-capas) 1 control(es) que metian su fallo en un puente (Plataforma/Puente*.cs) o en una linea con PuenteDibujo o Rocola.Dibujo2D se
+# retiraron: las capas se borraron y esas lineas ya no existen; lo que hacia cada puente lo hace ahora la traducida, con sus controles.

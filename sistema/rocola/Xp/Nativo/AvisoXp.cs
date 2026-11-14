@@ -4,7 +4,7 @@
 // los botones, botones de 75x23 separados 6 y centrados, el texto partido a lo mas en 4/5 del ancho de la pantalla, en espanol como el XP
 // del bar. Intro pulsa el boton por defecto (el que tiene el foco) y Escape el de cancelar (Aceptar, el unico); la «X» y Alt+F4 tambien
 // contestan Aceptar, como user32 con un aviso de solo Aceptar. Solo lo que XP usa: el boton Aceptar (MessageBoxButtons.OK) y el icono de
-// advertencia (MessageBoxIcon.Warning) o ninguno. Se porto de la capa (Plataforma/Ventanas.Form.cs: MessageBox y CajaAviso).
+// advertencia (MessageBoxIcon.Warning) o ninguno. Se porto de la capa (en la referencia, Plataforma/Ventanas.Form.cs: MessageBox y CajaAviso).
 using System;
 using System.Drawing;
 using Rocola.Nativo;

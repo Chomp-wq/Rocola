@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- la pantalla nativa con una vista falsa (IVista, Nativo/IVista.cs y PantallaRocola.Vistas.cs) junto a controles de la capa: el orden
+  <!-- la pantalla nativa con vistas falsas (IVista, Nativo/IVista.cs y PantallaRocola.Vistas.cs) en la lista de su ventana: el orden
        de composicion y el reparto del raton y de las teclas que da WinForms. Rocola=carpeta del rocola-xp.dll a probar (la compilacion JIT).
        El nombre del ensamblado es el que deja ver lo de dentro de la pantalla (InternalsVisibleTo de Nativo/IVista.cs). -->
   <PropertyGroup>

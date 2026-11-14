@@ -1,7 +1,7 @@
 // EL RECORTE DEL LIENZO COMO EN GDI+, NATIVO (port nativo, el dibujo; 8-11-2026). XP pone recortes con SetClip (que REEMPLAZA el de antes),
 // los combina (Intersect, Exclude) y lee sus limites (ClipBounds, VisibleClipBounds). En Skia un recorte solo se quita volviendo a un Save:
 // el codigo traducido hace c.Save() y ClipRect, y para reemplazarlo vuelve con Quita (que conserva la matriz) y pone el nuevo. Los
-// algoritmos son los de Plataforma/Dibujo2D.cs, movidos aqui.
+// algoritmos son los del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia), movidos aqui.
 using System.Drawing;
 using SkiaSharp;
 

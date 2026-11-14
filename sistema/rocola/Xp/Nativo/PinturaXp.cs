@@ -1,7 +1,7 @@
 // LO QUE PINTAN LAS HOJAS Y SUS PIEZAS COMO EN WINDOWS XP (port nativo de las ventanas de XP, ventanas2, paso H): el marco de las
 // ventanas de XP (tema Luna), los colores que calcula WinForms para sus controles (ControlPaint), la barra de desplazamiento de XP, la
 // «X» roja de .NET y lo que GDI+ hace con un pincel, una pluma o un trazo, todo con SkiaSharp y las funciones nativas del dibujo
-// (Nativo/Pixel.cs, Degradado.cs, TextoGdi.cs). Se PORTO de la capa de la transicion (Plataforma/Ventanas.Escritorio.cs: PintaMarco;
+// (Nativo/Pixel.cs, Degradado.cs, TextoGdi.cs). Se PORTO de la capa de la transicion (en la referencia, Plataforma/Ventanas.Escritorio.cs: PintaMarco;
 // Ventanas.Control.cs: ColoresXp, BarraXp, PintaExcepcion), llamando a las mismas funciones nativas con lo mismo que les pasaba la capa
 // por su Graphics de fabrica (sin suavizar, PixelOffsetMode de fabrica, sin copia; suavizado donde la capa ponia SmoothingMode.AntiAlias),
 // para que cada punto salga igual que en la referencia.

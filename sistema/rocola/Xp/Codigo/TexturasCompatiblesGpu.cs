@@ -157,7 +157,7 @@ namespace Rocola
                 // EN LINUX: bd = bmp.LockBits(origen, ReadOnly, Format32bppArgb): la lectura va abajo, con la copia (Pixeles.CopiaSinPremultiplicar)
                 int bytes = checked(origen.Width * 4);
                 if (bits == IntPtr.Zero || pitch < (r - destino.X) * 4 || bmp.GetPixels() == IntPtr.Zero || Math.Abs((long)bmp.RowBytes) < bytes) return false;   // EN LINUX: (lr.Bits, lr.Pitch); bd.Scan0 y bd.Stride = los puntos del SKBitmap y su paso
-                Pixeles.CopiaSinPremultiplicar(bmp, origen, bits, pitch);   // EN LINUX: LockBits(origen, ReadOnly, Format32bppArgb) y la copia fila a fila a lo bloqueado, en una pasada: los puntos del trozo sin premultiplicar (la tabla truncada de la capa, Nativo/Pixeles.cs) directo a lo bloqueado, con su paso; los mismos bytes, sin la copia aparte de GDI+
+                Pixeles.CopiaSinPremultiplicar(bmp, origen, bits, pitch);   // EN LINUX: LockBits(origen, ReadOnly, Format32bppArgb) y la copia fila a fila a lo bloqueado, en una pasada: los puntos del trozo sin premultiplicar (la tabla truncada de la capa de la referencia, Nativo/Pixeles.cs) directo a lo bloqueado, con su paso; los mismos bytes, sin la copia aparte de GDI+
                 // EN LINUX: (en XP: for (int y = 0; y < origen.Height; y++) D3D9.CopyMemory(lr.Bits + y * lr.Pitch, bd.Scan0 + y * bd.Stride, bytes))
                 RellenaBorde(bits, pitch, origen.Width, origen.Height, r - destino.X, b - destino.Y);   // EN LINUX: (lr)
                 ok = true;

@@ -14,7 +14,7 @@
 //    sube rodando.
 using System;
 using System.Collections.Generic;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el boleto, la pastilla de SONANDO con el ecualizador y las medidas de la lista dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; la letra de la lista (SongListView.Font) es una Letra (Nativo/Letras.cs) y llega directo; lo que aun llega de la capa (la Image del cubo) pasa por el puente (Plataforma/Puente.cs)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: el boleto, la pastilla de SONANDO con el ecualizador y las medidas de la lista dibujan con SkiaSharp directo y las funciones nativas (Xp/Nativo), no con GDI+; la letra de la lista (SongListView.Font) es una Letra (Nativo/Letras.cs) y llega directo; el cubo es un SKBitmap de la cache de portadas
 
 namespace Rocola
 {
@@ -433,7 +433,7 @@ namespace Rocola
                 llegaTick = t + Math.Max(0, enMs); if (llegaTick == 0) llegaTick = 1;
             }
             // El dibujo para la textura de la tarjeta. El del procesador (OnPaint) NUNCA enseña la llegada.
-            public void RenderContentGpu(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama (modo de letra, copia, filtro y medio pixel): RenderContent de la capsula (Form1.Vistas.cs) ya esta traducido; la llama directo DrawCtrlOverlay (Form1.Video.cs) (la firma de XP con un Graphics que estaba en Plataforma/Puente.vistas-b.cs se quito con vistas-disco)
+            public void RenderContentGpu(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio)   // EN LINUX: el lienzo de Skia y el estado del que llama (modo de letra, copia, filtro y medio pixel): RenderContent de la capsula (Form1.Vistas.cs) ya esta traducido; la llama directo DrawCtrlOverlay (Form1.Video.cs)
             {
                 dibujaGpu = true;
                 try { RenderContent(g, ajuste, copia, filtro, medio); }   // EN LINUX: con el lienzo y su estado

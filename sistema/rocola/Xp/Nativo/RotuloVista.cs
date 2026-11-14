@@ -8,7 +8,7 @@
 // ventana de la rocola, que la pantalla compone entre las demas vistas, el panel de la tarjeta y el video.
 //
 // Las reglas son las de WinForms (dotnet/winforms release/3.0, portada de .NET Framework 4.8: Label.cs y Control.cs), como las pintaba la
-// capa (Plataforma/Ventanas.Control.cs, Label) que esto sustituye:
+// capa (en la referencia, Plataforma/Ventanas.Control.cs, Label) que esto sustituye:
 //   - Label: no toma el foco ni entra en el tabulador (SetStyle(Selectable, false), TabStop = false), acepta el fondo transparente
 //     (SupportsTransparentBackColor), se repinta al cambiar de medida (ResizeRedraw) y de texto (OnTextChanged); mide 100x23 de fabrica
 //     (DefaultSize). El raton SI es suyo dentro de su caja (Label.WndProc, WM_NCHITTEST: HTCLIENT), aunque no haga nada con el: lo que

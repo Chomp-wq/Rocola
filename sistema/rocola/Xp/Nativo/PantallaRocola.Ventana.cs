@@ -3,7 +3,7 @@
 // avisos, la de prueba F12). Aqui su ventana es la pantalla misma: sus vistas son la lista de la ventana (PantallaRocola.Vistas.cs), su
 // fondo el primer tramo de la composicion y sus teclas PantallaRocola.Teclas. Este archivo lleva lo que Windows y WinForms hacian con esa
 // ventana y la rocola de XP supone, con las reglas de la fuente de WinForms (dotnet/winforms release/3.0, portada de .NET Framework 4.8:
-// Form.cs, Control.cs, ContainerControl.cs) tal como las fijaron las 41 pruebas en la capa de la transicion (Plataforma/Ventanas.Form.cs y
+// Form.cs, Control.cs, ContainerControl.cs) tal como las fijaron las 41 pruebas en la capa de la transicion (en la referencia, Plataforma/Ventanas.Form.cs y
 // Ventanas.Escritorio.cs, de donde sale cada regla):
 //   - la medida: 300x300 al nacer con el marco de una ventana normal de XP (Sizable: 4 de marco y 26 de barra); Size la cambia y avisa
 //     (OnResize); sin borde, el cliente es la ventana; maximizada, al crearse toma la pantalla entera (otro OnResize);
@@ -57,7 +57,7 @@ namespace Rocola
         {
             VentanaNativa w = ventana;
             if (w == null || w.Desechada) return;
-            Hoja.DesactivaPorLaCapa();
+            Hoja.DesactivaPorLaVentana();
             if (!w.Activa)
             {
                 w.Activa = true;
@@ -84,9 +84,9 @@ namespace Rocola
         internal static void FinDeSesion()
         {
             List<object> vs = new List<object>();
-            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
+            Hoja[] hs = Hoja.Abiertas; for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].DetrasDeLaVentana) vs.Add(hs[i]);
             if (ventana != null && ventana.Visible && !ventana.Desechada) vs.Add(ventana);
-            for (int i = hs.Length - 1; i >= 0; i--) if (hs[i].DetrasDeLaCapa) vs.Add(hs[i]);
+            for (int i = hs.Length - 1; i >= 0; i--) if (hs[i].DetrasDeLaVentana) vs.Add(hs[i]);
             bool seAcaba = true; int hasta = -1;
             for (int i = 0; i < vs.Count; i++) { hasta = i; if (!FinDeSesionDe(vs[i], true, true)) { seAcaba = false; break; } }
             for (int i = 0; i <= hasta && i < vs.Count; i++) FinDeSesionDe(vs[i], false, seAcaba);
@@ -110,21 +110,21 @@ namespace Rocola
             Teclas = t;
             DuenoDeLasTeclas = w;
             FondoDeLaVentana = w.PintaFondo;
-            PintadoSinLaCapa();
+            PonElPintado();
             // la ventana de delante y el foco que la rocola pide (ForceFocus, Form1.cs): PantallaRocola.Teclado.cs
             LaDeDelante = delegate { if (Hoja.Activa != null) return Hoja.Activa; return w.Activa && !w.Desechada ? avisos.Rocola : null; };
             PonDelante = delegate (object v) { if (v == avisos.Rocola && !w.Desechada) w.Activate(); };
             PonEncima = delegate (object v) { if (v == avisos.Rocola) HayQueComponer(); };
             PonFoco = delegate (object v) { if (v == avisos.Rocola && !w.Desechada) w.Enfoca(); };
             // lo que las hojas le piden a la ventana de debajo (Nativo/Hoja.cs: la activa, el foco, la duena)
-            Hoja.ActivaDeLaCapa = delegate { return w.Activa && !w.Desechada ? avisos.Rocola : null; };
-            Hoja.CedeLaCapa = delegate { if (!w.Activa) return; w.Activa = false; CambioVentana(); };
-            Hoja.QuitaFocoALaCapa = delegate { foco = null; };
-            Hoja.ActivaLaDeLaCapa = delegate (object v) { if (v == avisos.Rocola) ActivaVentana(true); };
-            Hoja.VivaEnLaCapa = delegate (object v) { return v == avisos.Rocola && !w.Desechada && w.Visible; };
-            Hoja.SitioEnLaCapa = delegate (object v) { return v == avisos.Rocola ? new Rectangle(Point.Empty, w.Medida) : Rectangle.Empty; };
+            Hoja.VentanaActiva = delegate { return w.Activa && !w.Desechada ? avisos.Rocola : null; };
+            Hoja.CedeLaVentana = delegate { if (!w.Activa) return; w.Activa = false; CambioVentana(); };
+            Hoja.QuitaFocoALaVentana = delegate { foco = null; };
+            Hoja.ActivaLaVentana = delegate (object v) { if (v == avisos.Rocola) ActivaVentana(true); };
+            Hoja.VentanaViva = delegate (object v) { return v == avisos.Rocola && !w.Desechada && w.Visible; };
+            Hoja.SitioDeLaVentana = delegate (object v) { return v == avisos.Rocola ? new Rectangle(Point.Empty, w.Medida) : Rectangle.Empty; };
             Hoja.HayQueComponer = HayQueComponer;
-            Hoja.ActivaLaDeArribaDeLaCapa = delegate { if (w.Visible && !w.Desechada) ActivaVentana(true); };
+            Hoja.ActivaLaVentanaDeDebajo = delegate { if (w.Visible && !w.Desechada) ActivaVentana(true); };
             return w;
         }
 

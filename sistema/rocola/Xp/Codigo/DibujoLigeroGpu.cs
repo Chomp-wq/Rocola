@@ -80,7 +80,7 @@ namespace Rocola
         // Linux, escribe el trozo de vuelta arriba a la izquierda aunque sea de solo lectura (comprobado en tironescambio); en Windows no pasa,
         // pero el bloqueo entero vale en los dos y no cuesta nada (devuelve el puntero al propio mapa de bits).
         internal static bool LecturaNativa(SKBitmap b) { return b.ColorType == SKColorType.Bgra8888 && b.AlphaType == SKAlphaType.Premul; }   // EN LINUX: (XP) b.PixelFormat == Format32bppPArgb: un SKBitmap BGRA premultiplicado (Mapas.Nuevo, Imagenes.Lee) es ese formato, y sus puntos se leen tal cual
-        internal static TeselasVisibles De(SKBitmap b, int lado, bool bordeSiempre)   // EN LINUX: un SKBitmap (los hornos de D3D9Star.cs, sin puente, y la interfaz por el de Puente.portadas.cs)
+        internal static TeselasVisibles De(SKBitmap b, int lado, bool bordeSiempre)   // EN LINUX: un SKBitmap (los hornos y la interfaz de D3D9Star.cs)
         {
             if (b == null || lado < 1) return null;
             int w = b.Width, h = b.Height;
@@ -91,7 +91,7 @@ namespace Rocola
             // leerlo desde la de al lado): las de (x-1)/lado a (x+1)/lado, y lo mismo a lo alto. Se recorre fila a fila,
             // por tramos seguidos de texeles con algo; sin un arreglo del tamano de la imagen.
             int[] fila = new int[w];
-            bool nativoDe = LecturaNativa(b); int pasoDe = nativoDe ? b.RowBytes : Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr scanDe = nativoDe ? b.GetPixels() : Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)pasoDe * h)); if (!nativoDe) Pixeles.LeeSinPremultiplicar(b, new Rectangle(0, 0, w, h), scanDe, pasoDe);   // solo el alfa: el formato propio, sin copia   // EN LINUX: b.LockBits(entero, ReadOnly, LecturaNativa ? Format32bppPArgb : Format32bppArgb): los puntos mismos y su paso (RowBytes), o una copia sin premultiplicar con el paso de GDI+ (Nativo/Pixeles.cs, como Dibujo2D.cs)
+            bool nativoDe = LecturaNativa(b); int pasoDe = nativoDe ? b.RowBytes : Pixeles.Paso(FormatoPuntos.Argb32, w); IntPtr scanDe = nativoDe ? b.GetPixels() : Marshal.AllocHGlobal((IntPtr)Math.Max(1L, (long)pasoDe * h)); if (!nativoDe) Pixeles.LeeSinPremultiplicar(b, new Rectangle(0, 0, w, h), scanDe, pasoDe);   // solo el alfa: el formato propio, sin copia   // EN LINUX: b.LockBits(entero, ReadOnly, LecturaNativa ? Format32bppPArgb : Format32bppArgb): los puntos mismos y su paso (RowBytes), o una copia sin premultiplicar con el paso de GDI+ (Nativo/Pixeles.cs, como el Dibujo2D.cs de la referencia)
             try
             {
                 for (int y = 0; y < h; y++)
@@ -254,13 +254,13 @@ namespace Rocola
         private double uiSubidaMs, uiBotSubidaMs;
         internal const double TeselasQuieta = 300;           // ms sin cambios antes de sacar las teselas de la interfaz
         internal const int LadoTeselaUi = 16;                // la interfaz va texel a pixel: teselas de 16 x 16 pixeles
-        private static TeselasVisibles TeselasQuietas(SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (la interfaz de la capa entra por Puente.portadas.cs)
+        private static TeselasVisibles TeselasQuietas(SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (la interfaz)
         {
             if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta) return null;
             return TeselasVisibles.De(b, LadoTeselaUi, false);
         }
 
-        private TeselasVisibles TeselasEnPasos(ref TrabajoTeselas trabajo, SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (GetUi y GetUiBot de D3D9Star.cs dan un Bitmap de la capa: entra por Puente.portadas.cs con sus mismos puntos)
+        private TeselasVisibles TeselasEnPasos(ref TrabajoTeselas trabajo, SKBitmap b, int w, int h, double subidaMs)   // EN LINUX: un SKBitmap (el de GetUi y GetUiBot de D3D9Star.cs)
         {
             if (b == null || b.Width != w || b.Height != h || AhoraMs() - subidaMs < TeselasQuieta)
             { trabajo = null; return null; }
@@ -335,7 +335,7 @@ namespace Rocola
         internal long PixelesHueco;                // las pruebas: cuanto se dejo de pintar en el ultimo cuadro (sin contar capas)
 
         // Si la portada no tiene transparencia por dentro (sin sus BordePortada texeles de cada lado).
-        internal static bool InteriorOpaco(SKBitmap b, bool alfaOPaleta)   // EN LINUX: un SKBitmap, y si el formato con que XP tenia el mapa trae alfa o paleta (un SKBitmap no lo guarda: lo dice el puente, Puente.portadas.cs)
+        internal static bool InteriorOpaco(SKBitmap b, bool alfaOPaleta)   // EN LINUX: un SKBitmap, y si el formato con que XP tenia el mapa trae alfa o paleta (un SKBitmap no lo guarda: lo dice quien llama)
         {
             if (b == null) return false;
             int w = b.Width, h = b.Height, m = BordePortada;

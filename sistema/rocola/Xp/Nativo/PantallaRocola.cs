@@ -129,8 +129,8 @@ namespace Rocola
         }
 
         // ---------- el pintado (WM_PAINT) ----------
-        // Lo da quien pinta: mientras dure la transicion, la capa de ventanas (Escritorio: el panel de la tarjeta y la composicion de las
-        // hojas); despues, la composicion nativa. PintaUno pinta lo primero que este sucio (true si habia algo); HaySucio lo mira sin
+        // Lo da quien pinta: la pantalla misma (PantallaRocola.Vistas.cs, PonElPintado: el WM_PAINT de las vistas de la tarjeta y la
+        // composicion pendiente); son ganchos porque las pruebas de la pantalla compilan este archivo sin las vistas. PintaUno pinta lo primero que este sucio (true si habia algo); HaySucio lo mira sin
         // pintarlo; ProximoPintado dice cuando habra que pintar aunque no llegue nada (ms del reloj de la pantalla).
         internal static Func<bool> PintaUno, HaySucio;
         internal static Func<double> ProximoPintado;

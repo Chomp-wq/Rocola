@@ -1,6 +1,6 @@
 #if ROCOLA_GPU
 using System;
-using System.Drawing; using SkiaSharp;   // EN LINUX: sin la capa de GDI+ (Dibujo2D.cs): aqui no se dibuja; la portada que vuela (GpuTrans.Bmp) es un SKBitmap de la cache de portadas
+using System.Drawing; using SkiaSharp;   // EN LINUX: sin GDI+: aqui no se dibuja; la portada que vuela (GpuTrans.Bmp) es un SKBitmap de la cache de portadas
 namespace Rocola
 {
     // Reloj por familia: no limita el render, la entrada, el progreso ni el audio.

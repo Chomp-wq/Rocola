@@ -3,9 +3,7 @@
 // WMP, con Controls.Add al fondo de la lista): aqui su capa es una capa de textura de la lista de la ventana (PantallaRocola.Vistas.cs),
 // que se mueve con ella: Pon (sitio y si se ve), AlFrente (BringToFront) y Quita (Controls.Remove); su orden frente al panel de la tarjeta
 // y los rotulos de encima lo deciden los BringToFront de XP, como alli.
-// Es la misma capa de la lista de la ventana siempre (rotulos-y-letras: VideoEnVentanas.cs, el hueco del video de la capa, se borro). TRANSICION:
-// mientras la ventana de la rocola sea una ventana de la capa, la pantalla pone esa capa en un hueco de textura de la capa (PantallaRocola.
-// AgregaCapa con su ventana; el hueco, Plataforma/Anfitrion.cs), entre los controles que quedan, que es como se ve hoy.
+// Es la misma capa de la lista de la ventana siempre (PantallaRocola.AgregaCapa).
 using System.Drawing;
 
 namespace Rocola

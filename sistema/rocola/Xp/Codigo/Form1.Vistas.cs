@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y los demas de GDI+: el archivo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo), sin Rocola.Dibujo2D; la Font de las vistas es una Letra (Nativo/Letras.cs; rotulos-y-letras) y se usa directo; las vistas ya no heredan de Control (vistas-disco) y no reciben ningun Graphics; la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2) es una pieza de la hoja con SkiaSharp directo
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: (XP) using System.Drawing.Drawing2D y los demas de GDI+: el archivo dibuja con SkiaSharp directo y las funciones nativas (Xp/Nativo); la Font de las vistas es una Letra (Nativo/Letras.cs; rotulos-y-letras) y se usa directo; las vistas ya no heredan de Control (vistas-disco) y no reciben ningun Graphics; la barra de avance de Ctrl+F3 (BarraAvance, paso C de ventanas2) es una pieza de la hoja con SkiaSharp directo
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -66,7 +66,7 @@ namespace Rocola
         // Barra de paginas de la lista de canciones: "Pagina X de Y" al centro, y a los lados las
         // instrucciones VARIABLES con flechas DIBUJADAS (la fuente de XP no trae flechas unicode):
         //   [<] pagina 1        Pagina 2 de 3        pagina 3 [>]
-        private class SongPagerBar : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): la firma de XP de RenderContent con un Graphics (su OnPaint) se quito del puente
+        private class SongPagerBar : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): RenderContent recibe el lienzo (su OnPaint es Pinta)
         {
             private int pagina = 0; // pagina actual (desde 0)
             public int Pages = 1;   // total de paginas
@@ -107,17 +107,17 @@ namespace Rocola
             // Al abrir un disco el letrero se pone donde toque, sin viaje.
             public void PonSinAnimar(int p) { pagina = p; animTick = -1; }
 
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref pgFont); } }
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             public SongPagerBar()
             {
                 caja = new CajaVista(this);   // EN LINUX: SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | ResizeRedraw, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera; ResizeRedraw = RepintaConMedida, que la CajaVista trae de fabrica (al cambiar de medida se pinta entera); un Control mide 0x0 de fabrica (DefaultSize), como la caja
-                // EN LINUX: (la segunda linea del SetStyle de XP) Selectable, TabStop, StandardClick y StandardDoubleClick quedan los de fabrica de Control, que el hueco de la capa conserva
+                // EN LINUX: (la segunda linea del SetStyle de XP) Selectable, TabStop, StandardClick y StandardDoubleClick quedan los de fabrica de Control, que la pantalla conserva (IVista)
             }
 
             public void Pinta(SKCanvas g) { RenderContent(g, false, false, false); } private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (!value.IsEmpty && value.A < 255) throw new ArgumentException("Control does not support transparent background colors."); if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics); }: la pinta la pantalla (IVista.Pinta) en su lienzo, con el estado del Graphics de un WM_PAINT (el de fabrica: sin suavizado, copia ni medio pixel); lo que XP le dejaba al Graphics (el suavizado y el modo de letra) se iba con el. En la misma linea, lo que XP usa de este control por fuera y le daba Control: Bounds, Left, Top, Width, Height, SetBounds, Visible e Invalidate (con su CajaVista) y el BackColor: un campo propio que repinta al cambiar (Control.OnBackColorChanged) y, como Control sin SupportsTransparentBackColor, no admite un color con alfa; sin poner seria el de su dueno (ambiental): Form1 siempre lo pone antes de leerlo
@@ -175,7 +175,7 @@ namespace Rocola
             }
         }
 
-        private class LetterBar : IVista   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): la firma de XP de RenderContent con un Graphics (su OnPaint) se quito del puente; no es IDisposable: XP no le sobrescribe Dispose
+        private class LetterBar : IVista   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): RenderContent recibe el lienzo (su OnPaint es Pinta); no es IDisposable: XP no le sobrescribe Dispose
         {
             private SKPaint pulseBrush; private SKPaint pulsePen;                       // resaltado de letra (reusables)   // EN LINUX: SolidBrush y Pen: el pincel (su color) y la pluma (su color, su ancho y su union) en un SKPaint cada uno
             private SKPath pulsePath; private RectangleF pulseBox = RectangleF.Empty;  // trayectoria cacheada   // EN LINUX: GraphicsPath -> SKPath
@@ -243,14 +243,14 @@ namespace Rocola
 
             public LetterBar()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera (Control.SetBoundsCore); Selectable, TabStop, StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera (Control.SetBoundsCore); Selectable, TabStop, StandardClick y StandardDoubleClick, los de fabrica de Control, que la pantalla conserva (IVista)
                 this.BackColor = Color.Transparent;
             }
 
-            public void Raton(AvisoRaton que, Raton e)   // EN LINUX: protected override void OnMouseClick(MouseEventArgs e): el raton de la vista (IVista.Raton), que el hueco de la capa o la pantalla le dan como WinForms al control; solo el clic (MouseClick)
+            public void Raton(AvisoRaton que, Raton e)   // EN LINUX: protected override void OnMouseClick(MouseEventArgs e): el raton de la vista (IVista.Raton), que la pantalla le da como WinForms al control; solo el clic (MouseClick)
             { if (que != AvisoRaton.Clic) return;   // EN LINUX: los demas avisos del raton, los de fabrica de Control (no hacen nada)
                 int n = Letters.Length;
-                if (n == 0 || Width <= 0) { return; }   // EN LINUX: base.OnMouseClick(e) (el aviso MouseClick a los que escuchan) lo da el hueco o la pantalla despues de Raton (PantallaRocola.AvisaOyentes), como el On* de fabrica
+                if (n == 0 || Width <= 0) { return; }   // EN LINUX: base.OnMouseClick(e) (el aviso MouseClick a los que escuchan) lo da la pantalla despues de Raton (PantallaRocola.AvisaOyentes), como el On* de fabrica
                 // CON DECIMALES, igual que se DIBUJA. Con division entera la casilla en la que crees pinchar y
                 // la que la barra dibuja se iban separando hacia la derecha -en 1024 casi un tercio de casilla
                 // al final, y con un video al lado MAS DE UNA CASILLA ENTERA-: pinchabas una letra y te llevaba
@@ -259,7 +259,7 @@ namespace Rocola
                 int i = (int)(e.X / slot);
                 if (i < 0) i = 0; else if (i >= n) i = n - 1;
                 if (OnPick != null) OnPick(Letters[i]);
-                // EN LINUX: base.OnMouseClick(e): el aviso MouseClick lo da el hueco o la pantalla despues de Raton (PantallaRocola.AvisaOyentes), en el mismo orden
+                // EN LINUX: base.OnMouseClick(e): el aviso MouseClick lo da la pantalla despues de Raton (PantallaRocola.AvisaOyentes), en el mismo orden
             }
 
             private void EnsureRes()
@@ -555,7 +555,7 @@ namespace Rocola
                 return (miles > 999 ? 999 : miles) + "k";
             }
 
-            public void Pinta(SKCanvas g) { RenderContent(g, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, false); } private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public void Invalidate(Rectangle rc) { caja.Invalidate(); } public int Bottom { get { return caja.Top + caja.Height; } } private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } } private Rocola.Nativo.Letra font; public Rocola.Nativo.Letra Font { get { return font ?? CajaPieza.LetraDeFabrica; } set { Rocola.Nativo.Letra antes = Font; if (value == null ? font != null : (font == null || !Letras.Iguales(value, font))) font = value; if (value == null || !Letras.Iguales(antes, value)) caja.Invalidate(); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }: la pinta la pantalla (IVista.Pinta) en su lienzo, con el estado del Graphics de un WM_PAINT (el de fabrica: modo de letra SystemDefault, sin copia, filtro bilineal, sin medio pixel); lo que XP le dejaba al Graphics (el suavizado) se iba con el. En la misma linea, lo que XP usa de este control por fuera y le daba Control: Bounds, Left, Top, Width, Height, SetBounds, Visible, Invalidate, Invalidate(Rectangle) (Form1.cs, el latido de la letra: como en la capa, la vista se pinta entera; el rectangulo solo acotaba la region del WM_PAINT en Windows) y Bottom (Form1.Video.cs; con su CajaVista), el BackColor: un campo propio que repinta al cambiar (Control.OnBackColorChanged); el constructor de XP lo pone transparente, y la Font: Font -> Letra (Nativo/Letras.cs, rotulos-y-letras), con lo de Control.Font: sin la suya, la del dueno (propiedad ambiental), que es la de la ventana, que XP nunca cambia: Control.DefaultFont, la letra de fabrica de XP, el mismo objeto (CajaPieza.LetraDeFabrica: Microsoft Sans Serif de 8,25 puntos); con Font.Equals (Letras.Iguales); al ponerla, la propia solo cambia si es otra letra (una igual deja el objeto de antes) y avisa si la que se ve cambia (resolved.Equals(value)) (XP no le sobrescribe OnFontChanged: el de fabrica la repinta)
+            public void Pinta(SKCanvas g) { RenderContent(g, AjusteLetra.DelSistema, false, Filtro.Bilineal, false, false); } private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public void Invalidate(Rectangle rc) { caja.Invalidate(); } public int Bottom { get { return caja.Top + caja.Height; } } private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } } private Rocola.Nativo.Letra font; public Rocola.Nativo.Letra Font { get { return font ?? CajaPieza.LetraDeFabrica; } set { Rocola.Nativo.Letra antes = Font; if (value == null ? font != null : (font == null || !Letras.Iguales(value, font))) font = value; if (value == null || !Letras.Iguales(antes, value)) caja.Invalidate(); } }   // EN LINUX: protected override void OnPaint(PaintEventArgs e) { RenderContent(e.Graphics, false); }: la pinta la pantalla (IVista.Pinta) en su lienzo, con el estado del Graphics de un WM_PAINT (el de fabrica: modo de letra SystemDefault, sin copia, filtro bilineal, sin medio pixel); lo que XP le dejaba al Graphics (el suavizado) se iba con el. En la misma linea, lo que XP usa de este control por fuera y le daba Control: Bounds, Left, Top, Width, Height, SetBounds, Visible, Invalidate, Invalidate(Rectangle) (Form1.cs, el latido de la letra: como en la referencia, la vista se pinta entera; el rectangulo solo acotaba la region del WM_PAINT en Windows) y Bottom (Form1.Video.cs; con su CajaVista), el BackColor: un campo propio que repinta al cambiar (Control.OnBackColorChanged); el constructor de XP lo pone transparente, y la Font: Font -> Letra (Nativo/Letras.cs, rotulos-y-letras), con lo de Control.Font: sin la suya, la del dueno (propiedad ambiental), que es la de la ventana, que XP nunca cambia: Control.DefaultFont, la letra de fabrica de XP, el mismo objeto (CajaPieza.LetraDeFabrica: Microsoft Sans Serif de 8,25 puntos); con Font.Equals (Letras.Iguales); al ponerla, la propia solo cambia si es otra letra (una igual deja el objeto de antes) y avisa si la que se ve cambia (resolved.Equals(value)) (XP no le sobrescribe OnFontChanged: el de fabrica la repinta)
             // Casilla de la letra ACTUAL (para el pulso por GPU): centro/radio en coords del control.
             // false si no aplica (la actual es TOP, que lleva su propio halo dorado, o no esta en la tira).
             public bool GetCurrentGlow(out float cx, out float cy, out float r)
@@ -995,7 +995,7 @@ namespace Rocola
         // seccion va en SU color -el mismo que la letra luce en la barra de arriba- y las paginas se ven de un
         // vistazo como puntitos: cuantas hay y en cual estas se sabe sin leer, que es lo que le sirve a alguien
         // que esta de pie delante de la maquina.
-        private class HeaderView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): la firma de XP de RenderContent con un Graphics (su OnPaint) se quito del puente
+        private class HeaderView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): RenderContent recibe el lienzo (su OnPaint es Pinta)
         {
             public string Section = "";
             public int Page = 0, Total = 1;
@@ -1010,18 +1010,18 @@ namespace Rocola
                 fontAlto = -1f;
                 caja.Invalidate(); Invalidate();   // EN LINUX: base.OnFontChanged(e): Control.OnFontChanged la repinta (Invalidate) y avisa FontChanged (nadie lo escucha; no tiene hijas)
             }
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref fSec); SueltaDibujo(ref fPag); SueltaDibujo(ref brocha); sfIzq = null; } }   // EN LINUX: SueltaDibujo(ref sfIzq): un FormatoTexto no tiene nada que soltar; queda en null, como lo dejaba SueltaDibujo
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             public HeaderView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que la pantalla conserva (IVista)
                 this.BackColor = Color.Transparent;
-                // EN LINUX: this.TabStop = false;   // aqui no se pincha nada: antes era una etiqueta, que nunca tomaba el foco -> ParaElTabulador = false (junto a Pinta): el hueco de la capa nace con ese TabStop
+                // EN LINUX: this.TabStop = false;   // aqui no se pincha nada: antes era una etiqueta, que nunca tomaba el foco -> ParaElTabulador = false (junto a Pinta): la pantalla no se para en ella con el tabulador (Nativo/PantallaRocola.Foco.cs)
             }
 
             private void EnsureRes(int h)
@@ -1226,7 +1226,7 @@ namespace Rocola
             }
         }
 
-        private partial class PastillaView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (DiscoVivoGpu.cs, SuenaVivoGpu.cs; Ancho, que Form1.cs y Form1.Datos.cs llaman con el nombre de la familia de la letra de la ventana: la firma con una FontFamily, Plataforma/Puente.vistas-b.cs, se borro con rotulos-y-letras)
+        private partial class PastillaView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (DiscoVivoGpu.cs, SuenaVivoGpu.cs; Ancho, que Form1.cs y Form1.Datos.cs llaman con el nombre de la familia de la letra de la ventana)
         {
             public string Etiqueta = "", Valor = "";
             public Color Acento = DefaultAccent;
@@ -1291,18 +1291,18 @@ namespace Rocola
                 fontAlto = -1f;
                 caja.Invalidate(); Invalidate();   // EN LINUX: base.OnFontChanged(e): Control.OnFontChanged la repinta (Invalidate) y avisa FontChanged (nadie lo escucha; no tiene hijas)
             }
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref fEtq); SueltaDibujo(ref fVal); SueltaDibujo(ref fMas); SueltaDibujo(ref brocha); sfCen = null; } }   // EN LINUX: SueltaDibujo(ref sfCen): un FormatoTexto no tiene nada que soltar; queda en null
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             public PastillaView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que la pantalla conserva (IVista)
                 this.BackColor = Color.Transparent;
-                // EN LINUX: this.TabStop = false; -> ParaElTabulador = false (junto a Pinta): el hueco de la capa nace con ese TabStop
+                // EN LINUX: this.TabStop = false; -> ParaElTabulador = false (junto a Pinta): la pantalla no se para en ella con el tabulador (Nativo/PantallaRocola.Foco.cs)
             }
 
             // Lo que mide de ancho una pastilla con ese contenido y ese alto. Lo usa el acomodo, que necesita
@@ -1531,7 +1531,7 @@ namespace Rocola
         // ponerla en la franja de abajo: asi, al sonar una cancion, tambien se ve DE QUE ES.
         //
         // Se mide sola: le da su ancho y su alto al acomodo, que es quien la coloca detras del artista.
-        private class GeneroView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): la firma de XP de RenderContent con un Graphics (su OnPaint) se quito del puente
+        private class GeneroView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): RenderContent recibe el lienzo (su OnPaint es Pinta)
         {
             private string texto = "";
             public string Texto
@@ -1544,18 +1544,18 @@ namespace Rocola
             private bool medido; private int anchoPide, altoPide;
             private SKPaint brocha; private FormatoTexto sfCen;   // EN LINUX: SolidBrush: el pincel de un color en un SKPaint; StringFormat: un FormatoTexto
 
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref brocha); sfCen = null; } }   // EN LINUX: SueltaDibujo(ref sfCen): un FormatoTexto no tiene nada que soltar; queda en null
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             public GeneroView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, StandardClick y StandardDoubleClick, los de fabrica de Control, que la pantalla conserva (IVista)
                 this.BackColor = Color.Transparent;
-                // EN LINUX: this.TabStop = false; -> ParaElTabulador = false (junto a Pinta): el hueco de la capa nace con ese TabStop
+                // EN LINUX: this.TabStop = false; -> ParaElTabulador = false (junto a Pinta): la pantalla no se para en ella con el tabulador (Nativo/PantallaRocola.Foco.cs)
             }
             private void OnFontChanged(EventArgs e) { caja.Invalidate(); medido = false; }   // EN LINUX: protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); ... }: lo llama el Font de esta vista (junto a Pinta) cuando cambia la que se ve, como Control.Font; base.OnFontChanged la repinta (Invalidate) y avisa FontChanged (nadie lo escucha)
 
@@ -1588,7 +1588,7 @@ namespace Rocola
         }
 
         // ==========  BARRA DE PROGRESO  ==========
-        private class ProgressView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): la firma de XP de RenderContent con un Graphics (su OnPaint) se quito del puente
+        private class ProgressView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); ya no es partial (como en XP): RenderContent recibe el lienzo (su OnPaint es Pinta)
         {
             private bool _neon;
             public bool Neon { get { return _neon; } set { if (_neon != value) { _neon = value; Invalidate(); } } }
@@ -1599,16 +1599,16 @@ namespace Rocola
 
             private SKPaint trackB; private SKPaint trackP;   // riel: colores fijos -> se cachean (se dibuja en cada reconstruccion de UI)   // EN LINUX: SolidBrush y Pen: SKPaint
 
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 // Solo recursos creados por esta vista: Font y portadas recibidas son prestadas.
                 try { if (disposing) { SueltaDibujo(ref trackB); SueltaDibujo(ref trackP); } }
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             public ProgressView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, TabStop, StandardClick y StandardDoubleClick, los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: this.SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer | SupportsTransparentBackColor, true): sin ventana propia no hay WM_ERASEBKGND, doble bufer ni comprobacion del fondo transparente: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, TabStop, StandardClick y StandardDoubleClick, los de fabrica de Control, que la pantalla conserva (IVista)
                 this.BackColor = Color.Transparent;
             }
 
@@ -1681,7 +1681,7 @@ namespace Rocola
         // ==========  LISTA DE CANCIONES (dibujada a mano, no ListBox nativo) ==========
         // Reemplaza al ListBox: asi el interior del disco se puede componer por GPU (un control nativo no se
         // puede poner sobre D3D). Es una VISTA de UNA pagina: la seleccion global la maneja el form (songSel).
-        private partial class SongListView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; en la ventana de la capa la pone su hueco (Plataforma/Anfitrion.cs), que la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (AcabadoGpu.cs, DiscoVivoGpu.cs)
+        private partial class SongListView : IVista, IDisposable   // EN LINUX: : Control -> sin herencia (port nativo, vistas-disco: W3a): una vista de la pantalla nativa (Nativo/IVista.cs) con su CajaVista; la pantalla la tiene en la lista de su ventana (Nativo/PantallaRocola.Vistas.cs), la pinta con Pinta y le da el raton como WinForms al control (Raton); partial como en XP (AcabadoGpu.cs, DiscoVivoGpu.cs)
         {
             public Func<int> GetCount;          // total de items (songItems.Count)
             public Func<int, string> GetText;   // texto del item i
@@ -1903,7 +1903,7 @@ namespace Rocola
 
             public SongListView()
             {
-                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, TabStop, StandardClick y StandardDoubleClick (el doble clic, abajo), los de fabrica de Control, que el hueco de la capa conserva
+                caja = new CajaVista(this); caja.RepintaConMedida = false;   // EN LINUX: SetStyle(AllPaintingInWmPaint | UserPaint | OptimizedDoubleBuffer, true): sin ventana propia no hay WM_ERASEBKGND ni doble bufer: la pinta su Pinta entera; SIN ResizeRedraw (no lo pone): al cambiar de medida no se pinta entera; Selectable, TabStop, StandardClick y StandardDoubleClick (el doble clic, abajo), los de fabrica de Control, que la pantalla conserva (IVista)
                 BackColor = Shade(DefaultAccent, 0.76);
             }
 
@@ -1923,7 +1923,7 @@ namespace Rocola
                 ClearFontDrawing();
                 Invalidate();
             }
-            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama su hueco al desecharse con la ventana (Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
+            void IDisposable.Dispose() { Dispose(true); } private void Dispose(bool disposing)   // EN LINUX: protected override void Dispose(bool disposing) de Control: la llama la pantalla al desecharse la ventana (PantallaRocola.Ventana.cs, DesechaVista: Control.Dispose desecha a los hijos) con disposing = true, como WinForms; sin finalizador no hay Dispose(false), que aqui no hacia nada
             {
                 try
                 {
@@ -1938,7 +1938,7 @@ namespace Rocola
                         SueltaAcabadoGpu();   // el velo y la clave de color de la lista transparente (solo con tarjeta)
                     }
                 }
-                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace su hueco despues de llamar aqui, en el mismo orden
+                finally { }   // EN LINUX: base.Dispose(disposing) (sacarla de la ventana, su handle, el aviso Disposed): lo hace la pantalla despues de llamar aqui, en el mismo orden (Nativo/PantallaRocola.Ventana.cs)
             }
 
             // ================= HOJEAR DENTRO DE UN DISCO =================
@@ -2065,7 +2065,7 @@ namespace Rocola
 
             public int RowsPerPage { get { int ih = Math.Max(1, RowH); return Math.Max(1, ClientSize.Height / ih); } }
 
-            public void Pinta(SKCanvas g) { RenderContent(g, false, Filtro.Bilineal, false); }   // EN LINUX: protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ } y OnPaint(e) { RenderContent(e.Graphics); }: la pinta la pantalla (IVista.Pinta) en su lienzo, fondo y contenido (el hueco de la capa no pinta fondo), con el estado del Graphics de un WM_PAINT (el de fabrica: sin copia, filtro bilineal, sin medio pixel)
+            public void Pinta(SKCanvas g) { RenderContent(g, false, Filtro.Bilineal, false); }   // EN LINUX: protected override void OnPaintBackground(PaintEventArgs e) { /* todo en OnPaint */ } y OnPaint(e) { RenderContent(e.Graphics); }: la pinta la pantalla (IVista.Pinta) en su lienzo, fondo y contenido (la pantalla no le pinta fondo), con el estado del Graphics de un WM_PAINT (el de fabrica: sin copia, filtro bilineal, sin medio pixel)
             private readonly CajaVista caja; public Rectangle Bounds { get { return caja.Bounds; } set { caja.Bounds = value; } } public int Left { get { return caja.Left; } set { caja.Left = value; } } public int Top { get { return caja.Top; } set { caja.Top = value; } } public int Width { get { return caja.Width; } set { caja.Width = value; } } public int Height { get { return caja.Height; } set { caja.Height = value; } } public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); } public bool Visible { get { return caja.Visible; } set { caja.Visible = value; } } public void Invalidate() { caja.Invalidate(); } public Size ClientSize { get { return new Size(caja.Width, caja.Height); } } private Color backColor = CajaPieza.ColorDeFondo; public Color BackColor { get { return backColor; } set { if (!value.IsEmpty && value.A < 255) throw new ArgumentException("Control does not support transparent background colors."); if (backColor.Equals(value)) return; backColor = value; caja.Invalidate(); } } private Rocola.Nativo.Letra font; public Rocola.Nativo.Letra Font { get { return font ?? CajaPieza.LetraDeFabrica; } set { Rocola.Nativo.Letra antes = Font; if (value == null ? font != null : (font == null || !Letras.Iguales(value, font))) font = value; if (value == null || !Letras.Iguales(antes, value)) OnFontChanged(EventArgs.Empty); } }   // EN LINUX: (el OnPaint de XP va en Pinta, arriba) lo que XP usa de este control por fuera y le daba Control: Bounds, Left, Top, Width, Height, SetBounds, Visible, Invalidate y ClientSize (con su CajaVista; el cliente de un control sin borde ni barras es su medida: lo leen esta clase y AcabadoGpu.cs), el BackColor: un campo propio que repinta al cambiar (Control.OnBackColorChanged) y, como Control sin SupportsTransparentBackColor, no admite un color con alfa; sin poner seria el de su dueno (ambiental): Form1 siempre lo pone antes de leerlo (lo pone tambien su constructor), y la Font: Font -> Letra (Nativo/Letras.cs, rotulos-y-letras), con lo de Control.Font: sin la suya, la del dueno (propiedad ambiental), que es la de la ventana, que XP nunca cambia: Control.DefaultFont, la letra de fabrica de XP, el mismo objeto (CajaPieza.LetraDeFabrica: Microsoft Sans Serif de 8,25 puntos); con Font.Equals (Letras.Iguales); al ponerla, la propia solo cambia si es otra letra (una igual deja el objeto de antes) y avisa si la que se ve cambia (resolved.Equals(value)) (Form1.cs y DiscoVivoGpu.cs la ponen)
 
             // Dibuja la pagina visible en cualquier Graphics (el control, o la textura de UI del modo GPU).
@@ -2264,17 +2264,17 @@ namespace Rocola
 
             private int RowIndexAt(int y) { int row = y / Math.Max(1, RowH); return PageStart + row; }
 
-            public void Raton(AvisoRaton que, Raton e)   // EN LINUX: protected override void OnMouseClick(MouseEventArgs e) y OnMouseDoubleClick: el raton de la vista (IVista.Raton), que el hueco de la capa o la pantalla le dan como WinForms al control (con StandardClick y StandardDoubleClick: el segundo clic da DobleClic y no Clic)
+            public void Raton(AvisoRaton que, Raton e)   // EN LINUX: protected override void OnMouseClick(MouseEventArgs e) y OnMouseDoubleClick: el raton de la vista (IVista.Raton), que la pantalla le da como WinForms al control (con StandardClick y StandardDoubleClick: el segundo clic da DobleClic y no Clic)
             { if (que == AvisoRaton.Clic) {   // EN LINUX: OnMouseClick
                 int idx = RowIndexAt(e.Y);
                 if (GetCount != null && idx >= 0 && idx < GetCount() && OnPick != null) OnPick(idx);
-                }   // EN LINUX: base.OnMouseClick(e): el aviso MouseClick lo da el hueco o la pantalla despues de Raton (PantallaRocola.AvisaOyentes)
+                }   // EN LINUX: base.OnMouseClick(e): el aviso MouseClick lo da la pantalla despues de Raton (PantallaRocola.AvisaOyentes)
             if (que == AvisoRaton.DobleClic) {   // EN LINUX: OnMouseDoubleClick
             // EN LINUX: protected override void OnMouseDoubleClick(MouseEventArgs e): en Raton, con DobleClic (arriba)
             {
                 int idx = RowIndexAt(e.Y);
                 if (GetCount != null && idx >= 0 && idx < GetCount() && OnActivate != null) OnActivate(idx);
-                } }   // EN LINUX: base.OnMouseDoubleClick(e): el aviso MouseDoubleClick (nadie lo escucha) lo daria el hueco despues de Raton
+                } }   // EN LINUX: base.OnMouseDoubleClick(e): el aviso MouseDoubleClick (nadie lo escucha) lo daria la pantalla despues de Raton
             }
         }
 

@@ -1,6 +1,6 @@
 // EL COMPOSITOR DE LA PANTALLA (port nativo, tanda 4, grupo pantalla-nativa: W2). Lo que en XP hacia Windows con las ventanas de la rocola
 // al ponerlas en la pantalla: en cada cuadro junta las capas, de abajo arriba, y presenta (KMS: el cambio de pagina con el barrido). Viene
-// del anfitrion de la transicion (Plataforma/Anfitrion.cs, que ya no compone: le da las capas) sin cambiar nada de lo que hace: el mismo
+// del anfitrion de la transicion (hoy Nativo/Anfitrion.cs, que ya no compone: le da las capas) sin cambiar nada de lo que hace: el mismo
 // programa de OpenGL, la misma mezcla, las mismas texturas que solo se suben cuando la capa cambio, la misma flecha y las mismas capturas.
 //
 // LAS CAPAS (CapaPantalla), en el orden en que se ven, de abajo arriba:
@@ -52,8 +52,6 @@ namespace Rocola
         internal int Composiciones;
         private static readonly bool trazaCapas = Environment.GetEnvironmentVariable("ROCOLA_TRAZA_CAPAS") == "1";
         private double ultimaTraza;
-        // la mano en lugar de la flecha (Cursors.Hand de lo que esta bajo el raton): lo dice quien da las capas
-        internal Func<bool> ConMano;
 
         internal CompositorPantalla(ISuperficie s)
         {
@@ -176,8 +174,7 @@ namespace Rocola
         private void Flecha()
         {
             if (!PantallaRocola.FlechaVisible) return;
-            Func<bool> m = ConMano;
-            bool mano = (m != null && m()) || Hoja.ManoBajoRaton;   // (la mano de las piezas de una hoja nativa)
+            bool mano = Hoja.ManoBajoRaton;   // (la mano de las piezas de una hoja nativa: Cursors.Hand de lo que esta bajo el raton; las vistas de la rocola no la usan)
             if (texFlecha == 0) { texFlecha = HazCursor(false); texMano = HazCursor(true); }
             Point p = PantallaRocola.Flecha;
             GL.UseProgram(programa);

@@ -4,12 +4,9 @@
 // Bounds, Visible, Left, Top, Width, Height, SetBounds e Invalidate) mas lo que la pantalla les pide: que se pinten (OnPaint) y el raton
 // (OnMouseDown, OnMouseClick...).
 //
-//   IVista       la vista: lo que XP usa de ella y lo que la pantalla le pide. Mientras dure la transicion, una vista de XP puede seguir
-//                heredando de Control de la capa (la oleada 3 les pone «, IVista» en la cabecera sin quitar la herencia): Bounds, Visible,
-//                Left, Top, Width, Height, SetBounds e Invalidate los da Control con su misma firma, y Pinta y Raton son de fabrica (Pinta
-//                la pinta la capa: PantallaRocola.PintaVista; el raton se lo sigue dando la capa a sus On*). Una vista que ya no hereda
-//                (oleadas 5 y 6) los implementa con su CajaVista y sobrescribe Pinta y Raton.
-//   AvisoRaton   que le paso al raton (WM_LBUTTONDOWN, WM_MOUSEMOVE...): los mismos nombres y numeros que escriben las trazas de la capa
+//   IVista       la vista: lo que XP usa de ella y lo que la pantalla le pide. Ninguna hereda de nada: Bounds, Visible, Left, Top, Width,
+//                Height, SetBounds e Invalidate los implementa con su CajaVista, y Pinta y Raton son los On* de XP.
+//   AvisoRaton   que le paso al raton (WM_LBUTTONDOWN, WM_MOUSEMOVE...): los mismos nombres y numeros que escriben las trazas de la referencia
 //                (TrazaVentanas.EventoRaton: baja, clic, mueve, entra, sale, doble, rueda, arriba).
 //   (panel-del-disco) Una vista puede CONTENER a otras (el panel del disco: BgPanel con la lista, el cubo y la barra de paginas): lo que
 //                XP hacia con Panel.Controls.Add es PantallaRocola.AgregaVista(panel, hija), con las reglas de un Panel de WinForms: la hija
@@ -31,7 +28,7 @@ using System.Drawing;
 using System.Runtime.CompilerServices;
 using SkiaSharp;
 
-// (pruebas) la prueba de la vista falsa junto a un control de la capa (Pruebas/Ventanas/PantallaVistas) usa la pantalla por dentro
+// (pruebas) la prueba de las vistas falsas en la lista de la ventana (Pruebas/Ventanas/PantallaVistas) usa la pantalla por dentro
 [assembly: InternalsVisibleTo("PruebasVistas")]
 
 namespace Rocola
@@ -53,19 +50,18 @@ namespace Rocola
         bool Visible { get; set; }
         // HAY QUE PINTARLA OTRA VEZ (Control.Invalidate: el WM_PAINT llega despues, cuando no hay encargos ni entrada)
         void Invalidate();
-        // PINTARSE (OnPaintBackground y OnPaint) en g, con el origen en su esquina y recortada a lo suyo que se ve. De fabrica (una vista
-        // que aun es Control de la capa): la pinta la capa.
-        void Pinta(SKCanvas g) { PantallaRocola.PintaVistaDeLaCapa(this, g); }
+        // PINTARSE (OnPaintBackground y OnPaint) en g, con el origen en su esquina y recortada a lo suyo que se ve.
+        void Pinta(SKCanvas g);
         // EL RATON (los On* del raton de Control, en el orden de WinForms: WmMouseDown, WmMouseUp -Click, MouseClick o DoubleClick,
         // MouseDoubleClick, y despues MouseUp: Control.cs:12673-12743-, WmMouseMove, WmMouseEnter/Leave y WmMouseWheel). e en las
         // coordenadas de la vista; en la rueda, e.Handled = true para que no siga al dueno. De fabrica, nada (Control.OnMouse*: solo el aviso).
         void Raton(AvisoRaton que, Raton e) { }
         // SI TOMA EL FOCO DEL TECLADO AL HACERLE CLIC (ControlStyles.Selectable: Control lo trae encendido, Panel y Label lo apagan). Lo mira
-        // el hueco de la capa de la transicion (Plataforma/Anfitrion.cs) y, en la lista nativa, el tabulador (PantallaRocola.Foco.cs: CanSelect).
+        // la pantalla: el clic (PantallaRocola.Vistas.cs) y el tabulador (PantallaRocola.Foco.cs: CanSelect).
         bool Seleccionable { get { return true; } }
         // SI EL TABULADOR SE PARA EN ELLA (Control.TabStop: true de fabrica, Control.cs, TabStop; SelectNextControl con tabStopOnly solo elige
-        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee el hueco de la capa
-        // (Plataforma/Anfitrion.cs) para el tabulador de su ventana; y, en la lista nativa, la pantalla (PantallaRocola.Foco.cs).
+        // los que lo tienen). XP se lo quita a algunas vistas (AyudaCasillaGpu.cs: «TabStop = false»). Lo lee la pantalla para el
+        // tabulador de la ventana (PantallaRocola.Foco.cs).
         bool ParaElTabulador { get { return true; } }
         // (gpupanel-sin-control) SI LA PINTA LA TARJETA: en XP, un control con un dispositivo de Direct3D 9 que presenta en su ventana (el
         // GpuPanel: CreateDevice con su Handle, Present en el). La pantalla no la pinta por procesador: compone, en su sitio y en su lugar del
@@ -74,7 +70,7 @@ namespace Rocola
         bool DeLaTarjeta { get { return false; } }
         // SU FORMA (Control.Region: la ventana es solo esa forma -SetWindowRgn-), en sus coordenadas; null, el rectangulo entero (de fabrica).
         // XP solo se la pone al aviso sin tarjeta (lblToast: Nativo/RotuloVista.cs). La pantalla la usa al pintar, al recortar a las de debajo
-        // y con el raton (PantallaRocola.Vistas.cs); el hueco de la capa la pasa a su Region (Plataforma/Anfitrion.cs).
+        // y con el raton (PantallaRocola.Vistas.cs).
         SKPath Forma { get { return null; } }
     }
 

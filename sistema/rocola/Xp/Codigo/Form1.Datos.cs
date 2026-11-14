@@ -7,7 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing; using SkiaSharp;   // EN LINUX: sin GDI+ (Plataforma/Dibujo2D.cs): este archivo no dibuja; la instantanea del buscador (winSnap) es un SKBitmap
+using System.Drawing; using SkiaSharp;   // EN LINUX: sin GDI+: este archivo no dibuja; la instantanea del buscador (winSnap) es un SKBitmap
 using System.Globalization;
 using System.IO;
 using System.Reflection;

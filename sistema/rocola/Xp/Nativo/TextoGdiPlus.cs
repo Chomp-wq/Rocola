@@ -1,6 +1,6 @@
 // EL TEXTO DE GDI+ (DrawString y MeasureString de XP), NATIVO (port nativo, el dibujo; 8-11-2026). Skia solo pinta una tira de letras en
 // una linea base; como GDI+ acomoda un texto en su caja (margenes, cortes, renglones, recorte con puntos, alineado) lo hace esto, con las
-// reglas de Plataforma/Dibujo2D.cs (revisadas el 8-11-2026 con la documentacion de StringFormat y las pruebas de Wine que pasan en Windows,
+// reglas del Dibujo2D.cs de la capa de la transicion (ya borrada; sigue en la referencia) (revisadas el 8-11-2026 con la documentacion de StringFormat y las pruebas de Wine que pasan en Windows,
 // dlls/gdiplus/tests/graphics.c: test_measure_string y test_string_functions), movidas aqui. Sin estado de dibujo: el modo de letra, el
 // pincel, la copia y el medio pixel llegan como parametros; la matriz y el recorte son los del SKCanvas.
 using System;

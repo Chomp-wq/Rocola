@@ -1,5 +1,5 @@
 using System;
-using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la paleta se saca de los puntos de un SKBitmap con lo nativo (Xp/Nativo), no con GDI+; quien aun trae un Bitmap de la capa (Form1.Fondo.cs y Form1.Portadas.cs) llega por el puente (Plataforma/Puente.pared.cs: ExtractCoverPalette)
+using System.Drawing; using Rocola.Nativo; using SkiaSharp;   // EN LINUX: la paleta se saca de los puntos de un SKBitmap con lo nativo (Xp/Nativo), no con GDI+
 
 namespace Rocola
 {
@@ -10,7 +10,7 @@ namespace Rocola
 #if ROCOLA_GPU
         // Solo al entrar una portada en la cache: 1024 muestras, 27 grupos, hasta 8 tonos.
         // Incluye blancos/grises/negros y colores minoritarios; no inventa saturacion.
-        internal static Color[] ExtractCoverPalette(SKBitmap bitmap, FormatoMapa formato)   // EN LINUX: los puntos de la portada (un SKBitmap, siempre BGRA premultiplicado) y el formato que tenia el Bitmap en XP (bitmap.PixelFormat: de el depende como se leen; Nativo/FormatoMapa.cs); quien aun pasa un Bitmap llega por el puente (Plataforma/Puente.pared.cs)
+        internal static Color[] ExtractCoverPalette(SKBitmap bitmap, FormatoMapa formato)   // EN LINUX: los puntos de la portada (un SKBitmap, siempre BGRA premultiplicado) y el formato que tenia el Bitmap en XP (bitmap.PixelFormat: de el depende como se leen; Nativo/FormatoMapa.cs)
         {
             if (bitmap == null) return new Color[0];
             int[] count = new int[27], red = new int[27], green = new int[27], blue = new int[27];

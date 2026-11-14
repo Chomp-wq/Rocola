@@ -142,7 +142,7 @@ namespace Rocola
             box = new Rectangle(left, top, Math.Max(0, right - left), Math.Max(0, lblNow.Top + baja - 4 - top));
             return box.Width >= TarjetaSiguienteMin && box.Height >= 28 ? box : Rectangle.Empty;
         }
-        private void PintaTituloCompacto(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, bool grande)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja; EnsureUiBotOverlay (Form1.Video.cs) la llama por el puente
+        private void PintaTituloCompacto(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio, bool grande)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja; EnsureUiBotOverlay (Form1.Video.cs) la llama directo
         {
             if (lblNowTop == null) return;
             Rectangle box = CajaSiguienteCompacto();
@@ -151,7 +151,7 @@ namespace Rocola
             if (grande) { r.Height += BajaArtistaLejos(); PintaTituloEnCaja(g, suave, ajuste, copia, medio, lblNowTop, r); }   // EN LINUX: con el lienzo y su estado
             else PintaRenglonLejos(g, suave, ajuste, copia, medio, lblNowTop.Text, lblNowTop.Font, lblNowTop.ForeColor, r, Alinea.Cerca);   // EN LINUX: con el lienzo y su estado; la Letra del rotulo, directo; Near es Alinea.Cerca
         }
-        private void PintaSiguienteCompacto(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja; EnsureUiBotOverlay (Form1.Video.cs) la llama por el puente
+        private void PintaSiguienteCompacto(SKCanvas g, bool suave, AjusteLetra ajuste, bool copia, bool medio)   // EN LINUX: el lienzo de Skia y el estado del Graphics de la franja; EnsureUiBotOverlay (Form1.Video.cs) la llama directo
         {
             string next = TextoSiguiente();
             if (next.Length == 0) return;
