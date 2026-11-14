@@ -23,13 +23,13 @@ SOLEST=$RUN/rocola-soloist/estado
 URL=${SOLOIST_URL:-https://soloist-builds.spotifycdn.com/soloist_release_x86_64.tar.gz}
 APRESOLVE=${ROCOLA_SPOTIFY_APRESOLVE:-https://apresolve.spotify.com/?type=accesspoint}
 
-clave() { tr -d '\r' < "$OSF" 2>/dev/null | sed '1s/^\xef\xbb\xbf//' | sed -n "s/^[ \t]*$1[ \t]*=[ \t]*\(.*\)/\1/p" | sed 's/[ \t]*$//' | tail -1; }
+clave() { [ -f "$OSF" ] || return 0; tr -d '\r' < "$OSF" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | sed -n "s/^[ \t]*$1[ \t]*=[ \t]*\(.*\)/\1/p" | sed 's/[ \t]*$//' | tail -1; }
 modo() { [ "$(clave spotify)" = 1 ] && echo encendido || echo apagado; }
 si_no() { case "$1" in 1|si|true) echo si ;; 0|no|false) echo no ;; "") echo "?" ;; *) echo "$1" ;; esac; }
 # el rocola-xp abierto como rocola (no el importador)
 rocola_pid() {
 	for p in $(pidof rocola-xp); do
-		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --importa-xp && continue
+		tr '\0' '\n' 2>/dev/null < "/proc/$p/cmdline" | grep -qx -- --importa-xp && continue
 		echo "$p"; return
 	done
 }
@@ -60,6 +60,8 @@ pon_clave() {
 	[ -s "$OSF" ] && cp -p "$OSF" "$OSF.bak"
 	mv -f "$n" "$OSF" && sync
 }
+# lo que Soloist guarda en su carpeta de datos (la identidad de la bocina y la sesion de la cuenta), sin lo que deja mientras corre
+guardado() { ls -A "$SDATOS" 2>/dev/null | grep -v -x -e soloist.pid -e ws.addr -e ws.port | grep -q .; }
 llave_ok() { v=$(head -n 1 "$LLAVE" 2>/dev/null | tr -d ' \t\r\n'); [ -n "$v" ] && case "$v" in *[!A-Za-z0-9._~+/=:-]*) false ;; *) true ;; esac; }
 api_ok() { grep -q '^client_id=.' "$APIF" 2>/dev/null && grep -q '^client_secret=.' "$APIF" 2>/dev/null; }
 lee() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1; }
@@ -153,7 +155,7 @@ encender|apagar)
 		echo "Modo Spotify ENCENDIDO (spotify=1 en $OSF). Se aplica al volver a la rocola (Ctrl+Alt+F1)."
 		llave_ok || echo "Falta la llave de Soloist: pon la memoria USB con rocola_spotify.txt y escribe «spotify llave» (o la rocola la toma sola de la USB en 30 s)."
 		api_ok || echo "Falta la llave de la API web (rocola_spotify_api.txt): sin ella la rocola no puede buscar en Spotify."
-		ls "$SDATOS" 2>/dev/null | grep -q . || echo "Falta emparejar la cuenta una vez: «spotify emparejar» (o, con la rocola abierta, elige «$(clave spotify_nombre | grep . || echo Rocola)» en la app de Spotify)."
+		guardado || echo "Falta emparejar la cuenta una vez: «spotify emparejar» (o, con la rocola abierta, elige «$(clave spotify_nombre | grep . || echo Rocola)» en la app de Spotify)."
 	else echo "Modo Spotify APAGADO (spotify=0 en $OSF). Se aplica al volver a la rocola (Ctrl+Alt+F1): lo pagado de Spotify que no sono vuelve como credito."; fi
 	[ -f "$APAGADO" ] && echo "OJO: Rocola OS esta APAGADO de emergencia ($APAGADO): mientras exista, no corre nada de Rocola OS (Spotify tampoco)."
 	exit 0 ;;
@@ -220,7 +222,12 @@ prueba)
 	if api_ok; then b "la llave de la API web esta puesta"; else m "falta la llave de la API web (sin ella no se puede buscar en Spotify)"; fi
 	if [ -s "$PULSO/libpulse.so.0" ]; then b "el puente de sonido (rocola-pulso) esta en $PULSO"; else m "falta el puente de sonido: $PULSO/libpulse.so.0 (el sistema no lo trae)"; fi
 	anillo; r=$?; [ $r = 0 ] && bien=$((bien + 1)); [ $r = 1 ] && mal=$((mal + 1))
-	if ls "$SDATOS" 2>/dev/null | grep -q .; then b "hay una sesion guardada (emparejada alguna vez)"; else m "no hay sesion guardada: falta emparejar una vez («spotify emparejar»)"; fi
+	case "$(lee sesion "$XPEST")" in
+		1|si|true) b "la cuenta esta emparejada (lo dice la rocola)" ;;
+		0|no|false) m "Soloist no tiene cuenta: falta emparejar («spotify emparejar», o elegir la bocina en la app de Spotify)" ;;
+		*) if guardado; then echo "  --    hay datos guardados de Soloist (si la cuenta esta, se ve con la rocola abierta)"
+		   else m "Soloist nunca se ha emparejado: falta hacerlo una vez («spotify emparejar»)"; fi ;;
+	esac
 	if [ -s "$SDATOS/ws.port" ]; then if ws; then bien=$((bien + 1)); else mal=$((mal + 1)); fi
 	else echo "  --    Soloist no esta en marcha (corre solo con el modo encendido y la rocola abierta): su WebSocket no se puede probar."; fi
 	[ -f "$XPEST" ] && lo_de_la_rocola

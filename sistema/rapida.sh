@@ -130,7 +130,7 @@ if con_pulso && { [ ! -f "$M/usr/lib/rocola-pulso/libpulse.so.0" ] || cambio sis
 	for v in $pide; do echo "$hay" | grep -qx "$v" || { echo "rapida.sh: rocola-pulso pide $v y el sistema no la tiene" >&2; exit 1; }; done
 	strip --strip-unneeded "$L"
 	sudo install -D -m 755 "$L" "$M/usr/lib/rocola-pulso/libpulse.so.0"
-	echo "rocola-pulso: libpulse.so.0 con las $n funciones que busca Soloist; glibc hasta $(echo "$pide" | sort -V | tail -1) (el sistema trae hasta $(echo "$hay" | sort -V | tail -1))"
+	echo "rocola-pulso: libpulse.so.0 con las $n funciones que busca Soloist; glibc hasta $(echo "$pide" | sort -V | tail -1 | grep . || echo '(ninguna)') (el sistema trae hasta $(echo "$hay" | sort -V | tail -1))"
 fi
 
 # 6. LA VERSION

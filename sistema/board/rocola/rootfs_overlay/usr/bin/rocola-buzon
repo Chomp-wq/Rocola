@@ -78,7 +78,7 @@ mira_llave() {
 	if [ -n "$ahoraB" ] && [ "$(leer "$TMP/busco_llave")" = "$ahoraB" ]; then
 		s=$(busca_llave rocola_spotify.txt)
 		if [ -n "$s" ]; then
-			v=$(tr -d '\r' < "$s" | sed '1s/^\xef\xbb\xbf//' | tr -d ' \t' | grep -v '^$' | head -n 1); rm -f "$TMP/llave.txt"
+			v=$(tr -d '\r' < "$s" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | tr -d ' \t' | grep -v '^$' | head -n 1); rm -f "$TMP/llave.txt"
 			case "$v" in *[!A-Za-z0-9._~+/=:-]*) v= ;; esac; [ ${#v} -ge 8 ] && [ ${#v} -le 1024 ] || v=
 			if [ -n "$v" ] && [ "$v" != "$(head -n 1 "$XPD/rocola_spotify_llave.txt" 2>/dev/null | tr -d ' \t\r\n')" ]; then
 				mkdir -p "$XPD" && ( umask 077; printf '%s\n' "$v" > "$XPD/.rocola_spotify_llave.txt.n" ) && mv -f "$XPD/.rocola_spotify_llave.txt.n" "$XPD/rocola_spotify_llave.txt" && sync \
@@ -88,7 +88,7 @@ mira_llave() {
 		fi
 		s=$(busca_llave rocola_spotify_api.txt)
 		if [ -n "$s" ]; then
-			( umask 077; tr -d '\r' < "$s" | sed '1s/^\xef\xbb\xbf//' \
+			( umask 077; tr -d '\r' < "$s" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' \
 				| sed -n -E 's/^[[:space:]]*(client_id|client_secret|refresh_token)[[:space:]]*=[[:space:]]*([A-Za-z0-9._~+\/=:-]+)[[:space:]]*$/\1=\2/p' \
 				| awk -F= '!visto[$1]++' > "$TMP/.api.v" )
 			rm -f "$TMP/llave.txt"
@@ -180,7 +180,7 @@ estado_json() {
 		--arg registro "$(cola 60 "$DATOS/rocola.txt")" \
 		--arg spotify "$(if [ -f "$XPD/rocola_spotify.txt" ]; then cola 15 "$XPD/rocola_spotify.txt"; else cola 15 "$DATOS/rocola_spotify.txt"; fi)" \
 		--arg soloist "$(cola 15 "$XPD/rocola_soloist.txt")" \
-		--arg sp_modo "$(tr -d '\r' < "$XPD/rocola_os.txt" 2>/dev/null | sed -n 's/^[ \t]*spotify[ \t]*=[ \t]*//p' | tail -1)" \
+		--arg sp_modo "$(tr -d '\r' 2>/dev/null < "$XPD/rocola_os.txt" | sed -n 's/^[ \t]*spotify[ \t]*=[ \t]*//p' | tail -1)" \
 		--arg sp_llave "$([ -s "$XPD/rocola_spotify_llave.txt" ] && echo si)" --arg sp_api "$([ -s "$XPD/rocola_spotify_api.txt" ] && echo si)" \
 		--arg sp_vigilante "$(grep -v '^cambio=' "$RUN/rocola-soloist/estado" 2>/dev/null)" --arg sp_rocola "$(leer "$RUN/rocola-xp/spotify/estado")" \
 		--arg nucleo "$(dmesg 2>/dev/null | grep -iE 'error|fail|warn|oops|bug|i/o' | tail -n 25)" \

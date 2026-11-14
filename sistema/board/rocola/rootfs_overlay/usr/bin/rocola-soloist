@@ -98,7 +98,7 @@ lee_llave() {
 huella_llave() { md5sum "$LLAVE" 2>/dev/null | cut -c1-32; }
 # normaliza_llave ARCHIVO: la primera linea con algo, sin espacios ni marca de UTF-8; vacio si no parece una llave (nunca se ensena)
 normaliza_llave() {
-	v=$(tr -d '\r' < "$1" 2>/dev/null | sed '1s/^\xef\xbb\xbf//' | tr -d ' \t' | grep -v '^$' | head -n 1)
+	v=$(tr -d '\r' 2>/dev/null < "$1" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | tr -d ' \t' | grep -v '^$' | head -n 1)
 	case "$v" in *[!A-Za-z0-9._~+/=:-]*) v= ;; esac
 	[ ${#v} -ge 8 ] && [ ${#v} -le 1024 ] || v=
 	printf '%s' "$v"
@@ -106,7 +106,7 @@ normaliza_llave() {
 # normaliza_api ARCHIVO: solo client_id=, client_secret= y refresh_token= (la primera de cada una), sin espacios; vacio si falta
 # client_id o client_secret
 normaliza_api() {
-	tr -d '\r' < "$1" 2>/dev/null | sed '1s/^\xef\xbb\xbf//' \
+	tr -d '\r' 2>/dev/null < "$1" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' \
 		| sed -n -E 's/^[[:space:]]*(client_id|client_secret|refresh_token)[[:space:]]*=[[:space:]]*([A-Za-z0-9._~+\/=:-]+)[[:space:]]*$/\1=\2/p' \
 		| awk -F= '!visto[$1]++' > "$AQUI/.api.n" 2>/dev/null
 	if grep -q '^client_id=' "$AQUI/.api.n" && grep -q '^client_secret=' "$AQUI/.api.n"; then
@@ -201,7 +201,8 @@ tar_actual() {
 	done
 	[ -n "$mejor" ] && echo "$mejor"
 }
-trae_soloist() { gzip -dc "$1" 2>/dev/null | tar -tf - 2>/dev/null | grep -qx -e soloist -e ./soloist; }
+# el .tar.gz esta entero (gzip -t: uno cortado a medias no pasa) y trae «soloist»
+trae_soloist() { gzip -t "$1" 2>/dev/null && gzip -dc "$1" 2>/dev/null | tar -tf - 2>/dev/null | grep -qx -e soloist -e ./soloist; }
 # baja [forzada]: el ultimo de Spotify. Sin «forzada», solo si es mas nuevo que el que hay (If-Modified-Since con su fecha: curl -R le pone
 # la del servidor). Lo bajado va a un .t; se comprueba que el tar trae «soloist»; el que habia pasa a soloist.anterior.tar.gz. Si algo
 # falla, se sigue con el que habia. 0 si hay uno usable al acabar.
@@ -225,7 +226,7 @@ baja_ya() {
 	r=$?; c=$(cat "$AQUI/curl.codigo" 2>/dev/null)
 	[ -n "$PARAR" ] && { rm -f "$t"; return 1; }
 	if [ $r != 0 ]; then
-		rm -f "$t"; falla "no se pudo bajar el programa de Spotify (curl $r, HTTP ${c:-000}: $(head -c 200 "$AQUI/curl.err" | tr '\n' ' '))"
+		rm -f "$t"; falla "no se pudo bajar el programa de Spotify (curl $r, HTTP ${c:-000}: $(tail -n 1 "$AQUI/curl.err" | head -c 200))"
 		[ -n "$(tar_actual)" ]; return
 	fi
 	if [ "$c" = 304 ] || [ ! -s "$t" ]; then rm -f "$t"; apunta "El programa de Spotify ya es el ultimo"; [ -n "$(tar_actual)" ]; return; fi
@@ -241,15 +242,19 @@ baja_ya() {
 }
 # info_de TAR: lo que se sabe de el, guardado al lado (soloist.info: version, compilado, caduca, fuente)
 info_de() { echo "${1%.tar.gz}.info"; }
+# dias_hasta AAAA-MM-DD: cuantos dias de calendario faltan desde hoy (0 = caduca hoy; -1 = ya caduco)
+dias_hasta() {
+	c=$(date -d "$1 00:00" +%s 2>/dev/null) || return 1; [ -n "$c" ] || return 1
+	h=$(date -d "$(date +%Y-%m-%d) 00:00" +%s); d=$(( (c - h + 43200) / 86400 )); [ $d -lt 0 ] && d=-1; echo $d
+}
 lee_info() {
 	VERSION=$(sed -n 's/^version=//p' "$1" 2>/dev/null); CADUCA=$(sed -n 's/^caduca=//p' "$1" 2>/dev/null)
-	c=$(date -d "$CADUCA 00:00" +%s 2>/dev/null)
-	if [ -n "$c" ]; then DIAS=$(( (c - $(ahora)) / 86400 )); [ $(( c - $(ahora) )) -lt 0 ] && DIAS=-1; else DIAS=; fi
+	DIAS=$(dias_hasta "$CADUCA")
 }
 # prepara: saca el programa a /run (en memoria: nunca se ejecuta desde el disco NTFS) y averigua su version y cuando caduca:
 # «soloist --version» (la fecha de compilacion, si la dice); si no, la fecha del .tar.gz bajado (la del servidor) mas 90 dias.
 # BIN: lo que se arranca. Con SOLOIST_BIN, ese tal cual (no se baja ni se saca nada).
-de_de() { echo "$1 $(date -r "$1" +%s 2>/dev/null) $(wc -c < "$1" 2>/dev/null)"; }   # (de que .tar.gz salio lo que hay en /run)
+de_de() { echo "$1 $(md5sum 2>/dev/null < "$1" | cut -c1-32)"; }   # (de que .tar.gz salio lo que hay en /run: su ruta y su contenido)
 # saca TAR: el programa (y su CHANGELOG.md) a $AQUI/bin
 saca() {
 	rm -rf "$AQUI/bin.n"; mkdir -p "$AQUI/bin.n" "$AQUI/bin"
@@ -300,7 +305,7 @@ version_de() {
 	if [ -z "$comp" ]; then f=$(echo "$out" | grep -o -E '\b1[6-9][0-9]{8}\b' | head -1); [ -n "$f" ] && comp=$f && fuente=version; fi
 	if [ -z "$comp" ] && [ -n "$2" ]; then comp=$(date -r "$2" +%s 2>/dev/null) && fuente=bajada; fi
 	if [ -n "$comp" ]; then
-		c=$(( comp + 90 * 86400 )); CADUCA=$(date -d "@$c" +%Y-%m-%d); DIAS=$(( (c - $(ahora)) / 86400 )); [ $(( c - $(ahora) )) -lt 0 ] && DIAS=-1
+		c=$(( comp + 90 * 86400 )); CADUCA=$(date -d "@$c" +%Y-%m-%d); DIAS=$(dias_hasta "$CADUCA")
 	else CADUCA=; DIAS=; fi
 	[ "$VR" = 10 ] && DIAS=-1
 	[ -n "$2" ] && { echo "version=$VERSION"; echo "compilado=$( [ -n "$comp" ] && date -d "@$comp" +%Y-%m-%d)"; echo "caduca=$CADUCA"; echo "fuente=$fuente"; } > "$(info_de "$2")" 2>/dev/null
@@ -342,7 +347,7 @@ huerfanos() {
 	for c in /proc/[0-9]*/cmdline; do
 		p=${c#/proc/}; p=${p%/cmdline}
 		[ "$p" = "$$" ] && continue
-		l=$(tr '\0' '\n' < "$c" 2>/dev/null) || continue
+		l=$(tr '\0' '\n' 2>/dev/null < "$c") || continue
 		echo "$l" | grep -qx -- "$SDATOS" || continue
 		echo "$l" | grep -qx -e -n -e --device-name || continue
 		echo "$p"
@@ -540,14 +545,15 @@ cuenta_estado() {
 	else echo "Programa de Spotify: no esta bajado todavia (se baja solo al encender el modo; o «spotify bajar»)."; fi
 	if [ -s "$LLAVE" ]; then echo "Llave de Soloist: puesta."; else echo "Llave de Soloist: FALTA."; fi
 	if [ -s "$APIF" ]; then echo "Llave de la API web: puesta$(grep -q '^refresh_token=' "$APIF" && echo ', con tu cuenta (refresh_token)')."; else echo "Llave de la API web: falta (sin ella no se puede buscar en Spotify desde la rocola)."; fi
-	if ls "$SDATOS" 2>/dev/null | grep -q .; then echo "Sesion guardada de Soloist: hay datos en $SDATOS."; else echo "Sesion guardada de Soloist: ninguna (falta emparejar una vez)."; fi
+	if ls -A "$SDATOS" 2>/dev/null | grep -v -x -e soloist.pid -e ws.addr -e ws.port | grep -q .; then echo "Datos de Soloist (la bocina y la cuenta): guardados en $SDATOS."
+	else echo "Datos de Soloist: ninguno (nunca se ha emparejado: falta hacerlo una vez)."; fi
 }
 # toma el candado (para emparejar u olvidar con Soloist parado): espera hasta 30 s a que el vigilante acabe
 toma_candado() {
 	mkdir -p "$AQUI"; exec 9>> "$AQUI/candado"
 	i=0; while ! flock -n 9; do
 		[ $i = 0 ] && echo "Soloist esta en marcha (la rocola lo tiene abierto): esperando hasta 30 s a que se cierre..."
-		i=$((i + 1)); [ $i -ge 30 ] && return 1; sleep 1
+		i=$((i + 1)); [ $i -ge "${ROCOLA_SOLOIST_CANDADO:-30}" ] && return 1; sleep 1
 	done
 	quita_huerfanos
 }
@@ -585,9 +591,13 @@ case "$1" in
 corre) HABLA=; corre ;;
 baja)
 	mkdir -p "$AQUI"; trap 'PARAR=senal' TERM INT
-	ERROR=; if baja; then prepara >/dev/null 2>&1; echo "Programa de Spotify al dia: $(tar_actual)${VERSION:+ (version $VERSION${CADUCA:+, caduca el $CADUCA})}"
-		exit 0
-	else echo "No se pudo poner el programa de Spotify."; exit 1; fi ;;
+	ERROR=; baja; r=$?
+	if [ -n "$ERROR" ]; then
+		if [ -n "$(tar_actual)" ]; then echo "No se pudo bajar uno nuevo: se sigue con el que habia ($(tar_actual))."; else echo "No hay programa de Spotify."; fi
+		exit 1
+	fi
+	prepara >/dev/null 2>&1; echo "Programa de Spotify al dia: $(tar_actual)${VERSION:+ (version $VERSION${CADUCA:+, caduca el $CADUCA})}"
+	exit $r ;;
 estado) cuenta_estado ;;
 emparejar) emparejar ;;
 olvidar)
@@ -600,6 +610,7 @@ llave) mkdir -p "$AQUI"; importa_llaves cambia; r=$?
 	exit $r ;;
 version)   # (para «spotify prueba»: saca el programa y dice si contesta a --version)
 	mkdir -p "$AQUI"; prepara || { echo "no hay programa de Spotify bajado"; exit 1; }
+	version_de "$BIN" ""; vr=$VR; [ -z "$SOLOIST_BIN" ] && lee_info "$(info_de "$PROGRAMA")"; VR=$vr   # (la fecha, la guardada)
 	echo "codigo=$VR"; echo "version=$VERSION"; echo "caduca=$CADUCA"; echo "dias=$DIAS"; echo "programa=$PROGRAMA"
 	contesta ;;
 pon-llave)

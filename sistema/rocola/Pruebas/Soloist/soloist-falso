@@ -1,0 +1,50 @@
+#!/bin/sh
+# UN SOLOIST FALSO (las pruebas de rocola-soloist y «spotify»; el de verdad NUNCA se ejecuta fuera del A4). prueba.sh lo mete en cada
+# .tar.gz de mentira cambiando @VER@ y @DIAS@. Apunta en /tmp/soloist.log como lo llamaron (con la hora en milesimas desde que prendio la
+# maquina, su entorno y como acabo; ese archivo es de la prueba: lleva la llave a proposito, para comprobar que se la pasaron). Dice por
+# su salida lo que diria uno de verdad, con una linea que lleva la llave (la bitacora de rocola-soloist no la debe apuntar) y «client
+# expires in N days».
+#   --version            «Spotify Soloist VER», «Build: FECHA» (si /tmp/soloist.sin_fecha no esta) y sale con 0; con 1 si esta
+#                        /tmp/soloist.version_falla
+#   ctl status           lo que diria «soloist ctl status»
+#   -p (emparejar)       espera 1 s, deja una sesion en -D y sale con lo de /tmp/soloist.par (0 si no esta)
+#   (la bocina)          /tmp/soloist.modo: «sale N» (sale con N enseguida), «lento N» (abre su WebSocket a los N s), «sin_ws» (nunca
+#                        lo abre), «terco» (no atiende SIGTERM); sin el archivo, normal. Si VER esta en /tmp/soloist.caducadas, sale con
+#                        10 (caducado). El WebSocket: ws.addr y ws.port en -D (el puerto del servidor de mentira, /tmp/ws.puerto).
+VER=@VER@
+DIAS=@DIAS@
+L=/tmp/soloist.log
+ms() { awk '{printf "%d", $1 * 1000}' /proc/uptime; }
+apunta() { echo "soloist $VER: [$(ms)] $*" >> $L; }
+apunta "args: $*"
+case "$1" in
+--version|-V)
+	[ -f /tmp/soloist.version_falla ] && exit 1
+	echo "Spotify Soloist $VER"
+	[ -f /tmp/soloist.sin_fecha ] || echo "Build: $(date -d "@$(( $(date +%s) - (90 - DIAS) * 86400 ))" +%Y-%m-%d) 12:00:00 UTC (falso)"
+	echo "Platform: linux x86_64"
+	exit 0 ;;
+ctl) echo "Daemon: running (pid falso)"; echo "WebSocket: available"; echo "Logged in: yes"; echo "Active device: no"; exit 0 ;;
+esac
+D=; K=; P=
+while [ $# -gt 0 ]; do case "$1" in -D) D=$2; shift ;; -k) K=$2; shift ;; -p) P=1 ;; esac; shift; done
+apunta "env LD_LIBRARY_PATH=$LD_LIBRARY_PATH ANILLO=$ROCOLA_SPOTIFY_ANILLO TRAZA=$ROCOLA_PULSO_TRAZA HOME=$HOME pgid=$(awk '{print $5}' /proc/$$/stat) nice=$(awk '{print $19}' /proc/$$/stat)"
+echo "INFO Spotify Soloist $VER (falso) arrancando"
+echo "DEBUG la llave es $K (una linea que la bitacora no debe guardar)"
+echo "INFO client expires in $DIAS days"
+if [ -n "$P" ]; then
+	echo "Waiting for Spotify Connect login (falso)"; sleep 1
+	mkdir -p "$D"; echo sesion > "$D/sesion.falsa"
+	r=$(cat /tmp/soloist.par 2>/dev/null); apunta "emparejado, sale con ${r:-0}"; exit "${r:-0}"
+fi
+grep -qx "$VER" /tmp/soloist.caducadas 2>/dev/null && { echo "ERROR client expired, please update to a newer version. Exiting with exit code 10" >&2; apunta "sale con 10 (caducado)"; exit 10; }
+set -- $(cat /tmp/soloist.modo 2>/dev/null)
+case "$1" in
+sale) echo "ERROR algo fallo (falso)" >&2; apunta "sale con $2"; exit "$2" ;;
+terco) trap 'apunta "SIGTERM: no hago caso"' TERM ;;
+*) trap 'rm -f "$D/ws.addr" "$D/ws.port" "$D/soloist.pid"; apunta "SIGTERM: sale con 0"; exit 0' TERM ;;
+esac
+echo $$ > "$D/soloist.pid"
+[ "$1" = lento ] && sleep "$2"
+[ "$1" = sin_ws ] || { echo 127.0.0.1 > "$D/ws.addr"; cat /tmp/ws.puerto > "$D/ws.port"; apunta "WebSocket abierto"; echo "INFO WebSocket listening on 127.0.0.1:$(cat /tmp/ws.puerto)"; }
+while :; do sleep 1 & wait $!; done
