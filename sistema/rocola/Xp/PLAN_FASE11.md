@@ -2,14 +2,63 @@
 
 14-11-2026, sobre `fc7b667`. Junta lo que estudiaron tres agentes en solo lectura (el inventario de lo que falta, la arquitectura y las
 propuestas visuales), revisado contra el código. **No se cambió ni se compiló nada.** Es una propuesta: **no se empieza nada hasta que el
-dueño la apruebe** (decisión del 14-11-2026: «con mucho cuidado: primero un plan que aprueba el dueño»). **Nada de esto está probado en
-el A4.**
+dueño la apruebe** (decisión del 14-11-2026: «con mucho cuidado: primero un plan que aprueba el dueño»). **El dueño lo aprobó el mismo
+día, con lo visual al final: §0.** **Nada de esto está probado en el A4.**
 
 Revisado por un crítico el mismo día, contra el código: lo que cambió y por qué está en §8 (ganchos que faltaban para Spotify, pruebas que
 no probaban lo que decían, la batería del nivel 0 que no estaba en el repositorio, y unas decisiones que se daban por tomadas).
 
 > Si hay poco tiempo: el resumen (§1), las propuestas visuales para elegir (§5) y las decisiones (§6). Lo demás es para los grupos que
 > harán el trabajo.
+
+## 0. Lo que decidió el dueño el 14-11-2026, y el orden que queda
+
+> «Lo que es propio de rocola OS ira en otra ventana, ctrl f4, empecemos con toda la fase 11, todos los cambios visuales al final para que
+> me propongas ideas con una presentación»
+
+- **Decisión 2: (a)**, una ventana propia con Ctrl+F4.
+- **Se empieza toda la fase 11, primero todo lo que no se ve.**
+  - Lo visual va al final: las oleadas 3, 7 y 9, y la parte que se ve de la 6 y de la 8 (la hojita de la IA).
+  - Entonces se le enseña al dueño una presentación con maquetas de ideas, y él elige antes de hacer nada visual (decisión 12). Las K1-K24
+    de §5 son el punto de partida y pueden cambiar.
+  - La ventana de Ctrl+F4 (K11) también es de lo del final.
+- **Las demás decisiones de §6, que el dueño no contestó, van como las recomendadas mientras no diga otra cosa:**
+  - 1 (a);
+  - 3 como se recomienda: apagar borra el estado, «libre» para apagar pide además cero créditos, reiniciar el programa o el equipo y volver a
+    XP conservan el estado; los botones de «La rocola» vuelven con la ventana del final;
+  - 4 (a), 5 (a), 6 (b), 8 (a), 9 (b), 10 (a), 11 (a) y 13 (b).
+- **Spotify (decisión 7).** Con lo visual al final, lo que no se ve va ya: el núcleo, SP4, SP2, SP3, el volumen V1-V3, y pedir y pagar
+  (sin la parte que se ve). La prueba corta en el A4 (2e) va primero. Sin internet, las de Spotify pagadas devuelven su crédito (i).
+- **Mientras no esté la ventana, los ajustes de `rocola_os.txt` se cambian:**
+  - desde casa, con una orden nueva del buzón, «ajuste». Solo acepta las claves de Rocola OS, y la aplica y la guarda el programa, que es el
+    dueño del archivo: el buzón deja `/run/rocola-ajuste` y el latido la toma;
+  - o a mano, desde la consola de mantenimiento.
+
+**El orden que queda.** Cada tanda tiene su junta y su comprobación completa, apuntadas en `FASE11_JUNTAS.md`.
+1. **Oleada 0:** el andamio (0a) y la batería del nivel 0 dentro del repositorio (0b, aparte de 0a para ir en paralelo).
+2. **Tanda A:**
+   - 1a vida;
+   - 1b guiones, con la copia de los botones de 2c y la orden «ajuste»;
+   - 1c casa;
+   - 2a red;
+   - 2b raton.
+3. **Tanda B:**
+   - 2c robustez, sin la copia de los botones;
+   - 2d vigilante, solo el paso 1: medir;
+   - 2e prueba-spotify;
+   - 4b archivos.
+4. **Tanda C:** 4a salida, 4c videos, 4d buscador y 8a entrenar (lo que no se ve).
+5. **Tanda D:** 5a spotify-nucleo. Va después de 4b, por `Form1.Sonido.cs`, y de 2e, por el `rocola-spotify` simulado.
+6. **Tanda E:**
+   - 6a parejas;
+   - 6b sustitución y pago (lo que no se ve);
+   - lo que dejó `rocola-consola` (decisión 6);
+   - 8b ia2-y-billar, después de 5a por `Form1.Sonido.cs`.
+7. **Oleada 10 de lo que no se ve:**
+   - los documentos;
+   - los niveles 0 a 3, con QEMU;
+   - la lista de lo que hay que probar en el A4.
+8. **La presentación de lo visual.** Con lo que elija el dueño: las oleadas 3, 6 (lo que se ve), 7 y 9, y la oleada 10 final.
 
 ## 1. Resumen
 
