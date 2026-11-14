@@ -157,6 +157,12 @@ huellas "$R/nuevo" ctrlf3; sed -i 's/eeee/eeef/' "$R/nuevo/ctrlf3/huellas.tsv"
 si "ctrlf3 c46 con F12 distinta (la de siempre): ACEPTADO" test "$(lin)" = ACEPTADO
 huellas "$R/nuevo" ctrlf3; sed -i 's/ffff/fffe/' "$R/nuevo/ctrlf3/huellas.tsv"
 si "otra capa quieta distinta: REPETIR" test "$(lin)" = REPETIR
+for d in ref ref2 nuevo; do huellas "$R/$d" hojas 'dibujo2d	c21.png.capa4-dibujo2d-29,2-966x764.png	9999	-'; done; rm -rf "$R"/*/ctrlf3
+echo "hojas: salio con 0" > "$R/salio.log"; sed -i 's/9999/9998/' "$R/nuevo/hojas/huellas.tsv"
+si "hojas: la hoja de Sonido de Ctrl+F3 distinta a los 21 s (el repaso): ACEPTADO" test "$(lin)" = ACEPTADO
+huellas "$R/nuevo" hojas 'dibujo2d	c21.png.capa5-dibujo2d-189,182-646x404.png	9999	-'; for d in ref ref2; do huellas "$R/$d" hojas 'dibujo2d	c21.png.capa5-dibujo2d-189,182-646x404.png	9997	-'; done
+si "hojas: otra hoja distinta (no la de Sonido): REPETIR" test "$(lin)" = REPETIR
+rm -rf "$R"/*/hojas; for d in ref ref2 nuevo; do huellas "$R/$d" ctrlf3; done; echo "ctrlf3: salio con 0" > "$R/salio.log"
 huellas "$R/nuevo" ctrlf3; sed -i '/1024x128/d; /512x256/d' "$R/nuevo/ctrlf3/huellas.tsv"
 si "faltan 2 de 4 texturas quietas de la hora (50 %, mas del tope): REPETIR" test "$(lin)" = REPETIR
 huellas "$R/nuevo" ctrlf3; echo "ctrlf3: salio con 124" > "$R/salio.log"

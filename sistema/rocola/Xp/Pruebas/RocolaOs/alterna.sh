@@ -8,7 +8,7 @@
 # $SAL/ETIQUETA-ESCENA como siempre (W, SAL, DATOS0 y DH como escenas.sh y corre.sh).
 #   ROCOLA_OS_NUEVO=lista  (el nivel 1 de PLAN_FASE11.md §2.6) el programa nuevo corre con ROCOLA_OS=lista, una carpeta /run de prueba
 #                          vacia para cada escena (ROCOLA_RUN=$RUN_BASE/ETQ_NUEVO-ESCENA) y, si se puede, sin red (unshare -n: otro
-#                          espacio de red, solo con la interfaz local apagada); SIN_RED=0 lo corre con la red de la maquina.
+#                          espacio de red, solo con la interfaz local: sin salida); SIN_RED=0 lo corre con la red de la maquina.
 # La referencia corre siempre sin ROCOLA_OS ni ROCOLA_RUN; sin ROCOLA_OS_NUEVO, el nuevo tambien (el nivel 0).
 set -u
 AQUI=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)

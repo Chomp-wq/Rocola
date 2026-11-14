@@ -360,14 +360,18 @@ def orden_escena(args):
 
 # Las capas de siempre (PORT_JUNTAS.md, juntas 13 a 17; PORT_borrar-capas.md): las tres de «ctrlf3» a los 46 s con F12 abierta
 # (compara.py empareja por numero de capa y la referencia pone un tramo transparente por ventana: PORT_f12-como-hoja.md) y la hoja de Sonido
-# de «hojas» a los 18 s y 19,5 s (lo que lleva medido el repaso: la carga de la maquina).
+# de Ctrl+F3 en «hojas» (la capa de 966x764 en 29,2, que sigue detras de las hojitas): dice lo que lleva medido el repaso, que con la
+# maquina cargada acaba despues (la de los 18 s en las juntas; en 43 corridas guardadas del port, tambien la de los 19,5 s y la de los
+# 21). Lo que esa pagina dibuja lo comprueban, punto por punto y con el repaso ya acabado, las escenas f3vistas y f3grises y el arnes
+# VistasAjustes.
 CAPAS_DE_SIEMPRE = [
     ("ctrlf3", re.compile(r"^c46\.png\.capa\d+-dibujo2d-"), "ctrlf3 a los 46 s con F12 abierta (la referencia pone un tramo transparente por ventana)"),
-    ("hojas", re.compile(r"^c(18|19\.5)\.png\.capa\d+-dibujo2d-29,2-966x764\.png$"), "hojas a los 18 s (la hoja de Sonido con lo que lleva medido el repaso)"),
+    ("hojas", re.compile(r"^c[\d.]+\.png\.capa\d+-dibujo2d-29,2-966x764\.png$"), "hojas: la hoja de Sonido con lo que lleva medido el repaso (la carga)"),
 ]
-# Las texturas quietas que faltan y son de la hora y del ritmo (rotulos de 1024x128, 512x256 y 1024x256: el reloj de la cancion, la hora...;
-# PORT_JUNTAS.md, junta 17: «las de la hora»), hasta un tope por recorrido.
-TEXTURAS_DE_LA_HORA = {"1024x128", "512x256", "1024x256"}
+# Las texturas quietas que faltan y son de la hora y del ritmo (rotulos de 1024x128, 1024x64, 512x256 y 1024x256: el reloj de la cancion,
+# la hora...; PORT_JUNTAS.md, junta 17: «las de la hora»; en 43 corridas guardadas del port son las que mas faltan, fuera del recorrido
+# buscador de antes de su arreglo), hasta un tope por recorrido.
+TEXTURAS_DE_LA_HORA = {"1024x128", "1024x64", "512x256", "1024x256"}
 
 
 def _lee_huellas(d):
