@@ -12,7 +12,7 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
 | `sistema/configs/rocola_a4_defconfig` | `BR2_PACKAGE_ROCOLA_XP=y`; fuera `BR2_PACKAGE_ROCOLA_CONSOLA`; `BR2_PACKAGE_ROCOLA_SPOTIFY` se queda. Los comentarios de DejaVu, mpv, ffmpeg, mpg123 y jpeg dicen ahora quién los usa. |
 | `sistema/Config.in` | lee el menú de `rocola-xp`; el de `rocola-consola` se queda (paquete apagado, como referencia: no hace falta para que el defconfig valga, y así sigue existiendo). |
 | `sistema/package/rocola-xp/` | compila con `-p:RocolaVersion` (= `ROCOLA_SISTEMA_VERSION`), `-p:RocolaCommit` (`GITHUB_SHA` o `git`, 7 letras) y `-p:RocolaFecha`; `/usr/lib/rocola-xp/version` = lo que dice `--version` (si dice otra cosa, falla; si el equipo no lo puede correr, la línea esperada); pone `/usr/share/rocola/prueba.mp3`, el disco «Rocola OS - Prueba» y `/rocola/datos`, que ponía `rocola-consola`; `select` de DejaVu y mpg123. |
-| `sistema/rapida.sh` | fuera el paso de `rocola-consola`; el de `rocola-xp` (que corre si cambió o si la base no lo trae, también con «rapida_ya») con su versión, la verificación de `--version` y la canción de prueba. |
+| `sistema/rapida.sh` | fuera el paso de `rocola-consola`; el de `rocola-xp` (que corre si cambió o si la base no lo trae, también con «rapida_ya») con su versión, la verificación de `--version` y la canción de prueba; si no compila, las últimas 60 líneas de lo que dijo `dotnet publish` salen en el registro (antes iban a `/dev/null`). |
 | `usr/bin/rocola` (el lanzador) | siempre `rocola-xp`; fuera el interruptor (se ignora, no se borra), el programa bajado y la vuelta a `rocola-consola`; el importador antes de cada arranque (el contrato, con tope de 10 min, aviso en pantalla a los 3 s, una línea en la bitácora por código); `ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp` solo con el disco con escritura; la tarjeta elegida cada vez; esperas de 2 s, 10 s, 30 s y 2 min tras caídas seguidas, apuntadas; la confirmación solo tras 120 s seguidos de un mismo `rocola-xp`; sin `rocola-xp`, aviso y fuera; el importador no cuenta como rocola abierta (ni para la consola, ni para «reiniciar ya», ni para confirmar). |
 | `usr/bin/rocola-actualiza` | el canal del programa apagado (nada de `programa-N`; `/rocola/datos/programa` ni se crea ni se toca); el estado dice la versión de `rocola-xp`; el sistema nuevo «entra al siguiente encendido». |
 | `usr/bin/rocola-buzon` | la versión, el proceso y los errores de `rocola-xp`; lo «cuando esté libre» y el diagnóstico se contestan («todavía no se puede... manda «... ya»») en lugar de quedar pendientes para siempre; archivos de `/rocola/datos/xp` primero; registros con `xp_`; las «ya» paran siempre antes el lanzador. |
@@ -65,8 +65,8 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   `/usr/lib/rocola-xp/{rocola-xp,libSkiaSharp.so,version}` («rocola-xp programa 99 (d8de93a) compilado ...», igual a lo que dice
   `--version`), `prueba.mp3` (igual a la del repositorio) en `/usr/share/rocola` y en el disco de prueba, el lanzador nuevo, el
   `rocola-consola` de la base todavía ahí, `/etc/rocola-sistema-version` = 99; `disk.img` lleva ese sistema en su partición 1; las sumas
-  bien. Con un `--version` que dice otra cosa: sale con 1 y lo dice; con uno que no corre: apunta la línea esperada. Sin montajes ni
-  `loop` colgados al acabar.
+  bien. Con un `--version` que dice otra cosa: sale con 1 y lo dice; con uno que no corre: apunta la línea esperada; con un `dotnet` que
+  falla: sale con 1 y enseña lo que dijo. Sin montajes ni `loop` colgados al acabar.
 - **Las órdenes del paquete** (`ROCOLA_XP_BUILD_CMDS` e `..._INSTALL_TARGET_CMDS`, tal cual, con bash como Buildroot y el mismo `dotnet` de
   mentira): `programa 41 (d8de93a)` con `ROCOLA_SISTEMA_VERSION=41`; `programa 0 (0123456)` con solo `GITHUB_SHA`; instala el programa, la
   biblioteca, `version`, las dos `prueba.mp3` y `/rocola/datos`.

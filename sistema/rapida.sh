@@ -85,8 +85,10 @@ if con_xp && { [ ! -x "$M/usr/lib/rocola-xp/rocola-xp" ] || cambio sistema/rocol
 	echo "rocola-xp (la traduccion de XP): se compila"
 	V=${ROCOLA_SISTEMA_VERSION:-0}; F=$(date +%s)
 	C=${GITHUB_SHA:-$(git -C "$REPO" rev-parse HEAD 2>/dev/null)}; C=${C:-local}; C=${C:0:7}
+	# (lo que dice la compilacion va a un archivo; si falla, su final sale en el registro de GitHub: es el unico programa de la rocola)
 	(cd "$REPO/sistema/rocola/Xp" && DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 dotnet publish -c Release -r linux-x64 \
-		-p:RocolaPerfil=a4 -p:RocolaVersion="$V" -p:RocolaCommit="$C" -p:RocolaFecha="$F" -o "$T/programa-xp" >/dev/null)
+		-p:RocolaPerfil=a4 -p:RocolaVersion="$V" -p:RocolaCommit="$C" -p:RocolaFecha="$F" -o "$T/programa-xp" > "$T/publica-xp.txt" 2>&1) \
+		|| { tail -n 60 "$T/publica-xp.txt" >&2; echo "rapida.sh: rocola-xp no compilo" >&2; exit 1; }
 	esperada="rocola-xp programa $V ($C) compilado $F"
 	linea=$(timeout 30 "$T/programa-xp/rocola-xp" --version 2>/dev/null | head -1) || true
 	if [ -z "$linea" ]; then echo "rocola-xp: aqui no corre --version; se apunta la linea esperada: $esperada"; linea=$esperada
