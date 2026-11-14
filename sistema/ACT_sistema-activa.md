@@ -52,6 +52,9 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   ya» -SIGUSR1- y «apagar ya» -SIGTERM-; con la rocola en la consola el lanzador también se para), actualiza 6/6 (ni una petición a los
   archivos de `programa-99` ni `/rocola/datos/programa`; el sistema 8 bajado a la copia b, en prueba, «entra al siguiente encendido»; lo
   que había en `/rocola/datos/programa` sin tocar).
+- **La corrida final, los 15 casos con el importador de verdad** (`ROCOLA_XP_REAL`, en `0defcd8`; carga 4 a 10): **95 BIEN, 0 MAL**. (En
+  la anterior salió una vez «MAL: y sigue al acabar [R S]»: la prueba pedía que todos los procesos del lanzador estuvieran esperando y uno
+  corría en ese instante; ahora mira que ninguno esté parado.)
 - **`prueba.sh contrato` con el importador de verdad** (`ROCOLA_XP_REAL` = el `rocola-xp` NativeAOT que el otro grupo compiló a las 06:06
   de su rama, `Nativo/ImportaXp.cs`; corre con la glibc del sistema en la raíz de prueba): **5 BIEN, 0 MAL**: sale con 0 («importado de
   /rocola/disco/Rocola/Release a /rocola/datos/xp...»), deja su marca y la rocola se abre; los botones tal cual y la configuración de XP con
