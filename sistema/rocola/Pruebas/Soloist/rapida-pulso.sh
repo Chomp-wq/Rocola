@@ -45,4 +45,13 @@ haz_pulso "$W/p2" pa_stream_write; corre "$W/p2"; r=$?
 ok "$r/$([ -f "$W/M/usr/lib/rocola-pulso/libpulse.so.0" ] && echo puesto)/$(grep -c 'no da pa_stream_write' "$W/salida.txt")" "1//1" "le falta pa_stream_write: no se pone y lo dice"
 haz_pulso "$W/p3" "" roto; corre "$W/p3"; r=$?
 ok "$r/$([ -f "$W/M/usr/lib/rocola-pulso/libpulse.so.0" ] && echo puesto)/$(grep -c 'rocola-pulso no compilo' "$W/salida.txt")" "1//1" "no compila: no se pone y lo dice"
+# (revision del 14-11-2026) EL DE VERDAD, si esta (sistema/rocola/pulso; antes de juntar las ramas, ROCOLA_PULSO_FUENTE=la carpeta de la
+# rama fase11-pulso): compila con el paso 5b y da las 48. Con lo que quede compilado a mano en su carpeta (un libpulse.so.0 viejo de
+# mentira encima): el paso lo limpia antes y compila de nuevo.
+PR=${ROCOLA_PULSO_FUENTE:-$REPO/sistema/rocola/pulso}
+if [ -f "$PR/Makefile" ]; then
+	rm -rf "$W/pr"; cp -a "$PR" "$W/pr"; echo 'esto no es una biblioteca' > "$W/pr/libpulse.so.0"; touch -d '+1 hour' "$W/pr/libpulse.so.0"
+	corre "$W/pr"; r=$?
+	ok "$r/$([ -f "$W/M/usr/lib/rocola-pulso/libpulse.so.0" ] && echo puesto)/$(grep -c 'con las 48 funciones' "$W/salida.txt")" "0/puesto/1" "el rocola-pulso de verdad ($PR): compila (sin tomar lo que habia en la carpeta), da las 48 y lo pone"
+else echo "  (no hay rocola-pulso de verdad en $PR: solo los de mentira)"; fi
 echo "=== RESUMEN: $bien BIEN, $mal MAL"

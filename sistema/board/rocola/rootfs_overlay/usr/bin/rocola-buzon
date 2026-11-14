@@ -48,7 +48,7 @@ busca_llave() {
 		m=$TMP/usb; mkdir -p "$m"
 		mount -o ro "/dev/$dev" "$m" 2>/dev/null || continue
 		f=$(find "$m" -maxdepth 2 -iname $nom 2>/dev/null | head -1)
-		[ -n "$f" ] && cp "$f" "$TMP/llave.txt"
+		[ -n "$f" ] && ( umask 077; cp "$f" "$TMP/llave.txt" )   # (una llave: solo root la lee, tambien la copia de paso)
 		umount "$m"
 		[ -f "$TMP/llave.txt" ] && { echo "$TMP/llave.txt"; return; }
 	done
@@ -81,8 +81,9 @@ mira_llave() {
 			v=$(tr -d '\r' < "$s" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | tr -d ' \t' | grep -v '^$' | head -n 1); rm -f "$TMP/llave.txt"
 			case "$v" in *[!A-Za-z0-9._~+/=:-]*) v= ;; esac; [ ${#v} -ge 8 ] && [ ${#v} -le 1024 ] || v=
 			if [ -n "$v" ] && [ "$v" != "$(head -n 1 "$XPD/rocola_spotify_llave.txt" 2>/dev/null | tr -d ' \t\r\n')" ]; then
-				mkdir -p "$XPD" && ( umask 077; printf '%s\n' "$v" > "$XPD/.rocola_spotify_llave.txt.n" ) && mv -f "$XPD/.rocola_spotify_llave.txt.n" "$XPD/rocola_spotify_llave.txt" && sync \
-					&& printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+				if mkdir -p "$XPD" && ( umask 077; printf '%s\n' "$v" > "$XPD/.rocola_spotify_llave.txt.n" ) && mv -f "$XPD/.rocola_spotify_llave.txt.n" "$XPD/rocola_spotify_llave.txt" && sync; then
+					printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+				else rm -f "$XPD/.rocola_spotify_llave.txt.n"; fi   # (sin sitio: no queda un trozo de la llave)
 			fi
 			v=
 		fi
@@ -95,8 +96,12 @@ mira_llave() {
 			if grep -q '^client_id=' "$TMP/.api.v" && grep -q '^client_secret=' "$TMP/.api.v"; then
 				( umask 077; { grep '^client_id=' "$TMP/.api.v"; grep '^client_secret=' "$TMP/.api.v"; grep '^refresh_token=' "$TMP/.api.v"; } > "$TMP/.api.o" )
 				if ! cmp -s "$TMP/.api.o" "$XPD/rocola_spotify_api.txt"; then
-					mkdir -p "$XPD" && chmod 600 "$TMP/.api.o" && mv -f "$TMP/.api.o" "$XPD/rocola_spotify_api.txt" && sync \
-						&& printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de la API web de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+					# (el de paso en la MISMA carpeta y despues el cambio de nombre: de /run a los datos, mv copiaria encima y un apagon lo
+					# dejaria a medias)
+					n=$XPD/.rocola_spotify_api.txt.n
+					if mkdir -p "$XPD" && ( umask 077; cat "$TMP/.api.o" > "$n" ) && mv -f "$n" "$XPD/rocola_spotify_api.txt" && sync; then
+						printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de la API web de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
+					else rm -f "$n"; fi
 				fi
 			fi
 			rm -f "$TMP/.api.v" "$TMP/.api.o"

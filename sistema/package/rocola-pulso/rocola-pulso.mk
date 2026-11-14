@@ -17,7 +17,10 @@ ROCOLA_PULSO_SITE = $(BR2_EXTERNAL_ROCOLA_PATH)/rocola/pulso
 ROCOLA_PULSO_SITE_METHOD = local
 ROCOLA_PULSO_LICENSE = propio (Rocola OS)
 
+# (primero «limpia»: el sitio local se copia tal cual, y un libpulse.so.0 o unos .o compilados a mano en la carpeta, con el gcc de la
+# maquina, se tomarian por hechos)
 define ROCOLA_PULSO_BUILD_CMDS
+	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D) limpia
 	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D) CC="$(TARGET_CC)" CFLAGS="$(TARGET_CFLAGS)" todo
 endef
 

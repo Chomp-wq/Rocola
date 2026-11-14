@@ -117,6 +117,7 @@ fi
 if con_pulso && { [ ! -f "$M/usr/lib/rocola-pulso/libpulse.so.0" ] || cambio sistema/rocola/pulso; }; then
 	echo "rocola-pulso (el sonido de Spotify Soloist): se compila"
 	P=$T/pulso; cp -a "$REPO/sistema/rocola/pulso" "$P"
+	make -C "$P" limpia > /dev/null 2>&1 || true   # (lo compilado a mano en la carpeta, fuera: se compila todo aqui)
 	make -C "$P" CC=gcc CFLAGS="-O2 -g0 -pipe -fPIC -march=x86-64 -mtune=generic" todo > "$T/pulso.txt" 2>&1 \
 		|| { tail -n 40 "$T/pulso.txt" >&2; echo "rapida.sh: rocola-pulso no compilo" >&2; exit 1; }
 	L=$P/libpulse.so.0
@@ -125,8 +126,9 @@ if con_pulso && { [ ! -f "$M/usr/lib/rocola-pulso/libpulse.so.0" ] || cambio sis
 	n=0; for f in $(grep -v '^#' "$REPO/sistema/package/rocola-pulso/funciones.txt"); do
 		echo "$da" | grep -qx "$f" || { echo "rapida.sh: rocola-pulso no da $f (Soloist la busca)" >&2; exit 1; }; n=$((n + 1))
 	done
-	hay=$(for b in "$M"/lib/libc.so.6 "$M"/lib/libm.so.6; do objdump -T "$b" 2>/dev/null; done | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u)
-	pide=$(objdump -T "$L" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u)
+	hay=$(for b in "$M"/lib/libc.so.6 "$M"/lib/libm.so.6; do objdump -T "$b" 2>/dev/null; done | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u) || true
+	[ -n "$hay" ] || { echo "rapida.sh: no se encontro la libc del sistema ($M/lib/libc.so.6) para comprobar rocola-pulso" >&2; exit 1; }
+	pide=$(objdump -T "$L" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u) || true
 	for v in $pide; do echo "$hay" | grep -qx "$v" || { echo "rapida.sh: rocola-pulso pide $v y el sistema no la tiene" >&2; exit 1; }; done
 	strip --strip-unneeded "$L"
 	sudo install -D -m 755 "$L" "$M/usr/lib/rocola-pulso/libpulse.so.0"
