@@ -24,6 +24,7 @@ static pthread_mutex_t traza_mx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t una_vez = PTHREAD_ONCE_INIT;
 static FILE *traza_f;
 static long traza_tam;
+static long traza_tope = TRAZA_TOPE;
 static char traza_ruta[600];
 static int avisos;
 
@@ -60,6 +61,12 @@ static void inicia(void)
         const char *run = getenv("ROCOLA_RUN");
         snprintf(traza_ruta, sizeof traza_ruta, "%s/rocola-soloist/pulso-traza.txt", run && *run ? run : "/run");
     }
+    const char *tope = getenv("ROCOLA_PULSO_TRAZA_TOPE"); /* solo para las pruebas */
+    long tp = 0;
+    for (const char *q = tope; q && *q >= '0' && *q <= '9'; q++)
+        tp = tp * 10 + (*q - '0'); /* sin atol: glibc >= 2.38 lo cambia a __isoc23_strtol */
+    if (tp >= 10000)
+        traza_tope = tp;
     carpetas(traza_ruta);
     abre_traza();
     if (traza_f)
@@ -74,7 +81,7 @@ static void escribe(const char *fmt, va_list ap)
 {
     pthread_mutex_lock(&traza_mx);
     if (traza_f) {
-        if (traza_tam > TRAZA_TOPE) {
+        if (traza_tam > traza_tope) {
             fclose(traza_f);
             char viejo[620];
             snprintf(viejo, sizeof viejo, "%s.1", traza_ruta);

@@ -190,6 +190,16 @@ static void completa_op_ctx(pa_operation *o)
         }
         break;
     }
+    case O_INFO_FUENTE: {
+        /* no hay entradas de sonido: la lista sale vacia y un indice no existe */
+        typedef void (*fuente_cb_t)(pa_context *, const void *, int, void *);
+        fuente_cb_t cb = (fuente_cb_t)o->cb;
+        if (!o->exito)
+            ctx_error(c, PA_ERR_NOENTITY);
+        if (cb)
+            cb(c, NULL, o->exito ? 1 : -1, o->ud);
+        break;
+    }
     default:
         break;
     }
@@ -659,6 +669,24 @@ EXPORTA pa_operation *pa_context_get_sink_info_by_index(pa_context *c, uint32_t 
 EXPORTA pa_operation *pa_context_get_sink_info_list(pa_context *c, pa_sink_info_cb_t cb, void *ud)
 {
     return info_salida(c, NULL, PA_INVALID_INDEX, 1, cb, ud);
+}
+
+EXPORTA pa_operation *pa_context_get_source_info_list(pa_context *c, void *cb, void *ud)
+{
+    if (!listo(c) || !cb)
+        return NULL;
+    pa_operation *o = op_nueva(c, NULL, O_INFO_FUENTE, cb, ud);
+    if (o)
+        o->exito = 1;
+    return o;
+}
+
+EXPORTA pa_operation *pa_context_get_source_info_by_index(pa_context *c, uint32_t idx, void *cb, void *ud)
+{
+    (void)idx;
+    if (!listo(c) || !cb)
+        return NULL;
+    return op_nueva(c, NULL, O_INFO_FUENTE, cb, ud);
 }
 
 EXPORTA pa_operation *pa_context_set_name(pa_context *c, const char *nombre, pa_context_success_cb_t cb, void *ud)

@@ -19,7 +19,7 @@ libpulse.so.0: $(OBJ) pulso.map
 	  -Wl,--version-script,pulso.map -Wl,-z,defs -Wl,--as-needed -o $@ $(OBJ)
 
 pruebas: libpulse.so.0
-	$(MAKE) -C prueba todo
+	$(MAKE) -C prueba todo && prueba/prueba.sh
 
 limpia:
 	rm -f $(OBJ) libpulse.so.0

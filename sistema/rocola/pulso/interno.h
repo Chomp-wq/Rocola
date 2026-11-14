@@ -125,7 +125,7 @@ struct pa_context {
     uint64_t prox_revision_us;
 };
 
-enum { O_EXITO_CTX = 1, O_EXITO_FLUJO, O_TIEMPOS, O_DRENA, O_INFO_ENTRADA, O_VOLUMEN, O_INFO_SERVIDOR, O_INFO_SALIDA, O_NADA };
+enum { O_EXITO_CTX = 1, O_EXITO_FLUJO, O_TIEMPOS, O_DRENA, O_INFO_ENTRADA, O_VOLUMEN, O_INFO_SERVIDOR, O_INFO_SALIDA, O_INFO_FUENTE, O_NADA };
 
 struct pa_operation {
     int ref;

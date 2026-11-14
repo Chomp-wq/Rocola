@@ -63,6 +63,8 @@ pa_operation *pa_context_get_server_info(pa_context *c, pa_server_info_cb_t cb, 
 pa_operation *pa_context_get_sink_info_by_name(pa_context *c, const char *n, pa_sink_info_cb_t cb, void *ud);
 pa_operation *pa_context_get_sink_info_by_index(pa_context *c, uint32_t idx, pa_sink_info_cb_t cb, void *ud);
 pa_operation *pa_context_get_sink_info_list(pa_context *c, pa_sink_info_cb_t cb, void *ud);
+pa_operation *pa_context_get_source_info_list(pa_context *c, void *cb, void *ud);
+pa_operation *pa_context_get_source_info_by_index(pa_context *c, uint32_t idx, void *cb, void *ud);
 pa_operation *pa_context_set_name(pa_context *c, const char *nombre, pa_context_success_cb_t cb, void *ud);
 pa_time_event *pa_context_rttime_new(const pa_context *c, pa_usec_t us, pa_time_event_cb_t cb, void *ud);
 void pa_context_rttime_restart(const pa_context *c, pa_time_event *e, pa_usec_t us);

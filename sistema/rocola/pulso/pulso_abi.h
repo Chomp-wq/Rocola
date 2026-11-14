@@ -19,7 +19,7 @@
 
 /* ---- numeros ---- */
 #define PA_CHANNELS_MAX 32U
-#define PA_RATE_MAX (48000U * 16U)
+#define PA_RATE_MAX (48000U * 8U)
 #define PA_INVALID_INDEX ((uint32_t)-1)
 #define PA_USEC_PER_SEC ((pa_usec_t)1000000ULL)
 #define PA_USEC_PER_MSEC ((pa_usec_t)1000ULL)
