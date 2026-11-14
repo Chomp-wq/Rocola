@@ -1,3 +1,7 @@
 # Menu de paquetes propios de Rocola OS.
+# rocola-xp: la rocola de XP traducida a Linux, el UNICO programa de Rocola OS (decision del dueno del 14-11-2026).
+source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-xp/Config.in"
+# rocola-consola: RETIRADO (14-11-2026): ya no va en el sistema (configs/rocola_a4_defconfig no lo pide); su menu se queda para que el
+# paquete siga existiendo como referencia (su codigo, sistema/rocola/Consola y Motor, sirve a la fase 11 y rocola-xp toma tres archivos).
 source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-consola/Config.in"
 source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-spotify/Config.in"

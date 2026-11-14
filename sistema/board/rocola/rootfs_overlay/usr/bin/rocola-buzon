@@ -10,23 +10,29 @@
 #   rocola/archivos/NOMBRE  un archivo entero de los datos (de la lista de abajo; nunca las llaves ni la cuenta de Spotify), cuando se pide.
 #   rocola/respuestas.json  lo que contesto a cada orden.
 #   casa/ordenes.json       las ordenes que deja «Rocola en casa» (sistema/casa); se leen cada minuto.
-# Ordenes: ping, informe, registros, archivo NOMBRE, buscar_actualizacion (lo que hace «Buscar actualizacion ahora»), diagnostico (el
-# diagnostico completo de la pantalla, cuando la rocola este libre), reiniciar_programa, reiniciar_equipo y apagar (cuando este libre;
-# con «ya», al momento). Apagada se vuelve a prender con el boton o con el encendido remoto (Wake on LAN), que queda escuchando.
+# Ordenes: ping, informe, registros, archivo NOMBRE, buscar_actualizacion (lo que hacia «Buscar actualizacion ahora»), y reiniciar_programa,
+# reiniciar_equipo y apagar con «ya» (al momento). Apagada se vuelve a prender con el boton o con el encendido remoto (Wake on LAN), que
+# queda escuchando.
+# CON rocola-xp (el unico programa desde el 14-11-2026; la rocola de XP traducida): lo «cuando este libre» (reiniciar_programa,
+# reiniciar_equipo y apagar sin «ya», y el diagnostico) dependia de que el programa mirara /run/rocola-reinicia-programa y compania, y
+# rocola-xp no lo hace (fase 11): esas ordenes no se aceptan y se contesta por que (antes se quedaban pendientes para siempre).
 #
 # LA LLAVE: rocola_buzon.txt en una memoria USB (o en la carpeta de XP), como rocola_github.txt: la llave en la primera linea y, si el
 # buzon no es Chomp-wq/rocola-buzon, el repositorio en la segunda. Se copia a /rocola/datos/rocola_buzon.txt. Sin llave no hace nada.
-# Lo que dice: /run/rocola-buzon.txt (Ctrl+F3 -> Internet). Para probarlo fuera: ROCOLA_API, ROCOLA_DATOS, ROCOLA_RUN, ROCOLA_DISCO.
+# Lo que dice: /run/rocola-buzon.txt (lo enseñaba Ctrl+F3 -> Internet de rocola-consola: fase 11). Para probarlo fuera: ROCOLA_API,
+# ROCOLA_DATOS, ROCOLA_RUN, ROCOLA_DISCO (y ROCOLA_XP_DATOS, ROCOLA_XP_BIN).
 API=${ROCOLA_API:-https://api.github.com}
 DATOS=${ROCOLA_DATOS:-/rocola/datos}
+XPD=${ROCOLA_XP_DATOS:-$DATOS/xp}   # (los datos de rocola-xp: sus bitacoras y sus tablas)
+XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
 RUN=${ROCOLA_RUN:-/run}
 OS=${ROCOLA_DISCO:-/rocola/disco}/rocola-os
-PROG=$DATOS/programa
 TMP=$RUN/rocola-buzon.d
 DICE=$RUN/rocola-buzon.txt
 HECHAS=$DATOS/rocola_buzon_hechas.txt
 mkdir -p "$TMP"
 dice() { echo "$(date '+%H:%M') $*" > "$DICE"; }
+LIBRE="con el programa traducido de XP todavia no se puede «cuando este libre» (llega en la fase 11)"
 
 # ---- la llave (de una memoria USB, como rocola-actualiza) ----
 # busca_llave [NOMBRE]: rocola_buzon.txt (de fabrica) o rocola_genius.txt (la llave para buscar canciones por su letra, BuscaLetras.cs)
@@ -103,22 +109,31 @@ sube() {
 # ---- lo que se cuenta ----
 leer() { cat "$1" 2>/dev/null | tr -d '\r'; }
 cola() { [ -f "$2" ] && tail -n "$1" "$2" 2>/dev/null | tr -d '\r'; }
-programa_version() { v=$(leer "$PROG/version"); [ -n "$v" ] || v=$(/usr/bin/rocola-consola --version 2>/dev/null | sed -n 's/.*programa \([0-9]*\).*/\1/p'); echo "${v:-0}"; }
+# el rocola-xp abierto como rocola (no el importador, «rocola-xp --importa-xp», que /usr/bin/rocola lanza antes de abrirla)
+rocola_pid() {
+	for p in $(pidof rocola-xp); do
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --importa-xp && continue
+		echo "$p"; return
+	done
+}
 estado_json() {
 	ip=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2; exit}')
 	mac=$(cat /sys/class/net/eth0/address 2>/dev/null)
 	gw=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
 	wol=$(ethtool eth0 2>/dev/null | sed -n 's/^[ \t]*Wake-on: *//p' | tail -1)
 	temp=; for t in /sys/class/hwmon/hwmon*/temp1_input /sys/class/thermal/thermal_zone*/temp; do [ -f "$t" ] && { temp=$(( $(cat "$t") / 1000 )); break; }; done
-	pid=$(pidof rocola-consola rocola-xp | awk '{print $1}')   # (rocola-xp: la traducida de XP, si es la que corre)
+	pid=$(rocola_pid)
+	# la version del programa: la de rocola-xp, que llega con el sistema (su numero es el del sistema que lo trajo; ya no hay versiones
+	# bajadas del programa: programa_nueva y programa_malas quedan vacios)
+	xpver=$(timeout 20 "$XPBIN" --version 2>/dev/null | head -1)
 	desde=; [ -n "$pid" ] && desde=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print int($22/100)}' /proc/$pid/stat 2>/dev/null || echo 0) ))
 	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg" 2>/dev/null)
 	jq -n \
 		--arg fecha "$(date '+%Y-%m-%d %H:%M:%S')" --arg zona "$(date '+%z')" --arg arriba "$(cut -d. -f1 /proc/uptime)" \
-		--arg sistema "$(leer /etc/rocola-sistema-version)" --arg programa "$(programa_version)" --arg nueva "$(leer "$PROG/nueva.version")" \
-		--arg malas "$(leer "$PROG/malas" | tr '\n' ' ')" --arg sistema_malas "$(leer "$OS/sistema-malas" | tr '\n' ' ')" \
+		--arg sistema "$(leer /etc/rocola-sistema-version)" --arg programa "$(echo "$xpver" | sed -n 's/.*programa \([0-9]*\).*/\1/p')" \
+		--arg programa_linea "$xpver" --arg sistema_malas "$(leer "$OS/sistema-malas" | tr '\n' ' ')" \
 		--arg slot "$slot" --arg probando "$([ -f "$OS/probando" ] && echo si)" \
-		--arg reinicio_pendiente "$([ -f "$RUN/rocola-reinicio-sistema" ] && echo "sistema ")$([ -f "$RUN/rocola-hay-nueva" ] && echo "programa ")$([ -f "$RUN/rocola-apaga-equipo" ] && echo "apagar ")$([ -f "$RUN/rocola-reinicia-equipo" ] && echo "reiniciar ")" \
+		--arg reinicio_pendiente "$([ -f "$RUN/rocola-reinicio-sistema" ] && echo "sistema ")" \
 		--arg actualiza "$(leer "$RUN/rocola-actualiza.txt")" --arg buscando "$([ -f "$RUN/rocola-buscar-ya" ] && echo si)" \
 		--arg llave_github "$([ -s "$DATOS/rocola_github.txt" ] && echo si)" \
 		--arg ip "$ip" --arg mac "$mac" --arg gw "$gw" --arg wol "$wol" \
@@ -128,7 +143,7 @@ estado_json() {
 		--arg disco_rocola "$(df -h "$OS" 2>/dev/null | awk 'NR==2 {print $4" libres de "$2}')$([ -f "$RUN/rocola-disco-revisar" ] && echo '; SIN REVISAR (un apagon lo dejo marcado): prende en Windows XP y no toques nada mientras lo revisa')" \
 		--arg rocola_corre "$([ -n "$pid" ] && echo si)" --arg rocola_desde "$desde" \
 		--arg vivo "$(leer "$RUN/rocola-vivo.txt")" \
-		--arg errores "$(cola 40 "$DATOS/rocola_error.txt")" --arg n_errores "$(grep -c '' "$DATOS/rocola_error.txt" 2>/dev/null)" \
+		--arg errores "$(cola 40 "$XPD/rocola_error.txt")" --arg n_errores "$(grep -c '' "$XPD/rocola_error.txt" 2>/dev/null)" \
 		--arg actualizaciones "$(cola 30 "$DATOS/rocola_actualizaciones.txt")" \
 		--arg sistema_txt "$(cola 20 "$OS/sistema.txt")" \
 		--arg registro "$(cola 60 "$DATOS/rocola.txt")" \
@@ -137,8 +152,9 @@ estado_json() {
 		--arg discos "$(leer "$RUN/rocola-discos.txt" | tail -n 15)" \
 		--arg tarjeta "$(cat /proc/asound/cards 2>/dev/null)" \
 		--arg buzon "$(leer "$DICE")" \
-		'{fecha:$fecha, zona:$zona, arriba_s:($arriba|tonumber? // 0), versiones:{sistema:$sistema, programa:$programa, programa_nueva:$nueva,
-		  programa_malas:$malas, sistema_malas:$sistema_malas, copia:$slot, sistema_en_prueba:$probando, reinicio_pendiente:$reinicio_pendiente},
+		'{fecha:$fecha, zona:$zona, arriba_s:($arriba|tonumber? // 0), versiones:{sistema:$sistema, programa:$programa, programa_nueva:"",
+		  programa_malas:"", programa_cual:"rocola-xp", programa_linea:$programa_linea, sistema_malas:$sistema_malas, copia:$slot,
+		  sistema_en_prueba:$probando, reinicio_pendiente:$reinicio_pendiente},
 		  actualizacion:{estado:$actualiza, buscando:$buscando, llave_github:$llave_github}, red:{ip:$ip, mac:$mac, puerta:$gw, wake_on_lan:$wol},
 		  equipo:{carga:$carga, temperatura_c:$temp, memoria:$mem, disco_datos:$disco_datos, disco_rocola:$disco_rocola, tarjeta:$tarjeta},
 		  rocola:{corriendo:$rocola_corre, segundos_abierta:$rocola_desde, vivo:$vivo},
@@ -158,7 +174,9 @@ manda_estado() {   # manda_estado [forzado]
 	sube rocola/estado.json "$TMP/estado.json" "estado $(date '+%Y-%m-%d %H:%M')" || return 1
 	echo "$ahora" > "$TMP/ultimo"; echo "$h" > "$TMP/ultima_huella"
 }
-# Los archivos que se pueden pedir enteros (nada con llaves ni la cuenta de Spotify).
+# Los archivos que se pueden pedir enteros (nada con llaves ni la cuenta de Spotify). Un nombre, sin carpetas: los de rocola-xp
+# (/rocola/datos/xp) primero, que es el programa; si alli no esta, el de /rocola/datos (los del sistema: rocola.txt,
+# rocola_actualizaciones.txt...; y los que dejo rocola-consola, que se quedan donde estaban).
 permitido() {
 	case "$1" in
 		*/*|*..*|rocola_github.txt|rocola_buzon.txt|"") return 1 ;;
@@ -173,19 +191,21 @@ donde_esta() {
 		rocola-arranque.txt|rocola-discos.txt) echo "$RUN/$1" ;;
 		rocola-mpv.txt) echo "/tmp/rocola-mpv.txt" ;;
 		dmesg.txt) dmesg > "$TMP/dmesg.txt" 2>/dev/null; echo "$TMP/dmesg.txt" ;;
-		*) echo "$DATOS/$1" ;;
+		*) if [ -f "$XPD/$1" ]; then echo "$XPD/$1"; else echo "$DATOS/$1"; fi ;;
 	esac
 }
 registros() {
 	: > "$TMP/reg.args"
-	for f in "$DATOS"/rocola*.txt "$OS/sistema.txt" "$RUN/rocola-arranque.txt" "$RUN/rocola-discos.txt" /tmp/rocola-mpv.txt; do
+	for f in "$DATOS"/rocola*.txt "$XPD"/rocola*.txt "$OS/sistema.txt" "$RUN/rocola-arranque.txt" "$RUN/rocola-discos.txt" /tmp/rocola-mpv.txt; do
 		[ -f "$f" ] || continue
 		n=$(basename "$f"); permitido "$n" || continue
 		case "$n" in rocola_sonoridad.txt|rocola_eq.txt|rocola_stats.txt|rocola_spotify_pares.txt|rocola_spotify_artistas.txt) continue ;; esac   # (tablas grandes: se piden enteras)
-		tail -c 262144 "$f" | tr -d '\r' > "$TMP/reg_$n"
+		case "$n" in rocola_biblioteca.txt|rocola_volumen.txt|rocola_duracion.txt|rocola_afondo.txt|rocola_calidad.txt|rocola_letras.txt|rocola_ia_hechas.txt) continue ;; esac   # (las de rocola-xp)
+		k=$n; [ "$f" = "$XPD/$n" ] && k=xp_$n   # (los de rocola-xp, con «xp_» delante: el de /rocola/datos puede llamarse igual)
+		tail -c 262144 "$f" | tr -d '\r' > "$TMP/reg_$k"
 	done
 	dmesg 2>/dev/null | tail -c 262144 > "$TMP/reg_dmesg.txt"
-	ls "$DATOS" "$OS" 2>/dev/null > "$TMP/reg_lista.txt"
+	ls "$DATOS" "$XPD" "$OS" 2>/dev/null > "$TMP/reg_lista.txt"
 	( cd "$TMP" && for f in reg_*; do jq -Rs --arg n "${f#reg_}" '{($n): .}' < "$f"; done ) | jq -s 'add // {}' > "$TMP/registros.json"
 	rm -f "$TMP"/reg_*
 	sube rocola/registros.json "$TMP/registros.json" "registros $(date '+%Y-%m-%d %H:%M')"
@@ -224,23 +244,24 @@ atiende_ordenes() {
 					else responde "$id" "$orden" "no se pudo subir: $arg"; fi
 				fi ;;
 			buscar_actualizacion) touch "$RUN/rocola-buscar-ya"; responde "$id" "$orden" "buscando actualizacion ahora (el estado dira como acabo)" ;;
-			diagnostico) touch "$RUN/rocola-pide-diagnostico"; date +%s > "$TMP/diag_pedido"; responde "$id" "$orden" "pedido: corre cuando la rocola este libre (unos 50 s) y se sube solo" ;;
+			# (lo «cuando este libre» no se acepta con rocola-xp: arriba)
+			diagnostico) responde "$id" "$orden" "el diagnostico desde casa todavia no se puede con el programa traducido de XP (fase 11): en la rocola, Ctrl+F3 -> Imagen -> Diagnostico completo; despues se puede pedir «archivo rocola_diagnostico.txt»" ;;
 			reiniciar_programa)
-				if [ "$arg" = ya ]; then touch "$RUN/rocola-reinicia-programa-ya"; responde "$id" "$orden" "el programa se reinicia ahora (y se pone la version nueva, si ya esta bajada)"
-				else touch "$RUN/rocola-reinicia-programa"; responde "$id" "$orden" "se reinicia cuando la rocola este libre"; fi ;;
+				if [ "$arg" = ya ]; then touch "$RUN/rocola-reinicia-programa-ya"; responde "$id" "$orden" "el programa se reinicia ahora (conserva los creditos y la cola)"
+				else responde "$id" "$orden" "$LIBRE: manda «reiniciar_programa ya» (se reinicia al momento; conserva los creditos y la cola)"; fi ;;
 			reiniciar_equipo)
-				if [ "$arg" = ya ]; then responde "$id" "$orden" "reiniciando el equipo ahora"; echo ya > "$TMP/reiniciar"
-				else touch "$RUN/rocola-reinicia-equipo"; responde "$id" "$orden" "el equipo se reinicia cuando la rocola este libre"; fi ;;
+				if [ "$arg" = ya ]; then responde "$id" "$orden" "reiniciando el equipo ahora (conserva los creditos y la cola)"; echo ya > "$TMP/reiniciar"
+				else responde "$id" "$orden" "$LIBRE: manda «reiniciar_equipo ya» (al momento; conserva los creditos y la cola)"; fi ;;
 			apagar)
-				if [ "$arg" = ya ]; then responde "$id" "$orden" "apagando el equipo ahora"; echo apaga > "$TMP/reiniciar"
-				else touch "$RUN/rocola-apaga-equipo"; responde "$id" "$orden" "el equipo se apaga cuando la rocola este libre (nada sonando ni en la cola, 2 min sin botones)"; fi ;;
+				if [ "$arg" = ya ]; then responde "$id" "$orden" "apagando el equipo ahora (como el boton de encendido: los creditos y la cola del dia se borran)"; echo apaga > "$TMP/reiniciar"
+				else responde "$id" "$orden" "$LIBRE: manda «apagar ya» (al momento, como el boton de encendido: los creditos y la cola del dia se borran)"; fi ;;
 			llave_genius)
 				v=$(printf '%s' "$arg" | tr -d ' \r\n\t')
 				if [ ${#v} -lt 10 ]; then responde "$id" "$orden" "la llave de Genius parece incompleta"
 				else printf '%s' "$v" > "$DATOS/rocola_genius.txt"; chmod 600 "$DATOS/rocola_genius.txt"; sync; responde "$id" "$orden" "llave de Genius puesta: ya se puede buscar por la letra"; fi ;;
 			cancelar)
 				rm -f "$RUN/rocola-apaga-equipo" "$RUN/rocola-reinicia-equipo" "$RUN/rocola-reinicia-programa"
-				responde "$id" "$orden" "cancelado lo pendiente (apagar o reiniciar cuando este libre)" ;;
+				responde "$id" "$orden" "no habia nada pendiente: con el programa traducido de XP no se aceptan ordenes «cuando este libre» (las «ya» no se pueden cancelar)" ;;
 			*) responde "$id" "$orden" "orden desconocida" ;;
 		esac
 	done
@@ -256,12 +277,13 @@ atiende_ordenes() {
 	if [ -f "$TMP/reiniciar" ]; then
 		que=$(cat "$TMP/reiniciar"); rm -f "$TMP/reiniciar"; manda_estado forzado
 		printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$([ "$que" = apaga ] && echo Apagado || echo Reinicio) pedido desde casa (ya)" >> "$DATOS/rocola_actualizaciones.txt"
-		# CON rocola-xp (la traducida de XP) ABIERTA: el apagado del sistema le llega como SIGTERM y solo le da 1 s. Apagar = el boton de
-		# encendido (SIGTERM: borra el estado del dia; se le espera 15 s); reiniciar = un reinicio propio de Rocola OS, que conserva los
-		# creditos y la cola (SIGUSR1, nunca SIGTERM; regla del 8-11-2026). Primero el lanzador, para que no la vuelva a abrir. Sin
-		# rocola-xp abierta no hace nada: todo como siempre.
+		# rocola-xp: el apagado del sistema le llega como SIGTERM y solo le da 1 s. Primero el lanzador, para que no la vuelva a abrir (ni la
+		# abra mientras el sistema se apaga). Con rocola-xp abierta: apagar = el boton de encendido (SIGTERM: borra el estado del dia; se le
+		# espera 15 s); reiniciar = un reinicio propio de Rocola OS, que conserva los creditos y la cola (SIGUSR1, nunca SIGTERM; regla del
+		# 8-11-2026; si en 15 s no se cerro, se corta como un apagon). (Si se estaba trayendo lo aprendido de XP, tambien se corta: se vuelve
+		# a traer al abrirla otra vez.)
+		killall rocola 2>/dev/null
 		if pidof rocola-xp >/dev/null; then
-			killall rocola 2>/dev/null
 			if [ "$que" = apaga ]; then killall -TERM rocola-xp 2>/dev/null; else killall -USR1 rocola-xp 2>/dev/null; fi
 			i=0; while pidof rocola-xp >/dev/null && [ $i -lt 15 ]; do sleep 1; i=$((i + 1)); done
 			[ "$que" = apaga ] || killall -KILL rocola-xp 2>/dev/null
@@ -269,7 +291,8 @@ atiende_ordenes() {
 		sync; if [ "$que" = apaga ]; then poweroff; else reboot; fi
 	fi
 }
-# El diagnostico pedido: cuando el programa lo deja (rocola_diagnostico.txt mas nuevo que el pedido), se sube solo.
+# El diagnostico pedido: cuando el programa lo deja (rocola_diagnostico.txt mas nuevo que el pedido), se sube solo. (Con rocola-xp no se
+# acepta la orden -fase 11-: sin diag_pedido no hace nada.)
 mira_diagnostico() {
 	[ -f "$TMP/diag_pedido" ] || return 0
 	p=$(cat "$TMP/diag_pedido"); f=$DATOS/rocola_diagnostico.txt
@@ -280,9 +303,11 @@ mira_diagnostico() {
 # ---- la vuelta: cada minuto ----
 [ "$1" = una ] && UNA=1
 while :; do
-	# «reiniciar el programa ya»: el programa lo atiende en 15 s (sale con 42: se pone la nueva si la hay); si no contesta (colgado), se cierra
+	# «reiniciar el programa ya»: lo atiende el lanzador en 5 s (cierra rocola-xp con SIGUSR1, conservando el estado, y la vuelve a abrir;
+	# si no se cierra en 20 s, la corta). Si a los 50 s el aviso sigue, el lanzador no pudo (la rocola no estaba abierta, o se esta en la
+	# consola de mantenimiento): se quita, para que no se dispare horas despues.
 	if [ -f "$RUN/rocola-reinicia-programa-ya" ] && [ $(( $(date +%s) - $(date -r "$RUN/rocola-reinicia-programa-ya" +%s) )) -gt 50 ]; then
-		rm -f "$RUN/rocola-reinicia-programa-ya"; killall rocola-consola 2>/dev/null
+		rm -f "$RUN/rocola-reinicia-programa-ya"
 	fi
 	mira_llave
 	if [ -z "$LLAVE" ]; then dice "apagado (opcional: usa la llave de GitHub si tiene permiso para el buzon)"

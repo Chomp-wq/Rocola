@@ -2,6 +2,9 @@
 # ROCOLA OS, etapa 1: la prueba de sonido y grafica. La lanza /etc/init.d/S99rocola en tty1 al arrancar.
 # Apunta lo que vio el nucleo (procesador, memoria, grafica, sonido), suena un tono de 3 s, gira un cubo 15 s y deja el resultado
 # en pantalla y en /root/rocola-prueba.txt (en la particion del sistema: sobrevive al apagar). No toca ningun otro disco.
+# (14-11-2026: el programa de la rocola es rocola-xp; rocola-consola se retiro. La cancion de prueba suena con mpg123 -el mismo
+# descompresor de MP3 que usa rocola-xp, libmpg123, por ALSA- y la pantalla de la rocola es rocola-xp 20 s, con una carpeta de datos
+# de prueba que se borra al acabar: ni sus datos ni lo de XP se tocan.)
 LOG=/root/rocola-prueba.txt
 SONIDO="no probado"; GRAFICA="no probada"
 
@@ -40,11 +43,11 @@ case $r in 0|124|143) SONIDO="sono (si no se oyo, revisar el cable y el volumen)
 linea "Sonido: $SONIDO"
 linea ""
 
-# La rocola de verdad (etapa 2): la cancion de prueba por la cadena de sonido de la rocola y ALSA.
-linea "--- LA ROCOLA (rocola-consola)"
+# La cancion de prueba (etapa 2): con mpg123 (libmpg123, el descompresor de MP3 de rocola-xp) por ALSA, a la tarjeta del amplificador.
+linea "--- LA CANCION DE PRUEBA (mpg123, por ALSA)"
 ROCOLA="no esta"
-if [ -x /usr/bin/rocola-consola ]; then
-	timeout 60 rocola-consola /usr/share/rocola/prueba.mp3 >> "$LOG" 2>&1; r=$?
+if command -v mpg123 >/dev/null && [ -f /usr/share/rocola/prueba.mp3 ]; then
+	timeout 60 mpg123 -q -o alsa -a "$D" /usr/share/rocola/prueba.mp3 >> "$LOG" 2>&1; r=$?
 	case $r in 0) ROCOLA="toco la cancion de prueba" ;; *) ROCOLA="FALLO $r (ver arriba)" ;; esac
 fi
 linea "Rocola: $ROCOLA"
@@ -60,16 +63,22 @@ fi
 linea "Grafica: $GRAFICA"
 linea ""
 
-# La rocola en la pantalla (etapa 2): 20 s con su pantalla grafica (KMS y OpenGL ES); que siga viva al acabar el tiempo es lo bueno.
+# La rocola en la pantalla (etapa 2): rocola-xp 20 s con su pantalla grafica (KMS y OpenGL ES); que siga viva al acabar el tiempo es lo
+# bueno. Con una carpeta de datos de prueba (vacia: sin botones abre su configuracion, como XP la primera vez), que se borra al acabar.
 linea "--- LA ROCOLA EN LA PANTALLA (20 s)"
 PANTALLA="no esta"
-if [ -x /usr/bin/rocola-consola ] && [ -e /dev/dri/card0 ]; then
+XPBIN=/usr/lib/rocola-xp/rocola-xp
+if [ -x "$XPBIN" ] && [ -e /dev/dri/card0 ]; then
+	P=/tmp/rocola-prueba-xp; rm -rf "$P"; mkdir -p "$P"
+	L=$(find /rocola/disco /rocola/discos/* -maxdepth 2 -type d -iname fonts 2>/dev/null | grep -i '/windows/fonts$' | head -1)
 	t0=$(date +%s)
-	ROCOLA_DATOS=/rocola/datos timeout 20 rocola-consola --rocola >> "$LOG" 2>&1; r=$?
+	# Al llegar los 20 s, timeout le manda SIGUSR1: rocola-xp se cierra ordenadamente conservando su estado (nunca SIGTERM, que es el
+	# apagado y lo borraria: regla del 8-11-2026) y sale con 0; lo bueno es que aguantara hasta ahi. Si sale con 138, la senal le llego
+	# antes de abrir la pantalla (no alcanzo a abrirse en 20 s).
+	ROCOLA_DATOS=$P ROCOLA_ALSA=$D ROCOLA_LETRAS_XP=$L timeout -s USR1 -k 10 20 "$XPBIN" >> "$LOG" 2>&1; r=$?
 	dura=$(( $(date +%s) - t0 ))
-	# Al llegar los 20 s, timeout le manda SIGTERM: la rocola se cierra ordenadamente (como con el boton de encendido) y sale con 0;
-	# lo bueno es que aguantara hasta ahi (124/143 si no alcanzo a cerrarse sola).
-	case $r in 124|143) PANTALLA="se dibujo 20 s" ;; 0) if [ "$dura" -ge 19 ]; then PANTALLA="se dibujo 20 s (y se cerro bien)"; else PANTALLA="FALLO: se cerro a los $dura s (ver arriba)"; fi ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
+	case $r in 0) if [ "$dura" -ge 19 ]; then PANTALLA="se dibujo 20 s (y se cerro bien)"; else PANTALLA="FALLO: se cerro a los $dura s (ver arriba)"; fi ;; 138) PANTALLA="FALLO: no alcanzo a abrir la pantalla en 20 s (ver arriba)" ;; *) PANTALLA="FALLO $r (ver arriba)" ;; esac
+	rm -rf "$P"
 fi
 linea "Pantalla de la rocola: $PANTALLA"
 sync
