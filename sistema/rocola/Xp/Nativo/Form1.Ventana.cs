@@ -32,7 +32,7 @@ namespace Rocola
             a.Ensenada = OnShown;
             a.CambioDeMedida = OnResize;
             a.PintaFondo = OnPaintBackground;
-            a.Cerrandose = OnFormClosing;
+            a.Cerrandose = RocolaOsEnvuelveElCierre(OnFormClosing);   // ROCOLA OS g22: (antes) a.Cerrandose = OnFormClosing; — lo de Rocola OS sabe la razon del cierre y para lo suyo antes de que XP guarde (RocolaOs/RocolaOs.Form1.cs; sin ROCOLA_OS, el mismo delegado de XP)
             a.Cerrada = OnFormClosed;
             a.ProcesaMando = ProcessCmdKey;
             a.Caracter = delegate (PulsoCaracter e) { Action<object, PulsoCaracter> k = KeyPress; if (k != null) k(this, e); };
