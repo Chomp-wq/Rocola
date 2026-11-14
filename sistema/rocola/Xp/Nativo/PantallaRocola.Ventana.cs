@@ -93,7 +93,14 @@ namespace Rocola
         }
         // EL CIERRE QUE PIDE ROCOLA OS (SIGUSR1; PantallaRocola.cs): un WM_CLOSE de fuera a la ventana de la rocola, este o no debajo de una
         // hoja modal (un mensaje puesto en la cola le llega tambien a una ventana deshabilitada). Sin ventana no hay a quien mandarselo.
-        internal static void CierreDeFuera() { VentanaNativa w = ventana; if (w != null) w.CierraDeFuera(); }
+        // Cerrada la rocola, el programa se acaba (Application.Run(form): al destruirse la ventana principal, ExitThread, y con el WM_QUIT
+        // acaba tambien cualquier bucle modal que siga abierto: el de un aviso sobre una ventana sin duena, la de prueba F12).
+        internal static void CierreDeFuera()
+        {
+            VentanaNativa w = ventana; if (w == null) return;
+            w.CierraDeFuera();
+            if (w.Desechada) Sal();
+        }
         private static bool FinDeSesionDe(object v, bool consulta, bool seAcaba)
         {
             Hoja h = v as Hoja; if (h != null) return h.FinDeSesion(consulta, seAcaba);
@@ -277,6 +284,17 @@ namespace Rocola
                 Desecha();
                 return true;
             }
+            // la rocola es su duena, o la duena de su duena... (la cadena de OwnedForms)
+            private bool EsDeLaRocola(Hoja h)
+            {
+                for (int n = 0; h != null && n < 64; n++)
+                {
+                    object d = h.Duena;
+                    if (d == avisos.Rocola) return d != null;
+                    h = d as Hoja;
+                }
+                return false;
+            }
             // DESECHAR (Form.Dispose(): Dispose(true), el de la rocola, que acaba en DesechaLoSuyo)
             public void Desecha() { avisos.Desecha(true); }
             public void DesechaLoSuyo(bool disposing)
@@ -288,7 +306,10 @@ namespace Rocola
                 if (!desechada && !desechandose)
                 {
                     Hoja[] hs = Hoja.Abiertas;
-                    for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].IsDisposed && hs[i].Duena == avisos.Rocola) hs[i].Dispose();
+                    // (y las de sus hojas: cada Form.Dispose desecha las suyas, y Windows destruye con su duena el aviso de user32 y el
+                    // selector de carpetas. El selector o un aviso abiertos sobre Ctrl+F2 tienen de duena a esa hoja, no a la rocola: sin
+                    // desecharlos, su bucle modal seguiria con la rocola ya cerrada y el programa no saldria)
+                    for (int i = hs.Length - 1; i >= 0; i--) if (!hs[i].IsDisposed && EsDeLaRocola(hs[i])) hs[i].Dispose();
                 }
                 if (!desechada)
                 {

@@ -140,3 +140,36 @@ valor más de un enumerado que ya existía.
   argumento contestaría la línea y saldría (ninguno lo hace).
 - `RocolaFecha` cambia en cada compilación: dos compilaciones del mismo código ya no dan el mismo `rocola-xp.dll` byte a byte (como
   `rocola-consola`).
+
+## Revisión
+
+Revisión independiente del diff `7d3d3a7..07ef5d7` (leído entero contra `Rocola/`, `Codigo/Form1.Video.cs` `OnFormClosing`, `Hoja.cs` y
+el lanzador). `Codigo/` no se tocó (ningún archivo en el diff). Compilación repetida: 0 errores, 13 avisos.
+
+**Encontrado y arreglado: con SIGUSR1 el programa NO salía si había un diálogo abierto sobre otro diálogo.** El selector de carpetas
+(«Agregar carpeta...») y los avisos de Ctrl+F2 tienen de dueña a la hoja de Ctrl+F2, no a la rocola. `CierraDeFuera` avisaba y
+desechaba solo las hojas cuya dueña es la rocola; la del selector seguía viva, su bucle modal (`!CheckCloseDialog(false) &&
+!Saliendo`) no acababa nunca y el programa se quedaba abierto con la rocola ya cerrada, hasta el SIGKILL del lanzador a los 20 s.
+Reproducido con el programa de verdad (Ctrl+F2, Tab, Espacio, SIGUSR1 con `activa=Hoja'Buscar carpeta'`): no salió en 12 s y hubo
+que matarlo (137); el estado sí quedó guardado. Arreglo en `Nativo/PantallaRocola.Ventana.cs`:
+
+- `DesechaLoSuyo` desecha también las hojas de sus hojas (`EsDeLaRocola`: la cadena de dueñas), de la última a la primera: cada
+  `Form.Dispose` desecha sus `OwnedForms` (Form.cs:3632-3642), y Windows destruye con su dueña el aviso de user32 y el selector. En
+  los caminos de antes (apagado, Alt+F4, Ctrl+Alt+Q) sigue sin hacer nada: no quedan hojas abiertas al llegar ahí.
+- `PantallaRocola.CierreDeFuera`: cerrada la rocola, `Sal()` (lo que hace `Application.Run(form)` al destruirse la ventana principal:
+  `ExitThread`, y con él acaba cualquier bucle modal que quede, p. ej. un aviso sobre la ventana F12, que no tiene dueña). Solo en
+  este camino; SIGTERM, Alt+F4, Ctrl+Alt+Q y kill -9 no pasan por aquí.
+
+Después: sale con 0 a los 55-70 ms, `dialogo-fin Hoja'Buscar carpeta' None` y `dialogo-fin Hoja'Rocola - Carpetas de musica' None`,
+estado conservado. Escena nueva `selsigusr1` en `cierre_rocola_os.sh` (usa el árbol de carpetas de `datos_h.sh`, `DH`). El guion
+entero en JIT (version, sigusr1, f3sigusr1, f2sigusr1, selsigusr1, videosigusr1): TODO BIEN, ningún MAL. No repetido aquí: NativeAOT,
+las escenas alternadas con la referencia, la prueba del lanzador (el lanzador no cambió en la revisión; `sh -n` bien).
+
+Mirado y sin fallo: el orden de `CierraDeFuera` frente a `Form.WmClose` (closing a las hojas con FormOwnerClosing, a la rocola
+siempre, closed, Dispose); `OnFormClosing` con `TaskManagerClosing` va por `WaitDataWrites` y no por `BorraEstado`; SIGUSR1 repetido o
+después de SIGTERM no hace nada (`desechada`); el lanzador mira la marca antes que el código de salida; `--version` y las propiedades
+como `Consola.csproj`.
+
+Queda (además de lo de arriba): `LaDuenaSeCierra(…, true)` (de antes, `Hoja.cs`, no es de este grupo) apunta «closed» de cada hoja
+pero no llama a su `AlCerrada`; ninguna hoja con dueña lo sobrescribe hoy (solo la ventana F12, que no tiene dueña). SIGUSR1 con un
+aviso sobre la ventana F12 y con un aviso sobre Ctrl+F2 no se probaron con el programa (el mismo camino que `selsigusr1`).

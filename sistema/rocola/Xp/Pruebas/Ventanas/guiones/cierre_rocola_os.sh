@@ -8,13 +8,18 @@
 #               otra vez con esos datos REANUDA (los mismos creditos) y entonces SIGTERM (el apagado) la cierra con 0 y lo BORRA
 #   f3sigusr1   lo mismo con Ctrl+F3 abierto: antes su hoja con FormOwnerClosing, y la hoja acaba (dialogo-fin)
 #   f2sigusr1   lo mismo con Ctrl+F2 abierto
+#   selsigusr1  lo mismo con el selector de carpetas abierto SOBRE Ctrl+F2 (su duena es esa hoja, no la rocola: revision): los dos
+#               dialogos acaban y el programa sale (antes el bucle del selector seguia y habia que cortarlo). Necesita los datos de
+#               datos_h.sh (DH, por defecto /root/rocola-trabajo/port/ventanas2/datos: su arbol de carpetas)
 #   videosigusr1  lo mismo con un video sonando (los pasos de la escena «video»; SIGUSR1 a los 15 s): suelta el reproductor y sale con 0
 # PROGRAMA = carpeta con rocola-xp.dll (JIT) o aot:CARPETA con el ejecutable de NativeAOT, como corre.sh. Deja en $SAL/ETIQUETA-ESCENA
 # la salida, la traza y los estados. Dice BIEN o MAL por comprobacion y sale con 1 si alguna falla.
-#   W, DATOS0, SAL: como corre.sh. ESCENAS="version sigusr1 f3sigusr1 f2sigusr1 videosigusr1" (por defecto todas).
+#   W, DATOS0, SAL: como corre.sh. ESCENAS="version sigusr1 f3sigusr1 f2sigusr1 selsigusr1 videosigusr1" (por defecto todas).
 W=${W:-/root/rocola-trabajo/port/ventanas}
 DATOS0=${DATOS0:-$W/datos0}
 SAL=${SAL:-$W/salidas}
+DH=${DH:-/root/rocola-trabajo/port/ventanas2/datos}
+export ROCOLA_CARPETAS_RAIZ="$DH/arbol"   # (solo la mira el selector de carpetas: selsigusr1)
 prog="$1"; et="${2:-cierre}"
 if [ "${prog#aot:}" != "$prog" ]; then cmd=("${prog#aot:}/rocola-xp"); else cmd=(dotnet "$prog/rocola-xp.dll"); fi
 malo=0
@@ -38,7 +43,7 @@ abre() {
 }
 creditos() { sed -n 's/^creditos=//p' "$1" 2>/dev/null | tr -d '\r' | head -1; }
 
-for esc in ${ESCENAS:-version sigusr1 f3sigusr1 f2sigusr1 videosigusr1}; do
+for esc in ${ESCENAS:-version sigusr1 f3sigusr1 f2sigusr1 selsigusr1 videosigusr1}; do
   echo "== $esc"
   d=$W/corridas/$et-$esc; rm -rf "$d"
   case $esc in
@@ -65,10 +70,11 @@ for esc in ${ESCENAS:-version sigusr1 f3sigusr1 f2sigusr1 videosigusr1}; do
       mira "y la abierta sigue" $(kill -0 $p 2>/dev/null; echo $?)
       kill -KILL $p 2>/dev/null; wait $p 2>/dev/null
       ;;
-    sigusr1|f3sigusr1|f2sigusr1|videosigusr1)
+    sigusr1|f3sigusr1|f2sigusr1|selsigusr1|videosigusr1)
       mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/
       cuando=10; antes=9.5
       case $esc in sigusr1) pulsa="7:67";; f3sigusr1) pulsa="7:67,8:17+114";; f2sigusr1) pulsa="7:67,8:17+113";;
+        selsigusr1) pulsa="6:67,7:17+113,7.6:9,8:32";;
         videosigusr1) pulsa="7:27+39,8.5:27+39,10:13,11:67,12.5:13"; cuando=15; antes=14.5;; esac
       abre "$et-$esc" "$d" "$pulsa" $cuando USR1 "$antes:antes"
       o1=$o; t=$o1/traza.txt
@@ -83,6 +89,7 @@ for esc in ${ESCENAS:-version sigusr1 f3sigusr1 f2sigusr1 videosigusr1}; do
       elif [ $esc != sigusr1 ]; then
         mira "antes, la hoja abierta recibe closing y closed con FormOwnerClosing, y su dialogo acaba" $([ "$(grep -cE "	(closing|closed) .* FormOwnerClosing$" "$t")" = 2 ] && grep -q "	dialogo-fin " "$t" \
           && [ "$(grep -nE "	closing .* FormOwnerClosing$" "$t" | cut -d: -f1)" -lt "$(grep -nE "	closing Form1'Rocola' TaskManagerClosing$" "$t" | cut -d: -f1)" ]; echo $?)
+        [ $esc = selsigusr1 ] && mira "el selector estaba abierto sobre Ctrl+F2, y los dos dialogos acaban" $(grep -q "^activa=Hoja'Buscar carpeta'" $o1/estado-antes.txt && [ "$(grep -c "	dialogo-fin " "$t")" = 2 ]; echo $?)
         mira "la hoja estaba abierta al cerrar" $(grep -qE "^activa=.+" $o1/estado-antes.txt && ! grep -q "^activa=Form1'Rocola'" $o1/estado-antes.txt; echo $?)
       fi
       # otra vez con esos datos: reanuda (los creditos vuelven) y el apagado (SIGTERM) borra el estado, como siempre
