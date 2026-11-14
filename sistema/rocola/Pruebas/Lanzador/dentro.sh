@@ -31,6 +31,8 @@ esperas() {
 }
 # el estado de los procesos del lanzador (T = parado, S = esperando); sin los que acaban mientras se miran (sus $(...) tambien se llaman rocola)
 estado_lanzador() { for p in $(pidof rocola); do awk '{print $3}' "/proc/$p/stat" 2>/dev/null; done | sort -u | tr '\n' ' '; }
+# «parado» si alguno de sus procesos esta parado (T); si no, «sigue» (esperando o, un instante, corriendo)
+parado() { case "$(estado_lanzador)" in *T*) echo parado ;; *) echo sigue ;; esac; }
 datos_xp() { mkdir -p /rocola/disco/Rocola/Release; printf 'teclas\r\n' > /rocola/disco/Rocola/Release/rocola_teclas.txt; echo /rocola/disco/Rocola/Release > /run/rocola-datos-xp; }
 limpia
 case "$1" in
@@ -144,7 +146,7 @@ sonido)   # rocola-sonido: para el lanzador mientras suena; si la rocola estaba 
 	rocola-sonido > /tmp/sonido.txt 2>&1 & s=$!; sleep 3
 	ok "$(estado_lanzador)" "T " "desde la consola: el lanzador parado mientras suena"
 	wait $s; sleep 1
-	ok "$(estado_lanzador)" "S " "y sigue al acabar"
+	ok "$(parado)" sigue "y sigue al acabar"
 	ok "$(n 'speaker-test: -D plughw:0,0')/$(n 'speaker-test: -D plughw:1,0')/$(n SIGUSR1)" "1/1/1" "las dos salidas; la rocola solo se cerro al ir a la consola"
 	echo tty1 > /run/vt; sleep 4; ok "$(n arranca)" 2 "al volver, se abre"
 	limpia; lanza; sleep 3; rocola-sonido > /tmp/sonido.txt 2>&1; sleep 4; log; bit
@@ -158,7 +160,7 @@ sonido)   # rocola-sonido: para el lanzador mientras suena; si la rocola estaba 
 	limpia; lanza; sleep 3; echo tty2 > /run/vt; sleep 3
 	# (SIGTERM solo al guion: el trap corre cuando acaba lo que esta haciendo, hasta 4 s; con Ctrl+C en la consola, al momento)
 	rocola-sonido > /dev/null 2>&1 & s=$!; sleep 2; kill -TERM $s; sleep 6
-	ok "$(estado_lanzador)" "S " "cortada a medias: el lanzador sigue" ;;
+	ok "$(parado)" sigue "cortada a medias: el lanzador sigue" ;;
 prueba)   # rocola-prueba: la cancion de prueba con mpg123 y la pantalla con rocola-xp 20 s (SIGUSR1, datos de prueba que se borran)
 	mkdir -p /rocola/disco/WINDOWS/Fonts
 	setsid rocola-prueba </dev/null >/tmp/tty1 2>&1 & sleep 29; log

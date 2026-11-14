@@ -29,8 +29,8 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   `rocola-sonido`, `rocola-prueba`, `00000080`, `S99rocola`, `dentro.sh`: bien. **`bash -n`** de `rapida.sh` y `prueba.sh`: bien.
 - **`rapida.sh decide 6a452567dd25`** (sistema-36, la base de hoy, completa): antes (f62d6cb) «rapida»; después «completa» por
   `sistema/Config.in`, `configs/rocola_a4_defconfig`, `package/rocola-xp/Config.in`, `package/rocola-xp/rocola-xp.mk`.
-- **Buildroot 2026.02.3** (`make rocola_a4_defconfig` en una carpeta aparte): las 0 líneas del defconfig que faltan en `.config`
-  (todas quedan), `BR2_PACKAGE_ROCOLA_XP=y`, `# BR2_PACKAGE_ROCOLA_CONSOLA is not set`, `BR2_PACKAGE_ROCOLA_SPOTIFY=y`; `printvars` de
+- **Buildroot 2026.02.3** (`make rocola_a4_defconfig` en una carpeta aparte): ninguna línea del defconfig falta en `.config`;
+  `BR2_PACKAGE_ROCOLA_XP=y`, `# BR2_PACKAGE_ROCOLA_CONSOLA is not set`, `BR2_PACKAGE_ROCOLA_SPOTIFY=y`; `printvars` de
   las órdenes del paquete, expandidas como se esperaba.
 - **`prueba.sh`** (los 14 casos, BusyBox del sistema, con la máquina cargada por las pruebas del otro grupo: carga 27 a 38 en 4 núcleos):
   **90 BIEN, 0 MAL** (sale con 0). Por caso: arranque 11/11 (el importador primero con el contrato, el entorno, los `dir=`,
@@ -114,7 +114,8 @@ sistema que los llama. **No se lanzó nada en GitHub**; nada se probó en el A4 
   usar. Si en el A4 siempre tardara más de 10 min, cada encendido esperaría esos 10 min y nunca acabaría: se vería en la bitácora («no
   acabo en 600 s») y habría que subir el tope (`IMPORTA_MAX` en el lanzador) o hacerlo más rápido.
 - **La confirmación** necesita 2 min seguidos de `rocola-xp` dentro de los 15 min: si el dueño entra a la consola de mantenimiento
-  justo al estrenar un sistema y se queda más de 13 min, `S99rocola` reinicia (como antes).
+  justo al estrenar un sistema y se queda más de 13 min, `S99rocola` reinicia (como antes). Con la primera importación en ese mismo
+  arranque hay margen: a lo más 10 min de importar y 2 de rocola, unos 13 con el arranque.
 - **Apagar con la rocola cerrada** (en la consola) no borra el estado del día: al prender reanuda (antes igual).
 - **`pidof`/`killall` por nombre**: el importador también se llama `rocola-xp`. El lanzador, el buzón y `rocola-sonido` lo distinguen
   por `--importa-xp` en su línea de órdenes; el botón, `S99rocola` y las «ya» del buzón lo cortan con lo demás (se vuelve a llamar).
