@@ -37,7 +37,7 @@
 #   CANDADO_RECORRIDOS  el de los recorridos (/root/rocola-trabajo/port/recorridos.lock)
 #   PASOS     los pasos, en este orden (de fabrica todos: previo codigo ganchos compila arneses banco cintas recorridos ventanas escenas aot
 #             cierre importa; con NIVEL=1: previo compila escenas aot recorridos)
-#   ESCENAS   las escenas en JIT (las 24 de la junta 17); ESCENAS_AOT, las de NativeAOT (las 7)
+#   ESCENAS   las escenas en JIT (las 24 de la junta 17); ESCENAS_AOT, las de NativeAOT (las 7); RECORRIDOS, los recorridos (los nueve)
 #   NIVEL     0 (de fabrica) o 1; ROCOLA_OS_LISTA, la lista del nivel 1 (vida,red); IGNORA, el prefijo que no se compara en el nivel 1
 #             (RocolaOs:); SIN_RED (1: el programa del nivel 1 en otro espacio de red, si se puede)
 #   BASE      el commit contra el que se cuentan las lineas y los CRLF de Codigo/ (fc7b667, la base de la fase 11)
@@ -66,6 +66,7 @@ if [ "$NIVEL" = 1 ]; then PASOS=${PASOS:-previo compila escenas aot recorridos}
 else PASOS=${PASOS:-previo codigo ganchos compila arneses banco cintas recorridos ventanas escenas aot cierre importa}; fi
 ESCENAS=${ESCENAS:-arranque moneda video tab buscador cierreq altf4 sigterm f3sigterm kill9 asistente captura salirq f2 f2barras f2sin aviso f3vistas f3grises f3teclas f3raton f3billar f12 f12vigia}
 ESCENAS_AOT=${ESCENAS_AOT:-arranque cierreq kill9 buscador f3vistas f3teclas f12}
+RECORRIDOS=${RECORRIDOS:-}   # (vacio: todos los que tienen salida de referencia en CMPREF)
 BASE=${BASE:-fc7b667}; REPITE=${REPITE:-1}; GUARDA_BIN=${GUARDA_BIN:-0}
 AVISOS=${AVISOS:-13}; DIFFXP=${DIFFXP:-5095 4828 229}; ACABADO=${ACABADO:-6603}; VISTASB=${VISTASB:-3108}; AJUSTES=${AJUSTES:-545}
 FRONTERA=${FRONTERA:-106 153}; CINTAS=${CINTAS:-29}; HOJA=${HOJA:-86}; PANTALLA=${PANTALLA:-32}; VISTAS=${VISTAS:-78}; CIERRE=${CIERRE:-43}
@@ -80,16 +81,20 @@ mkdir -p "$REG" "$SAL" "$WV" "$(dirname "$PESADO")" || exit 2
 : > "$RES"
 exec > >(tee -a "$TRABAJO/nivel0.log") 2>&1
 # lo que leen escenas.sh, corre.sh, compara.sh, cierre_rocola_os.sh y alterna.sh
-export W=$WV SAL DATOS0 DH PESADO GUIONES=$GV
+ESPERAS=$REG/esperas.txt; : > "$ESPERAS"
+export W=$WV SAL DATOS0 DH PESADO GUIONES=$GV ESPERAS
 if [ "$NIVEL" = 1 ]; then export ROCOLA_OS_NUEVO=$ROCOLA_OS_LISTA RUN_BASE=$TRABAJO/run SIN_RED; else unset ROCOLA_OS_NUEVO; fi
 N=$NIVEL   # (las etiquetas de las corridas: R0/N0 la referencia y el programa en JIT, RA0/NA0 en NativeAOT; R1/N1... en el nivel 1)
 DOTNET_BIN=$(readlink -f "$(command -v dotnet)" 2> /dev/null)
 
-apunta() {   # apunta VEREDICTO PASO DETALLE [SEGUNDOS]
-  printf '%-9s %s: %s%s\n' "$1" "$2" "$3" "${4:+  [$4 s]}" | tee -a "$RES"
+apunta() {   # apunta VEREDICTO PASO DETALLE [SEGUNDOS]: con los segundos, tambien los que se espero el candado desde la anterior
+  local e=""
+  if [ -n "${4:-}" ] && [ -s "$ESPERAS" ]; then e=$(awk '{s+=$1} END {printf "%d", s}' "$ESPERAS"); : > "$ESPERAS"; fi
+  printf '%-9s %s: %s%s\n' "$1" "$2" "$3" "${4:+  [$4 s${e:+, $e esperando el candado}]}" | tee -a "$RES"
 }
 cabeza() { echo; echo "== $1 ($(date +%T); disco libre $(df -h / | awk 'NR==2{print $4}'))"; }
-pesado() { flock -o "$PESADO" "$@"; }   # (con -o: lo que abre el paso no hereda el candado)
+# el candado de lo pesado, con -o (lo que abre el paso no lo hereda); lo que se espero, a $ESPERAS
+pesado() { flock -o "$PESADO" bash -c 'echo "$(date +%s) - $1" | bc >> "$2"; shift 2; exec "$@"' pesado "$(date +%s)" "$ESPERAS" "$@"; }
 cuenta() { grep -cE "$1" "$2" 2> /dev/null || true; }
 ruido_de() { local d; for d in $RUIDO; do [ -f "$d/$1.json" ] && { echo "$d/$1.json"; return; }; done; }
 # el veredicto de una escena (clasifica.py) y lo apunta; deja el veredicto en $VEREDICTO
@@ -170,22 +175,25 @@ paso_codigo() {
 
 paso_ganchos() {
   cabeza "ganchos: ganchos.py y diff-xp.py"
-  local t0=$SECONDS g=$P/RocolaOs/ganchos.py dx=$P/Tarjeta/guiones/diff-xp.py r
+  local t0=$SECONDS g=$P/RocolaOs/ganchos.py dx=$P/Tarjeta/guiones/diff-xp.py r op=()
   if [ -f "$g" ]; then
-    (cd "$XP" && python3 "$g") > "$REG/ganchos.log" 2>&1; r=$?
-    if [ $r = 0 ]; then apunta BIEN "ganchos.py" "$(tail -1 "$REG/ganchos.log" | cut -c1-200)" $((SECONDS - t0))
-    else apunta MAL "ganchos.py" "salio con $r: $(tail -1 "$REG/ganchos.log" | cut -c1-200)" $((SECONDS - t0)); fi
+    grep -q -- "--base" "$g" && op=(--base "$BASE")
+    (cd "$XP" && python3 "$g" "${op[@]}") > "$REG/ganchos.log" 2>&1; r=$?
+    if [ $r = 0 ]; then apunta BIEN "ganchos.py" "$(grep -v '^ *$' "$REG/ganchos.log" | tail -1 | cut -c1-80)$(grep -m1 -E '^ganchos: ' "$REG/ganchos.log" | sed 's/^/; /')$(grep -m1 -E '^Codigo/ devolviendo' "$REG/ganchos.log" | sed 's/^/; /' | cut -c1-140)" $((SECONDS - t0))
+    else apunta MAL "ganchos.py" "salio con $r: $(grep -m3 -E '^ *MAL|rror' "$REG/ganchos.log" | cut -c1-120 | tr '\n' ';') $(tail -1 "$REG/ganchos.log" | cut -c1-120)" $((SECONDS - t0)); fi
   else
     apunta NO "ganchos.py" "aun no esta (Pruebas/RocolaOs/ganchos.py lo hace el grupo andamio)"
   fi
   t0=$SECONDS
-  local op=() sin="(sin --sin-ganchos: aun no lo tiene)"
+  local sin="(sin --sin-ganchos: aun no lo tiene)"; op=()
   grep -q -- "--sin-ganchos" "$dx" && { op=(--sin-ganchos); sin="con --sin-ganchos"; }
-  (cd "$XP" && python3 "$dx" "${op[@]}" $(cd Codigo && ls *.cs)) > "$REG/diff-xp.log" 2>&1
-  local tot; tot=$(awk '/^[^ ]+\.cs: [0-9]+ lineas quitadas, [0-9]+ puestas \([0-9]+ sin marca\)/ {n++; q+=$2; p+=$5; s+=substr($7,2)} END {print n+0, q+0, p+0, s+0}' "$REG/diff-xp.log")
+  (cd "$XP" && python3 "$dx" "${op[@]}" $(cd Codigo && ls *.cs)) > "$REG/diff-xp.log" 2>&1; r=$?
+  local tot dev; tot=$(awk '/^[^ ]+\.cs: [0-9]+ lineas quitadas, [0-9]+ puestas \([0-9]+ sin marca\)/ {n++; q+=$2; p+=$5; s+=substr($7,2)} END {print n+0, q+0, p+0, s+0}' "$REG/diff-xp.log")
+  dev=$(grep -m1 "^ganchos devueltos" "$REG/diff-xp.log" | cut -c1-160); [ -n "$dev" ] && sin="$sin; $dev"
   set -- $tot
-  if [ "$2 $3 $4" = "$DIFFXP" ]; then apunta BIEN "diff-xp.py" "$1 archivos: $2 lineas quitadas, $3 puestas y $4 sin marca $sin (las de la base: $DIFFXP)" $((SECONDS - t0))
-  else apunta MAL "diff-xp.py" "$1 archivos: $2 lineas quitadas, $3 puestas y $4 sin marca $sin; la base: $DIFFXP" $((SECONDS - t0)); fi
+  if [ $r = 0 ] && [ "$2 $3 $4" = "$DIFFXP" ] && ! grep -q "^MAL" "$REG/diff-xp.log"; then
+    apunta BIEN "diff-xp.py" "$1 archivos: $2 lineas quitadas, $3 puestas y $4 sin marca $sin (las de la base: $DIFFXP)" $((SECONDS - t0))
+  else apunta MAL "diff-xp.py" "salio con $r; $1 archivos: $2 lineas quitadas, $3 puestas y $4 sin marca $sin; la base: $DIFFXP $(grep -m2 '^MAL' "$REG/diff-xp.log" | tr '\n' ' ')" $((SECONDS - t0)); fi
 }
 
 paso_compila() {
@@ -311,15 +319,15 @@ paso_recorridos() {
   local t0=$SECONDS n v d lista otra=()
   if [ -z "$PROG" ]; then apunta FALTA recorridos "no hay programa en JIT (el paso compila o PROG)"; return; fi
   : > "$REG/recorridos-salidas.log"
-  lista=$(ls "$CMPREF")
+  lista=${RECORRIDOS:-$(ls "$CMPREF")}
   for n in $lista; do recorrido_uno "$n"; done
-  python3 "$AQUI/clasifica.py" recorridos "$TRABAJO/recorridos" "$CMPREF" "$CMPREF2" "$REG/recorridos-salidas.log" > "$REG/recorridos.txt"
+  python3 "$AQUI/clasifica.py" recorridos "$TRABAJO/recorridos" "$CMPREF" "$CMPREF2" "$REG/recorridos-salidas.log" --solo "$(echo $lista | tr ' ' ',')" > "$REG/recorridos.txt"
   otra=($(awk -F'\t' '$1 == "REPETIR" {split($2, a, " "); sub(":", "", a[2]); print a[2]}' "$REG/recorridos.txt"))
   if [ ${#otra[@]} -gt 0 ] && [ "$REPITE" = 1 ]; then
     echo "   otra vez: ${otra[*]}" | tee -a "$REG/recorridos-corridas.log"
     cp "$REG/recorridos.txt" "$REG/recorridos-primera.txt"
     for n in "${otra[@]}"; do recorrido_uno "$n"; done
-    python3 "$AQUI/clasifica.py" recorridos "$TRABAJO/recorridos" "$CMPREF" "$CMPREF2" "$REG/recorridos-salidas.log" > "$REG/recorridos.txt"
+    python3 "$AQUI/clasifica.py" recorridos "$TRABAJO/recorridos" "$CMPREF" "$CMPREF2" "$REG/recorridos-salidas.log" --solo "$(echo $lista | tr ' ' ',')" > "$REG/recorridos.txt"
   fi
   while IFS=$'\t' read -r v d; do
     [ "$v" = TOTAL ] && continue

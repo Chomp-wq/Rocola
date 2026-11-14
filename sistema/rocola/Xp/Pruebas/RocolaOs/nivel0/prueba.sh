@@ -181,6 +181,14 @@ si "alterna.sh sin argumentos dice su uso y sale con 2" bash -c 'bash "$1/altern
 si "nivel0.sh: un paso desconocido da FALTA y sale con 2" bash -c 'TRABAJO="$2/n0" PASOS="nada" bash "$1/nivel0.sh" prueba > "$2/n0.txt" 2>&1; r=$?; grep -q "^FALTA     nada: paso desconocido" "$2/n0.txt" && [ $r = 2 ]' sh "$RO" "$W"
 si "nivel0.sh: el paso codigo solo, BIEN y sale con 0" bash -c 'TRABAJO="$2/n1" PASOS="codigo" bash "$1/nivel0.sh" prueba > "$2/n1.txt" 2>&1; r=$?; grep -q "^BIEN      codigo: 109 archivos" "$2/n1.txt" && [ $r = 0 ]' sh "$RO" "$W"
 si "nivel0.sh corre sin ROCOLA_OS aunque quien lo llama lo tenga" bash -c 'grep -q "^unset ROCOLA_OS ROCOLA_RUN" "$1/nivel0.sh"' sh "$RO"
+# el candado de lo pesado (pesado() de nivel0.sh): espera a quien lo tiene, apunta cuanto espero, y lo que corre dentro no lo hereda
+L=$W/candado.lock; : > "$W/esperas.txt"
+flock "$L" sleep 2 & sleep 0.3
+( ESPERAS=$W/esperas.txt; PESADO=$L; eval "$(sed -n '/^pesado() {/p' "$RO/nivel0.sh")"
+  pesado bash -c 'ls -l /proc/$$/fd | grep -c candado.lock' > "$W/hereda.txt" )
+wait
+si "pesado(): espero al que tenia el candado (2 s) y lo apunto en ESPERAS ($(cat "$W/esperas.txt") s)" test "$(cat "$W/esperas.txt")" -ge 1 -a "$(cat "$W/esperas.txt")" -le 3
+si "pesado(): lo que corre dentro no hereda el candado (flock -o)" test "$(cat "$W/hereda.txt")" = 0
 
 echo
 [ "${GUARDA:-0}" = 1 ] || rm -rf "$W"

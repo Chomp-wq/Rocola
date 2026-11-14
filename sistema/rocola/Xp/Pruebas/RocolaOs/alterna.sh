@@ -3,8 +3,9 @@
 # el programa nuevo, para que las dos corran con la misma carga de la maquina (la de la ultima junta del port: alterna.sh del scratchpad de la
 # sesion que hizo el port, PORT_JUNTAS.md). REF y NUEVO como escenas.sh: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT).
 # Cada par (la referencia y el nuevo de una escena) toma el candado de lo pesado (PESADO) con «flock -o»: el candado lo tiene flock y no
-# pasa a lo que se abre debajo (un servidor de compilacion o una rocola que quedara viva lo retendria). Lo que dicen las corridas («salio con»,
-# «duro») va a la salida; las salidas de las escenas, a $SAL/ETIQUETA-ESCENA como siempre (W, SAL, DATOS0 y DH como escenas.sh y corre.sh).
+# pasa a lo que se abre debajo (un servidor de compilacion o una rocola que quedara viva lo retendria); con ESPERAS=archivo, apunta alli los
+# segundos que espero el candado cada par. Lo que dicen las corridas («salio con», «duro») va a la salida; las salidas de las escenas, a
+# $SAL/ETIQUETA-ESCENA como siempre (W, SAL, DATOS0 y DH como escenas.sh y corre.sh).
 #   ROCOLA_OS_NUEVO=lista  (el nivel 1 de PLAN_FASE11.md §2.6) el programa nuevo corre con ROCOLA_OS=lista, una carpeta /run de prueba
 #                          vacia para cada escena (ROCOLA_RUN=$RUN_BASE/ETQ_NUEVO-ESCENA) y, si se puede, sin red (unshare -n: otro
 #                          espacio de red, solo con la interfaz local apagada); SIN_RED=0 lo corre con la red de la maquina.
@@ -32,6 +33,7 @@ ref="$1"; nue="$2"; er="$3"; en="$4"; shift 4
 mkdir -p "$(dirname "$PESADO")"
 for e in "$@"; do
   echo "== $e ($(date +%T))"
-  flock -o "$PESADO" bash "$AQUI/alterna.sh" --par "$ref" "$nue" "$er" "$en" "$e"
+  t0=$(date +%s)
+  flock -o "$PESADO" bash -c '[ -n "${ESPERAS:-}" ] && echo "$(date +%s) - $1" | bc >> "$ESPERAS"; shift; exec "$@"' alterna "$t0" bash "$AQUI/alterna.sh" --par "$ref" "$nue" "$er" "$en" "$e"
 done
 echo FIN
