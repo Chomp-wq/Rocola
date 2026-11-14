@@ -75,7 +75,8 @@ en N7 por orden del dueno: nada que frene el procesador), y no se vuelve a poner
   huecos de mas de 10 plazos, pasa del 110 % del plazo), su TOTAL se compara con la holgura del ruido o con el 30 % de la cuenta mayor, lo
   que sea mas (lo que la referencia se separa de si misma: 203 a 286), y se dice en una linea «NOTA» con los dos ritmos y la holgura. Por
   segundo se compara como siempre, y si en alguna de las dos no va saturado, como cualquier reloj. Los demas relojes, los encargos, la
-  secuencia, los estados y las capas, sin cambio: ninguna otra escena compara distinto (ninguna tiene ese reloj).
+  secuencia, los estados y las capas, sin cambio. Las otras escenas con ese reloj (`f12`, `f12sigterm`, `f12fallo`) entran en la misma
+  regla si va saturado en las dos trazas (ver «Revision»); las escenas sin ventana F12 comparan como antes.
 - `Pruebas/Ventanas/guiones/reloj_saturado.py` (nuevo): `mide` (Tick, intervalo corto y largo de cada traza) y `simula` (el modelo de la
   regla de WM_TIMER con lo que cuestan los cuadros).
 - `Pruebas/Ventanas/guiones/escenas.sh` y `Pruebas/Ventanas/LEEME.md`: la nota.
@@ -125,3 +126,26 @@ Las trazas de todas las corridas quedan comprimidas en `/root/rocola-trabajo/por
   llega a su plazo se sigue comparando con la holgura del ruido.
 - En el A4 (tarjeta de verdad, presentacion con el barrido) nada de esto se ha medido: alli un Tick de la ventana F12 espera al barrido y
   el reloj tambien ira saturado, como en XP con Direct3D 9; no se afirma nada del A4.
+
+## Revision
+
+Revisor independiente, 14-11-2026, sobre e55910c. Sin fallos en el programa (no cambia: `git diff de1498b` en `Codigo/`, `Nativo/` y
+`Plataforma/` vacio; numero de lineas y CRLF de `Codigo/`, por tanto, los de de1498b).
+
+- Leido el diff entero de `compara_trazas.py` y `reloj_saturado.py`. La regla nueva solo afloja el TOTAL de `D3D9Star.cs:reloj-F12` y solo
+  si el intervalo medio pasa del 110 % del plazo en las dos trazas; la traza trae el plazo (`tick D3D9Star.cs:1867 15`) y la linea 1867 de
+  `Codigo/D3D9Star.cs` sigue siendo la del `Reloj timer` de GpuTestWindow (1997 en la referencia).
+- Repetido con las trazas guardadas del grupo (`/root/rocola-trabajo/port/arreglo-f12vigia/trazas`): las 5 parejas de `f12vigia` dan IGUAL
+  con la NOTA (210/250, 210/252, 216/260, 226/238, 225/253; holgura 71-78) y con el `compara_trazas.py` de de1498b las tres primeras dan
+  DIFERENTE (holgura 27): los numeros del informe salen. `reloj_saturado.py mide`: corto 8,6-9,5 ms y largo 29,7-31,2 en la referencia;
+  7,2-8,3 y 27,2-28,7 en el nuevo (el nuevo es mas RAPIDO por cuadro, 1,5 a 3 ms: no hay espera de mas).
+- `dotnet build -c Release --no-incremental`: 0 errores, 13 avisos.
+- Corregido en este documento: decia que ninguna otra escena tiene ese reloj; lo tienen `f12`, `f12sigterm` y `f12fallo`. En `f12` no
+  cambia nada (su ruido medido da holgura 287, mas que el 30 %); en las otras dos, que no tienen ruido medido, el total de ese reloj pasa
+  a compararse con el 30 % si va saturado en las dos.
+- No repetido (el informe lo da por pasado y la lectura no lo pone en duda, el programa es de1498b): NativeAOT, las escenas en vivo, los
+  recorridos, las cintas, pruebas_hoja, pruebas_pantalla y PantallaVistas. La prueba de la capa transparente puesta a proposito (punto 5)
+  y la tabla de `LP_NUM_THREADS` no se repitieron: quedan como las midio el grupo.
+- Riesgo que se subraya: el 30 % (unos 75 Tick) es mas ancho que la mayor diferencia vista entre los dos programas a una misma velocidad
+  (62: 221 frente a 283, un 22 %); sale del recorrido de la referencia entre velocidades distintas. Un freno real del Present de la hoja
+  F12 de menos de un 30 % solo se veria con `reloj_saturado.py mide` (el intervalo corto y el largo), no con IGUAL/DIFERENTE.
