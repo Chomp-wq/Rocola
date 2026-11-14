@@ -9,8 +9,8 @@ Su código se queda en el repositorio solo como referencia para la fase 11 y par
 ya aprendió, con las rutas de Linux.
 
 Hasta aquí: activado en la configuración, los guiones y la compilación rápida, y probado con programas falsos y el BusyBox del sistema
-(«Qué se probó»). **Falta**: compilar el sistema (la rápida con «rapida_ya»: la lanza el coordinador después de probar el sistema
-entero en QEMU), y todo lo del A4. Lo propio de Rocola OS que `rocola-xp` aún no tiene es la fase 11 (lista abajo).
+(«Qué se probó»), y el sistema entero en QEMU (`sistema/ACT_qemu.md`). **Falta**: compilar el sistema (la rápida con «rapida_ya»: la
+lanza el coordinador), y todo lo del A4. Lo propio de Rocola OS que `rocola-xp` aún no tiene es la fase 11 (lista abajo).
 
 Las piezas, por grupo: el sistema y los guiones (`sistema/ACT_sistema-activa.md`); el importador y el material de la IA en `rocola-xp`
 (`Nativo/ImportaXp.cs`, `Nativo/DatosGrandes.cs`: el otro grupo de esta tanda); `--version` y el cierre con SIGUSR1
@@ -118,8 +118,9 @@ rocola...», y cómo volver al sistema de antes) y una línea en la bitácora; e
 mantenimiento sigue.
 
 Lo demás, como estaba: la consola de mantenimiento (Ctrl+Alt+F2 la cierra con SIGUSR1 y no la abre hasta volver a la 1; si en ese
-momento se está trayendo lo de XP, eso sigue), «reiniciar el programa ya» del buzón (SIGUSR1, y otra vez), el volumen, los códigos de
-salida 42 a 46 (`rocola-xp` hoy no sale con ninguno: son de la fase 11; 42 = otra vez, 43 y 46 = reiniciar el equipo, 44 = apagar,
+momento se está trayendo lo de XP, eso sigue; y, nuevo, al cerrarla repinta la consola de delante -`ESC [?5h ESC [?5l`-: en QEMU se
+quedaba en negro hasta tocar una tecla, `sistema/ACT_qemu.md`), «reiniciar el programa ya» del buzón (SIGUSR1, y otra vez), el volumen,
+los códigos de salida 42 a 46 (`rocola-xp` hoy no sale con ninguno: son de la fase 11; 42 = otra vez, 43 y 46 = reiniciar el equipo, 44 = apagar,
 45 = volver a Windows XP), `/root/rocola.txt`. Se quitaron `ROCOLA_CONVERTIDAS` y `ROCOLA_COPIAS` (eran de `rocola-consola`).
 
 ## 4. Apagado y reinicios (regla del 8-11-2026)
@@ -245,11 +246,15 @@ Probado aquí (máquina de pruebas, no el A4), 14-11-2026:
   botón, `S99rocola` sin confirmar y «apagar ya»), 0 de 4 sin el arreglo de la SIGHUP y 4 de 4 con él; el mismo orden con el `rocola-xp`
   de verdad y una pseudoterminal (apartado 4); y el trozo de `rocola-instalar` que traduce las rutas, con el BusyBox del sistema. Los
   números, en `sistema/ACT_sistema-activa.md` («Revisión»).
+- (Grupo qemu y su revisión, 14-11-2026) **El sistema entero en QEMU**, con datos inventados y la imagen del perfil de QEMU con lo que pone
+  `rapida.sh` encima: instalar desde la memoria USB en un disco de XP falso, arrancar el instalado, el importador, la pantalla por KMS (la
+  pared y la atracción), las teclas por evdev, el sonido (grabado de la tarjeta HDA de QEMU), las letras de XP leídas del disco de Windows,
+  el video, la consola de mantenimiento, una caída, un apagón, el botón de encendido y la confirmación de un sistema nuevo. Lo que salió,
+  lo que se arregló (la consola, que se quedaba en negro) y lo que QEMU no puede decir, en `sistema/ACT_qemu.md`.
 
 No probado:
 
-- **Nada en el A4.** Ni el sistema entero en QEMU con `rocola-xp` (pantalla KMS, `/dev/input`, sonido, video): lo hace el coordinador
-  antes de compilar.
+- **Nada en el A4.** (El sistema entero sí, pero en QEMU, que no es el A4: `sistema/ACT_qemu.md`, arriba.)
 - El paquete de Buildroot compilado de verdad (`make rocola-xp`) y `rapida.sh arma` con la base de verdad y el `dotnet` de verdad (no hay
   sitio en el disco de pruebas para la imagen entera, y la máquina estaba ocupada): la compilación la hace GitHub.
 - El importador con datos reales de XP y el tiempo que tarda la primera vez en el A4.

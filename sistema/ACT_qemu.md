@@ -92,7 +92,7 @@ misma máquina ya arrancada), `capturas/`, `sonido/` y, de las corridas anterior
 | La carpeta de XP sin tocar | la suma MD5 de cada archivo, dentro y en la máquina de pruebas | BIEN: 13 y 13 iguales |
 | La pantalla por KMS | captura del monitor de QEMU | BIEN: la rocola y no la consola (17 726 colores): la atracción de XP con la portada del disco y la estrella (`03-rocola.png`) |
 | Las teclas: la moneda | la M (`moneda=77`, de los botones traídos de XP), por el teclado emulado y evdev | BIEN: 4 créditos |
-| Pedir una canción | ENTER abre el disco de la letra B, ENTER pide su primera | BIEN: «01 Pulso Grave» suena y quedan 3 créditos (`04-sonando.png`) |
+| Pedir una canción | ENTER abre el disco de la letra B, ENTER pide su primera | BIEN: «01 Pulso Grave» suena y quedan 3 créditos (`04-sonando.png` es de un poco después: la atracción, con «pedido 3 veces») |
 | **Suena** | lo grabado de la tarjeta HDA (`sonido/arranque.wav`), por segundos | BIEN: 44 s de 196 Hz a -4,2 dBFS (antes, el tono de 440 Hz y la canción de prueba de la prueba de arranque) |
 | Lo más sonado y el sello | `rocola_stats.txt`, `rocola_fuentes.txt` | BIEN: la cuenta sube de 2 (de XP) a 3; el sello traído vale tal cual con el NTFS leído por ntfs3: la canción no se volvió a medir (el riesgo que apuntó xp-datos) |
 
@@ -122,7 +122,7 @@ misma máquina ya arrancada), `capturas/`, `sonido/` y, de las corridas anterior
 encima del instalado y reiniciado como «reiniciar ya» (SIGUSR1 con su marca). Con `qemu-x86_64` de usuario, en procesadores sin AVX
 (`qemu64`, `Nehalem`) no arranca y lo dice («The required instruction sets are not supported by the current CPU»); en `SandyBridge` (AVX
 sin AVX2) sí. En la máquina (corrida final y corrida 2): el procesador emulado tiene AVX y no AVX2; contesta `--version` («rocola-xp
-programa 0 (ab6a26e) compilado 1794645805»), se abre, pinta la pared por KMS (`13-a4.png`) y una canción pedida suena (44 s de 196 Hz en
+programa 0 (ab6a26e) compilado 1794645805»), se abre, pinta la rocola por KMS (la atracción: `13-a4.png`) y una canción pedida suena (44 s de 196 Hz en
 `sonido/a4.wav`). (Las corridas 3 y 4 del video ya fueron con este.) Eso dice que no lleva instrucciones de más para un procesador como el
 del A4 (AVX sin AVX2), no que funcione en el A4.
 
@@ -211,3 +211,88 @@ resúmenes (`prueba.txt`, `prueba-salida-final*.txt`), lo de las corridas 1 a 4 
 XP falso (`discoxp.img`) y, encima, lo que dejó Rocola OS en él (`xp.qcow2`, comprimido; queda con el `rocola-xp` del perfil del A4, de la
 fase `a4`). La memoria USB, `a4.img` y el `rocola-xp` del A4 se borraron para no pasar de 500 MB: se rehacen con `arma.sh` y como dice
 `LEEME.md`. Para repetir desde cero: `discoxp.sh` y `prueba.py` (la fase `instala` rehace `xp.qcow2`).
+
+## Revisión (revisor independiente, 14-11-2026)
+
+Leído todo lo de la rama desde f62d6cb (las dos juntas, el arreglo del lanzador, los guiones de `sistema/rocola/Pruebas/Qemu` y este
+documento) contra las reglas y la decisión del dueño, mirado lo que dejó la prueba (capturas, lo grabado y las salidas) y **repetida la P1
+en QEMU desde cero, con todo hecho otra vez**: otro `rocola-xp` (compilado aquí de e38dcc9, perfil de QEMU), otro mundo inventado
+(`mundo.sh`), otro disco de XP falso (`discoxp.sh`) y otra memoria USB (`arma.sh`), en `/root/rocola-trabajo/act/qemu/revision` (lo que
+queda: `capturas/`, `sonido/arranque.wav`, `logs/`, `prueba.txt`). Además, lo que la lectura puso en duda. Nada de esto dice nada del A4.
+
+### Lo comprobado
+
+- **Las juntas**, sin choques de verdad: las dos ramas salen de f62d6cb y no tocan ni un archivo en común; el árbol de 6875bee es el de
+  `act-xp-datos`, y 26d241b es 6875bee con el diff entero de `act-sistema-activa`. El código de `rocola-xp` de la rama es el de
+  `act-xp-datos` tal cual (ni el grupo ni esta revisión tocan `sistema/rocola/Xp`): valen sus escenas contra la referencia y las de su
+  revisión.
+- **El contrato del importador**, en los dos lados: el lanzador llama `rocola-xp --importa-xp /run/rocola-datos-xp` con `ROCOLA_DATOS`
+  (y `ROCOLA_IA_DATOS` si toca) bajo `timeout -k 10 600`; `ImportaXp.Antes` (antes del `Main`) mira el primer argumento, `CarpetaXpDe`
+  toma la primera línea no vacía del archivo (lo que escribe `rocola-discos`: una línea con la carpeta) o la carpeta, y sale con 0, 2, 3 o
+  4; el lanzador abre la rocola con cualquiera. De verdad: en QEMU («importado de /rocola/disco/Rocola/Release a /rocola/datos/xp») y en el
+  caso `contrato` de la prueba del lanzador con el importador compilado aquí.
+- **La compilación**: `dotnet build -c Release`, 0 errores y los 13 avisos de siempre (SYSLIB0054 ×9, CA2022 ×2, SYSLIB0050, CA2014);
+  NativeAOT con el perfil de QEMU y con el del A4, 0 avisos IL/AOT. El del A4 con `qemu-x86_64`: con `qemu64` y `Nehalem` no arranca («The
+  required instruction sets are not supported by the current CPU»), con `SandyBridge` y `Haswell` contesta `--version`.
+- **`Codigo/`**: los 109 archivos con las mismas líneas y los mismos CR que en f62d6cb; los únicos cambios, los 7 de xp-datos en tres
+  archivos, todos con «EN LINUX»; `diff-xp.py -v` da lo mismo que dice el apartado 1 (14/11, 76/73 y 47/44 con las 2 sin marca de siempre).
+- **La imagen**: `arma.sh` hace los pasos de `rapida.sh arma` (diferencias: el `initrd.gz` sale del que lleva la imagen en vez de
+  `$BASE/initrd.gz` -en una completa es el mismo-, el perfil de QEMU y lo que es solo de la prueba); los archivos de `rootfs_overlay` de
+  b6e8f14 son iguales a los de `salida-qemu/target` (la base es esa); la imagen de `salida-qemu` sigue sin la línea de órdenes de prueba
+  en `ttyS0`; en la memoria USB hecha aquí, cada archivo del overlay es igual al de la rama.
+- **Los guiones del sistema**: la prueba del lanzador entera (`Pruebas/Lanzador/prueba.sh`, los 16 casos, con el BusyBox del sistema y el
+  importador de verdad): **99 BIEN, 0 MAL**; `sh -n` con el BusyBox del sistema de los siete guiones.
+- **La P1, repetida** (`prueba.py instala arranque teclas`, tal como la dejó el grupo): **25 BIEN, 0 MAL**. El instalador (31 284 bytes
+  para el hueco de 31 744), el sistema instalado, `rocola-discos`, la prueba de arranque, el importador, `rocola-xp` con sus datos, las
+  tablas sin rutas de Windows (también la canción con acentos), el estado de XP sin traer, los botones, la configuración, la carpeta de XP
+  sin tocar, la pantalla por KMS, la moneda (la M) y pedir una canción (quedan 3 créditos), lo más sonado (de 2 a 3) y el sello. **Lo
+  grabado, mirado aparte** (una FFT propia, no `sonido.py`): 3 s de 440 Hz (el tono de la prueba de arranque), 3 s de 220 Hz (su canción de
+  prueba) y **45 s de 196 Hz a -4,2 dBFS** («01 Pulso Grave»), los dos canales iguales: suena, no es silencio.
+
+### Lo que la lectura puso en duda (y se comprobó)
+
+1. **La pared no se veía en ninguna captura.** Las de la pantalla (`03-rocola.png`, `04-sonando.png`, `09-vuelve.png`, `13-a4.png`) son
+   todas de la atracción; `10-reanuda.png` es la pared vacía mientras busca la música y `11-letra-videos.png` es con el dibujo por
+   procesador. El apartado 4 decía «pinta la pared» de `13-a4.png` y «suena» de `04-sonando.png`: corregido arriba. Fase nueva `pared` en
+   `prueba.py` (una tecla que solo despierta y capturas seguidas hasta ver la pared): **BIEN** con la tarjeta, `revision/capturas/05-pared-15.png`
+   (LETRA B, la portada roja de «Primer Disco» con su brillo, BUSCAR, «Nada reproduciendose», la cola y 3 créditos).
+2. **Las letras de XP del disco de Windows no se probaban**: la C: falsa no tenía `WINDOWS\Fonts` y `ROCOLA_LETRAS_XP` salía vacía (las
+   capturas del grupo son con DejaVu Sans, las del sistema). `mundo.sh` pone ahora ahí letras **libres** de esta máquina (DejaVu Serif) con
+   los nombres de los archivos de XP (nada de Microsoft): `ROCOLA_LETRAS_XP=/rocola/discos/sda1/WINDOWS/Fonts`, `rocola-discos` copió las 11 a
+   `/rocola/datos/letras` y la rocola pinta con ellas (con remates: `03-rocola-p1.png`, `05-pared-15.png`). **BIEN**.
+3. **La consola se daba por vista con cualquier pantalla de más de 400 puntos claros**, y el último cuadro de la rocola, si se quedara
+   puesto, también los tiene (`revision/capturas/06-antes-consola-sin-arreglo.png`: 216 786). Ahora pide además pocos colores: **BIEN**
+   (582 puntos claros, 2 colores; cerrada en 7 s, los 7 créditos conservados y otra vez con ellos al volver). Y **el arreglo hace falta**:
+   con una copia del lanzador sin su línea (en `/tmp`, abierta como la abre `S99rocola`: `setsid` en tty1), Ctrl+Alt+F2 cierra la rocola
+   en orden, pero la consola sigue en negro a los 6 s y a los 26 s (0 puntos claros: `07-consola-sin-arreglo*.png`); con la línea, se ve.
+4. **«La carpeta de XP sin tocar (contenido y fecha)» solo miraba el contenido**: ahora también la fecha de escritura (`date -r` dentro):
+   13 de 13 iguales.
+5. **El botón de encendido** (con `gpu=0`, como la fase `boton`): **BIEN**, el estado borrado a los 2 s, la máquina apagada a los 8 s y sin
+   créditos al prender. Con la tarjeta en QEMU no da tiempo (apartado 6), y el código lo explica: SIGTERM es un encargo («Apagado») en el
+   hilo de la pantalla (`Nativo/PantallaRocola.cs`, como `WM_ENDSESSION` en XP), que corre entre un cuadro y el siguiente, y en QEMU cada
+   cuadro tarda 20 a 30 s. Sigue siendo lo primero que hay que mirar en el A4.
+6. **Las demás comprobaciones** prueban lo que dicen: el sello (si .NET leyera en ntfs3 otra fecha de creación que la apuntada, la canción
+   se volvería a medir y los dos campos ya no serían iguales); el apagón (que `rocola_estado.txt` no cambie solo dice que sobrevivió; que
+   reanuda lo dice lo grabado: 196 Hz y después 660 Hz, y `explora/caps/d03.png` con «Reanudando la musica»); la confirmación de un sistema
+   nuevo (cuenta desde el arranque del `rocola-xp` que sigue abierto: un reinicio de por medio daría menos, nunca más).
+   No se repitieron aquí: `video`, `caida`, `apagon`, `ia` y `a4` (mirado lo que dejaron).
+
+### Lo que se cambió
+
+- `prueba.py`, `mundo.sh` y su `LEEME.md` (commit 095045a): la fase `pared`, las letras de XP del disco de Windows, las fechas de la carpeta
+  de XP, la consola con pocos colores, y «pinta la rocola» en vez de «pinta la pared» en la fase `a4`. Corridas aquí: `arranque` otra vez
+  (17 BIEN, 0 MAL, con las comprobaciones nuevas), `pared` (1 BIEN), `consola` (7 BIEN), `boton` (3 BIEN); `mundo.sh` nuevo, aparte (deja
+  las letras).
+- Este documento: las dos capturas mal descritas (apartado 4) y esta sección. `sistema/INTEGRACION_ROCOLA_XP.md`: decía que el sistema
+  entero en QEMU no estaba probado; ahora remite aquí y dice que la consola se repinta al cerrarse la rocola.
+- Nada de `rocola-xp` ni de los guiones del sistema: el arreglo del grupo en `/usr/bin/rocola` está bien (solo actúa si había una rocola
+  abierta, después de cerrarla con SIGUSR1; nunca SIGTERM; escribir dos secuencias de escape en la consola de delante no estorba).
+
+### Lo que queda
+
+- **Todo en el A4**: la pantalla con la Radeon (y si allí hace falta repintar la consola: si no, no estorba), el sonido por la salida
+  verde, el botón con la tarjeta y créditos puestos (que al prender ya no estén; si sobreviven, subir la espera de `00000080`: XP daba
+  20 s), la primera importación con la carpeta de XP de verdad y sus letras de verdad.
+- La compilación de verdad (la rápida con «rapida_ya»), del coordinador.
+- `/root/rocola-trabajo/act/qemu/revision`: 13 MB (capturas, lo grabado y las salidas); el disco de XP, la memoria USB, el mundo y el
+  `rocola-xp` de la revisión se borraron (se rehacen como dice `LEEME.md`).
