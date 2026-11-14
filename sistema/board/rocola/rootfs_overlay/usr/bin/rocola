@@ -23,6 +23,14 @@ apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; ec
 # abierta). No con la hora (date): rocola-actualiza la pone por NTP al minuto de prender, y salta (horas, si el reloj de la placa estaba
 # mal) justo mientras se trae lo de XP la primera vez o con la rocola abierta.
 segundos() { cut -d. -f1 /proc/uptime; }
+# LA ROCOLA NO MUERE CON EL LANZADOR (revision, 14-11-2026). S99rocola abre este lanzador en una sesion propia con tty1 como su terminal
+# de control (setsid ... </dev/tty1), y rocola-xp va en su mismo grupo de procesos, el de primer plano de tty1. Cuando el lanzador muere
+# (el boton de encendido, «apagar ya» y «reiniciar el equipo ya» del buzon y el reinicio de S99rocola lo matan PRIMERO, para que no la
+# vuelva a abrir), el nucleo cuelga tty1 y manda SIGHUP a ese grupo: rocola-xp no la atiende y se moria en seco ANTES de que le llegara
+# su SIGTERM (el apagado: borra el estado) o su SIGUSR1 (el cierre en orden): con el boton de encendido los creditos y la cola
+# sobrevivian (regla del 8-11-2026). Comprobado con el rocola-xp de verdad y una terminal (sistema/ACT_sistema-activa.md, «Revision»).
+# Ignorada aqui, rocola-xp y el importador la heredan ignorada (exec la conserva) y atienden solo las senales que les mandan a ellos.
+trap '' HUP
 
 # SIN rocola-xp EN EL SISTEMA (no deberia pasar: es su unico programa): un aviso claro en la pantalla (tty1) y en la bitacora, y nada mas
 # (sin volver a intentarlo una y otra vez). Un sistema nuevo en prueba asi no se confirma: S99rocola y el initramfs vuelven solos al

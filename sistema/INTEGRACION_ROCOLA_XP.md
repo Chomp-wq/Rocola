@@ -142,6 +142,17 @@ apagado ni Alt+F4 (`TaskManagerClosing`): hace todo lo que hace al cerrar (para 
 el estado también sobrevive. Quien la cierra deja antes su marca (`/run/rocola-en-consola`, `/run/rocola-xp-reinicio` con el motivo), y
 el lanzador la mira antes que el código de salida: ni el 0 ni el 138 cuentan como caída.
 
+**El lanzador ignora SIGHUP, y `rocola-xp` la hereda ignorada (revisión, 14-11-2026; arreglo necesario para la tabla de arriba).**
+`S99rocola` abre el lanzador en una sesión propia con tty1 como terminal de control, y `rocola-xp` va en su grupo de procesos (el de
+primer plano de tty1). El botón de encendido, «apagar ya» y «reiniciar el equipo ya» del buzón y el reinicio de `S99rocola` matan
+PRIMERO al lanzador (para que no la vuelva a abrir): al morir, el núcleo cuelga tty1 y manda SIGHUP a ese grupo, y `rocola-xp`, que no la
+atiende, se moría en seco antes de que le llegara su SIGTERM o su SIGUSR1. Con el botón de encendido el estado **sobrevivía** (contra la
+regla del 8-11-2026), y en los reinicios no se cerraba en orden. Comprobado con el `rocola-xp` de verdad (NativeAOT, fuera de pantalla,
+con una moneda) y un lanzador mínimo con una pseudoterminal de control, el mismo orden que `00000080`: sin el arreglo sale con 129 (la
+SIGHUP) y `rocola_estado.txt` queda con los créditos; con SIGHUP ignorada, `WindowsShutDown` y el estado borrado (y con SIGUSR1,
+`TaskManagerClosing` y el estado conservado). Las pruebas de antes no lo veían porque abrían el lanzador sin terminal (`</dev/null`):
+ahora el caso `colgar` de `prueba.sh` lo abre con una (`terminal.c`).
+
 Queda sin cubrir: apagar con la rocola ya cerrada para la consola de mantenimiento (el botón de encendido, o `poweroff` escrito ahí):
 `rocola-xp` no está abierta para borrar el estado (se cerró con SIGUSR1 al ir a la consola, que lo conserva), y al prender reanuda los
 créditos y la cola (antes igual).
@@ -229,6 +240,11 @@ Probado aquí (máquina de pruebas, no el A4), 14-11-2026:
   niega. Las órdenes del paquete de Buildroot, tal cual, con el mismo `dotnet` de mentira.
 - `sh -n` con el BusyBox del sistema de todos los guiones tocados; `bash -n rapida.sh`; `rapida.sh decide` antes y después.
 - La configuración con Buildroot (`make rocola_a4_defconfig` y `printvars` de las órdenes del paquete).
+- (Revisión independiente, 14-11-2026) Lo de arriba, repetido; además: la `.config` de Buildroot antes y después solo cambia
+  `ROCOLA_CONSOLA` por `ROCOLA_XP`; el caso nuevo `colgar` de `prueba.sh` (el lanzador con una terminal de control, como en tty1: el
+  botón, `S99rocola` sin confirmar y «apagar ya»), 0 de 4 sin el arreglo de la SIGHUP y 4 de 4 con él; el mismo orden con el `rocola-xp`
+  de verdad y una pseudoterminal (apartado 4); y el trozo de `rocola-instalar` que traduce las rutas, con el BusyBox del sistema. Los
+  números, en `sistema/ACT_sistema-activa.md` («Revisión»).
 
 No probado:
 

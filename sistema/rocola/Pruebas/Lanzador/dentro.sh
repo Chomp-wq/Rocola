@@ -8,7 +8,7 @@ unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 API=http://127.0.0.1:$(cat /tmp/gh.puerto)
 XPD=/rocola/datos/xp
 limpia() {
-	killall rocola rocola-sonido rocola-prueba 2>/dev/null; killall -KILL rocola-xp sleep 2>/dev/null; sleep 1
+	killall rocola rocola-sonido rocola-prueba 2>/dev/null; killall -KILL rocola-xp sleep con-terminal 2>/dev/null; sleep 1
 	umount /rocola/disco 2>/dev/null
 	rm -rf /run/* /tmp/falso.* /tmp/tty1 /tmp/sonido.txt /rocola/datos/* /rocola/datos/.[!.]* /rocola/disco /rocola/discos /root/rocola.txt \
 		/root/rocola-prueba.txt /tmp/rocola-prueba-xp /etc/rocola-sistema-version
@@ -34,6 +34,13 @@ estado_lanzador() { for p in $(pidof rocola); do awk '{print $3}' "/proc/$p/stat
 # «parado» si alguno de sus procesos esta parado (T); si no, «sigue» (esperando o, un instante, corriendo)
 parado() { case "$(estado_lanzador)" in *T*) echo parado ;; *) echo sigue ;; esac; }
 datos_xp() { mkdir -p /rocola/disco/Rocola/Release; printf 'teclas\r\n' > /rocola/disco/Rocola/Release/rocola_teclas.txt; echo /rocola/disco/Rocola/Release > /run/rocola-datos-xp; }
+# «si» si el proceso PID tiene SIGHUP ignorada (/proc/PID/status, SigIgn: el bit 0 es SIGHUP)
+sighup_ignorada() { m=$(awk '/^SigIgn:/ {print $2}' "/proc/$1/status" 2>/dev/null); case "$m" in *[13579bdfBDF]) echo si ;; *) echo no ;; esac; }
+# el lanzador como en la rocola: en una sesion nueva con una terminal (aqui una pseudoterminal; alli tty1) como terminal de control
+lanza_con_terminal() {
+	mountpoint -q /dev/pts || { mkdir -p /dev/pts; mount -t devpts -o newinstance,ptmxmode=0666 devpts /dev/pts && ln -sf pts/ptmx /dev/ptmx; }
+	( exec con-terminal rocola ) &
+}
 limpia
 case "$1" in
 arranque)   # siempre rocola-xp: el importador primero (el contrato), sus datos, la musica, las letras de XP; rocola_programa.txt se ignora
@@ -133,6 +140,20 @@ reinicia)   # «reiniciar el programa ya» (buzon): SIGUSR1, ordenado (sale con 
 boton)   # el boton de encendido: el lanzador y la rocola (SIGTERM: el apagado, que borra el estado) y se apaga
 	lanza; sleep 3; sh /etc/acpi/PWRF/00000080; sleep 1; log
 	ok "$(pidof rocola rocola-xp | wc -w)/$(n SIGTERM)/$(n SIGUSR1)/$(n 'poweroff:')" "0/1/0/1" "ni lanzador ni rocola, con SIGTERM, y se apaga" ;;
+colgar)   # (revision) el lanzador con su terminal de control, como lo abre S99rocola en tty1: al matarlo (boton, S99rocola, las «ya» del
+	# buzon), el nucleo manda SIGHUP al grupo de primer plano, el de rocola-xp; si no la ignora, muere en seco antes de su SIGTERM/SIGUSR1
+	lanza_con_terminal; sleep 3; log
+	ok "$(sighup_ignorada "$(pidof rocola-xp)")" si "rocola-xp lleva SIGHUP ignorada (la hereda del lanzador)"
+	sh /etc/acpi/PWRF/00000080; sleep 1; log | tail -2
+	ok "$(n SIGTERM)/$(n 'poweroff:')/$(pidof rocola rocola-xp | wc -w)" "1/1/0" "el boton: rocola-xp recibe su SIGTERM (borra el estado) y no muere antes por SIGHUP"
+	limpia; mkdir -p /rocola/disco/rocola-os; touch /rocola/disco/rocola-os/probando; echo 7 > /etc/rocola-sistema-version
+	sed -n '/^\t\tif \[ -f \/rocola\/disco\/rocola-os\/probando \]; then$/,/^\t\tfi$/p' /etc/init.d/S99rocola | sed 's/-lt 90/-lt 2/; s/sleep 10/sleep 1/' > /tmp/s99.sh
+	lanza_con_terminal; sleep 3; sh /tmp/s99.sh; sleep 4; log | tail -2
+	ok "$(n SIGUSR1)/$(n 'reboot:')/$(pidof rocola rocola-xp | wc -w)" "1/1/0" "S99rocola sin confirmar: rocola-xp se cierra en orden con su SIGUSR1 (conserva el estado) y no muere antes por SIGHUP"
+	limpia; printf 'llave-de-prueba\nprueba/buzon\n' > /rocola/datos/rocola_buzon.txt; rm -rf /gh/repo
+	echo '[{"id":"20","orden":"apagar","arg":"ya"}]' > /gh/ordenes.json
+	lanza_con_terminal; sleep 3; env ROCOLA_API=$API ROCOLA_RUN=/run ROCOLA_DATOS=/rocola/datos ROCOLA_DISCO=/rocola/disco rocola-buzon una; sleep 1; log | tail -2
+	ok "$(n SIGTERM)/$(n 'poweroff:')/$(pidof rocola rocola-xp | wc -w)" "1/1/0" "«apagar ya» del buzon: rocola-xp recibe su SIGTERM (borra el estado) y no muere antes por SIGHUP" ;;
 sinprograma)   # un sistema sin rocola-xp: el aviso en la pantalla y en la bitacora, sin dar vueltas
 	mv /usr/lib/rocola-xp/rocola-xp /usr/lib/rocola-xp/x
 	lanza; sleep 4; sed 's/^/    tty1: /' /tmp/tty1; bit
