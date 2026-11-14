@@ -229,12 +229,12 @@ kill9, f3vistas y f3teclas IGUALES; buscador solo por la cuenta del reloj, repet
 - `5a60f61`, `9e39620`, `e13d40c`: oleada 2 (directas-tanda2, ajustes-roundrect-familiaui y lo-suelto), las tres con revisión («bien»).
   Sin choques.
 - `809389d`: 3a armado-vistas (las vistas cumplen IVista y se arman por la pantalla; HelpBar sin herencia), revisión «bien».
-- `01fcf68`: 3b limpieza-puentes (hecho por Sonnet), revisión «arreglado» (tres notas viejas).
+- `01fcf68`: 3b limpieza-puentes (hecho por el modelo ligero), revisión «arreglado» (tres notas viejas).
 - `0130457`: 5c panel-del-disco (BgPanel sin Panel; sus vistas dentro como hijas de un Panel de WinForms) y 7a f12-como-hoja (la
-  ventana F12 como hoja no modal), los dos hechos por Sonnet, revisión «arreglado» (notas; el orden del apagado con F12 detrás).
+  ventana F12 como hoja no modal), los dos hechos por el modelo ligero, revisión «arreglado» (notas; el orden del apagado con F12 detrás).
 - `e5fbde4`: 4a cache-portadas (las cachés de portadas, previas y celdas en SKBitmap; Nativo/MapaVivo.cs), revisión «bien». Un
   choque de notas en PantallaVivaGpu.cs (las dos notas juntas, mismo número de líneas).
-- `d05b06d`: 4b vista-ayuda (hecho por Sonnet), revisión «arreglado» con un fallo GRAVE arreglado: el hueco de la casilla perdía el
+- `d05b06d`: 4b vista-ayuda (hecho por el modelo ligero), revisión «arreglado» con un fallo GRAVE arreglado: el hueco de la casilla perdía el
   `TabStop = false` de XP y el Tab de la ventana se paraba en ella (ciclo de 6 en vez de 5). Choque con 5c en IVista y Anfitrion.cs:
   quedan los dos (`Seleccionable` de 5c y `ParaElTabulador` de 4b); el hueco de una vista no seleccionable es un Panel (ni Selectable
   ni TabStop) y si no lleva el TabStop de XP.
