@@ -39,13 +39,16 @@ usa_xp() { [ ! -f "${ROCOLA_RUN:-/run}/rocola-xp-caida" ] && [ -x "$XPBIN" ] && 
 abierta() { pidof rocola-consola rocola-xp >/dev/null; }
 # CERRAR rocola-xp CONSERVANDO LOS CREDITOS Y LA COLA (los reinicios propios de Rocola OS: la consola de mantenimiento, «reiniciar el
 # programa ya»). En XP, y en rocola-xp, el cierre a proposito (SIGTERM = el apagado de Windows) BORRA rocola_estado.txt (regla del
-# 8-11-2026); lo unico que lo conserva es el «cierre por otra causa». rocola-xp aun no tiene esa via: se le manda SIGUSR1, que hoy lo
-# corta en seco como un apagon (el estado sobrevive y al abrir reanuda; lo aprendido desde el ultimo guardado se pierde) y, cuando
-# rocola-xp la atienda (pendiente: INTEGRACION_ROCOLA_XP.md), sera un cierre ordenado. NUNCA SIGTERM aqui.
+# 8-11-2026); lo unico que lo conserva es el «cierre por otra causa». Esa via es SIGUSR1: rocola-xp la atiende con un cierre ORDENADO
+# (guarda todo lo que XP guarda al cerrar, suelta el sonido y la tarjeta, NO borra el estado) y sale con 0. Si le llega antes de estar
+# lista para atenderla (los primeros instantes del arranque) la corta en seco como un apagon y sale con 138: el estado tambien sobrevive.
+# Ninguna de las dos salidas es una caida: quien llama a cierra_xp deja antes su marca (rocola-en-consola, rocola-xp-reinicio) y el bucle
+# de abajo la mira antes que el codigo de salida. Si en 20 s no se cerro, se corta (SIGKILL: como un apagon) y queda apuntado. NUNCA
+# SIGTERM aqui.
 cierra_xp() {
 	killall -USR1 rocola-xp 2>/dev/null
 	i=0; while pidof rocola-xp >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
-	pidof rocola-xp >/dev/null && killall -KILL rocola-xp 2>/dev/null
+	pidof rocola-xp >/dev/null && { killall -KILL rocola-xp 2>/dev/null; apunta "rocola-xp no se cerro en 20 s: se corto (el estado queda como tras un apagon)"; }
 }
 # LO QUE rocola-xp NECESITA (solo con el interruptor encendido). Deja XPDATOS y XPLETRAS.
 #  - LOS DATOS: de fabrica, una carpeta propia en lo aprendido (/rocola/datos/xp): no se mezclan con los de rocola-consola (su
@@ -190,7 +193,7 @@ while :; do
 	r=$?
 	duro=$(( $(date +%s) - t0 ))
 	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; continue; fi   # (no es una caida)
-	# (rocola-xp cerrado por el lanzador para «reiniciar el programa ya»: sale por la senal, no es una caida ni cuenta para las 3 seguidas)
+	# (rocola-xp cerrado por el lanzador para «reiniciar el programa ya»: sale con 0 -cierre ordenado- o por la senal; no es una caida ni cuenta para las 3 seguidas)
 	if [ "$BIN" = "$XPBIN" ] && [ -f ${ROCOLA_RUN:-/run}/rocola-xp-reinicio ]; then rm -f ${ROCOLA_RUN:-/run}/rocola-xp-reinicio; apunta "rocola-xp se cerro para reiniciarse (pedido desde casa)"; continue; fi
 	if [ "$r" = 42 ]; then pon_nueva; continue; fi   # salio para ponerse la version nueva
 	if [ "$r" = 43 ]; then apunta "Reinicio para el sistema nuevo"; sync; reboot; sleep 60; fi   # salio para el sistema nuevo (rocola-actualiza)

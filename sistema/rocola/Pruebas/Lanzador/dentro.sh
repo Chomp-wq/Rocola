@@ -42,6 +42,21 @@ buzon)   # «reiniciar el equipo ya» y «apagar ya» de rocola-buzon con rocola
 		que=$que sh /tmp/trozo.sh; sleep 3; echo "  -- $que: abiertos=[$(pidof rocola rocola-xp)] (nadie: ni el lanzador la vuelve a abrir)"; log | tail -1
 	done
 	limpia; lanza; sleep 3; que=reinicia sh /tmp/trozo.sh; echo "  -- sin rocola-xp: sigue rocola-consola=[$(pidof rocola-consola)] y el lanzador=[$(pidof rocola)]" ;;
+cierre)   # el cierre de rocola-xp con SIGUSR1 (cierra_xp): ordenado (sale con 0), cortado al arrancar (138) y uno que no se cierra (SIGKILL a los 20 s)
+	echo "programa=xp" > /rocola/datos/rocola_programa.txt; : > /run/rocola-musica
+	for modo in ordenado muere; do
+		limpia; echo "programa=xp" > /rocola/datos/rocola_programa.txt; : > /run/rocola-musica; echo $modo > /tmp/falso.usr1
+		# cuatro cierres seguidos en menos de 30 s cada uno (dos por la consola y dos de «reiniciar ya»): ninguno cuenta como caida
+		lanza; sleep 3
+		for n in 1 2; do echo tty2 > /run/vt; sleep 3; echo tty1 > /run/vt; sleep 4; done
+		for n in 1 2; do touch /run/rocola-reinicia-programa-ya; sleep 9; done
+		echo "  -- $modo: abiertos=[$(pidof rocola-xp | wc -w)] caida=$([ -f /run/rocola-xp-caida ] && echo SI || echo no) arranques=$(grep -c 'rocola-xp: arranca' /tmp/falso.log) con-consola=$(grep -c 'rocola-consola: arranca' /tmp/falso.log)"
+		grep -c "SIGUSR1" /tmp/falso.log | sed 's/^/    cierres ordenados apuntados por el programa: /'; sed 's/^/    bitacora: /' /rocola/datos/rocola_actualizaciones.txt
+	done
+	limpia; echo "programa=xp" > /rocola/datos/rocola_programa.txt; : > /run/rocola-musica; echo sordo > /tmp/falso.usr1
+	lanza; sleep 3; p1=$(pidof rocola-xp); echo tty2 > /run/vt; sleep 24; echo "  -- sordo: a los 24 s en la consola abiertos=[$(pidof rocola-xp | wc -w)]"; echo tty1 > /run/vt; sleep 4
+	echo "  de vuelta: abierta otra=[$([ -n "$(pidof rocola-xp)" ] && [ "$(pidof rocola-xp)" != "$p1" ] && echo si || echo NO)] caida=$([ -f /run/rocola-xp-caida ] && echo SI || echo no)"; sed 's/^/    bitacora: /' /rocola/datos/rocola_actualizaciones.txt
+	rm -f /tmp/falso.usr1 ;;
 sinprograma)   # el interruptor encendido en un sistema que no trae rocola-xp
 	mv /usr/lib/rocola-xp/rocola-xp /usr/lib/rocola-xp/x; echo "programa=xp" > /rocola/datos/rocola_programa.txt; lanza; sleep 3; log; mv /usr/lib/rocola-xp/x /usr/lib/rocola-xp/rocola-xp ;;
 esac
