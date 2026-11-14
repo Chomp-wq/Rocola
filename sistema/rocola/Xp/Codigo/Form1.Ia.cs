@@ -58,7 +58,7 @@ namespace Rocola
         // 24 GB de RAM: toma una muestra repartida por todo el archivo (ver ia/entrenar_ia.py). Se cambia con
         // ia_datos_mb= en la configuracion; 0 lo quita del todo.
         private long iaMaxBytes = 24L * 1024 * 1024 * 1024;
-        private bool IaBudgetFull() { return iaMaxBytes > 0 && (long)iaPairsTotal * 160L + 16L >= iaMaxBytes; }
+        private bool IaBudgetFull() { return (iaMaxBytes > 0 && (long)iaPairsTotal * 160L + 16L >= iaMaxBytes) || DatosGrandes.SinSitio(); }   // EN LINUX: (XP) sin «|| DatosGrandes.SinSitio()»: en Rocola OS la cosecha tambien se para si a donde va el material le quedan menos de 256 MB libres (decision del dueno del 3-11-2026; Nativo/DatosGrandes.cs)
         private string IaInfoText()
         {
             long mb = ((long)iaPairsTotal * 160L + 16L) / (1024 * 1024);
@@ -67,7 +67,7 @@ namespace Rocola
                    + (IaBudgetFull() ? ", tope alcanzado" : "") + ")";
         }
         private static readonly float[] IaCutsHz = { 11000f, 13000f, 15000f, 16500f, 18000f };   // cortes simulados
-        private string IaDataFile() { return RutaDatos("rocola_ia_datos.bin"); }
+        private string IaDataFile() { return DatosGrandes.Ruta("rocola_ia_datos.bin"); }   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola y no en lo aprendido, de 512 MB (Nativo/DatosGrandes.cs)
         private string IaDoneFile() { return RutaDatos("rocola_ia_hechas.txt"); }
         private readonly object iaDoneLock = new object();
         private volatile bool iaDoneDirty = false;   // hay canciones nuevas cosechadas sin apuntar en disco
@@ -248,7 +248,7 @@ namespace Rocola
         // medias, con su CRC malo o que no cuadra con los datos, se ignora al leer. Nunca se atribuye mal.
         // Coste: un CRC de lo que ya estaba en memoria y 64 bytes mas por cancion, en el hilo de fondo.
         private const int IaExtractorVersion = 2;   // la geometria de MakePair (ia/contrato_dsee.py, EXTRACTOR)
-        private string IaIndexFile() { return RutaDatos("rocola_ia_datos.idx"); }
+        private string IaIndexFile() { return DatosGrandes.Ruta("rocola_ia_datos.idx"); }   // EN LINUX: (XP) RutaDatos(...): junto al material (Nativo/DatosGrandes.cs)
         private sealed class IaOrigen
         {
             public ulong Cancion, Carpeta, Artista;
@@ -319,7 +319,7 @@ namespace Rocola
         {
             try
             {
-                string ruta = RutaDatos("rocola_ia_datos.generos.tsv");
+                string ruta = DatosGrandes.Ruta("rocola_ia_datos.generos.tsv");   // EN LINUX: (XP) RutaDatos(...): junto al material (Nativo/DatosGrandes.cs)
                 if (datosNuevos && File.Exists(ruta))
                 {
                     string aparte = ruta + ".anterior";
@@ -490,7 +490,7 @@ namespace Rocola
             GenerosCompletados = 0;
             lock (iaFileLock)
             {
-                string idx = IaIndexFile(), tsv = RutaDatos("rocola_ia_datos.generos.tsv");
+                string idx = IaIndexFile(), tsv = DatosGrandes.Ruta("rocola_ia_datos.generos.tsv");   // EN LINUX: (XP) RutaDatos(...): junto al material (Nativo/DatosGrandes.cs)
                 if (!File.Exists(idx)) return;
                 // Las canciones con material, del indice (64 bytes por entrada, la huella en el 32; las de CRC malo no cuentan).
                 HashSet<ulong> conMaterial = new HashSet<ulong>();
