@@ -71,16 +71,24 @@ namespace Rocola
         }
 
         // Poco sitio donde va el material: la cosecha se para (Form1.Ia.cs, IaBudgetFull). Se mira como mucho cada 30 s.
-        private static int mirado = int.MinValue / 2;
-        private static bool sinSitio;
+        // (Revision del 14-11-2026: con Environment.TickCount, de 32 bits, y «mirado» empezando en int.MinValue / 2, como Motor/MaterialIa.cs,
+        // la primera resta se desbordaba si el equipo llevaba encendido entre 12,4 y 37,3 dias -TickCount cuenta desde que se prendio el
+        // equipo y da la vuelta a los 24,9 dias-: entonces no se miraba NUNCA hasta salir de ese tramo, y la cosecha podia llenar el disco.
+        // Ahora TickCount64, que no da la vuelta, y la primera vez siempre se mira.)
+        private static readonly object sitioCerrojo = new object();
+        private static long mirado;
+        private static bool yaMirado, sinSitio;
         internal static bool SinSitio()
         {
-            int ahora = Environment.TickCount;
-            if (unchecked(ahora - mirado) < 30000) return sinSitio;
-            mirado = ahora;
-            try { sinSitio = new DriveInfo(Carpeta ?? Form1.CarpetaDatos).AvailableFreeSpace < ReservaBytes; }
-            catch { sinSitio = false; }
-            return sinSitio;
+            lock (sitioCerrojo)
+            {
+                long ahora = Environment.TickCount64;
+                if (yaMirado && ahora - mirado < 30000) return sinSitio;
+                yaMirado = true; mirado = ahora;
+                try { sinSitio = new DriveInfo(Carpeta ?? Form1.CarpetaDatos).AvailableFreeSpace < ReservaBytes; }
+                catch { sinSitio = false; }
+                return sinSitio;
+            }
         }
     }
 }
