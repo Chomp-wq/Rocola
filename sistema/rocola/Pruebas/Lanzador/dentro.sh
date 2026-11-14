@@ -238,5 +238,26 @@ EOF
 	env $A rocola-actualiza
 	ok "$(cat /rocola/datos/programa/version)/$(ls /rocola/datos/programa | tr '\n' ' ')" "57/rocola-consola.nueva version " "se queda como estaba"
 	ok "$(sed 's/^[0-9:]* //' /run/rocola-actualiza.txt)" "programa rocola-xp 0 (llega con el sistema); sistema nuevo en prueba" "lo que dice" ;;
+contrato)   # el contrato con el importador DE VERDAD (prueba.sh con ROCOLA_XP_REAL): el lanzador lo llama, trae lo de XP y sale con 0
+	if [ ! -x /usr/lib/rocola-xp/real/rocola-xp ]; then echo "  (sin ROCOLA_XP_REAL: no se prueba)"
+	else
+		mkdir -p /usr/lib/rocola-xp/falso; mv /usr/lib/rocola-xp/rocola-xp /usr/lib/rocola-xp/falso/rocola-xp
+		printf '#!/bin/sh\n[ "$1" = --importa-xp ] && exec /usr/lib/rocola-xp/real/rocola-xp "$@"\nexec /usr/lib/rocola-xp/falso/rocola-xp "$@"\n' > /usr/lib/rocola-xp/rocola-xp
+		chmod 755 /usr/lib/rocola-xp/rocola-xp
+		mkdir -p /rocola/disco/Rocola/Release /rocola/disco/Rocola/musica
+		printf '38\r\n40\r\n37\r\n39\r\n13\r\n8\r\n53\r\n83\r\n' > /rocola/disco/Rocola/Release/rocola_teclas.txt
+		printf 'noche=1\r\nnoche_pct=80\r\n' > /rocola/disco/Rocola/Release/rocola_config.txt
+		echo /rocola/disco/Rocola/Release > /run/rocola-datos-xp; echo /rocola/disco/Rocola/musica > /run/rocola-musica
+		antes=$(cd /rocola/disco/Rocola/Release && ls -la --full-time . 2>/dev/null | md5sum; cat * | md5sum)
+		lanza ROCOLA_SOLA=1; sleep 6; grep 'importa-xp' /rocola/datos/rocola.txt | sed 's/^/    | /'
+		ok "$(n 'traer lo aprendido en XP salio' /rocola/datos/rocola.txt)/$(si -f $XPD/rocola_importado_xp.txt)/$(n arranca)" "0/si/1" "sale con 0, deja su marca y la rocola se abre"
+		ok "$(cmp -s /rocola/disco/Rocola/Release/rocola_teclas.txt $XPD/rocola_teclas.txt && echo igual)/$(tr -d '\r' < $XPD/rocola_config.txt | tr '\n' '|')" "igual/noche=1|noche_pct=80|dir=/rocola/disco/Rocola/musica|" "los botones tal cual; la configuracion de XP y despues el dir= del lanzador"
+		ok "$(cd /rocola/disco/Rocola/Release && ls -la --full-time . 2>/dev/null | md5sum; cat * | md5sum)" "$antes" "la carpeta de XP no cambio"
+		echo 0 > /tmp/falso.cierra; sleep 5
+		ok "$(n 'ya importado de /rocola/disco/Rocola/Release' /rocola/datos/rocola.txt)/$(n 'traer lo aprendido en XP salio' /rocola/datos/rocola.txt)/$(n arranca)" "1/0/2" "la segunda vez: «ya importado», sale con 0 y se abre"
+		ok "$(tr -d '\r' < $XPD/rocola_config.txt | grep -c '^dir=')" 1 "el dir= no se repite"
+		killall rocola; killall -KILL rocola-xp; sleep 1
+		rm -f /usr/lib/rocola-xp/rocola-xp; mv /usr/lib/rocola-xp/falso/rocola-xp /usr/lib/rocola-xp/rocola-xp
+	fi ;;
 esac
 limpia

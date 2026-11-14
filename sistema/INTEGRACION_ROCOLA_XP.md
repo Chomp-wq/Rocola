@@ -214,6 +214,11 @@ Probado aquí (máquina de pruebas, no el A4), 14-11-2026:
   `rocola-sonido` (desde la consola, con la rocola abierta, `usar` y `auto`, cortado a medias), `rocola-prueba`, la vuelta de
   `S99rocola`, el buzón entero (órdenes, archivos, registros, estado, las tres «ya») y `rocola-actualiza` (el canal del programa
   apagado; un sistema nuevo). Los números, en `sistema/ACT_sistema-activa.md`.
+- El contrato con el importador de verdad (el `rocola-xp` NativeAOT del otro grupo, con la glibc del sistema): el lanzador lo llama, sale
+  con 0, trae los botones y la configuración, no cambia la carpeta de XP, y la segunda vez dice «ya importado».
+- `rapida.sh arma` de verdad con una base de mentira (64 MB) y un `dotnet` de mentira: con «rapida_ya» pone `rocola-xp` con su versión,
+  la canción de prueba y el lanzador nuevo, deja el `rocola-consola` de la base, y el `disk.img` lleva ese sistema; sin «rapida_ya», se
+  niega. Las órdenes del paquete de Buildroot, tal cual, con el mismo `dotnet` de mentira.
 - `sh -n` con el BusyBox del sistema de todos los guiones tocados; `bash -n rapida.sh`; `rapida.sh decide` antes y después.
 - La configuración con Buildroot (`make rocola_a4_defconfig` y `printvars` de las órdenes del paquete).
 
@@ -221,8 +226,8 @@ No probado:
 
 - **Nada en el A4.** Ni el sistema entero en QEMU con `rocola-xp` (pantalla KMS, `/dev/input`, sonido, video): lo hace el coordinador
   antes de compilar.
-- El paquete de Buildroot compilado de verdad (`make rocola-xp`) y `rapida.sh arma` con la base de verdad (no hay sitio en el disco de
-  pruebas para la imagen entera).
+- El paquete de Buildroot compilado de verdad (`make rocola-xp`) y `rapida.sh arma` con la base de verdad y el `dotnet` de verdad (no hay
+  sitio en el disco de pruebas para la imagen entera, y la máquina estaba ocupada): la compilación la hace GitHub.
 - El importador con datos reales de XP y el tiempo que tarda la primera vez en el A4.
 - Cuánto tarda `rocola-xp` en cerrarse con SIGTERM o SIGUSR1 con música sonando por una tarjeta de verdad (aquí, sin tarjeta, 30 a 90 ms;
   el lanzador corta a los 20 s y el buzón a los 15 s).
