@@ -715,7 +715,7 @@ namespace Rocola
         {
             if (thumbDir == null)
             {
-                string d = RutaDatos("rocola_miniaturas");
+                string d = DatosGrandes.Ruta("rocola_miniaturas");   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola; con 2 000 discos son unos 280 MB y lo aprendido mide 512 MB (Nativo/DatosGrandes.cs)
                 try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
                 thumbDir = d;
             }

@@ -2480,7 +2480,7 @@ namespace Rocola
         // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
         // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Las tablas/modelos pueden ocupar MB:
         // solo se capturan handles y longitudes aqui; copia, hashes y Flush ceden en un trabajador de baja prioridad.
-        private string BackupBaseDir() { return RutaDatos("respaldo"); }
+        private string BackupBaseDir() { return DatosGrandes.Ruta("respaldo"); }   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola: tres copias de las tablas son hasta unos 150 MB con 20 000 canciones, y una copia dentro de lo aprendido (datos.img) se perderia con el (Nativo/DatosGrandes.cs)
         private void BackupLearnedData()
         {
             string sp = CarpetaDatos, second = backupDir, baseDir = BackupBaseDir();

@@ -1,247 +1,269 @@
-# Rocola OS: el paso al programa traducido de XP (rocola-xp), preparado y APAGADO
+# Rocola OS con la rocola traducida de XP (rocola-xp): ACTIVADA, el único programa
 
-13-11-2026 (y 14-11-2026: `--version` y el cierre que conserva el estado, hechos). El programa de Rocola OS de hoy es
-`sistema/rocola/Consola` (`rocola-consola`). El dueño pidió rehacerlo traduciendo el de XP (`sistema/rocola/Xp`, `rocola-xp`); el port
-nativo ya está terminado (N7 hecho: sin capas). Regla del dueño (8-11-2026): **la versión a medio traducir no entra en Rocola OS**.
-Aquí queda preparado todo lo demás para que solo falte activar, compilar el sistema (lo pide el dueño) y probar en el A4.
+14-11-2026. **Decisión del dueño**: «Lo ideal es la que acabamos de traducir, la otra desecharla y si la que traducimos falla,
+arreglarla y pulirla». Desde ahora `rocola-xp` (`sistema/rocola/Xp`: la rocola de XP traducida a Linux, el port nativo terminado) es
+**el único programa de Rocola OS**. `rocola-consola` (`sistema/rocola/Consola` y `sistema/rocola/Motor`) se retira: el lanzador ya no
+lo abre nunca (ni como respaldo: si `rocola-xp` falla, se arregla `rocola-xp`), el sistema ya no lo compila y la rocola ya no lo baja.
+Su código se queda en el repositorio solo como referencia para la fase 11 y para lo que `rocola-xp` toma de él (`Gl.cs`, `Kms.cs`,
+`Botones.cs`). Y «traer lo aprendido de XP»: `rocola-xp` empieza en su carpeta propia (`/rocola/datos/xp`) con lo que la rocola de XP
+ya aprendió, con las rutas de Linux.
 
-**Con lo de fábrica nada cambia**: `rocola-xp` no se compila ni entra en el sistema, y el lanzador abre `rocola-consola` igual que
-antes (comprobado: ver «Qué se probó»).
+Hasta aquí: activado en la configuración, los guiones y la compilación rápida, y probado con programas falsos y el BusyBox del sistema
+(«Qué se probó»), y el sistema entero en QEMU (`sistema/ACT_qemu.md`). **Falta**: compilar el sistema (la rápida con «rapida_ya»: la
+lanza el coordinador), y todo lo del A4. Lo propio de Rocola OS que `rocola-xp` aún no tiene es la fase 11 (lista abajo).
 
-## 1. Cómo se compila rocola-xp para el sistema
+Las piezas, por grupo: el sistema y los guiones (`sistema/ACT_sistema-activa.md`); el importador y el material de la IA en `rocola-xp`
+(`Nativo/ImportaXp.cs`, `Nativo/DatosGrandes.cs`: el otro grupo de esta tanda); `--version` y el cierre con SIGUSR1
+(`sistema/rocola/Xp/PORT_integra-version-y-cierre.md`).
 
-- `dotnet publish -c Release -r linux-x64 -p:RocolaPerfil=a4` en `sistema/rocola/Xp` (NativeAOT; `RocolaXp.csproj` ya pone
-  `IlcInstructionSet x86-64-v2,avx` salvo con `RocolaPerfil=qemu`, como `Consola.csproj`). Hace falta el SDK de .NET 10 y clang, que
-  los dos trabajos del flujo del sistema ya instalan. En la máquina de pruebas: 1 min 28 s, sale `rocola-xp` (9,4 MB) y
-  `libSkiaSharp.so` (9,0 MB).
-- **Bibliotecas, miradas con `readelf -d` y `ldd` en lo publicado**:
-  - `rocola-xp` solo enlaza `libc.so.6` y `libm.so.6` (pide glibc 2.38 o menos; el sistema trae 2.42).
-  - `libSkiaSharp.so` (paquete `SkiaSharp.NativeAssets.Linux.NoDependencies`): solo glibc (`libpthread.so.0`, `libdl.so.2`, `libm`,
-    `libc`; pide glibc 2.29 o menos). **No hace falta HarfBuzz, FreeType ni fontconfig** (van dentro de Skia; el proyecto no usa
-    HarfBuzzSharp). Tiene que ir **al lado del programa** (lo busca junto a sí).
-  - Las que abre al usarlas (`DllImport`): `libEGL.so.1`, `libGLESv2.so.2`, `libgbm.so.1`, `libdrm.so.2` (Mesa y libdrm),
-    `libasound.so.2`, `libmpg123.so.0`, `libmpv.so.2`; y los programas `ffmpeg` (WAV comprimidos) y `amixer` (el volumen al
-    arrancar). **Todas están ya en el sistema** (`rocola_a4_defconfig`: Mesa, ALSA, `BR2_PACKAGE_MPV` -Buildroot compila mpv con
-    `-Dlibmpv=true`: `libmpv.so.2` está en la imagen-, `BR2_PACKAGE_MPG123`, `BR2_PACKAGE_FFMPEG_FFMPEG`, alsa-utils).
-- **No hay ningún paquete nuevo de Buildroot que compilar.** Por eso la activación puede hacerse con la compilación RÁPIDA con la
-  casilla «rapida_ya» (ver 3); sin esa casilla, el cambio de configuración pide la COMPLETA (una hora), que también vale.
+## 1. La compilación
+
+- **`configs/rocola_a4_defconfig`**: `BR2_PACKAGE_ROCOLA_XP=y`; `BR2_PACKAGE_ROCOLA_CONSOLA` ya no está (no se compila);
+  `BR2_PACKAGE_ROCOLA_SPOTIFY=y` se queda (lo usará la fase 11; hoy `rocola-xp` no lo abre). `sistema/Config.in` lee el menú de
+  `rocola-xp` y sigue leyendo el de `rocola-consola` (el paquete existe, apagado, como referencia; no hace falta para que la
+  configuración valga). Comprobado con Buildroot 2026.02.3 (`make rocola_a4_defconfig` en una carpeta aparte): todas las líneas del
+  defconfig quedan en `.config`, `BR2_PACKAGE_ROCOLA_XP=y`, `# BR2_PACKAGE_ROCOLA_CONSOLA is not set`, `BR2_PACKAGE_ROCOLA_SPOTIFY=y`.
+- **El paquete** (`package/rocola-xp/rocola-xp.mk`): `dotnet publish -c Release -r linux-x64 -p:RocolaPerfil=a4` en
+  `sistema/rocola/Xp` (NativeAOT; `RocolaXp.csproj` pone `IlcInstructionSet x86-64-v2,avx`, salvo con `RocolaPerfil=qemu`), con
+  `-p:RocolaVersion=N -p:RocolaCommit=C -p:RocolaFecha=S`: N = el número del sistema (`ROCOLA_SISTEMA_VERSION`, el que pone GitHub;
+  en casa, 0), C = el commit (`GITHUB_SHA`, o `git`; si no, «local»), S = cuándo. Pone:
+  - `/usr/lib/rocola-xp/rocola-xp` y a su lado `/usr/lib/rocola-xp/libSkiaSharp.so` (la busca junto a sí);
+  - `/usr/lib/rocola-xp/version`: lo que contesta `rocola-xp --version` («rocola-xp programa N (C) compilado S»); si dice otra cosa que
+    lo esperado, la compilación falla; si el equipo que compila no puede correrlo (otra glibc, sin AVX), se escribe la línea esperada;
+  - la canción de prueba que ponía `rocola-consola`: `/usr/share/rocola/prueba.mp3` (la usa `rocola-prueba`) y el disco
+    `/rocola/musica/Rocola OS - Prueba/prueba.mp3`, y la carpeta `/rocola/datos`.
+- **Bibliotecas** (miradas con `readelf -d` y `ldd` en lo publicado, 13-11-2026): `rocola-xp` solo enlaza `libc.so.6` y `libm.so.6`
+  (pide glibc 2.38 o menos; el sistema trae 2.42); `libSkiaSharp.so` solo glibc (2.29 o menos; sin HarfBuzz, FreeType ni fontconfig).
+  Las que abre al usarlas: `libEGL.so.1`, `libGLESv2.so.2`, `libgbm.so.1`, `libdrm.so.2`, `libasound.so.2`, `libmpg123.so.0`,
+  `libmpv.so.2`, y los programas `ffmpeg` y `amixer`. **Todas están ya en el sistema**; el menú de `rocola-xp` pide además ALSA,
+  libdrm, mpg123 y DejaVu (las letras de repuesto si no están las de XP), que el defconfig ya traía.
+- **La compilación rápida** (`sistema/rapida.sh`): ya no compila ni pone `rocola-consola` (antes, su paso 5); compila `rocola-xp`
+  (perfil del A4, con el número y el commit de ese sistema) si cambió `sistema/rocola/Xp` (o `Gl.cs`, `Kms.cs`, `Botones.cs`) o si la
+  base no lo trae, y pone lo mismo que el paquete (programa, biblioteca, `version` con lo que dice `--version`, canción de prueba).
+  - `rapida.sh decide` con la base de hoy (sistema-36, completa, commit 6a45256): antes de esta tanda decía «rapida»; ahora dice
+    «completa» por `sistema/Config.in`, `configs/rocola_a4_defconfig`, `package/rocola-xp/Config.in` y `package/rocola-xp/rocola-xp.mk`.
+  - **Con «rapida_ya»** (lo que se va a lanzar): el flujo (`.github/workflows/rocola-sistema.yml`) pone `modo=rapida` y `RAPIDA_YA=1`;
+    `rapida.sh arma` sigue aunque haya cambios que piden la completa, y su paso 5 corre porque la configuración ya pide `rocola-xp` y
+    sistema-36 no trae `/usr/lib/rocola-xp/rocola-xp`. Lo que **no entra hasta la siguiente completa**: el cambio de la configuración en
+    sí (en la imagen de la rápida **sigue `/usr/bin/rocola-consola` de sistema-36, sin usarse**: nadie lo abre ni lo baja) y el menú de
+    Buildroot. Nada de eso hace falta para que la rocola funcione con `rocola-xp`.
+  - Las pruebas de arranque (de `rapida.sh` no hay; la del flujo mira «Run /sbin/init» en QEMU) no nombran `rocola-consola`: no hubo que
+    cambiarlas. Los flujos no se tocaron: los dos trabajos del sistema ya instalan .NET 10 y clang.
+  - Sitio: `rocola-xp` añade unos 18 MB; la imagen de pruebas tenía 790 MB libres.
 
 ## 2. Lo que va en el sistema
 
-| Qué | Dónde | Estado |
-|---|---|---|
-| El paquete de Buildroot | `sistema/package/rocola-xp/` (`Config.in`, `rocola-xp.mk`) | escrito; **no está en `sistema/Config.in` ni en el defconfig**: no se compila |
-| El programa y su biblioteca | `/usr/lib/rocola-xp/rocola-xp`, `/usr/lib/rocola-xp/libSkiaSharp.so`, `/usr/lib/rocola-xp/version` | los pone el paquete (o `rapida.sh`) solo al activar |
-| El lanzador | `/usr/bin/rocola` | cambiado; sin interruptor hace lo de siempre |
-| El botón de encendido | `/etc/acpi/PWRF/00000080` | también cierra `rocola-xp` con SIGTERM y lo espera |
-| El buzón | `/usr/bin/rocola-buzon` | el estado mira también el proceso `rocola-xp` |
+| Qué | Dónde |
+|---|---|
+| El programa, su biblioteca y su versión | `/usr/lib/rocola-xp/` (paquete `rocola-xp` o `rapida.sh`) |
+| La canción de prueba | `/usr/share/rocola/prueba.mp3`, `/rocola/musica/Rocola OS - Prueba/` (paquete `rocola-xp`) |
+| El lanzador | `/usr/bin/rocola` (abre siempre `rocola-xp`) |
+| Lo demás que nombra a la rocola | `rocola-actualiza`, `rocola-buzon`, `rocola-sonido`, `rocola-prueba`, `/etc/acpi/PWRF/00000080`, `/etc/init.d/S99rocola`; y `rocola-instalar` (las rutas de `/rocola/datos/xp` al instalar, apartado 3) |
+| Lo de antes, sin usar | `/usr/bin/rocola-consola` solo en una imagen hecha con la rápida sobre sistema-36 (hasta la siguiente completa) |
 
-### El interruptor (uno, apagado de fábrica; no está en Ctrl+F3)
+## 3. El lanzador (`/usr/bin/rocola`)
 
-El archivo **`/rocola/datos/rocola_programa.txt`** con la línea `programa=xp`. Sin el archivo, con otra cosa dentro, o si el sistema
-no trae `/usr/lib/rocola-xp/rocola-xp`, se abre `rocola-consola` como siempre. Se mira cada vez que se abre el programa (no hace falta
-reiniciar el equipo). Líneas opcionales del mismo archivo:
+Lo abre `S99rocola` en tty1 (después de `rocola-discos`; la primera vez, después de `rocola-prueba`). Abre **siempre**
+`/usr/lib/rocola-xp/rocola-xp`. Ya no hay interruptor: `/rocola/datos/rocola_programa.txt`, si está, se ignora (no se borra; queda
+una línea en `rocola.txt`). Ya no hay nada de `rocola-consola`: ni el programa bajado (`.nueva`, `.anterior`, `.superada`, `.caida`:
+lo que hubiera en `/rocola/datos/programa` se queda como está), ni la vuelta a él tras tres caídas, ni la opción `datos=`.
 
-- (nada): los datos de `rocola-xp` en **`/rocola/datos/xp`** (carpeta propia, dentro de lo aprendido).
-- `datos=/una/carpeta`: en esa carpeta (por ejemplo `/rocola/disco/rocola-os/xp`, en el disco de la rocola).
-- `datos=xp`: en la carpeta de la rocola de XP que eligió `rocola-discos` (`/run/rocola-datos-xp`), si se puede escribir en ella
-  (solo si está en el disco donde va instalado Rocola OS; los otros discos van en solo lectura). **No es lo de fábrica**: ver
-  «Decisiones del dueño».
+Cada vez que abre la rocola, en este orden:
 
-**Red de seguridad**: si `rocola-xp` se cae 3 veces seguidas en sus primeros 30 s, el lanzador vuelve a `rocola-consola` hasta el
-siguiente encendido (`/run/rocola-xp-caida`) y lo apunta en `rocola_actualizaciones.txt`.
+1. Si está en la consola de mantenimiento, espera a que se vuelva a la 1 (Ctrl+Alt+F1).
+2. El volumen de la tarjeta (como siempre) y la tarjeta: `ROCOLA_ALSA` se vuelve a elegir con `rocola-tarjeta` **cada vez** (antes
+   una vez al prender: `rocola-sonido usar N` no valía hasta reiniciar el equipo).
+3. **Lo aprendido de XP** (el contrato con el importador): si `rocola-discos` encontró la carpeta de la rocola de XP
+   (`/run/rocola-datos-xp`), `ROCOLA_DATOS=/rocola/datos/xp /usr/lib/rocola-xp/rocola-xp --importa-xp /run/rocola-datos-xp`. Sale
+   enseguida si ya importó esa carpeta; 0 = bien; otro código se apunta en `rocola.txt` (cada vez) y en la bitácora (una vez por
+   código) y la rocola se abre igual. Tope de 10 minutos (la primera vez busca miles de archivos): si pasa de 3 s, en la pantalla sale
+   «Rocola OS: trayendo lo aprendido por la rocola de XP (solo la primera vez; puede tardar unos minutos)...» y se borra al acabar; si
+   llega al tope se corta (SIGTERM y, 10 s después, SIGKILL), se apunta y en ese encendido ya no se vuelve a intentar. El estado del día
+   (`rocola_estado.txt`) no se trae, y en la carpeta de XP no se escribe (`Nativo/ImportaXp.cs`). Sustituye a la copia de
+   `rocola_teclas.txt` y `rocola_config.txt` que hacía el lanzador cuando estaba apagada.
+4. **La música**: cada carpeta de `/run/rocola-musica` (las de `rocola-discos`) como línea `dir=` de `/rocola/datos/xp/rocola_config.txt`,
+   una vez cada una (después del importador, que puede traer la configuración de XP con sus `dir=` traducidas). XP busca además `musica`
+   junto a sus datos o hasta 3 carpetas más arriba: `/rocola/musica` (ahí está el disco de prueba).
+5. Si mientras tanto se fue a la consola, vuelve a esperar (no se abre encima de la consola).
+6. **La rocola**: `ROCOLA_DATOS=/rocola/datos/xp`, `ROCOLA_LETRAS_XP` = la carpeta `\WINDOWS\Fonts` del disco de Windows (leída tal
+   cual; si no está, `rocola-xp` mira `/rocola/datos/letras` y después las libres del sistema), `ROCOLA_ALSA`, y la pantalla por KMS.
 
-### Con el interruptor encendido, el lanzador abre rocola-xp así
+Además, una vez al prender: **`ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp`** (se crea si falta) solo si Rocola OS va instalado en el
+disco y ese disco está montado con escritura; si no (la memoria USB, o el disco en solo lectura), sin la variable. Ahí `rocola-xp` deja
+lo grande que no cabe en lo aprendido (512 MB): el material para entrenar la IA, las miniaturas de las portadas y el respaldo diario de
+lo aprendido (`respaldo/`; `Nativo/DatosGrandes.cs`). La carpeta de `rocola-consola` (`ia`) se queda como está.
 
-- **Pantalla**: KMS (sin `ROCOLA_PANTALLA`; el mismo `Kms.cs` que el programa actual). **Sonido**: `ROCOLA_ALSA` de `rocola-tarjeta`
-  (ya lo exportaba), y el volumen de la tarjeta como siempre.
-- **Datos** (`ROCOLA_DATOS`): la carpeta de arriba. Si es propia, la primera vez copia de la carpeta de XP (solo se lee)
-  `rocola_teclas.txt` y `rocola_config.txt` (los botones y los ajustes: sin los botones, `rocola-xp` abre la configuración de
-  botones, como XP la primera vez; visto aquí) y deja `rocola_de_xp.txt` con lo que copió. **No trae las tablas de lo aprendido**
-  (sonoridad, volumen, EQ...): llevan rutas de Windows y `rocola-xp` no tiene importador (pendiente).
-- **Música**: XP busca `musica` junto a sus datos o hasta 3 carpetas más arriba (con la carpeta propia: `/rocola/musica`) y las
-  carpetas de Ctrl+F2 (líneas `dir=` de `rocola_config.txt`). El lanzador apunta como `dir=` cada carpeta de `/run/rocola-musica`
-  (las que encontró `rocola-discos`), una vez cada una. (XP no entra en carpetas que son atajos: una carpeta de enlaces no sirve;
-  comprobado.) Con `datos=xp` no se apunta nada: ahí XP encuentra su `musica` como siempre.
-- **Letras de XP**: `ROCOLA_LETRAS_XP` = la carpeta `\WINDOWS\Fonts` del disco de Windows, leída tal cual al abrir. No van en el
-  repositorio ni en la imagen. (Si no se encuentra, `rocola-xp` mira `/rocola/datos/letras`, la copia que `rocola-discos` ya hacía en
-  la rocola, y si no las libres del sistema.)
-- **Códigos de salida**: el bucle es el mismo (42, 43, 44, 45, 46). `rocola-xp` no sale con ninguno hoy (son funciones de la fase
-  11); sale con 0 al cerrarse (también con el cierre que conserva el estado, SIGUSR1) y el lanzador lo vuelve a abrir.
+**Instalar después de probar desde la memoria USB** (revisión, 14-11-2026): `rocola-instalar` pasaba las rutas de la memoria
+(`/rocola/discos/<partición>/...`) a las del disco instalado (`/rocola/disco/...`) solo en los `rocola_*.txt` de `/rocola/datos`; ahora
+también en los de `/rocola/datos/xp` (las tablas que trajo el importador, su configuración y su marca `rocola_importado_xp.txt`). Sin eso,
+al prender ya instalada el importador daba la carpeta de XP por «la misma en otro disco» y `rocola-xp` se quedaba con rutas que ya no
+existen. Solo cuenta en una instalación nueva (con `datos.img` ya hecho, lo aprendido no se toca).
 
-### Apagado y reinicios (regla del 8-11-2026)
+**Si se cierra o se cae**, se vuelve a abrir. Una caída es salir con un código distinto de 0, o cerrarse sola (con 0) en menos de
+10 s; es «seguida» si llega antes de 2 minutos de abrirse. Antes de volver a abrirla espera 2 s, y si se cae seguido 10 s, 30 s y
+2 minutos (de la cuarta en adelante), para no quemar el procesador. Cada caída queda en la bitácora
+(`/rocola/datos/rocola_actualizaciones.txt`, que también sube el buzón): «rocola-xp se cayó (código 134) a los 0 s, 3 veces seguidas: se
+vuelve a abrir en 30 s». Cerrarla con Alt+F4 (en XP la cierra el dueño: borra el estado) no es una caída: 2 s y otra vez. Los cierres
+a propósito (consola, «reiniciar ya», la prueba de sonido) tampoco: dejan antes su marca y quedan apuntados. Lo que dura cada cosa (la
+rocola abierta, lo que tarda el importador) se mide con los segundos desde que prendió el equipo (`/proc/uptime`), no con la hora: la
+hora la pone NTP al minuto de prender y puede saltar justo mientras se trae lo de XP la primera vez (revisión, 14-11-2026).
 
-Así lo espera `rocola-xp` (mirado en `Nativo/PantallaRocola.cs` y `Codigo/Form1.Video.cs`, y probado con el programa de verdad):
+**Un sistema nuevo se da por bueno** (`/run/rocola-confirmado`, que mira `S99rocola`) solo cuando **`rocola-xp` lleva en pie al menos
+2 minutos seguidos**: el mismo proceso abierto todo ese tiempo (el importador, que también se llama `rocola-xp`, no cuenta). Antes
+bastaba con verla abierta en un instante a los 3 minutos; con `rocola-xp` como único programa, sin respaldo, eso podía dar por bueno un
+sistema cuyo programa se cae en bucle. Ahora ese sistema no se confirma y vuelve solo al anterior (apartado 7).
+
+**Sin `rocola-xp` en el sistema** (no debería pasar): un aviso claro en la pantalla («ROCOLA OS: este sistema no trae el programa de la
+rocola...», y cómo volver al sistema de antes) y una línea en la bitácora; el lanzador se va, sin volver a intentarlo. La consola de
+mantenimiento sigue.
+
+Lo demás, como estaba: la consola de mantenimiento (Ctrl+Alt+F2 la cierra con SIGUSR1 y no la abre hasta volver a la 1; si en ese
+momento se está trayendo lo de XP, eso sigue; y, nuevo, al cerrarla repinta la consola de delante -`ESC [?5h ESC [?5l`-: en QEMU se
+quedaba en negro hasta tocar una tecla, `sistema/ACT_qemu.md`), «reiniciar el programa ya» del buzón (SIGUSR1, y otra vez), el volumen,
+los códigos de salida 42 a 46 (`rocola-xp` hoy no sale con ninguno: son de la fase 11; 42 = otra vez, 43 y 46 = reiniciar el equipo, 44 = apagar,
+45 = volver a Windows XP), `/root/rocola.txt`. Se quitaron `ROCOLA_CONVERTIDAS` y `ROCOLA_COPIAS` (eran de `rocola-consola`).
+
+## 4. Apagado y reinicios (regla del 8-11-2026)
 
 | Qué pasa | Qué recibe rocola-xp | Estado (`rocola_estado.txt`) |
 |---|---|---|
-| Botón de encendido, apagado del sistema | SIGTERM = `WindowsShutDown` | **se borra** (sale con 0), como XP |
+| Botón de encendido | primero el lanzador; SIGTERM = `WindowsShutDown` (se le esperan 15 s) | **se borra**, como XP |
 | Alt+F4 | `UserClosing` | se borra; el lanzador la abre otra vez |
 | Apagón | nada | sobrevive: al prender reanuda |
-| Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** = cierre ordenado «por otra causa» (`TaskManagerClosing`), sale con 0 (20 s; después SIGKILL). Nunca SIGTERM | **se conserva** (y se guarda lo aprendido) |
-| «Reiniciar el equipo ya» del buzón | el buzón cierra antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y entonces reinicia | se conserva |
-| «Apagar ya» del buzón | el buzón cierra antes el lanzador y manda SIGTERM, lo espera 15 s (como el botón de encendido) y apaga | se borra |
+| Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** (cierre ordenado «por otra causa», `TaskManagerClosing`; 20 s y después SIGKILL) | **se conserva** |
+| «Reiniciar el equipo ya» del buzón | el buzón para antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y reinicia | se conserva |
+| «Apagar ya» del buzón | el buzón para antes el lanzador y manda SIGTERM (15 s, como el botón), y apaga | se borra |
+| Un sistema nuevo que no se confirma (S99rocola, a los 15 min) | **nuevo**: para el lanzador y manda **SIGUSR1** (20 s; después SIGKILL), y reinicia | se conserva (antes el reboot le mandaba SIGTERM y lo borraba) |
+| `rocola-sonido` (la prueba de las salidas, `usar`, `auto`) | si estaba abierta (desde la consola ya no lo está): SIGUSR1; el lanzador la vuelve a abrir | se conserva |
+| `rocola-prueba` (la pantalla 20 s, la primera vez) | SIGUSR1 a los 20 s, con una carpeta de datos de prueba que se borra | no toca el de verdad |
 
-**El cierre que conserva el estado (hecho el 14-11-2026; `sistema/rocola/Xp/PORT_integra-version-y-cierre.md`).** Al recibir
-SIGUSR1, `rocola-xp` se cierra por la vía de XP que no es ni el apagado ni Alt+F4: en XP, un `WM_CLOSE` que le llega de fuera a la
-ventana (el Administrador de tareas, `taskkill` sin `/F`) = `CloseReason.TaskManagerClosing`. `OnFormClosing` de la rocola
-(`Codigo/Form1.Video.cs`, sin tocar) hace entonces todo lo que hace al cerrar (para el sonido y el video, suelta los archivos,
-`GuardaTodoAlCerrar`) y, como la razón no es `WindowsShutDown` ni `UserClosing`, **no** llama a `BorraEstado`: espera a que el último
-estado llegue al disco (`WaitDataWrites`). Con una hoja abierta (Ctrl+F3, Ctrl+F2) se cierra igual: antes su hoja con
-`FormOwnerClosing`. Sale con **0**. Medido aquí (fuera de pantalla, sin música o con un video): 30 a 90 ms. `rocola_estado.txt`
-queda y al abrir reanuda (los créditos; con un video sonando, la línea `sonando=`).
+El cierre con SIGUSR1 (hecho el 14-11-2026, `PORT_integra-version-y-cierre.md`): `rocola-xp` se cierra por la vía de XP que no es ni el
+apagado ni Alt+F4 (`TaskManagerClosing`): hace todo lo que hace al cerrar (para el sonido y el video, guarda lo aprendido) y no llama a
+`BorraEstado`; sale con 0. Si la señal le llega antes de estar lista (los primeros instantes) la corta en seco (138): como un apagón,
+el estado también sobrevive. Quien la cierra deja antes su marca (`/run/rocola-en-consola`, `/run/rocola-xp-reinicio` con el motivo), y
+el lanzador la mira antes que el código de salida: ni el 0 ni el 138 cuentan como caída.
 
-- Si SIGUSR1 le llega **antes de estar lista** (los primeros instantes del arranque: antes de abrir la pantalla, o con el aviso de la
-  carpeta de datos puesto), la corta en seco como antes (sale con 138): es como un apagón, el estado también sobrevive.
-- El lanzador no cambia de lógica: quien cierra deja antes su marca (`rocola-en-consola`, `rocola-xp-reinicio`) y el bucle la mira
-  antes que el código de salida, así que ni el 0 ni el 138 cuentan como caída, y los dos quedan apuntados en la bitácora. Añadido: si
-  a los 20 s no se cerró y hay que cortarla (SIGKILL), también queda apuntado («rocola-xp no se cerró en 20 s: se cortó»).
-- SIGTERM, Alt+F4, Ctrl+Alt+Q y kill -9 siguen exactamente igual (comparados con el programa de antes del cambio).
+**El lanzador ignora SIGHUP, y `rocola-xp` la hereda ignorada (revisión, 14-11-2026; arreglo necesario para la tabla de arriba).**
+`S99rocola` abre el lanzador en una sesión propia con tty1 como terminal de control, y `rocola-xp` va en su grupo de procesos (el de
+primer plano de tty1). El botón de encendido, «apagar ya» y «reiniciar el equipo ya» del buzón y el reinicio de `S99rocola` matan
+PRIMERO al lanzador (para que no la vuelva a abrir): al morir, el núcleo cuelga tty1 y manda SIGHUP a ese grupo, y `rocola-xp`, que no la
+atiende, se moría en seco antes de que le llegara su SIGTERM o su SIGUSR1. Con el botón de encendido el estado **sobrevivía** (contra la
+regla del 8-11-2026), y en los reinicios no se cerraba en orden. Comprobado con el `rocola-xp` de verdad (NativeAOT, fuera de pantalla,
+con una moneda) y un lanzador mínimo con una pseudoterminal de control, el mismo orden que `00000080`: sin el arreglo sale con 129 (la
+SIGHUP) y `rocola_estado.txt` queda con los créditos; con SIGHUP ignorada, `WindowsShutDown` y el estado borrado (y con SIGUSR1,
+`TaskManagerClosing` y el estado conservado). Las pruebas de antes no lo veían porque abrían el lanzador sin terminal (`</dev/null`):
+ahora el caso `colgar` de `prueba.sh` lo abre con una (`terminal.c`).
 
-Añadido en la revisión (13-11-2026), probado con programas falsos (`prueba.sh buzon` y `xp`):
+Queda sin cubrir: apagar con la rocola ya cerrada para la consola de mantenimiento (el botón de encendido, o `poweroff` escrito ahí):
+`rocola-xp` no está abierta para borrar el estado (se cerró con SIGUSR1 al ir a la consola, que lo conserva), y al prender reanuda los
+créditos y la cola (antes igual).
 
-- Un `reboot` o `poweroff` directo le llega a `rocola-xp` como SIGTERM y el sistema solo espera 1 s antes de cortar. Por eso las
-  órdenes «ya» del buzón cierran antes `rocola-xp` como dice la tabla (sin `rocola-xp` abierta el buzón hace lo de siempre).
-  **Queda sin cubrir**: el reinicio de `S99rocola` cuando un sistema nuevo en prueba no llega a confirmarse, y un `reboot` escrito a
-  mano: ahí `rocola-xp`, si está abierta, recibe SIGTERM y borra el estado (si le da tiempo).
-- Si `rocola-xp` llega a abrirse justo al cambiar a la consola de mantenimiento, el vigilante la cierra igual (antes se quedaba
-  pintando encima de la consola).
-- El cierre de «reiniciar el programa ya» no cuenta como caída (no suma para las 3 seguidas) y queda apuntado en la bitácora.
+## 5. Actualizaciones (`rocola-actualiza`)
 
-## 3. La compilación rápida y los flujos
+- **El sistema** (`sistema-N`), como siempre: se baja a la otra copia y queda en prueba. `rocola-xp` aún no reinicia sola «cuando está
+  libre» (fase 11): el sistema nuevo entra **al siguiente encendido** (en el bar, al día siguiente) o con «reiniciar el equipo ya»
+  desde casa. Lo dice así en la bitácora y en su estado.
+- **El programa** (`programa-N`): **apagado**. Ese canal era de `rocola-consola`: no se baja ni se pone nada de él; lo que ya hubiera en
+  `/rocola/datos/programa` se queda como está. `rocola-xp` llega con el sistema (su número es el del sistema que lo trajo). Vuelve
+  cuando el programa traducido se publique por ese canal (que `rocola-programa.yml` compile `rocola-xp` y el lanzador sepa ponerlo).
+  `rocola-programa.yml` no se tocó: si se lanza, sigue publicando `rocola-consola`, que la rocola ya no baja.
+- El estado («programa rocola-xp N (llega con el sistema); sistema...») lee `rocola-xp --version`.
+- «Actualizarse sola» (`actualizar_solo=0` en `/rocola/datos/rocola_config.txt`, el de `rocola-consola`) se sigue respetando: lo que el
+  dueño decidió vale. Hoy solo se cambia desde la consola de mantenimiento; buscar a mano, con la orden `buscar_actualizacion` del buzón.
 
-- `sistema/rapida.sh` (cambiado, sin efecto hoy): con `BR2_PACKAGE_ROCOLA_XP=y` en el defconfig, compila `rocola-xp` y lo pone en
-  `/usr/lib/rocola-xp` (paso 5b) si cambió `sistema/rocola/Xp` (o `Gl.cs`, `Kms.cs`, `Botones.cs`, que toma del programa actual) o
-  la base no lo trae. Sin esa línea no hace nada. El paquete `package/rocola-xp/` no pide la completa mientras esté apagado
-  (probado: `rapida.sh decide` dice «rapida» con estos cambios, y «completa» al añadir la línea).
-- Los flujos (`rocola-sistema.yml`, `rocola-programa.yml`) **no se tocaron** y no hace falta tocarlos para activar: los dos trabajos
-  del sistema ya tienen .NET 10 y clang.
-- Sitio: `rocola-xp` añade unos 18 MB; la imagen del sistema de pruebas tiene 790 MB libres.
-- **Para que rocola-xp se actualice solo como el programa actual** (no hecho; cambia lo publicado): en `rocola-programa.yml`,
-  publicar también `rocola-xp-a4.gz` y `libSkiaSharp.so.gz` con sus sumas; en `rocola-actualiza`, bajarlos a
-  `/rocola/datos/programa/xp/`; en `/usr/bin/rocola`, preferir el bajado si es más nuevo. Necesita antes el `--version` (ver 4).
-  Hasta entonces `rocola-xp` solo cambia con una compilación del sistema (la rápida, unos minutos).
+## 6. Rocola en casa (`rocola-buzon`)
 
-## 4. `--version`
+- El estado (`rocola/estado.json`): `versiones.programa` = el número de `rocola-xp --version`, y además `programa_linea` (la línea
+  entera) y `programa_cual` («rocola-xp»); `programa_nueva` y `programa_malas`, vacíos (no hay canal del programa); `rocola.corriendo`
+  y `segundos_abierta` de `rocola-xp` (no del importador); los errores, de `/rocola/datos/xp/rocola_error.txt`.
+- **Lo «cuando esté libre» ya no se acepta** (reiniciar_programa, reiniciar_equipo y apagar sin «ya», y el diagnóstico): dependía de
+  que el programa mirara `/run/rocola-reinicia-programa` y compañía, y `rocola-xp` no lo hace (fase 11). Antes se quedaba pendiente
+  para siempre; ahora contesta por qué y qué mandar («manda «reiniciar_programa ya»...»; el diagnóstico, en la rocola: Ctrl+F3 ->
+  Imagen -> Diagnóstico completo, y después «archivo rocola_diagnostico.txt»). Las «ya», como antes; además el lanzador se para
+  siempre antes de reiniciar o apagar (también con la rocola cerrada en la consola: que no la abra mientras se apaga).
+- Los archivos que se piden (solo bitácoras y tablas; nunca las llaves ni la cuenta de Spotify, con las mismas reglas): primero en
+  `/rocola/datos/xp` (es el programa) y, si ahí no está, en `/rocola/datos` (los del sistema y los que dejó `rocola-consola`). Los
+  registros llevan también los de `/rocola/datos/xp`, con «xp_» delante.
+- **Rocola en casa** (`sistema/casa`, no se tocó) compara `versiones.programa` con la última `programa-N` publicada (de
+  `rocola-consola`): dirá que hay una más nueva. Pendiente (no era de este grupo).
 
-`/usr/bin/rocola`, `rocola-actualiza` y `rocola-buzon` leen de `rocola-consola --version` una línea como
-`rocola-consola programa 57 (abc1234) compilado 1762500000` con: `s/.*programa \([0-9]*\).*/\1/`, `s/.* compilado \([0-9]*\).*/\1/`
-y `grep -E "programa N( |$)"`.
+## 7. Cómo se vuelve atrás
 
-- **Hecho (14-11-2026)**: `rocola-xp --version` escribe UNA línea, `rocola-xp programa N (COMMIT) compilado SEGUNDOS`, y sale con 0
-  **antes** de la instancia única, los datos y la pantalla (`Nativo/VersionRocolaOs.cs`: al cargarse el programa, antes de entrar al
-  `Main` de XP, que no se tocó). Con las mismas propiedades que `Consola.csproj` (`-p:RocolaVersion=N -p:RocolaCommit=abc1234`;
-  sin ellas, `0` y `local`; `RocolaFecha` = cuándo se compiló, como `AssemblyMetadata`). Probado en JIT y NativeAOT (13 ms en
-  NativeAOT): las tres expresiones de los guiones leen lo suyo, no crea la carpeta de datos, no abre la pantalla y contesta también
-  con otra rocola abierta en los mismos datos. No cambiar ese formato sin cambiar los tres scripts.
-- Nada de lo preparado lo llama todavía: el lanzador sigue apuntando `/usr/lib/rocola-xp/version`, que escribe la compilación
-  (paquete y `rapida.sh`, con «programa 0 (sistema)»). **Pendiente, cuando se quiera** (hace falta para que `rocola-xp` se
-  actualice solo, apartado 3): que el paquete y `rapida.sh` compilen con `-p:RocolaVersion`/`-p:RocolaCommit` y que el lanzador
-  apunte y compare con `"$XPBIN" --version` (la función `compilado` ya sirve tal cual).
+- **Solo, si el sistema nuevo no sirve**: un sistema nuevo cuyo `rocola-xp` no aguanta 2 minutos seguidos no se confirma; a los
+  15 minutos `S99rocola` reinicia (cerrando la rocola con SIGUSR1) y a la tercera vez el initramfs vuelve al sistema anterior y aparta
+  el nuevo como malo (no se vuelve a bajar). Unos 30 minutos.
+- **A mano, en la rocola**: ESC al prender -> «Rocola OS - la versión anterior del sistema»: queda como el de siempre y el nuevo como
+  malo. El sistema anterior (sistema-36 o el que fuera) abre `rocola-consola` como antes, con sus datos de `/rocola/datos`, que
+  `rocola-xp` no toca (los suyos van en `/rocola/datos/xp`).
+- **En el repositorio**: revertir los commits de esta tanda y compilar el sistema.
+- Windows XP sigue en el menú de arranque (ESC), como siempre.
 
-## Cómo se activa (cuando N7 acabe y el dueño lo pida)
+## 8. Lo que se pierde, hasta la fase 11
 
-1. Añadir a `sistema/Config.in`: `source "$BR2_EXTERNAL_ROCOLA_PATH/package/rocola-xp/Config.in"`.
-2. Añadir a `sistema/configs/rocola_a4_defconfig`: `BR2_PACKAGE_ROCOLA_XP=y`.
-3. Compilar el sistema (solo a pedido del dueño): la completa, o la rápida con «rapida_ya».
-4. En la rocola, ya con ese sistema: en la consola de mantenimiento (Ctrl+Alt+F2),
-   `echo programa=xp > /rocola/datos/rocola_programa.txt` y volver con Ctrl+Alt+F1. Para volver al programa actual: borrar ese
-   archivo (o esperar: si se cae 3 veces seguidas vuelve solo).
-
-Los pasos 1 a 3 solo meten el programa en el sistema; no cambia nada en la rocola hasta el paso 4.
-
-## Lo que falta tras N7, en orden
-
-1. ~~N7 acabado y `rocola-xp` comprobado sin capas (del port).~~ Hecho (13-11-2026).
-2. ~~En `rocola-xp`: `--version` (apartado 4) y el cierre que conserva el estado al recibir SIGUSR1.~~ Hecho (14-11-2026), probado
-   fuera de pantalla en JIT y NativeAOT; no en el sistema entero ni en el A4.
-3. Activar la compilación (pasos 1 a 3) y probar en QEMU con el sistema entero: que abre por KMS, lee `/dev/input`, suena.
-4. **En el A4**, con el interruptor: pantalla, botones, sonido por la salida del amplificador, un video, las letras de XP, apagar
-   con el botón, un apagón, Ctrl+Alt+F2 y volver. Medir la fluidez allí.
-5. Decidir los datos (abajo) y, si se quieren las tablas de XP, el importador con rutas de Linux (lo que hace `Motor/ImportaXP.cs`
-   para el programa actual).
-6. **Fase 11**: lo propio de Rocola OS encima de la traducción.
-
-### Lo que se pierde al activar, hasta la fase 11
-
-`rocola-xp` es la rocola de XP tal cual. Lo que el programa actual tiene y él todavía no:
+`rocola-xp` es la rocola de XP tal cual. Lo que `rocola-consola` tenía y él todavía no:
 
 - Spotify entero (el modo, las portadas, las letras, el volumen), el buscador flexible y por letra, los artistas de Spotify.
 - La hoja de Internet y el estado de la conexión; «Actualizarse sola» y «Buscar actualización ahora» en Ctrl+F3.
-- **Actualizaciones**: `rocola-actualiza` sigue corriendo, pero el programa que baja es `rocola-consola` (no se usa con el
-  interruptor) y `rocola-xp` no reinicia «cuando esté libre»: un sistema nuevo ya bajado entra en el siguiente encendido.
-- **Buzón / Rocola en casa**: el estado, los registros y los archivos siguen (son del script). No se atienden las órdenes «cuando
-  esté libre» (reiniciar programa o equipo, apagar, diagnóstico); las «ya» sí. No hay `/run/rocola-vivo.txt` (lo que suena ahora).
-  Los archivos que se piden se buscan en `/rocola/datos`, no en la carpeta de `rocola-xp`.
-- Ctrl+F3 -> Detalles -> «La rocola» (reiniciar, apagar, volver a Windows XP, reimportar), el ratón propio de Rocola OS (el de XP
-  sí está), el cielo por hora y el clima, color vivo, movimiento, vidrio y letra, las mejoras visuales V.
-- Devolver el crédito de un archivo dañado, convertir los «MP3» que no lo son, entrenar la IA en reposo, el volumen de Spotify.
-- Lo aprendido por el programa actual en `/rocola/datos` no lo usa `rocola-xp` (ni al revés).
-- Con la carpeta propia, una carpeta de `/run/rocola-musica` que el dueño quite con Ctrl+F2 vuelve a apuntarse en el siguiente
-  arranque del programa (el lanzador la apunta siempre que falte).
+- Las actualizaciones del programa por su canal (apagado: llega con el sistema) y reiniciar «cuando esté libre» (un sistema nuevo
+  entra al siguiente encendido).
+- Del buzón, las órdenes «cuando esté libre» y el diagnóstico; `/run/rocola-vivo.txt` (lo que suena ahora).
+- Ctrl+F3 -> Detalles -> «La rocola» (reiniciar, apagar, volver a Windows XP, reimportar), el ratón propio de Rocola OS (el de XP sí
+  está), el cielo por hora y el clima, color vivo, movimiento, vidrio y letra, las mejoras visuales V.
+- Devolver el crédito de un archivo dañado, convertir los «MP3» que no lo son, entrenar la IA en reposo.
+- Lo aprendido por `rocola-consola` en `/rocola/datos` no lo usa `rocola-xp` (empieza con lo de XP).
 
 Sí están, porque son de XP: la cadena de sonido entera, el modo billar, el modo noche, los videos, Ctrl+F3 y Ctrl+F2 de XP.
 
-## Decisiones del dueño
+## 9. `--version`
 
-1. **Dónde guarda sus datos rocola-xp.** De fábrica, carpeta propia (`/rocola/datos/xp`), empezando solo con los botones y los
-   ajustes de XP. La otra opción, `datos=xp`, usa la carpeta de la rocola de XP: tendría sus ajustes y XP y Rocola OS compartirían
-   créditos y estadísticas, pero `rocola-xp` escribiría rutas de Linux en tablas que XP lee con rutas de Windows (la biblioteca se
-   reharía en cada cambio y lo medido no casaría en ninguno de los dos sentidos), con la rocola de XP todavía como la del bar. No
-   se probó con datos reales de XP. Por eso no es lo de fábrica.
-2. **Si la carpeta propia va en lo aprendido (512 MB) o en el disco de la rocola** (`datos=/rocola/disco/rocola-os/xp`): XP
-   guarda ahí miniaturas, respaldos y el material de la IA, que pueden pasar de 512 MB.
-3. **Si se traen las tablas de lo aprendido de XP** (hace falta el importador) o `rocola-xp` vuelve a medir la biblioteca.
-4. **Cuándo se cambia en el bar**, sabiendo lo que se pierde hasta la fase 11 (lista de arriba), o si se espera a la fase 11.
-5. **Cómo se enciende el interruptor**: hoy solo desde la consola de mantenimiento. Se puede añadir una orden de Rocola en casa o
-   un archivo en una memoria USB.
-6. **Si rocola-xp se actualiza solo** por el canal del programa (apartado 3) o solo con el sistema.
-7. **La compilación del sistema** para activarlo (completa o «rapida_ya») la pide el dueño.
+`rocola-xp --version` escribe UNA línea, `rocola-xp programa N (COMMIT) compilado SEGUNDOS`, y sale con 0 antes de la instancia única, los
+datos y la pantalla (`Nativo/VersionRocolaOs.cs`). La leen `rocola-actualiza` (`s/.*programa \([0-9]*\).*/\1/`) y `rocola-buzon` (el
+número y la línea); el paquete y `rapida.sh` la guardan en `/usr/lib/rocola-xp/version`, que el lanzador apunta en `rocola.txt` al
+abrirla. No cambiar ese formato sin cambiar esos guiones.
 
 ## Qué se probó y qué no
 
-Probado aquí (máquina de pruebas, no el A4):
+Probado aquí (máquina de pruebas, no el A4), 14-11-2026:
 
-- (14-11-2026, `--version` y el cierre con SIGUSR1) `Pruebas/Ventanas/guiones/cierre_rocola_os.sh` con el `rocola-xp` de verdad
-  fuera de pantalla, en JIT y en NativeAOT: 36 comprobaciones de 36 en cada uno (`--version`; SIGUSR1 con la rocola sola, con
-  Ctrl+F3, con Ctrl+F2 y con un video: `TaskManagerClosing`, sale con 0, `rocola_estado.txt` conservado, al abrir reanuda, y
-  entonces SIGTERM lo borra). SIGTERM, Ctrl+F3 con SIGTERM, Alt+F4, Ctrl+Alt+Q y kill -9: iguales que con el programa de antes del
-  cambio. `prueba.sh` del lanzador entera con el BusyBox del sistema: sin interruptor IGUAL (lo que recibe el programa, el registro y
-  la bitácora); con interruptor, el programa falso ahora atiende SIGUSR1 como el de verdad (sale con 0), y el caso nuevo `cierre`:
-  cuatro cierres seguidos (dos por la consola, dos de «reiniciar ya») ordenados (0) o cortados (138) no cuentan como caída y quedan
-  en la bitácora; uno que no se cierra se corta a los 20 s y queda apuntado.
-
-- (Revisión independiente, 13-11-2026) Repetido: la compilación NativeAOT con el perfil del A4 (ningún aviso IL), `readelf -d` y
-  `readelf -V` de `rocola-xp` (libm, libc; glibc 2.38) y de `libSkiaSharp.so` (libpthread, libdl, libm, libc; glibc 2.29), los nombres
-  de las bibliotecas que abre por `DllImport` (los siete de arriba) y que están en `salida-qemu/target`; con el `rocola-xp` de verdad
-  fuera de pantalla, SIGTERM sale con 0 y borra `rocola_estado.txt` y SIGUSR1 lo deja (sale con 138); `prueba.sh` entera con el
-  BusyBox del sistema (sin interruptor: IGUAL al lanzador de 7113804 en lo que recibe el programa, el registro y la bitácora).
-
-- `rocola-xp` compila en NativeAOT con el perfil del A4 (15 avisos del compilador -CA, CS, SYSLIB-, ninguno de NativeAOT -IL-; 1 min 28 s). Sus bibliotecas, con
-  `readelf`/`ldd`, contra lo que trae el sistema compilado (`salida-qemu/target`).
-- El `rocola-xp` de verdad **corre con las bibliotecas del sistema** (dentro de la raíz del sistema de QEMU: glibc 2.42, Mesa
-  softpipe), fuera de pantalla: abre, lee la carpeta de música apuntada con `dir=` y escribe sus datos donde dice `ROCOLA_DATOS`.
-- Las señales con el programa de verdad (tabla de arriba). (El 13-11-2026 `--version` abría la rocola y SIGUSR1 la cortaba con 138:
-  ya no, ver la entrada del 14-11-2026.)
-- El lanzador con programas falsos y el **BusyBox del sistema** en su propio espacio de procesos
-  (`sistema/rocola/Pruebas/Lanzador/prueba.sh`): sin interruptor hace **lo mismo que el lanzador de antes** (lo que se le pasa al
-  programa, el registro y la bitácora, iguales: arranque, salida con 42 y la consola de mantenimiento); con interruptor: entorno,
-  datos, botones y `dir=` (sin repetir), la consola con SIGUSR1 y la vuelta, «reiniciar ya», el botón de encendido con SIGTERM, tres
-  caídas -> programa actual, `datos=xp` (con y sin poder escribir), `datos=/carpeta`, y el interruptor en un sistema sin `rocola-xp`.
-- `sh -n` con el BusyBox del sistema en los tres scripts; `bash -n rapida.sh` y `rapida.sh decide` (apagado: «rapida»; activado:
-  «completa»). No había shellcheck.
+- `sistema/rocola/Pruebas/Lanzador/prueba.sh`: los guiones del sistema tal cual, con el **BusyBox del sistema** (y su curl y su jq) en una
+  raíz aparte y su propio espacio de procesos, un `rocola-xp` falso (que también hace de importador), programas de mentira para lo que
+  toca el equipo y un GitHub de mentira: el arranque (el importador antes, con el contrato), el material de la IA (con escritura, en
+  solo lectura, sin disco), el importador que falla o tarda (el aviso en la pantalla, el tope), las esperas tras caídas (1, 2, 3, 4 s con
+  el reloj acortado), la confirmación (no con caídas en bucle ni con el importador; sí tras aguantar seguido), la consola (también a
+  mitad de la importación), «reiniciar ya» (ordenado, cortado, sordo), el botón de encendido, un sistema sin `rocola-xp`,
+  `rocola-sonido` (desde la consola, con la rocola abierta, `usar` y `auto`, cortado a medias), `rocola-prueba`, la vuelta de
+  `S99rocola`, el buzón entero (órdenes, archivos, registros, estado, las tres «ya») y `rocola-actualiza` (el canal del programa
+  apagado; un sistema nuevo). Los números, en `sistema/ACT_sistema-activa.md`.
+- El contrato con el importador de verdad (el `rocola-xp` NativeAOT del otro grupo, con la glibc del sistema): el lanzador lo llama, sale
+  con 0, trae los botones y la configuración, no cambia la carpeta de XP, y la segunda vez dice «ya importado».
+- `rapida.sh arma` de verdad con una base de mentira (64 MB) y un `dotnet` de mentira: con «rapida_ya» pone `rocola-xp` con su versión,
+  la canción de prueba y el lanzador nuevo, deja el `rocola-consola` de la base, y el `disk.img` lleva ese sistema; sin «rapida_ya», se
+  niega. Las órdenes del paquete de Buildroot, tal cual, con el mismo `dotnet` de mentira.
+- `sh -n` con el BusyBox del sistema de todos los guiones tocados; `bash -n rapida.sh`; `rapida.sh decide` antes y después.
+- La configuración con Buildroot (`make rocola_a4_defconfig` y `printvars` de las órdenes del paquete).
+- (Revisión independiente, 14-11-2026) Lo de arriba, repetido; además: la `.config` de Buildroot antes y después solo cambia
+  `ROCOLA_CONSOLA` por `ROCOLA_XP`; el caso nuevo `colgar` de `prueba.sh` (el lanzador con una terminal de control, como en tty1: el
+  botón, `S99rocola` sin confirmar y «apagar ya»), 0 de 4 sin el arreglo de la SIGHUP y 4 de 4 con él; el mismo orden con el `rocola-xp`
+  de verdad y una pseudoterminal (apartado 4); y el trozo de `rocola-instalar` que traduce las rutas, con el BusyBox del sistema. Los
+  números, en `sistema/ACT_sistema-activa.md` («Revisión»).
+- (Grupo qemu y su revisión, 14-11-2026) **El sistema entero en QEMU**, con datos inventados y la imagen del perfil de QEMU con lo que pone
+  `rapida.sh` encima: instalar desde la memoria USB en un disco de XP falso, arrancar el instalado, el importador, la pantalla por KMS (la
+  pared y la atracción), las teclas por evdev, el sonido (grabado de la tarjeta HDA de QEMU), las letras de XP leídas del disco de Windows,
+  el video, la consola de mantenimiento, una caída, un apagón, el botón de encendido y la confirmación de un sistema nuevo. Lo que salió,
+  lo que se arregló (la consola, que se quedaba en negro) y lo que QEMU no puede decir, en `sistema/ACT_qemu.md`.
 
 No probado:
 
-- **Nada en el A4.** Ni en QEMU con el sistema entero (pantalla KMS, `/dev/input`, sonido).
-- El paquete de Buildroot (`make rocola-xp`) y el paso 5b de `rapida.sh arma` (no había sitio en el disco de pruebas para armar una
-  imagen); son las mismas órdenes que se corrieron a mano.
-- El video (`libmpv.so.2` del sistema: solo se vio que está y que trae la API de dibujo) y `libmpg123` con `rocola-xp` dentro del
-  sistema.
-- Las letras de XP leídas de un disco de Windows de verdad; `rocola_teclas.txt` y `rocola_config.txt` reales de XP.
-- El cambio del botón de encendido y el del estado del buzón, fuera de `sh -n`; lo del buzón con las órdenes «ya» solo como trozo
-  suelto con programas falsos (`prueba.sh buzon`), no con el buzón entero ni con un reinicio de verdad.
-- Cuánto tarda `rocola-xp` en cerrarse con SIGTERM o SIGUSR1 mientras suena música por una tarjeta de verdad (aquí, sin tarjeta:
-  30 a 90 ms, también con un video). El cierre de XP puede esperar hasta 15 s + 5 s a que las escrituras lleguen al disco
-  (`WaitDataWrites`); el lanzador corta a los 20 s y el buzón a los 15 s (si pasa, el estado queda como tras un apagón).
-- SIGUSR1 con el sistema entero (el `killall -USR1` del lanzador y del buzón de verdad) y en el A4.
+- **Nada en el A4.** (El sistema entero sí, pero en QEMU, que no es el A4: `sistema/ACT_qemu.md`, arriba.)
+- El paquete de Buildroot compilado de verdad (`make rocola-xp`) y `rapida.sh arma` con la base de verdad y el `dotnet` de verdad (no hay
+  sitio en el disco de pruebas para la imagen entera, y la máquina estaba ocupada): la compilación la hace GitHub.
+- El importador con datos reales de XP y el tiempo que tarda la primera vez en el A4.
+- Cuánto tarda `rocola-xp` en cerrarse con SIGTERM o SIGUSR1 con música sonando por una tarjeta de verdad (aquí, sin tarjeta, 30 a 90 ms;
+  el lanzador corta a los 20 s y el buzón a los 15 s).
+
+## Decisiones del dueño que quedan
+
+1. **Cuándo se cambia en el bar** (compilar el sistema y probarlo en el A4), sabiendo lo que se pierde hasta la fase 11.
+2. **Si `rocola-xp` se actualiza solo** por el canal del programa (hay que publicarlo en `rocola-programa.yml` y que el lanzador lo
+   ponga) o solo con el sistema (hoy).
+3. **La fase 11** (regla del 8-11-2026): lo no visual de Rocola OS encima; lo visual, propuestas nuevas que elige el dueño.

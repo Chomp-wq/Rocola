@@ -14,14 +14,17 @@
 #   board/rocola/rootfs_overlay/   se copia entero encima (como Buildroot: root, u=rwX,go=rX) y se quita lo que se borro
 #   board/rocola/initramfs/init    initrd.gz se rehace con el init nuevo (lo demas de dentro es de la base)
 #   board/rocola/grub-bios.cfg     el menu de la memoria USB (/boot/grub/grub.cfg)
-#   rocola/                        el programa: se compila (NativeAOT, perfil del A4) y va en /usr/bin/rocola-consola
-#   rocola/Xp                      la rocola traducida de XP (rocola-xp), SOLO si ya esta activada (BR2_PACKAGE_ROCOLA_XP=y en
-#                                  configs/rocola_a4_defconfig; hoy no: sistema/INTEGRACION_ROCOLA_XP.md): /usr/lib/rocola-xp
-# y lo que no va dentro del sistema: los .md, casa/ (Rocola en casa) y todo lo de fuera de sistema/.
+#   rocola/Xp                      EL PROGRAMA: la rocola traducida de XP (rocola-xp), el unico de Rocola OS desde el 14-11-2026
+#                                  (BR2_PACKAGE_ROCOLA_XP=y en configs/rocola_a4_defconfig; sistema/INTEGRACION_ROCOLA_XP.md): se compila
+#                                  (NativeAOT, perfil del A4) y va en /usr/lib/rocola-xp, si cambio (o lo que toma de rocola/Consola y
+#                                  rocola/Motor: Gl.cs, Kms.cs y Botones.cs) o si la base no lo trae. rocola-consola ya NO se compila: el de
+#                                  una base que lo traiga (sistema-36 y anteriores) se queda en /usr/bin sin usarse hasta la siguiente completa.
+# y lo que no va dentro del sistema: los .md, casa/ (Rocola en casa), el resto de rocola/ (rocola-consola, retirado) y todo lo de fuera de
+# sistema/.
 set -e
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 B=sistema/board/rocola
-# rocola-xp (la traduccion de XP) va en el sistema solo si la configuracion lo pide (hoy no)
+# rocola-xp (la traduccion de XP) va en el sistema si la configuracion lo pide (desde el 14-11-2026, si)
 con_xp() { grep -q '^BR2_PACKAGE_ROCOLA_XP=y' "$REPO/sistema/configs/rocola_a4_defconfig"; }
 
 # los archivos de sistema/ que cambiaron desde la base y que la rapida NO sabe poner
@@ -29,7 +32,7 @@ no_rapidos() {
 	git -C "$REPO" diff --no-renames --name-only "$1" HEAD -- sistema | grep -v \
 		-e '\.md$' -e '^sistema/casa/' -e '^sistema/rocola/' -e "^$B/rootfs_overlay/" -e "^$B/initramfs/init\$" -e "^$B/grub-bios.cfg\$" \
 		-e '^sistema/rapida.sh$' | { if con_xp; then cat; else grep -v '^sistema/package/rocola-xp/'; fi; } || true
-	# (el paquete de rocola-xp, mientras este apagado, no cambia el sistema: no pide la completa)
+	# (el paquete de rocola-xp, si estuviera apagado, no cambiaria el sistema: no pediria la completa)
 }
 
 if [ "$1" = decide ]; then
@@ -72,26 +75,31 @@ sudo install -m 755 "$REPO/$B/initramfs/init" "$T/initrd/init"
 (cd "$T/initrd" && sudo find . | sudo cpio -o -H newc --quiet | gzip -9) > "$T/initrd.gz"
 sudo install -D -m 644 "$T/initrd.gz" "$M/usr/share/rocola/instalar/initrd.gz"
 
-# 5. EL PROGRAMA, si cambio (el mismo dotnet publish que el paquete rocola-consola de Buildroot, perfil del A4). Solo cuentan el motor
-# y la consola: la traduccion de XP (sistema/rocola/Xp) aun no va en el sistema.
-if cambio sistema/rocola/Motor sistema/rocola/Consola; then
-	echo "el programa cambio: se compila"
-	(cd "$REPO/sistema/rocola/Consola" && DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 dotnet publish -c Release -r linux-x64 \
-		-p:RocolaPerfil=a4 -o "$T/programa" >/dev/null)
-	sudo install -m 755 "$T/programa/rocola-consola" "$M/usr/bin/rocola-consola"
-	sudo install -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/usr/share/rocola/prueba.mp3"
-fi
-
-# 5b. LA ROCOLA TRADUCIDA DE XP (rocola-xp), solo si esta activada: si cambio (o lo que toma del programa de ahora: Gl.cs, Kms.cs y
-# Botones.cs) o la base no la trae. Lo mismo que el paquete rocola-xp de Buildroot (package/rocola-xp/rocola-xp.mk): el programa y, a su
-# lado, libSkiaSharp.so; las demas bibliotecas (libmpv, libmpg123, ALSA, EGL/GLES, GBM, DRM) ya estan en la base.
+# 5. EL PROGRAMA: rocola-xp (la rocola traducida de XP), si esta en la configuracion: si cambio (o lo que toma de rocola-consola: Gl.cs,
+# Kms.cs y Botones.cs) o la base no lo trae (sistema-36 y anteriores: ahi estaba rocola-consola). Lo mismo que el paquete rocola-xp de
+# Buildroot (package/rocola-xp/rocola-xp.mk): el programa y, a su lado, libSkiaSharp.so (las demas bibliotecas -libmpv, libmpg123, ALSA,
+# EGL/GLES, GBM, DRM- ya estan en la base), su version (/usr/lib/rocola-xp/version: lo que dice «rocola-xp --version», compilado con el
+# numero de este sistema y su commit) y la cancion de prueba (/usr/share/rocola/prueba.mp3 y el disco «Rocola OS - Prueba», que ponia
+# rocola-consola). (rocola-consola ya no se compila ni se pone: el de la base se queda sin usarse hasta la siguiente completa.)
 if con_xp && { [ ! -x "$M/usr/lib/rocola-xp/rocola-xp" ] || cambio sistema/rocola/Xp sistema/rocola/Consola/Pantalla/Gl.cs sistema/rocola/Consola/Pantalla/Kms.cs sistema/rocola/Motor/Botones.cs; }; then
 	echo "rocola-xp (la traduccion de XP): se compila"
+	V=${ROCOLA_SISTEMA_VERSION:-0}; F=$(date +%s)
+	C=${GITHUB_SHA:-$(git -C "$REPO" rev-parse HEAD 2>/dev/null)}; C=${C:-local}; C=${C:0:7}
+	# (lo que dice la compilacion va a un archivo; si falla, su final sale en el registro de GitHub: es el unico programa de la rocola)
 	(cd "$REPO/sistema/rocola/Xp" && DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 dotnet publish -c Release -r linux-x64 \
-		-p:RocolaPerfil=a4 -o "$T/programa-xp" >/dev/null)
+		-p:RocolaPerfil=a4 -p:RocolaVersion="$V" -p:RocolaCommit="$C" -p:RocolaFecha="$F" -o "$T/programa-xp" > "$T/publica-xp.txt" 2>&1) \
+		|| { tail -n 60 "$T/publica-xp.txt" >&2; echo "rapida.sh: rocola-xp no compilo" >&2; exit 1; }
+	esperada="rocola-xp programa $V ($C) compilado $F"
+	linea=$(timeout 30 "$T/programa-xp/rocola-xp" --version 2>/dev/null | head -1) || true
+	if [ -z "$linea" ]; then echo "rocola-xp: aqui no corre --version; se apunta la linea esperada: $esperada"; linea=$esperada
+	elif [ "$linea" != "$esperada" ]; then echo "rapida.sh: rocola-xp --version dice «$linea» y se esperaba «$esperada»" >&2; exit 1; fi
 	sudo install -D -m 755 "$T/programa-xp/rocola-xp" "$M/usr/lib/rocola-xp/rocola-xp"
 	sudo install -D -m 644 "$T/programa-xp/libSkiaSharp.so" "$M/usr/lib/rocola-xp/libSkiaSharp.so"
-	echo "rocola-xp programa 0 (sistema) compilado $(date +%s)" | sudo tee "$M/usr/lib/rocola-xp/version" >/dev/null
+	echo "$linea" | sudo tee "$M/usr/lib/rocola-xp/version" >/dev/null
+	sudo install -D -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/usr/share/rocola/prueba.mp3"
+	sudo install -D -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/rocola/musica/Rocola OS - Prueba/prueba.mp3"
+	sudo mkdir -p "$M/rocola/datos"
+	echo "rocola-xp: $linea"
 fi
 
 # 6. LA VERSION

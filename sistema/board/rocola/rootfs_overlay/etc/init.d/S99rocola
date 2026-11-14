@@ -11,8 +11,8 @@ case "$1" in
 			exit 0
 		fi
 		# INTERNET: el encendido remoto (Wake on LAN, el «paquete magico» que manda el router) queda encendido en la tarjeta de red, y el
-		# programa de la rocola se actualiza solo (rocola-actualiza): al minuto de prender y despues cada hora, o al momento si se pide
-		# desde Ctrl+F3 (/run/rocola-buscar-ya).
+		# sistema se actualiza solo (rocola-actualiza; rocola-xp, el programa, llega con el sistema): al minuto de prender y despues cada
+		# hora, o al momento si se pide desde casa (/run/rocola-buscar-ya: la orden buscar_actualizacion del buzon).
 		ethtool -s eth0 wol g 2>/dev/null
 		# EL DISCO DE LA ROCOLA, QUE NO SE QUEDE «SIN REVISAR» (A4, 7-11-2026: el instalador no pudo escribir). ntfs3 marca el NTFS sucio en
 		# el disco en cuanto crea, agranda o borra un archivo, y solo lo limpia con un sync o al desmontar: un apagon en medio lo deja
@@ -29,7 +29,7 @@ case "$1" in
 		# actualizacion); nunca con el disco «sin revisar». El sync lo hace el vigilante de arriba.
 		( sleep 20; [ -d /rocola/disco/rocola-os ] && [ ! -f /run/rocola-disco-revisar ] || exit 0
 		  for f in /usr/share/rocola/xp/*; do d=/rocola/disco/rocola-os/${f##*/}; cmp -s "$f" "$d" || cp -f "$f" "$d"; done ) &
-		# (el aviso de «Buscar actualizacion ahora» se borra al acabar de buscar: hasta entonces Ctrl+F3 dice BUSCANDO, y
+		# (el aviso de «Buscar actualizacion ahora» se borra al acabar de buscar: hasta entonces el estado del buzon dice que busca, y
 		# rocola-actualiza sabe que se pidio a mano: busca aunque «Actualizarse sola» este apagado)
 		( sleep 60
 		  while :; do
@@ -41,8 +41,9 @@ case "$1" in
 		# EL BUZON (7-11-2026, rocola-buzon): trabajar en la rocola desde casa con «Rocola en casa» (sistema/casa). Sin su llave
 		# (rocola_buzon.txt en una memoria USB) no hace nada.
 		( sleep 90; command -v nice >/dev/null && exec nice -n 15 /usr/bin/rocola-buzon; exec /usr/bin/rocola-buzon ) >/dev/null 2>&1 &   # (prioridad baja: no le quita a la musica ni a la pantalla)
-		# UN SISTEMA NUEVO EN PRUEBA (rocola-actualiza): si la rocola no lleva 3 minutos en pie a los 15 minutos de prender, se reinicia;
-		# el initramfs cuenta los arranques y a la tercera vuelve al sistema anterior. Si llega, se da por bueno.
+		# UN SISTEMA NUEVO EN PRUEBA (rocola-actualiza): si a los 15 minutos de prender rocola-xp no ha estado 2 minutos seguidos en pie sin
+		# caerse (/run/rocola-confirmado: lo pone /usr/bin/rocola), se reinicia; el initramfs cuenta los arranques y a la tercera vuelve al
+		# sistema anterior. Si llega, se da por bueno.
 		if [ -f /rocola/disco/rocola-os/probando ]; then
 			( i=0
 			  while [ $i -lt 90 ] && [ ! -f /run/rocola-confirmado ]; do sleep 10; i=$((i + 1)); done
@@ -51,6 +52,13 @@ case "$1" in
 				printf '%s  el sistema %s quedo bien\n' "$(date '+%Y-%m-%d %H:%M')" "$(cat /etc/rocola-sistema-version 2>/dev/null)" >> /rocola/disco/rocola-os/sistema.txt
 			  else
 				printf '%s  el sistema %s no llego a confirmarse: reinicio\n' "$(date '+%Y-%m-%d %H:%M')" "$(cat /etc/rocola-sistema-version 2>/dev/null)" >> /rocola/disco/rocola-os/sistema.txt
+				# un reinicio propio de Rocola OS: si rocola-xp esta abierta se cierra conservando los creditos y la cola (SIGUSR1; el reboot
+				# le mandaria SIGTERM, que es el apagado y los borra: regla del 8-11-2026). Primero el lanzador, para que no la vuelva a abrir;
+				# si en 20 s no se cerro, se corta (como un apagon).
+				killall rocola 2>/dev/null
+				killall -USR1 rocola-xp 2>/dev/null
+				i=0; while pidof rocola-xp >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+				killall -KILL rocola-xp 2>/dev/null
 				sync; reboot
 			  fi; sync ) &
 		fi

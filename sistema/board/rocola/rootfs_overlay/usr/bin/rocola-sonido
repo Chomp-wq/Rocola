@@ -4,15 +4,42 @@
 #                          con un pitido de 3 s y su numero en grande; asi se ve cual llega al amplificador. Despues dice el estado del
 #                          mezclador de cada tarjeta. Todo queda en /rocola/datos/rocola_sonido.txt (lo ve tambien Rocola en casa).
 #   rocola-sonido usar N   la rocola usa desde ahora la salida N de la lista (/rocola/datos/rocola_tarjeta.txt, que rocola-tarjeta
-#                          obedece), le sube el volumen y vuelve a abrir la rocola.
+#                          obedece; el lanzador la vuelve a elegir cada vez que abre la rocola) y le sube el volumen: vale al volver a la
+#                          rocola (Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya).
 #   rocola-sonido auto     vuelve a la eleccion automatica (la primera salida que no sea HDMI).
-# Mientras prueba, la rocola se pausa (no puede tener la tarjeta abierta a la vez) y despues sigue sola.
+# Mientras prueba, la rocola se pausa (no puede tener la tarjeta abierta a la vez) y despues sigue sola. Desde la consola de mantenimiento
+# la rocola (rocola-xp) ya esta cerrada (el lanzador la cierra al cambiar de consola); si aun estuviera abierta, se cierra conservando los
+# creditos y la cola (SIGUSR1, nunca SIGTERM: regla del 8-11-2026) y el lanzador la vuelve a abrir al acabar.
 DATOS=${ROCOLA_DATOS:-/rocola/datos}
+XPD=${ROCOLA_XP_DATOS:-$DATOS/xp}   # (los datos de rocola-xp)
+RUN=${ROCOLA_RUN:-/run}
 FIJA=$DATOS/rocola_tarjeta.txt
 LOG=$DATOS/rocola_sonido.txt
 # las salidas: «tarjeta salida nombre», una por linea, como las da aplay -l
 salidas() { aplay -l 2>/dev/null | sed -n 's/^card \([0-9]*\): [^,]*, device \([0-9]*\): \(.*\)$/\1 \2 \3/p'; }
-pausa_rocola() { killall -STOP rocola 2>/dev/null; killall rocola-consola 2>/dev/null; killall mpv 2>/dev/null; sleep 1; }
+# los rocola-xp abiertos como rocola: no el importador (rocola-xp --importa-xp: no usa la tarjeta) ni uno que ya acabo y espera a que el
+# lanzador -parado- lo recoja
+xp_abierta() {
+	for p in $(pidof rocola-xp); do
+		e=$(awk '{print $3}' "/proc/$p/stat" 2>/dev/null); [ -n "$e" ] && [ "$e" != Z ] || continue
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --importa-xp && continue
+		echo "$p"
+	done
+}
+# cierra_xp POR_QUE: la cierra conservando el estado y deja la marca que el lanzador mira (no es una caida; lo apunta con POR_QUE)
+cierra_xp() {
+	p=$(xp_abierta); [ -n "$p" ] || return 0
+	echo "$1" > "$RUN/rocola-xp-reinicio"
+	kill -USR1 $p 2>/dev/null
+	i=0; while [ -n "$(xp_abierta)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+	p=$(xp_abierta); [ -n "$p" ] && kill -KILL $p 2>/dev/null
+}
+# la pausa: primero el lanzador (para que no la vuelva a abrir mientras suena la prueba), despues la rocola; si esto se corta a medias
+# (Ctrl+C), el lanzador sigue igual
+pausa_rocola() {
+	trap 'sigue_rocola' EXIT; trap 'exit 130' INT TERM HUP
+	killall -STOP rocola 2>/dev/null; cierra_xp "la prueba de sonido (rocola-sonido)"; killall mpv 2>/dev/null; sleep 1
+}
 sigue_rocola() { killall -CONT rocola 2>/dev/null; }
 # el volumen de una tarjeta: las salidas al maximo y sin silencio, el silencio automatico quitado y, si es HDMI, su salida digital
 sube() {
@@ -29,14 +56,14 @@ case "$1" in
 		set -- $l
 		echo "plughw:$1,$2" > "$FIJA"; sync
 		sube "$1"
-		echo "Listo: la rocola usa la tarjeta $1, salida $2. Se vuelve a abrir."
+		echo "Listo: la rocola usa la tarjeta $1, salida $2 (al volver a ella con Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya)."
 		printf '%s  se eligio a mano la salida plughw:%s,%s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" "$2" >> "$LOG"
-		killall rocola-consola 2>/dev/null
+		cierra_xp "otra salida de sonido (rocola-sonido usar)"
 		exit 0 ;;
 	auto)
 		rm -f "$FIJA"; sync
-		echo "Listo: la rocola elige sola la salida (la primera que no sea HDMI). Se vuelve a abrir."
-		killall rocola-consola 2>/dev/null
+		echo "Listo: la rocola elige sola la salida (la primera que no sea HDMI), al volver a ella con Ctrl+Alt+F1 (si estaba abierta, ya)."
+		cierra_xp "la salida de sonido automatica (rocola-sonido auto)"
 		exit 0 ;;
 esac
 
@@ -68,7 +95,7 @@ for t in $(salidas | cut -d' ' -f1 | sort -u); do
 done
 # lo que dijo la rocola de su salida de sonido (si el pitido se oye y la rocola no, el fallo esta en el programa)
 { echo "--- la rocola: lo ultimo de su salida de sonido"; grep -iE "sonido|alsa|salida|snd_|tarjeta|plughw" "$DATOS/rocola.txt" 2>/dev/null | tail -12
-  echo "--- rocola_error.txt (lo ultimo)"; tail -12 "$DATOS/rocola_error.txt" 2>/dev/null; } >> "$LOG"
+  echo "--- rocola_error.txt de rocola-xp (lo ultimo)"; tail -12 "$XPD/rocola_error.txt" 2>/dev/null; } >> "$LOG"
 sigue_rocola
 echo "Si alguna se oyo, escribe:   rocola-sonido usar NUMERO     (por ejemplo: rocola-sonido usar 2)"
 echo "Si ninguna se oyo: manda una foto de esta pantalla y de:   tail -40 $LOG"
