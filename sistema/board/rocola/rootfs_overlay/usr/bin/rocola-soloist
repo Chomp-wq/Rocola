@@ -416,6 +416,13 @@ duerme() {
 	done
 	[ -z "$PARAR" ]
 }
+# pausa: medio segundo (con Soloist en marcha: asi se nota enseguida si se cae), mirando al padre; 1 si llega SIGTERM o murio el padre
+pausa() {
+	[ -n "$PARAR" ] && return 1
+	padre_vivo || { PARAR=padre; return 1; }
+	sleep 0.5 & ds=$!; wait $ds 2>/dev/null; kill $ds 2>/dev/null
+	[ -z "$PARAR" ]
+}
 padre_vivo() { [ "$PADRE" = 1 ] || [ "$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null)" = "$PADRE" ]; }
 rota() { [ -f "$BITACORA" ] && [ "$(wc -c < "$BITACORA")" -gt 1048576 ] && mv -f "$BITACORA" "$BITACORA.1"; }
 
@@ -464,7 +471,7 @@ corre() {
 		arranca
 		ULTIMA_REVISION=$(segundos)
 		while vivo; do
-			duerme 2 || break
+			pausa || break
 			mira_expira
 			if [ -z "$LISTO" ] && [ -s "$SDATOS/ws.port" ]; then
 				LISTO=1; ERROR=; estado corriendo

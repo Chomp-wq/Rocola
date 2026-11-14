@@ -175,10 +175,10 @@ debe contestar con un `"access_token"`. Si contesta `invalid_client`, el Client 
   cierra con SIGTERM (SIGKILL a los 10 s si no salió).
 - **Un solo vigilante**: candado (`flock`) en `/run/rocola-soloist/candado`. Uno que llegue con otro en marcha **espera** a que acabe (no
   se va: si rocola-xp se cae y el lanzador la abre a los 2 s, el vigilante nuevo toma el relevo en cuanto el viejo se cierra).
-- **Sale si muere su padre** (lo mira cada 2 s: su proceso padre cambia) o con SIGTERM/SIGINT: SIGTERM a **todo el grupo** de Soloist (lo
+- **Sale si muere su padre** (lo mira cada 2 s, y cada 0,5 s con Soloist en marcha: su proceso padre cambia) o con SIGTERM/SIGINT: SIGTERM a **todo el grupo** de Soloist (lo
   arranca con `setsid`, así se cierran también sus hijos), hasta 8 s, y después SIGKILL. Las esperas largas (bajar, `--version`) van en
-  segundo plano y se cortan al momento. Medido (abajo): 0,2 s normal, 8,5 s con un Soloist que no hace caso, 0,1 s a media bajada,
-  2,1 s al morir el padre.
+  segundo plano y se cortan al momento. Medido (abajo): 0,24 s normal, 8,47 s con un Soloist que no hace caso, 0,12 s a media bajada,
+  0,58 s al morir el padre (todo fuera: el vigilante y Soloist).
 - **Un Soloist huérfano** (de un vigilante muerto con SIGKILL) que use la misma carpeta de datos se cierra antes de arrancar otro.
 - **La llave**: de `rocola_spotify_llave.txt`; si falta, fase `sin_llave` y busca la memoria USB cada 30 s. Si el archivo cambia, se
   vuelve a arrancar Soloist con la nueva. Si falta la de la API, se mira la USB al empezar y cada 15 min.
@@ -300,10 +300,11 @@ soloist-builds.spotifycdn.com, de apresolve.spotify.com y del WebSocket, y una m
 
 - `sistema/rocola/Pruebas/Soloist/prueba.sh`: 20 casos (bajar bien, CDN caído, tar roto, disco lleno, sin disco, caducado, caduca pronto,
   caídas, arranque lento, dos vigilantes, muere el padre, SIGTERM medido, la llave desde la USB, la llave nunca aparece, `spotify
-  encender/apagar`, `spotify estado`, `spotify prueba`, emparejar y olvidar, el entorno de Soloist, ROCOLA_OS en el lanzador). Los
-  números, en el informe del grupo y en la junta.
-- `sistema/rocola/Pruebas/Soloist/rapida-pulso.sh`: el paso 5b de `rapida.sh` contra un rocola-pulso de mentira (5 comprobaciones).
-- `sistema/rocola/Pruebas/Lanzador/prueba.sh` (las de antes del lanzador): siguen bien.
+  encender/apagar`, `spotify estado`, `spotify prueba`, emparejar y olvidar, el entorno de Soloist, ROCOLA_OS en el lanzador): **89 de
+  89 bien** (la última pasada entera, 14-11-2026), y `sh -n` con el BusyBox del sistema de los cuatro guiones tocados.
+- `sistema/rocola/Pruebas/Soloist/rapida-pulso.sh`: el paso 5b de `rapida.sh` contra un rocola-pulso de mentira: **5 de 5**.
+- `sistema/rocola/Pruebas/Lanzador/prueba.sh` (las de antes del lanzador), con el lanzador nuevo: 92 de 94 en la pasada entera (las 2
+  del caso `caidas`, por tiempos con la máquina cargada: repetido solo, 7 de 7, igual que con el lanzador de antes).
 
 **No probado**: nada con el Soloist de verdad, ni con una cuenta, ni en el A4, ni el paquete de Buildroot compilado. Lo que hay que mirar
 en el A4 está en la lista de la junta.
