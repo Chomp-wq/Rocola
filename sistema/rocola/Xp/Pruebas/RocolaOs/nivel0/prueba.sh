@@ -60,6 +60,12 @@ si "f3sigterm con la hoja que se cierra antes: ACEPTADO" es ACEPTADO escena f3si
 escena "$E/A"; escena "$E/B"
 for i in $(seq 1 30); do printf '%d\ttick Form1.cs:724 42\n' $((1000 + 42 * i)); done >> "$E/B/traza.txt"
 si "un reloj con 30 vueltas de mas (la carga): CUENTA" es CUENTA escena arranque "$E/A" "$E/B"
+# el volcado del estado al otro lado de una tecla (la hora de la maquina): una cuenta; y si ademas falta algo, MAL
+escena "$E/A"; escena "$E/B"
+grep -v "estado estado-antes" "$E/A/traza.txt" | sed 's/^7014\tkeydown 43 a Form1.Rocola.$/&\n7050\testado estado-antes.txt/' > "$E/B/traza.txt"
+si "el volcado del estado antes y no despues del keyup (la hora): CUENTA" es CUENTA escena video "$E/A" "$E/B"
+sed -i '/keyup 43/d' "$E/B/traza.txt"
+si "lo mismo y ademas un keyup de menos: MAL" es MAL escena video "$E/A" "$E/B"
 # el reloj saturado de la ventana F12 (15 ms): con la NOTA de compara_trazas.py, lo aceptado; sin ella, una cuenta
 escena "$E/A"; escena "$E/B"
 for i in $(seq 1 30); do printf '%d\ttick D3D9Star.cs:1997 15\n' $((2000 + 30 * i)); done >> "$E/A/traza.txt"

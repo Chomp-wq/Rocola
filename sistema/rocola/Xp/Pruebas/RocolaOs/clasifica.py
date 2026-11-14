@@ -5,8 +5,9 @@
 #   ACEPTADO  distinto solo en lo aceptado por el dueno y las juntas del port, y lo dice (sigterm y f3sigterm: el estado se borra; los
 #             rotulos del repaso en tab; el reloj saturado de F12; la linea de marca de VistasFondo; las capas y texturas de siempre de los
 #             recorridos)
-#   CUENTA    (escenas) distinto solo en cuentas de relojes, encargos o repeticiones, que con la maquina cargada se salen de la holgura: la
-#             bateria repite la escena una vez antes de darla por mala (PORT_JUNTAS.md)
+#   CUENTA    (escenas) distinto solo en cuentas de relojes, encargos o repeticiones, que con la maquina cargada se salen de la holgura, o
+#             en el sitio de un volcado del estado en la secuencia (cae al otro lado de una tecla): la bateria repite la escena una vez
+#             antes de darla por mala (PORT_JUNTAS.md)
 #   REPETIR   (recorridos) una capa o una textura quieta que falta y no es de las de siempre: se repite ese recorrido una vez
 #   MAL       cualquier otra diferencia
 #   NO        no se pudo comparar (falta la salida, o el nivel 1 sin la opcion --ignora de compara_trazas.py)
@@ -264,6 +265,15 @@ def clasifica_escena(nombre, texto, dir_a, dir_b):
     if nombre in ESCENAS_F12:
         r = _f12(e, quedan)
         if r: aceptado.append(r)
+    # un volcado del estado (ROCOLA_ESTADO_EN, a su segundo fijo) que cae al otro lado de una tecla o un encargo: la secuencia tiene las
+    # mismas lineas, solo que la del estado va en otro sitio (la hora de la maquina: PORT_form1-sin-form.md, la escena video). Es de la
+    # carga, como las cuentas: se repite
+    movidos = 0
+    cambios = _cambios_secuencia(quedan["secuencia"])
+    if cambios:
+        menos = sorted(l[1:] for l in cambios if l.startswith("-")); mas = sorted(l[1:] for l in cambios if l.startswith("+"))
+        if menos == mas and all(l.startswith("estado ") for l in menos):
+            movidos = len(menos); quedan["secuencia"] = []
     mal = []
     if _cambios_secuencia(quedan["secuencia"]):
         mal.append("la secuencia: " + " | ".join(_cambios_secuencia(quedan["secuencia"]))[:300])
@@ -279,8 +289,9 @@ def clasifica_escena(nombre, texto, dir_a, dir_b):
         mal.append("la traza: " + " | ".join(e.otras_traza)[:300])
     if mal:
         return "MAL", "; ".join(mal)
-    if quedan["cuentas"]:
-        r = "solo cuentas (%d): %s" % (len(quedan["cuentas"]), " | ".join(quedan["cuentas"][:3])[:300])
+    if quedan["cuentas"] or movidos:
+        r = "solo cuentas (%d): %s" % (len(quedan["cuentas"]), " | ".join(quedan["cuentas"][:3])[:300]) if quedan["cuentas"] else ""
+        if movidos: r += ("; y " if r else "") + "%d volcados del estado en otro sitio de la secuencia (la hora)" % movidos
         if aceptado: r += "; y lo aceptado: " + "; ".join(aceptado)
         return "CUENTA", r
     if aceptado:
