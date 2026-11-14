@@ -48,6 +48,7 @@ namespace Rocola
         private List<Album> rocolaOsSpCuenta, rocolaOsSpRecientes, rocolaOsSpLetra;
         private List<SearchItem> rocolaOsSpXp;      // lo ultimo que dio XP en el buscador (para mezclar cuando llega lo de Spotify)
         private string rocolaOsSpConsulta;           // y su consulta (la clave)
+        private string rocolaOsSpEscrito;            // (y tal cual se escribio: para la cuenta de XP)
         private bool rocolaOsSpCuentaPedida;
         private int rocolaOsSpAbriendo;              // el ultimo «abrir» pedido (si llega otro antes, el viejo no abre nada)
 
@@ -85,7 +86,7 @@ namespace Rocola
         {
             if (!RocolaOsSpotifyCatalogoVa) return res;
             string q = RocolaOsSpotifyCatalogoClave(consulta);
-            rocolaOsSpXp = res; rocolaOsSpConsulta = q;
+            rocolaOsSpXp = res; rocolaOsSpConsulta = q; rocolaOsSpEscrito = consulta;
             if (q.Length < 2 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return res; }
             RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyCatalogoApi.BuscaYa(q);
             if (b != null) return RocolaOsSpotifyCatalogoMezcla(res, b);
@@ -126,6 +127,7 @@ namespace Rocola
                 if (n >= 0) searchOverlay.SelResult = n;
             }
             searchOverlay.Results = m;
+            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
             searchOverlay.Invalidate();
             RocolaOsSpotifyCatalogoApi.EscribeEstado();
@@ -194,6 +196,15 @@ namespace Rocola
             return Path.Combine(Path.GetDirectoryName(d.TrimEnd('/')) ?? d, "miniaturas", Path.GetFileName(deXp));
         }
 
+        // g50 (PreviewsIndexadosGpu.cs, IndexedSave): la previa de 32 px de una portada de Spotify no va a previews32-v1.bin (en el disco)
+        internal static bool RocolaOsSpotifyCatalogoEsMiniatura(string identidad)
+        {
+            string d = RocolaOsSpotifyCatalogoPortadas.Carpeta;
+            if (d == null || identidad == null) return false;
+            string mini = Path.Combine(Path.GetDirectoryName(d.TrimEnd('/')) ?? d, "miniaturas") + "/";
+            return identidad.StartsWith(mini, StringComparison.Ordinal) || identidad.StartsWith(d, StringComparison.Ordinal);
+        }
+
         // g44 (Form1.Biblioteca.cs, CurrentList): LOS DISCOS DE LA LETRA DE SPOTIFY. De XP: una lista vacia (lo de antes).
         private List<Album> RocolaOsSpotifyCatalogoLista(char letra)
         {
@@ -210,7 +221,13 @@ namespace Rocola
                 rocolaOsSpCuentaPedida = true;
                 RocolaOsSpotifyCatalogoApi.PideCuenta(delegate (object r, string error)
                 {
-                    RocolaOs.Encarga("spotify_catalogo:cuenta", delegate { RocolaOsSpotifyCatalogoLlegoCuenta(r as List<RocolaOsSpotifyCatalogoDisco>, error); });
+                    // (esto se pide en cuanto se arma la barra, que puede ser antes de que la ventana exista: el encargo espera a la ventana
+                    // en su propio hilo, hasta 2 minutos, sin detener al del catalogo)
+                    RocolaOs.Hilo("spotify_cuenta", delegate
+                    {
+                        for (int i = 0; i < 1200 && RocolaOs.LaRocola == null; i++) Thread.Sleep(100);
+                        RocolaOs.Encarga("spotify_catalogo:cuenta", delegate { RocolaOsSpotifyCatalogoLlegoCuenta(r as List<RocolaOsSpotifyCatalogoDisco>, error); });
+                    });
                 });
             }
             if (letterAvailable == null) return deXp;
