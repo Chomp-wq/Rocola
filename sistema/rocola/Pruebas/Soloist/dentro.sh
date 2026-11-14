@@ -41,9 +41,11 @@ vivo_p() { [ "$(awk '{print $3}' /proc/$1/stat 2>/dev/null)" != Z ] && [ -d /pro
 soloists() { c=0; for f in /proc/[0-9]*/cmdline; do p=${f#/proc/}; p=${p%/cmdline}; vivo_p $p || continue; tr '\0' '\n' < "$f" 2>/dev/null | grep -qx -- "$SD" && tr '\0' '\n' < "$f" 2>/dev/null | grep -qx -- -n && c=$((c + 1)); done; echo $c; }
 # los vigilantes (sin contar sus subprocesos, que tambien se llaman rocola-soloist: los de la tuberia de la bitacora)
 vigilantes() { c=0; for p in $(pidof rocola-soloist); do vivo_p $p || continue; pp=$(awk '{print $4}' /proc/$p/stat 2>/dev/null); [ "$(cat /proc/$pp/comm 2>/dev/null)" = rocola-soloist ] || c=$((c + 1)); done; echo $c; }
-# las veces que arranco el soloist falso, y los segundos (redondeados) entre una salida y el siguiente arranque
+# las veces que arranco el soloist falso, y los segundos (enteros, hacia abajo) entre una salida y el siguiente arranque: la espera mas lo que
+# tarda el vigilante en notar la caida (hasta 0,5 s) y en arrancarlo (revision: antes se redondeaba, y salia 1 s de mas segun quien ganaba
+# la carrera entre la salida del soloist falso y la primera mirada del vigilante)
 arranques() { grep -c 'args: -n' /tmp/soloist.log 2>/dev/null || echo 0; }
-esperas() { grep -E 'args: -n|sale con' /tmp/soloist.log | sed 's/.*\[\([0-9]*\)\] \([a-z]*\).*/\1 \2/' | awk '$2 == "sale" {s = $1} $2 == "args" {if (n++) printf "%s%d", (n > 2 ? " " : ""), ($1 - s + 500) / 1000}'; }
+esperas() { grep -E 'args: -n|sale con' /tmp/soloist.log | sed 's/.*\[\([0-9]*\)\] \([a-z]*\).*/\1 \2/' | awk '$2 == "sale" {s = $1} $2 == "args" {if (n++) printf "%s%d", (n > 2 ? " " : ""), ($1 - s) / 1000}'; }
 # cuanto tarda (ms) en no quedar ni el vigilante ni su soloist
 hasta_que_no_quede() { t0=$(ms); i=0; while { [ "$(vigilantes)" != 0 ] || [ "$(soloists)" != 0 ]; } && [ $i -lt 150 ]; do sleep 0.1; i=$((i + 1)); done; echo $(( $(ms) - t0 )); }
 limpia
@@ -106,7 +108,8 @@ caducado)   # sale con 10: se baja el ultimo y arranca; si no hay uno nuevo, fas
 	echo 2.0.0 >> /tmp/soloist.caducadas; killall -KILL soloist
 	espera_fase caducado 10; r=$?; sleep 1
 	ok "$r/$(es error | grep -c 'no hay uno nuevo')/$(es dias)" "0/1/-1" "caducado y sin uno nuevo: fase caducado, lo dice"
-	sleep 5; ok "$(grep -c 'soloist 2.0.0.*sale con 10' /tmp/soloist.log)" 2 "y se vuelve a intentar a los ROCOLA_SOLOIST_CADUCADO s (aqui 3)" ;;
+	sleep 5; ok "$(grep -c 'soloist 2.0.0.*sale con 10' /tmp/soloist.log)" 2 "y se vuelve a intentar a los ROCOLA_SOLOIST_CADUCADO s (aqui 3)"
+	ok "$(tail -n 1 /srv/peticiones.log)" "GET /soloist_release_x86_64.tar.gz (If-Modified-Since)" "la segunda vez solo pregunta si hay uno mas nuevo (no baja los 14 MB cada vez)" ;;
 pronto)   # caduca en menos de 7 dias: antes de arrancar se busca uno nuevo; sin fecha en --version, la del archivo + 90 dias
 	disco; llave; srv v4 1; rocola-soloist baja >/dev/null
 	ok "$(sed -n 's/^caduca=//p' $DP/soloist.info)" "$(date -d "@$(( $(date +%s) + 3 * 86400 ))" +%Y-%m-%d)" "la 4.0.0 caduca en 3 dias (por su fecha de compilacion)"
@@ -170,6 +173,9 @@ usb)   # la llave desde una memoria USB: en otro disco, en una USB removible de 
 		ok "$(grep -c rocola-soloist/usb /proc/mounts)/$(ls -a $AQ | grep -c '^\.usb')" "0/0" "la USB se desmonta y no queda copia en /run"
 		rocola-soloist llave > /tmp/o.2; r=$?
 		ok "$r/$(grep -c 'la misma' /tmp/o.2)" "1/2" "otra vez: son las mismas, no cambia nada"
+		echo 'llaveVIEJA_desde_otra_vez' > $AQ/.usb.rocola_spotify.txt; rm -f $XPD/rocola_spotify_llave.txt
+		mkdir -p /mnt; mount -o ro /dev/loop99 /mnt 2>/dev/null; rocola-soloist llave > /tmp/o.5; r=$?; umount /mnt 2>/dev/null
+		ok "$r/$(si -e $XPD/rocola_spotify_llave.txt)/$(si -e $AQ/.usb.rocola_spotify.txt)" "2/no/no" "una copia de paso que quedo de otra vez (y la USB ya montada por otro): no cuenta como encontrada"
 	else echo "  MAL: no hay loop: la USB removible no se probo"; fi
 	limpia; mkdir -p /rocola/discos/sdz1; echo 'esto no es una llave!' > /rocola/discos/sdz1/rocola_spotify.txt
 	rocola-soloist llave > /tmp/o.3; r=$?; sed 's/^/    /' /tmp/o.3
@@ -180,6 +186,7 @@ usb)   # la llave desde una memoria USB: en otro disco, en una USB removible de 
 	ROCOLA_DATOS=/rocola/datos rocola-buzon una > /tmp/o.4 2>&1
 	ok "$(cat $XPD/rocola_spotify_llave.txt)/$(tr '\n' '|' < $XPD/rocola_spotify_api.txt)" "llaveNUEVA_1111111111/client_id=idB|client_secret=secB_222222|" "rocola-buzon: la de la USB es otra: se cambia (y la de la API)"
 	ok "$(n 'Llave de Spotify puesta (de USB)' /rocola/datos/rocola_actualizaciones.txt)/$(grep -c 'llaveNUEVA\|secB' /rocola/datos/rocola_actualizaciones.txt)" "1/0" "apunta solo «Llave de Spotify puesta (de USB)»"
+	ok "$(ls -l $XPD/rocola_spotify_llave.txt $XPD/rocola_spotify_api.txt | cut -c1-10 | tr '\n' ' ')/$(ls -a $XPD /run/rocola-buzon.d | grep -c -e '\.n$' -e '^\.api' -e '^llave.txt$')" "-rw------- -rw------- /0" "las dos 0600 y sin copias de paso (ni en los datos ni en /run)"
 	sed -n '/^permitido() {/,/^}/p' /usr/bin/rocola-buzon > /tmp/o.perm; . /tmp/o.perm
 	r=; for f in rocola_spotify_llave.txt rocola_spotify_api.txt rocola_spotify_llave.txt.bak soloist .rocola_spotify_llave.txt.n; do permitido "$f" && r="$r $f"; done
 	ok "${r:-ninguno}" ninguno "rocola-buzon nunca sube las llaves ni la sesion de Soloist"
@@ -190,6 +197,7 @@ secreto)   # la llave NUNCA aparece fuera de su archivo: ni en la bitacora, ni e
 	lanza; espera_fase corriendo 8; sleep 2
 	ok "$(grep -c "\-k $LL" /tmp/soloist.log)/$(grep -c 'la llave es' /tmp/soloist.log)" "1/0" "Soloist la recibe con -k (y la linea suya que la lleva...)"
 	ok "$(n 'la llave es')/$(n 'arrancando')" "0/1" "...no llega a la bitacora (lo demas que dice, si)"
+	ok "$(n 'llave recortada')/$(n 'llaveFALSA_12')" "0/0" "ni una linea con un trozo de ella (sus primeras 12 letras)"
 	rocola-soloist estado > /tmp/o.s2 2>&1; spotify estado > /tmp/o.s3 2>&1; spotify prueba > /tmp/o.s4 2>&1; spotify > /tmp/o.s5 2>&1
 	spotify encender > /tmp/o.s6 2>&1
 	printf '%s\n' "$LL" | rocola-soloist pon-llave > /tmp/o.s7 2>&1
@@ -270,6 +278,40 @@ lanzador)   # ROCOLA_OS en el lanzador: =1 para la rocola (no para el importador
 	ok "$(grep 'rocola-xp rocola' /tmp/xp.log)/$(grep -c 'apagado de emergencia' /rocola/datos/rocola.txt)" "rocola-xp rocola: ROCOLA_OS=[]/1" "con rocola_os_apagado: vacia (= sin ella; RocolaOs.cs la toma como apagada) y lo apunta"
 	rm -f $XPD/rocola_os_apagado; : > /tmp/xp.log; killall -TERM rocola-xp; sleep 4
 	ok "$(grep 'rocola-xp rocola' /tmp/xp.log)" "rocola-xp rocola: ROCOLA_OS=[1]" "sin el archivo, otra vez 1 (se mira cada vez que se abre)" ;;
+restos)   # (revision) lo que quede de Soloist FUERA de su grupo: un hijo en otra sesion con la tuberia de la bitacora (como crashpad) y
+	# el mismo programa sacado a /run en marcha: el vigilante no se queda esperando la bitacora y los cierra (salvo «ctl» de la consola)
+	disco; llave; srv v2 0; rocola-soloist baja >/dev/null
+	echo escapa > /tmp/soloist.modo; lanza; espera_fase corriendo 6; sleep 0.5
+	e=$(grep -o 'hijo escapado [0-9]*' $BIT | tail -1 | awk '{print $3}')
+	ok "$(si -n "$e")/$(vivo_p "$e" && echo vivo)" "si/vivo" "Soloist deja un hijo en otra sesion con su salida"
+	if [ -x /tars/dormilon ]; then
+		cp /tars/dormilon $AQ/bin/soloist.n && mv -f $AQ/bin/soloist.n $AQ/bin/soloist
+		( exec setsid $AQ/bin/soloist ) & sleep 0.2; ( exec setsid $AQ/bin/soloist ctl ) & sleep 0.3
+		d1=$(pidof soloist | tr ' ' '\n' | while read p; do [ "$(tr '\0' ' ' < /proc/$p/cmdline)" = "$AQ/bin/soloist " ] && echo $p; done)
+		d2=$(pidof soloist | tr ' ' '\n' | while read p; do [ "$(tr '\0' ' ' < /proc/$p/cmdline)" = "$AQ/bin/soloist ctl " ] && echo $p; done)
+	else echo "  (sin gcc: no se prueba el programa sacado a /run que se quedo)"; fi
+	kill -TERM "$(cat /tmp/o.vig)"; t=$(hasta_que_no_quede)
+	ok "$(awk -v t=$t 'BEGIN {print (t < 10000) ? "menos de 10 s" : t " ms"}')/$(vivo_p "$e" && echo vivo)/$(n 'fuera de su grupo')/$(es fase)" "menos de 10 s//1/parado" "SIGTERM: todo fuera ($t ms), el hijo de otra sesion tambien, y lo apunta"
+	if [ -n "$d1" ]; then
+		ok "$(vivo_p "$d1" && echo vivo)/$(vivo_p "$d2" && echo vivo)" "/vivo" "el programa sacado a /run que se quedo: cerrado; un «soloist ctl» de la consola: no se toca"
+		kill -KILL "$d2" 2>/dev/null
+	fi ;;
+cambio)   # (revision) caduca pronto y hay uno nuevo con Soloist en marcha: no se cambia mientras suena algo de Spotify (rocola-xp pone en
+	# sonando= la uri de la que suena) y si cuando la rocola no tiene nada de Spotify
+	disco; llave; srv v4 1; rocola-soloist baja >/dev/null; srv v2 0
+	mkdir -p /run/rocola-xp/spotify; printf 'ws=1\nsesion=1\nactiva=1\nsonando=spotify:track:inventado0123456789\nen_cola=0\n' > /run/rocola-xp/spotify/estado
+	lanza ROCOLA_SOLOIST_REINTENTO=5 ROCOLA_SOLOIST_REVISA=2; espera_fase corriendo 6; r=$?
+	ok "$r/$(es version)" "0/4.0.0" "arranca la 4.0.0 (caduca en 3 dias; acaba de buscar uno nuevo: no lo vuelve a buscar antes de 5 s)"
+	sleep 9
+	ok "$(es version)/$(n 'se cambia ahora')/$(cmp -s $DP/soloist.tar.gz /tars/v2.tar.gz && echo bajado)" "4.0.0/0/bajado" "baja la 2.0.0 pero no la cambia: suena una de Spotify (sonando=spotify:track:...)"
+	printf 'ws=1\nsesion=1\nactiva=1\nsonando=\nen_cola=0\n' > /run/rocola-xp/spotify/estado
+	i=0; while [ "$(es version)" != 2.0.0 ] && [ $i -lt 60 ]; do sleep 0.25; i=$((i + 1)); done
+	espera_fase corriendo 6; r=$?
+	ok "$r/$(es version)/$(n 'se cambia ahora')" "0/2.0.0/1" "sin nada de Spotify (sonando= vacio, en_cola=0): se cambia ya a la 2.0.0" ;;
+padrebaja)   # (revision) muere el padre mientras baja el programa (una bajada lenta): el vigilante no se queda minutos bajando con el candado
+	disco; llave; echo "lento 30" > /srv/.modo; srv v2 0
+	lanza; espera_fase bajando 6; kill -KILL "$(cat /tmp/o.padre)"; t=$(hasta_que_no_quede)
+	ok "$(awk -v t=$t 'BEGIN {print (t < 3000) ? "menos de 3 s" : t " ms"}')/$(si -e $DP/soloist.tar.gz.t)/$(n 'murio su padre')" "menos de 3 s/no/1" "todo fuera ($t ms) y sin el .t" ;;
 *) echo "  MAL: no hay caso «$1»" ;;
 esac
 limpia

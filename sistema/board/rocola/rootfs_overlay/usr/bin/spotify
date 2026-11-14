@@ -25,7 +25,7 @@ APRESOLVE=${ROCOLA_SPOTIFY_APRESOLVE:-https://apresolve.spotify.com/?type=access
 
 clave() { [ -f "$OSF" ] || return 0; tr -d '\r' < "$OSF" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | sed -n "s/^[ \t]*$1[ \t]*=[ \t]*\(.*\)/\1/p" | sed 's/[ \t]*$//' | tail -1; }
 modo() { [ "$(clave spotify)" = 1 ] && echo encendido || echo apagado; }
-si_no() { case "$1" in 1|si|true) echo si ;; 0|no|false) echo no ;; "") echo "?" ;; *) echo "$1" ;; esac; }
+si_no() { case "$1" in 1|si|true) echo si ;; 0|no|false) echo no ;; "") echo "?" ;; spotify:*) echo "si ($1)" ;; *) echo "$1" ;; esac; }
 # el rocola-xp abierto como rocola (no el importador)
 rocola_pid() {
 	for p in $(pidof rocola-xp); do
@@ -114,7 +114,8 @@ lo_de_la_rocola() {
 	if [ -f "$XPEST" ]; then
 		echo "Lo que dice la rocola (rocola-xp):"
 		echo "  WebSocket con Soloist: $(si_no "$(lee ws "$XPEST")"); cuenta (sesion): $(si_no "$(lee sesion "$XPEST")"); bocina activa: $(si_no "$(lee activa "$XPEST")")"
-		echo "  Sonando de Spotify: $(si_no "$(lee sonando "$XPEST")"); en la cola: $(lee en_cola "$XPEST"); esperando credito: $(si_no "$(lee esperando_credito "$XPEST")")"
+		so=$(lee sonando "$XPEST")   # (la uri de la que suena; vacio: nada)
+		echo "  Sonando de Spotify: $([ -n "$so" ] && si_no "$so" || echo no); en la cola: $(lee en_cola "$XPEST"); esperando credito: $(si_no "$(lee esperando_credito "$XPEST")")"
 		echo "  Cobradas: $(lee cobradas "$XPEST"); devueltas: $(lee devueltas "$XPEST")"
 		e=$(lee error "$XPEST"); [ -n "$e" ] && echo "  Ultimo problema: $e"
 	elif [ -n "$(rocola_pid)" ]; then echo "La rocola esta abierta, pero no ha dicho nada de Spotify (el modo apagado, o una version sin Spotify)."

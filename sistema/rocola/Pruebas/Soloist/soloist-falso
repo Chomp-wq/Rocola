@@ -9,7 +9,7 @@
 #   ctl status           lo que diria «soloist ctl status»
 #   -p (emparejar)       espera 1 s, deja una sesion en -D y sale con lo de /tmp/soloist.par (0 si no esta)
 #   (la bocina)          /tmp/soloist.modo: «sale N» (sale con N enseguida), «lento N» (abre su WebSocket a los N s), «sin_ws» (nunca
-#                        lo abre), «terco» (no atiende SIGTERM); sin el archivo, normal. Si VER esta en /tmp/soloist.caducadas, sale con
+#                        lo abre), «terco» (no atiende SIGTERM), «escapa» (deja un hijo en otra sesion con su salida); sin el archivo, normal. Si VER esta en /tmp/soloist.caducadas, sale con
 #                        10 (caducado). El WebSocket: ws.addr y ws.port en -D (el puerto del servidor de mentira, /tmp/ws.puerto).
 VER=@VER@
 DIAS=@DIAS@
@@ -31,6 +31,7 @@ while [ $# -gt 0 ]; do case "$1" in -D) D=$2; shift ;; -k) K=$2; shift ;; -p) P=
 apunta "env LD_LIBRARY_PATH=$LD_LIBRARY_PATH ANILLO=$ROCOLA_SPOTIFY_ANILLO TRAZA=$ROCOLA_PULSO_TRAZA HOME=$HOME pgid=$(awk '{print $5}' /proc/$$/stat) nice=$(awk '{print $19}' /proc/$$/stat)"
 echo "INFO Spotify Soloist $VER (falso) arrancando"
 echo "DEBUG la llave es $K (una linea que la bitacora no debe guardar)"
+echo "DEBUG llave recortada: $(printf '%s' "$K" | cut -c1-12)... (tampoco)"
 echo "INFO client expires in $DIAS days"
 if [ -n "$P" ]; then
 	echo "Waiting for Spotify Connect login (falso)"; sleep 1
@@ -42,6 +43,9 @@ set -- $(cat /tmp/soloist.modo 2>/dev/null)
 case "$1" in
 sale) echo "ERROR algo fallo (falso)" >&2; apunta "sale con $2"; exit "$2" ;;
 terco) trap 'apunta "SIGTERM: no hago caso"' TERM ;;
+escapa)   # (como el ayudante de fallos crashpad: un hijo en su propia sesion -fuera del grupo- que se queda con la salida, la tuberia)
+	setsid sh -c 'echo "INFO hijo escapado $$"; exec sleep 300' &
+	trap 'rm -f "$D/ws.addr" "$D/ws.port" "$D/soloist.pid"; apunta "SIGTERM: sale con 0"; exit 0' TERM ;;
 *) trap 'rm -f "$D/ws.addr" "$D/ws.port" "$D/soloist.pid"; apunta "SIGTERM: sale con 0"; exit 0' TERM ;;
 esac
 echo $$ > "$D/soloist.pid"

@@ -58,6 +58,11 @@ haz_tar() {   # haz_tar NOMBRE VER DIAS [relleno_KB]
 haz_tar v1 1.0.0 60; haz_tar v2 2.0.0 89; haz_tar v4 4.0.0 3; haz_tar grande 5.0.0 80 2048
 head -c "$(( $(wc -c < "$R/tars/v2.tar.gz") / 2 ))" "$R/tars/v2.tar.gz" > "$R/tars/roto.tar.gz"
 d=$(mktemp -d -p "$TRAB"); echo hola > "$d/LEEME"; (cd "$d" && tar -czf "$R/tars/sinsoloist.tar.gz" LEEME); rm -rf "$d"
+# UN PROGRAMA QUE SOLO ESPERA (estatico, para la raiz): hace de lo que quede del programa de Soloist fuera de su grupo (caso «restos»)
+if command -v gcc >/dev/null; then
+	printf '#include <unistd.h>\nint main(void) { for (;;) pause(); }\n' > "$R/tars/dormilon.c"
+	gcc -static -O2 -o "$R/tars/dormilon" "$R/tars/dormilon.c" 2>/dev/null || rm -f "$R/tars/dormilon"; rm -f "$R/tars/dormilon.c"
+fi
 # EL ANILLO de mentira (la cabecera de I1 con un flujo a 44100 Hz sonando; los latidos, de ahora): para «spotify estado» y «prueba»
 python3 -I - "$R/tars/anillo" <<'EOF'
 import struct, sys, time
@@ -87,6 +92,6 @@ for g in rocola-soloist spotify rocola-buzon rocola; do chroot "$R" /bin/sh -n "
 python3 -I "$AQUI/servidor.py" "$R/srv" "$R/tmp/srv.puerto" & SRV=$!
 for i in $(seq 30); do [ -s "$R/tmp/srv.puerto" ] && break; sleep 0.2; done
 [ $# -gt 0 ] || set -- baja caido roto lleno sindisco caducado pronto caidas lento dos padre sigterm usb secreto encender estado prueba \
-	emparejar entorno lanzador
+	emparejar entorno lanzador restos padrebaja cambio
 for t in "$@"; do echo "=== $t"; unshare --pid --fork --mount chroot "$R" /prueba.sh "$t" | tee -a "$R/resumen.txt"; done
 echo "=== RESUMEN: $(grep -c '^  BIEN' "$R/resumen.txt") BIEN, $(grep -c '^  MAL' "$R/resumen.txt") MAL"

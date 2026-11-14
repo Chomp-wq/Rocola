@@ -63,12 +63,22 @@ NICE=${ROCOLA_SOLOIST_NICE:-0}                 # Soloist decodifica el sonido: p
 
 ahora() { date +%s; }
 PADRE=$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null); PARAR=
-# corta ORDEN...: la orden en segundo plano, esperada; SIGTERM (PARAR) la corta al momento (el vigilante sale en menos de 10 s)
+# U: los milisegundos desde que prendio el equipo (de /proc/uptime, sin abrir ningun proceso: lo usan las esperas del cierre)
+uptime_ms() { U=; read -r U _ 2>/dev/null < /proc/uptime; U=${U%.*}${U#*.}0; }
+# vivo_pid PID: el proceso existe y no es un zombi (sin abrir ningun proceso)
+vivo_pid() { l=; read -r l 2>/dev/null < "/proc/$1/stat" || return 1; l=${l##*) }; [ "${l%% *}" != Z ]; }
+# corta ORDEN...: la orden en segundo plano, esperada; SIGTERM (PARAR) la corta al momento (el vigilante sale en menos de 10 s), y
+# tambien si muere su padre mientras tanto (una bajada lenta puede durar minutos: el vigilante no se queda con el candado sin rocola)
 corta() {
 	"$@" &
-	CP=$!; wait $CP; cr=$?
+	CP=$!
+	while vivo_pid "$CP"; do
+		[ -n "$PARAR" ] && break
+		padre_vivo || { PARAR=padre; break; }
+		sleep 0.2 & ds=$!; wait $ds 2>/dev/null
+	done
 	if [ -n "$PARAR" ]; then kill "$CP" 2>/dev/null; wait "$CP" 2>/dev/null; return 143; fi
-	return $cr
+	wait "$CP"
 }
 segundos() { cut -d. -f1 /proc/uptime; }   # (para medir lo que dura algo: la hora puede saltar con NTP)
 apunta() {
@@ -117,12 +127,16 @@ normaliza_api() {
 # guarda_secreto DESTINO (lo de la entrada): 0600, de un tiron; el de paso, oculto (los patrones del buzon no lo ven)
 guarda_secreto() {
 	d=$(dirname "$1"); n=$d/.$(basename "$1").n
-	mkdir -p "$d" && ( umask 077; cat > "$n" ) && chmod 600 "$n" && mv -f "$n" "$1" && sync
+	mkdir -p "$d" && ( umask 077; cat > "$n" ) && chmod 600 "$n" && mv -f "$n" "$1" && sync && return 0
+	rm -f "$n"; return 1   # (sin sitio en los datos: no queda un trozo de la llave en el de paso)
 }
 # busca_archivo NOMBRE: como busca_llave de rocola-buzon. En los otros discos (rocola-discos), en la carpeta de la rocola de XP y en las
 # memorias USB (solo lectura; se copia a /run y se desmonta). Devuelve la ruta; si vino de una USB, es una copia en $AQUI que hay que borrar.
 busca_archivo() {
 	nom=$1
+	rm -f "$AQUI/.usb.$nom"   # (una copia que quedo de una vez cortada no cuenta como encontrada)
+	# (y una memoria que quedo montada aqui de una vez cortada con SIGKILL: si no, se saltaria siempre por «ya montada»)
+	mountpoint -q "$AQUI/usb" 2>/dev/null && umount "$AQUI/usb" 2>/dev/null
 	for f in "$DISCOS"/*/$nom "$DISCOS"/*/*/$nom; do [ -f "$f" ] && { echo "$f"; return 0; }; done
 	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname "$nom" 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return 0; }
 	for p in "$SYSB"/*; do
@@ -256,13 +270,16 @@ lee_info() {
 # BIN: lo que se arranca. Con SOLOIST_BIN, ese tal cual (no se baja ni se saca nada).
 de_de() { echo "$1 $(md5sum 2>/dev/null < "$1" | cut -c1-32)"; }   # (de que .tar.gz salio lo que hay en /run: su ruta y su contenido)
 # saca TAR: el programa (y su CHANGELOG.md) a $AQUI/bin
+# (cada uno en su carpeta de paso, bin.n.PID: «spotify bajar» o «spotify prueba» en la consola pueden sacarlo a la vez que el vigilante;
+# las que dejo uno que ya no esta -36 MB en memoria cada una- se quitan)
 saca() {
-	rm -rf "$AQUI/bin.n"; mkdir -p "$AQUI/bin.n" "$AQUI/bin"
-	if ! gzip -dc "$1" 2>/dev/null | tar -xf - -C "$AQUI/bin.n" 2>/dev/null || [ ! -f "$AQUI/bin.n/soloist" ]; then rm -rf "$AQUI/bin.n"; return 1; fi
-	chmod 755 "$AQUI/bin.n/soloist"
+	for o in "$AQUI"/bin.n.*; do [ -d "$o" ] && [ ! -d "/proc/${o##*.}" ] && rm -rf "$o"; done
+	sn=$AQUI/bin.n.$$; rm -rf "$sn"; mkdir -p "$sn" "$AQUI/bin"
+	if ! gzip -dc "$1" 2>/dev/null | tar -xf - -C "$sn" 2>/dev/null || [ ! -f "$sn/soloist" ]; then rm -rf "$sn"; return 1; fi
+	chmod 755 "$sn/soloist"
 	rm -f "$AQUI/bin/de" "$AQUI/bin/CHANGELOG.md"
-	mv -f "$AQUI/bin.n/soloist" "$AQUI/bin/soloist"; mv -f "$AQUI/bin.n/CHANGELOG.md" "$AQUI/bin/CHANGELOG.md" 2>/dev/null
-	rm -rf "$AQUI/bin.n"; de_de "$1" > "$AQUI/bin/de"
+	mv -f "$sn/soloist" "$AQUI/bin/soloist"; mv -f "$sn/CHANGELOG.md" "$AQUI/bin/CHANGELOG.md" 2>/dev/null
+	rm -rf "$sn"; de_de "$1" > "$AQUI/bin/de"
 }
 # contesta: «--version» salio bien (o con 10, caducado) o dijo algo
 contesta() { [ "$VR" = 0 ] || [ "$VR" = 10 ] || [ -n "$VERSION_DICE" ]; }
@@ -334,6 +351,8 @@ registra() {
 	{
 		sub(/\r$/, "")
 		if (length(k) >= 4 && index($0, k)) next
+		# (y las que traen un trozo largo de ella: el principio o el final, por si la dice recortada)
+		if (length(k) >= 16 && (index($0, substr(k, 1, 10)) || index($0, substr(k, length(k) - 9)))) next
 		if (match($0, /client expires in [0-9]+ [a-z]+/)) {
 			s = substr($0, RSTART, RLENGTH); split(s, w, " "); n = w[4] + 0; if (w[5] !~ /^day/) n = 0
 			print n > d; close(d)
@@ -354,12 +373,37 @@ huerfanos() {
 	done
 }
 quita_huerfanos() {
-	h=$(huerfanos); [ -n "$h" ] || return 0
-	apunta "Habia un Soloist de antes en marcha (pid $(echo $h)): se cierra"
-	for p in $h; do kill -TERM "-$p" 2>/dev/null || kill -TERM "$p" 2>/dev/null; done
-	i=0; while [ -n "$(huerfanos)" ] && [ $i -lt $((TERMINA * 5)) ]; do sleep 0.2; i=$((i + 1)); done
-	for p in $(huerfanos); do kill -KILL "-$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null; done
-	rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$SDATOS/soloist.pid"
+	h=$(huerfanos)
+	if [ -n "$h" ]; then
+		apunta "Habia un Soloist de antes en marcha (pid $(echo $h)): se cierra"
+		for p in $h; do kill -TERM "-$p" 2>/dev/null || kill -TERM "$p" 2>/dev/null; done
+		i=0; while [ -n "$(huerfanos)" ] && [ $i -lt $((TERMINA * 5)) ]; do sleep 0.2; i=$((i + 1)); done
+		for p in $(huerfanos); do kill -KILL "-$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null; done
+		rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$SDATOS/soloist.pid"
+	fi
+	quita_restos ""
+}
+# restos [TUBERIA]: lo que quedo de un Soloist FUERA de su grupo (un hijo que se hizo su propia sesion: el programa trae el ayudante de
+# fallos crashpad, que en Linux se suele separar asi; no lo mata la senal al grupo): los procesos que son el mismo programa sacado a
+# /run (salvo «ctl», «--version» y «-p», que son de la consola) y los que siguen escribiendo en la tuberia de la bitacora (pipe:[N]).
+# Un solo «ls» y un awk (el cierre no puede gastar segundos abriendo un proceso por cada uno del sistema).
+restos() {
+	ls -l /proc/[0-9]*/exe /proc/[0-9]*/fd/1 /proc/[0-9]*/fd/2 2>/dev/null | awk -v b="$AQUI/bin/soloist" -v t="$1" -v yo="$$" -v sb="$SOLOIST_BIN" '
+	{
+		i = index($0, " -> "); if (!i) next
+		n = split(substr($0, 1, i - 1), c, " "); split(c[n], r, "/"); p = r[3]; q = substr($0, i + 4)
+		if (p == yo || (p in visto)) next
+		if (r[4] == "exe" && sb == "" && (q == b || q == b " (deleted)")) { visto[p] = 1; print "exe " p; next }
+		if (r[4] == "fd" && t != "" && q == t) { visto[p] = 1; print "tubo " p }
+	}' | while read -r k p; do
+		if [ "$k" = exe ]; then a=$(tr '\0' '\n' 2>/dev/null < "/proc/$p/cmdline" | sed -n 2p); case "$a" in ctl|--version|-V|-p|--pair) continue ;; esac; fi
+		echo "$p"
+	done
+}
+quita_restos() {
+	r=$(restos "$1"); [ -n "$r" ] || return 0
+	apunta "Quedaban procesos de Soloist fuera de su grupo (pid $(echo $r)): se cierran"
+	for p in $r; do kill -KILL "$p" 2>/dev/null; done
 }
 # arranca: Soloist en su propio grupo (setsid: asi se cierra con todos sus hijos), con nuestro libpulse.so.0 (rocola-pulso), su carpeta
 # de datos (la sesion de la cuenta), su cache en memoria y el WebSocket solo en 127.0.0.1 (el puerto lo elige el sistema: ws.port).
@@ -378,29 +422,37 @@ arranca() {
 		echo $! > "$AQUI/soloist.pid"
 		wait $!; echo $? > "$AQUI/soloist.salida"
 	} 9>&- | registra "soloist: " 9>&- &
-	TUBO=$!
+	TUBO=$!; TUBERIA=$(readlink "/proc/$TUBO/fd/0" 2>/dev/null)   # (pipe:[N]: la de la bitacora, para encontrar lo que quede escribiendo)
 	i=0; while [ ! -s "$AQUI/soloist.pid" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 	SPID=$(cat "$AQUI/soloist.pid" 2>/dev/null)
 	T0=$(segundos); LISTO=; HUELLA=$(huella_llave)
 	estado arrancando
 }
-vivo() { [ -n "$SPID" ] && [ -d "/proc/$SPID" ] && [ "$(awk '{print $3}' "/proc/$SPID/stat" 2>/dev/null)" != Z ] && [ ! -s "$AQUI/soloist.salida" ]; }
-# para: SIGTERM a todo su grupo, hasta TERMINA s, y SIGKILL. R: con que salio.
+vivo() { [ -n "$SPID" ] && [ ! -s "$AQUI/soloist.salida" ] && vivo_pid "$SPID"; }
+# para: SIGTERM a todo su grupo, hasta TERMINA s (por el reloj: el A4 es lento abriendo procesos), y SIGKILL. R: con que salio.
 para() {
 	[ -n "$SPID" ] || return 0
 	if vivo; then
 		kill -TERM "-$SPID" 2>/dev/null || kill -TERM "$SPID" 2>/dev/null
-		i=0; while vivo && [ $i -lt $((TERMINA * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+		uptime_ms; fin=$((U + TERMINA * 1000))
+		while vivo; do uptime_ms; [ "$U" -ge "$fin" ] && break; sleep 0.1; done
 		if vivo; then apunta "Soloist no se cerro en $TERMINA s: SIGKILL"; kill -KILL "-$SPID" 2>/dev/null || kill -KILL "$SPID" 2>/dev/null; fi
 	fi
 	recoge
 }
-# recoge: espera su salida (la escribe su envoltorio) y la tuberia de la bitacora
+# recoge: espera su salida (la escribe su envoltorio) y la tuberia de la bitacora: como mucho unos 2 s (si algo de Soloist se quedo con
+# la tuberia fuera de su grupo, se cierra: el vigilante no se puede quedar esperando)
 recoge() {
 	i=0; while [ ! -s "$AQUI/soloist.salida" ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 	R=$(cat "$AQUI/soloist.salida" 2>/dev/null); [ -n "$R" ] || R=137
 	kill -KILL "-$SPID" 2>/dev/null   # (lo que quede de su grupo)
-	[ -n "$TUBO" ] && { wait "$TUBO" 2>/dev/null; TUBO=; }
+	if [ -n "$TUBO" ]; then
+		i=0; while vivo_pid "$TUBO" && [ $i -lt 5 ]; do sleep 0.1; i=$((i + 1)); done
+		quita_restos "$TUBERIA"
+		i=0; while vivo_pid "$TUBO" && [ $i -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
+		vivo_pid "$TUBO" && { apunta "La bitacora de Soloist no se cerro: se corta"; kill -KILL "$TUBO" 2>/dev/null; }
+		wait "$TUBO" 2>/dev/null; TUBO=; TUBERIA=
+	else quita_restos ""; fi
 	rm -f "$SDATOS/ws.port" "$SDATOS/ws.addr" "$AQUI/soloist.pid"
 	SPID=
 }
@@ -423,7 +475,8 @@ pausa() {
 	sleep 0.5 & ds=$!; wait $ds 2>/dev/null; kill $ds 2>/dev/null
 	[ -z "$PARAR" ]
 }
-padre_vivo() { [ "$PADRE" = 1 ] || [ "$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null)" = "$PADRE" ]; }
+# (sin abrir ningun proceso: se mira cada 0,2-0,5 s. El 4o campo de /proc/$$/stat, el padre de ahora; si murio, el que lo adopto)
+padre_vivo() { [ "$PADRE" = 1 ] && return 0; l=; read -r l 2>/dev/null < "/proc/$$/stat"; l=${l##*) }; l=${l#* }; [ "${l%% *}" = "$PADRE" ]; }
 rota() { [ -f "$BITACORA" ] && [ "$(wc -c < "$BITACORA")" -gt 1048576 ] && mv -f "$BITACORA" "$BITACORA.1"; }
 
 corre() {
@@ -474,7 +527,7 @@ corre() {
 			pausa || break
 			mira_expira
 			if [ -z "$LISTO" ] && [ -s "$SDATOS/ws.port" ]; then
-				LISTO=1; ERROR=; estado corriendo
+				LISTO=1; ERROR=; CADUCO_YA=; estado corriendo
 				apunta "Soloist en marcha (pid $SPID), WebSocket en $(cat "$SDATOS/ws.addr" 2>/dev/null):$(cat "$SDATOS/ws.port")"
 			fi
 			if [ -z "$LISTO" ] && [ $(( $(segundos) - T0 )) -ge "$ARRANQUE" ]; then
@@ -489,7 +542,9 @@ corre() {
 				# caduca pronto: se baja el nuevo y, si la rocola no esta tocando nada de Spotify, se cambia ya
 				if [ -z "$SOLOIST_BIN" ] && caduca_pronto && puede_reintentar && baja && [ "$(cat "$AQUI/bin/de" 2>/dev/null)" != "$(de_de "$(tar_actual)")" ]; then
 					x=${ROCOLA_SPOTIFY_ESTADO:-$RUN/rocola-xp/spotify/estado}
-					if [ "$(sed -n 's/^sonando=//p' "$x" 2>/dev/null)" != 1 ] && [ "$(sed -n 's/^en_cola=//p' "$x" 2>/dev/null)" = 0 -o ! -f "$x" ]; then
+					# (sonando= trae la uri de la que suena -rocola-xp, grupo spotify-xp- o 1; vacio, 0 o no: nada)
+					case "$(sed -n 's/^sonando=//p' "$x" 2>/dev/null | head -n 1)" in ""|0|no|false) so= ;; *) so=1 ;; esac
+					if [ -z "$so" ] && [ "$(sed -n 's/^en_cola=//p' "$x" 2>/dev/null)" = 0 -o ! -f "$x" ]; then
 						apunta "Programa de Spotify nuevo y la rocola sin nada de Spotify: se cambia ahora"; para; R=nuevo; break
 					fi
 				fi
@@ -504,7 +559,9 @@ corre() {
 			FASE=caducado; DIAS=-1; falla "El programa de Spotify caduco (salio con 10): se baja el ultimo"
 			estado caducado
 			antes=$(t=$(tar_actual); [ -n "$t" ] && md5sum < "$t")
-			if baja forzada && [ "$(t=$(tar_actual); [ -n "$t" ] && md5sum < "$t")" != "$antes" ]; then continue; fi
+			# (la primera vez se baja entero aunque el servidor diga que es el mismo; despues, solo si hay uno mas nuevo: no 14 MB cada 10 min)
+			f=forzada; [ -n "$CADUCO_YA" ] && f=; CADUCO_YA=1
+			if baja $f && [ "$(t=$(tar_actual); [ -n "$t" ] && md5sum < "$t")" != "$antes" ]; then continue; fi
 			ERROR="el programa de Spotify caduco y no hay uno nuevo que bajar: se vuelve a intentar en $CADUCADO_ESPERA s"; apunta "$ERROR"
 			estado caducado; duerme "$CADUCADO_ESPERA" || break; continue ;;
 		esac
