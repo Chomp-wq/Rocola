@@ -311,3 +311,29 @@ cierreq, buscador, f3vistas y f3teclas IGUALES; kill9 solo por la cuenta del rel
   213 de 217 (las de siempre) y texturas quietas 469 de 487 (con carga: «botones» 42 de 50, que 8a sola dio entera; se repite con la
   verificación final de N7). Las 24 escenas IGUALES salvo sigterm y f3sigterm (lo aceptado) y asistente, captura, salirq y f2sin solo
   por la cuenta del encargo MedidasBitacora.cs:129 (carga). NativeAOT: las 7 IGUALES.
+
+## 14-11-2026: N7, el borrado de las capas. EL PORT NATIVO QUEDA TERMINADO
+
+- `de1498b`: port-borrar-capas (N7): fuera Dibujo2D.cs, Ventanas.*.cs, Traduccion.cs (el global using) y todos los Puente*.cs (13
+  archivos, 3 840 líneas); Anfitrion.cs pasa a Nativo/ sin la capa; fuera ILaCapa y sus 29 ramas; las 41 pruebas de WinForms contra
+  la capa se borran; PantallaVistas queda en 78 comprobaciones contra valores; Pruebas/Inventario da winforms=0 y gdi=0. En `Codigo/`
+  solo cambian notas (los 109 archivos con sus líneas y CRLF). Revisión «bien». Detalle en PORT_borrar-capas.md.
+- Comprobado con todo junto y la máquina libre (`scratchpad/merge/verifica-junta17.sh`): compila desde cero sin el global using (0
+  errores, 13 avisos: los 15 de antes menos los dos de la capa borrada), NativeAOT sin avisos IL/AOT; TODOS los arneses IGUALES
+  (acabado-estilo 0 de 6 603, vistas-b 0 de 3 108, Ctrl+F3 0 de 545; el fondo solo su línea de marca); el banco (nativo contra el gdi
+  de la referencia, semillas 7, 11 y 5) igual; pruebas de la hoja 86 de 86, de la pantalla 32 de 32, PantallaVistas 78 de 78;
+  recorridos 9 de 9 con 0, capas quietas 213 de 217 (ctrlf3 c46 con F12 y hojas c18, las de siempre) y texturas quietas 469 de 487
+  (ayuda 54 de 66 en esa corrida; repetida dos veces, 64 y 63: las de la hora); las 24 escenas IGUALES salvo sigterm y f3sigterm (lo
+  aceptado) y f12vigia; NativeAOT, las 7 IGUALES.
+- f12vigia (`port-arreglo-f12vigia`, revisión «arreglado», el programa no cambia): el reloj de la ventana F12 (15 ms, un cuadro de la
+  tarjeta por Tick) va saturado fuera de pantalla y, con la regla de WM_TIMER, su cuenta no es monótona con la velocidad de la
+  máquina: la referencia contra sí misma va de 203 a 286, y 535be08 (antes de N7) da lo mismo que de1498b a las tres velocidades
+  probadas. La diferencia de coste es el tramo transparente que la capa de la referencia armaba sobre la ventana F12 (un artefacto de
+  la imitación). compara_trazas.py compara ahora el TOTAL de ese reloj, solo cuando va saturado en las dos trazas, con el 30 % (lo
+  demás, como siempre): f12vigia 5 de 5 IGUAL y f12 3 de 3. En NativeAOT f12vigia sigue distinta de la referencia JIT por la fase del
+  vigía del foco (PORT_f12-como-hoja.md); no hay referencia en NativeAOT.
+- Lo que queda apuntado, sin cambiar lo que llega al código de XP: con gpu=0 el foco al cerrar el buscador va a HelpBar (WinForms de
+  verdad) y no a Form1 (la capa de la referencia), sin escena que lo cubra; el panel del disco pinta bajo sus hijas (WS_CLIPCHILDREN
+  no reproducido: igual mientras BgPanel pinte el cielo entero); 16 casos de control negativo retirados (mutaban los puentes). La
+  referencia congelada (aef2211, fuera del repositorio) es lo único que conserva la capa. Nada probado en el A4.
+- Sigue: la integración en Rocola OS (sistema/INTEGRACION_ROCOLA_XP.md, preparada y apagada) y la fase 11.
