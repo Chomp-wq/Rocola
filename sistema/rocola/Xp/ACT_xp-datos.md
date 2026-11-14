@@ -84,8 +84,9 @@ sonido, y en la carpeta de datos solo escribe lo suyo.
 - **Si no se encuentra ni una canción** de las tablas en los discos (no están montados), no se importa nada y sale con 4: se intenta otra
   vez en el siguiente arranque (sin esto se apuntaría la marca con todo fuera y nunca se volvería a traer).
 - **La primera vez** (sin marca): lo que ya tenga `rocola-xp` no se toca (si no es igual, sale en la marca como «ya había de rocola-xp, no
-  se tocan»), salvo lo que el lanzador de antes copió tal cual de XP (`rocola_de_xp.txt`: «NOMBRE de CARPETA») y la configuración, que se
-  junta: manda la de `rocola-xp` si es suya y la de XP si es la copia del lanzador. **De la otra** pasan las claves que la que manda no
+  se tocan»), salvo una tabla suya sin ninguna canción (vacía, o solo su cabecera: la que deja `rocola-xp` abierta antes sin la música;
+  añadido en la revisión, ver «Revisión»), y salvo lo que el lanzador de antes copió tal cual de XP (`rocola_de_xp.txt`: «NOMBRE de
+  CARPETA») y la configuración, que se junta: manda la de `rocola-xp` si es suya y la de XP si es la copia del lanzador. **De la otra** pasan las claves que la que manda no
   tiene y las carpetas `dir=` que falten (son una lista, no una clave); nunca una línea con una ruta de Windows. Lo reemplazado, en
   `.antes-xp`.
 - **Otra carpeta de XP** (la marca dice otra; regla del 7-11-2026): se importa **todo** otra vez de la buena; lo de antes en `.antes-xp`
@@ -133,7 +134,7 @@ Peor caso razonable con **20 000 canciones en 2 000 discos** y rutas de unos 100
 
 | Qué | Topes que trae XP | Peor caso | Dónde queda |
 |---|---|---|---|
-| `rocola_miniaturas/` | una PNG de 256x256 por portada (`Form1.Portadas.cs:43`); 142 KB cada una (lo medido por XP, `Form1.Portadas.cs:742`); el calentador las hace de toda la biblioteca (`Form1.cs:1786`); el barrido solo empieza pasados 200 MB y solo quita las de más de 365 días (`Form1.Portadas.cs:857-858`, `Form1.Biblioteca.cs:2619`) | **~280 MB** (2 000 × 142 KB; el comentario de `Form1.Portadas.cs:849` habla de 23 KB, pero era de las JPEG de antes), más `previews32-v1.bin` hasta 64 MB (`PreviewsIndexadosGpu.cs:31`; registros de 4 108 B, `CaratulasAdaptativas.cs:319-320`) | **`ROCOLA_IA_DATOS`** |
+| `rocola_miniaturas/` | una PNG de 256x256 por portada (`Form1.Portadas.cs:43`); 142 KB cada una (lo medido por XP, `Form1.Portadas.cs:742`); el calentador las hace de toda la biblioteca (`Form1.cs:1786`); el barrido solo empieza pasados 200 MB y solo quita las de más de 365 días (`Form1.Portadas.cs:857-858`, `Form1.Biblioteca.cs:2619`) | **~280 MB** (2 000 × 142 KB; el comentario de `Form1.Portadas.cs:849` habla de 23 KB, pero era de las JPEG de antes), más `previews32-v1.bin`, que se compacta al pasar de su capacidad más 128 registros de 4 108 B (`PreviewsIndexadosGpu.cs:167`, `CaratulasAdaptativas.cs:319-320`; capacidad 1 024 con dos núcleos, como el A4, y 4 096 con más, `CaratulasAdaptativas.cs:408`): **~4,7 MB** en el A4 (~17 MB con más núcleos; XP no lo lee si pasa de 64 MB, `PreviewsIndexadosGpu.cs:31`) *(corregido en la revisión: antes decía «hasta 64 MB»)* | **`ROCOLA_IA_DATOS`** |
 | `rocola_ia_datos.*` | 24 GB (`Form1.Ia.cs:60`); 160 B por ejemplo (`Form1.Ia.cs:61`) | **24 GB** | **`ROCOLA_IA_DATOS`**, y se para con < 256 MB libres |
 | `respaldo/` | 3 copias diarias (`Form1.Datos.cs:2515`, `PruneBackups`) de 15 archivos (`Form1.Datos.cs:2487-2494`) | ~28 MB por copia lo normal, ~49 MB en el peor (tablas sin compactar y `rocola_ia_hechas.txt` con 9 líneas por canción): **84 a 147 MB** | **`ROCOLA_IA_DATOS`** (también porque una copia dentro de `datos.img` se pierde con él, y XP respalda porque «el disco puede morir») |
 | las cuatro tablas que se guardan añadiendo (sonoridad, volumen, EQ, fuentes) | se compactan al pasar de 1,5 veces más 1 000 líneas (`DiarioTablas.cs:192`), con su `.bak` | 3,5 + 2,3 + 3,4 + 3,6 MB compactas; hasta ×2,5 con lo añadido y el `.bak`: **~32 MB** | carpeta de datos |
@@ -148,7 +149,7 @@ Peor caso razonable con **20 000 canciones en 2 000 discos** y rutas de unos 100
 | `IAS/` | los modelos (53 KB el DSEE, 3 KB el EQ) | < 1 MB | carpeta de datos |
 
 Con eso, en `/rocola/datos/xp` quedan como mucho **unos 90 MB** (lo normal, unos 40) en lugar de unos 520 MB (que no caben en un
-`datos.img` de 512 MB compartido). En el disco de la rocola (`ROCOLA_IA_DATOS`): las miniaturas (~280 MB más hasta 64 MB de previas), el
+`datos.img` de 512 MB compartido). En el disco de la rocola (`ROCOLA_IA_DATOS`): las miniaturas (~280 MB más unos 5 MB de previas), el
 respaldo (84 a 147 MB) y el material (hasta 24 GB, parado con < 256 MB libres). Nada se llevó a `/run`: las miniaturas son una caché que
 XP rehace, pero XP las sacó de la carpeta temporal a propósito (`Form1.Portadas.cs:705-711`: en la memoria se borran al apagar y se
 rehacen cada vez, 16 ms frente a 1,5 ms por portada), y en el A4 serían 280 MB de memoria.
@@ -225,3 +226,86 @@ rehacen cada vez, 16 ms frente a 1,5 ms por portada), y en el A4 serían 280 MB 
   (lo atiende `S99rocola`, como con el material del programa anterior).
 - La importación corre antes de abrir la rocola: la primera vez, con una biblioteca grande y el disco frío, la rocola tarda unos segundos
   más en aparecer.
+
+## Revisión (revisor independiente, 14-11-2026)
+
+Leído el diff entero (f62d6cb..95b9266) contra la tarea y las reglas, y el lanzador del otro grupo (rama `act-sistema-activa`, 740f872)
+para el contrato. Repetido aquí lo principal y lo que la lectura puso en duda (máquina de pruebas, fuera de pantalla con llvmpipe; nada en
+el A4 ni en QEMU). Commits de la revisión: 9413080 (arreglo 1), c0fad22 (arreglo 2 y la prueba) y el de este documento.
+
+### Lo encontrado y arreglado
+
+1. **(grave) La cosecha podía no mirar nunca el sitio libre** (`Nativo/DatosGrandes.cs`, `SinSitio`). Con `Environment.TickCount` (32 bits:
+   cuenta desde que se prendió el equipo y da la vuelta a los 24,9 días) y la primera vez en `int.MinValue / 2` (copiado de
+   `Motor/MaterialIa.cs`, que tiene el mismo fallo y no se toca), la primera resta se desbordaba si `rocola-xp` arrancaba con el equipo
+   encendido entre 12,4 y 37,3 días (cada 49,7): contestaba «hay sitio» sin mirar y no volvía a mirar hasta salir de ese tramo (hasta 24,9
+   días seguidos), así que la cosecha podía llenar el disco de la rocola, justo lo que evita el tope de 256 MB. Ahora `TickCount64` (no da
+   la vuelta) y la primera vez siempre se mira. En las pruebas no se veía: la máquina llevaba menos de 12 días prendida.
+2. **(grave) Una tabla vacía de `rocola-xp` tapaba para siempre la de XP** (`Nativo/ImportaXp.cs`). Reproducido con el programa de verdad:
+   `rocola-xp` abierta sin la música y sin tablas deja al cerrarse `rocola_volumen.txt` de 0 bytes (y `respaldo/`, `rocola_error.txt`). En
+   Rocola OS eso pasa si la primera importación sale con 4 (no está el disco de la música) y el lanzador abre la rocola igual, como dice el
+   contrato. La importación siguiente decía «ya había de rocola-xp, no se tocan: rocola_volumen.txt» y ponía la marca: el nivelado de XP no
+   entraba nunca. Ahora, antes de la primera importación (sin marca), una tabla de `rocola-xp` **sin ninguna canción** (ninguna línea con
+   una ruta de Linux: vacía, o solo su cabecera y sus totales; la bitácora del billar, que no lleva rutas, siempre) se reemplaza: la vacía
+   sin `.antes-xp`, las otras con su `.antes-xp`; la marca lo dice («vacias (de rocola-xp, sin ninguna cancion), reemplazadas: ...»). Una
+   tabla con alguna canción de `rocola-xp` sigue sin tocarse, como antes y como el programa anterior.
+3. **(menor, documento)** `previews32-v1.bin` no llega a 64 MB: se compacta al pasar de su capacidad más 128 registros (1 024 con dos
+   núcleos, como el A4: unos 4,7 MB; 4 096 con más: unos 17 MB); 64 MB es solo lo que XP ya no lee. Corregido en «Tamaños».
+
+### Lo comprobado
+
+- **Compilación**: JIT, 0 errores y los mismos 13 avisos de la base (archivo, línea y código); NativeAOT, 0 avisos IL/AOT y los mismos 13.
+  Antes y después de los arreglos.
+- **`Codigo/`**: la revisión no lo toca. Los 109 archivos con las mismas líneas y CRLF que f62d6cb (contados uno por uno); `diff-xp.py`:
+  `Form1.Ia.cs` 14/11, `Form1.Portadas.cs` 76/73, `Form1.Datos.cs` 47/44 (sin marca: 0, 0 y las 2 de siempre), como dice el grupo.
+- **`Pruebas/Importa/prueba.sh`**: con el programa del grupo, 136 de 136 en JIT (lo que dice el grupo). Con los arreglos y los 9 casos
+  nuevos: **145 de 145 en JIT y 145 de 145 en NativeAOT** (la primera corrida en NativeAOT dio 144: «(linux) suena «01 Pulso»» con
+  la máquina cargada por la prueba del lanzador del otro grupo; esa comprobación pulsa las teclas a tiempo fijo; repetida la parte `usa`,
+  14 de 14, y la prueba entera, 145 de 145). Los nuevos: `rocola-xp` abierta antes de la primera importación sin la música (cerrada
+  con SIGUSR1: deja `rocola_volumen.txt` vacío; la importación lo reemplaza sin `.antes-xp`, lo dice la marca y una tabla con una canción
+  de `rocola-xp` se queda), y un **apagón a media importación y a media re-importación**: `strace` mata el programa en seco al ir a poner
+  un archivo en su sitio (ese cambio de nombre no se hace); la marca no está o sigue diciendo la carpeta de antes, y la llamada siguiente
+  deja exactamente lo mismo que una sin cortes, también los `.antes-xp` (`.importa-xp.en-curso` hace su papel). A mano, además: cortes en
+  los archivos 1, 5, 12 y 16 de una primera importación y 1 y 3 de una re-importación (todos igual que sin cortes), y el destino casi lleno
+  (un tmpfs de 160 KB): sale con 4, una línea, y no deja nada.
+- **Las citas archivo:línea de «Tamaños»**: miradas una por una; bien (la de 705-711 empieza en la línea en blanco de antes del comentario).
+- **El sello**: .NET 10 lee las fechas con `lstat` (strace del importador: ni un `statx`), así que `CreationTimeUtc` en Linux no es la de
+  nacimiento; es lo que supone el arreglo del sello. Con ntfs3 de verdad no se vio (aquí no hay ntfs3; ver «Lo que queda»).
+- **El contrato**, contra el lanzador del otro grupo (740f872): llama `ROCOLA_DATOS=$XPDATOS timeout -k 10 600 "$XPBIN" --importa-xp
+  "$RUN/rocola-datos-xp"` (`/rocola/datos/xp` y `/run`) solo si `/run/rocola-datos-xp` tiene algo, apunta un código distinto de 0 y abre la
+  rocola igual; pone `ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp` (no la `ia` de `rocola-consola`, que se queda como está) solo con ese
+  disco montado con escritura; y no toma el importador por la rocola abierta (lo distingue por `--importa-xp`). Coincide con lo de aquí. Al
+  tope de 10 min, `timeout` le manda SIGTERM al importador: no es la rocola (no hay estado que borrar) y un corte no deja nada a medias.
+- **Las reglas**: nada de este grupo cierra `rocola-xp` (la prueba cierra sus rocolas de prueba; el caso nuevo, con SIGUSR1); el grupo no
+  toca guiones del sistema (lo del BusyBox no aplica); la carpeta de XP solo se lee (en la prueba, montada en solo lectura y con la foto de
+  contenido y fechas igual antes y después); el estado del día no se trae; lo de `rocola-consola` en `/rocola/datos` no se toca.
+- **`cierre_rocola_os.sh`**: 43 de 43 en JIT y 43 de 43 en NativeAOT (TODO BIEN). **Las escenas** alternadas con la referencia congelada
+  (`alterna.sh` y `compara.sh` con el ruido de `ventanas2`, etiquetas `Rxpdatosrev`/`xpdatosrev`): en JIT `arranque`, `cierreq`, `altf4`,
+  `kill9` y `video` IGUAL; en NativeAOT (`RxpdatosrevA`/`xpdatosrevA`) `arranque` y `kill9` IGUAL; `sigterm` DIFERENTE en los dos solo en
+  lo aceptado (`encargo Apagado`, `closing`/`closed` con `WindowsShutDown`, `foco nadie`, y `rocola_estado.txt` borrado).
+
+### Lo que no se cambió (visto y aceptado)
+
+- El respaldo en `ROCOLA_IA_DATOS` (el NTFS de la rocola): se hace en cada arranque de la rocola y al cerrar el día (`Form1.cs:843`,
+  `Form1.Datos.cs:2474`; quedan los 3 últimos), unos 30 a 50 MB escritos cada vez con 20 000 canciones. Fuera de `datos.img` sobrevive si
+  este se estropea; cada vez marca el NTFS «sucio» hasta el `sync` de `S99rocola` (a los 15 s). Razonable; si no se quiere, es una línea.
+- La configuración juntada suma las carpetas `dir=` de las dos (una lista), mientras `JuntaConfigDeAntes` del programa anterior dejaba las
+  de antes solo si la nueva no tenía ninguna: así no se pierden las que apunta el lanzador ni las que el dueño añada en `rocola-xp`; a
+  cambio, una carpeta que solo tenía la configuración de antes (ya traducida, o apuntada por el lanzador) sigue en la lista.
+- Los modelos se traen con el nombre en minúsculas: un modelo por género con mayúsculas en su nombre, que XP no usaba, `rocola-xp` sí lo
+  usaría. El entrenador los escribe en minúsculas: no pasa.
+
+### Lo que queda y riesgos (añadidos en la revisión)
+
+- **Lo que se importa la primera vez es lo que está en los discos ese día, y ya no se vuelve a traer.** Si falta un disco con parte de la
+  música (otra letra), sus líneas quedan fuera y la marca se pone; si falta toda, sale con 4 y se reintenta en cada arranque. Si antes de
+  que salga bien `rocola-xp` llega a medir canciones de otro disco, esas tablas suyas (con canciones) no se reemplazan. Conviene activar
+  con todos los discos de la música conectados; la marca dice la letra que no encontró disco («unidad E: -> (ninguno: ...)»).
+- **Los nombres de los discos no son fijos**: `rocola-discos` monta cada partición con su nombre del núcleo (`/rocola/discos/sdb1`); si
+  cambia (una memoria USB conectada al prender), las rutas de las tablas, las importadas y las de `rocola-xp`, dejan de casar con la
+  música mientras dure y `rocola-xp` la vuelve a medir. Ya pasaba con `rocola-consola`; no afecta a lo del disco de la rocola
+  (`/rocola/disco`). Lo arreglaría montar por UUID o etiqueta (`rocola-discos`, no es de este grupo).
+- **La música de XP a más de 3 carpetas de la raíz de su disco**: XP la busca junto a sus datos y hasta 3 carpetas más arriba;
+  `rocola-discos` solo busca «musica» hasta 3 niveles desde la raíz. Si la de XP está más honda y no está en Ctrl+F2 (`dir=`), `rocola-xp`
+  no la ve (tampoco `rocola-consola`). No es de este grupo; el lanzador o el importador podrían apuntarla.
+- El sello con un NTFS de verdad por ntfs3 (en QEMU o en el A4) y la carpeta de XP de verdad: sin probar.

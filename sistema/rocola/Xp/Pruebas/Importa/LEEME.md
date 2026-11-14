@@ -33,4 +33,6 @@ Partes (sin nombrarlas, las tres; unos 3 a 4 minutos con la máquina libre):
 
 Cada comprobación sale en una línea `BIEN` o `MAL`; al final `TODO BIEN (N comprobaciones)` o cuántas `MAL` (y sale con 1). Ninguna
 rocola de la prueba queda abierta (se comprueba, y un `trap` las cierra si la prueba se corta). El 14-11-2026: 136 de 136 en JIT y en
-NativeAOT.
+NativeAOT; tras la revisión (sus 9 casos nuevos), 145 de 145 en JIT y en NativeAOT. Hace falta `strace` para los dos apagones (sin él
+esos casos no se corren y lo dice). La comprobación «suena «01 Pulso»» pulsa las teclas a tiempo fijo: con la máquina muy cargada puede
+salir MAL; se repite una vez.

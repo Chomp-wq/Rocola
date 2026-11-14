@@ -211,7 +211,7 @@ if [[ " $partes " == *" importa "* ]]; then
 		importa "$W/destino7" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
 		contenido "$W/destino7" > "$W/contenido-destino7.txt"
 		si "(apagon a media re-importacion) la siguiente acaba: lo mismo que sin el corte (y los .antes-xp con lo de antes)" bash -c '[ $1 = 0 ] && cmp -s "$2" "$3" && tr -d "\r" < "$4/rocola_importado_xp.txt" | grep -qxF "carpeta=$5"' sh $rc "$W/contenido-reimportado.txt" "$W/contenido-destino7.txt" "$W/destino7" "$X2"
-	fi
+	else echo "(sin strace: no se prueba el apagon a media re-importacion)"; fi
 
 	# EL DISCO CAMBIA DE NOMBRE (ayer sda1, hoy sde1): la misma carpeta, no se re-importa
 	T=$W/destino3; echo "$XPC" > "$W/run/rocola-datos-xp"
