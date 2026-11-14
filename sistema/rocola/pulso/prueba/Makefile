@@ -28,8 +28,8 @@ $(B)/lector: lector.c ../anillo.c ../traza.c $(DEP) | $(B)
 $(B)/cliente: cliente.c ../anillo.c ../traza.c $(DEP) | $(B)
 	$(CC) $(CFLAGS) $(PROPIAS) -o $@ cliente.c ../anillo.c ../traza.c -ldl -lm
 
-$(B)/raro: raro.c ../anillo.c ../traza.c $(DEP) | $(B)
-	$(CC) $(CFLAGS) $(PROPIAS) -o $@ raro.c ../anillo.c ../traza.c -ldl -lm
+$(B)/raro: raro.c ../anillo.c ../traza.c $(DEP) $(B)/libpulse.so.0 | $(B)
+	$(CC) $(CFLAGS) $(PROPIAS) -o $@ raro.c ../anillo.c ../traza.c -L$(B) -l:libpulse.so.0 -Wl,-rpath,'$$ORIGIN' -lm
 
 $(B)/abi-nuestro: abi.c ../pulso_abi.h | $(B)
 	$(CC) -O0 -DNUESTRO -o $@ abi.c
