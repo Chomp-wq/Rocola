@@ -175,10 +175,13 @@ debe contestar con un `"access_token"`. Si contesta `invalid_client`, el Client 
   cierra con SIGTERM (SIGKILL a los 10 s si no salió).
 - **Un solo vigilante**: candado (`flock`) en `/run/rocola-soloist/candado`. Uno que llegue con otro en marcha **espera** a que acabe (no
   se va: si rocola-xp se cae y el lanzador la abre a los 2 s, el vigilante nuevo toma el relevo en cuanto el viejo se cierra).
-- **Sale si muere su padre** (lo mira cada 2 s, y cada 0,5 s con Soloist en marcha: su proceso padre cambia) o con SIGTERM/SIGINT: SIGTERM a **todo el grupo** de Soloist (lo
-  arranca con `setsid`, así se cierran también sus hijos), hasta 8 s, y después SIGKILL. Las esperas largas (bajar, `--version`) van en
-  segundo plano y se cortan al momento. Medido (abajo): 0,24 s normal, 8,47 s con un Soloist que no hace caso, 0,12 s a media bajada,
-  0,58 s al morir el padre (todo fuera: el vigilante y Soloist).
+- **Sale si muere su padre** (lo mira cada 2 s, cada 0,5 s con Soloist en marcha y cada 0,2 s mientras baja o espera a `--version`: su
+  proceso padre cambia) o con SIGTERM/SIGINT: SIGTERM a **todo el grupo** de Soloist (lo arranca con `setsid`, así se cierran también sus
+  hijos), hasta 8 s por el reloj, y después SIGKILL; y lo que quede **fuera** del grupo (un hijo que se hizo su propia sesión, como el
+  ayudante de fallos crashpad) se cierra también (revisión, abajo). Las esperas largas (bajar, `--version`) van en segundo plano y se
+  cortan al momento. Medido (abajo, pasada de la revisión): 0,17 s normal, 8,32 s con un Soloist que no hace caso, 0,14 s a media
+  bajada, 0,65 s al morir el padre, 0,24 s al morir el padre a media bajada y 0,80 s con un hijo de Soloist fuera de su grupo (todo
+  fuera: el vigilante, Soloist y lo suyo).
 - **Un Soloist huérfano** (de un vigilante muerto con SIGKILL) que use la misma carpeta de datos se cierra antes de arrancar otro.
 - **La llave**: de `rocola_spotify_llave.txt`; si falta, fase `sin_llave` y busca la memoria USB cada 30 s. Si el archivo cambia, se
   vuelve a arrancar Soloist con la nueva. Si falta la de la API, se mira la USB al empezar y cada 15 min.
@@ -298,11 +301,14 @@ propio espacio de procesos; con un **Soloist falso** en guion (nunca el de verda
 soloist-builds.spotifycdn.com, de apresolve.spotify.com y del WebSocket, y una memoria USB de mentira (imagen en un loop con un
 `/sys/class/block` de mentira). Todo inventado.
 
-- `sistema/rocola/Pruebas/Soloist/prueba.sh`: 20 casos (bajar bien, CDN caído, tar roto, disco lleno, sin disco, caducado, caduca pronto,
+- `sistema/rocola/Pruebas/Soloist/prueba.sh`: 23 casos desde la revisión (abajo; antes 20: bajar bien, CDN caído, tar roto, disco lleno, sin disco, caducado, caduca pronto,
   caídas, arranque lento, dos vigilantes, muere el padre, SIGTERM medido, la llave desde la USB, la llave nunca aparece, `spotify
-  encender/apagar`, `spotify estado`, `spotify prueba`, emparejar y olvidar, el entorno de Soloist, ROCOLA_OS en el lanzador): **89 de
-  89 bien** (la última pasada entera, 14-11-2026), y `sh -n` con el BusyBox del sistema de los cuatro guiones tocados.
-- `sistema/rocola/Pruebas/Soloist/rapida-pulso.sh`: el paso 5b de `rapida.sh` contra un rocola-pulso de mentira: **5 de 5**.
+  encender/apagar`, `spotify estado`, `spotify prueba`, emparejar y olvidar, el entorno de Soloist, ROCOLA_OS en el lanzador; y de la
+  revisión: `restos`, `padrebaja` y `cambio`): **100 de 100 bien** (la pasada entera del revisor, 14-11-2026; antes de la revisión, 89 de
+  89 en 20 casos), y `sh -n` con el BusyBox del sistema de los cuatro guiones tocados.
+- `sistema/rocola/Pruebas/Soloist/rapida-pulso.sh`: el paso 5b de `rapida.sh` contra un rocola-pulso de mentira y, desde la revisión,
+  contra el **de verdad** (el de `sistema/rocola/pulso`, o `ROCOLA_PULSO_FUENTE`): **6 de 6** (el de verdad, de la rama fase11-pulso:
+  compila, da las 48 y pide glibc hasta la 2.34).
 - `sistema/rocola/Pruebas/Lanzador/prueba.sh` (las de antes del lanzador), con el lanzador nuevo: 92 de 94 en la pasada entera (las 2
   del caso `caidas`, por tiempos con la máquina cargada: repetido solo, 7 de 7, igual que con el lanzador de antes).
 
@@ -316,3 +322,74 @@ Variables (los guiones de verdad no las usan): `ROCOLA_RUN`, `ROCOLA_XP_DATOS`, 
 no se baja nada), `ROCOLA_SPOTIFY_APRESOLVE`, y los relojes `ROCOLA_SOLOIST_ESPERAS` («2 10 30 120»), `_SEGUIDA` (600), `_ARRANQUE` (90),
 `_TERM` (8), `_USB` (30), `_REVISA` (3600), `_REINTENTO` (3600), `_CADUCADO` (600), `_CANDADO` (30), `_NICE` (0), `_MIN_DISCO_KB` (65536),
 `_MIN_DATOS_KB` (40960); `ROCOLA_SPOTIFY_ESPERA` (25) en `spotify`.
+
+---
+
+## Revisión (llave-y-robustez)
+
+14-11-2026, revisor independiente del grupo «soloist» (enfoque: que la llave nunca salga de su archivo, que todo corra con el BusyBox del
+sistema, los caminos de falla, el lanzador, el paquete de Buildroot y `rapida.sh`). Se leyó el diff entero contra la base y se repitieron
+las pruebas. Lo que estaba bien: el filtro de la llave en la bitácora, el estado y las órdenes sin secretos, la lista del buzón
+(`permitido`: ninguna llave, ni `soloist/`, ni ocultos), las copias de paso con `umask 077`, ningún `stat` (todo `date -r`; las applets
+que usan los guiones están todas en el BusyBox del sistema, comprobado con su `--list`), el cambio del lanzador (8 líneas, solo
+`ROCOLA_OS`) y el paquete contra Buildroot 2026.02 (`$(PKG)_PKGDIR`, `TARGET_NM`, `TARGET_CFLAGS`).
+
+Lo que se encontró y se arregló (cada uno con su prueba, que **falla con el código de antes**: 5 MAL de 14 con el `rocola-soloist`
+anterior, medido):
+
+1. **Grave: un hijo de Soloist fuera de su grupo colgaba el cierre.** El programa trae el ayudante de fallos **crashpad** (está en sus
+   cadenas) y en Linux ese ayudante se suele separar en su propia sesión: la señal al grupo no lo alcanza y se queda con la salida de
+   Soloist, la tubería de la bitácora. El vigilante esperaba a la bitácora (`wait`) para siempre: con SIGTERM no salía (medido con el de
+   antes: más de 15 s, Soloist «corriendo» en el estado; rocola-xp lo habría matado con SIGKILL a los 10 s y el ayudante seguiría vivo).
+   Ahora `recoge` espera a la bitácora como mucho unos 2 s y cierra lo que quede **fuera del grupo**: los procesos que siguen escribiendo
+   en esa tubería y los que son el mismo programa sacado a `/run` (salvo `ctl`, `--version` y `-p`, que son de la consola). Lo mismo al
+   arrancar el vigilante (lo de uno anterior). Se apunta «Quedaban procesos de Soloist fuera de su grupo (pid ...)». Un solo `ls` y un
+   `awk` para todo `/proc` (no un proceso por cada uno: el cierre tiene que caber en los 10 s). Caso nuevo `restos`.
+2. **Muere el padre a media bajada**: `corta` (las esperas largas: curl hasta 15 min, `--version`) solo se cortaba con SIGTERM; si la rocola
+   se caía mientras bajaba, el vigilante seguía bajando con el candado y el vigilante de la rocola reabierta esperaba. Ahora mira al
+   padre cada 0,2 s también ahí. Medido con el de antes: 16,3 s (lo que tardaba el servidor lento); ahora, abajo. Caso nuevo `padrebaja`.
+3. **El cierre medido por el reloj**: la espera de 8 s tras SIGTERM contaba vueltas de 0,1 s y en cada vuelta abría un `awk`; en el A4
+   (lento abriendo procesos) los 8 s podían ser 9 y pico, demasiado cerca de los 10 s de rocola-xp. Ahora cuenta por `/proc/uptime` y
+   mira si Soloist vive (y al padre) con `read`, sin abrir procesos.
+4. **«Caduca pronto» con Soloist en marcha y la uri de rocola-xp**: el vigilante solo cambia al programa nuevo si la rocola no está
+   tocando nada de Spotify, y lo miraba con `sonando=1`; el núcleo de rocola-xp (grupo spotify-xp) escribe en `sonando=` la **uri** de la
+   que suena (o nada). Con eso lo habría cambiado a media canción. Ahora cualquier valor que no sea vacío, `0` o `no` es «suena» (y
+   `spotify estado` lo dice bien). Este camino no tenía prueba: caso nuevo `cambio` (con la uri no cambia; vacío y `en_cola=0`, sí).
+5. **La llave dicha a medias**: la bitácora quitaba las líneas con la llave entera; ahora también las que llevan sus primeras o sus
+   últimas 10 letras (si Soloist la dijera recortada). Comprobado en el caso `secreto`.
+6. **Caducado sin uno nuevo**: cada 10 min se volvía a bajar **entero** (14 MB) para ver si había otro; ahora entero solo la primera vez y
+   después con If-Modified-Since (304 si no hay uno nuevo). Comprobado en `caducado`.
+7. **Menores**: sin sitio en los datos, el de paso de la llave (`.rocola_spotify_llave.txt.n`, con un trozo de ella) ya no se queda;
+   una copia `.usb.*` o una memoria montada en `/run/rocola-soloist/usb` que quedaran de una vez cortada con SIGKILL ya no cuentan ni
+   bloquean (antes la memoria se saltaba siempre por «ya montada»); `saca` usa una carpeta de paso propia (`bin.n.PID`: «spotify bajar» o
+   «spotify prueba» en la consola a la vez que el vigilante no se pisan; las que quedan de uno muerto, 36 MB en memoria, se quitan). En
+   el buzón: la copia de paso de la USB con `umask 077` (antes quedaba legible un momento en `/run`) y la llave de la API escrita en un de
+   paso en la **misma** carpeta y después el cambio de nombre (de `/run` a los datos, `mv` copiaba encima: un apagón la dejaba a medias).
+   En Buildroot y en `rapida.sh`: `make limpia` antes de `todo` (el sitio local se copia tal cual: un `libpulse.so.0` compilado a mano en
+   la carpeta, con el gcc de la máquina, se habría tomado por hecho); y `rapida.sh` dice por qué falla si no encuentra la libc del sistema
+   (con `set -e` salía sin decir nada).
+
+Repetido por el revisor (con el BusyBox del sistema y el Soloist falso; nunca el de verdad):
+
+- `Pruebas/Soloist/prueba.sh`, pasada entera: **100 de 100 bien**, 23 casos (los 20 de antes y `restos`, `padrebaja`, `cambio`), y `sh -n`
+  con el BusyBox del sistema de los cuatro guiones. Tiempos hasta que no queda nada: SIGTERM 170 ms; Soloist que no hace caso 8320 ms
+  (antes 8470); a media bajada 140 ms; muere el padre 650 ms; muere el padre a media bajada 240 ms (antes 16 290); con un hijo fuera del
+  grupo 800 ms (antes más de 15 s, sin salir). Las esperas tras caídas, 1 2 3 4 4 s.
+- Con el `rocola-soloist` de antes, los casos nuevos: `restos`, `padrebaja`, `secreto` y `caducado`, **5 MAL de 14**; `cambio`, **1 MAL de 3**
+  (cambiaba el programa con una de Spotify sonando).
+- `Pruebas/Soloist/rapida-pulso.sh`: **6 de 6**, con un caso nuevo con el rocola-pulso **de verdad** (rama fase11-pulso,
+  `ROCOLA_PULSO_FUENTE`): el paso 5b lo compila con su Makefile, da las 48 funciones y pide glibc hasta la 2.34 (el sistema trae la
+  2.42); con un `libpulse.so.0` viejo encima en su carpeta, `make limpia` lo quita y compila de nuevo.
+- `Pruebas/Lanzador/prueba.sh` (las de antes del lanzador y del buzón), con todo lo de esta rama: **94 de 94 bien**.
+- Un cambio en la prueba: `caidas` medía las esperas redondeando y daba 1 s de más según quién ganaba la carrera entre la salida del
+  Soloist falso y la primera mirada del vigilante (con la mirada sin abrir procesos, el vigilante llega antes y espera los 0,5 s de su
+  vuelta); ahora cuenta los segundos enteros hacia abajo (espera entre `e` y `e`+1 s).
+
+Lo que queda (no se pudo arreglar aquí):
+- La llave de Soloist va en su línea de órdenes (`-k`, la única forma que acepta: no hay variable de entorno ni archivo, lo dice su
+  documentación). `/proc/PID/cmdline` lo puede leer cualquier proceso del equipo, no solo root. Nada nuestro lo apunta ni lo sube, pero
+  si se quiere cerrar del todo: montar `/proc` con `hidepid=invisible` (cambio del sistema, para la junta; los guiones que leen `/proc`
+  corren como root y no les afecta).
+- Que Soloist de verdad deje un hijo fuera de su grupo (crashpad) es una suposición por sus cadenas; si no lo hace, lo nuevo no hace nada.
+  En el A4: tras `spotify apagar`, que no quede ningún proceso del programa (`ls -l /proc/*/exe | grep rocola-soloist`).
+- El formato de `soloist --version` sigue sin verse; `client expires in %d %s%s` sí está en sus cadenas (la cuenta de los días lo lee).
