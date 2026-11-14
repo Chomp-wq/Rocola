@@ -1,0 +1,25 @@
+#!/bin/bash
+# UN VIGILANTE FALSO para las pruebas del nucleo de Spotify (fase 11, grupo spotify-xp). Hace lo que I4 pide del de verdad
+# (rocola-soloist corre, de otro grupo) solo lo justo para probar rocola-xp: abre el Soloist FALSO (SOLOIST_FALSO_BIN, la carpeta con
+# soloist-falso.dll) con -n "$SPOTIFY_NOMBRE", una llave inventada, -D "$ROCOLA_SOLOIST_DATOS" y -w 127.0.0.1:0; si sale, lo vuelve a abrir
+# a los 2 s; con SIGTERM le pasa SIGTERM y sale; si muere su padre (rocola-xp), sale. Apunta en VIGILANTE_FALSO_LOG con que lo abrieron.
+[ "$1" = corre ] || { echo "uso: vigilante-falso.sh corre" >&2; exit 2; }
+padre=$PPID; hijo=
+log=${VIGILANTE_FALSO_LOG:-/dev/null}
+echo "$(date +%s.%N) arranca padre=$padre SPOTIFY_NOMBRE=$SPOTIFY_NOMBRE ROCOLA_SPOTIFY_ANILLO=$ROCOLA_SPOTIFY_ANILLO" >> "$log"
+fin() { echo "$(date +%s.%N) SIGTERM" >> "$log"; [ -n "$hijo" ] && kill -TERM "$hijo" 2>/dev/null && wait "$hijo"; exit 0; }
+trap fin TERM INT
+while kill -0 "$padre" 2>/dev/null; do
+  dotnet "$SOLOIST_FALSO_BIN/soloist-falso.dll" -n "$SPOTIFY_NOMBRE" -k llave-inventada-de-prueba -D "$ROCOLA_SOLOIST_DATOS" \
+    -C "${ROCOLA_RUN:-/tmp}/soloist-cache" -z 100 -w 127.0.0.1:0 -i 100 &
+  hijo=$!
+  while kill -0 "$hijo" 2>/dev/null; do
+    kill -0 "$padre" 2>/dev/null || { kill -TERM "$hijo"; wait "$hijo"; echo "$(date +%s.%N) murio el padre" >> "$log"; exit 0; }
+    sleep 0.5 & wait $!
+  done
+  wait "$hijo"; c=$?
+  echo "$(date +%s.%N) soloist salio con $c" >> "$log"
+  # (el guion de eventos es de la primera vida: la segunda arranca limpia)
+  unset SOLOIST_FALSO_GUION
+  sleep 2 & wait $!
+done

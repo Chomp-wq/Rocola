@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- UN SOLOIST FALSO para probar el nucleo de Spotify de rocola-xp (fase 11, grupo spotify-xp; FASE11_spotify-xp.md). NUNCA el de verdad:
+       este sirve la API WebSocket de Soloist (la de su documentacion) en 127.0.0.1 y escribe el sonido de cada cancion (un tono con su firma)
+       en el anillo de I1, directo o por un libpulse.so.0 (--por-pulso). Fuera del programa: no se compila con rocola-xp. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>soloist-falso</AssemblyName>
+  </PropertyGroup>
+</Project>
