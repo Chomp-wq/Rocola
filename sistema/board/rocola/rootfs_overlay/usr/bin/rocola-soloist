@@ -106,9 +106,9 @@ normaliza_llave() {
 # normaliza_api ARCHIVO: solo client_id=, client_secret= y refresh_token= (la primera de cada una), sin espacios; vacio si falta
 # client_id o client_secret
 normaliza_api() {
-	tr -d '\r' 2>/dev/null < "$1" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' \
+	( umask 077; tr -d '\r' 2>/dev/null < "$1" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' \
 		| sed -n -E 's/^[[:space:]]*(client_id|client_secret|refresh_token)[[:space:]]*=[[:space:]]*([A-Za-z0-9._~+\/=:-]+)[[:space:]]*$/\1=\2/p' \
-		| awk -F= '!visto[$1]++' > "$AQUI/.api.n" 2>/dev/null
+		| awk -F= '!visto[$1]++' > "$AQUI/.api.n" 2>/dev/null )
 	if grep -q '^client_id=' "$AQUI/.api.n" && grep -q '^client_secret=' "$AQUI/.api.n"; then
 		grep '^client_id=' "$AQUI/.api.n"; grep '^client_secret=' "$AQUI/.api.n"; grep '^refresh_token=' "$AQUI/.api.n"
 	fi
@@ -161,7 +161,7 @@ importa_llaves() {
 		f=$(busca_archivo rocola_spotify_api.txt)
 		if [ -n "$f" ]; then
 			[ $puso = 2 ] && puso=1
-			normaliza_api "$f" > "$AQUI/.api.v"
+			( umask 077; normaliza_api "$f" > "$AQUI/.api.v" )
 			if [ ! -s "$AQUI/.api.v" ]; then falla "rocola_spotify_api.txt (de la memoria USB) no trae client_id= y client_secret=: no se puso"
 			elif ! cmp -s "$AQUI/.api.v" "$APIF"; then
 				guarda_secreto "$APIF" < "$AQUI/.api.v" && { apunta "Llave de la API web de Spotify puesta (de USB)"; echo "Llave de la API web puesta (de la memoria USB)."; puso=0; }
@@ -620,7 +620,7 @@ pon-llave)
 	printf '%s\n' "$v" | guarda_secreto "$LLAVE" && apunta "Llave de Spotify puesta (escrita en la consola)" && echo "Llave de Soloist puesta." ;;
 pon-api)
 	mkdir -p "$AQUI"; ( umask 077; cat > "$AQUI/.api.e" )
-	normaliza_api "$AQUI/.api.e" > "$AQUI/.api.v"; rm -f "$AQUI/.api.e"
+	( umask 077; normaliza_api "$AQUI/.api.e" > "$AQUI/.api.v" ); rm -f "$AQUI/.api.e"
 	[ -s "$AQUI/.api.v" ] || { rm -f "$AQUI/.api.v"; echo "Faltan client_id o client_secret (o traen caracteres raros). No se cambio nada."; exit 1; }
 	guarda_secreto "$APIF" < "$AQUI/.api.v" && apunta "Llave de la API web de Spotify puesta (escrita en la consola)" && echo "Llave de la API web puesta."
 	rm -f "$AQUI/.api.v" ;;

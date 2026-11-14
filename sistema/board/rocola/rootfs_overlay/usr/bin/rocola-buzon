@@ -93,7 +93,7 @@ mira_llave() {
 				| awk -F= '!visto[$1]++' > "$TMP/.api.v" )
 			rm -f "$TMP/llave.txt"
 			if grep -q '^client_id=' "$TMP/.api.v" && grep -q '^client_secret=' "$TMP/.api.v"; then
-				{ grep '^client_id=' "$TMP/.api.v"; grep '^client_secret=' "$TMP/.api.v"; grep '^refresh_token=' "$TMP/.api.v"; } > "$TMP/.api.o"
+				( umask 077; { grep '^client_id=' "$TMP/.api.v"; grep '^client_secret=' "$TMP/.api.v"; grep '^refresh_token=' "$TMP/.api.v"; } > "$TMP/.api.o" )
 				if ! cmp -s "$TMP/.api.o" "$XPD/rocola_spotify_api.txt"; then
 					mkdir -p "$XPD" && chmod 600 "$TMP/.api.o" && mv -f "$TMP/.api.o" "$XPD/rocola_spotify_api.txt" && sync \
 						&& printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "Llave de la API web de Spotify puesta (de USB)" >> "$DATOS/rocola_actualizaciones.txt"
