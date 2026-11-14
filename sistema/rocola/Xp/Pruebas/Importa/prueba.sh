@@ -10,7 +10,7 @@
 #          la re-importacion de otra carpeta (.antes-xp y la configuracion juntada), el disco que cambia de nombre y los fallos.
 # usa:     rocola-xp abierto fuera de pantalla con lo importado: no vuelve a medir lo medido por XP (solo la cancion nueva), los botones
 #          importados valen, y al sonar una cancion importada su sello (rocola_fuentes.txt) vale tal cual (con el sello de Windows no).
-# material: el material para entrenar la IA y las miniaturas: sin ROCOLA_IA_DATOS en la carpeta de datos (como XP); con ella, alli; con
+# material: el material para entrenar la IA, las miniaturas y el respaldo: sin ROCOLA_IA_DATOS en la carpeta de datos (como XP); con ella, alli; con
 #          menos de 256 MB libres alli, la cosecha no junta nada; y si no se puede escribir alli, a la carpeta de datos.
 # Al final: «TODO BIEN» o cuantas MAL. Cada comprobacion dice BIEN o MAL en una linea.
 set -u
@@ -48,6 +48,10 @@ corre() {
 	t=0; while kill -0 $pid 2> /dev/null && [ $t -lt 60 ]; do sleep 0.5; t=$((t + 1)); done
 	kill -9 $pid 2> /dev/null; wait $pid 2> /dev/null
 }
+# al acabar (tambien si se corta): ninguna rocola de esta prueba queda abierta (las que se abrieron con sus datos en $W)
+quedan() { local p; for p in $(pgrep -f rocola-xp); do tr '\0' '\n' < /proc/$p/environ 2> /dev/null | grep -q "^ROCOLA_DATOS=$W/" && echo $p; done; }
+limpia() { local p; for p in $(quedan); do echo "(quedaba abierta una rocola de la prueba: $p)"; kill -9 $p; done; }
+trap limpia EXIT
 gen() { mkdir -p "$(dirname "$1")"; ffmpeg -hide_banner -loglevel error -y -f lavfi -i "$2" -t "$3" -ac 2 -ar 44100 ${5:--c:a libmp3lame -b:a 128k} -metadata title="$4" "$1"; }
 # los ticks de .NET de la fecha de escritura y de la «creacion» que .NET da en Linux (la mas vieja de escritura y cambio)
 ticks() { python3 -c 'import os,sys; s=os.stat(sys.argv[1]); t=lambda n: 621355968000000000 + n // 100; print(t(s.st_mtime_ns), t(min(s.st_mtime_ns, s.st_ctime_ns)))' "$1"; }
@@ -272,26 +276,29 @@ if [[ " $partes " == *" material "* ]]; then
 			sin) corre "$T" 60 'listo "$T"' ;;
 			con) corre "$T" 60 'listo "$T"' ROCOLA_IA_DATOS="$I" ;;
 			poco) # un sitio con 200 MB libres (menos de los 256 que pide la cosecha)
-				( unshare -m -- bash -c 'mount -t tmpfs -o size=200m tmpfs "$1" || exit 9; shift; T=$1; RXS=$2; shift 2; cd "$T" && env ROCOLA_DATOS="$T" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_IA_DATOS="$0" $RXS > "$T.salida.txt" 2>&1 & p=$!; for i in $(seq 1 120); do [ "$(grep -c "|/" "$T/rocola_sonoridad.txt" 2> /dev/null)" = 3 ] && break; sleep 0.5; done; ls -la "$0" > "$T.ia.txt"; kill -TERM $p; wait $p' "$I" "$I" "$T" "${RX[*]}" ) ;;
+				( unshare -m -- bash -c 'mount -t tmpfs -o size=200m tmpfs "$1" || exit 9; shift; T=$1; RXS=$2; shift 2; ( cd "$T" && exec env ROCOLA_DATOS="$T" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_IA_DATOS="$0" $RXS ) > "$T.salida.txt" 2>&1 & p=$!; for i in $(seq 1 120); do [ "$(grep -c "|/" "$T/rocola_sonoridad.txt" 2> /dev/null)" = 3 ] && break; sleep 0.5; done; ls -la "$0" > "$T.ia.txt"; kill -TERM $p; wait $p' "$I" "$I" "$T" "${RX[*]}" ) ;;
 			nopuede) # ROCOLA_IA_DATOS en un sitio de solo lectura: a la carpeta de datos
-				( unshare -m -- bash -c 'mount --bind -o ro "$0" "$0" || exit 9; T=$1; RXS=$2; cd "$T" && env ROCOLA_DATOS="$T" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_IA_DATOS="$0" $RXS > "$T.salida.txt" 2>&1 & p=$!; for i in $(seq 1 120); do [ "$(grep -c "|/" "$T/rocola_sonoridad.txt" 2> /dev/null)" = 3 ] && break; sleep 0.5; done; kill -TERM $p; wait $p' "$I" "$T" "${RX[*]}" ) ;;
+				( unshare -m -- bash -c 'mount --bind -o ro "$0" "$0" || exit 9; T=$1; RXS=$2; ( cd "$T" && exec env ROCOLA_DATOS="$T" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_IA_DATOS="$0" $RXS ) > "$T.salida.txt" 2>&1 & p=$!; for i in $(seq 1 120); do [ "$(grep -c "|/" "$T/rocola_sonoridad.txt" 2> /dev/null)" = 3 ] && break; sleep 0.5; done; kill -TERM $p; wait $p' "$I" "$T" "${RX[*]}" ) ;;
 		esac
 		si "($caso) el repaso midio las tres" listo "$T"
 		case $caso in
 			sin) si "(sin ROCOLA_IA_DATOS) el material en la carpeta de datos, como XP" bash -c '[ "$(stat -c %s "$1/rocola_ia_datos.bin" 2> /dev/null || echo 0)" -gt 16 ] && [ -s "$1/rocola_ia_datos.idx" ]' sh "$T"
-			     si "(sin ROCOLA_IA_DATOS) las miniaturas en la carpeta de datos" hay "$T/rocola_miniaturas" ;;
+			     si "(sin ROCOLA_IA_DATOS) las miniaturas en la carpeta de datos" hay "$T/rocola_miniaturas"
+			     si "(sin ROCOLA_IA_DATOS) el respaldo en la carpeta de datos" hay "$T/respaldo" ;;
 			con) si "(con ROCOLA_IA_DATOS) el material alli" bash -c '[ "$(stat -c %s "$1/rocola_ia_datos.bin" 2> /dev/null || echo 0)" -gt 16 ] && [ -s "$1/rocola_ia_datos.idx" ] && [ -s "$1/rocola_ia_datos.generos.tsv" ]' sh "$I"
 			     si "(con ROCOLA_IA_DATOS) y no en la carpeta de datos" bash -c '! ls "$1"/rocola_ia_datos* > /dev/null 2>&1' sh "$T"
 			     si "(con ROCOLA_IA_DATOS) de que canciones se saco, en la carpeta de datos (rocola_ia_hechas.txt, como XP)" bash -c '[ -s "$1/rocola_ia_hechas.txt" ] && [ ! -e "$2/rocola_ia_hechas.txt" ]' sh "$T" "$I"
-			     si "(con ROCOLA_IA_DATOS) las miniaturas alli" bash -c '[ -d "$1/rocola_miniaturas" ] && [ ! -e "$2/rocola_miniaturas" ]' sh "$I" "$T" ;;
+			     si "(con ROCOLA_IA_DATOS) las miniaturas alli" bash -c '[ -d "$1/rocola_miniaturas" ] && [ ! -e "$2/rocola_miniaturas" ]' sh "$I" "$T"
+			     si "(con ROCOLA_IA_DATOS) el respaldo de lo aprendido alli (con sus tablas)" bash -c 'ls "$1"/respaldo/*/rocola_config.txt > /dev/null 2>&1 && [ ! -e "$2/respaldo" ]' sh "$I" "$T" ;;
 			poco) si "(menos de 256 MB libres) la cosecha no junta nada" bash -c '! grep -q rocola_ia_datos "$1" && [ ! -e "$2/rocola_ia_hechas.txt" ] && ! ls "$2"/rocola_ia_datos* > /dev/null 2>&1' sh "$T.ia.txt" "$T"
-			      si "(menos de 256 MB libres) lo demas si (las miniaturas alli)" grep -q rocola_miniaturas "$T.ia.txt" ;;
-			nopuede) si "(ROCOLA_IA_DATOS de solo lectura) el material, a la carpeta de datos" bash -c '[ "$(stat -c %s "$1/rocola_ia_datos.bin" 2> /dev/null || echo 0)" -gt 16 ] && [ -d "$1/rocola_miniaturas" ]' sh "$T"
+			      si "(menos de 256 MB libres) lo demas si (las miniaturas y el respaldo alli)" bash -c 'grep -q rocola_miniaturas "$1" && grep -q respaldo "$1"' sh "$T.ia.txt" ;;
+			nopuede) si "(ROCOLA_IA_DATOS de solo lectura) el material, las miniaturas y el respaldo, a la carpeta de datos" bash -c '[ "$(stat -c %s "$1/rocola_ia_datos.bin" 2> /dev/null || echo 0)" -gt 16 ] && [ -d "$1/rocola_miniaturas" ] && [ -d "$1/respaldo" ]' sh "$T"
 			         si "(ROCOLA_IA_DATOS de solo lectura) y lo dice en la salida de errores" contiene "$T.salida.txt" "no se puede usar ROCOLA_IA_DATOS=$I" ;;
 		esac
 	done
 fi
 
+si "ninguna rocola de la prueba quedo abierta" [ -z "$(quedan)" ]
 echo
 if [ $mal = 0 ]; then echo "TODO BIEN ($bien comprobaciones)"; else echo "$mal MAL de $((bien + mal))"; fi
 [ $mal = 0 ]
