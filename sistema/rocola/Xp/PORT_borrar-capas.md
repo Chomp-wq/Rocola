@@ -198,3 +198,42 @@ No corrido: los `control.sh`/`mutantes.sh` enteros (ver «Lo que queda»); nada 
   con hojas (f2*, aviso, f3*, f12*: capas iguales pixel a pixel) y los recorridos `ctrlf3` y `hojas`, no por una prueba propia.
 - Los ganchos de `Hoja` cambiaron de nombre: una rama abierta antes de esta junta que los nombre (`Hoja.ActivaDeLaCapa`...) no compilara.
 - Nada de esto se ha visto en el A4.
+
+## Revision
+
+Revision independiente del diff `535be08..eddeda5` (14-11-2026), leyendo el codigo contra la base y repitiendo solo lo que la lectura ponia
+en duda. No se encontro ningun fallo que arreglar; no cambia ninguna linea de codigo.
+
+Lo comprobado:
+
+- **Codigo/**: los 109 archivos con las mismas lineas, los mismos CRLF y el mismo ultimo byte que en 535be08. De las 179 lineas que cambian
+  en 34 archivos, en las 179 la parte de codigo (lo de antes del primer `//`) es identica byte a byte: solo cambian notas.
+  `diff-xp.py` de los 34 da la misma salida, linea por linea, que en la copia principal.
+- **Lo que debia desaparecer**: 0 usos (fuera de comentarios) de `Rocola.Dibujo2D`, `Rocola.Ventanas`, `PuenteDibujo`, `LaCapa`, `ILaCapa`,
+  `SueltaLaCapa`, `HuecoDe*`, `Escritorio.` y `global using` en Codigo/, Nativo/, Plataforma/ y el proyecto. Ningun `.csproj` ni guion de
+  Pruebas/ del lado nuevo compila un archivo borrado (los que los nombran van contra la referencia o son comentarios). Los 81 guiones `.sh`
+  de Pruebas/ pasan `bash -n` (el comentario metido dentro de la lista de `VistasBuscador/control.sh` es valido).
+- **Compilacion desde cero** (`--no-incremental`): 0 errores, 13 avisos (los 15 de la base menos los dos CS1690 de `Ventanas.Control.cs`).
+- **`Anfitrion.Capas`** contra `Escritorio.Capas` de 535be08, linea por linea: las mismas hojas (no desechadas y visibles), la superficie
+  pedida una vez por cuadro y antes que la ventana, el mismo sitio y opacidad, la tarjeta de la hoja justo despues de la suya, las de detras
+  al principio y las demas despues de la ventana; las claves duran lo mismo (se olvidan al esconderse o desecharse la hoja).
+- **Las ramas de `LaCapa`**: en 535be08 `LaCapa` ya era `null` desde que se abria la ventana de la rocola, asi que con la rocola abierta
+  cada funcion queda con la rama que ya corria. Lo unico que cambia de camino es lo de ANTES de abrir la ventana (el aviso de la carpeta de
+  datos de `Program.cs:98`, que en 535be08 aun repartia la capa: `Escritorio.Tecla`, `RatonEn`, `PintaUno`): ahora lo reparte la pantalla,
+  con los ganchos de la ventana de debajo sin poner (`Hoja` los mira antes de llamarlos). Por eso se repitio la escena **aviso** alternada
+  con la referencia: IGUAL. Y **f12** (la tarjeta en el cliente de una hoja, la hoja detras de la ventana: el otro camino propio de
+  `Anfitrion.Capas`): IGUAL.
+- `VentanaMinimizada` pasa de «false sin la capa» a preguntar a la ventana, que contesta siempre false (`VentanaNativa.Minimizada`): lo mismo.
+- `TrazaVentanas.Pieza` y el volcado: sin la capa quedan las mismas ramas que ya corrian con la ventana nativa; el texto no cambia.
+- **PantallaVistas**: los valores esperados de las escenas que quedan (rotulo, video, panel, tabulador, tabulador con la tarjeta) son los de
+  535be08 sin tocar, y las reglas de la escena de la vista junto al control (orden, raton, captura, doble clic, BringToFront, transparente,
+  escondida, setbounds, quitada, quien escucha, foco) y de la tarjeta siguen como comprobaciones de la lista contra los mismos valores.
+
+Apuntes menores (sin cambio):
+
+- La marca `// NAudio 3 (Puente.cs)` de las lineas de sonido de Codigo/ nombra un archivo que no es el del puente de NAudio (esta en
+  `Plataforma/NAudioXp.cs`; `Plataforma/Puente.cs` era el del dibujo y se borro). Es la marca fija de AGENTS.md y de `diff-xp.py`: no se toca.
+- En `Pruebas/Ventanas/Hoja/Program.cs` tres titulos de prueba siguen diciendo «una ventana de la capa» (es la ventana de la rocola).
+
+No repetido aqui (lo da el informe y la lectura no lo pone en duda): NativeAOT, banco, cintas, arneses, recorridos y el resto de las escenas;
+los corre el coordinador al juntar.
