@@ -228,6 +228,7 @@ namespace Rocola
         {
             if (Hilo == null) Hilo = Thread.CurrentThread;
             EscuchaElApagado();
+            EscuchaElCierreDeFuera();
             Bucle(sigue);
         }
         // EL DE UNA HOJA MODAL (ShowDialog): el mismo bucle, anidado, hasta que sigue() de falso.
@@ -279,6 +280,33 @@ namespace Rocola
                 });
             }
             catch (Exception ex) { Console.Error.WriteLine("[pantalla] sin el aviso de apagado (SIGTERM): " + ex.Message); }
+        }
+
+        // ---------- el cierre que pide Rocola OS (SIGUSR1) ----------
+        // LOS REINICIOS PROPIOS DE ROCOLA OS (la consola de mantenimiento, «reiniciar el programa ya», el reinicio del equipo pedido desde
+        // casa: /usr/bin/rocola y rocola-buzon mandan SIGUSR1) no son el apagado: la rocola se cierra ordenadamente CONSERVANDO el estado
+        // vivo (regla del dueno del 8-11-2026: «los reinicios propios de Rocola OS van por la via de XP que conserva el estado, cierre por
+        // otra causa»). En XP esa via es un WM_CLOSE que le llega de fuera a la ventana de la rocola (lo que mandan el Administrador de
+        // tareas con «Finalizar tarea» y taskkill sin /F): Form.WndProc lo cierra con CloseReason.TaskManagerClosing (Form.cs:7200-7206) y
+        // OnFormClosing de la rocola, con una razon que no es WindowsShutDown ni UserClosing, guarda todo y NO borra rocola_estado.txt
+        // (Form1.Video.cs: «cierre por otra causa»). Como el apagado: un encargo en el hilo de la pantalla; el programa no se corta, sale
+        // de Corre cuando la rocola se cerro y acaba con 0. Lo pone quien corre la rocola (Corre). Antes de escucharla (el arranque, antes
+        // de Corre) SIGUSR1 corta el programa como siempre (sale con 138): es como un apagon, el estado tambien sobrevive.
+        internal static Action AlCerrarDeFuera = null;   // (con su «= null»: las pruebas de la pantalla compilan este archivo sin la rocola, que es quien lo pone)
+        private static PosixSignalRegistration avisoCierreDeFuera;
+        private const int SIGUSR1 = 10;   // (Linux en x86-64; PosixSignal acepta el numero de la senal tal cual)
+        private static void EscuchaElCierreDeFuera()
+        {
+            if (avisoCierreDeFuera != null) return;
+            try
+            {
+                avisoCierreDeFuera = PosixSignalRegistration.Create((PosixSignal)SIGUSR1, delegate (PosixSignalContext c)
+                {
+                    c.Cancel = true;   // el programa no se corta: la rocola se cierra en su hilo y sale de Corre
+                    EncolaDesde(null, delegate { Action a = AlCerrarDeFuera; if (a != null) a(); }, "CierreDeFuera", false);
+                });
+            }
+            catch (Exception ex) { Console.Error.WriteLine("[pantalla] sin el cierre que conserva el estado (SIGUSR1): " + ex.Message); }
         }
     }
 }

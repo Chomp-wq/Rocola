@@ -1,9 +1,9 @@
 # Rocola OS: el paso al programa traducido de XP (rocola-xp), preparado y APAGADO
 
-13-11-2026. El programa de Rocola OS de hoy es `sistema/rocola/Consola` (`rocola-consola`). El dueño pidió rehacerlo traduciendo el de
-XP (`sistema/rocola/Xp`, `rocola-xp`); a esa traducción le falta poco (Form1 sin Form y N7, borrar las capas). Regla del dueño
-(8-11-2026): **la versión a medio traducir no entra en Rocola OS**. Aquí queda preparado todo lo demás para que, cuando N7 acabe, solo
-falte activar, compilar el sistema (lo pide el dueño) y probar en el A4.
+13-11-2026 (y 14-11-2026: `--version` y el cierre que conserva el estado, hechos). El programa de Rocola OS de hoy es
+`sistema/rocola/Consola` (`rocola-consola`). El dueño pidió rehacerlo traduciendo el de XP (`sistema/rocola/Xp`, `rocola-xp`); el port
+nativo ya está terminado (N7 hecho: sin capas). Regla del dueño (8-11-2026): **la versión a medio traducir no entra en Rocola OS**.
+Aquí queda preparado todo lo demás para que solo falte activar, compilar el sistema (lo pide el dueño) y probar en el A4.
 
 **Con lo de fábrica nada cambia**: `rocola-xp` no se compila ni entra en el sistema, y el lanzador abre `rocola-consola` igual que
 antes (comprobado: ver «Qué se probó»).
@@ -67,7 +67,7 @@ siguiente encendido (`/run/rocola-xp-caida`) y lo apunta en `rocola_actualizacio
   repositorio ni en la imagen. (Si no se encuentra, `rocola-xp` mira `/rocola/datos/letras`, la copia que `rocola-discos` ya hacía en
   la rocola, y si no las libres del sistema.)
 - **Códigos de salida**: el bucle es el mismo (42, 43, 44, 45, 46). `rocola-xp` no sale con ninguno hoy (son funciones de la fase
-  11); sale con 0 al cerrarse y el lanzador lo vuelve a abrir.
+  11); sale con 0 al cerrarse (también con el cierre que conserva el estado, SIGUSR1) y el lanzador lo vuelve a abrir.
 
 ### Apagado y reinicios (regla del 8-11-2026)
 
@@ -78,15 +78,25 @@ Así lo espera `rocola-xp` (mirado en `Nativo/PantallaRocola.cs` y `Codigo/Form1
 | Botón de encendido, apagado del sistema | SIGTERM = `WindowsShutDown` | **se borra** (sale con 0), como XP |
 | Alt+F4 | `UserClosing` | se borra; el lanzador la abre otra vez |
 | Apagón | nada | sobrevive: al prender reanuda |
-| Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** (20 s; después SIGKILL). Nunca SIGTERM | sobrevive |
-| «Reiniciar el equipo ya» del buzón | el buzón cierra antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y entonces reinicia | sobrevive |
+| Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** = cierre ordenado «por otra causa» (`TaskManagerClosing`), sale con 0 (20 s; después SIGKILL). Nunca SIGTERM | **se conserva** (y se guarda lo aprendido) |
+| «Reiniciar el equipo ya» del buzón | el buzón cierra antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y entonces reinicia | se conserva |
 | «Apagar ya» del buzón | el buzón cierra antes el lanzador y manda SIGTERM, lo espera 15 s (como el botón de encendido) y apaga | se borra |
 
-`rocola-xp` **aún no tiene** el «cierre por otra causa» que conserva el estado, ni mira `/run/rocola-reinicia-programa(-ya)`. Por
-eso el lanzador lo cierra él con SIGUSR1: hoy eso lo corta en seco, igual que un apagón (el estado sobrevive y al abrir reanuda;
-probado: SIGUSR1, SIGKILL y SIGHUP lo dejan, SIGTERM lo borra; después de matarlo vuelve a abrir bien), pero lo aprendido desde el
-último guardado se pierde. Cuando `rocola-xp` atienda SIGUSR1 con un cierre ordenado que no borre el estado (pendiente 2), queda
-como pide la regla sin tocar el lanzador.
+**El cierre que conserva el estado (hecho el 14-11-2026; `sistema/rocola/Xp/PORT_integra-version-y-cierre.md`).** Al recibir
+SIGUSR1, `rocola-xp` se cierra por la vía de XP que no es ni el apagado ni Alt+F4: en XP, un `WM_CLOSE` que le llega de fuera a la
+ventana (el Administrador de tareas, `taskkill` sin `/F`) = `CloseReason.TaskManagerClosing`. `OnFormClosing` de la rocola
+(`Codigo/Form1.Video.cs`, sin tocar) hace entonces todo lo que hace al cerrar (para el sonido y el video, suelta los archivos,
+`GuardaTodoAlCerrar`) y, como la razón no es `WindowsShutDown` ni `UserClosing`, **no** llama a `BorraEstado`: espera a que el último
+estado llegue al disco (`WaitDataWrites`). Con una hoja abierta (Ctrl+F3, Ctrl+F2) se cierra igual: antes su hoja con
+`FormOwnerClosing`. Sale con **0**. Medido aquí (fuera de pantalla, sin música o con un video): 30 a 90 ms. `rocola_estado.txt`
+queda y al abrir reanuda (los créditos; con un video sonando, la línea `sonando=`).
+
+- Si SIGUSR1 le llega **antes de estar lista** (los primeros instantes del arranque: antes de abrir la pantalla, o con el aviso de la
+  carpeta de datos puesto), la corta en seco como antes (sale con 138): es como un apagón, el estado también sobrevive.
+- El lanzador no cambia de lógica: quien cierra deja antes su marca (`rocola-en-consola`, `rocola-xp-reinicio`) y el bucle la mira
+  antes que el código de salida, así que ni el 0 ni el 138 cuentan como caída, y los dos quedan apuntados en la bitácora. Añadido: si
+  a los 20 s no se cerró y hay que cortarla (SIGKILL), también queda apuntado («rocola-xp no se cerró en 20 s: se cortó»).
+- SIGTERM, Alt+F4, Ctrl+Alt+Q y kill -9 siguen exactamente igual (comparados con el programa de antes del cambio).
 
 Añadido en la revisión (13-11-2026), probado con programas falsos (`prueba.sh buzon` y `xp`):
 
@@ -118,12 +128,16 @@ Añadido en la revisión (13-11-2026), probado con programas falsos (`prueba.sh 
 `rocola-consola programa 57 (abc1234) compilado 1762500000` con: `s/.*programa \([0-9]*\).*/\1/`, `s/.* compilado \([0-9]*\).*/\1/`
 y `grep -E "programa N( |$)"`.
 
-- **Hoy `rocola-xp --version` abre la rocola entera** (probado: no contesta y sigue corriendo). Nada de lo preparado lo llama: el
-  lanzador apunta `/usr/lib/rocola-xp/version`, que escribe la compilación.
-- **Pendiente para el coordinador** (en `sistema/rocola/Xp`, que aquí no se tocó): que `rocola-xp --version` escriba
-  `rocola-xp programa N (COMMIT) compilado SEGUNDOS` y salga con 0 **antes** de la instancia única, los datos y la pantalla; con
-  las mismas propiedades que `Consola.csproj` (`RocolaVersion`, `RocolaCommit`, `RocolaFecha` como `AssemblyMetadata`). No cambiar
-  ese formato sin cambiar los tres scripts.
+- **Hecho (14-11-2026)**: `rocola-xp --version` escribe UNA línea, `rocola-xp programa N (COMMIT) compilado SEGUNDOS`, y sale con 0
+  **antes** de la instancia única, los datos y la pantalla (`Nativo/VersionRocolaOs.cs`: al cargarse el programa, antes de entrar al
+  `Main` de XP, que no se tocó). Con las mismas propiedades que `Consola.csproj` (`-p:RocolaVersion=N -p:RocolaCommit=abc1234`;
+  sin ellas, `0` y `local`; `RocolaFecha` = cuándo se compiló, como `AssemblyMetadata`). Probado en JIT y NativeAOT (13 ms en
+  NativeAOT): las tres expresiones de los guiones leen lo suyo, no crea la carpeta de datos, no abre la pantalla y contesta también
+  con otra rocola abierta en los mismos datos. No cambiar ese formato sin cambiar los tres scripts.
+- Nada de lo preparado lo llama todavía: el lanzador sigue apuntando `/usr/lib/rocola-xp/version`, que escribe la compilación
+  (paquete y `rapida.sh`, con «programa 0 (sistema)»). **Pendiente, cuando se quiera** (hace falta para que `rocola-xp` se
+  actualice solo, apartado 3): que el paquete y `rapida.sh` compilen con `-p:RocolaVersion`/`-p:RocolaCommit` y que el lanzador
+  apunte y compare con `"$XPBIN" --version` (la función `compilado` ya sirve tal cual).
 
 ## Cómo se activa (cuando N7 acabe y el dueño lo pida)
 
@@ -138,9 +152,9 @@ Los pasos 1 a 3 solo meten el programa en el sistema; no cambia nada en la rocol
 
 ## Lo que falta tras N7, en orden
 
-1. **N7 acabado** y `rocola-xp` comprobado sin capas (del port).
-2. **En `rocola-xp`** (coordinador): `--version` (apartado 4) y el cierre que conserva el estado al recibir SIGUSR1 (guardar todo
-   como al cerrar, sin `BorraEstado`: la vía «cierre por otra causa» de `OnFormClosing`).
+1. ~~N7 acabado y `rocola-xp` comprobado sin capas (del port).~~ Hecho (13-11-2026).
+2. ~~En `rocola-xp`: `--version` (apartado 4) y el cierre que conserva el estado al recibir SIGUSR1.~~ Hecho (14-11-2026), probado
+   fuera de pantalla en JIT y NativeAOT; no en el sistema entero ni en el A4.
 3. Activar la compilación (pasos 1 a 3) y probar en QEMU con el sistema entero: que abre por KMS, lee `/dev/input`, suena.
 4. **En el A4**, con el interruptor: pantalla, botones, sonido por la salida del amplificador, un video, las letras de XP, apagar
    con el botón, un apagón, Ctrl+Alt+F2 y volver. Medir la fluidez allí.
@@ -188,6 +202,15 @@ Sí están, porque son de XP: la cadena de sonido entera, el modo billar, el mod
 
 Probado aquí (máquina de pruebas, no el A4):
 
+- (14-11-2026, `--version` y el cierre con SIGUSR1) `Pruebas/Ventanas/guiones/cierre_rocola_os.sh` con el `rocola-xp` de verdad
+  fuera de pantalla, en JIT y en NativeAOT: 36 comprobaciones de 36 en cada uno (`--version`; SIGUSR1 con la rocola sola, con
+  Ctrl+F3, con Ctrl+F2 y con un video: `TaskManagerClosing`, sale con 0, `rocola_estado.txt` conservado, al abrir reanuda, y
+  entonces SIGTERM lo borra). SIGTERM, Ctrl+F3 con SIGTERM, Alt+F4, Ctrl+Alt+Q y kill -9: iguales que con el programa de antes del
+  cambio. `prueba.sh` del lanzador entera con el BusyBox del sistema: sin interruptor IGUAL (lo que recibe el programa, el registro y
+  la bitácora); con interruptor, el programa falso ahora atiende SIGUSR1 como el de verdad (sale con 0), y el caso nuevo `cierre`:
+  cuatro cierres seguidos (dos por la consola, dos de «reiniciar ya») ordenados (0) o cortados (138) no cuentan como caída y quedan
+  en la bitácora; uno que no se cierra se corta a los 20 s y queda apuntado.
+
 - (Revisión independiente, 13-11-2026) Repetido: la compilación NativeAOT con el perfil del A4 (ningún aviso IL), `readelf -d` y
   `readelf -V` de `rocola-xp` (libm, libc; glibc 2.38) y de `libSkiaSharp.so` (libpthread, libdl, libm, libc; glibc 2.29), los nombres
   de las bibliotecas que abre por `DllImport` (los siete de arriba) y que están en `salida-qemu/target`; con el `rocola-xp` de verdad
@@ -198,7 +221,8 @@ Probado aquí (máquina de pruebas, no el A4):
   `readelf`/`ldd`, contra lo que trae el sistema compilado (`salida-qemu/target`).
 - El `rocola-xp` de verdad **corre con las bibliotecas del sistema** (dentro de la raíz del sistema de QEMU: glibc 2.42, Mesa
   softpipe), fuera de pantalla: abre, lee la carpeta de música apuntada con `dir=` y escribe sus datos donde dice `ROCOLA_DATOS`.
-- Las señales con el programa de verdad (tabla de arriba) y que `--version` abre la rocola.
+- Las señales con el programa de verdad (tabla de arriba). (El 13-11-2026 `--version` abría la rocola y SIGUSR1 la cortaba con 138:
+  ya no, ver la entrada del 14-11-2026.)
 - El lanzador con programas falsos y el **BusyBox del sistema** en su propio espacio de procesos
   (`sistema/rocola/Pruebas/Lanzador/prueba.sh`): sin interruptor hace **lo mismo que el lanzador de antes** (lo que se le pasa al
   programa, el registro y la bitácora, iguales: arranque, salida con 42 y la consola de mantenimiento); con interruptor: entorno,
@@ -217,4 +241,7 @@ No probado:
 - Las letras de XP leídas de un disco de Windows de verdad; `rocola_teclas.txt` y `rocola_config.txt` reales de XP.
 - El cambio del botón de encendido y el del estado del buzón, fuera de `sh -n`; lo del buzón con las órdenes «ya» solo como trozo
   suelto con programas falsos (`prueba.sh buzon`), no con el buzón entero ni con un reinicio de verdad.
-- Cuánto tarda `rocola-xp` en cerrarse con SIGTERM mientras suena música o un video (parada, sin música: unos 40 ms aquí).
+- Cuánto tarda `rocola-xp` en cerrarse con SIGTERM o SIGUSR1 mientras suena música por una tarjeta de verdad (aquí, sin tarjeta:
+  30 a 90 ms, también con un video). El cierre de XP puede esperar hasta 15 s + 5 s a que las escrituras lleguen al disco
+  (`WaitDataWrites`); el lanzador corta a los 20 s y el buzón a los 15 s (si pasa, el estado queda como tras un apagón).
+- SIGUSR1 con el sistema entero (el `killall -USR1` del lanzador y del buzón de verdad) y en el A4.

@@ -66,6 +66,7 @@ namespace Rocola
             PonContexto();   // SynchronizationContext.Current de este hilo: lo que otros hilos le mandan con Post llega como encargo (PantallaRocola.Teclado.cs)
             Principal = rocola;
             AlApagar = FinDeSesion;   // WM_QUERYENDSESSION y WM_ENDSESSION a las ventanas: la rocola y sus hojas (PantallaRocola.Ventana.cs)
+            AlCerrarDeFuera = CierreDeFuera;   // SIGUSR1 (los reinicios propios de Rocola OS): WM_CLOSE de fuera a la ventana de la rocola, que conserva el estado
             bool cerrada = false;
             rocola.FormClosed += delegate { cerrada = true; };   // el aviso de la rocola al cerrarse (el FormClosed de XP)
             rocola.Ventana.Ensena();   // (Application.Run: Visible = true) la ventana se ensena con los pasos de WinForms
