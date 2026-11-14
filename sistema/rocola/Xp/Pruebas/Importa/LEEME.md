@@ -19,6 +19,10 @@ Partes (sin nombrarlas, las tres; unos 3 a 4 minutos con la máquina libre):
   quitada), los botones y los modelos tal cual, lo que no se trae, la marca; la segunda llamada no toca nada; la copia del lanzador de
   antes (`rocola_de_xp.txt`); otra carpeta de XP (`.antes-xp` y la configuración juntada); el disco que cambia de nombre (no se
   re-importa); los fallos (2, 3, 4, sin dejar nada); la carpeta de XP como destino; y la carpeta de XP sin tocar (contenido y fechas).
+  Añadido en la revisión: un apagón a media importación y a media re-importación (con `strace`, si está: el programa muere en seco al ir a
+  poner un archivo en su sitio; la siguiente llamada deja lo mismo que una sin cortes, también los `.antes-xp`) y `rocola-xp` abierta antes
+  de la primera importación sin la música (deja `rocola_volumen.txt` vacío, que no debe tapar la tabla de XP; una tabla con alguna canción
+  suya sí se queda).
 - **usa**: `rocola-xp` fuera de pantalla con lo importado (como el lanzador: más el `dir=` de la música): lee las seis medidas, el
   repaso solo mide la canción nueva, los botones importados dan créditos sin abrir el asistente de los botones, y al sonar una importada
   su sello vale tal cual; con el sello de Windows (la prueba de control) `rocola-xp` la adopta y le pone el de hoy, que es lo que evita

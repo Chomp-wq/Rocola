@@ -7,7 +7,8 @@
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT, bin/Release/net10.0) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/act/xp-datos/importa); se rehace entera en cada corrida
 # importa: la importacion tabla por tabla, la carpeta de XP sin tocar, la segunda llamada que no hace nada, la copia del lanzador de antes,
-#          la re-importacion de otra carpeta (.antes-xp y la configuracion juntada), el disco que cambia de nombre y los fallos.
+#          la re-importacion de otra carpeta (.antes-xp y la configuracion juntada), el disco que cambia de nombre y los fallos; y (revision)
+#          un apagon a media importacion y a media re-importacion (con strace, si esta) y rocola-xp abierta antes de importar sin la musica.
 # usa:     rocola-xp abierto fuera de pantalla con lo importado: no vuelve a medir lo medido por XP (solo la cancion nueva), los botones
 #          importados valen, y al sonar una cancion importada su sello (rocola_fuentes.txt) vale tal cual (con el sello de Windows no).
 # material: el material para entrenar la IA, las miniaturas y el respaldo: sin ROCOLA_IA_DATOS en la carpeta de datos (como XP); con ella, alli; con
@@ -33,11 +34,16 @@ sinwindows() { ! grep -qE '[A-Za-z]:\\' "$1"; }
 # archivo que la dice), lo demas los discos. Deja en $W/sale.txt y $W/err.txt lo que dijo, y en $rc como salio.
 importa() {
 	local dst="$1"; shift
-	unshare -m -- sh -c 'd=$1; shift; mount --bind -o ro "$d" "$d" && exec "$@"' sh "$D" env ROCOLA_DATOS="$dst" "${RX[@]}" --importa-xp "$@" > "$W/sale.txt" 2> "$W/err.txt"
+	# (revision) con CORTE=N, un apagon a media importacion: strace mata el programa en seco al ir a cambiar de nombre el archivo N (ese
+	# cambio no se hace); lo que quede escrito es lo que dejaria un apagon en ese punto
+	local pre=(); [ -n "${CORTE:-}" ] && pre=(strace -f -qq -o /dev/null -e trace=rename -e "inject=rename:signal=KILL:when=$CORTE")
+	unshare -m -- sh -c 'd=$1; shift; mount --bind -o ro "$d" "$d" && exec "$@"' sh "$D" "${pre[@]}" env ROCOLA_DATOS="$dst" "${RX[@]}" --importa-xp "$@" > "$W/sale.txt" 2> "$W/err.txt"
 	rc=$?
 }
 # lo que hay en una carpeta, con su contenido y su fecha (para ver que nadie la toco)
 foto() { (cd "$1" && find . -printf '%P %y %s %T@\n' | sort && find . -type f -print0 | sort -z | xargs -0 -r sha1sum) ; }
+# solo el contenido (sin las fechas ni la marca, que lleva la de la importacion): dos importaciones que acaban igual
+contenido() { (cd "$1" && find . -type f ! -name rocola_importado_xp.txt -print0 | sort -z | xargs -0 -r sha1sum) ; }
 # rocola-xp fuera de pantalla con los datos de $1 hasta que se cumpla $3 (o $2 segundos); despues SENAL (TERM de fabrica). Lo demas: VAR=valor.
 corre() {
 	local datos="$1" max="$2" cond="$3"; shift 3
@@ -56,7 +62,7 @@ gen() { mkdir -p "$(dirname "$1")"; ffmpeg -hide_banner -loglevel error -y -f la
 # los ticks de .NET de la fecha de escritura y de la «creacion» que .NET da en Linux (la mas vieja de escritura y cambio)
 ticks() { python3 -c 'import os,sys; s=os.stat(sys.argv[1]); t=lambda n: 621355968000000000 + n // 100; print(t(s.st_mtime_ns), t(min(s.st_mtime_ns, s.st_ctime_ns)))' "$1"; }
 
-for d in "$D" "$W/prep" "$W/run" "$W/destino1" "$W/destino2" "$W/destino3" "$W/destino4" "$W/destino5" "$W/usa" "$W/usa2" "$W/mat"; do rm -rf "$d"; done
+for d in "$D" "$W/prep" "$W/run" "$W/destino1" "$W/destino2" "$W/destino3" "$W/destino4" "$W/destino5" "$W/destino6" "$W/destino7" "$W/destino8" "$W/usa" "$W/usa2" "$W/mat"; do rm -rf "$d"; done
 rm -f "$W"/*.salida.txt; mkdir -p "$W/run"
 
 # ================= EL MUNDO =================
@@ -138,7 +144,18 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "la marca: la primera linea como la del programa anterior" contiene "$T/rocola_importado_xp.txt" "Importado de la rocola de XP ($XPC) el "
 	si "la marca: donde esta dentro de su disco" contiene "$T/rocola_importado_xp.txt" "relativa=Rocola/Release"
 	si "sin la carpeta de paso ni la de en curso" bash -c '[ ! -e "$1/.importa-xp.tmp" ] && [ ! -e "$1/.importa-xp.en-curso" ]' sh "$T"
-	foto "$T" > "$W/foto-destino1.txt"
+	foto "$T" > "$W/foto-destino1.txt"; contenido "$T" > "$W/contenido-destino1.txt"
+	# (revision) UN APAGON A MEDIA IMPORTACION: muere al ir a poner el 3.er archivo en su sitio (dos ya puestos, sin la marca); la siguiente
+	# llamada acaba lo que faltaba y todo queda igual que una importacion sin cortes
+	if command -v strace > /dev/null; then
+		T=$W/destino6
+		CORTE=3 importa "$T" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
+		si "(apagon a media importacion) muere sin dejar la marca" bash -c '[ $1 != 0 ] && [ ! -e "$2/rocola_importado_xp.txt" ] && [ -e "$2/.importa-xp.en-curso" ]' sh $rc "$T"
+		importa "$T" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
+		contenido "$T" > "$W/contenido-destino6.txt"
+		si "(apagon a media importacion) la siguiente acaba: lo mismo que sin el corte, con la marca y sin restos" bash -c '[ $1 = 0 ] && cmp -s "$2" "$3" && [ -e "$4/rocola_importado_xp.txt" ] && [ ! -e "$4/.importa-xp.en-curso" ] && [ ! -e "$4/.importa-xp.tmp" ]' sh $rc "$W/contenido-destino1.txt" "$W/contenido-destino6.txt" "$T"
+		T=$W/destino1
+	else echo "(sin strace: no se prueba el apagon a media importacion)"; fi
 	importa "$T" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
 	si "la segunda llamada sale con 0" [ $rc = 0 ]
 	si "y dice que ya estaba" contiene "$W/sale.txt" "ya importado de $XPC"
@@ -164,6 +181,7 @@ if [[ " $partes " == *" importa "* ]]; then
 	printf 'gpu=1\r\ndiagnostico=0\r\nclave_nueva=1\r\ndir=D:\\Musica Extra\r\n' > "$X2/rocola_config.txt"
 	printf 'clave_solo_de_rocola_xp=7\r\n' >> "$T/rocola_config.txt"
 	cp "$T/rocola_volumen.txt" "$W/volumen-de-antes.txt"; cp "$T/rocola_config.txt" "$W/config-de-antes.txt"; cp "$T/rocola_sonoridad.txt" "$W/sonoridad-de-antes.txt"
+	rm -rf "$W/destino7"; cp -a "$T" "$W/destino7"   # (revision) la misma, para el apagon a media re-importacion (abajo)
 	echo "$X2" > "$W/run/rocola-datos-xp"
 	importa "$T" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
 	si "otra carpeta de XP: sale con 0" [ $rc = 0 ]
@@ -183,6 +201,17 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "la configuracion de antes, en .antes-xp" igual "$T/rocola_config.txt.antes-xp" "$W/config-de-antes.txt"
 	importa "$T" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
 	si "y otra vez con la nueva: nada que hacer" bash -c '[ $1 = 0 ] && grep -qF "ya importado" "$2"' sh $rc "$W/sale.txt"
+	# (revision) UN APAGON A MEDIA RE-IMPORTACION: con lo de antes ya en .antes-xp y un archivo nuevo puesto, muere al ir a poner el 2.o; la
+	# marca sigue diciendo la carpeta de antes. La siguiente acaba: lo mismo que la re-importacion sin cortes, tambien los .antes-xp (no se
+	# vuelven a copiar encima con lo ya importado: .importa-xp.en-curso)
+	if command -v strace > /dev/null; then
+		contenido "$T" > "$W/contenido-reimportado.txt"
+		CORTE=2 importa "$W/destino7" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
+		si "(apagon a media re-importacion) muere y la marca sigue diciendo la de antes" bash -c '[ $1 != 0 ] && tr -d "\r" < "$3/rocola_importado_xp.txt" | grep -qxF "carpeta=$2"' sh $rc "$XPC" "$W/destino7"
+		importa "$W/destino7" "$W/run/rocola-datos-xp" "${DISCOS[@]}"
+		contenido "$W/destino7" > "$W/contenido-destino7.txt"
+		si "(apagon a media re-importacion) la siguiente acaba: lo mismo que sin el corte (y los .antes-xp con lo de antes)" bash -c '[ $1 = 0 ] && cmp -s "$2" "$3" && tr -d "\r" < "$4/rocola_importado_xp.txt" | grep -qxF "carpeta=$5"' sh $rc "$W/contenido-reimportado.txt" "$W/contenido-destino7.txt" "$W/destino7" "$X2"
+	fi
 
 	# EL DISCO CAMBIA DE NOMBRE (ayer sda1, hoy sde1): la misma carpeta, no se re-importa
 	T=$W/destino3; echo "$XPC" > "$W/run/rocola-datos-xp"
@@ -212,6 +241,19 @@ if [[ " $partes " == *" importa "* ]]; then
 		chattr -i "$T"
 		si "no se puede escribir en el destino: sale con 4, una linea en la salida de errores, y no deja nada" bash -c '[ $1 = 4 ] && [ "$(wc -l < "$3")" = 1 ] && [ -z "$(ls -A "$2")" ]' sh $rc "$T" "$W/err.txt"
 	fi
+	# (revision) ROCOLA-XP ABIERTA ANTES DE LA PRIMERA IMPORTACION, SIN LA MUSICA (la importacion salio con 4 porque no estaba el disco, y el
+	# lanzador abre la rocola igual): deja rocola_volumen.txt vacio, que no debe tapar para siempre la tabla de XP. Una tabla con alguna
+	# cancion suya si se queda (no se toca). Se cierra con SIGUSR1, como los reinicios propios de Rocola OS.
+	T=$W/destino8; mkdir -p "$T"
+	printf 'arriba=38\r\nabajo=40\r\nizquierda=37\r\nderecha=39\r\nponer=13\r\nregresar=27\r\nmoneda=77\r\nsaltar=83\r\n' > "$T/rocola_teclas.txt"
+	SENAL=USR1 corre "$T" 10 'false'
+	si "(rocola-xp sin musica antes de importar) deja rocola_volumen.txt vacio" bash -c '[ -e "$1/rocola_volumen.txt" ] && [ ! -s "$1/rocola_volumen.txt" ]' sh "$T"
+	printf '1.5|/otra/cancion/de/rocola-xp.mp3\r\n' > "$T/rocola_billar_nivel.txt"   # y una tabla con una cancion suya
+	importa "$T" "$XPC" "${DISCOS[@]}"
+	si "(rocola-xp sin musica antes de importar) la importacion sale con 0" [ $rc = 0 ]
+	si "la tabla vacia no tapa la de XP: rocola_volumen.txt con sus seis, sin .antes-xp" bash -c '[ "$(wc -l < "$1/rocola_volumen.txt")" = 6 ] && [ ! -e "$1/rocola_volumen.txt.antes-xp" ]' sh "$T"
+	si "y lo dice la marca" contiene "$T/rocola_importado_xp.txt" "vacias (de rocola-xp, sin ninguna cancion), reemplazadas: rocola_volumen.txt"
+	si "la tabla con una cancion de rocola-xp no se toca" bash -c 'grep -qF "/otra/cancion/de/rocola-xp.mp3" "$1/rocola_billar_nivel.txt" && grep -qF "no se tocan: rocola_billar_nivel.txt" "$1/rocola_importado_xp.txt"' sh "$T"
 	# LA CARPETA DE DATOS ES LA DE XP («datos=xp»): nada que importar
 	importa "$XPC" "$XPC" "${DISCOS[@]}"
 	si "con la carpeta de XP como destino: sale con 0 sin tocar nada" bash -c '[ $1 = 0 ] && grep -qF "nada que importar" "$2"' sh $rc "$W/sale.txt"

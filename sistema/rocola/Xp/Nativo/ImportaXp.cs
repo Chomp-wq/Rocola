@@ -333,7 +333,7 @@ namespace Rocola
             string enCurso = Path.Combine(destino, EnCurso);
             bool sigue = false;
             try { sigue = File.Exists(enCurso) && File.ReadAllText(enCurso).Trim() == xp; } catch { }
-            List<string> igual = new List<string>(), noSeTocan = new List<string>(), alAntes = new List<string>();
+            List<string> igual = new List<string>(), noSeTocan = new List<string>(), alAntes = new List<string>(), vacias = new List<string>();
             List<KeyValuePair<string, string>> mueve = new List<KeyValuePair<string, string>>();
             try
             {
@@ -343,10 +343,18 @@ namespace Rocola
                     if (File.Exists(dst))
                     {
                         if (MismosBytes(nuevo, dst)) { igual.Add(rel); continue; }
-                        bool reemplaza = reimporta || rel == "rocola_config.txt" || delLanzador.Contains(rel);
+                        // (Revision del 14-11-2026) Antes de la primera importacion (sin marca), una tabla de rocola-xp SIN NINGUNA CANCION no es
+                        // «lo que ya tenia rocola-xp»: la deja asi rocola-xp si se abrio antes sin la musica (la importacion salio con 4 porque no
+                        // estaba el disco y el lanzador abre la rocola igual): rocola_volumen.txt vacio. Sin esto, la de XP no entraba nunca.
+                        bool sinCanciones = ant == null && Array.IndexOf(Tablas, rel) >= 0 && SinCanciones(dst);
+                        bool reemplaza = reimporta || rel == "rocola_config.txt" || delLanzador.Contains(rel) || sinCanciones;
                         if (!reemplaza) { noSeTocan.Add(rel); continue; }
-                        if (!sigue) CopiaArchivo(dst, dst + SufijoAntes);
-                        alAntes.Add(rel);
+                        if (sinCanciones && new FileInfo(dst).Length == 0) vacias.Add(rel);   // vacia: nada que guardar en .antes-xp
+                        else
+                        {
+                            if (!sigue) CopiaArchivo(dst, dst + SufijoAntes);
+                            alAntes.Add(rel);
+                        }
                     }
                     mueve.Add(new KeyValuePair<string, string>(nuevo, dst));
                 }
@@ -361,6 +369,7 @@ namespace Rocola
             catch (Exception ex) { return Falla(4, "no se pudo poner lo importado en " + destino + " (" + ex.Message + ")"); }
             if (igual.Count > 0) informe.Append("igual que lo que ya habia: ").Append(string.Join(", ", igual)).Append("\r\n");
             if (noSeTocan.Count > 0) informe.Append("ya habia de rocola-xp, no se tocan: ").Append(string.Join(", ", noSeTocan)).Append("\r\n");
+            if (vacias.Count > 0) informe.Append("vacias (de rocola-xp, sin ninguna cancion), reemplazadas: ").Append(string.Join(", ", vacias)).Append("\r\n");
             if (alAntes.Count > 0) informe.Append("lo de antes, en .antes-xp: ").Append(string.Join(", ", alAntes)).Append("\r\n");
             if (reimporta && ant != null) informe.Append("importado otra vez: antes era de ").Append(ant[0]).Append("\r\n");
 
@@ -590,6 +599,17 @@ namespace Rocola
             using (FileStream o = new FileStream(de, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (FileStream d = new FileStream(a, FileMode.Create, FileAccess.Write, FileShare.None))
             { o.CopyTo(d); d.Flush(true); }
+        }
+        // Una tabla sin ninguna cancion: ninguna linea con una ruta de Linux (al final de la linea tras «|», o la linea entera: rocola_afondo.txt).
+        // Vacia, o solo su cabecera y sus totales. (La bitacora del billar no lleva rutas: siempre cuenta como sin canciones.)
+        private static bool SinCanciones(string ruta)
+        {
+            try
+            {
+                foreach (string l in File.ReadLines(ruta)) if (l.StartsWith("/", StringComparison.Ordinal) || l.IndexOf("|/", StringComparison.Ordinal) >= 0) return false;
+                return true;
+            }
+            catch { return false; }
         }
         private static bool MismosBytes(string a, string b)
         {
