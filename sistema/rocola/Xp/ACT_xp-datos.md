@@ -216,6 +216,8 @@ rehacen cada vez, 16 ms frente a 1,5 ms por portada), y en el A4 serían 280 MB 
   (aquí no hay ninguno). Si no cuadrara, lo mismo de arriba: se vuelven a medir.
 - **Dos discos con la misma música**: el voto elige bien la letra, pero el lanzador apunta como `dir=` todas las carpetas «musica» de
   todos los discos: `rocola-xp` vería la música dos veces (no es de este grupo).
+- **Una vez por carpeta**: lo que la rocola de XP aprenda después de la importación (si se sigue usando en el bar, arrancando Windows) no
+  se trae; `rocola-xp` lo mide por su cuenta. Como el programa anterior.
 - **La re-importación** pasa a `.antes-xp` lo que `rocola-xp` aprendió desde la primera (la regla del 7-11-2026). La identidad por
   `Rocola.exe` evita re-importar cuando solo cambia el nombre del disco; si a la vez se cambiara el `Rocola.exe` de XP, se re-importaría.
 - **Una carpeta de XP sin ninguna canción en los discos** se reintenta en cada arranque (sale con 4 y el lanzador lo apunta cada vez).
